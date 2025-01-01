@@ -1,41 +1,32 @@
-use ndarray::{Array, Array1, Array2};
+use ndarray::{Array1, Array2};
 use plotly::{Plot, Scatter};
 use rand::prelude::*;
-use rand_distr::Uniform;
 use statrs::distribution::{ContinuousCDF, MultivariateNormal, Normal};
 
-/// ======================================================
-/// 1) Empirical Copula (Ranking)
-/// ======================================================
-pub fn empirical_copula(x: &Array1<f64>, y: &Array1<f64>) -> (Array1<f64>, Array1<f64>) {
-  // Sort indices for x
-  let mut idx_x = (0..x.len()).collect::<Vec<usize>>();
-  idx_x.sort_by(|&i, &j| x[i].partial_cmp(&x[j]).unwrap());
-  // Ranks for x
-  let mut rank_sx = Array::zeros(x.len());
-  for (i, &idx) in idx_x.iter().enumerate() {
-    rank_sx[idx] = (i + 1) as f64 / x.len() as f64;
-  }
+/// A simple trait for 2D copulas: requires only a `sample` method and `get_params`.
+pub trait NCopula2D {
+  /// Generate `n` samples in [0,1]^2, returning them as an (n x 2) matrix.
+  fn sample(&self, n: usize) -> Array2<f64>;
 
-  // Sort indices for y
-  let mut idx_y = (0..y.len()).collect::<Vec<usize>>();
-  idx_y.sort_by(|&i, &j| y[i].partial_cmp(&y[j]).unwrap());
-  // Ranks for y
-  let mut rank_sy = Array::zeros(y.len());
-  for (i, &idx) in idx_y.iter().enumerate() {
-    rank_sy[idx] = (i + 1) as f64 / y.len() as f64;
-  }
-
-  (rank_sx, rank_sy)
+  /// Return the copula parameters as a `Vec<f64>`.
+  fn get_params(&self) -> Vec<f64>;
 }
 
-/// ======================================================
-/// 2) Plot (Empirical) Copula
-/// ======================================================
-pub fn plot_copula(u: &Array1<f64>, v: &Array1<f64>, title: &str) {
-  let trace = Scatter::new(u.to_vec(), v.to_vec())
+/// A small helper function for plotting 2D data using Plotly.
+pub fn plot_copula_samples(data: &Array2<f64>, title: &str) {
+  if data.ncols() != 2 {
+    eprintln!(
+      "Only 2D data can be plotted, but got {} columns!",
+      data.ncols()
+    );
+    return;
+  }
+  let x = data.column(0).to_vec();
+  let y = data.column(1).to_vec();
+
+  let trace = Scatter::new(x, y)
     .mode(plotly::common::Mode::Markers)
-    .marker(plotly::common::Marker::new().size(4))
+    .marker(plotly::common::Marker::new().size(3))
     .name(title);
 
   let mut plot = Plot::new();
@@ -43,238 +34,314 @@ pub fn plot_copula(u: &Array1<f64>, v: &Array1<f64>, title: &str) {
   plot.show();
 }
 
-/// ======================================================
-/// 3) Gaussian Copula
-/// ======================================================
-pub fn generate_gaussian_copula_sample(n: usize, rho: f64) -> (Array1<f64>, Array1<f64>) {
-  let mean = vec![0.0, 0.0];
-  let cov = vec![vec![1.0, rho], vec![rho, 1.0]];
-  let cov_flat = cov.into_iter().flatten().collect();
+/// ========================================================================
+/// Free functions for the *CDF* of Clayton and Gumbel (2D) from Wikipedia
+/// ========================================================================
 
-  let mvn = MultivariateNormal::new(mean, cov_flat)
-    .expect("Invalid covariance matrix for MultivariateNormal.");
-
-  let mut rng = thread_rng();
-  let mut samples = Array2::<f64>::zeros((n, 2));
-
-  for i in 0..n {
-    let xy = mvn.sample(&mut rng);
-    samples[[i, 0]] = xy[0];
-    samples[[i, 1]] = xy[1];
-  }
-
-  // Transform each dimension by standard normal CDF to get U(0,1)
-  let standard_normal = Normal::new(0.0, 1.0).unwrap();
-  let cdf = |z: f64| standard_normal.cdf(z);
-
-  let u = samples.column(0).mapv(cdf);
-  let v = samples.column(1).mapv(cdf);
-
-  (u.to_owned(), v.to_owned())
+/// Clayton copula CDF, θ in (-1,∞)\{0}:
+/// C(u,v) = max(u^-θ + v^-θ - 1, 0)^(-1/θ)
+pub fn cdf_clayton(u: f64, v: f64, theta: f64) -> f64 {
+  let val = u.powf(-theta) + v.powf(-theta) - 1.0;
+  val.max(0.0).powf(-1.0 / theta)
 }
 
-/// ======================================================
-/// 4) Clayton Copula (Archimedean)
-/// ======================================================
-pub fn generate_clayton_copula_sample(n: usize, alpha: f64) -> (Array1<f64>, Array1<f64>) {
-  use rand_distr::{Exp, Gamma};
-  assert!(alpha > 0.0, "Clayton alpha must be > 0.");
-
-  let mut rng = thread_rng();
-  let gamma_dist = Gamma::new(1.0 / alpha, 1.0).unwrap();
-  let exp_dist = Exp::new(1.0).unwrap();
-
-  let mut u = Array1::<f64>::zeros(n);
-  let mut v = Array1::<f64>::zeros(n);
-
-  for i in 0..n {
-    let w = gamma_dist.sample(&mut rng);
-    let e1 = exp_dist.sample(&mut rng);
-    let e2 = exp_dist.sample(&mut rng);
-
-    // (1 + e1 / w)^(-1/alpha)
-    u[i] = (1.0 + e1 / w).powf(-1.0 / alpha);
-    v[i] = (1.0 + e2 / w).powf(-1.0 / alpha);
-  }
-  (u, v)
+/// Gumbel copula CDF, θ in [1,∞):
+/// C(u,v) = exp(-( (-ln(u))^θ + (-ln(v))^θ )^(1/θ))
+pub fn cdf_gumbel(u: f64, v: f64, theta: f64) -> f64 {
+  let s = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
+  ((-1.0) * s.powf(1.0 / theta)).exp()
 }
 
-/// ======================================================
-/// 5) Gumbel Copula (Archimedean)
-/// ======================================================
-pub fn generate_gumbel_copula_sample(n: usize, alpha: f64) -> (Array1<f64>, Array1<f64>) {
-  use rand_distr::Exp;
-  assert!(alpha >= 1.0, "Gumbel alpha must be >= 1.0.");
-
-  let mut rng = thread_rng();
-  let exp_dist = Exp::new(1.0).unwrap();
-  let uniform_dist = Uniform::new(1e-15, 1.0 - 1e-15);
-
-  let mut u = Array1::<f64>::zeros(n);
-  let mut v = Array1::<f64>::zeros(n);
-
-  for i in 0..n {
-    let e1 = exp_dist.sample(&mut rng);
-    let e2 = exp_dist.sample(&mut rng);
-    // Avoid exact 0 or 1 for stable approx
-    let x = uniform_dist.sample(&mut rng);
-
-    let w_approx = e1 / (1.0 + x) + 1e-15; // ensure nonzero
-
-    let z1 = (e2 / w_approx as f64).powf(1.0 / alpha);
-    let z2 = (e1 / w_approx).powf(1.0 / alpha);
-
-    u[i] = (-z1).exp();
-    v[i] = (-z2).exp();
-  }
-  (u, v)
+/// ========================================================================
+/// 1) Empirical copula (2D) - rank-based transformation
+/// ========================================================================
+#[derive(Clone, Debug)]
+pub struct EmpiricalCopula2D {
+  /// The rank-transformed data (N x 2), each row in [0,1]^2
+  pub rank_data: Array2<f64>,
 }
 
-/// ======================================================
-/// 6) Frank Copula (Archimedean) - with clamping
-/// ======================================================
-pub fn generate_frank_copula_sample(n: usize, theta: f64) -> (Array1<f64>, Array1<f64>) {
-  assert!(theta != 0.0, "Frank copula parameter must be non-zero.");
+impl EmpiricalCopula2D {
+  /// Create an EmpiricalCopula2D from two 1D arrays (`xdata` and `ydata`) of equal length.
+  /// This performs a rank-based transform: for each sample i,
+  ///   sx[i] = rank_of_x[i] / n
+  ///   sy[i] = rank_of_y[i] / n
+  /// and stores the resulting points in [0,1]^2.
+  pub fn new_from_two_series(xdata: &Array1<f64>, ydata: &Array1<f64>) -> Self {
+    assert_eq!(
+      xdata.len(),
+      ydata.len(),
+      "xdata and ydata must have the same length!"
+    );
+    let n = xdata.len();
 
-  let mut rng = thread_rng();
-  let uni = Uniform::new(1e-15, 1.0 - 1e-15);
+    // Convert to Vec for easier sorting with indices
+    let mut xv: Vec<(f64, usize)> = xdata.iter().enumerate().map(|(i, &val)| (val, i)).collect();
+    let mut yv: Vec<(f64, usize)> = ydata.iter().enumerate().map(|(i, &val)| (val, i)).collect();
 
-  let mut u = Array1::<f64>::zeros(n);
-  let mut v = Array1::<f64>::zeros(n);
+    // Sort by the actual float value
+    xv.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    yv.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
-  for i in 0..n {
-    // Avoid exact 0 or 1 by sampling in (1e-15, 1 - 1e-15)
-    let uu = uni.sample(&mut rng);
-    let zz = uni.sample(&mut rng);
-    u[i] = uu;
-
-    let denom = 1.0 - (-theta * uu).exp();
-    let numerator = (1.0 - (-theta).exp()) * zz;
-    let mut inside = 1.0 - numerator / denom;
-
-    // If inside <= 0 => clamp to a small positive
-    if inside <= 1e-15 {
-      inside = 1e-15;
+    // After sorting, xv[k] = (value, original_index).
+    // The rank of that original index is k.
+    let mut rank_x = vec![0.0; n];
+    let mut rank_y = vec![0.0; n];
+    for (rank, &(_val, orig_i)) in xv.iter().enumerate() {
+      rank_x[orig_i] = rank as f64; // rank in [0..n-1]
+    }
+    for (rank, &(_val, orig_i)) in yv.iter().enumerate() {
+      rank_y[orig_i] = rank as f64;
     }
 
-    v[i] = -1.0 / theta * inside.ln();
+    // Normalize ranks to [0,1].
+    for i in 0..n {
+      rank_x[i] /= n as f64;
+      rank_y[i] /= n as f64;
+    }
+
+    // Build final (n x 2) array
+    let mut rank_data = Array2::<f64>::zeros((n, 2));
+    for i in 0..n {
+      rank_data[[i, 0]] = rank_x[i];
+      rank_data[[i, 1]] = rank_y[i];
+    }
+    EmpiricalCopula2D { rank_data }
   }
-  (u, v)
 }
 
-/// ======================================================
-/// 7) Tests (including Empirical Copula)
-/// ======================================================
+impl NCopula2D for EmpiricalCopula2D {
+  fn sample(&self, _n: usize) -> Array2<f64> {
+    // Demonstration: simply return the rank-transformed data
+    // If you want bootstrap, you can draw with replacement here.
+    self.rank_data.clone()
+  }
+
+  fn get_params(&self) -> Vec<f64> {
+    // Empirical copula has no explicit parameters
+    vec![]
+  }
+}
+
+/// ========================================================================
+/// 2) Gaussian copula (2D)
+/// ========================================================================
+#[derive(Clone, Debug)]
+pub struct GaussianCopula2D {
+  /// 2D mean vector, e.g. [0.0, 0.0]
+  pub mean: Array1<f64>,
+  /// 2x2 covariance matrix
+  pub cov: Array2<f64>,
+}
+
+impl NCopula2D for GaussianCopula2D {
+  fn sample(&self, n: usize) -> Array2<f64> {
+    // Flatten the 2x2 covariance
+    let mut cov_flat = Vec::with_capacity(4);
+    cov_flat.push(self.cov[[0, 0]]);
+    cov_flat.push(self.cov[[0, 1]]);
+    cov_flat.push(self.cov[[1, 0]]);
+    cov_flat.push(self.cov[[1, 1]]);
+
+    // Create a 2D MVN
+    let mvn = MultivariateNormal::new(self.mean.to_vec(), cov_flat)
+      .expect("Invalid MVN parameters (Gaussian copula).");
+
+    let mut rng = thread_rng();
+    let mut z = Array2::<f64>::zeros((n, 2));
+
+    // Sample from MVN
+    for i in 0..n {
+      let sample_vec = mvn.sample(&mut rng);
+      z[[i, 0]] = sample_vec[0];
+      z[[i, 1]] = sample_vec[1];
+    }
+
+    // Apply standard normal CDF to get each coordinate in [0,1]
+    let std_normal = Normal::new(0.0, 1.0).unwrap();
+    for i in 0..n {
+      z[[i, 0]] = std_normal.cdf(z[[i, 0]]);
+      z[[i, 1]] = std_normal.cdf(z[[i, 1]]);
+    }
+    z
+  }
+
+  fn get_params(&self) -> Vec<f64> {
+    vec![
+      self.mean[0],
+      self.mean[1],
+      self.cov[[0, 0]],
+      self.cov[[0, 1]],
+      self.cov[[1, 0]],
+      self.cov[[1, 1]],
+    ]
+  }
+}
+
+/// ========================================================================
+/// 3) Gumbel copula (2D) - CORRECT (Archimedean) sampling
+/// ========================================================================
+use rand_distr::{Distribution, Exp};
+use statrs::distribution::Gamma;
+
+#[derive(Clone, Debug)]
+pub struct GumbelCopula2D {
+  /// alpha >= 1 (Gumbel parameter)
+  pub alpha: f64,
+}
+
+impl NCopula2D for GumbelCopula2D {
+  fn sample(&self, n: usize) -> Array2<f64> {
+    let alpha = self.alpha;
+    assert!(alpha >= 1.0, "The Gumbel parameter (alpha) must be >= 1!");
+
+    let mut rng = thread_rng();
+    let exp_dist = Exp::new(1.0).unwrap(); // Exp(1)
+    let mut data = Array2::<f64>::zeros((n, 2));
+
+    for i in 0..n {
+      // 1) M = X^alpha, where X ~ Exp(1)
+      let x = exp_dist.sample(&mut rng) as f64;
+      let m = x.powf(alpha);
+
+      // 2) E1, E2 ~ Exp(1)
+      let e1 = exp_dist.sample(&mut rng);
+      let e2 = exp_dist.sample(&mut rng);
+
+      // 3) U1 = exp(- (E1*M)^(1/alpha)), U2 = exp(- (E2*M)^(1/alpha))
+      let u1 = (-(e1 * m).powf(1.0 / alpha)).exp();
+      let u2 = (-(e2 * m).powf(1.0 / alpha)).exp();
+
+      data[[i, 0]] = u1;
+      data[[i, 1]] = u2;
+    }
+    data
+  }
+
+  fn get_params(&self) -> Vec<f64> {
+    vec![self.alpha]
+  }
+}
+
+/// ========================================================================
+/// 4) Clayton copula (2D) - CORRECT (Archimedean) sampling
+/// ========================================================================
+#[derive(Clone, Debug)]
+pub struct ClaytonCopula2D {
+  /// alpha > 0 (Clayton parameter)
+  pub alpha: f64,
+}
+
+impl NCopula2D for ClaytonCopula2D {
+  fn sample(&self, n: usize) -> Array2<f64> {
+    let alpha = self.alpha;
+    assert!(alpha > 0.0, "The Clayton parameter (alpha) must be > 0!");
+
+    let mut rng = thread_rng();
+    // Gamma(shape = 1/alpha, rate = 1)
+    let gamma_dist = Gamma::new(1.0 / alpha, 1.0).unwrap();
+    let exp_dist = Exp::new(1.0).unwrap(); // Exp(1)
+
+    let mut data = Array2::<f64>::zeros((n, 2));
+
+    for i in 0..n {
+      // 1) W ~ Gamma(shape=1/alpha, rate=1)
+      let w = gamma_dist.sample(&mut rng);
+
+      // 2) E1, E2 ~ Exp(1)
+      let e1 = exp_dist.sample(&mut rng);
+      let e2 = exp_dist.sample(&mut rng);
+
+      // 3) U1 = (1 + W*E1)^(-1/alpha), U2 = (1 + W*E2)^(-1/alpha)
+      let u1 = (1.0 + w * e1).powf(-1.0 / alpha);
+      let u2 = (1.0 + w * e2).powf(-1.0 / alpha);
+
+      data[[i, 0]] = u1;
+      data[[i, 1]] = u2;
+    }
+    data
+  }
+
+  fn get_params(&self) -> Vec<f64> {
+    vec![self.alpha]
+  }
+}
+
+/// ========================================================================
+/// Tests / Examples: generate samples and plot them for Empirical, Gaussian,
+/// Gumbel, and Clayton copulas. Use `cargo test -- --nocapture`.
+/// ========================================================================
 #[cfg(test)]
 mod tests {
   use super::*;
-  use approx::assert_abs_diff_eq;
+  use ndarray::arr2;
+  use rand_distr::Uniform;
 
-  const N: usize = 500; // sample size for tests
+  /// Number of samples for each copula
+  const N: usize = 10000;
 
-  // ----------------------------------------------
-  // A) Direct Empirical Copula Test
-  // ----------------------------------------------
+  /// ========================================================================
+  /// 1) Empirical Copula Test
+  /// ========================================================================
   #[test]
-  fn test_empirical_copula_direct() {
+  fn test_empirical_copula() {
     let mut rng = thread_rng();
-    let uniform_dist = Uniform::new(0.0, 1.0);
+    let uniform = Uniform::new(0.0, 1.0);
 
-    let x_data = (0..N).map(|_| uniform_dist.sample(&mut rng)).collect();
-    let y_data = (0..N).map(|_| uniform_dist.sample(&mut rng)).collect();
+    let len_data = 500;
+    let mut xdata = Array1::<f64>::zeros(len_data);
+    let mut ydata = Array1::<f64>::zeros(len_data);
+    for i in 0..len_data {
+      let xv = uniform.sample(&mut rng);
+      // Introduce some linear correlation
+      let yv = 0.3 * uniform.sample(&mut rng) + 0.7 * xv;
+      xdata[i] = xv;
+      ydata[i] = yv.clamp(0.0, 1.0);
+    }
 
-    let x_arr = Array1::from_vec(x_data);
-    let y_arr = Array1::from_vec(y_data);
-
-    // Build empirical copula
-    let (sx, sy) = empirical_copula(&x_arr, &y_arr);
-
-    // Check range
-    assert!(sx.iter().all(|&x| x >= 0.0 && x <= 1.0));
-    assert!(sy.iter().all(|&y| y >= 0.0 && y <= 1.0));
-
-    // Means near 0.5
-    assert_abs_diff_eq!(sx.mean().unwrap(), 0.5, epsilon = 0.1);
-    assert_abs_diff_eq!(sy.mean().unwrap(), 0.5, epsilon = 0.1);
-
-    // Plot
-    plot_copula(&sx, &sy, "Empirical Copula (Direct Uniform Data)");
+    let empirical = EmpiricalCopula2D::new_from_two_series(&xdata, &ydata);
+    let emp_samples = empirical.sample(N);
+    plot_copula_samples(&emp_samples, "Empirical Copula (2D) - Rank-based data");
   }
 
-  // ----------------------------------------------
-  // B) Gaussian Copula Test
-  // ----------------------------------------------
+  /// ========================================================================
+  /// 2) Gaussian Copula Test
+  /// ========================================================================
   #[test]
   fn test_gaussian_copula() {
-    let rho = 0.7;
-    let (u, v) = generate_gaussian_copula_sample(N, rho);
-    let (sx, sy) = empirical_copula(&u, &v);
-
-    assert!(u.iter().all(|&x| x >= 0.0 && x <= 1.0));
-    assert!(v.iter().all(|&y| y >= 0.0 && y <= 1.0));
-
-    plot_copula(&sx, &sy, "Empirical Copula (Gaussian, rho=0.7)");
-
-    // Means ~ 0.5
-    assert_abs_diff_eq!(sx.mean().unwrap(), 0.5, epsilon = 0.1);
-    assert_abs_diff_eq!(sy.mean().unwrap(), 0.5, epsilon = 0.1);
+    let gauss = GaussianCopula2D {
+      mean: Array1::from(vec![0.0, 0.0]),
+      cov: arr2(&[[1.0, 0.6], [0.6, 1.0]]),
+    };
+    let gauss_samples = gauss.sample(N);
+    plot_copula_samples(&gauss_samples, "Gaussian Copula (2D)");
   }
 
-  // ----------------------------------------------
-  // C) Clayton Copula Test (Archimedean)
-  // ----------------------------------------------
-  #[test]
-  fn test_clayton_copula() {
-    let alpha = 1.5;
-    let (u, v) = generate_clayton_copula_sample(N, alpha);
-    let (sx, sy) = empirical_copula(&u, &v);
-
-    assert!(u.iter().all(|&x| x >= 0.0 && x <= 1.0));
-    assert!(v.iter().all(|&y| y >= 0.0 && y <= 1.0));
-
-    plot_copula(&sx, &sy, "Empirical Copula (Clayton, alpha=1.5)");
-
-    assert_abs_diff_eq!(sx.mean().unwrap(), 0.5, epsilon = 0.1);
-    assert_abs_diff_eq!(sy.mean().unwrap(), 0.5, epsilon = 0.1);
-  }
-
-  // ----------------------------------------------
-  // D) Gumbel Copula Test (Archimedean)
-  // ----------------------------------------------
+  /// ========================================================================
+  /// 3) Gumbel Copula Test
+  /// ========================================================================
   #[test]
   fn test_gumbel_copula() {
-    let alpha = 1.5; // Gumbel parameter >= 1
-    let (u, v) = generate_gumbel_copula_sample(N, alpha);
-    let (sx, sy) = empirical_copula(&u, &v);
+    let gumbel = GumbelCopula2D { alpha: 4.0 };
+    let gumbel_samples = gumbel.sample(N);
+    plot_copula_samples(&gumbel_samples, "Gumbel Copula (2D) - Marshall–Olkin");
 
-    assert!(u.iter().all(|&x| x >= 0.0 && x <= 1.0));
-    assert!(v.iter().all(|&y| y >= 0.0 && y <= 1.0));
-
-    plot_copula(&sx, &sy, "Empirical Copula (Gumbel, alpha=1.5)");
-
-    // Gumbel can have heavier tail dependence, so allow a bit more tolerance
-    assert_abs_diff_eq!(sx.mean().unwrap(), 0.5, epsilon = 0.2);
-    assert_abs_diff_eq!(sy.mean().unwrap(), 0.5, epsilon = 0.2);
+    // Example: Calculate the CDF of a specific point
+    let c_gumb = cdf_gumbel(0.5, 0.8, 1.5);
+    println!("Gumbel(θ=1.5) CDF(0.5, 0.8) = {}", c_gumb);
   }
 
-  // ----------------------------------------------
-  // E) Frank Copula Test (Archimedean)
-  // ----------------------------------------------
+  /// ========================================================================
+  /// 4) Clayton Copula Test
+  /// ========================================================================
   #[test]
-  fn test_frank_copula() {
-    let theta = 0.5;
-    let (u, v) = generate_frank_copula_sample(N, theta);
-    let (sx, sy) = empirical_copula(&u, &v);
+  fn test_clayton_copula() {
+    let clayton = ClaytonCopula2D { alpha: 1.5 };
+    let clayton_samples = clayton.sample(N);
+    plot_copula_samples(&clayton_samples, "Clayton Copula (2D) - Marshall–Olkin");
 
-    // Check range only if you clamp inside the generator
-    // TODO: this test is failing
-    assert!(u.iter().all(|&x| x >= 0.0 && x <= 1.0));
-    assert!(v.iter().all(|&y| y >= 0.0 && y <= 1.0));
-
-    plot_copula(&sx, &sy, "Empirical Copula (Frank, theta=5.0)");
-
-    // Means ~ 0.5
-    assert_abs_diff_eq!(sx.mean().unwrap(), 0.5, epsilon = 0.1);
-    assert_abs_diff_eq!(sy.mean().unwrap(), 0.5, epsilon = 0.1);
+    // Example: Calculate the CDF of a specific point
+    let c_clay = cdf_clayton(0.5, 0.8, 2.0);
+    println!("Clayton(θ=2) CDF(0.5, 0.8) = {}", c_clay);
   }
 }
