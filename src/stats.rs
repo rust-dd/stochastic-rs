@@ -1,4 +1,5 @@
 pub mod cir;
+pub mod copula;
 pub mod double_exp;
 pub mod fd;
 pub mod fou_estimator;

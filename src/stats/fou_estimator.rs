@@ -31,7 +31,11 @@ pub enum FilterType {
 impl FOUParameterEstimationV1 {
   pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
     self.linear_filter();
-    self.hurst_estimator();
+
+    if self.hurst.is_none() {
+      self.hurst_estimator();
+    }
+
     self.sigma_estimator();
     self.mu_estimator();
     self.theta_estimator();
@@ -42,6 +46,10 @@ impl FOUParameterEstimationV1 {
       self.mu.unwrap(),
       self.theta.unwrap(),
     )
+  }
+
+  pub fn set_hurst(&mut self, hurst: f64) {
+    self.hurst = Some(hurst);
   }
 
   fn hurst_estimator(&mut self) {
@@ -177,7 +185,9 @@ pub struct FOUParameterEstimationV2 {
 
 impl FOUParameterEstimationV2 {
   pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
-    self.hurst_estimator();
+    if self.hurst.is_none() {
+      self.hurst_estimator();
+    }
     self.sigma_estimator();
     self.mu_estimator();
     self.theta_estimator();
@@ -188,6 +198,10 @@ impl FOUParameterEstimationV2 {
       self.mu.unwrap(),
       self.theta.unwrap(),
     )
+  }
+
+  pub fn set_hurst(&mut self, hurst: f64) {
+    self.hurst = Some(hurst);
   }
 
   fn hurst_estimator(&mut self) {
