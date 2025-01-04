@@ -1,7 +1,7 @@
 use ndarray::{Array1, Array2};
 use plotly::{Plot, Scatter};
 use rand::prelude::*;
-use statrs::distribution::{ContinuousCDF, MultivariateNormal, Normal};
+use statrs::distribution::{ContinuousCDF, Exp, Gamma, MultivariateNormal, Normal};
 
 /// A simple trait for 2D copulas: requires only a `sample` method and `get_params`.
 pub trait NCopula2D {
@@ -34,10 +34,6 @@ pub fn plot_copula_samples(data: &Array2<f64>, title: &str) {
   plot.show();
 }
 
-/// ========================================================================
-/// Free functions for the *CDF* of Clayton and Gumbel (2D) from Wikipedia
-/// ========================================================================
-
 /// Clayton copula CDF, θ in (-1,∞)\{0}:
 /// C(u,v) = max(u^-θ + v^-θ - 1, 0)^(-1/θ)
 pub fn cdf_clayton(u: f64, v: f64, theta: f64) -> f64 {
@@ -52,9 +48,7 @@ pub fn cdf_gumbel(u: f64, v: f64, theta: f64) -> f64 {
   ((-1.0) * s.powf(1.0 / theta)).exp()
 }
 
-/// ========================================================================
-/// 1) Empirical copula (2D) - rank-based transformation
-/// ========================================================================
+/// Empirical copula (2D) - rank-based transformation
 #[derive(Clone, Debug)]
 pub struct EmpiricalCopula2D {
   /// The rank-transformed data (N x 2), each row in [0,1]^2
@@ -62,22 +56,18 @@ pub struct EmpiricalCopula2D {
 }
 
 impl EmpiricalCopula2D {
-  /// Create an EmpiricalCopula2D from two 1D arrays (`xdata` and `ydata`) of equal length.
+  /// Create an EmpiricalCopula2D from two 1D arrays (`x` and `y`) of equal length.
   /// This performs a rank-based transform: for each sample i,
   ///   sx[i] = rank_of_x[i] / n
   ///   sy[i] = rank_of_y[i] / n
   /// and stores the resulting points in [0,1]^2.
-  pub fn new_from_two_series(xdata: &Array1<f64>, ydata: &Array1<f64>) -> Self {
-    assert_eq!(
-      xdata.len(),
-      ydata.len(),
-      "xdata and ydata must have the same length!"
-    );
-    let n = xdata.len();
+  pub fn new_from_two_series(x: &Array1<f64>, y: &Array1<f64>) -> Self {
+    assert_eq!(x.len(), y.len(), "x and y must have the same length!");
+    let n = x.len();
 
     // Convert to Vec for easier sorting with indices
-    let mut xv: Vec<(f64, usize)> = xdata.iter().enumerate().map(|(i, &val)| (val, i)).collect();
-    let mut yv: Vec<(f64, usize)> = ydata.iter().enumerate().map(|(i, &val)| (val, i)).collect();
+    let mut xv: Vec<(f64, usize)> = x.iter().enumerate().map(|(i, &val)| (val, i)).collect();
+    let mut yv: Vec<(f64, usize)> = y.iter().enumerate().map(|(i, &val)| (val, i)).collect();
 
     // Sort by the actual float value
     xv.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -112,20 +102,15 @@ impl EmpiricalCopula2D {
 
 impl NCopula2D for EmpiricalCopula2D {
   fn sample(&self, _n: usize) -> Array2<f64> {
-    // Demonstration: simply return the rank-transformed data
-    // If you want bootstrap, you can draw with replacement here.
     self.rank_data.clone()
   }
 
   fn get_params(&self) -> Vec<f64> {
-    // Empirical copula has no explicit parameters
     vec![]
   }
 }
 
-/// ========================================================================
-/// 2) Gaussian copula (2D)
-/// ========================================================================
+/// Gaussian copula (2D)
 #[derive(Clone, Debug)]
 pub struct GaussianCopula2D {
   /// 2D mean vector, e.g. [0.0, 0.0]
@@ -178,12 +163,7 @@ impl NCopula2D for GaussianCopula2D {
   }
 }
 
-/// ========================================================================
-/// 3) Gumbel copula (2D) - CORRECT (Archimedean) sampling
-/// ========================================================================
-use rand_distr::{Distribution, Exp};
-use statrs::distribution::Gamma;
-
+/// Gumbel copula (2D) - CORRECT (Archimedean) sampling
 #[derive(Clone, Debug)]
 pub struct GumbelCopula2D {
   /// alpha >= 1 (Gumbel parameter)
@@ -223,9 +203,7 @@ impl NCopula2D for GumbelCopula2D {
   }
 }
 
-/// ========================================================================
-/// 4) Clayton copula (2D) - CORRECT (Archimedean) sampling
-/// ========================================================================
+/// Clayton copula (2D) - CORRECT (Archimedean) sampling
 #[derive(Clone, Debug)]
 pub struct ClaytonCopula2D {
   /// alpha > 0 (Clayton parameter)
@@ -267,46 +245,109 @@ impl NCopula2D for ClaytonCopula2D {
   }
 }
 
-/// ========================================================================
-/// Tests / Examples: generate samples and plot them for Empirical, Gaussian,
-/// Gumbel, and Clayton copulas. Use `cargo test -- --nocapture`.
-/// ========================================================================
+/// Kendall's tau matrix for a given data matrix
+pub fn kendall_tau(data: &Array2<f64>) -> Array2<f64> {
+  let cols = data.ncols();
+  let mut tau_matrix = Array2::<f64>::zeros((cols, cols));
+
+  for i in 0..cols {
+    for j in i..cols {
+      let col_i = data.column(i);
+      let col_j = data.column(j);
+      let mut concordant = 0;
+      let mut discordant = 0;
+
+      for k in 0..col_i.len() {
+        for l in (k + 1)..col_i.len() {
+          let x_diff = col_i[k] - col_i[l];
+          let y_diff = col_j[k] - col_j[l];
+          let sign = x_diff * y_diff;
+
+          if sign > 0.0 {
+            concordant += 1;
+          } else if sign < 0.0 {
+            discordant += 1;
+          }
+        }
+      }
+
+      let total_pairs = (col_i.len() * (col_i.len() - 1)) / 2;
+      let tau = (concordant as f64 - discordant as f64) / total_pairs as f64;
+      tau_matrix[[i, j]] = tau;
+      tau_matrix[[j, i]] = tau;
+    }
+  }
+
+  tau_matrix
+}
+
+fn spearman_correlation(data: &Array2<f64>) -> Array2<f64> {
+  let cols = data.ncols();
+  let mut rho_matrix = Array2::<f64>::zeros((cols, cols));
+
+  for i in 0..cols {
+    for j in i..cols {
+      let col_i = data.column(i);
+      let col_j = data.column(j);
+
+      let mean_i = col_i.sum() / col_i.len() as f64;
+      let mean_j = col_j.sum() / col_j.len() as f64;
+
+      let numerator: f64 = col_i
+        .iter()
+        .zip(col_j.iter())
+        .map(|(&xi, &yi)| (xi - mean_i) * (yi - mean_j))
+        .sum();
+
+      let denominator_i = col_i
+        .iter()
+        .map(|&xi| (xi - mean_i).powi(2))
+        .sum::<f64>()
+        .sqrt();
+      let denominator_j = col_j
+        .iter()
+        .map(|&yi| (yi - mean_j).powi(2))
+        .sum::<f64>()
+        .sqrt();
+
+      let rho = numerator / (denominator_i * denominator_j);
+      rho_matrix[[i, j]] = rho;
+      rho_matrix[[j, i]] = rho; // Szimmetrikus mátrix
+    }
+  }
+
+  rho_matrix
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
   use ndarray::arr2;
   use rand_distr::Uniform;
 
-  /// Number of samples for each copula
   const N: usize = 10000;
 
-  /// ========================================================================
-  /// 1) Empirical Copula Test
-  /// ========================================================================
   #[test]
   fn test_empirical_copula() {
     let mut rng = thread_rng();
     let uniform = Uniform::new(0.0, 1.0);
 
     let len_data = 500;
-    let mut xdata = Array1::<f64>::zeros(len_data);
-    let mut ydata = Array1::<f64>::zeros(len_data);
+    let mut x = Array1::<f64>::zeros(len_data);
+    let mut y = Array1::<f64>::zeros(len_data);
     for i in 0..len_data {
       let xv = uniform.sample(&mut rng);
       // Introduce some linear correlation
       let yv = 0.3 * uniform.sample(&mut rng) + 0.7 * xv;
-      xdata[i] = xv;
-      ydata[i] = yv.clamp(0.0, 1.0);
+      x[i] = xv;
+      y[i] = yv.clamp(0.0, 1.0);
     }
 
-    let empirical = EmpiricalCopula2D::new_from_two_series(&xdata, &ydata);
+    let empirical = EmpiricalCopula2D::new_from_two_series(&x, &y);
     let emp_samples = empirical.sample(N);
     plot_copula_samples(&emp_samples, "Empirical Copula (2D) - Rank-based data");
   }
 
-  /// ========================================================================
-  /// 2) Gaussian Copula Test
-  /// ========================================================================
   #[test]
   fn test_gaussian_copula() {
     let gauss = GaussianCopula2D {
@@ -317,9 +358,6 @@ mod tests {
     plot_copula_samples(&gauss_samples, "Gaussian Copula (2D)");
   }
 
-  /// ========================================================================
-  /// 3) Gumbel Copula Test
-  /// ========================================================================
   #[test]
   fn test_gumbel_copula() {
     let gumbel = GumbelCopula2D { alpha: 4.0 };
@@ -331,9 +369,6 @@ mod tests {
     println!("Gumbel(θ=1.5) CDF(0.5, 0.8) = {}", c_gumb);
   }
 
-  /// ========================================================================
-  /// 4) Clayton Copula Test
-  /// ========================================================================
   #[test]
   fn test_clayton_copula() {
     let clayton = ClaytonCopula2D { alpha: 1.5 };
@@ -343,5 +378,35 @@ mod tests {
     // Example: Calculate the CDF of a specific point
     let c_clay = cdf_clayton(0.5, 0.8, 2.0);
     println!("Clayton(θ=2) CDF(0.5, 0.8) = {}", c_clay);
+  }
+
+  #[test]
+  fn test_kendall_tau() {
+    let data = arr2(&[
+      [1.0, 2.0, 3.0],
+      [2.0, 3.0, 1.0],
+      [3.0, 1.0, 2.0],
+      [4.0, 4.0, 4.0],
+    ]);
+    let x = data.column(0).to_owned();
+    let y = data.column(1).to_owned();
+    let copula = EmpiricalCopula2D::new_from_two_series(&x, &y);
+    let tau_matrix = kendall_tau(&copula.rank_data);
+    println!("Kendall's tau matrix:\n{:?}", tau_matrix);
+  }
+
+  #[test]
+  fn test_spearman_correlation() {
+    let data = arr2(&[
+      [1.0, 2.0, 3.0],
+      [2.0, 3.0, 1.0],
+      [3.0, 1.0, 2.0],
+      [4.0, 4.0, 4.0],
+    ]);
+    let x = data.column(0).to_owned();
+    let y = data.column(1).to_owned();
+    let copula = EmpiricalCopula2D::new_from_two_series(&x, &y);
+    let rho_matrix = spearman_correlation(&copula.rank_data);
+    println!("Spearman's rho matrix:\n{:?}", rho_matrix);
   }
 }
