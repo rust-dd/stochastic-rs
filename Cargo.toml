@@ -41,6 +41,7 @@ ndrustfft = "0.5.0"
 num-complex = { version = "0.4.6", features = ["rand"] }
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 polars = { version = "0.43.1", features = ["lazy"] }
+prettytable-rs = "0.10.0"
 # pyo3 = { version = "0.22.3", features = ["extension-module", "abi3-py38"] }
 quadrature = "0.1.2"
 rand = "0.8.5"

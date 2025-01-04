@@ -10,6 +10,7 @@ use crate::stochastic::{noise::fgn::FGN, Sampling};
 pub struct FOUParameterEstimationV1 {
   pub path: Array1<f64>,
   pub filter_type: FilterType,
+  pub delta: Option<f64>,
   // Estimated parameters
   hurst: Option<f64>,
   sigma: Option<f64>,
@@ -64,7 +65,7 @@ impl FOUParameterEstimationV1 {
     let L = self.L;
 
     let series_length = self.path.len();
-    let delta = 1.0 / series_length as f64;
+    let delta: f64 = self.delta.unwrap_or(1.0 / series_length as f64);
 
     let mut const_filter = 0.0;
 
@@ -174,7 +175,7 @@ impl FOUParameterEstimationV1 {
 #[derive(ImplNew)]
 pub struct FOUParameterEstimationV2 {
   pub path: Array1<f64>,
-  pub delta: f64,
+  pub delta: Option<f64>,
   pub series_length: usize,
   // Estimated parameters
   hurst: Option<f64>,
@@ -230,7 +231,7 @@ impl FOUParameterEstimationV2 {
     let H = self.hurst.unwrap();
     let X = &self.path;
     let N = self.series_length as f64;
-    let delta = self.delta;
+    let delta = self.delta.unwrap_or(1.0 / N);
 
     let numerator: f64 = (0..(self.series_length - 2))
       .map(|i| {
@@ -437,7 +438,7 @@ mod tests {
     let fgn = FGN::new(0.70, 4095, Some(1.0), None);
     let fou = FOU::new(5.0, 2.8, 1.0, 4096, Some(X0), Some(16.0), None, fgn);
     let path = fou.sample();
-    let mut estimator = FOUParameterEstimationV1::new(path, FilterType::Daubechies);
+    let mut estimator = FOUParameterEstimationV1::new(path, FilterType::Daubechies, None);
 
     // Estimate the parameters
     let (estimated_hurst, estimated_sigma, estimated_mu, estimated_theta) =
@@ -459,7 +460,7 @@ mod tests {
     let fgn = FGN::new(0.70, N - 1, Some(1.0), None);
     let fou = FOU::new(5.0, 2.8, 2.0, N, Some(X0), Some(16.0), None, fgn);
     let path = fou.sample();
-    let mut estimator = FOUParameterEstimationV2::new(path, delta, N);
+    let mut estimator = FOUParameterEstimationV2::new(path, Some(delta), N);
 
     // Estimate the parameters
     let (estimated_hurst, estimated_sigma, estimated_mu, estimated_theta) =
