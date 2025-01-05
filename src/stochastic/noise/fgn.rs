@@ -102,6 +102,10 @@ impl Sampling<f64> for FGN {
 
 #[cfg(test)]
 mod tests {
+  use std::time::Instant;
+
+  use prettytable::{Cell, Row, Table};
+
   use crate::{plot_1d, stochastic::N};
 
   use super::*;
@@ -114,19 +118,34 @@ mod tests {
 
   #[test]
   fn fgn_speed_test() {
-    let start = std::time::Instant::now();
+    let mut table = Table::new();
+
+    table.add_row(Row::new(vec![
+      Cell::new("Test Case"),
+      Cell::new("Elapsed Time (ms)"),
+    ]));
+
+    let start = Instant::now();
     let fbm = FGN::new(0.7, N, Some(1.0), None);
     let _ = fbm.sample();
     let duration = start.elapsed();
-    println!("Time elapsed in sample() is: {:?}", duration);
+    table.add_row(Row::new(vec![
+      Cell::new("Single Sample"),
+      Cell::new(&format!("{:.2?}", duration.as_millis())),
+    ]));
 
-    let start = std::time::Instant::now();
+    let start = Instant::now();
     let fbm = FGN::new(0.7, N, Some(1.0), None);
     for _ in 0..N {
       let _ = fbm.sample();
     }
     let duration = start.elapsed();
-    println!("Time elapsed in sample() is: {:?}", duration);
+    table.add_row(Row::new(vec![
+      Cell::new("Repeated Samples"),
+      Cell::new(&format!("{:.2?}", duration.as_millis())),
+    ]));
+
+    table.printstd();
   }
 
   #[test]
