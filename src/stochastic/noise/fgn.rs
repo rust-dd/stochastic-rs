@@ -113,6 +113,23 @@ mod tests {
   }
 
   #[test]
+  fn fgn_speed_test() {
+    let start = std::time::Instant::now();
+    let fbm = FGN::new(0.7, N, Some(1.0), None);
+    let _ = fbm.sample();
+    let duration = start.elapsed();
+    println!("Time elapsed in sample() is: {:?}", duration);
+
+    let start = std::time::Instant::now();
+    let fbm = FGN::new(0.7, N, Some(1.0), None);
+    for _ in 0..N {
+      let _ = fbm.sample();
+    }
+    let duration = start.elapsed();
+    println!("Time elapsed in sample() is: {:?}", duration);
+  }
+
+  #[test]
   #[ignore = "Not implemented"]
   fn fgn_starts_with_x0() {
     unimplemented!()
