@@ -14,9 +14,9 @@ use stochastic_rs::stats::fou_estimator::{
 fn main() -> Result<(), Box<dyn Error>> {
   // File paths
   let paths = vec![
-    // "./test/kecskekut_original.txt",
-    // "./test/kecskekut_sim.txt",
-    // "./test/kecskekut_without_jumps.txt",
+    "./test/kecskekut_original.txt",
+    "./test/kecskekut_sim.txt",
+    "./test/kecskekut_without_jumps.txt",
     "./test/komlos_original.txt",
     "./test/komlos_sim.txt",
     "./test/komlos_without_jumps.txt",
@@ -33,6 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
       FOUParameterEstimationV1::new(data.clone().into(), FilterType::Daubechies, Some(delta));
     let hurst = FractalDim::new(data.clone().into());
     let hurst = hurst.higuchi_fd(12);
+    println!("Higuchi FD: {}", 2.0 - hurst);
     // estimator_v1.set_hurst(2. - hurst);
     let (hurst_v1, sigma_v1, mu_v1, theta_v1) = estimator_v1.estimate_parameters();
 
