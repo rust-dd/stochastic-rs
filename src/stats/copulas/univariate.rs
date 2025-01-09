@@ -1,0 +1,9 @@
+pub mod beta;
+pub mod gamma;
+pub mod gaussian;
+pub mod gaussian_kde;
+pub mod log_laplace;
+pub mod selection;
+pub mod student_t;
+pub mod truncated_gaussian;
+pub mod uniform;
