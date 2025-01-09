@@ -1,5 +1,5 @@
 use ndarray::{Array1, Array2};
-use std::f64;
+use std::{error::Error, f64};
 
 use super::{Bivariate, CopulaType};
 
@@ -54,14 +54,14 @@ impl Bivariate for Clayton {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
     Ok((1.0 / theta) * (t.powf(-theta) - 1.0))
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -74,7 +74,7 @@ impl Bivariate for Clayton {
     Ok(a * b.powf(c))
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -105,11 +105,7 @@ impl Bivariate for Clayton {
     Ok(cdfs)
   }
 
-  fn percent_point(
-    &self,
-    y: &Array1<f64>,
-    V: &Array1<f64>,
-  ) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -130,7 +126,7 @@ impl Bivariate for Clayton {
     Ok(((a + &b - 1.0) / b).powf(-1.0 / theta))
   }
 
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
     let U = X.column(0);
