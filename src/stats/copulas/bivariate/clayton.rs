@@ -13,6 +13,18 @@ pub struct Clayton {
   pub invalid_thetas: Vec<f64>,
 }
 
+impl Clayton {
+  pub fn new() -> Self {
+    Self {
+      r#type: CopulaType::Clayton,
+      theta: None,
+      tau: None,
+      theta_bounds: (0.0, f64::INFINITY),
+      invalid_thetas: vec![],
+    }
+  }
+}
+
 impl Bivariate for Clayton {
   fn r#type(&self) -> CopulaType {
     self.r#type
@@ -20,6 +32,10 @@ impl Bivariate for Clayton {
 
   fn tau(&self) -> Option<f64> {
     self.tau
+  }
+
+  fn set_tau(&mut self, tau: f64) {
+    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
