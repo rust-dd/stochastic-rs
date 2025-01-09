@@ -1,9 +1,11 @@
+use core::f64;
 use std::{cmp::Ordering, error::Error};
 
 use ndarray::{stack, Array1, Array2, Axis};
 use ndarray_rand::RandomExt;
 use ndarray_stats::QuantileExt;
 use rand_distr::Uniform;
+use roots::{find_root_brent, SimpleConvergency};
 
 pub mod clayton;
 pub mod frank;
@@ -17,6 +19,8 @@ pub enum CopulaType {
   Gumbel,
   Independence,
 }
+
+const EPSILON: f64 = 1e-12;
 
 pub trait Bivariate {
   fn r#type(&self) -> CopulaType;
@@ -121,41 +125,65 @@ pub trait Bivariate {
     Ok(())
   }
 
-  fn probability_density(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.probability_density(X)
-  }
-
-  fn log_probability_density(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    let pdf = self.probability_density(X)?;
+  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    let pdf = self.pdf(X)?;
     let log_pdf = pdf.mapv(|val| (val + 1e-32).ln());
     Ok(log_pdf)
   }
 
-  fn cumulative_distribution(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
-
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.cumulative_distribution(X)
-  }
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    todo!()
+    let n = y.len();
+    let mut results = Array1::zeros(n);
+
+    for i in 0..n {
+      let y_i = y[i];
+      let v_i = V[i];
+
+      let f = |u| self.partial_derivative_scalar(u, v_i).unwrap() - y_i;
+      let mut convergency = SimpleConvergency {
+        eps: f64::EPSILON,
+        max_iter: 50,
+      };
+      let min = find_root_brent(f64::EPSILON, 1.0, f, &mut convergency);
+      results[i] = min.unwrap_or(f64::EPSILON);
+    }
+
+    Ok(results)
   }
 
   fn ppf(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.percent_point(y, V)
   }
 
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    todo!()
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+    let n = X.nrows();
+    let mut X_prime = X.clone();
+    let mut delta = Array1::zeros(n);
+    for i in 0..n {
+      delta[i] = if X[[i, 1]] > 0.5 { -0.0001 } else { 0.0001 };
+      X_prime[[i, 1]] = X[[i, 1]] + delta[i];
+    }
+
+    let f = self.cdf(X).unwrap();
+    let f_prime = self.cdf(&X_prime).unwrap();
+
+    let mut deriv = Array1::zeros(n);
+    for i in 0..n {
+      deriv[i] = (f_prime[i] - f[i]) / delta[i];
+    }
+
+    Ok(deriv)
   }
 
-  fn partial_derivative_scalar(
-    &self,
-    u: Array1<f64>,
-    v: Array1<f64>,
-  ) -> Result<f64, Box<dyn Error>> {
-    todo!()
+  fn partial_derivative_scalar(&self, U: f64, V: f64) -> Result<f64, Box<dyn Error>> {
+    self.check_fit()?;
+    let X = stack![Axis(1), Array1::from(vec![U]), Array1::from(vec![V])];
+    let out = self.partial_derivative(&X);
+
+    Ok(out?.get(0).unwrap().clone())
   }
 }
