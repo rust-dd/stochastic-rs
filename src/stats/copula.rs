@@ -48,68 +48,6 @@ pub fn cdf_gumbel(u: f64, v: f64, theta: f64) -> f64 {
   ((-1.0) * s.powf(1.0 / theta)).exp()
 }
 
-/// Empirical copula (2D) - rank-based transformation
-#[derive(Clone, Debug)]
-pub struct EmpiricalCopula2D {
-  /// The rank-transformed data (N x 2), each row in [0,1]^2
-  pub rank_data: Array2<f64>,
-}
-
-impl EmpiricalCopula2D {
-  /// Create an EmpiricalCopula2D from two 1D arrays (`x` and `y`) of equal length.
-  /// This performs a rank-based transform: for each sample i,
-  ///   sx[i] = rank_of_x[i] / n
-  ///   sy[i] = rank_of_y[i] / n
-  /// and stores the resulting points in [0,1]^2.
-  pub fn new_from_two_series(x: &Array1<f64>, y: &Array1<f64>) -> Self {
-    assert_eq!(x.len(), y.len(), "x and y must have the same length!");
-    let n = x.len();
-
-    // Convert to Vec for easier sorting with indices
-    let mut xv: Vec<(f64, usize)> = x.iter().enumerate().map(|(i, &val)| (val, i)).collect();
-    let mut yv: Vec<(f64, usize)> = y.iter().enumerate().map(|(i, &val)| (val, i)).collect();
-
-    // Sort by the actual float value
-    xv.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-    yv.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-
-    // After sorting, xv[k] = (value, original_index).
-    // The rank of that original index is k.
-    let mut rank_x = vec![0.0; n];
-    let mut rank_y = vec![0.0; n];
-    for (rank, &(_val, orig_i)) in xv.iter().enumerate() {
-      rank_x[orig_i] = rank as f64; // rank in [0..n-1]
-    }
-    for (rank, &(_val, orig_i)) in yv.iter().enumerate() {
-      rank_y[orig_i] = rank as f64;
-    }
-
-    // Normalize ranks to [0,1].
-    for i in 0..n {
-      rank_x[i] /= n as f64;
-      rank_y[i] /= n as f64;
-    }
-
-    // Build final (n x 2) array
-    let mut rank_data = Array2::<f64>::zeros((n, 2));
-    for i in 0..n {
-      rank_data[[i, 0]] = rank_x[i];
-      rank_data[[i, 1]] = rank_y[i];
-    }
-    EmpiricalCopula2D { rank_data }
-  }
-}
-
-impl NCopula2D for EmpiricalCopula2D {
-  fn sample(&self, _n: usize) -> Array2<f64> {
-    self.rank_data.clone()
-  }
-
-  fn get_params(&self) -> Vec<f64> {
-    vec![]
-  }
-}
-
 /// Gaussian copula (2D)
 #[derive(Clone, Debug)]
 pub struct GaussianCopula2D {
@@ -245,108 +183,12 @@ impl NCopula2D for ClaytonCopula2D {
   }
 }
 
-/// Kendall's tau matrix for a given data matrix
-pub fn kendall_tau(data: &Array2<f64>) -> Array2<f64> {
-  let cols = data.ncols();
-  let mut tau_matrix = Array2::<f64>::zeros((cols, cols));
-
-  for i in 0..cols {
-    for j in i..cols {
-      let col_i = data.column(i);
-      let col_j = data.column(j);
-      let mut concordant = 0;
-      let mut discordant = 0;
-
-      for k in 0..col_i.len() {
-        for l in (k + 1)..col_i.len() {
-          let x_diff = col_i[k] - col_i[l];
-          let y_diff = col_j[k] - col_j[l];
-          let sign = x_diff * y_diff;
-
-          if sign > 0.0 {
-            concordant += 1;
-          } else if sign < 0.0 {
-            discordant += 1;
-          }
-        }
-      }
-
-      let total_pairs = (col_i.len() * (col_i.len() - 1)) / 2;
-      let tau = (concordant as f64 - discordant as f64) / total_pairs as f64;
-      tau_matrix[[i, j]] = tau;
-      tau_matrix[[j, i]] = tau;
-    }
-  }
-
-  tau_matrix
-}
-
-fn spearman_correlation(data: &Array2<f64>) -> Array2<f64> {
-  let cols = data.ncols();
-  let mut rho_matrix = Array2::<f64>::zeros((cols, cols));
-
-  for i in 0..cols {
-    for j in i..cols {
-      let col_i = data.column(i);
-      let col_j = data.column(j);
-
-      let mean_i = col_i.sum() / col_i.len() as f64;
-      let mean_j = col_j.sum() / col_j.len() as f64;
-
-      let numerator: f64 = col_i
-        .iter()
-        .zip(col_j.iter())
-        .map(|(&xi, &yi)| (xi - mean_i) * (yi - mean_j))
-        .sum();
-
-      let denominator_i = col_i
-        .iter()
-        .map(|&xi| (xi - mean_i).powi(2))
-        .sum::<f64>()
-        .sqrt();
-      let denominator_j = col_j
-        .iter()
-        .map(|&yi| (yi - mean_j).powi(2))
-        .sum::<f64>()
-        .sqrt();
-
-      let rho = numerator / (denominator_i * denominator_j);
-      rho_matrix[[i, j]] = rho;
-      rho_matrix[[j, i]] = rho; // Szimmetrikus mátrix
-    }
-  }
-
-  rho_matrix
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use ndarray::arr2;
-  use rand_distr::Uniform;
 
   const N: usize = 10000;
-
-  #[test]
-  fn test_empirical_copula() {
-    let mut rng = thread_rng();
-    let uniform = Uniform::new(0.0, 1.0);
-
-    let len_data = 500;
-    let mut x = Array1::<f64>::zeros(len_data);
-    let mut y = Array1::<f64>::zeros(len_data);
-    for i in 0..len_data {
-      let xv = uniform.sample(&mut rng);
-      // Introduce some linear correlation
-      let yv = 0.3 * uniform.sample(&mut rng) + 0.7 * xv;
-      x[i] = xv;
-      y[i] = yv.clamp(0.0, 1.0);
-    }
-
-    let empirical = EmpiricalCopula2D::new_from_two_series(&x, &y);
-    let emp_samples = empirical.sample(N);
-    plot_copula_samples(&emp_samples, "Empirical Copula (2D) - Rank-based data");
-  }
 
   #[test]
   fn test_gaussian_copula() {
@@ -378,35 +220,5 @@ mod tests {
     // Example: Calculate the CDF of a specific point
     let c_clay = cdf_clayton(0.5, 0.8, 2.0);
     println!("Clayton(θ=2) CDF(0.5, 0.8) = {}", c_clay);
-  }
-
-  #[test]
-  fn test_kendall_tau() {
-    let data = arr2(&[
-      [1.0, 2.0, 3.0],
-      [2.0, 3.0, 1.0],
-      [3.0, 1.0, 2.0],
-      [4.0, 4.0, 4.0],
-    ]);
-    let x = data.column(0).to_owned();
-    let y = data.column(1).to_owned();
-    let copula = EmpiricalCopula2D::new_from_two_series(&x, &y);
-    let tau_matrix = kendall_tau(&copula.rank_data);
-    println!("Kendall's tau matrix:\n{:?}", tau_matrix);
-  }
-
-  #[test]
-  fn test_spearman_correlation() {
-    let data = arr2(&[
-      [1.0, 2.0, 3.0],
-      [2.0, 3.0, 1.0],
-      [3.0, 1.0, 2.0],
-      [4.0, 4.0, 4.0],
-    ]);
-    let x = data.column(0).to_owned();
-    let y = data.column(1).to_owned();
-    let copula = EmpiricalCopula2D::new_from_two_series(&x, &y);
-    let rho_matrix = spearman_correlation(&copula.rank_data);
-    println!("Spearman's rho matrix:\n{:?}", rho_matrix);
   }
 }
