@@ -13,14 +13,12 @@ pub mod gumbel;
 pub mod independence;
 
 #[derive(Debug, Clone, Copy)]
-pub enum CopulaType {
+pub(super) enum CopulaType {
   Clayton,
   Frank,
   Gumbel,
   Independence,
 }
-
-const EPSILON: f64 = 1e-12;
 
 pub trait Bivariate {
   fn r#type(&self) -> CopulaType;
@@ -128,9 +126,7 @@ pub trait Bivariate {
   fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
   fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    let pdf = self.pdf(X)?;
-    let log_pdf = pdf.mapv(|val| (val + 1e-32).ln());
-    Ok(log_pdf)
+    Ok(self.pdf(X)?.ln())
   }
 
   fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
