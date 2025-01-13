@@ -62,7 +62,7 @@ mod tests {
   use rand::thread_rng;
   use rand_distr::{Distribution, Uniform};
 
-  use crate::{stats::copula::plot_copula_samples, stochastic::N};
+  use crate::{stats::copulas::samples::plot_copula_samples, stochastic::N};
 
   use super::EmpiricalCopula2D;
 
