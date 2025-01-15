@@ -17,7 +17,7 @@ impl FractalDim {
   /// Calculate the variogram of the path.
   pub fn variogram(&self, p: Option<f64>) -> f64 {
     if self.x.len() < 3 {
-      panic!("A path hossza legalább 3 kell, hogy legyen.");
+      panic!("A path must have at least 3 points to calculate the variogram.");
     }
 
     let p = p.unwrap_or(1.0);
