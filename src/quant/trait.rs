@@ -1,7 +1,7 @@
 use super::OptionType;
 
 /// Pricer trait.
-pub(crate) trait Pricer: Time {
+pub trait Pricer: Time {
   /// Calculate the price of an option.
   fn calculate_call_put(&self) -> (f64, f64) {
     todo!()
