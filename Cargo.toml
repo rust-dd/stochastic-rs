@@ -35,7 +35,7 @@ ndarray = { version = "0.16.1", features = [
     "matrixmultiply-threading",
     "blas",
 ] }
-ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg.git", features = [
+ndarray-linalg = { version = "0.17.0", features = [
     "openblas-static",
 ] }
 ndarray-npy = "0.9.1"
