@@ -1,4 +1,4 @@
-use ndarray::{Array, Array1};
+use ndarray::Array1;
 use std::f64::consts::PI;
 
 /// A struct representing a Gaussian Kernel Density Estimator (KDE).
@@ -208,7 +208,7 @@ pub fn percentile(sorted_data: &Vec<f64>, p: f64) -> f64 {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use ndarray::Array1;
+  use ndarray::{Array, Array1};
 
   #[test]
   fn test_kde() {
