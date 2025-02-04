@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 
 use crate::quant::{
-  r#trait::{Pricer, Time},
+  r#trait::{PricerExt, TimeExt},
   OptionType,
 };
 
@@ -42,7 +42,7 @@ pub struct Merton1976Pricer {
   pub b: BSMCoc,
 }
 
-impl Pricer for Merton1976Pricer {
+impl PricerExt for Merton1976Pricer {
   /// Calculate the option price
   #[must_use]
   fn calculate_call_put(&self) -> (f64, f64) {
@@ -84,7 +84,7 @@ impl Pricer for Merton1976Pricer {
   }
 }
 
-impl Time for Merton1976Pricer {
+impl TimeExt for Merton1976Pricer {
   fn tau(&self) -> Option<f64> {
     self.tau
   }

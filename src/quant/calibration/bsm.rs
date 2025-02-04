@@ -6,7 +6,7 @@ use nalgebra::{DMatrix, DVector, Dyn, Owned};
 
 use crate::quant::{
   pricing::bsm::{BSMCoc, BSMPricer},
-  r#trait::Pricer,
+  r#trait::PricerExt,
   OptionType,
 };
 

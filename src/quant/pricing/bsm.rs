@@ -3,7 +3,7 @@ use implied_vol::implied_black_volatility;
 use statrs::distribution::{Continuous, ContinuousCDF, Normal};
 
 use crate::quant::{
-  r#trait::{Pricer, Time},
+  r#trait::{PricerExt, TimeExt},
   OptionType,
 };
 
@@ -56,7 +56,7 @@ pub struct BSMPricer {
   pub b: BSMCoc,
 }
 
-impl Pricer for BSMPricer {
+impl PricerExt for BSMPricer {
   /// Calculate the option price
   #[must_use]
   fn calculate_call_put(&self) -> (f64, f64) {
@@ -94,7 +94,7 @@ impl Pricer for BSMPricer {
   }
 }
 
-impl Time for BSMPricer {
+impl TimeExt for BSMPricer {
   fn tau(&self) -> Option<f64> {
     self.tau
   }

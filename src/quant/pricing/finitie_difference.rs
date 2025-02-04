@@ -2,7 +2,7 @@ use impl_new_derive::ImplNew;
 use ndarray::{s, Array1};
 
 use crate::quant::{
-  r#trait::{Pricer, Time},
+  r#trait::{PricerExt, TimeExt},
   OptionStyle, OptionType,
 };
 
@@ -42,7 +42,7 @@ pub struct FiniteDifferencePricer {
   pub method: FiniteDifferenceMethod,
 }
 
-impl Pricer for FiniteDifferencePricer {
+impl PricerExt for FiniteDifferencePricer {
   /// Calculate the option price
   #[must_use]
   fn calculate_price(&self) -> f64 {
@@ -54,7 +54,7 @@ impl Pricer for FiniteDifferencePricer {
   }
 }
 
-impl Time for FiniteDifferencePricer {
+impl TimeExt for FiniteDifferencePricer {
   fn tau(&self) -> Option<f64> {
     self.tau
   }
@@ -287,7 +287,7 @@ impl FiniteDifferencePricer {
 #[cfg(test)]
 mod tests {
   use crate::{
-    quant::{r#trait::Pricer, OptionStyle, OptionType},
+    quant::{r#trait::PricerExt, OptionStyle, OptionType},
     stochastic::{K, S0},
   };
 

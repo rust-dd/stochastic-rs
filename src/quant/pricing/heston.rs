@@ -6,7 +6,7 @@ use num_complex::Complex64;
 use quadrature::double_exponential;
 
 use crate::quant::{
-  r#trait::{Pricer, Time},
+  r#trait::{PricerExt, TimeExt},
   OptionType,
 };
 
@@ -40,7 +40,7 @@ pub struct HestonPricer {
   pub expiry: Option<chrono::NaiveDate>,
 }
 
-impl Pricer for HestonPricer {
+impl PricerExt for HestonPricer {
   /// Calculate the price of a European call option using the Heston model
   /// https://quant.stackexchange.com/a/18686
   fn calculate_call_put(&self) -> (f64, f64) {
@@ -77,7 +77,7 @@ impl Pricer for HestonPricer {
   }
 }
 
-impl Time for HestonPricer {
+impl TimeExt for HestonPricer {
   fn tau(&self) -> Option<f64> {
     self.tau
   }

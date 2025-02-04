@@ -1,7 +1,7 @@
 use super::OptionType;
 
 /// Pricer trait.
-pub trait Pricer: Time {
+pub trait PricerExt: TimeExt {
   /// Calculate the price of an option.
   fn calculate_call_put(&self) -> (f64, f64) {
     todo!()
@@ -23,7 +23,7 @@ pub trait Pricer: Time {
   }
 }
 
-pub trait Time {
+pub trait TimeExt {
   fn tau(&self) -> Option<f64>;
 
   fn eval(&self) -> chrono::NaiveDate;
@@ -49,4 +49,31 @@ pub trait Time {
     let days = expiration.signed_duration_since(eval).num_days();
     days as f64 / 365.0
   }
+}
+
+/// Error trait.
+pub trait LossExt {
+  /// Calculate the mean absolute error.
+  fn mae(&self, actual: f64) -> f64;
+
+  /// Calculate the mean squared error.
+  fn mse(&self, actual: f64) -> f64;
+
+  /// Calculate the root mean squared error.
+  fn rmse(&self, actual: f64) -> f64;
+
+  /// Calculate the mean percentage error.
+  fn mpe(&self, actual: f64) -> f64;
+
+  /// Calculate the mean absolute percentage error.
+  fn mae_percentage(&self, actual: f64) -> f64;
+
+  /// Calculate the mean squared percentage error.
+  fn mse_percentage(&self, actual: f64) -> f64;
+
+  /// Calculate the root mean squared percentage error.
+  fn rmse_percentage(&self, actual: f64) -> f64;
+
+  /// Calculate the mean percentage error.
+  fn mpe_percentage(&self, actual: f64) -> f64;
 }

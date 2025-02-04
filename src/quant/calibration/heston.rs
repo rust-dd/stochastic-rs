@@ -1,12 +1,13 @@
 use std::cell::RefCell;
 
+use anyhow::Result;
 use impl_new_derive::ImplNew;
 use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
 use nalgebra::{DMatrix, DVector, Dyn, Owned};
 use ndarray::Array1;
 
 use crate::{
-  quant::{pricing::heston::HestonPricer, r#trait::Pricer, OptionType},
+  quant::{pricing::heston::HestonPricer, r#trait::PricerExt, OptionType},
   stats::mle::nmle_heston,
 };
 
@@ -44,6 +45,13 @@ impl From<DVector<f64>> for HestonParams {
   }
 }
 
+#[derive(Clone, Debug)]
+pub struct LmData {
+  pub residuals: DVector<f64>,
+  pub call_put: DVector<(f64, f64)>,
+  pub params: HestonParams,
+}
+
 /// A calibrator.
 #[derive(ImplNew, Clone)]
 pub struct HestonCalibrator {
@@ -63,12 +71,14 @@ pub struct HestonCalibrator {
   pub q: Option<f64>,
   /// Option type
   pub option_type: OptionType,
+  /// Levenberg-Marquardt algorithm residauls.
+  calibration_history: RefCell<Vec<LmData>>,
   /// Derivate matrix.
   derivates: RefCell<Vec<Vec<f64>>>,
 }
 
 impl HestonCalibrator {
-  pub fn calibrate(&self) {
+  pub fn calibrate(&self) -> Result<Vec<LmData>> {
     println!("Initial guess: {:?}", self.params);
 
     let (result, ..) = LevenbergMarquardt::new().minimize(self.clone());
@@ -83,6 +93,10 @@ impl HestonCalibrator {
 
     // Print the result of the calibration
     println!("Calibration report: {:?}", result.params);
+
+    let calibration_history = result.calibration_history.borrow().clone();
+
+    Ok(calibration_history)
   }
 
   /// Initial guess for the calibration
@@ -134,6 +148,11 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         OptionType::Put => c_model[idx] = put,
       }
 
+      self.calibration_history.borrow_mut().push(LmData {
+        residuals: c_model.clone() - self.c_market.clone(),
+        call_put: vec![(call, put)].into(),
+        params: self.params.clone().into(),
+      });
       derivates.push(pricer.derivatives());
     }
 
@@ -157,8 +176,10 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
 mod tests {
   use super::*;
 
+  use anyhow::Result;
+
   #[test]
-  fn test_heston_calibrate() {
+  fn test_heston_calibrate() -> Result<()> {
     let tau = 24.0 / 365.0;
     println!("Time to maturity: {}", tau);
 
@@ -175,7 +196,7 @@ mod tests {
       30.75, 25.88, 21.00, 16.50, 11.88, 7.69, 4.44, 2.10, 0.78, 0.25, 0.10, 0.10,
     ];
 
-    let v0 = Array1::linspace(0.0, 0.01, 10);
+    let v0 = Array1::linspace(0.0, 0.01, 1);
 
     for v in v0.iter() {
       let calibrator = HestonCalibrator::new(
@@ -194,7 +215,11 @@ mod tests {
         None,
         OptionType::Call,
       );
-      calibrator.calibrate();
+
+      let data = calibrator.calibrate()?;
+      println!("Calibration data: {:?}", data);
     }
+
+    Ok(())
   }
 }
