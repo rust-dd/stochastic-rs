@@ -53,9 +53,10 @@ pub trait TimeExt {
   }
 }
 
-/// Calibration Error trait.
+/// A trait providing various calibration error metrics.
 pub trait CalibrationLossExt {
-  /// Calculate the mean absolute error.
+  /// Mean Absolute Error (MAE):
+  /// MAE = (1 / N) * Σ |market_i - c_model_i|
   fn mae(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
     c_market
       .iter()
@@ -65,7 +66,8 @@ pub trait CalibrationLossExt {
       / c_market.len() as f64
   }
 
-  /// Calculate the mean squared error.
+  /// Mean Squared Error (MSE):
+  /// MSE = (1 / N) * Σ (c_market_i - c_model_i)²
   fn mse(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
     c_market
       .iter()
@@ -75,41 +77,98 @@ pub trait CalibrationLossExt {
       / c_market.len() as f64
   }
 
-  /// Calculate the root mean squared error.
+  /// Root Mean Squared Error (RMSE):
+  /// RMSE = √(MSE)
   fn rmse(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
     self.mse(c_market, c_model).sqrt()
   }
 
-  /// Calculate the mean percentage error (MPE) *in %*.
+  /// Mean Percentage Error (MPE) in %:
+  /// MPE = (100 / N) * Σ [(c_market_i - c_model_i) / c_market_i]
+  /// Note: This includes the sign of the difference.
   fn mpe(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
-    let mpe_ratio = c_market
+    let sum_ratio = c_market
       .iter()
       .zip(c_model.iter())
-      .map(|(mkt, mdl)| (mkt - mdl) / mkt)
-      .sum::<f64>()
-      / c_market.len() as f64;
+      .map(|(mkt, mdl)| {
+        if mkt.abs() < f64::EPSILON {
+          // Handle zero or near-zero c_market value
+          0.0
+        } else {
+          (mkt - mdl) / mkt
+        }
+      })
+      .sum::<f64>();
 
-    mpe_ratio * 100.0
+    (sum_ratio / c_market.len() as f64) * 100.0
   }
 
-  /// Calculate the mean absolute percentage error (MAPE) *in %*.
+  /// Mean Relative Error (MRE):
+  /// MRE = (1 / N) * Σ [(c_model_i - c_market_i) / c_market_i]
+  /// This is similar to MPE but uses (c_model_i - c_market_i) instead of (c_market_i - c_model_i).
+  /// Often used without multiplying by 100 (i.e. in plain ratio form).
+  fn mre(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    let sum_ratio = c_market
+      .iter()
+      .zip(c_model.iter())
+      .map(|(mkt, mdl)| {
+        if mkt.abs() < f64::EPSILON {
+          0.0
+        } else {
+          (mdl - mkt) / mkt
+        }
+      })
+      .sum::<f64>();
+
+    sum_ratio / c_market.len() as f64
+  }
+
+  /// Mean Relative Percentage Error (MRPE) in %:
+  /// MRPE = (100 / N) * Σ [(c_model_i - c_market_i) / c_market_i]
+  /// Essentially MRE * 100.
+  fn mrpe(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    self.mre(c_market, c_model) * 100.0
+  }
+
+  /// Mean Absolute Percentage Error (MAPE) in %:
+  /// MAPE = (100 / N) * Σ [|c_market_i - c_model_i| / |c_market_i|]
   fn mape(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
-    let mae_val = self.mae(c_market, c_model);
-    let mape_ratio = mae_val / c_market.mean();
-    mape_ratio * 100.0
+    let sum_ratio = c_market
+      .iter()
+      .zip(c_model.iter())
+      .map(|(mkt, mdl)| {
+        if mkt.abs() < f64::EPSILON {
+          0.0
+        } else {
+          (mkt - mdl).abs() / mkt.abs()
+        }
+      })
+      .sum::<f64>();
+
+    (sum_ratio / c_market.len() as f64) * 100.0
   }
 
-  /// Calculate the mean squared percentage error (MSPE) *in %*.
+  /// Mean Squared Percentage Error (MSPE) in %:
+  /// MSPE = (100 / N) * Σ [((c_market_i - c_model_i) / c_market_i)²]
   fn mspe(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
-    let mse_val = self.mse(c_market, c_model);
-    let mspe_ratio = mse_val / c_market.mean().powi(2);
-    mspe_ratio * 100.0
+    let sum_sq_ratio = c_market
+      .iter()
+      .zip(c_model.iter())
+      .map(|(mkt, mdl)| {
+        if mkt.abs() < f64::EPSILON {
+          0.0
+        } else {
+          ((mkt - mdl) / mkt).powi(2)
+        }
+      })
+      .sum::<f64>();
+
+    (sum_sq_ratio / c_market.len() as f64) * 100.0
   }
 
-  /// Calculate the root mean squared percentage error (RMSPE) *in %*.
+  /// Root Mean Squared Percentage Error (RMSPE) in %:
+  /// RMSPE = √(MSPE)
   fn rmspe(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
-    let rmse_val = self.rmse(c_market, c_model);
-    let rmspe_ratio = rmse_val / c_market.mean();
-    rmspe_ratio * 100.0
+    self.mspe(c_market, c_model).sqrt()
   }
 }

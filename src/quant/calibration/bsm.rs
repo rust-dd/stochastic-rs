@@ -131,13 +131,15 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
           call_put: vec![(call, put)].into(),
           params: self.params.clone().into(),
           loss_scores: CalibrationLossScore {
-            mae: self.mae(&c_model, &self.c_market),
-            mse: self.mse(&c_model, &self.c_market),
-            rmse: self.rmse(&c_model, &self.c_market),
-            mpe: self.mpe(&c_model, &self.c_market),
-            mape: self.mape(&c_model, &self.c_market),
-            mspe: self.mspe(&c_model, &self.c_market),
-            rmspe: self.rmspe(&c_model, &self.c_market),
+            mae: self.mae(&self.c_market, &c_model),
+            mse: self.mse(&self.c_market, &c_model),
+            rmse: self.rmse(&self.c_market, &c_model),
+            mpe: self.mpe(&self.c_market, &c_model),
+            mape: self.mape(&self.c_market, &c_model),
+            mspe: self.mspe(&self.c_market, &c_model),
+            rmspe: self.rmspe(&self.c_market, &c_model),
+            mre: self.mre(&self.c_market, &c_model),
+            mrpe: self.mrpe(&self.c_market, &c_model),
           },
         });
       derivates.push(pricer.derivatives());

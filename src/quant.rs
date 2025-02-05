@@ -46,7 +46,7 @@ impl Display for Moneyness {
   }
 }
 
-/// Calibration Loss scores
+/// Holds various calibration loss metrics in one place.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct CalibrationLossScore {
   /// Mean Absolute Error
@@ -55,12 +55,16 @@ pub struct CalibrationLossScore {
   pub mse: f64,
   /// Root Mean Squared Error
   pub rmse: f64,
-  /// Mean Percentage Error
+  /// Mean Percentage Error (in %)
   pub mpe: f64,
-  /// Mean Absolute Percentage Error
+  /// Mean Absolute Percentage Error (in %)
   pub mape: f64,
-  /// Mean Squared Percentage Error
+  /// Mean Squared Percentage Error (in %)
   pub mspe: f64,
-  /// Root Mean Squared Percentage Error
+  /// Root Mean Squared Percentage Error (in %)
   pub rmspe: f64,
+  /// Mean Relative Error (no %)
+  pub mre: f64,
+  /// Mean Relative Percentage Error (in %)
+  pub mrpe: f64,
 }
