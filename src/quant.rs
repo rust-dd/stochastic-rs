@@ -45,3 +45,22 @@ impl Display for Moneyness {
     }
   }
 }
+
+/// Calibration Loss scores
+#[derive(Default, Debug, Clone, Copy)]
+pub struct CalibrationLossScore {
+  /// Mean Absolute Error
+  pub mae: f64,
+  /// Mean Squared Error
+  pub mse: f64,
+  /// Root Mean Squared Error
+  pub rmse: f64,
+  /// Mean Percentage Error
+  pub mpe: f64,
+  /// Mean Absolute Percentage Error
+  pub mape: f64,
+  /// Mean Squared Percentage Error
+  pub mspe: f64,
+  /// Root Mean Squared Percentage Error
+  pub rmspe: f64,
+}

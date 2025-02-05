@@ -10,7 +10,7 @@ use crate::{
   quant::{
     pricing::heston::HestonPricer,
     r#trait::{CalibrationLossExt, PricerExt},
-    OptionType,
+    CalibrationLossScore, OptionType,
   },
   stats::mle::nmle_heston,
 };
@@ -50,10 +50,11 @@ impl From<DVector<f64>> for HestonParams {
 }
 
 #[derive(Clone, Debug)]
-pub struct LmData {
+pub struct CalibrationHistory {
   pub residuals: DVector<f64>,
   pub call_put: DVector<(f64, f64)>,
   pub params: HestonParams,
+  pub loss_scores: CalibrationLossScore,
 }
 
 /// A calibrator.
@@ -76,7 +77,7 @@ pub struct HestonCalibrator {
   /// Option type
   pub option_type: OptionType,
   /// Levenberg-Marquardt algorithm residauls.
-  calibration_history: RefCell<Vec<LmData>>,
+  calibration_history: RefCell<Vec<CalibrationHistory>>,
   /// Derivate matrix.
   derivates: RefCell<Vec<Vec<f64>>>,
 }
@@ -84,7 +85,7 @@ pub struct HestonCalibrator {
 impl CalibrationLossExt for HestonCalibrator {}
 
 impl HestonCalibrator {
-  pub fn calibrate(&self) -> Result<Vec<LmData>> {
+  pub fn calibrate(&self) -> Result<Vec<CalibrationHistory>> {
     println!("Initial guess: {:?}", self.params);
 
     let (result, ..) = LevenbergMarquardt::new().minimize(self.clone());
@@ -154,11 +155,23 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         OptionType::Put => c_model[idx] = put,
       }
 
-      self.calibration_history.borrow_mut().push(LmData {
-        residuals: c_model.clone() - self.c_market.clone(),
-        call_put: vec![(call, put)].into(),
-        params: self.params.clone().into(),
-      });
+      self
+        .calibration_history
+        .borrow_mut()
+        .push(CalibrationHistory {
+          residuals: c_model.clone() - self.c_market.clone(),
+          call_put: vec![(call, put)].into(),
+          params: self.params.clone().into(),
+          loss_scores: CalibrationLossScore {
+            mae: self.mae(&c_model, &self.c_market),
+            mse: self.mse(&c_model, &self.c_market),
+            rmse: self.rmse(&c_model, &self.c_market),
+            mpe: self.mpe(&c_model, &self.c_market),
+            mape: self.mape(&c_model, &self.c_market),
+            mspe: self.mspe(&c_model, &self.c_market),
+            rmspe: self.rmspe(&c_model, &self.c_market),
+          },
+        });
       derivates.push(pricer.derivatives());
     }
 
