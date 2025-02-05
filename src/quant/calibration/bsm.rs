@@ -6,9 +6,11 @@ use nalgebra::{DMatrix, DVector, Dyn, Owned};
 
 use crate::quant::{
   pricing::bsm::{BSMCoc, BSMPricer},
-  r#trait::PricerExt,
-  OptionType,
+  r#trait::{CalibrationLossExt, PricerExt},
+  CalibrationLossScore, OptionType,
 };
+
+use super::heston::CalibrationHistory;
 
 #[derive(Clone, Debug)]
 pub struct BSMParams {
@@ -51,9 +53,13 @@ pub struct BSMCalibrator {
   pub tau: f64,
   /// Option type
   pub option_type: OptionType,
+  /// Levenberg-Marquardt algorithm residauls.
+  calibration_history: RefCell<Vec<CalibrationHistory<BSMParams>>>,
   /// Derivate matrix.
   derivates: RefCell<Vec<Vec<f64>>>,
 }
+
+impl CalibrationLossExt for BSMCalibrator {}
 
 impl BSMCalibrator {
   pub fn calibrate(&self) {
@@ -117,6 +123,23 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         OptionType::Put => c_model[idx] = put,
       }
 
+      self
+        .calibration_history
+        .borrow_mut()
+        .push(CalibrationHistory {
+          residuals: c_model.clone() - self.c_market.clone(),
+          call_put: vec![(call, put)].into(),
+          params: self.params.clone().into(),
+          loss_scores: CalibrationLossScore {
+            mae: self.mae(&c_model, &self.c_market),
+            mse: self.mse(&c_model, &self.c_market),
+            rmse: self.rmse(&c_model, &self.c_market),
+            mpe: self.mpe(&c_model, &self.c_market),
+            mape: self.mape(&c_model, &self.c_market),
+            mspe: self.mspe(&c_model, &self.c_market),
+            rmspe: self.rmspe(&c_model, &self.c_market),
+          },
+        });
       derivates.push(pricer.derivatives());
     }
 

@@ -50,10 +50,10 @@ impl From<DVector<f64>> for HestonParams {
 }
 
 #[derive(Clone, Debug)]
-pub struct CalibrationHistory {
+pub struct CalibrationHistory<T> {
   pub residuals: DVector<f64>,
   pub call_put: DVector<(f64, f64)>,
-  pub params: HestonParams,
+  pub params: T,
   pub loss_scores: CalibrationLossScore,
 }
 
@@ -77,7 +77,7 @@ pub struct HestonCalibrator {
   /// Option type
   pub option_type: OptionType,
   /// Levenberg-Marquardt algorithm residauls.
-  calibration_history: RefCell<Vec<CalibrationHistory>>,
+  calibration_history: RefCell<Vec<CalibrationHistory<HestonParams>>>,
   /// Derivate matrix.
   derivates: RefCell<Vec<Vec<f64>>>,
 }
@@ -85,7 +85,7 @@ pub struct HestonCalibrator {
 impl CalibrationLossExt for HestonCalibrator {}
 
 impl HestonCalibrator {
-  pub fn calibrate(&self) -> Result<Vec<CalibrationHistory>> {
+  pub fn calibrate(&self) -> Result<Vec<CalibrationHistory<HestonParams>>> {
     println!("Initial guess: {:?}", self.params);
 
     let (result, ..) = LevenbergMarquardt::new().minimize(self.clone());
