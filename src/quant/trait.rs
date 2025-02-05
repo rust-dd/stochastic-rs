@@ -1,3 +1,5 @@
+use nalgebra::DVector;
+
 use super::OptionType;
 
 /// Pricer trait.
@@ -51,29 +53,63 @@ pub trait TimeExt {
   }
 }
 
-/// Error trait.
-pub trait LossExt {
+/// Calibration Error trait.
+pub trait CalibrationLossExt {
   /// Calculate the mean absolute error.
-  fn mae(&self, actual: f64) -> f64;
+  fn mae(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    c_market
+      .iter()
+      .zip(c_model.iter())
+      .map(|(mkt, mdl)| (mkt - mdl).abs())
+      .sum::<f64>()
+      / c_market.len() as f64
+  }
 
   /// Calculate the mean squared error.
-  fn mse(&self, actual: f64) -> f64;
+  fn mse(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    c_market
+      .iter()
+      .zip(c_model.iter())
+      .map(|(mkt, mdl)| (mkt - mdl).powi(2))
+      .sum::<f64>()
+      / c_market.len() as f64
+  }
 
   /// Calculate the root mean squared error.
-  fn rmse(&self, actual: f64) -> f64;
+  fn rmse(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    self.mse(c_market, c_model).sqrt()
+  }
 
-  /// Calculate the mean percentage error.
-  fn mpe(&self, actual: f64) -> f64;
+  /// Calculate the mean percentage error (MPE) *in %*.
+  fn mpe(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    let mpe_ratio = c_market
+      .iter()
+      .zip(c_model.iter())
+      .map(|(mkt, mdl)| (mkt - mdl) / mkt)
+      .sum::<f64>()
+      / c_market.len() as f64;
 
-  /// Calculate the mean absolute percentage error.
-  fn mae_percentage(&self, actual: f64) -> f64;
+    mpe_ratio * 100.0
+  }
 
-  /// Calculate the mean squared percentage error.
-  fn mse_percentage(&self, actual: f64) -> f64;
+  /// Calculate the mean absolute percentage error (MAPE) *in %*.
+  fn mape(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    let mae_val = self.mae(c_market, c_model);
+    let mape_ratio = mae_val / c_market.mean();
+    mape_ratio * 100.0
+  }
 
-  /// Calculate the root mean squared percentage error.
-  fn rmse_percentage(&self, actual: f64) -> f64;
+  /// Calculate the mean squared percentage error (MSPE) *in %*.
+  fn mspe(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    let mse_val = self.mse(c_market, c_model);
+    let mspe_ratio = mse_val / c_market.mean().powi(2);
+    mspe_ratio * 100.0
+  }
 
-  /// Calculate the mean percentage error.
-  fn mpe_percentage(&self, actual: f64) -> f64;
+  /// Calculate the root mean squared percentage error (RMSPE) *in %*.
+  fn rmspe(&self, c_market: &DVector<f64>, c_model: &DVector<f64>) -> f64 {
+    let rmse_val = self.rmse(c_market, c_model);
+    let rmspe_ratio = rmse_val / c_market.mean();
+    rmspe_ratio * 100.0
+  }
 }

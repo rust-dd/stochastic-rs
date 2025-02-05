@@ -7,7 +7,11 @@ use nalgebra::{DMatrix, DVector, Dyn, Owned};
 use ndarray::Array1;
 
 use crate::{
-  quant::{pricing::heston::HestonPricer, r#trait::PricerExt, OptionType},
+  quant::{
+    pricing::heston::HestonPricer,
+    r#trait::{CalibrationLossExt, PricerExt},
+    OptionType,
+  },
   stats::mle::nmle_heston,
 };
 
@@ -76,6 +80,8 @@ pub struct HestonCalibrator {
   /// Derivate matrix.
   derivates: RefCell<Vec<Vec<f64>>>,
 }
+
+impl CalibrationLossExt for HestonCalibrator {}
 
 impl HestonCalibrator {
   pub fn calibrate(&self) -> Result<Vec<LmData>> {
