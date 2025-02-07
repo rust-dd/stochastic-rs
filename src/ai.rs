@@ -1,4 +1,5 @@
 use candle_core::Tensor;
+pub use itransformer::ITransformer;
 
 pub mod fou;
 pub mod utils;
