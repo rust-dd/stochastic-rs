@@ -61,7 +61,7 @@ pub struct CalibrationHistory<T> {
 #[derive(ImplNew, Clone)]
 pub struct HestonCalibrator {
   /// Params to calibrate.
-  pub params: HestonParams,
+  pub params: Option<HestonParams>,
   /// Option prices from the market.
   pub c_market: DVector<f64>,
   /// Asset price vector.
@@ -88,6 +88,10 @@ impl HestonCalibrator {
   pub fn calibrate(&self) -> Result<Vec<CalibrationHistory<HestonParams>>> {
     println!("Initial guess: {:?}", self.params);
 
+    if self.params.is_none() {
+      return panic!("Initial parameters are not set. You can use set_initial_params method to guess the initial parameters.");
+    }
+
     let (result, ..) = LevenbergMarquardt::new().minimize(self.clone());
 
     // Print the c_market
@@ -111,7 +115,7 @@ impl HestonCalibrator {
   ///
   /// Using NMLE (Normal Maximum Likelihood Estimation) method
   pub fn set_initial_params(&mut self, s: Array1<f64>, v: Array1<f64>, r: f64) {
-    self.params = nmle_heston(s, v, r);
+    self.params = Some(nmle_heston(s, v, r));
   }
 }
 
@@ -121,28 +125,29 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
   type ResidualStorage = Owned<f64, Dyn>;
 
   fn set_params(&mut self, params: &DVector<f64>) {
-    self.params = HestonParams::from(params.clone());
+    self.params = Some(HestonParams::from(params.clone()));
   }
 
   fn params(&self) -> DVector<f64> {
-    self.params.clone().into()
+    self.params.clone().unwrap().into()
   }
 
   fn residuals(&self) -> Option<DVector<f64>> {
     let mut c_model = DVector::zeros(self.c_market.len());
     let mut derivates = Vec::new();
+    let params = self.params.clone().unwrap();
 
     for (idx, _) in self.c_market.iter().enumerate() {
       let pricer = HestonPricer::new(
         self.s[idx],
-        self.params.v0,
+        params.v0,
         self.k[idx],
         self.r,
         self.q,
-        self.params.rho,
-        self.params.kappa,
-        self.params.theta,
-        self.params.sigma,
+        params.rho,
+        params.kappa,
+        params.theta,
+        params.sigma,
         None,
         Some(self.tau),
         None,
@@ -161,7 +166,7 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         .push(CalibrationHistory {
           residuals: c_model.clone() - self.c_market.clone(),
           call_put: vec![(call, put)].into(),
-          params: self.params.clone().into(),
+          params: params.clone(),
           loss_scores: CalibrationLossScore {
             mae: self.mae(&self.c_market, &c_model),
             mse: self.mse(&self.c_market, &c_model),
@@ -195,6 +200,8 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
 
 #[cfg(test)]
 mod tests {
+  use std::cmp::Ordering;
+
   use super::*;
 
   use anyhow::Result;
@@ -221,13 +228,13 @@ mod tests {
 
     for v in v0.iter() {
       let calibrator = HestonCalibrator::new(
-        HestonParams {
+        Some(HestonParams {
           v0: *v,
           theta: 6.47e-5,
           rho: -1.98e-3,
           kappa: 6.57e-3,
           sigma: 5.09e-4,
-        },
+        }),
         c_market.clone().into(),
         s.clone().into(),
         k.clone().into(),
@@ -236,6 +243,46 @@ mod tests {
         None,
         OptionType::Call,
       );
+
+      let data = calibrator.calibrate()?;
+      println!("Calibration data: {:?}", data);
+    }
+
+    Ok(())
+  }
+
+  #[test]
+  fn test_heston_calibrate_guess_params() -> Result<()> {
+    let tau = 24.0 / 365.0;
+    println!("Time to maturity: {}", tau);
+
+    let s = vec![
+      425.73, 425.73, 425.73, 425.67, 425.68, 425.65, 425.65, 425.68, 425.65, 425.16, 424.78,
+      425.19,
+    ];
+
+    let k = vec![
+      395.0, 400.0, 405.0, 410.0, 415.0, 420.0, 425.0, 430.0, 435.0, 440.0, 445.0, 450.0,
+    ];
+
+    let c_market = vec![
+      30.75, 25.88, 21.00, 16.50, 11.88, 7.69, 4.44, 2.10, 0.78, 0.25, 0.10, 0.10,
+    ];
+
+    let v0 = Array1::linspace(0.0, 0.01, 1);
+
+    for v in v0.iter() {
+      let mut calibrator = HestonCalibrator::new(
+        None,
+        c_market.clone().into(),
+        s.clone().into(),
+        k.clone().into(),
+        tau,
+        6.40e-4,
+        None,
+        OptionType::Call,
+      );
+      calibrator.set_initial_params(s.clone().into(), Array1::from_elem(s.len(), *v), 6.40e-4);
 
       let data = calibrator.calibrate()?;
       println!("Calibration data: {:?}", data);
