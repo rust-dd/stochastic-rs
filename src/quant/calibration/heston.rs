@@ -89,7 +89,7 @@ impl HestonCalibrator {
     println!("Initial guess: {:?}", self.params);
 
     if self.params.is_none() {
-      return panic!("Initial parameters are not set. You can use set_initial_params method to guess the initial parameters.");
+      panic!("Initial parameters are not set. You can use set_initial_params method to guess the initial parameters.");
     }
 
     let (result, ..) = LevenbergMarquardt::new().minimize(self.clone());
@@ -200,8 +200,6 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
 
 #[cfg(test)]
 mod tests {
-  use std::cmp::Ordering;
-
   use super::*;
 
   use anyhow::Result;
