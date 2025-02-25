@@ -15,6 +15,7 @@
 //! | **volatility**   | Focuses on modeling stochastic volatility, including processes like the Heston model, which are used to simulate changes in volatility over time in financial markets.                                                    |
 //!
 
+pub mod autoregressive;
 pub mod diffusion;
 pub mod interest;
 pub mod isonormal;

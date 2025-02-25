@@ -1,6 +1,5 @@
 use impl_new_derive::ImplNew;
 use ndarray::{s, Array1};
-use ndarray_rand::RandomExt;
 use rand_distr::Distribution;
 
 use crate::stochastic::{noise::fgn::FGN, Sampling};
@@ -64,11 +63,11 @@ where
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::{Gamma, Normal, Weibull};
+  use rand_distr::{Gamma, Weibull};
 
   use crate::{
     plot_1d,
-    stochastic::{process::poisson::Poisson, N, X0},
+    stochastic::{N, X0},
   };
 
   use super::*;
