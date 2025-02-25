@@ -196,3 +196,36 @@ fn inverse_seasonal_difference(y: &Array1<f64>, s: usize) -> Array1<f64> {
   }
   x
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::arr1;
+
+  use crate::{
+    plot_1d,
+    stochastic::{autoregressive::sarima::SARIMA, Sampling},
+  };
+
+  #[test]
+  fn sarima_plot() {
+    let non_seasonal_ar = arr1(&[-0.4, 0.2]);
+    let non_seasonal_ma = arr1(&[0.3]);
+    let seasonal_ar = arr1(&[0.2]);
+    let seasonal_ma = arr1(&[0.1]);
+    let s = 12;
+
+    let sarima = SARIMA::new(
+      non_seasonal_ar,
+      non_seasonal_ma,
+      seasonal_ar,
+      seasonal_ma,
+      2,   // d
+      2,   // D
+      s,   // season length
+      1.0, // sigma
+      120, // n
+      None,
+    );
+    plot_1d!(sarima.sample(), "SARIMA(p,d,q)(P,D,Q)_s process");
+  }
+}

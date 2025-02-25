@@ -86,3 +86,21 @@ impl Sampling<f64> for GARCH {
     self.m
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::arr1;
+
+  use crate::{
+    plot_1d,
+    stochastic::{autoregressive::garch::GARCH, Sampling},
+  };
+
+  #[test]
+  fn garch_plot() {
+    let alpha = arr1(&[0.05, 0.02]); // p=2
+    let beta = arr1(&[0.9]); // q=1
+    let garchpq = GARCH::new(0.1, alpha, beta, 100, None);
+    plot_1d!(garchpq.sample(), "GARCH(p,q) process");
+  }
+}

@@ -111,3 +111,22 @@ impl Sampling<f64> for EGARCH {
     self.m
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::arr1;
+
+  use crate::{
+    plot_1d,
+    stochastic::{autoregressive::egarch::EGARCH, Sampling},
+  };
+
+  #[test]
+  fn egarch_plot() {
+    let alpha = arr1(&[0.1, 0.05]); // p=2
+    let gamma = arr1(&[0.0, -0.02]); // p=2
+    let beta = arr1(&[0.8]); // q=1
+    let egarchpq = EGARCH::new(0.0, alpha, gamma, beta, 100, None);
+    plot_1d!(egarchpq.sample(), "EGARCH(p,q) process");
+  }
+}

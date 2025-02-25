@@ -71,3 +71,21 @@ impl Sampling<f64> for ARp {
     self.m
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::arr1;
+
+  use crate::{
+    plot_1d,
+    stochastic::{autoregressive::ar::ARp, Sampling},
+  };
+
+  #[test]
+  fn ar_plot() {
+    // Suppose p=2 with user-defined coefficients
+    let phi = arr1(&[0.5, -0.25]);
+    let ar_model = ARp::new(phi, 1.0, 100, None, None);
+    plot_1d!(ar_model.sample(), "AR(p) process");
+  }
+}

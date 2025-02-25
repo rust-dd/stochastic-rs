@@ -59,3 +59,20 @@ impl Sampling<f64> for ARCH {
     self.m
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::arr1;
+
+  use crate::{
+    plot_1d,
+    stochastic::{autoregressive::arch::ARCH, Sampling},
+  };
+
+  #[test]
+  fn arch_plot() {
+    let alpha = arr1(&[0.2, 0.1]);
+    let arch_model = ARCH::new(0.1, alpha, 100, None);
+    plot_1d!(arch_model.sample(), "ARCH(m) process");
+  }
+}

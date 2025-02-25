@@ -99,3 +99,21 @@ impl Sampling<f64> for TGARCH {
     self.m
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::arr1;
+
+  use crate::{
+    plot_1d,
+    stochastic::{autoregressive::tgarch::TGARCH, Sampling},
+  };
+
+  fn tgarchpq_plot() {
+    let alpha = arr1(&[0.05, 0.01]); // p=2
+    let gamma = arr1(&[0.02, 0.01]); // p=2
+    let beta = arr1(&[0.9]); // q=1
+    let tgarchpq = TGARCH::new(0.1, alpha, gamma, beta, 100, None);
+    plot_1d!(tgarchpq.sample(), "T-GARCH(p,q) process");
+  }
+}
