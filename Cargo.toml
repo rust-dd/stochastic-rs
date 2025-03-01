@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs"
-version = "0.12.0"
+version = "0.12.1"
 edition = "2021"
 license = "MIT"
 description = "A Rust library for quant finance and simulating stochastic processes."
@@ -36,9 +36,7 @@ ndarray = { version = "0.16.1", features = [
     "matrixmultiply-threading",
     "blas",
 ] }
-ndarray-linalg = { version = "0.17.0", features = [
-    "openblas-static",
-] }
+ndarray-linalg = { version = "0.17.0", features = ["openblas-static"] }
 ndarray-npy = "0.9.1"
 ndarray-rand = "0.15.0"
 ndarray-stats = "0.6.0"
