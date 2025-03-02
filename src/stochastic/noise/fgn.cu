@@ -1,31 +1,55 @@
 #include "fgn.cuh"
-#include <cuComplex.h>
 #include <curand_kernel.h>
 #include <cufft.h>
+#include <cuda_runtime.h>
+#include <cuComplex.h>
 #include <math.h>
 
+extern "C" __global__ void fgn_kernel(
+    const cuComplex* sqrt_eigenvalues,
+    float* output,
+    int n,
+    int m,
+    int offset,
+    float hurst,
+    float t,
+    unsigned long seed
+) {
+    int traj_idx = blockIdx.x;
+    if (traj_idx >= m) return;
 
-__global__ void r_kernel(float* r, int n, float hurst)
-{
+    int idx = threadIdx.x;
+    int traj_size = 2 * n;
+    int output_size = n - offset;
 
-}
+    extern __shared__ cuComplex shared_data[];
 
-__global__ void sqrt_eigenvalues_kernel(cufftComplex* r_fft, cuComplex* sqrt_eigenvalues, int n)
-{
+    if (idx < traj_size) {
+        curandState state;
+        curand_init(seed + traj_idx, idx, 0, &state);
 
-}
+        float real = curand_normal(&state);
+        float imag = curand_normal(&state);
+        cuComplex noise = make_cuComplex(real, imag);
+        shared_data[idx] = cuCmulf(noise, sqrt_eigenvalues[idx]);
+    }
 
-extern "C" void sqrt_eigenvalues_kernel_wrapper(cuComplex* sqrt_eigenvalues, int n, int hurst)
-{
+    __syncthreads();
 
-}
+    if (idx == 0) {
+        cufftHandle plan;
+        cufftComplex* data = (cufftComplex*)shared_data;
+        // TODO: need to optimize, because create a plan for FFT in every thread not efficient
+        cufftPlan1d(&plan, traj_size, CUFFT_C2C, 1);
+        cufftExecC2C(plan, data, data, CUFFT_FORWARD);
+        cufftDestroy(plan);
+    }
 
-__global__ void fgn_kernel(const cuComplex* sqrt_eigenvalues, cuComplex* result, int n, float scale, unsigned long seed)
-{
+    __syncthreads();
 
-}
-
-extern "C" void fgn_kernel_wrapper(const cuComplex* sqrt_eigenvalues, cuComplex* result, int n, int m, float scale, unsigned long seed)
-{
-
+    float scale = powf((float)n, -hurst) * powf(t, hurst);
+    if (idx < output_size) {
+        int output_offset = traj_idx * output_size;
+        output[output_offset + idx] = shared_data[idx + 1].x * scale;
+    }
 }

@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 use ndarray::parallel::prelude::*;
@@ -8,30 +9,6 @@ use ndrustfft::{ndfft, FftHandler};
 use num_complex::{Complex, ComplexDistribution};
 
 use crate::stochastic::Sampling;
-
-#[cfg(feature = "cuda")]
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct cuComplex {
-  /// Real part
-  pub x: f32,
-  /// Imaginary part
-  pub y: f32,
-}
-
-#[cfg(feature = "cuda")]
-extern "C" {
-  fn sqrt_eigenvalues_kernel_wrapper(sqrt_eigenvalues: *mut cuComplex, n: i32, hurst: f32);
-
-  fn fgn_kernel_wrapper(
-    sqrt_eigenvalues: *mut cuComplex,
-    result: *mut cuComplex,
-    n: i32,
-    m: i32,
-    scale: f32,
-    seed: u64,
-  );
-}
 
 pub struct FGN {
   pub hurst: f64,
@@ -111,6 +88,63 @@ impl Sampling<f64> for FGN {
       .slice(s![1..self.n - self.offset + 1])
       .mapv(|x: Complex<f64>| x.re * scale);
     fgn
+  }
+
+  #[cfg(feature = "cuda")]
+  fn sample_cuda(&self) -> Result<Array2<f64>, Box<dyn Error>> {
+    use cudarc::driver::{CudaDevice, DeviceRepr, LaunchAsync, LaunchConfig};
+    use cudarc::nvrtc::Ptx;
+
+    let m = self.m.unwrap_or(1);
+    let device = CudaDevice::new(0)?;
+    device.load_ptx(Ptx::from_file("fgn.ptx"), "fgn", &["fgn_kernel"])?;
+    let f = device.get_func("fgn", "fgn_kernel").unwrap();
+
+    #[repr(C)]
+    #[derive(Debug, Default, Copy, Clone, PartialOrd, PartialEq)]
+    pub struct cuComplex {
+      pub x: f64,
+      pub y: f64,
+    }
+
+    unsafe impl DeviceRepr for cuComplex {
+      fn as_kernel_param(&self) -> *mut std::ffi::c_void {
+        self as *const Self as *mut _
+      }
+    }
+
+    let host_sqrt_eigenvalues = self
+      .sqrt_eigenvalues
+      .map(|v| cuComplex { x: v.re, y: v.im })
+      .to_vec();
+    let d_sqrt_eigenvalues = device.htod_copy(host_sqrt_eigenvalues)?;
+    let mut d_output = device.alloc_zeros::<f64>(m * self.n)?;
+    let seed = 42u64;
+
+    unsafe {
+      f.launch(
+        LaunchConfig::for_num_elems(self.n as u32),
+        (
+          &d_sqrt_eigenvalues,
+          &mut d_output,
+          self.n as u32,
+          m as u32,
+          self.offset,
+          self.hurst,
+          self.t.unwrap_or(1.0),
+          seed,
+        ),
+      )
+    }?;
+
+    let host_output = device.sync_reclaim(d_output)?;
+    let mut fgn = Array2::zeros((m, self.n - self.offset));
+    for i in 0..m {
+      for j in 0..self.n - self.offset {
+        fgn[[i, j]] = host_output[i * self.n + j];
+      }
+    }
+    Ok(fgn)
   }
 
   /// Number of time steps
