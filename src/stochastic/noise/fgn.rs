@@ -9,6 +9,30 @@ use num_complex::{Complex, ComplexDistribution};
 
 use crate::stochastic::Sampling;
 
+#[cfg(feature = "cuda")]
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct cuComplex {
+  /// Real part
+  pub x: f32,
+  /// Imaginary part
+  pub y: f32,
+}
+
+#[cfg(feature = "cuda")]
+extern "C" {
+  fn sqrt_eigenvalues_kernel_wrapper(sqrt_eigenvalues: *mut cuComplex, n: i32, hurst: f32);
+
+  fn fgn_kernel_wrapper(
+    sqrt_eigenvalues: *mut cuComplex,
+    result: *mut cuComplex,
+    n: i32,
+    m: i32,
+    scale: f32,
+    seed: u64,
+  );
+}
+
 pub struct FGN {
   pub hurst: f64,
   pub n: usize,

@@ -42,6 +42,12 @@ pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> Array1<T>;
 
+  /// Sample the process with CUDA support
+  #[cfg(feature = "cuda")]
+  fn sample_cuda(&self, _n: usize, _m: usize) -> Array2<T> {
+    unimplemented!()
+  }
+
   /// Parallel sampling
   fn sample_par(&self) -> Array2<T> {
     if self.m().is_none() {
