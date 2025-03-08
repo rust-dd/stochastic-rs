@@ -64,6 +64,10 @@ impl FGN {
 
 impl Sampling<f64> for FGN {
   fn sample(&self) -> Array1<f64> {
+    // let rnd = Array1::<Complex<f64>>::random(
+    //   2 * self.n,
+    //   ComplexDistribution::new(StandardNormal, StandardNormal),
+    // );
     let num_threads = rayon::current_num_threads();
     let chunk_size = (2 * self.n) / num_threads;
     let rnd = Arc::new(Mutex::new(Array1::<Complex<f64>>::zeros(2 * self.n)));
