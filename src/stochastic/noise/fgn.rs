@@ -90,6 +90,7 @@ impl Sampling<f64> for FGN {
     fgn
   }
 
+  #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self) -> Result<Array2<f64>, Box<dyn Error>> {
     // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft
@@ -124,16 +125,11 @@ impl Sampling<f64> for FGN {
       /* seed:        */ u64,
     );
 
-    let lib = unsafe {
-      #[cfg(target_os = "windows")]
-      {
-        Library::new("src/stochastic/cuda/fgn_windows/fgn.dll")
-      }
-      #[cfg(target_os = "linux")]
-      {
-        Library::new("src/stochastic/cuda/fgn_linux/libfgn.so")
-      }
-    }?;
+    #[cfg(target_os = "windows")]
+    let lib = unsafe { Library::new("src/stochastic/cuda/fgn_windows/fgn.dll") }?;
+
+    #[cfg(target_os = "linux")]
+    let lib = unsafe { Library::new("src/stochastic/cuda/fgn_linux/libfgn.so") }?;
 
     let fgn_kernel: Symbol<FgnKernelFn> = unsafe { lib.get(b"fgn_kernel") }?;
     let device = CudaDevice::new(0)?;
@@ -253,6 +249,7 @@ mod tests {
 
   #[test]
   #[tracing_test::traced_test]
+  #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
   fn fgn_cuda() {
     let fbm = FGN::new(0.7, 500, Some(1.0), None);

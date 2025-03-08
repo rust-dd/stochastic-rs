@@ -44,6 +44,7 @@ pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn sample(&self) -> Array1<T>;
 
   /// Sample the process with CUDA support
+  #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self) -> Result<Array2<T>, Box<dyn Error>> {
     unimplemented!()
