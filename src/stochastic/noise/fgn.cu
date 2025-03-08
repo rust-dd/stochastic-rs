@@ -1,4 +1,3 @@
-#include "fgn.cuh"
 #include <curand_kernel.h>
 #include <cufft.h>
 #include <cuda_runtime.h>
