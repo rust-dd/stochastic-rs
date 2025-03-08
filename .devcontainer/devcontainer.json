@@ -1,5 +1,5 @@
 {
-  "image": "rapidsai/devcontainers:25.04-cpp-llvm16-cuda12.8-nvhpc23.5-ubuntu22.04",
+  "image": "rapidsai/devcontainers:25.04-cpp-llvm16-cuda12.0-nvhpc23.5-ubuntu22.04",
   "hostRequirements": { "gpu": true },
   "workspaceFolder": "/home/coder/${localWorkspaceFolderBasename}",
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/coder/${localWorkspaceFolderBasename},type=bind"
