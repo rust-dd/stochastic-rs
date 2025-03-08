@@ -246,9 +246,12 @@ mod tests {
   }
 
   #[test]
+  #[tracing_test::traced_test]
   fn fgn_plot() {
-    let fbm = FGN::new(0.7, N, Some(1.0), None);
-    plot_1d!(fbm.sample(), "Fractional Brownian Motion (H = 0.7)");
+    let fgn = FGN::new(0.7, 100, Some(1.0), None);
+    let fgn = fgn.sample();
+    tracing::info!("{:?}", fgn);
+    // plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
   }
 
   #[test]

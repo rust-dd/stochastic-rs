@@ -1,38 +1,5 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the
-// README at: https://github.com/devcontainers/templates/tree/main/src/rust-postgres
 {
-  "name": "Rust GPU PyTorch",
   "features": {
-    "ghcr.io/devcontainers/features/nvidia-cuda:1": {
-      "installCudnn": true
-    },
-    "ghcr.io/devcontainers/features/rust:1": {},
-    "ghcr.io/eitsupi/devcontainer-features/mdbook:1.0.0": {},
-    "ghcr.io/guiyomh/features/vim:0": {}
-  },
-
-  // Features to add to the dev container. More info: https://containers.dev/features.
-  // "features": {},
-
-  // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  // "forwardPorts": [5432],
-
-  // Use 'postCreateCommand' to run commands after the container is created.
-  "postCreateCommand": "bash setup.sh",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "GitHub.copilot-labs",
-        "GitHub.copilot-nightly",
-        "ms-azuretools.vscode-docker",
-        "technosophos.vscode-make",
-        "ms-vscode.makefile-tools"
-      ]
-    }
+    "ghcr.io/rapidsai/devcontainers/features/rust:25.4.0": {}
   }
-  // Configure tool-specific properties.
-  // "customizations": {},
-
-  // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
-  // "remoteUser": "root"
 }
