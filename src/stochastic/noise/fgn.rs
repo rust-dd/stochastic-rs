@@ -97,7 +97,8 @@ impl Sampling<f64> for FGN {
   #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self) -> Result<Array2<f64>, Box<dyn Error>> {
-    // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft
+    // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft // ELF header error
+    // nvcc -shared -o libfgn.so fgn.cu -Xcompiler -fPIC
     // nvcc -shared fgn.cu -o fgn.dll -lcufft
     use std::ffi::c_void;
 
