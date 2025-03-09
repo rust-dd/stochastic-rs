@@ -26,6 +26,7 @@ pub mod noise;
 pub mod process;
 pub mod volatility;
 
+use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 use ndarray::parallel::prelude::*;
@@ -41,6 +42,13 @@ pub const K: f64 = 100.0;
 pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> Array1<T>;
+
+  /// Sample the process with CUDA support
+  #[cfg(not(target_os = "macos"))]
+  #[cfg(feature = "cuda")]
+  fn sample_cuda(&self) -> Result<Array2<T>, Box<dyn Error>> {
+    unimplemented!()
+  }
 
   /// Parallel sampling
   fn sample_par(&self) -> Array2<T> {

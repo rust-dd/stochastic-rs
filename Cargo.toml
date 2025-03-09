@@ -25,7 +25,7 @@ gauss-quad = "0.2.1"
 impl-new-derive = "0.1.2"
 implied-vol = "1.0.0"
 indicatif = "0.17.8"
-itransformer = "1.0.1"
+# itransformer = "1.0.1"
 kendalls = "0.2.2"
 levenberg-marquardt = "0.14.0"
 linreg = "0.2.0"
@@ -36,7 +36,7 @@ ndarray = { version = "0.16.1", features = [
     "matrixmultiply-threading",
     "blas",
 ] }
-ndarray-linalg = { version = "0.17.0", features = ["openblas-static"] }
+ndarray-linalg = { version = "0.17.0" }
 ndarray-npy = "0.9.1"
 ndarray-rand = "0.15.0"
 ndarray-stats = "0.6.0"
@@ -67,11 +67,27 @@ yahoo_finance_api = { version = "2.3.0", optional = true }
 [dev-dependencies]
 
 [features]
-default = ["jemalloc"]
+cuda = ["dep:cudarc", "dep:libloading"]
 jemalloc = ["dep:tikv-jemallocator"]
 malliavin = []
 mimalloc = ["dep:mimalloc"]
 yahoo = ["dep:time", "dep:yahoo_finance_api"]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ndarray-linalg = { version = "0.17.0", features = ["openblas-static"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+cudarc = { version = "0.13.9", optional = true, features = [
+    "cuda-12080",
+    "cuda-version-from-build-system",
+] }
+libloading = { version = "0.8.6", optional = true }
+
+[target.'cfg(not(target_os = "windows"))'.features]
+default = ["jemalloc"]
+
+[target.'cfg(target_os = "windows")'.features]
+default = ["mimalloc"]
 
 [lib]
 name = "stochastic_rs"
@@ -83,6 +99,7 @@ doctest = false
 debug = false
 codegen-units = 1
 lto = true
+
 
 # [package.metadata.docs.rs]
 # all-features = true
