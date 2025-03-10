@@ -20,6 +20,7 @@ candle-datasets = "0.8.1"
 candle-nn = "0.8.1"
 candle-transformers = "0.8.1"
 chrono = "0.4.38"
+crossbeam = "0.8.4"
 flate2 = "1.0.34"
 gauss-quad = "0.2.1"
 impl-new-derive = "0.1.2"
@@ -36,7 +37,7 @@ ndarray = { version = "0.16.1", features = [
     "matrixmultiply-threading",
     "blas",
 ] }
-ndarray-linalg = { version = "0.17.0", features = ["openblas-static"] }
+ndarray-linalg = { version = "0.17.0" }
 ndarray-npy = "0.9.1"
 ndarray-rand = "0.15.0"
 ndarray-stats = "0.6.0"

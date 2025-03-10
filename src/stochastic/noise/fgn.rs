@@ -1,4 +1,7 @@
+use std::marker::PhantomData;
+use std::ptr;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use ndarray::parallel::prelude::*;
 use ndarray::{concatenate, prelude::*};
@@ -61,25 +64,64 @@ impl FGN {
   }
 }
 
+#[derive(Clone, Copy)]
+struct SendPtr<T> {
+  ptr: *mut T,
+  _marker: PhantomData<T>,
+}
+
+unsafe impl<T: Send> Send for SendPtr<T> {}
+unsafe impl<T: Sync> Sync for SendPtr<T> {}
+
+impl<T> SendPtr<T> {
+  pub fn new(ptr: *mut T) -> Self {
+    SendPtr {
+      ptr,
+      _marker: PhantomData,
+    }
+  }
+
+  pub fn as_ptr(&self) -> *mut T {
+    self.ptr
+  }
+}
+
 impl Sampling<f64> for FGN {
   fn sample(&self) -> Array1<f64> {
     let num_threads = rayon::current_num_threads();
     let chunk_size = (2 * self.n) / num_threads;
-    let rnd = Arc::new(Mutex::new(Array1::<Complex<f64>>::zeros(2 * self.n)));
+    let mut fgn = Array1::<Complex<f64>>::zeros(2 * self.n);
+    let ptr_fgn = SendPtr::new(fgn.as_mut_ptr());
 
-    (0..num_threads).into_par_iter().for_each(|i| {
-      let chunk = Array1::<Complex<f64>>::random(
-        chunk_size,
-        ComplexDistribution::new(StandardNormal, StandardNormal),
-      );
+    thread::scope(|s| {
+      for i in 0..num_threads {
+        let eigen_arc = Arc::clone(&self.sqrt_eigenvalues);
+        let local_ptr = ptr_fgn;
 
-      let mut result_lock = rnd.lock().unwrap();
-      result_lock
-        .slice_mut(s![i * chunk_size..(i + 1) * chunk_size])
-        .assign(&chunk);
+        s.spawn(move || {
+          let start_idx = i * chunk_size;
+          let end_idx = start_idx + chunk_size;
+          let mut local_chunk = Array1::<Complex<f64>>::random(
+            chunk_size,
+            ComplexDistribution::new(StandardNormal, StandardNormal),
+          );
+
+          let eigen_slice = eigen_arc.slice(s![start_idx..end_idx]);
+          for (lc, ev) in local_chunk.iter_mut().zip(eigen_slice) {
+            *lc *= *ev;
+          }
+
+          unsafe {
+            std::ptr::copy_nonoverlapping(
+              local_chunk.as_ptr(),
+              local_ptr.as_ptr().add(start_idx),
+              chunk_size,
+            );
+          }
+        });
+      }
     });
 
-    let fgn = &*self.sqrt_eigenvalues * &*rnd.lock().unwrap();
     let mut fgn_fft = Array1::<Complex<f64>>::zeros(2 * self.n);
     ndfft(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
     let scale = (self.n as f64).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);

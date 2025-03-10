@@ -110,11 +110,11 @@ mod tests {
   #[test]
   fn fbm_plot() {
     let fbm = FBM::new(
-      0.1,
+      0.7,
       N,
       Some(1.0),
       None,
-      FGN::new(0.1, N - 1, Some(1.0), None),
+      FGN::new(0.7, N - 1, Some(1.0), None),
       #[cfg(feature = "malliavin")]
       None,
     );
