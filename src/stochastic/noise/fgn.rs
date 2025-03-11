@@ -170,7 +170,7 @@ impl Sampling<f64> for FGN {
       );
     }
 
-    let host_output: Vec<f32> = device.sync_reclaim(d_output)?;
+    let host_output = device.sync_reclaim(d_output)?;
     let mut fgn = Array2::<f64>::zeros((m, n - offset));
     for i in 0..m {
       for j in 0..(n - offset) {
@@ -251,8 +251,7 @@ mod tests {
   fn fgn_plot() {
     let fgn = FGN::new(0.7, 100, Some(1.0), None);
     let fgn = fgn.sample();
-    tracing::info!("{:?}", fgn);
-    // plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
+    plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
   }
 
   #[test]
@@ -260,30 +259,25 @@ mod tests {
   #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
   fn fgn_cuda() {
-    let fbm = FGN::new(0.7, 500, Some(1.0), None);
+    let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(20000));
     let fgn = fbm.sample_cuda().unwrap();
     let fgn = fgn.row(0);
-    tracing::info!("{:?}", fgn);
-    // plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
+    plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
     let mut path = Array1::<f64>::zeros(500);
     for i in 1..500 {
-      path[i] += fgn[i - 1];
+      path[i] += path[i-1] + fgn[i];
     }
     plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
 
     let start = std::time::Instant::now();
-    for i in 0..1_000_000 {
-      let _ = fbm.sample_cuda();
-    }
-    let end = start.elapsed().as_secs();
-    tracing::info!("1000 fgn generated on cuda in: {end}");
+    let _ = fbm.sample_cuda();
+    let end = start.elapsed().as_millis();
+    tracing::info!("10000 fgn generated on cuda in: {end}");
 
     let start = std::time::Instant::now();
-    for i in 0..1_000_000 {
-      let _ = fbm.sample();
-    }
-    let end = start.elapsed().as_secs();
-    tracing::info!("1000 fgn generated on cuda in: {end}");
+      let _ = fbm.sample_par();
+    let end = start.elapsed().as_millis();
+    tracing::info!("10000 fgn generated on cuda in: {end}");
   }
 
   #[test]
