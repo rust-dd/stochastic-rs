@@ -1,4 +1,8 @@
+use ndarray::Array1;
 use prettytable::{format, row, Cell, Row, Table};
+use stochastic_rs::plot_1d;
+use stochastic_rs::stochastic::noise::fgn::FGN;
+use stochastic_rs::stochastic::Sampling;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -15,36 +19,25 @@ use stochastic_rs::stats::fou_estimator::{
 // use your_crate::{FOUParameterEstimationV1, FOUParameterEstimationV2, FilterType};
 const N: usize = 10000;
 fn main() -> Result<(), Box<dyn Error>> {
-  for _ in 0..10 {
-    let mut table = Table::new();
-
-    table.add_row(Row::new(vec![
-      Cell::new("Test Case"),
-      Cell::new("Elapsed Time (ms)"),
-    ]));
-
-    let start = Instant::now();
-    let fbm = FGN::new(0.7, N, Some(1.0), None);
-    let _ = fbm.sample();
-    let duration = start.elapsed();
-    table.add_row(Row::new(vec![
-      Cell::new("Single Sample"),
-      Cell::new(&format!("{:.2?}", duration.as_millis())),
-    ]));
-
-    let start = Instant::now();
-    let fbm = FGN::new(0.7, N, Some(1.0), None);
-    for _ in 0..N {
-      let _ = fbm.sample();
-    }
-    let duration = start.elapsed();
-    table.add_row(Row::new(vec![
-      Cell::new("Repeated Samples"),
-      Cell::new(&format!("{:.2?}", duration.as_millis())),
-    ]));
-
-    table.printstd();
+  let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(10000));
+  let fgn = fbm.sample_cuda().unwrap();
+  let fgn = fgn.row(0);
+  plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
+  let mut path = Array1::<f64>::zeros(500);
+  for i in 1..500 {
+    path[i] += path[i-1] + fgn[i];
   }
+  plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
+
+  let start = std::time::Instant::now();
+  let _ = fbm.sample_cuda();
+  let end = start.elapsed().as_millis();
+  println!("20000 fgn generated on cuda in: {end}");
+
+  let start = std::time::Instant::now();
+    let _ = fbm.sample_par();
+  let end = start.elapsed().as_millis();
+  println!("20000 fgn generated on cuda in: {end}");
   // File paths
   // let paths = vec![
   //   "./test/kecskekut_original.txt",

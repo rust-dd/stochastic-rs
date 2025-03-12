@@ -1,0 +1,6 @@
+{
+  "image": "rapidsai/devcontainers:23.12-cpp-llvm16-rust-cuda12.3-ubuntu22.04",
+  "hostRequirements": { "gpu": true },
+  "workspaceFolder": "/home/coder/${localWorkspaceFolderBasename}",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/coder/${localWorkspaceFolderBasename},type=bind"
+}

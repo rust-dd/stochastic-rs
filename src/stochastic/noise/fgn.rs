@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::sync::{Arc, RwLock};
 
 use ndarray::parallel::prelude::*;
@@ -93,6 +94,93 @@ impl Sampling<f64> for FGN {
     fgn
   }
 
+  #[cfg(not(target_os = "macos"))]
+  #[cfg(feature = "cuda")]
+  fn sample_cuda(&self) -> Result<Array2<f64>, Box<dyn Error>> {
+    // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft // ELF header error
+    // nvcc -shared -o libfgn.so fgn.cu -Xcompiler -fPIC
+    // nvcc -shared fgn.cu -o fgn.dll -lcufft
+    use std::ffi::c_void;
+
+    use cudarc::driver::{CudaDevice, DevicePtr, DevicePtrMut, DeviceRepr};
+
+    use libloading::{Library, Symbol};
+
+    #[repr(C)]
+    #[derive(Debug, Default, Copy, Clone)]
+    pub struct cuComplex {
+      pub x: f32,
+      pub y: f32,
+    }
+
+    unsafe impl DeviceRepr for cuComplex {
+      fn as_kernel_param(&self) -> *mut c_void {
+        self as *const Self as *mut _
+      }
+    }
+
+    type FgnKernelFn = unsafe extern "C" fn(
+      /* d_sqrt_eigs: */ *const cuComplex,
+      /* d_output:    */ *mut f32,
+      /* n:           */ i32,
+      /* m:           */ i32,
+      /* offset:      */ i32,
+      /* hurst:       */ f32,
+      /* t:           */ f32,
+      /* seed:        */ u64,
+    );
+
+    #[cfg(target_os = "windows")]
+    let lib = unsafe { Library::new("src/stochastic/cuda/fgn_windows/fgn.dll") }?;
+
+    #[cfg(target_os = "linux")]
+    let lib = unsafe { Library::new("src/stochastic/cuda/fgn_linux/libfgn.so") }?;
+
+    let fgn_kernel: Symbol<FgnKernelFn> = unsafe { lib.get(b"fgn_kernel") }?;
+    let device = CudaDevice::new(0)?;
+
+    let m = self.m.unwrap_or(1);
+    let n = self.n;
+    let offset = self.offset;
+    let hurst = self.hurst;
+    let t = self.t.unwrap_or(1.0);
+    let seed = 42u64;
+
+    let host_sqrt_eigs: Vec<cuComplex> = self
+      .sqrt_eigenvalues
+      .iter()
+      .map(|z| cuComplex {
+        x: z.re as f32,
+        y: z.im as f32,
+      })
+      .collect();
+    let d_sqrt_eigs = device.htod_copy(host_sqrt_eigs)?;
+    let mut d_output = device.alloc_zeros::<f32>(m * (n - offset))?;
+
+    unsafe {
+      fgn_kernel(
+        (*d_sqrt_eigs.device_ptr()) as *const cuComplex,
+        (*d_output.device_ptr_mut()) as *mut f32,
+        n as i32,
+        m as i32,
+        offset as i32,
+        hurst as f32,
+        t as f32,
+        seed,
+      );
+    }
+
+    let host_output = device.sync_reclaim(d_output)?;
+    let mut fgn = Array2::<f64>::zeros((m, n - offset));
+    for i in 0..m {
+      for j in 0..(n - offset) {
+        fgn[[i, j]] = host_output[i * (n - offset) + j] as f64;
+      }
+    }
+
+    Ok(fgn)
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n - self.offset
@@ -159,9 +247,37 @@ mod tests {
   }
 
   #[test]
+  #[tracing_test::traced_test]
   fn fgn_plot() {
-    let fbm = FGN::new(0.7, N, Some(1.0), None);
-    plot_1d!(fbm.sample(), "Fractional Brownian Motion (H = 0.7)");
+    let fgn = FGN::new(0.7, 100, Some(1.0), None);
+    let fgn = fgn.sample();
+    plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
+  }
+
+  #[test]
+  #[tracing_test::traced_test]
+  #[cfg(not(target_os = "macos"))]
+  #[cfg(feature = "cuda")]
+  fn fgn_cuda() {
+    let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(20000));
+    let fgn = fbm.sample_cuda().unwrap();
+    let fgn = fgn.row(0);
+    plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
+    let mut path = Array1::<f64>::zeros(500);
+    for i in 1..500 {
+      path[i] += path[i-1] + fgn[i];
+    }
+    plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
+
+    let start = std::time::Instant::now();
+    let _ = fbm.sample_cuda();
+    let end = start.elapsed().as_millis();
+    tracing::info!("10000 fgn generated on cuda in: {end}");
+
+    let start = std::time::Instant::now();
+      let _ = fbm.sample_par();
+    let end = start.elapsed().as_millis();
+    tracing::info!("10000 fgn generated on cuda in: {end}");
   }
 
   #[test]
