@@ -1,11 +1,14 @@
 use ndarray::Array1;
-use prettytable::{format, row, Table};
+use prettytable::{format, row, Cell, Row, Table};
 use stochastic_rs::plot_1d;
 use stochastic_rs::stochastic::noise::fgn::FGN;
 use stochastic_rs::stochastic::Sampling;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::time::Instant;
+use stochastic_rs::stochastic::noise::fgn::FGN;
+use stochastic_rs::stochastic::Sampling;
 
 use stochastic_rs::stats::fd::FractalDim;
 use stochastic_rs::stats::fou_estimator::{
@@ -14,7 +17,7 @@ use stochastic_rs::stats::fou_estimator::{
 
 // Import your estimator modules and types here
 // use your_crate::{FOUParameterEstimationV1, FOUParameterEstimationV2, FilterType};
-
+const N: usize = 10000;
 fn main() -> Result<(), Box<dyn Error>> {
   let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(10000));
   let fgn = fbm.sample_cuda().unwrap();
