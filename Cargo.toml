@@ -20,6 +20,10 @@ candle-datasets = "0.8.1"
 candle-nn = "0.8.1"
 candle-transformers = "0.8.1"
 chrono = "0.4.38"
+cudarc = { version = "0.13.9", optional = true, features = [
+    "cuda-12080",
+    "cuda-version-from-build-system",
+] }
 either = "1.15.0"
 flate2 = "1.0.34"
 gauss-quad = "0.2.1"
@@ -29,6 +33,7 @@ indicatif = "0.17.8"
 # itransformer = "1.0.1"
 kendalls = "0.2.2"
 levenberg-marquardt = "0.14.0"
+libloading = { version = "0.8.6", optional = true }
 linreg = "0.2.0"
 mimalloc = { version = "0.1.43", optional = true }
 nalgebra = "0.33.2"
@@ -77,13 +82,6 @@ yahoo = ["dep:time", "dep:yahoo_finance_api"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 ndarray-linalg = { version = "0.17.0", features = ["openblas-static"] }
-
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-cudarc = { version = "0.13.9", optional = true, features = [
-    "cuda-12080",
-    "cuda-version-from-build-system",
-] }
-libloading = { version = "0.8.6", optional = true }
 
 [lib]
 name = "stochastic_rs"

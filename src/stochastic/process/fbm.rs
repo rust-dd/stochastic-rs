@@ -26,6 +26,7 @@ pub struct FBM {
 
 impl FBM {
   fn fgn(&self) -> Array1<f64> {
+    #[cfg(feature = "cuda")]
     if self.cuda {
       if self.m.is_some() && self.m.unwrap() > 1 {
         panic!("m must be None or 1 when using CUDA");
