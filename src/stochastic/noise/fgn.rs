@@ -84,7 +84,7 @@ impl Sampling<f64> for FGN {
         .assign(&chunk);
     });
 
-    let fgn = &*self.sqrt_eigenvalues * &rnd;
+    let fgn = &*self.sqrt_eigenvalues * &*rnd.read().unwrap();
     let mut fgn_fft = Array1::<Complex<f64>>::zeros(2 * self.n);
     ndfft(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
     let scale = (self.n as f64).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
@@ -265,7 +265,7 @@ mod tests {
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
     let mut path = Array1::<f64>::zeros(500);
     for i in 1..500 {
-      path[i] += path[i-1] + fgn[i];
+      path[i] += path[i - 1] + fgn[i];
     }
     plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
 
@@ -275,7 +275,7 @@ mod tests {
     tracing::info!("10000 fgn generated on cuda in: {end}");
 
     let start = std::time::Instant::now();
-      let _ = fbm.sample_par();
+    let _ = fbm.sample_par();
     let end = start.elapsed().as_millis();
     tracing::info!("10000 fgn generated on cuda in: {end}");
   }

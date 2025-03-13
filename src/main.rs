@@ -1,14 +1,14 @@
 use ndarray::Array1;
 use prettytable::{format, row, Cell, Row, Table};
-use stochastic_rs::plot_1d;
-use stochastic_rs::stochastic::noise::fgn::FGN;
-use stochastic_rs::stochastic::Sampling;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
+use stochastic_rs::plot_1d;
 use stochastic_rs::stochastic::noise::fgn::FGN;
 use stochastic_rs::stochastic::Sampling;
+// use stochastic_rs::stochastic::noise::fgn::FGN;
+// use stochastic_rs::stochastic::Sampling;
 
 use stochastic_rs::stats::fd::FractalDim;
 use stochastic_rs::stats::fou_estimator::{
@@ -19,25 +19,25 @@ use stochastic_rs::stats::fou_estimator::{
 // use your_crate::{FOUParameterEstimationV1, FOUParameterEstimationV2, FilterType};
 const N: usize = 10000;
 fn main() -> Result<(), Box<dyn Error>> {
-  let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(10000));
-  let fgn = fbm.sample_cuda().unwrap();
-  let fgn = fgn.row(0);
-  plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
-  let mut path = Array1::<f64>::zeros(500);
-  for i in 1..500 {
-    path[i] += path[i-1] + fgn[i];
-  }
-  plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
+  // let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(10000));
+  // let fgn = fbm.sample_cuda().unwrap();
+  // let fgn = fgn.row(0);
+  // plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
+  // let mut path = Array1::<f64>::zeros(500);
+  // for i in 1..500 {
+  //   path[i] += path[i-1] + fgn[i];
+  // }
+  // plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
 
-  let start = std::time::Instant::now();
-  let _ = fbm.sample_cuda();
-  let end = start.elapsed().as_millis();
-  println!("20000 fgn generated on cuda in: {end}");
+  // let start = std::time::Instant::now();
+  // let _ = fbm.sample_cuda();
+  // let end = start.elapsed().as_millis();
+  // println!("20000 fgn generated on cuda in: {end}");
 
-  let start = std::time::Instant::now();
-    let _ = fbm.sample_par();
-  let end = start.elapsed().as_millis();
-  println!("20000 fgn generated on cuda in: {end}");
+  // let start = std::time::Instant::now();
+  //   let _ = fbm.sample_par();
+  // let end = start.elapsed().as_millis();
+  // println!("20000 fgn generated on cuda in: {end}");
   // File paths
   // let paths = vec![
   //   "./test/kecskekut_original.txt",
