@@ -19,11 +19,28 @@ pub struct FBM {
   pub calculate_malliavin: Option<bool>,
   #[cfg(feature = "malliavin")]
   malliavin: Mutex<Option<Array1<f64>>>,
+  #[cfg(feature = "cuda")]
+  #[default(false)]
+  cuda: bool,
+}
+
+impl FBM {
+  fn fgn(&self) -> Array1<f64> {
+    if self.cuda {
+      if self.m.is_some() && self.m.unwrap() > 1 {
+        panic!("m must be None or 1 when using CUDA");
+      }
+
+      return self.fgn.sample_cuda().unwrap().left().unwrap();
+    }
+
+    self.fgn.sample()
+  }
 }
 
 impl Sampling<f64> for FBM {
   fn sample(&self) -> Array1<f64> {
-    let fgn = self.fgn.sample();
+    let fgn = self.fgn();
     let mut fbm = Array1::<f64>::zeros(self.n);
     fbm.slice_mut(s![1..]).assign(&fgn);
 
@@ -66,6 +83,11 @@ impl Sampling<f64> for FBM {
   #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> Array1<f64> {
     self.malliavin.lock().unwrap().clone().unwrap()
+  }
+
+  #[cfg(feature = "cuda")]
+  fn set_cuda(&mut self, cuda: bool) {
+    self.cuda = cuda;
   }
 }
 

@@ -13,6 +13,24 @@ pub struct CFGNS {
   pub t: Option<f64>,
   pub m: Option<usize>,
   pub fgn: FGN,
+  #[cfg(feature = "cuda")]
+  #[default(false)]
+  cuda: bool,
+}
+
+impl CFGNS {
+  fn fgn(&self) -> Array1<f64> {
+    #[cfg(feature = "cuda")]
+    if self.cuda {
+      if self.m.is_some() && self.m.unwrap() > 1 {
+        panic!("m must be None or 1 when using CUDA");
+      }
+
+      return self.fgn.sample_cuda().unwrap().left().unwrap();
+    }
+
+    self.fgn.sample()
+  }
 }
 
 impl Sampling2D<f64> for CFGNS {
@@ -27,8 +45,8 @@ impl Sampling2D<f64> for CFGNS {
     );
 
     let mut cfgns = Array2::<f64>::zeros((2, self.n));
-    let fgn1 = self.fgn.sample();
-    let fgn2 = self.fgn.sample();
+    let fgn1 = self.fgn();
+    let fgn2 = self.fgn();
 
     for i in 1..self.n {
       cfgns[[0, i]] = fgn1[i - 1];

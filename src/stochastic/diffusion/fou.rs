@@ -13,13 +13,31 @@ pub struct FOU {
   pub t: Option<f64>,
   pub m: Option<usize>,
   pub fgn: FGN,
+  #[cfg(feature = "cuda")]
+  #[default(false)]
+  cuda: bool,
+}
+
+impl FOU {
+  fn fgn(&self) -> Array1<f64> {
+    #[cfg(feature = "cuda")]
+    if self.cuda {
+      if self.m.is_some() && self.m.unwrap() > 1 {
+        panic!("m must be None or 1 when using CUDA");
+      }
+
+      return self.fgn.sample_cuda().unwrap().left().unwrap();
+    }
+
+    self.fgn.sample()
+  }
 }
 
 impl Sampling<f64> for FOU {
   /// Sample the Fractional Ornstein-Uhlenbeck (FOU) process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let fgn = self.fgn.sample();
+    let fgn = self.fgn();
 
     let mut fou = Array1::<f64>::zeros(self.n);
     fou[0] = self.x0.unwrap_or(0.0);
@@ -39,6 +57,11 @@ impl Sampling<f64> for FOU {
   /// Number of samples for parallel sampling
   fn m(&self) -> Option<usize> {
     self.m
+  }
+
+  #[cfg(feature = "cuda")]
+  fn set_cuda(&mut self, cuda: bool) {
+    self.cuda = cuda;
   }
 }
 

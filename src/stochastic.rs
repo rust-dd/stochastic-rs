@@ -29,6 +29,9 @@ pub mod volatility;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "cuda")]
+use either::Either;
+
 use ndarray::parallel::prelude::*;
 use ndarray::{Array1, Array2, Axis};
 use ndrustfft::Zero;
@@ -44,9 +47,8 @@ pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn sample(&self) -> Array1<T>;
 
   /// Sample the process with CUDA support
-  #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
-  fn sample_cuda(&self) -> Result<Array2<T>, Box<dyn Error>> {
+  fn sample_cuda(&self) -> Result<Either<Array1<T>, Array2<T>>, Box<dyn Error>> {
     unimplemented!()
   }
 
@@ -79,6 +81,10 @@ pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn malliavin(&self) -> Array1<T> {
     unimplemented!()
   }
+
+  /// Set CUDA support
+  #[cfg(feature = "cuda")]
+  fn set_cuda(&mut self, cuda: bool) {}
 }
 
 pub trait SamplingVector<T: Clone + Send + Sync + Zero>: Send + Sync {
@@ -139,6 +145,10 @@ pub trait Sampling2D<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn malliavin(&self) -> [Array1<T>; 2] {
     unimplemented!()
   }
+
+  /// Set CUDA support
+  #[cfg(feature = "cuda")]
+  fn set_cuda(&mut self, cuda: bool) {}
 }
 
 pub trait Sampling3D<T: Clone + Send + Sync + Zero>: Send + Sync {

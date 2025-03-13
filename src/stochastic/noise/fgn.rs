@@ -1,5 +1,9 @@
-use std::error::Error;
 use std::sync::{Arc, RwLock};
+
+#[cfg(feature = "cuda")]
+use either::Either;
+#[cfg(feature = "cuda")]
+use std::error::Error;
 
 use ndarray::parallel::prelude::*;
 use ndarray::{concatenate, prelude::*};
@@ -94,14 +98,14 @@ impl Sampling<f64> for FGN {
     fgn
   }
 
-  #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
-  fn sample_cuda(&self) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_cuda(&self) -> Result<Either<Array1<f64>, Array2<f64>>, Box<dyn Error>> {
     // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft // ELF header error
     // nvcc -shared -o libfgn.so fgn.cu -Xcompiler -fPIC
     // nvcc -shared fgn.cu -o fgn.dll -lcufft
     use std::ffi::c_void;
 
+    use anyhow::Ok;
     use cudarc::driver::{CudaDevice, DevicePtr, DevicePtrMut, DeviceRepr};
 
     use libloading::{Library, Symbol};
@@ -178,7 +182,12 @@ impl Sampling<f64> for FGN {
       }
     }
 
-    Ok(fgn)
+    if m == 1 {
+      let fgn = fgn.row(0);
+      return Ok(Either::Left(fgn));
+    }
+
+    Ok(Either::Right(fgn))
   }
 
   /// Number of time steps
@@ -256,7 +265,6 @@ mod tests {
 
   #[test]
   #[tracing_test::traced_test]
-  #[cfg(not(target_os = "macos"))]
   #[cfg(feature = "cuda")]
   fn fgn_cuda() {
     let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(20000));

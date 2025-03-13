@@ -20,6 +20,27 @@ where
   pub m: Option<usize>,
   pub fgn: FGN,
   pub cpoisson: CompoundPoisson<D>,
+  #[cfg(feature = "cuda")]
+  #[default(false)]
+  cuda: bool,
+}
+
+impl<D> JumpFOU<D>
+where
+  D: Distribution<f64> + Send + Sync,
+{
+  fn fgn(&self) -> Array1<f64> {
+    #[cfg(feature = "cuda")]
+    if self.cuda {
+      if self.m.is_some() && self.m.unwrap() > 1 {
+        panic!("m must be None or 1 when using CUDA");
+      }
+
+      return self.fgn.sample_cuda().unwrap().left().unwrap();
+    }
+
+    self.fgn.sample()
+  }
 }
 
 impl<D> Sampling<f64> for JumpFOU<D>
@@ -28,7 +49,7 @@ where
 {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let fgn = self.fgn.sample();
+    let fgn = self.fgn();
     let mut jump_fou = Array1::<f64>::zeros(self.n);
     jump_fou[0] = self.x0.unwrap_or(0.0);
 
