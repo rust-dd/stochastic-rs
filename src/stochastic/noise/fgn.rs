@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 #[cfg(feature = "cuda")]
 use either::Either;
 #[cfg(feature = "cuda")]
-use std::error::Error;
+use anyhow::Result;
 
 use ndarray::parallel::prelude::*;
 use ndarray::{concatenate, prelude::*};
@@ -99,13 +99,12 @@ impl Sampling<f64> for FGN {
   }
 
   #[cfg(feature = "cuda")]
-  fn sample_cuda(&self) -> Result<Either<Array1<f64>, Array2<f64>>, Box<dyn Error>> {
+  fn sample_cuda(&self) -> Result<Either<Array1<f64>, Array2<f64>>> {
     // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft // ELF header error
     // nvcc -shared -o libfgn.so fgn.cu -Xcompiler -fPIC
     // nvcc -shared fgn.cu -o fgn.dll -lcufft
     use std::ffi::c_void;
 
-    use anyhow::Ok;
     use cudarc::driver::{CudaDevice, DevicePtr, DevicePtrMut, DeviceRepr};
 
     use libloading::{Library, Symbol};
@@ -183,7 +182,7 @@ impl Sampling<f64> for FGN {
     }
 
     if m == 1 {
-      let fgn = fgn.row(0);
+      let fgn = fgn.row(0).to_owned();
       return Ok(Either::Left(fgn));
     }
 
@@ -267,9 +266,9 @@ mod tests {
   #[tracing_test::traced_test]
   #[cfg(feature = "cuda")]
   fn fgn_cuda() {
-    let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(20000));
+    let fbm = FGN::new(0.7, 500, Some(1.0), Some(1));
     let fgn = fbm.sample_cuda().unwrap();
-    let fgn = fgn.row(0);
+    let fgn = fgn.left().unwrap();
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
     let mut path = Array1::<f64>::zeros(500);
     for i in 1..500 {
