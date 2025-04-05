@@ -19,6 +19,7 @@ pub mod autoregressive;
 pub mod diffusion;
 pub mod interest;
 pub mod isonormal;
+pub mod ito;
 pub mod jump;
 #[cfg(feature = "malliavin")]
 pub mod malliavin;
@@ -29,9 +30,9 @@ pub mod volatility;
 use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "cuda")]
-use either::Either;
-#[cfg(feature = "cuda")]
 use anyhow::Result;
+#[cfg(feature = "cuda")]
+use either::Either;
 
 use ndarray::parallel::prelude::*;
 use ndarray::{Array1, Array2, Axis};
