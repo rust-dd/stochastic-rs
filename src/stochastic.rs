@@ -122,14 +122,14 @@ pub trait Sampling2D<T: Clone + Send + Sync + Zero>: Send + Sync {
       panic!("m must be specified for parallel sampling");
     }
 
-    let m = self.m().unwrap(); // m értékét előre kinyerjük, hogy ne kelljen többször unwrap-elni
+    let m = self.m().unwrap();
     let xs1 = Arc::new(Mutex::new(Array2::zeros((self.m().unwrap(), self.n()))));
     let xs2 = Arc::new(Mutex::new(Array2::zeros((self.m().unwrap(), self.n()))));
 
     (0..m).into_par_iter().for_each(|i| {
-      let [x1, x2] = self.sample(); // Minden szálon mintavételezünk
-      xs1.lock().unwrap().row_mut(i).assign(&x1); // Az első mintavételezés eredményét beírjuk az első mátrix i. sorába
-      xs2.lock().unwrap().row_mut(i).assign(&x2); // A második mintavételezés eredményét beírjuk a második mátrix i. sorába
+      let [x1, x2] = self.sample();
+      xs1.lock().unwrap().row_mut(i).assign(&x1);
+      xs2.lock().unwrap().row_mut(i).assign(&x2);
     });
 
     let xs1 = xs1.lock().unwrap().clone();
