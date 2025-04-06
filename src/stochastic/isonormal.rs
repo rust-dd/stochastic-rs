@@ -1,3 +1,5 @@
+//! Isonormal processes
+
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::{concatenate, prelude::*};

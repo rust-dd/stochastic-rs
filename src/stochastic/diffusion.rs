@@ -1,3 +1,4 @@
+//! Diffusion processes
 pub mod cev;
 pub mod cir;
 pub mod fcir;

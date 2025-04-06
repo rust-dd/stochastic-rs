@@ -1,19 +1,46 @@
 //! # Stochastic Process Simulation Modules
 //!
-//! `stochastic` provides various modules to simulate and analyze stochastic processes efficiently.
+//! `stochastic` provides a modular framework for simulating and analyzing a wide range of stochastic processes.
+//! It is designed for high performance, parallelism, and optional GPU acceleration via CUDA.
 //!
 //! ## Modules
 //!
-//! | Module          | Description                                                                                                                                                                       |
-//! |-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-//! | **diffusion**    | Handles diffusion processes, such as Brownian motion and Geometric Brownian motion, commonly used in physics and finance to model random behavior over time.                                                            |
-//! | **interest**     | Provides models for simulating stochastic interest rates, including well-known models like the Cox-Ingersoll-Ross (CIR) model used in financial mathematics.                                                             |
-//! | **jump**         | Implements jump processes, where sudden changes occur at random intervals, such as in the Poisson process or in financial models like the Bates model.                                                                  |
-//! | **malliavin**    | Tools for working with the Malliavin calculus, which is used to compute derivatives of stochastic processes for sensitivity analysis and other advanced applications.                                                     |
-//! | **noise**        | Generates various noise processes, including Gaussian and fractional Gaussian noise, which are essential for simulating random perturbations in stochastic models.                                                       |
-//! | **process**      | Provides general abstractions and implementations for creating, simulating, and sampling stochastic processes, supporting both regular and parallelized workflows.                                                       |
-//! | **volatility**   | Focuses on modeling stochastic volatility, including processes like the Heston model, which are used to simulate changes in volatility over time in financial markets.                                                    |
+//! | Module            | Description                                                                                                   |
+//! |-------------------|---------------------------------------------------------------------------------------------------------------|
+//! | [`autoregressive`] | Implements autoregressive stochastic models.                                                                 |
+//! | [`diffusion`]      | Handles diffusion processes such as Brownian motion and geometric Brownian motion.                           |
+//! | [`interest`]       | Simulates stochastic interest rates using models like Cox-Ingersoll-Ross (CIR).                              |
+//! | [`jump`]           | Implements jump processes like Poisson or Bates model, useful in financial mathematics.                      |
+//! | [`malliavin`]      | Tools for computing derivatives of stochastic processes (via Malliavin calculus). Optional feature `malliavin`. |
+//! | [`noise`]          | Provides Gaussian and fractional Gaussian noise generators.                                                  |
+//! | [`process`]        | General abstraction layer for sampling and managing stochastic processes.                                     |
+//! | [`volatility`]     | Models stochastic volatility processes such as the Heston model.                                              |
+//! | [`sde`]            | Solves stochastic differential equations with multiple integration schemes.                                   |
+//! | [`ito`]            | Defines the Itô calculus-based framework for process analysis.                                               |
+//! | [`isonormal`]      | Provides isonormal Gaussian processes.                                                                       |
 //!
+//! ## Features
+//!
+//! - `cuda`: Enables GPU-based sampling implementations via CUDA
+//! - `malliavin`: Enables Malliavin derivative-related functionality
+//!
+//! ## Parallelism
+//!
+//! All `sample_par()` methods use `rayon` for parallel execution over samples. Set the `m()` field to define the number of parallel trajectories.
+//!
+//! ## Example Usage
+//!
+//! ```rust
+//! use stochastic::diffusion::BrownianMotion;
+//! use stochastic::Sampling;
+//!
+//! let bm = BrownianMotion::new(0.0, 1.0, 1.0, 1000);
+//! let path = bm.sample();
+//! ```
+//!
+//! ## GPU Acceleration
+//!
+//! When the `cuda` feature is enabled, `sample_cuda()` can be used for faster batch sampling on supported devices.
 
 pub mod autoregressive;
 pub mod diffusion;
@@ -40,11 +67,16 @@ use ndarray::{Array1, Array2, Axis};
 use ndrustfft::Zero;
 use num_complex::Complex64;
 
+/// Default number of time steps
 pub const N: usize = 1000;
+/// Default initial value
 pub const X0: f64 = 0.5;
+/// Default spot price for financial models
 pub const S0: f64 = 100.0;
+/// Default strike price
 pub const K: f64 = 100.0;
 
+/// Trait for 1D sampling of stochastic processes
 pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> Array1<T>;
@@ -90,6 +122,7 @@ pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn set_cuda(&mut self, cuda: bool) {}
 }
 
+/// Trait for sampling vector-valued stochastic processes
 pub trait SamplingVector<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the vector process
   fn sample(&self) -> Array2<T>;
@@ -112,6 +145,7 @@ pub trait SamplingVector<T: Clone + Send + Sync + Zero>: Send + Sync {
   }
 }
 
+/// Trait for 2D sampling of stochastic processes
 pub trait Sampling2D<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> [Array1<T>; 2];
@@ -154,6 +188,7 @@ pub trait Sampling2D<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn set_cuda(&mut self, cuda: bool) {}
 }
 
+/// Trait for 3D sampling of stochastic processes
 pub trait Sampling3D<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> [Array1<T>; 3];
@@ -170,6 +205,7 @@ pub trait Sampling3D<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn m(&self) -> Option<usize>;
 }
 
+/// Provides analytical functions of the distribution (pdf, cdf, etc)
 pub trait Distribution {
   /// Characteristic function of the distribution
   fn characteristic_function(&self, _t: f64) -> Complex64 {

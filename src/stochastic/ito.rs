@@ -1,3 +1,5 @@
+//! Ito transformation module
+
 use ndarray::Array1;
 use rand_distr::StandardNormal;
 

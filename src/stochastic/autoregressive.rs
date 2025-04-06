@@ -1,3 +1,4 @@
+//! Autoregressive models.
 pub mod agrach;
 pub mod ar;
 pub mod arch;

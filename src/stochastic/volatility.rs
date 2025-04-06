@@ -1,3 +1,5 @@
+//! Stochastic volatility processes
+
 pub mod bergomi;
 pub mod fheston;
 pub mod heston;

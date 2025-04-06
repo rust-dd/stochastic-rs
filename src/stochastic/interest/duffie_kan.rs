@@ -1,10 +1,38 @@
+//! A standard Duffie–Kan two-factor model without jumps.
+//!
+//! # Model Definition
+//!
+//! We consider two state variables, `r(t)` and `x(t)`, evolving under:
+//!
+//! \
+//! \[
+//!   dr(t) = \bigl(a_1 r(t) + b_1 x(t) + c_1\bigr)\,dt
+//!            + \sigma_1 \bigl(\alpha\,r(t) + \beta\,x(t) + \gamma\bigr)\,dW_1(t),
+//! \]
+//! \[
+//!   dx(t) = \bigl(a_2 r(t) + b_2 x(t) + c_2\bigr)\,dt
+//!            + \sigma_2 \bigl(\alpha\,r(t) + \beta\,x(t) + \gamma\bigr)\,dW_2(t),
+//! \]
+//!
+//! # Parameters
+//! - `alpha, beta, gamma`: Linear combination for the diffusion part.
+//! - `a1, b1, c1, sigma1`: Drift and diffusion coefficients for `r(t)`.
+//! - `a2, b2, c2, sigma2`: Drift and diffusion coefficients for `x(t)`.
+//! - `rho`: Correlation parameter is handled by the `cgns` correlated noise system
+//!   (not used directly here, but embedded in the `CGNS` object).
+//! - `r0, x0`: Initial values for `r(t)` and `x(t)`.
+//! - `t`: Total time horizon.
+//! - `n`: Number of time steps for simulation.
+//! - `m`: Batch size for parallelization (if any).
+//! - `cgns`: A correlated Gaussian noise system that produces two correlated Brownian increments.
+
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::{noise::cgns::CGNS, Sampling2D};
 
+/// Standard Duffie–Kan two-factor model (continuous, no jumps).
 #[derive(ImplNew)]
-
 pub struct DuffieKan {
   pub alpha: f64,
   pub beta: f64,

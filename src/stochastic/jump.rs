@@ -1,3 +1,5 @@
+//! Jump processes
+
 pub mod bates;
 pub mod cgmy;
 pub mod cts;

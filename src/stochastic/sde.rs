@@ -1,3 +1,5 @@
+//! Stochastic differential equation solver
+
 use ndarray::{s, Array1, Array2, Array3, Axis};
 use rand::Rng;
 

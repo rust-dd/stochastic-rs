@@ -1,3 +1,5 @@
+//! Stochastic  processes
+
 pub mod bm;
 pub mod cbms;
 pub mod ccustom;

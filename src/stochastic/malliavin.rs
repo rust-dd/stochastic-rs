@@ -1,4 +1,4 @@
-/// Malliavin calculus
+//! Malliavin calculus
 
 /// Malliavin calculus for 1D stochastic process.
 pub mod malliavin_1d;
