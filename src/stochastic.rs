@@ -25,6 +25,7 @@ pub mod jump;
 pub mod malliavin;
 pub mod noise;
 pub mod process;
+pub mod sde;
 pub mod volatility;
 
 use std::sync::{Arc, Mutex};
