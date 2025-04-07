@@ -67,7 +67,7 @@ where
         if let Some(h) = &self.hursts {
           for p in 0..n_paths {
             for d in 0..dim {
-              let fgn = FGN::new(h[p], steps, Some(t1 - t0), None);
+              let fgn = FGN::new(h[d], steps, Some(t1 - t0), None);
               let data = fgn.sample();
 
               for i in 0..steps {
@@ -495,7 +495,12 @@ mod tests {
   fn test_fgn_1d_euler() {
     let drift = |x: &Array1<f64>, _t: f64| arr1(&[-0.5 * x[0]]);
     let diffusion = |_x: &Array1<f64>, _t: f64| arr2(&[[0.1]]);
-    let sde = Sde::new(drift, diffusion, NoiseModel::Fractional, Some(arr1(&[0.7])));
+    let sde = Sde::new(
+      drift,
+      diffusion,
+      NoiseModel::Fractional,
+      Some(arr1(&[0.7, 0.8])),
+    );
     let mut rng = thread_rng();
     let x0 = arr1(&[1.0]);
     let result = sde.solve(&x0, 0.0, 1.0, 0.01, 2, SdeMethod::Euler, &mut rng);
@@ -506,11 +511,16 @@ mod tests {
   fn test_fgn_2d_srk2() {
     let drift = |x: &Array1<f64>, _t: f64| arr1(&[-0.5 * x[0], -0.2 * x[1]]);
     let diffusion = |_x: &Array1<f64>, _t: f64| arr2(&[[0.1, 0.0], [0.0, 0.2]]);
-    let sde = Sde::new(drift, diffusion, NoiseModel::Fractional, Some(arr1(&[0.8])));
+    let sde = Sde::new(
+      drift,
+      diffusion,
+      NoiseModel::Fractional,
+      Some(arr1(&[0.8, 0.75])),
+    );
     let mut rng = thread_rng();
     let x0 = arr1(&[1.0, 1.0]);
-    let result = sde.solve(&x0, 0.0, 1.0, 0.01, 3, SdeMethod::SRK2, &mut rng);
-    assert_eq!(result.shape(), &[3, 101, 2]);
+    let result = sde.solve(&x0, 0.0, 1.0, 0.01, 2, SdeMethod::SRK2, &mut rng);
+    assert_eq!(result.shape(), &[2, 101, 2]);
   }
 
   #[test]
