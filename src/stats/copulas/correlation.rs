@@ -67,7 +67,7 @@ fn spearman_correlation(data: &Array2<f64>) -> Array2<f64> {
 
       let rho = numerator / (denominator_i * denominator_j);
       rho_matrix[[i, j]] = rho;
-      rho_matrix[[j, i]] = rho; // Szimmetrikus mátrix
+      rho_matrix[[j, i]] = rho;
     }
   }
 
