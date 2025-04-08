@@ -102,6 +102,7 @@ impl Sampling<f64> for FGN {
   fn sample_cuda(&self) -> Result<Either<Array1<f64>, Array2<f64>>> {
     // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft // ELF header error
     // nvcc -shared -o libfgn.so fgn.cu -Xcompiler -fPIC
+    // nvcc -O3 -use_fast_math -o libfgn.so fgn.cu -Xcompiler -fPIC
     // nvcc -shared fgn.cu -o fgn.dll -lcufft
     use std::ffi::c_void;
 
