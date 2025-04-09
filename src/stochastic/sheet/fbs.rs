@@ -28,10 +28,10 @@ impl FBS {
       }
     }
 
-    // 3. Construct block circulant matrix
     let big_m = 2 * (m - 1);
     let big_n = 2 * (n - 1);
     let mut blk = Array2::<f64>::zeros((big_m, big_n));
+
     // top-left block
     blk.slice_mut(s![..m, ..n]).assign(&cov);
 
