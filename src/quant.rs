@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+pub mod bonds;
 pub mod calibration;
 pub mod pricing;
 pub mod strategies;

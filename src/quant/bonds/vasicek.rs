@@ -1,4 +1,4 @@
-use crate::quant::r#trait::Pricer;
+use crate::quant::r#trait::{PricerExt, TimeExt};
 
 /// Vasicek model for zero-coupon bond pricing
 /// dR(t) = theta(mu - R(t))dt + sigma dW(t)
@@ -21,7 +21,7 @@ pub struct Vasicek {
   pub expiration: Option<chrono::NaiveDate>,
 }
 
-impl Pricer for Vasicek {
+impl PricerExt for Vasicek {
   fn calculate_price(&self) -> f64 {
     let tau = self.calculate_tau_in_days();
 
@@ -31,16 +31,18 @@ impl Pricer for Vasicek {
 
     (A - B * self.r_t).exp()
   }
+}
 
+impl TimeExt for Vasicek {
   fn tau(&self) -> Option<f64> {
     Some(self.tau)
   }
 
-  fn eval(&self) -> Option<chrono::NaiveDate> {
-    self.eval
+  fn eval(&self) -> chrono::NaiveDate {
+    self.eval.unwrap()
   }
 
-  fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiration
+  fn expiration(&self) -> chrono::NaiveDate {
+    self.expiration.unwrap()
   }
 }

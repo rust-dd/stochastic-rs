@@ -1,4 +1,4 @@
-use crate::quant::r#trait::Pricer;
+use crate::quant::r#trait::{PricerExt, TimeExt};
 
 /// CIR model for zero-coupon bond pricing
 /// dR(t) = theta(mu - R(t))dt + sigma * sqrt(R(t))dW(t)
@@ -21,7 +21,7 @@ pub struct CIR {
   pub expiration: Option<chrono::NaiveDate>,
 }
 
-impl Pricer for CIR {
+impl PricerExt for CIR {
   fn calculate_price(&self) -> f64 {
     let tau = self.calculate_tau_in_days();
 
@@ -34,16 +34,21 @@ impl Pricer for CIR {
 
     A * (self.r_t * B).exp()
   }
+}
 
+impl TimeExt for CIR {
+  fn calculate_tau_in_days(&self) -> f64 {
+    self.tau
+  }
   fn tau(&self) -> Option<f64> {
     Some(self.tau)
   }
 
-  fn eval(&self) -> Option<chrono::NaiveDate> {
-    self.eval
+  fn eval(&self) -> chrono::NaiveDate {
+    self.eval.unwrap()
   }
 
-  fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiration
+  fn expiration(&self) -> chrono::NaiveDate {
+    self.expiration.unwrap()
   }
 }
