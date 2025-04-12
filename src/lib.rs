@@ -6,7 +6,6 @@
 
 // TODO: this is just temporary
 #![allow(dead_code)]
-#![feature(portable_simd)]
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
