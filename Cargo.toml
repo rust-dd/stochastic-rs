@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs"
-version = "0.13.2"
+version = "0.13.3"
 edition = "2021"
 license = "MIT"
 description = "A Rust library for quant finance and simulating stochastic processes."
@@ -48,7 +48,7 @@ ndarray-stats = "0.6.0"
 ndrustfft = "0.5.0"
 num-complex = { version = "0.4.6", features = ["rand"] }
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
-polars = { version = "0.43.1", features = ["lazy"] }
+polars = { version = "0.43.1", features = ["lazy"], optional = true }
 prettytable-rs = "0.10.0"
 quadrature = "0.1.2"
 rand = "0.8.5"
@@ -73,13 +73,13 @@ yahoo_finance_api = { version = "2.3.0", optional = true }
 [dev-dependencies]
 
 [features]
-ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn"]
+ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]
 default = []
 jemalloc = ["dep:tikv-jemallocator"]
 malliavin = []
 mimalloc = ["dep:mimalloc"]
-yahoo = ["dep:time", "dep:yahoo_finance_api"]
+yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 ndarray-linalg = { version = "0.17.0", features = ["openblas-static"] }
