@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs"
-version = "0.13.1"
+version = "0.13.2"
 edition = "2021"
 license = "MIT"
 description = "A Rust library for quant finance and simulating stochastic processes."
@@ -16,10 +16,9 @@ anyhow = "1.0.89"
 approx = "0.5.1"
 argmin = "0.10.0"
 bytemuck = "1.22.0"
-candle-core = "=0.8.1"
-candle-datasets = "=0.8.1"
-candle-nn = "=0.8.1"
-candle-transformers = "=0.8.1"
+candle-core = { version = "=0.8.1", optional = true }
+candle-datasets = { version = "=0.8.1", optional = true }
+candle-nn = { version = "=0.8.1", optional = true }
 chrono = "0.4.38"
 cudarc = { version = "0.13.9", optional = true, features = [
     "cuda-12080",
@@ -74,6 +73,7 @@ yahoo_finance_api = { version = "2.3.0", optional = true }
 [dev-dependencies]
 
 [features]
+ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn"]
 cuda = ["dep:cudarc", "dep:libloading"]
 default = []
 jemalloc = ["dep:tikv-jemallocator"]

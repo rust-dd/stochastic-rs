@@ -16,6 +16,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+#[cfg(feature = "ai")]
 pub mod ai;
 #[doc(hidden)]
 mod macros;
