@@ -6,7 +6,6 @@ use rand_distr::Normal;
 use crate::stochastic::SamplingVector;
 
 /// Ahn-Dittmar-Gallant (ADG) model
-///
 #[derive(ImplNew)]
 pub struct ADG {
   pub k: fn(f64) -> f64,
