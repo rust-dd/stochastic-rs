@@ -5,7 +5,7 @@ use rand::Rng;
 use rand_distr::{Exp, Uniform};
 use scilib::math::basic::gamma;
 
-use crate::stochastic::{process::poisson::Poisson, Sampling};
+use crate::stochastic::{process::poisson::Poisson, SamplingExt};
 
 /// CGMY process
 ///
@@ -56,7 +56,7 @@ pub struct CGMY {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for CGMY {
+impl SamplingExt<f64> for CGMY {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();
 

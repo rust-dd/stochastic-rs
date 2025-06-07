@@ -6,9 +6,9 @@ use std::io::{BufRead, BufReader};
 use std::time::Instant;
 use stochastic_rs::plot_1d;
 use stochastic_rs::stochastic::noise::fgn::FGN;
-use stochastic_rs::stochastic::Sampling;
+use stochastic_rs::stochastic::SamplingExt;
 // use stochastic_rs::stochastic::noise::fgn::FGN;
-// use stochastic_rs::stochastic::Sampling;
+// use stochastic_rs::stochastic::SamplingExt;
 
 use stochastic_rs::stats::fd::FractalDim;
 use stochastic_rs::stats::fou_estimator::{

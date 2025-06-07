@@ -3,7 +3,7 @@ use ndarray::{Array1, Axis};
 use rand::thread_rng;
 use rand_distr::Distribution;
 
-use crate::stochastic::{Sampling, Sampling3D};
+use crate::stochastic::{Sampling3DExt, SamplingExt};
 
 use super::customjt::CustomJt;
 
@@ -21,7 +21,7 @@ where
   pub customjt: CustomJt<E>,
 }
 
-impl<D, E> Sampling3D<f64> for CompoundCustom<D, E>
+impl<D, E> Sampling3DExt<f64> for CompoundCustom<D, E>
 where
   D: Distribution<f64> + Send + Sync,
   E: Distribution<f64> + Send + Sync,

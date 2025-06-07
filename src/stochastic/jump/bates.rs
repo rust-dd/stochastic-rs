@@ -3,7 +3,7 @@ use ndarray::Array1;
 use rand_distr::Distribution;
 
 use crate::stochastic::{
-  noise::cgns::CGNS, process::cpoisson::CompoundPoisson, Sampling2D, Sampling3D,
+  noise::cgns::CGNS, process::cpoisson::CompoundPoisson, Sampling2DExt, Sampling3DExt,
 };
 
 #[derive(ImplNew)]
@@ -31,7 +31,7 @@ where
   pub cpoisson: CompoundPoisson<D>,
 }
 
-impl<D> Sampling2D<f64> for Bates1996<D>
+impl<D> Sampling2DExt<f64> for Bates1996<D>
 where
   D: Distribution<f64> + Send + Sync,
 {

@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::fgn::FGN, Sampling};
+use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
 pub struct FJacobi {
@@ -33,7 +33,7 @@ impl FJacobi {
   }
 }
 
-impl Sampling<f64> for FJacobi {
+impl SamplingExt<f64> for FJacobi {
   /// Sample the Fractional Jacobi process
   fn sample(&self) -> Array1<f64> {
     assert!(self.alpha > 0.0, "alpha must be positive");
@@ -82,7 +82,7 @@ impl Sampling<f64> for FJacobi {
 mod tests {
   use crate::{
     plot_1d,
-    stochastic::{noise::fgn::FGN, Sampling, N, X0},
+    stochastic::{noise::fgn::FGN, SamplingExt, N, X0},
   };
 
   use super::*;

@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Implements an ARCH(m) model:
 ///
@@ -29,7 +29,7 @@ pub struct ARCH {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for ARCH {
+impl SamplingExt<f64> for ARCH {
   fn sample(&self) -> Array1<f64> {
     let m = self.alpha.len();
     let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap());
@@ -66,7 +66,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::arch::ARCH, Sampling},
+    stochastic::{autoregressive::arch::ARCH, SamplingExt},
   };
 
   #[test]

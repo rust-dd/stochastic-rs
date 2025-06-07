@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Implements an EGARCH(p,q) model:
 ///
@@ -50,7 +50,7 @@ pub struct EGARCH {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for EGARCH {
+impl SamplingExt<f64> for EGARCH {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
     let q = self.beta.len();
@@ -118,7 +118,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::egarch::EGARCH, Sampling},
+    stochastic::{autoregressive::egarch::EGARCH, SamplingExt},
   };
 
   #[test]

@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Implements a SARIMA model, often denoted:
 ///
@@ -65,7 +65,7 @@ pub struct SARIMA {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for SARIMA {
+impl SamplingExt<f64> for SARIMA {
   fn sample(&self) -> Array1<f64> {
     // Generate white noise for dimension n
     let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());
@@ -203,7 +203,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::sarima::SARIMA, Sampling},
+    stochastic::{autoregressive::sarima::SARIMA, SamplingExt},
   };
 
   #[test]

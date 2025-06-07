@@ -5,7 +5,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[allow(non_snake_case)]
 #[derive(ImplNew)]
@@ -18,7 +18,7 @@ pub struct HoLee {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for HoLee {
+impl SamplingExt<f64> for HoLee {
   fn sample(&self) -> Array1<f64> {
     assert!(
       self.theta.is_none() && self.f_T.is_none(),

@@ -16,7 +16,7 @@
 //! - `n`: Number of time steps in the simulation.
 //! - `m`: Batch size for parallel sampling (if used).
 
-use crate::stochastic::SamplingVector;
+use crate::stochastic::SamplingVExt;
 use impl_new_derive::ImplNew;
 use ndarray::{Array1, Array2};
 use ndarray_rand::RandomExt;
@@ -46,7 +46,7 @@ pub struct WuZhangD {
   pub m: Option<usize>,
 }
 
-impl SamplingVector<f64> for WuZhangD {
+impl SamplingVExt<f64> for WuZhangD {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let mut fv = Array2::<f64>::zeros((2 * self.xn, self.n));

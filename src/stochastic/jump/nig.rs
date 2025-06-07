@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::{rand_distr::InverseGaussian, RandomExt};
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 
@@ -17,7 +17,7 @@ pub struct NIG {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for NIG {
+impl SamplingExt<f64> for NIG {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let scale = dt.powf(2.0) / self.kappa;

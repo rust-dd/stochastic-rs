@@ -3,7 +3,7 @@ use ndarray::{Array1, Array2};
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::SamplingVector;
+use crate::stochastic::SamplingVExt;
 
 /// Ahn-Dittmar-Gallant (ADG) model
 #[derive(ImplNew)]
@@ -21,7 +21,7 @@ pub struct ADG {
   pub m: Option<usize>,
 }
 
-impl SamplingVector<f64> for ADG {
+impl SamplingVExt<f64> for ADG {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
 

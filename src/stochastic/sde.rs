@@ -3,7 +3,7 @@
 use ndarray::{s, Array1, Array2, Array3, Axis};
 use rand::Rng;
 
-use super::{noise::fgn::FGN, Sampling};
+use super::{noise::fgn::FGN, SamplingExt};
 
 pub enum NoiseModel {
   Gaussian,

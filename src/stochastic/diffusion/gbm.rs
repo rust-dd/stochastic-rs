@@ -11,7 +11,7 @@ use statrs::{
   statistics::{Distribution as StatDistribution, Median, Mode},
 };
 
-use crate::stochastic::{Distribution, Sampling};
+use crate::stochastic::{DistributionExt, SamplingExt};
 
 #[derive(ImplNew)]
 pub struct GBM {
@@ -28,7 +28,7 @@ pub struct GBM {
   malliavin: Mutex<Option<Array1<f64>>>,
 }
 
-impl Sampling<f64> for GBM {
+impl SamplingExt<f64> for GBM {
   /// Sample the GBM process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -91,7 +91,7 @@ impl Sampling<f64> for GBM {
   }
 }
 
-impl Distribution for GBM {
+impl DistributionExt for GBM {
   /// Characteristic function of the distribution
   fn characteristic_function(&self, _t: f64) -> Complex64 {
     unimplemented!()

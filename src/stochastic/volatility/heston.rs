@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2D};
+use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 use super::HestonPow;
 
@@ -50,7 +50,7 @@ pub struct Heston {
   malliavin_of_price: Mutex<Option<Array1<f64>>>,
 }
 
-impl Sampling2D<f64> for Heston {
+impl Sampling2DExt<f64> for Heston {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

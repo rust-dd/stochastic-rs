@@ -8,7 +8,7 @@ use ndarray::{s, Array1};
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 
-use crate::stochastic::{diffusion::fou::FOU, noise::fgn::FGN, Sampling};
+use crate::stochastic::{diffusion::fou::FOU, noise::fgn::FGN, SamplingExt};
 
 pub fn test_vasicek_1_d(
   epoch_size: usize,

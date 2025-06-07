@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct Jacobi {
@@ -16,7 +16,7 @@ pub struct Jacobi {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for Jacobi {
+impl SamplingExt<f64> for Jacobi {
   /// Sample the Jacobi process
   fn sample(&self) -> Array1<f64> {
     assert!(self.alpha > 0.0, "alpha must be positive");
@@ -60,7 +60,7 @@ impl Sampling<f64> for Jacobi {
 mod tests {
   use crate::{
     plot_1d,
-    stochastic::{Sampling, N, X0},
+    stochastic::{SamplingExt, N, X0},
   };
 
   use super::*;

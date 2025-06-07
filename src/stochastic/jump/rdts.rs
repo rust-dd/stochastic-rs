@@ -5,7 +5,7 @@ use rand::Rng;
 use rand_distr::{Exp, Uniform};
 use scilib::math::basic::gamma;
 
-use crate::stochastic::{process::poisson::Poisson, Sampling};
+use crate::stochastic::{process::poisson::Poisson, SamplingExt};
 
 /// RDTS process (Rapidly Decreasing Tempered Stable process)
 /// https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015
@@ -30,7 +30,7 @@ pub struct RDTS {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for RDTS {
+impl SamplingExt<f64> for RDTS {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();
 

@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::fgn::FGN, Sampling};
+use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
 pub struct FGBM {
@@ -32,7 +32,7 @@ impl FGBM {
   }
 }
 
-impl Sampling<f64> for FGBM {
+impl SamplingExt<f64> for FGBM {
   /// Sample the Fractional Geometric Brownian Motion (FGBM) process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -69,7 +69,7 @@ impl Sampling<f64> for FGBM {
 mod tests {
   use crate::{
     plot_1d,
-    stochastic::{noise::fgn::FGN, Sampling, N, X0},
+    stochastic::{noise::fgn::FGN, SamplingExt, N, X0},
   };
 
   use super::*;

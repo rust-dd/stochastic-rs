@@ -28,7 +28,7 @@
 //! - `m`: Optional batch size for parallel sampling.
 //! - `cgns`: Correlated Gaussian noise generator for the diffusion part.
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2D};
+use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use rand_distr::{Distribution, Exp, Normal};
@@ -72,7 +72,7 @@ pub struct DuffieKanJumpExp {
   pub cgns: CGNS,
 }
 
-impl Sampling2D<f64> for DuffieKanJumpExp {
+impl Sampling2DExt<f64> for DuffieKanJumpExp {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

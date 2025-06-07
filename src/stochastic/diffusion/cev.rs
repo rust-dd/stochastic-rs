@@ -6,7 +6,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct CEV {
@@ -22,7 +22,7 @@ pub struct CEV {
   malliavin: Mutex<Option<Array1<f64>>>,
 }
 
-impl Sampling<f64> for CEV {
+impl SamplingExt<f64> for CEV {
   /// Sample the CEV process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

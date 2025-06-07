@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2D};
+use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 #[derive(ImplNew)]
 
@@ -26,7 +26,7 @@ pub struct SABR {
   malliavin_of_price: Mutex<Option<Array1<f64>>>,
 }
 
-impl Sampling2D<f64> for SABR {
+impl Sampling2DExt<f64> for SABR {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
 

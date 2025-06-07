@@ -3,7 +3,7 @@ use ndarray::{s, Array1};
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct BM {
@@ -12,7 +12,7 @@ pub struct BM {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for BM {
+impl SamplingExt<f64> for BM {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());

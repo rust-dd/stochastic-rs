@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::{s, Array1};
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2D};
+use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 #[derive(ImplNew)]
 pub struct Bergomi {
@@ -16,7 +16,7 @@ pub struct Bergomi {
   pub cgns: CGNS,
 }
 
-impl Sampling2D<f64> for Bergomi {
+impl Sampling2DExt<f64> for Bergomi {
   fn sample(&self) -> [Array1<f64>; 2] {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let [cgn1, z] = self.cgns.sample();

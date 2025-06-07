@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::fgn::FGN, Sampling};
+use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 /// Fractional Cox-Ingersoll-Ross (FCIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
@@ -37,7 +37,7 @@ impl FCIR {
   }
 }
 
-impl Sampling<f64> for FCIR {
+impl SamplingExt<f64> for FCIR {
   /// Sample the Fractional Cox-Ingersoll-Ross (FCIR) process
   fn sample(&self) -> Array1<f64> {
     assert!(
@@ -84,7 +84,7 @@ impl Sampling<f64> for FCIR {
 mod tests {
   use crate::{
     plot_1d,
-    stochastic::{noise::fgn::FGN, Sampling, N, X0},
+    stochastic::{noise::fgn::FGN, SamplingExt, N, X0},
   };
 
   use super::*;

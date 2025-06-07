@@ -7,7 +7,7 @@ use scilib::math::basic::gamma;
 
 use crate::{
   stats::non_central_chi_squared,
-  stochastic::{process::poisson::Poisson, Sampling},
+  stochastic::{process::poisson::Poisson, SamplingExt},
 };
 
 /// CGMY Stochastic Volatility process
@@ -43,7 +43,7 @@ pub struct SVCGMY {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for SVCGMY {
+impl SamplingExt<f64> for SVCGMY {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();
 

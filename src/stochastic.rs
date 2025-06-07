@@ -32,7 +32,7 @@
 //!
 //! ```rust
 //! use stochastic::diffusion::BrownianMotion;
-//! use stochastic::Sampling;
+//! use stochastic::SamplingExt;
 //!
 //! let bm = BrownianMotion::new(0.0, 1.0, 1.0, 1000);
 //! let path = bm.sample();
@@ -78,7 +78,7 @@ pub const S0: f64 = 100.0;
 pub const K: f64 = 100.0;
 
 /// Trait for 1D sampling of stochastic processes
-pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
+pub trait SamplingExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> Array1<T>;
 
@@ -124,7 +124,7 @@ pub trait Sampling<T: Clone + Send + Sync + Zero>: Send + Sync {
 }
 
 /// Trait for sampling vector-valued stochastic processes
-pub trait SamplingVector<T: Clone + Send + Sync + Zero>: Send + Sync {
+pub trait SamplingVExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the vector process
   fn sample(&self) -> Array2<T>;
 
@@ -147,7 +147,7 @@ pub trait SamplingVector<T: Clone + Send + Sync + Zero>: Send + Sync {
 }
 
 /// Trait for 2D sampling of stochastic processes
-pub trait Sampling2D<T: Clone + Send + Sync + Zero>: Send + Sync {
+pub trait Sampling2DExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> [Array1<T>; 2];
 
@@ -190,7 +190,7 @@ pub trait Sampling2D<T: Clone + Send + Sync + Zero>: Send + Sync {
 }
 
 /// Trait for 3D sampling of stochastic processes
-pub trait Sampling3D<T: Clone + Send + Sync + Zero>: Send + Sync {
+pub trait Sampling3DExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> [Array1<T>; 3];
 
@@ -207,7 +207,7 @@ pub trait Sampling3D<T: Clone + Send + Sync + Zero>: Send + Sync {
 }
 
 /// Provides analytical functions of the distribution (pdf, cdf, etc)
-pub trait Distribution {
+pub trait DistributionExt {
   /// Characteristic function of the distribution
   fn characteristic_function(&self, _t: f64) -> Complex64 {
     Complex64::new(0.0, 0.0)

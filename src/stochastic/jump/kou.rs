@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::{Distribution, Normal};
 
-use crate::stochastic::{process::cpoisson::CompoundPoisson, Sampling, Sampling3D};
+use crate::stochastic::{process::cpoisson::CompoundPoisson, Sampling3DExt, SamplingExt};
 
 /// Kou process
 ///
@@ -25,7 +25,7 @@ where
   pub cpoisson: CompoundPoisson<D>,
 }
 
-impl<D> Sampling<f64> for KOU<D>
+impl<D> SamplingExt<f64> for KOU<D>
 where
   D: Distribution<f64> + Send + Sync,
 {

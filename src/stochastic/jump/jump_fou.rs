@@ -3,7 +3,7 @@ use ndarray::{s, Array1};
 use rand_distr::Distribution;
 
 use crate::stochastic::{
-  noise::fgn::FGN, process::cpoisson::CompoundPoisson, Sampling, Sampling3D,
+  noise::fgn::FGN, process::cpoisson::CompoundPoisson, Sampling3DExt, SamplingExt,
 };
 
 #[derive(ImplNew)]
@@ -43,7 +43,7 @@ where
   }
 }
 
-impl<D> Sampling<f64> for JumpFOU<D>
+impl<D> SamplingExt<f64> for JumpFOU<D>
 where
   D: Distribution<f64> + Send + Sync,
 {

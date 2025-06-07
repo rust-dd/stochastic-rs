@@ -3,7 +3,7 @@ use ndarray::{Array1, Array2};
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling2D;
+use crate::stochastic::Sampling2DExt;
 
 #[derive(ImplNew)]
 pub struct CGNS {
@@ -13,7 +13,7 @@ pub struct CGNS {
   pub m: Option<usize>,
 }
 
-impl Sampling2D<f64> for CGNS {
+impl Sampling2DExt<f64> for CGNS {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(
       (-1.0..=1.0).contains(&self.rho),

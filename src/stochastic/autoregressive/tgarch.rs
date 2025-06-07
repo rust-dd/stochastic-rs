@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Implements a general T-GARCH (GJR-GARCH)(p,q) model:
 ///
@@ -38,7 +38,7 @@ pub struct TGARCH {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for TGARCH {
+impl SamplingExt<f64> for TGARCH {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
     let q = self.beta.len();
@@ -106,7 +106,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::tgarch::TGARCH, Sampling},
+    stochastic::{autoregressive::tgarch::TGARCH, SamplingExt},
   };
 
   fn tgarchpq_plot() {

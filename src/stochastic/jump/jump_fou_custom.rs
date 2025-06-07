@@ -2,7 +2,7 @@ use impl_new_derive::ImplNew;
 use ndarray::{s, Array1};
 use rand_distr::Distribution;
 
-use crate::stochastic::{noise::fgn::FGN, Sampling};
+use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
 pub struct JumpFOUCustom<D>
@@ -42,7 +42,7 @@ where
   }
 }
 
-impl<D> Sampling<f64> for JumpFOUCustom<D>
+impl<D> SamplingExt<f64> for JumpFOUCustom<D>
 where
   D: Distribution<f64> + Send + Sync,
 {

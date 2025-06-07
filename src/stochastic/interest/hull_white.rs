@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Hull-White process.
 /// dX(t) = theta(t)dt - alpha * X(t)dt + sigma * dW(t)
@@ -19,7 +19,7 @@ pub struct HullWhite {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for HullWhite {
+impl SamplingExt<f64> for HullWhite {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());

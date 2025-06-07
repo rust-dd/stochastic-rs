@@ -1,6 +1,6 @@
 use ndarray::Array1;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// This module provides tools for Malliavin calculus.
 /// The implementation is based on the perturbation method and it is very simple and still unstable.
@@ -59,7 +59,7 @@ pub trait Malliavin {
   fn path(&self) -> Array1<f64>;
 }
 
-impl<T: Sampling<f64>> Malliavin for T {
+impl<T: SamplingExt<f64>> Malliavin for T {
   fn path(&self) -> Array1<f64> {
     self.sample()
   }

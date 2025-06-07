@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Cox-Ingersoll-Ross (CIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
@@ -20,7 +20,7 @@ pub struct CIR {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for CIR {
+impl SamplingExt<f64> for CIR {
   /// Sample the Cox-Ingersoll-Ross (CIR) process
   fn sample(&self) -> Array1<f64> {
     assert!(
@@ -62,7 +62,7 @@ impl Sampling<f64> for CIR {
 mod tests {
   use crate::{
     plot_1d,
-    stochastic::{Sampling, N, X0},
+    stochastic::{SamplingExt, N, X0},
   };
 
   use super::*;

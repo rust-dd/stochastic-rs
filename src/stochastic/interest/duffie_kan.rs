@@ -29,7 +29,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2D};
+use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
 #[derive(ImplNew)]
@@ -54,7 +54,7 @@ pub struct DuffieKan {
   pub cgns: CGNS,
 }
 
-impl Sampling2D<f64> for DuffieKan {
+impl Sampling2DExt<f64> for DuffieKan {
   /// Sample the Duffie-Kan process
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();

@@ -12,7 +12,7 @@ use ndarray_rand::RandomExt;
 use ndrustfft::{ndfft_par, FftHandler};
 use num_complex::{Complex, ComplexDistribution};
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 pub struct FGN {
   pub hurst: f64,
@@ -66,7 +66,7 @@ impl FGN {
   }
 }
 
-impl Sampling<f64> for FGN {
+impl SamplingExt<f64> for FGN {
   fn sample(&self) -> Array1<f64> {
     // let rnd = Array1::<Complex<f64>>::random(
     //   2 * self.n,

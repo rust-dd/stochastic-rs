@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Implements an MA(q) model:
 ///
@@ -29,7 +29,7 @@ pub struct MAq {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for MAq {
+impl SamplingExt<f64> for MAq {
   fn sample(&self) -> Array1<f64> {
     let q = self.theta.len();
     let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());
@@ -66,7 +66,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::ma::MAq, Sampling},
+    stochastic::{autoregressive::ma::MAq, SamplingExt},
   };
 
   #[test]

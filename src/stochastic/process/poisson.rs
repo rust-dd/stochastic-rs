@@ -4,7 +4,7 @@ use ndarray_rand::rand_distr::{Distribution, Exp};
 use ndarray_rand::RandomExt;
 use rand::thread_rng;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct Poisson {
@@ -14,7 +14,7 @@ pub struct Poisson {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for Poisson {
+impl SamplingExt<f64> for Poisson {
   fn sample(&self) -> Array1<f64> {
     if let Some(n) = self.n {
       let exponentials = Array1::random(n, Exp::new(1.0 / self.lambda).unwrap());

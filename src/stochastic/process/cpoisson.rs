@@ -3,7 +3,7 @@ use ndarray::{Array1, Axis};
 use rand::thread_rng;
 use rand_distr::Distribution;
 
-use crate::stochastic::{Sampling, Sampling3D};
+use crate::stochastic::{Sampling3DExt, SamplingExt};
 
 use super::poisson::Poisson;
 
@@ -17,7 +17,7 @@ where
   pub poisson: Poisson,
 }
 
-impl<D> Sampling3D<f64> for CompoundPoisson<D>
+impl<D> Sampling3DExt<f64> for CompoundPoisson<D>
 where
   D: Distribution<f64> + Send + Sync,
 {

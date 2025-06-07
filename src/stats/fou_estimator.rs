@@ -3,7 +3,7 @@ use ndarray::{array, s, Array1};
 use statrs::function::gamma::gamma;
 use std::f64::consts::SQRT_2;
 
-use crate::stochastic::{noise::fgn::FGN, Sampling};
+use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 // Version 1: FOUParameterEstimationV1 with linear filter methods
 #[derive(ImplNew)]
@@ -428,7 +428,7 @@ impl FOUParameterEstimationV3 {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::stochastic::{diffusion::fou::FOU, noise::fgn::FGN, Sampling};
+  use crate::stochastic::{diffusion::fou::FOU, noise::fgn::FGN, SamplingExt};
 
   #[test]
   fn test_fou_parameter_estimation_v1() {

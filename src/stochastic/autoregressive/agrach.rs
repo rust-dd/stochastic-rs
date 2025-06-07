@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// A generic Asymmetric GARCH(p,q) model (A-GARCH),
 /// allowing a separate "delta" term for negative-lag effects.
@@ -39,7 +39,7 @@ pub struct AGARCH {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for AGARCH {
+impl SamplingExt<f64> for AGARCH {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
     let q = self.beta.len();
@@ -101,7 +101,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::agrach::AGARCH, Sampling},
+    stochastic::{autoregressive::agrach::AGARCH, SamplingExt},
   };
 
   #[test]

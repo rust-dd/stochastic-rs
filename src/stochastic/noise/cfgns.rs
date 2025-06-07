@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::{Array1, Array2};
 
-use crate::stochastic::{Sampling, Sampling2D};
+use crate::stochastic::{Sampling2DExt, SamplingExt};
 
 use super::fgn::FGN;
 
@@ -33,7 +33,7 @@ impl CFGNS {
   }
 }
 
-impl Sampling2D<f64> for CFGNS {
+impl Sampling2DExt<f64> for CFGNS {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(
       (0.0..=1.0).contains(&self.hurst),

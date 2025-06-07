@@ -6,7 +6,7 @@ use ndarray::{s, Array1};
 #[cfg(feature = "malliavin")]
 use statrs::function::gamma;
 
-use crate::stochastic::{noise::fgn::FGN, Sampling};
+use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
 pub struct FBM {
@@ -39,7 +39,7 @@ impl FBM {
   }
 }
 
-impl Sampling<f64> for FBM {
+impl SamplingExt<f64> for FBM {
   fn sample(&self) -> Array1<f64> {
     let fgn = self.fgn();
     let mut fbm = Array1::<f64>::zeros(self.n);

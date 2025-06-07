@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 use super::cir::CIR;
 
@@ -12,7 +12,7 @@ pub struct CIR2F {
   pub phi: fn(f64) -> f64,
 }
 
-impl Sampling<f64> for CIR2F {
+impl SamplingExt<f64> for CIR2F {
   fn sample(&self) -> Array1<f64> {
     let x = self.x.sample();
     let y = self.y.sample();

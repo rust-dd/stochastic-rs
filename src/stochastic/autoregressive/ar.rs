@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 /// Implements an AR(p) model:
 ///
@@ -33,7 +33,7 @@ pub struct ARp {
   pub x0: Option<Array1<f64>>,
 }
 
-impl Sampling<f64> for ARp {
+impl SamplingExt<f64> for ARp {
   fn sample(&self) -> Array1<f64> {
     let p = self.phi.len();
     let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());
@@ -78,7 +78,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::ar::ARp, Sampling},
+    stochastic::{autoregressive::ar::ARp, SamplingExt},
   };
 
   #[test]

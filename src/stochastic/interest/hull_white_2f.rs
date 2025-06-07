@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2D};
+use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 /// Hull-White 2-factor model
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0
@@ -21,7 +21,7 @@ pub struct HullWhite2F {
   pub cgns: CGNS,
 }
 
-impl Sampling2D<f64> for HullWhite2F {
+impl Sampling2DExt<f64> for HullWhite2F {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

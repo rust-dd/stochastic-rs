@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{diffusion::ou::OU, Sampling};
+use crate::stochastic::{diffusion::ou::OU, SamplingExt};
 
 #[derive(ImplNew)]
 pub struct Vasicek {
@@ -15,7 +15,7 @@ pub struct Vasicek {
   pub ou: OU,
 }
 
-impl Sampling<f64> for Vasicek {
+impl SamplingExt<f64> for Vasicek {
   fn sample(&self) -> Array1<f64> {
     self.ou.sample()
   }

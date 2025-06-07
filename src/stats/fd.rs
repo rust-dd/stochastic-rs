@@ -77,7 +77,7 @@ impl FractalDim {
 mod tests {
   use approx::assert_relative_eq;
 
-  use crate::stochastic::{noise::fgn::FGN, process::fbm::FBM, Sampling, N};
+  use crate::stochastic::{noise::fgn::FGN, process::fbm::FBM, SamplingExt, N};
 
   use super::*;
 

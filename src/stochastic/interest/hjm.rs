@@ -3,7 +3,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling3D;
+use crate::stochastic::Sampling3DExt;
 
 #[derive(ImplNew)]
 pub struct HJM {
@@ -22,7 +22,7 @@ pub struct HJM {
   pub m: Option<usize>,
 }
 
-impl Sampling3D<f64> for HJM {
+impl Sampling3DExt<f64> for HJM {
   fn sample(&self) -> [Array1<f64>; 3] {
     let t_max = self.t.unwrap_or(1.0);
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

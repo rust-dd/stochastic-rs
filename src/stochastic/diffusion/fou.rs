@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::fgn::FGN, Sampling};
+use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
 pub struct FOU {
@@ -33,7 +33,7 @@ impl FOU {
   }
 }
 
-impl Sampling<f64> for FOU {
+impl SamplingExt<f64> for FOU {
   /// Sample the Fractional Ornstein-Uhlenbeck (FOU) process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -69,7 +69,7 @@ impl Sampling<f64> for FOU {
 mod tests {
   use crate::{
     plot_1d,
-    stochastic::{noise::fgn::FGN, Sampling, N, X0},
+    stochastic::{noise::fgn::FGN, SamplingExt, N, X0},
   };
 
   use super::*;

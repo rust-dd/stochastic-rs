@@ -4,7 +4,7 @@ use ndarray_rand::rand_distr::Gamma;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct VG {
@@ -17,7 +17,7 @@ pub struct VG {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for VG {
+impl SamplingExt<f64> for VG {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
 

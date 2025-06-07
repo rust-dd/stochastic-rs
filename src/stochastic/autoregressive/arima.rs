@@ -1,4 +1,4 @@
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
@@ -27,7 +27,7 @@ pub struct ARIMA {
   pub m: Option<usize>,
 }
 
-impl Sampling<f64> for ARIMA {
+impl SamplingExt<f64> for ARIMA {
   fn sample(&self) -> Array1<f64> {
     // 1) Generate an AR(p) series with user-provided coefficients
     let ar_model = ARp::new(
@@ -85,7 +85,7 @@ mod tests {
 
   use crate::{
     plot_1d,
-    stochastic::{autoregressive::arima::ARIMA, Sampling},
+    stochastic::{autoregressive::arima::ARIMA, SamplingExt},
   };
 
   #[test]

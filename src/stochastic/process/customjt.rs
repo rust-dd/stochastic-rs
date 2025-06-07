@@ -4,7 +4,7 @@ use ndarray_rand::RandomExt;
 use rand::thread_rng;
 use rand_distr::Distribution;
 
-use crate::stochastic::Sampling;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct CustomJt<D>
@@ -17,7 +17,7 @@ where
   pub distribution: D,
 }
 
-impl<D> Sampling<f64> for CustomJt<D>
+impl<D> SamplingExt<f64> for CustomJt<D>
 where
   D: Distribution<f64> + Send + Sync,
 {
