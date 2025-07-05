@@ -222,7 +222,7 @@ mod tests {
       30.75, 25.88, 21.00, 16.50, 11.88, 7.69, 4.44, 2.10, 0.78, 0.25, 0.10, 0.10,
     ];
 
-    let v0 = Array1::linspace(0.0, 0.01, 1);
+    let v0 = Array1::linspace(0.0, 1.0, 10);
 
     for v in v0.iter() {
       let calibrator = HestonCalibrator::new(
@@ -244,6 +244,58 @@ mod tests {
 
       let data = calibrator.calibrate()?;
       println!("Calibration data: {:?}", data);
+    }
+
+    Ok(())
+  }
+
+  #[test]
+  fn test_heston_calibrate_v2() -> Result<()> {
+    let tau = 24.0 / 365.0;
+    println!("Time to maturity: {}", tau);
+
+    let s = vec![
+      8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53,
+      8700.53, 8700.53,
+    ];
+
+    let k = vec![
+      5220.318, 6090.371, 6960.424, 7830.477, 8265.5035, 8483.01675, 8700.53, 8918.04325,
+      9135.5565, 9570.583, 10440.636, 11310.689,
+    ];
+
+    let c_market = vec![
+      3499.564, 2632.74, 1765.933, 901.846, 479.055, 279.313, 118.848, 28.79, 4.23, 0.143,
+      1.799e-5, 1.259e-9,
+    ];
+
+    let r = 0.04;
+    let q = 0.06;
+    let t = 0.083;
+
+    let v0 = Array1::linspace(1e-5, 2.0, 5);
+
+    for v in v0.iter() {
+      let calibrator = HestonCalibrator::new(
+        Some(HestonParams {
+          v0: *v,
+          theta: 6.47e-5,
+          rho: -1.98e-3,
+          kappa: 6.57e-3,
+          sigma: 5.09e-4,
+        }),
+        c_market.clone().into(),
+        s.clone().into(),
+        k.clone().into(),
+        t,
+        r,
+        Some(q),
+        OptionType::Call,
+      );
+
+      let data = calibrator.calibrate()?;
+      let heston_params = data.iter().map(|d| d.params.clone()).collect::<Vec<_>>();
+      println!("Calibration data: {:?}", heston_params);
     }
 
     Ok(())
@@ -283,7 +335,8 @@ mod tests {
       calibrator.set_initial_params(s.clone().into(), Array1::from_elem(s.len(), *v), 6.40e-4);
 
       let data = calibrator.calibrate()?;
-      println!("Calibration data: {:?}", data);
+      let heston_params = data.iter().map(|d| d.params.clone()).collect::<Vec<_>>();
+      println!("Calibration data: {:?}", heston_params);
     }
 
     Ok(())
