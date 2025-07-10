@@ -16,9 +16,9 @@ anyhow = "1.0.89"
 approx = "0.5.1"
 argmin = "0.10.0"
 bytemuck = "1.22.0"
-candle-core = { version = "=0.8.1", optional = true }
-candle-datasets = { version = "=0.8.1", optional = true }
-candle-nn = { version = "=0.8.1", optional = true }
+candle-core = { version = "0.9.1", optional = true }
+candle-datasets = { version = "0.9.1", optional = true }
+candle-nn = { version = "0.9.1", optional = true }
 chrono = "0.4.38"
 cudarc = { version = "0.13.9", optional = true, features = [
     "cuda-12080",
@@ -42,6 +42,7 @@ ndarray = { version = "0.16.1", features = [
     "blas",
 ] }
 ndarray-linalg = { version = "0.17.0" }
+ndarray-npy = "0.9.1"
 ndarray-rand = "0.15.0"
 ndarray-stats = "0.6.0"
 ndrustfft = "0.5.0"
