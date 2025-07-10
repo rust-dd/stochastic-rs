@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
 use stochastic_rs::plot_1d;
+use stochastic_rs::stochastic::diffusion::ou::OU;
 use stochastic_rs::stochastic::noise::fgn::FGN;
 use stochastic_rs::stochastic::SamplingExt;
 // use stochastic_rs::stochastic::noise::fgn::FGN;
@@ -17,8 +18,13 @@ use stochastic_rs::stats::fou_estimator::{
 
 // Import your estimator modules and types here
 // use your_crate::{FOUParameterEstimationV1, FOUParameterEstimationV2, FilterType};
-const N: usize = 10000;
+const N: usize = 500_000;
 fn main() -> Result<(), Box<dyn Error>> {
+  let ou = OU::new(1.0, 1.0, 1.0, N, None, None, None);
+  let start = Instant::now();
+  ou.sample();
+  let end = start.elapsed().as_nanos();
+  println!("OU generated in: {end} ns");
   // let fbm = FGN::new(0.7, 10_000, Some(1.0), Some(10000));
   // let fgn = fbm.sample_cuda().unwrap();
   // let fgn = fgn.row(0);

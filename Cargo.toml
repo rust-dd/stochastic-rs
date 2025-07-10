@@ -42,7 +42,6 @@ ndarray = { version = "0.16.1", features = [
     "blas",
 ] }
 ndarray-linalg = { version = "0.17.0" }
-ndarray-npy = "0.9.1"
 ndarray-rand = "0.15.0"
 ndarray-stats = "0.6.0"
 ndrustfft = "0.5.0"
@@ -81,9 +80,6 @@ jemalloc = ["dep:tikv-jemallocator"]
 malliavin = []
 mimalloc = ["dep:mimalloc"]
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars"]
-
-[target.'cfg(target_os = "macos")'.dependencies]
-ndarray-linalg = { version = "0.17.0", features = ["openblas-static"] }
 
 [lib]
 name = "stochastic_rs"
