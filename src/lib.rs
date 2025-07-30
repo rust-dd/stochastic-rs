@@ -3,8 +3,6 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 //#![warn(missing_docs)]
-//
-#![feature(portable_simd)]
 // TODO: this is just temporary
 #![allow(dead_code)]
 
