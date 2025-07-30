@@ -15,6 +15,7 @@ pub mod normal_inverse_gauss;
 pub mod pareto;
 pub mod poisson;
 pub mod studentt;
+pub mod uniform;
 pub mod weibull;
 
 /// Fills a slice with random floating-point values in the range [0, 1).

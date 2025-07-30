@@ -48,6 +48,7 @@ ndarray-stats = "0.6.0"
 ndrustfft = "0.5.0"
 num-complex = { version = "0.4.6", features = ["rand"] }
 ordered-float = "5.0.0"
+# orx-parallel = "2.3.0"
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 polars = { version = "0.43.1", features = ["lazy"], optional = true }
 prettytable-rs = "0.10.0"
