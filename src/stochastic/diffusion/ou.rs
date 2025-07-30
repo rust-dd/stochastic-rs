@@ -32,6 +32,25 @@ impl SamplingExt<f64> for OU {
     ou
   }
 
+  #[cfg(feature = "simd")]
+  // TODO: experimental
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) as f32 / (self.n - 1) as f32;
+    let gn = Array1::random(self.n, SimdNormal::new(0.0, dt.sqrt()));
+
+    let mut ou = Array1::<f64>::zeros(self.n);
+    ou[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      ou[i] =
+        ou[i - 1] + self.theta * (self.mu - ou[i - 1]) * dt as f64 + self.sigma * gn[i - 1] as f64
+    }
+
+    ou
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -71,6 +90,32 @@ mod tests {
     let ou = OU::new(2.0, 1.0, 0.8, N, Some(X0), Some(1.0), None);
 
     plot_1d!(ou.sample(), "Fractional Ornstein-Uhlenbeck (FOU) Process");
+  }
+
+  #[cfg(feature = "simd")]
+  #[test]
+  fn sample_simd() {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let ou = OU::new(2.0, 1.0, 0.8, N, Some(X0), Some(1.0), None);
+
+    for _ in 0..100_000 {
+      ou.sample_simd();
+    }
+
+    let elapsed = start.elapsed();
+    println!("Elapsed time for sample_simd: {:?}", elapsed);
+
+    let start = Instant::now();
+    let ou = OU::new(2.0, 1.0, 0.8, N, Some(X0), Some(1.0), None);
+
+    for _ in 0..100_000 {
+      ou.sample();
+    }
+
+    let elapsed = start.elapsed();
+    println!("Elapsed time for sample: {:?}", elapsed);
   }
 
   #[test]

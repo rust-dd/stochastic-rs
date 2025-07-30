@@ -35,7 +35,8 @@ mod tests {
     beta::SimdBeta, binomial::SimdBinomial, cauchy::SimdCauchy, gamma::SimdGamma,
     geometric::SimdGeometric, hypergeometric::SimdHypergeometric, inverse_gauss::SimdInverseGauss,
     lognormal::SimdLogNormal, normal::SimdNormal, normal_inverse_gauss::SimdNormalInverseGauss,
-    pareto::SimdPareto, poisson::SimdPoisson, studentt::SimdStudentT, weibull::SimdWeibull,
+    pareto::SimdPareto, poisson::SimdPoisson, studentt::SimdStudentT, uniform::SimdUniform,
+    weibull::SimdWeibull,
   };
 
   use plotly::{
@@ -379,6 +380,22 @@ mod tests {
       let xs: Vec<f32> = (0..=max_range).map(|i| i as f32).collect();
       let trace = Scatter::new(xs, bins)
         .name("Poisson(lambda=4)")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace);
+    }
+
+    // 15) Uniform (0,1)
+    {
+      let (xa, ya) = subplot_axes(4, 3);
+      let mut rng = thread_rng();
+      let dist = SimdUniform::new(0.0, 1.0);
+      let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
+      let (xs, bins) = make_histogram(&samples, 100, -4.0, 4.0);
+      let trace = Scatter::new(xs, bins)
+        .name("Uniform(0,1)")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)

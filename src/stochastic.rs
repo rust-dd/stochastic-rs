@@ -82,6 +82,12 @@ pub trait SamplingExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
   fn sample(&self) -> Array1<T>;
 
+  /// Sample the process with simd acceleration
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<T> {
+    unimplemented!()
+  }
+
   /// Sample the process with CUDA support
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self) -> Result<Either<Array1<T>, Array2<T>>> {
