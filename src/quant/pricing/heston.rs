@@ -89,8 +89,8 @@ impl HestonPricer {
 
   pub(self) fn b(&self, j: u8) -> f64 {
     match j {
-      1 => self.kappa + self.lambda.unwrap_or(1.0) - self.rho * self.sigma,
-      2 => self.kappa + self.lambda.unwrap_or(1.0),
+      1 => self.kappa + self.lambda.unwrap_or(0.0) - self.rho * self.sigma,
+      2 => self.kappa + self.lambda.unwrap_or(0.0),
       _ => panic!("Invalid j"),
     }
   }

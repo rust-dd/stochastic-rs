@@ -98,8 +98,8 @@ impl HestonCalibrator {
 
     let residuals = result.residuals().unwrap();
 
-    // Print the c_model
-    println!("Model prices: {:?}", self.c_market.clone() + residuals);
+    // Print the c_model (residuals = market - model, so model = market - residuals)
+    println!("Model prices: {:?}", self.c_market.clone() - residuals);
 
     // Print the result of the calibration
     println!("Calibration report: {:?}", result.params);
@@ -177,8 +177,8 @@ impl HestonCalibrator {
       let (call, put) = pricer.calculate_call_put();
 
       match self.option_type {
-        OptionType::Call => c_model[idx] = call,
-        OptionType::Put => c_model[idx] = put,
+        OptionType::Call => c_model[idx] = call.max(0.0),
+        OptionType::Put => c_model[idx] = put.max(0.0),
       }
     }
 
@@ -186,7 +186,7 @@ impl HestonCalibrator {
   }
 
   fn residuals_for(&self, params: &HestonParams) -> DVector<f64> {
-    self.compute_model_prices_for(params) - self.c_market.clone()
+    self.c_market.clone() - self.compute_model_prices_for(params)
   }
 
   /// Numerically approximate the Jacobian via central differences.
@@ -300,7 +300,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
       .calibration_history
       .borrow_mut()
       .push(CalibrationHistory {
-        residuals: c_model.clone() - self.c_market.clone(),
+        residuals: self.c_market.clone() - c_model.clone(),
         call_put: self
           .c_market
           .iter()
@@ -339,7 +339,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         },
       });
 
-    Some(c_model - self.c_market.clone())
+    Some(self.c_market.clone() - c_model)
   }
 
   fn jacobian(&self) -> Option<DMatrix<f64>> {
