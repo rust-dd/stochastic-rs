@@ -5,12 +5,11 @@ use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
 use nalgebra::{DMatrix, DVector, Dyn, Owned};
 
 use crate::quant::{
+  calibration::CalibrationHistory,
   pricing::bsm::{BSMCoc, BSMPricer},
   r#trait::{CalibrationLossExt, PricerExt},
   CalibrationLossScore, OptionType,
 };
-
-use super::heston::CalibrationHistory;
 
 #[derive(Clone, Debug)]
 pub struct BSMParams {

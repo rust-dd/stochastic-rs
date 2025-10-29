@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use anyhow::Result;
 use impl_new_derive::ImplNew;
 use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
 use nalgebra::{DMatrix, DVector, Dyn, Owned};
@@ -8,6 +7,7 @@ use ndarray::Array1;
 
 use crate::{
   quant::{
+    calibration::CalibrationHistory,
     pricing::heston::HestonPricer,
     r#trait::{CalibrationLossExt, PricerExt},
     CalibrationLossScore, OptionType,
@@ -15,24 +15,28 @@ use crate::{
   stats::mle::nmle_heston,
 };
 
-/// Heston model parameters
 #[derive(Clone, Debug)]
 pub struct HestonParams {
+  /// Initial variance v0 (not volatility) in Heston model
   pub v0: f64,
-  pub theta: f64,
-  pub rho: f64,
+  /// Mean reversion speed
   pub kappa: f64,
+  /// Long-run variance
+  pub theta: f64,
+  /// Volatility of variance
   pub sigma: f64,
+  /// Correlation between price and variance Brownian motions
+  pub rho: f64,
 }
 
 impl From<HestonParams> for DVector<f64> {
   fn from(params: HestonParams) -> Self {
     DVector::from_vec(vec![
       params.v0,
-      params.theta,
-      params.rho,
       params.kappa,
+      params.theta,
       params.sigma,
+      params.rho,
     ])
   }
 }
@@ -41,58 +45,53 @@ impl From<DVector<f64>> for HestonParams {
   fn from(params: DVector<f64>) -> Self {
     HestonParams {
       v0: params[0],
-      theta: params[1],
-      rho: params[2],
-      kappa: params[3],
-      sigma: params[4],
+      kappa: params[1],
+      theta: params[2],
+      sigma: params[3],
+      rho: params[4],
     }
   }
 }
 
-#[derive(Clone, Debug)]
-pub struct CalibrationHistory<T> {
-  pub residuals: DVector<f64>,
-  pub call_put: DVector<(f64, f64)>,
-  pub params: T,
-  pub loss_scores: CalibrationLossScore,
-}
-
-/// A calibrator.
+/// A Heston model calibrator (price-based) using Levenberg-Marquardt.
 #[derive(ImplNew, Clone)]
 pub struct HestonCalibrator {
-  /// Params to calibrate.
+  /// Params to calibrate (v0, kappa, theta, sigma, rho).
+  /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).
   pub params: Option<HestonParams>,
   /// Option prices from the market.
   pub c_market: DVector<f64>,
-  /// Asset price vector.
+  /// Underlying spot per quote (allows small variations per strike/maturity bucket).
   pub s: DVector<f64>,
-  /// Strike price vector.
+  /// Strikes per quote.
   pub k: DVector<f64>,
-  /// Time to maturity.
-  pub tau: f64,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
   pub q: Option<f64>,
-  /// Option type
+  /// Time to maturity (years) used for all quotes in this calibrator.
+  pub tau: f64,
+  /// Option type of the quotes.
   pub option_type: OptionType,
-  /// Levenberg-Marquardt algorithm residauls.
+  /// Optional: time series for MLE-based initial guess
+  pub mle_s: Option<Array1<f64>>, // stock prices time series
+  pub mle_v: Option<Array1<f64>>, // variance (or instantaneous variance proxy) time series
+  pub mle_r: Option<f64>,         // risk-free rate used for MLE
+  /// History of iterations (residuals, params, loss metrics).
   calibration_history: RefCell<Vec<CalibrationHistory<HestonParams>>>,
-  /// Derivate matrix.
-  derivates: RefCell<Vec<Vec<f64>>>,
 }
 
 impl CalibrationLossExt for HestonCalibrator {}
 
 impl HestonCalibrator {
-  pub fn calibrate(&self) -> Result<Vec<CalibrationHistory<HestonParams>>> {
-    println!("Initial guess: {:?}", self.params);
+  pub fn calibrate(&self) {
+    // Prepare a problem clone with an initial guess if needed
+    let mut problem = self.clone();
+    problem.ensure_initial_guess();
 
-    if self.params.is_none() {
-      panic!("Initial parameters are not set. You can use set_initial_params method to guess the initial parameters.");
-    }
+    println!("Initial guess: {:?}", problem.params);
 
-    let (result, ..) = LevenbergMarquardt::new().minimize(self.clone());
+    let (result, ..) = LevenbergMarquardt::new().minimize(problem);
 
     // Print the c_market
     println!("Market prices: {:?}", self.c_market);
@@ -104,38 +103,60 @@ impl HestonCalibrator {
 
     // Print the result of the calibration
     println!("Calibration report: {:?}", result.params);
-
-    let calibration_history = result.calibration_history.borrow().clone();
-
-    Ok(calibration_history)
   }
 
-  /// Initial guess for the calibration
-  /// http://scis.scichina.com/en/2018/042202.pdf
-  ///
-  /// Using NMLE (Normal Maximum Likelihood Estimation) method
-  pub fn set_initial_params(&mut self, s: Array1<f64>, v: Array1<f64>, r: f64) {
-    self.params = Some(nmle_heston(s, v, r));
-  }
-}
-
-impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
-  fn set_params(&mut self, params: &DVector<f64>) {
-    self.params = Some(HestonParams::from(params.clone()));
+  pub fn set_initial_guess(&mut self, params: HestonParams) {
+    self.params = Some(params);
   }
 
-  fn params(&self) -> DVector<f64> {
-    self.params.clone().unwrap().into()
+  fn ensure_initial_guess(&mut self) {
+    if self.params.is_none() {
+      if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
+        let mut p = nmle_heston(s, v, r);
+        // Clamp to reasonable bounds
+        p.v0 = p.v0.max(1e-8);
+        p.kappa = p.kappa.max(1e-8);
+        p.theta = p.theta.max(1e-8);
+        p.sigma = p.sigma.abs().max(1e-8);
+        p.rho = p.rho.max(-0.9999).min(0.9999);
+        self.params = Some(p);
+      } else {
+        // Fallback conservative guess
+        self.params = Some(HestonParams {
+          v0: 0.04,
+          kappa: 1.5,
+          theta: 0.04,
+          sigma: 0.5,
+          rho: -0.5,
+        });
+      }
+    }
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn effective_params(&self) -> HestonParams {
+    if let Some(p) = &self.params {
+      return p.clone();
+    }
+    if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
+      let mut p = nmle_heston(s, v, r);
+      p.v0 = p.v0.max(1e-8);
+      p.kappa = p.kappa.max(1e-8);
+      p.theta = p.theta.max(1e-8);
+      p.sigma = p.sigma.abs().max(1e-8);
+      p.rho = p.rho.max(-0.9999).min(0.9999);
+      return p;
+    }
+    HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.5,
+      rho: -0.5,
+    }
+  }
+
+  fn compute_model_prices_for(&self, params: &HestonParams) -> DVector<f64> {
     let mut c_model = DVector::zeros(self.c_market.len());
-    let mut derivates = Vec::new();
-    let params = self.params.clone().unwrap();
 
     for (idx, _) in self.c_market.iter().enumerate() {
       let pricer = HestonPricer::new(
@@ -148,7 +169,7 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         params.kappa,
         params.theta,
         params.sigma,
-        None,
+        Some(0.0), // lambda (market price of vol risk), set to 0 in most calibrations
         Some(self.tau),
         None,
         None,
@@ -159,186 +180,347 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         OptionType::Call => c_model[idx] = call,
         OptionType::Put => c_model[idx] = put,
       }
-
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: c_model.clone() - self.c_market.clone(),
-          call_put: vec![(call, put)].into(),
-          params: params.clone(),
-          loss_scores: CalibrationLossScore {
-            mae: self.mae(&self.c_market, &c_model),
-            mse: self.mse(&self.c_market, &c_model),
-            rmse: self.rmse(&self.c_market, &c_model),
-            mpe: self.mpe(&self.c_market, &c_model),
-            mape: self.mape(&self.c_market, &c_model),
-            mspe: self.mspe(&self.c_market, &c_model),
-            rmspe: self.rmspe(&self.c_market, &c_model),
-            mre: self.mre(&self.c_market, &c_model),
-            mrpe: self.mrpe(&self.c_market, &c_model),
-          },
-        });
-      derivates.push(pricer.derivatives());
     }
 
-    let _ = std::mem::replace(&mut *self.derivates.borrow_mut(), derivates);
+    c_model
+  }
+
+  fn residuals_for(&self, params: &HestonParams) -> DVector<f64> {
+    self.compute_model_prices_for(params) - self.c_market.clone()
+  }
+
+  /// Numerically approximate the Jacobian via central differences.
+  fn numeric_jacobian(&self, params: &HestonParams) -> DMatrix<f64> {
+    let n = self.c_market.len();
+    let p = 5usize; // v0, kappa, theta, sigma, rho
+
+    let base_params_vec: DVector<f64> = params.clone().into();
+    let mut J = DMatrix::zeros(n, p);
+
+    for col in 0..p {
+      let x = base_params_vec[col];
+      let mut h = 1e-5_f64.max(1e-3 * x.abs());
+
+      let mut params_plus = params.clone();
+      let mut params_minus = params.clone();
+
+      match col {
+        0 => {
+          // v0 >= 0
+          params_plus.v0 = (x + h).max(1e-8);
+          params_minus.v0 = (x - h).max(1e-8);
+        }
+        1 => {
+          // kappa > 0
+          params_plus.kappa = (x + h).max(1e-8);
+          params_minus.kappa = (x - h).max(1e-8);
+        }
+        2 => {
+          // theta > 0
+          params_plus.theta = (x + h).max(1e-8);
+          params_minus.theta = (x - h).max(1e-8);
+        }
+        3 => {
+          // sigma >= 0
+          params_plus.sigma = (x + h).max(1e-8);
+          params_minus.sigma = (x - h).max(1e-8);
+        }
+        4 => {
+          // -1 < rho < 1
+          let clamp = |y: f64| y.max(-0.9999).min(0.9999);
+          params_plus.rho = clamp(x + h);
+          params_minus.rho = clamp(x - h);
+          // Use symmetric step if clamped too hard
+          if (params_plus.rho - params_minus.rho).abs() < 0.5 * h {
+            h = 1e-4;
+            params_plus.rho = clamp(x + h);
+            params_minus.rho = clamp(x - h);
+          }
+        }
+        _ => unreachable!(),
+      }
+
+      // Optional: enforce (soft) Feller condition in probes by nudging theta
+      // 2*kappa*theta > sigma^2
+      let enforce_feller = |p: &mut HestonParams| {
+        if 2.0 * p.kappa * p.theta <= p.sigma * p.sigma {
+          p.theta = (p.sigma * p.sigma) / (2.0 * p.kappa) + 1e-8;
+        }
+      };
+      enforce_feller(&mut params_plus);
+      enforce_feller(&mut params_minus);
+
+      let r_plus = self.residuals_for(&params_plus);
+      let r_minus = self.residuals_for(&params_minus);
+
+      let diff = (r_plus - r_minus) / (2.0 * h);
+      for row in 0..n {
+        J[(row, col)] = diff[row];
+      }
+    }
+
+    J
+  }
+}
+
+impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
+  type JacobianStorage = Owned<f64, Dyn, Dyn>;
+  type ParameterStorage = Owned<f64, Dyn>;
+  type ResidualStorage = Owned<f64, Dyn>;
+
+  fn set_params(&mut self, params: &DVector<f64>) {
+    self.params = Some(HestonParams::from(params.clone()));
+  }
+
+  fn params(&self) -> DVector<f64> {
+    if let Some(p) = &self.params {
+      p.clone().into()
+    } else if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r)
+    {
+      let p = nmle_heston(s, v, r);
+      p.into()
+    } else {
+      HestonParams {
+        v0: 0.04,
+        kappa: 1.5,
+        theta: 0.04,
+        sigma: 0.5,
+        rho: -0.5,
+      }
+      .into()
+    }
+  }
+
+  fn residuals(&self) -> Option<DVector<f64>> {
+    let params_eff = self.effective_params();
+    let c_model = self.compute_model_prices_for(&params_eff);
+
+    // Push history for the current iterate
+    self
+      .calibration_history
+      .borrow_mut()
+      .push(CalibrationHistory {
+        residuals: c_model.clone() - self.c_market.clone(),
+        call_put: self
+          .c_market
+          .iter()
+          .enumerate()
+          .map(|(i, _)| {
+            let pricer = HestonPricer::new(
+              self.s[i],
+              params_eff.v0,
+              self.k[i],
+              self.r,
+              self.q,
+              params_eff.rho,
+              params_eff.kappa,
+              params_eff.theta,
+              params_eff.sigma,
+              Some(0.0),
+              Some(self.tau),
+              None,
+              None,
+            );
+            pricer.calculate_call_put()
+          })
+          .collect::<Vec<(f64, f64)>>()
+          .into(),
+        params: params_eff.clone(),
+        loss_scores: CalibrationLossScore {
+          mae: self.mae(&self.c_market, &c_model),
+          mse: self.mse(&self.c_market, &c_model),
+          rmse: self.rmse(&self.c_market, &c_model),
+          mpe: self.mpe(&self.c_market, &c_model),
+          mape: self.mape(&self.c_market, &c_model),
+          mspe: self.mspe(&self.c_market, &c_model),
+          rmspe: self.rmspe(&self.c_market, &c_model),
+          mre: self.mre(&self.c_market, &c_model),
+          mrpe: self.mrpe(&self.c_market, &c_model),
+        },
+      });
+
     Some(c_model - self.c_market.clone())
   }
 
   fn jacobian(&self) -> Option<DMatrix<f64>> {
-    let derivates = self.derivates.borrow();
-    let derivates = derivates.iter().flatten().cloned().collect::<Vec<f64>>();
-
-    // The Jacobian matrix is a matrix of partial derivatives
-    // of the residuals with respect to the parameters.
-    let jacobian = DMatrix::from_vec(derivates.len() / 5, 5, derivates);
-
-    Some(jacobian)
+    // Use our own numeric Jacobian to keep the solver stable
+    let p = self.effective_params();
+    Some(self.numeric_jacobian(&p))
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  use anyhow::Result;
+  use crate::stochastic::noise::cgns::CGNS;
+  use crate::stochastic::volatility::heston::Heston as HestonProcess;
+  use crate::stochastic::volatility::HestonPow;
+  use crate::stochastic::Sampling2DExt;
+  use ndarray::Array1;
 
   #[test]
-  fn test_heston_calibrate() -> Result<()> {
-    let tau = 24.0 / 365.0;
-    println!("Time to maturity: {}", tau);
-
+  fn test_heston_calibrate() {
+    // Example dataset across strikes for a single maturity bucket.
     let s = vec![
-      425.73, 425.73, 425.73, 425.67, 425.68, 425.65, 425.65, 425.68, 425.65, 425.16, 424.78,
-      425.19,
+      100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
     ];
 
     let k = vec![
-      395.0, 400.0, 405.0, 410.0, 415.0, 420.0, 425.0, 430.0, 435.0, 440.0, 445.0, 450.0,
+      80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0,
     ];
 
+    // Hypothetical market call prices (monotone across strikes)
     let c_market = vec![
-      30.75, 25.88, 21.00, 16.50, 11.88, 7.69, 4.44, 2.10, 0.78, 0.25, 0.10, 0.10,
+      21.5, 17.9, 14.2, 11.0, 8.2, 6.0, 4.3, 3.1, 2.2, 1.6, 1.2, 0.9,
     ];
 
-    let v0 = Array1::linspace(0.0, 1.0, 10);
+    let r = 0.01;
+    let q = Some(0.0);
+    let tau = 0.5;
+    let option_type = OptionType::Call;
 
-    for v in v0.iter() {
-      let calibrator = HestonCalibrator::new(
-        Some(HestonParams {
-          v0: *v,
-          theta: 6.47e-5,
-          rho: -1.98e-3,
-          kappa: 6.57e-3,
-          sigma: 5.09e-4,
-        }),
-        c_market.clone().into(),
-        s.clone().into(),
-        k.clone().into(),
-        tau,
-        6.40e-4,
-        None,
-        OptionType::Call,
-      );
+    let calibrator = HestonCalibrator::new(
+      Some(HestonParams {
+        v0: 0.04,
+        kappa: 1.5,
+        theta: 0.04,
+        sigma: 0.5,
+        rho: -0.7,
+      }),
+      c_market.clone().into(),
+      s.clone().into(),
+      k.clone().into(),
+      r,
+      q,
+      tau,
+      option_type,
+      None,
+      None,
+      None,
+    );
 
-      let data = calibrator.calibrate()?;
-      println!("Calibration data: {:?}", data);
-    }
-
-    Ok(())
+    calibrator.calibrate();
   }
 
   #[test]
-  fn test_heston_calibrate_v2() -> Result<()> {
-    let tau = 24.0 / 365.0;
-    println!("Time to maturity: {}", tau);
+  fn test_heston_calibrate_with_mle_seed() {
+    // Simulate a short Heston path to seed MLE
+    let s0 = 100.0;
+    let v0 = 0.04;
+    let true_params = HestonParams {
+      v0,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.5,
+      rho: -0.6,
+    };
+    let n = 256usize;
+    let t = 1.0;
+    let mu = 0.0; // drift not needed for MLE besides r in formula
 
-    let s = vec![
-      8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53,
-      8700.53, 8700.53,
-    ];
+    let process = HestonProcess::new(
+      Some(s0),
+      Some(v0),
+      true_params.kappa,
+      true_params.theta,
+      true_params.sigma,
+      true_params.rho,
+      mu,
+      n,
+      Some(t),
+      HestonPow::Sqrt,
+      Some(true),
+      None,
+      CGNS::new(true_params.rho, n, None, None),
+    );
 
-    let k = vec![
+    let [s_ts, v_ts] = process.sample();
+
+    // Build synthetic market prices from true parameters
+    let strikes = vec![80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
+    let s_grid = vec![s0; strikes.len()];
+    let r = 0.01;
+    let q = Some(0.0);
+    let tau = 0.5;
+
+    let mut c_market = Vec::with_capacity(strikes.len());
+    for &kk in &strikes {
+      let pr = HestonPricer::new(
+        s0,
+        true_params.v0,
+        kk,
+        r,
+        q,
+        true_params.rho,
+        true_params.kappa,
+        true_params.theta,
+        true_params.sigma,
+        Some(0.0),
+        Some(tau),
+        None,
+        None,
+      );
+      let (call, _) = pr.calculate_call_put();
+      c_market.push(call);
+    }
+
+    let calibrator = HestonCalibrator::new(
+      None,
+      c_market.clone().into(),
+      s_grid.clone().into(),
+      strikes.clone().into(),
+      r,
+      q,
+      tau,
+      OptionType::Call,
+      Some(s_ts),
+      Some(v_ts),
+      Some(r),
+    );
+
+    calibrator.calibrate();
+  }
+
+  #[test]
+  fn test_heston_calibrate_ls_dataset() {
+    let r = 0.04;
+    let q = Some(0.06);
+    let tau = 0.083;
+
+    let strikes_ls: Vec<f64> = vec![
       5220.318, 6090.371, 6960.424, 7830.477, 8265.5035, 8483.01675, 8700.53, 8918.04325,
       9135.5565, 9570.583, 10440.636, 11310.689,
     ];
-
-    let c_market = vec![
+    let spots_ls: Vec<f64> = vec![
+      8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53, 8700.53,
+      8700.53, 8700.53,
+    ];
+    let vol_ls: Vec<f64> = vec![
+      0.3669, 0.3082, 0.2218, 0.1799, 0.1393, 0.1156, 0.1019, 0.0923, 0.0915, 0.1086, 0.1237, 0.136,
+    ];
+    let markets_ls: Vec<f64> = vec![
       3499.564, 2632.74, 1765.933, 901.846, 479.055, 279.313, 118.848, 28.79, 4.23, 0.143,
       1.799e-5, 1.259e-9,
     ];
 
-    let r = 0.04;
-    let q = 0.06;
-    let t = 0.083;
+    // MLE seed from pseudo time-series built from LS vectors
+    let s_ts = Array1::from(spots_ls.clone());
+    let v_ts = Array1::from(vol_ls.iter().map(|x| x * x).collect::<Vec<f64>>());
 
-    let v0 = Array1::linspace(1e-5, 2.0, 5);
+    let calibrator = HestonCalibrator::new(
+      None,
+      markets_ls.clone().into(),
+      spots_ls.clone().into(),
+      strikes_ls.clone().into(),
+      r,
+      q,
+      tau,
+      OptionType::Call,
+      Some(s_ts),
+      Some(v_ts),
+      Some(r),
+    );
 
-    for v in v0.iter() {
-      let calibrator = HestonCalibrator::new(
-        Some(HestonParams {
-          v0: *v,
-          theta: 6.47e-5,
-          rho: -1.98e-3,
-          kappa: 6.57e-3,
-          sigma: 5.09e-4,
-        }),
-        c_market.clone().into(),
-        s.clone().into(),
-        k.clone().into(),
-        t,
-        r,
-        Some(q),
-        OptionType::Call,
-      );
-
-      let data = calibrator.calibrate()?;
-      let heston_params = data.iter().map(|d| d.params.clone()).collect::<Vec<_>>();
-      println!("Calibration data: {:?}", heston_params);
-    }
-
-    Ok(())
-  }
-
-  #[test]
-  fn test_heston_calibrate_guess_params() -> Result<()> {
-    let tau = 24.0 / 365.0;
-    println!("Time to maturity: {}", tau);
-
-    let s = vec![
-      425.73, 425.73, 425.73, 425.67, 425.68, 425.65, 425.65, 425.68, 425.65, 425.16, 424.78,
-      425.19,
-    ];
-
-    let k = vec![
-      395.0, 400.0, 405.0, 410.0, 415.0, 420.0, 425.0, 430.0, 435.0, 440.0, 445.0, 450.0,
-    ];
-
-    let c_market = vec![
-      30.75, 25.88, 21.00, 16.50, 11.88, 7.69, 4.44, 2.10, 0.78, 0.25, 0.10, 0.10,
-    ];
-
-    let v0 = Array1::linspace(0.0, 0.01, 1);
-
-    for v in v0.iter() {
-      let mut calibrator = HestonCalibrator::new(
-        None,
-        c_market.clone().into(),
-        s.clone().into(),
-        k.clone().into(),
-        tau,
-        6.40e-4,
-        None,
-        OptionType::Call,
-      );
-      calibrator.set_initial_params(s.clone().into(), Array1::from_elem(s.len(), *v), 6.40e-4);
-
-      let data = calibrator.calibrate()?;
-      let heston_params = data.iter().map(|d| d.params.clone()).collect::<Vec<_>>();
-      println!("Calibration data: {:?}", heston_params);
-    }
-
-    Ok(())
+    calibrator.calibrate();
   }
 }
