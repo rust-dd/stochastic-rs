@@ -58,7 +58,6 @@ pub struct BSMPricer {
 
 impl PricerExt for BSMPricer {
   /// Calculate the option price
-  #[must_use]
   fn calculate_call_put(&self) -> (f64, f64) {
     let (d1, d2) = self.d1_d2();
     let n = Normal::default();

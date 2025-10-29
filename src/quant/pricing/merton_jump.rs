@@ -44,7 +44,6 @@ pub struct Merton1976Pricer {
 
 impl PricerExt for Merton1976Pricer {
   /// Calculate the option price
-  #[must_use]
   fn calculate_call_put(&self) -> (f64, f64) {
     let mut bsm = BSMPricer::new(
       self.s,

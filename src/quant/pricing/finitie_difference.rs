@@ -44,7 +44,6 @@ pub struct FiniteDifferencePricer {
 
 impl PricerExt for FiniteDifferencePricer {
   /// Calculate the option price
-  #[must_use]
   fn calculate_price(&self) -> f64 {
     match self.method {
       FiniteDifferenceMethod::Explicit => self.explicit(),

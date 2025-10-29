@@ -6,7 +6,7 @@ pub mod gaussian;
 pub mod tree;
 pub mod vine;
 
-pub(super) enum CopulaType {
+pub enum CopulaType {
   Gaussian,
   Tree,
   Vine,

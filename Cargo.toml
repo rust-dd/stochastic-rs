@@ -34,14 +34,13 @@ kendalls = "0.2.2"
 levenberg-marquardt = "0.14.0"
 libloading = { version = "0.8.6", optional = true }
 linreg = "0.2.0"
+openblas-src = { version = "0.10", features = ["cblas", "static"], optional = true }
 mimalloc = { version = "0.1.43", optional = true }
 nalgebra = "0.33.2"
 ndarray = { version = "0.16.1", features = [
     "rayon",
     "matrixmultiply-threading",
-    "blas",
 ] }
-ndarray-linalg = { version = "0.17.0" }
 ndarray-npy = "0.9.1"
 ndarray-rand = "0.15.0"
 ndarray-stats = "0.6.0"
@@ -78,6 +77,7 @@ yahoo_finance_api = { version = "2.3.0", optional = true }
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]
 default = []
+
 jemalloc = ["dep:tikv-jemallocator"]
 malliavin = []
 mimalloc = ["dep:mimalloc"]
