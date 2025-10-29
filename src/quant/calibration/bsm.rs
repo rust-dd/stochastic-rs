@@ -78,7 +78,7 @@ impl BSMCalibrator {
     println!("Calibration report: {:?}", result.params);
   }
 
-  pub fn set_intial_guess(&mut self, params: BSMParams) {
+  pub fn set_initial_guess(&mut self, params: BSMParams) {
     self.params = params;
   }
 }
@@ -97,7 +97,9 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
   }
 
   fn residuals(&self) -> Option<DVector<f64>> {
-    let mut c_model = DVector::zeros(self.c_market.len());
+    let n = self.c_market.len();
+    let mut c_model = DVector::zeros(n);
+    let mut vegas: Vec<f64> = Vec::with_capacity(n);
     let mut derivates = Vec::new();
 
     for (idx, _) in self.c_market.iter().enumerate() {
@@ -106,8 +108,8 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         self.params.v,
         self.k[idx],
         self.r,
-        None,
-        None,
+        self.r_d,
+        self.r_f,
         self.q,
         Some(self.tau),
         None,
@@ -121,6 +123,10 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         OptionType::Call => c_model[idx] = call,
         OptionType::Put => c_model[idx] = put,
       }
+
+      // Collect vega for vega-weighted residuals (calibration in vol space)
+      let vega = pricer.vega().abs().max(1e-8);
+      vegas.push(vega);
 
       self
         .calibration_history
@@ -145,18 +151,52 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
     }
 
     let _ = std::mem::replace(&mut *self.derivates.borrow_mut(), derivates);
-    Some(c_model - self.c_market.clone())
+
+    // Vega-weighted residuals approximate minimizing implied vol differences
+    let mut residuals = DVector::zeros(n);
+    for i in 0..n {
+      residuals[i] = (c_model[i] - self.c_market[i]) / vegas[i];
+    }
+
+    Some(residuals)
   }
 
   fn jacobian(&self) -> Option<DMatrix<f64>> {
-    let derivates = self.derivates.borrow();
-    let derivates = derivates.iter().flatten().cloned().collect::<Vec<f64>>();
+    // For vega-weighted residuals r = (C_model - C_mkt)/Vega,
+    // dr/dsigma = 1 - r * (Vomma / Vega)
+    let n = self.c_market.len();
+    let mut J = DMatrix::zeros(n, 1);
 
-    // The Jacobian matrix is a matrix of partial derivatives
-    // of the residuals with respect to the parameters.
-    let jacobian = DMatrix::from_vec(derivates.len() / 5, 5, derivates);
+    for idx in 0..n {
+      let pricer = BSMPricer::new(
+        self.s[idx],
+        self.params.v,
+        self.k[idx],
+        self.r,
+        self.r_d,
+        self.r_f,
+        self.q,
+        Some(self.tau),
+        None,
+        None,
+        self.option_type,
+        BSMCoc::BSM1973,
+      );
 
-    Some(jacobian)
+      let (call, put) = pricer.calculate_call_put();
+      let c_model_i = match self.option_type {
+        OptionType::Call => call,
+        OptionType::Put => put,
+      };
+
+      let vega = pricer.vega().abs().max(1e-8);
+      let vomma = pricer.vomma();
+      let r_i = (c_model_i - self.c_market[idx]) / vega;
+
+      J[(idx, 0)] = 1.0 - r_i * (vomma / vega);
+    }
+
+    Some(J)
   }
 }
 
