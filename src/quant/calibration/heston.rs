@@ -15,6 +15,12 @@ use crate::{
   stats::mle::nmle_heston,
 };
 
+const EPS: f64 = 1e-8;
+const RHO_BOUND: f64 = 0.9999;
+const KAPPA_MIN: f64 = 1e-3;
+const THETA_MIN: f64 = 1e-8;
+const SIGMA_MIN: f64 = 1e-8;
+
 #[derive(Clone, Debug)]
 pub struct HestonParams {
   /// Initial variance v0 (not volatility) in Heston model
@@ -27,6 +33,36 @@ pub struct HestonParams {
   pub sigma: f64,
   /// Correlation between price and variance Brownian motions
   pub rho: f64,
+}
+
+impl HestonParams {
+  /// Project parameters to satisfy Heston admissibility constraints:
+  /// v0 ≥ 0, kappa > 0, theta > 0, sigma ≥ 0, −1 < rho < 1, and Feller 2*kappa*theta ≥ sigma^2.
+  pub fn project_in_place(&mut self) {
+    // Basic bounds
+    self.v0 = self.v0.max(0.0);
+    self.kappa = self.kappa.max(KAPPA_MIN);
+    self.theta = self.theta.max(THETA_MIN);
+    self.sigma = self.sigma.abs().max(SIGMA_MIN);
+    self.rho = self.rho.max(-RHO_BOUND).min(RHO_BOUND);
+
+    // Feller condition: 2*kappa*theta ≥ sigma^2.
+    if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
+      let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
+      if sigma_star >= SIGMA_MIN {
+        // Prefer reducing sigma to satisfy Feller to avoid blowing up theta.
+        self.sigma = sigma_star;
+      } else {
+        // As a fallback (when sigma would go below minimum), bump theta minimally.
+        self.theta = ((self.sigma * self.sigma) / (2.0 * self.kappa)).max(THETA_MIN) + EPS;
+      }
+    }
+  }
+
+  pub fn projected(mut self) -> Self {
+    self.project_in_place();
+    self
+  }
 }
 
 impl From<HestonParams> for DVector<f64> {
@@ -77,6 +113,8 @@ pub struct HestonCalibrator {
   pub mle_s: Option<Array1<f64>>, // stock prices time series
   pub mle_v: Option<Array1<f64>>, // variance (or instantaneous variance proxy) time series
   pub mle_r: Option<f64>,         // risk-free rate used for MLE
+  /// If true, record per-iteration calibration history.
+  pub record_history: bool,
   /// History of iterations (residuals, params, loss metrics).
   calibration_history: RefCell<Vec<CalibrationHistory<HestonParams>>>,
 }
@@ -106,44 +144,49 @@ impl HestonCalibrator {
   }
 
   pub fn set_initial_guess(&mut self, params: HestonParams) {
-    self.params = Some(params);
+    self.params = Some(params.projected());
+  }
+
+  /// Enable or disable recording of per-iteration calibration history.
+  pub fn set_record_history(&mut self, record: bool) {
+    self.record_history = record;
+  }
+
+  /// Retrieve the collected calibration history.
+  pub fn history(&self) -> Vec<CalibrationHistory<HestonParams>> {
+    self.calibration_history.borrow().clone()
   }
 
   fn ensure_initial_guess(&mut self) {
     if self.params.is_none() {
       if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
         let mut p = nmle_heston(s, v, r);
-        // Clamp to reasonable bounds
-        p.v0 = p.v0.max(1e-8);
-        p.kappa = p.kappa.max(1e-8);
-        p.theta = p.theta.max(1e-8);
-        p.sigma = p.sigma.abs().max(1e-8);
-        p.rho = p.rho.max(-0.9999).min(0.9999);
+        // Clamp to reasonable bounds and enforce constraints
+        p.project_in_place();
         self.params = Some(p);
       } else {
         // Fallback conservative guess
-        self.params = Some(HestonParams {
-          v0: 0.04,
-          kappa: 1.5,
-          theta: 0.04,
-          sigma: 0.5,
-          rho: -0.5,
-        });
+        self.params = Some(
+          HestonParams {
+            v0: 0.04,
+            kappa: 1.5,
+            theta: 0.04,
+            sigma: 0.5,
+            rho: -0.5,
+          }
+          .projected(),
+        );
       }
     }
   }
 
   fn effective_params(&self) -> HestonParams {
     if let Some(p) = &self.params {
-      return p.clone();
+      return p.clone().projected();
     }
     if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
       let mut p = nmle_heston(s, v, r);
-      p.v0 = p.v0.max(1e-8);
-      p.kappa = p.kappa.max(1e-8);
-      p.theta = p.theta.max(1e-8);
-      p.sigma = p.sigma.abs().max(1e-8);
-      p.rho = p.rho.max(-0.9999).min(0.9999);
+      p.project_in_place();
       return p;
     }
     HestonParams {
@@ -153,6 +196,7 @@ impl HestonCalibrator {
       sigma: 0.5,
       rho: -0.5,
     }
+    .projected()
   }
 
   fn compute_model_prices_for(&self, params: &HestonParams) -> DVector<f64> {
@@ -206,28 +250,28 @@ impl HestonCalibrator {
 
       match col {
         0 => {
-          // v0 >= 0
-          params_plus.v0 = (x + h).max(1e-8);
-          params_minus.v0 = (x - h).max(1e-8);
+          // v0 ≥ 0
+          params_plus.v0 = (x + h).max(0.0);
+          params_minus.v0 = (x - h).max(0.0);
         }
         1 => {
           // kappa > 0
-          params_plus.kappa = (x + h).max(1e-8);
-          params_minus.kappa = (x - h).max(1e-8);
+          params_plus.kappa = (x + h).max(KAPPA_MIN);
+          params_minus.kappa = (x - h).max(KAPPA_MIN);
         }
         2 => {
           // theta > 0
-          params_plus.theta = (x + h).max(1e-8);
-          params_minus.theta = (x - h).max(1e-8);
+          params_plus.theta = (x + h).max(THETA_MIN);
+          params_minus.theta = (x - h).max(THETA_MIN);
         }
         3 => {
-          // sigma >= 0
-          params_plus.sigma = (x + h).max(1e-8);
-          params_minus.sigma = (x - h).max(1e-8);
+          // sigma ≥ 0
+          params_plus.sigma = (x + h).abs();
+          params_minus.sigma = (x - h).abs();
         }
         4 => {
-          // -1 < rho < 1
-          let clamp = |y: f64| y.max(-0.9999).min(0.9999);
+          // −1 < rho < 1
+          let clamp = |y: f64| y.max(-RHO_BOUND).min(RHO_BOUND);
           params_plus.rho = clamp(x + h);
           params_minus.rho = clamp(x - h);
           // Use symmetric step if clamped too hard
@@ -240,15 +284,9 @@ impl HestonCalibrator {
         _ => unreachable!(),
       }
 
-      // Optional: enforce (soft) Feller condition in probes by nudging theta
-      // 2*kappa*theta > sigma^2
-      let enforce_feller = |p: &mut HestonParams| {
-        if 2.0 * p.kappa * p.theta <= p.sigma * p.sigma {
-          p.theta = (p.sigma * p.sigma) / (2.0 * p.kappa) + 1e-8;
-        }
-      };
-      enforce_feller(&mut params_plus);
-      enforce_feller(&mut params_minus);
+      // Enforce full projection (incl. Feller) on probes
+      params_plus.project_in_place();
+      params_minus.project_in_place();
 
       let r_plus = self.residuals_for(&params_plus);
       let r_minus = self.residuals_for(&params_minus);
@@ -269,15 +307,17 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
   type ResidualStorage = Owned<f64, Dyn>;
 
   fn set_params(&mut self, params: &DVector<f64>) {
-    self.params = Some(HestonParams::from(params.clone()));
+    let p = HestonParams::from(params.clone()).projected();
+    self.params = Some(p);
   }
 
   fn params(&self) -> DVector<f64> {
     if let Some(p) = &self.params {
-      p.clone().into()
+      p.clone().projected().into()
     } else if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r)
     {
-      let p = nmle_heston(s, v, r);
+      let mut p = nmle_heston(s, v, r);
+      p.project_in_place();
       p.into()
     } else {
       HestonParams {
@@ -287,6 +327,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         sigma: 0.5,
         rho: -0.5,
       }
+      .projected()
       .into()
     }
   }
@@ -295,49 +336,51 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
 
-    // Push history for the current iterate
-    self
-      .calibration_history
-      .borrow_mut()
-      .push(CalibrationHistory {
-        residuals: self.c_market.clone() - c_model.clone(),
-        call_put: self
-          .c_market
-          .iter()
-          .enumerate()
-          .map(|(i, _)| {
-            let pricer = HestonPricer::new(
-              self.s[i],
-              params_eff.v0,
-              self.k[i],
-              self.r,
-              self.q,
-              params_eff.rho,
-              params_eff.kappa,
-              params_eff.theta,
-              params_eff.sigma,
-              Some(0.0),
-              Some(self.tau),
-              None,
-              None,
-            );
-            pricer.calculate_call_put()
-          })
-          .collect::<Vec<(f64, f64)>>()
-          .into(),
-        params: params_eff.clone(),
-        loss_scores: CalibrationLossScore {
-          mae: self.mae(&self.c_market, &c_model),
-          mse: self.mse(&self.c_market, &c_model),
-          rmse: self.rmse(&self.c_market, &c_model),
-          mpe: self.mpe(&self.c_market, &c_model),
-          mape: self.mape(&self.c_market, &c_model),
-          mspe: self.mspe(&self.c_market, &c_model),
-          rmspe: self.rmspe(&self.c_market, &c_model),
-          mre: self.mre(&self.c_market, &c_model),
-          mrpe: self.mrpe(&self.c_market, &c_model),
-        },
-      });
+    // Push history for the current iterate if enabled
+    if self.record_history {
+      self
+        .calibration_history
+        .borrow_mut()
+        .push(CalibrationHistory {
+          residuals: self.c_market.clone() - c_model.clone(),
+          call_put: self
+            .c_market
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+              let pricer = HestonPricer::new(
+                self.s[i],
+                params_eff.v0,
+                self.k[i],
+                self.r,
+                self.q,
+                params_eff.rho,
+                params_eff.kappa,
+                params_eff.theta,
+                params_eff.sigma,
+                Some(0.0),
+                Some(self.tau),
+                None,
+                None,
+              );
+              pricer.calculate_call_put()
+            })
+            .collect::<Vec<(f64, f64)>>()
+            .into(),
+          params: params_eff.clone(),
+          loss_scores: CalibrationLossScore {
+            mae: self.mae(&self.c_market, &c_model),
+            mse: self.mse(&self.c_market, &c_model),
+            rmse: self.rmse(&self.c_market, &c_model),
+            mpe: self.mpe(&self.c_market, &c_model),
+            mape: self.mape(&self.c_market, &c_model),
+            mspe: self.mspe(&self.c_market, &c_model),
+            rmspe: self.rmspe(&self.c_market, &c_model),
+            mre: self.mre(&self.c_market, &c_model),
+            mrpe: self.mrpe(&self.c_market, &c_model),
+          },
+        });
+    }
 
     Some(self.c_market.clone() - c_model)
   }
@@ -397,6 +440,7 @@ mod tests {
       None,
       None,
       None,
+      true,
     );
 
     calibrator.calibrate();
@@ -476,6 +520,7 @@ mod tests {
       Some(s_ts),
       Some(v_ts),
       Some(r),
+      true,
     );
 
     calibrator.calibrate();
@@ -519,6 +564,7 @@ mod tests {
       Some(s_ts),
       Some(v_ts),
       Some(r),
+      true,
     );
 
     calibrator.calibrate();
