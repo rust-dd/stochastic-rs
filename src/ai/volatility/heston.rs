@@ -134,14 +134,14 @@ mod tests {
 
     let data: Array2<f64> = read_npy(temp_file.path()).unwrap();
 
-    // Corrected data loading: match the Python code
+    // Corrected data loading to match the reference dataset
     let parameters = data.slice(s![.., 0..5]).to_owned(); // Parameters (12000, 5)
     let implied_vols = data.slice(s![.., 5..]).to_owned(); // Implied volatilities (12000, 88)
 
     let strikes = Array1::from(vec![0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]);
     let maturities = Array1::from(vec![0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0]);
 
-    // Data splitting: match the Python code
+    // Data splitting consistent with the reference workflow
     let split_data = train_test_split_for_array2(&[&implied_vols, &parameters], 0.15, Some(42));
     let (x_train, x_test) = &split_data[0]; // Implied volatilities
     let (y_train, y_test) = &split_data[1]; // Parameters

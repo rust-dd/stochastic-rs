@@ -21,6 +21,13 @@ const KAPPA_MIN: f64 = 1e-3;
 const THETA_MIN: f64 = 1e-8;
 const SIGMA_MIN: f64 = 1e-8;
 
+// Use periodic linear extension mapping into these ranges
+const P_KAPPA: (f64, f64) = (0.1, 20.0);
+const P_THETA: (f64, f64) = (0.001, 0.4);
+const P_SIGMA: (f64, f64) = (0.01, 0.6);
+const P_RHO: (f64, f64) = (-1.0, 1.0);
+const P_V0: (f64, f64) = (0.005, 0.25);
+
 #[derive(Clone, Debug)]
 pub struct HestonParams {
   /// Initial variance v0 (not volatility) in Heston model
@@ -36,25 +43,52 @@ pub struct HestonParams {
 }
 
 impl HestonParams {
-  /// Project parameters to satisfy Heston admissibility constraints:
-  /// v0 ≥ 0, kappa > 0, theta > 0, sigma ≥ 0, −1 < rho < 1, and Feller 2*kappa*theta ≥ sigma^2.
+  fn periodic_map(x: f64, c: f64, d: f64) -> f64 {
+    if c <= x && x <= d {
+      x
+    } else {
+      let range = d - c;
+      if range <= 0.0 {
+        return c;
+      }
+      let n = ((x - c) / range).floor();
+      let n_int = n as i64;
+      if n_int % 2 == 0 {
+        x - n * range
+      } else {
+        d + n * range - (x - c)
+      }
+    }
+  }
+
+  /// Project parameters to satisfy Heston admissibility constraints and periodic-range mapping.
+  /// Steps:
+  /// 1) Periodic mapping into fixed parameter ranges
+  /// 2) Enforce basic positivity/box constraints
+  /// 3) Enforce Feller by lowering sigma when needed (otherwise minimally bump theta)
   pub fn project_in_place(&mut self) {
-    // Basic bounds
+    self.kappa = Self::periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1);
+    self.theta = Self::periodic_map(self.theta, P_THETA.0, P_THETA.1);
+    self.sigma = Self::periodic_map(self.sigma, P_SIGMA.0, P_SIGMA.1).abs();
+    self.rho = Self::periodic_map(self.rho, P_RHO.0, P_RHO.1);
+    self.v0 = Self::periodic_map(self.v0, P_V0.0, P_V0.1);
+
     self.v0 = self.v0.max(0.0);
     self.kappa = self.kappa.max(KAPPA_MIN);
     self.theta = self.theta.max(THETA_MIN);
     self.sigma = self.sigma.abs().max(SIGMA_MIN);
     self.rho = self.rho.max(-RHO_BOUND).min(RHO_BOUND);
 
-    // Feller condition: 2*kappa*theta ≥ sigma^2.
+    // 3) Feller condition: 2*kappa*theta ≥ sigma^2.
     if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
       let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
-      if sigma_star >= SIGMA_MIN {
-        // Prefer reducing sigma to satisfy Feller to avoid blowing up theta.
-        self.sigma = sigma_star;
+      if sigma_star >= P_SIGMA.0 {
+        // Prefer reducing sigma, but keep within the range lower bound as well.
+        self.sigma = sigma_star.min(P_SIGMA.1);
       } else {
-        // As a fallback (when sigma would go below minimum), bump theta minimally.
-        self.theta = ((self.sigma * self.sigma) / (2.0 * self.kappa)).max(THETA_MIN) + EPS;
+        // As a fallback (when sigma would go below minimum), bump theta minimally, respecting the range upper bound.
+        let theta_star = ((self.sigma * self.sigma) / (2.0 * self.kappa)).max(THETA_MIN) + EPS;
+        self.theta = theta_star.min(P_THETA.1);
       }
     }
   }
