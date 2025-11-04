@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use impl_new_derive::ImplNew;
 use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
@@ -150,7 +151,7 @@ pub struct HestonCalibrator {
   /// If true, record per-iteration calibration history.
   pub record_history: bool,
   /// History of iterations (residuals, params, loss metrics).
-  calibration_history: RefCell<Vec<CalibrationHistory<HestonParams>>>,
+  calibration_history: Rc<RefCell<Vec<CalibrationHistory<HestonParams>>>>,
 }
 
 impl CalibrationLossExt for HestonCalibrator {}
@@ -602,5 +603,7 @@ mod tests {
     );
 
     calibrator.calibrate();
+    let history = calibrator.history();
+    println!("{:?}", history);
   }
 }
