@@ -7,20 +7,20 @@ use statrs::function::gamma::gamma;
 use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
-pub struct RoughHeston {
-  pub v0: Option<f64>,
-  pub theta: f64,
-  pub kappa: f64,
-  pub nu: f64,
-  pub hurst: f64,
-  pub c1: Option<f64>,
-  pub c2: Option<f64>,
-  pub t: Option<f64>,
+pub struct RoughHeston<T> {
+  pub v0: Option<T>,
+  pub theta: T,
+  pub kappa: T,
+  pub nu: T,
+  pub hurst: T,
+  pub c1: Option<T>,
+  pub c2: Option<T>,
+  pub t: Option<T>,
   pub n: usize,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for RoughHeston {
+impl SamplingExt<f64> for RoughHeston<f64> {
   fn sample(&self) -> ndarray::Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());

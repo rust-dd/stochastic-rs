@@ -12,22 +12,22 @@ use super::{ar::ARp, ma::MAq};
 /// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
 /// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
 #[derive(ImplNew)]
-pub struct ARIMA {
+pub struct ARIMA<T> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
-  pub ar_coefs: Array1<f64>,
+  pub ar_coefs: Array1<T>,
   /// MA coefficients (\(\theta_1,\dots,\theta_q\)) as an Array1
-  pub ma_coefs: Array1<f64>,
+  pub ma_coefs: Array1<T>,
   /// Differencing order (d)
   pub d: usize,
   /// Noise std dev (\(\sigma\)) for the innovations
-  pub sigma: f64,
+  pub sigma: T,
   /// Final length of time series
   pub n: usize,
   /// Optional batch size
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for ARIMA {
+impl SamplingExt<f64> for ARIMA<f64> {
   fn sample(&self) -> Array1<f64> {
     // 1) Generate an AR(p) series with user-provided coefficients
     let ar_model = ARp::new(

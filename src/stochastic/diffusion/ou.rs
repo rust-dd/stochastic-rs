@@ -6,17 +6,17 @@ use rand_distr::Normal;
 use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
-pub struct OU {
-  pub mu: f64,
-  pub sigma: f64,
-  pub theta: f64,
+pub struct OU<T> {
+  pub mu: T,
+  pub sigma: T,
+  pub theta: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for OU {
+impl SamplingExt<f64> for OU<f64> {
   /// Sample the Ornstein-Uhlenbeck (OU) process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

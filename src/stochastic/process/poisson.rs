@@ -7,14 +7,14 @@ use rand::thread_rng;
 use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
-pub struct Poisson {
-  pub lambda: f64,
+pub struct Poisson<T> {
+  pub lambda: T,
   pub n: Option<usize>,
-  pub t_max: Option<f64>,
+  pub t_max: Option<T>,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for Poisson {
+impl SamplingExt<f64> for Poisson<f64> {
   fn sample(&self) -> Array1<f64> {
     if let Some(n) = self.n {
       let exponentials = Array1::random(n, Exp::new(1.0 / self.lambda).unwrap());

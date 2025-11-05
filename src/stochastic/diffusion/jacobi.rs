@@ -6,17 +6,17 @@ use rand_distr::Normal;
 use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
-pub struct Jacobi {
-  pub alpha: f64,
-  pub beta: f64,
-  pub sigma: f64,
+pub struct Jacobi<T> {
+  pub alpha: T,
+  pub beta: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
+  pub x0: Option<T>,
   pub t: Option<f64>,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for Jacobi {
+impl SamplingExt<f64> for Jacobi<f64> {
   /// Sample the Jacobi process
   fn sample(&self) -> Array1<f64> {
     assert!(self.alpha > 0.0, "alpha must be positive");

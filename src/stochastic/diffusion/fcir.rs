@@ -7,7 +7,7 @@ use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the FCIR process.
 #[derive(ImplNew)]
-pub struct FCIR {
+pub struct FCIR<T> {
   pub theta: f64,
   pub mu: f64,
   pub sigma: f64,
@@ -16,13 +16,13 @@ pub struct FCIR {
   pub t: Option<f64>,
   pub use_sym: Option<bool>,
   pub m: Option<usize>,
-  pub fgn: FGN,
+  pub fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
 }
 
-impl FCIR {
+impl FCIR<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
     if self.cuda {
@@ -37,7 +37,7 @@ impl FCIR {
   }
 }
 
-impl SamplingExt<f64> for FCIR {
+impl SamplingExt<f64> for FCIR<f64> {
   /// Sample the Fractional Cox-Ingersoll-Ross (FCIR) process
   fn sample(&self) -> Array1<f64> {
     assert!(

@@ -9,12 +9,12 @@ use statrs::function::gamma;
 use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct FBM {
-  pub hurst: f64,
+pub struct FBM<T> {
+  pub hurst: T,
   pub n: usize,
   pub t: Option<f64>,
   pub m: Option<usize>,
-  pub fgn: FGN,
+  pub fgn: FGN<T>,
   #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
   #[cfg(feature = "malliavin")]
@@ -24,7 +24,7 @@ pub struct FBM {
   cuda: bool,
 }
 
-impl FBM {
+impl FBM<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
     if self.cuda {
@@ -39,7 +39,7 @@ impl FBM {
   }
 }
 
-impl SamplingExt<f64> for FBM {
+impl SamplingExt<f64> for FBM<f64> {
   fn sample(&self) -> Array1<f64> {
     let fgn = self.fgn();
     let mut fbm = Array1::<f64>::zeros(self.n);

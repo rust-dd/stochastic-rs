@@ -8,25 +8,25 @@ use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 #[derive(ImplNew)]
 
-pub struct SABR {
-  pub alpha: f64,
-  pub beta: f64,
-  pub rho: f64,
+pub struct SABR<T> {
+  pub alpha: T,
+  pub beta: T,
+  pub rho: T,
   pub n: usize,
-  pub f0: Option<f64>,
-  pub v0: Option<f64>,
-  pub t: Option<f64>,
+  pub f0: Option<T>,
+  pub v0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub cgns: CGNS,
+  pub cgns: CGNS<T>,
   #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
   #[cfg(feature = "malliavin")]
-  malliavin_of_vol: Mutex<Option<Array1<f64>>>,
+  malliavin_of_vol: Mutex<Option<Array1<T>>>,
   #[cfg(feature = "malliavin")]
-  malliavin_of_price: Mutex<Option<Array1<f64>>>,
+  malliavin_of_price: Mutex<Option<Array1<T>>>,
 }
 
-impl Sampling2DExt<f64> for SABR {
+impl Sampling2DExt<f64> for SABR<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
 

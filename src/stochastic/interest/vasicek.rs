@@ -4,18 +4,18 @@ use ndarray::Array1;
 use crate::stochastic::{diffusion::ou::OU, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct Vasicek {
-  pub mu: f64,
-  pub sigma: f64,
-  pub theta: Option<f64>,
+pub struct Vasicek<T> {
+  pub mu: T,
+  pub sigma: T,
+  pub theta: Option<T>,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub ou: OU<f64>,
+  pub ou: OU<T>,
 }
 
-impl SamplingExt<f64> for Vasicek {
+impl SamplingExt<f64> for Vasicek<f64> {
   fn sample(&self) -> Array1<f64> {
     self.ou.sample()
   }

@@ -7,31 +7,31 @@ use crate::stochastic::{
 };
 
 #[derive(ImplNew)]
-pub struct Bates1996<D>
+pub struct Bates1996<D, T>
 where
-  D: Distribution<f64> + Send + Sync,
+  D: Distribution<T> + Send + Sync,
 {
-  pub mu: Option<f64>,
-  pub b: Option<f64>,
-  pub r: Option<f64>,
-  pub r_f: Option<f64>,
-  pub lambda: f64,
-  pub k: f64,
-  pub alpha: f64,
-  pub beta: f64,
-  pub sigma: f64,
-  pub rho: f64,
+  pub mu: Option<T>,
+  pub b: Option<T>,
+  pub r: Option<T>,
+  pub r_f: Option<T>,
+  pub lambda: T,
+  pub k: T,
+  pub alpha: T,
+  pub beta: T,
+  pub sigma: T,
+  pub rho: T,
   pub n: usize,
-  pub s0: Option<f64>,
-  pub v0: Option<f64>,
-  pub t: Option<f64>,
+  pub s0: Option<T>,
+  pub v0: Option<T>,
+  pub t: Option<T>,
   pub use_sym: Option<bool>,
   pub m: Option<usize>,
-  pub cgns: CGNS,
-  pub cpoisson: CompoundPoisson<D>,
+  pub cgns: CGNS<T>,
+  pub cpoisson: CompoundPoisson<D, T>,
 }
 
-impl<D> Sampling2DExt<f64> for Bates1996<D>
+impl<D> Sampling2DExt<f64> for Bates1996<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {

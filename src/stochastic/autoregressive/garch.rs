@@ -26,15 +26,15 @@ use crate::stochastic::SamplingExt;
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
 /// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
 #[derive(ImplNew)]
-pub struct GARCH {
-  pub omega: f64,
-  pub alpha: Array1<f64>,
-  pub beta: Array1<f64>,
+pub struct GARCH<T> {
+  pub omega: T,
+  pub alpha: Array1<T>,
+  pub beta: Array1<T>,
   pub n: usize,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for GARCH {
+impl SamplingExt<f64> for GARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
     let q = self.beta.len();

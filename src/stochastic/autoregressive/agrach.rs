@@ -30,16 +30,16 @@ use crate::stochastic::SamplingExt;
 /// - This is essentially a T-GARCH-like structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
 #[derive(ImplNew)]
-pub struct AGARCH {
-  pub omega: f64,
-  pub alpha: Array1<f64>,
-  pub delta: Array1<f64>,
-  pub beta: Array1<f64>,
+pub struct AGARCH<T> {
+  pub omega: T,
+  pub alpha: Array1<T>,
+  pub delta: Array1<T>,
+  pub beta: Array1<T>,
   pub n: usize,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for AGARCH {
+impl SamplingExt<f64> for AGARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
     let q = self.beta.len();

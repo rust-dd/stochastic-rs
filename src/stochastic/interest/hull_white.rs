@@ -9,17 +9,17 @@ use crate::stochastic::SamplingExt;
 /// dX(t) = theta(t)dt - alpha * X(t)dt + sigma * dW(t)
 /// where X(t) is the Hull-White process.
 #[derive(ImplNew)]
-pub struct HullWhite {
-  pub theta: fn(f64) -> f64,
-  pub alpha: f64,
-  pub sigma: f64,
+pub struct HullWhite<T> {
+  pub theta: fn(T) -> T,
+  pub alpha: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for HullWhite {
+impl SamplingExt<f64> for HullWhite<f64> {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());

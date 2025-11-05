@@ -35,22 +35,22 @@ use crate::stochastic::SamplingExt;
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
 #[derive(ImplNew)]
-pub struct EGARCH {
+pub struct EGARCH<T> {
   /// Constant term (\(\omega\)) in log-variance
-  pub omega: f64,
+  pub omega: T,
   /// Magnitude effect coefficients (\(\alpha_1, \ldots, \alpha_p\))
-  pub alpha: Array1<f64>,
+  pub alpha: Array1<T>,
   /// Sign/asymmetry effect coefficients (\(\gamma_1, \ldots, \gamma_p\))
-  pub gamma: Array1<f64>,
+  pub gamma: Array1<T>,
   /// Persistence coefficients for log-variance (\(\beta_1, \ldots, \beta_q\))
-  pub beta: Array1<f64>,
+  pub beta: Array1<T>,
   /// Number of observations
   pub n: usize,
   /// Optional batch size (unused by default)
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for EGARCH {
+impl SamplingExt<f64> for EGARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
     let q = self.beta.len();

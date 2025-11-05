@@ -18,18 +18,18 @@ use crate::stochastic::SamplingExt;
 /// - `n`: Number of observations.
 /// - `m`: Optional batch size.
 #[derive(ImplNew)]
-pub struct ARCH {
+pub struct ARCH<T> {
   /// Omega (constant term in variance)
-  pub omega: f64,
+  pub omega: T,
   /// Coefficients alpha_i
-  pub alpha: Array1<f64>,
+  pub alpha: Array1<T>,
   /// Length of series
   pub n: usize,
   /// Optional batch size
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for ARCH {
+impl SamplingExt<f64> for ARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let m = self.alpha.len();
     let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap());

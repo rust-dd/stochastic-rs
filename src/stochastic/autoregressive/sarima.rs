@@ -42,15 +42,15 @@ use crate::stochastic::SamplingExt;
 /// 2. That sum is interpreted as the "fully differenced" data, i.e., \(\Delta^d \Delta_s^D X_t\).
 /// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
 #[derive(ImplNew)]
-pub struct SARIMA {
+pub struct SARIMA<T> {
   /// Non-seasonal AR coefficients, length p
-  pub non_seasonal_ar_coefs: Array1<f64>,
+  pub non_seasonal_ar_coefs: Array1<T>,
   /// Non-seasonal MA coefficients, length q
-  pub non_seasonal_ma_coefs: Array1<f64>,
+  pub non_seasonal_ma_coefs: Array1<T>,
   /// Seasonal AR coefficients, length P
-  pub seasonal_ar_coefs: Array1<f64>,
+  pub seasonal_ar_coefs: Array1<T>,
   /// Seasonal MA coefficients, length Q
-  pub seasonal_ma_coefs: Array1<f64>,
+  pub seasonal_ma_coefs: Array1<T>,
   /// Non-seasonal differencing (d)
   pub d: usize,
   /// Seasonal differencing (D)
@@ -58,14 +58,14 @@ pub struct SARIMA {
   /// Season length
   pub s: usize,
   /// Noise std dev
-  pub sigma: f64,
+  pub sigma: T,
   /// Final length of the time series
   pub n: usize,
   /// Optional batch size
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for SARIMA {
+impl SamplingExt<f64> for SARIMA<f64> {
   fn sample(&self) -> Array1<f64> {
     // Generate white noise for dimension n
     let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());

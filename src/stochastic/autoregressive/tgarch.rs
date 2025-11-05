@@ -29,16 +29,16 @@ use crate::stochastic::SamplingExt;
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
 #[derive(ImplNew)]
-pub struct TGARCH {
-  pub omega: f64,
-  pub alpha: Array1<f64>,
-  pub gamma: Array1<f64>,
-  pub beta: Array1<f64>,
+pub struct TGARCH<T> {
+  pub omega: T,
+  pub alpha: Array1<T>,
+  pub gamma: Array1<T>,
+  pub beta: Array1<T>,
   pub n: usize,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for TGARCH {
+impl SamplingExt<f64> for TGARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
     let q = self.beta.len();

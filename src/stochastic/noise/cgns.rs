@@ -6,14 +6,14 @@ use rand_distr::Normal;
 use crate::stochastic::Sampling2DExt;
 
 #[derive(ImplNew)]
-pub struct CGNS {
-  pub rho: f64,
+pub struct CGNS<T> {
+  pub rho: T,
   pub n: usize,
-  pub t: Option<f64>,
+  pub t: Option<T>,
   pub m: Option<usize>,
 }
 
-impl Sampling2DExt<f64> for CGNS {
+impl Sampling2DExt<f64> for CGNS<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(
       (-1.0..=1.0).contains(&self.rho),

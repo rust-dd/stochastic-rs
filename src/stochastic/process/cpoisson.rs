@@ -8,16 +8,16 @@ use crate::stochastic::{Sampling3DExt, SamplingExt};
 use super::poisson::Poisson;
 
 #[derive(ImplNew)]
-pub struct CompoundPoisson<D>
+pub struct CompoundPoisson<D, T>
 where
-  D: Distribution<f64> + Send + Sync,
+  D: Distribution<T> + Send + Sync,
 {
   pub m: Option<usize>,
   pub distribution: D,
-  pub poisson: Poisson,
+  pub poisson: Poisson<T>,
 }
 
-impl<D> Sampling3DExt<f64> for CompoundPoisson<D>
+impl<D> Sampling3DExt<f64> for CompoundPoisson<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {

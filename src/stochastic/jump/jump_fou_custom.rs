@@ -5,18 +5,18 @@ use rand_distr::Distribution;
 use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct JumpFOUCustom<D>
+pub struct JumpFOUCustom<D, T>
 where
-  D: Distribution<f64> + Send + Sync,
+  D: Distribution<T> + Send + Sync,
 {
-  pub mu: f64,
-  pub sigma: f64,
-  pub theta: f64,
+  pub mu: T,
+  pub sigma: T,
+  pub theta: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN,
+  pub fgn: FGN<T>,
   pub jump_times: D,
   pub jump_sizes: D,
   #[cfg(feature = "cuda")]
@@ -24,7 +24,7 @@ where
   cuda: bool,
 }
 
-impl<D> JumpFOUCustom<D>
+impl<D> JumpFOUCustom<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {
@@ -42,7 +42,7 @@ where
   }
 }
 
-impl<D> SamplingExt<f64> for JumpFOUCustom<D>
+impl<D> SamplingExt<f64> for JumpFOUCustom<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {

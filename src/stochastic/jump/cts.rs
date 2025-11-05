@@ -11,26 +11,26 @@ use crate::stochastic::{process::poisson::Poisson, SamplingExt};
 /// https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015
 ///
 #[derive(ImplNew)]
-pub struct CTS {
+pub struct CTS<T> {
   /// Positive jump rate lambda_plus (corresponds to G)
-  pub lambda_plus: f64, // G
+  pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
-  pub lambda_minus: f64, // M
+  pub lambda_minus: T, // M
   /// Jump activity parameter alpha (corresponds to Y), with 0 < alpha < 2
-  pub alpha: f64,
+  pub alpha: T,
   /// Number of time steps
   pub n: usize,
   /// Jumps
   pub j: usize,
   /// Initial value
-  pub x0: Option<f64>,
+  pub x0: Option<T>,
   /// Total time horizon
-  pub t: Option<f64>,
+  pub t: Option<T>,
   /// Number of samples for parallel sampling (not used in this implementation)
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for CTS {
+impl SamplingExt<f64> for CTS<f64> {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();
 

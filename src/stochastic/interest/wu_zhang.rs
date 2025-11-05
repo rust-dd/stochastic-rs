@@ -23,30 +23,30 @@ use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
 #[derive(ImplNew)]
-pub struct WuZhangD {
+pub struct WuZhangD<T> {
   /// Mean reversion level for each dimension's volatility.
-  pub alpha: Array1<f64>,
+  pub alpha: Array1<T>,
   /// Mean reversion speed for each dimension's volatility.
-  pub beta: Array1<f64>,
+  pub beta: Array1<T>,
   /// Volatility of volatility for each dimension.
-  pub nu: Array1<f64>,
+  pub nu: Array1<T>,
   /// Parameter controlling the impact of volatility on the forward rate.
-  pub lambda: Array1<f64>,
+  pub lambda: Array1<T>,
   /// Initial forward rates for each dimension.
-  pub x0: Array1<f64>,
+  pub x0: Array1<T>,
   /// Initial volatilities for each dimension.
-  pub v0: Array1<f64>,
+  pub v0: Array1<T>,
   /// Number of (rate, vol) pairs.
   pub xn: usize,
   /// Total time horizon.
-  pub t: Option<f64>,
+  pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
   /// Batch size for parallel sampling (if used).
   pub m: Option<usize>,
 }
 
-impl SamplingVExt<f64> for WuZhangD {
+impl SamplingVExt<f64> for WuZhangD<f64> {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let mut fv = Array2::<f64>::zeros((2 * self.xn, self.n));

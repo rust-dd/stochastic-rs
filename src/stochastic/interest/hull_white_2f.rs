@@ -7,21 +7,21 @@ use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0
 /// dU(t) = b * U(t) dt + sigma_2 dW2(t) u(0) = 0
 #[derive(ImplNew)]
-pub struct HullWhite2F {
-  pub k: fn(f64) -> f64,
-  pub theta: f64,
-  pub sigma1: f64,
-  pub sigma2: f64,
-  pub rho: f64,
-  pub b: f64,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+pub struct HullWhite2F<T> {
+  pub k: fn(T) -> T,
+  pub theta: T,
+  pub sigma1: T,
+  pub sigma2: T,
+  pub rho: T,
+  pub b: T,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub n: usize,
   pub m: Option<usize>,
-  pub cgns: CGNS,
+  pub cgns: CGNS<T>,
 }
 
-impl Sampling2DExt<f64> for HullWhite2F {
+impl Sampling2DExt<f64> for HullWhite2F<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

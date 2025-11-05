@@ -14,17 +14,17 @@ use num_complex::{Complex, ComplexDistribution};
 
 use crate::stochastic::SamplingExt;
 
-pub struct FGN {
-  pub hurst: f64,
+pub struct FGN<T> {
+  pub hurst: T,
   pub n: usize,
-  pub t: Option<f64>,
+  pub t: Option<T>,
   pub m: Option<usize>,
   pub offset: usize,
-  pub sqrt_eigenvalues: Arc<Array1<Complex<f64>>>,
-  pub fft_handler: Arc<FftHandler<f64>>,
+  pub sqrt_eigenvalues: Arc<Array1<Complex<T>>>,
+  pub fft_handler: Arc<FftHandler<T>>,
 }
 
-impl FGN {
+impl FGN<f64> {
   #[must_use]
   pub fn new(hurst: f64, n: usize, t: Option<f64>, m: Option<usize>) -> Self {
     if !(0.0..=1.0).contains(&hurst) {
@@ -66,7 +66,7 @@ impl FGN {
   }
 }
 
-impl SamplingExt<f64> for FGN {
+impl SamplingExt<f64> for FGN<f64> {
   fn sample(&self) -> Array1<f64> {
     // let rnd = Array1::<Complex<f64>>::random(
     //   2 * self.n,

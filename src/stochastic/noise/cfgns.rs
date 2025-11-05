@@ -6,19 +6,19 @@ use crate::stochastic::{Sampling2DExt, SamplingExt};
 use super::fgn::FGN;
 
 #[derive(ImplNew)]
-pub struct CFGNS {
-  pub hurst: f64,
-  pub rho: f64,
+pub struct CFGNS<T> {
+  pub hurst: T,
+  pub rho: T,
   pub n: usize,
-  pub t: Option<f64>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN,
+  pub fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
 }
 
-impl CFGNS {
+impl CFGNS<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
     if self.cuda {
@@ -33,7 +33,7 @@ impl CFGNS {
   }
 }
 
-impl Sampling2DExt<f64> for CFGNS {
+impl Sampling2DExt<f64> for CFGNS<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(
       (0.0..=1.0).contains(&self.hurst),

@@ -4,20 +4,20 @@ use ndarray::Array1;
 use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct FGBM {
-  pub mu: f64,
-  pub sigma: f64,
+pub struct FGBM<T> {
+  pub mu: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN,
+  pub fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
 }
 
-impl FGBM {
+impl FGBM<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
     if self.cuda {
@@ -32,7 +32,7 @@ impl FGBM {
   }
 }
 
-impl SamplingExt<f64> for FGBM {
+impl SamplingExt<f64> for FGBM<f64> {
   /// Sample the Fractional Geometric Brownian Motion (FGBM) process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

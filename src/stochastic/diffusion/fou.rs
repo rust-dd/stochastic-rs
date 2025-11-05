@@ -4,21 +4,21 @@ use ndarray::Array1;
 use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct FOU {
-  pub theta: f64,
-  pub mu: f64,
-  pub sigma: f64,
+pub struct FOU<T> {
+  pub theta: T,
+  pub mu: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN,
+  pub fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
 }
 
-impl FOU {
+impl FOU<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
     if self.cuda {
@@ -33,7 +33,7 @@ impl FOU {
   }
 }
 
-impl SamplingExt<f64> for FOU {
+impl SamplingExt<f64> for FOU<f64> {
   /// Sample the Fractional Ornstein-Uhlenbeck (FOU) process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

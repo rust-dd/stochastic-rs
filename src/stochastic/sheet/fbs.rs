@@ -6,14 +6,14 @@ use num_complex::{Complex64, ComplexDistribution};
 use rand_distr::StandardNormal;
 
 #[derive(ImplNew)]
-pub struct FBS {
-  pub hurst: f64,
+pub struct FBS<T> {
+  pub hurst: T,
   pub m: usize,
   pub n: usize,
-  pub R: f64,
+  pub R: T,
 }
 
-impl FBS {
+impl FBS<f64> {
   pub fn sample(&self) -> Array2<f64> {
     let (m, n, H, R) = (self.m, self.n, self.hurst, self.R);
     let alpha = 2.0 * H;

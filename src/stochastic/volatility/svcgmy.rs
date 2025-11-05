@@ -14,36 +14,36 @@ use crate::{
 ///
 /// https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf
 #[derive(ImplNew)]
-pub struct SVCGMY {
+pub struct SVCGMY<T> {
   /// Positive jump rate lambda_plus (corresponds to G)
-  pub lambda_plus: f64, // G
+  pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
-  pub lambda_minus: f64, // M
+  pub lambda_minus: T, // M
   /// Jump activity parameter alpha (corresponds to Y), with 0 < alpha < 2
-  pub alpha: f64,
+  pub alpha: T,
   /// Mean reversion rate
-  pub kappa: f64,
+  pub kappa: T,
   /// Long-term volatility
-  pub eta: f64,
+  pub eta: T,
   /// Volatility of volatility
-  pub zeta: f64,
+  pub zeta: T,
   ///
-  pub rho: f64,
+  pub rho: T,
   /// Number of time steps
   pub n: usize,
   /// Jumps
   pub j: usize,
   /// Initial value
-  pub x0: Option<f64>,
+  pub x0: Option<T>,
   /// Initial value
-  pub v0: Option<f64>,
+  pub v0: Option<T>,
   /// Total time horizon
-  pub t: Option<f64>,
+  pub t: Option<T>,
   /// Number of samples for parallel sampling (not used in this implementation)
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for SVCGMY {
+impl SamplingExt<f64> for SVCGMY<f64> {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();
 

@@ -7,21 +7,21 @@ use crate::stochastic::SamplingVExt;
 
 /// Ahn-Dittmar-Gallant (ADG) model
 #[derive(ImplNew)]
-pub struct ADG {
-  pub k: fn(f64) -> f64,
-  pub theta: fn(f64) -> f64,
-  pub sigma: Array1<f64>,
-  pub phi: fn(f64) -> f64,
-  pub b: fn(f64) -> f64,
-  pub c: fn(f64) -> f64,
+pub struct ADG<T> {
+  pub k: fn(T) -> T,
+  pub theta: fn(T) -> T,
+  pub sigma: Array1<T>,
+  pub phi: fn(T) -> T,
+  pub b: fn(T) -> T,
+  pub c: fn(T) -> T,
   pub n: usize,
   pub xn: usize,
-  pub x0: Array1<f64>,
-  pub t: Option<f64>,
+  pub x0: Array1<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
 }
 
-impl SamplingVExt<f64> for ADG {
+impl SamplingVExt<f64> for ADG<f64> {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
 

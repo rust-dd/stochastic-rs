@@ -4,20 +4,20 @@ use ndarray::{s, Array1};
 use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 #[derive(ImplNew)]
-pub struct RoughBergomi {
-  pub hurst: f64,
-  pub nu: f64,
-  pub v0: Option<f64>,
-  pub s0: Option<f64>,
-  pub r: f64,
-  pub rho: f64,
+pub struct RoughBergomi<T> {
+  pub hurst: T,
+  pub nu: T,
+  pub v0: Option<T>,
+  pub s0: Option<T>,
+  pub r: T,
+  pub rho: T,
   pub n: usize,
-  pub t: Option<f64>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub cgns: CGNS,
+  pub cgns: CGNS<T>,
 }
 
-impl Sampling2DExt<f64> for RoughBergomi {
+impl Sampling2DExt<f64> for RoughBergomi<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let [cgn1, z] = self.cgns.sample();

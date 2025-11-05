@@ -14,21 +14,21 @@ use statrs::{
 use crate::stochastic::{DistributionExt, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct GBM {
-  pub mu: f64,
-  pub sigma: f64,
+pub struct GBM<T> {
+  pub mu: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
   pub distribution: Option<LogNormal>,
   #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
   #[cfg(feature = "malliavin")]
-  malliavin: Mutex<Option<Array1<f64>>>,
+  malliavin: Mutex<Option<Array1<T>>>,
 }
 
-impl SamplingExt<f64> for GBM {
+impl SamplingExt<f64> for GBM<f64> {
   /// Sample the GBM process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -91,7 +91,7 @@ impl SamplingExt<f64> for GBM {
   }
 }
 
-impl DistributionExt for GBM {
+impl DistributionExt for GBM<f64> {
   /// Characteristic function of the distribution
   fn characteristic_function(&self, _t: f64) -> Complex64 {
     unimplemented!()

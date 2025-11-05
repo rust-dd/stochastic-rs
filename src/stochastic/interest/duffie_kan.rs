@@ -33,28 +33,28 @@ use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
 #[derive(ImplNew)]
-pub struct DuffieKan {
-  pub alpha: f64,
-  pub beta: f64,
-  pub gamma: f64,
-  pub rho: f64,
-  pub a1: f64,
-  pub b1: f64,
-  pub c1: f64,
-  pub sigma1: f64,
-  pub a2: f64,
-  pub b2: f64,
-  pub c2: f64,
-  pub sigma2: f64,
+pub struct DuffieKan<T> {
+  pub alpha: T,
+  pub beta: T,
+  pub gamma: T,
+  pub rho: T,
+  pub a1: T,
+  pub b1: T,
+  pub c1: T,
+  pub sigma1: T,
+  pub a2: T,
+  pub b2: T,
+  pub c2: T,
+  pub sigma2: T,
   pub n: usize,
-  pub r0: Option<f64>,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub r0: Option<T>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub cgns: CGNS,
+  pub cgns: CGNS<T>,
 }
 
-impl Sampling2DExt<f64> for DuffieKan {
+impl Sampling2DExt<f64> for DuffieKan<f64> {
   /// Sample the Duffie-Kan process
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();

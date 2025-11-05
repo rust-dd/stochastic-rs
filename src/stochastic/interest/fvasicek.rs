@@ -4,19 +4,19 @@ use ndarray::Array1;
 use crate::stochastic::{diffusion::fou::FOU, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct FVasicek {
-  pub hurst: f64,
-  pub mu: f64,
-  pub sigma: f64,
-  pub theta: Option<f64>,
+pub struct FVasicek<T> {
+  pub hurst: T,
+  pub mu: T,
+  pub sigma: T,
+  pub theta: Option<T>,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub fou: FOU,
+  pub fou: FOU<T>,
 }
 
-impl SamplingExt<f64> for FVasicek {
+impl SamplingExt<f64> for FVasicek<f64> {
   /// Sample the Fractional Vasicek process
   fn sample(&self) -> Array1<f64> {
     self.fou.sample()

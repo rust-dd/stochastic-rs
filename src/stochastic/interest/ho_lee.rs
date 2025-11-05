@@ -9,16 +9,16 @@ use crate::stochastic::SamplingExt;
 
 #[allow(non_snake_case)]
 #[derive(ImplNew)]
-pub struct HoLee {
-  pub f_T: Option<Arc<dyn Fn(f64) -> f64 + Send + Sync + 'static>>,
-  pub theta: Option<f64>,
-  pub sigma: f64,
+pub struct HoLee<T> {
+  pub f_T: Option<Arc<dyn Fn(T) -> T + Send + Sync + 'static>>,
+  pub theta: Option<T>,
+  pub sigma: T,
   pub n: usize,
-  pub t: f64,
+  pub t: T,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for HoLee {
+impl SamplingExt<f64> for HoLee<f64> {
   fn sample(&self) -> Array1<f64> {
     assert!(
       self.theta.is_none() && self.f_T.is_none(),

@@ -9,20 +9,20 @@ use rand_distr::Normal;
 use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
-pub struct CEV {
-  pub mu: f64,
-  pub sigma: f64,
-  pub gamma: f64,
+pub struct CEV<T> {
+  pub mu: T,
+  pub sigma: T,
+  pub gamma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
   pub calculate_malliavin: Option<bool>,
   #[cfg(feature = "malliavin")]
-  malliavin: Mutex<Option<Array1<f64>>>,
+  malliavin: Mutex<Option<Array1<T>>>,
 }
 
-impl SamplingExt<f64> for CEV {
+impl SamplingExt<f64> for CEV<f64> {
   /// Sample the CEV process
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

@@ -6,23 +6,23 @@ use rand_distr::Normal;
 use crate::stochastic::Sampling3DExt;
 
 #[derive(ImplNew)]
-pub struct HJM {
-  pub a: fn(f64) -> f64,
-  pub b: fn(f64) -> f64,
-  pub p: fn(f64, f64) -> f64,
-  pub q: fn(f64, f64) -> f64,
-  pub v: fn(f64, f64) -> f64,
-  pub alpha: fn(f64, f64) -> f64,
-  pub sigma: fn(f64, f64) -> f64,
+pub struct HJM<T> {
+  pub a: fn(T) -> T,
+  pub b: fn(T) -> T,
+  pub p: fn(T, T) -> T,
+  pub q: fn(T, T) -> T,
+  pub v: fn(T, T) -> T,
+  pub alpha: fn(T, T) -> T,
+  pub sigma: fn(T, T) -> T,
   pub n: usize,
-  pub r0: Option<f64>,
-  pub p0: Option<f64>,
-  pub f0: Option<f64>,
-  pub t: Option<f64>,
+  pub r0: Option<T>,
+  pub p0: Option<T>,
+  pub f0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
 }
 
-impl Sampling3DExt<f64> for HJM {
+impl Sampling3DExt<f64> for HJM<f64> {
   fn sample(&self) -> [Array1<f64>; 3] {
     let t_max = self.t.unwrap_or(1.0);
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

@@ -18,11 +18,11 @@ use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
 #[derive(ImplNew)]
-pub struct BGM {
+pub struct BGM<T> {
   /// Drift/volatility multiplier for each forward rate.
-  pub lambda: Array1<f64>,
+  pub lambda: Array1<T>,
   /// Initial forward rates for each path.
-  pub x0: Array1<f64>,
+  pub x0: Array1<T>,
   /// Number of forward rates (rows) to simulate.
   pub xn: usize,
   /// Total time horizon.
@@ -33,7 +33,7 @@ pub struct BGM {
   pub m: Option<usize>,
 }
 
-impl SamplingVExt<f64> for BGM {
+impl SamplingVExt<f64> for BGM<f64> {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let mut fwd = Array2::<f64>::zeros((self.xn, self.n));

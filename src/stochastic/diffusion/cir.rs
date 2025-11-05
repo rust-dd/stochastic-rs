@@ -9,18 +9,18 @@ use crate::stochastic::SamplingExt;
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
 /// where X(t) is the CIR process.
 #[derive(ImplNew)]
-pub struct CIR {
-  pub theta: f64,
-  pub mu: f64,
-  pub sigma: f64,
+pub struct CIR<T> {
+  pub theta: T,
+  pub mu: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub use_sym: Option<bool>,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for CIR {
+impl SamplingExt<f64> for CIR<f64> {
   /// Sample the Cox-Ingersoll-Ross (CIR) process
   fn sample(&self) -> Array1<f64> {
     assert!(

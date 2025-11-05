@@ -6,13 +6,13 @@ use crate::stochastic::SamplingExt;
 use super::cir::CIR;
 
 #[derive(ImplNew)]
-pub struct CIR2F {
-  pub x: CIR,
-  pub y: CIR,
-  pub phi: fn(f64) -> f64,
+pub struct CIR2F<T> {
+  pub x: CIR<T>,
+  pub y: CIR<T>,
+  pub phi: fn(T) -> T,
 }
 
-impl SamplingExt<f64> for CIR2F {
+impl SamplingExt<f64> for CIR2F<f64> {
   fn sample(&self) -> Array1<f64> {
     let x = self.x.sample();
     let y = self.y.sample();

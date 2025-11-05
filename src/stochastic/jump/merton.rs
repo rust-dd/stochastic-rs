@@ -6,22 +6,22 @@ use rand_distr::{Distribution, Normal};
 use crate::stochastic::{process::cpoisson::CompoundPoisson, Sampling3DExt, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct Merton<D>
+pub struct Merton<D, T>
 where
-  D: Distribution<f64> + Send + Sync,
+  D: Distribution<T> + Send + Sync,
 {
-  pub alpha: f64,
-  pub sigma: f64,
-  pub lambda: f64,
-  pub theta: f64,
+  pub alpha: T,
+  pub sigma: T,
+  pub lambda: T,
+  pub theta: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub cpoisson: CompoundPoisson<D>,
+  pub cpoisson: CompoundPoisson<D, T>,
 }
 
-impl<D> SamplingExt<f64> for Merton<D>
+impl<D> SamplingExt<f64> for Merton<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {

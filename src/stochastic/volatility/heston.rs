@@ -10,25 +10,25 @@ use super::HestonPow;
 
 #[derive(ImplNew)]
 
-pub struct Heston {
+pub struct Heston<T> {
   /// Initial stock price
-  pub s0: Option<f64>,
+  pub s0: Option<T>,
   /// Initial volatility
-  pub v0: Option<f64>,
+  pub v0: Option<T>,
   /// Mean reversion rate
-  pub kappa: f64,
+  pub kappa: T,
   /// Long-run average volatility
-  pub theta: f64,
+  pub theta: T,
   /// Volatility of volatility
-  pub sigma: f64,
+  pub sigma: T,
   /// Correlation between the stock price and its volatility
-  pub rho: f64,
+  pub rho: T,
   /// Drift of the stock price
-  pub mu: f64,
+  pub mu: T,
   /// Number of time steps
   pub n: usize,
   /// Time to maturity
-  pub t: Option<f64>,
+  pub t: Option<T>,
   /// Power of the variance
   /// If 0.5 then it is the original Heston model
   /// If 1.5 then it is the 3/2 model
@@ -38,19 +38,19 @@ pub struct Heston {
   /// Number of paths for multithreading
   pub m: Option<usize>,
   /// Noise generator
-  pub cgns: CGNS,
+  pub cgns: CGNS<T>,
   /// Calculate the Malliavin derivative
   #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
   /// Malliavin derivative of the volatility
   #[cfg(feature = "malliavin")]
-  malliavin_of_vol: Mutex<Option<Array1<f64>>>,
+  malliavin_of_vol: Mutex<Option<Array1<T>>>,
   /// Malliavin derivative of the price
   #[cfg(feature = "malliavin")]
-  malliavin_of_price: Mutex<Option<Array1<f64>>>,
+  malliavin_of_price: Mutex<Option<Array1<T>>>,
 }
 
-impl Sampling2DExt<f64> for Heston {
+impl Sampling2DExt<f64> for Heston<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

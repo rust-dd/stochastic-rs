@@ -7,15 +7,15 @@ use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 
-pub struct IG {
-  pub gamma: f64,
+pub struct IG<T> {
+  pub gamma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for IG {
+impl SamplingExt<f64> for IG<f64> {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());

@@ -34,45 +34,45 @@ use ndarray::Array1;
 use rand_distr::{Distribution, Exp, Normal};
 
 #[derive(ImplNew)]
-pub struct DuffieKanJumpExp {
-  pub alpha: f64,
-  pub beta: f64,
-  pub gamma: f64,
-  pub rho: f64,
-  pub a1: f64,
-  pub b1: f64,
-  pub c1: f64,
-  pub sigma1: f64,
-  pub a2: f64,
-  pub b2: f64,
-  pub c2: f64,
-  pub sigma2: f64,
+pub struct DuffieKanJumpExp<T> {
+  pub alpha: T,
+  pub beta: T,
+  pub gamma: T,
+  pub rho: T,
+  pub a1: T,
+  pub b1: T,
+  pub c1: T,
+  pub sigma1: T,
+  pub a2: T,
+  pub b2: T,
+  pub c2: T,
+  pub sigma2: T,
 
   /// Jump intensity (rate for the exponential distribution).
-  pub lambda: f64,
+  pub lambda: T,
 
   /// Standard deviation for jump sizes.
-  pub jump_scale: f64,
+  pub jump_scale: T,
 
   /// Number of time steps.
   pub n: usize,
 
   /// Initial value for r(t).
-  pub r0: Option<f64>,
+  pub r0: Option<T>,
   /// Initial value for x(t).
-  pub x0: Option<f64>,
+  pub x0: Option<T>,
 
   /// Total time horizon.
-  pub t: Option<f64>,
+  pub t: Option<T>,
 
   /// Optional batch size.
   pub m: Option<usize>,
 
   /// Correlated Gaussian noise generator for the diffusion part.
-  pub cgns: CGNS,
+  pub cgns: CGNS<T>,
 }
 
-impl Sampling2DExt<f64> for DuffieKanJumpExp {
+impl Sampling2DExt<f64> for DuffieKanJumpExp<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

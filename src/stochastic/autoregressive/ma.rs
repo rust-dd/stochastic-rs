@@ -18,18 +18,18 @@ use crate::stochastic::SamplingExt;
 /// - `n`: Length of time series.
 /// - `m`: Optional batch size.
 #[derive(ImplNew)]
-pub struct MAq {
+pub struct MAq<T> {
   /// MA coefficients
-  pub theta: Array1<f64>,
+  pub theta: Array1<T>,
   /// Noise std dev
-  pub sigma: f64,
+  pub sigma: T,
   /// Number of observations
   pub n: usize,
   /// Optional batch size
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for MAq {
+impl SamplingExt<f64> for MAq<f64> {
   fn sample(&self) -> Array1<f64> {
     let q = self.theta.len();
     let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());

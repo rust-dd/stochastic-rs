@@ -4,15 +4,15 @@ use ndarray::{Array1, Array2};
 use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 
 #[derive(ImplNew)]
-pub struct CBMS {
-  pub rho: f64,
+pub struct CBMS<T> {
+  pub rho: T,
   pub n: usize,
-  pub t: Option<f64>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub cgns: CGNS,
+  pub cgns: CGNS<T>,
 }
 
-impl Sampling2DExt<f64> for CBMS {
+impl Sampling2DExt<f64> for CBMS<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(
       (-1.0..=1.0).contains(&self.rho),

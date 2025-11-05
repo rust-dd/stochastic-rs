@@ -20,20 +20,20 @@ use crate::stochastic::SamplingExt;
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
 #[derive(ImplNew)]
-pub struct ARp {
+pub struct ARp<T> {
   /// AR coefficients
-  pub phi: Array1<f64>,
+  pub phi: Array1<T>,
   /// Noise std dev
-  pub sigma: f64,
+  pub sigma: T,
   /// Number of observations
   pub n: usize,
   /// Optional batch size
   pub m: Option<usize>,
   /// Optional initial conditions
-  pub x0: Option<Array1<f64>>,
+  pub x0: Option<Array1<T>>,
 }
 
-impl SamplingExt<f64> for ARp {
+impl SamplingExt<f64> for ARp<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.phi.len();
     let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());

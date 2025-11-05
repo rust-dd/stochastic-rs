@@ -6,20 +6,20 @@ use rand_distr::{Distribution, Normal};
 use crate::stochastic::{process::cpoisson::CompoundPoisson, Sampling3DExt, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct LevyDiffusion<D>
+pub struct LevyDiffusion<D, T>
 where
-  D: Distribution<f64> + Send + Sync,
+  D: Distribution<T> + Send + Sync,
 {
-  pub gamma: f64,
-  pub sigma: f64,
+  pub gamma: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub cpoisson: CompoundPoisson<D>,
+  pub cpoisson: CompoundPoisson<D, T>,
 }
 
-impl<D> SamplingExt<f64> for LevyDiffusion<D>
+impl<D> SamplingExt<f64> for LevyDiffusion<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {

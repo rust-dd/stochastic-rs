@@ -4,21 +4,21 @@ use ndarray::Array1;
 use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 #[derive(ImplNew)]
-pub struct FJacobi {
-  pub alpha: f64,
-  pub beta: f64,
-  pub sigma: f64,
+pub struct FJacobi<T> {
+  pub alpha: T,
+  pub beta: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN,
+  pub fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
 }
 
-impl FJacobi {
+impl FJacobi<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
     if self.cuda {
@@ -33,7 +33,7 @@ impl FJacobi {
   }
 }
 
-impl SamplingExt<f64> for FJacobi {
+impl SamplingExt<f64> for FJacobi<f64> {
   /// Sample the Fractional Jacobi process
   fn sample(&self) -> Array1<f64> {
     assert!(self.alpha > 0.0, "alpha must be positive");

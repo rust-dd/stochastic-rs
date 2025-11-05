@@ -7,25 +7,25 @@ use crate::stochastic::{
 };
 
 #[derive(ImplNew)]
-pub struct JumpFOU<D>
+pub struct JumpFOU<D, T>
 where
-  D: Distribution<f64> + Send + Sync,
+  D: Distribution<T> + Send + Sync,
 {
-  pub mu: f64,
-  pub sigma: f64,
-  pub theta: f64,
+  pub mu: T,
+  pub sigma: T,
+  pub theta: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN,
-  pub cpoisson: CompoundPoisson<D>,
+  pub fgn: FGN<T>,
+  pub cpoisson: CompoundPoisson<D, T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
 }
 
-impl<D> JumpFOU<D>
+impl<D> JumpFOU<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {
@@ -43,7 +43,7 @@ where
   }
 }
 
-impl<D> SamplingExt<f64> for JumpFOU<D>
+impl<D> SamplingExt<f64> for JumpFOU<D, f64>
 where
   D: Distribution<f64> + Send + Sync,
 {
