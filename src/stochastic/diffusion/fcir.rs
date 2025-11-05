@@ -143,7 +143,7 @@ mod tests {
       Some(1.0),
       Some(false),
       Some(1),
-      FGN::new(0.7, N, Some(1.0), None),
+      FGN::<f64>::new(0.7, N, Some(1.0), None),
     );
 
     assert_eq!(fcir.sample().len(), N);
@@ -160,7 +160,7 @@ mod tests {
       Some(1.0),
       Some(false),
       Some(1),
-      FGN::new(0.7, N, Some(1.0), None),
+      FGN::<f64>::new(0.7, N, Some(1.0), None),
     );
 
     assert_eq!(fcir.sample()[0], X0);
@@ -177,7 +177,7 @@ mod tests {
       Some(1.0),
       Some(false),
       Some(1),
-      FGN::new(0.7, N, Some(1.0), None),
+      FGN::<f64>::new(0.7, N, Some(1.0), None),
     );
 
     plot_1d!(

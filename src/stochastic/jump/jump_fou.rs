@@ -139,7 +139,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N, None, None),
+      FGN::<f64>::new(0.7, N, None, None),
       CompoundPoisson::new(
         None,
         Normal::new(0.0, 2.0).unwrap(),
@@ -160,7 +160,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N, None, None),
+      FGN::<f64>::new(0.7, N, None, None),
       CompoundPoisson::new(
         None,
         Normal::new(0.0, 2.0).unwrap(),
@@ -181,7 +181,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N, None, None),
+      FGN::<f64>::new(0.7, N, None, None),
       CompoundPoisson::new(
         None,
         Normal::new(0.0, 2.0).unwrap(),

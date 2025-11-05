@@ -161,7 +161,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N, None, None),
+      FGN::<f64>::new(0.7, N, None, None),
       Weibull::new(4.0, 2.0).unwrap(),
       Weibull::new(10.0, 2.0).unwrap(),
     );
@@ -179,7 +179,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N, None, None),
+      FGN::<f64>::new(0.7, N, None, None),
       Gamma::new(1.0, 1.0).unwrap(),
       Gamma::new(12.0, 1.0).unwrap(),
     );

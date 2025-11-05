@@ -296,7 +296,7 @@ mod tests {
 
   #[test]
   fn fgn_length_equals_n() {
-    let fbm = FGN::new(0.7, N, Some(1.0), None);
+    let fbm = FGN::<f64>::new(0.7, N, Some(1.0), None);
     assert_eq!(fbm.sample().len(), N);
   }
 
@@ -310,7 +310,7 @@ mod tests {
     ]));
 
     let start = Instant::now();
-    let fbm = FGN::new(0.7, N, Some(1.0), None);
+    let fbm = FGN::<f64>::new(0.7, N, Some(1.0), None);
     let _ = fbm.sample();
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
@@ -319,7 +319,7 @@ mod tests {
     ]));
 
     let start = Instant::now();
-    let fbm = FGN::new(0.7, N, Some(1.0), None);
+    let fbm = FGN::<f64>::new(0.7, N, Some(1.0), None);
     for _ in 0..N {
       let _ = fbm.sample();
     }
@@ -341,7 +341,7 @@ mod tests {
   #[test]
   #[tracing_test::traced_test]
   fn fgn_plot() {
-    let fgn = FGN::new(0.7, 100, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, 100, Some(1.0), None);
     let fgn = fgn.sample();
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
   }
@@ -350,7 +350,7 @@ mod tests {
   #[tracing_test::traced_test]
   #[cfg(feature = "cuda")]
   fn fgn_cuda() {
-    let fbm = FGN::new(0.7, 500, Some(1.0), Some(1));
+    let fbm = FGN::<f64>::new(0.7, 500, Some(1.0), Some(1));
     let fgn = fbm.sample_cuda().unwrap();
     let fgn = fgn.left().unwrap();
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");

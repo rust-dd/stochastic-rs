@@ -103,7 +103,9 @@ impl SamplingExt<f64> for SVCGMY<f64> {
             -self.lambda_minus
           };
 
-          let term1 = ((self.alpha * P[j]) / (2.0 * c_tau[j] * t_max)).powf(-1.0 / self.alpha);
+          let numerator: f64 = self.alpha * P[j];
+          let denominator: f64 = 2.0 * c_tau[j] * t_max;
+          let term1 = (numerator / denominator).powf(-1.0 / self.alpha);
           let term2 = E[j] * U[j].powf(1.0 / self.alpha) / v_j.abs();
           let min_term = term1.min(term2);
           let jump_size = min_term * (v_j / v_j.abs());
@@ -146,8 +148,8 @@ impl SamplingExt<f32> for SVCGMY<f32> {
     v[0] = self.v0.unwrap_or(0.0);
 
     let C = 1.0
-      / (gamma(2.0 - self.alpha as f64)
-        * (self.lambda_plus.powf(self.alpha - 2.0) as f64 + self.lambda_minus.powf(self.alpha - 2.0) as f64)) as f32;
+      / (gamma(2.0 - self.alpha as f64) as f32
+        * (self.lambda_plus.powf(self.alpha - 2.0) + self.lambda_minus.powf(self.alpha - 2.0)));
     let c = (2.0 * self.kappa) / ((1.0 - (-self.kappa * dt).exp()) * self.zeta.powi(2));
     let df = (4.0 * self.kappa * self.eta / self.zeta.powi(2)) as f64;
 
@@ -190,7 +192,9 @@ impl SamplingExt<f32> for SVCGMY<f32> {
             -self.lambda_minus
           };
 
-          let term1 = ((self.alpha * P[j]) / (2.0 * c_tau[j] * t_max)).powf(-1.0 / self.alpha);
+          let numerator: f32 = self.alpha * P[j];
+          let denominator: f32 = 2.0 * c_tau[j] * t_max;
+          let term1 = (numerator / denominator).powf(-1.0 / self.alpha);
           let term2 = E[j] * U[j].powf(1.0 / self.alpha) / v_j.abs();
           let min_term = term1.min(term2);
           let jump_size = min_term * (v_j / v_j.abs());

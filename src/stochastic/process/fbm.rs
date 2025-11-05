@@ -139,7 +139,7 @@ mod tests {
       N,
       Some(1.0),
       None,
-      FGN::new(0.7, N - 1, Some(1.0), None),
+      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
       #[cfg(feature = "malliavin")]
       None,
     );
@@ -154,7 +154,7 @@ mod tests {
       N,
       Some(1.0),
       None,
-      FGN::new(0.7, N - 1, Some(1.0), None),
+      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
       #[cfg(feature = "malliavin")]
       None,
     );
@@ -169,7 +169,7 @@ mod tests {
       N,
       Some(1.0),
       None,
-      FGN::new(0.1, N - 1, Some(1.0), None),
+      FGN::<f64>::new(0.1, N - 1, Some(1.0), None),
       #[cfg(feature = "malliavin")]
       None,
     );
@@ -185,7 +185,7 @@ mod tests {
       N,
       Some(1.0),
       None,
-      FGN::new(0.7, N - 1, Some(1.0), None),
+      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
       Some(true),
     );
     let process = fbm.sample();

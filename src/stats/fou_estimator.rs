@@ -435,7 +435,7 @@ mod tests {
     const N: usize = 10000;
     const X0: f64 = 0.0;
 
-    let fgn = FGN::new(0.70, 4095, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.70, 4095, Some(1.0), None);
     let fou = FOU::new(5.0, 2.8, 1.0, 4096, Some(X0), Some(16.0), None, fgn);
     let path = fou.sample();
     let mut estimator = FOUParameterEstimationV1::new(path, FilterType::Daubechies, None);
@@ -457,7 +457,7 @@ mod tests {
     const X0: f64 = 0.0;
     let delta = 1.0 / 256.0;
 
-    let fgn = FGN::new(0.70, N - 1, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.70, N - 1, Some(1.0), None);
     let fou = FOU::new(5.0, 2.8, 2.0, N, Some(X0), Some(16.0), None, fgn);
     let path = fou.sample();
     let mut estimator = FOUParameterEstimationV2::new(path, Some(delta), N);

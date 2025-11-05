@@ -142,7 +142,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N - 1, Some(1.0), None),
+      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
     );
 
     assert_eq!(fjacobi.sample().len(), N);
@@ -158,7 +158,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N - 1, Some(1.0), None),
+      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
     );
 
     assert_eq!(fjacobi.sample()[0], X0);
@@ -174,7 +174,7 @@ mod tests {
       Some(X0),
       Some(1.0),
       None,
-      FGN::new(0.7, N - 1, Some(1.0), None),
+      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
     );
 
     plot_1d!(fjacobi.sample(), "Fractional Jacobi process");

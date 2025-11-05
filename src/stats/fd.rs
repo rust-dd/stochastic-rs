@@ -84,7 +84,13 @@ mod tests {
   #[test]
   fn test_variogram() {
     let hurst = 0.75;
-    let x = FBM::new(hurst, N, None, None, FGN::new(hurst, N - 1, None, None));
+    let x = FBM::new(
+      hurst,
+      N,
+      None,
+      None,
+      FGN::<f64>::new(hurst, N - 1, None, None),
+    );
     let fd = FractalDim::new(x.sample());
     let result = fd.variogram(None);
     assert_relative_eq!(2.0 - result, hurst, epsilon = 1e-1);
@@ -93,7 +99,13 @@ mod tests {
   #[test]
   fn test_higuchi_fd() {
     let hurst = 0.75;
-    let x = FBM::new(hurst, N, None, None, FGN::new(hurst, N - 1, None, None));
+    let x = FBM::new(
+      hurst,
+      N,
+      None,
+      None,
+      FGN::<f64>::new(hurst, N - 1, None, None),
+    );
     let fd = FractalDim::new(x.sample());
     let result = fd.higuchi_fd(10);
     assert_relative_eq!(2.0 - result, hurst, epsilon = 1e-1);

@@ -2,9 +2,9 @@ use impl_new_derive::ImplNew;
 use ndarray::{linalg::kron, s, Array1, Array2, Axis};
 use ndarray_rand::RandomExt;
 use ndrustfft::{ndfft, ndfft_par, FftHandler};
-use num_complex::{Complex64, ComplexDistribution};
 #[cfg(feature = "f32")]
 use num_complex::Complex32;
+use num_complex::{Complex64, ComplexDistribution};
 use rand_distr::StandardNormal;
 
 #[derive(ImplNew)]
@@ -173,7 +173,8 @@ impl FBS<f32> {
     let z = Array2::random(
       (big_m, big_n),
       ComplexDistribution::new(StandardNormal, StandardNormal),
-    ).mapv(|c: num_complex::Complex<f64>| Complex32::new(c.re as f32, c.im as f32));
+    )
+    .mapv(|c: num_complex::Complex<f64>| Complex32::new(c.re as f32, c.im as f32));
 
     let mut Z = lam.mapv(Complex32::from) * z;
     let mut inv_tmp = Array2::<Complex32>::zeros((big_m, big_n));
@@ -248,7 +249,7 @@ mod tests {
     let half_m = m / 2;
     let half_n = n / 2;
 
-    let fbs = FBS::new(hurst, m, n, R);
+    let fbs: FBS<f64> = FBS::new(hurst, m, n, R);
     let sheet = fbs.sample();
 
     let x: Vec<f64> = (1..=half_n).map(|i| i as f64 * R / n as f64).collect();
