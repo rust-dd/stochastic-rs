@@ -15,6 +15,10 @@ impl SimdChiSquared {
       gamma: SimdGamma::new(k * 0.5, 2.0),
     }
   }
+
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
+    self.gamma.fill_slice(rng, out);
+  }
 }
 
 impl Distribution<f32> for SimdChiSquared {

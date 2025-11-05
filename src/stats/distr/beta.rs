@@ -27,13 +27,20 @@ impl SimdBeta {
     }
   }
 
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
+    // Fill two temp arrays, then compute ratio
+    let mut y1 = vec![0.0f32; out.len()];
+    let mut y2 = vec![0.0f32; out.len()];
+    self.gamma1.fill_slice(rng, &mut y1);
+    self.gamma2.fill_slice(rng, &mut y2);
+    for (o, (a, b)) in out.iter_mut().zip(y1.iter().zip(y2.iter())) {
+      *o = *a / (*a + *b);
+    }
+  }
+
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    for i in 0..16 {
-      let y1 = self.gamma1.sample(rng);
-      let y2 = self.gamma2.sample(rng);
-      buf[i] = y1 / (y1 + y2);
-    }
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

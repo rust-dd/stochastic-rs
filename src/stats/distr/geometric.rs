@@ -18,14 +18,43 @@ impl SimdGeometric {
     }
   }
 
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [u32]) {
+    use crate::stats::distr::fill_f32_zero_one;
+    use wide::f32x8;
+
+    let ln1p = (1.0 - self.p).ln();
+    let inv_ln1p = f32x8::splat(1.0 / ln1p);
+    let mut u = [0.0f32; 8];
+
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      fill_f32_zero_one(rng, &mut u);
+      let v = f32x8::from(u);
+      let g = (v.ln() * inv_ln1p).floor() + f32x8::splat(1.0);
+      let mut tmp = g.to_array();
+      for t in &mut tmp {
+        *t = (*t).max(1.0);
+      }
+      for (o, t) in chunk.iter_mut().zip(tmp.iter()) {
+        *o = *t as u32;
+      }
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      fill_f32_zero_one(rng, &mut u);
+      let v = f32x8::from(u);
+      let g = (v.ln() * inv_ln1p).floor() + f32x8::splat(1.0);
+      let tmp = g.to_array();
+      for i in 0..rem.len() {
+        let val = tmp[i].max(1.0);
+        rem[i] = val as u32;
+      }
+    }
+  }
+
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    let ln1p = (1.0 - self.p).ln();
-    for i in 0..16 {
-      let u: f32 = rng.gen_range(0.0..1.0);
-      let g = (u.ln() / ln1p).floor() + 1.0;
-      buf[i] = g.max(1.0) as u32;
-    }
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

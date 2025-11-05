@@ -22,9 +22,8 @@ impl SimdHypergeometric {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    for i in 0..16 {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [u32]) {
+    for x in out.iter_mut() {
       let mut count = 0;
       let mut rem_succ = self.k_success;
       let mut rem_tot = self.n_total;
@@ -38,8 +37,13 @@ impl SimdHypergeometric {
         rem_tot -= 1;
         draws -= 1;
       }
-      buf[i] = count;
+      *x = count;
     }
+  }
+
+  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

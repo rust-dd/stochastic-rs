@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use wide::f32x8;
 
 use super::normal::SimdNormal;
 
@@ -25,13 +26,38 @@ impl SimdLogNormal {
     }
   }
 
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
+    // Generate normals in batches of 16
+    let mut tmp = vec![0.0f32; out.len()];
+    self.normal.fill_slice(rng, &mut tmp);
+
+    // Apply affine and exp in SIMD over 8-lane chunks
+    let mm = f32x8::splat(self.mu);
+    let ss = f32x8::splat(self.sigma);
+
+    let mut chunks_out = out.chunks_exact_mut(8);
+    let mut chunks_in = tmp.chunks_exact(8);
+    for (chunk_o, chunk_i) in (&mut chunks_out).zip(&mut chunks_in) {
+      let mut a = [0.0f32; 8];
+      a.copy_from_slice(chunk_i);
+      let z = f32x8::from(a);
+      let x = (mm + ss * z).exp();
+      chunk_o.copy_from_slice(&x.to_array());
+    }
+    let rem_o = chunks_out.into_remainder();
+    let rem_i = chunks_in.remainder();
+    if !rem_o.is_empty() {
+      let mut a = [0.0f32; 8];
+      a[..rem_i.len()].copy_from_slice(rem_i);
+      let z = f32x8::from(a);
+      let x = (mm + ss * z).exp().to_array();
+      rem_o.copy_from_slice(&x[..rem_o.len()]);
+    }
+  }
+
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    // for i in 0..16, sample a standard normal, then transform
-    for i in 0..16 {
-      let z = self.normal.sample(rng);
-      buf[i] = (self.mu + self.sigma * z).exp();
-    }
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

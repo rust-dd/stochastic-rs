@@ -30,10 +30,34 @@ impl SimdNormal {
     }
   }
 
+  /// Efficiently fill `out` with samples using SIMD batches of 16.
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
+    let mut tmp = [0.0f32; 16];
+    let mut chunks = out.chunks_exact_mut(16);
+    for chunk in &mut chunks {
+      Self::fill_normal_f32x8(&mut tmp, rng, self.mean, self.std_dev);
+      chunk.copy_from_slice(&tmp);
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      Self::fill_normal_f32x8(&mut tmp, rng, self.mean, self.std_dev);
+      rem.copy_from_slice(&tmp[..rem.len()]);
+    }
+  }
+
+  /// Fill exactly 16 outputs into a mutable slice (must be length >= 16).
+  #[inline]
+  pub fn fill_16<R: Rng + ?Sized>(&self, rng: &mut R, out16: &mut [f32]) {
+    debug_assert!(out16.len() >= 16);
+    let mut tmp = [0.0f32; 16];
+    Self::fill_normal_f32x8(&mut tmp, rng, self.mean, self.std_dev);
+    out16[..16].copy_from_slice(&tmp);
+  }
+
   /// Refills the internal buffer with 16 samples using a vectorized Box–Muller transform.
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    Self::fill_normal_f32x8(buf, rng);
+    Self::fill_normal_f32x8(buf, rng, self.mean, self.std_dev);
     unsafe {
       *self.index.get() = 0;
     }
@@ -46,7 +70,8 @@ impl SimdNormal {
   /// - `u2` is used for the angle (theta = 2 π u2).
   /// - We compute z0 = r cos(theta) and z1 = r sin(theta) for all 8 lanes.
   /// - That yields 16 total normal samples in `buf[0..16]`.
-  fn fill_normal_f32x8<R: Rng + ?Sized>(buf: &mut [f32; 16], rng: &mut R) {
+  /// - We also apply the affine transform N(0,1) -> N(mean, std_dev^2) in SIMD.
+  fn fill_normal_f32x8<R: Rng + ?Sized>(buf: &mut [f32; 16], rng: &mut R, mean: f32, std_dev: f32) {
     // Generate 8 random values for u1
     let mut arr_u1 = [0.0_f32; 8];
     fill_f32_zero_one(rng, &mut arr_u1);
@@ -56,8 +81,12 @@ impl SimdNormal {
     fill_f32_zero_one(rng, &mut arr_u2);
 
     // Load them into f32x8 vectors
-    let u1 = f32x8::from(arr_u1);
+    let mut u1 = f32x8::from(arr_u1);
     let u2 = f32x8::from(arr_u2);
+
+    // Avoid ln(0)
+    let eps = f32x8::splat(f32::MIN_POSITIVE);
+    u1 = u1.max(eps);
 
     // Box–Muller:
     // r = sqrt(-2 * ln(u1)), theta = 2 * PI * u2
@@ -67,20 +96,22 @@ impl SimdNormal {
     let r = (neg_two * u1.ln()).sqrt();
     let theta = two_pi * u2;
 
-    // Compute z0 = r * cos(theta)
+    // Compute z0 = r * cos(theta) and z1 = r * sin(theta)
     let z0 = r * theta.cos();
-    // Compute z1 = r * sin(theta)
     let z1 = r * theta.sin();
 
-    // Each lane i of z0, z1 is one normal sample.
-    // So we have 16 total samples in two f32x8 vectors.
+    // Apply affine transform in SIMD: x = mean + std_dev * z
+    let mm = f32x8::splat(mean);
+    let ss = f32x8::splat(std_dev);
+    let x0 = mm + ss * z0;
+    let x1 = mm + ss * z1;
 
-    let arr_z0 = z0.to_array(); // 8 floats
-    let arr_z1 = z1.to_array(); // another 8 floats
+    let arr_x0 = x0.to_array();
+    let arr_x1 = x1.to_array();
 
-    // Put z0 in the first 8 slots, z1 in the next 8 slots
-    buf[..8].copy_from_slice(&arr_z0);
-    buf[8..16].copy_from_slice(&arr_z1);
+    // Put x0 in the first 8 slots, x1 in the next 8 slots
+    buf[..8].copy_from_slice(&arr_x0);
+    buf[8..16].copy_from_slice(&arr_x1);
   }
 }
 
@@ -93,7 +124,6 @@ impl Distribution<f32> for SimdNormal {
     let buf = unsafe { &mut *self.buffer.get() };
     let z = buf[*index];
     *index += 1;
-    // Transform from standard normal to N(mean, std_dev^2)
-    self.mean + self.std_dev * z
+    z
   }
 }

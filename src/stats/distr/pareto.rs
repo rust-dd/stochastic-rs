@@ -24,22 +24,32 @@ impl SimdPareto {
     }
   }
 
+  /// Efficiently fill `out` with Pareto(x_m, alpha) using 8-wide SIMD batches.
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
+    let xm = f32x8::splat(self.x_m);
+    let pow = -1.0 / self.alpha;
+    let mut u = [0.0f32; 8];
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      fill_f32_zero_one(rng, &mut u);
+      let v = f32x8::from(u);
+      let y = (f32x8::splat(1.0) - v).powf(pow);
+      let x = xm * y;
+      chunk.copy_from_slice(&x.to_array());
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      fill_f32_zero_one(rng, &mut u);
+      let v = f32x8::from(u);
+      let y = (f32x8::splat(1.0) - v).powf(pow);
+      let x = (xm * y).to_array();
+      rem.copy_from_slice(&x[..rem.len()]);
+    }
+  }
+
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-
-    for chunk_i in 0..2 {
-      let mut arr_u = [0f32; 8];
-      fill_f32_zero_one(rng, &mut arr_u);
-      let u = f32x8::from(arr_u);
-
-      // X = x_m * (1 - u)^(-1/alpha)
-      let y = (1.0 - u).powf(-1.0 / self.alpha);
-      let x = self.x_m * y;
-      let out = x.to_array();
-      let offset = chunk_i * 8;
-      buf[offset..offset + 8].copy_from_slice(&out);
-    }
-
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

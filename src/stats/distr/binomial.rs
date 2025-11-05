@@ -20,9 +20,8 @@ impl SimdBinomial {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    for i in 0..16 {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [u32]) {
+    for x in out.iter_mut() {
       let mut count = 0;
       for _ in 0..self.n {
         let u: f32 = rng.gen();
@@ -30,8 +29,13 @@ impl SimdBinomial {
           count += 1;
         }
       }
-      buf[i] = count;
+      *x = count;
     }
+  }
+
+  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

@@ -25,13 +25,11 @@ impl SimdGamma {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
-    let buf = unsafe { &mut *self.buffer.get() };
+  /// Bulk fill using Marsaglia–Tsang; uses scalar acceptance per sample but reduces per-call overhead.
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
     let d = self.alpha - 1.0 / 3.0;
     let c = 1.0 / (3.0 * d).sqrt();
-
-    for i in 0..16 {
-      // Marsaglia–Tsang
+    for x in out.iter_mut() {
       let val = loop {
         let z = self.normal.sample(rng);
         let v = (1.0 + c * z).powi(3);
@@ -46,8 +44,13 @@ impl SimdGamma {
           break self.scale * d * v;
         }
       };
-      buf[i] = val;
+      *x = val;
     }
+  }
+
+  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

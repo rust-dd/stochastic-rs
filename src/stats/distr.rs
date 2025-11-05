@@ -405,4 +405,240 @@ mod tests {
 
     plot.show();
   }
+
+  // ========== Benchmarks: compare SIMD vs rand_distr ==========
+  use rand::thread_rng;
+  use rand_distr::Distribution as _;
+  use std::time::Instant;
+
+  #[test]
+  fn bench_normal_simd_vs_rand() {
+    use crate::stats::distr::normal::SimdNormal;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdNormal::new(0.0, 1.0);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("Normal single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_lognormal_simd_vs_rand() {
+    use crate::stats::distr::lognormal::SimdLogNormal;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdLogNormal::new(0.2, 0.8);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("LogNormal single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_exp_simd_vs_rand() {
+    use crate::stats::distr::exp::SimdExp;
+    let n = 10_000_000usize;
+    let lambda = 1.5f32;
+
+    let mut rng = thread_rng();
+    let simd = SimdExp::new(lambda);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("Exp single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_cauchy_simd_vs_rand() {
+    use crate::stats::distr::cauchy::SimdCauchy;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdCauchy::new(0.0, 1.0);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("Cauchy single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_gamma_simd_vs_rand() {
+    use crate::stats::distr::gamma::SimdGamma;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdGamma::new(2.0, 2.0);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("Gamma single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_weibull_simd_vs_rand() {
+    use crate::stats::distr::weibull::SimdWeibull;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdWeibull::new(1.0, 1.5);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("Weibull single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_beta_simd_vs_rand() {
+    use crate::stats::distr::beta::SimdBeta;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdBeta::new(2.0, 2.0);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("Beta single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_chisq_simd_vs_rand() {
+    use crate::stats::distr::chi_square::SimdChiSquared;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdChiSquared::new(5.0);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("ChiSq single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_studentt_simd_vs_rand() {
+    use crate::stats::distr::studentt::SimdStudentT;
+    let n = 10_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdStudentT::new(5.0);
+    let mut s_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
+    let mut r_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    let dt_r = t1.elapsed();
+
+    println!("StudentT single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    assert!(!s_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
+  fn bench_poisson_simd_vs_rand() {
+    use crate::stats::distr::poisson::SimdPoisson;
+    let n = 5_000_000usize;
+
+    let mut rng = thread_rng();
+    let simd = SimdPoisson::new(4.0);
+    let mut s_sum: u64 = 0;
+    let t0 = Instant::now();
+    for _ in 0..n { s_sum += simd.sample(&mut rng) as u64; }
+    let dt_s = t0.elapsed();
+
+    let mut rng = thread_rng();
+    let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
+    let mut r_sum: u64 = 0;
+    let t1 = Instant::now();
+    for _ in 0..n { r_sum += rd.sample(&mut rng) as u64; }
+    let dt_r = t1.elapsed();
+
+    println!("Poisson single: simd {:?}, sum={} | rand_distr {:?}, sum={}", dt_s, s_sum, dt_r, r_sum);
+    assert!(s_sum > 0 && r_sum > 0);
+  }
 }

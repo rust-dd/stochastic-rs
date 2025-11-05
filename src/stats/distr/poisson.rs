@@ -19,20 +19,27 @@ impl SimdPoisson {
     }
   }
 
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [u32]) {
+    // Knuth's method per sample; bulk loop to reduce overhead
+    for x in out.iter_mut() {
+      let l = (-self.lambda).exp();
+      let mut k = 0u32;
+      let mut p = 1.0f32;
+      loop {
+        k += 1;
+        let u: f32 = rng.gen();
+        p *= u;
+        if p <= l {
+          break;
+        }
+      }
+      *x = k - 1;
+    }
+  }
+
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    for i in 0..16 {
-      // naive sum of Exp(1) approach
-      let mut sum = 0.0;
-      let mut count = 0;
-      while sum < self.lambda {
-        let u: f32 = rng.gen_range(0.0..1.0);
-        let e = -u.ln();
-        sum += e;
-        count += 1;
-      }
-      buf[i] = count - 1;
-    }
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }

@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use wide::f32x8;
 
 use super::{inverse_gauss::SimdInverseGauss, normal::SimdNormal};
 
@@ -33,14 +34,43 @@ impl SimdNormalInverseGauss {
     }
   }
 
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
+    let mut dbuf = vec![0.0f32; out.len()];
+    let mut zbuf = vec![0.0f32; out.len()];
+    self.ig.fill_slice(rng, &mut dbuf);
+    self.normal.fill_slice(rng, &mut zbuf);
+
+    let mu = f32x8::splat(self.mu);
+    let beta = f32x8::splat(self.beta);
+
+    let mut o_chunks = out.chunks_exact_mut(8);
+    let mut d_chunks = dbuf.chunks_exact(8);
+    let mut z_chunks = zbuf.chunks_exact(8);
+    for ((co, cd), cz) in (&mut o_chunks).zip(&mut d_chunks).zip(&mut z_chunks) {
+      let mut ad = [0.0f32; 8];
+      ad.copy_from_slice(cd);
+      let mut az = [0.0f32; 8];
+      az.copy_from_slice(cz);
+      let d = f32x8::from(ad);
+      let z = f32x8::from(az);
+      let x = mu + beta * d + d.sqrt() * z;
+      co.copy_from_slice(&x.to_array());
+    }
+    let rem_o = o_chunks.into_remainder();
+    let rem_d = d_chunks.remainder();
+    let rem_z = z_chunks.remainder();
+    if !rem_o.is_empty() {
+      for i in 0..rem_o.len() {
+        let d = rem_d[i];
+        let z = rem_z[i];
+        rem_o[i] = self.mu + self.beta * d + d.sqrt() * z;
+      }
+    }
+  }
+
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    for i in 0..16 {
-      let d = self.ig.sample(rng);
-      let z = self.normal.sample(rng);
-      // X = mu + beta*d + sqrt(d)*z
-      buf[i] = self.mu + self.beta * d + d.sqrt() * z;
-    }
+    self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
     }
