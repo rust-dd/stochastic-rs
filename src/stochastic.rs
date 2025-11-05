@@ -80,7 +80,9 @@ pub const K: f64 = 100.0;
 /// Trait for 1D sampling of stochastic processes
 pub trait SamplingExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   /// Sample the process
-  fn sample(&self) -> Array1<T>;
+  fn sample(&self) -> Array1<T> {
+    unimplemented!()
+  }
 
   /// Sample the process with simd acceleration
   #[cfg(feature = "simd")]

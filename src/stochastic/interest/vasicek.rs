@@ -12,7 +12,7 @@ pub struct Vasicek {
   pub x0: Option<f64>,
   pub t: Option<f64>,
   pub m: Option<usize>,
-  pub ou: OU,
+  pub ou: OU<f64>,
 }
 
 impl SamplingExt<f64> for Vasicek {
