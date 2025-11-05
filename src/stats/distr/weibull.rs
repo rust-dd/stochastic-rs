@@ -30,16 +30,17 @@ impl SimdWeibull {
     let inv_k = 1.0 / self.k;
     let mut u = [0.0f32; 8];
     let mut chunks = out.chunks_exact_mut(8);
+    let eps = f32x8::splat(f32::MIN_POSITIVE);
     for chunk in &mut chunks {
       fill_f32_zero_one(rng, &mut u);
-      let v = f32x8::from(u);
+      let v = f32x8::from(u).max(eps);
       let x = (-v.ln()).powf(inv_k) * lam;
       chunk.copy_from_slice(&x.to_array());
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
       fill_f32_zero_one(rng, &mut u);
-      let v = f32x8::from(u);
+      let v = f32x8::from(u).max(eps);
       let x = ((-v.ln()).powf(inv_k) * lam).to_array();
       rem.copy_from_slice(&x[..rem.len()]);
     }

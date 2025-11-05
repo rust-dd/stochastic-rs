@@ -407,8 +407,6 @@ mod tests {
   }
 
   // ========== Benchmarks: compare SIMD vs rand_distr ==========
-  use rand::thread_rng;
-  use rand_distr::Distribution as _;
   use std::time::Instant;
 
   #[test]
@@ -640,5 +638,167 @@ mod tests {
 
     println!("Poisson single: simd {:?}, sum={} | rand_distr {:?}, sum={}", dt_s, s_sum, dt_r, r_sum);
     assert!(s_sum > 0 && r_sum > 0);
+  }
+
+  // Helpers for timing benchmarks
+  struct Row { name: &'static str, simd_ms: f64, rand_ms: f64 }
+  fn time_f32<F1, F2>(rows: &mut Vec<Row>, n: usize, name: &'static str, mut simd_fn: F1, mut rand_fn: F2)
+  where
+    F1: FnMut() -> f32,
+    F2: FnMut() -> f32,
+  {
+    use std::hint::black_box;
+    let t0 = Instant::now();
+    let mut s_sum = 0.0f32;
+    for _ in 0..n { s_sum += simd_fn(); }
+    let dt_simd = t0.elapsed().as_secs_f64() * 1000.0;
+
+    let t1 = Instant::now();
+    let mut r_sum = 0.0f32;
+    for _ in 0..n { r_sum += rand_fn(); }
+    let dt_rand = t1.elapsed().as_secs_f64() * 1000.0;
+
+    black_box(s_sum);
+    black_box(r_sum);
+    rows.push(Row { name, simd_ms: dt_simd, rand_ms: dt_rand });
+  }
+  fn time_u32<F1, F2>(rows: &mut Vec<Row>, n: usize, name: &'static str, mut simd_fn: F1, mut rand_fn: F2)
+  where
+    F1: FnMut() -> u32,
+    F2: FnMut() -> u32,
+  {
+    use std::hint::black_box;
+    let t0 = Instant::now();
+    let mut s_sum: u64 = 0;
+    for _ in 0..n { s_sum += simd_fn() as u64; }
+    let dt_simd = t0.elapsed().as_secs_f64() * 1000.0;
+
+    let t1 = Instant::now();
+    let mut r_sum: u64 = 0;
+    for _ in 0..n { r_sum += rand_fn() as u64; }
+    let dt_rand = t1.elapsed().as_secs_f64() * 1000.0;
+
+    black_box(s_sum);
+    black_box(r_sum);
+    rows.push(Row { name, simd_ms: dt_simd, rand_ms: dt_rand });
+  }
+
+  #[test]
+  fn bench_summary_table() {
+    use crate::stats::distr::{
+      beta::SimdBeta, cauchy::SimdCauchy, exp::SimdExp, gamma::SimdGamma, lognormal::SimdLogNormal,
+      normal::SimdNormal, pareto::SimdPareto, poisson::SimdPoisson, studentt::SimdStudentT,
+      weibull::SimdWeibull,
+    };
+
+    let n_f = 5_000_000usize; // samples for continuous/f32
+    let n_i = 5_000_000usize; // samples for discrete/u32
+
+    let mut rows: Vec<Row> = Vec::new();
+
+    // Normal
+    {
+      let mut rng = thread_rng();
+      let simd = SimdNormal::new(0.0, 1.0);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
+      time_f32(&mut rows, n_f, "Normal", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // LogNormal
+    {
+      let mut rng = thread_rng();
+      let simd = SimdLogNormal::new(0.2, 0.8);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
+      time_f32(&mut rows, n_f, "LogNormal", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // Exp
+    {
+      let mut rng = thread_rng();
+      let simd = SimdExp::new(1.5);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::Exp::<f32>::new(1.5).unwrap();
+      time_f32(&mut rows, n_f, "Exp", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // Cauchy
+    {
+      let mut rng = thread_rng();
+      let simd = SimdCauchy::new(0.0, 1.0);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
+      time_f32(&mut rows, n_f, "Cauchy", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // Gamma
+    {
+      let mut rng = thread_rng();
+      let simd = SimdGamma::new(2.0, 2.0);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
+      time_f32(&mut rows, n_f, "Gamma", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // Weibull
+    {
+      let mut rng = thread_rng();
+      let simd = SimdWeibull::new(1.0, 1.5);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
+      time_f32(&mut rows, n_f, "Weibull", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // Beta
+    {
+      let mut rng = thread_rng();
+      let simd = SimdBeta::new(2.0, 2.0);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
+      time_f32(&mut rows, n_f, "Beta", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // Chi-Squared
+    {
+      use crate::stats::distr::chi_square::SimdChiSquared;
+      let mut rng = thread_rng();
+      let simd = SimdChiSquared::new(5.0);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
+      time_f32(&mut rows, n_f, "ChiSquared", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // StudentT
+    {
+      let mut rng = thread_rng();
+      let simd = SimdStudentT::new(5.0);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
+      time_f32(&mut rows, n_f, "StudentT", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+    }
+
+    // Poisson (discrete)
+    {
+      let mut rng = thread_rng();
+      let simd = SimdPoisson::new(4.0);
+      let mut rng2 = thread_rng();
+      let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
+      time_u32(&mut rows, n_i, "Poisson", || simd.sample(&mut rng), || rd.sample(&mut rng2) as u32);
+    }
+
+    // Optionally Pareto if available in rand_distr
+    #[allow(unused)]
+    {
+      // If rand_distr had Pareto<f32>, uncomment below lines.
+      let _ = SimdPareto::new(1.0, 1.5);
+    }
+
+    // Print table
+    println!("{:<14} {:>12} {:>14}", "Distribution", "simd (ms)", "rand_distr (ms)");
+    println!("{:-<14} {:-<12} {:-<14}", "", "", "");
+    for r in rows {
+      println!("{:<14} {:>12.2} {:>14.2}", r.name, r.simd_ms, r.rand_ms);
+    }
   }
 }
