@@ -82,6 +82,36 @@ impl SamplingExt<f64> for CEV<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for CEV<f32> {
+  /// Sample the CEV process
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt() as f64).unwrap()).mapv(|x| x as f32);
+
+    let mut cev = Array1::<f32>::zeros(self.n);
+    cev[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      cev[i] = cev[i - 1]
+        + self.mu * cev[i - 1] * dt
+        + self.sigma * cev[i - 1].powf(self.gamma) * gn[i - 1]
+    }
+
+    cev
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::{

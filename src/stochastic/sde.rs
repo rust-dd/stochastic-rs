@@ -67,7 +67,7 @@ where
         if let Some(h) = &self.hursts {
           for p in 0..n_paths {
             for d in 0..dim {
-              let fgn = FGN::new(h[d], steps, Some(t1 - t0), None);
+              let fgn = FGN::<f64>::new(h[d], steps, Some(t1 - t0), None);
               let data = fgn.sample();
 
               for i in 0..steps {

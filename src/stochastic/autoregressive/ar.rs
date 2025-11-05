@@ -72,6 +72,46 @@ impl SamplingExt<f64> for ARp<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for ARp<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let p = self.phi.len();
+    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
+    let mut series = Array1::<f32>::zeros(self.n);
+
+    // Fill initial conditions if provided
+    if let Some(init) = &self.x0 {
+      // Copy up to min(p, n)
+      for i in 0..p.min(self.n) {
+        series[i] = init[i];
+      }
+    }
+
+    // AR recursion
+    for t in 0..self.n {
+      let mut val = 0.0;
+      // Sum over AR lags
+      for k in 1..=p {
+        if t >= k {
+          val += self.phi[k - 1] * series[t - k];
+        }
+      }
+      // Add noise
+      series[t] += val + noise[t];
+    }
+
+    series
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::arr1;

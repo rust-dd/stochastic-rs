@@ -118,3 +118,51 @@ impl Sampling2DExt<f64> for DuffieKanJumpExp<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl Sampling2DExt<f32> for DuffieKanJumpExp<f32> {
+  fn sample(&self) -> [Array1<f32>; 2] {
+    let [cgn1, cgn2] = self.cgns.sample();
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let mut r = Array1::<f32>::zeros(self.n);
+    let mut x = Array1::<f32>::zeros(self.n);
+    r[0] = self.r0.unwrap_or(0.0);
+    x[0] = self.x0.unwrap_or(0.0);
+
+    let mut rng = rand::thread_rng();
+    let exp_dist = Exp::new(self.lambda as f64).unwrap();
+    let jump_dist = Normal::new(0.0, self.jump_scale as f64).unwrap();
+    let mut next_jump_time = exp_dist.sample(&mut rng) as f32;
+
+    for i in 1..self.n {
+      let current_time = i as f32 * dt;
+      let r_old = r[i - 1];
+      let x_old = x[i - 1];
+
+      let dr = (self.a1 * r_old + self.b1 * x_old + self.c1) * dt
+        + self.sigma1 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn1[i - 1];
+      let dx = (self.a2 * r_old + self.b2 * x_old + self.c2) * dt
+        + self.sigma2 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn2[i - 1];
+
+      let mut jump_sum_x = 0.0;
+      while next_jump_time <= current_time {
+        let jump_x = jump_dist.sample(&mut rng) as f32;
+        jump_sum_x += jump_x;
+        next_jump_time += exp_dist.sample(&mut rng) as f32;
+      }
+
+      r[i] = r_old + dr;
+      x[i] = x_old + dx + jump_sum_x;
+    }
+
+    [r, x]
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

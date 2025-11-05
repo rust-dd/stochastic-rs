@@ -92,6 +92,38 @@ impl SamplingExt<f64> for FBM<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl FBM<f32> {
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for FBM<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let fgn = self.fgn();
+    let mut fbm = Array1::<f32>::zeros(self.n);
+    fbm.slice_mut(s![1..]).assign(&fgn);
+
+    for i in 1..self.n {
+      fbm[i] += fbm[i - 1];
+    }
+
+    fbm.slice(s![..self.n()]).to_owned()
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   #[cfg(feature = "malliavin")]

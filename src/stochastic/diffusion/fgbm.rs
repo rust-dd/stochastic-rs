@@ -65,6 +65,42 @@ impl SamplingExt<f64> for FGBM<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl FGBM<f32> {
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for FGBM<f32> {
+  /// Sample the Fractional Geometric Brownian Motion (FGBM) process
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let fgn = self.fgn();
+
+    let mut fgbm = Array1::<f32>::zeros(self.n);
+    fgbm[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      fgbm[i] = fgbm[i - 1] + self.mu * fgbm[i - 1] * dt + self.sigma * fgbm[i - 1] * fgn[i - 1]
+    }
+
+    fgbm
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of paths
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::{

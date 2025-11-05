@@ -156,6 +156,69 @@ impl SamplingExt<f64> for SARIMA<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for SARIMA<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
+
+    let mut sarma_series = Array1::<f32>::zeros(self.n);
+
+    for t in 0..self.n {
+      let mut val = 0.0;
+      val += noise[t];
+
+      for (lag_idx, &phi) in self.non_seasonal_ar_coefs.iter().enumerate() {
+        let k = lag_idx + 1;
+        if t >= k {
+          val += phi * sarma_series[t - k];
+        }
+      }
+
+      for (lag_idx, &phi_s) in self.seasonal_ar_coefs.iter().enumerate() {
+        let k = (lag_idx + 1) * self.s;
+        if t >= k {
+          val += phi_s * sarma_series[t - k];
+        }
+      }
+
+      for (lag_idx, &theta) in self.non_seasonal_ma_coefs.iter().enumerate() {
+        let k = lag_idx + 1;
+        if t >= k {
+          val += theta * noise[t - k];
+        }
+      }
+
+      for (lag_idx, &theta_s) in self.seasonal_ma_coefs.iter().enumerate() {
+        let k = (lag_idx + 1) * self.s;
+        if t >= k {
+          val += theta_s * noise[t - k];
+        }
+      }
+
+      sarma_series[t] = val;
+    }
+
+    let mut integrated = sarma_series;
+    for _ in 0..self.D {
+      integrated = inverse_seasonal_difference_f32(&integrated, self.s);
+    }
+
+    for _ in 0..self.d {
+      integrated = inverse_difference_f32(&integrated);
+    }
+
+    integrated
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 /// Inverse *non-seasonal* differencing (1-B)^{-1} once.
 ///
 /// If Y = (1-B)X, then
@@ -191,6 +254,36 @@ fn inverse_seasonal_difference(y: &Array1<f64>, s: usize) -> Array1<f64> {
     x[t] = y[t];
   }
   // For t >= s, X[t] = X[t-s] + Y[t]
+  for t in s..n {
+    x[t] = x[t - s] + y[t];
+  }
+  x
+}
+
+#[cfg(feature = "f32")]
+fn inverse_difference_f32(y: &Array1<f32>) -> Array1<f32> {
+  let n = y.len();
+  if n == 0 {
+    return y.clone();
+  }
+  let mut x = Array1::<f32>::zeros(n);
+  x[0] = y[0];
+  for t in 1..n {
+    x[t] = x[t - 1] + y[t];
+  }
+  x
+}
+
+#[cfg(feature = "f32")]
+fn inverse_seasonal_difference_f32(y: &Array1<f32>, s: usize) -> Array1<f32> {
+  let n = y.len();
+  if n == 0 || s == 0 {
+    return y.clone();
+  }
+  let mut x = Array1::<f32>::zeros(n);
+  for t in 0..s.min(n) {
+    x[t] = y[t];
+  }
   for t in s..n {
     x[t] = x[t - s] + y[t];
   }

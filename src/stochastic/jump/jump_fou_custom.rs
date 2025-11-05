@@ -87,6 +87,59 @@ where
   }
 }
 
+#[cfg(feature = "f32")]
+impl<D> JumpFOUCustom<D, f32>
+where
+  D: Distribution<f32> + Send + Sync,
+{
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl<D> SamplingExt<f32> for JumpFOUCustom<D, f32>
+where
+  D: Distribution<f32> + Send + Sync,
+{
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let fgn = self.fgn();
+    let mut jump_fou = Array1::<f32>::zeros(self.n);
+    jump_fou[0] = self.x0.unwrap_or(0.0);
+    let mut jump_times = Array1::<f32>::zeros(self.n);
+    jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::thread_rng()));
+
+    for i in 1..self.n {
+      let t = i as f32 * dt;
+      let mut jump = 0.0;
+      if jump_times[i] < t && t - dt <= jump_times[i] {
+        jump = self.jump_sizes.sample(&mut rand::thread_rng());
+      }
+
+      jump_fou[i] = jump_fou[i - 1]
+        + self.theta * (self.mu - jump_fou[i - 1]) * dt
+        + self.sigma * fgn[i - 1]
+        + jump;
+    }
+
+    jump_fou.slice(s![..self.n()]).to_owned()
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+
+  #[cfg(feature = "cuda")]
+  fn set_cuda(&mut self, cuda: bool) {
+    self.cuda = cuda;
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use rand_distr::{Gamma, Weibull};

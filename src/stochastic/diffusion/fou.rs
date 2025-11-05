@@ -65,6 +65,41 @@ impl SamplingExt<f64> for FOU<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl FOU<f32> {
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for FOU<f32> {
+  /// Sample the Fractional Ornstein-Uhlenbeck (FOU) process
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let fgn = self.fgn();
+
+    let mut fou = Array1::<f32>::zeros(self.n);
+    fou[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      fou[i] = fou[i - 1] + self.theta * (self.mu - fou[i - 1]) * dt + self.sigma * fgn[i - 1]
+    }
+
+    fou
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::{

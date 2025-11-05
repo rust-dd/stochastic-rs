@@ -3,6 +3,8 @@ use ndarray::{linalg::kron, s, Array1, Array2, Axis};
 use ndarray_rand::RandomExt;
 use ndrustfft::{ndfft, ndfft_par, FftHandler};
 use num_complex::{Complex64, ComplexDistribution};
+#[cfg(feature = "f32")]
+use num_complex::Complex32;
 use rand_distr::StandardNormal;
 
 #[derive(ImplNew)]
@@ -100,6 +102,111 @@ impl FBS<f64> {
   }
 
   fn rho(x: (f64, f64), y: (f64, f64), R: f64, alpha: f64) -> (f64, f64, f64) {
+    let (beta, c2, c0) = if alpha <= 1.5 {
+      let c2 = alpha / 2.0;
+      let c0 = 1.0 - alpha / 2.0;
+      (0.0, c2, c0)
+    } else {
+      let beta = alpha * (2.0 - alpha) / (3.0 * R * (R * R - 1.0));
+      let c2 = (alpha - beta * (R - 1.0).powi(2) * (R + 2.0)) / 2.0;
+      let c0 = beta * (R - 1.0).powi(3) + 1.0 - c2;
+      (beta, c2, c0)
+    };
+
+    let dx = x.0 - y.0;
+    let dy = x.1 - y.1;
+    let r = (dx * dx + dy * dy).sqrt();
+    let out = if r <= 1.0 {
+      c0 - r.powf(alpha) + c2 * r * r
+    } else if r <= R {
+      beta * (R - r).powi(3) / r
+    } else {
+      0.0
+    };
+    (out, c0, c2)
+  }
+}
+
+#[cfg(feature = "f32")]
+impl FBS<f32> {
+  pub fn sample(&self) -> Array2<f32> {
+    let (m, n, H, R) = (self.m, self.n, self.hurst, self.R);
+    let alpha = 2.0 * H;
+
+    let tx = Array1::linspace(R / n as f32, R, n);
+    let ty = Array1::linspace(R / m as f32, R, m);
+
+    let mut cov = Array2::<f32>::zeros((m, n));
+    for i in 0..n {
+      for j in 0..m {
+        cov[[j, i]] = Self::rho((tx[i], ty[j]), (tx[0], ty[0]), R, alpha).0;
+      }
+    }
+
+    let big_m = 2 * (m - 1);
+    let big_n = 2 * (n - 1);
+    let mut blk = Array2::<f32>::zeros((big_m, big_n));
+
+    blk.slice_mut(s![..m, ..n]).assign(&cov);
+    blk
+      .slice_mut(s![..m, n..])
+      .assign(&cov.slice(s![.., 1..n - 1;-1]));
+    blk
+      .slice_mut(s![m.., ..n])
+      .assign(&cov.slice(s![1..m - 1;-1, ..]));
+    blk
+      .slice_mut(s![m.., n..])
+      .assign(&cov.slice(s![1..m - 1, 1..n - 1]).slice(s![..;-1, ..;-1]));
+
+    let scale = 4.0 * (m - 1) as f32 * (n - 1) as f32;
+    let mut fft_handler0 = FftHandler::<f32>::new(big_m);
+    let mut fft_handler1 = FftHandler::<f32>::new(big_n);
+
+    let blk_c = blk.mapv(Complex32::from);
+    let mut fft_tmp = Array2::<Complex32>::zeros((big_m, big_n));
+    ndfft(&blk_c, &mut fft_tmp, &mut fft_handler0, 0);
+    let mut fft_freq = Array2::<Complex32>::zeros((big_m, big_n));
+    ndfft(&fft_tmp, &mut fft_freq, &mut fft_handler1, 1);
+
+    let lam = fft_freq.mapv(|c| (c.re / scale).max(0.0).sqrt());
+
+    let z = Array2::random(
+      (big_m, big_n),
+      ComplexDistribution::new(StandardNormal, StandardNormal),
+    ).mapv(|c: num_complex::Complex<f64>| Complex32::new(c.re as f32, c.im as f32));
+
+    let mut Z = lam.mapv(Complex32::from) * z;
+    let mut inv_tmp = Array2::<Complex32>::zeros((big_m, big_n));
+    ndfft_par(&Z, &mut inv_tmp, &mut fft_handler0, 0);
+    ndfft_par(&inv_tmp, &mut Z, &mut fft_handler1, 1);
+
+    let mut field = Array2::<f32>::zeros((m, n));
+    for i in 0..m {
+      for j in 0..n {
+        field[[i, j]] = Z[[i, j]].re;
+      }
+    }
+
+    let (_, _, c2) = Self::rho((0.0, 0.0), (0.0, 0.0), R, alpha);
+
+    let shift = field[[0, 0]];
+    field.mapv_inplace(|v| v - shift);
+
+    let rand_x = Array1::random(n, StandardNormal).mapv(|x: f64| x as f32);
+    let rand_y = Array1::random(m, StandardNormal).mapv(|x: f64| x as f32);
+
+    let ty_rand = &ty * &rand_y;
+    let tx_rand = &tx * &rand_x;
+    let ty_mat = ty_rand.insert_axis(Axis(1));
+    let tx_mat = tx_rand.insert_axis(Axis(0));
+
+    let correction = kron(&ty_mat, &tx_mat) * (2.0 * c2 as f32).sqrt();
+    field = &field + &correction;
+
+    field
+  }
+
+  fn rho(x: (f32, f32), y: (f32, f32), R: f32, alpha: f32) -> (f32, f32, f32) {
     let (beta, c2, c0) = if alpha <= 1.5 {
       let c2 = alpha / 2.0;
       let c0 = 1.0 - alpha / 2.0;

@@ -334,7 +334,7 @@ impl FOUParameterEstimationV3 {
     let fgn_length = self.series_length * M;
 
     // Generate fGN sample of length fgn_length
-    let fgn = FGN::new(self.hurst, fgn_length - 1, Some(self.T), None);
+    let fgn = FGN::<f64>::new(self.hurst, fgn_length - 1, Some(self.T), None);
     let fgn_sample = fgn.sample();
 
     // Initialize full_fou array

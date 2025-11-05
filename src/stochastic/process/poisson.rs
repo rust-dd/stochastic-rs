@@ -56,3 +56,47 @@ impl SamplingExt<f64> for Poisson<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for Poisson<f32> {
+  fn sample(&self) -> Array1<f32> {
+    if let Some(n) = self.n {
+      let exponentials = Array1::random(n, Exp::new((1.0 / self.lambda) as f64).unwrap()).mapv(|x| x as f32);
+      let mut poisson = Array1::<f32>::zeros(n);
+      for i in 1..n {
+        poisson[i] = poisson[i - 1] + exponentials[i - 1];
+      }
+
+      poisson
+    } else if let Some(t_max) = self.t_max {
+      let mut poisson = Array1::from(vec![0.0f32]);
+      let mut t = 0.0f32;
+
+      while t < t_max {
+        t += Exp::new((1.0 / self.lambda) as f64)
+          .unwrap()
+          .sample(&mut thread_rng()) as f32;
+
+        if t < t_max {
+          poisson
+            .push(Axis(0), Array0::from_elem(Dim(()), t).view())
+            .unwrap();
+        }
+      }
+
+      poisson
+    } else {
+      panic!("n or t_max must be provided");
+    }
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n.unwrap_or(0)
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

@@ -86,3 +86,45 @@ impl SamplingVExt<f64> for WuZhangD<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl SamplingVExt<f32> for WuZhangD<f32> {
+  fn sample(&self) -> Array2<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let mut fv = Array2::<f32>::zeros((2 * self.xn, self.n));
+
+    for i in 0..self.xn {
+      fv[(i, 0)] = self.x0[i];
+      fv[(i + self.xn, 0)] = self.v0[i];
+    }
+
+    for i in 0..self.xn {
+      let gn_f = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+      let gn_v = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+
+      for j in 1..self.n {
+        let v_old = fv[(i + self.xn, j - 1)].max(0.0);
+        let f_old = fv[(i, j - 1)].max(0.0);
+
+        let dv =
+          (self.alpha[i] - self.beta[i] * v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
+
+        let v_new = (v_old + dv).max(0.0);
+        fv[(i + self.xn, j)] = v_new;
+
+        let df = f_old * self.lambda[i] * v_new.sqrt() * gn_f[j - 1];
+        fv[(i, j)] = f_old + df;
+      }
+    }
+
+    fv
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

@@ -66,3 +66,45 @@ impl Sampling2DExt<f64> for CFGNS<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl CFGNS<f32> {
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl Sampling2DExt<f32> for CFGNS<f32> {
+  fn sample(&self) -> [Array1<f32>; 2] {
+    assert!(
+      (0.0..=1.0).contains(&self.hurst),
+      "Hurst parameter must be in (0, 1)"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&self.rho),
+      "Correlation coefficient must be in [-1, 1]"
+    );
+
+    let mut cfgns = Array2::<f32>::zeros((2, self.n));
+    let fgn1 = self.fgn();
+    let fgn2 = self.fgn();
+
+    for i in 1..self.n {
+      cfgns[[0, i]] = fgn1[i - 1];
+      cfgns[[1, i]] = self.rho * fgn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * fgn2[i - 1];
+    }
+
+    [cfgns.row(0).into_owned(), cfgns.row(1).into_owned()]
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

@@ -54,6 +54,40 @@ where
   }
 }
 
+#[cfg(feature = "f32")]
+impl<D> SamplingExt<f32> for Merton<D, f32>
+where
+  D: Distribution<f32> + Send + Sync,
+{
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let mut merton = Array1::<f32>::zeros(self.n);
+    merton[0] = self.x0.unwrap_or(0.0);
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+
+    for i in 1..self.n {
+      let [.., jumps] = self.cpoisson.sample();
+
+      merton[i] = merton[i - 1]
+        + (self.alpha * self.sigma.powf(2.0) / 2.0 - self.lambda * self.theta) * dt
+        + self.sigma * gn[i - 1]
+        + jumps.sum();
+    }
+
+    merton
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::{

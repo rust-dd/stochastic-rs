@@ -142,6 +142,49 @@ impl Sampling2DExt<f64> for Heston<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl Sampling2DExt<f32> for Heston<f32> {
+  fn sample(&self) -> [Array1<f32>; 2] {
+    let [cgn1, cgn2] = self.cgns.sample();
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+
+    let mut s = Array1::<f32>::zeros(self.n);
+    let mut v = Array1::<f32>::zeros(self.n);
+
+    s[0] = self.s0.unwrap_or(0.0);
+    v[0] = self.v0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      s[i] = s[i - 1] + self.mu * s[i - 1] * dt + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1];
+
+      let dv = self.kappa * (self.theta - v[i - 1]) * dt
+        + self.sigma
+          * v[i - 1].powf(match self.pow {
+            HestonPow::Sqrt => 0.5,
+            HestonPow::ThreeHalves => 1.5,
+          })
+          * cgn2[i - 1];
+
+      v[i] = match self.use_sym.unwrap_or(false) {
+        true => (v[i - 1] + dv).abs(),
+        false => (v[i - 1] + dv).max(0.0),
+      }
+    }
+
+    [s, v]
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   #[cfg(feature = "malliavin")]

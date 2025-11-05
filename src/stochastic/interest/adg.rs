@@ -65,3 +65,47 @@ impl SamplingVExt<f64> for ADG<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl SamplingVExt<f32> for ADG<f32> {
+  fn sample(&self) -> Array2<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+
+    let mut adg = Array2::<f32>::zeros((self.xn, self.n));
+    for i in 0..self.xn {
+      adg[(i, 0)] = self.x0[i];
+    }
+
+    for i in 0..self.xn {
+      let gn = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+
+      for j in 1..self.n {
+        let t = j as f32 * dt;
+        adg[(i, j)] = adg[(i, j - 1)]
+          + ((self.k)(t) - (self.theta)(t) * adg[(i, j - 1)]) * dt
+          + self.sigma[i] * gn[j - 1];
+      }
+    }
+
+    let mut r = Array2::zeros((self.xn, self.n));
+
+    for i in 0..self.xn {
+      let phi = Array1::<f32>::from_shape_fn(self.n, |j| (self.phi)(j as f32 * dt));
+      let b = Array1::<f32>::from_shape_fn(self.n, |j| (self.b)(j as f32 * dt));
+      let c = Array1::<f32>::from_shape_fn(self.n, |j| (self.c)(j as f32 * dt));
+
+      r.row_mut(i)
+        .assign(&(phi + b * adg.row(i).t().to_owned() * c * adg.row(i)));
+    }
+
+    r
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

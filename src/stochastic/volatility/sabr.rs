@@ -88,6 +88,34 @@ impl Sampling2DExt<f64> for SABR<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl Sampling2DExt<f32> for SABR<f32> {
+  fn sample(&self) -> [Array1<f32>; 2] {
+    let [cgn1, cgn2] = self.cgns.sample();
+
+    let mut f = Array1::<f32>::zeros(self.n);
+    let mut v = Array1::<f32>::zeros(self.n);
+
+    f[0] = self.f0.unwrap_or(0.0);
+    v[0] = self.v0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      f[i] = f[i - 1] + v[i - 1] * f[i - 1].powf(self.beta) * cgn1[i - 1];
+      v[i] = v[i - 1] + self.alpha * v[i - 1] * cgn2[i - 1];
+    }
+
+    [f, v]
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 
 mod tests {

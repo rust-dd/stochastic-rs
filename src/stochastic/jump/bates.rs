@@ -81,6 +81,55 @@ where
   }
 }
 
+#[cfg(feature = "f32")]
+impl<D> Sampling2DExt<f32> for Bates1996<D, f32>
+where
+  D: Distribution<f32> + Send + Sync,
+{
+  fn sample(&self) -> [Array1<f32>; 2] {
+    let [cgn1, cgn2] = self.cgns.sample();
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+
+    let mut s = Array1::<f32>::zeros(self.n);
+    let mut v = Array1::<f32>::zeros(self.n);
+
+    s[0] = self.s0.unwrap_or(0.0);
+    v[0] = self.v0.unwrap_or(0.0);
+
+    let drift = match (self.mu, self.b, self.r, self.r_f) {
+      (Some(r), Some(r_f), ..) => r - r_f,
+      (Some(b), ..) => b,
+      _ => self.mu.unwrap(),
+    };
+
+    for i in 1..self.n {
+      let [.., jumps] = self.cpoisson.sample();
+
+      s[i] = s[i - 1]
+        + (drift - self.lambda * self.k) * s[i - 1] * dt
+        + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1]
+        + jumps.sum();
+
+      let dv = (self.alpha - self.beta * v[i - 1]) * dt + self.sigma * v[i - 1] * cgn2[i - 1];
+
+      v[i] = match self.use_sym.unwrap_or(false) {
+        true => (v[i - 1] + dv).abs(),
+        false => (v[i - 1] + dv).max(0.0),
+      }
+    }
+
+    [s, v]
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use rand_distr::Normal;

@@ -26,7 +26,7 @@ pub struct BGM<T> {
   /// Number of forward rates (rows) to simulate.
   pub xn: usize,
   /// Total time horizon.
-  pub t: Option<f64>,
+  pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
   /// Batch size for parallel sampling (if used).
@@ -44,6 +44,36 @@ impl SamplingVExt<f64> for BGM<f64> {
 
     for i in 0..self.xn {
       let gn = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+      for j in 1..self.n {
+        let f_old = fwd[(i, j - 1)];
+        fwd[(i, j)] = f_old + f_old * self.lambda[i] * gn[j - 1];
+      }
+    }
+
+    fwd
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingVExt<f32> for BGM<f32> {
+  fn sample(&self) -> Array2<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let mut fwd = Array2::<f32>::zeros((self.xn, self.n));
+
+    for i in 0..self.xn {
+      fwd[(i, 0)] = self.x0[i];
+    }
+
+    for i in 0..self.xn {
+      let gn = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
       for j in 1..self.n {
         let f_old = fwd[(i, j - 1)];
         fwd[(i, j)] = f_old + f_old * self.lambda[i] * gn[j - 1];

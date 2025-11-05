@@ -27,10 +27,11 @@ impl SamplingExt<f64> for Gn<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
 impl SamplingExt<f32> for Gn<f32> {
   fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) as f32 / self.n as f32;
-    Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap())
+    let dt = self.t.unwrap_or(1.0) / self.n as f32;
+    Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32)
   }
 
   fn n(&self) -> usize {

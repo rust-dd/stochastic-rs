@@ -78,6 +78,51 @@ impl SamplingExt<f64> for FJacobi<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl FJacobi<f32> {
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for FJacobi<f32> {
+  fn sample(&self) -> Array1<f32> {
+    assert!(self.alpha > 0.0, "alpha must be positive");
+    assert!(self.beta > 0.0, "beta must be positive");
+    assert!(self.sigma > 0.0, "sigma must be positive");
+    assert!(self.alpha < self.beta, "alpha must be less than beta");
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let fgn = self.fgn();
+
+    let mut fjacobi = Array1::<f32>::zeros(self.n);
+    fjacobi[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      fjacobi[i] = match fjacobi[i - 1] {
+        _ if fjacobi[i - 1] <= 0.0 && i > 0 => 0.0,
+        _ if fjacobi[i - 1] >= 1.0 && i > 0 => 1.0,
+        _ => {
+          fjacobi[i - 1]
+            + (self.alpha - self.beta * fjacobi[i - 1]) * dt
+            + self.sigma * (fjacobi[i - 1] * (1.0 - fjacobi[i - 1])).sqrt() * fgn[i - 1]
+        }
+      }
+    }
+
+    fjacobi
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::{

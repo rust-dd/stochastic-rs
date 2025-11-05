@@ -80,6 +80,49 @@ impl SamplingExt<f64> for FCIR<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl FCIR<f32> {
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for FCIR<f32> {
+  fn sample(&self) -> Array1<f32> {
+    assert!(
+      2.0 * self.theta * self.mu >= self.sigma.powi(2),
+      "2 * theta * mu < sigma^2"
+    );
+
+    let fgn = self.fgn();
+    let dt = (self.t.unwrap_or(1.0) / (self.n - 1) as f64) as f32;
+
+    let mut fcir = Array1::<f32>::zeros(self.n);
+    fcir[0] = self.x0.unwrap_or(0.0) as f32;
+
+    for i in 1..self.n {
+      let dfcir = (self.theta * (self.mu - fcir[i - 1] as f64) * dt as f64) as f32
+        + (self.sigma * (fcir[i - 1]).abs().sqrt() as f64) as f32 * fgn[i - 1];
+
+      fcir[i] = match self.use_sym.unwrap_or(false) {
+        true => (fcir[i - 1] + dfcir).abs(),
+        false => (fcir[i - 1] + dfcir).max(0.0),
+      };
+    }
+
+    fcir
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::{

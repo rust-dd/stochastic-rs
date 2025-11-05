@@ -36,3 +36,29 @@ impl SamplingExt<f64> for BM<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for BM<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt() as f64).unwrap()).mapv(|x| x as f32);
+    let mut bm = Array1::<f32>::zeros(self.n);
+    bm.slice_mut(s![1..]).assign(&gn);
+
+    for i in 1..self.n {
+      bm[i] += bm[i - 1];
+    }
+
+    bm
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

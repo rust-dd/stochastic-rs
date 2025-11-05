@@ -60,6 +60,38 @@ impl SamplingExt<f64> for ARCH<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for ARCH<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let m = self.alpha.len();
+    let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap()).mapv(|x| x as f32);
+    let mut x = Array1::<f32>::zeros(self.n);
+
+    for t in 0..self.n {
+      // compute sigma_t^2
+      let mut var_t = self.omega;
+      for i in 1..=m {
+        if t >= i {
+          let x_lag = x[t - i];
+          var_t += self.alpha[i - 1] * x_lag.powi(2);
+        }
+      }
+      let sigma_t = var_t.sqrt();
+      x[t] = sigma_t * z[t];
+    }
+
+    x
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::arr1;

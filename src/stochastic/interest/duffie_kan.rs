@@ -88,3 +88,36 @@ impl Sampling2DExt<f64> for DuffieKan<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl Sampling2DExt<f32> for DuffieKan<f32> {
+  fn sample(&self) -> [Array1<f32>; 2] {
+    let [cgn1, cgn2] = self.cgns.sample();
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+
+    let mut r = Array1::<f32>::zeros(self.n);
+    let mut x = Array1::<f32>::zeros(self.n);
+
+    r[0] = self.r0.unwrap_or(0.0);
+    x[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      r[i] = r[i - 1]
+        + (self.a1 * r[i - 1] + self.b1 * x[i - 1] + self.c1) * dt
+        + self.sigma1 * (self.alpha * r[i - 1] + self.beta * x[i - 1] + self.gamma) * cgn1[i - 1];
+      x[i] = x[i - 1]
+        + (self.a2 * r[i - 1] + self.b2 * x[i - 1] + self.c2) * dt
+        + self.sigma2 * (self.alpha * r[i - 1] + self.beta * x[i - 1] + self.gamma) * cgn2[i - 1];
+    }
+
+    [r, x]
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

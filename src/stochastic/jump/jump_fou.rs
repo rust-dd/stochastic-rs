@@ -76,6 +76,48 @@ where
   }
 }
 
+#[cfg(feature = "f32")]
+impl<D> JumpFOU<D, f32>
+where
+  D: Distribution<f32> + Send + Sync,
+{
+  fn fgn(&self) -> Array1<f32> {
+    self.fgn.sample()
+  }
+}
+
+#[cfg(feature = "f32")]
+impl<D> SamplingExt<f32> for JumpFOU<D, f32>
+where
+  D: Distribution<f32> + Send + Sync,
+{
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let fgn = self.fgn();
+    let mut jump_fou = Array1::<f32>::zeros(self.n);
+    jump_fou[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      let [.., jumps] = self.cpoisson.sample();
+
+      jump_fou[i] = jump_fou[i - 1]
+        + self.theta * (self.mu - jump_fou[i - 1]) * dt
+        + self.sigma * fgn[i - 1]
+        + jumps.sum();
+    }
+
+    jump_fou.slice(s![..self.n()]).to_owned()
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use rand_distr::Normal;

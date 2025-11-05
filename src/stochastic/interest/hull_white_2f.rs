@@ -52,3 +52,34 @@ impl Sampling2DExt<f64> for HullWhite2F<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl Sampling2DExt<f32> for HullWhite2F<f32> {
+  fn sample(&self) -> [Array1<f32>; 2] {
+    let [cgn1, cgn2] = self.cgns.sample();
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+
+    let mut x = Array1::<f32>::zeros(self.n);
+    let mut u = Array1::<f32>::zeros(self.n);
+
+    x[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      x[i] = x[i - 1]
+        + ((self.k)(i as f32 * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
+        + self.sigma1 * cgn1[i - 1];
+
+      u[i] = u[i - 1] + self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
+    }
+
+    [x, u]
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

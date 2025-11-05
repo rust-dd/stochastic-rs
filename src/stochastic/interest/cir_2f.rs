@@ -31,3 +31,24 @@ impl SamplingExt<f64> for CIR2F<f64> {
     self.x.m()
   }
 }
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for CIR2F<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let x = self.x.sample();
+    let y = self.y.sample();
+
+    let dt = self.x.t.unwrap_or(1.0) / (self.n() - 1) as f32;
+    let phi = Array1::<f32>::from_shape_fn(self.n(), |i| (self.phi)(i as f32 * dt));
+
+    x + y * phi
+  }
+
+  fn n(&self) -> usize {
+    self.x.n()
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.x.m()
+  }
+}

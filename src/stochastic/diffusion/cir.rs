@@ -58,6 +58,45 @@ impl SamplingExt<f64> for CIR<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for CIR<f32> {
+  /// Sample the Cox-Ingersoll-Ross (CIR) process
+  fn sample(&self) -> Array1<f32> {
+    assert!(
+      2.0 * self.theta * self.mu >= self.sigma.powi(2),
+      "2 * theta * mu < sigma^2"
+    );
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt() as f64).unwrap()).mapv(|x| x as f32);
+
+    let mut cir = Array1::<f32>::zeros(self.n);
+    cir[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      let dcir = self.theta * (self.mu - cir[i - 1]) * dt
+        + self.sigma * (cir[i - 1]).abs().sqrt() * gn[i - 1];
+
+      cir[i] = match self.use_sym.unwrap_or(false) {
+        true => (cir[i - 1] + dcir).abs(),
+        false => (cir[i - 1] + dcir).max(0.0),
+      };
+    }
+
+    cir
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::{

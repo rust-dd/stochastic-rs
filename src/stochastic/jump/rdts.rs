@@ -66,7 +66,9 @@ impl SamplingExt<f64> for RDTS<f64> {
             -self.lambda_minus
           };
 
-          let term1 = (self.alpha * poisson[j] / (2.0 * C * t_max)).powf(-1.0 / self.alpha);
+          let divisor: f64 = 2.0 * C * t_max;
+          let numerator: f64 = self.alpha * poisson[j];
+          let term1 = (numerator / divisor).powf(-1.0 / self.alpha);
           let term2 = 0.5 * E[j].powf(0.5) * U[j].powf(1.0 / self.alpha) / v_j.abs();
           let jump_size = term1.min(term2) * (v_j / v_j.abs());
 
@@ -86,6 +88,68 @@ impl SamplingExt<f64> for RDTS<f64> {
   }
 
   /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for RDTS<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let mut rng = rand::thread_rng();
+
+    let t_max = self.t.unwrap_or(1.0);
+    let dt = t_max / (self.n - 1) as f32;
+    let mut x = Array1::<f32>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(0.0);
+
+    let C = (gamma(2.0 - self.alpha as f64)
+      * (self.lambda_plus.powf(self.alpha - 2.0) as f64 + self.lambda_minus.powf(self.alpha - 2.0) as f64)) as f32;
+    let C = C.powi(-1);
+
+    let b_t = -C
+      * (gamma((1.0 - self.alpha as f64) / 2.0) / 2.0_f64.powf((self.alpha as f64 + 1.0) / 2.0)) as f32
+      * (self.lambda_plus.powf(self.alpha - 1.0) - self.lambda_minus.powf(self.alpha - 1.0));
+
+    let U = Array1::random(self.j, Uniform::new(0.0, 1.0)).mapv(|x: f64| x as f32);
+    let E = Array1::random(self.j, Exp::new(1.0).unwrap()).mapv(|x: f64| x as f32);
+    let tau = Array1::random(self.j, Uniform::new(0.0, 1.0)).mapv(|x: f64| x as f32);
+    let poisson = Poisson::new(1.0, Some(self.j), None, None);
+    let poisson = poisson.sample().mapv(|x| x as f32);
+
+    for i in 1..self.n {
+      let mut jump_component = 0.0;
+      let t_1 = (i - 1) as f32 * dt;
+      let t = i as f32 * dt;
+
+      for j in 1..self.j {
+        if tau[j] > t_1 && tau[j] <= t {
+          let v_j = if rng.gen_bool(0.5) {
+            self.lambda_plus
+          } else {
+            -self.lambda_minus
+          };
+
+          let divisor: f32 = 2.0 * C * t_max;
+          let numerator: f32 = self.alpha * poisson[j];
+          let term1 = (numerator / divisor).powf(-1.0 / self.alpha);
+          let term2 = 0.5 * E[j].powf(0.5) * U[j].powf(1.0 / self.alpha) / v_j.abs();
+          let jump_size = term1.min(term2) * (v_j / v_j.abs());
+
+          jump_component += jump_size;
+        }
+      }
+
+      x[i] = x[i - 1] + jump_component + b_t * dt;
+    }
+
+    x
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
   fn m(&self) -> Option<usize> {
     self.m
   }

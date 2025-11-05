@@ -32,3 +32,21 @@ impl SamplingExt<f64> for FVasicek<f64> {
     self.m
   }
 }
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for FVasicek<f32> {
+  /// Sample the Fractional Vasicek process
+  fn sample(&self) -> Array1<f32> {
+    self.fou.sample()
+  }
+
+  /// Number of time steps
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Number of samples for parallel sampling
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}

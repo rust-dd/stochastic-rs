@@ -60,6 +60,38 @@ impl SamplingExt<f64> for MAq<f64> {
   }
 }
 
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for MAq<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let q = self.theta.len();
+    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
+    let mut series = Array1::<f32>::zeros(self.n);
+
+    // MA recursion
+    for t in 0..self.n {
+      // Start with current noise
+      let mut val = noise[t];
+      // Add in past noises scaled by theta
+      for k in 1..=q {
+        if t >= k {
+          val += self.theta[k - 1] * noise[t - k];
+        }
+      }
+      series[t] = val;
+    }
+
+    series
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::arr1;
