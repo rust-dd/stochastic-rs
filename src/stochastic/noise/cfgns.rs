@@ -18,6 +18,7 @@ pub struct CFGNS<T> {
   cuda: bool,
 }
 
+#[cfg(feature = "f64")]
 impl CFGNS<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
@@ -33,6 +34,7 @@ impl CFGNS<f64> {
   }
 }
 
+#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for CFGNS<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(

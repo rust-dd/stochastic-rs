@@ -56,6 +56,7 @@ pub struct CGMY<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for CGMY<f64> {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();
@@ -130,7 +131,8 @@ impl SamplingExt<f32> for CGMY<f32> {
     x[0] = self.x0.unwrap_or(0.0);
 
     let C = (gamma(2.0 - self.alpha as f64)
-      * (self.lambda_plus.powf(self.alpha - 2.0) as f64 + self.lambda_minus.powf(self.alpha - 2.0) as f64)) as f32;
+      * (self.lambda_plus.powf(self.alpha - 2.0) as f64
+        + self.lambda_minus.powf(self.alpha - 2.0) as f64)) as f32;
     let C = C.powi(-1);
 
     let b_t = -C

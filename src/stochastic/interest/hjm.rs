@@ -22,6 +22,7 @@ pub struct HJM<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl Sampling3DExt<f64> for HJM<f64> {
   fn sample(&self) -> [Array1<f64>; 3] {
     let t_max = self.t.unwrap_or(1.0);
@@ -64,9 +65,12 @@ impl Sampling3DExt<f32> for HJM<f32> {
     let mut p = Array1::<f32>::zeros(self.n);
     let mut f = Array1::<f32>::zeros(self.n);
 
-    let gn1 = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
-    let gn2 = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
-    let gn3 = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn1 =
+      Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn2 =
+      Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn3 =
+      Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
 
     for i in 1..self.n {
       let t = i as f32 * dt;

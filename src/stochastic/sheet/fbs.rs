@@ -15,6 +15,7 @@ pub struct FBS<T> {
   pub R: T,
 }
 
+#[cfg(feature = "f64")]
 impl FBS<f64> {
   pub fn sample(&self) -> Array2<f64> {
     let (m, n, H, R) = (self.m, self.n, self.hurst, self.R);

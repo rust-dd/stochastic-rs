@@ -29,6 +29,7 @@ pub struct ARCH<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for ARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let m = self.alpha.len();

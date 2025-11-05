@@ -18,6 +18,7 @@ pub struct FJacobi<T> {
   cuda: bool,
 }
 
+#[cfg(feature = "f64")]
 impl FJacobi<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
@@ -33,6 +34,7 @@ impl FJacobi<f64> {
   }
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FJacobi<f64> {
   /// Sample the Fractional Jacobi process
   fn sample(&self) -> Array1<f64> {

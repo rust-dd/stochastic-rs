@@ -54,6 +54,7 @@ pub struct DuffieKan<T> {
   pub cgns: CGNS<T>,
 }
 
+#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for DuffieKan<f64> {
   /// Sample the Duffie-Kan process
   fn sample(&self) -> [Array1<f64>; 2] {

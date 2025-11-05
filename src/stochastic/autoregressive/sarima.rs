@@ -65,6 +65,7 @@ pub struct SARIMA<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for SARIMA<f64> {
   fn sample(&self) -> Array1<f64> {
     // Generate white noise for dimension n
@@ -159,7 +160,8 @@ impl SamplingExt<f64> for SARIMA<f64> {
 #[cfg(feature = "f32")]
 impl SamplingExt<f32> for SARIMA<f32> {
   fn sample(&self) -> Array1<f32> {
-    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
+    let noise =
+      Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
 
     let mut sarma_series = Array1::<f32>::zeros(self.n);
 

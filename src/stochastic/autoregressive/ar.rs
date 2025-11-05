@@ -33,6 +33,7 @@ pub struct ARp<T> {
   pub x0: Option<Array1<T>>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for ARp<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.phi.len();
@@ -76,7 +77,8 @@ impl SamplingExt<f64> for ARp<f64> {
 impl SamplingExt<f32> for ARp<f32> {
   fn sample(&self) -> Array1<f32> {
     let p = self.phi.len();
-    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
+    let noise =
+      Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
     let mut series = Array1::<f32>::zeros(self.n);
 
     // Fill initial conditions if provided

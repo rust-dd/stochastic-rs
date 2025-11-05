@@ -16,6 +16,7 @@ pub struct FVasicek<T> {
   pub fou: FOU<T>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FVasicek<f64> {
   /// Sample the Fractional Vasicek process
   fn sample(&self) -> Array1<f64> {

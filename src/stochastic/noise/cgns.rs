@@ -13,6 +13,7 @@ pub struct CGNS<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for CGNS<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(
@@ -54,8 +55,10 @@ impl Sampling2DExt<f32> for CGNS<f32> {
 
     let dt = self.t.unwrap_or(1.0) / self.n as f32;
     let mut cgns = Array2::<f32>::zeros((2, self.n));
-    let gn1 = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
-    let gn2 = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn1 =
+      Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn2 =
+      Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
 
     for i in 1..self.n {
       cgns[[0, i]] = gn1[i - 1];

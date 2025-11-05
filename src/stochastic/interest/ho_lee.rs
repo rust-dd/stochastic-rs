@@ -18,6 +18,7 @@ pub struct HoLee<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for HoLee<f64> {
   fn sample(&self) -> Array1<f64> {
     assert!(
@@ -61,7 +62,8 @@ impl SamplingExt<f32> for HoLee<f32> {
       "theta or f_T must be provided"
     );
     let dt = self.t / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn =
+      Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
 
     let mut r = Array1::<f32>::zeros(self.n);
 

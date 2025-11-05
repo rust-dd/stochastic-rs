@@ -24,6 +24,7 @@ pub struct FBM<T> {
   cuda: bool,
 }
 
+#[cfg(feature = "f64")]
 impl FBM<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
@@ -39,6 +40,7 @@ impl FBM<f64> {
   }
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FBM<f64> {
   fn sample(&self) -> Array1<f64> {
     let fgn = self.fgn();

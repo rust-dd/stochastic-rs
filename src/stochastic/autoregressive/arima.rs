@@ -27,6 +27,7 @@ pub struct ARIMA<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for ARIMA<f64> {
   fn sample(&self) -> Array1<f64> {
     // 1) Generate an AR(p) series with user-provided coefficients

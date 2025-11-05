@@ -17,6 +17,7 @@ pub struct FGBM<T> {
   cuda: bool,
 }
 
+#[cfg(feature = "f64")]
 impl FGBM<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
@@ -32,6 +33,7 @@ impl FGBM<f64> {
   }
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FGBM<f64> {
   /// Sample the Fractional Geometric Brownian Motion (FGBM) process
   fn sample(&self) -> Array1<f64> {

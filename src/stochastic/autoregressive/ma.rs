@@ -29,6 +29,7 @@ pub struct MAq<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for MAq<f64> {
   fn sample(&self) -> Array1<f64> {
     let q = self.theta.len();
@@ -64,7 +65,8 @@ impl SamplingExt<f64> for MAq<f64> {
 impl SamplingExt<f32> for MAq<f32> {
   fn sample(&self) -> Array1<f32> {
     let q = self.theta.len();
-    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
+    let noise =
+      Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
     let mut series = Array1::<f32>::zeros(self.n);
 
     // MA recursion

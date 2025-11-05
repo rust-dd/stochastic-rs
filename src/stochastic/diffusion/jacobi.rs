@@ -16,6 +16,7 @@ pub struct Jacobi<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for Jacobi<f64> {
   /// Sample the Jacobi process
   fn sample(&self) -> Array1<f64> {
@@ -66,7 +67,8 @@ impl SamplingExt<f32> for Jacobi<f32> {
     assert!(self.alpha < self.beta, "alpha must be less than beta");
 
     let dt = self.t.unwrap_or(1.0) as f32 / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt() as f64).unwrap()).mapv(|x| x as f32);
+    let gn =
+      Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt() as f64).unwrap()).mapv(|x| x as f32);
 
     let mut jacobi = Array1::<f32>::zeros(self.n);
     jacobi[0] = self.x0.unwrap_or(0.0);

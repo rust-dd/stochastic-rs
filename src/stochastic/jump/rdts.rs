@@ -30,6 +30,7 @@ pub struct RDTS<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for RDTS<f64> {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();
@@ -104,11 +105,13 @@ impl SamplingExt<f32> for RDTS<f32> {
     x[0] = self.x0.unwrap_or(0.0);
 
     let C = (gamma(2.0 - self.alpha as f64)
-      * (self.lambda_plus.powf(self.alpha - 2.0) as f64 + self.lambda_minus.powf(self.alpha - 2.0) as f64)) as f32;
+      * (self.lambda_plus.powf(self.alpha - 2.0) as f64
+        + self.lambda_minus.powf(self.alpha - 2.0) as f64)) as f32;
     let C = C.powi(-1);
 
     let b_t = -C
-      * (gamma((1.0 - self.alpha as f64) / 2.0) / 2.0_f64.powf((self.alpha as f64 + 1.0) / 2.0)) as f32
+      * (gamma((1.0 - self.alpha as f64) / 2.0) / 2.0_f64.powf((self.alpha as f64 + 1.0) / 2.0))
+        as f32
       * (self.lambda_plus.powf(self.alpha - 1.0) - self.lambda_minus.powf(self.alpha - 1.0));
 
     let U = Array1::random(self.j, Uniform::new(0.0, 1.0)).mapv(|x: f64| x as f32);

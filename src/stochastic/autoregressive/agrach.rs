@@ -39,6 +39,7 @@ pub struct AGARCH<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for AGARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();

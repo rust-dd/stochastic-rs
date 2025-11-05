@@ -33,6 +33,7 @@ pub struct BGM<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingVExt<f64> for BGM<f64> {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -73,7 +74,8 @@ impl SamplingVExt<f32> for BGM<f32> {
     }
 
     for i in 0..self.xn {
-      let gn = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+      let gn =
+        Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
       for j in 1..self.n {
         let f_old = fwd[(i, j - 1)];
         fwd[(i, j)] = f_old + f_old * self.lambda[i] * gn[j - 1];

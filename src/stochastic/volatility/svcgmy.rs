@@ -43,6 +43,7 @@ pub struct SVCGMY<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for SVCGMY<f64> {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::thread_rng();

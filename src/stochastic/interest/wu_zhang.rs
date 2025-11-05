@@ -46,6 +46,7 @@ pub struct WuZhangD<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingVExt<f64> for WuZhangD<f64> {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -99,8 +100,10 @@ impl SamplingVExt<f32> for WuZhangD<f32> {
     }
 
     for i in 0..self.xn {
-      let gn_f = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
-      let gn_v = Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+      let gn_f =
+        Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+      let gn_v =
+        Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
 
       for j in 1..self.n {
         let v_old = fv[(i + self.xn, j - 1)].max(0.0);

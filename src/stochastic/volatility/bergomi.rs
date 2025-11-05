@@ -16,6 +16,7 @@ pub struct Bergomi<T> {
   pub cgns: CGNS<T>,
 }
 
+#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for Bergomi<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;

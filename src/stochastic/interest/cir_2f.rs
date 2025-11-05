@@ -12,6 +12,7 @@ pub struct CIR2F<T> {
   pub phi: fn(T) -> T,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for CIR2F<f64> {
   fn sample(&self) -> Array1<f64> {
     let x = self.x.sample();

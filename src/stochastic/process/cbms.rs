@@ -12,6 +12,7 @@ pub struct CBMS<T> {
   pub cgns: CGNS<T>,
 }
 
+#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for CBMS<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(

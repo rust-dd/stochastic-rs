@@ -16,6 +16,7 @@ pub struct NIG<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for NIG<f64> {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -50,8 +51,10 @@ impl SamplingExt<f32> for NIG<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
     let scale = (dt.powf(2.0) / self.kappa) as f64;
     let mean = (dt as f64) / scale;
-    let ig = Array1::random(self.n - 1, InverseGaussian::new(mean, scale).unwrap()).mapv(|x| x as f32);
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let ig =
+      Array1::random(self.n - 1, InverseGaussian::new(mean, scale).unwrap()).mapv(|x| x as f32);
+    let gn =
+      Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
     let mut nig = Array1::zeros(self.n);
     nig[0] = self.x0.unwrap_or(0.0);
 

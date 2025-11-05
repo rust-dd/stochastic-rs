@@ -17,6 +17,7 @@ pub struct VG<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for VG<f64> {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -59,7 +60,8 @@ impl SamplingExt<f32> for VG<f32> {
     let mut vg = Array1::<f32>::zeros(self.n);
     vg[0] = self.x0.unwrap_or(0.0);
 
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn =
+      Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
     let gammas = Array1::random(self.n - 1, Gamma::new(shape, scale).unwrap()).mapv(|x| x as f32);
 
     for i in 1..self.n {

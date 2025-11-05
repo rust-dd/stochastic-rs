@@ -38,6 +38,7 @@ pub struct TGARCH<T> {
   pub m: Option<usize>,
 }
 
+#[cfg(feature = "f64")]
 impl SamplingExt<f64> for TGARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
