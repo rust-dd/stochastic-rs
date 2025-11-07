@@ -8,6 +8,12 @@
 
 **stochastic-rs** is a high-performance Rust library for simulating and analyzing stochastic processes. Designed for applications in quantitative finance, AI training, and statistical modeling, it provides efficient tools to generate synthetic data and analyze complex stochastic systems.
 
+## OpenAPI for Data Generation
+
+An OpenAPI interface is available to generate stochastic data on the fly. This feature is experimental and continuously expanding.
+
+**API Documentation:** [https://stochastic-api-production.up.railway.app/docs](https://stochastic-api-production.up.railway.app/docs)
+
 ## Installation
 
 Add **stochastic-rs** to your `Cargo.toml`:
