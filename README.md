@@ -12,7 +12,7 @@
 
 An OpenAPI interface is available to generate stochastic data on the fly. This feature is experimental and continuously expanding.
 
-**API Documentation:** [https://stochastic-api-production.up.railway.app/docs](https://stochastic-api-production.up.railway.app/docs)
+**API Documentation:** [https://stochastic-api-production.up.railway.app/](https://stochastic-api-production.up.railway.app/)
 
 ## Installation
 
