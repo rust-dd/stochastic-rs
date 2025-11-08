@@ -15,7 +15,7 @@ pub struct SimdGamma {
 
 impl SimdGamma {
   pub fn new(alpha: f32, scale: f32) -> Self {
-    assert!(alpha >= 1.0 && scale > 0.0);
+    assert!(alpha > 0.0 && scale > 0.0);
     Self {
       alpha,
       scale,
@@ -25,26 +25,40 @@ impl SimdGamma {
     }
   }
 
-  /// Bulk fill using Marsaglia–Tsang; uses scalar acceptance per sample but reduces per-call overhead.
+  /// Bulk fill using Marsaglia–Tsang (for alpha >= 1) or Ahrens-Dieter (for alpha < 1)
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
-    let d = self.alpha - 1.0 / 3.0;
-    let c = 1.0 / (3.0 * d).sqrt();
-    for x in out.iter_mut() {
-      let val = loop {
-        let z = self.normal.sample(rng);
-        let v = (1.0 + c * z).powi(3);
-        if v <= 0.0 {
-          continue;
-        }
+    if self.alpha < 1.0 {
+      // For alpha < 1, use the transformation: if X ~ Gamma(alpha+1, scale), then X*U^(1/alpha) ~ Gamma(alpha, scale)
+      let gamma_plus_one = SimdGamma::new(self.alpha + 1.0, self.scale);
+      for x in out.iter_mut() {
+        let g = gamma_plus_one.sample(rng);
         let u: f32 = rng.gen_range(0.0..1.0);
-        if u < 1.0 - 0.0331 * z.powi(4) {
-          break self.scale * d * v;
-        }
-        if u.ln() < 0.5 * z * z + d * (1.0 - v + v.ln()) {
-          break self.scale * d * v;
-        }
-      };
-      *x = val;
+        *x = g * u.powf(1.0 / self.alpha);
+      }
+    } else {
+      // Marsaglia-Tsang for alpha >= 1
+      let d = self.alpha - 1.0 / 3.0;
+      let c = 1.0 / (9.0 * d).sqrt();
+      for x in out.iter_mut() {
+        let val = loop {
+          let z = self.normal.sample(rng);
+          let v = (1.0 + c * z).powi(3);
+          if v <= 0.0 {
+            continue;
+          }
+          let u: f32 = rng.gen_range(0.0..1.0);
+          let z2 = z * z;
+          // Quick acceptance
+          if u < 1.0 - 0.0331 * z2 * z2 {
+            break d * v;
+          }
+          // Log acceptance
+          if u.ln() < 0.5 * z2 + d * (1.0 - v + v.ln()) {
+            break d * v;
+          }
+        };
+        *x = self.scale * val;
+      }
     }
   }
 

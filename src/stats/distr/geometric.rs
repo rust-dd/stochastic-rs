@@ -22,6 +22,8 @@ impl SimdGeometric {
     use crate::stats::distr::fill_f32_zero_one;
     use wide::f32x8;
 
+    // rand_distr Geometric returns number of failures before first success (starts at 0)
+    // Formula: floor(ln(U) / ln(1-p)) where U ~ Uniform(0,1)
     let ln1p = (1.0 - self.p).ln();
     let inv_ln1p = f32x8::splat(1.0 / ln1p);
     let mut u = [0.0f32; 8];
@@ -30,10 +32,11 @@ impl SimdGeometric {
     for chunk in &mut chunks {
       fill_f32_zero_one(rng, &mut u);
       let v = f32x8::from(u);
-      let g = (v.ln() * inv_ln1p).floor() + f32x8::splat(1.0);
+      // Number of failures before success (can be 0)
+      let g = (v.ln() * inv_ln1p).floor();
       let mut tmp = g.to_array();
       for t in &mut tmp {
-        *t = (*t).max(1.0);
+        *t = (*t).max(0.0);
       }
       for (o, t) in chunk.iter_mut().zip(tmp.iter()) {
         *o = *t as u32;
@@ -43,10 +46,10 @@ impl SimdGeometric {
     if !rem.is_empty() {
       fill_f32_zero_one(rng, &mut u);
       let v = f32x8::from(u);
-      let g = (v.ln() * inv_ln1p).floor() + f32x8::splat(1.0);
+      let g = (v.ln() * inv_ln1p).floor();
       let tmp = g.to_array();
       for i in 0..rem.len() {
-        let val = tmp[i].max(1.0);
+        let val = tmp[i].max(0.0);
         rem[i] = val as u32;
       }
     }

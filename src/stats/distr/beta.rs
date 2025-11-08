@@ -16,7 +16,7 @@ pub struct SimdBeta {
 
 impl SimdBeta {
   pub fn new(alpha: f32, beta: f32) -> Self {
-    assert!(alpha >= 1.0 && beta >= 1.0);
+    assert!(alpha > 0.0 && beta > 0.0);
     Self {
       alpha,
       beta,

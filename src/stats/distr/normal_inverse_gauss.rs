@@ -18,9 +18,19 @@ pub struct SimdNormalInverseGauss {
 }
 
 impl SimdNormalInverseGauss {
+  /// Create a NIG with 4 parameters (alpha, beta, delta, mu)
+  /// This is the full parameterization.
+  /// NIG(α, β, δ, μ) where α > |β|, δ > 0
   pub fn new(alpha: f32, beta: f32, delta: f32, mu: f32) -> Self {
-    // Typically alpha> |beta|, delta>0, etc.
-    let ig = SimdInverseGauss::new(delta * (alpha * alpha - beta * beta).sqrt(), delta);
+    assert!(
+      alpha > 0.0 && alpha > beta.abs(),
+      "NIG: alpha must be > |beta|"
+    );
+    assert!(delta > 0.0, "NIG: delta must be positive");
+    let gamma = (alpha * alpha - beta * beta).sqrt();
+    let ig_mean = delta / gamma;
+    let ig_shape = delta * delta;
+    let ig = SimdInverseGauss::new(ig_mean, ig_shape);
     let normal = SimdNormal::new(0.0, 1.0);
     Self {
       alpha,
