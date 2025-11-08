@@ -79,6 +79,52 @@ impl SamplingExt<f64> for GARCH<f64> {
     x
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.alpha.len();
+    let q = self.beta.len();
+
+    // Generate white noise z_t
+    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
+
+    // Arrays for X_t and sigma_t^2
+    let mut x = Array1::<f64>::zeros(self.n);
+    let mut sigma2 = Array1::<f64>::zeros(self.n);
+
+    // Sum of alpha/beta for unconditional variance initialization
+    let sum_alpha: f64 = self.alpha.iter().sum();
+    let sum_beta: f64 = self.beta.iter().sum();
+    let denom = (1.0 - sum_alpha - sum_beta).max(1e-8);
+
+    for t in 0..self.n {
+      if t == 0 {
+        sigma2[t] = self.omega / denom;
+      } else {
+        let mut var_t = self.omega;
+
+        // Sum alpha_i * X_{t-i}^2
+        for i in 1..=p {
+          if t >= i {
+            var_t += self.alpha[i - 1] * x[t - i].powi(2);
+          }
+        }
+        // Sum beta_j * sigma2[t-j]
+        for j in 1..=q {
+          if t >= j {
+            var_t += self.beta[j - 1] * sigma2[t - j];
+          }
+        }
+        sigma2[t] = var_t;
+      }
+      // X_t = sigma_t * z[t]
+      x[t] = sigma2[t].sqrt() * z[t] as f64;
+    }
+
+    x
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -96,6 +142,52 @@ impl SamplingExt<f32> for GARCH<f32> {
 
     // Generate white noise z_t
     let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap()).mapv(|x| x as f32);
+
+    // Arrays for X_t and sigma_t^2
+    let mut x = Array1::<f32>::zeros(self.n);
+    let mut sigma2 = Array1::<f32>::zeros(self.n);
+
+    // Sum of alpha/beta for unconditional variance initialization
+    let sum_alpha: f32 = self.alpha.iter().sum();
+    let sum_beta: f32 = self.beta.iter().sum();
+    let denom = (1.0 - sum_alpha - sum_beta).max(1e-8);
+
+    for t in 0..self.n {
+      if t == 0 {
+        sigma2[t] = self.omega / denom;
+      } else {
+        let mut var_t = self.omega;
+
+        // Sum alpha_i * X_{t-i}^2
+        for i in 1..=p {
+          if t >= i {
+            var_t += self.alpha[i - 1] * x[t - i].powi(2);
+          }
+        }
+        // Sum beta_j * sigma2[t-j]
+        for j in 1..=q {
+          if t >= j {
+            var_t += self.beta[j - 1] * sigma2[t - j];
+          }
+        }
+        sigma2[t] = var_t;
+      }
+      // X_t = sigma_t * z[t]
+      x[t] = sigma2[t].sqrt() * z[t];
+    }
+
+    x
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.alpha.len();
+    let q = self.beta.len();
+
+    // Generate white noise z_t
+    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
 
     // Arrays for X_t and sigma_t^2
     let mut x = Array1::<f32>::zeros(self.n);

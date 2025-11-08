@@ -46,6 +46,36 @@ impl SamplingExt<f64> for Jacobi<f64> {
     jacobi
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    assert!(self.alpha > 0.0, "alpha must be positive");
+    assert!(self.beta > 0.0, "beta must be positive");
+    assert!(self.sigma > 0.0, "sigma must be positive");
+    assert!(self.alpha < self.beta, "alpha must be less than beta");
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt() as f32));
+
+    let mut jacobi = Array1::<f64>::zeros(self.n);
+    jacobi[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      jacobi[i] = match jacobi[i - 1] {
+        _ if jacobi[i - 1] <= 0.0 && i > 0 => 0.0,
+        _ if jacobi[i - 1] >= 1.0 && i > 0 => 1.0,
+        _ => {
+          jacobi[i - 1]
+            + (self.alpha - self.beta * jacobi[i - 1]) * dt
+            + self.sigma * (jacobi[i - 1] * (1.0 - jacobi[i - 1])).sqrt() * gn[i - 1] as f64
+        }
+      }
+    }
+
+    jacobi
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -69,6 +99,36 @@ impl SamplingExt<f32> for Jacobi<f32> {
     let dt = self.t.unwrap_or(1.0) as f32 / (self.n - 1) as f32;
     let gn =
       Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt() as f64).unwrap()).mapv(|x| x as f32);
+
+    let mut jacobi = Array1::<f32>::zeros(self.n);
+    jacobi[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      jacobi[i] = match jacobi[i - 1] {
+        _ if jacobi[i - 1] <= 0.0 && i > 0 => 0.0,
+        _ if jacobi[i - 1] >= 1.0 && i > 0 => 1.0,
+        _ => {
+          jacobi[i - 1]
+            + (self.alpha - self.beta * jacobi[i - 1]) * dt
+            + self.sigma * (jacobi[i - 1] * (1.0 - jacobi[i - 1])).sqrt() * gn[i - 1]
+        }
+      }
+    }
+
+    jacobi
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    assert!(self.alpha > 0.0, "alpha must be positive");
+    assert!(self.beta > 0.0, "beta must be positive");
+    assert!(self.sigma > 0.0, "sigma must be positive");
+    assert!(self.alpha < self.beta, "alpha must be less than beta");
+
+    let dt = self.t.unwrap_or(1.0) as f32 / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
 
     let mut jacobi = Array1::<f32>::zeros(self.n);
     jacobi[0] = self.x0.unwrap_or(0.0);

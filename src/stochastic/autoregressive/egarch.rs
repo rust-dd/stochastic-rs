@@ -104,6 +104,61 @@ impl SamplingExt<f64> for EGARCH<f64> {
     x
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.alpha.len();
+    let q = self.beta.len();
+
+    // Generate white noise z_t ~ N(0,1)
+    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
+
+    // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
+    let mut x = Array1::<f64>::zeros(self.n);
+    let mut log_sigma2 = Array1::<f64>::zeros(self.n);
+
+    // For normal(0,1), the expected absolute value is sqrt(2/pi)
+    let e_abs_z = (2.0 / std::f64::consts::PI).sqrt();
+
+    for t in 0..self.n {
+      if t == 0 {
+        // Initialize log-variance (e.g., with omega)
+        log_sigma2[t] = self.omega;
+      } else {
+        // 1) Compute the shock term from p lags
+        let mut shock_term = 0.0;
+        for i in 1..=p {
+          if t >= i {
+            // Standardized residual from step t-i
+            let sigma_t_i = (log_sigma2[t - i].exp()).sqrt();
+            let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
+
+            // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
+            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
+          }
+        }
+
+        // 2) Sum in the log-variance from q lags
+        let mut persistence_term = 0.0;
+        for j in 1..=q {
+          if t >= j {
+            persistence_term += self.beta[j - 1] * log_sigma2[t - j];
+          }
+        }
+
+        // 3) Final log-variance
+        log_sigma2[t] = self.omega + shock_term + persistence_term;
+      }
+
+      // Convert log_sigma2[t] to sigma_t and compute X_t
+      let sigma_t = (log_sigma2[t].exp()).sqrt();
+      x[t] = sigma_t * z[t] as f64;
+    }
+
+    x
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -121,6 +176,61 @@ impl SamplingExt<f32> for EGARCH<f32> {
 
     // Generate white noise z_t ~ N(0,1)
     let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap()).mapv(|x| x as f32);
+
+    // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
+    let mut x = Array1::<f32>::zeros(self.n);
+    let mut log_sigma2 = Array1::<f32>::zeros(self.n);
+
+    // For normal(0,1), the expected absolute value is sqrt(2/pi)
+    let e_abs_z = (2.0 / std::f32::consts::PI).sqrt();
+
+    for t in 0..self.n {
+      if t == 0 {
+        // Initialize log-variance (e.g., with omega)
+        log_sigma2[t] = self.omega;
+      } else {
+        // 1) Compute the shock term from p lags
+        let mut shock_term = 0.0;
+        for i in 1..=p {
+          if t >= i {
+            // Standardized residual from step t-i
+            let sigma_t_i = (log_sigma2[t - i].exp()).sqrt();
+            let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
+
+            // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
+            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
+          }
+        }
+
+        // 2) Sum in the log-variance from q lags
+        let mut persistence_term = 0.0;
+        for j in 1..=q {
+          if t >= j {
+            persistence_term += self.beta[j - 1] * log_sigma2[t - j];
+          }
+        }
+
+        // 3) Final log-variance
+        log_sigma2[t] = self.omega + shock_term + persistence_term;
+      }
+
+      // Convert log_sigma2[t] to sigma_t and compute X_t
+      let sigma_t = (log_sigma2[t].exp()).sqrt();
+      x[t] = sigma_t * z[t];
+    }
+
+    x
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.alpha.len();
+    let q = self.beta.len();
+
+    // Generate white noise z_t ~ N(0,1)
+    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
 
     // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
     let mut x = Array1::<f32>::zeros(self.n);

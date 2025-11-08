@@ -59,6 +59,23 @@ impl SamplingExt<f64> for GBM<f64> {
     gbm
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt() as f32));
+
+    let mut gbm = Array1::<f64>::zeros(self.n);
+    gbm[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      gbm[i] = gbm[i - 1] + self.mu * gbm[i - 1] * dt + self.sigma * gbm[i - 1] * gn[i - 1] as f64
+    }
+
+    gbm
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -187,6 +204,23 @@ impl SamplingExt<f32> for GBM<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
     let gn =
       Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+
+    let mut gbm = Array1::<f32>::zeros(self.n);
+    gbm[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      gbm[i] = gbm[i - 1] + self.mu * gbm[i - 1] * dt + self.sigma * gbm[i - 1] * gn[i - 1]
+    }
+
+    gbm
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
 
     let mut gbm = Array1::<f32>::zeros(self.n);
     gbm[0] = self.x0.unwrap_or(0.0);

@@ -38,6 +38,28 @@ impl SamplingExt<f64> for VG<f64> {
     vg
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+
+    let shape = dt / self.nu;
+    let scale = self.nu;
+
+    let mut vg = Array1::<f64>::zeros(self.n);
+    vg[0] = self.x0.unwrap_or(0.0);
+
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt() as f32));
+    let gammas = Array1::random(self.n - 1, Gamma::new(shape, scale).unwrap());
+
+    for i in 1..self.n {
+      vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * gn[i - 1] as f64;
+    }
+
+    vg
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -62,6 +84,28 @@ impl SamplingExt<f32> for VG<f32> {
 
     let gn =
       Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gammas = Array1::random(self.n - 1, Gamma::new(shape, scale).unwrap()).mapv(|x| x as f32);
+
+    for i in 1..self.n {
+      vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * gn[i - 1];
+    }
+
+    vg
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+
+    let shape = (dt / self.nu) as f64;
+    let scale = self.nu as f64;
+
+    let mut vg = Array1::<f32>::zeros(self.n);
+    vg[0] = self.x0.unwrap_or(0.0);
+
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
     let gammas = Array1::random(self.n - 1, Gamma::new(shape, scale).unwrap()).mapv(|x| x as f32);
 
     for i in 1..self.n {

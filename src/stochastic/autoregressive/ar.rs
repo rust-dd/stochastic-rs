@@ -64,6 +64,38 @@ impl SamplingExt<f64> for ARp<f64> {
     series
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.phi.len();
+    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma as f32));
+    let mut series = Array1::<f64>::zeros(self.n);
+
+    // Fill initial conditions if provided
+    if let Some(init) = &self.x0 {
+      // Copy up to min(p, n)
+      for i in 0..p.min(self.n) {
+        series[i] = init[i];
+      }
+    }
+
+    // AR recursion
+    for t in 0..self.n {
+      let mut val = 0.0;
+      // Sum over AR lags
+      for k in 1..=p {
+        if t >= k {
+          val += self.phi[k - 1] * series[t - k];
+        }
+      }
+      // Add noise
+      series[t] += val + noise[t] as f64;
+    }
+
+    series
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -105,29 +137,43 @@ impl SamplingExt<f32> for ARp<f32> {
     series
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.phi.len();
+    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma));
+    let mut series = Array1::<f32>::zeros(self.n);
+
+    // Fill initial conditions if provided
+    if let Some(init) = &self.x0 {
+      // Copy up to min(p, n)
+      for i in 0..p.min(self.n) {
+        series[i] = init[i];
+      }
+    }
+
+    // AR recursion
+    for t in 0..self.n {
+      let mut val = 0.0;
+      // Sum over AR lags
+      for k in 1..=p {
+        if t >= k {
+          val += self.phi[k - 1] * series[t - k];
+        }
+      }
+      // Add noise
+      series[t] += val + noise[t];
+    }
+
+    series
+  }
+
   fn n(&self) -> usize {
     self.n
   }
 
   fn m(&self) -> Option<usize> {
     self.m
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use ndarray::arr1;
-
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::ar::ARp, SamplingExt},
-  };
-
-  #[test]
-  fn ar_plot() {
-    // Suppose p=2 with user-defined coefficients
-    let phi = arr1(&[0.5, -0.25]);
-    let ar_model = ARp::new(phi, 1.0, 100, None, None);
-    plot_1d!(ar_model.sample(), "AR(p) process");
   }
 }

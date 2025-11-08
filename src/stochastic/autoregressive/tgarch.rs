@@ -92,6 +92,61 @@ impl SamplingExt<f64> for TGARCH<f64> {
     x
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.alpha.len();
+    let q = self.beta.len();
+
+    // Standard normal noise
+    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
+
+    // Arrays for X_t and sigma_t^2
+    let mut x = Array1::<f64>::zeros(self.n);
+    let mut sigma2 = Array1::<f64>::zeros(self.n);
+
+    // Sum up alpha + 0.5 gamma + beta for unconditional variance approximation
+    let sum_alpha: f64 = self.alpha.iter().sum();
+    let sum_gamma_half: f64 = self.gamma.iter().sum::<f64>() * 0.5;
+    let sum_beta: f64 = self.beta.iter().sum();
+    let denom = (1.0 - sum_alpha - sum_gamma_half - sum_beta).max(1e-8);
+
+    for t in 0..self.n {
+      if t == 0 {
+        sigma2[t] = self.omega / denom;
+      } else {
+        let mut var_t = self.omega;
+
+        // Sum over p lags
+        for i in 1..=p {
+          if t >= i {
+            let x_lag = x[t - i];
+            // Threshold indicator
+            let indicator = if x_lag < 0.0 { 1.0 } else { 0.0 };
+
+            // alpha_i * X_{t-i}^2 + gamma_i * X_{t-i}^2 * indicator
+            var_t +=
+              self.alpha[i - 1] * x_lag.powi(2) + self.gamma[i - 1] * x_lag.powi(2) * indicator;
+          }
+        }
+
+        // Sum over q lags
+        for j in 1..=q {
+          if t >= j {
+            var_t += self.beta[j - 1] * sigma2[t - j];
+          }
+        }
+
+        sigma2[t] = var_t;
+      }
+      // X_t = sigma_t * z_t
+      x[t] = sigma2[t].sqrt() * z[t] as f64;
+    }
+
+    x
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -109,6 +164,61 @@ impl SamplingExt<f32> for TGARCH<f32> {
 
     // Standard normal noise
     let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap()).mapv(|x| x as f32);
+
+    // Arrays for X_t and sigma_t^2
+    let mut x = Array1::<f32>::zeros(self.n);
+    let mut sigma2 = Array1::<f32>::zeros(self.n);
+
+    // Sum up alpha + 0.5 gamma + beta for unconditional variance approximation
+    let sum_alpha: f32 = self.alpha.iter().sum();
+    let sum_gamma_half: f32 = self.gamma.iter().sum::<f32>() * 0.5;
+    let sum_beta: f32 = self.beta.iter().sum();
+    let denom = (1.0 - sum_alpha - sum_gamma_half - sum_beta).max(1e-8);
+
+    for t in 0..self.n {
+      if t == 0 {
+        sigma2[t] = self.omega / denom;
+      } else {
+        let mut var_t = self.omega;
+
+        // Sum over p lags
+        for i in 1..=p {
+          if t >= i {
+            let x_lag = x[t - i];
+            // Threshold indicator
+            let indicator = if x_lag < 0.0 { 1.0 } else { 0.0 };
+
+            // alpha_i * X_{t-i}^2 + gamma_i * X_{t-i}^2 * indicator
+            var_t +=
+              self.alpha[i - 1] * x_lag.powi(2) + self.gamma[i - 1] * x_lag.powi(2) * indicator;
+          }
+        }
+
+        // Sum over q lags
+        for j in 1..=q {
+          if t >= j {
+            var_t += self.beta[j - 1] * sigma2[t - j];
+          }
+        }
+
+        sigma2[t] = var_t;
+      }
+      // X_t = sigma_t * z_t
+      x[t] = sigma2[t].sqrt() * z[t];
+    }
+
+    x
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let p = self.alpha.len();
+    let q = self.beta.len();
+
+    // Standard normal noise
+    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
 
     // Arrays for X_t and sigma_t^2
     let mut x = Array1::<f32>::zeros(self.n);

@@ -56,6 +56,34 @@ impl SamplingExt<f64> for ARIMA<f64> {
     result
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    // 1) Generate an AR(p) series with user-provided coefficients
+    let ar_model = ARp::new(
+      self.ar_coefs.clone(),
+      self.sigma,
+      self.n,
+      None, // batch
+      None, // x0
+    );
+    let ar_series = ar_model.sample_simd();
+
+    // 2) Generate an MA(q) series with user-provided coefficients
+    let ma_model = MAq::new(self.ma_coefs.clone(), self.sigma, self.n, None);
+    let ma_series = ma_model.sample_simd();
+
+    // 3) Summation -> ARMA(p,q)
+    let arma_series = &ar_series + &ma_series;
+
+    // 4) Inverse difference d times -> ARIMA(p,d,q)
+    let mut result = arma_series;
+    for _ in 0..self.d {
+      result = inverse_difference(&result);
+    }
+
+    result
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -73,6 +101,24 @@ impl SamplingExt<f32> for ARIMA<f32> {
 
     let ma_model = MAq::new(self.ma_coefs.clone(), self.sigma, self.n, None);
     let ma_series = ma_model.sample();
+
+    let arma_series = &ar_series + &ma_series;
+
+    let mut result = arma_series;
+    for _ in 0..self.d {
+      result = inverse_difference_f32(&result);
+    }
+
+    result
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    let ar_model = ARp::new(self.ar_coefs.clone(), self.sigma, self.n, None, None);
+    let ar_series = ar_model.sample_simd();
+
+    let ma_model = MAq::new(self.ma_coefs.clone(), self.sigma, self.n, None);
+    let ma_series = ma_model.sample_simd();
 
     let arma_series = &ar_series + &ma_series;
 

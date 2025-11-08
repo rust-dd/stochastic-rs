@@ -148,6 +148,68 @@ impl SamplingExt<f64> for SARIMA<f64> {
     integrated
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    // Generate white noise for dimension n
+    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma as f32));
+
+    let mut sarma_series = Array1::<f64>::zeros(self.n);
+
+    for t in 0..self.n {
+      let mut val = 0.0;
+
+      // Current noise is always added for MA structure
+      val += noise[t] as f64;
+
+      // Non-seasonal AR part
+      for (lag_idx, &phi) in self.non_seasonal_ar_coefs.iter().enumerate() {
+        let k = lag_idx + 1; // backshift exponent
+        if t >= k {
+          val += phi * sarma_series[t - k];
+        }
+      }
+
+      // Seasonal AR part
+      for (lag_idx, &phi_s) in self.seasonal_ar_coefs.iter().enumerate() {
+        let k = (lag_idx + 1) * self.s;
+        if t >= k {
+          val += phi_s * sarma_series[t - k];
+        }
+      }
+
+      // Non-seasonal MA part
+      for (lag_idx, &theta) in self.non_seasonal_ma_coefs.iter().enumerate() {
+        let k = lag_idx + 1;
+        if t >= k {
+          val += theta * noise[t - k] as f64;
+        }
+      }
+
+      // Seasonal MA part
+      for (lag_idx, &theta_s) in self.seasonal_ma_coefs.iter().enumerate() {
+        let k = (lag_idx + 1) * self.s;
+        if t >= k {
+          val += theta_s * noise[t - k] as f64;
+        }
+      }
+
+      sarma_series[t] = val;
+    }
+
+    let mut integrated = sarma_series;
+    for _ in 0..self.D {
+      integrated = inverse_seasonal_difference(&integrated, self.s);
+    }
+
+    for _ in 0..self.d {
+      integrated = inverse_difference(&integrated);
+    }
+
+    integrated
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -212,6 +274,61 @@ impl SamplingExt<f32> for SARIMA<f32> {
     integrated
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma));
+
+    let mut sarma_series = Array1::<f32>::zeros(self.n);
+
+    for t in 0..self.n {
+      let mut val = 0.0;
+      val += noise[t];
+
+      for (lag_idx, &phi) in self.non_seasonal_ar_coefs.iter().enumerate() {
+        let k = lag_idx + 1;
+        if t >= k {
+          val += phi * sarma_series[t - k];
+        }
+      }
+
+      for (lag_idx, &phi_s) in self.seasonal_ar_coefs.iter().enumerate() {
+        let k = (lag_idx + 1) * self.s;
+        if t >= k {
+          val += phi_s * sarma_series[t - k];
+        }
+      }
+
+      for (lag_idx, &theta) in self.non_seasonal_ma_coefs.iter().enumerate() {
+        let k = lag_idx + 1;
+        if t >= k {
+          val += theta * noise[t - k];
+        }
+      }
+
+      for (lag_idx, &theta_s) in self.seasonal_ma_coefs.iter().enumerate() {
+        let k = (lag_idx + 1) * self.s;
+        if t >= k {
+          val += theta_s * noise[t - k];
+        }
+      }
+
+      sarma_series[t] = val;
+    }
+
+    let mut integrated = sarma_series;
+    for _ in 0..self.D {
+      integrated = inverse_seasonal_difference_f32(&integrated, self.s);
+    }
+
+    for _ in 0..self.d {
+      integrated = inverse_difference_f32(&integrated);
+    }
+
+    integrated
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -221,7 +338,7 @@ impl SamplingExt<f32> for SARIMA<f32> {
   }
 }
 
-/// Inverse *non-seasonal* differencing (1-B)^{-1} once.
+/// Inverse *non-seasonal* differencing
 ///
 /// If Y = (1-B)X, then
 ///   X[0] = Y[0],

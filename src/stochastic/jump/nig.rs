@@ -34,6 +34,26 @@ impl SamplingExt<f64> for NIG<f64> {
     nig
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+    use crate::stats::distr::inverse_gauss::SimdInverseGauss;
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+    let scale = dt.powf(2.0) / self.kappa;
+    let mean = dt / scale;
+    let ig = Array1::random(self.n - 1, SimdInverseGauss::new(mean as f32, scale as f32));
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt() as f32));
+    let mut nig = Array1::zeros(self.n);
+    nig[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      nig[i] = nig[i - 1] + self.theta * ig[i - 1] as f64 + self.sigma * (ig[i - 1] as f64).sqrt() * gn[i - 1] as f64
+    }
+
+    nig
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -55,6 +75,26 @@ impl SamplingExt<f32> for NIG<f32> {
       Array1::random(self.n - 1, InverseGaussian::new(mean, scale).unwrap()).mapv(|x| x as f32);
     let gn =
       Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let mut nig = Array1::zeros(self.n);
+    nig[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      nig[i] = nig[i - 1] + self.theta * ig[i - 1] + self.sigma * ig[i - 1].sqrt() * gn[i - 1]
+    }
+
+    nig
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+    use crate::stats::distr::inverse_gauss::SimdInverseGauss;
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let scale = dt.powf(2.0) / self.kappa;
+    let mean = dt / scale;
+    let ig = Array1::random(self.n - 1, SimdInverseGauss::new(mean, scale));
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
     let mut nig = Array1::zeros(self.n);
     nig[0] = self.x0.unwrap_or(0.0);
 

@@ -19,6 +19,14 @@ impl SamplingExt<f64> for Gn<f64> {
     Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap())
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) / self.n as f64;
+    Array1::random(self.n, SimdNormal::new(0.0, dt.sqrt() as f32)).mapv(|x| x as f64)
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -33,6 +41,14 @@ impl SamplingExt<f32> for Gn<f32> {
   fn sample(&self) -> Array1<f32> {
     let dt = self.t.unwrap_or(1.0) / self.n as f32;
     Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32)
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) / self.n as f32;
+    Array1::random(self.n, SimdNormal::new(0.0, dt.sqrt()))
   }
 
   fn n(&self) -> usize {

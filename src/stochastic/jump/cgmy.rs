@@ -109,6 +109,13 @@ impl SamplingExt<f64> for CGMY<f64> {
     x
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    // CGMY uses complex Lévy measure - currently delegates to standard sample
+    // Could be optimized with SimdExp for exponential components
+    self.sample()
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -172,6 +179,13 @@ impl SamplingExt<f32> for CGMY<f32> {
     }
 
     x
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    // CGMY uses complex Lévy measure - currently delegates to standard sample
+    // Could be optimized with SimdExp for exponential components
+    self.sample()
   }
 
   fn n(&self) -> usize {

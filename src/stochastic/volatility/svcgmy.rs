@@ -124,6 +124,13 @@ impl SamplingExt<f64> for SVCGMY<f64> {
     x
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    // SVCGMY uses non-central chi-squared and complex jump processes
+    // Currently delegates to standard sample
+    self.sample()
+  }
+
   fn n(&self) -> usize {
     self.n
   }
@@ -211,6 +218,13 @@ impl SamplingExt<f32> for SVCGMY<f32> {
     }
 
     x
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    // SVCGMY uses non-central chi-squared and complex jump processes
+    // Currently delegates to standard sample
+    self.sample()
   }
 
   fn n(&self) -> usize {
