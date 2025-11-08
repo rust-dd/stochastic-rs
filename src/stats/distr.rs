@@ -32,8 +32,9 @@ mod tests {
   use rand_distr::Distribution;
 
   use crate::stats::distr::{
-    beta::SimdBeta, binomial::SimdBinomial, cauchy::SimdCauchy, gamma::SimdGamma,
-    geometric::SimdGeometric, hypergeometric::SimdHypergeometric, inverse_gauss::SimdInverseGauss,
+    beta::SimdBeta, binomial::SimdBinomial, cauchy::SimdCauchy, chi_square::SimdChiSquared,
+    exp::SimdExp, gamma::SimdGamma, geometric::SimdGeometric,
+    hypergeometric::SimdHypergeometric, inverse_gauss::SimdInverseGauss,
     lognormal::SimdLogNormal, normal::SimdNormal, normal_inverse_gauss::SimdNormalInverseGauss,
     pareto::SimdPareto, poisson::SimdPoisson, studentt::SimdStudentT, uniform::SimdUniform,
     weibull::SimdWeibull,
@@ -100,12 +101,12 @@ mod tests {
 
   #[test]
   fn combined_all_distributions() {
-    // Create a 4x4 grid for 14 distributions (2 leftover)
+    // Create a 5x4 grid for 17 distributions
     let mut plot = Plot::new();
     plot.set_layout(
       Layout::new().grid(
         LayoutGrid::new()
-          .rows(4)
+          .rows(5)
           .columns(4)
           .pattern(GridPattern::Independent),
       ),
@@ -122,13 +123,26 @@ mod tests {
       let dist = SimdNormal::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -4.0, 4.0);
-      let trace = Scatter::new(xs, bins)
-        .name("Normal(0,1)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Normal(0,1) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, -4.0, 4.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Normal(0,1) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 2) Cauchy => subplot (1,2)
@@ -138,13 +152,26 @@ mod tests {
       let dist = SimdCauchy::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -10.0, 10.0);
-      let trace = Scatter::new(xs, bins)
-        .name("Cauchy(0,1)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Cauchy(0,1) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, -10.0, 10.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Cauchy(0,1) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 3) LogNormal => (1,3)
@@ -154,13 +181,26 @@ mod tests {
       let dist = SimdLogNormal::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 8.0);
-      let trace = Scatter::new(xs, bins)
-        .name("LogNormal(0,1)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("LogNormal(0,1) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::LogNormal::<f32>::new(0.0, 1.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 8.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("LogNormal(0,1) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 4) Pareto => (1,4)
@@ -170,13 +210,26 @@ mod tests {
       let dist = SimdPareto::new(1.0, 1.5);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 10.0);
-      let trace = Scatter::new(xs, bins)
-        .name("Pareto(x_m=1,alpha=1.5)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Pareto(1,1.5) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Pareto::<f32>::new(1.0, 1.5).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 10.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Pareto(1,1.5) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 5) Weibull => (2,1)
@@ -186,13 +239,26 @@ mod tests {
       let dist = SimdWeibull::new(1.0, 1.5);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 3.0);
-      let trace = Scatter::new(xs, bins)
-        .name("Weibull(lambda=1,k=1.5)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Weibull(1,1.5) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 3.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Weibull(1,1.5) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 6) Gamma => (2,2)
@@ -202,13 +268,26 @@ mod tests {
       let dist = SimdGamma::new(2.0, 2.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 120, 0.0, 20.0);
-      let trace = Scatter::new(xs, bins)
-        .name("Gamma(alpha=2,scale=2)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Gamma(2,2) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 120, 0.0, 20.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Gamma(2,2) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 7) Beta => (2,3)
@@ -218,13 +297,26 @@ mod tests {
       let dist = SimdBeta::new(2.0, 2.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 1.0);
-      let trace = Scatter::new(xs, bins)
-        .name("Beta(2,2)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Beta(2,2) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 1.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Beta(2,2) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 8) Inverse Gaussian => (2,4)
@@ -234,13 +326,26 @@ mod tests {
       let dist = SimdInverseGauss::new(1.0, 2.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 3.0);
-      let trace = Scatter::new(xs, bins)
-        .name("InverseGauss(mu=1,lambda=2)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("InverseGauss(1,2) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison (InverseGaussian in rand_distr)
+      let mut rng = thread_rng();
+      let rd = rand_distr::InverseGaussian::<f32>::new(1.0, 2.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 3.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("InverseGauss(1,2) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 9) Normal-Inverse Gauss => (3,1)
@@ -250,13 +355,26 @@ mod tests {
       let dist = SimdNormalInverseGauss::new(2.0, 0.0, 1.0, 0.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -3.0, 3.0);
-      let trace = Scatter::new(xs, bins)
-        .name("NIG(alpha=2,beta=0)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("NIG(2,0) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr has NormalInverseGaussian
+      let mut rng = thread_rng();
+      let rd = rand_distr::NormalInverseGaussian::<f32>::new(2.0, 0.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, -3.0, 3.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("NIG(2,0) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 10) StudentT => (3,2)
@@ -266,13 +384,26 @@ mod tests {
       let dist = SimdStudentT::new(5.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 120, -5.0, 5.0);
-      let trace = Scatter::new(xs, bins)
-        .name("StudentT(df=5)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("StudentT(5) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 120, -5.0, 5.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("StudentT(5) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 11) Binomial => (3,3) (discrete)
@@ -281,26 +412,30 @@ mod tests {
       let mut rng = thread_rng();
       let dist = SimdBinomial::new(10, 0.3);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
-      // we do 0..10 pmf
-      let mut bins = vec![0.0; 11];
-      for &val in &samples {
-        if val <= 10 {
-          bins[val as usize] += 1.0;
-        }
-      }
-      let total = samples.len() as f32;
-      for b in bins.iter_mut() {
-        *b /= total;
-      }
-      let xs: Vec<f32> = (0..=10).map(|i| i as f32).collect();
+      let (xs, bins) = make_discrete_pmf(&samples, 10);
 
-      let trace = Scatter::new(xs, bins)
-        .name("Binomial(10,0.3)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Binomial(10,0.3) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Binomial::new(10, 0.3).unwrap();
+      let samples_rd: Vec<u32> = (0..sample_size)
+        .map(|_| rd.sample(&mut rng) as u32)
+        .collect();
+      let (_, bins_rd) = make_discrete_pmf(&samples_rd, 10);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Binomial(10,0.3) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 12) Geometric => (3,4)
@@ -309,26 +444,29 @@ mod tests {
       let mut rng = thread_rng();
       let dist = SimdGeometric::new(0.25);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
-      // let's do 0..20
-      let max_range = 20;
-      let mut bins = vec![0.0; max_range + 1];
-      for &val in &samples {
-        if val as usize <= max_range {
-          bins[val as usize] += 1.0;
-        }
-      }
-      let total = samples.len() as f32;
-      for b in bins.iter_mut() {
-        *b /= total;
-      }
-      let xs: Vec<f32> = (0..=max_range).map(|i| i as f32).collect();
-      let trace = Scatter::new(xs, bins)
-        .name("Geometric(p=0.25)")
+      let (xs, bins) = make_discrete_pmf(&samples, 20);
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Geometric(0.25) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Geometric::new(0.25).unwrap();
+      let samples_rd: Vec<u32> = (0..sample_size)
+        .map(|_| rd.sample(&mut rng) as u32)
+        .collect();
+      let (_, bins_rd) = make_discrete_pmf(&samples_rd, 20);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Geometric(0.25) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 13) HyperGeometric => (4,1)
@@ -338,25 +476,30 @@ mod tests {
       // N=20, K=5, n=6
       let dist = SimdHypergeometric::new(20, 5, 6);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
-      let mut bins = vec![0.0; 7];
-      for &val in &samples {
-        if val <= 6 {
-          bins[val as usize] += 1.0;
-        }
-      }
-      let total = samples.len() as f32;
-      for b in bins.iter_mut() {
-        *b /= total;
-      }
-      let xs: Vec<f32> = (0..=6).map(|i| i as f32).collect();
+      let (xs, bins) = make_discrete_pmf(&samples, 6);
 
-      let trace = Scatter::new(xs, bins)
-        .name("HyperGeo(N=20,K=5,n=6)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("HyperGeo(20,5,6) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Hypergeometric::new(20, 5, 6).unwrap();
+      let samples_rd: Vec<u32> = (0..sample_size)
+        .map(|_| rd.sample(&mut rng) as u32)
+        .collect();
+      let (_, bins_rd) = make_discrete_pmf(&samples_rd, 6);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("HyperGeo(20,5,6) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     // 14) Poisson => (4,2)
@@ -365,42 +508,117 @@ mod tests {
       let mut rng = thread_rng();
       let dist = SimdPoisson::new(4.0);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
+      let (xs, bins) = make_discrete_pmf(&samples, 15);
 
-      let max_range = 15;
-      let mut bins = vec![0.0; max_range + 1];
-      for &val in &samples {
-        if val <= max_range as u32 {
-          bins[val as usize] += 1.0;
-        }
-      }
-      let total = samples.len() as f32;
-      for b in bins.iter_mut() {
-        *b /= total;
-      }
-      let xs: Vec<f32> = (0..=max_range).map(|i| i as f32).collect();
-      let trace = Scatter::new(xs, bins)
-        .name("Poisson(lambda=4)")
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Poisson(4) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
+      let samples_rd: Vec<u32> = (0..sample_size)
+        .map(|_| rd.sample(&mut rng) as u32)
+        .collect();
+      let (_, bins_rd) = make_discrete_pmf(&samples_rd, 15);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Poisson(4) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
-    // 15) Uniform (0,1)
+    // 15) Uniform (0,1) => (4,3)
     {
       let (xa, ya) = subplot_axes(4, 3);
       let mut rng = thread_rng();
       let dist = SimdUniform::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
-      let (xs, bins) = make_histogram(&samples, 100, -4.0, 4.0);
-      let trace = Scatter::new(xs, bins)
-        .name("Uniform(0,1)")
+      let (xs, bins) = make_histogram(&samples, 100, 0.0, 1.0);
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Uniform(0,1) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Uniform::<f32>::new(0.0, 1.0);
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 1.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Uniform(0,1) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
+    }
+
+    // 16) Exponential => (4,4)
+    {
+      let (xa, ya) = subplot_axes(4, 4);
+      let mut rng = thread_rng();
+      let dist = SimdExp::new(1.5);
+      let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
+      let (xs, bins) = make_histogram(&samples, 100, 0.0, 4.0);
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("Exp(1.5) - SIMD")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::Exp::<f32>::new(1.5).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 4.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("Exp(1.5) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
+    }
+
+    // 17) Chi-Squared => (5,1)
+    {
+      let (xa, ya) = subplot_axes(5, 1);
+      let mut rng = thread_rng();
+      let dist = SimdChiSquared::new(5.0);
+      let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
+      let (xs, bins) = make_histogram(&samples, 100, 0.0, 20.0);
+      let trace = Scatter::new(xs.clone(), bins)
+        .name("ChiSquared(5) - SIMD")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace);
+
+      // rand_distr comparison
+      let mut rng = thread_rng();
+      let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
+      let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
+      let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 20.0);
+      let trace_rd = Scatter::new(xs, bins_rd)
+        .name("ChiSquared(5) - rand_distr")
+        .mode(Mode::Lines)
+        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .x_axis(&xa)
+        .y_axis(&ya);
+      plot.add_trace(trace_rd);
     }
 
     plot.show();
