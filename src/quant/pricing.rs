@@ -6,3 +6,4 @@ pub mod merton_jump;
 pub mod breeden_litzenberger;
 pub mod dupire;
 pub mod pnl;
+pub mod sabr;
