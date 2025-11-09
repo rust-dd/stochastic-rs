@@ -32,6 +32,7 @@ implied-vol = "1.0.0"
 indicatif = "0.17.8"
 kendalls = "0.2.2"
 levenberg-marquardt = "0.14.0" # UPDATE: rand
+lbfgsb-rs-pure = "0.1.1"
 libloading = { version = "0.8.6", optional = true }
 linreg = "0.2.0"
 openblas-src = { version = "0.10", features = ["cblas", "static"], optional = true }

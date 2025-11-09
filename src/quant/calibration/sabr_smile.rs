@@ -1,5 +1,6 @@
 use impl_new_derive::ImplNew;
-use rand::{thread_rng, Rng};
+use lbfgsb_rs_pure::LBFGSB;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use plotly::common::Mode;
 use plotly::{Plot, Scatter};
@@ -137,11 +138,11 @@ fn objective_all(
   term_atm + term_rr + term_rr_delta + term_bf + term_bf_delta + 1e3 * penalty_bounds
 }
 
+// Basin-hopping with L-BFGS-B (matching Python scipy.optimize.basinhopping)
 fn basin_hopping_opt(
   x0: [f64; 8],
-  n_restarts: usize,
-  iters_per_start: usize,
-  step: f64,
+  niter: usize,
+  stepsize: f64,
   s: f64,
   r_d: f64,
   r_f: f64,
@@ -152,80 +153,100 @@ fn basin_hopping_opt(
   bounds_lo: [f64; 8],
   bounds_hi: [f64; 8],
 ) -> ([f64; 8], f64) {
-  let mut rng = thread_rng();
+  // Use same seed as Python for reproducibility
+  let mut rng = StdRng::seed_from_u64(3);
   let mut best_x = x0;
   let mut best_f = objective_all(
-    &x0, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
+    &x0,
+    s,
+    r_d,
+    r_f,
+    tau,
+    sigma_atm,
+    sigma_rr,
+    sigma_bf,
+    &bounds_lo,
+    &bounds_hi,
   );
 
-  for r in 0..n_restarts {
-    let mut x = x0;
-    if r > 0 {
-      for i in 0..8 {
-        let width = (bounds_hi[i] - bounds_lo[i]) * 0.1;
-        x[i] = clamp(
-          x[i] + rng.gen_range(-width..width),
-          bounds_lo[i],
-          bounds_hi[i],
-        );
-      }
+  // Set up L-BFGS-B solver with memory = 10 (matching Python's default)
+  let mut solver = LBFGSB::new(10);
+  
+  let lower = bounds_lo.to_vec();
+  let upper = bounds_hi.to_vec();
+
+  for _ in 0..niter {
+    // Random perturbation (matching Python's stepsize)
+    let mut x_new = best_x;
+    for i in 0..8 {
+      x_new[i] += rng.gen_range(-stepsize..stepsize);
     }
 
-    let mut f_cur = objective_all(
-      &x, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-    );
-    for _ in 0..iters_per_start {
-      let mut x_new = x;
-      for i in 0..8 {
-        x_new[i] = clamp(
-          x_new[i] + rng.gen_range(-step..step),
-          bounds_lo[i],
-          bounds_hi[i],
-        );
+    // Accept test: hard boundary rejection (matching Python's accept_test)
+    let mut accept = true;
+    for i in 0..8 {
+      if x_new[i] < bounds_lo[i] || x_new[i] > bounds_hi[i] {
+        accept = false;
+        break;
       }
-      let f_new = objective_all(
-        &x_new, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
+    }
+    if !accept {
+      continue;
+    }
+
+    // Local minimization with L-BFGS-B (matching Python's method='L-BFGS-B')
+    let mut obj_fn = |x: &[f64]| -> (f64, Vec<f64>) {
+      let f = objective_all(
+        x,
+        s,
+        r_d,
+        r_f,
+        tau,
+        sigma_atm,
+        sigma_rr,
+        sigma_bf,
+        &bounds_lo,
+        &bounds_hi,
       );
-      if f_new <= f_cur {
-        x = x_new;
-        f_cur = f_new;
+      
+      // Compute numerical gradient (finite differences)
+      let mut grad = vec![0.0; x.len()];
+      let eps = 1e-8;
+      for i in 0..x.len() {
+        let mut x_plus = x.to_vec();
+        x_plus[i] += eps;
+        let f_plus = objective_all(
+          &x_plus,
+          s,
+          r_d,
+          r_f,
+          tau,
+          sigma_atm,
+          sigma_rr,
+          sigma_bf,
+          &bounds_lo,
+          &bounds_hi,
+        );
+        grad[i] = (f_plus - f) / eps;
+      }
+      
+      (f, grad)
+    };
+
+    let mut x_local_vec = x_new.to_vec();
+    let result = solver.minimize(&mut x_local_vec, &lower, &upper, &mut obj_fn);
+
+    if let Ok(sol) = result {
+      let mut x_local = [0.0; 8];
+      for i in 0..8 {
+        x_local[i] = sol.x[i];
       }
 
-      if rng.gen_bool(0.2) {
-        let mut improved = true;
-        let mut tries = 0;
-        while improved && tries < 5 {
-          improved = false;
-          tries += 1;
-          for i in 0..8 {
-            let mut cand = x;
-            cand[i] = clamp(cand[i] + step, bounds_lo[i], bounds_hi[i]);
-            let f1 = objective_all(
-              &cand, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-            );
-            if f1 < f_cur {
-              x = cand;
-              f_cur = f1;
-              improved = true;
-              continue;
-            }
-            cand[i] = clamp(x[i] - step, bounds_lo[i], bounds_hi[i]);
-            let f2 = objective_all(
-              &cand, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-            );
-            if f2 < f_cur {
-              x = cand;
-              f_cur = f2;
-              improved = true;
-            }
-          }
-        }
+      // Update global best
+      if sol.f < best_f {
+        best_f = sol.f;
+        best_x = x_local;
       }
-    }
-
-    if f_cur < best_f {
-      best_f = f_cur;
-      best_x = x;
     }
   }
 
@@ -245,19 +266,16 @@ impl SabrSmileCalibrator {
 
     let x0 = [s + 0.2, s + 0.1, s - 0.1, s + 0.1, s - 0.1, 0.11, 0.6, 0.5];
 
+    let niter = if (tau - (1.0 / 365.0)).abs() < 1e-12 {
+      1000
+    } else {
+      100
+    };
+
     let (x_best, f_best) = basin_hopping_opt(
       x0,
-      if (tau - (1.0 / 365.0)).abs() < 1e-12 {
-        25
-      } else {
-        10
-      },
-      if (tau - (1.0 / 365.0)).abs() < 1e-12 {
-        1500
-      } else {
-        800
-      },
-      5e-4,
+      niter,
+      0.0005,
       s,
       self.r_d,
       self.r_f,
@@ -373,18 +391,21 @@ mod tests {
       (1.0, 13.94, 2.9, 0.55),
     ];
 
-    for (tau, atm_bps, rr_bps, bf_bps) in table {
+    for (i, (tau, atm_bps, rr_bps, bf_bps)) in table.iter().enumerate() {
       let quotes = SabrSmileQuotes {
-        tau,
+        tau: *tau,
         sigma_atm: atm_bps / 100.0,
         sigma_rr: rr_bps / 100.0,
         sigma_bf: bf_bps / 100.0,
       };
       let calib = SabrSmileCalibrator::new(s, r_brl, r_usd, quotes);
       let res = calib.calibrate();
-      println!("Calibration result: {:?}", res);
+      println!("\nTenor {} (T={:.4}):", ["ON", "1W", "2W", "1M", "2M", "3M", "6M", "1Y"][i], tau);
+      println!("  K_ATM={:.6}, alpha={:.6}, nu={:.6}, rho={:.6}", 
+               res.k_atm, res.params.alpha, res.params.nu, res.params.rho);
+      println!("  Objective: {:.6e}", res.objective);
       assert!(res.success);
-      calib.plot(&res);
+      assert!(res.objective < 1e-3, "Objective too large for tenor {}", i);
     }
   }
 }
