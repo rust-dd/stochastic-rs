@@ -61,25 +61,6 @@ impl SamplingExt<f64> for CEV<f64> {
     cev
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt() as f32));
-
-    let mut cev = Array1::<f64>::zeros(self.n);
-    cev[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      cev[i] = cev[i - 1]
-        + self.mu * cev[i - 1] * dt
-        + self.sigma * cev[i - 1].powf(self.gamma) * gn[i - 1] as f64
-    }
-
-    cev
-  }
-
   /// Number of time steps
   fn n(&self) -> usize {
     self.n

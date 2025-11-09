@@ -21,11 +21,6 @@ impl SamplingExt<f64> for Vasicek<f64> {
     self.ou.sample()
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    self.ou.sample_simd()
-  }
-
   /// Number of time steps
   fn n(&self) -> usize {
     self.n

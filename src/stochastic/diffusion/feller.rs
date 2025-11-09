@@ -75,6 +75,30 @@ impl SamplingExt<f32> for FellerLogistic<f32> {
     x
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
+
+    let mut x = Array1::<f32>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      let xi = x[i - 1].max(0.0);
+      let drift = self.kappa * (self.theta - xi) * xi * dt;
+      let diff = self.sigma * xi.sqrt() * gn[i - 1];
+      let next = xi + drift + diff;
+      x[i] = match self.use_sym.unwrap_or(false) {
+        true => next.abs(),
+        false => next.max(0.0),
+      };
+    }
+
+    x
+  }
+
   fn n(&self) -> usize {
     self.n
   }

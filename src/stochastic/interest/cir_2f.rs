@@ -24,17 +24,6 @@ impl SamplingExt<f64> for CIR2F<f64> {
     x + y * phi
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    let x = self.x.sample_simd();
-    let y = self.y.sample_simd();
-
-    let dt = self.x.t.unwrap_or(1.0) / (self.n() - 1) as f64;
-    let phi = Array1::<f64>::from_shape_fn(self.n(), |i| (self.phi)(i as f64 * dt));
-
-    x + y * phi
-  }
-
   fn n(&self) -> usize {
     self.x.n()
   }

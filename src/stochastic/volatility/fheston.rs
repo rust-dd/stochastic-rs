@@ -53,40 +53,6 @@ impl SamplingExt<f64> for RoughHeston<f64> {
     v2
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt() as f32));
-    let mut yt = Array1::<f64>::zeros(self.n);
-    let mut zt = Array1::<f64>::zeros(self.n);
-    let mut v2 = Array1::zeros(self.n);
-
-    yt[0] = self.theta + (self.v0.unwrap_or(1.0).powi(2) - self.theta) * (-self.kappa * 0.0).exp();
-    zt[0] = 0.0;
-    v2[0] = self.v0.unwrap_or(1.0).powi(2);
-
-    for i in 1..self.n {
-      let t = dt * i as f64;
-      yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
-      zt[i] = zt[i - 1] * (-self.kappa * dt).exp() + (v2[i - 1].powi(2)).sqrt() * gn[i - 1] as f64;
-
-      let integral = (0..i)
-        .map(|j| {
-          let tj = j as f64 * dt;
-          ((t - tj).powf(self.hurst - 0.5) * zt[j]) * dt
-        })
-        .sum::<f64>();
-
-      v2[i] = yt[i]
-        + self.c1.unwrap_or(1.0) * self.nu * zt[i]
-        + self.c2.unwrap_or(1.0) * self.nu * integral / gamma(self.hurst + 0.5);
-    }
-
-    v2
-  }
-
   /// Number of time steps
   fn n(&self) -> usize {
     self.n

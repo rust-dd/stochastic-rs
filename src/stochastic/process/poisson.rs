@@ -47,27 +47,6 @@ impl SamplingExt<f64> for Poisson<f64> {
     }
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::exp::SimdExp;
-
-    if let Some(n) = self.n {
-      let exponentials = Array1::random(n, SimdExp::new((1.0 / self.lambda) as f32));
-      let mut poisson = Array1::<f64>::zeros(n);
-      for i in 1..n {
-        poisson[i] = poisson[i - 1] + exponentials[i - 1] as f64;
-      }
-
-      poisson
-    } else if let Some(_t_max) = self.t_max {
-      // For t_max-based sampling, delegate to standard sample()
-      // as dynamic array growth doesn't benefit from SIMD
-      self.sample()
-    } else {
-      panic!("n or t_max must be provided");
-    }
-  }
-
   /// Number of time steps
   fn n(&self) -> usize {
     self.n.unwrap_or(0)

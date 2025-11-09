@@ -82,58 +82,6 @@ impl SamplingExt<f64> for CTS<f64> {
     x
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::{exp::SimdExp, uniform::SimdUniform};
-    let mut rng = rand::thread_rng();
-
-    let t_max = self.t.unwrap_or(1.0);
-    let dt = t_max / (self.n - 1) as f64;
-    let mut x = Array1::<f64>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0);
-
-    let C = (gamma(2.0 - self.alpha)
-      * (self.lambda_plus.powf(self.alpha - 2.0) + self.lambda_minus.powf(self.alpha - 2.0)))
-    .powi(-1);
-
-    let b_t = -C
-      * gamma(1.0 - self.alpha)
-      * (self.lambda_plus.powf(self.alpha - 1.0) - self.lambda_minus.powf(self.alpha - 1.0));
-
-    let U = Array1::random(self.j, SimdUniform::new(0.0, 1.0)).mapv(|x: f32| x as f64);
-    let E = Array1::random(self.j, SimdExp::new(1.0)).mapv(|x: f32| x as f64);
-    let tau = Array1::random(self.j, SimdUniform::new(0.0, 1.0)).mapv(|x: f32| x as f64);
-    let poisson = Poisson::new(1.0, Some(self.j), None, None);
-    let poisson = poisson.sample();
-
-    for i in 1..self.n {
-      let mut jump_component = 0.0;
-      let t_1 = (i - 1) as f64 * dt;
-      let t = i as f64 * dt;
-
-      for j in 1..self.j {
-        if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
-            self.lambda_plus
-          } else {
-            -self.lambda_minus
-          };
-
-          let numerator: f64 = self.alpha * poisson[j];
-          let term1 = (numerator / C).powf(-1.0 / self.alpha);
-          let term2 = E[j] * U[j].powf(1.0 / self.alpha) / v_j.abs();
-          let jump_size = term1.min(term2) * (v_j / v_j.abs());
-
-          jump_component += jump_size;
-        }
-      }
-
-      x[i] = x[i - 1] + jump_component + b_t * dt;
-    }
-
-    x
-  }
-
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -219,8 +167,7 @@ impl SamplingExt<f32> for CTS<f32> {
     let U = Array1::<f32>::random(self.j, SimdUniform::new(0.0, 1.0));
     let E = Array1::<f32>::random(self.j, SimdExp::new(1.0));
     let tau = Array1::<f32>::random(self.j, SimdUniform::new(0.0, 1.0));
-    let poisson = Poisson::new(1.0, Some(self.j), None, None);
-    let poisson = poisson.sample().mapv(|x| x as f32);
+    let poisson = Poisson::<f32>::new(1.0, Some(self.j), None, None).sample_simd();
 
     for i in 1..self.n {
       let mut jump_component = 0.0;

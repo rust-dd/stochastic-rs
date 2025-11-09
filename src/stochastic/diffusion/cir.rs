@@ -48,34 +48,6 @@ impl SamplingExt<f64> for CIR<f64> {
     cir
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    assert!(
-      2.0 * self.theta * self.mu >= self.sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt() as f32));
-
-    let mut cir = Array1::<f64>::zeros(self.n);
-    cir[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      let dcir = self.theta * (self.mu - cir[i - 1]) * dt
-        + self.sigma * (cir[i - 1]).abs().sqrt() * gn[i - 1] as f64;
-
-      cir[i] = match self.use_sym.unwrap_or(false) {
-        true => (cir[i - 1] + dcir).abs(),
-        false => (cir[i - 1] + dcir).max(0.0),
-      };
-    }
-
-    cir
-  }
-
   /// Number of time steps
   fn n(&self) -> usize {
     self.n

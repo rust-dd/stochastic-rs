@@ -71,6 +71,28 @@ impl SamplingExt<f32> for GBMIH<f32> {
     x
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f32> {
+    use crate::stats::distr::normal::SimdNormal;
+
+    if let Some(s) = &self.sigmas {
+      assert_eq!(s.len(), self.n - 1, "sigmas length must be n - 1");
+    }
+
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
+
+    let mut x = Array1::<f32>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(0.0);
+
+    for i in 1..self.n {
+      let sigma_i = self.sigmas.as_ref().map(|s| s[i - 1]).unwrap_or(self.sigma);
+      x[i] = x[i - 1] + self.mu * x[i - 1] * dt + sigma_i * x[i - 1] * gn[i - 1];
+    }
+
+    x
+  }
+
   fn n(&self) -> usize {
     self.n
   }

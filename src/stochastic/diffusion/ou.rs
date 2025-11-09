@@ -33,25 +33,6 @@ impl SamplingExt<f64> for OU<f64> {
     ou
   }
 
-  #[cfg(feature = "simd")]
-  // TODO: experimental
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let dt = self.t.unwrap_or(1.0) as f32 / (self.n - 1) as f32;
-    let gn = Array1::random(self.n, SimdNormal::new(0.0, dt.sqrt()));
-
-    let mut ou = Array1::<f64>::zeros(self.n);
-    ou[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      ou[i] =
-        ou[i - 1] + self.theta * (self.mu - ou[i - 1]) * dt as f64 + self.sigma * gn[i - 1] as f64
-    }
-
-    ou
-  }
-
   /// Number of time steps
   fn n(&self) -> usize {
     self.n

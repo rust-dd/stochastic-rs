@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs"
-version = "0.15.1"
+version = "0.15.2"
 edition = "2021"
 license = "MIT"
 description = "A Rust library for quant finance and simulating stochastic processes."
@@ -82,7 +82,7 @@ f64 = []
 jemalloc = ["dep:tikv-jemallocator"]
 malliavin = []
 mimalloc = ["dep:mimalloc"]
-simd = []
+simd = ["f32"]
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars"]
 
 [lib]
