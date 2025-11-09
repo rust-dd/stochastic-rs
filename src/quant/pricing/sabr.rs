@@ -81,15 +81,16 @@ pub fn model_price_hagan(
 pub struct SabrPricer {
   pub s: f64,
   pub k: f64,
-  pub r_d: f64,
-  pub r_f: f64,
+  /// Risk-free rate (domestic)
+  pub r: f64,
+  /// Dividend/foreign rate (q)
+  pub q: Option<f64>,
   pub alpha: f64,
   pub nu: f64,
   pub rho: f64,
   pub tau: Option<f64>,
   pub eval: Option<chrono::NaiveDate>,
   pub expiration: Option<chrono::NaiveDate>,
-  pub option_type: OptionType,
 }
 
 impl TimeExt for SabrPricer {
@@ -106,7 +107,7 @@ impl TimeExt for SabrPricer {
 
 impl SabrPricer {
   pub fn forward(&self) -> f64 {
-    forward_fx(self.s, self.tau().unwrap(), self.r_d, self.r_f)
+    forward_fx(self.s, self.tau().unwrap(), self.r, self.q.unwrap_or(0.0))
   }
   pub fn sigma(&self) -> f64 {
     hagan_implied_vol_beta1(
@@ -118,14 +119,14 @@ impl SabrPricer {
       self.rho,
     )
   }
-  /// FX delta definition used by the Python reference (forward-based, premium-included).
+  /// Forward-based (premium-included) delta with r_f := q
   pub fn sabr_fx_forward_delta(&self, phi: f64) -> f64 {
     fx_delta_from_forward(
       self.k,
       self.forward(),
       self.sigma(),
       self.tau().unwrap(),
-      self.r_f,
+      self.q.unwrap_or(0.0),
       phi,
     )
   }
@@ -138,15 +139,16 @@ impl PricerExt for SabrPricer {
       self.s,
       sigma,
       self.k,
-      self.r_d,
-      Some(self.r_d),
-      Some(self.r_f),
+      self.r,
       None,
+      None,
+      self.q,
       Some(self.tau().unwrap()),
       self.eval,
       self.expiration,
-      self.option_type,
-      BSMCoc::GARMAN1983,
+      // ctor requires an OptionType even though we return both prices
+      OptionType::Call,
+      BSMCoc::MERTON1973,
     );
     pricer.calculate_call_put()
   }
@@ -160,32 +162,6 @@ impl PricerExt for SabrPricer {
       option_type == OptionType::Call,
     )
   }
-
-  fn derivatives(&self) -> Vec<f64> {
-    // Use the underlying Black pricer with SABR vol to source Greeks
-    let sigma = self.sigma();
-    let pricer = BSMPricer::new(
-      self.s,
-      sigma,
-      self.k,
-      self.r_d,
-      Some(self.r_d),
-      Some(self.r_f),
-      None,
-      Some(self.tau().unwrap()),
-      self.eval,
-      self.expiration,
-      self.option_type,
-      BSMCoc::GARMAN1983,
-    );
-    vec![
-      pricer.delta(),
-      pricer.gamma(),
-      pricer.theta(),
-      pricer.vega(),
-      pricer.rho(),
-    ]
-  }
 }
 
 #[cfg(test)]
@@ -196,22 +172,10 @@ mod tests {
   fn sabr_pricer_basic() {
     let s = 3.724;
     let k = 3.8;
-    let r_d = 0.065;
-    let r_f = 0.022;
+    let r = 0.065;
+    let q = Some(0.022);
     let tau = 30.0 / 365.0;
-    let pr = SabrPricer::new(
-      s,
-      k,
-      r_d,
-      r_f,
-      0.11,
-      0.6,
-      0.5,
-      Some(tau),
-      None,
-      None,
-      OptionType::Call,
-    );
+    let pr = SabrPricer::new(s, k, r, q, 0.11, 0.6, 0.5, Some(tau), None, None);
     let (c, p) = pr.calculate_call_put();
     println!("Call: {}, Put: {}", c, p);
     assert!(c >= 0.0 && p >= 0.0);

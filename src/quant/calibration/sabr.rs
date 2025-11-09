@@ -1,425 +1,252 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use impl_new_derive::ImplNew;
-use rand::{thread_rng, Rng};
+use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
+use nalgebra::{DMatrix, DVector, Dyn, Owned};
 
-use crate::quant::pricing::sabr::{
-  bs_price_fx, forward_fx, fx_delta_from_forward, hagan_implied_vol_beta1, SabrPricer,
+use crate::quant::{
+  calibration::CalibrationHistory,
+  pricing::sabr::SabrPricer,
+  r#trait::{CalibrationLossExt, PricerExt},
+  CalibrationLossScore, OptionType,
 };
-use crate::quant::r#trait::PricerExt;
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SABRParams {
-  /// Hagan's alpha (instantaneous vol at ATM when beta = 1)
+const RHO_BOUND: f64 = 0.9999;
+const ALPHA_MIN: f64 = 1e-6;
+const NU_MIN: f64 = 1e-6;
+
+#[derive(Clone, Copy, Debug)]
+pub struct SabrParams {
   pub alpha: f64,
-  /// Vol of vol (nu)
   pub nu: f64,
-  /// Correlation rho
   pub rho: f64,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct TenorQuotes {
-  /// Time to maturity in years
-  pub tau: f64,
-  /// ATM vol (decimal)
-  pub sigma_atm: f64,
-  /// Risk-reversal (decimal): sigma(25d call) - sigma(25d put)
-  pub sigma_rr: f64,
-  /// Butterfly (decimal): average of call/put away-from-atm vol premium over ATM
-  pub sigma_bf: f64,
-}
-
-#[derive(ImplNew, Clone, Debug)]
-pub struct SABRCalibrationTarget {
-  /// Spot FX rate S
-  pub s: f64,
-  /// Domestic rate r_d
-  pub r_d: f64,
-  /// Foreign rate r_f
-  pub r_f: f64,
-  /// Tenor quotes to calibrate against
-  pub quotes: TenorQuotes,
-}
-
-#[derive(Clone, Debug)]
-pub struct SABRCalibrationResult {
-  /// K that reproduces ATM vol under Hagan approx
-  pub k_atm: f64,
-  /// 25d RR call and put strikes
-  pub k_rr_call: f64,
-  pub k_rr_put: f64,
-  /// 25d BF call and put strikes (premium-neutral deltas)
-  pub k_bf_call: f64,
-  pub k_bf_put: f64,
-  /// Calibrated SABR params (beta = 1)
-  pub params: SABRParams,
-  /// Final objective value
-  pub objective: f64,
-  /// Success flag
-  pub success: bool,
-}
-
-/// Convenience helpers to mirror the Python structure
-fn rr_sigma(k_call: f64, k_put: f64, f: f64, tau: f64, alpha: f64, nu: f64, rho: f64) -> f64 {
-  let sc = hagan_implied_vol_beta1(k_call, f, tau, alpha, nu, rho);
-  let sp = hagan_implied_vol_beta1(k_put, f, tau, alpha, nu, rho);
-  sc - sp
-}
-
-fn bf_premium_mismatch(
-  s: f64,
-  k_call: f64,
-  k_put: f64,
-  r_d: f64,
-  r_f: f64,
-  tau: f64,
-  alpha: f64,
-  nu: f64,
-  rho: f64,
-  sigma_ref: f64,
-) -> f64 {
-  let pr_c = SabrPricer::new(
-    s,
-    k_call,
-    r_d,
-    r_f,
-    alpha,
-    nu,
-    rho,
-    Some(tau),
-    None,
-    None,
-    crate::quant::OptionType::Call,
-  );
-  let pr_p = SabrPricer::new(
-    s,
-    k_put,
-    r_d,
-    r_f,
-    alpha,
-    nu,
-    rho,
-    Some(tau),
-    None,
-    None,
-    crate::quant::OptionType::Put,
-  );
-  let (mc, _) = pr_c.calculate_call_put();
-  let (_, mp) = pr_p.calculate_call_put();
-  let (bc, _) = bs_price_fx(s, k_call, r_d, r_f, tau, sigma_ref);
-  let (_, bp) = bs_price_fx(s, k_put, r_d, r_f, tau, sigma_ref);
-  (mc + mp) - (bc + bp)
-}
-
-/// Box bounds and clamping
-fn clamp(x: f64, lo: f64, hi: f64) -> f64 {
-  if x < lo {
-    lo
-  } else if x > hi {
-    hi
-  } else {
-    x
+impl SabrParams {
+  pub fn project_in_place(&mut self) {
+    self.alpha = self.alpha.abs().max(ALPHA_MIN);
+    self.nu = self.nu.abs().max(NU_MIN);
+    self.rho = self.rho.max(-RHO_BOUND).min(RHO_BOUND);
+  }
+  pub fn projected(mut self) -> Self {
+    self.project_in_place();
+    self
   }
 }
 
-/// Objective mirroring the Python f_all.
-/// Params layout: [K_ATM, K_RR_Call, K_RR_Put, K_BF_Call, K_BF_Put, alpha, nu, rho]
-fn objective_all(
-  x: &[f64],
-  s: f64,
-  r_d: f64,
-  r_f: f64,
-  tau: f64,
-  sigma_atm: f64,
-  sigma_rr: f64,
-  sigma_bf: f64,
-  bounds_lo: &[f64; 8],
-  bounds_hi: &[f64; 8],
-) -> f64 {
-  // Soft clamp params inside bounds to avoid invalid regions for NM
-  let mut p = [0.0; 8];
-  for i in 0..8 {
-    p[i] = clamp(x[i], bounds_lo[i], bounds_hi[i]);
+impl From<SabrParams> for DVector<f64> {
+  fn from(p: SabrParams) -> Self {
+    DVector::from_vec(vec![p.alpha, p.nu, p.rho])
   }
-
-  let f = forward_fx(s, tau, r_d, r_f);
-  let (k_atm, k_rr_c, k_rr_p, k_bf_c, k_bf_p, alpha, nu, rho) =
-    (p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-
-  // ATM vol mismatch
-  let sigma_atm_model = hagan_implied_vol_beta1(k_atm, f, tau, alpha, nu, rho);
-  let term_atm = (sigma_atm_model - sigma_atm).powi(2);
-
-  // RR vol diff + delta constraints at ±25d
-  let term_rr = (rr_sigma(k_rr_c, k_rr_p, f, tau, alpha, nu, rho) - sigma_rr).powi(2);
-  // Use SabrPricer-based deltas for RR constraints
-  let pr_call_rr = SabrPricer::new(
-    s,
-    k_rr_c,
-    r_d,
-    r_f,
-    alpha,
-    nu,
-    rho,
-    Some(tau),
-    None,
-    None,
-    crate::quant::OptionType::Call,
-  );
-  let pr_put_rr = SabrPricer::new(
-    s,
-    k_rr_p,
-    r_d,
-    r_f,
-    alpha,
-    nu,
-    rho,
-    Some(tau),
-    None,
-    None,
-    crate::quant::OptionType::Put,
-  );
-  let d_call_rr = pr_call_rr.sabr_fx_forward_delta(1.0);
-  let d_put_rr = pr_put_rr.sabr_fx_forward_delta(-1.0);
-  let term_rr_delta = (d_call_rr - 0.25).powi(2) + (d_put_rr + 0.25).powi(2);
-
-  // BF premium neutrality + delta constraints at ±25d, ref vol = sigma_atm + sigma_bf
-  let sigma_ref = sigma_atm + sigma_bf;
-  let term_bf =
-    bf_premium_mismatch(s, k_bf_c, k_bf_p, r_d, r_f, tau, alpha, nu, rho, sigma_ref).powi(2);
-  let d_call_bf = fx_delta_from_forward(k_bf_c, f, sigma_ref, tau, r_f, 1.0);
-  let d_put_bf = fx_delta_from_forward(k_bf_p, f, sigma_ref, tau, r_f, -1.0);
-  let term_bf_delta = (d_call_bf - 0.25).powi(2) + (d_put_bf + 0.25).powi(2);
-
-  // Small Tikhonov-like penalties to keep params sane inside box (esp. rho)
-  let penalty_bounds: f64 = x
-    .iter()
-    .enumerate()
-    .map(|(i, &xi)| {
-      let mut pen = 0.0;
-      if xi < bounds_lo[i] {
-        pen += (bounds_lo[i] - xi).powi(2);
-      }
-      if xi > bounds_hi[i] {
-        pen += (xi - bounds_hi[i]).powi(2);
-      }
-      pen
-    })
-    .sum();
-
-  term_atm + term_rr + term_rr_delta + term_bf + term_bf_delta + 1e3 * penalty_bounds
 }
-
-/// Simple Nelder-Mead wrapper in 8D with random-restart basin hopping.
-fn basin_hopping_opt(
-  x0: [f64; 8],
-  n_restarts: usize,
-  iters_per_start: usize,
-  step: f64,
-  s: f64,
-  r_d: f64,
-  r_f: f64,
-  tau: f64,
-  sigma_atm: f64,
-  sigma_rr: f64,
-  sigma_bf: f64,
-  bounds_lo: [f64; 8],
-  bounds_hi: [f64; 8],
-) -> ([f64; 8], f64) {
-  let mut rng = thread_rng();
-
-  let mut best_x = x0;
-  let mut best_f = objective_all(
-    &x0, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-  );
-
-  for r in 0..n_restarts {
-    // jitter start
-    let mut x = x0;
-    if r > 0 {
-      for i in 0..8 {
-        let width = (bounds_hi[i] - bounds_lo[i]) * 0.1;
-        x[i] = clamp(
-          x[i] + rng.gen_range(-width..width),
-          bounds_lo[i],
-          bounds_hi[i],
-        );
-      }
+impl From<DVector<f64>> for SabrParams {
+  fn from(v: DVector<f64>) -> Self {
+    SabrParams {
+      alpha: v[0],
+      nu: v[1],
+      rho: v[2],
     }
+  }
+}
 
-    let mut f_cur = objective_all(
-      &x, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-    );
-    // simple MH-like accept loop + coordinate refinements
-    for _ in 0..iters_per_start {
-      let mut x_new = x;
-      for i in 0..8 {
-        x_new[i] = clamp(
-          x_new[i] + rng.gen_range(-step..step),
-          bounds_lo[i],
-          bounds_hi[i],
-        );
-      }
-      let f_new = objective_all(
-        &x_new, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
+#[derive(ImplNew, Clone)]
+pub struct SabrCalibrator {
+  pub params: Option<SabrParams>,
+  pub c_market: DVector<f64>,
+  pub s: DVector<f64>,
+  pub k: DVector<f64>,
+  pub r: f64,
+  pub q: Option<f64>,
+  pub tau: f64,
+  pub option_type: OptionType,
+  pub record_history: bool,
+  calibration_history: Rc<RefCell<Vec<CalibrationHistory<SabrParams>>>>,
+}
+
+impl CalibrationLossExt for SabrCalibrator {}
+
+impl SabrCalibrator {
+  pub fn calibrate(&self) {
+    let mut problem = self.clone();
+    problem.ensure_initial_guess();
+
+    println!("Initial guess: {:?}", problem.params);
+    let (result, ..) = LevenbergMarquardt::new().minimize(problem);
+
+    println!("Market prices: {:?}", self.c_market);
+    let residuals = result.residuals().unwrap();
+    println!("Model prices: {:?}", self.c_market.clone() - residuals);
+    println!("Calibration report: {:?}", result.params);
+  }
+
+  pub fn set_initial_guess(&mut self, params: SabrParams) {
+    self.params = Some(params.projected());
+  }
+  pub fn set_record_history(&mut self, record: bool) {
+    self.record_history = record;
+  }
+  pub fn history(&self) -> Vec<CalibrationHistory<SabrParams>> {
+    self.calibration_history.borrow().clone()
+  }
+
+  fn ensure_initial_guess(&mut self) {
+    if self.params.is_none() {
+      self.params = Some(
+        SabrParams {
+          alpha: 0.2,
+          nu: 0.8,
+          rho: 0.0,
+        }
+        .projected(),
       );
-      if f_new <= f_cur {
-        x = x_new;
-        f_cur = f_new;
-      }
+    }
+  }
 
-      // occasional local coordinate descent
-      if rng.gen_bool(0.2) {
-        let mut improved = true;
-        let mut tries = 0;
-        while improved && tries < 5 {
-          improved = false;
-          tries += 1;
-          for i in 0..8 {
-            let mut cand = x;
-            cand[i] = clamp(cand[i] + step, bounds_lo[i], bounds_hi[i]);
-            let f1 = objective_all(
-              &cand, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-            );
-            if f1 < f_cur {
-              x = cand;
-              f_cur = f1;
-              improved = true;
-              continue;
-            }
+  fn effective_params(&self) -> SabrParams {
+    if let Some(p) = &self.params {
+      return p.clone().projected();
+    }
+    SabrParams {
+      alpha: 0.2,
+      nu: 0.8,
+      rho: 0.0,
+    }
+    .projected()
+  }
 
-            cand[i] = clamp(x[i] - step, bounds_lo[i], bounds_hi[i]);
-            let f2 = objective_all(
-              &cand, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-            );
-            if f2 < f_cur {
-              x = cand;
-              f_cur = f2;
-              improved = true;
-            }
+  fn compute_model_prices_for(&self, p: &SabrParams) -> DVector<f64> {
+    let mut c_model = DVector::zeros(self.c_market.len());
+    for i in 0..self.c_market.len() {
+      let pr = SabrPricer::new(
+        self.s[i],
+        self.k[i],
+        self.r,
+        self.q,
+        p.alpha,
+        p.nu,
+        p.rho,
+        Some(self.tau),
+        None,
+        None,
+      );
+      let (call, put) = pr.calculate_call_put();
+      c_model[i] = match self.option_type {
+        OptionType::Call => call,
+        OptionType::Put => put,
+      };
+    }
+    c_model
+  }
+
+  fn residuals_for(&self, p: &SabrParams) -> DVector<f64> {
+    self.c_market.clone() - self.compute_model_prices_for(p)
+  }
+
+  fn numeric_jacobian(&self, p: &SabrParams) -> DMatrix<f64> {
+    let n = self.c_market.len();
+    let m = 3usize; // alpha, nu, rho
+    let base: DVector<f64> = (*p).into();
+    let mut J = DMatrix::zeros(n, m);
+    for col in 0..m {
+      let x = base[col];
+      let mut h = 1e-5_f64.max(1e-3 * x.abs());
+      let mut p_plus = *p;
+      let mut p_minus = *p;
+      match col {
+        0 => {
+          p_plus.alpha = (x + h).abs().max(ALPHA_MIN);
+          p_minus.alpha = (x - h).abs().max(ALPHA_MIN);
+        }
+        1 => {
+          p_plus.nu = (x + h).abs().max(NU_MIN);
+          p_minus.nu = (x - h).abs().max(NU_MIN);
+        }
+        2 => {
+          let clamp = |y: f64| y.max(-RHO_BOUND).min(RHO_BOUND);
+          p_plus.rho = clamp(x + h);
+          p_minus.rho = clamp(x - h);
+          if (p_plus.rho - p_minus.rho).abs() < 0.5 * h {
+            h = 1e-4;
+            p_plus.rho = clamp(x + h);
+            p_minus.rho = clamp(x - h);
           }
         }
+        _ => unreachable!(),
+      }
+      p_plus.project_in_place();
+      p_minus.project_in_place();
+      let r_plus = self.residuals_for(&p_plus);
+      let r_minus = self.residuals_for(&p_minus);
+      let diff = (r_plus - r_minus) / (2.0 * h);
+      for row in 0..n {
+        J[(row, col)] = diff[row];
       }
     }
-
-    if f_cur < best_f {
-      best_f = f_cur;
-      best_x = x;
-    }
-  }
-
-  (best_x, best_f)
-}
-
-impl SABRCalibrationTarget {
-  /// Calibrate [K_ATM, K_RR_Call, K_RR_Put, K_BF_Call, K_BF_Put, alpha, nu, rho]
-  /// using a basin-hopping + Nelder-Mead scheme roughly analogous to the Python basinhopping approach.
-  pub fn calibrate(&self) -> SABRCalibrationResult {
-    // Bounds similar to the Python example
-    let lo = [1.0, 1.0, 1.0, 1.0, 1.0, 0.01, 0.01, -0.99];
-    let hi = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.99];
-
-    let s = self.s;
-    let tau = self.quotes.tau;
-    let sigma_atm = self.quotes.sigma_atm;
-    let sigma_rr = self.quotes.sigma_rr;
-    let sigma_bf = self.quotes.sigma_bf;
-
-    let x0 = [
-      s + 0.2, // K_ATM
-      s + 0.1, // K_RR_Call
-      s - 0.1, // K_RR_Put
-      s + 0.1, // K_BF_Call
-      s - 0.1, // K_BF_Put
-      0.11,    // alpha
-      0.6,     // nu
-      0.5,     // rho
-    ];
-
-    let (x_best, f_best) = basin_hopping_opt(
-      x0,
-      if (tau - (1.0 / 365.0)).abs() < 1e-12 {
-        25
-      } else {
-        10
-      }, // fewer restarts for longer maturities
-      if (tau - (1.0 / 365.0)).abs() < 1e-12 {
-        1500
-      } else {
-        800
-      },
-      5e-4,
-      s,
-      self.r_d,
-      self.r_f,
-      tau,
-      sigma_atm,
-      sigma_rr,
-      sigma_bf,
-      lo,
-      hi,
-    );
-
-    let res = SABRCalibrationResult {
-      k_atm: x_best[0],
-      k_rr_call: x_best[1],
-      k_rr_put: x_best[2],
-      k_bf_call: x_best[3],
-      k_bf_put: x_best[4],
-      params: SABRParams {
-        alpha: x_best[5],
-        nu: x_best[6],
-        rho: x_best[7],
-      },
-      objective: f_best,
-      success: f_best.is_finite(),
-    };
-
-    res
+    J
   }
 }
 
-/// Solve for strike K such that the FX delta (per Python definition) equals the desired value.
-pub fn strike_for_delta(
-  s: f64,
-  r_d: f64,
-  r_f: f64,
-  tau: f64,
-  params: SABRParams,
-  target_delta: f64,
-  phi: f64,
-) -> f64 {
-  // Golden-section search on K to minimize (delta(K) - target)^2 inside a broad bracket
-  let fwd = forward_fx(s, tau, r_d, r_f);
-  let mut a = s * 0.1;
-  let mut b = s * 10.0;
-  let mut fa = |k: f64| -> f64 {
-    let sig = hagan_implied_vol_beta1(k, fwd, tau, params.alpha, params.nu, params.rho);
-    let d = fx_delta_from_forward(k, fwd, sig, tau, r_f, phi);
-    (d - target_delta).powi(2)
-  };
+impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
+  type JacobianStorage = Owned<f64, Dyn, Dyn>;
+  type ParameterStorage = Owned<f64, Dyn>;
+  type ResidualStorage = Owned<f64, Dyn>;
 
-  // Golden section constants
-  let gr = 0.5 * (5.0f64.sqrt() - 1.0);
-  let mut c = b - gr * (b - a);
-  let mut d = a + gr * (b - a);
-  let mut fc = fa(c);
-  let mut fd = fa(d);
-  for _ in 0..200 {
-    if fc < fd {
-      b = d;
-      d = c;
-      fd = fc;
-      c = b - gr * (b - a);
-      fc = fa(c);
-    } else {
-      a = c;
-      c = d;
-      fc = fd;
-      d = a + gr * (b - a);
-      fd = fa(d);
-    }
+  fn set_params(&mut self, params: &DVector<f64>) {
+    self.params = Some(SabrParams::from(params.clone()).projected());
   }
-  0.5 * (a + b)
+  fn params(&self) -> DVector<f64> {
+    self.effective_params().into()
+  }
+  fn residuals(&self) -> Option<DVector<f64>> {
+    let p = self.effective_params();
+    let c_model = self.compute_model_prices_for(&p);
+    if self.record_history {
+      self
+        .calibration_history
+        .borrow_mut()
+        .push(CalibrationHistory {
+          residuals: self.c_market.clone() - c_model.clone(),
+          call_put: self
+            .c_market
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+              let pr = SabrPricer::new(
+                self.s[i],
+                self.k[i],
+                self.r,
+                self.q,
+                p.alpha,
+                p.nu,
+                p.rho,
+                Some(self.tau),
+                None,
+                None,
+              );
+              pr.calculate_call_put()
+            })
+            .collect::<Vec<(f64, f64)>>()
+            .into(),
+          params: p.clone(),
+          loss_scores: CalibrationLossScore {
+            mae: self.mae(&self.c_market, &c_model),
+            mse: self.mse(&self.c_market, &c_model),
+            rmse: self.rmse(&self.c_market, &c_model),
+            mpe: self.mpe(&self.c_market, &c_model),
+            mape: self.mape(&self.c_market, &c_model),
+            mspe: self.mspe(&self.c_market, &c_model),
+            rmspe: self.rmspe(&self.c_market, &c_model),
+            mre: self.mre(&self.c_market, &c_model),
+            mrpe: self.mrpe(&self.c_market, &c_model),
+          },
+        });
+    }
+    Some(self.c_market.clone() - c_model)
+  }
+  fn jacobian(&self) -> Option<DMatrix<f64>> {
+    Some(self.numeric_jacobian(&self.effective_params()))
+  }
 }
 
 #[cfg(test)]
@@ -427,61 +254,54 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_sabr_calibration_fx_dataset() {
-    // Python example dataset
-    let r_usd = 0.022f64;
-    let r_brl = 0.065f64;
-    let s = 3.724f64;
+  fn test_sabr_calibrate_price_based() {
+    let s = vec![100.0; 8];
+    let k = vec![80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0];
+    let r = 0.02;
+    let q = Some(0.01);
+    let tau = 0.5;
 
-    let table: &[(f64, f64, f64, f64)] = &[
-      (1.0 / 365.0, 20.98, 1.2, 0.15),
-      (7.0 / 365.0, 13.91, 1.3, 0.2),
-      (14.0 / 365.0, 13.75, 1.4, 0.2),
-      (30.0 / 365.0, 14.24, 1.5, 0.22),
-      (60.0 / 365.0, 13.84, 1.75, 0.27),
-      (90.0 / 365.0, 13.82, 2.0, 0.32),
-      (180.0 / 365.0, 13.82, 2.4, 0.43),
-      (1.0, 13.94, 2.9, 0.55),
-    ];
+    let true_p = SabrParams {
+      alpha: 0.2,
+      nu: 0.6,
+      rho: -0.4,
+    };
 
-    let mut results: Vec<SABRCalibrationResult> = Vec::new();
-    for (tau, atm_bps, rr_bps, bf_bps) in table.iter().cloned() {
-      let quotes = TenorQuotes {
-        tau,
-        sigma_atm: atm_bps / 100.0,
-        sigma_rr: rr_bps / 100.0,
-        sigma_bf: bf_bps / 100.0,
-      };
-      let target = SABRCalibrationTarget::new(s, r_brl, r_usd, quotes);
-      let res = target.calibrate();
-      println!(
-        "tau={:.6}, obj={:.6e}, params={:?}, Ks=({}, {}, {}, {})",
-        tau, res.objective, res.params, res.k_atm, res.k_rr_call, res.k_rr_put, res.k_bf_call
+    // Build synthetic market prices
+    let mut c_market = Vec::new();
+    for &kk in &k {
+      let pr = SabrPricer::new(
+        100.0,
+        kk,
+        r,
+        q,
+        true_p.alpha,
+        true_p.nu,
+        true_p.rho,
+        Some(tau),
+        None,
+        None,
       );
-      assert!(res.success);
-      results.push(res);
+      let (call, _) = pr.calculate_call_put();
+      c_market.push(call);
     }
 
-    // Compute ±10d strikes using calibrated params for last tenor as a smoke test
-    let last = results.last().unwrap();
-    let k_call_10d = strike_for_delta(
-      s,
-      r_brl,
-      r_usd,
-      table.last().unwrap().0,
-      last.params,
-      0.1,
-      1.0,
+    let calibrator = SabrCalibrator::new(
+      Some(SabrParams {
+        alpha: 0.15,
+        nu: 0.8,
+        rho: 0.0,
+      }),
+      c_market.clone().into(),
+      s.clone().into(),
+      k.clone().into(),
+      r,
+      q,
+      tau,
+      OptionType::Call,
+      true,
     );
-    let k_put_m10d = strike_for_delta(
-      s,
-      r_brl,
-      r_usd,
-      table.last().unwrap().0,
-      last.params,
-      -0.1,
-      -1.0,
-    );
-    println!("10d strikes: call={}, put={}", k_call_10d, k_put_m10d);
+
+    calibrator.calibrate();
   }
 }

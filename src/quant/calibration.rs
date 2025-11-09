@@ -4,6 +4,7 @@ use crate::quant::CalibrationLossScore;
 
 pub mod bsm;
 pub mod sabr;
+pub mod sabr_smile;
 pub mod heston;
 
 #[derive(Clone, Debug)]
