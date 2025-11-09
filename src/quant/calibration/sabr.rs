@@ -2,8 +2,9 @@ use impl_new_derive::ImplNew;
 use rand::{thread_rng, Rng};
 
 use crate::quant::pricing::sabr::{
-  bs_price_fx, forward_fx, fx_delta_from_forward, hagan_implied_vol_beta1, model_price_hagan,
+  bs_price_fx, forward_fx, fx_delta_from_forward, hagan_implied_vol_beta1, SabrPricer,
 };
+use crate::quant::r#trait::PricerExt;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SABRParams {
@@ -76,8 +77,34 @@ fn bf_premium_mismatch(
   rho: f64,
   sigma_ref: f64,
 ) -> f64 {
-  let (mc, _) = model_price_hagan(s, k_call, r_d, r_f, tau, alpha, nu, rho);
-  let (_, mp) = model_price_hagan(s, k_put, r_d, r_f, tau, alpha, nu, rho);
+  let pr_c = SabrPricer::new(
+    s,
+    k_call,
+    r_d,
+    r_f,
+    alpha,
+    nu,
+    rho,
+    Some(tau),
+    None,
+    None,
+    crate::quant::OptionType::Call,
+  );
+  let pr_p = SabrPricer::new(
+    s,
+    k_put,
+    r_d,
+    r_f,
+    alpha,
+    nu,
+    rho,
+    Some(tau),
+    None,
+    None,
+    crate::quant::OptionType::Put,
+  );
+  let (mc, _) = pr_c.calculate_call_put();
+  let (_, mp) = pr_p.calculate_call_put();
   let (bc, _) = bs_price_fx(s, k_call, r_d, r_f, tau, sigma_ref);
   let (_, bp) = bs_price_fx(s, k_put, r_d, r_f, tau, sigma_ref);
   (mc + mp) - (bc + bp)
@@ -124,10 +151,35 @@ fn objective_all(
 
   // RR vol diff + delta constraints at ±25d
   let term_rr = (rr_sigma(k_rr_c, k_rr_p, f, tau, alpha, nu, rho) - sigma_rr).powi(2);
-  let call_sigma_rr = hagan_implied_vol_beta1(k_rr_c, f, tau, alpha, nu, rho);
-  let put_sigma_rr = hagan_implied_vol_beta1(k_rr_p, f, tau, alpha, nu, rho);
-  let d_call_rr = fx_delta_from_forward(k_rr_c, f, call_sigma_rr, tau, r_f, 1.0);
-  let d_put_rr = fx_delta_from_forward(k_rr_p, f, put_sigma_rr, tau, r_f, -1.0);
+  // Use SabrPricer-based deltas for RR constraints
+  let pr_call_rr = SabrPricer::new(
+    s,
+    k_rr_c,
+    r_d,
+    r_f,
+    alpha,
+    nu,
+    rho,
+    Some(tau),
+    None,
+    None,
+    crate::quant::OptionType::Call,
+  );
+  let pr_put_rr = SabrPricer::new(
+    s,
+    k_rr_p,
+    r_d,
+    r_f,
+    alpha,
+    nu,
+    rho,
+    Some(tau),
+    None,
+    None,
+    crate::quant::OptionType::Put,
+  );
+  let d_call_rr = pr_call_rr.sabr_fx_forward_delta(1.0);
+  let d_put_rr = pr_put_rr.sabr_fx_forward_delta(-1.0);
   let term_rr_delta = (d_call_rr - 0.25).powi(2) + (d_put_rr + 0.25).powi(2);
 
   // BF premium neutrality + delta constraints at ±25d, ref vol = sigma_atm + sigma_bf

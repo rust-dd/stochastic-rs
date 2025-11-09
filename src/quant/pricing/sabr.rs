@@ -1,8 +1,10 @@
+use impl_new_derive::ImplNew;
+use implied_vol::implied_black_volatility;
 use statrs::distribution::{ContinuousCDF, Normal};
 
 use crate::quant::{
   pricing::bsm::{BSMCoc, BSMPricer},
-  r#trait::PricerExt,
+  r#trait::{PricerExt, TimeExt},
   OptionType,
 };
 
@@ -15,7 +17,8 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
 /// Matches the Python reference provided by the user.
 pub fn hagan_implied_vol_beta1(k: f64, f: f64, tau: f64, alpha: f64, nu: f64, rho: f64) -> f64 {
   if (k - f).abs() < 1e-12 {
-    return alpha * (1.0 + tau * (rho * nu * alpha / 4.0 + (2.0 - 3.0 * rho * rho) * nu * nu / 24.0));
+    return alpha
+      * (1.0 + tau * (rho * nu * alpha / 4.0 + (2.0 - 3.0 * rho * rho) * nu * nu / 24.0));
   }
 
   let z = (nu / alpha) * (f / k).ln();
@@ -71,4 +74,148 @@ pub fn model_price_hagan(
   let fwd = forward_fx(s, tau, r_d, r_f);
   let sigma = hagan_implied_vol_beta1(k, fwd, tau, alpha, nu, rho);
   bs_price_fx(s, k, r_d, r_f, tau, sigma)
+}
+
+/// Pricer that uses SABR(Hagan beta=1) to produce an implied vol, then prices via Black-GK.
+#[derive(ImplNew, Clone, Copy, Debug)]
+pub struct SabrPricer {
+  pub s: f64,
+  pub k: f64,
+  pub r_d: f64,
+  pub r_f: f64,
+  pub alpha: f64,
+  pub nu: f64,
+  pub rho: f64,
+  pub tau: Option<f64>,
+  pub eval: Option<chrono::NaiveDate>,
+  pub expiration: Option<chrono::NaiveDate>,
+  pub option_type: OptionType,
+}
+
+impl TimeExt for SabrPricer {
+  fn tau(&self) -> Option<f64> {
+    self.tau
+  }
+  fn eval(&self) -> chrono::NaiveDate {
+    self.eval.unwrap()
+  }
+  fn expiration(&self) -> chrono::NaiveDate {
+    self.expiration.unwrap()
+  }
+}
+
+impl SabrPricer {
+  pub fn forward(&self) -> f64 {
+    forward_fx(self.s, self.tau().unwrap(), self.r_d, self.r_f)
+  }
+  pub fn sigma(&self) -> f64 {
+    hagan_implied_vol_beta1(
+      self.k,
+      self.forward(),
+      self.tau().unwrap(),
+      self.alpha,
+      self.nu,
+      self.rho,
+    )
+  }
+  /// FX delta definition used by the Python reference (forward-based, premium-included).
+  pub fn sabr_fx_forward_delta(&self, phi: f64) -> f64 {
+    fx_delta_from_forward(
+      self.k,
+      self.forward(),
+      self.sigma(),
+      self.tau().unwrap(),
+      self.r_f,
+      phi,
+    )
+  }
+}
+
+impl PricerExt for SabrPricer {
+  fn calculate_call_put(&self) -> (f64, f64) {
+    let sigma = self.sigma();
+    let pricer = BSMPricer::new(
+      self.s,
+      sigma,
+      self.k,
+      self.r_d,
+      Some(self.r_d),
+      Some(self.r_f),
+      None,
+      Some(self.tau().unwrap()),
+      self.eval,
+      self.expiration,
+      self.option_type,
+      BSMCoc::GARMAN1983,
+    );
+    pricer.calculate_call_put()
+  }
+
+  fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
+    implied_black_volatility(
+      c_price,
+      self.s,
+      self.k,
+      self.calculate_tau_in_days(),
+      option_type == OptionType::Call,
+    )
+  }
+
+  fn derivatives(&self) -> Vec<f64> {
+    // Use the underlying Black pricer with SABR vol to source Greeks
+    let sigma = self.sigma();
+    let pricer = BSMPricer::new(
+      self.s,
+      sigma,
+      self.k,
+      self.r_d,
+      Some(self.r_d),
+      Some(self.r_f),
+      None,
+      Some(self.tau().unwrap()),
+      self.eval,
+      self.expiration,
+      self.option_type,
+      BSMCoc::GARMAN1983,
+    );
+    vec![
+      pricer.delta(),
+      pricer.gamma(),
+      pricer.theta(),
+      pricer.vega(),
+      pricer.rho(),
+    ]
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn sabr_pricer_basic() {
+    let s = 3.724;
+    let k = 3.8;
+    let r_d = 0.065;
+    let r_f = 0.022;
+    let tau = 30.0 / 365.0;
+    let pr = SabrPricer::new(
+      s,
+      k,
+      r_d,
+      r_f,
+      0.11,
+      0.6,
+      0.5,
+      Some(tau),
+      None,
+      None,
+      OptionType::Call,
+    );
+    let (c, p) = pr.calculate_call_put();
+    println!("Call: {}, Put: {}", c, p);
+    assert!(c >= 0.0 && p >= 0.0);
+    let d = pr.sabr_fx_forward_delta(1.0);
+    assert!(d.is_finite());
+  }
 }
