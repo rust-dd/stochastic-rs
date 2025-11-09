@@ -3,9 +3,9 @@ use nalgebra::DVector;
 use crate::quant::CalibrationLossScore;
 
 pub mod bsm;
+pub mod heston;
 pub mod sabr;
 pub mod sabr_smile;
-pub mod heston;
 
 #[derive(Clone, Debug)]
 pub struct CalibrationHistory<T> {
