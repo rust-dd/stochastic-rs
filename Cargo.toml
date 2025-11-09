@@ -14,7 +14,8 @@ keywords = ["stochastic", "quant", "finance", "simulation", "statistics"]
 [dependencies]
 anyhow = "1.0.89"
 approx = "0.5.1"
-argmin = "0.10.0"
+argmin = "0.11.0"
+argmin-math = { version = "0.5", features = ["ndarray_latest-nolinalg"] }
 bytemuck = "1.22.0"
 candle-core = { version = "0.9.1", optional = true }
 candle-datasets = { version = "0.9.1", optional = true }
@@ -32,7 +33,6 @@ implied-vol = "1.0.0"
 indicatif = "0.17.8"
 kendalls = "0.2.2"
 levenberg-marquardt = "0.14.0" # UPDATE: rand
-lbfgsb-rs-pure = "0.1.1"
 libloading = { version = "0.8.6", optional = true }
 linreg = "0.2.0"
 openblas-src = { version = "0.10", features = ["cblas", "static"], optional = true }

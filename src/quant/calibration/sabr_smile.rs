@@ -1,9 +1,13 @@
 use impl_new_derive::ImplNew;
-use lbfgsb_rs_pure::LBFGSB;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use plotly::common::Mode;
 use plotly::{Plot, Scatter};
+
+use argmin::core::{CostFunction, Executor, Gradient, State};
+use argmin::solver::linesearch::MoreThuenteLineSearch;
+use argmin::solver::quasinewton::LBFGS;
+use ndarray::Array1;
 
 use crate::quant::calibration::sabr::SabrParams;
 use crate::quant::pricing::sabr::{
@@ -81,9 +85,9 @@ fn clamp(x: f64, lo: f64, hi: f64) -> f64 {
   }
 }
 
-/// Params layout: [K_ATM, K_RR_Call, K_RR_Put, K_BF_Call, K_BF_Put, alpha, nu, rho]
-fn objective_all(
-  x: &[f64],
+/// Problem definition for argmin optimization
+#[derive(Clone)]
+struct SabrSmileProblem {
   s: f64,
   r_d: f64,
   r_f: f64,
@@ -91,54 +95,84 @@ fn objective_all(
   sigma_atm: f64,
   sigma_rr: f64,
   sigma_bf: f64,
-  bounds_lo: &[f64; 8],
-  bounds_hi: &[f64; 8],
-) -> f64 {
-  let mut p = [0.0; 8];
-  for i in 0..8 {
-    p[i] = clamp(x[i], bounds_lo[i], bounds_hi[i]);
-  }
-
-  let f = forward_fx(s, tau, r_d, r_f);
-  let (k_atm, k_rr_c, k_rr_p, k_bf_c, k_bf_p, alpha, nu, rho) =
-    (p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-
-  let sigma_atm_model = hagan_implied_vol_beta1(k_atm, f, tau, alpha, nu, rho);
-  let term_atm = (sigma_atm_model - sigma_atm).powi(2);
-
-  let term_rr = (rr_sigma(k_rr_c, k_rr_p, f, tau, alpha, nu, rho) - sigma_rr).powi(2);
-  let call_sigma_rr = hagan_implied_vol_beta1(k_rr_c, f, tau, alpha, nu, rho);
-  let put_sigma_rr = hagan_implied_vol_beta1(k_rr_p, f, tau, alpha, nu, rho);
-  let d_call_rr = fx_delta_from_forward(k_rr_c, f, call_sigma_rr, tau, r_f, 1.0);
-  let d_put_rr = fx_delta_from_forward(k_rr_p, f, put_sigma_rr, tau, r_f, -1.0);
-  let term_rr_delta = (d_call_rr - 0.25).powi(2) + (d_put_rr + 0.25).powi(2);
-
-  let sigma_ref = sigma_atm + sigma_bf;
-  let term_bf =
-    bf_premium_mismatch(s, k_bf_c, k_bf_p, r_d, r_f, tau, alpha, nu, rho, sigma_ref).powi(2);
-  let d_call_bf = fx_delta_from_forward(k_bf_c, f, sigma_ref, tau, r_f, 1.0);
-  let d_put_bf = fx_delta_from_forward(k_bf_p, f, sigma_ref, tau, r_f, -1.0);
-  let term_bf_delta = (d_call_bf - 0.25).powi(2) + (d_put_bf + 0.25).powi(2);
-
-  let penalty_bounds: f64 = x
-    .iter()
-    .enumerate()
-    .map(|(i, &xi)| {
-      let mut pen = 0.0;
-      if xi < bounds_lo[i] {
-        pen += (bounds_lo[i] - xi).powi(2);
-      }
-      if xi > bounds_hi[i] {
-        pen += (xi - bounds_hi[i]).powi(2);
-      }
-      pen
-    })
-    .sum();
-
-  term_atm + term_rr + term_rr_delta + term_bf + term_bf_delta + 1e3 * penalty_bounds
+  bounds_lo: [f64; 8],
+  bounds_hi: [f64; 8],
 }
 
-// Basin-hopping with L-BFGS-B
+impl CostFunction for SabrSmileProblem {
+  type Param = Array1<f64>;
+  type Output = f64;
+
+  fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+    let mut p = [0.0; 8];
+    for i in 0..8 {
+      p[i] = clamp(x[i], self.bounds_lo[i], self.bounds_hi[i]);
+    }
+
+    let f = forward_fx(self.s, self.tau, self.r_d, self.r_f);
+    let (k_atm, k_rr_c, k_rr_p, k_bf_c, k_bf_p, alpha, nu, rho) =
+      (p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
+
+    let sigma_atm_model = hagan_implied_vol_beta1(k_atm, f, self.tau, alpha, nu, rho);
+    let term_atm = (sigma_atm_model - self.sigma_atm).powi(2);
+
+    let term_rr = (rr_sigma(k_rr_c, k_rr_p, f, self.tau, alpha, nu, rho) - self.sigma_rr).powi(2);
+    let call_sigma_rr = hagan_implied_vol_beta1(k_rr_c, f, self.tau, alpha, nu, rho);
+    let put_sigma_rr = hagan_implied_vol_beta1(k_rr_p, f, self.tau, alpha, nu, rho);
+    let d_call_rr = fx_delta_from_forward(k_rr_c, f, call_sigma_rr, self.tau, self.r_f, 1.0);
+    let d_put_rr = fx_delta_from_forward(k_rr_p, f, put_sigma_rr, self.tau, self.r_f, -1.0);
+    let term_rr_delta = (d_call_rr - 0.25).powi(2) + (d_put_rr + 0.25).powi(2);
+
+    let sigma_ref = self.sigma_atm + self.sigma_bf;
+    let term_bf = bf_premium_mismatch(
+      self.s, k_bf_c, k_bf_p, self.r_d, self.r_f, self.tau, alpha, nu, rho, sigma_ref,
+    )
+    .powi(2);
+    let d_call_bf = fx_delta_from_forward(k_bf_c, f, sigma_ref, self.tau, self.r_f, 1.0);
+    let d_put_bf = fx_delta_from_forward(k_bf_p, f, sigma_ref, self.tau, self.r_f, -1.0);
+    let term_bf_delta = (d_call_bf - 0.25).powi(2) + (d_put_bf + 0.25).powi(2);
+
+    let penalty_bounds: f64 = x
+      .iter()
+      .enumerate()
+      .map(|(i, &xi)| {
+        let mut pen = 0.0;
+        if xi < self.bounds_lo[i] {
+          pen += (self.bounds_lo[i] - xi).powi(2);
+        }
+        if xi > self.bounds_hi[i] {
+          pen += (xi - self.bounds_hi[i]).powi(2);
+        }
+        pen
+      })
+      .sum();
+
+    Ok(term_atm + term_rr + term_rr_delta + term_bf + term_bf_delta + 1e3 * penalty_bounds)
+  }
+}
+
+impl Gradient for SabrSmileProblem {
+  type Param = Array1<f64>;
+  type Gradient = Array1<f64>;
+
+  fn gradient(&self, x: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
+    // Compute numerical gradient using finite differences
+    let mut grad = Array1::zeros(x.len());
+    let eps = 1e-8;
+    let f0 = self.cost(x)?;
+
+    for i in 0..x.len() {
+      let mut x_plus = x.clone();
+      x_plus[i] += eps;
+      let f_plus = self.cost(&x_plus)?;
+      grad[i] = (f_plus - f0) / eps;
+    }
+
+    Ok(grad)
+  }
+}
+
+// Basin-hopping with argmin L-BFGS
 fn basin_hopping_opt(
   x0: [f64; 8],
   niter: usize,
@@ -155,15 +189,24 @@ fn basin_hopping_opt(
 ) -> ([f64; 8], f64) {
   let mut rng = StdRng::seed_from_u64(3);
   let mut best_x = x0;
-  let mut best_f = objective_all(
-    &x0, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-  );
+  let mut best_f = f64::INFINITY;
 
-  // Set up L-BFGS-B solver with memory = 10
-  let mut solver = LBFGSB::new(10);
+  let problem = SabrSmileProblem {
+    s,
+    r_d,
+    r_f,
+    tau,
+    sigma_atm,
+    sigma_rr,
+    sigma_bf,
+    bounds_lo,
+    bounds_hi,
+  };
 
-  let lower = bounds_lo.to_vec();
-  let upper = bounds_hi.to_vec();
+  // Initial cost evaluation
+  if let Ok(f) = problem.cost(&Array1::from(x0.to_vec())) {
+    best_f = f;
+  }
 
   for _ in 0..niter {
     let mut x_new = best_x;
@@ -171,6 +214,7 @@ fn basin_hopping_opt(
       x_new[i] += rng.gen_range(-stepsize..stepsize);
     }
 
+    // Check bounds
     let mut accept = true;
     for i in 0..8 {
       if x_new[i] < bounds_lo[i] || x_new[i] > bounds_hi[i] {
@@ -182,39 +226,24 @@ fn basin_hopping_opt(
       continue;
     }
 
-    let mut obj_fn = |x: &[f64]| -> (f64, Vec<f64>) {
-      let f = objective_all(
-        x, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-      );
+    let linesearch = MoreThuenteLineSearch::new().with_c(1e-4, 0.9).unwrap();
+    let solver = LBFGS::new(linesearch, 10);
 
-      // Compute numerical gradient (finite differences)
-      let mut grad = vec![0.0; x.len()];
-      let eps = 1e-8;
-      for i in 0..x.len() {
-        let mut x_plus = x.to_vec();
-        x_plus[i] += eps;
-        let f_plus = objective_all(
-          &x_plus, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
-        );
-        grad[i] = (f_plus - f) / eps;
-      }
+    let x_init = Array1::from(x_new.to_vec());
+    let res = Executor::new(problem.clone(), solver)
+      .configure(|state| state.param(x_init).max_iters(100))
+      .run();
 
-      (f, grad)
-    };
-
-    let mut x_local_vec = x_new.to_vec();
-    let result = solver.minimize(&mut x_local_vec, &lower, &upper, &mut obj_fn);
-
-    if let Ok(sol) = result {
-      let mut x_local = [0.0; 8];
-      for i in 0..8 {
-        x_local[i] = sol.x[i];
-      }
-
-      // Update global best
-      if sol.f < best_f {
-        best_f = sol.f;
-        best_x = x_local;
+    if let Ok(optimization_result) = res {
+      let state = optimization_result.state();
+      if let Some(param) = state.get_param() {
+        let cost = state.get_cost();
+        if cost < best_f {
+          best_f = cost;
+          for i in 0..8 {
+            best_x[i] = param[i];
+          }
+        }
       }
     }
   }
