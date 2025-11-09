@@ -102,8 +102,7 @@ impl SamplingExt<f64> for RoughHeston<f64> {
 impl SamplingExt<f32> for RoughHeston<f32> {
   fn sample(&self) -> ndarray::Array1<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn =
-      Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
     let mut yt = Array1::<f32>::zeros(self.n);
     let mut zt = Array1::<f32>::zeros(self.n);
     let mut v2 = Array1::zeros(self.n);

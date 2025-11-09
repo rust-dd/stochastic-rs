@@ -100,10 +100,8 @@ impl SamplingVExt<f32> for WuZhangD<f32> {
     }
 
     for i in 0..self.xn {
-      let gn_f =
-        Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
-      let gn_v =
-        Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+      let gn_f = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+      let gn_v = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
 
       for j in 1..self.n {
         let v_old = fv[(i + self.xn, j - 1)].max(0.0);

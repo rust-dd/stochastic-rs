@@ -194,8 +194,8 @@ impl FBS<f32> {
     let shift = field[[0, 0]];
     field.mapv_inplace(|v| v - shift);
 
-    let rand_x = Array1::random(n, StandardNormal).mapv(|x: f64| x as f32);
-    let rand_y = Array1::random(m, StandardNormal).mapv(|x: f64| x as f32);
+    let rand_x = Array1::<f32>::random(n, StandardNormal);
+    let rand_y = Array1::<f32>::random(m, StandardNormal);
 
     let ty_rand = &ty * &rand_y;
     let tx_rand = &tx * &rand_x;

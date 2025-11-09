@@ -88,8 +88,7 @@ impl SamplingExt<f32> for HoLee<f32> {
       "theta or f_T must be provided"
     );
     let dt = self.t / (self.n - 1) as f32;
-    let gn =
-      Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
 
     let mut r = Array1::<f32>::zeros(self.n);
 

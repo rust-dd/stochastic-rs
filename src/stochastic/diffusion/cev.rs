@@ -107,8 +107,7 @@ impl SamplingExt<f32> for CEV<f32> {
   /// Sample the CEV process
   fn sample(&self) -> Array1<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn =
-      Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt() as f64).unwrap()).mapv(|x| x as f32);
+    let gn = Array1::random(self.n - 1, Normal::<f32>::new(0.0, dt.sqrt()).unwrap());
 
     let mut cev = Array1::<f32>::zeros(self.n);
     cev[0] = self.x0.unwrap_or(0.0);

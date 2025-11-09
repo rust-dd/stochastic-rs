@@ -131,8 +131,8 @@ impl Sampling2DExt<f32> for DuffieKanJumpExp<f32> {
     x[0] = self.x0.unwrap_or(0.0);
 
     let mut rng = rand::thread_rng();
-    let exp_dist = Exp::new(self.lambda as f64).unwrap();
-    let jump_dist = Normal::new(0.0, self.jump_scale as f64).unwrap();
+    let exp_dist = Exp::new(self.lambda).unwrap();
+    let jump_dist = Normal::new(0.0, self.jump_scale).unwrap();
     let mut next_jump_time = exp_dist.sample(&mut rng) as f32;
 
     for i in 1..self.n {

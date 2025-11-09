@@ -71,8 +71,7 @@ impl SamplingExt<f64> for HullWhite<f64> {
 impl SamplingExt<f32> for HullWhite<f32> {
   fn sample(&self) -> Array1<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn =
-      Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
 
     let mut hw = Array1::<f32>::zeros(self.n);
     hw[0] = self.x0.unwrap_or(0.0);

@@ -88,7 +88,7 @@ where
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
     let mut merton = Array1::<f32>::zeros(self.n);
     merton[0] = self.x0.unwrap_or(0.0);
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
 
     for i in 1..self.n {
       let [.., jumps] = self.cpoisson.sample();

@@ -2,9 +2,16 @@
 pub mod cev;
 pub mod cir;
 pub mod fcir;
+pub mod feller;
 pub mod fgbm;
 pub mod fjacobi;
 pub mod fou;
+pub mod fouque;
 pub mod gbm;
+pub mod gbm_ih;
+pub mod gompertz;
 pub mod jacobi;
+pub mod kimura;
 pub mod ou;
+pub mod quadratic;
+pub mod verhulst;

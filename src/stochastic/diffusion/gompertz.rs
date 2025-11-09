@@ -1,0 +1,105 @@
+use impl_new_derive::ImplNew;
+use ndarray::Array1;
+use ndarray_rand::RandomExt;
+use rand_distr::Normal;
+
+use crate::stochastic::SamplingExt;
+
+/// Gompertz diffusion
+/// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
+#[derive(ImplNew)]
+pub struct Gompertz<T> {
+  pub a: T,
+  pub b: T,
+  pub sigma: T,
+  pub n: usize,
+  pub x0: Option<T>,
+  pub t: Option<T>,
+  pub m: Option<usize>,
+}
+
+#[cfg(feature = "f64")]
+impl SamplingExt<f64> for Gompertz<f64> {
+  fn sample(&self) -> Array1<f64> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+
+    let mut x = Array1::<f64>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(0.0).max(1e-12);
+
+    for i in 1..self.n {
+      let xi = x[i - 1].max(1e-12);
+      let drift = (self.a - self.b * xi.ln()) * xi * dt;
+      let diff = self.sigma * xi * gn[i - 1];
+      let next = xi + drift + diff;
+      x[i] = next.max(1e-12);
+    }
+
+    x
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
+#[cfg(feature = "f32")]
+impl SamplingExt<f32> for Gompertz<f32> {
+  fn sample(&self) -> Array1<f32> {
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+
+    let mut x = Array1::<f32>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(0.0).max(1e-8);
+
+    for i in 1..self.n {
+      let xi = x[i - 1].max(1e-8);
+      let drift = (self.a - self.b * xi.ln()) * xi * dt;
+      let diff = self.sigma * xi * gn[i - 1];
+      let next = xi + drift + diff;
+      x[i] = next.max(1e-8);
+    }
+
+    x
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
+
+  fn m(&self) -> Option<usize> {
+    self.m
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::{
+    plot_1d,
+    stochastic::{SamplingExt, N, X0},
+  };
+
+  use super::*;
+
+  #[test]
+  fn gompertz_length_equals_n() {
+    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0), None);
+    assert_eq!(proc.sample().len(), N);
+  }
+
+  #[test]
+  fn gompertz_starts_with_x0() {
+    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0), None);
+    assert_eq!(proc.sample()[0], X0.max(1e-12));
+  }
+
+  #[test]
+  fn gompertz_plot() {
+    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0), None);
+    plot_1d!(proc.sample(), "Gompertz diffusion");
+  }
+}

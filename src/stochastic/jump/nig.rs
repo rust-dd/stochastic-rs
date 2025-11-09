@@ -36,8 +36,8 @@ impl SamplingExt<f64> for NIG<f64> {
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
     use crate::stats::distr::inverse_gauss::SimdInverseGauss;
+    use crate::stats::distr::normal::SimdNormal;
 
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
     let scale = dt.powf(2.0) / self.kappa;
@@ -48,7 +48,9 @@ impl SamplingExt<f64> for NIG<f64> {
     nig[0] = self.x0.unwrap_or(0.0);
 
     for i in 1..self.n {
-      nig[i] = nig[i - 1] + self.theta * ig[i - 1] as f64 + self.sigma * (ig[i - 1] as f64).sqrt() * gn[i - 1] as f64
+      nig[i] = nig[i - 1]
+        + self.theta * ig[i - 1] as f64
+        + self.sigma * (ig[i - 1] as f64).sqrt() * gn[i - 1] as f64
     }
 
     nig
@@ -69,12 +71,10 @@ impl SamplingExt<f64> for NIG<f64> {
 impl SamplingExt<f32> for NIG<f32> {
   fn sample(&self) -> Array1<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let scale = (dt.powf(2.0) / self.kappa) as f64;
-    let mean = (dt as f64) / scale;
-    let ig =
-      Array1::random(self.n - 1, InverseGaussian::new(mean, scale).unwrap()).mapv(|x| x as f32);
-    let gn =
-      Array1::random(self.n - 1, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+    let scale = dt.powf(2.0) / self.kappa;
+    let mean = dt / scale;
+    let ig = Array1::random(self.n - 1, InverseGaussian::new(mean, scale).unwrap());
+    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
     let mut nig = Array1::zeros(self.n);
     nig[0] = self.x0.unwrap_or(0.0);
 
@@ -87,8 +87,8 @@ impl SamplingExt<f32> for NIG<f32> {
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
     use crate::stats::distr::inverse_gauss::SimdInverseGauss;
+    use crate::stats::distr::normal::SimdNormal;
 
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
     let scale = dt.powf(2.0) / self.kappa;

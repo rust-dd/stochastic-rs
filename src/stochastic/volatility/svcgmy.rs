@@ -167,11 +167,10 @@ impl SamplingExt<f32> for SVCGMY<f32> {
       v[i] = xi / (2.0 * c);
     }
 
-    let U = Array1::random(self.j, Uniform::new(0.0, 1.0)).mapv(|x: f64| x as f32);
-    let E = Array1::random(self.j, Exp::new(1.0).unwrap()).mapv(|x: f64| x as f32);
-    let P = Poisson::new(1.0, Some(self.j), None, None);
-    let P = P.sample().mapv(|x| x as f32);
-    let tau = Array1::random(self.j, Uniform::new(0.0, 1.0)).mapv(|x: f64| x as f32) * t_max;
+    let U = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0));
+    let E = Array1::random(self.j, Exp::<f32>::new(1.0).unwrap());
+    let P = Poisson::<f32>::new(1.0, Some(self.j), None, None).sample();
+    let tau = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0)) * t_max;
 
     let mut c_tau = Array1::<f32>::zeros(self.j);
     for (idx, tau_j) in tau.iter().enumerate() {

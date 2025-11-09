@@ -74,8 +74,7 @@ impl SamplingVExt<f32> for BGM<f32> {
     }
 
     for i in 0..self.xn {
-      let gn =
-        Array1::random(self.n, Normal::new(0.0, (dt.sqrt()) as f64).unwrap()).mapv(|x| x as f32);
+      let gn = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
       for j in 1..self.n {
         let f_old = fwd[(i, j - 1)];
         fwd[(i, j)] = f_old + f_old * self.lambda[i] * gn[j - 1];
