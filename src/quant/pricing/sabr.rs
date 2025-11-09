@@ -14,7 +14,6 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
 }
 
 /// Hagan et al. (2002) implied vol approximation for beta = 1 (lognormal SABR)
-/// Matches the Python reference provided by the user.
 pub fn hagan_implied_vol_beta1(k: f64, f: f64, tau: f64, alpha: f64, nu: f64, rho: f64) -> f64 {
   if (k - f).abs() < 1e-12 {
     return alpha
@@ -52,7 +51,7 @@ pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> 
   pricer.calculate_call_put()
 }
 
-/// Delta on forward with premium included, as in the Python code
+/// Delta on forward with premium included
 pub fn fx_delta_from_forward(k: f64, f: f64, sigma: f64, tau: f64, r_f: f64, phi: f64) -> f64 {
   let d2 = (f / k).ln() / (sigma * tau.sqrt()) - 0.5 * sigma * tau.sqrt();
   let n = Normal::new(0.0, 1.0).unwrap();

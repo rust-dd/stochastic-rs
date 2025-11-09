@@ -138,7 +138,7 @@ fn objective_all(
   term_atm + term_rr + term_rr_delta + term_bf + term_bf_delta + 1e3 * penalty_bounds
 }
 
-// Basin-hopping with L-BFGS-B (matching Python scipy.optimize.basinhopping)
+// Basin-hopping with L-BFGS-B
 fn basin_hopping_opt(
   x0: [f64; 8],
   niter: usize,
@@ -153,36 +153,24 @@ fn basin_hopping_opt(
   bounds_lo: [f64; 8],
   bounds_hi: [f64; 8],
 ) -> ([f64; 8], f64) {
-  // Use same seed as Python for reproducibility
   let mut rng = StdRng::seed_from_u64(3);
   let mut best_x = x0;
   let mut best_f = objective_all(
-    &x0,
-    s,
-    r_d,
-    r_f,
-    tau,
-    sigma_atm,
-    sigma_rr,
-    sigma_bf,
-    &bounds_lo,
-    &bounds_hi,
+    &x0, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
   );
 
-  // Set up L-BFGS-B solver with memory = 10 (matching Python's default)
+  // Set up L-BFGS-B solver with memory = 10
   let mut solver = LBFGSB::new(10);
-  
+
   let lower = bounds_lo.to_vec();
   let upper = bounds_hi.to_vec();
 
   for _ in 0..niter {
-    // Random perturbation (matching Python's stepsize)
     let mut x_new = best_x;
     for i in 0..8 {
       x_new[i] += rng.gen_range(-stepsize..stepsize);
     }
 
-    // Accept test: hard boundary rejection (matching Python's accept_test)
     let mut accept = true;
     for i in 0..8 {
       if x_new[i] < bounds_lo[i] || x_new[i] > bounds_hi[i] {
@@ -194,21 +182,11 @@ fn basin_hopping_opt(
       continue;
     }
 
-    // Local minimization with L-BFGS-B (matching Python's method='L-BFGS-B')
     let mut obj_fn = |x: &[f64]| -> (f64, Vec<f64>) {
       let f = objective_all(
-        x,
-        s,
-        r_d,
-        r_f,
-        tau,
-        sigma_atm,
-        sigma_rr,
-        sigma_bf,
-        &bounds_lo,
-        &bounds_hi,
+        x, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
       );
-      
+
       // Compute numerical gradient (finite differences)
       let mut grad = vec![0.0; x.len()];
       let eps = 1e-8;
@@ -216,20 +194,11 @@ fn basin_hopping_opt(
         let mut x_plus = x.to_vec();
         x_plus[i] += eps;
         let f_plus = objective_all(
-          &x_plus,
-          s,
-          r_d,
-          r_f,
-          tau,
-          sigma_atm,
-          sigma_rr,
-          sigma_bf,
-          &bounds_lo,
-          &bounds_hi,
+          &x_plus, s, r_d, r_f, tau, sigma_atm, sigma_rr, sigma_bf, &bounds_lo, &bounds_hi,
         );
         grad[i] = (f_plus - f) / eps;
       }
-      
+
       (f, grad)
     };
 
@@ -273,18 +242,7 @@ impl SabrSmileCalibrator {
     };
 
     let (x_best, f_best) = basin_hopping_opt(
-      x0,
-      niter,
-      0.0005,
-      s,
-      self.r_d,
-      self.r_f,
-      tau,
-      sigma_atm,
-      sigma_rr,
-      sigma_bf,
-      lo,
-      hi,
+      x0, niter, 0.0005, s, self.r_d, self.r_f, tau, sigma_atm, sigma_rr, sigma_bf, lo, hi,
     );
 
     SabrSmileResult {
@@ -400,9 +358,15 @@ mod tests {
       };
       let calib = SabrSmileCalibrator::new(s, r_brl, r_usd, quotes);
       let res = calib.calibrate();
-      println!("\nTenor {} (T={:.4}):", ["ON", "1W", "2W", "1M", "2M", "3M", "6M", "1Y"][i], tau);
-      println!("  K_ATM={:.6}, alpha={:.6}, nu={:.6}, rho={:.6}", 
-               res.k_atm, res.params.alpha, res.params.nu, res.params.rho);
+      println!(
+        "\nTenor {} (T={:.4}):",
+        ["ON", "1W", "2W", "1M", "2M", "3M", "6M", "1Y"][i],
+        tau
+      );
+      println!(
+        "  K_ATM={:.6}, alpha={:.6}, nu={:.6}, rho={:.6}",
+        res.k_atm, res.params.alpha, res.params.nu, res.params.rho
+      );
       println!("  Objective: {:.6e}", res.objective);
       assert!(res.success);
       assert!(res.objective < 1e-3, "Objective too large for tenor {}", i);
