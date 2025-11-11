@@ -107,7 +107,16 @@ impl CostFunction for SabrSmileProblem {
   fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
     let mut p = [0.0; 8];
     for i in 0..8 {
-      p[i] = clamp(x[i], self.bounds_lo[i], self.bounds_hi[i]);
+      let xi = x[i];
+      let lo = self.bounds_lo[i];
+      let hi = self.bounds_hi[i];
+      p[i] = if xi < lo {
+        lo
+      } else if xi > hi {
+        hi
+      } else {
+        xi
+      };
     }
 
     let f = forward_fx(self.s, self.tau, self.r_d, self.r_f);
@@ -133,22 +142,7 @@ impl CostFunction for SabrSmileProblem {
     let d_put_bf = fx_delta_from_forward(k_bf_p, f, sigma_ref, self.tau, self.r_f, -1.0);
     let term_bf_delta = (d_call_bf - 0.25).powi(2) + (d_put_bf + 0.25).powi(2);
 
-    let penalty_bounds: f64 = x
-      .iter()
-      .enumerate()
-      .map(|(i, &xi)| {
-        let mut pen = 0.0;
-        if xi < self.bounds_lo[i] {
-          pen += (self.bounds_lo[i] - xi).powi(2);
-        }
-        if xi > self.bounds_hi[i] {
-          pen += (xi - self.bounds_hi[i]).powi(2);
-        }
-        pen
-      })
-      .sum();
-
-    Ok(term_atm + term_rr + term_rr_delta + term_bf + term_bf_delta + 1e3 * penalty_bounds)
+    Ok(term_atm + term_rr + term_rr_delta + term_bf + term_bf_delta)
   }
 }
 
@@ -189,8 +183,6 @@ fn basin_hopping_opt(
   bounds_hi: [f64; 8],
 ) -> ([f64; 8], f64) {
   let mut rng = StdRng::seed_from_u64(3);
-  let mut best_x = x0;
-  let mut best_f = f64::INFINITY;
 
   let problem = SabrSmileProblem {
     s,
@@ -204,33 +196,28 @@ fn basin_hopping_opt(
     bounds_hi,
   };
 
-  // Initial cost evaluation
-  if let Ok(f) = problem.cost(&Array1::from(x0.to_vec())) {
-    best_f = f;
-  }
+  let mut current_x = x0;
+  let mut current_f = problem
+    .cost(&Array1::from(x0.to_vec()))
+    .unwrap_or(f64::INFINITY);
+
+  let mut best_x = current_x;
+  let mut best_f = current_f;
+
+  let temp = 1.0_f64;
 
   for _ in 0..niter {
-    let mut x_new = best_x;
+    let mut x_trial = current_x;
     for i in 0..8 {
-      x_new[i] += rng.gen_range(-stepsize..stepsize);
-    }
-
-    // Check bounds
-    let mut accept = true;
-    for i in 0..8 {
-      if x_new[i] < bounds_lo[i] || x_new[i] > bounds_hi[i] {
-        accept = false;
-        break;
-      }
-    }
-    if !accept {
-      continue;
+      x_trial[i] += rng.gen_range(-stepsize..stepsize);
+      // azonnal clampeljük a boxra
+      x_trial[i] = clamp(x_trial[i], bounds_lo[i], bounds_hi[i]);
     }
 
     let linesearch = MoreThuenteLineSearch::new().with_c(1e-4, 0.9).unwrap();
     let solver = LBFGS::new(linesearch, 10);
 
-    let x_init = Array1::from(x_new.to_vec());
+    let x_init = Array1::from(x_trial.to_vec());
     let res = Executor::new(problem.clone(), solver)
       .configure(|state| state.param(x_init).max_iters(100))
       .run();
@@ -239,10 +226,24 @@ fn basin_hopping_opt(
       let state = optimization_result.state();
       if let Some(param) = state.get_param() {
         let cost = state.get_cost();
-        if cost < best_f {
-          best_f = cost;
+
+        let delta = cost - current_f;
+        let accept = if delta <= 0.0 {
+          true
+        } else {
+          let u: f64 = rng.gen();
+          u < (-delta / temp).exp()
+        };
+
+        if accept {
           for i in 0..8 {
-            best_x[i] = param[i];
+            current_x[i] = param[i];
+          }
+          current_f = cost;
+
+          if cost < best_f {
+            best_f = cost;
+            best_x = current_x;
           }
         }
       }
@@ -390,7 +391,11 @@ impl SabrSmileCalibrator {
           "Relationships between K and σ for different tenors (SABR, β=1)",
         ))
         .x_axis(Axis::new().title("Strike price"))
-        .y_axis(Axis::new().title("Implied volatility")),
+        .y_axis(
+          Axis::new()
+            .title("Implied volatility")
+            .range(vec![0.0, 0.3]),
+        ),
     );
     plot.show();
 
