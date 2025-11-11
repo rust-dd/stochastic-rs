@@ -33,9 +33,9 @@ impl Model {
 
 impl Module for Model {
   fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-    let xs = self.linear1.forward(&xs)?.elu(2.0)?;
-    let xs = self.linear2.forward(&xs)?.elu(2.0)?;
-    let xs = self.linear3.forward(&xs)?.elu(2.0)?;
+    let xs = self.linear1.forward(&xs)?.elu(1.0)?;
+    let xs = self.linear2.forward(&xs)?.elu(1.0)?;
+    let xs = self.linear3.forward(&xs)?.elu(1.0)?;
     let xs = self.output_layer.forward(&xs)?;
     Ok(xs)
   }
@@ -85,16 +85,17 @@ pub fn train(
       let y_batch = y_train.narrow(0, start, current_batch_size)?;
 
       let logits = model.forward(&x_batch)?;
-      let loss = candle_nn::loss::mse(&logits, &y_batch)?;
+      let mse = candle_nn::loss::mse(&logits, &y_batch)?;
+      let loss = mse.sqrt()?;
       adam.backward_step(&loss)?;
     }
 
     // Compute and print the loss on the entire training and test set
     let logits = model.forward(&x_train)?;
-    let loss = candle_nn::loss::mse(&logits, &y_train)?;
+    let loss = candle_nn::loss::mse(&logits, &y_train)?.sqrt()?; // RMSE
 
     let test_logits = model.forward(&x_test)?;
-    let test_loss = candle_nn::loss::mse(&test_logits, &y_test)?;
+    let test_loss = candle_nn::loss::mse(&test_logits, &y_test)?.sqrt()?; // RMSE
 
     println!(
       "Epoch: {epoch:3} Train MSE: {:8.5} Test MSE: {:8.5}",
@@ -251,7 +252,7 @@ mod tests {
       30,  // hidden_size
       88,  // output_dim (implied volatilities)
       32,  // batch_size
-      200, // epochs
+      100, // epochs
     )?;
 
     // Sample index for plotting

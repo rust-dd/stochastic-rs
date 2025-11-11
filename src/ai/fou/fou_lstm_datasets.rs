@@ -42,7 +42,7 @@ pub fn test_vasicek_1_d(
       Some(0.0),
       Some(16.0),
       None,
-      FGN::new(hurst, n - 1, Some(1.0), None),
+      FGN::<f64>::new(hurst, n - 1, Some(1.0), None),
     );
     let mut path = fou.sample();
     let mean = path.mean().unwrap();
@@ -96,7 +96,7 @@ pub fn test_vasicek_2_d(
       Some(0.0),
       Some(16.0),
       None,
-      FGN::new(hurst, n - 1, Some(1.0), None),
+      FGN::<f64>::new(hurst, n - 1, Some(1.0), None),
     );
     let mut path = fou.sample();
     let mean = path.mean().unwrap();

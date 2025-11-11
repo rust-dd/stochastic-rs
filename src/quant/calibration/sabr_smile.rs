@@ -1,7 +1,8 @@
 use impl_new_derive::ImplNew;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use plotly::common::Mode;
+use plotly::common::{Mode, Title};
+use plotly::layout::{Axis, Layout};
 use plotly::{Plot, Scatter};
 
 use argmin::core::{CostFunction, Executor, Gradient, State};
@@ -312,7 +313,88 @@ impl SabrSmileCalibrator {
     let trace = Scatter::new(xs, ys).mode(Mode::Lines).name("SABR beta=1");
     let mut plot = Plot::new();
     plot.add_trace(trace);
+    plot.set_layout(
+      Layout::new()
+        .title(Title::from("SABR Smile"))
+        .x_axis(Axis::new().title("Strike price"))
+        .y_axis(Axis::new().title("Implied volatility")),
+    );
     plot.show();
+  }
+
+  /// Returns the vector of calibration results in the same order as `cases`.
+  pub fn calibrate_and_plot_many(
+    s: f64,
+    r_d: f64,
+    r_f: f64,
+    cases: &[(&str, SabrSmileQuotes)],
+  ) -> Vec<SabrSmileResult> {
+    // Calibrate each case
+    let mut results: Vec<SabrSmileResult> = Vec::with_capacity(cases.len());
+    for (_, q) in cases.iter() {
+      let calib = SabrSmileCalibrator::new(s, r_d, r_f, *q);
+      results.push(calib.calibrate());
+    }
+
+    let mut k_call_delta_p10: Vec<f64> = Vec::with_capacity(cases.len());
+    let mut k_put_delta_m10: Vec<f64> = Vec::with_capacity(cases.len());
+
+    for (i, (_, q)) in cases.iter().enumerate() {
+      let res = &results[i];
+      let kc = strike_for_delta(s, r_d, r_f, q.tau, res.params, 0.1, 1.0);
+      let kp = strike_for_delta(s, r_d, r_f, q.tau, res.params, -0.1, -1.0);
+      k_call_delta_p10.push(kc);
+      k_put_delta_m10.push(kp);
+    }
+
+    let k_min = k_put_delta_m10
+      .into_iter()
+      .fold(f64::INFINITY, |a, b| a.min(b));
+    let k_max = k_call_delta_p10
+      .into_iter()
+      .fold(f64::INFINITY, |a, b| a.min(b));
+
+    let k_lo = (k_min - 1.0).max(1e-6);
+    let k_hi = k_max + 1.0;
+    let step = 0.01;
+    let n = (((k_hi - k_lo) / step).ceil() as usize).max(2);
+    let xs: Vec<f64> = (0..n).map(|i| k_lo + (i as f64) * step).collect();
+
+    // Build combined plot
+    let mut plot = Plot::new();
+    for (i, (label, q)) in cases.iter().enumerate() {
+      let res = &results[i];
+      let fwd = forward_fx(s, q.tau, r_d, r_f);
+      let ys: Vec<f64> = xs
+        .iter()
+        .map(|&k| {
+          hagan_implied_vol_beta1(
+            k,
+            fwd,
+            q.tau,
+            res.params.alpha,
+            res.params.nu,
+            res.params.rho,
+          )
+        })
+        .collect();
+      let trace = Scatter::new(xs.clone(), ys)
+        .mode(Mode::Lines)
+        .name((*label).to_string());
+      plot.add_trace(trace);
+    }
+
+    plot.set_layout(
+      Layout::new()
+        .title(Title::from(
+          "Relationships between K and σ for different tenors (SABR, β=1)",
+        ))
+        .x_axis(Axis::new().title("Strike price"))
+        .y_axis(Axis::new().title("Implied volatility")),
+    );
+    plot.show();
+
+    results
   }
 }
 
@@ -367,31 +449,87 @@ mod tests {
     let r_usd = 0.022_f64;
     let r_brl = 0.065_f64;
     let s = 3.724_f64;
-    let table = [
-      (1.0 / 365.0, 20.98, 1.2, 0.15),
-      (7.0 / 365.0, 13.91, 1.3, 0.2),
-      (14.0 / 365.0, 13.75, 1.4, 0.2),
-      (30.0 / 365.0, 14.24, 1.5, 0.22),
-      (60.0 / 365.0, 13.84, 1.75, 0.27),
-      (90.0 / 365.0, 13.82, 2.0, 0.32),
-      (180.0 / 365.0, 13.82, 2.4, 0.43),
-      (1.0, 13.94, 2.9, 0.55),
+
+    let cases: [(&str, SabrSmileQuotes); 8] = [
+      (
+        "ON",
+        SabrSmileQuotes {
+          tau: 1.0 / 365.0,
+          sigma_atm: 20.98 / 100.0,
+          sigma_rr: 1.2 / 100.0,
+          sigma_bf: 0.15 / 100.0,
+        },
+      ),
+      (
+        "1W",
+        SabrSmileQuotes {
+          tau: 7.0 / 365.0,
+          sigma_atm: 13.91 / 100.0,
+          sigma_rr: 1.3 / 100.0,
+          sigma_bf: 0.20 / 100.0,
+        },
+      ),
+      (
+        "2W",
+        SabrSmileQuotes {
+          tau: 14.0 / 365.0,
+          sigma_atm: 13.75 / 100.0,
+          sigma_rr: 1.4 / 100.0,
+          sigma_bf: 0.20 / 100.0,
+        },
+      ),
+      (
+        "1M",
+        SabrSmileQuotes {
+          tau: 30.0 / 365.0,
+          sigma_atm: 14.24 / 100.0,
+          sigma_rr: 1.5 / 100.0,
+          sigma_bf: 0.22 / 100.0,
+        },
+      ),
+      (
+        "2M",
+        SabrSmileQuotes {
+          tau: 60.0 / 365.0,
+          sigma_atm: 13.84 / 100.0,
+          sigma_rr: 1.75 / 100.0,
+          sigma_bf: 0.27 / 100.0,
+        },
+      ),
+      (
+        "3M",
+        SabrSmileQuotes {
+          tau: 90.0 / 365.0,
+          sigma_atm: 13.82 / 100.0,
+          sigma_rr: 2.0 / 100.0,
+          sigma_bf: 0.32 / 100.0,
+        },
+      ),
+      (
+        "6M",
+        SabrSmileQuotes {
+          tau: 180.0 / 365.0,
+          sigma_atm: 13.82 / 100.0,
+          sigma_rr: 2.4 / 100.0,
+          sigma_bf: 0.43 / 100.0,
+        },
+      ),
+      (
+        "1Y",
+        SabrSmileQuotes {
+          tau: 1.0,
+          sigma_atm: 13.94 / 100.0,
+          sigma_rr: 2.9 / 100.0,
+          sigma_bf: 0.55 / 100.0,
+        },
+      ),
     ];
 
-    for (i, (tau, atm_bps, rr_bps, bf_bps)) in table.iter().enumerate() {
-      let quotes = SabrSmileQuotes {
-        tau: *tau,
-        sigma_atm: atm_bps / 100.0,
-        sigma_rr: rr_bps / 100.0,
-        sigma_bf: bf_bps / 100.0,
-      };
-      let calib = SabrSmileCalibrator::new(s, r_brl, r_usd, quotes);
-      let res = calib.calibrate();
-      println!(
-        "\nTenor {} (T={:.4}):",
-        ["ON", "1W", "2W", "1M", "2M", "3M", "6M", "1Y"][i],
-        tau
-      );
+    // Calibrate and plot all in one figure
+    let results = SabrSmileCalibrator::calibrate_and_plot_many(s, r_brl, r_usd, &cases);
+
+    for (i, ((label, q), res)) in cases.iter().zip(results.iter()).enumerate() {
+      println!("\nTenor {} (T={:.4}):", label, q.tau);
       println!(
         "  K_ATM={:.6}, alpha={:.6}, nu={:.6}, rho={:.6}",
         res.k_atm, res.params.alpha, res.params.nu, res.params.rho
