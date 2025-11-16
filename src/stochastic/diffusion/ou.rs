@@ -7,9 +7,9 @@ use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct OU<T> {
+  pub theta: T,
   pub mu: T,
   pub sigma: T,
-  pub theta: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
