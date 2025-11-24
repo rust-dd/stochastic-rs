@@ -1,9 +1,7 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
-#[derive(ImplNew)]
 pub struct FGBM<T> {
   pub mu: T,
   pub sigma: T,
@@ -11,7 +9,7 @@ pub struct FGBM<T> {
   pub x0: Option<T>,
   pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN<T>,
+  fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,

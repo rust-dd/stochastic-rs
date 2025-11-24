@@ -1,25 +1,56 @@
-use impl_new_derive::ImplNew;
-use ndarray::Array1;
+use ndarray::{Array1, Array2, Axis, Zip};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::stochastic::{noise::fgn::FGN, SamplingExt};
 
 /// Fractional Cox-Ingersoll-Ross (FCIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the FCIR process.
-#[derive(ImplNew)]
 pub struct FCIR<T> {
-  pub theta: f64,
-  pub mu: f64,
-  pub sigma: f64,
+  pub hurst: T,
+  pub theta: T,
+  pub mu: T,
+  pub sigma: T,
   pub n: usize,
-  pub x0: Option<f64>,
-  pub t: Option<f64>,
+  pub x0: Option<T>,
+  pub t: Option<T>,
   pub use_sym: Option<bool>,
   pub m: Option<usize>,
-  pub fgn: FGN<T>,
+  fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
+}
+
+#[cfg(feature = "f64")]
+impl FCIR<f64> {
+  #[must_use]
+  pub fn new(
+    hurst: f64,
+    theta: f64,
+    mu: f64,
+    sigma: f64,
+    n: usize,
+    x0: Option<f64>,
+    t: Option<f64>,
+    use_sym: Option<bool>,
+    m: Option<usize>,
+  ) -> Self {
+    let fgn = FGN::<f64>::new(hurst, n - 1, t, m);
+
+    Self {
+      hurst,
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      use_sym,
+      m,
+      fgn,
+    }
+  }
 }
 
 #[cfg(feature = "f64")]
@@ -66,6 +97,42 @@ impl SamplingExt<f64> for FCIR<f64> {
     fcir
   }
 
+  /// Sample the Fractional Cox-Ingersoll-Ross (FCIR) process in parallel
+  fn sample_par(&self) -> ndarray::Array2<f64> {
+    assert!(
+      2.0 * self.theta * self.mu >= self.sigma.powi(2),
+      "2 * theta * mu < sigma^2"
+    );
+
+    let n = self.n();
+    let m = self.m().unwrap();
+    let dt = self.t.unwrap_or(1.0) / (n - 1) as f64;
+    let mut xs = Array2::zeros((m, n));
+    let fgn = self.fgn.sample_par();
+
+    debug_assert_eq!(fgn.nrows(), m);
+    debug_assert_eq!(fgn.ncols(), n - 1);
+
+    Zip::from(xs.axis_iter_mut(Axis(0)))
+      .and(fgn.axis_iter(Axis(0)))
+      .into_par_iter()
+      .for_each(|(mut fcir, fgn)| {
+        fcir[0] = self.x0.unwrap_or(0.0);
+
+        for i in 1..n {
+          let dfcir = self.theta * (self.mu - fcir[i - 1]) * dt
+            + self.sigma * fcir[i - 1].abs().sqrt() * fgn[i - 1];
+
+          fcir[i] = match self.use_sym.unwrap_or(false) {
+            true => (fcir[i - 1] + dfcir).abs(),
+            false => (fcir[i - 1] + dfcir).max(0.0),
+          };
+        }
+      });
+
+    xs
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -79,6 +146,37 @@ impl SamplingExt<f64> for FCIR<f64> {
   #[cfg(feature = "cuda")]
   fn set_cuda(&mut self, cuda: bool) {
     self.cuda = cuda;
+  }
+}
+
+#[cfg(feature = "f32")]
+impl FCIR<f32> {
+  #[must_use]
+  pub fn new(
+    hurst: f32,
+    theta: f32,
+    mu: f32,
+    sigma: f32,
+    n: usize,
+    x0: Option<f32>,
+    t: Option<f32>,
+    use_sym: Option<bool>,
+    m: Option<usize>,
+  ) -> Self {
+    let fgn = FGN::<f32>::new(hurst, n - 1, t, m);
+
+    Self {
+      hurst,
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      use_sym,
+      m,
+      fgn,
+    }
   }
 }
 
@@ -98,14 +196,14 @@ impl SamplingExt<f32> for FCIR<f32> {
     );
 
     let fgn = self.fgn();
-    let dt = (self.t.unwrap_or(1.0) / (self.n - 1) as f64) as f32;
+    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
 
     let mut fcir = Array1::<f32>::zeros(self.n);
-    fcir[0] = self.x0.unwrap_or(0.0) as f32;
+    fcir[0] = self.x0.unwrap_or(0.0);
 
     for i in 1..self.n {
-      let dfcir = (self.theta * (self.mu - fcir[i - 1] as f64) * dt as f64) as f32
-        + (self.sigma * (fcir[i - 1]).abs().sqrt() as f64) as f32 * fgn[i - 1];
+      let dfcir = (self.theta * (self.mu - fcir[i - 1]) * dt)
+        + (self.sigma * (fcir[i - 1]).abs().sqrt()) * fgn[i - 1];
 
       fcir[i] = match self.use_sym.unwrap_or(false) {
         true => (fcir[i - 1] + dfcir).abs(),
@@ -114,6 +212,42 @@ impl SamplingExt<f32> for FCIR<f32> {
     }
 
     fcir
+  }
+
+  /// Sample the Fractional Cox-Ingersoll-Ross (FCIR) process in parallel
+  fn sample_par(&self) -> ndarray::Array2<f32> {
+    assert!(
+      2.0 * self.theta * self.mu >= self.sigma.powi(2),
+      "2 * theta * mu < sigma^2"
+    );
+
+    let n = self.n();
+    let m = self.m().unwrap();
+    let dt = self.t.unwrap_or(1.0) / (n - 1) as f32;
+    let mut xs = Array2::zeros((m, n));
+    let fgn = self.fgn.sample_par();
+
+    debug_assert_eq!(fgn.nrows(), m);
+    debug_assert_eq!(fgn.ncols(), n - 1);
+
+    Zip::from(xs.axis_iter_mut(Axis(0)))
+      .and(fgn.axis_iter(Axis(0)))
+      .into_par_iter()
+      .for_each(|(mut fcir, fgn)| {
+        fcir[0] = self.x0.unwrap_or(0.0);
+
+        for i in 1..n {
+          let dfcir = self.theta * (self.mu - fcir[i - 1]) * dt
+            + self.sigma * fcir[i - 1].abs().sqrt() * fgn[i - 1];
+
+          fcir[i] = match self.use_sym.unwrap_or(false) {
+            true => (fcir[i - 1] + dfcir).abs(),
+            false => (fcir[i - 1] + dfcir).max(0.0),
+          };
+        }
+      });
+
+    xs
   }
 
   fn n(&self) -> usize {
@@ -129,14 +263,15 @@ impl SamplingExt<f32> for FCIR<f32> {
 mod tests {
   use crate::{
     plot_1d,
-    stochastic::{noise::fgn::FGN, SamplingExt, N, X0},
+    stochastic::{SamplingExt, N, X0},
   };
 
   use super::*;
 
   #[test]
   fn fcir_length_equals_n() {
-    let fcir = FCIR::new(
+    let fcir = FCIR::<f64>::new(
+      0.7,
       1.0,
       1.2,
       0.2,
@@ -145,7 +280,6 @@ mod tests {
       Some(1.0),
       Some(false),
       Some(1),
-      FGN::<f64>::new(0.7, N, Some(1.0), None),
     );
 
     assert_eq!(fcir.sample().len(), N);
@@ -153,7 +287,8 @@ mod tests {
 
   #[test]
   fn fcir_starts_with_x0() {
-    let fcir = FCIR::new(
+    let fcir = FCIR::<f64>::new(
+      0.7,
       1.0,
       1.2,
       0.2,
@@ -162,7 +297,6 @@ mod tests {
       Some(1.0),
       Some(false),
       Some(1),
-      FGN::<f64>::new(0.7, N, Some(1.0), None),
     );
 
     assert_eq!(fcir.sample()[0], X0);
@@ -170,7 +304,8 @@ mod tests {
 
   #[test]
   fn fcir_plot() {
-    let fcir = FCIR::new(
+    let fcir = FCIR::<f64>::new(
+      0.7,
       1.0,
       1.2,
       0.2,
@@ -179,7 +314,6 @@ mod tests {
       Some(1.0),
       Some(false),
       Some(1),
-      FGN::<f64>::new(0.7, N, Some(1.0), None),
     );
 
     plot_1d!(

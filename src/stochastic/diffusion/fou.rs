@@ -12,7 +12,7 @@ pub struct FOU<T> {
   pub x0: Option<T>,
   pub t: Option<T>,
   pub m: Option<usize>,
-  pub fgn: FGN<T>,
+  fgn: FGN<T>,
   #[cfg(feature = "cuda")]
   #[default(false)]
   cuda: bool,
