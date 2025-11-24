@@ -8,7 +8,7 @@ use ndarray::{s, Array1};
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 
-use crate::stochastic::{diffusion::fou::FOU, noise::fgn::FGN, SamplingExt};
+use crate::stochastic::{diffusion::fou::FOU, SamplingExt};
 
 pub fn test_vasicek_1_d(
   epoch_size: usize,
@@ -34,16 +34,7 @@ pub fn test_vasicek_1_d(
   for idx in 0..epoch_size {
     let hurst = hursts[idx];
     let theta = thetas[idx];
-    let fou = FOU::new(
-      theta,
-      mu,
-      sigma,
-      n,
-      Some(0.0),
-      Some(16.0),
-      None,
-      FGN::<f64>::new(hurst, n - 1, Some(1.0), None),
-    );
+    let fou = FOU::<f64>::new(hurst, theta, mu, sigma, n, Some(0.0), Some(16.0), None);
     let mut path = fou.sample();
     let mean = path.mean().unwrap();
     let std = path.std(0.0);
@@ -88,16 +79,7 @@ pub fn test_vasicek_2_d(
   for idx in 0..epoch_size {
     let hurst = hursts[idx];
     let theta = thetas[idx];
-    let fou = FOU::new(
-      theta,
-      mu,
-      sigma,
-      n,
-      Some(0.0),
-      Some(16.0),
-      None,
-      FGN::<f64>::new(hurst, n - 1, Some(1.0), None),
-    );
+    let fou = FOU::<f64>::new(hurst, theta, mu, sigma, n, Some(0.0), Some(16.0), None);
     let mut path = fou.sample();
     let mean = path.mean().unwrap();
     let std = path.std(0.0);

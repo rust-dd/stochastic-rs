@@ -49,6 +49,8 @@ impl FCIR<f64> {
       use_sym,
       m,
       fgn,
+      #[cfg(feature = "cuda")]
+      cuda: false,
     }
   }
 }
@@ -176,6 +178,8 @@ impl FCIR<f32> {
       use_sym,
       m,
       fgn,
+      #[cfg(feature = "cuda")]
+      cuda: false,
     }
   }
 }
