@@ -1,9 +1,10 @@
 pub mod asian;
+pub mod breeden_litzenberger;
 pub mod bsm;
+pub mod dupire;
 pub mod finitie_difference;
 pub mod heston;
+pub mod malliavin_gbm;
 pub mod merton_jump;
-pub mod breeden_litzenberger;
-pub mod dupire;
 pub mod pnl;
 pub mod sabr;
