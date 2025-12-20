@@ -78,7 +78,7 @@ arc-swap = "1.7.1"
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]
-default = ["f64"]
+default = ["f64", "cuda"]
 f32 = []
 f64 = []
 jemalloc = ["dep:tikv-jemallocator"]

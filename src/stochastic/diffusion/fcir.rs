@@ -18,7 +18,6 @@ pub struct FCIR<T> {
   pub m: Option<usize>,
   fgn: FGN<T>,
   #[cfg(feature = "cuda")]
-  #[default(false)]
   cuda: bool,
 }
 

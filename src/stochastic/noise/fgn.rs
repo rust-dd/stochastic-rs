@@ -4,6 +4,8 @@ use std::sync::{Arc, RwLock};
 use anyhow::Result;
 #[cfg(feature = "cuda")]
 use either::Either;
+#[cfg(feature = "cuda")]
+use rand::Rng;
 
 use ndarray::parallel::prelude::*;
 use ndarray::{concatenate, prelude::*};
@@ -150,7 +152,8 @@ impl SamplingExt<f64> for FGN<f64> {
     let offset = self.offset;
     let hurst = self.hurst;
     let t = self.t.unwrap_or(1.0);
-    let seed = 42u64;
+    let mut rng = rand::thread_rng();
+    let seed: u64 = rng.gen();
 
     let host_sqrt_eigs: Vec<cuComplex> = self
       .sqrt_eigenvalues
