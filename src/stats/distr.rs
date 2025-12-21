@@ -11,6 +11,7 @@ pub mod hypergeometric;
 pub mod inverse_gauss;
 pub mod lognormal;
 pub mod normal;
+pub mod normal_f64;
 pub mod normal_inverse_gauss;
 pub mod pareto;
 pub mod poisson;
@@ -25,6 +26,12 @@ fn fill_f32_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
   }
 }
 
+fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
+  for x in out.iter_mut() {
+    *x = rng.gen_range(0.0..1.0);
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use plotly::layout::LayoutGrid;
@@ -33,11 +40,10 @@ mod tests {
 
   use crate::stats::distr::{
     beta::SimdBeta, binomial::SimdBinomial, cauchy::SimdCauchy, chi_square::SimdChiSquared,
-    exp::SimdExp, gamma::SimdGamma, geometric::SimdGeometric,
-    hypergeometric::SimdHypergeometric, inverse_gauss::SimdInverseGauss,
-    lognormal::SimdLogNormal, normal::SimdNormal, normal_inverse_gauss::SimdNormalInverseGauss,
-    pareto::SimdPareto, poisson::SimdPoisson, studentt::SimdStudentT, uniform::SimdUniform,
-    weibull::SimdWeibull,
+    exp::SimdExp, gamma::SimdGamma, geometric::SimdGeometric, hypergeometric::SimdHypergeometric,
+    inverse_gauss::SimdInverseGauss, lognormal::SimdLogNormal, normal::SimdNormal,
+    normal_inverse_gauss::SimdNormalInverseGauss, pareto::SimdPareto, poisson::SimdPoisson,
+    studentt::SimdStudentT, uniform::SimdUniform, weibull::SimdWeibull,
   };
 
   use plotly::{
@@ -139,7 +145,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Normal(0,1) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -168,7 +178,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Cauchy(0,1) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -197,7 +211,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("LogNormal(0,1) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -226,7 +244,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Pareto(1,1.5) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -255,7 +277,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Weibull(1,1.5) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -284,7 +310,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Gamma(2,2) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -313,7 +343,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Beta(2,2) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -342,7 +376,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("InverseGauss(1,2) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -371,7 +409,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("NIG(2,0) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -400,7 +442,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("StudentT(5) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -432,7 +478,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Binomial(10,0.3) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -463,7 +513,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Geometric(0.25) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -496,7 +550,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("HyperGeo(20,5,6) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -528,7 +586,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Poisson(4) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -557,7 +619,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Uniform(0,1) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -586,7 +652,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("Exp(1.5) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -615,7 +685,11 @@ mod tests {
       let trace_rd = Scatter::new(xs, bins_rd)
         .name("ChiSquared(5) - rand_distr")
         .mode(Mode::Lines)
-        .line(Line::new().shape(LineShape::Linear).dash(plotly::common::DashType::Dash))
+        .line(
+          Line::new()
+            .shape(LineShape::Linear)
+            .dash(plotly::common::DashType::Dash),
+        )
         .x_axis(&xa)
         .y_axis(&ya);
       plot.add_trace(trace_rd);
@@ -636,17 +710,24 @@ mod tests {
     let simd = SimdNormal::new(0.0, 1.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("Normal single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "Normal single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -659,17 +740,24 @@ mod tests {
     let simd = SimdLogNormal::new(0.2, 0.8);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("LogNormal single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "LogNormal single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -683,17 +771,24 @@ mod tests {
     let simd = SimdExp::new(lambda);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("Exp single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "Exp single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -706,17 +801,24 @@ mod tests {
     let simd = SimdCauchy::new(0.0, 1.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("Cauchy single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "Cauchy single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -729,17 +831,24 @@ mod tests {
     let simd = SimdGamma::new(2.0, 2.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("Gamma single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "Gamma single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -752,17 +861,24 @@ mod tests {
     let simd = SimdWeibull::new(1.0, 1.5);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("Weibull single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "Weibull single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -775,17 +891,24 @@ mod tests {
     let simd = SimdBeta::new(2.0, 2.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("Beta single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "Beta single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -798,17 +921,24 @@ mod tests {
     let simd = SimdChiSquared::new(5.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("ChiSq single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "ChiSq single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -821,17 +951,24 @@ mod tests {
     let simd = SimdStudentT::new(5.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng); }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng);
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng); }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
     let dt_r = t1.elapsed();
 
-    println!("StudentT single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "StudentT single: simd {:?}, sum={:.3} | rand_distr {:?}, sum={:.3}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(!s_sum.is_nan() && !r_sum.is_nan());
   }
 
@@ -844,61 +981,98 @@ mod tests {
     let simd = SimdPoisson::new(4.0);
     let mut s_sum: u64 = 0;
     let t0 = Instant::now();
-    for _ in 0..n { s_sum += simd.sample(&mut rng) as u64; }
+    for _ in 0..n {
+      s_sum += simd.sample(&mut rng) as u64;
+    }
     let dt_s = t0.elapsed();
 
     let mut rng = thread_rng();
     let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
     let mut r_sum: u64 = 0;
     let t1 = Instant::now();
-    for _ in 0..n { r_sum += rd.sample(&mut rng) as u64; }
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng) as u64;
+    }
     let dt_r = t1.elapsed();
 
-    println!("Poisson single: simd {:?}, sum={} | rand_distr {:?}, sum={}", dt_s, s_sum, dt_r, r_sum);
+    println!(
+      "Poisson single: simd {:?}, sum={} | rand_distr {:?}, sum={}",
+      dt_s, s_sum, dt_r, r_sum
+    );
     assert!(s_sum > 0 && r_sum > 0);
   }
 
   // Helpers for timing benchmarks
-  struct Row { name: &'static str, simd_ms: f64, rand_ms: f64 }
-  fn time_f32<F1, F2>(rows: &mut Vec<Row>, n: usize, name: &'static str, mut simd_fn: F1, mut rand_fn: F2)
-  where
+  struct Row {
+    name: &'static str,
+    simd_ms: f64,
+    rand_ms: f64,
+  }
+  fn time_f32<F1, F2>(
+    rows: &mut Vec<Row>,
+    n: usize,
+    name: &'static str,
+    mut simd_fn: F1,
+    mut rand_fn: F2,
+  ) where
     F1: FnMut() -> f32,
     F2: FnMut() -> f32,
   {
     use std::hint::black_box;
     let t0 = Instant::now();
     let mut s_sum = 0.0f32;
-    for _ in 0..n { s_sum += simd_fn(); }
+    for _ in 0..n {
+      s_sum += simd_fn();
+    }
     let dt_simd = t0.elapsed().as_secs_f64() * 1000.0;
 
     let t1 = Instant::now();
     let mut r_sum = 0.0f32;
-    for _ in 0..n { r_sum += rand_fn(); }
+    for _ in 0..n {
+      r_sum += rand_fn();
+    }
     let dt_rand = t1.elapsed().as_secs_f64() * 1000.0;
 
     black_box(s_sum);
     black_box(r_sum);
-    rows.push(Row { name, simd_ms: dt_simd, rand_ms: dt_rand });
+    rows.push(Row {
+      name,
+      simd_ms: dt_simd,
+      rand_ms: dt_rand,
+    });
   }
-  fn time_u32<F1, F2>(rows: &mut Vec<Row>, n: usize, name: &'static str, mut simd_fn: F1, mut rand_fn: F2)
-  where
+  fn time_u32<F1, F2>(
+    rows: &mut Vec<Row>,
+    n: usize,
+    name: &'static str,
+    mut simd_fn: F1,
+    mut rand_fn: F2,
+  ) where
     F1: FnMut() -> u32,
     F2: FnMut() -> u32,
   {
     use std::hint::black_box;
     let t0 = Instant::now();
     let mut s_sum: u64 = 0;
-    for _ in 0..n { s_sum += simd_fn() as u64; }
+    for _ in 0..n {
+      s_sum += simd_fn() as u64;
+    }
     let dt_simd = t0.elapsed().as_secs_f64() * 1000.0;
 
     let t1 = Instant::now();
     let mut r_sum: u64 = 0;
-    for _ in 0..n { r_sum += rand_fn() as u64; }
+    for _ in 0..n {
+      r_sum += rand_fn() as u64;
+    }
     let dt_rand = t1.elapsed().as_secs_f64() * 1000.0;
 
     black_box(s_sum);
     black_box(r_sum);
-    rows.push(Row { name, simd_ms: dt_simd, rand_ms: dt_rand });
+    rows.push(Row {
+      name,
+      simd_ms: dt_simd,
+      rand_ms: dt_rand,
+    });
   }
 
   #[test]
@@ -920,7 +1094,13 @@ mod tests {
       let simd = SimdNormal::new(0.0, 1.0);
       let mut rng2 = thread_rng();
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
-      time_f32(&mut rows, n_f, "Normal", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "Normal",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // LogNormal
@@ -929,7 +1109,13 @@ mod tests {
       let simd = SimdLogNormal::new(0.2, 0.8);
       let mut rng2 = thread_rng();
       let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
-      time_f32(&mut rows, n_f, "LogNormal", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "LogNormal",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // Exp
@@ -938,7 +1124,13 @@ mod tests {
       let simd = SimdExp::new(1.5);
       let mut rng2 = thread_rng();
       let rd = rand_distr::Exp::<f32>::new(1.5).unwrap();
-      time_f32(&mut rows, n_f, "Exp", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "Exp",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // Cauchy
@@ -947,7 +1139,13 @@ mod tests {
       let simd = SimdCauchy::new(0.0, 1.0);
       let mut rng2 = thread_rng();
       let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
-      time_f32(&mut rows, n_f, "Cauchy", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "Cauchy",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // Gamma
@@ -956,7 +1154,13 @@ mod tests {
       let simd = SimdGamma::new(2.0, 2.0);
       let mut rng2 = thread_rng();
       let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
-      time_f32(&mut rows, n_f, "Gamma", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "Gamma",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // Weibull
@@ -965,7 +1169,13 @@ mod tests {
       let simd = SimdWeibull::new(1.0, 1.5);
       let mut rng2 = thread_rng();
       let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
-      time_f32(&mut rows, n_f, "Weibull", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "Weibull",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // Beta
@@ -974,7 +1184,13 @@ mod tests {
       let simd = SimdBeta::new(2.0, 2.0);
       let mut rng2 = thread_rng();
       let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
-      time_f32(&mut rows, n_f, "Beta", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "Beta",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // Chi-Squared
@@ -984,7 +1200,13 @@ mod tests {
       let simd = SimdChiSquared::new(5.0);
       let mut rng2 = thread_rng();
       let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
-      time_f32(&mut rows, n_f, "ChiSquared", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "ChiSquared",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // StudentT
@@ -993,7 +1215,13 @@ mod tests {
       let simd = SimdStudentT::new(5.0);
       let mut rng2 = thread_rng();
       let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
-      time_f32(&mut rows, n_f, "StudentT", || simd.sample(&mut rng), || rd.sample(&mut rng2));
+      time_f32(
+        &mut rows,
+        n_f,
+        "StudentT",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2),
+      );
     }
 
     // Poisson (discrete)
@@ -1002,7 +1230,13 @@ mod tests {
       let simd = SimdPoisson::new(4.0);
       let mut rng2 = thread_rng();
       let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
-      time_u32(&mut rows, n_i, "Poisson", || simd.sample(&mut rng), || rd.sample(&mut rng2) as u32);
+      time_u32(
+        &mut rows,
+        n_i,
+        "Poisson",
+        || simd.sample(&mut rng),
+        || rd.sample(&mut rng2) as u32,
+      );
     }
 
     // Optionally Pareto if available in rand_distr
@@ -1013,7 +1247,10 @@ mod tests {
     }
 
     // Print table
-    println!("{:<14} {:>12} {:>14}", "Distribution", "simd (ms)", "rand_distr (ms)");
+    println!(
+      "{:<14} {:>12} {:>14}",
+      "Distribution", "simd (ms)", "rand_distr (ms)"
+    );
     println!("{:-<14} {:-<12} {:-<14}", "", "", "");
     for r in rows {
       println!("{:<14} {:>12.2} {:>14.2}", r.name, r.simd_ms, r.rand_ms);

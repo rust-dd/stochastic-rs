@@ -59,6 +59,69 @@ impl SamplingExt<f64> for GBM<f64> {
     gbm
   }
 
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Array1<f64> {
+    use crate::stats::distr::normal_f64::SimdNormal;
+    use ndarray::Array1;
+    use wide::f64x8;
+
+    let n = self.n;
+    assert!(n >= 1, "n must be >= 1");
+
+    let t = self.t.unwrap_or(1.0);
+    let s0 = self.x0.unwrap_or(1.0);
+
+    if n == 1 {
+      return Array1::from(vec![s0]);
+    }
+
+    let dt = t / (n - 1) as f64;
+
+    let drift_dt = (self.mu - 0.5 * self.sigma * self.sigma) * dt;
+    let vol_sdt = self.sigma * dt.sqrt();
+
+    let driftv = f64x8::splat(drift_dt);
+    let volv = f64x8::splat(self.sigma);
+
+    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
+    let mut gbm = Array1::zeros(n);
+    let mut s = s0;
+    gbm[0] = s;
+
+    let mut i = 1usize;
+
+    while i + 8 <= n - 1 {
+      let z = f64x8::from([
+        gn[i - 1],
+        gn[i],
+        gn[i + 1],
+        gn[i + 2],
+        gn[i + 3],
+        gn[i + 4],
+        gn[i + 5],
+        gn[i + 6],
+      ]);
+
+      let g = (driftv + volv * z).exp().to_array();
+
+      for gj in g {
+        s *= gj;
+        gbm[i] = s;
+      }
+
+      i += 8;
+    }
+
+    while i < n - 1 {
+      let z = gn[i];
+      s *= (drift_dt + vol_sdt * z).exp();
+      gbm[i] = s;
+      i += 1;
+    }
+
+    gbm
+  }
+
   /// Number of time steps
   fn n(&self) -> usize {
     self.n
@@ -273,7 +336,7 @@ mod tests {
     let gbm = GBM::new(
       0.25,
       0.5,
-      N,
+      N * 10,
       Some(X0),
       Some(1.0),
       None,
@@ -281,7 +344,39 @@ mod tests {
       #[cfg(feature = "malliavin")]
       None,
     );
+
     plot_1d!(gbm.sample(), "Geometric Brownian Motion (GBM) process");
+  }
+
+  #[test]
+  fn gbm_benchmark() {
+    let gbm = GBM::new(
+      0.25,
+      0.5,
+      N * 10,
+      Some(X0),
+      Some(1.0),
+      None,
+      None,
+      #[cfg(feature = "malliavin")]
+      None,
+    );
+
+    let iters = N * 10;
+
+    let start = std::time::Instant::now();
+    for _ in 0..iters {
+      gbm.sample();
+    }
+    let basic_ms_per = start.elapsed().as_secs_f64() * 1000.0 / iters as f64;
+
+    let start = std::time::Instant::now();
+    for _ in 0..iters {
+      gbm.sample_simd();
+    }
+    let simd_ms_per = start.elapsed().as_secs_f64() * 1000.0 / iters as f64;
+
+    println!("Basic: {:.6} ms, SIMD: {:.6} ms", basic_ms_per, simd_ms_per);
   }
 
   #[test]
