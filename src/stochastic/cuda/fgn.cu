@@ -37,8 +37,7 @@ __global__ void scale_and_copy_to_output(
     int n,
     int m,
     int offset,
-    float hurst,
-    float t)
+    float scale)
 {
   int out_size = n - offset;
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -47,7 +46,6 @@ __global__ void scale_and_copy_to_output(
   int traj_id = tid / out_size;
   int idx = tid % out_size;
   int data_idx = traj_id * (2 * n) + (idx + 1);
-  float scale = powf((float)n, -hurst) * powf(t, hurst);
   d_output[tid] = d_data[data_idx].x * scale;
 }
 
@@ -57,8 +55,7 @@ extern "C" EXPORT void fgn_kernel(
     int n,
     int m,
     int offset,
-    float hurst,
-    float t,
+    float scale,
     unsigned long seed)
 {
   int traj_size = 2 * n;
@@ -83,7 +80,7 @@ extern "C" EXPORT void fgn_kernel(
     int totalThreads = m * out_size;
     int blockSize = 512;
     int gridSize = (totalThreads + blockSize - 1) / blockSize;
-    scale_and_copy_to_output<<<gridSize, blockSize>>>(d_data, d_output, n, m, offset, hurst, t);
+    scale_and_copy_to_output<<<gridSize, blockSize>>>(d_data, d_output, n, m, offset, scale);
     cudaDeviceSynchronize();
   }
   cudaFree(d_data);

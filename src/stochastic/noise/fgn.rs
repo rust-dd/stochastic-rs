@@ -104,10 +104,11 @@ impl SamplingExt<f64> for FGN<f64> {
 
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self) -> Result<Either<Array1<f64>, Array2<f64>>> {
+    //  nvcc -O3 -use_fast_math -shared fgn.cu -o ./fgn_linux/libfgn.so -Xcompiler -fPIC -lcufft -lcurand
     // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft // ELF header error
     // nvcc -shared -o libfgn.so fgn.cu -Xcompiler -fPIC
     // nvcc -O3 -use_fast_math -o libfgn.so fgn.cu -Xcompiler -fPIC
-    // nvcc -shared fgn.cu -o fgn.dll -lcufft
+    // nvcc -shared fgn.cu -o ./fgn_windows/fgn.dll -lcufft
     use std::ffi::c_void;
 
     use cudarc::driver::{CudaDevice, DevicePtr, DevicePtrMut, DeviceRepr};
@@ -133,8 +134,7 @@ impl SamplingExt<f64> for FGN<f64> {
       /* n:           */ i32,
       /* m:           */ i32,
       /* offset:      */ i32,
-      /* hurst:       */ f32,
-      /* t:           */ f32,
+      /* scale:       */ f32,
       /* seed:        */ u64,
     );
 
@@ -152,6 +152,7 @@ impl SamplingExt<f64> for FGN<f64> {
     let offset = self.offset;
     let hurst = self.hurst;
     let t = self.t.unwrap_or(1.0);
+    let scale = (n as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
     let mut rng = rand::thread_rng();
     let seed: u64 = rng.gen();
 
@@ -173,8 +174,7 @@ impl SamplingExt<f64> for FGN<f64> {
         n as i32,
         m as i32,
         offset as i32,
-        hurst as f32,
-        t as f32,
+        scale,
         seed,
       );
     }
@@ -359,21 +359,41 @@ mod tests {
     let fgn = fbm.sample_cuda().unwrap();
     let fgn = fgn.left().unwrap();
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
+    use crate::plot_2d;
+
+    let fgn = FGN::<f64>::new(0.7, 500, Some(1.0), Some(1));
+    let fgn = fgn.sample_cuda().unwrap();
+    let fgn_left = fgn.left().unwrap();
+    plot_1d!(fgn_left, "Fractional Brownian Motion (H = 0.7)");
     let mut path = Array1::<f64>::zeros(500);
     for i in 1..500 {
-      path[i] += path[i - 1] + fgn[i];
+      path[i] += path[i - 1] + fgn_left[i];
     }
     plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
 
+    let fgn = FGN::<f64>::new(0.7, 5000, Some(1.0), Some(10000));
     let start = std::time::Instant::now();
     let _ = fbm.sample_cuda();
+    let res = fgn.sample_cuda().unwrap();
     let end = start.elapsed().as_millis();
     tracing::info!("10000 fgn generated on cuda in: {end}");
+    // slice first  2 rows
+    let paths = res.right().unwrap();
+    let paths = paths.slice(s![..2, ..]);
+    plot_2d!(paths.row(0), "Path 1", paths.row(1), "Path 2");
+    let mut fbm1 = Array1::<f64>::zeros(5000);
+    let mut fbm2 = Array1::<f64>::zeros(5000);
+    for i in 1..5000 {
+      fbm1[i] += fbm1[i - 1] + paths.row(0)[i];
+      fbm2[i] += fbm2[i - 1] + paths.row(1)[i];
+    }
+    plot_2d!(fbm1, "FBM Path 1", fbm2, "FBM Path 2");
 
     let start = std::time::Instant::now();
     let _ = fbm.sample_par();
+    let _ = fgn.sample_par();
     let end = start.elapsed().as_millis();
-    tracing::info!("10000 fgn generated on cuda in: {end}");
+    tracing::info!("10000 fgn generated on cpu in: {end}");
   }
 
   #[test]
