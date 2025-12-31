@@ -1,6 +1,7 @@
 use impl_new_derive::ImplNew;
 
-use crate::quant::{Moneyness, OptionType};
+use crate::quant::Moneyness;
+use crate::quant::OptionType;
 
 #[derive(ImplNew)]
 pub struct DeltaHedge {

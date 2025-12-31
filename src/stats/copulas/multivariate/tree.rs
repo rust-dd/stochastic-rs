@@ -1,11 +1,14 @@
 use std::error::Error;
 
-use ndarray::{Array1, Array2, Axis};
-use statrs::distribution::{ContinuousCDF, Normal};
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Axis;
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::Normal;
 
+use super::CopulaType;
+use super::Multivariate;
 use crate::stats::copulas::correlation::kendall_tau;
-
-use super::{CopulaType, Multivariate};
 
 #[derive(Debug, Clone)]
 pub struct TreeMultivariate {

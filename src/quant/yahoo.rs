@@ -1,9 +1,11 @@
-use std::{borrow::Cow, fmt::Display};
+use std::borrow::Cow;
+use std::fmt::Display;
 
 use polars::prelude::*;
 use time::OffsetDateTime;
 use tokio_test;
-use yahoo_finance_api::{YOptionChain, YahooConnector};
+use yahoo_finance_api::YOptionChain;
+use yahoo_finance_api::YahooConnector;
 
 use super::OptionType;
 

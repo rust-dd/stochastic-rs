@@ -1,8 +1,10 @@
 use impl_new_derive::ImplNew;
-use ndarray::{s, Array1};
+use ndarray::s;
+use ndarray::Array1;
 use rand_distr::Distribution;
 
-use crate::stochastic::{noise::fgn::FGN, SamplingExt};
+use crate::stochastic::noise::fgn::FGN;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct JumpFOUCustom<D, T>
@@ -142,14 +144,13 @@ where
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::{Gamma, Weibull};
-
-  use crate::{
-    plot_1d,
-    stochastic::{N, X0},
-  };
+  use rand_distr::Gamma;
+  use rand_distr::Weibull;
 
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn jump_fou_weibull() {

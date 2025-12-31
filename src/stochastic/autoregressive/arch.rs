@@ -145,10 +145,9 @@ impl SamplingExt<f32> for ARCH<f32> {
 mod tests {
   use ndarray::arr1;
 
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::arch::ARCH, SamplingExt},
-  };
+  use crate::plot_1d;
+  use crate::stochastic::autoregressive::arch::ARCH;
+  use crate::stochastic::SamplingExt;
 
   #[test]
   fn arch_plot() {

@@ -1,7 +1,9 @@
 use impl_new_derive::ImplNew;
-use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::Normal;
 
-use crate::quant::r#trait::{PricerExt, TimeExt};
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
 
 /// Asian option pricer
 #[derive(ImplNew)]

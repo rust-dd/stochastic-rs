@@ -1,7 +1,9 @@
 use impl_new_derive::ImplNew;
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
-use crate::stochastic::{noise::cfgns::CFGNS, Sampling2DExt};
+use crate::stochastic::noise::cfgns::CFGNS;
+use crate::stochastic::Sampling2DExt;
 
 #[derive(ImplNew)]
 pub struct CFBMS<T> {

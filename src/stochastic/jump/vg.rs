@@ -72,7 +72,8 @@ impl SamplingExt<f32> for VG<f32> {
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::{gamma::SimdGamma, normal::SimdNormal};
+    use crate::stats::distr::gamma::SimdGamma;
+    use crate::stats::distr::normal::SimdNormal;
 
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
 
@@ -105,12 +106,10 @@ impl SamplingExt<f32> for VG<f32> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stochastic::{N, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn vg_length_equals_n() {

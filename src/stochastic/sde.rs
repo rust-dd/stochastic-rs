@@ -1,9 +1,14 @@
 //! Stochastic differential equation solver
 
-use ndarray::{s, Array1, Array2, Array3, Axis};
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Array3;
+use ndarray::Axis;
 use rand::Rng;
 
-use super::{noise::fgn::FGN, SamplingExt};
+use super::noise::fgn::FGN;
+use super::SamplingExt;
 
 pub enum NoiseModel {
   Gaussian,
@@ -487,9 +492,11 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use ndarray::{arr1, arr2};
+  use ndarray::arr1;
+  use ndarray::arr2;
   use rand::thread_rng;
+
+  use super::*;
 
   #[test]
   fn test_fgn_1d_euler() {

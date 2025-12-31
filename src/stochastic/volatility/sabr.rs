@@ -4,7 +4,8 @@ use std::sync::Mutex;
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
+use crate::stochastic::noise::cgns::CGNS;
+use crate::stochastic::Sampling2DExt;
 
 #[derive(ImplNew)]
 
@@ -121,10 +122,11 @@ impl Sampling2DExt<f32> for SABR<f32> {
 
 mod tests {
   #[cfg(feature = "malliavin")]
-  use crate::{plot_2d, stochastic::N};
-
-  #[cfg(feature = "malliavin")]
   use super::*;
+  #[cfg(feature = "malliavin")]
+  use crate::plot_2d;
+  #[cfg(feature = "malliavin")]
+  use crate::stochastic::N;
 
   #[test]
   #[cfg(feature = "malliavin")]

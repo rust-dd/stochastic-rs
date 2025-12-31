@@ -1,5 +1,8 @@
 use impl_new_derive::ImplNew;
-use ndarray::{Array0, Array1, Axis, Dim};
+use ndarray::Array0;
+use ndarray::Array1;
+use ndarray::Axis;
+use ndarray::Dim;
 use ndarray_rand::RandomExt;
 use rand::thread_rng;
 use rand_distr::Distribution;

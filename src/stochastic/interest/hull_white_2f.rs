@@ -1,7 +1,8 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
+use crate::stochastic::noise::cgns::CGNS;
+use crate::stochastic::Sampling2DExt;
 
 /// Hull-White 2-factor model
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0

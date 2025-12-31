@@ -1,11 +1,16 @@
 use core::f64;
-use std::{cmp::Ordering, error::Error};
+use std::cmp::Ordering;
+use std::error::Error;
 
-use ndarray::{stack, Array1, Array2, Axis};
+use ndarray::stack;
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Axis;
 use ndarray_rand::RandomExt;
 use ndarray_stats::QuantileExt;
 use rand_distr::Uniform;
-use roots::{find_root_brent, SimpleConvergency};
+use roots::find_root_brent;
+use roots::SimpleConvergency;
 
 pub mod clayton;
 pub mod frank;

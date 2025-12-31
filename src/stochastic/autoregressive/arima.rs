@@ -1,8 +1,9 @@
-use crate::stochastic::SamplingExt;
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use super::{ar::ARp, ma::MAq};
+use super::ar::ARp;
+use super::ma::MAq;
+use crate::stochastic::SamplingExt;
 
 /// Implements an ARIMA(p, d, q) process using explicit backshift notation:
 ///
@@ -172,10 +173,9 @@ fn inverse_difference_f32(y: &Array1<f32>) -> Array1<f32> {
 mod tests {
   use ndarray::arr1;
 
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::arima::ARIMA, SamplingExt},
-  };
+  use crate::plot_1d;
+  use crate::stochastic::autoregressive::arima::ARIMA;
+  use crate::stochastic::SamplingExt;
 
   #[test]
   fn arima_plot() {

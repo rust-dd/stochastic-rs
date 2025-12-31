@@ -2,9 +2,10 @@ use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use rand_distr::Distribution;
 
-use crate::stochastic::{
-  noise::cgns::CGNS, process::cpoisson::CompoundPoisson, Sampling2DExt, Sampling3DExt,
-};
+use crate::stochastic::noise::cgns::CGNS;
+use crate::stochastic::process::cpoisson::CompoundPoisson;
+use crate::stochastic::Sampling2DExt;
+use crate::stochastic::Sampling3DExt;
 
 #[derive(ImplNew)]
 pub struct Bates1996<D, T>
@@ -134,12 +135,12 @@ where
 mod tests {
   use rand_distr::Normal;
 
-  use crate::{
-    plot_2d,
-    stochastic::{process::poisson::Poisson, N, S0, X0},
-  };
-
   use super::*;
+  use crate::plot_2d;
+  use crate::stochastic::process::poisson::Poisson;
+  use crate::stochastic::N;
+  use crate::stochastic::S0;
+  use crate::stochastic::X0;
 
   #[test]
   fn bates1996__length_equals_n() {

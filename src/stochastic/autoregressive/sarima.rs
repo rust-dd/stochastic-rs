@@ -413,10 +413,9 @@ fn inverse_seasonal_difference_f32(y: &Array1<f32>, s: usize) -> Array1<f32> {
 mod tests {
   use ndarray::arr1;
 
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::sarima::SARIMA, SamplingExt},
-  };
+  use crate::plot_1d;
+  use crate::stochastic::autoregressive::sarima::SARIMA;
+  use crate::stochastic::SamplingExt;
 
   #[test]
   fn sarima_plot() {

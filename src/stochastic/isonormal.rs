@@ -1,11 +1,14 @@
 //! Isonormal processes
 
 use gauss_quad::GaussLegendre;
+use ndarray::concatenate;
+use ndarray::prelude::*;
 use ndarray::Array1;
-use ndarray::{concatenate, prelude::*};
 use ndarray_rand::RandomExt;
-use ndrustfft::{ndfft, FftHandler};
-use num_complex::{Complex64, ComplexDistribution};
+use ndrustfft::ndfft;
+use ndrustfft::FftHandler;
+use num_complex::Complex64;
+use num_complex::ComplexDistribution;
 use rand_distr::StandardNormal;
 use statrs::function::gamma::gamma;
 

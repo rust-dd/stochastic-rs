@@ -134,15 +134,12 @@ impl SamplingExt<f32> for CEV<f32> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stochastic::{N, X0},
-  };
-
+  use super::*;
+  use crate::plot_1d;
   #[cfg(feature = "malliavin")]
   use crate::plot_2d;
-
-  use super::*;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn cev_length_equals_n() {

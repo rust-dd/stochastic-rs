@@ -1,6 +1,7 @@
 use std::error::Error;
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
 pub mod gaussian;
 pub mod tree;

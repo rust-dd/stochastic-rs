@@ -2,9 +2,11 @@ use core::f64;
 use std::error::Error;
 
 use gauss_quad::GaussLegendre;
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
-use crate::stats::copulas::bivariate::{Bivariate, CopulaType};
+use crate::stats::copulas::bivariate::Bivariate;
+use crate::stats::copulas::bivariate::CopulaType;
 
 #[derive(Debug, Clone)]
 pub struct Frank {

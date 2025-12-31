@@ -19,8 +19,9 @@ impl SimdGeometric {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [u32]) {
-    use crate::stats::distr::fill_f32_zero_one;
     use wide::f32x8;
+
+    use crate::stats::distr::fill_f32_zero_one;
 
     // rand_distr Geometric returns number of failures before first success (starts at 0)
     // Formula: floor(ln(U) / ln(1-p)) where U ~ Uniform(0,1)

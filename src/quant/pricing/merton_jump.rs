@@ -1,11 +1,10 @@
 use impl_new_derive::ImplNew;
 
-use crate::quant::{
-  r#trait::{PricerExt, TimeExt},
-  OptionType,
-};
-
-use super::bsm::{BSMCoc, BSMPricer};
+use super::bsm::BSMCoc;
+use super::bsm::BSMPricer;
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
+use crate::quant::OptionType;
 
 /// Black-Scholes-Merton model
 #[derive(ImplNew)]

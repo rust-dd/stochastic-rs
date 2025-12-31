@@ -1,12 +1,13 @@
 use impl_new_derive::ImplNew;
 use implied_vol::implied_black_volatility;
-use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::Normal;
 
-use crate::quant::{
-  pricing::bsm::{BSMCoc, BSMPricer},
-  r#trait::{PricerExt, TimeExt},
-  OptionType,
-};
+use crate::quant::pricing::bsm::BSMCoc;
+use crate::quant::pricing::bsm::BSMPricer;
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
+use crate::quant::OptionType;
 
 /// Forward FX F = S * exp((r_d - r_f) T)
 pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {

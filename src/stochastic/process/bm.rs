@@ -1,5 +1,6 @@
 use impl_new_derive::ImplNew;
-use ndarray::{s, Array1};
+use ndarray::s;
+use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 

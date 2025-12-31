@@ -66,7 +66,10 @@ impl BreedenLitzenberger {
   /// Returns a Vec of length strikes.len() with the estimated density at each strike.
   #[must_use]
   pub fn density_from_custom_derivatives(&self) -> Vec<f64> {
-    let d2c = self.d2c_dk2.as_ref().expect("d2c_dk2 must be provided for custom derivatives");
+    let d2c = self
+      .d2c_dk2
+      .as_ref()
+      .expect("d2c_dk2 must be provided for custom derivatives");
     let n = self.strikes.len();
     assert_eq!(d2c.len(), n, "d2c_dk2 must have same length as strikes");
 

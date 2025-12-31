@@ -1,10 +1,11 @@
 use impl_new_derive::ImplNew;
-use ndarray::{s, Array1};
+use ndarray::s;
+use ndarray::Array1;
 
-use crate::quant::{
-  r#trait::{PricerExt, TimeExt},
-  OptionStyle, OptionType,
-};
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
+use crate::quant::OptionStyle;
+use crate::quant::OptionType;
 
 #[derive(Default)]
 pub enum FiniteDifferenceMethod {
@@ -285,12 +286,13 @@ impl FiniteDifferencePricer {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    quant::{r#trait::PricerExt, OptionStyle, OptionType},
-    stochastic::{K, S0},
-  };
-
-  use super::{FiniteDifferenceMethod, FiniteDifferencePricer};
+  use super::FiniteDifferenceMethod;
+  use super::FiniteDifferencePricer;
+  use crate::quant::r#trait::PricerExt;
+  use crate::quant::OptionStyle;
+  use crate::quant::OptionType;
+  use crate::stochastic::K;
+  use crate::stochastic::S0;
 
   fn atm_pricer(style: OptionStyle, r#type: OptionType, method: FiniteDifferenceMethod) -> f64 {
     let pricer = FiniteDifferencePricer::new(

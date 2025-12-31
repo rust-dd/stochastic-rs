@@ -1,10 +1,17 @@
 use impl_new_derive::ImplNew;
-use ndarray::{linalg::kron, s, Array1, Array2, Axis};
+use ndarray::linalg::kron;
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Axis;
 use ndarray_rand::RandomExt;
-use ndrustfft::{ndfft, ndfft_par, FftHandler};
+use ndrustfft::ndfft;
+use ndrustfft::ndfft_par;
+use ndrustfft::FftHandler;
 #[cfg(feature = "f32")]
 use num_complex::Complex32;
-use num_complex::{Complex64, ComplexDistribution};
+use num_complex::Complex64;
+use num_complex::ComplexDistribution;
 use rand_distr::StandardNormal;
 
 #[derive(ImplNew)]
@@ -236,9 +243,13 @@ impl FBS<f32> {
 
 #[cfg(test)]
 mod tests {
-  use super::FBS;
   use ndarray::s;
-  use plotly::{surface::PlaneContours, Layout, Plot, Surface};
+  use plotly::surface::PlaneContours;
+  use plotly::Layout;
+  use plotly::Plot;
+  use plotly::Surface;
+
+  use super::FBS;
 
   #[test]
   fn test_fbm_plot_matlab_like() {

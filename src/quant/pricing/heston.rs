@@ -5,10 +5,9 @@ use implied_vol::implied_black_volatility;
 use num_complex::Complex64;
 use quadrature::double_exponential;
 
-use crate::quant::{
-  r#trait::{PricerExt, TimeExt},
-  OptionType,
-};
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
+use crate::quant::OptionType;
 
 #[derive(ImplNew, Clone)]
 pub struct HestonPricer {

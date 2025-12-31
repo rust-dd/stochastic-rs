@@ -1,9 +1,12 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
-use rand_distr::{Distribution, Normal};
+use rand_distr::Distribution;
+use rand_distr::Normal;
 
-use crate::stochastic::{process::cpoisson::CompoundPoisson, Sampling3DExt, SamplingExt};
+use crate::stochastic::process::cpoisson::CompoundPoisson;
+use crate::stochastic::Sampling3DExt;
+use crate::stochastic::SamplingExt;
 
 /// Kou process
 ///
@@ -113,13 +116,13 @@ where
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stats::double_exp::DoubleExp,
-    stochastic::{process::poisson::Poisson, N, S0, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stats::double_exp::DoubleExp;
+  use crate::stochastic::process::poisson::Poisson;
+  use crate::stochastic::N;
+  use crate::stochastic::S0;
+  use crate::stochastic::X0;
 
   #[test]
   fn kou_length_equals_n() {

@@ -1,6 +1,10 @@
 use impl_new_derive::ImplNew;
-use ndarray::{Array0, Array1, Axis, Dim};
-use ndarray_rand::rand_distr::{Distribution, Exp};
+use ndarray::Array0;
+use ndarray::Array1;
+use ndarray::Axis;
+use ndarray::Dim;
+use ndarray_rand::rand_distr::Distribution;
+use ndarray_rand::rand_distr::Exp;
 use ndarray_rand::RandomExt;
 use rand::thread_rng;
 

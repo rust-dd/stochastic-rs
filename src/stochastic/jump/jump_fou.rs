@@ -1,10 +1,12 @@
 use impl_new_derive::ImplNew;
-use ndarray::{s, Array1};
+use ndarray::s;
+use ndarray::Array1;
 use rand_distr::Distribution;
 
-use crate::stochastic::{
-  noise::fgn::FGN, process::cpoisson::CompoundPoisson, Sampling3DExt, SamplingExt,
-};
+use crate::stochastic::noise::fgn::FGN;
+use crate::stochastic::process::cpoisson::CompoundPoisson;
+use crate::stochastic::Sampling3DExt;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct JumpFOU<D, T>
@@ -122,12 +124,11 @@ where
 mod tests {
   use rand_distr::Normal;
 
-  use crate::{
-    plot_1d,
-    stochastic::{process::poisson::Poisson, N, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::process::poisson::Poisson;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn jump_fou_length_equals_n() {

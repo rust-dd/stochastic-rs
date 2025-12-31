@@ -6,12 +6,15 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use num_complex::Complex64;
 use rand_distr::Normal;
-use statrs::{
-  distribution::{Continuous, ContinuousCDF, LogNormal},
-  statistics::{Distribution as StatDistribution, Median, Mode},
-};
+use statrs::distribution::Continuous;
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::LogNormal;
+use statrs::statistics::Distribution as StatDistribution;
+use statrs::statistics::Median;
+use statrs::statistics::Mode;
 
-use crate::stochastic::{DistributionExt, SamplingExt};
+use crate::stochastic::DistributionExt;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct GBM<T> {
@@ -61,9 +64,10 @@ impl SamplingExt<f64> for GBM<f64> {
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal_f64::SimdNormal;
     use ndarray::Array1;
     use wide::f64x8;
+
+    use crate::stats::distr::normal_f64::SimdNormal;
 
     let n = self.n;
     assert!(n >= 1, "n must be >= 1");
@@ -290,14 +294,12 @@ impl SamplingExt<f32> for GBM<f32> {
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+  use crate::plot_1d;
   #[cfg(feature = "malliavin")]
   use crate::plot_2d;
-  use crate::{
-    plot_1d,
-    stochastic::{N, X0},
-  };
-
-  use super::*;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn gbm_length_equals_n() {
@@ -370,13 +372,16 @@ mod tests {
     }
     let basic_ms_per = start.elapsed().as_secs_f64() * 1000.0 / iters as f64;
 
-    let start = std::time::Instant::now();
-    for _ in 0..iters {
-      gbm.sample_simd();
-    }
-    let simd_ms_per = start.elapsed().as_secs_f64() * 1000.0 / iters as f64;
+    #[cfg(feature = "simd")]
+    {
+      let start = std::time::Instant::now();
+      for _ in 0..iters {
+        gbm.sample_simd();
+      }
+      let simd_ms_per = start.elapsed().as_secs_f64() * 1000.0 / iters as f64;
 
-    println!("Basic: {:.6} ms, SIMD: {:.6} ms", basic_ms_per, simd_ms_per);
+      println!("Basic: {:.6} ms, SIMD: {:.6} ms", basic_ms_per, simd_ms_per);
+    }
   }
 
   #[test]

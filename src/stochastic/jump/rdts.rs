@@ -2,10 +2,12 @@ use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand::Rng;
-use rand_distr::{Exp, Uniform};
+use rand_distr::Exp;
+use rand_distr::Uniform;
 use scilib::math::basic::gamma;
 
-use crate::stochastic::{process::poisson::Poisson, SamplingExt};
+use crate::stochastic::process::poisson::Poisson;
+use crate::stochastic::SamplingExt;
 
 /// RDTS process (Rapidly Decreasing Tempered Stable process)
 /// https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015
@@ -150,7 +152,8 @@ impl SamplingExt<f32> for RDTS<f32> {
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::{exp::SimdExp, uniform::SimdUniform};
+    use crate::stats::distr::exp::SimdExp;
+    use crate::stats::distr::uniform::SimdUniform;
     let mut rng = rand::thread_rng();
 
     let t_max = self.t.unwrap_or(1.0);
@@ -216,7 +219,9 @@ mod tests {
   use ndarray::Axis;
 
   use super::*;
-  use crate::{plot_1d, plot_nd, stochastic::N};
+  use crate::plot_1d;
+  use crate::plot_nd;
+  use crate::stochastic::N;
 
   #[test]
   fn rdts_length_equals_n() {

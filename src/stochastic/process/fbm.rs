@@ -2,11 +2,13 @@
 use std::sync::Mutex;
 
 use impl_new_derive::ImplNew;
-use ndarray::{s, Array1};
+use ndarray::s;
+use ndarray::Array1;
 #[cfg(feature = "malliavin")]
 use statrs::function::gamma;
 
-use crate::stochastic::{noise::fgn::FGN, SamplingExt};
+use crate::stochastic::noise::fgn::FGN;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct FBM<T> {
@@ -128,11 +130,11 @@ impl SamplingExt<f32> for FBM<f32> {
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+  use crate::plot_1d;
   #[cfg(feature = "malliavin")]
   use crate::plot_2d;
-  use crate::{plot_1d, stochastic::N};
-
-  use super::*;
+  use crate::stochastic::N;
 
   #[test]
   fn fbm_length_equals_n() {

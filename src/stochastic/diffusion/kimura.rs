@@ -105,12 +105,11 @@ impl SamplingExt<f32> for Kimura<f32> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stochastic::{SamplingExt, N, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::SamplingExt;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn kimura_length_equals_n() {

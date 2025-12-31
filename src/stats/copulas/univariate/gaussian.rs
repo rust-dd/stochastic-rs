@@ -1,5 +1,7 @@
 use ndarray::Array1;
-use statrs::distribution::{Continuous, ContinuousCDF, Normal};
+use statrs::distribution::Continuous;
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::Normal;
 
 #[derive(Debug, Clone)]
 pub struct GaussianUnivariate {

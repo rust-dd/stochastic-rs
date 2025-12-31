@@ -146,10 +146,9 @@ impl SamplingExt<f32> for MAq<f32> {
 mod tests {
   use ndarray::arr1;
 
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::ma::MAq, SamplingExt},
-  };
+  use crate::plot_1d;
+  use crate::stochastic::autoregressive::ma::MAq;
+  use crate::stochastic::SamplingExt;
 
   #[test]
   fn ma_plot() {

@@ -85,12 +85,10 @@ impl SamplingExt<f32> for IG<f32> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stochastic::{N, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn ig_length_equals_n() {

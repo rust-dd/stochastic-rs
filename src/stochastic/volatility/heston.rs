@@ -4,9 +4,9 @@ use std::sync::Mutex;
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
-
 use super::HestonPow;
+use crate::stochastic::noise::cgns::CGNS;
+use crate::stochastic::Sampling2DExt;
 
 #[derive(ImplNew)]
 
@@ -189,13 +189,15 @@ impl Sampling2DExt<f32> for Heston<f32> {
 #[cfg(test)]
 mod tests {
   #[cfg(feature = "malliavin")]
-  use crate::{
-    plot_2d,
-    stochastic::{N, S0, X0},
-  };
-
-  #[cfg(feature = "malliavin")]
   use super::*;
+  #[cfg(feature = "malliavin")]
+  use crate::plot_2d;
+  #[cfg(feature = "malliavin")]
+  use crate::stochastic::N;
+  #[cfg(feature = "malliavin")]
+  use crate::stochastic::S0;
+  #[cfg(feature = "malliavin")]
+  use crate::stochastic::X0;
 
   #[test]
   #[cfg(feature = "malliavin")]

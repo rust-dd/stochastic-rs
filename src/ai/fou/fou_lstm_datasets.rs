@@ -1,14 +1,19 @@
 use std::vec::IntoIter;
 
 use anyhow::Result;
-use candle_core::{Device, Tensor};
-use candle_datasets::{batcher::IterResult2, Batcher};
-use indicatif::{ProgressBar, ProgressStyle};
-use ndarray::{s, Array1};
+use candle_core::Device;
+use candle_core::Tensor;
+use candle_datasets::batcher::IterResult2;
+use candle_datasets::Batcher;
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
+use ndarray::s;
+use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 
-use crate::stochastic::{diffusion::fou::FOU, SamplingExt};
+use crate::stochastic::diffusion::fou::FOU;
+use crate::stochastic::SamplingExt;
 
 pub fn test_vasicek_1_d(
   epoch_size: usize,

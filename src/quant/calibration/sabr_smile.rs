@@ -1,19 +1,27 @@
-use impl_new_derive::ImplNew;
-use rand::{rngs::StdRng, Rng, SeedableRng};
-
-use plotly::common::{Mode, Title};
-use plotly::layout::{Axis, Layout};
-use plotly::{Plot, Scatter};
-
-use argmin::core::{CostFunction, Executor, Gradient, State};
+use argmin::core::CostFunction;
+use argmin::core::Executor;
+use argmin::core::Gradient;
+use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
+use plotly::common::Mode;
+use plotly::common::Title;
+use plotly::layout::Axis;
+use plotly::layout::Layout;
+use plotly::Plot;
+use plotly::Scatter;
+use rand::rngs::StdRng;
+use rand::Rng;
+use rand::SeedableRng;
 
 use crate::quant::calibration::sabr::SabrParams;
-use crate::quant::pricing::sabr::{
-  bs_price_fx, forward_fx, fx_delta_from_forward, hagan_implied_vol_beta1, model_price_hagan,
-};
+use crate::quant::pricing::sabr::bs_price_fx;
+use crate::quant::pricing::sabr::forward_fx;
+use crate::quant::pricing::sabr::fx_delta_from_forward;
+use crate::quant::pricing::sabr::hagan_implied_vol_beta1;
+use crate::quant::pricing::sabr::model_price_hagan;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SabrSmileQuotes {

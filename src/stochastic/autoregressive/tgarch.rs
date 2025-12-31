@@ -278,10 +278,9 @@ impl SamplingExt<f32> for TGARCH<f32> {
 mod tests {
   use ndarray::arr1;
 
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::tgarch::TGARCH, SamplingExt},
-  };
+  use crate::plot_1d;
+  use crate::stochastic::autoregressive::tgarch::TGARCH;
+  use crate::stochastic::SamplingExt;
 
   fn tgarchpq_plot() {
     let alpha = arr1(&[0.05, 0.01]); // p=2

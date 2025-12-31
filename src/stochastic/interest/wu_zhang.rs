@@ -16,11 +16,13 @@
 //! - `n`: Number of time steps in the simulation.
 //! - `m`: Batch size for parallel sampling (if used).
 
-use crate::stochastic::SamplingVExt;
 use impl_new_derive::ImplNew;
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
+
+use crate::stochastic::SamplingVExt;
 
 #[derive(ImplNew)]
 pub struct WuZhangD<T> {

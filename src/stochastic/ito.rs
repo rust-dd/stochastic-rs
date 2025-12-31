@@ -171,11 +171,15 @@ impl ItoCalculator {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use plotly::common::{Line, LineShape, Mode};
-  use plotly::{Plot, Scatter};
+  use plotly::common::Line;
+  use plotly::common::LineShape;
+  use plotly::common::Mode;
+  use plotly::Plot;
+  use plotly::Scatter;
   use rand::thread_rng;
   use rand_distr::Distribution;
+
+  use super::*;
 
   /// This test demonstrates how to simulate and plot a single trajectory of the SDE.
   /// It uses the `DiffusionProcessFn`, `Function2D`, and `ItoCalculator` types.

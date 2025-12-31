@@ -1,9 +1,12 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
-use rand_distr::{Distribution, Normal};
+use rand_distr::Distribution;
+use rand_distr::Normal;
 
-use crate::stochastic::{process::cpoisson::CompoundPoisson, Sampling3DExt, SamplingExt};
+use crate::stochastic::process::cpoisson::CompoundPoisson;
+use crate::stochastic::Sampling3DExt;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct LevyDiffusion<D, T>
@@ -95,12 +98,11 @@ where
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stochastic::{process::poisson::Poisson, N, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::process::poisson::Poisson;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn levy_diffusion_length_equals_n() {

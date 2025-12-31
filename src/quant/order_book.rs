@@ -1,6 +1,10 @@
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
 use ordered_float::OrderedFloat;
-use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A total‑ordered price key (wraps `f64` so it can live in a `BTreeMap`).
 pub type Price = OrderedFloat<f64>;

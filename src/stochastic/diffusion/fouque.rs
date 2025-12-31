@@ -96,9 +96,10 @@ impl Sampling2DExt<f32> for FouqueOU2D<f32> {
 
 #[cfg(test)]
 mod tests {
-  use crate::stochastic::{Sampling2DExt, N, X0};
-
   use super::*;
+  use crate::stochastic::Sampling2DExt;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn fouque_length_equals_n() {

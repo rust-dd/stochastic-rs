@@ -1,11 +1,12 @@
 use impl_new_derive::ImplNew;
 use implied_vol::implied_black_volatility;
-use statrs::distribution::{Continuous, ContinuousCDF, Normal};
+use statrs::distribution::Continuous;
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::Normal;
 
-use crate::quant::{
-  r#trait::{PricerExt, TimeExt},
-  OptionType,
-};
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
+use crate::quant::OptionType;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum BSMCoc {

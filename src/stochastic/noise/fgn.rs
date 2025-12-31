@@ -1,18 +1,21 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use std::sync::RwLock;
 
 #[cfg(feature = "cuda")]
 use anyhow::Result;
 #[cfg(feature = "cuda")]
 use either::Either;
-#[cfg(feature = "cuda")]
-use rand::Rng;
-
+use ndarray::concatenate;
 use ndarray::parallel::prelude::*;
-use ndarray::{concatenate, prelude::*};
+use ndarray::prelude::*;
 use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
-use ndrustfft::{ndfft_par, FftHandler};
-use num_complex::{Complex, ComplexDistribution};
+use ndrustfft::ndfft_par;
+use ndrustfft::FftHandler;
+use num_complex::Complex;
+use num_complex::ComplexDistribution;
+#[cfg(feature = "cuda")]
+use rand::Rng;
 
 use crate::stochastic::SamplingExt;
 
@@ -111,9 +114,12 @@ impl SamplingExt<f64> for FGN<f64> {
     // nvcc -shared fgn.cu -o ./fgn_windows/fgn.dll -lcufft
     use std::ffi::c_void;
 
-    use cudarc::driver::{CudaDevice, DevicePtr, DevicePtrMut, DeviceRepr};
-
-    use libloading::{Library, Symbol};
+    use cudarc::driver::CudaDevice;
+    use cudarc::driver::DevicePtr;
+    use cudarc::driver::DevicePtrMut;
+    use cudarc::driver::DeviceRepr;
+    use libloading::Library;
+    use libloading::Symbol;
 
     #[repr(C)]
     #[derive(Debug, Default, Copy, Clone)]
@@ -293,11 +299,13 @@ impl SamplingExt<f32> for FGN<f32> {
 mod tests {
   use std::time::Instant;
 
-  use prettytable::{Cell, Row, Table};
-
-  use crate::{plot_1d, stochastic::N};
+  use prettytable::Cell;
+  use prettytable::Row;
+  use prettytable::Table;
 
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::N;
 
   #[test]
   fn fgn_length_equals_n() {

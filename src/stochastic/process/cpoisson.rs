@@ -1,11 +1,12 @@
 use impl_new_derive::ImplNew;
-use ndarray::{Array1, Axis};
+use ndarray::Array1;
+use ndarray::Axis;
 use rand::thread_rng;
 use rand_distr::Distribution;
 
-use crate::stochastic::{Sampling3DExt, SamplingExt};
-
 use super::poisson::Poisson;
+use crate::stochastic::Sampling3DExt;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct CompoundPoisson<D, T>

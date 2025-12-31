@@ -238,10 +238,9 @@ impl SamplingExt<f32> for GARCH<f32> {
 mod tests {
   use ndarray::arr1;
 
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::garch::GARCH, SamplingExt},
-  };
+  use crate::plot_1d;
+  use crate::stochastic::autoregressive::garch::GARCH;
+  use crate::stochastic::SamplingExt;
 
   #[test]
   fn garch_plot() {

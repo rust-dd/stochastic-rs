@@ -1,9 +1,8 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::SamplingExt;
-
 use super::cir::CIR;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct CIR2F<T> {

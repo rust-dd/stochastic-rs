@@ -1,7 +1,9 @@
 use impl_new_derive::ImplNew;
-use ndarray::{s, Array1};
+use ndarray::s;
+use ndarray::Array1;
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
+use crate::stochastic::noise::cgns::CGNS;
+use crate::stochastic::Sampling2DExt;
 
 #[derive(ImplNew)]
 pub struct RoughBergomi<T> {

@@ -4,7 +4,8 @@ use rand::Rng;
 use rand_distr::Distribution;
 use wide::f32x8;
 
-use super::{inverse_gauss::SimdInverseGauss, normal::SimdNormal};
+use super::inverse_gauss::SimdInverseGauss;
+use super::normal::SimdNormal;
 
 pub struct SimdNormalInverseGauss {
   alpha: f32,

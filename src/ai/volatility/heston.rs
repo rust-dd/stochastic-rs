@@ -1,5 +1,15 @@
-use candle_core::{DType, Device, Result, Tensor};
-use candle_nn::{linear, AdamW, Linear, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+use candle_core::DType;
+use candle_core::Device;
+use candle_core::Result;
+use candle_core::Tensor;
+use candle_nn::linear;
+use candle_nn::AdamW;
+use candle_nn::Linear;
+use candle_nn::Module;
+use candle_nn::Optimizer;
+use candle_nn::ParamsAdamW;
+use candle_nn::VarBuilder;
+use candle_nn::VarMap;
 
 /// Calibration model for the Heston model
 pub struct Model {
@@ -111,18 +121,27 @@ pub fn train(
 mod tests {
   use std::fs::File;
 
-  use super::*;
   use candle_core::Device;
   use flate2::read::GzDecoder;
-  use ndarray::{s, stack, Array1, Array2, Axis};
+  use ndarray::s;
+  use ndarray::stack;
+  use ndarray::Array1;
+  use ndarray::Array2;
+  use ndarray::Axis;
   use ndarray_npy::read_npy;
-  use plotly::{
-    common::{Mode, Title},
-    layout::{GridPattern, LayoutGrid},
-    Layout, Plot, Scatter,
-  };
-  use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+  use plotly::common::Mode;
+  use plotly::common::Title;
+  use plotly::layout::GridPattern;
+  use plotly::layout::LayoutGrid;
+  use plotly::Layout;
+  use plotly::Plot;
+  use plotly::Scatter;
+  use rand::rngs::StdRng;
+  use rand::seq::SliceRandom;
+  use rand::SeedableRng;
   use tempfile::NamedTempFile;
+
+  use super::*;
 
   #[test]
   fn fit_surface() -> Result<()> {

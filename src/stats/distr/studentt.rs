@@ -4,7 +4,8 @@ use rand::Rng;
 use rand_distr::Distribution;
 use wide::f32x8;
 
-use super::{chi_square::SimdChiSquared, normal::SimdNormal};
+use super::chi_square::SimdChiSquared;
+use super::normal::SimdNormal;
 
 pub struct SimdStudentT {
   nu: f32,

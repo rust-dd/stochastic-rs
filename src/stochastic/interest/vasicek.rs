@@ -1,7 +1,8 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
-use crate::stochastic::{diffusion::ou::OU, SamplingExt};
+use crate::stochastic::diffusion::ou::OU;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct Vasicek<T> {

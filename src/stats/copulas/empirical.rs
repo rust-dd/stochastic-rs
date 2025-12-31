@@ -1,4 +1,5 @@
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
 /// Empirical copula (2D) - rank-based transformation
 #[derive(Clone, Debug)]
@@ -60,11 +61,12 @@ impl EmpiricalCopula2D {
 mod tests {
   use ndarray::Array1;
   use rand::thread_rng;
-  use rand_distr::{Distribution, Uniform};
-
-  use crate::{stats::copulas::samples::plot_copula_samples, stochastic::N};
+  use rand_distr::Distribution;
+  use rand_distr::Uniform;
 
   use super::EmpiricalCopula2D;
+  use crate::stats::copulas::samples::plot_copula_samples;
+  use crate::stochastic::N;
 
   #[test]
   fn test_empirical_copula() {

@@ -34,23 +34,34 @@ fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
 
 #[cfg(test)]
 mod tests {
+  use plotly::common::Line;
+  use plotly::common::LineShape;
+  use plotly::common::Mode;
+  use plotly::layout::GridPattern;
   use plotly::layout::LayoutGrid;
+  use plotly::Layout;
+  use plotly::Plot;
+  use plotly::Scatter;
   use rand::thread_rng;
   use rand_distr::Distribution;
 
-  use crate::stats::distr::{
-    beta::SimdBeta, binomial::SimdBinomial, cauchy::SimdCauchy, chi_square::SimdChiSquared,
-    exp::SimdExp, gamma::SimdGamma, geometric::SimdGeometric, hypergeometric::SimdHypergeometric,
-    inverse_gauss::SimdInverseGauss, lognormal::SimdLogNormal, normal::SimdNormal,
-    normal_inverse_gauss::SimdNormalInverseGauss, pareto::SimdPareto, poisson::SimdPoisson,
-    studentt::SimdStudentT, uniform::SimdUniform, weibull::SimdWeibull,
-  };
-
-  use plotly::{
-    common::{Line, LineShape, Mode},
-    layout::GridPattern,
-    Layout, Plot, Scatter,
-  };
+  use crate::stats::distr::beta::SimdBeta;
+  use crate::stats::distr::binomial::SimdBinomial;
+  use crate::stats::distr::cauchy::SimdCauchy;
+  use crate::stats::distr::chi_square::SimdChiSquared;
+  use crate::stats::distr::exp::SimdExp;
+  use crate::stats::distr::gamma::SimdGamma;
+  use crate::stats::distr::geometric::SimdGeometric;
+  use crate::stats::distr::hypergeometric::SimdHypergeometric;
+  use crate::stats::distr::inverse_gauss::SimdInverseGauss;
+  use crate::stats::distr::lognormal::SimdLogNormal;
+  use crate::stats::distr::normal::SimdNormal;
+  use crate::stats::distr::normal_inverse_gauss::SimdNormalInverseGauss;
+  use crate::stats::distr::pareto::SimdPareto;
+  use crate::stats::distr::poisson::SimdPoisson;
+  use crate::stats::distr::studentt::SimdStudentT;
+  use crate::stats::distr::uniform::SimdUniform;
+  use crate::stats::distr::weibull::SimdWeibull;
 
   /// A small helper to create a PDF-like histogram for continuous data in [min_x, max_x].
   fn make_histogram(
@@ -1077,11 +1088,16 @@ mod tests {
 
   #[test]
   fn bench_summary_table() {
-    use crate::stats::distr::{
-      beta::SimdBeta, cauchy::SimdCauchy, exp::SimdExp, gamma::SimdGamma, lognormal::SimdLogNormal,
-      normal::SimdNormal, pareto::SimdPareto, poisson::SimdPoisson, studentt::SimdStudentT,
-      weibull::SimdWeibull,
-    };
+    use crate::stats::distr::beta::SimdBeta;
+    use crate::stats::distr::cauchy::SimdCauchy;
+    use crate::stats::distr::exp::SimdExp;
+    use crate::stats::distr::gamma::SimdGamma;
+    use crate::stats::distr::lognormal::SimdLogNormal;
+    use crate::stats::distr::normal::SimdNormal;
+    use crate::stats::distr::pareto::SimdPareto;
+    use crate::stats::distr::poisson::SimdPoisson;
+    use crate::stats::distr::studentt::SimdStudentT;
+    use crate::stats::distr::weibull::SimdWeibull;
 
     let n_f = 5_000_000usize; // samples for continuous/f32
     let n_i = 5_000_000usize; // samples for discrete/u32

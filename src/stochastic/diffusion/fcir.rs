@@ -1,7 +1,12 @@
-use ndarray::{Array1, Array2, Axis, Zip};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Axis;
+use ndarray::Zip;
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 
-use crate::stochastic::{noise::fgn::FGN, SamplingExt};
+use crate::stochastic::noise::fgn::FGN;
+use crate::stochastic::SamplingExt;
 
 /// Fractional Cox-Ingersoll-Ross (FCIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
@@ -264,12 +269,11 @@ impl SamplingExt<f32> for FCIR<f32> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stochastic::{SamplingExt, N, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::SamplingExt;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn fcir_length_equals_n() {

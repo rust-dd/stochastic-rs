@@ -1,9 +1,10 @@
 use impl_new_derive::ImplNew;
-use ndarray::{Array1, Array2};
-
-use crate::stochastic::{Sampling2DExt, SamplingExt};
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::fgn::FGN;
+use crate::stochastic::Sampling2DExt;
+use crate::stochastic::SamplingExt;
 
 #[derive(ImplNew)]
 pub struct CFGNS<T> {

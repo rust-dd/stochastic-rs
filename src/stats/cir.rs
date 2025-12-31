@@ -1,5 +1,6 @@
 use num_complex::Complex64;
-use rand::{thread_rng, Rng};
+use rand::thread_rng;
+use rand::Rng;
 use rand_distr::StandardNormal;
 use scilib::math::bessel::i_nu;
 use statrs::function::gamma::gamma;

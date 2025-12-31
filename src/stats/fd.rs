@@ -77,9 +77,11 @@ impl FractalDim {
 mod tests {
   use approx::assert_relative_eq;
 
-  use crate::stochastic::{noise::fgn::FGN, process::fbm::FBM, SamplingExt, N};
-
   use super::*;
+  use crate::stochastic::noise::fgn::FGN;
+  use crate::stochastic::process::fbm::FBM;
+  use crate::stochastic::SamplingExt;
+  use crate::stochastic::N;
 
   #[test]
   fn test_variogram() {

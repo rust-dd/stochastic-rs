@@ -28,10 +28,14 @@
 //! - `m`: Optional batch size for parallel sampling.
 //! - `cgns`: Correlated Gaussian noise generator for the diffusion part.
 
-use crate::stochastic::{noise::cgns::CGNS, Sampling2DExt};
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use rand_distr::{Distribution, Exp, Normal};
+use rand_distr::Distribution;
+use rand_distr::Exp;
+use rand_distr::Normal;
+
+use crate::stochastic::noise::cgns::CGNS;
+use crate::stochastic::Sampling2DExt;
 
 #[derive(ImplNew)]
 pub struct DuffieKanJumpExp<T> {

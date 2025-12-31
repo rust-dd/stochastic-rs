@@ -1,10 +1,12 @@
 use impl_new_derive::ImplNew;
-use ndarray::{s, Array1, Array2};
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::Array2;
 
-use crate::{
-  quant::r#trait::{PricerExt, TimeExt},
-  stochastic::{diffusion::gbm::GBM, SamplingExt},
-};
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
+use crate::stochastic::diffusion::gbm::GBM;
+use crate::stochastic::SamplingExt;
 
 fn laplace_pdf(x: f64, l: f64) -> f64 {
   if l <= 0.0 {
@@ -283,10 +285,7 @@ impl GbmMalliavinPricer {
   /// Returns:
   ///   - S_t: shape (M,)
   ///   - Localized C^M(t, S_t^{(i)}): shape (M,)
-  pub fn conditional_call_malliavin_localized(
-    &self,
-    t_eval: f64,
-  ) -> (Array1<f64>, Array1<f64>) {
+  pub fn conditional_call_malliavin_localized(&self, t_eval: f64) -> (Array1<f64>, Array1<f64>) {
     // Work with maturity in years to stay consistent with the reference script.
     let T = self.tau().unwrap_or_else(|| self.calculate_tau_in_years());
     assert!(t_eval > 0.0 && t_eval < T, "t_eval must be in (0, T)");
@@ -421,8 +420,9 @@ impl GbmMalliavinPricer {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use chrono::NaiveDate;
+
+  use super::*;
 
   #[test]
   fn malliavin_pricer_returns_finite_non_negative_prices() {
@@ -488,7 +488,13 @@ mod tests {
     assert!(put >= 0.0, "Localized put price should be non-negative");
 
     // Very loose upper bounds to avoid flakiness due to Monte Carlo noise
-    assert!(call < pricer.s * 2.0, "Localized call price is unreasonably large");
-    assert!(put < pricer.k * 2.0, "Localized put price is unreasonably large");
+    assert!(
+      call < pricer.s * 2.0,
+      "Localized call price is unreasonably large"
+    );
+    assert!(
+      put < pricer.k * 2.0,
+      "Localized put price is unreasonably large"
+    );
   }
 }

@@ -56,15 +56,17 @@ pub mod sde;
 pub mod sheet;
 pub mod volatility;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 #[cfg(feature = "cuda")]
 use anyhow::Result;
 #[cfg(feature = "cuda")]
 use either::Either;
-
 use ndarray::parallel::prelude::*;
-use ndarray::{Array1, Array2, Axis};
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Axis;
 use ndrustfft::Zero;
 use num_complex::Complex64;
 

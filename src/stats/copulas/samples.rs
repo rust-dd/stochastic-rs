@@ -1,7 +1,13 @@
-use ndarray::{Array1, Array2};
-use plotly::{Plot, Scatter};
+use ndarray::Array1;
+use ndarray::Array2;
+use plotly::Plot;
+use plotly::Scatter;
 use rand::prelude::*;
-use statrs::distribution::{ContinuousCDF, Exp, Gamma, MultivariateNormal, Normal};
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::Exp;
+use statrs::distribution::Gamma;
+use statrs::distribution::MultivariateNormal;
+use statrs::distribution::Normal;
 
 /// A simple trait for 2D copulas: requires only a `sample` method and `get_params`.
 pub trait NCopula2D {
@@ -185,8 +191,9 @@ impl NCopula2D for ClaytonCopula2D {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::arr2;
+
+  use super::*;
 
   const N: usize = 10000;
 

@@ -2,7 +2,8 @@
 //! σ_loc^2(K,T) = [ ∂C/∂T + (r - q) K ∂C/∂K + q C ] / [ 0.5 K^2 ∂²C/∂K² ]
 
 use impl_new_derive::ImplNew;
-use ndarray::{Array2, Axis};
+use ndarray::Array2;
+use ndarray::Axis;
 
 /// Dupire local volatility surface calculator
 #[derive(ImplNew, Clone, Debug)]
@@ -117,15 +118,28 @@ impl Dupire {
   /// Returns Array2 (N_T, N_K) with σ_loc(K_i, T_j).
   #[must_use]
   pub fn local_vol_surface_from_custom_derivatives(&self) -> Array2<f64> {
-    let dc_dk = self.dc_dk.as_ref().expect("dc_dk must be provided for custom derivatives");
-    let d2c_dk2 = self.d2c_dk2.as_ref().expect("d2c_dk2 must be provided for custom derivatives");
-    let dc_dt = self.dc_dt.as_ref().expect("dc_dt must be provided for custom derivatives");
+    let dc_dk = self
+      .dc_dk
+      .as_ref()
+      .expect("dc_dk must be provided for custom derivatives");
+    let d2c_dk2 = self
+      .d2c_dk2
+      .as_ref()
+      .expect("d2c_dk2 must be provided for custom derivatives");
+    let dc_dt = self
+      .dc_dt
+      .as_ref()
+      .expect("dc_dt must be provided for custom derivatives");
 
     let nt = self.ts.len();
     let nk = self.ks.len();
 
     assert_eq!(dc_dk.dim(), (nt, nk), "dc_dk must have shape (N_T, N_K)");
-    assert_eq!(d2c_dk2.dim(), (nt, nk), "d2c_dk2 must have shape (N_T, N_K)");
+    assert_eq!(
+      d2c_dk2.dim(),
+      (nt, nk),
+      "d2c_dk2 must have shape (N_T, N_K)"
+    );
     assert_eq!(dc_dt.dim(), (nt, nk), "dc_dt must have shape (N_T, N_K)");
 
     let mut sigma = Array2::<f64>::from_elem((nt, nk), f64::NAN);
@@ -229,9 +243,18 @@ impl Dupire {
   pub fn local_vol_slice_from_custom_derivatives(&self, j: usize) -> Vec<f64> {
     assert!(j < self.ts.len());
 
-    let dc_dk = self.dc_dk.as_ref().expect("dc_dk must be provided for custom derivatives");
-    let d2c_dk2 = self.d2c_dk2.as_ref().expect("d2c_dk2 must be provided for custom derivatives");
-    let dc_dt = self.dc_dt.as_ref().expect("dc_dt must be provided for custom derivatives");
+    let dc_dk = self
+      .dc_dk
+      .as_ref()
+      .expect("dc_dk must be provided for custom derivatives");
+    let d2c_dk2 = self
+      .d2c_dk2
+      .as_ref()
+      .expect("d2c_dk2 must be provided for custom derivatives");
+    let dc_dt = self
+      .dc_dt
+      .as_ref()
+      .expect("dc_dt must be provided for custom derivatives");
 
     let row = self.calls.index_axis(Axis(0), j);
     let mut out = vec![f64::NAN; self.ks.len()];

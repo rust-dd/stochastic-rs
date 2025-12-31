@@ -1,6 +1,8 @@
-use chrono::{Datelike, Utc};
+use chrono::Datelike;
+use chrono::Utc;
 
-use crate::quant::r#trait::{PricerExt, TimeExt};
+use crate::quant::r#trait::PricerExt;
+use crate::quant::r#trait::TimeExt;
 
 /// Hull-White model for zero-coupon bond pricing
 /// dR(t) = (theta(t) - aR(t))dt + sigma(t)dW(t)

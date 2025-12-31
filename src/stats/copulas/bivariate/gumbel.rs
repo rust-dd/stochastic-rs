@@ -1,8 +1,10 @@
 use std::error::Error;
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
-use super::{Bivariate, CopulaType};
+use super::Bivariate;
+use super::CopulaType;
 
 #[derive(Debug, Clone)]
 pub struct Gumbel {

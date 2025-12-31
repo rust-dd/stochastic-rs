@@ -1,4 +1,5 @@
-use ndarray::{Array2, Axis};
+use ndarray::Array2;
+use ndarray::Axis;
 use rand::prelude::*;
 
 pub fn train_test_split_for_array2(

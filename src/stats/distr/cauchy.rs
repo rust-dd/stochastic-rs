@@ -1,6 +1,7 @@
+use std::cell::UnsafeCell;
+
 use rand::Rng;
 use rand_distr::Distribution;
-use std::cell::UnsafeCell;
 use wide::f32x8;
 
 use super::fill_f32_zero_one;

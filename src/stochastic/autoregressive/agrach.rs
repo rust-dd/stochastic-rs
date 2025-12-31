@@ -255,10 +255,9 @@ impl SamplingExt<f32> for AGARCH<f32> {
 mod tests {
   use ndarray::arr1;
 
-  use crate::{
-    plot_1d,
-    stochastic::{autoregressive::agrach::AGARCH, SamplingExt},
-  };
+  use crate::plot_1d;
+  use crate::stochastic::autoregressive::agrach::AGARCH;
+  use crate::stochastic::SamplingExt;
 
   #[test]
   fn agarch_plot() {

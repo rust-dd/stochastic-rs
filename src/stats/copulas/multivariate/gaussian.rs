@@ -1,11 +1,15 @@
 use std::error::Error;
 
-use ndarray::{Array1, Array2, Axis};
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Axis;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal as RandNormal;
-use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::distribution::ContinuousCDF;
+use statrs::distribution::Normal;
 
-use super::{CopulaType, Multivariate};
+use super::CopulaType;
+use super::Multivariate;
 
 #[derive(Debug, Clone)]
 pub struct GaussianMultivariate {
@@ -281,7 +285,8 @@ impl Multivariate for GaussianMultivariate {
 
 #[cfg(test)]
 mod tests {
-  use ndarray::{arr2, Array2};
+  use ndarray::arr2;
+  use ndarray::Array2;
 
   use super::*;
 

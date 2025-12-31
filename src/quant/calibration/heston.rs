@@ -2,19 +2,21 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use impl_new_derive::ImplNew;
-use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
-use nalgebra::{DMatrix, DVector, Dyn, Owned};
+use levenberg_marquardt::LeastSquaresProblem;
+use levenberg_marquardt::LevenbergMarquardt;
+use nalgebra::DMatrix;
+use nalgebra::DVector;
+use nalgebra::Dyn;
+use nalgebra::Owned;
 use ndarray::Array1;
 
-use crate::{
-  quant::{
-    calibration::CalibrationHistory,
-    pricing::heston::HestonPricer,
-    r#trait::{CalibrationLossExt, PricerExt},
-    CalibrationLossScore, OptionType,
-  },
-  stats::mle::nmle_heston,
-};
+use crate::quant::calibration::CalibrationHistory;
+use crate::quant::pricing::heston::HestonPricer;
+use crate::quant::r#trait::CalibrationLossExt;
+use crate::quant::r#trait::PricerExt;
+use crate::quant::CalibrationLossScore;
+use crate::quant::OptionType;
+use crate::stats::mle::nmle_heston;
 
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
@@ -429,12 +431,13 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
+
   use super::*;
   use crate::stochastic::noise::cgns::CGNS;
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
   use crate::stochastic::volatility::HestonPow;
   use crate::stochastic::Sampling2DExt;
-  use ndarray::Array1;
 
   #[test]
   fn test_heston_calibrate() {

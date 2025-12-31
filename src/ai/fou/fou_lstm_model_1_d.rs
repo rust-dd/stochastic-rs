@@ -1,11 +1,31 @@
-use std::{fs::File, time::Instant};
+use std::fs::File;
+use std::time::Instant;
 
-use candle_core::{DType, Device, Module, Result, Tensor};
-use candle_nn::{
-  layer_norm, linear, loss::mse, lstm, prelu, seq, AdamW, Dropout, LSTMConfig, LayerNorm,
-  LayerNormConfig, Linear, Optimizer, PReLU, ParamsAdamW, Sequential, VarBuilder, VarMap, LSTM,
-  RNN,
-};
+use candle_core::DType;
+use candle_core::Device;
+use candle_core::Module;
+use candle_core::Result;
+use candle_core::Tensor;
+use candle_nn::layer_norm;
+use candle_nn::linear;
+use candle_nn::loss::mse;
+use candle_nn::lstm;
+use candle_nn::prelu;
+use candle_nn::seq;
+use candle_nn::AdamW;
+use candle_nn::Dropout;
+use candle_nn::LSTMConfig;
+use candle_nn::LayerNorm;
+use candle_nn::LayerNormConfig;
+use candle_nn::Linear;
+use candle_nn::Optimizer;
+use candle_nn::PReLU;
+use candle_nn::ParamsAdamW;
+use candle_nn::Sequential;
+use candle_nn::VarBuilder;
+use candle_nn::VarMap;
+use candle_nn::LSTM;
+use candle_nn::RNN;
 use polars::prelude::*;
 
 use super::fou_lstm_datasets::test_vasicek_1_d;

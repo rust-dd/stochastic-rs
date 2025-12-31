@@ -2,13 +2,13 @@ use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand::Rng;
-use rand_distr::{Exp, Uniform};
+use rand_distr::Exp;
+use rand_distr::Uniform;
 use scilib::math::basic::gamma;
 
-use crate::{
-  stats::non_central_chi_squared,
-  stochastic::{process::poisson::Poisson, SamplingExt},
-};
+use crate::stats::non_central_chi_squared;
+use crate::stochastic::process::poisson::Poisson;
+use crate::stochastic::SamplingExt;
 
 /// CGMY Stochastic Volatility process
 ///
@@ -214,7 +214,8 @@ impl SamplingExt<f32> for SVCGMY<f32> {
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::{exp::SimdExp, uniform::SimdUniform};
+    use crate::stats::distr::exp::SimdExp;
+    use crate::stats::distr::uniform::SimdUniform;
 
     let mut rng = rand::thread_rng();
 
@@ -306,7 +307,9 @@ mod tests {
   use ndarray::Axis;
 
   use super::*;
-  use crate::{plot_1d, plot_nd, stochastic::N};
+  use crate::plot_1d;
+  use crate::plot_nd;
+  use crate::stochastic::N;
 
   #[test]
   fn svcgmy_length_equals_n() {

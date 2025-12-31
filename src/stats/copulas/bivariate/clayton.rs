@@ -1,7 +1,11 @@
-use ndarray::{Array1, Array2};
-use std::{error::Error, f64};
+use std::error::Error;
+use std::f64;
 
-use super::{Bivariate, CopulaType};
+use ndarray::Array1;
+use ndarray::Array2;
+
+use super::Bivariate;
+use super::CopulaType;
 
 /// `BaseBivariate` struct – Közös mezők a bivariate copulákhoz
 #[derive(Debug, Clone)]
@@ -159,9 +163,8 @@ impl Bivariate for Clayton {
 mod tests {
   use ndarray::array;
 
-  use crate::stats::copulas::bivariate::Bivariate;
-
   use super::Clayton;
+  use crate::stats::copulas::bivariate::Bivariate;
 
   #[test]
   fn test_fit() {

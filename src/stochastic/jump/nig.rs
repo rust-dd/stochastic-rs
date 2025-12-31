@@ -1,6 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::{rand_distr::InverseGaussian, RandomExt};
+use ndarray_rand::rand_distr::InverseGaussian;
+use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
 use crate::stochastic::SamplingExt;
@@ -96,12 +97,10 @@ impl SamplingExt<f32> for NIG<f32> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    plot_1d,
-    stochastic::{N, X0},
-  };
-
   use super::*;
+  use crate::plot_1d;
+  use crate::stochastic::N;
+  use crate::stochastic::X0;
 
   #[test]
   fn nig_length_equals_n() {
