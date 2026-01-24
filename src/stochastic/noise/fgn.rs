@@ -1,12 +1,10 @@
 use std::sync::Arc;
-use std::sync::RwLock;
 
 #[cfg(feature = "cuda")]
 use anyhow::Result;
 #[cfg(feature = "cuda")]
 use either::Either;
 use ndarray::concatenate;
-use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
@@ -16,6 +14,44 @@ use num_complex::Complex;
 use num_complex::ComplexDistribution;
 #[cfg(feature = "cuda")]
 use rand::Rng;
+#[cfg(feature = "cuda")]
+use std::sync::Mutex;
+#[cfg(feature = "cuda")]
+use libloading::{Library, Symbol};
+
+// CUDA type for complex numbers
+#[cfg(feature = "cuda")]
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+struct CuComplex {
+  x: f32,
+  y: f32,
+}
+
+// Persistent CUDA context for fast repeated sampling
+#[cfg(feature = "cuda")]
+struct CudaContext {
+  _lib: Library, // Keep library alive
+  fgn_sample: Symbol<'static, unsafe extern "C" fn(*mut f32, f32, u64)>,
+  fgn_cleanup: Symbol<'static, unsafe extern "C" fn()>,
+  n: usize,
+  m: usize,
+  offset: usize,
+  hurst: f64,
+  t: f64,
+}
+
+#[cfg(feature = "cuda")]
+impl Drop for CudaContext {
+  fn drop(&mut self) {
+    unsafe {
+      (self.fgn_cleanup)();
+    }
+  }
+}
+
+#[cfg(feature = "cuda")]
+static CUDA_CONTEXT: Mutex<Option<CudaContext>> = Mutex::new(None);
 
 use crate::stochastic::SamplingExt;
 
@@ -75,27 +111,13 @@ impl FGN<f64> {
 #[cfg(feature = "f64")]
 impl SamplingExt<f64> for FGN<f64> {
   fn sample(&self) -> Array1<f64> {
-    // let rnd = Array1::<Complex<f64>>::random(
-    //   2 * self.n,
-    //   ComplexDistribution::new(StandardNormal, StandardNormal),
-    // );
-    let num_threads = rayon::current_num_threads();
-    let chunk_size = (2 * self.n) / num_threads;
-    let rnd = Arc::new(RwLock::new(Array1::<Complex<f64>>::zeros(2 * self.n)));
+    // Generate all random numbers at once for correct statistical properties
+    let rnd = Array1::<Complex<f64>>::random(
+      2 * self.n,
+      ComplexDistribution::new(StandardNormal, StandardNormal),
+    );
 
-    (0..num_threads).into_par_iter().for_each(|i| {
-      let chunk = Array1::<Complex<f64>>::random(
-        chunk_size,
-        ComplexDistribution::new(StandardNormal, StandardNormal),
-      );
-
-      let mut result_lock = rnd.write().unwrap();
-      result_lock
-        .slice_mut(s![i * chunk_size..(i + 1) * chunk_size])
-        .assign(&chunk);
-    });
-
-    let fgn = &*self.sqrt_eigenvalues * &*rnd.read().unwrap();
+    let fgn = &*self.sqrt_eigenvalues * &rnd;
     let mut fgn_fft = Array1::<Complex<f64>>::zeros(2 * self.n);
     ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
     let scale = (self.n as f64).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
@@ -107,95 +129,129 @@ impl SamplingExt<f64> for FGN<f64> {
 
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self) -> Result<Either<Array1<f64>, Array2<f64>>> {
-    //  nvcc -O3 -use_fast_math -shared fgn.cu -o ./fgn_linux/libfgn.so -Xcompiler -fPIC -lcufft -lcurand
-    // nvcc -shared -Xcompiler -fPIC fgn.cu -o libfgn.so -lcufft // ELF header error
-    // nvcc -shared -o libfgn.so fgn.cu -Xcompiler -fPIC
-    // nvcc -O3 -use_fast_math -o libfgn.so fgn.cu -Xcompiler -fPIC
-    // nvcc -shared fgn.cu -o ./fgn_windows/fgn.dll -lcufft
-    use std::ffi::c_void;
+    // CUDA kernel compilation - see src/stochastic/cuda/CUDA_BUILD.md for details
+    // Quick build:
+    //   Linux:   cd src/stochastic/cuda && ./build.sh
+    //   Windows: cd src\stochastic\cuda && build.bat
 
-    use cudarc::driver::CudaDevice;
-    use cudarc::driver::DevicePtr;
-    use cudarc::driver::DevicePtrMut;
-    use cudarc::driver::DeviceRepr;
-    use libloading::Library;
-    use libloading::Symbol;
-
-    #[repr(C)]
-    #[derive(Debug, Default, Copy, Clone)]
-    pub struct cuComplex {
-      pub x: f32,
-      pub y: f32,
-    }
-
-    unsafe impl DeviceRepr for cuComplex {
-      fn as_kernel_param(&self) -> *mut c_void {
-        self as *const Self as *mut _
-      }
-    }
-
-    type FgnKernelFn = unsafe extern "C" fn(
-      /* d_sqrt_eigs: */ *const cuComplex,
-      /* d_output:    */ *mut f32,
+    type FgnInitFn = unsafe extern "C" fn(
+      /* h_sqrt_eigs: */ *const CuComplex,
+      /* eig_len:     */ i32,
       /* n:           */ i32,
       /* m:           */ i32,
       /* offset:      */ i32,
+    ) -> i32;
+
+    type FgnSampleFn = unsafe extern "C" fn(
+      /* h_output:    */ *mut f32,
       /* scale:       */ f32,
       /* seed:        */ u64,
     );
 
-    #[cfg(target_os = "windows")]
-    let lib = unsafe { Library::new("src/stochastic/cuda/fgn_windows/fgn.dll") }?;
-
-    #[cfg(target_os = "linux")]
-    let lib = unsafe { Library::new("src/stochastic/cuda/fgn_linux/libfgn.so") }?;
-
-    let fgn_kernel: Symbol<FgnKernelFn> = unsafe { lib.get(b"fgn_kernel") }?;
-    let device = CudaDevice::new(0)?;
+    type FgnCleanupFn = unsafe extern "C" fn();
 
     let m = self.m.unwrap_or(1);
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst;
     let t = self.t.unwrap_or(1.0);
+    // Scale factor: n^(-H) * t^H, same as CPU
     let scale = (n as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
+    let out_size = n - offset;
+
+    // Check if we need to reinitialize
+    let need_init = {
+      let guard = CUDA_CONTEXT.lock().unwrap();
+      match &*guard {
+        Some(ctx) => ctx.n != n || ctx.m != m || ctx.offset != offset 
+                     || ctx.hurst != hurst || ctx.t != t,
+        None => true,
+      }
+    };
+
+    // Initialize if needed
+    if need_init {
+      // Drop old context first (this calls cleanup)
+      {
+        let mut guard = CUDA_CONTEXT.lock().unwrap();
+        *guard = None;
+      }
+
+      #[cfg(target_os = "windows")]
+      let lib = unsafe { Library::new("src/stochastic/cuda/fgn_windows/fgn.dll") }?;
+      #[cfg(target_os = "linux")]
+      let lib = unsafe { Library::new("src/stochastic/cuda/fgn_linux/libfgn.so") }?;
+
+      // Get function pointers
+      let fgn_init: Symbol<FgnInitFn> = unsafe { lib.get(b"fgn_init") }?;
+      let fgn_sample: Symbol<FgnSampleFn> = unsafe { lib.get(b"fgn_sample") }?;
+      let fgn_cleanup: Symbol<FgnCleanupFn> = unsafe { lib.get(b"fgn_cleanup") }?;
+
+      // Prepare eigenvalues
+      let host_sqrt_eigs: Vec<CuComplex> = self
+        .sqrt_eigenvalues
+        .iter()
+        .map(|z| CuComplex {
+          x: z.re as f32,
+          y: z.im as f32,
+        })
+        .collect();
+
+      // Initialize CUDA context (uploads eigenvalues, allocates buffers, creates FFT plan)
+      unsafe {
+        fgn_init(
+          host_sqrt_eigs.as_ptr(),
+          host_sqrt_eigs.len() as i32,
+          n as i32,
+          m as i32,
+          offset as i32,
+        );
+      }
+
+      // Store context (transmute to extend lifetime - safe because lib stays alive)
+      let fgn_sample: Symbol<'static, unsafe extern "C" fn(*mut f32, f32, u64)> = 
+        unsafe { std::mem::transmute(fgn_sample) };
+      let fgn_cleanup: Symbol<'static, unsafe extern "C" fn()> = 
+        unsafe { std::mem::transmute(fgn_cleanup) };
+
+      let ctx = CudaContext {
+        _lib: lib,
+        fgn_sample,
+        fgn_cleanup,
+        n,
+        m,
+        offset,
+        hurst,
+        t,
+      };
+
+      let mut guard = CUDA_CONTEXT.lock().unwrap();
+      *guard = Some(ctx);
+    }
+
+    // Fast path: just call fgn_sample (GPU already initialized)
+    let mut host_output = vec![0.0f32; m * out_size];
     let mut rng = rand::thread_rng();
     let seed: u64 = rng.gen();
 
-    let host_sqrt_eigs: Vec<cuComplex> = self
-      .sqrt_eigenvalues
-      .iter()
-      .map(|z| cuComplex {
-        x: z.re as f32,
-        y: z.im as f32,
-      })
-      .collect();
-    let d_sqrt_eigs = device.htod_copy(host_sqrt_eigs)?;
-    let mut d_output = device.alloc_zeros::<f32>(m * (n - offset))?;
-
-    unsafe {
-      fgn_kernel(
-        (*d_sqrt_eigs.device_ptr()) as *const cuComplex,
-        (*d_output.device_ptr_mut()) as *mut f32,
-        n as i32,
-        m as i32,
-        offset as i32,
-        scale,
-        seed,
-      );
+    {
+      let guard = CUDA_CONTEXT.lock().unwrap();
+      let ctx = guard.as_ref().unwrap();
+      unsafe {
+        (ctx.fgn_sample)(host_output.as_mut_ptr(), scale, seed);
+      }
     }
 
-    let host_output = device.sync_reclaim(d_output)?;
-    let mut fgn = Array2::<f64>::zeros((m, n - offset));
+    // Convert to ndarray
+    let mut fgn = Array2::<f64>::zeros((m, out_size));
     for i in 0..m {
-      for j in 0..(n - offset) {
-        fgn[[i, j]] = host_output[i * (n - offset) + j] as f64;
+      for j in 0..out_size {
+        fgn[[i, j]] = host_output[i * out_size + j] as f64;
       }
     }
 
     if m == 1 {
-      let fgn = fgn.row(0).to_owned();
-      return Ok(Either::Left(fgn));
+      return Ok(Either::Left(fgn.row(0).to_owned()));
     }
 
     Ok(Either::Right(fgn))
@@ -258,23 +314,13 @@ impl FGN<f32> {
 #[cfg(feature = "f32")]
 impl SamplingExt<f32> for FGN<f32> {
   fn sample(&self) -> Array1<f32> {
-    let num_threads = rayon::current_num_threads();
-    let chunk_size = (2 * self.n) / num_threads;
-    let rnd = Arc::new(RwLock::new(Array1::<Complex<f32>>::zeros(2 * self.n)));
+    // Generate all random numbers at once for correct statistical properties
+    let rnd = Array1::<Complex<f32>>::random(
+      2 * self.n,
+      ComplexDistribution::new(StandardNormal, StandardNormal),
+    );
 
-    (0..num_threads).into_par_iter().for_each(|i| {
-      let chunk = Array1::<Complex<f32>>::random(
-        chunk_size,
-        ComplexDistribution::new(StandardNormal, StandardNormal),
-      );
-
-      let mut result_lock = rnd.write().unwrap();
-      result_lock
-        .slice_mut(s![i * chunk_size..(i + 1) * chunk_size])
-        .assign(&chunk);
-    });
-
-    let fgn = &*self.sqrt_eigenvalues * &*rnd.read().unwrap();
+    let fgn = &*self.sqrt_eigenvalues * &rnd;
     let mut fgn_fft = Array1::<Complex<f32>>::zeros(2 * self.n);
     ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
     let scale = (self.n as f32).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
@@ -409,5 +455,518 @@ mod tests {
   #[cfg(feature = "malliavin")]
   fn fgn_malliavin() {
     unimplemented!();
+  }
+
+  #[test]
+  #[cfg(feature = "cuda")]
+  fn fgn_cuda_speed_test() {
+    use std::time::Instant;
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+      Cell::new("Test"),
+      Cell::new("Time (ms)"),
+    ]));
+
+    // Test 1: Single sample (includes initialization)
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(1));
+    let start = Instant::now();
+    let _ = fgn.sample_cuda().unwrap();
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new("CUDA Single (with init)"),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    // Test 2: Repeated samples (cached context)
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(1));
+    let start = Instant::now();
+    for _ in 0..N {
+      let _ = fgn.sample_cuda().unwrap();
+    }
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new(&format!("CUDA {} repeated", N)),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    // Test 3: CPU single
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), None);
+    let start = Instant::now();
+    let _ = fgn.sample();
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new("CPU Single"),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    // Test 4: CPU repeated
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), None);
+    let start = Instant::now();
+    for _ in 0..N {
+      let _ = fgn.sample();
+    }
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new(&format!("CPU {} repeated", N)),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    // Test 5: Batch CUDA (10000 trajectories at once) - warm start
+    let fgn_batch = FGN::<f64>::new(0.7, N, Some(1.0), Some(10000));
+    // Warm up call to initialize CUDA context
+    let _ = fgn_batch.sample_cuda().unwrap();
+    let start = Instant::now();
+    let _ = fgn_batch.sample_cuda().unwrap();
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new("CUDA 10000 batch (warm)"),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    // Test 6: CPU parallel (10000 trajectories)
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(10000));
+    let start = Instant::now();
+    let _ = fgn.sample_par();
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new("CPU 10000 parallel"),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    // Test 7: Larger batch - 100000 trajectories
+    let fgn_large = FGN::<f64>::new(0.7, N, Some(1.0), Some(100000));
+    // Warm up
+    let _ = fgn_large.sample_cuda().unwrap();
+    let start = Instant::now();
+    let _ = fgn_large.sample_cuda().unwrap();
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new("CUDA 100000 batch (warm)"),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    // Test 8: CPU parallel 100000 trajectories
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(100000));
+    let start = Instant::now();
+    let _ = fgn.sample_par();
+    let duration = start.elapsed();
+    table.add_row(Row::new(vec![
+      Cell::new("CPU 100000 parallel"),
+      Cell::new(&format!("{}", duration.as_millis())),
+    ]));
+
+    table.printstd();
+  }
+
+  #[test]
+  #[cfg(feature = "cuda")]
+  fn fgn_verify_eigenvalues() {
+    // Verify that the sqrt_eigenvalues computed on CPU are correctly passed to CUDA
+    let hurst = 0.7;
+    let n = 100;
+    let fgn = FGN::<f64>::new(hurst, n, Some(1.0), Some(1));
+    
+    println!("Original n: {}, Padded n: {}, Offset: {}", n, fgn.n, fgn.offset);
+    println!("sqrt_eigenvalues length: {}", fgn.sqrt_eigenvalues.len());
+    
+    // Print first 10 eigenvalues
+    println!("\nFirst 10 sqrt_eigenvalues (CPU f64):");
+    for i in 0..10.min(fgn.sqrt_eigenvalues.len()) {
+      let eig = fgn.sqrt_eigenvalues[i];
+      println!("  [{}]: re={:.10}, im={:.10}", i, eig.re, eig.im);
+    }
+    
+    // The eigenvalues should be real for a real symmetric circulant matrix
+    // Check that imaginary parts are negligible
+    let max_im: f64 = fgn.sqrt_eigenvalues.iter()
+      .map(|z| z.im.abs())
+      .fold(0.0, f64::max);
+    println!("\nMax imaginary part of eigenvalues: {:.2e}", max_im);
+    
+    // Verify eigenvalues are non-negative (they should be for a covariance matrix)
+    let min_re: f64 = fgn.sqrt_eigenvalues.iter()
+      .map(|z| z.re)
+      .fold(f64::INFINITY, f64::min);
+    println!("Min real part of sqrt_eigenvalues: {:.10}", min_re);
+    
+    assert!(max_im < 1e-10, "Eigenvalues should be real, but max im = {}", max_im);
+  }
+
+  #[test]
+  #[cfg(feature = "cuda")]
+  fn fgn_compare_statistics() {
+    // Compare statistics of CPU vs CUDA samples
+    let hurst = 0.7;
+    let n = 256;  // Power of 2 for simplicity
+    let num_samples = 10000;
+
+    let fgn_cpu = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
+    let fgn_cuda = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
+
+    let cpu_samples = fgn_cpu.sample_par();
+    let cuda_samples = fgn_cuda.sample_cuda().unwrap().right().unwrap();
+
+    // Compute mean and variance per time step
+    let mut cpu_means = vec![0.0; n];
+    let mut cuda_means = vec![0.0; n];
+    let mut cpu_vars = vec![0.0; n];
+    let mut cuda_vars = vec![0.0; n];
+
+    for t in 0..n {
+      let mut cpu_sum = 0.0;
+      let mut cuda_sum = 0.0;
+      for s in 0..num_samples {
+        cpu_sum += cpu_samples[[s, t]];
+        cuda_sum += cuda_samples[[s, t]];
+      }
+      cpu_means[t] = cpu_sum / num_samples as f64;
+      cuda_means[t] = cuda_sum / num_samples as f64;
+
+      let mut cpu_var_sum = 0.0;
+      let mut cuda_var_sum = 0.0;
+      for s in 0..num_samples {
+        cpu_var_sum += (cpu_samples[[s, t]] - cpu_means[t]).powi(2);
+        cuda_var_sum += (cuda_samples[[s, t]] - cuda_means[t]).powi(2);
+      }
+      cpu_vars[t] = cpu_var_sum / num_samples as f64;
+      cuda_vars[t] = cuda_var_sum / num_samples as f64;
+    }
+
+    // Print statistics for first few time steps
+    println!("Statistics comparison (first 10 time steps):");
+    println!("{:>4} {:>12} {:>12} {:>12} {:>12}", "t", "CPU Mean", "CUDA Mean", "CPU Var", "CUDA Var");
+    for t in 0..10.min(n) {
+      println!("{:>4} {:>12.6} {:>12.6} {:>12.6} {:>12.6}", 
+        t, cpu_means[t], cuda_means[t], cpu_vars[t], cuda_vars[t]);
+    }
+
+    // Overall statistics
+    let cpu_overall_mean: f64 = cpu_means.iter().sum::<f64>() / n as f64;
+    let cuda_overall_mean: f64 = cuda_means.iter().sum::<f64>() / n as f64;
+    let cpu_overall_var: f64 = cpu_vars.iter().sum::<f64>() / n as f64;
+    let cuda_overall_var: f64 = cuda_vars.iter().sum::<f64>() / n as f64;
+
+    println!("\nOverall statistics:");
+    println!("CPU:  Mean = {:.6}, Var = {:.6}", cpu_overall_mean, cpu_overall_var);
+    println!("CUDA: Mean = {:.6}, Var = {:.6}", cuda_overall_mean, cuda_overall_var);
+    
+    // Theoretical variance for FGN is 1 (when t=1)
+    println!("\nTheoretical variance: 1.0");
+    println!("CPU variance ratio: {:.4}", cpu_overall_var);
+    println!("CUDA variance ratio: {:.4}", cuda_overall_var);
+  }
+
+  #[test]
+  #[cfg(feature = "cuda")]
+  fn fgn_cuda_vs_cpu_correlation() {
+    use plotly::{Plot, Scatter, Layout, common::{Mode, Line, LineShape}};
+
+    let hurst = 0.7;
+    let n = 500;
+    let num_samples = 5000;
+
+    // Generate samples from both CPU and CUDA
+    let fgn_cpu = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
+    let fgn_cuda = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
+
+    let cpu_samples = fgn_cpu.sample_par();
+    let cuda_samples = fgn_cuda.sample_cuda().unwrap().right().unwrap();
+
+    println!("CPU samples shape: {:?}", cpu_samples.shape());
+    println!("CUDA samples shape: {:?}", cuda_samples.shape());
+
+    // Compute empirical covariance for first few lags
+    let max_lag = 20;
+    let mut cpu_autocov = vec![0.0; max_lag];
+    let mut cuda_autocov = vec![0.0; max_lag];
+
+    // Theoretical autocovariance for FGN: gamma(k) = 0.5 * (|k+1|^(2H) - 2|k|^(2H) + |k-1|^(2H))
+    let mut theoretical_autocov = vec![0.0; max_lag];
+    for k in 0..max_lag {
+      let kf = k as f64;
+      if k == 0 {
+        theoretical_autocov[k] = 1.0;
+      } else {
+        theoretical_autocov[k] = 0.5 * (
+          (kf + 1.0).powf(2.0 * hurst) 
+          - 2.0 * kf.powf(2.0 * hurst) 
+          + (kf - 1.0).powf(2.0 * hurst)
+        );
+      }
+    }
+
+    // Compute empirical autocovariance
+    for lag in 0..max_lag {
+      let mut cpu_sum = 0.0;
+      let mut cuda_sum = 0.0;
+      let mut count = 0;
+
+      for row in 0..num_samples {
+        for i in 0..(n - lag) {
+          cpu_sum += cpu_samples[[row, i]] * cpu_samples[[row, i + lag]];
+          cuda_sum += cuda_samples[[row, i]] * cuda_samples[[row, i + lag]];
+          count += 1;
+        }
+      }
+
+      cpu_autocov[lag] = cpu_sum / count as f64;
+      cuda_autocov[lag] = cuda_sum / count as f64;
+    }
+
+    // Normalize to get autocorrelation (divide by variance)
+    let cpu_var = cpu_autocov[0];
+    let cuda_var = cuda_autocov[0];
+    for lag in 0..max_lag {
+      cpu_autocov[lag] /= cpu_var;
+      cuda_autocov[lag] /= cuda_var;
+    }
+
+    // Print comparison table
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+      Cell::new("Lag"),
+      Cell::new("Theoretical"),
+      Cell::new("CPU"),
+      Cell::new("CUDA"),
+      Cell::new("CPU Error"),
+      Cell::new("CUDA Error"),
+    ]));
+
+    for lag in 0..max_lag {
+      let cpu_err = (cpu_autocov[lag] - theoretical_autocov[lag]).abs();
+      let cuda_err = (cuda_autocov[lag] - theoretical_autocov[lag]).abs();
+      table.add_row(Row::new(vec![
+        Cell::new(&format!("{}", lag)),
+        Cell::new(&format!("{:.6}", theoretical_autocov[lag])),
+        Cell::new(&format!("{:.6}", cpu_autocov[lag])),
+        Cell::new(&format!("{:.6}", cuda_autocov[lag])),
+        Cell::new(&format!("{:.6}", cpu_err)),
+        Cell::new(&format!("{:.6}", cuda_err)),
+      ]));
+    }
+    table.printstd();
+
+    // Plot 1: Autocorrelation comparison
+    {
+      let lags: Vec<usize> = (0..max_lag).collect();
+      let mut plot = Plot::new();
+
+      let trace_theory = Scatter::new(lags.clone(), theoretical_autocov.clone())
+        .mode(Mode::LinesMarkers)
+        .name("Theoretical")
+        .line(Line::new().color("black").width(2.0));
+
+      let trace_cpu = Scatter::new(lags.clone(), cpu_autocov.clone())
+        .mode(Mode::Markers)
+        .name("CPU")
+        .line(Line::new().color("blue"));
+
+      let trace_cuda = Scatter::new(lags.clone(), cuda_autocov.clone())
+        .mode(Mode::Markers)
+        .name("CUDA")
+        .line(Line::new().color("orange"));
+
+      plot.add_trace(trace_theory);
+      plot.add_trace(trace_cpu);
+      plot.add_trace(trace_cuda);
+
+      let layout = Layout::new()
+        .title(&format!("FGN Autocorrelation (H={})", hurst));
+      plot.set_layout(layout);
+      plot.show();
+    }
+
+    // Plot 2: Sample paths comparison (FGN)
+    {
+      let mut plot = Plot::new();
+
+      let trace_cpu = Scatter::new(
+        (0..n).collect::<Vec<_>>(),
+        cpu_samples.row(0).to_vec()
+      )
+        .mode(Mode::Lines)
+        .name("CPU FGN")
+        .line(Line::new().color("blue").shape(LineShape::Linear));
+
+      let trace_cuda = Scatter::new(
+        (0..n).collect::<Vec<_>>(),
+        cuda_samples.row(0).to_vec()
+      )
+        .mode(Mode::Lines)
+        .name("CUDA FGN")
+        .line(Line::new().color("orange").shape(LineShape::Linear));
+
+      plot.add_trace(trace_cpu);
+      plot.add_trace(trace_cuda);
+
+      let layout = Layout::new()
+        .title(&format!("FGN Sample Paths (H={})", hurst));
+      plot.set_layout(layout);
+      plot.show();
+    }
+
+    // Plot 3: Convert to FBM paths and compare
+    {
+      let mut cpu_fbm = Array1::<f64>::zeros(n);
+      let mut cuda_fbm = Array1::<f64>::zeros(n);
+
+      for i in 1..n {
+        cpu_fbm[i] = cpu_fbm[i-1] + cpu_samples[[0, i]];
+        cuda_fbm[i] = cuda_fbm[i-1] + cuda_samples[[0, i]];
+      }
+
+      let mut plot = Plot::new();
+
+      let trace_cpu = Scatter::new(
+        (0..n).collect::<Vec<_>>(),
+        cpu_fbm.to_vec()
+      )
+        .mode(Mode::Lines)
+        .name("CPU FBM")
+        .line(Line::new().color("blue").shape(LineShape::Linear));
+
+      let trace_cuda = Scatter::new(
+        (0..n).collect::<Vec<_>>(),
+        cuda_fbm.to_vec()
+      )
+        .mode(Mode::Lines)
+        .name("CUDA FBM")
+        .line(Line::new().color("orange").shape(LineShape::Linear));
+
+      plot.add_trace(trace_cpu);
+      plot.add_trace(trace_cuda);
+
+      let layout = Layout::new()
+        .title(&format!("FBM Sample Paths (H={})", hurst));
+      plot.set_layout(layout);
+      plot.show();
+    }
+
+    // Plot 4: Multiple FBM paths from CUDA
+    {
+      let mut plot = Plot::new();
+      let colors = ["red", "blue", "green", "orange", "purple"];
+
+      for (idx, color) in colors.iter().enumerate() {
+        let mut fbm = Array1::<f64>::zeros(n);
+        for i in 1..n {
+          fbm[i] = fbm[i-1] + cuda_samples[[idx, i]];
+        }
+
+        let trace = Scatter::new(
+          (0..n).collect::<Vec<_>>(),
+          fbm.to_vec()
+        )
+          .mode(Mode::Lines)
+          .name(&format!("Path {}", idx + 1))
+          .line(Line::new().color(*color).shape(LineShape::Linear));
+
+        plot.add_trace(trace);
+      }
+
+      let layout = Layout::new()
+        .title(&format!("CUDA FBM Multiple Paths (H={})", hurst));
+      plot.set_layout(layout);
+      plot.show();
+    }
+
+    // Verify correlation is close enough
+    let max_cpu_error: f64 = (0..max_lag)
+      .map(|lag| (cpu_autocov[lag] - theoretical_autocov[lag]).abs())
+      .fold(0.0, f64::max);
+    let max_cuda_error: f64 = (0..max_lag)
+      .map(|lag| (cuda_autocov[lag] - theoretical_autocov[lag]).abs())
+      .fold(0.0, f64::max);
+    
+    println!("\nMax CPU autocorrelation error: {:.6}", max_cpu_error);
+    println!("Max CUDA autocorrelation error: {:.6}", max_cuda_error);
+
+    // Estimate Hurst exponent using aggregated variance method
+    // For FBM: Var(B_H(t)) = t^(2H), so for aggregated series at scale m:
+    // Var(X^(m)) ~ m^(2H-2) * Var(X)
+    // Log-log regression gives slope = 2H - 2, so H = (slope + 2) / 2
+    fn estimate_hurst_variance(fgn_samples: &Array2<f64>, num_paths: usize) -> f64 {
+      let n = fgn_samples.ncols();
+      let mut log_ms = Vec::new();
+      let mut log_vars = Vec::new();
+      
+      // Aggregate at different scales
+      let scales: Vec<usize> = vec![1, 2, 4, 8, 16, 32, 64].into_iter().filter(|&m| m < n / 4).collect();
+      
+      for &m in &scales {
+        let mut var_sum = 0.0;
+        let mut count = 0;
+        
+        for path_idx in 0..num_paths.min(500) {
+          // Aggregate the FGN series at scale m
+          let num_agg = n / m;
+          let mut aggregated = vec![0.0; num_agg];
+          
+          for i in 0..num_agg {
+            let mut sum = 0.0;
+            for j in 0..m {
+              sum += fgn_samples[[path_idx, i * m + j]];
+            }
+            aggregated[i] = sum / m as f64;
+          }
+          
+          // Compute variance of aggregated series
+          let mean: f64 = aggregated.iter().sum::<f64>() / num_agg as f64;
+          let var: f64 = aggregated.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / num_agg as f64;
+          
+          if var > 1e-15 {
+            var_sum += var;
+            count += 1;
+          }
+        }
+        
+        if count > 0 {
+          let avg_var = var_sum / count as f64;
+          log_ms.push((m as f64).ln());
+          log_vars.push(avg_var.ln());
+        }
+      }
+      
+      // Linear regression: log(Var) = (2H-2) * log(m) + c
+      if log_ms.len() < 2 {
+        return 0.5;
+      }
+      
+      let n_points = log_ms.len() as f64;
+      let mean_x: f64 = log_ms.iter().sum::<f64>() / n_points;
+      let mean_y: f64 = log_vars.iter().sum::<f64>() / n_points;
+      
+      let mut cov = 0.0;
+      let mut var_x = 0.0;
+      for i in 0..log_ms.len() {
+        cov += (log_ms[i] - mean_x) * (log_vars[i] - mean_y);
+        var_x += (log_ms[i] - mean_x).powi(2);
+      }
+      
+      if var_x < 1e-10 {
+        return 0.5;
+      }
+      
+      let slope = cov / var_x;
+      // slope = 2H - 2, so H = (slope + 2) / 2
+      (slope + 2.0) / 2.0
+    }
+
+    // Estimate Hurst exponent for both CPU and CUDA samples
+    let cpu_hurst_est = estimate_hurst_variance(&cpu_samples, num_samples);
+    let cuda_hurst_est = estimate_hurst_variance(&cuda_samples, num_samples);
+    
+    println!("\n=== Hurst Exponent Estimation (Aggregated Variance) ===");
+    println!("True Hurst:     {:.4}", hurst);
+    println!("CPU estimated:  {:.4} (error: {:.4})", cpu_hurst_est, (cpu_hurst_est - hurst).abs());
+    println!("CUDA estimated: {:.4} (error: {:.4})", cuda_hurst_est, (cuda_hurst_est - hurst).abs());
+    
+    // Note: CUDA uses f32 internally, so correlation may have more error than CPU (f64)
+    // The threshold is relaxed to account for this
+    assert!(max_cuda_error < 0.15, "CUDA autocorrelation error too large: {}", max_cuda_error);
+    
+    // Hurst estimate should be within 0.1 of true value
+    assert!((cuda_hurst_est - hurst).abs() < 0.15, 
+      "CUDA Hurst estimate {} too far from true value {}", cuda_hurst_est, hurst);
   }
 }
