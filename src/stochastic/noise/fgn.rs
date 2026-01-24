@@ -12,6 +12,8 @@ use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
 use num_complex::Complex;
 use num_complex::ComplexDistribution;
+#[cfg(feature = "phastft")]
+use phastft::{fft_64, planner::Direction};
 #[cfg(feature = "cuda")]
 use rand::Rng;
 #[cfg(feature = "cuda")]
@@ -105,6 +107,36 @@ impl FGN<f64> {
       m,
       fft_handler: Arc::new(FftHandler::new(2 * n)),
     }
+  }
+
+  /// Sample FGN using PhastFT (requires nightly Rust and `phastft` feature)
+  /// PhastFT is a high-performance FFT library that uses SIMD and is competitive with FFTW
+  #[cfg(feature = "phastft")]
+  pub fn sample_phastft(&self) -> Array1<f64> {
+    // Generate random complex numbers
+    let rnd = Array1::<Complex<f64>>::random(
+      2 * self.n,
+      ComplexDistribution::new(StandardNormal, StandardNormal),
+    );
+
+    // Multiply by sqrt eigenvalues
+    let fgn_complex = &*self.sqrt_eigenvalues * &rnd;
+    
+    // PhastFT uses separate real and imaginary arrays
+    let mut reals: Vec<f64> = fgn_complex.iter().map(|c| c.re).collect();
+    let mut imags: Vec<f64> = fgn_complex.iter().map(|c| c.im).collect();
+    
+    // Perform FFT using PhastFT
+    fft_64(&mut reals, &mut imags, Direction::Forward);
+    
+    // Extract real parts and scale
+    let scale = (self.n as f64).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
+    let result: Vec<f64> = reals[1..self.n - self.offset + 1]
+      .iter()
+      .map(|&x| x * scale)
+      .collect();
+    
+    Array1::from_vec(result)
   }
 }
 
@@ -556,6 +588,153 @@ mod tests {
     ]));
 
     table.printstd();
+  }
+
+  /// Benchmark comparing all FFT implementations: ndrustfft, PhastFT, and CUDA
+  #[test]
+  #[cfg(all(feature = "cuda", feature = "phastft"))]
+  fn fgn_fft_benchmark() {
+    use std::time::Instant;
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+      Cell::new("FFT Implementation"),
+      Cell::new("Time (ms)"),
+      Cell::new("Samples/sec"),
+    ]));
+
+    let n = 1024; // Power of 2 for fair comparison
+    let num_iterations = 1000;
+
+    // Warmup
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    for _ in 0..10 {
+      let _ = fgn.sample();
+      let _ = fgn.sample_phastft();
+    }
+
+    // Test 1: ndrustfft (default CPU implementation)
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let start = Instant::now();
+    for _ in 0..num_iterations {
+      let _ = fgn.sample();
+    }
+    let duration_ndrustfft = start.elapsed();
+    let samples_per_sec_ndrustfft = num_iterations as f64 / duration_ndrustfft.as_secs_f64();
+    table.add_row(Row::new(vec![
+      Cell::new("ndrustfft (CPU)"),
+      Cell::new(&format!("{}", duration_ndrustfft.as_millis())),
+      Cell::new(&format!("{:.0}", samples_per_sec_ndrustfft)),
+    ]));
+
+    // Test 2: PhastFT
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let start = Instant::now();
+    for _ in 0..num_iterations {
+      let _ = fgn.sample_phastft();
+    }
+    let duration_phastft = start.elapsed();
+    let samples_per_sec_phastft = num_iterations as f64 / duration_phastft.as_secs_f64();
+    table.add_row(Row::new(vec![
+      Cell::new("PhastFT (CPU)"),
+      Cell::new(&format!("{}", duration_phastft.as_millis())),
+      Cell::new(&format!("{:.0}", samples_per_sec_phastft)),
+    ]));
+
+    // Test 3: CUDA (single samples)
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), Some(1));
+    // Warmup CUDA
+    let _ = fgn.sample_cuda().unwrap();
+    let start = Instant::now();
+    for _ in 0..num_iterations {
+      let _ = fgn.sample_cuda().unwrap();
+    }
+    let duration_cuda = start.elapsed();
+    let samples_per_sec_cuda = num_iterations as f64 / duration_cuda.as_secs_f64();
+    table.add_row(Row::new(vec![
+      Cell::new("CUDA (GPU)"),
+      Cell::new(&format!("{}", duration_cuda.as_millis())),
+      Cell::new(&format!("{:.0}", samples_per_sec_cuda)),
+    ]));
+
+    // Test 4: CUDA batch (1000 samples at once)
+    let fgn_batch = FGN::<f64>::new(0.7, n, Some(1.0), Some(num_iterations));
+    // Warmup
+    let _ = fgn_batch.sample_cuda().unwrap();
+    let start = Instant::now();
+    let _ = fgn_batch.sample_cuda().unwrap();
+    let duration_cuda_batch = start.elapsed();
+    let samples_per_sec_cuda_batch = num_iterations as f64 / duration_cuda_batch.as_secs_f64();
+    table.add_row(Row::new(vec![
+      Cell::new(&format!("CUDA batch ({})", num_iterations)),
+      Cell::new(&format!("{}", duration_cuda_batch.as_millis())),
+      Cell::new(&format!("{:.0}", samples_per_sec_cuda_batch)),
+    ]));
+
+    println!("\n=== FGN FFT Implementation Benchmark (n={}, {} iterations) ===", n, num_iterations);
+    table.printstd();
+
+    // Print speedup comparisons
+    println!("\nSpeedup comparisons:");
+    println!("  PhastFT vs ndrustfft: {:.2}x", duration_ndrustfft.as_secs_f64() / duration_phastft.as_secs_f64());
+    println!("  CUDA vs ndrustfft:    {:.2}x", duration_ndrustfft.as_secs_f64() / duration_cuda.as_secs_f64());
+    println!("  CUDA batch vs ndrustfft: {:.2}x", (duration_ndrustfft.as_secs_f64() * num_iterations as f64) / duration_cuda_batch.as_secs_f64());
+  }
+
+  /// PhastFT-only benchmark (doesn't require CUDA)
+  #[test]
+  #[cfg(feature = "phastft")]
+  fn fgn_phastft_benchmark() {
+    use std::time::Instant;
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+      Cell::new("FFT Implementation"),
+      Cell::new("Time (ms)"),
+      Cell::new("Samples/sec"),
+    ]));
+
+    let n = 1024;
+    let num_iterations = 1000;
+
+    // Warmup
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    for _ in 0..10 {
+      let _ = fgn.sample();
+      let _ = fgn.sample_phastft();
+    }
+
+    // Test 1: ndrustfft
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let start = Instant::now();
+    for _ in 0..num_iterations {
+      let _ = fgn.sample();
+    }
+    let duration_ndrustfft = start.elapsed();
+    let samples_per_sec_ndrustfft = num_iterations as f64 / duration_ndrustfft.as_secs_f64();
+    table.add_row(Row::new(vec![
+      Cell::new("ndrustfft (CPU)"),
+      Cell::new(&format!("{}", duration_ndrustfft.as_millis())),
+      Cell::new(&format!("{:.0}", samples_per_sec_ndrustfft)),
+    ]));
+
+    // Test 2: PhastFT
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let start = Instant::now();
+    for _ in 0..num_iterations {
+      let _ = fgn.sample_phastft();
+    }
+    let duration_phastft = start.elapsed();
+    let samples_per_sec_phastft = num_iterations as f64 / duration_phastft.as_secs_f64();
+    table.add_row(Row::new(vec![
+      Cell::new("PhastFT (CPU)"),
+      Cell::new(&format!("{}", duration_phastft.as_millis())),
+      Cell::new(&format!("{:.0}", samples_per_sec_phastft)),
+    ]));
+
+    println!("\n=== FGN CPU FFT Benchmark (n={}, {} iterations) ===", n, num_iterations);
+    table.printstd();
+
+    let speedup = duration_ndrustfft.as_secs_f64() / duration_phastft.as_secs_f64();
+    println!("\nPhastFT speedup vs ndrustfft: {:.2}x", speedup);
   }
 
   #[test]

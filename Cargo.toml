@@ -47,6 +47,7 @@ ndarray-rand = "0.15.0" # UPDATE: rand
 ndarray-stats = "0.6.0" # UPDATE: rand
 ndrustfft = "0.5.0" # UPDATE: rand
 num-complex = { version = "0.4.6", features = ["rand"] } # UPDATE: rand
+phastft = { version = "0.3.0", optional = true }
 ordered-float = "5.0.0"
 # orx-parallel = "2.3.0"
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
@@ -84,6 +85,7 @@ f64 = []
 jemalloc = ["dep:tikv-jemallocator"]
 malliavin = []
 mimalloc = ["dep:mimalloc"]
+phastft = ["dep:phastft"]
 simd = []
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars"]
 
