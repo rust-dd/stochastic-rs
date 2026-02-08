@@ -34,8 +34,4 @@ impl<T: Float> Process<T> for BM<T> {
 
     bm
   }
-
-  fn n(&self) -> usize {
-    self.n
-  }
 }

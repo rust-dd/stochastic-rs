@@ -61,10 +61,6 @@ impl<T: Float> Process<T> for GBM<T> {
 
     gbm
   }
-
-  fn n(&self) -> usize {
-    self.n
-  }
 }
 
 impl<T: Float> GBM<T> {

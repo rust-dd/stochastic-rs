@@ -132,11 +132,12 @@ pub trait Process<T: Float>: Send + Sync {
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Self::Output;
 
-  fn n(&self) -> usize;
-
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     (0..m).into_par_iter().map(|_| self.sample()).collect()
   }
+
+  #[cfg(feature = "cuda")]
+  fn sample_cuda(&self) -> Self::Output;
 
   fn euler_maruyama(&self, _noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
     unimplemented!()

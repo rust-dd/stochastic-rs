@@ -56,10 +56,6 @@ impl<T: Float> Process<T> for OU<T> {
 
     ou
   }
-
-  fn n(&self) -> usize {
-    self.n
-  }
 }
 
 #[cfg(test)]

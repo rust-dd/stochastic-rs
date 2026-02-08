@@ -26,10 +26,6 @@ impl<T: Float> Process<T> for Gn<T> {
   fn sample_simd(&self) -> Self::Output {
     T::normal_array_simd(self.n, T::zero(), self.dt().sqrt())
   }
-
-  fn n(&self) -> usize {
-    self.n
-  }
 }
 
 impl<T: Float> Gn<T> {
