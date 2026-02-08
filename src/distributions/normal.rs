@@ -11,6 +11,7 @@ use super::SimdFloat;
 struct ZigTables {
   kn: [i32; 128],
   wn: [f64; 128],
+  wn_f32: [f32; 128],
   fn_tab: [f64; 128],
 }
 
@@ -56,10 +57,17 @@ fn zig_tables() -> &'static ZigTables {
       wn[i] = dn / m1;
     }
 
-    ZigTables { kn, wn, fn_tab }
+    let wn_f32: [f32; 128] = std::array::from_fn(|i| wn[i] as f32);
+    ZigTables {
+      kn,
+      wn,
+      wn_f32,
+      fn_tab,
+    }
   })
 }
 
+#[inline(never)]
 fn nfix<T: SimdFloat, R: Rng + ?Sized>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut R) -> T {
   const R_TAIL: f64 = 3.442620;
   let mut hz = hz;
@@ -101,100 +109,115 @@ fn nfix<T: SimdFloat, R: Rng + ?Sized>(hz: i32, iz: usize, tables: &ZigTables, r
 }
 
 /// SIMD-accelerated normal (Gaussian) distribution using the Ziggurat algorithm.
-/// Generates 16 samples at a time. ~97% of samples use a branchless SIMD fast path
-/// (integer compare + multiply), with scalar fallback only for the rare ~3% edge cases.
-pub struct SimdNormal<T: SimdFloat> {
+/// ~97% of samples use a branchless SIMD fast path (integer compare + multiply),
+/// with scalar fallback only for the rare ~3% edge cases.
+///
+/// The const generic `N` controls the internal buffer size for `sample()` calls.
+/// Larger values reduce per-sample overhead but use more stack space.
+/// `fill_slice()` bypasses the buffer entirely.
+pub struct SimdNormal<T: SimdFloat, const N: usize = 64> {
   mean: T,
   std_dev: T,
-  buffer: UnsafeCell<[T; 16]>,
+  buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdNormal<T> {
+impl<T: SimdFloat, const N: usize> SimdNormal<T, N> {
   pub fn new(mean: T, std_dev: T) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
+    assert!(N >= 8, "buffer size must be at least 8");
     Self {
       mean,
       std_dev,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
+      buffer: UnsafeCell::new([T::zero(); N]),
+      index: UnsafeCell::new(N),
     }
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    let mut tmp = [T::zero(); 16];
-    let mut chunks = out.chunks_exact_mut(16);
-    for chunk in &mut chunks {
-      Self::fill_ziggurat(&mut tmp, rng, self.mean, self.std_dev);
-      chunk.copy_from_slice(&tmp);
-    }
-    let rem = chunks.into_remainder();
-    if !rem.is_empty() {
-      Self::fill_ziggurat(&mut tmp, rng, self.mean, self.std_dev);
-      rem.copy_from_slice(&tmp[..rem.len()]);
-    }
+    Self::fill_ziggurat(out, rng, self.mean, self.std_dev);
   }
 
   #[inline]
   pub fn fill_16<R: Rng + ?Sized>(&self, rng: &mut R, out16: &mut [T]) {
     debug_assert!(out16.len() >= 16);
-    let mut tmp = [T::zero(); 16];
-    Self::fill_ziggurat(&mut tmp, rng, self.mean, self.std_dev);
-    out16[..16].copy_from_slice(&tmp);
+    Self::fill_ziggurat(&mut out16[..16], rng, self.mean, self.std_dev);
   }
 
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    Self::fill_ziggurat(buf, rng, self.mean, self.std_dev);
+    Self::fill_ziggurat(buf.as_mut_slice(), rng, self.mean, self.std_dev);
     unsafe {
       *self.index.get() = 0;
     }
   }
 
-  fn fill_ziggurat<R: Rng + ?Sized>(buf: &mut [T; 16], rng: &mut R, mean: T, std_dev: T) {
+  #[inline]
+  fn fill_ziggurat<R: Rng + ?Sized>(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
+    let len = buf.len();
     let tables = zig_tables();
     let mean_simd = T::splat(mean);
     let std_dev_simd = T::splat(std_dev);
     let mask127 = i32x8::splat(127);
     let mut filled = 0;
 
-    while filled < 16 {
+    while filled < len {
       let hz_arr: [i32; 8] = std::array::from_fn(|_| rng.random::<i32>());
       let hz = i32x8::new(hz_arr);
       let iz = hz & mask127;
       let iz_arr = iz.to_array();
 
-      let kn_vals = i32x8::new(std::array::from_fn(|i| tables.kn[iz_arr[i] as usize]));
-      let abs_hz = hz.abs();
-      let accept = abs_hz.simd_lt(kn_vals);
+      // SAFETY: iz values are always 0..=127 (masked with & 127), tables have 128 entries
+      unsafe {
+        let kn_vals = i32x8::new([
+          *tables.kn.get_unchecked(iz_arr[0] as usize),
+          *tables.kn.get_unchecked(iz_arr[1] as usize),
+          *tables.kn.get_unchecked(iz_arr[2] as usize),
+          *tables.kn.get_unchecked(iz_arr[3] as usize),
+          *tables.kn.get_unchecked(iz_arr[4] as usize),
+          *tables.kn.get_unchecked(iz_arr[5] as usize),
+          *tables.kn.get_unchecked(iz_arr[6] as usize),
+          *tables.kn.get_unchecked(iz_arr[7] as usize),
+        ]);
+        let abs_hz = hz.abs();
+        let accept = abs_hz.simd_lt(kn_vals);
 
-      let wn_arr: [T; 8] =
-        std::array::from_fn(|i| T::from(tables.wn[iz_arr[i] as usize]).unwrap());
-      let hz_float = T::simd_from_i32x8(hz);
-      let wn_simd = T::simd_from_array(wn_arr);
-      let result = hz_float * wn_simd;
+        let wn_arr: [T; 8] = [
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
+        ];
+        let hz_float = T::simd_from_i32x8(hz);
+        let wn_simd = T::simd_from_array(wn_arr);
+        let result = hz_float * wn_simd;
 
-      if accept.all() {
-        let scaled = mean_simd + std_dev_simd * result;
-        let scaled_arr = T::simd_to_array(scaled);
-        let take = (16 - filled).min(8);
-        buf[filled..filled + take].copy_from_slice(&scaled_arr[..take]);
-        filled += take;
-      } else {
-        let accept_arr = accept.to_array();
-        let result_arr = T::simd_to_array(result);
-        for i in 0..8 {
-          if filled >= 16 {
-            break;
-          }
-          if accept_arr[i] != 0 {
-            buf[filled] = mean + std_dev * result_arr[i];
-            filled += 1;
-          } else {
-            let x = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
-            buf[filled] = mean + std_dev * x;
-            filled += 1;
+        if accept.all() {
+          let scaled = mean_simd + std_dev_simd * result;
+          let scaled_arr = T::simd_to_array(scaled);
+          let take = (len - filled).min(8);
+          buf[filled..filled + take].copy_from_slice(&scaled_arr[..take]);
+          filled += take;
+        } else {
+          let accept_arr = accept.to_array();
+          let result_arr = T::simd_to_array(result);
+          for i in 0..8 {
+            if filled >= len {
+              break;
+            }
+            if accept_arr[i] != 0 {
+              buf[filled] = mean + std_dev * result_arr[i];
+              filled += 1;
+            } else {
+              let x = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
+              buf[filled] = mean + std_dev * x;
+              filled += 1;
+            }
           }
         }
       }
@@ -202,10 +225,10 @@ impl<T: SimdFloat> SimdNormal<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdNormal<T> {
+impl<T: SimdFloat, const N: usize> Distribution<T> for SimdNormal<T, N> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
+    if *index >= N {
       self.refill_buffer(rng);
     }
     let buf = unsafe { &mut *self.buffer.get() };

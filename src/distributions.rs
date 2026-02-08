@@ -56,6 +56,7 @@ pub trait SimdFloat: num_traits::Float + Default + Send + Sync + 'static {
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
   fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
+  fn from_f64_fast(v: f64) -> Self;
   fn pi() -> Self;
   fn two_pi() -> Self;
   fn min_positive_val() -> Self;
@@ -122,6 +123,11 @@ impl SimdFloat for f32 {
 
   fn simd_from_i32x8(v: wide::i32x8) -> f32x8 {
     v.round_float()
+  }
+
+  #[inline(always)]
+  fn from_f64_fast(v: f64) -> f32 {
+    v as f32
   }
 
   fn pi() -> f32 {
@@ -198,6 +204,11 @@ impl SimdFloat for f64 {
 
   fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {
     f64x8::from_i32x8(v)
+  }
+
+  #[inline(always)]
+  fn from_f64_fast(v: f64) -> f64 {
+    v
   }
 
   fn pi() -> f64 {
@@ -318,7 +329,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(1, 1);
       let mut rng = rand::rng();
-      let dist = SimdNormal::new(0.0, 1.0);
+      let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -4.0, 4.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -898,7 +909,7 @@ mod tests {
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
-    let simd = SimdNormal::new(0.0, 1.0);
+    let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1267,7 +1278,7 @@ mod tests {
     // Normal
     {
       let mut rng = rand::rng();
-      let simd = SimdNormal::new(0.0, 1.0);
+      let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
       time_f32(
@@ -1427,8 +1438,47 @@ mod tests {
       "Distribution", "simd (ms)", "rand_distr (ms)"
     );
     println!("{:-<14} {:-<12} {:-<14}", "", "", "");
-    for r in rows {
+    for r in &rows {
       println!("{:<14} {:>12.2} {:>14.2}", r.name, r.simd_ms, r.rand_ms);
+    }
+
+    // Normal fill_slice benchmark at various sizes
+    println!();
+    println!(
+      "{:<24} {:>12} {:>14} {:>8}",
+      "Normal fill_slice", "simd (ms)", "rand_distr (ms)", "speedup"
+    );
+    println!("{:-<24} {:-<12} {:-<14} {:-<8}", "", "", "", "");
+    let total = 5_000_000usize;
+    for &size in &[8, 16, 64, 256, 1024, 10_000, 100_000] {
+      let iters = total / size;
+      let simd = SimdNormal::<f32>::new(0.0, 1.0);
+      let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
+      let mut buf = vec![0.0f32; size];
+
+      let mut rng = rand::rng();
+      let t0 = Instant::now();
+      for _ in 0..iters {
+        simd.fill_slice(&mut rng, &mut buf);
+        std::hint::black_box(&buf);
+      }
+      let dt_simd = t0.elapsed().as_secs_f64() * 1000.0;
+
+      let mut rng2 = rand::rng();
+      let t1 = Instant::now();
+      for _ in 0..iters {
+        for x in buf.iter_mut() {
+          *x = rd.sample(&mut rng2);
+        }
+        std::hint::black_box(&buf);
+      }
+      let dt_rand = t1.elapsed().as_secs_f64() * 1000.0;
+
+      let speedup = dt_rand / dt_simd;
+      println!(
+        "  n={:<20} {:>10.2} {:>14.2} {:>7.2}x",
+        size, dt_simd, dt_rand, speedup
+      );
     }
   }
 }
