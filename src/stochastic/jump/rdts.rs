@@ -116,9 +116,9 @@ impl SamplingExt<f32> for RDTS<f32> {
         as f32
       * (self.lambda_plus.powf(self.alpha - 1.0) - self.lambda_minus.powf(self.alpha - 1.0));
 
-    let U = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0));
+    let U = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0).unwrap());
     let E = Array1::random(self.j, Exp::<f32>::new(1.0).unwrap());
-    let tau = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0));
+    let tau = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0).unwrap());
     let poisson = Poisson::<f32>::new(1.0, Some(self.j), None, None).sample();
 
     for i in 1..self.n {
@@ -128,7 +128,7 @@ impl SamplingExt<f32> for RDTS<f32> {
 
       for j in 1..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus
@@ -183,7 +183,7 @@ impl SamplingExt<f32> for RDTS<f32> {
 
       for j in 1..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus

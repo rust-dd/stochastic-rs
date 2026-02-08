@@ -160,10 +160,10 @@ impl SamplingExt<f32> for SVCGMY<f32> {
       v[i] = xi / (2.0 * c);
     }
 
-    let U = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0));
+    let U = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0).unwrap());
     let E = Array1::random(self.j, Exp::<f32>::new(1.0).unwrap());
     let P = Poisson::<f32>::new(1.0, Some(self.j), None, None).sample();
-    let tau = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0)) * t_max;
+    let tau = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0).unwrap()) * t_max;
 
     let mut c_tau = Array1::<f32>::zeros(self.j);
     for (idx, tau_j) in tau.iter().enumerate() {
@@ -186,7 +186,7 @@ impl SamplingExt<f32> for SVCGMY<f32> {
 
       for j in 0..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus
@@ -267,7 +267,7 @@ impl SamplingExt<f32> for SVCGMY<f32> {
 
       for j in 0..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus
