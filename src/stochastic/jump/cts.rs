@@ -35,7 +35,7 @@ pub struct CTS<T> {
 #[cfg(feature = "f64")]
 impl SamplingExt<f64> for CTS<f64> {
   fn sample(&self) -> Array1<f64> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let t_max = self.t.unwrap_or(1.0);
     let dt = t_max / (self.n - 1) as f64;
@@ -50,9 +50,9 @@ impl SamplingExt<f64> for CTS<f64> {
       * gamma(1.0 - self.alpha)
       * (self.lambda_plus.powf(self.alpha - 1.0) - self.lambda_minus.powf(self.alpha - 1.0));
 
-    let U = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0));
+    let U = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0).unwrap());
     let E = Array1::<f64>::random(self.j, Exp::new(1.0).unwrap());
-    let tau = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0));
+    let tau = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0).unwrap());
     let poisson = Poisson::new(1.0, Some(self.j), None, None);
     let poisson = poisson.sample();
 
@@ -63,7 +63,7 @@ impl SamplingExt<f64> for CTS<f64> {
 
       for j in 1..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus
@@ -98,7 +98,7 @@ impl SamplingExt<f64> for CTS<f64> {
 #[cfg(feature = "f32")]
 impl SamplingExt<f32> for CTS<f32> {
   fn sample(&self) -> Array1<f32> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let t_max = self.t.unwrap_or(1.0);
     let dt = t_max / (self.n - 1) as f32;
@@ -151,7 +151,7 @@ impl SamplingExt<f32> for CTS<f32> {
   fn sample_simd(&self) -> Array1<f32> {
     use crate::stats::distr::exp::SimdExp;
     use crate::stats::distr::uniform::SimdUniform;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let t_max = self.t.unwrap_or(1.0);
     let dt = t_max / (self.n - 1) as f32;

@@ -494,7 +494,7 @@ where
 mod tests {
   use ndarray::arr1;
   use ndarray::arr2;
-  use rand::thread_rng;
+  use rand::rng;
 
   use super::*;
 
@@ -508,7 +508,7 @@ mod tests {
       NoiseModel::Fractional,
       Some(arr1(&[0.7, 0.8])),
     );
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let x0 = arr1(&[1.0]);
     let result = sde.solve(&x0, 0.0, 1.0, 0.01, 2, SdeMethod::Euler, &mut rng);
     assert_eq!(result.shape(), &[2, 101, 1]);
@@ -524,7 +524,7 @@ mod tests {
       NoiseModel::Fractional,
       Some(arr1(&[0.8, 0.75])),
     );
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let x0 = arr1(&[1.0, 1.0]);
     let result = sde.solve(&x0, 0.0, 1.0, 0.01, 2, SdeMethod::SRK2, &mut rng);
     assert_eq!(result.shape(), &[2, 101, 2]);
@@ -548,7 +548,7 @@ mod tests {
       NoiseModel::Fractional,
       Some(arr1(&[0.8, 0.9, 0.75, 0.78])),
     );
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let x0 = arr1(&[1.0, 1.0, 1.0, 1.0]);
     let result = sde.solve(&x0, 0.0, 1.0, 0.01, 4, SdeMethod::SRK2, &mut rng);
     assert_eq!(result.shape(), &[4, 101, 4]);

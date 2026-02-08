@@ -22,13 +22,13 @@ pub mod weibull;
 /// Fills a slice with random floating-point values in the range [0, 1).
 fn fill_f32_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
   for x in out.iter_mut() {
-    *x = rng.gen_range(0.0..1.0);
+    *x = rng.random_range(0.0..1.0);
   }
 }
 
 fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
   for x in out.iter_mut() {
-    *x = rng.gen_range(0.0..1.0);
+    *x = rng.random_range(0.0..1.0);
   }
 }
 
@@ -42,7 +42,7 @@ mod tests {
   use plotly::Layout;
   use plotly::Plot;
   use plotly::Scatter;
-  use rand::thread_rng;
+  use rand::rng;
   use rand_distr::Distribution;
 
   use crate::stats::distr::beta::SimdBeta;
@@ -136,7 +136,7 @@ mod tests {
     // 1) Normal => subplot (row=1, col=1)
     {
       let (xa, ya) = subplot_axes(1, 1);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdNormal::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -4.0, 4.0);
@@ -149,7 +149,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, -4.0, 4.0);
@@ -169,7 +169,7 @@ mod tests {
     // 2) Cauchy => subplot (1,2)
     {
       let (xa, ya) = subplot_axes(1, 2);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdCauchy::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -10.0, 10.0);
@@ -182,7 +182,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, -10.0, 10.0);
@@ -202,7 +202,7 @@ mod tests {
     // 3) LogNormal => (1,3)
     {
       let (xa, ya) = subplot_axes(1, 3);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdLogNormal::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 8.0);
@@ -215,7 +215,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::LogNormal::<f32>::new(0.0, 1.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 8.0);
@@ -235,7 +235,7 @@ mod tests {
     // 4) Pareto => (1,4)
     {
       let (xa, ya) = subplot_axes(1, 4);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdPareto::new(1.0, 1.5);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 10.0);
@@ -248,7 +248,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Pareto::<f32>::new(1.0, 1.5).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 10.0);
@@ -268,7 +268,7 @@ mod tests {
     // 5) Weibull => (2,1)
     {
       let (xa, ya) = subplot_axes(2, 1);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdWeibull::new(1.0, 1.5);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 3.0);
@@ -281,7 +281,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 3.0);
@@ -301,7 +301,7 @@ mod tests {
     // 6) Gamma => (2,2)
     {
       let (xa, ya) = subplot_axes(2, 2);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdGamma::new(2.0, 2.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 120, 0.0, 20.0);
@@ -314,7 +314,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 120, 0.0, 20.0);
@@ -334,7 +334,7 @@ mod tests {
     // 7) Beta => (2,3)
     {
       let (xa, ya) = subplot_axes(2, 3);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdBeta::new(2.0, 2.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 1.0);
@@ -347,7 +347,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 1.0);
@@ -367,7 +367,7 @@ mod tests {
     // 8) Inverse Gaussian => (2,4)
     {
       let (xa, ya) = subplot_axes(2, 4);
-      let mut rng = thread_rng();
+      let mut rng = rng();
       let dist = SimdInverseGauss::new(1.0, 2.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 3.0);
@@ -380,7 +380,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison (InverseGaussian in rand_distr)
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::InverseGaussian::<f32>::new(1.0, 2.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 3.0);
@@ -400,7 +400,7 @@ mod tests {
     // 9) Normal-Inverse Gauss => (3,1)
     {
       let (xa, ya) = subplot_axes(3, 1);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdNormalInverseGauss::new(2.0, 0.0, 1.0, 0.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -3.0, 3.0);
@@ -413,7 +413,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr has NormalInverseGaussian
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::NormalInverseGaussian::<f32>::new(2.0, 0.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, -3.0, 3.0);
@@ -433,7 +433,7 @@ mod tests {
     // 10) StudentT => (3,2)
     {
       let (xa, ya) = subplot_axes(3, 2);
-      let mut rng = thread_rng();
+      let mut rng = rng();
       let dist = SimdStudentT::new(5.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 120, -5.0, 5.0);
@@ -446,7 +446,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 120, -5.0, 5.0);
@@ -466,7 +466,7 @@ mod tests {
     // 11) Binomial => (3,3) (discrete)
     {
       let (xa, ya) = subplot_axes(3, 3);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdBinomial::new(10, 0.3);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_discrete_pmf(&samples, 10);
@@ -480,7 +480,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Binomial::new(10, 0.3).unwrap();
       let samples_rd: Vec<u32> = (0..sample_size)
         .map(|_| rd.sample(&mut rng) as u32)
@@ -502,7 +502,7 @@ mod tests {
     // 12) Geometric => (3,4)
     {
       let (xa, ya) = subplot_axes(3, 4);
-      let mut rng = thread_rng();
+      let mut rng = rng();
       let dist = SimdGeometric::new(0.25);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_discrete_pmf(&samples, 20);
@@ -515,7 +515,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Geometric::new(0.25).unwrap();
       let samples_rd: Vec<u32> = (0..sample_size)
         .map(|_| rd.sample(&mut rng) as u32)
@@ -537,7 +537,7 @@ mod tests {
     // 13) HyperGeometric => (4,1)
     {
       let (xa, ya) = subplot_axes(4, 1);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       // N=20, K=5, n=6
       let dist = SimdHypergeometric::new(20, 5, 6);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
@@ -552,7 +552,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Hypergeometric::new(20, 5, 6).unwrap();
       let samples_rd: Vec<u32> = (0..sample_size)
         .map(|_| rd.sample(&mut rng) as u32)
@@ -574,7 +574,7 @@ mod tests {
     // 14) Poisson => (4,2)
     {
       let (xa, ya) = subplot_axes(4, 2);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdPoisson::new(4.0);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_discrete_pmf(&samples, 15);
@@ -588,7 +588,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
       let samples_rd: Vec<u32> = (0..sample_size)
         .map(|_| rd.sample(&mut rng) as u32)
@@ -610,7 +610,7 @@ mod tests {
     // 15) Uniform (0,1) => (4,3)
     {
       let (xa, ya) = subplot_axes(4, 3);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdUniform::new(0.0, 1.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 1.0);
@@ -623,8 +623,8 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
-      let rd = rand_distr::Uniform::<f32>::new(0.0, 1.0);
+      let mut rng = rand::rng();
+      let rd = rand_distr::Uniform::<f32>::new(0.0, 1.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 1.0);
       let trace_rd = Scatter::new(xs, bins_rd)
@@ -643,7 +643,7 @@ mod tests {
     // 16) Exponential => (4,4)
     {
       let (xa, ya) = subplot_axes(4, 4);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdExp::new(1.5);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 4.0);
@@ -656,7 +656,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::Exp::<f32>::new(1.5).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 4.0);
@@ -676,7 +676,7 @@ mod tests {
     // 17) Chi-Squared => (5,1)
     {
       let (xa, ya) = subplot_axes(5, 1);
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let dist = SimdChiSquared::new(5.0);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 20.0);
@@ -689,7 +689,7 @@ mod tests {
       plot.add_trace(trace);
 
       // rand_distr comparison
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, 0.0, 20.0);
@@ -717,7 +717,7 @@ mod tests {
     use crate::stats::distr::normal::SimdNormal;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdNormal::new(0.0, 1.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -726,7 +726,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -747,7 +747,7 @@ mod tests {
     use crate::stats::distr::lognormal::SimdLogNormal;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdLogNormal::new(0.2, 0.8);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -756,7 +756,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -778,7 +778,7 @@ mod tests {
     let n = 10_000_000usize;
     let lambda = 1.5f32;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdExp::new(lambda);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -787,7 +787,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -808,7 +808,7 @@ mod tests {
     use crate::stats::distr::cauchy::SimdCauchy;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdCauchy::new(0.0, 1.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -817,7 +817,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -838,7 +838,7 @@ mod tests {
     use crate::stats::distr::gamma::SimdGamma;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdGamma::new(2.0, 2.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -847,7 +847,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -868,7 +868,7 @@ mod tests {
     use crate::stats::distr::weibull::SimdWeibull;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdWeibull::new(1.0, 1.5);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -877,7 +877,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -898,7 +898,7 @@ mod tests {
     use crate::stats::distr::beta::SimdBeta;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdBeta::new(2.0, 2.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -907,7 +907,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -928,7 +928,7 @@ mod tests {
     use crate::stats::distr::chi_square::SimdChiSquared;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdChiSquared::new(5.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -937,7 +937,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -958,7 +958,7 @@ mod tests {
     use crate::stats::distr::studentt::SimdStudentT;
     let n = 10_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdStudentT::new(5.0);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
@@ -967,7 +967,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
     let mut r_sum = 0.0f32;
     let t1 = Instant::now();
@@ -988,7 +988,7 @@ mod tests {
     use crate::stats::distr::poisson::SimdPoisson;
     let n = 5_000_000usize;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let simd = SimdPoisson::new(4.0);
     let mut s_sum: u64 = 0;
     let t0 = Instant::now();
@@ -997,7 +997,7 @@ mod tests {
     }
     let dt_s = t0.elapsed();
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
     let mut r_sum: u64 = 0;
     let t1 = Instant::now();
@@ -1106,9 +1106,9 @@ mod tests {
 
     // Normal
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdNormal::new(0.0, 1.0);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
       time_f32(
         &mut rows,
@@ -1121,9 +1121,9 @@ mod tests {
 
     // LogNormal
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdLogNormal::new(0.2, 0.8);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
       time_f32(
         &mut rows,
@@ -1136,9 +1136,9 @@ mod tests {
 
     // Exp
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdExp::new(1.5);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::Exp::<f32>::new(1.5).unwrap();
       time_f32(
         &mut rows,
@@ -1151,9 +1151,9 @@ mod tests {
 
     // Cauchy
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdCauchy::new(0.0, 1.0);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
       time_f32(
         &mut rows,
@@ -1166,9 +1166,9 @@ mod tests {
 
     // Gamma
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdGamma::new(2.0, 2.0);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
       time_f32(
         &mut rows,
@@ -1181,9 +1181,9 @@ mod tests {
 
     // Weibull
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdWeibull::new(1.0, 1.5);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
       time_f32(
         &mut rows,
@@ -1196,9 +1196,9 @@ mod tests {
 
     // Beta
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdBeta::new(2.0, 2.0);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
       time_f32(
         &mut rows,
@@ -1212,9 +1212,9 @@ mod tests {
     // Chi-Squared
     {
       use crate::stats::distr::chi_square::SimdChiSquared;
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdChiSquared::new(5.0);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
       time_f32(
         &mut rows,
@@ -1227,9 +1227,9 @@ mod tests {
 
     // StudentT
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdStudentT::new(5.0);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
       time_f32(
         &mut rows,
@@ -1242,9 +1242,9 @@ mod tests {
 
     // Poisson (discrete)
     {
-      let mut rng = thread_rng();
+      let mut rng = rand::rng();
       let simd = SimdPoisson::new(4.0);
-      let mut rng2 = thread_rng();
+      let mut rng2 = rand::rng();
       let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
       time_u32(
         &mut rows,

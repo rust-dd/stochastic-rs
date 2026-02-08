@@ -217,7 +217,7 @@ fn basin_hopping_opt(
   for _ in 0..niter {
     let mut x_trial = current_x;
     for i in 0..8 {
-      x_trial[i] += rng.gen_range(-stepsize..stepsize);
+      x_trial[i] += rng.random_range(-stepsize..stepsize);
       // azonnal clampeljük a boxra
       x_trial[i] = clamp(x_trial[i], bounds_lo[i], bounds_hi[i]);
     }
@@ -239,7 +239,7 @@ fn basin_hopping_opt(
         let accept = if delta <= 0.0 {
           true
         } else {
-          let u: f64 = rng.gen();
+          let u: f64 = rng.random();
           u < (-delta / temp).exp()
         };
 

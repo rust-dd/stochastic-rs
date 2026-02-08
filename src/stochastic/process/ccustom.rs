@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Axis;
-use rand::thread_rng;
+use rand::rng;
 use rand_distr::Distribution;
 
 use super::customjt::CustomJt;
@@ -35,7 +35,7 @@ where
     let p = self.customjt.sample();
     let mut jumps = Array1::<f64>::zeros(self.n.unwrap_or(p.len()));
     for i in 1..p.len() {
-      jumps[i] = self.jumps_distribution.sample(&mut thread_rng());
+      jumps[i] = self.jumps_distribution.sample(&mut rng());
     }
 
     let mut cum_jupms = jumps.clone();
@@ -69,7 +69,7 @@ where
     let p = self.customjt.sample();
     let mut jumps = Array1::<f32>::zeros(self.n.unwrap_or(p.len()));
     for i in 1..p.len() {
-      jumps[i] = self.jumps_distribution.sample(&mut thread_rng());
+      jumps[i] = self.jumps_distribution.sample(&mut rng());
     }
 
     let mut cum_jupms = jumps.clone();

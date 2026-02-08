@@ -60,7 +60,7 @@ impl EmpiricalCopula2D {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::thread_rng;
+  use rand::rng;
   use rand_distr::Distribution;
   use rand_distr::Uniform;
 
@@ -70,8 +70,8 @@ mod tests {
 
   #[test]
   fn test_empirical_copula() {
-    let mut rng = thread_rng();
-    let uniform = Uniform::new(0.0, 1.0);
+    let mut rng = rng();
+    let uniform = Uniform::new(0.0, 1.0).unwrap();
 
     let len_data = 500;
     let mut x = Array1::<f64>::zeros(len_data);

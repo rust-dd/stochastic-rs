@@ -27,7 +27,7 @@ impl SimdPoisson {
       let mut p = 1.0f32;
       loop {
         k += 1;
-        let u: f32 = rng.gen();
+        let u: f32 = rng.random();
         p *= u;
         if p <= l {
           break;

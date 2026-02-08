@@ -76,7 +76,7 @@ impl NCopula2D for GaussianCopula2D {
     let mvn = MultivariateNormal::new(self.mean.to_vec(), cov_flat)
       .expect("Invalid MVN parameters (Gaussian copula).");
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let mut z = Array2::<f64>::zeros((n, 2));
 
     // Sample from MVN
@@ -119,7 +119,7 @@ impl NCopula2D for GumbelCopula2D {
     let alpha = self.alpha;
     assert!(alpha >= 1.0, "The Gumbel parameter (alpha) must be >= 1!");
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let exp_dist = Exp::new(1.0).unwrap(); // Exp(1)
     let mut data = Array2::<f64>::zeros((n, 2));
 
@@ -159,7 +159,7 @@ impl NCopula2D for ClaytonCopula2D {
     let alpha = self.alpha;
     assert!(alpha > 0.0, "The Clayton parameter (alpha) must be > 0!");
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     // Gamma(shape = 1/alpha, rate = 1)
     let gamma_dist = Gamma::new(1.0 / alpha, 1.0).unwrap();
     let exp_dist = Exp::new(1.0).unwrap(); // Exp(1)

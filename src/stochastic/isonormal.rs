@@ -8,9 +8,10 @@ use ndarray_rand::RandomExt;
 use ndrustfft::ndfft;
 use ndrustfft::FftHandler;
 use num_complex::Complex64;
-use num_complex::ComplexDistribution;
 use rand_distr::StandardNormal;
 use statrs::function::gamma::gamma;
+
+use crate::stats::complex_distr::ComplexDistribution;
 
 /// Isonormal process
 ///

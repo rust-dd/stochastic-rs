@@ -32,7 +32,7 @@ impl SimdGamma {
       let gamma_plus_one = SimdGamma::new(self.alpha + 1.0, self.scale);
       for x in out.iter_mut() {
         let g = gamma_plus_one.sample(rng);
-        let u: f32 = rng.gen_range(0.0..1.0);
+        let u: f32 = rng.random_range(0.0..1.0);
         *x = g * u.powf(1.0 / self.alpha);
       }
     } else {
@@ -46,7 +46,7 @@ impl SimdGamma {
           if v <= 0.0 {
             continue;
           }
-          let u: f32 = rng.gen_range(0.0..1.0);
+          let u: f32 = rng.random_range(0.0..1.0);
           let z2 = z * z;
           // Quick acceptance
           if u < 1.0 - 0.0331 * z2 * z2 {

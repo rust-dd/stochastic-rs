@@ -1,9 +1,15 @@
 use std::sync::Arc;
+#[cfg(feature = "cuda")]
+use std::sync::Mutex;
 
 #[cfg(feature = "cuda")]
 use anyhow::Result;
 #[cfg(feature = "cuda")]
 use either::Either;
+#[cfg(feature = "cuda")]
+use libloading::Library;
+#[cfg(feature = "cuda")]
+use libloading::Symbol;
 use ndarray::concatenate;
 use ndarray::prelude::*;
 use ndarray_rand::rand_distr::StandardNormal;
@@ -11,15 +17,14 @@ use ndarray_rand::RandomExt;
 use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
 use num_complex::Complex;
-use num_complex::ComplexDistribution;
 #[cfg(feature = "phastft")]
-use phastft::{fft_64, planner::Direction};
+use phastft::fft_64;
+#[cfg(feature = "phastft")]
+use phastft::planner::Direction;
 #[cfg(feature = "cuda")]
 use rand::Rng;
-#[cfg(feature = "cuda")]
-use std::sync::Mutex;
-#[cfg(feature = "cuda")]
-use libloading::{Library, Symbol};
+
+use crate::stats::complex_distr::ComplexDistribution;
 
 // CUDA type for complex numbers
 #[cfg(feature = "cuda")]
@@ -121,21 +126,21 @@ impl FGN<f64> {
 
     // Multiply by sqrt eigenvalues
     let fgn_complex = &*self.sqrt_eigenvalues * &rnd;
-    
+
     // PhastFT uses separate real and imaginary arrays
     let mut reals: Vec<f64> = fgn_complex.iter().map(|c| c.re).collect();
     let mut imags: Vec<f64> = fgn_complex.iter().map(|c| c.im).collect();
-    
+
     // Perform FFT using PhastFT
     fft_64(&mut reals, &mut imags, Direction::Forward);
-    
+
     // Extract real parts and scale
     let scale = (self.n as f64).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
     let result: Vec<f64> = reals[1..self.n - self.offset + 1]
       .iter()
       .map(|&x| x * scale)
       .collect();
-    
+
     Array1::from_vec(result)
   }
 }
@@ -195,8 +200,9 @@ impl SamplingExt<f64> for FGN<f64> {
     let need_init = {
       let guard = CUDA_CONTEXT.lock().unwrap();
       match &*guard {
-        Some(ctx) => ctx.n != n || ctx.m != m || ctx.offset != offset 
-                     || ctx.hurst != hurst || ctx.t != t,
+        Some(ctx) => {
+          ctx.n != n || ctx.m != m || ctx.offset != offset || ctx.hurst != hurst || ctx.t != t
+        }
         None => true,
       }
     };
@@ -241,9 +247,9 @@ impl SamplingExt<f64> for FGN<f64> {
       }
 
       // Store context (transmute to extend lifetime - safe because lib stays alive)
-      let fgn_sample: Symbol<'static, unsafe extern "C" fn(*mut f32, f32, u64)> = 
+      let fgn_sample: Symbol<'static, unsafe extern "C" fn(*mut f32, f32, u64)> =
         unsafe { std::mem::transmute(fgn_sample) };
-      let fgn_cleanup: Symbol<'static, unsafe extern "C" fn()> = 
+      let fgn_cleanup: Symbol<'static, unsafe extern "C" fn()> =
         unsafe { std::mem::transmute(fgn_cleanup) };
 
       let ctx = CudaContext {
@@ -263,8 +269,8 @@ impl SamplingExt<f64> for FGN<f64> {
 
     // Fast path: just call fgn_sample (GPU already initialized)
     let mut host_output = vec![0.0f32; m * out_size];
-    let mut rng = rand::thread_rng();
-    let seed: u64 = rng.gen();
+    let mut rng = rand::rng();
+    let seed: u64 = rng.random();
 
     {
       let guard = CUDA_CONTEXT.lock().unwrap();
@@ -494,10 +500,7 @@ mod tests {
   fn fgn_cuda_speed_test() {
     use std::time::Instant;
     let mut table = Table::new();
-    table.add_row(Row::new(vec![
-      Cell::new("Test"),
-      Cell::new("Time (ms)"),
-    ]));
+    table.add_row(Row::new(vec![Cell::new("Test"), Cell::new("Time (ms)")]));
 
     // Test 1: Single sample (includes initialization)
     let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(1));
@@ -670,14 +673,27 @@ mod tests {
       Cell::new(&format!("{:.0}", samples_per_sec_cuda_batch)),
     ]));
 
-    println!("\n=== FGN FFT Implementation Benchmark (n={}, {} iterations) ===", n, num_iterations);
+    println!(
+      "\n=== FGN FFT Implementation Benchmark (n={}, {} iterations) ===",
+      n, num_iterations
+    );
     table.printstd();
 
     // Print speedup comparisons
     println!("\nSpeedup comparisons:");
-    println!("  PhastFT vs ndrustfft: {:.2}x", duration_ndrustfft.as_secs_f64() / duration_phastft.as_secs_f64());
-    println!("  CUDA vs ndrustfft:    {:.2}x", duration_ndrustfft.as_secs_f64() / duration_cuda.as_secs_f64());
-    println!("  CUDA batch vs ndrustfft: {:.2}x", (duration_ndrustfft.as_secs_f64() * num_iterations as f64) / duration_cuda_batch.as_secs_f64());
+    println!(
+      "  PhastFT vs ndrustfft: {:.2}x",
+      duration_ndrustfft.as_secs_f64() / duration_phastft.as_secs_f64()
+    );
+    println!(
+      "  CUDA vs ndrustfft:    {:.2}x",
+      duration_ndrustfft.as_secs_f64() / duration_cuda.as_secs_f64()
+    );
+    println!(
+      "  CUDA batch vs ndrustfft: {:.2}x",
+      (duration_ndrustfft.as_secs_f64() * num_iterations as f64)
+        / duration_cuda_batch.as_secs_f64()
+    );
   }
 
   /// PhastFT-only benchmark (doesn't require CUDA)
@@ -730,7 +746,10 @@ mod tests {
       Cell::new(&format!("{:.0}", samples_per_sec_phastft)),
     ]));
 
-    println!("\n=== FGN CPU FFT Benchmark (n={}, {} iterations) ===", n, num_iterations);
+    println!(
+      "\n=== FGN CPU FFT Benchmark (n={}, {} iterations) ===",
+      n, num_iterations
+    );
     table.printstd();
 
     let speedup = duration_ndrustfft.as_secs_f64() / duration_phastft.as_secs_f64();
@@ -744,31 +763,42 @@ mod tests {
     let hurst = 0.7;
     let n = 100;
     let fgn = FGN::<f64>::new(hurst, n, Some(1.0), Some(1));
-    
-    println!("Original n: {}, Padded n: {}, Offset: {}", n, fgn.n, fgn.offset);
+
+    println!(
+      "Original n: {}, Padded n: {}, Offset: {}",
+      n, fgn.n, fgn.offset
+    );
     println!("sqrt_eigenvalues length: {}", fgn.sqrt_eigenvalues.len());
-    
+
     // Print first 10 eigenvalues
     println!("\nFirst 10 sqrt_eigenvalues (CPU f64):");
     for i in 0..10.min(fgn.sqrt_eigenvalues.len()) {
       let eig = fgn.sqrt_eigenvalues[i];
       println!("  [{}]: re={:.10}, im={:.10}", i, eig.re, eig.im);
     }
-    
+
     // The eigenvalues should be real for a real symmetric circulant matrix
     // Check that imaginary parts are negligible
-    let max_im: f64 = fgn.sqrt_eigenvalues.iter()
+    let max_im: f64 = fgn
+      .sqrt_eigenvalues
+      .iter()
       .map(|z| z.im.abs())
       .fold(0.0, f64::max);
     println!("\nMax imaginary part of eigenvalues: {:.2e}", max_im);
-    
+
     // Verify eigenvalues are non-negative (they should be for a covariance matrix)
-    let min_re: f64 = fgn.sqrt_eigenvalues.iter()
+    let min_re: f64 = fgn
+      .sqrt_eigenvalues
+      .iter()
       .map(|z| z.re)
       .fold(f64::INFINITY, f64::min);
     println!("Min real part of sqrt_eigenvalues: {:.10}", min_re);
-    
-    assert!(max_im < 1e-10, "Eigenvalues should be real, but max im = {}", max_im);
+
+    assert!(
+      max_im < 1e-10,
+      "Eigenvalues should be real, but max im = {}",
+      max_im
+    );
   }
 
   #[test]
@@ -776,7 +806,7 @@ mod tests {
   fn fgn_compare_statistics() {
     // Compare statistics of CPU vs CUDA samples
     let hurst = 0.7;
-    let n = 256;  // Power of 2 for simplicity
+    let n = 256; // Power of 2 for simplicity
     let num_samples = 10000;
 
     let fgn_cpu = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
@@ -813,10 +843,15 @@ mod tests {
 
     // Print statistics for first few time steps
     println!("Statistics comparison (first 10 time steps):");
-    println!("{:>4} {:>12} {:>12} {:>12} {:>12}", "t", "CPU Mean", "CUDA Mean", "CPU Var", "CUDA Var");
+    println!(
+      "{:>4} {:>12} {:>12} {:>12} {:>12}",
+      "t", "CPU Mean", "CUDA Mean", "CPU Var", "CUDA Var"
+    );
     for t in 0..10.min(n) {
-      println!("{:>4} {:>12.6} {:>12.6} {:>12.6} {:>12.6}", 
-        t, cpu_means[t], cuda_means[t], cpu_vars[t], cuda_vars[t]);
+      println!(
+        "{:>4} {:>12.6} {:>12.6} {:>12.6} {:>12.6}",
+        t, cpu_means[t], cuda_means[t], cpu_vars[t], cuda_vars[t]
+      );
     }
 
     // Overall statistics
@@ -826,9 +861,15 @@ mod tests {
     let cuda_overall_var: f64 = cuda_vars.iter().sum::<f64>() / n as f64;
 
     println!("\nOverall statistics:");
-    println!("CPU:  Mean = {:.6}, Var = {:.6}", cpu_overall_mean, cpu_overall_var);
-    println!("CUDA: Mean = {:.6}, Var = {:.6}", cuda_overall_mean, cuda_overall_var);
-    
+    println!(
+      "CPU:  Mean = {:.6}, Var = {:.6}",
+      cpu_overall_mean, cpu_overall_var
+    );
+    println!(
+      "CUDA: Mean = {:.6}, Var = {:.6}",
+      cuda_overall_mean, cuda_overall_var
+    );
+
     // Theoretical variance for FGN is 1 (when t=1)
     println!("\nTheoretical variance: 1.0");
     println!("CPU variance ratio: {:.4}", cpu_overall_var);
@@ -838,7 +879,12 @@ mod tests {
   #[test]
   #[cfg(feature = "cuda")]
   fn fgn_cuda_vs_cpu_correlation() {
-    use plotly::{Plot, Scatter, Layout, common::{Mode, Line, LineShape}};
+    use plotly::common::Line;
+    use plotly::common::LineShape;
+    use plotly::common::Mode;
+    use plotly::Layout;
+    use plotly::Plot;
+    use plotly::Scatter;
 
     let hurst = 0.7;
     let n = 500;
@@ -866,11 +912,9 @@ mod tests {
       if k == 0 {
         theoretical_autocov[k] = 1.0;
       } else {
-        theoretical_autocov[k] = 0.5 * (
-          (kf + 1.0).powf(2.0 * hurst) 
-          - 2.0 * kf.powf(2.0 * hurst) 
-          + (kf - 1.0).powf(2.0 * hurst)
-        );
+        theoretical_autocov[k] = 0.5
+          * ((kf + 1.0).powf(2.0 * hurst) - 2.0 * kf.powf(2.0 * hurst)
+            + (kf - 1.0).powf(2.0 * hurst));
       }
     }
 
@@ -949,8 +993,7 @@ mod tests {
       plot.add_trace(trace_cpu);
       plot.add_trace(trace_cuda);
 
-      let layout = Layout::new()
-        .title(&format!("FGN Autocorrelation (H={})", hurst));
+      let layout = Layout::new().title(&format!("FGN Autocorrelation (H={})", hurst));
       plot.set_layout(layout);
       plot.show();
     }
@@ -959,18 +1002,12 @@ mod tests {
     {
       let mut plot = Plot::new();
 
-      let trace_cpu = Scatter::new(
-        (0..n).collect::<Vec<_>>(),
-        cpu_samples.row(0).to_vec()
-      )
+      let trace_cpu = Scatter::new((0..n).collect::<Vec<_>>(), cpu_samples.row(0).to_vec())
         .mode(Mode::Lines)
         .name("CPU FGN")
         .line(Line::new().color("blue").shape(LineShape::Linear));
 
-      let trace_cuda = Scatter::new(
-        (0..n).collect::<Vec<_>>(),
-        cuda_samples.row(0).to_vec()
-      )
+      let trace_cuda = Scatter::new((0..n).collect::<Vec<_>>(), cuda_samples.row(0).to_vec())
         .mode(Mode::Lines)
         .name("CUDA FGN")
         .line(Line::new().color("orange").shape(LineShape::Linear));
@@ -978,8 +1015,7 @@ mod tests {
       plot.add_trace(trace_cpu);
       plot.add_trace(trace_cuda);
 
-      let layout = Layout::new()
-        .title(&format!("FGN Sample Paths (H={})", hurst));
+      let layout = Layout::new().title(&format!("FGN Sample Paths (H={})", hurst));
       plot.set_layout(layout);
       plot.show();
     }
@@ -990,24 +1026,18 @@ mod tests {
       let mut cuda_fbm = Array1::<f64>::zeros(n);
 
       for i in 1..n {
-        cpu_fbm[i] = cpu_fbm[i-1] + cpu_samples[[0, i]];
-        cuda_fbm[i] = cuda_fbm[i-1] + cuda_samples[[0, i]];
+        cpu_fbm[i] = cpu_fbm[i - 1] + cpu_samples[[0, i]];
+        cuda_fbm[i] = cuda_fbm[i - 1] + cuda_samples[[0, i]];
       }
 
       let mut plot = Plot::new();
 
-      let trace_cpu = Scatter::new(
-        (0..n).collect::<Vec<_>>(),
-        cpu_fbm.to_vec()
-      )
+      let trace_cpu = Scatter::new((0..n).collect::<Vec<_>>(), cpu_fbm.to_vec())
         .mode(Mode::Lines)
         .name("CPU FBM")
         .line(Line::new().color("blue").shape(LineShape::Linear));
 
-      let trace_cuda = Scatter::new(
-        (0..n).collect::<Vec<_>>(),
-        cuda_fbm.to_vec()
-      )
+      let trace_cuda = Scatter::new((0..n).collect::<Vec<_>>(), cuda_fbm.to_vec())
         .mode(Mode::Lines)
         .name("CUDA FBM")
         .line(Line::new().color("orange").shape(LineShape::Linear));
@@ -1015,8 +1045,7 @@ mod tests {
       plot.add_trace(trace_cpu);
       plot.add_trace(trace_cuda);
 
-      let layout = Layout::new()
-        .title(&format!("FBM Sample Paths (H={})", hurst));
+      let layout = Layout::new().title(&format!("FBM Sample Paths (H={})", hurst));
       plot.set_layout(layout);
       plot.show();
     }
@@ -1029,13 +1058,10 @@ mod tests {
       for (idx, color) in colors.iter().enumerate() {
         let mut fbm = Array1::<f64>::zeros(n);
         for i in 1..n {
-          fbm[i] = fbm[i-1] + cuda_samples[[idx, i]];
+          fbm[i] = fbm[i - 1] + cuda_samples[[idx, i]];
         }
 
-        let trace = Scatter::new(
-          (0..n).collect::<Vec<_>>(),
-          fbm.to_vec()
-        )
+        let trace = Scatter::new((0..n).collect::<Vec<_>>(), fbm.to_vec())
           .mode(Mode::Lines)
           .name(&format!("Path {}", idx + 1))
           .line(Line::new().color(*color).shape(LineShape::Linear));
@@ -1043,8 +1069,7 @@ mod tests {
         plot.add_trace(trace);
       }
 
-      let layout = Layout::new()
-        .title(&format!("CUDA FBM Multiple Paths (H={})", hurst));
+      let layout = Layout::new().title(&format!("CUDA FBM Multiple Paths (H={})", hurst));
       plot.set_layout(layout);
       plot.show();
     }
@@ -1056,7 +1081,7 @@ mod tests {
     let max_cuda_error: f64 = (0..max_lag)
       .map(|lag| (cuda_autocov[lag] - theoretical_autocov[lag]).abs())
       .fold(0.0, f64::max);
-    
+
     println!("\nMax CPU autocorrelation error: {:.6}", max_cpu_error);
     println!("Max CUDA autocorrelation error: {:.6}", max_cuda_error);
 
@@ -1068,19 +1093,22 @@ mod tests {
       let n = fgn_samples.ncols();
       let mut log_ms = Vec::new();
       let mut log_vars = Vec::new();
-      
+
       // Aggregate at different scales
-      let scales: Vec<usize> = vec![1, 2, 4, 8, 16, 32, 64].into_iter().filter(|&m| m < n / 4).collect();
-      
+      let scales: Vec<usize> = vec![1, 2, 4, 8, 16, 32, 64]
+        .into_iter()
+        .filter(|&m| m < n / 4)
+        .collect();
+
       for &m in &scales {
         let mut var_sum = 0.0;
         let mut count = 0;
-        
+
         for path_idx in 0..num_paths.min(500) {
           // Aggregate the FGN series at scale m
           let num_agg = n / m;
           let mut aggregated = vec![0.0; num_agg];
-          
+
           for i in 0..num_agg {
             let mut sum = 0.0;
             for j in 0..m {
@@ -1088,44 +1116,45 @@ mod tests {
             }
             aggregated[i] = sum / m as f64;
           }
-          
+
           // Compute variance of aggregated series
           let mean: f64 = aggregated.iter().sum::<f64>() / num_agg as f64;
-          let var: f64 = aggregated.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / num_agg as f64;
-          
+          let var: f64 =
+            aggregated.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / num_agg as f64;
+
           if var > 1e-15 {
             var_sum += var;
             count += 1;
           }
         }
-        
+
         if count > 0 {
           let avg_var = var_sum / count as f64;
           log_ms.push((m as f64).ln());
           log_vars.push(avg_var.ln());
         }
       }
-      
+
       // Linear regression: log(Var) = (2H-2) * log(m) + c
       if log_ms.len() < 2 {
         return 0.5;
       }
-      
+
       let n_points = log_ms.len() as f64;
       let mean_x: f64 = log_ms.iter().sum::<f64>() / n_points;
       let mean_y: f64 = log_vars.iter().sum::<f64>() / n_points;
-      
+
       let mut cov = 0.0;
       let mut var_x = 0.0;
       for i in 0..log_ms.len() {
         cov += (log_ms[i] - mean_x) * (log_vars[i] - mean_y);
         var_x += (log_ms[i] - mean_x).powi(2);
       }
-      
+
       if var_x < 1e-10 {
         return 0.5;
       }
-      
+
       let slope = cov / var_x;
       // slope = 2H - 2, so H = (slope + 2) / 2
       (slope + 2.0) / 2.0
@@ -1134,18 +1163,34 @@ mod tests {
     // Estimate Hurst exponent for both CPU and CUDA samples
     let cpu_hurst_est = estimate_hurst_variance(&cpu_samples, num_samples);
     let cuda_hurst_est = estimate_hurst_variance(&cuda_samples, num_samples);
-    
+
     println!("\n=== Hurst Exponent Estimation (Aggregated Variance) ===");
     println!("True Hurst:     {:.4}", hurst);
-    println!("CPU estimated:  {:.4} (error: {:.4})", cpu_hurst_est, (cpu_hurst_est - hurst).abs());
-    println!("CUDA estimated: {:.4} (error: {:.4})", cuda_hurst_est, (cuda_hurst_est - hurst).abs());
-    
+    println!(
+      "CPU estimated:  {:.4} (error: {:.4})",
+      cpu_hurst_est,
+      (cpu_hurst_est - hurst).abs()
+    );
+    println!(
+      "CUDA estimated: {:.4} (error: {:.4})",
+      cuda_hurst_est,
+      (cuda_hurst_est - hurst).abs()
+    );
+
     // Note: CUDA uses f32 internally, so correlation may have more error than CPU (f64)
     // The threshold is relaxed to account for this
-    assert!(max_cuda_error < 0.15, "CUDA autocorrelation error too large: {}", max_cuda_error);
-    
+    assert!(
+      max_cuda_error < 0.15,
+      "CUDA autocorrelation error too large: {}",
+      max_cuda_error
+    );
+
     // Hurst estimate should be within 0.1 of true value
-    assert!((cuda_hurst_est - hurst).abs() < 0.15, 
-      "CUDA Hurst estimate {} too far from true value {}", cuda_hurst_est, hurst);
+    assert!(
+      (cuda_hurst_est - hurst).abs() < 0.15,
+      "CUDA Hurst estimate {} too far from true value {}",
+      cuda_hurst_est,
+      hurst
+    );
   }
 }
