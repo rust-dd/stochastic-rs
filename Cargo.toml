@@ -85,7 +85,7 @@ f64 = []
 jemalloc = ["dep:tikv-jemallocator"]
 malliavin = []
 mimalloc = ["dep:mimalloc"]
-phastft = ["dep:phastft"]
+phastft = ["dep:phastft", "f64"]
 simd = []
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars"]
 

@@ -28,7 +28,7 @@ pub struct GBM<T> {
   #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
   #[cfg(feature = "malliavin")]
-  malliavin: Mutex<Option<Array1<T>>>,
+  pub malliavin: Mutex<Option<Array1<T>>>,
 }
 
 #[cfg(feature = "f64")]
