@@ -1,80 +1,41 @@
-use impl_new_derive::ImplNew;
-use ndarray::s;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct BM<T> {
+pub struct BM<T: Float> {
   pub n: usize,
   pub t: Option<T>,
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for BM<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let mut bm = Array1::<f64>::zeros(self.n);
-    bm.slice_mut(s![1..]).assign(&gn);
+impl<T: Float> Process<T> for BM<T> {
+  type Output = Array1<T>;
+  type Noise = Gn<T>;
 
-    for i in 1..self.n {
-      bm[i] += bm[i - 1];
-    }
-
-    bm
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl SamplingExt<f32> for BM<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let mut bm = Array1::<f32>::zeros(self.n);
-    bm.slice_mut(s![1..]).assign(&gn);
-
-    for i in 1..self.n {
-      bm[i] += bm[i - 1];
-    }
-
-    bm
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
   }
 
   #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-    let mut bm = Array1::<f32>::zeros(self.n);
-    bm.slice_mut(s![1..]).assign(&gn);
+  fn euler_maruyama(&self, noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let gn = noise_fn(&gn);
+    let mut bm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
-      bm[i] += bm[i - 1];
+      bm[i] += bm[i - 1] + gn[i - 1];
     }
 
     bm
   }
 
-  /// Number of time steps
   fn n(&self) -> usize {
     self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

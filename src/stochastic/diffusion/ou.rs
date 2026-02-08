@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -26,33 +27,31 @@ impl<T: Float> OU<T> {
   }
 }
 
+impl<T: Float> OU<T> {}
+
 impl<T: Float> Process<T> for OU<T> {
   type Output = Array1<T>;
+  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize(self.n - 1);
-    let gn = T::normal_array(self.n - 1, T::zero(), dt.sqrt());
-
-    let mut ou = Array1::<T>::zeros(self.n);
-    ou[0] = self.x0.unwrap_or(T::zero());
-
-    for i in 1..self.n {
-      ou[i] = ou[i - 1] + self.theta * (self.mu - ou[i - 1]) * dt + self.sigma * gn[i - 1]
-    }
-
-    ou
+    self.euler_maruyama(|gn| gn.sample())
   }
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Self::Output {
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize(self.n - 1);
-    let gn = T::normal_array_simd(self.n - 1, T::zero(), dt.sqrt());
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
+
+  fn euler_maruyama(&self, noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+    let noise = noise_fn(&gn);
 
     let mut ou = Array1::<T>::zeros(self.n);
     ou[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      ou[i] = ou[i - 1] + self.theta * (self.mu - ou[i - 1]) * dt + self.sigma * gn[i - 1]
+      ou[i] = ou[i - 1] + self.theta * (self.mu - ou[i - 1]) * dt + self.sigma * noise[i - 1]
     }
 
     ou
@@ -116,11 +115,5 @@ mod tests {
 
     let elapsed = start.elapsed();
     println!("Elapsed time for sample: {:?}", elapsed);
-  }
-
-  #[test]
-  #[ignore = "Not implemented"]
-  fn fou_malliavin() {
-    unimplemented!();
   }
 }

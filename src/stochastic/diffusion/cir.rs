@@ -3,13 +3,14 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// Cox-Ingersoll-Ross (CIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
 /// where X(t) is the CIR process.
-#[derive(ImplNew)]
-pub struct CIR<T> {
+pub struct CIR<T: Float> {
   pub theta: T,
   pub mu: T,
   pub sigma: T,
@@ -20,19 +21,26 @@ pub struct CIR<T> {
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for CIR<f64> {
+impl<T: Float> Process<T> for CIR<T> {
+  type Output = Array1<T>;
+
   /// Sample the Cox-Ingersoll-Ross (CIR) process
-  fn sample(&self) -> Array1<f64> {
+  fn sample(&self) -> Self::Output {
     assert!(
       2.0 * self.theta * self.mu >= self.sigma.powi(2),
       "2 * theta * mu < sigma^2"
     );
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+    let gn = if cfg!(feature = "simd") {
+      gn.sample_simd()
+    } else {
+      gn.sample()
+    };
 
-    let mut cir = Array1::<f64>::zeros(self.n);
-    cir[0] = self.x0.unwrap_or(0.0);
+    let mut cir = Array1::<T>::zeros(self.n);
+    cir[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       let dcir = self.theta * (self.mu - cir[i - 1]) * dt
@@ -40,45 +48,7 @@ impl SamplingExt<f64> for CIR<f64> {
 
       cir[i] = match self.use_sym.unwrap_or(false) {
         true => (cir[i - 1] + dcir).abs(),
-        false => (cir[i - 1] + dcir).max(0.0),
-      };
-    }
-
-    cir
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl SamplingExt<f32> for CIR<f32> {
-  /// Sample the Cox-Ingersoll-Ross (CIR) process
-  fn sample(&self) -> Array1<f32> {
-    assert!(
-      2.0 * self.theta * self.mu >= self.sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut cir = Array1::<f32>::zeros(self.n);
-    cir[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      let dcir = self.theta * (self.mu - cir[i - 1]) * dt
-        + self.sigma * (cir[i - 1]).abs().sqrt() * gn[i - 1];
-
-      cir[i] = match self.use_sym.unwrap_or(false) {
-        true => (cir[i - 1] + dcir).abs(),
-        false => (cir[i - 1] + dcir).max(0.0),
+        false => (cir[i - 1] + dcir).max(T::zero()),
       };
     }
 
@@ -86,16 +56,15 @@ impl SamplingExt<f32> for CIR<f32> {
   }
 
   #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
+  fn sample_simd(&self) -> Self::Output {
     assert!(
       2.0 * self.theta * self.mu >= self.sigma.powi(2),
       "2 * theta * mu < sigma^2"
     );
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+    let gn = gn.sample_simd();
 
     let mut cir = Array1::<f32>::zeros(self.n);
     cir[0] = self.x0.unwrap_or(0.0);
@@ -117,18 +86,13 @@ impl SamplingExt<f32> for CIR<f32> {
   fn n(&self) -> usize {
     self.n
   }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::plot_1d;
-  use crate::stochastic::SamplingExt;
+  use crate::stochastic::Process;
   use crate::stochastic::N;
   use crate::stochastic::X0;
 

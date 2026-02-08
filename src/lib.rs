@@ -21,4 +21,4 @@ pub mod distributions;
 mod macros;
 // pub mod quant;
 // pub mod stats;
-// pub mod stochastic;
+pub mod stochastic;

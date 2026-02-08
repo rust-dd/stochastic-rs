@@ -25,7 +25,6 @@ cudarc = { version = "0.13.9", optional = true, features = [
     "cuda-12080",
     "cuda-version-from-build-system",
 ] }
-derive_builder = "0.20.2"
 either = "1.15.0"
 flate2 = "1.0.34"
 gauss-quad = "0.2.1"
@@ -74,6 +73,7 @@ tracing = "0.1.40"
 tracing-test = "0.2.5"
 wide = "1.1.0"
 yahoo_finance_api = { version = "2.3.0", optional = true }
+parking_lot = "0.12.5"
 
 [dev-dependencies]
 

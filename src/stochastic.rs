@@ -123,10 +123,11 @@ impl Float for f32 {
 
 pub trait Process<T: Float>: Send + Sync {
   type Output: Send;
+  type Noise: Process<T>;
 
   fn sample(&self) -> Self::Output;
 
-  fn sample_with_rng(&self, rng: &mut impl Rng) -> Self::Output;
+  // fn sample_with_rng(&self, rng: &mut impl Rng) -> Self::Output;
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Self::Output;
@@ -135,6 +136,10 @@ pub trait Process<T: Float>: Send + Sync {
 
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     (0..m).into_par_iter().map(|_| self.sample()).collect()
+  }
+
+  fn euler_maruyama(&self, _noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
+    unimplemented!()
   }
 }
 
