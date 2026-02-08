@@ -11,12 +11,12 @@ pub struct DoubleExp {
 
 impl Distribution<f64> for DoubleExp {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
-    let u = rng.gen::<f64>();
+    let u = rng.random::<f64>();
 
     if u < self.p.unwrap_or(0.5) {
-      -rng.gen::<f64>().ln() / self.lambda_plus
+      -rng.random::<f64>().ln() / self.lambda_plus
     } else {
-      rng.gen::<f64>().ln() / self.lambda_minus
+      rng.random::<f64>().ln() / self.lambda_minus
     }
   }
 }

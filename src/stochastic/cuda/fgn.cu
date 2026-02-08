@@ -27,7 +27,7 @@ __global__ void fill_random_with_eigs_fast(
   // Use curand's Philox4_32_10 state for high-quality random numbers
   curandStatePhilox4_32_10_t state;
   curand_init(seed, tid, 0, &state);
-  
+
   // Generate two standard normal random numbers
   float2 normal = curand_normal2(&state);
 

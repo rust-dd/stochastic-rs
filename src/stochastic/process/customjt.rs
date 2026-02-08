@@ -4,7 +4,7 @@ use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::Dim;
 use ndarray_rand::RandomExt;
-use rand::thread_rng;
+use rand::rng;
 use rand_distr::Distribution;
 
 use crate::stochastic::SamplingExt;
@@ -38,7 +38,7 @@ where
       let mut t = 0.0;
 
       while t < t_max {
-        t += self.distribution.sample(&mut thread_rng());
+        t += self.distribution.sample(&mut rng());
         x.push(Axis(0), Array0::from_elem(Dim(()), t).view())
           .unwrap();
       }
@@ -79,7 +79,7 @@ where
       let mut t = 0.0;
 
       while t < t_max {
-        t += self.distribution.sample(&mut thread_rng());
+        t += self.distribution.sample(&mut rng());
         x.push(Axis(0), Array0::from_elem(Dim(()), t).view())
           .unwrap();
       }

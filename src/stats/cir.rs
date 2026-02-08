@@ -1,5 +1,5 @@
 use num_complex::Complex64;
-use rand::thread_rng;
+use rand::rng;
 use rand::Rng;
 use rand_distr::StandardNormal;
 use scilib::math::bessel::i_nu;
@@ -12,7 +12,7 @@ pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
   let lambda = 2.0 * c * r_t * (-theta * t).exp();
   let df = ((4.0 * theta * mu) / sigma.powi(2)) as usize;
 
-  let mut rng = thread_rng();
+  let mut rng = rng();
   let chi2 = (0..df)
     .map(|_| {
       let z: f64 = rng.sample(StandardNormal);

@@ -1,4 +1,5 @@
 pub mod cir;
+pub mod complex_distr;
 pub mod copulas;
 pub mod distr;
 pub mod double_exp;

@@ -46,7 +46,7 @@ pub struct SVCGMY<T> {
 #[cfg(feature = "f64")]
 impl SamplingExt<f64> for SVCGMY<f64> {
   fn sample(&self) -> Array1<f64> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let t_max = self.t.unwrap_or(1.0);
     let dt = t_max / (self.n - 1) as f64;
@@ -71,11 +71,11 @@ impl SamplingExt<f64> for SVCGMY<f64> {
       v[i] = xi / (2.0 * c);
     }
 
-    let U = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0));
+    let U = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0).unwrap());
     let E = Array1::random(self.j, Exp::new(1.0).unwrap());
     let P = Poisson::new(1.0, Some(self.j), None, None);
     let P = P.sample();
-    let tau = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0)) * t_max;
+    let tau = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0).unwrap()) * t_max;
 
     let mut c_tau = Array1::<f64>::zeros(self.j);
     for (idx, tau_j) in tau.iter().enumerate() {
@@ -98,7 +98,7 @@ impl SamplingExt<f64> for SVCGMY<f64> {
 
       for j in 0..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus
@@ -136,7 +136,7 @@ impl SamplingExt<f64> for SVCGMY<f64> {
 #[cfg(feature = "f32")]
 impl SamplingExt<f32> for SVCGMY<f32> {
   fn sample(&self) -> Array1<f32> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let t_max = self.t.unwrap_or(1.0);
     let dt = t_max / (self.n - 1) as f32;
@@ -160,10 +160,10 @@ impl SamplingExt<f32> for SVCGMY<f32> {
       v[i] = xi / (2.0 * c);
     }
 
-    let U = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0));
+    let U = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0).unwrap());
     let E = Array1::random(self.j, Exp::<f32>::new(1.0).unwrap());
     let P = Poisson::<f32>::new(1.0, Some(self.j), None, None).sample();
-    let tau = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0)) * t_max;
+    let tau = Array1::random(self.j, Uniform::<f32>::new(0.0, 1.0).unwrap()) * t_max;
 
     let mut c_tau = Array1::<f32>::zeros(self.j);
     for (idx, tau_j) in tau.iter().enumerate() {
@@ -186,7 +186,7 @@ impl SamplingExt<f32> for SVCGMY<f32> {
 
       for j in 0..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus
@@ -217,7 +217,7 @@ impl SamplingExt<f32> for SVCGMY<f32> {
     use crate::stats::distr::exp::SimdExp;
     use crate::stats::distr::uniform::SimdUniform;
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let t_max = self.t.unwrap_or(1.0);
     let dt = t_max / (self.n - 1) as f32;
@@ -267,7 +267,7 @@ impl SamplingExt<f32> for SVCGMY<f32> {
 
       for j in 0..self.j {
         if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.gen_bool(0.5) {
+          let v_j = if rng.random_bool(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus

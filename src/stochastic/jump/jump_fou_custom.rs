@@ -54,14 +54,14 @@ where
     let mut jump_fou = Array1::<f64>::zeros(self.n);
     jump_fou[0] = self.x0.unwrap_or(0.0);
     let mut jump_times = Array1::<f64>::zeros(self.n);
-    jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::thread_rng()));
+    jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::rng()));
 
     for i in 1..self.n {
       let t = i as f64 * dt;
       // check if t is a jump time
       let mut jump = 0.0;
       if jump_times[i] < t && t - dt <= jump_times[i] {
-        jump = self.jump_sizes.sample(&mut rand::thread_rng());
+        jump = self.jump_sizes.sample(&mut rand::rng());
       }
 
       jump_fou[i] = jump_fou[i - 1]
@@ -110,13 +110,13 @@ where
     let mut jump_fou = Array1::<f32>::zeros(self.n);
     jump_fou[0] = self.x0.unwrap_or(0.0);
     let mut jump_times = Array1::<f32>::zeros(self.n);
-    jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::thread_rng()));
+    jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::rng()));
 
     for i in 1..self.n {
       let t = i as f32 * dt;
       let mut jump = 0.0;
       if jump_times[i] < t && t - dt <= jump_times[i] {
-        jump = self.jump_sizes.sample(&mut rand::thread_rng());
+        jump = self.jump_sizes.sample(&mut rand::rng());
       }
 
       jump_fou[i] = jump_fou[i - 1]

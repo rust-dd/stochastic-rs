@@ -24,7 +24,7 @@ impl SimdBinomial {
     for x in out.iter_mut() {
       let mut count = 0;
       for _ in 0..self.n {
-        let u: f32 = rng.gen();
+        let u: f32 = rng.random();
         if u < self.p {
           count += 1;
         }

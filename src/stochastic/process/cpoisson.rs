@@ -1,7 +1,7 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Axis;
-use rand::thread_rng;
+use rand::rng;
 use rand_distr::Distribution;
 
 use super::poisson::Poisson;
@@ -26,7 +26,7 @@ where
     let poisson = self.poisson.sample();
     let mut jumps = Array1::<f64>::zeros(poisson.len());
     for i in 1..poisson.len() {
-      jumps[i] = self.distribution.sample(&mut thread_rng());
+      jumps[i] = self.distribution.sample(&mut rng());
     }
 
     let mut cum_jupms = jumps.clone();
@@ -55,7 +55,7 @@ where
     let poisson = self.poisson.sample();
     let mut jumps = Array1::<f32>::zeros(poisson.len());
     for i in 1..poisson.len() {
-      jumps[i] = self.distribution.sample(&mut thread_rng());
+      jumps[i] = self.distribution.sample(&mut rng());
     }
 
     let mut cum_jupms = jumps.clone();

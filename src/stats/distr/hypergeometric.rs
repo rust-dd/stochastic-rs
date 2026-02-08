@@ -29,7 +29,7 @@ impl SimdHypergeometric {
       let mut rem_tot = self.n_total;
       let mut draws = self.n_draws;
       while draws > 0 {
-        let u: f32 = rng.gen_range(0.0..1.0);
+        let u: f32 = rng.random_range(0.0..1.0);
         if u < (rem_succ as f32) / (rem_tot as f32) {
           count += 1;
           rem_succ -= 1;

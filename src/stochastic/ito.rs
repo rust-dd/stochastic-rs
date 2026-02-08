@@ -176,7 +176,7 @@ mod tests {
   use plotly::common::Mode;
   use plotly::Plot;
   use plotly::Scatter;
-  use rand::thread_rng;
+  use rand::rng;
   use rand_distr::Distribution;
 
   use super::*;
@@ -194,7 +194,7 @@ mod tests {
         let lambda = 1.0;
         let expected_jumps = lambda * dt;
         let normal = rand_distr::Normal::new(0.0, 0.1).unwrap();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let num_jumps = expected_jumps.round() as usize;
         (0..num_jumps).map(|_| normal.sample(&mut rng)).sum::<f64>()
       })),
@@ -207,7 +207,7 @@ mod tests {
 
     // Create the ItoCalculator with a small finite-difference step.
     let calc = ItoCalculator::new(process, function, 1e-5);
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     // Simulate from t=0 to t=1 with steps of 0.01
     let data = calc.simulate(0.0, 0.0, 1.0, 0.01, &mut rng);

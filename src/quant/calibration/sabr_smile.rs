@@ -5,7 +5,6 @@ use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
 use impl_new_derive::ImplNew;
-use ndarray::Array1;
 use plotly::common::Mode;
 use plotly::common::Title;
 use plotly::layout::Axis;
@@ -109,7 +108,8 @@ struct SabrSmileProblem {
 }
 
 impl CostFunction for SabrSmileProblem {
-  type Param = Array1<f64>;
+  // TODO: temp solution until argmin has ndarray@0.17 support
+  type Param = Vec<f64>;
   type Output = f64;
 
   fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
@@ -155,12 +155,11 @@ impl CostFunction for SabrSmileProblem {
 }
 
 impl Gradient for SabrSmileProblem {
-  type Param = Array1<f64>;
-  type Gradient = Array1<f64>;
+  type Param = Vec<f64>;
+  type Gradient = Vec<f64>;
 
   fn gradient(&self, x: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
-    // Compute numerical gradient using finite differences
-    let mut grad = Array1::zeros(x.len());
+    let mut grad = vec![0.0; x.len()];
     let eps = 1e-8;
     let f0 = self.cost(x)?;
 
@@ -205,9 +204,7 @@ fn basin_hopping_opt(
   };
 
   let mut current_x = x0;
-  let mut current_f = problem
-    .cost(&Array1::from(x0.to_vec()))
-    .unwrap_or(f64::INFINITY);
+  let mut current_f = problem.cost(&x0.to_vec()).unwrap_or(f64::INFINITY);
 
   let mut best_x = current_x;
   let mut best_f = current_f;
@@ -217,15 +214,14 @@ fn basin_hopping_opt(
   for _ in 0..niter {
     let mut x_trial = current_x;
     for i in 0..8 {
-      x_trial[i] += rng.gen_range(-stepsize..stepsize);
-      // azonnal clampeljük a boxra
+      x_trial[i] += rng.random_range(-stepsize..stepsize);
       x_trial[i] = clamp(x_trial[i], bounds_lo[i], bounds_hi[i]);
     }
 
     let linesearch = MoreThuenteLineSearch::new().with_c(1e-4, 0.9).unwrap();
     let solver = LBFGS::new(linesearch, 10);
 
-    let x_init = Array1::from(x_trial.to_vec());
+    let x_init = x_trial.to_vec();
     let res = Executor::new(problem.clone(), solver)
       .configure(|state| state.param(x_init).max_iters(100))
       .run();
@@ -239,7 +235,7 @@ fn basin_hopping_opt(
         let accept = if delta <= 0.0 {
           true
         } else {
-          let u: f64 = rng.gen();
+          let u: f64 = rng.random();
           u < (-delta / temp).exp()
         };
 

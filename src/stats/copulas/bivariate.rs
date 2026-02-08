@@ -75,8 +75,8 @@ pub trait Bivariate {
       return Err("Tau must be in the interval (-1, 1)".into());
     }
 
-    let v = Array1::<f64>::random(n, Uniform::new(0.0, 1.0));
-    let c = Array1::<f64>::random(n, Uniform::new(0.0, 1.0));
+    let v = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
+    let c = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
     let u = self.percent_point(&c, &v)?;
 
     Ok(stack![Axis(1), u, v])

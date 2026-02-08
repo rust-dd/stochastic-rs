@@ -6,7 +6,7 @@ use ndarray::Dim;
 use ndarray_rand::rand_distr::Distribution;
 use ndarray_rand::rand_distr::Exp;
 use ndarray_rand::RandomExt;
-use rand::thread_rng;
+use rand::rng;
 
 use crate::stochastic::SamplingExt;
 
@@ -34,9 +34,7 @@ impl SamplingExt<f64> for Poisson<f64> {
       let mut t = 0.0;
 
       while t < t_max {
-        t += Exp::new(1.0 / self.lambda)
-          .unwrap()
-          .sample(&mut thread_rng());
+        t += Exp::new(1.0 / self.lambda).unwrap().sample(&mut rng());
 
         if t < t_max {
           poisson
@@ -80,7 +78,7 @@ impl SamplingExt<f32> for Poisson<f32> {
       while t < t_max {
         t += Exp::new((1.0 / self.lambda) as f64)
           .unwrap()
-          .sample(&mut thread_rng()) as f32;
+          .sample(&mut rng()) as f32;
 
         if t < t_max {
           poisson

@@ -11,8 +11,9 @@ use ndrustfft::FftHandler;
 #[cfg(feature = "f32")]
 use num_complex::Complex32;
 use num_complex::Complex64;
-use num_complex::ComplexDistribution;
 use rand_distr::StandardNormal;
+
+use crate::stats::complex_distr::ComplexDistribution;
 
 #[derive(ImplNew)]
 pub struct FBS<T> {

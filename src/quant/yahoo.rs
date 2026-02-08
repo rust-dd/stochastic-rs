@@ -46,7 +46,6 @@ impl Display for ReturnType {
 }
 
 impl<'a> Default for Yahoo<'a> {
-  #[must_use]
   fn default() -> Self {
     Self {
       provider: YahooConnector::new().unwrap(),
