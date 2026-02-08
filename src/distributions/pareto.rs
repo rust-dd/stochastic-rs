@@ -1,0 +1,68 @@
+use std::cell::UnsafeCell;
+
+use rand::Rng;
+use rand_distr::Distribution;
+
+use super::SimdFloat;
+
+pub struct SimdPareto<T: SimdFloat> {
+  x_m: T,
+  alpha: T,
+  buffer: UnsafeCell<[T; 16]>,
+  index: UnsafeCell<usize>,
+}
+
+impl<T: SimdFloat> SimdPareto<T> {
+  pub fn new(x_m: T, alpha: T) -> Self {
+    assert!(x_m > T::zero() && alpha > T::zero());
+    Self {
+      x_m,
+      alpha,
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
+    }
+  }
+
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    let xm = T::splat(self.x_m);
+    let pow = -T::one() / self.alpha;
+    let one = T::splat(T::one());
+    let mut u = [T::zero(); 8];
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      T::fill_uniform(rng, &mut u);
+      let v = T::simd_from_array(u);
+      let y = T::simd_powf(one - v, pow);
+      let x = xm * y;
+      chunk.copy_from_slice(&T::simd_to_array(x));
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      T::fill_uniform(rng, &mut u);
+      let v = T::simd_from_array(u);
+      let y = T::simd_powf(one - v, pow);
+      let x = T::simd_to_array(xm * y);
+      rem.copy_from_slice(&x[..rem.len()]);
+    }
+  }
+
+  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice(rng, buf);
+    unsafe {
+      *self.index.get() = 0;
+    }
+  }
+}
+
+impl<T: SimdFloat> Distribution<T> for SimdPareto<T> {
+  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+    let idx = unsafe { &mut *self.index.get() };
+    if *idx >= 16 {
+      self.refill_buffer(rng);
+    }
+    let val = unsafe { (*self.buffer.get())[*idx] };
+    *idx += 1;
+    val
+  }
+}

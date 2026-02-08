@@ -25,6 +25,7 @@ cudarc = { version = "0.13.9", optional = true, features = [
     "cuda-12080",
     "cuda-version-from-build-system",
 ] }
+derive_builder = "0.20.2"
 either = "1.15.0"
 flate2 = "1.0.34"
 gauss-quad = "0.2.1"

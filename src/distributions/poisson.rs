@@ -1,39 +1,39 @@
 use std::cell::UnsafeCell;
 
+use num_traits::PrimInt;
 use rand::Rng;
 use rand_distr::Distribution;
 
-pub struct SimdPoisson {
-  lambda: f32,
-  buffer: UnsafeCell<[u32; 16]>,
+pub struct SimdPoisson<T: PrimInt> {
+  lambda: f64,
+  buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
-impl SimdPoisson {
-  pub fn new(lambda: f32) -> Self {
+impl<T: PrimInt> SimdPoisson<T> {
+  pub fn new(lambda: f64) -> Self {
     assert!(lambda > 0.0);
     Self {
       lambda,
-      buffer: UnsafeCell::new([0; 16]),
+      buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [u32]) {
-    // Knuth's method per sample; bulk loop to reduce overhead
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
     for x in out.iter_mut() {
       let l = (-self.lambda).exp();
       let mut k = 0u32;
-      let mut p = 1.0f32;
+      let mut p = 1.0f64;
       loop {
         k += 1;
-        let u: f32 = rng.random();
+        let u: f64 = rng.random_range(0.0..1.0);
         p *= u;
         if p <= l {
           break;
         }
       }
-      *x = k - 1;
+      *x = num_traits::cast(k - 1).unwrap_or(T::zero());
     }
   }
 
@@ -46,8 +46,8 @@ impl SimdPoisson {
   }
 }
 
-impl Distribution<u32> for SimdPoisson {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> u32 {
+impl<T: PrimInt> Distribution<T> for SimdPoisson<T> {
+  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer(rng);

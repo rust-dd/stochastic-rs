@@ -1,4 +1,6 @@
 use rand::Rng;
+use wide::f32x8;
+use wide::f64x8;
 
 pub mod beta;
 pub mod binomial;
@@ -11,7 +13,6 @@ pub mod hypergeometric;
 pub mod inverse_gauss;
 pub mod lognormal;
 pub mod normal;
-pub mod normal_f64;
 pub mod normal_inverse_gauss;
 pub mod pareto;
 pub mod poisson;
@@ -32,6 +33,177 @@ fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
   }
 }
 
+pub trait SimdFloat: num_traits::Float + Default + Send + Sync + 'static {
+  type Simd: Copy
+    + std::ops::Mul<Output = Self::Simd>
+    + std::ops::Add<Output = Self::Simd>
+    + std::ops::Sub<Output = Self::Simd>
+    + std::ops::Div<Output = Self::Simd>
+    + std::ops::Neg<Output = Self::Simd>;
+
+  fn splat(val: Self) -> Self::Simd;
+  fn simd_from_array(arr: [Self; 8]) -> Self::Simd;
+  fn simd_to_array(v: Self::Simd) -> [Self; 8];
+  fn simd_ln(v: Self::Simd) -> Self::Simd;
+  fn simd_sqrt(v: Self::Simd) -> Self::Simd;
+  fn simd_cos(v: Self::Simd) -> Self::Simd;
+  fn simd_sin(v: Self::Simd) -> Self::Simd;
+  fn simd_exp(v: Self::Simd) -> Self::Simd;
+  fn simd_tan(v: Self::Simd) -> Self::Simd;
+  fn simd_max(a: Self::Simd, b: Self::Simd) -> Self::Simd;
+  fn simd_powf(v: Self::Simd, exp: Self) -> Self::Simd;
+  fn simd_floor(v: Self::Simd) -> Self::Simd;
+  fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
+  fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
+  fn pi() -> Self;
+  fn two_pi() -> Self;
+  fn min_positive_val() -> Self;
+}
+
+impl SimdFloat for f32 {
+  type Simd = f32x8;
+
+  fn splat(val: f32) -> f32x8 {
+    f32x8::splat(val)
+  }
+
+  fn simd_from_array(arr: [f32; 8]) -> f32x8 {
+    f32x8::from(arr)
+  }
+
+  fn simd_to_array(v: f32x8) -> [f32; 8] {
+    v.to_array()
+  }
+
+  fn simd_ln(v: f32x8) -> f32x8 {
+    v.ln()
+  }
+
+  fn simd_sqrt(v: f32x8) -> f32x8 {
+    v.sqrt()
+  }
+
+  fn simd_cos(v: f32x8) -> f32x8 {
+    v.cos()
+  }
+
+  fn simd_sin(v: f32x8) -> f32x8 {
+    v.sin()
+  }
+
+  fn simd_exp(v: f32x8) -> f32x8 {
+    v.exp()
+  }
+
+  fn simd_tan(v: f32x8) -> f32x8 {
+    v.tan()
+  }
+
+  fn simd_max(a: f32x8, b: f32x8) -> f32x8 {
+    a.max(b)
+  }
+
+  fn simd_powf(v: f32x8, exp: f32) -> f32x8 {
+    v.powf(exp)
+  }
+
+  fn simd_floor(v: f32x8) -> f32x8 {
+    v.floor()
+  }
+
+  fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
+    fill_f32_zero_one(rng, out)
+  }
+
+  fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f32 {
+    rng.random_range(0.0f32..1.0f32)
+  }
+
+  fn pi() -> f32 {
+    std::f32::consts::PI
+  }
+
+  fn two_pi() -> f32 {
+    2.0 * std::f32::consts::PI
+  }
+
+  fn min_positive_val() -> f32 {
+    f32::MIN_POSITIVE
+  }
+}
+
+impl SimdFloat for f64 {
+  type Simd = f64x8;
+
+  fn splat(val: f64) -> f64x8 {
+    f64x8::splat(val)
+  }
+
+  fn simd_from_array(arr: [f64; 8]) -> f64x8 {
+    f64x8::from(arr)
+  }
+
+  fn simd_to_array(v: f64x8) -> [f64; 8] {
+    v.to_array()
+  }
+
+  fn simd_ln(v: f64x8) -> f64x8 {
+    v.ln()
+  }
+
+  fn simd_sqrt(v: f64x8) -> f64x8 {
+    v.sqrt()
+  }
+
+  fn simd_cos(v: f64x8) -> f64x8 {
+    v.cos()
+  }
+
+  fn simd_sin(v: f64x8) -> f64x8 {
+    v.sin()
+  }
+
+  fn simd_exp(v: f64x8) -> f64x8 {
+    v.exp()
+  }
+
+  fn simd_tan(v: f64x8) -> f64x8 {
+    v.tan()
+  }
+
+  fn simd_max(a: f64x8, b: f64x8) -> f64x8 {
+    a.max(b)
+  }
+
+  fn simd_powf(v: f64x8, exp: f64) -> f64x8 {
+    v.powf(exp)
+  }
+
+  fn simd_floor(v: f64x8) -> f64x8 {
+    v.floor()
+  }
+
+  fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
+    fill_f64_zero_one(rng, out)
+  }
+
+  fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f64 {
+    rng.random_range(0.0f64..1.0f64)
+  }
+
+  fn pi() -> f64 {
+    std::f64::consts::PI
+  }
+
+  fn two_pi() -> f64 {
+    2.0 * std::f64::consts::PI
+  }
+
+  fn min_positive_val() -> f64 {
+    f64::MIN_POSITIVE
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use plotly::common::Line;
@@ -45,23 +217,23 @@ mod tests {
   use rand::rng;
   use rand_distr::Distribution;
 
-  use crate::stats::distr::beta::SimdBeta;
-  use crate::stats::distr::binomial::SimdBinomial;
-  use crate::stats::distr::cauchy::SimdCauchy;
-  use crate::stats::distr::chi_square::SimdChiSquared;
-  use crate::stats::distr::exp::SimdExp;
-  use crate::stats::distr::gamma::SimdGamma;
-  use crate::stats::distr::geometric::SimdGeometric;
-  use crate::stats::distr::hypergeometric::SimdHypergeometric;
-  use crate::stats::distr::inverse_gauss::SimdInverseGauss;
-  use crate::stats::distr::lognormal::SimdLogNormal;
-  use crate::stats::distr::normal::SimdNormal;
-  use crate::stats::distr::normal_inverse_gauss::SimdNormalInverseGauss;
-  use crate::stats::distr::pareto::SimdPareto;
-  use crate::stats::distr::poisson::SimdPoisson;
-  use crate::stats::distr::studentt::SimdStudentT;
-  use crate::stats::distr::uniform::SimdUniform;
-  use crate::stats::distr::weibull::SimdWeibull;
+  use crate::distributions::beta::SimdBeta;
+  use crate::distributions::binomial::SimdBinomial;
+  use crate::distributions::cauchy::SimdCauchy;
+  use crate::distributions::chi_square::SimdChiSquared;
+  use crate::distributions::exp::SimdExp;
+  use crate::distributions::gamma::SimdGamma;
+  use crate::distributions::geometric::SimdGeometric;
+  use crate::distributions::hypergeometric::SimdHypergeometric;
+  use crate::distributions::inverse_gauss::SimdInverseGauss;
+  use crate::distributions::lognormal::SimdLogNormal;
+  use crate::distributions::normal::SimdNormal;
+  use crate::distributions::normal_inverse_gauss::SimdNormalInverseGauss;
+  use crate::distributions::pareto::SimdPareto;
+  use crate::distributions::poisson::SimdPoisson;
+  use crate::distributions::studentt::SimdStudentT;
+  use crate::distributions::uniform::SimdUniform;
+  use crate::distributions::weibull::SimdWeibull;
 
   /// A small helper to create a PDF-like histogram for continuous data in [min_x, max_x].
   fn make_histogram(
@@ -714,7 +886,6 @@ mod tests {
 
   #[test]
   fn bench_normal_simd_vs_rand() {
-    use crate::stats::distr::normal::SimdNormal;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -744,7 +915,6 @@ mod tests {
 
   #[test]
   fn bench_lognormal_simd_vs_rand() {
-    use crate::stats::distr::lognormal::SimdLogNormal;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -774,7 +944,6 @@ mod tests {
 
   #[test]
   fn bench_exp_simd_vs_rand() {
-    use crate::stats::distr::exp::SimdExp;
     let n = 10_000_000usize;
     let lambda = 1.5f32;
 
@@ -805,7 +974,6 @@ mod tests {
 
   #[test]
   fn bench_cauchy_simd_vs_rand() {
-    use crate::stats::distr::cauchy::SimdCauchy;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -835,7 +1003,6 @@ mod tests {
 
   #[test]
   fn bench_gamma_simd_vs_rand() {
-    use crate::stats::distr::gamma::SimdGamma;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -865,7 +1032,6 @@ mod tests {
 
   #[test]
   fn bench_weibull_simd_vs_rand() {
-    use crate::stats::distr::weibull::SimdWeibull;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -895,7 +1061,6 @@ mod tests {
 
   #[test]
   fn bench_beta_simd_vs_rand() {
-    use crate::stats::distr::beta::SimdBeta;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -925,7 +1090,6 @@ mod tests {
 
   #[test]
   fn bench_chisq_simd_vs_rand() {
-    use crate::stats::distr::chi_square::SimdChiSquared;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -955,7 +1119,6 @@ mod tests {
 
   #[test]
   fn bench_studentt_simd_vs_rand() {
-    use crate::stats::distr::studentt::SimdStudentT;
     let n = 10_000_000usize;
 
     let mut rng = rand::rng();
@@ -985,11 +1148,10 @@ mod tests {
 
   #[test]
   fn bench_poisson_simd_vs_rand() {
-    use crate::stats::distr::poisson::SimdPoisson;
     let n = 5_000_000usize;
 
     let mut rng = rand::rng();
-    let simd = SimdPoisson::new(4.0);
+    let simd = SimdPoisson::<u32>::new(4.0);
     let mut s_sum: u64 = 0;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1088,17 +1250,6 @@ mod tests {
 
   #[test]
   fn bench_summary_table() {
-    use crate::stats::distr::beta::SimdBeta;
-    use crate::stats::distr::cauchy::SimdCauchy;
-    use crate::stats::distr::exp::SimdExp;
-    use crate::stats::distr::gamma::SimdGamma;
-    use crate::stats::distr::lognormal::SimdLogNormal;
-    use crate::stats::distr::normal::SimdNormal;
-    use crate::stats::distr::pareto::SimdPareto;
-    use crate::stats::distr::poisson::SimdPoisson;
-    use crate::stats::distr::studentt::SimdStudentT;
-    use crate::stats::distr::weibull::SimdWeibull;
-
     let n_f = 5_000_000usize; // samples for continuous/f32
     let n_i = 5_000_000usize; // samples for discrete/u32
 
@@ -1211,7 +1362,6 @@ mod tests {
 
     // Chi-Squared
     {
-      use crate::stats::distr::chi_square::SimdChiSquared;
       let mut rng = rand::rng();
       let simd = SimdChiSquared::new(5.0);
       let mut rng2 = rand::rng();

@@ -75,6 +75,8 @@ use ndrustfft::Zero;
 use num_complex::Complex64;
 use rand_distr::Normal;
 
+use crate::distributions::normal::SimdNormal;
+
 /// Default number of time steps
 pub const N: usize = 1000;
 /// Default initial value
@@ -89,6 +91,8 @@ pub trait Float:
 {
   fn from_usize(v: usize) -> Self;
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
+  #[cfg(feature = "simd")]
+  fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }
 
 impl Float for f64 {
@@ -98,6 +102,11 @@ impl Float for f64 {
 
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, Normal::new(mean, std_dev).unwrap())
+  }
+
+  #[cfg(feature = "simd")]
+  fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
+    Array1::random(n, SimdNormal::new(mean, std_dev))
   }
 }
 
@@ -109,12 +118,19 @@ impl Float for f32 {
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, Normal::new(mean, std_dev).unwrap())
   }
+
+  #[cfg(feature = "simd")]
+  fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
+    Array1::random(n, SimdNormal::new(mean, std_dev))
+  }
 }
 
 pub trait Process<T: Float>: Send + Sync {
   type Output: Send;
 
   fn sample(&self) -> Self::Output;
+
+  fn sample_simd(&self) -> Self::Output;
 
   fn n(&self) -> usize;
 

@@ -4,33 +4,33 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use super::gamma::SimdGamma;
+use super::SimdFloat;
 
-pub struct SimdBeta {
-  alpha: f32,
-  beta: f32,
-  gamma1: SimdGamma,
-  gamma2: SimdGamma,
-  buffer: UnsafeCell<[f32; 16]>,
+pub struct SimdBeta<T: SimdFloat> {
+  alpha: T,
+  beta: T,
+  gamma1: SimdGamma<T>,
+  gamma2: SimdGamma<T>,
+  buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
-impl SimdBeta {
-  pub fn new(alpha: f32, beta: f32) -> Self {
-    assert!(alpha > 0.0 && beta > 0.0);
+impl<T: SimdFloat> SimdBeta<T> {
+  pub fn new(alpha: T, beta: T) -> Self {
+    assert!(alpha > T::zero() && beta > T::zero());
     Self {
       alpha,
       beta,
-      gamma1: SimdGamma::new(alpha, 1.0),
-      gamma2: SimdGamma::new(beta, 1.0),
-      buffer: UnsafeCell::new([0.0; 16]),
+      gamma1: SimdGamma::new(alpha, T::one()),
+      gamma2: SimdGamma::new(beta, T::one()),
+      buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
-    // Fill two temp arrays, then compute ratio
-    let mut y1 = vec![0.0f32; out.len()];
-    let mut y2 = vec![0.0f32; out.len()];
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    let mut y1 = vec![T::zero(); out.len()];
+    let mut y2 = vec![T::zero(); out.len()];
     self.gamma1.fill_slice(rng, &mut y1);
     self.gamma2.fill_slice(rng, &mut y2);
     for (o, (a, b)) in out.iter_mut().zip(y1.iter().zip(y2.iter())) {
@@ -47,8 +47,8 @@ impl SimdBeta {
   }
 }
 
-impl Distribution<f32> for SimdBeta {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f32 {
+impl<T: SimdFloat> Distribution<T> for SimdBeta<T> {
+  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer(rng);

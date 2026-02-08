@@ -1,6 +1,7 @@
 #[cfg(feature = "malliavin")]
 use std::sync::Mutex;
 
+use derive_builder::Builder;
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
@@ -14,21 +15,82 @@ use statrs::statistics::Median;
 use statrs::statistics::Mode;
 
 use crate::stochastic::DistributionExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 use crate::stochastic::SamplingExt;
 
-#[derive(ImplNew)]
 pub struct GBM<T> {
   pub mu: T,
   pub sigma: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
   pub distribution: Option<LogNormal>,
   #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
   #[cfg(feature = "malliavin")]
   pub malliavin: Mutex<Option<Array1<T>>>,
+}
+
+impl<T: Float> GBM<T> {
+  pub fn new(
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    #[cfg(feature = "malliavin")] calculate_malliavin: Option<bool>,
+  ) -> Self {
+    Self {
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      distribution: None,
+      #[cfg(feature = "malliavin")]
+      calculate_malliavin,
+      #[cfg(feature = "malliavin")]
+      malliavin: Mutex::new(None),
+    }
+  }
+}
+
+impl<T: Float> Process<T> for GBM<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize(self.n - 1);
+    let gn = T::normal_array(self.n - 1, T::zero(), dt.sqrt());
+
+    let mut gbm = Array1::<T>::zeros(self.n);
+    gbm[0] = self.x0.unwrap_or(T::zero());
+
+    for i in 1..self.n {
+      gbm[i] = gbm[i - 1] + self.mu * gbm[i - 1] * dt + self.sigma * gbm[i - 1] * gn[i - 1]
+    }
+
+    #[cfg(feature = "malliavin")]
+    if self.calculate_malliavin.unwrap_or(false) {
+      let mut malliavin = Array1::zeros(self.n);
+
+      // reverse due the option pricing
+      let s_t = *gbm.last().unwrap();
+      for i in 0..self.n {
+        malliavin[i] = self.sigma * s_t;
+      }
+
+      // This equivalent to the following:
+      // self.malliavin.lock().unwrap().replace(Some(malliavin));
+      let _ = std::mem::replace(&mut *self.malliavin.lock().unwrap(), Some(malliavin));
+    }
+
+    gbm
+  }
+
+  fn n(&self) -> usize {
+    self.n
+  }
 }
 
 #[cfg(feature = "f64")]
@@ -67,7 +129,7 @@ impl SamplingExt<f64> for GBM<f64> {
     use ndarray::Array1;
     use wide::f64x8;
 
-    use crate::stats::distr::normal_f64::SimdNormal;
+    use crate::stats::distr::normal::SimdNormal;
 
     let n = self.n;
     assert!(n >= 1, "n must be >= 1");

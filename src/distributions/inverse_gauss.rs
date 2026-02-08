@@ -2,90 +2,90 @@ use std::cell::UnsafeCell;
 
 use rand::Rng;
 use rand_distr::Distribution;
-use wide::f32x8;
 
-use super::fill_f32_zero_one;
+use super::SimdFloat;
 use super::normal::SimdNormal;
 
-pub struct SimdInverseGauss {
-  mu: f32,
-  lambda: f32,
-  normal: SimdNormal,
-  buffer: UnsafeCell<[f32; 16]>,
+pub struct SimdInverseGauss<T: SimdFloat> {
+  mu: T,
+  lambda: T,
+  normal: SimdNormal<T>,
+  buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
-impl SimdInverseGauss {
-  pub fn new(mu: f32, lambda: f32) -> Self {
-    assert!(mu > 0.0 && lambda > 0.0);
+impl<T: SimdFloat> SimdInverseGauss<T> {
+  pub fn new(mu: T, lambda: T) -> Self {
+    assert!(mu > T::zero() && lambda > T::zero());
     Self {
       mu,
       lambda,
-      normal: SimdNormal::new(0.0, 1.0),
-      buffer: UnsafeCell::new([0.0; 16]),
+      normal: SimdNormal::new(T::zero(), T::one()),
+      buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [f32]) {
-    // Get z normals and u uniforms in batches of 8
-    let mut zbuf = vec![0.0f32; out.len()];
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    let mut zbuf = vec![T::zero(); out.len()];
     self.normal.fill_slice(rng, &mut zbuf);
-    let mut ubuf = vec![0.0f32; out.len()];
-    // fill ubuf with uniforms via chunks
-    let mut tmpu = [0.0f32; 8];
+    let mut ubuf = vec![T::zero(); out.len()];
+    let mut tmpu = [T::zero(); 8];
     let mut chunks = ubuf.chunks_exact_mut(8);
     for c in &mut chunks {
-      fill_f32_zero_one(rng, &mut tmpu);
+      T::fill_uniform(rng, &mut tmpu);
       c.copy_from_slice(&tmpu);
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      fill_f32_zero_one(rng, &mut tmpu);
+      T::fill_uniform(rng, &mut tmpu);
       rem.copy_from_slice(&tmpu[..rem.len()]);
     }
 
-    let mu = f32x8::splat(self.mu);
-    let lam = f32x8::splat(self.lambda);
+    let two = T::splat(T::from(2.0).unwrap());
+    let four = T::splat(T::from(4.0).unwrap());
+    let mu = T::splat(self.mu);
+    let lam = T::splat(self.lambda);
 
     let total = out.len();
     let mut out_chunks = out.chunks_exact_mut(8);
     let mut z_chunks = zbuf.chunks_exact(8);
     let mut u_chunks = ubuf.chunks_exact(8);
     for ((co, cz), cu) in (&mut out_chunks).zip(&mut z_chunks).zip(&mut u_chunks) {
-      let mut az = [0.0f32; 8];
+      let mut az = [T::zero(); 8];
       az.copy_from_slice(cz);
-      let mut au = [0.0f32; 8];
+      let mut au = [T::zero(); 8];
       au.copy_from_slice(cu);
-      let z = f32x8::from(az);
-      let u = f32x8::from(au);
+      let z = T::simd_from_array(az);
+      let u = T::simd_from_array(au);
       let w = z * z;
-      let t1 = mu + (mu * mu * w) / (f32x8::splat(2.0) * lam);
-      let rad = (f32x8::splat(4.0) * mu * lam * w + mu * mu * w * w).sqrt();
-      let x = t1 - (mu / (f32x8::splat(2.0) * lam)) * rad;
+      let t1 = mu + (mu * mu * w) / (two * lam);
+      let rad = T::simd_sqrt(four * mu * lam * w + mu * mu * w * w);
+      let x = t1 - (mu / (two * lam)) * rad;
       let check = mu / (mu + x);
       let alt = (mu * mu) / x;
-      let ua = u.to_array();
-      let xa = x.to_array();
-      let ca = check.to_array();
-      let aa = alt.to_array();
+      let ua = T::simd_to_array(u);
+      let xa = T::simd_to_array(x);
+      let ca = T::simd_to_array(check);
+      let aa = T::simd_to_array(alt);
       for j in 0..8 {
         co[j] = if ua[j] < ca[j] { xa[j] } else { aa[j] };
       }
     }
     let ro = out_chunks.into_remainder();
     if !ro.is_empty() {
-      // process tail scalar
       let base = total - ro.len();
+      let two_s = T::from(2.0).unwrap();
+      let four_s = T::from(4.0).unwrap();
       for i in 0..ro.len() {
         let z = zbuf[base + i];
         let u = ubuf[base + i];
         let w = z * z;
         let mu_s = self.mu;
         let lam_s = self.lambda;
-        let t1 = mu_s + (mu_s * mu_s * w) / (2.0 * lam_s);
-        let rad = (4.0 * mu_s * lam_s * w + mu_s * mu_s * w * w).sqrt();
-        let x = t1 - (mu_s / (2.0 * lam_s)) * rad;
+        let t1 = mu_s + (mu_s * mu_s * w) / (two_s * lam_s);
+        let rad = (four_s * mu_s * lam_s * w + mu_s * mu_s * w * w).sqrt();
+        let x = t1 - (mu_s / (two_s * lam_s)) * rad;
         let check = mu_s / (mu_s + x);
         ro[i] = if u < check { x } else { mu_s * mu_s / x };
       }
@@ -101,8 +101,8 @@ impl SimdInverseGauss {
   }
 }
 
-impl Distribution<f32> for SimdInverseGauss {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f32 {
+impl<T: SimdFloat> Distribution<T> for SimdInverseGauss<T> {
+  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer(rng);

@@ -1,35 +1,36 @@
 use std::cell::UnsafeCell;
 
+use num_traits::PrimInt;
 use rand::Rng;
 use rand_distr::Distribution;
 
-pub struct SimdBinomial {
+pub struct SimdBinomial<T: PrimInt> {
   n: u32,
-  p: f32,
-  buffer: UnsafeCell<[u32; 16]>,
+  p: f64,
+  buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
-impl SimdBinomial {
-  pub fn new(n: u32, p: f32) -> Self {
+impl<T: PrimInt> SimdBinomial<T> {
+  pub fn new(n: u32, p: f64) -> Self {
     Self {
       n,
       p,
-      buffer: UnsafeCell::new([0; 16]),
+      buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [u32]) {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
     for x in out.iter_mut() {
-      let mut count = 0;
+      let mut count = 0u32;
       for _ in 0..self.n {
-        let u: f32 = rng.random();
+        let u: f64 = rng.random_range(0.0..1.0);
         if u < self.p {
           count += 1;
         }
       }
-      *x = count;
+      *x = num_traits::cast(count).unwrap_or(T::zero());
     }
   }
 
@@ -42,8 +43,8 @@ impl SimdBinomial {
   }
 }
 
-impl Distribution<u32> for SimdBinomial {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> u32 {
+impl<T: PrimInt> Distribution<T> for SimdBinomial<T> {
+  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer(rng);
