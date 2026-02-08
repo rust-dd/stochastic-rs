@@ -1,12 +1,108 @@
 use std::cell::UnsafeCell;
+use std::sync::OnceLock;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use wide::CmpLt;
+use wide::i32x8;
 
 use super::SimdFloat;
 
-/// A SIMD-based normal (Gaussian) random number generator using the wide crate.
-/// It generates 16 normal samples at a time using the standard Box–Muller transform.
+struct ZigTables {
+  kn: [i32; 128],
+  wn: [f64; 128],
+  fn_tab: [f64; 128],
+}
+
+static ZIG_TABLES: OnceLock<ZigTables> = OnceLock::new();
+
+fn zig_tables() -> &'static ZigTables {
+  ZIG_TABLES.get_or_init(|| {
+    let mut kn = [0i32; 128];
+    let mut wn = [0.0f64; 128];
+    let mut fn_tab = [0.0f64; 128];
+
+    let mut dn = 3.442619855899f64;
+    let vn = 9.91256303526217e-3f64;
+    let m1 = 2147483648.0f64;
+
+    let q = vn / (-0.5 * dn * dn).exp();
+
+    let kn0 = (dn / q) * m1;
+    kn[0] = if kn0 > i32::MAX as f64 {
+      i32::MAX
+    } else {
+      kn0 as i32
+    };
+    kn[1] = 0;
+
+    wn[0] = q / m1;
+    wn[127] = dn / m1;
+
+    fn_tab[0] = 1.0;
+    fn_tab[127] = (-0.5 * dn * dn).exp();
+
+    let mut tn = dn;
+    for i in (1..=126).rev() {
+      dn = (-2.0 * (vn / dn + (-0.5 * dn * dn).exp()).ln()).sqrt();
+      let kn_val = (dn / tn) * m1;
+      kn[i + 1] = if kn_val > i32::MAX as f64 {
+        i32::MAX
+      } else {
+        kn_val as i32
+      };
+      tn = dn;
+      fn_tab[i] = (-0.5 * dn * dn).exp();
+      wn[i] = dn / m1;
+    }
+
+    ZigTables { kn, wn, fn_tab }
+  })
+}
+
+fn nfix<T: SimdFloat, R: Rng + ?Sized>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut R) -> T {
+  const R_TAIL: f64 = 3.442620;
+  let mut hz = hz;
+  let mut iz = iz;
+
+  loop {
+    let x = hz as f64 * tables.wn[iz];
+
+    if iz == 0 {
+      loop {
+        let u1: f64 = rng.random_range(0.0f64..1.0f64);
+        let u2: f64 = rng.random_range(0.0f64..1.0f64);
+        let x_tail = -0.2904764 * (-u1.ln());
+        let y = -u2.ln();
+        if y + y >= x_tail * x_tail {
+          let val = if hz > 0 {
+            R_TAIL + x_tail
+          } else {
+            -R_TAIL - x_tail
+          };
+          return T::from(val).unwrap();
+        }
+      }
+    }
+
+    if tables.fn_tab[iz]
+      + rng.random_range(0.0f64..1.0f64) * (tables.fn_tab[iz - 1] - tables.fn_tab[iz])
+      < (-0.5 * x * x).exp()
+    {
+      return T::from(x).unwrap();
+    }
+
+    hz = rng.random::<i32>();
+    iz = (hz & 127) as usize;
+    if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
+      return T::from(hz as f64 * tables.wn[iz]).unwrap();
+    }
+  }
+}
+
+/// SIMD-accelerated normal (Gaussian) distribution using the Ziggurat algorithm.
+/// Generates 16 samples at a time. ~97% of samples use a branchless SIMD fast path
+/// (integer compare + multiply), with scalar fallback only for the rare ~3% edge cases.
 pub struct SimdNormal<T: SimdFloat> {
   mean: T,
   std_dev: T,
@@ -16,6 +112,7 @@ pub struct SimdNormal<T: SimdFloat> {
 
 impl<T: SimdFloat> SimdNormal<T> {
   pub fn new(mean: T, std_dev: T) -> Self {
+    let _ = zig_tables();
     assert!(std_dev > T::zero());
     Self {
       mean,
@@ -29,12 +126,12 @@ impl<T: SimdFloat> SimdNormal<T> {
     let mut tmp = [T::zero(); 16];
     let mut chunks = out.chunks_exact_mut(16);
     for chunk in &mut chunks {
-      Self::fill_normal_simd(&mut tmp, rng, self.mean, self.std_dev);
+      Self::fill_ziggurat(&mut tmp, rng, self.mean, self.std_dev);
       chunk.copy_from_slice(&tmp);
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      Self::fill_normal_simd(&mut tmp, rng, self.mean, self.std_dev);
+      Self::fill_ziggurat(&mut tmp, rng, self.mean, self.std_dev);
       rem.copy_from_slice(&tmp[..rem.len()]);
     }
   }
@@ -43,46 +140,65 @@ impl<T: SimdFloat> SimdNormal<T> {
   pub fn fill_16<R: Rng + ?Sized>(&self, rng: &mut R, out16: &mut [T]) {
     debug_assert!(out16.len() >= 16);
     let mut tmp = [T::zero(); 16];
-    Self::fill_normal_simd(&mut tmp, rng, self.mean, self.std_dev);
+    Self::fill_ziggurat(&mut tmp, rng, self.mean, self.std_dev);
     out16[..16].copy_from_slice(&tmp);
   }
 
   fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
     let buf = unsafe { &mut *self.buffer.get() };
-    Self::fill_normal_simd(buf, rng, self.mean, self.std_dev);
+    Self::fill_ziggurat(buf, rng, self.mean, self.std_dev);
     unsafe {
       *self.index.get() = 0;
     }
   }
 
-  fn fill_normal_simd<R: Rng + ?Sized>(buf: &mut [T; 16], rng: &mut R, mean: T, std_dev: T) {
-    let mut arr_u1 = [T::zero(); 8];
-    T::fill_uniform(rng, &mut arr_u1);
-    let mut arr_u2 = [T::zero(); 8];
-    T::fill_uniform(rng, &mut arr_u2);
+  fn fill_ziggurat<R: Rng + ?Sized>(buf: &mut [T; 16], rng: &mut R, mean: T, std_dev: T) {
+    let tables = zig_tables();
+    let mean_simd = T::splat(mean);
+    let std_dev_simd = T::splat(std_dev);
+    let mask127 = i32x8::splat(127);
+    let mut filled = 0;
 
-    let mut u1 = T::simd_from_array(arr_u1);
-    let u2 = T::simd_from_array(arr_u2);
+    while filled < 16 {
+      let hz_arr: [i32; 8] = std::array::from_fn(|_| rng.random::<i32>());
+      let hz = i32x8::new(hz_arr);
+      let iz = hz & mask127;
+      let iz_arr = iz.to_array();
 
-    let eps = T::splat(T::min_positive_val());
-    u1 = T::simd_max(u1, eps);
+      let kn_vals = i32x8::new(std::array::from_fn(|i| tables.kn[iz_arr[i] as usize]));
+      let abs_hz = hz.abs();
+      let accept = abs_hz.simd_lt(kn_vals);
 
-    let neg_two = T::splat(T::from(-2.0).unwrap());
-    let two_pi = T::splat(T::two_pi());
+      let wn_arr: [T; 8] =
+        std::array::from_fn(|i| T::from(tables.wn[iz_arr[i] as usize]).unwrap());
+      let hz_float = T::simd_from_i32x8(hz);
+      let wn_simd = T::simd_from_array(wn_arr);
+      let result = hz_float * wn_simd;
 
-    let r = T::simd_sqrt(neg_two * T::simd_ln(u1));
-    let theta = two_pi * u2;
-
-    let z0 = r * T::simd_cos(theta);
-    let z1 = r * T::simd_sin(theta);
-
-    let mm = T::splat(mean);
-    let ss = T::splat(std_dev);
-    let x0 = mm + ss * z0;
-    let x1 = mm + ss * z1;
-
-    buf[..8].copy_from_slice(&T::simd_to_array(x0));
-    buf[8..16].copy_from_slice(&T::simd_to_array(x1));
+      if accept.all() {
+        let scaled = mean_simd + std_dev_simd * result;
+        let scaled_arr = T::simd_to_array(scaled);
+        let take = (16 - filled).min(8);
+        buf[filled..filled + take].copy_from_slice(&scaled_arr[..take]);
+        filled += take;
+      } else {
+        let accept_arr = accept.to_array();
+        let result_arr = T::simd_to_array(result);
+        for i in 0..8 {
+          if filled >= 16 {
+            break;
+          }
+          if accept_arr[i] != 0 {
+            buf[filled] = mean + std_dev * result_arr[i];
+            filled += 1;
+          } else {
+            let x = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
+            buf[filled] = mean + std_dev * x;
+            filled += 1;
+          }
+        }
+      }
+    }
   }
 }
 

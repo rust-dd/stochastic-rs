@@ -55,6 +55,7 @@ pub trait SimdFloat: num_traits::Float + Default + Send + Sync + 'static {
   fn simd_floor(v: Self::Simd) -> Self::Simd;
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
+  fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
   fn pi() -> Self;
   fn two_pi() -> Self;
   fn min_positive_val() -> Self;
@@ -117,6 +118,10 @@ impl SimdFloat for f32 {
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f32 {
     rng.random_range(0.0f32..1.0f32)
+  }
+
+  fn simd_from_i32x8(v: wide::i32x8) -> f32x8 {
+    v.round_float()
   }
 
   fn pi() -> f32 {
@@ -189,6 +194,10 @@ impl SimdFloat for f64 {
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f64 {
     rng.random_range(0.0f64..1.0f64)
+  }
+
+  fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {
+    f64x8::from_i32x8(v)
   }
 
   fn pi() -> f64 {
