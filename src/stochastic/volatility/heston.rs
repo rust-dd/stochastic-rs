@@ -1,4 +1,3 @@
-#[cfg(feature = "malliavin")]
 use std::sync::Mutex;
 
 use impl_new_derive::ImplNew;
@@ -40,13 +39,10 @@ pub struct Heston<T> {
   /// Noise generator
   pub cgns: CGNS<T>,
   /// Calculate the Malliavin derivative
-  #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
   /// Malliavin derivative of the volatility
-  #[cfg(feature = "malliavin")]
   malliavin_of_vol: Mutex<Option<Array1<T>>>,
   /// Malliavin derivative of the price
-  #[cfg(feature = "malliavin")]
   malliavin_of_price: Mutex<Option<Array1<T>>>,
 }
 
@@ -78,7 +74,6 @@ impl Sampling2DExt<f64> for Heston<f64> {
       }
     }
 
-    #[cfg(feature = "malliavin")]
     if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
       let mut det_term = Array1::zeros(self.n);
       let mut malliavin = Array1::zeros(self.n);
@@ -127,7 +122,6 @@ impl Sampling2DExt<f64> for Heston<f64> {
   ///
   /// The Malliavin derivative of the 3/2 Heston model is given by
   /// D_r v_t = \sigma v_t^{3/2} / 2 * exp(-(\kappa \theta / 2 + 3 \sigma^2 / 8) * v_t * dt)
-  #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> [Array1<f64>; 2] {
     [
       Array1::zeros(self.n),
@@ -186,19 +180,13 @@ impl Sampling2DExt<f32> for Heston<f32> {
 
 #[cfg(test)]
 mod tests {
-  #[cfg(feature = "malliavin")]
   use super::*;
-  #[cfg(feature = "malliavin")]
   use crate::plot_2d;
-  #[cfg(feature = "malliavin")]
   use crate::stochastic::N;
-  #[cfg(feature = "malliavin")]
   use crate::stochastic::S0;
-  #[cfg(feature = "malliavin")]
   use crate::stochastic::X0;
 
   #[test]
-  #[cfg(feature = "malliavin")]
   fn heston_malliavin() {
     let heston = Heston::new(
       Some(S0),

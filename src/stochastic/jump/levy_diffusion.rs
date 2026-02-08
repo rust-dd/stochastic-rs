@@ -162,7 +162,6 @@ mod tests {
 
   #[test]
   #[ignore = "Not implemented"]
-  #[cfg(feature = "malliavin")]
   fn levy_diffusion_malliavin() {
     unimplemented!()
   }

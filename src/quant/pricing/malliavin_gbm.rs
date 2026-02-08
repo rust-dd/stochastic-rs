@@ -154,9 +154,7 @@ impl GbmMalliavinPricer {
       t: Some(T),
       m: Some(self.n_paths),
       distribution: None,
-      #[cfg(feature = "malliavin")]
       calculate_malliavin: Some(false),
-      #[cfg(feature = "malliavin")]
       malliavin: std::sync::Mutex::new(None),
     };
 

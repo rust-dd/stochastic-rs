@@ -48,7 +48,6 @@ pub mod interest;
 pub mod isonormal;
 pub mod ito;
 pub mod jump;
-#[cfg(feature = "malliavin")]
 pub mod malliavin;
 pub mod noise;
 pub mod process;
@@ -184,7 +183,6 @@ pub trait SamplingExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn distribution(&mut self) {}
 
   /// Malliavin derivative of the process
-  #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> Array1<T> {
     unimplemented!()
   }
@@ -211,7 +209,6 @@ pub trait SamplingVExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn m(&self) -> Option<usize>;
 
   /// Malliavin derivative of the process
-  #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> Array1<T> {
     unimplemented!()
   }
@@ -250,7 +247,6 @@ pub trait Sampling2DExt<T: Clone + Send + Sync + Zero>: Send + Sync {
   fn m(&self) -> Option<usize>;
 
   /// Malliavin derivative of the process
-  #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> [Array1<T>; 2] {
     unimplemented!()
   }

@@ -1,4 +1,3 @@
-#[cfg(feature = "malliavin")]
 use std::sync::Mutex;
 
 use impl_new_derive::ImplNew;
@@ -18,7 +17,6 @@ pub struct CEV<T> {
   pub t: Option<T>,
   pub m: Option<usize>,
   pub calculate_malliavin: Option<bool>,
-  #[cfg(feature = "malliavin")]
   malliavin: Mutex<Option<Array1<T>>>,
 }
 
@@ -37,7 +35,6 @@ impl SamplingExt<f64> for CEV<f64> {
         + self.sigma * cev[i - 1].powf(self.gamma) * gn[i - 1]
     }
 
-    #[cfg(feature = "malliavin")]
     if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
       let mut det_term = Array1::zeros(self.n);
       let mut stochastic_term = Array1::zeros(self.n);
@@ -76,7 +73,6 @@ impl SamplingExt<f64> for CEV<f64> {
   /// D_r S_t = \sigma S_t^{\gamma} * 1_{[0, r]}(r) exp(\int_0^r (\mu - \frac{\gamma^2 \sigma^2 S_u^{2\gamma - 2}}{2}) du + \int_0^r \gamma \sigma S_u^{\gamma - 1} dW_u)
   ///
   /// The Malliavin derivative of the CEV process shows the sensitivity of the stock price with respect to the Wiener process.
-  #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> Array1<f64> {
     self.malliavin.lock().unwrap().clone().unwrap()
   }
@@ -134,7 +130,6 @@ impl SamplingExt<f32> for CEV<f32> {
 mod tests {
   use super::*;
   use crate::plot_1d;
-  #[cfg(feature = "malliavin")]
   use crate::plot_2d;
   use crate::stochastic::N;
   use crate::stochastic::X0;
@@ -161,7 +156,6 @@ mod tests {
   }
 
   #[test]
-  #[cfg(feature = "malliavin")]
   fn cev_malliavin() {
     let cev = CEV::new(0.25, 0.5, 0.3, N, Some(X0), Some(1.0), None, Some(true));
     let process = cev.sample();

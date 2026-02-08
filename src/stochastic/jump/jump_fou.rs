@@ -193,7 +193,6 @@ mod tests {
 
   #[test]
   #[ignore = "Not implemented"]
-  #[cfg(feature = "malliavin")]
   fn jump_fou_malliavin() {
     unimplemented!()
   }

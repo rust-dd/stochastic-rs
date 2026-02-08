@@ -325,7 +325,6 @@ mod tests {
 
   #[test]
   #[ignore = "Not implemented"]
-  #[cfg(feature = "malliavin")]
   fn fcir_malliavin() {
     unimplemented!();
   }

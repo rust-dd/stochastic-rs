@@ -1,10 +1,8 @@
-#[cfg(feature = "malliavin")]
 use std::sync::Mutex;
 
 use impl_new_derive::ImplNew;
 use ndarray::s;
 use ndarray::Array1;
-#[cfg(feature = "malliavin")]
 use statrs::function::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
@@ -17,9 +15,7 @@ pub struct FBM<T> {
   pub t: Option<f64>,
   pub m: Option<usize>,
   pub fgn: FGN<T>,
-  #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
-  #[cfg(feature = "malliavin")]
   malliavin: Mutex<Option<Array1<f64>>>,
   #[cfg(feature = "cuda")]
   #[default(false)]
@@ -51,7 +47,6 @@ impl SamplingExt<f64> for FBM<f64> {
       fbm[i] += fbm[i - 1];
     }
 
-    #[cfg(feature = "malliavin")]
     if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
       let mut malliavin = Array1::zeros(self.n);
       let dt = self.t.unwrap_or(1.0) / (self.n) as f64;
@@ -83,7 +78,6 @@ impl SamplingExt<f64> for FBM<f64> {
   /// where B^H_t is the fractional Brownian motion with Hurst parameter H in Mandelbrot-Van Ness representation as
   /// B^H_t = 1 / Γ(H + 1/2) ∫_0^t (t - s)^{H - 1/2} dW_s
   /// which is a truncated Wiener integral.
-  #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> Array1<f64> {
     self.malliavin.lock().unwrap().clone().unwrap()
   }
@@ -128,7 +122,6 @@ impl SamplingExt<f32> for FBM<f32> {
 mod tests {
   use super::*;
   use crate::plot_1d;
-  #[cfg(feature = "malliavin")]
   use crate::plot_2d;
   use crate::stochastic::N;
 
@@ -140,7 +133,6 @@ mod tests {
       Some(1.0),
       None,
       FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      #[cfg(feature = "malliavin")]
       None,
     );
 
@@ -155,7 +147,6 @@ mod tests {
       Some(1.0),
       None,
       FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      #[cfg(feature = "malliavin")]
       None,
     );
 
@@ -170,7 +161,6 @@ mod tests {
       Some(1.0),
       None,
       FGN::<f64>::new(0.1, N - 1, Some(1.0), None),
-      #[cfg(feature = "malliavin")]
       None,
     );
 
@@ -178,7 +168,6 @@ mod tests {
   }
 
   #[test]
-  #[cfg(feature = "malliavin")]
   fn fbm_malliavin() {
     let fbm = FBM::new(
       0.7,

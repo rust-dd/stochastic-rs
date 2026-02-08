@@ -120,7 +120,6 @@ mod tests {
 
   #[test]
   #[ignore = "Not implemented"]
-  #[cfg(feature = "malliavin")]
   fn nig_malliavin() {
     unimplemented!()
   }

@@ -1,4 +1,3 @@
-#[cfg(feature = "malliavin")]
 use std::sync::Mutex;
 
 use derive_builder::Builder;
@@ -26,9 +25,7 @@ pub struct GBM<T> {
   pub x0: Option<T>,
   pub t: Option<T>,
   pub distribution: Option<LogNormal>,
-  #[cfg(feature = "malliavin")]
   pub calculate_malliavin: Option<bool>,
-  #[cfg(feature = "malliavin")]
   pub malliavin: Mutex<Option<Array1<T>>>,
 }
 
@@ -39,7 +36,7 @@ impl<T: Float> GBM<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    #[cfg(feature = "malliavin")] calculate_malliavin: Option<bool>,
+    calculate_malliavin: Option<bool>,
   ) -> Self {
     Self {
       mu,
@@ -48,9 +45,7 @@ impl<T: Float> GBM<T> {
       x0,
       t,
       distribution: None,
-      #[cfg(feature = "malliavin")]
       calculate_malliavin,
-      #[cfg(feature = "malliavin")]
       malliavin: Mutex::new(None),
     }
   }
@@ -70,7 +65,6 @@ impl<T: Float> Process<T> for GBM<T> {
       gbm[i] = gbm[i - 1] + self.mu * gbm[i - 1] * dt + self.sigma * gbm[i - 1] * gn[i - 1]
     }
 
-    #[cfg(feature = "malliavin")]
     if self.calculate_malliavin.unwrap_or(false) {
       let mut malliavin = Array1::zeros(self.n);
 
@@ -128,7 +122,6 @@ impl<T: Float> GBM<T> {
   /// D_r S_t = \sigma S_t * 1_[0, r](r)
   ///
   /// The Malliavin derivate of the GBM shows the sensitivity of the stock price with respect to the Wiener process.
-  #[cfg(feature = "malliavin")]
   fn malliavin(&self) -> Array1<f64> {
     self.malliavin.lock().unwrap().as_ref().unwrap().clone()
   }
@@ -225,65 +218,32 @@ impl<T: Float> DistributionExt for GBM<T> {
 mod tests {
   use super::*;
   use crate::plot_1d;
-  #[cfg(feature = "malliavin")]
   use crate::plot_2d;
   use crate::stochastic::N;
   use crate::stochastic::X0;
 
   #[test]
   fn gbm_length_equals_n() {
-    let gbm = GBM::new(
-      0.25,
-      0.5,
-      N,
-      Some(X0),
-      Some(1.0),
-      #[cfg(feature = "malliavin")]
-      None,
-    );
+    let gbm = GBM::new(0.25, 0.5, N, Some(X0), Some(1.0), None);
     assert_eq!(gbm.sample().len(), N);
   }
 
   #[test]
   fn gbm_starts_with_x0() {
-    let gbm = GBM::new(
-      0.25,
-      0.5,
-      N,
-      Some(X0),
-      Some(1.0),
-      #[cfg(feature = "malliavin")]
-      None,
-    );
+    let gbm = GBM::new(0.25, 0.5, N, Some(X0), Some(1.0), None);
     assert_eq!(gbm.sample()[0], X0);
   }
 
   #[test]
   fn gbm_plot() {
-    let gbm = GBM::new(
-      0.25,
-      0.5,
-      N * 10,
-      Some(X0),
-      Some(1.0),
-      #[cfg(feature = "malliavin")]
-      None,
-    );
+    let gbm = GBM::new(0.25, 0.5, N * 10, Some(X0), Some(1.0), None);
 
     plot_1d!(gbm.sample(), "Geometric Brownian Motion (GBM) process");
   }
 
   #[test]
   fn gbm_benchmark() {
-    let gbm = GBM::new(
-      0.25,
-      0.5,
-      N * 10,
-      Some(X0),
-      Some(1.0),
-      #[cfg(feature = "malliavin")]
-      None,
-    );
+    let gbm = GBM::new(0.25, 0.5, N * 10, Some(X0), Some(1.0), None);
 
     let iters = N * 10;
 
@@ -306,7 +266,6 @@ mod tests {
   }
 
   #[test]
-  #[cfg(feature = "malliavin")]
   fn gbm_malliavin() {
     let gbm = GBM::new(0.25, 0.5, N, Some(X0), Some(1.0), None, None, Some(true));
     let process = gbm.sample();

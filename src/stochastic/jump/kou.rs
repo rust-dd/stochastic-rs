@@ -188,7 +188,6 @@ mod tests {
 
   #[test]
   #[ignore = "Not implemented"]
-  #[cfg(feature = "malliavin")]
   fn merton_malliavin() {
     unimplemented!()
   }
