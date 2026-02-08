@@ -29,12 +29,25 @@ impl<T: SimdFloat> SimdBeta<T> {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    let mut y1 = vec![T::zero(); out.len()];
-    let mut y2 = vec![T::zero(); out.len()];
-    self.gamma1.fill_slice(rng, &mut y1);
-    self.gamma2.fill_slice(rng, &mut y2);
-    for (o, (a, b)) in out.iter_mut().zip(y1.iter().zip(y2.iter())) {
-      *o = *a / (*a + *b);
+    let mut g1 = [T::zero(); 8];
+    let mut g2 = [T::zero(); 8];
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      self.gamma1.fill_slice(rng, &mut g1);
+      self.gamma2.fill_slice(rng, &mut g2);
+      let a = T::simd_from_array(g1);
+      let b = T::simd_from_array(g2);
+      let x = a / (a + b);
+      chunk.copy_from_slice(&T::simd_to_array(x));
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      self.gamma1.fill_slice(rng, &mut g1);
+      self.gamma2.fill_slice(rng, &mut g2);
+      let a = T::simd_from_array(g1);
+      let b = T::simd_from_array(g2);
+      let x = T::simd_to_array(a / (a + b));
+      rem.copy_from_slice(&x[..rem.len()]);
     }
   }
 

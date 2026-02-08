@@ -43,35 +43,27 @@ impl<T: SimdFloat> SimdNormalInverseGauss<T> {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    let mut dbuf = vec![T::zero(); out.len()];
-    let mut zbuf = vec![T::zero(); out.len()];
-    self.ig.fill_slice(rng, &mut dbuf);
-    self.normal.fill_slice(rng, &mut zbuf);
-
     let mu = T::splat(self.mu);
     let beta = T::splat(self.beta);
-
-    let mut o_chunks = out.chunks_exact_mut(8);
-    let mut d_chunks = dbuf.chunks_exact(8);
-    let mut z_chunks = zbuf.chunks_exact(8);
-    for ((co, cd), cz) in (&mut o_chunks).zip(&mut d_chunks).zip(&mut z_chunks) {
-      let mut ad = [T::zero(); 8];
-      ad.copy_from_slice(cd);
-      let mut az = [T::zero(); 8];
-      az.copy_from_slice(cz);
-      let d = T::simd_from_array(ad);
-      let z = T::simd_from_array(az);
+    let mut dbuf = [T::zero(); 8];
+    let mut zbuf = [T::zero(); 8];
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      self.ig.fill_slice(rng, &mut dbuf);
+      self.normal.fill_slice(rng, &mut zbuf);
+      let d = T::simd_from_array(dbuf);
+      let z = T::simd_from_array(zbuf);
       let x = mu + beta * d + T::simd_sqrt(d) * z;
-      co.copy_from_slice(&T::simd_to_array(x));
+      chunk.copy_from_slice(&T::simd_to_array(x));
     }
-    let rem_o = o_chunks.into_remainder();
-    let rem_d = d_chunks.remainder();
-    let rem_z = z_chunks.remainder();
-    if !rem_o.is_empty() {
-      for i in 0..rem_o.len() {
-        let d = rem_d[i];
-        let z = rem_z[i];
-        rem_o[i] = self.mu + self.beta * d + d.sqrt() * z;
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      self.ig.fill_slice(rng, &mut dbuf);
+      self.normal.fill_slice(rng, &mut zbuf);
+      for i in 0..rem.len() {
+        let d = dbuf[i];
+        let z = zbuf[i];
+        rem[i] = self.mu + self.beta * d + d.sqrt() * z;
       }
     }
   }

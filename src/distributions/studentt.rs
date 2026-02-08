@@ -27,34 +27,26 @@ impl<T: SimdFloat> SimdStudentT<T> {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    let mut zbuf = vec![T::zero(); out.len()];
-    let mut vbuf = vec![T::zero(); out.len()];
-    self.normal.fill_slice(rng, &mut zbuf);
-    self.chisq.fill_slice(rng, &mut vbuf);
-
     let inv_nu = T::splat(T::one() / self.nu);
-
-    let mut o_chunks = out.chunks_exact_mut(8);
-    let mut z_chunks = zbuf.chunks_exact(8);
-    let mut v_chunks = vbuf.chunks_exact(8);
-    for ((co, cz), cv) in (&mut o_chunks).zip(&mut z_chunks).zip(&mut v_chunks) {
-      let mut az = [T::zero(); 8];
-      az.copy_from_slice(cz);
-      let mut av = [T::zero(); 8];
-      av.copy_from_slice(cv);
-      let z = T::simd_from_array(az);
-      let v = T::simd_from_array(av);
-      let denom = T::simd_sqrt(v * inv_nu);
-      let x = z / denom;
-      co.copy_from_slice(&T::simd_to_array(x));
+    let mut zbuf = [T::zero(); 8];
+    let mut vbuf = [T::zero(); 8];
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      self.normal.fill_slice(rng, &mut zbuf);
+      self.chisq.fill_slice(rng, &mut vbuf);
+      let z = T::simd_from_array(zbuf);
+      let v = T::simd_from_array(vbuf);
+      let x = z / T::simd_sqrt(v * inv_nu);
+      chunk.copy_from_slice(&T::simd_to_array(x));
     }
-    let rem_o = o_chunks.into_remainder();
-    let rem_z = z_chunks.remainder();
-    let rem_v = v_chunks.remainder();
-    if !rem_o.is_empty() {
-      for i in 0..rem_o.len() {
-        rem_o[i] = rem_z[i] / (rem_v[i] / self.nu).sqrt();
-      }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      self.normal.fill_slice(rng, &mut zbuf);
+      self.chisq.fill_slice(rng, &mut vbuf);
+      let z = T::simd_from_array(zbuf);
+      let v = T::simd_from_array(vbuf);
+      let x = T::simd_to_array(z / T::simd_sqrt(v * inv_nu));
+      rem.copy_from_slice(&x[..rem.len()]);
     }
   }
 

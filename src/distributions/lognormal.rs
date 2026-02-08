@@ -27,29 +27,41 @@ impl<T: SimdFloat> SimdLogNormal<T> {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    let mut tmp = vec![T::zero(); out.len()];
-    self.normal.fill_slice(rng, &mut tmp);
-
     let mm = T::splat(self.mu);
     let ss = T::splat(self.sigma);
-
-    let mut chunks_out = out.chunks_exact_mut(8);
-    let mut chunks_in = tmp.chunks_exact(8);
-    for (chunk_o, chunk_i) in (&mut chunks_out).zip(&mut chunks_in) {
-      let mut a = [T::zero(); 8];
-      a.copy_from_slice(chunk_i);
-      let z = T::simd_from_array(a);
-      let x = T::simd_exp(mm + ss * z);
-      chunk_o.copy_from_slice(&T::simd_to_array(x));
+    let mut tmp = [T::zero(); 16];
+    let mut chunks = out.chunks_exact_mut(16);
+    for chunk in &mut chunks {
+      self.normal.fill_16(rng, &mut tmp);
+      for half in 0..2 {
+        let base = half * 8;
+        let mut a = [T::zero(); 8];
+        a.copy_from_slice(&tmp[base..base + 8]);
+        let z = T::simd_from_array(a);
+        let x = T::simd_to_array(T::simd_exp(mm + ss * z));
+        chunk[base..base + 8].copy_from_slice(&x);
+      }
     }
-    let rem_o = chunks_out.into_remainder();
-    let rem_i = chunks_in.remainder();
-    if !rem_o.is_empty() {
-      let mut a = [T::zero(); 8];
-      a[..rem_i.len()].copy_from_slice(rem_i);
-      let z = T::simd_from_array(a);
-      let x = T::simd_to_array(T::simd_exp(mm + ss * z));
-      rem_o.copy_from_slice(&x[..rem_o.len()]);
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      self.normal.fill_slice(rng, &mut tmp[..rem.len()]);
+      let mut done = 0;
+      while done + 8 <= rem.len() {
+        let mut a = [T::zero(); 8];
+        a.copy_from_slice(&tmp[done..done + 8]);
+        let z = T::simd_from_array(a);
+        let x = T::simd_to_array(T::simd_exp(mm + ss * z));
+        rem[done..done + 8].copy_from_slice(&x);
+        done += 8;
+      }
+      if done < rem.len() {
+        let left = rem.len() - done;
+        let mut a = [T::zero(); 8];
+        a[..left].copy_from_slice(&tmp[done..done + left]);
+        let z = T::simd_from_array(a);
+        let x = T::simd_to_array(T::simd_exp(mm + ss * z));
+        rem[done..done + left].copy_from_slice(&x[..left]);
+      }
     }
   }
 
