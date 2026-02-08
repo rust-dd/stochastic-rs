@@ -22,7 +22,6 @@ pub struct FouqueOU2D<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for FouqueOU2D<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     assert!(self.epsilon > 0.0, "epsilon must be positive");
@@ -59,7 +58,6 @@ impl Sampling2DExt<f64> for FouqueOU2D<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl Sampling2DExt<f32> for FouqueOU2D<f32> {
   fn sample(&self) -> [Array1<f32>; 2] {
     assert!(self.epsilon > 0.0, "epsilon must be positive");

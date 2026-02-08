@@ -55,7 +55,6 @@ where
   }
 }
 
-#[cfg(feature = "f32")]
 impl<D, E> Sampling3DExt<f32> for CompoundCustom<D, E, f32>
 where
   D: Distribution<f32> + Send + Sync,

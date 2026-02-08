@@ -12,7 +12,6 @@ pub struct Gn<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for Gn<f64> {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / self.n as f64;
@@ -28,7 +27,6 @@ impl SamplingExt<f64> for Gn<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for Gn<f32> {
   fn sample(&self) -> Array1<f32> {
     let dt = self.t.unwrap_or(1.0) / self.n as f32;

@@ -89,7 +89,6 @@ where
   }
 }
 
-#[cfg(feature = "f32")]
 impl<D> JumpFOUCustom<D, f32>
 where
   D: Distribution<f32> + Send + Sync,
@@ -99,7 +98,6 @@ where
   }
 }
 
-#[cfg(feature = "f32")]
 impl<D> SamplingExt<f32> for JumpFOUCustom<D, f32>
 where
   D: Distribution<f32> + Send + Sync,

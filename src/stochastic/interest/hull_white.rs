@@ -19,7 +19,6 @@ pub struct HullWhite<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for HullWhite<f64> {
   fn sample(&self) -> Array1<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -48,7 +47,6 @@ impl SamplingExt<f64> for HullWhite<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for HullWhite<f32> {
   fn sample(&self) -> Array1<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;

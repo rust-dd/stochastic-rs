@@ -32,7 +32,6 @@ pub struct RDTS<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for RDTS<f64> {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::rng();
@@ -96,7 +95,6 @@ impl SamplingExt<f64> for RDTS<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for RDTS<f32> {
   fn sample(&self) -> Array1<f32> {
     let mut rng = rand::rng();

@@ -16,7 +16,6 @@ pub struct Vasicek<T> {
   pub ou: OU<T>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for Vasicek<f64> {
   fn sample(&self) -> Array1<f64> {
     self.ou.sample()
@@ -33,7 +32,6 @@ impl SamplingExt<f64> for Vasicek<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for Vasicek<f32> {
   fn sample(&self) -> Array1<f32> {
     self.ou.sample()

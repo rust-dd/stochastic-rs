@@ -22,7 +22,6 @@ pub struct HullWhite2F<T> {
   pub cgns: CGNS<T>,
 }
 
-#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for HullWhite2F<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
@@ -55,7 +54,6 @@ impl Sampling2DExt<f64> for HullWhite2F<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl Sampling2DExt<f32> for HullWhite2F<f32> {
   fn sample(&self) -> [Array1<f32>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();

@@ -8,7 +8,6 @@ use ndarray_rand::RandomExt;
 use ndrustfft::ndfft;
 use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
-#[cfg(feature = "f32")]
 use num_complex::Complex32;
 use num_complex::Complex64;
 use rand_distr::StandardNormal;
@@ -23,7 +22,6 @@ pub struct FBS<T> {
   pub R: T,
 }
 
-#[cfg(feature = "f64")]
 impl FBS<f64> {
   pub fn sample(&self) -> Array2<f64> {
     let (m, n, H, R) = (self.m, self.n, self.hurst, self.R);
@@ -136,7 +134,6 @@ impl FBS<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl FBS<f32> {
   pub fn sample(&self) -> Array2<f32> {
     let (m, n, H, R) = (self.m, self.n, self.hurst, self.R);

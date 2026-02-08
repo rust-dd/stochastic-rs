@@ -28,7 +28,6 @@ pub struct ARIMA<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for ARIMA<f64> {
   fn sample(&self) -> Array1<f64> {
     // 1) Generate an AR(p) series with user-provided coefficients
@@ -94,7 +93,6 @@ impl SamplingExt<f64> for ARIMA<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for ARIMA<f32> {
   fn sample(&self) -> Array1<f32> {
     let ar_model = ARp::new(self.ar_coefs.clone(), self.sigma, self.n, None, None);
@@ -155,7 +153,6 @@ fn inverse_difference(y: &Array1<f64>) -> Array1<f64> {
   x
 }
 
-#[cfg(feature = "f32")]
 fn inverse_difference_f32(y: &Array1<f32>) -> Array1<f32> {
   let n = y.len();
   if n == 0 {

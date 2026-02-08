@@ -22,7 +22,6 @@ pub struct FOU<T> {
   cuda: bool,
 }
 
-#[cfg(feature = "f64")]
 impl FOU<f64> {
   #[must_use]
   pub fn new(
@@ -66,7 +65,6 @@ impl FOU<f64> {
   }
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FOU<f64> {
   /// Sample the Fractional Ornstein-Uhlenbeck (FOU) process
   fn sample(&self) -> Array1<f64> {
@@ -124,7 +122,6 @@ impl SamplingExt<f64> for FOU<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl FOU<f32> {
   #[must_use]
   pub fn new(
@@ -159,7 +156,6 @@ impl FOU<f32> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for FOU<f32> {
   /// Sample the Fractional Ornstein-Uhlenbeck (FOU) process
   fn sample(&self) -> Array1<f32> {

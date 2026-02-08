@@ -65,8 +65,9 @@ impl<T: Float> Process<T> for OU<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use super::OU;
   use crate::plot_1d;
+  use crate::stochastic::Process;
   use crate::stochastic::N;
   use crate::stochastic::X0;
 
@@ -91,7 +92,7 @@ mod tests {
     plot_1d!(ou.sample(), "Fractional Ornstein-Uhlenbeck (FOU) Process");
   }
 
-  #[cfg(all(feature = "simd", feature = "f32"))]
+  #[cfg(all(feature = "simd"))]
   #[test]
   fn sample_simd() {
     use std::time::Instant;

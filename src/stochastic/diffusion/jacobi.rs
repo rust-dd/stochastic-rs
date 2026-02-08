@@ -16,7 +16,6 @@ pub struct Jacobi<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for Jacobi<f64> {
   /// Sample the Jacobi process
   fn sample(&self) -> Array1<f64> {
@@ -57,7 +56,6 @@ impl SamplingExt<f64> for Jacobi<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for Jacobi<f32> {
   /// Sample the Jacobi process
   fn sample(&self) -> Array1<f32> {

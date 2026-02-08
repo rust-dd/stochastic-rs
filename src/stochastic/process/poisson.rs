@@ -18,7 +18,6 @@ pub struct Poisson<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for Poisson<f64> {
   fn sample(&self) -> Array1<f64> {
     if let Some(n) = self.n {
@@ -60,7 +59,6 @@ impl SamplingExt<f64> for Poisson<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for Poisson<f32> {
   fn sample(&self) -> Array1<f32> {
     if let Some(n) = self.n {

@@ -26,7 +26,6 @@ pub struct FCIR<T> {
   cuda: bool,
 }
 
-#[cfg(feature = "f64")]
 impl FCIR<f64> {
   #[must_use]
   pub fn new(
@@ -59,7 +58,6 @@ impl FCIR<f64> {
   }
 }
 
-#[cfg(feature = "f64")]
 impl FCIR<f64> {
   fn fgn(&self) -> Array1<f64> {
     #[cfg(feature = "cuda")]
@@ -75,7 +73,6 @@ impl FCIR<f64> {
   }
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FCIR<f64> {
   /// Sample the Fractional Cox-Ingersoll-Ross (FCIR) process
   fn sample(&self) -> Array1<f64> {
@@ -155,7 +152,6 @@ impl SamplingExt<f64> for FCIR<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl FCIR<f32> {
   #[must_use]
   pub fn new(
@@ -188,14 +184,12 @@ impl FCIR<f32> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl FCIR<f32> {
   fn fgn(&self) -> Array1<f32> {
     self.fgn.sample()
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for FCIR<f32> {
   fn sample(&self) -> Array1<f32> {
     assert!(

@@ -48,7 +48,6 @@ pub struct WuZhangD<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingVExt<f64> for WuZhangD<f64> {
   fn sample(&self) -> Array2<f64> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
@@ -90,7 +89,6 @@ impl SamplingVExt<f64> for WuZhangD<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingVExt<f32> for WuZhangD<f32> {
   fn sample(&self) -> Array2<f32> {
     let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;

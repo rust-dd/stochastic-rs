@@ -22,7 +22,6 @@ pub struct FJacobi<T> {
   cuda: bool,
 }
 
-#[cfg(feature = "f64")]
 impl FJacobi<f64> {
   #[must_use]
   pub fn new(
@@ -66,7 +65,6 @@ impl FJacobi<f64> {
   }
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FJacobi<f64> {
   /// Sample the Fractional Jacobi process
   fn sample(&self) -> Array1<f64> {
@@ -150,7 +148,6 @@ impl SamplingExt<f64> for FJacobi<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl FJacobi<f32> {
   #[must_use]
   pub fn new(
@@ -185,7 +182,6 @@ impl FJacobi<f32> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for FJacobi<f32> {
   fn sample(&self) -> Array1<f32> {
     assert!(self.alpha > 0.0, "alpha must be positive");

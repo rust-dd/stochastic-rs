@@ -20,7 +20,6 @@ pub struct CIR<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for CIR<f64> {
   /// Sample the Cox-Ingersoll-Ross (CIR) process
   fn sample(&self) -> Array1<f64> {
@@ -59,7 +58,6 @@ impl SamplingExt<f64> for CIR<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for CIR<f32> {
   /// Sample the Cox-Ingersoll-Ross (CIR) process
   fn sample(&self) -> Array1<f32> {

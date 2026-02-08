@@ -130,6 +130,7 @@ pub trait Process<T: Float>: Send + Sync {
 
   fn sample(&self) -> Self::Output;
 
+  #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Self::Output;
 
   fn n(&self) -> usize;

@@ -34,7 +34,6 @@ pub struct GARCH<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for GARCH<f64> {
   fn sample(&self) -> Array1<f64> {
     let p = self.alpha.len();
@@ -134,7 +133,6 @@ impl SamplingExt<f64> for GARCH<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for GARCH<f32> {
   fn sample(&self) -> Array1<f32> {
     let p = self.alpha.len();

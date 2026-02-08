@@ -22,7 +22,6 @@ pub struct CEV<T> {
   malliavin: Mutex<Option<Array1<T>>>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for CEV<f64> {
   /// Sample the CEV process
   fn sample(&self) -> Array1<f64> {
@@ -83,7 +82,6 @@ impl SamplingExt<f64> for CEV<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for CEV<f32> {
   /// Sample the CEV process
   fn sample(&self) -> Array1<f32> {

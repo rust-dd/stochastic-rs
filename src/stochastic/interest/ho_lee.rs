@@ -18,7 +18,6 @@ pub struct HoLee<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for HoLee<f64> {
   fn sample(&self) -> Array1<f64> {
     assert!(
@@ -54,7 +53,6 @@ impl SamplingExt<f64> for HoLee<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for HoLee<f32> {
   fn sample(&self) -> Array1<f32> {
     assert!(

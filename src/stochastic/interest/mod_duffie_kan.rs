@@ -76,7 +76,6 @@ pub struct DuffieKanJumpExp<T> {
   pub cgns: CGNS<T>,
 }
 
-#[cfg(feature = "f64")]
 impl Sampling2DExt<f64> for DuffieKanJumpExp<f64> {
   fn sample(&self) -> [Array1<f64>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();
@@ -124,7 +123,6 @@ impl Sampling2DExt<f64> for DuffieKanJumpExp<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl Sampling2DExt<f32> for DuffieKanJumpExp<f32> {
   fn sample(&self) -> [Array1<f32>; 2] {
     let [cgn1, cgn2] = self.cgns.sample();

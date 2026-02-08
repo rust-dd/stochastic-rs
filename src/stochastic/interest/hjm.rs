@@ -22,7 +22,6 @@ pub struct HJM<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl Sampling3DExt<f64> for HJM<f64> {
   fn sample(&self) -> [Array1<f64>; 3] {
     let t_max = self.t.unwrap_or(1.0);
@@ -56,7 +55,6 @@ impl Sampling3DExt<f64> for HJM<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl Sampling3DExt<f32> for HJM<f32> {
   fn sample(&self) -> [Array1<f32>; 3] {
     let t_max = self.t.unwrap_or(1.0);

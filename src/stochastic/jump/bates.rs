@@ -82,7 +82,6 @@ where
   }
 }
 
-#[cfg(feature = "f32")]
 impl<D> Sampling2DExt<f32> for Bates1996<D, f32>
 where
   D: Distribution<f32> + Send + Sync,

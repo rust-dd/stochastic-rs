@@ -72,7 +72,6 @@ pub struct FGN<T> {
   pub fft_handler: Arc<FftHandler<T>>,
 }
 
-#[cfg(feature = "f64")]
 impl FGN<f64> {
   #[must_use]
   pub fn new(hurst: f64, n: usize, t: Option<f64>, m: Option<usize>) -> Self {
@@ -145,7 +144,6 @@ impl FGN<f64> {
   }
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for FGN<f64> {
   fn sample(&self) -> Array1<f64> {
     // Generate all random numbers at once for correct statistical properties
@@ -306,7 +304,6 @@ impl SamplingExt<f64> for FGN<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl FGN<f32> {
   #[must_use]
   pub fn new(hurst: f32, n: usize, t: Option<f32>, m: Option<usize>) -> Self {
@@ -349,7 +346,6 @@ impl FGN<f32> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for FGN<f32> {
   fn sample(&self) -> Array1<f32> {
     // Generate all random numbers at once for correct statistical properties

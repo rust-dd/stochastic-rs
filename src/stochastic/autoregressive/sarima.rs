@@ -65,7 +65,6 @@ pub struct SARIMA<T> {
   pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
 impl SamplingExt<f64> for SARIMA<f64> {
   fn sample(&self) -> Array1<f64> {
     // Generate white noise for dimension n
@@ -219,7 +218,6 @@ impl SamplingExt<f64> for SARIMA<f64> {
   }
 }
 
-#[cfg(feature = "f32")]
 impl SamplingExt<f32> for SARIMA<f32> {
   fn sample(&self) -> Array1<f32> {
     let noise =
@@ -379,7 +377,6 @@ fn inverse_seasonal_difference(y: &Array1<f64>, s: usize) -> Array1<f64> {
   x
 }
 
-#[cfg(feature = "f32")]
 fn inverse_difference_f32(y: &Array1<f32>) -> Array1<f32> {
   let n = y.len();
   if n == 0 {
@@ -393,7 +390,6 @@ fn inverse_difference_f32(y: &Array1<f32>) -> Array1<f32> {
   x
 }
 
-#[cfg(feature = "f32")]
 fn inverse_seasonal_difference_f32(y: &Array1<f32>, s: usize) -> Array1<f32> {
   let n = y.len();
   if n == 0 || s == 0 {

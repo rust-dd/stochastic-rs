@@ -61,7 +61,6 @@ where
   }
 }
 
-#[cfg(feature = "f32")]
 impl<D> SamplingExt<f32> for KOU<D, f32>
 where
   D: Distribution<f32> + Send + Sync,
