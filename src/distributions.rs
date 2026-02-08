@@ -6,6 +6,7 @@ pub mod beta;
 pub mod binomial;
 pub mod cauchy;
 pub mod chi_square;
+pub mod complex;
 pub mod exp;
 pub mod gamma;
 pub mod geometric;

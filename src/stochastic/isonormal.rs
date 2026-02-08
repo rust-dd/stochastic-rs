@@ -11,7 +11,7 @@ use num_complex::Complex64;
 use rand_distr::StandardNormal;
 use statrs::function::gamma::gamma;
 
-use crate::stats::complex_distr::ComplexDistribution;
+use crate::distributions::complex::ComplexDistribution;
 
 /// Isonormal process
 ///
