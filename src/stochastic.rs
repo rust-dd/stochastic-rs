@@ -56,6 +56,8 @@ pub mod sde;
 pub mod sheet;
 pub mod volatility;
 
+use std::fmt::Debug;
+use std::ops::AddAssign;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -67,8 +69,11 @@ use ndarray::parallel::prelude::*;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
+use ndarray::ScalarOperand;
+use ndarray_rand::RandomExt;
 use ndrustfft::Zero;
 use num_complex::Complex64;
+use rand_distr::Normal;
 
 /// Default number of time steps
 pub const N: usize = 1000;
@@ -78,6 +83,45 @@ pub const X0: f64 = 0.5;
 pub const S0: f64 = 100.0;
 /// Default strike price
 pub const K: f64 = 100.0;
+
+pub trait Float:
+  num_traits::Float + Zero + Default + Debug + Send + Sync + ScalarOperand + AddAssign + 'static
+{
+  fn from_usize(v: usize) -> Self;
+  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
+}
+
+impl Float for f64 {
+  fn from_usize(v: usize) -> Self {
+    v as f64
+  }
+
+  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
+    Array1::random(n, Normal::new(mean, std_dev).unwrap())
+  }
+}
+
+impl Float for f32 {
+  fn from_usize(v: usize) -> Self {
+    v as f32
+  }
+
+  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
+    Array1::random(n, Normal::new(mean, std_dev).unwrap())
+  }
+}
+
+pub trait Process<T: Float>: Send + Sync {
+  type Output: Send;
+
+  fn sample(&self) -> Self::Output;
+
+  fn n(&self) -> usize;
+
+  fn sample_par(&self, m: usize) -> Vec<Self::Output> {
+    (0..m).into_par_iter().map(|_| self.sample()).collect()
+  }
+}
 
 /// Trait for 1D sampling of stochastic processes
 pub trait SamplingExt<T: Clone + Send + Sync + Zero>: Send + Sync {
