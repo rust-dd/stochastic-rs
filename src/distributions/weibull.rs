@@ -25,21 +25,23 @@ impl<T: SimdFloat> SimdWeibull<T> {
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
     let lam = T::splat(self.lambda);
-    let inv_k = T::one() / self.k;
+    let inv_k = T::splat(T::one() / self.k);
     let mut u = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);
     let eps = T::splat(T::min_positive_val());
     for chunk in &mut chunks {
       T::fill_uniform(rng, &mut u);
       let v = T::simd_max(T::simd_from_array(u), eps);
-      let x = T::simd_powf(-(T::simd_ln(v)), inv_k) * lam;
+      let neg_ln = -(T::simd_ln(v));
+      let x = T::simd_exp(T::simd_ln(T::simd_max(neg_ln, eps)) * inv_k) * lam;
       chunk.copy_from_slice(&T::simd_to_array(x));
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
       T::fill_uniform(rng, &mut u);
       let v = T::simd_max(T::simd_from_array(u), eps);
-      let x = T::simd_to_array(T::simd_powf(-(T::simd_ln(v)), inv_k) * lam);
+      let neg_ln = -(T::simd_ln(v));
+      let x = T::simd_to_array(T::simd_exp(T::simd_ln(T::simd_max(neg_ln, eps)) * inv_k) * lam);
       rem.copy_from_slice(&x[..rem.len()]);
     }
   }

@@ -21,19 +21,27 @@ impl<T: PrimInt> SimdPoisson<T> {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    for x in out.iter_mut() {
-      let l = (-self.lambda).exp();
-      let mut k = 0u32;
-      let mut p = 1.0f64;
-      loop {
-        k += 1;
-        let u: f64 = rng.random_range(0.0..1.0);
-        p *= u;
-        if p <= l {
-          break;
-        }
+    let mut cdf = Vec::new();
+    let mut pmf = (-self.lambda).exp();
+    let mut cum = pmf;
+    cdf.push(cum);
+    loop {
+      pmf *= self.lambda / (cdf.len() as f64);
+      cum += pmf;
+      if cum >= 1.0 - 1e-15 {
+        cdf.push(1.0);
+        break;
       }
-      *x = num_traits::cast(k - 1).unwrap_or(T::zero());
+      cdf.push(cum);
+    }
+
+    for x in out.iter_mut() {
+      let u: f64 = rng.random_range(0.0..1.0);
+      let mut k = 0;
+      while k < cdf.len() && u > cdf[k] {
+        k += 1;
+      }
+      *x = num_traits::cast(k).unwrap_or(T::zero());
     }
   }
 
