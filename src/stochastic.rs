@@ -57,8 +57,6 @@ pub mod volatility;
 
 use std::fmt::Debug;
 use std::ops::AddAssign;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 #[cfg(feature = "cuda")]
 use anyhow::Result;
@@ -66,12 +64,11 @@ use anyhow::Result;
 use either::Either;
 use ndarray::parallel::prelude::*;
 use ndarray::Array1;
-use ndarray::Array2;
-use ndarray::Axis;
 use ndarray::ScalarOperand;
 use ndarray_rand::RandomExt;
 use ndrustfft::Zero;
 use num_complex::Complex64;
+use rand::Rng;
 use rand_distr::Normal;
 
 use crate::distributions::normal::SimdNormal;
@@ -128,6 +125,8 @@ pub trait Process<T: Float>: Send + Sync {
   type Output: Send;
 
   fn sample(&self) -> Self::Output;
+
+  fn sample_with_rng(&self, rng: &mut impl Rng) -> Self::Output;
 
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Self::Output;
