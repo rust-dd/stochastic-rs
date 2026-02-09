@@ -1,16 +1,14 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::Sampling2DExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// Fouque slow–fast OU system
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
-#[derive(ImplNew)]
-pub struct FouqueOU2D<T> {
+pub struct FouqueOU2D<T: Float> {
   pub kappa: T,
   pub theta: T,
   pub epsilon: T,
@@ -19,25 +17,64 @@ pub struct FouqueOU2D<T> {
   pub x0: Option<T>,
   pub y0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
 }
 
-impl Sampling2DExt<f64> for FouqueOU2D<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
-    assert!(self.epsilon > 0.0, "epsilon must be positive");
+impl<T: Float> FouqueOU2D<T> {
+  fn new(
+    kappa: T,
+    theta: T,
+    epsilon: T,
+    alpha: T,
+    n: usize,
+    x0: Option<T>,
+    y0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
+    assert!(epsilon > T::zero(), "epsilon must be positive");
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn_x = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn_y = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+    Self {
+      kappa,
+      theta,
+      epsilon,
+      alpha,
+      n,
+      x0,
+      y0,
+      t,
+    }
+  }
+}
 
-    let mut x = Array1::<f64>::zeros(self.n);
-    let mut y = Array1::<f64>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0);
-    y[0] = self.y0.unwrap_or(0.0);
+impl<T: Float> Process<T> for FouqueOU2D<T> {
+  type Output = [Array1<T>; 2];
+  type Noise = Gn<T>;
+
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.euler_maruyama(|gn| gn.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+    let gn_x = noise_fn(&gn);
+    let gn_y = noise_fn(&gn);
+
+    let mut x = Array1::<T>::zeros(self.n);
+    let mut y = Array1::<T>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(T::zero());
+    y[0] = self.y0.unwrap_or(T::zero());
 
     let eps = self.epsilon;
-    let sqrt_eps_inv = 1.0 / eps.sqrt();
-    let eps_inv = 1.0 / eps;
+    let sqrt_eps_inv = T::one() / eps.sqrt();
+    let eps_inv = T::one() / eps;
 
     for i in 1..self.n {
       // Slow OU
@@ -48,60 +85,17 @@ impl Sampling2DExt<f64> for FouqueOU2D<f64> {
 
     [x, y]
   }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl Sampling2DExt<f32> for FouqueOU2D<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    assert!(self.epsilon > 0.0, "epsilon must be positive");
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn_x = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn_y = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut x = Array1::<f32>::zeros(self.n);
-    let mut y = Array1::<f32>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0);
-    y[0] = self.y0.unwrap_or(0.0);
-
-    let eps = self.epsilon;
-    let sqrt_eps_inv = 1.0 / eps.sqrt();
-    let eps_inv = 1.0 / eps;
-
-    for i in 1..self.n {
-      x[i] = x[i - 1] + self.kappa * (self.theta - x[i - 1]) * dt + eps * gn_x[i - 1];
-      y[i] = y[i - 1] + eps_inv * (self.alpha - y[i - 1]) * dt + sqrt_eps_inv * gn_y[i - 1];
-    }
-
-    [x, y]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::stochastic::Sampling2DExt;
   use crate::stochastic::N;
   use crate::stochastic::X0;
 
   #[test]
   fn fouque_length_equals_n() {
-    let proc = FouqueOU2D::new(0.5, 1.0, 0.1, 0.0, N, Some(X0), Some(X0), Some(1.0), None);
+    let proc = FouqueOU2D::new(0.5, 1.0, 0.1, 0.0, N, Some(X0), Some(X0), Some(1.0));
     let [x, y] = proc.sample();
     assert_eq!(x.len(), N);
     assert_eq!(y.len(), N);
@@ -109,7 +103,7 @@ mod tests {
 
   #[test]
   fn fouque_starts_with_x0_y0() {
-    let proc = FouqueOU2D::new(0.5, 1.0, 0.1, 0.0, N, Some(X0), Some(X0), Some(1.0), None);
+    let proc = FouqueOU2D::new(0.5, 1.0, 0.1, 0.0, N, Some(X0), Some(X0), Some(1.0));
     let [x, y] = proc.sample();
     assert_eq!(x[0], X0);
     assert_eq!(y[0], X0);

@@ -1,14 +1,12 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
-#[derive(ImplNew)]
-pub struct Quadratic<T> {
+pub struct Quadratic<T: Float> {
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -16,63 +14,45 @@ pub struct Quadratic<T> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for Quadratic<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut x = Array1::<f64>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      let xi = x[i - 1];
-      let drift = (self.alpha + self.beta * xi + self.gamma * xi * xi) * dt;
-      let diff = self.sigma * xi * gn[i - 1];
-      x[i] = xi + drift + diff;
+impl<T: Float> Quadratic<T> {
+  pub fn new(alpha: T, beta: T, gamma: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Quadratic {
+      alpha,
+      beta,
+      gamma,
+      sigma,
+      n,
+      x0,
+      t,
     }
-
-    x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl SamplingExt<f32> for Quadratic<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+impl<T: Float> Process<T> for Quadratic<T> {
+  type Output = Array1<T>;
+  type Noise = Gn<T>;
 
-    let mut x = Array1::<f32>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      let xi = x[i - 1];
-      let drift = (self.alpha + self.beta * xi + self.gamma * xi * xi) * dt;
-      let diff = self.sigma * xi * gn[i - 1];
-      x[i] = xi + drift + diff;
-    }
-
-    x
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
   }
 
   #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+    let noise = noise_fn(&gn);
 
-    let mut x = Array1::<f32>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0);
+    let mut x = Array1::<T>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       let xi = x[i - 1];
@@ -82,14 +62,6 @@ impl SamplingExt<f32> for Quadratic<f32> {
     }
 
     x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
@@ -97,25 +69,24 @@ impl SamplingExt<f32> for Quadratic<f32> {
 mod tests {
   use super::*;
   use crate::plot_1d;
-  use crate::stochastic::SamplingExt;
   use crate::stochastic::N;
   use crate::stochastic::X0;
 
   #[test]
   fn quadratic_length_equals_n() {
-    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0), None);
+    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0));
     assert_eq!(proc.sample().len(), N);
   }
 
   #[test]
   fn quadratic_starts_with_x0() {
-    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0), None);
+    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0));
     assert_eq!(proc.sample()[0], X0);
   }
 
   #[test]
   fn quadratic_plot() {
-    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0), None);
+    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0));
     plot_1d!(proc.sample(), "Quadratic diffusion");
   }
 }

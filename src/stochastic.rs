@@ -139,7 +139,10 @@ pub trait Process<T: Float>: Send + Sync {
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self) -> Self::Output;
 
-  fn euler_maruyama(&self, _noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
+  fn euler_maruyama(
+    &self,
+    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
     unimplemented!()
   }
 }

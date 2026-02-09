@@ -40,7 +40,10 @@ impl<T: Float> Process<T> for CEV<T> {
     self.euler_maruyama(|gn| gn.sample_simd())
   }
 
-  fn euler_maruyama(&self, noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
     let gn = Gn::new(self.n - 1, self.t);
     let dt = gn.dt();
     let noise = noise_fn(&gn);
