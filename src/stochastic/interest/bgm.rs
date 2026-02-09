@@ -11,6 +11,7 @@
 //! - `n`: Number of time steps in the simulation.
 //! - `m`: Batch size for parallel sampling (if used).
 
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -18,6 +19,7 @@ use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
+#[derive(ImplNew)]
 pub struct BGM<T: Float> {
   /// Drift/volatility multiplier for each forward rate.
   pub lambda: Array1<T>,
@@ -29,18 +31,6 @@ pub struct BGM<T: Float> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
-}
-
-impl<T: Float> BGM<T> {
-  pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize) -> Self {
-    Self {
-      lambda,
-      x0,
-      xn,
-      t,
-      n,
-    }
-  }
 }
 
 impl<T: Float> Process<T> for BGM<T> {

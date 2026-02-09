@@ -1,3 +1,4 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -6,6 +7,7 @@ use crate::stochastic::Process;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
+#[derive(ImplNew)]
 pub struct FellerLogistic<T: Float> {
   pub kappa: T,
   pub theta: T,
@@ -15,29 +17,6 @@ pub struct FellerLogistic<T: Float> {
   pub t: Option<T>,
   /// If true, reflect at 0; otherwise clamp at 0
   pub use_sym: Option<bool>,
-}
-
-impl<T: Float> FellerLogistic<T> {
-  /// Create a new Feller–logistic diffusion process
-  pub fn new(
-    kappa: T,
-    theta: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    use_sym: Option<bool>,
-  ) -> Self {
-    Self {
-      kappa,
-      theta,
-      sigma,
-      n,
-      x0,
-      t,
-      use_sym,
-    }
-  }
 }
 
 impl<T: Float> Process<T> for FellerLogistic<T> {

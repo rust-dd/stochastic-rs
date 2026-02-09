@@ -1,17 +1,13 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
+#[derive(ImplNew)]
 pub struct Gn<T: Float> {
   pub n: usize,
   pub t: Option<T>,
-}
-
-impl<T: Float> Gn<T> {
-  pub fn new(n: usize, t: Option<T>) -> Self {
-    Self { n, t }
-  }
 }
 
 impl<T: Float> Process<T> for Gn<T> {

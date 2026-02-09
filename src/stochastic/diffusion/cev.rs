@@ -1,9 +1,11 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
+#[derive(ImplNew)]
 pub struct CEV<T: Float> {
   pub mu: T,
   pub sigma: T,
@@ -11,19 +13,6 @@ pub struct CEV<T: Float> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-}
-
-impl<T: Float> CEV<T> {
-  pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      mu,
-      sigma,
-      gamma,
-      n,
-      x0,
-      t,
-    }
-  }
 }
 
 impl<T: Float> Process<T> for CEV<T> {

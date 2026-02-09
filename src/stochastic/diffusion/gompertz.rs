@@ -1,3 +1,4 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -6,6 +7,7 @@ use crate::stochastic::Process;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
+#[derive(ImplNew)]
 pub struct Gompertz<T: Float> {
   pub a: T,
   pub b: T,
@@ -13,19 +15,6 @@ pub struct Gompertz<T: Float> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-}
-
-impl<T: Float> Gompertz<T> {
-  pub fn new(a: T, b: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      a,
-      b,
-      sigma,
-      n,
-      x0,
-      t,
-    }
-  }
 }
 
 impl<T: Float> Process<T> for Gompertz<T> {

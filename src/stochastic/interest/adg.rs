@@ -1,3 +1,4 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -6,6 +7,7 @@ use crate::stochastic::Float;
 use crate::stochastic::Process;
 
 /// Ahn-Dittmar-Gallant (ADG) model
+#[derive(ImplNew)]
 pub struct ADG<T: Float> {
   pub k: fn(T) -> T,
   pub theta: fn(T) -> T,
@@ -17,34 +19,6 @@ pub struct ADG<T: Float> {
   pub xn: usize,
   pub x0: Array1<T>,
   pub t: Option<T>,
-}
-
-impl<T: Float> ADG<T> {
-  pub fn new(
-    k: fn(T) -> T,
-    theta: fn(T) -> T,
-    sigma: Array1<T>,
-    phi: fn(T) -> T,
-    b: fn(T) -> T,
-    c: fn(T) -> T,
-    n: usize,
-    xn: usize,
-    x0: Array1<T>,
-    t: Option<T>,
-  ) -> Self {
-    Self {
-      k,
-      theta,
-      sigma,
-      phi,
-      b,
-      c,
-      n,
-      xn,
-      x0,
-      t,
-    }
-  }
 }
 
 impl<T: Float> Process<T> for ADG<T> {

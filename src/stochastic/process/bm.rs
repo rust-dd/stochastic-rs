@@ -1,9 +1,11 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
+#[derive(ImplNew)]
 pub struct BM<T: Float> {
   pub n: usize,
   pub t: Option<T>,

@@ -1,9 +1,11 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
+#[derive(ImplNew)]
 pub struct OU<T> {
   pub theta: T,
   pub mu: T,
@@ -12,22 +14,6 @@ pub struct OU<T> {
   pub x0: Option<T>,
   pub t: Option<T>,
 }
-
-impl<T: Float> OU<T> {
-  /// Create a new Ornstein-Uhlenbeck (OU) process
-  pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      theta,
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-    }
-  }
-}
-
-impl<T: Float> OU<T> {}
 
 impl<T: Float> Process<T> for OU<T> {
   type Output = Array1<T>;

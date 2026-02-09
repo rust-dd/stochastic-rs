@@ -1,3 +1,4 @@
+use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use num_complex::Complex64;
 use statrs::distribution::Continuous;
@@ -12,26 +13,14 @@ use crate::stochastic::DistributionExt;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
+#[derive(ImplNew)]
 pub struct GBM<T> {
   pub mu: T,
   pub sigma: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub distribution: Option<LogNormal>,
-}
-
-impl<T: Float> GBM<T> {
-  pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      distribution: None,
-    }
-  }
+  distribution: Option<LogNormal>,
 }
 
 impl<T: Float> Process<T> for GBM<T> {
