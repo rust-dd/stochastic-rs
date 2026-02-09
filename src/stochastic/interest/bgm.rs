@@ -11,16 +11,14 @@
 //! - `n`: Number of time steps in the simulation.
 //! - `m`: Batch size for parallel sampling (if used).
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingVExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct BGM<T> {
+pub struct BGM<T: Float> {
   /// Drift/volatility multiplier for each forward rate.
   pub lambda: Array1<T>,
   /// Initial forward rates for each path.
@@ -31,21 +29,49 @@ pub struct BGM<T> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
-  /// Batch size for parallel sampling (if used).
-  pub m: Option<usize>,
 }
 
-impl SamplingVExt<f64> for BGM<f64> {
-  fn sample(&self) -> Array2<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let mut fwd = Array2::<f64>::zeros((self.xn, self.n));
+impl<T: Float> BGM<T> {
+  pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize) -> Self {
+    Self {
+      lambda,
+      x0,
+      xn,
+      t,
+      n,
+    }
+  }
+}
+
+impl<T: Float> Process<T> for BGM<T> {
+  type Output = Array2<T>;
+  type Noise = Gn<T>;
+
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+
+    let mut fwd = Array2::<T>::zeros((self.xn, self.n));
 
     for i in 0..self.xn {
       fwd[(i, 0)] = self.x0[i];
     }
 
     for i in 0..self.xn {
-      let gn = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+      let gn = noise_fn(&gn);
+
       for j in 1..self.n {
         let f_old = fwd[(i, j - 1)];
         fwd[(i, j)] = f_old + f_old * self.lambda[i] * gn[j - 1];
@@ -53,42 +79,5 @@ impl SamplingVExt<f64> for BGM<f64> {
     }
 
     fwd
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl SamplingVExt<f32> for BGM<f32> {
-  fn sample(&self) -> Array2<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let mut fwd = Array2::<f32>::zeros((self.xn, self.n));
-
-    for i in 0..self.xn {
-      fwd[(i, 0)] = self.x0[i];
-    }
-
-    for i in 0..self.xn {
-      let gn = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-      for j in 1..self.n {
-        let f_old = fwd[(i, j - 1)];
-        fwd[(i, j)] = f_old + f_old * self.lambda[i] * gn[j - 1];
-      }
-    }
-
-    fwd
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

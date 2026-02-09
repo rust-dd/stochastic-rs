@@ -51,7 +51,7 @@ impl<T: Float> Process<T> for Jacobi<T> {
   ) -> Self::Output {
     let gn = Gn::new(self.n - 1, self.t);
     let dt = gn.dt();
-    let noise = noise_fn(&gn);
+    let gn = noise_fn(&gn);
 
     let mut jacobi = Array1::<T>::zeros(self.n);
     jacobi[0] = self.x0.unwrap_or(T::zero());

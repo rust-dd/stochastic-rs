@@ -48,13 +48,13 @@ impl<T: Float> Process<T> for OU<T> {
   ) -> Self::Output {
     let gn = Gn::new(self.n - 1, self.t);
     let dt = gn.dt();
-    let noise = noise_fn(&gn);
+    let gn = noise_fn(&gn);
 
     let mut ou = Array1::<T>::zeros(self.n);
     ou[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      ou[i] = ou[i - 1] + self.theta * (self.mu - ou[i - 1]) * dt + self.sigma * noise[i - 1]
+      ou[i] = ou[i - 1] + self.theta * (self.mu - ou[i - 1]) * dt + self.sigma * gn[i - 1]
     }
 
     ou

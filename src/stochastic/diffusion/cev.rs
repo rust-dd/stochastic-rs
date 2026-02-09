@@ -46,7 +46,7 @@ impl<T: Float> Process<T> for CEV<T> {
   ) -> Self::Output {
     let gn = Gn::new(self.n - 1, self.t);
     let dt = gn.dt();
-    let noise = noise_fn(&gn);
+    let gn = noise_fn(&gn);
 
     let mut cev = Array1::<T>::zeros(self.n);
     cev[0] = self.x0.unwrap_or(T::zero());
