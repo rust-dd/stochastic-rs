@@ -67,23 +67,10 @@ impl<T: Float> Heston<T> {
 
 impl<T: Float> Process<T> for Heston<T> {
   type Output = [Array1<T>; 2];
-  type Noise = CGNS<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = noise_fn(&self.cgns);
+    let [cgn1, cgn2] = &self.cgns.sample();
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
@@ -97,8 +84,8 @@ impl<T: Float> Process<T> for Heston<T> {
       let dv = self.kappa * (self.theta - v[i - 1]) * dt
         + self.sigma
           * v[i - 1].powf(match self.pow {
-            HestonPow::Sqrt => 0.5.into(),
-            HestonPow::ThreeHalves => 1.5.into(),
+            HestonPow::Sqrt => T::from(0.5).unwrap(),
+            HestonPow::ThreeHalves => T::from(1.5).unwrap(),
           })
           * cgn2[i - 1];
 
@@ -122,31 +109,32 @@ impl<T: Float> Heston<T> {
   /// D_r v_t = \sigma v_t^{3/2} / 2 * exp(-(\kappa \theta / 2 + 3 \sigma^2 / 8) * v_t * dt)
   pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
     let [s, v] = self.sample();
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize(self.n - 1);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize(self.n - 1).unwrap();
 
     let mut det_term = Array1::zeros(self.n);
     let mut malliavin = Array1::zeros(self.n);
+    let f2 = T::from_usize(2).unwrap();
 
     for i in 0..self.n {
       match self.pow {
         HestonPow::Sqrt => {
-          det_term[i] = ((-(self.kappa * self.theta / T::from_usize(2)
-            - self.sigma.powi(2) / T::from_usize(8))
+          det_term[i] = ((-(self.kappa * self.theta / f2
+            - self.sigma.powi(2) / T::from_usize(8).unwrap())
             * (T::one() / *v.last().unwrap())
-            - self.kappa / T::from_usize(2))
-            * (T::from_usize(self.n - i) * dt))
+            - self.kappa / f2)
+            * (T::from_usize(self.n - i).unwrap() * dt))
             .exp();
-          malliavin[i] = (self.sigma * v.last().unwrap().sqrt() / T::from_usize(2)) * det_term[i];
+          malliavin[i] = (self.sigma * v.last().unwrap().sqrt() / f2) * det_term[i];
         }
         HestonPow::ThreeHalves => {
-          det_term[i] = ((-(self.kappa * self.theta / T::from_usize(2)
-            + T::from_usize(3) * self.sigma.powi(2) / T::from_usize(8))
+          det_term[i] = ((-(self.kappa * self.theta / f2
+            + T::from_usize(3).unwrap() * self.sigma.powi(2) / T::from_usize(8).unwrap())
             * *v.last().unwrap()
-            - (self.kappa * self.theta) / T::from_usize(2))
-            * (T::from_usize(self.n - i) * dt))
+            - (self.kappa * self.theta) / f2)
+            * (T::from_usize(self.n - i).unwrap() * dt))
             .exp();
           malliavin[i] =
-            (self.sigma * v.last().unwrap().powf(1.5.into()) / T::from_usize(2)) * det_term[i];
+            (self.sigma * v.last().unwrap().powf(T::from(1.5).unwrap()) / f2) * det_term[i];
         }
       };
     }
@@ -179,7 +167,7 @@ mod tests {
       None,
     );
     let process = heston.sample();
-    let malliavin = heston.malliavin();
+    let malliavin = heston.malliavin_of_vol();
     plot_2d!(
       process[1],
       "Heston volatility process",

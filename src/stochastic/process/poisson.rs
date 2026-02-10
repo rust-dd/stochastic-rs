@@ -28,12 +28,8 @@ impl<T: Float> Poisson<T> {
 
 impl<T: Float> Process<T> for Poisson<T> {
   type Output = Array1<T>;
-  type Noise = Self;
 
   fn sample(&self) -> Self::Output {
-    #[cfg(not(feature = "simd"))]
-    let distr = Exp::new(T::one() / self.lambda).unwrap();
-    #[cfg(feature = "simd")]
     let distr = SimdExp::new(T::one() / self.lambda);
 
     if let Some(n) = self.n {
@@ -62,17 +58,5 @@ impl<T: Float> Process<T> for Poisson<T> {
     } else {
       panic!("n or t_max must be provided");
     }
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.sample()
-  }
-
-  fn euler_maruyama(
-    &self,
-    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    unimplemented!()
   }
 }

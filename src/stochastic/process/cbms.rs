@@ -14,7 +14,7 @@ pub struct CBMS<T: Float> {
 impl<T: Float> CBMS<T> {
   pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (-1.0..=1.0).contains(&rho),
+      (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
@@ -29,22 +29,9 @@ impl<T: Float> CBMS<T> {
 
 impl<T: Float> Process<T> for CBMS<T> {
   type Output = [Array1<T>; 2];
-  type Noise = CGNS<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    let [cgn1, cgn2] = noise_fn(&self.cgns);
+    let [cgn1, cgn2] = &self.cgns.sample();
 
     let mut bm1 = Array1::<T>::zeros(self.n);
     let mut bm2 = Array1::<T>::zeros(self.n);

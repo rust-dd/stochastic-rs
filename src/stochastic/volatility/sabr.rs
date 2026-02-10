@@ -40,22 +40,9 @@ impl<T: Float> SABR<T> {
 
 impl<T: Float> Process<T> for SABR<T> {
   type Output = [Array1<T>; 2];
-  type Noise = CGNS<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    let [cgn1, cgn2] = noise_fn(&self.cgns);
+    let [cgn1, cgn2] = &self.cgns.sample();
 
     let mut f = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
@@ -66,20 +53,6 @@ impl<T: Float> Process<T> for SABR<T> {
     for i in 1..self.n {
       f[i] = f[i - 1] + v[i - 1] * f[i - 1].powf(self.beta) * cgn1[i - 1];
       v[i] = v[i - 1] + self.alpha * v[i - 1] * cgn2[i - 1];
-    }
-
-    if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
-      // Only volatility Malliavin derivative is supported
-      let mut malliavin_of_vol = Array1::<T>::zeros(self.n);
-
-      for i in 0..self.n {
-        malliavin_of_vol[i] = self.alpha * *v.last().unwrap();
-      }
-
-      let _ = std::mem::replace(
-        &mut *self.malliavin_of_vol.lock().unwrap(),
-        Some(malliavin_of_vol),
-      );
     }
 
     [f, v]
@@ -114,7 +87,7 @@ mod tests {
   fn sabr_malliavin() {
     let sabr = SABR::new(0.5, 0.5, 0.5, N, Some(1.0), Some(1.0), Some(1.0));
     let process = sabr.sample();
-    let malliavin = sabr.malliavin();
+    let malliavin = sabr.malliavin_of_vol();
     plot_2d!(
       process[1],
       "SABR volatility process",

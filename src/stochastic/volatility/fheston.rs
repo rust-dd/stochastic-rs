@@ -29,7 +29,6 @@ impl<T: Float> RoughHeston<T> {
     c2: Option<T>,
     t: Option<T>,
     n: usize,
-    gn: Gn<T>,
   ) -> Self {
     RoughHeston {
       hurst,
@@ -48,23 +47,10 @@ impl<T: Float> RoughHeston<T> {
 
 impl<T: Float> Process<T> for RoughHeston<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = self.gn.sample();
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::zeros(self.n);
@@ -75,20 +61,21 @@ impl<T: Float> Process<T> for RoughHeston<T> {
     v2[0] = self.v0.unwrap_or(T::one()).powi(2);
 
     for i in 1..self.n {
-      let t = dt * T::from_usize(i);
+      let t = dt * T::from_usize(i).unwrap();
       yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
       zt[i] = zt[i - 1] * (-self.kappa * dt).exp() + (v2[i - 1].powi(2)).sqrt() * gn[i - 1];
 
       let integral = (0..i)
         .map(|j| {
-          let tj = T::from_usize(j) * dt;
-          ((t - tj).powf(self.hurst - 0.5.into()) * zt[j]) * dt
+          let tj = T::from_usize(j).unwrap() * dt;
+          ((t - tj).powf(self.hurst - T::from(0.5).unwrap()) * zt[j]) * dt
         })
         .sum::<T>();
 
       v2[i] = yt[i]
         + self.c1.unwrap_or(T::one()) * self.nu * zt[i]
-        + self.c2.unwrap_or(T::one()) * self.nu * integral / gamma(self.hurst + 0.5.into()).into();
+        + self.c2.unwrap_or(T::one()) * self.nu * integral
+          / T::from(gamma(self.hurst.to_f64().unwrap() + 0.5)).unwrap();
     }
 
     v2

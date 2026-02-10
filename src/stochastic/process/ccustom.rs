@@ -58,7 +58,6 @@ where
   D2: Distribution<T> + Send + Sync,
 {
   type Output = [Array1<T>; 3];
-  type Noise = Self;
 
   fn sample(&self) -> Self::Output {
     let p = self.customjt.sample();
@@ -71,17 +70,5 @@ where
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
     [p, cum_jupms, jumps]
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.sample()
-  }
-
-  fn euler_maruyama(
-    &self,
-    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    unimplemented!()
   }
 }

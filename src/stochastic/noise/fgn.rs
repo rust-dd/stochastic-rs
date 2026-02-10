@@ -12,7 +12,6 @@ use libloading::Library;
 use libloading::Symbol;
 use ndarray::concatenate;
 use ndarray::prelude::*;
-use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
 use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
@@ -26,6 +25,7 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use crate::distributions::complex::ComplexDistribution;
+use crate::distributions::normal::SimdNormal;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -74,28 +74,28 @@ pub struct FGN<T: Float> {
 
 impl<T: Float> FGN<T> {
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize(self.n)
+    self.t.unwrap_or(T::one()) / T::from_usize(self.n).unwrap()
   }
 }
 
 impl<T: Float> FGN<T> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
-    if !(0.0..=1.0).contains(&hurst) {
+    if !(T::zero()..=T::one()).contains(&hurst) {
       panic!("Hurst parameter must be between 0 and 1");
     }
 
     let offset = n.next_power_of_two() - n;
     let n = n.next_power_of_two();
-    let mut r = Array1::linspace(T::zero(), T::from_usize(n), n + 1);
+    let mut r = Array1::linspace(T::zero(), T::from_usize(n).unwrap(), n + 1);
+    let f2 = T::from_usize(2).unwrap();
     r.mapv_inplace(|x| {
       if x == T::zero() {
         T::one()
       } else {
-        0.5
-          * ((x + T::zero()).powf(T::from_usize(2) * hurst)
-            - T::from_usize(2) * x.powf(T::from_usize(2) * hurst)
-            + (x - T::zero()).powf(T::from_usize(2) * hurst))
+        T::from(0.5).unwrap()
+          * ((x + T::zero()).powf(f2 * hurst) - f2 * x.powf(f2 * hurst)
+            + (x - T::zero()).powf(f2 * hurst))
       }
     });
     let r = concatenate(
@@ -108,7 +108,8 @@ impl<T: Float> FGN<T> {
     let r_fft = FftHandler::new(r.len());
     let mut sqrt_eigenvalues = Array1::<Complex<T>>::zeros(r.len());
     ndfft_par(&data, &mut sqrt_eigenvalues, &r_fft, 0);
-    sqrt_eigenvalues.mapv_inplace(|x| Complex::new((x.re / (2.0 * T::from_usize(n))).sqrt(), x.im));
+    sqrt_eigenvalues
+      .mapv_inplace(|x| Complex::new((x.re / T::from_usize(2 * n).unwrap()).sqrt(), x.im));
 
     Self {
       hurst,
@@ -154,42 +155,22 @@ impl<T: Float> FGN<T> {
     Array1::from_vec(result)
   }
 
-  fn sample_rnd<D: Distribution<T> + Send + Sync>(&self, d: D) -> Array1<Complex<T>> {
-    Array1::<Complex<T>>::random(2 * self.n, ComplexDistribution::new(d, d))
+  fn sample_rnd<D: Distribution<T>>(&self, d: D) -> Array1<Complex<T>> {
+    Array1::<Complex<T>>::random(2 * self.n, ComplexDistribution::new(&d, &d))
   }
 }
 
 impl<T: Float> Process<T> for FGN<T> {
   type Output = Array1<T>;
-  type Noise = Self;
 
   fn sample(&self) -> Self::Output {
-    // Generate all random numbers at once for correct statistical properties
-    let rnd = self.sample_rnd(StandardNormal);
+    let rnd = self.sample_rnd(SimdNormal::<T, 64>::new(T::zero(), T::one()));
 
     let fgn = &*self.sqrt_eigenvalues * &rnd;
     let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
     ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
-    let scale =
-      T::from_usize(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
-    let fgn = fgn_fft
-      .slice(s![1..self.n - self.offset + 1])
-      .mapv(|x| x.re * scale);
-    fgn
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    // Generate all random numbers at once for correct statistical properties
-
-    use crate::distributions::normal::SimdNormal;
-    let rnd = self.sample_rnd(SimdNormal::new(T::zero(), T::one()));
-
-    let fgn = &*self.sqrt_eigenvalues * &rnd;
-    let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
-    ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
-    let scale =
-      T::from_usize(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
+    let scale = T::from_usize(self.n).unwrap().powf(-self.hurst)
+      * self.t.unwrap_or(T::one()).powf(self.hurst);
     let fgn = fgn_fft
       .slice(s![1..self.n - self.offset + 1])
       .mapv(|x| x.re * scale);
@@ -325,13 +306,6 @@ impl<T: Float> Process<T> for FGN<T> {
 
     Ok(Either::Right(fgn))
   }
-
-  fn euler_maruyama(
-    &self,
-    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    unimplemented!()
-  }
 }
 
 #[cfg(test)]
@@ -393,7 +367,7 @@ mod tests {
   #[test]
   #[tracing_test::traced_test]
   fn fgn_plot() {
-    let fgn = FGN::<f64>::new(0.7, 100, Some(1.0));
+    let fgn = FGN::<f64>::new(0.7, 1000, Some(1.0));
     let fgn = fgn.sample();
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
   }

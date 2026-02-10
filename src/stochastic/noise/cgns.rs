@@ -15,7 +15,7 @@ pub struct CGNS<T: Float> {
 impl<T: Float> CGNS<T> {
   pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (-1.0..=1.0).contains(&rho),
+      (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
@@ -30,23 +30,10 @@ impl<T: Float> CGNS<T> {
 
 impl<T: Float> Process<T> for CGNS<T> {
   type Output = [Array1<T>; 2];
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    let gn1 = noise_fn(&self.gn);
-    let z = noise_fn(&self.gn);
+    let gn1 = self.gn.sample();
+    let z = self.gn.sample();
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut gn2 = Array1::zeros(self.n);
 
@@ -60,6 +47,6 @@ impl<T: Float> Process<T> for CGNS<T> {
 
 impl<T: Float> CGNS<T> {
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize(self.n)
+    self.t.unwrap_or(T::one()) / T::from_usize(self.n).unwrap()
   }
 }

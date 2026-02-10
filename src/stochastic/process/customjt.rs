@@ -24,7 +24,6 @@ where
   T: Float,
   D: Distribution<T> + Send + Sync,
 {
-  /// To use SIMD acceleration, use the `simd` feature flag and add a SIMD distribution.
   pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D) -> Self {
     CustomJt {
       n,
@@ -40,7 +39,6 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;
-  type Noise = Self;
 
   fn sample(&self) -> Self::Output {
     if let Some(n) = self.n {
@@ -65,17 +63,5 @@ where
     } else {
       panic!("n or t_max must be provided");
     }
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.sample()
-  }
-
-  fn euler_maruyama(
-    &self,
-    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    unimplemented!()
   }
 }

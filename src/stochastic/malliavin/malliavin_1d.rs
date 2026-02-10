@@ -1,67 +1,42 @@
 use ndarray::Array1;
 
+use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-/// This module provides tools for Malliavin calculus.
-/// The implementation is based on the perturbation method and it is very simple and still unstable.
-/// Use with caution.
 pub trait Malliavin<T: Float> {
-  /// Compute the Malliavin derivative of the stochastic process using perturbation.
-  ///
-  /// - `f`: the function that maps the path to a scalar value.
-  /// - `epsilon`: the perturbation value.
-  ///
-  /// The Malliavin derivative is defined as the derivative of the function `f` with respect to the path.
-  fn malliavin_derivate<F>(&self, f: F, epsilon: T) -> Array1<T>
+  /// Build a path from given noise increments.
+  fn sample_with_noise(&self, noise: &Array1<T>) -> Array1<T>;
+
+  fn n(&self) -> usize;
+
+  fn t(&self) -> Option<T>;
+
+  /// Compute the Malliavin derivative using noise perturbation.
+  /// Perturbs each dW_i by epsilon, rebuilds the path, and computes the finite difference.
+  fn malliavin_derivative<F>(&self, f: F, epsilon: T) -> Array1<T>
   where
     F: Fn(&Array1<T>) -> T,
   {
-    let mut path = self.path();
-    let mut derivates = Array1::zeros(path.len());
+    let gn = Gn::new(self.n() - 1, self.t());
+    let mut noise = gn.sample();
+    let path = self.sample_with_noise(&noise);
     let f_original = f(&path);
+    let mut derivatives = Array1::zeros(noise.len());
 
-    for i in 1..path.len() {
-      let original_value = path[i];
-      path[i] += epsilon;
-      let f_perturbed = f(&path);
-      derivates[i] = (f_perturbed - f_original) / epsilon;
-      path[i] = original_value;
+    for i in 0..noise.len() {
+      let original = noise[i];
+      noise[i] += epsilon;
+      let path_perturbed = self.sample_with_noise(&noise);
+      derivatives[i] = (f(&path_perturbed) - f_original) / epsilon;
+      noise[i] = original;
     }
 
-    derivates
+    derivatives
   }
 
-  /// Compute the Malliavin derivative of the stochastic process using perturbation for latest value.
-  ///
-  ///  - `epsilon`: the perturbation value.
-  ///
-  /// The Malliavin derivative is defined as the derivative of the function `f` with respect to the path.
-  /// For example we want to know how the option price changes if the stock price changes.
-  fn malliavin_derivate_latest(&self, epsilon: T) -> Array1<T> {
-    let mut path = self.path();
-    let mut derivates = Array1::zeros(path.len());
-
-    let final_value = |path| -> T { *path.last().unwrap() };
-    let f_original = final_value(&path);
-
-    for i in 1..path.len() {
-      let original_value = path[i];
-      path[i] += epsilon;
-      let f_perturbed = final_value(&path);
-      derivates[i] = (f_perturbed - f_original) / epsilon;
-      path[i] = original_value;
-    }
-
-    derivates
-  }
-
-  /// Get stochastic process path.
-  fn path(&self) -> Array1<T>;
-}
-
-impl<T1: Float, T2: Process<T1, Output = Array1<T1>>> Malliavin<T1> for T2 {
-  fn path(&self) -> Array1<T1> {
-    self.sample()
+  /// Malliavin derivative of the terminal value.
+  fn malliavin_derivative_terminal(&self, epsilon: T) -> Array1<T> {
+    self.malliavin_derivative(|path| *path.last().unwrap(), epsilon)
   }
 }

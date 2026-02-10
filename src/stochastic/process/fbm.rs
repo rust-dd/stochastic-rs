@@ -25,22 +25,9 @@ impl<T: Float> FBM<T> {
 
 impl<T: Float> Process<T> for FBM<T> {
   type Output = Array1<T>;
-  type Noise = FGN<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    let fgn = noise_fn(&self.fgn);
+    let fgn = &self.fgn.sample();
     let mut fbm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
@@ -65,8 +52,8 @@ impl<T: Float> FBM<T> {
     let mut m = Array1::zeros(self.n);
 
     for i in 0..self.n {
-      m[i] = 1.0 / (gamma::gamma(self.hurst + 0.5.into()))
-        * (T::from_usize(i) * dt).powf(self.hurst - 0.5.into());
+      m[i] = T::one() / T::from(gamma::gamma(self.hurst.to_f64().unwrap() + 0.5)).unwrap()
+        * (T::from_usize(i).unwrap() * dt).powf(self.hurst - T::from(0.5).unwrap().into());
     }
 
     m
@@ -83,21 +70,18 @@ mod tests {
   #[test]
   fn fbm_length_equals_n() {
     let fbm = FBM::new(0.7, N, Some(1.0));
-
     assert_eq!(fbm.sample().len(), N);
   }
 
   #[test]
   fn fbm_starts_with_x0() {
     let fbm = FBM::new(0.7, N, Some(1.0));
-
     assert_eq!(fbm.sample()[0], 0.0);
   }
 
   #[test]
   fn fbm_plot() {
     let fbm = FBM::new(0.1, N, Some(1.0));
-
     plot_1d!(fbm.sample(), "Fractional Brownian Motion (H = 0.7)");
   }
 

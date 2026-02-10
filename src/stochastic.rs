@@ -42,20 +42,21 @@
 //!
 //! When the `cuda` feature is enabled, `sample_cuda()` can be used for faster batch sampling on supported devices.
 
-pub mod autoregressive;
-pub mod diffusion;
-pub mod interest;
-pub mod isonormal;
-pub mod ito;
-pub mod jump;
+// pub mod autoregressive;
+// pub mod diffusion;
+// pub mod interest;
+// pub mod isonormal;
+// pub mod ito;
+// pub mod jump;
 pub mod malliavin;
 pub mod noise;
 pub mod process;
-pub mod sde;
+// pub mod sde;
 pub mod sheet;
 pub mod volatility;
 
 use std::fmt::Debug;
+use std::iter::Sum;
 use std::ops::AddAssign;
 
 #[cfg(feature = "cuda")]
@@ -66,14 +67,15 @@ use ndarray::parallel::prelude::*;
 use ndarray::Array1;
 #[cfg(feature = "cuda")]
 use ndarray::Array2;
+use ndarray::NdIndex;
 use ndarray::ScalarOperand;
 use ndarray_rand::RandomExt;
 use ndrustfft::Zero;
 use num_complex::Complex64;
-use rand::Rng;
 use rand_distr::Normal;
 
 use crate::distributions::normal::SimdNormal;
+use crate::distributions::SimdFloat;
 
 /// Default number of time steps
 pub const N: usize = 1000;
@@ -85,47 +87,50 @@ pub const S0: f64 = 100.0;
 pub const K: f64 = 100.0;
 
 pub trait Float:
-  num_traits::Float + Zero + Default + Debug + Send + Sync + ScalarOperand + AddAssign + 'static
+  num_traits::Float
+  + num_traits::FromPrimitive
+  + num_traits::Signed
+  + num_traits::FloatConst
+  + Sum
+  + SimdFloat
+  + Zero
+  + Default
+  + Debug
+  + Send
+  + Sync
+  + ScalarOperand
+  + AddAssign
+  + 'static
 {
-  fn from_usize(v: usize) -> Self;
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
   #[cfg(feature = "simd")]
   fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }
 
 impl Float for f64 {
-  fn from_usize(v: usize) -> Self {
-    v as f64
-  }
-
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, Normal::new(mean, std_dev).unwrap())
   }
 
   #[cfg(feature = "simd")]
   fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    Array1::random(n, SimdNormal::new(mean, std_dev))
+    Array1::random(n, SimdNormal::<f64, 64>::new(mean, std_dev))
   }
 }
 
 impl Float for f32 {
-  fn from_usize(v: usize) -> Self {
-    v as f32
-  }
-
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, Normal::new(mean, std_dev).unwrap())
   }
 
   #[cfg(feature = "simd")]
   fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    Array1::random(n, SimdNormal::new(mean, std_dev))
+    Array1::random(n, SimdNormal::<f32, 64>::new(mean, std_dev))
   }
 }
 
 pub trait Process<T: Float>: Send + Sync {
   type Output: Send;
-  type Noise: Process<T>;
 
   fn sample(&self) -> Self::Output;
 
@@ -135,23 +140,8 @@ pub trait Process<T: Float>: Send + Sync {
     (0..m).into_par_iter().map(|_| self.sample()).collect()
   }
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output;
-
-  #[cfg(feature = "simd")]
-  fn sample_par_simd(&self, m: usize) -> Vec<Self::Output> {
-    (0..m).into_par_iter().map(|_| self.sample_simd()).collect()
-  }
-
   #[cfg(feature = "cuda")]
   fn sample_cuda(&self, m: usize) -> Result<Either<Array1<f64>, Array2<f64>>>;
-
-  fn euler_maruyama(
-    &self,
-    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    unimplemented!()
-  }
 }
 
 /// Provides analytical functions of the distribution (pdf, cdf, etc)
