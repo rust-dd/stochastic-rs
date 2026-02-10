@@ -7,7 +7,8 @@ use rand_distr::Uniform;
 use scilib::math::basic::gamma;
 
 use crate::stochastic::process::poisson::Poisson;
-use crate::stochastic::SamplingExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// CGMY process
 ///
@@ -38,8 +39,7 @@ use crate::stochastic::SamplingExt;
 /// - Madan, D. B., Carr, P., & Chang, E. C. (1998). The Variance Gamma Process and Option Pricing. *European Finance Review*, 2(1), 79-105.
 /// https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf
 ///
-#[derive(ImplNew)]
-pub struct CGMY<T> {
+pub struct CGMY<T: Float> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -58,7 +58,7 @@ pub struct CGMY<T> {
   pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for CGMY<f64> {
+impl<T: Float> Process<T> for CGMY<T> {
   fn sample(&self) -> Array1<f64> {
     let mut rng = rand::rng();
 
@@ -77,7 +77,7 @@ impl SamplingExt<f64> for CGMY<f64> {
 
     let U = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0).unwrap());
     let E = Array1::<f64>::random(self.j, Exp::new(1.0).unwrap());
-    let P = Poisson::new(1.0, Some(self.j), None, None);
+    let P = Poisson::new(1.0, Some(self.j), None);
     let P = P.sample();
     let tau = Array1::<f64>::random(self.j, Uniform::new(0.0, 1.0).unwrap());
 

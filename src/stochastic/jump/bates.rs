@@ -1,15 +1,14 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use rand_distr::Distribution;
 
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
-use crate::stochastic::Sampling2DExt;
-use crate::stochastic::Sampling3DExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct Bates1996<D, T>
+pub struct Bates1996<T, D>
 where
+  T: Float,
   D: Distribution<T> + Send + Sync,
 {
   pub mu: Option<T>,
@@ -27,24 +26,84 @@ where
   pub v0: Option<T>,
   pub t: Option<T>,
   pub use_sym: Option<bool>,
-  pub m: Option<usize>,
-  pub cgns: CGNS<T>,
-  pub cpoisson: CompoundPoisson<D, T>,
+  cgns: CGNS<T>,
+  pub cpoisson: CompoundPoisson<T, D>,
 }
 
-impl<D> Sampling2DExt<f64> for Bates1996<D, f64>
+impl<T, D> Bates1996<T, D>
 where
-  D: Distribution<f64> + Send + Sync,
+  T: Float,
+  D: Distribution<T> + Send + Sync,
 {
-  fn sample(&self) -> [Array1<f64>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+  pub fn new(
+    mu: Option<T>,
+    b: Option<T>,
+    r: Option<T>,
+    r_f: Option<T>,
+    lambda: T,
+    k: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    rho: T,
+    n: usize,
+    s0: Option<T>,
+    v0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+    cpoisson: CompoundPoisson<T, D>,
+  ) -> Self {
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      lambda,
+      k,
+      alpha,
+      beta,
+      sigma,
+      rho,
+      n,
+      s0,
+      v0,
+      t,
+      use_sym,
+      cgns: CGNS::new(rho, n - 1, t),
+      cpoisson,
+    }
+  }
+}
 
-    let mut s = Array1::<f64>::zeros(self.n);
-    let mut v = Array1::<f64>::zeros(self.n);
+impl<T, D> Process<T> for Bates1996<T, D>
+where
+  T: Float,
+  D: Distribution<T> + Send + Sync,
+{
+  type Output = [Array1<T>; 2];
+  type Noise = CGNS<T>;
 
-    s[0] = self.s0.unwrap_or(0.0);
-    v[0] = self.v0.unwrap_or(0.0);
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = noise_fn(&self.cgns);
+
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+
+    s[0] = self.s0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero());
 
     let drift = match (self.mu, self.b, self.r, self.r_f) {
       (Some(r), Some(r_f), ..) => r - r_f,
@@ -64,69 +123,11 @@ where
 
       v[i] = match self.use_sym.unwrap_or(false) {
         true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(0.0),
+        false => (v[i - 1] + dv).max(T::zero()),
       }
     }
 
     [s, v]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl<D> Sampling2DExt<f32> for Bates1996<D, f32>
-where
-  D: Distribution<f32> + Send + Sync,
-{
-  fn sample(&self) -> [Array1<f32>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-
-    let mut s = Array1::<f32>::zeros(self.n);
-    let mut v = Array1::<f32>::zeros(self.n);
-
-    s[0] = self.s0.unwrap_or(0.0);
-    v[0] = self.v0.unwrap_or(0.0);
-
-    let drift = match (self.mu, self.b, self.r, self.r_f) {
-      (Some(r), Some(r_f), ..) => r - r_f,
-      (Some(b), ..) => b,
-      _ => self.mu.unwrap(),
-    };
-
-    for i in 1..self.n {
-      let [.., jumps] = self.cpoisson.sample();
-
-      s[i] = s[i - 1]
-        + (drift - self.lambda * self.k) * s[i - 1] * dt
-        + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1]
-        + jumps.sum();
-
-      let dv = (self.alpha - self.beta * v[i - 1]) * dt + self.sigma * v[i - 1] * cgn2[i - 1];
-
-      v[i] = match self.use_sym.unwrap_or(false) {
-        true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(0.0),
-      }
-    }
-
-    [s, v]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
@@ -159,12 +160,9 @@ mod tests {
       Some(X0),
       None,
       None,
-      None,
-      CGNS::new(0.7, N, None, None),
       CompoundPoisson::new(
-        None,
         Normal::new(0.0, 2.0).unwrap(),
-        Poisson::new(1.0, None, Some(1.0 / N as f64), None),
+        Poisson::new(1.0, None, Some(1.0 / N as f64)),
       ),
     );
 
@@ -190,12 +188,9 @@ mod tests {
       Some(X0),
       None,
       None,
-      None,
-      CGNS::new(0.7, N, None, None),
       CompoundPoisson::new(
-        None,
         Normal::new(0.0, 2.0).unwrap(),
-        Poisson::new(1.0, None, Some(1.0 / N as f64), None),
+        Poisson::new(1.0, None, Some(1.0 / N as f64)),
       ),
     );
 
@@ -221,12 +216,9 @@ mod tests {
       Some(X0),
       None,
       None,
-      None,
-      CGNS::new(0.7, N, None, None),
       CompoundPoisson::new(
-        None,
         Normal::new(0.0, 2.0).unwrap(),
-        Poisson::new(1.0, None, Some(1.0 / N as f64), None),
+        Poisson::new(1.0, None, Some(1.0 / N as f64)),
       ),
     );
 
