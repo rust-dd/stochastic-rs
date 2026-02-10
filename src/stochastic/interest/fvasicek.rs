@@ -1,52 +1,52 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::diffusion::fou::FOU;
-use crate::stochastic::SamplingExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct FVasicek<T> {
+pub struct FVasicek<T: Float> {
   pub hurst: T,
+  pub theta: T,
   pub mu: T,
   pub sigma: T,
-  pub theta: Option<T>,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
   pub fou: FOU<T>,
 }
 
-impl SamplingExt<f64> for FVasicek<f64> {
-  /// Sample the Fractional Vasicek process
-  fn sample(&self) -> Array1<f64> {
-    self.fou.sample()
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+impl<T: Float> FVasicek<T> {
+  pub fn new(hurst: T, theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Self {
+      hurst,
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      fou: FOU::new(hurst, theta, mu, sigma, n, x0, t),
+    }
   }
 }
 
-impl SamplingExt<f32> for FVasicek<f32> {
-  /// Sample the Fractional Vasicek process
-  fn sample(&self) -> Array1<f32> {
+impl<T: Float> Process<T> for FVasicek<T> {
+  type Output = Array1<T>;
+  type Noise = FOU<T>;
+
+  fn sample(&self) -> Array1<T> {
     self.fou.sample()
   }
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.fou.sample_simd()
   }
 
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+  fn euler_maruyama(
+    &self,
+    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    unimplemented!()
   }
 }

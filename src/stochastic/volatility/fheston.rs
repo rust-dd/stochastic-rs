@@ -1,139 +1,96 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 use statrs::function::gamma::gamma;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct RoughHeston<T> {
+pub struct RoughHeston<T: Float> {
+  pub hurst: T,
   pub v0: Option<T>,
   pub theta: T,
   pub kappa: T,
   pub nu: T,
-  pub hurst: T,
   pub c1: Option<T>,
   pub c2: Option<T>,
   pub t: Option<T>,
   pub n: usize,
-  pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
-impl SamplingExt<f64> for RoughHeston<f64> {
-  fn sample(&self) -> ndarray::Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let mut yt = Array1::<f64>::zeros(self.n);
-    let mut zt = Array1::<f64>::zeros(self.n);
-    let mut v2 = Array1::zeros(self.n);
-
-    yt[0] = self.theta + (self.v0.unwrap_or(1.0).powi(2) - self.theta) * (-self.kappa * 0.0).exp();
-    zt[0] = 0.0; // Initial condition for Z_t, typically 0 for such integrals.
-    v2[0] = self.v0.unwrap_or(1.0).powi(2);
-
-    for i in 1..self.n {
-      let t = dt * i as f64;
-      yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
-      zt[i] = zt[i - 1] * (-self.kappa * dt).exp() + (v2[i - 1].powi(2)).sqrt() * gn[i - 1];
-
-      let integral = (0..i)
-        .map(|j| {
-          let tj = j as f64 * dt;
-          ((t - tj).powf(self.hurst - 0.5) * zt[j]) * dt
-        })
-        .sum::<f64>();
-
-      v2[i] = yt[i]
-        + self.c1.unwrap_or(1.0) * self.nu * zt[i]
-        + self.c2.unwrap_or(1.0) * self.nu * integral / gamma(self.hurst + 0.5);
+impl<T: Float> RoughHeston<T> {
+  pub fn new(
+    hurst: T,
+    v0: Option<T>,
+    theta: T,
+    kappa: T,
+    nu: T,
+    c1: Option<T>,
+    c2: Option<T>,
+    t: Option<T>,
+    n: usize,
+    gn: Gn<T>,
+  ) -> Self {
+    RoughHeston {
+      hurst,
+      v0,
+      theta,
+      kappa,
+      nu,
+      c1,
+      c2,
+      t,
+      n,
+      gn: Gn::new(n - 1, t),
     }
-
-    v2
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl SamplingExt<f32> for RoughHeston<f32> {
-  fn sample(&self) -> ndarray::Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let mut yt = Array1::<f32>::zeros(self.n);
-    let mut zt = Array1::<f32>::zeros(self.n);
-    let mut v2 = Array1::zeros(self.n);
+impl<T: Float> Process<T> for RoughHeston<T> {
+  type Output = Array1<T>;
+  type Noise = Gn<T>;
 
-    yt[0] = self.theta + (self.v0.unwrap_or(1.0).powi(2) - self.theta) * (-self.kappa * 0.0).exp();
-    zt[0] = 0.0;
-    v2[0] = self.v0.unwrap_or(1.0).powi(2);
-
-    for i in 1..self.n {
-      let t = dt * i as f32;
-      yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
-      zt[i] = zt[i - 1] * (-self.kappa * dt).exp() + (v2[i - 1].powi(2)).sqrt() * gn[i - 1];
-
-      let integral = (0..i)
-        .map(|j| {
-          let tj = j as f32 * dt;
-          ((t - tj).powf(self.hurst - 0.5) * zt[j]) * dt
-        })
-        .sum::<f32>();
-
-      v2[i] = yt[i]
-        + self.c1.unwrap_or(1.0) * self.nu * zt[i]
-        + self.c2.unwrap_or(1.0) * self.nu * integral / gamma((self.hurst + 0.5) as f64) as f32;
-    }
-
-    v2
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
   }
 
   #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-    let mut yt = Array1::<f32>::zeros(self.n);
-    let mut zt = Array1::<f32>::zeros(self.n);
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
+    let mut yt = Array1::<T>::zeros(self.n);
+    let mut zt = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::zeros(self.n);
 
-    yt[0] = self.theta + (self.v0.unwrap_or(1.0).powi(2) - self.theta) * (-self.kappa * 0.0).exp();
-    zt[0] = 0.0;
-    v2[0] = self.v0.unwrap_or(1.0).powi(2);
+    yt[0] = self.theta
+      + (self.v0.unwrap_or(T::one()).powi(2) - self.theta) * (-self.kappa * T::zero()).exp();
+    zt[0] = T::zero(); // Initial condition for Z_t, typically 0 for such integrals.
+    v2[0] = self.v0.unwrap_or(T::one()).powi(2);
 
     for i in 1..self.n {
-      let t = dt * i as f32;
+      let t = dt * T::from_usize(i);
       yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
       zt[i] = zt[i - 1] * (-self.kappa * dt).exp() + (v2[i - 1].powi(2)).sqrt() * gn[i - 1];
 
       let integral = (0..i)
         .map(|j| {
-          let tj = j as f32 * dt;
-          ((t - tj).powf(self.hurst - 0.5) * zt[j]) * dt
+          let tj = T::from_usize(j) * dt;
+          ((t - tj).powf(self.hurst - 0.5.into()) * zt[j]) * dt
         })
-        .sum::<f32>();
+        .sum::<T>();
 
       v2[i] = yt[i]
-        + self.c1.unwrap_or(1.0) * self.nu * zt[i]
-        + self.c2.unwrap_or(1.0) * self.nu * integral / gamma((self.hurst + 0.5) as f64) as f32;
+        + self.c1.unwrap_or(T::one()) * self.nu * zt[i]
+        + self.c2.unwrap_or(T::one()) * self.nu * integral / gamma(self.hurst + 0.5.into()).into();
     }
 
     v2
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
