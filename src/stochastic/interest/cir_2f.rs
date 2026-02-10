@@ -19,7 +19,7 @@ impl<T: Float> CIR2F<T> {
 
 impl<T: Float> Process<T> for CIR2F<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
+  type Noise = Self;
 
   fn sample(&self) -> Self::Output {
     let x = self.x.sample();
