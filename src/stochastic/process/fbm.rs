@@ -1,75 +1,57 @@
-use std::sync::Mutex;
-
-use impl_new_derive::ImplNew;
-use ndarray::s;
 use ndarray::Array1;
 use statrs::function::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::SamplingExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct FBM<T> {
+pub struct FBM<T: Float> {
   pub hurst: T,
   pub n: usize,
-  pub t: Option<f64>,
-  pub m: Option<usize>,
-  pub fgn: FGN<T>,
-  pub calculate_malliavin: Option<bool>,
-  malliavin: Mutex<Option<Array1<f64>>>,
-  #[cfg(feature = "cuda")]
-  #[default(false)]
-  cuda: bool,
+  pub t: Option<T>,
+  fgn: FGN<T>,
 }
 
-impl FBM<f64> {
-  fn fgn(&self) -> Array1<f64> {
-    #[cfg(feature = "cuda")]
-    if self.cuda {
-      if self.m.is_some() && self.m.unwrap() > 1 {
-        panic!("m must be None or 1 when using CUDA");
-      }
-
-      return self.fgn.sample_cuda().unwrap().left().unwrap();
+impl<T: Float> FBM<T> {
+  pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
+    Self {
+      hurst,
+      n,
+      t,
+      fgn: FGN::new(hurst, n - 1, t),
     }
-
-    self.fgn.sample()
   }
 }
 
-impl SamplingExt<f64> for FBM<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let fgn = self.fgn();
-    let mut fbm = Array1::<f64>::zeros(self.n);
-    fbm.slice_mut(s![1..]).assign(&fgn);
+impl<T: Float> Process<T> for FBM<T> {
+  type Output = Array1<T>;
+  type Noise = FGN<T>;
+
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|fgn| fgn.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|fgn| fgn.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let fgn = noise_fn(&self.fgn);
+    let mut fbm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
-      fbm[i] += fbm[i - 1];
+      fbm[i] = fbm[i - 1] + fgn[i - 1];
     }
 
-    if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
-      let mut malliavin = Array1::zeros(self.n);
-      let dt = self.t.unwrap_or(1.0) / (self.n) as f64;
-      for i in 0..self.n {
-        malliavin[i] =
-          1.0 / (gamma::gamma(self.hurst + 0.5)) * (i as f64 * dt).powf(self.hurst - 0.5);
-      }
-
-      let _ = std::mem::replace(&mut *self.malliavin.lock().unwrap(), Some(malliavin));
-    }
-    fbm.slice(s![..self.n()]).to_owned()
+    fbm
   }
+}
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-
+impl<T: Float> FBM<T> {
   /// Calculate the Malliavin derivative
   ///
   /// The Malliavin derivative of the fractional Brownian motion is given by:
@@ -78,43 +60,16 @@ impl SamplingExt<f64> for FBM<f64> {
   /// where B^H_t is the fractional Brownian motion with Hurst parameter H in Mandelbrot-Van Ness representation as
   /// B^H_t = 1 / Γ(H + 1/2) ∫_0^t (t - s)^{H - 1/2} dW_s
   /// which is a truncated Wiener integral.
-  fn malliavin(&self) -> Array1<f64> {
-    self.malliavin.lock().unwrap().clone().unwrap()
-  }
+  fn malliavin(&self) -> Array1<T> {
+    let dt = self.fgn.dt();
+    let mut m = Array1::zeros(self.n);
 
-  #[cfg(feature = "cuda")]
-  fn set_cuda(&mut self, cuda: bool) {
-    self.cuda = cuda;
-  }
-}
-
-impl FBM<f32> {
-  fn fgn(&self) -> Array1<f32> {
-    self.fgn.sample()
-  }
-}
-
-impl SamplingExt<f32> for FBM<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let fgn = self.fgn();
-    let mut fbm = Array1::<f32>::zeros(self.n);
-    fbm.slice_mut(s![1..]).assign(&fgn);
-
-    for i in 1..self.n {
-      fbm[i] += fbm[i - 1];
+    for i in 0..self.n {
+      m[i] = 1.0 / (gamma::gamma(self.hurst + 0.5.into()))
+        * (T::from_usize(i) * dt).powf(self.hurst - 0.5.into());
     }
 
-    fbm.slice(s![..self.n()]).to_owned()
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+    m
   }
 }
 
@@ -127,56 +82,28 @@ mod tests {
 
   #[test]
   fn fbm_length_equals_n() {
-    let fbm = FBM::new(
-      0.7,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      None,
-    );
+    let fbm = FBM::new(0.7, N, Some(1.0));
 
     assert_eq!(fbm.sample().len(), N);
   }
 
   #[test]
   fn fbm_starts_with_x0() {
-    let fbm = FBM::new(
-      0.7,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      None,
-    );
+    let fbm = FBM::new(0.7, N, Some(1.0));
 
     assert_eq!(fbm.sample()[0], 0.0);
   }
 
   #[test]
   fn fbm_plot() {
-    let fbm = FBM::new(
-      0.1,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.1, N - 1, Some(1.0), None),
-      None,
-    );
+    let fbm = FBM::new(0.1, N, Some(1.0));
 
     plot_1d!(fbm.sample(), "Fractional Brownian Motion (H = 0.7)");
   }
 
   #[test]
   fn fbm_malliavin() {
-    let fbm = FBM::new(
-      0.7,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      Some(true),
-    );
+    let fbm = FBM::new(0.7, N, Some(1.0));
     let process = fbm.sample();
     let malliavin = fbm.malliavin();
     plot_2d!(

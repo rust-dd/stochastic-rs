@@ -32,7 +32,7 @@ impl<T: Float> Process<T> for BM<T> {
     let mut bm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
-      bm[i] += bm[i - 1] + gn[i - 1];
+      bm[i] = bm[i - 1] + gn[i - 1];
     }
 
     bm

@@ -64,6 +64,8 @@ use anyhow::Result;
 use either::Either;
 use ndarray::parallel::prelude::*;
 use ndarray::Array1;
+#[cfg(feature = "cuda")]
+use ndarray::Array2;
 use ndarray::ScalarOperand;
 use ndarray_rand::RandomExt;
 use ndrustfft::Zero;
@@ -142,7 +144,7 @@ pub trait Process<T: Float>: Send + Sync {
   }
 
   #[cfg(feature = "cuda")]
-  fn sample_cuda(&self) -> Self::Output;
+  fn sample_cuda(&self, m: usize) -> Result<Either<Array1<f64>, Array2<f64>>>;
 
   fn euler_maruyama(
     &self,

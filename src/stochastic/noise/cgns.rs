@@ -9,6 +9,7 @@ pub struct CGNS<T: Float> {
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
+  gn: Gn<T>,
 }
 
 impl<T: Float> CGNS<T> {
@@ -18,7 +19,12 @@ impl<T: Float> CGNS<T> {
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    Self { rho, n, t }
+    Self {
+      rho,
+      n,
+      t,
+      gn: Gn::new(n, t),
+    }
   }
 }
 
@@ -39,11 +45,8 @@ impl<T: Float> Process<T> for CGNS<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n, self.t);
-    let dt = gn.dt();
-
-    let gn1 = noise_fn(&gn);
-    let z = noise_fn(&gn);
+    let gn1 = noise_fn(&self.gn);
+    let z = noise_fn(&self.gn);
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut gn2 = Array1::zeros(self.n);
 

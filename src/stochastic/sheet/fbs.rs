@@ -12,7 +12,7 @@ use num_complex::Complex32;
 use num_complex::Complex64;
 use rand_distr::StandardNormal;
 
-use crate::stats::complex_distr::ComplexDistribution;
+use crate::distributions::complex::ComplexDistribution;
 
 #[derive(ImplNew)]
 pub struct FBS<T> {

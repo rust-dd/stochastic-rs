@@ -50,7 +50,6 @@ num-complex = { version = "0.4.6", features = ["rand"] } # UPDATE: rand
 num-traits = "0.2.19"
 phastft = { version = "0.3.0", optional = true }
 ordered-float = "5.0.0"
-# orx-parallel = "2.3.0"
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 polars = { version = "0.43.1", features = ["lazy"], optional = true }
 prettytable-rs = "0.10.0"

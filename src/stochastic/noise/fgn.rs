@@ -23,8 +23,11 @@ use phastft::fft_64;
 use phastft::planner::Direction;
 #[cfg(feature = "cuda")]
 use rand::Rng;
+use rand_distr::Distribution;
 
-use crate::stats::complex_distr::ComplexDistribution;
+use crate::distributions::complex::ComplexDistribution;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 // CUDA type for complex numbers
 #[cfg(feature = "cuda")]
@@ -60,34 +63,39 @@ impl Drop for CudaContext {
 #[cfg(feature = "cuda")]
 static CUDA_CONTEXT: Mutex<Option<CudaContext>> = Mutex::new(None);
 
-use crate::stochastic::SamplingExt;
-
-pub struct FGN<T> {
+pub struct FGN<T: Float> {
   pub hurst: T,
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
   pub offset: usize,
   pub sqrt_eigenvalues: Arc<Array1<Complex<T>>>,
   pub fft_handler: Arc<FftHandler<T>>,
 }
 
-impl FGN<f64> {
+impl<T: Float> FGN<T> {
+  pub fn dt(&self) -> T {
+    self.t.unwrap_or(T::one()) / T::from_usize(self.n)
+  }
+}
+
+impl<T: Float> FGN<T> {
   #[must_use]
-  pub fn new(hurst: f64, n: usize, t: Option<f64>, m: Option<usize>) -> Self {
+  pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
     if !(0.0..=1.0).contains(&hurst) {
       panic!("Hurst parameter must be between 0 and 1");
     }
 
     let offset = n.next_power_of_two() - n;
     let n = n.next_power_of_two();
-    let mut r = Array1::linspace(0.0, n as f64, n + 1);
+    let mut r = Array1::linspace(T::zero(), T::from_usize(n), n + 1);
     r.mapv_inplace(|x| {
-      if x == 0.0 {
-        1.0
+      if x == T::zero() {
+        T::one()
       } else {
         0.5
-          * ((x + 1.0).powf(2.0 * hurst) - 2.0 * x.powf(2.0 * hurst) + (x - 1.0).powf(2.0 * hurst))
+          * ((x + T::zero()).powf(T::from_usize(2) * hurst)
+            - T::from_usize(2) * x.powf(T::from_usize(2) * hurst)
+            + (x - T::zero()).powf(T::from_usize(2) * hurst))
       }
     });
     let r = concatenate(
@@ -96,11 +104,11 @@ impl FGN<f64> {
       &[r.view(), r.slice(s![..;-1]).slice(s![1..-1]).view()],
     )
     .unwrap();
-    let data = r.mapv(|v| Complex::new(v, 0.0));
+    let data = r.mapv(|v| Complex::new(v, T::zero()));
     let r_fft = FftHandler::new(r.len());
-    let mut sqrt_eigenvalues = Array1::<Complex<f64>>::zeros(r.len());
+    let mut sqrt_eigenvalues = Array1::<Complex<T>>::zeros(r.len());
     ndfft_par(&data, &mut sqrt_eigenvalues, &r_fft, 0);
-    sqrt_eigenvalues.mapv_inplace(|x| Complex::new((x.re / (2.0 * n as f64)).sqrt(), x.im));
+    sqrt_eigenvalues.mapv_inplace(|x| Complex::new((x.re / (2.0 * T::from_usize(n))).sqrt(), x.im));
 
     Self {
       hurst,
@@ -108,7 +116,6 @@ impl FGN<f64> {
       offset,
       t,
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
-      m,
       fft_handler: Arc::new(FftHandler::new(2 * n)),
     }
   }
@@ -116,54 +123,81 @@ impl FGN<f64> {
   /// Sample FGN using PhastFT (requires nightly Rust and `phastft` feature)
   /// PhastFT is a high-performance FFT library that uses SIMD and is competitive with FFTW
   #[cfg(feature = "phastft")]
-  pub fn sample_phastft(&self) -> Array1<f64> {
+  pub fn sample_phastft(&self) -> Array1<T> {
     // Generate random complex numbers
-    let rnd = Array1::<Complex<f64>>::random(
-      2 * self.n,
-      ComplexDistribution::new(StandardNormal, StandardNormal),
-    );
+
+    #[cfg(feature = "simd")]
+    use crate::distributions::normal::SimdNormal;
+    #[cfg(not(feature = "simd"))]
+    let rnd = self.sample_rnd(StandardNormal);
+    #[cfg(feature = "simd")]
+    let rnd = self.sample_rnd(SimdNormal::new(T::zero(), T::one()));
 
     // Multiply by sqrt eigenvalues
     let fgn_complex = &*self.sqrt_eigenvalues * &rnd;
 
     // PhastFT uses separate real and imaginary arrays
-    let mut reals: Vec<f64> = fgn_complex.iter().map(|c| c.re).collect();
-    let mut imags: Vec<f64> = fgn_complex.iter().map(|c| c.im).collect();
+    let mut reals = fgn_complex.iter().map(|c| c.re).collect();
+    let mut imags = fgn_complex.iter().map(|c| c.im).collect();
 
     // Perform FFT using PhastFT
     fft_64(&mut reals, &mut imags, Direction::Forward);
 
     // Extract real parts and scale
-    let scale = (self.n as f64).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
-    let result: Vec<f64> = reals[1..self.n - self.offset + 1]
+    let scale =
+      T::from_usize(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
+    let result = reals[1..self.n - self.offset + 1]
       .iter()
       .map(|&x| x * scale)
       .collect();
 
     Array1::from_vec(result)
   }
+
+  fn sample_rnd<D: Distribution<T> + Send + Sync>(&self, d: D) -> Array1<Complex<T>> {
+    Array1::<Complex<T>>::random(2 * self.n, ComplexDistribution::new(d, d))
+  }
 }
 
-impl SamplingExt<f64> for FGN<f64> {
-  fn sample(&self) -> Array1<f64> {
+impl<T: Float> Process<T> for FGN<T> {
+  type Output = Array1<T>;
+  type Noise = Self;
+
+  fn sample(&self) -> Self::Output {
     // Generate all random numbers at once for correct statistical properties
-    let rnd = Array1::<Complex<f64>>::random(
-      2 * self.n,
-      ComplexDistribution::new(StandardNormal, StandardNormal),
-    );
+    let rnd = self.sample_rnd(StandardNormal);
 
     let fgn = &*self.sqrt_eigenvalues * &rnd;
-    let mut fgn_fft = Array1::<Complex<f64>>::zeros(2 * self.n);
+    let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
     ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
-    let scale = (self.n as f64).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
+    let scale =
+      T::from_usize(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
     let fgn = fgn_fft
       .slice(s![1..self.n - self.offset + 1])
-      .mapv(|x: Complex<f64>| x.re * scale);
+      .mapv(|x| x.re * scale);
+    fgn
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    // Generate all random numbers at once for correct statistical properties
+
+    use crate::distributions::normal::SimdNormal;
+    let rnd = self.sample_rnd(SimdNormal::new(T::zero(), T::one()));
+
+    let fgn = &*self.sqrt_eigenvalues * &rnd;
+    let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
+    ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
+    let scale =
+      T::from_usize(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
+    let fgn = fgn_fft
+      .slice(s![1..self.n - self.offset + 1])
+      .mapv(|x| x.re * scale);
     fgn
   }
 
   #[cfg(feature = "cuda")]
-  fn sample_cuda(&self) -> Result<Either<Array1<f64>, Array2<f64>>> {
+  fn sample_cuda(&self, m: usize) -> Result<Either<Array1<f64>, Array2<f64>>> {
     // CUDA kernel compilation - see src/stochastic/cuda/CUDA_BUILD.md for details
     // Quick build:
     //   Linux:   cd src/stochastic/cuda && ./build.sh
@@ -185,11 +219,10 @@ impl SamplingExt<f64> for FGN<f64> {
 
     type FgnCleanupFn = unsafe extern "C" fn();
 
-    let m = self.m.unwrap_or(1);
     let n = self.n;
     let offset = self.offset;
-    let hurst = self.hurst;
-    let t = self.t.unwrap_or(1.0);
+    let hurst = self.hurst.to_f64().unwrap();
+    let t = self.t.unwrap_or(1.0.into()).to_f64().unwrap();
     // Scale factor: n^(-H) * t^H, same as CPU
     let scale = (n as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
     let out_size = n - offset;
@@ -228,8 +261,8 @@ impl SamplingExt<f64> for FGN<f64> {
         .sqrt_eigenvalues
         .iter()
         .map(|z| CuComplex {
-          x: z.re as f32,
-          y: z.im as f32,
+          x: z.re.to_f32().unwrap(),
+          y: z.im.to_f32().unwrap(),
         })
         .collect();
 
@@ -293,85 +326,11 @@ impl SamplingExt<f64> for FGN<f64> {
     Ok(Either::Right(fgn))
   }
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n - self.offset
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl FGN<f32> {
-  #[must_use]
-  pub fn new(hurst: f32, n: usize, t: Option<f32>, m: Option<usize>) -> Self {
-    if !(0.0..=1.0).contains(&hurst) {
-      panic!("Hurst parameter must be between 0 and 1");
-    }
-
-    let offset = n.next_power_of_two() - n;
-    let n = n.next_power_of_two();
-    let mut r = Array1::linspace(0.0, n as f32, n + 1);
-    r.mapv_inplace(|x| {
-      if x == 0.0 {
-        1.0
-      } else {
-        0.5
-          * ((x + 1.0).powf(2.0 * hurst) - 2.0 * x.powf(2.0 * hurst) + (x - 1.0).powf(2.0 * hurst))
-      }
-    });
-    let r = concatenate(
-      Axis(0),
-      #[allow(clippy::reversed_empty_ranges)]
-      &[r.view(), r.slice(s![..;-1]).slice(s![1..-1]).view()],
-    )
-    .unwrap();
-    let data = r.mapv(|v| Complex::new(v, 0.0));
-    let r_fft = FftHandler::new(r.len());
-    let mut sqrt_eigenvalues = Array1::<Complex<f32>>::zeros(r.len());
-    ndfft_par(&data, &mut sqrt_eigenvalues, &r_fft, 0);
-    sqrt_eigenvalues.mapv_inplace(|x| Complex::new((x.re / (2.0 * n as f32)).sqrt(), x.im));
-
-    Self {
-      hurst,
-      n,
-      offset,
-      t,
-      sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
-      m,
-      fft_handler: Arc::new(FftHandler::new(2 * n)),
-    }
-  }
-}
-
-impl SamplingExt<f32> for FGN<f32> {
-  fn sample(&self) -> Array1<f32> {
-    // Generate all random numbers at once for correct statistical properties
-    let rnd = Array1::<Complex<f32>>::random(
-      2 * self.n,
-      ComplexDistribution::new(StandardNormal, StandardNormal),
-    );
-
-    let fgn = &*self.sqrt_eigenvalues * &rnd;
-    let mut fgn_fft = Array1::<Complex<f32>>::zeros(2 * self.n);
-    ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
-    let scale = (self.n as f32).powf(-self.hurst) * self.t.unwrap_or(1.0).powf(self.hurst);
-    let fgn = fgn_fft
-      .slice(s![1..self.n - self.offset + 1])
-      .mapv(|x: Complex<f32>| x.re * scale);
-    fgn
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n - self.offset
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+  fn euler_maruyama(
+    &self,
+    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    unimplemented!()
   }
 }
 
@@ -389,7 +348,7 @@ mod tests {
 
   #[test]
   fn fgn_length_equals_n() {
-    let fbm = FGN::<f64>::new(0.7, N, Some(1.0), None);
+    let fbm = FGN::<f64>::new(0.7, N, Some(1.0));
     assert_eq!(fbm.sample().len(), N);
   }
 
@@ -403,7 +362,7 @@ mod tests {
     ]));
 
     let start = Instant::now();
-    let fbm = FGN::<f64>::new(0.7, N, Some(1.0), None);
+    let fbm = FGN::new(0.7, N, Some(1.0));
     let _ = fbm.sample();
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
@@ -412,7 +371,7 @@ mod tests {
     ]));
 
     let start = Instant::now();
-    let fbm = FGN::<f64>::new(0.7, N, Some(1.0), None);
+    let fbm = FGN::new(0.7, N, Some(1.0));
     for _ in 0..N {
       let _ = fbm.sample();
     }
@@ -434,7 +393,7 @@ mod tests {
   #[test]
   #[tracing_test::traced_test]
   fn fgn_plot() {
-    let fgn = FGN::<f64>::new(0.7, 100, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, 100, Some(1.0));
     let fgn = fgn.sample();
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
   }
@@ -443,14 +402,14 @@ mod tests {
   #[tracing_test::traced_test]
   #[cfg(feature = "cuda")]
   fn fgn_cuda() {
-    let fbm = FGN::<f64>::new(0.7, 500, Some(1.0), Some(1));
-    let fgn = fbm.sample_cuda().unwrap();
+    let fbm = FGN::<f64>::new(0.7, 500, Some(1.0));
+    let fgn = fbm.sample_cuda(1).unwrap();
     let fgn = fgn.left().unwrap();
     plot_1d!(fgn, "Fractional Brownian Motion (H = 0.7)");
     use crate::plot_2d;
 
-    let fgn = FGN::<f64>::new(0.7, 500, Some(1.0), Some(1));
-    let fgn = fgn.sample_cuda().unwrap();
+    let fgn = FGN::<f64>::new(0.7, 500, Some(1.0));
+    let fgn = fgn.sample_cuda(1).unwrap();
     let fgn_left = fgn.left().unwrap();
     plot_1d!(fgn_left, "Fractional Brownian Motion (H = 0.7)");
     let mut path = Array1::<f64>::zeros(500);
@@ -459,10 +418,10 @@ mod tests {
     }
     plot_1d!(path, "Fractional Brownian Motion (H = 0.7)");
 
-    let fgn = FGN::<f64>::new(0.7, 5000, Some(1.0), Some(10000));
+    let fgn = FGN::<f64>::new(0.7, 5000, Some(1.0));
     let start = std::time::Instant::now();
-    let _ = fbm.sample_cuda();
-    let res = fgn.sample_cuda().unwrap();
+    let _ = fbm.sample_cuda(10000);
+    let res = fgn.sample_cuda(10000).unwrap();
     let end = start.elapsed().as_millis();
     tracing::info!("10000 fgn generated on cuda in: {end}");
     // slice first  2 rows
@@ -478,8 +437,8 @@ mod tests {
     plot_2d!(fbm1, "FBM Path 1", fbm2, "FBM Path 2");
 
     let start = std::time::Instant::now();
-    let _ = fbm.sample_par();
-    let _ = fgn.sample_par();
+    let _ = fbm.sample_par(10000);
+    let _ = fgn.sample_par(10000);
     let end = start.elapsed().as_millis();
     tracing::info!("10000 fgn generated on cpu in: {end}");
   }
@@ -498,9 +457,9 @@ mod tests {
     table.add_row(Row::new(vec![Cell::new("Test"), Cell::new("Time (ms)")]));
 
     // Test 1: Single sample (includes initialization)
-    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(1));
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0));
     let start = Instant::now();
-    let _ = fgn.sample_cuda().unwrap();
+    let _ = fgn.sample_cuda(1).unwrap();
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
       Cell::new("CUDA Single (with init)"),
@@ -508,10 +467,10 @@ mod tests {
     ]));
 
     // Test 2: Repeated samples (cached context)
-    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(1));
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0));
     let start = Instant::now();
     for _ in 0..N {
-      let _ = fgn.sample_cuda().unwrap();
+      let _ = fgn.sample_cuda(1).unwrap();
     }
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
@@ -520,7 +479,7 @@ mod tests {
     ]));
 
     // Test 3: CPU single
-    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0));
     let start = Instant::now();
     let _ = fgn.sample();
     let duration = start.elapsed();
@@ -530,7 +489,7 @@ mod tests {
     ]));
 
     // Test 4: CPU repeated
-    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0));
     let start = Instant::now();
     for _ in 0..N {
       let _ = fgn.sample();
@@ -542,11 +501,11 @@ mod tests {
     ]));
 
     // Test 5: Batch CUDA (10000 trajectories at once) - warm start
-    let fgn_batch = FGN::<f64>::new(0.7, N, Some(1.0), Some(10000));
+    let fgn_batch = FGN::<f64>::new(0.7, N, Some(1.0));
     // Warm up call to initialize CUDA context
-    let _ = fgn_batch.sample_cuda().unwrap();
+    let _ = fgn_batch.sample_cuda(10000).unwrap();
     let start = Instant::now();
-    let _ = fgn_batch.sample_cuda().unwrap();
+    let _ = fgn_batch.sample_cuda(10000).unwrap();
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
       Cell::new("CUDA 10000 batch (warm)"),
@@ -554,9 +513,9 @@ mod tests {
     ]));
 
     // Test 6: CPU parallel (10000 trajectories)
-    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(10000));
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0));
     let start = Instant::now();
-    let _ = fgn.sample_par();
+    let _ = fgn.sample_par(10000);
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
       Cell::new("CPU 10000 parallel"),
@@ -564,11 +523,11 @@ mod tests {
     ]));
 
     // Test 7: Larger batch - 100000 trajectories
-    let fgn_large = FGN::<f64>::new(0.7, N, Some(1.0), Some(100000));
+    let fgn_large = FGN::<f64>::new(0.7, N, Some(1.0));
     // Warm up
-    let _ = fgn_large.sample_cuda().unwrap();
+    let _ = fgn_large.sample_cuda(100000).unwrap();
     let start = Instant::now();
-    let _ = fgn_large.sample_cuda().unwrap();
+    let _ = fgn_large.sample_cuda(100000).unwrap();
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
       Cell::new("CUDA 100000 batch (warm)"),
@@ -576,9 +535,9 @@ mod tests {
     ]));
 
     // Test 8: CPU parallel 100000 trajectories
-    let fgn = FGN::<f64>::new(0.7, N, Some(1.0), Some(100000));
+    let fgn = FGN::<f64>::new(0.7, N, Some(1.0));
     let start = Instant::now();
-    let _ = fgn.sample_par();
+    let _ = fgn.sample_par(100000);
     let duration = start.elapsed();
     table.add_row(Row::new(vec![
       Cell::new("CPU 100000 parallel"),
@@ -604,14 +563,14 @@ mod tests {
     let num_iterations = 1000;
 
     // Warmup
-    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0));
     for _ in 0..10 {
       let _ = fgn.sample();
       let _ = fgn.sample_phastft();
     }
 
     // Test 1: ndrustfft (default CPU implementation)
-    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0));
     let start = Instant::now();
     for _ in 0..num_iterations {
       let _ = fgn.sample();
@@ -625,7 +584,7 @@ mod tests {
     ]));
 
     // Test 2: PhastFT
-    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0));
     let start = Instant::now();
     for _ in 0..num_iterations {
       let _ = fgn.sample_phastft();
@@ -639,12 +598,12 @@ mod tests {
     ]));
 
     // Test 3: CUDA (single samples)
-    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), Some(1));
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0));
     // Warmup CUDA
-    let _ = fgn.sample_cuda().unwrap();
+    let _ = fgn.sample_cuda(1).unwrap();
     let start = Instant::now();
     for _ in 0..num_iterations {
-      let _ = fgn.sample_cuda().unwrap();
+      let _ = fgn.sample_cuda(1).unwrap();
     }
     let duration_cuda = start.elapsed();
     let samples_per_sec_cuda = num_iterations as f64 / duration_cuda.as_secs_f64();
@@ -655,11 +614,11 @@ mod tests {
     ]));
 
     // Test 4: CUDA batch (1000 samples at once)
-    let fgn_batch = FGN::<f64>::new(0.7, n, Some(1.0), Some(num_iterations));
+    let fgn_batch = FGN::<f64>::new(0.7, n, Some(1.0));
     // Warmup
-    let _ = fgn_batch.sample_cuda().unwrap();
+    let _ = fgn_batch.sample_cuda(num_iterations).unwrap();
     let start = Instant::now();
-    let _ = fgn_batch.sample_cuda().unwrap();
+    let _ = fgn_batch.sample_cuda(num_iterations).unwrap();
     let duration_cuda_batch = start.elapsed();
     let samples_per_sec_cuda_batch = num_iterations as f64 / duration_cuda_batch.as_secs_f64();
     table.add_row(Row::new(vec![
@@ -707,14 +666,14 @@ mod tests {
     let num_iterations = 1000;
 
     // Warmup
-    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0));
     for _ in 0..10 {
       let _ = fgn.sample();
       let _ = fgn.sample_phastft();
     }
 
     // Test 1: ndrustfft
-    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0));
     let start = Instant::now();
     for _ in 0..num_iterations {
       let _ = fgn.sample();
@@ -728,7 +687,7 @@ mod tests {
     ]));
 
     // Test 2: PhastFT
-    let fgn = FGN::<f64>::new(0.7, n, Some(1.0), None);
+    let fgn = FGN::<f64>::new(0.7, n, Some(1.0));
     let start = Instant::now();
     for _ in 0..num_iterations {
       let _ = fgn.sample_phastft();
@@ -757,7 +716,7 @@ mod tests {
     // Verify that the sqrt_eigenvalues computed on CPU are correctly passed to CUDA
     let hurst = 0.7;
     let n = 100;
-    let fgn = FGN::<f64>::new(hurst, n, Some(1.0), Some(1));
+    let fgn = FGN::<f64>::new(hurst, n, Some(1.0));
 
     println!(
       "Original n: {}, Padded n: {}, Offset: {}",
@@ -804,11 +763,11 @@ mod tests {
     let n = 256; // Power of 2 for simplicity
     let num_samples = 10000;
 
-    let fgn_cpu = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
-    let fgn_cuda = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
+    let fgn_cpu = FGN::<f64>::new(hurst, n, Some(1.0));
+    let fgn_cuda = FGN::<f64>::new(hurst, n, Some(1.0));
 
-    let cpu_samples = fgn_cpu.sample_par();
-    let cuda_samples = fgn_cuda.sample_cuda().unwrap().right().unwrap();
+    let cpu_samples = fgn_cpu.sample_par(num_samples);
+    let cuda_samples = fgn_cuda.sample_cuda(num_samples).unwrap().right().unwrap();
 
     // Compute mean and variance per time step
     let mut cpu_means = vec![0.0; n];
@@ -886,11 +845,11 @@ mod tests {
     let num_samples = 5000;
 
     // Generate samples from both CPU and CUDA
-    let fgn_cpu = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
-    let fgn_cuda = FGN::<f64>::new(hurst, n, Some(1.0), Some(num_samples));
+    let fgn_cpu = FGN::<f64>::new(hurst, n, Some(1.0));
+    let fgn_cuda = FGN::<f64>::new(hurst, n, Some(1.0));
 
-    let cpu_samples = fgn_cpu.sample_par();
-    let cuda_samples = fgn_cuda.sample_cuda().unwrap().right().unwrap();
+    let cpu_samples = fgn_cpu.sample_par(num_samples);
+    let cuda_samples = fgn_cuda.sample_cuda(num_samples).unwrap().right().unwrap();
 
     println!("CPU samples shape: {:?}", cpu_samples.shape());
     println!("CUDA samples shape: {:?}", cuda_samples.shape());
@@ -1156,7 +1115,7 @@ mod tests {
     }
 
     // Estimate Hurst exponent for both CPU and CUDA samples
-    let cpu_hurst_est = estimate_hurst_variance(&cpu_samples, num_samples);
+    let cpu_hurst_est = estimate_hurst_variance(&cpu_samples.into(), num_samples);
     let cuda_hurst_est = estimate_hurst_variance(&cuda_samples, num_samples);
 
     println!("\n=== Hurst Exponent Estimation (Aggregated Variance) ===");

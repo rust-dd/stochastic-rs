@@ -19,6 +19,6 @@ pub mod ai;
 pub mod distributions;
 #[doc(hidden)]
 mod macros;
-// pub mod quant;
+pub mod quant;
 pub mod stats;
 pub mod stochastic;

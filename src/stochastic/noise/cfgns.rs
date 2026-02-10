@@ -1,109 +1,64 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray::Array2;
 
 use super::fgn::FGN;
-use crate::stochastic::Sampling2DExt;
-use crate::stochastic::SamplingExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct CFGNS<T> {
+pub struct CFGNS<T: Float> {
   pub hurst: T,
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
-  pub fgn: FGN<T>,
-  #[cfg(feature = "cuda")]
-  #[default(false)]
-  cuda: bool,
+  fgn: FGN<T>,
 }
 
-impl CFGNS<f64> {
-  fn fgn(&self) -> Array1<f64> {
-    #[cfg(feature = "cuda")]
-    if self.cuda {
-      if self.m.is_some() && self.m.unwrap() > 1 {
-        panic!("m must be None or 1 when using CUDA");
-      }
-
-      return self.fgn.sample_cuda().unwrap().left().unwrap();
-    }
-
-    self.fgn.sample()
-  }
-}
-
-impl Sampling2DExt<f64> for CFGNS<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
+impl<T: Float> CFGNS<T> {
+  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (0.0..=1.0).contains(&self.hurst),
+      (0.0..=1.0).contains(&hurst),
       "Hurst parameter must be in (0, 1)"
     );
     assert!(
-      (-1.0..=1.0).contains(&self.rho),
+      (-1.0..=1.0).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    let mut cfgns = Array2::<f64>::zeros((2, self.n));
-    let fgn1 = self.fgn();
-    let fgn2 = self.fgn();
-
-    for i in 1..self.n {
-      cfgns[[0, i]] = fgn1[i - 1];
-      cfgns[[1, i]] = self.rho * fgn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * fgn2[i - 1];
+    Self {
+      hurst,
+      rho,
+      n,
+      t,
+      fgn: FGN::new(hurst, n, t),
     }
-
-    [cfgns.row(0).into_owned(), cfgns.row(1).into_owned()]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl CFGNS<f32> {
-  fn fgn(&self) -> Array1<f32> {
-    self.fgn.sample()
+impl<T: Float> Process<T> for CFGNS<T> {
+  type Output = [Array1<T>; 2];
+  type Noise = FGN<T>;
+
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|fgn| fgn.sample())
   }
-}
 
-impl Sampling2DExt<f32> for CFGNS<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    assert!(
-      (0.0..=1.0).contains(&self.hurst),
-      "Hurst parameter must be in (0, 1)"
-    );
-    assert!(
-      (-1.0..=1.0).contains(&self.rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|fgn| fgn.sample_simd())
+  }
 
-    let mut cfgns = Array2::<f32>::zeros((2, self.n));
-    let fgn1 = self.fgn();
-    let fgn2 = self.fgn();
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let fgn1 = noise_fn(&self.fgn);
+    let z = noise_fn(&self.gn);
+    let c = (T::one() - self.rho.powi(2)).sqrt();
+    let mut fgn2 = Array1::new(self.n);
 
-    for i in 1..self.n {
-      cfgns[[0, i]] = fgn1[i - 1];
-      cfgns[[1, i]] = self.rho * fgn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * fgn2[i - 1];
+    for i in 0..self.n {
+      fgn2[i] = self.rho * fgn1[i] + c * z[i];
     }
 
-    [cfgns.row(0).into_owned(), cfgns.row(1).into_owned()]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+    [fgn1, fgn2]
   }
 }
