@@ -434,10 +434,8 @@ mod tests {
   use ndarray::Array1;
 
   use super::*;
-  use crate::stochastic::noise::cgns::CGNS;
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
   use crate::stochastic::volatility::HestonPow;
-  use crate::stochastic::Sampling2DExt;
 
   #[test]
   fn test_heston_calibrate() {
@@ -512,8 +510,6 @@ mod tests {
       Some(t),
       HestonPow::Sqrt,
       Some(true),
-      None,
-      CGNS::new(true_params.rho, n, None, None),
     );
 
     let [s_ts, v_ts] = process.sample();

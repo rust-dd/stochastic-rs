@@ -7,7 +7,6 @@ use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::SamplingExt;
 
 // Version 1: FOUParameterEstimationV1 with linear filter methods
 #[derive(ImplNew)]
@@ -338,11 +337,11 @@ impl FOUParameterEstimationV3 {
     let fgn_length = self.series_length * M;
 
     // Generate fGN sample of length fgn_length
-    let fgn = FGN::<f64>::new(self.hurst, fgn_length - 1, Some(self.T), None);
+    let fgn = FGN::new(self.hurst, fgn_length - 1, Some(self.T));
     let fgn_sample = fgn.sample();
 
     // Initialize full_fou array
-    let mut full_fou = Array1::<f64>::zeros(fgn_length);
+    let mut full_fou = Array1::zeros(fgn_length);
     full_fou[0] = self.initial_value;
 
     for i in 1..fgn_length {
@@ -352,7 +351,7 @@ impl FOUParameterEstimationV3 {
     }
 
     // Initialize fou array
-    let mut fou = Array1::<f64>::zeros(self.series_length);
+    let mut fou = Array1::zeros(self.series_length);
     fou[0] = self.initial_value;
 
     for i in 1..self.series_length {
@@ -433,14 +432,13 @@ impl FOUParameterEstimationV3 {
 mod tests {
   use super::*;
   use crate::stochastic::diffusion::fou::FOU;
-  use crate::stochastic::SamplingExt;
 
   #[test]
   fn test_fou_parameter_estimation_v1() {
     const N: usize = 10000;
     const X0: f64 = 0.0;
 
-    let fou = FOU::<f64>::new(0.70, 5.0, 2.8, 1.0, 4096, Some(X0), Some(16.0), None);
+    let fou = FOU::<f64>::new(0.70, 5.0, 2.8, 1.0, 4096, Some(X0), Some(16.0));
     let path = fou.sample();
     let mut estimator = FOUParameterEstimationV1::new(path, FilterType::Daubechies, None);
 
@@ -461,7 +459,7 @@ mod tests {
     const X0: f64 = 0.0;
     let delta = 1.0 / 256.0;
 
-    let fou = FOU::<f64>::new(0.70, 5.0, 2.8, 2.0, N, Some(X0), Some(16.0), None);
+    let fou = FOU::<f64>::new(0.70, 5.0, 2.8, 2.0, N, Some(X0), Some(16.0));
     let path = fou.sample();
     let mut estimator = FOUParameterEstimationV2::new(path, Some(delta), N);
 

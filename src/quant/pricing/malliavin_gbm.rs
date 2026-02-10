@@ -6,7 +6,6 @@ use ndarray::Array2;
 use crate::quant::r#trait::PricerExt;
 use crate::quant::r#trait::TimeExt;
 use crate::stochastic::diffusion::gbm::GBM;
-use crate::stochastic::SamplingExt;
 
 fn laplace_pdf(x: f64, l: f64) -> f64 {
   if l <= 0.0 {
@@ -146,17 +145,7 @@ impl GbmMalliavinPricer {
     let mu = self.r - self.q.unwrap_or(0.0);
 
     // Construct a GBM process with Euler discretization on [0, T].
-    let gbm = GBM::<f64> {
-      mu,
-      sigma: self.v,
-      n: self.n_steps,
-      x0: Some(self.s),
-      t: Some(T),
-      m: Some(self.n_paths),
-      distribution: None,
-      calculate_malliavin: Some(false),
-      malliavin: std::sync::Mutex::new(None),
-    };
+    let gbm = GBM::new(mu, self.v, self.n_steps, Some(self.s), Some(T));
 
     let m = self.n_paths;
     let n = self.n_steps;
