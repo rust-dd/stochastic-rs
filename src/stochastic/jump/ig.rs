@@ -1,83 +1,56 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-
-pub struct IG<T> {
+pub struct IG<T: Float> {
   pub gamma: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
-impl SamplingExt<f64> for IG<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let mut ig = Array1::zeros(self.n);
-    ig[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      ig[i] = ig[i - 1] + self.gamma * dt + gn[i - 1]
+impl<T: Float> IG<T> {
+  pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Self {
+      gamma,
+      n,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
     }
-
-    ig
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl SamplingExt<f32> for IG<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let mut ig = Array1::zeros(self.n);
-    ig[0] = self.x0.unwrap_or(0.0);
+impl<T: Float> Process<T> for IG<T> {
+  type Output = Array1<T>;
+  type Noise = Gn<T>;
 
-    for i in 1..self.n {
-      ig[i] = ig[i - 1] + self.gamma * dt + gn[i - 1]
-    }
-
-    ig
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
   }
 
   #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
     let mut ig = Array1::zeros(self.n);
-    ig[0] = self.x0.unwrap_or(0.0);
+    ig[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       ig[i] = ig[i - 1] + self.gamma * dt + gn[i - 1]
     }
 
     ig
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
@@ -90,25 +63,19 @@ mod tests {
 
   #[test]
   fn ig_length_equals_n() {
-    let ig = IG::new(2.25, N, Some(X0), Some(10.0), None);
+    let ig = IG::new(2.25, N, Some(X0), Some(10.0));
     assert_eq!(ig.sample().len(), N);
   }
 
   #[test]
   fn ig_starts_with_x0() {
-    let ig = IG::new(2.25, N, Some(X0), Some(10.0), None);
+    let ig = IG::new(2.25, N, Some(X0), Some(10.0));
     assert_eq!(ig.sample()[0], X0);
   }
 
   #[test]
   fn ig_plot() {
-    let ig = IG::new(2.25, N, Some(X0), Some(10.0), None);
+    let ig = IG::new(2.25, N, Some(X0), Some(10.0));
     plot_1d!(ig.sample(), "Inverse Gaussian (IG)");
-  }
-
-  #[test]
-  #[ignore = "Not implemented"]
-  fn ig_malliavin() {
-    unimplemented!()
   }
 }

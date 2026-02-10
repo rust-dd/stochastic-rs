@@ -40,7 +40,11 @@ use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-pub struct DuffieKanJumpExp<T: Float> {
+pub struct DuffieKanJumpExp<T, D>
+where
+  T: Float,
+  D: Distribution<T> + Send + Sync,
+{
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -65,11 +69,17 @@ pub struct DuffieKanJumpExp<T: Float> {
   pub x0: Option<T>,
   /// Total time horizon.
   pub t: Option<T>,
+  /// Jump distribution.
+  jump_dist: D,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: CGNS<T>,
 }
 
-impl<T: Float> DuffieKanJumpExp<T> {
+impl<T, D> DuffieKanJumpExp<T, D>
+where
+  T: Float,
+  D: Distribution<T> + Send + Sync,
+{
   pub fn new(
     alpha: T,
     beta: T,
@@ -90,6 +100,11 @@ impl<T: Float> DuffieKanJumpExp<T> {
     x0: Option<T>,
     t: Option<T>,
   ) -> Self {
+    #[cfg(not(feature = "simd"))]
+    let jump_dist = Normal::new(T::zero(), self.jump_scale).unwrap();
+    #[cfg(feature = "simd")]
+    let jump_dist = SimdNormal::new(T::zero(), jump_scale);
+
     Self {
       alpha,
       beta,
@@ -109,12 +124,17 @@ impl<T: Float> DuffieKanJumpExp<T> {
       r0,
       x0,
       t,
+      jump_dist: jump_dist.into(),
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: Float> Process<T> for DuffieKanJumpExp<T> {
+impl<T, D> Process<T> for DuffieKanJumpExp<T, D>
+where
+  T: Float,
+  D: Distribution<T> + Send + Sync,
+{
   type Output = [Array1<T>; 2];
   type Noise = CGNS<T>;
 
@@ -142,11 +162,6 @@ impl<T: Float> Process<T> for DuffieKanJumpExp<T> {
     let mut rng = rand::rng();
     let exp_dist = Exp::new(self.lambda).unwrap();
 
-    #[cfg(feature = "simd")]
-    let jump_dist = SimdNormal::new(T::zero(), self.jump_scale);
-    #[cfg(not(feature = "simd"))]
-    let jump_dist = Normal::new(T::zero(), self.jump_scale).unwrap();
-
     let mut next_jump_time = exp_dist.sample(&mut rng);
 
     for i in 1..self.n {
@@ -161,7 +176,7 @@ impl<T: Float> Process<T> for DuffieKanJumpExp<T> {
 
       let mut jump_sum_x = T::zero();
       while next_jump_time <= current_time {
-        let jump_x = jump_dist.sample(&mut rng);
+        let jump_x = self.jump_dist.sample(&mut rng);
         jump_sum_x += jump_x;
         next_jump_time += exp_dist.sample(&mut rng);
       }

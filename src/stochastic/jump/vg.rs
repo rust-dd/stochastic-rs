@@ -1,104 +1,91 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
+#[cfg(not(feature = "simd"))]
 use ndarray_rand::rand_distr::Gamma;
 use ndarray_rand::RandomExt;
-use rand_distr::Normal;
+use rand_distr::Distribution;
 
-use crate::stochastic::SamplingExt;
+#[cfg(feature = "simd")]
+use crate::distributions::gamma::SimdGamma;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct VG<T> {
+pub struct VG<T, D>
+where
+  T: Float,
+  D: Distribution<T> + Send + Sync,
+{
   pub mu: T,
   pub sigma: T,
   pub nu: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
+  gamma: D,
+  gn: Gn<T>,
 }
 
-impl SamplingExt<f64> for VG<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+impl<T, D> VG<T, D>
+where
+  T: Float,
+  D: Distribution<T> + Send + Sync,
+{
+  pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    let gn = Gn::new(n - 1, t);
+    let dt = gn.dt();
+    let shape = dt / nu;
+    let scale = nu;
 
-    let shape = dt / self.nu;
-    let scale = self.nu;
+    #[cfg(not(feature = "simd"))]
+    let gamma = Gamma::new(shape, scale).unwrap();
+    #[cfg(feature = "simd")]
+    let gamma = SimdGamma::new(shape, scale);
 
-    let mut vg = Array1::<f64>::zeros(self.n);
-    vg[0] = self.x0.unwrap_or(0.0);
-
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gammas = Array1::random(self.n - 1, Gamma::new(shape, scale).unwrap());
-
-    for i in 1..self.n {
-      vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * gn[i - 1];
+    Self {
+      mu,
+      sigma,
+      nu,
+      n,
+      x0,
+      t,
+      gamma: gamma.into(),
+      gn,
     }
-
-    vg
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl SamplingExt<f32> for VG<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+impl<T, D> Process<T> for VG<T, D>
+where
+  T: Float,
+  D: Distribution<T> + Send + Sync,
+{
+  type Output = Array1<T>;
+  type Noise = Gn<T>;
 
-    let shape = dt / self.nu;
-    let scale = self.nu;
-
-    let mut vg = Array1::<f32>::zeros(self.n);
-    vg[0] = self.x0.unwrap_or(0.0);
-
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gammas = Array1::random(self.n - 1, Gamma::new(shape, scale).unwrap());
-
-    for i in 1..self.n {
-      vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * gn[i - 1];
-    }
-
-    vg
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
   }
 
   #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::gamma::SimdGamma;
-    use crate::stats::distr::normal::SimdNormal;
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let mut vg = Array1::<T>::zeros(self.n);
+    vg[0] = self.x0.unwrap_or(T::zero());
 
-    let shape = dt / self.nu;
-    let scale = self.nu;
-
-    let mut vg = Array1::<f32>::zeros(self.n);
-    vg[0] = self.x0.unwrap_or(0.0);
-
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-    let gammas = Array1::random(self.n - 1, SimdGamma::new(shape, scale));
+    let gn = noise_fn(&self.gn);
+    let gammas = Array1::random(self.n - 1, &self.gamma);
 
     for i in 1..self.n {
       vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * gn[i - 1];
     }
 
     vg
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
@@ -111,25 +98,19 @@ mod tests {
 
   #[test]
   fn vg_length_equals_n() {
-    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None, None);
+    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None);
     assert_eq!(vg.sample().len(), N);
   }
 
   #[test]
   fn vg_starts_with_x0() {
-    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None, None);
+    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None);
     assert_eq!(vg.sample()[0], X0);
   }
 
   #[test]
   fn vg_plot() {
-    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None, None);
+    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None);
     plot_1d!(vg.sample(), "Variace Gamma (VG)");
-  }
-
-  #[test]
-  #[ignore = "Not implemented"]
-  fn vg_malliavin() {
-    unimplemented!()
   }
 }
