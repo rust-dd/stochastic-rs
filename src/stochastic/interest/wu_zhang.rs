@@ -16,7 +16,6 @@
 //! - `n`: Number of time steps in the simulation.
 //! - `m`: Batch size for parallel sampling (if used).
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -24,7 +23,6 @@ use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
 pub struct WuZhangD<T: Float> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
@@ -44,6 +42,34 @@ pub struct WuZhangD<T: Float> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
+  gn: Gn<T>,
+}
+
+impl<T: Float> WuZhangD<T> {
+  pub fn new(
+    alpha: Array1<T>,
+    beta: Array1<T>,
+    nu: Array1<T>,
+    lambda: Array1<T>,
+    x0: Array1<T>,
+    v0: Array1<T>,
+    xn: usize,
+    t: Option<T>,
+    n: usize,
+  ) -> Self {
+    Self {
+      alpha,
+      beta,
+      nu,
+      lambda,
+      x0,
+      v0,
+      xn,
+      t,
+      n,
+      gn: Gn::new(n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for WuZhangD<T> {
@@ -63,8 +89,7 @@ impl<T: Float> Process<T> for WuZhangD<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
+    let dt = self.gn.dt();
     let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
 
     for i in 0..self.xn {
@@ -73,8 +98,8 @@ impl<T: Float> Process<T> for WuZhangD<T> {
     }
 
     for i in 0..self.xn {
-      let gn_f = noise_fn(&gn);
-      let gn_v = noise_fn(&gn);
+      let gn_f = noise_fn(&self.gn);
+      let gn_v = noise_fn(&self.gn);
 
       for j in 1..self.n {
         let v_old = fv[(i + self.xn, j - 1)].max(T::zero());

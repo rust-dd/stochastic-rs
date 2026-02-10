@@ -26,7 +26,6 @@
 //! - `m`: Batch size for parallelization (if any).
 //! - `cgns`: A correlated Gaussian noise system that produces two correlated Brownian increments.
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
@@ -34,7 +33,6 @@ use crate::stochastic::Float;
 use crate::stochastic::Process;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
-#[derive(ImplNew)]
 pub struct DuffieKan<T: Float> {
   pub alpha: T,
   pub beta: T,
@@ -52,8 +50,48 @@ pub struct DuffieKan<T: Float> {
   pub r0: Option<T>,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
-  pub cgns: CGNS<T>,
+  cgns: CGNS<T>,
+}
+
+impl<T: Float> DuffieKan<T> {
+  pub fn new(
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    n: usize,
+    r0: Option<T>,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
+    Self {
+      alpha,
+      beta,
+      gamma,
+      rho,
+      a1,
+      b1,
+      c1,
+      sigma1,
+      a2,
+      b2,
+      c2,
+      sigma2,
+      n,
+      r0,
+      x0,
+      t,
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for DuffieKan<T> {
@@ -73,9 +111,8 @@ impl<T: Float> Process<T> for DuffieKan<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let cgns = CGNS::new(self.rho, self.n - 1, self.t);
-    let dt = cgns.dt();
-    let [cgn1, cgn2] = noise_fn(&cgns);
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = noise_fn(&self.cgns);
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut x = Array1::<T>::zeros(self.n);

@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,13 +6,26 @@ use crate::stochastic::Process;
 
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
-#[derive(ImplNew)]
 pub struct Kimura<T: Float> {
   pub a: T,
   pub sigma: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
+  pub gn: Gn<T>,
+}
+
+impl<T: Float> Kimura<T> {
+  pub fn new(a: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Kimura {
+      a,
+      sigma,
+      n,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for Kimura<T> {
@@ -33,9 +45,8 @@ impl<T: Float> Process<T> for Kimura<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
 
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());

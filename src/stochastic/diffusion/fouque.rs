@@ -17,6 +17,7 @@ pub struct FouqueOU2D<T: Float> {
   pub x0: Option<T>,
   pub y0: Option<T>,
   pub t: Option<T>,
+  gn: Gn<T>,
 }
 
 impl<T: Float> FouqueOU2D<T> {
@@ -41,6 +42,7 @@ impl<T: Float> FouqueOU2D<T> {
       x0,
       y0,
       t,
+      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -62,10 +64,9 @@ impl<T: Float> Process<T> for FouqueOU2D<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn_x = noise_fn(&gn);
-    let gn_y = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn_x = noise_fn(&self.gn);
+    let gn_y = noise_fn(&self.gn);
 
     let mut x = Array1::<T>::zeros(self.n);
     let mut y = Array1::<T>::zeros(self.n);

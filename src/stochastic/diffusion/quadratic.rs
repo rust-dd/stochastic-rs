@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,7 +6,6 @@ use crate::stochastic::Process;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
-#[derive(ImplNew)]
 pub struct Quadratic<T: Float> {
   pub alpha: T,
   pub beta: T,
@@ -16,6 +14,22 @@ pub struct Quadratic<T: Float> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
+  gn: Gn<T>,
+}
+
+impl<T: Float> Quadratic<T> {
+  pub fn new(alpha: T, beta: T, gamma: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Self {
+      alpha,
+      beta,
+      gamma,
+      sigma,
+      n,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for Quadratic<T> {
@@ -35,9 +49,8 @@ impl<T: Float> Process<T> for Quadratic<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
 
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());

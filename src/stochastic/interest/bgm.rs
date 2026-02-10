@@ -11,7 +11,6 @@
 //! - `n`: Number of time steps in the simulation.
 //! - `m`: Batch size for parallel sampling (if used).
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -19,7 +18,6 @@ use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
 pub struct BGM<T: Float> {
   /// Drift/volatility multiplier for each forward rate.
   pub lambda: Array1<T>,
@@ -31,6 +29,20 @@ pub struct BGM<T: Float> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
+  gn: Gn<T>,
+}
+
+impl<T: Float> BGM<T> {
+  pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize) -> Self {
+    Self {
+      lambda,
+      x0,
+      xn,
+      t,
+      n,
+      gn: Gn::new(n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for BGM<T> {
@@ -50,8 +62,7 @@ impl<T: Float> Process<T> for BGM<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
+    let dt = self.gn.dt();
 
     let mut fwd = Array2::<T>::zeros((self.xn, self.n));
 
@@ -60,7 +71,7 @@ impl<T: Float> Process<T> for BGM<T> {
     }
 
     for i in 0..self.xn {
-      let gn = noise_fn(&gn);
+      let gn = noise_fn(&self.gn);
 
       for j in 1..self.n {
         let f_old = fwd[(i, j - 1)];

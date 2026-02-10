@@ -129,11 +129,16 @@ pub trait Process<T: Float>: Send + Sync {
 
   // fn sample_with_rng(&self, rng: &mut impl Rng) -> Self::Output;
 
+  fn sample_par(&self, m: usize) -> Vec<Self::Output> {
+    (0..m).into_par_iter().map(|_| self.sample()).collect()
+  }
+
   #[cfg(feature = "simd")]
   fn sample_simd(&self) -> Self::Output;
 
-  fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    (0..m).into_par_iter().map(|_| self.sample()).collect()
+  #[cfg(feature = "simd")]
+  fn sample_par_simd(&self, m: usize) -> Vec<Self::Output> {
+    (0..m).into_par_iter().map(|_| self.sample_simd()).collect()
   }
 
   #[cfg(feature = "cuda")]

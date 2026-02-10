@@ -13,6 +13,7 @@ pub struct HoLee<T: Float> {
   pub sigma: T,
   pub n: usize,
   pub t: Option<T>,
+  gn: Gn<T>,
 }
 
 impl<T: Float> HoLee<T> {
@@ -34,6 +35,7 @@ impl<T: Float> HoLee<T> {
       sigma,
       n,
       t,
+      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -54,9 +56,8 @@ impl<T: Float> Process<T> for HoLee<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
 
     let mut r = Array1::<T>::zeros(self.n);
 

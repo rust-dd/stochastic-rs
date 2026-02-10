@@ -4,7 +4,7 @@ use ndarray::Array1;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
+#[derive(ImplNew, Copy, Clone)]
 pub struct Gn<T: Float> {
   pub n: usize,
   pub t: Option<T>,

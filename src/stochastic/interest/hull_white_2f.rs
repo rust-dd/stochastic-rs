@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
@@ -8,7 +7,6 @@ use crate::stochastic::Process;
 /// Hull-White 2-factor model
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0
 /// dU(t) = b * U(t) dt + sigma_2 dW2(t) u(0) = 0
-#[derive(ImplNew)]
 pub struct HullWhite2F<T: Float> {
   pub k: fn(T) -> T,
   pub theta: T,
@@ -19,7 +17,34 @@ pub struct HullWhite2F<T: Float> {
   pub x0: Option<T>,
   pub t: Option<T>,
   pub n: usize,
-  pub cgns: CGNS<T>,
+  cgns: CGNS<T>,
+}
+
+impl<T: Float> HullWhite2F<T> {
+  fn new(
+    k: fn(T) -> T,
+    theta: T,
+    sigma1: T,
+    sigma2: T,
+    rho: T,
+    b: T,
+    x0: Option<T>,
+    t: Option<T>,
+    n: usize,
+  ) -> Self {
+    Self {
+      k,
+      theta,
+      sigma1,
+      sigma2,
+      rho,
+      b,
+      x0,
+      t,
+      n,
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for HullWhite2F<T> {
@@ -39,9 +64,8 @@ impl<T: Float> Process<T> for HullWhite2F<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let cgns = CGNS::new(self.rho, self.n - 1, self.t);
-    let dt = cgns.dt();
-    let [cgn1, cgn2] = noise_fn(&cgns);
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = noise_fn(&self.cgns);
 
     let mut x = Array1::<T>::zeros(self.n);
     let mut u = Array1::<T>::zeros(self.n);

@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -7,7 +6,6 @@ use crate::stochastic::Float;
 use crate::stochastic::Process;
 
 /// Ahn-Dittmar-Gallant (ADG) model
-#[derive(ImplNew)]
 pub struct ADG<T: Float> {
   pub k: fn(T) -> T,
   pub theta: fn(T) -> T,
@@ -19,6 +17,36 @@ pub struct ADG<T: Float> {
   pub xn: usize,
   pub x0: Array1<T>,
   pub t: Option<T>,
+  gn: Gn<T>,
+}
+
+impl<T: Float> ADG<T> {
+  fn new(
+    k: fn(T) -> T,
+    theta: fn(T) -> T,
+    sigma: Array1<T>,
+    phi: fn(T) -> T,
+    b: fn(T) -> T,
+    c: fn(T) -> T,
+    n: usize,
+    xn: usize,
+    x0: Array1<T>,
+    t: Option<T>,
+  ) -> Self {
+    Self {
+      k,
+      theta,
+      sigma,
+      phi,
+      b,
+      c,
+      n,
+      xn,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for ADG<T> {
@@ -38,8 +66,7 @@ impl<T: Float> Process<T> for ADG<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
+    let dt = self.gn.dt();
 
     let mut adg = Array2::<T>::zeros((self.xn, self.n));
     for i in 0..self.xn {
@@ -47,7 +74,7 @@ impl<T: Float> Process<T> for ADG<T> {
     }
 
     for i in 0..self.xn {
-      let gn = noise_fn(&gn);
+      let gn = noise_fn(&self.gn);
 
       for j in 1..self.n {
         let t = j as f64 * dt;

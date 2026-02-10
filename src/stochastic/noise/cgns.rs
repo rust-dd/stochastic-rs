@@ -4,6 +4,7 @@ use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
+#[derive(Copy, Clone)]
 pub struct CGNS<T: Float> {
   pub rho: T,
   pub n: usize,

@@ -15,6 +15,7 @@ pub struct CIR<T: Float> {
   pub x0: Option<T>,
   pub t: Option<T>,
   pub use_sym: Option<bool>,
+  gn: Gn<T>,
 }
 
 impl<T: Float> CIR<T> {
@@ -41,6 +42,7 @@ impl<T: Float> CIR<T> {
       x0,
       t,
       use_sym,
+      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -63,9 +65,8 @@ impl<T: Float> Process<T> for CIR<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
 
     let mut cir = Array1::<T>::zeros(self.n);
     cir[0] = self.x0.unwrap_or(T::zero());

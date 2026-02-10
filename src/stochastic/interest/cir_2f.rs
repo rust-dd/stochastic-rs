@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use super::cir::CIR;
@@ -6,11 +5,16 @@ use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
 pub struct CIR2F<T: Float> {
   pub x: CIR<T>,
   pub y: CIR<T>,
   pub phi: fn(T) -> T,
+}
+
+impl<T: Float> CIR2F<T> {
+  pub fn new(x: CIR<T>, y: CIR<T>, phi: fn(T) -> T, gn: Gn<T>) -> Self {
+    Self { x, y, phi }
+  }
 }
 
 impl<T: Float> Process<T> for CIR2F<T> {

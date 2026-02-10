@@ -11,10 +11,11 @@ pub struct Jacobi<T: Float> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
+  gn: Gn<T>,
 }
 
 impl<T: Float> Jacobi<T> {
-  fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(alpha > T::zero(), "alpha must be positive");
     assert!(beta > T::zero(), "beta must be positive");
     assert!(sigma > T::zero(), "sigma must be positive");
@@ -27,6 +28,7 @@ impl<T: Float> Jacobi<T> {
       n,
       x0,
       t,
+      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -49,9 +51,8 @@ impl<T: Float> Process<T> for Jacobi<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
 
     let mut jacobi = Array1::<T>::zeros(self.n);
     jacobi[0] = self.x0.unwrap_or(T::zero());

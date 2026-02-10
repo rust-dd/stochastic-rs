@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use num_complex::Complex64;
 use statrs::distribution::Continuous;
@@ -13,14 +12,28 @@ use crate::stochastic::DistributionExt;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct GBM<T> {
+pub struct GBM<T: Float> {
   pub mu: T,
   pub sigma: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
+  gn: Gn<T>,
   distribution: Option<LogNormal>,
+}
+
+impl<T: Float> GBM<T> {
+  pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Self {
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
+      distribution: None,
+    }
+  }
 }
 
 impl<T: Float> Process<T> for GBM<T> {
@@ -37,9 +50,8 @@ impl<T: Float> Process<T> for GBM<T> {
   }
 
   fn euler_maruyama(&self, noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
 
     let mut gbm = Array1::<T>::zeros(self.n);
     gbm[0] = self.x0.unwrap_or(T::zero());

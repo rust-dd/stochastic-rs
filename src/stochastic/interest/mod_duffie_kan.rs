@@ -28,7 +28,6 @@
 //! - `m`: Optional batch size for parallel sampling.
 //! - `cgns`: Correlated Gaussian noise generator for the diffusion part.
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use rand_distr::Distribution;
 use rand_distr::Exp;
@@ -41,7 +40,6 @@ use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
 pub struct DuffieKanJumpExp<T: Float> {
   pub alpha: T,
   pub beta: T,
@@ -68,7 +66,52 @@ pub struct DuffieKanJumpExp<T: Float> {
   /// Total time horizon.
   pub t: Option<T>,
   /// Correlated Gaussian noise generator for the diffusion part.
-  pub cgns: CGNS<T>,
+  cgns: CGNS<T>,
+}
+
+impl<T: Float> DuffieKanJumpExp<T> {
+  pub fn new(
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    lambda: T,
+    jump_scale: T,
+    n: usize,
+    r0: Option<T>,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
+    Self {
+      alpha,
+      beta,
+      gamma,
+      rho,
+      a1,
+      b1,
+      c1,
+      sigma1,
+      a2,
+      b2,
+      c2,
+      sigma2,
+      lambda,
+      jump_scale,
+      n,
+      r0,
+      x0,
+      t,
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for DuffieKanJumpExp<T> {
@@ -88,9 +131,8 @@ impl<T: Float> Process<T> for DuffieKanJumpExp<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let cgns = CGNS::new(self.rho, self.n - 1, self.t);
-    let dt = cgns.dt();
-    let [cgn1, cgn2] = noise_fn(&cgns);
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = noise_fn(&self.cgns);
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut x = Array1::<T>::zeros(self.n);

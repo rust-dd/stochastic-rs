@@ -1,11 +1,9 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
 pub struct HJM<T: Float> {
   pub a: fn(T) -> T,
   pub b: fn(T) -> T,
@@ -19,6 +17,41 @@ pub struct HJM<T: Float> {
   pub p0: Option<T>,
   pub f0: Option<T>,
   pub t: Option<T>,
+  gn: Gn<T>,
+}
+
+impl<T: Float> HJM<T> {
+  pub fn new(
+    a: fn(T) -> T,
+    b: fn(T) -> T,
+    p: fn(T, T) -> T,
+    q: fn(T, T) -> T,
+    v: fn(T, T) -> T,
+    alpha: fn(T, T) -> T,
+    sigma: fn(T, T) -> T,
+    n: usize,
+    r0: Option<T>,
+    p0: Option<T>,
+    f0: Option<T>,
+    t: Option<T>,
+    gn: Gn<T>,
+  ) -> Self {
+    Self {
+      a,
+      b,
+      p,
+      q,
+      v,
+      alpha,
+      sigma,
+      n,
+      r0,
+      p0,
+      f0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for HJM<T> {
@@ -38,16 +71,15 @@ impl<T: Float> Process<T> for HJM<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
+    let dt = self.gn.dt();
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut p = Array1::<T>::zeros(self.n);
     let mut f = Array1::<T>::zeros(self.n);
 
-    let gn1 = noise_fn(&gn);
-    let gn2 = noise_fn(&gn);
-    let gn3 = noise_fn(&gn);
+    let gn1 = noise_fn(&self.gn);
+    let gn2 = noise_fn(&self.gn);
+    let gn3 = noise_fn(&self.gn);
 
     let t_max = self.t.unwrap_or(T::one());
 

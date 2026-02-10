@@ -1,15 +1,14 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-#[derive(ImplNew)]
 pub struct BM<T: Float> {
   pub n: usize,
   pub t: Option<T>,
   pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
 impl<T: Float> Process<T> for BM<T> {
@@ -29,8 +28,7 @@ impl<T: Float> Process<T> for BM<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let gn = noise_fn(&gn);
+    let gn = noise_fn(&self.gn);
     let mut bm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {

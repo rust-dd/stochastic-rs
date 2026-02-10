@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -8,7 +7,6 @@ use crate::stochastic::Process;
 /// Hull-White process.
 /// dX(t) = theta(t)dt - alpha * X(t)dt + sigma * dW(t)
 /// where X(t) is the Hull-White process.
-#[derive(ImplNew)]
 pub struct HullWhite<T: Float> {
   pub theta: fn(T) -> T,
   pub alpha: T,
@@ -16,6 +14,21 @@ pub struct HullWhite<T: Float> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
+  gn: Gn<T>,
+}
+
+impl<T: Float> HullWhite<T> {
+  fn new(theta: fn(T) -> T, alpha: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Self {
+      theta,
+      alpha,
+      sigma,
+      n,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
 }
 
 impl<T: Float> Process<T> for HullWhite<T> {
@@ -35,9 +48,8 @@ impl<T: Float> Process<T> for HullWhite<T> {
     &self,
     noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
   ) -> Self::Output {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = noise_fn(&gn);
+    let dt = self.gn.dt();
+    let gn = noise_fn(&self.gn);
 
     let mut hw = Array1::<T>::zeros(self.n);
     hw[0] = self.x0.unwrap_or(T::zero());
