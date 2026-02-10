@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array0;
 use ndarray::Array1;
 use ndarray::Axis;
@@ -7,75 +6,54 @@ use ndarray_rand::RandomExt;
 use rand::rng;
 use rand_distr::Distribution;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-pub struct CustomJt<D, T>
+pub struct CustomJt<T, D>
 where
+  T: Float,
   D: Distribution<T> + Send + Sync,
 {
   pub n: Option<usize>,
   pub t_max: Option<T>,
-  pub m: Option<usize>,
   pub distribution: D,
 }
 
-impl<D> SamplingExt<f64> for CustomJt<D, f64>
+impl<T, D> CustomJt<T, D>
 where
-  D: Distribution<f64> + Send + Sync,
+  T: Float,
+  D: Distribution<T> + Send + Sync,
 {
-  fn sample(&self) -> Array1<f64> {
-    if let Some(n) = self.n {
-      let random = Array1::random(n, &self.distribution);
-      let mut x = Array1::<f64>::zeros(n);
-      for i in 1..n {
-        x[i] = x[i - 1] + random[i - 1];
-      }
-
-      x
-    } else if let Some(t_max) = self.t_max {
-      let mut x = Array1::from(vec![0.0]);
-      let mut t = 0.0;
-
-      while t < t_max {
-        t += self.distribution.sample(&mut rng());
-        x.push(Axis(0), Array0::from_elem(Dim(()), t).view())
-          .unwrap();
-      }
-
-      x
-    } else {
-      panic!("n or t_max must be provided");
+  /// To use SIMD acceleration, use the `simd` feature flag and add a SIMD distribution.
+  pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D) -> Self {
+    CustomJt {
+      n,
+      t_max,
+      distribution,
     }
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n.unwrap_or(0)
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl<D> SamplingExt<f32> for CustomJt<D, f32>
+impl<T, D> Process<T> for CustomJt<T, D>
 where
-  D: Distribution<f32> + Send + Sync,
+  T: Float,
+  D: Distribution<T> + Send + Sync,
 {
-  fn sample(&self) -> Array1<f32> {
+  type Output = Array1<T>;
+  type Noise = Self;
+
+  fn sample(&self) -> Self::Output {
     if let Some(n) = self.n {
       let random = Array1::random(n, &self.distribution);
-      let mut x = Array1::<f32>::zeros(n);
+      let mut x = Array1::<T>::zeros(n);
       for i in 1..n {
         x[i] = x[i - 1] + random[i - 1];
       }
 
       x
     } else if let Some(t_max) = self.t_max {
-      let mut x = Array1::from(vec![0.0]);
-      let mut t = 0.0;
+      let mut x = Array1::from(vec![T::zero()]);
+      let mut t = T::zero();
 
       while t < t_max {
         t += self.distribution.sample(&mut rng());
@@ -89,11 +67,15 @@ where
     }
   }
 
-  fn n(&self) -> usize {
-    self.n.unwrap_or(0)
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.sample()
   }
 
-  fn m(&self) -> Option<usize> {
-    self.m
+  fn euler_maruyama(
+    &self,
+    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    unimplemented!()
   }
 }
