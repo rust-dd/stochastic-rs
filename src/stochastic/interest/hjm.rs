@@ -1,12 +1,12 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::Sampling3DExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 #[derive(ImplNew)]
-pub struct HJM<T> {
+pub struct HJM<T: Float> {
   pub a: fn(T) -> T,
   pub b: fn(T) -> T,
   pub p: fn(T, T) -> T,
@@ -19,20 +19,37 @@ pub struct HJM<T> {
   pub p0: Option<T>,
   pub f0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
 }
 
-impl Sampling3DExt<f64> for HJM<f64> {
-  fn sample(&self) -> [Array1<f64>; 3] {
-    let t_max = self.t.unwrap_or(1.0);
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let mut r = Array1::<f64>::zeros(self.n);
-    let mut p = Array1::<f64>::zeros(self.n);
-    let mut f = Array1::<f64>::zeros(self.n);
+impl<T: Float> Process<T> for HJM<T> {
+  type Output = [Array1<T>; 3];
+  type Noise = Gn<T>;
 
-    let gn1 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn2 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn3 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+
+    let mut r = Array1::<T>::zeros(self.n);
+    let mut p = Array1::<T>::zeros(self.n);
+    let mut f = Array1::<T>::zeros(self.n);
+
+    let gn1 = noise_fn(&gn);
+    let gn2 = noise_fn(&gn);
+    let gn3 = noise_fn(&gn);
+
+    let t_max = self.t.unwrap_or(T::one());
 
     for i in 1..self.n {
       let t = i as f64 * dt;
@@ -44,46 +61,5 @@ impl Sampling3DExt<f64> for HJM<f64> {
     }
 
     [r, p, f]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl Sampling3DExt<f32> for HJM<f32> {
-  fn sample(&self) -> [Array1<f32>; 3] {
-    let t_max = self.t.unwrap_or(1.0);
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let mut r = Array1::<f32>::zeros(self.n);
-    let mut p = Array1::<f32>::zeros(self.n);
-    let mut f = Array1::<f32>::zeros(self.n);
-
-    let gn1 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn2 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn3 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    for i in 1..self.n {
-      let t = i as f32 * dt;
-
-      r[i] = r[i - 1] + (self.a)(t) * dt + (self.b)(t) * gn1[i - 1];
-      p[i] =
-        p[i - 1] + (self.p)(t, t_max) * ((self.q)(t, t_max) * dt + (self.v)(t, t_max) * gn2[i - 1]);
-      f[i] = f[i - 1] + (self.alpha)(t, t_max) * dt + (self.sigma)(t, t_max) * gn3[i - 1];
-    }
-
-    [r, p, f]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

@@ -1,31 +1,46 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// Hull-White process.
 /// dX(t) = theta(t)dt - alpha * X(t)dt + sigma * dW(t)
 /// where X(t) is the Hull-White process.
 #[derive(ImplNew)]
-pub struct HullWhite<T> {
+pub struct HullWhite<T: Float> {
   pub theta: fn(T) -> T,
   pub alpha: T,
   pub sigma: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
 }
 
-impl SamplingExt<f64> for HullWhite<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+impl<T: Float> Process<T> for HullWhite<T> {
+  type Output = Array1<T>;
+  type Noise = Gn<T>;
 
-    let mut hw = Array1::<f64>::zeros(self.n);
-    hw[0] = self.x0.unwrap_or(0.0);
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+    let gn = noise_fn(&gn);
+
+    let mut hw = Array1::<T>::zeros(self.n);
+    hw[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       hw[i] = hw[i - 1]
@@ -34,62 +49,5 @@ impl SamplingExt<f64> for HullWhite<f64> {
     }
 
     hw
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl SamplingExt<f32> for HullWhite<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut hw = Array1::<f32>::zeros(self.n);
-    hw[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      hw[i] = hw[i - 1]
-        + ((self.theta)(i as f32 * dt) - self.alpha * hw[i - 1]) * dt
-        + self.sigma * gn[i - 1]
-    }
-
-    hw
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-
-    let mut hw = Array1::<f32>::zeros(self.n);
-    hw[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      hw[i] = hw[i - 1]
-        + ((self.theta)(i as f32 * dt) - self.alpha * hw[i - 1]) * dt
-        + self.sigma * gn[i - 1]
-    }
-
-    hw
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

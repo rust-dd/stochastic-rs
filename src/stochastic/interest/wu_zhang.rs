@@ -19,13 +19,13 @@
 use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingVExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 #[derive(ImplNew)]
-pub struct WuZhangD<T> {
+pub struct WuZhangD<T: Float> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
   /// Mean reversion speed for each dimension's volatility.
@@ -44,14 +44,28 @@ pub struct WuZhangD<T> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
-  /// Batch size for parallel sampling (if used).
-  pub m: Option<usize>,
 }
 
-impl SamplingVExt<f64> for WuZhangD<f64> {
-  fn sample(&self) -> Array2<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let mut fv = Array2::<f64>::zeros((2 * self.xn, self.n));
+impl<T: Float> Process<T> for WuZhangD<T> {
+  type Output = Array2<T>;
+  type Noise = Gn<T>;
+
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|gn| gn.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let gn = Gn::new(self.n - 1, self.t);
+    let dt = gn.dt();
+    let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
 
     for i in 0..self.xn {
       fv[(i, 0)] = self.x0[i];
@@ -59,17 +73,17 @@ impl SamplingVExt<f64> for WuZhangD<f64> {
     }
 
     for i in 0..self.xn {
-      let gn_f = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-      let gn_v = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+      let gn_f = noise_fn(&gn);
+      let gn_v = noise_fn(&gn);
 
       for j in 1..self.n {
-        let v_old = fv[(i + self.xn, j - 1)].max(0.0);
-        let f_old = fv[(i, j - 1)].max(0.0);
+        let v_old = fv[(i + self.xn, j - 1)].max(T::zero());
+        let f_old = fv[(i, j - 1)].max(T::zero());
 
         let dv =
           (self.alpha[i] - self.beta[i] * v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
 
-        let v_new = (v_old + dv).max(0.0);
+        let v_new = (v_old + dv).max(T::zero());
         fv[(i + self.xn, j)] = v_new;
 
         let df = f_old * self.lambda[i] * v_new.sqrt() * gn_f[j - 1];
@@ -78,54 +92,5 @@ impl SamplingVExt<f64> for WuZhangD<f64> {
     }
 
     fv
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl SamplingVExt<f32> for WuZhangD<f32> {
-  fn sample(&self) -> Array2<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let mut fv = Array2::<f32>::zeros((2 * self.xn, self.n));
-
-    for i in 0..self.xn {
-      fv[(i, 0)] = self.x0[i];
-      fv[(i + self.xn, 0)] = self.v0[i];
-    }
-
-    for i in 0..self.xn {
-      let gn_f = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-      let gn_v = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-
-      for j in 1..self.n {
-        let v_old = fv[(i + self.xn, j - 1)].max(0.0);
-        let f_old = fv[(i, j - 1)].max(0.0);
-
-        let dv =
-          (self.alpha[i] - self.beta[i] * v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
-
-        let v_new = (v_old + dv).max(0.0);
-        fv[(i + self.xn, j)] = v_new;
-
-        let df = f_old * self.lambda[i] * v_new.sqrt() * gn_f[j - 1];
-        fv[(i, j)] = f_old + df;
-      }
-    }
-
-    fv
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

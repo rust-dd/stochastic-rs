@@ -2,53 +2,38 @@ use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::diffusion::ou::OU;
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 #[derive(ImplNew)]
-pub struct Vasicek<T> {
+pub struct Vasicek<T: Float> {
   pub mu: T,
   pub sigma: T,
   pub theta: Option<T>,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
   pub ou: OU<T>,
 }
 
-impl SamplingExt<f64> for Vasicek<f64> {
-  fn sample(&self) -> Array1<f64> {
-    self.ou.sample()
-  }
+impl<T: Float> Process<T> for Vasicek<T> {
+  type Output = Array1<T>;
+  type Noise = Gn<T>;
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl SamplingExt<f32> for Vasicek<f32> {
-  fn sample(&self) -> Array1<f32> {
+  fn sample(&self) -> Self::Output {
     self.ou.sample()
   }
 
   #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
+  fn sample_simd(&self) -> Self::Output {
     self.ou.sample_simd()
   }
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+  fn euler_maruyama(
+    &self,
+    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    unimplemented!()
   }
 }
