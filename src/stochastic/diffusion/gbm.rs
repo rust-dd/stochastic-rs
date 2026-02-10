@@ -82,7 +82,7 @@ impl<T: Float> GBM<T> {
   /// D_r S_t = \sigma S_t * 1_[0, r](r)
   ///
   /// The Malliavin derivate of the GBM shows the sensitivity of the stock price with respect to the Wiener process.
-  fn malliavin(&self) -> [Array1<T>; 2] {
+  pub fn malliavin(&self) -> [Array1<T>; 2] {
     let gbm = self.sample();
     let mut m = Array1::zeros(self.n);
 

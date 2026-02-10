@@ -21,7 +21,7 @@ pub struct FouqueOU2D<T: Float> {
 }
 
 impl<T: Float> FouqueOU2D<T> {
-  fn new(
+  pub fn new(
     kappa: T,
     theta: T,
     epsilon: T,

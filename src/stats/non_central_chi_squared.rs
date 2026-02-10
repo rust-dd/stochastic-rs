@@ -3,11 +3,13 @@ use rand_distr::ChiSquared;
 use rand_distr::Distribution;
 use rand_distr::Normal;
 
-pub fn sample(df: f64, lambda: f64, rng: &mut impl Rng) -> f64 {
+use crate::stochastic::Float;
+
+pub fn sample<T: Float>(df: T, lambda: T, rng: &mut impl Rng) -> T {
   let chi_squared = ChiSquared::new(df).unwrap();
   let y = chi_squared.sample(rng);
 
-  let normal = Normal::new(lambda.sqrt(), 1.0).unwrap();
+  let normal = Normal::new(lambda.sqrt(), T::one()).unwrap();
   let z = normal.sample(rng);
 
   y + z * z

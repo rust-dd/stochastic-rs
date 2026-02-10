@@ -8,7 +8,6 @@ use ndarray::Axis;
 use rand::Rng;
 
 use super::noise::fgn::FGN;
-use super::SamplingExt;
 
 pub enum NoiseModel {
   Gaussian,

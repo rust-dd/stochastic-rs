@@ -1,15 +1,11 @@
-use std::sync::Mutex;
-
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use super::HestonPow;
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Sampling2DExt;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
-#[derive(ImplNew)]
-
-pub struct Heston<T> {
+pub struct Heston<T: Float> {
   /// Initial stock price
   pub s0: Option<T>,
   /// Initial volatility
@@ -34,28 +30,66 @@ pub struct Heston<T> {
   pub pow: HestonPow,
   /// Use the symmetric method for the variance to avoid negative values
   pub use_sym: Option<bool>,
-  /// Number of paths for multithreading
-  pub m: Option<usize>,
   /// Noise generator
-  pub cgns: CGNS<T>,
-  /// Calculate the Malliavin derivative
-  pub calculate_malliavin: Option<bool>,
-  /// Malliavin derivative of the volatility
-  malliavin_of_vol: Mutex<Option<Array1<T>>>,
-  /// Malliavin derivative of the price
-  malliavin_of_price: Mutex<Option<Array1<T>>>,
+  cgns: CGNS<T>,
 }
 
-impl Sampling2DExt<f64> for Heston<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+impl<T: Float> Heston<T> {
+  pub fn new(
+    s0: Option<T>,
+    v0: Option<T>,
+    kappa: T,
+    theta: T,
+    sigma: T,
+    rho: T,
+    mu: T,
+    n: usize,
+    t: Option<T>,
+    pow: HestonPow,
+    use_sym: Option<bool>,
+  ) -> Self {
+    Self {
+      s0,
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+      mu,
+      n,
+      t,
+      pow,
+      use_sym,
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
+}
 
-    let mut s = Array1::<f64>::zeros(self.n);
-    let mut v = Array1::<f64>::zeros(self.n);
+impl<T: Float> Process<T> for Heston<T> {
+  type Output = [Array1<T>; 2];
+  type Noise = CGNS<T>;
 
-    s[0] = self.s0.unwrap_or(0.0);
-    v[0] = self.v0.unwrap_or(0.0);
+  fn sample(&self) -> Self::Output {
+    self.euler_maruyama(|cgns| cgns.sample())
+  }
+
+  #[cfg(feature = "simd")]
+  fn sample_simd(&self) -> Self::Output {
+    self.euler_maruyama(|cgns| cgns.sample_simd())
+  }
+
+  fn euler_maruyama(
+    &self,
+    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
+  ) -> Self::Output {
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = noise_fn(&self.cgns);
+
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+
+    s[0] = self.s0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       s[i] = s[i - 1] + self.mu * s[i - 1] * dt + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1];
@@ -63,58 +97,22 @@ impl Sampling2DExt<f64> for Heston<f64> {
       let dv = self.kappa * (self.theta - v[i - 1]) * dt
         + self.sigma
           * v[i - 1].powf(match self.pow {
-            HestonPow::Sqrt => 0.5,
-            HestonPow::ThreeHalves => 1.5,
+            HestonPow::Sqrt => 0.5.into(),
+            HestonPow::ThreeHalves => 1.5.into(),
           })
           * cgn2[i - 1];
 
       v[i] = match self.use_sym.unwrap_or(false) {
         true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(0.0),
+        false => (v[i - 1] + dv).max(T::zero()),
       }
-    }
-
-    if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
-      let mut det_term = Array1::zeros(self.n);
-      let mut malliavin = Array1::zeros(self.n);
-
-      for i in 0..self.n {
-        match self.pow {
-          HestonPow::Sqrt => {
-            det_term[i] = ((-(self.kappa * self.theta / 2.0 - self.sigma.powi(2) / 8.0)
-              * (1.0 / v.last().unwrap())
-              - self.kappa / 2.0)
-              * ((self.n - i) as f64 * dt))
-              .exp();
-            malliavin[i] = (self.sigma * v.last().unwrap().sqrt() / 2.0) * det_term[i];
-          }
-          HestonPow::ThreeHalves => {
-            det_term[i] = ((-(self.kappa * self.theta / 2.0 + 3.0 * self.sigma.powi(2) / 8.0)
-              * v.last().unwrap()
-              - (self.kappa * self.theta) / 2.0)
-              * ((self.n - i) as f64 * dt))
-              .exp();
-            malliavin[i] = (self.sigma * v.last().unwrap().powf(1.5) / 2.0) * det_term[i];
-          }
-        };
-      }
-
-      let _ = std::mem::replace(&mut *self.malliavin_of_vol.lock().unwrap(), Some(malliavin));
     }
 
     [s, v]
   }
+}
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-
+impl<T: Float> Heston<T> {
   /// Malliavin derivative of the volatility
   ///
   /// The Malliavin derivative of the Heston model is given by
@@ -122,59 +120,38 @@ impl Sampling2DExt<f64> for Heston<f64> {
   ///
   /// The Malliavin derivative of the 3/2 Heston model is given by
   /// D_r v_t = \sigma v_t^{3/2} / 2 * exp(-(\kappa \theta / 2 + 3 \sigma^2 / 8) * v_t * dt)
-  fn malliavin(&self) -> [Array1<f64>; 2] {
-    [
-      Array1::zeros(self.n),
-      self
-        .malliavin_of_vol
-        .lock()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .clone(),
-    ]
-  }
-}
+  pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
+    let [s, v] = self.sample();
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize(self.n - 1);
 
-impl Sampling2DExt<f32> for Heston<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+    let mut det_term = Array1::zeros(self.n);
+    let mut malliavin = Array1::zeros(self.n);
 
-    let mut s = Array1::<f32>::zeros(self.n);
-    let mut v = Array1::<f32>::zeros(self.n);
-
-    s[0] = self.s0.unwrap_or(0.0);
-    v[0] = self.v0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      s[i] = s[i - 1] + self.mu * s[i - 1] * dt + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1];
-
-      let dv = self.kappa * (self.theta - v[i - 1]) * dt
-        + self.sigma
-          * v[i - 1].powf(match self.pow {
-            HestonPow::Sqrt => 0.5,
-            HestonPow::ThreeHalves => 1.5,
-          })
-          * cgn2[i - 1];
-
-      v[i] = match self.use_sym.unwrap_or(false) {
-        true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(0.0),
-      }
+    for i in 0..self.n {
+      match self.pow {
+        HestonPow::Sqrt => {
+          det_term[i] = ((-(self.kappa * self.theta / T::from_usize(2)
+            - self.sigma.powi(2) / T::from_usize(8))
+            * (T::one() / *v.last().unwrap())
+            - self.kappa / T::from_usize(2))
+            * (T::from_usize(self.n - i) * dt))
+            .exp();
+          malliavin[i] = (self.sigma * v.last().unwrap().sqrt() / T::from_usize(2)) * det_term[i];
+        }
+        HestonPow::ThreeHalves => {
+          det_term[i] = ((-(self.kappa * self.theta / T::from_usize(2)
+            + T::from_usize(3) * self.sigma.powi(2) / T::from_usize(8))
+            * *v.last().unwrap()
+            - (self.kappa * self.theta) / T::from_usize(2))
+            * (T::from_usize(self.n - i) * dt))
+            .exp();
+          malliavin[i] =
+            (self.sigma * v.last().unwrap().powf(1.5.into()) / T::from_usize(2)) * det_term[i];
+        }
+      };
     }
 
-    [s, v]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+    [s, v, malliavin]
   }
 }
 
@@ -200,9 +177,6 @@ mod tests {
       Some(1.0),
       HestonPow::Sqrt,
       None,
-      None,
-      CGNS::new(0.7, N, None, None),
-      Some(true),
     );
     let process = heston.sample();
     let malliavin = heston.malliavin();

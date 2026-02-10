@@ -21,7 +21,7 @@ pub struct HullWhite2F<T: Float> {
 }
 
 impl<T: Float> HullWhite2F<T> {
-  fn new(
+  pub fn new(
     k: fn(T) -> T,
     theta: T,
     sigma1: T,

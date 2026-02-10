@@ -18,7 +18,7 @@ pub struct HullWhite<T: Float> {
 }
 
 impl<T: Float> HullWhite<T> {
-  fn new(theta: fn(T) -> T, alpha: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(theta: fn(T) -> T, alpha: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
       theta,
       alpha,

@@ -21,7 +21,7 @@ pub struct ADG<T: Float> {
 }
 
 impl<T: Float> ADG<T> {
-  fn new(
+  pub fn new(
     k: fn(T) -> T,
     theta: fn(T) -> T,
     sigma: Array1<T>,
