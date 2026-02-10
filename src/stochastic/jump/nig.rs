@@ -1,41 +1,31 @@
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
-use rand_distr::Distribution;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-pub struct NIG<T, D>
-where
-  T: Float,
-  D: Distribution<T> + Send + Sync,
-{
+pub struct NIG<T: Float> {
   pub theta: T,
   pub sigma: T,
   pub kappa: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  ig: D,
+  ig: SimdInverseGauss<T>,
   gn: Gn<T>,
 }
 
-impl<T, D> NIG<T, D>
-where
-  T: Float,
-  D: Distribution<T> + Send + Sync,
-{
+unsafe impl<T: Float> Send for NIG<T> {}
+unsafe impl<T: Float> Sync for NIG<T> {}
+
+impl<T: Float> NIG<T> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     let gn = Gn::new(n - 1, t);
     let dt = gn.dt();
-    let scale = dt.powf(T::from_usize(2)) / kappa;
+    let scale = dt.powf(T::from_usize(2).unwrap()) / kappa;
     let mean = dt / scale;
-
-    #[cfg(not(feature = "simd"))]
-    let ig = InverseGaussian::new(mean, scale).unwrap();
-    #[cfg(feature = "simd")]
     let ig = SimdInverseGauss::new(mean, scale);
 
     Self {
@@ -45,35 +35,17 @@ where
       n,
       x0,
       t,
-      ig: ig.into(),
+      ig,
       gn,
     }
   }
 }
 
-impl<T, D> Process<T> for NIG<T, D>
-where
-  T: Float,
-  D: Distribution<T> + Send + Sync,
-{
+impl<T: Float> Process<T> for NIG<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
     let ig = Array1::random(self.n - 1, &self.ig);
     let mut nig = Array1::zeros(self.n);
     nig[0] = self.x0.unwrap_or(T::zero());

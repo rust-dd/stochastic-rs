@@ -57,23 +57,10 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
 
     let mut merton = Array1::<T>::zeros(self.n);
     merton[0] = self.x0.unwrap_or(T::zero());
@@ -82,7 +69,7 @@ where
       let [.., jumps] = self.cpoisson.sample();
 
       merton[i] = merton[i - 1]
-        + (self.alpha * self.sigma.powf(T::from_usize(2)) / T::from_usize(2)
+        + (self.alpha * self.sigma.powf(T::from_usize(2).unwrap()) / T::from_usize(2).unwrap()
           - self.lambda * self.theta)
           * dt
         + self.sigma * gn[i - 1]

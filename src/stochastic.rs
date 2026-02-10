@@ -42,16 +42,16 @@
 //!
 //! When the `cuda` feature is enabled, `sample_cuda()` can be used for faster batch sampling on supported devices.
 
-// pub mod autoregressive;
-// pub mod diffusion;
-// pub mod interest;
-// pub mod isonormal;
-// pub mod ito;
-// pub mod jump;
+pub mod autoregressive;
+pub mod diffusion;
+pub mod interest;
+pub mod isonormal;
+pub mod ito;
+pub mod jump;
 pub mod malliavin;
 pub mod noise;
 pub mod process;
-// pub mod sde;
+pub mod sde;
 pub mod sheet;
 pub mod volatility;
 
@@ -67,7 +67,6 @@ use ndarray::parallel::prelude::*;
 use ndarray::Array1;
 #[cfg(feature = "cuda")]
 use ndarray::Array2;
-use ndarray::NdIndex;
 use ndarray::ScalarOperand;
 use ndarray_rand::RandomExt;
 use ndrustfft::Zero;

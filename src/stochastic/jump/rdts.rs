@@ -59,7 +59,6 @@ impl<T: Float> RDTS<T> {
 
 impl<T: Float> Process<T> for RDTS<T> {
   type Output = Array1<T>;
-  type Noise = Self;
 
   fn sample(&self) -> Self::Output {
     let mut rng = rand::rng();
@@ -80,26 +79,13 @@ impl<T: Float> Process<T> for RDTS<T> {
       * (self.lambda_plus.powf(self.alpha - T::one())
         - self.lambda_minus.powf(self.alpha - T::one()));
 
-    #[cfg(not(feature = "simd"))]
-    let uniform = Uniform::new(T::zero(), T::one()).unwrap();
-    #[cfg(not(feature = "simd"))]
-    let exp = Exp::new(T::one()).unwrap();
-
-    #[cfg(feature = "simd")]
     let uniform = SimdUniform::new(T::zero(), T::one());
-    #[cfg(feature = "simd")]
     let exp = SimdExp::new(T::one());
 
     let U = Array1::<T>::random(self.j, uniform);
     let E = Array1::<T>::random(self.j, exp);
     let P = Poisson::new(T::one(), Some(self.j), None);
-
-    #[cfg(not(feature = "simd"))]
     let P = P.sample();
-
-    #[cfg(feature = "simd")]
-    let P = P.sample_simd();
-
     let tau = Array1::<T>::random(self.j, uniform);
 
     for i in 1..self.n {
@@ -129,18 +115,6 @@ impl<T: Float> Process<T> for RDTS<T> {
     }
 
     x
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.sample()
-  }
-
-  fn euler_maruyama(
-    &self,
-    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    unimplemented!()
   }
 }
 

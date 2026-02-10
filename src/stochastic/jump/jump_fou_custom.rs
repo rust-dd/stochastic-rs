@@ -59,23 +59,10 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;
-  type Noise = FGN<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = noise_fn(&self.fgn);
+    let fgn = &self.fgn.sample();
 
     let mut jump_fou = Array1::<T>::zeros(self.n);
     jump_fou[0] = self.x0.unwrap_or(T::zero());
@@ -83,7 +70,7 @@ where
     jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::rng()));
 
     for i in 1..self.n {
-      let t = T::from_usize(i) * dt;
+      let t = T::from_usize(i).unwrap() * dt;
       // check if t is a jump time
       let mut jump = T::zero();
       if jump_times[i] < t && t - dt <= jump_times[i] {

@@ -436,6 +436,7 @@ mod tests {
   use super::*;
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
   use crate::stochastic::volatility::HestonPow;
+  use crate::stochastic::Process;
 
   #[test]
   fn test_heston_calibrate() {

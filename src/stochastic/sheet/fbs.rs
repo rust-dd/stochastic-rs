@@ -146,7 +146,6 @@ impl<T: Float> FBS<T> {
 
 #[cfg(test)]
 mod tests {
-  use ndarray::s;
   use plotly::surface::PlaneContours;
   use plotly::Layout;
   use plotly::Plot;
@@ -162,26 +161,12 @@ mod tests {
     let hurst = 0.7;
     let r = 2.0;
 
-    let half_m = m / 2;
-    let half_n = n / 2;
-
     let fbs: FBS<f64> = FBS::new(hurst, m, n, r);
     let sheet = fbs.sample();
+    let x: Vec<f64> = (1..=n).map(|i| i as f64 * r / n as f64).collect();
+    let y: Vec<f64> = (1..=m).map(|j| j as f64 * r / m as f64).collect();
 
-    let x: Vec<f64> = (1..=half_n).map(|i| i as f64 * r / n as f64).collect();
-    let y: Vec<f64> = (1..=half_m).map(|j| j as f64 * r / m as f64).collect();
-
-    let mut masked_half = sheet.slice(s![..half_m, ..half_n]).to_owned();
-
-    for (i, yi) in y.iter().enumerate() {
-      for (j, xj) in x.iter().enumerate() {
-        if xj.powi(2) + yi.powi(2) > 1.0 {
-          masked_half[[i, j]] = f64::NAN;
-        }
-      }
-    }
-
-    let z: Vec<Vec<f64>> = masked_half.outer_iter().map(|row| row.to_vec()).collect();
+    let z: Vec<Vec<f64>> = sheet.outer_iter().map(|row| row.to_vec()).collect();
 
     let surface = Surface::new(z)
       .x(x.clone())
