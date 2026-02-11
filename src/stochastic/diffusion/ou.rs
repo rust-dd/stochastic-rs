@@ -75,20 +75,4 @@ mod tests {
 
     plot_1d!(ou.sample(), "Fractional Ornstein-Uhlenbeck (FOU) Process");
   }
-
-  #[cfg(all(feature = "simd"))]
-  #[test]
-  fn sample_simd() {
-    use std::time::Instant;
-
-    let start = Instant::now();
-    let ou = OU::new(2.0_f32, 1.0_f32, 0.8_f32, N, Some(X0 as f32), Some(1.0_f32));
-
-    for _ in 0..100_000 {
-      ou.sample();
-    }
-
-    let elapsed = start.elapsed();
-    println!("Elapsed time for sample: {:?}", elapsed);
-  }
 }

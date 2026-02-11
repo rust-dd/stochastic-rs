@@ -1,7 +1,6 @@
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
-#[cfg(feature = "simd")]
 use crate::distributions::gamma::SimdGamma;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
@@ -27,10 +26,6 @@ impl<T: Float> VG<T> {
     let dt = gn.dt();
     let shape = dt / nu;
     let scale = nu;
-
-    #[cfg(not(feature = "simd"))]
-    let gamma = Gamma::new(shape, scale).unwrap();
-    #[cfg(feature = "simd")]
     let gamma = SimdGamma::new(shape, scale);
 
     Self {

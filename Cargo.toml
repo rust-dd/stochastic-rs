@@ -79,10 +79,9 @@ parking_lot = "0.12.5"
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]
-default = ["simd"]
+default = []
 jemalloc = ["dep:tikv-jemallocator"]
 mimalloc = ["dep:mimalloc"]
-simd = []
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars"]
 
 [lib]

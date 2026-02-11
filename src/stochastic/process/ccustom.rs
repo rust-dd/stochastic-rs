@@ -27,7 +27,6 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  // To use SIMD acceleration, use the `simd` feature flag and add a SIMD distribution.
   pub fn new(
     n: Option<usize>,
     t_max: Option<T>,

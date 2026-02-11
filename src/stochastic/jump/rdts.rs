@@ -1,15 +1,9 @@
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand::Rng;
-#[cfg(not(feature = "simd"))]
-use rand_distr::Exp;
-#[cfg(not(feature = "simd"))]
-use rand_distr::Uniform;
 use scilib::math::basic::gamma;
 
-#[cfg(feature = "simd")]
 use crate::distributions::exp::SimdExp;
-#[cfg(feature = "simd")]
 use crate::distributions::uniform::SimdUniform;
 use crate::stochastic::process::poisson::Poisson;
 use crate::stochastic::Float;

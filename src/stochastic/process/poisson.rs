@@ -3,12 +3,9 @@ use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::Dim;
 use ndarray_rand::rand_distr::Distribution;
-#[cfg(not(feature = "simd"))]
-use ndarray_rand::rand_distr::Exp;
 use ndarray_rand::RandomExt;
 use rand::rng;
 
-#[cfg(feature = "simd")]
 use crate::distributions::exp::SimdExp;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
