@@ -32,21 +32,8 @@ impl<T: Float> FVasicek<T> {
 
 impl<T: Float> Process<T> for FVasicek<T> {
   type Output = Array1<T>;
-  type Noise = FOU<T>;
 
   fn sample(&self) -> Array1<T> {
     self.fou.sample()
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.fou.sample_simd()
-  }
-
-  fn euler_maruyama(
-    &self,
-    _noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
-    unimplemented!()
   }
 }

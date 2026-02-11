@@ -1,6 +1,7 @@
 use ndarray::Array1;
 
 use super::fgn::FGN;
+use crate::f;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -15,11 +16,11 @@ pub struct CFGNS<T: Float> {
 impl<T: Float> CFGNS<T> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (T::zero()..=T::one()).contains(&hurst),
+      (f!(0)..=f!(1)).contains(&hurst),
       "Hurst parameter must be in (0, 1)"
     );
     assert!(
-      (-T::one()..=T::one()).contains(&rho),
+      (-f!(1)..=f!(1)).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
@@ -39,7 +40,7 @@ impl<T: Float> Process<T> for CFGNS<T> {
   fn sample(&self) -> Self::Output {
     let fgn1 = self.fgn.sample();
     let z = self.fgn.sample();
-    let c = (T::one() - self.rho.powi(2)).sqrt();
+    let c = (f!(1) - self.rho.powi(2)).sqrt();
     let mut fgn2 = Array1::zeros(self.n);
 
     for i in 0..self.n {

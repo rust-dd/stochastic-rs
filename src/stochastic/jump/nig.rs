@@ -2,6 +2,7 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -24,7 +25,7 @@ impl<T: Float> NIG<T> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     let gn = Gn::new(n - 1, t);
     let dt = gn.dt();
-    let scale = dt.powf(T::from_usize(2).unwrap()) / kappa;
+    let scale = dt.powf(f!(2)) / kappa;
     let mean = dt / scale;
     let ig = SimdInverseGauss::new(mean, scale);
 
@@ -48,7 +49,7 @@ impl<T: Float> Process<T> for NIG<T> {
     let gn = &self.gn.sample();
     let ig = Array1::random(self.n - 1, &self.ig);
     let mut nig = Array1::zeros(self.n);
-    nig[0] = self.x0.unwrap_or(T::zero());
+    nig[0] = self.x0.unwrap_or(f!(0));
 
     for i in 1..self.n {
       nig[i] = nig[i - 1] + self.theta * ig[i - 1] + self.sigma * ig[i - 1].sqrt() * gn[i - 1]

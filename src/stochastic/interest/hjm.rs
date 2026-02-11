@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -56,32 +57,19 @@ impl<T: Float> HJM<T> {
 
 impl<T: Float> Process<T> for HJM<T> {
   type Output = [Array1<T>; 3];
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut p = Array1::<T>::zeros(self.n);
-    let mut f = Array1::<T>::zeros(self.n);
+    let mut f_ = Array1::<T>::zeros(self.n);
 
-    let gn1 = noise_fn(&self.gn);
-    let gn2 = noise_fn(&self.gn);
-    let gn3 = noise_fn(&self.gn);
+    let gn1 = &self.gn.sample();
+    let gn2 = &self.gn.sample();
+    let gn3 = &self.gn.sample();
 
-    let t_max = self.t.unwrap_or(T::one());
+    let t_max = self.t.unwrap_or(f!(0));
 
     for i in 1..self.n {
       let t = i as f64 * dt;
@@ -89,9 +77,9 @@ impl<T: Float> Process<T> for HJM<T> {
       r[i] = r[i - 1] + (self.a)(t) * dt + (self.b)(t) * gn1[i - 1];
       p[i] =
         p[i - 1] + (self.p)(t, t_max) * ((self.q)(t, t_max) * dt + (self.v)(t, t_max) * gn2[i - 1]);
-      f[i] = f[i - 1] + (self.alpha)(t, t_max) * dt + (self.sigma)(t, t_max) * gn3[i - 1];
+      f_[i] = f_[i - 1] + (self.alpha)(t, t_max) * dt + (self.sigma)(t, t_max) * gn3[i - 1];
     }
 
-    [r, p, f]
+    [r, p, f_]
   }
 }

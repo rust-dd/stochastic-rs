@@ -1,6 +1,7 @@
 use ndarray::s;
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -51,16 +52,16 @@ impl<T: Float> Process<T> for Bergomi<T> {
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::<T>::zeros(self.n);
-    s[0] = self.s0.unwrap_or(T::from_usize(100).unwrap());
-    v2[0] = self.v0.unwrap_or(T::one()).powi(2);
+    s[0] = self.s0.unwrap_or(f!(100));
+    v2[0] = self.v0.unwrap_or(f!(1)).powi(2);
 
     for i in 0..self.n {
       s[i] = s[i - 1] + self.r * s[i - 1] * dt + v2[i - 1].sqrt() * s[i - 1] * cgn1[i - 1];
 
       let sum_z = cgn2.slice(s![..i]).sum();
-      let t = T::from_usize(i).unwrap() * dt;
-      v2[i] = self.v0.unwrap_or(T::one()).powi(2)
-        * (self.nu * t * sum_z - T::from(0.5).unwrap() * self.nu.powi(2) * t.powi(2))
+      let t = f!(i) * dt;
+      v2[i] = self.v0.unwrap_or(f!(1)).powi(2)
+        * (self.nu * t * sum_z - f!(0.5) * self.nu.powi(2) * t.powi(2))
     }
 
     [s, v2]

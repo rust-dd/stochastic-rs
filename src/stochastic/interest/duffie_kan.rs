@@ -28,6 +28,7 @@
 
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -96,29 +97,16 @@ impl<T: Float> DuffieKan<T> {
 
 impl<T: Float> Process<T> for DuffieKan<T> {
   type Output = [Array1<T>; 2];
-  type Noise = CGNS<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = noise_fn(&self.cgns);
+    let [cgn1, cgn2] = &self.cgns.sample();
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut x = Array1::<T>::zeros(self.n);
 
-    r[0] = self.r0.unwrap_or(T::zero());
-    x[0] = self.x0.unwrap_or(T::zero());
+    r[0] = self.r0.unwrap_or(f!(0));
+    x[0] = self.x0.unwrap_or(f!(0));
 
     for i in 1..self.n {
       r[i] = r[i - 1]

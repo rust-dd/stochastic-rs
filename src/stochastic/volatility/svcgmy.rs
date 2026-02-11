@@ -11,6 +11,7 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 #[cfg(feature = "simd")]
 use crate::distributions::uniform::SimdUniform;
+use crate::f;
 use crate::stats::non_central_chi_squared;
 use crate::stochastic::process::poisson::Poisson;
 use crate::stochastic::Float;
@@ -84,23 +85,23 @@ impl<T: Float> Process<T> for SVCGMY<T> {
   fn sample(&self) -> Self::Output {
     let mut rng = rand::rng();
 
-    let t_max = self.t.unwrap_or(T::one());
-    let dt = t_max / T::from_usize(self.n - 1).unwrap();
+    let t_max = self.t.unwrap_or(f!(1));
+    let dt = t_max / f!(self.n - 1);
 
     let mut x = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
     let mut y = Array1::<T>::zeros(self.n);
 
-    x[0] = self.x0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero());
+    x[0] = self.x0.unwrap_or(f!(0));
+    v[0] = self.v0.unwrap_or(f!(0));
 
-    let f2 = T::from_usize(2).unwrap();
+    let f2 = f!(2);
 
-    let C = T::one()
-      / (T::from(gamma(2.0 - self.alpha.to_f64().unwrap())).unwrap()
+    let C = f!(1)
+      / (f!(gamma(2.0 - self.alpha.to_f64().unwrap()))
         * (self.lambda_plus.powf(self.alpha - f2) + self.lambda_minus.powf(self.alpha - f2)));
-    let c = (f2 * self.kappa) / ((T::one() - (-self.kappa * dt).exp()) * self.zeta.powi(2));
-    let df = T::from_usize(4).unwrap() * self.kappa * self.eta / self.zeta.powi(2);
+    let c = (f2 * self.kappa) / ((f!(1) - (-self.kappa * dt).exp()) * self.zeta.powi(2));
+    let df = f!(4) * self.kappa * self.eta / self.zeta.powi(2);
 
     for i in 1..self.n {
       let ncp = f2 * c * v[i - 1] * (-self.kappa * dt).exp();
@@ -108,19 +109,19 @@ impl<T: Float> Process<T> for SVCGMY<T> {
       v[i] = xi / (f2 * c);
     }
 
-    let uniform = SimdUniform::new(T::zero(), T::one());
-    let exp = SimdExp::new(T::one());
+    let uniform = SimdUniform::new(f!(0), f!(1));
+    let exp = SimdExp::new(f!(1));
 
     let U = Array1::<T>::random(self.j, &uniform);
     let E = Array1::<T>::random(self.j, exp);
-    let P = Poisson::new(T::one(), Some(self.j), None);
+    let P = Poisson::new(f!(1), Some(self.j), None);
     let P = P.sample();
     let tau = Array1::<T>::random(self.j, &uniform) * t_max;
 
     let mut c_tau = Array1::<T>::zeros(self.j);
     for (idx, tau_j) in tau.iter().enumerate() {
-      let k = ((*tau_j / dt).ceil()).min(T::from_usize(self.n - 1).unwrap());
-      let v_k = if k == T::zero() {
+      let k = ((*tau_j / dt).ceil()).min(f!(self.n - 1));
+      let v_k = if k == f!(0) {
         v[0]
       } else {
         v[k.to_usize().unwrap() - 1]
@@ -130,16 +131,15 @@ impl<T: Float> Process<T> for SVCGMY<T> {
 
     for i in 1..self.n {
       let numerator = v[i - 1]
-        * (self.lambda_plus.powf(self.alpha - T::one())
-          - self.lambda_minus.powf(self.alpha - T::one()));
-      let denominator = (T::one() - self.alpha)
+        * (self.lambda_plus.powf(self.alpha - f!(1)) - self.lambda_minus.powf(self.alpha - f!(1)));
+      let denominator = (f!(1) - self.alpha)
         * (self.lambda_plus.powf(self.alpha - f2) + self.lambda_minus.powf(self.alpha - f2));
       let b = -numerator / denominator;
 
-      let mut jump_component = T::zero();
+      let mut jump_component = f!(0);
 
-      let t_1 = T::from_usize(i - 1).unwrap() * dt;
-      let t = T::from_usize(i).unwrap() * dt;
+      let t_1 = f!(i - 1) * dt;
+      let t = f!(i) * dt;
 
       for j in 0..self.j {
         if tau[j] > t_1 && tau[j] <= t {
@@ -151,8 +151,8 @@ impl<T: Float> Process<T> for SVCGMY<T> {
 
           let numerator = self.alpha * P[j];
           let denominator = f2 * c_tau[j] * t_max;
-          let term1 = (numerator / denominator).powf(-T::one() / self.alpha);
-          let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+          let term1 = (numerator / denominator).powf(-f!(1) / self.alpha);
+          let term2 = E[j] * U[j].powf(f!(1) / self.alpha) / v_j.abs();
           let min_term = term1.min(term2);
           let jump_size = min_term * (v_j / v_j.abs());
           jump_component += jump_size;

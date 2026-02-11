@@ -19,6 +19,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -74,21 +75,8 @@ impl<T: Float> WuZhangD<T> {
 
 impl<T: Float> Process<T> for WuZhangD<T> {
   type Output = Array2<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
     let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
 
@@ -98,17 +86,17 @@ impl<T: Float> Process<T> for WuZhangD<T> {
     }
 
     for i in 0..self.xn {
-      let gn_f = noise_fn(&self.gn);
-      let gn_v = noise_fn(&self.gn);
+      let gn_f = &self.gn.sample();
+      let gn_v = &self.gn.sample();
 
       for j in 1..self.n {
-        let v_old = fv[(i + self.xn, j - 1)].max(T::zero());
-        let f_old = fv[(i, j - 1)].max(T::zero());
+        let v_old = fv[(i + self.xn, j - 1)].max(f!(0));
+        let f_old = fv[(i, j - 1)].max(f!(0));
 
         let dv =
           (self.alpha[i] - self.beta[i] * v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
 
-        let v_new = (v_old + dv).max(T::zero());
+        let v_new = (v_old + dv).max(f!(0));
         fv[(i + self.xn, j)] = v_new;
 
         let df = f_old * self.lambda[i] * v_new.sqrt() * gn_f[j - 1];

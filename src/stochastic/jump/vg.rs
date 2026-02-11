@@ -3,6 +3,7 @@ use ndarray_rand::RandomExt;
 
 #[cfg(feature = "simd")]
 use crate::distributions::gamma::SimdGamma;
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -51,7 +52,7 @@ impl<T: Float> Process<T> for VG<T> {
 
   fn sample(&self) -> Self::Output {
     let mut vg = Array1::<T>::zeros(self.n);
-    vg[0] = self.x0.unwrap_or(T::zero());
+    vg[0] = self.x0.unwrap_or(f!(0));
 
     let gn = &self.gn.sample();
     let gammas = Array1::random(self.n - 1, &self.gamma);

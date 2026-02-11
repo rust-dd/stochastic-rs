@@ -1,6 +1,7 @@
 use ndarray::Array1;
 use statrs::function::gamma;
 
+use crate::f;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -52,8 +53,8 @@ impl<T: Float> FBM<T> {
     let mut m = Array1::zeros(self.n);
 
     for i in 0..self.n {
-      m[i] = T::one() / T::from(gamma::gamma(self.hurst.to_f64().unwrap() + 0.5)).unwrap()
-        * (T::from_usize(i).unwrap() * dt).powf(self.hurst - T::from(0.5).unwrap().into());
+      m[i] = f!(1) / f!(gamma::gamma(self.hurst.to_f64().unwrap() + 0.5))
+        * (f!(i) * dt).powf(self.hurst - f!(0.5));
     }
 
     m

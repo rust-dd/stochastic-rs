@@ -1,6 +1,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -51,21 +52,8 @@ impl<T: Float> ADG<T> {
 
 impl<T: Float> Process<T> for ADG<T> {
   type Output = Array2<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
 
     let mut adg = Array2::<T>::zeros((self.xn, self.n));
@@ -74,7 +62,7 @@ impl<T: Float> Process<T> for ADG<T> {
     }
 
     for i in 0..self.xn {
-      let gn = noise_fn(&self.gn);
+      let gn = &self.gn.sample();
 
       for j in 1..self.n {
         let t = j as f64 * dt;
@@ -87,9 +75,9 @@ impl<T: Float> Process<T> for ADG<T> {
     let mut r = Array2::zeros((self.xn, self.n));
 
     for i in 0..self.xn {
-      let phi = Array1::<T>::from_shape_fn(self.n, |j| (self.phi)(T::from_usize(j) * dt));
-      let b = Array1::<T>::from_shape_fn(self.n, |j| (self.b)(T::from_usize(j) * dt));
-      let c = Array1::<T>::from_shape_fn(self.n, |j| (self.c)(T::from_usize(j) * dt));
+      let phi = Array1::<T>::from_shape_fn(self.n, |j| (self.phi)(f!(j) * dt));
+      let b = Array1::<T>::from_shape_fn(self.n, |j| (self.b)(f!(j) * dt));
+      let c = Array1::<T>::from_shape_fn(self.n, |j| (self.c)(f!(j) * dt));
 
       r.row_mut(i)
         .assign(&(phi + b * adg.row(i).t().to_owned() * c * adg.row(i)));

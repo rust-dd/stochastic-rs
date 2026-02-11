@@ -1,6 +1,7 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
+use crate::f;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -65,14 +66,14 @@ where
     let fgn = &self.fgn.sample();
 
     let mut jump_fou = Array1::<T>::zeros(self.n);
-    jump_fou[0] = self.x0.unwrap_or(T::zero());
+    jump_fou[0] = self.x0.unwrap_or(f!(0));
     let mut jump_times = Array1::<T>::zeros(self.n);
     jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::rng()));
 
     for i in 1..self.n {
-      let t = T::from_usize(i).unwrap() * dt;
+      let t = f!(i) * dt;
       // check if t is a jump time
-      let mut jump = T::zero();
+      let mut jump = f!(0);
       if jump_times[i] < t && t - dt <= jump_times[i] {
         jump = self.jump_sizes.sample(&mut rand::rng());
       }

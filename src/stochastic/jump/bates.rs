@@ -1,6 +1,7 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
+use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::stochastic::Float;
@@ -89,8 +90,8 @@ where
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
 
-    s[0] = self.s0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero());
+    s[0] = self.s0.unwrap_or(f!(0));
+    v[0] = self.v0.unwrap_or(f!(0));
 
     let drift = match (self.mu, self.b, self.r, self.r_f) {
       (Some(r), Some(r_f), ..) => r - r_f,
@@ -110,7 +111,7 @@ where
 
       v[i] = match self.use_sym.unwrap_or(false) {
         true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(T::zero()),
+        false => (v[i - 1] + dv).max(f!(0)),
       }
     }
 

@@ -31,20 +31,14 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 use rand_distr::Exp;
-#[cfg(not(feature = "simd"))]
-use rand_distr::Normal;
 
-#[cfg(feature = "simd")]
 use crate::distributions::normal::SimdNormal;
+use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-pub struct DuffieKanJumpExp<T, D>
-where
-  T: Float,
-  D: Distribution<T> + Send + Sync,
-{
+pub struct DuffieKanJumpExp<T: Float, const N: usize> {
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -70,16 +64,15 @@ where
   /// Total time horizon.
   pub t: Option<T>,
   /// Jump distribution.
-  jump_dist: D,
+  jump_dist: SimdNormal<T, N>,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: CGNS<T>,
 }
 
-impl<T, D> DuffieKanJumpExp<T, D>
-where
-  T: Float,
-  D: Distribution<T> + Send + Sync,
-{
+unsafe impl<T: Float, const N: usize> Send for DuffieKanJumpExp<T, N> {}
+unsafe impl<T: Float, const N: usize> Sync for DuffieKanJumpExp<T, N> {}
+
+impl<T: Float, const N: usize> DuffieKanJumpExp<T, N> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -100,10 +93,7 @@ where
     x0: Option<T>,
     t: Option<T>,
   ) -> Self {
-    #[cfg(not(feature = "simd"))]
-    let jump_dist = Normal::new(T::zero(), self.jump_scale).unwrap();
-    #[cfg(feature = "simd")]
-    let jump_dist = SimdNormal::new(T::zero(), jump_scale);
+    let jump_dist = SimdNormal::new(f!(0), jump_scale);
 
     Self {
       alpha,
@@ -130,34 +120,17 @@ where
   }
 }
 
-impl<T, D> Process<T> for DuffieKanJumpExp<T, D>
-where
-  T: Float,
-  D: Distribution<T> + Send + Sync,
-{
+impl<T: Float, const N: usize> Process<T> for DuffieKanJumpExp<T, N> {
   type Output = [Array1<T>; 2];
-  type Noise = CGNS<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|cgns| cgns.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = noise_fn(&self.cgns);
+    let [cgn1, cgn2] = &self.cgns.sample();
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut x = Array1::<T>::zeros(self.n);
-    r[0] = self.r0.unwrap_or(T::zero());
-    x[0] = self.x0.unwrap_or(T::zero());
+    r[0] = self.r0.unwrap_or(f!(0));
+    x[0] = self.x0.unwrap_or(f!(0));
 
     let mut rng = rand::rng();
     let exp_dist = Exp::new(self.lambda).unwrap();
@@ -174,7 +147,7 @@ where
       let dx = (self.a2 * r_old + self.b2 * x_old + self.c2) * dt
         + self.sigma2 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn2[i - 1];
 
-      let mut jump_sum_x = T::zero();
+      let mut jump_sum_x = f!(0);
       while next_jump_time <= current_time {
         let jump_x = self.jump_dist.sample(&mut rng);
         jump_sum_x += jump_x;

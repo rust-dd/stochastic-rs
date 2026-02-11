@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -19,12 +20,12 @@ impl<T: Float> Process<T> for Gn<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    T::normal_array(self.n, T::zero(), self.dt().sqrt())
+    T::normal_array(self.n, f!(0), self.dt().sqrt())
   }
 }
 
 impl<T: Float> Gn<T> {
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize(self.n).unwrap()
+    self.t.unwrap_or(f!(0)) / f!(self.n)
   }
 }

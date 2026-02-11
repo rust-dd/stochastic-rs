@@ -11,6 +11,7 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 #[cfg(feature = "simd")]
 use crate::distributions::uniform::SimdUniform;
+use crate::f;
 use crate::stochastic::process::poisson::Poisson;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -89,34 +90,32 @@ impl<T: Float> Process<T> for CGMY<T> {
   fn sample(&self) -> Self::Output {
     let mut rng = rand::rng();
 
-    let t_max = self.t.unwrap_or(T::one());
-    let dt = t_max / T::from_usize(self.n - 1);
+    let t_max = self.t.unwrap_or(f!(1));
+    let dt = t_max / f!(self.n - 1);
     let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
+    x[0] = self.x0.unwrap_or(f!(0));
 
     let C = (gamma(2.0 - self.alpha)
-      * (self.lambda_plus.powf(self.alpha - T::from_usize(2))
-        + self.lambda_minus.powf(self.alpha - T::from_usize(2))))
+      * (self.lambda_plus.powf(self.alpha - f!(2)) + self.lambda_minus.powf(self.alpha - f!(2))))
     .powi(-1);
 
     let b_t = -C
       * gamma(1.0 - self.alpha)
-      * (self.lambda_plus.powf(self.alpha - T::one())
-        - self.lambda_minus.powf(self.alpha - T::one()));
+      * (self.lambda_plus.powf(self.alpha - f!(1)) - self.lambda_minus.powf(self.alpha - f!(1)));
 
-    let uniform = SimdUniform::new(T::zero(), T::one());
-    let exp = SimdExp::new(T::one());
+    let uniform = SimdUniform::new(f!(0), f!(1));
+    let exp = SimdExp::new(f!(1));
 
     let U = Array1::<T>::random(self.j, uniform);
     let E = Array1::<T>::random(self.j, exp);
-    let P = Poisson::new(T::one(), Some(self.j), None);
+    let P = Poisson::new(f!(1), Some(self.j), None);
     let P = P.sample();
     let tau = Array1::<T>::random(self.j, uniform);
 
     for i in 1..self.n {
-      let mut jump_component = T::zero();
-      let t_1 = T::from_usize(i - 1) * dt;
-      let t = T::from_usize(i) * dt;
+      let mut jump_component = f!(0);
+      let t_1 = f!(i - 1) * dt;
+      let t = f!(i) * dt;
 
       for j in 1..self.j {
         if tau[j] > t_1 && tau[j] <= t {

@@ -47,21 +47,8 @@ impl<T: Float> BGM<T> {
 
 impl<T: Float> Process<T> for BGM<T> {
   type Output = Array2<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
 
     let mut fwd = Array2::<T>::zeros((self.xn, self.n));
@@ -71,7 +58,7 @@ impl<T: Float> Process<T> for BGM<T> {
     }
 
     for i in 0..self.xn {
-      let gn = noise_fn(&self.gn);
+      let gn = &self.gn.sample();
 
       for j in 1..self.n {
         let f_old = fwd[(i, j - 1)];

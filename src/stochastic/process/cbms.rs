@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -14,7 +15,7 @@ pub struct CBMS<T: Float> {
 impl<T: Float> CBMS<T> {
   pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (-T::one()..=T::one()).contains(&rho),
+      (-f!(1)..=f!(1)).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 

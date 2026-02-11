@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -42,30 +43,18 @@ impl<T: Float> HoLee<T> {
 
 impl<T: Float> Process<T> for HoLee<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
 
     let mut r = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
       let drift = if let Some(r#fn) = self.f_T.as_ref() {
-        (r#fn)(i as f64 * dt) + self.sigma.powf(T::from_usize(2))
+        (r#fn)(i as f64 * dt) + self.sigma.powf(f!(2))
       } else {
-        self.theta.unwrap() + self.sigma.powf(T::from_usize(2))
+        self.theta.unwrap() + self.sigma.powf(f!(2))
       };
 
       r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];

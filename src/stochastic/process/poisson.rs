@@ -10,6 +10,7 @@ use rand::rng;
 
 #[cfg(feature = "simd")]
 use crate::distributions::exp::SimdExp;
+use crate::f;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -30,7 +31,7 @@ impl<T: Float> Process<T> for Poisson<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let distr = SimdExp::new(T::one() / self.lambda);
+    let distr = SimdExp::new(f!(1) / self.lambda);
 
     if let Some(n) = self.n {
       let exponentials = Array1::random(n, distr);
@@ -41,8 +42,8 @@ impl<T: Float> Process<T> for Poisson<T> {
 
       poisson
     } else if let Some(t_max) = self.t_max {
-      let mut poisson = Array1::from(vec![T::zero()]);
-      let mut t = T::zero();
+      let mut poisson = Array1::from(vec![f!(0)]);
+      let mut t = f!(0);
 
       while t < t_max {
         t += distr.sample(&mut rng());

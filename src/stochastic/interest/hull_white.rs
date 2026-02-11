@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -33,26 +34,13 @@ impl<T: Float> HullWhite<T> {
 
 impl<T: Float> Process<T> for HullWhite<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
 
     let mut hw = Array1::<T>::zeros(self.n);
-    hw[0] = self.x0.unwrap_or(T::zero());
+    hw[0] = self.x0.unwrap_or(f!(0));
 
     for i in 1..self.n {
       hw[i] = hw[i - 1]

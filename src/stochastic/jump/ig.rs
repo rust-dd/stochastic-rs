@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -31,7 +32,7 @@ impl<T: Float> Process<T> for IG<T> {
     let dt = self.gn.dt();
     let gn = &self.gn.sample();
     let mut ig = Array1::zeros(self.n);
-    ig[0] = self.x0.unwrap_or(T::zero());
+    ig[0] = self.x0.unwrap_or(f!(0));
 
     for i in 1..self.n {
       ig[i] = ig[i - 1] + self.gamma * dt + gn[i - 1]

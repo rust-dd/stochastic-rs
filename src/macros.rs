@@ -1,4 +1,13 @@
 #[macro_export]
+macro_rules! f {
+  ($x:expr) => {{
+    use num_traits::FromPrimitive;
+    let v = FromPrimitive::from_f64($x as f64);
+    unsafe { v.unwrap_unchecked() }
+  }};
+}
+
+#[macro_export]
 macro_rules! plot_1d {
   ($data:expr, $name:expr) => {
     let mut plot = plotly::Plot::new();
