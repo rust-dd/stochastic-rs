@@ -45,23 +45,10 @@ impl<T: Float> ARp<T> {
 
 impl<T: Float> Process<T> for ARp<T> {
   type Output = Array1<T>;
-  type Noise = Wn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|wn| wn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|wn| wn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let p = self.phi.len();
-    let noise = noise_fn(&self.wn);
+    let noise = &self.wn.sample();
     let mut series = Array1::<T>::zeros(self.n);
 
     // Fill initial conditions if provided
@@ -74,7 +61,7 @@ impl<T: Float> Process<T> for ARp<T> {
 
     // AR recursion
     for t in 0..self.n {
-      let mut val = 0.0;
+      let mut val = T::zero();
       // Sum over AR lags
       for k in 1..=p {
         if t >= k {

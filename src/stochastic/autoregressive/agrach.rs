@@ -65,10 +65,10 @@ impl<T: Float> Process<T> for AGARCH<T> {
     let mut sigma2 = Array1::<T>::zeros(self.n);
 
     // Summation for unconditional variance init
-    let sum_alpha = self.alpha.iter().sum();
-    let sum_delta_half = self.delta.iter().sum::<T>() * 0.5.into();
-    let sum_beta = self.beta.iter().sum();
-    let denom = (T::one() - sum_alpha - sum_delta_half - sum_beta).max(1e-8);
+    let sum_alpha = self.alpha.iter().cloned().sum();
+    let sum_delta_half = self.delta.iter().cloned().sum::<T>() + T::from_f64_fast(0.5);
+    let sum_beta = self.beta.iter().cloned().sum();
+    let denom = (T::one() - sum_alpha - sum_delta_half - sum_beta).max(T::from_f64_fast(1e-8));
 
     for t in 0..self.n {
       if t == 0 {
@@ -110,6 +110,7 @@ mod tests {
 
   use crate::plot_1d;
   use crate::stochastic::autoregressive::agrach::AGARCH;
+  use crate::stochastic::Process;
 
   #[test]
   fn agarch_plot() {

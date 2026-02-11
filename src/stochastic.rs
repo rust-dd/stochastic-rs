@@ -42,7 +42,7 @@
 //!
 //! When the `cuda` feature is enabled, `sample_cuda()` can be used for faster batch sampling on supported devices.
 
-// pub mod autoregressive;
+pub mod autoregressive;
 pub mod diffusion;
 pub mod interest;
 pub mod isonormal;

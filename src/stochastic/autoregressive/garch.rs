@@ -1,9 +1,8 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::wn::Wn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// Implements a general GARCH(p,q) model.
 ///
@@ -25,130 +24,44 @@ use crate::stochastic::SamplingExt;
 /// # Notes
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
 /// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
-#[derive(ImplNew)]
-pub struct GARCH<T> {
+pub struct GARCH<T: Float> {
   pub omega: T,
   pub alpha: Array1<T>,
   pub beta: Array1<T>,
   pub n: usize,
-  pub m: Option<usize>,
+  wn: Wn<T>,
 }
 
-impl SamplingExt<f64> for GARCH<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let p = self.alpha.len();
-    let q = self.beta.len();
-
-    // Generate white noise z_t
-    let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap());
-
-    // Arrays for X_t and sigma_t^2
-    let mut x = Array1::<f64>::zeros(self.n);
-    let mut sigma2 = Array1::<f64>::zeros(self.n);
-
-    // Sum of alpha/beta for unconditional variance initialization
-    let sum_alpha: f64 = self.alpha.iter().sum();
-    let sum_beta: f64 = self.beta.iter().sum();
-    let denom = (1.0 - sum_alpha - sum_beta).max(1e-8);
-
-    for t in 0..self.n {
-      if t == 0 {
-        sigma2[t] = self.omega / denom;
-      } else {
-        let mut var_t = self.omega;
-
-        // Sum alpha_i * X_{t-i}^2
-        for i in 1..=p {
-          if t >= i {
-            var_t += self.alpha[i - 1] * x[t - i].powi(2);
-          }
-        }
-        // Sum beta_j * sigma2[t-j]
-        for j in 1..=q {
-          if t >= j {
-            var_t += self.beta[j - 1] * sigma2[t - j];
-          }
-        }
-        sigma2[t] = var_t;
-      }
-      // X_t = sigma_t * z[t]
-      x[t] = sigma2[t].sqrt() * z[t];
+impl<T: Float> GARCH<T> {
+  pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize) -> Self {
+    GARCH {
+      omega,
+      alpha,
+      beta,
+      n,
+      wn: Wn::new(n, None, None),
     }
-
-    x
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let p = self.alpha.len();
-    let q = self.beta.len();
-
-    // Generate white noise z_t
-    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
-
-    // Arrays for X_t and sigma_t^2
-    let mut x = Array1::<f64>::zeros(self.n);
-    let mut sigma2 = Array1::<f64>::zeros(self.n);
-
-    // Sum of alpha/beta for unconditional variance initialization
-    let sum_alpha: f64 = self.alpha.iter().sum();
-    let sum_beta: f64 = self.beta.iter().sum();
-    let denom = (1.0 - sum_alpha - sum_beta).max(1e-8);
-
-    for t in 0..self.n {
-      if t == 0 {
-        sigma2[t] = self.omega / denom;
-      } else {
-        let mut var_t = self.omega;
-
-        // Sum alpha_i * X_{t-i}^2
-        for i in 1..=p {
-          if t >= i {
-            var_t += self.alpha[i - 1] * x[t - i].powi(2);
-          }
-        }
-        // Sum beta_j * sigma2[t-j]
-        for j in 1..=q {
-          if t >= j {
-            var_t += self.beta[j - 1] * sigma2[t - j];
-          }
-        }
-        sigma2[t] = var_t;
-      }
-      // X_t = sigma_t * z[t]
-      x[t] = sigma2[t].sqrt() * z[t] as f64;
-    }
-
-    x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl SamplingExt<f32> for GARCH<f32> {
-  fn sample(&self) -> Array1<f32> {
+impl<T: Float> Process<T> for GARCH<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
     let p = self.alpha.len();
     let q = self.beta.len();
 
     // Generate white noise z_t
-    let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap()).mapv(|x| x as f32);
+    let z = self.wn.sample();
 
     // Arrays for X_t and sigma_t^2
-    let mut x = Array1::<f32>::zeros(self.n);
-    let mut sigma2 = Array1::<f32>::zeros(self.n);
+    let mut x = Array1::<T>::zeros(self.n);
+    let mut sigma2 = Array1::<T>::zeros(self.n);
 
     // Sum of alpha/beta for unconditional variance initialization
-    let sum_alpha: f32 = self.alpha.iter().sum();
-    let sum_beta: f32 = self.beta.iter().sum();
-    let denom = (1.0 - sum_alpha - sum_beta).max(1e-8);
+    let sum_alpha = self.alpha.iter().cloned().sum();
+    let sum_beta = self.beta.iter().cloned().sum();
+    let denom = (T::one() - sum_alpha - sum_beta).max(T::from_f64_fast(1e-8));
 
     for t in 0..self.n {
       if t == 0 {
@@ -175,60 +88,6 @@ impl SamplingExt<f32> for GARCH<f32> {
     }
 
     x
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let p = self.alpha.len();
-    let q = self.beta.len();
-
-    // Generate white noise z_t
-    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
-
-    // Arrays for X_t and sigma_t^2
-    let mut x = Array1::<f32>::zeros(self.n);
-    let mut sigma2 = Array1::<f32>::zeros(self.n);
-
-    // Sum of alpha/beta for unconditional variance initialization
-    let sum_alpha: f32 = self.alpha.iter().sum();
-    let sum_beta: f32 = self.beta.iter().sum();
-    let denom = (1.0 - sum_alpha - sum_beta).max(1e-8);
-
-    for t in 0..self.n {
-      if t == 0 {
-        sigma2[t] = self.omega / denom;
-      } else {
-        let mut var_t = self.omega;
-
-        // Sum alpha_i * X_{t-i}^2
-        for i in 1..=p {
-          if t >= i {
-            var_t += self.alpha[i - 1] * x[t - i].powi(2);
-          }
-        }
-        // Sum beta_j * sigma2[t-j]
-        for j in 1..=q {
-          if t >= j {
-            var_t += self.beta[j - 1] * sigma2[t - j];
-          }
-        }
-        sigma2[t] = var_t;
-      }
-      // X_t = sigma_t * z[t]
-      x[t] = sigma2[t].sqrt() * z[t];
-    }
-
-    x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
@@ -238,13 +97,13 @@ mod tests {
 
   use crate::plot_1d;
   use crate::stochastic::autoregressive::garch::GARCH;
-  use crate::stochastic::SamplingExt;
+  use crate::stochastic::Process;
 
   #[test]
   fn garch_plot() {
     let alpha = arr1(&[0.05, 0.02]); // p=2
     let beta = arr1(&[0.9]); // q=1
-    let garchpq = GARCH::new(0.1, alpha, beta, 100, None);
+    let garchpq = GARCH::new(0.1, alpha, beta, 100);
     plot_1d!(garchpq.sample(), "GARCH(p,q) process");
   }
 }

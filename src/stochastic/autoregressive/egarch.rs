@@ -1,9 +1,8 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::wn::Wn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// Implements an EGARCH(p,q) model:
 ///
@@ -34,8 +33,7 @@ use crate::stochastic::SamplingExt;
 /// 1. We assume that `alpha` and `gamma` each have length \(p\).
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
-#[derive(ImplNew)]
-pub struct EGARCH<T> {
+pub struct EGARCH<T: Float> {
   /// Constant term (\(\omega\)) in log-variance
   pub omega: T,
   /// Magnitude effect coefficients (\(\alpha_1, \ldots, \alpha_p\))
@@ -46,21 +44,36 @@ pub struct EGARCH<T> {
   pub beta: Array1<T>,
   /// Number of observations
   pub n: usize,
-  /// Optional batch size (unused by default)
-  pub m: Option<usize>,
+  wn: Wn<T>,
 }
 
-impl SamplingExt<f64> for EGARCH<f64> {
-  fn sample(&self) -> Array1<f64> {
+impl<T: Float> EGARCH<T> {
+  /// Create a new EGARCH model with the given parameters.
+  pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
+    Self {
+      omega,
+      alpha,
+      gamma,
+      beta,
+      n,
+      wn: Wn::new(n, None, None),
+    }
+  }
+}
+
+impl<T: Float> Process<T> for EGARCH<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
     let p = self.alpha.len();
     let q = self.beta.len();
 
     // Generate white noise z_t ~ N(0,1)
-    let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap());
+    let z = self.wn.sample();
 
     // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
-    let mut x = Array1::<f64>::zeros(self.n);
-    let mut log_sigma2 = Array1::<f64>::zeros(self.n);
+    let mut x = Array1::<T>::zeros(self.n);
+    let mut log_sigma2 = Array1::<T>::zeros(self.n);
 
     // For normal(0,1), the expected absolute value is sqrt(2/pi)
     let e_abs_z = (2.0 / std::f64::consts::PI).sqrt();
@@ -71,7 +84,7 @@ impl SamplingExt<f64> for EGARCH<f64> {
         log_sigma2[t] = self.omega;
       } else {
         // 1) Compute the shock term from p lags
-        let mut shock_term = 0.0;
+        let mut shock_term = T::zero();
         for i in 1..=p {
           if t >= i {
             // Standardized residual from step t-i
@@ -79,12 +92,13 @@ impl SamplingExt<f64> for EGARCH<f64> {
             let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
 
             // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
-            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
+            shock_term += self.alpha[i - 1] * (z_t_i.abs() - T::from_f64_fast(e_abs_z))
+              + self.gamma[i - 1] * z_t_i;
           }
         }
 
         // 2) Sum in the log-variance from q lags
-        let mut persistence_term = 0.0;
+        let mut persistence_term = T::zero();
         for j in 1..=q {
           if t >= j {
             persistence_term += self.beta[j - 1] * log_sigma2[t - j];
@@ -101,186 +115,6 @@ impl SamplingExt<f64> for EGARCH<f64> {
     }
 
     x
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let p = self.alpha.len();
-    let q = self.beta.len();
-
-    // Generate white noise z_t ~ N(0,1)
-    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
-
-    // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
-    let mut x = Array1::<f64>::zeros(self.n);
-    let mut log_sigma2 = Array1::<f64>::zeros(self.n);
-
-    // For normal(0,1), the expected absolute value is sqrt(2/pi)
-    let e_abs_z = (2.0 / std::f64::consts::PI).sqrt();
-
-    for t in 0..self.n {
-      if t == 0 {
-        // Initialize log-variance (e.g., with omega)
-        log_sigma2[t] = self.omega;
-      } else {
-        // 1) Compute the shock term from p lags
-        let mut shock_term = 0.0;
-        for i in 1..=p {
-          if t >= i {
-            // Standardized residual from step t-i
-            let sigma_t_i = (log_sigma2[t - i].exp()).sqrt();
-            let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
-
-            // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
-            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
-          }
-        }
-
-        // 2) Sum in the log-variance from q lags
-        let mut persistence_term = 0.0;
-        for j in 1..=q {
-          if t >= j {
-            persistence_term += self.beta[j - 1] * log_sigma2[t - j];
-          }
-        }
-
-        // 3) Final log-variance
-        log_sigma2[t] = self.omega + shock_term + persistence_term;
-      }
-
-      // Convert log_sigma2[t] to sigma_t and compute X_t
-      let sigma_t = (log_sigma2[t].exp()).sqrt();
-      x[t] = sigma_t * z[t] as f64;
-    }
-
-    x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-impl SamplingExt<f32> for EGARCH<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let p = self.alpha.len();
-    let q = self.beta.len();
-
-    // Generate white noise z_t ~ N(0,1)
-    let z = Array1::random(self.n, Normal::new(0.0, 1.0).unwrap()).mapv(|x| x as f32);
-
-    // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
-    let mut x = Array1::<f32>::zeros(self.n);
-    let mut log_sigma2 = Array1::<f32>::zeros(self.n);
-
-    // For normal(0,1), the expected absolute value is sqrt(2/pi)
-    let e_abs_z = (2.0 / std::f32::consts::PI).sqrt();
-
-    for t in 0..self.n {
-      if t == 0 {
-        // Initialize log-variance (e.g., with omega)
-        log_sigma2[t] = self.omega;
-      } else {
-        // 1) Compute the shock term from p lags
-        let mut shock_term = 0.0;
-        for i in 1..=p {
-          if t >= i {
-            // Standardized residual from step t-i
-            let sigma_t_i = (log_sigma2[t - i].exp()).sqrt();
-            let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
-
-            // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
-            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
-          }
-        }
-
-        // 2) Sum in the log-variance from q lags
-        let mut persistence_term = 0.0;
-        for j in 1..=q {
-          if t >= j {
-            persistence_term += self.beta[j - 1] * log_sigma2[t - j];
-          }
-        }
-
-        // 3) Final log-variance
-        log_sigma2[t] = self.omega + shock_term + persistence_term;
-      }
-
-      // Convert log_sigma2[t] to sigma_t and compute X_t
-      let sigma_t = (log_sigma2[t].exp()).sqrt();
-      x[t] = sigma_t * z[t];
-    }
-
-    x
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let p = self.alpha.len();
-    let q = self.beta.len();
-
-    // Generate white noise z_t ~ N(0,1)
-    let z = Array1::random(self.n, SimdNormal::new(0.0, 1.0));
-
-    // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
-    let mut x = Array1::<f32>::zeros(self.n);
-    let mut log_sigma2 = Array1::<f32>::zeros(self.n);
-
-    // For normal(0,1), the expected absolute value is sqrt(2/pi)
-    let e_abs_z = (2.0 / std::f32::consts::PI).sqrt();
-
-    for t in 0..self.n {
-      if t == 0 {
-        // Initialize log-variance (e.g., with omega)
-        log_sigma2[t] = self.omega;
-      } else {
-        // 1) Compute the shock term from p lags
-        let mut shock_term = 0.0;
-        for i in 1..=p {
-          if t >= i {
-            // Standardized residual from step t-i
-            let sigma_t_i = (log_sigma2[t - i].exp()).sqrt();
-            let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
-
-            // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
-            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
-          }
-        }
-
-        // 2) Sum in the log-variance from q lags
-        let mut persistence_term = 0.0;
-        for j in 1..=q {
-          if t >= j {
-            persistence_term += self.beta[j - 1] * log_sigma2[t - j];
-          }
-        }
-
-        // 3) Final log-variance
-        log_sigma2[t] = self.omega + shock_term + persistence_term;
-      }
-
-      // Convert log_sigma2[t] to sigma_t and compute X_t
-      let sigma_t = (log_sigma2[t].exp()).sqrt();
-      x[t] = sigma_t * z[t];
-    }
-
-    x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
@@ -290,14 +124,14 @@ mod tests {
 
   use crate::plot_1d;
   use crate::stochastic::autoregressive::egarch::EGARCH;
-  use crate::stochastic::SamplingExt;
+  use crate::stochastic::Process;
 
   #[test]
   fn egarch_plot() {
     let alpha = arr1(&[0.1, 0.05]); // p=2
     let gamma = arr1(&[0.0, -0.02]); // p=2
     let beta = arr1(&[0.8]); // q=1
-    let egarchpq = EGARCH::new(0.0, alpha, gamma, beta, 100, None);
+    let egarchpq = EGARCH::new(0.0, alpha, gamma, beta, 100);
     plot_1d!(egarchpq.sample(), "EGARCH(p,q) process");
   }
 }

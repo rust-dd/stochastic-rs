@@ -1,9 +1,8 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::wn::Wn;
+use crate::stochastic::Float;
+use crate::stochastic::Process;
 
 /// Implements an MA(q) model:
 ///
@@ -17,79 +16,35 @@ use crate::stochastic::SamplingExt;
 /// - `sigma`: Standard deviation of noise \(\epsilon_t\).
 /// - `n`: Length of time series.
 /// - `m`: Optional batch size.
-#[derive(ImplNew)]
-pub struct MAq<T> {
+pub struct MAq<T: Float> {
   /// MA coefficients
   pub theta: Array1<T>,
   /// Noise std dev
   pub sigma: T,
   /// Number of observations
   pub n: usize,
-  /// Optional batch size
-  pub m: Option<usize>,
+  wn: Wn<T>,
 }
 
-impl SamplingExt<f64> for MAq<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let q = self.theta.len();
-    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());
-    let mut series = Array1::<f64>::zeros(self.n);
-
-    // MA recursion
-    for t in 0..self.n {
-      // Start with current noise
-      let mut val = noise[t];
-      // Add in past noises scaled by theta
-      for k in 1..=q {
-        if t >= k {
-          val += self.theta[k - 1] * noise[t - k];
-        }
-      }
-      series[t] = val;
+impl<T: Float> MAq<T> {
+  /// Create a new MA(q) model with the given parameters.
+  pub fn new(theta: Array1<T>, sigma: T, n: usize) -> Self {
+    Self {
+      theta,
+      sigma,
+      n,
+      wn: Wn::new(n, None, Some(sigma)),
     }
-
-    series
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let q = self.theta.len();
-    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma as f32));
-    let mut series = Array1::<f64>::zeros(self.n);
-
-    // MA recursion
-    for t in 0..self.n {
-      // Start with current noise
-      let mut val = noise[t] as f64;
-      // Add in past noises scaled by theta
-      for k in 1..=q {
-        if t >= k {
-          val += self.theta[k - 1] * noise[t - k] as f64;
-        }
-      }
-      series[t] = val;
-    }
-
-    series
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-impl SamplingExt<f32> for MAq<f32> {
-  fn sample(&self) -> Array1<f32> {
+impl<T: Float> Process<T> for MAq<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
     let q = self.theta.len();
-    let noise =
-      Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
-    let mut series = Array1::<f32>::zeros(self.n);
+    let noise = self.wn.sample();
+    let mut series = Array1::<T>::zeros(self.n);
 
     // MA recursion
     for t in 0..self.n {
@@ -105,38 +60,6 @@ impl SamplingExt<f32> for MAq<f32> {
     }
 
     series
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let q = self.theta.len();
-    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma));
-    let mut series = Array1::<f32>::zeros(self.n);
-
-    // MA recursion
-    for t in 0..self.n {
-      // Start with current noise
-      let mut val = noise[t];
-      // Add in past noises scaled by theta
-      for k in 1..=q {
-        if t >= k {
-          val += self.theta[k - 1] * noise[t - k];
-        }
-      }
-      series[t] = val;
-    }
-
-    series
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
@@ -146,13 +69,13 @@ mod tests {
 
   use crate::plot_1d;
   use crate::stochastic::autoregressive::ma::MAq;
-  use crate::stochastic::SamplingExt;
+  use crate::stochastic::Process;
 
   #[test]
   fn ma_plot() {
     // Suppose q=2 with user-defined coefficients
     let theta = arr1(&[0.4, 0.3]);
-    let ma_model = MAq::new(theta, 1.0, 100, None);
+    let ma_model = MAq::new(theta, 1.0, 100);
     plot_1d!(ma_model.sample(), "MA(q) process");
   }
 }
