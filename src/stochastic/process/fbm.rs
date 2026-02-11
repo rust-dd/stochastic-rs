@@ -47,7 +47,7 @@ impl<T: Float> FBM<T> {
   /// where B^H_t is the fractional Brownian motion with Hurst parameter H in Mandelbrot-Van Ness representation as
   /// B^H_t = 1 / Γ(H + 1/2) ∫_0^t (t - s)^{H - 1/2} dW_s
   /// which is a truncated Wiener integral.
-  fn malliavin(&self) -> Array1<T> {
+  pub fn malliavin(&self) -> Array1<T> {
     let dt = self.fgn.dt();
     let mut m = Array1::zeros(self.n);
     let g = gamma::gamma(self.hurst.to_f64().unwrap() + 0.5);
@@ -82,7 +82,7 @@ mod tests {
 
   #[test]
   fn fbm_plot() {
-    let fbm = FBM::new(0.1, N, Some(1.0));
+    let fbm = FBM::new(0.9, N, Some(1.0));
     plot_1d!(fbm.sample(), "Fractional Brownian Motion (H = 0.7)");
   }
 

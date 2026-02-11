@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::stochastic::c;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -39,7 +38,7 @@ impl<T: Float> Process<T> for Gompertz<T> {
     let gn = &self.gn.sample();
 
     let mut x = Array1::<T>::zeros(self.n);
-    let threshold = c(1e-12);
+    let threshold = T::from_f64_fast(1e-12);
     x[0] = self.x0.unwrap_or(T::zero()).max(threshold);
 
     for i in 1..self.n {

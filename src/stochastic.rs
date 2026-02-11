@@ -58,6 +58,7 @@ pub mod volatility;
 use std::fmt::Debug;
 use std::iter::Sum;
 use std::ops::AddAssign;
+use std::ops::SubAssign;
 
 #[cfg(feature = "cuda")]
 use anyhow::Result;
@@ -99,6 +100,7 @@ pub trait Float:
   + Sync
   + ScalarOperand
   + AddAssign
+  + SubAssign
   + 'static
 {
   fn from_usize_(n: usize) -> Self;
@@ -135,11 +137,6 @@ impl Float for f32 {
   fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, SimdNormal::<f32, 64>::new(mean, std_dev))
   }
-}
-
-#[inline(always)]
-pub fn c<T: Float>(x: f64) -> T {
-  T::from_f64(x).unwrap()
 }
 
 pub trait Process<T: Float>: Send + Sync {

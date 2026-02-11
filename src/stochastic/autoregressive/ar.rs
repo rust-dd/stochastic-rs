@@ -60,16 +60,15 @@ impl<T: Float> Process<T> for ARp<T> {
     }
 
     // AR recursion
-    for t in 0..self.n {
+    let start = if self.x0.is_some() { p.min(self.n) } else { 0 };
+    for t in start..self.n {
       let mut val = T::zero();
-      // Sum over AR lags
       for k in 1..=p {
         if t >= k {
           val += self.phi[k - 1] * series[t - k];
         }
       }
-      // Add noise
-      series[t] += val + noise[t];
+      series[t] = val + noise[t];
     }
 
     series

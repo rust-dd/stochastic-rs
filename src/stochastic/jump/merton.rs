@@ -69,7 +69,8 @@ where
       let [.., jumps] = self.cpoisson.sample();
 
       merton[i] = merton[i - 1]
-        + (self.alpha * self.sigma.powf(T::from_usize(2).unwrap()) / T::from_usize(2).unwrap()
+        + (self.alpha
+          - self.sigma.powf(T::from_usize(2).unwrap()) / T::from_usize(2).unwrap()
           - self.lambda * self.theta)
           * dt
         + self.sigma * gn[i - 1]

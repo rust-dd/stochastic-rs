@@ -53,18 +53,24 @@ impl<T: Float> Process<T> for RoughHeston<T> {
     let gn = self.gn.sample();
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);
+    let mut sigma_tilde2 = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::zeros(self.n);
 
-    yt[0] = self.theta
-      + (self.v0.unwrap_or(T::one()).powi(2) - self.theta) * (-self.kappa * T::zero()).exp();
-    zt[0] = T::zero(); // Initial condition for Z_t, typically 0 for such integrals.
-    v2[0] = self.v0.unwrap_or(T::one()).powi(2);
-    let g = gamma(self.hurst.to_f64().unwrap() + 0.5);
+    let v0_sq = self.v0.unwrap_or(T::one()).powi(2);
+    yt[0] = v0_sq;
+    zt[0] = T::zero();
+    sigma_tilde2[0] = v0_sq;
+    v2[0] = v0_sq;
+    let g = gamma(self.hurst.to_f64().unwrap() - 0.5);
 
     for i in 1..self.n {
       let t = dt * T::from_usize_(i);
       yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
-      zt[i] = zt[i - 1] * (-self.kappa * dt).exp() + (v2[i - 1].powi(2)).sqrt() * gn[i - 1];
+      zt[i] = zt[i - 1] * (-self.kappa * dt).exp()
+        + sigma_tilde2[i - 1].max(T::zero()).sqrt() * gn[i - 1];
+
+      // CIR process: sigma_tilde^2 = Y_t + nu * Z_t
+      sigma_tilde2[i] = yt[i] + self.nu * zt[i];
 
       let integral = (0..i)
         .map(|j| {

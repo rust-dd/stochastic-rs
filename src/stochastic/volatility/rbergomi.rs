@@ -54,7 +54,7 @@ impl<T: Float> Process<T> for RoughBergomi<T> {
     s[0] = self.s0.unwrap_or(T::from_usize_(100));
     v2[0] = self.v0.unwrap_or(T::one()).powi(2);
 
-    for i in 1..=self.n {
+    for i in 1..self.n {
       s[i] = s[i - 1] + self.r * s[i - 1] * dt + v2[i - 1].sqrt() * s[i - 1] * cgn1[i - 1];
 
       let sum_z = z.slice(s![..i]).sum();

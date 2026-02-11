@@ -6,7 +6,7 @@ use crate::stochastic::Process;
 
 /// Hull-White 2-factor model
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0
-/// dU(t) = b * U(t) dt + sigma_2 dW2(t) u(0) = 0
+/// dU(t) = -b * U(t) dt + sigma_2 dW2(t) u(0) = 0
 pub struct HullWhite2F<T: Float> {
   pub k: fn(T) -> T,
   pub theta: T,
@@ -64,7 +64,7 @@ impl<T: Float> Process<T> for HullWhite2F<T> {
         + ((self.k)(T::from_usize_(i) * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
         + self.sigma1 * cgn1[i - 1];
 
-      u[i] = u[i - 1] + self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
+      u[i] = u[i - 1] - self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
     }
 
     [x, u]

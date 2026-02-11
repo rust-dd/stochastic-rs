@@ -61,8 +61,8 @@ impl<T: Float> Process<T> for FouqueOU2D<T> {
     y[0] = self.y0.unwrap_or(T::zero());
 
     let eps = self.epsilon;
-    let sqrt_eps_inv = T::zero() / eps.sqrt();
-    let eps_inv = T::zero() / eps;
+    let sqrt_eps_inv = T::one() / eps.sqrt();
+    let eps_inv = T::one() / eps;
 
     for i in 1..self.n {
       // Slow OU

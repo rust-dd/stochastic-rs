@@ -106,7 +106,8 @@ where
         + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1]
         + jumps.sum();
 
-      let dv = (self.alpha - self.beta * v[i - 1]) * dt + self.sigma * v[i - 1] * cgn2[i - 1];
+      let dv = (self.alpha - self.beta * v[i - 1]) * dt
+        + self.sigma * v[i - 1].powf(T::from_f64_fast(0.5)) * cgn2[i - 1];
 
       v[i] = match self.use_sym.unwrap_or(false) {
         true => (v[i - 1] + dv).abs(),

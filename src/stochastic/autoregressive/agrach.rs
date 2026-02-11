@@ -66,7 +66,7 @@ impl<T: Float> Process<T> for AGARCH<T> {
 
     // Summation for unconditional variance init
     let sum_alpha = self.alpha.iter().cloned().sum();
-    let sum_delta_half = self.delta.iter().cloned().sum::<T>() + T::from_f64_fast(0.5);
+    let sum_delta_half = self.delta.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
     let sum_beta = self.beta.iter().cloned().sum();
     let denom = (T::one() - sum_alpha - sum_delta_half - sum_beta).max(T::from_f64_fast(1e-8));
 

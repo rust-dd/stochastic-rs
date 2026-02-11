@@ -25,6 +25,6 @@ impl<T: Float> Process<T> for Gn<T> {
 
 impl<T: Float> Gn<T> {
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::zero()) / T::from_usize_(self.n)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
   }
 }

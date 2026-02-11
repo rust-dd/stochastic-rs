@@ -28,6 +28,6 @@ impl<T: Float> Process<T> for CIR2F<T> {
     let dt = self.x.t.unwrap_or(T::zero()) / T::from_usize_(n - 1);
     let phi = Array1::<T>::from_shape_fn(n, |i| (self.phi)(T::from_usize_(i) * dt));
 
-    x + y * phi
+    x + y + phi
   }
 }

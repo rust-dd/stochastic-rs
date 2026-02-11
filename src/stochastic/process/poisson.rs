@@ -30,7 +30,7 @@ impl<T: Float> Process<T> for Poisson<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let distr = SimdExp::new(T::one() / self.lambda);
+    let distr = SimdExp::new(self.lambda);
 
     if let Some(n) = self.n {
       let exponentials = Array1::random(n, distr);

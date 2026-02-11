@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::stochastic::c;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -33,7 +32,7 @@ impl<T: Float> FCIR<T> {
     use_sym: Option<bool>,
   ) -> Self {
     assert!(
-      c::<T>(2.0) * theta * mu >= sigma.powi(2),
+      T::from_usize_(2) * theta * mu >= sigma.powi(2),
       "2 * theta * mu < sigma^2"
     );
 

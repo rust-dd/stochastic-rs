@@ -63,6 +63,10 @@ impl<T: Float> Process<T> for HJM<T> {
     let mut p = Array1::<T>::zeros(self.n);
     let mut f_ = Array1::<T>::zeros(self.n);
 
+    r[0] = self.r0.unwrap_or(T::zero());
+    p[0] = self.p0.unwrap_or(T::zero());
+    f_[0] = self.f0.unwrap_or(T::zero());
+
     let gn1 = &self.gn.sample();
     let gn2 = &self.gn.sample();
     let gn3 = &self.gn.sample();

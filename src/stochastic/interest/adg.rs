@@ -78,8 +78,9 @@ impl<T: Float> Process<T> for ADG<T> {
       let b = Array1::<T>::from_shape_fn(self.n, |j| (self.b)(T::from_usize_(j) * dt));
       let c = Array1::<T>::from_shape_fn(self.n, |j| (self.c)(T::from_usize_(j) * dt));
 
-      r.row_mut(i)
-        .assign(&(phi + b * adg.row(i).t().to_owned() * c * adg.row(i)));
+      let xi = adg.row(i).to_owned();
+      let xi_sq = &xi * &xi;
+      r.row_mut(i).assign(&(phi + b * &xi + c * xi_sq));
     }
 
     r

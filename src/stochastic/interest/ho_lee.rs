@@ -25,7 +25,7 @@ impl<T: Float> HoLee<T> {
     t: Option<T>,
   ) -> Self {
     assert!(
-      theta.is_none() && f_T.is_none(),
+      theta.is_some() || f_T.is_some(),
       "theta or f_T must be provided"
     );
 
@@ -50,10 +50,11 @@ impl<T: Float> Process<T> for HoLee<T> {
     let mut r = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
+      let t = T::from_usize_(i) * dt;
       let drift = if let Some(r#fn) = self.f_T.as_ref() {
-        (r#fn)(T::from_usize_(i) * dt) + self.sigma.powf(T::from_usize_(2))
+        (r#fn)(t) + self.sigma.powf(T::from_usize_(2)) * t
       } else {
-        self.theta.unwrap() + self.sigma.powf(T::from_usize_(2))
+        self.theta.unwrap() + self.sigma.powf(T::from_usize_(2)) * t
       };
 
       r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];

@@ -1,7 +1,6 @@
 use ndarray::Array1;
 
-use super::ar::ARp;
-use super::ma::MAq;
+use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -23,21 +22,19 @@ pub struct ARIMA<T: Float> {
   pub sigma: T,
   /// Final length of time series
   pub n: usize,
-  ar: ARp<T>,
+  wn: Wn<T>,
 }
 
 impl<T: Float> ARIMA<T> {
   /// Create a new ARIMA model with the given parameters.
   pub fn new(ar_coefs: Array1<T>, ma_coefs: Array1<T>, d: usize, sigma: T, n: usize) -> Self {
-    let ar = ARp::new(ar_coefs.clone(), sigma, n, None);
-
     Self {
       ar_coefs,
       ma_coefs,
       d,
       sigma,
       n,
-      ar,
+      wn: Wn::new(n, None, Some(sigma)),
     }
   }
 }
@@ -46,18 +43,32 @@ impl<T: Float> Process<T> for ARIMA<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    // 1) Generate an AR(p) series with user-provided coefficients
-    let ar_model = &self.ar;
-    let ar_series = ar_model.sample();
+    let p = self.ar_coefs.len();
+    let q = self.ma_coefs.len();
+    let noise = self.wn.sample();
+    let mut arma_series = Array1::<T>::zeros(self.n);
 
-    // 2) Generate an MA(q) series with user-provided coefficients
-    let ma_model = MAq::new(self.ma_coefs.clone(), self.sigma, self.n);
-    let ma_series = ma_model.sample();
+    // Single-pass ARMA(p,q) recursion with shared noise:
+    // X_t = sum_k(phi_k * X_{t-k}) + eps_t + sum_k(theta_k * eps_{t-k})
+    for t in 0..self.n {
+      let mut val = noise[t];
 
-    // 3) Summation -> ARMA(p,q)
-    let arma_series = &ar_series + &ma_series;
+      for k in 1..=p {
+        if t >= k {
+          val += self.ar_coefs[k - 1] * arma_series[t - k];
+        }
+      }
 
-    // 4) Inverse difference d times -> ARIMA(p,d,q)
+      for k in 1..=q {
+        if t >= k {
+          val += self.ma_coefs[k - 1] * noise[t - k];
+        }
+      }
+
+      arma_series[t] = val;
+    }
+
+    // Inverse difference d times -> ARIMA(p,d,q)
     let mut result = arma_series;
     for _ in 0..self.d {
       result = Self::inverse_difference(&result);

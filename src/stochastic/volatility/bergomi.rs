@@ -54,13 +54,13 @@ impl<T: Float> Process<T> for Bergomi<T> {
     s[0] = self.s0.unwrap_or(T::from_usize_(100));
     v2[0] = self.v0.unwrap_or(T::one()).powi(2);
 
-    for i in 0..self.n {
+    for i in 1..self.n {
       s[i] = s[i - 1] + self.r * s[i - 1] * dt + v2[i - 1].sqrt() * s[i - 1] * cgn1[i - 1];
 
       let sum_z = cgn2.slice(s![..i]).sum();
       let t = T::from_usize_(i) * dt;
       v2[i] = self.v0.unwrap_or(T::one()).powi(2)
-        * (self.nu * t * sum_z - T::from_f64_fast(0.5) * self.nu.powi(2) * t.powi(2))
+        * (self.nu * t * sum_z - T::from_f64_fast(0.5) * self.nu.powi(2) * t.powi(2)).exp()
     }
 
     [s, v2]

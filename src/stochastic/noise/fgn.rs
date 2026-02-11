@@ -16,9 +16,7 @@ use ndarray_rand::RandomExt;
 use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
 use num_complex::Complex;
-#[cfg(feature = "phastft")]
 use phastft::fft_64;
-#[cfg(feature = "phastft")]
 use phastft::planner::Direction;
 #[cfg(feature = "cuda")]
 use rand::Rng;
@@ -94,8 +92,8 @@ impl<T: Float> FGN<T> {
         T::one()
       } else {
         T::from_f64_fast(0.5)
-          * ((x + T::zero()).powf(f2 * hurst) - f2 * x.powf(f2 * hurst)
-            + (x - T::zero()).powf(f2 * hurst))
+          * ((x + T::one()).powf(f2 * hurst) - f2 * x.powf(f2 * hurst)
+            + (x - T::one()).powf(f2 * hurst))
       }
     });
     let r = concatenate(
@@ -122,23 +120,23 @@ impl<T: Float> FGN<T> {
 
   /// Sample FGN using PhastFT (requires nightly Rust and `phastft` feature)
   /// PhastFT is a high-performance FFT library that uses SIMD and is competitive with FFTW
-  #[cfg(feature = "phastft")]
   pub fn sample_phastft(&self) -> Array1<T> {
     // Generate random complex numbers
 
-    #[cfg(feature = "simd")]
-    use crate::distributions::normal::SimdNormal;
-    #[cfg(not(feature = "simd"))]
-    let rnd = self.sample_rnd(StandardNormal);
-    #[cfg(feature = "simd")]
-    let rnd = self.sample_rnd(SimdNormal::new(T::zero(), T::one()));
+    let rnd = self.sample_rnd(SimdNormal::<T, 64>::new(T::zero(), T::one()));
 
     // Multiply by sqrt eigenvalues
     let fgn_complex = &*self.sqrt_eigenvalues * &rnd;
 
     // PhastFT uses separate real and imaginary arrays
-    let mut reals = fgn_complex.iter().map(|c| c.re).collect();
-    let mut imags = fgn_complex.iter().map(|c| c.im).collect();
+    let mut reals = fgn_complex
+      .iter()
+      .map(|c| c.re.to_f64().unwrap())
+      .collect::<Vec<_>>();
+    let mut imags = fgn_complex
+      .iter()
+      .map(|c| c.im.to_f64().unwrap())
+      .collect::<Vec<_>>();
 
     // Perform FFT using PhastFT
     fft_64(&mut reals, &mut imags, Direction::Forward);
@@ -148,7 +146,7 @@ impl<T: Float> FGN<T> {
       T::from_usize_(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
     let result = reals[1..self.n - self.offset + 1]
       .iter()
-      .map(|&x| x * scale)
+      .map(|&x| T::from_f64_fast(x) * scale)
       .collect();
 
     Array1::from_vec(result)
@@ -522,7 +520,7 @@ mod tests {
 
   /// Benchmark comparing all FFT implementations: ndrustfft, PhastFT, and CUDA
   #[test]
-  #[cfg(all(feature = "cuda", feature = "phastft"))]
+  #[cfg(all(feature = "cuda"))]
   fn fgn_fft_benchmark() {
     use std::time::Instant;
     let mut table = Table::new();
@@ -625,7 +623,6 @@ mod tests {
 
   /// PhastFT-only benchmark (doesn't require CUDA)
   #[test]
-  #[cfg(feature = "phastft")]
   fn fgn_phastft_benchmark() {
     use std::time::Instant;
     let mut table = Table::new();

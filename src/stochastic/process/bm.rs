@@ -11,6 +11,17 @@ pub struct BM<T: Float> {
   gn: Gn<T>,
 }
 
+impl<T: Float> BM<T> {
+  pub fn new(n: usize, t: Option<T>, m: Option<usize>) -> Self {
+    Self {
+      n,
+      t,
+      m,
+      gn: Gn::new(n - 1, t),
+    }
+  }
+}
+
 impl<T: Float> Process<T> for BM<T> {
   type Output = Array1<T>;
 

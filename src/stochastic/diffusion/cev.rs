@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::stochastic::c;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -71,7 +70,7 @@ impl<T: Float> CEV<T> {
       det_term[i] = (self.mu
         - (self.gamma.powi(2)
           * self.sigma.powi(2)
-          * cev[i].powf(c::<T>(2.0) * self.gamma - c(2.0))
+          * cev[i].powf(T::from_usize_(2) * self.gamma - T::from_usize_(2))
           / T::from_usize_(2)))
         * dt;
       if i > 0 {
