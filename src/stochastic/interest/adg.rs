@@ -1,7 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -65,7 +64,7 @@ impl<T: Float> Process<T> for ADG<T> {
       let gn = &self.gn.sample();
 
       for j in 1..self.n {
-        let t = j as f64 * dt;
+        let t = T::from_usize_(j) * dt;
         adg[(i, j)] = adg[(i, j - 1)]
           + ((self.k)(t) - (self.theta)(t) * adg[(i, j - 1)]) * dt
           + self.sigma[i] * gn[j - 1];
@@ -75,9 +74,9 @@ impl<T: Float> Process<T> for ADG<T> {
     let mut r = Array2::zeros((self.xn, self.n));
 
     for i in 0..self.xn {
-      let phi = Array1::<T>::from_shape_fn(self.n, |j| (self.phi)(f!(j) * dt));
-      let b = Array1::<T>::from_shape_fn(self.n, |j| (self.b)(f!(j) * dt));
-      let c = Array1::<T>::from_shape_fn(self.n, |j| (self.c)(f!(j) * dt));
+      let phi = Array1::<T>::from_shape_fn(self.n, |j| (self.phi)(T::from_usize_(j) * dt));
+      let b = Array1::<T>::from_shape_fn(self.n, |j| (self.b)(T::from_usize_(j) * dt));
+      let c = Array1::<T>::from_shape_fn(self.n, |j| (self.c)(T::from_usize_(j) * dt));
 
       r.row_mut(i)
         .assign(&(phi + b * adg.row(i).t().to_owned() * c * adg.row(i)));

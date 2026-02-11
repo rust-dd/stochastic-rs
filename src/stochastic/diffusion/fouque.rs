@@ -49,24 +49,11 @@ impl<T: Float> FouqueOU2D<T> {
 
 impl<T: Float> Process<T> for FouqueOU2D<T> {
   type Output = [Array1<T>; 2];
-  type Noise = Gn<T>;
 
   fn sample(&self) -> [Array1<T>; 2] {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn_x = noise_fn(&self.gn);
-    let gn_y = noise_fn(&self.gn);
+    let gn_x = &self.gn.sample();
+    let gn_y = &self.gn.sample();
 
     let mut x = Array1::<T>::zeros(self.n);
     let mut y = Array1::<T>::zeros(self.n);
@@ -74,8 +61,8 @@ impl<T: Float> Process<T> for FouqueOU2D<T> {
     y[0] = self.y0.unwrap_or(T::zero());
 
     let eps = self.epsilon;
-    let sqrt_eps_inv = T::one() / eps.sqrt();
-    let eps_inv = T::one() / eps;
+    let sqrt_eps_inv = T::zero() / eps.sqrt();
+    let eps_inv = T::zero() / eps;
 
     for i in 1..self.n {
       // Slow OU

@@ -30,15 +30,14 @@
 
 use ndarray::Array1;
 use rand_distr::Distribution;
-use rand_distr::Exp;
 
+use crate::distributions::exp::SimdExp;
 use crate::distributions::normal::SimdNormal;
-use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
-pub struct DuffieKanJumpExp<T: Float, const N: usize> {
+pub struct DuffieKanJumpExp<T: Float> {
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -64,15 +63,15 @@ pub struct DuffieKanJumpExp<T: Float, const N: usize> {
   /// Total time horizon.
   pub t: Option<T>,
   /// Jump distribution.
-  jump_dist: SimdNormal<T, N>,
+  jump_dist: SimdNormal<T>,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: CGNS<T>,
 }
 
-unsafe impl<T: Float, const N: usize> Send for DuffieKanJumpExp<T, N> {}
-unsafe impl<T: Float, const N: usize> Sync for DuffieKanJumpExp<T, N> {}
+unsafe impl<T: Float> Send for DuffieKanJumpExp<T> {}
+unsafe impl<T: Float> Sync for DuffieKanJumpExp<T> {}
 
-impl<T: Float, const N: usize> DuffieKanJumpExp<T, N> {
+impl<T: Float> DuffieKanJumpExp<T> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -93,7 +92,7 @@ impl<T: Float, const N: usize> DuffieKanJumpExp<T, N> {
     x0: Option<T>,
     t: Option<T>,
   ) -> Self {
-    let jump_dist = SimdNormal::new(f!(0), jump_scale);
+    let jump_dist = SimdNormal::new(T::zero(), jump_scale);
 
     Self {
       alpha,
@@ -114,13 +113,13 @@ impl<T: Float, const N: usize> DuffieKanJumpExp<T, N> {
       r0,
       x0,
       t,
-      jump_dist: jump_dist.into(),
+      jump_dist,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: Float, const N: usize> Process<T> for DuffieKanJumpExp<T, N> {
+impl<T: Float> Process<T> for DuffieKanJumpExp<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -129,16 +128,16 @@ impl<T: Float, const N: usize> Process<T> for DuffieKanJumpExp<T, N> {
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut x = Array1::<T>::zeros(self.n);
-    r[0] = self.r0.unwrap_or(f!(0));
-    x[0] = self.x0.unwrap_or(f!(0));
+    r[0] = self.r0.unwrap_or(T::zero());
+    x[0] = self.x0.unwrap_or(T::zero());
 
     let mut rng = rand::rng();
-    let exp_dist = Exp::new(self.lambda).unwrap();
+    let exp_dist = SimdExp::new(self.lambda);
 
     let mut next_jump_time = exp_dist.sample(&mut rng);
 
     for i in 1..self.n {
-      let current_time = i as f64 * dt;
+      let current_time = T::from_usize_(i) * dt;
       let r_old = r[i - 1];
       let x_old = x[i - 1];
 
@@ -147,7 +146,7 @@ impl<T: Float, const N: usize> Process<T> for DuffieKanJumpExp<T, N> {
       let dx = (self.a2 * r_old + self.b2 * x_old + self.c2) * dt
         + self.sigma2 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn2[i - 1];
 
-      let mut jump_sum_x = f!(0);
+      let mut jump_sum_x = T::zero();
       while next_jump_time <= current_time {
         let jump_x = self.jump_dist.sample(&mut rng);
         jump_sum_x += jump_x;

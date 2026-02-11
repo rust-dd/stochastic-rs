@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -35,7 +34,6 @@ impl<T: Float> HJM<T> {
     p0: Option<T>,
     f0: Option<T>,
     t: Option<T>,
-    gn: Gn<T>,
   ) -> Self {
     Self {
       a,
@@ -69,10 +67,10 @@ impl<T: Float> Process<T> for HJM<T> {
     let gn2 = &self.gn.sample();
     let gn3 = &self.gn.sample();
 
-    let t_max = self.t.unwrap_or(f!(0));
+    let t_max = self.t.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      let t = i as f64 * dt;
+      let t = T::from_usize_(i) * dt;
 
       r[i] = r[i - 1] + (self.a)(t) * dt + (self.b)(t) * gn1[i - 1];
       p[i] =

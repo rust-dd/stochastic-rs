@@ -49,8 +49,6 @@ impl<T: Float> Process<T> for BGM<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-
     let mut fwd = Array2::<T>::zeros((self.xn, self.n));
 
     for i in 0..self.xn {

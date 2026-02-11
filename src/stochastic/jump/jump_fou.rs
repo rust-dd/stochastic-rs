@@ -1,7 +1,6 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
-use crate::f;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::stochastic::Float;
@@ -64,7 +63,7 @@ where
     let fgn = &self.fgn.sample();
 
     let mut jump_fou = Array1::<T>::zeros(self.n);
-    jump_fou[0] = self.x0.unwrap_or(f!(0));
+    jump_fou[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       let [.., jumps] = self.cpoisson.sample();

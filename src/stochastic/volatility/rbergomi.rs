@@ -1,7 +1,6 @@
 use ndarray::s;
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -52,17 +51,20 @@ impl<T: Float> Process<T> for RoughBergomi<T> {
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::<T>::zeros(self.n);
-    s[0] = self.s0.unwrap_or(f!(100));
-    v2[0] = self.v0.unwrap_or(f!(1)).powi(2);
+    s[0] = self.s0.unwrap_or(T::from_usize_(100));
+    v2[0] = self.v0.unwrap_or(T::one()).powi(2);
 
     for i in 1..=self.n {
       s[i] = s[i - 1] + self.r * s[i - 1] * dt + v2[i - 1].sqrt() * s[i - 1] * cgn1[i - 1];
 
       let sum_z = z.slice(s![..i]).sum();
-      let t = f!(i) * dt;
-      v2[i] = self.v0.unwrap_or(f!(1)).powi(2)
-        * (self.nu * (f!(2.0) * self.hurst).sqrt() * t.powf(self.hurst - f!(0.5)) * sum_z
-          - f!(0.5) * self.nu.powi(2) * t.powf(f!(2.0) * self.hurst))
+      let t = T::from_usize_(i) * dt;
+      v2[i] = self.v0.unwrap_or(T::one()).powi(2)
+        * (self.nu
+          * (T::from_usize_(2) * self.hurst).sqrt()
+          * t.powf(self.hurst - T::from_f64_fast(0.5))
+          * sum_z
+          - T::from_f64_fast(0.5) * self.nu.powi(2) * t.powf(T::from_usize_(2) * self.hurst))
         .exp();
     }
 

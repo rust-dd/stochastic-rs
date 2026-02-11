@@ -30,23 +30,10 @@ impl<T: Float> Kimura<T> {
 
 impl<T: Float> Process<T> for Kimura<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = self.gn.sample();
 
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());
@@ -54,8 +41,8 @@ impl<T: Float> Process<T> for Kimura<T> {
     for i in 1..self.n {
       // enforce [0,1] domain when computing coefficients
       let xi = x[i - 1].clamp(T::zero(), T::one());
-      let sqrt_term = (xi * (1.0 - xi)).sqrt();
-      let drift = self.a * xi * (1.0 - xi) * dt;
+      let sqrt_term = (xi * (T::one() - xi)).sqrt();
+      let drift = self.a * xi * (T::one() - xi) * dt;
       let diff = self.sigma * sqrt_term * gn[i - 1];
       let mut next = xi + drift + diff;
       next = next.clamp(T::zero(), T::one());

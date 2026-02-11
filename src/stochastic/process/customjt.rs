@@ -6,7 +6,6 @@ use ndarray_rand::RandomExt;
 use rand::rng;
 use rand_distr::Distribution;
 
-use crate::f;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -51,8 +50,8 @@ where
 
       x
     } else if let Some(t_max) = self.t_max {
-      let mut x = Array1::from(vec![f!(0)]);
-      let mut t = f!(0);
+      let mut x = Array1::from(vec![T::zero()]);
+      let mut t = T::zero();
 
       while t < t_max {
         t += self.distribution.sample(&mut rng());

@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::stochastic::c;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -30,24 +31,11 @@ impl<T: Float> CEV<T> {
 
 impl<T: Float> Process<T> for CEV<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   /// Sample the CEV process
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
 
     let mut cev = Array1::<T>::zeros(self.n);
     cev[0] = self.x0.unwrap_or(T::zero());
@@ -72,7 +60,8 @@ impl<T: Float> CEV<T> {
   fn malliavin(&self) -> [Array1<T>; 2] {
     let gn = Gn::new(self.n - 1, self.t);
     let dt = gn.dt();
-    let cev = self.euler_maruyama(|gn| gn.sample());
+    let gn = gn.sample();
+    let cev = self.sample();
 
     let mut det_term = Array1::zeros(self.n);
     let mut stochastic_term = Array1::zeros(self.n);
@@ -82,8 +71,8 @@ impl<T: Float> CEV<T> {
       det_term[i] = (self.mu
         - (self.gamma.powi(2)
           * self.sigma.powi(2)
-          * cev[i].powf(2.0 * self.gamma - T::from_usize(2))
-          / T::from_usize(2)))
+          * cev[i].powf(c::<T>(2.0) * self.gamma - c(2.0))
+          / T::from_usize_(2)))
         * dt;
       if i > 0 {
         stochastic_term[i] =

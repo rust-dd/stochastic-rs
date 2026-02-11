@@ -11,7 +11,6 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 #[cfg(feature = "simd")]
 use crate::distributions::uniform::SimdUniform;
-use crate::f;
 use crate::stochastic::process::poisson::Poisson;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -65,32 +64,36 @@ impl<T: Float> Process<T> for CTS<T> {
   fn sample(&self) -> Self::Output {
     let mut rng = rand::rng();
 
-    let t_max = self.t.unwrap_or(f!(1));
-    let dt = t_max / f!(self.n - 1);
+    let t_max = self.t.unwrap_or(T::one());
+    let dt = t_max / T::from_usize_(self.n - 1);
     let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(f!(0));
+    x[0] = self.x0.unwrap_or(T::zero());
 
-    let C = (gamma(2.0 - self.alpha)
-      * (self.lambda_plus.powf(self.alpha - f!(2)) + self.lambda_minus.powf(self.alpha - f!(2))))
+    let g = gamma(2.0 - self.alpha.to_f64().unwrap());
+    let C = (T::from_f64_fast(g)
+      * (self.lambda_plus.powf(self.alpha - T::from_usize_(2))
+        + self.lambda_minus.powf(self.alpha - T::from_usize_(2))))
     .powi(-1);
 
+    let g = gamma(1.0 - self.alpha.to_f64().unwrap());
     let b_t = -C
-      * gamma(1.0 - self.alpha)
-      * (self.lambda_plus.powf(self.alpha - f!(1)) - self.lambda_minus.powf(self.alpha - f!(1)));
+      * T::from_f64_fast(g)
+      * (self.lambda_plus.powf(self.alpha - T::one())
+        - self.lambda_minus.powf(self.alpha - T::one()));
 
-    let uniform = SimdUniform::new(f!(0), f!(1));
-    let exp = SimdExp::new(f!(1));
+    let uniform = SimdUniform::new(T::zero(), T::one());
+    let exp = SimdExp::new(T::one());
 
-    let U = Array1::<T>::random(self.j, uniform);
+    let U = Array1::<T>::random(self.j, &uniform);
     let E = Array1::<T>::random(self.j, exp);
-    let P = Poisson::new(f!(1), Some(self.j), None);
+    let P = Poisson::new(T::one(), Some(self.j), None);
     let P = P.sample();
-    let tau = Array1::<T>::random(self.j, uniform);
+    let tau = Array1::<T>::random(self.j, &uniform);
 
     for i in 1..self.n {
-      let mut jump_component = f!(0);
-      let t_1 = f!(i - 1) * dt;
-      let t = f!(i) * dt;
+      let mut jump_component = T::zero();
+      let t_1 = T::from_usize_(i - 1) * dt;
+      let t = T::from_usize_(i) * dt;
 
       for j in 1..self.j {
         if tau[j] > t_1 && tau[j] <= t {
@@ -101,8 +104,8 @@ impl<T: Float> Process<T> for CTS<T> {
           };
 
           let numerator = self.alpha * P[j];
-          let term1 = (numerator / C).powf(-f!(1) / self.alpha);
-          let term2 = E[j] * U[j].powf(f!(1) / self.alpha) / v_j.abs();
+          let term1 = (numerator / C).powf(-T::one() / self.alpha);
+          let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
           let jump_size = term1.min(term2) * (v_j / v_j.abs());
 
           jump_component += jump_size;
@@ -118,11 +121,8 @@ impl<T: Float> Process<T> for CTS<T> {
 
 #[cfg(test)]
 mod tests {
-  use ndarray::Axis;
-
   use super::*;
   use crate::plot_1d;
-  use crate::plot_nd;
   use crate::stochastic::N;
 
   #[test]
@@ -141,11 +141,5 @@ mod tests {
   fn cts_plot() {
     let cts = CTS::new(25.46, 4.604, 0.52, N, 1024, Some(2.0), Some(1.0));
     plot_1d!(cts.sample(), "CTS Process");
-  }
-
-  #[test]
-  fn cts_plot_multi() {
-    let cts = CTS::new(25.46, 4.604, 0.52, N, 1024, Some(2.0), Some(1.0));
-    plot_nd!(cts.sample_par(10), "CTS Process");
   }
 }

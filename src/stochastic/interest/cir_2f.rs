@@ -1,8 +1,6 @@
 use ndarray::Array1;
 
 use super::cir::CIR;
-use crate::f;
-use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -13,7 +11,7 @@ pub struct CIR2F<T: Float> {
 }
 
 impl<T: Float> CIR2F<T> {
-  pub fn new(x: CIR<T>, y: CIR<T>, phi: fn(T) -> T, gn: Gn<T>) -> Self {
+  pub fn new(x: CIR<T>, y: CIR<T>, phi: fn(T) -> T) -> Self {
     Self { x, y, phi }
   }
 }
@@ -25,8 +23,10 @@ impl<T: Float> Process<T> for CIR2F<T> {
     let x = self.x.sample();
     let y = self.y.sample();
 
-    let dt = self.x.t.unwrap_or(f!(0)) / f!(self.n - 1);
-    let phi = Array1::<T>::from_shape_fn(self.n, |i| (self.phi)(T::from_usize(i) * dt));
+    let n = x.len();
+
+    let dt = self.x.t.unwrap_or(T::zero()) / T::from_usize_(n - 1);
+    let phi = Array1::<T>::from_shape_fn(n, |i| (self.phi)(T::from_usize_(i) * dt));
 
     x + y * phi
   }

@@ -1,7 +1,6 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
-use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::stochastic::Float;
@@ -69,13 +68,15 @@ where
     let gn = &self.gn.sample();
 
     let mut merton = Array1::<T>::zeros(self.n);
-    merton[0] = self.x0.unwrap_or(f!(0));
+    merton[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       let [.., jumps] = self.cpoisson.sample();
 
       merton[i] = merton[i - 1]
-        + (self.alpha * self.sigma.powf(f!(2)) / f!(2) - self.lambda * self.theta) * dt
+        + (self.alpha * self.sigma.powf(T::from_usize_(2)) / T::from_usize_(2)
+          - self.lambda * self.theta)
+          * dt
         + self.sigma * gn[i - 1]
         + jumps.sum();
     }

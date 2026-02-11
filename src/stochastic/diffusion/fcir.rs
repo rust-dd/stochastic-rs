@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::stochastic::c;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -32,7 +33,7 @@ impl<T: Float> FCIR<T> {
     use_sym: Option<bool>,
   ) -> Self {
     assert!(
-      2.0 * &theta * mu >= sigma.powi(2),
+      c::<T>(2.0) * theta * mu >= sigma.powi(2),
       "2 * theta * mu < sigma^2"
     );
 
@@ -52,24 +53,10 @@ impl<T: Float> FCIR<T> {
 
 impl<T: Float> Process<T> for FCIR<T> {
   type Output = Array1<T>;
-  type Noise = FGN<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample_simd())
-  }
-
-  /// Sample the Fractional Cox-Ingersoll-Ross (FCIR) process
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = noise_fn(&self.fgn);
+    let fgn = &self.fgn.sample();
 
     let mut fcir = Array1::<T>::zeros(self.n);
     fcir[0] = self.x0.unwrap_or(T::zero());

@@ -6,6 +6,7 @@ use ndarray::Array2;
 use crate::quant::r#trait::PricerExt;
 use crate::quant::r#trait::TimeExt;
 use crate::stochastic::diffusion::gbm::GBM;
+use crate::stochastic::Process;
 
 fn laplace_pdf(x: f64, l: f64) -> f64 {
   if l <= 0.0 {

@@ -52,26 +52,13 @@ impl<T: Float> AGARCH<T> {
 
 impl<T: Float> Process<T> for AGARCH<T> {
   type Output = Array1<T>;
-  type Noise = Wn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|wn| wn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|wn| wn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let p = self.alpha.len();
     let q = self.beta.len();
 
     // Generate white noise
-    let z = noise_fn(&self.wn);
+    let z = &self.wn.sample();
 
     // Arrays for X_t and sigma_t^2
     let mut x = Array1::<T>::zeros(self.n);

@@ -28,7 +28,6 @@
 
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -105,8 +104,8 @@ impl<T: Float> Process<T> for DuffieKan<T> {
     let mut r = Array1::<T>::zeros(self.n);
     let mut x = Array1::<T>::zeros(self.n);
 
-    r[0] = self.r0.unwrap_or(f!(0));
-    x[0] = self.x0.unwrap_or(f!(0));
+    r[0] = self.r0.unwrap_or(T::zero());
+    x[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       r[i] = r[i - 1]

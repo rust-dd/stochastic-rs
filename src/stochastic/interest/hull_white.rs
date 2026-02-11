@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -40,11 +39,11 @@ impl<T: Float> Process<T> for HullWhite<T> {
     let gn = &self.gn.sample();
 
     let mut hw = Array1::<T>::zeros(self.n);
-    hw[0] = self.x0.unwrap_or(f!(0));
+    hw[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       hw[i] = hw[i - 1]
-        + ((self.theta)(i as f64 * dt) - self.alpha * hw[i - 1]) * dt
+        + ((self.theta)(T::from_usize_(i) * dt) - self.alpha * hw[i - 1]) * dt
         + self.sigma * gn[i - 1]
     }
 

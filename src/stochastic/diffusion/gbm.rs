@@ -38,20 +38,10 @@ impl<T: Float> GBM<T> {
 
 impl<T: Float> Process<T> for GBM<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(&self, noise_fn: impl FnOnce(&Self::Noise) -> Self::Output) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
 
     let mut gbm = Array1::<T>::zeros(self.n);
     gbm[0] = self.x0.unwrap_or(T::zero());
@@ -66,15 +56,15 @@ impl<T: Float> Process<T> for GBM<T> {
 
 impl<T: Float> GBM<T> {
   /// Distribution of the GBM process
-  fn distribution(&mut self) {
-    let mu = self.x0.unwrap() * (self.mu * self.t.unwrap()).exp();
-    let sigma = (self.x0.unwrap().powi(2)
-      * (2.0 * self.mu * self.t.unwrap()).exp()
-      * ((self.sigma.powi(2) * self.t.unwrap()).exp() - T::one()))
-    .sqrt();
+  // fn distribution(&mut self) {
+  //   let mu = self.x0.unwrap() * (self.mu * self.t.unwrap()).exp();
+  //   let sigma = (self.x0.unwrap().powi(2)
+  //     * (2.0 * self.mu * self.t.unwrap()).exp()
+  //     * ((self.sigma.powi(2) * self.t.unwrap()).exp() - T::one()))
+  //   .sqrt();
 
-    self.distribution = Some(LogNormal::new(mu.into(), sigma.into()).unwrap());
-  }
+  //   self.distribution = Some(LogNormal::new(mu, sigma).unwrap());
+  // }
 
   /// Mallaivin derivative of the GBM process
   ///
@@ -212,38 +202,13 @@ mod tests {
   }
 
   #[test]
-  fn gbm_benchmark() {
-    let gbm = GBM::new(0.25, 0.5, N * 10, Some(X0), Some(1.0));
-
-    let iters = N * 10;
-
-    let start = std::time::Instant::now();
-    for _ in 0..iters {
-      gbm.sample();
-    }
-    let basic_ms_per = start.elapsed().as_secs_f64() * 1000.0 / iters as f64;
-
-    #[cfg(feature = "simd")]
-    {
-      let start = std::time::Instant::now();
-      for _ in 0..iters {
-        gbm.sample_simd();
-      }
-      let simd_ms_per = start.elapsed().as_secs_f64() * 1000.0 / iters as f64;
-
-      println!("Basic: {:.6} ms, SIMD: {:.6} ms", basic_ms_per, simd_ms_per);
-    }
-  }
-
-  #[test]
   fn gbm_malliavin() {
     let gbm = GBM::new(0.25, 0.5, N, Some(X0), Some(1.0));
-    let process = gbm.sample();
     let malliavin = gbm.malliavin();
     plot_2d!(
-      process,
+      malliavin[0],
       "Geometric Brownian Motion (GBM) process",
-      malliavin.unwrap(),
+      malliavin[1],
       "Malliavin derivative of the GBM process"
     );
   }

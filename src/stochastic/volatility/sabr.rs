@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -48,8 +47,8 @@ impl<T: Float> Process<T> for SABR<T> {
     let mut f_ = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
 
-    f_[0] = self.f0.unwrap_or(f!(0));
-    v[0] = self.v0.unwrap_or(f!(0));
+    f_[0] = self.f0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       f_[i] = f_[i - 1] + v[i - 1] * f_[i - 1].powf(self.beta) * cgn1[i - 1];

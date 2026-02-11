@@ -19,7 +19,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -90,13 +89,13 @@ impl<T: Float> Process<T> for WuZhangD<T> {
       let gn_v = &self.gn.sample();
 
       for j in 1..self.n {
-        let v_old = fv[(i + self.xn, j - 1)].max(f!(0));
-        let f_old = fv[(i, j - 1)].max(f!(0));
+        let v_old = fv[(i + self.xn, j - 1)].max(T::zero());
+        let f_old = fv[(i, j - 1)].max(T::zero());
 
         let dv =
           (self.alpha[i] - self.beta[i] * v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
 
-        let v_new = (v_old + dv).max(f!(0));
+        let v_new = (v_old + dv).max(T::zero());
         fv[(i + self.xn, j)] = v_new;
 
         let df = f_old * self.lambda[i] * v_new.sqrt() * gn_f[j - 1];

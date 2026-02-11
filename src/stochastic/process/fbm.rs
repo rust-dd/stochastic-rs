@@ -1,7 +1,6 @@
 use ndarray::Array1;
 use statrs::function::gamma;
 
-use crate::f;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -51,10 +50,11 @@ impl<T: Float> FBM<T> {
   fn malliavin(&self) -> Array1<T> {
     let dt = self.fgn.dt();
     let mut m = Array1::zeros(self.n);
+    let g = gamma::gamma(self.hurst.to_f64().unwrap() + 0.5);
 
     for i in 0..self.n {
-      m[i] = f!(1) / f!(gamma::gamma(self.hurst.to_f64().unwrap() + 0.5))
-        * (f!(i) * dt).powf(self.hurst - f!(0.5));
+      m[i] = T::one() / T::from_f64_fast(g)
+        * (T::from_usize_(i) * dt).powf(self.hurst - T::from_f64_fast(0.5));
     }
 
     m

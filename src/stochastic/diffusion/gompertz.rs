@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::stochastic::c;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -32,33 +33,21 @@ impl<T: Float> Gompertz<T> {
 
 impl<T: Float> Process<T> for Gompertz<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
 
     let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero()).max(1e-12.into());
+    let threshold = c(1e-12);
+    x[0] = self.x0.unwrap_or(T::zero()).max(threshold);
 
     for i in 1..self.n {
-      let xi = x[i - 1].max(1e-12.into());
+      let xi = x[i - 1].max(threshold);
       let drift = (self.a - self.b * xi.ln()) * xi * dt;
       let diff = self.sigma * xi * gn[i - 1];
       let next = xi + drift + diff;
-      x[i] = next.max(1e-12.into());
+      x[i] = next.max(threshold);
     }
 
     x

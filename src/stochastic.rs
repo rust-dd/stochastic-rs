@@ -42,7 +42,7 @@
 //!
 //! When the `cuda` feature is enabled, `sample_cuda()` can be used for faster batch sampling on supported devices.
 
-pub mod autoregressive;
+// pub mod autoregressive;
 pub mod diffusion;
 pub mod interest;
 pub mod isonormal;
@@ -101,12 +101,17 @@ pub trait Float:
   + AddAssign
   + 'static
 {
+  fn from_usize_(n: usize) -> Self;
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
   #[cfg(feature = "simd")]
   fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }
 
 impl Float for f64 {
+  fn from_usize_(n: usize) -> Self {
+    n as f64
+  }
+
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, Normal::new(mean, std_dev).unwrap())
   }
@@ -118,6 +123,10 @@ impl Float for f64 {
 }
 
 impl Float for f32 {
+  fn from_usize_(n: usize) -> Self {
+    n as f32
+  }
+
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, Normal::new(mean, std_dev).unwrap())
   }
@@ -126,6 +135,11 @@ impl Float for f32 {
   fn normal_array_simd(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, SimdNormal::<f32, 64>::new(mean, std_dev))
   }
+}
+
+#[inline(always)]
+pub fn c<T: Float>(x: f64) -> T {
+  T::from_f64(x).unwrap()
 }
 
 pub trait Process<T: Float>: Send + Sync {

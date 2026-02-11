@@ -33,23 +33,10 @@ impl<T: Float> FOU<T> {
 
 impl<T: Float> Process<T> for FOU<T> {
   type Output = Array1<T>;
-  type Noise = FGN<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = noise_fn(&self.fgn);
+    let fgn = self.fgn.sample();
 
     let mut fou = Array1::<T>::zeros(self.n);
     fou[0] = self.x0.unwrap_or(T::zero());

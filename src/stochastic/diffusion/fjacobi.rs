@@ -38,23 +38,10 @@ impl<T: Float> FJacobi<T> {
 
 impl<T: Float> Process<T> for FJacobi<T> {
   type Output = Array1<T>;
-  type Noise = FGN<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|fgn| fgn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = noise_fn(&self.fgn);
+    let fgn = self.fgn.sample();
 
     let mut fjacobi = Array1::<T>::zeros(self.n);
     fjacobi[0] = self.x0.unwrap_or(T::zero());
@@ -66,7 +53,7 @@ impl<T: Float> Process<T> for FJacobi<T> {
         _ => {
           fjacobi[i - 1]
             + (self.alpha - self.beta * fjacobi[i - 1]) * dt
-            + self.sigma * (fjacobi[i - 1] * (1.0 - fjacobi[i - 1])).sqrt() * fgn[i - 1]
+            + self.sigma * (fjacobi[i - 1] * (T::one() - fjacobi[i - 1])).sqrt() * fgn[i - 1]
         }
       };
     }

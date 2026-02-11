@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -52,9 +51,9 @@ impl<T: Float> Process<T> for HoLee<T> {
 
     for i in 1..self.n {
       let drift = if let Some(r#fn) = self.f_T.as_ref() {
-        (r#fn)(i as f64 * dt) + self.sigma.powf(f!(2))
+        (r#fn)(T::from_usize_(i) * dt) + self.sigma.powf(T::from_usize_(2))
       } else {
-        self.theta.unwrap() + self.sigma.powf(f!(2))
+        self.theta.unwrap() + self.sigma.powf(T::from_usize_(2))
       };
 
       r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];

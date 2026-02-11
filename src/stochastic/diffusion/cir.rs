@@ -1,5 +1,6 @@
 use ndarray::Array1;
 
+use crate::stochastic::c;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -30,7 +31,7 @@ impl<T: Float> CIR<T> {
     use_sym: Option<bool>,
   ) -> Self {
     assert!(
-      2.0 * theta * mu >= sigma.powi(2),
+      c::<T>(2.0) * theta * mu >= sigma.powi(2),
       "2 * theta * mu < sigma^2"
     );
 
@@ -49,24 +50,11 @@ impl<T: Float> CIR<T> {
 
 impl<T: Float> Process<T> for CIR<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   /// Sample the Cox-Ingersoll-Ross (CIR) process
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = &self.gn.sample();
 
     let mut cir = Array1::<T>::zeros(self.n);
     cir[0] = self.x0.unwrap_or(T::zero());

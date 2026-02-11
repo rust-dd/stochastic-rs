@@ -43,30 +43,17 @@ impl<T: Float> Verhulst<T> {
 
 impl<T: Float> Process<T> for Verhulst<T> {
   type Output = Array1<T>;
-  type Noise = Gn<T>;
 
   fn sample(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample())
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Self::Output {
-    self.euler_maruyama(|gn| gn.sample_simd())
-  }
-
-  fn euler_maruyama(
-    &self,
-    noise_fn: impl Fn(&Self::Noise) -> <Self::Noise as Process<T>>::Output,
-  ) -> Self::Output {
     let dt = self.gn.dt();
-    let gn = noise_fn(&self.gn);
+    let gn = self.gn.sample();
 
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       let xi = x[i - 1];
-      let drift = self.r * xi * (1.0 - xi / self.k) * dt;
+      let drift = self.r * xi * (T::one() - xi / self.k) * dt;
       let diff = self.sigma * xi * gn[i - 1];
       let mut next = xi + drift + diff;
       if self.clamp.unwrap_or(true) {

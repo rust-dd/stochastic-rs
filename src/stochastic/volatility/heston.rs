@@ -1,7 +1,6 @@
 use ndarray::Array1;
 
 use super::HestonPow;
-use crate::f;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -76,8 +75,8 @@ impl<T: Float> Process<T> for Heston<T> {
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
 
-    s[0] = self.s0.unwrap_or(f!(0));
-    v[0] = self.v0.unwrap_or(f!(0));
+    s[0] = self.s0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       s[i] = s[i - 1] + self.mu * s[i - 1] * dt + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1];
@@ -85,14 +84,14 @@ impl<T: Float> Process<T> for Heston<T> {
       let dv = self.kappa * (self.theta - v[i - 1]) * dt
         + self.sigma
           * v[i - 1].powf(match self.pow {
-            HestonPow::Sqrt => f!(0.5),
-            HestonPow::ThreeHalves => f!(1.5),
+            HestonPow::Sqrt => T::from_f64_fast(0.5),
+            HestonPow::ThreeHalves => T::from_f64_fast(1.5),
           })
           * cgn2[i - 1];
 
       v[i] = match self.use_sym.unwrap_or(false) {
         true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(f!(0)),
+        false => (v[i - 1] + dv).max(T::zero()),
       }
     }
 
@@ -110,29 +109,32 @@ impl<T: Float> Heston<T> {
   /// D_r v_t = \sigma v_t^{3/2} / 2 * exp(-(\kappa \theta / 2 + 3 \sigma^2 / 8) * v_t * dt)
   pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
     let [s, v] = self.sample();
-    let dt = self.t.unwrap_or(f!(0)) / f!(self.n - 1);
+    let dt = self.t.unwrap_or(T::zero()) / T::from_usize_(self.n - 1);
 
     let mut det_term = Array1::zeros(self.n);
     let mut malliavin = Array1::zeros(self.n);
-    let f2 = f!(2);
+    let f2 = T::from_usize_(2);
 
     for i in 0..self.n {
       match self.pow {
         HestonPow::Sqrt => {
-          det_term[i] = ((-(self.kappa * self.theta / f2 - self.sigma.powi(2) / f!(8))
+          det_term[i] = ((-(self.kappa * self.theta / f2
+            - self.sigma.powi(2) / T::from_usize_(8))
             * (T::one() / *v.last().unwrap())
             - self.kappa / f2)
-            * (f!(self.n - i) * dt))
+            * (T::from_usize_(self.n - i) * dt))
             .exp();
           malliavin[i] = (self.sigma * v.last().unwrap().sqrt() / f2) * det_term[i];
         }
         HestonPow::ThreeHalves => {
-          det_term[i] = ((-(self.kappa * self.theta / f2 + f!(3) * self.sigma.powi(2) / f!(8))
+          det_term[i] = ((-(self.kappa * self.theta / f2
+            + T::from_usize_(3) * self.sigma.powi(2) / T::from_usize_(8))
             * *v.last().unwrap()
             - (self.kappa * self.theta) / f2)
-            * (f!(self.n - i) * dt))
+            * (T::from_usize_(self.n - i) * dt))
             .exp();
-          malliavin[i] = (self.sigma * v.last().unwrap().powf(f!(1.5)) / f2) * det_term[i];
+          malliavin[i] =
+            (self.sigma * v.last().unwrap().powf(T::from_f64_fast(1.5)) / f2) * det_term[i];
         }
       };
     }

@@ -1,13 +1,4 @@
 #[macro_export]
-macro_rules! f {
-  ($x:expr) => {{
-    use num_traits::FromPrimitive;
-    let v = FromPrimitive::from_f64($x as f64);
-    unsafe { v.unwrap_unchecked() }
-  }};
-}
-
-#[macro_export]
 macro_rules! plot_1d {
   ($data:expr, $name:expr) => {
     let mut plot = plotly::Plot::new();
@@ -92,28 +83,6 @@ macro_rules! plot_3d {
     plot.add_trace(trace1);
     plot.add_trace(trace2);
     plot.add_trace(trace3);
-    plot.show();
-  };
-}
-
-#[macro_export]
-macro_rules! plot_nd {
-  ($data:expr, $name:expr) => {
-    let mut plot = plotly::Plot::new();
-
-    for (idx, data) in $data.axis_iter(Axis(0)).enumerate() {
-      let trace = plotly::Scatter::new((0..data.len()).collect::<Vec<_>>(), data.to_vec())
-        .mode(plotly::common::Mode::Lines)
-        .line(
-          plotly::common::Line::new()
-            .color("orange")
-            .shape(plotly::common::LineShape::Linear),
-        )
-        .name(format!("{}-{}", $name, idx))
-        .show_legend(true);
-      plot.add_trace(trace);
-    }
-
     plot.show();
   };
 }

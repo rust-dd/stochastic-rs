@@ -26,7 +26,6 @@ use rand_distr::Distribution;
 
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
-use crate::f;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -75,27 +74,28 @@ pub struct FGN<T: Float> {
 
 impl<T: Float> FGN<T> {
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(f!(1)) / f!(self.n)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
   }
 }
 
 impl<T: Float> FGN<T> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
-    if !(f!(0)..=f!(1)).contains(&hurst) {
+    if !(T::zero()..=T::one()).contains(&hurst) {
       panic!("Hurst parameter must be between 0 and 1");
     }
 
     let offset = n.next_power_of_two() - n;
     let n = n.next_power_of_two();
-    let mut r = Array1::linspace(f!(0), f!(n), n + 1);
-    let f2 = f!(2);
+    let mut r = Array1::linspace(T::zero(), T::from_usize_(n), n + 1);
+    let f2 = T::from_usize_(2);
     r.mapv_inplace(|x| {
-      if x == f!(0) {
-        f!(1)
+      if x == T::zero() {
+        T::one()
       } else {
-        f!(0.5)
-          * ((x + f!(0)).powf(f2 * hurst) - f2 * x.powf(f2 * hurst) + (x - f!(0)).powf(f2 * hurst))
+        T::from_f64_fast(0.5)
+          * ((x + T::zero()).powf(f2 * hurst) - f2 * x.powf(f2 * hurst)
+            + (x - T::zero()).powf(f2 * hurst))
       }
     });
     let r = concatenate(
@@ -108,7 +108,7 @@ impl<T: Float> FGN<T> {
     let r_fft = FftHandler::new(r.len());
     let mut sqrt_eigenvalues = Array1::<Complex<T>>::zeros(r.len());
     ndfft_par(&data, &mut sqrt_eigenvalues, &r_fft, 0);
-    sqrt_eigenvalues.mapv_inplace(|x| Complex::new((x.re / f!(2 * n)).sqrt(), x.im));
+    sqrt_eigenvalues.mapv_inplace(|x| Complex::new((x.re / T::from_usize_(2 * n)).sqrt(), x.im));
 
     Self {
       hurst,
@@ -131,7 +131,7 @@ impl<T: Float> FGN<T> {
     #[cfg(not(feature = "simd"))]
     let rnd = self.sample_rnd(StandardNormal);
     #[cfg(feature = "simd")]
-    let rnd = self.sample_rnd(SimdNormal::new(f!(0), f!(1)));
+    let rnd = self.sample_rnd(SimdNormal::new(T::zero(), T::one()));
 
     // Multiply by sqrt eigenvalues
     let fgn_complex = &*self.sqrt_eigenvalues * &rnd;
@@ -144,7 +144,8 @@ impl<T: Float> FGN<T> {
     fft_64(&mut reals, &mut imags, Direction::Forward);
 
     // Extract real parts and scale
-    let scale = f!(self.n).powf(-self.hurst) * self.t.unwrap_or(f!(1)).powf(self.hurst);
+    let scale =
+      T::from_usize_(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
     let result = reals[1..self.n - self.offset + 1]
       .iter()
       .map(|&x| x * scale)
@@ -162,12 +163,13 @@ impl<T: Float> Process<T> for FGN<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let rnd = self.sample_rnd(SimdNormal::<T, 64>::new(f!(0), f!(1)));
+    let rnd = self.sample_rnd(SimdNormal::<T, 64>::new(T::zero(), T::one()));
 
     let fgn = &*self.sqrt_eigenvalues * &rnd;
     let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
     ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
-    let scale = f!(self.n).powf(-self.hurst) * self.t.unwrap_or(f!(1)).powf(self.hurst);
+    let scale =
+      T::from_usize_(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
     let fgn = fgn_fft
       .slice(s![1..self.n - self.offset + 1])
       .mapv(|x| x.re * scale);

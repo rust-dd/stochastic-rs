@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -16,7 +15,7 @@ pub struct CGNS<T: Float> {
 impl<T: Float> CGNS<T> {
   pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (-f!(1)..=f!(1)).contains(&rho),
+      (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
@@ -35,7 +34,7 @@ impl<T: Float> Process<T> for CGNS<T> {
   fn sample(&self) -> Self::Output {
     let gn1 = self.gn.sample();
     let z = self.gn.sample();
-    let c = (f!(1) - self.rho.powi(2)).sqrt();
+    let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut gn2 = Array1::zeros(self.n);
 
     for i in 0..self.n {

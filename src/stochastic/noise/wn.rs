@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
 
@@ -23,8 +22,8 @@ impl<T: Float> Process<T> for Wn<T> {
   fn sample(&self) -> Self::Output {
     T::normal_array(
       self.n,
-      self.mean.unwrap_or(f!(0)),
-      self.std_dev.unwrap_or(f!(1)),
+      self.mean.unwrap_or(T::zero()),
+      self.std_dev.unwrap_or(T::one()),
     )
   }
 }

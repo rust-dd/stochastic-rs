@@ -1,6 +1,5 @@
 use ndarray::Array1;
 
-use crate::f;
 use crate::stochastic::noise::cfgns::CFGNS;
 use crate::stochastic::Float;
 use crate::stochastic::Process;
@@ -17,11 +16,11 @@ pub struct CFBMS<T: Float> {
 impl<T: Float> CFBMS<T> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, m: Option<usize>) -> Self {
     assert!(
-      (f!(0)..=f!(1)).contains(&hurst),
+      (T::zero()..=T::one()).contains(&hurst),
       "Hurst parameter must be in (0, 1)"
     );
     assert!(
-      (-f!(1)..=f!(1)).contains(&rho),
+      (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
