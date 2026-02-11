@@ -48,7 +48,7 @@ ndarray-stats = "0.7.0"
 ndrustfft = "0.6.2"
 num-complex = { version = "0.4.6", features = ["rand"] } # UPDATE: rand
 num-traits = "0.2.19"
-phastft = { version = "0.3.0" }
+phastft = "0.3.0"
 ordered-float = "5.0.0"
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 polars = { version = "0.43.1", features = ["lazy"], optional = true }
