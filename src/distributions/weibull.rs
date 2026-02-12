@@ -1,7 +1,7 @@
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::exp_zig::SimdExpZig;
+use super::exp::SimdExpZig;
 use super::SimdFloatExt;
 
 pub struct SimdWeibull<T: SimdFloatExt> {
