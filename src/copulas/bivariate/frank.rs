@@ -5,8 +5,8 @@ use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::stats::copulas::bivariate::Bivariate;
-use crate::stats::copulas::bivariate::CopulaType;
+use crate::copulas::bivariate::Bivariate;
+use crate::copulas::bivariate::CopulaType;
 
 #[derive(Debug, Clone)]
 pub struct Frank {

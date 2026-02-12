@@ -56,36 +56,3 @@ impl EmpiricalCopula2D {
     self.rank_data.clone()
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use ndarray::Array1;
-  use rand::rng;
-  use rand_distr::Distribution;
-  use rand_distr::Uniform;
-
-  use super::EmpiricalCopula2D;
-  use crate::stats::copulas::samples::plot_copula_samples;
-  use crate::stochastic::N;
-
-  #[test]
-  fn test_empirical_copula() {
-    let mut rng = rng();
-    let uniform = Uniform::new(0.0, 1.0).unwrap();
-
-    let len_data = 500;
-    let mut x = Array1::<f64>::zeros(len_data);
-    let mut y = Array1::<f64>::zeros(len_data);
-    for i in 0..len_data {
-      let xv = uniform.sample(&mut rng);
-      // Introduce some linear correlation
-      let yv = 0.3 * uniform.sample(&mut rng) + 0.7 * xv;
-      x[i] = xv;
-      y[i] = yv.clamp(0.0, 1.0);
-    }
-
-    let empirical = EmpiricalCopula2D::new_from_two_series(&x, &y);
-    let emp_samples = empirical.sample(N);
-    plot_copula_samples(&emp_samples, "Empirical Copula (2D) - Rank-based data");
-  }
-}

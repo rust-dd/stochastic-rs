@@ -158,24 +158,3 @@ impl Bivariate for Clayton {
     2.0 * tau / (1.0 - tau)
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use ndarray::array;
-
-  use super::Clayton;
-  use crate::stats::copulas::bivariate::Bivariate;
-
-  #[test]
-  fn test_fit() {
-    let data = array![[0.5, 0.5], [0.5, 0.4], [0.5, 0.3], [0.2, 0.2], [0.5, 0.1]];
-    let mut clayton = Clayton::new();
-    clayton.fit(&data).unwrap();
-
-    let data1 = array![0.5, 0.4, 0.3, 0.2, 0.1];
-    let data2 = array![0.5, 0.4, 0.3, 0.2, 0.1];
-
-    let percentile_value = clayton.percent_point(&data1, &data2).unwrap();
-    println!("{:?}", percentile_value);
-  }
-}

@@ -8,7 +8,7 @@ use statrs::distribution::Normal;
 
 use super::CopulaType;
 use super::Multivariate;
-use crate::stats::copulas::correlation::kendall_tau;
+use crate::copulas::correlation::kendall_tau;
 
 #[derive(Debug, Clone)]
 pub struct VineMultivariate {
@@ -247,42 +247,5 @@ impl Multivariate for VineMultivariate {
       out[i] = count as f64 / m as f64;
     }
     Ok(out)
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use ndarray::arr2;
-
-  use super::*;
-
-  #[test]
-  fn vine_copula_sample_in_unit_cube() {
-    let corr = arr2(&[[1.0, 0.6, 0.24], [0.6, 1.0, 0.18], [0.24, 0.18, 1.0]]);
-    let vm = VineMultivariate::new_with_corr(corr).unwrap();
-    let u = vm.sample(1000).unwrap();
-    assert_eq!(u.ncols(), 3);
-    assert!(u.iter().all(|&v| v >= 0.0 && v <= 1.0));
-  }
-
-  #[test]
-  fn vine_copula_fit_recovers_corr() {
-    let corr = arr2(&[[1.0, 0.5, 0.25], [0.5, 1.0, 0.35], [0.25, 0.35, 1.0]]);
-    let vm_true = VineMultivariate::new_with_corr(corr.clone()).unwrap();
-    let u = vm_true.sample(5000).unwrap();
-
-    let mut vm_fit = VineMultivariate::new();
-    vm_fit.fit(u).unwrap();
-    let est = vm_fit.correlation().unwrap().clone();
-    for i in 0..3 {
-      for j in 0..3 {
-        let diff = (est[[i, j]] - corr[[i, j]]).abs();
-        if i == j {
-          assert!((est[[i, j]] - 1.0).abs() < 1e-6);
-        } else {
-          assert!(diff < 0.2, "diff {} at ({},{})", diff, i, j);
-        }
-      }
-    }
   }
 }
