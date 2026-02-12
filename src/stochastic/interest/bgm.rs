@@ -16,7 +16,7 @@ use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct BGM<T: Float> {
   /// Drift/volatility multiplier for each forward rate.
@@ -45,7 +45,7 @@ impl<T: Float> BGM<T> {
   }
 }
 
-impl<T: Float> Process<T> for BGM<T> {
+impl<T: Float> ProcessExt<T> for BGM<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Fouque slow–fast OU system
 ///
@@ -47,7 +47,7 @@ impl<T: Float> FouqueOU2D<T> {
   }
 }
 
-impl<T: Float> Process<T> for FouqueOU2D<T> {
+impl<T: Float> ProcessExt<T> for FouqueOU2D<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> [Array1<T>; 2] {

@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Implements a general GARCH(p,q) model.
 ///
@@ -44,7 +44,7 @@ impl<T: Float> GARCH<T> {
   }
 }
 
-impl<T: Float> Process<T> for GARCH<T> {
+impl<T: Float> ProcessExt<T> for GARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

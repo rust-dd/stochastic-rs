@@ -7,7 +7,7 @@ use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::stochastic::process::poisson::Poisson;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// RDTS process (Rapidly Decreasing Tempered Stable process)
 /// https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015
@@ -51,7 +51,7 @@ impl<T: Float> RDTS<T> {
   }
 }
 
-impl<T: Float> Process<T> for RDTS<T> {
+impl<T: Float> ProcessExt<T> for RDTS<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
@@ -32,7 +32,7 @@ impl<T: Float> Quadratic<T> {
   }
 }
 
-impl<T: Float> Process<T> for Quadratic<T> {
+impl<T: Float> ProcessExt<T> for Quadratic<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

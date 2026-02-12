@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
@@ -30,7 +30,7 @@ impl<T: Float> Gompertz<T> {
   }
 }
 
-impl<T: Float> Process<T> for Gompertz<T> {
+impl<T: Float> ProcessExt<T> for Gompertz<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

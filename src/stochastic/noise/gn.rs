@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct Gn<T: Float> {
@@ -15,7 +15,7 @@ impl<T: Float> Gn<T> {
   }
 }
 
-impl<T: Float> Process<T> for Gn<T> {
+impl<T: Float> ProcessExt<T> for Gn<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

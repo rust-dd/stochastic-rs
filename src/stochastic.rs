@@ -126,7 +126,7 @@ impl Float for f32 {
   }
 }
 
-pub trait Process<T: Float>: Send + Sync {
+pub trait ProcessExt<T: Float>: Send + Sync {
   type Output: Send;
 
   fn sample(&self) -> Self::Output;

@@ -3,7 +3,7 @@ use rand_distr::Distribution;
 
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct JumpFOUCustom<T, D>
 where
@@ -53,7 +53,7 @@ where
   }
 }
 
-impl<T, D> Process<T> for JumpFOUCustom<T, D>
+impl<T, D> ProcessExt<T> for JumpFOUCustom<T, D>
 where
   T: Float,
   D: Distribution<T> + Send + Sync,

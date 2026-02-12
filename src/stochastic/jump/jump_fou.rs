@@ -4,7 +4,7 @@ use rand_distr::Distribution;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct JumpFOU<T, D>
 where
@@ -51,7 +51,7 @@ where
   }
 }
 
-impl<T, D> Process<T> for JumpFOU<T, D>
+impl<T, D> ProcessExt<T> for JumpFOU<T, D>
 where
   T: Float,
   D: Distribution<T> + Send + Sync,

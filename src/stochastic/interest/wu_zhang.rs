@@ -21,7 +21,7 @@ use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct WuZhangD<T: Float> {
   /// Mean reversion level for each dimension's volatility.
@@ -72,7 +72,7 @@ impl<T: Float> WuZhangD<T> {
   }
 }
 
-impl<T: Float> Process<T> for WuZhangD<T> {
+impl<T: Float> ProcessExt<T> for WuZhangD<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

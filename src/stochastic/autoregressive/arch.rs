@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Implements an ARCH(m) model:
 ///
@@ -38,7 +38,7 @@ impl<T: Float> ARCH<T> {
   }
 }
 
-impl<T: Float> Process<T> for ARCH<T> {
+impl<T: Float> ProcessExt<T> for ARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

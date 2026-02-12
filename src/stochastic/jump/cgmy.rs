@@ -7,7 +7,7 @@ use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::stochastic::process::poisson::Poisson;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// CGMY process
 ///
@@ -77,7 +77,7 @@ impl<T: Float> CGMY<T> {
   }
 }
 
-impl<T: Float> Process<T> for CGMY<T> {
+impl<T: Float> ProcessExt<T> for CGMY<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

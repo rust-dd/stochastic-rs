@@ -7,7 +7,7 @@ use rand::rng;
 use rand_distr::Distribution;
 
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct CustomJt<T, D>
 where
@@ -33,7 +33,7 @@ where
   }
 }
 
-impl<T, D> Process<T> for CustomJt<T, D>
+impl<T, D> ProcessExt<T> for CustomJt<T, D>
 where
   T: Float,
   D: Distribution<T> + Send + Sync,

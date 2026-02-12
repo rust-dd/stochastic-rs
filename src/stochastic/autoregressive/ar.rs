@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Implements an AR(p) model:
 ///
@@ -43,7 +43,7 @@ impl<T: Float> ARp<T> {
   }
 }
 
-impl<T: Float> Process<T> for ARp<T> {
+impl<T: Float> ProcessExt<T> for ARp<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

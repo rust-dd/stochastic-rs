@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct BM<T: Float> {
   pub n: usize,
@@ -22,7 +22,7 @@ impl<T: Float> BM<T> {
   }
 }
 
-impl<T: Float> Process<T> for BM<T> {
+impl<T: Float> ProcessExt<T> for BM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

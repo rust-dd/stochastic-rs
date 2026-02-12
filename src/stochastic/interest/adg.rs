@@ -3,7 +3,7 @@ use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Ahn-Dittmar-Gallant (ADG) model
 pub struct ADG<T: Float> {
@@ -49,7 +49,7 @@ impl<T: Float> ADG<T> {
   }
 }
 
-impl<T: Float> Process<T> for ADG<T> {
+impl<T: Float> ProcessExt<T> for ADG<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

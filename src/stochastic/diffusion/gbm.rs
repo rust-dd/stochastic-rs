@@ -10,7 +10,7 @@ use statrs::statistics::Mode;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::DistributionExt;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct GBM<T: Float> {
   pub mu: T,
@@ -36,7 +36,7 @@ impl<T: Float> GBM<T> {
   }
 }
 
-impl<T: Float> Process<T> for GBM<T> {
+impl<T: Float> ProcessExt<T> for GBM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

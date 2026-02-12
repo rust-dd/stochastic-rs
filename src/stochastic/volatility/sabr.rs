@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct SABR<T: Float> {
   pub alpha: T,
@@ -38,7 +38,7 @@ impl<T: Float> SABR<T> {
   }
 }
 
-impl<T: Float> Process<T> for SABR<T> {
+impl<T: Float> ProcessExt<T> for SABR<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

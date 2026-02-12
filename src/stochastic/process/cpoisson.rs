@@ -5,7 +5,7 @@ use rand_distr::Distribution;
 
 use super::poisson::Poisson;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct CompoundPoisson<T, D>
 where
@@ -29,7 +29,7 @@ where
   }
 }
 
-impl<T, D> Process<T> for CompoundPoisson<T, D>
+impl<T, D> ProcessExt<T> for CompoundPoisson<T, D>
 where
   T: Float,
   D: Distribution<T> + Send + Sync,

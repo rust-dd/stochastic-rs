@@ -4,7 +4,7 @@ use rand_distr::Distribution;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Kou process
 ///
@@ -56,7 +56,7 @@ where
   }
 }
 
-impl<T, D> Process<T> for KOU<T, D>
+impl<T, D> ProcessExt<T> for KOU<T, D>
 where
   T: Float,
   D: Distribution<T> + Send + Sync,

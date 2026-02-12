@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Implements a SARIMA model, often denoted:
 ///
@@ -87,7 +87,7 @@ impl<T: Float> SARIMA<T> {
   }
 }
 
-impl<T: Float> Process<T> for SARIMA<T> {
+impl<T: Float> ProcessExt<T> for SARIMA<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

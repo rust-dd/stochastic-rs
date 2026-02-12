@@ -4,7 +4,7 @@ use ndarray_rand::RandomExt;
 use crate::distributions::gamma::SimdGamma;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct VG<T: Float> {
   pub mu: T,
@@ -41,7 +41,7 @@ impl<T: Float> VG<T> {
   }
 }
 
-impl<T: Float> Process<T> for VG<T> {
+impl<T: Float> ProcessExt<T> for VG<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

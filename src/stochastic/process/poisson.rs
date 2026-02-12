@@ -8,7 +8,7 @@ use rand::rng;
 
 use crate::distributions::exp::SimdExp;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct Poisson<T: Float> {
@@ -23,7 +23,7 @@ impl<T: Float> Poisson<T> {
   }
 }
 
-impl<T: Float> Process<T> for Poisson<T> {
+impl<T: Float> ProcessExt<T> for Poisson<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

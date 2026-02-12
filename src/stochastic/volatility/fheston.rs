@@ -3,7 +3,7 @@ use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct RoughHeston<T: Float> {
   pub hurst: T,
@@ -45,7 +45,7 @@ impl<T: Float> RoughHeston<T> {
   }
 }
 
-impl<T: Float> Process<T> for RoughHeston<T> {
+impl<T: Float> ProcessExt<T> for RoughHeston<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

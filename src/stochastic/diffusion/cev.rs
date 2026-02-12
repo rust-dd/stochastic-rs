@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct CEV<T: Float> {
   pub mu: T,
@@ -28,7 +28,7 @@ impl<T: Float> CEV<T> {
   }
 }
 
-impl<T: Float> Process<T> for CEV<T> {
+impl<T: Float> ProcessExt<T> for CEV<T> {
   type Output = Array1<T>;
 
   /// Sample the CEV process

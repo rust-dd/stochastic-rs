@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::diffusion::ou::OU;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct Vasicek<T: Float> {
   pub theta: T,
@@ -28,7 +28,7 @@ impl<T: Float> Vasicek<T> {
   }
 }
 
-impl<T: Float> Process<T> for Vasicek<T> {
+impl<T: Float> ProcessExt<T> for Vasicek<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

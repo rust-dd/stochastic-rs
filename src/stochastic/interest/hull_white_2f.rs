@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Hull-White 2-factor model
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0
@@ -47,7 +47,7 @@ impl<T: Float> HullWhite2F<T> {
   }
 }
 
-impl<T: Float> Process<T> for HullWhite2F<T> {
+impl<T: Float> ProcessExt<T> for HullWhite2F<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

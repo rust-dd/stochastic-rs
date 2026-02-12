@@ -25,7 +25,7 @@ use rand_distr::Distribution;
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 // CUDA type for complex numbers
 #[cfg(feature = "cuda")]
@@ -157,7 +157,7 @@ impl<T: Float> FGN<T> {
   }
 }
 
-impl<T: Float> Process<T> for FGN<T> {
+impl<T: Float> ProcessExt<T> for FGN<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

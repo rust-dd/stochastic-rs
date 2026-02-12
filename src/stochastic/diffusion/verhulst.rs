@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
@@ -41,7 +41,7 @@ impl<T: Float> Verhulst<T> {
   }
 }
 
-impl<T: Float> Process<T> for Verhulst<T> {
+impl<T: Float> ProcessExt<T> for Verhulst<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

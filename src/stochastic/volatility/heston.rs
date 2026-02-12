@@ -3,7 +3,7 @@ use ndarray::Array1;
 use super::HestonPow;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct Heston<T: Float> {
   /// Initial stock price
@@ -65,7 +65,7 @@ impl<T: Float> Heston<T> {
   }
 }
 
-impl<T: Float> Process<T> for Heston<T> {
+impl<T: Float> ProcessExt<T> for Heston<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

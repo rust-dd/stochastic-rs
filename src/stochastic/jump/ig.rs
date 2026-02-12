@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct IG<T: Float> {
   pub gamma: T,
@@ -24,7 +24,7 @@ impl<T: Float> IG<T> {
   }
 }
 
-impl<T: Float> Process<T> for IG<T> {
+impl<T: Float> ProcessExt<T> for IG<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

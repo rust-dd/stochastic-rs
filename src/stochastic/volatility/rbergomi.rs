@@ -3,7 +3,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct RoughBergomi<T: Float> {
   pub hurst: T,
@@ -42,7 +42,7 @@ impl<T: Float> RoughBergomi<T> {
   }
 }
 
-impl<T: Float> Process<T> for RoughBergomi<T> {
+impl<T: Float> ProcessExt<T> for RoughBergomi<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

@@ -8,7 +8,7 @@ use crate::distributions::uniform::SimdUniform;
 use crate::stats::non_central_chi_squared;
 use crate::stochastic::process::poisson::Poisson;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// CGMY Stochastic Volatility process
 ///
@@ -72,7 +72,7 @@ impl<T: Float> SVCGMY<T> {
   }
 }
 
-impl<T: Float> Process<T> for SVCGMY<T> {
+impl<T: Float> ProcessExt<T> for SVCGMY<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

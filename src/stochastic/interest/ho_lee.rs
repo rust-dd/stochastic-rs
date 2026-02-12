@@ -4,7 +4,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 #[allow(non_snake_case)]
 pub struct HoLee<T: Float> {
@@ -40,7 +40,7 @@ impl<T: Float> HoLee<T> {
   }
 }
 
-impl<T: Float> Process<T> for HoLee<T> {
+impl<T: Float> ProcessExt<T> for HoLee<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

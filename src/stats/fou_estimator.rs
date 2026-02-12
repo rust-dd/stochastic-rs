@@ -7,7 +7,7 @@ use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 // Version 1: FOUParameterEstimationV1 with linear filter methods
 #[derive(ImplNew)]

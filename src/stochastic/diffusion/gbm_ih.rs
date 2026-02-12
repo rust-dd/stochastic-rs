@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Inhomogeneous GBM with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
@@ -44,7 +44,7 @@ impl<T: Float> GBMIH<T> {
   }
 }
 
-impl<T: Float> Process<T> for GBMIH<T> {
+impl<T: Float> ProcessExt<T> for GBMIH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {

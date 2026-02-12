@@ -5,7 +5,7 @@ use rand_distr::Distribution;
 
 use super::customjt::CustomJt;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct CompoundCustom<T, D1, D2>
 where
@@ -50,7 +50,7 @@ where
   }
 }
 
-impl<T, D1, D2> Process<T> for CompoundCustom<T, D1, D2>
+impl<T, D1, D2> ProcessExt<T> for CompoundCustom<T, D1, D2>
 where
   T: Float,
   D1: Distribution<T> + Send + Sync,

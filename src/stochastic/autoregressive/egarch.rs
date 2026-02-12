@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Implements an EGARCH(p,q) model:
 ///
@@ -61,7 +61,7 @@ impl<T: Float> EGARCH<T> {
   }
 }
 
-impl<T: Float> Process<T> for EGARCH<T> {
+impl<T: Float> ProcessExt<T> for EGARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

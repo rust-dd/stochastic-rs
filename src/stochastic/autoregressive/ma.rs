@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// Implements an MA(q) model:
 ///
@@ -38,7 +38,7 @@ impl<T: Float> MAq<T> {
   }
 }
 
-impl<T: Float> Process<T> for MAq<T> {
+impl<T: Float> ProcessExt<T> for MAq<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

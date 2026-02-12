@@ -4,7 +4,7 @@ use ndarray_rand::RandomExt;
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct NIG<T: Float> {
   pub theta: T,
@@ -41,7 +41,7 @@ impl<T: Float> NIG<T> {
   }
 }
 
-impl<T: Float> Process<T> for NIG<T> {
+impl<T: Float> ProcessExt<T> for NIG<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

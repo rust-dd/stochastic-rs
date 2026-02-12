@@ -11,7 +11,7 @@ use num_complex::Complex;
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct FBS<T: Float> {
   pub hurst: T,
@@ -36,7 +36,7 @@ impl<T: Float> FBS<T> {
   }
 }
 
-impl<T: Float> Process<T> for FBS<T> {
+impl<T: Float> ProcessExt<T> for FBS<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Array2<T> {

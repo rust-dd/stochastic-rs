@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct Jacobi<T: Float> {
   pub alpha: T,
@@ -33,7 +33,7 @@ impl<T: Float> Jacobi<T> {
   }
 }
 
-impl<T: Float> Process<T> for Jacobi<T> {
+impl<T: Float> ProcessExt<T> for Jacobi<T> {
   type Output = Array1<T>;
 
   /// Sample the Jacobi process

@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct FJacobi<T: Float> {
   pub hurst: T,
@@ -36,7 +36,7 @@ impl<T: Float> FJacobi<T> {
   }
 }
 
-impl<T: Float> Process<T> for FJacobi<T> {
+impl<T: Float> ProcessExt<T> for FJacobi<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

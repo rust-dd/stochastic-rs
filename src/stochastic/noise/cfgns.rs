@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use super::fgn::FGN;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct CFGNS<T: Float> {
   pub hurst: T,
@@ -33,7 +33,7 @@ impl<T: Float> CFGNS<T> {
   }
 }
 
-impl<T: Float> Process<T> for CFGNS<T> {
+impl<T: Float> ProcessExt<T> for CFGNS<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

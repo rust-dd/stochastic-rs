@@ -2,7 +2,7 @@ use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 /// A generic Asymmetric GARCH(p,q) model (A-GARCH),
 /// allowing a separate "delta" term for negative-lag effects.
@@ -50,7 +50,7 @@ impl<T: Float> AGARCH<T> {
   }
 }
 
-impl<T: Float> Process<T> for AGARCH<T> {
+impl<T: Float> ProcessExt<T> for AGARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

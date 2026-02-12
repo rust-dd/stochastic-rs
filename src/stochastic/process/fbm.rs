@@ -3,7 +3,7 @@ use statrs::function::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct FBM<T: Float> {
   pub hurst: T,
@@ -23,7 +23,7 @@ impl<T: Float> FBM<T> {
   }
 }
 
-impl<T: Float> Process<T> for FBM<T> {
+impl<T: Float> ProcessExt<T> for FBM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -4,7 +4,7 @@ use rand_distr::Distribution;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::stochastic::Float;
-use crate::stochastic::Process;
+use crate::stochastic::ProcessExt;
 
 pub struct Bates1996<T, D>
 where
@@ -75,7 +75,7 @@ where
   }
 }
 
-impl<T, D> Process<T> for Bates1996<T, D>
+impl<T, D> ProcessExt<T> for Bates1996<T, D>
 where
   T: Float,
   D: Distribution<T> + Send + Sync,
