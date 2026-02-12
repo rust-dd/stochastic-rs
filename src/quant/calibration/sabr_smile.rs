@@ -245,9 +245,7 @@ fn basin_hopping_opt(
         };
 
         if accept {
-          for i in 0..8 {
-            current_x[i] = param[i];
-          }
+          current_x.copy_from_slice(&param[..8]);
           current_f = cost;
 
           if cost < best_f {
@@ -390,7 +388,7 @@ impl SabrSmileCalibrator {
         .collect();
       let trace = Scatter::new(xs.clone(), ys)
         .mode(Mode::Lines)
-        .name((*label).to_string());
+        .name(*label);
       plot.add_trace(trace);
     }
 

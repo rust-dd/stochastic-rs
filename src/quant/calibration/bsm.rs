@@ -165,7 +165,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         .push(CalibrationHistory {
           residuals: c_model.clone() - self.c_market.clone(),
           call_put: vec![(call, put)].into(),
-          params: self.params.clone().into(),
+          params: self.params.clone(),
           loss_scores: CalibrationLossScore {
             mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
             mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),

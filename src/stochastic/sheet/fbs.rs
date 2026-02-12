@@ -72,14 +72,14 @@ impl<T: Float> ProcessExt<T> for FBS<T> {
       .assign(&cov.slice(s![1..m - 1, 1..n - 1]).slice(s![..;-1, ..;-1]));
 
     let scale = T::from_usize_(4) * T::from_usize_(m - 1) * T::from_usize_(n - 1);
-    let mut fft_handler0 = FftHandler::<T>::new(big_m);
-    let mut fft_handler1 = FftHandler::<T>::new(big_n);
+    let fft_handler0 = FftHandler::<T>::new(big_m);
+    let fft_handler1 = FftHandler::<T>::new(big_n);
 
     let blk_c = blk.mapv(|v| Complex::new(v, T::zero()));
     let mut fft_tmp = Array2::<Complex<T>>::zeros((big_m, big_n));
-    ndfft(&blk_c, &mut fft_tmp, &mut fft_handler0, 0);
+    ndfft(&blk_c, &mut fft_tmp, &fft_handler0, 0);
     let mut fft_freq = Array2::<Complex<T>>::zeros((big_m, big_n));
-    ndfft(&fft_tmp, &mut fft_freq, &mut fft_handler1, 1);
+    ndfft(&fft_tmp, &mut fft_freq, &fft_handler1, 1);
 
     let lam = fft_freq.mapv(|c| (c.re / scale).max(T::zero()).sqrt());
 
@@ -90,9 +90,9 @@ impl<T: Float> ProcessExt<T> for FBS<T> {
 
     let prod = lam.mapv(|v| Complex::new(v, T::zero())) * z;
     let mut fft_tmp2 = Array2::<Complex<T>>::zeros((big_m, big_n));
-    ndfft(&prod, &mut fft_tmp2, &mut fft_handler0, 0);
+    ndfft(&prod, &mut fft_tmp2, &fft_handler0, 0);
     let mut result = Array2::<Complex<T>>::zeros((big_m, big_n));
-    ndfft(&fft_tmp2, &mut result, &mut fft_handler1, 1);
+    ndfft(&fft_tmp2, &mut result, &fft_handler1, 1);
 
     let mut field = Array2::<T>::zeros((m, n));
     for i in 0..m {

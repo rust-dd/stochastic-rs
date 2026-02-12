@@ -90,7 +90,7 @@ pub trait Bivariate {
     self.check_marginal(&V)?;
 
     let (tau, ..) = kendalls::tau_b_with_comparator(&U.to_vec(), &V.to_vec(), |a, b| {
-      a.partial_cmp(&b).unwrap_or(Ordering::Greater)
+      a.partial_cmp(b).unwrap_or(Ordering::Greater)
     })?;
 
     self.set_tau(tau);
@@ -185,6 +185,6 @@ pub trait Bivariate {
     let X = stack![Axis(1), Array1::from(vec![U]), Array1::from(vec![V])];
     let out = self.partial_derivative(&X);
 
-    Ok(out?.get(0).unwrap().clone())
+    Ok(*out?.get(0).unwrap())
   }
 }

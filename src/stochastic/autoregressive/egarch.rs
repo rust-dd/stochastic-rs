@@ -24,7 +24,7 @@ use crate::stochastic::ProcessExt;
 /// - `omega`: The constant term \(\omega\) in the log-variance equation.
 /// - `alpha`: An array \(\{\alpha_1, \dots, \alpha_p\}\) controlling the magnitude effect.
 /// - `gamma`: An array \(\{\gamma_1, \dots, \gamma_p\}\) for the sign (asymmetry) effect.
-///            Must be the same length as `alpha`.
+///   Must be the same length as `alpha`.
 /// - `beta`:  An array \(\{\beta_1, \dots, \beta_q\}\) controlling persistence of past log-variance.
 /// - `n`: The number of observations to generate.
 /// - `m`: Optional batch size for parallel sampling (unused by default).

@@ -11,7 +11,7 @@ use statrs::distribution::Normal;
 use super::CopulaType;
 use super::Multivariate;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GaussianMultivariate {
   dim: usize,
   /// Correlation matrix (dim x dim)
@@ -26,13 +26,7 @@ pub struct GaussianMultivariate {
 
 impl GaussianMultivariate {
   pub fn new() -> Self {
-    Self {
-      dim: 0,
-      corr: None,
-      inv_corr: None,
-      chol_lower: None,
-      log_det_corr: None,
-    }
+    Self::default()
   }
 
   /// Create directly from a correlation matrix.
@@ -95,7 +89,7 @@ impl GaussianMultivariate {
     let mut z = u.clone();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
-        let clamped = val.max(eps).min(1.0 - eps);
+        let clamped = val.clamp(eps, 1.0 - eps);
         *val = std_norm.inverse_cdf(clamped);
       }
     }
@@ -141,7 +135,7 @@ impl GaussianMultivariate {
           .map(|(&a, &b)| a * b)
           .sum::<f64>();
         let cov = dot / (n - 1.0);
-        let r = (cov / (stds[i] * stds[j])).max(-0.999_999).min(0.999_999);
+        let r = (cov / (stds[i] * stds[j])).clamp(-0.999_999, 0.999_999);
         corr[[i, j]] = r;
         corr[[j, i]] = r;
       }
@@ -149,7 +143,7 @@ impl GaussianMultivariate {
     // Ensure positive definiteness by adding jitter if necessary
     let mut jitter = 0usize;
     while !Self::is_spd(&corr) && jitter < 6 {
-      let eps = 10f64.powi(-(6 as i32) + jitter as i32); // 1e-6,1e-5,...
+      let eps = 10f64.powi(-6_i32 + jitter as i32);
       for k in 0..d {
         corr[[k, k]] = 1.0 + eps;
       }
@@ -213,7 +207,7 @@ impl Multivariate for GaussianMultivariate {
       return Err("Need at least 2 samples and 2 dimensions".into());
     }
     // Basic range check
-    if X.iter().any(|&v| !(v >= 0.0 && v <= 1.0)) {
+    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err("Input data must be in [0,1] for Gaussian copula fit".into());
     }
     self.dim = X.ncols();
@@ -228,7 +222,7 @@ impl Multivariate for GaussianMultivariate {
     if X.ncols() != self.dim {
       return Err("Dimension mismatch".into());
     }
-    if X.iter().any(|&v| !(v >= 0.0 && v <= 1.0)) {
+    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err("Input X must be in [0,1] for Gaussian copula".into());
     }
     Ok(())

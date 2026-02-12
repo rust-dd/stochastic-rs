@@ -180,7 +180,7 @@ pub fn silverman_bandwidth(data: &Array1<f64>) -> f64 {
 /// # Returns
 ///
 /// The value corresponding to the p-th percentile.
-pub fn percentile(sorted_data: &Vec<f64>, p: f64) -> f64 {
+pub fn percentile(sorted_data: &[f64], p: f64) -> f64 {
   if sorted_data.is_empty() {
     return 0.0;
   }

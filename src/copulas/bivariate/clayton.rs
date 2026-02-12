@@ -16,8 +16,8 @@ pub struct Clayton {
   pub invalid_thetas: Vec<f64>,
 }
 
-impl Clayton {
-  pub fn new() -> Self {
+impl Default for Clayton {
+  fn default() -> Self {
     Self {
       r#type: CopulaType::Clayton,
       theta: None,
@@ -25,6 +25,12 @@ impl Clayton {
       theta_bounds: (0.0, f64::INFINITY),
       invalid_thetas: vec![],
     }
+  }
+}
+
+impl Clayton {
+  pub fn new() -> Self {
+    Self::default()
   }
 }
 

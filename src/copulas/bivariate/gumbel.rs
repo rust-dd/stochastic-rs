@@ -77,7 +77,7 @@ impl Bivariate for Gumbel {
     let b = tmp.powf(-2.0 + 2.0 / theta);
     let c = (U.ln() * V.ln()).powf(theta - 1.0);
     let d = 1.0 + (theta - 1.0) * tmp.powf(-1.0 / theta);
-    let out = self.cdf(&X)? * a * b * c * d;
+    let out = self.cdf(X)? * a * b * c * d;
 
     Ok(out)
   }
@@ -101,6 +101,7 @@ impl Bivariate for Gumbel {
     Ok(cdfs)
   }
 
+  #[allow(clippy::only_used_in_recursion)]
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 

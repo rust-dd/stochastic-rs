@@ -10,7 +10,7 @@ use super::CopulaType;
 use super::Multivariate;
 use crate::copulas::correlation::kendall_tau;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VineMultivariate {
   dim: usize,
   corr: Option<Array2<f64>>, // correlation consistent with a simple C-vine (star)
@@ -21,13 +21,7 @@ pub struct VineMultivariate {
 
 impl VineMultivariate {
   pub fn new() -> Self {
-    Self {
-      dim: 0,
-      corr: None,
-      inv_corr: None,
-      chol_lower: None,
-      log_det_corr: None,
-    }
+    Self::default()
   }
 
   pub fn new_with_corr(corr: Array2<f64>) -> Result<Self, Box<dyn Error>> {
@@ -197,7 +191,7 @@ impl Multivariate for VineMultivariate {
     if X.ncols() != self.dim {
       return Err("Dimension mismatch".into());
     }
-    if X.iter().any(|&v| !(v >= 0.0 && v <= 1.0)) {
+    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err("Input must be in [0,1]".into());
     }
     Ok(())

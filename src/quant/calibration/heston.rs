@@ -80,7 +80,7 @@ impl HestonParams {
     self.kappa = self.kappa.max(KAPPA_MIN);
     self.theta = self.theta.max(THETA_MIN);
     self.sigma = self.sigma.abs().max(SIGMA_MIN);
-    self.rho = self.rho.max(-RHO_BOUND).min(RHO_BOUND);
+    self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
 
     // 3) Feller condition: 2*kappa*theta ≥ sigma^2.
     if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
@@ -349,7 +349,7 @@ impl HestonCalibrator {
         }
         4 => {
           // −1 < rho < 1
-          let clamp = |y: f64| y.max(-RHO_BOUND).min(RHO_BOUND);
+          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
           params_plus.rho = clamp(x + h);
           params_minus.rho = clamp(x - h);
           // Use symmetric step if clamped too hard

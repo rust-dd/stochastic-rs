@@ -74,14 +74,15 @@ where
   fn set_covariance_matrix_sqrt(&mut self) {
     let inner_product_structure_embedding =
       |inner_product_structure: &Array1<f64>| -> Array1<Complex64> {
-        let fft = FftHandler::new(inner_product_structure.len() * 2 - 2);
+        let n = inner_product_structure.len();
+        let fft = FftHandler::new(n * 2 - 2);
         let input = concatenate(
           Axis(0),
           &[
             inner_product_structure.view(),
             inner_product_structure
               .slice(s![..;-1])
-              .slice(s![1..-1])
+              .slice(s![1..n - 1])
               .view(),
           ],
         )
@@ -89,16 +90,14 @@ where
 
         let input = input.mapv(|v| Complex64::new(v, 0.0));
         let mut embedded_inner_product_structure =
-          Array1::<Complex64>::zeros(inner_product_structure.len() * 2 - 2);
+          Array1::<Complex64>::zeros(n * 2 - 2);
         ndfft(&input, &mut embedded_inner_product_structure, &fft, 0);
-        let embedded_inner_product_structure = embedded_inner_product_structure.mapv(|x| {
+        embedded_inner_product_structure.mapv(|x| {
           Complex64::new(
-            (x.re / (2.0 * (inner_product_structure.len() - 1) as f64)).sqrt(),
+            (x.re / (2.0 * (n - 1) as f64)).sqrt(),
             x.im,
           )
-        });
-
-        embedded_inner_product_structure
+        })
       };
 
     let embedded_inner_product_matrix =
@@ -117,7 +116,7 @@ where
     );
     let mut path = Array1::<Complex64>::zeros(self.covariance_matrix_sqrt.as_ref().unwrap().len());
     ndfft(
-      &(&*self.covariance_matrix_sqrt.as_ref().unwrap() * &normal),
+      &(self.covariance_matrix_sqrt.as_ref().unwrap() * &normal),
       &mut path,
       &fft,
       0,
@@ -165,12 +164,8 @@ where
   F2: Fn(f64) -> f64,
 {
   let integrand = |u: f64| function1(u) * function2(u);
-
-  // Use quad to perform the integration between 0 and 1
   let quad = GaussLegendre::new(5).unwrap();
-  let integral = quad.integrate(0.0, 1.0, integrand);
-
-  integral
+  quad.integrate(0.0, 1.0, integrand)
 }
 
 // Fractional Lévy Ornstein-Uhlenbeck inner product function (Unstable)
@@ -181,10 +176,8 @@ fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
   }
 
   let gamma_term = gamma(2.0 * d + 2.0);
-  let sin_term = ((std::f64::consts::PI * (d + 0.5)).sin()).abs(); // Biztosítjuk, hogy pozitív legyen
+  let sin_term = ((std::f64::consts::PI * (d + 0.5)).sin()).abs();
   let denominator = 2.0 * gamma_term * sin_term;
-
-  // Ellenőrizzük, hogy a nevező nem nulla
   if denominator == 0.0 {
     panic!("The denominator is zero.");
   }
@@ -193,7 +186,5 @@ fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
   let s_term = s.abs().powf(2.0 * d + 1.0);
   let ts_term = (t - s).abs().powf(2.0 * d + 1.0);
 
-  let covariance = (e_l1_squared / denominator) * (t_term + s_term - ts_term);
-
-  covariance
+  (e_l1_squared / denominator) * (t_term + s_term - ts_term)
 }

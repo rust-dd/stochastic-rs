@@ -36,6 +36,7 @@ pub struct Trade {
   pub maker_id: u64,
 }
 
+#[derive(Default)]
 pub struct OrderBook {
   bids: BTreeMap<Price, VecDeque<Order>>, // best bid = last key
   asks: BTreeMap<Price, VecDeque<Order>>, // best ask = first key
@@ -46,12 +47,7 @@ pub struct OrderBook {
 impl OrderBook {
   /// New empty book.
   pub fn new() -> Self {
-    Self {
-      bids: BTreeMap::default(),
-      asks: BTreeMap::default(),
-      index: HashMap::new(),
-      next_id: 0,
-    }
+    Self::default()
   }
 
   /// Execute a market order – consume liquidity until either the desired

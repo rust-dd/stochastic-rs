@@ -19,8 +19,8 @@ pub struct Independence {
   pub invalid_thetas: Vec<f64>,
 }
 
-impl Independence {
-  pub fn new() -> Self {
+impl Default for Independence {
+  fn default() -> Self {
     Self {
       r#type: CopulaType::Independence,
       theta: None,
@@ -28,6 +28,12 @@ impl Independence {
       theta_bounds: (0.0, 0.0),
       invalid_thetas: vec![],
     }
+  }
+}
+
+impl Independence {
+  pub fn new() -> Self {
+    Self::default()
   }
 }
 
@@ -78,7 +84,7 @@ impl Bivariate for Independence {
 
   fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     let in_range = X.map_axis(Axis(1), |row| {
-      row.iter().all(|&val| val >= 0.0 && val <= 1.0)
+      row.iter().all(|&val| (0.0..=1.0).contains(&val))
     });
 
     let out = in_range.map(|&val| if val { 1.0 } else { 0.0 });

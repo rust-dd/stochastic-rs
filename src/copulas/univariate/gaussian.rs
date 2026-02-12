@@ -3,14 +3,14 @@ use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GaussianUnivariate {
   dist: Option<Normal>, // statrs Normal distribution
 }
 
 impl GaussianUnivariate {
   pub fn new() -> Self {
-    Self { dist: None }
+    Self::default()
   }
 
   /// Fit mean and std to data column, then store a statrs Normal distribution.

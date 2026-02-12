@@ -19,7 +19,7 @@ use crate::stochastic::ProcessExt;
 /// - `omega`: Constant term (\(\omega\)).
 /// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for the positive part of squared residuals.
 /// - `gamma`: Array \(\{\gamma_1, \ldots, \gamma_p\}\) for the threshold effect (negative residuals).
-///            Must have the same length as `alpha`.
+///   Must have the same length as `alpha`.
 /// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\) for the past variance terms.
 /// - `n`:     Length of the time series to generate.
 /// - `m`:     Optional batch size (unused by default).

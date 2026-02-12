@@ -26,7 +26,6 @@ pub struct SVCGMY<T: Float> {
   pub eta: T,
   /// Volatility of volatility
   pub zeta: T,
-  ///
   pub rho: T,
   /// Number of time steps
   pub n: usize,

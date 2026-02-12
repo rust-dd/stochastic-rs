@@ -51,7 +51,7 @@ pub fn cdf_clayton(u: f64, v: f64, theta: f64) -> f64 {
 /// C(u,v) = exp(-( (-ln(u))^θ + (-ln(v))^θ )^(1/θ))
 pub fn cdf_gumbel(u: f64, v: f64, theta: f64) -> f64 {
   let s = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
-  ((-1.0) * s.powf(1.0 / theta)).exp()
+  (-s.powf(1.0 / theta)).exp()
 }
 
 /// Gaussian copula (2D)
@@ -66,11 +66,12 @@ pub struct GaussianCopula2D {
 impl NCopula2D for GaussianCopula2D {
   fn sample(&self, n: usize) -> Array2<f64> {
     // Flatten the 2x2 covariance
-    let mut cov_flat = Vec::with_capacity(4);
-    cov_flat.push(self.cov[[0, 0]]);
-    cov_flat.push(self.cov[[0, 1]]);
-    cov_flat.push(self.cov[[1, 0]]);
-    cov_flat.push(self.cov[[1, 1]]);
+    let cov_flat = vec![
+      self.cov[[0, 0]],
+      self.cov[[0, 1]],
+      self.cov[[1, 0]],
+      self.cov[[1, 1]],
+    ];
 
     // Create a 2D MVN
     let mvn = MultivariateNormal::new(self.mean.to_vec(), cov_flat)

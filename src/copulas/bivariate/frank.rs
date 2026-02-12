@@ -96,6 +96,7 @@ impl Bivariate for Frank {
     Ok(out)
   }
 
+  #[allow(clippy::only_used_in_recursion)]
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
@@ -142,8 +143,7 @@ impl Frank {
     let integrand = |u: f64| u / (u.exp() - 1.0);
     let quad = GaussLegendre::new(5).unwrap();
     let integral = quad.integrate(f64::EPSILON, alpha, integrand);
-    let out = 4.0 * (integral - 1.0) / alpha + 1.0 - tau;
-    out
+    4.0 * (integral - 1.0) / alpha + 1.0 - tau
   }
 
   // TODO: Improve this implementation

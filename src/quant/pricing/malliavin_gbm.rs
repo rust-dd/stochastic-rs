@@ -31,7 +31,7 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
 /// - Use the Malliavin weight (coef) to estimate the conditional call price
 ///   C(t, S_t^{(i)}) for each path i.
 /// - Then use the tower property to get the time-0 call price:
-///     C(0) = E[ e^{-r t} C(t, S_t) ]
+///   C(0) = E[ e^{-r t} C(t, S_t) ]
 /// - Put price is recovered from put-call parity.
 pub struct GbmMalliavinPricer {
   /// Underlying spot S_0

@@ -30,7 +30,7 @@ impl SabrParams {
   pub fn project_in_place(&mut self) {
     self.alpha = self.alpha.abs().max(ALPHA_MIN);
     self.nu = self.nu.abs().max(NU_MIN);
-    self.rho = self.rho.max(-RHO_BOUND).min(RHO_BOUND);
+    self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
   }
   pub fn projected(mut self) -> Self {
     self.project_in_place();
@@ -118,7 +118,7 @@ impl SabrCalibrator {
 
   fn effective_params(&self) -> SabrParams {
     if let Some(p) = &self.params {
-      return p.clone().projected();
+      return (*p).projected();
     }
     SabrParams {
       alpha: 0.2,
@@ -176,7 +176,7 @@ impl SabrCalibrator {
           p_minus.nu = (x - h).abs().max(NU_MIN);
         }
         2 => {
-          let clamp = |y: f64| y.max(-RHO_BOUND).min(RHO_BOUND);
+          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
           p_plus.rho = clamp(x + h);
           p_minus.rho = clamp(x - h);
           if (p_plus.rho - p_minus.rho).abs() < 0.5 * h {
@@ -241,7 +241,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
             })
             .collect::<Vec<(f64, f64)>>()
             .into(),
-          params: p.clone(),
+          params: p,
           loss_scores: CalibrationLossScore {
             mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
             mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),

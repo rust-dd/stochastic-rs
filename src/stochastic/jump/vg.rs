@@ -35,7 +35,7 @@ impl<T: Float> VG<T> {
       n,
       x0,
       t,
-      gamma: gamma.into(),
+      gamma,
       gn,
     }
   }

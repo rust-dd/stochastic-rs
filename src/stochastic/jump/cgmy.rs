@@ -36,7 +36,7 @@ use crate::stochastic::ProcessExt;
 ///
 /// - Cont, R., & Tankov, P. (2004). *Financial Modelling with Jump Processes*. Chapman and Hall/CRC.
 /// - Madan, D. B., Carr, P., & Chang, E. C. (1998). The Variance Gamma Process and Option Pricing. *European Finance Review*, 2(1), 79-105.
-/// https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf
+///   https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf
 ///
 pub struct CGMY<T: Float> {
   /// Positive jump rate lambda_plus (corresponds to G)

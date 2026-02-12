@@ -177,7 +177,7 @@ impl<T: Float> SARIMA<T> {
     for i in 0..p {
       for j in 0..big_p {
         let lag = (i + 1) + (j + 1) * s;
-        combined[lag] = combined[lag] - non_seasonal[i] * seasonal[j];
+        combined[lag] -= non_seasonal[i] * seasonal[j];
       }
     }
 
