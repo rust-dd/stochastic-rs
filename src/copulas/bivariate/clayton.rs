@@ -7,7 +7,6 @@ use ndarray::Array2;
 use super::Bivariate;
 use super::CopulaType;
 
-/// `BaseBivariate` struct – Közös mezők a bivariate copulákhoz
 #[derive(Debug, Clone)]
 pub struct Clayton {
   pub r#type: CopulaType,

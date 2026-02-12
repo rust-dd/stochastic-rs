@@ -74,7 +74,7 @@ impl Bivariate for Frank {
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(&U * &V);
+      return Ok(Array1::ones(U.len()));
     }
 
     let num = (-theta * self._g(&Array1::ones(U.len()))?) * (1.0 + self._g(&(&U + &V))?);
@@ -127,11 +127,9 @@ impl Bivariate for Frank {
   }
 
   fn compute_theta(&self) -> f64 {
-    let result = self
+    self
       .least_squares(Self::_tau_to_theta, 1.0, f64::MIN.ln(), f64::MAX.ln())
-      .unwrap();
-
-    result
+      .unwrap_or(1.0)
   }
 }
 

@@ -18,7 +18,7 @@ pub struct Gumbel {
 impl Gumbel {
   pub fn new(theta: Option<f64>, tau: Option<f64>) -> Self {
     Self {
-      r#type: CopulaType::Frank,
+      r#type: CopulaType::Gumbel,
       theta,
       tau,
       theta_bounds: (1.0, f64::INFINITY),
@@ -69,7 +69,7 @@ impl Bivariate for Gumbel {
     let theta = self.theta.unwrap();
 
     if theta == 1.0 {
-      return Ok(&U * &V);
+      return Ok(Array1::ones(U.len()));
     }
 
     let a = (&U * &V).powf(-1.0);

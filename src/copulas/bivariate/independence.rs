@@ -1,8 +1,11 @@
 use std::error::Error;
 
+use ndarray::stack;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
+use ndarray_rand::RandomExt;
+use rand_distr::Uniform;
 
 use super::Bivariate;
 use super::CopulaType;
@@ -58,7 +61,15 @@ impl Bivariate for Independence {
   }
 
   fn fit(&mut self, _X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+    self.tau = Some(0.0);
+    self.theta = Some(0.0);
     Ok(())
+  }
+
+  fn sample(&mut self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+    let u = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
+    let v = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
+    Ok(stack![Axis(1), u, v])
   }
 
   fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
@@ -92,7 +103,6 @@ impl Bivariate for Independence {
     y: &Array1<f64>,
     _V: &Array1<f64>,
   ) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit()?;
     Ok(y.to_owned())
   }
 

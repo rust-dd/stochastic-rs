@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use num_complex::Complex64;
 use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::LogNormal;
@@ -24,6 +23,14 @@ pub struct GBM<T: Float> {
 
 impl<T: Float> GBM<T> {
   pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
+    let mu_f64 = mu.to_f64().unwrap();
+    let sigma_f64 = sigma.to_f64().unwrap();
+    let t_f64 = t.unwrap_or(T::one()).to_f64().unwrap();
+
+    let mu_ln = x0_f64.ln() + (mu_f64 - 0.5 * sigma_f64 * sigma_f64) * t_f64;
+    let sigma_ln = sigma_f64 * t_f64.sqrt();
+
     Self {
       mu,
       sigma,
@@ -31,7 +38,7 @@ impl<T: Float> GBM<T> {
       x0,
       t,
       gn: Gn::new(n - 1, t),
-      distribution: None,
+      distribution: LogNormal::new(mu_ln, sigma_ln).ok(),
     }
   }
 }
@@ -55,18 +62,7 @@ impl<T: Float> ProcessExt<T> for GBM<T> {
 }
 
 impl<T: Float> GBM<T> {
-  /// Distribution of the GBM process
-  // fn distribution(&mut self) {
-  //   let mu = self.x0.unwrap() * (self.mu * self.t.unwrap()).exp();
-  //   let sigma = (self.x0.unwrap().powi(2)
-  //     * (2.0 * self.mu * self.t.unwrap()).exp()
-  //     * ((self.sigma.powi(2) * self.t.unwrap()).exp() - T::one()))
-  //   .sqrt();
-
-  //   self.distribution = Some(LogNormal::new(mu, sigma).unwrap());
-  // }
-
-  /// Mallaivin derivative of the GBM process
+  /// Malliavin derivative of the GBM process
   ///
   /// The Malliavin derivative of the GBM process is given by
   /// D_r S_t = \sigma S_t * 1_[0, r](r)
@@ -86,90 +82,60 @@ impl<T: Float> GBM<T> {
   }
 }
 
-// TODO: needs rework
 impl<T: Float> DistributionExt for GBM<T> {
-  /// Characteristic function of the distribution
-  fn characteristic_function(&self, _t: f64) -> Complex64 {
-    unimplemented!()
-  }
-
-  /// Probability density function of the distribution
   fn pdf(&self, x: f64) -> f64 {
-    self.distribution.as_ref().unwrap().pdf(x)
+    self.distribution.as_ref().map_or(0.0, |d| d.pdf(x))
   }
 
-  /// Cumulative distribution function of the distribution
   fn cdf(&self, x: f64) -> f64 {
-    self.distribution.as_ref().unwrap().cdf(x)
+    self.distribution.as_ref().map_or(0.0, |d| d.cdf(x))
   }
 
-  /// Inverse cumulative distribution function of the distribution
   fn inv_cdf(&self, p: f64) -> f64 {
-    self.distribution.as_ref().unwrap().inverse_cdf(p)
+    self.distribution.as_ref().map_or(0.0, |d| d.inverse_cdf(p))
   }
 
-  /// Mean of the distribution
   fn mean(&self) -> f64 {
     self
       .distribution
       .as_ref()
-      .unwrap()
-      .mean()
-      .expect("Mean not found")
+      .and_then(|d| d.mean())
+      .unwrap_or(0.0)
   }
 
-  /// Mode of the distribution
   fn mode(&self) -> f64 {
     self
       .distribution
       .as_ref()
-      .unwrap()
-      .mode()
-      .expect("Mode not found")
+      .and_then(|d| d.mode())
+      .unwrap_or(0.0)
   }
 
-  /// Median of the distribution
   fn median(&self) -> f64 {
-    self.distribution.as_ref().unwrap().median()
+    self.distribution.as_ref().map_or(0.0, |d| d.median())
   }
 
-  /// Variance of the distribution
   fn variance(&self) -> f64 {
     self
       .distribution
       .as_ref()
-      .unwrap()
-      .variance()
-      .expect("Variance not found")
+      .and_then(|d| d.variance())
+      .unwrap_or(0.0)
   }
 
-  /// Skewness of the distribution
   fn skewness(&self) -> f64 {
     self
       .distribution
       .as_ref()
-      .unwrap()
-      .skewness()
-      .expect("Skewness not found")
+      .and_then(|d| d.skewness())
+      .unwrap_or(0.0)
   }
 
-  /// Kurtosis of the distribution
-  fn kurtosis(&self) -> f64 {
-    unimplemented!()
-  }
-
-  /// Entropy of the distribution
   fn entropy(&self) -> f64 {
     self
       .distribution
       .as_ref()
-      .unwrap()
-      .entropy()
-      .expect("Entropy not found")
-  }
-
-  /// Moment generating function of the distribution
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    unimplemented!()
+      .and_then(|d| d.entropy())
+      .unwrap_or(0.0)
   }
 }
