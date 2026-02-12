@@ -62,19 +62,3 @@ impl<T: Float> Process<T> for ARCH<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use ndarray::arr1;
-
-  use crate::plot_1d;
-  use crate::stochastic::autoregressive::arch::ARCH;
-  use crate::stochastic::Process;
-
-  #[test]
-  fn arch_plot() {
-    let alpha = arr1(&[0.2, 0.1]);
-    let arch_model = ARCH::new(0.1, alpha, 100);
-    plot_1d!(arch_model.sample(), "ARCH(m) process");
-  }
-}

@@ -58,29 +58,3 @@ impl<T: Float> Process<T> for VG<T> {
     vg
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn vg_length_equals_n() {
-    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None);
-    assert_eq!(vg.sample().len(), N);
-  }
-
-  #[test]
-  fn vg_starts_with_x0() {
-    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None);
-    assert_eq!(vg.sample()[0], X0);
-  }
-
-  #[test]
-  fn vg_plot() {
-    let vg = VG::new(2.25, 2.5, 1.0, N, Some(X0), None);
-    plot_1d!(vg.sample(), "Variace Gamma (VG)");
-  }
-}

@@ -103,21 +103,3 @@ impl<T: Float> Process<T> for AGARCH<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use ndarray::arr1;
-
-  use crate::plot_1d;
-  use crate::stochastic::autoregressive::agrach::AGARCH;
-  use crate::stochastic::Process;
-
-  #[test]
-  fn agarch_plot() {
-    let alpha = arr1(&[0.05, 0.01]); // p=2
-    let delta = arr1(&[0.03, 0.01]); // p=2
-    let beta = arr1(&[0.8]); // q=1
-    let agarchpq = AGARCH::new(0.1, alpha, delta, beta, 100);
-    plot_1d!(agarchpq.sample(), "A-GARCH(p,q) process");
-  }
-}

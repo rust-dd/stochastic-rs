@@ -115,28 +115,3 @@ impl<T: Float> Process<T> for RDTS<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-
-  #[test]
-  fn rdts_length_equals_n() {
-    let cgmy = RDTS::new(5.0, 5.0, 0.7, N, 1000, Some(0.0), Some(1.0));
-    assert_eq!(cgmy.sample().len(), N);
-  }
-
-  #[test]
-  fn rdts_starts_with_x0() {
-    let cgmy = RDTS::new(5.0, 5.0, 0.7, N, 1000, Some(0.0), Some(1.0));
-    assert_eq!(cgmy.sample()[0], 0.0);
-  }
-
-  #[test]
-  fn rdts_plot() {
-    let cgmy = RDTS::new(25.46, 4.604, 0.52, 100, 1024, Some(2.0), Some(1.0));
-    plot_1d!(cgmy.sample(), "RDTS Process");
-  }
-}

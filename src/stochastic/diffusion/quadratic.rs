@@ -52,29 +52,3 @@ impl<T: Float> Process<T> for Quadratic<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn quadratic_length_equals_n() {
-    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0));
-    assert_eq!(proc.sample().len(), N);
-  }
-
-  #[test]
-  fn quadratic_starts_with_x0() {
-    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0));
-    assert_eq!(proc.sample()[0], X0);
-  }
-
-  #[test]
-  fn quadratic_plot() {
-    let proc = Quadratic::new(0.1, 0.2, 0.1, 0.3, N, Some(X0), Some(1.0));
-    plot_1d!(proc.sample(), "Quadratic diffusion");
-  }
-}

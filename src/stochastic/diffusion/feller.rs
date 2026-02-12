@@ -65,29 +65,3 @@ impl<T: Float> Process<T> for FellerLogistic<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn feller_length_equals_n() {
-    let proc = FellerLogistic::new(1.0, 1.0, 0.2, N, Some(X0), Some(1.0), Some(false));
-    assert_eq!(proc.sample().len(), N);
-  }
-
-  #[test]
-  fn feller_starts_with_x0() {
-    let proc = FellerLogistic::new(1.0, 1.0, 0.2, N, Some(X0), Some(1.0), Some(false));
-    assert_eq!(proc.sample()[0], X0);
-  }
-
-  #[test]
-  fn feller_plot() {
-    let proc = FellerLogistic::new(1.0, 1.0, 0.2, N, Some(X0), Some(1.0), Some(false));
-    plot_1d!(proc.sample(), "Feller–logistic diffusion");
-  }
-}

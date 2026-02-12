@@ -197,19 +197,3 @@ fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
 
   covariance
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn isonormal_fbm() {
-    let inner_product = |_: usize, idx: usize| -> f64 { fbm_custom_inc_cov(idx, 0.7) };
-    let index_functions = vec![1, 2, 3, 4];
-    let mut isonormal = ISONormal::new(inner_product, index_functions);
-    let path = isonormal.get_path();
-    println!("inner {:?}", isonormal.inner_product_structure);
-    println!("cov {:?}", isonormal.covariance_matrix_sqrt);
-    println!("path {:?}", path);
-  }
-}

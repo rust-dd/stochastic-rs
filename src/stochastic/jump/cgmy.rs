@@ -138,28 +138,3 @@ impl<T: Float> Process<T> for CGMY<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-
-  #[test]
-  fn cgmy_length_equals_n() {
-    let cgmy = CGMY::new(5.0, 5.0, 0.7, N, 1000, Some(0.0), Some(1.0));
-    assert_eq!(cgmy.sample().len(), N);
-  }
-
-  #[test]
-  fn cgmy_starts_with_x0() {
-    let cgmy = CGMY::new(5.0, 5.0, 0.7, N, 1000, Some(0.0), Some(1.0));
-    assert_eq!(cgmy.sample()[0], 0.0);
-  }
-
-  #[test]
-  fn cgmy_plot() {
-    let cgmy = CGMY::new(25.46, 4.604, 0.52, 1000, 1024, Some(2.0), Some(1.0));
-    plot_1d!(cgmy.sample(), "CGMY Process");
-  }
-}

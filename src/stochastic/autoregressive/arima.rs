@@ -94,26 +94,3 @@ impl<T: Float> ARIMA<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use ndarray::arr1;
-
-  use crate::plot_1d;
-  use crate::stochastic::autoregressive::arima::ARIMA;
-  use crate::stochastic::Process;
-
-  #[test]
-  fn arima_plot() {
-    // p=2, d=1, q=2
-    // AR/MA coefficients (array-based) for demonstration
-    let ar_coefs = arr1(&[0.5, -0.1]);
-    let ma_coefs = arr1(&[0.2, 0.2]);
-    let arima_model = ARIMA::new(
-      ar_coefs, ma_coefs, 1,   // d
-      1.0, // sigma
-      100, // n
-    );
-    plot_1d!(arima_model.sample(), "ARIMA(p,d,q) process");
-  }
-}

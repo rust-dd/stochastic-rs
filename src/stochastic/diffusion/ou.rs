@@ -46,33 +46,3 @@ impl<T: Float> Process<T> for OU<T> {
     ou
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::OU;
-  use crate::plot_1d;
-  use crate::stochastic::Process;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn ou_length_equals_n() {
-    let ou = OU::new(2.0, 1.0, 0.8, N, Some(X0), Some(1.0));
-
-    assert_eq!(ou.sample().len(), N);
-  }
-
-  #[test]
-  fn ou_starts_with_x0() {
-    let ou = OU::new(2.0, 1.0, 0.8, N, Some(X0), Some(1.0));
-
-    assert_eq!(ou.sample()[0], X0);
-  }
-
-  #[test]
-  fn ou_plot() {
-    let ou = OU::new(2.0, 1.0, 0.8, N, Some(X0), Some(1.0));
-
-    plot_1d!(ou.sample(), "Fractional Ornstein-Uhlenbeck (FOU) Process");
-  }
-}

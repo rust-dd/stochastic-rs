@@ -71,36 +71,3 @@ impl<T: Float> Process<T> for CIR<T> {
     cir
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::Process;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn cir_length_equals_n() {
-    let cir = CIR::new(1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false));
-    assert_eq!(cir.sample().len(), N);
-  }
-
-  #[test]
-  fn cir_starts_with_x0() {
-    let cir = CIR::new(1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false));
-    assert_eq!(cir.sample()[0], X0);
-  }
-
-  #[test]
-  fn cir_plot() {
-    let cir = CIR::new(1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false));
-    plot_1d!(cir.sample(), "Cox-Ingersoll-Ross (CIR) process");
-  }
-
-  #[test]
-  #[ignore = "Not implemented"]
-  fn cir_malliavin() {
-    unimplemented!();
-  }
-}

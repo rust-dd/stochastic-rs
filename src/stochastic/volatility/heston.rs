@@ -142,37 +142,3 @@ impl<T: Float> Heston<T> {
     [s, v, malliavin]
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_2d;
-  use crate::stochastic::N;
-  use crate::stochastic::S0;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn heston_malliavin() {
-    let heston = Heston::new(
-      Some(S0),
-      Some(X0),
-      0.5,
-      1.0,
-      1.0,
-      1.0,
-      1.0,
-      N,
-      Some(1.0),
-      HestonPow::Sqrt,
-      None,
-    );
-    let process = heston.sample();
-    let malliavin = heston.malliavin_of_vol();
-    plot_2d!(
-      process[1],
-      "Heston volatility process",
-      malliavin[1],
-      "Malliavin derivative of the Heston volatility process"
-    );
-  }
-}

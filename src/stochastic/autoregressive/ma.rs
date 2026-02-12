@@ -62,20 +62,3 @@ impl<T: Float> Process<T> for MAq<T> {
     series
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use ndarray::arr1;
-
-  use crate::plot_1d;
-  use crate::stochastic::autoregressive::ma::MAq;
-  use crate::stochastic::Process;
-
-  #[test]
-  fn ma_plot() {
-    // Suppose q=2 with user-defined coefficients
-    let theta = arr1(&[0.4, 0.3]);
-    let ma_model = MAq::new(theta, 1.0, 100);
-    plot_1d!(ma_model.sample(), "MA(q) process");
-  }
-}

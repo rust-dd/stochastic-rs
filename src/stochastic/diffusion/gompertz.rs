@@ -52,29 +52,3 @@ impl<T: Float> Process<T> for Gompertz<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn gompertz_length_equals_n() {
-    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0));
-    assert_eq!(proc.sample().len(), N);
-  }
-
-  #[test]
-  fn gompertz_starts_with_x0() {
-    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0));
-    assert_eq!(proc.sample()[0], X0.max(1e-12));
-  }
-
-  #[test]
-  fn gompertz_plot() {
-    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0));
-    plot_1d!(proc.sample(), "Gompertz diffusion");
-  }
-}

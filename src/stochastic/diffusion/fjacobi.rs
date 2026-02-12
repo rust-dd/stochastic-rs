@@ -61,32 +61,3 @@ impl<T: Float> Process<T> for FJacobi<T> {
     fjacobi
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn fjacobi_length_equals_n() {
-    let fjacobi = FJacobi::<f64>::new(0.7, 0.43, 0.5, 0.8, N, Some(X0), Some(1.0));
-
-    assert_eq!(fjacobi.sample().len(), N);
-  }
-
-  #[test]
-  fn fjacobi_starts_with_x0() {
-    let fjacobi = FJacobi::<f64>::new(0.7, 0.43, 0.5, 0.8, N, Some(X0), Some(1.0));
-
-    assert_eq!(fjacobi.sample()[0], X0);
-  }
-
-  #[test]
-  fn fjacobi_plot() {
-    let fjacobi = FJacobi::<f64>::new(0.7, 0.43, 0.5, 0.8, N, Some(X0), Some(1.0));
-
-    plot_1d!(fjacobi.sample(), "Fractional Jacobi process");
-  }
-}

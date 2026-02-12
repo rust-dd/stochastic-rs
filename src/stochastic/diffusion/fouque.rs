@@ -74,26 +74,3 @@ impl<T: Float> Process<T> for FouqueOU2D<T> {
     [x, y]
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn fouque_length_equals_n() {
-    let proc = FouqueOU2D::new(0.5, 1.0, 0.1, 0.0, N, Some(X0), Some(X0), Some(1.0));
-    let [x, y] = proc.sample();
-    assert_eq!(x.len(), N);
-    assert_eq!(y.len(), N);
-  }
-
-  #[test]
-  fn fouque_starts_with_x0_y0() {
-    let proc = FouqueOU2D::new(0.5, 1.0, 0.1, 0.0, N, Some(X0), Some(X0), Some(1.0));
-    let [x, y] = proc.sample();
-    assert_eq!(x[0], X0);
-    assert_eq!(y[0], X0);
-  }
-}

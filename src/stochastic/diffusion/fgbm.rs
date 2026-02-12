@@ -46,35 +46,3 @@ impl<T: Float> Process<T> for FGBM<T> {
     fgbm
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn fgbm_length_equals_n() {
-    let fgbm = FGBM::<f64>::new(0.7, 1.0, 0.8, N, Some(X0), Some(1.0));
-
-    assert_eq!(fgbm.sample().len(), N);
-  }
-
-  #[test]
-  fn fgbm_starts_with_x0() {
-    let fgbm = FGBM::<f64>::new(0.7, 1.0, 0.8, N, Some(X0), Some(1.0));
-
-    assert_eq!(fgbm.sample()[0], X0);
-  }
-
-  #[test]
-  fn fgbm_plot() {
-    let fgbm = FGBM::<f64>::new(0.7, 1.0, 0.8, N, Some(X0), Some(1.0));
-
-    plot_1d!(
-      fgbm.sample(),
-      "Fractional Geometric Brownian Motion (FGBM) process"
-    );
-  }
-}

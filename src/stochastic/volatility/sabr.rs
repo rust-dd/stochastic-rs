@@ -76,23 +76,3 @@ impl<T: Float> SABR<T> {
     [f, v, malliavin]
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_2d;
-  use crate::stochastic::N;
-
-  #[test]
-  fn sabr_malliavin() {
-    let sabr = SABR::new(0.5, 0.5, 0.5, N, Some(1.0), Some(1.0), Some(1.0));
-    let process = sabr.sample();
-    let malliavin = sabr.malliavin_of_vol();
-    plot_2d!(
-      process[1],
-      "SABR volatility process",
-      malliavin[1],
-      "Malliavin derivative of the SABR volatility process"
-    );
-  }
-}

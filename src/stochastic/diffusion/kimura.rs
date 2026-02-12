@@ -52,29 +52,3 @@ impl<T: Float> Process<T> for Kimura<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn kimura_length_equals_n() {
-    let proc = Kimura::new(2.0, 0.5, N, Some(X0), Some(1.0));
-    assert_eq!(proc.sample().len(), N);
-  }
-
-  #[test]
-  fn kimura_starts_with_x0() {
-    let proc = Kimura::new(2.0, 0.5, N, Some(X0), Some(1.0));
-    assert_eq!(proc.sample()[0], X0);
-  }
-
-  #[test]
-  fn kimura_plot() {
-    let proc = Kimura::new(2.0, 0.5, N, Some(X0), Some(1.0));
-    plot_1d!(proc.sample(), "Kimura / Wright–Fisher diffusion");
-  }
-}

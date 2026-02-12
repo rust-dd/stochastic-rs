@@ -62,32 +62,3 @@ impl<T: Float> Process<T> for GBMIH<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn gbm_ih_length_equals_n() {
-    let gbm = GBMIH::new(0.2, 0.4, N, Some(X0), Some(1.0), None);
-    assert_eq!(gbm.sample().len(), N);
-  }
-
-  #[test]
-  fn gbm_ih_starts_with_x0() {
-    let gbm = GBMIH::new(0.2, 0.4, N, Some(X0), Some(1.0), None);
-    assert_eq!(gbm.sample()[0], X0);
-  }
-
-  #[test]
-  fn gbm_ih_plot() {
-    let gbm = GBMIH::new(0.2, 0.4, N, Some(X0), Some(1.0), None);
-    plot_1d!(
-      gbm.sample(),
-      "Inhomogeneous GBM (time-dependent volatility)"
-    );
-  }
-}

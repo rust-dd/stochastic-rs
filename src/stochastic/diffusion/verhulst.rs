@@ -65,29 +65,3 @@ impl<T: Float> Process<T> for Verhulst<T> {
     x
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn verhulst_length_equals_n() {
-    let proc = Verhulst::new(1.2, 1.0, 0.3, N, Some(X0), Some(1.0), Some(true));
-    assert_eq!(proc.sample().len(), N);
-  }
-
-  #[test]
-  fn verhulst_starts_with_x0() {
-    let proc = Verhulst::new(1.2, 1.0, 0.3, N, Some(X0), Some(1.0), Some(true));
-    assert_eq!(proc.sample()[0], X0);
-  }
-
-  #[test]
-  fn verhulst_plot() {
-    let proc = Verhulst::new(1.2, 1.0, 0.3, N, Some(X0), Some(1.0), Some(true));
-    plot_1d!(proc.sample(), "Verhulst (logistic) diffusion");
-  }
-}

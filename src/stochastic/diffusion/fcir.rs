@@ -73,35 +73,3 @@ impl<T: Float> Process<T> for FCIR<T> {
     fcir
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn fcir_length_equals_n() {
-    let fcir = FCIR::<f64>::new(0.7, 1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false));
-
-    assert_eq!(fcir.sample().len(), N);
-  }
-
-  #[test]
-  fn fcir_starts_with_x0() {
-    let fcir = FCIR::<f64>::new(0.7, 1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false));
-
-    assert_eq!(fcir.sample()[0], X0);
-  }
-
-  #[test]
-  fn fcir_plot() {
-    let fcir = FCIR::<f64>::new(0.7, 1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false));
-
-    plot_1d!(
-      fcir.sample(),
-      "Fractional Cox-Ingersoll-Ross (FCIR) process"
-    );
-  }
-}

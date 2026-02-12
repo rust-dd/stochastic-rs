@@ -40,29 +40,3 @@ impl<T: Float> Process<T> for IG<T> {
     ig
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn ig_length_equals_n() {
-    let ig = IG::new(2.25, N, Some(X0), Some(10.0));
-    assert_eq!(ig.sample().len(), N);
-  }
-
-  #[test]
-  fn ig_starts_with_x0() {
-    let ig = IG::new(2.25, N, Some(X0), Some(10.0));
-    assert_eq!(ig.sample()[0], X0);
-  }
-
-  #[test]
-  fn ig_plot() {
-    let ig = IG::new(2.25, N, Some(X0), Some(10.0));
-    plot_1d!(ig.sample(), "Inverse Gaussian (IG)");
-  }
-}

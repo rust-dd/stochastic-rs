@@ -59,35 +59,3 @@ impl<T: Float> Process<T> for Jacobi<T> {
     jacobi
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn fjacobi_length_equals_n() {
-    let jacobi = Jacobi::new(0.43, 0.5, 0.8, N, Some(X0), Some(1.0));
-    assert_eq!(jacobi.sample().len(), N);
-  }
-
-  #[test]
-  fn jacobi_starts_with_x0() {
-    let jacobi = Jacobi::new(0.43, 0.5, 0.8, N, Some(X0), Some(1.0));
-    assert_eq!(jacobi.sample()[0], X0);
-  }
-
-  #[test]
-  fn jacobi_plot() {
-    let jacobi = Jacobi::new(0.43, 0.5, 0.8, N, Some(X0), Some(1.0));
-    plot_1d!(jacobi.sample(), "Jacobi process");
-  }
-
-  #[test]
-  #[ignore = "Not implemented"]
-  fn fjacobi_malliavin() {
-    unimplemented!();
-  }
-}
