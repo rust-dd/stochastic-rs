@@ -10,6 +10,7 @@ pub mod cauchy;
 pub mod chi_square;
 pub mod complex;
 pub mod exp;
+pub mod exp_zig;
 pub mod gamma;
 pub mod geometric;
 pub mod hypergeometric;
@@ -25,13 +26,13 @@ pub mod weibull;
 
 fn fill_f32_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
   for x in out.iter_mut() {
-    *x = rng.random_range(0.0..1.0);
+    *x = rng.random();
   }
 }
 
 fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
   for x in out.iter_mut() {
-    *x = rng.random_range(0.0..1.0);
+    *x = rng.random();
   }
 }
 
@@ -91,7 +92,7 @@ impl SimdFloatExt for f32 {
   }
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f32 {
-    rng.random_range(0.0f32..1.0f32)
+    rng.random()
   }
 
   fn simd_from_i32x8(v: wide::i32x8) -> f32x8 {
@@ -172,7 +173,7 @@ impl SimdFloatExt for f64 {
   }
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f64 {
-    rng.random_range(0.0f64..1.0f64)
+    rng.random()
   }
 
   fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {
@@ -215,6 +216,7 @@ mod tests {
   use crate::distributions::cauchy::SimdCauchy;
   use crate::distributions::chi_square::SimdChiSquared;
   use crate::distributions::exp::SimdExp;
+  use crate::distributions::exp_zig::SimdExpZig;
   use crate::distributions::gamma::SimdGamma;
   use crate::distributions::geometric::SimdGeometric;
   use crate::distributions::hypergeometric::SimdHypergeometric;
@@ -966,6 +968,45 @@ mod tests {
   }
 
   #[test]
+  fn bench_exp_zig_simd_vs_rand() {
+    let n = 10_000_000usize;
+    let lambda = 1.5f32;
+
+    let mut rng = rand::rng();
+    let zig: SimdExpZig<f32> = SimdExpZig::new(lambda);
+    let mut z_sum = 0.0f32;
+    let t0 = Instant::now();
+    for _ in 0..n {
+      z_sum += zig.sample(&mut rng);
+    }
+    let dt_z = t0.elapsed();
+
+    let mut rng = rand::rng();
+    let old = SimdExp::new(lambda);
+    let mut o_sum = 0.0f32;
+    let t1 = Instant::now();
+    for _ in 0..n {
+      o_sum += old.sample(&mut rng);
+    }
+    let dt_o = t1.elapsed();
+
+    let mut rng = rand::rng();
+    let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
+    let mut r_sum = 0.0f32;
+    let t2 = Instant::now();
+    for _ in 0..n {
+      r_sum += rd.sample(&mut rng);
+    }
+    let dt_r = t2.elapsed();
+
+    println!(
+      "Exp Ziggurat: {:?}, sum={:.3} | Exp ICDF: {:?}, sum={:.3} | rand_distr: {:?}, sum={:.3}",
+      dt_z, z_sum, dt_o, o_sum, dt_r, r_sum
+    );
+    assert!(!z_sum.is_nan() && !o_sum.is_nan() && !r_sum.is_nan());
+  }
+
+  #[test]
   fn bench_cauchy_simd_vs_rand() {
     let n = 10_000_000usize;
 
@@ -1026,6 +1067,17 @@ mod tests {
   #[test]
   fn bench_weibull_simd_vs_rand() {
     let n = 10_000_000usize;
+
+    // warmup
+    {
+      let mut rng = rand::rng();
+      let w = SimdWeibull::new(1.0f32, 1.5);
+      let mut sum = 0.0f32;
+      for _ in 0..n {
+        sum += w.sample(&mut rng);
+      }
+      std::hint::black_box(sum);
+    }
 
     let mut rng = rand::rng();
     let simd = SimdWeibull::new(1.0, 1.5);
