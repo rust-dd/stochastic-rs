@@ -1,14 +1,14 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Fouque slow–fast OU system
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
-pub struct FouqueOU2D<T: Float> {
+pub struct FouqueOU2D<T: FloatExt> {
   pub kappa: T,
   pub theta: T,
   pub epsilon: T,
@@ -20,7 +20,7 @@ pub struct FouqueOU2D<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> FouqueOU2D<T> {
+impl<T: FloatExt> FouqueOU2D<T> {
   pub fn new(
     kappa: T,
     theta: T,
@@ -47,7 +47,7 @@ impl<T: Float> FouqueOU2D<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FouqueOU2D<T> {
+impl<T: FloatExt> ProcessExt<T> for FouqueOU2D<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> [Array1<T>; 2] {

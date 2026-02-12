@@ -15,10 +15,10 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct BGM<T: Float> {
+pub struct BGM<T: FloatExt> {
   /// Drift/volatility multiplier for each forward rate.
   pub lambda: Array1<T>,
   /// Initial forward rates for each path.
@@ -32,7 +32,7 @@ pub struct BGM<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> BGM<T> {
+impl<T: FloatExt> BGM<T> {
   pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize) -> Self {
     Self {
       lambda,
@@ -45,7 +45,7 @@ impl<T: Float> BGM<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for BGM<T> {
+impl<T: FloatExt> ProcessExt<T> for BGM<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

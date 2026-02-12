@@ -3,7 +3,7 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use super::Bivariate;
+use super::BivariateExt;
 use super::CopulaType;
 
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ impl Gumbel {
   }
 }
 
-impl Bivariate for Gumbel {
+impl BivariateExt for Gumbel {
   fn r#type(&self) -> CopulaType {
     self.r#type
   }
@@ -109,7 +109,7 @@ impl Bivariate for Gumbel {
       return Ok(y.to_owned());
     }
 
-    let out = Bivariate::percent_point(self, y, V)?;
+    let out = BivariateExt::percent_point(self, y, V)?;
     Ok(out)
   }
 

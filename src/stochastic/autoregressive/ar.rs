@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements an AR(p) model:
@@ -18,7 +18,7 @@ use crate::stochastic::ProcessExt;
 /// - `n`: Length of the time series.
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
-pub struct ARp<T: Float> {
+pub struct ARp<T: FloatExt> {
   /// AR coefficients
   pub phi: Array1<T>,
   /// Noise std dev
@@ -30,7 +30,7 @@ pub struct ARp<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> ARp<T> {
+impl<T: FloatExt> ARp<T> {
   /// Create a new AR process with given coefficients and noise standard deviation.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>) -> Self {
     Self {
@@ -43,7 +43,7 @@ impl<T: Float> ARp<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for ARp<T> {
+impl<T: FloatExt> ProcessExt<T> for ARp<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

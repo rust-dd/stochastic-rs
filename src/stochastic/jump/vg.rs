@@ -3,10 +3,10 @@ use ndarray_rand::RandomExt;
 
 use crate::distributions::gamma::SimdGamma;
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct VG<T: Float> {
+pub struct VG<T: FloatExt> {
   pub mu: T,
   pub sigma: T,
   pub nu: T,
@@ -17,10 +17,10 @@ pub struct VG<T: Float> {
   gn: Gn<T>,
 }
 
-unsafe impl<T: Float> Send for VG<T> {}
-unsafe impl<T: Float> Sync for VG<T> {}
+unsafe impl<T: FloatExt> Send for VG<T> {}
+unsafe impl<T: FloatExt> Sync for VG<T> {}
 
-impl<T: Float> VG<T> {
+impl<T: FloatExt> VG<T> {
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     let gn = Gn::new(n - 1, t);
     let dt = gn.dt();
@@ -41,7 +41,7 @@ impl<T: Float> VG<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for VG<T> {
+impl<T: FloatExt> ProcessExt<T> for VG<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

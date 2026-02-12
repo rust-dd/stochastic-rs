@@ -2,10 +2,10 @@ use ndarray::s;
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct Bergomi<T: Float> {
+pub struct Bergomi<T: FloatExt> {
   pub nu: T,
   pub v0: Option<T>,
   pub s0: Option<T>,
@@ -17,7 +17,7 @@ pub struct Bergomi<T: Float> {
   cgns: CGNS<T>,
 }
 
-impl<T: Float> Bergomi<T> {
+impl<T: FloatExt> Bergomi<T> {
   pub fn new(
     nu: T,
     v0: Option<T>,
@@ -42,7 +42,7 @@ impl<T: Float> Bergomi<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for Bergomi<T> {
+impl<T: FloatExt> ProcessExt<T> for Bergomi<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

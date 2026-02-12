@@ -3,15 +3,15 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 
-pub struct SimdExp<T: SimdFloat> {
+pub struct SimdExp<T: SimdFloatExt> {
   lambda: T,
   buffer: UnsafeCell<[T; 8]>,
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdExp<T> {
+impl<T: SimdFloatExt> SimdExp<T> {
   pub fn new(lambda: T) -> Self {
     assert!(lambda > T::zero());
     Self {
@@ -51,7 +51,7 @@ impl<T: SimdFloat> SimdExp<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdExp<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdExp<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= 8 {

@@ -4,7 +4,7 @@ use std::f64;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use super::Bivariate;
+use super::BivariateExt;
 use super::CopulaType;
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ impl Clayton {
   }
 }
 
-impl Bivariate for Clayton {
+impl BivariateExt for Clayton {
   fn r#type(&self) -> CopulaType {
     self.r#type
   }

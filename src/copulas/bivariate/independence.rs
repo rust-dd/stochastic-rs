@@ -7,7 +7,7 @@ use ndarray::Axis;
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 
-use super::Bivariate;
+use super::BivariateExt;
 use super::CopulaType;
 
 #[derive(Debug, Clone)]
@@ -37,7 +37,7 @@ impl Independence {
   }
 }
 
-impl Bivariate for Independence {
+impl BivariateExt for Independence {
   fn r#type(&self) -> CopulaType {
     self.r#type
   }

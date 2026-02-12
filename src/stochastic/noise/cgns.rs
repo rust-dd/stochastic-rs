@@ -1,18 +1,18 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct CGNS<T: Float> {
+pub struct CGNS<T: FloatExt> {
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
   gn: Gn<T>,
 }
 
-impl<T: Float> CGNS<T> {
+impl<T: FloatExt> CGNS<T> {
   pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
@@ -28,7 +28,7 @@ impl<T: Float> CGNS<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for CGNS<T> {
+impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -45,7 +45,7 @@ impl<T: Float> ProcessExt<T> for CGNS<T> {
   }
 }
 
-impl<T: Float> CGNS<T> {
+impl<T: FloatExt> CGNS<T> {
   pub fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize(self.n).unwrap()
   }

@@ -7,7 +7,7 @@ use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
 use super::CopulaType;
-use super::Multivariate;
+use super::MultivariateExt;
 use crate::copulas::correlation::kendall_tau;
 
 #[derive(Debug, Clone, Default)]
@@ -179,7 +179,7 @@ impl TreeMultivariate {
   }
 }
 
-impl Multivariate for TreeMultivariate {
+impl MultivariateExt for TreeMultivariate {
   fn r#type(&self) -> CopulaType {
     CopulaType::Tree
   }

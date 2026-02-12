@@ -1,13 +1,13 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Cox-Ingersoll-Ross (CIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
 /// where X(t) is the CIR process.
-pub struct CIR<T: Float> {
+pub struct CIR<T: FloatExt> {
   pub theta: T,
   pub mu: T,
   pub sigma: T,
@@ -18,7 +18,7 @@ pub struct CIR<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> CIR<T> {
+impl<T: FloatExt> CIR<T> {
   /// Create a new CIR process.
   pub fn new(
     theta: T,
@@ -47,7 +47,7 @@ impl<T: Float> CIR<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for CIR<T> {
+impl<T: FloatExt> ProcessExt<T> for CIR<T> {
   type Output = Array1<T>;
 
   /// Sample the Cox-Ingersoll-Ross (CIR) process

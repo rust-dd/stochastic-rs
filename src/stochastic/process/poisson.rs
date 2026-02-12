@@ -7,23 +7,23 @@ use ndarray_rand::RandomExt;
 use rand::rng;
 
 use crate::distributions::exp::SimdExp;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct Poisson<T: Float> {
+pub struct Poisson<T: FloatExt> {
   pub lambda: T,
   pub n: Option<usize>,
   pub t_max: Option<T>,
 }
 
-impl<T: Float> Poisson<T> {
+impl<T: FloatExt> Poisson<T> {
   pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>) -> Self {
     Poisson { lambda, n, t_max }
   }
 }
 
-impl<T: Float> ProcessExt<T> for Poisson<T> {
+impl<T: FloatExt> ProcessExt<T> for Poisson<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

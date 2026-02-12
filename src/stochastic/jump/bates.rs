@@ -3,12 +3,12 @@ use rand_distr::Distribution;
 
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 pub struct Bates1996<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub mu: Option<T>,
@@ -32,7 +32,7 @@ where
 
 impl<T, D> Bates1996<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub fn new(
@@ -77,7 +77,7 @@ where
 
 impl<T, D> ProcessExt<T> for Bates1996<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   type Output = [Array1<T>; 2];

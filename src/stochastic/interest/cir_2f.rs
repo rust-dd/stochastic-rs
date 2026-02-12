@@ -1,22 +1,22 @@
 use ndarray::Array1;
 
 use super::cir::CIR;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct CIR2F<T: Float> {
+pub struct CIR2F<T: FloatExt> {
   pub x: CIR<T>,
   pub y: CIR<T>,
   pub phi: fn(T) -> T,
 }
 
-impl<T: Float> CIR2F<T> {
+impl<T: FloatExt> CIR2F<T> {
   pub fn new(x: CIR<T>, y: CIR<T>, phi: fn(T) -> T) -> Self {
     Self { x, y, phi }
   }
 }
 
-impl<T: Float> ProcessExt<T> for CIR2F<T> {
+impl<T: FloatExt> ProcessExt<T> for CIR2F<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

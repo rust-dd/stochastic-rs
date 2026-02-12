@@ -1,13 +1,13 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Hull-White process.
 /// dX(t) = theta(t)dt - alpha * X(t)dt + sigma * dW(t)
 /// where X(t) is the Hull-White process.
-pub struct HullWhite<T: Float> {
+pub struct HullWhite<T: FloatExt> {
   pub theta: fn(T) -> T,
   pub alpha: T,
   pub sigma: T,
@@ -17,7 +17,7 @@ pub struct HullWhite<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> HullWhite<T> {
+impl<T: FloatExt> HullWhite<T> {
   pub fn new(theta: fn(T) -> T, alpha: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
       theta,
@@ -31,7 +31,7 @@ impl<T: Float> HullWhite<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for HullWhite<T> {
+impl<T: FloatExt> ProcessExt<T> for HullWhite<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

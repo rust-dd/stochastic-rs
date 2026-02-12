@@ -4,12 +4,12 @@ use rand::rng;
 use rand_distr::Distribution;
 
 use super::customjt::CustomJt;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 pub struct CompoundCustom<T, D1, D2>
 where
-  T: Float,
+  T: FloatExt,
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
@@ -23,7 +23,7 @@ where
 
 impl<T, D1, D2> CompoundCustom<T, D1, D2>
 where
-  T: Float,
+  T: FloatExt,
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
@@ -52,7 +52,7 @@ where
 
 impl<T, D1, D2> ProcessExt<T> for CompoundCustom<T, D1, D2>
 where
-  T: Float,
+  T: FloatExt,
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {

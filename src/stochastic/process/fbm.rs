@@ -2,17 +2,17 @@ use ndarray::Array1;
 use statrs::function::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct FBM<T: Float> {
+pub struct FBM<T: FloatExt> {
   pub hurst: T,
   pub n: usize,
   pub t: Option<T>,
   fgn: FGN<T>,
 }
 
-impl<T: Float> FBM<T> {
+impl<T: FloatExt> FBM<T> {
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
     Self {
       hurst,
@@ -23,7 +23,7 @@ impl<T: Float> FBM<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FBM<T> {
+impl<T: FloatExt> ProcessExt<T> for FBM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -38,7 +38,7 @@ impl<T: Float> ProcessExt<T> for FBM<T> {
   }
 }
 
-impl<T: Float> FBM<T> {
+impl<T: FloatExt> FBM<T> {
   /// Calculate the Malliavin derivative
   ///
   /// The Malliavin derivative of the fractional Brownian motion is given by:

@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct SABR<T: Float> {
+pub struct SABR<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub rho: T,
@@ -15,7 +15,7 @@ pub struct SABR<T: Float> {
   cgns: CGNS<T>,
 }
 
-impl<T: Float> SABR<T> {
+impl<T: FloatExt> SABR<T> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -38,7 +38,7 @@ impl<T: Float> SABR<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for SABR<T> {
+impl<T: FloatExt> ProcessExt<T> for SABR<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -59,7 +59,7 @@ impl<T: Float> ProcessExt<T> for SABR<T> {
   }
 }
 
-impl<T: Float> SABR<T> {
+impl<T: FloatExt> SABR<T> {
   /// Calculate the Malliavin derivative of the SABR model
   ///
   /// The Malliavin derivative of the volaility process in the SABR model is given by:

@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::cfgns::CFGNS;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct CFBMS<T: Float> {
+pub struct CFBMS<T: FloatExt> {
   pub hurst: T,
   pub rho: T,
   pub n: usize,
@@ -13,7 +13,7 @@ pub struct CFBMS<T: Float> {
   cfgns: CFGNS<T>,
 }
 
-impl<T: Float> CFBMS<T> {
+impl<T: FloatExt> CFBMS<T> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, m: Option<usize>) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
@@ -35,7 +35,7 @@ impl<T: Float> CFBMS<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for CFBMS<T> {
+impl<T: FloatExt> ProcessExt<T> for CFBMS<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

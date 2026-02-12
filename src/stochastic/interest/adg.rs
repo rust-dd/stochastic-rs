@@ -2,11 +2,11 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Ahn-Dittmar-Gallant (ADG) model
-pub struct ADG<T: Float> {
+pub struct ADG<T: FloatExt> {
   pub k: fn(T) -> T,
   pub theta: fn(T) -> T,
   pub sigma: Array1<T>,
@@ -20,7 +20,7 @@ pub struct ADG<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> ADG<T> {
+impl<T: FloatExt> ADG<T> {
   pub fn new(
     k: fn(T) -> T,
     theta: fn(T) -> T,
@@ -49,7 +49,7 @@ impl<T: Float> ADG<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for ADG<T> {
+impl<T: FloatExt> ProcessExt<T> for ADG<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

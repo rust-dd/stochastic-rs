@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct Jacobi<T: Float> {
+pub struct Jacobi<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub sigma: T,
@@ -14,7 +14,7 @@ pub struct Jacobi<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> Jacobi<T> {
+impl<T: FloatExt> Jacobi<T> {
   pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(alpha > T::zero(), "alpha must be positive");
     assert!(beta > T::zero(), "beta must be positive");
@@ -33,7 +33,7 @@ impl<T: Float> Jacobi<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for Jacobi<T> {
+impl<T: FloatExt> ProcessExt<T> for Jacobi<T> {
   type Output = Array1<T>;
 
   /// Sample the Jacobi process

@@ -3,10 +3,10 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 use super::normal::SimdNormal;
 
-pub struct SimdInverseGauss<T: SimdFloat> {
+pub struct SimdInverseGauss<T: SimdFloatExt> {
   mu: T,
   lambda: T,
   normal: SimdNormal<T>,
@@ -14,7 +14,7 @@ pub struct SimdInverseGauss<T: SimdFloat> {
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdInverseGauss<T> {
+impl<T: SimdFloatExt> SimdInverseGauss<T> {
   pub fn new(mu: T, lambda: T) -> Self {
     assert!(mu > T::zero() && lambda > T::zero());
     Self {
@@ -83,7 +83,7 @@ impl<T: SimdFloat> SimdInverseGauss<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdInverseGauss<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

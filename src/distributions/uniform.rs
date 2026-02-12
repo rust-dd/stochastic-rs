@@ -3,16 +3,16 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 
-pub struct SimdUniform<T: SimdFloat> {
+pub struct SimdUniform<T: SimdFloatExt> {
   low: T,
   scale: T,
   buffer: UnsafeCell<[T; 8]>,
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdUniform<T> {
+impl<T: SimdFloatExt> SimdUniform<T> {
   pub fn new(low: T, high: T) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
@@ -59,7 +59,7 @@ impl<T: SimdFloat> SimdUniform<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdUniform<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
   #[inline]
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };

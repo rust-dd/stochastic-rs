@@ -29,11 +29,11 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
-pub struct DuffieKan<T: Float> {
+pub struct DuffieKan<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -53,7 +53,7 @@ pub struct DuffieKan<T: Float> {
   cgns: CGNS<T>,
 }
 
-impl<T: Float> DuffieKan<T> {
+impl<T: FloatExt> DuffieKan<T> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -94,7 +94,7 @@ impl<T: Float> DuffieKan<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for DuffieKan<T> {
+impl<T: FloatExt> ProcessExt<T> for DuffieKan<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

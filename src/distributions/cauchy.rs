@@ -3,16 +3,16 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 
-pub struct SimdCauchy<T: SimdFloat> {
+pub struct SimdCauchy<T: SimdFloatExt> {
   x0: T,
   gamma: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdCauchy<T> {
+impl<T: SimdFloatExt> SimdCauchy<T> {
   pub fn new(x0: T, gamma: T) -> Self {
     assert!(gamma > T::zero());
     Self {
@@ -56,7 +56,7 @@ impl<T: SimdFloat> SimdCauchy<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdCauchy<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdCauchy<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

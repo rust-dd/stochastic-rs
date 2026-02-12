@@ -74,7 +74,7 @@ use ndrustfft::Zero;
 use num_complex::Complex64;
 
 use crate::distributions::normal::SimdNormal;
-use crate::distributions::SimdFloat;
+use crate::distributions::SimdFloatExt;
 
 /// Default number of time steps
 pub const N: usize = 1000;
@@ -85,13 +85,13 @@ pub const S0: f64 = 100.0;
 /// Default strike price
 pub const K: f64 = 100.0;
 
-pub trait Float:
+pub trait FloatExt:
   num_traits::Float
   + num_traits::FromPrimitive
   + num_traits::Signed
   + num_traits::FloatConst
   + Sum
-  + SimdFloat
+  + SimdFloatExt
   + Zero
   + Default
   + Debug
@@ -106,7 +106,7 @@ pub trait Float:
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }
 
-impl Float for f64 {
+impl FloatExt for f64 {
   fn from_usize_(n: usize) -> Self {
     n as f64
   }
@@ -116,7 +116,7 @@ impl Float for f64 {
   }
 }
 
-impl Float for f32 {
+impl FloatExt for f32 {
   fn from_usize_(n: usize) -> Self {
     n as f32
   }
@@ -126,7 +126,7 @@ impl Float for f32 {
   }
 }
 
-pub trait ProcessExt<T: Float>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync {
   type Output: Send;
 
   fn sample(&self) -> Self::Output;

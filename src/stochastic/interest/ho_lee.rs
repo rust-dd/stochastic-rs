@@ -3,11 +3,11 @@ use std::sync::Arc;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 #[allow(non_snake_case)]
-pub struct HoLee<T: Float> {
+pub struct HoLee<T: FloatExt> {
   pub f_T: Option<Arc<dyn Fn(T) -> T + Send + Sync + 'static>>,
   pub theta: Option<T>,
   pub sigma: T,
@@ -16,7 +16,7 @@ pub struct HoLee<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> HoLee<T> {
+impl<T: FloatExt> HoLee<T> {
   pub fn new(
     f_T: Option<Arc<dyn Fn(T) -> T + Send + Sync + 'static>>,
     theta: Option<T>,
@@ -40,7 +40,7 @@ impl<T: Float> HoLee<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for HoLee<T> {
+impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

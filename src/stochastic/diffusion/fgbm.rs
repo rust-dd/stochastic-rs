@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct FGBM<T: Float> {
+pub struct FGBM<T: FloatExt> {
   pub hurst: T,
   pub mu: T,
   pub sigma: T,
@@ -14,7 +14,7 @@ pub struct FGBM<T: Float> {
   fgn: FGN<T>,
 }
 
-impl<T: Float> FGBM<T> {
+impl<T: FloatExt> FGBM<T> {
   #[must_use]
   pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
@@ -29,7 +29,7 @@ impl<T: Float> FGBM<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FGBM<T> {
+impl<T: FloatExt> ProcessExt<T> for FGBM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

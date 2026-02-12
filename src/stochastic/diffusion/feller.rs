@@ -1,12 +1,12 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
-pub struct FellerLogistic<T: Float> {
+pub struct FellerLogistic<T: FloatExt> {
   pub kappa: T,
   pub theta: T,
   pub sigma: T,
@@ -18,7 +18,7 @@ pub struct FellerLogistic<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> FellerLogistic<T> {
+impl<T: FloatExt> FellerLogistic<T> {
   pub fn new(
     kappa: T,
     theta: T,
@@ -41,7 +41,7 @@ impl<T: Float> FellerLogistic<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FellerLogistic<T> {
+impl<T: FloatExt> ProcessExt<T> for FellerLogistic<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

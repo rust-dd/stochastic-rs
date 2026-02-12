@@ -3,12 +3,12 @@ use rand_distr::Distribution;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 pub struct LevyDiffusion<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub gamma: T,
@@ -22,7 +22,7 @@ where
 
 impl<T, D> LevyDiffusion<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   fn new(
@@ -47,7 +47,7 @@ where
 
 impl<T, D> ProcessExt<T> for LevyDiffusion<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;

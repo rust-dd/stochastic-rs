@@ -1,21 +1,21 @@
 use ndarray::Array1;
 
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct Gn<T: Float> {
+pub struct Gn<T: FloatExt> {
   pub n: usize,
   pub t: Option<T>,
 }
 
-impl<T: Float> Gn<T> {
+impl<T: FloatExt> Gn<T> {
   pub fn new(n: usize, t: Option<T>) -> Self {
     Gn { n, t }
   }
 }
 
-impl<T: Float> ProcessExt<T> for Gn<T> {
+impl<T: FloatExt> ProcessExt<T> for Gn<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -23,7 +23,7 @@ impl<T: Float> ProcessExt<T> for Gn<T> {
   }
 }
 
-impl<T: Float> Gn<T> {
+impl<T: FloatExt> Gn<T> {
   pub fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
   }

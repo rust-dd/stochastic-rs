@@ -6,7 +6,7 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::stochastic::process::poisson::Poisson;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// CGMY process
@@ -38,7 +38,7 @@ use crate::stochastic::ProcessExt;
 /// - Madan, D. B., Carr, P., & Chang, E. C. (1998). The Variance Gamma Process and Option Pricing. *European Finance Review*, 2(1), 79-105.
 ///   https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf
 ///
-pub struct CGMY<T: Float> {
+pub struct CGMY<T: FloatExt> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -55,7 +55,7 @@ pub struct CGMY<T: Float> {
   pub t: Option<T>,
 }
 
-impl<T: Float> CGMY<T> {
+impl<T: FloatExt> CGMY<T> {
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -77,7 +77,7 @@ impl<T: Float> CGMY<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for CGMY<T> {
+impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

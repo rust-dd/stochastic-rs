@@ -10,10 +10,10 @@ use num_complex::Complex;
 
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct FBS<T: Float> {
+pub struct FBS<T: FloatExt> {
   pub hurst: T,
   pub m: usize,
   pub n: usize,
@@ -21,10 +21,10 @@ pub struct FBS<T: Float> {
   normal: SimdNormal<T>,
 }
 
-unsafe impl<T: Float> Send for FBS<T> {}
-unsafe impl<T: Float> Sync for FBS<T> {}
+unsafe impl<T: FloatExt> Send for FBS<T> {}
+unsafe impl<T: FloatExt> Sync for FBS<T> {}
 
-impl<T: Float> FBS<T> {
+impl<T: FloatExt> FBS<T> {
   pub fn new(hurst: T, m: usize, n: usize, r: T) -> Self {
     Self {
       hurst,
@@ -36,7 +36,7 @@ impl<T: Float> FBS<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FBS<T> {
+impl<T: FloatExt> ProcessExt<T> for FBS<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Array2<T> {
@@ -121,7 +121,7 @@ impl<T: Float> ProcessExt<T> for FBS<T> {
   }
 }
 
-impl<T: Float> FBS<T> {
+impl<T: FloatExt> FBS<T> {
   fn rho(x: (T, T), y: (T, T), r: T, alpha: T) -> (T, T, T) {
     let one = T::one();
     let two = T::from_usize_(2);

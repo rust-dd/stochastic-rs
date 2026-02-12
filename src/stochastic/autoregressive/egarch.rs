@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements an EGARCH(p,q) model:
@@ -33,7 +33,7 @@ use crate::stochastic::ProcessExt;
 /// 1. We assume that `alpha` and `gamma` each have length \(p\).
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
-pub struct EGARCH<T: Float> {
+pub struct EGARCH<T: FloatExt> {
   /// Constant term (\(\omega\)) in log-variance
   pub omega: T,
   /// Magnitude effect coefficients (\(\alpha_1, \ldots, \alpha_p\))
@@ -47,7 +47,7 @@ pub struct EGARCH<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> EGARCH<T> {
+impl<T: FloatExt> EGARCH<T> {
   /// Create a new EGARCH model with the given parameters.
   pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
     Self {
@@ -61,7 +61,7 @@ impl<T: Float> EGARCH<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for EGARCH<T> {
+impl<T: FloatExt> ProcessExt<T> for EGARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

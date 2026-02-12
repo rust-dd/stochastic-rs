@@ -1,12 +1,12 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
-pub struct Kimura<T: Float> {
+pub struct Kimura<T: FloatExt> {
   pub a: T,
   pub sigma: T,
   pub n: usize,
@@ -15,7 +15,7 @@ pub struct Kimura<T: Float> {
   pub gn: Gn<T>,
 }
 
-impl<T: Float> Kimura<T> {
+impl<T: FloatExt> Kimura<T> {
   pub fn new(a: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Kimura {
       a,
@@ -28,7 +28,7 @@ impl<T: Float> Kimura<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for Kimura<T> {
+impl<T: FloatExt> ProcessExt<T> for Kimura<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

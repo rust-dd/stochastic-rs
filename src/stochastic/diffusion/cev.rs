@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct CEV<T: Float> {
+pub struct CEV<T: FloatExt> {
   pub mu: T,
   pub sigma: T,
   pub gamma: T,
@@ -14,7 +14,7 @@ pub struct CEV<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> CEV<T> {
+impl<T: FloatExt> CEV<T> {
   fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
       mu,
@@ -28,7 +28,7 @@ impl<T: Float> CEV<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for CEV<T> {
+impl<T: FloatExt> ProcessExt<T> for CEV<T> {
   type Output = Array1<T>;
 
   /// Sample the CEV process
@@ -49,7 +49,7 @@ impl<T: Float> ProcessExt<T> for CEV<T> {
   }
 }
 
-impl<T: Float> CEV<T> {
+impl<T: FloatExt> CEV<T> {
   /// Calculate the Malliavin derivative of the CEV process
   ///
   /// The Malliavin derivative of the CEV process is given by

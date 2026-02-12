@@ -7,13 +7,13 @@ use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::stats::non_central_chi_squared;
 use crate::stochastic::process::poisson::Poisson;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// CGMY Stochastic Volatility process
 ///
 /// https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf
-pub struct SVCGMY<T: Float> {
+pub struct SVCGMY<T: FloatExt> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -39,7 +39,7 @@ pub struct SVCGMY<T: Float> {
   pub t: Option<T>,
 }
 
-impl<T: Float> SVCGMY<T> {
+impl<T: FloatExt> SVCGMY<T> {
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -71,7 +71,7 @@ impl<T: Float> SVCGMY<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for SVCGMY<T> {
+impl<T: FloatExt> ProcessExt<T> for SVCGMY<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

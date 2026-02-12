@@ -1,11 +1,11 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct OU<T: Float> {
+pub struct OU<T: FloatExt> {
   pub theta: T,
   pub mu: T,
   pub sigma: T,
@@ -15,7 +15,7 @@ pub struct OU<T: Float> {
   pub gn: Gn<T>,
 }
 
-impl<T: Float> OU<T> {
+impl<T: FloatExt> OU<T> {
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     OU {
       theta,
@@ -29,7 +29,7 @@ impl<T: Float> OU<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for OU<T> {
+impl<T: FloatExt> ProcessExt<T> for OU<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

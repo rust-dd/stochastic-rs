@@ -6,7 +6,7 @@ use rand_distr::Distribution;
 use wide::i32x8;
 use wide::CmpLt;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 
 struct ZigTables {
   kn: [i32; 128],
@@ -68,7 +68,7 @@ fn zig_tables() -> &'static ZigTables {
 }
 
 #[inline(never)]
-fn nfix<T: SimdFloat, R: Rng + ?Sized>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut R) -> T {
+fn nfix<T: SimdFloatExt, R: Rng + ?Sized>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut R) -> T {
   const R_TAIL: f64 = 3.442620;
   let mut hz = hz;
   let mut iz = iz;
@@ -115,14 +115,14 @@ fn nfix<T: SimdFloat, R: Rng + ?Sized>(hz: i32, iz: usize, tables: &ZigTables, r
 /// The const generic `N` controls the internal buffer size for `sample()` calls.
 /// Larger values reduce per-sample overhead but use more stack space.
 /// `fill_slice()` bypasses the buffer entirely.
-pub struct SimdNormal<T: SimdFloat, const N: usize = 64> {
+pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64> {
   mean: T,
   std_dev: T,
   buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat, const N: usize> SimdNormal<T, N> {
+impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   pub fn new(mean: T, std_dev: T) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
@@ -225,7 +225,7 @@ impl<T: SimdFloat, const N: usize> SimdNormal<T, N> {
   }
 }
 
-impl<T: SimdFloat, const N: usize> Distribution<T> for SimdNormal<T, N> {
+impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdNormal<T, N> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= N {

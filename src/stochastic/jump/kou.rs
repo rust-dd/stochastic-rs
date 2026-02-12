@@ -3,7 +3,7 @@ use rand_distr::Distribution;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Kou process
@@ -12,7 +12,7 @@ use crate::stochastic::ProcessExt;
 ///
 pub struct KOU<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub alpha: T,
@@ -28,7 +28,7 @@ where
 
 impl<T, D> KOU<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   /// Create a new Kou process
@@ -58,7 +58,7 @@ where
 
 impl<T, D> ProcessExt<T> for KOU<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;

@@ -1,12 +1,12 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Inhomogeneous GBM with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
-pub struct GBMIH<T: Float> {
+pub struct GBMIH<T: FloatExt> {
   pub mu: T,
   /// Baseline sigma used when `sigmas` is None
   pub sigma: T,
@@ -18,7 +18,7 @@ pub struct GBMIH<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> GBMIH<T> {
+impl<T: FloatExt> GBMIH<T> {
   /// Create a new GBMIH instance with the given parameters.
   pub fn new(
     mu: T,
@@ -44,7 +44,7 @@ impl<T: Float> GBMIH<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for GBMIH<T> {
+impl<T: FloatExt> ProcessExt<T> for GBMIH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {

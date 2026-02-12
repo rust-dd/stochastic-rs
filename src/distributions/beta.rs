@@ -4,9 +4,9 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use super::gamma::SimdGamma;
-use super::SimdFloat;
+use super::SimdFloatExt;
 
-pub struct SimdBeta<T: SimdFloat> {
+pub struct SimdBeta<T: SimdFloatExt> {
   alpha: T,
   beta: T,
   gamma1: SimdGamma<T>,
@@ -15,7 +15,7 @@ pub struct SimdBeta<T: SimdFloat> {
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdBeta<T> {
+impl<T: SimdFloatExt> SimdBeta<T> {
   pub fn new(alpha: T, beta: T) -> Self {
     assert!(alpha > T::zero() && beta > T::zero());
     Self {
@@ -60,7 +60,7 @@ impl<T: SimdFloat> SimdBeta<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdBeta<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdBeta<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

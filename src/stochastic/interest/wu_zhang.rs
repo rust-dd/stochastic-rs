@@ -20,10 +20,10 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct WuZhangD<T: Float> {
+pub struct WuZhangD<T: FloatExt> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
   /// Mean reversion speed for each dimension's volatility.
@@ -45,7 +45,7 @@ pub struct WuZhangD<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> WuZhangD<T> {
+impl<T: FloatExt> WuZhangD<T> {
   pub fn new(
     alpha: Array1<T>,
     beta: Array1<T>,
@@ -72,7 +72,7 @@ impl<T: Float> WuZhangD<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for WuZhangD<T> {
+impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

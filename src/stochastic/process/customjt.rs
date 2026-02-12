@@ -6,12 +6,12 @@ use ndarray_rand::RandomExt;
 use rand::rng;
 use rand_distr::Distribution;
 
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 pub struct CustomJt<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub n: Option<usize>,
@@ -21,7 +21,7 @@ where
 
 impl<T, D> CustomJt<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D) -> Self {
@@ -35,7 +35,7 @@ where
 
 impl<T, D> ProcessExt<T> for CustomJt<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;

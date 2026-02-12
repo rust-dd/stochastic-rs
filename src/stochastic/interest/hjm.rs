@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct HJM<T: Float> {
+pub struct HJM<T: FloatExt> {
   pub a: fn(T) -> T,
   pub b: fn(T) -> T,
   pub p: fn(T, T) -> T,
@@ -20,7 +20,7 @@ pub struct HJM<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> HJM<T> {
+impl<T: FloatExt> HJM<T> {
   pub fn new(
     a: fn(T) -> T,
     b: fn(T) -> T,
@@ -53,7 +53,7 @@ impl<T: Float> HJM<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for HJM<T> {
+impl<T: FloatExt> ProcessExt<T> for HJM<T> {
   type Output = [Array1<T>; 3];
 
   fn sample(&self) -> Self::Output {

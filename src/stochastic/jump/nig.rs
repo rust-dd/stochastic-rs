@@ -3,10 +3,10 @@ use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct NIG<T: Float> {
+pub struct NIG<T: FloatExt> {
   pub theta: T,
   pub sigma: T,
   pub kappa: T,
@@ -17,10 +17,10 @@ pub struct NIG<T: Float> {
   gn: Gn<T>,
 }
 
-unsafe impl<T: Float> Send for NIG<T> {}
-unsafe impl<T: Float> Sync for NIG<T> {}
+unsafe impl<T: FloatExt> Send for NIG<T> {}
+unsafe impl<T: FloatExt> Sync for NIG<T> {}
 
-impl<T: Float> NIG<T> {
+impl<T: FloatExt> NIG<T> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     let gn = Gn::new(n - 1, t);
     let dt = gn.dt();
@@ -41,7 +41,7 @@ impl<T: Float> NIG<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for NIG<T> {
+impl<T: FloatExt> ProcessExt<T> for NIG<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

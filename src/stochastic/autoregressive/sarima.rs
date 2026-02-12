@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements a SARIMA model, often denoted:
@@ -37,7 +37,7 @@ use crate::stochastic::ProcessExt;
 ///    to produce the combined polynomial with cross-terms.
 /// 2. A single-pass SARMA recursion generates the "fully differenced" data.
 /// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
-pub struct SARIMA<T: Float> {
+pub struct SARIMA<T: FloatExt> {
   /// Non-seasonal AR coefficients, length p
   pub non_seasonal_ar_coefs: Array1<T>,
   /// Non-seasonal MA coefficients, length q
@@ -59,7 +59,7 @@ pub struct SARIMA<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> SARIMA<T> {
+impl<T: FloatExt> SARIMA<T> {
   /// Create a new SARIMA model
   pub fn new(
     non_seasonal_ar_coefs: Array1<T>,
@@ -87,7 +87,7 @@ impl<T: Float> SARIMA<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for SARIMA<T> {
+impl<T: FloatExt> ProcessExt<T> for SARIMA<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -141,7 +141,7 @@ impl<T: Float> ProcessExt<T> for SARIMA<T> {
   }
 }
 
-impl<T: Float> SARIMA<T> {
+impl<T: FloatExt> SARIMA<T> {
   /// Multiply the non-seasonal AR polynomial φ(B) with the seasonal AR polynomial Φ(Bˢ).
   ///
   /// φ(B) = 1 - φ_1 B - ... - φ_p B^p

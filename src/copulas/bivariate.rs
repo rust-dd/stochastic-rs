@@ -25,7 +25,7 @@ pub enum CopulaType {
   Independence,
 }
 
-pub trait Bivariate {
+pub trait BivariateExt {
   fn r#type(&self) -> CopulaType;
 
   fn tau(&self) -> Option<f64>;

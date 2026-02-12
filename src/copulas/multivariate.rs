@@ -13,7 +13,7 @@ pub enum CopulaType {
   Vine,
 }
 
-pub trait Multivariate {
+pub trait MultivariateExt {
   fn r#type(&self) -> CopulaType;
 
   fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>>;

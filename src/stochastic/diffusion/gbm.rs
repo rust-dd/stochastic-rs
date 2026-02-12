@@ -8,10 +8,10 @@ use statrs::statistics::Mode;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::DistributionExt;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct GBM<T: Float> {
+pub struct GBM<T: FloatExt> {
   pub mu: T,
   pub sigma: T,
   pub n: usize,
@@ -21,7 +21,7 @@ pub struct GBM<T: Float> {
   distribution: Option<LogNormal>,
 }
 
-impl<T: Float> GBM<T> {
+impl<T: FloatExt> GBM<T> {
   pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
     let mu_f64 = mu.to_f64().unwrap();
@@ -43,7 +43,7 @@ impl<T: Float> GBM<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for GBM<T> {
+impl<T: FloatExt> ProcessExt<T> for GBM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -61,7 +61,7 @@ impl<T: Float> ProcessExt<T> for GBM<T> {
   }
 }
 
-impl<T: Float> GBM<T> {
+impl<T: FloatExt> GBM<T> {
   /// Malliavin derivative of the GBM process
   ///
   /// The Malliavin derivative of the GBM process is given by
@@ -82,7 +82,7 @@ impl<T: Float> GBM<T> {
   }
 }
 
-impl<T: Float> DistributionExt for GBM<T> {
+impl<T: FloatExt> DistributionExt for GBM<T> {
   fn pdf(&self, x: f64) -> f64 {
     self.distribution.as_ref().map_or(0.0, |d| d.pdf(x))
   }

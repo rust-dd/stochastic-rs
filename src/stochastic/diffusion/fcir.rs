@@ -1,13 +1,13 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Fractional Cox-Ingersoll-Ross (FCIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the FCIR process.
-pub struct FCIR<T: Float> {
+pub struct FCIR<T: FloatExt> {
   pub hurst: T,
   pub theta: T,
   pub mu: T,
@@ -19,7 +19,7 @@ pub struct FCIR<T: Float> {
   fgn: FGN<T>,
 }
 
-impl<T: Float> FCIR<T> {
+impl<T: FloatExt> FCIR<T> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -50,7 +50,7 @@ impl<T: Float> FCIR<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FCIR<T> {
+impl<T: FloatExt> ProcessExt<T> for FCIR<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

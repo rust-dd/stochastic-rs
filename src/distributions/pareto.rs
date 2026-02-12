@@ -3,16 +3,16 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 
-pub struct SimdPareto<T: SimdFloat> {
+pub struct SimdPareto<T: SimdFloatExt> {
   x_m: T,
   alpha: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdPareto<T> {
+impl<T: SimdFloatExt> SimdPareto<T> {
   pub fn new(x_m: T, alpha: T) -> Self {
     assert!(x_m > T::zero() && alpha > T::zero());
     Self {
@@ -56,7 +56,7 @@ impl<T: SimdFloat> SimdPareto<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdPareto<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

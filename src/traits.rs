@@ -1,0 +1,11 @@
+pub use crate::copulas::bivariate::BivariateExt;
+pub use crate::copulas::multivariate::MultivariateExt;
+pub use crate::copulas::samples::NCopula2DExt;
+pub use crate::distributions::SimdFloatExt;
+pub use crate::quant::traits::PricerExt;
+pub use crate::quant::traits::TimeExt;
+pub use crate::stochastic::malliavin::malliavin_1d::MalliavinExt;
+pub use crate::stochastic::malliavin::malliavin_2d::Malliavin2DExt;
+pub use crate::stochastic::DistributionExt;
+pub use crate::stochastic::FloatExt;
+pub use crate::stochastic::ProcessExt;

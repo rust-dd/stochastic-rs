@@ -3,10 +3,10 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 use super::normal::SimdNormal;
 
-pub struct SimdLogNormal<T: SimdFloat> {
+pub struct SimdLogNormal<T: SimdFloatExt> {
   mu: T,
   sigma: T,
   buffer: UnsafeCell<[T; 16]>,
@@ -14,7 +14,7 @@ pub struct SimdLogNormal<T: SimdFloat> {
   normal: SimdNormal<T>,
 }
 
-impl<T: SimdFloat> SimdLogNormal<T> {
+impl<T: SimdFloatExt> SimdLogNormal<T> {
   pub fn new(mu: T, sigma: T) -> Self {
     assert!(sigma > T::zero());
     Self {
@@ -74,7 +74,7 @@ impl<T: SimdFloat> SimdLogNormal<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdLogNormal<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdLogNormal<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

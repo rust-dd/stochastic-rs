@@ -2,14 +2,14 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use super::gamma::SimdGamma;
-use super::SimdFloat;
+use super::SimdFloatExt;
 
-pub struct SimdChiSquared<T: SimdFloat> {
+pub struct SimdChiSquared<T: SimdFloatExt> {
   df: T,
   gamma: SimdGamma<T>,
 }
 
-impl<T: SimdFloat> SimdChiSquared<T> {
+impl<T: SimdFloatExt> SimdChiSquared<T> {
   pub fn new(k: T) -> Self {
     Self {
       df: k,
@@ -22,7 +22,7 @@ impl<T: SimdFloat> SimdChiSquared<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdChiSquared<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdChiSquared<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     self.gamma.sample(rng)
   }

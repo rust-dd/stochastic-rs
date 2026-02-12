@@ -24,7 +24,7 @@ use rand_distr::Distribution;
 
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 // CUDA type for complex numbers
@@ -61,7 +61,7 @@ impl Drop for CudaContext {
 #[cfg(feature = "cuda")]
 static CUDA_CONTEXT: Mutex<Option<CudaContext>> = Mutex::new(None);
 
-pub struct FGN<T: Float> {
+pub struct FGN<T: FloatExt> {
   pub hurst: T,
   pub n: usize,
   pub t: Option<T>,
@@ -70,13 +70,13 @@ pub struct FGN<T: Float> {
   pub fft_handler: Arc<FftHandler<T>>,
 }
 
-impl<T: Float> FGN<T> {
+impl<T: FloatExt> FGN<T> {
   pub fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
   }
 }
 
-impl<T: Float> FGN<T> {
+impl<T: FloatExt> FGN<T> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
     if !(T::zero()..=T::one()).contains(&hurst) {
@@ -157,7 +157,7 @@ impl<T: Float> FGN<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FGN<T> {
+impl<T: FloatExt> ProcessExt<T> for FGN<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

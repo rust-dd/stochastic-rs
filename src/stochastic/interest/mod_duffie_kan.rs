@@ -34,10 +34,10 @@ use rand_distr::Distribution;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::normal::SimdNormal;
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct DuffieKanJumpExp<T: Float> {
+pub struct DuffieKanJumpExp<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -68,10 +68,10 @@ pub struct DuffieKanJumpExp<T: Float> {
   cgns: CGNS<T>,
 }
 
-unsafe impl<T: Float> Send for DuffieKanJumpExp<T> {}
-unsafe impl<T: Float> Sync for DuffieKanJumpExp<T> {}
+unsafe impl<T: FloatExt> Send for DuffieKanJumpExp<T> {}
+unsafe impl<T: FloatExt> Sync for DuffieKanJumpExp<T> {}
 
-impl<T: Float> DuffieKanJumpExp<T> {
+impl<T: FloatExt> DuffieKanJumpExp<T> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -119,7 +119,7 @@ impl<T: Float> DuffieKanJumpExp<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for DuffieKanJumpExp<T> {
+impl<T: FloatExt> ProcessExt<T> for DuffieKanJumpExp<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

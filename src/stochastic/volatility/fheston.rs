@@ -2,10 +2,10 @@ use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct RoughHeston<T: Float> {
+pub struct RoughHeston<T: FloatExt> {
   pub hurst: T,
   pub v0: Option<T>,
   pub theta: T,
@@ -18,7 +18,7 @@ pub struct RoughHeston<T: Float> {
   gn: Gn<T>,
 }
 
-impl<T: Float> RoughHeston<T> {
+impl<T: FloatExt> RoughHeston<T> {
   pub fn new(
     hurst: T,
     v0: Option<T>,
@@ -45,7 +45,7 @@ impl<T: Float> RoughHeston<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for RoughHeston<T> {
+impl<T: FloatExt> ProcessExt<T> for RoughHeston<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

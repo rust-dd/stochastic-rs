@@ -7,7 +7,7 @@ use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
 use super::CopulaType;
-use super::Multivariate;
+use super::MultivariateExt;
 use crate::copulas::correlation::kendall_tau;
 
 #[derive(Debug, Clone, Default)]
@@ -85,7 +85,7 @@ impl VineMultivariate {
   }
 }
 
-impl Multivariate for VineMultivariate {
+impl MultivariateExt for VineMultivariate {
   fn r#type(&self) -> CopulaType {
     CopulaType::Vine
   }

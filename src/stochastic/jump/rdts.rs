@@ -6,12 +6,12 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::stochastic::process::poisson::Poisson;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// RDTS process (Rapidly Decreasing Tempered Stable process)
 /// https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015
-pub struct RDTS<T: Float> {
+pub struct RDTS<T: FloatExt> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -28,7 +28,7 @@ pub struct RDTS<T: Float> {
   pub t: Option<T>,
 }
 
-impl<T: Float> RDTS<T> {
+impl<T: FloatExt> RDTS<T> {
   /// Create a new RDTS process
   pub fn new(
     lambda_plus: T,
@@ -51,7 +51,7 @@ impl<T: Float> RDTS<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for RDTS<T> {
+impl<T: FloatExt> ProcessExt<T> for RDTS<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::diffusion::ou::OU;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct Vasicek<T: Float> {
+pub struct Vasicek<T: FloatExt> {
   pub theta: T,
   pub mu: T,
   pub sigma: T,
@@ -14,7 +14,7 @@ pub struct Vasicek<T: Float> {
   ou: OU<T>,
 }
 
-impl<T: Float> Vasicek<T> {
+impl<T: FloatExt> Vasicek<T> {
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
       mu,
@@ -28,7 +28,7 @@ impl<T: Float> Vasicek<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for Vasicek<T> {
+impl<T: FloatExt> ProcessExt<T> for Vasicek<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

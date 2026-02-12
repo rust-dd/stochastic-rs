@@ -5,7 +5,7 @@ use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::copulas::bivariate::Bivariate;
+use crate::copulas::bivariate::BivariateExt;
 use crate::copulas::bivariate::CopulaType;
 
 #[derive(Debug, Clone)]
@@ -29,7 +29,7 @@ impl Frank {
   }
 }
 
-impl Bivariate for Frank {
+impl BivariateExt for Frank {
   fn r#type(&self) -> CopulaType {
     self.r#type
   }
@@ -106,7 +106,7 @@ impl Bivariate for Frank {
       return Ok(V.clone());
     }
 
-    let out = Bivariate::percent_point(self, y, V)?;
+    let out = BivariateExt::percent_point(self, y, V)?;
     Ok(out)
   }
 

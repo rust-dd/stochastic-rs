@@ -3,9 +3,9 @@ use rand_distr::Distribution;
 
 use crate::distributions::chi_square::SimdChiSquared;
 use crate::distributions::normal::SimdNormal;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 
-pub fn sample<T: Float>(df: T, lambda: T, rng: &mut impl Rng) -> T {
+pub fn sample<T: FloatExt>(df: T, lambda: T, rng: &mut impl Rng) -> T {
   let chi_squared = SimdChiSquared::new(df);
   let y = chi_squared.sample(rng);
 

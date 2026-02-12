@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use super::fgn::FGN;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct CFGNS<T: Float> {
+pub struct CFGNS<T: FloatExt> {
   pub hurst: T,
   pub rho: T,
   pub n: usize,
@@ -12,7 +12,7 @@ pub struct CFGNS<T: Float> {
   fgn: FGN<T>,
 }
 
-impl<T: Float> CFGNS<T> {
+impl<T: FloatExt> CFGNS<T> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
@@ -33,7 +33,7 @@ impl<T: Float> CFGNS<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for CFGNS<T> {
+impl<T: FloatExt> ProcessExt<T> for CFGNS<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

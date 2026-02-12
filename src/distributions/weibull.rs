@@ -3,16 +3,16 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloat;
+use super::SimdFloatExt;
 
-pub struct SimdWeibull<T: SimdFloat> {
+pub struct SimdWeibull<T: SimdFloatExt> {
   lambda: T,
   k: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
-impl<T: SimdFloat> SimdWeibull<T> {
+impl<T: SimdFloatExt> SimdWeibull<T> {
   pub fn new(lambda: T, k: T) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
     Self {
@@ -55,7 +55,7 @@ impl<T: SimdFloat> SimdWeibull<T> {
   }
 }
 
-impl<T: SimdFloat> Distribution<T> for SimdWeibull<T> {
+impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

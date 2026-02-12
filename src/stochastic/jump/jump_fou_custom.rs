@@ -2,12 +2,12 @@ use ndarray::Array1;
 use rand_distr::Distribution;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 pub struct JumpFOUCustom<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub hurst: T,
@@ -24,7 +24,7 @@ where
 
 impl<T, D> JumpFOUCustom<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub fn new(
@@ -55,7 +55,7 @@ where
 
 impl<T, D> ProcessExt<T> for JumpFOUCustom<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;

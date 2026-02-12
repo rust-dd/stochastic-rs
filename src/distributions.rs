@@ -34,7 +34,7 @@ fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
   }
 }
 
-pub trait SimdFloat: num_traits::Float + Default + Send + Sync + 'static {
+pub trait SimdFloatExt: num_traits::Float + Default + Send + Sync + 'static {
   type Simd: Copy
     + std::ops::Mul<Output = Self::Simd>
     + std::ops::Add<Output = Self::Simd>
@@ -63,7 +63,7 @@ pub trait SimdFloat: num_traits::Float + Default + Send + Sync + 'static {
   fn min_positive_val() -> Self;
 }
 
-impl SimdFloat for f32 {
+impl SimdFloatExt for f32 {
   type Simd = f32x8;
 
   fn splat(val: f32) -> f32x8 {
@@ -144,7 +144,7 @@ impl SimdFloat for f32 {
   }
 }
 
-impl SimdFloat for f64 {
+impl SimdFloatExt for f64 {
   type Simd = f64x8;
 
   fn splat(val: f64) -> f64x8 {

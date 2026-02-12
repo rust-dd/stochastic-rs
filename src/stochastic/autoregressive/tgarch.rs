@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements a general T-GARCH (GJR-GARCH)(p,q) model:
@@ -27,7 +27,7 @@ use crate::stochastic::ProcessExt;
 /// # Notes
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
-pub struct TGARCH<T: Float> {
+pub struct TGARCH<T: FloatExt> {
   pub omega: T,
   pub alpha: Array1<T>,
   pub gamma: Array1<T>,
@@ -36,7 +36,7 @@ pub struct TGARCH<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> TGARCH<T> {
+impl<T: FloatExt> TGARCH<T> {
   pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
     Self {
       omega,
@@ -49,7 +49,7 @@ impl<T: Float> TGARCH<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for TGARCH<T> {
+impl<T: FloatExt> ProcessExt<T> for TGARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

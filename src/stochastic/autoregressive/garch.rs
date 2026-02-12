@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements a general GARCH(p,q) model.
@@ -24,7 +24,7 @@ use crate::stochastic::ProcessExt;
 /// # Notes
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
 /// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
-pub struct GARCH<T: Float> {
+pub struct GARCH<T: FloatExt> {
   pub omega: T,
   pub alpha: Array1<T>,
   pub beta: Array1<T>,
@@ -32,7 +32,7 @@ pub struct GARCH<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> GARCH<T> {
+impl<T: FloatExt> GARCH<T> {
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize) -> Self {
     GARCH {
       omega,
@@ -44,7 +44,7 @@ impl<T: Float> GARCH<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for GARCH<T> {
+impl<T: FloatExt> ProcessExt<T> for GARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

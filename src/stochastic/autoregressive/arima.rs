@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements an ARIMA(p, d, q) process using explicit backshift notation:
@@ -11,7 +11,7 @@ use crate::stochastic::ProcessExt;
 /// \]
 /// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
 /// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
-pub struct ARIMA<T: Float> {
+pub struct ARIMA<T: FloatExt> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
   pub ar_coefs: Array1<T>,
   /// MA coefficients (\(\theta_1,\dots,\theta_q\)) as an Array1
@@ -25,7 +25,7 @@ pub struct ARIMA<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> ARIMA<T> {
+impl<T: FloatExt> ARIMA<T> {
   /// Create a new ARIMA model with the given parameters.
   pub fn new(ar_coefs: Array1<T>, ma_coefs: Array1<T>, d: usize, sigma: T, n: usize) -> Self {
     Self {
@@ -39,7 +39,7 @@ impl<T: Float> ARIMA<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for ARIMA<T> {
+impl<T: FloatExt> ProcessExt<T> for ARIMA<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -78,7 +78,7 @@ impl<T: Float> ProcessExt<T> for ARIMA<T> {
   }
 }
 
-impl<T: Float> ARIMA<T> {
+impl<T: FloatExt> ARIMA<T> {
   /// Inverse differencing once, converting Y into X:
   /// X[0] = Y[0],  X[t] = X[t-1] + Y[t], for t=1..(n-1).
   fn inverse_difference(y: &Array1<T>) -> Array1<T> {

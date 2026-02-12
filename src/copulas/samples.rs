@@ -10,7 +10,7 @@ use statrs::distribution::MultivariateNormal;
 use statrs::distribution::Normal;
 
 /// A simple trait for 2D copulas: requires only a `sample` method and `get_params`.
-pub trait NCopula2D {
+pub trait NCopula2DExt {
   /// Generate `n` samples in [0,1]^2, returning them as an (n x 2) matrix.
   fn sample(&self, n: usize) -> Array2<f64>;
 
@@ -63,7 +63,7 @@ pub struct GaussianCopula2D {
   pub cov: Array2<f64>,
 }
 
-impl NCopula2D for GaussianCopula2D {
+impl NCopula2DExt for GaussianCopula2D {
   fn sample(&self, n: usize) -> Array2<f64> {
     // Flatten the 2x2 covariance
     let cov_flat = vec![
@@ -115,7 +115,7 @@ pub struct GumbelCopula2D {
   pub alpha: f64,
 }
 
-impl NCopula2D for GumbelCopula2D {
+impl NCopula2DExt for GumbelCopula2D {
   fn sample(&self, n: usize) -> Array2<f64> {
     let alpha = self.alpha;
     assert!(alpha >= 1.0, "The Gumbel parameter (alpha) must be >= 1!");
@@ -155,7 +155,7 @@ pub struct ClaytonCopula2D {
   pub alpha: f64,
 }
 
-impl NCopula2D for ClaytonCopula2D {
+impl NCopula2DExt for ClaytonCopula2D {
   fn sample(&self, n: usize) -> Array2<f64> {
     let alpha = self.alpha;
     assert!(alpha > 0.0, "The Clayton parameter (alpha) must be > 0!");

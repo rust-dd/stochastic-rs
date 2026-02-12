@@ -4,12 +4,12 @@ use rand::rng;
 use rand_distr::Distribution;
 
 use super::poisson::Poisson;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 pub struct CompoundPoisson<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub distribution: D,
@@ -18,7 +18,7 @@ where
 
 impl<T, D> CompoundPoisson<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub fn new(distribution: D, poisson: Poisson<T>) -> Self {
@@ -31,7 +31,7 @@ where
 
 impl<T, D> ProcessExt<T> for CompoundPoisson<T, D>
 where
-  T: Float,
+  T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   type Output = [Array1<T>; 3];

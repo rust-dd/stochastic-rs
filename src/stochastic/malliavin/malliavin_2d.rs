@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 
-pub trait Malliavin2D<T: Float> {
+pub trait Malliavin2DExt<T: FloatExt> {
   /// Build paths from given noise increments.
   fn sample_with_noise(&self, noise: &[Array1<T>; 2]) -> [Array1<T>; 2];
 

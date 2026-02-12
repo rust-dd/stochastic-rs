@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// A generic Asymmetric GARCH(p,q) model (A-GARCH),
@@ -28,7 +28,7 @@ use crate::stochastic::ProcessExt;
 /// # Notes
 /// - This is essentially a T-GARCH-like structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
-pub struct AGARCH<T: Float> {
+pub struct AGARCH<T: FloatExt> {
   pub omega: T,
   pub alpha: Array1<T>,
   pub delta: Array1<T>,
@@ -37,7 +37,7 @@ pub struct AGARCH<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> AGARCH<T> {
+impl<T: FloatExt> AGARCH<T> {
   pub fn new(omega: T, alpha: Array1<T>, delta: Array1<T>, beta: Array1<T>, n: usize) -> Self {
     Self {
       omega,
@@ -50,7 +50,7 @@ impl<T: Float> AGARCH<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for AGARCH<T> {
+impl<T: FloatExt> ProcessExt<T> for AGARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

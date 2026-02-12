@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements an ARCH(m) model:
@@ -16,7 +16,7 @@ use crate::stochastic::ProcessExt;
 /// - `alpha`: Array of ARCH coefficients.
 /// - `n`: Number of observations.
 /// - `m`: Optional batch size.
-pub struct ARCH<T: Float> {
+pub struct ARCH<T: FloatExt> {
   /// Omega (constant term in variance)
   pub omega: T,
   /// Coefficients alpha_i
@@ -26,7 +26,7 @@ pub struct ARCH<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> ARCH<T> {
+impl<T: FloatExt> ARCH<T> {
   /// Create a new ARCH model.
   pub fn new(omega: T, alpha: Array1<T>, n: usize) -> Self {
     Self {
@@ -38,7 +38,7 @@ impl<T: Float> ARCH<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for ARCH<T> {
+impl<T: FloatExt> ProcessExt<T> for ARCH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

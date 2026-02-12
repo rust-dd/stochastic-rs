@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub trait Malliavin<T: Float> {
+pub trait MalliavinExt<T: FloatExt> {
   /// Build a path from given noise increments.
   fn sample_with_noise(&self, noise: &Array1<T>) -> Array1<T>;
 

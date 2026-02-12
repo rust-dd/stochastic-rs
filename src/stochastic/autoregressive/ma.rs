@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
 /// Implements an MA(q) model:
@@ -16,7 +16,7 @@ use crate::stochastic::ProcessExt;
 /// - `sigma`: Standard deviation of noise \(\epsilon_t\).
 /// - `n`: Length of time series.
 /// - `m`: Optional batch size.
-pub struct MAq<T: Float> {
+pub struct MAq<T: FloatExt> {
   /// MA coefficients
   pub theta: Array1<T>,
   /// Noise std dev
@@ -26,7 +26,7 @@ pub struct MAq<T: Float> {
   wn: Wn<T>,
 }
 
-impl<T: Float> MAq<T> {
+impl<T: FloatExt> MAq<T> {
   /// Create a new MA(q) model with the given parameters.
   pub fn new(theta: Array1<T>, sigma: T, n: usize) -> Self {
     Self {
@@ -38,7 +38,7 @@ impl<T: Float> MAq<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for MAq<T> {
+impl<T: FloatExt> ProcessExt<T> for MAq<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -21,3 +21,4 @@ pub mod distributions;
 pub mod quant;
 pub mod stats;
 pub mod stochastic;
+pub mod traits;

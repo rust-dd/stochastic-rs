@@ -9,7 +9,7 @@ use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
 use super::CopulaType;
-use super::Multivariate;
+use super::MultivariateExt;
 
 #[derive(Debug, Clone, Default)]
 pub struct GaussianMultivariate {
@@ -177,7 +177,7 @@ impl GaussianMultivariate {
   }
 }
 
-impl Multivariate for GaussianMultivariate {
+impl MultivariateExt for GaussianMultivariate {
   fn r#type(&self) -> CopulaType {
     CopulaType::Gaussian
   }

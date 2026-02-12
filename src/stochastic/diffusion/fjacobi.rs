@@ -1,10 +1,10 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::Float;
+use crate::stochastic::FloatExt;
 use crate::stochastic::ProcessExt;
 
-pub struct FJacobi<T: Float> {
+pub struct FJacobi<T: FloatExt> {
   pub hurst: T,
   pub alpha: T,
   pub beta: T,
@@ -15,7 +15,7 @@ pub struct FJacobi<T: Float> {
   fgn: FGN<T>,
 }
 
-impl<T: Float> FJacobi<T> {
+impl<T: FloatExt> FJacobi<T> {
   #[must_use]
   pub fn new(hurst: T, alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(alpha > T::zero(), "alpha must be positive");
@@ -36,7 +36,7 @@ impl<T: Float> FJacobi<T> {
   }
 }
 
-impl<T: Float> ProcessExt<T> for FJacobi<T> {
+impl<T: FloatExt> ProcessExt<T> for FJacobi<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
