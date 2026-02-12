@@ -200,7 +200,7 @@ impl<T: Float> ProcessExt<T> for FGN<T> {
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
-    let t = self.t.unwrap_or(1.0.into()).to_f64().unwrap();
+    let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
     // Scale factor: n^(-H) * t^H, same as CPU
     let scale = (n as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
     let out_size = n - offset;
@@ -224,10 +224,14 @@ impl<T: Float> ProcessExt<T> for FGN<T> {
         *guard = None;
       }
 
-      #[cfg(target_os = "windows")]
-      let lib = unsafe { Library::new("src/stochastic/cuda/fgn_windows/fgn.dll") }?;
-      #[cfg(target_os = "linux")]
-      let lib = unsafe { Library::new("src/stochastic/cuda/fgn_linux/libfgn.so") }?;
+      let lib_path = if cfg!(target_os = "windows") {
+        "src/stochastic/cuda/fgn_windows/fgn.dll"
+      } else if cfg!(target_os = "linux") {
+        "src/stochastic/cuda/fgn_linux/libfgn.so"
+      } else {
+        anyhow::bail!("CUDA FGN is only supported on Windows and Linux")
+      };
+      let lib = unsafe { Library::new(lib_path) }?;
 
       // Get function pointers
       let fgn_init: Symbol<FgnInitFn> = unsafe { lib.get(b"fgn_init") }?;

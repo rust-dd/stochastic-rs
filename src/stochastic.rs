@@ -138,7 +138,9 @@ pub trait ProcessExt<T: Float>: Send + Sync {
   }
 
   #[cfg(feature = "cuda")]
-  fn sample_cuda(&self, m: usize) -> Result<Either<Array1<f64>, Array2<f64>>>;
+  fn sample_cuda(&self, _m: usize) -> Result<Either<Array1<f64>, Array2<f64>>> {
+    anyhow::bail!("CUDA sampling is not supported for this process")
+  }
 }
 
 /// Provides analytical functions of the distribution (pdf, cdf, etc)
