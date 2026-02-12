@@ -1,4 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::hint::black_box;
+
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::BenchmarkId;
+use criterion::Criterion;
 use rand_distr::Distribution;
 use stochastic_rs::distributions::beta::SimdBeta;
 use stochastic_rs::distributions::cauchy::SimdCauchy;
