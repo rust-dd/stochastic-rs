@@ -42,7 +42,6 @@ ndarray-stats = "0.7.0"
 ndrustfft = "0.6.2"
 num-complex = { version = "0.4.6", features = ["rand"] }
 num-traits = "0.2.19"
-phastft = "0.3.0"
 ordered-float = "5.0.0"
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 polars = { version = "0.43.1", features = ["lazy"], optional = true }
@@ -65,6 +64,17 @@ yahoo_finance_api = { version = "2.3.0", optional = true }
 parking_lot = "0.12.5"
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+rand = "0.9.2"
+rand_distr = "0.5.1"
+
+[[bench]]
+name = "distributions"
+harness = false
+
+[[bench]]
+name = "fgn_fbm"
+harness = false
 
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]

@@ -16,11 +16,8 @@ use ndarray_rand::RandomExt;
 use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
 use num_complex::Complex;
-use phastft::fft_64;
-use phastft::planner::Direction;
 #[cfg(feature = "cuda")]
 use rand::Rng;
-use rand_distr::Distribution;
 
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
@@ -68,7 +65,11 @@ pub struct FGN<T: FloatExt> {
   pub offset: usize,
   pub sqrt_eigenvalues: Arc<Array1<Complex<T>>>,
   pub fft_handler: Arc<FftHandler<T>>,
+  normal: SimdNormal<T, 64>,
 }
+
+unsafe impl<T: FloatExt> Send for FGN<T> {}
+unsafe impl<T: FloatExt> Sync for FGN<T> {}
 
 impl<T: FloatExt> FGN<T> {
   pub fn dt(&self) -> T {
@@ -115,45 +116,8 @@ impl<T: FloatExt> FGN<T> {
       t,
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
       fft_handler: Arc::new(FftHandler::new(2 * n)),
+      normal: SimdNormal::new(T::zero(), T::one()),
     }
-  }
-
-  /// Sample FGN using PhastFT (requires nightly Rust and `phastft` feature)
-  /// PhastFT is a high-performance FFT library that uses SIMD and is competitive with FFTW
-  pub fn sample_phastft(&self) -> Array1<T> {
-    // Generate random complex numbers
-
-    let rnd = self.sample_rnd(SimdNormal::<T, 64>::new(T::zero(), T::one()));
-
-    // Multiply by sqrt eigenvalues
-    let fgn_complex = &*self.sqrt_eigenvalues * &rnd;
-
-    // PhastFT uses separate real and imaginary arrays
-    let mut reals = fgn_complex
-      .iter()
-      .map(|c| c.re.to_f64().unwrap())
-      .collect::<Vec<_>>();
-    let mut imags = fgn_complex
-      .iter()
-      .map(|c| c.im.to_f64().unwrap())
-      .collect::<Vec<_>>();
-
-    // Perform FFT using PhastFT
-    fft_64(&mut reals, &mut imags, Direction::Forward);
-
-    // Extract real parts and scale
-    let scale =
-      T::from_usize_(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
-    let result = reals[1..self.n - self.offset + 1]
-      .iter()
-      .map(|&x| T::from_f64_fast(x) * scale)
-      .collect();
-
-    Array1::from_vec(result)
-  }
-
-  fn sample_rnd<D: Distribution<T>>(&self, d: D) -> Array1<Complex<T>> {
-    Array1::<Complex<T>>::random(2 * self.n, ComplexDistribution::new(&d, &d))
   }
 }
 
@@ -161,7 +125,10 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let rnd = self.sample_rnd(SimdNormal::<T, 64>::new(T::zero(), T::one()));
+    let rnd = Array1::<Complex<T>>::random(
+      2 * self.n,
+      ComplexDistribution::new(&self.normal, &self.normal),
+    );
 
     let fgn = &*self.sqrt_eigenvalues * &rnd;
     let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
