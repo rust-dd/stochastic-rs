@@ -2,8 +2,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Ahn-Dittmar-Gallant (ADG) model
 pub struct ADG<T: FloatExt> {

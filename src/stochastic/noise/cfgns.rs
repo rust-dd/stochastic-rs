@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use super::fgn::FGN;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct CFGNS<T: FloatExt> {
   pub hurst: T,

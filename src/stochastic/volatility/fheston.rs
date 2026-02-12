@@ -2,8 +2,8 @@ use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct RoughHeston<T: FloatExt> {
   pub hurst: T,

@@ -7,8 +7,8 @@ use ndarray_rand::RandomExt;
 use rand::rng;
 
 use crate::distributions::exp::SimdExp;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct Poisson<T: FloatExt> {

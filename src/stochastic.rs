@@ -55,26 +55,15 @@ pub mod sde;
 pub mod sheet;
 pub mod volatility;
 
-use std::fmt::Debug;
-use std::iter::Sum;
-use std::ops::AddAssign;
-use std::ops::SubAssign;
-
-#[cfg(feature = "cuda")]
-use anyhow::Result;
-#[cfg(feature = "cuda")]
-use either::Either;
-use ndarray::parallel::prelude::*;
 use ndarray::Array1;
-#[cfg(feature = "cuda")]
-use ndarray::Array2;
-use ndarray::ScalarOperand;
 use ndarray_rand::RandomExt;
-use ndrustfft::Zero;
-use num_complex::Complex64;
 
 use crate::distributions::normal::SimdNormal;
-use crate::distributions::SimdFloatExt;
+use crate::traits::FloatExt;
+
+pub use crate::traits::DistributionExt;
+pub use crate::traits::ProcessExt;
+pub use crate::traits::SimdFloatExt;
 
 /// Default number of time steps
 pub const N: usize = 1000;
@@ -84,27 +73,6 @@ pub const X0: f64 = 0.5;
 pub const S0: f64 = 100.0;
 /// Default strike price
 pub const K: f64 = 100.0;
-
-pub trait FloatExt:
-  num_traits::Float
-  + num_traits::FromPrimitive
-  + num_traits::Signed
-  + num_traits::FloatConst
-  + Sum
-  + SimdFloatExt
-  + Zero
-  + Default
-  + Debug
-  + Send
-  + Sync
-  + ScalarOperand
-  + AddAssign
-  + SubAssign
-  + 'static
-{
-  fn from_usize_(n: usize) -> Self;
-  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
-}
 
 impl FloatExt for f64 {
   fn from_usize_(n: usize) -> Self {
@@ -123,85 +91,5 @@ impl FloatExt for f32 {
 
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
     Array1::random(n, SimdNormal::<f32, 64>::new(mean, std_dev))
-  }
-}
-
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
-  type Output: Send;
-
-  fn sample(&self) -> Self::Output;
-
-  // fn sample_with_rng(&self, rng: &mut impl Rng) -> Self::Output;
-
-  fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    (0..m).into_par_iter().map(|_| self.sample()).collect()
-  }
-
-  #[cfg(feature = "cuda")]
-  fn sample_cuda(&self, _m: usize) -> Result<Either<Array1<f64>, Array2<f64>>> {
-    anyhow::bail!("CUDA sampling is not supported for this process")
-  }
-}
-
-/// Provides analytical functions of the distribution (pdf, cdf, etc)
-pub trait DistributionExt {
-  /// Characteristic function of the distribution
-  fn characteristic_function(&self, _t: f64) -> Complex64 {
-    Complex64::new(0.0, 0.0)
-  }
-
-  /// Probability density function of the distribution
-  fn pdf(&self, _x: f64) -> f64 {
-    0.0
-  }
-
-  /// Cumulative distribution function of the distribution
-  fn cdf(&self, _x: f64) -> f64 {
-    0.0
-  }
-
-  /// Inverse cumulative distribution function of the distribution
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    0.0
-  }
-
-  /// Mean of the distribution
-  fn mean(&self) -> f64 {
-    0.0
-  }
-
-  /// Median of the distribution
-  fn median(&self) -> f64 {
-    0.0
-  }
-
-  /// Mode of the distribution
-  fn mode(&self) -> f64 {
-    0.0
-  }
-
-  /// Variance of the distribution
-  fn variance(&self) -> f64 {
-    0.0
-  }
-
-  /// Skewness of the distribution
-  fn skewness(&self) -> f64 {
-    0.0
-  }
-
-  /// Kurtosis of the distribution
-  fn kurtosis(&self) -> f64 {
-    0.0
-  }
-
-  /// Entropy of the distribution
-  fn entropy(&self) -> f64 {
-    0.0
-  }
-
-  /// Moment generating function of the distribution
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    0.0
   }
 }

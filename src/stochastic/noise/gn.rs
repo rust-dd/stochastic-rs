@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct Gn<T: FloatExt> {

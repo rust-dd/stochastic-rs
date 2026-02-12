@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::diffusion::fou::FOU;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct FVasicek<T: FloatExt> {
   pub hurst: T,

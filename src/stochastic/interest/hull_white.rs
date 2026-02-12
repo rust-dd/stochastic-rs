@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Hull-White process.
 /// dX(t) = theta(t)dt - alpha * X(t)dt + sigma * dW(t)

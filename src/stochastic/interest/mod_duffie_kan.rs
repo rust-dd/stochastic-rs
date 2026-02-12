@@ -34,8 +34,8 @@ use rand_distr::Distribution;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::normal::SimdNormal;
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct DuffieKanJumpExp<T: FloatExt> {
   pub alpha: T,

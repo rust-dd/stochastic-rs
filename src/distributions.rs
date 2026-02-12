@@ -2,6 +2,8 @@ use rand::Rng;
 use wide::f32x8;
 use wide::f64x8;
 
+pub use crate::traits::SimdFloatExt;
+
 pub mod beta;
 pub mod binomial;
 pub mod cauchy;
@@ -21,7 +23,6 @@ pub mod studentt;
 pub mod uniform;
 pub mod weibull;
 
-/// Fills a slice with random floating-point values in the range [0, 1).
 fn fill_f32_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
   for x in out.iter_mut() {
     *x = rng.random_range(0.0..1.0);
@@ -32,35 +33,6 @@ fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
   for x in out.iter_mut() {
     *x = rng.random_range(0.0..1.0);
   }
-}
-
-pub trait SimdFloatExt: num_traits::Float + Default + Send + Sync + 'static {
-  type Simd: Copy
-    + std::ops::Mul<Output = Self::Simd>
-    + std::ops::Add<Output = Self::Simd>
-    + std::ops::Sub<Output = Self::Simd>
-    + std::ops::Div<Output = Self::Simd>
-    + std::ops::Neg<Output = Self::Simd>;
-
-  fn splat(val: Self) -> Self::Simd;
-  fn simd_from_array(arr: [Self; 8]) -> Self::Simd;
-  fn simd_to_array(v: Self::Simd) -> [Self; 8];
-  fn simd_ln(v: Self::Simd) -> Self::Simd;
-  fn simd_sqrt(v: Self::Simd) -> Self::Simd;
-  fn simd_cos(v: Self::Simd) -> Self::Simd;
-  fn simd_sin(v: Self::Simd) -> Self::Simd;
-  fn simd_exp(v: Self::Simd) -> Self::Simd;
-  fn simd_tan(v: Self::Simd) -> Self::Simd;
-  fn simd_max(a: Self::Simd, b: Self::Simd) -> Self::Simd;
-  fn simd_powf(v: Self::Simd, exp: Self) -> Self::Simd;
-  fn simd_floor(v: Self::Simd) -> Self::Simd;
-  fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
-  fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
-  fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
-  fn from_f64_fast(v: f64) -> Self;
-  fn pi() -> Self;
-  fn two_pi() -> Self;
-  fn min_positive_val() -> Self;
 }
 
 impl SimdFloatExt for f32 {

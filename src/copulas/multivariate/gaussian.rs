@@ -9,7 +9,7 @@ use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
 use super::CopulaType;
-use super::MultivariateExt;
+use crate::traits::MultivariateExt;
 
 #[derive(Debug, Clone, Default)]
 pub struct GaussianMultivariate {

@@ -2,8 +2,8 @@ use ndarray::Array1;
 
 use super::HestonPow;
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct Heston<T: FloatExt> {
   /// Initial stock price

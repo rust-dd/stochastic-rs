@@ -2,8 +2,8 @@ use ndarray::Array1;
 use rand_distr::Distribution;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct JumpFOUCustom<T, D>
 where

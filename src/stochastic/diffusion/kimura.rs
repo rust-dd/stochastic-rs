@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t

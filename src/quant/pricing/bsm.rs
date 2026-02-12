@@ -3,8 +3,8 @@ use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::quant::OptionType;
 
 #[derive(Default, Debug, Clone, Copy)]

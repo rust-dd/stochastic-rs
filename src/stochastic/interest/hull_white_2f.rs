@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Hull-White 2-factor model
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0

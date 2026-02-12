@@ -7,7 +7,7 @@ use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
 use super::CopulaType;
-use super::MultivariateExt;
+use crate::traits::MultivariateExt;
 use crate::copulas::correlation::kendall_tau;
 
 #[derive(Debug, Clone, Default)]

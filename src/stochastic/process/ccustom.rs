@@ -4,8 +4,8 @@ use rand::rng;
 use rand_distr::Distribution;
 
 use super::customjt::CustomJt;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct CompoundCustom<T, D1, D2>
 where

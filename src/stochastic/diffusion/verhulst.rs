@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t

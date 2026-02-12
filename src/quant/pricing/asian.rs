@@ -1,8 +1,8 @@
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 
 pub struct AsianPricer {
   /// Underlying price

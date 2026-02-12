@@ -7,9 +7,9 @@ use statrs::statistics::Median;
 use statrs::statistics::Mode;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::DistributionExt;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::DistributionExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct GBM<T: FloatExt> {
   pub mu: T,

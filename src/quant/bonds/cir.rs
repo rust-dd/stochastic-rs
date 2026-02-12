@@ -1,5 +1,5 @@
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 
 /// CIR model for zero-coupon bond pricing
 /// dR(t) = theta(mu - R(t))dt + sigma * sqrt(R(t))dW(t)

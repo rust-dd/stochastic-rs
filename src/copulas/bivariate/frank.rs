@@ -5,7 +5,7 @@ use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::copulas::bivariate::BivariateExt;
+use crate::traits::BivariateExt;
 use crate::copulas::bivariate::CopulaType;
 
 #[derive(Debug, Clone)]

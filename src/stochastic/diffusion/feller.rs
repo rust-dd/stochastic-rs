@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t

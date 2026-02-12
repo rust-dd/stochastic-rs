@@ -6,8 +6,8 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::stochastic::process::poisson::Poisson;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// CGMY process
 ///

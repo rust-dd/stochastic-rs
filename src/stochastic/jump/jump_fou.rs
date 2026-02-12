@@ -3,8 +3,8 @@ use rand_distr::Distribution;
 
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct JumpFOU<T, D>
 where

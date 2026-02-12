@@ -3,8 +3,8 @@ use std::sync::Arc;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
 pub struct HoLee<T: FloatExt> {

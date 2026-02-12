@@ -29,8 +29,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
 pub struct DuffieKan<T: FloatExt> {

@@ -7,7 +7,7 @@ use ndarray::Axis;
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 
-use super::BivariateExt;
+use crate::traits::BivariateExt;
 use super::CopulaType;
 
 #[derive(Debug, Clone)]

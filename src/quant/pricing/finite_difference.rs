@@ -1,8 +1,8 @@
 use ndarray::s;
 use ndarray::Array1;
 
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::quant::OptionStyle;
 use crate::quant::OptionType;
 
@@ -303,7 +303,7 @@ impl FiniteDifferencePricer {
 mod tests {
   use super::FiniteDifferenceMethod;
   use super::FiniteDifferencePricer;
-  use crate::quant::traits::PricerExt;
+  use crate::traits::PricerExt;
   use crate::quant::OptionStyle;
   use crate::quant::OptionType;
   use crate::stochastic::K;

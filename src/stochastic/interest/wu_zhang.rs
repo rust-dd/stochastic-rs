@@ -20,8 +20,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct WuZhangD<T: FloatExt> {
   /// Mean reversion level for each dimension's volatility.

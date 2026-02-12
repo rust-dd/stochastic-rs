@@ -3,8 +3,8 @@ use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct NIG<T: FloatExt> {
   pub theta: T,

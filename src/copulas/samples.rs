@@ -9,14 +9,7 @@ use statrs::distribution::Gamma;
 use statrs::distribution::MultivariateNormal;
 use statrs::distribution::Normal;
 
-/// A simple trait for 2D copulas: requires only a `sample` method and `get_params`.
-pub trait NCopula2DExt {
-  /// Generate `n` samples in [0,1]^2, returning them as an (n x 2) matrix.
-  fn sample(&self, n: usize) -> Array2<f64>;
-
-  /// Return the copula parameters as a `Vec<f64>`.
-  fn get_params(&self) -> Vec<f64>;
-}
+pub use crate::traits::NCopula2DExt;
 
 /// A small helper function for plotting 2D data using Plotly.
 pub fn plot_copula_samples(data: &Array2<f64>, title: &str) {

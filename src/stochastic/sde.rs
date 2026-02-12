@@ -8,7 +8,7 @@ use ndarray::Axis;
 use rand::Rng;
 
 use super::noise::fgn::FGN;
-use crate::stochastic::ProcessExt;
+use crate::traits::ProcessExt;
 
 pub enum NoiseModel {
   Gaussian,

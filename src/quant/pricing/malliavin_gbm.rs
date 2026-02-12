@@ -2,10 +2,10 @@ use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::stochastic::diffusion::gbm::GBM;
-use crate::stochastic::ProcessExt;
+use crate::traits::ProcessExt;
 
 fn laplace_pdf(x: f64, l: f64) -> f64 {
   if l <= 0.0 {

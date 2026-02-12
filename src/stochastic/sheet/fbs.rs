@@ -10,8 +10,8 @@ use num_complex::Complex;
 
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct FBS<T: FloatExt> {
   pub hurst: T,

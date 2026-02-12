@@ -6,7 +6,6 @@ pub mod loss;
 pub mod order_book;
 pub mod pricing;
 pub mod strategies;
-pub mod traits;
 #[cfg(feature = "yahoo")]
 pub mod yahoo;
 

@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use super::cir::CIR;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct CIR2F<T: FloatExt> {
   pub x: CIR<T>,

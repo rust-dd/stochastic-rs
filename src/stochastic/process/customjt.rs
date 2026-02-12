@@ -6,8 +6,8 @@ use ndarray_rand::RandomExt;
 use rand::rng;
 use rand_distr::Distribution;
 
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct CustomJt<T, D>
 where

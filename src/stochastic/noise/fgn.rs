@@ -24,8 +24,8 @@ use rand_distr::Distribution;
 
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 // CUDA type for complex numbers
 #[cfg(feature = "cuda")]

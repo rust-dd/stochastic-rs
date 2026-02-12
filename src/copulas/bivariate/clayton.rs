@@ -4,7 +4,7 @@ use std::f64;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use super::BivariateExt;
+use crate::traits::BivariateExt;
 use super::CopulaType;
 
 #[derive(Debug, Clone)]

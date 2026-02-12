@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t

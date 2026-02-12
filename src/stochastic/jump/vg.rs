@@ -3,8 +3,8 @@ use ndarray_rand::RandomExt;
 
 use crate::distributions::gamma::SimdGamma;
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct VG<T: FloatExt> {
   pub mu: T,

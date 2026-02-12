@@ -4,8 +4,8 @@ use implied_vol::implied_black_volatility;
 use num_complex::Complex64;
 use quadrature::double_exponential;
 
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::quant::OptionType;
 
 #[derive(Clone)]

@@ -3,7 +3,7 @@ use rand_distr::Distribution;
 
 use crate::distributions::chi_square::SimdChiSquared;
 use crate::distributions::normal::SimdNormal;
-use crate::stochastic::FloatExt;
+use crate::traits::FloatExt;
 
 pub fn sample<T: FloatExt>(df: T, lambda: T, rng: &mut impl Rng) -> T {
   let chi_squared = SimdChiSquared::new(df);

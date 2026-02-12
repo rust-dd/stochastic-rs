@@ -4,8 +4,8 @@ use statrs::distribution::Normal;
 
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::quant::OptionType;
 
 /// Forward FX F = S * exp((r_d - r_f) T)

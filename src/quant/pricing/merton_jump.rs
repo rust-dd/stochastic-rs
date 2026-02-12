@@ -1,7 +1,7 @@
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::quant::OptionType;
 
 pub struct Merton1976Pricer {

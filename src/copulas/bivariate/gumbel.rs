@@ -3,7 +3,7 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use super::BivariateExt;
+use crate::traits::BivariateExt;
 use super::CopulaType;
 
 #[derive(Debug, Clone)]

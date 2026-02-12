@@ -12,7 +12,7 @@ use ndarray::Array1;
 use crate::quant::calibration::CalibrationHistory;
 use crate::quant::loss;
 use crate::quant::pricing::heston::HestonPricer;
-use crate::quant::traits::PricerExt;
+use crate::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
 use crate::stats::mle::nmle_heston;
@@ -477,7 +477,7 @@ mod tests {
   use super::*;
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
   use crate::stochastic::volatility::HestonPow;
-  use crate::stochastic::ProcessExt;
+  use crate::traits::ProcessExt;
 
   #[test]
   fn test_heston_calibrate() {

@@ -1,5 +1,5 @@
-use crate::quant::traits::PricerExt;
-use crate::quant::traits::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 
 /// Vasicek model for zero-coupon bond pricing
 /// dR(t) = theta(mu - R(t))dt + sigma dW(t)

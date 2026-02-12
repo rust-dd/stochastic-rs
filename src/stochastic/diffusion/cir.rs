@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Cox-Ingersoll-Ross (CIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)

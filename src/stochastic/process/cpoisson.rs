@@ -4,8 +4,8 @@ use rand::rng;
 use rand_distr::Distribution;
 
 use super::poisson::Poisson;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct CompoundPoisson<T, D>
 where

@@ -3,8 +3,8 @@ use rand_distr::Distribution;
 
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
-use crate::stochastic::FloatExt;
-use crate::stochastic::ProcessExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub struct Bates1996<T, D>
 where
