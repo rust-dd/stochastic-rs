@@ -1,7 +1,7 @@
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::quant::traits::PricerExt;
+use crate::quant::traits::TimeExt;
 use crate::quant::OptionType;
 
 pub struct Merton1976Pricer {
@@ -49,7 +49,6 @@ impl Merton1976Pricer {
 }
 
 impl PricerExt for Merton1976Pricer {
-  /// Calculate the option price
   fn calculate_call_put(&self) -> (f64, f64) {
     let mut bsm = BSMPricer::new(
       self.s,
@@ -87,6 +86,14 @@ impl PricerExt for Merton1976Pricer {
 
     (call, put)
   }
+
+  fn calculate_price(&self) -> f64 {
+    let (call, put) = self.calculate_call_put();
+    match self.option_type {
+      OptionType::Call => call,
+      OptionType::Put => put,
+    }
+  }
 }
 
 impl TimeExt for Merton1976Pricer {
@@ -94,11 +101,11 @@ impl TimeExt for Merton1976Pricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }

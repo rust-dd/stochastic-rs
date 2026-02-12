@@ -4,8 +4,8 @@ use statrs::distribution::Normal;
 
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::quant::traits::PricerExt;
+use crate::quant::traits::TimeExt;
 use crate::quant::OptionType;
 
 /// Forward FX F = S * exp((r_d - r_f) T)
@@ -46,7 +46,7 @@ pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> 
     None,
     None,
     OptionType::Call,
-    BSMCoc::GARMAN1983,
+    BSMCoc::GarmanKohlhagen1983,
   );
   pricer.calculate_call_put()
 }
@@ -105,11 +105,11 @@ impl TimeExt for SabrPricer {
   fn tau(&self) -> Option<f64> {
     self.tau
   }
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }
 
@@ -154,11 +154,14 @@ impl PricerExt for SabrPricer {
       Some(self.tau().unwrap()),
       self.eval,
       self.expiration,
-      // ctor requires an OptionType even though we return both prices
       OptionType::Call,
-      BSMCoc::MERTON1973,
+      BSMCoc::Merton1973,
     );
     pricer.calculate_call_put()
+  }
+
+  fn calculate_price(&self) -> f64 {
+    self.calculate_call_put().0
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {

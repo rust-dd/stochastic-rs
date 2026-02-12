@@ -1,8 +1,8 @@
 use ndarray::s;
 use ndarray::Array1;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::quant::traits::PricerExt;
+use crate::quant::traits::TimeExt;
 use crate::quant::OptionStyle;
 use crate::quant::OptionType;
 
@@ -52,7 +52,14 @@ impl FiniteDifferencePricer {
 }
 
 impl PricerExt for FiniteDifferencePricer {
-  /// Calculate the option price
+  fn calculate_call_put(&self) -> (f64, f64) {
+    let price = self.calculate_price();
+    match self.option_type {
+      OptionType::Call => (price, 0.0),
+      OptionType::Put => (0.0, price),
+    }
+  }
+
   fn calculate_price(&self) -> f64 {
     match self.method {
       FiniteDifferenceMethod::Explicit => self.explicit(),
@@ -67,12 +74,12 @@ impl TimeExt for FiniteDifferencePricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }
 
@@ -296,7 +303,7 @@ impl FiniteDifferencePricer {
 mod tests {
   use super::FiniteDifferenceMethod;
   use super::FiniteDifferencePricer;
-  use crate::quant::r#trait::PricerExt;
+  use crate::quant::traits::PricerExt;
   use crate::quant::OptionStyle;
   use crate::quant::OptionType;
   use crate::stochastic::K;

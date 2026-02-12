@@ -8,10 +8,10 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use crate::quant::calibration::CalibrationHistory;
+use crate::quant::loss;
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
-use crate::quant::r#trait::CalibrationLossExt;
-use crate::quant::r#trait::PricerExt;
+use crate::quant::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
 
@@ -91,8 +91,6 @@ impl BSMCalibrator {
   }
 }
 
-impl CalibrationLossExt for BSMCalibrator {}
-
 impl BSMCalibrator {
   pub fn calibrate(&self) {
     println!("Initial guess: {:?}", self.params);
@@ -148,7 +146,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         None,
         None,
         self.option_type,
-        BSMCoc::BSM1973,
+        BSMCoc::Bsm1973,
       );
       let (call, put) = pricer.calculate_call_put();
 
@@ -169,15 +167,15 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
           call_put: vec![(call, put)].into(),
           params: self.params.clone().into(),
           loss_scores: CalibrationLossScore {
-            mae: self.mae(&self.c_market, &c_model),
-            mse: self.mse(&self.c_market, &c_model),
-            rmse: self.rmse(&self.c_market, &c_model),
-            mpe: self.mpe(&self.c_market, &c_model),
-            mape: self.mape(&self.c_market, &c_model),
-            mspe: self.mspe(&self.c_market, &c_model),
-            rmspe: self.rmspe(&self.c_market, &c_model),
-            mre: self.mre(&self.c_market, &c_model),
-            mrpe: self.mrpe(&self.c_market, &c_model),
+            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
+            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
+            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
+            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
+            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
+            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
+            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
+            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
+            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
           },
         });
       derivates.push(pricer.derivatives());
@@ -213,7 +211,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         None,
         None,
         self.option_type,
-        BSMCoc::BSM1973,
+        BSMCoc::Bsm1973,
       );
 
       let (call, put) = pricer.calculate_call_put();

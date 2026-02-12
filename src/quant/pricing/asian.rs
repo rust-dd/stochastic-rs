@@ -1,8 +1,8 @@
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::quant::traits::PricerExt;
+use crate::quant::traits::TimeExt;
 
 pub struct AsianPricer {
   /// Underlying price
@@ -64,6 +64,10 @@ impl PricerExt for AsianPricer {
 
     (call, put)
   }
+
+  fn calculate_price(&self) -> f64 {
+    self.calculate_call_put().0
+  }
 }
 
 impl TimeExt for AsianPricer {
@@ -71,11 +75,11 @@ impl TimeExt for AsianPricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }

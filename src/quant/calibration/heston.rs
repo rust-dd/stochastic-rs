@@ -10,13 +10,13 @@ use nalgebra::Owned;
 use ndarray::Array1;
 
 use crate::quant::calibration::CalibrationHistory;
+use crate::quant::loss;
 use crate::quant::pricing::heston::HestonPricer;
-use crate::quant::r#trait::CalibrationLossExt;
-use crate::quant::r#trait::PricerExt;
+use crate::quant::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
-use crate::stats::mle::HestonMleResult;
 use crate::stats::mle::nmle_heston;
+use crate::stats::mle::HestonMleResult;
 
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
@@ -169,20 +169,36 @@ pub struct HestonCalibrator {
 
 impl HestonCalibrator {
   pub fn new(
-    params: Option<HestonParams>, c_market: DVector<f64>, s: DVector<f64>, k: DVector<f64>,
-    r: f64, q: Option<f64>, tau: f64, option_type: OptionType,
-    mle_s: Option<Array1<f64>>, mle_v: Option<Array1<f64>>, mle_r: Option<f64>,
+    params: Option<HestonParams>,
+    c_market: DVector<f64>,
+    s: DVector<f64>,
+    k: DVector<f64>,
+    r: f64,
+    q: Option<f64>,
+    tau: f64,
+    option_type: OptionType,
+    mle_s: Option<Array1<f64>>,
+    mle_v: Option<Array1<f64>>,
+    mle_r: Option<f64>,
     record_history: bool,
   ) -> Self {
     Self {
-      params, c_market, s, k, r, q, tau, option_type,
-      mle_s, mle_v, mle_r, record_history,
+      params,
+      c_market,
+      s,
+      k,
+      r,
+      q,
+      tau,
+      option_type,
+      mle_s,
+      mle_v,
+      mle_r,
+      record_history,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
     }
   }
 }
-
-impl CalibrationLossExt for HestonCalibrator {}
 
 impl HestonCalibrator {
   pub fn calibrate(&self) {
@@ -431,15 +447,15 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
             .into(),
           params: params_eff.clone(),
           loss_scores: CalibrationLossScore {
-            mae: self.mae(&self.c_market, &c_model),
-            mse: self.mse(&self.c_market, &c_model),
-            rmse: self.rmse(&self.c_market, &c_model),
-            mpe: self.mpe(&self.c_market, &c_model),
-            mape: self.mape(&self.c_market, &c_model),
-            mspe: self.mspe(&self.c_market, &c_model),
-            rmspe: self.rmspe(&self.c_market, &c_model),
-            mre: self.mre(&self.c_market, &c_model),
-            mrpe: self.mrpe(&self.c_market, &c_model),
+            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
+            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
+            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
+            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
+            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
+            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
+            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
+            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
+            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
           },
         });
     }

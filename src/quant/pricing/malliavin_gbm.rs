@@ -2,8 +2,8 @@ use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::quant::traits::PricerExt;
+use crate::quant::traits::TimeExt;
 use crate::stochastic::diffusion::gbm::GBM;
 use crate::stochastic::ProcessExt;
 
@@ -65,24 +65,25 @@ impl TimeExt for GbmMalliavinPricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }
 
 impl PricerExt for GbmMalliavinPricer {
-  /// Call/put prices based purely on the Malliavin estimator.
-  ///
-  /// No plain Monte Carlo and no closed-form BS formula is used here.
   fn calculate_call_put(&self) -> (f64, f64) {
     let t = self.t_eval;
     let (_s_t, c_t) = self.conditional_call_malliavin(t);
 
     self.call_put_from_conditional(t, &c_t)
+  }
+
+  fn calculate_price(&self) -> f64 {
+    self.calculate_call_put().0
   }
 }
 
