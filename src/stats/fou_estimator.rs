@@ -1,6 +1,5 @@
 use std::f64::consts::SQRT_2;
 
-use impl_new_derive::ImplNew;
 use ndarray::array;
 use ndarray::s;
 use ndarray::Array1;
@@ -10,7 +9,6 @@ use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::ProcessExt;
 
 // Version 1: FOUParameterEstimationV1 with linear filter methods
-#[derive(ImplNew)]
 pub struct FOUParameterEstimationV1 {
   pub path: Array1<f64>,
   pub filter_type: FilterType,
@@ -25,6 +23,16 @@ pub struct FOUParameterEstimationV1 {
   L: usize,
   V1: f64,
   V2: f64,
+}
+
+impl FOUParameterEstimationV1 {
+  pub fn new(path: Array1<f64>, filter_type: FilterType, delta: Option<f64>) -> Self {
+    Self {
+      path, filter_type, delta,
+      hurst: None, sigma: None, mu: None, theta: None,
+      a: Array1::zeros(0), L: 0, V1: 0.0, V2: 0.0,
+    }
+  }
 }
 
 #[derive(PartialEq)]
@@ -176,7 +184,6 @@ impl FOUParameterEstimationV1 {
 }
 
 // Version 2: FOUParameterEstimationV2 without linear filters
-#[derive(ImplNew)]
 pub struct FOUParameterEstimationV2 {
   pub path: Array1<f64>,
   pub delta: Option<f64>,
@@ -189,6 +196,13 @@ pub struct FOUParameterEstimationV2 {
 }
 
 impl FOUParameterEstimationV2 {
+  pub fn new(path: Array1<f64>, delta: Option<f64>, series_length: usize) -> Self {
+    Self {
+      path, delta, series_length,
+      hurst: None, sigma: None, mu: None, theta: None,
+    }
+  }
+
   pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
     if self.hurst.is_none() {
       self.hurst_estimator();

@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::s;
 use ndarray::Array1;
 
@@ -15,7 +14,6 @@ pub enum FiniteDifferenceMethod {
   CrankNicolson,
 }
 
-#[derive(ImplNew)]
 pub struct FiniteDifferencePricer {
   /// Underlying price
   pub s: f64,
@@ -41,6 +39,16 @@ pub struct FiniteDifferencePricer {
   pub option_type: OptionType,
   /// Pricing method
   pub method: FiniteDifferenceMethod,
+}
+
+impl FiniteDifferencePricer {
+  pub fn new(
+    s: f64, v: f64, k: f64, r: f64, t_n: usize, s_n: usize,
+    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiration: Option<chrono::NaiveDate>,
+    option_style: OptionStyle, option_type: OptionType, method: FiniteDifferenceMethod,
+  ) -> Self {
+    Self { s, v, k, r, t_n, s_n, tau, eval, expiration, option_style, option_type, method }
+  }
 }
 
 impl PricerExt for FiniteDifferencePricer {

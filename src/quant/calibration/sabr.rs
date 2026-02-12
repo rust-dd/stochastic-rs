@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use impl_new_derive::ImplNew;
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
@@ -54,7 +53,7 @@ impl From<DVector<f64>> for SabrParams {
   }
 }
 
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct SabrCalibrator {
   pub params: Option<SabrParams>,
   pub c_market: DVector<f64>,
@@ -66,6 +65,18 @@ pub struct SabrCalibrator {
   pub option_type: OptionType,
   pub record_history: bool,
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<SabrParams>>>>,
+}
+
+impl SabrCalibrator {
+  pub fn new(
+    params: Option<SabrParams>, c_market: DVector<f64>, s: DVector<f64>, k: DVector<f64>,
+    r: f64, q: Option<f64>, tau: f64, option_type: OptionType, record_history: bool,
+  ) -> Self {
+    Self {
+      params, c_market, s, k, r, q, tau, option_type, record_history,
+      calibration_history: Rc::new(RefCell::new(Vec::new())),
+    }
+  }
 }
 
 impl CalibrationLossExt for SabrCalibrator {}

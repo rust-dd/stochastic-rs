@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use impl_new_derive::ImplNew;
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
@@ -34,8 +33,7 @@ impl From<DVector<f64>> for BSMParams {
   }
 }
 
-/// A calibrator.
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct BSMCalibrator {
   /// Params to calibrate.
   pub params: BSMParams,
@@ -61,6 +59,36 @@ pub struct BSMCalibrator {
   calibration_history: RefCell<Vec<CalibrationHistory<BSMParams>>>,
   /// Derivate matrix.
   derivates: RefCell<Vec<Vec<f64>>>,
+}
+
+impl BSMCalibrator {
+  pub fn new(
+    params: BSMParams,
+    c_market: DVector<f64>,
+    s: DVector<f64>,
+    k: DVector<f64>,
+    r: f64,
+    r_d: Option<f64>,
+    r_f: Option<f64>,
+    q: Option<f64>,
+    tau: f64,
+    option_type: OptionType,
+  ) -> Self {
+    Self {
+      params,
+      c_market,
+      s,
+      k,
+      r,
+      r_d,
+      r_f,
+      q,
+      tau,
+      option_type,
+      calibration_history: RefCell::new(Vec::new()),
+      derivates: RefCell::new(Vec::new()),
+    }
+  }
 }
 
 impl CalibrationLossExt for BSMCalibrator {}

@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
@@ -34,7 +33,6 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
 /// - Then use the tower property to get the time-0 call price:
 ///     C(0) = E[ e^{-r t} C(t, S_t) ]
 /// - Put price is recovered from put-call parity.
-#[derive(ImplNew)]
 pub struct GbmMalliavinPricer {
   /// Underlying spot S_0
   pub s: f64,

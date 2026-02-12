@@ -1,9 +1,6 @@
 //! Profit and Loss utilities for option pricing and risk decomposition
 
-use impl_new_derive::ImplNew;
-
-/// Greek-based P&L calculator
-#[derive(ImplNew, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct GreekPnL {
   /// Delta
   pub delta: f64,
@@ -16,6 +13,10 @@ pub struct GreekPnL {
 }
 
 impl GreekPnL {
+  pub fn new(delta: f64, gamma: f64, vega: f64, theta: f64) -> Self {
+    Self { delta, gamma, vega, theta }
+  }
+
   /// First-order/second-order Greek-based P&L decomposition over a small interval.
   /// ΔV ≈ Δ ⋅ ΔS + 0.5 Γ (ΔS)^2 + Vega ⋅ Δσ + Θ ⋅ Δt
   #[must_use]
@@ -24,8 +25,7 @@ impl GreekPnL {
   }
 }
 
-/// Discrete position P&L calculator
-#[derive(ImplNew, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct DiscretePnL {
   /// Position quantity
   pub quantity: f64,
@@ -34,6 +34,10 @@ pub struct DiscretePnL {
 }
 
 impl DiscretePnL {
+  pub fn new(quantity: f64, p0: f64) -> Self {
+    Self { quantity, p0 }
+  }
+
   /// Discrete P&L for a position from time 0 to 1: PnL = q * (p1 - p0)
   #[must_use]
   pub fn calculate(&self, p1: f64) -> f64 {
@@ -41,8 +45,7 @@ impl DiscretePnL {
   }
 }
 
-/// Delta-hedged option P&L calculator
-#[derive(ImplNew, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct DeltaHedgedPnL {
   /// Theta
   pub theta: f64,
@@ -55,6 +58,10 @@ pub struct DeltaHedgedPnL {
 }
 
 impl DeltaHedgedPnL {
+  pub fn new(theta: f64, gamma: f64, sigma: f64, s: f64) -> Self {
+    Self { theta, gamma, sigma, s }
+  }
+
   /// Delta-hedged option P&L approximation over dt (ignoring funding/costs):
   /// dΠ ≈ Θ dt + 0.5 Γ σ^2 S^2 dt
   #[must_use]

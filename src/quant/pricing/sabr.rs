@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use implied_vol::implied_black_volatility;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
@@ -77,7 +76,7 @@ pub fn model_price_hagan(
 }
 
 /// Pricer that uses SABR(Hagan beta=1) to produce an implied vol, then prices via Black-GK.
-#[derive(ImplNew, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct SabrPricer {
   pub s: f64,
   pub k: f64,
@@ -91,6 +90,15 @@ pub struct SabrPricer {
   pub tau: Option<f64>,
   pub eval: Option<chrono::NaiveDate>,
   pub expiration: Option<chrono::NaiveDate>,
+}
+
+impl SabrPricer {
+  pub fn new(
+    s: f64, k: f64, r: f64, q: Option<f64>, alpha: f64, nu: f64, rho: f64,
+    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiration: Option<chrono::NaiveDate>,
+  ) -> Self {
+    Self { s, k, r, q, alpha, nu, rho, tau, eval, expiration }
+  }
 }
 
 impl TimeExt for SabrPricer {

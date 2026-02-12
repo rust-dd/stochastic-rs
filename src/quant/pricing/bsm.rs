@@ -1,4 +1,3 @@
-use impl_new_derive::ImplNew;
 use implied_vol::implied_black_volatility;
 use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
@@ -28,8 +27,6 @@ pub enum BSMCoc {
   GARMAN1983,
 }
 
-/// Black-Scholes-Merton model
-#[derive(ImplNew)]
 pub struct BSMPricer {
   /// Underlying price
   pub s: f64,
@@ -55,6 +52,25 @@ pub struct BSMPricer {
   pub option_type: OptionType,
   /// Cost of carry
   pub b: BSMCoc,
+}
+
+impl BSMPricer {
+  pub fn new(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    r_d: Option<f64>,
+    r_f: Option<f64>,
+    q: Option<f64>,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
+    option_type: OptionType,
+    b: BSMCoc,
+  ) -> Self {
+    Self { s, v, k, r, r_d, r_f, q, tau, eval, expiration, option_type, b }
+  }
 }
 
 impl PricerExt for BSMPricer {

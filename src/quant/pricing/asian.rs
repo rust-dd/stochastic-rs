@@ -1,12 +1,9 @@
-use impl_new_derive::ImplNew;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
 use crate::quant::r#trait::PricerExt;
 use crate::quant::r#trait::TimeExt;
 
-/// Asian option pricer
-#[derive(ImplNew)]
 pub struct AsianPricer {
   /// Underlying price
   pub s: f64,
@@ -24,6 +21,30 @@ pub struct AsianPricer {
   pub eval: Option<chrono::NaiveDate>,
   /// Expiration date
   pub expiration: Option<chrono::NaiveDate>,
+}
+
+impl AsianPricer {
+  pub fn new(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    q: Option<f64>,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
+  ) -> Self {
+    Self {
+      s,
+      v,
+      k,
+      r,
+      q,
+      tau,
+      eval,
+      expiration,
+    }
+  }
 }
 
 impl PricerExt for AsianPricer {

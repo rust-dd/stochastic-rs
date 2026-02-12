@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use impl_new_derive::ImplNew;
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
@@ -16,6 +15,7 @@ use crate::quant::r#trait::CalibrationLossExt;
 use crate::quant::r#trait::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
+use crate::stats::mle::HestonMleResult;
 use crate::stats::mle::nmle_heston;
 
 const EPS: f64 = 1e-8;
@@ -102,6 +102,18 @@ impl HestonParams {
   }
 }
 
+impl From<HestonMleResult> for HestonParams {
+  fn from(mle: HestonMleResult) -> Self {
+    HestonParams {
+      v0: mle.v0,
+      kappa: mle.kappa,
+      theta: mle.theta,
+      sigma: mle.sigma,
+      rho: mle.rho,
+    }
+  }
+}
+
 impl From<HestonParams> for DVector<f64> {
   fn from(params: HestonParams) -> Self {
     DVector::from_vec(vec![
@@ -126,8 +138,7 @@ impl From<DVector<f64>> for HestonParams {
   }
 }
 
-/// A Heston model calibrator (price-based) using Levenberg-Marquardt.
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct HestonCalibrator {
   /// Params to calibrate (v0, kappa, theta, sigma, rho).
   /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).
@@ -154,6 +165,21 @@ pub struct HestonCalibrator {
   pub record_history: bool,
   /// History of iterations (residuals, params, loss metrics).
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<HestonParams>>>>,
+}
+
+impl HestonCalibrator {
+  pub fn new(
+    params: Option<HestonParams>, c_market: DVector<f64>, s: DVector<f64>, k: DVector<f64>,
+    r: f64, q: Option<f64>, tau: f64, option_type: OptionType,
+    mle_s: Option<Array1<f64>>, mle_v: Option<Array1<f64>>, mle_r: Option<f64>,
+    record_history: bool,
+  ) -> Self {
+    Self {
+      params, c_market, s, k, r, q, tau, option_type,
+      mle_s, mle_v, mle_r, record_history,
+      calibration_history: Rc::new(RefCell::new(Vec::new())),
+    }
+  }
 }
 
 impl CalibrationLossExt for HestonCalibrator {}
@@ -197,8 +223,7 @@ impl HestonCalibrator {
   fn ensure_initial_guess(&mut self) {
     if self.params.is_none() {
       if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
-        let mut p = nmle_heston(s, v, r);
-        // Clamp to reasonable bounds and enforce constraints
+        let mut p: HestonParams = nmle_heston(s, v, r).into();
         p.project_in_place();
         self.params = Some(p);
       } else {
@@ -222,7 +247,7 @@ impl HestonCalibrator {
       return p.clone().projected();
     }
     if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
-      let mut p = nmle_heston(s, v, r);
+      let mut p: HestonParams = nmle_heston(s, v, r).into();
       p.project_in_place();
       return p;
     }
@@ -353,7 +378,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
       p.clone().projected().into()
     } else if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r)
     {
-      let mut p = nmle_heston(s, v, r);
+      let mut p: HestonParams = nmle_heston(s, v, r).into();
       p.project_in_place();
       p.into()
     } else {

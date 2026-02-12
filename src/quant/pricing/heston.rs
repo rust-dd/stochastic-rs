@@ -1,6 +1,5 @@
 use std::f64::consts::FRAC_1_PI;
 
-use impl_new_derive::ImplNew;
 use implied_vol::implied_black_volatility;
 use num_complex::Complex64;
 use quadrature::double_exponential;
@@ -9,7 +8,7 @@ use crate::quant::r#trait::PricerExt;
 use crate::quant::r#trait::TimeExt;
 use crate::quant::OptionType;
 
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct HestonPricer {
   /// Stock price
   pub s: f64,
@@ -37,6 +36,16 @@ pub struct HestonPricer {
   pub eval: Option<chrono::NaiveDate>,
   /// Expiration date
   pub expiry: Option<chrono::NaiveDate>,
+}
+
+impl HestonPricer {
+  pub fn new(
+    s: f64, v0: f64, k: f64, r: f64, q: Option<f64>, rho: f64,
+    kappa: f64, theta: f64, sigma: f64, lambda: Option<f64>,
+    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiry: Option<chrono::NaiveDate>,
+  ) -> Self {
+    Self { s, v0, k, r, q, rho, kappa, theta, sigma, lambda, tau, eval, expiry }
+  }
 }
 
 impl PricerExt for HestonPricer {

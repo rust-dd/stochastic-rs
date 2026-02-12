@@ -1,10 +1,7 @@
 //! Breeden–Litzenberger formula utilities
 //! f_{RN}(K, T) = e^{r T} * ∂²C(K,T)/∂K² (same for P)
 
-use impl_new_derive::ImplNew;
-
-/// Breeden–Litzenberger risk-neutral density extractor
-#[derive(ImplNew, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct BreedenLitzenberger {
   /// Strikes (strictly increasing)
   pub strikes: Vec<f64>,
@@ -16,6 +13,12 @@ pub struct BreedenLitzenberger {
   pub tau: f64,
   /// Optional pre-calculated second derivative ∂²C/∂K² at each strike (overrides finite-difference computation)
   pub d2c_dk2: Option<Vec<f64>>,
+}
+
+impl BreedenLitzenberger {
+  pub fn new(strikes: Vec<f64>, prices: Vec<f64>, r: f64, tau: f64, d2c_dk2: Option<Vec<f64>>) -> Self {
+    Self { strikes, prices, r, tau, d2c_dk2 }
+  }
 }
 
 impl BreedenLitzenberger {
