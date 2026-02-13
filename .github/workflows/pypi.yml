@@ -27,8 +27,14 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist -i python3.9 python3.10 python3.11 python3.12 python3.13
           manylinux: auto
+          before-script-linux: |
+            curl -sSf https://rye.astral.sh/get | RYE_INSTALL_OPTION="--yes" bash
+            export PATH="$HOME/.rye/shims:$PATH"
+            for V in 3.9 3.10 3.11 3.12 3.13; do
+              rye toolchain fetch cpython@$V
+            done
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -53,8 +59,15 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist -i python3.9 python3.10 python3.11 python3.12 python3.13
           manylinux: musllinux_1_2
+          before-script-linux: |
+            apk add --no-cache curl
+            curl -sSf https://rye.astral.sh/get | RYE_INSTALL_OPTION="--yes" bash
+            export PATH="$HOME/.rye/shims:$PATH"
+            for V in 3.9 3.10 3.11 3.12 3.13; do
+              rye toolchain fetch cpython@$V
+            done
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
