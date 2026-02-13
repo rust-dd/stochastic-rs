@@ -27,51 +27,12 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist -i python3.9 python3.10 python3.11 python3.12 python3.13
+          args: --release --out dist --find-interpreter
           manylinux: auto
-          before-script-linux: |
-            curl -sSf https://rye.astral.sh/get | RYE_INSTALL_OPTION="--yes" bash
-            export PATH="$HOME/.rye/shims:$PATH"
-            for V in 3.9 3.10 3.11 3.12 3.13; do
-              rye toolchain fetch cpython@$V
-            done
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
-          path: dist
-
-  musllinux:
-    runs-on: ${{ matrix.platform.runner }}
-    strategy:
-      matrix:
-        platform:
-          - runner: ubuntu-22.04
-            target: x86_64
-          - runner: ubuntu-22.04
-            target: aarch64
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist -i python3.9 python3.10 python3.11 python3.12 python3.13
-          manylinux: musllinux_1_2
-          before-script-linux: |
-            apk add --no-cache curl
-            curl -sSf https://rye.astral.sh/get | RYE_INSTALL_OPTION="--yes" bash
-            export PATH="$HOME/.rye/shims:$PATH"
-            for V in 3.9 3.10 3.11 3.12 3.13; do
-              rye toolchain fetch cpython@$V
-            done
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
 
   windows:
@@ -90,7 +51,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          args: --release --out dist
+          args: --release --out dist --find-interpreter
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -115,7 +76,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist --find-interpreter
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -140,7 +101,7 @@ jobs:
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [linux, musllinux, windows, macos, sdist]
+    needs: [linux, windows, macos, sdist]
     environment: pypi
     permissions:
       id-token: write
