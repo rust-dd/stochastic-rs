@@ -65,3 +65,8 @@ impl<T: PrimInt> Distribution<T> for SimdHypergeometric<T> {
     val
   }
 }
+
+py_distribution_int!(PyHypergeometric, SimdHypergeometric,
+  sig: (n_total, k_success, n_draws),
+  params: (n_total: u32, k_success: u32, n_draws: u32)
+);

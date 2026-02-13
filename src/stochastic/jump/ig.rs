@@ -40,3 +40,8 @@ impl<T: FloatExt> ProcessExt<T> for IG<T> {
     ig
   }
 }
+
+py_process_1d!(PyIG, IG,
+  sig: (gamma_, n, x0=None, t=None, dtype=None),
+  params: (gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

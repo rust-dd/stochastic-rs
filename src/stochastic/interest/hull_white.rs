@@ -1,14 +1,12 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
+use crate::traits::Fn1D;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Hull-White process.
-/// dX(t) = theta(t)dt - alpha * X(t)dt + sigma * dW(t)
-/// where X(t) is the Hull-White process.
 pub struct HullWhite<T: FloatExt> {
-  pub theta: fn(T) -> T,
+  pub theta: Fn1D<T>,
   pub alpha: T,
   pub sigma: T,
   pub n: usize,
@@ -18,9 +16,9 @@ pub struct HullWhite<T: FloatExt> {
 }
 
 impl<T: FloatExt> HullWhite<T> {
-  pub fn new(theta: fn(T) -> T, alpha: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(theta: impl Into<Fn1D<T>>, alpha: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
-      theta,
+      theta: theta.into(),
       alpha,
       sigma,
       n,
@@ -43,10 +41,38 @@ impl<T: FloatExt> ProcessExt<T> for HullWhite<T> {
 
     for i in 1..self.n {
       hw[i] = hw[i - 1]
-        + ((self.theta)(T::from_usize_(i) * dt) - self.alpha * hw[i - 1]) * dt
+        + (self.theta.call(T::from_usize_(i) * dt) - self.alpha * hw[i - 1]) * dt
         + self.sigma * gn[i - 1]
     }
 
     hw
+  }
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyHullWhite {
+  inner: HullWhite<f64>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyHullWhite {
+  #[new]
+  #[pyo3(signature = (theta, alpha, sigma, n, x0=None, t=None))]
+  fn new(
+    theta: pyo3::Py<pyo3::PyAny>, alpha: f64, sigma: f64, n: usize,
+    x0: Option<f64>, t: Option<f64>,
+  ) -> Self {
+    Self {
+      inner: HullWhite::new(Fn1D::Py(theta), alpha, sigma, n, x0, t),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
   }
 }

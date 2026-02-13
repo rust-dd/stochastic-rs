@@ -35,3 +35,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
     self.lambda * (-u.ln()).powf(self.inv_k)
   }
 }
+
+py_distribution!(PyWeibull, SimdWeibull,
+  sig: (lambda_, k, dtype=None),
+  params: (lambda_: f64, k: f64)
+);

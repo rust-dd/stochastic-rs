@@ -79,3 +79,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGamma<T> {
     val
   }
 }
+
+py_distribution!(PyGamma, SimdGamma,
+  sig: (alpha, scale, dtype=None),
+  params: (alpha: f64, scale: f64)
+);

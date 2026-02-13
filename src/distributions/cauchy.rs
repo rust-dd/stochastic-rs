@@ -67,3 +67,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdCauchy<T> {
     val
   }
 }
+
+py_distribution!(PyCauchy, SimdCauchy,
+  sig: (x0, gamma_, dtype=None),
+  params: (x0: f64, gamma_: f64)
+);

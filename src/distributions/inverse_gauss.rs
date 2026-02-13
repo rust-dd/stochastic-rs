@@ -94,3 +94,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
     val
   }
 }
+
+py_distribution!(PyInverseGauss, SimdInverseGauss,
+  sig: (mu, lambda_, dtype=None),
+  params: (mu: f64, lambda_: f64)
+);

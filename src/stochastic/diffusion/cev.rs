@@ -83,3 +83,8 @@ impl<T: FloatExt> CEV<T> {
     [cev, m]
   }
 }
+
+py_process_1d!(PyCEV, CEV,
+  sig: (mu, sigma, gamma, n, x0=None, t=None, dtype=None),
+  params: (mu: f64, sigma: f64, gamma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

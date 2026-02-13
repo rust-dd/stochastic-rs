@@ -153,3 +153,8 @@ impl<T: FloatExt> FBS<T> {
     (out, c0, c2)
   }
 }
+
+py_process_2d!(PyFBS, FBS,
+  sig: (hurst, m, n, r, dtype=None),
+  params: (hurst: f64, m: usize, n: usize, r: f64)
+);

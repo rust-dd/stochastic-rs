@@ -62,3 +62,8 @@ impl<T: FloatExt> ProcessExt<T> for GBMIH<T> {
     x
   }
 }
+
+py_process_1d!(PyGBMIH, GBMIH,
+  sig: (mu, sigma, n, x0=None, t=None, sigmas=None, dtype=None),
+  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, sigmas: Option<Vec<f64>>)
+);

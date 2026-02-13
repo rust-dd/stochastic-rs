@@ -57,3 +57,8 @@ impl<T: FloatExt> ProcessExt<T> for Poisson<T> {
     }
   }
 }
+
+py_process_1d!(PyPoisson, Poisson,
+  sig: (lambda_, n=None, t_max=None, dtype=None),
+  params: (lambda_: f64, n: Option<usize>, t_max: Option<f64>)
+);

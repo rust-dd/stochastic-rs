@@ -70,3 +70,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
     val
   }
 }
+
+py_distribution!(PyStudentT, SimdStudentT,
+  sig: (nu, dtype=None),
+  params: (nu: f64)
+);

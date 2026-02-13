@@ -9,3 +9,4 @@ CI.yml
 .zed
 
 *.py
+.venv/

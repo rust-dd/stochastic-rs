@@ -49,3 +49,8 @@ impl<T: FloatExt> ProcessExt<T> for CFGNS<T> {
     [fgn1, fgn2]
   }
 }
+
+py_process_2x1d!(PyCFGNS, CFGNS,
+  sig: (hurst, rho, n, t=None, dtype=None),
+  params: (hurst: f64, rho: f64, n: usize, t: Option<f64>)
+);

@@ -119,3 +119,8 @@ impl<T: FloatExt> ProcessExt<T> for DuffieKan<T> {
     [r, x]
   }
 }
+
+py_process_2x1d!(PyDuffieKan, DuffieKan,
+  sig: (alpha, beta, gamma_, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, n, r0=None, x0=None, t=None, dtype=None),
+  params: (alpha: f64, beta: f64, gamma_: f64, rho: f64, a1: f64, b1: f64, c1: f64, sigma1: f64, a2: f64, b2: f64, c2: f64, sigma2: f64, n: usize, r0: Option<f64>, x0: Option<f64>, t: Option<f64>)
+);

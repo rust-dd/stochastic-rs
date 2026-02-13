@@ -25,6 +25,45 @@ stochastic-rs = "0.x.0"
 
 Ensure you have Rust installed. Visit [rust-lang.org](https://www.rust-lang.org/tools/install) for setup instructions.
 
+## Usage
+
+### Rust
+
+```rust
+use stochastic_rs::stochastic::process::fbm::FBM;
+use stochastic_rs::traits::ProcessExt;
+
+fn main() {
+    let fbm = FBM::new(0.7, 1000, None);
+    let path = fbm.sample();
+    println!("FBM path length: {}", path.len());
+
+    let paths = fbm.sample_par(4);
+    println!("Generated {} parallel paths", paths.len());
+}
+```
+
+### Bindings
+
+Install via [maturin](https://www.maturin.rs/):
+
+```bash
+pip install maturin
+maturin develop --release
+```
+
+```python
+from stochastic_rs import PyFBM, PyFGN
+
+fbm = PyFBM(0.7, 1000)
+path = fbm.sample()  # returns numpy array, shape (1000,)
+
+paths = fbm.sample_par(4)  # returns numpy array, shape (4, 1000)
+
+fgn = PyFGN(0.7, 1000)
+noise = fgn.sample()  # returns numpy array, shape (1000,)
+```
+
 ## Contributing
 
 Contributions are welcome! Whether it's bug reports, feature suggestions, or documentation improvements, your help is appreciated. Open an issue or start a discussion on GitHub.

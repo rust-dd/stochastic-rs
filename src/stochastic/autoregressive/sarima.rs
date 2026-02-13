@@ -262,3 +262,8 @@ impl<T: FloatExt> SARIMA<T> {
     x
   }
 }
+
+py_process_1d!(PySARIMA, SARIMA,
+  sig: (non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, d_seasonal, s, sigma, n, dtype=None),
+  params: (non_seasonal_ar_coefs: Vec<f64>, non_seasonal_ma_coefs: Vec<f64>, seasonal_ar_coefs: Vec<f64>, seasonal_ma_coefs: Vec<f64>, d: usize, d_seasonal: usize, s: usize, sigma: f64, n: usize)
+);

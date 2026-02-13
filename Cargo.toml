@@ -42,6 +42,8 @@ ndarray-stats = "0.7.0"
 ndrustfft = "0.6.2"
 num-complex = { version = "0.4.6", features = ["rand"] }
 num-traits = "0.2.19"
+numpy = { version = "0.27", optional = true }
+pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
 ordered-float = "5.0.0"
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 polars = { version = "0.43.1", features = ["lazy"], optional = true }
@@ -81,12 +83,13 @@ ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]
 default = []
 jemalloc = ["dep:tikv-jemallocator"]
+python = ["dep:pyo3", "dep:numpy"]
 mimalloc = ["dep:mimalloc"]
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars", "dep:tokio-test"]
 
 [lib]
 name = "stochastic_rs"
-crate-type = ["lib"]
+crate-type = ["lib", "cdylib"]
 path = "src/lib.rs"
 doctest = false
 

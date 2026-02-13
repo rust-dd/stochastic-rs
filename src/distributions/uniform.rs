@@ -71,3 +71,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
     val
   }
 }
+
+py_distribution!(PyUniform, SimdUniform,
+  sig: (low, high, dtype=None),
+  params: (low: f64, high: f64)
+);

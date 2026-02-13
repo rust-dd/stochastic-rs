@@ -65,3 +65,8 @@ impl<T: FloatExt> ProcessExt<T> for Verhulst<T> {
     x
   }
 }
+
+py_process_1d!(PyVerhulst, Verhulst,
+  sig: (r, k, sigma, n, x0=None, t=None, clamp=None, dtype=None),
+  params: (r: f64, k: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, clamp: Option<bool>)
+);

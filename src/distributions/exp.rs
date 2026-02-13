@@ -230,3 +230,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdExp<T> {
     self.inner.sample(rng)
   }
 }
+
+py_distribution!(PyExp, SimdExp,
+  sig: (lambda_, dtype=None),
+  params: (lambda_: f64)
+);

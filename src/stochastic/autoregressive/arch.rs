@@ -62,3 +62,8 @@ impl<T: FloatExt> ProcessExt<T> for ARCH<T> {
     x
   }
 }
+
+py_process_1d!(PyARCH, ARCH,
+  sig: (omega, alpha, n, dtype=None),
+  params: (omega: f64, alpha: Vec<f64>, n: usize)
+);

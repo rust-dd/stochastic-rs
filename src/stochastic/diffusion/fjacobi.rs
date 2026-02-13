@@ -61,3 +61,8 @@ impl<T: FloatExt> ProcessExt<T> for FJacobi<T> {
     fjacobi
   }
 }
+
+py_process_1d!(PyFJacobi, FJacobi,
+  sig: (hurst, alpha, beta, sigma, n, x0=None, t=None, dtype=None),
+  params: (hurst: f64, alpha: f64, beta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

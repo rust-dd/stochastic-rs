@@ -71,3 +71,8 @@ impl<T: PrimInt> Distribution<T> for SimdGeometric<T> {
     val
   }
 }
+
+py_distribution_int!(PyGeometric, SimdGeometric,
+  sig: (p),
+  params: (p: f64)
+);

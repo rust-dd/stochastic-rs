@@ -49,3 +49,36 @@ where
     [poisson, cum_jupms, jumps]
   }
 }
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyCompoundPoisson {
+  inner: CompoundPoisson<f64, crate::traits::CallableDist>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyCompoundPoisson {
+  #[new]
+  #[pyo3(signature = (distribution, lambda_, n=None, t_max=None))]
+  fn new(distribution: pyo3::Py<pyo3::PyAny>, lambda_: f64, n: Option<usize>, t_max: Option<f64>) -> Self {
+    Self {
+      inner: CompoundPoisson::new(
+        crate::traits::CallableDist::new(distribution),
+        Poisson::new(lambda_, n, t_max),
+      ),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    let [p, cum, j] = self.inner.sample();
+    (
+      p.into_pyarray(py).into_py_any(py).unwrap(),
+      cum.into_pyarray(py).into_py_any(py).unwrap(),
+      j.into_pyarray(py).into_py_any(py).unwrap(),
+    )
+  }
+}

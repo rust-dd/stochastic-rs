@@ -1,14 +1,12 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
+use crate::traits::Fn1D;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Hull-White 2-factor model
-/// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0
-/// dU(t) = -b * U(t) dt + sigma_2 dW2(t) u(0) = 0
 pub struct HullWhite2F<T: FloatExt> {
-  pub k: fn(T) -> T,
+  pub k: Fn1D<T>,
   pub theta: T,
   pub sigma1: T,
   pub sigma2: T,
@@ -22,7 +20,7 @@ pub struct HullWhite2F<T: FloatExt> {
 
 impl<T: FloatExt> HullWhite2F<T> {
   pub fn new(
-    k: fn(T) -> T,
+    k: impl Into<Fn1D<T>>,
     theta: T,
     sigma1: T,
     sigma2: T,
@@ -33,7 +31,7 @@ impl<T: FloatExt> HullWhite2F<T> {
     n: usize,
   ) -> Self {
     Self {
-      k,
+      k: k.into(),
       theta,
       sigma1,
       sigma2,
@@ -61,12 +59,41 @@ impl<T: FloatExt> ProcessExt<T> for HullWhite2F<T> {
 
     for i in 1..self.n {
       x[i] = x[i - 1]
-        + ((self.k)(T::from_usize_(i) * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
+        + (self.k.call(T::from_usize_(i) * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
         + self.sigma1 * cgn1[i - 1];
 
       u[i] = u[i - 1] - self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
     }
 
     [x, u]
+  }
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyHullWhite2F {
+  inner: HullWhite2F<f64>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyHullWhite2F {
+  #[new]
+  #[pyo3(signature = (k, theta, sigma1, sigma2, rho, b, n, x0=None, t=None))]
+  fn new(
+    k: pyo3::Py<pyo3::PyAny>, theta: f64, sigma1: f64, sigma2: f64,
+    rho: f64, b: f64, n: usize, x0: Option<f64>, t: Option<f64>,
+  ) -> Self {
+    Self {
+      inner: HullWhite2F::new(Fn1D::Py(k), theta, sigma1, sigma2, rho, b, x0, t, n),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    let [a, b] = self.inner.sample();
+    (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
   }
 }

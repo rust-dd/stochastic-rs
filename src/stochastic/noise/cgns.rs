@@ -50,3 +50,8 @@ impl<T: FloatExt> CGNS<T> {
     self.t.unwrap_or(T::one()) / T::from_usize(self.n).unwrap()
   }
 }
+
+py_process_2x1d!(PyCGNS, CGNS,
+  sig: (rho, n, t=None, dtype=None),
+  params: (rho: f64, n: usize, t: Option<f64>)
+);

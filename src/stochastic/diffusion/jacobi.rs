@@ -59,3 +59,8 @@ impl<T: FloatExt> ProcessExt<T> for Jacobi<T> {
     jacobi
   }
 }
+
+py_process_1d!(PyJacobi, Jacobi,
+  sig: (alpha, beta, sigma, n, x0=None, t=None, dtype=None),
+  params: (alpha: f64, beta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

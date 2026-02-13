@@ -65,3 +65,8 @@ impl<T: FloatExt> ProcessExt<T> for FellerLogistic<T> {
     x
   }
 }
+
+py_process_1d!(PyFellerLogistic, FellerLogistic,
+  sig: (kappa, theta, sigma, n, x0=None, t=None, use_sym=None, dtype=None),
+  params: (kappa: f64, theta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
+);

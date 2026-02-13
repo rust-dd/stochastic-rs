@@ -115,3 +115,8 @@ impl<T: FloatExt> ProcessExt<T> for RDTS<T> {
     x
   }
 }
+
+py_process_1d!(PyRDTS, RDTS,
+  sig: (lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, dtype=None),
+  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
+);

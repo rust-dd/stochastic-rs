@@ -74,3 +74,8 @@ impl<T: FloatExt> ProcessExt<T> for FouqueOU2D<T> {
     [x, y]
   }
 }
+
+py_process_2x1d!(PyFouqueOU2D, FouqueOU2D,
+  sig: (kappa, theta, epsilon, alpha, n, x0=None, y0=None, t=None, dtype=None),
+  params: (kappa: f64, theta: f64, epsilon: f64, alpha: f64, n: usize, x0: Option<f64>, y0: Option<f64>, t: Option<f64>)
+);

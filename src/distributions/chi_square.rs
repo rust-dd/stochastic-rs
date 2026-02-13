@@ -27,3 +27,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdChiSquared<T> {
     self.gamma.sample(rng)
   }
 }
+
+py_distribution!(PyChiSquared, SimdChiSquared,
+  sig: (k, dtype=None),
+  params: (k: f64)
+);

@@ -345,3 +345,8 @@ impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdNormal<T, N> {
     z
   }
 }
+
+py_distribution!(PyNormal, SimdNormal,
+  sig: (mean, std_dev, dtype=None),
+  params: (mean: f64, std_dev: f64)
+);

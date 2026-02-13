@@ -71,3 +71,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdBeta<T> {
     val
   }
 }
+
+py_distribution!(PyBeta, SimdBeta,
+  sig: (alpha, beta, dtype=None),
+  params: (alpha: f64, beta: f64)
+);

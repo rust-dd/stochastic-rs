@@ -28,3 +28,8 @@ impl<T: FloatExt> Gn<T> {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
   }
 }
+
+py_process_1d!(PyGn, Gn,
+  sig: (n, t=None, dtype=None),
+  params: (n: usize, t: Option<f64>)
+);

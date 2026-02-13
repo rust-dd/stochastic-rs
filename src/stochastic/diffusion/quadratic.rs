@@ -52,3 +52,8 @@ impl<T: FloatExt> ProcessExt<T> for Quadratic<T> {
     x
   }
 }
+
+py_process_1d!(PyQuadratic, Quadratic,
+  sig: (alpha, beta, gamma, sigma, n, x0=None, t=None, dtype=None),
+  params: (alpha: f64, beta: f64, gamma: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

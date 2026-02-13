@@ -52,3 +52,8 @@ impl<T: FloatExt> ProcessExt<T> for Kimura<T> {
     x
   }
 }
+
+py_process_1d!(PyKimura, Kimura,
+  sig: (a, sigma, n, x0=None, t=None, dtype=None),
+  params: (a: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

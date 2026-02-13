@@ -67,3 +67,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
     val
   }
 }
+
+py_distribution!(PyPareto, SimdPareto,
+  sig: (x_m, alpha, dtype=None),
+  params: (x_m: f64, alpha: f64)
+);

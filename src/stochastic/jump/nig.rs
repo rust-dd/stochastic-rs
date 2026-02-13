@@ -57,3 +57,8 @@ impl<T: FloatExt> ProcessExt<T> for NIG<T> {
     nig
   }
 }
+
+py_process_1d!(PyNIG, NIG,
+  sig: (theta, sigma, kappa, n, x0=None, t=None, dtype=None),
+  params: (theta: f64, sigma: f64, kappa: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

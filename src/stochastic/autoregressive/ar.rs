@@ -74,3 +74,8 @@ impl<T: FloatExt> ProcessExt<T> for ARp<T> {
     series
   }
 }
+
+py_process_1d!(PyARp, ARp,
+  sig: (phi, sigma, n, x0=None, dtype=None),
+  params: (phi: Vec<f64>, sigma: f64, n: usize, x0: Option<Vec<f64>>)
+);

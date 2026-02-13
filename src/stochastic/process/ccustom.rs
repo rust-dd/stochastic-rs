@@ -71,3 +71,50 @@ where
     [p, cum_jupms, jumps]
   }
 }
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyCompoundCustom {
+  inner: CompoundCustom<f64, crate::traits::CallableDist, crate::traits::CallableDist>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyCompoundCustom {
+  #[new]
+  #[pyo3(signature = (jumps_distribution, jump_times_distribution, n=None, t_max=None, m=None))]
+  fn new(
+    jumps_distribution: pyo3::Py<pyo3::PyAny>,
+    jump_times_distribution: pyo3::Py<pyo3::PyAny>,
+    n: Option<usize>,
+    t_max: Option<f64>,
+    m: Option<usize>,
+  ) -> Self {
+    let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
+      let a = jump_times_distribution.clone_ref(py);
+      let b = jump_times_distribution;
+      (crate::traits::CallableDist::new(a), crate::traits::CallableDist::new(b))
+    });
+    let customjt = CustomJt::new(n, t_max, customjt_dist);
+    Self {
+      inner: CompoundCustom::new(
+        n, t_max, m,
+        crate::traits::CallableDist::new(jumps_distribution),
+        jt_dist,
+        customjt,
+      ),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    let [p, cum, j] = self.inner.sample();
+    (
+      p.into_pyarray(py).into_py_any(py).unwrap(),
+      cum.into_pyarray(py).into_py_any(py).unwrap(),
+      j.into_pyarray(py).into_py_any(py).unwrap(),
+    )
+  }
+}

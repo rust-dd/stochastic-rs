@@ -1,17 +1,19 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
+use crate::traits::Fn1D;
+use crate::traits::Fn2D;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct HJM<T: FloatExt> {
-  pub a: fn(T) -> T,
-  pub b: fn(T) -> T,
-  pub p: fn(T, T) -> T,
-  pub q: fn(T, T) -> T,
-  pub v: fn(T, T) -> T,
-  pub alpha: fn(T, T) -> T,
-  pub sigma: fn(T, T) -> T,
+  pub a: Fn1D<T>,
+  pub b: Fn1D<T>,
+  pub p: Fn2D<T>,
+  pub q: Fn2D<T>,
+  pub v: Fn2D<T>,
+  pub alpha: Fn2D<T>,
+  pub sigma: Fn2D<T>,
   pub n: usize,
   pub r0: Option<T>,
   pub p0: Option<T>,
@@ -22,13 +24,13 @@ pub struct HJM<T: FloatExt> {
 
 impl<T: FloatExt> HJM<T> {
   pub fn new(
-    a: fn(T) -> T,
-    b: fn(T) -> T,
-    p: fn(T, T) -> T,
-    q: fn(T, T) -> T,
-    v: fn(T, T) -> T,
-    alpha: fn(T, T) -> T,
-    sigma: fn(T, T) -> T,
+    a: impl Into<Fn1D<T>>,
+    b: impl Into<Fn1D<T>>,
+    p: impl Into<Fn2D<T>>,
+    q: impl Into<Fn2D<T>>,
+    v: impl Into<Fn2D<T>>,
+    alpha: impl Into<Fn2D<T>>,
+    sigma: impl Into<Fn2D<T>>,
     n: usize,
     r0: Option<T>,
     p0: Option<T>,
@@ -36,13 +38,13 @@ impl<T: FloatExt> HJM<T> {
     t: Option<T>,
   ) -> Self {
     Self {
-      a,
-      b,
-      p,
-      q,
-      v,
-      alpha,
-      sigma,
+      a: a.into(),
+      b: b.into(),
+      p: p.into(),
+      q: q.into(),
+      v: v.into(),
+      alpha: alpha.into(),
+      sigma: sigma.into(),
       n,
       r0,
       p0,
@@ -76,12 +78,53 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
     for i in 1..self.n {
       let t = T::from_usize_(i) * dt;
 
-      r[i] = r[i - 1] + (self.a)(t) * dt + (self.b)(t) * gn1[i - 1];
+      r[i] = r[i - 1] + self.a.call(t) * dt + self.b.call(t) * gn1[i - 1];
       p[i] =
-        p[i - 1] + (self.p)(t, t_max) * ((self.q)(t, t_max) * dt + (self.v)(t, t_max) * gn2[i - 1]);
-      f_[i] = f_[i - 1] + (self.alpha)(t, t_max) * dt + (self.sigma)(t, t_max) * gn3[i - 1];
+        p[i - 1] + self.p.call(t, t_max) * (self.q.call(t, t_max) * dt + self.v.call(t, t_max) * gn2[i - 1]);
+      f_[i] = f_[i - 1] + self.alpha.call(t, t_max) * dt + self.sigma.call(t, t_max) * gn3[i - 1];
     }
 
     [r, p, f_]
+  }
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyHJM {
+  inner: HJM<f64>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyHJM {
+  #[new]
+  #[pyo3(signature = (a, b, p, q, v, alpha, sigma, n, r0=None, p0=None, f0=None, t=None))]
+  fn new(
+    a: pyo3::Py<pyo3::PyAny>, b: pyo3::Py<pyo3::PyAny>,
+    p: pyo3::Py<pyo3::PyAny>, q: pyo3::Py<pyo3::PyAny>, v: pyo3::Py<pyo3::PyAny>,
+    alpha: pyo3::Py<pyo3::PyAny>, sigma: pyo3::Py<pyo3::PyAny>,
+    n: usize, r0: Option<f64>, p0: Option<f64>, f0: Option<f64>, t: Option<f64>,
+  ) -> Self {
+    use crate::traits::Fn2D;
+    Self {
+      inner: HJM::new(
+        Fn1D::Py(a), Fn1D::Py(b),
+        Fn2D::Py(p), Fn2D::Py(q), Fn2D::Py(v),
+        Fn2D::Py(alpha), Fn2D::Py(sigma),
+        n, r0, p0, f0, t,
+      ),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    let [r, p, f] = self.inner.sample();
+    (
+      r.into_pyarray(py).into_py_any(py).unwrap(),
+      p.into_pyarray(py).into_py_any(py).unwrap(),
+      f.into_pyarray(py).into_py_any(py).unwrap(),
+    )
   }
 }

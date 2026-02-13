@@ -33,6 +33,31 @@ where
   }
 }
 
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyCustomJt {
+  inner: CustomJt<f64, crate::traits::CallableDist>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyCustomJt {
+  #[new]
+  #[pyo3(signature = (distribution, n=None, t_max=None))]
+  fn new(distribution: pyo3::Py<pyo3::PyAny>, n: Option<usize>, t_max: Option<f64>) -> Self {
+    Self {
+      inner: CustomJt::new(n, t_max, crate::traits::CallableDist::new(distribution)),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+  }
+}
+
 impl<T, D> ProcessExt<T> for CustomJt<T, D>
 where
   T: FloatExt,

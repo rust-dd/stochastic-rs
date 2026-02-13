@@ -14,6 +14,9 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+#[macro_use]
+mod macros;
+
 #[cfg(feature = "ai")]
 pub mod ai;
 pub mod copulas;
@@ -23,3 +26,6 @@ pub mod stats;
 pub mod stochastic;
 pub mod traits;
 mod visualization;
+
+#[cfg(feature = "python")]
+mod python;

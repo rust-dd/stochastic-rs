@@ -163,3 +163,8 @@ impl<T: FloatExt> ProcessExt<T> for SVCGMY<T> {
     x
   }
 }
+
+py_process_1d!(PySVCGMY, SVCGMY,
+  sig: (lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0=None, v0=None, t=None, dtype=None),
+  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>)
+);

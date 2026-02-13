@@ -48,3 +48,8 @@ impl<T: FloatExt> ProcessExt<T> for FOU<T> {
     fou
   }
 }
+
+py_process_1d!(PyFOU, FOU,
+  sig: (hurst, theta, mu, sigma, n, x0=None, t=None, dtype=None),
+  params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+);

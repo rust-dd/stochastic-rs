@@ -65,3 +65,8 @@ impl<T: PrimInt> Distribution<T> for SimdPoisson<T> {
     val
   }
 }
+
+py_distribution_int!(PyPoissonD, SimdPoisson,
+  sig: (lambda_),
+  params: (lambda_: f64)
+);

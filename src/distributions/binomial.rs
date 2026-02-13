@@ -54,3 +54,8 @@ impl<T: PrimInt> Distribution<T> for SimdBinomial<T> {
     val
   }
 }
+
+py_distribution_int!(PyBinomial, SimdBinomial,
+  sig: (n, p),
+  params: (n: u32, p: f64)
+);
