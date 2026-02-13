@@ -139,7 +139,7 @@ impl GridPlotter {
   pub fn plot(self) -> Plot {
     let n = self.entries.len();
     let cols = self.cols;
-    let rows = (n + cols - 1) / cols;
+    let rows = n.div_ceil(cols);
 
     let mut plot = Plot::new();
     plot.set_layout(
