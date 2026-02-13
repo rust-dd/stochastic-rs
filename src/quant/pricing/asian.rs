@@ -1,12 +1,9 @@
-use impl_new_derive::ImplNew;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 
-/// Asian option pricer
-#[derive(ImplNew)]
 pub struct AsianPricer {
   /// Underlying price
   pub s: f64,
@@ -26,6 +23,30 @@ pub struct AsianPricer {
   pub expiration: Option<chrono::NaiveDate>,
 }
 
+impl AsianPricer {
+  pub fn new(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    q: Option<f64>,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
+  ) -> Self {
+    Self {
+      s,
+      v,
+      k,
+      r,
+      q,
+      tau,
+      eval,
+      expiration,
+    }
+  }
+}
+
 impl PricerExt for AsianPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
     let T = self.calculate_tau_in_days();
@@ -43,6 +64,10 @@ impl PricerExt for AsianPricer {
 
     (call, put)
   }
+
+  fn calculate_price(&self) -> f64 {
+    self.calculate_call_put().0
+  }
 }
 
 impl TimeExt for AsianPricer {
@@ -50,11 +75,11 @@ impl TimeExt for AsianPricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }

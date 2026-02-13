@@ -1,12 +1,10 @@
 //! Dupire local volatility from call price surface
 //! σ_loc^2(K,T) = [ ∂C/∂T + (r - q) K ∂C/∂K + q C ] / [ 0.5 K^2 ∂²C/∂K² ]
 
-use impl_new_derive::ImplNew;
 use ndarray::Array2;
 use ndarray::Axis;
 
-/// Dupire local volatility surface calculator
-#[derive(ImplNew, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Dupire {
   /// Strikes (ascending), length N_K
   pub ks: Vec<f64>,
@@ -26,6 +24,15 @@ pub struct Dupire {
   pub d2c_dk2: Option<Array2<f64>>,
   /// Optional pre-calculated ∂C/∂T with shape (N_T, N_K) (overrides finite-difference computation)
   pub dc_dt: Option<Array2<f64>>,
+}
+
+impl Dupire {
+  pub fn new(
+    ks: Vec<f64>, ts: Vec<f64>, calls: Array2<f64>, r: f64, q: f64, eps: f64,
+    dc_dk: Option<Array2<f64>>, d2c_dk2: Option<Array2<f64>>, dc_dt: Option<Array2<f64>>,
+  ) -> Self {
+    Self { ks, ts, calls, r, q, eps, dc_dk, d2c_dk2, dc_dt }
+  }
 }
 
 impl Dupire {

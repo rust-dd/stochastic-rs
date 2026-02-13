@@ -1,53 +1,30 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct Gn<T> {
+#[derive(Copy, Clone)]
+pub struct Gn<T: FloatExt> {
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for Gn<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / self.n as f64;
-    Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap())
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
+impl<T: FloatExt> Gn<T> {
+  pub fn new(n: usize, t: Option<T>) -> Self {
+    Gn { n, t }
   }
 }
 
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for Gn<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / self.n as f32;
-    Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap())
+impl<T: FloatExt> ProcessExt<T> for Gn<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
+    T::normal_array(self.n, T::zero(), self.dt().sqrt())
   }
+}
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let dt = self.t.unwrap_or(1.0) / self.n as f32;
-    Array1::random(self.n, SimdNormal::new(0.0, dt.sqrt()))
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
+impl<T: FloatExt> Gn<T> {
+  pub fn dt(&self) -> T {
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
   }
 }

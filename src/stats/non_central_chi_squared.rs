@@ -1,13 +1,15 @@
 use rand::Rng;
-use rand_distr::ChiSquared;
 use rand_distr::Distribution;
-use rand_distr::Normal;
 
-pub fn sample(df: f64, lambda: f64, rng: &mut impl Rng) -> f64 {
-  let chi_squared = ChiSquared::new(df).unwrap();
+use crate::distributions::chi_square::SimdChiSquared;
+use crate::distributions::normal::SimdNormal;
+use crate::traits::FloatExt;
+
+pub fn sample<T: FloatExt>(df: T, lambda: T, rng: &mut impl Rng) -> T {
+  let chi_squared = SimdChiSquared::new(df);
   let y = chi_squared.sample(rng);
 
-  let normal = Normal::new(lambda.sqrt(), 1.0).unwrap();
+  let normal = SimdNormal::<T, 64>::new(lambda.sqrt(), T::one());
   let z = normal.sample(rng);
 
   y + z * z

@@ -1,12 +1,11 @@
-use impl_new_derive::ImplNew;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::stochastic::diffusion::gbm::GBM;
-use crate::stochastic::SamplingExt;
+use crate::traits::ProcessExt;
 
 fn laplace_pdf(x: f64, l: f64) -> f64 {
   if l <= 0.0 {
@@ -32,9 +31,8 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
 /// - Use the Malliavin weight (coef) to estimate the conditional call price
 ///   C(t, S_t^{(i)}) for each path i.
 /// - Then use the tower property to get the time-0 call price:
-///     C(0) = E[ e^{-r t} C(t, S_t) ]
+///   C(0) = E[ e^{-r t} C(t, S_t) ]
 /// - Put price is recovered from put-call parity.
-#[derive(ImplNew)]
 pub struct GbmMalliavinPricer {
   /// Underlying spot S_0
   pub s: f64,
@@ -67,24 +65,25 @@ impl TimeExt for GbmMalliavinPricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }
 
 impl PricerExt for GbmMalliavinPricer {
-  /// Call/put prices based purely on the Malliavin estimator.
-  ///
-  /// No plain Monte Carlo and no closed-form BS formula is used here.
   fn calculate_call_put(&self) -> (f64, f64) {
     let t = self.t_eval;
     let (_s_t, c_t) = self.conditional_call_malliavin(t);
 
     self.call_put_from_conditional(t, &c_t)
+  }
+
+  fn calculate_price(&self) -> f64 {
+    self.calculate_call_put().0
   }
 }
 
@@ -146,19 +145,7 @@ impl GbmMalliavinPricer {
     let mu = self.r - self.q.unwrap_or(0.0);
 
     // Construct a GBM process with Euler discretization on [0, T].
-    let gbm = GBM::<f64> {
-      mu,
-      sigma: self.v,
-      n: self.n_steps,
-      x0: Some(self.s),
-      t: Some(T),
-      m: Some(self.n_paths),
-      distribution: None,
-      #[cfg(feature = "malliavin")]
-      calculate_malliavin: Some(false),
-      #[cfg(feature = "malliavin")]
-      malliavin: std::sync::Mutex::new(None),
-    };
+    let gbm = GBM::new(mu, self.v, self.n_steps, Some(self.s), Some(T));
 
     let m = self.n_paths;
     let n = self.n_steps;

@@ -26,15 +26,14 @@
 //! - `m`: Batch size for parallelization (if any).
 //! - `cgns`: A correlated Gaussian noise system that produces two correlated Brownian increments.
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Sampling2DExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
-#[derive(ImplNew)]
-pub struct DuffieKan<T> {
+pub struct DuffieKan<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -51,22 +50,62 @@ pub struct DuffieKan<T> {
   pub r0: Option<T>,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
-  pub cgns: CGNS<T>,
+  cgns: CGNS<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling2DExt<f64> for DuffieKan<f64> {
-  /// Sample the Duffie-Kan process
-  fn sample(&self) -> [Array1<f64>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+impl<T: FloatExt> DuffieKan<T> {
+  pub fn new(
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    n: usize,
+    r0: Option<T>,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
+    Self {
+      alpha,
+      beta,
+      gamma,
+      rho,
+      a1,
+      b1,
+      c1,
+      sigma1,
+      a2,
+      b2,
+      c2,
+      sigma2,
+      n,
+      r0,
+      x0,
+      t,
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
+}
 
-    let mut r = Array1::<f64>::zeros(self.n);
-    let mut x = Array1::<f64>::zeros(self.n);
+impl<T: FloatExt> ProcessExt<T> for DuffieKan<T> {
+  type Output = [Array1<T>; 2];
 
-    r[0] = self.r0.unwrap_or(0.0);
-    x[0] = self.x0.unwrap_or(0.0);
+  fn sample(&self) -> Self::Output {
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = &self.cgns.sample();
+
+    let mut r = Array1::<T>::zeros(self.n);
+    let mut x = Array1::<T>::zeros(self.n);
+
+    r[0] = self.r0.unwrap_or(T::zero());
+    x[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       r[i] = r[i - 1]
@@ -78,48 +117,5 @@ impl Sampling2DExt<f64> for DuffieKan<f64> {
     }
 
     [r, x]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(feature = "f32")]
-impl Sampling2DExt<f32> for DuffieKan<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-
-    let mut r = Array1::<f32>::zeros(self.n);
-    let mut x = Array1::<f32>::zeros(self.n);
-
-    r[0] = self.r0.unwrap_or(0.0);
-    x[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      r[i] = r[i - 1]
-        + (self.a1 * r[i - 1] + self.b1 * x[i - 1] + self.c1) * dt
-        + self.sigma1 * (self.alpha * r[i - 1] + self.beta * x[i - 1] + self.gamma) * cgn1[i - 1];
-      x[i] = x[i - 1]
-        + (self.a2 * r[i - 1] + self.b2 * x[i - 1] + self.c2) * dt
-        + self.sigma2 * (self.alpha * r[i - 1] + self.beta * x[i - 1] + self.gamma) * cgn2[i - 1];
-    }
-
-    [r, x]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

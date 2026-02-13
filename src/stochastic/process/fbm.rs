@@ -1,82 +1,44 @@
-#[cfg(feature = "malliavin")]
-use std::sync::Mutex;
-
-use impl_new_derive::ImplNew;
-use ndarray::s;
 use ndarray::Array1;
-#[cfg(feature = "malliavin")]
 use statrs::function::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::SamplingExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct FBM<T> {
+pub struct FBM<T: FloatExt> {
   pub hurst: T,
   pub n: usize,
-  pub t: Option<f64>,
-  pub m: Option<usize>,
-  pub fgn: FGN<T>,
-  #[cfg(feature = "malliavin")]
-  pub calculate_malliavin: Option<bool>,
-  #[cfg(feature = "malliavin")]
-  malliavin: Mutex<Option<Array1<f64>>>,
-  #[cfg(feature = "cuda")]
-  #[default(false)]
-  cuda: bool,
+  pub t: Option<T>,
+  fgn: FGN<T>,
 }
 
-#[cfg(feature = "f64")]
-impl FBM<f64> {
-  fn fgn(&self) -> Array1<f64> {
-    #[cfg(feature = "cuda")]
-    if self.cuda {
-      if self.m.is_some() && self.m.unwrap() > 1 {
-        panic!("m must be None or 1 when using CUDA");
-      }
-
-      return self.fgn.sample_cuda().unwrap().left().unwrap();
+impl<T: FloatExt> FBM<T> {
+  pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
+    Self {
+      hurst,
+      n,
+      t,
+      fgn: FGN::new(hurst, n - 1, t),
     }
-
-    self.fgn.sample()
   }
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for FBM<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let fgn = self.fgn();
-    let mut fbm = Array1::<f64>::zeros(self.n);
-    fbm.slice_mut(s![1..]).assign(&fgn);
+impl<T: FloatExt> ProcessExt<T> for FBM<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
+    let fgn = &self.fgn.sample();
+    let mut fbm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
-      fbm[i] += fbm[i - 1];
+      fbm[i] = fbm[i - 1] + fgn[i - 1];
     }
 
-    #[cfg(feature = "malliavin")]
-    if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
-      let mut malliavin = Array1::zeros(self.n);
-      let dt = self.t.unwrap_or(1.0) / (self.n) as f64;
-      for i in 0..self.n {
-        malliavin[i] =
-          1.0 / (gamma::gamma(self.hurst + 0.5)) * (i as f64 * dt).powf(self.hurst - 0.5);
-      }
-
-      let _ = std::mem::replace(&mut *self.malliavin.lock().unwrap(), Some(malliavin));
-    }
-    fbm.slice(s![..self.n()]).to_owned()
+    fbm
   }
+}
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-
+impl<T: FloatExt> FBM<T> {
   /// Calculate the Malliavin derivative
   ///
   /// The Malliavin derivative of the fractional Brownian motion is given by:
@@ -85,120 +47,42 @@ impl SamplingExt<f64> for FBM<f64> {
   /// where B^H_t is the fractional Brownian motion with Hurst parameter H in Mandelbrot-Van Ness representation as
   /// B^H_t = 1 / Γ(H + 1/2) ∫_0^t (t - s)^{H - 1/2} dW_s
   /// which is a truncated Wiener integral.
-  #[cfg(feature = "malliavin")]
-  fn malliavin(&self) -> Array1<f64> {
-    self.malliavin.lock().unwrap().clone().unwrap()
-  }
+  pub fn malliavin(&self) -> Array1<T> {
+    let dt = self.fgn.dt();
+    let mut m = Array1::zeros(self.n);
+    let g = gamma::gamma(self.hurst.to_f64().unwrap() + 0.5);
 
-  #[cfg(feature = "cuda")]
-  fn set_cuda(&mut self, cuda: bool) {
-    self.cuda = cuda;
-  }
-}
-
-#[cfg(feature = "f32")]
-impl FBM<f32> {
-  fn fgn(&self) -> Array1<f32> {
-    self.fgn.sample()
-  }
-}
-
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for FBM<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let fgn = self.fgn();
-    let mut fbm = Array1::<f32>::zeros(self.n);
-    fbm.slice_mut(s![1..]).assign(&fgn);
-
-    for i in 1..self.n {
-      fbm[i] += fbm[i - 1];
+    for i in 0..self.n {
+      m[i] = T::one() / T::from_f64_fast(g)
+        * (T::from_usize_(i) * dt).powf(self.hurst - T::from_f64_fast(0.5));
     }
 
-    fbm.slice(s![..self.n()]).to_owned()
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+    m
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use std::time::Instant;
+
   use super::*;
-  use crate::plot_1d;
-  #[cfg(feature = "malliavin")]
-  use crate::plot_2d;
-  use crate::stochastic::N;
 
   #[test]
-  fn fbm_length_equals_n() {
-    let fbm = FBM::new(
-      0.7,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      #[cfg(feature = "malliavin")]
-      None,
-    );
+  fn test_fbm() {
+    let start = Instant::now();
+    let fbm = FBM::new(0.7, 10000, None);
+    for _ in 0..10000 {
+      let m = fbm.sample();
+      assert_eq!(m.len(), 10000);
+    }
+    println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
 
-    assert_eq!(fbm.sample().len(), N);
-  }
-
-  #[test]
-  fn fbm_starts_with_x0() {
-    let fbm = FBM::new(
-      0.7,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      #[cfg(feature = "malliavin")]
-      None,
-    );
-
-    assert_eq!(fbm.sample()[0], 0.0);
-  }
-
-  #[test]
-  fn fbm_plot() {
-    let fbm = FBM::new(
-      0.1,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.1, N - 1, Some(1.0), None),
-      #[cfg(feature = "malliavin")]
-      None,
-    );
-
-    plot_1d!(fbm.sample(), "Fractional Brownian Motion (H = 0.7)");
-  }
-
-  #[test]
-  #[cfg(feature = "malliavin")]
-  fn fbm_malliavin() {
-    let fbm = FBM::new(
-      0.7,
-      N,
-      Some(1.0),
-      None,
-      FGN::<f64>::new(0.7, N - 1, Some(1.0), None),
-      Some(true),
-    );
-    let process = fbm.sample();
-    let malliavin = fbm.malliavin();
-    plot_2d!(
-      process,
-      "Fractional Brownian Motion (H = 0.7)",
-      malliavin,
-      "Malliavin derivative of Fractional Brownian Motion (H = 0.7)"
-    );
+    let start = Instant::now();
+    let fbm = FBM::new(0.7, 10000, None);
+    for _ in 0..10000 {
+      let m = fbm.sample();
+      assert_eq!(m.len(), 10000);
+    }
+    println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
   }
 }

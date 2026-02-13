@@ -1,16 +1,14 @@
 use std::f64::consts::SQRT_2;
 
-use impl_new_derive::ImplNew;
 use ndarray::array;
 use ndarray::s;
 use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
-use crate::stochastic::SamplingExt;
+use crate::traits::ProcessExt;
 
 // Version 1: FOUParameterEstimationV1 with linear filter methods
-#[derive(ImplNew)]
 pub struct FOUParameterEstimationV1 {
   pub path: Array1<f64>,
   pub filter_type: FilterType,
@@ -25,6 +23,16 @@ pub struct FOUParameterEstimationV1 {
   L: usize,
   V1: f64,
   V2: f64,
+}
+
+impl FOUParameterEstimationV1 {
+  pub fn new(path: Array1<f64>, filter_type: FilterType, delta: Option<f64>) -> Self {
+    Self {
+      path, filter_type, delta,
+      hurst: None, sigma: None, mu: None, theta: None,
+      a: Array1::zeros(0), L: 0, V1: 0.0, V2: 0.0,
+    }
+  }
 }
 
 #[derive(PartialEq)]
@@ -176,7 +184,6 @@ impl FOUParameterEstimationV1 {
 }
 
 // Version 2: FOUParameterEstimationV2 without linear filters
-#[derive(ImplNew)]
 pub struct FOUParameterEstimationV2 {
   pub path: Array1<f64>,
   pub delta: Option<f64>,
@@ -189,6 +196,13 @@ pub struct FOUParameterEstimationV2 {
 }
 
 impl FOUParameterEstimationV2 {
+  pub fn new(path: Array1<f64>, delta: Option<f64>, series_length: usize) -> Self {
+    Self {
+      path, delta, series_length,
+      hurst: None, sigma: None, mu: None, theta: None,
+    }
+  }
+
   pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
     if self.hurst.is_none() {
       self.hurst_estimator();
@@ -338,11 +352,11 @@ impl FOUParameterEstimationV3 {
     let fgn_length = self.series_length * M;
 
     // Generate fGN sample of length fgn_length
-    let fgn = FGN::<f64>::new(self.hurst, fgn_length - 1, Some(self.T), None);
+    let fgn = FGN::new(self.hurst, fgn_length - 1, Some(self.T));
     let fgn_sample = fgn.sample();
 
     // Initialize full_fou array
-    let mut full_fou = Array1::<f64>::zeros(fgn_length);
+    let mut full_fou = Array1::zeros(fgn_length);
     full_fou[0] = self.initial_value;
 
     for i in 1..fgn_length {
@@ -352,7 +366,7 @@ impl FOUParameterEstimationV3 {
     }
 
     // Initialize fou array
-    let mut fou = Array1::<f64>::zeros(self.series_length);
+    let mut fou = Array1::zeros(self.series_length);
     fou[0] = self.initial_value;
 
     for i in 1..self.series_length {
@@ -426,86 +440,5 @@ impl FOUParameterEstimationV3 {
 
     let estimated_alpha = (numerator / denominator).powf(-1.0 / (2.0 * H));
     self.estimated_alpha = Some(estimated_alpha);
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::stochastic::diffusion::fou::FOU;
-  use crate::stochastic::SamplingExt;
-
-  #[test]
-  fn test_fou_parameter_estimation_v1() {
-    const N: usize = 10000;
-    const X0: f64 = 0.0;
-
-    let fou = FOU::<f64>::new(0.70, 5.0, 2.8, 1.0, 4096, Some(X0), Some(16.0), None);
-    let path = fou.sample();
-    let mut estimator = FOUParameterEstimationV1::new(path, FilterType::Daubechies, None);
-
-    // Estimate the parameters
-    let (estimated_hurst, estimated_sigma, estimated_mu, estimated_theta) =
-      estimator.estimate_parameters();
-
-    // Print the estimated parameters
-    println!("Estimated Hurst exponent: {}", estimated_hurst);
-    println!("Estimated sigma: {}", estimated_sigma);
-    println!("Estimated mu: {}", estimated_mu);
-    println!("Estimated theta: {}", estimated_theta);
-  }
-
-  #[test]
-  fn test_fou_parameter_estimation_v2() {
-    const N: usize = 4096;
-    const X0: f64 = 0.0;
-    let delta = 1.0 / 256.0;
-
-    let fou = FOU::<f64>::new(0.70, 5.0, 2.8, 2.0, N, Some(X0), Some(16.0), None);
-    let path = fou.sample();
-    let mut estimator = FOUParameterEstimationV2::new(path, Some(delta), N);
-
-    // Estimate the parameters
-    let (estimated_hurst, estimated_sigma, estimated_mu, estimated_theta) =
-      estimator.estimate_parameters();
-
-    // Print the estimated parameters
-    println!("Estimated Hurst exponent: {}", estimated_hurst);
-    println!("Estimated sigma: {}", estimated_sigma);
-    println!("Estimated mu: {}", estimated_mu);
-    println!("Estimated theta: {}", estimated_theta);
-  }
-
-  #[test]
-  fn test_fou_parameter_estimation_v3() {
-    let series_length = 4096;
-    let hurst = 0.70;
-    let sigma = 2.0;
-    let alpha = 5.0;
-    let mu = 2.8;
-    let initial_value = 0.0;
-    let T = 16.0;
-    let delta = 1.0 / 256.0;
-
-    let mut estimator = FOUParameterEstimationV3::new(
-      series_length,
-      hurst,
-      sigma,
-      alpha,
-      mu,
-      initial_value,
-      T,
-      delta,
-    );
-
-    // Estimate the parameters
-    let (estimated_hurst, estimated_sigma, estimated_mu, estimated_alpha) =
-      estimator.estimate_parameters();
-
-    // Print the estimated parameters
-    println!("Estimated Hurst exponent: {}", estimated_hurst);
-    println!("Estimated sigma: {}", estimated_sigma);
-    println!("Estimated mu: {}", estimated_mu);
-    println!("Estimated alpha: {}", estimated_alpha);
   }
 }

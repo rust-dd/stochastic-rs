@@ -1,77 +1,46 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray::Array2;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Sampling2DExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct CBMS<T> {
+pub struct CBMS<T: FloatExt> {
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
-  pub cgns: CGNS<T>,
+  cgns: CGNS<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling2DExt<f64> for CBMS<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
+impl<T: FloatExt> CBMS<T> {
+  pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (-1.0..=1.0).contains(&self.rho),
+      (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    let mut bms = Array2::<f64>::zeros((2, self.n));
-    let [cgn1, cgn2] = self.cgns.sample();
-
-    for i in 1..self.n {
-      bms[[0, i]] = bms[[0, i - 1]] + cgn1[i - 1];
-      bms[[1, i]] =
-        bms[[1, i - 1]] + self.rho * cgn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * cgn2[i - 1];
+    Self {
+      rho,
+      n,
+      t,
+      cgns: CGNS::new(rho, n - 1, t),
     }
-
-    [bms.row(0).into_owned(), bms.row(1).into_owned()]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-#[cfg(feature = "f32")]
-impl Sampling2DExt<f32> for CBMS<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    assert!(
-      (-1.0..=1.0).contains(&self.rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
+impl<T: FloatExt> ProcessExt<T> for CBMS<T> {
+  type Output = [Array1<T>; 2];
 
-    let mut bms = Array2::<f32>::zeros((2, self.n));
-    let [cgn1, cgn2] = self.cgns.sample();
+  fn sample(&self) -> Self::Output {
+    let [cgn1, cgn2] = &self.cgns.sample();
+
+    let mut bm1 = Array1::<T>::zeros(self.n);
+    let mut bm2 = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
-      bms[[0, i]] = bms[[0, i - 1]] + cgn1[i - 1];
-      bms[[1, i]] =
-        bms[[1, i - 1]] + self.rho * cgn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * cgn2[i - 1];
+      bm1[i] = bm1[i - 1] + cgn1[i - 1];
+      bm2[i] = bm2[i - 1] + cgn2[i - 1];
     }
 
-    [bms.row(0).into_owned(), bms.row(1).into_owned()]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+    [bm1, bm2]
   }
 }

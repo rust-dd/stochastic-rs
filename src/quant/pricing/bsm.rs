@@ -1,11 +1,10 @@
-use impl_new_derive::ImplNew;
 use implied_vol::implied_black_volatility;
 use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::quant::OptionType;
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -13,23 +12,21 @@ pub enum BSMCoc {
   /// Black-Scholes-Merton 1973 (stock option)
   /// Cost of carry = risk-free rate
   #[default]
-  BSM1973,
+  Bsm1973,
   /// Black-Scholes-Merton 1976 (stock option)
   /// Cost of carry = risk-free rate - dividend yield
-  MERTON1973,
+  Merton1973,
   /// Black 1976 (futures option)
   /// Cost of carry = 0
-  BLACK1976,
+  Black1976,
   /// Asay 1982 (futures option)
   /// Cost of carry = 0
-  ASAY1982,
+  Asay1982,
   /// Garman-Kohlhagen 1983 (currency option)
   /// Cost of carry = (domestic - foregin) risk-free rate
-  GARMAN1983,
+  GarmanKohlhagen1983,
 }
 
-/// Black-Scholes-Merton model
-#[derive(ImplNew)]
 pub struct BSMPricer {
   /// Underlying price
   pub s: f64,
@@ -57,8 +54,109 @@ pub struct BSMPricer {
   pub b: BSMCoc,
 }
 
+impl BSMPricer {
+  pub fn new(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    r_d: Option<f64>,
+    r_f: Option<f64>,
+    q: Option<f64>,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
+    option_type: OptionType,
+    b: BSMCoc,
+  ) -> Self {
+    Self { s, v, k, r, r_d, r_f, q, tau, eval, expiration, option_type, b }
+  }
+
+  pub fn builder(s: f64, v: f64, k: f64, r: f64) -> BSMPricerBuilder {
+    BSMPricerBuilder {
+      s,
+      v,
+      k,
+      r,
+      r_d: None,
+      r_f: None,
+      q: None,
+      tau: None,
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Call,
+      b: BSMCoc::Bsm1973,
+    }
+  }
+}
+
+pub struct BSMPricerBuilder {
+  s: f64,
+  v: f64,
+  k: f64,
+  r: f64,
+  r_d: Option<f64>,
+  r_f: Option<f64>,
+  q: Option<f64>,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+  option_type: OptionType,
+  b: BSMCoc,
+}
+
+impl BSMPricerBuilder {
+  pub fn r_d(mut self, r_d: f64) -> Self {
+    self.r_d = Some(r_d);
+    self
+  }
+  pub fn r_f(mut self, r_f: f64) -> Self {
+    self.r_f = Some(r_f);
+    self
+  }
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn option_type(mut self, option_type: OptionType) -> Self {
+    self.option_type = option_type;
+    self
+  }
+  pub fn coc(mut self, b: BSMCoc) -> Self {
+    self.b = b;
+    self
+  }
+  pub fn build(self) -> BSMPricer {
+    BSMPricer {
+      s: self.s,
+      v: self.v,
+      k: self.k,
+      r: self.r,
+      r_d: self.r_d,
+      r_f: self.r_f,
+      q: self.q,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
+      option_type: self.option_type,
+      b: self.b,
+    }
+  }
+}
+
 impl PricerExt for BSMPricer {
-  /// Calculate the option price
   fn calculate_call_put(&self) -> (f64, f64) {
     let (d1, d2) = self.d1_d2();
     let n = Normal::default();
@@ -72,7 +170,14 @@ impl PricerExt for BSMPricer {
     (call, put)
   }
 
-  /// Calculate the implied volatility
+  fn calculate_price(&self) -> f64 {
+    let (call, put) = self.calculate_call_put();
+    match self.option_type {
+      OptionType::Call => call,
+      OptionType::Put => put,
+    }
+  }
+
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
     implied_black_volatility(
       c_price,
@@ -99,12 +204,12 @@ impl TimeExt for BSMPricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }
 
@@ -121,11 +226,11 @@ impl BSMPricer {
   /// Calculate b (cost of carry)
   fn b(&self) -> f64 {
     match self.b {
-      BSMCoc::BSM1973 => self.r,
-      BSMCoc::MERTON1973 => self.r - self.q.unwrap(),
-      BSMCoc::BLACK1976 => 0.0,
-      BSMCoc::ASAY1982 => 0.0,
-      BSMCoc::GARMAN1983 => self.r_d.unwrap() - self.r_f.unwrap(),
+      BSMCoc::Bsm1973 => self.r,
+      BSMCoc::Merton1973 => self.r - self.q.unwrap(),
+      BSMCoc::Black1976 => 0.0,
+      BSMCoc::Asay1982 => 0.0,
+      BSMCoc::GarmanKohlhagen1983 => self.r_d.unwrap() - self.r_f.unwrap(),
     }
   }
 
@@ -361,7 +466,7 @@ mod tests {
       None,
       None,
       OptionType::Call,
-      BSMCoc::BSM1973,
+      BSMCoc::Bsm1973,
     );
     let price = bsm.calculate_call_put();
     println!("Call Price: {}, Put Price: {}", price.0, price.1);
@@ -381,7 +486,7 @@ mod tests {
       None,
       None,
       OptionType::Call,
-      BSMCoc::BSM1973,
+      BSMCoc::Bsm1973,
     );
 
     let (call, ..) = bsm.calculate_call_put();

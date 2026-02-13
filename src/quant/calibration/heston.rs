@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use impl_new_derive::ImplNew;
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
@@ -11,12 +10,13 @@ use nalgebra::Owned;
 use ndarray::Array1;
 
 use crate::quant::calibration::CalibrationHistory;
+use crate::quant::loss;
 use crate::quant::pricing::heston::HestonPricer;
-use crate::quant::r#trait::CalibrationLossExt;
-use crate::quant::r#trait::PricerExt;
+use crate::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
 use crate::stats::mle::nmle_heston;
+use crate::stats::mle::HestonMleResult;
 
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
@@ -80,7 +80,7 @@ impl HestonParams {
     self.kappa = self.kappa.max(KAPPA_MIN);
     self.theta = self.theta.max(THETA_MIN);
     self.sigma = self.sigma.abs().max(SIGMA_MIN);
-    self.rho = self.rho.max(-RHO_BOUND).min(RHO_BOUND);
+    self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
 
     // 3) Feller condition: 2*kappa*theta ≥ sigma^2.
     if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
@@ -99,6 +99,18 @@ impl HestonParams {
   pub fn projected(mut self) -> Self {
     self.project_in_place();
     self
+  }
+}
+
+impl From<HestonMleResult> for HestonParams {
+  fn from(mle: HestonMleResult) -> Self {
+    HestonParams {
+      v0: mle.v0,
+      kappa: mle.kappa,
+      theta: mle.theta,
+      sigma: mle.sigma,
+      rho: mle.rho,
+    }
   }
 }
 
@@ -126,8 +138,7 @@ impl From<DVector<f64>> for HestonParams {
   }
 }
 
-/// A Heston model calibrator (price-based) using Levenberg-Marquardt.
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct HestonCalibrator {
   /// Params to calibrate (v0, kappa, theta, sigma, rho).
   /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).
@@ -156,7 +167,38 @@ pub struct HestonCalibrator {
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<HestonParams>>>>,
 }
 
-impl CalibrationLossExt for HestonCalibrator {}
+impl HestonCalibrator {
+  pub fn new(
+    params: Option<HestonParams>,
+    c_market: DVector<f64>,
+    s: DVector<f64>,
+    k: DVector<f64>,
+    r: f64,
+    q: Option<f64>,
+    tau: f64,
+    option_type: OptionType,
+    mle_s: Option<Array1<f64>>,
+    mle_v: Option<Array1<f64>>,
+    mle_r: Option<f64>,
+    record_history: bool,
+  ) -> Self {
+    Self {
+      params,
+      c_market,
+      s,
+      k,
+      r,
+      q,
+      tau,
+      option_type,
+      mle_s,
+      mle_v,
+      mle_r,
+      record_history,
+      calibration_history: Rc::new(RefCell::new(Vec::new())),
+    }
+  }
+}
 
 impl HestonCalibrator {
   pub fn calibrate(&self) {
@@ -197,8 +239,7 @@ impl HestonCalibrator {
   fn ensure_initial_guess(&mut self) {
     if self.params.is_none() {
       if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
-        let mut p = nmle_heston(s, v, r);
-        // Clamp to reasonable bounds and enforce constraints
+        let mut p: HestonParams = nmle_heston(s, v, r).into();
         p.project_in_place();
         self.params = Some(p);
       } else {
@@ -222,7 +263,7 @@ impl HestonCalibrator {
       return p.clone().projected();
     }
     if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
-      let mut p = nmle_heston(s, v, r);
+      let mut p: HestonParams = nmle_heston(s, v, r).into();
       p.project_in_place();
       return p;
     }
@@ -308,7 +349,7 @@ impl HestonCalibrator {
         }
         4 => {
           // −1 < rho < 1
-          let clamp = |y: f64| y.max(-RHO_BOUND).min(RHO_BOUND);
+          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
           params_plus.rho = clamp(x + h);
           params_minus.rho = clamp(x - h);
           // Use symmetric step if clamped too hard
@@ -353,7 +394,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
       p.clone().projected().into()
     } else if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r)
     {
-      let mut p = nmle_heston(s, v, r);
+      let mut p: HestonParams = nmle_heston(s, v, r).into();
       p.project_in_place();
       p.into()
     } else {
@@ -406,15 +447,15 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
             .into(),
           params: params_eff.clone(),
           loss_scores: CalibrationLossScore {
-            mae: self.mae(&self.c_market, &c_model),
-            mse: self.mse(&self.c_market, &c_model),
-            rmse: self.rmse(&self.c_market, &c_model),
-            mpe: self.mpe(&self.c_market, &c_model),
-            mape: self.mape(&self.c_market, &c_model),
-            mspe: self.mspe(&self.c_market, &c_model),
-            rmspe: self.rmspe(&self.c_market, &c_model),
-            mre: self.mre(&self.c_market, &c_model),
-            mrpe: self.mrpe(&self.c_market, &c_model),
+            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
+            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
+            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
+            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
+            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
+            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
+            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
+            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
+            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
           },
         });
     }
@@ -434,10 +475,9 @@ mod tests {
   use ndarray::Array1;
 
   use super::*;
-  use crate::stochastic::noise::cgns::CGNS;
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
   use crate::stochastic::volatility::HestonPow;
-  use crate::stochastic::Sampling2DExt;
+  use crate::traits::ProcessExt;
 
   #[test]
   fn test_heston_calibrate() {
@@ -512,8 +552,6 @@ mod tests {
       Some(t),
       HestonPow::Sqrt,
       Some(true),
-      None,
-      CGNS::new(true_params.rho, n, None, None),
     );
 
     let [s_ts, v_ts] = process.sample();

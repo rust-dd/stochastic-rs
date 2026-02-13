@@ -1,163 +1,61 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct Jacobi<T> {
+pub struct Jacobi<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub sigma: T,
   pub n: usize,
   pub x0: Option<T>,
-  pub t: Option<f64>,
-  pub m: Option<usize>,
+  pub t: Option<T>,
+  gn: Gn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for Jacobi<f64> {
+impl<T: FloatExt> Jacobi<T> {
+  pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    assert!(alpha > T::zero(), "alpha must be positive");
+    assert!(beta > T::zero(), "beta must be positive");
+    assert!(sigma > T::zero(), "sigma must be positive");
+    assert!(alpha < beta, "alpha must be less than beta");
+
+    Jacobi {
+      alpha,
+      beta,
+      sigma,
+      n,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt> ProcessExt<T> for Jacobi<T> {
+  type Output = Array1<T>;
+
   /// Sample the Jacobi process
-  fn sample(&self) -> Array1<f64> {
-    assert!(self.alpha > 0.0, "alpha must be positive");
-    assert!(self.beta > 0.0, "beta must be positive");
-    assert!(self.sigma > 0.0, "sigma must be positive");
-    assert!(self.alpha < self.beta, "alpha must be less than beta");
+  fn sample(&self) -> Self::Output {
+    let dt = self.gn.dt();
+    let gn = &self.gn.sample();
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut jacobi = Array1::<f64>::zeros(self.n);
-    jacobi[0] = self.x0.unwrap_or(0.0);
+    let mut jacobi = Array1::<T>::zeros(self.n);
+    jacobi[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       jacobi[i] = match jacobi[i - 1] {
-        _ if jacobi[i - 1] <= 0.0 && i > 0 => 0.0,
-        _ if jacobi[i - 1] >= 1.0 && i > 0 => 1.0,
+        _ if jacobi[i - 1] <= T::zero() && i > 0 => T::zero(),
+        _ if jacobi[i - 1] >= T::one() && i > 0 => T::one(),
         _ => {
           jacobi[i - 1]
             + (self.alpha - self.beta * jacobi[i - 1]) * dt
-            + self.sigma * (jacobi[i - 1] * (1.0 - jacobi[i - 1])).sqrt() * gn[i - 1]
+            + self.sigma * (jacobi[i - 1] * (T::one() - jacobi[i - 1])).sqrt() * gn[i - 1]
         }
       }
     }
 
     jacobi
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for Jacobi<f32> {
-  /// Sample the Jacobi process
-  fn sample(&self) -> Array1<f32> {
-    assert!(self.alpha > 0.0, "alpha must be positive");
-    assert!(self.beta > 0.0, "beta must be positive");
-    assert!(self.sigma > 0.0, "sigma must be positive");
-    assert!(self.alpha < self.beta, "alpha must be less than beta");
-
-    let dt = self.t.unwrap_or(1.0) as f32 / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut jacobi = Array1::<f32>::zeros(self.n);
-    jacobi[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      jacobi[i] = match jacobi[i - 1] {
-        _ if jacobi[i - 1] <= 0.0 && i > 0 => 0.0,
-        _ if jacobi[i - 1] >= 1.0 && i > 0 => 1.0,
-        _ => {
-          jacobi[i - 1]
-            + (self.alpha - self.beta * jacobi[i - 1]) * dt
-            + self.sigma * (jacobi[i - 1] * (1.0 - jacobi[i - 1])).sqrt() * gn[i - 1]
-        }
-      }
-    }
-
-    jacobi
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    assert!(self.alpha > 0.0, "alpha must be positive");
-    assert!(self.beta > 0.0, "beta must be positive");
-    assert!(self.sigma > 0.0, "sigma must be positive");
-    assert!(self.alpha < self.beta, "alpha must be less than beta");
-
-    let dt = self.t.unwrap_or(1.0) as f32 / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-
-    let mut jacobi = Array1::<f32>::zeros(self.n);
-    jacobi[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      jacobi[i] = match jacobi[i - 1] {
-        _ if jacobi[i - 1] <= 0.0 && i > 0 => 0.0,
-        _ if jacobi[i - 1] >= 1.0 && i > 0 => 1.0,
-        _ => {
-          jacobi[i - 1]
-            + (self.alpha - self.beta * jacobi[i - 1]) * dt
-            + self.sigma * (jacobi[i - 1] * (1.0 - jacobi[i - 1])).sqrt() * gn[i - 1]
-        }
-      }
-    }
-
-    jacobi
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::SamplingExt;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn fjacobi_length_equals_n() {
-    let jacobi = Jacobi::new(0.43, 0.5, 0.8, N, Some(X0), Some(1.0), None);
-    assert_eq!(jacobi.sample().len(), N);
-  }
-
-  #[test]
-  fn jacobi_starts_with_x0() {
-    let jacobi = Jacobi::new(0.43, 0.5, 0.8, N, Some(X0), Some(1.0), None);
-    assert_eq!(jacobi.sample()[0], X0);
-  }
-
-  #[test]
-  fn jacobi_plot() {
-    let jacobi = Jacobi::new(0.43, 0.5, 0.8, N, Some(X0), Some(1.0), None);
-    plot_1d!(jacobi.sample(), "Jacobi process");
-  }
-
-  #[test]
-  #[ignore = "Not implemented"]
-  #[cfg(feature = "malliavin")]
-  fn fjacobi_malliavin() {
-    unimplemented!();
   }
 }

@@ -1,79 +1,52 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray::Array2;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::Sampling2DExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct CGNS<T> {
+#[derive(Copy, Clone)]
+pub struct CGNS<T: FloatExt> {
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling2DExt<f64> for CGNS<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
+impl<T: FloatExt> CGNS<T> {
+  pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
-      (-1.0..=1.0).contains(&self.rho),
+      (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    let dt = self.t.unwrap_or(1.0) / self.n as f64;
-    let mut cgns = Array2::<f64>::zeros((2, self.n));
-    let gn1 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn2 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    for i in 1..self.n {
-      cgns[[0, i]] = gn1[i - 1];
-      cgns[[1, i]] = self.rho * gn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * gn2[i - 1];
+    Self {
+      rho,
+      n,
+      t,
+      gn: Gn::new(n, t),
     }
-
-    [cgns.row(0).into_owned(), cgns.row(1).into_owned()]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-#[cfg(feature = "f32")]
-impl Sampling2DExt<f32> for CGNS<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    assert!(
-      (-1.0..=1.0).contains(&self.rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
+impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
+  type Output = [Array1<T>; 2];
 
-    let dt = self.t.unwrap_or(1.0) / self.n as f32;
-    let mut cgns = Array2::<f32>::zeros((2, self.n));
-    let gn1 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn2 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+  fn sample(&self) -> Self::Output {
+    let gn1 = self.gn.sample();
+    let z = self.gn.sample();
+    let c = (T::one() - self.rho.powi(2)).sqrt();
+    let mut gn2 = Array1::zeros(self.n);
 
-    for i in 1..self.n {
-      cgns[[0, i]] = gn1[i - 1];
-      cgns[[1, i]] = self.rho * gn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * gn2[i - 1];
+    for i in 0..self.n {
+      gn2[i] = self.rho * gn1[i] + c * z[i];
     }
 
-    [cgns.row(0).into_owned(), cgns.row(1).into_owned()]
+    [gn1, gn2]
   }
+}
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+impl<T: FloatExt> CGNS<T> {
+  pub fn dt(&self) -> T {
+    self.t.unwrap_or(T::one()) / T::from_usize(self.n).unwrap()
   }
 }

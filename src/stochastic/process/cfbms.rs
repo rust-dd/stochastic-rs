@@ -1,77 +1,54 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray::Array2;
 
 use crate::stochastic::noise::cfgns::CFGNS;
-use crate::stochastic::Sampling2DExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct CFBMS<T> {
+pub struct CFBMS<T: FloatExt> {
+  pub hurst: T,
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
   pub m: Option<usize>,
-  pub cfgns: CFGNS<T>,
+  cfgns: CFGNS<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling2DExt<f64> for CFBMS<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
+impl<T: FloatExt> CFBMS<T> {
+  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, m: Option<usize>) -> Self {
     assert!(
-      (-1.0..=1.0).contains(&self.rho),
+      (T::zero()..=T::one()).contains(&hurst),
+      "Hurst parameter must be in (0, 1)"
+    );
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    let mut fbms = Array2::<f64>::zeros((2, self.n));
-    let [fgn1, fgn2] = self.cfgns.sample();
-
-    for i in 1..self.n {
-      fbms[[0, i]] = fbms[[0, i - 1]] + fgn1[i - 1];
-      fbms[[1, i]] =
-        fbms[[1, i - 1]] + self.rho * fgn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * fgn2[i - 1];
+    Self {
+      hurst,
+      rho,
+      n,
+      t,
+      m,
+      cfgns: CFGNS::new(hurst, rho, n - 1, t),
     }
-
-    [fbms.row(0).to_owned(), fbms.row(1).to_owned()]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-#[cfg(feature = "f32")]
-impl Sampling2DExt<f32> for CFBMS<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    assert!(
-      (-1.0..=1.0).contains(&self.rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
+impl<T: FloatExt> ProcessExt<T> for CFBMS<T> {
+  type Output = [Array1<T>; 2];
 
-    let mut fbms = Array2::<f32>::zeros((2, self.n));
-    let [fgn1, fgn2] = self.cfgns.sample();
+  fn sample(&self) -> Self::Output {
+    let [fgn1, fgn2] = &self.cfgns.sample();
+
+    let mut fbm1 = Array1::<T>::zeros(self.n);
+    let mut fbm2 = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
-      fbms[[0, i]] = fbms[[0, i - 1]] + fgn1[i - 1];
-      fbms[[1, i]] =
-        fbms[[1, i - 1]] + self.rho * fgn1[i - 1] + (1.0 - self.rho.powi(2)).sqrt() * fgn2[i - 1];
+      fbm1[i] = fbm1[i - 1] + fgn1[i - 1];
+      fbm2[i] = fbm2[i - 1] + fgn2[i - 1];
     }
 
-    [fbms.row(0).to_owned(), fbms.row(1).to_owned()]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+    [fbm1, fbm2]
   }
 }

@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use impl_new_derive::ImplNew;
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
@@ -9,10 +8,10 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use crate::quant::calibration::CalibrationHistory;
+use crate::quant::loss;
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
-use crate::quant::r#trait::CalibrationLossExt;
-use crate::quant::r#trait::PricerExt;
+use crate::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
 
@@ -34,8 +33,7 @@ impl From<DVector<f64>> for BSMParams {
   }
 }
 
-/// A calibrator.
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct BSMCalibrator {
   /// Params to calibrate.
   pub params: BSMParams,
@@ -63,7 +61,35 @@ pub struct BSMCalibrator {
   derivates: RefCell<Vec<Vec<f64>>>,
 }
 
-impl CalibrationLossExt for BSMCalibrator {}
+impl BSMCalibrator {
+  pub fn new(
+    params: BSMParams,
+    c_market: DVector<f64>,
+    s: DVector<f64>,
+    k: DVector<f64>,
+    r: f64,
+    r_d: Option<f64>,
+    r_f: Option<f64>,
+    q: Option<f64>,
+    tau: f64,
+    option_type: OptionType,
+  ) -> Self {
+    Self {
+      params,
+      c_market,
+      s,
+      k,
+      r,
+      r_d,
+      r_f,
+      q,
+      tau,
+      option_type,
+      calibration_history: RefCell::new(Vec::new()),
+      derivates: RefCell::new(Vec::new()),
+    }
+  }
+}
 
 impl BSMCalibrator {
   pub fn calibrate(&self) {
@@ -120,7 +146,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         None,
         None,
         self.option_type,
-        BSMCoc::BSM1973,
+        BSMCoc::Bsm1973,
       );
       let (call, put) = pricer.calculate_call_put();
 
@@ -139,17 +165,17 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         .push(CalibrationHistory {
           residuals: c_model.clone() - self.c_market.clone(),
           call_put: vec![(call, put)].into(),
-          params: self.params.clone().into(),
+          params: self.params.clone(),
           loss_scores: CalibrationLossScore {
-            mae: self.mae(&self.c_market, &c_model),
-            mse: self.mse(&self.c_market, &c_model),
-            rmse: self.rmse(&self.c_market, &c_model),
-            mpe: self.mpe(&self.c_market, &c_model),
-            mape: self.mape(&self.c_market, &c_model),
-            mspe: self.mspe(&self.c_market, &c_model),
-            rmspe: self.rmspe(&self.c_market, &c_model),
-            mre: self.mre(&self.c_market, &c_model),
-            mrpe: self.mrpe(&self.c_market, &c_model),
+            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
+            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
+            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
+            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
+            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
+            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
+            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
+            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
+            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
           },
         });
       derivates.push(pricer.derivatives());
@@ -185,7 +211,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         None,
         None,
         self.option_type,
-        BSMCoc::BSM1973,
+        BSMCoc::Bsm1973,
       );
 
       let (call, put) = pricer.calculate_call_put();

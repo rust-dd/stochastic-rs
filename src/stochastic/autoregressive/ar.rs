@@ -1,9 +1,8 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::wn::Wn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Implements an AR(p) model:
 ///
@@ -19,99 +18,38 @@ use crate::stochastic::SamplingExt;
 /// - `n`: Length of the time series.
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
-#[derive(ImplNew)]
-pub struct ARp<T> {
+pub struct ARp<T: FloatExt> {
   /// AR coefficients
   pub phi: Array1<T>,
   /// Noise std dev
   pub sigma: T,
   /// Number of observations
   pub n: usize,
-  /// Optional batch size
-  pub m: Option<usize>,
   /// Optional initial conditions
   pub x0: Option<Array1<T>>,
+  wn: Wn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for ARp<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let p = self.phi.len();
-    let noise = Array1::random(self.n, Normal::new(0.0, self.sigma).unwrap());
-    let mut series = Array1::<f64>::zeros(self.n);
-
-    // Fill initial conditions if provided
-    if let Some(init) = &self.x0 {
-      // Copy up to min(p, n)
-      for i in 0..p.min(self.n) {
-        series[i] = init[i];
-      }
+impl<T: FloatExt> ARp<T> {
+  /// Create a new AR process with given coefficients and noise standard deviation.
+  pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>) -> Self {
+    Self {
+      phi,
+      sigma,
+      n,
+      x0,
+      wn: Wn::new(n, None, Some(sigma)),
     }
-
-    // AR recursion
-    for t in 0..self.n {
-      let mut val = 0.0;
-      // Sum over AR lags
-      for k in 1..=p {
-        if t >= k {
-          val += self.phi[k - 1] * series[t - k];
-        }
-      }
-      // Add noise
-      series[t] += val + noise[t];
-    }
-
-    series
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f64> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let p = self.phi.len();
-    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma as f32));
-    let mut series = Array1::<f64>::zeros(self.n);
-
-    // Fill initial conditions if provided
-    if let Some(init) = &self.x0 {
-      // Copy up to min(p, n)
-      for i in 0..p.min(self.n) {
-        series[i] = init[i];
-      }
-    }
-
-    // AR recursion
-    for t in 0..self.n {
-      let mut val = 0.0;
-      // Sum over AR lags
-      for k in 1..=p {
-        if t >= k {
-          val += self.phi[k - 1] * series[t - k];
-        }
-      }
-      // Add noise
-      series[t] += val + noise[t] as f64;
-    }
-
-    series
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for ARp<f32> {
-  fn sample(&self) -> Array1<f32> {
+impl<T: FloatExt> ProcessExt<T> for ARp<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
     let p = self.phi.len();
-    let noise =
-      Array1::random(self.n, Normal::new(0.0, self.sigma as f64).unwrap()).mapv(|x| x as f32);
-    let mut series = Array1::<f32>::zeros(self.n);
+    let noise = &self.wn.sample();
+    let mut series = Array1::<T>::zeros(self.n);
 
     // Fill initial conditions if provided
     if let Some(init) = &self.x0 {
@@ -122,58 +60,17 @@ impl SamplingExt<f32> for ARp<f32> {
     }
 
     // AR recursion
-    for t in 0..self.n {
-      let mut val = 0.0;
-      // Sum over AR lags
+    let start = if self.x0.is_some() { p.min(self.n) } else { 0 };
+    for t in start..self.n {
+      let mut val = T::zero();
       for k in 1..=p {
         if t >= k {
           val += self.phi[k - 1] * series[t - k];
         }
       }
-      // Add noise
-      series[t] += val + noise[t];
+      series[t] = val + noise[t];
     }
 
     series
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let p = self.phi.len();
-    let noise = Array1::random(self.n, SimdNormal::new(0.0, self.sigma));
-    let mut series = Array1::<f32>::zeros(self.n);
-
-    // Fill initial conditions if provided
-    if let Some(init) = &self.x0 {
-      // Copy up to min(p, n)
-      for i in 0..p.min(self.n) {
-        series[i] = init[i];
-      }
-    }
-
-    // AR recursion
-    for t in 0..self.n {
-      let mut val = 0.0;
-      // Sum over AR lags
-      for k in 1..=p {
-        if t >= k {
-          val += self.phi[k - 1] * series[t - k];
-        }
-      }
-      // Add noise
-      series[t] += val + noise[t];
-    }
-
-    series
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

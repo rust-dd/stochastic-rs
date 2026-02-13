@@ -4,7 +4,6 @@ use argmin::core::Gradient;
 use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
-use impl_new_derive::ImplNew;
 use plotly::common::Mode;
 use plotly::common::Title;
 use plotly::layout::Axis;
@@ -34,7 +33,7 @@ pub struct SabrSmileQuotes {
   pub sigma_bf: f64,
 }
 
-#[derive(ImplNew, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct SabrSmileCalibrator {
   /// Spot FX rate S
   pub s: f64,
@@ -44,6 +43,12 @@ pub struct SabrSmileCalibrator {
   pub r_f: f64,
   /// Quotes for one tenor
   pub quotes: SabrSmileQuotes,
+}
+
+impl SabrSmileCalibrator {
+  pub fn new(s: f64, r_d: f64, r_f: f64, quotes: SabrSmileQuotes) -> Self {
+    Self { s, r_d, r_f, quotes }
+  }
 }
 
 #[derive(Clone, Debug)]
@@ -240,9 +245,7 @@ fn basin_hopping_opt(
         };
 
         if accept {
-          for i in 0..8 {
-            current_x[i] = param[i];
-          }
+          current_x.copy_from_slice(&param[..8]);
           current_f = cost;
 
           if cost < best_f {
@@ -385,7 +388,7 @@ impl SabrSmileCalibrator {
         .collect();
       let trace = Scatter::new(xs.clone(), ys)
         .mode(Mode::Lines)
-        .name((*label).to_string());
+        .name(*label);
       plot.add_trace(trace);
     }
 

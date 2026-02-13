@@ -1,125 +1,54 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
-#[derive(ImplNew)]
-pub struct Gompertz<T> {
+pub struct Gompertz<T: FloatExt> {
   pub a: T,
   pub b: T,
   pub sigma: T,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for Gompertz<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut x = Array1::<f64>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0).max(1e-12);
-
-    for i in 1..self.n {
-      let xi = x[i - 1].max(1e-12);
-      let drift = (self.a - self.b * xi.ln()) * xi * dt;
-      let diff = self.sigma * xi * gn[i - 1];
-      let next = xi + drift + diff;
-      x[i] = next.max(1e-12);
+impl<T: FloatExt> Gompertz<T> {
+  pub fn new(a: T, b: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Self {
+      a,
+      b,
+      sigma,
+      n,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
     }
-
-    x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for Gompertz<f32> {
-  fn sample(&self) -> Array1<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+impl<T: FloatExt> ProcessExt<T> for Gompertz<T> {
+  type Output = Array1<T>;
 
-    let mut x = Array1::<f32>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0).max(1e-8);
+  fn sample(&self) -> Self::Output {
+    let dt = self.gn.dt();
+    let gn = &self.gn.sample();
+
+    let mut x = Array1::<T>::zeros(self.n);
+    let threshold = T::from_f64_fast(1e-12);
+    x[0] = self.x0.unwrap_or(T::zero()).max(threshold);
 
     for i in 1..self.n {
-      let xi = x[i - 1].max(1e-8);
+      let xi = x[i - 1].max(threshold);
       let drift = (self.a - self.b * xi.ln()) * xi * dt;
       let diff = self.sigma * xi * gn[i - 1];
       let next = xi + drift + diff;
-      x[i] = next.max(1e-8);
+      x[i] = next.max(threshold);
     }
 
     x
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-
-    let mut x = Array1::<f32>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(0.0).max(1e-8);
-
-    for i in 1..self.n {
-      let xi = x[i - 1].max(1e-8);
-      let drift = (self.a - self.b * xi.ln()) * xi * dt;
-      let diff = self.sigma * xi * gn[i - 1];
-      let next = xi + drift + diff;
-      x[i] = next.max(1e-8);
-    }
-
-    x
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::SamplingExt;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn gompertz_length_equals_n() {
-    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0), None);
-    assert_eq!(proc.sample().len(), N);
-  }
-
-  #[test]
-  fn gompertz_starts_with_x0() {
-    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0), None);
-    assert_eq!(proc.sample()[0], X0.max(1e-12));
-  }
-
-  #[test]
-  fn gompertz_plot() {
-    let proc = Gompertz::new(1.0, 0.5, 0.3, N, Some(X0), Some(1.0), None);
-    plot_1d!(proc.sample(), "Gompertz diffusion");
   }
 }

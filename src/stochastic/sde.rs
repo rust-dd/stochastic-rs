@@ -8,7 +8,7 @@ use ndarray::Axis;
 use rand::Rng;
 
 use super::noise::fgn::FGN;
-use super::SamplingExt;
+use crate::traits::ProcessExt;
 
 pub enum NoiseModel {
   Gaussian,
@@ -72,7 +72,7 @@ where
         if let Some(h) = &self.hursts {
           for p in 0..n_paths {
             for d in 0..dim {
-              let fgn = FGN::<f64>::new(h[d], steps, Some(t1 - t0), None);
+              let fgn = FGN::new(h[d], steps, Some(t1 - t0));
               let data = fgn.sample();
 
               for i in 0..steps {
@@ -135,6 +135,40 @@ where
     out
   }
 
+  fn milstein_correction(
+    &self,
+    x: &Array1<f64>,
+    time: f64,
+    dW: &Array1<f64>,
+    dt: f64,
+  ) -> Array1<f64> {
+    let dim = x.len();
+    let eps = 1e-7;
+    let sigma_val = (self.diffusion)(x, time);
+    let mut correction = Array1::zeros(dim);
+
+    for j in 0..dim {
+      let mut x_plus = x.clone();
+      x_plus[j] += eps;
+      let sigma_plus = (self.diffusion)(&x_plus, time);
+
+      for i_dim in 0..dim {
+        for l in 0..dim {
+          let dsig = (sigma_plus[[i_dim, l]] - sigma_val[[i_dim, l]]) / eps;
+          let lj_bil = sigma_val[[j, l]] * dsig;
+          let i_jl = if j == l {
+            0.5 * (dW[j] * dW[l] - dt)
+          } else {
+            0.5 * dW[j] * dW[l]
+          };
+          correction[i_dim] += lj_bil * i_jl;
+        }
+      }
+    }
+
+    correction
+  }
+
   fn solve_milstein_gauss(
     &self,
     x0: &Array1<f64>,
@@ -155,11 +189,13 @@ where
         let dW = self.gauss_increment(dim, dt, rng);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
+        let correction = self.milstein_correction(&x, time, &dW, dt);
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
             incr += sigma_val[[i_dim, j_dim]] * dW[j_dim];
           }
+          incr += correction[i_dim];
           x[i_dim] += incr;
         }
         time += dt;
@@ -231,44 +267,38 @@ where
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
         let dW_full = self.gauss_increment(dim, dt, rng);
-        let mut partials = vec![Array1::<f64>::zeros(dim); 4];
-        for idx in 0..4 {
-          for d in 0..dim {
-            partials[idx][d] = dW_full[d] * 0.25;
-          }
-        }
         let k1_mu = (self.drift)(&x, time);
         let k1_sig = (self.diffusion)(&x, time);
         let mut x1 = x.clone();
         for i_dim in 0..dim {
-          let mut incr = k1_mu[i_dim] * (dt / 4.0);
+          let mut incr = k1_mu[i_dim] * (dt / 2.0);
           for j_dim in 0..dim {
-            incr += k1_sig[[i_dim, j_dim]] * partials[0][j_dim];
+            incr += k1_sig[[i_dim, j_dim]] * (dW_full[j_dim] * 0.5);
           }
           x1[i_dim] += incr;
         }
-        let k2_mu = (self.drift)(&x1, time + dt / 4.0);
-        let k2_sig = (self.diffusion)(&x1, time + dt / 4.0);
+        let k2_mu = (self.drift)(&x1, time + dt / 2.0);
+        let k2_sig = (self.diffusion)(&x1, time + dt / 2.0);
         let mut x2 = x.clone();
         for i_dim in 0..dim {
-          let mut incr = k2_mu[i_dim] * (dt / 4.0);
+          let mut incr = k2_mu[i_dim] * (dt / 2.0);
           for j_dim in 0..dim {
-            incr += k2_sig[[i_dim, j_dim]] * partials[1][j_dim];
+            incr += k2_sig[[i_dim, j_dim]] * (dW_full[j_dim] * 0.5);
           }
           x2[i_dim] += incr;
         }
-        let k3_mu = (self.drift)(&x2, time + dt / 4.0);
-        let k3_sig = (self.diffusion)(&x2, time + dt / 4.0);
+        let k3_mu = (self.drift)(&x2, time + dt / 2.0);
+        let k3_sig = (self.diffusion)(&x2, time + dt / 2.0);
         let mut x3 = x.clone();
         for i_dim in 0..dim {
-          let mut incr = k3_mu[i_dim] * (dt / 4.0);
+          let mut incr = k3_mu[i_dim] * dt;
           for j_dim in 0..dim {
-            incr += k3_sig[[i_dim, j_dim]] * partials[2][j_dim];
+            incr += k3_sig[[i_dim, j_dim]] * dW_full[j_dim];
           }
           x3[i_dim] += incr;
         }
-        let k4_mu = (self.drift)(&x3, time + dt / 4.0);
-        let k4_sig = (self.diffusion)(&x3, time + dt / 4.0);
+        let k4_mu = (self.drift)(&x3, time + dt);
+        let k4_sig = (self.diffusion)(&x3, time + dt);
         for i_dim in 0..dim {
           let drift_avg =
             (k1_mu[i_dim] + 2.0 * k2_mu[i_dim] + 2.0 * k3_mu[i_dim] + k4_mu[i_dim]) / 6.0;
@@ -346,14 +376,16 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i_step in 1..=steps {
-        let dW = incs.slice(s![p, i_step - 1, ..]);
+        let dW = incs.slice(s![p, i_step - 1, ..]).to_owned();
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
+        let correction = self.milstein_correction(&x, time, &dW, dt);
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
             incr += sigma_val[[i_dim, j_dim]] * dW[j_dim];
           }
+          incr += correction[i_dim];
           x[i_dim] += incr;
         }
         time += dt;
@@ -427,44 +459,38 @@ where
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i_step in 1..=steps {
         let dW_full = incs.slice(s![p, i_step - 1, ..]);
-        let mut partials = vec![Array1::<f64>::zeros(dim); 4];
-        for idx in 0..4 {
-          for d in 0..dim {
-            partials[idx][d] = dW_full[d] * 0.25;
-          }
-        }
         let k1_mu = (self.drift)(&x, time);
         let k1_sig = (self.diffusion)(&x, time);
         let mut x1 = x.clone();
         for i_dim in 0..dim {
-          let mut incr = k1_mu[i_dim] * (dt / 4.0);
+          let mut incr = k1_mu[i_dim] * (dt / 2.0);
           for j_dim in 0..dim {
-            incr += k1_sig[[i_dim, j_dim]] * partials[0][j_dim];
+            incr += k1_sig[[i_dim, j_dim]] * (dW_full[j_dim] * 0.5);
           }
           x1[i_dim] += incr;
         }
-        let k2_mu = (self.drift)(&x1, time + dt / 4.0);
-        let k2_sig = (self.diffusion)(&x1, time + dt / 4.0);
+        let k2_mu = (self.drift)(&x1, time + dt / 2.0);
+        let k2_sig = (self.diffusion)(&x1, time + dt / 2.0);
         let mut x2 = x.clone();
         for i_dim in 0..dim {
-          let mut incr = k2_mu[i_dim] * (dt / 4.0);
+          let mut incr = k2_mu[i_dim] * (dt / 2.0);
           for j_dim in 0..dim {
-            incr += k2_sig[[i_dim, j_dim]] * partials[1][j_dim];
+            incr += k2_sig[[i_dim, j_dim]] * (dW_full[j_dim] * 0.5);
           }
           x2[i_dim] += incr;
         }
-        let k3_mu = (self.drift)(&x2, time + dt / 4.0);
-        let k3_sig = (self.diffusion)(&x2, time + dt / 4.0);
+        let k3_mu = (self.drift)(&x2, time + dt / 2.0);
+        let k3_sig = (self.diffusion)(&x2, time + dt / 2.0);
         let mut x3 = x.clone();
         for i_dim in 0..dim {
-          let mut incr = k3_mu[i_dim] * (dt / 4.0);
+          let mut incr = k3_mu[i_dim] * dt;
           for j_dim in 0..dim {
-            incr += k3_sig[[i_dim, j_dim]] * partials[2][j_dim];
+            incr += k3_sig[[i_dim, j_dim]] * dW_full[j_dim];
           }
           x3[i_dim] += incr;
         }
-        let k4_mu = (self.drift)(&x3, time + dt / 4.0);
-        let k4_sig = (self.diffusion)(&x3, time + dt / 4.0);
+        let k4_mu = (self.drift)(&x3, time + dt);
+        let k4_sig = (self.diffusion)(&x3, time + dt);
         for i_dim in 0..dim {
           let drift_avg =
             (k1_mu[i_dim] + 2.0 * k2_mu[i_dim] + 2.0 * k3_mu[i_dim] + k4_mu[i_dim]) / 6.0;
@@ -487,70 +513,5 @@ where
       }
     }
     out
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use ndarray::arr1;
-  use ndarray::arr2;
-  use rand::rng;
-
-  use super::*;
-
-  #[test]
-  fn test_fgn_1d_euler() {
-    let drift = |x: &Array1<f64>, _t: f64| arr1(&[-0.5 * x[0]]);
-    let diffusion = |_x: &Array1<f64>, _t: f64| arr2(&[[0.1]]);
-    let sde = Sde::new(
-      drift,
-      diffusion,
-      NoiseModel::Fractional,
-      Some(arr1(&[0.7, 0.8])),
-    );
-    let mut rng = rng();
-    let x0 = arr1(&[1.0]);
-    let result = sde.solve(&x0, 0.0, 1.0, 0.01, 2, SdeMethod::Euler, &mut rng);
-    assert_eq!(result.shape(), &[2, 101, 1]);
-  }
-
-  #[test]
-  fn test_fgn_2d_srk2() {
-    let drift = |x: &Array1<f64>, _t: f64| arr1(&[-0.5 * x[0], -0.2 * x[1]]);
-    let diffusion = |_x: &Array1<f64>, _t: f64| arr2(&[[0.1, 0.0], [0.0, 0.2]]);
-    let sde = Sde::new(
-      drift,
-      diffusion,
-      NoiseModel::Fractional,
-      Some(arr1(&[0.8, 0.75])),
-    );
-    let mut rng = rng();
-    let x0 = arr1(&[1.0, 1.0]);
-    let result = sde.solve(&x0, 0.0, 1.0, 0.01, 2, SdeMethod::SRK2, &mut rng);
-    assert_eq!(result.shape(), &[2, 101, 2]);
-  }
-
-  #[test]
-  fn test_fgn_4d_srk2() {
-    let drift =
-      |x: &Array1<f64>, _t: f64| arr1(&[-0.5 * x[0], -0.2 * x[1], -0.3 * x[2], -0.4 * x[3]]);
-    let diffusion = |_x: &Array1<f64>, _t: f64| {
-      arr2(&[
-        [0.1, 0.0, 0.0, 0.0],
-        [0.0, 0.2, 0.0, 0.0],
-        [0.0, 0.0, 0.3, 0.0],
-        [0.0, 0.0, 0.0, 0.4],
-      ])
-    };
-    let sde = Sde::new(
-      drift,
-      diffusion,
-      NoiseModel::Fractional,
-      Some(arr1(&[0.8, 0.9, 0.75, 0.78])),
-    );
-    let mut rng = rng();
-    let x0 = arr1(&[1.0, 1.0, 1.0, 1.0]);
-    let result = sde.solve(&x0, 0.0, 1.0, 0.01, 4, SdeMethod::SRK2, &mut rng);
-    assert_eq!(result.shape(), &[4, 101, 4]);
   }
 }

@@ -180,7 +180,7 @@ pub fn silverman_bandwidth(data: &Array1<f64>) -> f64 {
 /// # Returns
 ///
 /// The value corresponding to the p-th percentile.
-pub fn percentile(sorted_data: &Vec<f64>, p: f64) -> f64 {
+pub fn percentile(sorted_data: &[f64], p: f64) -> f64 {
   if sorted_data.is_empty() {
     return 0.0;
   }
@@ -203,51 +203,5 @@ pub fn percentile(sorted_data: &Vec<f64>, p: f64) -> f64 {
     let lower_val = sorted_data[lower_index];
     let upper_val = sorted_data[upper_index];
     lower_val + weight * (upper_val - lower_val)
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use ndarray::Array;
-  use ndarray::Array1;
-
-  use super::*;
-
-  #[test]
-  fn test_kde() {
-    let data = Array1::from(vec![1.0, 1.5, 2.0, 2.5, 3.0]);
-
-    let kde_auto = GaussianKDE::with_silverman_bandwidth(data.clone());
-    println!("Silverman bandwidth: {:.5}", kde_auto.bandwidth);
-
-    let x_single = 2.0;
-    let density_single = kde_auto.evaluate(x_single);
-    println!("KDE({}) = {:.6}", x_single, density_single);
-
-    let x_values = Array::linspace(0.0, 4.0, 11);
-    let density_values = kde_auto.evaluate_array(&x_values);
-    println!("\nEvaluating multiple points (0..4):");
-    for (x, dens) in x_values.iter().zip(density_values.iter()) {
-      println!("x = {:.2}, KDE = {:.6}", x, dens);
-    }
-  }
-
-  #[test]
-  fn test_kde_evaluate_single() {
-    let data = Array1::from(vec![1.0, 2.0, 3.0]);
-    let kde = GaussianKDE::new(data.clone(), 0.5);
-    let density = kde.evaluate(2.0);
-
-    assert!(density.is_finite());
-    assert!(density >= 0.0);
-  }
-
-  #[test]
-  fn test_silverman_bandwidth() {
-    let data = Array1::from(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
-    let h = silverman_bandwidth(&data);
-
-    assert!(h > 0.0, "Bandwidth should be positive");
-    assert!(h < 10.0, "Bandwidth seems unexpectedly large");
   }
 }

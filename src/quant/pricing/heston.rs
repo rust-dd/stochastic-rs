@@ -1,15 +1,14 @@
 use std::f64::consts::FRAC_1_PI;
 
-use impl_new_derive::ImplNew;
 use implied_vol::implied_black_volatility;
 use num_complex::Complex64;
 use quadrature::double_exponential;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 use crate::quant::OptionType;
 
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct HestonPricer {
   /// Stock price
   pub s: f64,
@@ -39,9 +38,93 @@ pub struct HestonPricer {
   pub expiry: Option<chrono::NaiveDate>,
 }
 
+impl HestonPricer {
+  pub fn new(
+    s: f64, v0: f64, k: f64, r: f64, q: Option<f64>, rho: f64,
+    kappa: f64, theta: f64, sigma: f64, lambda: Option<f64>,
+    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiry: Option<chrono::NaiveDate>,
+  ) -> Self {
+    Self { s, v0, k, r, q, rho, kappa, theta, sigma, lambda, tau, eval, expiry }
+  }
+
+  pub fn builder(
+    s: f64, v0: f64, k: f64, r: f64, rho: f64, kappa: f64, theta: f64, sigma: f64,
+  ) -> HestonPricerBuilder {
+    HestonPricerBuilder {
+      s,
+      v0,
+      k,
+      r,
+      q: None,
+      rho,
+      kappa,
+      theta,
+      sigma,
+      lambda: None,
+      tau: None,
+      eval: None,
+      expiry: None,
+    }
+  }
+}
+
+pub struct HestonPricerBuilder {
+  s: f64,
+  v0: f64,
+  k: f64,
+  r: f64,
+  q: Option<f64>,
+  rho: f64,
+  kappa: f64,
+  theta: f64,
+  sigma: f64,
+  lambda: Option<f64>,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiry: Option<chrono::NaiveDate>,
+}
+
+impl HestonPricerBuilder {
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn lambda(mut self, lambda: f64) -> Self {
+    self.lambda = Some(lambda);
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiry(mut self, expiry: chrono::NaiveDate) -> Self {
+    self.expiry = Some(expiry);
+    self
+  }
+  pub fn build(self) -> HestonPricer {
+    HestonPricer {
+      s: self.s,
+      v0: self.v0,
+      k: self.k,
+      r: self.r,
+      q: self.q,
+      rho: self.rho,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma: self.sigma,
+      lambda: self.lambda,
+      tau: self.tau,
+      eval: self.eval,
+      expiry: self.expiry,
+    }
+  }
+}
+
 impl PricerExt for HestonPricer {
-  /// Calculate the price of a European call option using the Heston model
-  /// https://quant.stackexchange.com/a/18686
   fn calculate_call_put(&self) -> (f64, f64) {
     let tau = self.tau().unwrap_or(1.0);
 
@@ -50,6 +133,10 @@ impl PricerExt for HestonPricer {
     let put = call + self.k * (-self.r * tau).exp() - self.s * (-self.q.unwrap_or(0.0) * tau).exp();
 
     (call, put)
+  }
+
+  fn calculate_price(&self) -> f64 {
+    self.calculate_call_put().0
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
@@ -68,12 +155,12 @@ impl TimeExt for HestonPricer {
     self.tau
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiry.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiry
   }
 }
 

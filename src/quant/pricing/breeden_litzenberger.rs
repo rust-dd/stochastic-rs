@@ -1,10 +1,7 @@
 //! Breeden–Litzenberger formula utilities
 //! f_{RN}(K, T) = e^{r T} * ∂²C(K,T)/∂K² (same for P)
 
-use impl_new_derive::ImplNew;
-
-/// Breeden–Litzenberger risk-neutral density extractor
-#[derive(ImplNew, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct BreedenLitzenberger {
   /// Strikes (strictly increasing)
   pub strikes: Vec<f64>,
@@ -16,6 +13,12 @@ pub struct BreedenLitzenberger {
   pub tau: f64,
   /// Optional pre-calculated second derivative ∂²C/∂K² at each strike (overrides finite-difference computation)
   pub d2c_dk2: Option<Vec<f64>>,
+}
+
+impl BreedenLitzenberger {
+  pub fn new(strikes: Vec<f64>, prices: Vec<f64>, r: f64, tau: f64, d2c_dk2: Option<Vec<f64>>) -> Self {
+    Self { strikes, prices, r, tau, d2c_dk2 }
+  }
 }
 
 impl BreedenLitzenberger {
@@ -35,26 +38,19 @@ impl BreedenLitzenberger {
       return dens;
     }
 
-    for i in 1..n - 1 {
-      let k_im1 = self.strikes[i - 1];
-      let k_i = self.strikes[i];
-      let k_ip1 = self.strikes[i + 1];
+    for (dens_val, (k_win, c_win)) in dens[1..n - 1]
+      .iter_mut()
+      .zip(self.strikes.windows(3).zip(self.prices.windows(3)))
+    {
+      let h_i = k_win[1] - k_win[0];
+      let h_ip1 = k_win[2] - k_win[1];
 
-      let c_im1 = self.prices[i - 1];
-      let c_i = self.prices[i];
-      let c_ip1 = self.prices[i + 1];
-
-      let h_i = k_i - k_im1;
-      let h_ip1 = k_ip1 - k_i;
-
-      // Second derivative on a non-uniform grid (three-point formula)
-      // C''(K_i) ≈ 2 [ C_{i-1}/(h_i (h_i + h_ip1)) - C_i/(h_i h_ip1) + C_{i+1}/(h_ip1 (h_i + h_ip1)) ]
       let denom_left = h_i * (h_i + h_ip1);
       let denom_mid = h_i * h_ip1;
       let denom_right = h_ip1 * (h_i + h_ip1);
 
-      let cdd = 2.0 * (c_im1 / denom_left - c_i / denom_mid + c_ip1 / denom_right);
-      dens[i] = (self.r * self.tau).exp() * cdd;
+      let cdd = 2.0 * (c_win[0] / denom_left - c_win[1] / denom_mid + c_win[2] / denom_right);
+      *dens_val = (self.r * self.tau).exp() * cdd;
     }
 
     dens
@@ -73,10 +69,6 @@ impl BreedenLitzenberger {
     let n = self.strikes.len();
     assert_eq!(d2c.len(), n, "d2c_dk2 must have same length as strikes");
 
-    let mut dens = Vec::with_capacity(n);
-    for i in 0..n {
-      dens.push((self.r * self.tau).exp() * d2c[i]);
-    }
-    dens
+    d2c.iter().map(|d| (self.r * self.tau).exp() * d).collect()
   }
 }

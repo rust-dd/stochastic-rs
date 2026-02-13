@@ -1,15 +1,13 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Cox-Ingersoll-Ross (CIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
 /// where X(t) is the CIR process.
-#[derive(ImplNew)]
-pub struct CIR<T> {
+pub struct CIR<T: FloatExt> {
   pub theta: T,
   pub mu: T,
   pub sigma: T,
@@ -17,23 +15,48 @@ pub struct CIR<T> {
   pub x0: Option<T>,
   pub t: Option<T>,
   pub use_sym: Option<bool>,
-  pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for CIR<f64> {
+impl<T: FloatExt> CIR<T> {
+  /// Create a new CIR process.
+  pub fn new(
+    theta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+  ) -> Self {
+    assert!(
+      T::from_usize_(2) * theta * mu >= sigma.powi(2),
+      "2 * theta * mu < sigma^2"
+    );
+
+    Self {
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      use_sym,
+      gn: Gn::new(n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt> ProcessExt<T> for CIR<T> {
+  type Output = Array1<T>;
+
   /// Sample the Cox-Ingersoll-Ross (CIR) process
-  fn sample(&self) -> Array1<f64> {
-    assert!(
-      2.0 * self.theta * self.mu >= self.sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
+  fn sample(&self) -> Self::Output {
+    let dt = self.gn.dt();
+    let gn = &self.gn.sample();
 
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut cir = Array1::<f64>::zeros(self.n);
-    cir[0] = self.x0.unwrap_or(0.0);
+    let mut cir = Array1::<T>::zeros(self.n);
+    cir[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       let dcir = self.theta * (self.mu - cir[i - 1]) * dt
@@ -41,121 +64,10 @@ impl SamplingExt<f64> for CIR<f64> {
 
       cir[i] = match self.use_sym.unwrap_or(false) {
         true => (cir[i - 1] + dcir).abs(),
-        false => (cir[i - 1] + dcir).max(0.0),
+        false => (cir[i - 1] + dcir).max(T::zero()),
       };
     }
 
     cir
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for CIR<f32> {
-  /// Sample the Cox-Ingersoll-Ross (CIR) process
-  fn sample(&self) -> Array1<f32> {
-    assert!(
-      2.0 * self.theta * self.mu >= self.sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    let mut cir = Array1::<f32>::zeros(self.n);
-    cir[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      let dcir = self.theta * (self.mu - cir[i - 1]) * dt
-        + self.sigma * (cir[i - 1]).abs().sqrt() * gn[i - 1];
-
-      cir[i] = match self.use_sym.unwrap_or(false) {
-        true => (cir[i - 1] + dcir).abs(),
-        false => (cir[i - 1] + dcir).max(0.0),
-      };
-    }
-
-    cir
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    assert!(
-      2.0 * self.theta * self.mu >= self.sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
-
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-
-    let mut cir = Array1::<f32>::zeros(self.n);
-    cir[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      let dcir = self.theta * (self.mu - cir[i - 1]) * dt
-        + self.sigma * (cir[i - 1]).abs().sqrt() * gn[i - 1];
-
-      cir[i] = match self.use_sym.unwrap_or(false) {
-        true => (cir[i - 1] + dcir).abs(),
-        false => (cir[i - 1] + dcir).max(0.0),
-      };
-    }
-
-    cir
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::plot_1d;
-  use crate::stochastic::SamplingExt;
-  use crate::stochastic::N;
-  use crate::stochastic::X0;
-
-  #[test]
-  fn cir_length_equals_n() {
-    let cir = CIR::new(1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false), None);
-    assert_eq!(cir.sample().len(), N);
-  }
-
-  #[test]
-  fn cir_starts_with_x0() {
-    let cir = CIR::new(1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false), None);
-    assert_eq!(cir.sample()[0], X0);
-  }
-
-  #[test]
-  fn cir_plot() {
-    let cir = CIR::new(1.0, 1.2, 0.2, N, Some(X0), Some(1.0), Some(false), None);
-    plot_1d!(cir.sample(), "Cox-Ingersoll-Ross (CIR) process");
-  }
-
-  #[test]
-  #[ignore = "Not implemented"]
-  #[cfg(feature = "malliavin")]
-  fn cir_malliavin() {
-    unimplemented!();
   }
 }

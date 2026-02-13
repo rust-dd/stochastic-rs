@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 pub mod bonds;
 pub mod calibration;
+pub mod loss;
 pub mod order_book;
 pub mod pricing;
 pub mod strategies;
-pub mod r#trait;
 #[cfg(feature = "yahoo")]
 pub mod yahoo;
 

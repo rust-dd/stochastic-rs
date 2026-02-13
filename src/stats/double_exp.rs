@@ -1,12 +1,16 @@
-use impl_new_derive::ImplNew;
 use rand::Rng;
 use rand_distr::Distribution;
 
-#[derive(ImplNew)]
 pub struct DoubleExp {
   pub p: Option<f64>,
   pub lambda_plus: f64,
   pub lambda_minus: f64,
+}
+
+impl DoubleExp {
+  pub fn new(p: Option<f64>, lambda_plus: f64, lambda_minus: f64) -> Self {
+    Self { p, lambda_plus, lambda_minus }
+  }
 }
 
 impl Distribution<f64> for DoubleExp {

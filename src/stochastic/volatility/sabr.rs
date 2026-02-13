@@ -1,15 +1,10 @@
-#[cfg(feature = "malliavin")]
-use std::sync::Mutex;
-
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Sampling2DExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-
-pub struct SABR<T> {
+pub struct SABR<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub rho: T,
@@ -17,139 +12,67 @@ pub struct SABR<T> {
   pub f0: Option<T>,
   pub v0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
-  pub cgns: CGNS<T>,
-  #[cfg(feature = "malliavin")]
-  pub calculate_malliavin: Option<bool>,
-  #[cfg(feature = "malliavin")]
-  malliavin_of_vol: Mutex<Option<Array1<T>>>,
-  #[cfg(feature = "malliavin")]
-  malliavin_of_price: Mutex<Option<Array1<T>>>,
+  cgns: CGNS<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling2DExt<f64> for SABR<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
+impl<T: FloatExt> SABR<T> {
+  pub fn new(
+    alpha: T,
+    beta: T,
+    rho: T,
+    n: usize,
+    f0: Option<T>,
+    v0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
+    Self {
+      alpha,
+      beta,
+      rho,
+      n,
+      f0,
+      v0,
+      t,
+      cgns: CGNS::new(rho, n, t),
+    }
+  }
+}
 
-    let mut f = Array1::<f64>::zeros(self.n);
-    let mut v = Array1::<f64>::zeros(self.n);
+impl<T: FloatExt> ProcessExt<T> for SABR<T> {
+  type Output = [Array1<T>; 2];
 
-    f[0] = self.f0.unwrap_or(0.0);
-    v[0] = self.v0.unwrap_or(0.0);
+  fn sample(&self) -> Self::Output {
+    let [cgn1, cgn2] = &self.cgns.sample();
+
+    let mut f_ = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+
+    f_[0] = self.f0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      f[i] = f[i - 1] + v[i - 1] * f[i - 1].powf(self.beta) * cgn1[i - 1];
+      f_[i] = f_[i - 1] + v[i - 1] * f_[i - 1].powf(self.beta) * cgn1[i - 1];
       v[i] = v[i - 1] + self.alpha * v[i - 1] * cgn2[i - 1];
     }
 
-    #[cfg(feature = "malliavin")]
-    if self.calculate_malliavin.is_some() && self.calculate_malliavin.unwrap() {
-      // Only volatility Malliavin derivative is supported
-      let mut malliavin_of_vol = Array1::<f64>::zeros(self.n);
-
-      for i in 0..self.n {
-        malliavin_of_vol[i] = self.alpha * v.last().unwrap();
-      }
-
-      let _ = std::mem::replace(
-        &mut *self.malliavin_of_vol.lock().unwrap(),
-        Some(malliavin_of_vol),
-      );
-    }
-
-    [f, v]
+    [f_, v]
   }
+}
 
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-
+impl<T: FloatExt> SABR<T> {
   /// Calculate the Malliavin derivative of the SABR model
   ///
   /// The Malliavin derivative of the volaility process in the SABR model is given by:
   /// D_r \sigma_t = \alpha \sigma_t 1_{[0, T]}(r)
-  #[cfg(feature = "malliavin")]
-  fn malliavin(&self) -> [Array1<f64>; 2] {
-    [
-      Array1::zeros(self.n + 1),
-      self
-        .malliavin_of_vol
-        .lock()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .clone(),
-    ]
-  }
-}
+  fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
+    let [f, v] = self.sample();
 
-#[cfg(feature = "f32")]
-impl Sampling2DExt<f32> for SABR<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
+    let mut malliavin = Array1::<T>::zeros(self.n);
 
-    let mut f = Array1::<f32>::zeros(self.n);
-    let mut v = Array1::<f32>::zeros(self.n);
-
-    f[0] = self.f0.unwrap_or(0.0);
-    v[0] = self.v0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      f[i] = f[i - 1] + v[i - 1] * f[i - 1].powf(self.beta) * cgn1[i - 1];
-      v[i] = v[i - 1] + self.alpha * v[i - 1] * cgn2[i - 1];
+    for i in 0..self.n {
+      malliavin[i] = self.alpha * *v.last().unwrap();
     }
 
-    [f, v]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(test)]
-
-mod tests {
-  #[cfg(feature = "malliavin")]
-  use super::*;
-  #[cfg(feature = "malliavin")]
-  use crate::plot_2d;
-  #[cfg(feature = "malliavin")]
-  use crate::stochastic::N;
-
-  #[test]
-  #[cfg(feature = "malliavin")]
-  fn sabr_malliavin() {
-    let sabr = SABR::new(
-      0.5,
-      0.5,
-      0.5,
-      N,
-      Some(1.0),
-      Some(1.0),
-      Some(1.0),
-      None,
-      CGNS::new(0.7, N, None, None),
-      Some(true),
-    );
-    let process = sabr.sample();
-    let malliavin = sabr.malliavin();
-    plot_2d!(
-      process[1],
-      "SABR volatility process",
-      malliavin[1],
-      "Malliavin derivative of the SABR volatility process"
-    );
+    [f, v, malliavin]
   }
 }

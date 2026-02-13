@@ -1,12 +1,10 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::Sampling3DExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct HJM<T> {
+pub struct HJM<T: FloatExt> {
   pub a: fn(T) -> T,
   pub b: fn(T) -> T,
   pub p: fn(T, T) -> T,
@@ -19,73 +17,71 @@ pub struct HJM<T> {
   pub p0: Option<T>,
   pub f0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling3DExt<f64> for HJM<f64> {
-  fn sample(&self) -> [Array1<f64>; 3] {
-    let t_max = self.t.unwrap_or(1.0);
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let mut r = Array1::<f64>::zeros(self.n);
-    let mut p = Array1::<f64>::zeros(self.n);
-    let mut f = Array1::<f64>::zeros(self.n);
+impl<T: FloatExt> HJM<T> {
+  pub fn new(
+    a: fn(T) -> T,
+    b: fn(T) -> T,
+    p: fn(T, T) -> T,
+    q: fn(T, T) -> T,
+    v: fn(T, T) -> T,
+    alpha: fn(T, T) -> T,
+    sigma: fn(T, T) -> T,
+    n: usize,
+    r0: Option<T>,
+    p0: Option<T>,
+    f0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
+    Self {
+      a,
+      b,
+      p,
+      q,
+      v,
+      alpha,
+      sigma,
+      n,
+      r0,
+      p0,
+      f0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
+}
 
-    let gn1 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn2 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn3 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+impl<T: FloatExt> ProcessExt<T> for HJM<T> {
+  type Output = [Array1<T>; 3];
+
+  fn sample(&self) -> Self::Output {
+    let dt = self.gn.dt();
+
+    let mut r = Array1::<T>::zeros(self.n);
+    let mut p = Array1::<T>::zeros(self.n);
+    let mut f_ = Array1::<T>::zeros(self.n);
+
+    r[0] = self.r0.unwrap_or(T::zero());
+    p[0] = self.p0.unwrap_or(T::zero());
+    f_[0] = self.f0.unwrap_or(T::zero());
+
+    let gn1 = &self.gn.sample();
+    let gn2 = &self.gn.sample();
+    let gn3 = &self.gn.sample();
+
+    let t_max = self.t.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      let t = i as f64 * dt;
+      let t = T::from_usize_(i) * dt;
 
       r[i] = r[i - 1] + (self.a)(t) * dt + (self.b)(t) * gn1[i - 1];
       p[i] =
         p[i - 1] + (self.p)(t, t_max) * ((self.q)(t, t_max) * dt + (self.v)(t, t_max) * gn2[i - 1]);
-      f[i] = f[i - 1] + (self.alpha)(t, t_max) * dt + (self.sigma)(t, t_max) * gn3[i - 1];
+      f_[i] = f_[i - 1] + (self.alpha)(t, t_max) * dt + (self.sigma)(t, t_max) * gn3[i - 1];
     }
 
-    [r, p, f]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(feature = "f32")]
-impl Sampling3DExt<f32> for HJM<f32> {
-  fn sample(&self) -> [Array1<f32>; 3] {
-    let t_max = self.t.unwrap_or(1.0);
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let mut r = Array1::<f32>::zeros(self.n);
-    let mut p = Array1::<f32>::zeros(self.n);
-    let mut f = Array1::<f32>::zeros(self.n);
-
-    let gn1 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn2 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-    let gn3 = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-
-    for i in 1..self.n {
-      let t = i as f32 * dt;
-
-      r[i] = r[i - 1] + (self.a)(t) * dt + (self.b)(t) * gn1[i - 1];
-      p[i] =
-        p[i - 1] + (self.p)(t, t_max) * ((self.q)(t, t_max) * dt + (self.v)(t, t_max) * gn2[i - 1]);
-      f[i] = f[i - 1] + (self.alpha)(t, t_max) * dt + (self.sigma)(t, t_max) * gn3[i - 1];
-    }
-
-    [r, p, f]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
+    [r, p, f_]
   }
 }

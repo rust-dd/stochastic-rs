@@ -16,8 +16,10 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[cfg(feature = "ai")]
 pub mod ai;
-#[doc(hidden)]
-mod macros;
+pub mod copulas;
+pub mod distributions;
 pub mod quant;
 pub mod stats;
 pub mod stochastic;
+pub mod traits;
+mod visualization;

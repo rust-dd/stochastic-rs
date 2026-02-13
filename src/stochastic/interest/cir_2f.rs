@@ -1,65 +1,33 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use super::cir::CIR;
-use crate::stochastic::SamplingExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct CIR2F<T> {
+pub struct CIR2F<T: FloatExt> {
   pub x: CIR<T>,
   pub y: CIR<T>,
   pub phi: fn(T) -> T,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for CIR2F<f64> {
-  fn sample(&self) -> Array1<f64> {
-    let x = self.x.sample();
-    let y = self.y.sample();
-
-    let dt = self.x.t.unwrap_or(1.0) / (self.n() - 1) as f64;
-    let phi = Array1::<f64>::from_shape_fn(self.n(), |i| (self.phi)(i as f64 * dt));
-
-    x + y * phi
-  }
-
-  fn n(&self) -> usize {
-    self.x.n()
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.x.m()
+impl<T: FloatExt> CIR2F<T> {
+  pub fn new(x: CIR<T>, y: CIR<T>, phi: fn(T) -> T) -> Self {
+    Self { x, y, phi }
   }
 }
 
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for CIR2F<f32> {
-  fn sample(&self) -> Array1<f32> {
+impl<T: FloatExt> ProcessExt<T> for CIR2F<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
     let x = self.x.sample();
     let y = self.y.sample();
 
-    let dt = self.x.t.unwrap_or(1.0) / (self.n() - 1) as f32;
-    let phi = Array1::<f32>::from_shape_fn(self.n(), |i| (self.phi)(i as f32 * dt));
+    let n = x.len();
 
-    x + y * phi
-  }
+    let dt = self.x.t.unwrap_or(T::zero()) / T::from_usize_(n - 1);
+    let phi = Array1::<T>::from_shape_fn(n, |i| (self.phi)(T::from_usize_(i) * dt));
 
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    let x = self.x.sample_simd();
-    let y = self.y.sample_simd();
-
-    let dt = self.x.t.unwrap_or(1.0) / (self.n() - 1) as f32;
-    let phi = Array1::<f32>::from_shape_fn(self.n(), |i| (self.phi)(i as f32 * dt));
-
-    x + y * phi
-  }
-
-  fn n(&self) -> usize {
-    self.x.n()
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.x.m()
+    x + y + phi
   }
 }

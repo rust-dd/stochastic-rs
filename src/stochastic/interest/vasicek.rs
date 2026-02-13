@@ -1,56 +1,37 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::diffusion::ou::OU;
-use crate::stochastic::SamplingExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct Vasicek<T> {
+pub struct Vasicek<T: FloatExt> {
+  pub theta: T,
   pub mu: T,
   pub sigma: T,
-  pub theta: Option<T>,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
-  pub ou: OU<T>,
+  ou: OU<T>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for Vasicek<f64> {
-  fn sample(&self) -> Array1<f64> {
-    self.ou.sample()
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
+impl<T: FloatExt> Vasicek<T> {
+  pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    Self {
+      mu,
+      sigma,
+      theta,
+      n,
+      x0,
+      t,
+      ou: OU::new(theta, mu, sigma, n, x0, t),
+    }
   }
 }
 
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for Vasicek<f32> {
-  fn sample(&self) -> Array1<f32> {
+impl<T: FloatExt> ProcessExt<T> for Vasicek<T> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
     self.ou.sample()
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    self.ou.sample_simd()
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

@@ -1,8 +1,8 @@
 use chrono::Datelike;
 use chrono::Utc;
 
-use crate::quant::r#trait::PricerExt;
-use crate::quant::r#trait::TimeExt;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 
 /// Hull-White model for zero-coupon bond pricing
 /// dR(t) = (theta(t) - aR(t))dt + sigma(t)dW(t)
@@ -26,7 +26,11 @@ pub struct HullWhite {
 }
 
 impl PricerExt for HullWhite {
-  /// Calculate the price of the zero-coupon bond (unstable)
+  fn calculate_call_put(&self) -> (f64, f64) {
+    let price = self.calculate_price();
+    (price, price)
+  }
+
   fn calculate_price(&self) -> f64 {
     let tau = self.calculate_tau_in_years();
     let today = Utc::now().year() as f64;
@@ -53,11 +57,11 @@ impl TimeExt for HullWhite {
     Some(self.tau)
   }
 
-  fn eval(&self) -> chrono::NaiveDate {
-    self.eval.unwrap()
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
   }
 
-  fn expiration(&self) -> chrono::NaiveDate {
-    self.expiration.unwrap()
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiration
   }
 }

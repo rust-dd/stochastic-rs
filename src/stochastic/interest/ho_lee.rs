@@ -1,117 +1,65 @@
 use std::sync::Arc;
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
-#[derive(ImplNew)]
-pub struct HoLee<T> {
+pub struct HoLee<T: FloatExt> {
   pub f_T: Option<Arc<dyn Fn(T) -> T + Send + Sync + 'static>>,
   pub theta: Option<T>,
   pub sigma: T,
   pub n: usize,
-  pub t: T,
-  pub m: Option<usize>,
+  pub t: Option<T>,
+  gn: Gn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingExt<f64> for HoLee<f64> {
-  fn sample(&self) -> Array1<f64> {
+impl<T: FloatExt> HoLee<T> {
+  pub fn new(
+    f_T: Option<Arc<dyn Fn(T) -> T + Send + Sync + 'static>>,
+    theta: Option<T>,
+    sigma: T,
+    n: usize,
+    t: Option<T>,
+  ) -> Self {
     assert!(
-      self.theta.is_none() && self.f_T.is_none(),
+      theta.is_some() || f_T.is_some(),
       "theta or f_T must be provided"
     );
-    let dt = self.t / (self.n - 1) as f64;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
 
-    let mut r = Array1::<f64>::zeros(self.n);
-
-    for i in 1..self.n {
-      let drift = if let Some(r#fn) = self.f_T.as_ref() {
-        (r#fn)(i as f64 * dt) + self.sigma.powf(2.0)
-      } else {
-        self.theta.unwrap() + self.sigma.powf(2.0)
-      };
-
-      r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];
+    Self {
+      f_T,
+      theta,
+      sigma,
+      n,
+      t,
+      gn: Gn::new(n - 1, t),
     }
-
-    r
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-#[cfg(feature = "f32")]
-impl SamplingExt<f32> for HoLee<f32> {
-  fn sample(&self) -> Array1<f32> {
-    assert!(
-      self.theta.is_none() && self.f_T.is_none(),
-      "theta or f_T must be provided"
-    );
-    let dt = self.t / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, Normal::new(0.0, dt.sqrt()).unwrap());
+impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
+  type Output = Array1<T>;
 
-    let mut r = Array1::<f32>::zeros(self.n);
+  fn sample(&self) -> Self::Output {
+    let dt = self.gn.dt();
+    let gn = &self.gn.sample();
+
+    let mut r = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
+      let t = T::from_usize_(i) * dt;
       let drift = if let Some(r#fn) = self.f_T.as_ref() {
-        (r#fn)(i as f32 * dt) + self.sigma.powf(2.0)
+        (r#fn)(t) + self.sigma.powf(T::from_usize_(2)) * t
       } else {
-        self.theta.unwrap() + self.sigma.powf(2.0)
+        self.theta.unwrap() + self.sigma.powf(T::from_usize_(2)) * t
       };
 
       r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];
     }
 
     r
-  }
-
-  #[cfg(feature = "simd")]
-  fn sample_simd(&self) -> Array1<f32> {
-    use crate::stats::distr::normal::SimdNormal;
-
-    assert!(
-      self.theta.is_none() && self.f_T.is_none(),
-      "theta or f_T must be provided"
-    );
-    let dt = self.t / (self.n - 1) as f32;
-    let gn = Array1::random(self.n - 1, SimdNormal::new(0.0, dt.sqrt()));
-
-    let mut r = Array1::<f32>::zeros(self.n);
-
-    for i in 1..self.n {
-      let drift = if let Some(r#fn) = self.f_T.as_ref() {
-        (r#fn)(i as f32 * dt) + self.sigma.powf(2.0)
-      } else {
-        self.theta.unwrap() + self.sigma.powf(2.0)
-      };
-
-      r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];
-    }
-
-    r
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

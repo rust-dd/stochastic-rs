@@ -28,17 +28,16 @@
 //! - `m`: Optional batch size for parallel sampling.
 //! - `cgns`: Correlated Gaussian noise generator for the diffusion part.
 
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use rand_distr::Distribution;
-use rand_distr::Exp;
-use rand_distr::Normal;
 
+use crate::distributions::exp::SimdExp;
+use crate::distributions::normal::SimdNormal;
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Sampling2DExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
-#[derive(ImplNew)]
-pub struct DuffieKanJumpExp<T> {
+pub struct DuffieKanJumpExp<T: FloatExt> {
   pub alpha: T,
   pub beta: T,
   pub gamma: T,
@@ -51,48 +50,94 @@ pub struct DuffieKanJumpExp<T> {
   pub b2: T,
   pub c2: T,
   pub sigma2: T,
-
   /// Jump intensity (rate for the exponential distribution).
   pub lambda: T,
-
   /// Standard deviation for jump sizes.
   pub jump_scale: T,
-
   /// Number of time steps.
   pub n: usize,
-
   /// Initial value for r(t).
   pub r0: Option<T>,
   /// Initial value for x(t).
   pub x0: Option<T>,
-
   /// Total time horizon.
   pub t: Option<T>,
-
-  /// Optional batch size.
-  pub m: Option<usize>,
-
+  /// Jump distribution.
+  jump_dist: SimdNormal<T>,
   /// Correlated Gaussian noise generator for the diffusion part.
-  pub cgns: CGNS<T>,
+  cgns: CGNS<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling2DExt<f64> for DuffieKanJumpExp<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-    let mut r = Array1::<f64>::zeros(self.n);
-    let mut x = Array1::<f64>::zeros(self.n);
-    r[0] = self.r0.unwrap_or(0.0);
-    x[0] = self.x0.unwrap_or(0.0);
+unsafe impl<T: FloatExt> Send for DuffieKanJumpExp<T> {}
+unsafe impl<T: FloatExt> Sync for DuffieKanJumpExp<T> {}
+
+impl<T: FloatExt> DuffieKanJumpExp<T> {
+  pub fn new(
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    lambda: T,
+    jump_scale: T,
+    n: usize,
+    r0: Option<T>,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
+    let jump_dist = SimdNormal::new(T::zero(), jump_scale);
+
+    Self {
+      alpha,
+      beta,
+      gamma,
+      rho,
+      a1,
+      b1,
+      c1,
+      sigma1,
+      a2,
+      b2,
+      c2,
+      sigma2,
+      lambda,
+      jump_scale,
+      n,
+      r0,
+      x0,
+      t,
+      jump_dist,
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt> ProcessExt<T> for DuffieKanJumpExp<T> {
+  type Output = [Array1<T>; 2];
+
+  fn sample(&self) -> Self::Output {
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = &self.cgns.sample();
+
+    let mut r = Array1::<T>::zeros(self.n);
+    let mut x = Array1::<T>::zeros(self.n);
+    r[0] = self.r0.unwrap_or(T::zero());
+    x[0] = self.x0.unwrap_or(T::zero());
 
     let mut rng = rand::rng();
-    let exp_dist = Exp::new(self.lambda).unwrap();
-    let jump_dist = Normal::new(0.0, self.jump_scale).unwrap();
+    let exp_dist = SimdExp::new(self.lambda);
+
     let mut next_jump_time = exp_dist.sample(&mut rng);
 
     for i in 1..self.n {
-      let current_time = i as f64 * dt;
+      let current_time = T::from_usize_(i) * dt;
       let r_old = r[i - 1];
       let x_old = x[i - 1];
 
@@ -101,9 +146,9 @@ impl Sampling2DExt<f64> for DuffieKanJumpExp<f64> {
       let dx = (self.a2 * r_old + self.b2 * x_old + self.c2) * dt
         + self.sigma2 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn2[i - 1];
 
-      let mut jump_sum_x = 0.0;
+      let mut jump_sum_x = T::zero();
       while next_jump_time <= current_time {
-        let jump_x = jump_dist.sample(&mut rng);
+        let jump_x = self.jump_dist.sample(&mut rng);
         jump_sum_x += jump_x;
         next_jump_time += exp_dist.sample(&mut rng);
       }
@@ -113,61 +158,5 @@ impl Sampling2DExt<f64> for DuffieKanJumpExp<f64> {
     }
 
     [r, x]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(feature = "f32")]
-impl Sampling2DExt<f32> for DuffieKanJumpExp<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-    let mut r = Array1::<f32>::zeros(self.n);
-    let mut x = Array1::<f32>::zeros(self.n);
-    r[0] = self.r0.unwrap_or(0.0);
-    x[0] = self.x0.unwrap_or(0.0);
-
-    let mut rng = rand::rng();
-    let exp_dist = Exp::new(self.lambda).unwrap();
-    let jump_dist = Normal::new(0.0, self.jump_scale).unwrap();
-    let mut next_jump_time = exp_dist.sample(&mut rng) as f32;
-
-    for i in 1..self.n {
-      let current_time = i as f32 * dt;
-      let r_old = r[i - 1];
-      let x_old = x[i - 1];
-
-      let dr = (self.a1 * r_old + self.b1 * x_old + self.c1) * dt
-        + self.sigma1 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn1[i - 1];
-      let dx = (self.a2 * r_old + self.b2 * x_old + self.c2) * dt
-        + self.sigma2 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn2[i - 1];
-
-      let mut jump_sum_x = 0.0;
-      while next_jump_time <= current_time {
-        let jump_x = jump_dist.sample(&mut rng) as f32;
-        jump_sum_x += jump_x;
-        next_jump_time += exp_dist.sample(&mut rng) as f32;
-      }
-
-      r[i] = r_old + dr;
-      x[i] = x_old + dx + jump_sum_x;
-    }
-
-    [r, x]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

@@ -1,14 +1,12 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray_rand::RandomExt;
-use rand_distr::Normal;
 
-use crate::stochastic::SamplingVExt;
+use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Ahn-Dittmar-Gallant (ADG) model
-#[derive(ImplNew)]
-pub struct ADG<T> {
+pub struct ADG<T: FloatExt> {
   pub k: fn(T) -> T,
   pub theta: fn(T) -> T,
   pub sigma: Array1<T>,
@@ -19,24 +17,54 @@ pub struct ADG<T> {
   pub xn: usize,
   pub x0: Array1<T>,
   pub t: Option<T>,
-  pub m: Option<usize>,
+  gn: Gn<T>,
 }
 
-#[cfg(feature = "f64")]
-impl SamplingVExt<f64> for ADG<f64> {
-  fn sample(&self) -> Array2<f64> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
+impl<T: FloatExt> ADG<T> {
+  pub fn new(
+    k: fn(T) -> T,
+    theta: fn(T) -> T,
+    sigma: Array1<T>,
+    phi: fn(T) -> T,
+    b: fn(T) -> T,
+    c: fn(T) -> T,
+    n: usize,
+    xn: usize,
+    x0: Array1<T>,
+    t: Option<T>,
+  ) -> Self {
+    Self {
+      k,
+      theta,
+      sigma,
+      phi,
+      b,
+      c,
+      n,
+      xn,
+      x0,
+      t,
+      gn: Gn::new(n - 1, t),
+    }
+  }
+}
 
-    let mut adg = Array2::<f64>::zeros((self.xn, self.n));
+impl<T: FloatExt> ProcessExt<T> for ADG<T> {
+  type Output = Array2<T>;
+
+  fn sample(&self) -> Self::Output {
+    let dt = self.gn.dt();
+
+    let mut adg = Array2::<T>::zeros((self.xn, self.n));
     for i in 0..self.xn {
       adg[(i, 0)] = self.x0[i];
     }
 
     for i in 0..self.xn {
-      let gn = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
+      let gn = &self.gn.sample();
 
       for j in 1..self.n {
-        let t = j as f64 * dt;
+        let t = T::from_usize_(j) * dt;
         adg[(i, j)] = adg[(i, j - 1)]
           + ((self.k)(t) - (self.theta)(t) * adg[(i, j - 1)]) * dt
           + self.sigma[i] * gn[j - 1];
@@ -46,68 +74,15 @@ impl SamplingVExt<f64> for ADG<f64> {
     let mut r = Array2::zeros((self.xn, self.n));
 
     for i in 0..self.xn {
-      let phi = Array1::<f64>::from_shape_fn(self.n, |j| (self.phi)(j as f64 * dt));
-      let b = Array1::<f64>::from_shape_fn(self.n, |j| (self.b)(j as f64 * dt));
-      let c = Array1::<f64>::from_shape_fn(self.n, |j| (self.c)(j as f64 * dt));
+      let phi = Array1::<T>::from_shape_fn(self.n, |j| (self.phi)(T::from_usize_(j) * dt));
+      let b = Array1::<T>::from_shape_fn(self.n, |j| (self.b)(T::from_usize_(j) * dt));
+      let c = Array1::<T>::from_shape_fn(self.n, |j| (self.c)(T::from_usize_(j) * dt));
 
-      r.row_mut(i)
-        .assign(&(phi + b * adg.row(i).t().to_owned() * c * adg.row(i)));
+      let xi = adg.row(i).to_owned();
+      let xi_sq = &xi * &xi;
+      r.row_mut(i).assign(&(phi + b * &xi + c * xi_sq));
     }
 
     r
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
-  }
-}
-
-#[cfg(feature = "f32")]
-impl SamplingVExt<f32> for ADG<f32> {
-  fn sample(&self) -> Array2<f32> {
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
-
-    let mut adg = Array2::<f32>::zeros((self.xn, self.n));
-    for i in 0..self.xn {
-      adg[(i, 0)] = self.x0[i];
-    }
-
-    for i in 0..self.xn {
-      let gn = Array1::random(self.n, Normal::new(0.0, dt.sqrt()).unwrap());
-
-      for j in 1..self.n {
-        let t = j as f32 * dt;
-        adg[(i, j)] = adg[(i, j - 1)]
-          + ((self.k)(t) - (self.theta)(t) * adg[(i, j - 1)]) * dt
-          + self.sigma[i] * gn[j - 1];
-      }
-    }
-
-    let mut r = Array2::zeros((self.xn, self.n));
-
-    for i in 0..self.xn {
-      let phi = Array1::<f32>::from_shape_fn(self.n, |j| (self.phi)(j as f32 * dt));
-      let b = Array1::<f32>::from_shape_fn(self.n, |j| (self.b)(j as f32 * dt));
-      let c = Array1::<f32>::from_shape_fn(self.n, |j| (self.c)(j as f32 * dt));
-
-      r.row_mut(i)
-        .assign(&(phi + b * adg.row(i).t().to_owned() * c * adg.row(i)));
-    }
-
-    r
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

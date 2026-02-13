@@ -1,14 +1,13 @@
-use impl_new_derive::ImplNew;
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::stochastic::Sampling2DExt;
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 /// Hull-White 2-factor model
 /// dX(t) = (k(t) + U(t) - theta * X(t)) dt + sigma_1 dW1(t) x(0) = x0
-/// dU(t) = b * U(t) dt + sigma_2 dW2(t) u(0) = 0
-#[derive(ImplNew)]
-pub struct HullWhite2F<T> {
+/// dU(t) = -b * U(t) dt + sigma_2 dW2(t) u(0) = 0
+pub struct HullWhite2F<T: FloatExt> {
   pub k: fn(T) -> T,
   pub theta: T,
   pub sigma1: T,
@@ -18,70 +17,56 @@ pub struct HullWhite2F<T> {
   pub x0: Option<T>,
   pub t: Option<T>,
   pub n: usize,
-  pub m: Option<usize>,
-  pub cgns: CGNS<T>,
+  cgns: CGNS<T>,
 }
 
-#[cfg(feature = "f64")]
-impl Sampling2DExt<f64> for HullWhite2F<f64> {
-  fn sample(&self) -> [Array1<f64>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f64;
-
-    let mut x = Array1::<f64>::zeros(self.n);
-    let mut u = Array1::<f64>::zeros(self.n);
-
-    x[0] = self.x0.unwrap_or(0.0);
-
-    for i in 1..self.n {
-      x[i] = x[i - 1]
-        + ((self.k)(i as f64 * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
-        + self.sigma1 * cgn1[i - 1];
-
-      u[i] = u[i - 1] + self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
+impl<T: FloatExt> HullWhite2F<T> {
+  pub fn new(
+    k: fn(T) -> T,
+    theta: T,
+    sigma1: T,
+    sigma2: T,
+    rho: T,
+    b: T,
+    x0: Option<T>,
+    t: Option<T>,
+    n: usize,
+  ) -> Self {
+    Self {
+      k,
+      theta,
+      sigma1,
+      sigma2,
+      rho,
+      b,
+      x0,
+      t,
+      n,
+      cgns: CGNS::new(rho, n - 1, t),
     }
-
-    [x, u]
-  }
-
-  /// Number of time steps
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  /// Number of samples for parallel sampling
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }
 
-#[cfg(feature = "f32")]
-impl Sampling2DExt<f32> for HullWhite2F<f32> {
-  fn sample(&self) -> [Array1<f32>; 2] {
-    let [cgn1, cgn2] = self.cgns.sample();
-    let dt = self.t.unwrap_or(1.0) / (self.n - 1) as f32;
+impl<T: FloatExt> ProcessExt<T> for HullWhite2F<T> {
+  type Output = [Array1<T>; 2];
 
-    let mut x = Array1::<f32>::zeros(self.n);
-    let mut u = Array1::<f32>::zeros(self.n);
+  fn sample(&self) -> Self::Output {
+    let dt = self.cgns.dt();
+    let [cgn1, cgn2] = &self.cgns.sample();
 
-    x[0] = self.x0.unwrap_or(0.0);
+    let mut x = Array1::<T>::zeros(self.n);
+    let mut u = Array1::<T>::zeros(self.n);
+
+    x[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
       x[i] = x[i - 1]
-        + ((self.k)(i as f32 * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
+        + ((self.k)(T::from_usize_(i) * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
         + self.sigma1 * cgn1[i - 1];
 
-      u[i] = u[i - 1] + self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
+      u[i] = u[i - 1] - self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
     }
 
     [x, u]
-  }
-
-  fn n(&self) -> usize {
-    self.n
-  }
-
-  fn m(&self) -> Option<usize> {
-    self.m
   }
 }

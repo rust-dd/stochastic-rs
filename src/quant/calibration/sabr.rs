@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use impl_new_derive::ImplNew;
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
@@ -10,9 +9,9 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use crate::quant::calibration::CalibrationHistory;
+use crate::quant::loss;
 use crate::quant::pricing::sabr::SabrPricer;
-use crate::quant::r#trait::CalibrationLossExt;
-use crate::quant::r#trait::PricerExt;
+use crate::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
 
@@ -31,7 +30,7 @@ impl SabrParams {
   pub fn project_in_place(&mut self) {
     self.alpha = self.alpha.abs().max(ALPHA_MIN);
     self.nu = self.nu.abs().max(NU_MIN);
-    self.rho = self.rho.max(-RHO_BOUND).min(RHO_BOUND);
+    self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
   }
   pub fn projected(mut self) -> Self {
     self.project_in_place();
@@ -54,7 +53,7 @@ impl From<DVector<f64>> for SabrParams {
   }
 }
 
-#[derive(ImplNew, Clone)]
+#[derive(Clone)]
 pub struct SabrCalibrator {
   pub params: Option<SabrParams>,
   pub c_market: DVector<f64>,
@@ -68,7 +67,17 @@ pub struct SabrCalibrator {
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<SabrParams>>>>,
 }
 
-impl CalibrationLossExt for SabrCalibrator {}
+impl SabrCalibrator {
+  pub fn new(
+    params: Option<SabrParams>, c_market: DVector<f64>, s: DVector<f64>, k: DVector<f64>,
+    r: f64, q: Option<f64>, tau: f64, option_type: OptionType, record_history: bool,
+  ) -> Self {
+    Self {
+      params, c_market, s, k, r, q, tau, option_type, record_history,
+      calibration_history: Rc::new(RefCell::new(Vec::new())),
+    }
+  }
+}
 
 impl SabrCalibrator {
   pub fn calibrate(&self) {
@@ -109,7 +118,7 @@ impl SabrCalibrator {
 
   fn effective_params(&self) -> SabrParams {
     if let Some(p) = &self.params {
-      return p.clone().projected();
+      return (*p).projected();
     }
     SabrParams {
       alpha: 0.2,
@@ -167,7 +176,7 @@ impl SabrCalibrator {
           p_minus.nu = (x - h).abs().max(NU_MIN);
         }
         2 => {
-          let clamp = |y: f64| y.max(-RHO_BOUND).min(RHO_BOUND);
+          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
           p_plus.rho = clamp(x + h);
           p_minus.rho = clamp(x - h);
           if (p_plus.rho - p_minus.rho).abs() < 0.5 * h {
@@ -232,17 +241,17 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
             })
             .collect::<Vec<(f64, f64)>>()
             .into(),
-          params: p.clone(),
+          params: p,
           loss_scores: CalibrationLossScore {
-            mae: self.mae(&self.c_market, &c_model),
-            mse: self.mse(&self.c_market, &c_model),
-            rmse: self.rmse(&self.c_market, &c_model),
-            mpe: self.mpe(&self.c_market, &c_model),
-            mape: self.mape(&self.c_market, &c_model),
-            mspe: self.mspe(&self.c_market, &c_model),
-            rmspe: self.rmspe(&self.c_market, &c_model),
-            mre: self.mre(&self.c_market, &c_model),
-            mrpe: self.mrpe(&self.c_market, &c_model),
+            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
+            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
+            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
+            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
+            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
+            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
+            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
+            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
+            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
           },
         });
     }
