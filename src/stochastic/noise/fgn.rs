@@ -65,7 +65,7 @@ pub struct FGN<T: FloatExt> {
   pub offset: usize,
   pub sqrt_eigenvalues: Arc<Array1<Complex<T>>>,
   pub fft_handler: Arc<FftHandler<T>>,
-  normal: SimdNormal<T, 64>,
+  normal: SimdNormal<T, 32>,
 }
 
 unsafe impl<T: FloatExt> Send for FGN<T> {}

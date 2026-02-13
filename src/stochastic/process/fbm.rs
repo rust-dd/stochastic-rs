@@ -76,5 +76,13 @@ mod tests {
       assert_eq!(m.len(), 10000);
     }
     println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
+
+    let start = Instant::now();
+    let fbm = FBM::new(0.7, 10000, None);
+    for _ in 0..10000 {
+      let m = fbm.sample();
+      assert_eq!(m.len(), 10000);
+    }
+    println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
   }
 }

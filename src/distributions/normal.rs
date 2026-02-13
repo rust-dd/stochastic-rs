@@ -68,7 +68,12 @@ fn zig_tables() -> &'static ZigTables {
 }
 
 #[inline(never)]
-fn nfix<T: SimdFloatExt, R: Rng + ?Sized>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut R) -> T {
+fn nfix<T: SimdFloatExt, R: Rng + ?Sized>(
+  hz: i32,
+  iz: usize,
+  tables: &ZigTables,
+  rng: &mut R,
+) -> T {
   const R_TAIL: f64 = 3.442620;
   let mut hz = hz;
   let mut iz = iz;
