@@ -81,7 +81,11 @@ impl PyBGM {
   #[new]
   #[pyo3(signature = (lambda_, x0, xn, n, t=None, dtype=None))]
   fn new(
-    lambda_: Vec<f64>, x0: Vec<f64>, xn: usize, n: usize, t: Option<f64>,
+    lambda_: Vec<f64>,
+    x0: Vec<f64>,
+    xn: usize,
+    n: usize,
+    t: Option<f64>,
     dtype: Option<&str>,
   ) -> Self {
     match dtype.unwrap_or("f64") {
@@ -106,31 +110,47 @@ impl PyBGM {
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
     } else if let Some(ref inner) = self.inner_f32 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else { unreachable!() }
+    } else {
+      unreachable!()
+    }
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let samples = inner.sample_par(m);
       pyo3::types::PyList::new(
         py,
-        samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      ).unwrap().into_py_any(py).unwrap()
+        samples
+          .iter()
+          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+      )
+      .unwrap()
+      .into_py_any(py)
+      .unwrap()
     } else if let Some(ref inner) = self.inner_f32 {
       let samples = inner.sample_par(m);
       pyo3::types::PyList::new(
         py,
-        samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      ).unwrap().into_py_any(py).unwrap()
-    } else { unreachable!() }
+        samples
+          .iter()
+          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+      )
+      .unwrap()
+      .into_py_any(py)
+      .unwrap()
+    } else {
+      unreachable!()
+    }
   }
 }

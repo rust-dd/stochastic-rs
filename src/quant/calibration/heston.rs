@@ -12,11 +12,11 @@ use ndarray::Array1;
 use crate::quant::calibration::CalibrationHistory;
 use crate::quant::loss;
 use crate::quant::pricing::heston::HestonPricer;
-use crate::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
 use crate::stats::mle::nmle_heston;
 use crate::stats::mle::HestonMleResult;
+use crate::traits::PricerExt;
 
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;

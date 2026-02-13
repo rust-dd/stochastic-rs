@@ -93,12 +93,17 @@ impl PyCompoundCustom {
     let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
       let a = jump_times_distribution.clone_ref(py);
       let b = jump_times_distribution;
-      (crate::traits::CallableDist::new(a), crate::traits::CallableDist::new(b))
+      (
+        crate::traits::CallableDist::new(a),
+        crate::traits::CallableDist::new(b),
+      )
     });
     let customjt = CustomJt::new(n, t_max, customjt_dist);
     Self {
       inner: CompoundCustom::new(
-        n, t_max, m,
+        n,
+        t_max,
+        m,
         crate::traits::CallableDist::new(jumps_distribution),
         jt_dist,
         customjt,
@@ -106,10 +111,18 @@ impl PyCompoundCustom {
     }
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+  fn sample<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+  ) -> (
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+  ) {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     let [p, cum, j] = self.inner.sample();
     (
       p.into_pyarray(py).into_py_any(py).unwrap(),

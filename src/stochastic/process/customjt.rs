@@ -52,9 +52,15 @@ impl PyCustomJt {
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
-    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+
+    use crate::traits::ProcessExt;
+    self
+      .inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap()
   }
 }
 

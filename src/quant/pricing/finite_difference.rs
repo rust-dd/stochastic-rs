@@ -1,10 +1,10 @@
 use ndarray::s;
 use ndarray::Array1;
 
-use crate::traits::PricerExt;
-use crate::traits::TimeExt;
 use crate::quant::OptionStyle;
 use crate::quant::OptionType;
+use crate::traits::PricerExt;
+use crate::traits::TimeExt;
 
 #[derive(Default)]
 pub enum FiniteDifferenceMethod {
@@ -43,11 +43,33 @@ pub struct FiniteDifferencePricer {
 
 impl FiniteDifferencePricer {
   pub fn new(
-    s: f64, v: f64, k: f64, r: f64, t_n: usize, s_n: usize,
-    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiration: Option<chrono::NaiveDate>,
-    option_style: OptionStyle, option_type: OptionType, method: FiniteDifferenceMethod,
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    t_n: usize,
+    s_n: usize,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
+    option_style: OptionStyle,
+    option_type: OptionType,
+    method: FiniteDifferenceMethod,
   ) -> Self {
-    Self { s, v, k, r, t_n, s_n, tau, eval, expiration, option_style, option_type, method }
+    Self {
+      s,
+      v,
+      k,
+      r,
+      t_n,
+      s_n,
+      tau,
+      eval,
+      expiration,
+      option_style,
+      option_type,
+      method,
+    }
   }
 }
 
@@ -303,11 +325,11 @@ impl FiniteDifferencePricer {
 mod tests {
   use super::FiniteDifferenceMethod;
   use super::FiniteDifferencePricer;
-  use crate::traits::PricerExt;
   use crate::quant::OptionStyle;
   use crate::quant::OptionType;
   use crate::stochastic::K;
   use crate::stochastic::S0;
+  use crate::traits::PricerExt;
 
   fn atm_pricer(style: OptionStyle, r#type: OptionType, method: FiniteDifferenceMethod) -> f64 {
     let pricer = FiniteDifferencePricer::new(

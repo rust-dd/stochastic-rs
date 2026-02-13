@@ -28,7 +28,13 @@ pub fn mpe(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
     .zip(model.iter())
-    .map(|(m, d)| if m.abs() < f64::EPSILON { 0.0 } else { (m - d) / m })
+    .map(|(m, d)| {
+      if m.abs() < f64::EPSILON {
+        0.0
+      } else {
+        (m - d) / m
+      }
+    })
     .sum();
   (sum / market.len() as f64) * 100.0
 }
@@ -38,7 +44,13 @@ pub fn mre(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
     .zip(model.iter())
-    .map(|(m, d)| if m.abs() < f64::EPSILON { 0.0 } else { (d - m) / m })
+    .map(|(m, d)| {
+      if m.abs() < f64::EPSILON {
+        0.0
+      } else {
+        (d - m) / m
+      }
+    })
     .sum();
   sum / market.len() as f64
 }

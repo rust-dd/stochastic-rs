@@ -59,9 +59,8 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::normal::SimdNormal;
-use crate::traits::FloatExt;
-
 pub use crate::traits::DistributionExt;
+use crate::traits::FloatExt;
 pub use crate::traits::ProcessExt;
 pub use crate::traits::SimdFloatExt;
 

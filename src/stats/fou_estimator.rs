@@ -28,9 +28,17 @@ pub struct FOUParameterEstimationV1 {
 impl FOUParameterEstimationV1 {
   pub fn new(path: Array1<f64>, filter_type: FilterType, delta: Option<f64>) -> Self {
     Self {
-      path, filter_type, delta,
-      hurst: None, sigma: None, mu: None, theta: None,
-      a: Array1::zeros(0), L: 0, V1: 0.0, V2: 0.0,
+      path,
+      filter_type,
+      delta,
+      hurst: None,
+      sigma: None,
+      mu: None,
+      theta: None,
+      a: Array1::zeros(0),
+      L: 0,
+      V1: 0.0,
+      V2: 0.0,
     }
   }
 }
@@ -198,8 +206,13 @@ pub struct FOUParameterEstimationV2 {
 impl FOUParameterEstimationV2 {
   pub fn new(path: Array1<f64>, delta: Option<f64>, series_length: usize) -> Self {
     Self {
-      path, delta, series_length,
-      hurst: None, sigma: None, mu: None, theta: None,
+      path,
+      delta,
+      series_length,
+      hurst: None,
+      sigma: None,
+      mu: None,
+      theta: None,
     }
   }
 

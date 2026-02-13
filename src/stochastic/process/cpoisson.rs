@@ -61,7 +61,12 @@ pub struct PyCompoundPoisson {
 impl PyCompoundPoisson {
   #[new]
   #[pyo3(signature = (distribution, lambda_, n=None, t_max=None))]
-  fn new(distribution: pyo3::Py<pyo3::PyAny>, lambda_: f64, n: Option<usize>, t_max: Option<f64>) -> Self {
+  fn new(
+    distribution: pyo3::Py<pyo3::PyAny>,
+    lambda_: f64,
+    n: Option<usize>,
+    t_max: Option<f64>,
+  ) -> Self {
     Self {
       inner: CompoundPoisson::new(
         crate::traits::CallableDist::new(distribution),
@@ -70,10 +75,18 @@ impl PyCompoundPoisson {
     }
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+  fn sample<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+  ) -> (
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+  ) {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     let [p, cum, j] = self.inner.sample();
     (
       p.into_pyarray(py).into_py_any(py).unwrap(),

@@ -3,9 +3,9 @@ use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
+use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
-use crate::quant::OptionType;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum BSMCoc {
@@ -69,7 +69,20 @@ impl BSMPricer {
     option_type: OptionType,
     b: BSMCoc,
   ) -> Self {
-    Self { s, v, k, r, r_d, r_f, q, tau, eval, expiration, option_type, b }
+    Self {
+      s,
+      v,
+      k,
+      r,
+      r_d,
+      r_f,
+      q,
+      tau,
+      eval,
+      expiration,
+      option_type,
+      b,
+    }
   }
 
   pub fn builder(s: f64, v: f64, k: f64, r: f64) -> BSMPricerBuilder {

@@ -16,8 +16,20 @@ pub struct BreedenLitzenberger {
 }
 
 impl BreedenLitzenberger {
-  pub fn new(strikes: Vec<f64>, prices: Vec<f64>, r: f64, tau: f64, d2c_dk2: Option<Vec<f64>>) -> Self {
-    Self { strikes, prices, r, tau, d2c_dk2 }
+  pub fn new(
+    strikes: Vec<f64>,
+    prices: Vec<f64>,
+    r: f64,
+    tau: f64,
+    d2c_dk2: Option<Vec<f64>>,
+  ) -> Self {
+    Self {
+      strikes,
+      prices,
+      r,
+      tau,
+      d2c_dk2,
+    }
   }
 }
 

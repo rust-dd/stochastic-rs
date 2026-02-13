@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::traits::Fn1D;
 use crate::traits::FloatExt;
+use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
@@ -69,8 +69,11 @@ impl PyHoLee {
   #[new]
   #[pyo3(signature = (sigma, n, f_T=None, theta=None, t=None))]
   fn new(
-    sigma: f64, n: usize,
-    f_T: Option<pyo3::Py<pyo3::PyAny>>, theta: Option<f64>, t: Option<f64>,
+    sigma: f64,
+    n: usize,
+    f_T: Option<pyo3::Py<pyo3::PyAny>>,
+    theta: Option<f64>,
+    t: Option<f64>,
   ) -> Self {
     Self {
       inner: HoLee::new(f_T.map(Fn1D::Py), theta, sigma, n, t),
@@ -79,8 +82,14 @@ impl PyHoLee {
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
-    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+
+    use crate::traits::ProcessExt;
+    self
+      .inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap()
   }
 }

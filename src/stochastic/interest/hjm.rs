@@ -1,9 +1,9 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
+use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
-use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct HJM<T: FloatExt> {
@@ -79,8 +79,8 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
       let t = T::from_usize_(i) * dt;
 
       r[i] = r[i - 1] + self.a.call(t) * dt + self.b.call(t) * gn1[i - 1];
-      p[i] =
-        p[i - 1] + self.p.call(t, t_max) * (self.q.call(t, t_max) * dt + self.v.call(t, t_max) * gn2[i - 1]);
+      p[i] = p[i - 1]
+        + self.p.call(t, t_max) * (self.q.call(t, t_max) * dt + self.v.call(t, t_max) * gn2[i - 1]);
       f_[i] = f_[i - 1] + self.alpha.call(t, t_max) * dt + self.sigma.call(t, t_max) * gn3[i - 1];
     }
 
@@ -100,26 +100,50 @@ impl PyHJM {
   #[new]
   #[pyo3(signature = (a, b, p, q, v, alpha, sigma, n, r0=None, p0=None, f0=None, t=None))]
   fn new(
-    a: pyo3::Py<pyo3::PyAny>, b: pyo3::Py<pyo3::PyAny>,
-    p: pyo3::Py<pyo3::PyAny>, q: pyo3::Py<pyo3::PyAny>, v: pyo3::Py<pyo3::PyAny>,
-    alpha: pyo3::Py<pyo3::PyAny>, sigma: pyo3::Py<pyo3::PyAny>,
-    n: usize, r0: Option<f64>, p0: Option<f64>, f0: Option<f64>, t: Option<f64>,
+    a: pyo3::Py<pyo3::PyAny>,
+    b: pyo3::Py<pyo3::PyAny>,
+    p: pyo3::Py<pyo3::PyAny>,
+    q: pyo3::Py<pyo3::PyAny>,
+    v: pyo3::Py<pyo3::PyAny>,
+    alpha: pyo3::Py<pyo3::PyAny>,
+    sigma: pyo3::Py<pyo3::PyAny>,
+    n: usize,
+    r0: Option<f64>,
+    p0: Option<f64>,
+    f0: Option<f64>,
+    t: Option<f64>,
   ) -> Self {
     use crate::traits::Fn2D;
     Self {
       inner: HJM::new(
-        Fn1D::Py(a), Fn1D::Py(b),
-        Fn2D::Py(p), Fn2D::Py(q), Fn2D::Py(v),
-        Fn2D::Py(alpha), Fn2D::Py(sigma),
-        n, r0, p0, f0, t,
+        Fn1D::Py(a),
+        Fn1D::Py(b),
+        Fn2D::Py(p),
+        Fn2D::Py(q),
+        Fn2D::Py(v),
+        Fn2D::Py(alpha),
+        Fn2D::Py(sigma),
+        n,
+        r0,
+        p0,
+        f0,
+        t,
       ),
     }
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+  fn sample<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+  ) -> (
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+  ) {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     let [r, p, f] = self.inner.sample();
     (
       r.into_pyarray(py).into_py_any(py).unwrap(),

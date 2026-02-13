@@ -11,9 +11,9 @@ use nalgebra::Owned;
 use crate::quant::calibration::CalibrationHistory;
 use crate::quant::loss;
 use crate::quant::pricing::sabr::SabrPricer;
-use crate::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
+use crate::traits::PricerExt;
 
 const RHO_BOUND: f64 = 0.9999;
 const ALPHA_MIN: f64 = 1e-6;
@@ -69,11 +69,26 @@ pub struct SabrCalibrator {
 
 impl SabrCalibrator {
   pub fn new(
-    params: Option<SabrParams>, c_market: DVector<f64>, s: DVector<f64>, k: DVector<f64>,
-    r: f64, q: Option<f64>, tau: f64, option_type: OptionType, record_history: bool,
+    params: Option<SabrParams>,
+    c_market: DVector<f64>,
+    s: DVector<f64>,
+    k: DVector<f64>,
+    r: f64,
+    q: Option<f64>,
+    tau: f64,
+    option_type: OptionType,
+    record_history: bool,
   ) -> Self {
     Self {
-      params, c_market, s, k, r, q, tau, option_type, record_history,
+      params,
+      c_market,
+      s,
+      k,
+      r,
+      q,
+      tau,
+      option_type,
+      record_history,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
     }
   }

@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
-use crate::traits::Fn1D;
 use crate::traits::FloatExt;
+use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct HullWhite2F<T: FloatExt> {
@@ -81,8 +81,15 @@ impl PyHullWhite2F {
   #[new]
   #[pyo3(signature = (k, theta, sigma1, sigma2, rho, b, n, x0=None, t=None))]
   fn new(
-    k: pyo3::Py<pyo3::PyAny>, theta: f64, sigma1: f64, sigma2: f64,
-    rho: f64, b: f64, n: usize, x0: Option<f64>, t: Option<f64>,
+    k: pyo3::Py<pyo3::PyAny>,
+    theta: f64,
+    sigma1: f64,
+    sigma2: f64,
+    rho: f64,
+    b: f64,
+    n: usize,
+    x0: Option<f64>,
+    t: Option<f64>,
   ) -> Self {
     Self {
       inner: HullWhite2F::new(Fn1D::Py(k), theta, sigma1, sigma2, rho, b, x0, t, n),
@@ -91,9 +98,13 @@ impl PyHullWhite2F {
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     let [a, b] = self.inner.sample();
-    (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+    (
+      a.into_pyarray(py).into_py_any(py).unwrap(),
+      b.into_pyarray(py).into_py_any(py).unwrap(),
+    )
   }
 }

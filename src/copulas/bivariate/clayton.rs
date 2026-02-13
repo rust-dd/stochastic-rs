@@ -4,8 +4,8 @@ use std::f64;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::traits::BivariateExt;
 use super::CopulaType;
+use crate::traits::BivariateExt;
 
 #[derive(Debug, Clone)]
 pub struct Clayton {

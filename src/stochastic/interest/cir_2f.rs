@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use super::cir::CIR;
-use crate::traits::Fn1D;
 use crate::traits::FloatExt;
+use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct CIR2F<T: FloatExt> {
@@ -13,7 +13,11 @@ pub struct CIR2F<T: FloatExt> {
 
 impl<T: FloatExt> CIR2F<T> {
   pub fn new(x: CIR<T>, y: CIR<T>, phi: impl Into<Fn1D<T>>) -> Self {
-    Self { x, y, phi: phi.into() }
+    Self {
+      x,
+      y,
+      phi: phi.into(),
+    }
   }
 }
 

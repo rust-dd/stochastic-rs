@@ -11,9 +11,9 @@ use crate::quant::calibration::CalibrationHistory;
 use crate::quant::loss;
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
-use crate::traits::PricerExt;
 use crate::quant::CalibrationLossScore;
 use crate::quant::OptionType;
+use crate::traits::PricerExt;
 
 #[derive(Clone, Debug)]
 pub struct BSMParams {

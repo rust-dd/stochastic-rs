@@ -14,7 +14,12 @@ pub struct GreekPnL {
 
 impl GreekPnL {
   pub fn new(delta: f64, gamma: f64, vega: f64, theta: f64) -> Self {
-    Self { delta, gamma, vega, theta }
+    Self {
+      delta,
+      gamma,
+      vega,
+      theta,
+    }
   }
 
   /// First-order/second-order Greek-based P&L decomposition over a small interval.
@@ -59,7 +64,12 @@ pub struct DeltaHedgedPnL {
 
 impl DeltaHedgedPnL {
   pub fn new(theta: f64, gamma: f64, sigma: f64, s: f64) -> Self {
-    Self { theta, gamma, sigma, s }
+    Self {
+      theta,
+      gamma,
+      sigma,
+      s,
+    }
   }
 
   /// Delta-hedged option P&L approximation over dt (ignoring funding/costs):

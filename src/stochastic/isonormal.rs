@@ -89,15 +89,10 @@ where
         .unwrap();
 
         let input = input.mapv(|v| Complex64::new(v, 0.0));
-        let mut embedded_inner_product_structure =
-          Array1::<Complex64>::zeros(n * 2 - 2);
+        let mut embedded_inner_product_structure = Array1::<Complex64>::zeros(n * 2 - 2);
         ndfft(&input, &mut embedded_inner_product_structure, &fft, 0);
-        embedded_inner_product_structure.mapv(|x| {
-          Complex64::new(
-            (x.re / (2.0 * (n - 1) as f64)).sqrt(),
-            x.im,
-          )
-        })
+        embedded_inner_product_structure
+          .mapv(|x| Complex64::new((x.re / (2.0 * (n - 1) as f64)).sqrt(), x.im))
       };
 
     let embedded_inner_product_matrix =

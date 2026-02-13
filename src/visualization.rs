@@ -1,9 +1,15 @@
-use ndarray::{Array1, Array2};
-use plotly::common::{Line, Mode};
-use plotly::layout::{GridPattern, LayoutGrid};
-use plotly::{Layout, Plot, Scatter};
+use ndarray::Array1;
+use ndarray::Array2;
+use plotly::common::Line;
+use plotly::common::Mode;
+use plotly::layout::GridPattern;
+use plotly::layout::LayoutGrid;
+use plotly::Layout;
+use plotly::Plot;
+use plotly::Scatter;
 
-use crate::traits::{FloatExt, ProcessExt};
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
 
 pub trait Plottable<T: FloatExt> {
   fn n_components(&self) -> usize;
@@ -143,14 +149,12 @@ impl GridPlotter {
 
     let mut plot = Plot::new();
     plot.set_layout(
-      Layout::new()
-        .title(self.title.as_str())
-        .grid(
-          LayoutGrid::new()
-            .rows(rows)
-            .columns(cols)
-            .pattern(GridPattern::Independent),
-        ),
+      Layout::new().title(self.title.as_str()).grid(
+        LayoutGrid::new()
+          .rows(rows)
+          .columns(cols)
+          .pattern(GridPattern::Independent),
+      ),
     );
 
     for (idx, entry) in self.entries.iter().enumerate() {

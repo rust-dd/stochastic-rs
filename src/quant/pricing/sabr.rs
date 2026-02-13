@@ -4,9 +4,9 @@ use statrs::distribution::Normal;
 
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
+use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
-use crate::quant::OptionType;
 
 /// Forward FX F = S * exp((r_d - r_f) T)
 pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
@@ -94,10 +94,29 @@ pub struct SabrPricer {
 
 impl SabrPricer {
   pub fn new(
-    s: f64, k: f64, r: f64, q: Option<f64>, alpha: f64, nu: f64, rho: f64,
-    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiration: Option<chrono::NaiveDate>,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: Option<f64>,
+    alpha: f64,
+    nu: f64,
+    rho: f64,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
   ) -> Self {
-    Self { s, k, r, q, alpha, nu, rho, tau, eval, expiration }
+    Self {
+      s,
+      k,
+      r,
+      q,
+      alpha,
+      nu,
+      rho,
+      tau,
+      eval,
+      expiration,
+    }
   }
 }
 

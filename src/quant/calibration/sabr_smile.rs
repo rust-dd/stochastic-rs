@@ -47,7 +47,12 @@ pub struct SabrSmileCalibrator {
 
 impl SabrSmileCalibrator {
   pub fn new(s: f64, r_d: f64, r_f: f64, quotes: SabrSmileQuotes) -> Self {
-    Self { s, r_d, r_f, quotes }
+    Self {
+      s,
+      r_d,
+      r_f,
+      quotes,
+    }
   }
 }
 
@@ -386,9 +391,7 @@ impl SabrSmileCalibrator {
           )
         })
         .collect();
-      let trace = Scatter::new(xs.clone(), ys)
-        .mode(Mode::Lines)
-        .name(*label);
+      let trace = Scatter::new(xs.clone(), ys).mode(Mode::Lines).name(*label);
       plot.add_trace(trace);
     }
 

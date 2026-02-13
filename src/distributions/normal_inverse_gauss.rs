@@ -3,9 +3,9 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::SimdFloatExt;
 use super::inverse_gauss::SimdInverseGauss;
 use super::normal::SimdNormal;
+use super::SimdFloatExt;
 
 pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
   alpha: T,

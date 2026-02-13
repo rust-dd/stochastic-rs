@@ -85,15 +85,27 @@ impl PyRoughBergomi {
   #[new]
   #[pyo3(signature = (hurst, nu, r, rho, n, v0=None, s0=None, t=None, dtype=None))]
   fn new(
-    hurst: f64, nu: f64, r: f64, rho: f64, n: usize,
-    v0: Option<f64>, s0: Option<f64>, t: Option<f64>,
+    hurst: f64,
+    nu: f64,
+    r: f64,
+    rho: f64,
+    n: usize,
+    v0: Option<f64>,
+    s0: Option<f64>,
+    t: Option<f64>,
     dtype: Option<&str>,
   ) -> Self {
     match dtype.unwrap_or("f64") {
       "f32" => Self {
         inner_f32: Some(RoughBergomi::new(
-          hurst as f32, nu as f32, v0.map(|v| v as f32), s0.map(|v| v as f32),
-          r as f32, rho as f32, n, t.map(|v| v as f32),
+          hurst as f32,
+          nu as f32,
+          v0.map(|v| v as f32),
+          s0.map(|v| v as f32),
+          r as f32,
+          rho as f32,
+          n,
+          t.map(|v| v as f32),
         )),
         inner_f64: None,
       },
@@ -106,36 +118,64 @@ impl PyRoughBergomi {
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let [a, b] = inner.sample();
-      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
       let [a, b] = inner.sample();
-      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
-    } else { unreachable!() }
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else {
+      unreachable!()
+    }
   }
 
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
     use numpy::ndarray::Array2;
-    use crate::traits::ProcessExt;
+    use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::<f64>::zeros((m, n));
       let mut r1 = Array2::<f64>::zeros((m, n));
-      for (i, [a, b]) in samples.iter().enumerate() { r0.row_mut(i).assign(a); r1.row_mut(i).assign(b); }
-      (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::<f32>::zeros((m, n));
       let mut r1 = Array2::<f32>::zeros((m, n));
-      for (i, [a, b]) in samples.iter().enumerate() { r0.row_mut(i).assign(a); r1.row_mut(i).assign(b); }
-      (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
-    } else { unreachable!() }
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else {
+      unreachable!()
+    }
   }
 }

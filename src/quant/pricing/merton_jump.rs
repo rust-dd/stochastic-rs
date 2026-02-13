@@ -1,8 +1,8 @@
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
+use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
-use crate::quant::OptionType;
 
 pub struct Merton1976Pricer {
   /// Underlying price
@@ -39,12 +39,39 @@ pub struct Merton1976Pricer {
 
 impl Merton1976Pricer {
   pub fn new(
-    s: f64, v: f64, k: f64, r: f64, r_d: Option<f64>, r_f: Option<f64>,
-    q: Option<f64>, lambda: f64, gamma: f64, m: usize,
-    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiration: Option<chrono::NaiveDate>,
-    option_type: OptionType, b: BSMCoc,
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    r_d: Option<f64>,
+    r_f: Option<f64>,
+    q: Option<f64>,
+    lambda: f64,
+    gamma: f64,
+    m: usize,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
+    option_type: OptionType,
+    b: BSMCoc,
   ) -> Self {
-    Self { s, v, k, r, r_d, r_f, q, lambda, gamma, m, tau, eval, expiration, option_type, b }
+    Self {
+      s,
+      v,
+      k,
+      r,
+      r_d,
+      r_f,
+      q,
+      lambda,
+      gamma,
+      m,
+      tau,
+      eval,
+      expiration,
+      option_type,
+      b,
+    }
   }
 }
 

@@ -28,10 +28,27 @@ pub struct Dupire {
 
 impl Dupire {
   pub fn new(
-    ks: Vec<f64>, ts: Vec<f64>, calls: Array2<f64>, r: f64, q: f64, eps: f64,
-    dc_dk: Option<Array2<f64>>, d2c_dk2: Option<Array2<f64>>, dc_dt: Option<Array2<f64>>,
+    ks: Vec<f64>,
+    ts: Vec<f64>,
+    calls: Array2<f64>,
+    r: f64,
+    q: f64,
+    eps: f64,
+    dc_dk: Option<Array2<f64>>,
+    d2c_dk2: Option<Array2<f64>>,
+    dc_dt: Option<Array2<f64>>,
   ) -> Self {
-    Self { ks, ts, calls, r, q, eps, dc_dk, d2c_dk2, dc_dt }
+    Self {
+      ks,
+      ts,
+      calls,
+      r,
+      q,
+      eps,
+      dc_dk,
+      d2c_dk2,
+      dc_dt,
+    }
   }
 }
 

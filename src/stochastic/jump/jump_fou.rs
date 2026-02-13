@@ -90,13 +90,18 @@ impl PyJumpFOU {
   #[new]
   #[pyo3(signature = (hurst, theta, mu, sigma, distribution, lambda_, n, x0=None, t=None))]
   fn new(
-    hurst: f64, theta: f64, mu: f64, sigma: f64,
+    hurst: f64,
+    theta: f64,
+    mu: f64,
+    sigma: f64,
     distribution: pyo3::Py<pyo3::PyAny>,
     lambda_: f64,
-    n: usize, x0: Option<f64>, t: Option<f64>,
+    n: usize,
+    x0: Option<f64>,
+    t: Option<f64>,
   ) -> Self {
-    use crate::stochastic::process::poisson::Poisson;
     use crate::stochastic::process::cpoisson::CompoundPoisson;
+    use crate::stochastic::process::poisson::Poisson;
     let cpoisson = CompoundPoisson::new(
       crate::traits::CallableDist::new(distribution),
       Poisson::new(lambda_, Some(n), t),
@@ -108,8 +113,14 @@ impl PyJumpFOU {
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
-    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+
+    use crate::traits::ProcessExt;
+    self
+      .inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap()
   }
 }

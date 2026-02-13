@@ -2,8 +2,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::traits::Fn1D;
 use crate::traits::FloatExt;
+use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct ADG<T: FloatExt> {
@@ -99,25 +99,43 @@ impl PyADG {
   #[new]
   #[pyo3(signature = (k, theta, sigma, phi, b, c, n, xn, x0, t=None))]
   fn new(
-    k: pyo3::Py<pyo3::PyAny>, theta: pyo3::Py<pyo3::PyAny>,
+    k: pyo3::Py<pyo3::PyAny>,
+    theta: pyo3::Py<pyo3::PyAny>,
     sigma: Vec<f64>,
-    phi: pyo3::Py<pyo3::PyAny>, b: pyo3::Py<pyo3::PyAny>, c: pyo3::Py<pyo3::PyAny>,
-    n: usize, xn: usize, x0: Vec<f64>, t: Option<f64>,
+    phi: pyo3::Py<pyo3::PyAny>,
+    b: pyo3::Py<pyo3::PyAny>,
+    c: pyo3::Py<pyo3::PyAny>,
+    n: usize,
+    xn: usize,
+    x0: Vec<f64>,
+    t: Option<f64>,
   ) -> Self {
     Self {
       inner: ADG::new(
-        Fn1D::Py(k), Fn1D::Py(theta),
+        Fn1D::Py(k),
+        Fn1D::Py(theta),
         ndarray::Array1::from_vec(sigma),
-        Fn1D::Py(phi), Fn1D::Py(b), Fn1D::Py(c),
-        n, xn, ndarray::Array1::from_vec(x0), t,
+        Fn1D::Py(phi),
+        Fn1D::Py(b),
+        Fn1D::Py(c),
+        n,
+        xn,
+        ndarray::Array1::from_vec(x0),
+        t,
       ),
     }
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
-    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+
+    use crate::traits::ProcessExt;
+    self
+      .inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap()
   }
 }

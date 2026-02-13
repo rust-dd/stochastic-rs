@@ -4,9 +4,9 @@ use implied_vol::implied_black_volatility;
 use num_complex::Complex64;
 use quadrature::double_exponential;
 
+use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
-use crate::quant::OptionType;
 
 #[derive(Clone)]
 pub struct HestonPricer {
@@ -40,15 +40,46 @@ pub struct HestonPricer {
 
 impl HestonPricer {
   pub fn new(
-    s: f64, v0: f64, k: f64, r: f64, q: Option<f64>, rho: f64,
-    kappa: f64, theta: f64, sigma: f64, lambda: Option<f64>,
-    tau: Option<f64>, eval: Option<chrono::NaiveDate>, expiry: Option<chrono::NaiveDate>,
+    s: f64,
+    v0: f64,
+    k: f64,
+    r: f64,
+    q: Option<f64>,
+    rho: f64,
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
+    lambda: Option<f64>,
+    tau: Option<f64>,
+    eval: Option<chrono::NaiveDate>,
+    expiry: Option<chrono::NaiveDate>,
   ) -> Self {
-    Self { s, v0, k, r, q, rho, kappa, theta, sigma, lambda, tau, eval, expiry }
+    Self {
+      s,
+      v0,
+      k,
+      r,
+      q,
+      rho,
+      kappa,
+      theta,
+      sigma,
+      lambda,
+      tau,
+      eval,
+      expiry,
+    }
   }
 
   pub fn builder(
-    s: f64, v0: f64, k: f64, r: f64, rho: f64, kappa: f64, theta: f64, sigma: f64,
+    s: f64,
+    v0: f64,
+    k: f64,
+    r: f64,
+    rho: f64,
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
   ) -> HestonPricerBuilder {
     HestonPricerBuilder {
       s,

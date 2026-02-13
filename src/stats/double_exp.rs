@@ -9,7 +9,11 @@ pub struct DoubleExp {
 
 impl DoubleExp {
   pub fn new(p: Option<f64>, lambda_plus: f64, lambda_minus: f64) -> Self {
-    Self { p, lambda_plus, lambda_minus }
+    Self {
+      p,
+      lambda_plus,
+      lambda_minus,
+    }
   }
 }
 

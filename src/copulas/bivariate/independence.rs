@@ -7,8 +7,8 @@ use ndarray::Axis;
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 
-use crate::traits::BivariateExt;
 use super::CopulaType;
+use crate::traits::BivariateExt;
 
 #[derive(Debug, Clone)]
 pub struct Independence {

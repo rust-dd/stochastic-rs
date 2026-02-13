@@ -1,8 +1,8 @@
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
-use crate::traits::Fn1D;
 use crate::traits::FloatExt;
+use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct HullWhite<T: FloatExt> {
@@ -16,7 +16,14 @@ pub struct HullWhite<T: FloatExt> {
 }
 
 impl<T: FloatExt> HullWhite<T> {
-  pub fn new(theta: impl Into<Fn1D<T>>, alpha: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(
+    theta: impl Into<Fn1D<T>>,
+    alpha: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
     Self {
       theta: theta.into(),
       alpha,
@@ -61,8 +68,12 @@ impl PyHullWhite {
   #[new]
   #[pyo3(signature = (theta, alpha, sigma, n, x0=None, t=None))]
   fn new(
-    theta: pyo3::Py<pyo3::PyAny>, alpha: f64, sigma: f64, n: usize,
-    x0: Option<f64>, t: Option<f64>,
+    theta: pyo3::Py<pyo3::PyAny>,
+    alpha: f64,
+    sigma: f64,
+    n: usize,
+    x0: Option<f64>,
+    t: Option<f64>,
   ) -> Self {
     Self {
       inner: HullWhite::new(Fn1D::Py(theta), alpha, sigma, n, x0, t),
@@ -71,8 +82,14 @@ impl PyHullWhite {
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
-    use crate::traits::ProcessExt;
     use pyo3::IntoPyObjectExt;
-    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+
+    use crate::traits::ProcessExt;
+    self
+      .inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap()
   }
 }

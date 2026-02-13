@@ -32,13 +32,34 @@ pub struct DeltaHedge {
 impl DeltaHedge {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    c: f64, c_premium: f64, c_delta: f64, k: f64, s: f64, s0: f64,
-    contract_size: f64, hedge_size: f64, option_type: OptionType,
-    dotm_threshold: f64, ditm_threshold: f64, atm_threshold: f64, itm_threshold: f64,
+    c: f64,
+    c_premium: f64,
+    c_delta: f64,
+    k: f64,
+    s: f64,
+    s0: f64,
+    contract_size: f64,
+    hedge_size: f64,
+    option_type: OptionType,
+    dotm_threshold: f64,
+    ditm_threshold: f64,
+    atm_threshold: f64,
+    itm_threshold: f64,
   ) -> Self {
     Self {
-      c, c_premium, c_delta, k, s, s0, contract_size, hedge_size,
-      option_type, dotm_threshold, ditm_threshold, atm_threshold, itm_threshold,
+      c,
+      c_premium,
+      c_delta,
+      k,
+      s,
+      s0,
+      contract_size,
+      hedge_size,
+      option_type,
+      dotm_threshold,
+      ditm_threshold,
+      atm_threshold,
+      itm_threshold,
     }
   }
 }

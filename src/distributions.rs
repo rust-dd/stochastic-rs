@@ -888,7 +888,10 @@ mod tests {
       let d: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -927,7 +930,10 @@ mod tests {
       let d = SimdLogNormal::new(0.2f32, 0.8);
       let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -967,7 +973,10 @@ mod tests {
       let d = SimdExp::new(lambda);
       let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1008,7 +1017,11 @@ mod tests {
       let d2 = SimdExp::new(lambda);
       let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += d2.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += d2.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1056,7 +1069,10 @@ mod tests {
       let d = SimdCauchy::new(0.0f32, 1.0);
       let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1095,7 +1111,10 @@ mod tests {
       let d = SimdGamma::new(2.0f32, 2.0);
       let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1134,7 +1153,10 @@ mod tests {
       let d = SimdWeibull::new(1.0f32, 1.5);
       let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1173,7 +1195,10 @@ mod tests {
       let d = SimdBeta::new(2.0f32, 2.0);
       let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1212,7 +1237,10 @@ mod tests {
       let d = SimdChiSquared::new(5.0f32);
       let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1251,7 +1279,10 @@ mod tests {
       let d = SimdStudentT::new(5.0f32);
       let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
       let mut s = 0.0f32;
-      for _ in 0..warmup { s += d.sample(&mut rng); s += rd.sample(&mut rng); }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng);
+        s += rd.sample(&mut rng);
+      }
       std::hint::black_box(s);
     }
 
@@ -1290,7 +1321,10 @@ mod tests {
       let d = SimdPoisson::<u32>::new(4.0);
       let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
       let mut s: u64 = 0;
-      for _ in 0..warmup { s += d.sample(&mut rng) as u64; s += rd.sample(&mut rng) as u64; }
+      for _ in 0..warmup {
+        s += d.sample(&mut rng) as u64;
+        s += rd.sample(&mut rng) as u64;
+      }
       std::hint::black_box(s);
     }
 
@@ -1338,7 +1372,10 @@ mod tests {
     use std::hint::black_box;
     let warmup = n / 5;
     let mut w = 0.0f32;
-    for _ in 0..warmup { w += simd_fn(); w += rand_fn(); }
+    for _ in 0..warmup {
+      w += simd_fn();
+      w += rand_fn();
+    }
     black_box(w);
 
     let t0 = Instant::now();
@@ -1376,7 +1413,10 @@ mod tests {
     use std::hint::black_box;
     let warmup = n / 5;
     let mut w: u64 = 0;
-    for _ in 0..warmup { w += simd_fn() as u64; w += rand_fn() as u64; }
+    for _ in 0..warmup {
+      w += simd_fn() as u64;
+      w += rand_fn() as u64;
+    }
     black_box(w);
 
     let t0 = Instant::now();
