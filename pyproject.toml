@@ -4,9 +4,23 @@ build-backend = "maturin"
 
 [project]
 name = "stochastic-rs"
+description = "A high-performance Rust library for simulating stochastic processes with first-class bindings."
 requires-python = ">=3.9"
 dynamic = ["version"]
 dependencies = ["numpy"]
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["stochastic", "quant", "finance", "simulation", "statistics"]
+classifiers = [
+  "Programming Language :: Rust",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Office/Business :: Financial",
+]
+
+[project.urls]
+Homepage = "https://github.com/rust-dd/stochastic-rs"
+Repository = "https://github.com/rust-dd/stochastic-rs"
+Documentation = "https://docs.rs/stochastic-rs"
 
 [tool.maturin]
 features = ["python"]
