@@ -86,3 +86,37 @@ where
     jump_fou
   }
 }
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyJumpFOUCustom {
+  inner: JumpFOUCustom<f64, crate::traits::CallableDist>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyJumpFOUCustom {
+  #[new]
+  #[pyo3(signature = (hurst, theta, mu, sigma, jump_times, jump_sizes, n, x0=None, t=None))]
+  fn new(
+    hurst: f64, theta: f64, mu: f64, sigma: f64,
+    jump_times: pyo3::Py<pyo3::PyAny>,
+    jump_sizes: pyo3::Py<pyo3::PyAny>,
+    n: usize, x0: Option<f64>, t: Option<f64>,
+  ) -> Self {
+    Self {
+      inner: JumpFOUCustom::new(
+        hurst, theta, mu, sigma, n, x0, t,
+        crate::traits::CallableDist::new(jump_times),
+        crate::traits::CallableDist::new(jump_sizes),
+      ),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+  }
+}

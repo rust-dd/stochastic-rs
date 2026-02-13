@@ -118,3 +118,43 @@ where
     [s, v]
   }
 }
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyBates {
+  inner: Bates1996<f64, crate::traits::CallableDist>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyBates {
+  #[new]
+  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None))]
+  fn new(
+    lambda_: f64, k: f64, alpha: f64, beta: f64, sigma: f64, rho: f64,
+    distribution: pyo3::Py<pyo3::PyAny>,
+    n: usize,
+    mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>,
+    s0: Option<f64>, v0: Option<f64>, t: Option<f64>, use_sym: Option<bool>,
+  ) -> Self {
+    use crate::stochastic::process::poisson::Poisson;
+    let cpoisson = CompoundPoisson::new(
+      crate::traits::CallableDist::new(distribution),
+      Poisson::new(lambda_, Some(n), t),
+    );
+    Self {
+      inner: Bates1996::new(mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    let [s, v] = self.inner.sample();
+    (
+      s.into_pyarray(py).into_py_any(py).unwrap(),
+      v.into_pyarray(py).into_py_any(py).unwrap(),
+    )
+  }
+}

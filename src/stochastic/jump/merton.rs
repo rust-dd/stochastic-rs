@@ -80,3 +80,37 @@ where
     merton
   }
 }
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyMerton {
+  inner: Merton<f64, crate::traits::CallableDist>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyMerton {
+  #[new]
+  #[pyo3(signature = (alpha, sigma, lambda_, theta, distribution, n, x0=None, t=None))]
+  fn new(
+    alpha: f64, sigma: f64, lambda_: f64, theta: f64,
+    distribution: pyo3::Py<pyo3::PyAny>,
+    n: usize, x0: Option<f64>, t: Option<f64>,
+  ) -> Self {
+    use crate::stochastic::process::poisson::Poisson;
+    let cpoisson = CompoundPoisson::new(
+      crate::traits::CallableDist::new(distribution),
+      Poisson::new(lambda_, Some(n), t),
+    );
+    Self {
+      inner: Merton::new(alpha, sigma, lambda_, theta, n, x0, t, cpoisson),
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use crate::traits::ProcessExt;
+    use pyo3::IntoPyObjectExt;
+    self.inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+  }
+}

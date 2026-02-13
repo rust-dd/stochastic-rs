@@ -171,9 +171,15 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::interest::fvasicek::PyFVasicek;
   use crate::stochastic::interest::mod_duffie_kan::PyDuffieKanJumpExp;
   use crate::stochastic::interest::vasicek::PyVasicek;
+  use crate::stochastic::jump::bates::PyBates;
   use crate::stochastic::jump::cgmy::PyCGMY;
   use crate::stochastic::jump::cts::PyCTS;
   use crate::stochastic::jump::ig::PyIG;
+  use crate::stochastic::jump::jump_fou::PyJumpFOU;
+  use crate::stochastic::jump::jump_fou_custom::PyJumpFOUCustom;
+  use crate::stochastic::jump::kou::PyKOU;
+  use crate::stochastic::jump::levy_diffusion::PyLevyDiffusion;
+  use crate::stochastic::jump::merton::PyMerton;
   use crate::stochastic::jump::nig::PyNIG;
   use crate::stochastic::jump::rdts::PyRDTS;
   use crate::stochastic::jump::vg::PyVG;
@@ -233,6 +239,12 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyNIG>()?;
   m.add_class::<PyRDTS>()?;
   m.add_class::<PyVG>()?;
+  m.add_class::<PyMerton>()?;
+  m.add_class::<PyKOU>()?;
+  m.add_class::<PyLevyDiffusion>()?;
+  m.add_class::<PyBates>()?;
+  m.add_class::<PyJumpFOU>()?;
+  m.add_class::<PyJumpFOUCustom>()?;
   m.add_class::<PyBergomi>()?;
   m.add_class::<PyHeston>()?;
   m.add_class::<PyRoughBergomi>()?;
