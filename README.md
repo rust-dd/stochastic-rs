@@ -30,7 +30,11 @@ stochastic-rs = "1.0.0"
 
 ### Bindings
 
-Requires [maturin](https://www.maturin.rs/):
+```bash
+pip install stochastic-rs
+```
+
+For development builds from source (requires [maturin](https://www.maturin.rs/)):
 
 ```bash
 pip install maturin
