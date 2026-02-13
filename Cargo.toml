@@ -54,7 +54,7 @@ rayon = "1.11.0"
 roots = "0.0.8"
 sci-rs = "0.4.1"
 scilib = "1.0.0"
-statrs = { git = "https://github.com/statrs-dev/statrs.git" }
+statrs = "0.18.0"
 tikv-jemallocator = { version = "0.6.1", optional = true }
 time = { version = "0.3.36", features = [
     "formatting",

@@ -6,24 +6,36 @@
 
 # stochastic-rs
 
-**stochastic-rs** is a high-performance Rust library for simulating and analyzing stochastic processes. Designed for applications in quantitative finance, AI training, and statistical modeling, it provides efficient tools to generate synthetic data and analyze complex stochastic systems.
+A high-performance Rust library for simulating stochastic processes, with first-class bindings. Built for quantitative finance, statistical modeling and synthetic data generation.
 
-## OpenAPI for Data Generation
+## Features
 
-An OpenAPI interface is available to generate stochastic data on the fly. This feature is experimental and continuously expanding.
-
-**API Documentation:** [https://stochastic-api-production.up.railway.app/](https://stochastic-api-production.up.railway.app/)
+- **85+ stochastic models** — diffusions, jump processes, stochastic volatility, interest rate models, autoregressive models, noise generators, and probability distributions
+- **Copulas** — bivariate, multivariate, and empirical copulas with correlation utilities
+- **Quant toolbox** — option pricing, bond analytics, calibration, loss models, order book, and trading strategies
+- **Statistics** — MLE, kernel density estimation, fractional OU estimation, and CIR parameter fitting
+- **SIMD-optimized** — fractional Gaussian noise, fractional Brownian motion, and all probability distributions use wide SIMD for fast sample generation
+- **Parallel sampling** — `sample_par(m)` generates `m` independent paths in parallel via rayon
+- **Generic precision** — most models support both `f32` and `f64`
+- **Bindings** — full stochastic model coverage with numpy integration; all models return numpy arrays
 
 ## Installation
 
-Add **stochastic-rs** to your `Cargo.toml`:
+### Rust
 
 ```toml
 [dependencies]
-stochastic-rs = "0.x.0"
+stochastic-rs = "1.0.0"
 ```
 
-Ensure you have Rust installed. Visit [rust-lang.org](https://www.rust-lang.org/tools/install) for setup instructions.
+### Bindings
+
+Requires [maturin](https://www.maturin.rs/):
+
+```bash
+pip install maturin
+maturin develop --release
+```
 
 ## Usage
 
@@ -31,51 +43,57 @@ Ensure you have Rust installed. Visit [rust-lang.org](https://www.rust-lang.org/
 
 ```rust
 use stochastic_rs::stochastic::process::fbm::FBM;
+use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::traits::ProcessExt;
 
 fn main() {
+    // Fractional Brownian Motion
     let fbm = FBM::new(0.7, 1000, None);
     let path = fbm.sample();
-    println!("FBM path length: {}", path.len());
 
-    let paths = fbm.sample_par(4);
-    println!("Generated {} parallel paths", paths.len());
+    // Parallel batch sampling
+    let paths = fbm.sample_par(1000);
+
+    // Heston stochastic volatility
+    let heston = Heston::new(0.05, 2.0, 0.04, 0.3, -0.7, 1000, Some(100.0), Some(0.04), None, None);
+    let [price, variance] = heston.sample();
 }
 ```
 
 ### Bindings
 
-Install via [maturin](https://www.maturin.rs/):
-
-```bash
-pip install maturin
-maturin develop --release
-```
+All models return numpy arrays. Use `dtype="f32"` or `dtype="f64"` (default) to control precision.
 
 ```python
-from stochastic_rs import PyFBM, PyFGN
+import stochastic_rs as sr
 
-fbm = PyFBM(0.7, 1000)
-path = fbm.sample()  # returns numpy array, shape (1000,)
+# Basic processes
+fbm = sr.PyFBM(0.7, 1000)
+path = fbm.sample()           # shape (1000,)
+paths = fbm.sample_par(500)   # shape (500, 1000)
 
-paths = fbm.sample_par(4)  # returns numpy array, shape (4, 1000)
+# Stochastic volatility
+heston = sr.PyHeston(mu=0.05, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, n=1000)
+price, variance = heston.sample()
 
-fgn = PyFGN(0.7, 1000)
-noise = fgn.sample()  # returns numpy array, shape (1000,)
+# Models with callable parameters
+hw = sr.PyHullWhite(theta=lambda t: 0.04 + 0.01*t, alpha=0.1, sigma=0.02, n=1000)
+rates = hw.sample()
+
+# Jump processes with custom jump distributions
+import numpy as np
+merton = sr.PyMerton(
+    alpha=0.05, sigma=0.2, lambda_=3.0, theta=0.01,
+    distribution=lambda: np.random.normal(0, 0.1),
+    n=1000,
+)
+log_prices = merton.sample()
 ```
 
 ## Contributing
 
-Contributions are welcome! Whether it's bug reports, feature suggestions, or documentation improvements, your help is appreciated. Open an issue or start a discussion on GitHub.
+Contributions are welcome — bug reports, feature suggestions, or PRs. Open an issue or start a discussion on GitHub.
 
 ## License
 
-Licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Contact
-
-For discussions, issues, or suggestions, feel free to open a GitHub issue or reach out at [dancixx@gmail.com].
-
----
-
-**Note:** This library is in active development and may introduce breaking changes as it evolves. Feedback is encouraged!
+MIT — see [LICENSE](LICENSE).

@@ -2,13 +2,13 @@ use ndarray::Array1;
 use ndarray::Array2;
 use plotly::Plot;
 use plotly::Scatter;
-use rand::prelude::*;
+use rand_distr::Distribution;
 use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Exp;
-use statrs::distribution::Gamma;
-use statrs::distribution::MultivariateNormal;
 use statrs::distribution::Normal;
 
+use crate::distributions::exp::SimdExp;
+use crate::distributions::gamma::SimdGamma;
+use crate::distributions::normal::SimdNormal;
 pub use crate::traits::NCopula2DExt;
 
 /// A small helper function for plotting 2D data using Plotly.
@@ -58,26 +58,21 @@ pub struct GaussianCopula2D {
 
 impl NCopula2DExt for GaussianCopula2D {
   fn sample(&self, n: usize) -> Array2<f64> {
-    // Flatten the 2x2 covariance
-    let cov_flat = vec![
-      self.cov[[0, 0]],
-      self.cov[[0, 1]],
-      self.cov[[1, 0]],
-      self.cov[[1, 1]],
-    ];
+    let a11 = self.cov[[0, 0]].sqrt();
+    let a21 = self.cov[[1, 0]] / a11;
+    let a22 = (self.cov[[1, 1]] - a21 * a21).sqrt();
 
-    // Create a 2D MVN
-    let mvn = MultivariateNormal::new(self.mean.to_vec(), cov_flat)
-      .expect("Invalid MVN parameters (Gaussian copula).");
+    let n1: SimdNormal<f64> = SimdNormal::new(0.0, 1.0);
+    let n2: SimdNormal<f64> = SimdNormal::new(0.0, 1.0);
 
     let mut rng = rand::rng();
     let mut z = Array2::<f64>::zeros((n, 2));
 
-    // Sample from MVN
     for i in 0..n {
-      let sample_vec = mvn.sample(&mut rng);
-      z[[i, 0]] = sample_vec[0];
-      z[[i, 1]] = sample_vec[1];
+      let z1: f64 = n1.sample(&mut rng);
+      let z2: f64 = n2.sample(&mut rng);
+      z[[i, 0]] = self.mean[0] + a11 * z1;
+      z[[i, 1]] = self.mean[1] + a21 * z1 + a22 * z2;
     }
 
     // Apply standard normal CDF to get each coordinate in [0,1]
@@ -114,19 +109,16 @@ impl NCopula2DExt for GumbelCopula2D {
     assert!(alpha >= 1.0, "The Gumbel parameter (alpha) must be >= 1!");
 
     let mut rng = rand::rng();
-    let exp_dist = Exp::new(1.0).unwrap(); // Exp(1)
+    let exp_dist: SimdExp<f64> = SimdExp::new(1.0);
     let mut data = Array2::<f64>::zeros((n, 2));
 
     for i in 0..n {
-      // 1) M = X^alpha, where X ~ Exp(1)
-      let x = exp_dist.sample(&mut rng) as f64;
+      let x: f64 = exp_dist.sample(&mut rng);
       let m = x.powf(alpha);
 
-      // 2) E1, E2 ~ Exp(1)
-      let e1 = exp_dist.sample(&mut rng);
-      let e2 = exp_dist.sample(&mut rng);
+      let e1: f64 = exp_dist.sample(&mut rng);
+      let e2: f64 = exp_dist.sample(&mut rng);
 
-      // 3) U1 = exp(- (E1*M)^(1/alpha)), U2 = exp(- (E2*M)^(1/alpha))
       let u1 = (-(e1 * m).powf(1.0 / alpha)).exp();
       let u2 = (-(e2 * m).powf(1.0 / alpha)).exp();
 
@@ -154,23 +146,19 @@ impl NCopula2DExt for ClaytonCopula2D {
     assert!(alpha > 0.0, "The Clayton parameter (alpha) must be > 0!");
 
     let mut rng = rand::rng();
-    // Gamma(shape = 1/alpha, rate = 1)
-    let gamma_dist = Gamma::new(1.0 / alpha, 1.0).unwrap();
-    let exp_dist = Exp::new(1.0).unwrap(); // Exp(1)
+    let gamma_dist: SimdGamma<f64> = SimdGamma::new(1.0 / alpha, 1.0);
+    let exp_dist: SimdExp<f64> = SimdExp::new(1.0);
 
     let mut data = Array2::<f64>::zeros((n, 2));
 
     for i in 0..n {
-      // 1) W ~ Gamma(shape=1/alpha, rate=1)
-      let w = gamma_dist.sample(&mut rng);
+      let w: f64 = gamma_dist.sample(&mut rng);
 
-      // 2) E1, E2 ~ Exp(1)
-      let e1 = exp_dist.sample(&mut rng);
-      let e2 = exp_dist.sample(&mut rng);
+      let e1: f64 = exp_dist.sample(&mut rng);
+      let e2: f64 = exp_dist.sample(&mut rng);
 
-      // 3) U1 = (1 + W*E1)^(-1/alpha), U2 = (1 + W*E2)^(-1/alpha)
-      let u1 = (1.0 + w * e1).powf(-1.0 / alpha);
-      let u2 = (1.0 + w * e2).powf(-1.0 / alpha);
+      let u1: f64 = (1.0 + w * e1).powf(-1.0 / alpha);
+      let u2: f64 = (1.0 + w * e2).powf(-1.0 / alpha);
 
       data[[i, 0]] = u1;
       data[[i, 1]] = u2;
