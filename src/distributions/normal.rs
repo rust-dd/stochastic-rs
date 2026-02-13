@@ -243,6 +243,94 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     *index += 2;
     (a, b)
   }
+
+  #[inline]
+  fn refill_buffer_standard<R: Rng + ?Sized>(&self, rng: &mut R) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    Self::fill_ziggurat_standard(buf.as_mut_slice(), rng);
+    unsafe {
+      *self.index.get() = 0;
+    }
+  }
+
+  #[inline]
+  pub fn sample_pair_standard<R: Rng + ?Sized>(&self, rng: &mut R) -> (T, T) {
+    let index = unsafe { &mut *self.index.get() };
+    if *index + 1 >= N {
+      self.refill_buffer_standard(rng);
+    }
+    let buf = unsafe { &*self.buffer.get() };
+    let a = buf[*index];
+    let b = buf[*index + 1];
+    *index += 2;
+    (a, b)
+  }
+
+  #[inline]
+  fn fill_ziggurat_standard<R: Rng + ?Sized>(buf: &mut [T], rng: &mut R) {
+    let len = buf.len();
+    let tables = zig_tables();
+    let mask127 = i32x8::splat(127);
+    let mut filled = 0;
+
+    while filled < len {
+      let hz_arr: [i32; 8] = std::array::from_fn(|_| rng.random::<i32>());
+      let hz = i32x8::new(hz_arr);
+      let iz = hz & mask127;
+      let iz_arr = iz.to_array();
+
+      unsafe {
+        let kn_vals = i32x8::new([
+          *tables.kn.get_unchecked(iz_arr[0] as usize),
+          *tables.kn.get_unchecked(iz_arr[1] as usize),
+          *tables.kn.get_unchecked(iz_arr[2] as usize),
+          *tables.kn.get_unchecked(iz_arr[3] as usize),
+          *tables.kn.get_unchecked(iz_arr[4] as usize),
+          *tables.kn.get_unchecked(iz_arr[5] as usize),
+          *tables.kn.get_unchecked(iz_arr[6] as usize),
+          *tables.kn.get_unchecked(iz_arr[7] as usize),
+        ]);
+        let abs_hz = hz.abs();
+        let accept = abs_hz.simd_lt(kn_vals);
+
+        let wn_arr: [T; 8] = [
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
+        ];
+        let hz_float = T::simd_from_i32x8(hz);
+        let wn_simd = T::simd_from_array(wn_arr);
+        let result = hz_float * wn_simd;
+
+        if accept.all() {
+          let result_arr = T::simd_to_array(result);
+          let take = (len - filled).min(8);
+          buf[filled..filled + take].copy_from_slice(&result_arr[..take]);
+          filled += take;
+        } else {
+          let accept_arr = accept.to_array();
+          let result_arr = T::simd_to_array(result);
+          for i in 0..8 {
+            if filled >= len {
+              break;
+            }
+            if accept_arr[i] != 0 {
+              buf[filled] = result_arr[i];
+              filled += 1;
+            } else {
+              buf[filled] = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
+              filled += 1;
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdNormal<T, N> {

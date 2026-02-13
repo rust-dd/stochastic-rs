@@ -126,7 +126,7 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
   fn sample(&self) -> Self::Output {
     let mut rng = rand::rngs::SmallRng::from_rng(&mut rand::rng());
     let rnd = Array1::from_shape_fn(2 * self.n, |_| {
-      let (re, im) = self.normal.sample_pair(&mut rng);
+      let (re, im) = self.normal.sample_pair_standard(&mut rng);
       Complex::new(re, im)
     });
 
