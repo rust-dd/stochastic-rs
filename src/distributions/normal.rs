@@ -230,6 +230,21 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 }
 
+impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
+  #[inline]
+  pub fn sample_pair<R: Rng + ?Sized>(&self, rng: &mut R) -> (T, T) {
+    let index = unsafe { &mut *self.index.get() };
+    if *index + 1 >= N {
+      self.refill_buffer(rng);
+    }
+    let buf = unsafe { &*self.buffer.get() };
+    let a = buf[*index];
+    let b = buf[*index + 1];
+    *index += 2;
+    (a, b)
+  }
+}
+
 impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdNormal<T, N> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };

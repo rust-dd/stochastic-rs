@@ -12,14 +12,13 @@ use libloading::Library;
 use libloading::Symbol;
 use ndarray::concatenate;
 use ndarray::prelude::*;
-use ndarray_rand::RandomExt;
 use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
 use num_complex::Complex;
 #[cfg(feature = "cuda")]
 use rand::Rng;
+use rand::SeedableRng;
 
-use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -125,10 +124,11 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let rnd = Array1::<Complex<T>>::random(
-      2 * self.n,
-      ComplexDistribution::new(&self.normal, &self.normal),
-    );
+    let mut rng = rand::rngs::SmallRng::from_rng(&mut rand::rng());
+    let rnd = Array1::from_shape_fn(2 * self.n, |_| {
+      let (re, im) = self.normal.sample_pair(&mut rng);
+      Complex::new(re, im)
+    });
 
     let fgn = &*self.sqrt_eigenvalues * &rnd;
     let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
