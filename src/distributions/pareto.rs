@@ -4,12 +4,14 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 pub struct SimdPareto<T: SimdFloatExt> {
   x_m: T,
   alpha: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt> SimdPareto<T> {
@@ -20,10 +22,16 @@ impl<T: SimdFloatExt> SimdPareto<T> {
       alpha,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let xm = T::splat(self.x_m);
     let neg_inv_alpha = T::splat(-T::one() / self.alpha);
     let one = T::splat(T::one());
@@ -31,7 +39,7 @@ impl<T: SimdFloatExt> SimdPareto<T> {
     let mut u = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
-      T::fill_uniform(rng, &mut u);
+      T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let base = T::simd_max(one - v, eps);
       let x = xm * T::simd_exp(T::simd_ln(base) * neg_inv_alpha);
@@ -39,7 +47,7 @@ impl<T: SimdFloatExt> SimdPareto<T> {
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      T::fill_uniform(rng, &mut u);
+      T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let base = T::simd_max(one - v, eps);
       let x = T::simd_to_array(xm * T::simd_exp(T::simd_ln(base) * neg_inv_alpha));
@@ -47,9 +55,9 @@ impl<T: SimdFloatExt> SimdPareto<T> {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
+    self.fill_slice_fast(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -57,10 +65,10 @@ impl<T: SimdFloatExt> SimdPareto<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;

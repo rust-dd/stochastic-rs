@@ -94,6 +94,77 @@ merton = sr.PyMerton(
 log_prices = merton.sample()
 ```
 
+## Benchmarks
+
+Distribution sampling performance: `stochastic-rs` SIMD vs `rand_distr`.
+All distributions use an internal SIMD PRNG (xoshiro256++/xoshiro128++ on `wide` SIMD types) for maximum throughput.
+For Normal and Exp, the const generic buffer size (N=32 / N=64) is also compared.
+Measured with Criterion on Apple M-series, `--release`.
+
+### 1K samples (small dataset)
+
+| Distribution | Type | N | stochastic-rs (µs) | rand_distr (µs) | Speedup |
+|---|---|---|---:|---:|---:|
+| Normal | f32 | 32 | 2.84 | 8.43 | 2.97x |
+| Normal | f32 | 64 | 2.93 | 8.43 | 2.88x |
+| Normal | f64 | 32 | 2.80 | 9.81 | 3.50x |
+| Normal | f64 | 64 | 2.83 | 9.81 | 3.47x |
+| Exp | f32 | 32 | 2.58 | 11.75 | 4.55x |
+| Exp | f32 | 64 | 2.50 | 11.75 | 4.70x |
+| Exp | f64 | 32 | 2.59 | 11.16 | 4.31x |
+| Exp | f64 | 64 | 2.56 | 11.16 | 4.36x |
+| LogNormal | f32 | - | 4.31 | 7.64 | 1.77x |
+| LogNormal | f64 | - | 5.46 | 12.78 | 2.34x |
+| Cauchy | f32 | - | 2.29 | 9.80 | 4.28x |
+| Cauchy | f64 | - | 6.09 | 10.52 | 1.73x |
+| Gamma | f32 | - | 6.08 | 12.14 | 2.00x |
+| Gamma | f64 | - | 6.32 | 14.88 | 2.35x |
+| Weibull | f32 | - | 5.00 | 7.34 | 1.47x |
+| Weibull | f64 | - | 10.26 | 15.08 | 1.47x |
+| Beta | f32 | - | 12.25 | 36.37 | 2.97x |
+| Beta | f64 | - | 12.78 | 46.33 | 3.63x |
+| ChiSquared | f32 | - | 5.99 | 12.28 | 2.05x |
+| ChiSquared | f64 | - | 6.17 | 14.81 | 2.40x |
+| StudentT | f32 | - | 9.09 | 19.67 | 2.16x |
+| StudentT | f64 | - | 9.37 | 22.70 | 2.42x |
+| Poisson | u32 | - | 21.42 | 40.37 | 1.88x |
+| Pareto | f32 | - | 2.49 | 5.25 | 2.11x |
+| Pareto | f64 | - | 4.81 | 10.95 | 2.28x |
+| Uniform | f32 | - | 3.10 | 3.04 | 0.98x |
+| Uniform | f64 | - | 5.65 | 5.62 | 1.01x |
+
+### 100K samples (large dataset)
+
+| Distribution | Type | N | stochastic-rs (µs) | rand_distr (µs) | Speedup |
+|---|---|---|---:|---:|---:|
+| Normal | f32 | 32 | 284 | 829 | 2.92x |
+| Normal | f32 | 64 | 290 | 829 | 2.86x |
+| Normal | f64 | 32 | 279 | 981 | 3.51x |
+| Normal | f64 | 64 | 281 | 981 | 3.49x |
+| Exp | f32 | 32 | 256 | 923 | 3.60x |
+| Exp | f32 | 64 | 249 | 923 | 3.71x |
+| Exp | f64 | 32 | 260 | 935 | 3.60x |
+| Exp | f64 | 64 | 254 | 935 | 3.68x |
+| LogNormal | f32 | - | 431 | 754 | 1.75x |
+| LogNormal | f64 | - | 543 | 1293 | 2.38x |
+| Cauchy | f32 | - | 229 | 978 | 4.27x |
+| Cauchy | f64 | - | 593 | 1042 | 1.76x |
+| Gamma | f32 | - | 608 | 1214 | 2.00x |
+| Gamma | f64 | - | 631 | 1480 | 2.35x |
+| Weibull | f32 | - | 501 | 733 | 1.46x |
+| Weibull | f64 | - | 1027 | 1509 | 1.47x |
+| Beta | f32 | - | 1223 | 3641 | 2.98x |
+| Beta | f64 | - | 1280 | 4625 | 3.61x |
+| ChiSquared | f32 | - | 596 | 1224 | 2.05x |
+| ChiSquared | f64 | - | 617 | 1485 | 2.41x |
+| StudentT | f32 | - | 906 | 1967 | 2.17x |
+| StudentT | f64 | - | 936 | 2273 | 2.43x |
+| Poisson | u32 | - | 2132 | 4036 | 1.89x |
+| Pareto | f32 | - | 249 | 524 | 2.10x |
+| Pareto | f64 | - | 481 | 1095 | 2.28x |
+| Uniform | f32 | - | 310 | 303 | 0.98x |
+| Uniform | f64 | - | 564 | 562 | 1.00x |
+
 ## Contributing
 
 Contributions are welcome — bug reports, feature suggestions, or PRs. Open an issue or start a discussion on GitHub.

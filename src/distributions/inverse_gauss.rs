@@ -5,6 +5,7 @@ use rand_distr::Distribution;
 
 use super::normal::SimdNormal;
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 pub struct SimdInverseGauss<T: SimdFloatExt> {
   mu: T,
@@ -12,6 +13,7 @@ pub struct SimdInverseGauss<T: SimdFloatExt> {
   normal: SimdNormal<T>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt> SimdInverseGauss<T> {
@@ -23,10 +25,16 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
       normal: SimdNormal::new(T::zero(), T::one()),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let two = T::splat(T::from(2.0).unwrap());
     let four = T::splat(T::from(4.0).unwrap());
     let mu = T::splat(self.mu);
@@ -36,7 +44,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
       self.normal.fill_slice(rng, &mut zbuf);
-      T::fill_uniform(rng, &mut ubuf);
+      T::fill_uniform_simd(rng, &mut ubuf);
       let z = T::simd_from_array(zbuf);
       let u = T::simd_from_array(ubuf);
       let w = z * z;
@@ -56,7 +64,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
       self.normal.fill_slice(rng, &mut zbuf);
-      T::fill_uniform(rng, &mut ubuf);
+      T::fill_uniform_simd(rng, &mut ubuf);
       let two_s = T::from(2.0).unwrap();
       let four_s = T::from(4.0).unwrap();
       for i in 0..rem.len() {
@@ -74,9 +82,9 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
+    self.fill_slice_fast(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -84,10 +92,10 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;

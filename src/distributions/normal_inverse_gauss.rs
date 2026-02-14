@@ -6,6 +6,7 @@ use rand_distr::Distribution;
 use super::inverse_gauss::SimdInverseGauss;
 use super::normal::SimdNormal;
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
   alpha: T,
@@ -16,6 +17,7 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
   normal: SimdNormal<T>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
@@ -39,10 +41,16 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
       normal,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let mu = T::splat(self.mu);
     let beta = T::splat(self.beta);
     let mut dbuf = [T::zero(); 8];
@@ -68,9 +76,9 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
+    self.fill_slice_fast(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -78,10 +86,10 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;

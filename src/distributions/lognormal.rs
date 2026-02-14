@@ -5,6 +5,7 @@ use rand_distr::Distribution;
 
 use super::normal::SimdNormal;
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 pub struct SimdLogNormal<T: SimdFloatExt> {
   mu: T,
@@ -12,6 +13,7 @@ pub struct SimdLogNormal<T: SimdFloatExt> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   normal: SimdNormal<T>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt> SimdLogNormal<T> {
@@ -23,6 +25,7 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
       normal: SimdNormal::new(T::zero(), T::one()),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
@@ -65,8 +68,9 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
+    let rng = unsafe { &mut *self.simd_rng.get() };
     self.fill_slice(rng, buf);
     unsafe {
       *self.index.get() = 0;
@@ -75,10 +79,10 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdLogNormal<T> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;

@@ -27,8 +27,6 @@ use numpy::PyArray2;
 use pyo3::prelude::*;
 #[cfg(feature = "cuda")]
 use rand::Rng;
-use rand::SeedableRng;
-
 use crate::distributions::normal::SimdNormal;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -134,11 +132,10 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut rng = rand::rngs::SmallRng::from_rng(&mut rand::rng());
-    let rnd = Array1::from_shape_fn(2 * self.n, |_| {
-      let (re, im) = self.normal.sample_pair_standard(&mut rng);
-      Complex::new(re, im)
-    });
+    let len = 2 * self.n;
+    let mut buf = vec![T::zero(); 2 * len];
+    self.normal.fill_standard_fast(&mut buf);
+    let rnd = Array1::from_shape_fn(len, |i| Complex::new(buf[2 * i], buf[2 * i + 1]));
 
     let fgn = &*self.sqrt_eigenvalues * &rnd;
     let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);

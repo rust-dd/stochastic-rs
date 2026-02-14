@@ -7,6 +7,7 @@ use wide::i32x8;
 use wide::CmpLt;
 
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 const ZIG_EXP_R: f64 = 7.697_117_470_131_487;
 const ZIG_EXP_V: f64 = 3.949_659_822_581_572e-3;
@@ -95,6 +96,7 @@ pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64> {
   lambda: T,
   buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
@@ -106,6 +108,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
       lambda,
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
@@ -186,9 +189,16 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer(&self) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
+    Self::fill_exp1(buf, rng);
+    if self.lambda != T::one() {
+      let inv_lambda = T::one() / self.lambda;
+      for x in buf.iter_mut() {
+        *x = *x * inv_lambda;
+      }
+    }
     unsafe {
       *self.index.get() = 0;
     }
@@ -197,10 +207,10 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
 
 impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdExpZig<T, N> {
   #[inline(always)]
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= N {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let val = unsafe { (*self.buffer.get())[*index] };
     *index += 1;

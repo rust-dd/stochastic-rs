@@ -4,12 +4,12 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 pub struct SimdUniform<T: SimdFloatExt> {
   low: T,
   scale: T,
-  buffer: UnsafeCell<[T; 8]>,
-  index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt> SimdUniform<T> {
@@ -19,8 +19,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     Self {
       low,
       scale: high - low,
-      buffer: UnsafeCell::new([T::zero(); 8]),
-      index: UnsafeCell::new(8),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
@@ -28,47 +27,36 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     Self::new(T::zero(), T::one())
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let low = T::splat(self.low);
     let scale = T::splat(self.scale);
     let mut u = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
-      T::fill_uniform(rng, &mut u);
+      T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let vals = low + v * scale;
       chunk.copy_from_slice(&T::simd_to_array(vals));
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      T::fill_uniform(rng, &mut u);
+      T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let vals = T::simd_to_array(low + v * scale);
       rem.copy_from_slice(&vals[..rem.len()]);
     }
   }
-
-  #[inline]
-  fn refill<R: Rng + ?Sized>(&self, rng: &mut R) {
-    let mut tmp = [T::zero(); 8];
-    self.fill_slice(rng, &mut tmp);
-    unsafe {
-      *self.buffer.get() = tmp;
-      *self.index.get() = 0;
-    }
-  }
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
-  #[inline]
+  #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 8 {
-      self.refill(rng);
-    }
-    let val = unsafe { (*self.buffer.get())[*index] };
-    *index += 1;
-    val
+    self.low + T::sample_uniform(rng) * self.scale
   }
 }
 

@@ -1,12 +1,16 @@
+use std::cell::UnsafeCell;
+
 use rand::Rng;
 use rand_distr::Distribution;
 
 use super::exp::SimdExpZig;
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 pub struct SimdWeibull<T: SimdFloatExt> {
   lambda: T,
   inv_k: T,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt> SimdWeibull<T> {
@@ -15,6 +19,7 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     Self {
       lambda,
       inv_k: T::one() / k,
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
@@ -30,7 +35,8 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
 
 impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
   #[inline(always)]
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let u = T::sample_uniform(rng).max(T::min_positive_val());
     self.lambda * (-u.ln()).powf(self.inv_k)
   }

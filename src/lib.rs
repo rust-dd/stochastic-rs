@@ -22,6 +22,7 @@ pub mod ai;
 pub mod copulas;
 pub mod distributions;
 pub mod quant;
+pub mod simd_rng;
 pub mod stats;
 pub mod stochastic;
 pub mod traits;

@@ -1,14 +1,12 @@
 use std::hint::black_box;
+use std::time::Duration;
 
-use criterion::criterion_group;
-use criterion::criterion_main;
-use criterion::BenchmarkId;
-use criterion::Criterion;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand_distr::Distribution;
 use stochastic_rs::distributions::beta::SimdBeta;
 use stochastic_rs::distributions::cauchy::SimdCauchy;
 use stochastic_rs::distributions::chi_square::SimdChiSquared;
-use stochastic_rs::distributions::exp::SimdExp;
+use stochastic_rs::distributions::exp::SimdExpZig;
 use stochastic_rs::distributions::gamma::SimdGamma;
 use stochastic_rs::distributions::lognormal::SimdLogNormal;
 use stochastic_rs::distributions::normal::SimdNormal;
@@ -18,61 +16,80 @@ use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
 
-const N: usize = 100_000;
+const SMALL: usize = 1_000;
+const LARGE: usize = 100_000;
+const SIZES: &[(&str, usize)] = &[("small", SMALL), ("large", LARGE)];
 
 fn bench_normal(c: &mut Criterion) {
   let mut group = c.benchmark_group("Normal");
+  group.measurement_time(Duration::from_secs(3));
+  group.warm_up_time(Duration::from_millis(500));
 
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.finish();
-}
-
-fn bench_normal_fill_slice(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Normal_fill_slice");
-
-  for &size in &[64, 256, 1024, 10_000, 100_000] {
-    group.bench_with_input(BenchmarkId::new("simd", size), &size, |b, &size| {
+  for &(label, n) in SIZES {
+    group.bench_with_input(BenchmarkId::new("simd/f32/N=32", label), &n, |b, &n| {
       let mut rng = rand::rng();
-      let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
-      let mut buf = vec![0.0f32; size];
+      let dist: SimdNormal<f32, 32> = SimdNormal::new(0.0, 1.0);
       b.iter(|| {
-        dist.fill_slice(&mut rng, &mut buf);
-        black_box(&buf);
+        let mut s = 0.0f32;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
       });
     });
-
-    group.bench_with_input(BenchmarkId::new("rand_distr", size), &size, |b, &size| {
+    group.bench_with_input(BenchmarkId::new("simd/f32/N=64", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist: SimdNormal<f32, 64> = SimdNormal::new(0.0, 1.0);
+      b.iter(|| {
+        let mut s = 0.0f32;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
+    });
+    group.bench_with_input(BenchmarkId::new("simd/f64/N=32", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist: SimdNormal<f64, 32> = SimdNormal::new(0.0, 1.0);
+      b.iter(|| {
+        let mut s = 0.0f64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
+    });
+    group.bench_with_input(BenchmarkId::new("simd/f64/N=64", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist: SimdNormal<f64, 64> = SimdNormal::new(0.0, 1.0);
+      b.iter(|| {
+        let mut s = 0.0f64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
+    });
+    group.bench_with_input(BenchmarkId::new("rand_distr/f32", label), &n, |b, &n| {
       let mut rng = rand::rng();
       let dist = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
-      let mut buf = vec![0.0f32; size];
       b.iter(|| {
-        for x in buf.iter_mut() {
-          *x = dist.sample(&mut rng);
+        let mut s = 0.0f32;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
         }
-        black_box(&buf);
+        black_box(s)
+      });
+    });
+    group.bench_with_input(BenchmarkId::new("rand_distr/f64", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist = rand_distr::Normal::<f64>::new(0.0, 1.0).unwrap();
+      b.iter(|| {
+        let mut s = 0.0f64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
       });
     });
   }
@@ -80,332 +97,254 @@ fn bench_normal_fill_slice(c: &mut Criterion) {
   group.finish();
 }
 
-fn bench_lognormal(c: &mut Criterion) {
-  let mut group = c.benchmark_group("LogNormal");
-
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdLogNormal::new(0.2f32, 0.8);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.finish();
-}
-
 fn bench_exp(c: &mut Criterion) {
   let mut group = c.benchmark_group("Exp");
+  group.measurement_time(Duration::from_secs(3));
+  group.warm_up_time(Duration::from_millis(500));
 
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdExp::new(1.5f32);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
+  for &(label, n) in SIZES {
+    group.bench_with_input(BenchmarkId::new("simd/f32/N=32", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist: SimdExpZig<f32, 32> = SimdExpZig::new(1.5);
+      b.iter(|| {
+        let mut s = 0.0f32;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
     });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Exp::<f32>::new(1.5).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
+    group.bench_with_input(BenchmarkId::new("simd/f32/N=64", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist: SimdExpZig<f32, 64> = SimdExpZig::new(1.5);
+      b.iter(|| {
+        let mut s = 0.0f32;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
     });
-  });
+    group.bench_with_input(BenchmarkId::new("simd/f64/N=32", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist: SimdExpZig<f64, 32> = SimdExpZig::new(1.5);
+      b.iter(|| {
+        let mut s = 0.0f64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
+    });
+    group.bench_with_input(BenchmarkId::new("simd/f64/N=64", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist: SimdExpZig<f64, 64> = SimdExpZig::new(1.5);
+      b.iter(|| {
+        let mut s = 0.0f64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
+    });
+    group.bench_with_input(BenchmarkId::new("rand_distr/f32", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist = rand_distr::Exp::<f32>::new(1.5).unwrap();
+      b.iter(|| {
+        let mut s = 0.0f32;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
+    });
+    group.bench_with_input(BenchmarkId::new("rand_distr/f64", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist = rand_distr::Exp::<f64>::new(1.5).unwrap();
+      b.iter(|| {
+        let mut s = 0.0f64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng);
+        }
+        black_box(s)
+      });
+    });
+  }
 
   group.finish();
 }
 
-fn bench_cauchy(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Cauchy");
+macro_rules! bench_dist {
+  ($fn_name:ident, $group_name:expr,
+   $simd_f32:expr, $simd_f64:expr,
+   $rand_f32:expr, $rand_f64:expr) => {
+    fn $fn_name(c: &mut Criterion) {
+      let mut group = c.benchmark_group($group_name);
+      group.measurement_time(Duration::from_secs(3));
+      group.warm_up_time(Duration::from_millis(500));
 
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdCauchy::new(0.0f32, 1.0);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
+      for &(label, n) in SIZES {
+        group.bench_with_input(BenchmarkId::new("simd/f32", label), &n, |b, &n| {
+          let mut rng = rand::rng();
+          let dist = $simd_f32;
+          b.iter(|| {
+            let mut s = 0.0f32;
+            for _ in 0..n {
+              s += dist.sample(&mut rng);
+            }
+            black_box(s)
+          });
+        });
+        group.bench_with_input(BenchmarkId::new("simd/f64", label), &n, |b, &n| {
+          let mut rng = rand::rng();
+          let dist = $simd_f64;
+          b.iter(|| {
+            let mut s = 0.0f64;
+            for _ in 0..n {
+              s += dist.sample(&mut rng);
+            }
+            black_box(s)
+          });
+        });
+        group.bench_with_input(BenchmarkId::new("rand_distr/f32", label), &n, |b, &n| {
+          let mut rng = rand::rng();
+          let dist = $rand_f32;
+          b.iter(|| {
+            let mut s = 0.0f32;
+            for _ in 0..n {
+              s += dist.sample(&mut rng);
+            }
+            black_box(s)
+          });
+        });
+        group.bench_with_input(BenchmarkId::new("rand_distr/f64", label), &n, |b, &n| {
+          let mut rng = rand::rng();
+          let dist = $rand_f64;
+          b.iter(|| {
+            let mut s = 0.0f64;
+            for _ in 0..n {
+              s += dist.sample(&mut rng);
+            }
+            black_box(s)
+          });
+        });
       }
-      black_box(sum)
-    });
-  });
 
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.finish();
+      group.finish();
+    }
+  };
 }
 
-fn bench_gamma(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Gamma");
+bench_dist!(
+  bench_lognormal,
+  "LogNormal",
+  SimdLogNormal::new(0.2f32, 0.8),
+  SimdLogNormal::new(0.2f64, 0.8),
+  rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap(),
+  rand_distr::LogNormal::<f64>::new(0.2, 0.8).unwrap()
+);
 
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdGamma::new(2.0f32, 2.0);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
+bench_dist!(
+  bench_cauchy,
+  "Cauchy",
+  SimdCauchy::new(0.0f32, 1.0),
+  SimdCauchy::new(0.0f64, 1.0),
+  rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap(),
+  rand_distr::Cauchy::<f64>::new(0.0, 1.0).unwrap()
+);
 
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
+bench_dist!(
+  bench_gamma,
+  "Gamma",
+  SimdGamma::new(2.0f32, 2.0),
+  SimdGamma::new(2.0f64, 2.0),
+  rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap(),
+  rand_distr::Gamma::<f64>::new(2.0, 2.0).unwrap()
+);
 
-  group.finish();
-}
+bench_dist!(
+  bench_weibull,
+  "Weibull",
+  SimdWeibull::new(1.0f32, 1.5),
+  SimdWeibull::new(1.0f64, 1.5),
+  rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap(),
+  rand_distr::Weibull::<f64>::new(1.0, 1.5).unwrap()
+);
 
-fn bench_weibull(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Weibull");
+bench_dist!(
+  bench_beta,
+  "Beta",
+  SimdBeta::new(2.0f32, 2.0),
+  SimdBeta::new(2.0f64, 2.0),
+  rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap(),
+  rand_distr::Beta::<f64>::new(2.0, 2.0).unwrap()
+);
 
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdWeibull::new(1.0f32, 1.5);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
+bench_dist!(
+  bench_chi_squared,
+  "ChiSquared",
+  SimdChiSquared::new(5.0f32),
+  SimdChiSquared::new(5.0f64),
+  rand_distr::ChiSquared::<f32>::new(5.0).unwrap(),
+  rand_distr::ChiSquared::<f64>::new(5.0).unwrap()
+);
 
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
+bench_dist!(
+  bench_studentt,
+  "StudentT",
+  SimdStudentT::new(5.0f32),
+  SimdStudentT::new(5.0f64),
+  rand_distr::StudentT::<f32>::new(5.0).unwrap(),
+  rand_distr::StudentT::<f64>::new(5.0).unwrap()
+);
 
-  group.finish();
-}
+bench_dist!(
+  bench_pareto,
+  "Pareto",
+  SimdPareto::new(1.0f32, 1.5),
+  SimdPareto::new(1.0f64, 1.5),
+  rand_distr::Pareto::<f32>::new(1.0, 1.5).unwrap(),
+  rand_distr::Pareto::<f64>::new(1.0, 1.5).unwrap()
+);
 
-fn bench_beta(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Beta");
-
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdBeta::new(2.0f32, 2.0);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.finish();
-}
-
-fn bench_chi_squared(c: &mut Criterion) {
-  let mut group = c.benchmark_group("ChiSquared");
-
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdChiSquared::new(5.0f32);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.finish();
-}
-
-fn bench_studentt(c: &mut Criterion) {
-  let mut group = c.benchmark_group("StudentT");
-
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdStudentT::new(5.0f32);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::StudentT::<f32>::new(5.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.finish();
-}
+bench_dist!(
+  bench_uniform,
+  "Uniform",
+  SimdUniform::new(0.0f32, 1.0),
+  SimdUniform::new(0.0f64, 1.0),
+  rand_distr::Uniform::<f32>::new(0.0, 1.0).unwrap(),
+  rand_distr::Uniform::<f64>::new(0.0, 1.0).unwrap()
+);
 
 fn bench_poisson(c: &mut Criterion) {
   let mut group = c.benchmark_group("Poisson");
+  group.measurement_time(Duration::from_secs(3));
+  group.warm_up_time(Duration::from_millis(500));
 
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdPoisson::<u32>::new(4.0);
-    b.iter(|| {
-      let mut sum = 0u64;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng) as u64;
-      }
-      black_box(sum)
+  for &(label, n) in SIZES {
+    group.bench_with_input(BenchmarkId::new("simd", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist = SimdPoisson::<u32>::new(4.0);
+      b.iter(|| {
+        let mut s = 0u64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng) as u64;
+        }
+        black_box(s)
+      });
     });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Poisson::<f64>::new(4.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0u64;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng) as u64;
-      }
-      black_box(sum)
+    group.bench_with_input(BenchmarkId::new("rand_distr", label), &n, |b, &n| {
+      let mut rng = rand::rng();
+      let dist = rand_distr::Poisson::<f64>::new(4.0).unwrap();
+      b.iter(|| {
+        let mut s = 0u64;
+        for _ in 0..n {
+          s += dist.sample(&mut rng) as u64;
+        }
+        black_box(s)
+      });
     });
-  });
-
-  group.finish();
-}
-
-fn bench_pareto(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Pareto");
-
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdPareto::new(1.0f32, 1.5);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Pareto::<f32>::new(1.0, 1.5).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.finish();
-}
-
-fn bench_uniform(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Uniform");
-
-  group.bench_function("simd", |b| {
-    let mut rng = rand::rng();
-    let dist = SimdUniform::new(0.0f32, 1.0);
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
-
-  group.bench_function("rand_distr", |b| {
-    let mut rng = rand::rng();
-    let dist = rand_distr::Uniform::<f32>::new(0.0, 1.0).unwrap();
-    b.iter(|| {
-      let mut sum = 0.0f32;
-      for _ in 0..N {
-        sum += dist.sample(&mut rng);
-      }
-      black_box(sum)
-    });
-  });
+  }
 
   group.finish();
 }
@@ -413,9 +352,8 @@ fn bench_uniform(c: &mut Criterion) {
 criterion_group!(
   benches,
   bench_normal,
-  bench_normal_fill_slice,
-  bench_lognormal,
   bench_exp,
+  bench_lognormal,
   bench_cauchy,
   bench_gamma,
   bench_weibull,

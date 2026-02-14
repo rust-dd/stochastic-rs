@@ -17,8 +17,12 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    self.gamma.fill_slice(rng, out);
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    self.gamma.fill_slice_fast(out);
+  }
+
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    self.gamma.fill_slice_fast(out);
   }
 }
 

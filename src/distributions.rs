@@ -90,6 +90,18 @@ impl SimdFloatExt for f32 {
     fill_f32_zero_one(rng, out)
   }
 
+  fn fill_uniform_simd(rng: &mut crate::simd_rng::SimdRng, out: &mut [f32]) {
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      chunk.copy_from_slice(&rng.next_f32_array());
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      let arr = rng.next_f32_array();
+      rem.copy_from_slice(&arr[..rem.len()]);
+    }
+  }
+
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f32 {
     rng.random()
   }
@@ -169,6 +181,18 @@ impl SimdFloatExt for f64 {
 
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
     fill_f64_zero_one(rng, out)
+  }
+
+  fn fill_uniform_simd(rng: &mut crate::simd_rng::SimdRng, out: &mut [f64]) {
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      chunk.copy_from_slice(&rng.next_f64_array());
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      let arr = rng.next_f64_array();
+      rem.copy_from_slice(&arr[..rem.len()]);
+    }
   }
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f64 {

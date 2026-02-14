@@ -7,6 +7,7 @@ use wide::i32x8;
 use wide::CmpLt;
 
 use super::SimdFloatExt;
+use crate::simd_rng::SimdRng;
 
 struct ZigTables {
   kn: [i32; 128],
@@ -68,11 +69,11 @@ fn zig_tables() -> &'static ZigTables {
 }
 
 #[inline(never)]
-fn nfix<T: SimdFloatExt, R: Rng + ?Sized>(
+fn nfix<T: SimdFloatExt>(
   hz: i32,
   iz: usize,
   tables: &ZigTables,
-  rng: &mut R,
+  rng: &mut SimdRng,
 ) -> T {
   const R_TAIL: f64 = 3.442620;
   let mut hz = hz;
@@ -125,6 +126,7 @@ pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64> {
   std_dev: T,
   buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
@@ -137,20 +139,24 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
       std_dev,
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat(out, rng, self.mean, self.std_dev);
   }
 
   #[inline]
-  pub fn fill_16<R: Rng + ?Sized>(&self, rng: &mut R, out16: &mut [T]) {
+  pub fn fill_16<R: Rng + ?Sized>(&self, _rng: &mut R, out16: &mut [T]) {
     debug_assert!(out16.len() >= 16);
+    let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat(&mut out16[..16], rng, self.mean, self.std_dev);
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer(&self) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let buf = unsafe { &mut *self.buffer.get() };
     Self::fill_ziggurat(buf.as_mut_slice(), rng, self.mean, self.std_dev);
     unsafe {
@@ -159,7 +165,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 
   #[inline]
-  fn fill_ziggurat<R: Rng + ?Sized>(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
+  fn fill_ziggurat(buf: &mut [T], rng: &mut SimdRng, mean: T, std_dev: T) {
     let len = buf.len();
     let tables = zig_tables();
     let mean_simd = T::splat(mean);
@@ -168,12 +174,11 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     let mut filled = 0;
 
     while filled < len {
-      let hz_arr: [i32; 8] = std::array::from_fn(|_| rng.random::<i32>());
-      let hz = i32x8::new(hz_arr);
+      let hz = rng.next_i32x8();
+      let hz_arr = hz.to_array();
       let iz = hz & mask127;
       let iz_arr = iz.to_array();
 
-      // SAFETY: iz values are always 0..=127 (masked with & 127), tables have 128 entries
       unsafe {
         let kn_vals = i32x8::new([
           *tables.kn.get_unchecked(iz_arr[0] as usize),
@@ -219,7 +224,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
               buf[filled] = mean + std_dev * result_arr[i];
               filled += 1;
             } else {
-              let x = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
+              let x = nfix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng);
               buf[filled] = mean + std_dev * x;
               filled += 1;
             }
@@ -231,11 +236,16 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
 }
 
 impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
+  pub fn fill_standard_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    Self::fill_ziggurat_standard(out, rng);
+  }
+
   #[inline]
-  pub fn sample_pair<R: Rng + ?Sized>(&self, rng: &mut R) -> (T, T) {
+  pub fn sample_pair<R: Rng + ?Sized>(&self, _rng: &mut R) -> (T, T) {
     let index = unsafe { &mut *self.index.get() };
     if *index + 1 >= N {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let buf = unsafe { &*self.buffer.get() };
     let a = buf[*index];
@@ -245,7 +255,8 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 
   #[inline]
-  fn refill_buffer_standard<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer_standard(&self) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let buf = unsafe { &mut *self.buffer.get() };
     Self::fill_ziggurat_standard(buf.as_mut_slice(), rng);
     unsafe {
@@ -254,10 +265,10 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 
   #[inline]
-  pub fn sample_pair_standard<R: Rng + ?Sized>(&self, rng: &mut R) -> (T, T) {
+  pub fn sample_pair_standard<R: Rng + ?Sized>(&self, _rng: &mut R) -> (T, T) {
     let index = unsafe { &mut *self.index.get() };
     if *index + 1 >= N {
-      self.refill_buffer_standard(rng);
+      self.refill_buffer_standard();
     }
     let buf = unsafe { &*self.buffer.get() };
     let a = buf[*index];
@@ -267,15 +278,15 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 
   #[inline]
-  fn fill_ziggurat_standard<R: Rng + ?Sized>(buf: &mut [T], rng: &mut R) {
+  fn fill_ziggurat_standard(buf: &mut [T], rng: &mut SimdRng) {
     let len = buf.len();
     let tables = zig_tables();
     let mask127 = i32x8::splat(127);
     let mut filled = 0;
 
     while filled < len {
-      let hz_arr: [i32; 8] = std::array::from_fn(|_| rng.random::<i32>());
-      let hz = i32x8::new(hz_arr);
+      let hz = rng.next_i32x8();
+      let hz_arr = hz.to_array();
       let iz = hz & mask127;
       let iz_arr = iz.to_array();
 
@@ -323,7 +334,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
               buf[filled] = result_arr[i];
               filled += 1;
             } else {
-              buf[filled] = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
+              buf[filled] = nfix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng);
               filled += 1;
             }
           }
@@ -334,10 +345,10 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
 }
 
 impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdNormal<T, N> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= N {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let buf = unsafe { &mut *self.buffer.get() };
     let z = buf[*index];
