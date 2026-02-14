@@ -65,11 +65,11 @@ fn exp_zig_tables() -> &'static ExpZigTables {
 }
 
 #[inline(never)]
-fn efix<T: SimdFloatExt, R: Rng + ?Sized>(
+fn efix<T: SimdFloatExt>(
   hz: i32,
   iz: usize,
   tables: &ExpZigTables,
-  rng: &mut R,
+  rng: &mut SimdRng,
 ) -> T {
   let mut hz = hz;
   let mut iz = iz;
@@ -113,15 +113,15 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   }
 
   #[inline]
-  pub fn fill_exp1<R: Rng + ?Sized>(buf: &mut [T], rng: &mut R) {
+  fn fill_exp1(buf: &mut [T], rng: &mut SimdRng) {
     let tables = exp_zig_tables();
     let len = buf.len();
     let mask255 = i32x8::splat(0xFF);
     let mut filled = 0;
 
     while filled < len {
-      let hz_arr: [i32; 8] = std::array::from_fn(|_| rng.random::<i32>());
-      let hz = i32x8::new(hz_arr);
+      let hz = rng.next_i32x8();
+      let hz_arr = hz.to_array();
       let iz = hz & mask255;
       let iz_arr = iz.to_array();
       let abs_hz = hz.abs();
@@ -170,7 +170,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
               buf[filled] = result_arr[i];
               filled += 1;
             } else {
-              buf[filled] = efix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
+              buf[filled] = efix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng);
               filled += 1;
             }
           }
@@ -179,7 +179,8 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_exp1(out, rng);
     if self.lambda != T::one() {
       let inv_lambda = T::one() / self.lambda;

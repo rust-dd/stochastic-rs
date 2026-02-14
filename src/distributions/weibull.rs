@@ -10,6 +10,7 @@ use crate::simd_rng::SimdRng;
 pub struct SimdWeibull<T: SimdFloatExt> {
   lambda: T,
   inv_k: T,
+  exp1: SimdExpZig<T>,
   simd_rng: UnsafeCell<SimdRng>,
 }
 
@@ -19,12 +20,14 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     Self {
       lambda,
       inv_k: T::one() / k,
+      exp1: SimdExpZig::new(T::one()),
       simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
-    SimdExpZig::<T>::fill_exp1(out, rng);
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    self.exp1.fill_slice(rng, out);
     let lambda = self.lambda;
     let inv_k = self.inv_k;
     for x in out.iter_mut() {
