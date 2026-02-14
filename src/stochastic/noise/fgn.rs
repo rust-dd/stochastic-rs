@@ -133,13 +133,14 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
 
   fn sample(&self) -> Self::Output {
     let len = 2 * self.n;
-    let mut buf = vec![T::zero(); 2 * len];
-    self.normal.fill_standard_fast(&mut buf);
-    let rnd = Array1::from_shape_fn(len, |i| Complex::new(buf[2 * i], buf[2 * i + 1]));
-
-    let fgn = &*self.sqrt_eigenvalues * &rnd;
-    let mut fgn_fft = Array1::<Complex<T>>::zeros(2 * self.n);
-    ndfft_par(&fgn, &mut fgn_fft, &*self.fft_handler, 0);
+    let mut rnd = Array1::<Complex<T>>::zeros(len);
+    // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
+    let flat =
+      unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+    self.normal.fill_standard_fast(flat);
+    rnd.zip_mut_with(&*self.sqrt_eigenvalues, |a, b| *a = *a * *b);
+    let mut fgn_fft = Array1::<Complex<T>>::zeros(len);
+    ndfft_par(&rnd, &mut fgn_fft, &*self.fft_handler, 0);
     let scale =
       T::from_usize_(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
     let fgn = fgn_fft
