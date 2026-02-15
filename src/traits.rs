@@ -89,21 +89,28 @@ impl<T: FloatExt> From<fn(T, T) -> T> for Fn2D<T> {
 }
 
 #[cfg(feature = "python")]
-pub struct CallableDist {
+pub struct CallableDist<T: FloatExt> {
   callable: pyo3::Py<pyo3::PyAny>,
+  _phantom: std::marker::PhantomData<T>,
 }
 
 #[cfg(feature = "python")]
-impl CallableDist {
+impl<T: FloatExt> CallableDist<T> {
   pub fn new(callable: pyo3::Py<pyo3::PyAny>) -> Self {
-    Self { callable }
+    Self {
+      callable,
+      _phantom: std::marker::PhantomData,
+    }
   }
 }
 
 #[cfg(feature = "python")]
-impl rand_distr::Distribution<f64> for CallableDist {
-  fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> f64 {
-    pyo3::Python::attach(|py| self.callable.call0(py).unwrap().extract::<f64>(py).unwrap())
+impl<T: FloatExt> rand_distr::Distribution<T> for CallableDist<T> {
+  fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
+    pyo3::Python::attach(|py| {
+      let result: f64 = self.callable.call0(py).unwrap().extract::<f64>(py).unwrap();
+      T::from_f64_fast(result)
+    })
   }
 }
 

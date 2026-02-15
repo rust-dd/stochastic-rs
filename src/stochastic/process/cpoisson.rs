@@ -53,25 +53,37 @@ where
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyCompoundPoisson {
-  inner: CompoundPoisson<f64, crate::traits::CallableDist>,
+  inner_f32: Option<CompoundPoisson<f32, crate::traits::CallableDist<f32>>>,
+  inner_f64: Option<CompoundPoisson<f64, crate::traits::CallableDist<f64>>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyCompoundPoisson {
   #[new]
-  #[pyo3(signature = (distribution, lambda_, n=None, t_max=None))]
+  #[pyo3(signature = (distribution, lambda_, n=None, t_max=None, dtype=None))]
   fn new(
     distribution: pyo3::Py<pyo3::PyAny>,
     lambda_: f64,
     n: Option<usize>,
     t_max: Option<f64>,
+    dtype: Option<&str>,
   ) -> Self {
-    Self {
-      inner: CompoundPoisson::new(
-        crate::traits::CallableDist::new(distribution),
-        Poisson::new(lambda_, n, t_max),
-      ),
+    match dtype.unwrap_or("f64") {
+      "f32" => Self {
+        inner_f32: Some(CompoundPoisson::new(
+          crate::traits::CallableDist::new(distribution),
+          Poisson::new(lambda_ as f32, n, t_max.map(|v| v as f32)),
+        )),
+        inner_f64: None,
+      },
+      _ => Self {
+        inner_f32: None,
+        inner_f64: Some(CompoundPoisson::new(
+          crate::traits::CallableDist::new(distribution),
+          Poisson::new(lambda_, n, t_max),
+        )),
+      },
     }
   }
 
@@ -85,13 +97,23 @@ impl PyCompoundPoisson {
   ) {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
-
     use crate::traits::ProcessExt;
-    let [p, cum, j] = self.inner.sample();
-    (
-      p.into_pyarray(py).into_py_any(py).unwrap(),
-      cum.into_pyarray(py).into_py_any(py).unwrap(),
-      j.into_pyarray(py).into_py_any(py).unwrap(),
-    )
+    if let Some(ref inner) = self.inner_f64 {
+      let [p, cum, j] = inner.sample();
+      (
+        p.into_pyarray(py).into_py_any(py).unwrap(),
+        cum.into_pyarray(py).into_py_any(py).unwrap(),
+        j.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.inner_f32 {
+      let [p, cum, j] = inner.sample();
+      (
+        p.into_pyarray(py).into_py_any(py).unwrap(),
+        cum.into_pyarray(py).into_py_any(py).unwrap(),
+        j.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else {
+      unreachable!()
+    }
   }
 }

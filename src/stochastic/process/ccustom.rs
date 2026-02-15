@@ -75,39 +75,68 @@ where
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyCompoundCustom {
-  inner: CompoundCustom<f64, crate::traits::CallableDist, crate::traits::CallableDist>,
+  inner_f32: Option<CompoundCustom<f32, crate::traits::CallableDist<f32>, crate::traits::CallableDist<f32>>>,
+  inner_f64: Option<CompoundCustom<f64, crate::traits::CallableDist<f64>, crate::traits::CallableDist<f64>>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyCompoundCustom {
   #[new]
-  #[pyo3(signature = (jumps_distribution, jump_times_distribution, n=None, t_max=None, m=None))]
+  #[pyo3(signature = (jumps_distribution, jump_times_distribution, n=None, t_max=None, m=None, dtype=None))]
   fn new(
     jumps_distribution: pyo3::Py<pyo3::PyAny>,
     jump_times_distribution: pyo3::Py<pyo3::PyAny>,
     n: Option<usize>,
     t_max: Option<f64>,
     m: Option<usize>,
+    dtype: Option<&str>,
   ) -> Self {
-    let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
-      let a = jump_times_distribution.clone_ref(py);
-      let b = jump_times_distribution;
-      (
-        crate::traits::CallableDist::new(a),
-        crate::traits::CallableDist::new(b),
-      )
-    });
-    let customjt = CustomJt::new(n, t_max, customjt_dist);
-    Self {
-      inner: CompoundCustom::new(
-        n,
-        t_max,
-        m,
-        crate::traits::CallableDist::new(jumps_distribution),
-        jt_dist,
-        customjt,
-      ),
+    match dtype.unwrap_or("f64") {
+      "f32" => {
+        let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
+          let a = jump_times_distribution.clone_ref(py);
+          let b = jump_times_distribution;
+          (
+            crate::traits::CallableDist::<f32>::new(a),
+            crate::traits::CallableDist::<f32>::new(b),
+          )
+        });
+        let customjt = CustomJt::new(n, t_max.map(|v| v as f32), customjt_dist);
+        Self {
+          inner_f32: Some(CompoundCustom::new(
+            n,
+            t_max.map(|v| v as f32),
+            m,
+            crate::traits::CallableDist::new(jumps_distribution),
+            jt_dist,
+            customjt,
+          )),
+          inner_f64: None,
+        }
+      }
+      _ => {
+        let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
+          let a = jump_times_distribution.clone_ref(py);
+          let b = jump_times_distribution;
+          (
+            crate::traits::CallableDist::<f64>::new(a),
+            crate::traits::CallableDist::<f64>::new(b),
+          )
+        });
+        let customjt = CustomJt::new(n, t_max, customjt_dist);
+        Self {
+          inner_f32: None,
+          inner_f64: Some(CompoundCustom::new(
+            n,
+            t_max,
+            m,
+            crate::traits::CallableDist::new(jumps_distribution),
+            jt_dist,
+            customjt,
+          )),
+        }
+      }
     }
   }
 
@@ -121,13 +150,23 @@ impl PyCompoundCustom {
   ) {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
-
     use crate::traits::ProcessExt;
-    let [p, cum, j] = self.inner.sample();
-    (
-      p.into_pyarray(py).into_py_any(py).unwrap(),
-      cum.into_pyarray(py).into_py_any(py).unwrap(),
-      j.into_pyarray(py).into_py_any(py).unwrap(),
-    )
+    if let Some(ref inner) = self.inner_f64 {
+      let [p, cum, j] = inner.sample();
+      (
+        p.into_pyarray(py).into_py_any(py).unwrap(),
+        cum.into_pyarray(py).into_py_any(py).unwrap(),
+        j.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.inner_f32 {
+      let [p, cum, j] = inner.sample();
+      (
+        p.into_pyarray(py).into_py_any(py).unwrap(),
+        cum.into_pyarray(py).into_py_any(py).unwrap(),
+        j.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else {
+      unreachable!()
+    }
   }
 }

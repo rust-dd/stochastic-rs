@@ -122,14 +122,15 @@ where
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyBates {
-  inner: Bates1996<f64, crate::traits::CallableDist>,
+  inner_f32: Option<Bates1996<f32, crate::traits::CallableDist<f32>>>,
+  inner_f64: Option<Bates1996<f64, crate::traits::CallableDist<f64>>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyBates {
   #[new]
-  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None))]
+  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, dtype=None))]
   fn new(
     lambda_: f64,
     k: f64,
@@ -147,16 +148,49 @@ impl PyBates {
     v0: Option<f64>,
     t: Option<f64>,
     use_sym: Option<bool>,
+    dtype: Option<&str>,
   ) -> Self {
     use crate::stochastic::process::poisson::Poisson;
-    let cpoisson = CompoundPoisson::new(
-      crate::traits::CallableDist::new(distribution),
-      Poisson::new(lambda_, Some(n), t),
-    );
-    Self {
-      inner: Bates1996::new(
-        mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson,
-      ),
+    match dtype.unwrap_or("f64") {
+      "f32" => {
+        let cpoisson = CompoundPoisson::new(
+          crate::traits::CallableDist::new(distribution),
+          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32)),
+        );
+        Self {
+          inner_f32: Some(Bates1996::new(
+            mu.map(|v| v as f32),
+            b.map(|v| v as f32),
+            r.map(|v| v as f32),
+            r_f.map(|v| v as f32),
+            lambda_ as f32,
+            k as f32,
+            alpha as f32,
+            beta as f32,
+            sigma as f32,
+            rho as f32,
+            n,
+            s0.map(|v| v as f32),
+            v0.map(|v| v as f32),
+            t.map(|v| v as f32),
+            use_sym,
+            cpoisson,
+          )),
+          inner_f64: None,
+        }
+      }
+      _ => {
+        let cpoisson = CompoundPoisson::new(
+          crate::traits::CallableDist::new(distribution),
+          Poisson::new(lambda_, Some(n), t),
+        );
+        Self {
+          inner_f32: None,
+          inner_f64: Some(Bates1996::new(
+            mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson,
+          )),
+        }
+      }
     }
   }
 
@@ -165,10 +199,61 @@ impl PyBates {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    let [s, v] = self.inner.sample();
-    (
-      s.into_pyarray(py).into_py_any(py).unwrap(),
-      v.into_pyarray(py).into_py_any(py).unwrap(),
-    )
+    if let Some(ref inner) = self.inner_f64 {
+      let [s, v] = inner.sample();
+      (
+        s.into_pyarray(py).into_py_any(py).unwrap(),
+        v.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.inner_f32 {
+      let [s, v] = inner.sample();
+      (
+        s.into_pyarray(py).into_py_any(py).unwrap(),
+        v.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else {
+      unreachable!()
+    }
+  }
+
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+    use numpy::ndarray::Array2;
+    use numpy::IntoPyArray;
+    use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
+    if let Some(ref inner) = self.inner_f64 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f64>::zeros((m, n));
+      let mut r1 = Array2::<f64>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.inner_f32 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f32>::zeros((m, n));
+      let mut r1 = Array2::<f32>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else {
+      unreachable!()
+    }
   }
 }

@@ -90,14 +90,15 @@ where
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyJumpFOUCustom {
-  inner: JumpFOUCustom<f64, crate::traits::CallableDist>,
+  inner_f32: Option<JumpFOUCustom<f32, crate::traits::CallableDist<f32>>>,
+  inner_f64: Option<JumpFOUCustom<f64, crate::traits::CallableDist<f64>>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyJumpFOUCustom {
   #[new]
-  #[pyo3(signature = (hurst, theta, mu, sigma, jump_times, jump_sizes, n, x0=None, t=None))]
+  #[pyo3(signature = (hurst, theta, mu, sigma, jump_times, jump_sizes, n, x0=None, t=None, dtype=None))]
   fn new(
     hurst: f64,
     theta: f64,
@@ -108,32 +109,65 @@ impl PyJumpFOUCustom {
     n: usize,
     x0: Option<f64>,
     t: Option<f64>,
+    dtype: Option<&str>,
   ) -> Self {
-    Self {
-      inner: JumpFOUCustom::new(
-        hurst,
-        theta,
-        mu,
-        sigma,
-        n,
-        x0,
-        t,
-        crate::traits::CallableDist::new(jump_times),
-        crate::traits::CallableDist::new(jump_sizes),
-      ),
+    match dtype.unwrap_or("f64") {
+      "f32" => Self {
+        inner_f32: Some(JumpFOUCustom::new(
+          hurst as f32, theta as f32, mu as f32, sigma as f32, n,
+          x0.map(|v| v as f32), t.map(|v| v as f32),
+          crate::traits::CallableDist::new(jump_times),
+          crate::traits::CallableDist::new(jump_sizes),
+        )),
+        inner_f64: None,
+      },
+      _ => Self {
+        inner_f32: None,
+        inner_f64: Some(JumpFOUCustom::new(
+          hurst, theta, mu, sigma, n, x0, t,
+          crate::traits::CallableDist::new(jump_times),
+          crate::traits::CallableDist::new(jump_sizes),
+        )),
+      },
     }
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
-
     use crate::traits::ProcessExt;
-    self
-      .inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap()
+    if let Some(ref inner) = self.inner_f64 {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.inner_f32 {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else {
+      unreachable!()
+    }
+  }
+
+  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use numpy::ndarray::Array2;
+    use pyo3::IntoPyObjectExt;
+    use crate::traits::ProcessExt;
+    if let Some(ref inner) = self.inner_f64 {
+      let paths = inner.sample_par(m);
+      let n = paths[0].len();
+      let mut result = Array2::<f64>::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.inner_f32 {
+      let paths = inner.sample_par(m);
+      let n = paths[0].len();
+      let mut result = Array2::<f32>::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py).into_py_any(py).unwrap()
+    } else {
+      unreachable!()
+    }
   }
 }
