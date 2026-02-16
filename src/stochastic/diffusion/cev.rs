@@ -15,7 +15,7 @@ pub struct CEV<T: FloatExt> {
 }
 
 impl<T: FloatExt> CEV<T> {
-  fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
       mu,
       sigma,
