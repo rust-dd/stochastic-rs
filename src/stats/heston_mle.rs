@@ -248,8 +248,8 @@ pub fn pmle_heston_with_delta(
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::rngs::StdRng;
   use rand::SeedableRng;
+  use rand::rngs::StdRng;
   use rand_distr::Distribution;
   use rand_distr::StandardNormal;
 

@@ -28,8 +28,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use nalgebra::DMatrix;
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rand_distr::Distribution;
 use rand_distr::StandardNormal;
 use rayon::prelude::*;

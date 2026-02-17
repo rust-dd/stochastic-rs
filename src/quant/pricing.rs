@@ -14,3 +14,4 @@ pub mod malliavin_gbm;
 pub mod merton_jump;
 pub mod pnl;
 pub mod sabr;
+pub mod snell_envelope;

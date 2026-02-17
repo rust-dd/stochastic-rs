@@ -10,15 +10,15 @@ use argmin::core::Gradient;
 use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
+use plotly::Plot;
+use plotly::Scatter;
 use plotly::common::Mode;
 use plotly::common::Title;
 use plotly::layout::Axis;
 use plotly::layout::Layout;
-use plotly::Plot;
-use plotly::Scatter;
-use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 use crate::quant::calibration::sabr::SabrParams;
 use crate::quant::pricing::sabr::bs_price_fx;
