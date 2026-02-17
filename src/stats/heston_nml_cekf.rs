@@ -6,8 +6,8 @@
 //!
 use ndarray::Array1;
 
-use crate::stats::mle::nmle_heston_with_delta;
-use crate::stats::mle::HestonMleResult;
+use crate::stats::heston_mle::HestonMleResult;
+use crate::stats::heston_mle::nmle_heston_with_delta;
 
 const EPS: f64 = 1e-12;
 const RHO_MAX: f64 = 0.9999;
@@ -253,14 +253,14 @@ pub fn nmle_cekf_heston(s: Array1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLE
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::rngs::StdRng;
   use rand::SeedableRng;
+  use rand::rngs::StdRng;
   use rand_distr::Distribution;
   use rand_distr::StandardNormal;
 
-  use super::nmle_cekf_heston;
   use super::HestonNMLECEKFConfig;
   use super::HestonNMLECEKFParams;
+  use super::nmle_cekf_heston;
 
   fn simulate_heston_prices(
     n_obs: usize,
