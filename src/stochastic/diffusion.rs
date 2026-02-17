@@ -5,6 +5,7 @@
 //! $$
 //!
 pub mod cev;
+pub mod cfou;
 pub mod cir;
 pub mod fcir;
 pub mod feller;

@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+use num_complex::Complex;
 use plotly::Layout;
 use plotly::Plot;
 use plotly::Scatter;
@@ -40,6 +41,32 @@ impl<T: FloatExt> Plottable<T> for Array1<T> {
 
   fn component(&self, _idx: usize) -> Vec<f64> {
     self.iter().map(|v| v.to_f64().unwrap()).collect()
+  }
+
+  fn len(&self) -> usize {
+    self.len()
+  }
+}
+
+impl<T: FloatExt> Plottable<T> for Array1<Complex<T>> {
+  fn n_components(&self) -> usize {
+    2
+  }
+
+  fn component_name(&self, idx: usize) -> String {
+    match idx {
+      0 => "real".to_string(),
+      1 => "imag".to_string(),
+      _ => String::new(),
+    }
+  }
+
+  fn component(&self, idx: usize) -> Vec<f64> {
+    match idx {
+      0 => self.iter().map(|v| v.re.to_f64().unwrap()).collect(),
+      1 => self.iter().map(|v| v.im.to_f64().unwrap()).collect(),
+      _ => Vec::new(),
+    }
   }
 
   fn len(&self) -> usize {
@@ -450,6 +477,7 @@ mod tests {
   use crate::stochastic::autoregressive::sarima::SARIMA;
   use crate::stochastic::autoregressive::tgarch::TGARCH;
   use crate::stochastic::diffusion::cev::CEV;
+  use crate::stochastic::diffusion::cfou::CFOU;
   use crate::stochastic::diffusion::cir::CIR as DiffCIR;
   use crate::stochastic::diffusion::fcir::FCIR;
   use crate::stochastic::diffusion::feller::FellerLogistic;
@@ -813,6 +841,11 @@ mod tests {
     grid = grid.register(
       &FOU::new(0.7, 2.0, 0.0, 0.2, n, Some(0.0), Some(1.0)),
       "Diffusion: FOU",
+      traj,
+    );
+    grid = grid.register(
+      &CFOU::new(0.7, 1.8, 3.0, 0.4, n, Some(0.0), Some(0.0), Some(1.0)),
+      "Diffusion: Complex fOU",
       traj,
     );
     grid = grid.register(

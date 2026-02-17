@@ -152,6 +152,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::autoregressive::sarima::PySARIMA;
   use crate::stochastic::autoregressive::tgarch::PyTGARCH;
   use crate::stochastic::diffusion::cev::PyCEV;
+  use crate::stochastic::diffusion::cfou::PyCFOU;
   use crate::stochastic::diffusion::cir::PyCIR;
   use crate::stochastic::diffusion::fcir::PyFCIR;
   use crate::stochastic::diffusion::feller::PyFellerLogistic;
@@ -227,6 +228,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyCGNS>()?;
   m.add_class::<PyCFGNS>()?;
   m.add_class::<PyCEV>()?;
+  m.add_class::<PyCFOU>()?;
   m.add_class::<PyCIR>()?;
   m.add_class::<PyFCIR>()?;
   m.add_class::<PyFellerLogistic>()?;
