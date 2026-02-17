@@ -118,6 +118,7 @@ impl IntoF64 for u32 {
 #[pymodule]
 #[pyo3(name = "stochastic_rs")]
 fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
+  use crate::distributions::alpha_stable::PyAlphaStable;
   use crate::distributions::beta::PyBeta;
   use crate::distributions::binomial::PyBinomial;
   use crate::distributions::cauchy::PyCauchy;
@@ -195,6 +196,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::process::cpoisson::PyCompoundPoisson;
   use crate::stochastic::process::customjt::PyCustomJt;
   use crate::stochastic::process::fbm::PyFBM;
+  use crate::stochastic::process::lfsm::PyLFSM;
   use crate::stochastic::process::poisson::PyPoisson;
   use crate::stochastic::sheet::fbs::PyFBS;
   use crate::stochastic::volatility::bergomi::PyBergomi;
@@ -205,6 +207,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::volatility::svcgmy::PySVCGMY;
 
   m.add_class::<PyFBM>()?;
+  m.add_class::<PyLFSM>()?;
   m.add_class::<PyBM>()?;
   m.add_class::<PyCBMS>()?;
   m.add_class::<PyCFBMS>()?;
@@ -273,6 +276,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyTGARCH>()?;
   m.add_class::<PyFBS>()?;
   m.add_class::<PyBeta>()?;
+  m.add_class::<PyAlphaStable>()?;
   m.add_class::<PyCauchy>()?;
   m.add_class::<PyChiSquared>()?;
   m.add_class::<PyExp>()?;

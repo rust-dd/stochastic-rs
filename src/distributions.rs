@@ -4,6 +4,7 @@ use wide::f64x8;
 
 pub use crate::traits::SimdFloatExt;
 
+pub mod alpha_stable;
 pub mod beta;
 pub mod binomial;
 pub mod cauchy;

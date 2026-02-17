@@ -7,4 +7,5 @@ pub mod cfbms;
 pub mod cpoisson;
 pub mod customjt;
 pub mod fbm;
+pub mod lfsm;
 pub mod poisson;
