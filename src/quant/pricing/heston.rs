@@ -14,6 +14,12 @@ use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
+/// Heston stochastic volatility pricer using the characteristic-function method.
+///
+/// Source:
+/// - Heston, S. L. (1993), "A Closed-Form Solution for Options with Stochastic Volatility
+///   with Applications to Bond and Currency Options"
+///   https://doi.org/10.1093/rfs/6.2.327
 #[derive(Clone)]
 pub struct HestonPricer {
   /// Stock price
@@ -256,6 +262,11 @@ impl HestonPricer {
     }
   }
 
+  /// Risk-neutral probability integral `P_j` in the original Heston semi-closed form.
+  ///
+  /// Source:
+  /// - Heston, S. L. (1993)
+  ///   https://doi.org/10.1093/rfs/6.2.327
   pub(self) fn p(&self, j: u8, tau: f64) -> f64 {
     0.5 + FRAC_1_PI * double_exponential::integrate(self.re(j, tau), 0.00001, 50.0, 10e-6).integral
   }

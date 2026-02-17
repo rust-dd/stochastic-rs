@@ -65,6 +65,12 @@ pub struct HestonNMLECEKFConfig {
   pub q11: f64,
   pub q12: f64,
   pub q22: f64,
+  /// Enables consistent-EKF correction terms (`ΔQ_k`, `ΔR_{k+1}`) from NMLE-CEKF.
+  ///
+  /// Source:
+  /// - Wang et al. (2018), NMLE-CEKF consistent terms
+  ///   https://doi.org/10.1007/s11432-017-9215-8
+  ///   http://scis.scichina.com/en/2018/042202.pdf
   pub use_consistent_terms: bool,
 }
 
@@ -180,6 +186,15 @@ fn cekf_pass(
   (v_hat, p_hat)
 }
 
+/// Heston NMLE-CEKF loop:
+/// 1) CEKF latent variance filtering
+/// 2) NMLE parameter refresh
+/// 3) Damped fixed-point iteration
+///
+/// Source:
+/// - Wang et al. (2018), NMLE-CEKF framework
+///   https://doi.org/10.1007/s11432-017-9215-8
+///   http://scis.scichina.com/en/2018/042202.pdf
 pub fn nmle_cekf_heston(s: Array1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLECEKFResult {
   assert!(s.len() >= 2, "nmle_cekf_heston requires at least 2 prices");
   assert!(

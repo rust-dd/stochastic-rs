@@ -48,8 +48,19 @@ const P_RHO: (f64, f64) = (-1.0, 1.0);
 const P_V0: (f64, f64) = (0.005, 0.25);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Jacobian strategy used by the Heston least-squares calibration.
+///
+/// Source:
+/// - Cui et al. (2017), analytic Heston calibration Jacobian
+///   https://doi.org/10.1016/j.ejor.2017.05.018
 pub enum HestonJacobianMethod {
+  /// Central finite-difference Jacobian.
   NumericFiniteDiff,
+  /// Closed-form analytic Jacobian for Heston calibration integrals.
+  ///
+  /// Source:
+  /// - Cui et al. (2017)
+  ///   https://doi.org/10.1016/j.ejor.2017.05.018
   CuiAnalytic,
 }
 
@@ -60,10 +71,19 @@ impl Default for HestonJacobianMethod {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// Seed estimators for Heston calibration from historical time series.
+///
+/// Source:
+/// - Wang et al. (2018), NMLE/PMLE/NMLE-CEKF
+///   https://doi.org/10.1007/s11432-017-9215-8
+///   http://scis.scichina.com/en/2018/042202.pdf
 pub enum HestonMleSeedMethod {
   #[default]
+  /// Nonlinear MLE based on square-root variance dynamics.
   Nmle,
+  /// Pseudo-MLE closed-form approximation.
   Pmle,
+  /// NMLE with consistent EKF latent-variance filtering.
   NmleCekf,
 }
 
@@ -105,6 +125,10 @@ impl HestonParams {
   /// 1) Periodic mapping into fixed parameter ranges
   /// 2) Enforce basic positivity/box constraints
   /// 3) Enforce Feller by lowering sigma when needed (otherwise minimally bump theta)
+  ///
+  /// Source:
+  /// - Heston (1993), variance process admissibility context
+  ///   https://doi.org/10.1093/rfs/6.2.327
   pub fn project_in_place(&mut self) {
     self.kappa = Self::periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1);
     self.theta = Self::periodic_map(self.theta, P_THETA.0, P_THETA.1);
@@ -245,6 +269,12 @@ fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
 }
 
 #[derive(Clone)]
+/// Heston least-squares calibrator using Levenberg-Marquardt iterations.
+///
+/// Source:
+/// - Levenberg (1944), https://doi.org/10.1090/qam/10666
+/// - Marquardt (1963), https://doi.org/10.1137/0111030
+/// - Heston model (1993), https://doi.org/10.1093/rfs/6.2.327
 pub struct HestonCalibrator {
   /// Params to calibrate (v0, kappa, theta, sigma, rho).
   /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).
@@ -413,6 +443,12 @@ impl HestonCalibrator {
     1.0 / n_obs.saturating_sub(1).max(1) as f64
   }
 
+  /// Build an initial parameter guess from historical series via NMLE/PMLE/NMLE-CEKF.
+  ///
+  /// Source:
+  /// - Wang et al. (2018)
+  ///   https://doi.org/10.1007/s11432-017-9215-8
+  ///   http://scis.scichina.com/en/2018/042202.pdf
   fn infer_initial_guess_from_series(&self) -> Option<HestonParams> {
     match self.mle_seed_method {
       HestonMleSeedMethod::Nmle => {
@@ -748,6 +784,11 @@ impl HestonCalibrator {
     }
   }
 
+  /// Compute model prices and residual Jacobian via the Cui analytic formulation.
+  ///
+  /// Source:
+  /// - Cui et al. (2017), fast and accurate Heston calibration
+  ///   https://doi.org/10.1016/j.ejor.2017.05.018
   fn compute_model_prices_and_residual_jacobian_cui(
     &self,
     params: &HestonParams,

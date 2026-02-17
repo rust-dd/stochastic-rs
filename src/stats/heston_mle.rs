@@ -20,6 +20,12 @@ pub struct HestonMleResult {
   pub rho: f64,
 }
 
+/// NMLE estimator for Heston parameters from observed `(S_t, V_t)` samples.
+///
+/// Source:
+/// - Wang et al. (2018), NMLE closed-form estimators
+///   https://doi.org/10.1007/s11432-017-9215-8
+///   http://scis.scichina.com/en/2018/042202.pdf
 pub fn nmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let n_obs = v.len();
@@ -28,6 +34,12 @@ pub fn nmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
   nmle_heston_with_delta(s, v, r, delta)
 }
 
+/// NMLE estimator with explicit sampling interval `delta`.
+///
+/// Source:
+/// - Wang et al. (2018), Eq. (19)-(21) and rho moment estimator
+///   https://doi.org/10.1007/s11432-017-9215-8
+///   http://scis.scichina.com/en/2018/042202.pdf
 pub fn nmle_heston_with_delta(
   s: Array1<f64>,
   v: Array1<f64>,
@@ -120,6 +132,12 @@ pub fn nmle_heston_with_delta(
   }
 }
 
+/// PMLE estimator for Heston parameters from observed `(S_t, V_t)` samples.
+///
+/// Source:
+/// - Wang et al. (2018), PMLE closed-form estimators
+///   https://doi.org/10.1007/s11432-017-9215-8
+///   http://scis.scichina.com/en/2018/042202.pdf
 pub fn pmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let n_obs = v.len();
@@ -128,6 +146,12 @@ pub fn pmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
   pmle_heston_with_delta(s, v, r, delta)
 }
 
+/// PMLE estimator with explicit sampling interval `delta`.
+///
+/// Source:
+/// - Wang et al. (2018), PMLE formulas and rho moment estimator
+///   https://doi.org/10.1007/s11432-017-9215-8
+///   http://scis.scichina.com/en/2018/042202.pdf
 pub fn pmle_heston_with_delta(
   s: Array1<f64>,
   v: Array1<f64>,
