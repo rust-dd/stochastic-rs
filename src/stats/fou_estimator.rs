@@ -6,9 +6,9 @@
 //!
 use std::f64::consts::SQRT_2;
 
+use ndarray::Array1;
 use ndarray::array;
 use ndarray::s;
-use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::fgn::FGN;
@@ -465,5 +465,250 @@ impl FOUParameterEstimationV3 {
 
     let estimated_alpha = (numerator / denominator).powf(-1.0 / (2.0 * H));
     self.estimated_alpha = Some(estimated_alpha);
+  }
+}
+
+/// Version 4: fOU estimator aligned with high-frequency power-variation formulas.
+///
+/// Source:
+/// - https://arxiv.org/abs/1703.09372
+pub struct FOUParameterEstimationV4 {
+  /// Observed path on an equidistant grid.
+  pub path: Array1<f64>,
+  /// Sampling interval. If omitted, defaults to `1/(N-1)`.
+  pub delta: Option<f64>,
+  /// Difference order `k` for power variation.
+  pub k: usize,
+  /// Power `p` for `V_{k,p}`.
+  pub p: f64,
+  // Estimated parameters
+  hurst: Option<f64>,
+  sigma: Option<f64>,
+  mu: Option<f64>,
+  theta: Option<f64>,
+}
+
+impl FOUParameterEstimationV4 {
+  #[must_use]
+  pub fn new(path: Array1<f64>, delta: Option<f64>, k: usize, p: f64) -> Self {
+    assert!(path.len() >= k + 2, "path length must be at least k + 2");
+    assert!(k >= 1, "k must be at least 1");
+    assert!(p.is_finite() && p > 0.0, "p must be positive");
+    if let Some(dt) = delta {
+      assert!(dt.is_finite() && dt > 0.0, "delta must be positive");
+    }
+
+    Self {
+      path,
+      delta,
+      k,
+      p,
+      hurst: None,
+      sigma: None,
+      mu: None,
+      theta: None,
+    }
+  }
+
+  pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
+    if self.hurst.is_none() {
+      self.hurst_estimator();
+    }
+    if self.sigma.is_none() {
+      self.sigma_estimator();
+    }
+    self.mu_estimator();
+    self.theta_estimator();
+
+    (
+      self.hurst.unwrap(),
+      self.sigma.unwrap(),
+      self.mu.unwrap(),
+      self.theta.unwrap(),
+    )
+  }
+
+  pub fn set_hurst(&mut self, hurst: f64) {
+    assert!(
+      hurst.is_finite() && (0.0..1.0).contains(&hurst),
+      "hurst must be in (0, 1)"
+    );
+    self.hurst = Some(hurst);
+  }
+
+  pub fn set_sigma(&mut self, sigma: f64) {
+    assert!(sigma.is_finite() && sigma > 0.0, "sigma must be positive");
+    self.sigma = Some(sigma);
+  }
+
+  fn effective_delta(&self) -> f64 {
+    self.delta.unwrap_or(1.0 / (self.path.len() - 1) as f64)
+  }
+
+  fn hurst_estimator(&mut self) {
+    // Scale-ratio estimate based on k-th order p-variations at stride 1 and 2.
+    // V(stride=2)/V(stride=1) ≈ 2^(pH-1), hence H ≈ (1 + log2 ratio)/p.
+    let v1 = self.power_variation(self.k, self.p, 1);
+    let v2 = self.power_variation(self.k, self.p, 2);
+    assert!(v1 > 0.0 && v2 > 0.0, "power variations must be positive");
+
+    let mut h = (1.0 + (v2 / v1).log2()) / self.p;
+    if !h.is_finite() {
+      h = 0.5;
+    }
+    h = h.clamp(1e-6, 1.0 - 1e-6);
+    self.hurst = Some(h);
+  }
+
+  fn sigma_estimator(&mut self) {
+    // |sigma_hat|^p = n^{-1+pH} V_{k,p}^n(X)_T / (c_{k,p} T)
+    let h = self.hurst.unwrap();
+    let n = (self.path.len() - 1) as f64;
+    let t_horizon = n * self.effective_delta();
+    let v = self.power_variation(self.k, self.p, 1);
+    let c_k_p = self.c_k_p(self.k, self.p, h);
+
+    let scaled = n.powf(-1.0 + self.p * h) * v;
+    let sigma_abs_p = scaled / (c_k_p * t_horizon);
+    assert!(
+      sigma_abs_p.is_finite() && sigma_abs_p > 0.0,
+      "estimated sigma^p must be positive"
+    );
+
+    let sigma = sigma_abs_p.powf(1.0 / self.p);
+    self.sigma = Some(sigma);
+  }
+
+  fn mu_estimator(&mut self) {
+    self.mu = Some(self.path.mean().unwrap());
+  }
+
+  fn theta_estimator(&mut self) {
+    // Discrete ergodic estimator:
+    // theta_bar_n = ( (1/(n sigma^2 H Gamma(2H))) sum_{k=1}^n X_{kh}^2 )^{-1/(2H)}.
+    let h = self.hurst.unwrap();
+    let sigma = self.sigma.unwrap();
+    let mu = self.mu.unwrap_or_else(|| self.path.mean().unwrap());
+    let n = (self.path.len() - 1) as f64;
+
+    let sum_sq: f64 = self
+      .path
+      .slice(s![1..])
+      .iter()
+      .map(|x| (x - mu).powi(2))
+      .sum();
+    let denom = n * sigma.powi(2) * h * gamma(2.0 * h);
+    let base = sum_sq / denom;
+    assert!(base.is_finite() && base > 0.0, "invalid theta base value");
+
+    let theta = base.powf(-1.0 / (2.0 * h));
+    assert!(
+      theta.is_finite() && theta > 0.0,
+      "estimated theta must be positive"
+    );
+    self.theta = Some(theta);
+  }
+
+  fn power_variation(&self, k: usize, p: f64, stride: usize) -> f64 {
+    let n = self.path.len();
+    let span = k * stride;
+    assert!(n > span, "path is too short for requested (k, stride)");
+
+    let mut v = 0.0;
+    for i in 0..(n - span) {
+      let mut d = 0.0;
+      for j in 0..=k {
+        let coeff = self.diff_coeff(k, j);
+        d += coeff * self.path[i + j * stride];
+      }
+      v += d.abs().powf(p);
+    }
+    v
+  }
+
+  fn diff_coeff(&self, k: usize, j: usize) -> f64 {
+    let sign = if ((k - j) & 1) == 0 { 1.0 } else { -1.0 };
+    sign * Self::binomial(k, j)
+  }
+
+  fn c_k_p(&self, k: usize, p: f64, h: f64) -> f64 {
+    let rho0 = self.rho_k_h_zero(k, h);
+    assert!(
+      rho0.is_finite() && rho0 > 0.0,
+      "rho_(k,H)(0) must be positive"
+    );
+
+    let normal_abs_p = 2.0_f64.powf(p / 2.0) * gamma((p + 1.0) / 2.0) / gamma(0.5);
+    normal_abs_p * rho0.powf(p / 2.0)
+  }
+
+  fn rho_k_h_zero(&self, k: usize, h: f64) -> f64 {
+    let mut acc = 0.0;
+    for i in -(k as isize)..=(k as isize) {
+      let parity = (1_isize - i).rem_euclid(2);
+      let sign = if parity == 0 { 1.0 } else { -1.0 };
+      let comb = Self::binomial(2 * k, (k as isize - i) as usize);
+      let abs_term = (i.unsigned_abs() as f64).powf(2.0 * h);
+      acc += sign * comb * abs_term;
+    }
+    0.5 * acc
+  }
+
+  fn binomial(n: usize, k: usize) -> f64 {
+    if k > n {
+      return 0.0;
+    }
+    let k = k.min(n - k);
+    if k == 0 {
+      return 1.0;
+    }
+    let mut c = 1.0;
+    for i in 1..=k {
+      c *= (n - k + i) as f64 / i as f64;
+    }
+    c
+  }
+}
+
+#[cfg(test)]
+mod fou_v4_tests {
+  use super::FOUParameterEstimationV4;
+  use crate::stochastic::diffusion::fou::FOU;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  fn fou_v4_returns_finite_params() {
+    let n = 1024usize;
+    let h_true = 0.7;
+    let sigma_true = 0.35;
+    let path = FOU::<f64>::new(h_true, 1.5, 0.0, sigma_true, n, Some(0.0), Some(1.0)).sample();
+
+    let mut est = FOUParameterEstimationV4::new(path, Some(1.0 / (n - 1) as f64), 2, 2.0);
+    est.set_hurst(h_true);
+    let (h, sigma, mu, theta) = est.estimate_parameters();
+    println!(
+      "FOUV4 fixed-H test => estimated: H={:.6}, sigma={:.6}, mu={:.6}, theta={:.6} | true: H={:.6}, sigma={:.6}",
+      h, sigma, mu, theta, h_true, sigma_true
+    );
+
+    assert!(h.is_finite() && (0.0..1.0).contains(&h));
+    assert!(sigma.is_finite() && sigma > 0.0);
+    assert!(mu.is_finite());
+    assert!(theta.is_finite() && theta > 0.0);
+  }
+
+  #[test]
+  fn fou_v4_estimated_hurst_in_range_when_not_fixed() {
+    let n = 768usize;
+    let path = FOU::<f64>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0)).sample();
+    let mut est = FOUParameterEstimationV4::new(path, Some(1.0 / (n - 1) as f64), 2, 2.0);
+
+    let (h, sigma, _mu, theta) = est.estimate_parameters();
+    println!(
+      "FOUV4 free-H test  => estimated: H={:.6}, sigma={:.6}, theta={:.6}",
+      h, sigma, theta
+    );
+    assert!((0.0..1.0).contains(&h));
+    assert!(sigma > 0.0 && theta > 0.0);
   }
 }
