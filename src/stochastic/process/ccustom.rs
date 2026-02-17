@@ -15,7 +15,6 @@ where
 {
   pub n: Option<usize>,
   pub t_max: Option<T>,
-  pub m: Option<usize>,
   pub jumps_distribution: D1,
   pub jump_times_distribution: D2,
   pub customjt: CustomJt<T, D2>,
@@ -30,7 +29,6 @@ where
   pub fn new(
     n: Option<usize>,
     t_max: Option<T>,
-    m: Option<usize>,
     jumps_distribution: D1,
     jump_times_distribution: D2,
     customjt: CustomJt<T, D2>,
@@ -42,7 +40,6 @@ where
     Self {
       n,
       t_max,
-      m,
       jumps_distribution,
       jump_times_distribution,
       customjt,
@@ -75,21 +72,22 @@ where
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyCompoundCustom {
-  inner_f32: Option<CompoundCustom<f32, crate::traits::CallableDist<f32>, crate::traits::CallableDist<f32>>>,
-  inner_f64: Option<CompoundCustom<f64, crate::traits::CallableDist<f64>, crate::traits::CallableDist<f64>>>,
+  inner_f32:
+    Option<CompoundCustom<f32, crate::traits::CallableDist<f32>, crate::traits::CallableDist<f32>>>,
+  inner_f64:
+    Option<CompoundCustom<f64, crate::traits::CallableDist<f64>, crate::traits::CallableDist<f64>>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyCompoundCustom {
   #[new]
-  #[pyo3(signature = (jumps_distribution, jump_times_distribution, n=None, t_max=None, m=None, dtype=None))]
+  #[pyo3(signature = (jumps_distribution, jump_times_distribution, n=None, t_max=None, dtype=None))]
   fn new(
     jumps_distribution: pyo3::Py<pyo3::PyAny>,
     jump_times_distribution: pyo3::Py<pyo3::PyAny>,
     n: Option<usize>,
     t_max: Option<f64>,
-    m: Option<usize>,
     dtype: Option<&str>,
   ) -> Self {
     match dtype.unwrap_or("f64") {
@@ -107,7 +105,6 @@ impl PyCompoundCustom {
           inner_f32: Some(CompoundCustom::new(
             n,
             t_max.map(|v| v as f32),
-            m,
             crate::traits::CallableDist::new(jumps_distribution),
             jt_dist,
             customjt,
@@ -130,7 +127,6 @@ impl PyCompoundCustom {
           inner_f64: Some(CompoundCustom::new(
             n,
             t_max,
-            m,
             crate::traits::CallableDist::new(jumps_distribution),
             jt_dist,
             customjt,
@@ -150,6 +146,7 @@ impl PyCompoundCustom {
   ) {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let [p, cum, j] = inner.sample();

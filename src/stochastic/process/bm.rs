@@ -7,16 +7,14 @@ use crate::traits::ProcessExt;
 pub struct BM<T: FloatExt> {
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
   gn: Gn<T>,
 }
 
 impl<T: FloatExt> BM<T> {
-  pub fn new(n: usize, t: Option<T>, m: Option<usize>) -> Self {
+  pub fn new(n: usize, t: Option<T>) -> Self {
     Self {
       n,
       t,
-      m,
       gn: Gn::new(n - 1, t),
     }
   }
@@ -38,6 +36,6 @@ impl<T: FloatExt> ProcessExt<T> for BM<T> {
 }
 
 py_process_1d!(PyBM, BM,
-  sig: (n, t=None, m=None, dtype=None),
-  params: (n: usize, t: Option<f64>, m: Option<usize>)
+  sig: (n, t=None, dtype=None),
+  params: (n: usize, t: Option<f64>)
 );

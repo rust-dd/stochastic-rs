@@ -9,12 +9,11 @@ pub struct CFBMS<T: FloatExt> {
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
   cfgns: CFGNS<T>,
 }
 
 impl<T: FloatExt> CFBMS<T> {
-  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, m: Option<usize>) -> Self {
+  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
       "Hurst parameter must be in (0, 1)"
@@ -29,7 +28,6 @@ impl<T: FloatExt> CFBMS<T> {
       rho,
       n,
       t,
-      m,
       cfgns: CFGNS::new(hurst, rho, n - 1, t),
     }
   }
@@ -54,6 +52,6 @@ impl<T: FloatExt> ProcessExt<T> for CFBMS<T> {
 }
 
 py_process_2x1d!(PyCFBMS, CFBMS,
-  sig: (hurst, rho, n, t=None, m=None, dtype=None),
-  params: (hurst: f64, rho: f64, n: usize, t: Option<f64>, m: Option<usize>)
+  sig: (hurst, rho, n, t=None, dtype=None),
+  params: (hurst: f64, rho: f64, n: usize, t: Option<f64>)
 );

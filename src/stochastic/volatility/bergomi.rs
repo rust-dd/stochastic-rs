@@ -13,21 +13,11 @@ pub struct Bergomi<T: FloatExt> {
   pub rho: T,
   pub n: usize,
   pub t: Option<T>,
-  pub m: Option<usize>,
   cgns: CGNS<T>,
 }
 
 impl<T: FloatExt> Bergomi<T> {
-  pub fn new(
-    nu: T,
-    v0: Option<T>,
-    s0: Option<T>,
-    r: T,
-    rho: T,
-    n: usize,
-    t: Option<T>,
-    m: Option<usize>,
-  ) -> Self {
+  pub fn new(nu: T, v0: Option<T>, s0: Option<T>, r: T, rho: T, n: usize, t: Option<T>) -> Self {
     Self {
       nu,
       v0,
@@ -36,7 +26,6 @@ impl<T: FloatExt> Bergomi<T> {
       rho,
       n,
       t,
-      m,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
@@ -78,7 +67,7 @@ pub struct PyBergomi {
 #[pyo3::prelude::pymethods]
 impl PyBergomi {
   #[new]
-  #[pyo3(signature = (nu, r, rho, n, v0=None, s0=None, t=None, m=None, dtype=None))]
+  #[pyo3(signature = (nu, r, rho, n, v0=None, s0=None, t=None, dtype=None))]
   fn new(
     nu: f64,
     r: f64,
@@ -87,7 +76,6 @@ impl PyBergomi {
     v0: Option<f64>,
     s0: Option<f64>,
     t: Option<f64>,
-    m: Option<usize>,
     dtype: Option<&str>,
   ) -> Self {
     match dtype.unwrap_or("f64") {
@@ -100,7 +88,6 @@ impl PyBergomi {
           rho as f32,
           n,
           t.map(|v| v as f32),
-          m,
         )),
         inner_f64: None,
       },
