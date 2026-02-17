@@ -283,8 +283,8 @@ impl PyHeston {
     py: pyo3::Python<'py>,
     m: usize,
   ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::ndarray::Array2;
     use numpy::IntoPyArray;
+    use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;

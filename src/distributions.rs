@@ -230,14 +230,14 @@ impl SimdFloatExt for f64 {
 
 #[cfg(test)]
 mod tests {
+  use plotly::Layout;
+  use plotly::Plot;
+  use plotly::Scatter;
   use plotly::common::Line;
   use plotly::common::LineShape;
   use plotly::common::Mode;
   use plotly::layout::GridPattern;
   use plotly::layout::LayoutGrid;
-  use plotly::Layout;
-  use plotly::Plot;
-  use plotly::Scatter;
   use rand::rng;
   use rand_distr::Distribution;
 

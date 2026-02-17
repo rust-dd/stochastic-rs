@@ -3,17 +3,17 @@ use std::vec::IntoIter;
 use anyhow::Result;
 use candle_core::Device;
 use candle_core::Tensor;
-use candle_datasets::batcher::IterResult2;
 use candle_datasets::Batcher;
+use candle_datasets::batcher::IterResult2;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
-use ndarray::s;
 use ndarray::Array1;
+use ndarray::s;
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 
-use crate::stochastic::diffusion::fou::FOU;
 use crate::stochastic::SamplingExt;
+use crate::stochastic::diffusion::fou::FOU;
 
 pub fn test_vasicek_1_d(
   epoch_size: usize,

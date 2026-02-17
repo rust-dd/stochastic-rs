@@ -5,12 +5,12 @@
 //! $$
 //!
 use gauss_quad::GaussLegendre;
+use ndarray::Array1;
 use ndarray::concatenate;
 use ndarray::prelude::*;
-use ndarray::Array1;
+use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use ndrustfft::ndfft_inplace;
-use ndrustfft::FftHandler;
 use num_complex::Complex64;
 use statrs::function::gamma::gamma;
 

@@ -15,13 +15,13 @@ use std::ops::SubAssign;
 use anyhow::Result;
 #[cfg(feature = "cuda")]
 use either::Either;
-use ndarray::parallel::prelude::*;
-use ndarray::stack;
 use ndarray::Array1;
 #[cfg(feature = "cuda")]
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::ScalarOperand;
+use ndarray::parallel::prelude::*;
+use ndarray::stack;
 use ndarray_rand::RandomExt;
 use ndarray_stats::QuantileExt;
 use ndrustfft::Zero;
@@ -29,8 +29,8 @@ use num_complex::Complex;
 use num_complex::Complex64;
 use rand::Rng;
 use rand_distr::Uniform;
-use roots::find_root_brent;
 use roots::SimpleConvergency;
+use roots::find_root_brent;
 
 use crate::copulas::bivariate::CopulaType as BivariateCopulaType;
 use crate::copulas::multivariate::CopulaType as MultivariateCopulaType;

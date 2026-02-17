@@ -9,9 +9,9 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
+use super::SimdFloatExt;
 use super::chi_square::SimdChiSquared;
 use super::normal::SimdNormal;
-use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 
 pub struct SimdStudentT<T: SimdFloatExt> {

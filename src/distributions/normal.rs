@@ -9,8 +9,8 @@ use std::sync::OnceLock;
 
 use rand::Rng;
 use rand_distr::Distribution;
-use wide::i32x8;
 use wide::CmpLt;
+use wide::i32x8;
 
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;

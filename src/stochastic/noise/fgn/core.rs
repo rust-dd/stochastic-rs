@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use ndarray::concatenate;
 use ndarray::prelude::*;
+use ndrustfft::FftHandler;
 use ndrustfft::ndfft_inplace_par;
 use ndrustfft::ndfft_par;
-use ndrustfft::FftHandler;
 use num_complex::Complex;
 
 use crate::traits::FloatExt;

@@ -9,8 +9,8 @@ use std::cell::UnsafeCell;
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::exp::SimdExpZig;
 use super::SimdFloatExt;
+use super::exp::SimdExpZig;
 use crate::simd_rng::SimdRng;
 
 pub struct SimdWeibull<T: SimdFloatExt> {

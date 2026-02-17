@@ -8,9 +8,9 @@ use implied_vol::implied_black_volatility;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
+use crate::quant::OptionType;
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
-use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 

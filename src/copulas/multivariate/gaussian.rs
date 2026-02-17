@@ -192,7 +192,7 @@ impl MultivariateExt for GaussianMultivariate {
     self.require_fitted()?;
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap(); // (d x d)
-                                               // Sample standard normals G ~ N(0, I) of shape (n x d)
+    // Sample standard normals G ~ N(0, I) of shape (n x d)
     let g = Array2::<f64>::random((n, d), RandNormal::new(0.0, 1.0).unwrap());
     // z = g * L^T
     let z = g.dot(&l.t());

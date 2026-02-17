@@ -1,9 +1,9 @@
 use std::hint::black_box;
 
-use criterion::criterion_group;
-use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use stochastic_rs::stochastic::noise::fgn::FGN;
 use stochastic_rs::stochastic::process::fbm::FBM;
 use stochastic_rs::traits::ProcessExt;

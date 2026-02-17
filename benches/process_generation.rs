@@ -1,11 +1,11 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::criterion_group;
-use criterion::criterion_main;
 use criterion::BatchSize;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use rand_distr::Distribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::stochastic::noise::gn::Gn;

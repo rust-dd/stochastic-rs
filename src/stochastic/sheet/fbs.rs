@@ -4,14 +4,14 @@
 //! \mathbb E[B^H(t_1,t_2)B^H(s_1,s_2)]=\prod_{j=1}^2\tfrac12\left(t_j^{2H_j}+s_j^{2H_j}-|t_j-s_j|^{2H_j}\right)
 //! $$
 //!
-use ndarray::linalg::kron;
-use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
+use ndarray::linalg::kron;
+use ndarray::s;
 use ndarray_rand::RandomExt;
-use ndrustfft::ndfft;
 use ndrustfft::FftHandler;
+use ndrustfft::ndfft;
 use num_complex::Complex;
 
 use crate::distributions::complex::ComplexDistribution;

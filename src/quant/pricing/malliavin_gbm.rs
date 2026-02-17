@@ -4,9 +4,9 @@
 //! \Delta=\mathbb E\!\left[e^{-rT}\Phi(S_T)\,\frac{W_T}{S_0\sigma T}\right]
 //! $$
 //!
-use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::s;
 
 use crate::stochastic::diffusion::gbm::GBM;
 use crate::traits::PricerExt;

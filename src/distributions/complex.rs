@@ -6,8 +6,8 @@
 //!
 use num_complex::Complex;
 use num_traits::Num;
-use rand::distr::Distribution;
 use rand::Rng;
+use rand::distr::Distribution;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ComplexDistribution<Re, Im = Re> {

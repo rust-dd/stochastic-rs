@@ -4,10 +4,10 @@
 //! \varepsilon \sim \mathcal N(0,\Sigma)\ \text{with optional fractional covariance shaping}
 //! $$
 //!
-use numpy::ndarray::Array2;
 use numpy::IntoPyArray;
 use numpy::PyArray1;
 use numpy::PyArray2;
+use numpy::ndarray::Array2;
 use pyo3::prelude::*;
 
 use super::FGN;

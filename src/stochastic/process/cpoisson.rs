@@ -6,8 +6,8 @@
 //!
 use ndarray::Array1;
 use ndarray::Axis;
-use rand::rng;
 use rand::Rng;
+use rand::rng;
 use rand_distr::Distribution;
 
 use super::poisson::Poisson;

@@ -7,8 +7,8 @@
 use rand::Rng;
 use rand_distr::Distribution;
 
-use super::gamma::SimdGamma;
 use super::SimdFloatExt;
+use super::gamma::SimdGamma;
 
 pub struct SimdChiSquared<T: SimdFloatExt> {
   df: T,

@@ -6,13 +6,13 @@
 //!
 use ndarray::Array1;
 #[cfg(feature = "python")]
-use numpy::ndarray::Array2;
-#[cfg(feature = "python")]
 use numpy::IntoPyArray;
 #[cfg(feature = "python")]
 use numpy::PyArray1;
 #[cfg(feature = "python")]
 use numpy::PyArray2;
+#[cfg(feature = "python")]
+use numpy::ndarray::Array2;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 use statrs::function::gamma;

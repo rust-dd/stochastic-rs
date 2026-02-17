@@ -4,12 +4,12 @@
 //! X_t = X_0 + \int_0^t a(s,X_s)\,ds + \int_0^t b(s,X_s)\,dW_s
 //! $$
 //!
-use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
 use ndarray::ArrayView1;
 use ndarray::Axis;
+use ndarray::s;
 use rand::Rng;
 
 use super::noise::fgn::FGN;

@@ -6,10 +6,10 @@
 //!
 use std::error::Error;
 
-use ndarray::stack;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
+use ndarray::stack;
 use ndarray_rand::RandomExt;
 use rand_distr::Uniform;
 

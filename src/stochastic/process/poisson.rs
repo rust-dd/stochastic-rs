@@ -8,8 +8,8 @@ use ndarray::Array0;
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::Dim;
-use ndarray_rand::rand_distr::Distribution;
 use ndarray_rand::RandomExt;
+use ndarray_rand::rand_distr::Distribution;
 use rand::rng;
 
 use crate::distributions::exp::SimdExp;

@@ -1,10 +1,10 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::criterion_group;
-use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use ndarray::Array1;
 use stochastic_rs::stochastic::diffusion::fouque::FouqueOU2D;
 use stochastic_rs::stochastic::interest::hjm::HJM;

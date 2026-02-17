@@ -4,8 +4,8 @@
 //! dS_t=S_t\sqrt{v_t}dW_t^1,\quad v_t=\xi_0(t)\exp\!\left(\eta X_t-\tfrac12\eta^2 t^{2H}\right)
 //! $$
 //!
-use ndarray::s;
 use ndarray::Array1;
+use ndarray::s;
 
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
@@ -138,8 +138,8 @@ impl PyBergomi {
     py: pyo3::Python<'py>,
     m: usize,
   ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::ndarray::Array2;
     use numpy::IntoPyArray;
+    use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;

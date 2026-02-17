@@ -6,6 +6,9 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+use plotly::Layout;
+use plotly::Plot;
+use plotly::Scatter;
 use plotly::common::Anchor;
 use plotly::common::DashType;
 use plotly::common::Font;
@@ -15,9 +18,6 @@ use plotly::layout::Annotation;
 use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
 use plotly::layout::Margin;
-use plotly::Layout;
-use plotly::Plot;
-use plotly::Scatter;
 
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -478,8 +478,8 @@ mod tests {
   use crate::stochastic::interest::mod_duffie_kan::DuffieKanJumpExp;
   use crate::stochastic::interest::vasicek::Vasicek;
   use crate::stochastic::interest::wu_zhang::WuZhangD;
-  use crate::stochastic::isonormal::fbm_custom_inc_cov;
   use crate::stochastic::isonormal::ISONormal;
+  use crate::stochastic::isonormal::fbm_custom_inc_cov;
   use crate::stochastic::jump::bates::Bates1996;
   use crate::stochastic::jump::cgmy::CGMY;
   use crate::stochastic::jump::cts::CTS;
@@ -507,13 +507,13 @@ mod tests {
   use crate::stochastic::process::lfsm::LFSM;
   use crate::stochastic::process::poisson::Poisson;
   use crate::stochastic::sheet::fbs::FBS;
+  use crate::stochastic::volatility::HestonPow;
   use crate::stochastic::volatility::bergomi::Bergomi;
   use crate::stochastic::volatility::fheston::RoughHeston;
   use crate::stochastic::volatility::heston::Heston;
   use crate::stochastic::volatility::rbergomi::RoughBergomi;
   use crate::stochastic::volatility::sabr::SABR;
   use crate::stochastic::volatility::svcgmy::SVCGMY;
-  use crate::stochastic::volatility::HestonPow;
 
   fn f_const_001(_: f64) -> f64 {
     0.01

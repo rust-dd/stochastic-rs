@@ -4,8 +4,8 @@
 //! B_t=\int_0^t dW_s,\quad B_t-B_s\sim\mathcal N(0,t-s)
 //! $$
 //!
-use ndarray::s;
 use ndarray::Array1;
+use ndarray::s;
 
 use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
