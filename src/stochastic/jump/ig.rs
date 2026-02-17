@@ -1,6 +1,7 @@
 use ndarray::Array1;
+use ndarray_rand::RandomExt;
 
-use crate::stochastic::noise::gn::Gn;
+use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -9,18 +10,17 @@ pub struct IG<T: FloatExt> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> IG<T> {
   pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      gamma,
-      n,
-      x0,
-      t,
-      gn: Gn::new(n - 1, t),
-    }
+    assert!(gamma > T::zero(), "gamma must be positive");
+    Self { gamma, n, x0, t }
+  }
+
+  #[inline]
+  fn dt(&self) -> T {
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
@@ -28,13 +28,22 @@ impl<T: FloatExt> ProcessExt<T> for IG<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
     let mut ig = Array1::zeros(self.n);
+    if self.n <= 1 {
+      return ig;
+    }
     ig[0] = self.x0.unwrap_or(T::zero());
 
+    let dt = self.dt();
+    // Single-parameter IG subordinator:
+    // increments are strictly positive and independent over grid steps.
+    let mean = self.gamma * dt;
+    let shape = mean * mean;
+    let ig_dist = SimdInverseGauss::new(mean, shape);
+    let inc = Array1::random(self.n - 1, &ig_dist);
+
     for i in 1..self.n {
-      ig[i] = ig[i - 1] + self.gamma * dt + gn[i - 1]
+      ig[i] = ig[i - 1] + inc[i - 1];
     }
 
     ig
@@ -45,3 +54,17 @@ py_process_1d!(PyIG, IG,
   sig: (gamma_, n, x0=None, t=None, dtype=None),
   params: (gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  fn ig_path_is_non_decreasing() {
+    let p = IG::new(1.0_f64, 256, Some(0.0), Some(1.0));
+    let x = p.sample();
+    assert_eq!(x.len(), 256);
+    assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
+  }
+}

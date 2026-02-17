@@ -61,17 +61,16 @@ where
   fn sample(&self) -> Self::Output {
     let dt = self.fgn.dt();
     let fgn = &self.fgn.sample();
+    let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
 
     let mut jump_fou = Array1::<T>::zeros(self.n);
     jump_fou[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      let [.., jumps] = self.cpoisson.sample();
-
       jump_fou[i] = jump_fou[i - 1]
         + self.theta * (self.mu - jump_fou[i - 1]) * dt
         + self.sigma * fgn[i - 1]
-        + jumps.sum();
+        + jump_increments[i];
     }
 
     jump_fou

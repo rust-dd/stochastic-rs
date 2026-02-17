@@ -95,6 +95,7 @@ where
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
     let [cgn1, cgn2] = &self.cgns.sample();
+    let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
@@ -105,12 +106,10 @@ where
     let drift = self.effective_drift();
 
     for i in 1..self.n {
-      let [.., jumps] = self.cpoisson.sample();
-
       s[i] = s[i - 1]
         + (drift - self.lambda * self.k) * s[i - 1] * dt
         + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1]
-        + jumps.sum();
+        + s[i - 1] * jump_increments[i];
 
       let dv = (self.alpha - self.beta * v[i - 1]) * dt
         + self.sigma * v[i - 1].powf(T::from_f64_fast(0.5)) * cgn2[i - 1];

@@ -66,20 +66,19 @@ where
   fn sample(&self) -> Self::Output {
     let dt = self.gn.dt();
     let gn = &self.gn.sample();
+    let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
 
     let mut merton = Array1::<T>::zeros(self.n);
     merton[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      let [.., jumps] = self.cpoisson.sample();
-
       merton[i] = merton[i - 1]
         + (self.alpha
           - self.sigma.powf(T::from_usize_(2)) / T::from_usize_(2)
           - self.lambda * self.theta)
           * dt
         + self.sigma * gn[i - 1]
-        + jumps.sum();
+        + jump_increments[i];
     }
 
     merton

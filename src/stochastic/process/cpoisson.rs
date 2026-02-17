@@ -4,6 +4,7 @@ use rand::rng;
 use rand_distr::Distribution;
 
 use super::poisson::Poisson;
+use crate::distributions::poisson::SimdPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -27,6 +28,38 @@ where
       poisson,
     }
   }
+
+  /// Draw compound-Poisson jump increments on a fixed simulation grid.
+  ///
+  /// The returned array has length `n`, with `increments[0] = 0` and
+  /// `increments[i]` holding the sum of jump sizes over `((i-1)dt, i*dt]`.
+  pub fn sample_grid_increments(&self, n: usize, dt: T) -> Array1<T> {
+    let mut increments = Array1::<T>::zeros(n);
+    if n <= 1 {
+      return increments;
+    }
+
+    let lambda_dt = (self.poisson.lambda * dt).to_f64().unwrap();
+    if !(lambda_dt.is_finite()) {
+      panic!("lambda * dt must be finite");
+    }
+    if lambda_dt <= 0.0 {
+      return increments;
+    }
+
+    let poisson = SimdPoisson::<u32>::new(lambda_dt);
+    let mut rng = rng();
+    for i in 1..n {
+      let jump_count = poisson.sample(&mut rng);
+      let mut jump_sum = T::zero();
+      for _ in 0..jump_count {
+        jump_sum += self.distribution.sample(&mut rng);
+      }
+      increments[i] = jump_sum;
+    }
+
+    increments
+  }
 }
 
 impl<T, D> ProcessExt<T> for CompoundPoisson<T, D>
@@ -47,6 +80,37 @@ where
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
     [poisson, cum_jupms, jumps]
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use rand_distr::Distribution;
+
+  use super::*;
+
+  #[derive(Clone, Copy)]
+  struct ConstJump<T: FloatExt>(T);
+
+  impl<T: FloatExt> Distribution<T> for ConstJump<T> {
+    fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
+      self.0
+    }
+  }
+
+  #[test]
+  fn grid_increments_zero_for_zero_intensity() {
+    let cp = CompoundPoisson::new(ConstJump(1.0f64), Poisson::new(0.0, Some(16), Some(1.0)));
+    let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
+    assert_eq!(inc.len(), 16);
+    assert!(inc.iter().all(|&x| x == 0.0));
+  }
+
+  #[test]
+  fn grid_increments_start_at_zero() {
+    let cp = CompoundPoisson::new(ConstJump(1.0f64), Poisson::new(2.0, Some(16), Some(1.0)));
+    let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
+    assert_eq!(inc[0], 0.0);
   }
 }
 

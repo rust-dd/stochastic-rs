@@ -55,13 +55,13 @@ where
   fn sample(&self) -> Self::Output {
     let dt = self.gn.dt();
     let gn = &self.gn.sample();
+    let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
 
     let mut levy = Array1::<T>::zeros(self.n);
     levy[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {
-      let [.., jumps] = self.cpoisson.sample();
-      levy[i] = levy[i - 1] + self.gamma * dt + self.sigma * gn[i - 1] + jumps.sum();
+      levy[i] = levy[i - 1] + self.gamma * dt + self.sigma * gn[i - 1] + jump_increments[i];
     }
 
     levy

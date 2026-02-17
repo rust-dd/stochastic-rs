@@ -65,25 +65,72 @@ where
     let fgn = &self.fgn.sample();
 
     let mut jump_fou = Array1::<T>::zeros(self.n);
+    if self.n <= 1 {
+      return jump_fou;
+    }
     jump_fou[0] = self.x0.unwrap_or(T::zero());
-    let mut jump_times = Array1::<T>::zeros(self.n);
-    jump_times.mapv_inplace(|_| self.jump_times.sample(&mut rand::rng()));
+    let mut rng = rand::rng();
+    let mut next_jump_time = self.jump_times.sample(&mut rng);
+    if next_jump_time <= T::zero() {
+      panic!("jump_times distribution must return strictly positive inter-arrival times");
+    }
 
     for i in 1..self.n {
-      let t = T::from_usize_(i) * dt;
-      // check if t is a jump time
-      let mut jump = T::zero();
-      if jump_times[i] < t && t - dt <= jump_times[i] {
-        jump = self.jump_sizes.sample(&mut rand::rng());
+      let current_time = T::from_usize_(i) * dt;
+      let mut jump_sum = T::zero();
+      while next_jump_time <= current_time {
+        jump_sum += self.jump_sizes.sample(&mut rng);
+        let delta = self.jump_times.sample(&mut rng);
+        if delta <= T::zero() {
+          panic!("jump_times distribution must return strictly positive inter-arrival times");
+        }
+        next_jump_time += delta;
       }
 
       jump_fou[i] = jump_fou[i - 1]
         + self.theta * (self.mu - jump_fou[i - 1]) * dt
         + self.sigma * fgn[i - 1]
-        + jump;
+        + jump_sum;
     }
 
     jump_fou
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use rand_distr::Distribution;
+
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  #[derive(Clone, Copy)]
+  struct ConstDist<T>(T);
+
+  impl<T: Copy> Distribution<T> for ConstDist<T> {
+    fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
+      self.0
+    }
+  }
+
+  #[test]
+  fn allows_multiple_jumps_in_single_dt() {
+    let p = JumpFOUCustom::new(
+      0.7_f64,
+      0.0,
+      0.0,
+      0.0,
+      3,
+      Some(0.0),
+      Some(1.0),
+      ConstDist(0.2), // inter-arrival
+      ConstDist(0.2), // jump size
+    );
+
+    let x = p.sample();
+    assert_eq!(x.len(), 3);
+    assert!((x[1] - 0.4).abs() < 1e-12);
+    assert!((x[2] - 1.0).abs() < 1e-12);
   }
 }
 
