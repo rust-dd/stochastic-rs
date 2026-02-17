@@ -29,10 +29,13 @@ impl<T: FloatExt> ProcessExt<T> for IG<T> {
 
   fn sample(&self) -> Self::Output {
     let mut ig = Array1::zeros(self.n);
-    if self.n <= 1 {
+    if self.n == 0 {
       return ig;
     }
     ig[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return ig;
+    }
 
     let dt = self.dt();
     // Single-parameter IG subordinator:
@@ -66,5 +69,13 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
+  }
+
+  #[test]
+  fn n_eq_1_keeps_initial_value() {
+    let p = IG::new(1.0_f64, 1, Some(3.5), Some(1.0));
+    let x = p.sample();
+    assert_eq!(x.len(), 1);
+    assert_eq!(x[0], 3.5);
   }
 }

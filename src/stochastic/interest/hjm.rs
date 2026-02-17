@@ -6,6 +6,10 @@ use crate::traits::Fn1D;
 use crate::traits::Fn2D;
 use crate::traits::ProcessExt;
 
+/// HJM-style Euler simulator.
+///
+/// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
+/// does not enforce the no-arbitrage HJM drift restriction between `alpha` and `sigma`.
 pub struct HJM<T: FloatExt> {
   pub a: Fn1D<T>,
   pub b: Fn1D<T>,

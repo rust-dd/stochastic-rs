@@ -99,6 +99,22 @@ impl<T: FloatExt> WuZhangD<T> {
       v0.len(),
       xn
     );
+    assert!(
+      alpha.iter().all(|&x| x >= T::zero()),
+      "alpha entries must be non-negative"
+    );
+    assert!(
+      beta.iter().all(|&x| x >= T::zero()),
+      "beta entries must be non-negative"
+    );
+    assert!(
+      nu.iter().all(|&x| x >= T::zero()),
+      "nu entries must be non-negative"
+    );
+    assert!(
+      v0.iter().all(|&x| x >= T::zero()),
+      "v0 entries must be non-negative"
+    );
     Self {
       alpha,
       beta,
@@ -135,7 +151,7 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
         let f_old = fv[(i, j - 1)].max(T::zero());
 
         let dv =
-          (self.alpha[i] - self.beta[i] * v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
+          self.beta[i] * (self.alpha[i] - v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
 
         let v_new = (v_old + dv).max(T::zero());
         fv[(i + self.xn, j)] = v_new;
@@ -146,6 +162,49 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
     }
 
     fv
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  fn cir_drift_uses_mean_reversion_level_directly() {
+    let model = WuZhangD::new(
+      array![2.0f64],
+      array![0.5f64],
+      array![0.0f64],
+      array![0.0f64],
+      array![1.0f64],
+      array![0.0f64],
+      1,
+      Some(2.0),
+      3,
+    );
+    let fv = model.sample();
+    let v = fv.row(1);
+    assert!((v[1] - 1.0).abs() < 1e-12);
+    assert!((v[2] - 1.5).abs() < 1e-12);
+  }
+
+  #[test]
+  #[should_panic(expected = "v0 entries must be non-negative")]
+  fn negative_initial_volatility_panics() {
+    let _ = WuZhangD::new(
+      array![1.0f64],
+      array![1.0f64],
+      array![0.1f64],
+      array![0.0f64],
+      array![1.0f64],
+      array![-0.1f64],
+      1,
+      Some(1.0),
+      16,
+    );
   }
 }
 

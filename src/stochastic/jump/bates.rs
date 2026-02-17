@@ -53,6 +53,10 @@ where
     use_sym: Option<bool>,
     cpoisson: CompoundPoisson<T, D>,
   ) -> Self {
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
     Self {
       mu,
       b,
@@ -95,24 +99,24 @@ where
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
     let [cgn1, cgn2] = &self.cgns.sample();
-    let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
+    let jump_increments = self.cpoisson.sample_grid_relative_increments(self.n, dt);
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
 
     s[0] = self.s0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero()).max(T::zero());
 
     let drift = self.effective_drift();
 
     for i in 1..self.n {
+      let v_prev = v[i - 1].max(T::zero());
       s[i] = s[i - 1]
         + (drift - self.lambda * self.k) * s[i - 1] * dt
-        + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1]
+        + s[i - 1] * v_prev.sqrt() * cgn1[i - 1]
         + s[i - 1] * jump_increments[i];
 
-      let dv = (self.alpha - self.beta * v[i - 1]) * dt
-        + self.sigma * v[i - 1].powf(T::from_f64_fast(0.5)) * cgn2[i - 1];
+      let dv = (self.alpha - self.beta * v_prev) * dt + self.sigma * v_prev.sqrt() * cgn2[i - 1];
 
       v[i] = match self.use_sym.unwrap_or(false) {
         true => (v[i - 1] + dv).abs(),
