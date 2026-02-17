@@ -169,7 +169,11 @@ pub fn silverman_bandwidth(data: &Array1<f64>) -> f64 {
   let scale = std.min(iqr / 1.34);
   let h = 0.9 * scale * (n.powf(-1.0 / 5.0));
   // Avoid extremely small bandwidth.
-  if h < 1e-8 { 1e-8 } else { h }
+  if h < 1e-8 {
+    1e-8
+  } else {
+    h
+  }
 }
 
 /// Returns the p-th percentile of a sorted vector.

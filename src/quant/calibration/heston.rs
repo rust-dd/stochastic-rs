@@ -18,13 +18,18 @@ use nalgebra::Owned;
 use ndarray::Array1;
 use num_complex::Complex64;
 
-use crate::quant::CalibrationLossScore;
-use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
 use crate::quant::loss;
 use crate::quant::pricing::heston::HestonPricer;
-use crate::stats::mle::HestonMleResult;
+use crate::quant::CalibrationLossScore;
+use crate::quant::OptionType;
+use crate::stats::heston_nml_cekf::nmle_cekf_heston;
+use crate::stats::heston_nml_cekf::HestonNMLECEKFConfig;
 use crate::stats::mle::nmle_heston;
+use crate::stats::mle::nmle_heston_with_delta;
+use crate::stats::mle::pmle_heston;
+use crate::stats::mle::pmle_heston_with_delta;
+use crate::stats::mle::HestonMleResult;
 use crate::traits::PricerExt;
 
 const EPS: f64 = 1e-8;
@@ -52,6 +57,14 @@ impl Default for HestonJacobianMethod {
   fn default() -> Self {
     Self::CuiAnalytic
   }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum HestonMleSeedMethod {
+  #[default]
+  Nmle,
+  Pmle,
+  NmleCekf,
 }
 
 #[derive(Clone, Debug)]
@@ -254,6 +267,12 @@ pub struct HestonCalibrator {
   pub mle_s: Option<Array1<f64>>, // stock prices time series
   pub mle_v: Option<Array1<f64>>, // variance (or instantaneous variance proxy) time series
   pub mle_r: Option<f64>,         // risk-free rate used for MLE
+  /// Seed method for the MLE-based initial guess.
+  pub mle_seed_method: HestonMleSeedMethod,
+  /// Optional explicit sampling step used by MLE seed estimators.
+  pub mle_delta: Option<f64>,
+  /// Optional config for NMLE-CEKF seed when `mle_seed_method = NmleCekf`.
+  pub nmle_cekf_config: Option<HestonNMLECEKFConfig>,
   /// If true, record per-iteration calibration history.
   pub record_history: bool,
   /// Jacobian/method choice for calibration.
@@ -304,6 +323,9 @@ impl HestonCalibrator {
       mle_s,
       mle_v,
       mle_r,
+      mle_seed_method: HestonMleSeedMethod::default(),
+      mle_delta: None,
+      nmle_cekf_config: None,
       record_history,
       jacobian_method: HestonJacobianMethod::default(),
       calibration_history: Rc::new(RefCell::new(Vec::new())),
@@ -349,6 +371,18 @@ impl HestonCalibrator {
     self.jacobian_method = method;
   }
 
+  pub fn set_mle_seed_method(&mut self, method: HestonMleSeedMethod) {
+    self.mle_seed_method = method;
+  }
+
+  pub fn set_mle_delta(&mut self, delta: Option<f64>) {
+    self.mle_delta = delta;
+  }
+
+  pub fn set_nmle_cekf_config(&mut self, cfg: HestonNMLECEKFConfig) {
+    self.nmle_cekf_config = Some(cfg);
+  }
+
   pub fn calibrate_cui(&mut self) {
     self.jacobian_method = HestonJacobianMethod::CuiAnalytic;
     self.calibrate();
@@ -359,37 +393,7 @@ impl HestonCalibrator {
     self.calibration_history.borrow().clone()
   }
 
-  fn ensure_initial_guess(&mut self) {
-    if self.params.is_none() {
-      if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
-        let mut p: HestonParams = nmle_heston(s, v, r).into();
-        p.project_in_place();
-        self.params = Some(p);
-      } else {
-        // Fallback conservative guess
-        self.params = Some(
-          HestonParams {
-            v0: 0.04,
-            kappa: 1.5,
-            theta: 0.04,
-            sigma: 0.5,
-            rho: -0.5,
-          }
-          .projected(),
-        );
-      }
-    }
-  }
-
-  fn effective_params(&self) -> HestonParams {
-    if let Some(p) = &self.params {
-      return p.clone().projected();
-    }
-    if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r) {
-      let mut p: HestonParams = nmle_heston(s, v, r).into();
-      p.project_in_place();
-      return p;
-    }
+  fn fallback_params() -> HestonParams {
     HestonParams {
       v0: 0.04,
       kappa: 1.5,
@@ -398,6 +402,82 @@ impl HestonCalibrator {
       rho: -0.5,
     }
     .projected()
+  }
+
+  fn inferred_mle_delta(&self, n_obs: usize) -> f64 {
+    if let Some(dt) = self.mle_delta {
+      if dt.is_finite() && dt > 0.0 {
+        return dt;
+      }
+    }
+    1.0 / n_obs.saturating_sub(1).max(1) as f64
+  }
+
+  fn infer_initial_guess_from_series(&self) -> Option<HestonParams> {
+    match self.mle_seed_method {
+      HestonMleSeedMethod::Nmle => {
+        let (s, v, r) = (self.mle_s.clone()?, self.mle_v.clone()?, self.mle_r?);
+        if s.len() < 2 || v.len() < 2 || s.len() != v.len() {
+          return None;
+        }
+        let p: HestonParams = if self.mle_delta.is_some() {
+          let delta = self.inferred_mle_delta(s.len());
+          nmle_heston_with_delta(s, v, r, delta).into()
+        } else {
+          nmle_heston(s, v, r).into()
+        };
+        Some(p.projected())
+      }
+      HestonMleSeedMethod::Pmle => {
+        let (s, v, r) = (self.mle_s.clone()?, self.mle_v.clone()?, self.mle_r?);
+        if s.len() < 2 || v.len() < 2 || s.len() != v.len() {
+          return None;
+        }
+        let p: HestonParams = if self.mle_delta.is_some() {
+          let delta = self.inferred_mle_delta(s.len());
+          pmle_heston_with_delta(s, v, r, delta).into()
+        } else {
+          pmle_heston(s, v, r).into()
+        };
+        Some(p.projected())
+      }
+      HestonMleSeedMethod::NmleCekf => {
+        let (s, r) = (self.mle_s.clone()?, self.mle_r?);
+        if s.len() < 2 {
+          return None;
+        }
+        let mut cfg = self.nmle_cekf_config.clone().unwrap_or_default();
+        cfg.r = r;
+        cfg.delta = self.inferred_mle_delta(s.len());
+        if let Some(v_ts) = self.mle_v.as_ref() {
+          if !v_ts.is_empty() && v_ts[0].is_finite() && v_ts[0] > 0.0 {
+            cfg.initial_v0 = v_ts[0];
+          }
+        }
+        let out = nmle_cekf_heston(s, cfg);
+        let p: HestonParams = out.params.into();
+        Some(p.projected())
+      }
+    }
+  }
+
+  fn ensure_initial_guess(&mut self) {
+    if self.params.is_none() {
+      self.params = Some(
+        self
+          .infer_initial_guess_from_series()
+          .unwrap_or_else(Self::fallback_params),
+      );
+    }
+  }
+
+  fn effective_params(&self) -> HestonParams {
+    if let Some(p) = &self.params {
+      return p.clone().projected();
+    }
+    self
+      .infer_initial_guess_from_series()
+      .unwrap_or_else(Self::fallback_params)
   }
 
   fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> DVector<f64> {
@@ -801,24 +881,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
   }
 
   fn params(&self) -> DVector<f64> {
-    if let Some(p) = &self.params {
-      p.clone().projected().into()
-    } else if let (Some(s), Some(v), Some(r)) = (self.mle_s.clone(), self.mle_v.clone(), self.mle_r)
-    {
-      let mut p: HestonParams = nmle_heston(s, v, r).into();
-      p.project_in_place();
-      p.into()
-    } else {
-      HestonParams {
-        v0: 0.04,
-        kappa: 1.5,
-        theta: 0.04,
-        sigma: 0.5,
-        rho: -0.5,
-      }
-      .projected()
-      .into()
-    }
+    self.effective_params().into()
   }
 
   fn residuals(&self) -> Option<DVector<f64>> {
@@ -894,8 +957,8 @@ mod tests {
   use ndarray::Array1;
 
   use super::*;
-  use crate::stochastic::volatility::HestonPow;
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
+  use crate::stochastic::volatility::HestonPow;
   use crate::traits::ProcessExt;
 
   #[test]
@@ -1017,6 +1080,167 @@ mod tests {
       Some(r),
       true,
     );
+
+    calibrator.calibrate();
+  }
+
+  #[test]
+  fn test_heston_calibrate_with_pmle_seed() {
+    let s0 = 100.0;
+    let v0 = 0.04;
+    let true_params = HestonParams {
+      v0,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.5,
+      rho: -0.6,
+    };
+    let n = 256usize;
+    let t = 1.0;
+    let mu = 0.0;
+
+    let process = HestonProcess::new(
+      Some(s0),
+      Some(v0),
+      true_params.kappa,
+      true_params.theta,
+      true_params.sigma,
+      true_params.rho,
+      mu,
+      n,
+      Some(t),
+      HestonPow::Sqrt,
+      Some(true),
+    );
+    let [s_ts, v_ts] = process.sample();
+
+    let strikes = vec![80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
+    let s_grid = vec![s0; strikes.len()];
+    let r = 0.01;
+    let q = Some(0.0);
+    let tau = 0.5;
+
+    let mut c_market = Vec::with_capacity(strikes.len());
+    for &kk in &strikes {
+      let pr = HestonPricer::new(
+        s0,
+        true_params.v0,
+        kk,
+        r,
+        q,
+        true_params.rho,
+        true_params.kappa,
+        true_params.theta,
+        true_params.sigma,
+        Some(0.0),
+        Some(tau),
+        None,
+        None,
+      );
+      let (call, _) = pr.calculate_call_put();
+      c_market.push(call);
+    }
+
+    let mut calibrator = HestonCalibrator::new(
+      None,
+      c_market.clone().into(),
+      s_grid.clone().into(),
+      strikes.clone().into(),
+      r,
+      q,
+      tau,
+      OptionType::Call,
+      Some(s_ts),
+      Some(v_ts),
+      Some(r),
+      true,
+    );
+    calibrator.set_mle_seed_method(HestonMleSeedMethod::Pmle);
+    calibrator.set_mle_delta(Some(t / (n - 1) as f64));
+
+    calibrator.calibrate();
+  }
+
+  #[test]
+  fn test_heston_calibrate_with_nmle_cekf_seed() {
+    let s0 = 100.0;
+    let v0 = 0.04;
+    let true_params = HestonParams {
+      v0,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.5,
+      rho: -0.6,
+    };
+    let n = 256usize;
+    let t = 1.0;
+    let mu = 0.0;
+
+    let process = HestonProcess::new(
+      Some(s0),
+      Some(v0),
+      true_params.kappa,
+      true_params.theta,
+      true_params.sigma,
+      true_params.rho,
+      mu,
+      n,
+      Some(t),
+      HestonPow::Sqrt,
+      Some(true),
+    );
+    let [s_ts, _v_ts] = process.sample();
+
+    let strikes = vec![80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
+    let s_grid = vec![s0; strikes.len()];
+    let r = 0.01;
+    let q = Some(0.0);
+    let tau = 0.5;
+
+    let mut c_market = Vec::with_capacity(strikes.len());
+    for &kk in &strikes {
+      let pr = HestonPricer::new(
+        s0,
+        true_params.v0,
+        kk,
+        r,
+        q,
+        true_params.rho,
+        true_params.kappa,
+        true_params.theta,
+        true_params.sigma,
+        Some(0.0),
+        Some(tau),
+        None,
+        None,
+      );
+      let (call, _) = pr.calculate_call_put();
+      c_market.push(call);
+    }
+
+    let mut calibrator = HestonCalibrator::new(
+      None,
+      c_market.clone().into(),
+      s_grid.clone().into(),
+      strikes.clone().into(),
+      r,
+      q,
+      tau,
+      OptionType::Call,
+      Some(s_ts),
+      None,
+      Some(r),
+      true,
+    );
+    calibrator.set_mle_seed_method(HestonMleSeedMethod::NmleCekf);
+    calibrator.set_mle_delta(Some(t / (n - 1) as f64));
+    calibrator.set_nmle_cekf_config(HestonNMLECEKFConfig {
+      max_iters: 6,
+      tol: 1e-5,
+      param_damping: 0.6,
+      initial_v0: v0,
+      ..HestonNMLECEKFConfig::default()
+    });
 
     calibrator.calibrate();
   }

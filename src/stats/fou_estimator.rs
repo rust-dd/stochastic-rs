@@ -6,9 +6,9 @@
 //!
 use std::f64::consts::SQRT_2;
 
-use ndarray::Array1;
 use ndarray::array;
 use ndarray::s;
+use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::stochastic::noise::fgn::FGN;

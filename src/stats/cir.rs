@@ -5,8 +5,8 @@
 //! $$
 //!
 use num_complex::Complex64;
-use rand::Rng;
 use rand::rng;
+use rand::Rng;
 use rand_distr::StandardNormal;
 use scilib::math::bessel::i_nu;
 use statrs::function::gamma::gamma;
