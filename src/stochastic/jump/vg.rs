@@ -38,10 +38,13 @@ impl<T: FloatExt> ProcessExt<T> for VG<T> {
 
   fn sample(&self) -> Self::Output {
     let mut vg = Array1::<T>::zeros(self.n);
-    if self.n <= 1 {
+    if self.n == 0 {
       return vg;
     }
     vg[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return vg;
+    }
 
     let dt = self.dt();
     let gamma = SimdGamma::new(dt / self.nu, self.nu);
@@ -55,6 +58,20 @@ impl<T: FloatExt> ProcessExt<T> for VG<T> {
     }
 
     vg
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  fn n_eq_1_keeps_initial_value() {
+    let p = VG::new(0.1_f64, 0.2, 0.3, 1, Some(2.5), Some(1.0));
+    let x = p.sample();
+    assert_eq!(x.len(), 1);
+    assert_eq!(x[0], 2.5);
   }
 }
 

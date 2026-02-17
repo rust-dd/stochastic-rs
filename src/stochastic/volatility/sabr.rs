@@ -25,6 +25,15 @@ impl<T: FloatExt> SABR<T> {
     v0: Option<T>,
     t: Option<T>,
   ) -> Self {
+    assert!(
+      beta >= T::zero() && beta <= T::one(),
+      "beta must be in [0, 1] for SABR"
+    );
+    assert!(alpha >= T::zero(), "alpha must be non-negative");
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
     Self {
       alpha,
       beta,
@@ -42,20 +51,38 @@ impl<T: FloatExt> ProcessExt<T> for SABR<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
+    let dt = self.cgns.dt();
     let [cgn1, cgn2] = &self.cgns.sample();
 
     let mut f_ = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
 
     f_[0] = self.f0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero()).max(T::zero());
 
     for i in 1..self.n {
-      f_[i] = f_[i - 1] + v[i - 1] * f_[i - 1].powf(self.beta) * cgn1[i - 1];
-      v[i] = v[i - 1] + self.alpha * v[i - 1] * cgn2[i - 1];
+      let f_prev = f_[i - 1].max(T::zero());
+      let v_prev = v[i - 1].max(T::zero());
+      f_[i] = f_[i - 1] + v_prev * f_prev.powf(self.beta) * cgn1[i - 1];
+      // Exact step for dV = alpha * V * dW preserves non-negativity.
+      v[i] =
+        v_prev * (self.alpha * cgn2[i - 1] - T::from_f64_fast(0.5) * self.alpha.powi(2) * dt).exp();
     }
 
     [f_, v]
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  fn volatility_stays_non_negative() {
+    let p = SABR::new(0.4_f64, 0.5, -0.3, 256, Some(1.0), Some(0.2), Some(1.0));
+    let [_f, v] = p.sample();
+    assert!(v.iter().all(|x| *x >= 0.0));
   }
 }
 

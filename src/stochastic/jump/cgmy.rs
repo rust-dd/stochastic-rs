@@ -65,6 +65,13 @@ impl<T: FloatExt> CGMY<T> {
     x0: Option<T>,
     t: Option<T>,
   ) -> Self {
+    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
+    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      alpha > T::zero() && alpha < T::from_usize_(2),
+      "alpha must be in (0, 2)"
+    );
+
     CGMY {
       lambda_plus,
       lambda_minus,
@@ -107,7 +114,7 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
     let E = Array1::<T>::random(self.j, exp);
     let P = Poisson::new(T::one(), Some(self.j), None);
     let P = P.sample();
-    let tau = Array1::<T>::random(self.j, &uniform);
+    let tau = Array1::<T>::random(self.j, &uniform) * t_max;
 
     for i in 1..self.n {
       let mut jump_component = T::zero();

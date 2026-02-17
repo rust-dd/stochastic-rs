@@ -13,6 +13,13 @@ pub struct CIR2F<T: FloatExt> {
 
 impl<T: FloatExt> CIR2F<T> {
   pub fn new(x: CIR<T>, y: CIR<T>, phi: impl Into<Fn1D<T>>) -> Self {
+    assert_eq!(x.n, y.n, "x and y CIR factors must use the same n");
+    if let (Some(tx), Some(ty)) = (x.t, y.t) {
+      assert!(
+        (tx - ty).abs() <= T::from_f64_fast(1e-12),
+        "x and y CIR factors must use the same time horizon"
+      );
+    }
     Self {
       x,
       y,
@@ -55,5 +62,13 @@ mod tests {
     assert!((out[0] - 0.0).abs() < 1e-12);
     assert!((out[1] - 0.5).abs() < 1e-12);
     assert!((out[2] - 1.0).abs() < 1e-12);
+  }
+
+  #[test]
+  #[should_panic(expected = "x and y CIR factors must use the same n")]
+  fn mismatched_lengths_panic() {
+    let x = CIR::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), Some(1.0), Some(false));
+    let y = CIR::new(0.0_f64, 0.0, 0.0, 4, Some(0.0), Some(1.0), Some(false));
+    let _ = CIR2F::new(x, y, phi_fn as fn(f64) -> f64);
   }
 }

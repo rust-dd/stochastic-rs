@@ -48,6 +48,13 @@ impl<T: FloatExt> Heston<T> {
     pow: HestonPow,
     use_sym: Option<bool>,
   ) -> Self {
+    assert!(kappa >= T::zero(), "kappa must be non-negative");
+    assert!(theta >= T::zero(), "theta must be non-negative");
+    assert!(sigma >= T::zero(), "sigma must be non-negative");
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
     Self {
       s0,
       v0,
@@ -76,14 +83,15 @@ impl<T: FloatExt> ProcessExt<T> for Heston<T> {
     let mut v = Array1::<T>::zeros(self.n);
 
     s[0] = self.s0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero());
+    v[0] = self.v0.unwrap_or(T::zero()).max(T::zero());
 
     for i in 1..self.n {
-      s[i] = s[i - 1] + self.mu * s[i - 1] * dt + s[i - 1] * v[i - 1].sqrt() * cgn1[i - 1];
+      let v_prev = v[i - 1].max(T::zero());
+      s[i] = s[i - 1] + self.mu * s[i - 1] * dt + s[i - 1] * v_prev.sqrt() * cgn1[i - 1];
 
-      let dv = self.kappa * (self.theta - v[i - 1]) * dt
+      let dv = self.kappa * (self.theta - v_prev) * dt
         + self.sigma
-          * v[i - 1].powf(match self.pow {
+          * v_prev.powf(match self.pow {
             HestonPow::Sqrt => T::from_f64_fast(0.5),
             HestonPow::ThreeHalves => T::from_f64_fast(1.5),
           })
@@ -140,6 +148,49 @@ impl<T: FloatExt> Heston<T> {
     }
 
     [s, v, malliavin]
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  #[should_panic(expected = "v0 must be non-negative")]
+  fn negative_initial_variance_panics() {
+    let _ = Heston::new(
+      Some(100.0_f64),
+      Some(-0.1),
+      1.0,
+      0.04,
+      0.3,
+      -0.5,
+      0.0,
+      8,
+      Some(1.0),
+      HestonPow::Sqrt,
+      Some(false),
+    );
+  }
+
+  #[test]
+  fn variance_path_stays_non_negative() {
+    let p = Heston::new(
+      Some(100.0_f64),
+      Some(0.04),
+      1.5,
+      0.04,
+      0.5,
+      -0.7,
+      0.0,
+      128,
+      Some(1.0),
+      HestonPow::Sqrt,
+      Some(false),
+    );
+    let [_s, v] = p.sample();
+    assert!(v.iter().all(|x| *x >= 0.0));
   }
 }
 

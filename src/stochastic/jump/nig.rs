@@ -38,10 +38,13 @@ impl<T: FloatExt> ProcessExt<T> for NIG<T> {
 
   fn sample(&self) -> Self::Output {
     let mut nig = Array1::zeros(self.n);
-    if self.n <= 1 {
+    if self.n == 0 {
       return nig;
     }
     nig[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return nig;
+    }
 
     let dt = self.dt();
     // For NIG: G_dt ~ IG(mean=dt, shape=dt^2/kappa).
@@ -57,6 +60,20 @@ impl<T: FloatExt> ProcessExt<T> for NIG<T> {
     }
 
     nig
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  fn n_eq_1_keeps_initial_value() {
+    let p = NIG::new(0.1_f64, 0.2, 0.3, 1, Some(4.0), Some(1.0));
+    let x = p.sample();
+    assert_eq!(x.len(), 1);
+    assert_eq!(x[0], 4.0);
   }
 }
 

@@ -54,6 +54,23 @@ impl<T: FloatExt> SVCGMY<T> {
     v0: Option<T>,
     t: Option<T>,
   ) -> Self {
+    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
+    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      alpha > T::zero() && alpha < T::from_usize_(2),
+      "alpha must be in (0, 2)"
+    );
+    assert!(kappa > T::zero(), "kappa must be positive");
+    assert!(eta >= T::zero(), "eta must be non-negative");
+    assert!(zeta > T::zero(), "zeta must be positive");
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
+      "rho must be in [-1, 1]"
+    );
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
     Self {
       lambda_plus,
       lambda_minus,
@@ -193,5 +210,24 @@ mod tests {
 
     let x = model.sample();
     assert!(x.iter().all(|v| (*v - 5.0).abs() < 1e-12));
+  }
+
+  #[test]
+  #[should_panic(expected = "alpha must be in (0, 2)")]
+  fn invalid_alpha_panics() {
+    let _ = SVCGMY::new(
+      2.0_f64,
+      2.0,
+      2.5,
+      1.0,
+      0.04,
+      0.2,
+      0.0,
+      8,
+      0,
+      Some(0.0),
+      Some(0.01),
+      Some(1.0),
+    );
   }
 }

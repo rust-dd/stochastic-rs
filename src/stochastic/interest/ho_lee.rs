@@ -45,15 +45,43 @@ impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
     for i in 1..self.n {
       let t = T::from_usize_(i) * dt;
       let drift = if let Some(ref f) = self.f_T {
-        f.call(t) + self.sigma.powf(T::from_usize_(2)) * t
+        let eps = dt.max(T::from_f64_fast(1e-8));
+        let t_minus = (t - eps).max(T::zero());
+        let t_plus = t + eps;
+        let df_dt = (f.call(t_plus) - f.call(t_minus)) / (t_plus - t_minus);
+        df_dt + self.sigma.powf(T::from_usize_(2)) * t
       } else {
-        self.theta.unwrap() + self.sigma.powf(T::from_usize_(2)) * t
+        self.theta.unwrap()
       };
 
       r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];
     }
 
     r
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  fn f_curve(t: f64) -> f64 {
+    t * t
+  }
+
+  #[test]
+  fn uses_forward_curve_derivative_when_provided() {
+    let p = HoLee::new(
+      Some(Fn1D::Native(f_curve as fn(f64) -> f64)),
+      None,
+      0.0_f64,
+      3,
+      Some(1.0),
+    );
+    let r = p.sample();
+    assert!((r[1] - 0.5).abs() < 1e-12);
+    assert!((r[2] - 1.5).abs() < 1e-12);
   }
 }
 
