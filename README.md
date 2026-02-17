@@ -105,20 +105,20 @@ Measured with Criterion on Apple M-series, `--release`.
 
 | Distribution | Type | N | stochastic-rs (µs) | rand_distr (µs) | Speedup |
 |---|---|---|---:|---:|---:|
-| Normal | f32 | 32 | 1.98 | 8.30 | 4.19x |
-| Normal | f32 | 64 | 2.09 | 8.30 | 3.97x |
-| Normal | f64 | 32 | 2.02 | 9.72 | 4.81x |
-| Normal | f64 | 64 | 2.14 | 9.72 | 4.54x |
-| Exp | f32 | 32 | 1.80 | 9.23 | 5.13x |
-| Exp | f32 | 64 | 1.79 | 9.23 | 5.16x |
-| Exp | f64 | 32 | 1.87 | 9.26 | 4.95x |
-| Exp | f64 | 64 | 1.85 | 9.26 | 5.01x |
+| Normal | f32 | 32 | 2.31 | 6.63 | 2.88x |
+| Normal | f32 | 64 | 2.13 | 6.63 | 3.11x |
+| Normal | f64 | 32 | 2.17 | 7.01 | 3.24x |
+| Normal | f64 | 64 | 2.25 | 7.01 | 3.12x |
+| Exp | f32 | 32 | 1.82 | 9.30 | 5.10x |
+| Exp | f32 | 64 | 1.79 | 9.30 | 5.19x |
+| Exp | f64 | 32 | 1.89 | 9.19 | 4.85x |
+| Exp | f64 | 64 | 1.86 | 9.19 | 4.93x |
 | LogNormal | f32 | - | 2.90 | 7.68 | 2.65x |
 | LogNormal | f64 | - | 4.57 | 12.91 | 2.83x |
 | Cauchy | f32 | - | 2.31 | 9.98 | 4.32x |
 | Cauchy | f64 | - | 6.25 | 10.44 | 1.67x |
-| Gamma | f32 | - | 5.26 | 12.31 | 2.34x |
-| Gamma | f64 | - | 5.60 | 14.94 | 2.67x |
+| Gamma | f32 | - | 5.34 | 12.49 | 2.34x |
+| Gamma | f64 | - | 5.75 | 15.27 | 2.66x |
 | Weibull | f32 | - | 5.00 | 7.36 | 1.47x |
 | Weibull | f64 | - | 10.25 | 15.10 | 1.47x |
 | Beta | f32 | - | 10.64 | 36.43 | 3.42x |
@@ -127,7 +127,7 @@ Measured with Criterion on Apple M-series, `--release`.
 | ChiSquared | f64 | - | 5.49 | 14.79 | 2.69x |
 | StudentT | f32 | - | 7.50 | 19.69 | 2.63x |
 | StudentT | f64 | - | 7.83 | 22.58 | 2.88x |
-| Poisson | u32 | - | 21.95 | 41.13 | 1.87x |
+| Poisson | u32 | - | 8.10 | 41.44 | 5.11x |
 | Pareto | f32 | - | 2.51 | 5.28 | 2.10x |
 | Pareto | f64 | - | 4.90 | 11.01 | 2.25x |
 | Uniform | f32 | - | 3.08 | 3.05 | 0.99x |
@@ -137,20 +137,20 @@ Measured with Criterion on Apple M-series, `--release`.
 
 | Distribution | Type | N | stochastic-rs (µs) | rand_distr (µs) | Speedup |
 |---|---|---|---:|---:|---:|
-| Normal | f32 | 32 | 196 | 830 | 4.23x |
-| Normal | f32 | 64 | 209 | 830 | 3.97x |
-| Normal | f64 | 32 | 201 | 973 | 4.84x |
-| Normal | f64 | 64 | 211 | 973 | 4.61x |
-| Exp | f32 | 32 | 180 | 934 | 5.19x |
-| Exp | f32 | 64 | 180 | 934 | 5.19x |
-| Exp | f64 | 32 | 188 | 924 | 4.91x |
-| Exp | f64 | 64 | 185 | 924 | 4.99x |
+| Normal | f32 | 32 | 228 | 673 | 2.96x |
+| Normal | f32 | 64 | 211 | 673 | 3.18x |
+| Normal | f64 | 32 | 209 | 704 | 3.37x |
+| Normal | f64 | 64 | 214 | 704 | 3.29x |
+| Exp | f32 | 32 | 184 | 927 | 5.04x |
+| Exp | f32 | 64 | 181 | 927 | 5.12x |
+| Exp | f64 | 32 | 189 | 910 | 4.81x |
+| Exp | f64 | 64 | 185 | 910 | 4.92x |
 | LogNormal | f32 | - | 291 | 763 | 2.62x |
 | LogNormal | f64 | - | 468 | 1284 | 2.74x |
 | Cauchy | f32 | - | 231 | 1010 | 4.37x |
 | Cauchy | f64 | - | 593 | 1044 | 1.76x |
-| Gamma | f32 | - | 525 | 1227 | 2.34x |
-| Gamma | f64 | - | 560 | 1490 | 2.66x |
+| Gamma | f32 | - | 532 | 1304 | 2.45x |
+| Gamma | f64 | - | 566 | 1533 | 2.71x |
 | Weibull | f32 | - | 502 | 733 | 1.46x |
 | Weibull | f64 | - | 1025 | 1510 | 1.47x |
 | Beta | f32 | - | 1062 | 3645 | 3.43x |
@@ -159,7 +159,7 @@ Measured with Criterion on Apple M-series, `--release`.
 | ChiSquared | f64 | - | 545 | 1478 | 2.71x |
 | StudentT | f32 | - | 744 | 1969 | 2.65x |
 | StudentT | f64 | - | 784 | 2332 | 2.97x |
-| Poisson | u32 | - | 2166 | 4235 | 1.96x |
+| Poisson | u32 | - | 811 | 4143 | 5.11x |
 | Pareto | f32 | - | 251 | 527 | 2.10x |
 | Pareto | f64 | - | 485 | 1103 | 2.27x |
 | Uniform | f32 | - | 307 | 306 | 1.00x |

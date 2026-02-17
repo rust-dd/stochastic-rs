@@ -82,6 +82,10 @@ harness = false
 name = "process_generation"
 harness = false
 
+[[bench]]
+name = "gn_batching"
+harness = false
+
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]
