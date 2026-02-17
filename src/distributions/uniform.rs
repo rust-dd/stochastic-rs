@@ -9,6 +9,8 @@ use crate::simd_rng::SimdRng;
 pub struct SimdUniform<T: SimdFloatExt> {
   low: T,
   scale: T,
+  buffer: UnsafeCell<[T; 16]>,
+  index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<SimdRng>,
 }
 
@@ -19,6 +21,8 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     Self {
       low,
       scale: high - low,
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(SimdRng::new()),
     }
   }
@@ -51,12 +55,27 @@ impl<T: SimdFloatExt> SimdUniform<T> {
       rem.copy_from_slice(&vals[..rem.len()]);
     }
   }
+
+  #[inline]
+  fn refill_buffer(&self) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice_fast(buf);
+    unsafe {
+      *self.index.get() = 0;
+    }
+  }
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
   #[inline(always)]
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
-    self.low + T::sample_uniform(rng) * self.scale
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let val = unsafe { (*self.buffer.get())[*index] };
+    *index += 1;
+    val
   }
 }
 

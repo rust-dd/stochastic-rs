@@ -84,8 +84,8 @@ fn nfix<T: SimdFloatExt>(
 
     if iz == 0 {
       loop {
-        let u1: f64 = rng.random_range(0.0f64..1.0f64);
-        let u2: f64 = rng.random_range(0.0f64..1.0f64);
+        let u1: f64 = rng.random();
+        let u2: f64 = rng.random();
         let x_tail = -0.2904764 * (-u1.ln());
         let y = -u2.ln();
         if y + y >= x_tail * x_tail {
@@ -94,22 +94,22 @@ fn nfix<T: SimdFloatExt>(
           } else {
             -R_TAIL - x_tail
           };
-          return T::from(val).unwrap();
+          return T::from_f64_fast(val);
         }
       }
     }
 
     if tables.fn_tab[iz]
-      + rng.random_range(0.0f64..1.0f64) * (tables.fn_tab[iz - 1] - tables.fn_tab[iz])
+      + rng.random::<f64>() * (tables.fn_tab[iz - 1] - tables.fn_tab[iz])
       < (-0.5 * x * x).exp()
     {
-      return T::from(x).unwrap();
+      return T::from_f64_fast(x);
     }
 
     hz = rng.random::<i32>();
     iz = (hz & 127) as usize;
     if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
-      return T::from(hz as f64 * tables.wn[iz]).unwrap();
+      return T::from_f64_fast(hz as f64 * tables.wn[iz]);
     }
   }
 }

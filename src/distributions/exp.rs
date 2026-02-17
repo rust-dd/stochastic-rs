@@ -86,8 +86,9 @@ fn efix<T: SimdFloatExt>(
 
     hz = rng.random::<i32>();
     iz = (hz & 0xFF) as usize;
-    if hz.abs() < tables.ke[iz] {
-      return T::from_f64_fast((hz.unsigned_abs() as f64) * tables.we[iz]);
+    let abs_hz = hz.unsigned_abs() as i64;
+    if abs_hz < tables.ke[iz] as i64 {
+      return T::from_f64_fast((abs_hz as f64) * tables.we[iz]);
     }
   }
 }
