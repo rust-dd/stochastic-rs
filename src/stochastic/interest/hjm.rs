@@ -73,7 +73,7 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
     let gn2 = &self.gn.sample();
     let gn3 = &self.gn.sample();
 
-    let t_max = self.t.unwrap_or(T::zero());
+    let t_max = self.t.unwrap_or(T::one());
 
     for i in 1..self.n {
       let t = T::from_usize_(i) * dt;
@@ -150,5 +150,48 @@ impl PyHJM {
       p.into_pyarray(py).into_py_any(py).unwrap(),
       f.into_pyarray(py).into_py_any(py).unwrap(),
     )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn zero_1d(_: f64) -> f64 {
+    0.0
+  }
+
+  fn zero_2d(_: f64, _: f64) -> f64 {
+    0.0
+  }
+
+  fn one_2d(_: f64, _: f64) -> f64 {
+    1.0
+  }
+
+  fn tmax_2d(_: f64, t_max: f64) -> f64 {
+    t_max
+  }
+
+  #[test]
+  fn default_t_max_is_one() {
+    let model = HJM::new(
+      zero_1d as fn(f64) -> f64,
+      zero_1d as fn(f64) -> f64,
+      tmax_2d as fn(f64, f64) -> f64,
+      one_2d as fn(f64, f64) -> f64,
+      zero_2d as fn(f64, f64) -> f64,
+      zero_2d as fn(f64, f64) -> f64,
+      zero_2d as fn(f64, f64) -> f64,
+      3,
+      Some(0.0),
+      Some(0.0),
+      Some(0.0),
+      None,
+    );
+
+    let [_r, p, _f] = model.sample();
+    assert!((p[1] - 0.5).abs() < 1e-12);
+    assert!((p[2] - 1.0).abs() < 1e-12);
   }
 }

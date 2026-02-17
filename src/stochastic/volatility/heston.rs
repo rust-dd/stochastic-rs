@@ -109,7 +109,7 @@ impl<T: FloatExt> Heston<T> {
   /// D_r v_t = \sigma v_t^{3/2} / 2 * exp(-(\kappa \theta / 2 + 3 \sigma^2 / 8) * v_t * dt)
   pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
     let [s, v] = self.sample();
-    let dt = self.t.unwrap_or(T::zero()) / T::from_usize_(self.n - 1);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
 
     let mut det_term = Array1::zeros(self.n);
     let mut malliavin = Array1::zeros(self.n);

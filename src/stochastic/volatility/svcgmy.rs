@@ -86,6 +86,7 @@ impl<T: FloatExt> ProcessExt<T> for SVCGMY<T> {
 
     x[0] = self.x0.unwrap_or(T::zero());
     v[0] = self.v0.unwrap_or(T::zero());
+    y[0] = x[0] - self.rho * v[0];
 
     let f2 = T::from_usize_(2);
 
@@ -168,3 +169,29 @@ py_process_1d!(PySVCGMY, SVCGMY,
   sig: (lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0=None, v0=None, t=None, dtype=None),
   params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn x0_shift_is_preserved_when_no_jumps_and_zero_loading() {
+    let model = SVCGMY::new(
+      2.0_f64, // lambda_plus
+      2.0_f64, // lambda_minus
+      0.5,     // alpha
+      1.0,     // kappa
+      0.04,    // eta
+      0.2,     // zeta
+      0.0,     // rho
+      8,       // n
+      0,       // j
+      Some(5.0),
+      Some(0.0),
+      Some(1.0),
+    );
+
+    let x = model.sample();
+    assert!(x.iter().all(|v| (*v - 5.0).abs() < 1e-12));
+  }
+}

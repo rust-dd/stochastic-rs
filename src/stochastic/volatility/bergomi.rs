@@ -49,7 +49,7 @@ impl<T: FloatExt> ProcessExt<T> for Bergomi<T> {
       let sum_z = cgn2.slice(s![..i]).sum();
       let t = T::from_usize_(i) * dt;
       v2[i] = self.v0.unwrap_or(T::one()).powi(2)
-        * (self.nu * t * sum_z - T::from_f64_fast(0.5) * self.nu.powi(2) * t.powi(2)).exp()
+        * (self.nu * sum_z - T::from_f64_fast(0.5) * self.nu.powi(2) * t).exp()
     }
 
     [s, v2]

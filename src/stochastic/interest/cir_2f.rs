@@ -30,9 +30,30 @@ impl<T: FloatExt> ProcessExt<T> for CIR2F<T> {
 
     let n = x.len();
 
-    let dt = self.x.t.unwrap_or(T::zero()) / T::from_usize_(n - 1);
+    let dt = self.x.t.unwrap_or(T::one()) / T::from_usize_(n - 1);
     let phi = Array1::<T>::from_shape_fn(n, |i| self.phi.call(T::from_usize_(i) * dt));
 
     x + y + phi
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn phi_fn(t: f64) -> f64 {
+    t
+  }
+
+  #[test]
+  fn default_time_horizon_is_one() {
+    let x = CIR::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
+    let y = CIR::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
+    let model = CIR2F::new(x, y, phi_fn as fn(f64) -> f64);
+
+    let out = model.sample();
+    assert!((out[0] - 0.0).abs() < 1e-12);
+    assert!((out[1] - 0.5).abs() < 1e-12);
+    assert!((out[2] - 1.0).abs() < 1e-12);
   }
 }
