@@ -57,6 +57,48 @@ impl<T: FloatExt> WuZhangD<T> {
     t: Option<T>,
     n: usize,
   ) -> Self {
+    assert_eq!(
+      alpha.len(),
+      xn,
+      "alpha length ({}) must match xn ({})",
+      alpha.len(),
+      xn
+    );
+    assert_eq!(
+      beta.len(),
+      xn,
+      "beta length ({}) must match xn ({})",
+      beta.len(),
+      xn
+    );
+    assert_eq!(
+      nu.len(),
+      xn,
+      "nu length ({}) must match xn ({})",
+      nu.len(),
+      xn
+    );
+    assert_eq!(
+      lambda.len(),
+      xn,
+      "lambda length ({}) must match xn ({})",
+      lambda.len(),
+      xn
+    );
+    assert_eq!(
+      x0.len(),
+      xn,
+      "x0 length ({}) must match xn ({})",
+      x0.len(),
+      xn
+    );
+    assert_eq!(
+      v0.len(),
+      xn,
+      "v0 length ({}) must match xn ({})",
+      v0.len(),
+      xn
+    );
     Self {
       alpha,
       beta,

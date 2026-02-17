@@ -13,21 +13,11 @@ pub struct VG<T: FloatExt> {
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  gamma: SimdGamma<T>,
   gn: Gn<T>,
 }
 
-unsafe impl<T: FloatExt> Send for VG<T> {}
-unsafe impl<T: FloatExt> Sync for VG<T> {}
-
 impl<T: FloatExt> VG<T> {
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    let gn = Gn::new(n - 1, t);
-    let dt = gn.dt();
-    let shape = dt / nu;
-    let scale = nu;
-    let gamma = SimdGamma::new(shape, scale);
-
     Self {
       mu,
       sigma,
@@ -35,8 +25,7 @@ impl<T: FloatExt> VG<T> {
       n,
       x0,
       t,
-      gamma,
-      gn,
+      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -49,7 +38,9 @@ impl<T: FloatExt> ProcessExt<T> for VG<T> {
     vg[0] = self.x0.unwrap_or(T::zero());
 
     let gn = &self.gn.sample();
-    let gammas = Array1::random(self.n - 1, &self.gamma);
+    let dt = self.gn.dt();
+    let gamma = SimdGamma::new(dt / self.nu, self.nu);
+    let gammas = Array1::random(self.n - 1, &gamma);
 
     for i in 1..self.n {
       vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * gn[i - 1];

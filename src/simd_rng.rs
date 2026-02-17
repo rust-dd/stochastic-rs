@@ -197,13 +197,14 @@ impl RngCore for SimdRng {
 
   #[inline(always)]
   fn next_u64(&mut self) -> u64 {
-    if self.u64_idx >= 4 {
+    let idx = self.u64_idx;
+    if idx >= 4 {
       self.u64_buf = self.f64_engine.next().to_array();
-      self.u64_idx = 0;
+      self.u64_idx = 1;
+      return self.u64_buf[0];
     }
-    let val = self.u64_buf[self.u64_idx];
-    self.u64_idx += 1;
-    val
+    self.u64_idx = idx + 1;
+    self.u64_buf[idx]
   }
 
   fn fill_bytes(&mut self, dest: &mut [u8]) {

@@ -34,6 +34,20 @@ pub struct BGM<T: FloatExt> {
 
 impl<T: FloatExt> BGM<T> {
   pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize) -> Self {
+    assert_eq!(
+      lambda.len(),
+      xn,
+      "lambda length ({}) must match xn ({})",
+      lambda.len(),
+      xn
+    );
+    assert_eq!(
+      x0.len(),
+      xn,
+      "x0 length ({}) must match xn ({})",
+      x0.len(),
+      xn
+    );
     Self {
       lambda,
       x0,

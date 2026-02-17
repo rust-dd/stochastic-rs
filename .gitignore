@@ -10,3 +10,4 @@ CI.yml
 
 *.py
 .venv/
+tests

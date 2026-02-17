@@ -33,7 +33,7 @@ impl<T: FloatExt> SABR<T> {
       f0,
       v0,
       t,
-      cgns: CGNS::new(rho, n, t),
+      cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }

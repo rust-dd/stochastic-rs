@@ -33,6 +33,20 @@ impl<T: FloatExt> ADG<T> {
     x0: Array1<T>,
     t: Option<T>,
   ) -> Self {
+    assert_eq!(
+      sigma.len(),
+      xn,
+      "sigma length ({}) must match xn ({})",
+      sigma.len(),
+      xn
+    );
+    assert_eq!(
+      x0.len(),
+      xn,
+      "x0 length ({}) must match xn ({})",
+      x0.len(),
+      xn
+    );
     Self {
       k: k.into(),
       theta: theta.into(),

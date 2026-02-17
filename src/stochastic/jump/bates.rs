@@ -73,6 +73,16 @@ where
       cpoisson,
     }
   }
+
+  #[inline]
+  fn effective_drift(&self) -> T {
+    match (self.r, self.r_f, self.b, self.mu) {
+      (Some(r), Some(r_f), _, _) => r - r_f,
+      (_, _, Some(b), _) => b,
+      (_, _, _, Some(mu)) => mu,
+      _ => panic!("one of (r and r_f), b, or mu must be provided"),
+    }
+  }
 }
 
 impl<T, D> ProcessExt<T> for Bates1996<T, D>
@@ -92,11 +102,7 @@ where
     s[0] = self.s0.unwrap_or(T::zero());
     v[0] = self.v0.unwrap_or(T::zero());
 
-    let drift = match (self.mu, self.b, self.r, self.r_f) {
-      (Some(r), Some(r_f), ..) => r - r_f,
-      (Some(b), ..) => b,
-      _ => self.mu.unwrap(),
-    };
+    let drift = self.effective_drift();
 
     for i in 1..self.n {
       let [.., jumps] = self.cpoisson.sample();
@@ -255,5 +261,61 @@ impl PyBates {
     } else {
       unreachable!()
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use rand_distr::Normal;
+
+  use super::*;
+  use crate::stochastic::process::poisson::Poisson;
+
+  fn make_bates(
+    mu: Option<f64>,
+    b: Option<f64>,
+    r: Option<f64>,
+    r_f: Option<f64>,
+  ) -> Bates1996<f64, Normal<f64>> {
+    let cpoisson = CompoundPoisson::new(
+      Normal::new(0.0, 1.0).expect("valid normal"),
+      Poisson::new(1.0, Some(8), Some(1.0)),
+    );
+    Bates1996::new(
+      mu,
+      b,
+      r,
+      r_f,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      8,
+      Some(1.0),
+      Some(0.0),
+      Some(1.0),
+      Some(false),
+      cpoisson,
+    )
+  }
+
+  #[test]
+  fn effective_drift_prefers_r_minus_rf_when_present() {
+    let p = make_bates(Some(0.9), Some(0.7), Some(0.4), Some(0.1));
+    assert!((p.effective_drift() - 0.3).abs() < 1e-12);
+  }
+
+  #[test]
+  fn effective_drift_uses_b_if_rates_missing() {
+    let p = make_bates(Some(0.9), Some(0.7), None, None);
+    assert!((p.effective_drift() - 0.7).abs() < 1e-12);
+  }
+
+  #[test]
+  fn effective_drift_falls_back_to_mu() {
+    let p = make_bates(Some(0.9), None, None, None);
+    assert!((p.effective_drift() - 0.9).abs() < 1e-12);
   }
 }

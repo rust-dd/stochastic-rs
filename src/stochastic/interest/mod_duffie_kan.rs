@@ -62,14 +62,9 @@ pub struct DuffieKanJumpExp<T: FloatExt> {
   pub x0: Option<T>,
   /// Total time horizon.
   pub t: Option<T>,
-  /// Jump distribution.
-  jump_dist: SimdNormal<T>,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: CGNS<T>,
 }
-
-unsafe impl<T: FloatExt> Send for DuffieKanJumpExp<T> {}
-unsafe impl<T: FloatExt> Sync for DuffieKanJumpExp<T> {}
 
 impl<T: FloatExt> DuffieKanJumpExp<T> {
   pub fn new(
@@ -92,8 +87,6 @@ impl<T: FloatExt> DuffieKanJumpExp<T> {
     x0: Option<T>,
     t: Option<T>,
   ) -> Self {
-    let jump_dist = SimdNormal::new(T::zero(), jump_scale);
-
     Self {
       alpha,
       beta,
@@ -113,7 +106,6 @@ impl<T: FloatExt> DuffieKanJumpExp<T> {
       r0,
       x0,
       t,
-      jump_dist,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
@@ -133,6 +125,7 @@ impl<T: FloatExt> ProcessExt<T> for DuffieKanJumpExp<T> {
 
     let mut rng = rand::rng();
     let exp_dist = SimdExp::new(self.lambda);
+    let jump_dist = SimdNormal::<T, 64>::new(T::zero(), self.jump_scale);
 
     let mut next_jump_time = exp_dist.sample(&mut rng);
 
@@ -148,7 +141,7 @@ impl<T: FloatExt> ProcessExt<T> for DuffieKanJumpExp<T> {
 
       let mut jump_sum_x = T::zero();
       while next_jump_time <= current_time {
-        let jump_x = self.jump_dist.sample(&mut rng);
+        let jump_x = jump_dist.sample(&mut rng);
         jump_sum_x += jump_x;
         next_jump_time += exp_dist.sample(&mut rng);
       }

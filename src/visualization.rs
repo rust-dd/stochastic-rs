@@ -36,16 +36,13 @@ impl<T: FloatExt> Plottable<T> for Array1<T> {
   }
 }
 
-impl<T: FloatExt> Plottable<T> for [Array1<T>; 2] {
+impl<T: FloatExt, const N: usize> Plottable<T> for [Array1<T>; N] {
   fn n_components(&self) -> usize {
-    2
+    N
   }
 
   fn component_name(&self, idx: usize) -> String {
-    match idx {
-      0 => "component 1".into(),
-      _ => "component 2".into(),
-    }
+    format!("component {}", idx + 1)
   }
 
   fn component(&self, idx: usize) -> Vec<f64> {
@@ -219,11 +216,20 @@ mod tests {
   use crate::stochastic::diffusion::cir::CIR;
   use crate::stochastic::diffusion::gbm::GBM;
   use crate::stochastic::diffusion::ou::OU;
+  use crate::stochastic::interest::hjm::HJM;
   use crate::stochastic::isonormal::fbm_custom_inc_cov;
   use crate::stochastic::isonormal::ISONormal;
   use crate::stochastic::process::fbm::FBM;
   use crate::stochastic::volatility::heston::Heston;
   use crate::stochastic::volatility::HestonPow;
+
+  fn const_fn1(_t: f64) -> f64 {
+    0.03
+  }
+
+  fn const_fn2(_t: f64, _u: f64) -> f64 {
+    0.02
+  }
 
   #[test]
   fn plot_grid() {
@@ -282,6 +288,24 @@ mod tests {
           None,
         ),
         "Heston",
+        traj,
+      )
+      .register(
+        &HJM::new(
+          const_fn1 as fn(f64) -> f64,
+          const_fn1 as fn(f64) -> f64,
+          const_fn2 as fn(f64, f64) -> f64,
+          const_fn2 as fn(f64, f64) -> f64,
+          const_fn2 as fn(f64, f64) -> f64,
+          const_fn2 as fn(f64, f64) -> f64,
+          const_fn2 as fn(f64, f64) -> f64,
+          n,
+          Some(0.02),
+          Some(0.01),
+          Some(0.02),
+          Some(1.0),
+        ),
+        "HJM (3 components)",
         traj,
       )
       .show();

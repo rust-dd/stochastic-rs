@@ -18,21 +18,11 @@ pub struct FBS<T: FloatExt> {
   pub m: usize,
   pub n: usize,
   pub r: T,
-  normal: SimdNormal<T>,
 }
-
-unsafe impl<T: FloatExt> Send for FBS<T> {}
-unsafe impl<T: FloatExt> Sync for FBS<T> {}
 
 impl<T: FloatExt> FBS<T> {
   pub fn new(hurst: T, m: usize, n: usize, r: T) -> Self {
-    Self {
-      hurst,
-      m,
-      n,
-      r,
-      normal: SimdNormal::new(T::zero(), T::one()),
-    }
+    Self { hurst, m, n, r }
   }
 }
 
@@ -83,10 +73,9 @@ impl<T: FloatExt> ProcessExt<T> for FBS<T> {
 
     let lam = fft_freq.mapv(|c| (c.re / scale).max(T::zero()).sqrt());
 
-    let z: Array2<Complex<T>> = Array2::random(
-      (big_m, big_n),
-      ComplexDistribution::new(&self.normal, &self.normal),
-    );
+    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one());
+    let z: Array2<Complex<T>> =
+      Array2::random((big_m, big_n), ComplexDistribution::new(&normal, &normal));
 
     let prod = lam.mapv(|v| Complex::new(v, T::zero())) * z;
     let mut fft_tmp2 = Array2::<Complex<T>>::zeros((big_m, big_n));
