@@ -376,7 +376,7 @@ impl GridPlotter {
 
       for series in &entry.series {
         let scale = comp_scale[series.component_idx];
-        let y_vals = if scale > 1.01 {
+        let y_plot = if scale > 1.01 {
           series
             .values
             .iter()
@@ -385,16 +385,38 @@ impl GridPlotter {
         } else {
           series.values.clone()
         };
+        let hover_text = series
+          .values
+          .iter()
+          .zip(y_plot.iter())
+          .map(|(raw, plotted)| {
+            if scale > 1.01 {
+              format!(
+                "value (raw): {:.6}<br>value (plotted): {:.6}<br>scale: x{:.3}",
+                raw, plotted, scale
+              )
+            } else {
+              format!("value: {:.6}", raw)
+            }
+          })
+          .collect::<Vec<String>>();
+        let trace_name = if scale > 1.01 {
+          format!("{} (plot x{:.2})", series.label, scale)
+        } else {
+          series.label.clone()
+        };
         let dash = match series.component_idx % 4 {
           0 => DashType::Solid,
           1 => DashType::Dash,
           2 => DashType::Dot,
           _ => DashType::DashDot,
         };
-        let trace = Scatter::new(t.clone(), y_vals)
+        let trace = Scatter::new(t.clone(), y_plot)
           .mode(Mode::Lines)
           .line(Line::new().width(self.line_width).dash(dash))
-          .name(series.label.clone())
+          .name(trace_name.as_str())
+          .hover_text_array(hover_text)
+          .hover_template("%{hovertext}<extra></extra>")
           .show_legend(self.show_legend)
           .x_axis(xa.as_str())
           .y_axis(ya.as_str());
