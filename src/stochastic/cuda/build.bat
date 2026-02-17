@@ -24,7 +24,7 @@ set ARCH=sm_89
 echo Target architecture: %ARCH%
 
 nvcc -O3 -use_fast_math -arch=%ARCH% ^
-    -shared fgn.cu ^
+    -shared fgn_exports.cu ^
     -o ./fgn_windows/fgn.dll ^
     -lcufft -lcurand
 

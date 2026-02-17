@@ -178,7 +178,7 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   }
 
   #[cfg(feature = "cuda")]
-  fn sample_cuda(&self, _m: usize) -> Result<Either<Array1<f64>, ndarray::Array2<f64>>> {
+  fn sample_cuda(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     anyhow::bail!("CUDA sampling is not supported for this process")
   }
 }

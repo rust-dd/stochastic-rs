@@ -18,7 +18,7 @@ echo "Target architecture: $ARCH"
 
 # Build for Linux
 nvcc -O3 -use_fast_math -arch=$ARCH \
-    -shared fgn.cu \
+    -shared fgn_exports.cu \
     -o ./fgn_linux/libfgn.so \
     -Xcompiler -fPIC \
     -lcufft -lcurand
