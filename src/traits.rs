@@ -19,6 +19,7 @@ use ndarray::ScalarOperand;
 use ndarray_rand::RandomExt;
 use ndarray_stats::QuantileExt;
 use ndrustfft::Zero;
+use num_complex::Complex;
 use num_complex::Complex64;
 use rand::Rng;
 use rand_distr::Uniform;
@@ -163,6 +164,7 @@ pub trait FloatExt:
 {
   fn from_usize_(n: usize) -> Self;
   fn fill_standard_normal_slice(out: &mut [Self]);
+  fn with_fgn_complex_scratch<R, F: FnOnce(&mut [Complex<Self>]) -> R>(len: usize, f: F) -> R;
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }
 

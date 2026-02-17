@@ -73,7 +73,7 @@ pub struct FGN<T: FloatExt> {
   pub offset: usize,
   out_len: usize,
   scale: T,
-  pub sqrt_eigenvalues: Arc<Array1<Complex<T>>>,
+  pub sqrt_eigenvalues: Arc<Array1<T>>,
   pub fft_handler: Arc<FftHandler<T>>,
 }
 
@@ -112,9 +112,18 @@ impl<T: FloatExt> FGN<T> {
     .unwrap();
     let data = r.mapv(|v| Complex::new(v, T::zero()));
     let r_fft = FftHandler::new(r.len());
-    let mut sqrt_eigenvalues = Array1::<Complex<T>>::zeros(r.len());
-    ndfft_par(&data, &mut sqrt_eigenvalues, &r_fft, 0);
-    sqrt_eigenvalues.mapv_inplace(|x| Complex::new((x.re / T::from_usize_(2 * n)).sqrt(), x.im));
+    let mut eig_fft = Array1::<Complex<T>>::zeros(r.len());
+    ndfft_par(&data, &mut eig_fft, &r_fft, 0);
+    let norm = T::from_usize_(2 * n);
+    let mut sqrt_eigenvalues = Array1::<T>::zeros(r.len());
+    for (dst, eig) in sqrt_eigenvalues.iter_mut().zip(eig_fft.iter()) {
+      let lambda = eig.re / norm;
+      *dst = if lambda > T::zero() {
+        lambda.sqrt()
+      } else {
+        T::zero()
+      };
+    }
 
     Self {
       hurst,
@@ -134,17 +143,25 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
 
   fn sample(&self) -> Self::Output {
     let len = 2 * self.n;
-    let mut rnd = Array1::<Complex<T>>::zeros(len);
-    // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-    let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-    T::fill_standard_normal_slice(flat);
-    rnd.zip_mut_with(&*self.sqrt_eigenvalues, |a, b| *a = *a * *b);
-    ndfft_inplace_par(&mut rnd, &*self.fft_handler, 0);
     let mut fgn = Array1::<T>::zeros(self.out_len);
-    let src = rnd.slice(s![1..self.out_len + 1]);
-    for (dst, c) in fgn.iter_mut().zip(src.iter()) {
-      *dst = c.re * self.scale;
-    }
+
+    T::with_fgn_complex_scratch(len, |rnd| {
+      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
+      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+      T::fill_standard_normal_slice(flat);
+      for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
+        z.re = z.re * w;
+        z.im = z.im * w;
+      }
+
+      let mut rnd_view = ArrayViewMut1::from(rnd);
+      ndfft_inplace_par(&mut rnd_view, &*self.fft_handler, 0);
+      let src = rnd_view.slice(s![1..self.out_len + 1]);
+      for (dst, c) in fgn.iter_mut().zip(src.iter()) {
+        *dst = c.re * self.scale;
+      }
+    });
+
     fgn
   }
 
@@ -216,9 +233,9 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
       let host_sqrt_eigs: Vec<CuComplex> = self
         .sqrt_eigenvalues
         .iter()
-        .map(|z| CuComplex {
-          x: z.re.to_f32().unwrap(),
-          y: z.im.to_f32().unwrap(),
+        .map(|x| CuComplex {
+          x: x.to_f32().unwrap(),
+          y: 0.0,
         })
         .collect();
 

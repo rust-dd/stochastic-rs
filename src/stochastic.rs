@@ -55,7 +55,10 @@ pub mod sde;
 pub mod sheet;
 pub mod volatility;
 
+use std::cell::RefCell;
+
 use ndarray::Array1;
+use num_complex::Complex;
 
 use crate::distributions::normal::SimdNormal;
 pub use crate::traits::DistributionExt;
@@ -73,8 +76,10 @@ pub const S0: f64 = 100.0;
 pub const K: f64 = 100.0;
 
 thread_local! {
-  static STANDARD_NORMAL_F64: SimdNormal<f64, 64> = SimdNormal::new(0.0, 1.0);
-  static STANDARD_NORMAL_F32: SimdNormal<f32, 64> = SimdNormal::new(0.0, 1.0);
+  static STANDARD_NORMAL_F64: RefCell<Option<Box<SimdNormal<f64, 64>>>> = const { RefCell::new(None) };
+  static STANDARD_NORMAL_F32: RefCell<Option<Box<SimdNormal<f32, 64>>>> = const { RefCell::new(None) };
+  static FGN_SCRATCH_F64: RefCell<Vec<Complex<f64>>> = const { RefCell::new(Vec::new()) };
+  static FGN_SCRATCH_F32: RefCell<Vec<Complex<f32>>> = const { RefCell::new(Vec::new()) };
 }
 
 impl FloatExt for f64 {
@@ -86,7 +91,21 @@ impl FloatExt for f64 {
     if out.is_empty() {
       return;
     }
-    STANDARD_NORMAL_F64.with(|dist| dist.fill_standard_fast(out));
+    STANDARD_NORMAL_F64.with(|cell| {
+      let mut slot = cell.borrow_mut();
+      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0)));
+      dist.fill_standard_fast(out);
+    });
+  }
+
+  fn with_fgn_complex_scratch<R, F: FnOnce(&mut [Complex<Self>]) -> R>(len: usize, f: F) -> R {
+    FGN_SCRATCH_F64.with(|scratch| {
+      let mut scratch = scratch.borrow_mut();
+      if scratch.len() < len {
+        scratch.resize(len, Complex::new(0.0, 0.0));
+      }
+      f(&mut scratch[..len])
+    })
   }
 
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
@@ -115,7 +134,21 @@ impl FloatExt for f32 {
     if out.is_empty() {
       return;
     }
-    STANDARD_NORMAL_F32.with(|dist| dist.fill_standard_fast(out));
+    STANDARD_NORMAL_F32.with(|cell| {
+      let mut slot = cell.borrow_mut();
+      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0)));
+      dist.fill_standard_fast(out);
+    });
+  }
+
+  fn with_fgn_complex_scratch<R, F: FnOnce(&mut [Complex<Self>]) -> R>(len: usize, f: F) -> R {
+    FGN_SCRATCH_F32.with(|scratch| {
+      let mut scratch = scratch.borrow_mut();
+      if scratch.len() < len {
+        scratch.resize(len, Complex::new(0.0, 0.0));
+      }
+      f(&mut scratch[..len])
+    })
   }
 
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
