@@ -64,13 +64,9 @@ fn exp_zig_tables() -> &'static ExpZigTables {
   })
 }
 
+#[cold]
 #[inline(never)]
-fn efix<T: SimdFloatExt>(
-  hz: i32,
-  iz: usize,
-  tables: &ExpZigTables,
-  rng: &mut SimdRng,
-) -> T {
+fn efix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ExpZigTables, rng: &mut SimdRng) -> T {
   let mut hz = hz;
   let mut iz = iz;
 
@@ -122,7 +118,6 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
 
     while filled < len {
       let hz = rng.next_i32x8();
-      let hz_arr = hz.to_array();
       let iz = hz & mask255;
       let iz_arr = iz.to_array();
       let abs_hz = hz.abs();
@@ -161,6 +156,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
           buf[filled..filled + take].copy_from_slice(&result_arr[..take]);
           filled += take;
         } else {
+          let hz_arr = hz.to_array();
           let accept_arr = accept.to_array();
           let result_arr = T::simd_to_array(result);
           for i in 0..8 {

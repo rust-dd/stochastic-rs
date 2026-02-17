@@ -162,6 +162,7 @@ pub trait FloatExt:
   + 'static
 {
   fn from_usize_(n: usize) -> Self;
+  fn fill_standard_normal_slice(out: &mut [Self]);
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }
 

@@ -113,8 +113,14 @@ impl PyMerton {
         );
         Self {
           inner_f32: Some(Merton::new(
-            alpha as f32, sigma as f32, lambda_ as f32, theta as f32, n,
-            x0.map(|v| v as f32), t.map(|v| v as f32), cpoisson,
+            alpha as f32,
+            sigma as f32,
+            lambda_ as f32,
+            theta as f32,
+            n,
+            x0.map(|v| v as f32),
+            t.map(|v| v as f32),
+            cpoisson,
           )),
           inner_f64: None,
         }
@@ -126,7 +132,9 @@ impl PyMerton {
         );
         Self {
           inner_f32: None,
-          inner_f64: Some(Merton::new(alpha, sigma, lambda_, theta, n, x0, t, cpoisson)),
+          inner_f64: Some(Merton::new(
+            alpha, sigma, lambda_, theta, n, x0, t, cpoisson,
+          )),
         }
       }
     }
@@ -135,6 +143,7 @@ impl PyMerton {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
@@ -146,9 +155,10 @@ impl PyMerton {
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
+    use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let paths = inner.sample_par(m);

@@ -78,6 +78,10 @@ harness = false
 name = "fgn_fbm"
 harness = false
 
+[[bench]]
+name = "process_generation"
+harness = false
+
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]

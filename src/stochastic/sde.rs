@@ -70,14 +70,14 @@ where
         let mut incs = Array3::zeros((n_paths, steps, dim));
 
         if let Some(h) = &self.hursts {
+          let fgns: Vec<FGN<f64>> = (0..dim)
+            .map(|d| FGN::new(h[d], steps, Some(t1 - t0)))
+            .collect();
+
           for p in 0..n_paths {
             for d in 0..dim {
-              let fgn = FGN::new(h[d], steps, Some(t1 - t0));
-              let data = fgn.sample();
-
-              for i in 0..steps {
-                incs[[p, i, d]] = data[i];
-              }
+              let data = fgns[d].sample();
+              incs.slice_mut(s![p, .., d]).assign(&data);
             }
           }
         }

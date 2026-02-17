@@ -99,8 +99,12 @@ impl PyLevyDiffusion {
         );
         Self {
           inner_f32: Some(LevyDiffusion::new(
-            gamma_ as f32, sigma as f32, n,
-            x0.map(|v| v as f32), t.map(|v| v as f32), cpoisson,
+            gamma_ as f32,
+            sigma as f32,
+            n,
+            x0.map(|v| v as f32),
+            t.map(|v| v as f32),
+            cpoisson,
           )),
           inner_f64: None,
         }
@@ -121,6 +125,7 @@ impl PyLevyDiffusion {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
@@ -132,9 +137,10 @@ impl PyLevyDiffusion {
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
+    use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let paths = inner.sample_par(m);

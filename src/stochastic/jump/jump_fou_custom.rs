@@ -114,8 +114,13 @@ impl PyJumpFOUCustom {
     match dtype.unwrap_or("f64") {
       "f32" => Self {
         inner_f32: Some(JumpFOUCustom::new(
-          hurst as f32, theta as f32, mu as f32, sigma as f32, n,
-          x0.map(|v| v as f32), t.map(|v| v as f32),
+          hurst as f32,
+          theta as f32,
+          mu as f32,
+          sigma as f32,
+          n,
+          x0.map(|v| v as f32),
+          t.map(|v| v as f32),
           crate::traits::CallableDist::new(jump_times),
           crate::traits::CallableDist::new(jump_sizes),
         )),
@@ -124,7 +129,13 @@ impl PyJumpFOUCustom {
       _ => Self {
         inner_f32: None,
         inner_f64: Some(JumpFOUCustom::new(
-          hurst, theta, mu, sigma, n, x0, t,
+          hurst,
+          theta,
+          mu,
+          sigma,
+          n,
+          x0,
+          t,
           crate::traits::CallableDist::new(jump_times),
           crate::traits::CallableDist::new(jump_sizes),
         )),
@@ -135,6 +146,7 @@ impl PyJumpFOUCustom {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
@@ -146,9 +158,10 @@ impl PyJumpFOUCustom {
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
+    use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let paths = inner.sample_par(m);

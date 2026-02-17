@@ -1,7 +1,10 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::BenchmarkId;
+use criterion::Criterion;
 use rand_distr::Distribution;
 use stochastic_rs::distributions::beta::SimdBeta;
 use stochastic_rs::distributions::cauchy::SimdCauchy;

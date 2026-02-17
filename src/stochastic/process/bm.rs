@@ -1,3 +1,4 @@
+use ndarray::s;
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -15,7 +16,7 @@ impl<T: FloatExt> BM<T> {
     Self {
       n,
       t,
-      gn: Gn::new(n - 1, t),
+      gn: Gn::new(n.saturating_sub(1), t),
     }
   }
 }
@@ -24,11 +25,22 @@ impl<T: FloatExt> ProcessExt<T> for BM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let gn = &self.gn.sample();
     let mut bm = Array1::<T>::zeros(self.n);
+    if self.n <= 1 {
+      return bm;
+    }
 
-    for i in 1..self.n {
-      bm[i] = bm[i - 1] + gn[i - 1];
+    let std_dev = self.gn.dt().sqrt();
+    let mut tail_view = bm.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("BM output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    let mut acc = T::zero();
+    for x in tail.iter_mut() {
+      acc = acc + *x * std_dev;
+      *x = acc;
     }
 
     bm
@@ -39,3 +51,29 @@ py_process_1d!(PyBM, BM,
   sig: (n, t=None, dtype=None),
   params: (n: usize, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use std::time::Instant;
+
+  use super::*;
+
+  #[test]
+  fn test_bm() {
+    let start = Instant::now();
+    let bm = BM::new(10000, Some(1.0));
+    for _ in 0..10000 {
+      let m = bm.sample();
+      assert_eq!(m.len(), 10000);
+    }
+    println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
+
+    let start = Instant::now();
+    let bm = BM::new(10000, Some(1.0));
+    for _ in 0..10000 {
+      let m = bm.sample();
+      assert_eq!(m.len(), 10000);
+    }
+    println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
+  }
+}

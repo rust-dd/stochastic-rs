@@ -5,28 +5,21 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 pub struct SimdPoisson<T: PrimInt> {
-  lambda: f64,
+  cdf: Box<[f64]>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
 }
 
 impl<T: PrimInt> SimdPoisson<T> {
-  pub fn new(lambda: f64) -> Self {
-    assert!(lambda > 0.0);
-    Self {
-      lambda,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-    }
-  }
-
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  #[inline]
+  fn build_cdf(lambda: f64) -> Box<[f64]> {
     let mut cdf = Vec::new();
-    let mut pmf = (-self.lambda).exp();
+    let mut pmf = (-lambda).exp();
     let mut cum = pmf;
     cdf.push(cum);
+
     loop {
-      pmf *= self.lambda / (cdf.len() as f64);
+      pmf *= lambda / (cdf.len() as f64);
       cum += pmf;
       if cum >= 1.0 - 1e-15 {
         cdf.push(1.0);
@@ -35,12 +28,22 @@ impl<T: PrimInt> SimdPoisson<T> {
       cdf.push(cum);
     }
 
+    cdf.into_boxed_slice()
+  }
+
+  pub fn new(lambda: f64) -> Self {
+    assert!(lambda > 0.0);
+    Self {
+      cdf: Self::build_cdf(lambda),
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
+    }
+  }
+
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
     for x in out.iter_mut() {
-      let u: f64 = rng.random_range(0.0..1.0);
-      let mut k = 0;
-      while k < cdf.len() && u > cdf[k] {
-        k += 1;
-      }
+      let u: f64 = rng.random();
+      let k = self.cdf.partition_point(|&p| p < u);
       *x = num_traits::cast(k).unwrap_or(T::zero());
     }
   }

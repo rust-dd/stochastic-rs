@@ -12,7 +12,6 @@ use crate::simd_rng::SimdRng;
 struct ZigTables {
   kn: [i32; 128],
   wn: [f64; 128],
-  wn_f32: [f32; 128],
   fn_tab: [f64; 128],
 }
 
@@ -58,23 +57,13 @@ fn zig_tables() -> &'static ZigTables {
       wn[i] = dn / m1;
     }
 
-    let wn_f32: [f32; 128] = std::array::from_fn(|i| wn[i] as f32);
-    ZigTables {
-      kn,
-      wn,
-      wn_f32,
-      fn_tab,
-    }
+    ZigTables { kn, wn, fn_tab }
   })
 }
 
+#[cold]
 #[inline(never)]
-fn nfix<T: SimdFloatExt>(
-  hz: i32,
-  iz: usize,
-  tables: &ZigTables,
-  rng: &mut SimdRng,
-) -> T {
+fn nfix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut SimdRng) -> T {
   const R_TAIL: f64 = 3.442620;
   let mut hz = hz;
   let mut iz = iz;
@@ -99,8 +88,7 @@ fn nfix<T: SimdFloatExt>(
       }
     }
 
-    if tables.fn_tab[iz]
-      + rng.random::<f64>() * (tables.fn_tab[iz - 1] - tables.fn_tab[iz])
+    if tables.fn_tab[iz] + rng.random::<f64>() * (tables.fn_tab[iz - 1] - tables.fn_tab[iz])
       < (-0.5 * x * x).exp()
     {
       return T::from_f64_fast(x);
@@ -144,6 +132,11 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  #[inline]
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat(out, rng, self.mean, self.std_dev);
   }
@@ -175,7 +168,6 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
 
     while filled < len {
       let hz = rng.next_i32x8();
-      let hz_arr = hz.to_array();
       let iz = hz & mask127;
       let iz_arr = iz.to_array();
 
@@ -214,6 +206,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
           buf[filled..filled + take].copy_from_slice(&scaled_arr[..take]);
           filled += take;
         } else {
+          let hz_arr = hz.to_array();
           let accept_arr = accept.to_array();
           let result_arr = T::simd_to_array(result);
           for i in 0..8 {
@@ -286,7 +279,6 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
 
     while filled < len {
       let hz = rng.next_i32x8();
-      let hz_arr = hz.to_array();
       let iz = hz & mask127;
       let iz_arr = iz.to_array();
 
@@ -324,6 +316,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
           buf[filled..filled + take].copy_from_slice(&result_arr[..take]);
           filled += take;
         } else {
+          let hz_arr = hz.to_array();
           let accept_arr = accept.to_array();
           let result_arr = T::simd_to_array(result);
           for i in 0..8 {

@@ -12,6 +12,7 @@ use libloading::Library;
 use libloading::Symbol;
 use ndarray::concatenate;
 use ndarray::prelude::*;
+use ndrustfft::ndfft_inplace_par;
 use ndrustfft::ndfft_par;
 use ndrustfft::FftHandler;
 use num_complex::Complex;
@@ -27,7 +28,7 @@ use numpy::PyArray2;
 use pyo3::prelude::*;
 #[cfg(feature = "cuda")]
 use rand::Rng;
-use crate::distributions::normal::SimdNormal;
+
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -70,13 +71,11 @@ pub struct FGN<T: FloatExt> {
   pub n: usize,
   pub t: Option<T>,
   pub offset: usize,
+  out_len: usize,
+  scale: T,
   pub sqrt_eigenvalues: Arc<Array1<Complex<T>>>,
   pub fft_handler: Arc<FftHandler<T>>,
-  normal: SimdNormal<T, 32>,
 }
-
-unsafe impl<T: FloatExt> Send for FGN<T> {}
-unsafe impl<T: FloatExt> Sync for FGN<T> {}
 
 impl<T: FloatExt> FGN<T> {
   pub fn dt(&self) -> T {
@@ -92,6 +91,7 @@ impl<T: FloatExt> FGN<T> {
     }
 
     let offset = n.next_power_of_two() - n;
+    let out_len = n;
     let n = n.next_power_of_two();
     let mut r = Array1::linspace(T::zero(), T::from_usize_(n), n + 1);
     let f2 = T::from_usize_(2);
@@ -120,10 +120,11 @@ impl<T: FloatExt> FGN<T> {
       hurst,
       n,
       offset,
+      out_len,
       t,
+      scale: T::from_usize_(n).powf(-hurst) * t.unwrap_or(T::one()).powf(hurst),
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
       fft_handler: Arc::new(FftHandler::new(2 * n)),
-      normal: SimdNormal::new(T::zero(), T::one()),
     }
   }
 }
@@ -135,17 +136,15 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
     let len = 2 * self.n;
     let mut rnd = Array1::<Complex<T>>::zeros(len);
     // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-    let flat =
-      unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-    self.normal.fill_standard_fast(flat);
+    let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+    T::fill_standard_normal_slice(flat);
     rnd.zip_mut_with(&*self.sqrt_eigenvalues, |a, b| *a = *a * *b);
-    let mut fgn_fft = Array1::<Complex<T>>::zeros(len);
-    ndfft_par(&rnd, &mut fgn_fft, &*self.fft_handler, 0);
-    let scale =
-      T::from_usize_(self.n).powf(-self.hurst) * self.t.unwrap_or(T::one()).powf(self.hurst);
-    let fgn = fgn_fft
-      .slice(s![1..self.n - self.offset + 1])
-      .mapv(|x| x.re * scale);
+    ndfft_inplace_par(&mut rnd, &*self.fft_handler, 0);
+    let mut fgn = Array1::<T>::zeros(self.out_len);
+    let src = rnd.slice(s![1..self.out_len + 1]);
+    for (dst, c) in fgn.iter_mut().zip(src.iter()) {
+      *dst = c.re * self.scale;
+    }
     fgn
   }
 

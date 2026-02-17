@@ -56,7 +56,6 @@ pub mod sheet;
 pub mod volatility;
 
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 
 use crate::distributions::normal::SimdNormal;
 pub use crate::traits::DistributionExt;
@@ -73,13 +72,37 @@ pub const S0: f64 = 100.0;
 /// Default strike price
 pub const K: f64 = 100.0;
 
+thread_local! {
+  static STANDARD_NORMAL_F64: SimdNormal<f64, 64> = SimdNormal::new(0.0, 1.0);
+  static STANDARD_NORMAL_F32: SimdNormal<f32, 64> = SimdNormal::new(0.0, 1.0);
+}
+
 impl FloatExt for f64 {
   fn from_usize_(n: usize) -> Self {
     n as f64
   }
 
+  fn fill_standard_normal_slice(out: &mut [Self]) {
+    if out.is_empty() {
+      return;
+    }
+    STANDARD_NORMAL_F64.with(|dist| dist.fill_standard_fast(out));
+  }
+
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    Array1::random(n, SimdNormal::<f64, 64>::new(mean, std_dev))
+    assert!(std_dev > 0.0, "std_dev must be positive");
+    let mut out = Array1::<f64>::zeros(n);
+    if n == 0 {
+      return out;
+    }
+    let out_slice = out
+      .as_slice_mut()
+      .expect("normal_array output must be contiguous");
+    Self::fill_standard_normal_slice(out_slice);
+    for x in out_slice.iter_mut() {
+      *x = mean + std_dev * *x;
+    }
+    out
   }
 }
 
@@ -88,7 +111,26 @@ impl FloatExt for f32 {
     n as f32
   }
 
+  fn fill_standard_normal_slice(out: &mut [Self]) {
+    if out.is_empty() {
+      return;
+    }
+    STANDARD_NORMAL_F32.with(|dist| dist.fill_standard_fast(out));
+  }
+
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    Array1::random(n, SimdNormal::<f32, 64>::new(mean, std_dev))
+    assert!(std_dev > 0.0, "std_dev must be positive");
+    let mut out = Array1::<f32>::zeros(n);
+    if n == 0 {
+      return out;
+    }
+    let out_slice = out
+      .as_slice_mut()
+      .expect("normal_array output must be contiguous");
+    Self::fill_standard_normal_slice(out_slice);
+    for x in out_slice.iter_mut() {
+      *x = mean + std_dev * *x;
+    }
+    out
   }
 }

@@ -97,6 +97,7 @@ impl PyCompoundPoisson {
   ) {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       let [p, cum, j] = inner.sample();
