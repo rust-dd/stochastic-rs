@@ -14,11 +14,11 @@ use nalgebra::DVector;
 use nalgebra::Dyn;
 use nalgebra::Owned;
 
-use crate::quant::CalibrationLossScore;
-use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
 use crate::quant::loss;
 use crate::quant::pricing::sabr::SabrPricer;
+use crate::quant::CalibrationLossScore;
+use crate::quant::OptionType;
 use crate::traits::PricerExt;
 
 const RHO_BOUND: f64 = 0.9999;

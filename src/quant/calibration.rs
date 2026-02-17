@@ -10,6 +10,7 @@ use crate::quant::CalibrationLossScore;
 
 pub mod bsm;
 pub mod heston;
+pub mod rbergomi;
 pub mod sabr;
 pub mod sabr_smile;
 

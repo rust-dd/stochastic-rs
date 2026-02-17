@@ -18,18 +18,18 @@ use nalgebra::Owned;
 use ndarray::Array1;
 use num_complex::Complex64;
 
-use crate::quant::CalibrationLossScore;
-use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
 use crate::quant::loss;
 use crate::quant::pricing::heston::HestonPricer;
-use crate::stats::heston_mle::HestonMleResult;
+use crate::quant::CalibrationLossScore;
+use crate::quant::OptionType;
 use crate::stats::heston_mle::nmle_heston;
 use crate::stats::heston_mle::nmle_heston_with_delta;
 use crate::stats::heston_mle::pmle_heston;
 use crate::stats::heston_mle::pmle_heston_with_delta;
-use crate::stats::heston_nml_cekf::HestonNMLECEKFConfig;
+use crate::stats::heston_mle::HestonMleResult;
 use crate::stats::heston_nml_cekf::nmle_cekf_heston;
+use crate::stats::heston_nml_cekf::HestonNMLECEKFConfig;
 use crate::traits::PricerExt;
 
 const EPS: f64 = 1e-8;
@@ -998,8 +998,8 @@ mod tests {
   use ndarray::Array1;
 
   use super::*;
-  use crate::stochastic::volatility::HestonPow;
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
+  use crate::stochastic::volatility::HestonPow;
   use crate::traits::ProcessExt;
 
   #[test]
