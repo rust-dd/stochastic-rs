@@ -93,7 +93,7 @@ impl PyBergomi {
       },
       _ => Self {
         inner_f32: None,
-        inner_f64: Some(Bergomi::new(nu, v0, s0, r, rho, n, t, m)),
+        inner_f64: Some(Bergomi::new(nu, v0, s0, r, rho, n, t)),
       },
     }
   }

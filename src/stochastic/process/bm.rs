@@ -39,7 +39,7 @@ impl<T: FloatExt> ProcessExt<T> for BM<T> {
 
     let mut acc = T::zero();
     for x in tail.iter_mut() {
-      acc = acc + *x * std_dev;
+      acc += *x * std_dev;
       *x = acc;
     }
 

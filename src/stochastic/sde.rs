@@ -77,8 +77,8 @@ where
             .collect();
 
           for p in 0..n_paths {
-            for d in 0..dim {
-              let data = fgns[d].sample();
+            for (d, fgn) in fgns.iter().enumerate().take(dim) {
+              let data = fgn.sample();
               incs.slice_mut(s![p, .., d]).assign(&data);
             }
           }

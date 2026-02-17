@@ -61,11 +61,11 @@ impl Xoshiro256PP4 {
   fn next(&mut self) -> u64x4 {
     let result = rotl_u64x4(self.s0 + self.s3, 23) + self.s0;
     let t = self.s1 << 17u32;
-    self.s2 = self.s2 ^ self.s0;
-    self.s3 = self.s3 ^ self.s1;
-    self.s1 = self.s1 ^ self.s2;
-    self.s0 = self.s0 ^ self.s3;
-    self.s2 = self.s2 ^ t;
+    self.s2 ^= self.s0;
+    self.s3 ^= self.s1;
+    self.s1 ^= self.s2;
+    self.s0 ^= self.s3;
+    self.s2 ^= t;
     self.s3 = rotl_u64x4(self.s3, 45);
     result
   }
@@ -111,11 +111,11 @@ impl Xoshiro128PP8 {
   fn next(&mut self) -> u32x8 {
     let result = rotl_u32x8(self.s0 + self.s3, 7) + self.s0;
     let t = self.s1 << 9u32;
-    self.s2 = self.s2 ^ self.s0;
-    self.s3 = self.s3 ^ self.s1;
-    self.s1 = self.s1 ^ self.s2;
-    self.s0 = self.s0 ^ self.s3;
-    self.s2 = self.s2 ^ t;
+    self.s2 ^= self.s0;
+    self.s3 ^= self.s1;
+    self.s1 ^= self.s2;
+    self.s0 ^= self.s3;
+    self.s2 ^= t;
     self.s3 = rotl_u32x8(self.s3, 11);
     result
   }
@@ -180,6 +180,12 @@ impl SimdRng {
       (a[6] >> 8) as f32 * F32_SCALE,
       (a[7] >> 8) as f32 * F32_SCALE,
     ]
+  }
+}
+
+impl Default for SimdRng {
+  fn default() -> Self {
+    Self::new()
   }
 }
 

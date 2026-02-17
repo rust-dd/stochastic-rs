@@ -78,11 +78,11 @@ fn bench_process_generation(c: &mut Criterion) {
           || vec![0.0f64; n],
           |out| {
             let mut acc = 0.0f64;
-            for i in 1..n {
+            for item in out.iter_mut().take(n).skip(1) {
               acc += dist.sample(&mut rng);
-              out[i] = acc;
+              *item = acc;
             }
-            black_box(out[n - 1])
+            black_box(*out.last().expect("n must be > 0"))
           },
           BatchSize::SmallInput,
         );
@@ -99,11 +99,11 @@ fn bench_process_generation(c: &mut Criterion) {
         || vec![0.0f64; n],
         |out| {
           let mut acc = 0.0f64;
-          for i in 1..n {
-            acc += increments[i - 1];
-            out[i] = acc;
+          for (item, inc) in out.iter_mut().take(n).skip(1).zip(increments.iter()) {
+            acc += *inc;
+            *item = acc;
           }
-          black_box(out[n - 1])
+          black_box(*out.last().expect("n must be > 0"))
         },
         BatchSize::SmallInput,
       );
