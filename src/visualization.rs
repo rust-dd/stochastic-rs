@@ -142,6 +142,29 @@ impl GridPlotter {
     self
   }
 
+  pub fn register_paths(mut self, trajectories: Vec<Vec<f64>>, title: &str) -> Self {
+    if trajectories.is_empty() {
+      return self;
+    }
+
+    let n_points = trajectories[0].len();
+    for traj in &trajectories {
+      assert_eq!(
+        traj.len(),
+        n_points,
+        "All trajectories must have the same length"
+      );
+    }
+
+    self.entries.push(GridEntry {
+      title: title.into(),
+      n_points,
+      trajectories,
+    });
+
+    self
+  }
+
   pub fn plot(self) -> Plot {
     let n = self.entries.len();
     let cols = self.cols;
@@ -196,6 +219,8 @@ mod tests {
   use crate::stochastic::diffusion::cir::CIR;
   use crate::stochastic::diffusion::gbm::GBM;
   use crate::stochastic::diffusion::ou::OU;
+  use crate::stochastic::isonormal::fbm_custom_inc_cov;
+  use crate::stochastic::isonormal::ISONormal;
   use crate::stochastic::process::fbm::FBM;
   use crate::stochastic::volatility::heston::Heston;
   use crate::stochastic::volatility::HestonPow;
@@ -204,11 +229,28 @@ mod tests {
   fn plot_grid() {
     let n = 1000;
     let traj = 5;
+    let mut isonormal_fbm = ISONormal::new(
+      |aux_idx, idx| fbm_custom_inc_cov(aux_idx.abs_diff(idx), 0.7),
+      (0..n).collect(),
+    );
+    let mut isonormal_paths = Vec::with_capacity(traj);
+    for _ in 0..traj {
+      let increments = isonormal_fbm.get_path();
+      let mut path = Vec::with_capacity(n);
+      path.push(0.0);
+      let mut acc = 0.0;
+      for &dx in &increments {
+        acc += dx;
+        path.push(acc);
+      }
+      isonormal_paths.push(path);
+    }
 
     GridPlotter::new()
       .title("Stochastic Processes Overview")
       .cols(3)
       .register(&FBM::new(0.7, n, Some(1.0f64)), "FBM (H=0.7)", traj)
+      .register_paths(isonormal_paths, "fBM via ISONormal (H=0.7)")
       .register(&FBM::new(0.3, n, Some(1.0f64)), "FBM (H=0.3)", traj)
       .register(
         &GBM::new(0.05, 0.2, n, Some(100.0f64), Some(1.0)),

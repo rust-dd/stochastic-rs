@@ -4,14 +4,13 @@ use gauss_quad::GaussLegendre;
 use ndarray::concatenate;
 use ndarray::prelude::*;
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 use ndrustfft::ndfft;
+use ndrustfft::ndfft_inplace;
 use ndrustfft::FftHandler;
 use num_complex::Complex64;
-use rand_distr::StandardNormal;
 use statrs::function::gamma::gamma;
 
-use crate::distributions::complex::ComplexDistribution;
+use crate::traits::FloatExt;
 
 /// Isonormal process
 ///
@@ -45,7 +44,8 @@ where
   inner_product: F,
   index_functions: Vec<usize>,
   inner_product_structure: Option<Array1<f64>>,
-  covariance_matrix_sqrt: Option<Array1<Complex64>>,
+  covariance_matrix_sqrt: Option<Array1<f64>>,
+  fft_handler: Option<FftHandler<f64>>,
 }
 
 impl<F> ISONormal<F>
@@ -58,10 +58,15 @@ where
       index_functions,
       inner_product_structure: None,
       covariance_matrix_sqrt: None,
+      fft_handler: None,
     }
   }
 
   fn set_inner_product_structure(&mut self) {
+    if self.inner_product_structure.is_some() {
+      return;
+    }
+
     let inner_product_structure = Array1::from(
       (0..self.index_functions.len())
         .map(|k| (self.inner_product)(self.index_functions[0], self.index_functions[k]))
@@ -72,6 +77,10 @@ where
   }
 
   fn set_covariance_matrix_sqrt(&mut self) {
+    if self.covariance_matrix_sqrt.is_some() {
+      return;
+    }
+
     let inner_product_structure_embedding =
       |inner_product_structure: &Array1<f64>| -> Array1<Complex64> {
         let n = inner_product_structure.len();
@@ -92,33 +101,53 @@ where
         let mut embedded_inner_product_structure = Array1::<Complex64>::zeros(n * 2 - 2);
         ndfft(&input, &mut embedded_inner_product_structure, &fft, 0);
         embedded_inner_product_structure
-          .mapv(|x| Complex64::new((x.re / (2.0 * (n - 1) as f64)).sqrt(), x.im))
       };
 
-    let embedded_inner_product_matrix =
+    let embedded_inner_product_structure =
       inner_product_structure_embedding(self.inner_product_structure.as_ref().unwrap());
+    let n = self.inner_product_structure.as_ref().unwrap().len();
+    let mut covariance_matrix_sqrt = Array1::<f64>::zeros(embedded_inner_product_structure.len());
+    let norm = 2.0 * (n - 1) as f64;
+    for (dst, x) in covariance_matrix_sqrt
+      .iter_mut()
+      .zip(embedded_inner_product_structure.iter())
+    {
+      let lambda = x.re / norm;
+      *dst = if lambda > 0.0 { lambda.sqrt() } else { 0.0 };
+    }
 
-    self.covariance_matrix_sqrt = Some(embedded_inner_product_matrix);
+    self.covariance_matrix_sqrt = Some(covariance_matrix_sqrt);
+    self.fft_handler = Some(FftHandler::new(2 * n - 2));
   }
 
   pub fn get_path(&mut self) -> Array1<f64> {
     self.set_inner_product_structure();
     self.set_covariance_matrix_sqrt();
-    let fft = FftHandler::new(self.covariance_matrix_sqrt.as_ref().unwrap().len());
-    let normal = Array1::random(
-      self.covariance_matrix_sqrt.as_ref().unwrap().len(),
-      ComplexDistribution::new(StandardNormal, StandardNormal),
-    );
-    let mut path = Array1::<Complex64>::zeros(self.covariance_matrix_sqrt.as_ref().unwrap().len());
-    ndfft(
-      &(self.covariance_matrix_sqrt.as_ref().unwrap() * &normal),
-      &mut path,
-      &fft,
-      0,
-    );
-    let path = path.mapv(|x| x.re);
-    let path = path.slice(s![1..self.inner_product_structure.as_ref().unwrap().len()]);
-    path.into_owned()
+    let covariance_matrix_sqrt = self.covariance_matrix_sqrt.as_ref().unwrap();
+    let fft = self.fft_handler.as_ref().unwrap();
+    let n = self.inner_product_structure.as_ref().unwrap().len();
+    let mut path = Array1::<f64>::zeros(n - 1);
+
+    <f64 as FloatExt>::with_fgn_complex_scratch(covariance_matrix_sqrt.len(), |workspace| {
+      // SAFETY: Complex64 is repr(C) with two f64 fields, matching [f64; 2] layout.
+      let flat = unsafe {
+        std::slice::from_raw_parts_mut(workspace.as_mut_ptr() as *mut f64, 2 * workspace.len())
+      };
+      <f64 as FloatExt>::fill_standard_normal_slice(flat);
+
+      for (z, &w) in workspace.iter_mut().zip(covariance_matrix_sqrt.iter()) {
+        z.re *= w;
+        z.im *= w;
+      }
+
+      let mut workspace_view = ArrayViewMut1::from(workspace);
+      ndfft_inplace(&mut workspace_view, fft, 0);
+      for (dst, z) in path.iter_mut().zip(workspace_view.slice(s![1..n]).iter()) {
+        *dst = z.re;
+      }
+    });
+
+    path
   }
 }
 

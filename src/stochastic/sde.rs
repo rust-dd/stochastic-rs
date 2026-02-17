@@ -4,10 +4,12 @@ use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
+use ndarray::ArrayView1;
 use ndarray::Axis;
 use rand::Rng;
 
 use super::noise::fgn::FGN;
+use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub enum NoiseModel {
@@ -92,13 +94,11 @@ where
     }
   }
 
-  fn gauss_increment(&self, dim: usize, dt: f64, rng: &mut impl Rng) -> Array1<f64> {
-    let sqrt_dt = dt.sqrt();
-    let mut inc = Array1::zeros(dim);
-    for i in 0..dim {
-      inc[i] = rng.sample::<f64, _>(rand_distr::StandardNormal) * sqrt_dt;
+  fn fill_gauss_increment(&self, out: &mut [f64], sqrt_dt: f64, _rng: &mut impl Rng) {
+    <f64 as FloatExt>::fill_standard_normal_slice(out);
+    for x in out.iter_mut() {
+      *x *= sqrt_dt;
     }
-    inc
   }
 
   fn solve_euler_gauss(
@@ -112,19 +112,21 @@ where
   ) -> Array3<f64> {
     let steps = ((t1 - t0) / dt).ceil() as usize;
     let dim = x0.len();
+    let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
     for p in 0..n_paths {
       let mut x = x0.clone();
+      let mut d_w = vec![0.0; dim];
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        let dW = self.gauss_increment(dim, dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
-            incr += sigma_val[[i_dim, j_dim]] * dW[j_dim];
+            incr += sigma_val[[i_dim, j_dim]] * d_w[j_dim];
           }
           x[i_dim] += incr;
         }
@@ -139,7 +141,7 @@ where
     &self,
     x: &Array1<f64>,
     time: f64,
-    dW: &Array1<f64>,
+    d_w: ArrayView1<'_, f64>,
     dt: f64,
   ) -> Array1<f64> {
     let dim = x.len();
@@ -157,9 +159,9 @@ where
           let dsig = (sigma_plus[[i_dim, l]] - sigma_val[[i_dim, l]]) / eps;
           let lj_bil = sigma_val[[j, l]] * dsig;
           let i_jl = if j == l {
-            0.5 * (dW[j] * dW[l] - dt)
+            0.5 * (d_w[j] * d_w[l] - dt)
           } else {
-            0.5 * dW[j] * dW[l]
+            0.5 * d_w[j] * d_w[l]
           };
           correction[i_dim] += lj_bil * i_jl;
         }
@@ -180,20 +182,22 @@ where
   ) -> Array3<f64> {
     let steps = ((t1 - t0) / dt).ceil() as usize;
     let dim = x0.len();
+    let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
     for p in 0..n_paths {
       let mut x = x0.clone();
+      let mut d_w = vec![0.0; dim];
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        let dW = self.gauss_increment(dim, dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
-        let correction = self.milstein_correction(&x, time, &dW, dt);
+        let correction = self.milstein_correction(&x, time, ArrayView1::from(&d_w[..]), dt);
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
-            incr += sigma_val[[i_dim, j_dim]] * dW[j_dim];
+            incr += sigma_val[[i_dim, j_dim]] * d_w[j_dim];
           }
           incr += correction[i_dim];
           x[i_dim] += incr;
@@ -216,20 +220,22 @@ where
   ) -> Array3<f64> {
     let steps = ((t1 - t0) / dt).ceil() as usize;
     let dim = x0.len();
+    let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
     for p in 0..n_paths {
       let mut x = x0.clone();
+      let mut d_w = vec![0.0; dim];
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        let dW = self.gauss_increment(dim, dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
         let mu1 = (self.drift)(&x, time);
         let sig1 = (self.diffusion)(&x, time);
         let mut x_half = x.clone();
         for i_dim in 0..dim {
           let mut incr = mu1[i_dim] * (0.5 * dt);
           for j_dim in 0..dim {
-            incr += sig1[[i_dim, j_dim]] * (0.5 * dW[j_dim]);
+            incr += sig1[[i_dim, j_dim]] * (0.5 * d_w[j_dim]);
           }
           x_half[i_dim] += incr;
         }
@@ -238,7 +244,7 @@ where
         for i_dim in 0..dim {
           let mut incr = mu2[i_dim] * dt;
           for j_dim in 0..dim {
-            incr += sig2[[i_dim, j_dim]] * dW[j_dim];
+            incr += sig2[[i_dim, j_dim]] * d_w[j_dim];
           }
           x[i_dim] += incr;
         }
@@ -260,20 +266,22 @@ where
   ) -> Array3<f64> {
     let steps = ((t1 - t0) / dt).ceil() as usize;
     let dim = x0.len();
+    let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
     for p in 0..n_paths {
       let mut x = x0.clone();
+      let mut d_w_full = vec![0.0; dim];
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        let dW_full = self.gauss_increment(dim, dt, rng);
+        self.fill_gauss_increment(&mut d_w_full, sqrt_dt, rng);
         let k1_mu = (self.drift)(&x, time);
         let k1_sig = (self.diffusion)(&x, time);
         let mut x1 = x.clone();
         for i_dim in 0..dim {
           let mut incr = k1_mu[i_dim] * (dt / 2.0);
           for j_dim in 0..dim {
-            incr += k1_sig[[i_dim, j_dim]] * (dW_full[j_dim] * 0.5);
+            incr += k1_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * 0.5);
           }
           x1[i_dim] += incr;
         }
@@ -283,7 +291,7 @@ where
         for i_dim in 0..dim {
           let mut incr = k2_mu[i_dim] * (dt / 2.0);
           for j_dim in 0..dim {
-            incr += k2_sig[[i_dim, j_dim]] * (dW_full[j_dim] * 0.5);
+            incr += k2_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * 0.5);
           }
           x2[i_dim] += incr;
         }
@@ -293,7 +301,7 @@ where
         for i_dim in 0..dim {
           let mut incr = k3_mu[i_dim] * dt;
           for j_dim in 0..dim {
-            incr += k3_sig[[i_dim, j_dim]] * dW_full[j_dim];
+            incr += k3_sig[[i_dim, j_dim]] * d_w_full[j_dim];
           }
           x3[i_dim] += incr;
         }
@@ -302,17 +310,14 @@ where
         for i_dim in 0..dim {
           let drift_avg =
             (k1_mu[i_dim] + 2.0 * k2_mu[i_dim] + 2.0 * k3_mu[i_dim] + k4_mu[i_dim]) / 6.0;
-          let mut diff_vec = vec![0.0; dim];
+          let mut incr = drift_avg * dt;
           for j_dim in 0..dim {
-            diff_vec[j_dim] = (k1_sig[[i_dim, j_dim]]
+            let diff_ij = (k1_sig[[i_dim, j_dim]]
               + 2.0 * k2_sig[[i_dim, j_dim]]
               + 2.0 * k3_sig[[i_dim, j_dim]]
               + k4_sig[[i_dim, j_dim]])
               / 6.0;
-          }
-          let mut incr = drift_avg * dt;
-          for j_dim in 0..dim {
-            incr += diff_vec[j_dim] * dW_full[j_dim];
+            incr += diff_ij * d_w_full[j_dim];
           }
           x[i_dim] += incr;
         }
@@ -376,14 +381,14 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i_step in 1..=steps {
-        let dW = incs.slice(s![p, i_step - 1, ..]).to_owned();
+        let d_w = incs.slice(s![p, i_step - 1, ..]);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
-        let correction = self.milstein_correction(&x, time, &dW, dt);
+        let correction = self.milstein_correction(&x, time, d_w, dt);
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
-            incr += sigma_val[[i_dim, j_dim]] * dW[j_dim];
+            incr += sigma_val[[i_dim, j_dim]] * d_w[j_dim];
           }
           incr += correction[i_dim];
           x[i_dim] += incr;
@@ -494,17 +499,14 @@ where
         for i_dim in 0..dim {
           let drift_avg =
             (k1_mu[i_dim] + 2.0 * k2_mu[i_dim] + 2.0 * k3_mu[i_dim] + k4_mu[i_dim]) / 6.0;
-          let mut diff_vec = vec![0.0; dim];
+          let mut incr = drift_avg * dt;
           for j_dim in 0..dim {
-            diff_vec[j_dim] = (k1_sig[[i_dim, j_dim]]
+            let diff_ij = (k1_sig[[i_dim, j_dim]]
               + 2.0 * k2_sig[[i_dim, j_dim]]
               + 2.0 * k3_sig[[i_dim, j_dim]]
               + k4_sig[[i_dim, j_dim]])
               / 6.0;
-          }
-          let mut incr = drift_avg * dt;
-          for j_dim in 0..dim {
-            incr += diff_vec[j_dim] * dW_full[j_dim];
+            incr += diff_ij * dW_full[j_dim];
           }
           x[i_dim] += incr;
         }

@@ -1,7 +1,8 @@
 //! Ito transformation module
 
 use ndarray::Array1;
-use rand_distr::StandardNormal;
+
+use crate::traits::FloatExt;
 
 /// A structure defining the drift and diffusion functions of the SDE.
 /// Optionally, a jump term can be added (e.g., for jump-diffusion models).
@@ -139,18 +140,24 @@ impl ItoCalculator {
     t0: f64,
     t1: f64,
     dt: f64,
-    rng: &mut impl rand::Rng,
+    _rng: &mut impl rand::Rng,
   ) -> Array1<(f64, f64)> {
+    let steps = ((t1 - t0) / dt).ceil().max(0.0) as usize;
+    let sqrt_dt = dt.sqrt();
+    let mut normals = vec![0.0; steps];
+    <f64 as FloatExt>::fill_standard_normal_slice(&mut normals);
+
     let mut t = t0;
     let mut x = x0;
-    let mut path = vec![(t, x)];
+    let mut path = Vec::with_capacity(steps + 1);
+    path.push((t, x));
 
-    // Loop until we reach or surpass the final time t1.
-    while t < t1 {
+    // Loop over the precomputed Gaussian increments.
+    for z in normals {
       let mu = (self.process.drift)(t, x);
       let sigma = (self.process.diffusion)(t, x);
       // Brownian increment ~ Normal(0, dt).
-      let dw = sigma * dt.sqrt() * rng.sample::<f64, _>(StandardNormal);
+      let dw = sigma * sqrt_dt * z;
 
       // If a jump_term is defined, add its contribution over the interval dt.
       let jump = if let Some(jump_fn) = &self.process.jump_term {
