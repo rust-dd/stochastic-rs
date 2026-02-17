@@ -1,3 +1,9 @@
+//! # GBM Ih
+//!
+//! $$
+//! dS_t=\mu(t)S_t\,dt+\sigma(t)S_t\,dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,11 +13,15 @@ use crate::traits::ProcessExt;
 /// Inhomogeneous GBM with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
 pub struct GBMIH<T: FloatExt> {
+  /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Baseline sigma used when `sigmas` is None
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Optional per-step volatilities (length must be n-1)
   pub sigmas: Option<Array1<T>>,

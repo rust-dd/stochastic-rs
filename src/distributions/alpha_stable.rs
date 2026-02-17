@@ -1,3 +1,9 @@
+//! # Alpha Stable
+//!
+//! $$
+//! \varphi_X(u)=\exp\!\left(i\delta u-\gamma^\alpha |u|^\alpha\left[1-i\beta\operatorname{sgn}(u)\omega(u,\alpha)\right]\right)
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

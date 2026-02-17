@@ -1,3 +1,9 @@
+//! # Finite Difference
+//!
+//! $$
+//! \partial_t V+\tfrac12\sigma^2S^2\partial_{SS}V+rS\partial_SV-rV=0
+//! $$
+//!
 use ndarray::s;
 use ndarray::Array1;
 

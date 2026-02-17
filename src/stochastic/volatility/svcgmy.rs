@@ -1,3 +1,9 @@
+//! # Svcgmy
+//!
+//! $$
+//! dS_t=S_t\sqrt{v_t}dW_t + S_{t^-}dJ_t^{\mathrm{CGMY}},\quad dv_t=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dB_t
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand::Rng;
@@ -26,6 +32,7 @@ pub struct SVCGMY<T: FloatExt> {
   pub eta: T,
   /// Volatility of volatility
   pub zeta: T,
+  /// Instantaneous correlation parameter.
   pub rho: T,
   /// Number of time steps
   pub n: usize,

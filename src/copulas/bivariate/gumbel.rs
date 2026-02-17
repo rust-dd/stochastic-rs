@@ -1,3 +1,9 @@
+//! # Gumbel
+//!
+//! $$
+//! C_\theta(u,v)=\exp\!\left(-\left(({-\ln u})^\theta+({-\ln v})^\theta\right)^{1/\theta}\right),\ \theta\ge1
+//! $$
+//!
 use std::error::Error;
 
 use ndarray::Array1;

@@ -1,3 +1,9 @@
+//! # Garch
+//!
+//! $$
+//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
@@ -25,9 +31,13 @@ use crate::traits::ProcessExt;
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
 /// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
 pub struct GARCH<T: FloatExt> {
+  /// Constant term in conditional variance dynamics.
   pub omega: T,
+  /// Model shape / loading parameter.
   pub alpha: Array1<T>,
+  /// Model slope / loading parameter.
   pub beta: Array1<T>,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
   wn: Wn<T>,
 }

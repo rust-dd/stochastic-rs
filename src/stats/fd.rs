@@ -1,3 +1,9 @@
+//! # Fd
+//!
+//! $$
+//! \hat\theta_{FD}=\arg\min_\theta\sum_i\left(\Delta X_i-\mu_\theta(X_i)\Delta t\right)^2
+//! $$
+//!
 use std::f64::consts::LN_2;
 
 use linreg::linear_regression;
@@ -5,6 +11,7 @@ use ndarray::Array1;
 
 /// Fractal dimension.
 pub struct FractalDim {
+  /// Observed data/sample vector.
   pub x: Array1<f64>,
 }
 

@@ -1,3 +1,9 @@
+//! # Fbs
+//!
+//! $$
+//! \mathbb E[B^H(t_1,t_2)B^H(s_1,s_2)]=\prod_{j=1}^2\tfrac12\left(t_j^{2H_j}+s_j^{2H_j}-|t_j-s_j|^{2H_j}\right)
+//! $$
+//!
 use ndarray::linalg::kron;
 use ndarray::s;
 use ndarray::Array1;
@@ -14,9 +20,13 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct FBS<T: FloatExt> {
+  /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
+  /// Number of parallel paths / first-grid resolution.
   pub m: usize,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Risk-free rate / drift adjustment parameter.
   pub r: T,
 }
 

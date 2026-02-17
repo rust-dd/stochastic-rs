@@ -1,3 +1,9 @@
+//! # Fheston
+//!
+//! $$
+//! dS_t=\mu S_tdt+\sqrt{v_t}S_tdW_t,\quad dv_t=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dB_t^H
+//! $$
+//!
 use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
@@ -6,14 +12,23 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct RoughHeston<T: FloatExt> {
+  /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
+  /// Initial variance/volatility level.
   pub v0: Option<T>,
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Mean-reversion speed parameter.
   pub kappa: T,
+  /// Volatility-of-volatility / tail-thickness parameter.
   pub nu: T,
+  /// Model coefficient for factor 1.
   pub c1: Option<T>,
+  /// Model coefficient for factor 2.
   pub c2: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
   gn: Gn<T>,
 }

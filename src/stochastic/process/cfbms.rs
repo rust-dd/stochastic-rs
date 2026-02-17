@@ -1,3 +1,9 @@
+//! # Cfbms
+//!
+//! $$
+//! dX_t=L\,dB_t^H,\quad LL^\top=\Sigma
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::cfgns::CFGNS;
@@ -5,9 +11,13 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct CFBMS<T: FloatExt> {
+  /// Hurst parameter (`0 < H < 1`) shared by both components.
   pub hurst: T,
+  /// Instantaneous correlation between the two fractional-noise drivers.
   pub rho: T,
+  /// Number of discrete time points in each path.
   pub n: usize,
+  /// Total simulation horizon (defaults to `1` if `None`).
   pub t: Option<T>,
   cfgns: CFGNS<T>,
 }

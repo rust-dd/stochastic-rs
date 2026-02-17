@@ -1,3 +1,9 @@
+//! # Ma
+//!
+//! $$
+//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;

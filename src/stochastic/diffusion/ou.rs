@@ -1,3 +1,9 @@
+//! # Ou
+//!
+//! $$
+//! dX_t=\kappa(\theta-X_t)\,dt+\sigma\,dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -6,12 +12,19 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct OU<T: FloatExt> {
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Drift / long-run mean-level parameter.
   pub mu: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Gaussian increment generator used internally.
   pub gn: Gn<T>,
 }
 

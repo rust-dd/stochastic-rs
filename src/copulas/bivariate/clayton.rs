@@ -1,3 +1,9 @@
+//! # Clayton
+//!
+//! $$
+//! C_\theta(u,v)=\left(u^{-\theta}+v^{-\theta}-1\right)^{-1/\theta},\ \theta>0
+//! $$
+//!
 use std::error::Error;
 use std::f64;
 

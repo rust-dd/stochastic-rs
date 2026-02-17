@@ -1,3 +1,9 @@
+//! # Vg
+//!
+//! $$
+//! X_t=\theta G_t+\sigma W_{G_t},\quad G_t\sim\Gamma(\nu^{-1}t,\nu)
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
@@ -6,11 +12,17 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct VG<T: FloatExt> {
+  /// Drift / long-run mean-level parameter.
   pub mu: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Volatility-of-volatility / tail-thickness parameter.
   pub nu: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
 }
 

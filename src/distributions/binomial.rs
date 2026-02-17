@@ -1,3 +1,9 @@
+//! # Binomial
+//!
+//! $$
+//! \mathbb{P}(X=k)=\binom{n}{k}p^k(1-p)^{n-k}
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use num_traits::PrimInt;

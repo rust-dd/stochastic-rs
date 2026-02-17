@@ -1,3 +1,9 @@
+//! # Lib
+//!
+//! $$
+//! V_0 = \mathbb{E}^{\mathbb{Q}}\!\left[e^{-\int_0^T r_t\,dt}\,\Pi(X_T)\right]
+//! $$
+//!
 #![doc = include_str!("../README.md")]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]

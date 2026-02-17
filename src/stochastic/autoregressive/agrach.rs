@@ -1,3 +1,9 @@
+//! # Agrach
+//!
+//! $$
+//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
@@ -29,10 +35,15 @@ use crate::traits::ProcessExt;
 /// - This is essentially a T-GARCH-like structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
 pub struct AGARCH<T: FloatExt> {
+  /// Constant term in conditional variance dynamics.
   pub omega: T,
+  /// Model shape / loading parameter.
   pub alpha: Array1<T>,
+  /// Model shape / asymmetry parameter.
   pub delta: Array1<T>,
+  /// Model slope / loading parameter.
   pub beta: Array1<T>,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
   wn: Wn<T>,
 }

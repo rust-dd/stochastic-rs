@@ -1,3 +1,9 @@
+//! # Gamma
+//!
+//! $$
+//! f(x)=\frac{\beta^\alpha}{\Gamma(\alpha)}x^{\alpha-1}e^{-\beta x},\ x>0
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

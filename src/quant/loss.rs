@@ -1,3 +1,9 @@
+//! # Loss
+//!
+//! $$
+//! L=\frac1n\sum_{i=1}^n \ell(y_i,\hat y_i)
+//! $$
+//!
 /// Mean Absolute Error: MAE = (1/N) Σ|market_i - model_i|
 pub fn mae(market: &[f64], model: &[f64]) -> f64 {
   market

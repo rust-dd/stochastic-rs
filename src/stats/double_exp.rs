@@ -1,9 +1,18 @@
+//! # Double Exp
+//!
+//! $$
+//! f(x)=\frac{\lambda}{2}e^{-\lambda|x-\mu|}
+//! $$
+//!
 use rand::Rng;
 use rand_distr::Distribution;
 
 pub struct DoubleExp {
+  /// Mixing probability parameter.
   pub p: Option<f64>,
+  /// Positive-tail exponential rate parameter.
   pub lambda_plus: f64,
+  /// Negative-tail exponential rate parameter.
   pub lambda_minus: f64,
 }
 

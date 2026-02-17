@@ -1,5 +1,9 @@
-//! Profit and Loss utilities for option pricing and risk decomposition
-
+//! # Pnl
+//!
+//! $$
+//! \mathrm{PnL}_t=V_t-V_0-\int_0^t \Delta_u\,dS_u
+//! $$
+//!
 #[derive(Clone, Debug)]
 pub struct GreekPnL {
   /// Delta

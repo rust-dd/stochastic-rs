@@ -1,3 +1,9 @@
+//! # Kimura
+//!
+//! $$
+//! dX_t=(a+bX_t)dt+\sigma\sqrt{X_t}\,dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,11 +13,17 @@ use crate::traits::ProcessExt;
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
 pub struct Kimura<T: FloatExt> {
+  /// Model coefficient / user-supplied drift term.
   pub a: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Gaussian increment generator used internally.
   pub gn: Gn<T>,
 }
 

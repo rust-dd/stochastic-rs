@@ -1,3 +1,9 @@
+//! # Cfgns
+//!
+//! $$
+//! Z_t=L\eta_t^H,\quad \operatorname{Cov}(\eta_i^H,\eta_j^H)=\gamma_H(i-j)
+//! $$
+//!
 use ndarray::Array1;
 
 use super::fgn::FGN;
@@ -5,9 +11,13 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct CFGNS<T: FloatExt> {
+  /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
+  /// Instantaneous correlation parameter.
   pub rho: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   fgn: FGN<T>,
 }

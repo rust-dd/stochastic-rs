@@ -1,21 +1,9 @@
-//! A multi-dimensional Wu–Zhang-style model, combining a forward rate and a stochastic
-//! volatility process for each dimension.
+//! # Wu Zhang
 //!
-//! Produces a 2D array (`(2*xn, n)`) of forward rates and volatilities. The first `xn` rows
-//! are the forward rates; the next `xn` rows are the volatilities, each evolving over `n` steps.
+//! $$
+//! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
+//! $$
 //!
-//! # Parameters
-//! - `alpha`: Mean reversion level for each dimension's volatility.
-//! - `beta`: Mean reversion speed for each dimension's volatility.
-//! - `nu`: Volatility-of-volatility parameter for each dimension.
-//! - `lambda`: Parameter controlling how volatility impacts the forward rate.
-//! - `x0`: Initial forward rates for each dimension.
-//! - `v0`: Initial volatilities for each dimension.
-//! - `xn`: Number of `(rate, vol)` pairs.
-//! - `t`: Total time horizon.
-//! - `n`: Number of time steps in the simulation.
-//! - `m`: Batch size for parallel sampling (if used).
-
 use ndarray::Array1;
 use ndarray::Array2;
 

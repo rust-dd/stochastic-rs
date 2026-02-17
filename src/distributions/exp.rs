@@ -1,3 +1,9 @@
+//! # Exp
+//!
+//! $$
+//! f(x)=\lambda e^{-\lambda x},\ x\ge 0
+//! $$
+//!
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
 

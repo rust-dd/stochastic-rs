@@ -1,3 +1,9 @@
+//! # NIG
+//!
+//! $$
+//! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{IG}(\delta t,\gamma)
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
@@ -6,11 +12,17 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct NIG<T: FloatExt> {
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Mean-reversion speed parameter.
   pub kappa: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
 }
 

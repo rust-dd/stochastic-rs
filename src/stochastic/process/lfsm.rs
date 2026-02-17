@@ -1,3 +1,9 @@
+//! # LFSM
+//!
+//! $$
+//! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)\,dL_u^{\alpha}
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
@@ -14,12 +20,23 @@ use crate::traits::ProcessExt;
 /// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
 /// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
 pub struct LFSM<T: FloatExt> {
+  /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
+  /// Smaller values produce heavier tails and larger jumps.
   pub alpha: T,
+  /// Skewness of the stable innovations (`-1 <= beta <= 1`).
+  /// Controls left/right jump asymmetry.
   pub beta: T,
+  /// Self-similarity / roughness parameter (`1/alpha < H < 1` here).
+  /// Governs long-memory strength in the fractional kernel.
   pub hurst: T,
+  /// Scale of the stable noise term.
+  /// Larger values increase path variability.
   pub scale: T,
+  /// Number of grid points along the path.
   pub n: usize,
+  /// Initial process value.
   pub x0: Option<T>,
+  /// Total simulated time horizon (defaults to `1` if `None`).
   pub t: Option<T>,
 }
 

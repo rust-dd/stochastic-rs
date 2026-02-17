@@ -1,3 +1,9 @@
+//! # CIR
+//!
+//! $$
+//! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
+//! $$
+//!
 use num_complex::Complex64;
 use rand::rng;
 use rand::Rng;

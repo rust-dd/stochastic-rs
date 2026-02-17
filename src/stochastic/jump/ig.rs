@@ -1,3 +1,9 @@
+//! # IG
+//!
+//! $$
+//! L_t\sim\mathrm{IG}(\mu t,\lambda t),\quad X_t=L_t\text{ or time-change driver}
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
@@ -6,9 +12,13 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct IG<T: FloatExt> {
+  /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
 }
 

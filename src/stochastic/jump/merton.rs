@@ -1,3 +1,9 @@
+//! # Merton
+//!
+//! $$
+//! \frac{dS_t}{S_{t^-}}=(\mu-\lambda\kappa)dt+\sigma dW_t+(Y-1)dN_t
+//! $$
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 

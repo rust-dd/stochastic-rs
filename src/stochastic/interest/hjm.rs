@@ -1,3 +1,9 @@
+//! # HJM
+//!
+//! $$
+//! df(t,T)=\alpha(t,T)dt+\sigma(t,T)\,dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -11,17 +17,29 @@ use crate::traits::ProcessExt;
 /// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
 /// does not enforce the no-arbitrage HJM drift restriction between `alpha` and `sigma`.
 pub struct HJM<T: FloatExt> {
+  /// Model coefficient / user-supplied drift term.
   pub a: Fn1D<T>,
+  /// Model coefficient / user-supplied diffusion term.
   pub b: Fn1D<T>,
+  /// Order / lag count for the autoregressive component.
   pub p: Fn2D<T>,
+  /// Model coefficient / moving-average term parameter.
   pub q: Fn2D<T>,
+  /// Volatility / variance level or coefficient.
   pub v: Fn2D<T>,
+  /// Model shape / loading parameter.
   pub alpha: Fn2D<T>,
+  /// Diffusion / noise scale parameter.
   pub sigma: Fn2D<T>,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial short-rate / interest-rate level.
   pub r0: Option<T>,
+  /// Initial bond-price / auxiliary level.
   pub p0: Option<T>,
+  /// Initial forward-rate level.
   pub f0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

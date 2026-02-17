@@ -1,3 +1,9 @@
+//! # Order Book
+//!
+//! $$
+//! \text{mid}_t=\frac{best\_bid_t+best\_ask_t}{2},\quad \Delta q_t=\text{arrivals}-\text{cancellations}
+//! $$
+//!
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -19,9 +25,13 @@ pub enum Side {
 /// A single limit order resting in the order book.
 #[derive(Debug, Clone)]
 pub struct Order {
+  /// Unique order identifier.
   pub id: u64,
+  /// Order side (buy/sell).
   pub side: Side,
+  /// Order/trade price.
   pub price: f64,
+  /// Order/trade size.
   pub size: f64,
   pub timestamp: u128, // µs since Unix epoch – used for *time* priority
 }
@@ -29,10 +39,15 @@ pub struct Order {
 /// Executed trade (taker × maker).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trade {
+  /// Aggressing side of the trade.
   pub taker_side: Side,
+  /// Order/trade price.
   pub price: f64,
+  /// Order/trade size.
   pub size: f64,
+  /// Taker order identifier.
   pub taker_id: u64,
+  /// Maker order identifier.
   pub maker_id: u64,
 }
 

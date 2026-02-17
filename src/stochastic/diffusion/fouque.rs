@@ -1,3 +1,9 @@
+//! # Fouque
+//!
+//! $$
+//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -9,13 +15,21 @@ use crate::traits::ProcessExt;
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
 pub struct FouqueOU2D<T: FloatExt> {
+  /// Mean-reversion speed parameter.
   pub kappa: T,
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Model parameter controlling process dynamics.
   pub epsilon: T,
+  /// Model shape / loading parameter.
   pub alpha: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Initial value of the secondary state variable.
   pub y0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

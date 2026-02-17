@@ -1,5 +1,9 @@
-//! Stochastic differential equation solver
-
+//! # Sde
+//!
+//! $$
+//! X_t = X_0 + \int_0^t a(s,X_s)\,ds + \int_0^t b(s,X_s)\,dW_s
+//! $$
+//!
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;

@@ -1,3 +1,9 @@
+//! # Normal Inverse Gauss
+//!
+//! $$
+//! X\sim\mathrm{NIG}(\alpha,\beta,\delta,\mu),\ \psi(u)=\mu u+\delta\left(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+iu)^2}\right)
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

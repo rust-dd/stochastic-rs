@@ -1,3 +1,9 @@
+//! # Asian
+//!
+//! $$
+//! V_0=e^{-rT}\,\mathbb E\!\left[\left(\frac1T\int_0^T S_tdt-K\right)^+\right]
+//! $$
+//!
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 

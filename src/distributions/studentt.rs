@@ -1,3 +1,9 @@
+//! # Studentt
+//!
+//! $$
+//! f(x)=\frac{\Gamma((\nu+1)/2)}{\sqrt{\nu\pi}\,\Gamma(\nu/2)}\left(1+\frac{x^2}{\nu}\right)^{-(\nu+1)/2}
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

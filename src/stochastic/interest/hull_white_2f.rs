@@ -1,3 +1,9 @@
+//! # Hull White 2f
+//!
+//! $$
+//! dr_t=x_t+y_t,\ dx_t=-a x_t dt+\sigma_1 dW_t^1,\ dy_t=-b y_t dt+\sigma_2 dW_t^2
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
@@ -6,14 +12,23 @@ use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct HullWhite2F<T: FloatExt> {
+  /// Jump-size adjustment / shape parameter.
   pub k: Fn1D<T>,
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Diffusion/noise scale for factor 1.
   pub sigma1: T,
+  /// Diffusion/noise scale for factor 2.
   pub sigma2: T,
+  /// Instantaneous correlation parameter.
   pub rho: T,
+  /// Model coefficient / user-supplied diffusion term.
   pub b: T,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
   cgns: CGNS<T>,
 }

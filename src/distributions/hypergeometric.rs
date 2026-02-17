@@ -1,3 +1,9 @@
+//! # Hypergeometric
+//!
+//! $$
+//! \mathbb{P}(X=k)=\frac{\binom{K}{k}\binom{N-K}{n-k}}{\binom{N}{n}}
+//! $$
+//!
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 

@@ -1,3 +1,9 @@
+//! # RDTS
+//!
+//! $$
+//! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx\quad(\text{rapidly decaying tempered stable})
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand::Rng;

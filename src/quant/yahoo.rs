@@ -1,3 +1,9 @@
+//! # Yahoo
+//!
+//! $$
+//! \text{market data stream }\mapsto\text{ cleaned OHLCV time series}
+//! $$
+//!
 use std::borrow::Cow;
 use std::fmt::Display;
 

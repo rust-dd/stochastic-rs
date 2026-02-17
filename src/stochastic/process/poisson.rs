@@ -1,3 +1,9 @@
+//! # Poisson
+//!
+//! $$
+//! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
+//! $$
+//!
 use ndarray::Array0;
 use ndarray::Array1;
 use ndarray::Axis;
@@ -12,8 +18,13 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct Poisson<T: FloatExt> {
+  /// Jump intensity (expected arrivals per unit time).
   pub lambda: T,
+  /// Optional fixed number of sampled events.
+  /// If set, the process is generated with exactly `n` increments.
   pub n: Option<usize>,
+  /// Optional terminal time for horizon-based sampling.
+  /// If set (and `n` is `None`), events are sampled up to `t_max`.
   pub t_max: Option<T>,
 }
 

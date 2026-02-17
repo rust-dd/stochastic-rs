@@ -1,3 +1,9 @@
+//! # Rbergomi
+//!
+//! $$
+//! dS_t=S_t\sqrt{v_t}dW_t^1,\quad X_t=\int_0^t (t-s)^{H-1/2}dW_s^2
+//! $$
+//!
 use ndarray::s;
 use ndarray::Array1;
 
@@ -6,13 +12,21 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct RoughBergomi<T: FloatExt> {
+  /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
+  /// Volatility-of-volatility / tail-thickness parameter.
   pub nu: T,
+  /// Initial variance/volatility level.
   pub v0: Option<T>,
+  /// Initial asset/price level.
   pub s0: Option<T>,
+  /// Risk-free rate / drift adjustment parameter.
   pub r: T,
+  /// Instantaneous correlation parameter.
   pub rho: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   cgns: CGNS<T>,
 }

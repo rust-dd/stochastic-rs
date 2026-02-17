@@ -1,3 +1,9 @@
+//! # CTS
+//!
+//! $$
+//! \nu(dx)=c_+e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}dx+c_-e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}dx
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand::Rng;

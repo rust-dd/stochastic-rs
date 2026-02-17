@@ -1,3 +1,9 @@
+//! # CIR 2f
+//!
+//! $$
+//! r_t=x_t+y_t,\ dx_t=\kappa_1(\theta_1-x_t)dt+\sigma_1\sqrt{x_t}dW_t^1,\ dy_t=\kappa_2(\theta_2-y_t)dt+\sigma_2\sqrt{y_t}dW_t^2
+//! $$
+//!
 use ndarray::Array1;
 
 use super::cir::CIR;
@@ -6,8 +12,11 @@ use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct CIR2F<T: FloatExt> {
+  /// Model parameter controlling process dynamics.
   pub x: CIR<T>,
+  /// Model parameter controlling process dynamics.
   pub y: CIR<T>,
+  /// Autoregressive coefficient vector.
   pub phi: Fn1D<T>,
 }
 

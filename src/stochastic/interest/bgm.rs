@@ -1,16 +1,9 @@
-//! A simple single-factor BGM (Brace–Gatarek–Musiela) model for forward rates.
+//! # BGM
 //!
-//! Produces a 2D array (`(xn, n)`) of forward rate paths. Each row represents a separate
-//! forward rate, evolving over `n` time steps.
+//! $$
+//! dL_i(t)=\mu_i(t)L_i(t)dt+\sigma_i(t)L_i(t)dW_t
+//! $$
 //!
-//! # Parameters
-//! - `lambda`: The drift/volatility multiplier for each forward rate.
-//! - `x0`: Initial forward rates for each path.
-//! - `xn`: Number of forward rates (rows) to simulate.
-//! - `t`: Total time horizon.
-//! - `n`: Number of time steps in the simulation.
-//! - `m`: Batch size for parallel sampling (if used).
-
 use ndarray::Array1;
 use ndarray::Array2;
 

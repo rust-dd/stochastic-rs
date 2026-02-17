@@ -1,3 +1,9 @@
+//! # Feller
+//!
+//! $$
+//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,11 +13,17 @@ use crate::traits::ProcessExt;
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
 pub struct FellerLogistic<T: FloatExt> {
+  /// Mean-reversion speed parameter.
   pub kappa: T,
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   /// If true, reflect at 0; otherwise clamp at 0
   pub use_sym: Option<bool>,

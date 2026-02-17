@@ -1,3 +1,9 @@
+//! # Ccustom
+//!
+//! $$
+//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t+\sum_{k=1}^{dN_t}J_k
+//! $$
+//!
 use ndarray::Array1;
 use ndarray::Axis;
 use rand::rng;
@@ -13,10 +19,16 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
+  /// Optional fixed number of generated events.
   pub n: Option<usize>,
+  /// Optional horizon for time-based generation.
+  /// Used when `n` is `None`.
   pub t_max: Option<T>,
+  /// Distribution of jump magnitudes.
   pub jumps_distribution: D1,
+  /// Distribution of jump waiting times / event times.
   pub jump_times_distribution: D2,
+  /// Underlying jump-time generator used internally.
   pub customjt: CustomJt<T, D2>,
 }
 

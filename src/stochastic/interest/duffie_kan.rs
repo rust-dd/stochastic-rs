@@ -1,31 +1,9 @@
-//! A standard Duffie–Kan two-factor model without jumps.
+//! # Duffie Kan
 //!
-//! # Model Definition
+//! $$
+//! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
+//! $$
 //!
-//! We consider two state variables, `r(t)` and `x(t)`, evolving under:
-//!
-//! \
-//! \[
-//!   dr(t) = \bigl(a_1 r(t) + b_1 x(t) + c_1\bigr)\,dt
-//!            + \sigma_1 \bigl(\alpha\,r(t) + \beta\,x(t) + \gamma\bigr)\,dW_1(t),
-//! \]
-//! \[
-//!   dx(t) = \bigl(a_2 r(t) + b_2 x(t) + c_2\bigr)\,dt
-//!            + \sigma_2 \bigl(\alpha\,r(t) + \beta\,x(t) + \gamma\bigr)\,dW_2(t),
-//! \]
-//!
-//! # Parameters
-//! - `alpha, beta, gamma`: Linear combination for the diffusion part.
-//! - `a1, b1, c1, sigma1`: Drift and diffusion coefficients for `r(t)`.
-//! - `a2, b2, c2, sigma2`: Drift and diffusion coefficients for `x(t)`.
-//! - `rho`: Correlation parameter is handled by the `cgns` correlated noise system
-//!   (not used directly here, but embedded in the `CGNS` object).
-//! - `r0, x0`: Initial values for `r(t)` and `x(t)`.
-//! - `t`: Total time horizon.
-//! - `n`: Number of time steps for simulation.
-//! - `m`: Batch size for parallelization (if any).
-//! - `cgns`: A correlated Gaussian noise system that produces two correlated Brownian increments.
-
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
@@ -34,21 +12,37 @@ use crate::traits::ProcessExt;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
 pub struct DuffieKan<T: FloatExt> {
+  /// Model shape / loading parameter.
   pub alpha: T,
+  /// Model slope / loading parameter.
   pub beta: T,
+  /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
+  /// Instantaneous correlation parameter.
   pub rho: T,
+  /// Model coefficient for factor 1.
   pub a1: T,
+  /// Model coefficient for factor 1.
   pub b1: T,
+  /// Model coefficient for factor 1.
   pub c1: T,
+  /// Diffusion/noise scale for factor 1.
   pub sigma1: T,
+  /// Model coefficient for factor 2.
   pub a2: T,
+  /// Model coefficient for factor 2.
   pub b2: T,
+  /// Model coefficient for factor 2.
   pub c2: T,
+  /// Diffusion/noise scale for factor 2.
   pub sigma2: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial short-rate / interest-rate level.
   pub r0: Option<T>,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   cgns: CGNS<T>,
 }

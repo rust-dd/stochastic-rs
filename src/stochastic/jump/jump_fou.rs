@@ -1,3 +1,9 @@
+//! # Jump fOU
+//!
+//! $$
+//! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t
+//! $$
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 

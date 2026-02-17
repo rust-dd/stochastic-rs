@@ -1,3 +1,9 @@
+//! # Poisson
+//!
+//! $$
+//! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use num_traits::PrimInt;

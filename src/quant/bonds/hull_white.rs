@@ -1,3 +1,9 @@
+//! # Hull White
+//!
+//! $$
+//! dr_t=\left(\theta(t)-a r_t\right)dt+\sigma dW_t
+//! $$
+//!
 use chrono::Datelike;
 use chrono::Utc;
 

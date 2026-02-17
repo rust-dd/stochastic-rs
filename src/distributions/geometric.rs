@@ -1,3 +1,9 @@
+//! # Geometric
+//!
+//! $$
+//! \mathbb{P}(X=k)=(1-p)^{k-1}p,\ k\ge 1
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use num_traits::PrimInt;

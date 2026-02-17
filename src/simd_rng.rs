@@ -1,3 +1,9 @@
+//! # Simd Rng
+//!
+//! $$
+//! u_{k+1}=F(u_k),\quad x_k = \mathrm{transform}(u_k)
+//! $$
+//!
 use rand::Rng;
 use rand::RngCore;
 use wide::i32x8;

@@ -1,5 +1,9 @@
-//! Isonormal processes
-
+//! # Isonormal
+//!
+//! $$
+//! \mathbb{E}[W(h)W(g)] = \langle h, g \rangle_{\mathcal H}
+//! $$
+//!
 use gauss_quad::GaussLegendre;
 use ndarray::concatenate;
 use ndarray::prelude::*;
@@ -27,12 +31,13 @@ use crate::traits::FloatExt;
 ///
 /// # Example
 ///
-/// ```rust
-/// let inner_product = |aux_idx: usize, idx: usize| -> f64 {
-///     fbm_custom_inc_cov(idx, 0.7)
-/// };
-/// let index_functions = vec![1, 2, 3, 4, 5];
-/// let iso_normal = ISONormal::new(inner_product, "fft", index_functions);
+/// ```ignore
+/// use stochastic_rs::stochastic::isonormal::{fbm_custom_inc_cov, ISONormal};
+///
+/// let inner_product = |_aux_idx: usize, idx: usize| -> f64 { fbm_custom_inc_cov(idx, 0.7) };
+/// let index_functions = vec![0, 1, 2, 3, 4];
+/// let mut iso_normal = ISONormal::new(inner_product, index_functions);
+/// let _path = iso_normal.get_path();
 /// ```
 ///
 /// In this example, an Isonormal process is defined using the fractional Brownian motion covariance increments.

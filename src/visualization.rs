@@ -1,3 +1,9 @@
+//! # Visualization
+//!
+//! $$
+//! \text{paths }\{X_t^{(k)}\}_{k=1}^m \mapsto \text{diagnostic charts on common grids}
+//! $$
+//!
 use ndarray::Array1;
 use ndarray::Array2;
 use plotly::common::Anchor;

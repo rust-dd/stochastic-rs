@@ -1,3 +1,9 @@
+//! # Gaussian Kde
+//!
+//! $$
+//! \hat f_h(x)=\frac{1}{nh}\sum_{i=1}^n\phi\!\left(\frac{x-x_i}{h}\right)
+//! $$
+//!
 use std::f64::consts::PI;
 
 use ndarray::Array1;

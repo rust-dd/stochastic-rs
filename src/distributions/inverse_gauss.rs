@@ -1,3 +1,9 @@
+//! # Inverse Gauss
+//!
+//! $$
+//! f(x)=\sqrt{\frac{\lambda}{2\pi x^3}}\exp\!\left(-\frac{\lambda(x-\mu)^2}{2\mu^2 x}\right),\ x>0
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

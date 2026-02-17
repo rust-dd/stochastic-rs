@@ -48,6 +48,7 @@ maturin develop --release
 ```rust
 use stochastic_rs::stochastic::process::fbm::FBM;
 use stochastic_rs::stochastic::volatility::heston::Heston;
+use stochastic_rs::stochastic::volatility::HestonPow;
 use stochastic_rs::traits::ProcessExt;
 
 fn main() {
@@ -59,7 +60,19 @@ fn main() {
     let paths = fbm.sample_par(1000);
 
     // Heston stochastic volatility
-    let heston = Heston::new(0.05, 2.0, 0.04, 0.3, -0.7, 1000, Some(100.0), Some(0.04), None, None);
+    let heston = Heston::new(
+        Some(100.0),   // s0
+        Some(0.04),    // v0
+        2.0,           // kappa
+        0.04,          // theta
+        0.3,           // sigma
+        -0.7,          // rho
+        0.05,          // mu
+        1000,          // n
+        None,          // t
+        HestonPow::Sqrt,
+        Some(false),
+    );
     let [price, variance] = heston.sample();
 }
 ```

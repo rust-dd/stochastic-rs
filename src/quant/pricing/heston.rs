@@ -1,3 +1,9 @@
+//! # Heston
+//!
+//! $$
+//! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\dv_t&=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dW_t^v,\ d\langle W^S,W^v\rangle_t=\rho dt\end{aligned}
+//! $$
+//!
 use std::f64::consts::FRAC_1_PI;
 
 use implied_vol::implied_black_volatility;

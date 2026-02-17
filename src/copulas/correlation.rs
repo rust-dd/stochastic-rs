@@ -1,3 +1,9 @@
+//! # Correlation
+//!
+//! $$
+//! \rho_{ij}=\frac{\operatorname{Cov}(X_i,X_j)}{\sigma_i\sigma_j}
+//! $$
+//!
 use ndarray::Array2;
 
 /// Kendall's tau matrix for a given data matrix

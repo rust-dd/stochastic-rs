@@ -1,3 +1,9 @@
+//! # Tree
+//!
+//! $$
+//! \text{Tree copula factorization over pair-copulas on spanning levels}
+//! $$
+//!
 use std::error::Error;
 
 use ndarray::Array1;

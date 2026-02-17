@@ -1,5 +1,9 @@
-//! Ito transformation module
-
+//! # Ito
+//!
+//! $$
+//! df(t,X_t)=\left(f_t+a f_x+\tfrac12 b^2 f_{xx}\right)dt + b f_x dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::traits::FloatExt;
@@ -25,7 +29,9 @@ pub struct Function2D {
 
 /// A simple result structure holding the drift and diffusion terms from the Ito transformation.
 pub struct ItoResult {
+  /// Model parameter controlling process dynamics.
   pub drift_term: f64,
+  /// Model parameter controlling process dynamics.
   pub diffusion_term: f64,
 }
 
@@ -38,8 +44,11 @@ pub struct ItoResult {
 /// * `function` - The 2D function \(f(t, x)\) for Ito's lemma.
 /// * `h` - A small step used in the finite-difference approximation.
 pub struct ItoCalculator {
+  /// Model parameter controlling process dynamics.
   pub process: DiffusionProcessFn,
+  /// Model parameter controlling process dynamics.
   pub function: Function2D,
+  /// Model parameter controlling process dynamics.
   pub h: f64,
 }
 

@@ -1,3 +1,9 @@
+//! # Quadratic
+//!
+//! $$
+//! dX_t=(aX_t^2+bX_t+c)dt+\sigma X_t dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,12 +13,19 @@ use crate::traits::ProcessExt;
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
 pub struct Quadratic<T: FloatExt> {
+  /// Model shape / loading parameter.
   pub alpha: T,
+  /// Model slope / loading parameter.
   pub beta: T,
+  /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

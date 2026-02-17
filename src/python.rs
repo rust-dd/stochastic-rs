@@ -1,3 +1,9 @@
+//! # Python
+//!
+//! $$
+//! \text{Python call} \xrightarrow{\text{PyO3}} \text{Rust engine} \xrightarrow{} \text{numpy-compatible outputs}
+//! $$
+//!
 use ndarray::Array1;
 use pyo3::prelude::*;
 

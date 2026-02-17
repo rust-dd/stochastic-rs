@@ -1,3 +1,9 @@
+//! # Vine
+//!
+//! $$
+//! c(u)=\prod_{m=1}^{d-1}\prod_{e\in E_m} c_{a_e,b_e\mid D_e}(u_{a_e\mid D_e},u_{b_e\mid D_e})
+//! $$
+//!
 use std::error::Error;
 
 use ndarray::Array1;

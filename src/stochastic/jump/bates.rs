@@ -1,3 +1,9 @@
+//! # Bates
+//!
+//! $$
+//! \begin{aligned}dS_t&=(r-r_f-\lambda k)S_tdt+\sqrt{v_t}S_t dW_t^S+(Y-1)S_{t^-}dN_t\\dv_t&=\kappa(\theta-v_t)dt+\sigma\sqrt{v_t}dW_t^v\end{aligned}
+//! $$
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 

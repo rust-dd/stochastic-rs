@@ -1,3 +1,9 @@
+//! # Distributions
+//!
+//! $$
+//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
+//! $$
+//!
 use rand::Rng;
 use wide::f32x8;
 use wide::f64x8;

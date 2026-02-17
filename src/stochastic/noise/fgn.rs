@@ -1,3 +1,9 @@
+//! # fGN
+//!
+//! $$
+//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
+//! $$
+//!
 mod core;
 #[cfg(feature = "cuda")]
 mod cuda;

@@ -1,3 +1,9 @@
+//! # Cev
+//!
+//! $$
+//! dS_t=\mu S_t\,dt+\sigma S_t^{\gamma}\,dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -5,11 +11,17 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct CEV<T: FloatExt> {
+  /// Drift / long-run mean-level parameter.
   pub mu: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

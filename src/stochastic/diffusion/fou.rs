@@ -1,3 +1,9 @@
+//! # fOU
+//!
+//! $$
+//! dX_t=\kappa(\theta-X_t)\,dt+\sigma\,dB_t^H
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::fgn::FGN;
@@ -5,12 +11,19 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct FOU<T: FloatExt> {
+  /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Drift / long-run mean-level parameter.
   pub mu: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   fgn: FGN<T>,
 }

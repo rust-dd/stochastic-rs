@@ -1,3 +1,9 @@
+//! # Macros
+//!
+//! $$
+//! \text{macro expansion} : (\text{model spec}) \mapsto (\text{impl blocks})
+//! $$
+//!
 #[cfg(feature = "python")]
 macro_rules! py_process_1d {
   ($py_name:ident, $inner:ident,

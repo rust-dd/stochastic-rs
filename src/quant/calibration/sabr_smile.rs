@@ -1,3 +1,9 @@
+//! # SABR Smile
+//!
+//! $$
+//! \sigma_{imp}(K)\approx \sigma_{Hagan}(K;\alpha,\beta,\rho,\nu)
+//! $$
+//!
 use argmin::core::CostFunction;
 use argmin::core::Executor;
 use argmin::core::Gradient;
@@ -58,13 +64,21 @@ impl SabrSmileCalibrator {
 
 #[derive(Clone, Debug)]
 pub struct SabrSmileResult {
+  /// ATM strike inferred from smile fit.
   pub k_atm: f64,
+  /// Call strike corresponding to risk-reversal quote.
   pub k_rr_call: f64,
+  /// Put strike corresponding to risk-reversal quote.
   pub k_rr_put: f64,
+  /// Call strike corresponding to butterfly quote.
   pub k_bf_call: f64,
+  /// Put strike corresponding to butterfly quote.
   pub k_bf_put: f64,
+  /// Model parameter set (input or calibrated output).
   pub params: SabrParams,
+  /// Final objective-function value.
   pub objective: f64,
+  /// Indicates whether optimization converged successfully.
   pub success: bool,
 }
 

@@ -1,3 +1,9 @@
+//! # Ho Lee
+//!
+//! $$
+//! dr_t=\theta(t)dt+\sigma dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,10 +13,15 @@ use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
 pub struct HoLee<T: FloatExt> {
+  /// Model parameter controlling process dynamics.
   pub f_T: Option<Fn1D<T>>,
+  /// Long-run target level / model location parameter.
   pub theta: Option<T>,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

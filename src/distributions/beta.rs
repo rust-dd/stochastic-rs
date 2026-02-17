@@ -1,3 +1,9 @@
+//! # Beta
+//!
+//! $$
+//! f(x)=\frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha,\beta)},\ x\in(0,1)
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

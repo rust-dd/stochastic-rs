@@ -1,3 +1,9 @@
+//! # Empirical
+//!
+//! $$
+//! C_n(u,v)=\frac{1}{n}\sum_{i=1}^n \mathbf 1\{U_i\le u,\,V_i\le v\}
+//! $$
+//!
 use ndarray::Array1;
 use ndarray::Array2;
 

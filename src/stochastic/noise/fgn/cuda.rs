@@ -1,3 +1,9 @@
+//! # CUDA
+//!
+//! $$
+//! \varepsilon \sim \mathcal N(0,\Sigma)\ \text{with optional fractional covariance shaping}
+//! $$
+//!
 use std::any::TypeId;
 use std::path::PathBuf;
 use std::sync::Mutex;

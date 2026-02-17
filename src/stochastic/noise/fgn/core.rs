@@ -1,3 +1,9 @@
+//! # Core
+//!
+//! $$
+//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
+//! $$
+//!
 use std::sync::Arc;
 
 use ndarray::concatenate;
@@ -10,13 +16,19 @@ use num_complex::Complex;
 use crate::traits::FloatExt;
 
 pub struct FGN<T: FloatExt> {
+  /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Model parameter controlling process dynamics.
   pub offset: usize,
   pub(crate) out_len: usize,
   pub(crate) scale: T,
+  /// Model parameter controlling process dynamics.
   pub sqrt_eigenvalues: Arc<Array1<T>>,
+  /// Model parameter controlling process dynamics.
   pub fft_handler: Arc<FftHandler<T>>,
 }
 

@@ -1,3 +1,9 @@
+//! # Cgns
+//!
+//! $$
+//! Z_t=L\varepsilon_t,\quad \varepsilon_t\sim\mathcal N(0,I),\ LL^\top=\Sigma
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -6,8 +12,11 @@ use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct CGNS<T: FloatExt> {
+  /// Instantaneous correlation parameter.
   pub rho: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

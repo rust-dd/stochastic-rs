@@ -1,3 +1,9 @@
+//! # Traits
+//!
+//! $$
+//! \text{Trait contracts: }\mathcal{A}:\text{inputs}\to\text{samples/prices/statistics}
+//! $$
+//!
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::Debug;

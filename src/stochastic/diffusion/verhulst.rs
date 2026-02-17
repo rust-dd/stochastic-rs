@@ -1,3 +1,9 @@
+//! # Verhulst
+//!
+//! $$
+//! dX_t=rX_t\left(1-\frac{X_t}{K}\right)dt+\sigma X_t dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,11 +13,17 @@ use crate::traits::ProcessExt;
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
 pub struct Verhulst<T: FloatExt> {
+  /// Risk-free rate / drift adjustment parameter.
   pub r: T,
+  /// Jump-size adjustment / shape parameter.
   pub k: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   /// If true, clamp the state into [0, K] each step
   pub clamp: Option<bool>,

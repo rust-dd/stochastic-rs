@@ -1,3 +1,9 @@
+//! # Stats
+//!
+//! $$
+//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
+//! $$
+//!
 pub mod cir;
 pub mod double_exp;
 pub mod fd;

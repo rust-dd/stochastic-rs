@@ -1,3 +1,9 @@
+//! # Chi Square
+//!
+//! $$
+//! X\sim\chi^2_\nu,\quad f(x)=\frac{1}{2^{\nu/2}\Gamma(\nu/2)}x^{\nu/2-1}e^{-x/2}
+//! $$
+//!
 use rand::Rng;
 use rand_distr::Distribution;
 

@@ -1,3 +1,9 @@
+//! # Pareto
+//!
+//! $$
+//! f(x)=\alpha x_m^\alpha x^{-(\alpha+1)},\ x\ge x_m
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

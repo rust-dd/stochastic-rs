@@ -1,3 +1,9 @@
+//! # Non Central Chi Squared
+//!
+//! $$
+//! X\sim\chi^2_\nu(\lambda),\quad f_X(x)=\tfrac12 e^{-(x+\lambda)/2}(x/\lambda)^{\nu/4-1/2}I_{\nu/2-1}(\sqrt{\lambda x})
+//! $$
+//!
 use rand::Rng;
 use rand_distr::Distribution;
 

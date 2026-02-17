@@ -1,3 +1,9 @@
+//! # Cpoisson
+//!
+//! $$
+//! X_t=\sum_{k=1}^{N_t}Y_k,\quad N_t\sim\mathrm{Poisson}(\lambda t)
+//! $$
+//!
 use ndarray::Array1;
 use ndarray::Axis;
 use rand::rng;
@@ -14,7 +20,9 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Distribution of per-jump sizes `Y_k`.
   pub distribution: D,
+  /// Poisson driver defining jump arrival intensity and timeline.
   pub poisson: Poisson<T>,
 }
 

@@ -1,3 +1,9 @@
+//! # Gaussian
+//!
+//! $$
+//! C_\Sigma(u)=\Phi_\Sigma\!\left(\Phi^{-1}(u_1),\dots,\Phi^{-1}(u_d)\right)
+//! $$
+//!
 use ndarray::Array1;
 use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;

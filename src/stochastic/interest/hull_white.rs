@@ -1,3 +1,9 @@
+//! # Hull White
+//!
+//! $$
+//! dr_t=\left(\theta(t)-a r_t\right)dt+\sigma dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -6,11 +12,17 @@ use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct HullWhite<T: FloatExt> {
+  /// Long-run target level / model location parameter.
   pub theta: Fn1D<T>,
+  /// Model shape / loading parameter.
   pub alpha: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

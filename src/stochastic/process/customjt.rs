@@ -1,3 +1,9 @@
+//! # Customjt
+//!
+//! $$
+//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t+\sum_{k=1}^{dN_t}J_k
+//! $$
+//!
 use ndarray::Array0;
 use ndarray::Array1;
 use ndarray::Axis;
@@ -14,8 +20,12 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Optional fixed number of generated events.
   pub n: Option<usize>,
+  /// Optional horizon for time-based generation.
+  /// Used when `n` is `None`.
   pub t_max: Option<T>,
+  /// Distribution used for generated increments / inter-arrival draws.
   pub distribution: D,
 }
 

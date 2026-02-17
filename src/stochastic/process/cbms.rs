@@ -1,3 +1,9 @@
+//! # Cbms
+//!
+//! $$
+//! dX_t=L\,dW_t,\quad LL^\top=\Sigma
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::cgns::CGNS;
@@ -5,8 +11,11 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct CBMS<T: FloatExt> {
+  /// Instantaneous correlation between the two Brownian components.
   pub rho: T,
+  /// Number of discrete time points in each path.
   pub n: usize,
+  /// Total simulation horizon (defaults to `1` if `None`).
   pub t: Option<T>,
   cgns: CGNS<T>,
 }

@@ -1,3 +1,9 @@
+//! # fOU Estimator
+//!
+//! $$
+//! (\hat\kappa,\hat\theta,\hat\sigma)=\arg\min \sum_i\left(X_{t_{i+1}}-X_{t_i}-\kappa(\theta-X_{t_i})\Delta t\right)^2
+//! $$
+//!
 use std::f64::consts::SQRT_2;
 
 use ndarray::array;
@@ -10,8 +16,11 @@ use crate::traits::ProcessExt;
 
 // Version 1: FOUParameterEstimationV1 with linear filter methods
 pub struct FOUParameterEstimationV1 {
+  /// Observed path/sample trajectory.
   pub path: Array1<f64>,
+  /// Filter/kernel selection used by estimator.
   pub filter_type: FilterType,
+  /// Delta sensitivity / sampling interval depending on context.
   pub delta: Option<f64>,
   // Estimated parameters
   hurst: Option<f64>,
@@ -193,8 +202,11 @@ impl FOUParameterEstimationV1 {
 
 // Version 2: FOUParameterEstimationV2 without linear filters
 pub struct FOUParameterEstimationV2 {
+  /// Observed path/sample trajectory.
   pub path: Array1<f64>,
+  /// Delta sensitivity / sampling interval depending on context.
   pub delta: Option<f64>,
+  /// Number of samples in the input series.
   pub series_length: usize,
   // Estimated parameters
   hurst: Option<f64>,

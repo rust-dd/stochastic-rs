@@ -1,3 +1,9 @@
+//! # CIR
+//!
+//! $$
+//! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -8,12 +14,19 @@ use crate::traits::ProcessExt;
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
 /// where X(t) is the CIR process.
 pub struct CIR<T: FloatExt> {
+  /// Long-run target level / model location parameter.
   pub theta: T,
+  /// Drift / long-run mean-level parameter.
   pub mu: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Enables symmetric/truncated update variant when true.
   pub use_sym: Option<bool>,
   gn: Gn<T>,
 }

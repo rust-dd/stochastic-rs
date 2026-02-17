@@ -1,3 +1,9 @@
+//! # SABR
+//!
+//! $$
+//! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
+//! $$
+//!
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -21,8 +27,11 @@ const NU_MIN: f64 = 1e-6;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SabrParams {
+  /// Model shape/loading parameter.
   pub alpha: f64,
+  /// Volatility-of-volatility parameter.
   pub nu: f64,
+  /// Correlation parameter.
   pub rho: f64,
 }
 
@@ -55,14 +64,23 @@ impl From<DVector<f64>> for SabrParams {
 
 #[derive(Clone)]
 pub struct SabrCalibrator {
+  /// Model parameter set (input or calibrated output).
   pub params: Option<SabrParams>,
+  /// Observed market option prices used for calibration.
   pub c_market: DVector<f64>,
+  /// Underlying spot/forward level.
   pub s: DVector<f64>,
+  /// Strike level.
   pub k: DVector<f64>,
+  /// Risk-free rate used for discounting.
   pub r: f64,
+  /// Dividend yield / convenience yield.
   pub q: Option<f64>,
+  /// Time-to-maturity in years.
   pub tau: f64,
+  /// Option direction (call/put).
   pub option_type: OptionType,
+  /// If true, stores optimization parameter history.
   pub record_history: bool,
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<SabrParams>>>>,
 }

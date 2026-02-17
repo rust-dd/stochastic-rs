@@ -1,6 +1,9 @@
-//! Dupire local volatility from call price surface
-//! σ_loc^2(K,T) = [ ∂C/∂T + (r - q) K ∂C/∂K + q C ] / [ 0.5 K^2 ∂²C/∂K² ]
-
+//! # Dupire
+//!
+//! $$
+//! \sigma_{loc}^2(K,T)=\frac{\partial_T C + (r-q)K\partial_K C + qC}{\tfrac12 K^2\partial_{KK}C}
+//! $$
+//!
 use ndarray::Array2;
 use ndarray::Axis;
 

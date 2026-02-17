@@ -1,3 +1,9 @@
+//! # Independence
+//!
+//! $$
+//! C(u,v)=uv
+//! $$
+//!
 use std::error::Error;
 
 use ndarray::stack;

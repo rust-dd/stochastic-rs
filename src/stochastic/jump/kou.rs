@@ -1,3 +1,9 @@
+//! # Kou
+//!
+//! $$
+//! \log Y\sim p\,\mathrm{Exp}(\eta_1)-(1-p)\,\mathrm{Exp}(\eta_2),\quad dS/S=\cdots+d\left(\sum(J-1)\right)
+//! $$
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 

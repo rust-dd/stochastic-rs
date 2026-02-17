@@ -1,3 +1,9 @@
+//! # BM
+//!
+//! $$
+//! B_t=\int_0^t dW_s,\quad B_t-B_s\sim\mathcal N(0,t-s)
+//! $$
+//!
 use ndarray::s;
 use ndarray::Array1;
 
@@ -6,7 +12,9 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct BM<T: FloatExt> {
+  /// Number of discrete time points in the generated path.
   pub n: usize,
+  /// Total simulation horizon (defaults to `1` if `None`).
   pub t: Option<T>,
   gn: Gn<T>,
 }

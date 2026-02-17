@@ -106,5 +106,6 @@ debug = false
 codegen-units = 1
 lto = true
 
-# [package.metadata.docs.rs]
-# all-features = true
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

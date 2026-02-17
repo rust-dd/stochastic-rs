@@ -1,3 +1,9 @@
+//! # Levy Diffusion
+//!
+//! $$
+//! dX_t=\mu_tdt+\sigma_t dW_t+dL_t
+//! $$
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 

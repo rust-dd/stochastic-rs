@@ -1,11 +1,22 @@
+//! # Mle
+//!
+//! $$
+//! \hat\theta=\arg\max_\theta \sum_{i=1}^n \log f(x_i\mid\theta)
+//! $$
+//!
 use ndarray::Array1;
 
 #[derive(Clone, Debug)]
 pub struct HestonMleResult {
+  /// Initial variance/volatility level.
   pub v0: f64,
+  /// Mean-reversion speed parameter.
   pub kappa: f64,
+  /// Long-run target level parameter.
   pub theta: f64,
+  /// Volatility / diffusion scale parameter.
   pub sigma: f64,
+  /// Correlation parameter.
   pub rho: f64,
 }
 

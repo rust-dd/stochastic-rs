@@ -1,3 +1,9 @@
+//! # CGMY
+//!
+//! $$
+//! \nu(dx)=C\left(e^{-Gx}x^{-1-Y}\mathbf 1_{x>0}+e^{-M|x|}|x|^{-1-Y}\mathbf 1_{x<0}\right)dx
+//! $$
+//!
 use ndarray::Array1;
 use ndarray_rand::RandomExt;
 use rand::Rng;

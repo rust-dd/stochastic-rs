@@ -1,3 +1,9 @@
+//! # fBM
+//!
+//! $$
+//! \mathbb E[B_t^H B_s^H]=\tfrac12\left(t^{2H}+s^{2H}-|t-s|^{2H}\right)
+//! $$
+//!
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use numpy::ndarray::Array2;
@@ -16,8 +22,11 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct FBM<T: FloatExt> {
+  /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
   pub hurst: T,
+  /// Number of discrete time points in the generated path.
   pub n: usize,
+  /// Total simulation horizon (defaults to `1` if `None`).
   pub t: Option<T>,
   fgn: FGN<T>,
 }

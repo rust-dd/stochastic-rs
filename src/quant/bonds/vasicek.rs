@@ -1,3 +1,9 @@
+//! # Vasicek
+//!
+//! $$
+//! dr_t=a(b-r_t)dt+\sigma dW_t
+//! $$
+//!
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 

@@ -1,3 +1,9 @@
+//! # SABR
+//!
+//! $$
+//! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
+//! $$
+//!
 use implied_vol::implied_black_volatility;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
@@ -78,17 +84,25 @@ pub fn model_price_hagan(
 /// Pricer that uses SABR(Hagan beta=1) to produce an implied vol, then prices via Black-GK.
 #[derive(Clone, Copy, Debug)]
 pub struct SabrPricer {
+  /// Underlying spot/forward level.
   pub s: f64,
+  /// Strike level.
   pub k: f64,
   /// Risk-free rate (domestic)
   pub r: f64,
   /// Dividend/foreign rate (q)
   pub q: Option<f64>,
+  /// Model shape/loading parameter.
   pub alpha: f64,
+  /// Volatility-of-volatility parameter.
   pub nu: f64,
+  /// Correlation parameter.
   pub rho: f64,
+  /// Time-to-maturity in years.
   pub tau: Option<f64>,
+  /// Valuation date.
   pub eval: Option<chrono::NaiveDate>,
+  /// Expiration date.
   pub expiration: Option<chrono::NaiveDate>,
 }
 

@@ -1,3 +1,9 @@
+//! # Uniform
+//!
+//! $$
+//! f(x)=\frac{1}{b-a}\mathbf 1_{[a,b]}(x)
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

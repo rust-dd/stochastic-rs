@@ -1,3 +1,9 @@
+//! # Weibull
+//!
+//! $$
+//! f(x)=\frac{k}{\lambda}\left(\frac{x}{\lambda}\right)^{k-1}e^{-(x/\lambda)^k},\ x\ge0
+//! $$
+//!
 use std::cell::UnsafeCell;
 
 use rand::Rng;

@@ -1,3 +1,9 @@
+//! # GN
+//!
+//! $$
+//! \Delta W_i\sim\mathcal N(0,\Delta t)
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::traits::FloatExt;
@@ -5,7 +11,9 @@ use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct Gn<T: FloatExt> {
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
 }
 

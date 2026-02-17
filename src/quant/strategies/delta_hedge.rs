@@ -1,7 +1,14 @@
+//! # Delta Hedge
+//!
+//! $$
+//! \Delta_t=\partial_S V(t,S_t),\quad d\Pi_t=dV_t-\Delta_t dS_t
+//! $$
+//!
 use crate::quant::Moneyness;
 use crate::quant::OptionType;
 
 pub struct DeltaHedge {
+  /// Current option value used by strategy/PnL routines.
   pub c: f64,
   /// The option's premium
   pub c_premium: f64,

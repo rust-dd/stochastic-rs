@@ -1,3 +1,9 @@
+//! # Quant
+//!
+//! $$
+//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
+//! $$
+//!
 use std::fmt::Display;
 
 pub mod bonds;

@@ -1,5 +1,9 @@
-//! Custom complex distribution implementation.
-
+//! # Complex
+//!
+//! $$
+//! \mathbb P(X\in A)=\int_A f_X(x)dx\ \text{or}\ \sum_{x\in A}p_X(x)
+//! $$
+//!
 use num_complex::Complex;
 use num_traits::Num;
 use rand::distr::Distribution;

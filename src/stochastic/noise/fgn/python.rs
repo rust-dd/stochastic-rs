@@ -1,3 +1,9 @@
+//! # Python
+//!
+//! $$
+//! \varepsilon \sim \mathcal N(0,\Sigma)\ \text{with optional fractional covariance shaping}
+//! $$
+//!
 use numpy::ndarray::Array2;
 use numpy::IntoPyArray;
 use numpy::PyArray1;

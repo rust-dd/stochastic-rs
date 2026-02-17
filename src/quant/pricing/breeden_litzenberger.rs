@@ -1,6 +1,9 @@
-//! Breeden–Litzenberger formula utilities
-//! f_{RN}(K, T) = e^{r T} * ∂²C(K,T)/∂K² (same for P)
-
+//! # Breeden Litzenberger
+//!
+//! $$
+//! f_{\mathbb Q}(K)=e^{rT}\frac{\partial^2 C(K,T)}{\partial K^2}
+//! $$
+//!
 #[derive(Clone, Debug)]
 pub struct BreedenLitzenberger {
   /// Strikes (strictly increasing)

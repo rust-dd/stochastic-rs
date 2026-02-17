@@ -1,3 +1,9 @@
+//! # Merton Jump
+//!
+//! $$
+//! V=\sum_{n=0}^{\infty}e^{-\lambda T}\frac{(\lambda T)^n}{n!}V_{BS}(\sigma_n,r_n)
+//! $$
+//!
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
 use crate::quant::OptionType;

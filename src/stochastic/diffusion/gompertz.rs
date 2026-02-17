@@ -1,3 +1,9 @@
+//! # Gompertz
+//!
+//! $$
+//! dX_t=aX_t\ln\!\left(\frac{K}{X_t}\right)dt+\sigma X_t dW_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::gn::Gn;
@@ -7,11 +13,17 @@ use crate::traits::ProcessExt;
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
 pub struct Gompertz<T: FloatExt> {
+  /// Model coefficient / user-supplied drift term.
   pub a: T,
+  /// Model coefficient / user-supplied diffusion term.
   pub b: T,
+  /// Diffusion / noise scale parameter.
   pub sigma: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Initial value of the primary state variable.
   pub x0: Option<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

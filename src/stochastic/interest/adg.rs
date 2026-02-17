@@ -1,3 +1,9 @@
+//! # Adg
+//!
+//! $$
+//! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
+//! $$
+//!
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -7,15 +13,25 @@ use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 pub struct ADG<T: FloatExt> {
+  /// Jump-size adjustment / shape parameter.
   pub k: Fn1D<T>,
+  /// Long-run target level / model location parameter.
   pub theta: Fn1D<T>,
+  /// Diffusion / noise scale parameter.
   pub sigma: Array1<T>,
+  /// Autoregressive coefficient vector.
   pub phi: Fn1D<T>,
+  /// Model coefficient / user-supplied diffusion term.
   pub b: Fn1D<T>,
+  /// Model coefficient for nonlinear drift/level terms.
   pub c: Fn1D<T>,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Model parameter controlling process dynamics.
   pub xn: usize,
+  /// Initial value of the primary state variable.
   pub x0: Array1<T>,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   gn: Gn<T>,
 }

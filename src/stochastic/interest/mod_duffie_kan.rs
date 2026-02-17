@@ -1,33 +1,9 @@
-//! A modified Duffie–Kan model with jumps (jump diffusion) where jumps occur at exponentially distributed times.
+//! # Mod Duffie Kan
 //!
-//! # Model Definition
+//! $$
+//! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
+//! $$
 //!
-//! In addition to the continuous part:
-//!
-//! \
-//! \[
-//!   dr(t) = (a_1 r(t) + b_1 x(t) + c_1)\,dt
-//!           + \sigma_1 (α\,r(t) + β\,x(t) + γ)\,dW_1(t)
-//! \]
-//! \[
-//!   dx(t) = (a_2 r(t) + b_2 x(t) + c_2)\,dt
-//!           + \sigma_2 (α\,r(t) + β\,x(t) + γ)\,dW_2(t)
-//!           + dJ_x(t),
-//! \]
-//!
-//! where jumps occur at random times with inter-arrival times following an exponential distribution with rate `lambda`.
-//! Jump sizes are drawn from a normal distribution with mean 0 and standard deviation `jump_scale`.
-//!
-//! # Parameters
-//! - `alpha, beta, gamma, a1, b1, c1, sigma1, a2, b2, c2, sigma2`: Model parameters for the continuous part.
-//! - `lambda`: Jump intensity (rate for the exponential waiting times).
-//! - `jump_scale`: Standard deviation for the normally distributed jump sizes.
-//! - `r0, x0`: Initial values for r(t) and x(t).
-//! - `t`: Total time horizon.
-//! - `n`: Number of time steps.
-//! - `m`: Optional batch size for parallel sampling.
-//! - `cgns`: Correlated Gaussian noise generator for the diffusion part.
-
 use ndarray::Array1;
 use rand_distr::Distribution;
 
@@ -38,17 +14,29 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct DuffieKanJumpExp<T: FloatExt> {
+  /// Model shape / loading parameter.
   pub alpha: T,
+  /// Model slope / loading parameter.
   pub beta: T,
+  /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
+  /// Instantaneous correlation parameter.
   pub rho: T,
+  /// Model coefficient for factor 1.
   pub a1: T,
+  /// Model coefficient for factor 1.
   pub b1: T,
+  /// Model coefficient for factor 1.
   pub c1: T,
+  /// Diffusion/noise scale for factor 1.
   pub sigma1: T,
+  /// Model coefficient for factor 2.
   pub a2: T,
+  /// Model coefficient for factor 2.
   pub b2: T,
+  /// Model coefficient for factor 2.
   pub c2: T,
+  /// Diffusion/noise scale for factor 2.
   pub sigma2: T,
   /// Jump intensity (rate for the exponential distribution).
   pub lambda: T,

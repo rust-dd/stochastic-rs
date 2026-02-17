@@ -1,3 +1,9 @@
+//! # Tgarch
+//!
+//! $$
+//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! $$
+//!
 use ndarray::Array1;
 
 use crate::stochastic::noise::wn::Wn;
@@ -28,10 +34,15 @@ use crate::traits::ProcessExt;
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
 pub struct TGARCH<T: FloatExt> {
+  /// Constant term in conditional variance dynamics.
   pub omega: T,
+  /// Model shape / loading parameter.
   pub alpha: Array1<T>,
+  /// Model asymmetry / nonlinearity parameter.
   pub gamma: Array1<T>,
+  /// Model slope / loading parameter.
   pub beta: Array1<T>,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
   wn: Wn<T>,
 }

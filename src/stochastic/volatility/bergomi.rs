@@ -1,3 +1,9 @@
+//! # Bergomi
+//!
+//! $$
+//! dS_t=S_t\sqrt{v_t}dW_t^1,\quad v_t=\xi_0(t)\exp\!\left(\eta X_t-\tfrac12\eta^2 t^{2H}\right)
+//! $$
+//!
 use ndarray::s;
 use ndarray::Array1;
 
@@ -6,12 +12,19 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 pub struct Bergomi<T: FloatExt> {
+  /// Volatility-of-volatility / tail-thickness parameter.
   pub nu: T,
+  /// Initial variance/volatility level.
   pub v0: Option<T>,
+  /// Initial asset/price level.
   pub s0: Option<T>,
+  /// Risk-free rate / drift adjustment parameter.
   pub r: T,
+  /// Instantaneous correlation parameter.
   pub rho: T,
+  /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   cgns: CGNS<T>,
 }
