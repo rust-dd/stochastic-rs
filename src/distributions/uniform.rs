@@ -1,7 +1,7 @@
 //! # Uniform
 //!
 //! $$
-//! f(x)=\frac{1}{b-a}\mathbf 1_{[a,b]}(x)
+//! f(x)=\frac{1}{b-a}\mathbf{1}_{a\le x\le b}
 //! $$
 //!
 use std::cell::UnsafeCell;

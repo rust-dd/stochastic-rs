@@ -184,4 +184,4 @@ Contributions are welcome — bug reports, feature suggestions, or PRs. Open an 
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/dancixx/stochastic-rs/blob/main/LICENSE).

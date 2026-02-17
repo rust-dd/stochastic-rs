@@ -14,7 +14,7 @@ use crate::traits::ProcessExt;
 
 /// Kou process
 ///
-/// https://www.columbia.edu/~sk75/MagSci02.pdf
+/// <https://www.columbia.edu/~sk75/MagSci02.pdf>
 ///
 pub struct KOU<T, D>
 where

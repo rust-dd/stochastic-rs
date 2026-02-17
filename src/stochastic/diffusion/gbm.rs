@@ -76,7 +76,7 @@ impl<T: FloatExt> GBM<T> {
   /// Malliavin derivative of the GBM process
   ///
   /// The Malliavin derivative of the GBM process is given by
-  /// D_r S_t = \sigma S_t * 1_[0, r](r)
+  /// `D_r S_t = \sigma S_t \mathbf{1}_{0 \le r \le t}`.
   ///
   /// The Malliavin derivate of the GBM shows the sensitivity of the stock price with respect to the Wiener process.
   pub fn malliavin(&self) -> [Array1<T>; 2] {

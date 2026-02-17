@@ -10,16 +10,15 @@ use ndarray::Array2;
 /// Empirical copula (2D) - rank-based transformation
 #[derive(Clone, Debug)]
 pub struct EmpiricalCopula2D {
-  /// The rank-transformed data (N x 2), each row in [0,1]^2
+  /// The rank-transformed data `(N x 2)`, each row in `[0, 1]^2`.
   pub rank_data: Array2<f64>,
 }
 
 impl EmpiricalCopula2D {
   /// Create an EmpiricalCopula2D from two 1D arrays (`x` and `y`) of equal length.
-  /// This performs a rank-based transform: for each sample i,
-  ///   sx[i] = rank_of_x[i] / n
-  ///   sy[i] = rank_of_y[i] / n
-  /// and stores the resulting points in [0,1]^2.
+  /// This performs a rank-based transform: for each sample `i`,
+  /// `sx_i = rank_of_x_i / n` and `sy_i = rank_of_y_i / n`,
+  /// then stores the resulting points in `[0, 1]^2`.
   pub fn new_from_two_series(x: &Array1<f64>, y: &Array1<f64>) -> Self {
     assert_eq!(x.len(), y.len(), "x and y must have the same length!");
     let n = x.len();

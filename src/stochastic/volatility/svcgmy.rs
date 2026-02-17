@@ -18,7 +18,7 @@ use crate::traits::ProcessExt;
 
 /// CGMY Stochastic Volatility process
 ///
-/// https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf
+/// <https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf>
 pub struct SVCGMY<T: FloatExt> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G

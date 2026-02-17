@@ -16,7 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// RDTS process (Rapidly Decreasing Tempered Stable process)
-/// https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015
+/// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
 pub struct RDTS<T: FloatExt> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G

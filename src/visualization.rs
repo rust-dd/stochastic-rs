@@ -7,12 +7,14 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use plotly::common::Anchor;
+use plotly::common::DashType;
 use plotly::common::Font;
 use plotly::common::Line;
 use plotly::common::Mode;
 use plotly::layout::Annotation;
 use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
+use plotly::layout::Margin;
 use plotly::Layout;
 use plotly::Plot;
 use plotly::Scatter;
@@ -97,6 +99,7 @@ pub struct GridPlotter {
   entries: Vec<GridEntry>,
   cols: usize,
   line_width: f64,
+  show_legend: bool,
   title: String,
   x_gap: f64,
   y_gap: f64,
@@ -108,6 +111,7 @@ impl GridPlotter {
       entries: Vec::new(),
       cols: 3,
       line_width: 1.0,
+      show_legend: false,
       title: String::new(),
       x_gap: 0.06,
       y_gap: 0.12,
@@ -129,6 +133,11 @@ impl GridPlotter {
     self
   }
 
+  pub fn show_legend(mut self, show: bool) -> Self {
+    self.show_legend = show;
+    self
+  }
+
   pub fn x_gap(mut self, x_gap: f64) -> Self {
     self.x_gap = x_gap.max(0.0);
     self
@@ -139,7 +148,37 @@ impl GridPlotter {
     self
   }
 
-  pub fn register<T, P>(mut self, process: &P, title: &str, n_traj: usize) -> Self
+  pub fn register<T, P>(self, process: &P, title: &str, n_traj: usize) -> Self
+  where
+    T: FloatExt,
+    P: ProcessExt<T>,
+    P::Output: Plottable<T>,
+  {
+    self.register_impl::<T, P>(process, title, n_traj, None)
+  }
+
+  pub fn register_with_component_labels<T, P>(
+    self,
+    process: &P,
+    title: &str,
+    component_labels: &[&str],
+    n_traj: usize,
+  ) -> Self
+  where
+    T: FloatExt,
+    P: ProcessExt<T>,
+    P::Output: Plottable<T>,
+  {
+    self.register_impl::<T, P>(process, title, n_traj, Some(component_labels))
+  }
+
+  fn register_impl<T, P>(
+    mut self,
+    process: &P,
+    title: &str,
+    n_traj: usize,
+    component_labels: Option<&[&str]>,
+  ) -> Self
   where
     T: FloatExt,
     P: ProcessExt<T>,
@@ -151,12 +190,23 @@ impl GridPlotter {
 
     let samples: Vec<P::Output> = (0..n_traj).map(|_| process.sample()).collect();
     let n_comp = samples[0].n_components();
+    if let Some(labels) = component_labels {
+      assert_eq!(
+        labels.len(),
+        n_comp,
+        "component_labels length must match number of components"
+      );
+    }
     let n_points = samples[0].len();
     let mut series = Vec::with_capacity(n_comp * n_traj);
     for c in 0..n_comp {
-      let comp_name = samples[0].component_name(c);
+      let comp_name = if let Some(labels) = component_labels {
+        labels[c].to_string()
+      } else {
+        samples[0].component_name(c)
+      };
       for (traj_idx, sample) in samples.iter().enumerate() {
-        let label = if n_comp > 1 && n_traj > 1 {
+        let base_label = if n_comp > 1 && n_traj > 1 {
           format!("{} - traj {}", comp_name, traj_idx + 1)
         } else if n_comp > 1 {
           comp_name.clone()
@@ -164,6 +214,11 @@ impl GridPlotter {
           format!("traj {}", traj_idx + 1)
         } else {
           title.to_string()
+        };
+        let label = if base_label == title {
+          base_label
+        } else {
+          format!("{} | {}", title, base_label)
         };
         series.push(GridSeries {
           label,
@@ -218,42 +273,59 @@ impl GridPlotter {
     let n = self.entries.len();
     let cols = self.cols;
     let rows = n.div_ceil(cols);
-    let plot_height = (rows * 260).max(900);
-    let plot_width = (cols * 360).max(1200);
-    let x_gap = if cols > 1 { self.x_gap } else { 0.0 };
-    let y_gap = if rows > 1 { self.y_gap } else { 0.0 };
-    let cell_w = (1.0 - x_gap * (cols.saturating_sub(1) as f64)) / cols as f64;
-    let cell_h = (1.0 - y_gap * (rows.saturating_sub(1) as f64)) / rows as f64;
-    let annotations: Vec<Annotation> = self
-      .entries
-      .iter()
-      .enumerate()
-      .map(|(idx, entry)| {
-        let row = idx / cols;
-        let col = idx % cols;
-        let x_left = col as f64 * (cell_w + x_gap);
-        let y_top = 1.0 - row as f64 * (cell_h + y_gap);
+    let plot_height = (rows * 440 + 220).max(1500);
+    let x_gap = if cols > 1 {
+      let scaled = self.x_gap / cols as f64;
+      let max_gap = ((1.0 - 0.08 * cols as f64) / cols.saturating_sub(1) as f64).max(0.0);
+      scaled.min(max_gap).max(0.0)
+    } else {
+      0.0
+    };
+    let y_gap = if rows > 1 {
+      let scaled = self.y_gap / rows as f64;
+      let max_gap = ((1.0 - 0.02 * rows as f64) / rows.saturating_sub(1) as f64).max(0.0);
+      scaled.min(max_gap).max(0.0)
+    } else {
+      0.0
+    };
+
+    let axis_name = |subplot_idx: usize, axis: &str| -> String {
+      if subplot_idx == 1 {
+        axis.to_string()
+      } else {
+        format!("{axis}{subplot_idx}")
+      }
+    };
+
+    let mut annotations = Vec::with_capacity(self.entries.len());
+    for (idx, entry) in self.entries.iter().enumerate() {
+      let subplot_idx = idx + 1;
+      let xa = axis_name(subplot_idx, "x");
+      let ya = axis_name(subplot_idx, "y");
+
+      annotations.push(
         Annotation::new()
-          .text(entry.title.clone())
-          .x_ref("paper")
-          .y_ref("paper")
-          .x(x_left + cell_w * 0.5)
-          .y(y_top - 0.008)
+          .text(format!("<b>{}</b>", entry.title))
+          .x_ref(format!("{xa} domain"))
+          .y_ref(format!("{ya} domain"))
+          .x(0.5)
+          .y(0.985)
           .x_anchor(Anchor::Center)
           .y_anchor(Anchor::Top)
-          .font(Font::new().size(10))
-          .show_arrow(false)
-      })
-      .collect();
+          .font(Font::new().size(12))
+          .background_color("rgba(255,255,255,0.92)")
+          .border_pad(1.0)
+          .show_arrow(false),
+      );
+    }
 
     let mut plot = Plot::new();
     plot.set_layout(
       Layout::new()
         .title(self.title.as_str())
+        .auto_size(true)
         .height(plot_height)
-        .width(plot_width)
-        .paper_background_color("#ededed")
-        .plot_background_color("#ffffff")
+        .margin(Margin::new().left(56).right(24).top(84).bottom(44))
         .annotations(annotations)
         .grid(
           LayoutGrid::new()
@@ -267,8 +339,8 @@ impl GridPlotter {
 
     for (idx, entry) in self.entries.iter().enumerate() {
       let subplot_idx = idx + 1;
-      let xa = format!("x{}", subplot_idx);
-      let ya = format!("y{}", subplot_idx);
+      let xa = axis_name(subplot_idx, "x");
+      let ya = axis_name(subplot_idx, "y");
       let n_components = entry
         .series
         .iter()
@@ -313,11 +385,17 @@ impl GridPlotter {
         } else {
           series.values.clone()
         };
+        let dash = match series.component_idx % 4 {
+          0 => DashType::Solid,
+          1 => DashType::Dash,
+          2 => DashType::Dot,
+          _ => DashType::DashDot,
+        };
         let trace = Scatter::new(t.clone(), y_vals)
           .mode(Mode::Lines)
-          .line(Line::new().width(self.line_width))
+          .line(Line::new().width(self.line_width).dash(dash))
           .name(series.label.clone())
-          .show_legend(false)
+          .show_legend(self.show_legend)
           .x_axis(xa.as_str())
           .y_axis(ya.as_str());
         plot.add_trace(trace);
@@ -504,10 +582,12 @@ mod tests {
     }
 
     let mut grid = GridPlotter::new()
-      .title("Stochastic Processes Grid (All Categories)")
-      .cols(6)
-      .x_gap(0.035)
-      .y_gap(0.09);
+      .title("Stochastic Processes (Grid)")
+      .cols(4)
+      .show_legend(false)
+      .line_width(1.2)
+      .x_gap(0.80)
+      .y_gap(5.00);
 
     grid = grid.register(
       &ARp::new(Array1::from_vec(vec![0.65, -0.2]), 0.08, n, None),
@@ -987,7 +1067,7 @@ mod tests {
       "Jump: Jump-FOU Custom",
       traj,
     );
-    grid = grid.register(
+    grid = grid.register_with_component_labels(
       &Bates1996::new(
         Some(0.03),
         None,
@@ -1006,7 +1086,8 @@ mod tests {
         Some(false),
         normal_cpoisson(0.8, n, 0.05),
       ),
-      "Jump: Bates 1996",
+      "Jump: Bates 1996 (S: solid, v: dashed)",
+      &["S", "v"],
       traj,
     );
 

@@ -8,7 +8,7 @@
 pub struct BreedenLitzenberger {
   /// Strikes (strictly increasing)
   pub strikes: Vec<f64>,
-  /// Option prices C(K[i], T) or P(K[i], T) at the same maturity T (present values)
+  /// Option prices `C(K_i, T)` or `P(K_i, T)` at the same maturity `T` (present values).
   pub prices: Vec<f64>,
   /// Risk-free rate
   pub r: f64,

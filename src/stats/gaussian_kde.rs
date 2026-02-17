@@ -96,7 +96,7 @@ impl GaussianKDE {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```text
   /// // let kde = GaussianKDE::new(data, 0.5);
   /// // let density_value = kde.evaluate(1.5);
   /// ```
@@ -121,7 +121,7 @@ impl GaussianKDE {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```text
   /// // let kde = GaussianKDE::new(data, 0.5);
   /// // let xs = Array1::linspace(0.0, 5.0, 50);
   /// // let ys = kde.evaluate_array(&xs);
