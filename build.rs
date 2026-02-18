@@ -2,6 +2,16 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
+fn emit_nvcc_stream(label: &str, bytes: &[u8]) {
+  let text = String::from_utf8_lossy(bytes);
+  for line in text.lines() {
+    let line = line.trim();
+    if !line.is_empty() {
+      println!("cargo:warning=nvcc {label}: {line}");
+    }
+  }
+}
+
 fn main() {
   println!("cargo:rerun-if-changed=build.rs");
   println!("cargo:rerun-if-changed=src/stochastic/cuda/fgn_exports.cu");
@@ -37,6 +47,15 @@ fn main() {
     out_dir.join("libfgn_cuda.so")
   };
 
+  if target_os == "windows" {
+    let cl_available = Command::new("cl.exe").arg("/?").output().is_ok();
+    if !cl_available {
+      println!(
+        "cargo:warning=MSVC compiler (cl.exe) not found in PATH. CUDA build on Windows requires a Visual Studio Developer Command Prompt (vcvars64)."
+      );
+    }
+  }
+
   let mut cmd = Command::new(&nvcc);
   cmd
     .arg("-O3")
@@ -65,12 +84,15 @@ fn main() {
       );
     }
     Ok(out) => {
-      let stderr = String::from_utf8_lossy(&out.stderr);
       println!(
         "cargo:warning=CUDA build failed with status: {}",
         out.status
       );
-      println!("cargo:warning=nvcc stderr: {}", stderr.trim());
+      emit_nvcc_stream("stdout", &out.stdout);
+      emit_nvcc_stream("stderr", &out.stderr);
+      if out.stdout.is_empty() && out.stderr.is_empty() {
+        println!("cargo:warning=nvcc produced no stdout/stderr output");
+      }
       println!("cargo:warning=Falling back to runtime/manual CUDA library loading");
     }
     Err(err) => {

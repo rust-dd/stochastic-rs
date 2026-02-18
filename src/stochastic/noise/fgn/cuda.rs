@@ -88,7 +88,7 @@ unsafe fn load_symbol_with_fallback<'lib, T>(
 ) -> Result<Symbol<'lib, T>> {
   let mut last_error: Option<libloading::Error> = None;
   for &name in names {
-    match lib.get::<T>(name) {
+    match unsafe { lib.get::<T>(name) } {
       Ok(sym) => return Ok(sym),
       Err(err) => last_error = Some(err),
     }
@@ -107,15 +107,15 @@ unsafe fn load_symbol_with_fallback<'lib, T>(
 
 fn cuda_library_candidates() -> Vec<PathBuf> {
   let mut candidates = Vec::new();
-  if let Ok(path) = std::env::var("STOCHASTIC_RS_CUDA_FGN_LIB_PATH") {
-    if !path.is_empty() {
-      candidates.push(PathBuf::from(path));
-    }
+  if let Ok(path) = std::env::var("STOCHASTIC_RS_CUDA_FGN_LIB_PATH")
+    && !path.is_empty()
+  {
+    candidates.push(PathBuf::from(path));
   }
-  if let Some(path) = option_env!("STOCHASTIC_RS_CUDA_FGN_LIB") {
-    if !path.is_empty() {
-      candidates.push(PathBuf::from(path));
-    }
+  if let Some(path) = option_env!("STOCHASTIC_RS_CUDA_FGN_LIB")
+    && !path.is_empty()
+  {
+    candidates.push(PathBuf::from(path));
   }
   if cfg!(target_os = "windows") {
     candidates.push(PathBuf::from("src/stochastic/cuda/fgn_windows/fgn.dll"));
@@ -165,6 +165,28 @@ fn array2_from_flat<T: FloatExt, U: Copy + Into<f64>>(
   out
 }
 
+fn array2_from_vec_f32<T: FloatExt>(host_output: Vec<f32>, m: usize, out_size: usize) -> Array2<T> {
+  if TypeId::of::<T>() == TypeId::of::<f32>() {
+    let out = Array2::<f32>::from_shape_vec((m, out_size), host_output)
+      .expect("f32 CUDA output shape must be valid");
+    // Safe because we guard with runtime TypeId equality above.
+    unsafe { std::mem::transmute::<Array2<f32>, Array2<T>>(out) }
+  } else {
+    array2_from_flat::<T, f32>(&host_output, m, out_size)
+  }
+}
+
+fn array2_from_vec_f64<T: FloatExt>(host_output: Vec<f64>, m: usize, out_size: usize) -> Array2<T> {
+  if TypeId::of::<T>() == TypeId::of::<f64>() {
+    let out = Array2::<f64>::from_shape_vec((m, out_size), host_output)
+      .expect("f64 CUDA output shape must be valid");
+    // Safe because we guard with runtime TypeId equality above.
+    unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) }
+  } else {
+    array2_from_flat::<T, f64>(&host_output, m, out_size)
+  }
+}
+
 impl<T: FloatExt> FGN<T> {
   fn sample_cuda_f32(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     let n = self.n;
@@ -175,21 +197,16 @@ impl<T: FloatExt> FGN<T> {
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let scale = (scale_steps as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
 
-    let need_init = {
-      let guard = CUDA_CONTEXT_F32.lock().unwrap();
-      match &*guard {
-        Some(ctx) => {
-          ctx.n != n || ctx.m != m || ctx.offset != offset || ctx.hurst != hurst || ctx.t != t
-        }
-        None => true,
+    let mut guard = CUDA_CONTEXT_F32.lock().unwrap();
+    let need_init = match &*guard {
+      Some(ctx) => {
+        ctx.n != n || ctx.m != m || ctx.offset != offset || ctx.hurst != hurst || ctx.t != t
       }
+      None => true,
     };
 
     if need_init {
-      {
-        let mut guard = CUDA_CONTEXT_F32.lock().unwrap();
-        *guard = None;
-      }
+      *guard = None;
 
       let lib = open_cuda_library()?;
       let fgn_init: Symbol<Fgn32InitFn> =
@@ -225,7 +242,7 @@ impl<T: FloatExt> FGN<T> {
       let fgn_cleanup: Symbol<'static, Fgn32CleanupFn> =
         unsafe { std::mem::transmute(fgn_cleanup) };
 
-      let ctx = CudaContextF32 {
+      *guard = Some(CudaContextF32 {
         _lib: lib,
         fgn_sample,
         fgn_cleanup,
@@ -234,23 +251,18 @@ impl<T: FloatExt> FGN<T> {
         offset,
         hurst,
         t,
-      };
-
-      let mut guard = CUDA_CONTEXT_F32.lock().unwrap();
-      *guard = Some(ctx);
+      });
     }
 
     let mut host_output = vec![0.0f32; m * out_size];
     let seed: u64 = rand::rng().random();
-    {
-      let guard = CUDA_CONTEXT_F32.lock().unwrap();
-      let ctx = guard.as_ref().unwrap();
-      unsafe {
-        (ctx.fgn_sample)(host_output.as_mut_ptr(), scale, seed);
-      }
+    let ctx = guard.as_ref().unwrap();
+    unsafe {
+      (ctx.fgn_sample)(host_output.as_mut_ptr(), scale, seed);
     }
+    drop(guard);
 
-    let fgn = array2_from_flat::<T, f32>(&host_output, m, out_size);
+    let fgn = array2_from_vec_f32::<T>(host_output, m, out_size);
     if m == 1 {
       return Ok(Either::Left(fgn.row(0).to_owned()));
     }
@@ -267,21 +279,16 @@ impl<T: FloatExt> FGN<T> {
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let scale = (scale_steps as f64).powf(-hurst) * t.powf(hurst);
 
-    let need_init = {
-      let guard = CUDA_CONTEXT_F64.lock().unwrap();
-      match &*guard {
-        Some(ctx) => {
-          ctx.n != n || ctx.m != m || ctx.offset != offset || ctx.hurst != hurst || ctx.t != t
-        }
-        None => true,
+    let mut guard = CUDA_CONTEXT_F64.lock().unwrap();
+    let need_init = match &*guard {
+      Some(ctx) => {
+        ctx.n != n || ctx.m != m || ctx.offset != offset || ctx.hurst != hurst || ctx.t != t
       }
+      None => true,
     };
 
     if need_init {
-      {
-        let mut guard = CUDA_CONTEXT_F64.lock().unwrap();
-        *guard = None;
-      }
+      *guard = None;
 
       let lib = open_cuda_library()?;
       let fgn_init: Symbol<Fgn64InitFn> =
@@ -317,7 +324,7 @@ impl<T: FloatExt> FGN<T> {
       let fgn_cleanup: Symbol<'static, Fgn64CleanupFn> =
         unsafe { std::mem::transmute(fgn_cleanup) };
 
-      let ctx = CudaContextF64 {
+      *guard = Some(CudaContextF64 {
         _lib: lib,
         fgn_sample,
         fgn_cleanup,
@@ -326,23 +333,18 @@ impl<T: FloatExt> FGN<T> {
         offset,
         hurst,
         t,
-      };
-
-      let mut guard = CUDA_CONTEXT_F64.lock().unwrap();
-      *guard = Some(ctx);
+      });
     }
 
     let mut host_output = vec![0.0f64; m * out_size];
     let seed: u64 = rand::rng().random();
-    {
-      let guard = CUDA_CONTEXT_F64.lock().unwrap();
-      let ctx = guard.as_ref().unwrap();
-      unsafe {
-        (ctx.fgn_sample)(host_output.as_mut_ptr(), scale, seed);
-      }
+    let ctx = guard.as_ref().unwrap();
+    unsafe {
+      (ctx.fgn_sample)(host_output.as_mut_ptr(), scale, seed);
     }
+    drop(guard);
 
-    let fgn = array2_from_flat::<T, f64>(&host_output, m, out_size);
+    let fgn = array2_from_vec_f64::<T>(host_output, m, out_size);
     if m == 1 {
       return Ok(Either::Left(fgn.row(0).to_owned()));
     }

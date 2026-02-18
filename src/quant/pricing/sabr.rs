@@ -4,7 +4,7 @@
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
-use implied_vol::implied_black_volatility;
+use implied_vol::{DefaultSpecialFn, ImpliedBlackVolatility};
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
@@ -198,13 +198,15 @@ impl PricerExt for SabrPricer {
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
-    implied_black_volatility(
-      c_price,
-      self.s,
-      self.k,
-      self.calculate_tau_in_days(),
-      option_type == OptionType::Call,
-    )
+    ImpliedBlackVolatility::builder()
+      .option_price(c_price)
+      .forward(self.s)
+      .strike(self.k)
+      .expiry(self.calculate_tau_in_days())
+      .is_call(option_type == OptionType::Call)
+      .build()
+      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
+      .unwrap_or(f64::NAN)
   }
 }
 

@@ -10,14 +10,14 @@ A high-performance Rust library for simulating stochastic processes, with first-
 
 ## Features
 
-- **85+ stochastic models** — diffusions, jump processes, stochastic volatility, interest rate models, autoregressive models, noise generators, and probability distributions
-- **Copulas** — bivariate, multivariate, and empirical copulas with correlation utilities
-- **Quant toolbox** — option pricing, bond analytics, calibration, loss models, order book, and trading strategies
-- **Statistics** — MLE, kernel density estimation, fractional OU estimation, and CIR parameter fitting
-- **SIMD-optimized** — fractional Gaussian noise, fractional Brownian motion, and all probability distributions use wide SIMD for fast sample generation
-- **Parallel sampling** — `sample_par(m)` generates `m` independent paths in parallel via rayon
-- **Generic precision** — most models support both `f32` and `f64`
-- **Bindings** — full stochastic model coverage with numpy integration; all models return numpy arrays
+- **85+ stochastic models** - diffusions, jump processes, stochastic volatility, interest rate models, autoregressive models, noise generators, and probability distributions
+- **Copulas** - bivariate, multivariate, and empirical copulas with correlation utilities
+- **Quant toolbox** - option pricing, bond analytics, calibration, loss models, order book, and trading strategies
+- **Statistics** - MLE, kernel density estimation, fractional OU estimation, and CIR parameter fitting
+- **SIMD-optimized** - fractional Gaussian noise, fractional Brownian motion, and all probability distributions use wide SIMD for fast sample generation
+- **Parallel sampling** - `sample_par(m)` generates `m` independent paths in parallel via rayon
+- **Generic precision** - most models support both `f32` and `f64`
+- **Bindings** - full stochastic model coverage with numpy integration; all models return numpy arrays
 
 ## Installation
 
@@ -109,79 +109,89 @@ log_prices = merton.sample()
 
 ## Benchmarks
 
-Distribution sampling performance: `stochastic-rs` SIMD vs `rand_distr`.
-All distributions use an internal SIMD PRNG (xoshiro256++/xoshiro128++ on `wide` SIMD types) for maximum throughput.
-For Normal and Exp, the const generic buffer size (N=32 / N=64) is also compared.
-Measured with Criterion on Apple M-series, `--release`.
+CUDA build details (Windows/Linux commands) are documented in `src/stochastic/cuda/CUDA_BUILD.md`.
 
-### 1K samples (small dataset)
+### CUDA fallback (if auto-build fails)
 
-| Distribution | Type | N | stochastic-rs (µs) | rand_distr (µs) | Speedup |
-|---|---|---|---:|---:|---:|
-| Normal | f32 | 32 | 2.31 | 6.63 | 2.88x |
-| Normal | f32 | 64 | 2.13 | 6.63 | 3.11x |
-| Normal | f64 | 32 | 2.17 | 7.01 | 3.24x |
-| Normal | f64 | 64 | 2.25 | 7.01 | 3.12x |
-| Exp | f32 | 32 | 1.82 | 9.30 | 5.10x |
-| Exp | f32 | 64 | 1.79 | 9.30 | 5.19x |
-| Exp | f64 | 32 | 1.89 | 9.19 | 4.85x |
-| Exp | f64 | 64 | 1.86 | 9.19 | 4.93x |
-| LogNormal | f32 | - | 2.90 | 7.68 | 2.65x |
-| LogNormal | f64 | - | 4.57 | 12.91 | 2.83x |
-| Cauchy | f32 | - | 2.31 | 9.98 | 4.32x |
-| Cauchy | f64 | - | 6.25 | 10.44 | 1.67x |
-| Gamma | f32 | - | 5.34 | 12.49 | 2.34x |
-| Gamma | f64 | - | 5.75 | 15.27 | 2.66x |
-| Weibull | f32 | - | 5.00 | 7.36 | 1.47x |
-| Weibull | f64 | - | 10.25 | 15.10 | 1.47x |
-| Beta | f32 | - | 10.64 | 36.43 | 3.42x |
-| Beta | f64 | - | 11.32 | 46.46 | 4.11x |
-| ChiSquared | f32 | - | 5.16 | 12.32 | 2.39x |
-| ChiSquared | f64 | - | 5.49 | 14.79 | 2.69x |
-| StudentT | f32 | - | 7.50 | 19.69 | 2.63x |
-| StudentT | f64 | - | 7.83 | 22.58 | 2.88x |
-| Poisson | u32 | - | 8.10 | 41.44 | 5.11x |
-| Pareto | f32 | - | 2.51 | 5.28 | 2.10x |
-| Pareto | f64 | - | 4.90 | 11.01 | 2.25x |
-| Uniform | f32 | - | 3.08 | 3.05 | 0.99x |
-| Uniform | f64 | - | 5.69 | 5.65 | 0.99x |
+If `cargo build --features cuda` fails (for example: `nvcc fatal : Cannot find compiler 'cl.exe'`), use prebuilt CUDA FGN binaries.
 
-### 100K samples (large dataset)
+1. Download the platform file from GitHub Releases:  
+   `https://github.com/dancixx/stochastic-rs/releases`
+2. Place it at:
+   - Windows: `src/stochastic/cuda/fgn_windows/fgn.dll`
+   - Linux: `src/stochastic/cuda/fgn_linux/libfgn.so`
+3. Set runtime path explicitly:
 
-| Distribution | Type | N | stochastic-rs (µs) | rand_distr (µs) | Speedup |
-|---|---|---|---:|---:|---:|
-| Normal | f32 | 32 | 228 | 673 | 2.96x |
-| Normal | f32 | 64 | 211 | 673 | 3.18x |
-| Normal | f64 | 32 | 209 | 704 | 3.37x |
-| Normal | f64 | 64 | 214 | 704 | 3.29x |
-| Exp | f32 | 32 | 184 | 927 | 5.04x |
-| Exp | f32 | 64 | 181 | 927 | 5.12x |
-| Exp | f64 | 32 | 189 | 910 | 4.81x |
-| Exp | f64 | 64 | 185 | 910 | 4.92x |
-| LogNormal | f32 | - | 291 | 763 | 2.62x |
-| LogNormal | f64 | - | 468 | 1284 | 2.74x |
-| Cauchy | f32 | - | 231 | 1010 | 4.37x |
-| Cauchy | f64 | - | 593 | 1044 | 1.76x |
-| Gamma | f32 | - | 532 | 1304 | 2.45x |
-| Gamma | f64 | - | 566 | 1533 | 2.71x |
-| Weibull | f32 | - | 502 | 733 | 1.46x |
-| Weibull | f64 | - | 1025 | 1510 | 1.47x |
-| Beta | f32 | - | 1062 | 3645 | 3.43x |
-| Beta | f64 | - | 1129 | 4652 | 4.12x |
-| ChiSquared | f32 | - | 513 | 1235 | 2.41x |
-| ChiSquared | f64 | - | 545 | 1478 | 2.71x |
-| StudentT | f32 | - | 744 | 1969 | 2.65x |
-| StudentT | f64 | - | 784 | 2332 | 2.97x |
-| Poisson | u32 | - | 811 | 4143 | 5.11x |
-| Pareto | f32 | - | 251 | 527 | 2.10x |
-| Pareto | f64 | - | 485 | 1103 | 2.27x |
-| Uniform | f32 | - | 307 | 306 | 1.00x |
-| Uniform | f64 | - | 568 | 566 | 1.00x |
+```powershell
+$env:STOCHASTIC_RS_CUDA_FGN_LIB_PATH='src/stochastic/cuda/fgn_windows/fgn.dll'
+```
+
+```bash
+export STOCHASTIC_RS_CUDA_FGN_LIB_PATH=src/stochastic/cuda/fgn_linux/libfgn.so
+```
+
+### FGN CPU vs CUDA (`sample`, `sample_par`, `sample_cuda`)
+
+Measured with Criterion in `--release` using:
+
+```bash
+$env:STOCHASTIC_RS_CUDA_FGN_LIB_PATH='src/stochastic/cuda/fgn_windows/fgn.dll'
+cargo bench --bench fgn_cuda --features cuda -- --noplot
+```
+
+Environment:
+- GPU: NVIDIA GeForce RTX 4070 SUPER
+- Rust: `rustc 1.93.1`
+- CUDA library: `src/stochastic/cuda/fgn_windows/fgn.dll` (fatbin `sm_75+`)
+
+Note: one-time CUDA init is excluded via warmup (`sample_cuda(...)` called once before each benchmark case).
+
+Single path (`sample` vs `sample_cuda(1)`, `f32`, H=0.7):
+
+| n | CPU `sample` | CUDA `sample_cuda(1)` | CUDA speedup (CPU/CUDA) |
+|---:|---:|---:|---:|
+| 1,024 | 10.112 us | 62.070 us | 0.16x |
+| 4,096 | 40.901 us | 49.040 us | 0.83x |
+| 16,384 | 184.060 us | 59.592 us | 3.09x |
+| 65,536 | 1.0282 ms | 121.160 us | 8.49x |
+
+Batch (`sample_par(m)` vs `sample_cuda(m)`, `f32`, H=0.7):
+
+| n, m | CPU `sample_par(m)` | CUDA `sample_cuda(m)` | CUDA speedup (CPU/CUDA) |
+|---|---:|---:|---:|
+| 4,096, 32 | 148.840 us | 154.080 us | 0.97x |
+| 4,096, 128 | 364.690 us | 1.1255 ms | 0.32x |
+| 4,096, 512 | 1.7975 ms | 4.3293 ms | 0.42x |
+| 16,384, 128 | 1.7029 ms | 4.5458 ms | 0.37x |
+| 16,384, 512 | 5.5850 ms | 17.2110 ms | 0.32x |
+
+Interpretation:
+- CUDA wins for large single-path generation (from roughly `n >= 16k` in this setup).
+- For the tested batch sizes, CPU `sample_par` is faster than current CUDA path.
+
+### Distribution Sampling (Compact Summary)
+
+SIMD distribution sampling (`stochastic-rs`) vs `rand_distr` measured with Criterion (`benches/distributions.rs`).
+
+| Distribution family | Observed speedup range |
+|---|---:|
+| Normal | 2.88x - 3.37x |
+| Exponential | 4.81x - 5.19x |
+| LogNormal | 2.62x - 2.83x |
+| Cauchy | 1.67x - 4.37x |
+| Gamma | 2.34x - 2.71x |
+| Weibull | 1.46x - 1.47x |
+| Beta | 3.42x - 4.12x |
+| ChiSquared | 2.39x - 2.71x |
+| StudentT | 2.63x - 2.97x |
+| Poisson | 5.11x |
+| Pareto | 2.10x - 2.27x |
+| Uniform | ~1.00x |
 
 ## Contributing
 
-Contributions are welcome — bug reports, feature suggestions, or PRs. Open an issue or start a discussion on GitHub.
+Contributions are welcome - bug reports, feature suggestions, or PRs. Open an issue or start a discussion on GitHub.
 
 ## License
 
-MIT — see [LICENSE](https://github.com/dancixx/stochastic-rs/blob/main/LICENSE).
+MIT - see [LICENSE](https://github.com/dancixx/stochastic-rs/blob/main/LICENSE).

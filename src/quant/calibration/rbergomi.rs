@@ -519,11 +519,11 @@ impl RBergomiCalibrator {
     for iter in 1..=self.config.max_iters {
       iterations = iter;
 
-      if let Some(stop) = self.config.stop_loss {
-        if current_loss <= stop {
-          converged = true;
-          break;
-        }
+      if let Some(stop) = self.config.stop_loss
+        && current_loss <= stop
+      {
+        converged = true;
+        break;
       }
 
       let grad = self.finite_diff_gradient(&current_params, &theta);
@@ -706,12 +706,12 @@ impl MsoeEngine {
   fn transform(&self, z: &[f64], out: &mut [f64]) {
     debug_assert_eq!(z.len(), self.dim());
     debug_assert_eq!(out.len(), self.dim());
-    for row in 0..self.dim() {
+    for (idx, item) in out.iter_mut().enumerate().take(self.dim()) {
       let mut acc = 0.0;
-      for (col, l_rc) in self.chol_l[row].iter().enumerate() {
+      for (col, l_rc) in self.chol_l[idx].iter().enumerate() {
         acc += l_rc * z[col];
       }
-      out[row] = acc;
+      *item = acc;
     }
   }
 }
@@ -827,8 +827,8 @@ pub fn simulate_rbergomi_terminal_samples(
         s *= (drift + diffusion).exp();
 
         let mut past_sum = 0.0;
-        for k in 0..engine.terms() {
-          past_sum += engine.weights[k] * history[k];
+        for (idx, item) in history.iter().enumerate().take(engine.terms()) {
+          past_sum += engine.weights[idx] * item;
         }
 
         let i_hat = xi[dim - 1] + (2.0 * engine.h).sqrt() * past_sum;

@@ -6,7 +6,7 @@
 //!
 use std::f64::consts::FRAC_1_PI;
 
-use implied_vol::implied_black_volatility;
+use implied_vol::{DefaultSpecialFn, ImpliedBlackVolatility};
 use num_complex::Complex64;
 use quadrature::double_exponential;
 
@@ -183,13 +183,15 @@ impl PricerExt for HestonPricer {
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
-    implied_black_volatility(
-      c_price,
-      self.s,
-      self.k,
-      self.calculate_tau_in_days(),
-      option_type == OptionType::Call,
-    )
+    ImpliedBlackVolatility::builder()
+      .option_price(c_price)
+      .forward(self.s)
+      .strike(self.k)
+      .expiry(self.calculate_tau_in_days())
+      .is_call(option_type == OptionType::Call)
+      .build()
+      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
+      .unwrap_or(f64::NAN)
   }
 }
 

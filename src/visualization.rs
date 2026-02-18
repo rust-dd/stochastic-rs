@@ -461,6 +461,8 @@ impl GridPlotter {
 
 #[cfg(test)]
 mod tests {
+  #[cfg(feature = "cuda")]
+  use either::Either;
   use ndarray::Array1;
   use plotly::Surface;
   use rand_distr::Exp;
@@ -732,6 +734,26 @@ mod tests {
 
     grid = grid.register(&BM::new(n, Some(1.0)), "Process: BM", traj);
     grid = grid.register(&FBM::new(0.7, n, Some(1.0)), "Process: FBM", traj);
+    #[cfg(feature = "cuda")]
+    {
+      let fbm_cuda = FBM::<f32>::new(0.7, n, Some(1.0));
+      match fbm_cuda.sample_cuda(traj) {
+        Ok(Either::Left(path)) => {
+          let trajectories = vec![path.iter().map(|&x| x as f64).collect()];
+          grid = grid.register_paths(trajectories, "Process: FBM (CUDA)");
+        }
+        Ok(Either::Right(paths)) => {
+          let trajectories = paths
+            .outer_iter()
+            .map(|row| row.iter().map(|&x| x as f64).collect())
+            .collect();
+          grid = grid.register_paths(trajectories, "Process: FBM (CUDA)");
+        }
+        Err(err) => {
+          eprintln!("Skipping Process: FBM (CUDA): {err}");
+        }
+      }
+    }
     grid = grid.register_paths(isonormal_paths, "Process: fBM via ISONormal (H=0.7)");
     grid = grid.register(
       &Poisson::new(2.0, Some(n), Some(1.0)),
@@ -1223,5 +1245,45 @@ mod tests {
         .width(1200),
     );
     sheet_plot.show();
+  }
+
+  #[cfg(feature = "cuda")]
+  #[test]
+  fn plot_fbm_cuda_seed_check() {
+    let n = 512usize;
+    let m = 8usize;
+    let fbm_cuda = FBM::<f32>::new(0.7, n, Some(1.0));
+
+    let sample_paths = |process: &FBM<f32>| -> Vec<Vec<f64>> {
+      match process.sample_cuda(m).expect("CUDA FBM sampling failed") {
+        Either::Left(path) => vec![path.iter().map(|&x| x as f64).collect()],
+        Either::Right(paths) => paths
+          .outer_iter()
+          .map(|row| row.iter().map(|&x| x as f64).collect())
+          .collect(),
+      }
+    };
+
+    let batch_a = sample_paths(&fbm_cuda);
+    let batch_b = sample_paths(&fbm_cuda);
+
+    let all_identical = batch_a.iter().zip(batch_b.iter()).all(|(a, b)| {
+      a.iter()
+        .zip(b.iter())
+        .all(|(x, y)| (*x - *y).abs() <= f64::EPSILON)
+    });
+    eprintln!("CUDA FBM seed check - consecutive batches identical: {all_identical}");
+
+    let plot = GridPlotter::new()
+      .title("CUDA FBM Seed Check")
+      .cols(2)
+      .line_width(1.2)
+      .show_legend(false)
+      .register_paths(batch_a, "FBM CUDA batch A")
+      .register_paths(batch_b, "FBM CUDA batch B")
+      .plot();
+
+    plot.write_html("target/fbm_cuda_seed_check.html");
+    plot.show();
   }
 }

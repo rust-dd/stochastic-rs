@@ -4,7 +4,7 @@
 //! C=S_0e^{(b-r)T}N(d_1)-Ke^{-rT}N(d_2),\quad d_{1,2}=\frac{\ln(S_0/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
-use implied_vol::implied_black_volatility;
+use implied_vol::{DefaultSpecialFn, ImpliedBlackVolatility};
 use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
@@ -198,13 +198,15 @@ impl PricerExt for BSMPricer {
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
-    implied_black_volatility(
-      c_price,
-      self.s,
-      self.k,
-      self.calculate_tau_in_days(),
-      option_type == OptionType::Call,
-    )
+    ImpliedBlackVolatility::builder()
+      .option_price(c_price)
+      .forward(self.s)
+      .strike(self.k)
+      .expiry(self.calculate_tau_in_days())
+      .is_call(option_type == OptionType::Call)
+      .build()
+      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
+      .unwrap_or(f64::NAN)
   }
 
   fn derivatives(&self) -> Vec<f64> {

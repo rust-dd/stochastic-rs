@@ -47,7 +47,7 @@ const P_SIGMA: (f64, f64) = (0.01, 0.6);
 const P_RHO: (f64, f64) = (-1.0, 1.0);
 const P_V0: (f64, f64) = (0.005, 0.25);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 /// Jacobian strategy used by the Heston least-squares calibration.
 ///
 /// Source:
@@ -61,13 +61,8 @@ pub enum HestonJacobianMethod {
   /// Source:
   /// - Cui et al. (2017)
   ///   https://doi.org/10.1016/j.ejor.2017.05.018
+  #[default]
   CuiAnalytic,
-}
-
-impl Default for HestonJacobianMethod {
-  fn default() -> Self {
-    Self::CuiAnalytic
-  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -435,10 +430,11 @@ impl HestonCalibrator {
   }
 
   fn inferred_mle_delta(&self, n_obs: usize) -> f64 {
-    if let Some(dt) = self.mle_delta {
-      if dt.is_finite() && dt > 0.0 {
-        return dt;
-      }
+    if let Some(dt) = self.mle_delta
+      && dt.is_finite()
+      && dt > 0.0
+    {
+      return dt;
     }
     1.0 / n_obs.saturating_sub(1).max(1) as f64
   }
@@ -485,10 +481,12 @@ impl HestonCalibrator {
         let mut cfg = self.nmle_cekf_config.clone().unwrap_or_default();
         cfg.r = r;
         cfg.delta = self.inferred_mle_delta(s.len());
-        if let Some(v_ts) = self.mle_v.as_ref() {
-          if !v_ts.is_empty() && v_ts[0].is_finite() && v_ts[0] > 0.0 {
-            cfg.initial_v0 = v_ts[0];
-          }
+        if let Some(v_ts) = self.mle_v.as_ref()
+          && !v_ts.is_empty()
+          && v_ts[0].is_finite()
+          && v_ts[0] > 0.0
+        {
+          cfg.initial_v0 = v_ts[0];
         }
         let out = nmle_cekf_heston(s, cfg);
         let p: HestonParams = out.params.into();
