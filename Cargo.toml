@@ -9,6 +9,16 @@ documentation = "https://docs.rs/stochastic-rs/latest/stochastic_rs/"
 repository = "https://github.com/dancixx/stochastic-rs"
 readme = "README.md"
 keywords = ["stochastic", "quant", "finance", "simulation", "statistics"]
+exclude = [
+    "**/*.tar.gz",
+    "data/**",
+    "trainsets/**",
+    "src/ai/volatility/*TrainSet.txt.gz",
+    "src/stochastic/cuda/fgn_linux/*.so",
+    "src/stochastic/cuda/fgn_windows/*.dll",
+    "src/stochastic/cuda/fgn_windows/*.lib",
+    "src/stochastic/cuda/fgn_windows/*.exp",
+]
 
 [dependencies]
 anyhow = "1.0.89"
