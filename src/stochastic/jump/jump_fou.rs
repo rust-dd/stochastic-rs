@@ -43,6 +43,8 @@ where
     t: Option<T>,
     cpoisson: CompoundPoisson<T, D>,
   ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
     Self {
       hurst,
       theta,

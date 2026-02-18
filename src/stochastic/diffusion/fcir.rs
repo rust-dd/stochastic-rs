@@ -45,6 +45,7 @@ impl<T: FloatExt> FCIR<T> {
     t: Option<T>,
     use_sym: Option<bool>,
   ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
     assert!(
       T::from_usize_(2) * theta * mu >= sigma.powi(2),
       "2 * theta * mu < sigma^2"

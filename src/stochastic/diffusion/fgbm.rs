@@ -29,6 +29,8 @@ pub struct FGBM<T: FloatExt> {
 impl<T: FloatExt> FGBM<T> {
   #[must_use]
   pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
     Self {
       hurst,
       mu,

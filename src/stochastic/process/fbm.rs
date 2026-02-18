@@ -33,6 +33,8 @@ pub struct FBM<T: FloatExt> {
 
 impl<T: FloatExt> FBM<T> {
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
     Self {
       hurst,
       n,

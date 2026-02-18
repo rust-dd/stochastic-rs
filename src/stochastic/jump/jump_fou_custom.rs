@@ -44,6 +44,8 @@ where
     jump_times: D,
     jump_sizes: D,
   ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
     Self {
       hurst,
       mu,
