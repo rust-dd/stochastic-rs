@@ -124,16 +124,23 @@ mod tests {
 
   #[test]
   fn dt_and_scale_use_requested_length_not_fft_padding() {
-    let n = 1000_usize;
-    let h = 0.7_f64;
-    let t = 2.0_f64;
-    let fgn = FGN::<f64>::new(h, n, Some(t));
+    let hs = [0.2_f64, 0.7_f64];
+    let ns = [3_usize, 17, 1000, 4095];
+    let ts = [0.7_f64, 2.0_f64];
 
-    // Internal FFT length is padded, but time-step must follow requested n.
-    assert_eq!(fgn.n, 1024);
-    assert!((fgn.dt() - (t / n as f64)).abs() < 1e-15);
+    for &h in &hs {
+      for &n in &ns {
+        for &t in &ts {
+          let fgn = FGN::<f64>::new(h, n, Some(t));
 
-    let expected_scale = (n as f64).powf(-h) * t.powf(h);
-    assert!((fgn.scale - expected_scale).abs() < 1e-15);
+          // Internal FFT length is padded, but dt/scale must follow requested n.
+          assert!(fgn.n >= n && fgn.n.is_power_of_two());
+          assert!((fgn.dt() - (t / n as f64)).abs() < 1e-15);
+
+          let expected_scale = (n as f64).powf(-h) * t.powf(h);
+          assert!((fgn.scale - expected_scale).abs() < 1e-15);
+        }
+      }
+    }
   }
 }

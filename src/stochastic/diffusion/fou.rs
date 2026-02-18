@@ -31,6 +31,8 @@ pub struct FOU<T: FloatExt> {
 impl<T: FloatExt> FOU<T> {
   #[must_use]
   pub fn new(hurst: T, theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
     Self {
       hurst,
       theta,
@@ -94,6 +96,35 @@ mod tests {
     for i in 1..n {
       expected = expected + theta * (mu - expected) * dt;
       assert!((x[i] - expected).abs() < 1e-12, "mismatch at index {i}");
+    }
+  }
+
+  #[test]
+  fn fou_dt_alignment_holds_for_multiple_grid_sizes() {
+    let theta = 0.9_f64;
+    let mu = -0.1_f64;
+    let x0 = 0.35_f64;
+    let hs = [0.55_f64, 0.9_f64];
+    let ns = [3_usize, 17, 129, 1000];
+    let ts = [0.7_f64, 2.0_f64];
+
+    for &h in &hs {
+      for &n in &ns {
+        for &t in &ts {
+          let p = FOU::<f64>::new(h, theta, mu, 0.0, n, Some(x0), Some(t));
+          let x = p.sample();
+
+          let dt = t / (n as f64 - 1.0);
+          let mut expected = x0;
+          for i in 1..n {
+            expected = expected + theta * (mu - expected) * dt;
+            assert!(
+              (x[i] - expected).abs() < 1e-12,
+              "mismatch at i={i}, n={n}, t={t}, h={h}"
+            );
+          }
+        }
+      }
     }
   }
 
