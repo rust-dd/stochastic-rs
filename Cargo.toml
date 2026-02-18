@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2024"
 license = "MIT"
 description = "A Rust library for quant finance and simulating stochastic processes."

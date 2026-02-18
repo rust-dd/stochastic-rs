@@ -18,7 +18,7 @@ use crate::traits::FloatExt;
 pub struct FGN<T: FloatExt> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
-  /// Number of discrete simulation points (or samples).
+  /// Internal FFT length (power-of-two padded).
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
@@ -34,7 +34,8 @@ pub struct FGN<T: FloatExt> {
 
 impl<T: FloatExt> FGN<T> {
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
+    let step_count = self.out_len.max(1);
+    self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
   }
 
   #[must_use]
@@ -78,13 +79,15 @@ impl<T: FloatExt> FGN<T> {
       };
     }
 
+    let scale_n = out_len.max(1);
+
     Self {
       hurst,
       n,
       offset,
       out_len,
       t,
-      scale: T::from_usize_(n).powf(-hurst) * t.unwrap_or(T::one()).powf(hurst),
+      scale: T::from_usize_(scale_n).powf(-hurst) * t.unwrap_or(T::one()).powf(hurst),
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
       fft_handler: Arc::new(FftHandler::new(2 * n)),
     }
@@ -112,5 +115,25 @@ impl<T: FloatExt> FGN<T> {
     });
 
     fgn
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::FGN;
+
+  #[test]
+  fn dt_and_scale_use_requested_length_not_fft_padding() {
+    let n = 1000_usize;
+    let h = 0.7_f64;
+    let t = 2.0_f64;
+    let fgn = FGN::<f64>::new(h, n, Some(t));
+
+    // Internal FFT length is padded, but time-step must follow requested n.
+    assert_eq!(fgn.n, 1024);
+    assert!((fgn.dt() - (t / n as f64)).abs() < 1e-15);
+
+    let expected_scale = (n as f64).powf(-h) * t.powf(h);
+    assert!((fgn.scale - expected_scale).abs() < 1e-15);
   }
 }

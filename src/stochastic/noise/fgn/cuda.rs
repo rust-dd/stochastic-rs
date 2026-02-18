@@ -169,10 +169,11 @@ impl<T: FloatExt> FGN<T> {
   fn sample_cuda_f32(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     let n = self.n;
     let offset = self.offset;
+    let out_size = n - offset;
+    let scale_steps = out_size.max(1);
     let hurst = self.hurst.to_f64().unwrap();
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let scale = (n as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
-    let out_size = n - offset;
+    let scale = (scale_steps as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
 
     let need_init = {
       let guard = CUDA_CONTEXT_F32.lock().unwrap();
@@ -260,10 +261,11 @@ impl<T: FloatExt> FGN<T> {
   fn sample_cuda_f64(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     let n = self.n;
     let offset = self.offset;
+    let out_size = n - offset;
+    let scale_steps = out_size.max(1);
     let hurst = self.hurst.to_f64().unwrap();
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let scale = (n as f64).powf(-hurst) * t.powf(hurst);
-    let out_size = n - offset;
+    let scale = (scale_steps as f64).powf(-hurst) * t.powf(hurst);
 
     let need_init = {
       let guard = CUDA_CONTEXT_F64.lock().unwrap();

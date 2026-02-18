@@ -1,7 +1,7 @@
 //! # fOU
 //!
 //! $$
-//! dX_t=\kappa(\theta-X_t)\,dt+\sigma\,dB_t^H
+//! dX_t=\theta(\mu-X_t)\,dt+\sigma\,dB_t^H
 //! $$
 //!
 use ndarray::Array1;
@@ -13,9 +13,9 @@ use crate::traits::ProcessExt;
 pub struct FOU<T: FloatExt> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
-  /// Long-run target level / model location parameter.
+  /// Mean-reversion speed.
   pub theta: T,
-  /// Drift / long-run mean-level parameter.
+  /// Long-run mean level.
   pub mu: T,
   /// Diffusion / noise scale parameter.
   pub sigma: T,
@@ -66,3 +66,42 @@ py_process_1d!(PyFOU, FOU,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, dtype=None),
   params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::FOU;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  #[should_panic(expected = "n must be at least 2")]
+  fn fou_requires_at_least_two_points() {
+    let _ = FOU::<f64>::new(0.7, 1.0, 0.0, 0.2, 1, Some(0.0), Some(1.0));
+  }
+
+  #[test]
+  fn fou_sigma_zero_matches_deterministic_euler() {
+    let theta = 1.3_f64;
+    let mu = 0.8_f64;
+    let n = 129_usize;
+    let x0 = 0.2_f64;
+    let t = 1.0_f64;
+
+    let p = FOU::<f64>::new(0.7, theta, mu, 0.0, n, Some(x0), Some(t));
+    let x = p.sample();
+
+    let dt = t / (n as f64 - 1.0);
+    let mut expected = x0;
+    for i in 1..n {
+      expected = expected + theta * (mu - expected) * dt;
+      assert!((x[i] - expected).abs() < 1e-12, "mismatch at index {i}");
+    }
+  }
+
+  #[test]
+  fn fou_sample_is_finite() {
+    let p = FOU::<f64>::new(0.65, 1.0, 0.0, 0.5, 256, Some(0.1), Some(1.0));
+    let x = p.sample();
+    assert_eq!(x.len(), 256);
+    assert!(x.iter().all(|v| v.is_finite()));
+  }
+}
