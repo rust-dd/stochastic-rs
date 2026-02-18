@@ -23,7 +23,10 @@ pub fn train_test_split_for_array2(
   let mut indices: Vec<usize> = (0..n_samples).collect();
   let mut rng = match random_state {
     Some(seed) => StdRng::seed_from_u64(seed),
-    None => StdRng::from_entropy(),
+    None => {
+      let mut base = rand::rng();
+      StdRng::from_rng(&mut base)
+    }
   };
   indices.shuffle(&mut rng);
 

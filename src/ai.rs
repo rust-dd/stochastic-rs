@@ -1,6 +1,5 @@
 use candle_core::Tensor;
 
-pub mod fou;
 pub mod utils;
 pub mod volatility;
 

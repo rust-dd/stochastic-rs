@@ -14,15 +14,16 @@ keywords = ["stochastic", "quant", "finance", "simulation", "statistics"]
 anyhow = "1.0.89"
 argmin = "0.11.0"
 argmin-math = { version = "0.5", features = ["ndarray_latest-nolinalg"] }
-candle-core = { version = "0.9.1", optional = true }
-candle-datasets = { version = "0.9.1", optional = true }
-candle-nn = { version = "0.9.1", optional = true }
+candle-core = { version = "0.9.2", optional = true }
+candle-datasets = { version = "0.9.2", optional = true }
+candle-nn = { version = "0.9.2", optional = true }
 chrono = "0.4.38"
 cudarc = { version = "0.13.9", optional = true, features = [
     "cuda-12080",
     "cuda-version-from-build-system",
 ] }
 either = "1.15.0"
+flate2 = "1.1.2"
 gauss-quad = "0.2.1"
 implied-vol = "1.0.0"
 kendalls = "0.2.2"
@@ -36,7 +37,7 @@ ndarray = { version = "0.17.2", features = [
     "rayon",
     "matrixmultiply-threading",
 ] }
-ndarray-npy = "0.9.1"
+ndarray-npy = "0.10.0"
 ndarray-rand = "0.16.0"
 ndarray-stats = "0.7.0"
 ndrustfft = "0.6.2"
