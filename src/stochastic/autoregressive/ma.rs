@@ -1,7 +1,7 @@
 //! # Ma
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! X_t=\varepsilon_t+\sum_{k=1}^q\theta_k\varepsilon_{t-k},\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
 use ndarray::Array1;
@@ -35,6 +35,7 @@ pub struct MAq<T: FloatExt> {
 impl<T: FloatExt> MAq<T> {
   /// Create a new MA(q) model with the given parameters.
   pub fn new(theta: Array1<T>, sigma: T, n: usize) -> Self {
+    assert!(sigma > T::zero(), "MAq requires sigma > 0");
     Self {
       theta,
       sigma,

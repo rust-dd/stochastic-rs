@@ -1,7 +1,8 @@
 //! # Agrach
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! \sigma_t^2=\omega+\sum_{i=1}^p(\alpha_i+\delta_i\mathbf 1_{\{X_{t-i}<0\}})X_{t-i}^2
+//! +\sum_{j=1}^q\beta_j\sigma_{t-j}^2
 //! $$
 //!
 use ndarray::Array1;
@@ -50,6 +51,11 @@ pub struct AGARCH<T: FloatExt> {
 
 impl<T: FloatExt> AGARCH<T> {
   pub fn new(omega: T, alpha: Array1<T>, delta: Array1<T>, beta: Array1<T>, n: usize) -> Self {
+    assert!(omega > T::zero(), "AGARCH requires omega > 0");
+    assert!(
+      alpha.len() == delta.len(),
+      "AGARCH requires alpha.len() == delta.len()"
+    );
     Self {
       omega,
       alpha,
@@ -74,12 +80,17 @@ impl<T: FloatExt> ProcessExt<T> for AGARCH<T> {
     // Arrays for X_t and sigma_t^2
     let mut x = Array1::<T>::zeros(self.n);
     let mut sigma2 = Array1::<T>::zeros(self.n);
+    let var_floor = T::from_f64_fast(1e-12);
 
     // Summation for unconditional variance init
     let sum_alpha = self.alpha.iter().cloned().sum();
     let sum_delta_half = self.delta.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
     let sum_beta = self.beta.iter().cloned().sum();
-    let denom = (T::one() - sum_alpha - sum_delta_half - sum_beta).max(T::from_f64_fast(1e-8));
+    let denom = T::one() - sum_alpha - sum_delta_half - sum_beta;
+    assert!(
+      denom > T::zero(),
+      "AGARCH requires sum(alpha) + 0.5*sum(delta) + sum(beta) < 1 for finite unconditional variance"
+    );
 
     for t in 0..self.n {
       if t == 0 {
@@ -108,7 +119,12 @@ impl<T: FloatExt> ProcessExt<T> for AGARCH<T> {
         }
         sigma2[t] = var_t;
       }
-      x[t] = sigma2[t].sqrt() * z[t];
+      assert!(
+        sigma2[t].is_finite() && sigma2[t] > T::zero(),
+        "AGARCH produced non-positive or non-finite conditional variance at t={}",
+        t
+      );
+      x[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }
 
     x

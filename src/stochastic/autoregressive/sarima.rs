@@ -1,7 +1,7 @@
 //! # Sarima
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! \Phi(B^s)\phi(B)(1-B)^d(1-B^s)^DX_t=\Theta(B^s)\theta(B)\varepsilon_t
 //! $$
 //!
 use ndarray::Array1;
@@ -78,6 +78,8 @@ impl<T: FloatExt> SARIMA<T> {
     sigma: T,
     n: usize,
   ) -> Self {
+    assert!(sigma > T::zero(), "SARIMA requires sigma > 0");
+    assert!(s > 0, "SARIMA requires season length s > 0");
     SARIMA {
       non_seasonal_ar_coefs,
       non_seasonal_ma_coefs,

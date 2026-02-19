@@ -1,7 +1,8 @@
 //! # Egarch
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! \log(\sigma_t^2)=\omega+\sum_{i=1}^p[\alpha_i(|z_{t-i}|-\mathbb E|z|)+\gamma_i z_{t-i}]
+//! +\sum_{j=1}^q\beta_j\log(\sigma_{t-j}^2)
 //! $$
 //!
 use ndarray::Array1;
@@ -56,6 +57,10 @@ pub struct EGARCH<T: FloatExt> {
 impl<T: FloatExt> EGARCH<T> {
   /// Create a new EGARCH model with the given parameters.
   pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
+    assert!(
+      alpha.len() == gamma.len(),
+      "EGARCH requires alpha.len() == gamma.len()"
+    );
     Self {
       omega,
       alpha,
@@ -116,7 +121,17 @@ impl<T: FloatExt> ProcessExt<T> for EGARCH<T> {
       }
 
       // Convert log_sigma2[t] to sigma_t and compute X_t
+      assert!(
+        log_sigma2[t].is_finite(),
+        "EGARCH produced non-finite log-variance at t={}",
+        t
+      );
       let sigma_t = (log_sigma2[t].exp()).sqrt();
+      assert!(
+        sigma_t.is_finite() && sigma_t > T::zero(),
+        "EGARCH produced non-positive or non-finite sigma at t={}",
+        t
+      );
       x[t] = sigma_t * z[t];
     }
 

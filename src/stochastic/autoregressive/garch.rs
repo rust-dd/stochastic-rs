@@ -1,7 +1,7 @@
 //! # Garch
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2+\sum_{j=1}^q\beta_j\sigma_{t-j}^2,\qquad X_t=\sigma_t z_t
 //! $$
 //!
 use ndarray::Array1;
@@ -44,6 +44,7 @@ pub struct GARCH<T: FloatExt> {
 
 impl<T: FloatExt> GARCH<T> {
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize) -> Self {
+    assert!(omega > T::zero(), "GARCH requires omega > 0");
     GARCH {
       omega,
       alpha,
@@ -67,11 +68,16 @@ impl<T: FloatExt> ProcessExt<T> for GARCH<T> {
     // Arrays for X_t and sigma_t^2
     let mut x = Array1::<T>::zeros(self.n);
     let mut sigma2 = Array1::<T>::zeros(self.n);
+    let var_floor = T::from_f64_fast(1e-12);
 
     // Sum of alpha/beta for unconditional variance initialization
     let sum_alpha = self.alpha.iter().cloned().sum();
     let sum_beta = self.beta.iter().cloned().sum();
-    let denom = (T::one() - sum_alpha - sum_beta).max(T::from_f64_fast(1e-8));
+    let denom = T::one() - sum_alpha - sum_beta;
+    assert!(
+      denom > T::zero(),
+      "GARCH requires sum(alpha) + sum(beta) < 1 for finite unconditional variance"
+    );
 
     for t in 0..self.n {
       if t == 0 {
@@ -93,8 +99,13 @@ impl<T: FloatExt> ProcessExt<T> for GARCH<T> {
         }
         sigma2[t] = var_t;
       }
+      assert!(
+        sigma2[t].is_finite() && sigma2[t] > T::zero(),
+        "GARCH produced non-positive or non-finite conditional variance at t={}",
+        t
+      );
       // X_t = sigma_t * z[t]
-      x[t] = sigma2[t].sqrt() * z[t];
+      x[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }
 
     x

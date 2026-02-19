@@ -1,7 +1,7 @@
 //! # Arch
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! \sigma_t^2=\omega+\sum_{i=1}^m\alpha_iX_{t-i}^2,\qquad X_t=\sigma_t z_t,\ z_t\sim\mathcal N(0,1)
 //! $$
 //!
 use ndarray::Array1;
@@ -35,6 +35,7 @@ pub struct ARCH<T: FloatExt> {
 impl<T: FloatExt> ARCH<T> {
   /// Create a new ARCH model.
   pub fn new(omega: T, alpha: Array1<T>, n: usize) -> Self {
+    assert!(omega > T::zero(), "ARCH requires omega > 0");
     Self {
       omega,
       alpha,
@@ -51,6 +52,7 @@ impl<T: FloatExt> ProcessExt<T> for ARCH<T> {
     let m = self.alpha.len();
     let z = self.wn.sample();
     let mut x = Array1::<T>::zeros(self.n);
+    let var_floor = T::from_f64_fast(1e-12);
 
     for t in 0..self.n {
       // compute sigma_t^2
@@ -61,7 +63,12 @@ impl<T: FloatExt> ProcessExt<T> for ARCH<T> {
           var_t += self.alpha[i - 1] * x_lag.powi(2);
         }
       }
-      let sigma_t = var_t.sqrt();
+      assert!(
+        var_t.is_finite() && var_t > T::zero(),
+        "ARCH produced non-positive or non-finite conditional variance at t={}",
+        t
+      );
+      let sigma_t = var_t.max(var_floor).sqrt();
       x[t] = sigma_t * z[t];
     }
 

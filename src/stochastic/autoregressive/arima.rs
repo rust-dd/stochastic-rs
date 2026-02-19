@@ -1,7 +1,7 @@
 //! # Arima
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! \phi(B)(1-B)^dX_t=\theta(B)\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
 use ndarray::Array1;
@@ -34,6 +34,7 @@ pub struct ARIMA<T: FloatExt> {
 impl<T: FloatExt> ARIMA<T> {
   /// Create a new ARIMA model with the given parameters.
   pub fn new(ar_coefs: Array1<T>, ma_coefs: Array1<T>, d: usize, sigma: T, n: usize) -> Self {
+    assert!(sigma > T::zero(), "ARIMA requires sigma > 0");
     Self {
       ar_coefs,
       ma_coefs,

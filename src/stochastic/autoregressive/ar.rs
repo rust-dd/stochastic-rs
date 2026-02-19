@@ -1,7 +1,7 @@
 //! # Ar
 //!
 //! $$
-//! X_t=\sum_i\phi_i X_{t-i}+\sum_j\theta_j\varepsilon_{t-j}+\varepsilon_t
+//! X_t=\sum_{k=1}^p \phi_k X_{t-k}+\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
 use ndarray::Array1;
@@ -39,6 +39,16 @@ pub struct ARp<T: FloatExt> {
 impl<T: FloatExt> ARp<T> {
   /// Create a new AR process with given coefficients and noise standard deviation.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>) -> Self {
+    assert!(sigma > T::zero(), "ARp requires sigma > 0");
+    if let Some(init) = &x0 {
+      let required = phi.len().min(n);
+      assert!(
+        init.len() >= required,
+        "ARp requires x0.len() >= min(phi.len(), n) (got {}, need at least {})",
+        init.len(),
+        required
+      );
+    }
     Self {
       phi,
       sigma,
