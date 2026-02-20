@@ -102,22 +102,24 @@ impl<T: FloatExt> ProcessExt<T> for KoBoL<T> {
       * (self.lambda_plus.powf(self.alpha - T::one())
         - self.lambda_minus.powf(self.alpha - T::one()));
 
-    // --- Random building blocks (keep same symbols as CGMY):
+    let J = self.j;
+    let size = J + 1; // index 0 is reserved (Γ0=0)
+
     let uniform = SimdUniform::new(T::zero(), T::one());
     let exp = SimdExp::new(T::one());
 
     // U_j ~ Unif(0,1)
-    let U = Array1::<T>::random(self.j, &uniform);
+    let U = Array1::<T>::random(size, &uniform);
     // E_j ~ Exp(1)
-    let E = Array1::<T>::random(self.j, exp);
+    let E = Array1::<T>::random(size, exp);
     // P_j = Γ_j (PPP arrival times), with P[0]=0, P[1]=Γ_1, ...
-    let P = Poisson::new(T::one(), Some(self.j), None).sample();
+    let P = Poisson::new(T::one(), Some(size), None).sample();
     // τ_j ~ Unif(0,T)
-    let tau = Array1::<T>::random(self.j, &uniform) * t_max;
+    let tau = Array1::<T>::random(size, &uniform) * t_max;
 
-    let mut jump_size = Array1::<T>::zeros(self.j);
+    let mut jump_size = Array1::<T>::zeros(size);
 
-    for j in 1..self.j {
+    for j in 1..size {
       let v_j = if rng.random_bool(0.5) {
         self.lambda_plus
       } else {
@@ -132,7 +134,7 @@ impl<T: FloatExt> ProcessExt<T> for KoBoL<T> {
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
 
-    let mut idx = (1..self.j).collect::<Vec<usize>>(); // 1.. because tau[0] exists, but you use 1..j
+    let mut idx = (1..size).collect::<Vec<usize>>(); // 1.. because tau[0] exists, but you use 1..j
     idx.sort_by(|&a, &b| {
       tau[a]
         .to_f64()

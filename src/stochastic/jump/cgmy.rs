@@ -111,18 +111,21 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
       * (self.lambda_plus.powf(self.alpha - T::one())
         - self.lambda_minus.powf(self.alpha - T::one()));
 
+    let J = self.j;
+    let size = J + 1; // index 0 is reserved (Γ0=0)
+
     let uniform = SimdUniform::new(T::zero(), T::one());
     let exp = SimdExp::new(T::one());
 
-    let U = Array1::<T>::random(self.j, &uniform);
-    let E = Array1::<T>::random(self.j, exp);
-    let P = Poisson::new(T::one(), Some(self.j), None);
+    let U = Array1::<T>::random(size, &uniform);
+    let E = Array1::<T>::random(size, exp);
+    let P = Poisson::new(T::one(), Some(size), None);
     let P = P.sample();
-    let tau = Array1::<T>::random(self.j, &uniform) * t_max;
+    let tau = Array1::<T>::random(size, &uniform) * t_max;
 
-    let mut jump_size = Array1::<T>::zeros(self.j);
+    let mut jump_size = Array1::<T>::zeros(size);
 
-    for j in 1..self.j {
+    for j in 1..size {
       let v_j = if rng.random_bool(0.5) {
         self.lambda_plus
       } else {
@@ -137,7 +140,7 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
 
-    let mut idx = (1..self.j).collect::<Vec<usize>>(); // 1.. because tau[0] exists, but you use 1..j
+    let mut idx = (1..size).collect::<Vec<usize>>(); // 1.. because tau[0] exists, but you use 1..j
     idx.sort_by(|&a, &b| {
       tau[a]
         .to_f64()
@@ -149,7 +152,7 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());
 
-    let mut k: usize = 0;
+    let mut k = 0;
     let mut cum_jumps = T::zero(); // sum_{tau_j <= current t} jump_size[j]
 
     for i in 1..self.n {

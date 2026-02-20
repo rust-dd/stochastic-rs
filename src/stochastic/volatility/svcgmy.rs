@@ -159,7 +159,7 @@ impl<T: FloatExt> ProcessExt<T> for SVCGMY<T> {
 
     // c(τ_j) = C * v_{k-1} where (k-1)dt < τ_j <= k dt
     let mut c_tau = Array1::<T>::zeros(size);
-    for j in 1..=J {
+    for j in 1..size {
       let tau_j = tau[j];
       let k = ((tau_j / dt).ceil()).min(T::from_usize_(self.n - 1));
       let v_km1 = if k == T::zero() {
