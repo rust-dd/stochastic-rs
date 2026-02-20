@@ -98,8 +98,6 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
-    let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
 
     let g = gamma(2.0 - self.alpha.to_f64().unwrap());
     let C = (T::from_f64_fast(g)
@@ -122,30 +120,48 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
     let P = P.sample();
     let tau = Array1::<T>::random(self.j, &uniform) * t_max;
 
+    let mut jump_size = Array1::<T>::zeros(self.j);
+
+    for j in 1..self.j {
+      let v_j = if rng.random_bool(0.5) {
+        self.lambda_plus
+      } else {
+        -self.lambda_minus
+      };
+
+      let divisor = T::from_usize_(2) * C * t_max;
+      let numerator = self.alpha * P[j];
+      let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
+
+      let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+      jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
+    }
+
+    let mut idx = (1..self.j).collect::<Vec<usize>>(); // 1.. because tau[0] exists, but you use 1..j
+    idx.sort_by(|&a, &b| {
+      tau[a]
+        .to_f64()
+        .unwrap()
+        .partial_cmp(&tau[b].to_f64().unwrap())
+        .unwrap()
+    });
+
+    let mut x = Array1::<T>::zeros(self.n);
+    x[0] = self.x0.unwrap_or(T::zero());
+
+    let mut k: usize = 0;
+    let mut cum_jumps = T::zero(); // sum_{tau_j <= current t} jump_size[j]
+
     for i in 1..self.n {
-      let mut jump_component = T::zero();
-      let t_1 = T::from_usize_(i - 1) * dt;
-      let t = T::from_usize_(i) * dt;
+      let t_i = T::from_usize_(i) * dt;
 
-      for j in 1..self.j {
-        if tau[j] > t_1 && tau[j] <= t {
-          let v_j = if rng.random_bool(0.5) {
-            self.lambda_plus
-          } else {
-            -self.lambda_minus
-          };
-
-          let divisor = T::from_usize_(2) * C * t_max;
-          let numerator = self.alpha * P[j];
-          let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
-          let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
-          let jump_size = term1.min(term2) * (v_j / v_j.abs());
-
-          jump_component += jump_size;
-        }
+      while k < idx.len() && tau[idx[k]] <= t_i {
+        cum_jumps += jump_size[idx[k]];
+        k += 1;
       }
 
-      x[i] = x[i - 1] + jump_component + b_t * dt;
+      // Equivalent to your interval-summing but faster:
+      x[i] = x[0] + cum_jumps + b_t * t_i;
     }
 
     x

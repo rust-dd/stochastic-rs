@@ -40,10 +40,11 @@ impl<T: FloatExt> ProcessExt<T> for FGN<T> {
 
 #[cfg(all(test, feature = "cuda"))]
 mod cuda_tests {
-  use super::FGN;
-  use crate::traits::ProcessExt;
   use anyhow::Result;
   use either::Either;
+
+  use super::FGN;
+  use crate::traits::ProcessExt;
 
   fn sample_cuda_paths(
     h: f32,

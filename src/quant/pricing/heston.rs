@@ -6,7 +6,8 @@
 //!
 use std::f64::consts::FRAC_1_PI;
 
-use implied_vol::{DefaultSpecialFn, ImpliedBlackVolatility};
+use implied_vol::DefaultSpecialFn;
+use implied_vol::ImpliedBlackVolatility;
 use num_complex::Complex64;
 use quadrature::double_exponential;
 

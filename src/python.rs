@@ -185,6 +185,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::jump::ig::PyIG;
   use crate::stochastic::jump::jump_fou::PyJumpFOU;
   use crate::stochastic::jump::jump_fou_custom::PyJumpFOUCustom;
+  use crate::stochastic::jump::kobol::PyKoBoL;
   use crate::stochastic::jump::kou::PyKOU;
   use crate::stochastic::jump::levy_diffusion::PyLevyDiffusion;
   use crate::stochastic::jump::merton::PyMerton;
@@ -205,6 +206,13 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::process::fbm::PyFBM;
   use crate::stochastic::process::lfsm::PyLFSM;
   use crate::stochastic::process::poisson::PyPoisson;
+  use crate::stochastic::process::subordinator::alpha_stable::PyAlphaStableSubordinator;
+  use crate::stochastic::process::subordinator::ctrw::PyCTRW;
+  use crate::stochastic::process::subordinator::gamma_subordinator::PyGammaSubordinator;
+  use crate::stochastic::process::subordinator::ig_subordinator::PyIGSubordinator;
+  use crate::stochastic::process::subordinator::inverse_alpha_stable::PyInverseAlphaStableSubordinator;
+  use crate::stochastic::process::subordinator::poisson_subordinator::PyPoissonSubordinator;
+  use crate::stochastic::process::subordinator::tempered_stable::PyTemperedStableSubordinator;
   use crate::stochastic::sheet::fbs::PyFBS;
   use crate::stochastic::volatility::bergomi::PyBergomi;
   use crate::stochastic::volatility::fheston::PyRoughHeston;
@@ -222,6 +230,13 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyCustomJt>()?;
   m.add_class::<PyCompoundPoisson>()?;
   m.add_class::<PyCompoundCustom>()?;
+  m.add_class::<PyAlphaStableSubordinator>()?;
+  m.add_class::<PyInverseAlphaStableSubordinator>()?;
+  m.add_class::<PyPoissonSubordinator>()?;
+  m.add_class::<PyGammaSubordinator>()?;
+  m.add_class::<PyIGSubordinator>()?;
+  m.add_class::<PyTemperedStableSubordinator>()?;
+  m.add_class::<PyCTRW>()?;
   m.add_class::<PyFGN>()?;
   m.add_class::<PyGn>()?;
   m.add_class::<PyWn>()?;
@@ -251,6 +266,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyRDTS>()?;
   m.add_class::<PyVG>()?;
   m.add_class::<PyMerton>()?;
+  m.add_class::<PyKoBoL>()?;
   m.add_class::<PyKOU>()?;
   m.add_class::<PyLevyDiffusion>()?;
   m.add_class::<PyBates>()?;

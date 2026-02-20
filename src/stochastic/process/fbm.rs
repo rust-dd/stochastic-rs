@@ -4,6 +4,10 @@
 //! \mathbb E[B_t^H B_s^H]=\tfrac12\left(t^{2H}+s^{2H}-|t-s|^{2H}\right)
 //! $$
 //!
+#[cfg(feature = "cuda")]
+use anyhow::Result;
+#[cfg(feature = "cuda")]
+use either::Either;
 use ndarray::Array1;
 #[cfg(feature = "cuda")]
 use ndarray::Array2;
@@ -22,10 +26,6 @@ use statrs::function::gamma;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
-#[cfg(feature = "cuda")]
-use anyhow::Result;
-#[cfg(feature = "cuda")]
-use either::Either;
 
 pub struct FBM<T: FloatExt> {
   /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
@@ -145,13 +145,14 @@ impl PyFBM {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::stats::fd::FractalDim;
   #[cfg(feature = "cuda")]
   use anyhow::Result;
   #[cfg(feature = "cuda")]
   use either::Either;
   use statrs::function::erf::erf;
+
+  use super::*;
+  use crate::stats::fd::FractalDim;
 
   fn nearest_quantile(sorted: &[f64], p: f64) -> f64 {
     let idx = (((sorted.len() - 1) as f64) * p).round() as usize;

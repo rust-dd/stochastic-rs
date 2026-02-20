@@ -536,6 +536,15 @@ mod tests {
   use crate::stochastic::process::fbm::FBM;
   use crate::stochastic::process::lfsm::LFSM;
   use crate::stochastic::process::poisson::Poisson;
+  use crate::stochastic::process::subordinator::AlphaStableSubordinator;
+  use crate::stochastic::process::subordinator::CTRW;
+  use crate::stochastic::process::subordinator::CtrwJumpLaw;
+  use crate::stochastic::process::subordinator::CtrwWaitingLaw;
+  use crate::stochastic::process::subordinator::GammaSubordinator;
+  use crate::stochastic::process::subordinator::IGSubordinator;
+  use crate::stochastic::process::subordinator::InverseAlphaStableSubordinator;
+  use crate::stochastic::process::subordinator::PoissonSubordinator;
+  use crate::stochastic::process::subordinator::TemperedStableSubordinator;
   use crate::stochastic::sheet::fbs::FBS;
   use crate::stochastic::volatility::HestonPow;
   use crate::stochastic::volatility::bergomi::Bergomi;
@@ -797,6 +806,50 @@ mod tests {
     grid = grid.register(
       &LFSM::new(1.7, 0.0, 0.8, 1.0, n, Some(0.0), Some(1.0)),
       "Process: LFSM",
+      traj,
+    );
+    grid = grid.register(
+      &AlphaStableSubordinator::new(0.7, 1.0, n, Some(0.0), Some(1.0)),
+      "Process: AlphaStable Subordinator",
+      traj,
+    );
+    grid = grid.register(
+      &InverseAlphaStableSubordinator::new(0.7, 1.0, n, Some(1.0), 2048, Some(4.0)),
+      "Process: Inverse AlphaStable",
+      traj,
+    );
+    grid = grid.register(
+      &PoissonSubordinator::new(2.0, n, Some(0.0), Some(1.0)),
+      "Process: Poisson Subordinator",
+      traj,
+    );
+    grid = grid.register(
+      &GammaSubordinator::new(3.0, 5.0, n, Some(0.0), Some(1.0)),
+      "Process: Gamma Subordinator",
+      traj,
+    );
+    grid = grid.register(
+      &IGSubordinator::new(1.5, 2.0, n, Some(0.0), Some(1.0)),
+      "Process: IG Subordinator",
+      traj,
+    );
+    grid = grid.register(
+      &TemperedStableSubordinator::new(0.7, 1.0, 2.0, 0.05, n, Some(0.0), Some(1.0)),
+      "Process: Tempered Stable Subordinator",
+      traj,
+    );
+    grid = grid.register(
+      &CTRW::new(
+        CtrwWaitingLaw::Exponential { rate: 2.0 },
+        CtrwJumpLaw::Normal {
+          mean: 0.0,
+          std: 0.3,
+        },
+        n,
+        Some(0.0),
+        Some(1.0),
+      ),
+      "Process: CTRW",
       traj,
     );
 

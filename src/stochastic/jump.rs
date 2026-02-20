@@ -10,6 +10,7 @@ pub mod cts;
 pub mod ig;
 pub mod jump_fou;
 pub mod jump_fou_custom;
+pub mod kobol;
 pub mod kou;
 pub mod levy_diffusion;
 pub mod merton;

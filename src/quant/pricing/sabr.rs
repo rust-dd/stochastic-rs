@@ -4,7 +4,8 @@
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
-use implied_vol::{DefaultSpecialFn, ImpliedBlackVolatility};
+use implied_vol::DefaultSpecialFn;
+use implied_vol::ImpliedBlackVolatility;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
