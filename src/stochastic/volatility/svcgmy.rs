@@ -38,22 +38,18 @@ pub struct SVCGMY<T: FloatExt> {
   pub lambda_minus: T,
   /// Activity parameter α (0 < α < 2)
   pub alpha: T,
-
   /// CIR mean reversion κ > 0
   pub kappa: T,
   /// CIR long-term level η >= 0
   pub eta: T,
   /// CIR vol-of-vol ζ > 0
   pub zeta: T,
-
-  /// Loading parameter ρ (no [-1,1] restriction)
+  /// Loading parameter ρ
   pub rho: T,
-
   /// Number of time steps (M+1 points including t=0)
   pub n: usize,
   /// Truncation level J (number of series terms)
   pub j: usize,
-
   /// Initial value (interpreted as L0)
   pub x0: Option<T>,
   /// Initial variance v0
