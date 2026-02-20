@@ -1124,16 +1124,27 @@ mod tests {
       "Jump: CTS",
       traj,
     );
+
+    let g = 4.0;
+    let m = 5.0;
+    let y = 0.7;
+
+    let c = CGMY::<f64>::c_for_unit_variance(g, m, y);
+    // KoBoL: in case of p=q=1 D_for_unit_variance == C_for_unit_variance
+    let d = KoBoL::<f64>::d_for_unit_variance(1.0, 1.0, g, m, y);
+
     grid = grid.register(
-      &CGMY::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
-      "Jump: CGMY",
+      &CGMY::<f64>::new(c, g, m, y, n, j, Some(0.0), Some(1.0)),
+      "Jump: CGMY (unit var, symmetric)",
       traj,
     );
+
     grid = grid.register(
-      &KoBoL::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
-      "Jump: KoBoL",
+      &KoBoL::<f64>::new(d, 1.0, 1.0, g, m, y, n, j, Some(0.0), Some(1.0)),
+      "Jump: KoBoL (unit var, p=q=1)",
       traj,
     );
+
     grid = grid.register(
       &Merton::new(
         0.03,
