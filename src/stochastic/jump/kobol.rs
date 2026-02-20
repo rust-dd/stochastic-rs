@@ -36,7 +36,6 @@ pub struct KoBoL<T: FloatExt> {
   pub lambda_minus: T, // M
   /// Activity parameter (Y) in (0, 2)
   pub alpha: T, // Y
-
   /// Number of time steps
   pub n: usize,
   /// Truncation terms (J)
