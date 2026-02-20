@@ -516,6 +516,7 @@ mod tests {
   use crate::stochastic::jump::ig::IG;
   use crate::stochastic::jump::jump_fou::JumpFOU;
   use crate::stochastic::jump::jump_fou_custom::JumpFOUCustom;
+  use crate::stochastic::jump::kobol::KoBoL;
   use crate::stochastic::jump::kou::KOU;
   use crate::stochastic::jump::levy_diffusion::LevyDiffusion;
   use crate::stochastic::jump::merton::Merton;
@@ -1126,6 +1127,11 @@ mod tests {
     grid = grid.register(
       &CGMY::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
       "Jump: CGMY",
+      traj,
+    );
+    grid = grid.register(
+      &KoBoL::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
+      "Jump: KoBoL",
       traj,
     );
     grid = grid.register(
