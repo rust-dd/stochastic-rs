@@ -14,6 +14,7 @@ pub mod kobol;
 pub mod kou;
 pub mod levy_diffusion;
 pub mod merton;
+pub mod mjd_log;
 pub mod nig;
 pub mod rdts;
 pub mod vg;

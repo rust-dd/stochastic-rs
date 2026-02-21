@@ -162,6 +162,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::diffusion::fouque::PyFouqueOU2D;
   use crate::stochastic::diffusion::gbm::PyGBM;
   use crate::stochastic::diffusion::gbm_ih::PyGBMIH;
+  use crate::stochastic::diffusion::gbm_log::PyGBMLog;
   use crate::stochastic::diffusion::gompertz::PyGompertz;
   use crate::stochastic::diffusion::jacobi::PyJacobi;
   use crate::stochastic::diffusion::kimura::PyKimura;
@@ -189,6 +190,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::jump::kou::PyKOU;
   use crate::stochastic::jump::levy_diffusion::PyLevyDiffusion;
   use crate::stochastic::jump::merton::PyMerton;
+  use crate::stochastic::jump::mjd_log::PyMJDLog;
   use crate::stochastic::jump::nig::PyNIG;
   use crate::stochastic::jump::rdts::PyRDTS;
   use crate::stochastic::jump::vg::PyVG;
@@ -218,6 +220,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::volatility::bergomi::PyBergomi;
   use crate::stochastic::volatility::fheston::PyRoughHeston;
   use crate::stochastic::volatility::heston::PyHeston;
+  use crate::stochastic::volatility::heston_log::PyHestonLog;
   use crate::stochastic::volatility::rbergomi::PyRoughBergomi;
   use crate::stochastic::volatility::sabr::PySABR;
   use crate::stochastic::volatility::svcgmy::PySVCGMY;
@@ -254,6 +257,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyFouqueOU2D>()?;
   m.add_class::<PyGBM>()?;
   m.add_class::<PyGBMIH>()?;
+  m.add_class::<PyGBMLog>()?;
   m.add_class::<PyGompertz>()?;
   m.add_class::<PyJacobi>()?;
   m.add_class::<PyKimura>()?;
@@ -267,6 +271,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyRDTS>()?;
   m.add_class::<PyVG>()?;
   m.add_class::<PyMerton>()?;
+  m.add_class::<PyMJDLog>()?;
   m.add_class::<PyKoBoL>()?;
   m.add_class::<PyKOU>()?;
   m.add_class::<PyLevyDiffusion>()?;
@@ -276,6 +281,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyBatesSVJ>()?;
   m.add_class::<PyBergomi>()?;
   m.add_class::<PyHeston>()?;
+  m.add_class::<PyHestonLog>()?;
   m.add_class::<PyRoughBergomi>()?;
   m.add_class::<PySABR>()?;
   m.add_class::<PyRoughHeston>()?;

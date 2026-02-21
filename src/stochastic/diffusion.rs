@@ -15,6 +15,7 @@ pub mod fou;
 pub mod fouque;
 pub mod gbm;
 pub mod gbm_ih;
+pub mod gbm_log;
 pub mod gompertz;
 pub mod jacobi;
 pub mod kimura;
