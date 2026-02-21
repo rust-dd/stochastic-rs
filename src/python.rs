@@ -214,6 +214,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::process::subordinator::poisson_subordinator::PyPoissonSubordinator;
   use crate::stochastic::process::subordinator::tempered_stable::PyTemperedStableSubordinator;
   use crate::stochastic::sheet::fbs::PyFBS;
+  use crate::stochastic::volatility::bates_svj::PyBatesSVJ;
   use crate::stochastic::volatility::bergomi::PyBergomi;
   use crate::stochastic::volatility::fheston::PyRoughHeston;
   use crate::stochastic::volatility::heston::PyHeston;
@@ -272,6 +273,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyBates>()?;
   m.add_class::<PyJumpFOU>()?;
   m.add_class::<PyJumpFOUCustom>()?;
+  m.add_class::<PyBatesSVJ>()?;
   m.add_class::<PyBergomi>()?;
   m.add_class::<PyHeston>()?;
   m.add_class::<PyRoughBergomi>()?;
