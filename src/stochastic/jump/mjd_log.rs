@@ -60,7 +60,19 @@ impl<T: FloatExt> MJDLog<T> {
     assert!(sigma >= T::zero(), "sigma must be >= 0");
     assert!(lambda >= T::zero(), "lambda must be >= 0");
     assert!(omega >= T::zero(), "omega must be >= 0");
-    Self { mu, b, r, r_f, sigma, lambda, nu, omega, n, s0, t }
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      sigma,
+      lambda,
+      nu,
+      omega,
+      n,
+      s0,
+      t,
+    }
   }
 
   #[inline]
@@ -105,7 +117,9 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
     let z_std = SimdNormal::<f64, 64>::new(0.0, 1.0);
 
     let pois = if self.lambda > T::zero() {
-      Some(SimdPoisson::<u32>::new((self.lambda * dt).to_f64().unwrap()))
+      Some(SimdPoisson::<u32>::new(
+        (self.lambda * dt).to_f64().unwrap(),
+      ))
     } else {
       None
     };
@@ -139,9 +153,17 @@ mod tests {
   #[test]
   fn price_stays_positive() {
     let p = MJDLog::new(
-      Some(0.05_f64), None, None, None,
-      0.2, 0.5, -0.1, 0.15,
-      256, Some(100.0), Some(1.0),
+      Some(0.05_f64),
+      None,
+      None,
+      None,
+      0.2,
+      0.5,
+      -0.1,
+      0.15,
+      256,
+      Some(100.0),
+      Some(1.0),
     );
     let s = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));

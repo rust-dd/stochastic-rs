@@ -45,7 +45,16 @@ impl<T: FloatExt> GBMLog<T> {
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(sigma >= T::zero(), "sigma must be >= 0");
-    Self { mu, b, r, r_f, sigma, n, s0, t }
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      sigma,
+      n,
+      s0,
+      t,
+    }
   }
 
   #[inline]
@@ -100,8 +109,14 @@ mod tests {
   #[test]
   fn price_stays_positive() {
     let p = GBMLog::new(
-      Some(0.05_f64), None, None, None,
-      0.2, 1000, Some(100.0), Some(1.0),
+      Some(0.05_f64),
+      None,
+      None,
+      None,
+      0.2,
+      1000,
+      Some(100.0),
+      Some(1.0),
     );
     let s = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));

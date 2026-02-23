@@ -153,9 +153,19 @@ mod tests {
   #[test]
   fn price_stays_positive() {
     let p = HestonLog::new(
-      Some(0.05_f64), None, None, None,
-      1.5, 0.04, 0.3, -0.7,
-      256, Some(100.0), Some(0.04), Some(1.0), Some(false),
+      Some(0.05_f64),
+      None,
+      None,
+      None,
+      1.5,
+      0.04,
+      0.3,
+      -0.7,
+      256,
+      Some(100.0),
+      Some(0.04),
+      Some(1.0),
+      Some(false),
     );
     let [s, _v] = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
@@ -164,9 +174,19 @@ mod tests {
   #[test]
   fn variance_stays_non_negative() {
     let p = HestonLog::new(
-      Some(0.05_f64), None, None, None,
-      1.5, 0.04, 0.5, -0.7,
-      256, Some(100.0), Some(0.04), Some(1.0), Some(false),
+      Some(0.05_f64),
+      None,
+      None,
+      None,
+      1.5,
+      0.04,
+      0.5,
+      -0.7,
+      256,
+      Some(100.0),
+      Some(0.04),
+      Some(1.0),
+      Some(false),
     );
     let [_s, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));
