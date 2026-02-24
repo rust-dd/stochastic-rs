@@ -78,6 +78,27 @@ fn tanh_weights(x: &[f64]) -> Vec<f64> {
   }
 }
 
+/// Build an n+1 vertex simplex that spans both long and short directions.
+fn long_short_simplex(n: usize) -> Vec<Vec<f64>> {
+  let x0 = vec![0.0; n];
+  let mut simplex = Vec::with_capacity(n + 1);
+  simplex.push(x0);
+
+  if n == 1 {
+    simplex.push(vec![1.0]);
+    return simplex;
+  }
+
+  for i in 0..n {
+    let mut point = vec![0.0; n];
+    point[i] = 1.0;
+    point[(i + 1) % n] = -1.0;
+    simplex.push(point);
+  }
+
+  simplex
+}
+
 fn empirical_cvar(returns: &mut [f64], alpha: f64) -> f64 {
   if returns.is_empty() {
     return 0.0;
@@ -237,19 +258,7 @@ pub fn optimize_markowitz_long_short(
   };
 
   let x0 = vec![0.0; n];
-  let mut simplex = Vec::with_capacity(n + 1);
-  simplex.push(x0.clone());
-  for i in 0..n {
-    let mut point = x0.clone();
-    point[i] = 1.0;
-    simplex.push(point);
-  }
-  for i in 0..n {
-    let mut point = x0.clone();
-    point[i] = -1.0;
-    simplex.push(point);
-  }
-  simplex.truncate(n + 1);
+  let simplex = long_short_simplex(n);
 
   let w = match NelderMead::new(simplex).with_sd_tolerance(1e-8) {
     Ok(solver) => {
@@ -445,19 +454,7 @@ pub fn optimize_mean_cvar_long_short(
   };
 
   let x0 = vec![0.0; n];
-  let mut simplex = Vec::with_capacity(n + 1);
-  simplex.push(x0.clone());
-  for i in 0..n {
-    let mut point = x0.clone();
-    point[i] = 1.0;
-    simplex.push(point);
-  }
-  for i in 0..n {
-    let mut point = x0.clone();
-    point[i] = -1.0;
-    simplex.push(point);
-  }
-  simplex.truncate(n + 1);
+  let simplex = long_short_simplex(n);
 
   let w = match NelderMead::new(simplex).with_sd_tolerance(1e-8) {
     Ok(solver) => {
