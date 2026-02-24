@@ -10,8 +10,10 @@ pub mod bonds;
 pub mod calibration;
 pub mod loss;
 pub mod order_book;
+pub mod portfolio;
 pub mod pricing;
 pub mod strategies;
+pub use portfolio::momentum;
 #[cfg(feature = "yahoo")]
 pub mod yahoo;
 
