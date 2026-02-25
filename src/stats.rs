@@ -12,3 +12,5 @@ pub mod gaussian_kde;
 pub mod heston_mle;
 pub mod heston_nml_cekf;
 pub mod non_central_chi_squared;
+pub mod normality;
+pub mod stationarity;

@@ -125,7 +125,7 @@ impl PortfolioEngine {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::quant::portfolio::AssetModelEstimate;
+  use crate::quant::momentum::AssetModelEstimate;
   use crate::quant::portfolio::momentum::WeightScheme;
 
   fn dummy_evals() -> Vec<AssetModelEstimate> {

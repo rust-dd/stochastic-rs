@@ -249,3 +249,90 @@ py_distribution!(PyExp, SimdExp,
   sig: (lambda_, dtype=None),
   params: (lambda_: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use rand_distr::Distribution;
+
+  use super::SimdExp;
+  use super::SimdExpZig;
+
+  fn mean(samples: &[f64]) -> f64 {
+    samples.iter().sum::<f64>() / samples.len() as f64
+  }
+
+  fn exp_cdf(x: f64, lambda: f64) -> f64 {
+    if x <= 0.0 {
+      0.0
+    } else {
+      1.0 - (-lambda * x).exp()
+    }
+  }
+
+  fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
+    samples.sort_by(f64::total_cmp);
+    let n = samples.len() as f64;
+    let mut d = 0.0_f64;
+    for (i, &x) in samples.iter().enumerate() {
+      let f = cdf(x).clamp(0.0, 1.0);
+      let i_f = i as f64;
+      let d_plus = ((i_f + 1.0) / n - f).abs();
+      let d_minus = (f - i_f / n).abs();
+      d = d.max(d_plus.max(d_minus));
+    }
+    d
+  }
+
+  #[test]
+  fn simd_exp_matches_theoretical_distribution() {
+    const N: usize = 40_000;
+    let lambda = 1.8_f64;
+    let mean_target = 1.0 / lambda;
+
+    let dist = SimdExp::<f64>::new(lambda);
+    let mut rng = rand::rng();
+    let mut samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
+
+    assert!(
+      samples.iter().all(|x| x.is_finite() && *x >= 0.0),
+      "invalid exponential sample encountered"
+    );
+
+    let mean_emp = mean(&samples);
+    let mean_se = mean_target / (N as f64).sqrt();
+    assert!(
+      (mean_emp - mean_target).abs() < 6.0 * mean_se,
+      "exp mean mismatch: emp={mean_emp}, target={mean_target}, se={mean_se}"
+    );
+
+    let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
+    let ks_critical = 2.0 / (N as f64).sqrt();
+    assert!(
+      d < ks_critical,
+      "exp KS statistic too large: D={d}, critical={ks_critical}"
+    );
+  }
+
+  #[test]
+  fn simd_exp_zig_fill_slice_matches_theoretical_distribution() {
+    const N: usize = 32_000;
+    let lambda = 0.65_f64;
+
+    let dist = SimdExpZig::<f64>::new(lambda);
+    let mut rng = rand::rng();
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice(&mut rng, &mut samples);
+
+    assert!(
+      samples.iter().all(|x| x.is_finite() && *x >= 0.0),
+      "invalid exponential sample encountered"
+    );
+
+    let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
+    let ks_critical = 2.0 / (N as f64).sqrt();
+    assert!(
+      d < ks_critical,
+      "exp-zig KS statistic too large: D={d}, critical={ks_critical}"
+    );
+  }
+}
