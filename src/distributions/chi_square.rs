@@ -32,6 +32,12 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdChiSquared<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.df)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdChiSquared<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     self.gamma.sample(rng)

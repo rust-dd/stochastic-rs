@@ -4,6 +4,8 @@
 //! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
 //! $$
 //!
+use ndarray::Array1;
+use ndarray::Array2;
 use rand::Rng;
 use wide::f32x8;
 use wide::f64x8;
@@ -29,6 +31,224 @@ pub mod poisson;
 pub mod studentt;
 pub mod uniform;
 pub mod weibull;
+
+/// Rust-side bulk sampling API for distribution structs.
+///
+/// Implementors provide `fill_slice`; `sample_n` and `sample_matrix` are
+/// lock-free convenience methods that allocate and fill contiguous buffers.
+pub trait DistributionSampler<T> {
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]);
+
+  #[inline]
+  fn sample_n(&self, n: usize) -> Array1<T>
+  where
+    T: Default + Clone,
+  {
+    let mut out = Array1::<T>::default(n);
+    let flat = out
+      .as_slice_mut()
+      .expect("distribution sample_n output must be contiguous");
+    let mut rng = crate::simd_rng::SimdRng::new();
+    self.fill_slice(&mut rng, flat);
+    out
+  }
+
+  #[inline]
+  fn sample_matrix(&self, m: usize, n: usize) -> Array2<T>
+  where
+    Self: Clone + Send,
+    T: Default + Clone + Send,
+  {
+    let mut out = Array2::<T>::default((m, n));
+    if m == 0 || n == 0 {
+      return out;
+    }
+    let flat = out
+      .as_slice_mut()
+      .expect("distribution sample_matrix output must be contiguous");
+    let total = flat.len();
+    let workers = total.min(rayon::current_num_threads().max(1));
+    if workers == 1 {
+      let mut rng = crate::simd_rng::SimdRng::new();
+      self.fill_slice(&mut rng, flat);
+      return out;
+    }
+    let chunk_len = total.div_ceil(workers);
+    let base = self.clone();
+
+    rayon::scope(move |scope| {
+      for chunk in flat.chunks_mut(chunk_len) {
+        let sampler = base.clone();
+        scope.spawn(move |_| {
+          let mut rng = crate::simd_rng::SimdRng::new();
+          sampler.fill_slice(&mut rng, chunk);
+        });
+      }
+    });
+    out
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for alpha_stable::SimdAlphaStable<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for beta::SimdBeta<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: num_traits::PrimInt> DistributionSampler<T> for binomial::SimdBinomial<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for cauchy::SimdCauchy<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for chi_square::SimdChiSquared<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for exp::SimdExp<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for gamma::SimdGamma<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: num_traits::PrimInt> DistributionSampler<T> for geometric::SimdGeometric<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: num_traits::PrimInt> DistributionSampler<T> for hypergeometric::SimdHypergeometric<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for inverse_gauss::SimdInverseGauss<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for lognormal::SimdLogNormal<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for normal_inverse_gauss::SimdNormalInverseGauss<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for pareto::SimdPareto<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: num_traits::PrimInt> DistributionSampler<T> for poisson::SimdPoisson<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for studentt::SimdStudentT<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for uniform::SimdUniform<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> DistributionSampler<T> for weibull::SimdWeibull<T> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt, const N: usize> DistributionSampler<T> for normal::SimdNormal<T, N> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt, const N: usize> DistributionSampler<T> for exp::SimdExpZig<T, N> {
+  #[inline]
+  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    self.fill_slice(rng, out);
+  }
+}
+
+#[cfg(test)]
+mod distribution_sampler_tests {
+  use super::DistributionSampler;
+  use super::normal::SimdNormal;
+  use super::poisson::SimdPoisson;
+
+  #[test]
+  fn sample_n_returns_requested_length() {
+    let dist = SimdNormal::<f64>::new(0.0, 1.0);
+    let out = dist.sample_n(1024);
+    assert_eq!(out.len(), 1024);
+  }
+
+  #[test]
+  fn sample_matrix_float_has_expected_shape() {
+    let dist = SimdNormal::<f32>::new(0.0, 1.0);
+    let out = dist.sample_matrix(32, 64);
+    assert_eq!(out.shape(), &[32, 64]);
+  }
+
+  #[test]
+  fn sample_matrix_int_has_expected_shape() {
+    let dist = SimdPoisson::<i64>::new(1.5);
+    let out = dist.sample_matrix(16, 8);
+    assert_eq!(out.shape(), &[16, 8]);
+  }
+}
 
 fn fill_f32_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
   for x in out.iter_mut() {

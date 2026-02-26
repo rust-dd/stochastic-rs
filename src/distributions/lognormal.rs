@@ -84,6 +84,12 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdLogNormal<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.mu, self.sigma)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdLogNormal<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

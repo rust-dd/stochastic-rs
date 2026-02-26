@@ -49,6 +49,12 @@ impl<T: PrimInt> SimdBinomial<T> {
   }
 }
 
+impl<T: PrimInt> Clone for SimdBinomial<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.n, self.p)
+  }
+}
+
 impl<T: PrimInt> Distribution<T> for SimdBinomial<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

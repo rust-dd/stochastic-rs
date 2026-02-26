@@ -104,6 +104,12 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdGamma<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.alpha, self.scale)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdGamma<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

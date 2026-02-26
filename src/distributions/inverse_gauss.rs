@@ -97,6 +97,12 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdInverseGauss<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.mu, self.lambda)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

@@ -60,6 +60,12 @@ impl<T: PrimInt> SimdHypergeometric<T> {
   }
 }
 
+impl<T: PrimInt> Clone for SimdHypergeometric<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.n_total, self.k_success, self.n_draws)
+  }
+}
+
 impl<T: PrimInt> Distribution<T> for SimdHypergeometric<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

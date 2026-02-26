@@ -73,6 +73,12 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdStudentT<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.nu)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

@@ -72,6 +72,12 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdUniform<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.low, self.low + self.scale)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
   #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {

@@ -63,6 +63,16 @@ impl<T: PrimInt> SimdPoisson<T> {
   }
 }
 
+impl<T: PrimInt> Clone for SimdPoisson<T> {
+  fn clone(&self) -> Self {
+    Self {
+      cdf: self.cdf.clone(),
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
+    }
+  }
+}
+
 impl<T: PrimInt> Distribution<T> for SimdPoisson<T> {
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

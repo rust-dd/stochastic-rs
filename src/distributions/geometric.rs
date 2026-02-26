@@ -69,6 +69,12 @@ impl<T: PrimInt> SimdGeometric<T> {
   }
 }
 
+impl<T: PrimInt> Clone for SimdGeometric<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.p)
+  }
+}
+
 impl<T: PrimInt> Distribution<T> for SimdGeometric<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

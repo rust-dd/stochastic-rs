@@ -98,6 +98,10 @@ name = "gn_batching"
 harness = false
 
 [[bench]]
+name = "dist_multicore"
+harness = false
+
+[[bench]]
 name = "fgn_cuda"
 harness = false
 required-features = ["cuda"]

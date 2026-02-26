@@ -218,6 +218,12 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdAlphaStable<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.alpha, self.beta, self.scale, self.location)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdAlphaStable<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

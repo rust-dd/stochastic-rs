@@ -42,6 +42,12 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdWeibull<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.lambda, T::one() / self.inv_k)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
   #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {

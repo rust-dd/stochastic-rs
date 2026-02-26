@@ -70,6 +70,12 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdCauchy<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.x0, self.gamma)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdCauchy<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

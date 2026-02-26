@@ -209,6 +209,12 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   }
 }
 
+impl<T: SimdFloatExt, const N: usize> Clone for SimdExpZig<T, N> {
+  fn clone(&self) -> Self {
+    Self::new(self.lambda)
+  }
+}
+
 impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdExpZig<T, N> {
   #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
@@ -235,6 +241,12 @@ impl<T: SimdFloatExt> SimdExp<T> {
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
     self.inner.fill_slice(rng, out);
+  }
+}
+
+impl<T: SimdFloatExt> Clone for SimdExp<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.inner.lambda)
   }
 }
 

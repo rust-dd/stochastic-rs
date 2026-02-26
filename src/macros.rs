@@ -251,10 +251,10 @@ macro_rules! py_distribution {
     sig: ($($sig:tt)*),
     params: ($($param:ident : $pty:ty),* $(,)?)
   ) => {
-    #[pyo3::prelude::pyclass]
+    #[pyo3::prelude::pyclass(unsendable)]
     pub struct $py_name {
-      inner_f32: Option<std::sync::Mutex<$inner<f32>>>,
-      inner_f64: Option<std::sync::Mutex<$inner<f64>>>,
+      inner_f32: Option<$inner<f32>>,
+      inner_f64: Option<$inner<f64>>,
     }
 
     #[pyo3::prelude::pymethods]
@@ -264,59 +264,40 @@ macro_rules! py_distribution {
       fn new($($param: $pty,)* dtype: Option<&str>) -> Self {
         match dtype.unwrap_or("f64") {
           "f32" => Self {
-            inner_f32: Some(std::sync::Mutex::new($inner::new($(crate::python::IntoF32::into_f32($param)),*))),
+            inner_f32: Some($inner::new($(crate::python::IntoF32::into_f32($param)),*)),
             inner_f64: None,
           },
           _ => Self {
             inner_f32: None,
-            inner_f64: Some(std::sync::Mutex::new($inner::new($(crate::python::IntoF64::into_f64($param)),*))),
+            inner_f64: Some($inner::new($(crate::python::IntoF64::into_f64($param)),*)),
           },
         }
       }
 
       fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use crate::distributions::DistributionSampler;
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
-        let mut rng = rand::rng();
-        if let Some(ref mtx) = self.inner_f64 {
-          let inner = mtx.lock().unwrap();
-          let mut buf = vec![0.0f64; n];
-          inner.fill_slice(&mut rng, &mut buf);
-          numpy::ndarray::Array1::from_vec(buf).into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref mtx) = self.inner_f32 {
-          let inner = mtx.lock().unwrap();
-          let mut buf = vec![0.0f32; n];
-          inner.fill_slice(&mut rng, &mut buf);
-          numpy::ndarray::Array1::from_vec(buf).into_pyarray(py).into_py_any(py).unwrap()
+        if let Some(ref inner) = self.inner_f64 {
+          let out = inner.sample_n(n);
+          out.into_pyarray(py).into_py_any(py).unwrap()
+        } else if let Some(ref inner) = self.inner_f32 {
+          let out = inner.sample_n(n);
+          out.into_pyarray(py).into_py_any(py).unwrap()
         } else {
           unreachable!()
         }
       }
 
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use crate::distributions::DistributionSampler;
         use numpy::IntoPyArray;
-        use numpy::ndarray::Array2;
         use pyo3::IntoPyObjectExt;
-        let mut rng = rand::rng();
-        if let Some(ref mtx) = self.inner_f64 {
-          let inner = mtx.lock().unwrap();
-          let mut out = Array2::<f64>::zeros((m, n));
-          let flat = out
-            .as_slice_mut()
-            .expect("distribution sample_par output must be contiguous");
-          for row in flat.chunks_exact_mut(n) {
-            inner.fill_slice(&mut rng, row);
-          }
+        if let Some(ref inner) = self.inner_f64 {
+          let out = inner.sample_matrix(m, n);
           out.into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref mtx) = self.inner_f32 {
-          let inner = mtx.lock().unwrap();
-          let mut out = Array2::<f32>::zeros((m, n));
-          let flat = out
-            .as_slice_mut()
-            .expect("distribution sample_par output must be contiguous");
-          for row in flat.chunks_exact_mut(n) {
-            inner.fill_slice(&mut rng, row);
-          }
+        } else if let Some(ref inner) = self.inner_f32 {
+          let out = inner.sample_matrix(m, n);
           out.into_pyarray(py).into_py_any(py).unwrap()
         } else {
           unreachable!()
@@ -337,9 +318,9 @@ macro_rules! py_distribution_int {
     sig: ($($sig:tt)*),
     params: ($($param:ident : $pty:ty),* $(,)?)
   ) => {
-    #[pyo3::prelude::pyclass]
+    #[pyo3::prelude::pyclass(unsendable)]
     pub struct $py_name {
-      inner: std::sync::Mutex<$inner<i64>>,
+      inner: $inner<i64>,
     }
 
     #[pyo3::prelude::pymethods]
@@ -348,33 +329,23 @@ macro_rules! py_distribution_int {
       #[pyo3(signature = ($($sig)*))]
       fn new($($param: $pty),*) -> Self {
         Self {
-          inner: std::sync::Mutex::new($inner::new($($param),*)),
+          inner: $inner::new($($param),*),
         }
       }
 
       fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use crate::distributions::DistributionSampler;
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
-        let mut rng = rand::rng();
-        let inner = self.inner.lock().unwrap();
-        let mut buf = vec![0i64; n];
-        inner.fill_slice(&mut rng, &mut buf);
-        numpy::ndarray::Array1::from_vec(buf).into_pyarray(py).into_py_any(py).unwrap()
+        let out = self.inner.sample_n(n);
+        out.into_pyarray(py).into_py_any(py).unwrap()
       }
 
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use crate::distributions::DistributionSampler;
         use numpy::IntoPyArray;
-        use numpy::ndarray::Array2;
         use pyo3::IntoPyObjectExt;
-        let mut rng = rand::rng();
-        let inner = self.inner.lock().unwrap();
-        let mut out = Array2::<i64>::zeros((m, n));
-        let flat = out
-          .as_slice_mut()
-          .expect("distribution sample_par output must be contiguous");
-        for row in flat.chunks_exact_mut(n) {
-          inner.fill_slice(&mut rng, row);
-        }
+        let out = self.inner.sample_matrix(m, n);
         out.into_pyarray(py).into_py_any(py).unwrap()
       }
     }

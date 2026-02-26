@@ -70,6 +70,12 @@ impl<T: SimdFloatExt> SimdPareto<T> {
   }
 }
 
+impl<T: SimdFloatExt> Clone for SimdPareto<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.x_m, self.alpha)
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

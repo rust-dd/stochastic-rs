@@ -234,6 +234,12 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 }
 
+impl<T: SimdFloatExt, const N: usize> Clone for SimdNormal<T, N> {
+  fn clone(&self) -> Self {
+    Self::new(self.mean, self.std_dev)
+  }
+}
+
 impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   pub fn fill_standard_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
