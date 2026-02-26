@@ -169,6 +169,10 @@ pub struct SimdRng {
   f32_engine: Xoshiro128PP8,
   u64_buf: [u64; 4],
   u64_idx: usize,
+  f64_scalar_buf: [f64; 8],
+  f64_scalar_idx: usize,
+  i32_scalar_buf: [i32; 8],
+  i32_scalar_idx: usize,
 }
 
 impl SimdRng {
@@ -182,6 +186,10 @@ impl SimdRng {
       f32_engine: Xoshiro128PP8::new_from_u64(seed32),
       u64_buf: [0; 4],
       u64_idx: 4,
+      f64_scalar_buf: [0.0; 8],
+      f64_scalar_idx: 8,
+      i32_scalar_buf: [0; 8],
+      i32_scalar_idx: 8,
     }
   }
 
@@ -225,6 +233,28 @@ impl SimdRng {
       (a[6] >> 8) as f32 * F32_SCALE,
       (a[7] >> 8) as f32 * F32_SCALE,
     ]
+  }
+
+  #[inline(always)]
+  pub fn next_f64(&mut self) -> f64 {
+    if self.f64_scalar_idx >= 8 {
+      self.f64_scalar_buf = self.next_f64_array();
+      self.f64_scalar_idx = 0;
+    }
+    let v = self.f64_scalar_buf[self.f64_scalar_idx];
+    self.f64_scalar_idx += 1;
+    v
+  }
+
+  #[inline(always)]
+  pub fn next_i32(&mut self) -> i32 {
+    if self.i32_scalar_idx >= 8 {
+      self.i32_scalar_buf = self.next_i32x8().to_array();
+      self.i32_scalar_idx = 0;
+    }
+    let v = self.i32_scalar_buf[self.i32_scalar_idx];
+    self.i32_scalar_idx += 1;
+    v
   }
 }
 

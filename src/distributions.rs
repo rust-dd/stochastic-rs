@@ -292,9 +292,16 @@ impl SimdFloatExt for f32 {
     v.round_float()
   }
 
+  const PREFERS_F32_WN: bool = true;
+
   #[inline(always)]
   fn from_f64_fast(v: f64) -> f32 {
     v as f32
+  }
+
+  #[inline(always)]
+  fn from_f32_fast(v: f32) -> f32 {
+    v
   }
 
   fn pi() -> f32 {
@@ -384,6 +391,8 @@ impl SimdFloatExt for f64 {
   fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {
     f64x8::from_i32x8(v)
   }
+
+  const PREFERS_F32_WN: bool = false;
 
   #[inline(always)]
   fn from_f64_fast(v: f64) -> f64 {

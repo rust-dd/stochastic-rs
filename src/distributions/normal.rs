@@ -18,6 +18,7 @@ use crate::simd_rng::SimdRng;
 struct ZigTables {
   kn: [i32; 128],
   wn: [f64; 128],
+  wn_f32: [f32; 128],
   fn_tab: [f64; 128],
 }
 
@@ -27,6 +28,7 @@ fn zig_tables() -> &'static ZigTables {
   ZIG_TABLES.get_or_init(|| {
     let mut kn = [0i32; 128];
     let mut wn = [0.0f64; 128];
+    let mut wn_f32 = [0.0f32; 128];
     let mut fn_tab = [0.0f64; 128];
 
     let mut dn = 3.442619855899f64;
@@ -63,7 +65,16 @@ fn zig_tables() -> &'static ZigTables {
       wn[i] = dn / m1;
     }
 
-    ZigTables { kn, wn, fn_tab }
+    for i in 0..128 {
+      wn_f32[i] = wn[i] as f32;
+    }
+
+    ZigTables {
+      kn,
+      wn,
+      wn_f32,
+      fn_tab,
+    }
   })
 }
 
@@ -79,8 +90,8 @@ fn nfix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut SimdR
 
     if iz == 0 {
       loop {
-        let u1: f64 = rng.random();
-        let u2: f64 = rng.random();
+        let u1: f64 = rng.next_f64();
+        let u2: f64 = rng.next_f64();
         let x_tail = -0.2904764 * (-u1.ln());
         let y = -u2.ln();
         if y + y >= x_tail * x_tail {
@@ -94,13 +105,13 @@ fn nfix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut SimdR
       }
     }
 
-    if tables.fn_tab[iz] + rng.random::<f64>() * (tables.fn_tab[iz - 1] - tables.fn_tab[iz])
+    if tables.fn_tab[iz] + rng.next_f64() * (tables.fn_tab[iz - 1] - tables.fn_tab[iz])
       < (-0.5 * x * x).exp()
     {
       return T::from_f64_fast(x);
     }
 
-    hz = rng.random::<i32>();
+    hz = rng.next_i32();
     iz = (hz & 127) as usize;
     if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
       return T::from_f64_fast(hz as f64 * tables.wn[iz]);
@@ -191,16 +202,29 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
         let abs_hz = hz.abs();
         let accept = abs_hz.simd_lt(kn_vals);
 
-        let wn_arr: [T; 8] = [
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
-        ];
+        let wn_arr: [T; 8] = if T::PREFERS_F32_WN {
+          [
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[0] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[1] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[2] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[3] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[4] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[5] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[6] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[7] as usize)),
+          ]
+        } else {
+          [
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
+          ]
+        };
         let hz_float = T::simd_from_i32x8(hz);
         let wn_simd = T::simd_from_array(wn_arr);
         let result = hz_float * wn_simd;
@@ -308,16 +332,29 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
         let abs_hz = hz.abs();
         let accept = abs_hz.simd_lt(kn_vals);
 
-        let wn_arr: [T; 8] = [
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
-        ];
+        let wn_arr: [T; 8] = if T::PREFERS_F32_WN {
+          [
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[0] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[1] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[2] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[3] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[4] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[5] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[6] as usize)),
+            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[7] as usize)),
+          ]
+        } else {
+          [
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
+            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
+          ]
+        };
         let hz_float = T::simd_from_i32x8(hz);
         let wn_simd = T::simd_from_array(wn_arr);
         let result = hz_float * wn_simd;

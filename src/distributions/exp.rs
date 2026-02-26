@@ -78,15 +78,15 @@ fn efix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ExpZigTables, rng: &mut Si
 
   loop {
     if iz == 0 {
-      return T::from_f64_fast(ZIG_EXP_R - (1.0f64 - rng.random::<f64>()).ln());
+      return T::from_f64_fast(ZIG_EXP_R - (1.0f64 - rng.next_f64()).ln());
     }
 
     let x = (hz.unsigned_abs() as f64) * tables.we[iz];
-    if tables.fe[iz] + rng.random::<f64>() * (tables.fe[iz - 1] - tables.fe[iz]) < (-x).exp() {
+    if tables.fe[iz] + rng.next_f64() * (tables.fe[iz - 1] - tables.fe[iz]) < (-x).exp() {
       return T::from_f64_fast(x);
     }
 
-    hz = rng.random::<i32>();
+    hz = rng.next_i32();
     iz = (hz & 0xFF) as usize;
     let abs_hz = hz.unsigned_abs() as i64;
     if abs_hz < tables.ke[iz] as i64 {
