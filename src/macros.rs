@@ -275,24 +275,49 @@ macro_rules! py_distribution {
       }
 
       fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
-        use rand_distr::Distribution;
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
         let mut rng = rand::rng();
         if let Some(ref mtx) = self.inner_f64 {
           let inner = mtx.lock().unwrap();
           let mut buf = vec![0.0f64; n];
-          for v in buf.iter_mut() {
-            *v = inner.sample(&mut rng);
-          }
+          inner.fill_slice(&mut rng, &mut buf);
           numpy::ndarray::Array1::from_vec(buf).into_pyarray(py).into_py_any(py).unwrap()
         } else if let Some(ref mtx) = self.inner_f32 {
           let inner = mtx.lock().unwrap();
           let mut buf = vec![0.0f32; n];
-          for v in buf.iter_mut() {
-            *v = inner.sample(&mut rng);
-          }
+          inner.fill_slice(&mut rng, &mut buf);
           numpy::ndarray::Array1::from_vec(buf).into_pyarray(py).into_py_any(py).unwrap()
+        } else {
+          unreachable!()
+        }
+      }
+
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use numpy::IntoPyArray;
+        use numpy::ndarray::Array2;
+        use pyo3::IntoPyObjectExt;
+        let mut rng = rand::rng();
+        if let Some(ref mtx) = self.inner_f64 {
+          let inner = mtx.lock().unwrap();
+          let mut out = Array2::<f64>::zeros((m, n));
+          let flat = out
+            .as_slice_mut()
+            .expect("distribution sample_par output must be contiguous");
+          for row in flat.chunks_exact_mut(n) {
+            inner.fill_slice(&mut rng, row);
+          }
+          out.into_pyarray(py).into_py_any(py).unwrap()
+        } else if let Some(ref mtx) = self.inner_f32 {
+          let inner = mtx.lock().unwrap();
+          let mut out = Array2::<f32>::zeros((m, n));
+          let flat = out
+            .as_slice_mut()
+            .expect("distribution sample_par output must be contiguous");
+          for row in flat.chunks_exact_mut(n) {
+            inner.fill_slice(&mut rng, row);
+          }
+          out.into_pyarray(py).into_py_any(py).unwrap()
         } else {
           unreachable!()
         }
@@ -328,16 +353,29 @@ macro_rules! py_distribution_int {
       }
 
       fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
-        use rand_distr::Distribution;
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
         let mut rng = rand::rng();
         let inner = self.inner.lock().unwrap();
         let mut buf = vec![0i64; n];
-        for v in buf.iter_mut() {
-          *v = inner.sample(&mut rng);
-        }
+        inner.fill_slice(&mut rng, &mut buf);
         numpy::ndarray::Array1::from_vec(buf).into_pyarray(py).into_py_any(py).unwrap()
+      }
+
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use numpy::IntoPyArray;
+        use numpy::ndarray::Array2;
+        use pyo3::IntoPyObjectExt;
+        let mut rng = rand::rng();
+        let inner = self.inner.lock().unwrap();
+        let mut out = Array2::<i64>::zeros((m, n));
+        let flat = out
+          .as_slice_mut()
+          .expect("distribution sample_par output must be contiguous");
+        for row in flat.chunks_exact_mut(n) {
+          inner.fill_slice(&mut rng, row);
+        }
+        out.into_pyarray(py).into_py_any(py).unwrap()
       }
     }
   };

@@ -10,9 +10,9 @@
 //! Log-spot scheme guarantees $S_t > 0$.
 //!
 use ndarray::Array1;
+use ndarray::s;
 use rand_distr::Distribution;
 
-use crate::distributions::normal::SimdNormal;
 use crate::distributions::poisson::SimdPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -100,6 +100,18 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
+    let mut s = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return s;
+    }
+
+    let s0 = self.s0.unwrap_or(T::one());
+    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
+    s[0] = s0;
+    if self.n == 1 {
+      return s;
+    }
+
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
     let drift = self.drift();
@@ -108,13 +120,7 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
 
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let s0 = self.s0.unwrap_or(T::one());
-    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
-    s[0] = s0;
-
     let mut rng = rand::rng();
-    let z_std = SimdNormal::<f64, 64>::new(0.0, 1.0);
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(
@@ -124,22 +130,31 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
       None
     };
 
-    for i in 1..self.n {
-      let z1: f64 = z_std.sample(&mut rng);
-      let diff = self.sigma * sqrt_dt * T::from_f64_fast(z1);
+    let mut prev = s0;
+    let mut tail_view = s.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("MJDLog output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for z in tail.iter_mut() {
+      let diff = self.sigma * sqrt_dt * *z;
 
       let mut jump_sum = T::zero();
       if let Some(pois) = &pois {
         let k: u32 = pois.sample(&mut rng);
         if k > 0 {
           let kf = T::from_usize_(k as usize);
-          let z0: f64 = z_std.sample(&mut rng);
-          jump_sum = self.nu * kf + self.omega * kf.sqrt() * T::from_f64_fast(z0);
+          let mut z0 = [T::zero(); 1];
+          T::fill_standard_normal_slice(&mut z0);
+          jump_sum = self.nu * kf + self.omega * kf.sqrt() * z0[0];
         }
       }
 
       let log_inc = drift_ln + diff + jump_sum;
-      s[i] = s[i - 1] * log_inc.exp();
+      let next = prev * log_inc.exp();
+      *z = next;
+      prev = next;
     }
 
     s
@@ -171,6 +186,6 @@ mod tests {
 }
 
 py_process_1d!(PyMJDLog, MJDLog,
-  sig: (sigma, lambda_, nu, omega, n, mu=None, b=None, r=None, r_f=None, s0=None, t=None, dtype=None),
+  sig: (mu=None, b=None, r=None, r_f=None, *, sigma, lambda_, nu, omega, n, s0=None, t=None, dtype=None),
   params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, lambda_: f64, nu: f64, omega: f64, n: usize, s0: Option<f64>, t: Option<f64>)
 );

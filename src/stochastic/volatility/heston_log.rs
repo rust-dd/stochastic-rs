@@ -12,7 +12,6 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -43,7 +42,6 @@ pub struct HestonLog<T: FloatExt> {
   pub t: Option<T>,
   /// Use symmetric (abs) instead of truncation (max(0)) for variance
   pub use_sym: Option<bool>,
-  cgns: CGNS<T>,
 }
 
 impl<T: FloatExt> HestonLog<T> {
@@ -88,7 +86,6 @@ impl<T: FloatExt> HestonLog<T> {
       v0,
       t,
       use_sym,
-      cgns: CGNS::new(rho, n - 1, t),
     }
   }
 
@@ -107,17 +104,34 @@ impl<T: FloatExt> ProcessExt<T> for HestonLog<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
-    let [dws, dwv] = &self.cgns.sample();
-
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return [s, v];
+    }
 
     let s0 = self.s0.unwrap_or(T::one());
     assert!(s0 > T::zero(), "s0 must be > 0 for log-price simulation");
     s[0] = s0;
 
     v[0] = self.v0.unwrap_or(self.theta).max(T::zero());
+    if self.n == 1 {
+      return [s, v];
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let sqrt_dt = dt.sqrt();
+    let mut dws = vec![T::zero(); n_increments];
+    let mut z = vec![T::zero(); n_increments];
+    let mut dwv = vec![T::zero(); n_increments];
+    T::fill_standard_normal_slice(&mut dws);
+    T::fill_standard_normal_slice(&mut z);
+    let corr_scale = (T::one() - self.rho * self.rho).sqrt();
+    for i in 0..n_increments {
+      dws[i] = dws[i] * sqrt_dt;
+      dwv[i] = self.rho * dws[i] + corr_scale * z[i] * sqrt_dt;
+    }
 
     let drift = self.drift();
     let half = T::from_f64_fast(0.5);
@@ -194,6 +208,6 @@ mod tests {
 }
 
 py_process_2x1d!(PyHestonLog, HestonLog,
-  sig: (kappa, theta, xi, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, dtype=None),
+  sig: (mu=None, b=None, r=None, r_f=None, *, kappa, theta, xi, rho, n, s0=None, v0=None, t=None, use_sym=None, dtype=None),
   params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, kappa: f64, theta: f64, xi: f64, rho: f64, n: usize, s0: Option<f64>, v0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
 );

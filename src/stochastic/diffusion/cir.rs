@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -28,7 +28,6 @@ pub struct CIR<T: FloatExt> {
   pub t: Option<T>,
   /// Enables symmetric/truncated update variant when true.
   pub use_sym: Option<bool>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> CIR<T> {
@@ -55,7 +54,6 @@ impl<T: FloatExt> CIR<T> {
       x0,
       t,
       use_sym,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -65,20 +63,34 @@ impl<T: FloatExt> ProcessExt<T> for CIR<T> {
 
   /// Sample the Cox-Ingersoll-Ross (CIR) process
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
-
     let mut cir = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return cir;
+    }
+
     cir[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return cir;
+    }
 
-    for i in 1..self.n {
-      let dcir = self.theta * (self.mu - cir[i - 1]) * dt
-        + self.sigma * (cir[i - 1]).abs().sqrt() * gn[i - 1];
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = cir[0];
+    let mut tail_view = cir.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("CIR output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
 
-      cir[i] = match self.use_sym.unwrap_or(false) {
-        true => (cir[i - 1] + dcir).abs(),
-        false => (cir[i - 1] + dcir).max(T::zero()),
+    for z in tail.iter_mut() {
+      let dcir = self.theta * (self.mu - prev) * dt + diff_scale * prev.abs().sqrt() * *z;
+      let next = match self.use_sym.unwrap_or(false) {
+        true => (prev + dcir).abs(),
+        false => (prev + dcir).max(T::zero()),
       };
+      *z = next;
+      prev = next;
     }
 
     cir

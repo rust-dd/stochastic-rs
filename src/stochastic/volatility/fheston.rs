@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -30,7 +29,6 @@ pub struct RoughHeston<T: FloatExt> {
   pub t: Option<T>,
   /// Number of discrete simulation points (or samples).
   pub n: usize,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> RoughHeston<T> {
@@ -55,7 +53,6 @@ impl<T: FloatExt> RoughHeston<T> {
       c2,
       t,
       n,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -64,12 +61,26 @@ impl<T: FloatExt> ProcessExt<T> for RoughHeston<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = self.gn.sample();
+    let dt = if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    };
+    let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
+    if let Some(gn_slice) = gn.as_slice_mut() {
+      T::fill_standard_normal_slice(gn_slice);
+      let sqrt_dt = dt.sqrt();
+      for z in gn_slice.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
+    }
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);
     let mut sigma_tilde2 = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::zeros(self.n);
+    if self.n == 0 {
+      return v2;
+    }
 
     let v0_sq = self.v0.unwrap_or(T::one()).powi(2);
     yt[0] = v0_sq;

@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -23,7 +23,6 @@ pub struct CEV<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> CEV<T> {
@@ -35,7 +34,6 @@ impl<T: FloatExt> CEV<T> {
       n,
       x0,
       t,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -45,16 +43,30 @@ impl<T: FloatExt> ProcessExt<T> for CEV<T> {
 
   /// Sample the CEV process
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
-
     let mut cev = Array1::<T>::zeros(self.n);
-    cev[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 0 {
+      return cev;
+    }
 
-    for i in 1..self.n {
-      cev[i] = cev[i - 1]
-        + self.mu * cev[i - 1] * dt
-        + self.sigma * cev[i - 1].powf(self.gamma) * gn[i - 1]
+    cev[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return cev;
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = cev[0];
+    let mut tail_view = cev.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("CEV output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for z in tail.iter_mut() {
+      let next = prev + self.mu * prev * dt + diff_scale * prev.powf(self.gamma) * *z;
+      *z = next;
+      prev = next;
     }
 
     cev
@@ -69,9 +81,19 @@ impl<T: FloatExt> CEV<T> {
   ///
   /// The Malliavin derivative of the CEV process shows the sensitivity of the stock price with respect to the Wiener process.
   fn malliavin(&self) -> [Array1<T>; 2] {
-    let gn = Gn::new(self.n - 1, self.t);
-    let dt = gn.dt();
-    let gn = gn.sample();
+    let dt = if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    };
+    let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
+    if let Some(gn_slice) = gn.as_slice_mut() {
+      T::fill_standard_normal_slice(gn_slice);
+      let sqrt_dt = dt.sqrt();
+      for z in gn_slice.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
+    }
     let cev = self.sample();
 
     let mut det_term = Array1::zeros(self.n);

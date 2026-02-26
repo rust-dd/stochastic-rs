@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -25,7 +25,6 @@ pub struct GBMIH<T: FloatExt> {
   pub t: Option<T>,
   /// Optional per-step volatilities (length must be n-1)
   pub sigmas: Option<Array1<T>>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> GBMIH<T> {
@@ -39,17 +38,16 @@ impl<T: FloatExt> GBMIH<T> {
     sigmas: Option<Array1<T>>,
   ) -> Self {
     if let Some(s) = &sigmas {
-      assert_eq!(s.len(), n - 1, "sigmas length must be n - 1");
+      assert_eq!(s.len(), n.saturating_sub(1), "sigmas length must be n - 1");
     }
 
-    GBMIH {
+    Self {
       mu,
       sigma,
       n,
       x0,
       t,
       sigmas,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -58,15 +56,32 @@ impl<T: FloatExt> ProcessExt<T> for GBMIH<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {
-    let dt = self.gn.dt();
-    let gn = self.gn.sample();
-
     let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 0 {
+      return x;
+    }
 
-    for i in 1..self.n {
-      let sigma_i = self.sigmas.as_ref().map(|s| s[i - 1]).unwrap_or(self.sigma);
-      x[i] = x[i - 1] + self.mu * x[i - 1] * dt + sigma_i * x[i - 1] * gn[i - 1];
+    x[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return x;
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let drift_scale = self.mu * dt;
+    let sqrt_dt = dt.sqrt();
+    let mut prev = x[0];
+    let mut tail_view = x.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("GBMIH output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for (i, z) in tail.iter_mut().enumerate() {
+      let sigma_i = self.sigmas.as_ref().map(|s| s[i]).unwrap_or(self.sigma);
+      let next = prev + drift_scale * prev + sigma_i * sqrt_dt * prev * *z;
+      *z = next;
+      prev = next;
     }
 
     x

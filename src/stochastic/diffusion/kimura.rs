@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -23,20 +23,11 @@ pub struct Kimura<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Gaussian increment generator used internally.
-  pub gn: Gn<T>,
 }
 
 impl<T: FloatExt> Kimura<T> {
   pub fn new(a: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Kimura {
-      a,
-      sigma,
-      n,
-      x0,
-      t,
-      gn: Gn::new(n - 1, t),
-    }
+    Self { a, sigma, n, x0, t }
   }
 }
 
@@ -44,21 +35,36 @@ impl<T: FloatExt> ProcessExt<T> for Kimura<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = self.gn.sample();
-
     let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 0 {
+      return x;
+    }
 
-    for i in 1..self.n {
+    x[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return x;
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = x[0];
+    let mut tail_view = x.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("Kimura output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for z in tail.iter_mut() {
       // enforce [0,1] domain when computing coefficients
-      let xi = x[i - 1].clamp(T::zero(), T::one());
+      let xi = prev.clamp(T::zero(), T::one());
       let sqrt_term = (xi * (T::one() - xi)).sqrt();
       let drift = self.a * xi * (T::one() - xi) * dt;
-      let diff = self.sigma * sqrt_term * gn[i - 1];
+      let diff = diff_scale * sqrt_term * *z;
       let mut next = xi + drift + diff;
       next = next.clamp(T::zero(), T::one());
-      x[i] = next;
+      *z = next;
+      prev = next;
     }
 
     x

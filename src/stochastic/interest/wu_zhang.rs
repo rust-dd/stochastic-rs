@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -30,7 +29,6 @@ pub struct WuZhangD<T: FloatExt> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> WuZhangD<T> {
@@ -113,7 +111,6 @@ impl<T: FloatExt> WuZhangD<T> {
       xn,
       t,
       n,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -122,7 +119,12 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
+    let dt = if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    };
+    let sqrt_dt = dt.sqrt();
     let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
 
     for i in 0..self.xn {
@@ -131,8 +133,25 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
     }
 
     for i in 0..self.xn {
-      let gn_f = &self.gn.sample();
-      let gn_v = &self.gn.sample();
+      if self.n <= 1 {
+        continue;
+      }
+      let mut gn_f = Array1::<T>::zeros(self.n - 1);
+      let mut gn_v = Array1::<T>::zeros(self.n - 1);
+      let gn_f_slice = gn_f
+        .as_slice_mut()
+        .expect("WuZhang noise f must be contiguous");
+      let gn_v_slice = gn_v
+        .as_slice_mut()
+        .expect("WuZhang noise v must be contiguous");
+      T::fill_standard_normal_slice(gn_f_slice);
+      T::fill_standard_normal_slice(gn_v_slice);
+      for z in gn_f_slice.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
+      for z in gn_v_slice.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
 
       for j in 1..self.n {
         let v_old = fv[(i + self.xn, j - 1)].max(T::zero());

@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -25,7 +25,6 @@ pub struct Gompertz<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> Gompertz<T> {
@@ -37,7 +36,6 @@ impl<T: FloatExt> Gompertz<T> {
       n,
       x0,
       t,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -46,19 +44,35 @@ impl<T: FloatExt> ProcessExt<T> for Gompertz<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
-
     let mut x = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return x;
+    }
+
     let threshold = T::from_f64_fast(1e-12);
     x[0] = self.x0.unwrap_or(T::zero()).max(threshold);
+    if self.n == 1 {
+      return x;
+    }
 
-    for i in 1..self.n {
-      let xi = x[i - 1].max(threshold);
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = x[0];
+    let mut tail_view = x.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("Gompertz output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for z in tail.iter_mut() {
+      let xi = prev.max(threshold);
       let drift = (self.a - self.b * xi.ln()) * xi * dt;
-      let diff = self.sigma * xi * gn[i - 1];
+      let diff = diff_scale * xi * *z;
       let next = xi + drift + diff;
-      x[i] = next.max(threshold);
+      let clamped = next.max(threshold);
+      *z = clamped;
+      prev = clamped;
     }
 
     x

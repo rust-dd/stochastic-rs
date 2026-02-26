@@ -8,6 +8,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use rand_distr::Distribution;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::stochastic::diffusion::ou::OU;
 use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::stochastic::process::bm::BM;
 use stochastic_rs::traits::ProcessExt;
@@ -56,6 +57,11 @@ fn bench_process_generation(c: &mut Criterion) {
       b.iter(|| black_box(bm.sample()));
     });
 
+    group.bench_with_input(BenchmarkId::new("process/OU.sample", n), &n, |b, &n| {
+      let ou = OU::<f64>::new(2.0, 0.0, 0.2, n, Some(0.0), Some(1.0));
+      b.iter(|| black_box(ou.sample()));
+    });
+
     group.bench_with_input(BenchmarkId::new("process/BM.old_style", n), &n, |b, &n| {
       let gn = Gn::<f64>::new(n.saturating_sub(1), Some(1.0));
       b.iter(|| {
@@ -65,6 +71,19 @@ fn bench_process_generation(c: &mut Criterion) {
           bm[i] = bm[i - 1] + inc[i - 1];
         }
         black_box(bm[n - 1])
+      });
+    });
+
+    group.bench_with_input(BenchmarkId::new("process/OU.old_style", n), &n, |b, &n| {
+      let gn = Gn::<f64>::new(n.saturating_sub(1), Some(1.0));
+      let dt = gn.dt();
+      b.iter(|| {
+        let noise = gn.sample();
+        let mut ou = vec![0.0f64; n];
+        for i in 1..n {
+          ou[i] = ou[i - 1] + 2.0 * (0.0 - ou[i - 1]) * dt + 0.2 * noise[i - 1];
+        }
+        black_box(ou[n - 1])
       });
     });
 

@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -22,7 +21,6 @@ pub struct BGM<T: FloatExt> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> BGM<T> {
@@ -47,7 +45,6 @@ impl<T: FloatExt> BGM<T> {
       xn,
       t,
       n,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -57,13 +54,28 @@ impl<T: FloatExt> ProcessExt<T> for BGM<T> {
 
   fn sample(&self) -> Self::Output {
     let mut fwd = Array2::<T>::zeros((self.xn, self.n));
+    if self.n == 0 {
+      return fwd;
+    }
 
     for i in 0..self.xn {
       fwd[(i, 0)] = self.x0[i];
     }
 
+    if self.n == 1 {
+      return fwd;
+    }
+
+    let n_increments = self.n - 1;
+    let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(n_increments)).sqrt();
+
     for i in 0..self.xn {
-      let gn = &self.gn.sample();
+      let mut gn = Array1::<T>::zeros(n_increments);
+      let gn_slice = gn.as_slice_mut().expect("BGM noise must be contiguous");
+      T::fill_standard_normal_slice(gn_slice);
+      for z in gn_slice.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
 
       for j in 1..self.n {
         let f_old = fwd[(i, j - 1)];

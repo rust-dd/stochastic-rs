@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -29,7 +28,6 @@ where
   pub x0: Option<T>,
   pub t: Option<T>,
   pub cpoisson: CompoundPoisson<T, D>,
-  gn: Gn<T>,
 }
 
 impl<T, D> KOU<T, D>
@@ -57,7 +55,6 @@ where
       x0,
       t,
       cpoisson,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -70,11 +67,25 @@ where
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
+    let dt = if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    };
     let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
+    let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
+    if let Some(gn_slice) = gn.as_slice_mut() {
+      T::fill_standard_normal_slice(gn_slice);
+      let sqrt_dt = dt.sqrt();
+      for z in gn_slice.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
+    }
 
     let mut merton = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return merton;
+    }
     merton[0] = self.x0.unwrap_or(T::zero());
 
     for i in 1..self.n {

@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -18,7 +17,6 @@ pub struct CGNS<T: FloatExt> {
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> CGNS<T> {
@@ -28,12 +26,7 @@ impl<T: FloatExt> CGNS<T> {
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    Self {
-      rho,
-      n,
-      t,
-      gn: Gn::new(n, t),
-    }
+    Self { rho, n, t }
   }
 }
 
@@ -41,8 +34,23 @@ impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    let gn1 = self.gn.sample();
-    let z = self.gn.sample();
+    let mut gn1 = Array1::<T>::zeros(self.n);
+    let mut z = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return [gn1, z];
+    }
+
+    let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(self.n)).sqrt();
+    let gn1_slice = gn1.as_slice_mut().expect("CGNS noise 1 must be contiguous");
+    let z_slice = z.as_slice_mut().expect("CGNS noise 2 must be contiguous");
+    T::fill_standard_normal_slice(gn1_slice);
+    T::fill_standard_normal_slice(z_slice);
+    for x in gn1_slice.iter_mut() {
+      *x = *x * sqrt_dt;
+    }
+    for x in z_slice.iter_mut() {
+      *x = *x * sqrt_dt;
+    }
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut gn2 = Array1::zeros(self.n);
 
@@ -56,7 +64,7 @@ impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
 
 impl<T: FloatExt> CGNS<T> {
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize(self.n).unwrap()
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
   }
 }
 

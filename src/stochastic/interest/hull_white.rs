@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
@@ -24,7 +24,6 @@ pub struct HullWhite<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> HullWhite<T> {
@@ -43,7 +42,6 @@ impl<T: FloatExt> HullWhite<T> {
       n,
       x0,
       t,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -52,16 +50,32 @@ impl<T: FloatExt> ProcessExt<T> for HullWhite<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
-
     let mut hw = Array1::<T>::zeros(self.n);
-    hw[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 0 {
+      return hw;
+    }
 
-    for i in 1..self.n {
-      hw[i] = hw[i - 1]
-        + (self.theta.call(T::from_usize_(i) * dt) - self.alpha * hw[i - 1]) * dt
-        + self.sigma * gn[i - 1]
+    hw[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return hw;
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = hw[0];
+    let mut tail_view = hw.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("HullWhite output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for (k, z) in tail.iter_mut().enumerate() {
+      let i = k + 1;
+      let next =
+        prev + (self.theta.call(T::from_usize_(i) * dt) - self.alpha * prev) * dt + diff_scale * *z;
+      *z = next;
+      prev = next;
     }
 
     hw

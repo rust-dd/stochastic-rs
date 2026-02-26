@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
@@ -41,7 +40,6 @@ pub struct HJM<T: FloatExt> {
   pub f0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> HJM<T> {
@@ -72,7 +70,6 @@ impl<T: FloatExt> HJM<T> {
       p0,
       f0,
       t,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -81,19 +78,41 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
   type Output = [Array1<T>; 3];
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-
     let mut r = Array1::<T>::zeros(self.n);
     let mut p = Array1::<T>::zeros(self.n);
     let mut f_ = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return [r, p, f_];
+    }
 
     r[0] = self.r0.unwrap_or(T::zero());
     p[0] = self.p0.unwrap_or(T::zero());
     f_[0] = self.f0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return [r, p, f_];
+    }
 
-    let gn1 = &self.gn.sample();
-    let gn2 = &self.gn.sample();
-    let gn3 = &self.gn.sample();
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let sqrt_dt = dt.sqrt();
+    let mut gn1 = Array1::<T>::zeros(n_increments);
+    let mut gn2 = Array1::<T>::zeros(n_increments);
+    let mut gn3 = Array1::<T>::zeros(n_increments);
+    let gn1_slice = gn1.as_slice_mut().expect("HJM noise 1 must be contiguous");
+    let gn2_slice = gn2.as_slice_mut().expect("HJM noise 2 must be contiguous");
+    let gn3_slice = gn3.as_slice_mut().expect("HJM noise 3 must be contiguous");
+    T::fill_standard_normal_slice(gn1_slice);
+    T::fill_standard_normal_slice(gn2_slice);
+    T::fill_standard_normal_slice(gn3_slice);
+    for z in gn1_slice.iter_mut() {
+      *z = *z * sqrt_dt;
+    }
+    for z in gn2_slice.iter_mut() {
+      *z = *z * sqrt_dt;
+    }
+    for z in gn3_slice.iter_mut() {
+      *z = *z * sqrt_dt;
+    }
 
     let t_max = self.t.unwrap_or(T::one());
 

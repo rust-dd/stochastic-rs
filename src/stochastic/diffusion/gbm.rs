@@ -5,6 +5,7 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 use statrs::distribution::Continuous;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::LogNormal;
@@ -12,7 +13,6 @@ use statrs::statistics::Distribution as StatDistribution;
 use statrs::statistics::Median;
 use statrs::statistics::Mode;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -28,7 +28,6 @@ pub struct GBM<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
   distribution: Option<LogNormal>,
 }
 
@@ -48,7 +47,6 @@ impl<T: FloatExt> GBM<T> {
       n,
       x0,
       t,
-      gn: Gn::new(n - 1, t),
       distribution: LogNormal::new(mu_ln, sigma_ln).ok(),
     }
   }
@@ -58,14 +56,31 @@ impl<T: FloatExt> ProcessExt<T> for GBM<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
-
     let mut gbm = Array1::<T>::zeros(self.n);
-    gbm[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 0 {
+      return gbm;
+    }
 
-    for i in 1..self.n {
-      gbm[i] = gbm[i - 1] + self.mu * gbm[i - 1] * dt + self.sigma * gbm[i - 1] * gn[i - 1]
+    gbm[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return gbm;
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let drift_scale = self.mu * dt;
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = gbm[0];
+    let mut tail_view = gbm.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("GBM output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for z in tail.iter_mut() {
+      let next = prev + drift_scale * prev + diff_scale * prev * *z;
+      *z = next;
+      prev = next;
     }
 
     gbm

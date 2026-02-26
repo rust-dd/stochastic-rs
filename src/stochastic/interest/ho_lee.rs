@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
@@ -23,7 +23,6 @@ pub struct HoLee<T: FloatExt> {
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> HoLee<T> {
@@ -39,7 +38,6 @@ impl<T: FloatExt> HoLee<T> {
       sigma,
       n,
       t,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -48,12 +46,23 @@ impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
-
     let mut r = Array1::<T>::zeros(self.n);
+    if self.n <= 1 {
+      return r;
+    }
 
-    for i in 1..self.n {
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = r[0];
+    let mut tail_view = r.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("HoLee output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for (k, z) in tail.iter_mut().enumerate() {
+      let i = k + 1;
       let t = T::from_usize_(i) * dt;
       let drift = if let Some(ref f) = self.f_T {
         let eps = dt.max(T::from_f64_fast(1e-8));
@@ -65,7 +74,9 @@ impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
         self.theta.unwrap()
       };
 
-      r[i] = r[i - 1] + drift * dt + self.sigma * gn[i - 1];
+      let next = prev + drift * dt + diff_scale * *z;
+      *z = next;
+      prev = next;
     }
 
     r

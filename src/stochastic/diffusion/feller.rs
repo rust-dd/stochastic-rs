@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -27,7 +27,6 @@ pub struct FellerLogistic<T: FloatExt> {
   pub t: Option<T>,
   /// If true, reflect at 0; otherwise clamp at 0
   pub use_sym: Option<bool>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> FellerLogistic<T> {
@@ -48,7 +47,6 @@ impl<T: FloatExt> FellerLogistic<T> {
       x0,
       t,
       use_sym,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -57,21 +55,37 @@ impl<T: FloatExt> ProcessExt<T> for FellerLogistic<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = self.gn.sample();
-
     let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 0 {
+      return x;
+    }
 
-    for i in 1..self.n {
-      let xi = x[i - 1].max(T::zero());
+    x[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return x;
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = x[0];
+    let mut tail_view = x.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("Feller output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for z in tail.iter_mut() {
+      let xi = prev.max(T::zero());
       let drift = self.kappa * (self.theta - xi) * xi * dt;
-      let diff = self.sigma * xi.sqrt() * gn[i - 1];
+      let diff = diff_scale * xi.sqrt() * *z;
       let next = xi + drift + diff;
-      x[i] = match self.use_sym.unwrap_or(false) {
+      let clamped = match self.use_sym.unwrap_or(false) {
         true => next.abs(),
         false => next.max(T::zero()),
       };
+      *z = clamped;
+      prev = clamped;
     }
 
     x

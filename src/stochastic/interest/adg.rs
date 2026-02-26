@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
@@ -33,7 +32,6 @@ pub struct ADG<T: FloatExt> {
   pub x0: Array1<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> ADG<T> {
@@ -74,7 +72,6 @@ impl<T: FloatExt> ADG<T> {
       xn,
       x0,
       t,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -83,7 +80,12 @@ impl<T: FloatExt> ProcessExt<T> for ADG<T> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
+    let dt = if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    };
+    let sqrt_dt = dt.sqrt();
 
     let mut adg = Array2::<T>::zeros((self.xn, self.n));
     for i in 0..self.xn {
@@ -91,7 +93,15 @@ impl<T: FloatExt> ProcessExt<T> for ADG<T> {
     }
 
     for i in 0..self.xn {
-      let gn = &self.gn.sample();
+      if self.n <= 1 {
+        continue;
+      }
+      let mut gn = Array1::<T>::zeros(self.n - 1);
+      let gn_slice = gn.as_slice_mut().expect("ADG noise must be contiguous");
+      T::fill_standard_normal_slice(gn_slice);
+      for z in gn_slice.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
 
       for j in 1..self.n {
         let t = T::from_usize_(j) * dt;

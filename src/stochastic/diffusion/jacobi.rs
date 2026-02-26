@@ -5,8 +5,8 @@
 //! $$
 //!
 use ndarray::Array1;
+use ndarray::s;
 
-use crate::stochastic::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -23,7 +23,6 @@ pub struct Jacobi<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  gn: Gn<T>,
 }
 
 impl<T: FloatExt> Jacobi<T> {
@@ -33,14 +32,13 @@ impl<T: FloatExt> Jacobi<T> {
     assert!(sigma > T::zero(), "sigma must be positive");
     assert!(alpha < beta, "alpha must be less than beta");
 
-    Jacobi {
+    Self {
       alpha,
       beta,
       sigma,
       n,
       x0,
       t,
-      gn: Gn::new(n - 1, t),
     }
   }
 }
@@ -50,22 +48,38 @@ impl<T: FloatExt> ProcessExt<T> for Jacobi<T> {
 
   /// Sample the Jacobi process
   fn sample(&self) -> Self::Output {
-    let dt = self.gn.dt();
-    let gn = &self.gn.sample();
-
     let mut jacobi = Array1::<T>::zeros(self.n);
-    jacobi[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 0 {
+      return jacobi;
+    }
 
-    for i in 1..self.n {
-      jacobi[i] = match jacobi[i - 1] {
-        _ if jacobi[i - 1] <= T::zero() && i > 0 => T::zero(),
-        _ if jacobi[i - 1] >= T::one() && i > 0 => T::one(),
+    jacobi[0] = self.x0.unwrap_or(T::zero());
+    if self.n == 1 {
+      return jacobi;
+    }
+
+    let n_increments = self.n - 1;
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let diff_scale = self.sigma * dt.sqrt();
+    let mut prev = jacobi[0];
+    let mut tail_view = jacobi.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("Jacobi output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
+
+    for z in tail.iter_mut() {
+      let next = match prev {
+        _ if prev <= T::zero() => T::zero(),
+        _ if prev >= T::one() => T::one(),
         _ => {
-          jacobi[i - 1]
-            + (self.alpha - self.beta * jacobi[i - 1]) * dt
-            + self.sigma * (jacobi[i - 1] * (T::one() - jacobi[i - 1])).sqrt() * gn[i - 1]
+          prev
+            + (self.alpha - self.beta * prev) * dt
+            + diff_scale * (prev * (T::one() - prev)).sqrt() * *z
         }
-      }
+      };
+      *z = next;
+      prev = next;
     }
 
     jacobi

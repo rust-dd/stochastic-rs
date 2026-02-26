@@ -7,9 +7,8 @@
 //! Exact log-increment scheme guarantees $S_t > 0$.
 //!
 use ndarray::Array1;
-use rand_distr::Distribution;
+use ndarray::s;
 
-use crate::distributions::normal::SimdNormal;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -77,25 +76,36 @@ impl<T: FloatExt> ProcessExt<T> for GBMLog<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
+    let mut s = Array1::<T>::zeros(self.n);
+    if self.n == 0 {
+      return s;
+    }
+
+    let s0 = self.s0.unwrap_or(T::one());
+    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
+    s[0] = s0;
+    if self.n == 1 {
+      return s;
+    }
+
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
     let drift = self.drift();
     let half = T::from_f64_fast(0.5);
-
     let drift_ln = (drift - half * self.sigma * self.sigma) * dt;
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let s0 = self.s0.unwrap_or(T::one());
-    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
-    s[0] = s0;
+    let mut prev = s0;
+    let mut tail_view = s.slice_mut(s![1..]);
+    let tail = tail_view
+      .as_slice_mut()
+      .expect("GBMLog output tail must be contiguous");
+    T::fill_standard_normal_slice(tail);
 
-    let z = SimdNormal::<f64, 64>::new(0.0, 1.0);
-    let mut rng = rand::rng();
-
-    for i in 1..self.n {
-      let z_val: f64 = z.sample(&mut rng);
-      let log_inc = drift_ln + self.sigma * sqrt_dt * T::from_f64_fast(z_val);
-      s[i] = s[i - 1] * log_inc.exp();
+    for z in tail.iter_mut() {
+      let log_inc = drift_ln + self.sigma * sqrt_dt * *z;
+      let next = prev * log_inc.exp();
+      *z = next;
+      prev = next;
     }
 
     s
@@ -124,6 +134,6 @@ mod tests {
 }
 
 py_process_1d!(PyGBMLog, GBMLog,
-  sig: (sigma, n, mu=None, b=None, r=None, r_f=None, s0=None, t=None, dtype=None),
+  sig: (mu=None, b=None, r=None, r_f=None, *, sigma, n, s0=None, t=None, dtype=None),
   params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, n: usize, s0: Option<f64>, t: Option<f64>)
 );
