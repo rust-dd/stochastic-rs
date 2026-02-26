@@ -169,24 +169,43 @@ Interpretation:
 - CUDA wins for large single-path generation (from roughly `n >= 16k` in this setup).
 - For the tested batch sizes, CPU `sample_par` is faster than current CUDA path.
 
-### Distribution Sampling (Compact Summary)
+### Distribution Sampling (All Built-in Distributions)
 
-SIMD distribution sampling (`stochastic-rs`) vs `rand_distr` measured with Criterion (`benches/distributions.rs`).
+Measured with:
 
-| Distribution family | Observed speedup range |
-|---|---:|
-| Normal | 2.88x - 3.37x |
-| Exponential | 4.81x - 5.19x |
-| LogNormal | 2.62x - 2.83x |
-| Cauchy | 1.67x - 4.37x |
-| Gamma | 2.34x - 2.71x |
-| Weibull | 1.46x - 1.47x |
-| Beta | 3.42x - 4.12x |
-| ChiSquared | 2.39x - 2.71x |
-| StudentT | 2.63x - 2.97x |
-| Poisson | 5.11x |
-| Pareto | 2.10x - 2.27x |
-| Uniform | ~1.00x |
+```bash
+cargo bench --bench dist_multicore
+```
+
+Configuration in this run:
+- `sample_matrix` benchmark
+- 1-thread vs 14-thread rayon pools
+- size is mostly `1024 x 1024`; heavy discrete samplers use `512 x 512`
+
+| Distribution | Shape | 1T (ms) | MT (ms) | Speedup |
+|---|---:|---:|---:|---:|
+| Normal<f64> | 1024 x 1024 | 1.78 | 0.34 | 5.28x |
+| Exp<f64> | 1024 x 1024 | 1.73 | 0.33 | 5.25x |
+| Uniform<f64> | 1024 x 1024 | 0.65 | 0.13 | 5.12x |
+| Cauchy<f64> | 1024 x 1024 | 6.23 | 0.90 | 6.96x |
+| LogNormal<f64> | 1024 x 1024 | 5.07 | 0.81 | 6.25x |
+| Gamma<f64> | 1024 x 1024 | 5.20 | 0.72 | 7.19x |
+| ChiSq<f64> | 1024 x 1024 | 5.06 | 1.22 | 4.14x |
+| StudentT<f64> | 1024 x 1024 | 7.89 | 1.89 | 4.18x |
+| Beta<f64> | 1024 x 1024 | 11.85 | 1.68 | 7.04x |
+| Weibull<f64> | 1024 x 1024 | 13.17 | 1.73 | 7.59x |
+| Pareto<f64> | 1024 x 1024 | 5.48 | 0.80 | 6.87x |
+| InvGauss<f64> | 1024 x 1024 | 2.52 | 0.44 | 5.69x |
+| NIG<f64> | 1024 x 1024 | 5.93 | 0.90 | 6.62x |
+| AlphaStable<f64> | 1024 x 1024 | 42.52 | 5.36 | 7.94x |
+| Poisson<i64> | 1024 x 1024 | 2.28 | 0.42 | 5.40x |
+| Geometric<u64> | 1024 x 1024 | 2.75 | 0.44 | 6.30x |
+| Binomial<u32> | 512 x 512 | 4.43 | 0.70 | 6.32x |
+| Hypergeo<u32> | 512 x 512 | 20.99 | 2.76 | 7.60x |
+
+`Normal` single-thread kernel comparison (`fill_slice`, same run):
+- vs `rand_distr + SimdRng`: ~`1.21x` to `1.35x`
+- vs `rand_distr + rand::rng()`: ~`4.09x` to `4.61x`
 
 ## Contributing
 

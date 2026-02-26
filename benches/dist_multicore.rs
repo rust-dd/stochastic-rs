@@ -5,9 +5,24 @@ use rand_distr::Distribution;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::alpha_stable::SimdAlphaStable;
+use stochastic_rs::distributions::beta::SimdBeta;
+use stochastic_rs::distributions::binomial::SimdBinomial;
+use stochastic_rs::distributions::cauchy::SimdCauchy;
+use stochastic_rs::distributions::chi_square::SimdChiSquared;
 use stochastic_rs::distributions::exp::SimdExp;
+use stochastic_rs::distributions::gamma::SimdGamma;
+use stochastic_rs::distributions::geometric::SimdGeometric;
+use stochastic_rs::distributions::hypergeometric::SimdHypergeometric;
+use stochastic_rs::distributions::inverse_gauss::SimdInverseGauss;
+use stochastic_rs::distributions::lognormal::SimdLogNormal;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::distributions::normal_inverse_gauss::SimdNormalInverseGauss;
+use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::distributions::poisson::SimdPoisson;
+use stochastic_rs::distributions::studentt::SimdStudentT;
+use stochastic_rs::distributions::uniform::SimdUniform;
+use stochastic_rs::distributions::weibull::SimdWeibull;
 use stochastic_rs::simd_rng::SimdRng;
 
 fn median_ms(samples: &mut [f64]) -> f64 {
@@ -132,7 +147,7 @@ where
   let speedup = t1 / tn;
   let values = m * n;
   println!(
-    "{name:>12} | m={m:<5} n={n:<5} values={values:<10} | 1T={t1:>8.2} ms | MT={tn:>8.2} ms | speedup={speedup:>5.2}x"
+    "{name:>18} | m={m:<5} n={n:<5} values={values:<10} | 1T={t1:>8.2} ms | MT={tn:>8.2} ms | speedup={speedup:>5.2}x"
   );
 }
 
@@ -155,7 +170,7 @@ fn main() {
   println!();
 
   run_case(
-    "Normal<f64>",
+    "Normal<f64>(ref)",
     &SimdNormal::<f64>::new(0.0, 1.0),
     2048,
     2048,
@@ -163,7 +178,7 @@ fn main() {
     &multi,
   );
   run_case(
-    "Exp<f64>",
+    "Exp<f64>(ref)",
     &SimdExp::<f64>::new(1.5),
     2048,
     2048,
@@ -171,10 +186,164 @@ fn main() {
     &multi,
   );
   run_case(
-    "Poisson<i64>",
+    "Poisson<i64>(ref)",
     &SimdPoisson::<i64>::new(1.5),
     2048,
     2048,
+    &single,
+    &multi,
+  );
+
+  println!();
+  println!("All built-in distributions sample_matrix benchmark");
+  println!("(sizes tuned to keep runtime practical for heavier discrete samplers)");
+  let fm = 1024usize;
+  let fnn = 1024usize;
+  let im = 512usize;
+  let inn = 512usize;
+
+  run_case(
+    "Normal<f64>",
+    &SimdNormal::<f64>::new(0.0, 1.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Exp<f64>",
+    &SimdExp::<f64>::new(1.5),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Uniform<f64>",
+    &SimdUniform::<f64>::new(0.0, 1.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Cauchy<f64>",
+    &SimdCauchy::<f64>::new(0.0, 1.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "LogNormal<f64>",
+    &SimdLogNormal::<f64>::new(0.2, 0.8),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Gamma<f64>",
+    &SimdGamma::<f64>::new(2.0, 2.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "ChiSq<f64>",
+    &SimdChiSquared::<f64>::new(5.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "StudentT<f64>",
+    &SimdStudentT::<f64>::new(5.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Beta<f64>",
+    &SimdBeta::<f64>::new(2.0, 2.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Weibull<f64>",
+    &SimdWeibull::<f64>::new(1.0, 1.5),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Pareto<f64>",
+    &SimdPareto::<f64>::new(1.0, 1.5),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "InvGauss<f64>",
+    &SimdInverseGauss::<f64>::new(1.0, 2.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "NIG<f64>",
+    &SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "AlphaStable<f64>",
+    &SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+
+  run_case(
+    "Poisson<i64>",
+    &SimdPoisson::<i64>::new(2.5),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Geometric<u64>",
+    &SimdGeometric::<u64>::new(0.3),
+    fm,
+    fnn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Binomial<u32>",
+    &SimdBinomial::<u32>::new(32, 0.3),
+    im,
+    inn,
+    &single,
+    &multi,
+  );
+  run_case(
+    "Hypergeo<u32>",
+    &SimdHypergeometric::<u32>::new(500, 80, 32),
+    im,
+    inn,
     &single,
     &multi,
   );
