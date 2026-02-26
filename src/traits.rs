@@ -144,6 +144,12 @@ pub trait SimdFloatExt: num_traits::Float + Default + Send + Sync + 'static {
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
   fn fill_uniform_simd(rng: &mut crate::simd_rng::SimdRng, out: &mut [Self]);
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
+  #[inline(always)]
+  fn sample_uniform_simd(rng: &mut crate::simd_rng::SimdRng) -> Self {
+    let mut buf = [Self::zero(); 8];
+    Self::fill_uniform_simd(rng, &mut buf);
+    buf[0]
+  }
   fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
   const PREFERS_F32_WN: bool = false;
   fn from_f64_fast(v: f64) -> Self;

@@ -12,6 +12,8 @@ use rand_distr::Distribution;
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 
+const SMALL_PARETO_THRESHOLD: usize = 16;
+
 pub struct SimdPareto<T: SimdFloatExt> {
   x_m: T,
   alpha: T,
@@ -38,6 +40,16 @@ impl<T: SimdFloatExt> SimdPareto<T> {
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    if out.len() < SMALL_PARETO_THRESHOLD {
+      let neg_inv_alpha = -T::one() / self.alpha;
+      let eps = T::min_positive_val();
+      for x in out.iter_mut() {
+        let u = T::sample_uniform_simd(rng);
+        let base = (T::one() - u).max(eps);
+        *x = self.x_m * (base.ln() * neg_inv_alpha).exp();
+      }
+      return;
+    }
     let xm = T::splat(self.x_m);
     let neg_inv_alpha = T::splat(-T::one() / self.alpha);
     let one = T::splat(T::one());

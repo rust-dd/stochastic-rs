@@ -23,6 +23,7 @@ struct ZigTables {
 }
 
 static ZIG_TABLES: OnceLock<ZigTables> = OnceLock::new();
+const SMALL_NORMAL_THRESHOLD: usize = 16;
 
 fn zig_tables() -> &'static ZigTables {
   ZIG_TABLES.get_or_init(|| {
@@ -175,9 +176,27 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 
   #[inline]
+  fn sample_one(rng: &mut SimdRng, tables: &ZigTables, mean: T, std_dev: T) -> T {
+    let hz = rng.next_i32();
+    let iz = (hz & 127) as usize;
+    let z = if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
+      T::from_f64_fast(hz as f64 * tables.wn[iz])
+    } else {
+      nfix::<T>(hz, iz, tables, rng)
+    };
+    mean + std_dev * z
+  }
+
+  #[inline]
   fn fill_ziggurat(buf: &mut [T], rng: &mut SimdRng, mean: T, std_dev: T) {
     let len = buf.len();
     let tables = zig_tables();
+    if len < SMALL_NORMAL_THRESHOLD {
+      for x in buf.iter_mut() {
+        *x = Self::sample_one(rng, tables, mean, std_dev);
+      }
+      return;
+    }
     let mean_simd = T::splat(mean);
     let std_dev_simd = T::splat(std_dev);
     let mask127 = i32x8::splat(127);
@@ -307,9 +326,26 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   }
 
   #[inline]
+  fn sample_one_standard(rng: &mut SimdRng, tables: &ZigTables) -> T {
+    let hz = rng.next_i32();
+    let iz = (hz & 127) as usize;
+    if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
+      T::from_f64_fast(hz as f64 * tables.wn[iz])
+    } else {
+      nfix::<T>(hz, iz, tables, rng)
+    }
+  }
+
+  #[inline]
   fn fill_ziggurat_standard(buf: &mut [T], rng: &mut SimdRng) {
     let len = buf.len();
     let tables = zig_tables();
+    if len < SMALL_NORMAL_THRESHOLD {
+      for x in buf.iter_mut() {
+        *x = Self::sample_one_standard(rng, tables);
+      }
+      return;
+    }
     let mask127 = i32x8::splat(127);
     let mut filled = 0;
 

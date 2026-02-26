@@ -13,6 +13,8 @@ use super::SimdFloatExt;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
 
+const SMALL_INVERSE_GAUSS_THRESHOLD: usize = 16;
+
 pub struct SimdInverseGauss<T: SimdFloatExt> {
   mu: T,
   lambda: T,
@@ -41,6 +43,25 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    if out.len() < SMALL_INVERSE_GAUSS_THRESHOLD {
+      let two = T::from(2.0).unwrap();
+      let four = T::from(4.0).unwrap();
+      for x in out.iter_mut() {
+        let z = self.normal.sample(rng);
+        let u = T::sample_uniform_simd(rng);
+        let w = z * z;
+        let t1 = self.mu + (self.mu * self.mu * w) / (two * self.lambda);
+        let rad = (four * self.mu * self.lambda * w + self.mu * self.mu * w * w).sqrt();
+        let xr = t1 - (self.mu / (two * self.lambda)) * rad;
+        let check = self.mu / (self.mu + xr);
+        *x = if u < check {
+          xr
+        } else {
+          self.mu * self.mu / xr
+        };
+      }
+      return;
+    }
     let two = T::splat(T::from(2.0).unwrap());
     let four = T::splat(T::from(4.0).unwrap());
     let mu = T::splat(self.mu);

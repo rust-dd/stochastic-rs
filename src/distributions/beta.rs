@@ -12,6 +12,8 @@ use rand_distr::Distribution;
 use super::SimdFloatExt;
 use super::gamma::SimdGamma;
 
+const SMALL_BETA_THRESHOLD: usize = 16;
+
 pub struct SimdBeta<T: SimdFloatExt> {
   alpha: T,
   beta: T,
@@ -39,6 +41,15 @@ impl<T: SimdFloatExt> SimdBeta<T> {
   }
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
+    if out.len() < SMALL_BETA_THRESHOLD {
+      let mut rng = crate::simd_rng::SimdRng::new();
+      for x in out.iter_mut() {
+        let a = self.gamma1.sample(&mut rng);
+        let b = self.gamma2.sample(&mut rng);
+        *x = a / (a + b);
+      }
+      return;
+    }
     let mut g1 = [T::zero(); 8];
     let mut g2 = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);

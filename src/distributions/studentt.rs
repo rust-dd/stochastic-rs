@@ -14,6 +14,8 @@ use super::chi_square::SimdChiSquared;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
 
+const SMALL_STUDENT_T_THRESHOLD: usize = 16;
+
 pub struct SimdStudentT<T: SimdFloatExt> {
   nu: T,
   normal: SimdNormal<T>,
@@ -41,6 +43,14 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    if out.len() < SMALL_STUDENT_T_THRESHOLD {
+      for x in out.iter_mut() {
+        let z = self.normal.sample(rng);
+        let v = self.chisq.sample(rng);
+        *x = z / (v / self.nu).sqrt();
+      }
+      return;
+    }
     let inv_nu = T::splat(T::one() / self.nu);
     let mut zbuf = [T::zero(); 8];
     let mut vbuf = [T::zero(); 8];

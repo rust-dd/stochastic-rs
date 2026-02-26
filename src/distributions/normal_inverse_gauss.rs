@@ -14,6 +14,8 @@ use super::inverse_gauss::SimdInverseGauss;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
 
+const SMALL_NIG_THRESHOLD: usize = 16;
+
 pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
   alpha: T,
   beta: T,
@@ -57,6 +59,14 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    if out.len() < SMALL_NIG_THRESHOLD {
+      for x in out.iter_mut() {
+        let d = self.ig.sample(rng);
+        let z = self.normal.sample(rng);
+        *x = self.mu + self.beta * d + d.sqrt() * z;
+      }
+      return;
+    }
     let mu = T::splat(self.mu);
     let beta = T::splat(self.beta);
     let mut dbuf = [T::zero(); 8];

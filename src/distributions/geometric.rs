@@ -13,6 +13,8 @@ use wide::f64x8;
 
 use crate::simd_rng::SimdRng;
 
+const SMALL_GEOMETRIC_THRESHOLD: usize = 16;
+
 pub struct SimdGeometric<T: PrimInt> {
   p: f64,
   buffer: UnsafeCell<[T; 16]>,
@@ -37,6 +39,15 @@ impl<T: PrimInt> SimdGeometric<T> {
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let ln1p = (1.0 - self.p).ln();
+    if out.len() < SMALL_GEOMETRIC_THRESHOLD {
+      let inv_ln1p = 1.0 / ln1p;
+      for x in out.iter_mut() {
+        let u = rng.next_f64();
+        let g = (u.ln() * inv_ln1p).floor();
+        *x = num_traits::cast(g.max(0.0) as u64).unwrap_or(T::zero());
+      }
+      return;
+    }
     let inv_ln1p = f64x8::splat(1.0 / ln1p);
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {

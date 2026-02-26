@@ -18,6 +18,7 @@ use crate::simd_rng::SimdRng;
 const ZIG_EXP_R: f64 = 7.697_117_470_131_487;
 const ZIG_EXP_V: f64 = 3.949_659_822_581_572e-3;
 const TABLE_SIZE: usize = 256;
+const SMALL_EXP_THRESHOLD: usize = 16;
 
 struct ExpZigTables {
   ke: [i32; TABLE_SIZE],
@@ -116,9 +117,27 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   }
 
   #[inline]
+  fn sample_exp1_one(rng: &mut SimdRng, tables: &ExpZigTables) -> T {
+    let hz = rng.next_i32();
+    let iz = (hz & 0xFF) as usize;
+    let abs_hz = hz.unsigned_abs() as i64;
+    if abs_hz < tables.ke[iz] as i64 {
+      T::from_f64_fast((abs_hz as f64) * tables.we[iz])
+    } else {
+      efix::<T>(hz, iz, tables, rng)
+    }
+  }
+
+  #[inline]
   fn fill_exp1(buf: &mut [T], rng: &mut SimdRng) {
     let tables = exp_zig_tables();
     let len = buf.len();
+    if len < SMALL_EXP_THRESHOLD {
+      for x in buf.iter_mut() {
+        *x = Self::sample_exp1_one(rng, tables);
+      }
+      return;
+    }
     let mask255 = i32x8::splat(0xFF);
     let mut filled = 0;
 

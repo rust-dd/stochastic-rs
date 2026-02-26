@@ -60,7 +60,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
   #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let rng = unsafe { &mut *self.simd_rng.get() };
-    let u = T::sample_uniform(rng).max(T::min_positive_val());
+    let u = T::sample_uniform_simd(rng).max(T::min_positive_val());
     self.lambda * (-u.ln()).powf(self.inv_k)
   }
 }

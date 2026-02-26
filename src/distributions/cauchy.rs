@@ -12,6 +12,8 @@ use rand_distr::Distribution;
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 
+const SMALL_CAUCHY_THRESHOLD: usize = 16;
+
 pub struct SimdCauchy<T: SimdFloatExt> {
   x0: T,
   gamma: T,
@@ -38,6 +40,15 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    if out.len() < SMALL_CAUCHY_THRESHOLD {
+      let pi = T::pi();
+      let half = T::from(0.5).unwrap();
+      for x in out.iter_mut() {
+        let u = T::sample_uniform_simd(rng);
+        *x = self.x0 + self.gamma * (pi * (u - half)).tan();
+      }
+      return;
+    }
     let x0 = T::splat(self.x0);
     let g = T::splat(self.gamma);
     let pi = T::splat(T::pi());

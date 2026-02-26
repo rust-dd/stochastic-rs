@@ -172,8 +172,8 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     let scale = self.scale;
     let loc = self.location;
     for x in out.iter_mut() {
-      let mut u = T::sample_uniform(rng);
-      let mut e = T::sample_uniform(rng);
+      let mut u = T::sample_uniform_simd(rng);
+      let mut e = T::sample_uniform_simd(rng);
       u = Self::clamp_open_unit(u);
       e = Self::clamp_open_unit(e);
       let v = pi * (u - T::from(0.5).unwrap());

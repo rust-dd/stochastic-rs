@@ -59,7 +59,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
           if v <= T::zero() {
             continue;
           }
-          let u: T = T::sample_uniform(rng);
+          let u: T = T::sample_uniform_simd(rng);
           let z2 = z * z;
           if u < T::one() - c1 * z2 * z2 {
             break d * v;
@@ -68,7 +68,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
             break d * v;
           }
         };
-        let u: T = T::sample_uniform(rng);
+        let u: T = T::sample_uniform_simd(rng);
         *x = self.scale * g * u.powf(inv_alpha);
       }
     } else {
@@ -81,7 +81,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
           if v <= T::zero() {
             continue;
           }
-          let u: T = T::sample_uniform(rng);
+          let u: T = T::sample_uniform_simd(rng);
           let z2 = z * z;
           if u < T::one() - c1 * z2 * z2 {
             break d * v;

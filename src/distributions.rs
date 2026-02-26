@@ -288,6 +288,11 @@ impl SimdFloatExt for f32 {
     rng.random()
   }
 
+  #[inline(always)]
+  fn sample_uniform_simd(rng: &mut crate::simd_rng::SimdRng) -> f32 {
+    rng.next_f32()
+  }
+
   fn simd_from_i32x8(v: wide::i32x8) -> f32x8 {
     v.round_float()
   }
@@ -386,6 +391,11 @@ impl SimdFloatExt for f64 {
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f64 {
     rng.random()
+  }
+
+  #[inline(always)]
+  fn sample_uniform_simd(rng: &mut crate::simd_rng::SimdRng) -> f64 {
+    rng.next_f64()
   }
 
   fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {

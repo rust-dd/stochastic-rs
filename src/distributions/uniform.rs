@@ -12,6 +12,8 @@ use rand_distr::Distribution;
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 
+const SMALL_UNIFORM_THRESHOLD: usize = 16;
+
 pub struct SimdUniform<T: SimdFloatExt> {
   low: T,
   scale: T,
@@ -43,6 +45,12 @@ impl<T: SimdFloatExt> SimdUniform<T> {
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    if out.len() < SMALL_UNIFORM_THRESHOLD {
+      for x in out.iter_mut() {
+        *x = self.low + self.scale * T::sample_uniform_simd(rng);
+      }
+      return;
+    }
     let low = T::splat(self.low);
     let scale = T::splat(self.scale);
     let mut u = [T::zero(); 8];

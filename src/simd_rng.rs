@@ -171,6 +171,8 @@ pub struct SimdRng {
   u64_idx: usize,
   f64_scalar_buf: [f64; 8],
   f64_scalar_idx: usize,
+  f32_scalar_buf: [f32; 8],
+  f32_scalar_idx: usize,
   i32_scalar_buf: [i32; 8],
   i32_scalar_idx: usize,
 }
@@ -188,6 +190,8 @@ impl SimdRng {
       u64_idx: 4,
       f64_scalar_buf: [0.0; 8],
       f64_scalar_idx: 8,
+      f32_scalar_buf: [0.0; 8],
+      f32_scalar_idx: 8,
       i32_scalar_buf: [0; 8],
       i32_scalar_idx: 8,
     }
@@ -243,6 +247,17 @@ impl SimdRng {
     }
     let v = self.f64_scalar_buf[self.f64_scalar_idx];
     self.f64_scalar_idx += 1;
+    v
+  }
+
+  #[inline(always)]
+  pub fn next_f32(&mut self) -> f32 {
+    if self.f32_scalar_idx >= 8 {
+      self.f32_scalar_buf = self.next_f32_array();
+      self.f32_scalar_idx = 0;
+    }
+    let v = self.f32_scalar_buf[self.f32_scalar_idx];
+    self.f32_scalar_idx += 1;
     v
   }
 
