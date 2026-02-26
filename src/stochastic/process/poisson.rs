@@ -4,15 +4,12 @@
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
 //!
-use ndarray::Array0;
 use ndarray::Array1;
-use ndarray::Axis;
-use ndarray::Dim;
-use ndarray_rand::RandomExt;
-use ndarray_rand::rand_distr::Distribution;
-use rand::rng;
+use ndarray::s;
+use rand_distr::Distribution;
 
 use crate::distributions::exp::SimdExp;
+use crate::simd_rng::SimdRng;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -41,28 +38,53 @@ impl<T: FloatExt> ProcessExt<T> for Poisson<T> {
     let distr = SimdExp::new(self.lambda);
 
     if let Some(n) = self.n {
-      let exponentials = Array1::random(n, distr);
       let mut poisson = Array1::<T>::zeros(n);
-      for i in 1..n {
-        poisson[i] = poisson[i - 1] + exponentials[i - 1];
+      if n <= 1 {
+        return poisson;
       }
 
+      let mut tail_view = poisson.slice_mut(s![1..]);
+      let tail = tail_view
+        .as_slice_mut()
+        .expect("Poisson output tail must be contiguous");
+      let mut rng = SimdRng::new();
+      distr.fill_slice(&mut rng, tail);
+
+      let mut acc = T::zero();
+      for x in tail.iter_mut() {
+        acc += *x;
+        *x = acc;
+      }
       poisson
     } else if let Some(t_max) = self.t_max {
-      let mut poisson = Array1::from(vec![T::zero()]);
+      let expected = if t_max > T::zero() {
+        (self.lambda * t_max).to_f64().unwrap_or(0.0)
+      } else {
+        0.0
+      };
+      let cap = if expected.is_finite() && expected > 0.0 {
+        (expected.ceil() as usize).saturating_add(1)
+      } else {
+        1
+      };
+      let mut poisson = Vec::with_capacity(cap);
+      poisson.push(T::zero());
+      if t_max <= T::zero() {
+        return Array1::from(poisson);
+      }
+
       let mut t = T::zero();
+      let mut rng = SimdRng::new();
 
       while t < t_max {
-        t += distr.sample(&mut rng());
+        t += distr.sample(&mut rng);
 
         if t < t_max {
-          poisson
-            .push(Axis(0), Array0::from_elem(Dim(()), t).view())
-            .unwrap();
+          poisson.push(t);
         }
       }
 
-      poisson
+      Array1::from(poisson)
     } else {
       panic!("n or t_max must be provided");
     }

@@ -4,10 +4,7 @@
 //! dX_t=a(t,X_t)dt+b(t,X_t)dW_t+\sum_{k=1}^{dN_t}J_k
 //! $$
 //!
-use ndarray::Array0;
 use ndarray::Array1;
-use ndarray::Axis;
-use ndarray::Dim;
 use ndarray_rand::RandomExt;
 use rand::rng;
 use rand_distr::Distribution;
@@ -140,16 +137,17 @@ where
 
       x
     } else if let Some(t_max) = self.t_max {
-      let mut x = Array1::from(vec![T::zero()]);
+      let mut x = Vec::with_capacity(16);
+      x.push(T::zero());
       let mut t = T::zero();
+      let mut rng = rng();
 
       while t < t_max {
-        t += self.distribution.sample(&mut rng());
-        x.push(Axis(0), Array0::from_elem(Dim(()), t).view())
-          .unwrap();
+        t += self.distribution.sample(&mut rng);
+        x.push(t);
       }
 
-      x
+      Array1::from(x)
     } else {
       panic!("n or t_max must be provided");
     }

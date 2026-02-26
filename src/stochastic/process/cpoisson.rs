@@ -119,8 +119,9 @@ where
   fn sample(&self) -> Self::Output {
     let poisson = self.poisson.sample();
     let mut jumps = Array1::<T>::zeros(poisson.len());
+    let mut rng = rng();
     for i in 1..poisson.len() {
-      jumps[i] = self.distribution.sample(&mut rng());
+      jumps[i] = self.distribution.sample(&mut rng);
     }
 
     let mut cum_jupms = jumps.clone();

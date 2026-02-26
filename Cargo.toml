@@ -106,6 +106,10 @@ name = "fgn_cuda"
 harness = false
 required-features = ["cuda"]
 
+[[bench]]
+name = "poisson_process"
+harness = false
+
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]

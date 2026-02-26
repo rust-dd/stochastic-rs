@@ -70,8 +70,9 @@ where
   fn sample(&self) -> Self::Output {
     let p = self.customjt.sample();
     let mut jumps = Array1::<T>::zeros(self.n.unwrap_or(p.len()));
+    let mut rng = rng();
     for i in 1..p.len() {
-      jumps[i] = self.jumps_distribution.sample(&mut rng());
+      jumps[i] = self.jumps_distribution.sample(&mut rng);
     }
 
     let mut cum_jupms = jumps.clone();
