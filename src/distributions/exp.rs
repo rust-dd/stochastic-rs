@@ -182,14 +182,26 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
+  #[inline]
+  fn scale_in_place(buf: &mut [T], factor: T) {
+    let factor_simd = T::splat(factor);
+    let mut chunks = buf.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      let mut tmp = [T::zero(); 8];
+      tmp.copy_from_slice(chunk);
+      let scaled = T::simd_to_array(T::simd_from_array(tmp) * factor_simd);
+      chunk.copy_from_slice(&scaled);
+    }
+    for x in chunks.into_remainder().iter_mut() {
+      *x = *x * factor;
+    }
+  }
+
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_exp1(out, rng);
     if self.lambda != T::one() {
-      let inv_lambda = T::one() / self.lambda;
-      for x in out.iter_mut() {
-        *x = *x * inv_lambda;
-      }
+      Self::scale_in_place(out, T::one() / self.lambda);
     }
   }
 
@@ -198,10 +210,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     let buf = unsafe { &mut *self.buffer.get() };
     Self::fill_exp1(buf, rng);
     if self.lambda != T::one() {
-      let inv_lambda = T::one() / self.lambda;
-      for x in buf.iter_mut() {
-        *x = *x * inv_lambda;
-      }
+      Self::scale_in_place(buf, T::one() / self.lambda);
     }
     unsafe {
       *self.index.get() = 0;

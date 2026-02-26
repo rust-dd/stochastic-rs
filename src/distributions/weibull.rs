@@ -34,10 +34,18 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     self.exp1.fill_slice(rng, out);
-    let lambda = self.lambda;
+    let lambda = T::splat(self.lambda);
     let inv_k = self.inv_k;
-    for x in out.iter_mut() {
-      *x = lambda * (*x).powf(inv_k);
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      let mut tmp = [T::zero(); 8];
+      tmp.copy_from_slice(chunk);
+      let x = T::simd_from_array(tmp);
+      let y = lambda * T::simd_powf(x, inv_k);
+      chunk.copy_from_slice(&T::simd_to_array(y));
+    }
+    for x in chunks.into_remainder().iter_mut() {
+      *x = self.lambda * (*x).powf(inv_k);
     }
   }
 }

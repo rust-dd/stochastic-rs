@@ -31,7 +31,7 @@ impl<T: PrimInt> SimdBinomial<T> {
     for x in out.iter_mut() {
       let mut count = 0u32;
       for _ in 0..self.n {
-        let u: f64 = rng.random_range(0.0..1.0);
+        let u: f64 = rng.random();
         if u < self.p {
           count += 1;
         }

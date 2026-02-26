@@ -39,7 +39,7 @@ impl<T: PrimInt> SimdHypergeometric<T> {
       let mut rem_tot = self.n_total;
       let mut draws = self.n_draws;
       while draws > 0 {
-        let u: f64 = rng.random_range(0.0..1.0);
+        let u: f64 = rng.random();
         if u < (rem_succ as f64) / (rem_tot as f64) {
           count += 1;
           rem_succ -= 1;

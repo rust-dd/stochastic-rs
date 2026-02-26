@@ -4,7 +4,12 @@
 //! u_{k+1}=F(u_k),\quad x_k = \mathrm{transform}(u_k)
 //! $$
 //!
-use rand::Rng;
+use std::sync::OnceLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
 use rand::RngCore;
 use wide::i32x8;
 use wide::u32x8;
@@ -129,6 +134,35 @@ impl Xoshiro128PP8 {
 
 const F64_SCALE: f64 = 1.0 / (1u64 << 53) as f64;
 const F32_SCALE: f32 = 1.0 / (1u32 << 24) as f32;
+const SEED_GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
+
+#[inline]
+fn global_seed_counter() -> &'static AtomicU64 {
+  static SEED_COUNTER: OnceLock<AtomicU64> = OnceLock::new();
+  SEED_COUNTER.get_or_init(|| AtomicU64::new(initial_seed()))
+}
+
+#[inline(always)]
+fn next_global_seed() -> u64 {
+  let base = global_seed_counter().fetch_add(SEED_GAMMA, Ordering::Relaxed);
+  let mut seed = base;
+  splitmix64_next(&mut seed)
+}
+
+#[inline]
+fn initial_seed() -> u64 {
+  let t = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map(|d| d.as_nanos())
+    .unwrap_or(0);
+  let t_lo = t as u64;
+  let t_hi = (t >> 64) as u64;
+  let pid = std::process::id() as u64;
+  let x = 0u64;
+  let addr = (&x as *const u64 as usize) as u64;
+  let mut seed = t_lo ^ t_hi.rotate_left(23) ^ pid.rotate_left(11) ^ addr.rotate_left(37);
+  splitmix64_next(&mut seed)
+}
 
 pub struct SimdRng {
   f64_engine: Xoshiro256PP4,
@@ -138,17 +172,22 @@ pub struct SimdRng {
 }
 
 impl SimdRng {
-  pub fn new() -> Self {
-    let mut rng = rand::rng();
-    let mut seed = rng.random::<u64>();
-    let seed64 = splitmix64_next(&mut seed);
-    let seed32 = splitmix64_next(&mut seed);
+  #[inline]
+  pub fn from_seed(seed: u64) -> Self {
+    let mut state = seed;
+    let seed64 = splitmix64_next(&mut state);
+    let seed32 = splitmix64_next(&mut state);
     Self {
       f64_engine: Xoshiro256PP4::new_from_u64(seed64),
       f32_engine: Xoshiro128PP8::new_from_u64(seed32),
       u64_buf: [0; 4],
       u64_idx: 4,
     }
+  }
+
+  #[inline]
+  pub fn new() -> Self {
+    Self::from_seed(next_global_seed())
   }
 
   #[inline(always)]
