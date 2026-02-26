@@ -89,38 +89,37 @@ impl<T: FloatExt> ProcessExt<T> for ADG<T> {
 
     let mut adg = Array2::<T>::zeros((self.xn, self.n));
     for i in 0..self.xn {
-      adg[(i, 0)] = self.x0[i];
-    }
-
-    for i in 0..self.xn {
+      let mut row = adg.row_mut(i);
+      let row_slice = row
+        .as_slice_mut()
+        .expect("ADG state row must be contiguous in memory");
+      row_slice[0] = self.x0[i];
       if self.n <= 1 {
         continue;
       }
-      let mut gn = Array1::<T>::zeros(self.n - 1);
-      let gn_slice = gn.as_slice_mut().expect("ADG noise must be contiguous");
-      T::fill_standard_normal_slice(gn_slice);
-      for z in gn_slice.iter_mut() {
+
+      let tail = &mut row_slice[1..];
+      T::fill_standard_normal_slice(tail);
+      for z in tail.iter_mut() {
         *z = *z * sqrt_dt;
       }
 
       for j in 1..self.n {
         let t = T::from_usize_(j) * dt;
-        adg[(i, j)] = adg[(i, j - 1)]
-          + (self.k.call(t) - self.theta.call(t) * adg[(i, j - 1)]) * dt
-          + self.sigma[i] * gn[j - 1];
+        row_slice[j] = row_slice[j - 1]
+          + (self.k.call(t) - self.theta.call(t) * row_slice[j - 1]) * dt
+          + self.sigma[i] * row_slice[j];
       }
     }
 
     let mut r = Array2::zeros((self.xn, self.n));
 
     for i in 0..self.xn {
-      let phi = Array1::<T>::from_shape_fn(self.n, |j| self.phi.call(T::from_usize_(j) * dt));
-      let b = Array1::<T>::from_shape_fn(self.n, |j| self.b.call(T::from_usize_(j) * dt));
-      let c = Array1::<T>::from_shape_fn(self.n, |j| self.c.call(T::from_usize_(j) * dt));
-
-      let xi = adg.row(i).to_owned();
-      let xi_sq = &xi * &xi;
-      r.row_mut(i).assign(&(phi + b * &xi + c * xi_sq));
+      for j in 0..self.n {
+        let t = T::from_usize_(j) * dt;
+        let x = adg[(i, j)];
+        r[(i, j)] = self.phi.call(t) + self.b.call(t) * x + self.c.call(t) * x * x;
+      }
     }
 
     r

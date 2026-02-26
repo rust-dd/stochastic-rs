@@ -70,16 +70,19 @@ impl<T: FloatExt> ProcessExt<T> for BGM<T> {
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(n_increments)).sqrt();
 
     for i in 0..self.xn {
-      let mut gn = Array1::<T>::zeros(n_increments);
-      let gn_slice = gn.as_slice_mut().expect("BGM noise must be contiguous");
-      T::fill_standard_normal_slice(gn_slice);
-      for z in gn_slice.iter_mut() {
+      let mut row = fwd.row_mut(i);
+      let row_slice = row
+        .as_slice_mut()
+        .expect("BGM row must be contiguous in memory");
+      let tail = &mut row_slice[1..];
+      T::fill_standard_normal_slice(tail);
+      for z in tail.iter_mut() {
         *z = *z * sqrt_dt;
       }
 
       for j in 1..self.n {
-        let f_old = fwd[(i, j - 1)];
-        fwd[(i, j)] = f_old + f_old * self.lambda[i] * gn[j - 1];
+        let f_old = row_slice[j - 1];
+        row_slice[j] = f_old + f_old * self.lambda[i] * row_slice[j];
       }
     }
 

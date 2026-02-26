@@ -95,23 +95,35 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
     let n_increments = self.n - 1;
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let sqrt_dt = dt.sqrt();
-    let mut gn1 = Array1::<T>::zeros(n_increments);
-    let mut gn2 = Array1::<T>::zeros(n_increments);
-    let mut gn3 = Array1::<T>::zeros(n_increments);
-    let gn1_slice = gn1.as_slice_mut().expect("HJM noise 1 must be contiguous");
-    let gn2_slice = gn2.as_slice_mut().expect("HJM noise 2 must be contiguous");
-    let gn3_slice = gn3.as_slice_mut().expect("HJM noise 3 must be contiguous");
-    T::fill_standard_normal_slice(gn1_slice);
-    T::fill_standard_normal_slice(gn2_slice);
-    T::fill_standard_normal_slice(gn3_slice);
-    for z in gn1_slice.iter_mut() {
-      *z = *z * sqrt_dt;
+    {
+      let r_slice = r
+        .as_slice_mut()
+        .expect("HJM short-rate path must be contiguous in memory");
+      let r_tail = &mut r_slice[1..];
+      T::fill_standard_normal_slice(r_tail);
+      for z in r_tail.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
     }
-    for z in gn2_slice.iter_mut() {
-      *z = *z * sqrt_dt;
+    {
+      let p_slice = p
+        .as_slice_mut()
+        .expect("HJM bond-price path must be contiguous in memory");
+      let p_tail = &mut p_slice[1..];
+      T::fill_standard_normal_slice(p_tail);
+      for z in p_tail.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
     }
-    for z in gn3_slice.iter_mut() {
-      *z = *z * sqrt_dt;
+    {
+      let f_slice = f_
+        .as_slice_mut()
+        .expect("HJM forward-rate path must be contiguous in memory");
+      let f_tail = &mut f_slice[1..];
+      T::fill_standard_normal_slice(f_tail);
+      for z in f_tail.iter_mut() {
+        *z = *z * sqrt_dt;
+      }
     }
 
     let t_max = self.t.unwrap_or(T::one());
@@ -119,10 +131,10 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
     for i in 1..self.n {
       let t = T::from_usize_(i) * dt;
 
-      r[i] = r[i - 1] + self.a.call(t) * dt + self.b.call(t) * gn1[i - 1];
+      r[i] = r[i - 1] + self.a.call(t) * dt + self.b.call(t) * r[i];
       p[i] = p[i - 1]
-        + self.p.call(t, t_max) * (self.q.call(t, t_max) * dt + self.v.call(t, t_max) * gn2[i - 1]);
-      f_[i] = f_[i - 1] + self.alpha.call(t, t_max) * dt + self.sigma.call(t, t_max) * gn3[i - 1];
+        + self.p.call(t, t_max) * (self.q.call(t, t_max) * dt + self.v.call(t, t_max) * p[i]);
+      f_[i] = f_[i - 1] + self.alpha.call(t, t_max) * dt + self.sigma.call(t, t_max) * f_[i];
     }
 
     [r, p, f_]

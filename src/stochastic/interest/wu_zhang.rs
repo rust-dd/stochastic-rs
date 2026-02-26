@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::Axis;
 
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -126,45 +127,51 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
     };
     let sqrt_dt = dt.sqrt();
     let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
-
+    let (mut f_rows, mut v_rows) = fv.view_mut().split_at(Axis(0), self.xn);
     for i in 0..self.xn {
-      fv[(i, 0)] = self.x0[i];
-      fv[(i + self.xn, 0)] = self.v0[i];
-    }
+      let mut f_row = f_rows.row_mut(i);
+      let mut v_row = v_rows.row_mut(i);
+      let f_slice = f_row
+        .as_slice_mut()
+        .expect("WuZhang forward row must be contiguous in memory");
+      let v_slice = v_row
+        .as_slice_mut()
+        .expect("WuZhang volatility row must be contiguous in memory");
 
-    for i in 0..self.xn {
+      f_slice[0] = self.x0[i];
+      v_slice[0] = self.v0[i];
+
       if self.n <= 1 {
         continue;
       }
-      let mut gn_f = Array1::<T>::zeros(self.n - 1);
-      let mut gn_v = Array1::<T>::zeros(self.n - 1);
-      let gn_f_slice = gn_f
-        .as_slice_mut()
-        .expect("WuZhang noise f must be contiguous");
-      let gn_v_slice = gn_v
-        .as_slice_mut()
-        .expect("WuZhang noise v must be contiguous");
-      T::fill_standard_normal_slice(gn_f_slice);
-      T::fill_standard_normal_slice(gn_v_slice);
-      for z in gn_f_slice.iter_mut() {
-        *z = *z * sqrt_dt;
+
+      {
+        let f_tail = &mut f_slice[1..];
+        T::fill_standard_normal_slice(f_tail);
+        for z in f_tail.iter_mut() {
+          *z = *z * sqrt_dt;
+        }
       }
-      for z in gn_v_slice.iter_mut() {
-        *z = *z * sqrt_dt;
+      {
+        let v_tail = &mut v_slice[1..];
+        T::fill_standard_normal_slice(v_tail);
+        for z in v_tail.iter_mut() {
+          *z = *z * sqrt_dt;
+        }
       }
 
       for j in 1..self.n {
-        let v_old = fv[(i + self.xn, j - 1)].max(T::zero());
-        let f_old = fv[(i, j - 1)].max(T::zero());
+        let v_old = v_slice[j - 1].max(T::zero());
+        let f_old = f_slice[j - 1].max(T::zero());
+        let d_w_v = v_slice[j];
+        let d_w_f = f_slice[j];
 
-        let dv =
-          self.beta[i] * (self.alpha[i] - v_old) * dt + self.nu[i] * v_old.sqrt() * gn_v[j - 1];
-
+        let dv = self.beta[i] * (self.alpha[i] - v_old) * dt + self.nu[i] * v_old.sqrt() * d_w_v;
         let v_new = (v_old + dv).max(T::zero());
-        fv[(i + self.xn, j)] = v_new;
+        v_slice[j] = v_new;
 
-        let df = f_old * self.lambda[i] * v_new.sqrt() * gn_f[j - 1];
-        fv[(i, j)] = f_old + df;
+        let df = f_old * self.lambda[i] * v_new.sqrt() * d_w_f;
+        f_slice[j] = f_old + df;
       }
     }
 
