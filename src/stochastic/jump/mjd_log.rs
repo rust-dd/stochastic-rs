@@ -135,10 +135,10 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("MJDLog output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for z in tail.iter_mut() {
-      let diff = self.sigma * sqrt_dt * *z;
+      let diff = self.sigma * *z;
 
       let mut jump_sum = T::zero();
       if let Some(pois) = &pois {

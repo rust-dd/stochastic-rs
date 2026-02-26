@@ -75,11 +75,11 @@ impl<T: FloatExt> ProcessExt<T> for GBMIH<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("GBMIH output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for (i, z) in tail.iter_mut().enumerate() {
       let sigma_i = self.sigmas.as_ref().map(|s| s[i]).unwrap_or(self.sigma);
-      let next = prev + drift_scale * prev + sigma_i * sqrt_dt * prev * *z;
+      let next = prev + drift_scale * prev + sigma_i * prev * *z;
       *z = next;
       prev = next;
     }

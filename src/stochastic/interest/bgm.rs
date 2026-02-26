@@ -75,10 +75,7 @@ impl<T: FloatExt> ProcessExt<T> for BGM<T> {
         .as_slice_mut()
         .expect("BGM row must be contiguous in memory");
       let tail = &mut row_slice[1..];
-      T::fill_standard_normal_slice(tail);
-      for z in tail.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
       for j in 1..self.n {
         let f_old = row_slice[j - 1];

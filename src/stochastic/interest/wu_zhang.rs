@@ -147,17 +147,11 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
 
       {
         let f_tail = &mut f_slice[1..];
-        T::fill_standard_normal_slice(f_tail);
-        for z in f_tail.iter_mut() {
-          *z = *z * sqrt_dt;
-        }
+        T::fill_standard_normal_scaled_slice(f_tail, sqrt_dt);
       }
       {
         let v_tail = &mut v_slice[1..];
-        T::fill_standard_normal_slice(v_tail);
-        for z in v_tail.iter_mut() {
-          *z = *z * sqrt_dt;
-        }
+        T::fill_standard_normal_scaled_slice(v_tail, sqrt_dt);
       }
 
       for j in 1..self.n {

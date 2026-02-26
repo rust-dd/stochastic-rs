@@ -53,13 +53,14 @@ impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
 
     let n_increments = self.n - 1;
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let diff_scale = self.sigma * dt.sqrt();
+    let sqrt_dt = dt.sqrt();
+    let diff_scale = self.sigma;
     let mut prev = r[0];
     let mut tail_view = r.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
       .expect("HoLee output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for (k, z) in tail.iter_mut().enumerate() {
       let i = k + 1;

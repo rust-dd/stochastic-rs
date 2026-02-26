@@ -68,11 +68,8 @@ impl<T: FloatExt> ProcessExt<T> for RoughHeston<T> {
     };
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
-      T::fill_standard_normal_slice(gn_slice);
       let sqrt_dt = dt.sqrt();
-      for z in gn_slice.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(gn_slice, sqrt_dt);
     }
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);

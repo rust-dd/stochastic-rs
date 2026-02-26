@@ -99,10 +99,7 @@ impl<T: FloatExt> ProcessExt<T> for ADG<T> {
       }
 
       let tail = &mut row_slice[1..];
-      T::fill_standard_normal_slice(tail);
-      for z in tail.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
       for j in 1..self.n {
         let t = T::from_usize_(j) * dt;

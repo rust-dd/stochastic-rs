@@ -55,13 +55,14 @@ impl<T: FloatExt> ProcessExt<T> for CEV<T> {
 
     let n_increments = self.n - 1;
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let diff_scale = self.sigma * dt.sqrt();
+    let sqrt_dt = dt.sqrt();
+    let diff_scale = self.sigma;
     let mut prev = cev[0];
     let mut tail_view = cev.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
       .expect("CEV output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for z in tail.iter_mut() {
       let next = prev + self.mu * prev * dt + diff_scale * prev.powf(self.gamma) * *z;
@@ -88,11 +89,8 @@ impl<T: FloatExt> CEV<T> {
     };
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
-      T::fill_standard_normal_slice(gn_slice);
       let sqrt_dt = dt.sqrt();
-      for z in gn_slice.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(gn_slice, sqrt_dt);
     }
     let cev = self.sample();
 

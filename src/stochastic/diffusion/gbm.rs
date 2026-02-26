@@ -69,13 +69,14 @@ impl<T: FloatExt> ProcessExt<T> for GBM<T> {
     let n_increments = self.n - 1;
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let drift_scale = self.mu * dt;
-    let diff_scale = self.sigma * dt.sqrt();
+    let sqrt_dt = dt.sqrt();
+    let diff_scale = self.sigma;
     let mut prev = gbm[0];
     let mut tail_view = gbm.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
       .expect("GBM output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for z in tail.iter_mut() {
       let next = prev + drift_scale * prev + diff_scale * prev * *z;

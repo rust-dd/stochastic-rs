@@ -170,6 +170,13 @@ pub trait FloatExt:
 {
   fn from_usize_(n: usize) -> Self;
   fn fill_standard_normal_slice(out: &mut [Self]);
+  #[inline]
+  fn fill_standard_normal_scaled_slice(out: &mut [Self], scale: Self) {
+    Self::fill_standard_normal_slice(out);
+    for x in out.iter_mut() {
+      *x = *x * scale;
+    }
+  }
   fn with_fgn_complex_scratch<R, F: FnOnce(&mut [Complex<Self>]) -> R>(len: usize, f: F) -> R;
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }

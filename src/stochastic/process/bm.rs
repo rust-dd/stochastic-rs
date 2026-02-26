@@ -38,11 +38,11 @@ impl<T: FloatExt> ProcessExt<T> for BM<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("BM output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, std_dev);
 
     let mut acc = T::zero();
     for x in tail.iter_mut() {
-      acc += *x * std_dev;
+      acc += *x;
       *x = acc;
     }
 

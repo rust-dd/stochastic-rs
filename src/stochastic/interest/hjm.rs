@@ -100,30 +100,21 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
         .as_slice_mut()
         .expect("HJM short-rate path must be contiguous in memory");
       let r_tail = &mut r_slice[1..];
-      T::fill_standard_normal_slice(r_tail);
-      for z in r_tail.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(r_tail, sqrt_dt);
     }
     {
       let p_slice = p
         .as_slice_mut()
         .expect("HJM bond-price path must be contiguous in memory");
       let p_tail = &mut p_slice[1..];
-      T::fill_standard_normal_slice(p_tail);
-      for z in p_tail.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(p_tail, sqrt_dt);
     }
     {
       let f_slice = f_
         .as_slice_mut()
         .expect("HJM forward-rate path must be contiguous in memory");
       let f_tail = &mut f_slice[1..];
-      T::fill_standard_normal_slice(f_tail);
-      for z in f_tail.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(f_tail, sqrt_dt);
     }
 
     let t_max = self.t.unwrap_or(T::one());

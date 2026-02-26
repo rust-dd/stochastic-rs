@@ -57,13 +57,14 @@ impl<T: FloatExt> ProcessExt<T> for Gompertz<T> {
 
     let n_increments = self.n - 1;
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let diff_scale = self.sigma * dt.sqrt();
+    let sqrt_dt = dt.sqrt();
+    let diff_scale = self.sigma;
     let mut prev = x[0];
     let mut tail_view = x.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
       .expect("Gompertz output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for z in tail.iter_mut() {
       let xi = prev.max(threshold);

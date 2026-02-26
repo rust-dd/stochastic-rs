@@ -125,12 +125,11 @@ impl<T: FloatExt> ProcessExt<T> for HestonLog<T> {
     let mut dws = vec![T::zero(); n_increments];
     let mut z = vec![T::zero(); n_increments];
     let mut dwv = vec![T::zero(); n_increments];
-    T::fill_standard_normal_slice(&mut dws);
-    T::fill_standard_normal_slice(&mut z);
+    T::fill_standard_normal_scaled_slice(&mut dws, sqrt_dt);
+    T::fill_standard_normal_scaled_slice(&mut z, sqrt_dt);
     let corr_scale = (T::one() - self.rho * self.rho).sqrt();
     for i in 0..n_increments {
-      dws[i] = dws[i] * sqrt_dt;
-      dwv[i] = self.rho * dws[i] + corr_scale * z[i] * sqrt_dt;
+      dwv[i] = self.rho * dws[i] + corr_scale * z[i];
     }
 
     let drift = self.drift();

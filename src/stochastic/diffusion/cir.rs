@@ -75,13 +75,14 @@ impl<T: FloatExt> ProcessExt<T> for CIR<T> {
 
     let n_increments = self.n - 1;
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let diff_scale = self.sigma * dt.sqrt();
+    let sqrt_dt = dt.sqrt();
+    let diff_scale = self.sigma;
     let mut prev = cir[0];
     let mut tail_view = cir.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
       .expect("CIR output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for z in tail.iter_mut() {
       let dcir = self.theta * (self.mu - prev) * dt + diff_scale * prev.abs().sqrt() * *z;

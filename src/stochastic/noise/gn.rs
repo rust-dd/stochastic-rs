@@ -40,11 +40,8 @@ impl<T: FloatExt> Gn<T> {
     if len == 0 {
       return;
     }
-    T::fill_standard_normal_slice(&mut out[..len]);
     let std_dev = self.dt().sqrt();
-    for x in out[..len].iter_mut() {
-      *x = *x * std_dev;
-    }
+    T::fill_standard_normal_scaled_slice(&mut out[..len], std_dev);
   }
 
   pub fn dt(&self) -> T {

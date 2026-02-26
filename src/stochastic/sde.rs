@@ -99,10 +99,7 @@ where
   }
 
   fn fill_gauss_increment(&self, out: &mut [f64], sqrt_dt: f64, _rng: &mut impl Rng) {
-    <f64 as FloatExt>::fill_standard_normal_slice(out);
-    for x in out.iter_mut() {
-      *x *= sqrt_dt;
-    }
+    <f64 as FloatExt>::fill_standard_normal_scaled_slice(out, sqrt_dt);
   }
 
   fn solve_euler_gauss(

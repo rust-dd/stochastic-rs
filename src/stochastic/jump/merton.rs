@@ -70,11 +70,8 @@ where
     let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
-      T::fill_standard_normal_slice(gn_slice);
       let sqrt_dt = dt.sqrt();
-      for z in gn_slice.iter_mut() {
-        *z = *z * sqrt_dt;
-      }
+      T::fill_standard_normal_scaled_slice(gn_slice, sqrt_dt);
     }
 
     let mut merton = Array1::<T>::zeros(self.n);

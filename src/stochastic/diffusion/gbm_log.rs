@@ -99,10 +99,10 @@ impl<T: FloatExt> ProcessExt<T> for GBMLog<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("GBMLog output tail must be contiguous");
-    T::fill_standard_normal_slice(tail);
+    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
 
     for z in tail.iter_mut() {
-      let log_inc = drift_ln + self.sigma * sqrt_dt * *z;
+      let log_inc = drift_ln + self.sigma * *z;
       let next = prev * log_inc.exp();
       *z = next;
       prev = next;

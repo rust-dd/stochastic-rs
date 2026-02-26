@@ -43,14 +43,8 @@ impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(self.n)).sqrt();
     let gn1_slice = gn1.as_slice_mut().expect("CGNS noise 1 must be contiguous");
     let z_slice = z.as_slice_mut().expect("CGNS noise 2 must be contiguous");
-    T::fill_standard_normal_slice(gn1_slice);
-    T::fill_standard_normal_slice(z_slice);
-    for x in gn1_slice.iter_mut() {
-      *x = *x * sqrt_dt;
-    }
-    for x in z_slice.iter_mut() {
-      *x = *x * sqrt_dt;
-    }
+    T::fill_standard_normal_scaled_slice(gn1_slice, sqrt_dt);
+    T::fill_standard_normal_scaled_slice(z_slice, sqrt_dt);
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut gn2 = Array1::zeros(self.n);
 
