@@ -84,8 +84,12 @@ impl<T: FloatExt> ProcessExt<T> for FBS<T> {
     let lam = fft_freq.mapv(|c| (c.re / scale).max(T::zero()).sqrt());
 
     let normal = SimdNormal::<T, 64>::new(T::zero(), T::one());
-    let z: Array2<Complex<T>> =
-      Array2::random((big_m, big_n), ComplexDistribution::new(&normal, &normal));
+    let mut rng = crate::simd_rng::rng();
+    let z: Array2<Complex<T>> = Array2::random_using(
+      (big_m, big_n),
+      ComplexDistribution::new(&normal, &normal),
+      &mut rng,
+    );
 
     let prod = lam.mapv(|v| Complex::new(v, T::zero())) * z;
     let mut fft_tmp2 = Array2::<Complex<T>>::zeros((big_m, big_n));

@@ -111,7 +111,7 @@ impl<T: FloatExt> ProcessExt<T> for DuffieKanJumpExp<T> {
     r[0] = self.r0.unwrap_or(T::zero());
     x[0] = self.x0.unwrap_or(T::zero());
 
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
     let exp_dist = SimdExp::new(self.lambda);
     let jump_dist = SimdNormal::<T, 64>::new(T::zero(), self.jump_scale);
 

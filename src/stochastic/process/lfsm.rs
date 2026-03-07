@@ -82,7 +82,8 @@ impl<T: FloatExt> ProcessExt<T> for LFSM<T> {
     let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
 
     let stable = SimdAlphaStable::new(self.alpha, self.beta, innovation_scale, T::zero());
-    let innovations = Array1::random(self.n - 1, &stable);
+    let mut rng = crate::simd_rng::rng();
+    let innovations = Array1::random_using(self.n - 1, &stable, &mut rng);
 
     let mut weights = Array1::<T>::zeros(self.n - 1);
     for k in 0..(self.n - 1) {

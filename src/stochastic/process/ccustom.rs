@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::Axis;
-use rand::rng;
 use rand_distr::Distribution;
 
 use super::customjt::CustomJt;
@@ -70,7 +69,7 @@ where
   fn sample(&self) -> Self::Output {
     let p = self.customjt.sample();
     let mut jumps = Array1::<T>::zeros(self.n.unwrap_or(p.len()));
-    let mut rng = rng();
+    let mut rng = crate::simd_rng::rng();
     for i in 1..p.len() {
       jumps[i] = self.jumps_distribution.sample(&mut rng);
     }

@@ -74,7 +74,7 @@ impl<T: FloatExt> ProcessExt<T> for TemperedStableSubordinator<T> {
     let poisson = SimdPoisson::<u32>::new(lambda0 * dt);
     let small_jump_drift = dt * c * eps.powf(1.0 - alpha) / (1.0 - alpha);
 
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
     let mut level = out[0].to_f64().unwrap();
     for i in 1..self.n {
       let n_candidates = poisson.sample(&mut rng) as usize;

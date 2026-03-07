@@ -79,7 +79,7 @@ impl<T: FloatExt> ProcessExt<T> for InverseAlphaStableSubordinator<T> {
       u_max = t_max.max(1.0);
     }
 
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
     let mut u = Vec::new();
     let mut d = Vec::new();
     let mut reached = false;

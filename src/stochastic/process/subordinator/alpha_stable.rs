@@ -47,7 +47,7 @@ impl<T: FloatExt> ProcessExt<T> for AlphaStableSubordinator<T> {
     let c = self.c.to_f64().unwrap();
     let dt = t_max / (self.n - 1) as f64;
     let scale = (c * dt).powf(1.0 / alpha);
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
     let mut level = path[0].to_f64().unwrap();
 
     for i in 1..self.n {

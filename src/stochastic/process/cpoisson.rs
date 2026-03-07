@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use ndarray::Axis;
 use rand::Rng;
-use rand::rng;
 use rand_distr::Distribution;
 
 use super::poisson::Poisson;
@@ -57,7 +56,7 @@ where
     }
 
     let poisson = SimdPoisson::<u32>::new(lambda_dt);
-    let mut rng = rng();
+    let mut rng = crate::simd_rng::rng();
     for i in 1..n {
       let jump_count = poisson.sample(&mut rng);
       let mut jump_sum = T::zero();
@@ -99,7 +98,7 @@ where
     }
 
     let poisson = SimdPoisson::<u32>::new(lambda_dt);
-    let mut rng = rng();
+    let mut rng = crate::simd_rng::rng();
     for i in 1..n {
       let jump_count = poisson.sample(&mut rng);
       increments[i] = self.relative_jump_from_count(jump_count, &mut rng);
@@ -119,7 +118,7 @@ where
   fn sample(&self) -> Self::Output {
     let poisson = self.poisson.sample();
     let mut jumps = Array1::<T>::zeros(poisson.len());
-    let mut rng = rng();
+    let mut rng = crate::simd_rng::rng();
     for i in 1..poisson.len() {
       jumps[i] = self.distribution.sample(&mut rng);
     }
@@ -164,7 +163,7 @@ mod tests {
   #[test]
   fn relative_increment_compounds_multiple_jumps() {
     let cp = CompoundPoisson::new(ConstJump(0.1f64), Poisson::new(1.0, Some(4), Some(1.0)));
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
     let rel = cp.relative_jump_from_count(3, &mut rng);
     let expected = 1.1f64.powi(3) - 1.0;
     assert!((rel - expected).abs() < 1e-12);

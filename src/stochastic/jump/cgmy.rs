@@ -100,7 +100,7 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
@@ -125,15 +125,15 @@ impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
     let exp = SimdExp::new(T::one());
 
     // U_j ~ Unif(0,1)
-    let U = Array1::<T>::random(size, &uniform);
+    let U = Array1::<T>::random_using(size, &uniform, &mut rng);
     // E_j ~ Exp(1)
-    let E = Array1::<T>::random(size, exp);
+    let E = Array1::<T>::random_using(size, exp, &mut rng);
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
     let P = Poisson::new(T::one(), Some(size), None).sample();
 
     // τ_j ~ Unif(0,T)
-    let tau = Array1::<T>::random(size, &uniform) * t_max;
+    let tau = Array1::<T>::random_using(size, &uniform, &mut rng) * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);
 

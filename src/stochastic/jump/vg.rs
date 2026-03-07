@@ -60,7 +60,8 @@ impl<T: FloatExt> ProcessExt<T> for VG<T> {
 
     let dt = self.dt();
     let gamma = SimdGamma::new(dt / self.nu, self.nu);
-    let gammas = Array1::random(self.n - 1, &gamma);
+    let mut rng = crate::simd_rng::rng();
+    let gammas = Array1::random_using(self.n - 1, &gamma, &mut rng);
     let mut z = Array1::<T>::zeros(self.n - 1);
     let z_slice = z.as_slice_mut().expect("VG normals must be contiguous");
     T::fill_standard_normal_slice(z_slice);

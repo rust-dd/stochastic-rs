@@ -68,7 +68,7 @@ impl<T: FloatExt> ProcessExt<T> for RDTS<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
@@ -91,11 +91,11 @@ impl<T: FloatExt> ProcessExt<T> for RDTS<T> {
     let uniform = SimdUniform::new(T::zero(), T::one());
     let exp = SimdExp::new(T::one());
 
-    let U = Array1::<T>::random(size, &uniform);
-    let E = Array1::<T>::random(size, exp);
+    let U = Array1::<T>::random_using(size, &uniform, &mut rng);
+    let E = Array1::<T>::random_using(size, exp, &mut rng);
     let P = Poisson::new(T::one(), Some(size), None);
     let P = P.sample();
-    let tau = Array1::<T>::random(size, &uniform) * t_max;
+    let tau = Array1::<T>::random_using(size, &uniform, &mut rng) * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);
 

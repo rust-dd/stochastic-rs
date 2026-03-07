@@ -51,7 +51,8 @@ impl<T: FloatExt> ProcessExt<T> for IGSubordinator<T> {
     let mu = (self.delta * dt) / self.gamma;
     let lambda = (self.delta * dt).powi(2);
     let ig = SimdInverseGauss::new(mu, lambda);
-    let inc = Array1::random(self.n - 1, &ig);
+    let mut rng = crate::simd_rng::rng();
+    let inc = Array1::random_using(self.n - 1, &ig, &mut rng);
     for i in 1..self.n {
       out[i] = out[i - 1] + inc[i - 1];
     }

@@ -138,7 +138,7 @@ impl<T: FloatExt> ProcessExt<T> for BatesSVJ<T> {
     let drift = self.drift();
     let kappa_j = self.kappa_j();
 
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(

@@ -255,7 +255,7 @@ impl<T: FloatExt> FGN<T> {
     }
 
     let mut host_output = vec![0.0f32; m * out_size];
-    let seed: u64 = rand::rng().random();
+    let seed: u64 = crate::simd_rng::rng().random();
     let ctx = guard.as_ref().unwrap();
     unsafe {
       (ctx.fgn_sample)(host_output.as_mut_ptr(), scale, seed);
@@ -337,7 +337,7 @@ impl<T: FloatExt> FGN<T> {
     }
 
     let mut host_output = vec![0.0f64; m * out_size];
-    let seed: u64 = rand::rng().random();
+    let seed: u64 = crate::simd_rng::rng().random();
     let ctx = guard.as_ref().unwrap();
     unsafe {
       (ctx.fgn_sample)(host_output.as_mut_ptr(), scale, seed);

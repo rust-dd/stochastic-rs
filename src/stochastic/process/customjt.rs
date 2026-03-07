@@ -5,8 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand::rng;
 use rand_distr::Distribution;
 
 use crate::traits::FloatExt;
@@ -129,7 +127,11 @@ where
 
   fn sample(&self) -> Self::Output {
     if let Some(n) = self.n {
-      let random = Array1::random(n, &self.distribution);
+      let mut random = Array1::<T>::zeros(n);
+      let mut rng = crate::simd_rng::rng();
+      for x in &mut random {
+        *x = self.distribution.sample(&mut rng);
+      }
       let mut x = Array1::<T>::zeros(n);
       for i in 1..n {
         x[i] = x[i - 1] + random[i - 1];
@@ -140,7 +142,7 @@ where
       let mut x = Vec::with_capacity(16);
       x.push(T::zero());
       let mut t = T::zero();
-      let mut rng = rng();
+      let mut rng = crate::simd_rng::rng();
 
       while t < t_max {
         t += self.distribution.sample(&mut rng);

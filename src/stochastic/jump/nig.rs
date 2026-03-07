@@ -62,7 +62,8 @@ impl<T: FloatExt> ProcessExt<T> for NIG<T> {
     // For NIG: G_dt ~ IG(mean=dt, shape=dt^2/kappa).
     let shape = dt * dt / self.kappa;
     let ig_dist = SimdInverseGauss::new(dt, shape);
-    let ig = Array1::random(self.n - 1, &ig_dist);
+    let mut rng = crate::simd_rng::rng();
+    let ig = Array1::random_using(self.n - 1, &ig_dist, &mut rng);
     let mut z = Array1::<T>::zeros(self.n - 1);
     let z_slice = z.as_slice_mut().expect("NIG normals must be contiguous");
     T::fill_standard_normal_slice(z_slice);

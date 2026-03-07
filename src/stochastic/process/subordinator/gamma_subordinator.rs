@@ -43,7 +43,8 @@ impl<T: FloatExt> ProcessExt<T> for GammaSubordinator<T> {
     let shape = self.nu * dt;
     let scale = T::one() / self.rate;
     let gamma = SimdGamma::new(shape, scale);
-    let inc = Array1::random(self.n - 1, &gamma);
+    let mut rng = crate::simd_rng::rng();
+    let inc = Array1::random_using(self.n - 1, &gamma, &mut rng);
     for i in 1..self.n {
       out[i] = out[i - 1] + inc[i - 1];
     }

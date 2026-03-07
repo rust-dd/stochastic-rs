@@ -133,7 +133,7 @@ impl<T: FloatExt> ProcessExt<T> for CTRW<T> {
 
     let t_max = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let dt = t_max / (self.n - 1) as f64;
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
     let mut x = x0.to_f64().unwrap();
 
     let mut next_event = match &waiting_sampler {

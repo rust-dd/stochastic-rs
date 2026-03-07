@@ -77,7 +77,7 @@ where
       return jump_fou;
     }
     jump_fou[0] = self.x0.unwrap_or(T::zero());
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
     let mut next_jump_time = self.jump_times.sample(&mut rng);
     if next_jump_time <= T::zero() {
       panic!("jump_times distribution must return strictly positive inter-arrival times");

@@ -120,7 +120,7 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
 
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
 
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(

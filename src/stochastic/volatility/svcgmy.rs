@@ -109,7 +109,7 @@ impl<T: FloatExt> ProcessExt<T> for SVCGMY<T> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut rng = rand::rng();
+    let mut rng = crate::simd_rng::rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
@@ -150,9 +150,9 @@ impl<T: FloatExt> ProcessExt<T> for SVCGMY<T> {
     let exp = SimdExp::new(T::one());
 
     // U_j ~ Unif(0,1), E_j ~ Exp(1), τ_j ~ Unif(0,T)
-    let U = Array1::<T>::random(size, &uniform);
-    let E = Array1::<T>::random(size, exp);
-    let tau = Array1::<T>::random(size, &uniform) * t_max;
+    let U = Array1::<T>::random_using(size, &uniform, &mut rng);
+    let E = Array1::<T>::random_using(size, exp, &mut rng);
+    let tau = Array1::<T>::random_using(size, &uniform, &mut rng) * t_max;
 
     // Γ_0=0, Γ_j = Γ_{j-1} + E'_j; we reuse Poisson-generator-as-arrival-times for Γ_j
     let P = Poisson::new(T::one(), Some(size), None).sample();

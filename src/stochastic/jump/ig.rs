@@ -53,7 +53,8 @@ impl<T: FloatExt> ProcessExt<T> for IG<T> {
     let mean = self.gamma * dt;
     let shape = mean * mean;
     let ig_dist = SimdInverseGauss::new(mean, shape);
-    let inc = Array1::random(self.n - 1, &ig_dist);
+    let mut rng = crate::simd_rng::rng();
+    let inc = Array1::random_using(self.n - 1, &ig_dist, &mut rng);
 
     for i in 1..self.n {
       ig[i] = ig[i - 1] + inc[i - 1];
