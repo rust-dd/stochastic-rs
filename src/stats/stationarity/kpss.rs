@@ -128,14 +128,17 @@ pub fn kpss_test(y: &[f64], cfg: KPSSConfig) -> KPSSResult {
 
 #[cfg(test)]
 mod tests {
+  use rand::SeedableRng;
+  use rand::rngs::StdRng;
+
   use super::KPSSConfig;
   use super::kpss_test;
   use crate::distributions::normal::SimdNormal;
 
-  fn simulate_ar1(phi: f64, n: usize) -> Vec<f64> {
+  fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
+      let mut rng = StdRng::seed_from_u64(seed);
       let mut eps = vec![0.0; n];
       dist.fill_slice(&mut rng, &mut eps);
       eps
@@ -148,10 +151,10 @@ mod tests {
     x
   }
 
-  fn simulate_random_walk(n: usize) -> Vec<f64> {
+  fn simulate_random_walk(n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
+      let mut rng = StdRng::seed_from_u64(seed);
       let mut eps = vec![0.0; n];
       dist.fill_slice(&mut rng, &mut eps);
       eps
@@ -166,7 +169,7 @@ mod tests {
 
   #[test]
   fn kpss_keeps_stationarity_for_ar1() {
-    let x = simulate_ar1(0.75, 2000);
+    let x = simulate_ar1(0.75, 2000, 0x4B505353);
     let res = kpss_test(&x, KPSSConfig::default());
     assert!(
       !res.reject_stationarity,
@@ -176,7 +179,7 @@ mod tests {
 
   #[test]
   fn kpss_rejects_stationarity_for_random_walk() {
-    let x = simulate_random_walk(2000);
+    let x = simulate_random_walk(2000, 0x4B505354);
     let res = kpss_test(&x, KPSSConfig::default());
     assert!(
       res.reject_stationarity,
