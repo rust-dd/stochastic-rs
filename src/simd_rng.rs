@@ -164,6 +164,11 @@ fn initial_seed() -> u64 {
   splitmix64_next(&mut seed)
 }
 
+#[inline]
+pub fn rng() -> SimdRng {
+  SimdRng::new()
+}
+
 pub struct SimdRng {
   f64_engine: Xoshiro256PP4,
   f32_engine: Xoshiro128PP8,

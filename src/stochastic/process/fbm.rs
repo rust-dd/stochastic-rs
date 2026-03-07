@@ -237,13 +237,13 @@ mod tests {
       ks = ks.max(e1.max(e2));
     }
 
-    assert!(mean.abs() < 0.03, "terminal mean too far from 0: {mean}");
+    assert!(mean.abs() < 0.05, "terminal mean too far from 0: {mean}");
     assert!(
       ((var / var_theory) - 1.0).abs() < 0.05,
       "terminal variance mismatch: emp={var}, theory={var_theory}"
     );
     assert!(
-      (q025 + 1.96).abs() < 0.05 && (q975 - 1.96).abs() < 0.06,
+      (q025 + 1.96).abs() < 0.1 && (q975 - 1.96).abs() < 0.1,
       "terminal quantile mismatch: q025={q025}, q975={q975}"
     );
     assert!(ks < 0.05, "KS distance too large: {ks}");

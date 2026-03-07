@@ -89,16 +89,19 @@ pub fn adf_test(y: &[f64], cfg: ADFConfig) -> ADFResult {
 
 #[cfg(test)]
 mod tests {
+  use rand::SeedableRng;
+  use rand::rngs::StdRng;
+
   use super::ADFConfig;
   use super::adf_test;
   use crate::distributions::normal::SimdNormal;
   use crate::stats::stationarity::common::DeterministicTerm;
   use crate::stats::stationarity::common::LagSelection;
 
-  fn simulate_ar1(phi: f64, n: usize) -> Vec<f64> {
+  fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
+      let mut rng = StdRng::seed_from_u64(seed);
       let mut eps = vec![0.0; n];
       dist.fill_slice(&mut rng, &mut eps);
       eps
@@ -111,10 +114,10 @@ mod tests {
     x
   }
 
-  fn simulate_random_walk(n: usize) -> Vec<f64> {
+  fn simulate_random_walk(n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
+      let mut rng = StdRng::seed_from_u64(seed);
       let mut eps = vec![0.0; n];
       dist.fill_slice(&mut rng, &mut eps);
       eps
@@ -129,7 +132,7 @@ mod tests {
 
   #[test]
   fn adf_rejects_stationary_ar1() {
-    let x = simulate_ar1(0.7, 2400);
+    let x = simulate_ar1(0.7, 2400, 0xADF1);
     let cfg = ADFConfig {
       deterministic: DeterministicTerm::Constant,
       lag_selection: LagSelection::Fixed(4),
@@ -143,11 +146,12 @@ mod tests {
   }
 
   #[test]
-  fn adf_keeps_unit_root_for_random_walk() {
-    let x = simulate_random_walk(2400);
+  fn adf_random_walk_is_not_rejected_at_one_percent() {
+    let x = simulate_random_walk(2400, 0xADF2);
     let cfg = ADFConfig {
       deterministic: DeterministicTerm::Constant,
       lag_selection: LagSelection::Fixed(4),
+      alpha: 0.01,
       ..ADFConfig::default()
     };
     let res = adf_test(&x, cfg);

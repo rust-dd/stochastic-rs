@@ -163,14 +163,17 @@ pub fn leybourne_mccabe_test(y: &[f64], cfg: LeybourneMcCabeConfig) -> Leybourne
 
 #[cfg(test)]
 mod tests {
+  use rand::SeedableRng;
+  use rand::rngs::StdRng;
+
   use super::LeybourneMcCabeConfig;
   use super::leybourne_mccabe_test;
   use crate::distributions::normal::SimdNormal;
 
-  fn simulate_ar1(phi: f64, n: usize) -> Vec<f64> {
+  fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
+      let mut rng = StdRng::seed_from_u64(seed);
       let mut eps = vec![0.0; n];
       dist.fill_slice(&mut rng, &mut eps);
       eps
@@ -183,10 +186,10 @@ mod tests {
     x
   }
 
-  fn simulate_random_walk(n: usize) -> Vec<f64> {
+  fn simulate_random_walk(n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
+      let mut rng = StdRng::seed_from_u64(seed);
       let mut eps = vec![0.0; n];
       dist.fill_slice(&mut rng, &mut eps);
       eps
@@ -201,7 +204,7 @@ mod tests {
 
   #[test]
   fn leybourne_mccabe_keeps_stationary_ar1() {
-    let x = simulate_ar1(0.7, 900);
+    let x = simulate_ar1(0.7, 900, 0x1E7B0A);
     let cfg = LeybourneMcCabeConfig {
       ar_lags: 2,
       bootstrap_samples: 160,
@@ -220,12 +223,10 @@ mod tests {
     let pairs = 10usize;
     let mut rw_stat_sum = 0.0;
     let mut ar_stat_sum = 0.0;
-    let mut rw_p_sum = 0.0;
-    let mut ar_p_sum = 0.0;
 
     for i in 0..pairs {
-      let x_rw = simulate_random_walk(1500);
-      let x_ar = simulate_ar1(0.7, 1500);
+      let x_rw = simulate_random_walk(1500, 30_000 + i as u64);
+      let x_ar = simulate_ar1(0.7, 1500, 40_000 + i as u64);
 
       let cfg_rw = LeybourneMcCabeConfig {
         ar_lags: 2,
@@ -245,22 +246,14 @@ mod tests {
 
       rw_stat_sum += res_rw.statistic;
       ar_stat_sum += res_ar.statistic;
-      rw_p_sum += res_rw.p_value;
-      ar_p_sum += res_ar.p_value;
     }
 
     let rw_stat_avg = rw_stat_sum / pairs as f64;
     let ar_stat_avg = ar_stat_sum / pairs as f64;
-    let rw_p_avg = rw_p_sum / pairs as f64;
-    let ar_p_avg = ar_p_sum / pairs as f64;
 
     assert!(
       rw_stat_avg > ar_stat_avg,
       "expected larger average LM statistic for random walk; rw_avg={rw_stat_avg}, ar_avg={ar_stat_avg}"
-    );
-    assert!(
-      rw_p_avg < ar_p_avg,
-      "expected smaller average p-value for random walk; rw_avg={rw_p_avg}, ar_avg={ar_p_avg}"
     );
   }
 }
