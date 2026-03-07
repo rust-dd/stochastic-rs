@@ -20,6 +20,10 @@ const ZIG_EXP_V: f64 = 3.949_659_822_581_572e-3;
 const TABLE_SIZE: usize = 256;
 const SMALL_EXP_THRESHOLD: usize = 16;
 
+/// Precomputed lookup tables for the Ziggurat algorithm (exponential distribution).
+/// `ke` holds threshold integers for the fast-accept test,
+/// `we` holds the width of each rectangle,
+/// `fe` holds the function values f(x)=exp(-x) at rectangle boundaries.
 struct ExpZigTables {
   ke: [i32; TABLE_SIZE],
   we: [f64; TABLE_SIZE],
@@ -28,6 +32,7 @@ struct ExpZigTables {
 
 static EXP_ZIG_TABLES: OnceLock<ExpZigTables> = OnceLock::new();
 
+/// Returns a reference to the lazily-initialized exponential Ziggurat tables.
 fn exp_zig_tables() -> &'static ExpZigTables {
   EXP_ZIG_TABLES.get_or_init(|| {
     let mut ke = [0i32; TABLE_SIZE];
@@ -71,6 +76,9 @@ fn exp_zig_tables() -> &'static ExpZigTables {
   })
 }
 
+/// Scalar fallback for exponential samples that fall outside a Ziggurat rectangle.
+/// For iz==0 (tail), uses the inversion method: R - ln(U).
+/// Otherwise performs rejection sampling within the rectangle.
 #[cold]
 #[inline(never)]
 fn efix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ExpZigTables, rng: &mut SimdRng) -> T {
@@ -96,6 +104,9 @@ fn efix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ExpZigTables, rng: &mut Si
   }
 }
 
+/// SIMD-accelerated exponential distribution using the Ziggurat algorithm.
+/// Generates Exp(1) samples internally, then scales by 1/lambda.
+/// The const generic `N` controls the internal buffer size.
 pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64> {
   lambda: T,
   buffer: UnsafeCell<[T; N]>,
@@ -104,6 +115,8 @@ pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64> {
 }
 
 impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
+  /// Creates a new exponential distribution with rate parameter `lambda`.
+  /// Uses an automatically generated random seed.
   pub fn new(lambda: T) -> Self {
     let _ = exp_zig_tables();
     assert!(lambda > T::zero());
@@ -116,6 +129,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
+  /// Generates a single Exp(1) sample using the scalar Ziggurat path.
   #[inline]
   fn sample_exp1_one(rng: &mut SimdRng, tables: &ExpZigTables) -> T {
     let hz = rng.next_i32();
@@ -128,6 +142,8 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
+  /// Core Ziggurat fill for Exp(1) samples into `buf`.
+  /// Uses 8-wide SIMD for the fast-accept path, scalar fallback for edge cases.
   #[inline]
   fn fill_exp1(buf: &mut [T], rng: &mut SimdRng) {
     let tables = exp_zig_tables();
@@ -201,6 +217,8 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
+  /// Multiplies every element in `buf` by `factor` using SIMD 8-wide chunks.
+  /// Used to convert Exp(1) samples to Exp(lambda) via scaling by 1/lambda.
   #[inline]
   fn scale_in_place(buf: &mut [T], factor: T) {
     let factor_simd = T::splat(factor);
@@ -216,6 +234,8 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
+  /// Fills a slice with Exp(lambda) samples.
+  /// Generates Exp(1) first, then scales by 1/lambda (skipped when lambda==1).
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_exp1(out, rng);
@@ -224,6 +244,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
+  /// Refills the internal sample buffer with Exp(lambda) values.
   fn refill_buffer(&self) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let buf = unsafe { &mut *self.buffer.get() };
@@ -244,6 +265,8 @@ impl<T: SimdFloatExt, const N: usize> Clone for SimdExpZig<T, N> {
 }
 
 impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdExpZig<T, N> {
+  /// Returns a single Exp(lambda) sample.
+  /// Draws from a pre-filled buffer, refilling it when exhausted.
   #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };
@@ -256,17 +279,21 @@ impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdExpZig<T, N> {
   }
 }
 
+/// Convenience wrapper around `SimdExpZig` with a default buffer size.
+/// Provides the same API with less generic noise.
 pub struct SimdExp<T: SimdFloatExt> {
   inner: SimdExpZig<T>,
 }
 
 impl<T: SimdFloatExt> SimdExp<T> {
+  /// Creates a new exponential distribution with rate `lambda`.
   pub fn new(lambda: T) -> Self {
     Self {
       inner: SimdExpZig::new(lambda),
     }
   }
 
+  /// Fills a slice with Exp(lambda) samples. Delegates to the inner `SimdExpZig`.
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
     self.inner.fill_slice(rng, out);
   }
@@ -279,6 +306,7 @@ impl<T: SimdFloatExt> Clone for SimdExp<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdExp<T> {
+  /// Returns a single Exp(lambda) sample. Delegates to the inner `SimdExpZig`.
   #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     self.inner.sample(rng)

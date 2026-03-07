@@ -15,6 +15,10 @@ use wide::i32x8;
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 
+/// Precomputed lookup tables for the Ziggurat algorithm (normal distribution).
+/// `kn` holds threshold integers for the fast-accept test,
+/// `wn`/`wn_f32` hold the width of each rectangle (f64 and f32),
+/// `fn_tab` holds the function values f(x)=exp(-x²/2) at rectangle boundaries.
 struct ZigTables {
   kn: [i32; 128],
   wn: [f64; 128],
@@ -25,6 +29,8 @@ struct ZigTables {
 static ZIG_TABLES: OnceLock<ZigTables> = OnceLock::new();
 const SMALL_NORMAL_THRESHOLD: usize = 16;
 
+/// Returns a reference to the lazily-initialized Ziggurat tables.
+/// Uses `OnceLock` so the tables are computed only once per process.
 fn zig_tables() -> &'static ZigTables {
   ZIG_TABLES.get_or_init(|| {
     let mut kn = [0i32; 128];
@@ -79,6 +85,9 @@ fn zig_tables() -> &'static ZigTables {
   })
 }
 
+/// Scalar fallback for the ~3% of samples that fall outside a Ziggurat rectangle.
+/// Handles tail sampling (iz==0) via the exponential-tail method and
+/// rejection sampling for intermediate rectangles.
 #[cold]
 #[inline(never)]
 fn nfix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut SimdRng) -> T {
@@ -136,6 +145,8 @@ pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64> {
 }
 
 impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
+  /// Creates a new normal distribution with the given mean and standard deviation.
+  /// Uses an automatically generated random seed.
   pub fn new(mean: T, std_dev: T) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
@@ -149,16 +160,22 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     }
   }
 
+  /// Fills a slice with normally distributed samples.
+  /// The `_rng` argument is accepted for API compatibility but ignored;
+  /// the internal SIMD RNG is used instead.
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
+  /// Fills a slice with normally distributed samples using the internal SIMD RNG directly.
   #[inline]
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat(out, rng, self.mean, self.std_dev);
   }
 
+  /// Fills exactly 16 elements with normally distributed samples.
+  /// Optimized hot-path for small fixed-size buffers.
   #[inline]
   pub fn fill_16<R: Rng + ?Sized>(&self, _rng: &mut R, out16: &mut [T]) {
     debug_assert!(out16.len() >= 16);
@@ -166,6 +183,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     Self::fill_ziggurat(&mut out16[..16], rng, self.mean, self.std_dev);
   }
 
+  /// Refills the internal sample buffer (used by the `Distribution::sample` trait impl).
   fn refill_buffer(&self) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let buf = unsafe { &mut *self.buffer.get() };
@@ -175,6 +193,8 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     }
   }
 
+  /// Generates a single normal sample using the scalar Ziggurat path.
+  /// Used when the remaining buffer is smaller than the SIMD threshold.
   #[inline]
   fn sample_one(rng: &mut SimdRng, tables: &ZigTables, mean: T, std_dev: T) -> T {
     let hz = rng.next_i32();
@@ -187,6 +207,9 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     mean + std_dev * z
   }
 
+  /// Core Ziggurat fill: generates N(mean, std_dev) samples into `buf`.
+  /// Uses 8-wide SIMD for the fast-accept path (~97% of samples),
+  /// falling back to scalar `nfix` for the rare edge cases.
   #[inline]
   fn fill_ziggurat(buf: &mut [T], rng: &mut SimdRng, mean: T, std_dev: T) {
     let len = buf.len();
@@ -284,11 +307,14 @@ impl<T: SimdFloatExt, const N: usize> Clone for SimdNormal<T, N> {
 }
 
 impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
+  /// Fills a slice with standard normal N(0,1) samples using the internal SIMD RNG.
   pub fn fill_standard_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat_standard(out, rng);
   }
 
+  /// Returns a pair of N(mean, std_dev) samples from the internal buffer.
+  /// Refills the buffer if fewer than 2 samples remain.
   #[inline]
   pub fn sample_pair<R: Rng + ?Sized>(&self, _rng: &mut R) -> (T, T) {
     let index = unsafe { &mut *self.index.get() };
@@ -302,6 +328,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     (a, b)
   }
 
+  /// Refills the internal buffer with standard normal N(0,1) samples.
   #[inline]
   fn refill_buffer_standard(&self) {
     let rng = unsafe { &mut *self.simd_rng.get() };
@@ -312,6 +339,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     }
   }
 
+  /// Returns a pair of standard normal N(0,1) samples from the internal buffer.
   #[inline]
   pub fn sample_pair_standard<R: Rng + ?Sized>(&self, _rng: &mut R) -> (T, T) {
     let index = unsafe { &mut *self.index.get() };
@@ -325,6 +353,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     (a, b)
   }
 
+  /// Generates a single standard normal N(0,1) sample using the scalar Ziggurat path.
   #[inline]
   fn sample_one_standard(rng: &mut SimdRng, tables: &ZigTables) -> T {
     let hz = rng.next_i32();
@@ -336,6 +365,8 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     }
   }
 
+  /// Core Ziggurat fill for standard normal N(0,1) samples.
+  /// Same SIMD fast-path as `fill_ziggurat` but skips mean/std_dev scaling.
   #[inline]
   fn fill_ziggurat_standard(buf: &mut [T], rng: &mut SimdRng) {
     let len = buf.len();
@@ -423,6 +454,8 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
 }
 
 impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdNormal<T, N> {
+  /// Returns a single N(mean, std_dev) sample.
+  /// Internally draws from a pre-filled buffer and refills it when exhausted.
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= N {
