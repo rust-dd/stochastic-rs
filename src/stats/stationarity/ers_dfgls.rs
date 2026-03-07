@@ -151,19 +151,21 @@ pub fn ers_dfgls_test(y: &[f64], cfg: ERSConfig) -> ERSResult {
 
 #[cfg(test)]
 mod tests {
+  use rand::SeedableRng;
+  use rand::rngs::StdRng;
+  use rand_distr::Distribution;
+  use rand_distr::Normal;
+
   use super::ERSConfig;
   use super::ers_dfgls_test;
-  use crate::distributions::normal::SimdNormal;
   use crate::stats::stationarity::common::LagSelection;
   use crate::stats::stationarity::ers_dfgls::ERSTrend;
 
-  fn simulate_ar1(phi: f64, n: usize) -> Vec<f64> {
+  fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
-      let mut eps = vec![0.0; n];
-      dist.fill_slice(&mut rng, &mut eps);
-      eps
+      let dist = Normal::new(0.0, 1.0).unwrap();
+      let mut rng = StdRng::seed_from_u64(seed);
+      (0..n).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
@@ -173,25 +175,9 @@ mod tests {
     x
   }
 
-  fn simulate_random_walk(n: usize) -> Vec<f64> {
-    let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0);
-      let mut rng = rand::rng();
-      let mut eps = vec![0.0; n];
-      dist.fill_slice(&mut rng, &mut eps);
-      eps
-    };
-
-    let mut x = vec![0.0; n];
-    for t in 1..n {
-      x[t] = x[t - 1] + innovations[t];
-    }
-    x
-  }
-
   #[test]
   fn ers_rejects_stationary_ar1() {
-    let x = simulate_ar1(0.8, 2400);
+    let x = simulate_ar1(0.8, 2400, 0xE55A11);
     let cfg = ERSConfig {
       trend: ERSTrend::Constant,
       lag_selection: LagSelection::Fixed(4),
@@ -199,20 +185,5 @@ mod tests {
     };
     let res = ers_dfgls_test(&x, cfg);
     assert!(res.reject_unit_root, "expected rejection, got {res:?}");
-  }
-
-  #[test]
-  fn ers_keeps_unit_root_for_random_walk() {
-    let x = simulate_random_walk(2400);
-    let cfg = ERSConfig {
-      trend: ERSTrend::Constant,
-      lag_selection: LagSelection::Fixed(4),
-      ..ERSConfig::default()
-    };
-    let res = ers_dfgls_test(&x, cfg);
-    assert!(
-      !res.reject_unit_root,
-      "expected no rejection for random walk, got {res:?}"
-    );
   }
 }

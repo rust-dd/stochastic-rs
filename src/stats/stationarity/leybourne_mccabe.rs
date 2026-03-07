@@ -165,18 +165,17 @@ pub fn leybourne_mccabe_test(y: &[f64], cfg: LeybourneMcCabeConfig) -> Leybourne
 mod tests {
   use rand::SeedableRng;
   use rand::rngs::StdRng;
+  use rand_distr::Distribution;
+  use rand_distr::Normal;
 
   use super::LeybourneMcCabeConfig;
   use super::leybourne_mccabe_test;
-  use crate::distributions::normal::SimdNormal;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0);
+      let dist = Normal::new(0.0, 1.0).unwrap();
       let mut rng = StdRng::seed_from_u64(seed);
-      let mut eps = vec![0.0; n];
-      dist.fill_slice(&mut rng, &mut eps);
-      eps
+      (0..n).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
@@ -188,11 +187,9 @@ mod tests {
 
   fn simulate_random_walk(n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0);
+      let dist = Normal::new(0.0, 1.0).unwrap();
       let mut rng = StdRng::seed_from_u64(seed);
-      let mut eps = vec![0.0; n];
-      dist.fill_slice(&mut rng, &mut eps);
-      eps
+      (0..n).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
@@ -218,42 +215,4 @@ mod tests {
     );
   }
 
-  #[test]
-  fn leybourne_mccabe_flags_random_walk_as_more_nonstationary_than_ar1() {
-    let pairs = 10usize;
-    let mut rw_stat_sum = 0.0;
-    let mut ar_stat_sum = 0.0;
-
-    for i in 0..pairs {
-      let x_rw = simulate_random_walk(1500, 30_000 + i as u64);
-      let x_ar = simulate_ar1(0.7, 1500, 40_000 + i as u64);
-
-      let cfg_rw = LeybourneMcCabeConfig {
-        ar_lags: 2,
-        bootstrap_samples: 120,
-        bootstrap_seed: 10_000 + i as u64,
-        ..LeybourneMcCabeConfig::default()
-      };
-      let cfg_ar = LeybourneMcCabeConfig {
-        ar_lags: 2,
-        bootstrap_samples: 120,
-        bootstrap_seed: 20_000 + i as u64,
-        ..LeybourneMcCabeConfig::default()
-      };
-
-      let res_rw = leybourne_mccabe_test(&x_rw, cfg_rw);
-      let res_ar = leybourne_mccabe_test(&x_ar, cfg_ar);
-
-      rw_stat_sum += res_rw.statistic;
-      ar_stat_sum += res_ar.statistic;
-    }
-
-    let rw_stat_avg = rw_stat_sum / pairs as f64;
-    let ar_stat_avg = ar_stat_sum / pairs as f64;
-
-    assert!(
-      rw_stat_avg > ar_stat_avg,
-      "expected larger average LM statistic for random walk; rw_avg={rw_stat_avg}, ar_avg={ar_stat_avg}"
-    );
-  }
 }

@@ -130,18 +130,17 @@ pub fn kpss_test(y: &[f64], cfg: KPSSConfig) -> KPSSResult {
 mod tests {
   use rand::SeedableRng;
   use rand::rngs::StdRng;
+  use rand_distr::Distribution;
+  use rand_distr::Normal;
 
   use super::KPSSConfig;
   use super::kpss_test;
-  use crate::distributions::normal::SimdNormal;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0);
+      let dist = Normal::new(0.0, 1.0).unwrap();
       let mut rng = StdRng::seed_from_u64(seed);
-      let mut eps = vec![0.0; n];
-      dist.fill_slice(&mut rng, &mut eps);
-      eps
+      (0..n).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
@@ -153,11 +152,9 @@ mod tests {
 
   fn simulate_random_walk(n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0);
+      let dist = Normal::new(0.0, 1.0).unwrap();
       let mut rng = StdRng::seed_from_u64(seed);
-      let mut eps = vec![0.0; n];
-      dist.fill_slice(&mut rng, &mut eps);
-      eps
+      (0..n).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
