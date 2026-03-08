@@ -8,7 +8,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use plotly::Plot;
 use plotly::Scatter;
-use rand_distr::Distribution;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
@@ -71,12 +70,11 @@ impl NCopula2DExt for GaussianCopula2D {
     let n1: SimdNormal<f64> = SimdNormal::new(0.0, 1.0);
     let n2: SimdNormal<f64> = SimdNormal::new(0.0, 1.0);
 
-    let mut rng = rand::rng();
     let mut z = Array2::<f64>::zeros((n, 2));
 
     for i in 0..n {
-      let z1: f64 = n1.sample(&mut rng);
-      let z2: f64 = n2.sample(&mut rng);
+      let z1 = n1.sample_fast();
+      let z2 = n2.sample_fast();
       z[[i, 0]] = self.mean[0] + a11 * z1;
       z[[i, 1]] = self.mean[1] + a21 * z1 + a22 * z2;
     }
@@ -114,16 +112,15 @@ impl NCopula2DExt for GumbelCopula2D {
     let alpha = self.alpha;
     assert!(alpha >= 1.0, "The Gumbel parameter (alpha) must be >= 1!");
 
-    let mut rng = rand::rng();
     let exp_dist: SimdExp<f64> = SimdExp::new(1.0);
     let mut data = Array2::<f64>::zeros((n, 2));
 
     for i in 0..n {
-      let x: f64 = exp_dist.sample(&mut rng);
+      let x = exp_dist.sample_fast();
       let m = x.powf(alpha);
 
-      let e1: f64 = exp_dist.sample(&mut rng);
-      let e2: f64 = exp_dist.sample(&mut rng);
+      let e1 = exp_dist.sample_fast();
+      let e2 = exp_dist.sample_fast();
 
       let u1 = (-(e1 * m).powf(1.0 / alpha)).exp();
       let u2 = (-(e2 * m).powf(1.0 / alpha)).exp();
@@ -151,17 +148,16 @@ impl NCopula2DExt for ClaytonCopula2D {
     let alpha = self.alpha;
     assert!(alpha > 0.0, "The Clayton parameter (alpha) must be > 0!");
 
-    let mut rng = rand::rng();
     let gamma_dist: SimdGamma<f64> = SimdGamma::new(1.0 / alpha, 1.0);
     let exp_dist: SimdExp<f64> = SimdExp::new(1.0);
 
     let mut data = Array2::<f64>::zeros((n, 2));
 
     for i in 0..n {
-      let w: f64 = gamma_dist.sample(&mut rng);
+      let w = gamma_dist.sample_fast();
 
-      let e1: f64 = exp_dist.sample(&mut rng);
-      let e2: f64 = exp_dist.sample(&mut rng);
+      let e1 = exp_dist.sample_fast();
+      let e2 = exp_dist.sample_fast();
 
       let u1: f64 = (1.0 + w * e1).powf(-1.0 / alpha);
       let u2: f64 = (1.0 + w * e2).powf(-1.0 / alpha);

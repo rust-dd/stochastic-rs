@@ -5,8 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand::Rng;
 use scilib::math::basic::gamma;
 
 use crate::distributions::exp::SimdExp;
@@ -105,7 +103,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RDTS<T, S> {
 
   fn sample(&self) -> Self::Output {
     let mut seed = self.seed;
-    let mut rng = seed.rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
@@ -125,19 +122,21 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RDTS<T, S> {
     let J = self.j;
     let size = J + 1; // index 0 is reserved (Γ0=0)
 
-    let uniform = SimdUniform::new(T::zero(), T::one());
-    let exp = SimdExp::new(T::one());
+    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &mut seed);
+    let exp = SimdExp::from_seed_source(T::one(), &mut seed);
 
-    let U = Array1::<T>::random_using(size, &uniform, &mut rng);
-    let E = Array1::<T>::random_using(size, exp, &mut rng);
-    let P = Poisson::new(T::one(), Some(size), None);
-    let P = P.sample();
-    let tau = Array1::<T>::random_using(size, &uniform, &mut rng) * t_max;
+    let mut U = Array1::<T>::zeros(size);
+    uniform.fill_slice_fast(U.as_slice_mut().unwrap());
+    let E = Array1::from_shape_fn(size, |_| exp.sample_fast());
+    let P = Poisson::new(T::one(), Some(size), None).sample();
+    let mut tau_raw = Array1::<T>::zeros(size);
+    uniform.fill_slice_fast(tau_raw.as_slice_mut().unwrap());
+    let tau = tau_raw * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);
 
     for j in 1..size {
-      let v_j = if rng.random_bool(0.5) {
+      let v_j = if uniform.sample_fast() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus

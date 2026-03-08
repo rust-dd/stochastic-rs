@@ -1,6 +1,7 @@
 use ndarray::Array1;
 
 use super::sample_positive_stable;
+use crate::distributions::uniform::SimdUniform;
 use crate::simd_rng::Deterministic;
 use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
@@ -78,11 +79,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AlphaStableSubordinator<T, S> {
     let dt = t_max / (self.n - 1) as f64;
     let scale = (c * dt).powf(1.0 / alpha);
     let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &mut seed);
     let mut level = path[0].to_f64().unwrap();
 
     for i in 1..self.n {
-      let s = sample_positive_stable(alpha, &mut rng);
+      let s = sample_positive_stable(alpha, &uniform);
       level += scale * s;
       path[i] = T::from_f64_fast(level);
     }

@@ -22,13 +22,11 @@ use ndarray::Axis;
 use ndarray::ScalarOperand;
 use ndarray::parallel::prelude::*;
 use ndarray::stack;
-use ndarray_rand::RandomExt;
 use ndarray_stats::QuantileExt;
 use ndrustfft::Zero;
 use num_complex::Complex;
 use num_complex::Complex64;
 use rand::Rng;
-use rand_distr::Uniform;
 use roots::SimpleConvergency;
 use roots::find_root_brent;
 
@@ -307,8 +305,11 @@ pub trait BivariateExt {
       return Err("Tau must be in the interval (-1, 1)".into());
     }
 
-    let v = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
-    let c = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
+    let ud = crate::distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0);
+    let mut v = Array1::<f64>::zeros(n);
+    ud.fill_slice_fast(v.as_slice_mut().unwrap());
+    let mut c = Array1::<f64>::zeros(n);
+    ud.fill_slice_fast(c.as_slice_mut().unwrap());
     let u = self.percent_point(&c, &v)?;
 
     Ok(stack![Axis(1), u, v])

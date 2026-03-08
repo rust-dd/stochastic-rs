@@ -20,8 +20,6 @@
 //! with V_j ∈ {+G, -M}, P(V_j=+G)=P(V_j=-M)=1/2.
 
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
-use rand::Rng;
 use scilib::math::basic::gamma;
 
 use crate::distributions::exp::SimdExp;
@@ -145,7 +143,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGMY<T, S> {
 
   fn sample(&self) -> Self::Output {
     let mut seed = self.seed;
-    let mut rng = seed.rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
@@ -166,25 +163,28 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGMY<T, S> {
     let J = self.j;
     let size = J + 1; // index 0 reserved (Γ0=0)
 
-    let uniform = SimdUniform::new(T::zero(), T::one());
-    let exp = SimdExp::new(T::one());
+    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &mut seed);
+    let exp = SimdExp::from_seed_source(T::one(), &mut seed);
 
     // U_j ~ Unif(0,1)
-    let U = Array1::<T>::random_using(size, &uniform, &mut rng);
+    let mut U = Array1::<T>::zeros(size);
+    uniform.fill_slice_fast(U.as_slice_mut().unwrap());
     // E_j ~ Exp(1)
-    let E = Array1::<T>::random_using(size, exp, &mut rng);
+    let E = Array1::from_shape_fn(size, |_| exp.sample_fast());
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
     let P = Poisson::new(T::one(), Some(size), None).sample();
 
     // τ_j ~ Unif(0,T)
-    let tau = Array1::<T>::random_using(size, &uniform, &mut rng) * t_max;
+    let mut tau_raw = Array1::<T>::zeros(size);
+    uniform.fill_slice_fast(tau_raw.as_slice_mut().unwrap());
+    let tau = tau_raw * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);
 
     // NOTE: Here V_j is +G or -M with 0.5-0.5 probability
     for j in 1..size {
-      let v_j = if rng.random_bool(0.5) {
+      let v_j = if uniform.sample_fast() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus

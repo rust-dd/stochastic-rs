@@ -28,10 +28,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use nalgebra::DMatrix;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
-use rand_distr::Distribution;
-use rand_distr::StandardNormal;
 use rayon::prelude::*;
 use statrs::function::gamma::gamma;
 use statrs::function::gamma::gamma_li;
@@ -800,10 +796,10 @@ pub fn simulate_rbergomi_terminal_samples(
   (0..paths)
     .into_par_iter()
     .map(|path_idx| {
-      let mut rng = StdRng::seed_from_u64(
-        seed
-          .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1))),
-      );
+      let path_seed = seed
+        .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1)));
+      let mut seed_ext = crate::simd_rng::Deterministic(path_seed);
+      let normal = crate::distributions::normal::SimdNormal::<f64>::from_seed_source(0.0, 1.0, &mut seed_ext);
       let dim = engine.dim();
       let mut z = vec![0.0_f64; dim];
       let mut xi = vec![0.0_f64; dim];
@@ -814,13 +810,12 @@ pub fn simulate_rbergomi_terminal_samples(
 
       for step in 1..=steps {
         for zi in z.iter_mut() {
-          *zi = StandardNormal.sample(&mut rng);
+          *zi = normal.sample_fast();
         }
         engine.transform(&z, &mut xi);
 
         let d_w = xi[0];
-        let d_w_perp: f64 = StandardNormal.sample(&mut rng);
-        let d_w_perp = d_w_perp * sqrt_dt;
+        let d_w_perp = normal.sample_fast() * sqrt_dt;
 
         let drift = (r - 0.5 * v_prev) * dt;
         let diffusion = v_prev.sqrt() * (rho * d_w + rho_orth * d_w_perp);

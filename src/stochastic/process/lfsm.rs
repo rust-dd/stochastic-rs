@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 
 use crate::distributions::alpha_stable::SimdAlphaStable;
 use crate::simd_rng::Deterministic;
@@ -113,8 +112,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for LFSM<T, S> {
 
     let mut seed = self.seed;
     let stable = SimdAlphaStable::from_seed_source(self.alpha, self.beta, innovation_scale, T::zero(), &mut seed);
-    let mut rng = seed.rng();
-    let innovations = Array1::random_using(self.n - 1, &stable, &mut rng);
+    let mut innovations = Array1::<T>::zeros(self.n - 1);
+    stable.fill_slice_fast(innovations.as_slice_mut().unwrap());
 
     let mut weights = Array1::<T>::zeros(self.n - 1);
     for k in 0..(self.n - 1) {

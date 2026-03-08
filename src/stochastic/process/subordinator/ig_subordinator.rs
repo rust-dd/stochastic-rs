@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::simd_rng::Deterministic;
@@ -73,8 +72,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for IGSubordinator<T, S> {
     let lambda = (self.delta * dt).powi(2);
     let mut seed = self.seed;
     let ig = SimdInverseGauss::from_seed_source(mu, lambda, &mut seed);
-    let mut rng = seed.rng();
-    let inc = Array1::random_using(self.n - 1, &ig, &mut rng);
+    let mut inc = Array1::<T>::zeros(self.n - 1);
+    ig.fill_slice_fast(inc.as_slice_mut().unwrap());
     for i in 1..self.n {
       out[i] = out[i - 1] + inc[i - 1];
     }

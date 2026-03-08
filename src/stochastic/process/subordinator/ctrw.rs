@@ -1,6 +1,4 @@
 use ndarray::Array1;
-use rand::Rng;
-use rand_distr::Distribution;
 
 use super::sample_positive_stable;
 use crate::distributions::alpha_stable::SimdAlphaStable;
@@ -8,6 +6,7 @@ use crate::distributions::exp::SimdExp;
 use crate::distributions::gamma::SimdGamma;
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::distributions::normal::SimdNormal;
+use crate::distributions::uniform::SimdUniform;
 use crate::simd_rng::Deterministic;
 use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
@@ -105,27 +104,31 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
       Rademacher(T),
     }
 
+    let t_max = self.t.unwrap_or(T::one()).to_f64().unwrap();
+    let dt = t_max / (self.n - 1) as f64;
+    let mut seed = self.seed;
+
     let waiting_sampler = match self.waiting {
       CtrwWaitingLaw::Exponential { rate } => {
         assert!(
           rate > T::zero(),
           "CTRW Exponential waiting requires rate > 0"
         );
-        WaitingSampler::Exp(SimdExp::new(rate))
+        WaitingSampler::Exp(SimdExp::from_seed_source(rate, &mut seed))
       }
       CtrwWaitingLaw::Gamma { shape, rate } => {
         assert!(
           shape > T::zero() && rate > T::zero(),
           "CTRW Gamma waiting requires shape > 0 and rate > 0"
         );
-        WaitingSampler::Gamma(SimdGamma::new(shape, T::one() / rate))
+        WaitingSampler::Gamma(SimdGamma::from_seed_source(shape, T::one() / rate, &mut seed))
       }
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
         assert!(
           mu > T::zero() && lambda > T::zero(),
           "CTRW IG waiting requires mu > 0 and lambda > 0"
         );
-        WaitingSampler::IG(SimdInverseGauss::new(mu, lambda))
+        WaitingSampler::IG(SimdInverseGauss::from_seed_source(mu, lambda, &mut seed))
       }
       CtrwWaitingLaw::PositiveStable { alpha, scale } => {
         assert!(
@@ -142,14 +145,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
     let jump_sampler = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
         assert!(std > T::zero(), "CTRW normal jumps require std > 0");
-        JumpSampler::Normal(SimdNormal::new(mean, std))
+        JumpSampler::Normal(SimdNormal::from_seed_source(mean, std, &mut seed))
       }
       CtrwJumpLaw::SymmetricStable { alpha, scale } => {
         assert!(
           alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
           "CTRW stable jumps require alpha in (0,2] and scale > 0"
         );
-        JumpSampler::Stable(SimdAlphaStable::new(alpha, T::zero(), scale, T::zero()))
+        JumpSampler::Stable(SimdAlphaStable::from_seed_source(alpha, T::zero(), scale, T::zero(), &mut seed))
       }
       CtrwJumpLaw::Rademacher { scale } => {
         assert!(scale > T::zero(), "CTRW rademacher jumps require scale > 0");
@@ -157,18 +160,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
       }
     };
 
-    let t_max = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let dt = t_max / (self.n - 1) as f64;
-    let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &mut seed);
     let mut x = x0.to_f64().unwrap();
 
     let mut next_event = match &waiting_sampler {
-      WaitingSampler::Exp(d) => d.sample(&mut rng).to_f64().unwrap(),
-      WaitingSampler::Gamma(d) => d.sample(&mut rng).to_f64().unwrap(),
-      WaitingSampler::IG(d) => d.sample(&mut rng).to_f64().unwrap(),
+      WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
+      WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
+      WaitingSampler::IG(d) => d.sample_fast().to_f64().unwrap(),
       WaitingSampler::PosStable { alpha, scale } => {
-        scale * sample_positive_stable(*alpha, &mut rng)
+        scale * sample_positive_stable(*alpha, &uniform)
       }
     }
     .max(1e-12);
@@ -178,10 +178,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
       let mut safety = 0usize;
       while next_event <= t_i {
         let jump = match &jump_sampler {
-          JumpSampler::Normal(d) => d.sample(&mut rng).to_f64().unwrap(),
-          JumpSampler::Stable(d) => d.sample(&mut rng).to_f64().unwrap(),
+          JumpSampler::Normal(d) => d.sample_fast().to_f64().unwrap(),
+          JumpSampler::Stable(d) => d.sample_fast().to_f64().unwrap(),
           JumpSampler::Rademacher(scale) => {
-            if rng.random_bool(0.5) {
+            if uniform.sample_fast() < 0.5 {
               scale.to_f64().unwrap()
             } else {
               -scale.to_f64().unwrap()
@@ -191,11 +191,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
         x += jump;
 
         let wait = match &waiting_sampler {
-          WaitingSampler::Exp(d) => d.sample(&mut rng).to_f64().unwrap(),
-          WaitingSampler::Gamma(d) => d.sample(&mut rng).to_f64().unwrap(),
-          WaitingSampler::IG(d) => d.sample(&mut rng).to_f64().unwrap(),
+          WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
+          WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
+          WaitingSampler::IG(d) => d.sample_fast().to_f64().unwrap(),
           WaitingSampler::PosStable { alpha, scale } => {
-            scale * sample_positive_stable(*alpha, &mut rng)
+            scale * sample_positive_stable(*alpha, &uniform)
           }
         }
         .max(1e-12);

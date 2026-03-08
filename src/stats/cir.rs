@@ -5,11 +5,10 @@
 //! $$
 //!
 use num_complex::Complex64;
-use rand::Rng;
-use rand::rng;
-use rand_distr::StandardNormal;
 use scilib::math::bessel::i_nu;
 use statrs::function::gamma::gamma;
+
+use crate::distributions::normal::SimdNormal;
 
 /// Cox-Ingersoll-Ross (CIR) process future value.
 pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
@@ -18,10 +17,10 @@ pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
   let lambda = 2.0 * c * r_t * (-theta * t).exp();
   let df = ((4.0 * theta * mu) / sigma.powi(2)) as usize;
 
-  let mut rng = rng();
+  let normal = SimdNormal::<f64>::new(0.0, 1.0);
   let chi2 = (0..df)
     .map(|_| {
-      let z: f64 = rng.sample(StandardNormal);
+      let z = normal.sample_fast();
       (z + lambda.sqrt()).powi(2)
     })
     .sum::<f64>();

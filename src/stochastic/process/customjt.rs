@@ -139,17 +139,15 @@ impl PyCustomJt {
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for CustomJt<T, D, S>
+impl<T, D, S: SeedExt> CustomJt<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  type Output = Array1<T>;
-
-  fn sample(&self) -> Self::Output {
+  /// Core sampling — monomorphised per seed strategy, zero runtime branching.
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> Array1<T> {
     if let Some(n) = self.n {
       let mut random = Array1::<T>::zeros(n);
-      let mut seed = self.seed;
       let mut rng = seed.rng();
       for x in &mut random {
         *x = self.distribution.sample(&mut rng);
@@ -158,13 +156,11 @@ where
       for i in 1..n {
         x[i] = x[i - 1] + random[i - 1];
       }
-
       x
     } else if let Some(t_max) = self.t_max {
       let mut x = Vec::with_capacity(16);
       x.push(T::zero());
       let mut t = T::zero();
-      let mut seed = self.seed;
       seed.derive();
       let mut rng = seed.rng();
 
@@ -177,5 +173,17 @@ where
     } else {
       panic!("n or t_max must be provided");
     }
+  }
+}
+
+impl<T, D, S: SeedExt> ProcessExt<T> for CustomJt<T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
+    self.sample_impl(self.seed)
   }
 }

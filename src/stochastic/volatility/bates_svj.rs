@@ -198,6 +198,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSVJ<T, S> {
     let drift = self.drift();
     let kappa_j = self.kappa_j();
 
+    let z_std = SimdNormal::<f64, 64>::from_seed_source(0.0, 1.0, &mut seed);
     let mut rng = seed.rng();
 
     let pois = if self.lambda > T::zero() {
@@ -207,8 +208,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSVJ<T, S> {
     } else {
       None
     };
-
-    let z_std = SimdNormal::<f64, 64>::new(0.0, 1.0);
 
     for i in 1..self.n {
       let v_prev = match self.use_sym.unwrap_or(false) {
@@ -222,7 +221,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSVJ<T, S> {
         let k: u32 = pois.sample(&mut rng);
         if k > 0 {
           let kf = T::from_usize_(k as usize);
-          let z0: f64 = z_std.sample(&mut rng);
+          let z0: f64 = z_std.sample_fast();
           jump_sum_z = self.nu * kf + self.omega * kf.sqrt() * T::from_f64_fast(z0);
         }
       }

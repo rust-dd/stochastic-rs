@@ -9,12 +9,10 @@ use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::linalg::kron;
 use ndarray::s;
-use ndarray_rand::RandomExt;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use num_complex::Complex;
 
-use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
 use crate::simd_rng::SeedExt;
@@ -109,12 +107,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBS<T, S> {
 
     let mut seed = self.seed;
     let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &mut seed);
-    let mut rng = seed.rng();
-    let z: Array2<Complex<T>> = Array2::random_using(
-      (big_m, big_n),
-      ComplexDistribution::new(&normal, &normal),
-      &mut rng,
-    );
+    let z = Array2::from_shape_fn((big_m, big_n), |_| {
+      Complex::new(normal.sample_fast(), normal.sample_fast())
+    });
 
     let prod = lam.mapv(|v| Complex::new(v, T::zero())) * z;
     let mut fft_tmp2 = Array2::<Complex<T>>::zeros((big_m, big_n));

@@ -24,8 +24,9 @@ pub use gamma_subordinator::GammaSubordinator;
 pub use ig_subordinator::IGSubordinator;
 pub use inverse_alpha_stable::InverseAlphaStableSubordinator;
 pub use poisson_subordinator::PoissonSubordinator;
-use rand::Rng;
 pub use tempered_stable::TemperedStableSubordinator;
+
+use crate::distributions::uniform::SimdUniform;
 
 #[inline]
 pub(crate) fn clamp_open01(u: f64) -> f64 {
@@ -33,9 +34,9 @@ pub(crate) fn clamp_open01(u: f64) -> f64 {
 }
 
 #[inline]
-pub(crate) fn sample_positive_stable(alpha: f64, rng: &mut impl Rng) -> f64 {
-  let u = clamp_open01(rng.random::<f64>()) * PI;
-  let w = -clamp_open01(rng.random::<f64>()).ln();
+pub(crate) fn sample_positive_stable(alpha: f64, uniform: &SimdUniform<f64>) -> f64 {
+  let u = clamp_open01(uniform.sample_fast()) * PI;
+  let w = -clamp_open01(uniform.sample_fast()).ln();
   let s1 = (alpha * u).sin() / u.sin().powf(1.0 / alpha);
   let s2 = (((1.0 - alpha) * u).sin() / w).powf((1.0 - alpha) / alpha);
   s1 * s2

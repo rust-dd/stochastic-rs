@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::distributions::normal::SimdNormal;
@@ -84,14 +83,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for NIG<T, S> {
     let dt = self.dt();
     // For NIG: G_dt ~ IG(mean=dt, shape=dt^2/kappa).
     let shape = dt * dt / self.kappa;
-    let ig_dist = SimdInverseGauss::new(dt, shape);
     let mut seed = self.seed;
-    let mut rng = seed.rng();
-    let ig = Array1::random_using(self.n - 1, &ig_dist, &mut rng);
-    let mut z = Array1::<T>::zeros(self.n - 1);
-    let z_slice = z.as_slice_mut().expect("NIG normals must be contiguous");
+    let ig_dist = SimdInverseGauss::from_seed_source(dt, shape, &mut seed);
+    let mut ig = Array1::<T>::zeros(self.n - 1);
+    ig_dist.fill_slice_fast(ig.as_slice_mut().unwrap());
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
-    normal.fill_slice_fast(z_slice);
+    let mut z = Array1::<T>::zeros(self.n - 1);
+    normal.fill_slice_fast(z.as_slice_mut().unwrap());
 
     for i in 1..self.n {
       nig[i] = nig[i - 1] + self.theta * ig[i - 1] + self.sigma * ig[i - 1].sqrt() * z[i - 1]

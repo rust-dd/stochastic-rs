@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::simd_rng::Deterministic;
@@ -65,10 +64,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for IG<T, S> {
     // increments are strictly positive and independent over grid steps.
     let mean = self.gamma * dt;
     let shape = mean * mean;
-    let ig_dist = SimdInverseGauss::new(mean, shape);
     let mut seed = self.seed;
-    let mut rng = seed.rng();
-    let inc = Array1::random_using(self.n - 1, &ig_dist, &mut rng);
+    let ig_dist = SimdInverseGauss::from_seed_source(mean, shape, &mut seed);
+    let mut inc = Array1::<T>::zeros(self.n - 1);
+    ig_dist.fill_slice_fast(inc.as_slice_mut().unwrap());
 
     for i in 1..self.n {
       ig[i] = ig[i - 1] + inc[i - 1];

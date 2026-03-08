@@ -1,9 +1,8 @@
 use ndarray::Array1;
-use rand::Rng;
-use rand_distr::Distribution;
 
 use super::clamp_open01;
 use crate::distributions::poisson::SimdPoisson;
+use crate::distributions::uniform::SimdUniform;
 use crate::simd_rng::Deterministic;
 use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
@@ -99,19 +98,19 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TemperedStableSubordinator<T, S>
     let dt = t_max / (self.n - 1) as f64;
 
     let lambda0 = (c / alpha) * eps.powf(-alpha);
-    let poisson = SimdPoisson::<u32>::new(lambda0 * dt);
     let small_jump_drift = dt * c * eps.powf(1.0 - alpha) / (1.0 - alpha);
 
     let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let poisson = SimdPoisson::<u32>::from_seed_source(lambda0 * dt, &mut seed);
+    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &mut seed);
     let mut level = out[0].to_f64().unwrap();
     for i in 1..self.n {
-      let n_candidates = poisson.sample(&mut rng) as usize;
+      let n_candidates = poisson.sample_fast() as usize;
       let mut jump_sum = 0.0f64;
       for _ in 0..n_candidates {
-        let u = clamp_open01(rng.random::<f64>());
+        let u = clamp_open01(uniform.sample_fast());
         let x = eps * u.powf(-1.0 / alpha);
-        let accept = rng.random::<f64>() <= (-mu * x).exp();
+        let accept = uniform.sample_fast() <= (-mu * x).exp();
         if accept {
           jump_sum += x;
         }

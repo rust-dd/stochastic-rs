@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 
 use crate::distributions::gamma::SimdGamma;
 use crate::simd_rng::Deterministic;
@@ -71,8 +70,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GammaSubordinator<T, S> {
     let scale = T::one() / self.rate;
     let mut seed = self.seed;
     let gamma = SimdGamma::from_seed_source(shape, scale, &mut seed);
-    let mut rng = seed.rng();
-    let inc = Array1::random_using(self.n - 1, &gamma, &mut rng);
+    let mut inc = Array1::<T>::zeros(self.n - 1);
+    gamma.fill_slice_fast(inc.as_slice_mut().unwrap());
     for i in 1..self.n {
       out[i] = out[i - 1] + inc[i - 1];
     }

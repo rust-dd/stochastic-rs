@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray_rand::RandomExt;
 
 use crate::distributions::gamma::SimdGamma;
 use crate::distributions::normal::SimdNormal;
@@ -82,14 +81,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for VG<T, S> {
     }
 
     let dt = self.dt();
-    let gamma = SimdGamma::new(dt / self.nu, self.nu);
     let mut seed = self.seed;
-    let mut rng = seed.rng();
-    let gammas = Array1::random_using(self.n - 1, &gamma, &mut rng);
-    let mut z = Array1::<T>::zeros(self.n - 1);
-    let z_slice = z.as_slice_mut().expect("VG normals must be contiguous");
+    let gamma = SimdGamma::from_seed_source(dt / self.nu, self.nu, &mut seed);
+    let mut gammas = Array1::<T>::zeros(self.n - 1);
+    gamma.fill_slice_fast(gammas.as_slice_mut().unwrap());
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
-    normal.fill_slice_fast(z_slice);
+    let mut z = Array1::<T>::zeros(self.n - 1);
+    normal.fill_slice_fast(z.as_slice_mut().unwrap());
 
     for i in 1..self.n {
       vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * z[i - 1];

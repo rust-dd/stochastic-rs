@@ -145,10 +145,9 @@ where
   type Output = [Array1<T>; 3];
 
   fn sample(&self) -> Self::Output {
-    let poisson = self.poisson.sample();
-    let mut jumps = Array1::<T>::zeros(poisson.len());
     let mut seed = self.seed;
-    seed.derive();
+    let poisson = self.poisson.sample_impl(seed.derive());
+    let mut jumps = Array1::<T>::zeros(poisson.len());
     seed.derive();
     let mut rng = seed.rng();
     for i in 1..poisson.len() {

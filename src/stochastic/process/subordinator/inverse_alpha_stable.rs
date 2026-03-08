@@ -1,7 +1,7 @@
 use ndarray::Array1;
-use rand::Rng;
 
 use super::sample_positive_stable;
+use crate::distributions::uniform::SimdUniform;
 use crate::simd_rng::Deterministic;
 use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
@@ -68,7 +68,7 @@ impl<T: FloatExt> InverseAlphaStableSubordinator<T, Deterministic> {
 }
 
 impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
-  fn simulate_direct_path(&self, u_max: f64, rng: &mut impl Rng) -> (Vec<f64>, Vec<f64>) {
+  fn simulate_direct_path(&self, u_max: f64, uniform: &SimdUniform<f64>) -> (Vec<f64>, Vec<f64>) {
     let m = self.u_steps;
     let du = u_max / (m - 1) as f64;
     let alpha = self.alpha.to_f64().unwrap();
@@ -78,7 +78,7 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
     let mut d = vec![0.0; m];
     for i in 1..m {
       u[i] = i as f64 * du;
-      d[i] = d[i - 1] + scale * sample_positive_stable(alpha, rng);
+      d[i] = d[i - 1] + scale * sample_positive_stable(alpha, uniform);
     }
     (u, d)
   }
@@ -108,13 +108,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for InverseAlphaStableSubordinator<T
     }
 
     let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &mut seed);
     let mut u = Vec::new();
     let mut d = Vec::new();
     let mut reached = false;
 
     for _ in 0..10 {
-      let (u_try, d_try) = self.simulate_direct_path(u_max, &mut rng);
+      let (u_try, d_try) = self.simulate_direct_path(u_max, &uniform);
       if *d_try.last().unwrap_or(&0.0) >= t_max {
         u = u_try;
         d = d_try;

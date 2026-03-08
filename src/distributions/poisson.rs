@@ -41,12 +41,16 @@ impl<T: PrimInt> SimdPoisson<T> {
   }
 
   pub fn new(lambda: f64) -> Self {
+    Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
+  }
+
+  pub(crate) fn from_seed_source(lambda: f64, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(lambda > 0.0);
     Self {
       cdf: Self::build_cdf(lambda),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 

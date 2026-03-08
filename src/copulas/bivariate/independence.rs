@@ -10,10 +10,9 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::stack;
-use ndarray_rand::RandomExt;
-use rand_distr::Uniform;
 
 use super::CopulaType;
+use crate::distributions::uniform::SimdUniform;
 use crate::traits::BivariateExt;
 
 #[derive(Debug, Clone)]
@@ -79,8 +78,9 @@ impl BivariateExt for Independence {
   }
 
   fn sample(&mut self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    let u = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
-    let v = Array1::<f64>::random(n, Uniform::new(0.0, 1.0)?);
+    let ud = SimdUniform::<f64>::new(0.0, 1.0);
+    let u = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
+    let v = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
     Ok(stack![Axis(1), u, v])
   }
 
