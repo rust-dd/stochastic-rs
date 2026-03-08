@@ -23,17 +23,22 @@ use numpy::ndarray::Array2;
 use pyo3::prelude::*;
 use statrs::function::gamma;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FBM<T: FloatExt> {
+pub struct FBM<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
   pub hurst: T,
   /// Number of discrete time points in the generated path.
   pub n: usize,
   /// Total simulation horizon (defaults to `1` if `None`).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   fgn: FGN<T>,
 }
 
@@ -45,16 +50,32 @@ impl<T: FloatExt> FBM<T> {
       hurst,
       n,
       t,
+      seed: Unseeded,
       fgn: FGN::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FBM<T> {
+impl<T: FloatExt> FBM<T, Deterministic> {
+  pub fn seeded(hurst: T, n: usize, t: Option<T>, seed: u64) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
+    Self {
+      hurst,
+      n,
+      t,
+      seed: Deterministic(seed),
+      fgn: FGN::new(hurst, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FBM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let fgn = &self.fgn.sample();
+    let mut seed = self.seed;
+    let fgn = self.fgn.sample_cpu_impl(seed.derive());
     let mut fbm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
@@ -88,7 +109,7 @@ impl<T: FloatExt> ProcessExt<T> for FBM<T> {
   }
 }
 
-impl<T: FloatExt> FBM<T> {
+impl<T: FloatExt, S: Seed> FBM<T, S> {
   /// Calculate the Malliavin derivative
   ///
   /// The Malliavin derivative of the fractional Brownian motion is given by:

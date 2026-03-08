@@ -24,13 +24,26 @@ pub struct SimdBeta<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdBeta<T> {
+  #[inline]
   pub fn new(alpha: T, beta: T) -> Self {
+    Self::from_seed_source(alpha, beta, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates a beta distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(alpha: T, beta: T, seed: u64) -> Self {
+    Self::from_seed_source(alpha, beta, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates a beta distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Each sub-component (gamma1, gamma2) gets an independent stream.
+  pub fn from_seed_source(alpha: T, beta: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     assert!(alpha > T::zero() && beta > T::zero());
     Self {
       alpha,
       beta,
-      gamma1: SimdGamma::new(alpha, T::one()),
-      gamma2: SimdGamma::new(beta, T::one()),
+      gamma1: SimdGamma::from_seed_source(alpha, T::one(), seed),
+      gamma2: SimdGamma::from_seed_source(beta, T::one(), seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
     }

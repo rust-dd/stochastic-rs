@@ -2,11 +2,14 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::gamma::SimdGamma;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Gamma subordinator where `G_t ~ Gamma(nu * t, rate)`.
-pub struct GammaSubordinator<T: FloatExt> {
+pub struct GammaSubordinator<T: FloatExt, S: Seed = Unseeded> {
   /// Shape intensity `nu`.
   pub nu: T,
   /// Rate parameter (>0).
@@ -17,17 +20,41 @@ pub struct GammaSubordinator<T: FloatExt> {
   pub x0: Option<T>,
   /// Horizon.
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> GammaSubordinator<T> {
   pub fn new(nu: T, rate: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(nu > T::zero(), "nu must be positive");
     assert!(rate > T::zero(), "rate must be positive");
-    Self { nu, rate, n, x0, t }
+    Self {
+      nu,
+      rate,
+      n,
+      x0,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for GammaSubordinator<T> {
+impl<T: FloatExt> GammaSubordinator<T, Deterministic> {
+  pub fn seeded(nu: T, rate: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(nu > T::zero(), "nu must be positive");
+    assert!(rate > T::zero(), "rate must be positive");
+    Self {
+      nu,
+      rate,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for GammaSubordinator<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -42,8 +69,9 @@ impl<T: FloatExt> ProcessExt<T> for GammaSubordinator<T> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let shape = self.nu * dt;
     let scale = T::one() / self.rate;
-    let gamma = SimdGamma::new(shape, scale);
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let gamma = SimdGamma::from_seed_source(shape, scale, &mut seed);
+    let mut rng = seed.rng();
     let inc = Array1::random_using(self.n - 1, &gamma, &mut rng);
     for i in 1..self.n {
       out[i] = out[i - 1] + inc[i - 1];

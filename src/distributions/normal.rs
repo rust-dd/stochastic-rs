@@ -147,7 +147,25 @@ pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64> {
 impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   /// Creates a new normal distribution with the given mean and standard deviation.
   /// Uses an automatically generated random seed.
+  #[inline]
   pub fn new(mean: T, std_dev: T) -> Self {
+    Self::from_seed_source(mean, std_dev, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates a normal distribution with a deterministic seed.
+  ///
+  /// Two instances created with the same parameters and seed produce
+  /// identical sample sequences.
+  #[inline]
+  pub fn with_seed(mean: T, std_dev: T, seed: u64) -> Self {
+    Self::from_seed_source(mean, std_dev, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates a normal distribution with an RNG obtained from a [`Seed`](crate::simd_rng::Seed) source.
+  ///
+  /// This is the core constructor — `new()` and `with_seed()` delegate here.
+  /// Monomorphised at compile time, zero runtime branching.
+  pub fn from_seed_source(mean: T, std_dev: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -156,7 +174,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
       std_dev,
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 

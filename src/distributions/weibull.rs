@@ -21,13 +21,26 @@ pub struct SimdWeibull<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdWeibull<T> {
+  #[inline]
   pub fn new(lambda: T, k: T) -> Self {
+    Self::from_seed_source(lambda, k, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates a Weibull distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(lambda: T, k: T, seed: u64) -> Self {
+    Self::from_seed_source(lambda, k, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates a Weibull distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Each sub-component (exp, main rng) gets an independent stream.
+  pub fn from_seed_source(lambda: T, k: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
     Self {
       lambda,
       inv_k: T::one() / k,
-      exp1: SimdExpZig::new(T::one()),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      exp1: SimdExpZig::from_seed_source(T::one(), seed),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 

@@ -11,10 +11,13 @@ use rand_distr::Distribution;
 
 use super::poisson::Poisson;
 use crate::distributions::poisson::SimdPoisson;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CompoundPoisson<T, D>
+pub struct CompoundPoisson<T, D, S: Seed = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -23,6 +26,8 @@ where
   pub distribution: D,
   /// Poisson driver defining jump arrival intensity and timeline.
   pub poisson: Poisson<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T, D> CompoundPoisson<T, D>
@@ -34,9 +39,30 @@ where
     Self {
       distribution,
       poisson,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T, D> CompoundPoisson<T, D, Deterministic>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  pub fn seeded(distribution: D, poisson: Poisson<T>, seed: u64) -> Self {
+    Self {
+      distribution,
+      poisson,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T, D, S: Seed> CompoundPoisson<T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
   /// Draw compound-Poisson jump increments on a fixed simulation grid.
   ///
   /// The returned array has length `n`, with `increments[0] = 0` and
@@ -56,7 +82,8 @@ where
     }
 
     let poisson = SimdPoisson::<u32>::new(lambda_dt);
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
     for i in 1..n {
       let jump_count = poisson.sample(&mut rng);
       let mut jump_sum = T::zero();
@@ -98,7 +125,9 @@ where
     }
 
     let poisson = SimdPoisson::<u32>::new(lambda_dt);
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    seed.derive(); // skip one to differ from sample_grid_increments
+    let mut rng = seed.rng();
     for i in 1..n {
       let jump_count = poisson.sample(&mut rng);
       increments[i] = self.relative_jump_from_count(jump_count, &mut rng);
@@ -108,7 +137,7 @@ where
   }
 }
 
-impl<T, D> ProcessExt<T> for CompoundPoisson<T, D>
+impl<T, D, S: Seed> ProcessExt<T> for CompoundPoisson<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -118,7 +147,10 @@ where
   fn sample(&self) -> Self::Output {
     let poisson = self.poisson.sample();
     let mut jumps = Array1::<T>::zeros(poisson.len());
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    seed.derive();
+    seed.derive();
+    let mut rng = seed.rng();
     for i in 1..poisson.len() {
       jumps[i] = self.distribution.sample(&mut rng);
     }

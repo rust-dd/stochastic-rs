@@ -117,7 +117,19 @@ pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64> {
 impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   /// Creates a new exponential distribution with rate parameter `lambda`.
   /// Uses an automatically generated random seed.
+  #[inline]
   pub fn new(lambda: T) -> Self {
+    Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates an exponential distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(lambda: T, seed: u64) -> Self {
+    Self::from_seed_source(lambda, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates an exponential distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
+  pub fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     let _ = exp_zig_tables();
     assert!(lambda > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -125,7 +137,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
       lambda,
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 
@@ -287,9 +299,21 @@ pub struct SimdExp<T: SimdFloatExt> {
 
 impl<T: SimdFloatExt> SimdExp<T> {
   /// Creates a new exponential distribution with rate `lambda`.
+  #[inline]
   pub fn new(lambda: T) -> Self {
+    Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates an exponential distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(lambda: T, seed: u64) -> Self {
+    Self::from_seed_source(lambda, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates an exponential distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
+  pub fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     Self {
-      inner: SimdExpZig::new(lambda),
+      inner: SimdExpZig::from_seed_source(lambda, seed),
     }
   }
 

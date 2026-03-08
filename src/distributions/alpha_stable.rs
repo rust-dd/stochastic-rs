@@ -31,7 +31,31 @@ pub struct SimdAlphaStable<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdAlphaStable<T> {
+  #[inline]
   pub fn new(alpha: T, beta: T, scale: T, location: T) -> Self {
+    Self::from_seed_source(alpha, beta, scale, location, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates an alpha-stable distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(alpha: T, beta: T, scale: T, location: T, seed: u64) -> Self {
+    Self::from_seed_source(
+      alpha,
+      beta,
+      scale,
+      location,
+      &mut crate::simd_rng::Deterministic(seed),
+    )
+  }
+
+  /// Creates an alpha-stable distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
+  pub fn from_seed_source(
+    alpha: T,
+    beta: T,
+    scale: T,
+    location: T,
+    seed: &mut impl crate::simd_rng::Seed,
+  ) -> Self {
     assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
     assert!((-T::one()..=T::one()).contains(&beta));
     assert!(scale > T::zero());
@@ -42,7 +66,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       location,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 

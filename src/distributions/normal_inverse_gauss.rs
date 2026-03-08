@@ -29,7 +29,20 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
+  #[inline]
   pub fn new(alpha: T, beta: T, delta: T, mu: T) -> Self {
+    Self::from_seed_source(alpha, beta, delta, mu, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates a normal-inverse Gaussian distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(alpha: T, beta: T, delta: T, mu: T, seed: u64) -> Self {
+    Self::from_seed_source(alpha, beta, delta, mu, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates a normal-inverse Gaussian distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Each sub-component (ig, normal, main rng) gets an independent stream.
+  pub fn from_seed_source(alpha: T, beta: T, delta: T, mu: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),
       "NIG: alpha must be > |beta|"
@@ -38,18 +51,16 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let ig_mean = delta / gamma;
     let ig_shape = delta * delta;
-    let ig = SimdInverseGauss::new(ig_mean, ig_shape);
-    let normal = SimdNormal::new(T::zero(), T::one());
     Self {
       alpha,
       beta,
       delta,
       mu,
-      ig,
-      normal,
+      ig: SimdInverseGauss::from_seed_source(ig_mean, ig_shape, seed),
+      normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 

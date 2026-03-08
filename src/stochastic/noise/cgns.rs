@@ -6,17 +6,22 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct CGNS<T: FloatExt> {
+pub struct CGNS<T: FloatExt, S: Seed = Unseeded> {
   /// Instantaneous correlation parameter.
   pub rho: T,
   /// Number of discrete simulation points (or samples).
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> CGNS<T> {
@@ -26,14 +31,40 @@ impl<T: FloatExt> CGNS<T> {
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    Self { rho, n, t }
+    Self {
+      rho,
+      n,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
-  type Output = [Array1<T>; 2];
+impl<T: FloatExt> CGNS<T, Deterministic> {
+  pub fn seeded(rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
+      "Correlation coefficient must be in [-1, 1]"
+    );
 
-  fn sample(&self) -> Self::Output {
+    Self {
+      rho,
+      n,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> CGNS<T, S> {
+  /// Sample with an explicit seed, used by callers like CBMS.
+  pub(crate) fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
+    self.sample_impl(Deterministic(seed))
+  }
+
+  /// Core sampling — monomorphised per seed strategy, zero runtime branching.
+  #[inline]
+  pub(crate) fn sample_impl<S2: Seed>(&self, mut seed: S2) -> [Array1<T>; 2] {
     let mut gn1 = Array1::<T>::zeros(self.n);
     let mut z = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -43,8 +74,18 @@ impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(self.n)).sqrt();
     let gn1_slice = gn1.as_slice_mut().expect("CGNS noise 1 must be contiguous");
     let z_slice = z.as_slice_mut().expect("CGNS noise 2 must be contiguous");
-    T::fill_standard_normal_scaled_slice(gn1_slice, sqrt_dt);
-    T::fill_standard_normal_scaled_slice(z_slice, sqrt_dt);
+    let n1 = crate::distributions::normal::SimdNormal::<T>::from_seed_source(
+      T::zero(),
+      sqrt_dt,
+      &mut seed,
+    );
+    let n2 = crate::distributions::normal::SimdNormal::<T>::from_seed_source(
+      T::zero(),
+      sqrt_dt,
+      &mut seed,
+    );
+    n1.fill_slice_fast(gn1_slice);
+    n2.fill_slice_fast(z_slice);
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut gn2 = Array1::zeros(self.n);
 
@@ -54,11 +95,17 @@ impl<T: FloatExt> ProcessExt<T> for CGNS<T> {
 
     [gn1, gn2]
   }
-}
 
-impl<T: FloatExt> CGNS<T> {
   pub fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CGNS<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample(&self) -> Self::Output {
+    self.sample_impl(self.seed)
   }
 }
 

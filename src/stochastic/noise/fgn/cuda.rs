@@ -187,7 +187,7 @@ fn array2_from_vec_f64<T: FloatExt>(host_output: Vec<f64>, m: usize, out_size: u
   }
 }
 
-impl<T: FloatExt> FGN<T> {
+impl<T: FloatExt, S: crate::simd_rng::Seed> FGN<T, S> {
   fn sample_cuda_f32(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     let n = self.n;
     let offset = self.offset;

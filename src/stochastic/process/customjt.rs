@@ -7,10 +7,13 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CustomJt<T, D>
+pub struct CustomJt<T, D, S: Seed = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -22,6 +25,8 @@ where
   pub t_max: Option<T>,
   /// Distribution used for generated increments / inter-arrival draws.
   pub distribution: D,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T, D> CustomJt<T, D>
@@ -34,6 +39,22 @@ where
       n,
       t_max,
       distribution,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<T, D> CustomJt<T, D, Deterministic>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  pub fn seeded(n: Option<usize>, t_max: Option<T>, distribution: D, seed: u64) -> Self {
+    CustomJt {
+      n,
+      t_max,
+      distribution,
+      seed: Deterministic(seed),
     }
   }
 }
@@ -118,7 +139,7 @@ impl PyCustomJt {
   }
 }
 
-impl<T, D> ProcessExt<T> for CustomJt<T, D>
+impl<T, D, S: Seed> ProcessExt<T> for CustomJt<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -128,7 +149,8 @@ where
   fn sample(&self) -> Self::Output {
     if let Some(n) = self.n {
       let mut random = Array1::<T>::zeros(n);
-      let mut rng = crate::simd_rng::rng();
+      let mut seed = self.seed;
+      let mut rng = seed.rng();
       for x in &mut random {
         *x = self.distribution.sample(&mut rng);
       }
@@ -142,7 +164,9 @@ where
       let mut x = Vec::with_capacity(16);
       x.push(T::zero());
       let mut t = T::zero();
-      let mut rng = crate::simd_rng::rng();
+      let mut seed = self.seed;
+      seed.derive();
+      let mut rng = seed.rng();
 
       while t < t_max {
         t += self.distribution.sample(&mut rng);

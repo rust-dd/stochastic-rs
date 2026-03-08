@@ -7,23 +7,43 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BM<T: FloatExt> {
+pub struct BM<T: FloatExt, S: Seed = Unseeded> {
   /// Number of discrete time points in the generated path.
   pub n: usize,
   /// Total simulation horizon (defaults to `1` if `None`).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> BM<T> {
   pub fn new(n: usize, t: Option<T>) -> Self {
-    Self { n, t }
+    Self {
+      n,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for BM<T> {
+impl<T: FloatExt> BM<T, Deterministic> {
+  pub fn seeded(n: usize, t: Option<T>, seed: u64) -> Self {
+    Self {
+      n,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for BM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -38,7 +58,10 @@ impl<T: FloatExt> ProcessExt<T> for BM<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("BM output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, std_dev);
+
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &mut seed);
+    normal.fill_slice_fast(tail);
 
     let mut acc = T::zero();
     for x in tail.iter_mut() {

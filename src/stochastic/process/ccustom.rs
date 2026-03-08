@@ -9,10 +9,13 @@ use ndarray::Axis;
 use rand_distr::Distribution;
 
 use super::customjt::CustomJt;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CompoundCustom<T, D1, D2>
+pub struct CompoundCustom<T, D1, D2, S: Seed = Unseeded>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,
@@ -29,6 +32,8 @@ where
   pub jump_times_distribution: D2,
   /// Underlying jump-time generator used internally.
   pub customjt: CustomJt<T, D2>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T, D1, D2> CompoundCustom<T, D1, D2>
@@ -54,11 +59,41 @@ where
       jumps_distribution,
       jump_times_distribution,
       customjt,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T, D1, D2> ProcessExt<T> for CompoundCustom<T, D1, D2>
+impl<T, D1, D2> CompoundCustom<T, D1, D2, Deterministic>
+where
+  T: FloatExt,
+  D1: Distribution<T> + Send + Sync,
+  D2: Distribution<T> + Send + Sync,
+{
+  pub fn seeded(
+    n: Option<usize>,
+    t_max: Option<T>,
+    jumps_distribution: D1,
+    jump_times_distribution: D2,
+    customjt: CustomJt<T, D2>,
+    seed: u64,
+  ) -> Self {
+    if n.is_none() && t_max.is_none() {
+      panic!("n or t_max must be provided");
+    }
+
+    Self {
+      n,
+      t_max,
+      jumps_distribution,
+      jump_times_distribution,
+      customjt,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T, D1, D2, S: Seed> ProcessExt<T> for CompoundCustom<T, D1, D2, S>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,
@@ -69,7 +104,8 @@ where
   fn sample(&self) -> Self::Output {
     let p = self.customjt.sample();
     let mut jumps = Array1::<T>::zeros(self.n.unwrap_or(p.len()));
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
     for i in 1..p.len() {
       jumps[i] = self.jumps_distribution.sample(&mut rng);
     }

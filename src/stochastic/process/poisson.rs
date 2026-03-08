@@ -9,33 +9,52 @@ use ndarray::s;
 use rand_distr::Distribution;
 
 use crate::distributions::exp::SimdExp;
-use crate::simd_rng::SimdRng;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct Poisson<T: FloatExt> {
+pub struct Poisson<T: FloatExt, S: Seed = Unseeded> {
   /// Jump intensity (expected arrivals per unit time).
   pub lambda: T,
   /// Optional fixed number of sampled events.
-  /// If set, the process is generated with exactly `n` increments.
   pub n: Option<usize>,
   /// Optional terminal time for horizon-based sampling.
-  /// If set (and `n` is `None`), events are sampled up to `t_max`.
   pub t_max: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> Poisson<T> {
   pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>) -> Self {
-    Poisson { lambda, n, t_max }
+    Poisson {
+      lambda,
+      n,
+      t_max,
+      seed: Unseeded,
+    }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Poisson<T> {
+impl<T: FloatExt> Poisson<T, Deterministic> {
+  pub fn seeded(lambda: T, n: Option<usize>, t_max: Option<T>, seed: u64) -> Self {
+    Poisson {
+      lambda,
+      n,
+      t_max,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Poisson<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let distr = SimdExp::new(self.lambda);
+    let mut seed = self.seed;
+    let distr = SimdExp::from_seed_source(self.lambda, &mut seed);
 
     if let Some(n) = self.n {
       let mut poisson = Array1::<T>::zeros(n);
@@ -47,7 +66,7 @@ impl<T: FloatExt> ProcessExt<T> for Poisson<T> {
       let tail = tail_view
         .as_slice_mut()
         .expect("Poisson output tail must be contiguous");
-      let mut rng = SimdRng::new();
+      let mut rng = seed.rng();
       distr.fill_slice(&mut rng, tail);
 
       let mut acc = T::zero();
@@ -74,7 +93,7 @@ impl<T: FloatExt> ProcessExt<T> for Poisson<T> {
       }
 
       let mut t = T::zero();
-      let mut rng = SimdRng::new();
+      let mut rng = seed.rng();
 
       while t < t_max {
         t += distr.sample(&mut rng);

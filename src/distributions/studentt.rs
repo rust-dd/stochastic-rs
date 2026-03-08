@@ -26,14 +26,27 @@ pub struct SimdStudentT<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdStudentT<T> {
+  #[inline]
   pub fn new(nu: T) -> Self {
+    Self::from_seed_source(nu, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates a Student's t-distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(nu: T, seed: u64) -> Self {
+    Self::from_seed_source(nu, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates a Student's t-distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Each sub-component (normal, chisq, main rng) gets an independent stream.
+  pub fn from_seed_source(nu: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     Self {
       nu,
-      normal: SimdNormal::new(T::zero(), T::one()),
-      chisq: SimdChiSquared::new(nu),
+      normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),
+      chisq: SimdChiSquared::from_seed_source(nu, seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 

@@ -13,9 +13,12 @@ use ndrustfft::ndfft_inplace_par;
 use ndrustfft::ndfft_par;
 use num_complex::Complex;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 
-pub struct FGN<T: FloatExt> {
+pub struct FGN<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Internal FFT length (power-of-two padded).
@@ -30,14 +33,18 @@ pub struct FGN<T: FloatExt> {
   pub sqrt_eigenvalues: Arc<Array1<T>>,
   /// Model parameter controlling process dynamics.
   pub fft_handler: Arc<FftHandler<T>>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
-impl<T: FloatExt> FGN<T> {
+impl<T: FloatExt, S: Seed> FGN<T, S> {
   pub fn dt(&self) -> T {
     let step_count = self.out_len.max(1);
     self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
   }
+}
 
+impl<T: FloatExt> FGN<T> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
     if !(T::zero()..=T::one()).contains(&hurst) {
@@ -90,17 +97,53 @@ impl<T: FloatExt> FGN<T> {
       scale: T::from_usize_(scale_n).powf(-hurst) * t.unwrap_or(T::one()).powf(hurst),
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
       fft_handler: Arc::new(FftHandler::new(2 * n)),
+      seed: Unseeded,
     }
+  }
+}
+
+impl<T: FloatExt> FGN<T, Deterministic> {
+  pub fn seeded(hurst: T, n: usize, t: Option<T>, seed: u64) -> Self {
+    let base = FGN::<T>::new(hurst, n, t);
+    Self {
+      hurst: base.hurst,
+      n: base.n,
+      offset: base.offset,
+      out_len: base.out_len,
+      t: base.t,
+      scale: base.scale,
+      sqrt_eigenvalues: base.sqrt_eigenvalues,
+      fft_handler: base.fft_handler,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> FGN<T, S> {
+  /// Sample fGn using a specific deterministic seed.
+  pub(crate) fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
+    self.sample_cpu_impl(Deterministic(seed))
   }
 
   pub(crate) fn sample_cpu(&self) -> Array1<T> {
+    self.sample_cpu_impl(self.seed)
+  }
+
+  /// Core fGn sampling — monomorphised per seed strategy, zero runtime branching.
+  #[inline]
+  pub(crate) fn sample_cpu_impl<S2: Seed>(&self, mut seed: S2) -> Array1<T> {
     let len = 2 * self.n;
     let mut fgn = Array1::<T>::zeros(self.out_len);
 
     T::with_fgn_complex_scratch(len, |rnd| {
       // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
       let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-      T::fill_standard_normal_slice(flat);
+      let normal = crate::distributions::normal::SimdNormal::<T>::from_seed_source(
+        T::zero(),
+        T::one(),
+        &mut seed,
+      );
+      normal.fill_slice_fast(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
         z.im = z.im * w;

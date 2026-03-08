@@ -8,6 +8,9 @@ use crate::distributions::exp::SimdExp;
 use crate::distributions::gamma::SimdGamma;
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -27,12 +30,14 @@ pub enum CtrwJumpLaw<T: FloatExt> {
 }
 
 /// Continuous-time random walk sampled on a fixed output grid.
-pub struct CTRW<T: FloatExt> {
+pub struct CTRW<T: FloatExt, S: Seed = Unseeded> {
   pub waiting: CtrwWaitingLaw<T>,
   pub jumps: CtrwJumpLaw<T>,
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> CTRW<T> {
@@ -49,11 +54,32 @@ impl<T: FloatExt> CTRW<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CTRW<T> {
+impl<T: FloatExt> CTRW<T, Deterministic> {
+  pub fn seeded(
+    waiting: CtrwWaitingLaw<T>,
+    jumps: CtrwJumpLaw<T>,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    Self {
+      waiting,
+      jumps,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CTRW<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -133,7 +159,8 @@ impl<T: FloatExt> ProcessExt<T> for CTRW<T> {
 
     let t_max = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let dt = t_max / (self.n - 1) as f64;
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
     let mut x = x0.to_f64().unwrap();
 
     let mut next_event = match &waiting_sampler {

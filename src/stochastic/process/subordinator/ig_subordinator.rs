@@ -2,12 +2,15 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Inverse-Gaussian subordinator with BNS parameterization:
 /// `phi(lambda) = delta (sqrt(gamma^2 + 2 lambda) - gamma)`.
-pub struct IGSubordinator<T: FloatExt> {
+pub struct IGSubordinator<T: FloatExt, S: Seed = Unseeded> {
   /// Scale `delta`.
   pub delta: T,
   /// Shape `gamma`.
@@ -18,6 +21,8 @@ pub struct IGSubordinator<T: FloatExt> {
   pub x0: Option<T>,
   /// Horizon.
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> IGSubordinator<T> {
@@ -30,11 +35,27 @@ impl<T: FloatExt> IGSubordinator<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for IGSubordinator<T> {
+impl<T: FloatExt> IGSubordinator<T, Deterministic> {
+  pub fn seeded(delta: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(delta > T::zero(), "delta must be positive");
+    assert!(gamma > T::zero(), "gamma must be positive");
+    Self {
+      delta,
+      gamma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for IGSubordinator<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -50,8 +71,9 @@ impl<T: FloatExt> ProcessExt<T> for IGSubordinator<T> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let mu = (self.delta * dt) / self.gamma;
     let lambda = (self.delta * dt).powi(2);
-    let ig = SimdInverseGauss::new(mu, lambda);
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let ig = SimdInverseGauss::from_seed_source(mu, lambda, &mut seed);
+    let mut rng = seed.rng();
     let inc = Array1::random_using(self.n - 1, &ig, &mut rng);
     for i in 1..self.n {
       out[i] = out[i - 1] + inc[i - 1];

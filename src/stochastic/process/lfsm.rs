@@ -8,6 +8,9 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::alpha_stable::SimdAlphaStable;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -19,7 +22,7 @@ use crate::traits::ProcessExt;
 ///
 /// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
 /// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
-pub struct LFSM<T: FloatExt> {
+pub struct LFSM<T: FloatExt, S: Seed = Unseeded> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
   /// Smaller values produce heavier tails and larger jumps.
   pub alpha: T,
@@ -38,6 +41,8 @@ pub struct LFSM<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulated time horizon (defaults to `1` if `None`).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> LFSM<T> {
@@ -57,16 +62,41 @@ impl<T: FloatExt> LFSM<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T: FloatExt> LFSM<T, Deterministic> {
+  pub fn seeded(alpha: T, beta: T, hurst: T, scale: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
+    assert!((-T::one()..=T::one()).contains(&beta));
+    assert!(scale > T::zero());
+    assert!(
+      hurst > T::one() / alpha && hurst < T::one(),
+      "LFSM requires 1/alpha < hurst < 1 for this discretization"
+    );
+    Self {
+      alpha,
+      beta,
+      hurst,
+      scale,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> LFSM<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for LFSM<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for LFSM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -81,8 +111,9 @@ impl<T: FloatExt> ProcessExt<T> for LFSM<T> {
     let kernel_scale = dt.powf(d);
     let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
 
-    let stable = SimdAlphaStable::new(self.alpha, self.beta, innovation_scale, T::zero());
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let stable = SimdAlphaStable::from_seed_source(self.alpha, self.beta, innovation_scale, T::zero(), &mut seed);
+    let mut rng = seed.rng();
     let innovations = Array1::random_using(self.n - 1, &stable, &mut rng);
 
     let mut weights = Array1::<T>::zeros(self.n - 1);

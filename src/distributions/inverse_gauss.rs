@@ -25,15 +25,27 @@ pub struct SimdInverseGauss<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdInverseGauss<T> {
+  #[inline]
   pub fn new(mu: T, lambda: T) -> Self {
+    Self::from_seed_source(mu, lambda, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates an inverse-Gaussian distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(mu: T, lambda: T, seed: u64) -> Self {
+    Self::from_seed_source(mu, lambda, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates an inverse-Gaussian distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  pub fn from_seed_source(mu: T, lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     assert!(mu > T::zero() && lambda > T::zero());
     Self {
       mu,
       lambda,
-      normal: SimdNormal::new(T::zero(), T::one()),
+      normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 
