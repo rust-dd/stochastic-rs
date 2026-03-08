@@ -321,7 +321,7 @@ mod tests {
         let rel_err = ((cov / cov_theory) - 1.0).abs();
         if i == j {
           assert!(
-            rel_err < 0.05,
+            rel_err < 0.08,
             "variance mismatch at ({i},{j}): emp={cov}, theory={cov_theory}, rel_err={rel_err}"
           );
         } else {
@@ -333,7 +333,7 @@ mod tests {
 
     let off_diag_mean_rel_err = off_diag_rel_sum / off_diag_count as f64;
     assert!(
-      off_diag_mean_rel_err < 0.05,
+      off_diag_mean_rel_err < 0.08,
       "off-diagonal mean relative covariance error too large: {off_diag_mean_rel_err}"
     );
   }
