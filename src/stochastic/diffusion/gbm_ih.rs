@@ -7,12 +7,16 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Inhomogeneous GBM with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
-pub struct GBMIH<T: FloatExt> {
+pub struct GBMIH<T: FloatExt, S: Seed = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Baseline sigma used when `sigmas` is None
@@ -25,6 +29,8 @@ pub struct GBMIH<T: FloatExt> {
   pub t: Option<T>,
   /// Optional per-step volatilities (length must be n-1)
   pub sigmas: Option<Array1<T>>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> GBMIH<T> {
@@ -48,11 +54,38 @@ impl<T: FloatExt> GBMIH<T> {
       x0,
       t,
       sigmas,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for GBMIH<T> {
+impl<T: FloatExt> GBMIH<T, Deterministic> {
+  pub fn seeded(
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    sigmas: Option<Array1<T>>,
+    seed: u64,
+  ) -> Self {
+    if let Some(s) = &sigmas {
+      assert_eq!(s.len(), n.saturating_sub(1), "sigmas length must be n - 1");
+    }
+
+    Self {
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      sigmas,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for GBMIH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {
@@ -75,7 +108,9 @@ impl<T: FloatExt> ProcessExt<T> for GBMIH<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("GBMIH output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for (i, z) in tail.iter_mut().enumerate() {
       let sigma_i = self.sigmas.as_ref().map(|s| s[i]).unwrap_or(self.sigma);

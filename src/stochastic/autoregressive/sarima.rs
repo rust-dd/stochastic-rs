@@ -6,7 +6,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -43,7 +46,7 @@ use crate::traits::ProcessExt;
 ///    to produce the combined polynomial with cross-terms.
 /// 2. A single-pass SARMA recursion generates the "fully differenced" data.
 /// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
-pub struct SARIMA<T: FloatExt> {
+pub struct SARIMA<T: FloatExt, S: Seed = Unseeded> {
   /// Non-seasonal AR coefficients, length p
   pub non_seasonal_ar_coefs: Array1<T>,
   /// Non-seasonal MA coefficients, length q
@@ -62,7 +65,8 @@ pub struct SARIMA<T: FloatExt> {
   pub sigma: T,
   /// Final length of the time series
   pub n: usize,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> SARIMA<T> {
@@ -90,16 +94,54 @@ impl<T: FloatExt> SARIMA<T> {
       s,
       sigma,
       n,
-      wn: Wn::new(n, None, Some(sigma)),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for SARIMA<T> {
+impl<T: FloatExt> SARIMA<T, Deterministic> {
+  /// Create a new SARIMA model with a deterministic seed for reproducible output.
+  #[allow(non_snake_case)]
+  pub fn seeded(
+    non_seasonal_ar_coefs: Array1<T>,
+    non_seasonal_ma_coefs: Array1<T>,
+    seasonal_ar_coefs: Array1<T>,
+    seasonal_ma_coefs: Array1<T>,
+    d: usize,
+    D: usize,
+    s: usize,
+    sigma: T,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    assert!(sigma > T::zero(), "SARIMA requires sigma > 0");
+    assert!(s > 0, "SARIMA requires season length s > 0");
+    SARIMA {
+      non_seasonal_ar_coefs,
+      non_seasonal_ma_coefs,
+      seasonal_ar_coefs,
+      seasonal_ma_coefs,
+      d,
+      D,
+      s,
+      sigma,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for SARIMA<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let noise = self.wn.sample();
+    let mut noise = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = noise.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), self.sigma, &mut seed);
+      normal.fill_slice_fast(slice);
+    }
 
     // Multiply φ(B) and Φ(Bˢ) to get the combined AR polynomial.
     // φ(B) = 1 - φ_1 B - ... - φ_p B^p
@@ -149,7 +191,7 @@ impl<T: FloatExt> ProcessExt<T> for SARIMA<T> {
   }
 }
 
-impl<T: FloatExt> SARIMA<T> {
+impl<T: FloatExt, S: Seed> SARIMA<T, S> {
   /// Multiply the non-seasonal AR polynomial φ(B) with the seasonal AR polynomial Φ(Bˢ).
   ///
   /// φ(B) = 1 - φ_1 B - ... - φ_p B^p

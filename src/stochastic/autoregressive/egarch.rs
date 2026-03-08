@@ -7,7 +7,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -40,7 +43,7 @@ use crate::traits::ProcessExt;
 /// 1. We assume that `alpha` and `gamma` each have length \(p\).
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
-pub struct EGARCH<T: FloatExt> {
+pub struct EGARCH<T: FloatExt, S: Seed = Unseeded> {
   /// Constant term (\(\omega\)) in log-variance
   pub omega: T,
   /// Magnitude effect coefficients (\(\alpha_1, \ldots, \alpha_p\))
@@ -51,7 +54,8 @@ pub struct EGARCH<T: FloatExt> {
   pub beta: Array1<T>,
   /// Number of observations
   pub n: usize,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> EGARCH<T> {
@@ -67,12 +71,37 @@ impl<T: FloatExt> EGARCH<T> {
       gamma,
       beta,
       n,
-      wn: Wn::new(n, None, None),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for EGARCH<T> {
+impl<T: FloatExt> EGARCH<T, Deterministic> {
+  /// Create a new EGARCH model with a deterministic seed for reproducible output.
+  pub fn seeded(
+    omega: T,
+    alpha: Array1<T>,
+    gamma: Array1<T>,
+    beta: Array1<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    assert!(
+      alpha.len() == gamma.len(),
+      "EGARCH requires alpha.len() == gamma.len()"
+    );
+    Self {
+      omega,
+      alpha,
+      gamma,
+      beta,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for EGARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -80,7 +109,13 @@ impl<T: FloatExt> ProcessExt<T> for EGARCH<T> {
     let q = self.beta.len();
 
     // Generate white noise z_t ~ N(0,1)
-    let z = self.wn.sample();
+    let mut z = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = z.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+      normal.fill_slice_fast(slice);
+    }
 
     // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
     let mut x = Array1::<T>::zeros(self.n);

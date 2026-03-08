@@ -6,11 +6,14 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FJacobi<T: FloatExt> {
+pub struct FJacobi<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Model shape / loading parameter.
@@ -25,6 +28,8 @@ pub struct FJacobi<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   fgn: FGN<T>,
 }
 
@@ -45,17 +50,42 @@ impl<T: FloatExt> FJacobi<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
       fgn: FGN::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FJacobi<T> {
+impl<T: FloatExt> FJacobi<T, Deterministic> {
+  #[must_use]
+  pub fn seeded(hurst: T, alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    assert!(alpha > T::zero(), "alpha must be positive");
+    assert!(beta > T::zero(), "beta must be positive");
+    assert!(sigma > T::zero(), "sigma must be positive");
+    assert!(alpha < beta, "alpha must be less than beta");
+
+    Self {
+      hurst,
+      alpha,
+      beta,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+      fgn: FGN::new(hurst, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FJacobi<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
+    let mut seed = self.seed;
     let dt = self.fgn.dt();
-    let fgn = self.fgn.sample();
+    let fgn = self.fgn.sample_cpu_impl(seed.derive());
 
     let mut fjacobi = Array1::<T>::zeros(self.n);
     fjacobi[0] = self.x0.unwrap_or(T::zero());

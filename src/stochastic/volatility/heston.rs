@@ -7,11 +7,14 @@
 use ndarray::Array1;
 
 use super::HestonPow;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Heston<T: FloatExt> {
+pub struct Heston<T: FloatExt, S: Seed = Unseeded> {
   /// Initial stock price
   pub s0: Option<T>,
   /// Initial volatility
@@ -36,6 +39,8 @@ pub struct Heston<T: FloatExt> {
   pub pow: HestonPow,
   /// Use the symmetric method for the variance to avoid negative values
   pub use_sym: Option<bool>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   /// Noise generator
   cgns: CGNS<T>,
 }
@@ -73,17 +78,59 @@ impl<T: FloatExt> Heston<T> {
       t,
       pow,
       use_sym,
+      seed: Unseeded,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Heston<T> {
+impl<T: FloatExt> Heston<T, Deterministic> {
+  pub fn seeded(
+    s0: Option<T>,
+    v0: Option<T>,
+    kappa: T,
+    theta: T,
+    sigma: T,
+    rho: T,
+    mu: T,
+    n: usize,
+    t: Option<T>,
+    pow: HestonPow,
+    use_sym: Option<bool>,
+    seed: u64,
+  ) -> Self {
+    assert!(kappa >= T::zero(), "kappa must be non-negative");
+    assert!(theta >= T::zero(), "theta must be non-negative");
+    assert!(sigma >= T::zero(), "sigma must be non-negative");
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
+    Self {
+      s0,
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+      mu,
+      n,
+      t,
+      pow,
+      use_sym,
+      seed: Deterministic(seed),
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Heston<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = &self.cgns.sample();
+    let mut seed = self.seed;
+    let [cgn1, cgn2] = &self.cgns.sample_impl(seed.derive());
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
@@ -113,7 +160,7 @@ impl<T: FloatExt> ProcessExt<T> for Heston<T> {
   }
 }
 
-impl<T: FloatExt> Heston<T> {
+impl<T: FloatExt, S: Seed> Heston<T, S> {
   /// Malliavin derivative of the volatility
   ///
   /// The Malliavin derivative of the Heston model is given by

@@ -23,6 +23,9 @@ use scilib::math::basic::gamma;
 
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stats::non_central_chi_squared;
 use crate::stochastic::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -31,7 +34,7 @@ use crate::traits::ProcessExt;
 /// CGMY Stochastic Volatility process (CGMYSV)
 ///
 /// Paper: <https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf>
-pub struct SVCGMY<T: FloatExt> {
+pub struct SVCGMY<T: FloatExt, S: Seed = Unseeded> {
   /// Positive tempering parameter λ+ > 0
   pub lambda_plus: T,
   /// Negative tempering parameter λ− > 0
@@ -56,6 +59,8 @@ pub struct SVCGMY<T: FloatExt> {
   pub v0: Option<T>,
   /// Time horizon T
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> SVCGMY<T> {
@@ -101,15 +106,66 @@ impl<T: FloatExt> SVCGMY<T> {
       x0,
       v0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for SVCGMY<T> {
+impl<T: FloatExt> SVCGMY<T, Deterministic> {
+  pub fn seeded(
+    lambda_plus: T,
+    lambda_minus: T,
+    alpha: T,
+    kappa: T,
+    eta: T,
+    zeta: T,
+    rho: T,
+    n: usize,
+    j: usize,
+    x0: Option<T>,
+    v0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
+    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      alpha > T::zero() && alpha < T::from_usize_(2),
+      "alpha must be in (0, 2)"
+    );
+    assert!(kappa > T::zero(), "kappa must be positive");
+    assert!(eta >= T::zero(), "eta must be non-negative");
+    assert!(zeta > T::zero(), "zeta must be positive");
+    assert!(n >= 2, "n must be >= 2");
+
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
+    Self {
+      lambda_plus,
+      lambda_minus,
+      alpha,
+      kappa,
+      eta,
+      zeta,
+      rho,
+      n,
+      j,
+      x0,
+      v0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for SVCGMY<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);

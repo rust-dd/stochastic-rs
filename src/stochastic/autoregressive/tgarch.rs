@@ -7,7 +7,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -34,7 +37,7 @@ use crate::traits::ProcessExt;
 /// # Notes
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
-pub struct TGARCH<T: FloatExt> {
+pub struct TGARCH<T: FloatExt, S: Seed = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Model shape / loading parameter.
@@ -45,7 +48,8 @@ pub struct TGARCH<T: FloatExt> {
   pub beta: Array1<T>,
   /// Number of discrete simulation points (or samples).
   pub n: usize,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> TGARCH<T> {
@@ -61,12 +65,38 @@ impl<T: FloatExt> TGARCH<T> {
       gamma,
       beta,
       n,
-      wn: Wn::new(n, None, None),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for TGARCH<T> {
+impl<T: FloatExt> TGARCH<T, Deterministic> {
+  /// Create a new TGARCH model with a deterministic seed for reproducible output.
+  pub fn seeded(
+    omega: T,
+    alpha: Array1<T>,
+    gamma: Array1<T>,
+    beta: Array1<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    assert!(omega > T::zero(), "TGARCH requires omega > 0");
+    assert!(
+      alpha.len() == gamma.len(),
+      "TGARCH requires alpha.len() == gamma.len()"
+    );
+    Self {
+      omega,
+      alpha,
+      gamma,
+      beta,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for TGARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -74,7 +104,13 @@ impl<T: FloatExt> ProcessExt<T> for TGARCH<T> {
     let q = self.beta.len();
 
     // Standard normal noise
-    let z = self.wn.sample();
+    let mut z = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = z.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+      normal.fill_slice_fast(slice);
+    }
 
     // Arrays for X_t and sigma_t^2
     let mut x = Array1::<T>::zeros(self.n);

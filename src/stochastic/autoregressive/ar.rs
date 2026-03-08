@@ -6,7 +6,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -24,7 +27,7 @@ use crate::traits::ProcessExt;
 /// - `n`: Length of the time series.
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
-pub struct ARp<T: FloatExt> {
+pub struct ARp<T: FloatExt, S: Seed = Unseeded> {
   /// AR coefficients
   pub phi: Array1<T>,
   /// Noise std dev
@@ -33,7 +36,8 @@ pub struct ARp<T: FloatExt> {
   pub n: usize,
   /// Optional initial conditions
   pub x0: Option<Array1<T>>,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> ARp<T> {
@@ -54,17 +58,47 @@ impl<T: FloatExt> ARp<T> {
       sigma,
       n,
       x0,
-      wn: Wn::new(n, None, Some(sigma)),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for ARp<T> {
+impl<T: FloatExt> ARp<T, Deterministic> {
+  /// Create a new AR process with a deterministic seed for reproducible output.
+  pub fn seeded(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: u64) -> Self {
+    assert!(sigma > T::zero(), "ARp requires sigma > 0");
+    if let Some(init) = &x0 {
+      let required = phi.len().min(n);
+      assert!(
+        init.len() >= required,
+        "ARp requires x0.len() >= min(phi.len(), n) (got {}, need at least {})",
+        init.len(),
+        required
+      );
+    }
+    Self {
+      phi,
+      sigma,
+      n,
+      x0,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for ARp<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let p = self.phi.len();
-    let noise = &self.wn.sample();
+    let mut noise = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = noise.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), self.sigma, &mut seed);
+      normal.fill_slice_fast(slice);
+    }
+    let noise = &noise;
     let mut series = Array1::<T>::zeros(self.n);
 
     // Fill initial conditions if provided

@@ -6,12 +6,15 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
-pub struct DuffieKan<T: FloatExt> {
+pub struct DuffieKan<T: FloatExt, S: Seed = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -44,7 +47,9 @@ pub struct DuffieKan<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  cgns: CGNS<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
+  cgns: CGNS<T, S>,
 }
 
 impl<T: FloatExt> DuffieKan<T> {
@@ -83,12 +88,58 @@ impl<T: FloatExt> DuffieKan<T> {
       r0,
       x0,
       t,
+      seed: Unseeded,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for DuffieKan<T> {
+impl<T: FloatExt> DuffieKan<T, Deterministic> {
+  pub fn seeded(
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    n: usize,
+    r0: Option<T>,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    let mut s = Deterministic(seed);
+    let child = s.derive();
+    Self {
+      alpha,
+      beta,
+      gamma,
+      rho,
+      a1,
+      b1,
+      c1,
+      sigma1,
+      a2,
+      b2,
+      c2,
+      sigma2,
+      n,
+      r0,
+      x0,
+      t,
+      seed: Deterministic(seed),
+      cgns: CGNS::seeded(rho, n - 1, t, child.0),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for DuffieKan<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

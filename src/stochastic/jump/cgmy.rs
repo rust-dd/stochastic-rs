@@ -26,11 +26,14 @@ use scilib::math::basic::gamma;
 
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CGMY<T: FloatExt> {
+pub struct CGMY<T: FloatExt, S: Seed = Unseeded> {
   /// Overall jump intensity scale C > 0
   pub c: T,
   /// Positive tempering parameter G > 0
@@ -47,6 +50,7 @@ pub struct CGMY<T: FloatExt> {
   pub x0: Option<T>,
   /// Total horizon T
   pub t: Option<T>,
+  pub seed: S,
 }
 
 impl<T: FloatExt> CGMY<T> {
@@ -82,6 +86,7 @@ impl<T: FloatExt> CGMY<T> {
       j,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 
@@ -96,11 +101,51 @@ impl<T: FloatExt> CGMY<T> {
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CGMY<T> {
+impl<T: FloatExt> CGMY<T, Deterministic> {
+  pub fn seeded(
+    c: T,
+    lambda_plus: T,
+    lambda_minus: T,
+    alpha: T,
+    n: usize,
+    j: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(c > T::zero(), "c (C) must be positive");
+    assert!(lambda_plus > T::zero(), "lambda_plus (G) must be positive");
+    assert!(
+      lambda_minus > T::zero(),
+      "lambda_minus (M) must be positive"
+    );
+    assert!(
+      alpha > T::zero() && alpha < T::from_usize_(2),
+      "alpha (Y) must be in (0, 2)"
+    );
+    assert!(n >= 2, "n must be >= 2");
+    assert!(j >= 2, "j must be >= 2 (because we index from 1..j)");
+
+    Self {
+      c,
+      lambda_plus,
+      lambda_minus,
+      alpha,
+      n,
+      j,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CGMY<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);

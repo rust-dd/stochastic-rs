@@ -6,24 +6,44 @@
 //!
 use ndarray::Array1;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct Gn<T: FloatExt> {
+pub struct Gn<T: FloatExt, S: Seed = Unseeded> {
   /// Number of discrete simulation points (or samples).
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> Gn<T> {
   pub fn new(n: usize, t: Option<T>) -> Self {
-    Gn { n, t }
+    Gn {
+      n,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Gn<T> {
+impl<T: FloatExt> Gn<T, Deterministic> {
+  pub fn seeded(n: usize, t: Option<T>, seed: u64) -> Self {
+    Gn {
+      n,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Gn<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -34,14 +54,16 @@ impl<T: FloatExt> ProcessExt<T> for Gn<T> {
   }
 }
 
-impl<T: FloatExt> Gn<T> {
+impl<T: FloatExt, S: Seed> Gn<T, S> {
   pub fn fill_slice(&self, out: &mut [T]) {
     let len = self.n.min(out.len());
     if len == 0 {
       return;
     }
     let std_dev = self.dt().sqrt();
-    T::fill_standard_normal_scaled_slice(&mut out[..len], std_dev);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &mut seed);
+    normal.fill_slice_fast(&mut out[..len]);
   }
 
   pub fn dt(&self) -> T {

@@ -6,6 +6,9 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -13,7 +16,7 @@ use crate::traits::ProcessExt;
 /// Fractional Cox-Ingersoll-Ross (FCIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the FCIR process.
-pub struct FCIR<T: FloatExt> {
+pub struct FCIR<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Long-run target level / model location parameter.
@@ -30,6 +33,8 @@ pub struct FCIR<T: FloatExt> {
   pub t: Option<T>,
   /// Enables symmetric/truncated update variant when true.
   pub use_sym: Option<bool>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   fgn: FGN<T>,
 }
 
@@ -60,17 +65,53 @@ impl<T: FloatExt> FCIR<T> {
       x0,
       t,
       use_sym,
+      seed: Unseeded,
       fgn: FGN::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FCIR<T> {
+impl<T: FloatExt> FCIR<T, Deterministic> {
+  #[must_use]
+  pub fn seeded(
+    hurst: T,
+    theta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    assert!(
+      T::from_usize_(2) * theta * mu >= sigma.powi(2),
+      "2 * theta * mu < sigma^2"
+    );
+
+    Self {
+      hurst,
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      use_sym,
+      seed: Deterministic(seed),
+      fgn: FGN::new(hurst, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FCIR<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
+    let mut seed = self.seed;
     let dt = self.fgn.dt();
-    let fgn = &self.fgn.sample();
+    let fgn = self.fgn.sample_cpu_impl(seed.derive());
 
     let mut fcir = Array1::<T>::zeros(self.n);
     fcir[0] = self.x0.unwrap_or(T::zero());

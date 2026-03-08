@@ -9,11 +9,14 @@ use rand_distr::Distribution;
 
 use crate::distributions::exp::SimdExp;
 use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct DuffieKanJumpExp<T: FloatExt> {
+pub struct DuffieKanJumpExp<T: FloatExt, S: Seed = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -50,8 +53,10 @@ pub struct DuffieKanJumpExp<T: FloatExt> {
   pub x0: Option<T>,
   /// Total time horizon.
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   /// Correlated Gaussian noise generator for the diffusion part.
-  cgns: CGNS<T>,
+  cgns: CGNS<T, S>,
 }
 
 impl<T: FloatExt> DuffieKanJumpExp<T> {
@@ -94,12 +99,62 @@ impl<T: FloatExt> DuffieKanJumpExp<T> {
       r0,
       x0,
       t,
+      seed: Unseeded,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for DuffieKanJumpExp<T> {
+impl<T: FloatExt> DuffieKanJumpExp<T, Deterministic> {
+  pub fn seeded(
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    lambda: T,
+    jump_scale: T,
+    n: usize,
+    r0: Option<T>,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    let mut s = Deterministic(seed);
+    let child = s.derive();
+    Self {
+      alpha,
+      beta,
+      gamma,
+      rho,
+      a1,
+      b1,
+      c1,
+      sigma1,
+      a2,
+      b2,
+      c2,
+      sigma2,
+      lambda,
+      jump_scale,
+      n,
+      r0,
+      x0,
+      t,
+      seed: Deterministic(seed),
+      cgns: CGNS::seeded(rho, n - 1, t, child.0),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for DuffieKanJumpExp<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -111,10 +166,11 @@ impl<T: FloatExt> ProcessExt<T> for DuffieKanJumpExp<T> {
     r[0] = self.r0.unwrap_or(T::zero());
     x[0] = self.x0.unwrap_or(T::zero());
 
-    let mut rng = crate::simd_rng::rng();
-    let exp_dist = SimdExp::new(self.lambda);
-    let jump_dist = SimdNormal::<T, 64>::new(T::zero(), self.jump_scale);
+    let mut seed = self.seed;
+    let exp_dist = SimdExp::from_seed_source(self.lambda, &mut seed);
+    let jump_dist = SimdNormal::<T, 64>::from_seed_source(T::zero(), self.jump_scale, &mut seed);
 
+    let mut rng = seed.rng();
     let mut next_jump_time = exp_dist.sample(&mut rng);
 
     for i in 1..self.n {

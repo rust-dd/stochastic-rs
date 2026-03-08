@@ -7,12 +7,15 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct JumpFOU<T, D>
+pub struct JumpFOU<T, D, S: Seed = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -26,6 +29,7 @@ where
   pub t: Option<T>,
   pub cpoisson: CompoundPoisson<T, D>,
   fgn: FGN<T>,
+  pub seed: S,
 }
 
 impl<T, D> JumpFOU<T, D>
@@ -55,11 +59,45 @@ where
       t,
       cpoisson,
       fgn: FGN::new(hurst, n - 1, t),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T, D> ProcessExt<T> for JumpFOU<T, D>
+impl<T, D> JumpFOU<T, D, Deterministic>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  pub fn seeded(
+    hurst: T,
+    theta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    cpoisson: CompoundPoisson<T, D>,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
+    Self {
+      hurst,
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      cpoisson,
+      fgn: FGN::new(hurst, n - 1, t),
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T, D, S: Seed> ProcessExt<T> for JumpFOU<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

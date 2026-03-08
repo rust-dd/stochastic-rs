@@ -7,10 +7,14 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Jacobi<T: FloatExt> {
+pub struct Jacobi<T: FloatExt, S: Seed = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -23,6 +27,8 @@ pub struct Jacobi<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> Jacobi<T> {
@@ -39,11 +45,31 @@ impl<T: FloatExt> Jacobi<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Jacobi<T> {
+impl<T: FloatExt> Jacobi<T, Deterministic> {
+  pub fn seeded(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(alpha > T::zero(), "alpha must be positive");
+    assert!(beta > T::zero(), "beta must be positive");
+    assert!(sigma > T::zero(), "sigma must be positive");
+    assert!(alpha < beta, "alpha must be less than beta");
+
+    Self {
+      alpha,
+      beta,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Jacobi<T, S> {
   type Output = Array1<T>;
 
   /// Sample the Jacobi process
@@ -67,7 +93,9 @@ impl<T: FloatExt> ProcessExt<T> for Jacobi<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Jacobi output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let next = match prev {

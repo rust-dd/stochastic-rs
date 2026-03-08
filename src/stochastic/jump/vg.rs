@@ -8,10 +8,14 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::gamma::SimdGamma;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct VG<T: FloatExt> {
+pub struct VG<T: FloatExt, S: Seed = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -24,6 +28,7 @@ pub struct VG<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  pub seed: S,
 }
 
 impl<T: FloatExt> VG<T> {
@@ -36,16 +41,34 @@ impl<T: FloatExt> VG<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T: FloatExt> VG<T, Deterministic> {
+  pub fn seeded(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(nu > T::zero(), "nu must be positive");
+    Self {
+      mu,
+      sigma,
+      nu,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> VG<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for VG<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for VG<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -60,11 +83,13 @@ impl<T: FloatExt> ProcessExt<T> for VG<T> {
 
     let dt = self.dt();
     let gamma = SimdGamma::new(dt / self.nu, self.nu);
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
     let gammas = Array1::random_using(self.n - 1, &gamma, &mut rng);
     let mut z = Array1::<T>::zeros(self.n - 1);
     let z_slice = z.as_slice_mut().expect("VG normals must be contiguous");
-    T::fill_standard_normal_slice(z_slice);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+    normal.fill_slice_fast(z_slice);
 
     for i in 1..self.n {
       vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * z[i - 1];

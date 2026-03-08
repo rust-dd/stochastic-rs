@@ -7,11 +7,14 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct JumpFOUCustom<T, D>
+pub struct JumpFOUCustom<T, D, S: Seed = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -26,6 +29,7 @@ where
   pub jump_times: D,
   pub jump_sizes: D,
   fgn: FGN<T>,
+  pub seed: S,
 }
 
 impl<T, D> JumpFOUCustom<T, D>
@@ -57,11 +61,47 @@ where
       jump_times,
       jump_sizes,
       fgn: FGN::new(hurst, n - 1, t),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T, D> ProcessExt<T> for JumpFOUCustom<T, D>
+impl<T, D> JumpFOUCustom<T, D, Deterministic>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  pub fn seeded(
+    hurst: T,
+    theta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    jump_times: D,
+    jump_sizes: D,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
+    Self {
+      hurst,
+      mu,
+      sigma,
+      theta,
+      n,
+      x0,
+      t,
+      jump_times,
+      jump_sizes,
+      fgn: FGN::new(hurst, n - 1, t),
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T, D, S: Seed> ProcessExt<T> for JumpFOUCustom<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -77,7 +117,8 @@ where
       return jump_fou;
     }
     jump_fou[0] = self.x0.unwrap_or(T::zero());
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
     let mut next_jump_time = self.jump_times.sample(&mut rng);
     if next_jump_time <= T::zero() {
       panic!("jump_times distribution must return strictly positive inter-arrival times");

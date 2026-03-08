@@ -8,10 +8,13 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct IG<T: FloatExt> {
+pub struct IG<T: FloatExt, S: Seed = Unseeded> {
   /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
   /// Number of discrete simulation points (or samples).
@@ -20,21 +23,31 @@ pub struct IG<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  pub seed: S,
 }
 
 impl<T: FloatExt> IG<T> {
   pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(gamma > T::zero(), "gamma must be positive");
-    Self { gamma, n, x0, t }
+    Self { gamma, n, x0, t, seed: Unseeded }
   }
+}
 
+impl<T: FloatExt> IG<T, Deterministic> {
+  pub fn seeded(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(gamma > T::zero(), "gamma must be positive");
+    Self { gamma, n, x0, t, seed: Deterministic(seed) }
+  }
+}
+
+impl<T: FloatExt, S: Seed> IG<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for IG<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for IG<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -53,7 +66,8 @@ impl<T: FloatExt> ProcessExt<T> for IG<T> {
     let mean = self.gamma * dt;
     let shape = mean * mean;
     let ig_dist = SimdInverseGauss::new(mean, shape);
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
     let inc = Array1::random_using(self.n - 1, &ig_dist, &mut rng);
 
     for i in 1..self.n {

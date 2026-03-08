@@ -6,12 +6,15 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct HullWhite2F<T: FloatExt> {
+pub struct HullWhite2F<T: FloatExt, S: Seed = Unseeded> {
   /// Jump-size adjustment / shape parameter.
   pub k: Fn1D<T>,
   /// Long-run target level / model location parameter.
@@ -30,7 +33,9 @@ pub struct HullWhite2F<T: FloatExt> {
   pub t: Option<T>,
   /// Number of discrete simulation points (or samples).
   pub n: usize,
-  cgns: CGNS<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
+  cgns: CGNS<T, S>,
 }
 
 impl<T: FloatExt> HullWhite2F<T> {
@@ -55,12 +60,44 @@ impl<T: FloatExt> HullWhite2F<T> {
       x0,
       t,
       n,
+      seed: Unseeded,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for HullWhite2F<T> {
+impl<T: FloatExt> HullWhite2F<T, Deterministic> {
+  pub fn seeded(
+    k: impl Into<Fn1D<T>>,
+    theta: T,
+    sigma1: T,
+    sigma2: T,
+    rho: T,
+    b: T,
+    x0: Option<T>,
+    t: Option<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    let mut s = Deterministic(seed);
+    let child = s.derive();
+    Self {
+      k: k.into(),
+      theta,
+      sigma1,
+      sigma2,
+      rho,
+      b,
+      x0,
+      t,
+      n,
+      seed: Deterministic(seed),
+      cgns: CGNS::seeded(rho, n - 1, t, child.0),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for HullWhite2F<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

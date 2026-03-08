@@ -13,11 +13,15 @@ use statrs::statistics::Distribution as StatDistribution;
 use statrs::statistics::Median;
 use statrs::statistics::Mode;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct GBM<T: FloatExt> {
+pub struct GBM<T: FloatExt, S: Seed = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -29,6 +33,8 @@ pub struct GBM<T: FloatExt> {
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   distribution: Option<LogNormal>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> GBM<T> {
@@ -48,11 +54,34 @@ impl<T: FloatExt> GBM<T> {
       x0,
       t,
       distribution: LogNormal::new(mu_ln, sigma_ln).ok(),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for GBM<T> {
+impl<T: FloatExt> GBM<T, Deterministic> {
+  pub fn seeded(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
+    let mu_f64 = mu.to_f64().unwrap();
+    let sigma_f64 = sigma.to_f64().unwrap();
+    let t_f64 = t.unwrap_or(T::one()).to_f64().unwrap();
+
+    let mu_ln = x0_f64.ln() + (mu_f64 - 0.5 * sigma_f64 * sigma_f64) * t_f64;
+    let sigma_ln = sigma_f64 * t_f64.sqrt();
+
+    Self {
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      distribution: LogNormal::new(mu_ln, sigma_ln).ok(),
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for GBM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -76,7 +105,9 @@ impl<T: FloatExt> ProcessExt<T> for GBM<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("GBM output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let next = prev + drift_scale * prev + diff_scale * prev * *z;
@@ -88,7 +119,7 @@ impl<T: FloatExt> ProcessExt<T> for GBM<T> {
   }
 }
 
-impl<T: FloatExt> GBM<T> {
+impl<T: FloatExt, S: Seed> GBM<T, S> {
   /// Malliavin derivative of the GBM process
   ///
   /// The Malliavin derivative of the GBM process is given by
@@ -109,7 +140,7 @@ impl<T: FloatExt> GBM<T> {
   }
 }
 
-impl<T: FloatExt> DistributionExt for GBM<T> {
+impl<T: FloatExt, S: Seed> DistributionExt for GBM<T, S> {
   fn pdf(&self, x: f64) -> f64 {
     self.distribution.as_ref().map_or(0.0, |d| d.pdf(x))
   }

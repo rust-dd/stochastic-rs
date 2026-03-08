@@ -7,12 +7,16 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
-pub struct Kimura<T: FloatExt> {
+pub struct Kimura<T: FloatExt, S: Seed = Unseeded> {
   /// Model coefficient / user-supplied drift term.
   pub a: T,
   /// Diffusion / noise scale parameter.
@@ -23,15 +27,37 @@ pub struct Kimura<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> Kimura<T> {
   pub fn new(a: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self { a, sigma, n, x0, t }
+    Self {
+      a,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Kimura<T> {
+impl<T: FloatExt> Kimura<T, Deterministic> {
+  pub fn seeded(a: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    Self {
+      a,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Kimura<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -54,7 +80,9 @@ impl<T: FloatExt> ProcessExt<T> for Kimura<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Kimura output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       // enforce [0,1] domain when computing coefficients

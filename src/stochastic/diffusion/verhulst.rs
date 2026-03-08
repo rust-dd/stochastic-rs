@@ -7,12 +7,16 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
-pub struct Verhulst<T: FloatExt> {
+pub struct Verhulst<T: FloatExt, S: Seed = Unseeded> {
   /// Risk-free rate / drift adjustment parameter.
   pub r: T,
   /// Jump-size adjustment / shape parameter.
@@ -27,6 +31,8 @@ pub struct Verhulst<T: FloatExt> {
   pub t: Option<T>,
   /// If true, clamp the state into [0, K] each step
   pub clamp: Option<bool>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> Verhulst<T> {
@@ -47,11 +53,36 @@ impl<T: FloatExt> Verhulst<T> {
       x0,
       t,
       clamp,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Verhulst<T> {
+impl<T: FloatExt> Verhulst<T, Deterministic> {
+  pub fn seeded(
+    r: T,
+    k: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    clamp: Option<bool>,
+    seed: u64,
+  ) -> Self {
+    Self {
+      r,
+      k,
+      sigma,
+      n,
+      x0,
+      t,
+      clamp,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Verhulst<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -74,7 +105,9 @@ impl<T: FloatExt> ProcessExt<T> for Verhulst<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Verhulst output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let xi = prev;

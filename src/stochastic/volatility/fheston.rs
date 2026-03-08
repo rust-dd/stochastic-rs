@@ -7,10 +7,14 @@
 use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct RoughHeston<T: FloatExt> {
+pub struct RoughHeston<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Initial variance/volatility level.
@@ -29,6 +33,8 @@ pub struct RoughHeston<T: FloatExt> {
   pub t: Option<T>,
   /// Number of discrete simulation points (or samples).
   pub n: usize,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> RoughHeston<T> {
@@ -53,14 +59,44 @@ impl<T: FloatExt> RoughHeston<T> {
       c2,
       t,
       n,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for RoughHeston<T> {
+impl<T: FloatExt> RoughHeston<T, Deterministic> {
+  pub fn seeded(
+    hurst: T,
+    v0: Option<T>,
+    theta: T,
+    kappa: T,
+    nu: T,
+    c1: Option<T>,
+    c2: Option<T>,
+    t: Option<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    RoughHeston {
+      hurst,
+      v0,
+      theta,
+      kappa,
+      nu,
+      c1,
+      c2,
+      t,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for RoughHeston<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
+    let mut seed = self.seed;
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
     } else {
@@ -69,7 +105,8 @@ impl<T: FloatExt> ProcessExt<T> for RoughHeston<T> {
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
       let sqrt_dt = dt.sqrt();
-      T::fill_standard_normal_scaled_slice(gn_slice, sqrt_dt);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal.fill_slice_fast(gn_slice);
     }
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);

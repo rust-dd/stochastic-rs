@@ -11,6 +11,9 @@ use scilib::math::basic::gamma;
 
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -18,7 +21,7 @@ use crate::traits::ProcessExt;
 /// CTS process (Classical Tempered Stable process)
 /// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
 ///
-pub struct CTS<T: FloatExt> {
+pub struct CTS<T: FloatExt, S: Seed = Unseeded> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -33,6 +36,7 @@ pub struct CTS<T: FloatExt> {
   pub x0: Option<T>,
   /// Total time horizon
   pub t: Option<T>,
+  pub seed: S,
 }
 
 impl<T: FloatExt> CTS<T> {
@@ -61,15 +65,48 @@ impl<T: FloatExt> CTS<T> {
       j,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CTS<T> {
+impl<T: FloatExt> CTS<T, Deterministic> {
+  pub fn seeded(
+    lambda_plus: T,
+    lambda_minus: T,
+    alpha: T,
+    n: usize,
+    j: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
+    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      alpha > T::zero() && alpha < T::from_usize_(2),
+      "alpha must be in (0, 2)"
+    );
+
+    Self {
+      lambda_plus,
+      lambda_minus,
+      alpha,
+      n,
+      j,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CTS<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);

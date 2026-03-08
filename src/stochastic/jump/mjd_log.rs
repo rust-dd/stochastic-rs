@@ -13,11 +13,15 @@ use ndarray::Array1;
 use ndarray::s;
 use rand_distr::Distribution;
 
+use crate::distributions::normal::SimdNormal;
 use crate::distributions::poisson::SimdPoisson;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct MJDLog<T: FloatExt> {
+pub struct MJDLog<T: FloatExt, S: Seed = Unseeded> {
   /// Drift rate
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -40,6 +44,7 @@ pub struct MJDLog<T: FloatExt> {
   pub s0: Option<T>,
   /// Total simulation horizon (defaults to 1)
   pub t: Option<T>,
+  pub seed: S,
 }
 
 impl<T: FloatExt> MJDLog<T> {
@@ -72,9 +77,48 @@ impl<T: FloatExt> MJDLog<T> {
       n,
       s0,
       t,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T: FloatExt> MJDLog<T, Deterministic> {
+  pub fn seeded(
+    mu: Option<T>,
+    b: Option<T>,
+    r: Option<T>,
+    r_f: Option<T>,
+    sigma: T,
+    lambda: T,
+    nu: T,
+    omega: T,
+    n: usize,
+    s0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    assert!(sigma >= T::zero(), "sigma must be >= 0");
+    assert!(lambda >= T::zero(), "lambda must be >= 0");
+    assert!(omega >= T::zero(), "omega must be >= 0");
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      sigma,
+      lambda,
+      nu,
+      omega,
+      n,
+      s0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> MJDLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -96,7 +140,7 @@ impl<T: FloatExt> MJDLog<T> {
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for MJDLog<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -120,7 +164,8 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
 
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
 
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(
@@ -135,7 +180,10 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("MJDLog output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
+
+    let jump_normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
 
     for z in tail.iter_mut() {
       let diff = self.sigma * *z;
@@ -146,7 +194,7 @@ impl<T: FloatExt> ProcessExt<T> for MJDLog<T> {
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let mut z0 = [T::zero(); 1];
-          T::fill_standard_normal_slice(&mut z0);
+          jump_normal.fill_slice_fast(&mut z0);
           jump_sum = self.nu * kf + self.omega * kf.sqrt() * z0[0];
         }
       }

@@ -7,13 +7,17 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Cox-Ingersoll-Ross (CIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
 /// where X(t) is the CIR process.
-pub struct CIR<T: FloatExt> {
+pub struct CIR<T: FloatExt, S: Seed = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Drift / long-run mean-level parameter.
@@ -28,6 +32,8 @@ pub struct CIR<T: FloatExt> {
   pub t: Option<T>,
   /// Enables symmetric/truncated update variant when true.
   pub use_sym: Option<bool>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> CIR<T> {
@@ -54,11 +60,41 @@ impl<T: FloatExt> CIR<T> {
       x0,
       t,
       use_sym,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CIR<T> {
+impl<T: FloatExt> CIR<T, Deterministic> {
+  pub fn seeded(
+    theta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+    seed: u64,
+  ) -> Self {
+    assert!(
+      T::from_usize_(2) * theta * mu >= sigma.powi(2),
+      "2 * theta * mu < sigma^2"
+    );
+
+    Self {
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      use_sym,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CIR<T, S> {
   type Output = Array1<T>;
 
   /// Sample the Cox-Ingersoll-Ross (CIR) process
@@ -82,7 +118,9 @@ impl<T: FloatExt> ProcessExt<T> for CIR<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("CIR output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let dcir = self.theta * (self.mu - prev) * dt + diff_scale * prev.abs().sqrt() * *z;

@@ -7,12 +7,16 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
-pub struct Quadratic<T: FloatExt> {
+pub struct Quadratic<T: FloatExt, S: Seed = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -27,6 +31,8 @@ pub struct Quadratic<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> Quadratic<T> {
@@ -39,11 +45,27 @@ impl<T: FloatExt> Quadratic<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Quadratic<T> {
+impl<T: FloatExt> Quadratic<T, Deterministic> {
+  pub fn seeded(alpha: T, beta: T, gamma: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    Self {
+      alpha,
+      beta,
+      gamma,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Quadratic<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -66,7 +88,9 @@ impl<T: FloatExt> ProcessExt<T> for Quadratic<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Quadratic output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let xi = prev;

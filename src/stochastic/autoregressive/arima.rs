@@ -6,7 +6,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -17,7 +20,7 @@ use crate::traits::ProcessExt;
 /// \]
 /// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
 /// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
-pub struct ARIMA<T: FloatExt> {
+pub struct ARIMA<T: FloatExt, S: Seed = Unseeded> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
   pub ar_coefs: Array1<T>,
   /// MA coefficients (\(\theta_1,\dots,\theta_q\)) as an Array1
@@ -28,7 +31,8 @@ pub struct ARIMA<T: FloatExt> {
   pub sigma: T,
   /// Final length of time series
   pub n: usize,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> ARIMA<T> {
@@ -41,18 +45,46 @@ impl<T: FloatExt> ARIMA<T> {
       d,
       sigma,
       n,
-      wn: Wn::new(n, None, Some(sigma)),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for ARIMA<T> {
+impl<T: FloatExt> ARIMA<T, Deterministic> {
+  /// Create a new ARIMA model with a deterministic seed for reproducible output.
+  pub fn seeded(
+    ar_coefs: Array1<T>,
+    ma_coefs: Array1<T>,
+    d: usize,
+    sigma: T,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    assert!(sigma > T::zero(), "ARIMA requires sigma > 0");
+    Self {
+      ar_coefs,
+      ma_coefs,
+      d,
+      sigma,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for ARIMA<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let p = self.ar_coefs.len();
     let q = self.ma_coefs.len();
-    let noise = self.wn.sample();
+    let mut noise = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = noise.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), self.sigma, &mut seed);
+      normal.fill_slice_fast(slice);
+    }
     let mut arma_series = Array1::<T>::zeros(self.n);
 
     // Single-pass ARMA(p,q) recursion with shared noise:
@@ -85,7 +117,7 @@ impl<T: FloatExt> ProcessExt<T> for ARIMA<T> {
   }
 }
 
-impl<T: FloatExt> ARIMA<T> {
+impl<T: FloatExt, S: Seed> ARIMA<T, S> {
   /// Inverse differencing once, converting Y into X:
   /// X[0] = Y[0],  X[t] = X[t-1] + Y[t], for t=1..(n-1).
   fn inverse_difference(y: &Array1<T>) -> Array1<T> {

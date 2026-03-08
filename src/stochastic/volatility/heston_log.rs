@@ -12,10 +12,14 @@
 //!
 use ndarray::Array1;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct HestonLog<T: FloatExt> {
+pub struct HestonLog<T: FloatExt, S: Seed = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -42,6 +46,8 @@ pub struct HestonLog<T: FloatExt> {
   pub t: Option<T>,
   /// Use symmetric (abs) instead of truncation (max(0)) for variance
   pub use_sym: Option<bool>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> HestonLog<T> {
@@ -86,9 +92,60 @@ impl<T: FloatExt> HestonLog<T> {
       v0,
       t,
       use_sym,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T: FloatExt> HestonLog<T, Deterministic> {
+  pub fn seeded(
+    mu: Option<T>,
+    b: Option<T>,
+    r: Option<T>,
+    r_f: Option<T>,
+    kappa: T,
+    theta: T,
+    xi: T,
+    rho: T,
+    n: usize,
+    s0: Option<T>,
+    v0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    assert!(kappa >= T::zero(), "kappa must be >= 0");
+    assert!(theta >= T::zero(), "theta must be >= 0");
+    assert!(xi >= T::zero(), "xi must be >= 0");
+    assert!(
+      rho >= -T::one() && rho <= T::one(),
+      "rho must be in [-1, 1]"
+    );
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be >= 0");
+    }
+
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      kappa,
+      theta,
+      xi,
+      rho,
+      n,
+      s0,
+      v0,
+      t,
+      use_sym,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> HestonLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -100,10 +157,11 @@ impl<T: FloatExt> HestonLog<T> {
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for HestonLog<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for HestonLog<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
+    let mut seed = self.seed;
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -125,8 +183,10 @@ impl<T: FloatExt> ProcessExt<T> for HestonLog<T> {
     let mut dws = vec![T::zero(); n_increments];
     let mut z = vec![T::zero(); n_increments];
     let mut dwv = vec![T::zero(); n_increments];
-    T::fill_standard_normal_scaled_slice(&mut dws, sqrt_dt);
-    T::fill_standard_normal_scaled_slice(&mut z, sqrt_dt);
+    let n1 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    let n2 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    n1.fill_slice_fast(&mut dws);
+    n2.fill_slice_fast(&mut z);
     let corr_scale = (T::one() - self.rho * self.rho).sqrt();
     for i in 0..n_increments {
       dwv[i] = self.rho * dws[i] + corr_scale * z[i];

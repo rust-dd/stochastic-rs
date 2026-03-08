@@ -8,10 +8,14 @@ use ndarray::Array1;
 use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct NIG<T: FloatExt> {
+pub struct NIG<T: FloatExt, S: Seed = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Diffusion / noise scale parameter.
@@ -24,6 +28,7 @@ pub struct NIG<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  pub seed: S,
 }
 
 impl<T: FloatExt> NIG<T> {
@@ -36,16 +41,34 @@ impl<T: FloatExt> NIG<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T: FloatExt> NIG<T, Deterministic> {
+  pub fn seeded(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(kappa > T::zero(), "kappa must be positive");
+    Self {
+      theta,
+      sigma,
+      kappa,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> NIG<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for NIG<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for NIG<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -62,11 +85,13 @@ impl<T: FloatExt> ProcessExt<T> for NIG<T> {
     // For NIG: G_dt ~ IG(mean=dt, shape=dt^2/kappa).
     let shape = dt * dt / self.kappa;
     let ig_dist = SimdInverseGauss::new(dt, shape);
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let mut rng = seed.rng();
     let ig = Array1::random_using(self.n - 1, &ig_dist, &mut rng);
     let mut z = Array1::<T>::zeros(self.n - 1);
     let z_slice = z.as_slice_mut().expect("NIG normals must be contiguous");
-    T::fill_standard_normal_slice(z_slice);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+    normal.fill_slice_fast(z_slice);
 
     for i in 1..self.n {
       nig[i] = nig[i - 1] + self.theta * ig[i - 1] + self.sigma * ig[i - 1].sqrt() * z[i - 1]

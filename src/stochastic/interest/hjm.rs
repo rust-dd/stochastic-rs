@@ -6,6 +6,10 @@
 //!
 use ndarray::Array1;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
@@ -15,7 +19,7 @@ use crate::traits::ProcessExt;
 ///
 /// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
 /// does not enforce the no-arbitrage HJM drift restriction between `alpha` and `sigma`.
-pub struct HJM<T: FloatExt> {
+pub struct HJM<T: FloatExt, S: Seed = Unseeded> {
   /// Model coefficient / user-supplied drift term.
   pub a: Fn1D<T>,
   /// Model coefficient / user-supplied diffusion term.
@@ -40,6 +44,8 @@ pub struct HJM<T: FloatExt> {
   pub f0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> HJM<T> {
@@ -70,11 +76,46 @@ impl<T: FloatExt> HJM<T> {
       p0,
       f0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for HJM<T> {
+impl<T: FloatExt> HJM<T, Deterministic> {
+  pub fn seeded(
+    a: impl Into<Fn1D<T>>,
+    b: impl Into<Fn1D<T>>,
+    p: impl Into<Fn2D<T>>,
+    q: impl Into<Fn2D<T>>,
+    v: impl Into<Fn2D<T>>,
+    alpha: impl Into<Fn2D<T>>,
+    sigma: impl Into<Fn2D<T>>,
+    n: usize,
+    r0: Option<T>,
+    p0: Option<T>,
+    f0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    Self {
+      a: a.into(),
+      b: b.into(),
+      p: p.into(),
+      q: q.into(),
+      v: v.into(),
+      alpha: alpha.into(),
+      sigma: sigma.into(),
+      n,
+      r0,
+      p0,
+      f0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for HJM<T, S> {
   type Output = [Array1<T>; 3];
 
   fn sample(&self) -> Self::Output {
@@ -95,26 +136,30 @@ impl<T: FloatExt> ProcessExt<T> for HJM<T> {
     let n_increments = self.n - 1;
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let sqrt_dt = dt.sqrt();
+    let mut seed = self.seed;
     {
       let r_slice = r
         .as_slice_mut()
         .expect("HJM short-rate path must be contiguous in memory");
       let r_tail = &mut r_slice[1..];
-      T::fill_standard_normal_scaled_slice(r_tail, sqrt_dt);
+      let normal_r = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal_r.fill_slice_fast(r_tail);
     }
     {
       let p_slice = p
         .as_slice_mut()
         .expect("HJM bond-price path must be contiguous in memory");
       let p_tail = &mut p_slice[1..];
-      T::fill_standard_normal_scaled_slice(p_tail, sqrt_dt);
+      let normal_p = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal_p.fill_slice_fast(p_tail);
     }
     {
       let f_slice = f_
         .as_slice_mut()
         .expect("HJM forward-rate path must be contiguous in memory");
       let f_tail = &mut f_slice[1..];
-      T::fill_standard_normal_scaled_slice(f_tail, sqrt_dt);
+      let normal_f = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal_f.fill_slice_fast(f_tail);
     }
 
     let t_max = self.t.unwrap_or(T::one());

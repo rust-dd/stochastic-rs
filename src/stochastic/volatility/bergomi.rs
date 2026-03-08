@@ -7,11 +7,14 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Bergomi<T: FloatExt> {
+pub struct Bergomi<T: FloatExt, S: Seed = Unseeded> {
   /// Volatility-of-volatility / tail-thickness parameter.
   pub nu: T,
   /// Initial variance/volatility level.
@@ -26,6 +29,8 @@ pub struct Bergomi<T: FloatExt> {
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   cgns: CGNS<T>,
 }
 
@@ -39,17 +44,35 @@ impl<T: FloatExt> Bergomi<T> {
       rho,
       n,
       t,
+      seed: Unseeded,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for Bergomi<T> {
+impl<T: FloatExt> Bergomi<T, Deterministic> {
+  pub fn seeded(nu: T, v0: Option<T>, s0: Option<T>, r: T, rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
+    Self {
+      nu,
+      v0,
+      s0,
+      r,
+      rho,
+      n,
+      t,
+      seed: Deterministic(seed),
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for Bergomi<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = &self.cgns.sample();
+    let mut seed = self.seed;
+    let [cgn1, cgn2] = &self.cgns.sample_impl(seed.derive());
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::<T>::zeros(self.n);

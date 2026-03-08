@@ -7,12 +7,16 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
-pub struct FellerLogistic<T: FloatExt> {
+pub struct FellerLogistic<T: FloatExt, S: Seed = Unseeded> {
   /// Mean-reversion speed parameter.
   pub kappa: T,
   /// Long-run target level / model location parameter.
@@ -27,6 +31,8 @@ pub struct FellerLogistic<T: FloatExt> {
   pub t: Option<T>,
   /// If true, reflect at 0; otherwise clamp at 0
   pub use_sym: Option<bool>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> FellerLogistic<T> {
@@ -47,11 +53,36 @@ impl<T: FloatExt> FellerLogistic<T> {
       x0,
       t,
       use_sym,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FellerLogistic<T> {
+impl<T: FloatExt> FellerLogistic<T, Deterministic> {
+  pub fn seeded(
+    kappa: T,
+    theta: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+    seed: u64,
+  ) -> Self {
+    Self {
+      kappa,
+      theta,
+      sigma,
+      n,
+      x0,
+      t,
+      use_sym,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FellerLogistic<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -74,7 +105,9 @@ impl<T: FloatExt> ProcessExt<T> for FellerLogistic<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Feller output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let xi = prev.max(T::zero());

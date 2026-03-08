@@ -14,10 +14,9 @@
 //! |---|---|
 //! | [`SimdRng::new()`] | globally-unique automatic seed (thread-safe atomic counter) |
 //! | [`SimdRng::from_seed(seed)`] | deterministic – same `seed` ⇒ same stream |
-//! | [`rng()`] | shorthand for `SimdRng::new()` |
 //!
-//! [`derive_seed`] splits a parent seed into child seeds for
-//! propagating determinism across composed distributions and processes.
+//! Use the [`Seed`] trait ([`Unseeded`] / [`Deterministic`]) to propagate
+//! determinism through composed distributions and processes at zero cost.
 //!
 //! $$
 //! u_{k+1}=F(u_k),\quad x_k = \mathrm{transform}(u_k)
@@ -200,14 +199,6 @@ pub fn rng() -> SimdRng {
   SimdRng::new()
 }
 
-/// Creates a new [`SimdRng`] deterministically seeded from `seed`.
-///
-/// Two calls with the same `seed` produce identical streams.
-#[inline]
-pub fn rng_seeded(seed: u64) -> SimdRng {
-  SimdRng::from_seed(seed)
-}
-
 /// Compile-time seed strategy for zero-overhead determinism control.
 ///
 /// Two built-in implementations:
@@ -260,22 +251,8 @@ impl Seed for Deterministic {
 }
 
 /// Derives a child seed from a mutable parent seed.
-///
-/// Each call advances `state` and returns a new well-mixed value,
-/// so successive calls yield independent child seeds:
-///
-/// ```
-/// # use stochastic_rs::simd_rng::derive_seed;
-/// let mut parent = 42u64;
-/// let child_a = derive_seed(&mut parent);
-/// let child_b = derive_seed(&mut parent);
-/// assert_ne!(child_a, child_b);
-/// ```
-///
-/// This is the recommended way to propagate determinism through
-/// nested distributions and processes without sharing RNG state.
 #[inline]
-pub fn derive_seed(state: &mut u64) -> u64 {
+pub(crate) fn derive_seed(state: &mut u64) -> u64 {
   splitmix64_next(state)
 }
 

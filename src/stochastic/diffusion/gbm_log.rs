@@ -9,10 +9,14 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct GBMLog<T: FloatExt> {
+pub struct GBMLog<T: FloatExt, S: Seed = Unseeded> {
   /// Drift rate
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -29,6 +33,8 @@ pub struct GBMLog<T: FloatExt> {
   pub s0: Option<T>,
   /// Total simulation horizon (defaults to 1)
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> GBMLog<T> {
@@ -53,9 +59,40 @@ impl<T: FloatExt> GBMLog<T> {
       n,
       s0,
       t,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T: FloatExt> GBMLog<T, Deterministic> {
+  pub fn seeded(
+    mu: Option<T>,
+    b: Option<T>,
+    r: Option<T>,
+    r_f: Option<T>,
+    sigma: T,
+    n: usize,
+    s0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    assert!(sigma >= T::zero(), "sigma must be >= 0");
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      sigma,
+      n,
+      s0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> GBMLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -72,7 +109,7 @@ impl<T: FloatExt> GBMLog<T> {
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for GBMLog<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for GBMLog<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -99,7 +136,9 @@ impl<T: FloatExt> ProcessExt<T> for GBMLog<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("GBMLog output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let log_inc = drift_ln + self.sigma * *z;

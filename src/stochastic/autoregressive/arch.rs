@@ -6,7 +6,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -22,14 +25,15 @@ use crate::traits::ProcessExt;
 /// - `alpha`: Array of ARCH coefficients.
 /// - `n`: Number of observations.
 /// - `m`: Optional batch size.
-pub struct ARCH<T: FloatExt> {
+pub struct ARCH<T: FloatExt, S: Seed = Unseeded> {
   /// Omega (constant term in variance)
   pub omega: T,
   /// Coefficients alpha_i
   pub alpha: Array1<T>,
   /// Length of series
   pub n: usize,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> ARCH<T> {
@@ -40,17 +44,36 @@ impl<T: FloatExt> ARCH<T> {
       omega,
       alpha,
       n,
-      wn: Wn::new(n, None, None),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for ARCH<T> {
+impl<T: FloatExt> ARCH<T, Deterministic> {
+  /// Create a new ARCH model with a deterministic seed for reproducible output.
+  pub fn seeded(omega: T, alpha: Array1<T>, n: usize, seed: u64) -> Self {
+    assert!(omega > T::zero(), "ARCH requires omega > 0");
+    Self {
+      omega,
+      alpha,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for ARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let m = self.alpha.len();
-    let z = self.wn.sample();
+    let mut z = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = z.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+      normal.fill_slice_fast(slice);
+    }
     let mut x = Array1::<T>::zeros(self.n);
     let var_floor = T::from_f64_fast(1e-12);
 

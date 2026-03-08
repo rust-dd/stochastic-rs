@@ -15,11 +15,14 @@ use rand_distr::Distribution;
 
 use crate::distributions::normal::SimdNormal;
 use crate::distributions::poisson::SimdPoisson;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BatesSVJ<T: FloatExt> {
+pub struct BatesSVJ<T: FloatExt, S: Seed = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -52,6 +55,8 @@ pub struct BatesSVJ<T: FloatExt> {
   pub t: Option<T>,
   /// Use symmetric (abs) instead of truncation (max(0)) for variance positivity
   pub use_sym: Option<bool>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   cgns: CGNS<T>,
 }
 
@@ -99,10 +104,64 @@ impl<T: FloatExt> BatesSVJ<T> {
       v0,
       t,
       use_sym,
+      seed: Unseeded,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
+}
 
+impl<T: FloatExt> BatesSVJ<T, Deterministic> {
+  pub fn seeded(
+    mu: Option<T>,
+    b: Option<T>,
+    r: Option<T>,
+    r_f: Option<T>,
+    lambda: T,
+    nu: T,
+    omega: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    rho: T,
+    n: usize,
+    s0: Option<T>,
+    v0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    assert!(
+      rho >= -T::one() && rho <= T::one(),
+      "rho must be in [-1, 1]"
+    );
+    assert!(omega >= T::zero(), "omega must be >= 0");
+    assert!(lambda >= T::zero(), "lambda must be >= 0");
+
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      lambda,
+      nu,
+      omega,
+      alpha,
+      beta,
+      sigma,
+      rho,
+      n,
+      s0,
+      v0,
+      t,
+      use_sym,
+      seed: Deterministic(seed),
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> BatesSVJ<T, S> {
   #[inline]
   fn kappa_j(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp() - T::one()
@@ -119,12 +178,13 @@ impl<T: FloatExt> BatesSVJ<T> {
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for BatesSVJ<T> {
+impl<T: FloatExt, S: Seed> ProcessExt<T> for BatesSVJ<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
+    let mut seed = self.seed;
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = &self.cgns.sample();
+    let [cgn1, cgn2] = &self.cgns.sample_impl(seed.derive());
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
@@ -138,7 +198,7 @@ impl<T: FloatExt> ProcessExt<T> for BatesSVJ<T> {
     let drift = self.drift();
     let kappa_j = self.kappa_j();
 
-    let mut rng = crate::simd_rng::rng();
+    let mut rng = seed.rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(

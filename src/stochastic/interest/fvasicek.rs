@@ -6,11 +6,14 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::diffusion::fou::FOU;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FVasicek<T: FloatExt> {
+pub struct FVasicek<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Long-run target level / model location parameter.
@@ -25,8 +28,10 @@ pub struct FVasicek<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   /// Model parameter controlling process dynamics.
-  pub fou: FOU<T>,
+  pub fou: FOU<T, S>,
 }
 
 impl<T: FloatExt> FVasicek<T> {
@@ -39,12 +44,31 @@ impl<T: FloatExt> FVasicek<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
       fou: FOU::new(hurst, theta, mu, sigma, n, x0, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FVasicek<T> {
+impl<T: FloatExt> FVasicek<T, Deterministic> {
+  pub fn seeded(hurst: T, theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    let mut s = Deterministic(seed);
+    let child = s.derive();
+    Self {
+      hurst,
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+      fou: FOU::seeded(hurst, theta, mu, sigma, n, x0, t, child.0),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FVasicek<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {

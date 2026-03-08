@@ -7,17 +7,22 @@
 use ndarray::Array1;
 
 use super::cir::CIR;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct CIR2F<T: FloatExt> {
+pub struct CIR2F<T: FloatExt, S: Seed = Unseeded> {
   /// Model parameter controlling process dynamics.
-  pub x: CIR<T>,
+  pub x: CIR<T, S>,
   /// Model parameter controlling process dynamics.
-  pub y: CIR<T>,
+  pub y: CIR<T, S>,
   /// Autoregressive coefficient vector.
   pub phi: Fn1D<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> CIR2F<T> {
@@ -33,11 +38,35 @@ impl<T: FloatExt> CIR2F<T> {
       x,
       y,
       phi: phi.into(),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CIR2F<T> {
+impl<T: FloatExt> CIR2F<T, Deterministic> {
+  pub fn seeded(
+    x: CIR<T, Deterministic>,
+    y: CIR<T, Deterministic>,
+    phi: impl Into<Fn1D<T>>,
+    seed: u64,
+  ) -> Self {
+    assert_eq!(x.n, y.n, "x and y CIR factors must use the same n");
+    if let (Some(tx), Some(ty)) = (x.t, y.t) {
+      assert!(
+        (tx - ty).abs() <= T::from_f64_fast(1e-12),
+        "x and y CIR factors must use the same time horizon"
+      );
+    }
+    Self {
+      x,
+      y,
+      phi: phi.into(),
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CIR2F<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -6,11 +6,14 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FGBM<T: FloatExt> {
+pub struct FGBM<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Drift / long-run mean-level parameter.
@@ -23,6 +26,8 @@ pub struct FGBM<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   fgn: FGN<T>,
 }
 
@@ -38,17 +43,37 @@ impl<T: FloatExt> FGBM<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
       fgn: FGN::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FGBM<T> {
+impl<T: FloatExt> FGBM<T, Deterministic> {
+  #[must_use]
+  pub fn seeded(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+
+    Self {
+      hurst,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+      fgn: FGN::new(hurst, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FGBM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
+    let mut seed = self.seed;
     let dt = self.fgn.dt();
-    let fgn = &self.fgn.sample();
+    let fgn = self.fgn.sample_cpu_impl(seed.derive());
 
     let mut fgbm = Array1::<T>::zeros(self.n);
     fgbm[0] = self.x0.unwrap_or(T::zero());

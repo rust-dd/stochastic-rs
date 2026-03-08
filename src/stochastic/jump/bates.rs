@@ -7,12 +7,15 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Bates1996<T, D>
+pub struct Bates1996<T, D, S: Seed = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -34,6 +37,7 @@ where
   pub use_sym: Option<bool>,
   cgns: CGNS<T>,
   pub cpoisson: CompoundPoisson<T, D>,
+  pub seed: S,
 }
 
 impl<T, D> Bates1996<T, D>
@@ -81,9 +85,67 @@ where
       use_sym,
       cgns: CGNS::new(rho, n - 1, t),
       cpoisson,
+      seed: Unseeded,
     }
   }
+}
 
+impl<T, D> Bates1996<T, D, Deterministic>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  pub fn seeded(
+    mu: Option<T>,
+    b: Option<T>,
+    r: Option<T>,
+    r_f: Option<T>,
+    lambda: T,
+    k: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    rho: T,
+    n: usize,
+    s0: Option<T>,
+    v0: Option<T>,
+    t: Option<T>,
+    use_sym: Option<bool>,
+    cpoisson: CompoundPoisson<T, D>,
+    seed: u64,
+  ) -> Self {
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
+    Self {
+      mu,
+      b,
+      r,
+      r_f,
+      lambda,
+      k,
+      alpha,
+      beta,
+      sigma,
+      rho,
+      n,
+      s0,
+      v0,
+      t,
+      use_sym,
+      cgns: CGNS::new(rho, n - 1, t),
+      cpoisson,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T, D, S: Seed> Bates1996<T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
   #[inline]
   fn effective_drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -95,7 +157,7 @@ where
   }
 }
 
-impl<T, D> ProcessExt<T> for Bates1996<T, D>
+impl<T, D, S: Seed> ProcessExt<T> for Bates1996<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

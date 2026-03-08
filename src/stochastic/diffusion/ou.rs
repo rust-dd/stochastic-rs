@@ -7,11 +7,15 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct OU<T: FloatExt> {
+pub struct OU<T: FloatExt, S: Seed = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Drift / long-run mean-level parameter.
@@ -24,6 +28,8 @@ pub struct OU<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> OU<T> {
@@ -35,11 +41,26 @@ impl<T: FloatExt> OU<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for OU<T> {
+impl<T: FloatExt> OU<T, Deterministic> {
+  pub fn seeded(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    Self {
+      theta,
+      mu,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for OU<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -63,7 +84,9 @@ impl<T: FloatExt> ProcessExt<T> for OU<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("OU output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let next = prev + drift_scale * (self.mu - prev) + diff_scale * *z;

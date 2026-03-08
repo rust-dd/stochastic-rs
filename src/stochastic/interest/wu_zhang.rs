@@ -8,10 +8,14 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct WuZhangD<T: FloatExt> {
+pub struct WuZhangD<T: FloatExt, S: Seed = Unseeded> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
   /// Mean reversion speed for each dimension's volatility.
@@ -30,6 +34,8 @@ pub struct WuZhangD<T: FloatExt> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> WuZhangD<T> {
@@ -112,11 +118,98 @@ impl<T: FloatExt> WuZhangD<T> {
       xn,
       t,
       n,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
+impl<T: FloatExt> WuZhangD<T, Deterministic> {
+  pub fn seeded(
+    alpha: Array1<T>,
+    beta: Array1<T>,
+    nu: Array1<T>,
+    lambda: Array1<T>,
+    x0: Array1<T>,
+    v0: Array1<T>,
+    xn: usize,
+    t: Option<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    assert_eq!(
+      alpha.len(),
+      xn,
+      "alpha length ({}) must match xn ({})",
+      alpha.len(),
+      xn
+    );
+    assert_eq!(
+      beta.len(),
+      xn,
+      "beta length ({}) must match xn ({})",
+      beta.len(),
+      xn
+    );
+    assert_eq!(
+      nu.len(),
+      xn,
+      "nu length ({}) must match xn ({})",
+      nu.len(),
+      xn
+    );
+    assert_eq!(
+      lambda.len(),
+      xn,
+      "lambda length ({}) must match xn ({})",
+      lambda.len(),
+      xn
+    );
+    assert_eq!(
+      x0.len(),
+      xn,
+      "x0 length ({}) must match xn ({})",
+      x0.len(),
+      xn
+    );
+    assert_eq!(
+      v0.len(),
+      xn,
+      "v0 length ({}) must match xn ({})",
+      v0.len(),
+      xn
+    );
+    assert!(
+      alpha.iter().all(|&x| x >= T::zero()),
+      "alpha entries must be non-negative"
+    );
+    assert!(
+      beta.iter().all(|&x| x >= T::zero()),
+      "beta entries must be non-negative"
+    );
+    assert!(
+      nu.iter().all(|&x| x >= T::zero()),
+      "nu entries must be non-negative"
+    );
+    assert!(
+      v0.iter().all(|&x| x >= T::zero()),
+      "v0 entries must be non-negative"
+    );
+    Self {
+      alpha,
+      beta,
+      nu,
+      lambda,
+      x0,
+      v0,
+      xn,
+      t,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for WuZhangD<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
@@ -126,6 +219,7 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
       T::zero()
     };
     let sqrt_dt = dt.sqrt();
+    let mut seed = self.seed;
     let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
     let (mut f_rows, mut v_rows) = fv.view_mut().split_at(Axis(0), self.xn);
     for i in 0..self.xn {
@@ -147,11 +241,13 @@ impl<T: FloatExt> ProcessExt<T> for WuZhangD<T> {
 
       {
         let f_tail = &mut f_slice[1..];
-        T::fill_standard_normal_scaled_slice(f_tail, sqrt_dt);
+        let normal_f = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+        normal_f.fill_slice_fast(f_tail);
       }
       {
         let v_tail = &mut v_slice[1..];
-        T::fill_standard_normal_scaled_slice(v_tail, sqrt_dt);
+        let normal_v = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+        normal_v.fill_slice_fast(v_tail);
       }
 
       for j in 1..self.n {

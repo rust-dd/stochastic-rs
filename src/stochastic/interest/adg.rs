@@ -7,11 +7,15 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct ADG<T: FloatExt> {
+pub struct ADG<T: FloatExt, S: Seed = Unseeded> {
   /// Jump-size adjustment / shape parameter.
   pub k: Fn1D<T>,
   /// Long-run target level / model location parameter.
@@ -32,6 +36,8 @@ pub struct ADG<T: FloatExt> {
   pub x0: Array1<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> ADG<T> {
@@ -72,11 +78,56 @@ impl<T: FloatExt> ADG<T> {
       xn,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for ADG<T> {
+impl<T: FloatExt> ADG<T, Deterministic> {
+  pub fn seeded(
+    k: impl Into<Fn1D<T>>,
+    theta: impl Into<Fn1D<T>>,
+    sigma: Array1<T>,
+    phi: impl Into<Fn1D<T>>,
+    b: impl Into<Fn1D<T>>,
+    c: impl Into<Fn1D<T>>,
+    n: usize,
+    xn: usize,
+    x0: Array1<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert_eq!(
+      sigma.len(),
+      xn,
+      "sigma length ({}) must match xn ({})",
+      sigma.len(),
+      xn
+    );
+    assert_eq!(
+      x0.len(),
+      xn,
+      "x0 length ({}) must match xn ({})",
+      x0.len(),
+      xn
+    );
+    Self {
+      k: k.into(),
+      theta: theta.into(),
+      sigma,
+      phi: phi.into(),
+      b: b.into(),
+      c: c.into(),
+      n,
+      xn,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for ADG<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
@@ -86,6 +137,7 @@ impl<T: FloatExt> ProcessExt<T> for ADG<T> {
       T::zero()
     };
     let sqrt_dt = dt.sqrt();
+    let mut seed = self.seed;
 
     let mut adg = Array2::<T>::zeros((self.xn, self.n));
     for i in 0..self.xn {
@@ -99,7 +151,8 @@ impl<T: FloatExt> ProcessExt<T> for ADG<T> {
       }
 
       let tail = &mut row_slice[1..];
-      T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal.fill_slice_fast(tail);
 
       for j in 1..self.n {
         let t = T::from_usize_(j) * dt;

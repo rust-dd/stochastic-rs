@@ -7,11 +7,15 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Merton<T, D>
+pub struct Merton<T, D, S: Seed = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -24,6 +28,7 @@ where
   pub x0: Option<T>,
   pub t: Option<T>,
   pub cpoisson: CompoundPoisson<T, D>,
+  pub seed: S,
 }
 
 impl<T, D> Merton<T, D>
@@ -50,11 +55,42 @@ where
       x0,
       t,
       cpoisson,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T, D> ProcessExt<T> for Merton<T, D>
+impl<T, D> Merton<T, D, Deterministic>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  pub fn seeded(
+    alpha: T,
+    sigma: T,
+    lambda: T,
+    theta: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    cpoisson: CompoundPoisson<T, D>,
+    seed: u64,
+  ) -> Self {
+    Self {
+      alpha,
+      sigma,
+      lambda,
+      theta,
+      n,
+      x0,
+      t,
+      cpoisson,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T, D, S: Seed> ProcessExt<T> for Merton<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -68,10 +104,12 @@ where
       T::zero()
     };
     let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
+    let sqrt_dt = dt.sqrt();
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
-      let sqrt_dt = dt.sqrt();
-      T::fill_standard_normal_scaled_slice(gn_slice, sqrt_dt);
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal.fill_slice_fast(gn_slice);
     }
 
     let mut merton = Array1::<T>::zeros(self.n);

@@ -6,11 +6,14 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct SABR<T: FloatExt> {
+pub struct SABR<T: FloatExt, S: Seed = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -25,6 +28,8 @@ pub struct SABR<T: FloatExt> {
   pub v0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   cgns: CGNS<T>,
 }
 
@@ -55,17 +60,53 @@ impl<T: FloatExt> SABR<T> {
       f0,
       v0,
       t,
+      seed: Unseeded,
       cgns: CGNS::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for SABR<T> {
+impl<T: FloatExt> SABR<T, Deterministic> {
+  pub fn seeded(
+    alpha: T,
+    beta: T,
+    rho: T,
+    n: usize,
+    f0: Option<T>,
+    v0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(
+      beta >= T::zero() && beta <= T::one(),
+      "beta must be in [0, 1] for SABR"
+    );
+    assert!(alpha >= T::zero(), "alpha must be non-negative");
+    if let Some(v0) = v0 {
+      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    }
+
+    Self {
+      alpha,
+      beta,
+      rho,
+      n,
+      f0,
+      v0,
+      t,
+      seed: Deterministic(seed),
+      cgns: CGNS::new(rho, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for SABR<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = &self.cgns.sample();
+    let mut seed = self.seed;
+    let [cgn1, cgn2] = &self.cgns.sample_impl(seed.derive());
 
     let mut f_ = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
@@ -99,7 +140,7 @@ mod tests {
   }
 }
 
-impl<T: FloatExt> SABR<T> {
+impl<T: FloatExt, S: Seed> SABR<T, S> {
   /// Calculate the Malliavin derivative of the SABR model
   ///
   /// The Malliavin derivative of the volaility process in the SABR model is given by:

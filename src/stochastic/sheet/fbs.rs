@@ -16,10 +16,13 @@ use num_complex::Complex;
 
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FBS<T: FloatExt> {
+pub struct FBS<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Number of parallel paths / first-grid resolution.
@@ -28,15 +31,36 @@ pub struct FBS<T: FloatExt> {
   pub n: usize,
   /// Risk-free rate / drift adjustment parameter.
   pub r: T,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> FBS<T> {
   pub fn new(hurst: T, m: usize, n: usize, r: T) -> Self {
-    Self { hurst, m, n, r }
+    Self {
+      hurst,
+      m,
+      n,
+      r,
+      seed: Unseeded,
+    }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FBS<T> {
+impl<T: FloatExt> FBS<T, Deterministic> {
+  /// Create a new FBS model with a deterministic seed for reproducible output.
+  pub fn seeded(hurst: T, m: usize, n: usize, r: T, seed: u64) -> Self {
+    Self {
+      hurst,
+      m,
+      n,
+      r,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FBS<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Array2<T> {
@@ -83,8 +107,9 @@ impl<T: FloatExt> ProcessExt<T> for FBS<T> {
 
     let lam = fft_freq.mapv(|c| (c.re / scale).max(T::zero()).sqrt());
 
-    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one());
-    let mut rng = crate::simd_rng::rng();
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &mut seed);
+    let mut rng = seed.rng();
     let z: Array2<Complex<T>> = Array2::random_using(
       (big_m, big_n),
       ComplexDistribution::new(&normal, &normal),
@@ -109,8 +134,11 @@ impl<T: FloatExt> ProcessExt<T> for FBS<T> {
     let shift = field[[0, 0]];
     field.mapv_inplace(|v| v - shift);
 
-    let z1 = T::normal_array(1, T::zero(), T::one())[0];
-    let z2 = T::normal_array(1, T::zero(), T::one())[0];
+    let normal_scalar = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+    let mut z_buf = [T::zero(); 2];
+    normal_scalar.fill_slice_fast(&mut z_buf);
+    let z1 = z_buf[0];
+    let z2 = z_buf[1];
 
     let ty_scaled = &ty * z1;
     let tx_scaled = &tx * z2;
@@ -124,7 +152,7 @@ impl<T: FloatExt> ProcessExt<T> for FBS<T> {
   }
 }
 
-impl<T: FloatExt> FBS<T> {
+impl<T: FloatExt, S: Seed> FBS<T, S> {
   fn rho(x: (T, T), y: (T, T), r: T, alpha: T) -> (T, T, T) {
     let one = T::one();
     let two = T::from_usize_(2);

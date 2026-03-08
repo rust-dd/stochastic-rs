@@ -6,6 +6,9 @@
 //!
 use ndarray::Array1;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -13,7 +16,7 @@ use crate::traits::ProcessExt;
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
-pub struct FouqueOU2D<T: FloatExt> {
+pub struct FouqueOU2D<T: FloatExt, S: Seed = Unseeded> {
   /// Mean-reversion speed parameter.
   pub kappa: T,
   /// Long-run target level / model location parameter.
@@ -30,6 +33,8 @@ pub struct FouqueOU2D<T: FloatExt> {
   pub y0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> FouqueOU2D<T> {
@@ -54,14 +59,44 @@ impl<T: FloatExt> FouqueOU2D<T> {
       x0,
       y0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for FouqueOU2D<T> {
+impl<T: FloatExt> FouqueOU2D<T, Deterministic> {
+  pub fn seeded(
+    kappa: T,
+    theta: T,
+    epsilon: T,
+    alpha: T,
+    n: usize,
+    x0: Option<T>,
+    y0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(epsilon > T::zero(), "epsilon must be positive");
+
+    Self {
+      kappa,
+      theta,
+      epsilon,
+      alpha,
+      n,
+      x0,
+      y0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for FouqueOU2D<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> [Array1<T>; 2] {
+    let mut seed = self.seed;
     let mut x = Array1::<T>::zeros(self.n);
     let mut y = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -79,8 +114,19 @@ impl<T: FloatExt> ProcessExt<T> for FouqueOU2D<T> {
     let sqrt_dt = dt.sqrt();
     let mut gn_x = vec![T::zero(); n_increments];
     let mut gn_y = vec![T::zero(); n_increments];
-    T::fill_standard_normal_scaled_slice(&mut gn_x, sqrt_dt);
-    T::fill_standard_normal_scaled_slice(&mut gn_y, sqrt_dt);
+
+    let nx = crate::distributions::normal::SimdNormal::<T>::from_seed_source(
+      T::zero(),
+      sqrt_dt,
+      &mut seed,
+    );
+    let ny = crate::distributions::normal::SimdNormal::<T>::from_seed_source(
+      T::zero(),
+      sqrt_dt,
+      &mut seed,
+    );
+    nx.fill_slice_fast(&mut gn_x);
+    ny.fill_slice_fast(&mut gn_y);
 
     let eps = self.epsilon;
     let sqrt_eps_inv = T::one() / eps.sqrt();

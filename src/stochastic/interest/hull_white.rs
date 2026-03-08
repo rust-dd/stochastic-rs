@@ -7,11 +7,15 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct HullWhite<T: FloatExt> {
+pub struct HullWhite<T: FloatExt, S: Seed = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: Fn1D<T>,
   /// Model shape / loading parameter.
@@ -24,6 +28,8 @@ pub struct HullWhite<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> HullWhite<T> {
@@ -42,11 +48,34 @@ impl<T: FloatExt> HullWhite<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for HullWhite<T> {
+impl<T: FloatExt> HullWhite<T, Deterministic> {
+  pub fn seeded(
+    theta: impl Into<Fn1D<T>>,
+    alpha: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    Self {
+      theta: theta.into(),
+      alpha,
+      sigma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for HullWhite<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -69,7 +98,9 @@ impl<T: FloatExt> ProcessExt<T> for HullWhite<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("HullWhite output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for (k, z) in tail.iter_mut().enumerate() {
       let i = k + 1;

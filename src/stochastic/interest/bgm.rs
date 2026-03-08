@@ -7,10 +7,14 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BGM<T: FloatExt> {
+pub struct BGM<T: FloatExt, S: Seed = Unseeded> {
   /// Drift/volatility multiplier for each forward rate.
   pub lambda: Array1<T>,
   /// Initial forward rates for each path.
@@ -21,6 +25,8 @@ pub struct BGM<T: FloatExt> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> BGM<T> {
@@ -45,11 +51,39 @@ impl<T: FloatExt> BGM<T> {
       xn,
       t,
       n,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for BGM<T> {
+impl<T: FloatExt> BGM<T, Deterministic> {
+  pub fn seeded(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize, seed: u64) -> Self {
+    assert_eq!(
+      lambda.len(),
+      xn,
+      "lambda length ({}) must match xn ({})",
+      lambda.len(),
+      xn
+    );
+    assert_eq!(
+      x0.len(),
+      xn,
+      "x0 length ({}) must match xn ({})",
+      x0.len(),
+      xn
+    );
+    Self {
+      lambda,
+      x0,
+      xn,
+      t,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for BGM<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
@@ -68,6 +102,7 @@ impl<T: FloatExt> ProcessExt<T> for BGM<T> {
 
     let n_increments = self.n - 1;
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(n_increments)).sqrt();
+    let mut seed = self.seed;
 
     for i in 0..self.xn {
       let mut row = fwd.row_mut(i);
@@ -75,7 +110,8 @@ impl<T: FloatExt> ProcessExt<T> for BGM<T> {
         .as_slice_mut()
         .expect("BGM row must be contiguous in memory");
       let tail = &mut row_slice[1..];
-      T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal.fill_slice_fast(tail);
 
       for j in 1..self.n {
         let f_old = row_slice[j - 1];

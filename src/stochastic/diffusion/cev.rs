@@ -7,10 +7,14 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CEV<T: FloatExt> {
+pub struct CEV<T: FloatExt, S: Seed = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -23,6 +27,8 @@ pub struct CEV<T: FloatExt> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> CEV<T> {
@@ -34,11 +40,26 @@ impl<T: FloatExt> CEV<T> {
       n,
       x0,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CEV<T> {
+impl<T: FloatExt> CEV<T, Deterministic> {
+  pub fn seeded(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+    Self {
+      mu,
+      sigma,
+      gamma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CEV<T, S> {
   type Output = Array1<T>;
 
   /// Sample the CEV process
@@ -62,7 +83,9 @@ impl<T: FloatExt> ProcessExt<T> for CEV<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("CEV output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let next = prev + self.mu * prev * dt + diff_scale * prev.powf(self.gamma) * *z;
@@ -74,7 +97,7 @@ impl<T: FloatExt> ProcessExt<T> for CEV<T> {
   }
 }
 
-impl<T: FloatExt> CEV<T> {
+impl<T: FloatExt, S: Seed> CEV<T, S> {
   /// Calculate the Malliavin derivative of the CEV process
   ///
   /// The Malliavin derivative of the CEV process is given by
@@ -90,7 +113,9 @@ impl<T: FloatExt> CEV<T> {
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
       let sqrt_dt = dt.sqrt();
-      T::fill_standard_normal_scaled_slice(gn_slice, sqrt_dt);
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      normal.fill_slice_fast(gn_slice);
     }
     let cev = self.sample();
 

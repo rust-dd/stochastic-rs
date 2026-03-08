@@ -18,6 +18,9 @@
 use ndarray::Array1;
 use num_complex::Complex;
 
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -26,7 +29,7 @@ use crate::traits::ProcessExt;
 ///
 /// Source:
 /// - https://arxiv.org/abs/2406.18004
-pub struct CFOU<T: FloatExt> {
+pub struct CFOU<T: FloatExt, S: Seed = Unseeded> {
   /// Hurst exponent of the driving fractional Brownian motion.
   pub hurst: T,
   /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
@@ -43,6 +46,8 @@ pub struct CFOU<T: FloatExt> {
   pub x2_0: Option<T>,
   /// Total simulation horizon.
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
   fgn: FGN<T>,
 }
 
@@ -71,12 +76,45 @@ impl<T: FloatExt> CFOU<T> {
       x1_0,
       x2_0,
       t,
+      seed: Unseeded,
       fgn: FGN::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for CFOU<T> {
+impl<T: FloatExt> CFOU<T, Deterministic> {
+  #[must_use]
+  pub fn seeded(
+    hurst: T,
+    lambda: T,
+    omega: T,
+    a: T,
+    n: usize,
+    x1_0: Option<T>,
+    x2_0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    assert!(lambda > T::zero(), "lambda must be positive");
+    assert!(a > T::zero(), "a must be positive");
+
+    Self {
+      hurst,
+      lambda,
+      omega,
+      a,
+      n,
+      x1_0,
+      x2_0,
+      t,
+      seed: Deterministic(seed),
+      fgn: FGN::new(hurst, n - 1, t),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for CFOU<T, S> {
   type Output = Array1<Complex<T>>;
 
   /// Samples the complex path directly as `Z_t = X_1(t) + i X_2(t)`.
@@ -88,9 +126,10 @@ impl<T: FloatExt> ProcessExt<T> for CFOU<T> {
   /// Source:
   /// - https://arxiv.org/abs/2406.18004
   fn sample(&self) -> Self::Output {
+    let mut seed = self.seed;
     let dt = self.fgn.dt();
-    let noise_1 = self.fgn.sample();
-    let noise_2 = self.fgn.sample();
+    let noise_1 = self.fgn.sample_cpu_impl(seed.derive());
+    let noise_2 = self.fgn.sample_cpu_impl(seed.derive());
     let gamma = Complex::new(self.lambda, -self.omega);
     let dt_c = Complex::new(dt, T::zero());
     let noise_scale = (self.a * T::from_f64_fast(0.5)).sqrt();
@@ -112,7 +151,7 @@ impl<T: FloatExt> ProcessExt<T> for CFOU<T> {
   }
 }
 
-impl<T: FloatExt> CFOU<T> {
+impl<T: FloatExt, S: Seed> CFOU<T, S> {
   /// Samples the process and returns explicit real/imaginary components.
   #[must_use]
   pub fn sample_components(&self) -> [Array1<T>; 2] {

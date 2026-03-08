@@ -7,12 +7,16 @@
 use ndarray::Array1;
 use ndarray::s;
 
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
-pub struct HoLee<T: FloatExt> {
+pub struct HoLee<T: FloatExt, S: Seed = Unseeded> {
   /// Model parameter controlling process dynamics.
   pub f_T: Option<Fn1D<T>>,
   /// Long-run target level / model location parameter.
@@ -23,6 +27,8 @@ pub struct HoLee<T: FloatExt> {
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> HoLee<T> {
@@ -38,11 +44,30 @@ impl<T: FloatExt> HoLee<T> {
       sigma,
       n,
       t,
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
+impl<T: FloatExt> HoLee<T, Deterministic> {
+  pub fn seeded(f_T: Option<Fn1D<T>>, theta: Option<T>, sigma: T, n: usize, t: Option<T>, seed: u64) -> Self {
+    assert!(
+      theta.is_some() || f_T.is_some(),
+      "theta or f_T must be provided"
+    );
+
+    Self {
+      f_T,
+      theta,
+      sigma,
+      n,
+      t,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for HoLee<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -60,7 +85,9 @@ impl<T: FloatExt> ProcessExt<T> for HoLee<T> {
     let tail = tail_view
       .as_slice_mut()
       .expect("HoLee output tail must be contiguous");
-    T::fill_standard_normal_scaled_slice(tail, sqrt_dt);
+    let mut seed = self.seed;
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    normal.fill_slice_fast(tail);
 
     for (k, z) in tail.iter_mut().enumerate() {
       let i = k + 1;

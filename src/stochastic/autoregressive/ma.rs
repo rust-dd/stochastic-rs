@@ -6,7 +6,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -22,14 +25,15 @@ use crate::traits::ProcessExt;
 /// - `sigma`: Standard deviation of noise \(\epsilon_t\).
 /// - `n`: Length of time series.
 /// - `m`: Optional batch size.
-pub struct MAq<T: FloatExt> {
+pub struct MAq<T: FloatExt, S: Seed = Unseeded> {
   /// MA coefficients
   pub theta: Array1<T>,
   /// Noise std dev
   pub sigma: T,
   /// Number of observations
   pub n: usize,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> MAq<T> {
@@ -40,17 +44,36 @@ impl<T: FloatExt> MAq<T> {
       theta,
       sigma,
       n,
-      wn: Wn::new(n, None, Some(sigma)),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for MAq<T> {
+impl<T: FloatExt> MAq<T, Deterministic> {
+  /// Create a new MA(q) model with a deterministic seed for reproducible output.
+  pub fn seeded(theta: Array1<T>, sigma: T, n: usize, seed: u64) -> Self {
+    assert!(sigma > T::zero(), "MAq requires sigma > 0");
+    Self {
+      theta,
+      sigma,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for MAq<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let q = self.theta.len();
-    let noise = self.wn.sample();
+    let mut noise = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = noise.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), self.sigma, &mut seed);
+      normal.fill_slice_fast(slice);
+    }
     let mut series = Array1::<T>::zeros(self.n);
 
     // MA recursion

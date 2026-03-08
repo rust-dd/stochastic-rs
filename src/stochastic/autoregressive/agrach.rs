@@ -7,7 +7,10 @@
 //!
 use ndarray::Array1;
 
-use crate::stochastic::noise::wn::Wn;
+use crate::distributions::normal::SimdNormal;
+use crate::simd_rng::Deterministic;
+use crate::simd_rng::Seed;
+use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -35,7 +38,7 @@ use crate::traits::ProcessExt;
 /// # Notes
 /// - This is essentially a T-GARCH-like structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
-pub struct AGARCH<T: FloatExt> {
+pub struct AGARCH<T: FloatExt, S: Seed = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Model shape / loading parameter.
@@ -46,7 +49,8 @@ pub struct AGARCH<T: FloatExt> {
   pub beta: Array1<T>,
   /// Number of discrete simulation points (or samples).
   pub n: usize,
-  wn: Wn<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
 }
 
 impl<T: FloatExt> AGARCH<T> {
@@ -62,20 +66,53 @@ impl<T: FloatExt> AGARCH<T> {
       delta,
       beta,
       n,
-      wn: Wn::new(n, None, None),
+      seed: Unseeded,
     }
   }
 }
 
-impl<T: FloatExt> ProcessExt<T> for AGARCH<T> {
+impl<T: FloatExt> AGARCH<T, Deterministic> {
+  /// Create a new AGARCH model with a deterministic seed for reproducible output.
+  pub fn seeded(
+    omega: T,
+    alpha: Array1<T>,
+    delta: Array1<T>,
+    beta: Array1<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    assert!(omega > T::zero(), "AGARCH requires omega > 0");
+    assert!(
+      alpha.len() == delta.len(),
+      "AGARCH requires alpha.len() == delta.len()"
+    );
+    Self {
+      omega,
+      alpha,
+      delta,
+      beta,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: Seed> ProcessExt<T> for AGARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let p = self.alpha.len();
     let q = self.beta.len();
 
-    // Generate white noise
-    let z = &self.wn.sample();
+    // Generate white noise z_t ~ N(0,1)
+    let mut z_arr = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = z_arr.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+      normal.fill_slice_fast(slice);
+    }
+    let z = &z_arr;
 
     // Arrays for X_t and sigma_t^2
     let mut x = Array1::<T>::zeros(self.n);
