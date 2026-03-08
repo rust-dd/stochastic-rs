@@ -4,6 +4,29 @@
 //! \text{macro expansion} : (\text{model spec}) \mapsto (\text{impl blocks})
 //! $$
 //!
+
+/// Dispatch across 4-field Python wrappers (inner_f64, seeded_f64, inner_f32, seeded_f32).
+#[cfg(feature = "python")]
+macro_rules! py_dispatch {
+  ($self:expr, |$inner:ident| $body:expr) => {
+    if let Some(ref $inner) = $self.inner_f64 { $body }
+    else if let Some(ref $inner) = $self.seeded_f64 { $body }
+    else if let Some(ref $inner) = $self.inner_f32 { $body }
+    else if let Some(ref $inner) = $self.seeded_f32 { $body }
+    else { unreachable!() }
+  };
+}
+
+/// Dispatch across 2-field f64-only Python wrappers (inner, seeded).
+#[cfg(feature = "python")]
+macro_rules! py_dispatch_f64 {
+  ($self:expr, |$inner:ident| $body:expr) => {
+    if let Some(ref $inner) = $self.inner { $body }
+    else if let Some(ref $inner) = $self.seeded { $body }
+    else { unreachable!() }
+  };
+}
+
 #[cfg(feature = "python")]
 macro_rules! py_process_1d {
   ($py_name:ident, $inner:ident,
@@ -37,17 +60,7 @@ macro_rules! py_process_1d {
         use numpy::IntoPyArray;
         use crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        if let Some(ref inner) = self.inner_f64 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.seeded_f64 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.inner_f32 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.seeded_f32 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else {
-          unreachable!()
-        }
+        py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
       }
 
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
@@ -55,28 +68,15 @@ macro_rules! py_process_1d {
         use numpy::ndarray::Array2;
         use crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        macro_rules! _do_par {
-          ($inner_ref:expr, $float:ty) => {{
-            let paths = $inner_ref.sample_par(m);
-            let n = paths[0].len();
-            let mut result = Array2::<$float>::zeros((m, n));
-            for (i, path) in paths.iter().enumerate() {
-              result.row_mut(i).assign(path);
-            }
-            result.into_pyarray(py).into_py_any(py).unwrap()
-          }};
-        }
-        if let Some(ref inner) = self.inner_f64 {
-          _do_par!(inner, f64)
-        } else if let Some(ref inner) = self.seeded_f64 {
-          _do_par!(inner, f64)
-        } else if let Some(ref inner) = self.inner_f32 {
-          _do_par!(inner, f32)
-        } else if let Some(ref inner) = self.seeded_f32 {
-          _do_par!(inner, f32)
-        } else {
-          unreachable!()
-        }
+        py_dispatch!(self, |inner| {
+          let paths = inner.sample_par(m);
+          let n = paths[0].len();
+          let mut result = Array2::zeros((m, n));
+          for (i, path) in paths.iter().enumerate() {
+            result.row_mut(i).assign(path);
+          }
+          result.into_pyarray(py).into_py_any(py).unwrap()
+        })
       }
     }
   };
@@ -120,26 +120,10 @@ macro_rules! py_process_2x1d {
         use numpy::IntoPyArray;
         use crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        macro_rules! _do_sample {
-          ($inner_ref:expr) => {{
-            let [a, b] = $inner_ref.sample();
-            (
-              a.into_pyarray(py).into_py_any(py).unwrap(),
-              b.into_pyarray(py).into_py_any(py).unwrap(),
-            )
-          }};
-        }
-        if let Some(ref inner) = self.inner_f64 {
-          _do_sample!(inner)
-        } else if let Some(ref inner) = self.seeded_f64 {
-          _do_sample!(inner)
-        } else if let Some(ref inner) = self.inner_f32 {
-          _do_sample!(inner)
-        } else if let Some(ref inner) = self.seeded_f32 {
-          _do_sample!(inner)
-        } else {
-          unreachable!()
-        }
+        py_dispatch!(self, |inner| {
+          let [a, b] = inner.sample();
+          (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+        })
       }
 
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
@@ -147,33 +131,17 @@ macro_rules! py_process_2x1d {
         use numpy::ndarray::Array2;
         use crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        macro_rules! _do_par {
-          ($inner_ref:expr, $float:ty) => {{
-            let samples = $inner_ref.sample_par(m);
-            let n = samples[0][0].len();
-            let mut r0 = Array2::<$float>::zeros((m, n));
-            let mut r1 = Array2::<$float>::zeros((m, n));
-            for (i, [a, b]) in samples.iter().enumerate() {
-              r0.row_mut(i).assign(a);
-              r1.row_mut(i).assign(b);
-            }
-            (
-              r0.into_pyarray(py).into_py_any(py).unwrap(),
-              r1.into_pyarray(py).into_py_any(py).unwrap(),
-            )
-          }};
-        }
-        if let Some(ref inner) = self.inner_f64 {
-          _do_par!(inner, f64)
-        } else if let Some(ref inner) = self.seeded_f64 {
-          _do_par!(inner, f64)
-        } else if let Some(ref inner) = self.inner_f32 {
-          _do_par!(inner, f32)
-        } else if let Some(ref inner) = self.seeded_f32 {
-          _do_par!(inner, f32)
-        } else {
-          unreachable!()
-        }
+        py_dispatch!(self, |inner| {
+          let samples = inner.sample_par(m);
+          let n = samples[0][0].len();
+          let mut r0 = Array2::zeros((m, n));
+          let mut r1 = Array2::zeros((m, n));
+          for (i, [a, b]) in samples.iter().enumerate() {
+            r0.row_mut(i).assign(a);
+            r1.row_mut(i).assign(b);
+          }
+          (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
+        })
       }
     }
   };
@@ -217,43 +185,20 @@ macro_rules! py_process_2d {
         use numpy::IntoPyArray;
         use crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        if let Some(ref inner) = self.inner_f64 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.seeded_f64 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.inner_f32 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.seeded_f32 {
-          inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-        } else {
-          unreachable!()
-        }
+        py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
       }
 
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        macro_rules! _do_par {
-          ($inner_ref:expr) => {{
-            let samples = $inner_ref.sample_par(m);
-            pyo3::types::PyList::new(
-              py,
-              samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-            ).unwrap().into_py_any(py).unwrap()
-          }};
-        }
-        if let Some(ref inner) = self.inner_f64 {
-          _do_par!(inner)
-        } else if let Some(ref inner) = self.seeded_f64 {
-          _do_par!(inner)
-        } else if let Some(ref inner) = self.inner_f32 {
-          _do_par!(inner)
-        } else if let Some(ref inner) = self.seeded_f32 {
-          _do_par!(inner)
-        } else {
-          unreachable!()
-        }
+        py_dispatch!(self, |inner| {
+          let samples = inner.sample_par(m);
+          pyo3::types::PyList::new(
+            py,
+            samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+          ).unwrap().into_py_any(py).unwrap()
+        })
       }
     }
   };
@@ -298,11 +243,9 @@ macro_rules! py_distribution {
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
         if let Some(ref inner) = self.inner_f64 {
-          let out = inner.sample_n(n);
-          out.into_pyarray(py).into_py_any(py).unwrap()
+          inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
         } else if let Some(ref inner) = self.inner_f32 {
-          let out = inner.sample_n(n);
-          out.into_pyarray(py).into_py_any(py).unwrap()
+          inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
         } else {
           unreachable!()
         }
@@ -313,11 +256,9 @@ macro_rules! py_distribution {
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
         if let Some(ref inner) = self.inner_f64 {
-          let out = inner.sample_matrix(m, n);
-          out.into_pyarray(py).into_py_any(py).unwrap()
+          inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
         } else if let Some(ref inner) = self.inner_f32 {
-          let out = inner.sample_matrix(m, n);
-          out.into_pyarray(py).into_py_any(py).unwrap()
+          inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
         } else {
           unreachable!()
         }
@@ -356,16 +297,14 @@ macro_rules! py_distribution_int {
         use crate::distributions::DistributionSampler;
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
-        let out = self.inner.sample_n(n);
-        out.into_pyarray(py).into_py_any(py).unwrap()
+        self.inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
       }
 
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
         use crate::distributions::DistributionSampler;
         use numpy::IntoPyArray;
         use pyo3::IntoPyObjectExt;
-        let out = self.inner.sample_matrix(m, n);
-        out.into_pyarray(py).into_py_any(py).unwrap()
+        self.inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
       }
     }
   };

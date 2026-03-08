@@ -162,20 +162,9 @@ impl PyHullWhite2F {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner {
+    py_dispatch_f64!(self, |inner| {
       let [a, b] = inner.sample();
-      (
-        a.into_pyarray(py).into_py_any(py).unwrap(),
-        b.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    } else if let Some(ref inner) = self.seeded {
-      let [a, b] = inner.sample();
-      (
-        a.into_pyarray(py).into_py_any(py).unwrap(),
-        b.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    } else {
-      unreachable!()
-    }
+      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+    })
   }
 }

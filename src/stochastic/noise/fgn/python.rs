@@ -37,17 +37,11 @@ impl PyFGN {
   }
 
   fn sample<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-    if let Some(ref inner) = self.inner {
-      inner.sample().into_pyarray(py)
-    } else if let Some(ref inner) = self.seeded {
-      inner.sample().into_pyarray(py)
-    } else {
-      unreachable!()
-    }
+    py_dispatch_f64!(self, |inner| inner.sample().into_pyarray(py))
   }
 
   fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> Bound<'py, PyArray2<f64>> {
-    if let Some(ref inner) = self.inner {
+    py_dispatch_f64!(self, |inner| {
       let paths = inner.sample_par(m);
       let n = paths[0].len();
       let mut result = Array2::<f64>::zeros((m, n));
@@ -55,16 +49,6 @@ impl PyFGN {
         result.row_mut(i).assign(path);
       }
       result.into_pyarray(py)
-    } else if let Some(ref inner) = self.seeded {
-      let paths = inner.sample_par(m);
-      let n = paths[0].len();
-      let mut result = Array2::<f64>::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
-      }
-      result.into_pyarray(py)
-    } else {
-      unreachable!()
-    }
+    })
   }
 }

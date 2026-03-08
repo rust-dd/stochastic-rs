@@ -256,23 +256,10 @@ impl PyHJM {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner {
-      let [r, p, f] = inner.sample();
-      (
-        r.into_pyarray(py).into_py_any(py).unwrap(),
-        p.into_pyarray(py).into_py_any(py).unwrap(),
-        f.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    } else if let Some(ref inner) = self.seeded {
-      let [r, p, f] = inner.sample();
-      (
-        r.into_pyarray(py).into_py_any(py).unwrap(),
-        p.into_pyarray(py).into_py_any(py).unwrap(),
-        f.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    } else {
-      unreachable!()
-    }
+    py_dispatch_f64!(self, |inner| {
+      let [a, b, c] = inner.sample();
+      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap(), c.into_pyarray(py).into_py_any(py).unwrap())
+    })
   }
 }
 

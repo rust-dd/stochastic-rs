@@ -241,12 +241,6 @@ impl PyADG {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.seeded {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else {
-      unreachable!()
-    }
+    py_dispatch_f64!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
   }
 }

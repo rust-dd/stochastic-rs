@@ -175,11 +175,10 @@ impl PyRoughHeston {
     seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
+    let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
     match (seed, dtype.unwrap_or("f64")) {
-      (Some(s), "f32") => Self {
-        inner_f32: None,
-        inner_f64: None,
-        seeded_f32: Some(RoughHeston::seeded(
+      (Some(sd), "f32") => {
+        s.seeded_f32 = Some(RoughHeston::seeded(
           hurst as f32,
           v0.map(|v| v as f32),
           theta as f32,
@@ -189,18 +188,14 @@ impl PyRoughHeston {
           c2.map(|v| v as f32),
           t.map(|v| v as f32),
           n,
-          s,
-        )),
-        seeded_f64: None,
-      },
-      (Some(s), _) => Self {
-        inner_f32: None,
-        inner_f64: None,
-        seeded_f32: None,
-        seeded_f64: Some(RoughHeston::seeded(hurst, v0, theta, kappa, nu, c1, c2, t, n, s)),
-      },
-      (None, "f32") => Self {
-        inner_f32: Some(RoughHeston::new(
+          sd,
+        ));
+      }
+      (Some(sd), _) => {
+        s.seeded_f64 = Some(RoughHeston::seeded(hurst, v0, theta, kappa, nu, c1, c2, t, n, sd));
+      }
+      (None, "f32") => {
+        s.inner_f32 = Some(RoughHeston::new(
           hurst as f32,
           v0.map(|v| v as f32),
           theta as f32,
@@ -210,78 +205,35 @@ impl PyRoughHeston {
           c2.map(|v| v as f32),
           t.map(|v| v as f32),
           n,
-        )),
-        inner_f64: None,
-        seeded_f32: None,
-        seeded_f64: None,
-      },
-      (None, _) => Self {
-        inner_f32: None,
-        inner_f64: Some(RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n)),
-        seeded_f32: None,
-        seeded_f64: None,
-      },
+        ));
+      }
+      (None, _) => {
+        s.inner_f64 = Some(RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n));
+      }
     }
+    s
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
-
     use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner_f64 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.seeded_f64 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.inner_f32 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.seeded_f32 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else {
-      unreachable!()
-    }
+    py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
-
     use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner_f64 {
+    py_dispatch!(self, |inner| {
       let paths = inner.sample_par(m);
       let n = paths[0].len();
-      let mut result = Array2::<f64>::zeros((m, n));
+      let mut result = Array2::zeros((m, n));
       for (i, path) in paths.iter().enumerate() {
         result.row_mut(i).assign(path);
       }
       result.into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.seeded_f64 {
-      let paths = inner.sample_par(m);
-      let n = paths[0].len();
-      let mut result = Array2::<f64>::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
-      }
-      result.into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.inner_f32 {
-      let paths = inner.sample_par(m);
-      let n = paths[0].len();
-      let mut result = Array2::<f32>::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
-      }
-      result.into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.seeded_f32 {
-      let paths = inner.sample_par(m);
-      let n = paths[0].len();
-      let mut result = Array2::<f32>::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
-      }
-      result.into_pyarray(py).into_py_any(py).unwrap()
-    } else {
-      unreachable!()
-    }
+    })
   }
 }

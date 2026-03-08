@@ -428,17 +428,7 @@ impl PyWuZhangD {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner_f64 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.seeded_f64 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.inner_f32 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.seeded_f32 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else {
-      unreachable!()
-    }
+    py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
@@ -446,52 +436,12 @@ impl PyWuZhangD {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner_f64 {
+    py_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
       pyo3::types::PyList::new(
         py,
-        samples
-          .iter()
-          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      )
-      .unwrap()
-      .into_py_any(py)
-      .unwrap()
-    } else if let Some(ref inner) = self.seeded_f64 {
-      let samples = inner.sample_par(m);
-      pyo3::types::PyList::new(
-        py,
-        samples
-          .iter()
-          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      )
-      .unwrap()
-      .into_py_any(py)
-      .unwrap()
-    } else if let Some(ref inner) = self.inner_f32 {
-      let samples = inner.sample_par(m);
-      pyo3::types::PyList::new(
-        py,
-        samples
-          .iter()
-          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      )
-      .unwrap()
-      .into_py_any(py)
-      .unwrap()
-    } else if let Some(ref inner) = self.seeded_f32 {
-      let samples = inner.sample_par(m);
-      pyo3::types::PyList::new(
-        py,
-        samples
-          .iter()
-          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      )
-      .unwrap()
-      .into_py_any(py)
-      .unwrap()
-    } else {
-      unreachable!()
-    }
+        samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+      ).unwrap().into_py_any(py).unwrap()
+    })
   }
 }
