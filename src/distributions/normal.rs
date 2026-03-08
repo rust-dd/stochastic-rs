@@ -165,7 +165,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   ///
   /// This is the core constructor — `new()` and `with_seed()` delegate here.
   /// Monomorphised at compile time, zero runtime branching.
-  pub fn from_seed_source(mean: T, std_dev: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(mean: T, std_dev: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -195,7 +195,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   /// Fills exactly 16 elements with normally distributed samples.
   /// Optimized hot-path for small fixed-size buffers.
   #[inline]
-  pub fn fill_16<R: Rng + ?Sized>(&self, _rng: &mut R, out16: &mut [T]) {
+  pub(crate) fn fill_16<R: Rng + ?Sized>(&self, _rng: &mut R, out16: &mut [T]) {
     debug_assert!(out16.len() >= 16);
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat(&mut out16[..16], rng, self.mean, self.std_dev);
@@ -329,46 +329,6 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   pub fn fill_standard_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat_standard(out, rng);
-  }
-
-  /// Returns a pair of N(mean, std_dev) samples from the internal buffer.
-  /// Refills the buffer if fewer than 2 samples remain.
-  #[inline]
-  pub fn sample_pair<R: Rng + ?Sized>(&self, _rng: &mut R) -> (T, T) {
-    let index = unsafe { &mut *self.index.get() };
-    if *index + 1 >= N {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &*self.buffer.get() };
-    let a = buf[*index];
-    let b = buf[*index + 1];
-    *index += 2;
-    (a, b)
-  }
-
-  /// Refills the internal buffer with standard normal N(0,1) samples.
-  #[inline]
-  fn refill_buffer_standard(&self) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let buf = unsafe { &mut *self.buffer.get() };
-    Self::fill_ziggurat_standard(buf.as_mut_slice(), rng);
-    unsafe {
-      *self.index.get() = 0;
-    }
-  }
-
-  /// Returns a pair of standard normal N(0,1) samples from the internal buffer.
-  #[inline]
-  pub fn sample_pair_standard<R: Rng + ?Sized>(&self, _rng: &mut R) -> (T, T) {
-    let index = unsafe { &mut *self.index.get() };
-    if *index + 1 >= N {
-      self.refill_buffer_standard();
-    }
-    let buf = unsafe { &*self.buffer.get() };
-    let a = buf[*index];
-    let b = buf[*index + 1];
-    *index += 2;
-    (a, b)
   }
 
   /// Generates a single standard normal N(0,1) sample using the scalar Ziggurat path.

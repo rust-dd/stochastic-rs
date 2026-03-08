@@ -39,7 +39,7 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
 
   /// Creates a Student's t-distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
   /// Each sub-component (normal, chisq, main rng) gets an independent stream.
-  pub fn from_seed_source(nu: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(nu: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     Self {
       nu,
       normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),

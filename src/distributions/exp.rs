@@ -129,7 +129,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   }
 
   /// Creates an exponential distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     let _ = exp_zig_tables();
     assert!(lambda > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -311,7 +311,7 @@ impl<T: SimdFloatExt> SimdExp<T> {
   }
 
   /// Creates an exponential distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     Self {
       inner: SimdExpZig::from_seed_source(lambda, seed),
     }

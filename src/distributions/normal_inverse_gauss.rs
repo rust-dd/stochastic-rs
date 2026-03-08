@@ -42,7 +42,7 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
 
   /// Creates a normal-inverse Gaussian distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
   /// Each sub-component (ig, normal, main rng) gets an independent stream.
-  pub fn from_seed_source(alpha: T, beta: T, delta: T, mu: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(alpha: T, beta: T, delta: T, mu: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),
       "NIG: alpha must be > |beta|"

@@ -215,6 +215,7 @@ pub trait Seed: Copy + Clone + Send + Sync + 'static {
   fn rng(&mut self) -> SimdRng;
 
   /// Derive a child seed for sub-component propagation.
+  #[doc(hidden)]
   fn derive(&mut self) -> Self;
 }
 

@@ -38,7 +38,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   }
 
   /// Creates a uniform distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub fn from_seed_source(low: T, high: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(low: T, high: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
     Self {

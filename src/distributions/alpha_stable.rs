@@ -49,7 +49,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
   }
 
   /// Creates an alpha-stable distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub fn from_seed_source(
+  pub(crate) fn from_seed_source(
     alpha: T,
     beta: T,
     scale: T,

@@ -35,7 +35,7 @@ impl<T: PrimInt> SimdGeometric<T> {
   }
 
   /// Creates a geometric distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub fn from_seed_source(p: f64, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(p: f64, seed: &mut impl crate::simd_rng::Seed) -> Self {
     Self {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
