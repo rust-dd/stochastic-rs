@@ -135,32 +135,58 @@ impl<T: FloatExt, S: SeedExt> FBM<T, S> {
 #[cfg(feature = "python")]
 #[pyclass]
 pub struct PyFBM {
-  inner: FBM<f64>,
+  inner: Option<FBM<f64>>,
+  seeded: Option<FBM<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl PyFBM {
   #[new]
-  #[pyo3(signature = (hurst, n, t=None))]
-  fn new(hurst: f64, n: usize, t: Option<f64>) -> Self {
-    Self {
-      inner: FBM::new(hurst, n, t),
+  #[pyo3(signature = (hurst, n, t=None, seed=None))]
+  fn new(hurst: f64, n: usize, t: Option<f64>, seed: Option<u64>) -> Self {
+    match seed {
+      Some(s) => Self {
+        inner: None,
+        seeded: Some(FBM::seeded(hurst, n, t, s)),
+      },
+      None => Self {
+        inner: Some(FBM::new(hurst, n, t)),
+        seeded: None,
+      },
     }
   }
 
   fn sample<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-    self.inner.sample().into_pyarray(py)
+    if let Some(ref inner) = self.inner {
+      inner.sample().into_pyarray(py)
+    } else if let Some(ref inner) = self.seeded {
+      inner.sample().into_pyarray(py)
+    } else {
+      unreachable!()
+    }
   }
 
   fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> Bound<'py, PyArray2<f64>> {
-    let paths = self.inner.sample_par(m);
-    let n = paths[0].len();
-    let mut result = Array2::<f64>::zeros((m, n));
-    for (i, path) in paths.iter().enumerate() {
-      result.row_mut(i).assign(path);
+    if let Some(ref inner) = self.inner {
+      let paths = inner.sample_par(m);
+      let n = paths[0].len();
+      let mut result = Array2::<f64>::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py)
+    } else if let Some(ref inner) = self.seeded {
+      let paths = inner.sample_par(m);
+      let n = paths[0].len();
+      let mut result = Array2::<f64>::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py)
+    } else {
+      unreachable!()
     }
-    result.into_pyarray(py)
   }
 }
 

@@ -317,13 +317,15 @@ mod tests {
 pub struct PyWuZhangD {
   inner_f32: Option<WuZhangD<f32>>,
   inner_f64: Option<WuZhangD<f64>>,
+  seeded_f32: Option<WuZhangD<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<WuZhangD<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyWuZhangD {
   #[new]
-  #[pyo3(signature = (alpha, beta, nu, lambda_, x0, v0, xn, n, t=None, dtype=None))]
+  #[pyo3(signature = (alpha, beta, nu, lambda_, x0, v0, xn, n, t=None, seed=None, dtype=None))]
   fn new(
     alpha: Vec<f64>,
     beta: Vec<f64>,
@@ -334,10 +336,52 @@ impl PyWuZhangD {
     xn: usize,
     n: usize,
     t: Option<f64>,
+    seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    match dtype.unwrap_or("f64") {
-      "f32" => {
+    match (seed, dtype.unwrap_or("f64")) {
+      (Some(s), "f32") => {
+        let to_f32_arr =
+          |v: Vec<f64>| ndarray::Array1::from_vec(v.iter().map(|&x| x as f32).collect());
+        Self {
+          inner_f32: None,
+          inner_f64: None,
+          seeded_f32: Some(WuZhangD::seeded(
+            to_f32_arr(alpha),
+            to_f32_arr(beta),
+            to_f32_arr(nu),
+            to_f32_arr(lambda_),
+            to_f32_arr(x0),
+            to_f32_arr(v0),
+            xn,
+            t.map(|v| v as f32),
+            n,
+            s,
+          )),
+          seeded_f64: None,
+        }
+      }
+      (Some(s), _) => {
+        let to_arr = |v: Vec<f64>| ndarray::Array1::from_vec(v);
+        Self {
+          inner_f32: None,
+          inner_f64: None,
+          seeded_f32: None,
+          seeded_f64: Some(WuZhangD::seeded(
+            to_arr(alpha),
+            to_arr(beta),
+            to_arr(nu),
+            to_arr(lambda_),
+            to_arr(x0),
+            to_arr(v0),
+            xn,
+            t,
+            n,
+            s,
+          )),
+        }
+      }
+      (None, "f32") => {
         let to_f32_arr =
           |v: Vec<f64>| ndarray::Array1::from_vec(v.iter().map(|&x| x as f32).collect());
         Self {
@@ -353,9 +397,11 @@ impl PyWuZhangD {
             n,
           )),
           inner_f64: None,
+          seeded_f32: None,
+          seeded_f64: None,
         }
       }
-      _ => {
+      (None, _) => {
         let to_arr = |v: Vec<f64>| ndarray::Array1::from_vec(v);
         Self {
           inner_f32: None,
@@ -370,6 +416,8 @@ impl PyWuZhangD {
             t,
             n,
           )),
+          seeded_f32: None,
+          seeded_f64: None,
         }
       }
     }
@@ -382,7 +430,11 @@ impl PyWuZhangD {
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded_f64 {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
     } else if let Some(ref inner) = self.inner_f32 {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded_f32 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
     } else {
       unreachable!()
@@ -405,7 +457,29 @@ impl PyWuZhangD {
       .unwrap()
       .into_py_any(py)
       .unwrap()
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let samples = inner.sample_par(m);
+      pyo3::types::PyList::new(
+        py,
+        samples
+          .iter()
+          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+      )
+      .unwrap()
+      .into_py_any(py)
+      .unwrap()
     } else if let Some(ref inner) = self.inner_f32 {
+      let samples = inner.sample_par(m);
+      pyo3::types::PyList::new(
+        py,
+        samples
+          .iter()
+          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+      )
+      .unwrap()
+      .into_py_any(py)
+      .unwrap()
+    } else if let Some(ref inner) = self.seeded_f32 {
       let samples = inner.sample_par(m);
       pyo3::types::PyList::new(
         py,

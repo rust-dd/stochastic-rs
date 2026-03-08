@@ -138,23 +138,32 @@ mod tests {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyHoLee {
-  inner: HoLee<f64>,
+  inner: Option<HoLee<f64>>,
+  seeded: Option<HoLee<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHoLee {
   #[new]
-  #[pyo3(signature = (sigma, n, f_T=None, theta=None, t=None))]
+  #[pyo3(signature = (sigma, n, f_T=None, theta=None, t=None, seed=None))]
   fn new(
     sigma: f64,
     n: usize,
     f_T: Option<pyo3::Py<pyo3::PyAny>>,
     theta: Option<f64>,
     t: Option<f64>,
+    seed: Option<u64>,
   ) -> Self {
-    Self {
-      inner: HoLee::new(f_T.map(Fn1D::Py), theta, sigma, n, t),
+    match seed {
+      Some(s) => Self {
+        inner: None,
+        seeded: Some(HoLee::seeded(f_T.map(Fn1D::Py), theta, sigma, n, t, s)),
+      },
+      None => Self {
+        inner: Some(HoLee::new(f_T.map(Fn1D::Py), theta, sigma, n, t)),
+        seeded: None,
+      },
     }
   }
 
@@ -163,11 +172,12 @@ impl PyHoLee {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    self
-      .inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap()
+    if let Some(ref inner) = self.inner {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else {
+      unreachable!()
+    }
   }
 }

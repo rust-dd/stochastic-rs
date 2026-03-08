@@ -179,14 +179,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ADG<T, S> {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyADG {
-  inner: ADG<f64>,
+  inner: Option<ADG<f64>>,
+  seeded: Option<ADG<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyADG {
   #[new]
-  #[pyo3(signature = (k, theta, sigma, phi, b, c, n, xn, x0, t=None))]
+  #[pyo3(signature = (k, theta, sigma, phi, b, c, n, xn, x0, t=None, seed=None))]
   fn new(
     k: pyo3::Py<pyo3::PyAny>,
     theta: pyo3::Py<pyo3::PyAny>,
@@ -198,20 +199,40 @@ impl PyADG {
     xn: usize,
     x0: Vec<f64>,
     t: Option<f64>,
+    seed: Option<u64>,
   ) -> Self {
-    Self {
-      inner: ADG::new(
-        Fn1D::Py(k),
-        Fn1D::Py(theta),
-        ndarray::Array1::from_vec(sigma),
-        Fn1D::Py(phi),
-        Fn1D::Py(b),
-        Fn1D::Py(c),
-        n,
-        xn,
-        ndarray::Array1::from_vec(x0),
-        t,
-      ),
+    match seed {
+      Some(s) => Self {
+        inner: None,
+        seeded: Some(ADG::seeded(
+          Fn1D::Py(k),
+          Fn1D::Py(theta),
+          ndarray::Array1::from_vec(sigma),
+          Fn1D::Py(phi),
+          Fn1D::Py(b),
+          Fn1D::Py(c),
+          n,
+          xn,
+          ndarray::Array1::from_vec(x0),
+          t,
+          s,
+        )),
+      },
+      None => Self {
+        inner: Some(ADG::new(
+          Fn1D::Py(k),
+          Fn1D::Py(theta),
+          ndarray::Array1::from_vec(sigma),
+          Fn1D::Py(phi),
+          Fn1D::Py(b),
+          Fn1D::Py(c),
+          n,
+          xn,
+          ndarray::Array1::from_vec(x0),
+          t,
+        )),
+        seeded: None,
+      },
     }
   }
 
@@ -220,11 +241,12 @@ impl PyADG {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    self
-      .inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap()
+    if let Some(ref inner) = self.inner {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else {
+      unreachable!()
+    }
   }
 }

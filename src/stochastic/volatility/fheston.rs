@@ -153,13 +153,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
 pub struct PyRoughHeston {
   inner_f32: Option<RoughHeston<f32>>,
   inner_f64: Option<RoughHeston<f64>>,
+  seeded_f32: Option<RoughHeston<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<RoughHeston<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyRoughHeston {
   #[new]
-  #[pyo3(signature = (hurst, theta, kappa, nu, n, v0=None, c1=None, c2=None, t=None, dtype=None))]
+  #[pyo3(signature = (hurst, theta, kappa, nu, n, v0=None, c1=None, c2=None, t=None, seed=None, dtype=None))]
   fn new(
     hurst: f64,
     theta: f64,
@@ -170,10 +172,34 @@ impl PyRoughHeston {
     c1: Option<f64>,
     c2: Option<f64>,
     t: Option<f64>,
+    seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    match dtype.unwrap_or("f64") {
-      "f32" => Self {
+    match (seed, dtype.unwrap_or("f64")) {
+      (Some(s), "f32") => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: Some(RoughHeston::seeded(
+          hurst as f32,
+          v0.map(|v| v as f32),
+          theta as f32,
+          kappa as f32,
+          nu as f32,
+          c1.map(|v| v as f32),
+          c2.map(|v| v as f32),
+          t.map(|v| v as f32),
+          n,
+          s,
+        )),
+        seeded_f64: None,
+      },
+      (Some(s), _) => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: Some(RoughHeston::seeded(hurst, v0, theta, kappa, nu, c1, c2, t, n, s)),
+      },
+      (None, "f32") => Self {
         inner_f32: Some(RoughHeston::new(
           hurst as f32,
           v0.map(|v| v as f32),
@@ -186,10 +212,14 @@ impl PyRoughHeston {
           n,
         )),
         inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: None,
       },
-      _ => Self {
+      (None, _) => Self {
         inner_f32: None,
         inner_f64: Some(RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n)),
+        seeded_f32: None,
+        seeded_f64: None,
       },
     }
   }
@@ -201,7 +231,11 @@ impl PyRoughHeston {
     use crate::traits::ProcessExt;
     if let Some(ref inner) = self.inner_f64 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded_f64 {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
     } else if let Some(ref inner) = self.inner_f32 {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded_f32 {
       inner.sample().into_pyarray(py).into_py_any(py).unwrap()
     } else {
       unreachable!()
@@ -222,7 +256,23 @@ impl PyRoughHeston {
         result.row_mut(i).assign(path);
       }
       result.into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let paths = inner.sample_par(m);
+      let n = paths[0].len();
+      let mut result = Array2::<f64>::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py).into_py_any(py).unwrap()
     } else if let Some(ref inner) = self.inner_f32 {
+      let paths = inner.sample_par(m);
+      let n = paths[0].len();
+      let mut result = Array2::<f32>::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded_f32 {
       let paths = inner.sample_par(m);
       let n = paths[0].len();
       let mut result = Array2::<f32>::zeros((m, n));

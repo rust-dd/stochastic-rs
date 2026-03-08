@@ -117,14 +117,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite<T, S> {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyHullWhite {
-  inner: HullWhite<f64>,
+  inner: Option<HullWhite<f64>>,
+  seeded: Option<HullWhite<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHullWhite {
   #[new]
-  #[pyo3(signature = (theta, alpha, sigma, n, x0=None, t=None))]
+  #[pyo3(signature = (theta, alpha, sigma, n, x0=None, t=None, seed=None))]
   fn new(
     theta: pyo3::Py<pyo3::PyAny>,
     alpha: f64,
@@ -132,9 +133,17 @@ impl PyHullWhite {
     n: usize,
     x0: Option<f64>,
     t: Option<f64>,
+    seed: Option<u64>,
   ) -> Self {
-    Self {
-      inner: HullWhite::new(Fn1D::Py(theta), alpha, sigma, n, x0, t),
+    match seed {
+      Some(s) => Self {
+        inner: None,
+        seeded: Some(HullWhite::seeded(Fn1D::Py(theta), alpha, sigma, n, x0, t, s)),
+      },
+      None => Self {
+        inner: Some(HullWhite::new(Fn1D::Py(theta), alpha, sigma, n, x0, t)),
+        seeded: None,
+      },
     }
   }
 
@@ -143,11 +152,12 @@ impl PyHullWhite {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    self
-      .inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap()
+    if let Some(ref inner) = self.inner {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else if let Some(ref inner) = self.seeded {
+      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+    } else {
+      unreachable!()
+    }
   }
 }

@@ -125,13 +125,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
 pub struct PyRoughBergomi {
   inner_f32: Option<RoughBergomi<f32>>,
   inner_f64: Option<RoughBergomi<f64>>,
+  seeded_f32: Option<RoughBergomi<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<RoughBergomi<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyRoughBergomi {
   #[new]
-  #[pyo3(signature = (hurst, nu, r, rho, n, v0=None, s0=None, t=None, dtype=None))]
+  #[pyo3(signature = (hurst, nu, r, rho, n, v0=None, s0=None, t=None, seed=None, dtype=None))]
   fn new(
     hurst: f64,
     nu: f64,
@@ -141,10 +143,33 @@ impl PyRoughBergomi {
     v0: Option<f64>,
     s0: Option<f64>,
     t: Option<f64>,
+    seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    match dtype.unwrap_or("f64") {
-      "f32" => Self {
+    match (seed, dtype.unwrap_or("f64")) {
+      (Some(s), "f32") => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: Some(RoughBergomi::seeded(
+          hurst as f32,
+          nu as f32,
+          v0.map(|v| v as f32),
+          s0.map(|v| v as f32),
+          r as f32,
+          rho as f32,
+          n,
+          t.map(|v| v as f32),
+          s,
+        )),
+        seeded_f64: None,
+      },
+      (Some(s), _) => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: Some(RoughBergomi::seeded(hurst, nu, v0, s0, r, rho, n, t, s)),
+      },
+      (None, "f32") => Self {
         inner_f32: Some(RoughBergomi::new(
           hurst as f32,
           nu as f32,
@@ -156,10 +181,14 @@ impl PyRoughBergomi {
           t.map(|v| v as f32),
         )),
         inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: None,
       },
-      _ => Self {
+      (None, _) => Self {
         inner_f32: None,
         inner_f64: Some(RoughBergomi::new(hurst, nu, v0, s0, r, rho, n, t)),
+        seeded_f32: None,
+        seeded_f64: None,
       },
     }
   }
@@ -175,7 +204,19 @@ impl PyRoughBergomi {
         a.into_pyarray(py).into_py_any(py).unwrap(),
         b.into_pyarray(py).into_py_any(py).unwrap(),
       )
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let [a, b] = inner.sample();
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
+      let [a, b] = inner.sample();
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.seeded_f32 {
       let [a, b] = inner.sample();
       (
         a.into_pyarray(py).into_py_any(py).unwrap(),
@@ -209,7 +250,33 @@ impl PyRoughBergomi {
         r0.into_pyarray(py).into_py_any(py).unwrap(),
         r1.into_pyarray(py).into_py_any(py).unwrap(),
       )
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f64>::zeros((m, n));
+      let mut r1 = Array2::<f64>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f32>::zeros((m, n));
+      let mut r1 = Array2::<f32>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.seeded_f32 {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::<f32>::zeros((m, n));

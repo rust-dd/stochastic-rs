@@ -370,13 +370,15 @@ mod tests {
 pub struct PyBatesSVJ {
   inner_f32: Option<BatesSVJ<f32>>,
   inner_f64: Option<BatesSVJ<f64>>,
+  seeded_f32: Option<BatesSVJ<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<BatesSVJ<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyBatesSVJ {
   #[new]
-  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, dtype=None))]
+  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None))]
   fn new(
     lambda_: f64,
     nu: f64,
@@ -394,10 +396,43 @@ impl PyBatesSVJ {
     v0: Option<f64>,
     t: Option<f64>,
     use_sym: Option<bool>,
+    seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    match dtype.unwrap_or("f64") {
-      "f32" => Self {
+    match (seed, dtype.unwrap_or("f64")) {
+      (Some(s), "f32") => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: Some(BatesSVJ::seeded(
+          mu.map(|v| v as f32),
+          b.map(|v| v as f32),
+          r.map(|v| v as f32),
+          r_f.map(|v| v as f32),
+          lambda_ as f32,
+          nu as f32,
+          omega as f32,
+          alpha as f32,
+          beta as f32,
+          sigma as f32,
+          rho as f32,
+          n,
+          s0.map(|v| v as f32),
+          v0.map(|v| v as f32),
+          t.map(|v| v as f32),
+          use_sym,
+          s,
+        )),
+        seeded_f64: None,
+      },
+      (Some(s), _) => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: Some(BatesSVJ::seeded(
+          mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, s,
+        )),
+      },
+      (None, "f32") => Self {
         inner_f32: Some(BatesSVJ::new(
           mu.map(|v| v as f32),
           b.map(|v| v as f32),
@@ -417,12 +452,16 @@ impl PyBatesSVJ {
           use_sym,
         )),
         inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: None,
       },
-      _ => Self {
+      (None, _) => Self {
         inner_f32: None,
         inner_f64: Some(BatesSVJ::new(
           mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym,
         )),
+        seeded_f32: None,
+        seeded_f64: None,
       },
     }
   }
@@ -438,7 +477,19 @@ impl PyBatesSVJ {
         s.into_pyarray(py).into_py_any(py).unwrap(),
         v.into_pyarray(py).into_py_any(py).unwrap(),
       )
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let [s, v] = inner.sample();
+      (
+        s.into_pyarray(py).into_py_any(py).unwrap(),
+        v.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
+      let [s, v] = inner.sample();
+      (
+        s.into_pyarray(py).into_py_any(py).unwrap(),
+        v.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.seeded_f32 {
       let [s, v] = inner.sample();
       (
         s.into_pyarray(py).into_py_any(py).unwrap(),
@@ -472,7 +523,33 @@ impl PyBatesSVJ {
         r0.into_pyarray(py).into_py_any(py).unwrap(),
         r1.into_pyarray(py).into_py_any(py).unwrap(),
       )
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f64>::zeros((m, n));
+      let mut r1 = Array2::<f64>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f32>::zeros((m, n));
+      let mut r1 = Array2::<f32>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.seeded_f32 {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::<f32>::zeros((m, n));

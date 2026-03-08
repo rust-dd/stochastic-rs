@@ -252,13 +252,15 @@ mod tests {
 pub struct PyHeston {
   inner_f32: Option<Heston<f32>>,
   inner_f64: Option<Heston<f64>>,
+  seeded_f32: Option<Heston<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<Heston<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHeston {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, dtype=None))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -271,14 +273,42 @@ impl PyHeston {
     t: Option<f64>,
     pow: Option<&str>,
     use_sym: Option<bool>,
+    seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
     let hp = match pow.unwrap_or("sqrt") {
       "three_halves" | "3/2" => HestonPow::ThreeHalves,
       _ => HestonPow::Sqrt,
     };
-    match dtype.unwrap_or("f64") {
-      "f32" => Self {
+    match (seed, dtype.unwrap_or("f64")) {
+      (Some(s), "f32") => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: Some(Heston::seeded(
+          s0.map(|v| v as f32),
+          v0.map(|v| v as f32),
+          kappa as f32,
+          theta as f32,
+          sigma as f32,
+          rho as f32,
+          mu as f32,
+          n,
+          t.map(|v| v as f32),
+          hp,
+          use_sym,
+          s,
+        )),
+        seeded_f64: None,
+      },
+      (Some(s), _) => Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: Some(Heston::seeded(
+          s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym, s,
+        )),
+      },
+      (None, "f32") => Self {
         inner_f32: Some(Heston::new(
           s0.map(|v| v as f32),
           v0.map(|v| v as f32),
@@ -293,12 +323,16 @@ impl PyHeston {
           use_sym,
         )),
         inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: None,
       },
-      _ => Self {
+      (None, _) => Self {
         inner_f32: None,
         inner_f64: Some(Heston::new(
           s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym,
         )),
+        seeded_f32: None,
+        seeded_f64: None,
       },
     }
   }
@@ -314,7 +348,19 @@ impl PyHeston {
         a.into_pyarray(py).into_py_any(py).unwrap(),
         b.into_pyarray(py).into_py_any(py).unwrap(),
       )
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let [a, b] = inner.sample();
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
+      let [a, b] = inner.sample();
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.seeded_f32 {
       let [a, b] = inner.sample();
       (
         a.into_pyarray(py).into_py_any(py).unwrap(),
@@ -348,7 +394,33 @@ impl PyHeston {
         r0.into_pyarray(py).into_py_any(py).unwrap(),
         r1.into_pyarray(py).into_py_any(py).unwrap(),
       )
+    } else if let Some(ref inner) = self.seeded_f64 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f64>::zeros((m, n));
+      let mut r1 = Array2::<f64>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     } else if let Some(ref inner) = self.inner_f32 {
+      let samples = inner.sample_par(m);
+      let n = samples[0][0].len();
+      let mut r0 = Array2::<f32>::zeros((m, n));
+      let mut r1 = Array2::<f32>::zeros((m, n));
+      for (i, [a, b]) in samples.iter().enumerate() {
+        r0.row_mut(i).assign(a);
+        r1.row_mut(i).assign(b);
+      }
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.seeded_f32 {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::<f32>::zeros((m, n));

@@ -180,14 +180,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HJM<T, S> {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyHJM {
-  inner: HJM<f64>,
+  inner: Option<HJM<f64>>,
+  seeded: Option<HJM<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHJM {
   #[new]
-  #[pyo3(signature = (a, b, p, q, v, alpha, sigma, n, r0=None, p0=None, f0=None, t=None))]
+  #[pyo3(signature = (a, b, p, q, v, alpha, sigma, n, r0=None, p0=None, f0=None, t=None, seed=None))]
   fn new(
     a: pyo3::Py<pyo3::PyAny>,
     b: pyo3::Py<pyo3::PyAny>,
@@ -201,23 +202,45 @@ impl PyHJM {
     p0: Option<f64>,
     f0: Option<f64>,
     t: Option<f64>,
+    seed: Option<u64>,
   ) -> Self {
     use crate::traits::Fn2D;
-    Self {
-      inner: HJM::new(
-        Fn1D::Py(a),
-        Fn1D::Py(b),
-        Fn2D::Py(p),
-        Fn2D::Py(q),
-        Fn2D::Py(v),
-        Fn2D::Py(alpha),
-        Fn2D::Py(sigma),
-        n,
-        r0,
-        p0,
-        f0,
-        t,
-      ),
+    match seed {
+      Some(s) => Self {
+        inner: None,
+        seeded: Some(HJM::seeded(
+          Fn1D::Py(a),
+          Fn1D::Py(b),
+          Fn2D::Py(p),
+          Fn2D::Py(q),
+          Fn2D::Py(v),
+          Fn2D::Py(alpha),
+          Fn2D::Py(sigma),
+          n,
+          r0,
+          p0,
+          f0,
+          t,
+          s,
+        )),
+      },
+      None => Self {
+        inner: Some(HJM::new(
+          Fn1D::Py(a),
+          Fn1D::Py(b),
+          Fn2D::Py(p),
+          Fn2D::Py(q),
+          Fn2D::Py(v),
+          Fn2D::Py(alpha),
+          Fn2D::Py(sigma),
+          n,
+          r0,
+          p0,
+          f0,
+          t,
+        )),
+        seeded: None,
+      },
     }
   }
 
@@ -233,12 +256,23 @@ impl PyHJM {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    let [r, p, f] = self.inner.sample();
-    (
-      r.into_pyarray(py).into_py_any(py).unwrap(),
-      p.into_pyarray(py).into_py_any(py).unwrap(),
-      f.into_pyarray(py).into_py_any(py).unwrap(),
-    )
+    if let Some(ref inner) = self.inner {
+      let [r, p, f] = inner.sample();
+      (
+        r.into_pyarray(py).into_py_any(py).unwrap(),
+        p.into_pyarray(py).into_py_any(py).unwrap(),
+        f.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else if let Some(ref inner) = self.seeded {
+      let [r, p, f] = inner.sample();
+      (
+        r.into_pyarray(py).into_py_any(py).unwrap(),
+        p.into_pyarray(py).into_py_any(py).unwrap(),
+        f.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    } else {
+      unreachable!()
+    }
   }
 }
 
