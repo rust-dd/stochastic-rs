@@ -94,6 +94,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MAq<T, S> {
 }
 
 py_process_1d!(PyMAq, MAq,
-  sig: (theta, sigma, n, dtype=None),
+  sig: (theta, sigma, n, seed=None, dtype=None),
   params: (theta: Vec<f64>, sigma: f64, n: usize)
 );

@@ -72,6 +72,6 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
 }
 
 py_process_1d!(PyGn, Gn,
-  sig: (n, t=None, dtype=None),
+  sig: (n, t=None, seed=None, dtype=None),
   params: (n: usize, t: Option<f64>)
 );

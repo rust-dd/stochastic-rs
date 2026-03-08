@@ -275,7 +275,7 @@ mod tests {
     let h = 0.72_f64;
     let t_max = 1.0_f64;
     let n = 2048_usize;
-    let m = 3200_usize;
+    let m = 5000_usize;
     let fbm = FBM::new(h, n, Some(t_max));
     let dt = t_max / (n as f64 - 1.0);
     let idxs = [n / 4, n / 2, 3 * n / 4, n - 1];

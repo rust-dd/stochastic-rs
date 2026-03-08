@@ -137,6 +137,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GARCH<T, S> {
 }
 
 py_process_1d!(PyGARCH, GARCH,
-  sig: (omega, alpha, beta, n, dtype=None),
+  sig: (omega, alpha, beta, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, beta: Vec<f64>, n: usize)
 );

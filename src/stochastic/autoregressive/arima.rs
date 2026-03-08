@@ -135,6 +135,6 @@ impl<T: FloatExt, S: SeedExt> ARIMA<T, S> {
 }
 
 py_process_1d!(PyARIMA, ARIMA,
-  sig: (ar_coefs, ma_coefs, d, sigma, n, dtype=None),
+  sig: (ar_coefs, ma_coefs, d, sigma, n, seed=None, dtype=None),
   params: (ar_coefs: Vec<f64>, ma_coefs: Vec<f64>, d: usize, sigma: f64, n: usize)
 );

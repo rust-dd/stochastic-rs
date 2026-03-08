@@ -104,6 +104,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gompertz<T, S> {
 }
 
 py_process_1d!(PyGompertz, Gompertz,
-  sig: (a, b, sigma, n, x0=None, t=None, dtype=None),
+  sig: (a, b, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (a: f64, b: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

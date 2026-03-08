@@ -84,6 +84,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CBMS<T, S> {
 }
 
 py_process_2x1d!(PyCBMS, CBMS,
-  sig: (rho, n, t=None, dtype=None),
+  sig: (rho, n, t=None, seed=None, dtype=None),
   params: (rho: f64, n: usize, t: Option<f64>)
 );

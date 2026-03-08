@@ -159,6 +159,6 @@ impl<T: FloatExt, S: SeedExt> SABR<T, S> {
 }
 
 py_process_2x1d!(PySABR, SABR,
-  sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, dtype=None),
+  sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>)
 );

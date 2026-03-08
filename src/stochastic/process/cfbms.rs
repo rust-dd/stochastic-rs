@@ -91,6 +91,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFBMS<T, S> {
 }
 
 py_process_2x1d!(PyCFBMS, CFBMS,
-  sig: (hurst, rho, n, t=None, dtype=None),
+  sig: (hurst, rho, n, t=None, seed=None, dtype=None),
   params: (hurst: f64, rho: f64, n: usize, t: Option<f64>)
 );

@@ -77,6 +77,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FVasicek<T, S> {
 }
 
 py_process_1d!(PyFVasicek, FVasicek,
-  sig: (hurst, theta, mu, sigma, n, x0=None, t=None, dtype=None),
+  sig: (hurst, theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

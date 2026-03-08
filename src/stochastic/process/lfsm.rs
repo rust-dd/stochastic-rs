@@ -135,7 +135,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for LFSM<T, S> {
 }
 
 py_process_1d!(PyLFSM, LFSM,
-  sig: (alpha, beta, hurst, scale, n, x0=None, t=None, dtype=None),
+  sig: (alpha, beta, hurst, scale, n, x0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, hurst: f64, scale: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
 

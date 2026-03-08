@@ -167,7 +167,7 @@ impl<T: FloatExt, S: SeedExt> CFOU<T, S> {
 }
 
 py_process_2d!(PyCFOU, CFOU,
-  sig: (hurst, lambda, omega, a, n, x1_0=None, x2_0=None, t=None, dtype=None),
+  sig: (hurst, lambda, omega, a, n, x1_0=None, x2_0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, lambda: f64, omega: f64, a: f64, n: usize, x1_0: Option<f64>, x2_0: Option<f64>, t: Option<f64>)
 );
 

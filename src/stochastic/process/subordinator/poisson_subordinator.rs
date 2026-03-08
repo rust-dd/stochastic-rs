@@ -76,6 +76,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for PoissonSubordinator<T, S> {
 }
 
 py_process_1d!(PyPoissonSubordinator, PoissonSubordinator,
-  sig: (lambda_, n, x0=None, t=None, dtype=None),
+  sig: (lambda_, n, x0=None, t=None, seed=None, dtype=None),
   params: (lambda_: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

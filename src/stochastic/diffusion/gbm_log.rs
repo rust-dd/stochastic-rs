@@ -173,6 +173,6 @@ mod tests {
 }
 
 py_process_1d!(PyGBMLog, GBMLog,
-  sig: (mu=None, b=None, r=None, r_f=None, *, sigma, n, s0=None, t=None, dtype=None),
+  sig: (mu=None, b=None, r=None, r_f=None, *, sigma, n, s0=None, t=None, seed=None, dtype=None),
   params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, n: usize, s0: Option<f64>, t: Option<f64>)
 );

@@ -231,6 +231,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGMY<T, S> {
 }
 
 py_process_1d!(PyCGMY, CGMY,
-  sig: (c, lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, dtype=None),
+  sig: (c, lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
   params: (c: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
 );

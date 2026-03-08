@@ -81,6 +81,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GammaSubordinator<T, S> {
 }
 
 py_process_1d!(PyGammaSubordinator, GammaSubordinator,
-  sig: (nu, rate, n, x0=None, t=None, dtype=None),
+  sig: (nu, rate, n, x0=None, t=None, seed=None, dtype=None),
   params: (nu: f64, rate: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

@@ -74,7 +74,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BM<T, S> {
 }
 
 py_process_1d!(PyBM, BM,
-  sig: (n, t=None, dtype=None),
+  sig: (n, t=None, seed=None, dtype=None),
   params: (n: usize, t: Option<f64>)
 );
 

@@ -116,6 +116,6 @@ mod tests {
 }
 
 py_process_1d!(PyNIG, NIG,
-  sig: (theta, sigma, kappa, n, x0=None, t=None, dtype=None),
+  sig: (theta, sigma, kappa, n, x0=None, t=None, seed=None, dtype=None),
   params: (theta: f64, sigma: f64, kappa: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

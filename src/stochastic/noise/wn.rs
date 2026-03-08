@@ -66,6 +66,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Wn<T, S> {
 }
 
 py_process_1d!(PyWn, Wn,
-  sig: (n, mean=None, std_dev=None, dtype=None),
+  sig: (n, mean=None, std_dev=None, seed=None, dtype=None),
   params: (n: usize, mean: Option<f64>, std_dev: Option<f64>)
 );

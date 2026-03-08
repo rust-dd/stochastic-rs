@@ -99,6 +99,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for OU<T, S> {
 }
 
 py_process_1d!(PyOU, OU,
-  sig: (theta, mu, sigma, n, x0=None, t=None, dtype=None),
+  sig: (theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

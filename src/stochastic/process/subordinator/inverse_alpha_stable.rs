@@ -157,6 +157,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for InverseAlphaStableSubordinator<T
 }
 
 py_process_1d!(PyInverseAlphaStableSubordinator, InverseAlphaStableSubordinator,
-  sig: (alpha, c, n, t=None, u_steps=2048, u_max=None, dtype=None),
+  sig: (alpha, c, n, t=None, u_steps=2048, u_max=None, seed=None, dtype=None),
   params: (alpha: f64, c: f64, n: usize, t: Option<f64>, u_steps: usize, u_max: Option<f64>)
 );
