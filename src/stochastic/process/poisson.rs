@@ -10,13 +10,13 @@ use rand_distr::Distribution;
 
 use crate::distributions::exp::SimdExp;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct Poisson<T: FloatExt, S: Seed = Unseeded> {
+pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded> {
   /// Jump intensity (expected arrivals per unit time).
   pub lambda: T,
   /// Optional fixed number of sampled events.
@@ -49,7 +49,7 @@ impl<T: FloatExt> Poisson<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Poisson<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Poisson<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

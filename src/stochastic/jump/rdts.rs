@@ -12,7 +12,7 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -20,7 +20,7 @@ use crate::traits::ProcessExt;
 
 /// RDTS process (Rapidly Decreasing Tempered Stable process)
 /// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
-pub struct RDTS<T: FloatExt, S: Seed = Unseeded> {
+pub struct RDTS<T: FloatExt, S: SeedExt = Unseeded> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -100,7 +100,7 @@ impl<T: FloatExt> RDTS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for RDTS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RDTS<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

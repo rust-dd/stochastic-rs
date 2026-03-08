@@ -10,12 +10,12 @@ use ndarray_rand::RandomExt;
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct NIG<T: FloatExt, S: Seed = Unseeded> {
+pub struct NIG<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Diffusion / noise scale parameter.
@@ -61,14 +61,14 @@ impl<T: FloatExt> NIG<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> NIG<T, S> {
+impl<T: FloatExt, S: SeedExt> NIG<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for NIG<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for NIG<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -9,7 +9,7 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -38,7 +38,7 @@ use crate::traits::ProcessExt;
 /// # Notes
 /// - This is essentially a T-GARCH-like structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
-pub struct AGARCH<T: FloatExt, S: Seed = Unseeded> {
+pub struct AGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Model shape / loading parameter.
@@ -97,7 +97,7 @@ impl<T: FloatExt> AGARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for AGARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AGARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

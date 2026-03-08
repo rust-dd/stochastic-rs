@@ -3,14 +3,14 @@ use rand_distr::Distribution;
 
 use crate::distributions::poisson::SimdPoisson;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Poisson subordinator with unit jumps:
 /// `N_t` with independent increments `Poisson(lambda * dt)`.
-pub struct PoissonSubordinator<T: FloatExt, S: Seed = Unseeded> {
+pub struct PoissonSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   /// Intensity parameter.
   pub lambda: T,
   /// Number of grid points.
@@ -49,7 +49,7 @@ impl<T: FloatExt> PoissonSubordinator<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for PoissonSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for PoissonSubordinator<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

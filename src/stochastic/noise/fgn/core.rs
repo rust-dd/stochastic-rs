@@ -14,11 +14,11 @@ use ndrustfft::ndfft_par;
 use num_complex::Complex;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 
-pub struct FGN<T: FloatExt, S: Seed = Unseeded> {
+pub struct FGN<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Internal FFT length (power-of-two padded).
@@ -37,7 +37,7 @@ pub struct FGN<T: FloatExt, S: Seed = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt, S: Seed> FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> FGN<T, S> {
   pub fn dt(&self) -> T {
     let step_count = self.out_len.max(1);
     self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
@@ -119,7 +119,7 @@ impl<T: FloatExt> FGN<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> FGN<T, S> {
   /// Sample fGn using a specific deterministic seed.
   pub(crate) fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
     self.sample_cpu_impl(Deterministic(seed))
@@ -131,7 +131,7 @@ impl<T: FloatExt, S: Seed> FGN<T, S> {
 
   /// Core fGn sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
-  pub(crate) fn sample_cpu_impl<S2: Seed>(&self, mut seed: S2) -> Array1<T> {
+  pub(crate) fn sample_cpu_impl<S2: SeedExt>(&self, mut seed: S2) -> Array1<T> {
     let len = 2 * self.n;
     let mut fgn = Array1::<T>::zeros(self.out_len);
 

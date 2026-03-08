@@ -15,7 +15,7 @@
 //! | [`SimdRng::new()`] | globally-unique automatic seed (thread-safe atomic counter) |
 //! | [`SimdRng::from_seed(seed)`] | deterministic – same `seed` ⇒ same stream |
 //!
-//! Use the [`Seed`] trait ([`Unseeded`] / [`Deterministic`]) to propagate
+//! Use the [`SeedExt`] trait ([`Unseeded`] / [`Deterministic`]) to propagate
 //! determinism through composed distributions and processes at zero cost.
 //!
 //! $$
@@ -205,12 +205,12 @@ pub fn rng() -> SimdRng {
 /// - [`Unseeded`] — fresh random RNG each time (default, zero cost)
 /// - [`Deterministic`] — reproducible streams from a fixed seed
 ///
-/// Each call to [`rng()`](Seed::rng) produces an independent [`SimdRng`].
-/// [`derive()`](Seed::derive) creates a child seed for propagation
+/// Each call to [`rng()`](SeedExt::rng) produces an independent [`SimdRng`].
+/// [`derive()`](SeedExt::derive) creates a child seed for propagation
 /// to sub-components (distributions, noise modules).
 ///
 /// All branching is resolved at compile time via monomorphisation.
-pub trait Seed: Copy + Clone + Send + Sync + 'static {
+pub trait SeedExt: Copy + Clone + Send + Sync + 'static {
   /// Create an independent [`SimdRng`] and advance internal state.
   fn rng(&mut self) -> SimdRng;
 
@@ -227,7 +227,7 @@ pub struct Unseeded;
 #[derive(Copy, Clone, Debug)]
 pub struct Deterministic(pub u64);
 
-impl Seed for Unseeded {
+impl SeedExt for Unseeded {
   #[inline(always)]
   fn rng(&mut self) -> SimdRng {
     SimdRng::new()
@@ -239,7 +239,7 @@ impl Seed for Unseeded {
   }
 }
 
-impl Seed for Deterministic {
+impl SeedExt for Deterministic {
   #[inline(always)]
   fn rng(&mut self) -> SimdRng {
     SimdRng::from_seed(splitmix64_next(&mut self.0))

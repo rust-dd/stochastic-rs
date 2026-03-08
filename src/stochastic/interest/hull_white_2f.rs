@@ -7,14 +7,14 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct HullWhite2F<T: FloatExt, S: Seed = Unseeded> {
+pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
   /// Jump-size adjustment / shape parameter.
   pub k: Fn1D<T>,
   /// Long-run target level / model location parameter.
@@ -97,7 +97,7 @@ impl<T: FloatExt> HullWhite2F<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for HullWhite2F<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite2F<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

@@ -9,13 +9,13 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct HullWhite<T: FloatExt, S: Seed = Unseeded> {
+pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: Fn1D<T>,
   /// Model shape / loading parameter.
@@ -75,7 +75,7 @@ impl<T: FloatExt> HullWhite<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for HullWhite<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -7,13 +7,13 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct SABR<T: FloatExt, S: Seed = Unseeded> {
+pub struct SABR<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -100,7 +100,7 @@ impl<T: FloatExt> SABR<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for SABR<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SABR<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -140,7 +140,7 @@ mod tests {
   }
 }
 
-impl<T: FloatExt, S: Seed> SABR<T, S> {
+impl<T: FloatExt, S: SeedExt> SABR<T, S> {
   /// Calculate the Malliavin derivative of the SABR model
   ///
   /// The Malliavin derivative of the volaility process in the SABR model is given by:

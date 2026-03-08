@@ -9,7 +9,7 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -17,7 +17,7 @@ use crate::traits::ProcessExt;
 /// Cox-Ingersoll-Ross (CIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
 /// where X(t) is the CIR process.
-pub struct CIR<T: FloatExt, S: Seed = Unseeded> {
+pub struct CIR<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Drift / long-run mean-level parameter.
@@ -94,7 +94,7 @@ impl<T: FloatExt> CIR<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CIR<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CIR<T, S> {
   type Output = Array1<T>;
 
   /// Sample the Cox-Ingersoll-Ross (CIR) process

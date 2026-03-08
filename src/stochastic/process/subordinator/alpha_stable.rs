@@ -2,13 +2,13 @@ use ndarray::Array1;
 
 use super::sample_positive_stable;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Alpha-stable subordinator with Laplace exponent `phi(lambda) = c * lambda^alpha`.
-pub struct AlphaStableSubordinator<T: FloatExt, S: Seed = Unseeded> {
+pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
   /// Laplace scale coefficient `c > 0`.
@@ -59,7 +59,7 @@ impl<T: FloatExt> AlphaStableSubordinator<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for AlphaStableSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AlphaStableSubordinator<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

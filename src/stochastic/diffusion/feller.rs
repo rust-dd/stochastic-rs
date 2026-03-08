@@ -9,14 +9,14 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
-pub struct FellerLogistic<T: FloatExt, S: Seed = Unseeded> {
+pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed parameter.
   pub kappa: T,
   /// Long-run target level / model location parameter.
@@ -82,7 +82,7 @@ impl<T: FloatExt> FellerLogistic<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FellerLogistic<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FellerLogistic<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

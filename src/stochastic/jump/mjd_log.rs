@@ -16,12 +16,12 @@ use rand_distr::Distribution;
 use crate::distributions::normal::SimdNormal;
 use crate::distributions::poisson::SimdPoisson;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct MJDLog<T: FloatExt, S: Seed = Unseeded> {
+pub struct MJDLog<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -118,7 +118,7 @@ impl<T: FloatExt> MJDLog<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> MJDLog<T, S> {
+impl<T: FloatExt, S: SeedExt> MJDLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -140,7 +140,7 @@ impl<T: FloatExt, S: Seed> MJDLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for MJDLog<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MJDLog<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

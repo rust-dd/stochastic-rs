@@ -8,7 +8,7 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -33,7 +33,7 @@ use crate::traits::ProcessExt;
 /// # Notes
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
 /// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
-pub struct GARCH<T: FloatExt, S: Seed = Unseeded> {
+pub struct GARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Model shape / loading parameter.
@@ -73,7 +73,7 @@ impl<T: FloatExt> GARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for GARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

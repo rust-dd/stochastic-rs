@@ -9,14 +9,14 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
-pub struct Verhulst<T: FloatExt, S: Seed = Unseeded> {
+pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded> {
   /// Risk-free rate / drift adjustment parameter.
   pub r: T,
   /// Jump-size adjustment / shape parameter.
@@ -82,7 +82,7 @@ impl<T: FloatExt> Verhulst<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Verhulst<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Verhulst<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

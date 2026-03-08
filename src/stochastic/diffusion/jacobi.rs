@@ -9,12 +9,12 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Jacobi<T: FloatExt, S: Seed = Unseeded> {
+pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -69,7 +69,7 @@ impl<T: FloatExt> Jacobi<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Jacobi<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Jacobi<T, S> {
   type Output = Array1<T>;
 
   /// Sample the Jacobi process

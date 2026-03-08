@@ -8,13 +8,13 @@ use ndarray::Array1;
 use ndarray::s;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Bergomi<T: FloatExt, S: Seed = Unseeded> {
+pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded> {
   /// Volatility-of-volatility / tail-thickness parameter.
   pub nu: T,
   /// Initial variance/volatility level.
@@ -66,7 +66,7 @@ impl<T: FloatExt> Bergomi<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Bergomi<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bergomi<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

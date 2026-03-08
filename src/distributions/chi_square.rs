@@ -27,12 +27,18 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
     Self::from_seed_source(k, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a chi-squared distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
-  pub(crate) fn from_seed_source(k: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  /// Creates a chi-squared distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub(crate) fn from_seed_source(k: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     Self {
       df: k,
       gamma: SimdGamma::from_seed_source(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    self.gamma.sample_fast()
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

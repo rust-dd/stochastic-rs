@@ -8,7 +8,7 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -25,7 +25,7 @@ use crate::traits::ProcessExt;
 /// - `alpha`: Array of ARCH coefficients.
 /// - `n`: Number of observations.
 /// - `m`: Optional batch size.
-pub struct ARCH<T: FloatExt, S: Seed = Unseeded> {
+pub struct ARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Omega (constant term in variance)
   pub omega: T,
   /// Coefficients alpha_i
@@ -62,7 +62,7 @@ impl<T: FloatExt> ARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for ARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

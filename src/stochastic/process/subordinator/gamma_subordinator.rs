@@ -3,13 +3,13 @@ use ndarray_rand::RandomExt;
 
 use crate::distributions::gamma::SimdGamma;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Gamma subordinator where `G_t ~ Gamma(nu * t, rate)`.
-pub struct GammaSubordinator<T: FloatExt, S: Seed = Unseeded> {
+pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   /// Shape intensity `nu`.
   pub nu: T,
   /// Rate parameter (>0).
@@ -54,7 +54,7 @@ impl<T: FloatExt> GammaSubordinator<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for GammaSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GammaSubordinator<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

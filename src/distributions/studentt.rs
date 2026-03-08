@@ -37,9 +37,9 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     Self::from_seed_source(nu, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a Student's t-distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Creates a Student's t-distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, chisq, main rng) gets an independent stream.
-  pub(crate) fn from_seed_source(nu: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(nu: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     Self {
       nu,
       normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),
@@ -48,6 +48,19 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

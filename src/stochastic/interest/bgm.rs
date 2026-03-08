@@ -9,12 +9,12 @@ use ndarray::Array2;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BGM<T: FloatExt, S: Seed = Unseeded> {
+pub struct BGM<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift/volatility multiplier for each forward rate.
   pub lambda: Array1<T>,
   /// Initial forward rates for each path.
@@ -83,7 +83,7 @@ impl<T: FloatExt> BGM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for BGM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BGM<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

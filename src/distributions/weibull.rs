@@ -32,9 +32,9 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     Self::from_seed_source(lambda, k, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a Weibull distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Creates a Weibull distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (exp, main rng) gets an independent stream.
-  pub(crate) fn from_seed_source(lambda: T, k: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(lambda: T, k: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
     Self {
       lambda,
@@ -42,6 +42,14 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
       exp1: SimdExpZig::from_seed_source(T::one(), seed),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let u = T::sample_uniform_simd(rng).max(T::min_positive_val());
+    self.lambda * (-u.ln()).powf(self.inv_k)
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

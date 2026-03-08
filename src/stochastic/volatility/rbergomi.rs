@@ -8,13 +8,13 @@ use ndarray::Array1;
 use ndarray::s;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct RoughBergomi<T: FloatExt, S: Seed = Unseeded> {
+pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Volatility-of-volatility / tail-thickness parameter.
@@ -89,7 +89,7 @@ impl<T: FloatExt> RoughBergomi<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for RoughBergomi<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

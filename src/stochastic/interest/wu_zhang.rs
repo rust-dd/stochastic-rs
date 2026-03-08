@@ -10,12 +10,12 @@ use ndarray::Axis;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct WuZhangD<T: FloatExt, S: Seed = Unseeded> {
+pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
   /// Mean reversion speed for each dimension's volatility.
@@ -209,7 +209,7 @@ impl<T: FloatExt> WuZhangD<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for WuZhangD<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

@@ -5,7 +5,7 @@ use rand_distr::Distribution;
 use super::clamp_open01;
 use crate::distributions::poisson::SimdPoisson;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -15,7 +15,7 @@ use crate::traits::ProcessExt;
 /// Uses truncated-stable large jumps with exponential thinning and
 /// deterministic small-jump drift:
 /// `nu(dx) = c * exp(-mu x) * x^{-1-alpha} dx`, `x > 0`, `alpha in (0,1)`.
-pub struct TemperedStableSubordinator<T: FloatExt, S: Seed = Unseeded> {
+pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   /// Stable index in `(0,1)`.
   pub alpha: T,
   /// Levy density scale.
@@ -78,7 +78,7 @@ impl<T: FloatExt> TemperedStableSubordinator<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for TemperedStableSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TemperedStableSubordinator<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

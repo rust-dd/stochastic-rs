@@ -9,14 +9,14 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
-pub struct Quadratic<T: FloatExt, S: Seed = Unseeded> {
+pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -65,7 +65,7 @@ impl<T: FloatExt> Quadratic<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Quadratic<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Quadratic<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

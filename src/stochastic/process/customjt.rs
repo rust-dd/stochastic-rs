@@ -8,12 +8,12 @@ use ndarray::Array1;
 use rand_distr::Distribution;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CustomJt<T, D, S: Seed = Unseeded>
+pub struct CustomJt<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -139,7 +139,7 @@ impl PyCustomJt {
   }
 }
 
-impl<T, D, S: Seed> ProcessExt<T> for CustomJt<T, D, S>
+impl<T, D, S: SeedExt> ProcessExt<T> for CustomJt<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

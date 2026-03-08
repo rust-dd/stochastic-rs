@@ -48,13 +48,13 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     )
   }
 
-  /// Creates an alpha-stable distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Creates an alpha-stable distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub(crate) fn from_seed_source(
     alpha: T,
     beta: T,
     scale: T,
     location: T,
-    seed: &mut impl crate::simd_rng::Seed,
+    seed: &mut impl crate::simd_rng::SeedExt,
   ) -> Self {
     assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
     assert!((-T::one()..=T::one()).contains(&beta));
@@ -68,6 +68,19 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

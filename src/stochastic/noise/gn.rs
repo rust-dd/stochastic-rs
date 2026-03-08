@@ -8,13 +8,13 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct Gn<T: FloatExt, S: Seed = Unseeded> {
+pub struct Gn<T: FloatExt, S: SeedExt = Unseeded> {
   /// Number of discrete simulation points (or samples).
   pub n: usize,
   /// Total simulation horizon (defaults to 1 when omitted).
@@ -43,7 +43,7 @@ impl<T: FloatExt> Gn<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Gn<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gn<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -54,7 +54,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for Gn<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> Gn<T, S> {
+impl<T: FloatExt, S: SeedExt> Gn<T, S> {
   pub fn fill_slice(&self, out: &mut [T]) {
     let len = self.n.min(out.len());
     if len == 0 {

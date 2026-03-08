@@ -8,13 +8,13 @@ use ndarray::Array1;
 
 use super::HestonPow;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Heston<T: FloatExt, S: Seed = Unseeded> {
+pub struct Heston<T: FloatExt, S: SeedExt = Unseeded> {
   /// Initial stock price
   pub s0: Option<T>,
   /// Initial volatility
@@ -124,7 +124,7 @@ impl<T: FloatExt> Heston<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Heston<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -160,7 +160,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for Heston<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> Heston<T, S> {
+impl<T: FloatExt, S: SeedExt> Heston<T, S> {
   /// Malliavin derivative of the volatility
   ///
   /// The Malliavin derivative of the Heston model is given by

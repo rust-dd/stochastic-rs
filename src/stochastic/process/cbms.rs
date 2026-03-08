@@ -7,13 +7,13 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CBMS<T: FloatExt, S: Seed = Unseeded> {
+pub struct CBMS<T: FloatExt, S: SeedExt = Unseeded> {
   /// Instantaneous correlation between the two Brownian components.
   pub rho: T,
   /// Number of discrete time points in each path.
@@ -59,7 +59,7 @@ impl<T: FloatExt> CBMS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> CBMS<T, S> {
+impl<T: FloatExt, S: SeedExt> CBMS<T, S> {
   #[inline]
   fn cumsum_noise(&self, noise: [Array1<T>; 2]) -> [Array1<T>; 2] {
     let [cgn1, cgn2] = &noise;
@@ -73,7 +73,7 @@ impl<T: FloatExt, S: Seed> CBMS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CBMS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CBMS<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

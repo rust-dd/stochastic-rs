@@ -10,11 +10,14 @@ use num_traits::PrimInt;
 use rand::Rng;
 use rand_distr::Distribution;
 
+use crate::simd_rng::SimdRng;
+
 pub struct SimdBinomial<T: PrimInt> {
   n: u32,
   p: f64,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
 }
 
 impl<T: PrimInt> SimdBinomial<T> {
@@ -24,6 +27,29 @@ impl<T: PrimInt> SimdBinomial<T> {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
+    }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer_fast();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
+  }
+
+  fn refill_buffer_fast(&self) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice(rng, buf);
+    unsafe {
+      *self.index.get() = 0;
     }
   }
 

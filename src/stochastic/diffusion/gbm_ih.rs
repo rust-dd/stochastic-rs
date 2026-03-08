@@ -9,14 +9,14 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Inhomogeneous GBM with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
-pub struct GBMIH<T: FloatExt, S: Seed = Unseeded> {
+pub struct GBMIH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Baseline sigma used when `sigmas` is None
@@ -85,7 +85,7 @@ impl<T: FloatExt> GBMIH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for GBMIH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBMIH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {

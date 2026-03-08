@@ -8,13 +8,13 @@ use ndarray::Array1;
 
 use super::cir::CIR;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct CIR2F<T: FloatExt, S: Seed = Unseeded> {
+pub struct CIR2F<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model parameter controlling process dynamics.
   pub x: CIR<T, S>,
   /// Model parameter controlling process dynamics.
@@ -66,7 +66,7 @@ impl<T: FloatExt> CIR2F<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CIR2F<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CIR2F<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

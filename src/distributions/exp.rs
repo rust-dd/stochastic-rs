@@ -128,8 +128,8 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     Self::from_seed_source(lambda, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates an exponential distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub(crate) fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  /// Creates an exponential distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub(crate) fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     let _ = exp_zig_tables();
     assert!(lambda > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -246,6 +246,18 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
+  /// Returns a single Exp(lambda) sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= N {
+      self.refill_buffer();
+    }
+    let val = unsafe { (*self.buffer.get())[*index] };
+    *index += 1;
+    val
+  }
+
   /// Fills a slice with Exp(lambda) samples.
   /// Generates Exp(1) first, then scales by 1/lambda (skipped when lambda==1).
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
@@ -310,11 +322,17 @@ impl<T: SimdFloatExt> SimdExp<T> {
     Self::from_seed_source(lambda, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates an exponential distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub(crate) fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  /// Creates an exponential distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub(crate) fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     Self {
       inner: SimdExpZig::from_seed_source(lambda, seed),
     }
+  }
+
+  /// Returns a single Exp(lambda) sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    self.inner.sample_fast()
   }
 
   /// Fills a slice with Exp(lambda) samples. Delegates to the inner `SimdExpZig`.

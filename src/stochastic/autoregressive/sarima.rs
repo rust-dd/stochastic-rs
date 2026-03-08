@@ -8,7 +8,7 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -46,7 +46,7 @@ use crate::traits::ProcessExt;
 ///    to produce the combined polynomial with cross-terms.
 /// 2. A single-pass SARMA recursion generates the "fully differenced" data.
 /// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
-pub struct SARIMA<T: FloatExt, S: Seed = Unseeded> {
+pub struct SARIMA<T: FloatExt, S: SeedExt = Unseeded> {
   /// Non-seasonal AR coefficients, length p
   pub non_seasonal_ar_coefs: Array1<T>,
   /// Non-seasonal MA coefficients, length q
@@ -131,7 +131,7 @@ impl<T: FloatExt> SARIMA<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for SARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SARIMA<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -191,7 +191,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for SARIMA<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> SARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> SARIMA<T, S> {
   /// Multiply the non-seasonal AR polynomial φ(B) with the seasonal AR polynomial Φ(Bˢ).
   ///
   /// φ(B) = 1 - φ_1 B - ... - φ_p B^p

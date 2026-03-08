@@ -8,13 +8,13 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct Wn<T: FloatExt, S: Seed = Unseeded> {
+pub struct Wn<T: FloatExt, S: SeedExt = Unseeded> {
   /// Number of discrete simulation points (or samples).
   pub n: usize,
   /// Target mean level for generated noise samples.
@@ -47,7 +47,7 @@ impl<T: FloatExt> Wn<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Wn<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Wn<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

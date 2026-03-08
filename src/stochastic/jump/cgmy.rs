@@ -27,13 +27,13 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CGMY<T: FloatExt, S: Seed = Unseeded> {
+pub struct CGMY<T: FloatExt, S: SeedExt = Unseeded> {
   /// Overall jump intensity scale C > 0
   pub c: T,
   /// Positive tempering parameter G > 0
@@ -140,7 +140,7 @@ impl<T: FloatExt> CGMY<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CGMY<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGMY<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -9,13 +9,13 @@ use ndarray::Array2;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct ADG<T: FloatExt, S: Seed = Unseeded> {
+pub struct ADG<T: FloatExt, S: SeedExt = Unseeded> {
   /// Jump-size adjustment / shape parameter.
   pub k: Fn1D<T>,
   /// Long-run target level / model location parameter.
@@ -127,7 +127,7 @@ impl<T: FloatExt> ADG<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for ADG<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ADG<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {

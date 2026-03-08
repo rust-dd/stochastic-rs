@@ -34,8 +34,8 @@ impl<T: SimdFloatExt> SimdPareto<T> {
     Self::from_seed_source(x_m, alpha, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a Pareto distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub(crate) fn from_seed_source(x_m: T, alpha: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  /// Creates a Pareto distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub(crate) fn from_seed_source(x_m: T, alpha: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(x_m > T::zero() && alpha > T::zero());
     Self {
       x_m,
@@ -44,6 +44,19 @@ impl<T: SimdFloatExt> SimdPareto<T> {
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

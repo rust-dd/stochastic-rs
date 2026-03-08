@@ -34,14 +34,27 @@ impl<T: PrimInt> SimdGeometric<T> {
     Self::from_seed_source(p, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a geometric distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub(crate) fn from_seed_source(p: f64, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  /// Creates a geometric distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub(crate) fn from_seed_source(p: f64, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     Self {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

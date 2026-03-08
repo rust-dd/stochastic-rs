@@ -12,12 +12,12 @@ use rand_distr::Distribution;
 use super::poisson::Poisson;
 use crate::distributions::poisson::SimdPoisson;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CompoundPoisson<T, D, S: Seed = Unseeded>
+pub struct CompoundPoisson<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -58,7 +58,7 @@ where
   }
 }
 
-impl<T, D, S: Seed> CompoundPoisson<T, D, S>
+impl<T, D, S: SeedExt> CompoundPoisson<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -137,7 +137,7 @@ where
   }
 }
 
-impl<T, D, S: Seed> ProcessExt<T> for CompoundPoisson<T, D, S>
+impl<T, D, S: SeedExt> ProcessExt<T> for CompoundPoisson<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

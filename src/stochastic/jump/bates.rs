@@ -8,14 +8,14 @@ use ndarray::Array1;
 use rand_distr::Distribution;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Bates1996<T, D, S: Seed = Unseeded>
+pub struct Bates1996<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -141,7 +141,7 @@ where
   }
 }
 
-impl<T, D, S: Seed> Bates1996<T, D, S>
+impl<T, D, S: SeedExt> Bates1996<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -157,7 +157,7 @@ where
   }
 }
 
-impl<T, D, S: Seed> ProcessExt<T> for Bates1996<T, D, S>
+impl<T, D, S: SeedExt> ProcessExt<T> for Bates1996<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

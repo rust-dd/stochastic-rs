@@ -9,7 +9,7 @@ use ndarray_rand::RandomExt;
 
 use crate::distributions::alpha_stable::SimdAlphaStable;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -22,7 +22,7 @@ use crate::traits::ProcessExt;
 ///
 /// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
 /// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
-pub struct LFSM<T: FloatExt, S: Seed = Unseeded> {
+pub struct LFSM<T: FloatExt, S: SeedExt = Unseeded> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
   /// Smaller values produce heavier tails and larger jumps.
   pub alpha: T,
@@ -89,14 +89,14 @@ impl<T: FloatExt> LFSM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> LFSM<T, S> {
+impl<T: FloatExt, S: SeedExt> LFSM<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for LFSM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for LFSM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

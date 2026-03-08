@@ -9,12 +9,12 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CEV<T: FloatExt, S: Seed = Unseeded> {
+pub struct CEV<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -59,7 +59,7 @@ impl<T: FloatExt> CEV<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CEV<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CEV<T, S> {
   type Output = Array1<T>;
 
   /// Sample the CEV process
@@ -97,7 +97,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for CEV<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> CEV<T, S> {
+impl<T: FloatExt, S: SeedExt> CEV<T, S> {
   /// Calculate the Malliavin derivative of the CEV process
   ///
   /// The Malliavin derivative of the CEV process is given by

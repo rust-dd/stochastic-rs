@@ -14,12 +14,12 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct HestonLog<T: FloatExt, S: Seed = Unseeded> {
+pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -145,7 +145,7 @@ impl<T: FloatExt> HestonLog<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> HestonLog<T, S> {
+impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -157,7 +157,7 @@ impl<T: FloatExt, S: Seed> HestonLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for HestonLog<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonLog<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

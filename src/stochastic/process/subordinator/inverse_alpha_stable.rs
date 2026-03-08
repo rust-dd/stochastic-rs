@@ -3,14 +3,14 @@ use rand::Rng;
 
 use super::sample_positive_stable;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Inverse alpha-stable subordinator:
 /// `E_alpha(t) = inf { u >= 0 : D_alpha(u) > t }`.
-pub struct InverseAlphaStableSubordinator<T: FloatExt, S: Seed = Unseeded> {
+pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
   /// Laplace scale of the direct stable subordinator.
@@ -67,7 +67,7 @@ impl<T: FloatExt> InverseAlphaStableSubordinator<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> InverseAlphaStableSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
   fn simulate_direct_path(&self, u_max: f64, rng: &mut impl Rng) -> (Vec<f64>, Vec<f64>) {
     let m = self.u_steps;
     let du = u_max / (m - 1) as f64;
@@ -84,7 +84,7 @@ impl<T: FloatExt, S: Seed> InverseAlphaStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for InverseAlphaStableSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for InverseAlphaStableSubordinator<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

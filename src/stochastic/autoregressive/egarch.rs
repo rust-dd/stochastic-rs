@@ -9,7 +9,7 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -43,7 +43,7 @@ use crate::traits::ProcessExt;
 /// 1. We assume that `alpha` and `gamma` each have length \(p\).
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
-pub struct EGARCH<T: FloatExt, S: Seed = Unseeded> {
+pub struct EGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term (\(\omega\)) in log-variance
   pub omega: T,
   /// Magnitude effect coefficients (\(\alpha_1, \ldots, \alpha_p\))
@@ -101,7 +101,7 @@ impl<T: FloatExt> EGARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for EGARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for EGARCH<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -10,12 +10,12 @@ use rand_distr::Distribution;
 
 use super::customjt::CustomJt;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CompoundCustom<T, D1, D2, S: Seed = Unseeded>
+pub struct CompoundCustom<T, D1, D2, S: SeedExt = Unseeded>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,
@@ -93,7 +93,7 @@ where
   }
 }
 
-impl<T, D1, D2, S: Seed> ProcessExt<T> for CompoundCustom<T, D1, D2, S>
+impl<T, D1, D2, S: SeedExt> ProcessExt<T> for CompoundCustom<T, D1, D2, S>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,

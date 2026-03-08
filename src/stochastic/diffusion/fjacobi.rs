@@ -7,13 +7,13 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FJacobi<T: FloatExt, S: Seed = Unseeded> {
+pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Model shape / loading parameter.
@@ -79,7 +79,7 @@ impl<T: FloatExt> FJacobi<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FJacobi<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FJacobi<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

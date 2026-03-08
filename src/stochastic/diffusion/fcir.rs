@@ -7,7 +7,7 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
@@ -16,7 +16,7 @@ use crate::traits::ProcessExt;
 /// Fractional Cox-Ingersoll-Ross (FCIR) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the FCIR process.
-pub struct FCIR<T: FloatExt, S: Seed = Unseeded> {
+pub struct FCIR<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Long-run target level / model location parameter.
@@ -105,7 +105,7 @@ impl<T: FloatExt> FCIR<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FCIR<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FCIR<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

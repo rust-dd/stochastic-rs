@@ -19,7 +19,7 @@ use ndarray::Array1;
 use num_complex::Complex;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
@@ -29,7 +29,7 @@ use crate::traits::ProcessExt;
 ///
 /// Source:
 /// - https://arxiv.org/abs/2406.18004
-pub struct CFOU<T: FloatExt, S: Seed = Unseeded> {
+pub struct CFOU<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent of the driving fractional Brownian motion.
   pub hurst: T,
   /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
@@ -114,7 +114,7 @@ impl<T: FloatExt> CFOU<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CFOU<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFOU<T, S> {
   type Output = Array1<Complex<T>>;
 
   /// Samples the complex path directly as `Z_t = X_1(t) + i X_2(t)`.
@@ -151,7 +151,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for CFOU<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> CFOU<T, S> {
+impl<T: FloatExt, S: SeedExt> CFOU<T, S> {
   /// Samples the process and returns explicit real/imaginary components.
   #[must_use]
   pub fn sample_components(&self) -> [Array1<T>; 2] {

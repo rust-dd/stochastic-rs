@@ -7,13 +7,13 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct CGNS<T: FloatExt, S: Seed = Unseeded> {
+pub struct CGNS<T: FloatExt, S: SeedExt = Unseeded> {
   /// Instantaneous correlation parameter.
   pub rho: T,
   /// Number of discrete simulation points (or samples).
@@ -56,7 +56,7 @@ impl<T: FloatExt> CGNS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> CGNS<T, S> {
+impl<T: FloatExt, S: SeedExt> CGNS<T, S> {
   /// Sample with an explicit seed, used by callers like CBMS.
   pub(crate) fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(Deterministic(seed))
@@ -64,7 +64,7 @@ impl<T: FloatExt, S: Seed> CGNS<T, S> {
 
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
-  pub(crate) fn sample_impl<S2: Seed>(&self, mut seed: S2) -> [Array1<T>; 2] {
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> [Array1<T>; 2] {
     let mut gn1 = Array1::<T>::zeros(self.n);
     let mut z = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -101,7 +101,7 @@ impl<T: FloatExt, S: Seed> CGNS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CGNS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGNS<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

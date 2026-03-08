@@ -9,12 +9,12 @@ use ndarray_rand::RandomExt;
 
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct IG<T: FloatExt, S: Seed = Unseeded> {
+pub struct IG<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
   /// Number of discrete simulation points (or samples).
@@ -40,14 +40,14 @@ impl<T: FloatExt> IG<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> IG<T, S> {
+impl<T: FloatExt, S: SeedExt> IG<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for IG<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for IG<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

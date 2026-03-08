@@ -7,13 +7,13 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cfgns::CFGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CFBMS<T: FloatExt, S: Seed = Unseeded> {
+pub struct CFBMS<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst parameter (`0 < H < 1`) shared by both components.
   pub hurst: T,
   /// Instantaneous correlation between the two fractional-noise drivers.
@@ -71,7 +71,7 @@ impl<T: FloatExt> CFBMS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CFBMS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFBMS<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

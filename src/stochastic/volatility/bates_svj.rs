@@ -16,13 +16,13 @@ use rand_distr::Distribution;
 use crate::distributions::normal::SimdNormal;
 use crate::distributions::poisson::SimdPoisson;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BatesSVJ<T: FloatExt, S: Seed = Unseeded> {
+pub struct BatesSVJ<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -161,7 +161,7 @@ impl<T: FloatExt> BatesSVJ<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> BatesSVJ<T, S> {
+impl<T: FloatExt, S: SeedExt> BatesSVJ<T, S> {
   #[inline]
   fn kappa_j(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp() - T::one()
@@ -178,7 +178,7 @@ impl<T: FloatExt, S: Seed> BatesSVJ<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for BatesSVJ<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSVJ<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

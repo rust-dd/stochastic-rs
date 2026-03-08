@@ -7,14 +7,14 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
-pub struct DuffieKan<T: FloatExt, S: Seed = Unseeded> {
+pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -139,7 +139,7 @@ impl<T: FloatExt> DuffieKan<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for DuffieKan<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKan<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

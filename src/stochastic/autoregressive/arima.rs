@@ -8,7 +8,7 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -20,7 +20,7 @@ use crate::traits::ProcessExt;
 /// \]
 /// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
 /// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
-pub struct ARIMA<T: FloatExt, S: Seed = Unseeded> {
+pub struct ARIMA<T: FloatExt, S: SeedExt = Unseeded> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
   pub ar_coefs: Array1<T>,
   /// MA coefficients (\(\theta_1,\dots,\theta_q\)) as an Array1
@@ -72,7 +72,7 @@ impl<T: FloatExt> ARIMA<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for ARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARIMA<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -117,7 +117,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for ARIMA<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> ARIMA<T, S> {
   /// Inverse differencing once, converting Y into X:
   /// X[0] = Y[0],  X[t] = X[t-1] + Y[t], for t=1..(n-1).
   fn inverse_difference(y: &Array1<T>) -> Array1<T> {

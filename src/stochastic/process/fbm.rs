@@ -24,13 +24,13 @@ use pyo3::prelude::*;
 use statrs::function::gamma;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FBM<T: FloatExt, S: Seed = Unseeded> {
+pub struct FBM<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
   pub hurst: T,
   /// Number of discrete time points in the generated path.
@@ -70,7 +70,7 @@ impl<T: FloatExt> FBM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FBM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -109,7 +109,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for FBM<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> FBM<T, S> {
+impl<T: FloatExt, S: SeedExt> FBM<T, S> {
   /// Calculate the Malliavin derivative
   ///
   /// The Malliavin derivative of the fractional Brownian motion is given by:

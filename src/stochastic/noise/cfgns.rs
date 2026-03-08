@@ -8,12 +8,12 @@ use ndarray::Array1;
 
 use super::fgn::FGN;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CFGNS<T: FloatExt, S: Seed = Unseeded> {
+pub struct CFGNS<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Instantaneous correlation parameter.
@@ -71,7 +71,7 @@ impl<T: FloatExt> CFGNS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> CFGNS<T, S> {
+impl<T: FloatExt, S: SeedExt> CFGNS<T, S> {
   /// Sample with an explicit seed, used by callers like CFBMS.
   pub(crate) fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(Deterministic(seed))
@@ -79,7 +79,7 @@ impl<T: FloatExt, S: Seed> CFGNS<T, S> {
 
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
-  pub(crate) fn sample_impl<S2: Seed>(&self, mut seed: S2) -> [Array1<T>; 2] {
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> [Array1<T>; 2] {
     let child1 = seed.derive();
     let child2 = seed.derive();
     let fgn1 = self.fgn.sample_cpu_impl(child1);
@@ -93,7 +93,7 @@ impl<T: FloatExt, S: Seed> CFGNS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CFGNS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFGNS<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {

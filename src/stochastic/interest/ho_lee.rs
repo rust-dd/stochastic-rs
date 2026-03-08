@@ -9,14 +9,14 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
-pub struct HoLee<T: FloatExt, S: Seed = Unseeded> {
+pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model parameter controlling process dynamics.
   pub f_T: Option<Fn1D<T>>,
   /// Long-run target level / model location parameter.
@@ -67,7 +67,7 @@ impl<T: FloatExt> HoLee<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for HoLee<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HoLee<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

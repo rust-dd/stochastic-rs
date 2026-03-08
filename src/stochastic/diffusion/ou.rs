@@ -9,13 +9,13 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct OU<T: FloatExt, S: Seed = Unseeded> {
+pub struct OU<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Drift / long-run mean-level parameter.
@@ -60,7 +60,7 @@ impl<T: FloatExt> OU<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for OU<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for OU<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

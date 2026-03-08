@@ -24,7 +24,7 @@ use scilib::math::basic::gamma;
 use crate::distributions::exp::SimdExp;
 use crate::distributions::uniform::SimdUniform;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stats::non_central_chi_squared;
 use crate::stochastic::process::poisson::Poisson;
@@ -34,7 +34,7 @@ use crate::traits::ProcessExt;
 /// CGMY Stochastic Volatility process (CGMYSV)
 ///
 /// Paper: <https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf>
-pub struct SVCGMY<T: FloatExt, S: Seed = Unseeded> {
+pub struct SVCGMY<T: FloatExt, S: SeedExt = Unseeded> {
   /// Positive tempering parameter λ+ > 0
   pub lambda_plus: T,
   /// Negative tempering parameter λ− > 0
@@ -160,7 +160,7 @@ impl<T: FloatExt> SVCGMY<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for SVCGMY<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SVCGMY<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

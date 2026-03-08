@@ -22,11 +22,11 @@ use ndarray::Array2;
 #[cfg(feature = "python")]
 pub use python::PyFGN;
 
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FGN<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

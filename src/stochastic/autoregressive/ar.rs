@@ -8,7 +8,7 @@ use ndarray::Array1;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -27,7 +27,7 @@ use crate::traits::ProcessExt;
 /// - `n`: Length of the time series.
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
-pub struct ARp<T: FloatExt, S: Seed = Unseeded> {
+pub struct ARp<T: FloatExt, S: SeedExt = Unseeded> {
   /// AR coefficients
   pub phi: Array1<T>,
   /// Noise std dev
@@ -86,7 +86,7 @@ impl<T: FloatExt> ARp<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for ARp<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARp<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

@@ -9,7 +9,7 @@ use crate::distributions::gamma::SimdGamma;
 use crate::distributions::inverse_gauss::SimdInverseGauss;
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -30,7 +30,7 @@ pub enum CtrwJumpLaw<T: FloatExt> {
 }
 
 /// Continuous-time random walk sampled on a fixed output grid.
-pub struct CTRW<T: FloatExt, S: Seed = Unseeded> {
+pub struct CTRW<T: FloatExt, S: SeedExt = Unseeded> {
   pub waiting: CtrwWaitingLaw<T>,
   pub jumps: CtrwJumpLaw<T>,
   pub n: usize,
@@ -79,7 +79,7 @@ impl<T: FloatExt> CTRW<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for CTRW<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

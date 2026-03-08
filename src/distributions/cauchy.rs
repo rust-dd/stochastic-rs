@@ -34,8 +34,8 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
     Self::from_seed_source(x0, gamma, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a Cauchy distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub(crate) fn from_seed_source(x0: T, gamma: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  /// Creates a Cauchy distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub(crate) fn from_seed_source(x0: T, gamma: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(gamma > T::zero());
     Self {
       x0,
@@ -44,6 +44,19 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

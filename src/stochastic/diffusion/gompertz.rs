@@ -9,14 +9,14 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
-pub struct Gompertz<T: FloatExt, S: Seed = Unseeded> {
+pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model coefficient / user-supplied drift term.
   pub a: T,
   /// Model coefficient / user-supplied diffusion term.
@@ -61,7 +61,7 @@ impl<T: FloatExt> Gompertz<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for Gompertz<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gompertz<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

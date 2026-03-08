@@ -34,9 +34,9 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     Self::from_seed_source(alpha, scale, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a gamma distribution with RNGs from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Creates a gamma distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
-  pub(crate) fn from_seed_source(alpha: T, scale: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(alpha: T, scale: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(alpha > T::zero() && scale > T::zero());
     Self {
       alpha,
@@ -46,6 +46,19 @@ impl<T: SimdFloatExt> SimdGamma<T> {
       normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

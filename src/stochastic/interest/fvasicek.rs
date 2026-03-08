@@ -7,13 +7,13 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::diffusion::fou::FOU;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FVasicek<T: FloatExt, S: Seed = Unseeded> {
+pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Long-run target level / model location parameter.
@@ -68,7 +68,7 @@ impl<T: FloatExt> FVasicek<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FVasicek<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FVasicek<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {

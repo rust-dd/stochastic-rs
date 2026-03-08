@@ -161,11 +161,11 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     Self::from_seed_source(mean, std_dev, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a normal distribution with an RNG obtained from a [`Seed`](crate::simd_rng::Seed) source.
+  /// Creates a normal distribution with an RNG obtained from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   ///
   /// This is the core constructor — `new()` and `with_seed()` delegate here.
   /// Monomorphised at compile time, zero runtime branching.
-  pub(crate) fn from_seed_source(mean: T, std_dev: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  pub(crate) fn from_seed_source(mean: T, std_dev: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -176,6 +176,19 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
       index: UnsafeCell::new(N),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
+  }
+
+  /// Returns a single N(mean, std_dev) sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= N {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   /// Fills a slice with normally distributed samples.

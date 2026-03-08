@@ -37,8 +37,8 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     Self::from_seed_source(low, high, &mut crate::simd_rng::Deterministic(seed))
   }
 
-  /// Creates a uniform distribution with an RNG from a [`Seed`](crate::simd_rng::Seed) source.
-  pub(crate) fn from_seed_source(low: T, high: T, seed: &mut impl crate::simd_rng::Seed) -> Self {
+  /// Creates a uniform distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub(crate) fn from_seed_source(low: T, high: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
     Self {
@@ -52,6 +52,19 @@ impl<T: SimdFloatExt> SimdUniform<T> {
 
   pub fn unit() -> Self {
     Self::new(T::zero(), T::one())
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {

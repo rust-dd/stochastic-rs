@@ -7,13 +7,13 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::noise::fgn::FGN;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FOU<T: FloatExt, S: Seed = Unseeded> {
+pub struct FOU<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Mean-reversion speed.
@@ -71,7 +71,7 @@ impl<T: FloatExt> FOU<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FOU<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FOU<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

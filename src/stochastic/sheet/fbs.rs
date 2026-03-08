@@ -17,12 +17,12 @@ use num_complex::Complex;
 use crate::distributions::complex::ComplexDistribution;
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FBS<T: FloatExt, S: Seed = Unseeded> {
+pub struct FBS<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Number of parallel paths / first-grid resolution.
@@ -60,7 +60,7 @@ impl<T: FloatExt> FBS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FBS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBS<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Array2<T> {
@@ -152,7 +152,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for FBS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> FBS<T, S> {
+impl<T: FloatExt, S: SeedExt> FBS<T, S> {
   fn rho(x: (T, T), y: (T, T), r: T, alpha: T) -> (T, T, T) {
     let one = T::one();
     let two = T::from_usize_(2);

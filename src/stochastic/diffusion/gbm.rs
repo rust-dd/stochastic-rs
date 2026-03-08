@@ -15,13 +15,13 @@ use statrs::statistics::Mode;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct GBM<T: FloatExt, S: Seed = Unseeded> {
+pub struct GBM<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -81,7 +81,7 @@ impl<T: FloatExt> GBM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for GBM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -119,7 +119,7 @@ impl<T: FloatExt, S: Seed> ProcessExt<T> for GBM<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> GBM<T, S> {
+impl<T: FloatExt, S: SeedExt> GBM<T, S> {
   /// Malliavin derivative of the GBM process
   ///
   /// The Malliavin derivative of the GBM process is given by
@@ -140,7 +140,7 @@ impl<T: FloatExt, S: Seed> GBM<T, S> {
   }
 }
 
-impl<T: FloatExt, S: Seed> DistributionExt for GBM<T, S> {
+impl<T: FloatExt, S: SeedExt> DistributionExt for GBM<T, S> {
   fn pdf(&self, x: f64) -> f64 {
     self.distribution.as_ref().map_or(0.0, |d| d.pdf(x))
   }

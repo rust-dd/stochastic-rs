@@ -7,7 +7,7 @@
 use ndarray::Array1;
 
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -16,7 +16,7 @@ use crate::traits::ProcessExt;
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
-pub struct FouqueOU2D<T: FloatExt, S: Seed = Unseeded> {
+pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed parameter.
   pub kappa: T,
   /// Long-run target level / model location parameter.
@@ -92,7 +92,7 @@ impl<T: FloatExt> FouqueOU2D<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for FouqueOU2D<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FouqueOU2D<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> [Array1<T>; 2] {

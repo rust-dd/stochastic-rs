@@ -9,13 +9,13 @@ use rand_distr::Distribution;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::stochastic::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Merton<T, D, S: Seed = Unseeded>
+pub struct Merton<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -90,7 +90,7 @@ where
   }
 }
 
-impl<T, D, S: Seed> ProcessExt<T> for Merton<T, D, S>
+impl<T, D, S: SeedExt> ProcessExt<T> for Merton<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

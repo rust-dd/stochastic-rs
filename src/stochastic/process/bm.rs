@@ -9,12 +9,12 @@ use ndarray::s;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
-use crate::simd_rng::Seed;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BM<T: FloatExt, S: Seed = Unseeded> {
+pub struct BM<T: FloatExt, S: SeedExt = Unseeded> {
   /// Number of discrete time points in the generated path.
   pub n: usize,
   /// Total simulation horizon (defaults to `1` if `None`).
@@ -43,7 +43,7 @@ impl<T: FloatExt> BM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: Seed> ProcessExt<T> for BM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BM<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
