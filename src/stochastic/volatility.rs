@@ -9,6 +9,7 @@ pub mod bergomi;
 pub mod fheston;
 pub mod heston;
 pub mod heston_log;
+pub mod hkde;
 pub mod rbergomi;
 pub mod sabr;
 pub mod svcgmy;

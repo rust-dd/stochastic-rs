@@ -110,6 +110,10 @@ required-features = ["cuda"]
 name = "poisson_process"
 harness = false
 
+[[bench]]
+name = "mle"
+harness = false
+
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]

@@ -86,7 +86,7 @@ impl CarrMadanPricer {
     s: f64,
     r: f64,
     t: f64,
-  ) -> (Vec<f64>, Vec<f64>) {
+  ) -> (Array1<f64>, Array1<f64>) {
     let n = self.n;
     let alpha = self.alpha;
     let eta = self.eta;
@@ -102,7 +102,6 @@ impl CarrMadanPricer {
     for j in 0..n {
       let v_j = eta * j as f64;
 
-      // Simpson's rule weight
       let simpson = if j == 0 {
         eta / 3.0
       } else if j % 2 == 1 {
@@ -121,18 +120,16 @@ impl CarrMadanPricer {
       input[j] = (i_unit * v_j * b).exp() * psi * simpson;
     }
 
-    // FFT via ndrustfft
     let mut handler = FftHandler::<f64>::new(n);
     let mut output = Array1::<Complex64>::zeros(n);
     ndfft(&input, &mut output, &mut handler, 0);
 
-    let mut log_strikes = Vec::with_capacity(n);
-    let mut prices = Vec::with_capacity(n);
+    let mut log_strikes = Array1::<f64>::zeros(n);
+    let mut prices = Array1::<f64>::zeros(n);
     for u in 0..n {
       let k_u = b + lambda * u as f64;
-      let call = ((-alpha * k_u).exp() * output[u].re / PI).max(0.0);
-      log_strikes.push(k_u);
-      prices.push(call);
+      log_strikes[u] = k_u;
+      prices[u] = ((-alpha * k_u).exp() * output[u].re / PI).max(0.0);
     }
 
     (log_strikes, prices)
@@ -460,6 +457,106 @@ impl FourierModelExt for KouFourier {
   }
 }
 
+/// Heston + Kou Double-Exponential jump model (HKDE) for Fourier pricing.
+///
+/// $$
+/// dS_t = (r-q)S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S + J_t\,S_t\,dN_t
+/// $$
+/// $$
+/// dv_t = \kappa(\theta-v_t)\,dt + \sigma_v\sqrt{v_t}\,dW_t^v
+/// $$
+///
+/// where $J_t$ follows a Kou double-exponential distribution with upward jump rate $\eta_1$,
+/// downward jump rate $\eta_2$, and probability of upward jump $p$.
+///
+/// Source:
+/// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
+pub struct HKDEFourier {
+  /// Initial variance.
+  pub v0: f64,
+  /// Mean-reversion speed.
+  pub kappa: f64,
+  /// Long-run variance.
+  pub theta: f64,
+  /// Volatility of variance.
+  pub sigma_v: f64,
+  /// Correlation.
+  pub rho: f64,
+  /// Risk-free rate.
+  pub r: f64,
+  /// Dividend yield.
+  pub q: f64,
+  /// Jump intensity (Poisson rate).
+  pub lam: f64,
+  /// Probability of upward jump.
+  pub p_up: f64,
+  /// Upward jump rate parameter (eta1 > 1 required for finite expectation).
+  pub eta1: f64,
+  /// Downward jump rate parameter (eta2 > 0).
+  pub eta2: f64,
+}
+
+impl FourierModelExt for HKDEFourier {
+  fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
+    let i = Complex64::i();
+    let sigma_v2 = self.sigma_v * self.sigma_v;
+
+    // Heston part (same as HestonFourier)
+    let rsi = self.rho * self.sigma_v * i;
+    let d = ((self.kappa - rsi * xi).powi(2) + sigma_v2 * (i * xi + xi * xi)).sqrt();
+    let g = (self.kappa - rsi * xi - d) / (self.kappa - rsi * xi + d);
+    let exp_dt = (-d * t).exp();
+
+    let c_heston = (self.kappa * self.theta / sigma_v2)
+      * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
+    let d_heston = ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
+
+    // Kou jump compensator
+    // k_bar = E[e^J - 1] = p*eta1/(eta1-1) + (1-p)*eta2/(eta2+1) - 1
+    let k_bar = self.p_up * self.eta1 / (self.eta1 - 1.0)
+      + (1.0 - self.p_up) * self.eta2 / (self.eta2 + 1.0)
+      - 1.0;
+
+    // Jump characteristic function
+    let jump_cf = self.lam
+      * ((1.0 - self.p_up) * self.eta2 / (Complex64::new(self.eta2, 0.0) + i * xi)
+        + self.p_up * self.eta1 / (Complex64::new(self.eta1, 0.0) - i * xi)
+        - 1.0);
+
+    // Convexity correction (martingale condition)
+    let drift_correction = -self.lam * k_bar;
+
+    (c_heston
+      + d_heston * self.v0
+      + i * xi * (self.r - self.q + drift_correction) * t
+      + jump_cf * t)
+      .exp()
+  }
+
+  fn cumulants(&self, t: f64) -> Cumulants {
+    // Heston cumulants
+    let ekt = (-self.kappa * t).exp();
+    let c1_h = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
+      - 0.5 * self.theta * t;
+    let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
+
+    // Kou jump cumulants
+    let c1_j = self.lam * t * (self.p_up / self.eta1 - (1.0 - self.p_up) / self.eta2);
+    let c2_j = 2.0
+      * self.lam
+      * t
+      * (self.p_up / (self.eta1 * self.eta1) + (1.0 - self.p_up) / (self.eta2 * self.eta2));
+    let c4_j =
+      24.0 * self.lam * t * (self.p_up / self.eta1.powi(4) + (1.0 - self.p_up) / self.eta2.powi(4));
+
+    Cumulants {
+      c1: c1_h + c1_j,
+      c2: c2_h + c2_j,
+      c4: c4_j,
+    }
+  }
+}
+
 fn gamma_neg_y(y: f64) -> f64 {
   if y.abs() < 1e-8 {
     return 1e15;
@@ -668,6 +765,111 @@ mod tests {
     assert!(
       (price - expected).abs() < TOL_TIGHT,
       "Barrier DO call: got={price}, expected={expected}"
+    );
+  }
+
+  #[test]
+  fn hkde_zero_jumps_equals_heston() {
+    // HKDE with lam=0 should equal Heston
+    let heston = HestonFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.1,
+      rho: -0.6,
+      r: 0.05,
+      q: 0.0,
+    };
+    let hkde = HKDEFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma_v: 0.1,
+      rho: -0.6,
+      r: 0.05,
+      q: 0.0,
+      lam: 0.0,
+      p_up: 0.5,
+      eta1: 10.0,
+      eta2: 10.0,
+    };
+    let pricer = CarrMadanPricer::default();
+    let heston_price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 1.0);
+    let hkde_price = pricer.price_call(&hkde, 100.0, 100.0, 0.05, 1.0);
+    assert!(
+      (heston_price - hkde_price).abs() < TOL_TIGHT,
+      "HKDE(lam=0) vs Heston: hkde={hkde_price}, heston={heston_price}"
+    );
+  }
+
+  #[test]
+  fn hkde_prices_positive() {
+    let model = HKDEFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma_v: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.01,
+      lam: 3.0,
+      p_up: 0.4,
+      eta1: 10.0,
+      eta2: 5.0,
+    };
+    let pricer = CarrMadanPricer::default();
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    assert!(
+      price > 0.0,
+      "HKDE call price should be positive, got={price}"
+    );
+  }
+
+  #[test]
+  fn hkde_call_decreases_with_strike() {
+    let model = HKDEFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma_v: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.01,
+      lam: 3.0,
+      p_up: 0.4,
+      eta1: 10.0,
+      eta2: 5.0,
+    };
+    let pricer = CarrMadanPricer::default();
+    let p1 = pricer.price_call(&model, 100.0, 90.0, 0.05, 1.0);
+    let p2 = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let p3 = pricer.price_call(&model, 100.0, 110.0, 0.05, 1.0);
+    assert!(
+      p1 > p2 && p2 > p3,
+      "HKDE call should decrease with strike: p(90)={p1}, p(100)={p2}, p(110)={p3}"
+    );
+  }
+
+  #[test]
+  fn hkde_lewis_vs_carr_madan() {
+    let model = HKDEFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma_v: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.01,
+      lam: 1.0,
+      p_up: 0.4,
+      eta1: 10.0,
+      eta2: 5.0,
+    };
+    let cm_price = CarrMadanPricer::default().price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let lw_price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
+    assert!(
+      (cm_price - lw_price).abs() < TOL_FOURIER,
+      "HKDE Lewis vs Carr-Madan: lewis={lw_price}, cm={cm_price}"
     );
   }
 }

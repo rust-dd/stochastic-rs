@@ -117,10 +117,7 @@ pub struct LevyCalibrator {
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<Vec<f64>>>>>,
 }
 
-// ---------------------------------------------------------------------------
 // Gauss-Legendre quadrature (cached)
-// ---------------------------------------------------------------------------
-
 fn gauss_legendre_nodes_weights(n: usize) -> (Vec<f64>, Vec<f64>) {
   let mut x = vec![0.0; n];
   let mut w = vec![0.0; n];
@@ -170,10 +167,6 @@ fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
   let (x, w) = GL64.get_or_init(|| gauss_legendre_nodes_weights(GL_N));
   (x.as_slice(), w.as_slice())
 }
-
-// ---------------------------------------------------------------------------
-// Characteristic exponents for each Lévy model
-// ---------------------------------------------------------------------------
 
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
 /// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.
@@ -272,10 +265,6 @@ fn gamma_neg_y_fn(y: f64) -> Complex64 {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Fourier pricing via Gil-Pelaez / Lewis representation
-// ---------------------------------------------------------------------------
-
 /// Price a European call option using the characteristic function and
 /// Gauss-Legendre quadrature over the Gil-Pelaez inversion integral.
 ///
@@ -360,10 +349,6 @@ fn fourier_option_price(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Parameter bounds and defaults
-// ---------------------------------------------------------------------------
-
 fn param_count(model_type: LevyModelType) -> usize {
   match model_type {
     LevyModelType::VarianceGamma => 3, // sigma, theta, nu
@@ -439,10 +424,6 @@ fn compute_loss_score(market: &[f64], model: &[f64]) -> CalibrationLossScore {
     mrpe: loss::mrpe(market, model),
   }
 }
-
-// ---------------------------------------------------------------------------
-// LevyCalibrator
-// ---------------------------------------------------------------------------
 
 impl LevyCalibrator {
   pub fn new(
@@ -702,7 +683,15 @@ mod tests {
     // Verify our internal Fourier pricer reproduces reference VG prices
     let params = [0.2, -0.1, 0.5]; // sigma, theta, nu
     for (i, &k) in STRIKES.iter().enumerate() {
-      let price = fourier_call_price(LevyModelType::VarianceGamma, &params, 100.0, k, 0.05, 0.0, 1.0);
+      let price = fourier_call_price(
+        LevyModelType::VarianceGamma,
+        &params,
+        100.0,
+        k,
+        0.05,
+        0.0,
+        1.0,
+      );
       assert!(
         (price - VG_REF[i]).abs() < 0.05,
         "VG K={k}: got {price:.6}, expected {:.6}",
@@ -734,13 +723,8 @@ mod tests {
       t: 1.0,
     };
 
-    let calibrator = LevyCalibrator::new(
-      LevyModelType::VarianceGamma,
-      100.0,
-      0.05,
-      0.0,
-      vec![market],
-    );
+    let calibrator =
+      LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, vec![market]);
 
     let result = calibrator.calibrate(None);
     assert!(result.loss.rmse < 0.1, "VG RMSE={:.6}", result.loss.rmse);

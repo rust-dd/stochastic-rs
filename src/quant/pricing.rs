@@ -16,6 +16,7 @@ pub mod lookback;
 pub mod malliavin_gbm;
 pub mod merton_jump;
 pub mod pnl;
+pub mod regime_switching;
 pub mod sabr;
 pub mod snell_envelope;
 pub mod variance_swap;

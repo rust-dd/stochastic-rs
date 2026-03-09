@@ -1100,7 +1100,6 @@ mod tests {
     plot.show();
   }
 
-  // ========== Benchmarks: compare SIMD vs rand_distr ==========
   use std::time::Instant;
 
   #[test]

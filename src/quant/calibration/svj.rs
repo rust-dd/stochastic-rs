@@ -210,10 +210,6 @@ pub struct SVJCalibrator {
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<SVJParams>>>>,
 }
 
-// ---------------------------------------------------------------------------
-// Gauss-Legendre quadrature (cached)
-// ---------------------------------------------------------------------------
-
 fn gauss_legendre_nodes_weights(n: usize) -> (Vec<f64>, Vec<f64>) {
   let mut x = vec![0.0; n];
   let mut w = vec![0.0; n];
@@ -263,10 +259,6 @@ fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
   let (x, w) = GL64.get_or_init(|| gauss_legendre_nodes_weights(GL_N));
   (x.as_slice(), w.as_slice())
 }
-
-// ---------------------------------------------------------------------------
-// Bates (SVJ) characteristic function
-// ---------------------------------------------------------------------------
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -357,10 +349,6 @@ fn compute_loss_score(market: &[f64], model: &[f64]) -> CalibrationLossScore {
     mrpe: loss::mrpe(market, model),
   }
 }
-
-// ---------------------------------------------------------------------------
-// SVJCalibrator
-// ---------------------------------------------------------------------------
 
 impl SVJCalibrator {
   pub fn new(
@@ -639,8 +627,7 @@ mod tests {
   // Analytical reference: Heston (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7)
   // S=100, r=0.05, q=0, T=1.0
   const HESTON_REF: [f64; 9] = [
-    25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953,
-    2.193310,
+    25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953, 2.193310,
   ];
   const STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
 
