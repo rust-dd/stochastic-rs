@@ -13,7 +13,19 @@ pub(super) fn gaussian_pdf(x: f64, mean: f64, var: f64) -> f64 {
 
 /// Transition-density approximation method.
 ///
-/// Source: pymle (<https://github.com/jkirkby3/pymle>)
+/// # References
+/// - Euler: Maruyama, G. (1955). *Rendiconti del Circolo Matematico di Palermo*,
+///   4(1), 48-90. <https://doi.org/10.1007/BF02846028>
+/// - Ozaki: Ozaki, T. (1992). *Statistica Sinica*, 2(1), 113-135.
+///   <https://www.jstor.org/stable/24304999>
+/// - Shoji-Ozaki: Shoji, I. & Ozaki, T. (1998). *Biometrika*, 85(1), 240-243.
+///   <https://doi.org/10.1093/biomet/85.1.240>
+/// - Elerian: Elerian, O., Chib, S. & Shephard, N. (2001). *Econometrica*, 69(4),
+///   959-993. <https://doi.org/10.1111/1468-0262.00226>
+/// - Kessler: Kessler, M. (1997). *Scand. J. Statist.*, 24(2), 211-229.
+///   <https://doi.org/10.1111/1467-9469.00059>
+/// - Aït-Sahalia: Aït-Sahalia, Y. (2002). *Econometrica*, 70(1), 223-262.
+///   <https://doi.org/10.1111/1468-0262.00274>
 #[derive(Clone, Copy, Debug)]
 pub enum DensityApprox {
   /// Exact closed-form density (must be implemented by the model).
@@ -52,7 +64,7 @@ impl DensityApprox {
       .expect("Exact density not implemented for this model")
   }
 
-  /// Source: pymle (https://github.com/jkirkby3/pymle)
+  /// Ref: Maruyama (1955)
   fn density_euler(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
@@ -61,7 +73,7 @@ impl DensityApprox {
     gaussian_pdf(xt, mean, var)
   }
 
-  /// Source: pymle (https://github.com/jkirkby3/pymle)
+  /// Ref: Ozaki (1992)
   fn density_ozaki(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
@@ -95,7 +107,7 @@ impl DensityApprox {
     gaussian_pdf(xt, mt, vt_sq)
   }
 
-  /// Source: pymle (https://github.com/jkirkby3/pymle)
+  /// Ref: Shoji & Ozaki (1998)
   fn density_shoji_ozaki(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
@@ -118,7 +130,7 @@ impl DensityApprox {
     }
   }
 
-  /// Source: pymle (https://github.com/jkirkby3/pymle)
+  /// Ref: Elerian, Chib & Shephard (2001)
   fn density_elerian(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
@@ -152,7 +164,7 @@ impl DensityApprox {
     }
   }
 
-  /// Source: pymle (https://github.com/jkirkby3/pymle)
+  /// Ref: Kessler (1997)
   fn density_kessler(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);

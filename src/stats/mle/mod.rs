@@ -11,9 +11,7 @@
 //! $$
 //!
 //! using several transition density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian,
-//! Kessler, exact, and Ait-Sahalia).
-//!
-//! Source: pymle (<https://github.com/jkirkby3/pymle>)
+//! Kessler, exact, and Aït-Sahalia).
 
 mod density;
 mod fit;
@@ -27,8 +25,6 @@ pub use fit::{MleResult, fit_mle};
 /// $$
 /// dX_t = \mu(X_t,t)\,dt + \sigma(X_t,t)\,dW_t
 /// $$
-///
-/// Source: pymle (<https://github.com/jkirkby3/pymle>)
 pub trait DiffusionModel: Send + Sync {
   /// Number of parameters.
   fn num_params(&self) -> usize;
