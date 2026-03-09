@@ -10,9 +10,11 @@ use crate::quant::CalibrationLossScore;
 
 pub mod bsm;
 pub mod heston;
+pub mod levy;
 pub mod rbergomi;
 pub mod sabr;
 pub mod sabr_smile;
+pub mod svj;
 
 #[derive(Clone, Debug)]
 pub struct CalibrationHistory<T> {

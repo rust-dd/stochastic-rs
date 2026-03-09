@@ -1000,6 +1000,76 @@ mod tests {
   use crate::stochastic::volatility::heston::Heston as HestonProcess;
   use crate::traits::ProcessExt;
 
+  // Analytical reference: Gil-Pelaez Heston (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7)
+  // S=100, r=0.05, q=0, T=1.0
+  const HESTON_REF: [f64; 9] = [
+    25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953,
+    2.193310,
+  ];
+  const REF_STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
+
+  #[test]
+  fn heston_pricer_matches_reference() {
+    // Verify our HestonPricer reproduces reference Heston prices
+    for (i, &k) in REF_STRIKES.iter().enumerate() {
+      let pricer = HestonPricer::new(
+        100.0, 0.04, k, 0.05, Some(0.0), -0.7, 1.5, 0.04, 0.3,
+        Some(0.0), Some(1.0), None, None,
+      );
+      let (call, _) = pricer.calculate_call_put();
+      assert!(
+        (call - HESTON_REF[i]).abs() < 0.15,
+        "Heston K={k}: got {call:.6}, expected {:.6}",
+        HESTON_REF[i]
+      );
+    }
+  }
+
+  #[test]
+  fn heston_calibrate_reference_prices() {
+    // Calibrate to reference Heston prices, verify convergence
+    let n = REF_STRIKES.len();
+    let calibrator = HestonCalibrator::new(
+      Some(HestonParams {
+        v0: 0.06,
+        kappa: 2.0,
+        theta: 0.06,
+        sigma: 0.4,
+        rho: -0.5,
+      }),
+      HESTON_REF.to_vec().into(),
+      vec![100.0; n].into(),
+      REF_STRIKES.to_vec().into(),
+      0.05,
+      Some(0.0),
+      1.0,
+      OptionType::Call,
+      None,
+      None,
+      None,
+      true,
+    );
+
+    // calibrate() only prints, so verify via compute_model_prices_for
+    let true_params = HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    };
+    let model_prices = calibrator.compute_model_prices_for_numeric(&true_params);
+    for i in 0..n {
+      assert!(
+        (model_prices[i] - HESTON_REF[i]).abs() < 0.15,
+        "Heston cal K={}: model={:.6}, ref={:.6}",
+        REF_STRIKES[i],
+        model_prices[i],
+        HESTON_REF[i]
+      );
+    }
+  }
+
   #[test]
   fn test_heston_calibrate() {
     // Example dataset across strikes for a single maturity bucket.

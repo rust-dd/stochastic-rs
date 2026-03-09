@@ -5,13 +5,17 @@
 //! $$
 //!
 pub mod asian;
+pub mod barrier;
 pub mod breeden_litzenberger;
 pub mod bsm;
 pub mod dupire;
 pub mod finite_difference;
+pub mod fourier;
 pub mod heston;
+pub mod lookback;
 pub mod malliavin_gbm;
 pub mod merton_jump;
 pub mod pnl;
 pub mod sabr;
 pub mod snell_envelope;
+pub mod variance_swap;

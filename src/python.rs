@@ -181,6 +181,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::interest::vasicek::PyVasicek;
   use crate::stochastic::interest::wu_zhang::PyWuZhangD;
   use crate::stochastic::jump::bates::PyBates;
+  use crate::stochastic::jump::bilateral_gamma::PyBilateralGamma;
+  use crate::stochastic::jump::bilateral_gamma::PyBilateralGammaMotion;
   use crate::stochastic::jump::cgmy::PyCGMY;
   use crate::stochastic::jump::cts::PyCTS;
   use crate::stochastic::jump::ig::PyIG;
@@ -276,6 +278,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyKOU>()?;
   m.add_class::<PyLevyDiffusion>()?;
   m.add_class::<PyBates>()?;
+  m.add_class::<PyBilateralGamma>()?;
+  m.add_class::<PyBilateralGammaMotion>()?;
   m.add_class::<PyJumpFOU>()?;
   m.add_class::<PyJumpFOUCustom>()?;
   m.add_class::<PyBatesSVJ>()?;

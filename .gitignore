@@ -11,3 +11,4 @@ CI.yml
 *.py
 .venv/
 tests
+.claude

@@ -5,6 +5,7 @@
 //! $$
 //!
 pub mod bates;
+pub mod bilateral_gamma;
 pub mod cgmy;
 pub mod cts;
 pub mod ig;
