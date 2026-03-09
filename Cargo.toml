@@ -23,7 +23,7 @@ exclude = [
 [dependencies]
 anyhow = "1.0.89"
 argmin = "0.11.0"
-argmin-math = { version = "0.5", features = ["ndarray_latest-nolinalg"] }
+argmin-math = { version = "0.5", features = ["ndarray_latest-nolinalg", "vec"] }
 candle-core = { version = "0.9.2", optional = true }
 candle-datasets = { version = "0.9.2", optional = true }
 candle-nn = { version = "0.9.2", optional = true }
