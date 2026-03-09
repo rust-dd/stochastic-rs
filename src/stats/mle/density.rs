@@ -40,7 +40,7 @@ pub enum DensityApprox {
   Elerian,
   /// Kessler second-order moment expansion.
   Kessler,
-  /// Ait-Sahalia Hermite expansion (must be implemented by the model).
+  /// Aït-Sahalia Hermite expansion (must be implemented by the model).
   AitSahalia,
 }
 
@@ -194,6 +194,7 @@ impl DensityApprox {
     (-0.5 * z * z).exp() / ((2.0 * PI).sqrt() * std)
   }
 
+  /// Ref: Aït-Sahalia (2002)
   fn density_ait_sahalia(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     model
       .ait_sahalia_density(x0, xt, t0, dt)

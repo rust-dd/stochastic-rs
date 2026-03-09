@@ -87,7 +87,7 @@ pub trait DiffusionModel: Send + Sync {
     None
   }
 
-  /// Ait-Sahalia Hermite density expansion. Return `None` if not available.
+  /// Aït-Sahalia Hermite density expansion. Return `None` if not available.
   fn ait_sahalia_density(&self, _x0: f64, _xt: f64, _t0: f64, _dt: f64) -> Option<f64> {
     None
   }
@@ -252,75 +252,75 @@ mod tests {
   }
 
   #[test]
-  fn pymle_density_cir_euler() {
+  fn density_cir_euler_reference() {
     let cir = CIR::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
     let dt = 1.0 / 250.0;
     let d = DensityApprox::Euler.density(&cir, 0.4, 0.41, 0.0, dt);
-    // pymle reference: 18.715933204468332
+    // reference value: 18.715933204468332
     assert!(
       (d - 18.715933204468332).abs() < 1e-8,
-      "CIR Euler vs pymle: got {d}, expected 18.715933204468332"
+      "CIR Euler: got {d}, expected 18.715933204468332"
     );
   }
 
   #[test]
-  fn pymle_density_cir_kessler() {
+  fn density_cir_kessler_reference() {
     let cir = CIR::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
     let dt = 1.0 / 250.0;
     let d = DensityApprox::Kessler.density(&cir, 0.4, 0.41, 0.0, dt);
-    // pymle reference: 18.734374214427948
+    // reference value: 18.734374214427948
     assert!(
       (d - 18.734374214427948).abs() < 1e-6,
-      "CIR Kessler vs pymle: got {d}, expected 18.734374214427948"
+      "CIR Kessler: got {d}, expected 18.734374214427948"
     );
   }
 
   #[test]
-  fn pymle_density_ou_exact() {
+  fn density_ou_exact_reference() {
     let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::Exact.density(&ou, 0.5, 0.55, 0.0, 0.01);
-    // pymle reference: 5.399419276877125
+    // reference value: 5.399419276877125
     assert!(
       (d - 5.399419276877125).abs() < 1e-8,
-      "OU Exact vs pymle: got {d}, expected 5.399419276877125"
+      "OU Exact: got {d}, expected 5.399419276877125"
     );
   }
 
   #[test]
-  fn pymle_density_ou_euler() {
+  fn density_ou_euler_reference() {
     let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::Euler.density(&ou, 0.5, 0.55, 0.0, 0.01);
-    // pymle reference: 5.467002489199778
+    // reference value: 5.467002489199778
     assert!(
       (d - 5.467002489199778).abs() < 1e-8,
-      "OU Euler vs pymle: got {d}, expected 5.467002489199778"
+      "OU Euler: got {d}, expected 5.467002489199778"
     );
   }
 
   #[test]
-  fn pymle_density_ou_shoji_ozaki() {
+  fn density_ou_shoji_ozaki_reference() {
     let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::ShojiOzaki.density(&ou, 0.5, 0.55, 0.0, 0.01);
-    // pymle reference: 5.399419278094993
+    // reference value: 5.399419278094993
     assert!(
       (d - 5.399419278094993).abs() < 1e-6,
-      "OU ShojiOzaki vs pymle: got {d}, expected 5.399419278094993"
+      "OU ShojiOzaki: got {d}, expected 5.399419278094993"
     );
   }
 
   #[test]
-  fn pymle_density_ou_kessler() {
+  fn density_ou_kessler_reference() {
     let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::Kessler.density(&ou, 0.5, 0.55, 0.0, 0.01);
-    // pymle reference: 5.447446973872427
+    // reference value: 5.447446973872427
     assert!(
       (d - 5.447446973872427).abs() < 1e-6,
-      "OU Kessler vs pymle: got {d}, expected 5.447446973872427"
+      "OU Kessler: got {d}, expected 5.447446973872427"
     );
   }
 
   #[test]
-  fn pymle_cir_kessler_mle() {
+  fn cir_kessler_mle() {
     let cir = CIR::seeded(3.0, 0.3, 0.2, 1251, Some(0.4), Some(5.0), None, 42);
     let path = cir.sample();
     let dt = 5.0 / 1250.0;
@@ -349,7 +349,7 @@ mod tests {
   }
 
   #[test]
-  fn pymle_ou_all_densities_agree() {
+  fn ou_all_densities_agree() {
     let ou = OU::seeded(2.0, 1.0, 0.3, 5001, Some(1.0), Some(10.0), 77);
     let path = ou.sample();
     let dt = 10.0 / 5000.0;
