@@ -10,14 +10,15 @@ A high-performance Rust library for simulating stochastic processes, with first-
 
 ## Features
 
-- **85+ stochastic models** - diffusions, jump processes, stochastic volatility, interest rate models, autoregressive models, noise generators, and probability distributions
+- **85+ stochastic models** - 31 diffusions (OU, CIR, GBM, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, ...), 15 jump processes (Merton, Kou, CGMY, bilateral gamma, ...), 9 stochastic volatility models (Heston, SABR, Bergomi, rough Bergomi, HKDE, ...), 13 interest rate models (Hull-White, HJM, Vasicek, ...), and base processes (fBM, Poisson, LFSM, ...)
+- **MLE engine** - maximum likelihood estimation for 1-D diffusion models with 6 transition density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS optimizer via argmin, and 22 built-in process implementations
+- **Quant toolbox** - option pricing (Fourier, barrier, lookback, Asian, variance swaps, regime-switching), calibration (Heston, SABR, Lévy, SVJ, rough Bergomi), and finite-difference methods
 - **Copulas** - bivariate, multivariate, and empirical copulas with correlation utilities
-- **Quant toolbox** - option pricing, bond analytics, calibration, loss models, order book, and trading strategies
-- **Statistics** - MLE, kernel density estimation, fractional OU estimation, and CIR parameter fitting
+- **Statistics** - kernel density estimation, fractional OU estimation, and CIR parameter fitting
 - **SIMD-optimized** - fractional Gaussian noise, fractional Brownian motion, and all probability distributions use wide SIMD for fast sample generation
 - **Parallel sampling** - `sample_par(m)` generates `m` independent paths in parallel via rayon
 - **Generic precision** - most models support both `f32` and `f64`
-- **Bindings** - full stochastic model coverage with numpy integration; all models return numpy arrays
+- **Python bindings** - full stochastic model coverage with numpy integration; all models return numpy arrays (others coming soon)
 
 ## Installation
 
@@ -25,7 +26,7 @@ A high-performance Rust library for simulating stochastic processes, with first-
 
 ```toml
 [dependencies]
-stochastic-rs = "1.0.0"
+stochastic-rs = "1.5.0"
 ```
 
 ### Bindings
