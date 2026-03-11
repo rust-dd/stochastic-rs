@@ -26,3 +26,10 @@ pub struct CalibrationHistory<T> {
   /// Calibration loss metric configuration/result.
   pub loss_scores: CalibrationLossScore,
 }
+
+impl<T> CalibrationHistory<T> {
+  /// Extract the history of a single loss metric across iterations.
+  pub fn metric_history(history: &[Self], metric: crate::quant::LossMetric) -> Vec<f64> {
+    history.iter().map(|h| h.loss_scores.get(metric)).collect()
+  }
+}

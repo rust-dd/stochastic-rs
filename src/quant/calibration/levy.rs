@@ -34,8 +34,9 @@ use nalgebra::Owned;
 use num_complex::Complex64;
 
 use crate::quant::CalibrationLossScore;
+use crate::quant::LossMetric;
 use crate::quant::calibration::CalibrationHistory;
-use crate::quant::loss;
+
 
 const GL_N: usize = 64;
 const U_MAX: f64 = 100.0;
@@ -113,6 +114,8 @@ pub struct LevyCalibrator {
   flat_t: Vec<f64>,
   /// Internal: flattened is_call flags.
   flat_is_call: Vec<bool>,
+  /// Which loss metrics to compute when recording history.
+  pub loss_metrics: &'static [LossMetric],
   /// History of iterations.
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<Vec<f64>>>>>,
 }
@@ -411,18 +414,8 @@ fn project_params(model_type: LevyModelType, params: &mut [f64]) {
   }
 }
 
-fn compute_loss_score(market: &[f64], model: &[f64]) -> CalibrationLossScore {
-  CalibrationLossScore {
-    mae: loss::mae(market, model),
-    mse: loss::mse(market, model),
-    rmse: loss::rmse(market, model),
-    mpe: loss::mpe(market, model),
-    mape: loss::mape(market, model),
-    mspe: loss::mspe(market, model),
-    rmspe: loss::rmspe(market, model),
-    mre: loss::mre(market, model),
-    mrpe: loss::mrpe(market, model),
-  }
+fn compute_loss_score(market: &[f64], model: &[f64], metrics: &[LossMetric]) -> CalibrationLossScore {
+  CalibrationLossScore::compute_selected(market, model, metrics)
 }
 
 impl LevyCalibrator {
@@ -448,6 +441,7 @@ impl LevyCalibrator {
       flat_strikes,
       flat_t,
       flat_is_call,
+      loss_metrics: &LossMetric::ALL,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
     }
   }
@@ -498,7 +492,7 @@ impl LevyCalibrator {
 
     let final_params = result.params.clone();
     let c_model = result.compute_model_prices();
-    let loss = compute_loss_score(&result.flat_prices, &c_model);
+    let loss = compute_loss_score(&result.flat_prices, &c_model, result.loss_metrics);
 
     println!("Market prices: {:?}", result.flat_prices);
     println!("Model prices:  {:?}", c_model);
@@ -643,7 +637,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for LevyCalibrator {
             .collect::<Vec<(f64, f64)>>()
             .into(),
           params: self.params.clone(),
-          loss_scores: compute_loss_score(&self.flat_prices, &c_model),
+          loss_scores: compute_loss_score(&self.flat_prices, &c_model, self.loss_metrics),
         });
     }
 
@@ -727,7 +721,7 @@ mod tests {
       LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, vec![market]);
 
     let result = calibrator.calibrate(None);
-    assert!(result.loss.rmse < 0.1, "VG RMSE={:.6}", result.loss.rmse);
+    assert!(result.loss.get(LossMetric::Rmse) < 0.1, "VG RMSE={:.6}", result.loss.get(LossMetric::Rmse));
     println!("VG recovered params: {:?}", result.params);
   }
 
@@ -743,7 +737,7 @@ mod tests {
     let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.05, 0.0, vec![market]);
 
     let result = calibrator.calibrate(None);
-    assert!(result.loss.rmse < 0.1, "MJD RMSE={:.6}", result.loss.rmse);
+    assert!(result.loss.get(LossMetric::Rmse) < 0.1, "MJD RMSE={:.6}", result.loss.get(LossMetric::Rmse));
     println!("MJD recovered params: {:?}", result.params);
   }
 

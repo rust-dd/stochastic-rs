@@ -14,9 +14,10 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use crate::quant::CalibrationLossScore;
+use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
-use crate::quant::loss;
+
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
 use crate::traits::PricerExt;
@@ -61,6 +62,8 @@ pub struct BSMCalibrator {
   pub tau: f64,
   /// Option type
   pub option_type: OptionType,
+  /// Which loss metrics to compute when recording history.
+  pub loss_metrics: &'static [LossMetric],
   /// Levenberg-Marquardt algorithm residauls.
   calibration_history: RefCell<Vec<CalibrationHistory<BSMParams>>>,
   /// Derivate matrix.
@@ -91,6 +94,7 @@ impl BSMCalibrator {
       q,
       tau,
       option_type,
+      loss_metrics: &LossMetric::ALL,
       calibration_history: RefCell::new(Vec::new()),
       derivates: RefCell::new(Vec::new()),
     }
@@ -172,17 +176,11 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
           residuals: c_model.clone() - self.c_market.clone(),
           call_put: vec![(call, put)].into(),
           params: self.params.clone(),
-          loss_scores: CalibrationLossScore {
-            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
-            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
-            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
-            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
-            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
-            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
-            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
-            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
-            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
-          },
+          loss_scores: CalibrationLossScore::compute_selected(
+            self.c_market.as_slice(),
+            c_model.as_slice(),
+            self.loss_metrics,
+          ),
         });
       derivates.push(pricer.derivatives());
     }

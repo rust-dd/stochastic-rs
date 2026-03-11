@@ -19,9 +19,10 @@ use ndarray::Array1;
 use num_complex::Complex64;
 
 use crate::quant::CalibrationLossScore;
+use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
-use crate::quant::loss;
+
 use crate::quant::pricing::heston::HestonPricer;
 use crate::stats::heston_mle::HestonMleResult;
 use crate::stats::heston_mle::nmle_heston;
@@ -300,6 +301,8 @@ pub struct HestonCalibrator {
   pub nmle_cekf_config: Option<HestonNMLECEKFConfig>,
   /// If true, record per-iteration calibration history.
   pub record_history: bool,
+  /// Which loss metrics to compute when recording history.
+  pub loss_metrics: &'static [LossMetric],
   /// Jacobian/method choice for calibration.
   pub jacobian_method: HestonJacobianMethod,
   /// History of iterations (residuals, params, loss metrics).
@@ -352,6 +355,7 @@ impl HestonCalibrator {
       mle_delta: None,
       nmle_cekf_config: None,
       record_history,
+      loss_metrics: &LossMetric::ALL,
       jacobian_method: HestonJacobianMethod::default(),
       calibration_history: Rc::new(RefCell::new(Vec::new())),
     }
@@ -959,17 +963,11 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
             .collect::<Vec<(f64, f64)>>()
             .into(),
           params: params_eff.clone(),
-          loss_scores: CalibrationLossScore {
-            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
-            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
-            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
-            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
-            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
-            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
-            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
-            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
-            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
-          },
+          loss_scores: CalibrationLossScore::compute_selected(
+            self.c_market.as_slice(),
+            c_model.as_slice(),
+            self.loss_metrics,
+          ),
         });
     }
 

@@ -4,6 +4,7 @@
 //! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
 //! $$
 //!
+use std::collections::HashMap;
 use std::fmt::Display;
 
 pub mod bonds;
@@ -56,25 +57,71 @@ impl Display for Moneyness {
   }
 }
 
-/// Holds various calibration loss metrics in one place.
-#[derive(Default, Debug, Clone, Copy)]
+/// Individual loss metric selector.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LossMetric {
+  Mae,
+  Mse,
+  Rmse,
+  Mpe,
+  Mape,
+  Mspe,
+  Rmspe,
+  Mre,
+  Mrpe,
+}
+
+impl LossMetric {
+  pub const ALL: [Self; 9] = [
+    Self::Mae,
+    Self::Mse,
+    Self::Rmse,
+    Self::Mpe,
+    Self::Mape,
+    Self::Mspe,
+    Self::Rmspe,
+    Self::Mre,
+    Self::Mrpe,
+  ];
+
+  fn compute(self, market: &[f64], model: &[f64]) -> f64 {
+    match self {
+      Self::Mae => loss::mae(market, model),
+      Self::Mse => loss::mse(market, model),
+      Self::Rmse => loss::rmse(market, model),
+      Self::Mpe => loss::mpe(market, model),
+      Self::Mape => loss::mape(market, model),
+      Self::Mspe => loss::mspe(market, model),
+      Self::Rmspe => loss::rmspe(market, model),
+      Self::Mre => loss::mre(market, model),
+      Self::Mrpe => loss::mrpe(market, model),
+    }
+  }
+}
+
+/// Holds calibration loss metrics as a `HashMap<LossMetric, f64>`.
+#[derive(Default, Debug, Clone)]
 pub struct CalibrationLossScore {
-  /// Mean Absolute Error
-  pub mae: f64,
-  /// Mean Squared Error
-  pub mse: f64,
-  /// Root Mean Squared Error
-  pub rmse: f64,
-  /// Mean Percentage Error (in %)
-  pub mpe: f64,
-  /// Mean Absolute Percentage Error (in %)
-  pub mape: f64,
-  /// Mean Squared Percentage Error (in %)
-  pub mspe: f64,
-  /// Root Mean Squared Percentage Error (in %)
-  pub rmspe: f64,
-  /// Mean Relative Error (no %)
-  pub mre: f64,
-  /// Mean Relative Percentage Error (in %)
-  pub mrpe: f64,
+  pub scores: HashMap<LossMetric, f64>,
+}
+
+impl CalibrationLossScore {
+  /// Compute all loss metrics.
+  pub fn compute(market: &[f64], model: &[f64]) -> Self {
+    Self::compute_selected(market, model, &LossMetric::ALL)
+  }
+
+  /// Compute only the selected metrics.
+  pub fn compute_selected(market: &[f64], model: &[f64], metrics: &[LossMetric]) -> Self {
+    let scores = metrics
+      .iter()
+      .map(|&m| (m, m.compute(market, model)))
+      .collect();
+    Self { scores }
+  }
+
+  /// Get a metric value. Returns 0.0 if not computed.
+  pub fn get(&self, metric: LossMetric) -> f64 {
+    self.scores.get(&metric).copied().unwrap_or(0.0)
+  }
 }

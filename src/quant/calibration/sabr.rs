@@ -20,9 +20,9 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use crate::quant::CalibrationLossScore;
+use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
-use crate::quant::loss;
 use crate::quant::pricing::sabr::SabrPricer;
 use crate::traits::PricerExt;
 
@@ -92,6 +92,8 @@ pub struct SabrCalibrator {
   pub option_type: OptionType,
   /// If true, stores optimization parameter history.
   pub record_history: bool,
+  /// Which loss metrics to compute when recording history.
+  pub loss_metrics: &'static [LossMetric],
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<SabrParams>>>>,
 }
 
@@ -117,6 +119,7 @@ impl SabrCalibrator {
       tau,
       option_type,
       record_history,
+      loss_metrics: &LossMetric::ALL,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
     }
   }
@@ -297,17 +300,11 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
             .collect::<Vec<(f64, f64)>>()
             .into(),
           params: p,
-          loss_scores: CalibrationLossScore {
-            mae: loss::mae(self.c_market.as_slice(), c_model.as_slice()),
-            mse: loss::mse(self.c_market.as_slice(), c_model.as_slice()),
-            rmse: loss::rmse(self.c_market.as_slice(), c_model.as_slice()),
-            mpe: loss::mpe(self.c_market.as_slice(), c_model.as_slice()),
-            mape: loss::mape(self.c_market.as_slice(), c_model.as_slice()),
-            mspe: loss::mspe(self.c_market.as_slice(), c_model.as_slice()),
-            rmspe: loss::rmspe(self.c_market.as_slice(), c_model.as_slice()),
-            mre: loss::mre(self.c_market.as_slice(), c_model.as_slice()),
-            mrpe: loss::mrpe(self.c_market.as_slice(), c_model.as_slice()),
-          },
+          loss_scores: CalibrationLossScore::compute_selected(
+            self.c_market.as_slice(),
+            c_model.as_slice(),
+            self.loss_metrics,
+          ),
         });
     }
     Some(self.c_market.clone() - c_model)
