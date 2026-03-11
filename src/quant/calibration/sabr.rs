@@ -1,5 +1,10 @@
 //! # SABR
 //!
+//! Price-based SABR calibrator using Levenberg-Marquardt.
+//!
+//! **Reference:** P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
+//! *Managing Smile Risk*, Wilmott Magazine, pp. 84–108, 2002.
+//!
 //! $$
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
@@ -29,6 +34,8 @@ const NU_MIN: f64 = 1e-6;
 pub struct SabrParams {
   /// Model shape/loading parameter.
   pub alpha: f64,
+  /// CEV exponent (0 = normal, 1 = lognormal).
+  pub beta: f64,
   /// Volatility-of-volatility parameter.
   pub nu: f64,
   /// Correlation parameter.
@@ -38,6 +45,7 @@ pub struct SabrParams {
 impl SabrParams {
   pub fn project_in_place(&mut self) {
     self.alpha = self.alpha.abs().max(ALPHA_MIN);
+    self.beta = self.beta.clamp(0.0, 1.0);
     self.nu = self.nu.abs().max(NU_MIN);
     self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
   }
@@ -52,10 +60,12 @@ impl From<SabrParams> for DVector<f64> {
     DVector::from_vec(vec![p.alpha, p.nu, p.rho])
   }
 }
+
 impl From<DVector<f64>> for SabrParams {
   fn from(v: DVector<f64>) -> Self {
     SabrParams {
       alpha: v[0],
+      beta: 1.0,
       nu: v[1],
       rho: v[2],
     }
@@ -141,6 +151,7 @@ impl SabrCalibrator {
       self.params = Some(
         SabrParams {
           alpha: 0.2,
+          beta: 1.0,
           nu: 0.8,
           rho: 0.0,
         }
@@ -155,6 +166,7 @@ impl SabrCalibrator {
     }
     SabrParams {
       alpha: 0.2,
+      beta: 1.0,
       nu: 0.8,
       rho: 0.0,
     }
@@ -170,6 +182,7 @@ impl SabrCalibrator {
         self.r,
         self.q,
         p.alpha,
+        p.beta,
         p.nu,
         p.rho,
         Some(self.tau),
@@ -239,7 +252,15 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
   type ResidualStorage = Owned<f64, Dyn>;
 
   fn set_params(&mut self, params: &DVector<f64>) {
-    self.params = Some(SabrParams::from(params.clone()).projected());
+    let beta = self.effective_params().beta;
+    let mut p = SabrParams {
+      alpha: params[0],
+      beta,
+      nu: params[1],
+      rho: params[2],
+    };
+    p.project_in_place();
+    self.params = Some(p);
   }
   fn params(&self) -> DVector<f64> {
     self.effective_params().into()
@@ -264,6 +285,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
                 self.r,
                 self.q,
                 p.alpha,
+                p.beta,
                 p.nu,
                 p.rho,
                 Some(self.tau),
@@ -309,6 +331,7 @@ mod tests {
 
     let true_p = SabrParams {
       alpha: 0.2,
+      beta: 1.0,
       nu: 0.6,
       rho: -0.4,
     };
@@ -322,6 +345,7 @@ mod tests {
         r,
         q,
         true_p.alpha,
+        true_p.beta,
         true_p.nu,
         true_p.rho,
         Some(tau),
@@ -335,6 +359,7 @@ mod tests {
     let calibrator = SabrCalibrator::new(
       Some(SabrParams {
         alpha: 0.15,
+        beta: 1.0,
         nu: 0.8,
         rho: 0.0,
       }),
