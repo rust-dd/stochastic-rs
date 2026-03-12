@@ -113,11 +113,13 @@ mod tests {
   use super::anderson_darling_normal_test;
   use crate::distributions::normal::SimdNormal;
   use crate::distributions::uniform::SimdUniform;
+  use rand::SeedableRng;
+  use rand::rngs::StdRng;
 
   #[test]
   fn anderson_darling_accepts_normal_sample() {
     let dist = SimdNormal::<f64>::new(0.0, 1.0);
-    let mut rng = rand::rng();
+    let mut rng = StdRng::seed_from_u64(42);
     let mut x = vec![0.0; 4000];
     dist.fill_slice(&mut rng, &mut x);
 
@@ -131,7 +133,7 @@ mod tests {
   #[test]
   fn anderson_darling_rejects_uniform_sample() {
     let dist = SimdUniform::<f64>::new(0.0, 1.0);
-    let mut rng = rand::rng();
+    let mut rng = StdRng::seed_from_u64(42);
     let mut x = vec![0.0; 4000];
     dist.fill_slice(&mut rng, &mut x);
 
