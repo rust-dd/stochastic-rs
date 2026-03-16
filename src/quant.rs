@@ -9,6 +9,7 @@ use std::fmt::Display;
 
 pub mod bonds;
 pub mod calibration;
+pub mod fourier_malliavin;
 pub mod loss;
 pub mod order_book;
 pub mod portfolio;
