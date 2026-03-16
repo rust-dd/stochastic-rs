@@ -7,6 +7,7 @@ use num_complex::Complex;
 
 use super::coefficients::convolution_coefficients;
 use super::coefficients::fourier_coefficients_dx;
+use super::coefficients::fourier_coefficients_dx_uniform;
 use crate::traits::FloatExt;
 
 /// Fourier-Malliavin volatility estimation engine.
@@ -24,7 +25,7 @@ use crate::traits::FloatExt;
 /// ```
 pub struct FMVol<T: FloatExt> {
   /// Precomputed Fourier coefficients of price increments.
-  dx: Vec<Complex<T>>,
+  dx: Array1<Complex<T>>,
   /// Time period *T*.
   period: T,
   /// Number of price increments (*n*).
@@ -36,7 +37,7 @@ pub struct FMVol<T: FloatExt> {
 }
 
 impl<T: FloatExt> FMVol<T> {
-  /// Build an engine with automatic cutting frequencies.
+  /// Build an engine from irregularly spaced observations.
   ///
   /// Sets `N = floor(n/2)` and pre-computes Fourier coefficients up to
   /// `N + M_max + L_max` where `M_max = floor(N^0.5)` and `L_max = floor(N^0.25)`.
@@ -45,7 +46,34 @@ impl<T: FloatExt> FMVol<T> {
     let big_n = n / 2;
     let m_max = (big_n as f64).sqrt() as usize;
     let l_max = (big_n as f64).powf(0.25) as usize;
-    Self::with_freq(prices, times, period, big_n, big_n + m_max + l_max)
+    let max_freq = big_n + m_max + l_max;
+    let dx = fourier_coefficients_dx(prices, times, period, max_freq);
+    Self {
+      dx,
+      period,
+      n,
+      n_freq: big_n,
+      max_freq,
+    }
+  }
+
+  /// Build an engine from **uniformly spaced** observations (FFT-accelerated, O(n log n)).
+  ///
+  /// Assumes `t_l = l · T / n`; no explicit times array needed.
+  pub fn new_uniform(prices: &[T], period: T) -> Self {
+    let n = prices.len() - 1;
+    let big_n = n / 2;
+    let m_max = (big_n as f64).sqrt() as usize;
+    let l_max = (big_n as f64).powf(0.25) as usize;
+    let max_freq = big_n + m_max + l_max;
+    let dx = fourier_coefficients_dx_uniform(prices, period, max_freq);
+    Self {
+      dx,
+      period,
+      n,
+      n_freq: big_n,
+      max_freq,
+    }
   }
 
   /// Build an engine with explicit cutting frequency *N* and maximum frequency.
@@ -97,7 +125,7 @@ impl<T: FloatExt> FMVol<T> {
     T::from_f64_fast(std::f64::consts::TAU) / self.period
   }
 
-  fn vol_coeffs(&self, m: usize) -> Vec<Complex<T>> {
+  fn vol_coeffs(&self, m: usize) -> Array1<Complex<T>> {
     assert!(
       self.n_freq + m <= self.max_freq,
       "need max_freq ≥ N + M = {} but have {}",
@@ -149,7 +177,8 @@ impl<T: FloatExt> FMVol<T> {
     let c_v = self.vol_coeffs(big_m);
     let c = self.center();
 
-    let mut c_dv = vec![Complex::<T>::new(T::zero(), T::zero()); 2 * big_m + 1];
+    let len = 2 * big_m + 1;
+    let mut c_dv = Array1::<Complex<T>>::zeros(len);
     for (j, k) in (-(big_m as i64)..=(big_m as i64)).enumerate() {
       let k_t = T::from_f64_fast(k as f64);
       let fejer = T::one() - T::from_usize_(k.unsigned_abs() as usize) / big_m_plus_1;
@@ -171,8 +200,8 @@ impl<T: FloatExt> FMVol<T> {
     let c_v = self.vol_coeffs(big_m);
 
     let len = 2 * big_m + 1;
-    let mut c_dv = vec![Complex::<T>::new(T::zero(), T::zero()); len];
-    let mut c_dv2 = vec![Complex::<T>::new(T::zero(), T::zero()); len];
+    let mut c_dv = Array1::<Complex<T>>::zeros(len);
+    let mut c_dv2 = Array1::<Complex<T>>::zeros(len);
     for (j, k) in (-(big_m as i64)..=(big_m as i64)).enumerate() {
       let diff = Complex::<T>::new(T::zero(), T::from_f64_fast(k as f64) * const_);
       let fejer = T::one() - T::from_usize_(k.unsigned_abs() as usize) / big_m_plus_1;
@@ -198,6 +227,8 @@ impl<T: FloatExt> FMVol<T> {
     }
     self.period * sum.re
   }
+
+  // ──────────────────── spot estimators ───────────────────
 
   /// Spot variance at evaluation times `tau`.
   pub fn spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
@@ -228,16 +259,14 @@ impl<T: FloatExt> FMVol<T> {
 
     let c_v = self.vol_coeffs(big_m);
 
-    // Differentiate (no Fejér for spot)
     let len_m = 2 * big_m + 1;
-    let mut c_dv = vec![Complex::<T>::new(T::zero(), T::zero()); len_m];
+    let mut c_dv = Array1::<Complex<T>>::zeros(len_m);
     for (j, k) in (-(big_m as i64)..=(big_m as i64)).enumerate() {
       c_dv[j] = Complex::<T>::new(T::zero(), T::from_f64_fast(k as f64) * const_) * c_v[j];
     }
 
-    // Second convolution
     let len_l = 2 * big_l + 1;
-    let mut c_lev = vec![Complex::<T>::new(T::zero(), T::zero()); len_l];
+    let mut c_lev = Array1::<Complex<T>>::zeros(len_l);
     let scale = self.period / T::from_usize_(2 * big_m + 1);
 
     for (j_lev, k) in (-(big_l as i64)..=(big_l as i64)).enumerate() {
@@ -261,12 +290,11 @@ impl<T: FloatExt> FMVol<T> {
 
     let c_v = self.vol_coeffs(big_m);
     let len_m = 2 * big_m + 1;
-    let mut c_dv = vec![Complex::<T>::new(T::zero(), T::zero()); len_m];
+    let mut c_dv = Array1::<Complex<T>>::zeros(len_m);
     for (j, k) in (-(big_m as i64)..=(big_m as i64)).enumerate() {
       c_dv[j] = Complex::<T>::new(T::zero(), T::from_f64_fast(k as f64) * const_) * c_v[j];
     }
 
-    // Extended range
     assert!(
       self.n_freq + mm <= self.max_freq,
       "need max_freq ≥ N+M+L = {} but have {}",
@@ -275,14 +303,14 @@ impl<T: FloatExt> FMVol<T> {
     );
     let c_v2 = convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, mm);
     let len_mm = 2 * mm + 1;
-    let mut c_dv2 = vec![Complex::<T>::new(T::zero(), T::zero()); len_mm];
+    let mut c_dv2 = Array1::<Complex<T>>::zeros(len_mm);
     for (j, k) in (-(mm as i64)..=(mm as i64)).enumerate() {
       c_dv2[j] = Complex::<T>::new(T::zero(), T::from_f64_fast(k as f64) * const_) * c_v2[j];
     }
 
     let center_dv2 = mm;
     let len_l = 2 * big_l + 1;
-    let mut c_w = vec![Complex::<T>::new(T::zero(), T::zero()); len_l];
+    let mut c_w = Array1::<Complex<T>>::zeros(len_l);
     let scale = self.period / T::from_usize_(2 * big_m + 1);
 
     for (j_w, k) in (-(big_l as i64)..=(big_l as i64)).enumerate() {
@@ -319,7 +347,7 @@ impl<T: FloatExt> FMVol<T> {
     let c_v2 = convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, mm);
     let center_v2 = mm;
     let len_l = 2 * big_l + 1;
-    let mut c_q = vec![Complex::<T>::new(T::zero(), T::zero()); len_l];
+    let mut c_q = Array1::<Complex<T>>::zeros(len_l);
 
     for (j_q, k) in (-(big_l as i64)..=(big_l as i64)).enumerate() {
       let mut sum = Complex::<T>::new(T::zero(), T::zero());
@@ -336,7 +364,7 @@ impl<T: FloatExt> FMVol<T> {
 
 /// Fejér kernel inversion (internal helper).
 fn fejer_inversion<T: FloatExt>(
-  coeffs: &[Complex<T>],
+  coeffs: &Array1<Complex<T>>,
   m_freq: usize,
   period: T,
   tau: &[T],
@@ -421,6 +449,42 @@ mod tests {
     assert!(
       rel_err < 0.15,
       "f32 est={est_iv:.6}, true={true_iv:.6}, rel_err={rel_err:.4}"
+    );
+  }
+
+  #[test]
+  fn test_uniform_fft_matches_direct() {
+    let (lp, _, times) = heston_paths();
+    let engine_direct = FMVol::new(&lp, &times, 1.0);
+    let engine_fft = FMVol::new_uniform(&lp, 1.0);
+
+    let iv_direct = engine_direct.integrated_variance();
+    let iv_fft = engine_fft.integrated_variance();
+    let rel_err = (iv_fft - iv_direct).abs() / iv_direct.abs();
+    assert!(
+      rel_err < 1e-6,
+      "FFT vs direct mismatch: fft={iv_fft:.8}, direct={iv_direct:.8}, rel_err={rel_err:.2e}"
+    );
+  }
+
+  #[test]
+  fn test_uniform_fft_spot_matches_direct() {
+    let (lp, _, times) = heston_paths();
+    let engine_direct = FMVol::new(&lp, &times, 1.0);
+    let engine_fft = FMVol::new_uniform(&lp, 1.0);
+    let tau: Vec<f64> = (0..11).map(|i| i as f64 / 10.0).collect();
+
+    let spot_direct = engine_direct.spot_variance(&tau, None);
+    let spot_fft = engine_fft.spot_variance(&tau, None);
+
+    let max_diff = spot_direct
+      .iter()
+      .zip(spot_fft.iter())
+      .map(|(a, b)| (a - b).abs())
+      .fold(0.0_f64, f64::max);
+    assert!(
+      max_diff < 1e-6,
+      "FFT vs direct spot max_diff = {max_diff:.2e}"
     );
   }
 
