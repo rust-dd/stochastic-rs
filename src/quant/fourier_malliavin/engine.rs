@@ -355,10 +355,10 @@ impl<T: FloatExt> FMVol<T> {
         let idx = (center_v2 as i64 + k - s) as usize;
         sum = sum + c_v[j_v] * c_v2[idx];
       }
-      c_q[j_q] = sum * self.period;
+      c_q[j_q] = sum;
     }
 
-    fejer_inversion(&c_q, big_l, self.period, tau, T::from_usize_(big_l.max(1)))
+    fejer_inversion(&c_q, big_l, self.period, tau, T::from_usize_(big_l + 1))
   }
 }
 
