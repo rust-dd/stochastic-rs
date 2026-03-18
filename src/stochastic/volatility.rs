@@ -6,6 +6,7 @@
 //!
 pub mod bates_svj;
 pub mod bergomi;
+pub mod fbates_svj;
 pub mod fheston;
 pub mod heston;
 pub mod heston_log;

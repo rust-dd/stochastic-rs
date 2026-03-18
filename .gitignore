@@ -12,3 +12,4 @@ CI.yml
 .venv/
 tests
 .claude
+paper

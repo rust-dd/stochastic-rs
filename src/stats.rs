@@ -8,6 +8,8 @@ pub mod cir;
 pub mod double_exp;
 pub mod fd;
 pub mod fou_estimator;
+pub mod leverage;
+pub mod tail_index;
 pub mod gaussian_kde;
 pub mod heston_mle;
 pub mod heston_nml_cekf;

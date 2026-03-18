@@ -109,6 +109,94 @@ impl FractalDim {
   }
 }
 
+/// Estimate the Hurst exponent from a close-price series.
+///
+/// Uses Higuchi fractal dimension on a realized-volatility proxy
+/// (rolling mean absolute return), cross-validated against an
+/// absolute-return based estimate.
+///
+/// Returns H in \[0.05, 0.45\].  Falls back to 0.1 when data is
+/// insufficient or the estimate is unreliable.
+///
+/// # Arguments
+/// * `closes` — Daily (or intraday) close prices as `ArrayView1`,
+///              length >= 30.
+pub fn estimate_hurst(closes: &ndarray::ArrayView1<f64>) -> f64 {
+  let n = closes.len();
+  if n < 30 {
+    return 0.1;
+  }
+
+  let rets: Vec<f64> = (1..n)
+    .filter_map(|i| {
+      let r = (closes[i] / closes[i - 1]).ln();
+      if r.is_finite() { Some(r) } else { None }
+    })
+    .collect();
+
+  if rets.len() < 30 {
+    return 0.1;
+  }
+
+  // Realized vol proxy: rolling mean absolute return
+  let window = 5.min(rets.len() / 4).max(2);
+  let vol_proxy: Vec<f64> = rets
+    .windows(window)
+    .map(|w| {
+      let sum: f64 = w.iter().map(|r| r.abs()).sum();
+      sum / window as f64
+    })
+    .filter(|&v| v.is_finite() && v > 0.0)
+    .collect();
+
+  if vol_proxy.len() < 20 {
+    let abs_rets: Array1<f64> = Array1::from_vec(
+      rets.iter().map(|r| r.abs()).filter(|&r| r.is_finite() && r > 0.0).collect(),
+    );
+    return hurst_from_signal(&abs_rets.view());
+  }
+
+  let vol_arr = Array1::from_vec(vol_proxy);
+  let h_rv = hurst_from_signal(&vol_arr.view());
+
+  let abs_arr = Array1::from_vec(
+    rets.iter().map(|r| r.abs()).filter(|&r| r.is_finite() && r > 0.0).collect(),
+  );
+  let h_abs = hurst_from_signal(&abs_arr.view());
+
+  // Cross-validate: if estimates disagree by > 0.15, use the lower (conservative)
+  if (h_rv - h_abs).abs() > 0.15 {
+    h_rv.min(h_abs).clamp(0.05, 0.45)
+  } else {
+    (0.65 * h_rv + 0.35 * h_abs).clamp(0.05, 0.45)
+  }
+}
+
+/// Estimate Hurst exponent from an arbitrary positive signal via Higuchi FD.
+///
+/// Converts fractal dimension D to H = 2 − D, clamped to \[0.05, 0.45\].
+/// Returns 0.1 on degenerate input.
+///
+/// # Arguments
+/// * `signal` — Positive-valued time series as `ArrayView1`.
+pub fn hurst_from_signal(signal: &ndarray::ArrayView1<f64>) -> f64 {
+  if signal.len() < 20 {
+    return 0.1;
+  }
+  let owned = signal.to_owned();
+  let kmax = 64.min(signal.len() / 4).max(4);
+
+  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let fd = FractalDim::new(owned);
+    fd.higuchi_fd(kmax)
+  }));
+
+  match result {
+    Ok(d) if d.is_finite() && d > 1.0 && d < 2.0 => (2.0 - d).clamp(0.05, 0.45),
+    _ => 0.1,
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;

@@ -5,6 +5,7 @@
 //! $$
 //!
 pub mod autoregressive;
+pub mod correlation;
 pub mod diffusion;
 pub mod interest;
 pub mod isonormal;

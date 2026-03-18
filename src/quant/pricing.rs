@@ -12,6 +12,7 @@ pub mod dupire;
 pub mod finite_difference;
 pub mod fourier;
 pub mod heston;
+pub mod heston_stoch_corr;
 pub mod lookback;
 pub mod malliavin_gbm;
 pub mod merton_jump;
