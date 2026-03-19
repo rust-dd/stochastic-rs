@@ -15,6 +15,7 @@ pub mod heston;
 pub mod heston_stoch_corr;
 pub mod lookback;
 pub mod malliavin_gbm;
+pub mod malliavin_greeks;
 pub mod merton_jump;
 pub mod pnl;
 pub mod regime_switching;

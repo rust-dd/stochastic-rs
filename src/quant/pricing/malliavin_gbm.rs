@@ -56,7 +56,6 @@ pub struct GbmMalliavinPricer {
   pub eval: Option<chrono::NaiveDate>,
   /// Expiration date
   pub expiration: Option<chrono::NaiveDate>,
-
   /// Number of Monte Carlo paths (M)
   pub n_paths: usize,
   /// Number of time steps (N)

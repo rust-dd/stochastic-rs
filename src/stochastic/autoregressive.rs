@@ -9,6 +9,7 @@ pub mod ar;
 pub mod arch;
 pub mod arima;
 pub mod egarch;
+pub mod drr_garch;
 pub mod garch;
 pub mod ma;
 pub mod sarima;
