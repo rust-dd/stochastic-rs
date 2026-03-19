@@ -11,5 +11,5 @@ CI.yml
 *.py
 .venv/
 tests
-.claude
+settings.local.json
 paper
