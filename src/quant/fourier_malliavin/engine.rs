@@ -603,4 +603,67 @@ mod tests {
       "f32 mean spot vol {mean} out of range"
     );
   }
+
+  #[test]
+  fn test_optimal_cutting_frequency_noisy() {
+    let (lp, v, times) = heston_paths();
+    let dt = 1.0 / (lp.len() - 1) as f64;
+    let true_iv: f64 = (0..v.len() - 1).map(|i| (v[i] + v[i + 1]) * 0.5 * dt).sum();
+
+    // Add i.i.d. noise: η ~ N(0, σ²_η) with noise-to-signal ≈ 0.5
+    let sigma_eta = 0.005;
+    let noisy: Vec<f64> = lp
+      .iter()
+      .enumerate()
+      .map(|(i, &p)| {
+        // Deterministic pseudo-noise for reproducibility
+        let noise = sigma_eta * (((i * 7919 + 104729) % 10000) as f64 / 5000.0 - 1.0);
+        p + noise
+      })
+      .collect();
+
+    // ── Optimal N ──
+    let result = super::super::optimal_cutting_frequency(&noisy, &times);
+    let (n_opt, m_opt, _l_opt) = result.cutting_freqs();
+
+    // ── Fixed-rule N (heuristic) ──
+    let n = lp.len() - 1;
+    let (n_heur, m_heur, _) = super::super::default_cutting_freq_noisy(n);
+
+    // ── Estimate with optimal N ──
+    let engine_opt = FMVol::with_freq(&noisy, &times, 1.0, n_opt, n_opt + m_opt + 10);
+    let iv_opt = engine_opt.integrated_variance();
+
+    // ── Estimate with heuristic N ──
+    let engine_heur = FMVol::with_freq(&noisy, &times, 1.0, n_heur, n_heur + m_heur + 10);
+    let iv_heur = engine_heur.integrated_variance();
+
+    // ── Estimate with naive N = n/2 (no noise correction) ──
+    let engine_naive = FMVol::new(&noisy, &times, 1.0);
+    let iv_naive = engine_naive.integrated_variance();
+
+    let err_opt = (iv_opt - true_iv).abs() / true_iv;
+    let err_heur = (iv_heur - true_iv).abs() / true_iv;
+    let err_naive = (iv_naive - true_iv).abs() / true_iv;
+
+    // Optimal N should give smaller error than naive (no noise correction)
+    assert!(
+      err_opt < err_naive,
+      "optimal N should beat naive: err_opt={err_opt:.4}, err_naive={err_naive:.4}"
+    );
+
+    // Optimal N should be much smaller than n/2
+    assert!(
+      n_opt < n / 4,
+      "optimal N={n_opt} should be << n/2={} for noisy data",
+      n / 2
+    );
+
+    // Estimated noise variance should be in reasonable range
+    assert!(
+      result.noise_variance > 0.0,
+      "noise variance should be positive, got {}",
+      result.noise_variance
+    );
+  }
 }
