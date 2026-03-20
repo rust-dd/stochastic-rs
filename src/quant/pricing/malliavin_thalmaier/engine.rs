@@ -191,6 +191,12 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     }
   }
 
+  /// Fallback g kernel for d > 2 via finite difference.
+  ///
+  /// **Note**: this path uses MC sampling from the model distribution as a
+  /// proxy for Lebesgue-measure integration, which introduces density-weighting
+  /// bias. For production use with d > 2, implement a proper quadrature or
+  /// importance-sampling correction. Currently only d = 2 is fully validated.
   fn g_finite_difference(&self, payoff: &MtPayoff<T>, y: &[T]) -> Array2<T> {
     let d = y.len();
     let eps = T::from_f64_fast(1e-3)

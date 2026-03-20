@@ -22,14 +22,19 @@ pub fn norm_h<T: FloatExt>(x: &[T], h: T) -> T {
 
 /// Gradient of the regularised Poisson kernel `∂Q_d^h/∂x_i`.
 ///
-/// For all `d ≥ 2`: `∂Q_d^h/∂x_i(x) = (1/a_d) · x_i / |x|_h^d`.
+/// - `d = 2`: `∂Q₂^h/∂xᵢ = (1/a₂) · xᵢ / |x|_h²`
+/// - `d ≥ 3`: `∂Q_d^h/∂xᵢ = (d−2)/a_d · xᵢ / |x|_h^d`
 pub fn grad_poisson_reg<T: FloatExt>(x: &[T], h: T) -> Vec<T> {
   let d = x.len();
   let ad: T = sphere_area(d);
   let r = norm_h(x, h);
   let rd = r.powi(d as i32);
-  let inv_ad_rd = T::one() / (ad * rd);
-  x.iter().map(|&xi| xi * inv_ad_rd).collect()
+  let factor = if d >= 3 {
+    T::from_usize_(d - 2) / (ad * rd)
+  } else {
+    T::one() / (ad * rd)
+  };
+  x.iter().map(|&xi| xi * factor).collect()
 }
 
 /// Closed-form `g_{i,j}` for the 2-asset digital put `f(x) = 1(x₁≤K₁)·1(x₂≤K₂)`.
