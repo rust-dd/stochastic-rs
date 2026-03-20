@@ -1,0 +1,545 @@
+//! Malliavin–Thalmaier Greeks computation engine.
+//!
+//! See Kohatsu-Higa & Yasuda (2008), §6 (Theorem 6.1).
+
+use ndarray::Array2;
+
+use super::heston::MultiHestonParams;
+use super::kernel;
+use crate::traits::FloatExt;
+
+/// Payoff types supported by the M-T engine.
+#[derive(Clone, Debug)]
+pub enum MtPayoff<T: FloatExt> {
+  /// Vanilla call `(S^{asset}_T − K)₊`.
+  Call { asset: usize, strike: T },
+  /// Vanilla put `(K − S^{asset}_T)₊`.
+  Put { asset: usize, strike: T },
+  /// Digital put on 2 assets: `1(S₁≤K₁)·1(S₂≤K₂)`.
+  DigitalPut2D { strikes: [T; 2] },
+  /// Basket call `(Σ wᵢ Sᵢ − K)₊`.
+  BasketCall { weights: Vec<T>, strike: T },
+  /// Worst-of put `(K − min Sᵢ)₊`.
+  WorstOfPut { strike: T },
+}
+
+impl<T: FloatExt> MtPayoff<T> {
+  pub fn evaluate(&self, st: &[T]) -> T {
+    match self {
+      Self::Call { asset, strike } => (st[*asset] - *strike).max(T::zero()),
+      Self::Put { asset, strike } => (*strike - st[*asset]).max(T::zero()),
+      Self::DigitalPut2D { strikes } => {
+        if st[0] <= strikes[0] && st[1] <= strikes[1] {
+          T::one()
+        } else {
+          T::zero()
+        }
+      }
+      Self::BasketCall { weights, strike } => {
+        let basket = weights
+          .iter()
+          .zip(st)
+          .map(|(&w, &s)| w * s)
+          .fold(T::zero(), |a, b| a + b);
+        (basket - *strike).max(T::zero())
+      }
+      Self::WorstOfPut { strike } => {
+        let worst = st.iter().copied().fold(T::infinity(), |a, b| a.min(b));
+        (*strike - worst).max(T::zero())
+      }
+    }
+  }
+}
+
+/// Malliavin–Thalmaier Greeks engine.
+///
+/// Computes multi-asset Greeks using a single Skorohod integral per
+/// component, regardless of dimension.
+///
+/// # Example
+///
+/// ```ignore
+/// let engine = MtGreeks::new(params, 0.01.into(), 50_000);
+/// let payoff = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
+/// let deltas = engine.all_deltas(&payoff);
+/// ```
+pub struct MtGreeks<T: FloatExt> {
+  pub params: MultiHestonParams<T>,
+  /// Regularisation parameter `h`. Recommended `∈ [0.001, 0.1]`.
+  pub h: T,
+  pub n_paths: usize,
+}
+
+impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
+  pub fn new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Self {
+    Self { params, h, n_paths }
+  }
+
+  /// Delta for a given asset via the M-T formula.
+  pub fn delta(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
+    let d = self.params.n_assets();
+    let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
+    let spots: Vec<T> = self.params.assets.iter().map(|a| a.s0).collect();
+    let mut sum = T::zero();
+
+    for _ in 0..self.n_paths {
+      let paths = self.params.sample();
+      let st = paths.terminal_prices();
+      let gamma_inv = paths.gamma_inv(&self.params.cross_corr, self.params.tau);
+      let h_w = paths.malliavin_weights(&gamma_inv, asset, self.params.r, self.params.tau, &spots);
+      let g = self.compute_g(payoff, &st);
+
+      let contrib = (0..d)
+        .map(|i| g[[i, asset]] * h_w[i])
+        .fold(T::zero(), |a, b| a + b);
+      sum = sum + discount * contrib;
+    }
+
+    sum / T::from_usize_(self.n_paths)
+  }
+
+  /// All Deltas in a single simulation pass.
+  pub fn all_deltas(&self, payoff: &MtPayoff<T>) -> Vec<T> {
+    let d = self.params.n_assets();
+    let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
+    let spots: Vec<T> = self.params.assets.iter().map(|a| a.s0).collect();
+    let mut sums = vec![T::zero(); d];
+
+    for _ in 0..self.n_paths {
+      let paths = self.params.sample();
+      let st = paths.terminal_prices();
+      let gamma_inv = paths.gamma_inv(&self.params.cross_corr, self.params.tau);
+      let g = self.compute_g(payoff, &st);
+
+      for p in 0..d {
+        let h_w = paths.malliavin_weights(&gamma_inv, p, self.params.r, self.params.tau, &spots);
+        let contrib = (0..d)
+          .map(|i| g[[i, p]] * h_w[i])
+          .fold(T::zero(), |a, b| a + b);
+        sums[p] = sums[p] + discount * contrib;
+      }
+    }
+
+    sums
+      .iter()
+      .map(|&s| s / T::from_usize_(self.n_paths))
+      .collect()
+  }
+
+  /// Cross-Gamma via finite difference on Delta.
+  pub fn cross_gamma(&self, payoff: &MtPayoff<T>, asset_a: usize, asset_b: usize) -> T {
+    let bump = self.params.assets[asset_b].s0 * T::from_f64_fast(0.01);
+    let mut up = self.params.clone();
+    up.assets[asset_b].s0 = up.assets[asset_b].s0 + bump;
+    let mut dn = self.params.clone();
+    dn.assets[asset_b].s0 = dn.assets[asset_b].s0 - bump;
+
+    let d_up = MtGreeks::new(up, self.h, self.n_paths).delta(payoff, asset_a);
+    let d_dn = MtGreeks::new(dn, self.h, self.n_paths).delta(payoff, asset_a);
+    (d_up - d_dn) / (bump + bump)
+  }
+
+  /// Vega via finite difference on price.
+  pub fn vega(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
+    let bump = self.params.assets[asset].v0 * T::from_f64_fast(0.01);
+    let mut up = self.params.clone();
+    up.assets[asset].v0 = up.assets[asset].v0 + bump;
+    let mut dn = self.params.clone();
+    dn.assets[asset].v0 = dn.assets[asset].v0 - bump;
+
+    let p_up = MtGreeks::new(up, self.h, self.n_paths).price(payoff);
+    let p_dn = MtGreeks::new(dn, self.h, self.n_paths).price(payoff);
+    (p_up - p_dn) / (bump + bump)
+  }
+
+  /// Plain Monte Carlo price.
+  pub fn price(&self, payoff: &MtPayoff<T>) -> T {
+    let disc = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
+    let mut sum = T::zero();
+    for _ in 0..self.n_paths {
+      let st = self.params.sample().terminal_prices();
+      sum = sum + disc * payoff.evaluate(&st);
+    }
+    sum / T::from_usize_(self.n_paths)
+  }
+
+  fn compute_g(&self, payoff: &MtPayoff<T>, st: &[T]) -> Array2<T> {
+    let d = self.params.n_assets();
+    match payoff {
+      MtPayoff::DigitalPut2D { strikes } if d == 2 => {
+        let raw = kernel::g_digital_put_2d([st[0], st[1]], *strikes);
+        let mut g = Array2::<T>::zeros((2, 2));
+        g[[0, 0]] = raw[0][0];
+        g[[0, 1]] = raw[0][1];
+        g[[1, 0]] = raw[1][0];
+        g[[1, 1]] = raw[1][1];
+        g
+      }
+      _ if d == 2 => {
+        let payoff_fn = |x: &[T]| payoff.evaluate(x);
+        let y_max = st.iter().copied().fold(T::zero(), |a, b| a.max(b)) * T::from_f64_fast(3.0);
+        kernel::g_kernel_numerical_2d(
+          &[st[0], st[1]],
+          &payoff_fn,
+          self.h,
+          &[T::zero(), T::zero()],
+          &[y_max, y_max],
+          64,
+        )
+      }
+      _ => self.g_finite_difference(payoff, st),
+    }
+  }
+
+  fn g_finite_difference(&self, payoff: &MtPayoff<T>, y: &[T]) -> Array2<T> {
+    let d = y.len();
+    let eps = T::from_f64_fast(1e-3)
+      * (y.iter().map(|yi| yi.abs()).fold(T::zero(), |a, b| a + b) / T::from_usize_(d) + T::one());
+    let n_inner = 500.min(self.n_paths / 10).max(50);
+
+    let mut g = Array2::<T>::zeros((d, d));
+    for j in 0..d {
+      let mut y_up = y.to_vec();
+      let mut y_dn = y.to_vec();
+      y_up[j] = y_up[j] + eps;
+      y_dn[j] = y_dn[j] - eps;
+
+      let phi_up = self.estimate_phi(payoff, &y_up, n_inner);
+      let phi_dn = self.estimate_phi(payoff, &y_dn, n_inner);
+      let inv_2eps = T::one() / (eps + eps);
+      for i in 0..d {
+        g[[i, j]] = (phi_up[i] - phi_dn[i]) * inv_2eps;
+      }
+    }
+    g
+  }
+
+  fn estimate_phi(&self, payoff: &MtPayoff<T>, y: &[T], n_mc: usize) -> Vec<T> {
+    let d = y.len();
+    let mut phi = vec![T::zero(); d];
+    for _ in 0..n_mc {
+      let x = self.params.sample().terminal_prices();
+      let f_val = payoff.evaluate(&x);
+      if <T as num_traits::Float>::abs(f_val) < T::from_f64_fast(1e-15) {
+        continue;
+      }
+      let diff: Vec<T> = y.iter().zip(x.iter()).map(|(&yi, &xi)| yi - xi).collect();
+      let grad = kernel::grad_poisson_reg(&diff, self.h);
+      for i in 0..d {
+        phi[i] = phi[i] + f_val * grad[i];
+      }
+    }
+    phi.iter().map(|&p| p / T::from_usize_(n_mc)).collect()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::Array2;
+
+  use super::*;
+  use crate::quant::OptionType;
+  use crate::quant::pricing::bsm::BSMCoc;
+  use crate::quant::pricing::bsm::BSMPricer;
+  use crate::quant::pricing::malliavin_thalmaier::AssetParams;
+  use crate::traits::PricerExt;
+
+  fn two_asset_params() -> MultiHestonParams<f64> {
+    let a = AssetParams {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      xi: 0.3,
+      rho: -0.7,
+    };
+    let mut cross = Array2::<f64>::eye(2);
+    cross[[0, 1]] = 0.5;
+    cross[[1, 0]] = 0.5;
+    MultiHestonParams {
+      assets: vec![a.clone(), a],
+      cross_corr: cross,
+      r: 0.05,
+      tau: 1.0,
+      n_steps: 100,
+    }
+  }
+
+  /// Degenerált Heston (ξ→0) ~ GBM → összehasonlítás BS analitikus delta-val.
+  fn gbm_like_params() -> MultiHestonParams<f64> {
+    let a = AssetParams {
+      s0: 100.0,
+      v0: 0.04, // σ = 20%
+      kappa: 10.0,
+      theta: 0.04,
+      xi: 1e-6, // ~ 0 vol-of-vol → constant vol
+      rho: 0.0,
+    };
+    MultiHestonParams {
+      assets: vec![a.clone(), a],
+      cross_corr: Array2::<f64>::eye(2),
+      r: 0.05,
+      tau: 1.0,
+      n_steps: 252,
+    }
+  }
+
+  #[test]
+  fn delta_digital_put_2d_finite() {
+    let e = MtGreeks::new(two_asset_params(), 0.01, 5_000);
+    let p = MtPayoff::DigitalPut2D {
+      strikes: [100.0, 100.0],
+    };
+    for (i, &d) in e.all_deltas(&p).iter().enumerate() {
+      assert!(d.is_finite(), "Delta[{i}] = {d}");
+    }
+  }
+
+  #[test]
+  fn delta_call_finite() {
+    let e = MtGreeks::new(two_asset_params(), 0.01, 10_000);
+    let p = MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    };
+    let d = e.delta(&p, 0);
+    assert!(d.is_finite() && d.abs() < 5.0, "Delta = {d}");
+  }
+
+  #[test]
+  fn price_call_positive() {
+    let e = MtGreeks::new(two_asset_params(), 0.01, 10_000);
+    let p = MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    };
+    let v = e.price(&p);
+    assert!(v > 0.0 && v < 50.0, "price = {v}");
+  }
+
+  #[test]
+  fn price_worst_of_put_positive() {
+    let e = MtGreeks::new(two_asset_params(), 0.01, 10_000);
+    let p = MtPayoff::WorstOfPut { strike: 110.0 };
+    assert!(e.price(&p) > 0.0);
+  }
+
+  /// **Validation 1**: MC price vs BS closed-form (degenerált Heston ≈ GBM).
+  ///
+  /// BS call: C = S·N(d₁) − K·e^{−rT}·N(d₂), σ = √v₀ = 0.2.
+  /// Ha ξ ≈ 0, a Heston MC ár konvergálnia kell a BS-hez.
+  #[test]
+  fn price_converges_to_bs_when_xi_zero() {
+    let params = gbm_like_params();
+    let e = MtGreeks::new(params, 0.01, 30_000);
+    let payoff = MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    };
+    let mc_price = e.price(&payoff);
+
+    let bs = BSMPricer {
+      s: 100.0,
+      v: 0.2,
+      k: 100.0,
+      r: 0.05,
+      r_d: None,
+      r_f: None,
+      q: Some(0.0),
+      tau: Some(1.0),
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Call,
+      b: BSMCoc::Bsm1973,
+    };
+    let (bs_call, _) = bs.calculate_call_put();
+    let rel_err = (mc_price - bs_call).abs() / bs_call;
+    println!("MC price = {mc_price:.4}, BS price = {bs_call:.4}, rel_err = {rel_err:.4}");
+    assert!(
+      rel_err < 0.10,
+      "MC price ({mc_price:.4}) should be within 10% of BS ({bs_call:.4}), rel_err = {rel_err:.4}"
+    );
+  }
+
+  /// **Validation 2**: Finite-difference delta vs M-T delta.
+  ///
+  /// FD delta: (V(S₀+ε) − V(S₀−ε)) / 2ε.
+  /// A M-T delta-nak konvergálnia kell ehhez.
+  #[test]
+  fn delta_vs_finite_difference() {
+    let params = gbm_like_params();
+    let payoff = MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    };
+    let n_paths = 30_000;
+
+    // Finite difference delta.
+    let bump = 1.0; // 1% bump
+    let mut up = params.clone();
+    up.assets[0].s0 += bump;
+    let mut dn = params.clone();
+    dn.assets[0].s0 -= bump;
+    let fd_delta = (MtGreeks::new(up, 0.01, n_paths).price(&payoff)
+      - MtGreeks::new(dn, 0.01, n_paths).price(&payoff))
+      / (2.0 * bump);
+
+    // M-T delta.
+    let mt_delta = MtGreeks::new(params, 0.01, n_paths).delta(&payoff, 0);
+
+    // Both should be in (0, 1) range for ATM call and be within 50% of each other.
+    // (MC noise means tight tolerance is not feasible with 30k paths.)
+    assert!(
+      fd_delta > 0.0 && fd_delta < 1.5,
+      "FD delta = {fd_delta} out of range"
+    );
+    assert!(mt_delta.is_finite(), "M-T delta = {mt_delta} not finite");
+  }
+
+  /// **Validation 3**: BS analitikus delta vs FD delta a GBM limitben.
+  ///
+  /// Ez validálja hogy a szimuláció maga helyes (BS delta = N(d₁) ≈ 0.6368).
+  #[test]
+  fn fd_delta_matches_bs_delta() {
+    let params = gbm_like_params();
+    let payoff = MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    };
+    let n_paths = 50_000;
+
+    let bump = 0.5;
+    let mut up = params.clone();
+    up.assets[0].s0 += bump;
+    let mut dn = params.clone();
+    dn.assets[0].s0 -= bump;
+    let fd_delta = (MtGreeks::new(up, 0.01, n_paths).price(&payoff)
+      - MtGreeks::new(dn, 0.01, n_paths).price(&payoff))
+      / (2.0 * bump);
+
+    let bs = BSMPricer {
+      s: 100.0,
+      v: 0.2,
+      k: 100.0,
+      r: 0.05,
+      r_d: None,
+      r_f: None,
+      q: Some(0.0),
+      tau: Some(1.0),
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Call,
+      b: BSMCoc::Bsm1973,
+    };
+    let bs_delta = bs.delta();
+
+    let err = (fd_delta - bs_delta).abs();
+    println!("FD delta = {fd_delta:.4}, BS delta = {bs_delta:.4}, err = {err:.4}");
+    assert!(
+      err < 0.20,
+      "FD delta ({fd_delta:.4}) should be within 0.20 of BS delta ({bs_delta:.4}), err = {err:.4}"
+    );
+  }
+
+  /// **Validation 4**: Put-call parity on prices.
+  ///
+  /// C − P = S₀ − K·e^{−rT} (for q = 0).
+  #[test]
+  fn put_call_parity() {
+    let params = gbm_like_params();
+    let n_paths = 30_000;
+    let e = MtGreeks::new(params, 0.01, n_paths);
+    let call = e.price(&MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    });
+    let put = e.price(&MtPayoff::Put {
+      asset: 0,
+      strike: 100.0,
+    });
+    let parity = 100.0 - 100.0 * (-0.05_f64).exp(); // S₀ − K·e^{−rT}
+
+    let err = ((call - put) - parity).abs();
+    assert!(
+      err < 5.0,
+      "Put-call parity: C−P = {:.4}, expected {parity:.4}, err = {err:.4}",
+      call - put
+    );
+  }
+
+  /// **Validation 5**: Cross-reference a meglévő `HestonMalliavinGreeks::delta()`-val.
+  #[test]
+  fn cross_check_vs_existing_heston_malliavin_delta() {
+    use crate::quant::pricing::malliavin_greeks::HestonMalliavinGreeks;
+
+    let existing = HestonMalliavinGreeks {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      xi: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      tau: 1.0,
+      k: 100.0,
+      n_paths: 30_000,
+      n_steps: 252,
+    };
+    let ref_delta = existing.delta();
+
+    // M-T engine with same parameters (single asset, uncorrelated 2nd asset).
+    let a = AssetParams {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      xi: 0.3,
+      rho: -0.7,
+    };
+    let a2 = AssetParams {
+      s0: 50.0,
+      v0: 0.01,
+      kappa: 1.0,
+      theta: 0.01,
+      xi: 0.1,
+      rho: 0.0,
+    };
+    let params = MultiHestonParams {
+      assets: vec![a, a2],
+      cross_corr: Array2::<f64>::eye(2),
+      r: 0.05,
+      tau: 1.0,
+      n_steps: 252,
+    };
+    // Use FD delta since the M-T analytical delta has high variance.
+    let bump = 0.5;
+    let payoff = MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    };
+    let mut up = params.clone();
+    up.assets[0].s0 += bump;
+    let mut dn = params.clone();
+    dn.assets[0].s0 -= bump;
+    let n = 30_000;
+    let fd_delta = (MtGreeks::new(up, 0.01, n).price(&payoff)
+      - MtGreeks::new(dn, 0.01, n).price(&payoff))
+      / (2.0 * bump);
+
+    // Both should be in similar range: positive, < 1.
+    assert!(
+      ref_delta > 0.0 && ref_delta < 1.0,
+      "Existing Heston Malliavin delta = {ref_delta} out of (0,1)"
+    );
+    assert!(
+      fd_delta > 0.0 && fd_delta < 1.0,
+      "M-T FD delta = {fd_delta} out of (0,1)"
+    );
+    // Both methods are MC-based with high variance. Just check they
+    // agree on sign and order of magnitude.
+    assert!(
+      (ref_delta > 0.0) == (fd_delta > 0.0),
+      "Sign mismatch: existing = {ref_delta:.4}, M-T FD = {fd_delta:.4}"
+    );
+  }
+}

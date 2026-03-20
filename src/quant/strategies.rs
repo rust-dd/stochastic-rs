@@ -5,3 +5,7 @@
 //! $$
 //!
 pub mod delta_hedge;
+pub mod fmvol_regime;
+pub mod mean_reversion;
+pub mod trend_following;
+pub mod variance_risk_premium;

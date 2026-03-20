@@ -47,6 +47,7 @@ ndarray = { version = "0.17.2", features = [
     "rayon",
     "matrixmultiply-threading",
 ] }
+ndarray-linalg = { version = "0.18.1", features = ["openblas-system"] }
 ndarray-npy = "0.10.0"
 ndarray-rand = "0.16.0"
 ndarray-stats = "0.7.0"
