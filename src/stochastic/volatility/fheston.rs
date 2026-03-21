@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
-use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
 use crate::simd_rng::SeedExt;
 use crate::simd_rng::Unseeded;

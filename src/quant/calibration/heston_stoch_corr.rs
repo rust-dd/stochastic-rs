@@ -85,15 +85,15 @@ fn slsqp_objective(x: &[f64], gradient: Option<&mut [f64]>, data: &mut CalibData
   // Numerical gradient via central differences
   if let Some(g) = gradient {
     let h = 1e-5;
-    let f0 = eval_sse(x, &data);
+    let f0 = eval_sse(x, data);
     for i in 0..x.len() {
       let mut xp = x.to_vec();
       xp[i] += h;
-      let fp = eval_sse(&xp, &data);
+      let fp = eval_sse(&xp, data);
       g[i] = (fp - f0) / h;
     }
   }
-  eval_sse(x, &data)
+  eval_sse(x, data)
 }
 
 fn eval_sse(x: &[f64], data: &CalibData) -> f64 {
@@ -121,11 +121,11 @@ pub fn calibrate_hscm(
 ) -> HscmCalibrationResult {
   let n = options.len();
 
-  let mut x: Vec<f64> = initial_guess
+  let x = initial_guess
     .iter()
     .enumerate()
     .map(|(i, &v)| v.clamp(BOUNDS[i].0, BOUNDS[i].1))
-    .collect();
+    .collect::<Vec<_>>();
 
   let bounds: Vec<(f64, f64)> = BOUNDS.to_vec();
   let cons: Vec<&dyn slsqp::Func<CalibData>> = vec![];
@@ -134,15 +134,7 @@ pub fn calibrate_hscm(
     options: options.to_vec(),
   };
 
-  let _ = slsqp::minimize(
-    slsqp_objective,
-    &mut x,
-    &bounds,
-    &cons,
-    data,
-    max_iter,
-    None,
-  );
+  let _ = slsqp::minimize(slsqp_objective, &x, &bounds, &cons, data, max_iter, None);
 
   // Compute final errors
   let mut sse = 0.0;
