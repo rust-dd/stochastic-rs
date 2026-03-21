@@ -301,6 +301,50 @@ mod tests {
     }
   }
 
+  /// M-T delta vs FD delta for digital put 2D.
+  ///
+  /// The closed-form g kernel (arctan + ln) should give deltas that agree
+  /// with bump-and-reprice in sign and both should be negative (higher
+  /// spot → less likely to finish below strike).
+  #[test]
+  fn digital_put_2d_mt_vs_fd() {
+    let n = 30_000;
+    let params = two_asset_params();
+    let payoff = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
+
+    let mt = MtGreeks::new(params.clone(), 0.01, n).all_deltas(&payoff);
+
+    let bump = 0.5;
+    let mut fd = vec![0.0; 2];
+    for p in 0..2 {
+      let mut up = params.clone();
+      up.assets[p].s0 += bump;
+      let mut dn = params.clone();
+      dn.assets[p].s0 -= bump;
+      fd[p] = (MtGreeks::new(up, 0.01, n).price(&payoff)
+        - MtGreeks::new(dn, 0.01, n).price(&payoff))
+        / (2.0 * bump);
+    }
+
+    // Both should be negative.
+    assert!(mt[0] < 0.0 && mt[1] < 0.0, "MT deltas should be < 0: [{:.4}, {:.4}]", mt[0], mt[1]);
+    assert!(fd[0] < 0.0 && fd[1] < 0.0, "FD deltas should be < 0: [{:.4}, {:.4}]", fd[0], fd[1]);
+
+    // Same sign.
+    assert_eq!(mt[0] < 0.0, fd[0] < 0.0, "sign mismatch asset 0");
+    assert_eq!(mt[1] < 0.0, fd[1] < 0.0, "sign mismatch asset 1");
+  }
+
+  /// Price of digital put 2D should be in (0, e^{-rT}).
+  #[test]
+  fn digital_put_2d_price_bounded() {
+    let e = MtGreeks::new(two_asset_params(), 0.01, 20_000);
+    let p = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
+    let price = e.price(&p);
+    let disc = (-0.05_f64).exp();
+    assert!(price > 0.0 && price < disc, "price {price:.4} not in (0, {disc:.4})");
+  }
+
   #[test]
   fn delta_call_finite() {
     let e = MtGreeks::new(two_asset_params(), 0.01, 10_000);
