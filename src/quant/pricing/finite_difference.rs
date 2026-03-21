@@ -120,8 +120,9 @@ impl FiniteDifferencePricer {
       option_values[i] = self.payoff(s_i);
     }
 
-    for _ in 0..time_steps {
+    for step in 0..time_steps {
       let mut new_option_values = option_values.clone();
+      let elapsed = (step + 1) as f64 * dt;
 
       for i in 1..self.s_n {
         let s_i = s_values[i];
@@ -141,8 +142,8 @@ impl FiniteDifferencePricer {
         }
       }
 
-      new_option_values[0] = self.boundary_condition(s_values[0], 0.0);
-      new_option_values[self.s_n] = self.boundary_condition(s_values[self.s_n], 0.0);
+      new_option_values[0] = self.boundary_condition(s_values[0], elapsed);
+      new_option_values[self.s_n] = self.boundary_condition(s_values[self.s_n], elapsed);
 
       option_values = new_option_values;
     }
@@ -162,7 +163,9 @@ impl FiniteDifferencePricer {
       option_values[i] = self.payoff(s_i);
     }
 
-    for _ in 0..time_steps {
+    for step in 0..time_steps {
+      let elapsed = (step + 1) as f64 * dt;
+
       for i in 1..self.s_n {
         let s_i = s_values[i];
         let sigma_sq = self.v.powi(2);
@@ -174,8 +177,8 @@ impl FiniteDifferencePricer {
 
       let mut d = option_values.slice(s![1..self.s_n]).to_owned();
 
-      d[0] -= a[0] * self.boundary_condition(0.0, dt);
-      d[self.s_n - 2] -= c[self.s_n - 2] * self.boundary_condition(s_values[self.s_n], dt);
+      d[0] -= a[0] * self.boundary_condition(0.0, elapsed);
+      d[self.s_n - 2] -= c[self.s_n - 2] * self.boundary_condition(s_values[self.s_n], elapsed);
 
       let new_option_values_inner = self.solve_tridiagonal(&a, &b, &c, &d);
 
@@ -188,8 +191,8 @@ impl FiniteDifferencePricer {
         }
       }
 
-      option_values[0] = self.boundary_condition(0.0, dt);
-      option_values[self.s_n] = self.boundary_condition(s_values[self.s_n], dt);
+      option_values[0] = self.boundary_condition(0.0, elapsed);
+      option_values[self.s_n] = self.boundary_condition(s_values[self.s_n], elapsed);
     }
 
     self.interpolate(&s_values, &option_values, self.s)
@@ -207,7 +210,9 @@ impl FiniteDifferencePricer {
       option_values[i] = self.payoff(s_i);
     }
 
-    for _ in 0..time_steps {
+    for step in 0..time_steps {
+      let elapsed = (step + 1) as f64 * dt;
+
       for i in 1..self.s_n {
         let s_i = s_values[i];
         let sigma_sq = self.v.powi(2);
@@ -230,8 +235,8 @@ impl FiniteDifferencePricer {
           a_past * option_values[i - 1] + b_past * option_values[i] + c_past * option_values[i + 1];
       }
 
-      d[0] -= a[0] * self.boundary_condition(0.0, dt);
-      d[self.s_n - 2] -= c[self.s_n - 2] * self.boundary_condition(s_values[self.s_n], dt);
+      d[0] -= a[0] * self.boundary_condition(0.0, elapsed);
+      d[self.s_n - 2] -= c[self.s_n - 2] * self.boundary_condition(s_values[self.s_n], elapsed);
 
       let new_option_values_inner = self.solve_tridiagonal(&a, &b, &c, &d);
 
@@ -244,8 +249,8 @@ impl FiniteDifferencePricer {
         }
       }
 
-      option_values[0] = self.boundary_condition(0.0, dt);
-      option_values[self.s_n] = self.boundary_condition(s_values[self.s_n], dt);
+      option_values[0] = self.boundary_condition(0.0, elapsed);
+      option_values[self.s_n] = self.boundary_condition(s_values[self.s_n], elapsed);
     }
 
     self.interpolate(&s_values, &option_values, self.s)
