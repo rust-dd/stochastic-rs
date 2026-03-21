@@ -12,6 +12,10 @@ cargo build --features cuda    # build with CUDA support
 cargo build --features python  # build with Python bindings (pyo3)
 ```
 
+## Clippy usage
+
+Always run `cargo clippy` to adopt the latest compiler recommendations.
+
 ## Key traits
 
 - `FloatExt` — core float trait bound (extends `num_traits::Float + Send + Sync + ...`)

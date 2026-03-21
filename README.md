@@ -214,11 +214,11 @@ Configuration in this run:
 
 ### P0 — Core research infrastructure
 
-- [ ] **Advanced Monte Carlo** (`stochastic::mc`)
-  - [ ] Variance reduction — antithetic variates, control variates, importance sampling, stratified sampling
-  - [ ] Quasi-Monte Carlo sequences — Sobol, Halton, Niederreiter
-  - [ ] Multi-Level Monte Carlo (MLMC)
-  - [ ] Longstaff-Schwartz (LSM) for American option pricing
+- [x] **Advanced Monte Carlo** (`stochastic::mc`)
+  - [x] Variance reduction — antithetic variates, control variates, importance sampling, stratified sampling
+  - [x] Quasi-Monte Carlo sequences — Sobol, Halton
+  - [x] Multi-Level Monte Carlo (MLMC)
+  - [x] Longstaff-Schwartz (LSM) for American option pricing
 - [ ] **Volatility surface** (`quant::vol_surface`)
   - [ ] Implied volatility surface construction from market data
   - [ ] SVI parameterization (Gatheral) and SSVI
