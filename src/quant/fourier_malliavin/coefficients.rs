@@ -47,8 +47,8 @@ pub fn fourier_coefficients_dx<T: FloatExt>(
     let mut im = T::zero();
     for l in 0..n {
       let phase = k_t * neg_phases[l];
-      re = re + phase.cos() * r[l];
-      im = im + phase.sin() * r[l];
+      re += phase.cos() * r[l];
+      im += phase.sin() * r[l];
     }
     c_pos[k - 1] = Complex::new(re, im);
   }

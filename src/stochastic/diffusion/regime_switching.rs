@@ -123,7 +123,7 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     let m = self.vols.len();
     let mut cum = T::zero();
     for j in 0..m {
-      cum = cum + p_matrix[[current, j]];
+      cum += p_matrix[[current, j]];
       if T::from_f64_fast(u) <= cum {
         return j;
       }
@@ -139,7 +139,7 @@ fn matrix_exp_real<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
   for i in 0..m {
     let mut row_sum = T::zero();
     for j in 0..m {
-      row_sum = row_sum + a[[i, j]].abs();
+      row_sum += a[[i, j]].abs();
     }
     if row_sum > norm {
       norm = row_sum;
@@ -176,7 +176,7 @@ fn matrix_exp_real<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
     for i in 0..m {
       for j in 0..m {
         term[[i, j]] = term[[i, j]] / divisor;
-        result[[i, j]] = result[[i, j]] + term[[i, j]];
+        result[[i, j]] += term[[i, j]];
       }
     }
   }
@@ -195,7 +195,7 @@ fn mat_mul<T: FloatExt>(a: &Array2<T>, b: &Array2<T>) -> Array2<T> {
     for j in 0..m {
       let mut sum = T::zero();
       for k in 0..m {
-        sum = sum + a[[i, k]] * b[[k, j]];
+        sum += a[[i, k]] * b[[k, j]];
       }
       c[[i, j]] = sum;
     }

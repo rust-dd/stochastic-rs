@@ -232,7 +232,7 @@ pub fn periodogram_fft(signal: &[f64], cfg: PeriodogramConfig) -> PeriodogramRes
   for k in 0..bins {
     let mut p = fft_out[k].norm_sqr() / base_scale;
 
-    if cfg.onesided && k > 0 && !(nfft % 2 == 0 && k == nfft / 2) {
+    if cfg.onesided && k > 0 && !(nfft.is_multiple_of(2) && k == nfft / 2) {
       p *= 2.0;
     }
 

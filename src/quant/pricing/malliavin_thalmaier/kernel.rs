@@ -117,8 +117,8 @@ where
         let r = norm_h(&dy, h);
         let rd = r * r; // d=2
         let inv = fval * area / (ad * rd);
-        phi[s][0] = phi[s][0] + dy[0] * inv;
-        phi[s][1] = phi[s][1] + dy[1] * inv;
+        phi[s][0] += dy[0] * inv;
+        phi[s][1] += dy[1] * inv;
       }
     }
   }

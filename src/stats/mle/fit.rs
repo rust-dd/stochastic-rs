@@ -163,7 +163,9 @@ pub fn fit_mle(
   } else {
     let init: Vec<f64> = x0.to_vec();
 
-    let best = {
+    
+
+    {
       let problem = MleProblem {
         model: Mutex::new(&mut *model),
         sample,
@@ -183,9 +185,7 @@ pub fn fit_mle(
         Ok(res) => res.state.get_best_param().cloned().unwrap_or(init),
         Err(_) => init,
       }
-    };
-
-    best
+    }
   };
 
   let clamped: Vec<f64> = best_params

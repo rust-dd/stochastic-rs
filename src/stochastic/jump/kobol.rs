@@ -20,6 +20,7 @@
 //! - D = C
 //! - p = q = 1
 //! - λ_+ = G, λ_- = M
+//!
 //! then D(p+q)=2C and P(+)=1/2.
 
 use ndarray::Array1;

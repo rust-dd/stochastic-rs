@@ -120,9 +120,9 @@ impl CarrMadanPricer {
       input[j] = (i_unit * v_j * b).exp() * psi * simpson;
     }
 
-    let mut handler = FftHandler::<f64>::new(n);
+    let handler = FftHandler::<f64>::new(n);
     let mut output = Array1::<Complex64>::zeros(n);
-    ndfft(&input, &mut output, &mut handler, 0);
+    ndfft(&input, &mut output, &handler, 0);
 
     let mut log_strikes = Array1::<f64>::zeros(n);
     let mut prices = Array1::<f64>::zeros(n);

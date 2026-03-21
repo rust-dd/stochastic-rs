@@ -237,9 +237,9 @@ fn basin_hopping_opt(
 
   for _ in 0..niter {
     let mut x_trial = current_x;
-    for i in 0..NVARS {
-      x_trial[i] += rng.random_range(-stepsize..stepsize);
-      x_trial[i] = x_trial[i].clamp(problem.bounds_lo[i], problem.bounds_hi[i]);
+    for (i, x) in x_trial.iter_mut().enumerate() {
+      *x += rng.random_range(-stepsize..stepsize);
+      *x = (*x).clamp(problem.bounds_lo[i], problem.bounds_hi[i]);
     }
 
     let linesearch = MoreThuenteLineSearch::new().with_c(1e-4, 0.9).unwrap();

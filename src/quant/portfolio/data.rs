@@ -98,6 +98,7 @@ pub fn covariance_matrix(sigmas: &[f64], corr: &[Vec<f64>]) -> Vec<Vec<f64>> {
   cov
 }
 
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn corr_from_cov(cov: &[Vec<f64>]) -> Vec<Vec<f64>> {
   let n = cov.len();
   let mut corr = vec![vec![0.0; n]; n];

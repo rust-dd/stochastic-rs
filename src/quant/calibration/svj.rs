@@ -273,6 +273,7 @@ fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
 /// $$
 /// C_{\mathrm{Bates}} = C_{\mathrm{Heston}} + T\,\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr)
 ///   - i\xi\,T\,\lambda\bigl(e^{\mu_J+\frac12\sigma_J^2}-1\bigr)
+///
 /// $$
 fn bates_cf(p: &SVJParams, s: f64, r: f64, q: f64, tau: f64, u: Complex64) -> Complex64 {
   let i = Complex64::i();

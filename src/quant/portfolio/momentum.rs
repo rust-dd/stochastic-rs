@@ -106,13 +106,14 @@ pub enum WeightScheme {
   ScoreWeighted,
 }
 
-impl WeightScheme {
-  /// Parse weighting scheme from string.
-  pub fn from_str(s: &str) -> Self {
-    match s.to_lowercase().as_str() {
+impl std::str::FromStr for WeightScheme {
+  type Err = std::convert::Infallible;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    Ok(match s.to_lowercase().as_str() {
       "score" | "score-weighted" | "scoreweighted" => Self::ScoreWeighted,
       _ => Self::Equal,
-    }
+    })
   }
 }
 
@@ -499,8 +500,8 @@ fn compute_portfolio_vol(
 
 fn identity_matrix(n: usize) -> Vec<Vec<f64>> {
   let mut m = vec![vec![0.0; n]; n];
-  for i in 0..n {
-    m[i][i] = 1.0;
+  for (i, row) in m.iter_mut().enumerate() {
+    row[i] = 1.0;
   }
   m
 }

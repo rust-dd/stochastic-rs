@@ -40,6 +40,7 @@
 //! $$
 //! X_{n+1}^i = X_n^i + a^i \Delta t + \sum_j b^{ij} \Delta W^j
 //!   + \sum_{j_1=1}^{d} \sum_{j_2=1}^{d} \mathcal{L}^{j_1} b^{i,j_2} \cdot I_{(j_1,j_2)}
+//!
 //! $$
 //!
 //! where the operator $\mathcal{L}^{j_1}$ is defined as:
@@ -78,6 +79,7 @@
 //! $$
 //! X_{n+1} = X_n + a(\hat{X},\, t_n + \tfrac{\Delta t}{2})\,\Delta t
 //!   + b(\hat{X},\, t_n + \tfrac{\Delta t}{2})\,\Delta W_n
+//!
 //! $$
 //!
 //! This method has the same strong convergence order as Euler–Maruyama (0.5) but can offer
@@ -327,11 +329,11 @@ where
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + sigma_val[[i_dim, j_dim]] * d_w[j_dim];
+            incr += sigma_val[[i_dim, j_dim]] * d_w[j_dim];
           }
-          x[i_dim] = x[i_dim] + incr;
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i, ..]).assign(&x);
       }
     }
@@ -368,7 +370,7 @@ where
     let mut dsigma_dx: Vec<Array2<T>> = Vec::with_capacity(dim);
     for k in 0..dim {
       let mut x_plus = x.clone();
-      x_plus[k] = x_plus[k] + eps;
+      x_plus[k] += eps;
       let sigma_plus = (self.diffusion)(&x_plus, time);
       dsigma_dx.push((&sigma_plus - &sigma_val) / eps);
     }
@@ -385,9 +387,9 @@ where
         for i_dim in 0..dim {
           let mut lj1_sigma_ij2 = T::zero();
           for k in 0..dim {
-            lj1_sigma_ij2 = lj1_sigma_ij2 + sigma_val[[k, j1]] * dsigma_dx[k][[i_dim, j2]];
+            lj1_sigma_ij2 += sigma_val[[k, j1]] * dsigma_dx[k][[i_dim, j2]];
           }
-          correction[i_dim] = correction[i_dim] + lj1_sigma_ij2 * i_j1j2;
+          correction[i_dim] += lj1_sigma_ij2 * i_j1j2;
         }
       }
     }
@@ -422,12 +424,12 @@ where
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + sigma_val[[i_dim, j_dim]] * d_w[j_dim];
+            incr += sigma_val[[i_dim, j_dim]] * d_w[j_dim];
           }
-          incr = incr + correction[i_dim];
-          x[i_dim] = x[i_dim] + incr;
+          incr += correction[i_dim];
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i, ..]).assign(&x);
       }
     }
@@ -466,20 +468,20 @@ where
         for i_dim in 0..dim {
           let mut incr = mu1[i_dim] * half_dt;
           for j_dim in 0..dim {
-            incr = incr + sig1[[i_dim, j_dim]] * (half * d_w[j_dim]);
+            incr += sig1[[i_dim, j_dim]] * (half * d_w[j_dim]);
           }
-          x_half[i_dim] = x_half[i_dim] + incr;
+          x_half[i_dim] += incr;
         }
         let mu2 = (self.drift)(&x_half, time + half_dt);
         let sig2 = (self.diffusion)(&x_half, time + half_dt);
         for i_dim in 0..dim {
           let mut incr = mu2[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + sig2[[i_dim, j_dim]] * d_w[j_dim];
+            incr += sig2[[i_dim, j_dim]] * d_w[j_dim];
           }
-          x[i_dim] = x[i_dim] + incr;
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i, ..]).assign(&x);
       }
     }
@@ -522,9 +524,9 @@ where
         for i_dim in 0..dim {
           let mut incr = k1_mu[i_dim] * half_dt;
           for j_dim in 0..dim {
-            incr = incr + k1_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
+            incr += k1_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
           }
-          x1[i_dim] = x1[i_dim] + incr;
+          x1[i_dim] += incr;
         }
         let k2_mu = (self.drift)(&x1, time + half_dt);
         let k2_sig = (self.diffusion)(&x1, time + half_dt);
@@ -533,9 +535,9 @@ where
         for i_dim in 0..dim {
           let mut incr = k2_mu[i_dim] * half_dt;
           for j_dim in 0..dim {
-            incr = incr + k2_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
+            incr += k2_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
           }
-          x2[i_dim] = x2[i_dim] + incr;
+          x2[i_dim] += incr;
         }
         let k3_mu = (self.drift)(&x2, time + half_dt);
         let k3_sig = (self.diffusion)(&x2, time + half_dt);
@@ -544,9 +546,9 @@ where
         for i_dim in 0..dim {
           let mut incr = k3_mu[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + k3_sig[[i_dim, j_dim]] * d_w_full[j_dim];
+            incr += k3_sig[[i_dim, j_dim]] * d_w_full[j_dim];
           }
-          x3[i_dim] = x3[i_dim] + incr;
+          x3[i_dim] += incr;
         }
         let k4_mu = (self.drift)(&x3, time + dt);
         let k4_sig = (self.diffusion)(&x3, time + dt);
@@ -561,11 +563,11 @@ where
               + two * k3_sig[[i_dim, j_dim]]
               + k4_sig[[i_dim, j_dim]])
               / six;
-            incr = incr + diff_ij * d_w_full[j_dim];
+            incr += diff_ij * d_w_full[j_dim];
           }
-          x[i_dim] = x[i_dim] + incr;
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i, ..]).assign(&x);
       }
     }
@@ -597,11 +599,11 @@ where
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + sigma_val[[i_dim, j_dim]] * d_w[j_dim];
+            incr += sigma_val[[i_dim, j_dim]] * d_w[j_dim];
           }
-          x[i_dim] = x[i_dim] + incr;
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i_step, ..]).assign(&x);
       }
     }
@@ -634,12 +636,12 @@ where
         for i_dim in 0..dim {
           let mut incr = mu_val[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + sigma_val[[i_dim, j_dim]] * d_w[j_dim];
+            incr += sigma_val[[i_dim, j_dim]] * d_w[j_dim];
           }
-          incr = incr + correction[i_dim];
-          x[i_dim] = x[i_dim] + incr;
+          incr += correction[i_dim];
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i_step, ..]).assign(&x);
       }
     }
@@ -674,20 +676,20 @@ where
         for i_dim in 0..dim {
           let mut incr = mu1[i_dim] * half_dt;
           for j_dim in 0..dim {
-            incr = incr + sig1[[i_dim, j_dim]] * (half * d_w[j_dim]);
+            incr += sig1[[i_dim, j_dim]] * (half * d_w[j_dim]);
           }
-          x_half[i_dim] = x_half[i_dim] + incr;
+          x_half[i_dim] += incr;
         }
         let mu2 = (self.drift)(&x_half, time + half_dt);
         let sig2 = (self.diffusion)(&x_half, time + half_dt);
         for i_dim in 0..dim {
           let mut incr = mu2[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + sig2[[i_dim, j_dim]] * d_w[j_dim];
+            incr += sig2[[i_dim, j_dim]] * d_w[j_dim];
           }
-          x[i_dim] = x[i_dim] + incr;
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i_step, ..]).assign(&x);
       }
     }
@@ -724,9 +726,9 @@ where
         for i_dim in 0..dim {
           let mut incr = k1_mu[i_dim] * half_dt;
           for j_dim in 0..dim {
-            incr = incr + k1_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
+            incr += k1_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
           }
-          x1[i_dim] = x1[i_dim] + incr;
+          x1[i_dim] += incr;
         }
         let k2_mu = (self.drift)(&x1, time + half_dt);
         let k2_sig = (self.diffusion)(&x1, time + half_dt);
@@ -734,9 +736,9 @@ where
         for i_dim in 0..dim {
           let mut incr = k2_mu[i_dim] * half_dt;
           for j_dim in 0..dim {
-            incr = incr + k2_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
+            incr += k2_sig[[i_dim, j_dim]] * (d_w_full[j_dim] * half);
           }
-          x2[i_dim] = x2[i_dim] + incr;
+          x2[i_dim] += incr;
         }
         let k3_mu = (self.drift)(&x2, time + half_dt);
         let k3_sig = (self.diffusion)(&x2, time + half_dt);
@@ -744,9 +746,9 @@ where
         for i_dim in 0..dim {
           let mut incr = k3_mu[i_dim] * dt;
           for j_dim in 0..dim {
-            incr = incr + k3_sig[[i_dim, j_dim]] * d_w_full[j_dim];
+            incr += k3_sig[[i_dim, j_dim]] * d_w_full[j_dim];
           }
-          x3[i_dim] = x3[i_dim] + incr;
+          x3[i_dim] += incr;
         }
         let k4_mu = (self.drift)(&x3, time + dt);
         let k4_sig = (self.diffusion)(&x3, time + dt);
@@ -760,11 +762,11 @@ where
               + two * k3_sig[[i_dim, j_dim]]
               + k4_sig[[i_dim, j_dim]])
               / six;
-            incr = incr + diff_ij * d_w_full[j_dim];
+            incr += diff_ij * d_w_full[j_dim];
           }
-          x[i_dim] = x[i_dim] + incr;
+          x[i_dim] += incr;
         }
-        time = time + dt;
+        time += dt;
         out.slice_mut(s![p, i_step, ..]).assign(&x);
       }
     }

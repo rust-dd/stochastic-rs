@@ -3,6 +3,7 @@
 //! $$
 //! \ln\!\bigl(\tfrac{S_{t+dt}}{S_t}\bigr) = (\mu - \lambda\kappa_J - \tfrac12\sigma^2)\,dt
 //!   + \sigma\sqrt{dt}\,Z_1 + \sum_{j=1}^{K} Z_j
+//!
 //! $$
 //!
 //! where $K\sim\mathrm{Poisson}(\lambda\,dt)$, $Z_j\sim\mathcal{N}(\nu,\omega^2)$,

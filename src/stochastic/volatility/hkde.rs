@@ -220,7 +220,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HKDE<T, S> {
       if let Some(pois) = &pois {
         let k: u32 = pois.sample(&mut rng);
         for _ in 0..k {
-          jump_log = jump_log + self.sample_kou_jump(&mut rng);
+          jump_log += self.sample_kou_jump(&mut rng);
         }
       }
 

@@ -613,6 +613,7 @@ pub fn optimize_risk_parity(mu: &[f64], cov: &[Vec<f64>], risk_free: f64) -> Por
   }
 }
 
+#[allow(clippy::needless_range_loop)]
 /// Hierarchical Risk Parity optimizer.
 pub fn optimize_hrp(
   mu: &[f64],
@@ -821,6 +822,7 @@ fn hrp_cluster_var(indices: &[usize], cov: &[Vec<f64>]) -> f64 {
   var
 }
 
+#[allow(clippy::needless_range_loop)]
 fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
   let n = mat.len();
   if n == 0 {

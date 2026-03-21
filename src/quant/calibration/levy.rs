@@ -508,21 +508,20 @@ impl LevyCalibrator {
   }
 
   fn compute_model_prices(&self) -> Vec<f64> {
-    let n = self.flat_prices.len();
-    let mut model = vec![0.0; n];
-    for i in 0..n {
-      model[i] = fourier_option_price(
-        self.model_type,
-        &self.params,
-        self.s,
-        self.flat_strikes[i],
-        self.r,
-        self.q,
-        self.flat_t[i],
-        self.flat_is_call[i],
-      );
-    }
-    model
+    (0..self.flat_prices.len())
+      .map(|i| {
+        fourier_option_price(
+          self.model_type,
+          &self.params,
+          self.s,
+          self.flat_strikes[i],
+          self.r,
+          self.q,
+          self.flat_t[i],
+          self.flat_is_call[i],
+        )
+      })
+      .collect()
   }
 
   fn effective_params(&self) -> Vec<f64> {

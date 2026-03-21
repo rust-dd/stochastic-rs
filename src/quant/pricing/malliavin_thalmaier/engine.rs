@@ -92,7 +92,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
       let contrib = (0..d)
         .map(|i| g[[i, asset]] * h_w[i])
         .fold(T::zero(), |a, b| a + b);
-      sum = sum + discount * contrib;
+      sum += discount * contrib;
     }
 
     sum / T::from_usize_(self.n_paths)
@@ -116,7 +116,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
         let contrib = (0..d)
           .map(|i| g[[i, p]] * h_w[i])
           .fold(T::zero(), |a, b| a + b);
-        sums[p] = sums[p] + discount * contrib;
+        sums[p] += discount * contrib;
       }
     }
 
@@ -130,9 +130,9 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
   pub fn cross_gamma(&self, payoff: &MtPayoff<T>, asset_a: usize, asset_b: usize) -> T {
     let bump = self.params.assets[asset_b].s0 * T::from_f64_fast(0.01);
     let mut up = self.params.clone();
-    up.assets[asset_b].s0 = up.assets[asset_b].s0 + bump;
+    up.assets[asset_b].s0 += bump;
     let mut dn = self.params.clone();
-    dn.assets[asset_b].s0 = dn.assets[asset_b].s0 - bump;
+    dn.assets[asset_b].s0 -= bump;
 
     let d_up = MtGreeks::new(up, self.h, self.n_paths).delta(payoff, asset_a);
     let d_dn = MtGreeks::new(dn, self.h, self.n_paths).delta(payoff, asset_a);
@@ -143,9 +143,9 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
   pub fn vega(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
     let bump = self.params.assets[asset].v0 * T::from_f64_fast(0.01);
     let mut up = self.params.clone();
-    up.assets[asset].v0 = up.assets[asset].v0 + bump;
+    up.assets[asset].v0 += bump;
     let mut dn = self.params.clone();
-    dn.assets[asset].v0 = dn.assets[asset].v0 - bump;
+    dn.assets[asset].v0 -= bump;
 
     let p_up = MtGreeks::new(up, self.h, self.n_paths).price(payoff);
     let p_dn = MtGreeks::new(dn, self.h, self.n_paths).price(payoff);
@@ -158,7 +158,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     let mut sum = T::zero();
     for _ in 0..self.n_paths {
       let st = self.params.sample().terminal_prices();
-      sum = sum + disc * payoff.evaluate(&st);
+      sum += disc * payoff.evaluate(&st);
     }
     sum / T::from_usize_(self.n_paths)
   }
@@ -207,8 +207,8 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     for j in 0..d {
       let mut y_up = y.to_vec();
       let mut y_dn = y.to_vec();
-      y_up[j] = y_up[j] + eps;
-      y_dn[j] = y_dn[j] - eps;
+      y_up[j] += eps;
+      y_dn[j] -= eps;
 
       let phi_up = self.estimate_phi(payoff, &y_up, n_inner);
       let phi_dn = self.estimate_phi(payoff, &y_dn, n_inner);
@@ -232,7 +232,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
       let diff: Vec<T> = y.iter().zip(x.iter()).map(|(&yi, &xi)| yi - xi).collect();
       let grad = kernel::grad_poisson_reg(&diff, self.h);
       for i in 0..d {
-        phi[i] = phi[i] + f_val * grad[i];
+        phi[i] += f_val * grad[i];
       }
     }
     phi.iter().map(|&p| p / T::from_usize_(n_mc)).collect()

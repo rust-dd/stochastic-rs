@@ -23,17 +23,18 @@ pub enum OptimizerMethod {
   BlackLitterman,
 }
 
-impl OptimizerMethod {
-  /// Parse a string into an [`OptimizerMethod`].
-  pub fn from_str(s: &str) -> Self {
-    match s.to_lowercase().as_str() {
+impl std::str::FromStr for OptimizerMethod {
+  type Err = std::convert::Infallible;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    Ok(match s.to_lowercase().as_str() {
       "cvar" | "mean-cvar" | "meancvar" => Self::MeanCVaR,
       "inv-vol" | "inverse-vol" | "invvol" => Self::InverseVol,
       "risk-parity" | "riskparity" => Self::RiskParity,
       "hrp" => Self::HRP,
       "bl" | "black-litterman" | "blacklitterman" => Self::BlackLitterman,
       _ => Self::Markowitz,
-    }
+    })
   }
 }
 

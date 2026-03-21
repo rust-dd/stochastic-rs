@@ -79,7 +79,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
       for i in 0..m {
         let mut s = T::zero();
         for j in 0..=i {
-          s = s + chol[[i, j]] * z_ind[j];
+          s += chol[[i, j]] * z_ind[j];
         }
         db[i] = s * sqrt_dt;
       }
@@ -173,8 +173,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
       for j in 0..d {
         let mut integral = T::zero();
         for k in 0..(n - 1) {
-          integral = integral
-            + (self.vols[[i, k]].max(T::zero()) * self.vols[[j, k]].max(T::zero())).sqrt() * dt;
+          integral += (self.vols[[i, k]].max(T::zero()) * self.vols[[j, k]].max(T::zero())).sqrt() * dt;
         }
         g[[i, j]] = st[i] * st[j] * cross_corr[[i, j]] * integral;
       }
