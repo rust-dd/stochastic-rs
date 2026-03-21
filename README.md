@@ -210,79 +210,71 @@ Configuration in this run:
 
 ## Roadmap to v2
 
-The next major version will transform stochastic-rs into a comprehensive **quantitative research library**. Below is the planned scope, grouped by priority.
+> Turning stochastic-rs into a comprehensive **quantitative research library**.
 
 ### P0 — Core research infrastructure
 
-- **Advanced Monte Carlo** (`stochastic::mc`)
-  - Variance reduction: antithetic variates, control variates, importance sampling, stratified sampling
-  - Quasi-Monte Carlo sequences: Sobol, Halton, Niederreiter
-  - Multi-Level Monte Carlo (MLMC)
-  - Longstaff-Schwartz (LSM) for American option pricing
-
-- **Volatility surface** (`quant::vol_surface`)
-  - Implied volatility surface construction from market data
-  - SVI parameterization (Gatheral) and SSVI (Surface SVI)
-  - Arbitrage-free interpolation and extrapolation
-  - Smile and skew analytics
+- [ ] **Advanced Monte Carlo** (`stochastic::mc`)
+  - [ ] Variance reduction — antithetic variates, control variates, importance sampling, stratified sampling
+  - [ ] Quasi-Monte Carlo sequences — Sobol, Halton, Niederreiter
+  - [ ] Multi-Level Monte Carlo (MLMC)
+  - [ ] Longstaff-Schwartz (LSM) for American option pricing
+- [ ] **Volatility surface** (`quant::vol_surface`)
+  - [ ] Implied volatility surface construction from market data
+  - [ ] SVI parameterization (Gatheral) and SSVI
+  - [ ] Arbitrage-free interpolation and extrapolation
+  - [ ] Smile and skew analytics
 
 ### P1 — Quant essentials
 
-- **Risk metrics** (`quant::risk`)
-  - Value at Risk: parametric, historical simulation, Monte Carlo
-  - CVaR / Expected Shortfall
-  - Stress testing and scenario analysis framework
-  - Drawdown metrics, Sharpe, Sortino, Information Ratio, Calmar
-
-- **Yield curve construction** (`quant::curves`)
-  - Bootstrapping from deposit, FRA, and swap rates
-  - Nelson-Siegel / Svensson parameterization
-  - Discount factor and forward rate extraction
-  - Multi-curve framework (OIS vs SOFR)
-  - Interpolation: monotone convex, log-linear, cubic spline
-
-- **Realized volatility & microstructure noise** (`stats::realized`)
-  - Realized variance, bipower variation, kernel-based RV
-  - Realized semivariance, realized skewness and kurtosis
-  - HAR (Heterogeneous Autoregressive) model
-  - Noise-robust estimators (pre-averaging, two-scale RV)
+- [ ] **Risk metrics** (`quant::risk`)
+  - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
+  - [ ] CVaR / Expected Shortfall
+  - [ ] Stress testing and scenario analysis framework
+  - [ ] Drawdown metrics, Sharpe, Sortino, Information Ratio, Calmar
+- [ ] **Yield curve construction** (`quant::curves`)
+  - [ ] Bootstrapping from deposit, FRA, and swap rates
+  - [ ] Nelson-Siegel / Svensson parameterization
+  - [ ] Discount factor and forward rate extraction
+  - [ ] Multi-curve framework (OIS vs SOFR)
+  - [ ] Interpolation — monotone convex, log-linear, cubic spline
+- [ ] **Realized volatility & microstructure noise** (`stats::realized`)
+  - [ ] Realized variance, bipower variation, kernel-based RV
+  - [ ] Realized semivariance, realized skewness and kurtosis
+  - [ ] HAR (Heterogeneous Autoregressive) model
+  - [ ] Noise-robust estimators — pre-averaging, two-scale RV
 
 ### P2 — Deeper research coverage
 
-- **Econometrics** (`stats::econometrics`)
-  - Cointegration: Johansen test, Engle-Granger two-step
-  - Granger causality
-  - Hidden Markov Models for regime detection
-  - Changepoint detection
-
-- **Credit models** (`quant::credit`)
-  - Merton structural model
-  - Reduced-form / intensity-based models
-  - CDS pricing and hazard rate bootstrapping
-  - Credit migration matrices
-
-- **Exotic derivatives** (`quant::pricing`)
-  - Bermudan options (LSM and PDE)
-  - Basket and rainbow options
-  - Cliquet / ratchet options
-  - Auto-callable structures
-
-- **Market microstructure** (`quant::microstructure`)
-  - Hawkes processes for order flow modeling
-  - Almgren-Chriss optimal execution
-  - Market impact models (Kyle, transient impact)
-  - Bid-ask spread models
-
-- **Bayesian inference & filtering** (`stats::filtering`)
-  - Particle filters for general state-space models
-  - Unscented Kalman Filter
-  - MCMC samplers (Metropolis-Hastings, HMC) for calibration
-
-- **Factor models & statistical arbitrage** (`quant::factors`)
-  - PCA-based factor models
-  - Cross-sectional regression (Fama-MacBeth)
-  - Covariance shrinkage (Ledoit-Wolf)
-  - Pairs trading / stat arb framework
+- [ ] **Econometrics** (`stats::econometrics`)
+  - [ ] Cointegration — Johansen test, Engle-Granger two-step
+  - [ ] Granger causality
+  - [ ] Hidden Markov Models for regime detection
+  - [ ] Changepoint detection
+- [ ] **Credit models** (`quant::credit`)
+  - [ ] Merton structural model
+  - [ ] Reduced-form / intensity-based models
+  - [ ] CDS pricing and hazard rate bootstrapping
+  - [ ] Credit migration matrices
+- [ ] **Exotic derivatives** (`quant::pricing`)
+  - [ ] Bermudan options (LSM and PDE)
+  - [ ] Basket and rainbow options
+  - [ ] Cliquet / ratchet options
+  - [ ] Auto-callable structures
+- [ ] **Market microstructure** (`quant::microstructure`)
+  - [ ] Hawkes processes for order flow modeling
+  - [ ] Almgren-Chriss optimal execution
+  - [ ] Market impact models (Kyle, transient impact)
+  - [ ] Bid-ask spread models
+- [ ] **Bayesian inference & filtering** (`stats::filtering`)
+  - [ ] Particle filters for general state-space models
+  - [ ] Unscented Kalman Filter
+  - [ ] MCMC samplers (Metropolis-Hastings, HMC) for calibration
+- [ ] **Factor models & statistical arbitrage** (`quant::factors`)
+  - [ ] PCA-based factor models
+  - [ ] Cross-sectional regression (Fama-MacBeth)
+  - [ ] Covariance shrinkage (Ledoit-Wolf)
+  - [ ] Pairs trading / stat arb framework
 
 ## Contributing
 
