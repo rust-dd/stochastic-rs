@@ -115,7 +115,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
     } else {
       T::zero()
     };
-    let sqrt_dt = dt.sqrt();
 
     // Use CGNS for rho-correlated noise: [gn_vol, gn_price]
     let rho = self.rho.unwrap_or(T::zero());
@@ -203,12 +202,25 @@ impl PyRoughHeston {
     seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    let mut obj = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
+    let mut obj = Self {
+      inner_f32: None,
+      inner_f64: None,
+      seeded_f32: None,
+      seeded_f64: None,
+    };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
         let mut m = RoughHeston::seeded(
-          hurst as f32, v0.map(|v| v as f32), theta as f32, kappa as f32, nu as f32,
-          c1.map(|v| v as f32), c2.map(|v| v as f32), t.map(|v| v as f32), n, sd,
+          hurst as f32,
+          v0.map(|v| v as f32),
+          theta as f32,
+          kappa as f32,
+          nu as f32,
+          c1.map(|v| v as f32),
+          c2.map(|v| v as f32),
+          t.map(|v| v as f32),
+          n,
+          sd,
         );
         m.mu = mu.map(|v| v as f32);
         m.s0 = s0.map(|v| v as f32);
@@ -217,13 +229,22 @@ impl PyRoughHeston {
       }
       (Some(sd), _) => {
         let mut m = RoughHeston::seeded(hurst, v0, theta, kappa, nu, c1, c2, t, n, sd);
-        m.mu = mu; m.s0 = s0; m.rho = rho;
+        m.mu = mu;
+        m.s0 = s0;
+        m.rho = rho;
         obj.seeded_f64 = Some(m);
       }
       (None, "f32") => {
         let mut m = RoughHeston::new(
-          hurst as f32, v0.map(|v| v as f32), theta as f32, kappa as f32, nu as f32,
-          c1.map(|v| v as f32), c2.map(|v| v as f32), t.map(|v| v as f32), n,
+          hurst as f32,
+          v0.map(|v| v as f32),
+          theta as f32,
+          kappa as f32,
+          nu as f32,
+          c1.map(|v| v as f32),
+          c2.map(|v| v as f32),
+          t.map(|v| v as f32),
+          n,
         );
         m.mu = mu.map(|v| v as f32);
         m.s0 = s0.map(|v| v as f32);
@@ -232,7 +253,9 @@ impl PyRoughHeston {
       }
       (None, _) => {
         let mut m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n);
-        m.mu = mu; m.s0 = s0; m.rho = rho;
+        m.mu = mu;
+        m.s0 = s0;
+        m.rho = rho;
         obj.inner_f64 = Some(m);
       }
     }
@@ -242,10 +265,13 @@ impl PyRoughHeston {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let [s, v] = inner.sample();
-      (s.into_pyarray(py), v.into_pyarray(py)).into_py_any(py).unwrap()
+      (s.into_pyarray(py), v.into_pyarray(py))
+        .into_py_any(py)
+        .unwrap()
     })
   }
 
@@ -253,6 +279,7 @@ impl PyRoughHeston {
     use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let paths = inner.sample_par(m);
@@ -263,7 +290,9 @@ impl PyRoughHeston {
         s_result.row_mut(i).assign(s);
         v_result.row_mut(i).assign(v);
       }
-      (s_result.into_pyarray(py), v_result.into_pyarray(py)).into_py_any(py).unwrap()
+      (s_result.into_pyarray(py), v_result.into_pyarray(py))
+        .into_py_any(py)
+        .unwrap()
     })
   }
 }

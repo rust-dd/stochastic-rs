@@ -27,94 +27,119 @@ use crate::stochastic::noise::cgns::CGNS;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FBatesSVJ<S: SeedExt = Unseeded> {
+pub struct FBatesSVJ<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness (H ∈ (0, 0.5) for rough).
-  pub hurst: f64,
+  pub hurst: T,
   /// Drift rate.
-  pub mu: f64,
+  pub mu: T,
   /// Initial spot price.
-  pub s0: f64,
+  pub s0: T,
   /// Initial variance.
-  pub v0: f64,
+  pub v0: T,
   /// Long-run variance level (θ).
-  pub theta: f64,
+  pub theta: T,
   /// Mean-reversion speed (κ).
-  pub kappa: f64,
+  pub kappa: T,
   /// Vol-of-vol (ξ).
-  pub xi: f64,
+  pub xi: T,
   /// Price-vol correlation (ρ ∈ [-1, 1]).
-  pub rho: f64,
+  pub rho: T,
   /// Jump intensity (Poisson arrival rate λ).
-  pub lambda: f64,
+  pub lambda: T,
   /// Mean of jump log-size Z ~ N(ν, ω²).
-  pub nu: f64,
+  pub nu: T,
   /// Std dev of jump log-size Z.
-  pub omega: f64,
+  pub omega: T,
   /// Number of discrete simulation points.
   pub n: usize,
   /// Total simulation horizon (defaults to 1).
-  pub t: Option<f64>,
+  pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
 }
 
-impl FBatesSVJ {
+impl<T: FloatExt> FBatesSVJ<T> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    hurst: f64,
-    mu: f64,
-    s0: f64,
-    v0: f64,
-    theta: f64,
-    kappa: f64,
-    xi: f64,
-    rho: f64,
-    lambda: f64,
-    nu: f64,
-    omega: f64,
+    hurst: T,
+    mu: T,
+    s0: T,
+    v0: T,
+    theta: T,
+    kappa: T,
+    xi: T,
+    rho: T,
+    lambda: T,
+    nu: T,
+    omega: T,
     n: usize,
-    t: Option<f64>,
+    t: Option<T>,
   ) -> Self {
     Self {
-      hurst, mu, s0, v0, theta, kappa, xi, rho, lambda, nu, omega, n, t, seed: Unseeded,
+      hurst,
+      mu,
+      s0,
+      v0,
+      theta,
+      kappa,
+      xi,
+      rho,
+      lambda,
+      nu,
+      omega,
+      n,
+      t,
+      seed: Unseeded,
     }
   }
 }
 
-impl FBatesSVJ<Deterministic> {
+impl<T: FloatExt> FBatesSVJ<T, Deterministic> {
   #[allow(clippy::too_many_arguments)]
   pub fn seeded(
-    hurst: f64,
-    mu: f64,
-    s0: f64,
-    v0: f64,
-    theta: f64,
-    kappa: f64,
-    xi: f64,
-    rho: f64,
-    lambda: f64,
-    nu: f64,
-    omega: f64,
+    hurst: T,
+    mu: T,
+    s0: T,
+    v0: T,
+    theta: T,
+    kappa: T,
+    xi: T,
+    rho: T,
+    lambda: T,
+    nu: T,
+    omega: T,
     n: usize,
-    t: Option<f64>,
+    t: Option<T>,
     seed: u64,
   ) -> Self {
     Self {
-      hurst, mu, s0, v0, theta, kappa, xi, rho, lambda, nu, omega, n, t,
+      hurst,
+      mu,
+      s0,
+      v0,
+      theta,
+      kappa,
+      xi,
+      rho,
+      lambda,
+      nu,
+      omega,
+      n,
+      t,
       seed: Deterministic(seed),
     }
   }
 }
 
-impl<S: SeedExt> ProcessExt<f64> for FBatesSVJ<S> {
-  type Output = [Array1<f64>; 2]; // [S, v]
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSVJ<T, S> {
+  type Output = [Array1<T>; 2]; // [S, v]
 
   fn sample(&self) -> Self::Output {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
-      self.t.unwrap_or(1.0) / n_steps as f64
+      self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
-      0.0
+      T::zero()
     };
 
     // Use CGNS for rho-correlated noise: [gn_vol, gn_price]
@@ -122,9 +147,9 @@ impl<S: SeedExt> ProcessExt<f64> for FBatesSVJ<S> {
     let cgns = CGNS::new(self.rho, n_steps, self.t);
     let [gn_vol, gn_price] = cgns.sample_impl(seed.derive());
 
-    let mut yt = Array1::<f64>::zeros(self.n);
-    let mut zt = Array1::<f64>::zeros(self.n);
-    let mut sigma_tilde2 = Array1::<f64>::zeros(self.n);
+    let mut yt = Array1::<T>::zeros(self.n);
+    let mut zt = Array1::<T>::zeros(self.n);
+    let mut sigma_tilde2 = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::zeros(self.n);
     let mut s = Array1::zeros(self.n);
 
@@ -133,55 +158,56 @@ impl<S: SeedExt> ProcessExt<f64> for FBatesSVJ<S> {
     }
 
     yt[0] = self.v0;
-    zt[0] = 0.0;
+    zt[0] = T::zero();
     sigma_tilde2[0] = self.v0;
     v2[0] = self.v0;
     s[0] = self.s0;
 
-    let g = gamma(self.hurst - 0.5);
-    let half = 0.5;
+    let g = T::from_f64_fast(gamma(self.hurst.to_f64().unwrap() - 0.5));
+    let half = T::from_f64_fast(0.5);
 
     // Jump compensation: κ_J = exp(ν + ½ω²) - 1
-    let kappa_j = (self.nu + 0.5 * self.omega * self.omega).exp() - 1.0;
+    let kappa_j = (self.nu + half * self.omega * self.omega).exp() - T::one();
 
     // Jump RNG
-    let z_std = SimdNormal::<f64, 64>::from_seed_source(0.0, 1.0, &mut seed);
+    let z_std = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
     let mut rng = seed.rng();
-    let pois = if self.lambda > 0.0 {
-      Some(SimdPoisson::<u32>::new(self.lambda * dt))
+    let lambda_dt = self.lambda.to_f64().unwrap() * dt.to_f64().unwrap();
+    let pois = if lambda_dt > 0.0 {
+      Some(SimdPoisson::<u32>::new(lambda_dt))
     } else {
       None
     };
 
     for i in 1..self.n {
-      let t_i = dt * i as f64;
+      let t_i = dt * T::from_usize_(i);
 
       // ── Rough variance dynamics (same as RoughHeston/fheston.rs) ──
       yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
       zt[i] = zt[i - 1] * (-self.kappa * dt).exp()
-        + sigma_tilde2[i - 1].max(0.0).sqrt() * gn_vol[i - 1];
+        + sigma_tilde2[i - 1].max(T::zero()).sqrt() * gn_vol[i - 1];
 
       sigma_tilde2[i] = yt[i] + self.xi * zt[i];
 
-      let integral: f64 = (0..i)
+      let integral = (0..i)
         .map(|j| {
-          let tj = j as f64 * dt;
+          let tj = T::from_usize_(j) * dt;
           ((t_i - tj).powf(self.hurst - half) * zt[j]) * dt
         })
-        .sum();
+        .sum::<T>();
 
       v2[i] = yt[i] + self.xi * zt[i] + self.xi * integral / g;
 
-      // ── Price dynamics with jumps ──
-      let vi = v2[i - 1].max(0.0);
+      // Price dynamics with jumps
+      let vi = v2[i - 1].max(T::zero());
 
       // Jump component
-      let mut jump_sum = 0.0;
+      let mut jump_sum = T::zero();
       if let Some(pois) = &pois {
         let n_jumps: u32 = pois.sample(&mut rng);
         if n_jumps > 0 {
-          let kf = n_jumps as f64;
-          let z0: f64 = z_std.sample_fast();
+          let kf = T::from_f64_fast(n_jumps as f64);
+          let z0 = z_std.sample_fast();
           jump_sum = self.nu * kf + self.omega * kf.sqrt() * z0;
         }
       }
@@ -202,16 +228,45 @@ mod tests {
   #[test]
   fn price_stays_positive() {
     let m = FBatesSVJ::seeded(
-      0.1, 0.05, 100.0, 0.04, 0.04, 2.0, 0.3, -0.7, 0.5, -0.01, 0.1, 256, Some(1.0), 42,
+      0.1_f64,
+      0.05,
+      100.0,
+      0.04,
+      0.04,
+      2.0,
+      0.3,
+      -0.7,
+      0.5,
+      -0.01,
+      0.1,
+      256,
+      Some(1.0),
+      42,
     );
     let [s, _v] = m.sample();
-    assert!(s.iter().all(|x| x.is_finite() && *x > 0.0), "prices must be positive");
+    assert!(
+      s.iter().all(|x| x.is_finite() && *x > 0.0),
+      "prices must be positive"
+    );
   }
 
   #[test]
   fn variance_path_is_finite() {
     let m = FBatesSVJ::seeded(
-      0.15, 0.05, 100.0, 0.04, 0.04, 2.0, 0.3, -0.7, 0.5, 0.0, 0.1, 256, Some(1.0), 99,
+      0.15_f64,
+      0.05,
+      100.0,
+      0.04,
+      0.04,
+      2.0,
+      0.3,
+      -0.7,
+      0.5,
+      0.0,
+      0.1,
+      256,
+      Some(1.0),
+      99,
     );
     let [_s, v] = m.sample();
     assert!(v.iter().all(|x| x.is_finite()), "variance must be finite");
@@ -221,7 +276,20 @@ mod tests {
   fn seeded_is_deterministic() {
     let mk = || {
       FBatesSVJ::seeded(
-        0.1, 0.05, 100.0, 0.04, 0.04, 2.0, 0.3, -0.7, 0.5, 0.0, 0.1, 128, Some(0.5), 77,
+        0.1_f64,
+        0.05,
+        100.0,
+        0.04,
+        0.04,
+        2.0,
+        0.3,
+        -0.7,
+        0.5,
+        0.0,
+        0.1,
+        128,
+        Some(0.5),
+        77,
       )
     };
     let [s1, _] = mk().sample();
@@ -235,7 +303,20 @@ mod tests {
   fn reduces_to_rough_heston_without_jumps() {
     // With λ=0, should be identical to RoughHeston
     let m = FBatesSVJ::seeded(
-      0.1, 0.05, 100.0, 0.04, 0.04, 2.0, 0.3, -0.7, 0.0, 0.0, 0.0, 128, Some(0.5), 55,
+      0.1_f64,
+      0.05,
+      100.0,
+      0.04,
+      0.04,
+      2.0,
+      0.3,
+      -0.7,
+      0.0,
+      0.0,
+      0.0,
+      128,
+      Some(0.5),
+      55,
     );
     let [s, v] = m.sample();
     assert!(s.iter().all(|x| x.is_finite() && *x > 0.0));
