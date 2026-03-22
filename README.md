@@ -212,8 +212,6 @@ Configuration in this run:
 
 > Turning stochastic-rs into a comprehensive **quantitative research library**.
 
-### P0 — Core research infrastructure
-
 - [x] **Advanced Monte Carlo** (`stochastic::mc`)
   - [x] Variance reduction — antithetic variates, control variates, importance sampling, stratified sampling
   - [x] Quasi-Monte Carlo sequences — Sobol, Halton
@@ -224,9 +222,6 @@ Configuration in this run:
   - [ ] SVI parameterization (Gatheral) and SSVI
   - [ ] Arbitrage-free interpolation and extrapolation
   - [ ] Smile and skew analytics
-
-### P1 — Quant essentials
-
 - [ ] **Risk metrics** (`quant::risk`)
   - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
   - [ ] CVaR / Expected Shortfall
@@ -243,9 +238,6 @@ Configuration in this run:
   - [ ] Realized semivariance, realized skewness and kurtosis
   - [ ] HAR (Heterogeneous Autoregressive) model
   - [ ] Noise-robust estimators — pre-averaging, two-scale RV
-
-### P2 — Deeper research coverage
-
 - [ ] **Econometrics** (`stats::econometrics`)
   - [ ] Cointegration — Johansen test, Engle-Granger two-step
   - [ ] Granger causality
@@ -275,6 +267,15 @@ Configuration in this run:
   - [ ] Cross-sectional regression (Fama-MacBeth)
   - [ ] Covariance shrinkage (Ledoit-Wolf)
   - [ ] Pairs trading / stat arb framework
+- [ ] **Calendar & day count** (`quant::calendar`)
+  - [ ] Day count conventions — ACT/360, ACT/365, 30/360, ACT/ACT
+  - [ ] Business day adjustment rules — Following, Modified Following, Preceding
+  - [ ] Holiday calendars — US, UK, TARGET, Tokyo
+  - [ ] Schedule generation for coupon and payment dates
+- [ ] **FX & currencies** (`quant::fx`)
+  - [ ] ISO 4217 currency definitions and metadata
+  - [ ] FX quoting and cross-rate conventions
+  - [ ] FX forward pricing
 
 ## Contributing
 
