@@ -557,6 +557,74 @@ impl FourierModelExt for HKDEFourier {
   }
 }
 
+/// Bates / Stochastic Volatility with Jumps (SVJ) model for Fourier pricing.
+///
+/// Heston + Merton log-normal jumps:
+///
+/// $$
+/// dS = (r-q)S\,dt + \sqrt{v}\,S\,dW^S + (e^J - 1)S\,dN_t,
+/// \quad dv = \kappa(\theta - v)\,dt + \sigma_v\sqrt{v}\,dW^v
+/// $$
+///
+/// Reference: Bates (1996), "Jumps and Stochastic Volatility"
+pub struct BatesFourier {
+  pub v0: f64,
+  pub kappa: f64,
+  pub theta: f64,
+  pub sigma_v: f64,
+  pub rho: f64,
+  pub lambda: f64,
+  pub mu_j: f64,
+  pub sigma_j: f64,
+  pub r: f64,
+  pub q: f64,
+}
+
+impl FourierModelExt for BatesFourier {
+  fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
+    let i = Complex64::i();
+    let sigma_v2 = self.sigma_v * self.sigma_v;
+
+    // Heston part
+    let rsi = self.rho * self.sigma_v * i;
+    let d = ((self.kappa - rsi * xi).powi(2) + sigma_v2 * (i * xi + xi * xi)).sqrt();
+    let g = (self.kappa - rsi * xi - d) / (self.kappa - rsi * xi + d);
+    let exp_dt = (-d * t).exp();
+
+    let c_heston = (self.kappa * self.theta / sigma_v2)
+      * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
+    let d_heston =
+      ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
+
+    // Merton jump compensator
+    let k_bar = (self.mu_j + 0.5 * self.sigma_j * self.sigma_j).exp() - 1.0;
+    let jump_cf =
+      self.lambda * ((i * self.mu_j * xi - 0.5 * self.sigma_j * self.sigma_j * xi * xi).exp() - 1.0);
+    let drift_correction = -self.lambda * k_bar;
+
+    (c_heston
+      + d_heston * self.v0
+      + i * xi * (self.r - self.q + drift_correction) * t
+      + jump_cf * t)
+      .exp()
+  }
+
+  fn cumulants(&self, t: f64) -> Cumulants {
+    let ekt = (-self.kappa * t).exp();
+    let c1_h = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
+      - 0.5 * self.theta * t;
+    let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
+    let c1_j = self.lambda * self.mu_j * t;
+    let c2_j = self.lambda * (self.mu_j.powi(2) + self.sigma_j.powi(2)) * t;
+
+    Cumulants {
+      c1: c1_h + c1_j,
+      c2: c2_h + c2_j,
+      c4: 0.0,
+    }
+  }
+}
+
 fn gamma_neg_y(y: f64) -> f64 {
   if y.abs() < 1e-8 {
     return 1e15;

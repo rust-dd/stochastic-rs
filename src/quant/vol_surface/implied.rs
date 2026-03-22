@@ -237,6 +237,82 @@ pub struct SmileSlice {
   pub tau: f64,
 }
 
+impl SmileSlice {
+  /// Fit SVI raw parameters to this smile slice.
+  pub fn fit_svi(&self, initial: Option<super::svi::SviRawParams<f64>>) -> super::svi::SviRawParams<f64> {
+    super::svi::calibrate_svi(&self.log_moneyness, &self.total_variance, initial)
+  }
+
+  /// Convert to an SSVI slice using the ATM total variance from the data.
+  ///
+  /// ATM total variance $\theta$ is interpolated at $k = 0$.
+  pub fn to_ssvi_slice(&self) -> super::ssvi::SsviSlice<f64> {
+    let theta = self.atm_total_variance();
+    super::ssvi::SsviSlice {
+      log_moneyness: self.log_moneyness.clone(),
+      total_variance: self.total_variance.clone(),
+      theta,
+    }
+  }
+
+  /// Interpolate ATM total variance ($k = 0$) from the data.
+  fn atm_total_variance(&self) -> f64 {
+    let n = self.log_moneyness.len();
+    if n == 0 {
+      return 0.0;
+    }
+
+    let idx = self.log_moneyness.partition_point(|&k| k < 0.0);
+
+    if idx == 0 {
+      return self.total_variance[0];
+    }
+    if idx >= n {
+      return self.total_variance[n - 1];
+    }
+
+    let k0 = self.log_moneyness[idx - 1];
+    let k1 = self.log_moneyness[idx];
+    let w0 = self.total_variance[idx - 1];
+    let w1 = self.total_variance[idx];
+
+    if (k1 - k0).abs() < 1e-14 {
+      return w0;
+    }
+
+    let alpha = (0.0 - k0) / (k1 - k0);
+    w0 * (1.0 - alpha) + w1 * alpha
+  }
+}
+
+impl ImpliedVolSurface {
+  /// Fit SVI parameters to each maturity slice independently.
+  pub fn fit_svi_slices(&self) -> Vec<super::svi::SviRawParams<f64>> {
+    let nt = self.maturities.len();
+    (0..nt).map(|j| self.smile_slice(j).fit_svi(None)).collect()
+  }
+
+  /// Fit SSVI surface to all maturity slices simultaneously.
+  ///
+  /// First extracts ATM total variance $\theta_t$ per slice, then
+  /// calibrates global SSVI parameters $(\rho, \eta, \gamma)$.
+  pub fn fit_ssvi(
+    &self,
+    initial: Option<super::ssvi::SsviParams<f64>>,
+  ) -> super::ssvi::SsviSurface<f64> {
+    let nt = self.maturities.len();
+    let slices: Vec<super::ssvi::SsviSlice<f64>> = (0..nt)
+      .map(|j| self.smile_slice(j).to_ssvi_slice())
+      .collect();
+
+    let params = super::ssvi::calibrate_ssvi(&slices, initial);
+
+    let thetas: Vec<f64> = slices.iter().map(|s| s.theta).collect();
+
+    super::ssvi::SsviSurface::new(params, thetas, self.maturities.clone())
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

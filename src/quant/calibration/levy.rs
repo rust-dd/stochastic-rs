@@ -37,7 +37,6 @@ use crate::quant::CalibrationLossScore;
 use crate::quant::LossMetric;
 use crate::quant::calibration::CalibrationHistory;
 
-
 const GL_N: usize = 64;
 const U_MAX: f64 = 100.0;
 const EPS: f64 = 1e-8;
@@ -414,7 +413,11 @@ fn project_params(model_type: LevyModelType, params: &mut [f64]) {
   }
 }
 
-fn compute_loss_score(market: &[f64], model: &[f64], metrics: &[LossMetric]) -> CalibrationLossScore {
+fn compute_loss_score(
+  market: &[f64],
+  model: &[f64],
+  metrics: &[LossMetric],
+) -> CalibrationLossScore {
   CalibrationLossScore::compute_selected(market, model, metrics)
 }
 
@@ -720,7 +723,11 @@ mod tests {
       LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, vec![market]);
 
     let result = calibrator.calibrate(None);
-    assert!(result.loss.get(LossMetric::Rmse) < 0.1, "VG RMSE={:.6}", result.loss.get(LossMetric::Rmse));
+    assert!(
+      result.loss.get(LossMetric::Rmse) < 0.1,
+      "VG RMSE={:.6}",
+      result.loss.get(LossMetric::Rmse)
+    );
     println!("VG recovered params: {:?}", result.params);
   }
 
@@ -736,7 +743,11 @@ mod tests {
     let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.05, 0.0, vec![market]);
 
     let result = calibrator.calibrate(None);
-    assert!(result.loss.get(LossMetric::Rmse) < 0.1, "MJD RMSE={:.6}", result.loss.get(LossMetric::Rmse));
+    assert!(
+      result.loss.get(LossMetric::Rmse) < 0.1,
+      "MJD RMSE={:.6}",
+      result.loss.get(LossMetric::Rmse)
+    );
     println!("MJD recovered params: {:?}", result.params);
   }
 

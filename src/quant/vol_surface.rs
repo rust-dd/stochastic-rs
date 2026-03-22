@@ -8,5 +8,7 @@
 pub mod analytics;
 pub mod arbitrage;
 pub mod implied;
+pub mod model_surface;
+pub mod pipeline;
 pub mod ssvi;
 pub mod svi;

@@ -101,6 +101,36 @@ impl<T: FloatExt> SsviParams<T> {
     half * theta * phi * phi * one_m_rho2 / (r * r * r)
   }
 
+  /// Derivative of the power-law mixing function: $\varphi'(\theta) = -\varphi(\theta)\bigl[\gamma/\theta + (1-\gamma)/(1+\theta)\bigr]$.
+  #[inline]
+  pub fn phi_prime(&self, theta: T) -> T {
+    if theta <= T::zero() {
+      return T::zero();
+    }
+    let one = T::one();
+    let phi = self.phi(theta);
+    -phi * (self.gamma / theta + (one - self.gamma) / (one + theta))
+  }
+
+  /// Partial derivative $\partial_\theta w(k, \theta)$.
+  ///
+  /// $$
+  /// \partial_\theta w = \frac{w}{\theta} + \frac{\theta\,\varphi'(\theta)\,k}{2}
+  ///     \Bigl(\rho + \frac{\varphi(\theta)\,k + \rho}{\sqrt{(\varphi(\theta)\,k+\rho)^2+(1-\rho^2)}}\Bigr)
+  /// $$
+  #[inline]
+  pub fn w_prime_theta(&self, k: T, theta: T) -> T {
+    let half = T::from_f64_fast(0.5);
+    let one = T::one();
+    let phi = self.phi(theta);
+    let phi_p = self.phi_prime(theta);
+    let u = phi * k + self.rho;
+    let r = (u * u + one - self.rho * self.rho).sqrt();
+    let w = self.total_variance(k, theta);
+
+    w / theta + half * theta * phi_p * k * (self.rho + u / r)
+  }
+
   /// Check the sufficient no-butterfly-arbitrage condition from
   /// Gatheral & Jacquier (2012), Theorem 4.1:
   ///
@@ -270,6 +300,85 @@ impl<T: FloatExt> SsviSurface<T> {
   /// Check calendar-spread arbitrage: $\theta_t$ must be non-decreasing.
   pub fn is_calendar_spread_free(&self) -> bool {
     self.thetas.windows(2).all(|w| w[1] >= w[0])
+  }
+
+  /// Dupire local variance $\sigma^2_{\mathrm{loc}}(k, T)$ from SSVI analytic
+  /// derivatives.
+  ///
+  /// Uses the total-variance form of Dupire's formula:
+  ///
+  /// $$
+  /// \sigma^2_{\mathrm{loc}}(k, T) = \frac{\partial_T w(k, T)}{g(k)}
+  /// $$
+  ///
+  /// where $g(k)$ is the butterfly density and $\partial_T w = \theta'(T) \cdot \partial_\theta w$.
+  pub fn local_var(&self, k: T, t: T) -> T {
+    let zero = T::zero();
+    let theta = self.interpolate_theta(t);
+    let theta_prime = self.interpolate_theta_prime(t);
+
+    let dw_dt = theta_prime * self.params.w_prime_theta(k, theta);
+
+    let w = self.params.total_variance(k, theta);
+    let wp = self.params.w_prime_k(k, theta);
+    let wpp = self.params.w_double_prime_k(k, theta);
+    let g = super::arbitrage::butterfly_density_at(k, w, wp, wpp);
+
+    if g > zero && dw_dt.is_finite() && g.is_finite() {
+      dw_dt / g
+    } else {
+      T::nan()
+    }
+  }
+
+  /// Dupire local volatility $\sigma_{\mathrm{loc}}(k, T) = \sqrt{\sigma^2_{\mathrm{loc}}}$.
+  pub fn local_vol(&self, k: T, t: T) -> T {
+    let lv2 = self.local_var(k, t);
+    if lv2 > T::zero() {
+      lv2.sqrt()
+    } else {
+      T::nan()
+    }
+  }
+
+  /// Compute local volatility surface on a $(k, T)$ grid.
+  ///
+  /// Returns an `Array2<T>` with shape `(n_t, n_k)`.
+  pub fn local_vol_surface(&self, ks: &[T], ts: &[T]) -> ndarray::Array2<T> {
+    let nt = ts.len();
+    let nk = ks.len();
+    let mut surface = ndarray::Array2::<T>::from_elem((nt, nk), T::nan());
+
+    for (j, &t) in ts.iter().enumerate() {
+      for (i, &k) in ks.iter().enumerate() {
+        surface[[j, i]] = self.local_vol(k, t);
+      }
+    }
+
+    surface
+  }
+
+  /// Derivative $\theta'(T)$ from linear interpolation of the term structure.
+  fn interpolate_theta_prime(&self, t: T) -> T {
+    let n = self.maturities.len();
+    if n < 2 {
+      return T::zero();
+    }
+
+    if t <= self.maturities[0] {
+      return (self.thetas[1] - self.thetas[0]) / (self.maturities[1] - self.maturities[0]);
+    }
+    if t >= self.maturities[n - 1] {
+      return (self.thetas[n - 1] - self.thetas[n - 2])
+        / (self.maturities[n - 1] - self.maturities[n - 2]);
+    }
+
+    let idx = self
+      .maturities
+      .partition_point(|&m| m < t)
+      .min(n - 1)
+      .max(1);
+    (self.thetas[idx] - self.thetas[idx - 1]) / (self.maturities[idx] - self.maturities[idx - 1])
   }
 }
 

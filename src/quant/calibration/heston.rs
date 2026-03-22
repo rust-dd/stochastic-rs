@@ -363,28 +363,13 @@ impl HestonCalibrator {
 }
 
 impl HestonCalibrator {
-  pub fn calibrate(&self) {
-    // Prepare a problem clone with an initial guess if needed
+  pub fn calibrate(&self) -> HestonParams {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
-    println!(
-      "Initial guess ({:?}): {:?}",
-      problem.jacobian_method, problem.params
-    );
-
     let (result, ..) = LevenbergMarquardt::new().minimize(problem);
 
-    // Print the c_market
-    println!("Market prices: {:?}", self.c_market);
-
-    let residuals = result.residuals().unwrap();
-
-    // Print the c_model (residuals = market - model, so model = market - residuals)
-    println!("Model prices: {:?}", self.c_market.clone() - residuals);
-
-    // Print the result of the calibration
-    println!("Calibration report: {:?}", result.params);
+    result.effective_params()
   }
 
   pub fn set_initial_guess(&mut self, params: HestonParams) {
@@ -412,9 +397,9 @@ impl HestonCalibrator {
     self.nmle_cekf_config = Some(cfg);
   }
 
-  pub fn calibrate_cui(&mut self) {
+  pub fn calibrate_cui(&mut self) -> HestonParams {
     self.jacobian_method = HestonJacobianMethod::CuiAnalytic;
-    self.calibrate();
+    self.calibrate()
   }
 
   /// Retrieve the collected calibration history.
