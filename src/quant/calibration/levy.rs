@@ -32,12 +32,11 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 use num_complex::Complex64;
 
+use super::GL_U_MAX;
+use super::gauss_legendre_64;
 use crate::quant::CalibrationLossScore;
 use crate::quant::LossMetric;
 use crate::quant::calibration::CalibrationHistory;
-
-use super::GL_U_MAX;
-use super::gauss_legendre_64;
 
 const EPS: f64 = 1e-8;
 
@@ -177,7 +176,6 @@ pub struct LevyCalibrator {
   /// History of iterations.
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<Vec<f64>>>>>,
 }
-
 
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
 /// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.
@@ -422,7 +420,6 @@ fn project_params(model_type: LevyModelType, params: &mut [f64]) {
   }
 }
 
-
 impl LevyCalibrator {
   pub fn new(
     model_type: LevyModelType,
@@ -492,9 +489,8 @@ impl LevyCalibrator {
 
     let final_params = result.params.clone();
     let c_model = result.compute_model_prices();
-    let loss = CalibrationLossScore::compute_selected(
-      &result.flat_prices, &c_model, result.loss_metrics,
-    );
+    let loss =
+      CalibrationLossScore::compute_selected(&result.flat_prices, &c_model, result.loss_metrics);
 
     LevyCalibrationResult {
       params: final_params,
@@ -634,7 +630,11 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for LevyCalibrator {
             .collect::<Vec<(f64, f64)>>()
             .into(),
           params: self.params.clone(),
-          loss_scores: CalibrationLossScore::compute_selected(&self.flat_prices, &c_model, self.loss_metrics),
+          loss_scores: CalibrationLossScore::compute_selected(
+            &self.flat_prices,
+            &c_model,
+            self.loss_metrics,
+          ),
         });
     }
 

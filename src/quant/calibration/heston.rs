@@ -17,6 +17,9 @@ use nalgebra::Owned;
 use ndarray::Array1;
 use num_complex::Complex64;
 
+use super::GL_U_MAX;
+use super::gauss_legendre_64;
+use super::periodic_map;
 use crate::quant::CalibrationLossScore;
 use crate::quant::LossMetric;
 use crate::quant::OptionType;
@@ -30,10 +33,6 @@ use crate::stats::heston_mle::pmle_heston_with_delta;
 use crate::stats::heston_nml_cekf::HestonNMLECEKFConfig;
 use crate::stats::heston_nml_cekf::nmle_cekf_heston;
 use crate::traits::PricerExt;
-
-use super::GL_U_MAX;
-use super::gauss_legendre_64;
-use super::periodic_map;
 
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
@@ -110,7 +109,6 @@ impl HestonParams {
       q,
     }
   }
-
 }
 
 impl crate::traits::ToModel for HestonParams {
@@ -217,7 +215,6 @@ struct CuiCfTerms {
 fn finite_c64(z: Complex64) -> bool {
   z.re.is_finite() && z.im.is_finite()
 }
-
 
 #[derive(Clone)]
 /// Heston least-squares calibrator using Levenberg-Marquardt iterations.

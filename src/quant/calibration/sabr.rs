@@ -166,7 +166,9 @@ impl SabrCalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(), c_model.as_slice(), result.loss_metrics,
+      result.c_market.as_slice(),
+      c_model.as_slice(),
+      result.loss_metrics,
     );
 
     SabrCalibrationResult {

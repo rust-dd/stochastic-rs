@@ -35,14 +35,13 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 use num_complex::Complex64;
 
+use super::GL_U_MAX;
+use super::gauss_legendre_64;
+use super::periodic_map;
 use crate::quant::CalibrationLossScore;
 use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
-
-use super::GL_U_MAX;
-use super::gauss_legendre_64;
-use super::periodic_map;
 
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
@@ -185,7 +184,6 @@ impl SVJCalibrationResult {
       q,
     }
   }
-
 }
 
 /// SVJ (Bates) least-squares calibrator using Levenberg-Marquardt.
@@ -219,7 +217,6 @@ pub struct SVJCalibrator {
   /// History of iterations.
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<SVJParams>>>>,
 }
-
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -297,7 +294,6 @@ fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> 
   let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * (i1 - k * i2);
   call.max(0.0)
 }
-
 
 impl SVJCalibrator {
   /// Create a calibrator for a single maturity slice (backwards compatible).
@@ -458,8 +454,7 @@ impl SVJCalibrator {
       c_model[idx] = match self.option_type {
         OptionType::Call => call.max(0.0),
         OptionType::Put => {
-          let put = call - self.s[idx] * (-q_val * tau).exp()
-            + self.k[idx] * (-self.r * tau).exp();
+          let put = call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
           put.max(0.0)
         }
       };
@@ -576,16 +571,10 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SVJCalibrator {
             .enumerate()
             .map(|(idx, _)| {
               let tau = self.flat_t[idx];
-              let call = bates_call_price(
-                &params_eff,
-                self.s[idx],
-                self.k[idx],
-                self.r,
-                q_val,
-                tau,
-              );
-              let put = call - self.s[idx] * (-q_val * tau).exp()
-                + self.k[idx] * (-self.r * tau).exp();
+              let call =
+                bates_call_price(&params_eff, self.s[idx], self.k[idx], self.r, q_val, tau);
+              let put =
+                call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
               (call.max(0.0), put.max(0.0))
             })
             .collect::<Vec<(f64, f64)>>()

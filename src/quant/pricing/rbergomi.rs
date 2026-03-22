@@ -14,7 +14,8 @@
 //! - Bayer, Friz & Gatheral (2016), Quantitative Finance 16(6), 887–904
 //! - McCrickerd & Pakkanen (2018), DOI: 10.1080/14697688.2018.1459812, arXiv:1708.02563
 
-use crate::quant::calibration::rbergomi::{RBergomiParams, simulate_rbergomi_terminal_samples};
+use crate::quant::calibration::rbergomi::RBergomiParams;
+use crate::quant::calibration::rbergomi::simulate_rbergomi_terminal_samples;
 use crate::traits::ModelPricer;
 
 /// Monte Carlo pricer for the rough Bergomi model.

@@ -200,12 +200,20 @@ pub mod svi;
 
 // Re-export key types for convenient access.
 pub use analytics::SmileAnalytics;
-pub use implied::{ImpliedVolSurface, OptionQuote, SmileSlice};
-pub use model_surface::{ModelSurface, fourier_model_surface_fft};
-pub use pipeline::{
-  VolSurfaceResult, build_surface, build_surface_from_calibration, build_surface_from_iv,
-  build_surface_from_model,
-};
-pub use ssvi::{SsviParams, SsviSurface};
-pub use sabr_smile::{SabrSmileCalibrator, SabrSmileQuotes, SabrSmileResult};
-pub use svi::{SviJumpWings, SviRawParams};
+pub use implied::ImpliedVolSurface;
+pub use implied::OptionQuote;
+pub use implied::SmileSlice;
+pub use model_surface::ModelSurface;
+pub use model_surface::fourier_model_surface_fft;
+pub use pipeline::VolSurfaceResult;
+pub use pipeline::build_surface;
+pub use pipeline::build_surface_from_calibration;
+pub use pipeline::build_surface_from_iv;
+pub use pipeline::build_surface_from_model;
+pub use sabr_smile::SabrSmileCalibrator;
+pub use sabr_smile::SabrSmileQuotes;
+pub use sabr_smile::SabrSmileResult;
+pub use ssvi::SsviParams;
+pub use ssvi::SsviSurface;
+pub use svi::SviJumpWings;
+pub use svi::SviRawParams;

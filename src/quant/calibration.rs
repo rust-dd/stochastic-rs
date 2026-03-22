@@ -20,12 +20,24 @@ pub mod sabr;
 pub mod svj;
 
 // Re-export key calibration types for convenience.
-pub use bsm::{BSMCalibrationResult, BSMCalibrator, BSMParams};
-pub use heston::{HestonCalibrator, HestonParams};
-pub use heston_stoch_corr::{HscmCalibrationResult, MarketOption, calibrate_hscm};
-pub use levy::{LevyCalibrationResult, LevyCalibrator, LevyModelType, MarketSlice};
-pub use sabr::{SabrCalibrationResult, SabrCalibrator, SabrParams};
-pub use svj::{SVJCalibrationResult, SVJCalibrator, SVJParams};
+pub use bsm::BSMCalibrationResult;
+pub use bsm::BSMCalibrator;
+pub use bsm::BSMParams;
+pub use heston::HestonCalibrator;
+pub use heston::HestonParams;
+pub use heston_stoch_corr::HscmCalibrationResult;
+pub use heston_stoch_corr::MarketOption;
+pub use heston_stoch_corr::calibrate_hscm;
+pub use levy::LevyCalibrationResult;
+pub use levy::LevyCalibrator;
+pub use levy::LevyModelType;
+pub use levy::MarketSlice;
+pub use sabr::SabrCalibrationResult;
+pub use sabr::SabrCalibrator;
+pub use sabr::SabrParams;
+pub use svj::SVJCalibrationResult;
+pub use svj::SVJCalibrator;
+pub use svj::SVJParams;
 
 /// Default upper integration limit for Gil-Pelaez integrals in calibrators.
 pub(crate) const GL_U_MAX: f64 = 100.0;

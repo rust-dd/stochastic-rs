@@ -256,10 +256,11 @@ mod tests {
 
   #[test]
   fn build_surface_from_calibration_heston_multi_maturity() {
-    use crate::quant::calibration::heston::{HestonCalibrator, HestonParams};
+    use crate::quant::OptionType;
+    use crate::quant::calibration::heston::HestonCalibrator;
+    use crate::quant::calibration::heston::HestonParams;
     use crate::quant::calibration::levy::MarketSlice;
     use crate::quant::pricing::fourier::HestonFourier;
-    use crate::quant::OptionType;
     use crate::traits::ModelPricer;
 
     // Generate synthetic prices from known Heston params
@@ -320,16 +321,19 @@ mod tests {
     assert_eq!(result.svi_params.len(), 3);
     for a in &result.analytics {
       assert!(a.atm_vol > 0.0 && a.atm_vol.is_finite());
-      assert!(a.atm_skew < 0.0, "negative rho should produce negative skew");
+      assert!(
+        a.atm_skew < 0.0,
+        "negative rho should produce negative skew"
+      );
     }
   }
 
   #[test]
   fn build_surface_from_calibration_svj_multi_maturity() {
+    use crate::quant::OptionType;
     use crate::quant::calibration::levy::MarketSlice;
     use crate::quant::calibration::svj::SVJCalibrator;
     use crate::quant::pricing::fourier::BatesFourier;
-    use crate::quant::OptionType;
     use crate::traits::ModelPricer;
 
     let true_model = BatesFourier {
@@ -363,7 +367,15 @@ mod tests {
       })
       .collect();
 
-    let cal = SVJCalibrator::from_slices(None, &slices, 100.0, 0.05, Some(0.0), OptionType::Call, false);
+    let cal = SVJCalibrator::from_slices(
+      None,
+      &slices,
+      100.0,
+      0.05,
+      Some(0.0),
+      OptionType::Call,
+      false,
+    );
     let result = cal.calibrate(None);
     assert!(result.converged, "SVJ should converge");
 
@@ -383,7 +395,9 @@ mod tests {
 
   #[test]
   fn build_surface_from_calibration_levy_vg() {
-    use crate::quant::calibration::levy::{LevyCalibrator, LevyModelType, MarketSlice};
+    use crate::quant::calibration::levy::LevyCalibrator;
+    use crate::quant::calibration::levy::LevyModelType;
+    use crate::quant::calibration::levy::MarketSlice;
     use crate::quant::pricing::fourier::VarianceGammaFourier;
     use crate::traits::ModelPricer;
 

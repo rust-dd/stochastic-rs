@@ -132,20 +132,36 @@ impl BSMCalibrator {
   pub fn calibrate(&self) -> BSMCalibrationResult {
     let (result, report) = LevenbergMarquardt::new().minimize(self.clone());
     let converged = report.termination.was_successful();
-    let c_model: Vec<f64> = result.c_market.iter().enumerate().map(|(idx, _)| {
-      let pricer = BSMPricer::new(
-        result.s[idx], result.params.v, result.k[idx], result.r,
-        result.r_d, result.r_f, result.q, Some(result.tau),
-        None, None, result.option_type, BSMCoc::Bsm1973,
-      );
-      let (call, put) = pricer.calculate_call_put();
-      match result.option_type {
-        OptionType::Call => call,
-        OptionType::Put => put,
-      }
-    }).collect();
+    let c_model: Vec<f64> = result
+      .c_market
+      .iter()
+      .enumerate()
+      .map(|(idx, _)| {
+        let pricer = BSMPricer::new(
+          result.s[idx],
+          result.params.v,
+          result.k[idx],
+          result.r,
+          result.r_d,
+          result.r_f,
+          result.q,
+          Some(result.tau),
+          None,
+          None,
+          result.option_type,
+          BSMCoc::Bsm1973,
+        );
+        let (call, put) = pricer.calculate_call_put();
+        match result.option_type {
+          OptionType::Call => call,
+          OptionType::Put => put,
+        }
+      })
+      .collect();
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(), &c_model, result.loss_metrics,
+      result.c_market.as_slice(),
+      &c_model,
+      result.loss_metrics,
     );
 
     BSMCalibrationResult {

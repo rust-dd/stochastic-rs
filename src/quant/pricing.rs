@@ -26,14 +26,21 @@ pub mod snell_envelope;
 pub mod variance_swap;
 
 // Re-export Fourier infrastructure and model structs.
-pub use fourier::{
-  BatesFourier, BSMFourier, CGMYFourier, CarrMadanPricer, Cumulants, FourierModelExt,
-  GilPelaezPricer, HKDEFourier, HestonFourier, KouFourier, LewisPricer, MertonJDFourier,
-  VarianceGammaFourier,
-};
-
 // Re-export commonly used pricers.
 pub use bsm::{BSMCoc, BSMPricer};
+pub use fourier::BSMFourier;
+pub use fourier::BatesFourier;
+pub use fourier::CGMYFourier;
+pub use fourier::CarrMadanPricer;
+pub use fourier::Cumulants;
+pub use fourier::FourierModelExt;
+pub use fourier::GilPelaezPricer;
+pub use fourier::HKDEFourier;
+pub use fourier::HestonFourier;
+pub use fourier::KouFourier;
+pub use fourier::LewisPricer;
+pub use fourier::MertonJDFourier;
+pub use fourier::VarianceGammaFourier;
 pub use heston::HestonPricer;
 pub use heston_stoch_corr::HscmModel;
 pub use rbergomi::RBergomiPricer;
