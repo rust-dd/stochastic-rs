@@ -46,7 +46,15 @@ impl<T: FloatExt> CEV<T> {
 }
 
 impl<T: FloatExt> CEV<T, Deterministic> {
-  pub fn seeded(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    mu: T,
+    sigma: T,
+    gamma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       mu,
       sigma,

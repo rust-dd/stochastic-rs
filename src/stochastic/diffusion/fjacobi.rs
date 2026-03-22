@@ -58,7 +58,16 @@ impl<T: FloatExt> FJacobi<T> {
 
 impl<T: FloatExt> FJacobi<T, Deterministic> {
   #[must_use]
-  pub fn seeded(hurst: T, alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    hurst: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(alpha > T::zero(), "alpha must be positive");
     assert!(beta > T::zero(), "beta must be positive");

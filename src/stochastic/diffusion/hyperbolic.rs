@@ -82,7 +82,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hyperbolic<T, S> {
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
-      let next = prev + (-self.kappa * prev / (T::one() + prev * prev).sqrt()) * dt + self.sigma * *z;
+      let next =
+        prev + (-self.kappa * prev / (T::one() + prev * prev).sqrt()) * dt + self.sigma * *z;
       *z = next;
       prev = next;
     }

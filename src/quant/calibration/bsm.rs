@@ -17,7 +17,6 @@ use crate::quant::CalibrationLossScore;
 use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
-
 use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
 use crate::traits::PricerExt;

@@ -350,21 +350,33 @@ mod tests {
   fn in_out_parity_down_call() {
     let di = base(BarrierType::DownAndIn, OptionType::Call, 90.0).price();
     let do_ = base(BarrierType::DownAndOut, OptionType::Call, 90.0).price();
-    assert!((di + do_ - BSM_VANILLA_CALL).abs() < 0.1, "DI+DO={}", di + do_);
+    assert!(
+      (di + do_ - BSM_VANILLA_CALL).abs() < 0.1,
+      "DI+DO={}",
+      di + do_
+    );
   }
 
   #[test]
   fn in_out_parity_up_call() {
     let ui = base(BarrierType::UpAndIn, OptionType::Call, 110.0).price();
     let uo = base(BarrierType::UpAndOut, OptionType::Call, 110.0).price();
-    assert!((ui + uo - BSM_VANILLA_CALL).abs() < 0.1, "UI+UO={}", ui + uo);
+    assert!(
+      (ui + uo - BSM_VANILLA_CALL).abs() < 0.1,
+      "UI+UO={}",
+      ui + uo
+    );
   }
 
   #[test]
   fn in_out_parity_down_put() {
     let di = base(BarrierType::DownAndIn, OptionType::Put, 90.0).price();
     let do_ = base(BarrierType::DownAndOut, OptionType::Put, 90.0).price();
-    assert!((di + do_ - BSM_VANILLA_PUT).abs() < 0.1, "DI+DO={}", di + do_);
+    assert!(
+      (di + do_ - BSM_VANILLA_PUT).abs() < 0.1,
+      "DI+DO={}",
+      di + do_
+    );
   }
 
   #[test]
@@ -423,6 +435,9 @@ mod tests {
       option_type: OptionType::Call,
     };
     let price = p.price();
-    assert!((price - BSM_VANILLA_CALL).abs() < 0.5, "wide double barrier={price}");
+    assert!(
+      (price - BSM_VANILLA_CALL).abs() < 0.5,
+      "wide double barrier={price}"
+    );
   }
 }

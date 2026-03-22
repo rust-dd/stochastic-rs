@@ -18,7 +18,8 @@ mod fit;
 mod process_impls;
 
 pub use density::DensityApprox;
-pub use fit::{MleResult, fit_mle};
+pub use fit::MleResult;
+pub use fit::fit_mle;
 
 /// A one-dimensional stochastic differential equation
 ///

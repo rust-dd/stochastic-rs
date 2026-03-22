@@ -13,7 +13,8 @@
 //! Reference: Yi He (2024) "Ridge Regression Under Dense Factor Augmented
 //! Models", JASA 2024, Vol 119, No. 546.
 //!
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
 /// DRR-GARCH: Double Ridge Regression with GARCH(1,1) errors.
 ///
@@ -448,12 +449,7 @@ impl DrrGarch {
   ///
   /// # Returns
   /// (point_forecasts, variance_forecasts), each of length h.
-  pub fn forecast(
-    &self,
-    y: &[f64],
-    x: &Array2<f64>,
-    h: usize,
-  ) -> (Array1<f64>, Array1<f64>) {
+  pub fn forecast(&self, y: &[f64], x: &Array2<f64>, h: usize) -> (Array1<f64>, Array1<f64>) {
     assert!(!y.is_empty(), "Need at least one historical observation");
     assert_eq!(x.nrows(), h, "x must have h rows for h-step forecast");
     assert_eq!(
@@ -496,8 +492,9 @@ impl DrrGarch {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array2;
+
+  use super::*;
 
   #[test]
   fn ridge_solve_recovers_simple_coefficients() {
@@ -576,6 +573,10 @@ mod tests {
     }
     let (w, a, b) = fit_garch11(&eps);
     assert!(w > 0.0, "omega should be > 0, got {w}");
-    assert!(a + b < 1.0, "stationarity: a+b should be < 1, got {}", a + b);
+    assert!(
+      a + b < 1.0,
+      "stationarity: a+b should be < 1, got {}",
+      a + b
+    );
   }
 }

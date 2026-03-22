@@ -310,7 +310,9 @@ mod tests {
   fn digital_put_2d_mt_vs_fd() {
     let n = 30_000;
     let params = two_asset_params();
-    let payoff = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
+    let payoff = MtPayoff::DigitalPut2D {
+      strikes: [100.0, 100.0],
+    };
 
     let mt = MtGreeks::new(params.clone(), 0.01, n).all_deltas(&payoff);
 
@@ -327,8 +329,18 @@ mod tests {
     }
 
     // Both should be negative.
-    assert!(mt[0] < 0.0 && mt[1] < 0.0, "MT deltas should be < 0: [{:.4}, {:.4}]", mt[0], mt[1]);
-    assert!(fd[0] < 0.0 && fd[1] < 0.0, "FD deltas should be < 0: [{:.4}, {:.4}]", fd[0], fd[1]);
+    assert!(
+      mt[0] < 0.0 && mt[1] < 0.0,
+      "MT deltas should be < 0: [{:.4}, {:.4}]",
+      mt[0],
+      mt[1]
+    );
+    assert!(
+      fd[0] < 0.0 && fd[1] < 0.0,
+      "FD deltas should be < 0: [{:.4}, {:.4}]",
+      fd[0],
+      fd[1]
+    );
 
     // Same sign.
     assert_eq!(mt[0] < 0.0, fd[0] < 0.0, "sign mismatch asset 0");
@@ -339,10 +351,15 @@ mod tests {
   #[test]
   fn digital_put_2d_price_bounded() {
     let e = MtGreeks::new(two_asset_params(), 0.01, 20_000);
-    let p = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
+    let p = MtPayoff::DigitalPut2D {
+      strikes: [100.0, 100.0],
+    };
     let price = e.price(&p);
     let disc = (-0.05_f64).exp();
-    assert!(price > 0.0 && price < disc, "price {price:.4} not in (0, {disc:.4})");
+    assert!(
+      price > 0.0 && price < disc,
+      "price {price:.4} not in (0, {disc:.4})"
+    );
   }
 
   #[test]

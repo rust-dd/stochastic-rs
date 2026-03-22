@@ -72,7 +72,11 @@ fn tail_exponent_from_kurtosis(data: &ArrayView1<f64>, mean: f64, var: f64) -> f
     return 3.0;
   }
   let n = data.len() as f64;
-  let kurt = data.iter().map(|&x| ((x - mean).powi(4)) / (var * var)).sum::<f64>() / n;
+  let kurt = data
+    .iter()
+    .map(|&x| ((x - mean).powi(4)) / (var * var))
+    .sum::<f64>()
+    / n;
   let excess = (kurt - 3.0).abs().min(6.0);
   (4.0 - 0.5 * excess).clamp(1.5, 5.0)
 }
@@ -168,7 +172,10 @@ mod tests {
     let m: f64 = data.sum() / data.len() as f64;
     let v: f64 = data.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (data.len() - 1) as f64;
     let xi = estimate_tail_exponent(&data.view(), m, v);
-    assert!(xi > 2.0, "Expected high tail exponent for Gaussian, got {xi}");
+    assert!(
+      xi > 2.0,
+      "Expected high tail exponent for Gaussian, got {xi}"
+    );
   }
 
   #[test]
@@ -187,6 +194,9 @@ mod tests {
     let v = data.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (data.len() - 1) as f64;
     let sigma = v.sqrt();
     let (lp, lm) = estimate_cgmy_lambdas(&data.view(), m, sigma);
-    assert!(lp > 0.0 && lm > 0.0, "lambdas must be positive: ({lp}, {lm})");
+    assert!(
+      lp > 0.0 && lm > 0.0,
+      "lambdas must be positive: ({lp}, {lm})"
+    );
   }
 }

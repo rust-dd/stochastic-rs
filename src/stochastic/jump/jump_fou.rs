@@ -128,8 +128,10 @@ where
 pub struct PyJumpFOU {
   inner_f32: Option<JumpFOU<f32, crate::traits::CallableDist<f32>>>,
   inner_f64: Option<JumpFOU<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32: Option<JumpFOU<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<JumpFOU<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+  seeded_f32:
+    Option<JumpFOU<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
+  seeded_f64:
+    Option<JumpFOU<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
@@ -152,7 +154,12 @@ impl PyJumpFOU {
   ) -> Self {
     use crate::stochastic::process::cpoisson::CompoundPoisson;
     use crate::stochastic::process::poisson::Poisson;
-    let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
+    let mut s = Self {
+      inner_f32: None,
+      inner_f64: None,
+      seeded_f32: None,
+      seeded_f64: None,
+    };
     match dtype.unwrap_or("f64") {
       "f32" => {
         let cpoisson = CompoundPoisson::new(
@@ -162,14 +169,27 @@ impl PyJumpFOU {
         match seed {
           Some(sd) => {
             s.seeded_f32 = Some(JumpFOU::seeded(
-              hurst as f32, theta as f32, mu as f32, sigma as f32,
-              n, x0.map(|v| v as f32), t.map(|v| v as f32), cpoisson, sd,
+              hurst as f32,
+              theta as f32,
+              mu as f32,
+              sigma as f32,
+              n,
+              x0.map(|v| v as f32),
+              t.map(|v| v as f32),
+              cpoisson,
+              sd,
             ));
           }
           None => {
             s.inner_f32 = Some(JumpFOU::new(
-              hurst as f32, theta as f32, mu as f32, sigma as f32,
-              n, x0.map(|v| v as f32), t.map(|v| v as f32), cpoisson,
+              hurst as f32,
+              theta as f32,
+              mu as f32,
+              sigma as f32,
+              n,
+              x0.map(|v| v as f32),
+              t.map(|v| v as f32),
+              cpoisson,
             ));
           }
         }
@@ -181,7 +201,9 @@ impl PyJumpFOU {
         );
         match seed {
           Some(sd) => {
-            s.seeded_f64 = Some(JumpFOU::seeded(hurst, theta, mu, sigma, n, x0, t, cpoisson, sd));
+            s.seeded_f64 = Some(JumpFOU::seeded(
+              hurst, theta, mu, sigma, n, x0, t, cpoisson, sd,
+            ));
           }
           None => {
             s.inner_f64 = Some(JumpFOU::new(hurst, theta, mu, sigma, n, x0, t, cpoisson));
@@ -195,14 +217,20 @@ impl PyJumpFOU {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
+    py_dispatch!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let paths = inner.sample_par(m);

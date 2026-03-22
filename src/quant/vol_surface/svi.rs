@@ -24,6 +24,7 @@ use nalgebra::DMatrix;
 use nalgebra::DVector;
 use nalgebra::Dyn;
 use nalgebra::Owned;
+
 use crate::traits::FloatExt;
 
 /// Raw SVI parameters: $\{a, b, \rho, m, \sigma\}$.
@@ -254,15 +255,16 @@ fn svi_initial_guess(ks: &[f64], ws: &[f64]) -> SviRawParams<f64> {
       .map(|(&k, &w)| (k - k_mean) * (w - w_mean))
       .sum();
     let denom: f64 = ks.iter().map(|&k| (k - k_mean).powi(2)).sum();
-    if denom.abs() > 1e-14 { num / denom } else { 0.0 }
+    if denom.abs() > 1e-14 {
+      num / denom
+    } else {
+      0.0
+    }
   } else {
     0.0
   };
 
-  let k_range = ks
-    .iter()
-    .cloned()
-    .fold(f64::NEG_INFINITY, f64::max)
+  let k_range = ks.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
     - ks.iter().cloned().fold(f64::INFINITY, f64::min);
 
   SviRawParams {
@@ -357,8 +359,7 @@ mod tests {
       p.w_prime(k),
       num_first
     );
-    let rel_err = (p.w_double_prime(k) - num_second).abs()
-      / p.w_double_prime(k).abs().max(1e-14);
+    let rel_err = (p.w_double_prime(k) - num_second).abs() / p.w_double_prime(k).abs().max(1e-14);
     assert!(
       rel_err < 1e-3,
       "w''(k) mismatch: analytic={} numeric={} rel_err={}",
@@ -380,7 +381,10 @@ mod tests {
     assert!((fitted.b - true_params.b).abs() < 1e-4, "b mismatch");
     assert!((fitted.rho - true_params.rho).abs() < 1e-4, "rho mismatch");
     assert!((fitted.m - true_params.m).abs() < 1e-4, "m mismatch");
-    assert!((fitted.sigma - true_params.sigma).abs() < 1e-4, "sigma mismatch");
+    assert!(
+      (fitted.sigma - true_params.sigma).abs() < 1e-4,
+      "sigma mismatch"
+    );
   }
 
   #[test]

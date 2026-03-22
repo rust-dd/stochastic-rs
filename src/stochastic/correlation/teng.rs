@@ -48,15 +48,29 @@ pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded> {
 
 impl<T: FloatExt> TengSCP<T> {
   pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>) -> Self {
-    Self { kappa, mu, sigma, rho0, n, t, seed: Unseeded }
+    Self {
+      kappa,
+      mu,
+      sigma,
+      rho0,
+      n,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
 impl<T: FloatExt> TengSCP<T, Deterministic> {
-  pub fn seeded(
-    kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: u64,
-  ) -> Self {
-    Self { kappa, mu, sigma, rho0, n, t, seed: Deterministic(seed) }
+  pub fn seeded(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: u64) -> Self {
+    Self {
+      kappa,
+      mu,
+      sigma,
+      rho0,
+      n,
+      t,
+      seed: Deterministic(seed),
+    }
   }
 }
 
@@ -126,10 +140,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TengSCP<T, S> {
       return rho;
     }
 
-    let x0 = self.rho0.clamp(
-      T::from_f64_fast(-0.999),
-      T::from_f64_fast(0.999),
-    ).atanh();
+    let x0 = self
+      .rho0
+      .clamp(T::from_f64_fast(-0.999), T::from_f64_fast(0.999))
+      .atanh();
     let mut x = x0;
     rho[0] = x.tanh();
 
@@ -167,7 +181,10 @@ mod tests {
     let path = scp.sample();
     let tail = &path.as_slice().unwrap()[4000..];
     let avg: f64 = tail.iter().sum::<f64>() / tail.len() as f64;
-    assert!((avg - mu).abs() < 0.15, "Expected mean near {mu}, got {avg}");
+    assert!(
+      (avg - mu).abs() < 0.15,
+      "Expected mean near {mu}, got {avg}"
+    );
   }
 
   #[test]

@@ -18,11 +18,11 @@ pub mod transformed_ou;
 pub mod van_emmerich;
 
 pub use heston_stoch_corr::HestonStochCorr;
-pub use teng::TengSCP;
-pub use transformed_ou::{Transformation, TransformedOU};
-pub use van_emmerich::VanEmmerich;
-
 use ndarray::Array1;
+pub use teng::TengSCP;
+pub use transformed_ou::Transformation;
+pub use transformed_ou::TransformedOU;
+pub use van_emmerich::VanEmmerich;
 
 use crate::traits::FloatExt;
 

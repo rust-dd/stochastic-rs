@@ -28,7 +28,16 @@ pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt> Hyperbolic2<T> {
-  pub fn new(beta: T, gamma: T, delta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(
+    beta: T,
+    gamma: T,
+    delta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
     Self {
       beta,
       gamma,
@@ -44,7 +53,17 @@ impl<T: FloatExt> Hyperbolic2<T> {
 }
 
 impl<T: FloatExt> Hyperbolic2<T, Deterministic> {
-  pub fn seeded(beta: T, gamma: T, delta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    beta: T,
+    gamma: T,
+    delta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       beta,
       gamma,

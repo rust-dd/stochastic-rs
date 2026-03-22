@@ -280,27 +280,53 @@ impl PyHeston {
       "three_halves" | "3/2" => HestonPow::ThreeHalves,
       _ => HestonPow::Sqrt,
     };
-    let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
+    let mut s = Self {
+      inner_f32: None,
+      inner_f64: None,
+      seeded_f32: None,
+      seeded_f64: None,
+    };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
         s.seeded_f32 = Some(Heston::seeded(
-          s0.map(|v| v as f32), v0.map(|v| v as f32),
-          kappa as f32, theta as f32, sigma as f32, rho as f32, mu as f32,
-          n, t.map(|v| v as f32), hp, use_sym, sd,
+          s0.map(|v| v as f32),
+          v0.map(|v| v as f32),
+          kappa as f32,
+          theta as f32,
+          sigma as f32,
+          rho as f32,
+          mu as f32,
+          n,
+          t.map(|v| v as f32),
+          hp,
+          use_sym,
+          sd,
         ));
       }
       (Some(sd), _) => {
-        s.seeded_f64 = Some(Heston::seeded(s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym, sd));
+        s.seeded_f64 = Some(Heston::seeded(
+          s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym, sd,
+        ));
       }
       (None, "f32") => {
         s.inner_f32 = Some(Heston::new(
-          s0.map(|v| v as f32), v0.map(|v| v as f32),
-          kappa as f32, theta as f32, sigma as f32, rho as f32, mu as f32,
-          n, t.map(|v| v as f32), hp, use_sym,
+          s0.map(|v| v as f32),
+          v0.map(|v| v as f32),
+          kappa as f32,
+          theta as f32,
+          sigma as f32,
+          rho as f32,
+          mu as f32,
+          n,
+          t.map(|v| v as f32),
+          hp,
+          use_sym,
         ));
       }
       (None, _) => {
-        s.inner_f64 = Some(Heston::new(s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym));
+        s.inner_f64 = Some(Heston::new(
+          s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym,
+        ));
       }
     }
     s
@@ -309,17 +335,26 @@ impl PyHeston {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let [a, b] = inner.sample();
-      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
     use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
@@ -330,7 +365,10 @@ impl PyHeston {
         r0.row_mut(i).assign(a);
         r1.row_mut(i).assign(b);
       }
-      (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 }

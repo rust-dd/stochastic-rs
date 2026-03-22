@@ -51,7 +51,15 @@ impl<T: FloatExt> Jacobi<T> {
 }
 
 impl<T: FloatExt> Jacobi<T, Deterministic> {
-  pub fn seeded(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    alpha: T,
+    beta: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(alpha > T::zero(), "alpha must be positive");
     assert!(beta > T::zero(), "beta must be positive");
     assert!(sigma > T::zero(), "sigma must be positive");

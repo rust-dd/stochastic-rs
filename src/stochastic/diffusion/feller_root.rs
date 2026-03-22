@@ -40,7 +40,15 @@ impl<T: FloatExt> FellerRoot<T> {
 }
 
 impl<T: FloatExt> FellerRoot<T, Deterministic> {
-  pub fn seeded(theta1: T, theta2: T, theta3: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    theta1: T,
+    theta2: T,
+    theta3: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       theta1,
       theta2,

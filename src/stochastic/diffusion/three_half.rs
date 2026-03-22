@@ -46,7 +46,15 @@ impl<T: FloatExt> ThreeHalf<T> {
 }
 
 impl<T: FloatExt> ThreeHalf<T, Deterministic> {
-  pub fn seeded(kappa: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    kappa: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       kappa,
       mu,
@@ -86,7 +94,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ThreeHalf<T, S> {
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
-      let next = prev + self.kappa * prev * (self.mu - prev) * dt + self.sigma * prev.abs().powf(T::from_f64_fast(1.5)) * *z;
+      let next = prev
+        + self.kappa * prev * (self.mu - prev) * dt
+        + self.sigma * prev.abs().powf(T::from_f64_fast(1.5)) * *z;
       *z = next;
       prev = next;
     }

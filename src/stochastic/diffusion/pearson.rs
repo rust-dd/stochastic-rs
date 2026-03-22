@@ -44,7 +44,17 @@ impl<T: FloatExt> Pearson<T> {
 }
 
 impl<T: FloatExt> Pearson<T, Deterministic> {
-  pub fn seeded(kappa: T, mu: T, a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    kappa: T,
+    mu: T,
+    a: T,
+    b: T,
+    c: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       kappa,
       mu,
@@ -86,7 +96,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Pearson<T, S> {
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
-      let diff_inner = T::from_f64_fast(2.0) * self.kappa * (self.a * prev * prev + self.b * prev + self.c);
+      let diff_inner =
+        T::from_f64_fast(2.0) * self.kappa * (self.a * prev * prev + self.b * prev + self.c);
       let next = prev + self.kappa * (self.mu - prev) * dt + diff_inner.abs().sqrt() * *z;
       *z = next;
       prev = next;

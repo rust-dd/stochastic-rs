@@ -29,13 +29,29 @@ pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded> {
 
 impl<T: FloatExt> VanEmmerich<T> {
   pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>) -> Self {
-    Self { kappa, mu, sigma, rho0, n, t, seed: Unseeded }
+    Self {
+      kappa,
+      mu,
+      sigma,
+      rho0,
+      n,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
 impl<T: FloatExt> VanEmmerich<T, Deterministic> {
   pub fn seeded(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    Self { kappa, mu, sigma, rho0, n, t, seed: Deterministic(seed) }
+    Self {
+      kappa,
+      mu,
+      sigma,
+      rho0,
+      n,
+      t,
+      seed: Deterministic(seed),
+    }
   }
 }
 

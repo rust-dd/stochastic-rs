@@ -82,7 +82,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RadialOU<T, S> {
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
-      let safe_prev = if prev.abs() < T::from_f64_fast(1e-12) { T::from_f64_fast(1e-12) } else { prev };
+      let safe_prev = if prev.abs() < T::from_f64_fast(1e-12) {
+        T::from_f64_fast(1e-12)
+      } else {
+        prev
+      };
       let next = prev + (self.kappa / safe_prev - prev) * dt + self.sigma * *z;
       *z = next;
       prev = next;

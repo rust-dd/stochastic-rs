@@ -151,7 +151,11 @@ pub fn estimate_hurst(closes: &ndarray::ArrayView1<f64>) -> f64 {
 
   if vol_proxy.len() < 20 {
     let abs_rets: Array1<f64> = Array1::from_vec(
-      rets.iter().map(|r| r.abs()).filter(|&r| r.is_finite() && r > 0.0).collect(),
+      rets
+        .iter()
+        .map(|r| r.abs())
+        .filter(|&r| r.is_finite() && r > 0.0)
+        .collect(),
     );
     return hurst_from_signal(&abs_rets.view());
   }
@@ -160,7 +164,11 @@ pub fn estimate_hurst(closes: &ndarray::ArrayView1<f64>) -> f64 {
   let h_rv = hurst_from_signal(&vol_arr.view());
 
   let abs_arr = Array1::from_vec(
-    rets.iter().map(|r| r.abs()).filter(|&r| r.is_finite() && r > 0.0).collect(),
+    rets
+      .iter()
+      .map(|r| r.abs())
+      .filter(|&r| r.is_finite() && r > 0.0)
+      .collect(),
   );
   let h_abs = hurst_from_signal(&abs_arr.view());
 

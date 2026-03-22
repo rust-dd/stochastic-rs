@@ -28,14 +28,26 @@ pub struct IG<T: FloatExt, S: SeedExt = Unseeded> {
 impl<T: FloatExt> IG<T> {
   pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(gamma > T::zero(), "gamma must be positive");
-    Self { gamma, n, x0, t, seed: Unseeded }
+    Self {
+      gamma,
+      n,
+      x0,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
 impl<T: FloatExt> IG<T, Deterministic> {
   pub fn seeded(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
     assert!(gamma > T::zero(), "gamma must be positive");
-    Self { gamma, n, x0, t, seed: Deterministic(seed) }
+    Self {
+      gamma,
+      n,
+      x0,
+      t,
+      seed: Deterministic(seed),
+    }
   }
 }
 

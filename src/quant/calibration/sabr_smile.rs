@@ -174,8 +174,7 @@ impl CostFunction for SabrSmileProblem {
 
     // RR vol match
     let term_rr =
-      (rr_sigma(k_rr_c, k_rr_p, f, self.tau, alpha, self.beta, nu, rho) - self.sigma_rr)
-        .powi(2);
+      (rr_sigma(k_rr_c, k_rr_p, f, self.tau, alpha, self.beta, nu, rho) - self.sigma_rr).powi(2);
 
     // RR 25-delta constraints (smile vol for delta)
     let call_sigma_rr = hagan_implied_vol(k_rr_c, f, self.tau, alpha, self.beta, nu, rho);
@@ -187,8 +186,7 @@ impl CostFunction for SabrSmileProblem {
     // BF premium match (market strangle: σ_ref = σ_ATM + σ_BF for delta)
     let sigma_ref = self.sigma_atm + self.sigma_bf;
     let term_bf = bf_premium_mismatch(
-      self.s, k_bf_c, k_bf_p, self.r_d, self.r_f, self.tau, alpha, self.beta, nu, rho,
-      sigma_ref,
+      self.s, k_bf_c, k_bf_p, self.r_d, self.r_f, self.tau, alpha, self.beta, nu, rho, sigma_ref,
     )
     .powi(2);
 
@@ -406,14 +404,8 @@ impl SabrSmileCalibrator {
       let res = &results[i];
       let fwd = forward_fx(s, q.tau, r_d, r_f);
 
-      let lo = res
-        .k_rr_put
-        .min(res.k_bf_put)
-        .min(res.k_atm);
-      let hi = res
-        .k_rr_call
-        .max(res.k_bf_call)
-        .max(res.k_atm);
+      let lo = res.k_rr_put.min(res.k_bf_put).min(res.k_atm);
+      let hi = res.k_rr_call.max(res.k_bf_call).max(res.k_atm);
       let pad = (hi - lo) * 0.25;
       let k_lo = (lo - pad).max(1e-6);
       let k_hi = hi + pad;
@@ -437,11 +429,7 @@ impl SabrSmileCalibrator {
             res.params.nu,
             res.params.rho,
           );
-          if v > 0.0 && v < vol_cap {
-            v
-          } else {
-            f64::NAN
-          }
+          if v > 0.0 && v < vol_cap { v } else { f64::NAN }
         })
         .collect();
 
@@ -510,7 +498,15 @@ pub fn strike_for_delta(
   let mut a = s * 0.1;
   let mut b = s * 10.0;
   let fa = |k: f64| -> f64 {
-    let sig = hagan_implied_vol(k, fwd, tau, params.alpha, params.beta, params.nu, params.rho);
+    let sig = hagan_implied_vol(
+      k,
+      fwd,
+      tau,
+      params.alpha,
+      params.beta,
+      params.nu,
+      params.rho,
+    );
     let d = fx_delta_from_forward(k, fwd, sig, tau, r_f, phi);
     (d - target_delta).powi(2)
   };
@@ -625,8 +621,7 @@ mod tests {
     ];
 
     // Calibrate and plot all in one figure
-    let results =
-      SabrSmileCalibrator::calibrate_and_plot_many(s, r_brl, r_usd, beta, &cases);
+    let results = SabrSmileCalibrator::calibrate_and_plot_many(s, r_brl, r_usd, beta, &cases);
 
     for (i, ((label, q), res)) in cases.iter().zip(results.iter()).enumerate() {
       println!("\nTenor {} (T={:.4}):", label, q.tau);

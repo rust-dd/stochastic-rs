@@ -8,8 +8,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::stochastic::diffusion::gbm::GBM;
-use crate::stochastic::volatility::heston::Heston;
 use crate::stochastic::volatility::HestonPow;
+use crate::stochastic::volatility::heston::Heston;
 use crate::traits::ProcessExt;
 
 /// Container for the four standard Greeks.
@@ -115,7 +115,8 @@ impl GbmMalliavinGreeks {
     for i in 0..self.n_paths {
       let payoff = (s_t[i] - self.k).max(0.0);
       let w = w_t[i];
-      let weight = (w * w - self.sigma * t * w - t) / (self.s0 * self.s0 * self.sigma * self.sigma * t * t);
+      let weight =
+        (w * w - self.sigma * t * w - t) / (self.s0 * self.s0 * self.sigma * self.sigma * t * t);
       sum += discount * payoff * weight;
     }
 
@@ -348,16 +349,15 @@ impl HestonMalliavinGreeks {
           0.0
         };
 
-        let dw2 = (v_path[k + 1] - v_path[k] - self.kappa * (self.theta - v_k) * dt)
-          / (self.xi * sqrt_v_k);
+        let dw2 =
+          (v_path[k + 1] - v_path[k] - self.kappa * (self.theta - v_k) * dt) / (self.xi * sqrt_v_k);
 
         sum_inv_sqrt_v_dw1 += inv_sqrt_v_k * dw1;
         sum_inv_sqrt_v_dw2 += inv_sqrt_v_k * dw2;
       }
 
       let pi_delta = (1.0 / (self.s0 * self.tau))
-        * (sum_inv_sqrt_v_dw1
-          - (self.rho / sqrt_one_minus_rho2) * sum_inv_sqrt_v_dw2);
+        * (sum_inv_sqrt_v_dw1 - (self.rho / sqrt_one_minus_rho2) * sum_inv_sqrt_v_dw2);
 
       sum += discount * payoff * pi_delta;
     }

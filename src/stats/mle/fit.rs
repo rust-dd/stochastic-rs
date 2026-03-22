@@ -1,6 +1,9 @@
 use std::fmt;
 
-use argmin::core::{CostFunction, Executor, Gradient, State};
+use argmin::core::CostFunction;
+use argmin::core::Executor;
+use argmin::core::Gradient;
+use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
 use ndarray::Array1;
@@ -66,10 +69,9 @@ impl MleProblem<'_> {
     let mut sum = 0.0;
     for i in 1..self.sample.len() {
       let t0 = (i - 1) as f64 * self.dt;
-      let d =
-        self
-          .density
-          .density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
+      let d = self
+        .density
+        .density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
       sum -= d.max(1e-30).ln();
     }
     if sum.is_finite() { sum } else { 1e30 }
@@ -162,8 +164,6 @@ pub fn fit_mle(
     x0.to_vec()
   } else {
     let init: Vec<f64> = x0.to_vec();
-
-    
 
     {
       let problem = MleProblem {

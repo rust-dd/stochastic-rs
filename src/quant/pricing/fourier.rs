@@ -601,13 +601,12 @@ impl FourierModelExt for BatesFourier {
 
     let c_heston = (self.kappa * self.theta / sigma_v2)
       * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-    let d_heston =
-      ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
+    let d_heston = ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
 
     // Merton jump compensator
     let k_bar = (self.mu_j + 0.5 * self.sigma_j * self.sigma_j).exp() - 1.0;
-    let jump_cf =
-      self.lambda * ((i * self.mu_j * xi - 0.5 * self.sigma_j * self.sigma_j * xi * xi).exp() - 1.0);
+    let jump_cf = self.lambda
+      * ((i * self.mu_j * xi - 0.5 * self.sigma_j * self.sigma_j * xi * xi).exp() - 1.0);
     let drift_correction = -self.lambda * k_bar;
 
     (c_heston

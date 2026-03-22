@@ -37,7 +37,11 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
   }
 
   /// Creates an inverse-Gaussian distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub(crate) fn from_seed_source(mu: T, lambda: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub(crate) fn from_seed_source(
+    mu: T,
+    lambda: T,
+    seed: &mut impl crate::simd_rng::SeedExt,
+  ) -> Self {
     assert!(mu > T::zero() && lambda > T::zero());
     Self {
       mu,

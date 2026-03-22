@@ -48,7 +48,13 @@ pub trait ModelSurface: ModelPricer {
       }
     }
 
-    ImpliedVolSurface::from_prices(strikes.to_vec(), maturities.to_vec(), forwards, &prices, true)
+    ImpliedVolSurface::from_prices(
+      strikes.to_vec(),
+      maturities.to_vec(),
+      forwards,
+      &prices,
+      true,
+    )
   }
 }
 
@@ -87,17 +93,23 @@ pub fn fourier_model_surface_fft(
     }
   }
 
-  ImpliedVolSurface::from_prices(strikes.to_vec(), maturities.to_vec(), forwards, &prices, true)
+  ImpliedVolSurface::from_prices(
+    strikes.to_vec(),
+    maturities.to_vec(),
+    forwards,
+    &prices,
+    true,
+  )
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::quant::pricing::fourier::BatesFourier;
-  use crate::quant::pricing::sabr::SabrModel;
   use crate::quant::pricing::fourier::HestonFourier;
   use crate::quant::pricing::fourier::VarianceGammaFourier;
   use crate::quant::pricing::heston_stoch_corr::HscmModel;
+  use crate::quant::pricing::sabr::SabrModel;
 
   #[test]
   fn heston_via_model_surface() {
@@ -157,7 +169,10 @@ mod tests {
     for j in 0..maturities.len() {
       for i in 0..strikes.len() {
         let iv = surface.ivs[[j, i]];
-        assert!(iv.is_finite() && iv > 0.0, "SABR IV should be positive: iv={iv}");
+        assert!(
+          iv.is_finite() && iv > 0.0,
+          "SABR IV should be positive: iv={iv}"
+        );
       }
     }
   }

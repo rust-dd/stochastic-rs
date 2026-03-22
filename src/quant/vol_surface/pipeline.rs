@@ -102,11 +102,13 @@ pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array2;
 
+  use super::*;
+
   fn make_test_prices() -> (Vec<f64>, Vec<f64>, Vec<f64>, Array2<f64>) {
-    use statrs::distribution::{ContinuousCDF, Normal};
+    use statrs::distribution::ContinuousCDF;
+    use statrs::distribution::Normal;
 
     let normal = Normal::new(0.0, 1.0).unwrap();
     let s = 100.0;
@@ -145,7 +147,10 @@ mod tests {
     assert_eq!(result.butterfly_checks.len(), 3);
 
     for a in &result.analytics {
-      assert!(a.atm_vol > 0.0 && a.atm_vol.is_finite(), "ATM vol should be positive");
+      assert!(
+        a.atm_vol > 0.0 && a.atm_vol.is_finite(),
+        "ATM vol should be positive"
+      );
       assert!(a.atm_skew.is_finite(), "ATM skew should be finite");
     }
 
@@ -153,7 +158,10 @@ mod tests {
       assert!(svi.is_admissible(), "SVI should be admissible");
     }
 
-    assert!(result.calendar_spread_free, "should be calendar-spread free");
+    assert!(
+      result.calendar_spread_free,
+      "should be calendar-spread free"
+    );
   }
 
   #[test]
@@ -177,8 +185,7 @@ mod tests {
   #[test]
   fn smile_slice_svi_fit() {
     let (strikes, maturities, forwards, prices) = make_test_prices();
-    let iv_surface =
-      ImpliedVolSurface::from_prices(strikes, maturities, forwards, &prices, true);
+    let iv_surface = ImpliedVolSurface::from_prices(strikes, maturities, forwards, &prices, true);
 
     let slice = iv_surface.smile_slice(1);
     let svi = slice.fit_svi(None);

@@ -37,7 +37,11 @@ impl<T: SimdFloatExt> SimdBeta<T> {
 
   /// Creates a beta distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (gamma1, gamma2) gets an independent stream.
-  pub(crate) fn from_seed_source(alpha: T, beta: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub(crate) fn from_seed_source(
+    alpha: T,
+    beta: T,
+    seed: &mut impl crate::simd_rng::SeedExt,
+  ) -> Self {
     assert!(alpha > T::zero() && beta > T::zero());
     Self {
       alpha,

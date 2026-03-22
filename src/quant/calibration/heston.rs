@@ -22,7 +22,6 @@ use crate::quant::CalibrationLossScore;
 use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
-
 use crate::quant::pricing::heston::HestonPricer;
 use crate::stats::heston_mle::HestonMleResult;
 use crate::stats::heston_mle::nmle_heston;
@@ -999,8 +998,7 @@ mod tests {
   // Analytical reference: Gil-Pelaez Heston (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7)
   // S=100, r=0.05, q=0, T=1.0
   const HESTON_REF: [f64; 9] = [
-    25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953,
-    2.193310,
+    25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953, 2.193310,
   ];
   const REF_STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
 
@@ -1009,8 +1007,19 @@ mod tests {
     // Verify our HestonPricer reproduces reference Heston prices
     for (i, &k) in REF_STRIKES.iter().enumerate() {
       let pricer = HestonPricer::new(
-        100.0, 0.04, k, 0.05, Some(0.0), -0.7, 1.5, 0.04, 0.3,
-        Some(0.0), Some(1.0), None, None,
+        100.0,
+        0.04,
+        k,
+        0.05,
+        Some(0.0),
+        -0.7,
+        1.5,
+        0.04,
+        0.3,
+        Some(0.0),
+        Some(1.0),
+        None,
+        None,
       );
       let (call, _) = pricer.calculate_call_put();
       assert!(

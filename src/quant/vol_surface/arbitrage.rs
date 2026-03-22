@@ -64,11 +64,7 @@ pub fn check_butterfly_svi<T: FloatExt>(params: &SviRawParams<T>, ks: &[T]) -> (
 }
 
 /// Check butterfly arbitrage for an SSVI slice at given $\theta$.
-pub fn check_butterfly_ssvi<T: FloatExt>(
-  params: &SsviParams<T>,
-  theta: T,
-  ks: &[T],
-) -> (bool, T) {
+pub fn check_butterfly_ssvi<T: FloatExt>(params: &SsviParams<T>, theta: T, ks: &[T]) -> (bool, T) {
   let mut min_g = T::infinity();
 
   for &k in ks {
@@ -153,7 +149,10 @@ mod tests {
     let p = SviRawParams::<f64>::new(0.04, 0.2, -0.3, 0.0, 0.3);
     let ks: Vec<f64> = (-50..=50).map(|i| i as f64 * 0.05).collect();
     let (free, min_g) = check_butterfly_svi(&p, &ks);
-    assert!(free, "admissible SVI should be butterfly-free, min_g={min_g}");
+    assert!(
+      free,
+      "admissible SVI should be butterfly-free, min_g={min_g}"
+    );
   }
 
   #[test]
@@ -163,7 +162,10 @@ mod tests {
 
     let ks: Vec<f64> = (-50..=50).map(|i| i as f64 * 0.05).collect();
     let (free, min_g) = check_butterfly_ssvi(&p, 0.04, &ks);
-    assert!(free, "SSVI with η(1+|ρ|)≤2 should be butterfly-free, min_g={min_g}");
+    assert!(
+      free,
+      "SSVI with η(1+|ρ|)≤2 should be butterfly-free, min_g={min_g}"
+    );
   }
 
   #[test]

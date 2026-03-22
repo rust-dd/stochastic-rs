@@ -51,7 +51,16 @@ impl<T: FloatExt> Quadratic<T> {
 }
 
 impl<T: FloatExt> Quadratic<T, Deterministic> {
-  pub fn seeded(alpha: T, beta: T, gamma: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    alpha: T,
+    beta: T,
+    gamma: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       alpha,
       beta,

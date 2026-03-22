@@ -428,7 +428,11 @@ impl PyWuZhangD {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
+    py_dispatch!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
@@ -440,8 +444,13 @@ impl PyWuZhangD {
       let samples = inner.sample_par(m);
       pyo3::types::PyList::new(
         py,
-        samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      ).unwrap().into_py_any(py).unwrap()
+        samples
+          .iter()
+          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+      )
+      .unwrap()
+      .into_py_any(py)
+      .unwrap()
     })
   }
 }

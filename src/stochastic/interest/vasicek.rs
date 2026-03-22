@@ -47,7 +47,15 @@ impl<T: FloatExt> Vasicek<T> {
 }
 
 impl<T: FloatExt> Vasicek<T, Deterministic> {
-  pub fn seeded(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    theta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     let mut s = Deterministic(seed);
     let child = s.derive();
     Self {

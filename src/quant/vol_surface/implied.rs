@@ -119,10 +119,8 @@ impl ImpliedVolSurface {
     strike_set.sort_by(|a, b| a.partial_cmp(b).unwrap());
     strike_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
-    let fwd_map: std::collections::HashMap<u64, f64> = forwards
-      .iter()
-      .map(|&(t, f)| (t.to_bits(), f))
-      .collect();
+    let fwd_map: std::collections::HashMap<u64, f64> =
+      forwards.iter().map(|&(t, f)| (t.to_bits(), f)).collect();
 
     let nt = tau_set.len();
     let nk = strike_set.len();
@@ -239,7 +237,10 @@ pub struct SmileSlice {
 
 impl SmileSlice {
   /// Fit SVI raw parameters to this smile slice.
-  pub fn fit_svi(&self, initial: Option<super::svi::SviRawParams<f64>>) -> super::svi::SviRawParams<f64> {
+  pub fn fit_svi(
+    &self,
+    initial: Option<super::svi::SviRawParams<f64>>,
+  ) -> super::svi::SviRawParams<f64> {
     super::svi::calibrate_svi(&self.log_moneyness, &self.total_variance, initial)
   }
 
@@ -315,12 +316,14 @@ impl ImpliedVolSurface {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
+
+  use super::*;
 
   #[test]
   fn from_prices_round_trip() {
-    use statrs::distribution::{ContinuousCDF, Normal};
+    use statrs::distribution::ContinuousCDF;
+    use statrs::distribution::Normal;
 
     let normal = Normal::new(0.0, 1.0).unwrap();
     let s = 100.0;

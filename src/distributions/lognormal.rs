@@ -36,7 +36,11 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
 
   /// Creates a log-normal distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
-  pub(crate) fn from_seed_source(mu: T, sigma: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub(crate) fn from_seed_source(
+    mu: T,
+    sigma: T,
+    seed: &mut impl crate::simd_rng::SeedExt,
+  ) -> Self {
     assert!(sigma > T::zero());
     Self {
       mu,

@@ -56,7 +56,16 @@ impl<T: FloatExt> TemperedStableSubordinator<T> {
 }
 
 impl<T: FloatExt> TemperedStableSubordinator<T, Deterministic> {
-  pub fn seeded(alpha: T, c: T, mu: T, epsilon: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    alpha: T,
+    c: T,
+    mu: T,
+    epsilon: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
       "alpha must be in (0,1)"

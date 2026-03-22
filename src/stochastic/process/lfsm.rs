@@ -67,7 +67,16 @@ impl<T: FloatExt> LFSM<T> {
 }
 
 impl<T: FloatExt> LFSM<T, Deterministic> {
-  pub fn seeded(alpha: T, beta: T, hurst: T, scale: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    alpha: T,
+    beta: T,
+    hurst: T,
+    scale: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
     assert!((-T::one()..=T::one()).contains(&beta));
     assert!(scale > T::zero());
@@ -111,7 +120,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for LFSM<T, S> {
     let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
 
     let mut seed = self.seed;
-    let stable = SimdAlphaStable::from_seed_source(self.alpha, self.beta, innovation_scale, T::zero(), &mut seed);
+    let stable = SimdAlphaStable::from_seed_source(
+      self.alpha,
+      self.beta,
+      innovation_scale,
+      T::zero(),
+      &mut seed,
+    );
     let mut innovations = Array1::<T>::zeros(self.n - 1);
     stable.fill_slice_fast(innovations.as_slice_mut().unwrap());
 

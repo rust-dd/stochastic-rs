@@ -241,6 +241,10 @@ impl PyADG {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
+    py_dispatch_f64!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
   }
 }

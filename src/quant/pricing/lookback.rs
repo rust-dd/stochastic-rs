@@ -65,8 +65,7 @@ impl FloatingLookbackPricer {
           s * (-r * t).exp() * sigma * sqrt_t * n.cdf(a1).max(0.0) * sigma
         } else {
           let coeff = s * (-r * t).exp() * sigma2 / (2.0 * b);
-          let bracket = (s / s_min).powf(-2.0 * b / sigma2)
-            * n.cdf(-a1 + 2.0 * b * sqrt_t / sigma)
+          let bracket = (s / s_min).powf(-2.0 * b / sigma2) * n.cdf(-a1 + 2.0 * b * sqrt_t / sigma)
             - (b * t).exp() * n.cdf(-a1);
           coeff * bracket
         };
@@ -84,9 +83,8 @@ impl FloatingLookbackPricer {
           s * (-r * t).exp() * sigma * sqrt_t * n.cdf(-b1).max(0.0) * sigma
         } else {
           let coeff = s * (-r * t).exp() * sigma2 / (2.0 * b);
-          let bracket =
-            (b * t).exp() * n.cdf(b1) - (s / s_max).powf(-2.0 * b / sigma2)
-              * n.cdf(b1 - 2.0 * b * sqrt_t / sigma);
+          let bracket = (b * t).exp() * n.cdf(b1)
+            - (s / s_max).powf(-2.0 * b / sigma2) * n.cdf(b1 - 2.0 * b * sqrt_t / sigma);
           coeff * bracket
         };
 
@@ -198,7 +196,10 @@ mod tests {
       option_type: OptionType::Call,
     };
     let price = p.price();
-    assert!((price - 8.2687).abs() < 0.01, "floating call={price}, expected≈8.2687");
+    assert!(
+      (price - 8.2687).abs() < 0.01,
+      "floating call={price}, expected≈8.2687"
+    );
   }
 
   #[test]
@@ -252,7 +253,10 @@ mod tests {
     };
     let price = p.price();
     // BSM vanilla call ≈ 10.45
-    assert!(price > 10.0, "fixed lookback call={price}, should be > vanilla≈10.45");
+    assert!(
+      price > 10.0,
+      "fixed lookback call={price}, should be > vanilla≈10.45"
+    );
   }
 
   #[test]
@@ -270,6 +274,9 @@ mod tests {
     };
     let price = p.price();
     // BSM vanilla put ≈ 5.57
-    assert!(price > 5.0, "fixed lookback put={price}, should be > vanilla≈5.57");
+    assert!(
+      price > 5.0,
+      "fixed lookback put={price}, should be > vanilla≈5.57"
+    );
   }
 }

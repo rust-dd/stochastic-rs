@@ -280,8 +280,19 @@ pub struct HscmModel {
 impl crate::traits::ModelPricer for HscmModel {
   fn price_call(&self, s: f64, k: f64, r: f64, _q: f64, tau: f64) -> f64 {
     let pricer = HestonStochCorrPricer::new(
-      s, r, k, self.v0, self.kappa_v, self.theta_v, self.sigma_v, self.rho0, self.kappa_r,
-      self.mu_r, self.sigma_r, self.rho2, tau,
+      s,
+      r,
+      k,
+      self.v0,
+      self.kappa_v,
+      self.theta_v,
+      self.sigma_v,
+      self.rho0,
+      self.kappa_r,
+      self.mu_r,
+      self.sigma_r,
+      self.rho2,
+      tau,
     );
     pricer.price_call_carr_madan()
   }

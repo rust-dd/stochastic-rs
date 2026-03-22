@@ -146,7 +146,12 @@ impl PyRoughBergomi {
     seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
+    let mut s = Self {
+      inner_f32: None,
+      inner_f64: None,
+      seeded_f32: None,
+      seeded_f64: None,
+    };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
         s.seeded_f32 = Some(RoughBergomi::seeded(
@@ -186,10 +191,14 @@ impl PyRoughBergomi {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let [a, b] = inner.sample();
-      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 
@@ -201,6 +210,7 @@ impl PyRoughBergomi {
     use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
@@ -211,7 +221,10 @@ impl PyRoughBergomi {
         r0.row_mut(i).assign(a);
         r1.row_mut(i).assign(b);
       }
-      (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 }

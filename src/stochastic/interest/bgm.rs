@@ -57,7 +57,14 @@ impl<T: FloatExt> BGM<T> {
 }
 
 impl<T: FloatExt> BGM<T, Deterministic> {
-  pub fn seeded(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize, seed: u64) -> Self {
+  pub fn seeded(
+    lambda: Array1<T>,
+    x0: Array1<T>,
+    xn: usize,
+    t: Option<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
     assert_eq!(
       lambda.len(),
       xn,
@@ -153,7 +160,14 @@ impl PyBGM {
         Self {
           inner_f32: None,
           inner_f64: None,
-          seeded_f32: Some(BGM::seeded(lambda_f32, x0_f32, xn, t.map(|v| v as f32), n, s)),
+          seeded_f32: Some(BGM::seeded(
+            lambda_f32,
+            x0_f32,
+            xn,
+            t.map(|v| v as f32),
+            n,
+            s,
+          )),
           seeded_f64: None,
         }
       }
@@ -195,7 +209,11 @@ impl PyBGM {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
+    py_dispatch!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
   }
 
   fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
@@ -207,8 +225,13 @@ impl PyBGM {
       let samples = inner.sample_par(m);
       pyo3::types::PyList::new(
         py,
-        samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      ).unwrap().into_py_any(py).unwrap()
+        samples
+          .iter()
+          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+      )
+      .unwrap()
+      .into_py_any(py)
+      .unwrap()
     })
   }
 }

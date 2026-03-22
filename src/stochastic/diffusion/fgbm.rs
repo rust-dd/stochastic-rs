@@ -51,7 +51,15 @@ impl<T: FloatExt> FGBM<T> {
 
 impl<T: FloatExt> FGBM<T, Deterministic> {
   #[must_use]
-  pub fn seeded(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    hurst: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
     Self {

@@ -21,12 +21,7 @@ use crate::traits::FloatExt;
 /// Useful for rare-event simulation (e.g., deep out-of-the-money options).
 ///
 /// The `payoff` closure receives the shifted samples `Z + θ`.
-pub fn estimate<T, F>(
-  n_paths: usize,
-  dim: usize,
-  payoff: F,
-  shift: &Array1<T>,
-) -> McEstimate<T>
+pub fn estimate<T, F>(n_paths: usize, dim: usize, payoff: F, shift: &Array1<T>) -> McEstimate<T>
 where
   T: FloatExt,
   F: Fn(&Array1<T>) -> T,

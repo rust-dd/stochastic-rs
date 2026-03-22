@@ -138,7 +138,15 @@ impl PyHullWhite {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(HullWhite::seeded(Fn1D::Py(theta), alpha, sigma, n, x0, t, s)),
+        seeded: Some(HullWhite::seeded(
+          Fn1D::Py(theta),
+          alpha,
+          sigma,
+          n,
+          x0,
+          t,
+          s,
+        )),
       },
       None => Self {
         inner: Some(HullWhite::new(Fn1D::Py(theta), alpha, sigma, n, x0, t)),
@@ -152,6 +160,10 @@ impl PyHullWhite {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
+    py_dispatch_f64!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
   }
 }

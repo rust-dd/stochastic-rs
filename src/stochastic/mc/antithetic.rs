@@ -66,11 +66,7 @@ where
   let n = T::from_usize_(n_paths);
   let sum: T = results.iter().copied().sum();
   let mean = sum / n;
-  let var: T = results
-    .iter()
-    .map(|&y| (y - mean) * (y - mean))
-    .sum::<T>()
-    / n;
+  let var: T = results.iter().map(|&y| (y - mean) * (y - mean)).sum::<T>() / n;
   let std_err = (var / n).sqrt();
 
   McEstimate {

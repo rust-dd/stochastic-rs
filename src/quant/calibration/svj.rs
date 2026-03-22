@@ -41,7 +41,6 @@ use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
 
-
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
 const KAPPA_MIN: f64 = 1e-3;
@@ -358,7 +357,11 @@ fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> 
   call.max(0.0)
 }
 
-fn compute_loss_score(market: &[f64], model: &[f64], metrics: &[LossMetric]) -> CalibrationLossScore {
+fn compute_loss_score(
+  market: &[f64],
+  model: &[f64],
+  metrics: &[LossMetric],
+) -> CalibrationLossScore {
   CalibrationLossScore::compute_selected(market, model, metrics)
 }
 
@@ -424,7 +427,11 @@ impl SVJCalibrator {
     println!("Calibration report: {:?}", result.params);
 
     let p = result.effective_params();
-    let loss = compute_loss_score(result.c_market.as_slice(), c_model.as_slice(), result.loss_metrics);
+    let loss = compute_loss_score(
+      result.c_market.as_slice(),
+      c_model.as_slice(),
+      result.loss_metrics,
+    );
 
     SVJCalibrationResult {
       v0: p.v0,
@@ -621,7 +628,11 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SVJCalibrator {
             .collect::<Vec<(f64, f64)>>()
             .into(),
           params: params_eff,
-          loss_scores: compute_loss_score(self.c_market.as_slice(), c_model.as_slice(), self.loss_metrics),
+          loss_scores: compute_loss_score(
+            self.c_market.as_slice(),
+            c_model.as_slice(),
+            self.loss_metrics,
+          ),
         });
     }
 

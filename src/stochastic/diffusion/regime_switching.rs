@@ -12,7 +12,8 @@
 //! - Hamilton, J.D. (1989), "A New Approach to the Economic Analysis
 //!   of Nonstationary Time Series and the Business Cycle"
 //!
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
 use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::Deterministic;
@@ -260,11 +261,7 @@ mod tests {
   use super::*;
 
   fn q3() -> Array2<f64> {
-    array![
-      [-1.0, 0.5, 0.5],
-      [0.5, -1.0, 0.5],
-      [0.5, 0.5, -1.0],
-    ]
+    array![[-1.0, 0.5, 0.5], [0.5, -1.0, 0.5], [0.5, 0.5, -1.0],]
   }
 
   #[test]
@@ -302,16 +299,8 @@ mod tests {
   #[test]
   fn single_regime_like_gbm() {
     let q1 = array![[0.0]];
-    let p = RegimeSwitchingDiffusion::seeded(
-      0.05,
-      q1,
-      array![0.2],
-      0,
-      1000,
-      Some(100.0),
-      Some(1.0),
-      42,
-    );
+    let p =
+      RegimeSwitchingDiffusion::seeded(0.05, q1, array![0.2], 0, 1000, Some(100.0), Some(1.0), 42);
     let [s, z] = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
     assert!(z.iter().all(|x| (*x - 0.0_f64).abs() < 1e-10));

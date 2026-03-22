@@ -48,7 +48,15 @@ impl<T: FloatExt> InverseAlphaStableSubordinator<T> {
 }
 
 impl<T: FloatExt> InverseAlphaStableSubordinator<T, Deterministic> {
-  pub fn seeded(alpha: T, c: T, n: usize, t: Option<T>, u_steps: usize, u_max: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    alpha: T,
+    c: T,
+    n: usize,
+    t: Option<T>,
+    u_steps: usize,
+    u_max: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
       "alpha must be in (0,1)"

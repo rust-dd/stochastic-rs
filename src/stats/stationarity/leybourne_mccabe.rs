@@ -214,5 +214,4 @@ mod tests {
       "expected no rejection for stationary series, got {res:?}"
     );
   }
-
 }

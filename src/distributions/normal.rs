@@ -165,7 +165,11 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   ///
   /// This is the core constructor — `new()` and `with_seed()` delegate here.
   /// Monomorphised at compile time, zero runtime branching.
-  pub(crate) fn from_seed_source(mean: T, std_dev: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub(crate) fn from_seed_source(
+    mean: T,
+    std_dev: T,
+    seed: &mut impl crate::simd_rng::SeedExt,
+  ) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");

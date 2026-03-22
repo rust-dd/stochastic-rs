@@ -1359,13 +1359,16 @@ mod tests {
 
   #[test]
   fn plot_sde_gbm_all_methods() {
-    use ndarray::{array, Array2};
+    use ndarray::Array2;
+    use ndarray::array;
+    use plotly::Layout;
     use plotly::common::Line;
     use plotly::layout::Margin;
-    use plotly::Layout;
     use rand::rng;
 
-    use crate::stochastic::sde::{NoiseModel, Sde, SdeMethod};
+    use crate::stochastic::sde::NoiseModel;
+    use crate::stochastic::sde::Sde;
+    use crate::stochastic::sde::SdeMethod;
 
     let mu = 0.05;
     let sigma = 0.2;

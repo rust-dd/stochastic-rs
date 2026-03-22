@@ -89,11 +89,7 @@ impl LevyCalibrationResult {
   ///
   /// Returns a boxed [`ModelPricer`] because the concrete type depends
   /// on the calibrated model variant.
-  pub fn to_model(
-    &self,
-    r: f64,
-    q: f64,
-  ) -> Box<dyn crate::traits::ModelPricer> {
+  pub fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
     use crate::quant::pricing::fourier::*;
     let p = &self.params;
     match self.model_type {

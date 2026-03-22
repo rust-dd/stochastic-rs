@@ -54,7 +54,16 @@ impl<T: FloatExt> FOU<T> {
 
 impl<T: FloatExt> FOU<T, Deterministic> {
   #[must_use]
-  pub fn seeded(hurst: T, theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    hurst: T,
+    theta: T,
+    mu: T,
+    sigma: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
     Self {

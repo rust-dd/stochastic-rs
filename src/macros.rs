@@ -9,11 +9,17 @@
 #[cfg(feature = "python")]
 macro_rules! py_dispatch {
   ($self:expr, |$inner:ident| $body:expr) => {
-    if let Some(ref $inner) = $self.inner_f64 { $body }
-    else if let Some(ref $inner) = $self.seeded_f64 { $body }
-    else if let Some(ref $inner) = $self.inner_f32 { $body }
-    else if let Some(ref $inner) = $self.seeded_f32 { $body }
-    else { unreachable!() }
+    if let Some(ref $inner) = $self.inner_f64 {
+      $body
+    } else if let Some(ref $inner) = $self.seeded_f64 {
+      $body
+    } else if let Some(ref $inner) = $self.inner_f32 {
+      $body
+    } else if let Some(ref $inner) = $self.seeded_f32 {
+      $body
+    } else {
+      unreachable!()
+    }
   };
 }
 
@@ -21,9 +27,13 @@ macro_rules! py_dispatch {
 #[cfg(feature = "python")]
 macro_rules! py_dispatch_f64 {
   ($self:expr, |$inner:ident| $body:expr) => {
-    if let Some(ref $inner) = $self.inner { $body }
-    else if let Some(ref $inner) = $self.seeded { $body }
-    else { unreachable!() }
+    if let Some(ref $inner) = $self.inner {
+      $body
+    } else if let Some(ref $inner) = $self.seeded {
+      $body
+    } else {
+      unreachable!()
+    }
   };
 }
 

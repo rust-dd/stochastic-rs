@@ -148,10 +148,31 @@ impl PyHullWhite2F {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(HullWhite2F::seeded(Fn1D::Py(k), theta, sigma1, sigma2, rho, b, x0, t, n, s)),
+        seeded: Some(HullWhite2F::seeded(
+          Fn1D::Py(k),
+          theta,
+          sigma1,
+          sigma2,
+          rho,
+          b,
+          x0,
+          t,
+          n,
+          s,
+        )),
       },
       None => Self {
-        inner: Some(HullWhite2F::new(Fn1D::Py(k), theta, sigma1, sigma2, rho, b, x0, t, n)),
+        inner: Some(HullWhite2F::new(
+          Fn1D::Py(k),
+          theta,
+          sigma1,
+          sigma2,
+          rho,
+          b,
+          x0,
+          t,
+          n,
+        )),
         seeded: None,
       },
     }
@@ -164,7 +185,10 @@ impl PyHullWhite2F {
     use crate::traits::ProcessExt;
     py_dispatch_f64!(self, |inner| {
       let [a, b] = inner.sample();
-      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 }

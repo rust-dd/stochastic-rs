@@ -77,7 +77,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ModifiedCIR<T, S> {
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
-      let next = prev + (-self.kappa * prev) * dt + self.sigma * (T::one() + prev * prev).sqrt() * *z;
+      let next =
+        prev + (-self.kappa * prev) * dt + self.sigma * (T::one() + prev * prev).sqrt() * *z;
       *z = next;
       prev = next;
     }

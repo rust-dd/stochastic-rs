@@ -258,7 +258,11 @@ impl PyHJM {
     use crate::traits::ProcessExt;
     py_dispatch_f64!(self, |inner| {
       let [a, b, c] = inner.sample();
-      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap(), c.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+        c.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 }

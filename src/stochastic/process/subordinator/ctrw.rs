@@ -121,7 +121,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
           shape > T::zero() && rate > T::zero(),
           "CTRW Gamma waiting requires shape > 0 and rate > 0"
         );
-        WaitingSampler::Gamma(SimdGamma::from_seed_source(shape, T::one() / rate, &mut seed))
+        WaitingSampler::Gamma(SimdGamma::from_seed_source(
+          shape,
+          T::one() / rate,
+          &mut seed,
+        ))
       }
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
         assert!(
@@ -152,7 +156,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
           alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
           "CTRW stable jumps require alpha in (0,2] and scale > 0"
         );
-        JumpSampler::Stable(SimdAlphaStable::from_seed_source(alpha, T::zero(), scale, T::zero(), &mut seed))
+        JumpSampler::Stable(SimdAlphaStable::from_seed_source(
+          alpha,
+          T::zero(),
+          scale,
+          T::zero(),
+          &mut seed,
+        ))
       }
       CtrwJumpLaw::Rademacher { scale } => {
         assert!(scale > T::zero(), "CTRW rademacher jumps require scale > 0");

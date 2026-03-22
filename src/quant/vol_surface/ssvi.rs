@@ -28,6 +28,7 @@ use nalgebra::DMatrix;
 use nalgebra::DVector;
 use nalgebra::Dyn;
 use nalgebra::Owned;
+
 use crate::traits::FloatExt;
 
 /// SSVI global parameters: $\{\rho, \eta, \gamma\}$.
@@ -204,8 +205,16 @@ pub fn calibrate_ssvi<T: FloatExt>(
   let slices_f64: Vec<SsviSliceF64> = slices
     .iter()
     .map(|s| SsviSliceF64 {
-      log_moneyness: s.log_moneyness.iter().map(|x| x.to_f64().unwrap_or(0.0)).collect(),
-      total_variance: s.total_variance.iter().map(|x| x.to_f64().unwrap_or(0.0)).collect(),
+      log_moneyness: s
+        .log_moneyness
+        .iter()
+        .map(|x| x.to_f64().unwrap_or(0.0))
+        .collect(),
+      total_variance: s
+        .total_variance
+        .iter()
+        .map(|x| x.to_f64().unwrap_or(0.0))
+        .collect(),
       theta: s.theta.to_f64().unwrap_or(0.0),
     })
     .collect();
@@ -521,7 +530,10 @@ mod tests {
 
     assert!((fitted.rho - true_params.rho).abs() < 1e-3, "rho mismatch");
     assert!((fitted.eta - true_params.eta).abs() < 1e-3, "eta mismatch");
-    assert!((fitted.gamma - true_params.gamma).abs() < 1e-3, "gamma mismatch");
+    assert!(
+      (fitted.gamma - true_params.gamma).abs() < 1e-3,
+      "gamma mismatch"
+    );
   }
 
   #[test]

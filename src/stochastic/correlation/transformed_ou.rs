@@ -80,7 +80,16 @@ impl<T: FloatExt> TransformedOU<T> {
     n: usize,
     t: Option<T>,
   ) -> Self {
-    Self { kappa, mu, sigma, rho0, transform, n, t, seed: Unseeded }
+    Self {
+      kappa,
+      mu,
+      sigma,
+      rho0,
+      transform,
+      n,
+      t,
+      seed: Unseeded,
+    }
   }
 }
 
@@ -95,7 +104,16 @@ impl<T: FloatExt> TransformedOU<T, Deterministic> {
     t: Option<T>,
     seed: u64,
   ) -> Self {
-    Self { kappa, mu, sigma, rho0, transform, n, t, seed: Deterministic(seed) }
+    Self {
+      kappa,
+      mu,
+      sigma,
+      rho0,
+      transform,
+      n,
+      t,
+      seed: Deterministic(seed),
+    }
   }
 }
 
@@ -141,7 +159,14 @@ mod tests {
   #[test]
   fn tanh_stays_bounded() {
     let scp = TransformedOU::seeded(
-      5.0_f64, 0.0, 1.5, 0.3, Transformation::Tanh, 2000, Some(2.0), 77,
+      5.0_f64,
+      0.0,
+      1.5,
+      0.3,
+      Transformation::Tanh,
+      2000,
+      Some(2.0),
+      77,
     );
     let path = scp.sample();
     assert_eq!(path.len(), 2000);
@@ -151,7 +176,14 @@ mod tests {
   #[test]
   fn arctan_stays_bounded() {
     let scp = TransformedOU::seeded(
-      5.0_f64, 0.0, 1.5, -0.5, Transformation::Arctan, 2000, Some(2.0), 88,
+      5.0_f64,
+      0.0,
+      1.5,
+      -0.5,
+      Transformation::Arctan,
+      2000,
+      Some(2.0),
+      88,
     );
     let path = scp.sample();
     assert!(path.iter().all(|&r| r > -1.0 && r < 1.0));
@@ -162,11 +194,17 @@ mod tests {
     for &x in &[-2.0_f64, -1.0, -0.5, 0.0, 0.3, 1.0, 3.0] {
       let rho_t = Transformation::Tanh.forward(x);
       let x_back: f64 = Transformation::Tanh.inverse(rho_t);
-      assert!((x - x_back).abs() < 1e-10, "tanh roundtrip failed for x={x}");
+      assert!(
+        (x - x_back).abs() < 1e-10,
+        "tanh roundtrip failed for x={x}"
+      );
 
       let rho_a = Transformation::Arctan.forward(x);
       let x_back_a: f64 = Transformation::Arctan.inverse(rho_a);
-      assert!((x - x_back_a).abs() < 1e-8, "arctan roundtrip failed for x={x}");
+      assert!(
+        (x - x_back_a).abs() < 1e-8,
+        "arctan roundtrip failed for x={x}"
+      );
     }
   }
 }

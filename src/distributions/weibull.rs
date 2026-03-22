@@ -34,7 +34,11 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
 
   /// Creates a Weibull distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (exp, main rng) gets an independent stream.
-  pub(crate) fn from_seed_source(lambda: T, k: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub(crate) fn from_seed_source(
+    lambda: T,
+    k: T,
+    seed: &mut impl crate::simd_rng::SeedExt,
+  ) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
     Self {
       lambda,

@@ -575,13 +575,7 @@ where
   }
 
   /// Euler–Maruyama with fractional Brownian noise.
-  fn solve_euler_fractional(
-    &self,
-    x0: &Array1<T>,
-    t0: T,
-    dt: T,
-    incs: &Array3<T>,
-  ) -> Array3<T> {
+  fn solve_euler_fractional(&self, x0: &Array1<T>, t0: T, dt: T, incs: &Array3<T>) -> Array3<T> {
     let (n_paths, steps, dim) = (
       incs.len_of(Axis(0)),
       incs.len_of(Axis(1)),
@@ -611,13 +605,7 @@ where
   }
 
   /// Milstein scheme with fractional Brownian noise.
-  fn solve_milstein_fractional(
-    &self,
-    x0: &Array1<T>,
-    t0: T,
-    dt: T,
-    incs: &Array3<T>,
-  ) -> Array3<T> {
+  fn solve_milstein_fractional(&self, x0: &Array1<T>, t0: T, dt: T, incs: &Array3<T>) -> Array3<T> {
     let (n_paths, steps, dim) = (
       incs.len_of(Axis(0)),
       incs.len_of(Axis(1)),
@@ -649,13 +637,7 @@ where
   }
 
   /// Stochastic midpoint (RK2-style) method with fractional Brownian noise.
-  fn solve_srk2_fractional(
-    &self,
-    x0: &Array1<T>,
-    t0: T,
-    dt: T,
-    incs: &Array3<T>,
-  ) -> Array3<T> {
+  fn solve_srk2_fractional(&self, x0: &Array1<T>, t0: T, dt: T, incs: &Array3<T>) -> Array3<T> {
     let (n_paths, steps, dim) = (
       incs.len_of(Axis(0)),
       incs.len_of(Axis(1)),
@@ -697,13 +679,7 @@ where
   }
 
   /// Classical RK4 structure applied to both drift and diffusion, with fractional Brownian noise.
-  fn solve_srk4_fractional(
-    &self,
-    x0: &Array1<T>,
-    t0: T,
-    dt: T,
-    incs: &Array3<T>,
-  ) -> Array3<T> {
+  fn solve_srk4_fractional(&self, x0: &Array1<T>, t0: T, dt: T, incs: &Array3<T>) -> Array3<T> {
     let (n_paths, steps, dim) = (
       incs.len_of(Axis(0)),
       incs.len_of(Axis(1)),

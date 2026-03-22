@@ -20,7 +20,8 @@
 //! Source:
 //! - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 use num_complex::Complex64;
 
 use super::fourier::Cumulants;
@@ -443,11 +444,7 @@ mod tests {
     use super::super::fourier::LewisPricer;
 
     let model = RegimeSwitchingModel {
-      q_matrix: array![
-        [-1.0, 0.5, 0.5],
-        [0.3, -0.6, 0.3],
-        [0.4, 0.4, -0.8],
-      ],
+      q_matrix: array![[-1.0, 0.5, 0.5], [0.3, -0.6, 0.3], [0.4, 0.4, -0.8],],
       vols: array![0.10, 0.25, 0.50],
       r: 0.05,
       q: 0.01,

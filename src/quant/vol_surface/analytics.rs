@@ -68,11 +68,7 @@ pub fn svi_analytics<T: FloatExt>(params: &SviRawParams<T>, tau: T) -> SmileAnal
 }
 
 /// Compute smile analytics from an SSVI surface at given maturity.
-pub fn ssvi_analytics<T: FloatExt>(
-  params: &SsviParams<T>,
-  theta: T,
-  tau: T,
-) -> SmileAnalytics<T> {
+pub fn ssvi_analytics<T: FloatExt>(params: &SsviParams<T>, theta: T, tau: T) -> SmileAnalytics<T> {
   let zero = T::zero();
   let two = T::from_f64_fast(2.0);
   let four = T::from_f64_fast(4.0);
@@ -206,7 +202,10 @@ mod tests {
     let a = svi_analytics(&p, 1.0);
 
     assert!(a.atm_vol > 0.0);
-    assert!(a.atm_skew < 0.0, "negative rho should give negative ATM skew");
+    assert!(
+      a.atm_skew < 0.0,
+      "negative rho should give negative ATM skew"
+    );
     assert!(a.atm_convexity.is_finite());
     assert!((a.atm_total_variance - p.total_variance(0.0)).abs() < 1e-12);
   }
@@ -218,7 +217,10 @@ mod tests {
     let a = ssvi_analytics(&p, theta, 1.0);
 
     assert!(a.atm_vol > 0.0);
-    assert!(a.atm_skew < 0.0, "negative rho should give negative ATM skew");
+    assert!(
+      a.atm_skew < 0.0,
+      "negative rho should give negative ATM skew"
+    );
     assert!((a.atm_total_variance - theta).abs() < 1e-10);
   }
 
@@ -231,7 +233,10 @@ mod tests {
     assert!(rr.is_finite());
     assert!(rr < 0.0, "negative rho should give negative RR25: rr={rr}");
     assert!(bf.is_finite());
-    assert!(bf > 0.0, "butterfly should be positive (smile convexity): bf={bf}");
+    assert!(
+      bf > 0.0,
+      "butterfly should be positive (smile convexity): bf={bf}"
+    );
   }
 
   #[test]

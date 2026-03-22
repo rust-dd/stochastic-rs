@@ -31,7 +31,19 @@ pub struct NonLinearSDE<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt> NonLinearSDE<T> {
-  pub fn new(am1: T, a0: T, a1: T, a2: T, b0: T, b1: T, b2: T, b3: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(
+    am1: T,
+    a0: T,
+    a1: T,
+    a2: T,
+    b0: T,
+    b1: T,
+    b2: T,
+    b3: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
     Self {
       am1,
       a0,
@@ -50,7 +62,20 @@ impl<T: FloatExt> NonLinearSDE<T> {
 }
 
 impl<T: FloatExt> NonLinearSDE<T, Deterministic> {
-  pub fn seeded(am1: T, a0: T, a1: T, a2: T, b0: T, b1: T, b2: T, b3: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    am1: T,
+    a0: T,
+    a1: T,
+    a2: T,
+    b0: T,
+    b1: T,
+    b2: T,
+    b3: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       am1,
       a0,
@@ -95,7 +120,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for NonLinearSDE<T, S> {
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
-      let safe_prev = if prev.abs() < T::from_f64_fast(1e-12) { T::from_f64_fast(1e-12) } else { prev };
+      let safe_prev = if prev.abs() < T::from_f64_fast(1e-12) {
+        T::from_f64_fast(1e-12)
+      } else {
+        prev
+      };
       let drift = self.am1 / safe_prev + self.a0 + self.a1 * prev + self.a2 * prev * prev;
       let diff = self.b0 + self.b1 * prev + self.b2 * prev.abs().powf(self.b3);
       let next = prev + drift * dt + diff * *z;

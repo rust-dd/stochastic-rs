@@ -50,7 +50,14 @@ impl<T: FloatExt> HoLee<T> {
 }
 
 impl<T: FloatExt> HoLee<T, Deterministic> {
-  pub fn seeded(f_T: Option<Fn1D<T>>, theta: Option<T>, sigma: T, n: usize, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    f_T: Option<Fn1D<T>>,
+    theta: Option<T>,
+    sigma: T,
+    n: usize,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(
       theta.is_some() || f_T.is_some(),
       "theta or f_T must be provided"
@@ -172,6 +179,10 @@ impl PyHoLee {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
+    py_dispatch_f64!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
   }
 }

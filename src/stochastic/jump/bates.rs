@@ -201,8 +201,10 @@ where
 pub struct PyBates {
   inner_f32: Option<Bates1996<f32, crate::traits::CallableDist<f32>>>,
   inner_f64: Option<Bates1996<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32: Option<Bates1996<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<Bates1996<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+  seeded_f32:
+    Option<Bates1996<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
+  seeded_f64:
+    Option<Bates1996<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
@@ -231,7 +233,12 @@ impl PyBates {
     dtype: Option<&str>,
   ) -> Self {
     use crate::stochastic::process::poisson::Poisson;
-    let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
+    let mut s = Self {
+      inner_f32: None,
+      inner_f64: None,
+      seeded_f32: None,
+      seeded_f64: None,
+    };
     match dtype.unwrap_or("f64") {
       "f32" => {
         let cpoisson = CompoundPoisson::new(
@@ -241,22 +248,43 @@ impl PyBates {
         match seed {
           Some(sd) => {
             s.seeded_f32 = Some(Bates1996::seeded(
-              mu.map(|v| v as f32), b.map(|v| v as f32),
-              r.map(|v| v as f32), r_f.map(|v| v as f32),
-              lambda_ as f32, k as f32, alpha as f32, beta as f32,
-              sigma as f32, rho as f32, n,
-              s0.map(|v| v as f32), v0.map(|v| v as f32),
-              t.map(|v| v as f32), use_sym, cpoisson, sd,
+              mu.map(|v| v as f32),
+              b.map(|v| v as f32),
+              r.map(|v| v as f32),
+              r_f.map(|v| v as f32),
+              lambda_ as f32,
+              k as f32,
+              alpha as f32,
+              beta as f32,
+              sigma as f32,
+              rho as f32,
+              n,
+              s0.map(|v| v as f32),
+              v0.map(|v| v as f32),
+              t.map(|v| v as f32),
+              use_sym,
+              cpoisson,
+              sd,
             ));
           }
           None => {
             s.inner_f32 = Some(Bates1996::new(
-              mu.map(|v| v as f32), b.map(|v| v as f32),
-              r.map(|v| v as f32), r_f.map(|v| v as f32),
-              lambda_ as f32, k as f32, alpha as f32, beta as f32,
-              sigma as f32, rho as f32, n,
-              s0.map(|v| v as f32), v0.map(|v| v as f32),
-              t.map(|v| v as f32), use_sym, cpoisson,
+              mu.map(|v| v as f32),
+              b.map(|v| v as f32),
+              r.map(|v| v as f32),
+              r_f.map(|v| v as f32),
+              lambda_ as f32,
+              k as f32,
+              alpha as f32,
+              beta as f32,
+              sigma as f32,
+              rho as f32,
+              n,
+              s0.map(|v| v as f32),
+              v0.map(|v| v as f32),
+              t.map(|v| v as f32),
+              use_sym,
+              cpoisson,
             ));
           }
         }
@@ -269,7 +297,8 @@ impl PyBates {
         match seed {
           Some(sd) => {
             s.seeded_f64 = Some(Bates1996::seeded(
-              mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson, sd,
+              mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson,
+              sd,
             ));
           }
           None => {
@@ -286,10 +315,14 @@ impl PyBates {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let [a, b] = inner.sample();
-      (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        a.into_pyarray(py).into_py_any(py).unwrap(),
+        b.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 
@@ -301,6 +334,7 @@ impl PyBates {
     use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     py_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
@@ -311,7 +345,10 @@ impl PyBates {
         r0.row_mut(i).assign(a);
         r1.row_mut(i).assign(b);
       }
-      (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
+      (
+        r0.into_pyarray(py).into_py_any(py).unwrap(),
+        r1.into_pyarray(py).into_py_any(py).unwrap(),
+      )
     })
   }
 }

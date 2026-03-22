@@ -37,12 +37,24 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
   /// Creates a normal-inverse Gaussian distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(alpha: T, beta: T, delta: T, mu: T, seed: u64) -> Self {
-    Self::from_seed_source(alpha, beta, delta, mu, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(
+      alpha,
+      beta,
+      delta,
+      mu,
+      &mut crate::simd_rng::Deterministic(seed),
+    )
   }
 
   /// Creates a normal-inverse Gaussian distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (ig, normal, main rng) gets an independent stream.
-  pub(crate) fn from_seed_source(alpha: T, beta: T, delta: T, mu: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub(crate) fn from_seed_source(
+    alpha: T,
+    beta: T,
+    delta: T,
+    mu: T,
+    seed: &mut impl crate::simd_rng::SeedExt,
+  ) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),
       "NIG: alpha must be > |beta|"

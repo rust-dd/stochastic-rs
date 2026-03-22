@@ -46,7 +46,15 @@ impl<T: FloatExt> NIG<T> {
 }
 
 impl<T: FloatExt> NIG<T, Deterministic> {
-  pub fn seeded(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    theta: T,
+    sigma: T,
+    kappa: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
       theta,

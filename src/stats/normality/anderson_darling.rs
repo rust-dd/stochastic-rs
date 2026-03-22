@@ -109,12 +109,13 @@ pub fn anderson_darling_normal_test(
 
 #[cfg(test)]
 mod tests {
+  use rand::SeedableRng;
+  use rand::rngs::StdRng;
+
   use super::AndersonDarlingConfig;
   use super::anderson_darling_normal_test;
   use crate::distributions::normal::SimdNormal;
   use crate::distributions::uniform::SimdUniform;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
 
   #[test]
   fn anderson_darling_accepts_normal_sample() {

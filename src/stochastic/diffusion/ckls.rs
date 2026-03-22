@@ -34,7 +34,15 @@ pub struct CKLS<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt> CKLS<T> {
-  pub fn new(theta1: T, theta2: T, theta3: T, theta4: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(
+    theta1: T,
+    theta2: T,
+    theta3: T,
+    theta4: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+  ) -> Self {
     Self {
       theta1,
       theta2,
@@ -49,7 +57,16 @@ impl<T: FloatExt> CKLS<T> {
 }
 
 impl<T: FloatExt> CKLS<T, Deterministic> {
-  pub fn seeded(theta1: T, theta2: T, theta3: T, theta4: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
+  pub fn seeded(
+    theta1: T,
+    theta2: T,
+    theta3: T,
+    theta4: T,
+    n: usize,
+    x0: Option<T>,
+    t: Option<T>,
+    seed: u64,
+  ) -> Self {
     Self {
       theta1,
       theta2,
@@ -90,7 +107,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CKLS<T, S> {
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
-      let next = prev + (self.theta1 + self.theta2 * prev) * dt + self.theta3 * prev.abs().powf(self.theta4) * *z;
+      let next = prev
+        + (self.theta1 + self.theta2 * prev) * dt
+        + self.theta3 * prev.abs().powf(self.theta4) * *z;
       *z = next;
       prev = next;
     }

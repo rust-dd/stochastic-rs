@@ -112,8 +112,7 @@ pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttin
 
   // sparse sampling
   // Compute increments of prices
-  let increments =
-    Array1::from_vec((0..n).map(|i| prices[i + 1] - prices[i]).collect());
+  let increments = Array1::from_vec((0..n).map(|i| prices[i + 1] - prices[i]).collect());
 
   // Find sparse step so that lag-1 autocorrelation of increments is
   // below the Bartlett 95 % bound.

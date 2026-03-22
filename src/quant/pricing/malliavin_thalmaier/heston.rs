@@ -152,7 +152,12 @@ impl<T: FloatExt> MultiHestonPaths<T> {
       }
     }
 
-    Self { prices, vols, n_assets: d, n_steps: n }
+    Self {
+      prices,
+      vols,
+      n_assets: d,
+      n_steps: n,
+    }
   }
 
   pub fn terminal_prices(&self) -> Vec<T> {
@@ -173,7 +178,8 @@ impl<T: FloatExt> MultiHestonPaths<T> {
       for j in 0..d {
         let mut integral = T::zero();
         for k in 0..(n - 1) {
-          integral += (self.vols[[i, k]].max(T::zero()) * self.vols[[j, k]].max(T::zero())).sqrt() * dt;
+          integral +=
+            (self.vols[[i, k]].max(T::zero()) * self.vols[[j, k]].max(T::zero())).sqrt() * dt;
         }
         g[[i, j]] = st[i] * st[j] * cross_corr[[i, j]] * integral;
       }
