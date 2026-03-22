@@ -34,7 +34,7 @@ cudarc = { version = "0.19.2", optional = true, features = [
 ] }
 either = "1.15.0"
 flate2 = "1.1.2"
-gauss-quad = "0.2.1"
+gauss-quad = "0.3.0"
 implied-vol = "2.0.0"
 kendalls = "1.0.0"
 levenberg-marquardt = "0.14.0"

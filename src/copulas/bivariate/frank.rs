@@ -147,7 +147,7 @@ impl Frank {
 
   fn _tau_to_theta(tau: f64, alpha: f64) -> f64 {
     let integrand = |u: f64| u / (u.exp() - 1.0);
-    let quad = GaussLegendre::new(5).unwrap();
+    let quad = GaussLegendre::new(std::num::NonZeroUsize::new(5).unwrap());
     let integral = quad.integrate(f64::EPSILON, alpha, integrand);
     4.0 * (integral - 1.0) / alpha + 1.0 - tau
   }

@@ -193,7 +193,7 @@ where
   F2: Fn(f64) -> f64,
 {
   let integrand = |u: f64| function1(u) * function2(u);
-  let quad = GaussLegendre::new(5).unwrap();
+  let quad = GaussLegendre::new(std::num::NonZeroUsize::new(5).unwrap());
   quad.integrate(0.0, 1.0, integrand)
 }
 
