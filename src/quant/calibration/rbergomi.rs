@@ -359,9 +359,18 @@ pub struct RBergomiCalibrationResult {
   pub converged: bool,
 }
 
-// TODO: add `to_model()` once a `RBergomiPricer` implementing `ModelPricer`
-// exists in `pricing/`. The rough Bergomi model has no closed-form CF so it
-// requires Monte Carlo pricing, which doesn't yet have a `ModelPricer` wrapper.
+impl RBergomiCalibrationResult {
+  /// Convert to an [`RBergomiPricer`] for pricing / vol surface generation.
+  pub fn to_model(&self) -> crate::quant::pricing::rbergomi::RBergomiPricer {
+    crate::quant::pricing::rbergomi::RBergomiPricer::new(self.calibrated_params.clone())
+  }
+}
+
+impl crate::traits::ToModel for RBergomiCalibrationResult {
+  fn to_model(&self, _r: f64, _q: f64) -> Box<dyn crate::traits::ModelPricer> {
+    Box::new(RBergomiCalibrationResult::to_model(self))
+  }
+}
 
 #[derive(Clone)]
 pub struct RBergomiCalibrator {

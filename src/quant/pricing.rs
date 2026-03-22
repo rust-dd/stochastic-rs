@@ -19,6 +19,7 @@ pub mod malliavin_greeks;
 pub mod malliavin_thalmaier;
 pub mod merton_jump;
 pub mod pnl;
+pub mod rbergomi;
 pub mod regime_switching;
 pub mod sabr;
 pub mod snell_envelope;
@@ -35,4 +36,5 @@ pub use fourier::{
 pub use bsm::{BSMCoc, BSMPricer};
 pub use heston::HestonPricer;
 pub use heston_stoch_corr::HscmModel;
+pub use rbergomi::RBergomiPricer;
 pub use sabr::SabrModel;

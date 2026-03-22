@@ -198,18 +198,18 @@ impl SVJCalibrationResult {
 pub struct SVJCalibrator {
   /// Params to calibrate.
   pub params: Option<SVJParams>,
-  /// Option prices from the market.
+  /// Option prices from the market (flattened across all maturities).
   pub c_market: DVector<f64>,
   /// Underlying spot per quote.
   pub s: DVector<f64>,
-  /// Strikes per quote.
+  /// Strikes per quote (flattened).
   pub k: DVector<f64>,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
   pub q: Option<f64>,
-  /// Time to maturity (years).
-  pub tau: f64,
+  /// Time to maturity per quote (flattened). Supports multi-maturity joint calibration.
+  pub flat_t: Vec<f64>,
   /// Option type.
   pub option_type: OptionType,
   /// If true, record per-iteration calibration history.
@@ -300,6 +300,7 @@ fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> 
 
 
 impl SVJCalibrator {
+  /// Create a calibrator for a single maturity slice (backwards compatible).
   pub fn new(
     params: Option<SVJParams>,
     c_market: DVector<f64>,
@@ -311,16 +312,9 @@ impl SVJCalibrator {
     option_type: OptionType,
     record_history: bool,
   ) -> Self {
-    assert_eq!(
-      c_market.len(),
-      s.len(),
-      "c_market and s must have the same length"
-    );
-    assert_eq!(
-      c_market.len(),
-      k.len(),
-      "c_market and k must have the same length"
-    );
+    let n = c_market.len();
+    assert_eq!(n, s.len(), "c_market and s must have the same length");
+    assert_eq!(n, k.len(), "c_market and k must have the same length");
     assert!(
       tau.is_finite() && tau > 0.0,
       "tau must be a finite positive value"
@@ -333,7 +327,46 @@ impl SVJCalibrator {
       k,
       r,
       q,
-      tau,
+      flat_t: vec![tau; n],
+      option_type,
+      record_history,
+      loss_metrics: &LossMetric::ALL,
+      calibration_history: Rc::new(RefCell::new(Vec::new())),
+    }
+  }
+
+  /// Create a calibrator from multiple maturity slices for joint surface calibration.
+  pub fn from_slices(
+    params: Option<SVJParams>,
+    slices: &[super::levy::MarketSlice],
+    s: f64,
+    r: f64,
+    q: Option<f64>,
+    option_type: OptionType,
+    record_history: bool,
+  ) -> Self {
+    let mut flat_prices = Vec::new();
+    let mut flat_strikes = Vec::new();
+    let mut flat_t = Vec::new();
+    let mut flat_s = Vec::new();
+
+    for slice in slices {
+      for i in 0..slice.strikes.len() {
+        flat_prices.push(slice.prices[i]);
+        flat_strikes.push(slice.strikes[i]);
+        flat_t.push(slice.t);
+        flat_s.push(s);
+      }
+    }
+
+    Self {
+      params,
+      c_market: DVector::from_vec(flat_prices),
+      s: DVector::from_vec(flat_s),
+      k: DVector::from_vec(flat_strikes),
+      r,
+      q,
+      flat_t,
       option_type,
       record_history,
       loss_metrics: &LossMetric::ALL,
@@ -420,12 +453,13 @@ impl SVJCalibrator {
     let q_val = self.q.unwrap_or(0.0);
 
     for idx in 0..n {
-      let call = bates_call_price(p, self.s[idx], self.k[idx], self.r, q_val, self.tau);
+      let tau = self.flat_t[idx];
+      let call = bates_call_price(p, self.s[idx], self.k[idx], self.r, q_val, tau);
       c_model[idx] = match self.option_type {
         OptionType::Call => call.max(0.0),
         OptionType::Put => {
-          let put = call - self.s[idx] * (-q_val * self.tau).exp()
-            + self.k[idx] * (-self.r * self.tau).exp();
+          let put = call - self.s[idx] * (-q_val * tau).exp()
+            + self.k[idx] * (-self.r * tau).exp();
           put.max(0.0)
         }
       };
@@ -541,16 +575,17 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SVJCalibrator {
             .iter()
             .enumerate()
             .map(|(idx, _)| {
+              let tau = self.flat_t[idx];
               let call = bates_call_price(
                 &params_eff,
                 self.s[idx],
                 self.k[idx],
                 self.r,
                 q_val,
-                self.tau,
+                tau,
               );
-              let put = call - self.s[idx] * (-q_val * self.tau).exp()
-                + self.k[idx] * (-self.r * self.tau).exp();
+              let put = call - self.s[idx] * (-q_val * tau).exp()
+                + self.k[idx] * (-self.r * tau).exp();
               (call.max(0.0), put.max(0.0))
             })
             .collect::<Vec<(f64, f64)>>()

@@ -230,24 +230,24 @@ pub struct HestonCalibrator {
   /// Params to calibrate (v0, kappa, theta, sigma, rho).
   /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).
   pub params: Option<HestonParams>,
-  /// Option prices from the market.
+  /// Option prices from the market (flattened across all maturities).
   pub c_market: DVector<f64>,
   /// Underlying spot per quote (allows small variations per strike/maturity bucket).
   pub s: DVector<f64>,
-  /// Strikes per quote.
+  /// Strikes per quote (flattened).
   pub k: DVector<f64>,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
   pub q: Option<f64>,
-  /// Time to maturity (years) used for all quotes in this calibrator.
-  pub tau: f64,
+  /// Time to maturity per quote (flattened). Supports multi-maturity joint calibration.
+  pub flat_t: Vec<f64>,
   /// Option type of the quotes.
   pub option_type: OptionType,
   /// Optional: time series for MLE-based initial guess
-  pub mle_s: Option<Array1<f64>>, // stock prices time series
-  pub mle_v: Option<Array1<f64>>, // variance (or instantaneous variance proxy) time series
-  pub mle_r: Option<f64>,         // risk-free rate used for MLE
+  pub mle_s: Option<Array1<f64>>,
+  pub mle_v: Option<Array1<f64>>,
+  pub mle_r: Option<f64>,
   /// Seed method for the MLE-based initial guess.
   pub mle_seed_method: HestonMleSeedMethod,
   /// Optional explicit sampling step used by MLE seed estimators.
@@ -265,6 +265,7 @@ pub struct HestonCalibrator {
 }
 
 impl HestonCalibrator {
+  /// Create a calibrator for a single maturity slice (backwards compatible).
   pub fn new(
     params: Option<HestonParams>,
     c_market: DVector<f64>,
@@ -279,16 +280,9 @@ impl HestonCalibrator {
     mle_r: Option<f64>,
     record_history: bool,
   ) -> Self {
-    assert_eq!(
-      c_market.len(),
-      s.len(),
-      "c_market and s must have the same length"
-    );
-    assert_eq!(
-      c_market.len(),
-      k.len(),
-      "c_market and k must have the same length"
-    );
+    let n = c_market.len();
+    assert_eq!(n, s.len(), "c_market and s must have the same length");
+    assert_eq!(n, k.len(), "c_market and k must have the same length");
     assert!(
       tau.is_finite() && tau > 0.0,
       "tau must be a finite positive value"
@@ -301,11 +295,57 @@ impl HestonCalibrator {
       k,
       r,
       q,
-      tau,
+      flat_t: vec![tau; n],
       option_type,
       mle_s,
       mle_v,
       mle_r,
+      mle_seed_method: HestonMleSeedMethod::default(),
+      mle_delta: None,
+      nmle_cekf_config: None,
+      record_history,
+      loss_metrics: &LossMetric::ALL,
+      jacobian_method: HestonJacobianMethod::default(),
+      calibration_history: Rc::new(RefCell::new(Vec::new())),
+    }
+  }
+
+  /// Create a calibrator from multiple maturity slices for joint surface calibration.
+  pub fn from_slices(
+    params: Option<HestonParams>,
+    slices: &[super::levy::MarketSlice],
+    s: f64,
+    r: f64,
+    q: Option<f64>,
+    option_type: OptionType,
+    record_history: bool,
+  ) -> Self {
+    let mut flat_prices = Vec::new();
+    let mut flat_strikes = Vec::new();
+    let mut flat_t = Vec::new();
+    let mut flat_s = Vec::new();
+
+    for slice in slices {
+      for i in 0..slice.strikes.len() {
+        flat_prices.push(slice.prices[i]);
+        flat_strikes.push(slice.strikes[i]);
+        flat_t.push(slice.t);
+        flat_s.push(s);
+      }
+    }
+
+    Self {
+      params,
+      c_market: DVector::from_vec(flat_prices),
+      s: DVector::from_vec(flat_s),
+      k: DVector::from_vec(flat_strikes),
+      r,
+      q,
+      flat_t,
+      option_type,
+      mle_s: None,
+      mle_v: None,
+      mle_r: None,
       mle_seed_method: HestonMleSeedMethod::default(),
       mle_delta: None,
       nmle_cekf_config: None,
@@ -472,8 +512,8 @@ impl HestonCalibrator {
         params.kappa,
         params.theta,
         params.sigma,
-        Some(0.0), // lambda (market price of vol risk), set to 0 in most calibrations
-        Some(self.tau),
+        Some(0.0),
+        Some(self.flat_t[idx]),
         None,
         None,
       );
@@ -742,9 +782,10 @@ impl HestonCalibrator {
     for idx in 0..n {
       let s = self.s[idx];
       let k = self.k[idx];
-      let (call_raw, grad_call) = self.cui_price_and_grad_for_quote(params, s, k, self.tau)?;
-      let disc_r = (-self.r * self.tau).exp();
-      let disc_q = (-self.q.unwrap_or(0.0) * self.tau).exp();
+      let tau_idx = self.flat_t[idx];
+      let (call_raw, grad_call) = self.cui_price_and_grad_for_quote(params, s, k, tau_idx)?;
+      let disc_r = (-self.r * tau_idx).exp();
+      let disc_q = (-self.q.unwrap_or(0.0) * tau_idx).exp();
       let put_raw = call_raw - s * disc_q + k * disc_r;
 
       let (model_raw, grad_model) = match self.option_type {
@@ -894,7 +935,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
                 params_eff.theta,
                 params_eff.sigma,
                 Some(0.0),
-                Some(self.tau),
+                Some(self.flat_t[i]),
                 None,
                 None,
               );
