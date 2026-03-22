@@ -492,6 +492,31 @@ pub trait TimeExt {
   }
 }
 
+/// Trait for models that can price European options at arbitrary (K, T) points.
+///
+/// Unlike [`PricerExt`], which bundles market data and strike into the pricer,
+/// `ModelPricer` separates the model from the pricing query. This enables
+/// vectorized pricing across strike/maturity grids for calibration and vol
+/// surface construction.
+pub trait ModelPricer {
+  /// Price a European call option.
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
+
+  /// Price a European put via put-call parity.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let call = self.price_call(s, k, r, q, tau);
+    call - s * (-q * tau).exp() + k * (-r * tau).exp()
+  }
+
+  /// Price a call or put.
+  fn price_option(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    match option_type {
+      OptionType::Call => self.price_call(s, k, r, q, tau),
+      OptionType::Put => self.price_put(s, k, r, q, tau),
+    }
+  }
+}
+
 pub trait MalliavinExt<T: FloatExt> {
   fn sample_with_noise(&self, noise: &Array1<T>) -> Array1<T>;
 

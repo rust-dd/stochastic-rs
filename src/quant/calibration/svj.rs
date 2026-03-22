@@ -181,6 +181,24 @@ pub struct SVJCalibrationResult {
   pub converged: bool,
 }
 
+impl SVJCalibrationResult {
+  /// Convert to a [`BatesFourier`] model for pricing / vol surface generation.
+  pub fn to_fourier(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::BatesFourier {
+    crate::quant::pricing::fourier::BatesFourier {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma_v: self.sigma_v,
+      rho: self.rho,
+      lambda: self.lambda,
+      mu_j: self.mu_j,
+      sigma_j: self.sigma_j,
+      r,
+      q,
+    }
+  }
+}
+
 /// SVJ (Bates) least-squares calibrator using Levenberg-Marquardt.
 ///
 /// Source:

@@ -50,6 +50,22 @@ pub struct HscmCalibrationResult {
   pub mae: f64,
 }
 
+impl From<HscmCalibrationResult> for crate::quant::pricing::heston_stoch_corr::HscmModel {
+  fn from(r: HscmCalibrationResult) -> Self {
+    Self {
+      v0: r.v0,
+      kappa_v: r.kappa_v,
+      theta_v: r.theta_v,
+      sigma_v: r.sigma_v,
+      rho0: r.rho0,
+      kappa_r: r.kappa_r,
+      mu_r: r.mu_r,
+      sigma_r: r.sigma_r,
+      rho2: r.rho2,
+    }
+  }
+}
+
 impl HscmCalibrationResult {
   pub fn to_vec(&self) -> Vec<f64> {
     vec![

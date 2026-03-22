@@ -98,6 +98,19 @@ pub struct HestonParams {
 }
 
 impl HestonParams {
+  /// Convert to a [`HestonFourier`] model for pricing / vol surface generation.
+  pub fn to_fourier(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::HestonFourier {
+    crate::quant::pricing::fourier::HestonFourier {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma: self.sigma,
+      rho: self.rho,
+      r,
+      q,
+    }
+  }
+
   fn periodic_map(x: f64, c: f64, d: f64) -> f64 {
     if c <= x && x <= d {
       x

@@ -84,6 +84,63 @@ pub struct LevyCalibrationResult {
   pub iterations: usize,
 }
 
+impl LevyCalibrationResult {
+  /// Convert to a Fourier model for pricing / vol surface generation.
+  ///
+  /// Returns a boxed [`ModelPricer`] because the concrete type depends
+  /// on the calibrated model variant.
+  pub fn to_model(
+    &self,
+    r: f64,
+    q: f64,
+  ) -> Box<dyn crate::traits::ModelPricer> {
+    use crate::quant::pricing::fourier::*;
+    let p = &self.params;
+    match self.model_type {
+      LevyModelType::VarianceGamma => Box::new(VarianceGammaFourier {
+        sigma: p[0],
+        theta: p[1],
+        nu: p[2],
+        r,
+        q,
+      }),
+      LevyModelType::NIG => Box::new(CGMYFourier {
+        c: p[0],
+        g: p[1],
+        m: p[2],
+        y: 0.5,
+        r,
+        q,
+      }),
+      LevyModelType::CGMY => Box::new(CGMYFourier {
+        c: p[0],
+        g: p[1],
+        m: p[2],
+        y: p[3],
+        r,
+        q,
+      }),
+      LevyModelType::MertonJD => Box::new(MertonJDFourier {
+        sigma: p[0],
+        lambda: p[1],
+        mu_j: p[2],
+        sigma_j: p[3],
+        r,
+        q,
+      }),
+      LevyModelType::Kou => Box::new(KouFourier {
+        sigma: p[0],
+        lambda: p[1],
+        p_up: p[2],
+        eta1: p[3],
+        eta2: p[4],
+        r,
+        q,
+      }),
+    }
+  }
+}
+
 /// Lévy model calibrator via Fourier pricing + Levenberg-Marquardt.
 ///
 /// Source:

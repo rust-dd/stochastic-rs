@@ -244,6 +244,14 @@ impl LewisPricer {
   }
 }
 
+/// Blanket implementation: every [`FourierModelExt`] model automatically
+/// implements [`ModelPricer`] via Gil-Pelaez quadrature.
+impl<T: FourierModelExt> crate::traits::ModelPricer for T {
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    GilPelaezPricer::price_call(self, s, k, r, q, tau)
+  }
+}
+
 /// Black–Scholes–Merton model for Fourier pricing.
 pub struct BSMFourier {
   pub sigma: f64,

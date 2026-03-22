@@ -319,6 +319,43 @@ impl PricerExt for SabrPricer {
   }
 }
 
+/// SABR model parameters (model only, no market data).
+///
+/// Implements [`ModelPricer`] via the Hagan (2002) implied-vol formula
+/// plugged into Black-Scholes.
+#[derive(Clone, Copy, Debug)]
+pub struct SabrModel {
+  pub alpha: f64,
+  pub beta: f64,
+  pub nu: f64,
+  pub rho: f64,
+}
+
+impl crate::traits::ModelPricer for SabrModel {
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let fwd = s * ((r - q) * tau).exp();
+    let sigma = hagan_implied_vol(k, fwd, tau, self.alpha, self.beta, self.nu, self.rho);
+    if !sigma.is_finite() || sigma <= 0.0 {
+      return 0.0;
+    }
+    let pricer = BSMPricer::new(
+      s,
+      sigma,
+      k,
+      r,
+      None,
+      None,
+      Some(q),
+      Some(tau),
+      None,
+      None,
+      OptionType::Call,
+      BSMCoc::Merton1973,
+    );
+    pricer.calculate_call_put().0
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

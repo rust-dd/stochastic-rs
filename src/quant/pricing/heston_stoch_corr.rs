@@ -261,6 +261,32 @@ impl TimeExt for HestonStochCorrPricer {
   }
 }
 
+/// Heston stochastic-correlation model parameters (model only, no market data).
+///
+/// Implements [`ModelPricer`] via the Carr-Madan FFT pricer.
+#[derive(Clone, Copy, Debug)]
+pub struct HscmModel {
+  pub v0: f64,
+  pub kappa_v: f64,
+  pub theta_v: f64,
+  pub sigma_v: f64,
+  pub rho0: f64,
+  pub kappa_r: f64,
+  pub mu_r: f64,
+  pub sigma_r: f64,
+  pub rho2: f64,
+}
+
+impl crate::traits::ModelPricer for HscmModel {
+  fn price_call(&self, s: f64, k: f64, r: f64, _q: f64, tau: f64) -> f64 {
+    let pricer = HestonStochCorrPricer::new(
+      s, r, k, self.v0, self.kappa_v, self.theta_v, self.sigma_v, self.rho0, self.kappa_r,
+      self.mu_r, self.sigma_r, self.rho2, tau,
+    );
+    pricer.price_call_carr_madan()
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
