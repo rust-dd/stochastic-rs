@@ -228,8 +228,6 @@ impl<T: FloatExt> FMVol<T> {
     self.period * sum.re
   }
 
-  // ──────────────────── spot estimators ───────────────────
-
   /// Spot variance at evaluation times `tau`.
   pub fn spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     let big_m = self.resolve_m(m_freq);
@@ -622,28 +620,28 @@ mod tests {
       })
       .collect();
 
-    // ── Optimal N ──
+    // Optimal N
     let result = super::super::optimal_cutting_frequency(&noisy, &times);
     let (n_opt, m_opt, _l_opt) = result.cutting_freqs();
 
-    // ── Fixed-rule N (heuristic) ──
+    // Fixed-rule N (heuristic)
     let n = lp.len() - 1;
     let (n_heur, m_heur, _) = super::super::default_cutting_freq_noisy(n);
 
-    // ── Estimate with optimal N ──
+    // Estimate with optimal N
     let engine_opt = FMVol::with_freq(&noisy, &times, 1.0, n_opt, n_opt + m_opt + 10);
     let iv_opt = engine_opt.integrated_variance();
 
-    // ── Estimate with heuristic N ──
+    // Estimate with heuristic N
     let engine_heur = FMVol::with_freq(&noisy, &times, 1.0, n_heur, n_heur + m_heur + 10);
     let iv_heur = engine_heur.integrated_variance();
 
-    // ── Estimate with naive N = n/2 (no noise correction) ──
+    // Estimate with naive N = n/2 (no noise correction)
     let engine_naive = FMVol::new(&noisy, &times, 1.0);
     let iv_naive = engine_naive.integrated_variance();
 
     let err_opt = (iv_opt - true_iv).abs() / true_iv;
-    let err_heur = (iv_heur - true_iv).abs() / true_iv;
+    let _err_heur = (iv_heur - true_iv).abs() / true_iv;
     let err_naive = (iv_naive - true_iv).abs() / true_iv;
 
     // Optimal N should give smaller error than naive (no noise correction)
