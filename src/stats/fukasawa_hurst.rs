@@ -16,7 +16,10 @@
 //! - Correction terms A¹ and A² for low-frequency truncation (eq. 16)
 //! - Multi-start L-BFGS-B optimisation (projected L-BFGS via argmin)
 
-use argmin::core::{CostFunction, Executor, Gradient, State};
+use argmin::core::CostFunction;
+use argmin::core::Executor;
+use argmin::core::Gradient;
+use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
 use ndarray::Array1;
@@ -32,8 +35,6 @@ pub struct FukasawaResult {
   pub neg_log_lik: f64,
   pub n_obs: usize,
 }
-
-// ── Spectral helpers ────────────────────────────────────────────────
 
 /// `C_H = Γ(2H+1) sin(πH) / (2π)`.
 fn c_h(h: f64) -> f64 {
@@ -62,8 +63,8 @@ pub fn spectral_density(lambda: f64, h: f64, v: f64, m: usize, _n: usize, k_trun
   let mut sum = lambda.abs().powf(-alpha); // k=0 term
   for k in 1..=k_trunc {
     let kf = k as f64;
-    sum += (2.0 * pi * kf + lambda).abs().powf(-alpha)
-      + (2.0 * pi * kf - lambda).abs().powf(-alpha);
+    sum +=
+      (2.0 * pi * kf + lambda).abs().powf(-alpha) + (2.0 * pi * kf - lambda).abs().powf(-alpha);
   }
 
   let sin_half = (lambda / 2.0).sin();
@@ -111,8 +112,6 @@ fn autocovariance(y: &[f64]) -> Vec<f64> {
     })
     .collect()
 }
-
-// ── Correction terms (eq. 16, Section 3.2) ──────────────────────────
 
 /// Correction term A¹_{H,ν}(ψ) from eq. 16.
 ///
@@ -182,7 +181,6 @@ fn a_hv(tau: usize, psi: f64, h: f64, v: f64, j_max: usize) -> f64 {
 /// autocovariance γ̂ and the Taylor-expanded kernel a_{H,ν}(τ,ψ,J).
 fn correction_a2(gamma: &[f64], psi: f64, h: f64, v: f64, j_max: usize) -> f64 {
   let pi = std::f64::consts::PI;
-  let n = gamma.len();
 
   let a0 = a_hv(0, psi, h, v, j_max);
   let mut sum = a0 * gamma[0];
@@ -267,8 +265,6 @@ fn whittle_objective_full(
   }
 }
 
-// ── L-BFGS-B optimisation (projected L-BFGS via argmin) ─────────────
-
 /// Argmin problem wrapper for Whittle quasi-likelihood minimisation.
 #[derive(Clone)]
 struct WhittleProblem {
@@ -295,7 +291,15 @@ impl WhittleProblem {
   fn eval(&self, params: &[f64]) -> f64 {
     let p = self.clamp(params);
     whittle_objective_full(
-      &self.pgram, &self.gamma, p[0], p[1], self.m, self.n, self.psi, self.k_trunc, self.j_max,
+      &self.pgram,
+      &self.gamma,
+      p[0],
+      p[1],
+      self.m,
+      self.n,
+      self.psi,
+      self.k_trunc,
+      self.j_max,
     )
   }
 }
@@ -359,8 +363,6 @@ fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f
     Err(_) => (h_init, v_init, fallback_cost),
   }
 }
-
-// ── Public estimation API ───────────────────────────────────────────
 
 /// Estimate `(H, η)` from log realized variance increments.
 ///
@@ -467,7 +469,6 @@ pub fn estimate_from_prices_generic<T: FloatExt>(closes: &Array1<T>) -> Fukasawa
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::stochastic::process::fbm::FBM;
   use crate::traits::ProcessExt;
 
   /// With m=1 (daily data, no intraday), estimation has heavy downward
@@ -475,17 +476,27 @@ mod tests {
   /// This test uses the full model (fOU + intraday) with m=72.
   #[test]
   fn estimate_h_from_simulated_rv() {
-    use crate::stochastic::diffusion::fou::FOU;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use rand_distr::{Distribution, StandardNormal};
+    use rand::rngs::StdRng;
+    use rand_distr::Distribution;
+    use rand_distr::StandardNormal;
+
+    use crate::stochastic::diffusion::fou::FOU;
 
     let true_h = 0.3_f64;
     let m = 72_usize;
     let n_days = 500_usize;
     let delta = 1.0 / 250.0;
 
-    let fou = FOU::new(true_h, 0.001, -3.2, 1.0, n_days + 1, Some(-3.2), Some(n_days as f64 * delta));
+    let fou = FOU::new(
+      true_h,
+      0.001,
+      -3.2,
+      1.0,
+      n_days + 1,
+      Some(-3.2),
+      Some(n_days as f64 * delta),
+    );
     let log_vol_sq: ndarray::Array1<f64> = fou.sample();
 
     let mut rng = StdRng::seed_from_u64(123);
@@ -514,17 +525,27 @@ mod tests {
   /// smooth (H=0.45) volatility.
   #[test]
   fn rough_vs_smooth_distinguished() {
-    use crate::stochastic::diffusion::fou::FOU;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use rand_distr::{Distribution, StandardNormal};
+    use rand::rngs::StdRng;
+    use rand_distr::Distribution;
+    use rand_distr::StandardNormal;
+
+    use crate::stochastic::diffusion::fou::FOU;
 
     let m = 72_usize;
     let n_days = 500_usize;
     let delta = 1.0 / 250.0;
 
     let estimate_h = |true_h: f64, seed: u64| -> f64 {
-      let fou = FOU::new(true_h, 0.001, -3.2, 1.0, n_days + 1, Some(-3.2), Some(n_days as f64 * delta));
+      let fou = FOU::new(
+        true_h,
+        0.001,
+        -3.2,
+        1.0,
+        n_days + 1,
+        Some(-3.2),
+        Some(n_days as f64 * delta),
+      );
       let log_vol_sq: ndarray::Array1<f64> = fou.sample();
       let mut rng = StdRng::seed_from_u64(seed);
       let mut log_rv = vec![0.0_f64; n_days];
@@ -570,10 +591,12 @@ mod tests {
   /// computes 5-min realized variance, then estimates H.
   #[test]
   fn table1_m72_accuracy() {
-    use crate::stochastic::diffusion::fou::FOU;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use rand_distr::{Distribution, StandardNormal};
+    use rand::rngs::StdRng;
+    use rand_distr::Distribution;
+    use rand_distr::StandardNormal;
+
+    use crate::stochastic::diffusion::fou::FOU;
 
     let true_h_values = [0.1, 0.3, 0.5];
     let eta_0 = 1.0;
@@ -634,4 +657,3 @@ mod tests {
     }
   }
 }
-
