@@ -23,3 +23,16 @@ pub mod regime_switching;
 pub mod sabr;
 pub mod snell_envelope;
 pub mod variance_swap;
+
+// Re-export Fourier infrastructure and model structs.
+pub use fourier::{
+  BatesFourier, BSMFourier, CGMYFourier, CarrMadanPricer, Cumulants, FourierModelExt,
+  GilPelaezPricer, HKDEFourier, HestonFourier, KouFourier, LewisPricer, MertonJDFourier,
+  VarianceGammaFourier,
+};
+
+// Re-export commonly used pricers.
+pub use bsm::{BSMCoc, BSMPricer};
+pub use heston::HestonPricer;
+pub use heston_stoch_corr::HscmModel;
+pub use sabr::SabrModel;

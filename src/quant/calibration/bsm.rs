@@ -21,6 +21,34 @@ use crate::quant::pricing::bsm::BSMCoc;
 use crate::quant::pricing::bsm::BSMPricer;
 use crate::traits::PricerExt;
 
+/// Calibration result for the BSM model.
+#[derive(Clone, Debug)]
+pub struct BSMCalibrationResult {
+  /// Calibrated implied volatility.
+  pub v: f64,
+  /// Calibration loss metrics.
+  pub loss: CalibrationLossScore,
+  /// Whether the optimiser converged.
+  pub converged: bool,
+}
+
+impl BSMCalibrationResult {
+  /// Convert to a [`BSMFourier`] model for pricing / vol surface generation.
+  pub fn to_model(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::BSMFourier {
+    crate::quant::pricing::fourier::BSMFourier {
+      sigma: self.v,
+      r,
+      q,
+    }
+  }
+}
+
+impl crate::traits::ToModel for BSMCalibrationResult {
+  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
+    Box::new(BSMCalibrationResult::to_model(self, r, q))
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct BSMParams {
   /// Implied volatility
@@ -101,21 +129,30 @@ impl BSMCalibrator {
 }
 
 impl BSMCalibrator {
-  pub fn calibrate(&self) {
-    println!("Initial guess: {:?}", self.params);
+  pub fn calibrate(&self) -> BSMCalibrationResult {
+    let (result, report) = LevenbergMarquardt::new().minimize(self.clone());
+    let converged = report.termination.was_successful();
+    let c_model: Vec<f64> = result.c_market.iter().enumerate().map(|(idx, _)| {
+      let pricer = BSMPricer::new(
+        result.s[idx], result.params.v, result.k[idx], result.r,
+        result.r_d, result.r_f, result.q, Some(result.tau),
+        None, None, result.option_type, BSMCoc::Bsm1973,
+      );
+      let (call, put) = pricer.calculate_call_put();
+      match result.option_type {
+        OptionType::Call => call,
+        OptionType::Put => put,
+      }
+    }).collect();
+    let loss = CalibrationLossScore::compute_selected(
+      result.c_market.as_slice(), &c_model, result.loss_metrics,
+    );
 
-    let (result, ..) = LevenbergMarquardt::new().minimize(self.clone());
-
-    // Print the c_market
-    println!("Market prices: {:?}", self.c_market);
-
-    let residuals = result.residuals().unwrap();
-
-    // Print the c_model
-    println!("Model prices: {:?}", self.c_market.clone() + residuals);
-
-    // Print the result of the calibration
-    println!("Calibration report: {:?}", result.params);
+    BSMCalibrationResult {
+      v: result.params.v,
+      loss,
+      converged,
+    }
   }
 
   pub fn set_initial_guess(&mut self, params: BSMParams) {

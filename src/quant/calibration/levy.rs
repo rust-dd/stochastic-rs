@@ -23,7 +23,6 @@
 use std::cell::RefCell;
 use std::f64::consts::FRAC_1_PI;
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
@@ -37,8 +36,9 @@ use crate::quant::CalibrationLossScore;
 use crate::quant::LossMetric;
 use crate::quant::calibration::CalibrationHistory;
 
-const GL_N: usize = 64;
-const U_MAX: f64 = 100.0;
+use super::GL_U_MAX;
+use super::gauss_legendre_64;
+
 const EPS: f64 = 1e-8;
 
 /// Supported Lévy model types for calibration.
@@ -82,6 +82,12 @@ pub struct LevyCalibrationResult {
   pub converged: bool,
   /// Number of LM iterations performed.
   pub iterations: usize,
+}
+
+impl crate::traits::ToModel for LevyCalibrationResult {
+  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
+    LevyCalibrationResult::to_model(self, r, q)
+  }
 }
 
 impl LevyCalibrationResult {
@@ -172,56 +178,6 @@ pub struct LevyCalibrator {
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<Vec<f64>>>>>,
 }
 
-// Gauss-Legendre quadrature (cached)
-fn gauss_legendre_nodes_weights(n: usize) -> (Vec<f64>, Vec<f64>) {
-  let mut x = vec![0.0; n];
-  let mut w = vec![0.0; n];
-  let m = n.div_ceil(2);
-  let eps = 1e-14;
-
-  for i in 0..m {
-    let mut z = (std::f64::consts::PI * (i as f64 + 0.75) / (n as f64 + 0.5)).cos();
-    loop {
-      let mut p1 = 1.0;
-      let mut p2 = 0.0;
-      for j in 1..=n {
-        let p3 = p2;
-        p2 = p1;
-        p1 = ((2.0 * j as f64 - 1.0) * z * p2 - (j as f64 - 1.0) * p3) / j as f64;
-      }
-      let pp = n as f64 * (z * p1 - p2) / (z * z - 1.0);
-      let z_next = z - p1 / pp;
-      if (z_next - z).abs() <= eps {
-        z = z_next;
-        break;
-      }
-      z = z_next;
-    }
-
-    x[i] = -z;
-    x[n - 1 - i] = z;
-
-    let mut p1 = 1.0;
-    let mut p2 = 0.0;
-    for j in 1..=n {
-      let p3 = p2;
-      p2 = p1;
-      p1 = ((2.0 * j as f64 - 1.0) * z * p2 - (j as f64 - 1.0) * p3) / j as f64;
-    }
-    let pp = n as f64 * (z * p1 - p2) / (z * z - 1.0);
-    let wi = 2.0 / ((1.0 - z * z) * pp * pp);
-    w[i] = wi;
-    w[n - 1 - i] = wi;
-  }
-
-  (x, w)
-}
-
-fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
-  static GL64: OnceLock<(Vec<f64>, Vec<f64>)> = OnceLock::new();
-  let (x, w) = GL64.get_or_init(|| gauss_legendre_nodes_weights(GL_N));
-  (x.as_slice(), w.as_slice())
-}
 
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
 /// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.
@@ -338,7 +294,7 @@ fn fourier_call_price(
   t: f64,
 ) -> f64 {
   let (nodes, weights) = gauss_legendre_64();
-  let scale = 0.5 * U_MAX;
+  let scale = 0.5 * GL_U_MAX;
   let ln_s = s.ln();
   let ln_k = k.ln();
   let rq = r - q;
@@ -466,13 +422,6 @@ fn project_params(model_type: LevyModelType, params: &mut [f64]) {
   }
 }
 
-fn compute_loss_score(
-  market: &[f64],
-  model: &[f64],
-  metrics: &[LossMetric],
-) -> CalibrationLossScore {
-  CalibrationLossScore::compute_selected(market, model, metrics)
-}
 
 impl LevyCalibrator {
   pub fn new(
@@ -539,20 +488,13 @@ impl LevyCalibrator {
     }
     project_params(problem.model_type, &mut problem.params);
 
-    println!(
-      "Lévy {:?} initial guess: {:?}",
-      self.model_type, problem.params
-    );
-
     let (result, report) = LevenbergMarquardt::new().minimize(problem);
 
     let final_params = result.params.clone();
     let c_model = result.compute_model_prices();
-    let loss = compute_loss_score(&result.flat_prices, &c_model, result.loss_metrics);
-
-    println!("Market prices: {:?}", result.flat_prices);
-    println!("Model prices:  {:?}", c_model);
-    println!("Calibration report: {:?}", final_params);
+    let loss = CalibrationLossScore::compute_selected(
+      &result.flat_prices, &c_model, result.loss_metrics,
+    );
 
     LevyCalibrationResult {
       params: final_params,
@@ -692,7 +634,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for LevyCalibrator {
             .collect::<Vec<(f64, f64)>>()
             .into(),
           params: self.params.clone(),
-          loss_scores: compute_loss_score(&self.flat_prices, &c_model, self.loss_metrics),
+          loss_scores: CalibrationLossScore::compute_selected(&self.flat_prices, &c_model, self.loss_metrics),
         });
     }
 

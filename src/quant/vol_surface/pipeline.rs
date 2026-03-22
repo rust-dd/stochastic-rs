@@ -9,8 +9,11 @@ use ndarray::Array2;
 
 use super::analytics::SmileAnalytics;
 use super::implied::ImpliedVolSurface;
+use super::model_surface::ModelSurface;
 use super::ssvi::SsviSurface;
 use super::svi::SviRawParams;
+use crate::traits::ModelPricer;
+use crate::traits::ToModel;
 
 /// Result of the full vol-surface pipeline.
 #[derive(Clone, Debug)]
@@ -63,6 +66,50 @@ pub fn build_surface(
   let iv_surface = ImpliedVolSurface::from_prices(strikes, maturities, forwards, prices, is_call);
 
   build_surface_from_iv(&iv_surface)
+}
+
+/// Build a complete volatility surface from any calibrated model.
+///
+/// Works with all `ModelPricer` implementations: Heston, Bates/SVJ, Lévy
+/// (VG, NIG, CGMY, Merton, Kou), HSCM, SABR, or any custom model.
+///
+/// # Arguments
+/// * `model` - Calibrated model implementing [`ModelPricer`]
+/// * `s` - Spot price
+/// * `r` - Risk-free rate
+/// * `q` - Dividend yield
+/// * `strikes` - Strike prices (ascending)
+/// * `maturities` - Maturities in years (ascending)
+pub fn build_surface_from_model(
+  model: &dyn ModelPricer,
+  s: f64,
+  r: f64,
+  q: f64,
+  strikes: &[f64],
+  maturities: &[f64],
+) -> VolSurfaceResult {
+  let iv_surface = model.vol_surface(s, r, q, strikes, maturities);
+  build_surface_from_iv(&iv_surface)
+}
+
+/// Build a complete volatility surface directly from a calibration result.
+///
+/// Accepts any type implementing [`ToModel`] (all calibration results).
+///
+/// ```rust,ignore
+/// let result = heston_calibrator.calibrate();
+/// let surface = build_surface_from_calibration(&result, s, r, q, &strikes, &mats);
+/// ```
+pub fn build_surface_from_calibration(
+  calibration: &dyn ToModel,
+  s: f64,
+  r: f64,
+  q: f64,
+  strikes: &[f64],
+  maturities: &[f64],
+) -> VolSurfaceResult {
+  let model = calibration.to_model(r, q);
+  build_surface_from_model(model.as_ref(), s, r, q, strikes, maturities)
 }
 
 /// Build SVI/SSVI fits and diagnostics from an existing implied vol surface.

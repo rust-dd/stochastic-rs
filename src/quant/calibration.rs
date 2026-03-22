@@ -4,6 +4,9 @@
 //! \hat\theta=\arg\min_\theta\sum_i w_i\left(P_i^{model}(\theta)-P_i^{mkt}\right)^2
 //! $$
 //!
+use std::sync::OnceLock;
+
+use gauss_quad::GaussLegendre;
 use nalgebra::DVector;
 
 use crate::quant::CalibrationLossScore;
@@ -14,8 +17,51 @@ pub mod heston_stoch_corr;
 pub mod levy;
 pub mod rbergomi;
 pub mod sabr;
-pub mod sabr_smile;
 pub mod svj;
+
+// Re-export key calibration types for convenience.
+pub use bsm::{BSMCalibrationResult, BSMCalibrator, BSMParams};
+pub use heston::{HestonCalibrator, HestonParams};
+pub use heston_stoch_corr::{HscmCalibrationResult, MarketOption, calibrate_hscm};
+pub use levy::{LevyCalibrationResult, LevyCalibrator, LevyModelType, MarketSlice};
+pub use sabr::{SabrCalibrationResult, SabrCalibrator, SabrParams};
+pub use svj::{SVJCalibrationResult, SVJCalibrator, SVJParams};
+
+/// Default upper integration limit for Gil-Pelaez integrals in calibrators.
+pub(crate) const GL_U_MAX: f64 = 100.0;
+
+/// Cached 64-point Gauss-Legendre nodes and weights via `gauss_quad` crate.
+pub(crate) fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
+  static GL64: OnceLock<(Vec<f64>, Vec<f64>)> = OnceLock::new();
+  let (nodes, weights) = GL64.get_or_init(|| {
+    let quad = GaussLegendre::new(64.try_into().unwrap());
+    let nodes: Vec<f64> = quad.nodes().copied().collect();
+    let weights: Vec<f64> = quad.weights().copied().collect();
+    (nodes, weights)
+  });
+  (nodes.as_slice(), weights.as_slice())
+}
+
+/// Periodic linear extension mapping `x` into `[c, d]`.
+///
+/// Used to keep optimiser parameters in range without hard clipping.
+pub(crate) fn periodic_map(x: f64, c: f64, d: f64) -> f64 {
+  if c <= x && x <= d {
+    x
+  } else {
+    let range = d - c;
+    if range <= 0.0 {
+      return c;
+    }
+    let n = ((x - c) / range).floor();
+    let n_int = n as i64;
+    if n_int % 2 == 0 {
+      x - n * range
+    } else {
+      d + n * range - (x - c)
+    }
+  }
+}
 
 #[derive(Clone, Debug)]
 pub struct CalibrationHistory<T> {

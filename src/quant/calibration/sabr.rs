@@ -30,6 +30,37 @@ const RHO_BOUND: f64 = 0.9999;
 const ALPHA_MIN: f64 = 1e-6;
 const NU_MIN: f64 = 1e-6;
 
+/// Calibration result for the SABR model.
+#[derive(Clone, Debug)]
+pub struct SabrCalibrationResult {
+  pub alpha: f64,
+  pub beta: f64,
+  pub nu: f64,
+  pub rho: f64,
+  /// Calibration loss metrics.
+  pub loss: CalibrationLossScore,
+  /// Whether the optimiser converged.
+  pub converged: bool,
+}
+
+impl crate::traits::ToModel for SabrCalibrationResult {
+  fn to_model(&self, _r: f64, _q: f64) -> Box<dyn crate::traits::ModelPricer> {
+    Box::new(SabrCalibrationResult::to_model(self))
+  }
+}
+
+impl SabrCalibrationResult {
+  /// Convert to a [`SabrModel`] for pricing / vol surface generation.
+  pub fn to_model(&self) -> crate::quant::pricing::sabr::SabrModel {
+    crate::quant::pricing::sabr::SabrModel {
+      alpha: self.alpha,
+      beta: self.beta,
+      nu: self.nu,
+      rho: self.rho,
+    }
+  }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SabrParams {
   /// Model shape/loading parameter.
@@ -126,17 +157,26 @@ impl SabrCalibrator {
 }
 
 impl SabrCalibrator {
-  pub fn calibrate(&self) {
+  pub fn calibrate(&self) -> SabrCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
-    println!("Initial guess: {:?}", problem.params);
-    let (result, ..) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    let converged = report.termination.was_successful();
+    let p = result.effective_params();
+    let c_model = result.compute_model_prices_for(&p);
+    let loss = CalibrationLossScore::compute_selected(
+      result.c_market.as_slice(), c_model.as_slice(), result.loss_metrics,
+    );
 
-    println!("Market prices: {:?}", self.c_market);
-    let residuals = result.residuals().unwrap();
-    println!("Model prices: {:?}", self.c_market.clone() - residuals);
-    println!("Calibration report: {:?}", result.params);
+    SabrCalibrationResult {
+      alpha: p.alpha,
+      beta: p.beta,
+      nu: p.nu,
+      rho: p.rho,
+      loss,
+      converged,
+    }
   }
 
   pub fn set_initial_guess(&mut self, params: SabrParams) {

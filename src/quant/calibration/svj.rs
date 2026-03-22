@@ -26,7 +26,6 @@
 use std::cell::RefCell;
 use std::f64::consts::FRAC_1_PI;
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
@@ -41,13 +40,15 @@ use crate::quant::LossMetric;
 use crate::quant::OptionType;
 use crate::quant::calibration::CalibrationHistory;
 
+use super::GL_U_MAX;
+use super::gauss_legendre_64;
+use super::periodic_map;
+
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
 const KAPPA_MIN: f64 = 1e-3;
 const THETA_MIN: f64 = 1e-8;
 const SIGMA_V_MIN: f64 = 1e-8;
-const GL_N: usize = 64;
-const U_MAX: f64 = 100.0;
 
 // Parameter ranges for periodic/box projection
 const P_V0: (f64, f64) = (0.005, 0.25);
@@ -81,36 +82,18 @@ pub struct SVJParams {
 }
 
 impl SVJParams {
-  fn periodic_map(x: f64, c: f64, d: f64) -> f64 {
-    if c <= x && x <= d {
-      x
-    } else {
-      let range = d - c;
-      if range <= 0.0 {
-        return c;
-      }
-      let n = ((x - c) / range).floor();
-      let n_int = n as i64;
-      if n_int % 2 == 0 {
-        x - n * range
-      } else {
-        d + n * range - (x - c)
-      }
-    }
-  }
-
   /// Project parameters to satisfy admissibility constraints (box + Feller condition).
   pub fn project_in_place(&mut self) {
-    self.v0 = Self::periodic_map(self.v0, P_V0.0, P_V0.1).max(0.0);
-    self.kappa = Self::periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
-    self.theta = Self::periodic_map(self.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);
-    self.sigma_v = Self::periodic_map(self.sigma_v, P_SIGMA_V.0, P_SIGMA_V.1)
+    self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1).max(0.0);
+    self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
+    self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);
+    self.sigma_v = periodic_map(self.sigma_v, P_SIGMA_V.0, P_SIGMA_V.1)
       .abs()
       .max(SIGMA_V_MIN);
-    self.rho = Self::periodic_map(self.rho, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
-    self.lambda = Self::periodic_map(self.lambda, P_LAMBDA.0, P_LAMBDA.1).max(0.0);
-    self.mu_j = Self::periodic_map(self.mu_j, P_MU_J.0, P_MU_J.1);
-    self.sigma_j = Self::periodic_map(self.sigma_j, P_SIGMA_J.0, P_SIGMA_J.1)
+    self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
+    self.lambda = periodic_map(self.lambda, P_LAMBDA.0, P_LAMBDA.1).max(0.0);
+    self.mu_j = periodic_map(self.mu_j, P_MU_J.0, P_MU_J.1);
+    self.sigma_j = periodic_map(self.sigma_j, P_SIGMA_J.0, P_SIGMA_J.1)
       .abs()
       .max(P_SIGMA_J.0);
 
@@ -180,9 +163,15 @@ pub struct SVJCalibrationResult {
   pub converged: bool,
 }
 
+impl crate::traits::ToModel for SVJCalibrationResult {
+  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
+    Box::new(SVJCalibrationResult::to_model(self, r, q))
+  }
+}
+
 impl SVJCalibrationResult {
   /// Convert to a [`BatesFourier`] model for pricing / vol surface generation.
-  pub fn to_fourier(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::BatesFourier {
+  pub fn to_model(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::BatesFourier {
     crate::quant::pricing::fourier::BatesFourier {
       v0: self.v0,
       kappa: self.kappa,
@@ -196,6 +185,7 @@ impl SVJCalibrationResult {
       q,
     }
   }
+
 }
 
 /// SVJ (Bates) least-squares calibrator using Levenberg-Marquardt.
@@ -230,55 +220,6 @@ pub struct SVJCalibrator {
   calibration_history: Rc<RefCell<Vec<CalibrationHistory<SVJParams>>>>,
 }
 
-fn gauss_legendre_nodes_weights(n: usize) -> (Vec<f64>, Vec<f64>) {
-  let mut x = vec![0.0; n];
-  let mut w = vec![0.0; n];
-  let m = n.div_ceil(2);
-  let eps = 1e-14;
-
-  for i in 0..m {
-    let mut z = (std::f64::consts::PI * (i as f64 + 0.75) / (n as f64 + 0.5)).cos();
-    loop {
-      let mut p1 = 1.0;
-      let mut p2 = 0.0;
-      for j in 1..=n {
-        let p3 = p2;
-        p2 = p1;
-        p1 = ((2.0 * j as f64 - 1.0) * z * p2 - (j as f64 - 1.0) * p3) / j as f64;
-      }
-      let pp = n as f64 * (z * p1 - p2) / (z * z - 1.0);
-      let z_next = z - p1 / pp;
-      if (z_next - z).abs() <= eps {
-        z = z_next;
-        break;
-      }
-      z = z_next;
-    }
-
-    x[i] = -z;
-    x[n - 1 - i] = z;
-
-    let mut p1 = 1.0;
-    let mut p2 = 0.0;
-    for j in 1..=n {
-      let p3 = p2;
-      p2 = p1;
-      p1 = ((2.0 * j as f64 - 1.0) * z * p2 - (j as f64 - 1.0) * p3) / j as f64;
-    }
-    let pp = n as f64 * (z * p1 - p2) / (z * z - 1.0);
-    let wi = 2.0 / ((1.0 - z * z) * pp * pp);
-    w[i] = wi;
-    w[n - 1 - i] = wi;
-  }
-
-  (x, w)
-}
-
-fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
-  static GL64: OnceLock<(Vec<f64>, Vec<f64>)> = OnceLock::new();
-  let (x, w) = GL64.get_or_init(|| gauss_legendre_nodes_weights(GL_N));
-  (x.as_slice(), w.as_slice())
-}
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -326,7 +267,7 @@ fn bates_cf(p: &SVJParams, s: f64, r: f64, q: f64, tau: f64, u: Complex64) -> Co
 /// Gauss-Legendre quadrature over the Gil-Pelaez integral.
 fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
   let (nodes, weights) = gauss_legendre_64();
-  let scale = 0.5 * U_MAX;
+  let scale = 0.5 * GL_U_MAX;
 
   let mut i1 = 0.0_f64;
   let mut i2 = 0.0_f64;
@@ -357,13 +298,6 @@ fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> 
   call.max(0.0)
 }
 
-fn compute_loss_score(
-  market: &[f64],
-  model: &[f64],
-  metrics: &[LossMetric],
-) -> CalibrationLossScore {
-  CalibrationLossScore::compute_selected(market, model, metrics)
-}
 
 impl SVJCalibrator {
   pub fn new(
@@ -417,17 +351,11 @@ impl SVJCalibrator {
     }
     problem.ensure_initial_guess();
 
-    println!("SVJ initial guess: {:?}", problem.params);
-
     let (result, report) = LevenbergMarquardt::new().minimize(problem);
 
-    println!("Market prices: {:?}", result.c_market);
-    let c_model = result.compute_model_prices_for(&result.effective_params());
-    println!("Model prices:  {:?}", c_model);
-    println!("Calibration report: {:?}", result.params);
-
     let p = result.effective_params();
-    let loss = compute_loss_score(
+    let c_model = result.compute_model_prices_for(&p);
+    let loss = CalibrationLossScore::compute_selected(
       result.c_market.as_slice(),
       c_model.as_slice(),
       result.loss_metrics,
@@ -628,7 +556,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SVJCalibrator {
             .collect::<Vec<(f64, f64)>>()
             .into(),
           params: params_eff,
-          loss_scores: compute_loss_score(
+          loss_scores: CalibrationLossScore::compute_selected(
             self.c_market.as_slice(),
             c_model.as_slice(),
             self.loss_metrics,

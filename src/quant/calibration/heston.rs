@@ -7,7 +7,6 @@
 use std::cell::RefCell;
 use std::f64::consts::FRAC_1_PI;
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use levenberg_marquardt::LeastSquaresProblem;
 use levenberg_marquardt::LevenbergMarquardt;
@@ -32,13 +31,15 @@ use crate::stats::heston_nml_cekf::HestonNMLECEKFConfig;
 use crate::stats::heston_nml_cekf::nmle_cekf_heston;
 use crate::traits::PricerExt;
 
+use super::GL_U_MAX;
+use super::gauss_legendre_64;
+use super::periodic_map;
+
 const EPS: f64 = 1e-8;
 const RHO_BOUND: f64 = 0.9999;
 const KAPPA_MIN: f64 = 1e-3;
 const THETA_MIN: f64 = 1e-8;
 const SIGMA_MIN: f64 = 1e-8;
-const CUI_GL_N: usize = 64;
-const CUI_U_MAX: f64 = 100.0;
 
 // Use periodic linear extension mapping into these ranges
 const P_KAPPA: (f64, f64) = (0.1, 20.0);
@@ -98,7 +99,7 @@ pub struct HestonParams {
 
 impl HestonParams {
   /// Convert to a [`HestonFourier`] model for pricing / vol surface generation.
-  pub fn to_fourier(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::HestonFourier {
+  pub fn to_model(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::HestonFourier {
     crate::quant::pricing::fourier::HestonFourier {
       v0: self.v0,
       kappa: self.kappa,
@@ -110,24 +111,15 @@ impl HestonParams {
     }
   }
 
-  fn periodic_map(x: f64, c: f64, d: f64) -> f64 {
-    if c <= x && x <= d {
-      x
-    } else {
-      let range = d - c;
-      if range <= 0.0 {
-        return c;
-      }
-      let n = ((x - c) / range).floor();
-      let n_int = n as i64;
-      if n_int % 2 == 0 {
-        x - n * range
-      } else {
-        d + n * range - (x - c)
-      }
-    }
-  }
+}
 
+impl crate::traits::ToModel for HestonParams {
+  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
+    Box::new(HestonParams::to_model(self, r, q))
+  }
+}
+
+impl HestonParams {
   /// Project parameters to satisfy Heston admissibility constraints and periodic-range mapping.
   /// Steps:
   /// 1) Periodic mapping into fixed parameter ranges
@@ -138,11 +130,11 @@ impl HestonParams {
   /// - Heston (1993), variance process admissibility context
   ///   https://doi.org/10.1093/rfs/6.2.327
   pub fn project_in_place(&mut self) {
-    self.kappa = Self::periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1);
-    self.theta = Self::periodic_map(self.theta, P_THETA.0, P_THETA.1);
-    self.sigma = Self::periodic_map(self.sigma, P_SIGMA.0, P_SIGMA.1).abs();
-    self.rho = Self::periodic_map(self.rho, P_RHO.0, P_RHO.1);
-    self.v0 = Self::periodic_map(self.v0, P_V0.0, P_V0.1);
+    self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1);
+    self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1);
+    self.sigma = periodic_map(self.sigma, P_SIGMA.0, P_SIGMA.1).abs();
+    self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1);
+    self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1);
 
     self.v0 = self.v0.max(0.0);
     self.kappa = self.kappa.max(KAPPA_MIN);
@@ -226,55 +218,6 @@ fn finite_c64(z: Complex64) -> bool {
   z.re.is_finite() && z.im.is_finite()
 }
 
-fn gauss_legendre_nodes_weights(n: usize) -> (Vec<f64>, Vec<f64>) {
-  let mut x = vec![0.0; n];
-  let mut w = vec![0.0; n];
-  let m = n.div_ceil(2);
-  let eps = 1e-14;
-
-  for i in 0..m {
-    let mut z = (std::f64::consts::PI * (i as f64 + 0.75) / (n as f64 + 0.5)).cos();
-    loop {
-      let mut p1 = 1.0;
-      let mut p2 = 0.0;
-      for j in 1..=n {
-        let p3 = p2;
-        p2 = p1;
-        p1 = ((2.0 * j as f64 - 1.0) * z * p2 - (j as f64 - 1.0) * p3) / j as f64;
-      }
-      let pp = n as f64 * (z * p1 - p2) / (z * z - 1.0);
-      let z_next = z - p1 / pp;
-      if (z_next - z).abs() <= eps {
-        z = z_next;
-        break;
-      }
-      z = z_next;
-    }
-
-    x[i] = -z;
-    x[n - 1 - i] = z;
-
-    let mut p1 = 1.0;
-    let mut p2 = 0.0;
-    for j in 1..=n {
-      let p3 = p2;
-      p2 = p1;
-      p1 = ((2.0 * j as f64 - 1.0) * z * p2 - (j as f64 - 1.0) * p3) / j as f64;
-    }
-    let pp = n as f64 * (z * p1 - p2) / (z * z - 1.0);
-    let wi = 2.0 / ((1.0 - z * z) * pp * pp);
-    w[i] = wi;
-    w[n - 1 - i] = wi;
-  }
-
-  (x, w)
-}
-
-fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
-  static GL64: OnceLock<(Vec<f64>, Vec<f64>)> = OnceLock::new();
-  let (x, w) = GL64.get_or_init(|| gauss_legendre_nodes_weights(CUI_GL_N));
-  (x.as_slice(), w.as_slice())
-}
 
 #[derive(Clone)]
 /// Heston least-squares calibrator using Levenberg-Marquardt iterations.
@@ -652,7 +595,7 @@ impl HestonCalibrator {
     tau: f64,
   ) -> Option<(f64, [f64; 5])> {
     let (nodes, weights) = gauss_legendre_64();
-    let scale = 0.5 * CUI_U_MAX;
+    let scale = 0.5 * GL_U_MAX;
     let sigma = params.sigma;
     let sigma2 = sigma * sigma;
     let sigma3 = sigma2 * sigma;

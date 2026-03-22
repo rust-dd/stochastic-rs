@@ -492,6 +492,20 @@ pub trait TimeExt {
   }
 }
 
+/// Trait for calibration results that can produce a [`ModelPricer`].
+///
+/// Every calibration result implementing this trait can be fed directly into
+/// the vol-surface pipeline via [`build_surface_from_model`].
+///
+/// Fourier-based models (Heston, Bates, Lévy) embed `r` and `q` in their
+/// characteristic function. Non-Fourier models (SABR, HSCM) receive `r`/`q`
+/// at pricing time and may ignore them here.
+///
+/// [`build_surface_from_model`]: crate::quant::vol_surface::pipeline::build_surface_from_model
+pub trait ToModel {
+  fn to_model(&self, r: f64, q: f64) -> Box<dyn ModelPricer>;
+}
+
 /// Trait for models that can price European options at arbitrary (K, T) points.
 ///
 /// Unlike [`PricerExt`], which bundles market data and strike into the pricer,

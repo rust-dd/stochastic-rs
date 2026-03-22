@@ -359,6 +359,10 @@ pub struct RBergomiCalibrationResult {
   pub converged: bool,
 }
 
+// TODO: add `to_model()` once a `RBergomiPricer` implementing `ModelPricer`
+// exists in `pricing/`. The rough Bergomi model has no closed-form CF so it
+// requires Monte Carlo pricing, which doesn't yet have a `ModelPricer` wrapper.
+
 #[derive(Clone)]
 pub struct RBergomiCalibrator {
   /// Spot level $S_0$.
