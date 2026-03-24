@@ -267,15 +267,15 @@ Configuration in this run:
   - [ ] Cross-sectional regression (Fama-MacBeth)
   - [ ] Covariance shrinkage (Ledoit-Wolf)
   - [ ] Pairs trading / stat arb framework
-- [ ] **Calendar & day count** (`quant::calendar`)
-  - [ ] Day count conventions — ACT/360, ACT/365, 30/360, ACT/ACT
-  - [ ] Business day adjustment rules — Following, Modified Following, Preceding
-  - [ ] Holiday calendars — US, UK, TARGET, Tokyo
-  - [ ] Schedule generation for coupon and payment dates
-- [ ] **FX & currencies** (`quant::fx`)
-  - [ ] ISO 4217 currency definitions and metadata
-  - [ ] FX quoting and cross-rate conventions
-  - [ ] FX forward pricing
+- [x] **Calendar & day count** (`quant::calendar`)
+  - [x] Day count conventions — ACT/360, ACT/365, 30/360, ACT/ACT
+  - [x] Business day adjustment rules — Following, Modified Following, Preceding
+  - [x] Holiday calendars — US, UK, TARGET, Tokyo
+  - [x] Schedule generation for coupon and payment dates
+- [x] **FX & currencies** (`quant::fx`)
+  - [x] ISO 4217 currency definitions and metadata
+  - [x] FX quoting and cross-rate conventions
+  - [x] FX forward pricing
 
 ## Contributing
 
