@@ -8,8 +8,10 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 pub mod bonds;
+pub mod calendar;
 pub mod calibration;
 pub mod fourier_malliavin;
+pub mod fx;
 pub mod loss;
 pub mod order_book;
 pub mod portfolio;

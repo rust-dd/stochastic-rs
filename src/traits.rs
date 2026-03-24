@@ -483,6 +483,21 @@ pub trait TimeExt {
     }
   }
 
+  /// Compute `tau` using a specific day count convention.
+  ///
+  /// If `tau` is set explicitly it is returned as-is. Otherwise the year
+  /// fraction is derived from `eval` / `expiration` using the given
+  /// [`DayCountConvention`](crate::quant::calendar::DayCountConvention).
+  fn tau_with_dcc(&self, dcc: crate::quant::calendar::DayCountConvention) -> f64 {
+    if let Some(tau) = self.tau() {
+      return tau;
+    }
+    match (self.eval(), self.expiration()) {
+      (Some(e), Some(x)) => dcc.year_fraction(e, x),
+      _ => panic!("either tau or both eval and expiration must be set"),
+    }
+  }
+
   fn calculate_tau_in_days(&self) -> f64 {
     self.tau_or_from_dates() * 365.0
   }

@@ -10,7 +10,7 @@ description: Development rules for stochastic-rs — enforces project convention
 ```
 src/
   stochastic/       — stochastic processes (diffusion, volatility, jump, noise, interest, autoregressive, correlation, malliavin, sheet)
-  quant/            — quantitative finance (pricing, bonds, portfolio, strategies, order_book, loss)
+  quant/            — quantitative finance (pricing, bonds, portfolio, strategies, calendar, fx, order_book, loss)
   stats/            — statistical estimators and tests (stationarity, normality, spectral, MLE, KDE)
   distributions/    — probability distributions
   copulas/          — copula models (bivariate, multivariate, univariate, empirical, correlation)

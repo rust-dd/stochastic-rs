@@ -217,11 +217,11 @@ Configuration in this run:
   - [x] Quasi-Monte Carlo sequences — Sobol, Halton
   - [x] Multi-Level Monte Carlo (MLMC)
   - [x] Longstaff-Schwartz (LSM) for American option pricing
-- [ ] **Volatility surface** (`quant::vol_surface`)
-  - [ ] Implied volatility surface construction from market data
-  - [ ] SVI parameterization (Gatheral) and SSVI
-  - [ ] Arbitrage-free interpolation and extrapolation
-  - [ ] Smile and skew analytics
+- [x] **Volatility surface** (`quant::vol_surface`)
+  - [x] Implied volatility surface construction from market data
+  - [x] SVI parameterization (Gatheral) and SSVI
+  - [x] Arbitrage-free interpolation and extrapolation
+  - [x] Smile and skew analytics
 - [ ] **Risk metrics** (`quant::risk`)
   - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
   - [ ] CVaR / Expected Shortfall

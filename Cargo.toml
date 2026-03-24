@@ -117,6 +117,10 @@ harness = false
 name = "mle"
 harness = false
 
+[[bench]]
+name = "calendar"
+harness = false
+
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda = ["dep:cudarc", "dep:libloading"]
