@@ -295,9 +295,9 @@ Configuration in this run:
   - [ ] Zero-coupon and year-on-year inflation term structures
   - [ ] CPI / RPI / HICP index objects
   - [ ] Inflation-linked swaps and bonds
-- [ ] **Stochastic local volatility** (`quant::pricing`)
-  - [ ] Heston SLV model — Fokker-Planck calibration
-  - [ ] Combined stochastic + Dupire local vol
+- [x] **Stochastic local volatility** (`quant::pricing`)
+  - [x] Heston SLV model — Guyon–Labordère particle calibration of leverage function
+  - [x] Combined stochastic + Dupire local vol with mixing factor η
 
 ### Done
 

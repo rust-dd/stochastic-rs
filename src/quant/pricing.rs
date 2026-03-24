@@ -22,6 +22,7 @@ pub mod pnl;
 pub mod rbergomi;
 pub mod regime_switching;
 pub mod sabr;
+pub mod slv;
 pub mod snell_envelope;
 pub mod variance_swap;
 
@@ -45,3 +46,4 @@ pub use heston::HestonPricer;
 pub use heston_stoch_corr::HscmModel;
 pub use rbergomi::RBergomiPricer;
 pub use sabr::SabrModel;
+pub use slv::{HestonSlvParams, HestonSlvPricer, LeverageSurface, calibrate_from_dupire, calibrate_leverage};
