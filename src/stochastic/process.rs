@@ -12,5 +12,6 @@ pub mod cpoisson;
 pub mod customjt;
 pub mod fbm;
 pub mod lfsm;
+pub mod hawkes;
 pub mod poisson;
 pub mod subordinator;
