@@ -73,7 +73,7 @@ pub struct HestonStochCorrPricer {
   /// Evaluation date.
   pub eval: Option<chrono::NaiveDate>,
   /// Expiration date.
-  pub expiry: Option<chrono::NaiveDate>,
+  pub expiration: Option<chrono::NaiveDate>,
 }
 
 impl HestonStochCorrPricer {
@@ -109,7 +109,7 @@ impl HestonStochCorrPricer {
       rho2,
       tau: Some(tau),
       eval: None,
-      expiry: None,
+      expiration: None,
     }
   }
 
@@ -257,7 +257,7 @@ impl TimeExt for HestonStochCorrPricer {
   }
 
   fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiry
+    self.expiration
   }
 }
 

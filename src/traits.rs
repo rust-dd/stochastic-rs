@@ -478,7 +478,9 @@ pub trait TimeExt {
       return tau;
     }
     match (self.eval(), self.expiration()) {
-      (Some(e), Some(x)) => x.signed_duration_since(e).num_days() as f64 / 365.0,
+      (Some(e), Some(x)) => {
+        crate::quant::calendar::DayCountConvention::Actual365Fixed.year_fraction(e, x)
+      }
       _ => panic!("either tau or both eval and expiration must be set"),
     }
   }

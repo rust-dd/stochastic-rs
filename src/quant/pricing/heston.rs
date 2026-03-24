@@ -48,7 +48,7 @@ pub struct HestonPricer {
   /// Evaluation date
   pub eval: Option<chrono::NaiveDate>,
   /// Expiration date
-  pub expiry: Option<chrono::NaiveDate>,
+  pub expiration: Option<chrono::NaiveDate>,
 }
 
 impl HestonPricer {
@@ -65,7 +65,7 @@ impl HestonPricer {
     lambda: Option<f64>,
     tau: Option<f64>,
     eval: Option<chrono::NaiveDate>,
-    expiry: Option<chrono::NaiveDate>,
+    expiration: Option<chrono::NaiveDate>,
   ) -> Self {
     Self {
       s,
@@ -80,7 +80,7 @@ impl HestonPricer {
       lambda,
       tau,
       eval,
-      expiry,
+      expiration,
     }
   }
 
@@ -107,7 +107,7 @@ impl HestonPricer {
       lambda: None,
       tau: None,
       eval: None,
-      expiry: None,
+      expiration: None,
     }
   }
 }
@@ -125,7 +125,7 @@ pub struct HestonPricerBuilder {
   lambda: Option<f64>,
   tau: Option<f64>,
   eval: Option<chrono::NaiveDate>,
-  expiry: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
 }
 
 impl HestonPricerBuilder {
@@ -145,8 +145,8 @@ impl HestonPricerBuilder {
     self.eval = Some(eval);
     self
   }
-  pub fn expiry(mut self, expiry: chrono::NaiveDate) -> Self {
-    self.expiry = Some(expiry);
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
     self
   }
   pub fn build(self) -> HestonPricer {
@@ -163,7 +163,7 @@ impl HestonPricerBuilder {
       lambda: self.lambda,
       tau: self.tau,
       eval: self.eval,
-      expiry: self.expiry,
+      expiration: self.expiration,
     }
   }
 }
@@ -206,7 +206,7 @@ impl TimeExt for HestonPricer {
   }
 
   fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiry
+    self.expiration
   }
 }
 

@@ -210,7 +210,96 @@ Configuration in this run:
 
 ## Roadmap to v2
 
-> Turning stochastic-rs into a comprehensive **quantitative research library**.
+> Turning stochastic-rs into a comprehensive **quantitative finance library** — a full QuantLib competitor in Rust.
+
+- [ ] **Yield curve construction** (`quant::curves`)
+  - [ ] Bootstrapping from deposit, FRA, futures, and swap rates
+  - [ ] Nelson-Siegel / Svensson parameterization
+  - [ ] Discount factor and forward rate extraction
+  - [ ] Multi-curve framework (OIS vs SOFR discounting)
+  - [ ] Interpolation — monotone convex, log-linear, cubic spline
+- [ ] **Cash flow engine** (`quant::cashflows`)
+  - [ ] Fixed-rate coupon, floating-rate coupon (IBOR, OIS), CMS coupon
+  - [ ] Leg abstraction — ordered sequence of cash flows with notional schedule
+  - [ ] Amortizing and accreting notionals
+  - [ ] Cash flow NPV, accrued interest
+- [ ] **Interest rate swaps** (`quant::instruments`)
+  - [ ] Vanilla IRS (fixed vs floating)
+  - [ ] Overnight Indexed Swap (OIS)
+  - [ ] Basis swap and cross-currency basis swap
+  - [ ] NPV, fair rate, DV01 / BPV
+- [ ] **Fixed-income instruments** (`quant::instruments`)
+  - [ ] Fixed-rate bond — dirty/clean price, YTM, duration (Macaulay, modified), convexity
+  - [ ] Floating-rate bond / FRN
+  - [ ] Zero-coupon bond pricing from yield curve
+  - [ ] Amortizing bond, inflation-linked bond
+  - [ ] Z-spread, ASW spread, OAS
+- [ ] **Caps, floors & swaptions** (`quant::instruments`)
+  - [ ] Cap / Floor / Collar pricing (Black, Bachelier, SABR)
+  - [ ] European and Bermudan swaptions
+  - [ ] Hull-White / G2++ tree-based engines
+  - [ ] Short-rate model calibration to swaption / cap vols
+- [ ] **Market data framework** (`quant::market`)
+  - [ ] Quote / Handle / Observable abstraction for reactive repricing
+  - [ ] Rate index objects (SOFR, EURIBOR, TONAR) with fixing history
+  - [ ] FRA and money market instrument helpers
+  - [ ] Rate helpers for curve bootstrapping
+- [ ] **Risk metrics** (`quant::risk`)
+  - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
+  - [ ] CVaR / Expected Shortfall
+  - [ ] Stress testing and scenario analysis framework
+  - [ ] Drawdown metrics, Sharpe, Sortino, Information Ratio, Calmar
+  - [ ] Instrument-level Greeks — bump-and-reprice, bucket DV01, scenario engine
+- [ ] **Credit models** (`quant::credit`)
+  - [ ] Merton structural model
+  - [ ] Reduced-form / intensity-based models
+  - [ ] CDS pricing (ISDA standard) and hazard rate bootstrapping
+  - [ ] Default probability term structure
+  - [ ] Credit migration matrices
+- [ ] **Trinomial tree & lattice framework** (`quant::lattice`)
+  - [ ] General trinomial / binomial tree
+  - [ ] Hull-White, Black-Karasinski, G2++ tree engines
+  - [ ] Callable bond and Bermudan swaption pricing
+- [ ] **Exotic derivatives** (`quant::pricing`)
+  - [ ] Bermudan options (LSM and PDE)
+  - [ ] Basket and rainbow options
+  - [ ] Cliquet / ratchet options
+  - [ ] Auto-callable structures
+  - [ ] Digital / binary options (cash-or-nothing, asset-or-nothing)
+  - [ ] Chooser, compound, spread options
+- [ ] **Realized volatility & microstructure noise** (`stats::realized`)
+  - [ ] Realized variance, bipower variation, kernel-based RV
+  - [ ] Realized semivariance, realized skewness and kurtosis
+  - [ ] HAR (Heterogeneous Autoregressive) model
+  - [ ] Noise-robust estimators — pre-averaging, two-scale RV
+- [ ] **Econometrics** (`stats::econometrics`)
+  - [ ] Cointegration — Johansen test, Engle-Granger two-step
+  - [ ] Granger causality
+  - [ ] Hidden Markov Models for regime detection
+  - [ ] Changepoint detection
+- [ ] **Bayesian inference & filtering** (`stats::filtering`)
+  - [ ] Particle filters for general state-space models
+  - [ ] Unscented Kalman Filter
+  - [ ] MCMC samplers (Metropolis-Hastings, HMC) for calibration
+- [ ] **Factor models & statistical arbitrage** (`quant::factors`)
+  - [ ] PCA-based factor models
+  - [ ] Cross-sectional regression (Fama-MacBeth)
+  - [ ] Covariance shrinkage (Ledoit-Wolf)
+  - [ ] Pairs trading / stat arb framework
+- [ ] **Market microstructure** (`quant::microstructure`)
+  - [ ] Hawkes processes for order flow modeling
+  - [ ] Almgren-Chriss optimal execution
+  - [ ] Market impact models (Kyle, transient impact)
+  - [ ] Bid-ask spread models
+- [ ] **Inflation** (`quant::inflation`)
+  - [ ] Zero-coupon and year-on-year inflation term structures
+  - [ ] CPI / RPI / HICP index objects
+  - [ ] Inflation-linked swaps and bonds
+- [ ] **Stochastic local volatility** (`quant::pricing`)
+  - [ ] Heston SLV model — Fokker-Planck calibration
+  - [ ] Combined stochastic + Dupire local vol
+
+### Done
 
 - [x] **Advanced Monte Carlo** (`stochastic::mc`)
   - [x] Variance reduction — antithetic variates, control variates, importance sampling, stratified sampling
@@ -222,51 +311,6 @@ Configuration in this run:
   - [x] SVI parameterization (Gatheral) and SSVI
   - [x] Arbitrage-free interpolation and extrapolation
   - [x] Smile and skew analytics
-- [ ] **Risk metrics** (`quant::risk`)
-  - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
-  - [ ] CVaR / Expected Shortfall
-  - [ ] Stress testing and scenario analysis framework
-  - [ ] Drawdown metrics, Sharpe, Sortino, Information Ratio, Calmar
-- [ ] **Yield curve construction** (`quant::curves`)
-  - [ ] Bootstrapping from deposit, FRA, and swap rates
-  - [ ] Nelson-Siegel / Svensson parameterization
-  - [ ] Discount factor and forward rate extraction
-  - [ ] Multi-curve framework (OIS vs SOFR)
-  - [ ] Interpolation — monotone convex, log-linear, cubic spline
-- [ ] **Realized volatility & microstructure noise** (`stats::realized`)
-  - [ ] Realized variance, bipower variation, kernel-based RV
-  - [ ] Realized semivariance, realized skewness and kurtosis
-  - [ ] HAR (Heterogeneous Autoregressive) model
-  - [ ] Noise-robust estimators — pre-averaging, two-scale RV
-- [ ] **Econometrics** (`stats::econometrics`)
-  - [ ] Cointegration — Johansen test, Engle-Granger two-step
-  - [ ] Granger causality
-  - [ ] Hidden Markov Models for regime detection
-  - [ ] Changepoint detection
-- [ ] **Credit models** (`quant::credit`)
-  - [ ] Merton structural model
-  - [ ] Reduced-form / intensity-based models
-  - [ ] CDS pricing and hazard rate bootstrapping
-  - [ ] Credit migration matrices
-- [ ] **Exotic derivatives** (`quant::pricing`)
-  - [ ] Bermudan options (LSM and PDE)
-  - [ ] Basket and rainbow options
-  - [ ] Cliquet / ratchet options
-  - [ ] Auto-callable structures
-- [ ] **Market microstructure** (`quant::microstructure`)
-  - [ ] Hawkes processes for order flow modeling
-  - [ ] Almgren-Chriss optimal execution
-  - [ ] Market impact models (Kyle, transient impact)
-  - [ ] Bid-ask spread models
-- [ ] **Bayesian inference & filtering** (`stats::filtering`)
-  - [ ] Particle filters for general state-space models
-  - [ ] Unscented Kalman Filter
-  - [ ] MCMC samplers (Metropolis-Hastings, HMC) for calibration
-- [ ] **Factor models & statistical arbitrage** (`quant::factors`)
-  - [ ] PCA-based factor models
-  - [ ] Cross-sectional regression (Fama-MacBeth)
-  - [ ] Covariance shrinkage (Ledoit-Wolf)
-  - [ ] Pairs trading / stat arb framework
 - [x] **Calendar & day count** (`quant::calendar`)
   - [x] Day count conventions — ACT/360, ACT/365, 30/360, ACT/ACT
   - [x] Business day adjustment rules — Following, Modified Following, Preceding
