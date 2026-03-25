@@ -122,38 +122,6 @@ extern "C" __global__ void extract_f64(
 }
 "#;
 
-// ── Pinned host memory (page-locked, DMA-capable) ────────────────────────────
-
-struct PinnedBuf<T: Copy> {
-  ptr: *mut T,
-  len: usize,
-}
-
-unsafe impl<T: Copy> Send for PinnedBuf<T> {}
-
-impl<T: Copy> PinnedBuf<T> {
-  fn new(len: usize) -> Result<Self> {
-    let bytes = len * std::mem::size_of::<T>();
-    let ptr =
-      unsafe { result::malloc_host(bytes, 0) }.map_err(|e| anyhow::anyhow!("malloc_host: {e}"))?;
-    Ok(Self { ptr: ptr as *mut T, len })
-  }
-
-  fn as_mut_slice(&mut self) -> &mut [T] {
-    unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
-  }
-
-  fn to_vec(&self) -> Vec<T> {
-    unsafe { std::slice::from_raw_parts(self.ptr, self.len) }.to_vec()
-  }
-}
-
-impl<T: Copy> Drop for PinnedBuf<T> {
-  fn drop(&mut self) {
-    unsafe { let _ = result::free_host(self.ptr as *mut _); }
-  }
-}
-
 // ── Persistent GPU state (survives param changes) ─────────────────────────────
 
 struct GpuKernels {
@@ -176,13 +144,16 @@ fn get_or_init_gpu() -> Result<()> {
     return Ok(());
   }
   let ctx = CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext: {e}"))?;
-  let stream = ctx.new_stream().map_err(|e| anyhow::anyhow!("stream: {e}"))?;
+  let stream = ctx
+    .new_stream()
+    .map_err(|e| anyhow::anyhow!("stream: {e}"))?;
   let c = stream.context();
 
-  // Compile all four kernels once
   let load = |src: &str, name: &str| -> Result<CudaFunction> {
     let ptx = nvrtc::compile_ptx(src).map_err(|e| anyhow::anyhow!("NVRTC {name}: {e}"))?;
-    let m = c.load_module(ptx).map_err(|e| anyhow::anyhow!("load {name}: {e}"))?;
+    let m = c
+      .load_module(ptx)
+      .map_err(|e| anyhow::anyhow!("load {name}: {e}"))?;
     m.load_function(name)
       .map_err(|e| anyhow::anyhow!("fn {name}: {e}"))
   };
@@ -204,7 +175,6 @@ struct SizedCtxF32 {
   d_eigs: CudaSlice<f32>,
   d_data: CudaSlice<f32>,
   d_out: CudaSlice<f32>,
-  h_pinned: PinnedBuf<f32>,
   n: usize,
   m: usize,
   offset: usize,
@@ -214,7 +184,9 @@ struct SizedCtxF32 {
 
 impl Drop for SizedCtxF32 {
   fn drop(&mut self) {
-    unsafe { let _ = cufft::result::destroy(self.fft_plan); }
+    unsafe {
+      let _ = cufft::result::destroy(self.fft_plan);
+    }
   }
 }
 
@@ -223,7 +195,6 @@ struct SizedCtxF64 {
   d_eigs: CudaSlice<f64>,
   d_data: CudaSlice<f64>,
   d_out: CudaSlice<f64>,
-  h_pinned: PinnedBuf<f64>,
   n: usize,
   m: usize,
   offset: usize,
@@ -233,7 +204,9 @@ struct SizedCtxF64 {
 
 impl Drop for SizedCtxF64 {
   fn drop(&mut self) {
-    unsafe { let _ = cufft::result::destroy(self.fft_plan); }
+    unsafe {
+      let _ = cufft::result::destroy(self.fft_plan);
+    }
   }
 }
 
@@ -307,16 +280,18 @@ fn sample_f32<T: FloatExt>(
 
   if need_init {
     *sized = None;
-    let plan =
-      cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
-        .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
+    let plan = cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
+      .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
     unsafe {
       cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
         .map_err(|e| anyhow::anyhow!("cuFFT set_stream: {e}"))?;
     }
     *sized = Some(SizedCtxF32 {
       fft_plan: plan,
-      d_eigs: gpu.stream.clone_htod(sqrt_eigs).map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
+      d_eigs: gpu
+        .stream
+        .clone_htod(sqrt_eigs)
+        .map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
       d_data: gpu
         .stream
         .alloc_zeros::<f32>(2 * m * traj_size)
@@ -325,7 +300,6 @@ fn sample_f32<T: FloatExt>(
         .stream
         .alloc_zeros::<f32>(m * out_size)
         .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
-      h_pinned: PinnedBuf::new(m * out_size)?,
       n,
       m,
       offset,
@@ -382,20 +356,11 @@ fn sample_f32<T: FloatExt>(
       .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
   }
 
-  // 4. DtoH — pinned DMA for small transfers, clone_dtoh for large.
-  //    Pinned avoids driver staging but adds a to_vec copy; crossover ~1M elems.
-  let total_elems = m * out_size;
-  let host = if total_elems <= 1_000_000 {
-    let (src_ptr, _g) = s.d_out.device_ptr_mut(&gpu.stream);
-    unsafe {
-      result::memcpy_dtoh_async(s.h_pinned.as_mut_slice(), src_ptr, gpu.stream.cu_stream())
-        .map_err(|e| anyhow::anyhow!("async dtoh: {e}"))?;
-    }
-    gpu.stream.synchronize().map_err(|e| anyhow::anyhow!("sync: {e}"))?;
-    s.h_pinned.to_vec()
-  } else {
-    gpu.stream.clone_dtoh(&s.d_out).map_err(|e| anyhow::anyhow!("dtoh: {e}"))?
-  };
+  // 4. DtoH
+  let host = gpu
+    .stream
+    .clone_dtoh(&s.d_out)
+    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
   drop(sized);
 
   let fgn = array2_from_vec_f32::<T>(host, m, out_size);
@@ -433,16 +398,18 @@ fn sample_f64<T: FloatExt>(
 
   if need_init {
     *sized = None;
-    let plan =
-      cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
-        .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
+    let plan = cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
+      .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
     unsafe {
       cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
         .map_err(|e| anyhow::anyhow!("cuFFT set_stream: {e}"))?;
     }
     *sized = Some(SizedCtxF64 {
       fft_plan: plan,
-      d_eigs: gpu.stream.clone_htod(sqrt_eigs).map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
+      d_eigs: gpu
+        .stream
+        .clone_htod(sqrt_eigs)
+        .map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
       d_data: gpu
         .stream
         .alloc_zeros::<f64>(2 * m * traj_size)
@@ -451,7 +418,6 @@ fn sample_f64<T: FloatExt>(
         .stream
         .alloc_zeros::<f64>(m * out_size)
         .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
-      h_pinned: PinnedBuf::new(m * out_size)?,
       n,
       m,
       offset,
@@ -508,19 +474,11 @@ fn sample_f64<T: FloatExt>(
       .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
   }
 
-  // 4. DtoH — pinned DMA for small, clone_dtoh for large
-  let total_elems = m * out_size;
-  let host = if total_elems <= 1_000_000 {
-    let (src_ptr, _g) = s.d_out.device_ptr_mut(&gpu.stream);
-    unsafe {
-      result::memcpy_dtoh_async(s.h_pinned.as_mut_slice(), src_ptr, gpu.stream.cu_stream())
-        .map_err(|e| anyhow::anyhow!("async dtoh: {e}"))?;
-    }
-    gpu.stream.synchronize().map_err(|e| anyhow::anyhow!("sync: {e}"))?;
-    s.h_pinned.to_vec()
-  } else {
-    gpu.stream.clone_dtoh(&s.d_out).map_err(|e| anyhow::anyhow!("dtoh: {e}"))?
-  };
+  // 4. DtoH
+  let host = gpu
+    .stream
+    .clone_dtoh(&s.d_out)
+    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
   drop(sized);
 
   let fgn = array2_from_vec_f64::<T>(host, m, out_size);
@@ -586,7 +544,9 @@ mod tests {
   #[test]
   fn cuda_native_single_path_shape() {
     let fgn = FGN::<f64>::new(0.7, 1024, Some(1.0));
-    let result = fgn.sample_cuda_native(1).expect("single path should succeed");
+    let result = fgn
+      .sample_cuda_native(1)
+      .expect("single path should succeed");
     let path = result.left().expect("m=1 should return Left(Array1)");
     assert_eq!(path.len(), 1024);
   }
@@ -673,12 +633,17 @@ mod tests {
     let cpu_var =
       cpu_vals.iter().map(|x| (x - cpu_mean).powi(2)).sum::<f64>() / cpu_vals.len() as f64;
 
-    let cuda_result = fgn.sample_cuda_native(m).expect("cuda batch should succeed");
+    let cuda_result = fgn
+      .sample_cuda_native(m)
+      .expect("cuda batch should succeed");
     let cuda_batch = cuda_result.right().expect("batch");
     let cuda_vals: Vec<f64> = cuda_batch.iter().copied().collect();
     let cuda_mean = cuda_vals.iter().sum::<f64>() / cuda_vals.len() as f64;
-    let cuda_var =
-      cuda_vals.iter().map(|x| (x - cuda_mean).powi(2)).sum::<f64>() / cuda_vals.len() as f64;
+    let cuda_var = cuda_vals
+      .iter()
+      .map(|x| (x - cuda_mean).powi(2))
+      .sum::<f64>()
+      / cuda_vals.len() as f64;
 
     let ratio = cuda_var / cpu_var;
     assert!(
@@ -701,7 +666,9 @@ mod tests {
     let cpu_cov1 = lag_covariance(&cpu_paths, cpu_mean, 1);
     let cpu_cov4 = lag_covariance(&cpu_paths, cpu_mean, 4);
 
-    let cuda_result = fgn.sample_cuda_native(m).expect("cuda batch should succeed");
+    let cuda_result = fgn
+      .sample_cuda_native(m)
+      .expect("cuda batch should succeed");
     let cuda_batch = cuda_result.right().expect("batch");
     let cuda_paths: Vec<Vec<f64>> = cuda_batch.rows().into_iter().map(|r| r.to_vec()).collect();
     let cuda_vals: Vec<f64> = cuda_paths.iter().flatten().copied().collect();
