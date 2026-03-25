@@ -16,6 +16,7 @@ pub mod heston_stoch_corr;
 pub mod lookback;
 pub mod malliavin_gbm;
 pub mod malliavin_greeks;
+#[cfg(feature = "openblas")]
 pub mod malliavin_thalmaier;
 pub mod merton_jump;
 pub mod pnl;

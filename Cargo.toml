@@ -47,7 +47,7 @@ ndarray = { version = "0.17.2", features = [
     "rayon",
     "matrixmultiply-threading",
 ] }
-ndarray-linalg = { version = "0.18.1", features = ["openblas-system"] }
+ndarray-linalg = { version = "0.18.1", features = ["openblas-system"], optional = true }
 ndarray-npy = "0.10.0"
 ndarray-rand = "0.16.0"
 ndarray-stats = "0.7.0"
@@ -149,6 +149,7 @@ harness = false
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda-native = ["dep:cudarc", "cudarc/cufft"]
 default = []
+openblas = ["dep:ndarray-linalg", "dep:openblas-src"]
 accelerate = []
 gpu = ["dep:cubecl", "dep:gpu-fft"]
 metal = ["dep:metal"]

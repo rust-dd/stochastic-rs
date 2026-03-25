@@ -40,7 +40,7 @@ jobs:
           RUSTFLAGS: "-C instrument-coverage -C codegen-units=1 -C debuginfo=0"
           LLVM_PROFILE_FILE: "coverage-%p-%m.profraw"
         run: |
-          cargo test --all --verbose
+          cargo test --all --features openblas --verbose
 
       - name: Generate coverage report
         run: |
