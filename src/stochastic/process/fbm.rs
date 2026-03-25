@@ -4,12 +4,12 @@
 //! \mathbb E[B_t^H B_s^H]=\tfrac12\left(t^{2H}+s^{2H}-|t-s|^{2H}\right)
 //! $$
 //!
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use anyhow::Result;
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use either::Either;
 use ndarray::Array1;
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use ndarray::Array2;
 #[cfg(feature = "python")]
 use numpy::IntoPyArray;
@@ -94,9 +94,19 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBM<T, S> {
   fn sample_cuda_native(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     Self::fgn_to_fbm(self.n, self.fgn.sample_cuda_native(m)?)
   }
+
+  #[cfg(feature = "accelerate")]
+  fn sample_accelerate(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    Self::fgn_to_fbm(self.n, self.fgn.sample_accelerate(m)?)
+  }
+
+  #[cfg(feature = "metal")]
+  fn sample_metal(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    Self::fgn_to_fbm(self.n, self.fgn.sample_metal(m)?)
+  }
 }
 
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 impl<T: FloatExt, S: SeedExt> FBM<T, S> {
   fn fgn_to_fbm(n: usize, fgn_out: Either<Array1<T>, Array2<T>>) -> Result<Either<Array1<T>, Array2<T>>> {
     match fgn_out {

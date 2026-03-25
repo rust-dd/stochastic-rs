@@ -8,10 +8,11 @@ use std::any::TypeId;
 use std::ffi::c_void;
 
 use anyhow::Result;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use either::Either;
 use ndarray::Array1;
 use ndarray::Array2;
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 
 use super::FGN;
 use crate::simd_rng::SeedExt;

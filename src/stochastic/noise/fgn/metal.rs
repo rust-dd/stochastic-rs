@@ -1,8 +1,9 @@
 //! # Metal GPU
 //!
 //! macOS Metal compute backend for FGN sampling.
-//! MSL shaders compiled at runtime, unified memory (zero-copy on Apple Silicon),
-//! all FFT stages encoded into a single command buffer.
+//! Full GPU pipeline: Philox RNG + Box-Muller -> eigenvalue scale ->
+//! bit-reversal -> FFT butterfly stages -> extract.
+//! All encoded into a single command buffer, unified memory zero-copy.
 //!
 use std::any::TypeId;
 
@@ -19,6 +20,50 @@ use crate::traits::FloatExt;
 const MSL_SOURCE: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
+
+// PCG hash: excellent statistical quality, single-instruction path
+inline uint pcg(uint v) {
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+inline float u01(uint x) {
+    return (float(x >> 8) + 0.5f) / 16777216.0f;
+}
+
+// Generate normals, scale by eigenvalues, write to bit-reversed position.
+// Each thread produces one (re, im) pair using 4 independent PCG hashes
+// fed into two Box-Muller transforms.
+kernel void generate_scale_permute(
+    device float* dst_real [[buffer(0)]],
+    device float* dst_imag [[buffer(1)]],
+    device const float* sqrt_eigs [[buffer(2)]],
+    device const uint* bit_rev [[buffer(3)]],
+    constant uint& traj_size [[buffer(4)]],
+    constant uint& seed [[buffer(5)]],
+    uint tid [[thread_position_in_grid]])
+{
+    uint batch = tid / traj_size;
+    uint local = tid % traj_size;
+
+    uint base = tid * 4u + seed;
+    float u1 = u01(pcg(base));
+    float u2 = u01(pcg(base + 1u));
+    float u3 = u01(pcg(base + 2u));
+    float u4 = u01(pcg(base + 3u));
+
+    float r_a = sqrt(-2.0f * log(u1 + 1e-10f));
+    float r_b = sqrt(-2.0f * log(u3 + 1e-10f));
+    float n_re = r_a * cos(6.28318530718f * u2);
+    float n_im = r_b * cos(6.28318530718f * u4);
+
+    float eig = sqrt_eigs[local];
+    uint rev = bit_rev[local];
+    uint dst = batch * traj_size + rev;
+    dst_real[dst] = n_re * eig;
+    dst_imag[dst] = n_im * eig;
+}
 
 kernel void fft_butterfly(
     device float* real [[buffer(0)]],
@@ -69,6 +114,7 @@ kernel void extract_real(
 struct MetalCtx {
   device: Device,
   queue: CommandQueue,
+  gen_pso: ComputePipelineState,
   butterfly_pso: ComputePipelineState,
   extract_pso: ComputePipelineState,
 }
@@ -87,20 +133,26 @@ fn ensure_ctx() -> Result<()> {
   let lib = device
     .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
     .map_err(|e| anyhow::anyhow!("MSL compile: {e}"))?;
-  let bf_fn = lib
-    .get_function("fft_butterfly", None)
-    .map_err(|e| anyhow::anyhow!("get fft_butterfly: {e}"))?;
-  let ex_fn = lib
-    .get_function("extract_real", None)
-    .map_err(|e| anyhow::anyhow!("get extract_real: {e}"))?;
-  let butterfly_pso = device
-    .new_compute_pipeline_state_with_function(&bf_fn)
-    .map_err(|e| anyhow::anyhow!("butterfly PSO: {e}"))?;
-  let extract_pso = device
-    .new_compute_pipeline_state_with_function(&ex_fn)
-    .map_err(|e| anyhow::anyhow!("extract PSO: {e}"))?;
-  *g = Some(MetalCtx { device, queue, butterfly_pso, extract_pso });
+
+  let mk = |name: &str| -> Result<ComputePipelineState> {
+    let f = lib.get_function(name, None).map_err(|e| anyhow::anyhow!("get {name}: {e}"))?;
+    device
+      .new_compute_pipeline_state_with_function(&f)
+      .map_err(|e| anyhow::anyhow!("{name} PSO: {e}"))
+  };
+
+  let gen_pso = mk("generate_scale_permute")?;
+  let butterfly_pso = mk("fft_butterfly")?;
+  let extract_pso = mk("extract_real")?;
+
+  *g = Some(MetalCtx { device, queue, gen_pso, butterfly_pso, extract_pso });
   Ok(())
+}
+
+fn build_bit_reverse_table(n: usize) -> Vec<u32> {
+  let log_n = n.trailing_zeros() as usize;
+  let bits = usize::BITS as usize;
+  (0..n).map(|i| (i.reverse_bits() >> (bits - log_n)) as u32).collect()
 }
 
 fn sample_f32<T: FloatExt>(
@@ -117,82 +169,83 @@ fn sample_f32<T: FloatExt>(
   let total = m * traj_size;
   let log_n = traj_size.trailing_zeros() as usize;
 
-  // CPU: normals + eigenvalue scaling + bit-reversal
-  let mut real_host = vec![0.0f32; total];
-  let mut imag_host = vec![0.0f32; total];
-  {
-    let normal = crate::distributions::normal::SimdNormal::<f32>::new(0.0, 1.0);
-    normal.fill_slice_fast(&mut real_host);
-    normal.fill_slice_fast(&mut imag_host);
-  }
-  for i in 0..total {
-    let e = sqrt_eigs[i % traj_size];
-    real_host[i] *= e;
-    imag_host[i] *= e;
-  }
-  bit_reverse_permute(&mut real_host, &mut imag_host, traj_size, m);
-
   ensure_ctx()?;
   let g = CTX.lock();
   let ctx = g.as_ref().unwrap();
+  let dev = &ctx.device;
+  let shared = MTLResourceOptions::StorageModeShared;
 
-  // Shared-mode buffers: zero-copy on Apple Silicon unified memory
-  let bytes = (total * 4) as u64;
-  let real_buf = ctx.device.new_buffer_with_data(
-    real_host.as_ptr() as *const _,
-    bytes,
-    MTLResourceOptions::StorageModeShared,
+  // GPU buffers (zero-copy unified memory)
+  let real_buf = dev.new_buffer((total * 4) as u64, shared);
+  let imag_buf = dev.new_buffer((total * 4) as u64, shared);
+  let out_buf = dev.new_buffer((m * out_size * 4) as u64, shared);
+
+  // Upload eigenvalues + bit-reverse table (small, one-time per config)
+  let eig_buf = dev.new_buffer_with_data(
+    sqrt_eigs.as_ptr() as *const _,
+    (sqrt_eigs.len() * 4) as u64,
+    shared,
   );
-  let imag_buf = ctx.device.new_buffer_with_data(
-    imag_host.as_ptr() as *const _,
-    bytes,
-    MTLResourceOptions::StorageModeShared,
+  let bit_rev = build_bit_reverse_table(traj_size);
+  let rev_buf = dev.new_buffer_with_data(
+    bit_rev.as_ptr() as *const _,
+    (bit_rev.len() * 4) as u64,
+    shared,
   );
 
-  let out_bytes = (m * out_size * 4) as u64;
-  let out_buf = ctx
-    .device
-    .new_buffer(out_bytes, MTLResourceOptions::StorageModeShared);
+  let seed: u32 = rand::Rng::random(&mut crate::simd_rng::rng());
 
-  // Encode ALL FFT stages + extract into a SINGLE command buffer
+  // Single command buffer for the entire pipeline
   let cmd = ctx.queue.new_command_buffer();
+  let tg = MTLSize::new(256, 1, 1);
+  let ts_u32 = traj_size as u32;
 
-  let n_u32 = traj_size as u32;
-  let tg_size = MTLSize::new(256, 1, 1);
-  let butterflies = (total / 2) as u64;
-  let grid_fft = MTLSize::new(butterflies, 1, 1);
+  // 1. Generate normals + scale + bit-reversal (GPU Philox RNG)
+  {
+    let enc = cmd.new_compute_command_encoder();
+    enc.set_compute_pipeline_state(&ctx.gen_pso);
+    enc.set_buffer(0, Some(&real_buf), 0);
+    enc.set_buffer(1, Some(&imag_buf), 0);
+    enc.set_buffer(2, Some(&eig_buf), 0);
+    enc.set_buffer(3, Some(&rev_buf), 0);
+    enc.set_bytes(4, 4, &ts_u32 as *const u32 as *const _);
+    enc.set_bytes(5, 4, &seed as *const u32 as *const _);
+    enc.dispatch_threads(MTLSize::new(total as u64, 1, 1), tg);
+    enc.end_encoding();
+  }
 
+  // 2. FFT butterfly stages
+  let grid_fft = MTLSize::new((total / 2) as u64, 1, 1);
   for stage in 0..log_n {
     let hs = (1u32 << stage) as u32;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.butterfly_pso);
     enc.set_buffer(0, Some(&real_buf), 0);
     enc.set_buffer(1, Some(&imag_buf), 0);
-    enc.set_bytes(2, 4, &n_u32 as *const u32 as *const _);
+    enc.set_bytes(2, 4, &ts_u32 as *const u32 as *const _);
     enc.set_bytes(3, 4, &hs as *const u32 as *const _);
-    enc.dispatch_threads(grid_fft, tg_size);
+    enc.dispatch_threads(grid_fft, tg);
     enc.end_encoding();
   }
 
-  // Extract
+  // 3. Extract
   {
     let os = out_size as u32;
-    let ts = traj_size as u32;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.extract_pso);
     enc.set_buffer(0, Some(&real_buf), 0);
     enc.set_buffer(1, Some(&out_buf), 0);
     enc.set_bytes(2, 4, &os as *const u32 as *const _);
-    enc.set_bytes(3, 4, &ts as *const u32 as *const _);
+    enc.set_bytes(3, 4, &ts_u32 as *const u32 as *const _);
     enc.set_bytes(4, 4, &scale as *const f32 as *const _);
-    enc.dispatch_threads(MTLSize::new((m * out_size) as u64, 1, 1), tg_size);
+    enc.dispatch_threads(MTLSize::new((m * out_size) as u64, 1, 1), tg);
     enc.end_encoding();
   }
 
   cmd.commit();
   cmd.wait_until_completed();
 
-  // Read back from shared buffer (zero-copy, just pointer cast)
+  // Zero-copy read from shared buffer
   let out_ptr = out_buf.contents() as *const f32;
   let out_slice = unsafe { std::slice::from_raw_parts(out_ptr, m * out_size) };
 
@@ -201,21 +254,6 @@ fn sample_f32<T: FloatExt>(
     return Ok(Either::Left(fgn.row(0).to_owned()));
   }
   Ok(Either::Right(fgn))
-}
-
-fn bit_reverse_permute(real: &mut [f32], imag: &mut [f32], n: usize, m: usize) {
-  let log_n = n.trailing_zeros() as usize;
-  let bits = usize::BITS as usize;
-  for b in 0..m {
-    let base = b * n;
-    for i in 0..n {
-      let j = i.reverse_bits() >> (bits - log_n);
-      if i < j {
-        real.swap(base + i, base + j);
-        imag.swap(base + i, base + j);
-      }
-    }
-  }
 }
 
 fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
