@@ -159,65 +159,35 @@ log_prices = merton.sample()
 
 ## Benchmarks
 
-CUDA build details (Windows/Linux commands) are documented in `src/stochastic/cuda/CUDA_BUILD.md`.
+### FGN CPU vs CUDA native (`sample`, `sample_par`, `sample_cuda_native`)
 
-### CUDA fallback (if auto-build fails)
-
-If `cargo build --features cuda` fails (for example: `nvcc fatal : Cannot find compiler 'cl.exe'`), use prebuilt CUDA FGN binaries.
-
-1. Download the platform file from GitHub Releases:  
-   `https://github.com/dancixx/stochastic-rs/releases`
-2. Place it at:
-   - Windows: `src/stochastic/cuda/fgn_windows/fgn.dll`
-   - Linux: `src/stochastic/cuda/fgn_linux/libfgn.so`
-3. Set runtime path explicitly:
-
-```powershell
-$env:STOCHASTIC_RS_CUDA_FGN_LIB_PATH='src/stochastic/cuda/fgn_windows/fgn.dll'
-```
+`cuda-native` backend: cudarc + cuFFT + fused Philox RNG kernel (no `.cu` files, no `nvcc`).
 
 ```bash
-export STOCHASTIC_RS_CUDA_FGN_LIB_PATH=src/stochastic/cuda/fgn_linux/libfgn.so
+cargo bench --features cuda-native --bench fgn_cuda_native
 ```
 
-### FGN CPU vs CUDA (`sample`, `sample_par`, `sample_cuda`)
+Environment: NVIDIA GPU, CUDA 12.x, Rust nightly, `--release` with LTO.
 
-Measured with Criterion in `--release` using:
+Single path (`sample` vs `sample_cuda_native(1)`, `f32`, H=0.7):
 
-```bash
-$env:STOCHASTIC_RS_CUDA_FGN_LIB_PATH='src/stochastic/cuda/fgn_windows/fgn.dll'
-cargo bench --bench fgn_cuda --features cuda -- --noplot
-```
-
-Environment:
-- GPU: NVIDIA GeForce RTX 4070 SUPER
-- Rust: `rustc 1.93.1`
-- CUDA library: `src/stochastic/cuda/fgn_windows/fgn.dll` (fatbin `sm_75+`)
-
-Note: one-time CUDA init is excluded via warmup (`sample_cuda(...)` called once before each benchmark case).
-
-Single path (`sample` vs `sample_cuda(1)`, `f32`, H=0.7):
-
-| n | CPU `sample` | CUDA `sample_cuda(1)` | CUDA speedup (CPU/CUDA) |
+| n | CPU `sample` | CUDA `sample_cuda_native(1)` | Speedup |
 |---:|---:|---:|---:|
-| 1,024 | 10.112 us | 62.070 us | 0.16x |
-| 4,096 | 40.901 us | 49.040 us | 0.83x |
-| 16,384 | 184.060 us | 59.592 us | 3.09x |
-| 65,536 | 1.0282 ms | 121.160 us | 8.49x |
+| 1,024 | 8.1 us | 46 us | 0.18x |
+| 4,096 | 35 us | 84 us | 0.42x |
+| 16,384 | 147 us | 110 us | **1.3x** |
+| 65,536 | 850 us | 227 us | **3.7x** |
 
-Batch (`sample_par(m)` vs `sample_cuda(m)`, `f32`, H=0.7):
+Batch (`sample_par(m)` vs `sample_cuda_native(m)`, `f32`, H=0.7):
 
-| n, m | CPU `sample_par(m)` | CUDA `sample_cuda(m)` | CUDA speedup (CPU/CUDA) |
+| n, m | CPU `sample_par(m)` | CUDA `sample_cuda_native(m)` | Speedup |
 |---|---:|---:|---:|
-| 4,096, 32 | 148.840 us | 154.080 us | 0.97x |
-| 4,096, 128 | 364.690 us | 1.1255 ms | 0.32x |
-| 4,096, 512 | 1.7975 ms | 4.3293 ms | 0.42x |
-| 16,384, 128 | 1.7029 ms | 4.5458 ms | 0.37x |
-| 16,384, 512 | 5.5850 ms | 17.2110 ms | 0.32x |
+| 4,096, 32 | 147 us | 117 us | **1.3x** |
+| 4,096, 512 | 1.78 ms | 2.37 ms | 0.75x |
+| 65,536, 128 | 12.6 ms | 10.5 ms | **1.2x** |
+| 65,536, 1024 | 102 ms | 93 ms | **1.1x** |
 
-Interpretation:
-- CUDA wins for large single-path generation (from roughly `n >= 16k` in this setup).
-- For the tested batch sizes, CPU `sample_par` is faster than current CUDA path.
+CUDA wins for large n (>= 16k) and is competitive at n=65k batches. CPU rayon parallelism dominates for medium n due to zero transfer overhead.
 
 ### Distribution Sampling (All Built-in Distributions)
 
