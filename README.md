@@ -42,6 +42,55 @@ pip install maturin
 maturin develop --release
 ```
 
+### OpenBLAS (required for `openblas` feature)
+
+The `openblas` feature enables `ndarray-linalg` for linear algebra operations. It requires a system OpenBLAS installation with LAPACK support.
+
+**Linux (Debian/Ubuntu)**
+
+```bash
+sudo apt install libopenblas-dev
+```
+
+**Linux (Fedora/RHEL)**
+
+```bash
+sudo dnf install openblas-devel
+```
+
+**macOS**
+
+```bash
+brew install openblas
+export OPENBLAS_DIR=$(brew --prefix openblas)
+```
+
+**Windows**
+
+Download prebuilt OpenBLAS from [OpenMathLib/OpenBLAS releases](https://github.com/OpenMathLib/OpenBLAS/releases) (pick the `x64.zip`), extract it, and install [vcpkg](https://github.com/microsoft/vcpkg):
+
+```powershell
+git clone https://github.com/microsoft/vcpkg C:\vcpkg
+C:\vcpkg\bootstrap-vcpkg.bat
+$env:VCPKG_ROOT = "C:\vcpkg"
+```
+
+Then copy the prebuilt `libopenblas.lib` and `libopenblas.dll` into `$VCPKG_ROOT\installed\x64-windows\lib\` and `$VCPKG_ROOT\installed\x64-windows\bin\` respectively. The prebuilt release includes LAPACK (the vcpkg `openblas` port does not).
+
+**Build with OpenBLAS**
+
+```bash
+cargo build --features openblas
+```
+
+### CUDA native (optional)
+
+Requires NVIDIA CUDA Toolkit (12.x+) and a compatible GPU.
+
+```bash
+cargo build --features cuda-native
+```
+
 ## Usage
 
 ### Rust
