@@ -23,11 +23,9 @@ use crate::traits::FloatExt;
 
 const CUFFT_FORWARD: i32 = -1;
 
-// ── Fused generate + scale kernel (Philox-2x32-10 RNG + Box-Muller) ──────────
-// Generates two standard normals per thread via counter-based RNG,
-// scales by sqrt_eigenvalue, and writes interleaved complex output.
-// Eliminates cuRAND + one global-memory round-trip.
-
+/// Fused generate + scale NVRTC kernel (Philox-2x32-10 RNG + Box-Muller, f32).
+/// Generates two standard normals per thread, scales by sqrt_eigenvalue,
+/// and writes interleaved complex output.
 const GEN_SCALE_F32: &str = r#"
 extern "C" __global__ void gen_scale_f32(
     float* __restrict__ data,
@@ -122,8 +120,7 @@ extern "C" __global__ void extract_f64(
 }
 "#;
 
-// ── Persistent GPU state (survives param changes) ─────────────────────────────
-
+/// Persistent GPU state: compiled kernels and stream (survives param changes).
 struct GpuKernels {
   stream: Arc<CudaStream>,
   gen_scale_f32: CudaFunction,
@@ -132,7 +129,7 @@ struct GpuKernels {
   extract_f64: CudaFunction,
 }
 
-// SAFETY: CUDA context and stream are thread-safe; all ops serialized by stream.
+/// SAFETY: all GPU ops serialized through the stream.
 unsafe impl Send for GpuKernels {}
 
 static GPU: Mutex<Option<GpuKernels>> = Mutex::new(None);
@@ -168,8 +165,7 @@ fn get_or_init_gpu() -> Result<()> {
   Ok(())
 }
 
-// ── Per-precision sized state (FFT plan + device buffers) ─────────────────────
-
+/// Per-precision GPU state: FFT plan and device buffers, re-created on param change.
 struct SizedCtxF32 {
   fft_plan: cufft::sys::cufftHandle,
   d_eigs: CudaSlice<f32>,
@@ -216,8 +212,6 @@ unsafe impl Send for SizedCtxF64 {}
 static SIZED_F32: Mutex<Option<SizedCtxF32>> = Mutex::new(None);
 static SIZED_F64: Mutex<Option<SizedCtxF64>> = Mutex::new(None);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn array2_from_flat<T: FloatExt, U: Copy + Into<f64>>(
   host: &[U],
   m: usize,
@@ -249,8 +243,6 @@ fn array2_from_vec_f64<T: FloatExt>(v: Vec<f64>, m: usize, cols: usize) -> Array
     array2_from_flat::<T, f64>(&v, m, cols)
   }
 }
-
-// ── Sampling ──────────────────────────────────────────────────────────────────
 
 fn sample_f32<T: FloatExt>(
   sqrt_eigs: &[f32],
