@@ -5,21 +5,25 @@
 //! $$
 //!
 mod core;
+#[cfg(feature = "accelerate")]
+mod accelerate;
 #[cfg(feature = "cuda-native")]
 mod cuda_native;
 #[cfg(feature = "gpu")]
 mod gpu;
+#[cfg(feature = "metal")]
+mod metal;
 #[cfg(feature = "python")]
 mod python;
 
 pub use core::FGN;
 
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use anyhow::Result;
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use either::Either;
 use ndarray::Array1;
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use ndarray::Array2;
 #[cfg(feature = "python")]
 pub use python::PyFGN;
@@ -43,5 +47,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FGN<T, S> {
   #[cfg(feature = "cuda-native")]
   fn sample_cuda_native(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     self.sample_cuda_native_impl(m)
+  }
+
+  #[cfg(feature = "accelerate")]
+  fn sample_accelerate(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    self.sample_accelerate_impl(m)
+  }
+
+  #[cfg(feature = "metal")]
+  fn sample_metal(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    self.sample_metal_impl(m)
   }
 }

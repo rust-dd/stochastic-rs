@@ -40,6 +40,7 @@ kendalls = "1.0.0"
 levenberg-marquardt = "0.14.0"
 linreg = "0.2.0"
 openblas-src = { version = "0.10", features = ["cblas", "static"], optional = true }
+metal = { version = "0.33.0", optional = true }
 mimalloc = { version = "0.1.48", optional = true }
 nalgebra = "0.33.2"
 ndarray = { version = "0.17.2", features = [
@@ -114,6 +115,16 @@ harness = false
 required-features = ["cuda-native"]
 
 [[bench]]
+name = "fgn_accelerate"
+harness = false
+required-features = ["accelerate"]
+
+[[bench]]
+name = "fgn_metal"
+harness = false
+required-features = ["metal"]
+
+[[bench]]
 name = "poisson_process"
 harness = false
 
@@ -133,7 +144,9 @@ harness = false
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda-native = ["dep:cudarc", "cudarc/cufft"]
 default = []
+accelerate = []
 gpu = ["dep:cubecl", "dep:gpu-fft"]
+metal = ["dep:metal"]
 gpu-cuda = ["gpu", "dep:cubecl-cuda"]
 gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
 jemalloc = ["dep:tikv-jemallocator"]

@@ -11,12 +11,12 @@ use std::iter::Sum;
 use std::ops::AddAssign;
 use std::ops::SubAssign;
 
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use anyhow::Result;
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use either::Either;
 use ndarray::Array1;
-#[cfg(any(feature = "gpu", feature = "cuda-native"))]
+#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::ScalarOperand;
@@ -207,6 +207,16 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   #[cfg(feature = "cuda-native")]
   fn sample_cuda_native(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     anyhow::bail!("cudarc native CUDA sampling is not supported for this process")
+  }
+
+  #[cfg(feature = "accelerate")]
+  fn sample_accelerate(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    anyhow::bail!("Accelerate/vDSP sampling is not supported for this process")
+  }
+
+  #[cfg(feature = "metal")]
+  fn sample_metal(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    anyhow::bail!("Metal GPU sampling is not supported for this process")
   }
 }
 

@@ -209,7 +209,10 @@ fn fft_butterfly<F: Float>(
 
   let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(pos) / F::cast_from(stride);
   let (tw_r, tw_i) = (F::cos(a), F::sin(a));
-  let (tr, ti) = (real[j] * tw_r - imag[j] * tw_i, real[j] * tw_i + imag[j] * tw_r);
+  let (tr, ti) = (
+    real[j] * tw_r - imag[j] * tw_i,
+    real[j] * tw_i + imag[j] * tw_r,
+  );
   let (ar, ai) = (real[i], imag[i]);
   real[i] = ar + tr;
   imag[i] = ai + ti;
