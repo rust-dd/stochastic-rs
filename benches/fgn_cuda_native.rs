@@ -58,6 +58,9 @@ fn bench_fgn_batch_cpu_vs_cuda_native(c: &mut Criterion) {
     (4096usize, 512usize),
     (16384usize, 128usize),
     (16384usize, 512usize),
+    (65536usize, 128usize),
+    (65536usize, 512usize),
+    (65536usize, 1024usize),
   ];
 
   for &(n, m) in &cases {

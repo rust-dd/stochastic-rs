@@ -1,14 +1,15 @@
 //! # cudarc Native CUDA
 //!
-//! NVIDIA-optimized FGN sampling via cudarc (cuFFT + cuRAND + NVRTC).
-//! No `.cu` files, no `nvcc`, no FFI — pure Rust with dynamic CUDA loading.
+//! NVIDIA-optimized FGN sampling via cudarc (cuFFT + NVRTC).
+//! Fused Philox RNG + eigenvalue scaling eliminates cuRAND dependency
+//! and one GPU memory round-trip.
 //!
 use std::any::TypeId;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
 use cudarc::cufft;
-use cudarc::curand::CudaRng;
 use cudarc::driver::*;
 use cudarc::nvrtc;
 use either::Either;
@@ -22,86 +23,188 @@ use crate::traits::FloatExt;
 
 const CUFFT_FORWARD: i32 = -1;
 
-/// NVRTC kernel: scale interleaved complex data by real eigenvalues (f32).
-const SCALE_KERNEL_F32: &str = r#"
-extern "C" __global__ void scale_by_eigs_f32(
-    float* data,
-    const float* sqrt_eigs,
-    int traj_size,
-    int total)
+// ── Fused generate + scale kernel (Philox-2x32-10 RNG + Box-Muller) ──────────
+// Generates two standard normals per thread via counter-based RNG,
+// scales by sqrt_eigenvalue, and writes interleaved complex output.
+// Eliminates cuRAND + one global-memory round-trip.
+
+const GEN_SCALE_F32: &str = r#"
+extern "C" __global__ void gen_scale_f32(
+    float* __restrict__ data,
+    const float* __restrict__ sqrt_eigs,
+    int traj_size, int total,
+    unsigned long long seed, unsigned long long seq)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= total) return;
-    int idx = tid % traj_size;
-    float eig = sqrt_eigs[idx];
-    data[2*tid]   *= eig;
-    data[2*tid+1] *= eig;
+
+    /* Philox-2x32-10 */
+    unsigned int lo = (unsigned int)((unsigned long long)tid + seq);
+    unsigned int hi = (unsigned int)(((unsigned long long)tid + seq) >> 32);
+    unsigned int k  = (unsigned int)seed;
+    #pragma unroll
+    for (int i = 0; i < 10; i++) {
+        unsigned long long p = (unsigned long long)0xD2511F53u * lo;
+        lo = ((unsigned int)(p >> 32)) ^ hi ^ k;
+        hi = (unsigned int)p;
+        k += 0x9E3779B9u;
+    }
+
+    float u1 = (lo + 0.5f) * 2.3283064365386963e-10f;
+    float u2 = (hi + 0.5f) * 2.3283064365386963e-10f;
+    float r  = sqrtf(-2.0f * logf(u1));
+    float sn, cs;
+    __sincosf(6.283185307179586f * u2, &sn, &cs);
+
+    float eig = sqrt_eigs[tid % traj_size];
+    data[2*tid]   = r * cs * eig;
+    data[2*tid+1] = r * sn * eig;
 }
 "#;
 
-const EXTRACT_KERNEL_F32: &str = r#"
-extern "C" __global__ void extract_scale_f32(
-    const float* data,
-    float* output,
-    int out_size,
-    int traj_stride,
-    float scale,
-    int total)
+const EXTRACT_F32: &str = r#"
+extern "C" __global__ void extract_f32(
+    const float* __restrict__ data,
+    float* __restrict__ output,
+    int out_size, int traj_stride, float scale, int total)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= total) return;
-    int traj_id = tid / out_size;
-    int idx = tid % out_size;
-    int data_idx = traj_id * traj_stride + (idx + 1);
-    output[tid] = data[2*data_idx] * scale;
+    int traj_id  = tid / out_size;
+    int idx      = tid % out_size;
+    output[tid]  = data[2 * (traj_id * traj_stride + idx + 1)] * scale;
 }
 "#;
 
-/// NVRTC kernel: scale interleaved complex data by real eigenvalues (f64).
-const SCALE_KERNEL_F64: &str = r#"
-extern "C" __global__ void scale_by_eigs_f64(
-    double* data,
-    const double* sqrt_eigs,
-    int traj_size,
-    int total)
+const GEN_SCALE_F64: &str = r#"
+extern "C" __global__ void gen_scale_f64(
+    double* __restrict__ data,
+    const double* __restrict__ sqrt_eigs,
+    int traj_size, int total,
+    unsigned long long seed, unsigned long long seq)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= total) return;
-    int idx = tid % traj_size;
-    double eig = sqrt_eigs[idx];
-    data[2*tid]   *= eig;
-    data[2*tid+1] *= eig;
+
+    unsigned int lo = (unsigned int)((unsigned long long)tid + seq);
+    unsigned int hi = (unsigned int)(((unsigned long long)tid + seq) >> 32);
+    unsigned int k  = (unsigned int)seed;
+    #pragma unroll
+    for (int i = 0; i < 10; i++) {
+        unsigned long long p = (unsigned long long)0xD2511F53u * lo;
+        lo = ((unsigned int)(p >> 32)) ^ hi ^ k;
+        hi = (unsigned int)p;
+        k += 0x9E3779B9u;
+    }
+
+    double u1 = ((double)lo + 0.5) * 2.3283064365386963e-10;
+    double u2 = ((double)hi + 0.5) * 2.3283064365386963e-10;
+    double r  = sqrt(-2.0 * log(u1));
+    double angle = 6.283185307179586 * u2;
+
+    double eig = sqrt_eigs[tid % traj_size];
+    data[2*tid]   = r * cos(angle) * eig;
+    data[2*tid+1] = r * sin(angle) * eig;
 }
 "#;
 
-const EXTRACT_KERNEL_F64: &str = r#"
-extern "C" __global__ void extract_scale_f64(
-    const double* data,
-    double* output,
-    int out_size,
-    int traj_stride,
-    double scale,
-    int total)
+const EXTRACT_F64: &str = r#"
+extern "C" __global__ void extract_f64(
+    const double* __restrict__ data,
+    double* __restrict__ output,
+    int out_size, int traj_stride, double scale, int total)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= total) return;
-    int traj_id = tid / out_size;
-    int idx = tid % out_size;
-    int data_idx = traj_id * traj_stride + (idx + 1);
-    output[tid] = data[2*data_idx] * scale;
+    int traj_id  = tid / out_size;
+    int idx      = tid % out_size;
+    output[tid]  = data[2 * (traj_id * traj_stride + idx + 1)] * scale;
 }
 "#;
 
-struct CudaNativeCtxF32 {
+// ── Pinned host memory (page-locked, DMA-capable) ────────────────────────────
+
+struct PinnedBuf<T: Copy> {
+  ptr: *mut T,
+  len: usize,
+}
+
+unsafe impl<T: Copy> Send for PinnedBuf<T> {}
+
+impl<T: Copy> PinnedBuf<T> {
+  fn new(len: usize) -> Result<Self> {
+    let bytes = len * std::mem::size_of::<T>();
+    let ptr =
+      unsafe { result::malloc_host(bytes, 0) }.map_err(|e| anyhow::anyhow!("malloc_host: {e}"))?;
+    Ok(Self { ptr: ptr as *mut T, len })
+  }
+
+  fn as_mut_slice(&mut self) -> &mut [T] {
+    unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
+  }
+
+  fn to_vec(&self) -> Vec<T> {
+    unsafe { std::slice::from_raw_parts(self.ptr, self.len) }.to_vec()
+  }
+}
+
+impl<T: Copy> Drop for PinnedBuf<T> {
+  fn drop(&mut self) {
+    unsafe { let _ = result::free_host(self.ptr as *mut _); }
+  }
+}
+
+// ── Persistent GPU state (survives param changes) ─────────────────────────────
+
+struct GpuKernels {
   stream: Arc<CudaStream>,
-  scale_fn: CudaFunction,
-  extract_fn: CudaFunction,
+  gen_scale_f32: CudaFunction,
+  extract_f32: CudaFunction,
+  gen_scale_f64: CudaFunction,
+  extract_f64: CudaFunction,
+}
+
+// SAFETY: CUDA context and stream are thread-safe; all ops serialized by stream.
+unsafe impl Send for GpuKernels {}
+
+static GPU: Mutex<Option<GpuKernels>> = Mutex::new(None);
+static RNG_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn get_or_init_gpu() -> Result<()> {
+  let mut g = GPU.lock();
+  if g.is_some() {
+    return Ok(());
+  }
+  let ctx = CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext: {e}"))?;
+  let stream = ctx.new_stream().map_err(|e| anyhow::anyhow!("stream: {e}"))?;
+  let c = stream.context();
+
+  // Compile all four kernels once
+  let load = |src: &str, name: &str| -> Result<CudaFunction> {
+    let ptx = nvrtc::compile_ptx(src).map_err(|e| anyhow::anyhow!("NVRTC {name}: {e}"))?;
+    let m = c.load_module(ptx).map_err(|e| anyhow::anyhow!("load {name}: {e}"))?;
+    m.load_function(name)
+      .map_err(|e| anyhow::anyhow!("fn {name}: {e}"))
+  };
+
+  *g = Some(GpuKernels {
+    gen_scale_f32: load(GEN_SCALE_F32, "gen_scale_f32")?,
+    extract_f32: load(EXTRACT_F32, "extract_f32")?,
+    gen_scale_f64: load(GEN_SCALE_F64, "gen_scale_f64")?,
+    extract_f64: load(EXTRACT_F64, "extract_f64")?,
+    stream,
+  });
+  Ok(())
+}
+
+// ── Per-precision sized state (FFT plan + device buffers) ─────────────────────
+
+struct SizedCtxF32 {
   fft_plan: cufft::sys::cufftHandle,
-  d_sqrt_eigs: CudaSlice<f32>,
+  d_eigs: CudaSlice<f32>,
   d_data: CudaSlice<f32>,
-  d_output: CudaSlice<f32>,
-  rng: CudaRng,
-  // cache key
+  d_out: CudaSlice<f32>,
+  h_pinned: PinnedBuf<f32>,
   n: usize,
   m: usize,
   offset: usize,
@@ -109,24 +212,18 @@ struct CudaNativeCtxF32 {
   t_bits: u64,
 }
 
-impl Drop for CudaNativeCtxF32 {
+impl Drop for SizedCtxF32 {
   fn drop(&mut self) {
-    unsafe {
-      let _ = cufft::result::destroy(self.fft_plan);
-    }
+    unsafe { let _ = cufft::result::destroy(self.fft_plan); }
   }
 }
 
-struct CudaNativeCtxF64 {
-  stream: Arc<CudaStream>,
-  scale_fn: CudaFunction,
-  extract_fn: CudaFunction,
+struct SizedCtxF64 {
   fft_plan: cufft::sys::cufftHandle,
-  d_sqrt_eigs: CudaSlice<f64>,
+  d_eigs: CudaSlice<f64>,
   d_data: CudaSlice<f64>,
-  d_output: CudaSlice<f64>,
-  rng: CudaRng,
-  // cache key
+  d_out: CudaSlice<f64>,
+  h_pinned: PinnedBuf<f64>,
   n: usize,
   m: usize,
   offset: usize,
@@ -134,21 +231,19 @@ struct CudaNativeCtxF64 {
   t_bits: u64,
 }
 
-impl Drop for CudaNativeCtxF64 {
+impl Drop for SizedCtxF64 {
   fn drop(&mut self) {
-    unsafe {
-      let _ = cufft::result::destroy(self.fft_plan);
-    }
+    unsafe { let _ = cufft::result::destroy(self.fft_plan); }
   }
 }
 
-// SAFETY: The CUDA context and stream are thread-safe.
-// All GPU operations are serialized through the stream.
-unsafe impl Send for CudaNativeCtxF32 {}
-unsafe impl Send for CudaNativeCtxF64 {}
+unsafe impl Send for SizedCtxF32 {}
+unsafe impl Send for SizedCtxF64 {}
 
-static CTX_F32: Mutex<Option<CudaNativeCtxF32>> = Mutex::new(None);
-static CTX_F64: Mutex<Option<CudaNativeCtxF64>> = Mutex::new(None);
+static SIZED_F32: Mutex<Option<SizedCtxF32>> = Mutex::new(None);
+static SIZED_F64: Mutex<Option<SizedCtxF64>> = Mutex::new(None);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn array2_from_flat<T: FloatExt, U: Copy + Into<f64>>(
   host: &[U],
@@ -182,141 +277,7 @@ fn array2_from_vec_f64<T: FloatExt>(v: Vec<f64>, m: usize, cols: usize) -> Array
   }
 }
 
-fn init_ctx_f32(
-  stream: &Arc<CudaStream>,
-  sqrt_eigs_host: &[f32],
-  n: usize,
-  m: usize,
-  offset: usize,
-  hurst_bits: u64,
-  t_bits: u64,
-) -> Result<CudaNativeCtxF32> {
-  let ctx = stream.context();
-
-  // Compile NVRTC kernels
-  let ptx_scale = nvrtc::compile_ptx(SCALE_KERNEL_F32)
-    .map_err(|e| anyhow::anyhow!("NVRTC compile scale_f32: {e}"))?;
-  let ptx_extract = nvrtc::compile_ptx(EXTRACT_KERNEL_F32)
-    .map_err(|e| anyhow::anyhow!("NVRTC compile extract_f32: {e}"))?;
-
-  let mod_scale = ctx
-    .load_module(ptx_scale)
-    .map_err(|e| anyhow::anyhow!("load scale module: {e}"))?;
-  let mod_extract = ctx
-    .load_module(ptx_extract)
-    .map_err(|e| anyhow::anyhow!("load extract module: {e}"))?;
-
-  let scale_fn = mod_scale
-    .load_function("scale_by_eigs_f32")
-    .map_err(|e| anyhow::anyhow!("load scale_by_eigs_f32: {e}"))?;
-  let extract_fn = mod_extract
-    .load_function("extract_scale_f32")
-    .map_err(|e| anyhow::anyhow!("load extract_scale_f32: {e}"))?;
-
-  // cuFFT batched plan: traj_size complex elements, m batches
-  let traj_size = 2 * n;
-  let fft_plan =
-    cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
-      .map_err(|e| anyhow::anyhow!("cuFFT plan_1d: {e}"))?;
-
-  // Device memory
-  let d_sqrt_eigs = stream
-    .clone_htod(sqrt_eigs_host)
-    .map_err(|e| anyhow::anyhow!("htod sqrt_eigs: {e}"))?;
-  let d_data = stream
-    .alloc_zeros::<f32>(2 * m * traj_size)
-    .map_err(|e| anyhow::anyhow!("alloc data: {e}"))?;
-  let out_size = n - offset;
-  let d_output = stream
-    .alloc_zeros::<f32>(m * out_size)
-    .map_err(|e| anyhow::anyhow!("alloc output: {e}"))?;
-
-  // cuRAND
-  let seed: u64 = rand::Rng::random(&mut crate::simd_rng::rng());
-  let rng = CudaRng::new(seed, stream.clone()).map_err(|e| anyhow::anyhow!("cuRAND init: {e}"))?;
-
-  Ok(CudaNativeCtxF32 {
-    stream: stream.clone(),
-    scale_fn,
-    extract_fn,
-    fft_plan,
-    d_sqrt_eigs,
-    d_data,
-    d_output,
-    rng,
-    n,
-    m,
-    offset,
-    hurst_bits,
-    t_bits,
-  })
-}
-
-fn init_ctx_f64(
-  stream: &Arc<CudaStream>,
-  sqrt_eigs_host: &[f64],
-  n: usize,
-  m: usize,
-  offset: usize,
-  hurst_bits: u64,
-  t_bits: u64,
-) -> Result<CudaNativeCtxF64> {
-  let ctx = stream.context();
-
-  let ptx_scale = nvrtc::compile_ptx(SCALE_KERNEL_F64)
-    .map_err(|e| anyhow::anyhow!("NVRTC compile scale_f64: {e}"))?;
-  let ptx_extract = nvrtc::compile_ptx(EXTRACT_KERNEL_F64)
-    .map_err(|e| anyhow::anyhow!("NVRTC compile extract_f64: {e}"))?;
-
-  let mod_scale = ctx
-    .load_module(ptx_scale)
-    .map_err(|e| anyhow::anyhow!("load scale module: {e}"))?;
-  let mod_extract = ctx
-    .load_module(ptx_extract)
-    .map_err(|e| anyhow::anyhow!("load extract module: {e}"))?;
-
-  let scale_fn = mod_scale
-    .load_function("scale_by_eigs_f64")
-    .map_err(|e| anyhow::anyhow!("load scale_by_eigs_f64: {e}"))?;
-  let extract_fn = mod_extract
-    .load_function("extract_scale_f64")
-    .map_err(|e| anyhow::anyhow!("load extract_scale_f64: {e}"))?;
-
-  let traj_size = 2 * n;
-  let fft_plan =
-    cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
-      .map_err(|e| anyhow::anyhow!("cuFFT plan_1d Z2Z: {e}"))?;
-
-  let d_sqrt_eigs = stream
-    .clone_htod(sqrt_eigs_host)
-    .map_err(|e| anyhow::anyhow!("htod sqrt_eigs: {e}"))?;
-  let d_data = stream
-    .alloc_zeros::<f64>(2 * m * traj_size)
-    .map_err(|e| anyhow::anyhow!("alloc data: {e}"))?;
-  let out_size = n - offset;
-  let d_output = stream
-    .alloc_zeros::<f64>(m * out_size)
-    .map_err(|e| anyhow::anyhow!("alloc output: {e}"))?;
-
-  let seed: u64 = rand::Rng::random(&mut crate::simd_rng::rng());
-  let rng = CudaRng::new(seed, stream.clone()).map_err(|e| anyhow::anyhow!("cuRAND init: {e}"))?;
-
-  Ok(CudaNativeCtxF64 {
-    stream: stream.clone(),
-    scale_fn,
-    extract_fn,
-    fft_plan,
-    d_sqrt_eigs,
-    d_data,
-    d_output,
-    rng,
-    n,
-    m,
-    offset,
-    hurst_bits,
-    t_bits,
-  })
-}
+// ── Sampling ──────────────────────────────────────────────────────────────────
 
 fn sample_f32<T: FloatExt>(
   sqrt_eigs: &[f32],
@@ -330,92 +291,114 @@ fn sample_f32<T: FloatExt>(
   let t_bits = t.to_bits();
   let out_size = n - offset;
   let traj_size = 2 * n;
-  let scale_steps = out_size.max(1);
-  let scale = (scale_steps as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
+  let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
 
-  let mut guard = CTX_F32.lock();
-  let need_init = match &*guard {
-    Some(ctx) => {
-      ctx.n != n
-        || ctx.m != m
-        || ctx.offset != offset
-        || ctx.hurst_bits != hurst_bits
-        || ctx.t_bits != t_bits
+  get_or_init_gpu()?;
+  let gpu = GPU.lock();
+  let gpu = gpu.as_ref().unwrap();
+
+  let mut sized = SIZED_F32.lock();
+  let need_init = match &*sized {
+    Some(s) => {
+      s.n != n || s.m != m || s.offset != offset || s.hurst_bits != hurst_bits || s.t_bits != t_bits
     }
     None => true,
   };
 
   if need_init {
-    *guard = None;
-    let cuda_ctx = CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext::new: {e}"))?;
-    let stream = cuda_ctx
-      .new_stream()
-      .map_err(|e| anyhow::anyhow!("new_stream: {e}"))?;
-    *guard = Some(init_ctx_f32(
-      &stream, sqrt_eigs, n, m, offset, hurst_bits, t_bits,
-    )?);
-  }
-
-  let ctx = guard.as_mut().unwrap();
-
-  // 1. Fill with standard normals (2 * m * traj_size f32s = m * traj_size complex)
-  ctx
-    .rng
-    .fill_with_normal(&mut ctx.d_data, 0.0f32, 1.0f32)
-    .map_err(|e| anyhow::anyhow!("cuRAND fill_with_normal: {e}"))?;
-
-  // 2. Scale by eigenvalues
-  let total_complex = (m * traj_size) as i32;
-  let traj_size_i32 = traj_size as i32;
-  unsafe {
-    ctx
-      .stream
-      .launch_builder(&ctx.scale_fn)
-      .arg(&mut ctx.d_data)
-      .arg(&ctx.d_sqrt_eigs)
-      .arg(&traj_size_i32)
-      .arg(&total_complex)
-      .launch(LaunchConfig::for_num_elems(total_complex as u32))
-      .map_err(|e| anyhow::anyhow!("scale kernel launch: {e}"))?;
-  }
-
-  // 3. Batched in-place C2C FFT
-  {
-    let (ptr, _guard) = ctx.d_data.device_ptr_mut(&ctx.stream);
-    let complex_ptr = ptr as *mut cufft::sys::cufftComplex;
+    *sized = None;
+    let plan =
+      cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
+        .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
     unsafe {
-      cufft::result::exec_c2c(ctx.fft_plan, complex_ptr, complex_ptr, CUFFT_FORWARD)
-        .map_err(|e| anyhow::anyhow!("cuFFT exec_c2c: {e}"))?;
+      cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
+        .map_err(|e| anyhow::anyhow!("cuFFT set_stream: {e}"))?;
+    }
+    *sized = Some(SizedCtxF32 {
+      fft_plan: plan,
+      d_eigs: gpu.stream.clone_htod(sqrt_eigs).map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
+      d_data: gpu
+        .stream
+        .alloc_zeros::<f32>(2 * m * traj_size)
+        .map_err(|e| anyhow::anyhow!("alloc data: {e}"))?,
+      d_out: gpu
+        .stream
+        .alloc_zeros::<f32>(m * out_size)
+        .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
+      h_pinned: PinnedBuf::new(m * out_size)?,
+      n,
+      m,
+      offset,
+      hurst_bits,
+      t_bits,
+    });
+  }
+
+  let s = sized.as_mut().unwrap();
+
+  // 1. Fused generate normals + scale by eigenvalues
+  let total_complex = (m * traj_size) as i32;
+  let traj_i32 = traj_size as i32;
+  let seed: u64 = rand::Rng::random(&mut crate::simd_rng::rng());
+  let seq = RNG_SEQ.fetch_add(total_complex as u64, Ordering::Relaxed);
+  unsafe {
+    gpu
+      .stream
+      .launch_builder(&gpu.gen_scale_f32)
+      .arg(&mut s.d_data)
+      .arg(&s.d_eigs)
+      .arg(&traj_i32)
+      .arg(&total_complex)
+      .arg(&seed)
+      .arg(&seq)
+      .launch(LaunchConfig::for_num_elems(total_complex as u32))
+      .map_err(|e| anyhow::anyhow!("gen_scale: {e}"))?;
+  }
+
+  // 2. Batched FFT
+  {
+    let (ptr, _g) = s.d_data.device_ptr_mut(&gpu.stream);
+    unsafe {
+      cufft::result::exec_c2c(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
+        .map_err(|e| anyhow::anyhow!("cuFFT: {e}"))?;
     }
   }
 
-  // 4. Extract real parts + scale
+  // 3. Extract real parts + scale
   let total_out = (m * out_size) as i32;
-  let out_size_i32 = out_size as i32;
-  let traj_stride_i32 = traj_size as i32;
+  let out_i32 = out_size as i32;
+  let stride_i32 = traj_size as i32;
   unsafe {
-    ctx
+    gpu
       .stream
-      .launch_builder(&ctx.extract_fn)
-      .arg(&ctx.d_data)
-      .arg(&mut ctx.d_output)
-      .arg(&out_size_i32)
-      .arg(&traj_stride_i32)
+      .launch_builder(&gpu.extract_f32)
+      .arg(&s.d_data)
+      .arg(&mut s.d_out)
+      .arg(&out_i32)
+      .arg(&stride_i32)
       .arg(&scale)
       .arg(&total_out)
       .launch(LaunchConfig::for_num_elems(total_out as u32))
-      .map_err(|e| anyhow::anyhow!("extract kernel launch: {e}"))?;
+      .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
   }
 
-  // 5. Download results
-  let host_output = ctx
-    .stream
-    .clone_dtoh(&ctx.d_output)
-    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
+  // 4. DtoH — pinned DMA for small transfers, clone_dtoh for large.
+  //    Pinned avoids driver staging but adds a to_vec copy; crossover ~1M elems.
+  let total_elems = m * out_size;
+  let host = if total_elems <= 1_000_000 {
+    let (src_ptr, _g) = s.d_out.device_ptr_mut(&gpu.stream);
+    unsafe {
+      result::memcpy_dtoh_async(s.h_pinned.as_mut_slice(), src_ptr, gpu.stream.cu_stream())
+        .map_err(|e| anyhow::anyhow!("async dtoh: {e}"))?;
+    }
+    gpu.stream.synchronize().map_err(|e| anyhow::anyhow!("sync: {e}"))?;
+    s.h_pinned.to_vec()
+  } else {
+    gpu.stream.clone_dtoh(&s.d_out).map_err(|e| anyhow::anyhow!("dtoh: {e}"))?
+  };
+  drop(sized);
 
-  drop(guard);
-
-  let fgn = array2_from_vec_f32::<T>(host_output, m, out_size);
+  let fgn = array2_from_vec_f32::<T>(host, m, out_size);
   if m == 1 {
     return Ok(Either::Left(fgn.row(0).to_owned()));
   }
@@ -434,92 +417,113 @@ fn sample_f64<T: FloatExt>(
   let t_bits = t.to_bits();
   let out_size = n - offset;
   let traj_size = 2 * n;
-  let scale_steps = out_size.max(1);
-  let scale = (scale_steps as f64).powf(-hurst) * t.powf(hurst);
+  let scale = (out_size.max(1) as f64).powf(-hurst) * t.powf(hurst);
 
-  let mut guard = CTX_F64.lock();
-  let need_init = match &*guard {
-    Some(ctx) => {
-      ctx.n != n
-        || ctx.m != m
-        || ctx.offset != offset
-        || ctx.hurst_bits != hurst_bits
-        || ctx.t_bits != t_bits
+  get_or_init_gpu()?;
+  let gpu = GPU.lock();
+  let gpu = gpu.as_ref().unwrap();
+
+  let mut sized = SIZED_F64.lock();
+  let need_init = match &*sized {
+    Some(s) => {
+      s.n != n || s.m != m || s.offset != offset || s.hurst_bits != hurst_bits || s.t_bits != t_bits
     }
     None => true,
   };
 
   if need_init {
-    *guard = None;
-    let cuda_ctx = CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext::new: {e}"))?;
-    let stream = cuda_ctx
-      .new_stream()
-      .map_err(|e| anyhow::anyhow!("new_stream: {e}"))?;
-    *guard = Some(init_ctx_f64(
-      &stream, sqrt_eigs, n, m, offset, hurst_bits, t_bits,
-    )?);
-  }
-
-  let ctx = guard.as_mut().unwrap();
-
-  // 1. Fill with standard normals
-  ctx
-    .rng
-    .fill_with_normal(&mut ctx.d_data, 0.0f64, 1.0f64)
-    .map_err(|e| anyhow::anyhow!("cuRAND fill_with_normal: {e}"))?;
-
-  // 2. Scale by eigenvalues
-  let total_complex = (m * traj_size) as i32;
-  let traj_size_i32 = traj_size as i32;
-  unsafe {
-    ctx
-      .stream
-      .launch_builder(&ctx.scale_fn)
-      .arg(&mut ctx.d_data)
-      .arg(&ctx.d_sqrt_eigs)
-      .arg(&traj_size_i32)
-      .arg(&total_complex)
-      .launch(LaunchConfig::for_num_elems(total_complex as u32))
-      .map_err(|e| anyhow::anyhow!("scale kernel launch: {e}"))?;
-  }
-
-  // 3. Batched in-place Z2Z FFT
-  {
-    let (ptr, _guard) = ctx.d_data.device_ptr_mut(&ctx.stream);
-    let complex_ptr = ptr as *mut cufft::sys::cufftDoubleComplex;
+    *sized = None;
+    let plan =
+      cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
+        .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
     unsafe {
-      cufft::result::exec_z2z(ctx.fft_plan, complex_ptr, complex_ptr, CUFFT_FORWARD)
-        .map_err(|e| anyhow::anyhow!("cuFFT exec_z2z: {e}"))?;
+      cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
+        .map_err(|e| anyhow::anyhow!("cuFFT set_stream: {e}"))?;
+    }
+    *sized = Some(SizedCtxF64 {
+      fft_plan: plan,
+      d_eigs: gpu.stream.clone_htod(sqrt_eigs).map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
+      d_data: gpu
+        .stream
+        .alloc_zeros::<f64>(2 * m * traj_size)
+        .map_err(|e| anyhow::anyhow!("alloc data: {e}"))?,
+      d_out: gpu
+        .stream
+        .alloc_zeros::<f64>(m * out_size)
+        .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
+      h_pinned: PinnedBuf::new(m * out_size)?,
+      n,
+      m,
+      offset,
+      hurst_bits,
+      t_bits,
+    });
+  }
+
+  let s = sized.as_mut().unwrap();
+
+  // 1. Fused generate + scale
+  let total_complex = (m * traj_size) as i32;
+  let traj_i32 = traj_size as i32;
+  let seed: u64 = rand::Rng::random(&mut crate::simd_rng::rng());
+  let seq = RNG_SEQ.fetch_add(total_complex as u64, Ordering::Relaxed);
+  unsafe {
+    gpu
+      .stream
+      .launch_builder(&gpu.gen_scale_f64)
+      .arg(&mut s.d_data)
+      .arg(&s.d_eigs)
+      .arg(&traj_i32)
+      .arg(&total_complex)
+      .arg(&seed)
+      .arg(&seq)
+      .launch(LaunchConfig::for_num_elems(total_complex as u32))
+      .map_err(|e| anyhow::anyhow!("gen_scale: {e}"))?;
+  }
+
+  // 2. Batched FFT
+  {
+    let (ptr, _g) = s.d_data.device_ptr_mut(&gpu.stream);
+    unsafe {
+      cufft::result::exec_z2z(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
+        .map_err(|e| anyhow::anyhow!("cuFFT: {e}"))?;
     }
   }
 
-  // 4. Extract real parts + scale
+  // 3. Extract + scale
   let total_out = (m * out_size) as i32;
-  let out_size_i32 = out_size as i32;
-  let traj_stride_i32 = traj_size as i32;
+  let out_i32 = out_size as i32;
+  let stride_i32 = traj_size as i32;
   unsafe {
-    ctx
+    gpu
       .stream
-      .launch_builder(&ctx.extract_fn)
-      .arg(&ctx.d_data)
-      .arg(&mut ctx.d_output)
-      .arg(&out_size_i32)
-      .arg(&traj_stride_i32)
+      .launch_builder(&gpu.extract_f64)
+      .arg(&s.d_data)
+      .arg(&mut s.d_out)
+      .arg(&out_i32)
+      .arg(&stride_i32)
       .arg(&scale)
       .arg(&total_out)
       .launch(LaunchConfig::for_num_elems(total_out as u32))
-      .map_err(|e| anyhow::anyhow!("extract kernel launch: {e}"))?;
+      .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
   }
 
-  // 5. Download results
-  let host_output = ctx
-    .stream
-    .clone_dtoh(&ctx.d_output)
-    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
+  // 4. DtoH — pinned DMA for small, clone_dtoh for large
+  let total_elems = m * out_size;
+  let host = if total_elems <= 1_000_000 {
+    let (src_ptr, _g) = s.d_out.device_ptr_mut(&gpu.stream);
+    unsafe {
+      result::memcpy_dtoh_async(s.h_pinned.as_mut_slice(), src_ptr, gpu.stream.cu_stream())
+        .map_err(|e| anyhow::anyhow!("async dtoh: {e}"))?;
+    }
+    gpu.stream.synchronize().map_err(|e| anyhow::anyhow!("sync: {e}"))?;
+    s.h_pinned.to_vec()
+  } else {
+    gpu.stream.clone_dtoh(&s.d_out).map_err(|e| anyhow::anyhow!("dtoh: {e}"))?
+  };
+  drop(sized);
 
-  drop(guard);
-
-  let fgn = array2_from_vec_f64::<T>(host_output, m, out_size);
+  let fgn = array2_from_vec_f64::<T>(host, m, out_size);
   if m == 1 {
     return Ok(Either::Left(fgn.row(0).to_owned()));
   }
@@ -559,5 +563,161 @@ impl<T: FloatExt, S: SeedExt> FGN<T, S> {
         sample_f32::<T>(&eigs_f32, n, m, offset, hurst, t)
       }
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::ProcessExt;
+
+  fn lag_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
+    let mut s = 0.0;
+    let mut c = 0usize;
+    for p in paths {
+      for i in 0..(p.len() - lag) {
+        s += (p[i] - mean) * (p[i + lag] - mean);
+        c += 1;
+      }
+    }
+    s / c as f64
+  }
+
+  #[test]
+  fn cuda_native_single_path_shape() {
+    let fgn = FGN::<f64>::new(0.7, 1024, Some(1.0));
+    let result = fgn.sample_cuda_native(1).expect("single path should succeed");
+    let path = result.left().expect("m=1 should return Left(Array1)");
+    assert_eq!(path.len(), 1024);
+  }
+
+  #[test]
+  fn cuda_native_batch_shape() {
+    let fgn = FGN::<f64>::new(0.7, 512, Some(1.0));
+    let m = 64;
+    let result = fgn.sample_cuda_native(m).expect("batch should succeed");
+    let batch = result.right().expect("m>1 should return Right(Array2)");
+    assert_eq!(batch.shape(), &[m, 512]);
+  }
+
+  #[test]
+  fn cuda_native_f32_works() {
+    let fgn = FGN::<f32>::new(0.7, 1024, Some(1.0));
+    let result = fgn.sample_cuda_native(4).expect("f32 should succeed");
+    let batch = result.right().expect("m>1 should return Right(Array2)");
+    assert_eq!(batch.shape(), &[4, 1024]);
+  }
+
+  #[test]
+  fn cuda_native_non_power_of_two_n() {
+    let fgn = FGN::<f64>::new(0.7, 3000, Some(1.0));
+    let result = fgn.sample_cuda_native(8).expect("non-pot n should work");
+    let batch = result.right().expect("batch");
+    assert_eq!(batch.shape(), &[8, 3000]);
+  }
+
+  #[test]
+  fn cuda_native_eigenvalues_structural() {
+    let fgn = FGN::<f64>::new(0.72, 2048, Some(1.0));
+    let eigs = &*fgn.sqrt_eigenvalues;
+
+    assert_eq!(eigs.len(), 2 * fgn.n);
+    assert!(eigs.iter().all(|&v| v >= 0.0));
+
+    for i in 1..eigs.len() / 2 {
+      let diff = (eigs[i] - eigs[eigs.len() - i]).abs();
+      assert!(
+        diff < 1e-10,
+        "eigs[{i}]={} != eigs[{}]={}",
+        eigs[i],
+        eigs.len() - i,
+        eigs[eigs.len() - i]
+      );
+    }
+
+    let energy: f64 = eigs.iter().map(|&v| v * v).sum();
+    assert!(
+      (energy - 1.0).abs() < 1e-6,
+      "eigenvalue energy sum should be 1.0, got {energy}"
+    );
+  }
+
+  #[test]
+  fn cuda_native_scale_matches_cpu() {
+    for &n in &[1024_usize, 3000, 4096] {
+      let fgn = FGN::<f64>::new(0.7, n, Some(2.0));
+      let cpu_scale = fgn.scale;
+
+      let out_size = fgn.n - fgn.offset;
+      let scale_steps = out_size.max(1);
+      let cuda_scale = (scale_steps as f64).powf(-0.7) * 2.0_f64.powf(0.7);
+
+      assert!(
+        (cpu_scale - cuda_scale).abs() < 1e-14,
+        "scale mismatch for n={n}: cpu={cpu_scale}, cuda={cuda_scale}"
+      );
+    }
+  }
+
+  #[test]
+  fn cuda_native_variance_matches_cpu() {
+    let h = 0.72_f64;
+    let n = 2048_usize;
+    let t = 1.0_f64;
+    let m = 1024_usize;
+    let fgn = FGN::<f64>::new(h, n, Some(t));
+
+    let cpu_paths: Vec<Vec<f64>> = (0..m).map(|_| fgn.sample_cpu().to_vec()).collect();
+    let cpu_vals: Vec<f64> = cpu_paths.iter().flatten().copied().collect();
+    let cpu_mean = cpu_vals.iter().sum::<f64>() / cpu_vals.len() as f64;
+    let cpu_var =
+      cpu_vals.iter().map(|x| (x - cpu_mean).powi(2)).sum::<f64>() / cpu_vals.len() as f64;
+
+    let cuda_result = fgn.sample_cuda_native(m).expect("cuda batch should succeed");
+    let cuda_batch = cuda_result.right().expect("batch");
+    let cuda_vals: Vec<f64> = cuda_batch.iter().copied().collect();
+    let cuda_mean = cuda_vals.iter().sum::<f64>() / cuda_vals.len() as f64;
+    let cuda_var =
+      cuda_vals.iter().map(|x| (x - cuda_mean).powi(2)).sum::<f64>() / cuda_vals.len() as f64;
+
+    let ratio = cuda_var / cpu_var;
+    assert!(
+      (ratio - 1.0).abs() < 0.15,
+      "CUDA vs CPU variance ratio = {ratio} (cuda={cuda_var}, cpu={cpu_var})"
+    );
+  }
+
+  #[test]
+  fn cuda_native_covariance_structure_matches_cpu() {
+    let h = 0.72_f64;
+    let n = 2048_usize;
+    let t = 1.0_f64;
+    let m = 1024_usize;
+    let fgn = FGN::<f64>::new(h, n, Some(t));
+
+    let cpu_paths: Vec<Vec<f64>> = (0..m).map(|_| fgn.sample_cpu().to_vec()).collect();
+    let cpu_vals: Vec<f64> = cpu_paths.iter().flatten().copied().collect();
+    let cpu_mean = cpu_vals.iter().sum::<f64>() / cpu_vals.len() as f64;
+    let cpu_cov1 = lag_covariance(&cpu_paths, cpu_mean, 1);
+    let cpu_cov4 = lag_covariance(&cpu_paths, cpu_mean, 4);
+
+    let cuda_result = fgn.sample_cuda_native(m).expect("cuda batch should succeed");
+    let cuda_batch = cuda_result.right().expect("batch");
+    let cuda_paths: Vec<Vec<f64>> = cuda_batch.rows().into_iter().map(|r| r.to_vec()).collect();
+    let cuda_vals: Vec<f64> = cuda_paths.iter().flatten().copied().collect();
+    let cuda_mean = cuda_vals.iter().sum::<f64>() / cuda_vals.len() as f64;
+    let cuda_cov1 = lag_covariance(&cuda_paths, cuda_mean, 1);
+    let cuda_cov4 = lag_covariance(&cuda_paths, cuda_mean, 4);
+
+    let ratio1 = cuda_cov1 / cpu_cov1;
+    let ratio4 = cuda_cov4 / cpu_cov4;
+    assert!(
+      (ratio1 - 1.0).abs() < 0.15,
+      "lag-1 cov ratio = {ratio1} (cuda={cuda_cov1}, cpu={cpu_cov1})"
+    );
+    assert!(
+      (ratio4 - 1.0).abs() < 0.15,
+      "lag-4 cov ratio = {ratio4} (cuda={cuda_cov4}, cpu={cpu_cov4})"
+    );
   }
 }
