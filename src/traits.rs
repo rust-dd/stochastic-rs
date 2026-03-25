@@ -11,12 +11,12 @@ use std::iter::Sum;
 use std::ops::AddAssign;
 use std::ops::SubAssign;
 
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "gpu", feature = "cuda-native"))]
 use anyhow::Result;
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "gpu", feature = "cuda-native"))]
 use either::Either;
 use ndarray::Array1;
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "gpu", feature = "cuda-native"))]
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::ScalarOperand;
@@ -199,9 +199,14 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
     (0..m).into_par_iter().map(|_| self.sample()).collect()
   }
 
-  #[cfg(feature = "cuda")]
-  fn sample_cuda(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    anyhow::bail!("CUDA sampling is not supported for this process")
+  #[cfg(feature = "gpu")]
+  fn sample_gpu(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    anyhow::bail!("CubeCL GPU sampling is not supported for this process")
+  }
+
+  #[cfg(feature = "cuda-native")]
+  fn sample_cuda_native(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    anyhow::bail!("cudarc native CUDA sampling is not supported for this process")
   }
 }
 

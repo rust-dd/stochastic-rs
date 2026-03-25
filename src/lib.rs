@@ -32,7 +32,7 @@ pub mod simd_rng;
 pub mod stats;
 pub mod stochastic;
 pub mod traits;
-mod visualization;
+pub mod visualization;
 
 #[cfg(feature = "python")]
 mod python;
