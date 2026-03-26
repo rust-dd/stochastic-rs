@@ -133,9 +133,9 @@ pub struct GridPlotter {
 }
 
 impl Default for GridPlotter {
-    fn default() -> Self {
-        Self::new()
-    }
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl GridPlotter {

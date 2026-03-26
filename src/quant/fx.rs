@@ -13,4 +13,5 @@ pub mod quoting;
 
 pub use currency::Currency;
 pub use forward::FxForward;
-pub use quoting::{CurrencyPair, cross_rate};
+pub use quoting::CurrencyPair;
+pub use quoting::cross_rate;

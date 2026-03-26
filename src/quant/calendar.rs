@@ -16,8 +16,12 @@ pub mod schedule;
 
 pub use business_day::BusinessDayConvention;
 pub use day_count::DayCountConvention;
-pub use holiday::{Calendar, HolidayCalendar};
-pub use schedule::{DateGenerationRule, Frequency, Schedule, ScheduleBuilder};
+pub use holiday::Calendar;
+pub use holiday::HolidayCalendar;
+pub use schedule::DateGenerationRule;
+pub use schedule::Frequency;
+pub use schedule::Schedule;
+pub use schedule::ScheduleBuilder;
 
 /// Trait for types that can determine business days.
 ///

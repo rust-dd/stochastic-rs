@@ -34,7 +34,13 @@ fn bench_batch(c: &mut Criterion) {
   g.warm_up_time(Duration::from_millis(500));
   g.sample_size(30);
 
-  let cases = [(4096, 32), (4096, 128), (4096, 512), (16384, 128), (16384, 512)];
+  let cases = [
+    (4096, 32),
+    (4096, 128),
+    (4096, 512),
+    (16384, 128),
+    (16384, 512),
+  ];
   for &(n, m) in &cases {
     let fgn = FGN::new(0.7f32, n, None);
     let _ = fgn.sample_accelerate(m);
@@ -43,9 +49,13 @@ fn bench_batch(c: &mut Criterion) {
     g.bench_with_input(BenchmarkId::new("cpu", &label), &(n, m), |b, &(_, m)| {
       b.iter(|| black_box(fgn.sample_par(m)));
     });
-    g.bench_with_input(BenchmarkId::new("accelerate", &label), &(n, m), |b, &(_, m)| {
-      b.iter(|| black_box(fgn.sample_accelerate(m).unwrap()));
-    });
+    g.bench_with_input(
+      BenchmarkId::new("accelerate", &label),
+      &(n, m),
+      |b, &(_, m)| {
+        b.iter(|| black_box(fgn.sample_accelerate(m).unwrap()));
+      },
+    );
   }
   g.finish();
 }

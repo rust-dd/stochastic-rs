@@ -4,12 +4,27 @@
 //! \mathbb E[B_t^H B_s^H]=\tfrac12\left(t^{2H}+s^{2H}-|t-s|^{2H}\right)
 //! $$
 //!
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use anyhow::Result;
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use either::Either;
 use ndarray::Array1;
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use ndarray::Array2;
 #[cfg(feature = "python")]
 use numpy::IntoPyArray;
@@ -106,9 +121,17 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBM<T, S> {
   }
 }
 
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 impl<T: FloatExt, S: SeedExt> FBM<T, S> {
-  fn fgn_to_fbm(n: usize, fgn_out: Either<Array1<T>, Array2<T>>) -> Result<Either<Array1<T>, Array2<T>>> {
+  fn fgn_to_fbm(
+    n: usize,
+    fgn_out: Either<Array1<T>, Array2<T>>,
+  ) -> Result<Either<Array1<T>, Array2<T>>> {
     match fgn_out {
       Either::Left(fgn_path) => {
         let mut fbm = Array1::<T>::zeros(n);
@@ -404,5 +427,4 @@ mod tests {
       "higuchi FD mismatch: D_est={d_higuchi}, D={d_theory}"
     );
   }
-
 }

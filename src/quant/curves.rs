@@ -27,11 +27,15 @@ pub mod nelson_siegel;
 pub mod svensson;
 pub mod types;
 
-pub use bootstrap::{bootstrap, bootstrap_iterative};
+pub use bootstrap::bootstrap;
+pub use bootstrap::bootstrap_iterative;
 pub use discount_curve::DiscountCurve;
 pub use interpolation::interpolate_discount_factor;
 pub use multi_curve::MultiCurve;
 pub use nelson_siegel::NelsonSiegel;
 #[cfg(feature = "openblas")]
 pub use svensson::Svensson;
-pub use types::{Compounding, CurvePoint, Instrument, InterpolationMethod};
+pub use types::Compounding;
+pub use types::CurvePoint;
+pub use types::Instrument;
+pub use types::InterpolationMethod;

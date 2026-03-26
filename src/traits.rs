@@ -11,12 +11,27 @@ use std::iter::Sum;
 use std::ops::AddAssign;
 use std::ops::SubAssign;
 
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use anyhow::Result;
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use either::Either;
 use ndarray::Array1;
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::ScalarOperand;

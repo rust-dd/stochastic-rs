@@ -29,7 +29,8 @@ pub mod variance_swap;
 
 // Re-export Fourier infrastructure and model structs.
 // Re-export commonly used pricers.
-pub use bsm::{BSMCoc, BSMPricer};
+pub use bsm::BSMCoc;
+pub use bsm::BSMPricer;
 pub use fourier::BSMFourier;
 pub use fourier::BatesFourier;
 pub use fourier::CGMYFourier;
@@ -47,4 +48,8 @@ pub use heston::HestonPricer;
 pub use heston_stoch_corr::HscmModel;
 pub use rbergomi::RBergomiPricer;
 pub use sabr::SabrModel;
-pub use slv::{HestonSlvParams, HestonSlvPricer, LeverageSurface, calibrate_from_dupire, calibrate_leverage};
+pub use slv::HestonSlvParams;
+pub use slv::HestonSlvPricer;
+pub use slv::LeverageSurface;
+pub use slv::calibrate_from_dupire;
+pub use slv::calibrate_leverage;

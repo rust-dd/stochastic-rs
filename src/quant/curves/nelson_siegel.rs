@@ -15,9 +15,8 @@
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
-
 use super::types::CurvePoint;
+use crate::traits::FloatExt;
 
 /// Nelson-Siegel parametric yield curve model (4 parameters).
 #[derive(Debug, Clone)]
@@ -34,7 +33,12 @@ pub struct NelsonSiegel<T: FloatExt> {
 
 impl<T: FloatExt> NelsonSiegel<T> {
   pub fn new(beta0: T, beta1: T, beta2: T, lambda: T) -> Self {
-    Self { beta0, beta1, beta2, lambda }
+    Self {
+      beta0,
+      beta1,
+      beta2,
+      lambda,
+    }
   }
 
   /// Factor loading for the slope component.
@@ -80,7 +84,10 @@ impl<T: FloatExt> NelsonSiegel<T> {
   pub fn curve_points(&self, maturities: &Array1<T>) -> Vec<CurvePoint<T>> {
     maturities
       .iter()
-      .map(|&tau| CurvePoint { time: tau, discount_factor: self.discount_factor(tau) })
+      .map(|&tau| CurvePoint {
+        time: tau,
+        discount_factor: self.discount_factor(tau),
+      })
       .collect()
   }
 
@@ -120,8 +127,12 @@ impl<T: FloatExt> NelsonSiegel<T> {
       }
 
       if let Some(betas) = super::linalg::solve_linalg::<3>(&xtx_data, &xty_data) {
-        let candidate =
-          Self::new(T::from_f64_fast(betas[0]), T::from_f64_fast(betas[1]), T::from_f64_fast(betas[2]), lambda);
+        let candidate = Self::new(
+          T::from_f64_fast(betas[0]),
+          T::from_f64_fast(betas[1]),
+          T::from_f64_fast(betas[2]),
+          lambda,
+        );
         let mut sse = T::zero();
         for i in 0..n {
           let err = market_rates[i] - candidate.zero_rate(maturities[i]);

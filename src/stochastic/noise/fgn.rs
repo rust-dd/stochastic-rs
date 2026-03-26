@@ -4,9 +4,9 @@
 //! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
-mod core;
 #[cfg(feature = "accelerate")]
 mod accelerate;
+mod core;
 #[cfg(feature = "cuda-native")]
 mod cuda_native;
 #[cfg(feature = "gpu")]
@@ -18,12 +18,27 @@ mod python;
 
 pub use core::FGN;
 
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use anyhow::Result;
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use either::Either;
 use ndarray::Array1;
-#[cfg(any(feature = "gpu", feature = "cuda-native", feature = "accelerate", feature = "metal"))]
+#[cfg(any(
+  feature = "gpu",
+  feature = "cuda-native",
+  feature = "accelerate",
+  feature = "metal"
+))]
 use ndarray::Array2;
 #[cfg(feature = "python")]
 pub use python::PyFGN;

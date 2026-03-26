@@ -6,10 +6,12 @@
 //! Reference: QuantLib — `MakeSchedule` builder;
 //! ISDA 2006 Definitions, Sections 4.15–4.16.
 
-use chrono::{Datelike, NaiveDate};
+use chrono::Datelike;
+use chrono::NaiveDate;
 
 use super::business_day::BusinessDayConvention;
-use super::day_count::{days_in_month, DayCountConvention};
+use super::day_count::DayCountConvention;
+use super::day_count::days_in_month;
 use super::holiday::Calendar;
 use crate::traits::FloatExt;
 
@@ -144,15 +146,22 @@ impl ScheduleBuilder {
   pub fn build(self) -> Schedule {
     let period = self.frequency.months();
     let mut raw_dates = match self.rule {
-      DateGenerationRule::Backward => generate_backward(self.effective, self.termination, period, self.end_of_month),
-      DateGenerationRule::Forward => generate_forward(self.effective, self.termination, period, self.end_of_month),
+      DateGenerationRule::Backward => {
+        generate_backward(self.effective, self.termination, period, self.end_of_month)
+      }
+      DateGenerationRule::Forward => {
+        generate_forward(self.effective, self.termination, period, self.end_of_month)
+      }
     };
 
     raw_dates.sort();
     raw_dates.dedup();
 
     let adjusted = match &self.calendar {
-      Some(cal) => raw_dates.iter().map(|&d| self.convention.adjust(d, cal)).collect(),
+      Some(cal) => raw_dates
+        .iter()
+        .map(|&d| self.convention.adjust(d, cal))
+        .collect(),
       None => raw_dates.clone(),
     };
 

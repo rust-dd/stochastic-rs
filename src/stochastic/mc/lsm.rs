@@ -10,7 +10,8 @@
 //! Simulation: A Simple Least-Squares Approach",
 //! DOI: 10.1093/rfs/14.1.113
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 use ndarray_linalg::LeastSquaresSvd;
 
 use crate::traits::FloatExt;

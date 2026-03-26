@@ -2,7 +2,8 @@
 //!
 //! Reference: ISDA 2006 Definitions, Section 4.16
 
-use chrono::{Datelike, NaiveDate};
+use chrono::Datelike;
+use chrono::NaiveDate;
 
 use crate::traits::FloatExt;
 

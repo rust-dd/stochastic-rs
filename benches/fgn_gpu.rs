@@ -60,9 +60,7 @@ fn bench_fgn_batch_cpu_vs_gpu(c: &mut Criterion) {
     let label = format!("n={n},m={m}");
     let fgn = FGN::new(hurst, n, None);
 
-    let _ = fgn
-      .sample_gpu(m)
-      .expect("GPU batch warmup should succeed");
+    let _ = fgn.sample_gpu(m).expect("GPU batch warmup should succeed");
 
     group.bench_with_input(
       BenchmarkId::new("cpu/sample_par", &label),

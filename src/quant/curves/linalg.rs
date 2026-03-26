@@ -2,7 +2,8 @@
 //!
 //! Wraps `ndarray-linalg::Solve` for small NxN systems used in OLS regression.
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 use ndarray_linalg::Solve;
 
 /// Solve an NxN linear system $Ax = b$ using ndarray-linalg (LAPACK LU decomposition).

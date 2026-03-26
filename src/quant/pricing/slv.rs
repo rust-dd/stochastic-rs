@@ -21,9 +21,12 @@
 //! arXiv 2406.14074 (Mustapha, strong well-posedness),
 //! arXiv 1701.06001 (Cozma et al., control-variate particle method).
 
-use ndarray::{Array1, Array2, Axis};
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Axis;
 use rand::SeedableRng;
-use rand_distr::{Distribution, StandardNormal};
+use rand_distr::Distribution;
+use rand_distr::StandardNormal;
 
 use crate::traits::ModelPricer;
 
@@ -177,7 +180,11 @@ pub fn calibrate_leverage(
     for i in 0..n_eval {
       let x_eval = eval_spots[i].ln();
       let (sum_v, sum_k) = kernel_conditional_mean(&x_particles, &v_particles, x_eval, bandwidth);
-      let cond_v = if sum_k > 1e-12 { sum_v / sum_k } else { params.v0 };
+      let cond_v = if sum_k > 1e-12 {
+        sum_v / sum_k
+      } else {
+        params.v0
+      };
       let cond_v = cond_v.max(1e-8);
 
       let local_vol = lv_surf.interpolate(eval_spots[i], t_curr);
@@ -204,9 +211,9 @@ pub fn calibrate_leverage(
       let l = lev_step.interpolate(s_curr, t_curr);
 
       // Variance: truncated Euler–Maruyama
-      v_particles[p] = (v_curr + params.kappa * (params.theta - v_curr) * dt
-        + sigma_mixed * sqrt_v * dw_v)
-        .max(0.0);
+      v_particles[p] =
+        (v_curr + params.kappa * (params.theta - v_curr) * dt + sigma_mixed * sqrt_v * dw_v)
+          .max(0.0);
 
       // Log-spot
       let drift = (r - q) - 0.5 * l * l * v_curr;
@@ -235,9 +242,7 @@ pub fn calibrate_from_dupire(
   // Replace NaN boundary values with nearest valid interior value per row
   let mut lv_clean = lv_surface.clone();
   for j in 0..nt {
-    let first_valid = (0..nk)
-      .find(|&i| lv_clean[[j, i]].is_finite())
-      .unwrap_or(1);
+    let first_valid = (0..nk).find(|&i| lv_clean[[j, i]].is_finite()).unwrap_or(1);
     let last_valid = (0..nk)
       .rfind(|&i| lv_clean[[j, i]].is_finite())
       .unwrap_or(nk - 2);
@@ -301,12 +306,7 @@ pub struct HestonSlvPricer {
 }
 
 impl HestonSlvPricer {
-  pub fn new(
-    params: HestonSlvParams,
-    leverage: LeverageSurface,
-    r: f64,
-    q: f64,
-  ) -> Self {
+  pub fn new(params: HestonSlvParams, leverage: LeverageSurface, r: f64, q: f64) -> Self {
     Self {
       params,
       leverage,
@@ -359,9 +359,9 @@ impl HestonSlvPricer {
 
         let l = self.leverage.interpolate(s_curr, t);
 
-        v = (v + self.params.kappa * (self.params.theta - v_pos) * dt
-          + sigma_mixed * sqrt_v * dw_v)
-          .max(0.0);
+        v =
+          (v + self.params.kappa * (self.params.theta - v_pos) * dt + sigma_mixed * sqrt_v * dw_v)
+            .max(0.0);
 
         let drift = (self.r - self.q) - 0.5 * l * l * v_pos;
         x += drift * dt + l * sqrt_v * dw_x;

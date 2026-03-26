@@ -1,7 +1,10 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::BenchmarkId;
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use stochastic_rs::stochastic::noise::fgn::FGN;
 use stochastic_rs::traits::ProcessExt;
 
@@ -31,7 +34,13 @@ fn bench_batch(c: &mut Criterion) {
   g.warm_up_time(Duration::from_millis(500));
   g.sample_size(30);
 
-  let cases = [(4096, 32), (4096, 128), (4096, 512), (16384, 128), (16384, 512)];
+  let cases = [
+    (4096, 32),
+    (4096, 128),
+    (4096, 512),
+    (16384, 128),
+    (16384, 512),
+  ];
   for &(n, m) in &cases {
     let fgn = FGN::new(0.7f32, n, None);
     let _ = fgn.sample_metal(m);

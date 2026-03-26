@@ -8,9 +8,8 @@
 //! Reference: BIS Triennial Central Bank Survey (2022); Thomson Reuters
 //! Spot FX quoting conventions.
 
-use crate::traits::FloatExt;
-
 use super::currency::Currency;
+use crate::traits::FloatExt;
 
 /// An FX currency pair (base / quote).
 ///
@@ -35,9 +34,15 @@ impl CurrencyPair {
     let p1 = quote_priority(c1.code);
     let p2 = quote_priority(c2.code);
     if p1 <= p2 {
-      Self { base: c1, quote: c2 }
+      Self {
+        base: c1,
+        quote: c2,
+      }
     } else {
-      Self { base: c2, quote: c1 }
+      Self {
+        base: c2,
+        quote: c1,
+      }
     }
   }
 

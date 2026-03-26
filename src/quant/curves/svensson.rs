@@ -13,9 +13,8 @@
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
-
 use super::types::CurvePoint;
+use crate::traits::FloatExt;
 
 /// Nelson-Siegel-Svensson parametric yield curve model (6 parameters).
 #[derive(Debug, Clone)]
@@ -36,7 +35,14 @@ pub struct Svensson<T: FloatExt> {
 
 impl<T: FloatExt> Svensson<T> {
   pub fn new(beta0: T, beta1: T, beta2: T, beta3: T, lambda1: T, lambda2: T) -> Self {
-    Self { beta0, beta1, beta2, beta3, lambda1, lambda2 }
+    Self {
+      beta0,
+      beta1,
+      beta2,
+      beta3,
+      lambda1,
+      lambda2,
+    }
   }
 
   fn slope_loading(&self, tau: T, lambda: T) -> T {
@@ -83,7 +89,10 @@ impl<T: FloatExt> Svensson<T> {
   pub fn curve_points(&self, maturities: &Array1<T>) -> Vec<CurvePoint<T>> {
     maturities
       .iter()
-      .map(|&tau| CurvePoint { time: tau, discount_factor: self.discount_factor(tau) })
+      .map(|&tau| CurvePoint {
+        time: tau,
+        discount_factor: self.discount_factor(tau),
+      })
       .collect()
   }
 
@@ -91,8 +100,14 @@ impl<T: FloatExt> Svensson<T> {
   pub fn fit(maturities: &Array1<T>, market_rates: &Array1<T>) -> Self {
     let n = maturities.len();
     let mut best_sse = T::from_f64_fast(f64::MAX);
-    let mut best =
-      Self::new(T::zero(), T::zero(), T::zero(), T::zero(), T::one(), T::from_f64_fast(2.0));
+    let mut best = Self::new(
+      T::zero(),
+      T::zero(),
+      T::zero(),
+      T::zero(),
+      T::one(),
+      T::from_f64_fast(2.0),
+    );
 
     let lambda_min = T::from_f64_fast(0.1);
     let lambda_max = T::from_f64_fast(5.0);

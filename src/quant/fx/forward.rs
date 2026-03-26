@@ -11,9 +11,8 @@
 //! Reference: Hull, *Options, Futures, and Other Derivatives*, 11th ed.,
 //! Chapter 5 — Determination of Forward and Futures Prices.
 
-use crate::traits::FloatExt;
-
 use super::quoting::CurrencyPair;
+use crate::traits::FloatExt;
 
 /// FX forward pricer using covered interest parity (CIP).
 #[derive(Debug, Clone, Copy)]
@@ -65,7 +64,8 @@ impl<T: FloatExt> FxForward<T> {
   /// $F = S \cdot \frac{1 + r_d \tau}{1 + r_f \tau}$
   pub fn forward_rate_simple(&self) -> T {
     let one = T::one();
-    self.spot * (one + self.domestic_rate * self.maturity) / (one + self.foreign_rate * self.maturity)
+    self.spot * (one + self.domestic_rate * self.maturity)
+      / (one + self.foreign_rate * self.maturity)
   }
 
   /// Forward points: $F - S$.

@@ -10,7 +10,8 @@ use std::any::TypeId;
 use anyhow::Result;
 use either::Either;
 use metal::*;
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 use parking_lot::Mutex;
 
 use super::FGN;
@@ -135,7 +136,9 @@ fn ensure_ctx() -> Result<()> {
     .map_err(|e| anyhow::anyhow!("MSL compile: {e}"))?;
 
   let mk = |name: &str| -> Result<ComputePipelineState> {
-    let f = lib.get_function(name, None).map_err(|e| anyhow::anyhow!("get {name}: {e}"))?;
+    let f = lib
+      .get_function(name, None)
+      .map_err(|e| anyhow::anyhow!("get {name}: {e}"))?;
     device
       .new_compute_pipeline_state_with_function(&f)
       .map_err(|e| anyhow::anyhow!("{name} PSO: {e}"))
@@ -145,14 +148,22 @@ fn ensure_ctx() -> Result<()> {
   let butterfly_pso = mk("fft_butterfly")?;
   let extract_pso = mk("extract_real")?;
 
-  *g = Some(MetalCtx { device, queue, gen_pso, butterfly_pso, extract_pso });
+  *g = Some(MetalCtx {
+    device,
+    queue,
+    gen_pso,
+    butterfly_pso,
+    extract_pso,
+  });
   Ok(())
 }
 
 fn build_bit_reverse_table(n: usize) -> Vec<u32> {
   let log_n = n.trailing_zeros() as usize;
   let bits = usize::BITS as usize;
-  (0..n).map(|i| (i.reverse_bits() >> (bits - log_n)) as u32).collect()
+  (0..n)
+    .map(|i| (i.reverse_bits() >> (bits - log_n)) as u32)
+    .collect()
 }
 
 fn sample_f32<T: FloatExt>(
@@ -277,7 +288,11 @@ impl<T: FloatExt, S: SeedExt> FGN<T, S> {
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let eigs: Vec<f32> = self.sqrt_eigenvalues.iter().map(|x| x.to_f32().unwrap()).collect();
+    let eigs: Vec<f32> = self
+      .sqrt_eigenvalues
+      .iter()
+      .map(|x| x.to_f32().unwrap())
+      .collect();
     sample_f32::<T>(&eigs, n, m, offset, hurst, t)
   }
 }

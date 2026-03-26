@@ -1,5 +1,7 @@
-use ndarray::{Array1, Array2};
-use ndarray_linalg::{Inverse, Solve};
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray_linalg::Inverse;
+use ndarray_linalg::Solve;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeterministicTerm {

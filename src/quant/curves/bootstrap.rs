@@ -12,11 +12,12 @@
 //! 2. **Middle** (FRAs / futures): $D(t_2) = D(t_1)/(1 + R\,\delta)$
 //! 3. **Long end** (swaps): $D(t_n) = \frac{1 - S\sum_{i=1}^{n-1}\delta_i\,D(t_i)}{1 + S\,\delta_n}$
 
-use crate::traits::FloatExt;
-
 use super::discount_curve::DiscountCurve;
 use super::interpolation;
-use super::types::{CurvePoint, Instrument, InterpolationMethod};
+use super::types::CurvePoint;
+use super::types::Instrument;
+use super::types::InterpolationMethod;
+use crate::traits::FloatExt;
 
 /// Build a discount curve by bootstrapping from a set of market instruments.
 ///
@@ -29,21 +30,35 @@ pub fn bootstrap<T: FloatExt>(
   let mut sorted: Vec<&Instrument<T>> = instruments.iter().collect();
   sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
 
-  let mut points: Vec<CurvePoint<T>> = vec![CurvePoint { time: T::zero(), discount_factor: T::one() }];
+  let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
+    time: T::zero(),
+    discount_factor: T::one(),
+  }];
 
   for inst in &sorted {
     match inst {
       Instrument::Deposit { maturity, rate } => {
         let df = T::one() / (T::one() + *rate * *maturity);
-        points.push(CurvePoint { time: *maturity, discount_factor: df });
+        points.push(CurvePoint {
+          time: *maturity,
+          discount_factor: df,
+        });
       }
       Instrument::Fra { start, end, rate } => {
         let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
         let delta = *end - *start;
         let df = d_start / (T::one() + *rate * delta);
-        points.push(CurvePoint { time: *end, discount_factor: df });
+        points.push(CurvePoint {
+          time: *end,
+          discount_factor: df,
+        });
       }
-      Instrument::Future { start, end, price, sigma } => {
+      Instrument::Future {
+        start,
+        end,
+        price,
+        sigma,
+      } => {
         let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
         let delta = *end - *start;
         let hundred = T::from_f64_fast(100.0);
@@ -52,9 +67,16 @@ pub fn bootstrap<T: FloatExt>(
         let convexity_adj = half * *sigma * *sigma * *start * *end;
         let fra_rate = futures_rate - convexity_adj;
         let df = d_start / (T::one() + fra_rate * delta);
-        points.push(CurvePoint { time: *end, discount_factor: df });
+        points.push(CurvePoint {
+          time: *end,
+          discount_factor: df,
+        });
       }
-      Instrument::Swap { maturity, rate, frequency } => {
+      Instrument::Swap {
+        maturity,
+        rate,
+        frequency,
+      } => {
         let delta = T::one() / T::from_f64_fast(*frequency as f64);
         let n_payments = (*maturity * T::from_f64_fast(*frequency as f64))
           .round()
@@ -69,7 +91,10 @@ pub fn bootstrap<T: FloatExt>(
         }
 
         let df_n = (T::one() - *rate * annuity) / (T::one() + *rate * delta);
-        points.push(CurvePoint { time: *maturity, discount_factor: df_n });
+        points.push(CurvePoint {
+          time: *maturity,
+          discount_factor: df_n,
+        });
       }
     }
   }
@@ -89,21 +114,35 @@ pub fn bootstrap_iterative<T: FloatExt>(
   let mut sorted: Vec<&Instrument<T>> = instruments.iter().collect();
   sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
 
-  let mut points: Vec<CurvePoint<T>> = vec![CurvePoint { time: T::zero(), discount_factor: T::one() }];
+  let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
+    time: T::zero(),
+    discount_factor: T::one(),
+  }];
 
   for inst in &sorted {
     match inst {
       Instrument::Deposit { maturity, rate } => {
         let df = T::one() / (T::one() + *rate * *maturity);
-        points.push(CurvePoint { time: *maturity, discount_factor: df });
+        points.push(CurvePoint {
+          time: *maturity,
+          discount_factor: df,
+        });
       }
       Instrument::Fra { start, end, rate } => {
         let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
         let delta = *end - *start;
         let df = d_start / (T::one() + *rate * delta);
-        points.push(CurvePoint { time: *end, discount_factor: df });
+        points.push(CurvePoint {
+          time: *end,
+          discount_factor: df,
+        });
       }
-      Instrument::Future { start, end, price, sigma } => {
+      Instrument::Future {
+        start,
+        end,
+        price,
+        sigma,
+      } => {
         let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
         let delta = *end - *start;
         let hundred = T::from_f64_fast(100.0);
@@ -112,11 +151,21 @@ pub fn bootstrap_iterative<T: FloatExt>(
         let convexity_adj = half * *sigma * *sigma * *start * *end;
         let fra_rate = futures_rate - convexity_adj;
         let df = d_start / (T::one() + fra_rate * delta);
-        points.push(CurvePoint { time: *end, discount_factor: df });
+        points.push(CurvePoint {
+          time: *end,
+          discount_factor: df,
+        });
       }
-      Instrument::Swap { maturity, rate, frequency } => {
+      Instrument::Swap {
+        maturity,
+        rate,
+        frequency,
+      } => {
         let df_n = solve_swap_df(&points, *maturity, *rate, *frequency, method, tol, max_iter);
-        points.push(CurvePoint { time: *maturity, discount_factor: df_n });
+        points.push(CurvePoint {
+          time: *maturity,
+          discount_factor: df_n,
+        });
       }
     }
   }

@@ -11,10 +11,11 @@
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
-
 use super::interpolation;
-use super::types::{Compounding, CurvePoint, InterpolationMethod};
+use super::types::Compounding;
+use super::types::CurvePoint;
+use super::types::InterpolationMethod;
+use crate::traits::FloatExt;
 
 /// A calibrated discount curve built from (time, discount_factor) pairs.
 ///
@@ -30,25 +31,42 @@ impl<T: FloatExt> DiscountCurve<T> {
   pub fn new(points: Vec<CurvePoint<T>>, method: InterpolationMethod) -> Self {
     let mut pts = points;
     pts.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
-    Self { points: pts, method }
+    Self {
+      points: pts,
+      method,
+    }
   }
 
   /// Build from parallel arrays of times and discount factors.
-  pub fn from_arrays(times: &Array1<T>, discount_factors: &Array1<T>, method: InterpolationMethod) -> Self {
+  pub fn from_arrays(
+    times: &Array1<T>,
+    discount_factors: &Array1<T>,
+    method: InterpolationMethod,
+  ) -> Self {
     let points: Vec<CurvePoint<T>> = times
       .iter()
       .zip(discount_factors.iter())
-      .map(|(&t, &df)| CurvePoint { time: t, discount_factor: df })
+      .map(|(&t, &df)| CurvePoint {
+        time: t,
+        discount_factor: df,
+      })
       .collect();
     Self::new(points, method)
   }
 
   /// Build from parallel arrays of times and zero rates (continuous compounding).
-  pub fn from_zero_rates(times: &Array1<T>, rates: &Array1<T>, method: InterpolationMethod) -> Self {
+  pub fn from_zero_rates(
+    times: &Array1<T>,
+    rates: &Array1<T>,
+    method: InterpolationMethod,
+  ) -> Self {
     let points: Vec<CurvePoint<T>> = times
       .iter()
       .zip(rates.iter())
-      .map(|(&t, &r)| CurvePoint { time: t, discount_factor: (-r * t).exp() })
+      .map(|(&t, &r)| CurvePoint {
+        time: t,
+        discount_factor: (-r * t).exp(),
+      })
       .collect();
     Self::new(points, method)
   }
@@ -154,7 +172,12 @@ impl<T: FloatExt> DiscountCurve<T> {
 
   /// Extract discount factors at the given maturities.
   pub fn discount_factors(&self, maturities: &Array1<T>) -> Array1<T> {
-    Array1::from_vec(maturities.iter().map(|&t| self.discount_factor(t)).collect())
+    Array1::from_vec(
+      maturities
+        .iter()
+        .map(|&t| self.discount_factor(t))
+        .collect(),
+    )
   }
 
   /// Extract forward rates for consecutive intervals defined by `maturities`.

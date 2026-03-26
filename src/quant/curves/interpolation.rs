@@ -7,9 +7,8 @@
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
-
 use super::types::CurvePoint;
+use crate::traits::FloatExt;
 
 /// Linearly interpolate on zero rates.
 ///
@@ -31,7 +30,11 @@ pub fn linear_on_zero_rates<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
   let (p0, p1) = (&points[idx], &points[idx + 1]);
 
-  let r0 = if p0.time > T::zero() { -p0.discount_factor.ln() / p0.time } else { T::zero() };
+  let r0 = if p0.time > T::zero() {
+    -p0.discount_factor.ln() / p0.time
+  } else {
+    T::zero()
+  };
   let r1 = -p1.discount_factor.ln() / p1.time;
 
   let w = (t - p0.time) / (p1.time - p0.time);
@@ -215,7 +218,10 @@ pub fn monotone_convex<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
     }
   }
 
-  let idx = points.partition_point(|p| p.time < t).saturating_sub(1).max(1);
+  let idx = points
+    .partition_point(|p| p.time < t)
+    .saturating_sub(1)
+    .max(1);
   let h = times[idx] - times[idx - 1];
   let x = (t - times[idx - 1]) / h;
 
@@ -238,8 +244,8 @@ pub fn monotone_convex<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
 
   let _ = integral;
 
-  let forward_adj = rt[idx - 1]
-    + h * (a * x + (three * fi - two * a - b) * x * x + (a + b - two * fi) * x * x * x);
+  let forward_adj =
+    rt[idx - 1] + h * (a * x + (three * fi - two * a - b) * x * x + (a + b - two * fi) * x * x * x);
 
   (-forward_adj).exp()
 }

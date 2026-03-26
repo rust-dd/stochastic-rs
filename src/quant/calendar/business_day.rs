@@ -2,7 +2,9 @@
 //!
 //! Reference: ISDA 2006 Definitions, Section 4.12
 
-use chrono::{Datelike, Duration, NaiveDate};
+use chrono::Datelike;
+use chrono::Duration;
+use chrono::NaiveDate;
 
 use super::CalendarExt;
 

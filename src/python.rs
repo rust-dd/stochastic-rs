@@ -208,8 +208,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::process::cpoisson::PyCompoundPoisson;
   use crate::stochastic::process::customjt::PyCustomJt;
   use crate::stochastic::process::fbm::PyFBM;
-  use crate::stochastic::process::lfsm::PyLFSM;
   use crate::stochastic::process::hawkes::PyHawkes;
+  use crate::stochastic::process::lfsm::PyLFSM;
   use crate::stochastic::process::poisson::PyPoisson;
   use crate::stochastic::process::subordinator::alpha_stable::PyAlphaStableSubordinator;
   use crate::stochastic::process::subordinator::ctrw::PyCTRW;

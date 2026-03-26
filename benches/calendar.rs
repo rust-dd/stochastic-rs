@@ -1,9 +1,13 @@
 use chrono::NaiveDate;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use stochastic_rs::quant::calendar::business_day::BusinessDayConvention;
 use stochastic_rs::quant::calendar::day_count::DayCountConvention;
-use stochastic_rs::quant::calendar::holiday::{Calendar, HolidayCalendar};
-use stochastic_rs::quant::calendar::schedule::{Frequency, ScheduleBuilder};
+use stochastic_rs::quant::calendar::holiday::Calendar;
+use stochastic_rs::quant::calendar::holiday::HolidayCalendar;
+use stochastic_rs::quant::calendar::schedule::Frequency;
+use stochastic_rs::quant::calendar::schedule::ScheduleBuilder;
 
 fn bench_day_count(c: &mut Criterion) {
   let d1 = NaiveDate::from_ymd_opt(2020, 1, 15).unwrap();

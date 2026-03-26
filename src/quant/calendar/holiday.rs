@@ -9,7 +9,10 @@
 
 use std::collections::BTreeSet;
 
-use chrono::{Datelike, Duration, NaiveDate, Weekday};
+use chrono::Datelike;
+use chrono::Duration;
+use chrono::NaiveDate;
+use chrono::Weekday;
 
 /// Identifies which holiday calendar to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

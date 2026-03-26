@@ -9,7 +9,9 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
-use ndarray_linalg::{Cholesky, Inverse, UPLO};
+use ndarray_linalg::Cholesky;
+use ndarray_linalg::Inverse;
+use ndarray_linalg::UPLO;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 

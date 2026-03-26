@@ -18,10 +18,8 @@
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
-
 use super::discount_curve::DiscountCurve;
-
+use crate::traits::FloatExt;
 
 /// Multi-curve framework holding a discount curve and tenor-specific forecast curves.
 #[derive(Debug, Clone)]
@@ -35,7 +33,10 @@ pub struct MultiCurve<T: FloatExt> {
 impl<T: FloatExt> MultiCurve<T> {
   /// Create a multi-curve framework with a discount curve.
   pub fn new(discount: DiscountCurve<T>) -> Self {
-    Self { discount, forecasts: Vec::new() }
+    Self {
+      discount,
+      forecasts: Vec::new(),
+    }
   }
 
   /// Add a forecast curve for a given tenor.
@@ -45,7 +46,11 @@ impl<T: FloatExt> MultiCurve<T> {
 
   /// Get the forecast curve for a given tenor.
   pub fn forecast(&self, tenor: &str) -> Option<&DiscountCurve<T>> {
-    self.forecasts.iter().find(|(t, _)| t == tenor).map(|(_, c)| c)
+    self
+      .forecasts
+      .iter()
+      .find(|(t, _)| t == tenor)
+      .map(|(_, c)| c)
   }
 
   /// Projected simple forward rate from the forecast curve for `tenor` over `[t1, t2]`.
@@ -54,7 +59,9 @@ impl<T: FloatExt> MultiCurve<T> {
   /// L(t_1, t_2) = \frac{1}{\delta}\left(\frac{D_{\text{forecast}}(t_1)}{D_{\text{forecast}}(t_2)} - 1\right)
   /// $$
   pub fn projected_forward(&self, tenor: &str, t1: T, t2: T) -> Option<T> {
-    self.forecast(tenor).map(|fc| fc.simple_forward_rate(t1, t2))
+    self
+      .forecast(tenor)
+      .map(|fc| fc.simple_forward_rate(t1, t2))
   }
 
   /// Basis spread between a forecast curve and the OIS discount curve.
@@ -71,12 +78,7 @@ impl<T: FloatExt> MultiCurve<T> {
   /// Present value of a floating leg using OIS discounting and forecast curve projection.
   ///
   /// Payment schedule: $t_0, t_1, \ldots, t_n$ with $\delta_i = t_i - t_{i-1}$.
-  pub fn pv_floating_leg(
-    &self,
-    tenor: &str,
-    schedule: &Array1<T>,
-    notional: T,
-  ) -> Option<T> {
+  pub fn pv_floating_leg(&self, tenor: &str, schedule: &Array1<T>, notional: T) -> Option<T> {
     let fc = self.forecast(tenor)?;
     let n = schedule.len();
     if n < 2 {
@@ -96,12 +98,7 @@ impl<T: FloatExt> MultiCurve<T> {
   }
 
   /// Present value of a fixed leg using OIS discounting.
-  pub fn pv_fixed_leg(
-    &self,
-    schedule: &Array1<T>,
-    fixed_rate: T,
-    notional: T,
-  ) -> T {
+  pub fn pv_fixed_leg(&self, schedule: &Array1<T>, fixed_rate: T, notional: T) -> T {
     let n = schedule.len();
     if n < 2 {
       return T::zero();
