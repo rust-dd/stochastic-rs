@@ -1,5 +1,5 @@
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::{Array1, Array2};
+use ndarray_linalg::{Inverse, Solve};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeterministicTerm {
@@ -81,7 +81,6 @@ pub fn schwert_max_lags(n: usize) -> usize {
 
 pub fn adf_critical_values(det: DeterministicTerm) -> CriticalValues {
   match det {
-    // Asymptotic MacKinnon-style benchmark values used widely in practice.
     DeterministicTerm::None => CriticalValues {
       one_percent: -2.58,
       five_percent: -1.95,
@@ -108,7 +107,6 @@ pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
       ten_percent: -2.89,
     }
   } else {
-    // ERS (constant-only) critical values are close to ADF with constant.
     CriticalValues {
       one_percent: -2.58,
       five_percent: -1.95,
@@ -129,36 +127,31 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
   );
   assert!(n > k, "OLS requires nobs > number of regressors");
 
-  let mut flat_x = Vec::with_capacity(n * k);
-  for row in x {
-    flat_x.extend_from_slice(row);
-  }
+  let x_mat = Array2::from_shape_fn((n, k), |(i, j)| x[i][j]);
+  let y_vec = Array1::from_vec(y.to_vec());
 
-  let x_mat = DMatrix::from_row_slice(n, k, &flat_x);
-  let y_vec = DVector::from_row_slice(y);
+  let xtx = x_mat.t().dot(&x_mat);
+  let xty = x_mat.t().dot(&y_vec);
 
-  let xtx = x_mat.transpose() * &x_mat;
-  let Some(xtx_inv) = xtx.clone().try_inverse() else {
-    panic!("OLS failed: singular design matrix")
-  };
+  let beta_arr = xtx.solve(&xty).expect("OLS failed: singular design matrix");
+  let fitted = x_mat.dot(&beta_arr);
+  let residuals_arr = &y_vec - &fitted;
 
-  let beta = &xtx_inv * x_mat.transpose() * &y_vec;
-  let fitted = &x_mat * &beta;
-  let residuals_vec = y_vec - fitted;
-
-  let residuals: Vec<f64> = residuals_vec.iter().copied().collect();
+  let residuals: Vec<f64> = residuals_arr.to_vec();
   let sse = residuals.iter().map(|u| u * u).sum::<f64>();
   let dof = (n - k) as f64;
   let sigma2 = (sse / dof).max(0.0);
 
-  let cov = xtx_inv * sigma2;
   let mut std_err = vec![0.0; k];
-  for i in 0..k {
-    std_err[i] = cov[(i, i)].max(0.0).sqrt();
+  if let Ok(xtx_inv) = xtx.inv() {
+    let cov = &xtx_inv * sigma2;
+    for i in 0..k {
+      std_err[i] = cov[[i, i]].max(0.0).sqrt();
+    }
   }
 
   OlsResult {
-    beta: beta.iter().copied().collect(),
+    beta: beta_arr.to_vec(),
     std_err,
     residuals,
     sse,
@@ -261,7 +254,6 @@ pub fn choose_lag_for_adf(
   let mut best_score = f64::INFINITY;
 
   let mut candidates: Vec<(usize, f64, f64)> = Vec::new();
-  // (lag, score_for_ic, tstat_last_lag)
 
   for lag in 0..=max_lags {
     let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, det);

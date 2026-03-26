@@ -10,10 +10,8 @@
 //! Simulation: A Simple Least-Squares Approach",
 //! DOI: 10.1093/rfs/14.1.113
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
-use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::{Array1, Array2};
+use ndarray_linalg::LeastSquaresSvd;
 
 use crate::traits::FloatExt;
 
@@ -83,14 +81,13 @@ impl<T: FloatExt> Lsm<T> {
       // Regression: basis functions are 1, S, S², …
       let n_itm = itm.len();
       let n_b = self.n_basis.min(n_itm);
-      let a_mat = DMatrix::from_fn(n_itm, n_b, |row, col| {
+      let a_mat = Array2::from_shape_fn((n_itm, n_b), |(row, col)| {
         paths[[itm[row], step]].to_f64().unwrap().powi(col as i32)
       });
-      let b_vec = DVector::from_fn(n_itm, |row, _| y_vals[row]);
+      let b_vec = Array1::from_vec(y_vals);
 
-      let svd = a_mat.svd(true, true);
-      let beta = match svd.solve(&b_vec, 1e-10) {
-        Ok(b) => b,
+      let beta = match a_mat.least_squares(&b_vec) {
+        Ok(result) => result.solution,
         Err(_) => continue,
       };
 

@@ -15,6 +15,7 @@ pub mod antithetic;
 pub mod control_variates;
 pub mod halton;
 pub mod importance_sampling;
+#[cfg(feature = "openblas")]
 pub mod lsm;
 pub mod mlmc;
 pub mod sobol;

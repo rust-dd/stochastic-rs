@@ -1,4 +1,4 @@
-//! Stationarity and unit-root tests.
+//! Stationarity and unit-root tests (requires `openblas` feature).
 
 mod common;
 

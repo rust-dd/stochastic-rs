@@ -132,6 +132,12 @@ pub struct GridPlotter {
   y_gap: f64,
 }
 
+impl Default for GridPlotter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GridPlotter {
   pub fn new() -> Self {
     Self {

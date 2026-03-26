@@ -17,5 +17,6 @@ pub mod mle;
 pub mod non_central_chi_squared;
 pub mod normality;
 pub mod spectral;
+#[cfg(feature = "openblas")]
 pub mod stationarity;
 pub mod tail_index;
