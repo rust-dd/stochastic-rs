@@ -31,6 +31,7 @@ use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::copulas::bivariate::CopulaType as BivariateCopulaType;
+#[cfg(feature = "openblas")]
 use crate::copulas::multivariate::CopulaType as MultivariateCopulaType;
 use crate::quant::OptionType;
 use crate::stochastic::noise::gn::Gn;
@@ -439,6 +440,7 @@ pub trait BivariateExt {
   }
 }
 
+#[cfg(feature = "openblas")]
 pub trait MultivariateExt {
   fn r#type(&self) -> MultivariateCopulaType;
 

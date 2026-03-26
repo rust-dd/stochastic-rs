@@ -9,6 +9,7 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
+use ndarray_linalg::{Cholesky, Inverse, UPLO};
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
@@ -46,18 +47,20 @@ impl VineMultivariate {
       return Err("Correlation matrix must be square".into());
     }
     self.dim = d;
-    let corr_na =
-      nalgebra::DMatrix::from_row_slice(d, d, corr.as_slice().ok_or("Non-contiguous matrix")?);
-    let chol = corr_na.clone().cholesky().ok_or("Correlation not PD")?;
-    let l = chol.l();
+
+    let l_arr = corr
+      .cholesky(UPLO::Lower)
+      .map_err(|_| -> Box<dyn Error> { "Correlation not PD".into() })?;
     let mut log_det = 0.0;
     for i in 0..d {
-      log_det += l[(i, i)].ln();
+      log_det += l_arr[[i, i]].ln();
     }
     let log_det = 2.0 * log_det;
-    let inv = corr_na.try_inverse().ok_or("Failed to invert corr")?;
-    self.chol_lower = Some(Array2::from_shape_vec((d, d), l.as_slice().to_vec()).unwrap());
-    self.inv_corr = Some(Array2::from_shape_vec((d, d), inv.as_slice().to_vec()).unwrap());
+    let inv_arr = corr
+      .inv()
+      .map_err(|_| -> Box<dyn Error> { "Failed to invert corr".into() })?;
+    self.chol_lower = Some(l_arr);
+    self.inv_corr = Some(inv_arr);
     self.corr = Some(corr);
     self.log_det_corr = Some(log_det);
     Ok(())
@@ -175,10 +178,7 @@ impl MultivariateExt for VineMultivariate {
     let mut corr_try = corr.clone();
     let mut tries = 0;
     loop {
-      if nalgebra::DMatrix::from_row_slice(d, d, corr_try.as_slice().unwrap())
-        .cholesky()
-        .is_some()
-      {
+      if corr_try.cholesky(UPLO::Lower).is_ok() {
         break;
       }
       for k in 0..d {

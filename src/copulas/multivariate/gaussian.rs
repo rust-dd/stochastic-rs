@@ -9,6 +9,7 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
+use ndarray_linalg::{Cholesky, Inverse, UPLO};
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
@@ -54,31 +55,18 @@ impl GaussianMultivariate {
     let dim = corr.nrows();
     self.dim = dim;
 
-    // Use nalgebra for Cholesky and inverse robustly
-    let corr_na =
-      nalgebra::DMatrix::from_row_slice(dim, dim, corr.as_slice().ok_or("Non-contiguous matrix")?);
-    let chol = match corr_na.clone().cholesky() {
-      Some(c) => c,
-      None => return Err("Correlation matrix is not positive definite".into()),
-    };
-    // Extract lower-triangular L
-    let l = chol.l();
-    // Compute log det from Cholesky: log det = 2 * sum log diag(L)
+    let l_arr = corr
+      .cholesky(UPLO::Lower)
+      .map_err(|_| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
     let mut log_det = 0.0;
     for i in 0..dim {
-      log_det += l[(i, i)].ln();
+      log_det += l_arr[[i, i]].ln();
     }
     log_det *= 2.0;
 
-    // Inverse via generic inverse (sufficient for small dims)
-    let inv_na = match corr_na.try_inverse() {
-      Some(m) => m,
-      None => return Err("Failed to invert correlation matrix".into()),
-    };
-
-    // Convert nalgebra matrices back to ndarray
-    let l_arr = Array2::from_shape_vec((dim, dim), l.as_slice().to_vec()).unwrap();
-    let inv_arr = Array2::from_shape_vec((dim, dim), inv_na.as_slice().to_vec()).unwrap();
+    let inv_arr = corr
+      .inv()
+      .map_err(|_| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
 
     self.corr = Some(corr);
     self.inv_corr = Some(inv_arr);
@@ -162,12 +150,7 @@ impl GaussianMultivariate {
     if dim != a.ncols() {
       return false;
     }
-    if let Some(slice) = a.as_slice() {
-      let m = nalgebra::DMatrix::from_row_slice(dim, dim, slice);
-      m.cholesky().is_some()
-    } else {
-      false
-    }
+    a.cholesky(UPLO::Lower).is_ok()
   }
 
   fn require_fitted(&self) -> Result<(), Box<dyn Error>> {
