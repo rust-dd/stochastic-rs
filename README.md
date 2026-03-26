@@ -231,12 +231,12 @@ Configuration in this run:
 
 > Turning stochastic-rs into a comprehensive **quantitative finance library** — a full QuantLib competitor in Rust.
 
-- [ ] **Yield curve construction** (`quant::curves`)
-  - [ ] Bootstrapping from deposit, FRA, futures, and swap rates
-  - [ ] Nelson-Siegel / Svensson parameterization
-  - [ ] Discount factor and forward rate extraction
-  - [ ] Multi-curve framework (OIS vs SOFR discounting)
-  - [ ] Interpolation — monotone convex, log-linear, cubic spline
+- [x] **Yield curve construction** (`quant::curves`)
+  - [x] Bootstrapping from deposit, FRA, futures, and swap rates
+  - [x] Nelson-Siegel / Svensson parameterization
+  - [x] Discount factor and forward rate extraction
+  - [x] Multi-curve framework (OIS vs SOFR discounting)
+  - [x] Interpolation — monotone convex, log-linear, cubic spline
 - [ ] **Cash flow engine** (`quant::cashflows`)
   - [ ] Fixed-rate coupon, floating-rate coupon (IBOR, OIS), CMS coupon
   - [ ] Leg abstraction — ordered sequence of cash flows with notional schedule
