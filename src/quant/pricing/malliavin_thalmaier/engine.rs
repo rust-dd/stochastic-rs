@@ -473,7 +473,7 @@ mod tests {
       asset: 0,
       strike: 100.0,
     };
-    let n_paths = 50_000;
+    let n_paths = 200_000;
 
     let bump = 0.5;
     let mut up = params.clone();
