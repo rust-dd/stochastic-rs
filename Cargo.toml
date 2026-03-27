@@ -75,6 +75,7 @@ time = { version = "0.3.36", features = [
 ], optional = true }
 tokio-test = { version = "0.4.4", optional = true }
 wide = "1.1.0"
+hotpath = { version = "0.14", optional = true }
 yahoo_finance_api = { version = "2.3.0", optional = true }
 parking_lot = "0.12.5"
 
@@ -145,6 +146,11 @@ harness = false
 name = "slv"
 harness = false
 
+[[bench]]
+name = "hotpath_profile"
+harness = false
+required-features = ["hotpath"]
+
 [features]
 ai = ["dep:candle-core", "dep:candle-datasets", "dep:candle-nn", "dep:polars"]
 cuda-native = ["dep:cudarc", "cudarc/cufft"]
@@ -159,6 +165,8 @@ jemalloc = ["dep:tikv-jemallocator"]
 python = ["dep:pyo3", "dep:numpy"]
 mimalloc = ["dep:mimalloc"]
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars", "dep:tokio-test"]
+hotpath = ["dep:hotpath", "hotpath/hotpath"]
+hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
 
 [lib]
 name = "stochastic_rs"

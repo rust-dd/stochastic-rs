@@ -6,11 +6,9 @@
 //!
 use std::sync::Arc;
 
-use ndarray::concatenate;
 use ndarray::prelude::*;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft_inplace_par;
-use ndrustfft::ndfft_par;
 use num_complex::Complex;
 
 use crate::simd_rng::Deterministic;
@@ -54,37 +52,42 @@ impl<T: FloatExt> FGN<T> {
     let offset = n.next_power_of_two() - n;
     let out_len = n;
     let n = n.next_power_of_two();
-    let mut r = Array1::linspace(T::zero(), T::from_usize_(n), n + 1);
-    let f2 = T::from_usize_(2);
-    r.mapv_inplace(|x| {
-      if x == T::zero() {
-        T::one()
-      } else {
-        T::from_f64_fast(0.5)
-          * ((x + T::one()).powf(f2 * hurst) - f2 * x.powf(f2 * hurst)
-            + (x - T::one()).powf(f2 * hurst))
+    let circ_len = 2 * n;
+    let f2h = T::from_usize_(2) * hurst;
+    let half = T::from_f64_fast(0.5);
+
+    let mut buf = Array1::<Complex<T>>::zeros(circ_len);
+    let buf_slice = buf.as_slice_mut().unwrap();
+    buf_slice[0] = Complex::new(T::one(), T::zero());
+    for k in 1..=n {
+      let kf = T::from_usize_(k);
+      let val = half
+        * ((kf + T::one()).powf(f2h) - T::from_usize_(2) * kf.powf(f2h)
+          + (kf - T::one()).powf(f2h));
+      buf_slice[k] = Complex::new(val, T::zero());
+      if k > 0 && k < n {
+        buf_slice[circ_len - k] = Complex::new(val, T::zero());
       }
-    });
-    let r = concatenate(
-      Axis(0),
-      #[allow(clippy::reversed_empty_ranges)]
-      &[r.view(), r.slice(s![..;-1]).slice(s![1..-1]).view()],
-    )
-    .unwrap();
-    let data = r.mapv(|v| Complex::new(v, T::zero()));
-    let r_fft = FftHandler::new(r.len());
-    let mut eig_fft = Array1::<Complex<T>>::zeros(r.len());
-    ndfft_par(&data, &mut eig_fft, &r_fft, 0);
-    let norm = T::from_usize_(2 * n);
-    let mut sqrt_eigenvalues = Array1::<T>::zeros(r.len());
-    for (dst, eig) in sqrt_eigenvalues.iter_mut().zip(eig_fft.iter()) {
-      let lambda = eig.re / norm;
+    }
+
+    let fft_handler = Arc::new(FftHandler::new(circ_len));
+    let mut buf_view = buf.view_mut();
+    ndfft_inplace_par(&mut buf_view, &*fft_handler, 0);
+
+    let norm = T::from_usize_(circ_len);
+    let mut sqrt_eigenvalues = Array1::<T>::uninit(circ_len);
+    let eig_slice =
+      unsafe { std::slice::from_raw_parts_mut(sqrt_eigenvalues.as_mut_ptr() as *mut T, circ_len) };
+    let buf_slice = buf.as_slice().unwrap();
+    for (dst, src) in eig_slice.iter_mut().zip(buf_slice.iter()) {
+      let lambda = src.re / norm;
       *dst = if lambda > T::zero() {
         lambda.sqrt()
       } else {
         T::zero()
       };
     }
+    let sqrt_eigenvalues = unsafe { sqrt_eigenvalues.assume_init() };
 
     let scale_n = out_len.max(1);
 
@@ -96,7 +99,7 @@ impl<T: FloatExt> FGN<T> {
       t,
       scale: T::from_usize_(scale_n).powf(-hurst) * t.unwrap_or(T::one()).powf(hurst),
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
-      fft_handler: Arc::new(FftHandler::new(2 * n)),
+      fft_handler,
       seed: Unseeded,
     }
   }
