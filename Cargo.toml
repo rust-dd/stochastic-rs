@@ -57,6 +57,7 @@ num-traits = "0.2.19"
 numpy = { version = "0.27", optional = true }
 pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
 ordered-float = "5.0.0"
+owens-t = "0.1.5"
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 polars = { version = "0.43.1", features = ["lazy"], optional = true }
 quadrature = "0.1.2"

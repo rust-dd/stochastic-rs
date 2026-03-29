@@ -6,6 +6,7 @@
 //!
 pub mod asian;
 pub mod barrier;
+pub mod bjerksund_stensland;
 pub mod breeden_litzenberger;
 pub mod bsm;
 pub mod dupire;
@@ -13,6 +14,7 @@ pub mod finite_difference;
 pub mod fourier;
 pub mod heston;
 pub mod heston_stoch_corr;
+pub mod kirk;
 pub mod lookback;
 pub mod malliavin_gbm;
 pub mod malliavin_greeks;
@@ -29,8 +31,10 @@ pub mod variance_swap;
 
 // Re-export Fourier infrastructure and model structs.
 // Re-export commonly used pricers.
+pub use bjerksund_stensland::BjerksundStensland2002Pricer;
 pub use bsm::BSMCoc;
 pub use bsm::BSMPricer;
+pub use kirk::KirkSpreadPricer;
 pub use fourier::BSMFourier;
 pub use fourier::BatesFourier;
 pub use fourier::CGMYFourier;
