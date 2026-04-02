@@ -632,6 +632,11 @@ impl FourierModelExt for BatesFourier {
   }
 }
 
+/// Compute $\Gamma(-Y)$ via the reflection formula.
+pub fn gamma_neg_y_pub(y: f64) -> f64 {
+  gamma_neg_y(y)
+}
+
 fn gamma_neg_y(y: f64) -> f64 {
   if y.abs() < 1e-8 {
     return 1e15;

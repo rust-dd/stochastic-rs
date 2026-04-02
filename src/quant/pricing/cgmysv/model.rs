@@ -1,7 +1,7 @@
 //! CGMYSV model characteristic function and Fourier integration support.
 //!
 //! $$
-//! \phi_{L_t}(u) = \Phi_t\!\bigl(-i\,\psi_{\mathrm{stdCGMY}}(u),\;\rho\,u,\;v_0\bigr)
+//! \phi_{L_t}(u) = \Phi_t\!\bigl(\psi_{\mathrm{stdCGMY}}(u),\;\rho\,u,\;v_0\bigr)
 //! $$
 //!
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001, Sections 2–3.
@@ -61,9 +61,9 @@ impl CgmysvParams {
   /// Lévy symbol of the standard CGMY distribution $\psi_{\mathrm{stdCGMY}}(u)$ (Eq. 3).
   ///
   /// $$
-  /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})}\,iu
+  /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)\,D}\,iu
   /// + \frac{(\lambda_+-iu)^\alpha - \lambda_+^\alpha + (\lambda_-+iu)^\alpha - \lambda_-^\alpha}
-  ///        {\alpha(\alpha-1)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})}
+  ///        {\alpha(\alpha-1)\,D}
   /// $$
   pub fn psi_std_cgmy(&self, u: Complex64) -> Complex64 {
     let a = self.alpha;
@@ -82,28 +82,28 @@ impl CgmysvParams {
     drift + jumps
   }
 
-  /// CIR joint characteristic function $\Phi_t(a, b, x)$ (Eq. 2).
+  /// CIR joint characteristic function $\Phi_t(a,b,x) = E[\exp(a\mathcal V_t + ib\,v_t)\mid v_0=x]$ (Eq. 2).
   ///
-  /// $$
-  /// \Phi_t(a,b,x) = A(t,a,b)\,\exp\!\bigl(B(t,a,b)\,x\bigr)
-  /// $$
+  /// Following Kim (2021) / Lamberton–Lapeyre (1996) Prop. 6.2.5 verbatim:
+  /// $\gamma = \sqrt{\kappa^2 - 2\zeta^2 i a}$.
   pub fn cir_joint_chf(&self, t: f64, a: Complex64, b: Complex64, x: f64) -> Complex64 {
     let kappa = self.kappa;
     let eta = self.eta;
     let zeta = self.zeta;
+    let zeta2 = zeta * zeta;
     let i = Complex64::i();
 
-    let gamma = (Complex64::from(kappa * kappa) - 2.0 * zeta * zeta * i * a).sqrt();
+    let gamma = (Complex64::from(kappa * kappa) - 2.0 * zeta2 * i * a).sqrt();
     let half_gt = gamma * t / 2.0;
     let ch = half_gt.cosh();
     let sh = half_gt.sinh();
 
-    let base = ch + (Complex64::from(kappa) - i * b * zeta * zeta) / gamma * sh;
-    let exp_power = 2.0 * kappa * eta / (zeta * zeta);
-    let a_val = (kappa * kappa * eta * t / (zeta * zeta)).exp() * base.powf(-exp_power);
+    let base = ch + (Complex64::from(kappa) - i * b * zeta2) / gamma * sh;
+    let exp_power = 2.0 * kappa * eta / zeta2;
+    let a_val = (kappa * kappa * eta * t / zeta2).exp() * base.powf(-exp_power);
 
     let b_num = i * b * (gamma * ch - Complex64::from(kappa) * sh) + 2.0 * i * a * sh;
-    let b_denom = gamma * ch + (Complex64::from(kappa) - i * b * zeta * zeta) * sh;
+    let b_denom = gamma * ch + (Complex64::from(kappa) - i * b * zeta2) * sh;
     let b_val = b_num / b_denom;
 
     a_val * (b_val * x).exp()
@@ -111,7 +111,7 @@ impl CgmysvParams {
 
   /// Characteristic function of $L_t$ (Eq. 5).
   ///
-  /// $\phi_{L_t}(u) = \Phi_t(-i\,\psi_{\mathrm{stdCGMY}}(u),\;\rho\,u,\;v_0)$
+  /// $\phi_{L_t}(u) = \Phi_t(-i\psi(u),\,\rho u,\,v_0)$
   pub fn chf_l(&self, t: f64, u: Complex64) -> Complex64 {
     let psi = self.psi_std_cgmy(u);
     let a = -Complex64::i() * psi;

@@ -7,8 +7,13 @@
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001, Section 3.
 
 use ndarray::{Array1, Array2};
-use rand::Rng;
-use rand_distr::{Distribution, Exp1, Gamma as GammaDist, Poisson, StandardNormal};
+
+use crate::distributions::exp::SimdExp;
+use crate::distributions::gamma::SimdGamma;
+use crate::distributions::normal::SimdNormal;
+use crate::distributions::poisson::SimdPoisson;
+use crate::distributions::uniform::SimdUniform;
+
 use super::model::CgmysvParams;
 
 /// CGMYSV sample path generator implementing Algorithm 1 from Kim (2021).
@@ -32,10 +37,7 @@ impl CgmysvPathGen {
 
     let results: Vec<(Array1<f64>, Array1<f64>)> = (0..n_paths)
       .into_par_iter()
-      .map(|_| {
-        let mut rng = rand::rng();
-        self.sample_single(&mut rng)
-      })
+      .map(|_| self.sample_single())
       .collect();
 
     let m = self.n_steps;
@@ -50,7 +52,7 @@ impl CgmysvPathGen {
   }
 
   /// Generate a single sample path of $(L, v)$.
-  fn sample_single(&self, rng: &mut impl Rng) -> (Array1<f64>, Array1<f64>) {
+  fn sample_single(&self) -> (Array1<f64>, Array1<f64>) {
     let p = &self.params;
     let m = self.n_steps;
     let j = self.n_jumps;
@@ -61,44 +63,52 @@ impl CgmysvPathGen {
     let df = 4.0 * p.kappa * p.eta / (p.zeta * p.zeta);
     let big_c = p.norm_const();
 
+    // Internal SIMD-accelerated distributions (thread-local RNG)
+    let uniform = SimdUniform::<f64>::new(0.0, 1.0);
+    let exp1 = SimdExp::<f64>::new(1.0);
+    let normal = SimdNormal::<f64>::new(0.0, 1.0);
+
     // Step 1: CIR variance path via non-central χ²
-    let mut v = Array1::zeros(m + 1);
+    let mut v = Array1::<f64>::zeros(m + 1);
     v[0] = p.v0;
     for i in 1..=m {
       let ncp = (2.0 * c_cir * v[i - 1] * (-p.kappa * dt).exp()).max(0.0);
-      v[i] = (sample_noncentral_chi_sq(rng, df, ncp) / (2.0 * c_cir)).max(0.0);
+      v[i] = (sample_noncentral_chi_sq(&normal, df, ncp) / (2.0 * c_cir)).max(0.0);
     }
 
-    // Step 2: Generate jump components
-    let mut gamma_arrivals = Vec::with_capacity(j);
+    // Step 2: Generate jump components in bulk
+    let mut gamma_arrivals = Array1::<f64>::zeros(j);
     let mut gamma_sum = 0.0_f64;
-    for _ in 0..j {
-      let e: f64 = Exp1.sample(rng);
-      gamma_sum += e;
-      gamma_arrivals.push(gamma_sum);
+    for jj in 0..j {
+      gamma_sum += exp1.sample_fast();
+      gamma_arrivals[jj] = gamma_sum;
     }
 
-    let u_vals: Vec<f64> = (0..j).map(|_| rng.random::<f64>()).collect();
-    let e_vals: Vec<f64> = (0..j).map(|_| Exp1.sample(rng)).collect();
-    let v_signs: Vec<f64> = (0..j)
-      .map(|_| {
-        if rng.random::<f64>() <= 0.5 {
-          p.lambda_plus
-        } else {
-          -p.lambda_minus
-        }
-      })
-      .collect();
-    let tau_vals: Vec<f64> = (0..j).map(|_| rng.random::<f64>() * t).collect();
+    let mut u_vals = Array1::<f64>::zeros(j);
+    uniform.fill_slice_fast(u_vals.as_slice_mut().unwrap());
+
+    let mut e_vals = Array1::<f64>::zeros(j);
+    for jj in 0..j {
+      e_vals[jj] = exp1.sample_fast();
+    }
+
+    let v_signs: Array1<f64> = Array1::from_shape_fn(j, |_| {
+      if uniform.sample_fast() <= 0.5 {
+        p.lambda_plus
+      } else {
+        -p.lambda_minus
+      }
+    });
+
+    let mut tau_raw = Array1::<f64>::zeros(j);
+    uniform.fill_slice_fast(tau_raw.as_slice_mut().unwrap());
+    let tau_vals = tau_raw * t;
 
     // c(τ_j) = C · v_{k-1} where (k-1)Δt < τ_j ≤ kΔt
-    let c_tau: Vec<f64> = tau_vals
-      .iter()
-      .map(|&tau_j| {
-        let k = ((tau_j / dt).ceil() as usize).max(1).min(m);
-        big_c * v[k - 1]
-      })
-      .collect();
+    let c_tau: Array1<f64> = Array1::from_shape_fn(j, |jj| {
+      let k = ((tau_vals[jj] / dt).ceil() as usize).max(1).min(m);
+      big_c * v[k - 1]
+    });
 
     // Precompute drift asymmetry ratio
     let asym = (p.lambda_plus.powf(p.alpha - 1.0) - p.lambda_minus.powf(p.alpha - 1.0))
@@ -133,32 +143,35 @@ impl CgmysvPathGen {
   }
 }
 
-/// Sample from a non-central $\chi^2$ distribution with `df` degrees of freedom
-/// and noncentrality parameter `ncp`.
-fn sample_noncentral_chi_sq(rng: &mut impl Rng, df: f64, ncp: f64) -> f64 {
+/// Sample from a non-central $\chi^2$ distribution using internal distributions.
+///
+/// Uses the decomposition $\chi^2_\nu(\lambda) = (Z + \sqrt\lambda)^2 + \chi^2_{\nu-1}$
+/// for $\nu \ge 1$, and Poisson mixture for $\nu < 1$.
+fn sample_noncentral_chi_sq(normal: &SimdNormal<f64>, df: f64, ncp: f64) -> f64 {
   if ncp < 1e-10 {
     if df < 1e-10 {
       return 0.0;
     }
-    return GammaDist::new(df / 2.0, 2.0).unwrap().sample(rng);
+    return SimdGamma::<f64>::new(df / 2.0, 2.0).sample_fast();
   }
 
   if df >= 1.0 {
-    let z: f64 = StandardNormal.sample(rng);
+    let z = normal.sample_fast();
     let sq = (z + ncp.sqrt()).powi(2);
     let rem = df - 1.0;
     if rem > 1e-10 {
-      sq + GammaDist::new(rem / 2.0, 2.0).unwrap().sample(rng)
+      sq + SimdGamma::<f64>::new(rem / 2.0, 2.0).sample_fast()
     } else {
       sq
     }
   } else {
-    // 0 < df < 1: Poisson mixture representation
-    let n: f64 = Poisson::<f64>::new(ncp / 2.0).unwrap().sample(rng);
+    // 0 < df < 1: Poisson mixture
+    let poi = SimdPoisson::<u32>::new(ncp / 2.0);
+    let n = poi.sample_fast() as f64;
     let adj = df + 2.0 * n;
     if adj < 1e-10 {
       return 0.0;
     }
-    GammaDist::new(adj / 2.0, 2.0).unwrap().sample(rng)
+    SimdGamma::<f64>::new(adj / 2.0, 2.0).sample_fast()
   }
 }

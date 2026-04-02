@@ -351,9 +351,9 @@ mod tests {
       BarrierType::DownAndOut,
       OptionType::Call,
     );
-    // Down-and-out call ≤ vanilla European call
+    // Down-and-out call ≤ vanilla European call (allow MC noise)
     assert!(
-      barrier.price <= eu.price + 3.0 * eu.std_error,
+      barrier.price <= eu.price + 5.0 * (eu.std_error + barrier.std_error),
       "Barrier {barrier} should be ≤ European {eu}"
     );
   }

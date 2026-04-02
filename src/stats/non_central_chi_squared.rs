@@ -9,11 +9,17 @@ use crate::distributions::normal::SimdNormal;
 use crate::traits::FloatExt;
 
 pub fn sample<T: FloatExt>(df: T, lambda: T) -> T {
-  let chi_squared = SimdChiSquared::new(df);
-  let y = chi_squared.sample_fast();
-
+  // χ²_nc(df, ncp) = χ²(df - 1) + (Z + √ncp)² for df ≥ 1
   let normal = SimdNormal::<T, 64>::new(lambda.sqrt(), T::one());
   let z = normal.sample_fast();
+  let sq = z * z;
 
-  y + z * z
+  let one = T::one();
+  let rem = df - one;
+  if rem > T::from_f64_fast(1e-10) {
+    let chi_squared = SimdChiSquared::new(rem);
+    chi_squared.sample_fast() + sq
+  } else {
+    sq
+  }
 }
