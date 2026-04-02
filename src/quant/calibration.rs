@@ -12,6 +12,7 @@ use nalgebra::DVector;
 use crate::quant::CalibrationLossScore;
 
 pub mod bsm;
+pub mod cgmysv;
 pub mod heston;
 pub mod heston_stoch_corr;
 pub mod levy;
@@ -28,6 +29,8 @@ pub use heston::HestonParams;
 pub use heston_stoch_corr::HscmCalibrationResult;
 pub use heston_stoch_corr::MarketOption;
 pub use heston_stoch_corr::calibrate_hscm;
+pub use cgmysv::CgmysvCalibrationResult;
+pub use cgmysv::CgmysvCalibrator;
 pub use levy::LevyCalibrationResult;
 pub use levy::LevyCalibrator;
 pub use levy::LevyModelType;
