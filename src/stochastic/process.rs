@@ -15,3 +15,4 @@ pub mod hawkes;
 pub mod lfsm;
 pub mod poisson;
 pub mod subordinator;
+pub mod volterra;
