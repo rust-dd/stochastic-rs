@@ -9,7 +9,8 @@
 use num_complex::Complex64;
 use scilib::math::basic::gamma;
 
-use crate::quant::pricing::fourier::{Cumulants, FourierModelExt};
+use crate::quant::pricing::fourier::Cumulants;
+use crate::quant::pricing::fourier::FourierModelExt;
 
 /// Parameters for the CGMYSV process (Eq. 4).
 ///
@@ -54,8 +55,7 @@ impl CgmysvParams {
   pub fn norm_const(&self) -> f64 {
     let g2a = gamma(2.0 - self.alpha);
     1.0
-      / (g2a
-        * (self.lambda_plus.powf(self.alpha - 2.0) + self.lambda_minus.powf(self.alpha - 2.0)))
+      / (g2a * (self.lambda_plus.powf(self.alpha - 2.0) + self.lambda_minus.powf(self.alpha - 2.0)))
   }
 
   /// Lévy symbol of the standard CGMY distribution $\psi_{\mathrm{stdCGMY}}(u)$ (Eq. 3).

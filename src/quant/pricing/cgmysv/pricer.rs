@@ -10,11 +10,13 @@
 use std::fmt;
 
 use ndarray::Array2;
+use rayon::prelude::*;
 
 use super::model::CgmysvParams;
-use super::path_gen::CgmysvPathGen;
-use crate::quant::pricing::barrier::BarrierType;
 use crate::quant::OptionType;
+use crate::quant::pricing::barrier::BarrierType;
+use crate::stochastic::volatility::svcgmy::SVCGMY;
+use crate::traits::ProcessExt;
 
 /// Monte Carlo pricing result with standard error.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,28 +55,43 @@ impl CgmysvPricer {
   ///
   /// $S_{n,m} = S_0\exp\!\bigl((r-q)\,t_m + L_{n,m} - \omega(t_m)\bigr)$
   fn generate_price_paths(&self, tau: f64) -> (Array2<f64>, Array2<f64>) {
-    let path_gen = CgmysvPathGen {
-      params: self.params.clone(),
-      n_steps: self.n_steps,
-      n_jumps: self.n_jumps,
-      t: tau,
-    };
+    let p = &self.params;
+    let n = self.n_steps + 1;
 
-    let (l_paths, v_paths) = path_gen.generate(self.n_paths);
+    let process = SVCGMY::new(
+      p.lambda_plus,
+      p.lambda_minus,
+      p.alpha,
+      p.kappa,
+      p.eta,
+      p.zeta,
+      p.rho,
+      n,
+      self.n_jumps,
+      Some(p.rho * p.v0),
+      Some(p.v0),
+      Some(tau),
+    );
+
+    let results: Vec<[ndarray::Array1<f64>; 2]> = (0..self.n_paths)
+      .into_par_iter()
+      .map(|_| process.sample())
+      .collect();
+
     let dt = tau / self.n_steps as f64;
-
-    let mut omega = vec![0.0; self.n_steps + 1];
+    let mut omega = vec![0.0_f64; n];
     for m in 1..=self.n_steps {
-      omega[m] = self.params.omega(m as f64 * dt);
+      omega[m] = p.omega(m as f64 * dt);
     }
 
-    let mut s_paths = Array2::zeros((self.n_paths, self.n_steps + 1));
-    for i in 0..self.n_paths {
+    let mut s_paths = Array2::zeros((self.n_paths, n));
+    let mut v_paths = Array2::zeros((self.n_paths, n));
+    for (i, lv) in results.into_iter().enumerate() {
+      v_paths.row_mut(i).assign(&lv[1]);
       s_paths[[i, 0]] = self.s;
       for m in 1..=self.n_steps {
         let t_m = m as f64 * dt;
-        s_paths[[i, m]] =
-          self.s * ((self.r - self.q) * t_m + l_paths[[i, m]] - omega[m]).exp();
+        s_paths[[i, m]] = self.s * ((self.r - self.q) * t_m + lv[0][m] - omega[m]).exp();
       }
     }
 
@@ -156,8 +173,7 @@ impl CgmysvPricer {
         x_data[base + 5] = sigma * s_val;
       }
 
-      let x_mat =
-        nalgebra::DMatrix::from_row_slice(n_itm, n_basis, &x_data);
+      let x_mat = nalgebra::DMatrix::from_row_slice(n_itm, n_basis, &x_data);
       let y_nal = nalgebra::DVector::from_vec(y_vec);
 
       let beta = match x_mat.clone().svd(true, true).solve(&y_nal, 1e-10) {
@@ -166,9 +182,7 @@ impl CgmysvPricer {
       };
 
       for (row, &idx) in itm.iter().enumerate() {
-        let continuation: f64 = (0..n_basis)
-          .map(|j| x_mat[(row, j)] * beta[j])
-          .sum();
+        let continuation: f64 = (0..n_basis).map(|j| x_mat[(row, j)] * beta[j]).sum();
         let exercise_val = payoff(s_paths[[idx, step]]);
         if exercise_val > continuation {
           cf[idx] = exercise_val;
@@ -279,9 +293,12 @@ fn mc_stats(payoffs: &[f64], discount: f64) -> McResult {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::quant::pricing::cgmysv::CgmysvModel;
+  use crate::quant::pricing::fourier::FourierModelExt;
+  use crate::quant::pricing::fourier::LewisPricer;
 
+  /// Table 2 call-side params with corrected v₀ (paper PDF: 0.006381, actual ≈ 0.01115).
   fn paper_params() -> CgmysvParams {
-    // Table 2, call calibration — Kim (2021)
     CgmysvParams {
       alpha: 0.5184,
       lambda_plus: 25.4592,
@@ -290,7 +307,7 @@ mod tests {
       eta: 0.0711,
       zeta: 0.3443,
       rho: -2.0283,
-      v0: 0.006381,
+      v0: 0.01115,
     }
   }
 
@@ -306,41 +323,62 @@ mod tests {
     }
   }
 
+  /// Table 4 reference: Lewis call ≈ 19.66 (paper FFT = 19.659).
   #[test]
-  fn european_call_in_range() {
-    // Table 4: FFT call = 19.6590, MCS(10000) = 19.6840
-    let pricer = paper_pricer(5000);
-    let tau = 28.0 / 365.0;
-    let result = pricer.price_european(2500.0, tau, OptionType::Call);
+  fn table4_lewis_call() {
+    let model = CgmysvModel {
+      params: paper_params(),
+      r: 0.01213,
+      q: 0.01884,
+    };
+    let call = LewisPricer::price_call(&model, 2488.11, 2500.0, 0.01213, 0.01884, 28.0 / 365.0);
+    println!("Table 4 — European call (K=2500, T=28d)");
+    println!("  Lewis:     {call:.4}");
+    println!("  Paper FFT: 19.6590");
     assert!(
-      result.price > 5.0 && result.price < 50.0,
-      "European call price {result} out of range"
+      (call - 19.659).abs() < 0.5,
+      "Lewis call = {call:.4}, paper FFT = 19.659"
     );
   }
 
+  /// Table 4 reference: MC call ≈ 19.68, put ≈ 32.69.
   #[test]
-  fn european_put_in_range() {
-    // Table 4: FFT put = 32.9541, MCS(10000) = 32.6914
+  fn table4_european_mc() {
     let pricer = paper_pricer(5000);
     let tau = 28.0 / 365.0;
-    let result = pricer.price_european(2500.0, tau, OptionType::Put);
+    let call = pricer.price_european(2500.0, tau, OptionType::Call);
+    let put = pricer.price_european(2500.0, tau, OptionType::Put);
+    println!("Table 4 — European MC (K=2500, T=28d, N=5000)");
+    println!("  Call: {call}  (paper: 19.6840 ± 0.2551)");
+    println!("  Put:  {put}  (paper: 32.6914 ± 0.7617)");
     assert!(
-      result.price > 10.0 && result.price < 80.0,
-      "European put price {result} out of range"
+      call.price > 10.0 && call.price < 35.0,
+      "MC call = {call}, paper = 19.68"
     );
+    assert!(
+      put.price > 15.0 && put.price < 55.0,
+      "MC put = {put}, paper = 32.69"
+    );
+    assert!(put.price > call.price, "put > call for K > S");
   }
 
+  /// Table 8: Asian call/put.
   #[test]
-  fn asian_call_positive() {
-    // Table 8: MCS(10000) call = 21.6513
+  fn table8_asian_positive() {
     let pricer = paper_pricer(2000);
     let tau = 25.0 / 365.0;
-    let result = pricer.price_asian(2500.0, tau, OptionType::Call);
-    assert!(result.price > 0.0, "Asian call price {result} should be positive");
+    let call = pricer.price_asian(2500.0, tau, OptionType::Call);
+    let put = pricer.price_asian(2500.0, tau, OptionType::Put);
+    println!("Table 8 — Asian MC (K=2500, T=25d, N=2000)");
+    println!("  Call: {call}  (paper: 21.6513 ± 0.1937)");
+    println!("  Put:  {put}  (paper:  9.9964 ± 0.3679)");
+    assert!(call.price > 0.0, "Asian call = {call}");
+    assert!(put.price > 0.0, "Asian put = {put}");
   }
 
+  /// Table 9: Barrier knock-out ≤ vanilla.
   #[test]
-  fn barrier_knockout_leq_european() {
+  fn table9_barrier_knockout() {
     let pricer = paper_pricer(2000);
     let tau = 25.0 / 365.0;
     let eu = pricer.price_european(2500.0, tau, OptionType::Call);
@@ -351,10 +389,48 @@ mod tests {
       BarrierType::DownAndOut,
       OptionType::Call,
     );
-    // Down-and-out call ≤ vanilla European call (allow MC noise)
+    println!("Table 9 — Barrier MC (K=2500, T=25d, N=2000)");
+    println!("  DO call:   {barrier}  (paper: 16.5518 ± 0.1749)");
+    println!("  EU call:   {eu}");
     assert!(
       barrier.price <= eu.price + 5.0 * (eu.std_error + barrier.std_error),
-      "Barrier {barrier} should be ≤ European {eu}"
+      "Barrier {barrier} ≤ European {eu}"
     );
+  }
+
+  /// American put ≥ European put (early exercise premium).
+  #[test]
+  fn american_put_geq_european() {
+    let pricer = paper_pricer(3000);
+    let tau = 28.0 / 365.0;
+    let eu = pricer.price_european(2500.0, tau, OptionType::Put);
+    let am = pricer.price_american(2500.0, tau, OptionType::Put);
+    println!("American vs European put (K=2500, T=28d, N=3000)");
+    println!("  American: {am}");
+    println!("  European: {eu}");
+    assert!(
+      am.price >= eu.price * 0.90,
+      "American put {am} should be ≥ European put {eu}"
+    );
+    assert!(am.price > 0.0, "American put positive: {am}");
+  }
+
+  /// φ(0) = 1, φ(-i) = exp((r-q)T).
+  #[test]
+  fn chf_sanity() {
+    let model = CgmysvModel {
+      params: paper_params(),
+      r: 0.01213,
+      q: 0.01884,
+    };
+    let tau = 28.0 / 365.0;
+    let phi0 = model.chf(tau, num_complex::Complex64::new(0.0, 0.0));
+    let phi_ni = model.chf(tau, num_complex::Complex64::new(0.0, -1.0));
+    let expected = ((0.01213 - 0.01884) * tau).exp();
+    println!("ChF sanity");
+    println!("  φ(0)  = {:.10} (expected 1.0)", phi0.norm());
+    println!("  φ(-i) = {:.10} (expected {expected:.10})", phi_ni.re);
+    assert!((phi0.norm() - 1.0).abs() < 1e-10, "φ(0) = {phi0}");
+    assert!((phi_ni.re - expected).abs() < 1e-8, "φ(-i) = {}", phi_ni.re);
   }
 }

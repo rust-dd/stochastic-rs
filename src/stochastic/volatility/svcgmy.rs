@@ -159,8 +159,9 @@ impl<T: FloatExt> SVCGMY<T, Deterministic> {
 }
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SVCGMY<T, S> {
-  type Output = Array1<T>;
+  type Output = [Array1<T>; 2];
 
+  /// Returns `[L, v]` — the CGMYSV log-increment path and the CIR variance path.
   fn sample(&self) -> Self::Output {
     let mut seed = self.seed;
 
@@ -265,16 +266,16 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SVCGMY<T, S> {
       y[i] = y[i - 1] + jump_component + b * dt;
     }
 
-    // 4) L ≈ Y + ρ v  (paper Eq. (9))
+    // 4) L ≈ Y + ρ v  (paper Eq. (7))
     for i in 1..self.n {
       x[i] = y[i] + self.rho * v[i];
     }
 
-    x
+    [x, v]
   }
 }
 
-py_process_1d!(PySVCGMY, SVCGMY,
+py_process_2x1d!(PySVCGMY, SVCGMY,
   sig: (lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0=None, v0=None, t=None, seed=None, dtype=None),
   params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>)
 );

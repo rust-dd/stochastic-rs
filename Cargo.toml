@@ -143,9 +143,6 @@ harness = false
 name = "calendar"
 harness = false
 
-[[bench]]
-name = "cgmysv"
-harness = false
 
 [[bench]]
 name = "slv"

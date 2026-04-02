@@ -15,9 +15,9 @@
 //! arXiv:2101.11001
 
 pub mod model;
-pub mod path_gen;
 pub mod pricer;
 
-pub use model::{CgmysvModel, CgmysvParams};
-pub use path_gen::CgmysvPathGen;
-pub use pricer::{CgmysvPricer, McResult};
+pub use model::CgmysvModel;
+pub use model::CgmysvParams;
+pub use pricer::CgmysvPricer;
+pub use pricer::McResult;
