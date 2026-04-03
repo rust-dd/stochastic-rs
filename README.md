@@ -230,56 +230,75 @@ Configuration in this run:
 ## Roadmap to v2
 
 > Turning stochastic-rs into a comprehensive **quantitative finance library** — a full QuantLib competitor in Rust.
+>
+> Items are ordered by dependency: each tier builds on the one above it. Independent modules (stats, factors) can be done in parallel at any time.
 
-- [ ] **Cash flow engine** (`quant::cashflows`)
+### Tier 0 — Foundations (no roadmap dependencies, builds on done modules)
+
+- [ ] **Cash flow engine** (`quant::cashflows`) ← *calendar ✓, curves ✓*
   - [ ] Fixed-rate coupon, floating-rate coupon (IBOR, OIS), CMS coupon
   - [ ] Leg abstraction — ordered sequence of cash flows with notional schedule
   - [ ] Amortizing and accreting notionals
   - [ ] Cash flow NPV, accrued interest
-- [ ] **Interest rate swaps** (`quant::instruments`)
+- [ ] **Trinomial tree & lattice framework** (`quant::lattice`)
+  - [ ] General trinomial / binomial tree
+  - [ ] Hull-White, Black-Karasinski, G2++ tree engines
+
+### Tier 1 — Instruments (depends on: cash flow engine)
+
+- [ ] **Interest rate swaps** (`quant::instruments`) ← *cashflows, curves ✓*
   - [ ] Vanilla IRS (fixed vs floating)
   - [ ] Overnight Indexed Swap (OIS)
   - [ ] Basis swap and cross-currency basis swap
   - [ ] NPV, fair rate, DV01 / BPV
-- [ ] **Fixed-income instruments** (`quant::instruments`)
+- [ ] **Fixed-income instruments** (`quant::instruments`) ← *cashflows, curves ✓*
   - [ ] Fixed-rate bond — dirty/clean price, YTM, duration (Macaulay, modified), convexity
   - [ ] Floating-rate bond / FRN
   - [ ] Zero-coupon bond pricing from yield curve
   - [ ] Amortizing bond, inflation-linked bond
   - [ ] Z-spread, ASW spread, OAS
-- [ ] **Caps, floors & swaptions** (`quant::instruments`)
+
+### Tier 2 — Advanced instruments & framework (depends on: Tier 1)
+
+- [ ] **Caps, floors & swaptions** (`quant::instruments`) ← *IRS, lattice*
   - [ ] Cap / Floor / Collar pricing (Black, Bachelier, SABR)
   - [ ] European and Bermudan swaptions
   - [ ] Hull-White / G2++ tree-based engines
   - [ ] Short-rate model calibration to swaption / cap vols
-- [ ] **Market data framework** (`quant::market`)
+- [ ] **Market data framework** (`quant::market`) ← *IRS, fixed-income (rate helpers)*
   - [ ] Quote / Handle / Observable abstraction for reactive repricing
   - [ ] Rate index objects (SOFR, EURIBOR, TONAR) with fixing history
   - [ ] FRA and money market instrument helpers
   - [ ] Rate helpers for curve bootstrapping
-- [ ] **Risk metrics** (`quant::risk`)
-  - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
-  - [ ] CVaR / Expected Shortfall
-  - [ ] Stress testing and scenario analysis framework
-  - [ ] Drawdown metrics, Sharpe, Sortino, Information Ratio, Calmar
-  - [ ] Instrument-level Greeks — bump-and-reprice, bucket DV01, scenario engine
-- [ ] **Credit models** (`quant::credit`)
+- [ ] **Credit models** (`quant::credit`) ← *fixed-income (CDS cash flows)*
   - [ ] Merton structural model
   - [ ] Reduced-form / intensity-based models
   - [ ] CDS pricing (ISDA standard) and hazard rate bootstrapping
   - [ ] Default probability term structure
   - [ ] Credit migration matrices
-- [ ] **Trinomial tree & lattice framework** (`quant::lattice`)
-  - [ ] General trinomial / binomial tree
-  - [ ] Hull-White, Black-Karasinski, G2++ tree engines
-  - [ ] Callable bond and Bermudan swaption pricing
-- [ ] **Exotic derivatives** (`quant::pricing`)
+- [ ] **Risk metrics** (`quant::risk`) ← *instruments (Greeks, bucket DV01)*
+  - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
+  - [ ] CVaR / Expected Shortfall
+  - [ ] Stress testing and scenario analysis framework
+  - [ ] Drawdown metrics, Sharpe, Sortino, Information Ratio, Calmar
+  - [ ] Instrument-level Greeks — bump-and-reprice, bucket DV01, scenario engine
+
+### Tier 3 — Complex products (depends on: Tier 2)
+
+- [ ] **Exotic derivatives** (`quant::pricing`) ← *lattice, pricing ✓, optionally swaptions*
   - [ ] Bermudan options (LSM and PDE)
   - [ ] Basket and rainbow options
   - [ ] Cliquet / ratchet options
   - [ ] Auto-callable structures
   - [ ] Digital / binary options (cash-or-nothing, asset-or-nothing)
   - [ ] Chooser, compound, spread options
+- [ ] **Inflation** (`quant::inflation`) ← *fixed-income, cashflows*
+  - [ ] Zero-coupon and year-on-year inflation term structures
+  - [ ] CPI / RPI / HICP index objects
+  - [ ] Inflation-linked swaps and bonds
+
+### Independent — Stats & quant modules (no tier dependencies)
+
 - [ ] **Realized volatility & microstructure noise** (`stats::realized`)
   - [ ] Realized variance, bipower variation, kernel-based RV
   - [ ] Realized semivariance, realized skewness and kurtosis
@@ -299,15 +318,25 @@ Configuration in this run:
   - [ ] Cross-sectional regression (Fama-MacBeth)
   - [ ] Covariance shrinkage (Ledoit-Wolf)
   - [ ] Pairs trading / stat arb framework
-- [ ] **Market microstructure** (`quant::microstructure`)
-  - [ ] Hawkes processes for order flow modeling
+- [ ] **Market microstructure** (`quant::microstructure`) ← *order_book ✓, hawkes ✓*
   - [ ] Almgren-Chriss optimal execution
   - [ ] Market impact models (Kyle, transient impact)
   - [ ] Bid-ask spread models
-- [ ] **Inflation** (`quant::inflation`)
-  - [ ] Zero-coupon and year-on-year inflation term structures
-  - [ ] CPI / RPI / HICP index objects
-  - [ ] Inflation-linked swaps and bonds
+
+### Quality improvements (pre-v2 hardening)
+
+> These should be addressed before or alongside Tier 0 work to ensure new modules build on a solid foundation.
+
+- [ ] **Stability: replace `.unwrap()` in core pricing** — `bsm.rs` (40+), `sabr.rs`, `heston.rs` panic on `None` tau / optional fields. Switch to `Result` or validated builder pattern.
+- [ ] **Missing derives on public types** — `OrderBook` (no `Debug`/`Clone`), `BSMPricer`, `BSMPricerBuilder` lack standard derives. All public structs need `Debug`, `Clone`; enums need `Display`.
+- [ ] **`Vec<Vec<f64>>` → `Array2<T>`** — `portfolio/data.rs`, `portfolio/momentum.rs`, `calibration/rbergomi.rs`, `pricing/dupire.rs`, `pricing/breeden_litzenberger.rs` use nested `Vec` for numerical data instead of `ndarray`.
+- [ ] **Mixed linalg libraries** — `calibration.rs` uses `nalgebra::DVector` while the rest of the codebase uses `ndarray`. Consolidate to `ndarray`.
+- [ ] **Hardcoded day count constants** — `sabr_smile.rs` (`/365.0`), `fmvol_regime.rs` (`/252.0`), `variance_swap.rs` (`/252.0`). Use `DayCountConvention` or accept as parameter.
+- [ ] **Global `#![allow(dead_code)]`** — `lib.rs` suppresses all dead code warnings. Remove and audit.
+- [ ] **Test coverage gaps** — `calendar/*`, `bonds/*`, `curves/*`, `fx/*`, `interest/*` have zero tests. Add comparison tests against QuantLib / reference implementations.
+- [ ] **Module documentation** — `curves/*`, `bonds/*`, `calendar/holiday.rs`, `pricing/dupire.rs` and others missing `//!` doc headers and paper citations.
+- [ ] **Re-export consistency** — `bonds.rs` has no re-exports; `stochastic.rs` only re-exports traits. Match the `pricing.rs` / `calibration.rs` pattern everywhere.
+- [ ] **Naming conventions** — `XxxConfig` vs `XxxParams` vs `XxxCalibrationConfig`; inconsistent abbreviation style (`cir_2f` vs `duffie_kan`). Standardize.
 
 ### Done
 
