@@ -231,12 +231,6 @@ Configuration in this run:
 
 > Turning stochastic-rs into a comprehensive **quantitative finance library** — a full QuantLib competitor in Rust.
 
-- [x] **Yield curve construction** (`quant::curves`)
-  - [x] Bootstrapping from deposit, FRA, futures, and swap rates
-  - [x] Nelson-Siegel / Svensson parameterization
-  - [x] Discount factor and forward rate extraction
-  - [x] Multi-curve framework (OIS vs SOFR discounting)
-  - [x] Interpolation — monotone convex, log-linear, cubic spline
 - [ ] **Cash flow engine** (`quant::cashflows`)
   - [ ] Fixed-rate coupon, floating-rate coupon (IBOR, OIS), CMS coupon
   - [ ] Leg abstraction — ordered sequence of cash flows with notional schedule
@@ -314,9 +308,6 @@ Configuration in this run:
   - [ ] Zero-coupon and year-on-year inflation term structures
   - [ ] CPI / RPI / HICP index objects
   - [ ] Inflation-linked swaps and bonds
-- [x] **Stochastic local volatility** (`quant::pricing`)
-  - [x] Heston SLV model — Guyon–Labordère particle calibration of leverage function
-  - [x] Combined stochastic + Dupire local vol with mixing factor η
 
 ### Done
 
@@ -339,6 +330,15 @@ Configuration in this run:
   - [x] ISO 4217 currency definitions and metadata
   - [x] FX quoting and cross-rate conventions
   - [x] FX forward pricing
+- [x] **Yield curve construction** (`quant::curves`)
+  - [x] Bootstrapping from deposit, FRA, futures, and swap rates
+  - [x] Nelson-Siegel / Svensson parameterization
+  - [x] Discount factor and forward rate extraction
+  - [x] Multi-curve framework (OIS vs SOFR discounting)
+  - [x] Interpolation — monotone convex, log-linear, cubic spline
+- [x] **Stochastic local volatility** (`quant::pricing`)
+  - [x] Heston SLV model — Guyon–Labordère particle calibration of leverage function
+  - [x] Combined stochastic + Dupire local vol with mixing factor η
 
 ## Contributing
 
