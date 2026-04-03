@@ -13,6 +13,7 @@ pub mod customjt;
 pub mod fbm;
 pub mod hawkes;
 pub mod lfsm;
+pub mod multivariate_hawkes;
 pub mod poisson;
 pub mod subordinator;
 pub mod volterra;
