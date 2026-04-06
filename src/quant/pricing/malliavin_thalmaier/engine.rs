@@ -77,13 +77,30 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
 
   /// Delta for a given asset via the M-T formula.
   pub fn delta(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
+    self.delta_from_sampler(payoff, asset, || self.params.sample())
+  }
+
+  /// Deterministic Delta estimator for reproducible tests and benchmarks.
+  pub fn delta_with_seed(&self, payoff: &MtPayoff<T>, asset: usize, seed: u64) -> T {
+    let mut seed_state = seed;
+    self.delta_from_sampler(payoff, asset, || {
+      self
+        .params
+        .sample_with_seed(crate::simd_rng::derive_seed(&mut seed_state))
+    })
+  }
+
+  fn delta_from_sampler<F>(&self, payoff: &MtPayoff<T>, asset: usize, mut sample: F) -> T
+  where
+    F: FnMut() -> super::heston::MultiHestonPaths<T>,
+  {
     let d = self.params.n_assets();
     let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
     let spots: Vec<T> = self.params.assets.iter().map(|a| a.s0).collect();
     let mut sum = T::zero();
 
     for _ in 0..self.n_paths {
-      let paths = self.params.sample();
+      let paths = sample();
       let st = paths.terminal_prices();
       let gamma_inv = paths.gamma_inv(&self.params.cross_corr, self.params.tau);
       let h_w = paths.malliavin_weights(&gamma_inv, asset, self.params.r, self.params.tau, &spots);
@@ -100,13 +117,30 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
 
   /// All Deltas in a single simulation pass.
   pub fn all_deltas(&self, payoff: &MtPayoff<T>) -> Vec<T> {
+    self.all_deltas_from_sampler(payoff, || self.params.sample())
+  }
+
+  /// Deterministic variant of [`all_deltas`](Self::all_deltas).
+  pub fn all_deltas_with_seed(&self, payoff: &MtPayoff<T>, seed: u64) -> Vec<T> {
+    let mut seed_state = seed;
+    self.all_deltas_from_sampler(payoff, || {
+      self
+        .params
+        .sample_with_seed(crate::simd_rng::derive_seed(&mut seed_state))
+    })
+  }
+
+  fn all_deltas_from_sampler<F>(&self, payoff: &MtPayoff<T>, mut sample: F) -> Vec<T>
+  where
+    F: FnMut() -> super::heston::MultiHestonPaths<T>,
+  {
     let d = self.params.n_assets();
     let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
     let spots: Vec<T> = self.params.assets.iter().map(|a| a.s0).collect();
     let mut sums = vec![T::zero(); d];
 
     for _ in 0..self.n_paths {
-      let paths = self.params.sample();
+      let paths = sample();
       let st = paths.terminal_prices();
       let gamma_inv = paths.gamma_inv(&self.params.cross_corr, self.params.tau);
       let g = self.compute_g(payoff, &st);
@@ -139,6 +173,11 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     (d_up - d_dn) / (bump + bump)
   }
 
+  /// Backward-compatible alias retained for the integration tests.
+  pub fn cross_gamma_fd(&self, payoff: &MtPayoff<T>, asset_a: usize, asset_b: usize) -> T {
+    self.cross_gamma(payoff, asset_a, asset_b)
+  }
+
   /// Vega via finite difference on price.
   pub fn vega(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
     let bump = self.params.assets[asset].v0 * T::from_f64_fast(0.01);
@@ -154,10 +193,27 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
 
   /// Plain Monte Carlo price.
   pub fn price(&self, payoff: &MtPayoff<T>) -> T {
+    self.price_from_sampler(payoff, || self.params.sample())
+  }
+
+  /// Deterministic variant of [`price`](Self::price).
+  pub fn price_with_seed(&self, payoff: &MtPayoff<T>, seed: u64) -> T {
+    let mut seed_state = seed;
+    self.price_from_sampler(payoff, || {
+      self
+        .params
+        .sample_with_seed(crate::simd_rng::derive_seed(&mut seed_state))
+    })
+  }
+
+  fn price_from_sampler<F>(&self, payoff: &MtPayoff<T>, mut sample: F) -> T
+  where
+    F: FnMut() -> super::heston::MultiHestonPaths<T>,
+  {
     let disc = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
     let mut sum = T::zero();
     for _ in 0..self.n_paths {
-      let st = self.params.sample().terminal_prices();
+      let st = sample().terminal_prices();
       sum += disc * payoff.evaluate(&st);
     }
     sum / T::from_usize_(self.n_paths)
@@ -248,6 +304,10 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
 #[cfg(test)]
 mod tests {
   use ndarray::Array2;
+  use owens_t::biv_norm;
+  use statrs::distribution::Continuous;
+  use statrs::distribution::ContinuousCDF;
+  use statrs::distribution::Normal;
 
   use super::*;
   use crate::quant::OptionType;
@@ -312,6 +372,61 @@ mod tests {
       tau: 1.0,
       n_steps: 128,
     }
+  }
+
+  /// Scenario used for the Greeks experiment in Kohatsu-Higa--Yasuda (2010),
+  /// Figure 5/6, but simulated here in the near-GBM limit of the multi-Heston
+  /// engine so we can compare against the exact Black-Scholes benchmark.
+  fn paper_bs_digital_put_params(s01: f64, n_steps: usize) -> MultiHestonParams<f64> {
+    let a1 = AssetParams {
+      s0: s01,
+      v0: 0.3 * 0.3,
+      kappa: 10.0,
+      theta: 0.3 * 0.3,
+      xi: 1e-8,
+      rho: 0.0,
+    };
+    let a2 = AssetParams {
+      s0: 100.0,
+      v0: 0.2 * 0.2,
+      kappa: 10.0,
+      theta: 0.2 * 0.2,
+      xi: 1e-8,
+      rho: 0.0,
+    };
+    let mut cross = Array2::<f64>::eye(2);
+    cross[[0, 1]] = 0.2;
+    cross[[1, 0]] = 0.2;
+    MultiHestonParams {
+      assets: vec![a1, a2],
+      cross_corr: cross,
+      r: 0.0,
+      tau: 1.0,
+      n_steps,
+    }
+  }
+
+  fn bs_bivariate_digital_put_price_delta(
+    s1: f64,
+    s2: f64,
+    k1: f64,
+    k2: f64,
+    sigma1: f64,
+    sigma2: f64,
+    rho: f64,
+    r: f64,
+    tau: f64,
+  ) -> (f64, f64) {
+    let root_t = tau.sqrt();
+    let a1 = ((k1 / s1).ln() - (r - 0.5 * sigma1 * sigma1) * tau) / (sigma1 * root_t);
+    let a2 = ((k2 / s2).ln() - (r - 0.5 * sigma2 * sigma2) * tau) / (sigma2 * root_t);
+    let disc = (-r * tau).exp();
+    let stdn = Normal::new(0.0, 1.0).unwrap();
+    let cdf = |x: f64, y: f64, corr: f64| -> f64 { biv_norm(-x, -y, corr) };
+    let price = disc * cdf(a1, a2, rho);
+    let conditional = stdn.cdf((a2 - rho * a1) / (1.0 - rho * rho).sqrt());
+    let delta = disc * (-(stdn.pdf(a1) * conditional) / (s1 * sigma1 * root_t));
+    (price, delta)
   }
 
   #[test]
@@ -398,14 +513,90 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(
+    debug_assertions,
+    ignore = "expensive 3D MC smoke test; run with --release --features openblas"
+  )]
   fn delta_call_finite_in_3d() {
-    let e = MtGreeks::new(gbm_like_params_3d(), 0.01, 256);
+    let e = MtGreeks::new(gbm_like_params_3d(), 0.01, 20_000);
     let p = MtPayoff::Call {
       asset: 0,
       strike: 100.0,
     };
-    let d = e.delta(&p, 0);
-    assert!(d.is_finite() && d > 0.0 && d < 2.0, "3D delta = {d}");
+    let d = e.delta_with_seed(&p, 0, 7);
+
+    let bs = BSMPricer {
+      s: 100.0,
+      v: 0.2,
+      k: 100.0,
+      r: 0.05,
+      r_d: None,
+      r_f: None,
+      q: Some(0.0),
+      tau: Some(1.0),
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Call,
+      b: BSMCoc::Bsm1973,
+    };
+    let bs_delta = bs.delta();
+    let err = (d - bs_delta).abs();
+
+    assert!(d.is_finite(), "3D delta is not finite: {d}");
+    assert!(
+      err < 0.20,
+      "3D delta = {d}, BS delta = {bs_delta}, err = {err}"
+    );
+  }
+
+  #[test]
+  #[cfg_attr(
+    debug_assertions,
+    ignore = "expensive MC reference test; run with --release --features openblas"
+  )]
+  fn paper_scenario_digital_put_price_matches_bs_reference() {
+    let params = paper_bs_digital_put_params(100.0, 512);
+    let payoff = MtPayoff::DigitalPut2D {
+      strikes: [100.0, 100.0],
+    };
+    let engine = MtGreeks::new(params, 0.01, 20_000);
+    let mc_price = engine.price_with_seed(&payoff, 42);
+    let (ref_price, _) =
+      bs_bivariate_digital_put_price_delta(100.0, 100.0, 100.0, 100.0, 0.3, 0.2, 0.2, 0.0, 1.0);
+
+    let rel_err = (mc_price - ref_price).abs() / ref_price;
+    assert!(
+      rel_err < 0.06,
+      "paper-scenario price = {mc_price:.6}, reference = {ref_price:.6}, rel_err = {rel_err:.4}"
+    );
+  }
+
+  #[test]
+  #[cfg_attr(
+    debug_assertions,
+    ignore = "expensive MC reference test; run with --release --features openblas"
+  )]
+  fn paper_scenario_digital_put_delta_matches_bs_reference() {
+    let payoff = MtPayoff::DigitalPut2D {
+      strikes: [100.0, 100.0],
+    };
+    let seeds = [7_u64, 17_u64, 29_u64];
+    let mt_delta: f64 = seeds
+      .iter()
+      .map(|&seed| {
+        let engine = MtGreeks::new(paper_bs_digital_put_params(100.0, 512), 0.01, 20_000);
+        engine.delta_with_seed(&payoff, 0, seed)
+      })
+      .sum::<f64>()
+      / seeds.len() as f64;
+    let (_, ref_delta) =
+      bs_bivariate_digital_put_price_delta(100.0, 100.0, 100.0, 100.0, 0.3, 0.2, 0.2, 0.0, 1.0);
+
+    let abs_err = (mt_delta - ref_delta).abs();
+    assert!(
+      abs_err < 0.0020,
+      "paper-scenario delta = {mt_delta:.6}, reference = {ref_delta:.6}, abs_err = {abs_err:.6}"
+    );
   }
 
   #[test]

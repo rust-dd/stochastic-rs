@@ -37,6 +37,23 @@ pub fn grad_poisson_reg<T: FloatExt>(x: &[T], h: T) -> Vec<T> {
   x.iter().map(|&xi| xi * factor).collect()
 }
 
+/// Regularised second derivative kernel
+/// `K^h_{i,j}(x) = ∂²Q_d^h(x) / (∂x_i ∂x_j)`.
+fn kernel_k_ij_h<T: FloatExt>(x: &[T], h: T, i: usize, j: usize) -> T {
+  let d = x.len();
+  assert!(i < d && j < d, "kernel indices out of bounds");
+  let ad: T = sphere_area(d);
+  let r = norm_h(x, h);
+  let rd = r.powi(d as i32);
+  let factor = if d >= 3 {
+    T::from_usize_(d - 2) / ad
+  } else {
+    T::one() / ad
+  };
+  let delta = if i == j { T::one() } else { T::zero() };
+  factor * (delta / rd - T::from_usize_(d) * x[i] * x[j] / r.powi(d as i32 + 2))
+}
+
 /// Closed-form `g_{i,j}` for the 2-asset digital put `f(x) = 1(x₁≤K₁)·1(x₂≤K₂)`.
 ///
 /// From Kohatsu-Higa & Yasuda (2008), eq. (6.3). Valid as `h → 0`.
@@ -290,6 +307,44 @@ mod tests {
           "mismatch at ({i},{j}): {} vs {}",
           g_2d[[i, j]],
           g_nd[[i, j]]
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn kernel_trace_identity_holds() {
+    let z = [2.0_f64, 3.0, 1.5];
+    let h = 0.01;
+    let d = z.len();
+
+    let trace: f64 = (0..d).map(|i| kernel_k_ij_h(&z, h, i, i)).sum();
+
+    let ad: f64 = 2.0 * std::f64::consts::PI.powf(d as f64 / 2.0) / gamma(d as f64 / 2.0);
+    let factor = (d - 2) as f64 / ad;
+    let r_h = (z.iter().map(|x| x * x).sum::<f64>() + h).sqrt();
+    let z_sq: f64 = z.iter().map(|x| x * x).sum();
+    let expected =
+      factor * (d as f64 / r_h.powi(d as i32) - d as f64 * z_sq / r_h.powi(d as i32 + 2));
+
+    assert!(
+      (trace - expected).abs() < 1e-10,
+      "trace={trace}, expected={expected}"
+    );
+  }
+
+  #[test]
+  fn kernel_is_symmetric_in_indices() {
+    let z = [1.0_f64, 2.0, 3.0, 4.0];
+    let h = 0.01;
+
+    for i in 0..z.len() {
+      for j in (i + 1)..z.len() {
+        let kij = kernel_k_ij_h(&z, h, i, j);
+        let kji = kernel_k_ij_h(&z, h, j, i);
+        assert!(
+          (kij - kji).abs() < 1e-14,
+          "K[{i},{j}]={kij} != K[{j},{i}]={kji}"
         );
       }
     }

@@ -44,4 +44,5 @@ pub use heston::AssetParams;
 pub use heston::MultiHestonParams;
 pub use heston::MultiHestonPaths;
 pub use kernel::g_digital_put_2d;
+pub use kernel::g_kernel_numerical_nd;
 pub use traits::MultiSvPaths;

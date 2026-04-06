@@ -4,6 +4,7 @@
 
 use ndarray::Array2;
 
+use crate::distributions::normal::SimdNormal;
 use crate::simd_rng::SeedExt;
 use crate::stochastic::volatility::heston::Heston;
 use crate::traits::FloatExt;
@@ -51,9 +52,9 @@ impl<T: FloatExt> MultiHestonParams<T> {
     self.assets.len()
   }
 
-  /// Simulate one set of paths. Requires LAPACK for Cholesky.
-  pub fn sample(&self) -> MultiHestonPaths<T>
+  fn sample_with_fill<F>(&self, mut fill_standard_normals: F) -> MultiHestonPaths<T>
   where
+    F: FnMut(&mut [T]),
     T: ndarray_linalg::Lapack,
   {
     let d = self.n_assets();
@@ -73,7 +74,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
 
     for step in 1..n {
       let mut z_ind = vec![T::zero(); m];
-      T::fill_standard_normal_slice(&mut z_ind);
+      fill_standard_normals(&mut z_ind);
 
       let mut db = vec![T::zero(); m];
       for i in 0..m {
@@ -102,6 +103,24 @@ impl<T: FloatExt> MultiHestonParams<T> {
       n_assets: d,
       n_steps: n,
     }
+  }
+
+  /// Simulate one set of paths. Requires LAPACK for Cholesky.
+  pub fn sample(&self) -> MultiHestonPaths<T>
+  where
+    T: ndarray_linalg::Lapack,
+  {
+    self.sample_with_fill(T::fill_standard_normal_slice)
+  }
+
+  /// Deterministic variant of [`sample`](Self::sample), intended for reproducible
+  /// tests and benchmark comparisons.
+  pub fn sample_with_seed(&self, seed: u64) -> MultiHestonPaths<T>
+  where
+    T: ndarray_linalg::Lapack,
+  {
+    let normal = SimdNormal::<T>::with_seed(T::zero(), T::one(), seed);
+    self.sample_with_fill(|z| normal.fill_slice_fast(z))
   }
 
   fn brownian_cholesky(&self) -> Array2<T>
