@@ -14,6 +14,7 @@ pub mod cashflows;
 pub mod curves;
 pub mod fourier_malliavin;
 pub mod fx;
+pub mod instruments;
 pub mod lattice;
 pub mod loss;
 pub mod order_book;

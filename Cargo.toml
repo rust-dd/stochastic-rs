@@ -148,6 +148,10 @@ name = "cashflows"
 harness = false
 
 [[bench]]
+name = "instruments"
+harness = false
+
+[[bench]]
 name = "lattice"
 harness = false
 

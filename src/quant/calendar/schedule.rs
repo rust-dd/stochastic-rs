@@ -46,6 +46,16 @@ impl Frequency {
       Self::Monthly => 1,
     }
   }
+
+  /// Number of coupon periods per year.
+  pub fn periods_per_year(self) -> u32 {
+    match self {
+      Self::Annual => 1,
+      Self::SemiAnnual => 2,
+      Self::Quarterly => 4,
+      Self::Monthly => 12,
+    }
+  }
 }
 
 /// Direction of date generation.
