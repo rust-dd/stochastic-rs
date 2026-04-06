@@ -15,7 +15,8 @@
 //! - Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
 //! - Bacry, Mastromatteo, Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
+use ndarray::Array2;
 
 use crate::simd_rng::Deterministic;
 use crate::simd_rng::SeedExt;
@@ -147,8 +148,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array2;
+  use ndarray::array;
+
   use super::*;
-  use ndarray::{array, Array2};
 
   #[test]
   fn bivariate_hawkes_runs() {

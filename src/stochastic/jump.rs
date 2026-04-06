@@ -7,8 +7,8 @@
 pub mod bates;
 pub mod bilateral_gamma;
 pub mod cgmy;
-pub mod hawkes_jd;
 pub mod cts;
+pub mod hawkes_jd;
 pub mod ig;
 pub mod jump_fou;
 pub mod jump_fou_custom;

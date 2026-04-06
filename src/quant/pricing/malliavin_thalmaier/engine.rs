@@ -177,65 +177,71 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
       }
       _ if d == 2 => {
         let payoff_fn = |x: &[T]| payoff.evaluate(x);
-        let y_max = st.iter().copied().fold(T::zero(), |a, b| a.max(b)) * T::from_f64_fast(3.0);
+        let (lo, hi) = self.quadrature_bounds(payoff, st);
         kernel::g_kernel_numerical_2d(
           &[st[0], st[1]],
           &payoff_fn,
           self.h,
-          &[T::zero(), T::zero()],
-          &[y_max, y_max],
-          64,
+          &[lo[0], lo[1]],
+          &[hi[0], hi[1]],
+          self.quadrature_points_per_axis(d),
         )
       }
-      _ => self.g_finite_difference(payoff, st),
+      _ => {
+        let payoff_fn = |x: &[T]| payoff.evaluate(x);
+        let (lo, hi) = self.quadrature_bounds(payoff, st);
+        kernel::g_kernel_numerical_nd(
+          st,
+          &payoff_fn,
+          self.h,
+          &lo,
+          &hi,
+          self.quadrature_points_per_axis(d),
+        )
+      }
     }
   }
 
-  /// Fallback g kernel for d > 2 via finite difference.
-  ///
-  /// **Note**: this path uses MC sampling from the model distribution as a
-  /// proxy for Lebesgue-measure integration, which introduces density-weighting
-  /// bias. For production use with d > 2, implement a proper quadrature or
-  /// importance-sampling correction. Currently only d = 2 is fully validated.
-  fn g_finite_difference(&self, payoff: &MtPayoff<T>, y: &[T]) -> Array2<T> {
-    let d = y.len();
-    let eps = T::from_f64_fast(1e-3)
-      * (y.iter().map(|yi| yi.abs()).fold(T::zero(), |a, b| a + b) / T::from_usize_(d) + T::one());
-    let n_inner = 500.min(self.n_paths / 10).max(50);
-
-    let mut g = Array2::<T>::zeros((d, d));
-    for j in 0..d {
-      let mut y_up = y.to_vec();
-      let mut y_dn = y.to_vec();
-      y_up[j] += eps;
-      y_dn[j] -= eps;
-
-      let phi_up = self.estimate_phi(payoff, &y_up, n_inner);
-      let phi_dn = self.estimate_phi(payoff, &y_dn, n_inner);
-      let inv_2eps = T::one() / (eps + eps);
-      for i in 0..d {
-        g[[i, j]] = (phi_up[i] - phi_dn[i]) * inv_2eps;
+  /// Numerical quadrature for non-compact payoffs is truncated to a positive
+  /// orthant box `[0, hi]^d`. This is a practical localization, not an exact
+  /// treatment of the infinite domain.
+  fn quadrature_bounds(&self, payoff: &MtPayoff<T>, st: &[T]) -> (Vec<T>, Vec<T>) {
+    let spot_scale = self
+      .params
+      .assets
+      .iter()
+      .map(|a| <T as num_traits::Float>::abs(a.s0))
+      .fold(T::zero(), |a, b| a.max(b));
+    let terminal_scale = st
+      .iter()
+      .copied()
+      .map(<T as num_traits::Float>::abs)
+      .fold(T::zero(), |a, b| a.max(b));
+    let payoff_scale = match payoff {
+      MtPayoff::Call { strike, .. } => <T as num_traits::Float>::abs(*strike),
+      MtPayoff::Put { strike, .. } => <T as num_traits::Float>::abs(*strike),
+      MtPayoff::DigitalPut2D { strikes } => {
+        <T as num_traits::Float>::abs(strikes[0]).max(<T as num_traits::Float>::abs(strikes[1]))
       }
-    }
-    g
+      MtPayoff::BasketCall { strike, .. } => <T as num_traits::Float>::abs(*strike),
+      MtPayoff::WorstOfPut { strike } => <T as num_traits::Float>::abs(*strike),
+    };
+    let upper = T::from_f64_fast(3.0)
+      * spot_scale
+        .max(terminal_scale)
+        .max(payoff_scale)
+        .max(T::one());
+    (vec![T::zero(); st.len()], vec![upper; st.len()])
   }
 
-  fn estimate_phi(&self, payoff: &MtPayoff<T>, y: &[T], n_mc: usize) -> Vec<T> {
-    let d = y.len();
-    let mut phi = vec![T::zero(); d];
-    for _ in 0..n_mc {
-      let x = self.params.sample().terminal_prices();
-      let f_val = payoff.evaluate(&x);
-      if <T as num_traits::Float>::abs(f_val) < T::from_f64_fast(1e-15) {
-        continue;
-      }
-      let diff: Vec<T> = y.iter().zip(x.iter()).map(|(&yi, &xi)| yi - xi).collect();
-      let grad = kernel::grad_poisson_reg(&diff, self.h);
-      for i in 0..d {
-        phi[i] += f_val * grad[i];
-      }
+  /// Keep the tensor-product quadrature bounded as dimension grows.
+  fn quadrature_points_per_axis(&self, d: usize) -> usize {
+    if d <= 2 {
+      64
+    } else {
+      let max_nodes = 1024.0_f64;
+      ((max_nodes.powf(1.0 / d as f64)).floor() as usize).max(3)
     }
-    phi.iter().map(|&p| p / T::from_usize_(n_mc)).collect()
   }
 }
 
@@ -287,6 +293,24 @@ mod tests {
       r: 0.05,
       tau: 1.0,
       n_steps: 252,
+    }
+  }
+
+  fn gbm_like_params_3d() -> MultiHestonParams<f64> {
+    let a = AssetParams {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 10.0,
+      theta: 0.04,
+      xi: 1e-6,
+      rho: 0.0,
+    };
+    MultiHestonParams {
+      assets: vec![a.clone(), a.clone(), a],
+      cross_corr: Array2::<f64>::eye(3),
+      r: 0.05,
+      tau: 1.0,
+      n_steps: 128,
     }
   }
 
@@ -371,6 +395,17 @@ mod tests {
     };
     let d = e.delta(&p, 0);
     assert!(d.is_finite() && d.abs() < 5.0, "Delta = {d}");
+  }
+
+  #[test]
+  fn delta_call_finite_in_3d() {
+    let e = MtGreeks::new(gbm_like_params_3d(), 0.01, 256);
+    let p = MtPayoff::Call {
+      asset: 0,
+      strike: 100.0,
+    };
+    let d = e.delta(&p, 0);
+    assert!(d.is_finite() && d > 0.0 && d < 2.0, "3D delta = {d}");
   }
 
   #[test]

@@ -39,7 +39,7 @@ implied-vol = "2.0.0"
 kendalls = "1.0.0"
 levenberg-marquardt = "0.14.0"
 linreg = "0.2.0"
-openblas-src = { version = "0.10", features = ["cblas", "static"], optional = true }
+openblas-src = { version = "0.10", features = ["cblas"], optional = true }
 metal = { version = "0.33.0", optional = true }
 mimalloc = { version = "0.1.48", optional = true }
 nalgebra = "0.33.2"

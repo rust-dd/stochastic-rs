@@ -132,6 +132,98 @@ where
   g
 }
 
+/// Compute `g^h_{i,j}(y)` numerically in arbitrary dimension via tensor-product
+/// midpoint quadrature on `[lo, hi]^d`.
+///
+/// This is the direct numerical counterpart of Theorem 6.1 in
+/// Kohatsu-Higa--Yasuda when no closed-form `g_{i,j}` is available.
+pub fn g_kernel_numerical_nd<T, F>(
+  y: &[T],
+  payoff: &F,
+  h: T,
+  lo: &[T],
+  hi: &[T],
+  n_quad: usize,
+) -> Array2<T>
+where
+  T: FloatExt,
+  F: Fn(&[T]) -> T,
+{
+  let d = y.len();
+  assert!(d >= 2, "g_kernel_numerical_nd requires d >= 2");
+  assert_eq!(lo.len(), d, "lo must have the same dimension as y");
+  assert_eq!(hi.len(), d, "hi must have the same dimension as y");
+  assert!(n_quad > 0, "n_quad must be positive");
+
+  let half = T::from_f64_fast(0.5);
+  let dx: Vec<T> = (0..d)
+    .map(|k| (hi[k] - lo[k]) / T::from_usize_(n_quad))
+    .collect();
+  let cell_volume = dx.iter().copied().fold(T::one(), |acc, step| acc * step);
+  let eps = T::from_f64_fast(1e-4)
+    * (y.iter().map(|yi| yi.abs()).fold(T::zero(), |a, b| a + b) / T::from_usize_(d) + T::one());
+  let tol = T::from_f64_fast(1e-15);
+
+  let mut shifts = Vec::with_capacity(1 + 2 * d);
+  shifts.push(vec![T::zero(); d]);
+  for j in 0..d {
+    let mut up = vec![T::zero(); d];
+    up[j] = eps;
+    shifts.push(up);
+    let mut dn = vec![T::zero(); d];
+    dn[j] = -eps;
+    shifts.push(dn);
+  }
+
+  let mut phi = vec![vec![T::zero(); d]; shifts.len()];
+  let mut x = vec![T::zero(); d];
+  let mut multi_idx = vec![0usize; d];
+
+  loop {
+    for k in 0..d {
+      x[k] = lo[k] + (T::from_usize_(multi_idx[k]) + half) * dx[k];
+    }
+
+    let fval = payoff(&x);
+    if fval.abs() >= tol {
+      let weighted = fval * cell_volume;
+      for (shift_id, shift) in shifts.iter().enumerate() {
+        let diff: Vec<T> = (0..d).map(|k| y[k] + shift[k] - x[k]).collect();
+        let grad = grad_poisson_reg(&diff, h);
+        for i in 0..d {
+          phi[shift_id][i] += weighted * grad[i];
+        }
+      }
+    }
+
+    let mut exhausted = true;
+    for k in (0..d).rev() {
+      if multi_idx[k] + 1 < n_quad {
+        multi_idx[k] += 1;
+        for reset in (k + 1)..d {
+          multi_idx[reset] = 0;
+        }
+        exhausted = false;
+        break;
+      }
+    }
+    if exhausted {
+      break;
+    }
+  }
+
+  let inv_2eps = T::one() / (eps + eps);
+  let mut g = Array2::<T>::zeros((d, d));
+  for j in 0..d {
+    let up = 1 + 2 * j;
+    let dn = up + 1;
+    for i in 0..d {
+      g[[i, j]] = (phi[up][i] - phi[dn][i]) * inv_2eps;
+    }
+  }
+  g
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -161,5 +253,45 @@ mod tests {
     let n1: f64 = g1.iter().map(|x| x * x).sum::<f64>().sqrt();
     let n2: f64 = g2.iter().map(|x| x * x).sum::<f64>().sqrt();
     assert!(n1 > n2, "|∇Q(1)| = {n1} should > |∇Q(10)| = {n2}");
+  }
+
+  #[test]
+  fn poisson_kernel_grad_matches_3d_newton_potential() {
+    let x = [1.0_f64, 2.0, 2.0];
+    let grad = grad_poisson_reg(&x, 0.0);
+    let r = (x[0] * x[0] + x[1] * x[1] + x[2] * x[2]).sqrt();
+    let factor = 1.0 / (4.0 * std::f64::consts::PI * r.powi(3));
+
+    for i in 0..3 {
+      let expected = x[i] * factor;
+      assert!(
+        (grad[i] - expected).abs() < 1e-12,
+        "grad[{i}] = {}, expected {expected}",
+        grad[i]
+      );
+    }
+  }
+
+  #[test]
+  fn g_kernel_numerical_nd_matches_2d_specialisation() {
+    let y = [0.7_f64, 0.4];
+    let lo = [0.0_f64, 0.0];
+    let hi = [1.5_f64, 1.5];
+    let h = 0.05_f64;
+    let payoff = |x: &[f64]| if x[0] <= 1.0 && x[1] <= 0.8 { 1.0 } else { 0.0 };
+
+    let g_2d = g_kernel_numerical_2d(&y, &payoff, h, &lo, &hi, 32);
+    let g_nd = g_kernel_numerical_nd(&y, &payoff, h, &lo, &hi, 32);
+
+    for i in 0..2 {
+      for j in 0..2 {
+        assert!(
+          (g_2d[[i, j]] - g_nd[[i, j]]).abs() < 5e-3,
+          "mismatch at ({i},{j}): {} vs {}",
+          g_2d[[i, j]],
+          g_nd[[i, j]]
+        );
+      }
+    }
   }
 }

@@ -156,7 +156,12 @@ mod tests {
   #[test]
   fn volterra_fbm_h05_is_bm() {
     // H=0.5 → K(t,s) = 1/Γ(1) = 1 → X_t = W_t (standard BM)
-    let v = Volterra::<f64, Deterministic>::seeded(VolterraKernel::FractionalBM { h: 0.5 }, 200, Some(1.0), 42);
+    let v = Volterra::<f64, Deterministic>::seeded(
+      VolterraKernel::FractionalBM { h: 0.5 },
+      200,
+      Some(1.0),
+      42,
+    );
     let path = v.sample();
     // Variance of BM at t=1 should be ~1
     let var: f64 = path.iter().map(|&x| x * x).sum::<f64>() / path.len() as f64;
@@ -166,7 +171,12 @@ mod tests {
 
   #[test]
   fn volterra_seeded_deterministic() {
-    let v = Volterra::<f64, Deterministic>::seeded(VolterraKernel::FractionalBM { h: 0.7 }, 50, Some(1.0), 123);
+    let v = Volterra::<f64, Deterministic>::seeded(
+      VolterraKernel::FractionalBM { h: 0.7 },
+      50,
+      Some(1.0),
+      123,
+    );
     let p1 = v.sample();
     let p2 = v.sample();
     assert_eq!(p1, p2);

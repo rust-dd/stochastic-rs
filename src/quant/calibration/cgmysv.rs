@@ -19,6 +19,7 @@ use nalgebra::DMatrix;
 use nalgebra::DVector;
 use nalgebra::Dyn;
 use nalgebra::Owned;
+
 use super::CalibrationHistory;
 /// Market data for a single maturity slice.
 pub use super::levy::MarketSlice;
@@ -352,7 +353,10 @@ mod tests {
 
     println!("Calibrated: {:?}", result.params);
     println!("Loss RMSE: {:.6}", result.loss.get(LossMetric::Rmse));
-    println!("Converged: {}, Iterations: {}", result.converged, result.iterations);
+    println!(
+      "Converged: {}, Iterations: {}",
+      result.converged, result.iterations
+    );
 
     // RMSE should be small since we calibrate to synthetic data
     assert!(

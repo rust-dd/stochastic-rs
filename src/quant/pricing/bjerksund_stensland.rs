@@ -150,7 +150,8 @@ impl BjerksundStensland2002Pricer {
     // owens_t::biv_norm computes P(X > x, Y > y), so negate args for CDF
     let cbnd = |a: f64, b: f64, rho: f64| -> f64 { biv_norm(-a, -b, rho) };
 
-    (lambda * t2).exp() * fs.powf(gamma)
+    (lambda * t2).exp()
+      * fs.powf(gamma)
       * (cbnd(-d1, -e1, tau)
         - (i2 / fs).powf(kappa) * cbnd(-d2, -e2, tau)
         - (i1 / fs).powf(kappa) * cbnd(-d3, -e3, -tau)
@@ -189,8 +190,7 @@ impl BjerksundStensland2002Pricer {
       return fs - x;
     }
 
-    let value = alpha2 * fs.powf(beta)
-      - alpha2 * self.phi(fs, t1, beta, i2, i2, r, b, v)
+    let value = alpha2 * fs.powf(beta) - alpha2 * self.phi(fs, t1, beta, i2, i2, r, b, v)
       + self.phi(fs, t1, 1.0, i2, i2, r, b, v)
       - self.phi(fs, t1, 1.0, i1, i2, r, b, v)
       - x * self.phi(fs, t1, 0.0, i2, i2, r, b, v)
@@ -218,7 +218,10 @@ impl PricerExt for BjerksundStensland2002Pricer {
     // Put: use the Bjerksund-Stensland symmetry relation
     // P(S, X, T, r, b, v) = C(X, S, T, r-b, -b, v)
     let put_as_call = self.bs2002_call(self.k, self.s, tau, self.r - b, -b, self.v);
-    let put = f64::max(put_as_call, self.gbs_put(self.s, self.k, tau, self.r, b, self.v));
+    let put = f64::max(
+      put_as_call,
+      self.gbs_put(self.s, self.k, tau, self.r, b, self.v),
+    );
 
     (call, put)
   }

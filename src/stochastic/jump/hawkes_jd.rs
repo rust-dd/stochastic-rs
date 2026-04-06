@@ -179,7 +179,18 @@ mod tests {
 
   #[test]
   fn hawkes_jd_runs() {
-    let hjd = HawkesJD::new(0.05, 0.2, 3.0, 1.5, 5.0, -0.01, 0.05, 252, Some(0.0), Some(1.0));
+    let hjd = HawkesJD::new(
+      0.05,
+      0.2,
+      3.0,
+      1.5,
+      5.0,
+      -0.01,
+      0.05,
+      252,
+      Some(0.0),
+      Some(1.0),
+    );
     let path = hjd.sample();
     assert_eq!(path.len(), 252);
     assert!(path[0] == 0.0);
@@ -188,7 +199,18 @@ mod tests {
   #[test]
   fn hawkes_jd_clustering() {
     // Hawkes with high excitation should produce clustered jumps
-    let hjd = HawkesJD::new(0.05, 0.2, 5.0, 3.0, 8.0, -0.02, 0.05, 1000, Some(0.0), Some(1.0));
+    let hjd = HawkesJD::new(
+      0.05,
+      0.2,
+      5.0,
+      3.0,
+      8.0,
+      -0.02,
+      0.05,
+      1000,
+      Some(0.0),
+      Some(1.0),
+    );
     let path = hjd.sample();
     assert_eq!(path.len(), 1000);
     // Path should have non-trivial movement
@@ -198,7 +220,19 @@ mod tests {
 
   #[test]
   fn hawkes_jd_seeded_deterministic() {
-    let hjd = HawkesJD::seeded(0.05, 0.2, 3.0, 1.5, 5.0, -0.01, 0.05, 100, Some(0.0), Some(1.0), 42);
+    let hjd = HawkesJD::seeded(
+      0.05,
+      0.2,
+      3.0,
+      1.5,
+      5.0,
+      -0.01,
+      0.05,
+      100,
+      Some(0.0),
+      Some(1.0),
+      42,
+    );
     let p1 = hjd.sample();
     let p2 = hjd.sample();
     assert_eq!(p1, p2);

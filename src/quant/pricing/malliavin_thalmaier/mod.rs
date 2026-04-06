@@ -14,7 +14,7 @@
 //!
 //! The Poisson kernel `Q_d`:
 //! - `d = 2`: `Q₂(x) = (1/2π) ln|x|`
-//! - `d ≥ 3`: `Q_d(x) = −1 / (a_d · |x|^{d−2})`
+//! - `d ≥ 3`: `Q_d(x) = −1 / ((d−2) · a_d) · |x|^{2−d}`
 //!
 //! where `a_d = 2π^{d/2} / Γ(d/2)` is the surface area of the unit sphere.
 //!
