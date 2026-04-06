@@ -70,7 +70,17 @@ pub struct MtGreeks<T: FloatExt> {
   pub n_paths: usize,
 }
 
+#[derive(Clone, Debug)]
+/// Smooth localization parameters for the split `f = f_MT + f_PW`.
+struct MtLocalization<T: FloatExt> {
+  kink_eps: T,
+  box_hi: Vec<T>,
+  box_width: Vec<T>,
+}
+
 impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
+  /// Construct an M-T engine for the given model, regularization level and
+  /// Monte Carlo path count.
   pub fn new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Self {
     Self { params, h, n_paths }
   }
@@ -97,6 +107,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     let d = self.params.n_assets();
     let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
     let spots: Vec<T> = self.params.assets.iter().map(|a| a.s0).collect();
+    let localization = self.localization(payoff);
     let mut sum = T::zero();
 
     for _ in 0..self.n_paths {
@@ -104,12 +115,22 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
       let st = paths.terminal_prices();
       let gamma_inv = paths.gamma_inv(&self.params.cross_corr, self.params.tau);
       let h_w = paths.malliavin_weights(&gamma_inv, asset, self.params.r, self.params.tau, &spots);
-      let g = self.compute_g(payoff, &st);
+      let g = match localization.as_ref() {
+        Some(loc) => self.compute_g_localized(payoff, &st, loc),
+        None => self.compute_g(payoff, &st),
+      };
+      let pw_contrib = localization
+        .as_ref()
+        .map(|loc| {
+          let grad = self.pathwise_tail_gradient(payoff, &st, loc);
+          grad[asset] * st[asset] / spots[asset]
+        })
+        .unwrap_or_else(T::zero);
 
       let contrib = (0..d)
         .map(|i| g[[i, asset]] * h_w[i])
         .fold(T::zero(), |a, b| a + b);
-      sum += discount * contrib;
+      sum += discount * (contrib + pw_contrib);
     }
 
     sum / T::from_usize_(self.n_paths)
@@ -137,20 +158,31 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     let d = self.params.n_assets();
     let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
     let spots: Vec<T> = self.params.assets.iter().map(|a| a.s0).collect();
+    let localization = self.localization(payoff);
     let mut sums = vec![T::zero(); d];
 
     for _ in 0..self.n_paths {
       let paths = sample();
       let st = paths.terminal_prices();
       let gamma_inv = paths.gamma_inv(&self.params.cross_corr, self.params.tau);
-      let g = self.compute_g(payoff, &st);
+      let g = match localization.as_ref() {
+        Some(loc) => self.compute_g_localized(payoff, &st, loc),
+        None => self.compute_g(payoff, &st),
+      };
+      let grad_pw = localization
+        .as_ref()
+        .map(|loc| self.pathwise_tail_gradient(payoff, &st, loc));
 
       for p in 0..d {
         let h_w = paths.malliavin_weights(&gamma_inv, p, self.params.r, self.params.tau, &spots);
         let contrib = (0..d)
           .map(|i| g[[i, p]] * h_w[i])
           .fold(T::zero(), |a, b| a + b);
-        sums[p] += discount * contrib;
+        let pw_contrib = grad_pw
+          .as_ref()
+          .map(|grad| grad[p] * st[p] / spots[p])
+          .unwrap_or_else(T::zero);
+        sums[p] += discount * (contrib + pw_contrib);
       }
     }
 
@@ -179,15 +211,24 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
   }
 
   /// Vega via finite difference on price.
+  ///
+  /// Uses a fixed-seed common-random-numbers bump internally to reduce Monte
+  /// Carlo variance compared with two independent price runs.
   pub fn vega(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
+    self.vega_with_seed(payoff, asset, 0x9E37_79B9_7F4A_7C15_u64 ^ asset as u64)
+  }
+
+  /// Deterministic Vega estimator using common random numbers for the
+  /// up/down finite-difference bump.
+  pub fn vega_with_seed(&self, payoff: &MtPayoff<T>, asset: usize, seed: u64) -> T {
     let bump = self.params.assets[asset].v0 * T::from_f64_fast(0.01);
     let mut up = self.params.clone();
     up.assets[asset].v0 += bump;
     let mut dn = self.params.clone();
     dn.assets[asset].v0 -= bump;
 
-    let p_up = MtGreeks::new(up, self.h, self.n_paths).price(payoff);
-    let p_dn = MtGreeks::new(dn, self.h, self.n_paths).price(payoff);
+    let p_up = MtGreeks::new(up, self.h, self.n_paths).price_with_seed(payoff, seed);
+    let p_dn = MtGreeks::new(dn, self.h, self.n_paths).price_with_seed(payoff, seed);
     (p_up - p_dn) / (bump + bump)
   }
 
@@ -256,6 +297,229 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
         )
       }
     }
+  }
+
+  /// Compute the `g_{i,j}` tensor for the compactly supported localized payoff
+  /// `f_MT = f · beta · chi`.
+  fn compute_g_localized(
+    &self,
+    payoff: &MtPayoff<T>,
+    st: &[T],
+    loc: &MtLocalization<T>,
+  ) -> Array2<T> {
+    let d = self.params.n_assets();
+    let hi: Vec<T> = loc
+      .box_hi
+      .iter()
+      .zip(&loc.box_width)
+      .map(|(&hi_j, &w_j)| hi_j + w_j)
+      .collect();
+    let lo = vec![T::zero(); d];
+    let payoff_fn = |x: &[T]| self.localized_mt_piece(payoff, x, loc);
+
+    if d == 2 {
+      kernel::g_kernel_numerical_2d(
+        &[st[0], st[1]],
+        &payoff_fn,
+        self.h,
+        &[lo[0], lo[1]],
+        &[hi[0], hi[1]],
+        self.quadrature_points_per_axis(d),
+      )
+    } else {
+      kernel::g_kernel_numerical_nd(
+        st,
+        &payoff_fn,
+        self.h,
+        &lo,
+        &hi,
+        self.quadrature_points_per_axis(d),
+      )
+    }
+  }
+
+  /// Heuristic localization settings for the non-compact payoffs currently
+  /// supported by the hybrid M-T + pathwise split.
+  fn localization(&self, payoff: &MtPayoff<T>) -> Option<MtLocalization<T>> {
+    match payoff {
+      MtPayoff::Call { strike, .. } | MtPayoff::Put { strike, .. } => {
+        let base = self
+          .params
+          .assets
+          .iter()
+          .map(|a| <T as num_traits::Float>::abs(a.s0))
+          .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
+          .max(T::one());
+        let box_hi = self
+          .params
+          .assets
+          .iter()
+          .map(|a| T::from_f64_fast(2.0) * <T as num_traits::Float>::abs(a.s0).max(base))
+          .collect();
+        let box_width = vec![T::from_f64_fast(0.5) * base; self.params.n_assets()];
+        Some(MtLocalization {
+          kink_eps: T::from_f64_fast(0.05) * base,
+          box_hi,
+          box_width,
+        })
+      }
+      MtPayoff::BasketCall { strike, .. } => {
+        let base = self
+          .params
+          .assets
+          .iter()
+          .map(|a| <T as num_traits::Float>::abs(a.s0))
+          .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
+          .max(T::one());
+        let box_hi = self
+          .params
+          .assets
+          .iter()
+          .map(|a| T::from_f64_fast(2.5) * <T as num_traits::Float>::abs(a.s0).max(base))
+          .collect();
+        let box_width = vec![T::from_f64_fast(0.75) * base; self.params.n_assets()];
+        Some(MtLocalization {
+          kink_eps: T::from_f64_fast(0.05) * base,
+          box_hi,
+          box_width,
+        })
+      }
+      _ => None,
+    }
+  }
+
+  /// Compactly supported payoff piece integrated against the M-T kernel.
+  fn localized_mt_piece(&self, payoff: &MtPayoff<T>, x: &[T], loc: &MtLocalization<T>) -> T {
+    let Some((u, _)) = self.exercise_coordinate_and_gradient(payoff, x) else {
+      return payoff.evaluate(x);
+    };
+    let payoff_pos = u.max(T::zero());
+    let (beta, _) = self.beta_and_derivative(u, loc.kink_eps);
+    let (chi, _) = self.box_cutoff_and_gradient(x, loc);
+    payoff_pos * beta * chi
+  }
+
+  /// Pathwise gradient of the smooth remainder `f_PW = f - f_MT`.
+  fn pathwise_tail_gradient(
+    &self,
+    payoff: &MtPayoff<T>,
+    x: &[T],
+    loc: &MtLocalization<T>,
+  ) -> Vec<T> {
+    let Some((u, grad_u)) = self.exercise_coordinate_and_gradient(payoff, x) else {
+      return vec![T::zero(); x.len()];
+    };
+    let payoff_pos = u.max(T::zero());
+    let indicator = if u > T::zero() { T::one() } else { T::zero() };
+    let (beta, beta_prime) = self.beta_and_derivative(u, loc.kink_eps);
+    let (chi, grad_chi) = self.box_cutoff_and_gradient(x, loc);
+    let beta_chi = beta * chi;
+
+    (0..x.len())
+      .map(|k| {
+        indicator * (T::one() - beta_chi) * grad_u[k]
+          - payoff_pos * (chi * beta_prime * grad_u[k] + beta * grad_chi[k])
+      })
+      .collect()
+  }
+
+  /// Exercise-surface coordinate `u(x)` and its gradient for payoffs that can
+  /// be written as `u(x)^+`.
+  fn exercise_coordinate_and_gradient(&self, payoff: &MtPayoff<T>, x: &[T]) -> Option<(T, Vec<T>)> {
+    match payoff {
+      MtPayoff::Call { asset, strike } => {
+        let mut grad = vec![T::zero(); x.len()];
+        grad[*asset] = T::one();
+        Some((x[*asset] - *strike, grad))
+      }
+      MtPayoff::Put { asset, strike } => {
+        let mut grad = vec![T::zero(); x.len()];
+        grad[*asset] = -T::one();
+        Some((*strike - x[*asset], grad))
+      }
+      MtPayoff::BasketCall { weights, strike } => {
+        assert_eq!(weights.len(), x.len(), "basket weights dimension mismatch");
+        let basket = weights
+          .iter()
+          .zip(x)
+          .map(|(&w, &xi)| w * xi)
+          .fold(T::zero(), |a, b| a + b);
+        Some((basket - *strike, weights.clone()))
+      }
+      _ => None,
+    }
+  }
+
+  /// Quintic `C²` bump around the payoff kink and its derivative.
+  fn beta_and_derivative(&self, u: T, eps: T) -> (T, T) {
+    let abs_u = <T as num_traits::Float>::abs(u);
+    if abs_u <= eps {
+      return (T::one(), T::zero());
+    }
+    if abs_u >= eps + eps {
+      return (T::zero(), T::zero());
+    }
+
+    let s = (abs_u - eps) / eps;
+    let s2 = s * s;
+    let s3 = s2 * s;
+    let s4 = s3 * s;
+    let s5 = s4 * s;
+    let beta = T::one() - T::from_f64_fast(10.0) * s3 + T::from_f64_fast(15.0) * s4
+      - T::from_f64_fast(6.0) * s5;
+    let dp_ds =
+      -T::from_f64_fast(30.0) * s2 + T::from_f64_fast(60.0) * s3 - T::from_f64_fast(30.0) * s4;
+    let sign = if u >= T::zero() { T::one() } else { -T::one() };
+    (beta, dp_ds * sign / eps)
+  }
+
+  /// One-sided smooth box cutoff `chi` and its spatial gradient.
+  fn box_cutoff_and_gradient(&self, x: &[T], loc: &MtLocalization<T>) -> (T, Vec<T>) {
+    assert_eq!(x.len(), loc.box_hi.len(), "box_hi dimension mismatch");
+    assert_eq!(x.len(), loc.box_width.len(), "box_width dimension mismatch");
+
+    let d = x.len();
+    let mut cutoff = vec![T::one(); d];
+    let mut deriv = vec![T::zero(); d];
+
+    for j in 0..d {
+      let hi = loc.box_hi[j];
+      let width = loc.box_width[j];
+      if x[j] <= hi {
+        continue;
+      }
+      if x[j] >= hi + width {
+        cutoff[j] = T::zero();
+        deriv[j] = T::zero();
+        continue;
+      }
+
+      let s = (x[j] - hi) / width;
+      let s2 = s * s;
+      let s3 = s2 * s;
+      let s4 = s3 * s;
+      let s5 = s4 * s;
+      cutoff[j] = T::one() - T::from_f64_fast(10.0) * s3 + T::from_f64_fast(15.0) * s4
+        - T::from_f64_fast(6.0) * s5;
+      deriv[j] = (-T::from_f64_fast(30.0) * s2 + T::from_f64_fast(60.0) * s3
+        - T::from_f64_fast(30.0) * s4)
+        / width;
+    }
+
+    let chi = cutoff.iter().copied().fold(T::one(), |a, b| a * b);
+    let grad = (0..d)
+      .map(|j| {
+        let mut prod = deriv[j];
+        for (k, &cutoff_k) in cutoff.iter().enumerate() {
+          if k != j {
+            prod = prod * cutoff_k;
+          }
+        }
+        prod
+      })
+      .collect();
+
+    (chi, grad)
   }
 
   /// Numerical quadrature for non-compact payoffs is truncated to a positive
@@ -546,6 +810,43 @@ mod tests {
     assert!(
       err < 0.20,
       "3D delta = {d}, BS delta = {bs_delta}, err = {err}"
+    );
+  }
+
+  #[test]
+  #[cfg_attr(
+    debug_assertions,
+    ignore = "expensive 3D MC smoke test; run with --release --features openblas"
+  )]
+  fn delta_put_finite_in_3d() {
+    let e = MtGreeks::new(gbm_like_params_3d(), 0.01, 20_000);
+    let p = MtPayoff::Put {
+      asset: 0,
+      strike: 100.0,
+    };
+    let d = e.delta_with_seed(&p, 0, 11);
+
+    let bs = BSMPricer {
+      s: 100.0,
+      v: 0.2,
+      k: 100.0,
+      r: 0.05,
+      r_d: None,
+      r_f: None,
+      q: Some(0.0),
+      tau: Some(1.0),
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Put,
+      b: BSMCoc::Bsm1973,
+    };
+    let bs_delta = bs.delta();
+    let err = (d - bs_delta).abs();
+
+    assert!(d.is_finite(), "3D put delta is not finite: {d}");
+    assert!(
+      err < 0.20,
+      "3D put delta = {d}, BS delta = {bs_delta}, err = {err}"
     );
   }
 
