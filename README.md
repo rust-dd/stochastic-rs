@@ -235,28 +235,28 @@ Configuration in this run:
 
 ### Tier 0 — Foundations (no roadmap dependencies, builds on done modules)
 
-- [ ] **Cash flow engine** (`quant::cashflows`) ← *calendar ✓, curves ✓*
-  - [ ] Fixed-rate coupon, floating-rate coupon (IBOR, OIS), CMS coupon
-  - [ ] Leg abstraction — ordered sequence of cash flows with notional schedule
-  - [ ] Amortizing and accreting notionals
-  - [ ] Cash flow NPV, accrued interest
-- [ ] **Trinomial tree & lattice framework** (`quant::lattice`)
-  - [ ] General trinomial / binomial tree
-  - [ ] Hull-White, Black-Karasinski, G2++ tree engines
+- [x] **Cash flow engine** (`quant::cashflows`) ← *calendar ✓, curves ✓*
+  - [x] Fixed-rate coupon, floating-rate coupon (IBOR, OIS), CMS coupon
+  - [x] Leg abstraction — ordered sequence of cash flows with notional schedule
+  - [x] Amortizing and accreting notionals
+  - [x] Cash flow NPV, accrued interest
+- [x] **Trinomial tree & lattice framework** (`quant::lattice`)
+  - [x] General trinomial / binomial tree
+  - [x] Hull-White, Black-Karasinski, G2++ tree engines
 
 ### Tier 1 — Instruments (depends on: cash flow engine)
 
-- [ ] **Interest rate swaps** (`quant::instruments`) ← *cashflows, curves ✓*
-  - [ ] Vanilla IRS (fixed vs floating)
-  - [ ] Overnight Indexed Swap (OIS)
-  - [ ] Basis swap and cross-currency basis swap
-  - [ ] NPV, fair rate, DV01 / BPV
-- [ ] **Fixed-income instruments** (`quant::instruments`) ← *cashflows, curves ✓*
-  - [ ] Fixed-rate bond — dirty/clean price, YTM, duration (Macaulay, modified), convexity
-  - [ ] Floating-rate bond / FRN
-  - [ ] Zero-coupon bond pricing from yield curve
-  - [ ] Amortizing bond, inflation-linked bond
-  - [ ] Z-spread, ASW spread, OAS
+- [x] **Interest rate swaps** (`quant::instruments`) ← *cashflows, curves ✓*
+  - [x] Vanilla IRS (fixed vs floating)
+  - [x] Overnight Indexed Swap (OIS)
+  - [x] Basis swap and cross-currency basis swap
+  - [x] NPV, fair rate, DV01 / BPV
+- [x] **Fixed-income instruments** (`quant::instruments`) ← *cashflows, curves ✓*
+  - [x] Fixed-rate bond — dirty/clean price, YTM, duration (Macaulay, modified), convexity
+  - [x] Floating-rate bond / FRN
+  - [x] Zero-coupon bond pricing from yield curve
+  - [x] Amortizing bond, inflation-linked bond
+  - [x] Z-spread, ASW spread, OAS
 
 ### Tier 2 — Advanced instruments & framework (depends on: Tier 1)
 

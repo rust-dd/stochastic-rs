@@ -32,6 +32,7 @@
 //! - Kohatsu-Higa, A. & Yasuda, K. (2008). RIMS Kôkyûroku 1580, 124–135.
 //! - Bally, V. & Caramellino, L. *Lower bounds for the density of Itô
 //!   processes under weak regularity assumptions*. Preprint.
+//! <https://www.kurims.kyoto-u.ac.jp/~kyodo/kokyuroku/contents/pdf/1580-11.pdf>
 
 pub mod engine;
 pub mod heston;
