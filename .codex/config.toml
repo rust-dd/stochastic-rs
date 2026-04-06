@@ -1,0 +1,3 @@
+[mcp_servers.arxiv]
+command = "uvx"
+args = ["arxiv-mcp-server"]

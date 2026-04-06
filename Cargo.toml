@@ -143,6 +143,14 @@ harness = false
 name = "calendar"
 harness = false
 
+[[bench]]
+name = "cashflows"
+harness = false
+
+[[bench]]
+name = "lattice"
+harness = false
+
 
 [[bench]]
 name = "slv"
