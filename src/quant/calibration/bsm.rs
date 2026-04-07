@@ -71,11 +71,11 @@ impl From<DVector<f64>> for BSMParams {
 pub struct BSMCalibrator {
   /// Params to calibrate.
   pub params: BSMParams,
-  /// Option prices from the market.
+  /// Option prices from the market (flattened across all maturities).
   pub c_market: DVector<f64>,
-  /// Asset price vector.
+  /// Underlying spot per quote.
   pub s: DVector<f64>,
-  /// Strike price vector.
+  /// Strike per quote (flattened).
   pub k: DVector<f64>,
   /// Risk-free rate.
   pub r: f64,
@@ -85,8 +85,12 @@ pub struct BSMCalibrator {
   pub r_f: Option<f64>,
   /// Dividend yield.
   pub q: Option<f64>,
-  /// Time to maturity.
+  /// Time to maturity (kept for the legacy single-tau constructor).
   pub tau: f64,
+  /// Time to maturity per quote (flattened). Supports multi-maturity
+  /// joint calibration. Always populated — for the single-tau
+  /// `BSMCalibrator::new` constructor every entry equals `tau`.
+  pub flat_t: Vec<f64>,
   /// Option type
   pub option_type: OptionType,
   /// Which loss metrics to compute when recording history.
@@ -98,6 +102,7 @@ pub struct BSMCalibrator {
 }
 
 impl BSMCalibrator {
+  /// Create a calibrator for a single maturity slice (backwards compatible).
   pub fn new(
     params: BSMParams,
     c_market: DVector<f64>,
@@ -110,6 +115,7 @@ impl BSMCalibrator {
     tau: f64,
     option_type: OptionType,
   ) -> Self {
+    let n = c_market.len();
     Self {
       params,
       c_market,
@@ -120,6 +126,53 @@ impl BSMCalibrator {
       r_f,
       q,
       tau,
+      flat_t: vec![tau; n],
+      option_type,
+      loss_metrics: &LossMetric::ALL,
+      calibration_history: RefCell::new(Vec::new()),
+      derivates: RefCell::new(Vec::new()),
+    }
+  }
+
+  /// Create a calibrator from multiple maturity slices for joint
+  /// surface calibration. Mirrors the API of the Heston / SVJ
+  /// calibrators so a single chain of `MarketSlice`s can be used to
+  /// fit BSM, Heston and Bates side by side.
+  pub fn from_slices(
+    params: BSMParams,
+    slices: &[super::levy::MarketSlice],
+    s: f64,
+    r: f64,
+    r_d: Option<f64>,
+    r_f: Option<f64>,
+    q: Option<f64>,
+    option_type: OptionType,
+  ) -> Self {
+    let mut flat_prices = Vec::new();
+    let mut flat_strikes = Vec::new();
+    let mut flat_t = Vec::new();
+    let mut flat_s = Vec::new();
+
+    for slice in slices {
+      for i in 0..slice.strikes.len() {
+        flat_prices.push(slice.prices[i]);
+        flat_strikes.push(slice.strikes[i]);
+        flat_t.push(slice.t);
+        flat_s.push(s);
+      }
+    }
+
+    Self {
+      params,
+      c_market: DVector::from_vec(flat_prices),
+      s: DVector::from_vec(flat_s),
+      k: DVector::from_vec(flat_strikes),
+      r,
+      r_d,
+      r_f,
+      q,
+      tau: 0.0,
+      flat_t,
       option_type,
       loss_metrics: &LossMetric::ALL,
       calibration_history: RefCell::new(Vec::new()),
@@ -145,7 +198,7 @@ impl BSMCalibrator {
           result.r_d,
           result.r_f,
           result.q,
-          Some(result.tau),
+          Some(result.flat_t[idx]),
           None,
           None,
           result.option_type,
@@ -204,7 +257,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         self.r_d,
         self.r_f,
         self.q,
-        Some(self.tau),
+        Some(self.flat_t[idx]),
         None,
         None,
         self.option_type,
@@ -263,7 +316,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         self.r_d,
         self.r_f,
         self.q,
-        Some(self.tau),
+        Some(self.flat_t[idx]),
         None,
         None,
         self.option_type,
@@ -327,5 +380,61 @@ mod tests {
     );
 
     calibrator.calibrate();
+  }
+
+  #[test]
+  fn test_calibrate_from_slices_recovers_constant_sigma() {
+    // Generate three synthetic maturity slices from a known constant sigma,
+    // then check the joint calibrator recovers it on the whole flattened set.
+    use crate::quant::calibration::levy::MarketSlice;
+
+    let s = 100.0_f64;
+    let r = 0.03_f64;
+    let true_sigma = 0.25_f64;
+    let strikes = vec![85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0];
+
+    let make_slice = |t: f64| -> MarketSlice {
+      let prices: Vec<f64> = strikes
+        .iter()
+        .map(|&k| {
+          let pricer = BSMPricer::builder(s, true_sigma, k, r)
+            .tau(t)
+            .coc(BSMCoc::Bsm1973)
+            .build();
+          let (call, _) = pricer.calculate_call_put();
+          call
+        })
+        .collect();
+      MarketSlice {
+        strikes: strikes.clone(),
+        prices,
+        is_call: vec![true; strikes.len()],
+        t,
+      }
+    };
+
+    let slices = vec![make_slice(0.10), make_slice(0.30), make_slice(0.75)];
+
+    let calibrator = BSMCalibrator::from_slices(
+      BSMParams { v: 0.4 }, // intentionally far from the truth
+      &slices,
+      s,
+      r,
+      None,
+      None,
+      None,
+      OptionType::Call,
+    );
+    let result = calibrator.calibrate();
+    println!(
+      "recovered sigma = {:.6}  (truth {:.4})  converged = {}",
+      result.v, true_sigma, result.converged
+    );
+    assert!(
+      (result.v - true_sigma).abs() < 1e-3,
+      "expected ~{}, got {}",
+      true_sigma,
+      result.v
+    );
   }
 }
