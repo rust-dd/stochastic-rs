@@ -106,6 +106,7 @@ pub fn fourier_model_surface_fft(
 mod tests {
   use super::*;
   use crate::quant::pricing::fourier::BatesFourier;
+  use crate::quant::pricing::fourier::DoubleHestonFourier;
   use crate::quant::pricing::fourier::HestonFourier;
   use crate::quant::pricing::fourier::VarianceGammaFourier;
   use crate::quant::pricing::heston_stoch_corr::HscmModel;
@@ -202,6 +203,53 @@ mod tests {
         );
       }
     }
+  }
+
+  #[test]
+  fn double_heston_via_model_surface() {
+    let model = DoubleHestonFourier {
+      v1_0: 0.02,
+      kappa1: 3.0,
+      theta1: 0.02,
+      sigma1: 0.4,
+      rho1: -0.6,
+      v2_0: 0.02,
+      kappa2: 0.5,
+      theta2: 0.03,
+      sigma2: 0.2,
+      rho2: -0.3,
+      r: 0.05,
+      q: 0.0,
+    };
+
+    let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
+    let maturities = vec![0.25, 0.5, 1.0];
+    let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
+
+    for j in 0..maturities.len() {
+      for i in 0..strikes.len() {
+        let iv = surface.ivs[[j, i]];
+        assert!(
+          iv.is_finite() && iv > 0.0 && iv < 2.0,
+          "Double Heston IV should be reasonable: iv={iv} at T={}, K={}",
+          maturities[j],
+          strikes[i]
+        );
+      }
+    }
+
+    let slice = surface.smile_slice(2);
+    let atm_idx = slice
+      .log_moneyness
+      .iter()
+      .enumerate()
+      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .map(|(i, _)| i)
+      .unwrap();
+    assert!(
+      slice.implied_vols[0] > slice.implied_vols[atm_idx],
+      "Double Heston OTM put IV should be > ATM IV with negative rho1/rho2"
+    );
   }
 
   #[test]

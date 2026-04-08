@@ -44,6 +44,7 @@ pub use fourier::BatesFourier;
 pub use fourier::CGMYFourier;
 pub use fourier::CarrMadanPricer;
 pub use fourier::Cumulants;
+pub use fourier::DoubleHestonFourier;
 pub use fourier::FourierModelExt;
 pub use fourier::GilPelaezPricer;
 pub use fourier::HKDEFourier;

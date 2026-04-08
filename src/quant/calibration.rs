@@ -13,6 +13,7 @@ use crate::quant::CalibrationLossScore;
 
 pub mod bsm;
 pub mod cgmysv;
+pub mod double_heston;
 pub mod heston;
 pub mod heston_stoch_corr;
 pub mod hkde;
@@ -27,6 +28,9 @@ pub use bsm::BSMCalibrator;
 pub use bsm::BSMParams;
 pub use cgmysv::CgmysvCalibrationResult;
 pub use cgmysv::CgmysvCalibrator;
+pub use double_heston::DoubleHestonCalibrationResult;
+pub use double_heston::DoubleHestonCalibrator;
+pub use double_heston::DoubleHestonParams;
 pub use heston::HestonCalibrator;
 pub use heston::HestonParams;
 pub use heston_stoch_corr::HscmCalibrationResult;
