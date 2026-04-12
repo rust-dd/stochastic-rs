@@ -25,6 +25,15 @@ use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
+#[derive(Debug, Clone)]
+pub struct SnellEnvelopeResult {
+  pub price: f64,
+  pub european_price: f64,
+  pub early_exercise_premium: f64,
+  /// Exercise boundary as `(time_in_years, critical_stock_price)` pairs.
+  pub exercise_boundary: Vec<(f64, f64)>,
+}
+
 pub struct SnellEnvelopePricer {
   /// Spot level $S_0$.
   pub s: f64,
@@ -120,6 +129,80 @@ impl SnellEnvelopePricer {
     }
 
     values[0]
+  }
+
+  pub fn price_detailed(&self, option_type: OptionType) -> SnellEnvelopeResult {
+    let tau = self.tau_or_from_dates();
+    assert!(tau.is_finite() && tau > 0.0, "tau must be positive");
+
+    let dt = tau / self.steps as f64;
+    let sqrt_dt = dt.sqrt();
+    let u = (self.v * sqrt_dt).exp();
+    let d = 1.0 / u;
+    let disc = (-self.r * dt).exp();
+    let growth = ((self.r - self.q.unwrap_or(0.0)) * dt).exp();
+    let p = (growth - d) / (u - d);
+    assert!(
+      (0.0..=1.0).contains(&p),
+      "risk-neutral probability out of range: p={p}. Increase steps or adjust parameters."
+    );
+    let ud_ratio = u / d;
+
+    let mut am_values = vec![0.0_f64; self.steps + 1];
+    let mut eu_values = vec![0.0_f64; self.steps + 1];
+    let mut s_node = self.s * d.powi(self.steps as i32);
+    for idx in 0..=self.steps {
+      let pv = payoff(option_type, s_node, self.k);
+      am_values[idx] = pv;
+      eu_values[idx] = pv;
+      s_node *= ud_ratio;
+    }
+
+    let mut exercise_boundary = Vec::new();
+
+    for i in (0..self.steps).rev() {
+      let mut s_i0 = self.s * d.powi(i as i32);
+      let mut boundary_s = f64::NAN;
+
+      for j in 0..=i {
+        let am_cont = disc * (p * am_values[j + 1] + (1.0 - p) * am_values[j]);
+        let eu_cont = disc * (p * eu_values[j + 1] + (1.0 - p) * eu_values[j]);
+        let exercise = payoff(option_type, s_i0, self.k);
+
+        am_values[j] = am_cont.max(exercise);
+        eu_values[j] = eu_cont;
+
+        if exercise > am_cont + 1e-12 {
+          match option_type {
+            OptionType::Put => {
+              if boundary_s.is_nan() || s_i0 > boundary_s {
+                boundary_s = s_i0;
+              }
+            }
+            OptionType::Call => {
+              if boundary_s.is_nan() || s_i0 < boundary_s {
+                boundary_s = s_i0;
+              }
+            }
+          }
+        }
+
+        s_i0 *= ud_ratio;
+      }
+
+      if boundary_s.is_finite() {
+        exercise_boundary.push(((i as f64) * dt, boundary_s));
+      }
+    }
+
+    exercise_boundary.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    SnellEnvelopeResult {
+      price: am_values[0],
+      european_price: eu_values[0],
+      early_exercise_premium: am_values[0] - eu_values[0],
+      exercise_boundary,
+    }
   }
 }
 
@@ -231,6 +314,39 @@ mod tests {
     .calculate_price();
 
     assert!((amer - euro).abs() < 5e-2);
+  }
+
+  #[test]
+  fn price_detailed_returns_exercise_boundary_and_premium() {
+    let pricer = SnellEnvelopePricer::new(
+      100.0,
+      0.2,
+      100.0,
+      0.03,
+      Some(0.01),
+      800,
+      Some(1.0),
+      None,
+      None,
+      OptionType::Put,
+    );
+    let result = pricer.price_detailed(OptionType::Put);
+
+    assert!(result.price > 0.0);
+    assert!(result.european_price > 0.0);
+    assert!(result.early_exercise_premium >= -1e-10);
+    assert!(result.price >= result.european_price - 1e-10);
+    assert!(!result.exercise_boundary.is_empty());
+
+    for &(t, s_star) in &result.exercise_boundary {
+      assert!(t >= 0.0 && t < 1.0);
+      assert!(s_star > 0.0 && s_star <= 100.0);
+    }
+
+    let times: Vec<f64> = result.exercise_boundary.iter().map(|p| p.0).collect();
+    for w in times.windows(2) {
+      assert!(w[0] <= w[1]);
+    }
   }
 
   #[test]
