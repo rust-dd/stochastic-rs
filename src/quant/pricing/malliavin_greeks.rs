@@ -297,21 +297,65 @@ impl HestonMalliavinGreeks {
     (s_terminal, payoffs, v_paths, w1_paths)
   }
 
-  /// Malliavin Delta for a European call under Heston dynamics.
+  /// Pathwise Delta for a European call under Heston dynamics.
   ///
-  /// The Malliavin weight is:
+  /// Since the variance process does not depend on S₀, we have ∂S_T/∂S₀ = S_T/S₀,
+  /// giving the exact pathwise estimator:
   /// ```text
-  /// pi_Delta^i = (1 / (S_0 * T)) * [ sum_k (1/sqrt(V_k)) * dW1_k
-  ///              - (rho / sqrt(1 - rho^2)) * sum_k (1/sqrt(V_k)) * dW2_k ]
+  /// Delta = E[ e^{-rT} · 1{S_T > K} · S_T / S_0 ]
   /// ```
   ///
-  /// where dW1, dW2 are the correlated Brownian increments driving S and V respectively.
+  /// This is exact for smooth payoffs (vanilla calls/puts) and does not require
+  /// Malliavin weights. For non-smooth payoffs (digitals, barriers), use [`delta`].
+  pub fn delta_pathwise(&self) -> f64 {
+    let discount = (-self.r * self.tau).exp();
+    let m = self.n_paths as f64;
+
+    let heston = Heston::new(
+      Some(self.s0),
+      Some(self.v0),
+      self.kappa,
+      self.theta,
+      self.xi,
+      self.rho,
+      self.r,
+      self.n_steps,
+      Some(self.tau),
+      HestonPow::Sqrt,
+      Some(false),
+    );
+
+    let mut sum = 0.0;
+
+    for _ in 0..self.n_paths {
+      let [s_path, _] = heston.sample();
+      let s_t = s_path[self.n_steps - 1];
+      if s_t > self.k {
+        sum += discount * s_t / self.s0;
+      }
+    }
+
+    sum / m
+  }
+
+  /// Malliavin Delta for a European call under Heston dynamics.
+  ///
+  /// Uses the zeroth-order Malliavin covariance approximation from
+  /// El-Khatib (2009, arXiv:0904.3247) and the Fourier-Malliavin framework:
+  ///
+  /// ```text
+  /// D_t S_T ≈ S_T √V_t   (zeroth-order, ignoring σ'(V) correction)
+  /// γ = S_T² ∫₀ᵀ V_t dt  (Malliavin covariance)
+  ///
+  /// π_Δ = (1/S₀) · ∫₀ᵀ √V_t dW_t^S / ∫₀ᵀ V_t dt
+  /// ```
+  ///
+  /// Works for non-smooth payoffs (digitals, barriers) where pathwise fails.
+  /// For vanilla calls, prefer [`delta_pathwise`] which is exact.
   pub fn delta(&self) -> f64 {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
-    let rho2 = self.rho * self.rho;
-    let sqrt_one_minus_rho2 = (1.0 - rho2).max(1e-12).sqrt();
 
     let heston = Heston::new(
       Some(self.s0),
@@ -333,36 +377,145 @@ impl HestonMalliavinGreeks {
       let [s_path, v_path] = heston.sample();
       let payoff = (s_path[self.n_steps - 1] - self.k).max(0.0);
 
-      // Reconstruct dW1 and dW2 from the paths
-      let mut sum_inv_sqrt_v_dw1 = 0.0;
-      let mut sum_inv_sqrt_v_dw2 = 0.0;
+      // Reconstruct dW^S from the arithmetic Euler step:
+      //   S_{k+1} = S_k + r·S_k·dt + √V_k·S_k·dW^S_k
+      //   dW^S_k  = (S_{k+1} - S_k - r·S_k·dt) / (√V_k · S_k)
+      let mut numerator = 0.0; // ∫ √V_t dW_t^S
+      let mut int_v = 0.0; // ∫ V_t dt
 
       for k in 0..(self.n_steps - 1) {
         let v_k = v_path[k].max(1e-12);
         let sqrt_v_k = v_k.sqrt();
-        let inv_sqrt_v_k = 1.0 / sqrt_v_k;
+
+        int_v += v_k * dt;
 
         let s_prev = s_path[k];
-        let dw1 = if s_prev.abs() > 1e-14 {
+        let dw_s = if s_prev.abs() > 1e-14 {
           (s_path[k + 1] - s_prev - self.r * s_prev * dt) / (sqrt_v_k * s_prev)
         } else {
           0.0
         };
 
-        let dw2 =
-          (v_path[k + 1] - v_path[k] - self.kappa * (self.theta - v_k) * dt) / (self.xi * sqrt_v_k);
-
-        sum_inv_sqrt_v_dw1 += inv_sqrt_v_k * dw1;
-        sum_inv_sqrt_v_dw2 += inv_sqrt_v_k * dw2;
+        // √V_k · dW^S_k  (note: dw_s already contains √dt via reconstruction)
+        numerator += sqrt_v_k * dw_s;
       }
 
-      let pi_delta = (1.0 / (self.s0 * self.tau))
-        * (sum_inv_sqrt_v_dw1 - (self.rho / sqrt_one_minus_rho2) * sum_inv_sqrt_v_dw2);
+      let int_v_safe = int_v.max(1e-12);
+      let pi_delta = numerator / (self.s0 * int_v_safe);
 
       sum += discount * payoff * pi_delta;
     }
 
     sum / m
+  }
+
+  /// Malliavin Gamma for a European call under Heston dynamics.
+  ///
+  /// Uses the second-order Malliavin weight derived from the covariance:
+  /// ```text
+  /// π_Γ = (π_Δ² − ∫₀ᵀ dt / (S₀² · (∫₀ᵀ V_t dt)²))
+  /// ```
+  pub fn gamma(&self) -> f64 {
+    let dt = self.tau / (self.n_steps - 1) as f64;
+    let discount = (-self.r * self.tau).exp();
+    let m = self.n_paths as f64;
+
+    let heston = Heston::new(
+      Some(self.s0),
+      Some(self.v0),
+      self.kappa,
+      self.theta,
+      self.xi,
+      self.rho,
+      self.r,
+      self.n_steps,
+      Some(self.tau),
+      HestonPow::Sqrt,
+      Some(false),
+    );
+
+    let mut sum = 0.0;
+
+    for _ in 0..self.n_paths {
+      let [s_path, v_path] = heston.sample();
+      let payoff = (s_path[self.n_steps - 1] - self.k).max(0.0);
+
+      let mut numerator = 0.0;
+      let mut int_v = 0.0;
+
+      for k in 0..(self.n_steps - 1) {
+        let v_k = v_path[k].max(1e-12);
+        let sqrt_v_k = v_k.sqrt();
+        int_v += v_k * dt;
+
+        let s_prev = s_path[k];
+        let dw_s = if s_prev.abs() > 1e-14 {
+          (s_path[k + 1] - s_prev - self.r * s_prev * dt) / (sqrt_v_k * s_prev)
+        } else {
+          0.0
+        };
+        numerator += sqrt_v_k * dw_s;
+      }
+
+      let int_v_safe = int_v.max(1e-12);
+      let pi_delta = numerator / (self.s0 * int_v_safe);
+      let pi_gamma = pi_delta * pi_delta - self.tau / (self.s0 * self.s0 * int_v_safe);
+
+      sum += discount * payoff * pi_gamma;
+    }
+
+    sum / m
+  }
+
+  /// Vega with respect to initial variance v₀.
+  ///
+  /// Uses finite-difference bump on v₀ with common random numbers (CRN)
+  /// via seeded Heston simulation.
+  pub fn vega_v0(&self) -> f64 {
+    let dv = 0.002_f64.min(self.v0 * 0.1);
+    let discount = (-self.r * self.tau).exp();
+    let m = self.n_paths as f64;
+
+    let heston_up = Heston::seeded(
+      Some(self.s0),
+      Some(self.v0 + dv),
+      self.kappa,
+      self.theta,
+      self.xi,
+      self.rho,
+      self.r,
+      self.n_steps,
+      Some(self.tau),
+      HestonPow::Sqrt,
+      Some(false),
+      0xCAFE,
+    );
+    let heston_dn = Heston::seeded(
+      Some(self.s0),
+      Some((self.v0 - dv).max(1e-6)),
+      self.kappa,
+      self.theta,
+      self.xi,
+      self.rho,
+      self.r,
+      self.n_steps,
+      Some(self.tau),
+      HestonPow::Sqrt,
+      Some(false),
+      0xCAFE,
+    );
+
+    let mut sum_up = 0.0;
+    let mut sum_dn = 0.0;
+
+    for _ in 0..self.n_paths {
+      let [s_up, _] = heston_up.sample();
+      let [s_dn, _] = heston_dn.sample();
+      sum_up += (s_up[self.n_steps - 1] - self.k).max(0.0);
+      sum_dn += (s_dn[self.n_steps - 1] - self.k).max(0.0);
+    }
+
+    discount * (sum_up - sum_dn) / (m * 2.0 * dv)
   }
 }
 
@@ -458,7 +611,94 @@ mod tests {
     let delta = greeks.delta();
     assert!(
       delta > 0.0 && delta < 1.0,
-      "Heston delta should be in (0,1), got {delta}"
+      "Heston Malliavin delta should be in (0,1), got {delta}"
+    );
+  }
+
+  #[test]
+  fn heston_delta_pathwise_positive() {
+    let greeks = HestonMalliavinGreeks {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      xi: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      tau: 1.0,
+      k: 100.0,
+      n_paths: 50_000,
+      n_steps: 252,
+    };
+    let delta = greeks.delta_pathwise();
+    assert!(
+      delta > 0.3 && delta < 0.9,
+      "Heston pathwise delta should be ~0.6 for ATM, got {delta}"
+    );
+  }
+
+  #[test]
+  fn heston_gamma_positive() {
+    let greeks = HestonMalliavinGreeks {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      xi: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      tau: 1.0,
+      k: 100.0,
+      n_paths: 100_000,
+      n_steps: 252,
+    };
+    let gamma = greeks.gamma();
+    assert!(
+      gamma > 0.0 && gamma < 0.1,
+      "Heston gamma should be positive and reasonable, got {gamma}"
+    );
+  }
+
+  #[test]
+  fn heston_vega_v0_positive() {
+    let greeks = HestonMalliavinGreeks {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      xi: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      tau: 1.0,
+      k: 100.0,
+      n_paths: 50_000,
+      n_steps: 252,
+    };
+    let vega = greeks.vega_v0();
+    assert!(vega > 0.0, "Heston vega_v0 should be > 0, got {vega}");
+  }
+
+  #[test]
+  fn heston_malliavin_vs_pathwise_consistent() {
+    let greeks = HestonMalliavinGreeks {
+      s0: 100.0,
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      xi: 0.1, // low vol-of-vol so zeroth-order approx is good
+      rho: -0.3,
+      r: 0.05,
+      tau: 1.0,
+      k: 100.0,
+      n_paths: 200_000,
+      n_steps: 252,
+    };
+    let mall = greeks.delta();
+    let path = greeks.delta_pathwise();
+    let rel_err = ((mall - path) / path).abs();
+    assert!(
+      rel_err < 0.15,
+      "Malliavin and pathwise delta should be close for low xi, got mall={mall} path={path} rel_err={rel_err}"
     );
   }
 }
