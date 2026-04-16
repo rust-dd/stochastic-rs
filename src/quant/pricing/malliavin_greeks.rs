@@ -340,17 +340,18 @@ impl HestonMalliavinGreeks {
 
   /// Malliavin Delta for a European call under Heston dynamics.
   ///
-  /// Uses the zeroth-order Malliavin covariance approximation from
-  /// El-Khatib (2009, arXiv:0904.3247) and the Fourier-Malliavin framework:
+  /// Uses the adapted covariance weight obtained from the leading Heston
+  /// Malliavin derivative `D_t S_T ≈ S_T √V_t`:
   ///
   /// ```text
-  /// D_t S_T ≈ S_T √V_t   (zeroth-order, ignoring σ'(V) correction)
-  /// γ = S_T² ∫₀ᵀ V_t dt  (Malliavin covariance)
-  ///
+  /// γ ≈ S_T² ∫₀ᵀ V_t dt
   /// π_Δ = (1/S₀) · ∫₀ᵀ √V_t dW_t^S / ∫₀ᵀ V_t dt
   /// ```
   ///
-  /// Works for non-smooth payoffs (digitals, barriers) where pathwise fails.
+  /// This is the same O(n) covariance approximation used by the
+  /// Malliavin-Thalmaier engine. The exact El-Khatib `G(t,T)` kernel is
+  /// non-adapted and requires Skorohod correction terms; using only its Ito
+  /// integral part gives a biased and very slow estimator.
   /// For vanilla calls, prefer [`delta_pathwise`] which is exact.
   pub fn delta(&self) -> f64 {
     let dt = self.tau / (self.n_steps - 1) as f64;
@@ -377,16 +378,12 @@ impl HestonMalliavinGreeks {
       let [s_path, v_path] = heston.sample();
       let payoff = (s_path[self.n_steps - 1] - self.k).max(0.0);
 
-      // Reconstruct dW^S from the arithmetic Euler step:
-      //   S_{k+1} = S_k + r·S_k·dt + √V_k·S_k·dW^S_k
-      //   dW^S_k  = (S_{k+1} - S_k - r·S_k·dt) / (√V_k · S_k)
-      let mut numerator = 0.0; // ∫ √V_t dW_t^S
-      let mut int_v = 0.0; // ∫ V_t dt
+      let mut numerator = 0.0;
+      let mut int_v = 0.0;
 
       for k in 0..(self.n_steps - 1) {
         let v_k = v_path[k].max(1e-12);
         let sqrt_v_k = v_k.sqrt();
-
         int_v += v_k * dt;
 
         let s_prev = s_path[k];
@@ -395,14 +392,10 @@ impl HestonMalliavinGreeks {
         } else {
           0.0
         };
-
-        // √V_k · dW^S_k  (note: dw_s already contains √dt via reconstruction)
         numerator += sqrt_v_k * dw_s;
       }
 
-      let int_v_safe = int_v.max(1e-12);
-      let pi_delta = numerator / (self.s0 * int_v_safe);
-
+      let pi_delta = numerator / (self.s0 * int_v.max(1e-12));
       sum += discount * payoff * pi_delta;
     }
 
@@ -411,9 +404,9 @@ impl HestonMalliavinGreeks {
 
   /// Malliavin Gamma for a European call under Heston dynamics.
   ///
-  /// Uses the second-order Malliavin weight derived from the covariance:
+  /// Uses the second-order covariance weight:
   /// ```text
-  /// π_Γ = (π_Δ² − ∫₀ᵀ dt / (S₀² · (∫₀ᵀ V_t dt)²))
+  /// π_Γ = π_Δ² − T / (S₀² · ∫₀ᵀ V_t dt)
   /// ```
   pub fn gamma(&self) -> f64 {
     let dt = self.tau / (self.n_steps - 1) as f64;
@@ -460,7 +453,6 @@ impl HestonMalliavinGreeks {
       let int_v_safe = int_v.max(1e-12);
       let pi_delta = numerator / (self.s0 * int_v_safe);
       let pi_gamma = pi_delta * pi_delta - self.tau / (self.s0 * self.s0 * int_v_safe);
-
       sum += discount * payoff * pi_gamma;
     }
 
@@ -469,46 +461,48 @@ impl HestonMalliavinGreeks {
 
   /// Vega with respect to initial variance v₀.
   ///
-  /// Uses finite-difference bump on v₀ with common random numbers (CRN)
-  /// via seeded Heston simulation.
+  /// Uses finite-difference bump on v₀ with common random numbers (CRN).
+  /// Each path pair (up/down) shares the same seed for noise cancellation.
   pub fn vega_v0(&self) -> f64 {
     let dv = 0.002_f64.min(self.v0 * 0.1);
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
 
-    let heston_up = Heston::seeded(
-      Some(self.s0),
-      Some(self.v0 + dv),
-      self.kappa,
-      self.theta,
-      self.xi,
-      self.rho,
-      self.r,
-      self.n_steps,
-      Some(self.tau),
-      HestonPow::Sqrt,
-      Some(false),
-      0xCAFE,
-    );
-    let heston_dn = Heston::seeded(
-      Some(self.s0),
-      Some((self.v0 - dv).max(1e-6)),
-      self.kappa,
-      self.theta,
-      self.xi,
-      self.rho,
-      self.r,
-      self.n_steps,
-      Some(self.tau),
-      HestonPow::Sqrt,
-      Some(false),
-      0xCAFE,
-    );
-
     let mut sum_up = 0.0;
     let mut sum_dn = 0.0;
 
-    for _ in 0..self.n_paths {
+    for i in 0..self.n_paths {
+      let seed = 0xCAFE_u64.wrapping_add(i as u64);
+
+      let heston_up = Heston::seeded(
+        Some(self.s0),
+        Some(self.v0 + dv),
+        self.kappa,
+        self.theta,
+        self.xi,
+        self.rho,
+        self.r,
+        self.n_steps,
+        Some(self.tau),
+        HestonPow::Sqrt,
+        Some(false),
+        seed,
+      );
+      let heston_dn = Heston::seeded(
+        Some(self.s0),
+        Some((self.v0 - dv).max(1e-6)),
+        self.kappa,
+        self.theta,
+        self.xi,
+        self.rho,
+        self.r,
+        self.n_steps,
+        Some(self.tau),
+        HestonPow::Sqrt,
+        Some(false),
+        seed,
+      );
+
       let [s_up, _] = heston_up.sample();
       let [s_dn, _] = heston_dn.sample();
       sum_up += (s_up[self.n_steps - 1] - self.k).max(0.0);
