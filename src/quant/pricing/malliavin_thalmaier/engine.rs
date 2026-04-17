@@ -574,10 +574,10 @@ mod tests {
   use statrs::distribution::Normal;
 
   use super::*;
-  use crate::quant::OptionType;
   use crate::quant::pricing::bsm::BSMCoc;
   use crate::quant::pricing::bsm::BSMPricer;
   use crate::quant::pricing::malliavin_thalmaier::AssetParams;
+  use crate::quant::OptionType;
   use crate::traits::PricerExt;
 
   fn two_asset_params() -> MultiHestonParams<f64> {
@@ -717,7 +717,7 @@ mod tests {
       strikes: [100.0, 100.0],
     };
 
-    let mt = MtGreeks::new(params.clone(), 0.01, n).all_deltas(&payoff);
+    let mt = MtGreeks::new(params.clone(), 0.01, n).all_deltas_with_seed(&payoff, 0xD161_7A1);
 
     let bump = 0.5;
     let mut fd = vec![0.0; 2];
@@ -726,8 +726,9 @@ mod tests {
       up.assets[p].s0 += bump;
       let mut dn = params.clone();
       dn.assets[p].s0 -= bump;
-      fd[p] = (MtGreeks::new(up, 0.01, n).price(&payoff)
-        - MtGreeks::new(dn, 0.01, n).price(&payoff))
+      let seed = 0xFD_D161_7A_u64 ^ p as u64;
+      fd[p] = (MtGreeks::new(up, 0.01, n).price_with_seed(&payoff, seed)
+        - MtGreeks::new(dn, 0.01, n).price_with_seed(&payoff, seed))
         / (2.0 * bump);
     }
 
