@@ -260,10 +260,10 @@ Configuration in this run:
 
 ### Tier 2 — Advanced instruments & framework (depends on: Tier 1)
 
-- [ ] **Caps, floors & swaptions** (`quant::instruments`) ← *IRS, lattice*
-  - [ ] Cap / Floor / Collar pricing (Black, Bachelier, SABR)
-  - [ ] European and Bermudan swaptions
-  - [ ] Hull-White / G2++ tree-based engines
+- [ ] **Caps, floors & swaptions** (`quant::instruments::option`) ← *IRS, lattice*
+  - [x] Cap / Floor / Collar pricing (Black, Bachelier, SABR)
+  - [x] European and Bermudan swaptions
+  - [x] Hull-White tree-based Bermudan engine (Black-Karasinski via `price_on_tree`); G2++ engine pending
   - [ ] Short-rate model calibration to swaption / cap vols
 - [ ] **Market data framework** (`quant::market`) ← *IRS, fixed-income (rate helpers)*
   - [ ] Quote / Handle / Observable abstraction for reactive repricing
