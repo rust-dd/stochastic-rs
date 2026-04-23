@@ -15,6 +15,7 @@
 //! Necula C. *Option pricing in a fractional Brownian motion environment*,
 //! Working Paper (2008).
 use ndarray::Array1;
+use ndarray::Array2;
 
 use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
@@ -100,6 +101,33 @@ impl<T: FloatExt> RlBlackScholes<T, Deterministic> {
       seed: Deterministic(seed),
       fbm: RlFBm::new(hurst, n, t, degree),
     }
+  }
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholes<T, S> {
+  /// Generate $m$ independent fractional Black–Scholes asset paths.
+  /// Each path is $S_0 \exp(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t)$
+  /// applied pointwise to a batch of RL-fBM paths.
+  pub fn sample_batch(&self, m: usize) -> Array2<T> {
+    let mut seed = self.seed;
+    let fbm = self.fbm.sample_batch_impl(seed.derive(), m);
+
+    let horizon = self.t.unwrap_or(T::one());
+    let dt = horizon / T::from_usize_(self.n - 1);
+    let two_h = T::from_f64_fast(2.0) * self.hurst;
+    let half_sigma_sq = T::from_f64_fast(0.5) * self.sigma * self.sigma;
+
+    let mut spots = Array2::<T>::zeros((m, self.n));
+    for p in 0..m {
+      spots[[p, 0]] = self.s0;
+      for i in 1..self.n {
+        let t_i = dt * T::from_usize_(i);
+        let log_s =
+          self.r * t_i - half_sigma_sq * t_i.powf(two_h) + self.sigma * fbm[[p, i]];
+        spots[[p, i]] = self.s0 * log_s.exp();
+      }
+    }
+    spots
   }
 }
 

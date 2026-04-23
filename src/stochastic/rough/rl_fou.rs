@@ -12,6 +12,7 @@
 //! Reference: Bayer C., Friz P., Gatheral J. *Pricing under rough volatility*.
 //! Quantitative Finance 16 (2016), 887–904.
 use ndarray::Array1;
+use ndarray::Array2;
 
 use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
@@ -99,6 +100,29 @@ impl<T: FloatExt> RlFOU<T, Deterministic> {
       seed: Deterministic(seed),
       fbm: RlFBm::new(hurst, n, t, degree),
     }
+  }
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOU<T, S> {
+  /// Generate $m$ independent RFSV log-volatility paths as an $(m, n)$ array.
+  /// The RL-fBM noise is generated in a single batch via
+  /// [`RlFBm::sample_batch`], then each path is Euler-integrated independently.
+  pub fn sample_batch(&self, m: usize) -> Array2<T> {
+    let mut seed = self.seed;
+    let fbm = self.fbm.sample_batch_impl(seed.derive(), m);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
+    let x0 = self.x0.unwrap_or(T::zero());
+    let mut out = Array2::<T>::zeros((m, self.n));
+
+    for p in 0..m {
+      out[[p, 0]] = x0;
+      for i in 1..self.n {
+        let dfbm = fbm[[p, i]] - fbm[[p, i - 1]];
+        out[[p, i]] =
+          out[[p, i - 1]] + self.kappa * (self.mu - out[[p, i - 1]]) * dt + self.sigma * dfbm;
+      }
+    }
+    out
   }
 }
 
