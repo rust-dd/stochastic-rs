@@ -47,6 +47,28 @@ use crate::simd_rng::SeedExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+impl<T: FloatExt, S: SeedExt> FGN<T, S> {
+  /// Sample two independent fGn paths in a single FFT / RNG pass.
+  ///
+  /// Both paths have the same covariance structure as [`sample`](Self::sample)
+  /// and are statistically independent — Dietrich & Newsam (1997) and
+  /// Kroese & Botev (2013 §2.2) identify the real and imaginary parts of
+  /// the circulant-embedding FFT output as two independent realisations of
+  /// the target Gaussian field.
+  ///
+  /// For Monte-Carlo inner loops this ~halves wall time per path vs.
+  /// two back-to-back [`sample`](Self::sample) calls (one FFT / RNG pass
+  /// reused for both outputs).
+  pub fn sample_pair(&self) -> (Array1<T>, Array1<T>) {
+    self.sample_pair_cpu()
+  }
+
+  /// As [`sample_pair`](Self::sample_pair) but with an explicit seed.
+  pub fn sample_pair_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
+    self.sample_pair_cpu_with_seed(seed)
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FGN<T, S> {
   type Output = Array1<T>;
 

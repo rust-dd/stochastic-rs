@@ -162,6 +162,58 @@ impl<T: FloatExt, S: SeedExt> FGN<T, S> {
 
     fgn
   }
+
+  /// Sample a pair of independent fGn paths using a specific deterministic seed.
+  pub(crate) fn sample_pair_cpu_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
+    self.sample_pair_cpu_impl(Deterministic(seed))
+  }
+
+  pub(crate) fn sample_pair_cpu(&self) -> (Array1<T>, Array1<T>) {
+    self.sample_pair_cpu_impl(self.seed)
+  }
+
+  /// Two independent fGn paths per FFT call. Re and Im of the circulant
+  /// output are independent zero-mean Gaussians with the same target
+  /// covariance — Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2
+  /// Step 4, MATLAB listing "two independent fields").
+  #[inline]
+  pub(crate) fn sample_pair_cpu_impl<S2: SeedExt>(
+    &self,
+    mut seed: S2,
+  ) -> (Array1<T>, Array1<T>) {
+    let len = 2 * self.n;
+    let mut fgn_re = Array1::<T>::zeros(self.out_len);
+    let mut fgn_im = Array1::<T>::zeros(self.out_len);
+
+    T::with_fgn_complex_scratch(len, |rnd| {
+      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
+      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+      let normal = crate::distributions::normal::SimdNormal::<T>::from_seed_source(
+        T::zero(),
+        T::one(),
+        &mut seed,
+      );
+      normal.fill_slice_fast(flat);
+      for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
+        z.re = z.re * w;
+        z.im = z.im * w;
+      }
+
+      let mut rnd_view = ArrayViewMut1::from(rnd);
+      ndfft_inplace_par(&mut rnd_view, &*self.fft_handler, 0);
+      let src = rnd_view.slice(s![1..self.out_len + 1]);
+      for ((r, i), c) in fgn_re
+        .iter_mut()
+        .zip(fgn_im.iter_mut())
+        .zip(src.iter())
+      {
+        *r = c.re * self.scale;
+        *i = c.im * self.scale;
+      }
+    });
+
+    (fgn_re, fgn_im)
+  }
 }
 
 #[cfg(test)]
@@ -424,5 +476,91 @@ mod tests {
       "endpoint variance mismatch: emp={endpoint_var}, theory={}",
       t.powf(2.0 * h)
     );
+  }
+
+  fn cross_covariance(a: &[Vec<f64>], b: &[Vec<f64>], mean_a: f64, mean_b: f64) -> f64 {
+    let mut s = 0.0;
+    let mut c = 0usize;
+    for (pa, pb) in a.iter().zip(b.iter()) {
+      for i in 0..pa.len() {
+        s += (pa[i] - mean_a) * (pb[i] - mean_b);
+        c += 1;
+      }
+    }
+    s / c as f64
+  }
+
+  /// Primary and secondary paths of `sample_pair` must each satisfy the
+  /// target marginal law and be mutually independent. The latter is the
+  /// Dietrich–Newsam (1997) / Kroese–Botev (2013 §2.2) claim — here we
+  /// check the sample cross-correlation vanishes to within Monte-Carlo SE.
+  #[test]
+  fn sample_pair_independent_paths_match_theory() {
+    let h = 0.68_f64;
+    let n = 2048_usize;
+    let t = 1.0_f64;
+    let pairs_count = 1024_usize;
+
+    let fgn = FGN::<f64>::new(h, n, Some(t));
+    let mut prim = Vec::with_capacity(pairs_count);
+    let mut sec = Vec::with_capacity(pairs_count);
+    for _ in 0..pairs_count {
+      let (a, b) = fgn.sample_pair_cpu();
+      prim.push(a.to_vec());
+      sec.push(b.to_vec());
+    }
+
+    let dt = t / n as f64;
+    let var_theory = dt.powf(2.0 * h);
+    let cov1_theory = var_theory * unit_lag_covariance(h, 1);
+
+    for (label, paths) in [("primary", &prim), ("secondary", &sec)] {
+      let values: Vec<f64> = paths.iter().flatten().copied().collect();
+      let count = values.len() as f64;
+      let mean = values.iter().sum::<f64>() / count;
+      let var = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / count;
+      let cov1 = lag_covariance(paths, mean, 1);
+
+      assert!(mean.abs() < 5e-4, "{label}: mean drift {mean}");
+      assert!(
+        ((var / var_theory) - 1.0).abs() < 0.05,
+        "{label}: variance mismatch emp={var} theory={var_theory}"
+      );
+      assert!(
+        ((cov1 / cov1_theory) - 1.0).abs() < 0.05,
+        "{label}: lag-1 covariance mismatch emp={cov1} theory={cov1_theory}"
+      );
+    }
+
+    let mean_p =
+      prim.iter().flatten().sum::<f64>() / (prim.len() * n) as f64;
+    let mean_s = sec.iter().flatten().sum::<f64>() / (sec.len() * n) as f64;
+    let var_p = prim
+      .iter()
+      .flatten()
+      .map(|x| (*x - mean_p).powi(2))
+      .sum::<f64>()
+      / (prim.len() * n) as f64;
+
+    let xcov = cross_covariance(&prim, &sec, mean_p, mean_s);
+    let correlation = xcov / var_p;
+    assert!(
+      correlation.abs() < 0.02,
+      "primary/secondary correlation {correlation} too large (expected ≈ 0)"
+    );
+  }
+
+  /// `sample_pair` with an explicit seed must be fully deterministic and
+  /// bit-for-bit match two separate `sample_cpu_with_seed` invocations —
+  /// the second one using a seed derived by replaying the same SplitMix64
+  /// step the single-path variant would have produced. Here we check the
+  /// simpler determinism-across-identical-seed property.
+  #[test]
+  fn sample_pair_is_deterministic_with_seed() {
+    let fgn = FGN::<f64>::new(0.55, 1024, Some(1.0));
+    let (a1, b1) = fgn.sample_pair_cpu_with_seed(7);
+    let (a2, b2) = fgn.sample_pair_cpu_with_seed(7);
+    assert_eq!(a1, a2);
+    assert_eq!(b1, b2);
   }
 }
