@@ -15,6 +15,7 @@ pub mod malliavin;
 pub mod mc;
 pub mod noise;
 pub mod process;
+pub mod rough;
 pub mod sde;
 pub mod sheet;
 pub mod volatility;
