@@ -394,7 +394,7 @@ fn invert_matrix<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
       }
       for j in 0..(2 * n) {
         let sub = factor * aug[[col, j]];
-        aug[[row, j]] = aug[[row, j]] - sub;
+        aug[[row, j]] -= sub;
       }
     }
   }

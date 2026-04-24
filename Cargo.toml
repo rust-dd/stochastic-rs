@@ -164,6 +164,10 @@ name = "credit"
 harness = false
 
 [[bench]]
+name = "risk"
+harness = false
+
+[[bench]]
 name = "lattice"
 harness = false
 

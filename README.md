@@ -284,12 +284,12 @@ Configuration in this run:
   - [x] Hazard rate bootstrapping from a CDS par-spread term structure (`bootstrap_hazard`)
   - [x] Default probability term structure via `SurvivalCurve::default_probability` and `conditional_default_probability`
   - [x] Credit migration matrices — discrete `TransitionMatrix` plus continuous-time `GeneratorMatrix` with a pure-Rust scaling-and-squaring Padé-13 matrix exponential, JLT embedding and Israel-Rosenthal-Wei generator projection
-- [ ] **Risk metrics** (`quant::risk`) ← *instruments (Greeks, bucket DV01)*
-  - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
-  - [ ] CVaR / Expected Shortfall
-  - [ ] Stress testing and scenario analysis framework
-  - [ ] Drawdown metrics, Sharpe, Sortino, Information Ratio, Calmar
-  - [ ] Instrument-level Greeks — bump-and-reprice, bucket DV01, scenario engine
+- [x] **Risk metrics** (`quant::risk`) ← *instruments (Greeks, bucket DV01)*
+  - [x] Value at Risk — parametric Gaussian, historical-simulation and Monte-Carlo (`gaussian_var`, `historical_var`, `monte_carlo_var`, dispatcher `value_at_risk` + `VarMethod`)
+  - [x] CVaR / Expected Shortfall (`gaussian_es`, `historical_es`, `monte_carlo_es`, dispatcher `expected_shortfall`)
+  - [x] Stress testing and scenario analysis framework — `Scenario`, `Shock` (additive/multiplicative/level), `CurveShift` (parallel/twist/key-rate/at-pillars), `StressTest` engine
+  - [x] Drawdown metrics (`running_drawdown`, `max_drawdown`, `max_drawdown_duration`, `DrawdownStats`), Sharpe, Sortino, Information Ratio, Calmar (all with explicit annualisation factor — no hard-coded `252`/`365`)
+  - [x] Instrument-level Greeks — `central_difference`, `forward_difference`, `second_difference`, `bucket_dv01` with per-pillar PnL attribution via `CurveShift::KeyRate`
 
 ### Tier 3 — Complex products (depends on: Tier 2)
 

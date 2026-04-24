@@ -9,21 +9,21 @@
 //! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
 //! Springer, 2nd ed. (2006), Chapter 22.
 //!
-//! ## Valuation formulas
-//!
 //! Given a hazard-driven survival curve $Q(t)$, a risk-free discount curve
 //! $D(t)$, a constant recovery $R\in[0,1)$ and a running contractual spread
 //! $s$, the CDS legs are
+//!
 //! $$
-//! \mathrm{PV}_{\text{prem}}
-//!  = N\,s\!\left[\sum_i \alpha_i\,Q(t_i)\,D(t_i)
-//!    + \underbrace{\int_0^T D(u)(u-t_{i(u)-1})\bigl(-dQ(u)\bigr)}_{\text{accrual on default}}\right],
+//! \mathrm{PV}_{\text{prem}} = N\,s\!\left[\sum_i \alpha_i\,Q(t_i)\,D(t_i)\,+\,\int_0^T D(u)(u-t_{i(u)-1})\bigl(-dQ(u)\bigr)\right],
 //! $$
+//!
 //! $$
 //! \mathrm{PV}_{\text{prot}}
-//!  = N(1-R)\int_0^T D(u)\,\bigl(-dQ(u)\bigr).
+//! = N(1-R)\int_0^T D(u)\,\bigl(-dQ(u)\bigr).
 //! $$
-//! The protection integral and the accrual piece are approximated on a daily
+//!
+//! The second term in the premium PV is the accrual on default.  The
+//! protection integral and the accrual piece are approximated on a daily
 //! grid (ISDA standard), splitting each coupon period by the trapezoidal rule
 //! on $D(u)Q(u)$ times the finite increment $Q(u_k)-Q(u_{k+1})$.
 

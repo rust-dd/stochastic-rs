@@ -22,6 +22,7 @@ pub mod market;
 pub mod order_book;
 pub mod portfolio;
 pub mod pricing;
+pub mod risk;
 pub mod strategies;
 pub mod vol_surface;
 pub use portfolio::momentum;
