@@ -260,11 +260,18 @@ Configuration in this run:
 
 ### Tier 2 — Advanced instruments & framework (depends on: Tier 1)
 
-- [ ] **Caps, floors & swaptions** (`quant::instruments::option`) ← *IRS, lattice*
+- [x] **Caps, floors & swaptions** (`quant::instruments::option`) ← *IRS, lattice*
   - [x] Cap / Floor / Collar pricing (Black, Bachelier, SABR)
   - [x] European and Bermudan swaptions
-  - [x] Hull-White tree-based Bermudan engine (Black-Karasinski via `price_on_tree`); G2++ engine pending
-  - [ ] Short-rate model calibration to swaption / cap vols
+  - [x] Hull-White tree-based Bermudan engine (Black-Karasinski via `price_on_tree`)
+  - [x] G2++ tree-based Bermudan engine (two-factor joint backward induction)
+  - [x] Hull-White time-dependent $\theta(t)$ calibrated to initial yield curve (`CurveFittedHullWhiteTree`)
+  - [x] Jamshidian analytic European swaption under Hull-White (ZBP strip)
+  - [x] Hull-White calibration to swaption vol grids (`HullWhiteSwaptionCalibrator`)
+  - [x] SABR calibration to per-expiry caplet smile (`SabrCapletCalibrator`)
+  - [x] Shifted SABR for negative / low rates (`ShiftedSabrVolatility`)
+  - [x] CMS caplet / floorlet with Hagan linear-TSR convexity adjustment
+  - [x] Calendar-aware Bermudan API (snap `&[NaiveDate]` to tree levels via `BermudanSwaption::from_calendar`)
 - [ ] **Market data framework** (`quant::market`) ← *IRS, fixed-income (rate helpers)*
   - [ ] Quote / Handle / Observable abstraction for reactive repricing
   - [ ] Rate index objects (SOFR, EURIBOR, TONAR) with fixing history

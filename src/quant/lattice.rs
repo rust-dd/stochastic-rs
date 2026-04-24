@@ -22,6 +22,8 @@ pub mod tree;
 
 pub use short_rate::BlackKarasinskiTree;
 pub use short_rate::BlackKarasinskiTreeModel;
+pub use short_rate::CurveFittedHullWhiteModel;
+pub use short_rate::CurveFittedHullWhiteTree;
 pub use short_rate::G2ppTree;
 pub use short_rate::G2ppTreeModel;
 pub use short_rate::HullWhiteTree;

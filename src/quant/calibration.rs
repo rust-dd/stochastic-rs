@@ -17,9 +17,11 @@ pub mod double_heston;
 pub mod heston;
 pub mod heston_stoch_corr;
 pub mod hkde;
+pub mod hw_swaption;
 pub mod levy;
 pub mod rbergomi;
 pub mod sabr;
+pub mod sabr_caplet;
 pub mod svj;
 
 // Re-export key calibration types for convenience.
@@ -43,9 +45,14 @@ pub use levy::LevyCalibrationResult;
 pub use levy::LevyCalibrator;
 pub use levy::LevyModelType;
 pub use levy::MarketSlice;
+pub use hw_swaption::HullWhiteCalibrationResult;
+pub use hw_swaption::HullWhiteSwaptionCalibrator;
+pub use hw_swaption::SwaptionQuote;
 pub use sabr::SabrCalibrationResult;
 pub use sabr::SabrCalibrator;
 pub use sabr::SabrParams;
+pub use sabr_caplet::SabrCapletCalibrationResult;
+pub use sabr_caplet::SabrCapletCalibrator;
 pub use svj::SVJCalibrationResult;
 pub use svj::SVJCalibrator;
 pub use svj::SVJParams;

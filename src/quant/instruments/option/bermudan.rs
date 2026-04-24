@@ -17,15 +17,21 @@
 //! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
 //! Springer 2nd ed. (2006), §13.
 
+use chrono::NaiveDate;
 use ndarray::Array1;
+use ndarray::Array2;
 
 use super::types::BermudanSwaptionValuation;
 use super::types::ExerciseSchedule;
 use super::types::SwaptionDirection;
 use super::types::TreeCouponSchedule;
+use crate::quant::calendar::DayCountConvention;
+use crate::quant::lattice::G2ppTree;
 use crate::quant::lattice::HullWhiteTree;
 use crate::quant::lattice::OneFactorShortRateModel;
 use crate::quant::lattice::TrinomialTree;
+use crate::quant::lattice::TwoFactorShortRateModel;
+use crate::quant::lattice::short_rate::correlated_joint_probabilities;
 use crate::traits::FloatExt;
 
 /// Bermudan swaption priced on a Hull-White trinomial tree.
@@ -91,6 +97,71 @@ impl<T: FloatExt> BermudanSwaption<T> {
       &self.coupon_schedule,
     )
   }
+
+  /// Price on a G2++ two-factor trinomial tree via joint $(x,y)$ backward
+  /// induction with correlated branches.
+  pub fn price_on_g2pp(&self, tree: &G2ppTree<T>) -> T {
+    price_on_two_factor_tree(
+      tree,
+      self.direction,
+      self.strike,
+      self.notional,
+      &self.exercise_schedule,
+      &self.coupon_schedule,
+    )
+  }
+
+  /// Valuation summary on a G2++ tree.
+  pub fn valuation_on_g2pp(&self, tree: &G2ppTree<T>) -> BermudanSwaptionValuation<T> {
+    BermudanSwaptionValuation {
+      npv: self.price_on_g2pp(tree),
+      exercise_count: self.exercise_schedule.levels.len(),
+    }
+  }
+
+  /// Build a Bermudan swaption from calendar exercise and coupon dates.
+  ///
+  /// Each date is snapped to the nearest tree level based on `valuation_date`,
+  /// `day_count`, and the tree step size `dt`. The `accrual_factors` are paired
+  /// positionally with `coupon_dates`.
+  #[allow(clippy::too_many_arguments)]
+  pub fn from_calendar(
+    direction: SwaptionDirection,
+    strike: T,
+    notional: T,
+    valuation_date: NaiveDate,
+    day_count: DayCountConvention,
+    dt: T,
+    exercise_dates: &[NaiveDate],
+    coupon_dates: &[NaiveDate],
+    accrual_factors: &[T],
+  ) -> Self {
+    let exercise_levels = snap_to_levels(valuation_date, day_count, dt, exercise_dates);
+    let coupon_levels = snap_to_levels(valuation_date, day_count, dt, coupon_dates);
+    Self::new(
+      direction,
+      strike,
+      notional,
+      ExerciseSchedule::new(exercise_levels),
+      TreeCouponSchedule::new(coupon_levels, accrual_factors.to_vec()),
+    )
+  }
+}
+
+fn snap_to_levels<T: FloatExt>(
+  valuation_date: NaiveDate,
+  day_count: DayCountConvention,
+  dt: T,
+  dates: &[NaiveDate],
+) -> Vec<usize> {
+  dates
+    .iter()
+    .map(|&date| {
+      let tau: T = day_count.year_fraction(valuation_date, date);
+      let level = (tau / dt).to_f64().unwrap_or(0.0).round().max(0.0) as usize;
+      level
+    })
+    .collect()
 }
 
 fn price_on_one_factor_tree<T: FloatExt, M: OneFactorShortRateModel<T>>(
@@ -236,6 +307,248 @@ fn backward_expectation_with_injection<T: FloatExt, M: OneFactorShortRateModel<T
       let rate = model.short_rate(time, tree.states[level][node]);
       let discount = (-rate * dt).exp();
       step[node] = discount * expected;
+    }
+
+    let inject = injection(level);
+    if inject != T::zero() {
+      step.mapv_inplace(|v| v + inject);
+    }
+    values = step.clone();
+    storage[level] = step;
+  }
+
+  storage
+}
+
+fn price_on_two_factor_tree<T: FloatExt>(
+  tree: &G2ppTree<T>,
+  direction: SwaptionDirection,
+  strike: T,
+  notional: T,
+  exercise_schedule: &ExerciseSchedule,
+  coupon_schedule: &TreeCouponSchedule<T>,
+) -> T {
+  let n_levels = tree.x_tree.states.len();
+  assert!(n_levels > 0, "G2++ tree must contain at least one level");
+  let terminal = n_levels - 1;
+  let dt = tree.dt;
+
+  let injection_at = |level: usize| -> T {
+    for (i, &l) in coupon_schedule.levels.iter().enumerate() {
+      if l == level {
+        return notional * strike * coupon_schedule.accrual_factors[i];
+      }
+    }
+    T::zero()
+  };
+
+  let zcb = backward_expectation_2d(tree, |level, _| {
+    let x_width = tree.x_tree.states[level].len();
+    let y_width = tree.y_tree.states[level].len();
+    if level == terminal {
+      Array2::from_elem((x_width, y_width), T::one())
+    } else {
+      Array2::zeros((x_width, y_width))
+    }
+  });
+
+  let fixed_leg = backward_expectation_2d_with_injection(tree, injection_at);
+
+  let direction_sign = match direction {
+    SwaptionDirection::Payer => T::one(),
+    SwaptionDirection::Receiver => -T::one(),
+  };
+
+  let intrinsic = |level: usize, ix: usize, iy: usize| -> T {
+    let p = zcb[level][[ix, iy]];
+    let fixed = fixed_leg[level][[ix, iy]];
+    let float = notional * (T::one() - p);
+    direction_sign * (float - fixed)
+  };
+
+  let x_width_terminal = tree.x_tree.states[terminal].len();
+  let y_width_terminal = tree.y_tree.states[terminal].len();
+  let mut option = Array2::zeros((x_width_terminal, y_width_terminal));
+  if exercise_schedule.contains(terminal) {
+    for ix in 0..x_width_terminal {
+      for iy in 0..y_width_terminal {
+        option[[ix, iy]] = intrinsic(terminal, ix, iy).max(T::zero());
+      }
+    }
+  }
+
+  for level in (0..terminal).rev() {
+    let x_width = tree.x_tree.states[level].len();
+    let y_width = tree.y_tree.states[level].len();
+    let mut step = Array2::zeros((x_width, y_width));
+    let time = T::from_usize_(level) * dt;
+    let rho = tree.model.correlation();
+    for ix in 0..x_width {
+      let x_branch = tree.x_tree.branches[level][ix];
+      let x_children = [
+        x_branch.center_index - 1,
+        x_branch.center_index,
+        x_branch.center_index + 1,
+      ];
+      for iy in 0..y_width {
+        let y_branch = tree.y_tree.branches[level][iy];
+        let y_children = [
+          y_branch.center_index - 1,
+          y_branch.center_index,
+          y_branch.center_index + 1,
+        ];
+        let joint = correlated_joint_probabilities(x_branch, y_branch, rho);
+        let mut expected = T::zero();
+        for ax in 0..3 {
+          for ay in 0..3 {
+            expected += joint[ax][ay] * option[[x_children[ax], y_children[ay]]];
+          }
+        }
+        let rate = tree.model.short_rate(
+          time,
+          tree.x_tree.states[level][ix],
+          tree.y_tree.states[level][iy],
+        );
+        step[[ix, iy]] = (-rate * dt).exp() * expected;
+      }
+    }
+
+    if exercise_schedule.contains(level) {
+      for ix in 0..x_width {
+        for iy in 0..y_width {
+          let ex = intrinsic(level, ix, iy);
+          step[[ix, iy]] = step[[ix, iy]].max(ex);
+        }
+      }
+    }
+
+    option = step;
+  }
+
+  option[[0, 0]]
+}
+
+fn backward_expectation_2d<T: FloatExt>(
+  tree: &G2ppTree<T>,
+  seed: impl Fn(usize, &G2ppTree<T>) -> Array2<T>,
+) -> Vec<Array2<T>> {
+  let n_levels = tree.x_tree.states.len();
+  let terminal = n_levels - 1;
+  let dt = tree.dt;
+  let rho = tree.model.correlation();
+
+  let mut storage: Vec<Array2<T>> = (0..n_levels)
+    .map(|level| {
+      Array2::zeros((
+        tree.x_tree.states[level].len(),
+        tree.y_tree.states[level].len(),
+      ))
+    })
+    .collect();
+  storage[terminal] = seed(terminal, tree);
+
+  let mut values = storage[terminal].clone();
+  for level in (0..terminal).rev() {
+    let x_width = tree.x_tree.states[level].len();
+    let y_width = tree.y_tree.states[level].len();
+    let mut step = Array2::zeros((x_width, y_width));
+    let time = T::from_usize_(level) * dt;
+    for ix in 0..x_width {
+      let x_branch = tree.x_tree.branches[level][ix];
+      let x_children = [
+        x_branch.center_index - 1,
+        x_branch.center_index,
+        x_branch.center_index + 1,
+      ];
+      for iy in 0..y_width {
+        let y_branch = tree.y_tree.branches[level][iy];
+        let y_children = [
+          y_branch.center_index - 1,
+          y_branch.center_index,
+          y_branch.center_index + 1,
+        ];
+        let joint = correlated_joint_probabilities(x_branch, y_branch, rho);
+        let mut expected = T::zero();
+        for ax in 0..3 {
+          for ay in 0..3 {
+            expected += joint[ax][ay] * values[[x_children[ax], y_children[ay]]];
+          }
+        }
+        let rate = tree.model.short_rate(
+          time,
+          tree.x_tree.states[level][ix],
+          tree.y_tree.states[level][iy],
+        );
+        step[[ix, iy]] = (-rate * dt).exp() * expected;
+      }
+    }
+    values = step.clone();
+    storage[level] = step;
+  }
+
+  storage
+}
+
+fn backward_expectation_2d_with_injection<T: FloatExt>(
+  tree: &G2ppTree<T>,
+  injection: impl Fn(usize) -> T,
+) -> Vec<Array2<T>> {
+  let n_levels = tree.x_tree.states.len();
+  let terminal = n_levels - 1;
+  let dt = tree.dt;
+  let rho = tree.model.correlation();
+
+  let mut storage: Vec<Array2<T>> = (0..n_levels)
+    .map(|level| {
+      Array2::zeros((
+        tree.x_tree.states[level].len(),
+        tree.y_tree.states[level].len(),
+      ))
+    })
+    .collect();
+  let terminal_inject = injection(terminal);
+  let mut values = Array2::from_elem(
+    (
+      tree.x_tree.states[terminal].len(),
+      tree.y_tree.states[terminal].len(),
+    ),
+    terminal_inject,
+  );
+  storage[terminal] = values.clone();
+
+  for level in (0..terminal).rev() {
+    let x_width = tree.x_tree.states[level].len();
+    let y_width = tree.y_tree.states[level].len();
+    let mut step = Array2::zeros((x_width, y_width));
+    let time = T::from_usize_(level) * dt;
+    for ix in 0..x_width {
+      let x_branch = tree.x_tree.branches[level][ix];
+      let x_children = [
+        x_branch.center_index - 1,
+        x_branch.center_index,
+        x_branch.center_index + 1,
+      ];
+      for iy in 0..y_width {
+        let y_branch = tree.y_tree.branches[level][iy];
+        let y_children = [
+          y_branch.center_index - 1,
+          y_branch.center_index,
+          y_branch.center_index + 1,
+        ];
+        let joint = correlated_joint_probabilities(x_branch, y_branch, rho);
+        let mut expected = T::zero();
+        for ax in 0..3 {
+          for ay in 0..3 {
+            expected += joint[ax][ay] * values[[x_children[ax], y_children[ay]]];
+          }
+        }
+        let rate = tree.model.short_rate(
+          time,
+          tree.x_tree.states[level][ix],
+          tree.y_tree.states[level][iy],
+        );
+        step[[ix, iy]] = (-rate * dt).exp() * expected;
+      }
     }
 
     let inject = injection(level);

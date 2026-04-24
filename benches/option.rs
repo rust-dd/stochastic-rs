@@ -21,11 +21,14 @@ use stochastic_rs::quant::instruments::BlackVolatility;
 use stochastic_rs::quant::instruments::Cap;
 use stochastic_rs::quant::instruments::EuropeanSwaption;
 use stochastic_rs::quant::instruments::ExerciseSchedule;
+use stochastic_rs::quant::instruments::JamshidianHullWhiteSwaption;
 use stochastic_rs::quant::instruments::SabrVolatility;
 use stochastic_rs::quant::instruments::SwapDirection;
 use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::TreeCouponSchedule;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
+use stochastic_rs::quant::lattice::G2ppTree;
+use stochastic_rs::quant::lattice::G2ppTreeModel;
 use stochastic_rs::quant::lattice::HullWhiteTree;
 use stochastic_rs::quant::lattice::HullWhiteTreeModel;
 
@@ -193,11 +196,56 @@ fn bench_bermudan_swaption_hw_tree(c: &mut Criterion) {
   });
 }
 
+fn bench_jamshidian_hw_swaption(c: &mut Criterion) {
+  let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
+  let rates = array![0.03, 0.035, 0.038, 0.04, 0.042];
+  let curve = DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let expiry = 1.0_f64;
+  let coupon_times: Vec<f64> = (1..=20).map(|i| expiry + 0.5 * i as f64).collect();
+  let accrual_factors = vec![0.5_f64; coupon_times.len()];
+  let swpn = JamshidianHullWhiteSwaption::new(
+    SwaptionDirection::Payer,
+    0.045,
+    10_000_000.0,
+    expiry,
+    coupon_times,
+    accrual_factors,
+    0.05,
+    0.01,
+  );
+  c.bench_function("option_jamshidian_hw_10y_semi", |b| {
+    b.iter(|| swpn.price(&curve))
+  });
+}
+
+fn bench_bermudan_swaption_g2pp_tree(c: &mut Criterion) {
+  let horizon: f64 = 10.0;
+  let steps: usize = 60;
+  let dt: f64 = horizon / steps as f64;
+  let model = G2ppTreeModel::new(0.0_f64, 0.0, 0.04, 0.1, 0.5, 0.01, 0.005, -0.3);
+  let tree = G2ppTree::new(model, horizon, steps);
+  let coupon_levels: Vec<usize> = (6..=steps).step_by(6).collect();
+  let accrual_factors = vec![dt * 6.0; coupon_levels.len()];
+  let coupon_schedule = TreeCouponSchedule::new(coupon_levels.clone(), accrual_factors);
+  let swpn = BermudanSwaption::new(
+    SwaptionDirection::Payer,
+    0.045,
+    1_000_000.0_f64,
+    ExerciseSchedule::new(coupon_levels),
+    coupon_schedule,
+  );
+  c.bench_function("option_bermudan_swaption_g2pp_tree_60steps", |b| {
+    b.iter(|| swpn.price_on_g2pp(&tree))
+  });
+}
+
 criterion_group!(
   benches,
   bench_cap_npv,
   bench_european_swaption_black,
   bench_european_swaption_sabr,
+  bench_jamshidian_hw_swaption,
   bench_bermudan_swaption_hw_tree,
+  bench_bermudan_swaption_g2pp_tree,
 );
 criterion_main!(benches);

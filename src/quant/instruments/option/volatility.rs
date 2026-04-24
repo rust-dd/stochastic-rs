@@ -117,3 +117,59 @@ impl<T: FloatExt> VolatilityModel<T> for SabrVolatility<T> {
     VolatilityQuoteKind::Lognormal
   }
 }
+
+/// Shifted SABR for negative or near-zero rates.
+///
+/// The displacement $s$ is added to both forward and strike so that the
+/// underlying Hagan expansion sees a positive shifted forward
+/// $F_s = F + s$ and shifted strike $K_s = K + s$. Under this convention, a
+/// call on $F$ with strike $K$ equals a call on $F_s$ with strike $K_s$, so the
+/// pricing formulae stay identical after the substitution.
+///
+/// Reference: Oblój, "Fine-tune your smile: Correction to Hagan et al.",
+/// Wilmott Magazine (2008).
+#[derive(Debug, Clone, Copy)]
+pub struct ShiftedSabrVolatility<T: FloatExt> {
+  /// SABR level parameter $\alpha$ in the shifted coordinates.
+  pub alpha: T,
+  /// SABR CEV exponent $\beta$.
+  pub beta: T,
+  /// SABR volatility of volatility $\nu$.
+  pub nu: T,
+  /// SABR correlation $\rho$.
+  pub rho: T,
+  /// Displacement $s$ so that $F_s = F + s$ and $K_s = K + s$.
+  pub shift: T,
+}
+
+impl<T: FloatExt> ShiftedSabrVolatility<T> {
+  /// Build a shifted SABR volatility surface with displacement `shift`.
+  pub fn new(alpha: T, beta: T, nu: T, rho: T, shift: T) -> Self {
+    Self {
+      alpha,
+      beta,
+      nu,
+      rho,
+      shift,
+    }
+  }
+}
+
+impl<T: FloatExt> VolatilityModel<T> for ShiftedSabrVolatility<T> {
+  fn implied_volatility(&self, forward: T, strike: T, tau: T) -> T {
+    let sigma = hagan_implied_vol(
+      (strike + self.shift).to_f64().unwrap_or(0.0),
+      (forward + self.shift).to_f64().unwrap_or(0.0),
+      tau.to_f64().unwrap_or(0.0),
+      self.alpha.to_f64().unwrap_or(0.0),
+      self.beta.to_f64().unwrap_or(0.0),
+      self.nu.to_f64().unwrap_or(0.0),
+      self.rho.to_f64().unwrap_or(0.0),
+    );
+    T::from_f64_fast(sigma)
+  }
+
+  fn quote_kind(&self) -> VolatilityQuoteKind {
+    VolatilityQuoteKind::Lognormal
+  }
+}
