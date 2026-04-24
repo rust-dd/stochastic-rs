@@ -152,6 +152,10 @@ name = "cashflows"
 harness = false
 
 [[bench]]
+name = "market"
+harness = false
+
+[[bench]]
 name = "instruments"
 harness = false
 

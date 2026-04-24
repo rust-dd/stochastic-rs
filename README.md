@@ -272,11 +272,11 @@ Configuration in this run:
   - [x] Shifted SABR for negative / low rates (`ShiftedSabrVolatility`)
   - [x] CMS caplet / floorlet with Hagan linear-TSR convexity adjustment
   - [x] Calendar-aware Bermudan API (snap `&[NaiveDate]` to tree levels via `BermudanSwaption::from_calendar`)
-- [ ] **Market data framework** (`quant::market`) ← *IRS, fixed-income (rate helpers)*
-  - [ ] Quote / Handle / Observable abstraction for reactive repricing
-  - [ ] Rate index objects (SOFR, EURIBOR, TONAR) with fixing history
-  - [ ] FRA and money market instrument helpers
-  - [ ] Rate helpers for curve bootstrapping
+- [x] **Market data framework** (`quant::market`) ← *IRS, fixed-income (rate helpers)*
+  - [x] Quote / Handle / Observable abstraction for reactive repricing (`SimpleQuote`, `DerivedQuote`, `CompositeQuote`, `Handle`, `RelinkableHandle`, `ObservableBase`)
+  - [x] Named rate indices (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor, USD Libor) with ARRC/ISDA conventions and observable `FixingHistory`
+  - [x] Dated `ForwardRateAgreement` and `Deposit` instruments with NPV / par-rate under multi-curve discounting
+  - [x] `RateHelper` trait + `DepositRateHelper` / `FraRateHelper` / `SwapRateHelper` / `FuturesRateHelper` feeding `build_curve` for quote-driven bootstrapping
 - [ ] **Credit models** (`quant::credit`) ← *fixed-income (CDS cash flows)*
   - [ ] Merton structural model
   - [ ] Reduced-form / intensity-based models

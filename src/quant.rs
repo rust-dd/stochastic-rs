@@ -17,6 +17,7 @@ pub mod fx;
 pub mod instruments;
 pub mod lattice;
 pub mod loss;
+pub mod market;
 pub mod order_book;
 pub mod portfolio;
 pub mod pricing;
