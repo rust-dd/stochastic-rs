@@ -11,6 +11,7 @@ pub mod bonds;
 pub mod calendar;
 pub mod calibration;
 pub mod cashflows;
+pub mod credit;
 pub mod curves;
 pub mod fourier_malliavin;
 pub mod fx;

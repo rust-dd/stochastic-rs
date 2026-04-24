@@ -277,12 +277,13 @@ Configuration in this run:
   - [x] Named rate indices (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor, USD Libor) with ARRC/ISDA conventions and observable `FixingHistory`
   - [x] Dated `ForwardRateAgreement` and `Deposit` instruments with NPV / par-rate under multi-curve discounting
   - [x] `RateHelper` trait + `DepositRateHelper` / `FraRateHelper` / `SwapRateHelper` / `FuturesRateHelper` feeding `build_curve` for quote-driven bootstrapping
-- [ ] **Credit models** (`quant::credit`) ← *fixed-income (CDS cash flows)*
-  - [ ] Merton structural model
-  - [ ] Reduced-form / intensity-based models
-  - [ ] CDS pricing (ISDA standard) and hazard rate bootstrapping
-  - [ ] Default probability term structure
-  - [ ] Credit migration matrices
+- [x] **Credit models** (`quant::credit`) ← *fixed-income (CDS cash flows)*
+  - [x] Merton structural model (analytical PD, equity, debt, distance-to-default, credit spread, implied recovery)
+  - [x] Reduced-form / intensity-based models via `SurvivalCurve` / `HazardRateCurve` with piecewise-constant hazard interpolation
+  - [x] CDS pricing (ISDA-style daily-grid integration) with protection, premium and accrual-on-default legs; fair spread and risky PV01
+  - [x] Hazard rate bootstrapping from a CDS par-spread term structure (`bootstrap_hazard`)
+  - [x] Default probability term structure via `SurvivalCurve::default_probability` and `conditional_default_probability`
+  - [x] Credit migration matrices — discrete `TransitionMatrix` plus continuous-time `GeneratorMatrix` with a pure-Rust scaling-and-squaring Padé-13 matrix exponential, JLT embedding and Israel-Rosenthal-Wei generator projection
 - [ ] **Risk metrics** (`quant::risk`) ← *instruments (Greeks, bucket DV01)*
   - [ ] Value at Risk — parametric, historical simulation, Monte Carlo
   - [ ] CVaR / Expected Shortfall
