@@ -267,9 +267,10 @@ impl<T: FloatExt> Quote<T> for CompositeQuote<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
+
+  use super::*;
 
   struct Counter(AtomicUsize);
   impl Observer for Counter {
@@ -292,10 +293,7 @@ mod tests {
   #[test]
   fn derived_quote_propagates_base() {
     let base = Arc::new(SimpleQuote::<f64>::new(0.01));
-    let derived = DerivedQuote::new(
-      Arc::clone(&base) as Arc<dyn Quote<f64>>,
-      |x| x + 0.005,
-    );
+    let derived = DerivedQuote::new(Arc::clone(&base) as Arc<dyn Quote<f64>>, |x| x + 0.005);
     assert!((derived.value() - 0.015).abs() < 1e-12);
 
     let counter = Arc::new(Counter(AtomicUsize::new(0)));

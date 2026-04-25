@@ -9,8 +9,8 @@ use ndarray::Array2;
 
 use crate::distributions::normal::SimdNormal;
 use crate::stochastic::diffusion::gbm::GBM;
-use crate::stochastic::volatility::heston::Heston;
 use crate::stochastic::volatility::HestonPow;
+use crate::stochastic::volatility::heston::Heston;
 use crate::traits::ProcessExt;
 
 struct HestonElKhatibPath {

@@ -125,11 +125,7 @@ impl<T: FloatExt> FixingHistory<T> {
     if prev_date == date {
       return Some(prev_val / base_value);
     }
-    let next = self
-      .fixings
-      .range(date..)
-      .next()
-      .map(|(d, v)| (*d, *v))?;
+    let next = self.fixings.range(date..).next().map(|(d, v)| (*d, *v))?;
     if next.0 == date {
       return Some(next.1 / base_value);
     }

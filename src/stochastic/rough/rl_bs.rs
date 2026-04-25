@@ -122,8 +122,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholes<T, S> {
       spots[[p, 0]] = self.s0;
       for i in 1..self.n {
         let t_i = dt * T::from_usize_(i);
-        let log_s =
-          self.r * t_i - half_sigma_sq * t_i.powf(two_h) + self.sigma * fbm[[p, i]];
+        let log_s = self.r * t_i - half_sigma_sq * t_i.powf(two_h) + self.sigma * fbm[[p, i]];
         spots[[p, i]] = self.s0 * log_s.exp();
       }
     }
@@ -147,8 +146,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlBlackScholes<T, S>
     s[0] = self.s0;
     for i in 1..self.n {
       let t_i = dt * T::from_usize_(i);
-      let log_s =
-        self.r * t_i - half_sigma_sq * t_i.powf(two_h) + self.sigma * fbm[i];
+      let log_s = self.r * t_i - half_sigma_sq * t_i.powf(two_h) + self.sigma * fbm[i];
       s[i] = self.s0 * log_s.exp();
     }
     s
@@ -212,6 +210,9 @@ mod tests {
     let empirical = sum / samples as f64;
     let expected = s0 * (r * t).exp();
     let rel = (empirical - expected).abs() / expected;
-    assert!(rel < 0.05, "empirical={empirical} expected={expected} rel={rel}");
+    assert!(
+      rel < 0.05,
+      "empirical={empirical} expected={expected} rel={rel}"
+    );
   }
 }

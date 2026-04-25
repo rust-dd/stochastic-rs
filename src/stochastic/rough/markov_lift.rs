@@ -49,12 +49,7 @@ pub trait RoughSimd: FloatExt {
 
   /// Batch path reduction for a single factor $l$:
   /// `history[p] += we_l * (h_row[p] + j_row[p])` for all paths $p$.
-  fn batch_history_accumulate(
-    we_l: Self,
-    h_row: &[Self],
-    j_row: &[Self],
-    history: &mut [Self],
-  );
+  fn batch_history_accumulate(we_l: Self, h_row: &[Self], j_row: &[Self], history: &mut [Self]);
 
   /// Batch state update for a single factor $l$:
   /// - `h_row[p] = e_l * h_row[p] + f_prev[p] * omx_l`
@@ -126,12 +121,7 @@ impl RoughSimd for f64 {
   }
 
   #[inline]
-  fn batch_history_accumulate(
-    we_l: f64,
-    h_row: &[f64],
-    j_row: &[f64],
-    history: &mut [f64],
-  ) {
+  fn batch_history_accumulate(we_l: f64, h_row: &[f64], j_row: &[f64], history: &mut [f64]) {
     let m = history.len();
     let chunks = m / 4;
     let we_v = f64x4::splat(we_l);
@@ -240,12 +230,7 @@ impl RoughSimd for f32 {
   }
 
   #[inline]
-  fn batch_history_accumulate(
-    we_l: f32,
-    h_row: &[f32],
-    j_row: &[f32],
-    history: &mut [f32],
-  ) {
+  fn batch_history_accumulate(we_l: f32, h_row: &[f32], j_row: &[f32], history: &mut [f32]) {
     let m = history.len();
     let chunks = m / 8;
     let we_v = f32x8::splat(we_l);
@@ -442,13 +427,7 @@ impl<T: FloatExt + RoughSimd> MarkovLift<T> {
   /// Layout matches the Python reference `RoughHestonFast` (numpy
   /// `(p, N')` matmul) but with explicit cache blocking to avoid the memory
   /// bandwidth ceiling that a naive single large batch would hit.
-  pub fn simulate_batch<F, G>(
-    &self,
-    x0: T,
-    f: F,
-    g: G,
-    dw: ArrayView2<T>,
-  ) -> Array2<T>
+  pub fn simulate_batch<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T) -> T,
     G: Fn(T) -> T,
@@ -473,13 +452,7 @@ impl<T: FloatExt + RoughSimd> MarkovLift<T> {
   /// Same as [`simulate_batch`](Self::simulate_batch) but parallelises the
   /// outer tile loop with rayon — combines per-core SIMD path-batching with
   /// multi-core scheduling. Requires `f` and `g` to be `Send + Sync`.
-  pub fn simulate_batch_par<F, G>(
-    &self,
-    x0: T,
-    f: F,
-    g: G,
-    dw: ArrayView2<T>,
-  ) -> Array2<T>
+  pub fn simulate_batch_par<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T) -> T + Send + Sync,
     G: Fn(T) -> T + Send + Sync,
@@ -694,8 +667,7 @@ mod tests {
 
     for p in 0..m {
       let row = dw.row(p).to_vec();
-      let single =
-        step.simulate(0.4, |x| 0.6 * (1.0 - x), |_| 0.15, row.as_slice());
+      let single = step.simulate(0.4, |x| 0.6 * (1.0 - x), |_| 0.15, row.as_slice());
       for i in 0..n {
         let diff = (batch[[p, i]] - single[i]).abs();
         assert!(

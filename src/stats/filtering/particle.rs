@@ -14,7 +14,6 @@ use std::fmt::Display;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-
 use rand::RngCore;
 
 use crate::distributions::normal::SimdNormal;
@@ -111,7 +110,11 @@ where
   /// Mean state across particles, weighted by the current normalised weights.
   pub fn mean_state(&self) -> Array1<f64> {
     let (n, d) = self.particles.dim();
-    let max_lw = self.log_weights.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self
+      .log_weights
+      .iter()
+      .cloned()
+      .fold(f64::NEG_INFINITY, f64::max);
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -130,7 +133,11 @@ where
 
   /// Effective sample size $1 / \sum w_i^2$ in the natural scale.
   pub fn effective_sample_size(&self) -> f64 {
-    let max_lw = self.log_weights.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self
+      .log_weights
+      .iter()
+      .cloned()
+      .fold(f64::NEG_INFINITY, f64::max);
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -164,7 +171,11 @@ where
   }
 
   fn normalise_log_weights(&mut self) {
-    let max_lw = self.log_weights.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self
+      .log_weights
+      .iter()
+      .cloned()
+      .fold(f64::NEG_INFINITY, f64::max);
     let log_total: f64 = self
       .log_weights
       .iter()
@@ -179,7 +190,11 @@ where
 
   fn resample(&mut self) {
     let (n, d) = self.particles.dim();
-    let max_lw = self.log_weights.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self
+      .log_weights
+      .iter()
+      .cloned()
+      .fold(f64::NEG_INFINITY, f64::max);
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -249,7 +264,6 @@ pub fn gaussian_random_walk_transition(
 #[cfg(test)]
 mod tests {
   use super::*;
-
   use crate::distributions::normal::SimdNormal;
 
   #[test]

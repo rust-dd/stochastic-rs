@@ -81,7 +81,8 @@ impl GaussianHmm {
     let mut delta = Array2::<f64>::from_elem((n, k), f64::NEG_INFINITY);
     let mut psi = Array2::<usize>::zeros((n, k));
     for s in 0..k {
-      delta[[0, s]] = self.initial[s].max(1e-300).ln() + log_gauss_pdf(observations[0], self.means[s], self.stds[s]);
+      delta[[0, s]] = self.initial[s].max(1e-300).ln()
+        + log_gauss_pdf(observations[0], self.means[s], self.stds[s]);
     }
     for t in 1..n {
       for s in 0..k {
@@ -172,7 +173,10 @@ impl GaussianHmm {
   pub fn baum_welch(&mut self, observations: ArrayView1<f64>, max_iter: usize, tol: f64) -> HmmFit {
     let n = observations.len();
     let k = self.n_states();
-    assert!(n >= 2 && k >= 1, "need at least two observations and one state");
+    assert!(
+      n >= 2 && k >= 1,
+      "need at least two observations and one state"
+    );
     let mut prev_ll = f64::NEG_INFINITY;
     let mut converged = false;
     let mut iter_done = 0;
@@ -273,9 +277,9 @@ fn log_gauss_pdf(x: f64, mean: f64, std: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   #[test]

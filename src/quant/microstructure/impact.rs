@@ -137,12 +137,8 @@ mod tests {
     let v = ndarray::array![1.0_f64, -1.0, 1.0, 1.0];
     let path = propagator_impact_path(v.view(), ImpactKernel::PowerLaw, 1.0, 0.5);
     for t in 0..v.len() {
-      let expected = propagator_price_impact(
-        v.slice(ndarray::s![..=t]),
-        ImpactKernel::PowerLaw,
-        1.0,
-        0.5,
-      );
+      let expected =
+        propagator_price_impact(v.slice(ndarray::s![..=t]), ImpactKernel::PowerLaw, 1.0, 0.5);
       assert!(approx(path[t], expected, 1e-12));
     }
   }

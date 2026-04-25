@@ -66,7 +66,11 @@ pub fn cusum<T: FloatExt>(series: ArrayView1<T>, k: f64, h: f64) -> CusumResult 
       alarms.push(i);
     }
   }
-  CusumResult { upper, lower, alarms }
+  CusumResult {
+    upper,
+    lower,
+    alarms,
+  }
 }
 
 /// Result of a PELT pass.
@@ -161,9 +165,9 @@ pub fn pelt<T: FloatExt>(series: ArrayView1<T>, penalty: f64, min_size: usize) -
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   #[test]
@@ -204,6 +208,11 @@ mod tests {
     }
     let res = pelt(buf.view(), 1.0, 5);
     assert!(!res.changepoints.is_empty());
-    assert!(res.changepoints.iter().any(|&cp| (cp as i64 - 100).abs() <= 5));
+    assert!(
+      res
+        .changepoints
+        .iter()
+        .any(|&cp| (cp as i64 - 100).abs() <= 5)
+    );
   }
 }

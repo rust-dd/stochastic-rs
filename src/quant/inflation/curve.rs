@@ -62,7 +62,10 @@ impl<T: FloatExt> ZeroCouponInflationCurve<T> {
     for w in pillars.windows(2) {
       assert!(w[1] > w[0], "pillars must be strictly increasing");
     }
-    Self { pillars, breakevens }
+    Self {
+      pillars,
+      breakevens,
+    }
   }
 
   fn interp_breakeven(&self, t: T) -> T {
@@ -150,15 +153,14 @@ impl<T: FloatExt> InflationCurve<T> for YoyInflationCurve<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
+
+  use super::*;
 
   #[test]
   fn zc_curve_forward_ratio() {
-    let c: ZeroCouponInflationCurve<f64> = ZeroCouponInflationCurve::new(
-      array![1.0, 5.0, 10.0],
-      array![0.025, 0.024, 0.023],
-    );
+    let c: ZeroCouponInflationCurve<f64> =
+      ZeroCouponInflationCurve::new(array![1.0, 5.0, 10.0], array![0.025, 0.024, 0.023]);
     let ratio_5 = c.forward_index_ratio(5.0);
     let expected = (1.0_f64 + 0.024).powf(5.0);
     assert!((ratio_5 - expected).abs() < 1e-12);
@@ -166,10 +168,8 @@ mod tests {
 
   #[test]
   fn zc_curve_breakeven_inversion() {
-    let c: ZeroCouponInflationCurve<f64> = ZeroCouponInflationCurve::new(
-      array![1.0, 5.0, 10.0],
-      array![0.025, 0.024, 0.023],
-    );
+    let c: ZeroCouponInflationCurve<f64> =
+      ZeroCouponInflationCurve::new(array![1.0, 5.0, 10.0], array![0.025, 0.024, 0.023]);
     let b = c.breakeven_rate(5.0);
     assert!((b - 0.024).abs() < 1e-12);
   }
@@ -191,10 +191,8 @@ mod tests {
 
   #[test]
   fn yoy_curve_compounds_correctly() {
-    let c: YoyInflationCurve<f64> = YoyInflationCurve::new(
-      array![1.0, 2.0, 3.0],
-      array![0.02, 0.025, 0.03],
-    );
+    let c: YoyInflationCurve<f64> =
+      YoyInflationCurve::new(array![1.0, 2.0, 3.0], array![0.02, 0.025, 0.03]);
     let ratio_3 = c.forward_index_ratio(3.0);
     let expected = 1.02 * 1.025 * 1.03;
     assert!((ratio_3 - expected).abs() < 1e-12);
@@ -202,8 +200,7 @@ mod tests {
 
   #[test]
   fn yoy_curve_intermediate_time_partial_compounding() {
-    let c: YoyInflationCurve<f64> =
-      YoyInflationCurve::new(array![1.0, 2.0], array![0.02, 0.04]);
+    let c: YoyInflationCurve<f64> = YoyInflationCurve::new(array![1.0, 2.0], array![0.02, 0.04]);
     let ratio_15 = c.forward_index_ratio(1.5);
     let expected = 1.02 * 1.04_f64.powf(0.5);
     assert!((ratio_15 - expected).abs() < 1e-12);

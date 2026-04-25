@@ -98,8 +98,7 @@ impl CompoundPricer {
           - self.k1 * disc_t1 * n.cdf(z2)
       }
       CompoundType::PutOnCall => {
-        self.k2 * disc_t2 * cdf2(-z2, y2, -rho)
-          - self.s * coc_t2 * cdf2(-z1, y1, -rho)
+        self.k2 * disc_t2 * cdf2(-z2, y2, -rho) - self.s * coc_t2 * cdf2(-z1, y1, -rho)
           + self.k1 * disc_t1 * n.cdf(-z2)
       }
       CompoundType::CallOnPut => {
@@ -108,8 +107,7 @@ impl CompoundPricer {
           - self.k1 * disc_t1 * n.cdf(-z2)
       }
       CompoundType::PutOnPut => {
-        self.s * coc_t2 * cdf2(z1, -y1, -rho)
-          - self.k2 * disc_t2 * cdf2(z2, -y2, -rho)
+        self.s * coc_t2 * cdf2(z1, -y1, -rho) - self.k2 * disc_t2 * cdf2(z2, -y2, -rho)
           + self.k1 * disc_t1 * n.cdf(z2)
       }
     }
@@ -160,8 +158,7 @@ impl CompoundPricer {
         s * ((b - self.r) * tau).exp() * n.cdf(d1) - self.k2 * (-self.r * tau).exp() * n.cdf(d2)
       }
       OptionType::Put => {
-        self.k2 * (-self.r * tau).exp() * n.cdf(-d2)
-          - s * ((b - self.r) * tau).exp() * n.cdf(-d1)
+        self.k2 * (-self.r * tau).exp() * n.cdf(-d2) - s * ((b - self.r) * tau).exp() * n.cdf(-d1)
       }
     }
   }

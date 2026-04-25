@@ -41,8 +41,7 @@ impl<T: FloatExt> ZeroCouponInflationSwap<T> {
   /// the caller — typically the nominal discount curve.
   pub fn npv(&self, curve: &(impl InflationCurve<T> + ?Sized), nominal_df: T) -> T {
     let inflation_leg = self.notional * (curve.forward_index_ratio(self.maturity) - T::one());
-    let fixed_leg =
-      self.notional * ((T::one() + self.fixed_rate).powf(self.maturity) - T::one());
+    let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.maturity) - T::one());
     nominal_df * (inflation_leg - fixed_leg)
   }
 
@@ -51,7 +50,10 @@ impl<T: FloatExt> ZeroCouponInflationSwap<T> {
     if self.maturity <= T::epsilon() {
       return T::zero();
     }
-    curve.forward_index_ratio(self.maturity).powf(T::one() / self.maturity) - T::one()
+    curve
+      .forward_index_ratio(self.maturity)
+      .powf(T::one() / self.maturity)
+      - T::one()
   }
 }
 
@@ -115,9 +117,9 @@ impl<T: FloatExt> YearOnYearInflationSwap<T> {
     let mut pv = T::zero();
     for i in 0..self.payment_times.len() {
       pv += self.notional
-          * self.fixed_rate
-          * self.accrual_factors[i]
-          * self.nominal_discount_factors[i];
+        * self.fixed_rate
+        * self.accrual_factors[i]
+        * self.nominal_discount_factors[i];
     }
     pv
   }
@@ -143,9 +145,10 @@ impl<T: FloatExt> YearOnYearInflationSwap<T> {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::array;
+
   use super::*;
   use crate::quant::inflation::ZeroCouponInflationCurve;
-  use ndarray::array;
 
   #[test]
   fn zciis_par_makes_npv_zero() {
@@ -192,9 +195,7 @@ mod tests {
     let n = 5;
     let payment_times = Array1::from_iter((1..=n).map(|i| i as f64));
     let accrual_factors = Array1::from_elem(n, 1.0_f64);
-    let dfs = Array1::from_iter(
-      (1..=n).map(|i| (-nominal_r * i as f64).exp()),
-    );
+    let dfs = Array1::from_iter((1..=n).map(|i| (-nominal_r * i as f64).exp()));
     let s = YearOnYearInflationSwap::<f64>::new(
       1_000_000.0,
       breakeven,
@@ -225,13 +226,8 @@ mod tests {
       dfs.clone(),
     );
     let par = s.fair_fixed_rate(&curve);
-    let s_par = YearOnYearInflationSwap::<f64>::new(
-      100.0,
-      par,
-      payment_times,
-      accrual_factors,
-      dfs,
-    );
+    let s_par =
+      YearOnYearInflationSwap::<f64>::new(100.0, par, payment_times, accrual_factors, dfs);
     assert!(s_par.npv(&curve).abs() < 1e-9);
   }
 }

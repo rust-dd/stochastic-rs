@@ -136,11 +136,15 @@ pub fn optimal_execution<T: FloatExt>(params: &AlmgrenChrissParams<T>) -> Almgre
 
   let tau = params.horizon / T::from_usize_(n);
   let eta_tilde = params.eta - params.gamma * tau / T::from_f64_fast(2.0);
-  assert!(eta_tilde > T::zero(), "eta_tilde non-positive: increase eta or shrink tau");
+  assert!(
+    eta_tilde > T::zero(),
+    "eta_tilde non-positive: increase eta or shrink tau"
+  );
 
   let half = T::from_f64_fast(0.5);
-  let arg = T::one() + params.lambda * params.volatility * params.volatility * tau * tau
-    / (T::from_f64_fast(2.0) * eta_tilde);
+  let arg = T::one()
+    + params.lambda * params.volatility * params.volatility * tau * tau
+      / (T::from_f64_fast(2.0) * eta_tilde);
   let kappa = if params.lambda > T::zero() {
     let argf = arg.to_f64().unwrap();
     T::from_f64_fast(argf.acosh()) / tau
@@ -217,15 +221,7 @@ mod tests {
 
   #[test]
   fn lambda_zero_recovers_twap() {
-    let p = AlmgrenChrissParams::new(
-      1_000.0_f64,
-      1.0,
-      10,
-      0.01,
-      1e-7,
-      1e-5,
-      0.0,
-    );
+    let p = AlmgrenChrissParams::new(1_000.0_f64, 1.0, 10, 0.01, 1e-7, 1e-5, 0.0);
     let plan = optimal_execution(&p);
     for k in 0..=p.n_intervals {
       let expected = 1_000.0 * (1.0 - k as f64 / 10.0);
@@ -245,15 +241,7 @@ mod tests {
   #[test]
   fn larger_lambda_front_loads_execution() {
     let mk = |lam: f64| {
-      let p = AlmgrenChrissParams::new(
-        1_000.0_f64,
-        1.0,
-        10,
-        0.05,
-        1e-7,
-        1e-5,
-        lam,
-      );
+      let p = AlmgrenChrissParams::new(1_000.0_f64, 1.0, 10, 0.05, 1e-7, 1e-5, lam);
       optimal_execution(&p)
     };
     let cautious = mk(0.01);
@@ -264,15 +252,7 @@ mod tests {
 
   #[test]
   fn risk_adjusted_cost_consistent() {
-    let p = AlmgrenChrissParams::new(
-      1_000.0_f64,
-      1.0,
-      20,
-      0.02,
-      2e-7,
-      5e-6,
-      0.5,
-    );
+    let p = AlmgrenChrissParams::new(1_000.0_f64, 1.0, 20, 0.02, 2e-7, 5e-6, 0.5);
     let plan = optimal_execution(&p);
     let recomputed = plan.expected_cost + p.lambda * plan.variance;
     assert!(approx(plan.risk_adjusted_cost(p.lambda), recomputed, 1e-12));

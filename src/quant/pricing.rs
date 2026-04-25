@@ -42,6 +42,15 @@ pub mod variance_swap;
 
 // Re-export Fourier infrastructure and model structs.
 // Re-export commonly used pricers.
+pub use autocallable::AutocallablePricer;
+pub use autocallable::KnockInStyle;
+pub use basket::ArithmeticBasketLevyPricer;
+pub use basket::BasketAverageType;
+pub use basket::GeometricBasketPricer;
+#[cfg(feature = "openblas")]
+pub use basket::McBasketPricer;
+#[cfg(feature = "openblas")]
+pub use bermudan::BermudanLsmPricer;
 pub use bjerksund_stensland::BjerksundStensland2002Pricer;
 pub use bsm::BSMCoc;
 pub use bsm::BSMPricer;
@@ -54,15 +63,6 @@ pub use chooser::ForwardStartPricer;
 pub use chooser::SimpleChooserPricer;
 pub use cliquet::CliquetPricer;
 pub use cliquet::McCliquetPricer;
-pub use autocallable::AutocallablePricer;
-pub use autocallable::KnockInStyle;
-pub use basket::ArithmeticBasketLevyPricer;
-pub use basket::BasketAverageType;
-pub use basket::GeometricBasketPricer;
-#[cfg(feature = "openblas")]
-pub use basket::McBasketPricer;
-#[cfg(feature = "openblas")]
-pub use bermudan::BermudanLsmPricer;
 pub use compound::CompoundPricer;
 pub use compound::CompoundType;
 pub use digital::AssetOrNothingPricer;
@@ -92,10 +92,10 @@ pub use rainbow::RainbowPayoff;
 pub use rainbow::StulzRainbowPricer;
 pub use rbergomi::RBergomiPricer;
 pub use sabr::SabrModel;
-pub use spread::MargrabePricer;
-pub use spread::McSpreadPricer;
 pub use slv::HestonSlvParams;
 pub use slv::HestonSlvPricer;
 pub use slv::LeverageSurface;
 pub use slv::calibrate_from_dupire;
 pub use slv::calibrate_leverage;
+pub use spread::MargrabePricer;
+pub use spread::McSpreadPricer;

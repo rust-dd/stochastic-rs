@@ -33,7 +33,11 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 fn flat_discount() -> DiscountCurve<f64> {
   let times = array![0.25_f64, 1.0, 3.0, 5.0, 10.0, 30.0];
   let rates = array![0.03_f64, 0.03, 0.03, 0.03, 0.03, 0.03];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LogLinearOnDiscountFactors)
+  DiscountCurve::from_zero_rates(
+    &times,
+    &rates,
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  )
 }
 
 fn bench_merton(c: &mut Criterion) {

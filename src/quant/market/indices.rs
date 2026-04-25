@@ -72,7 +72,9 @@ impl<T: FloatExt> std::fmt::Debug for FixingHistory<T> {
       .read()
       .map(|m| m.len())
       .unwrap_or_default();
-    f.debug_struct("FixingHistory").field("entries", &n).finish()
+    f.debug_struct("FixingHistory")
+      .field("entries", &n)
+      .finish()
   }
 }
 
@@ -184,12 +186,7 @@ pub struct NamedIborIndex<T: FloatExt> {
 
 impl<T: FloatExt> NamedIborIndex<T> {
   /// Construct from raw parts — typically via a factory in [`ibor`].
-  pub fn new(
-    index: IborIndex<T>,
-    currency: Currency,
-    calendar: Calendar,
-    spot_lag: u32,
-  ) -> Self {
+  pub fn new(index: IborIndex<T>, currency: Currency, calendar: Calendar, spot_lag: u32) -> Self {
     Self {
       index,
       currency,
@@ -235,7 +232,12 @@ pub mod ibor {
   pub fn euribor<T: FloatExt>(tenor: RateTenor) -> NamedIborIndex<T> {
     let name = format!("EURIBOR{}", tenor.curve_key());
     let index = IborIndex::new(name, tenor, DayCountConvention::Actual360);
-    NamedIborIndex::new(index, currency::EUR, Calendar::new(HolidayCalendar::Target), 2)
+    NamedIborIndex::new(
+      index,
+      currency::EUR,
+      Calendar::new(HolidayCalendar::Target),
+      2,
+    )
   }
 
   /// Three-month Euribor.
@@ -256,7 +258,10 @@ pub mod ibor {
     NamedIborIndex::new(
       index,
       currency::USD,
-      Calendar::joint([HolidayCalendar::UnitedStates, HolidayCalendar::UnitedKingdom]),
+      Calendar::joint([
+        HolidayCalendar::UnitedStates,
+        HolidayCalendar::UnitedKingdom,
+      ]),
       2,
     )
   }
@@ -280,13 +285,21 @@ pub mod overnight {
   /// Reference: ARRC SOFR conventions (2019).
   pub fn sofr<T: FloatExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("SOFR", DayCountConvention::Actual360);
-    NamedOvernightIndex::new(index, currency::USD, Calendar::new(HolidayCalendar::UnitedStates))
+    NamedOvernightIndex::new(
+      index,
+      currency::USD,
+      Calendar::new(HolidayCalendar::UnitedStates),
+    )
   }
 
   /// Effective Federal Funds Rate (USD). Actual/360, US calendar.
   pub fn fed_funds<T: FloatExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("EFFR", DayCountConvention::Actual360);
-    NamedOvernightIndex::new(index, currency::USD, Calendar::new(HolidayCalendar::UnitedStates))
+    NamedOvernightIndex::new(
+      index,
+      currency::USD,
+      Calendar::new(HolidayCalendar::UnitedStates),
+    )
   }
 
   /// ESTR — Euro Short-Term Rate. Actual/360, TARGET2 calendar.
@@ -298,7 +311,11 @@ pub mod overnight {
   /// SONIA — Sterling Overnight Index Average. Actual/365 fixed, UK calendar.
   pub fn sonia<T: FloatExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("SONIA", DayCountConvention::Actual365Fixed);
-    NamedOvernightIndex::new(index, currency::GBP, Calendar::new(HolidayCalendar::UnitedKingdom))
+    NamedOvernightIndex::new(
+      index,
+      currency::GBP,
+      Calendar::new(HolidayCalendar::UnitedKingdom),
+    )
   }
 
   /// TONAR — Tokyo Overnight Average Rate (aka TONA). Actual/365 fixed,
@@ -323,7 +340,9 @@ mod tests {
     hist.add_fixing(d2, 0.052);
     hist.add_fixing(d3, 0.051);
     assert_eq!(hist.fixing(d2), Some(0.052));
-    let (d, v) = hist.latest_before(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()).unwrap();
+    let (d, v) = hist
+      .latest_before(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap())
+      .unwrap();
     assert_eq!(d, d2);
     assert!((v - 0.052).abs() < 1e-12);
     assert_eq!(hist.len(), 3);

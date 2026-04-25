@@ -86,7 +86,9 @@ pub fn pairs_signals(
     design[[i, 1]] = x[i];
   }
   let y_owned = y.to_owned();
-  let sol = design.least_squares(&y_owned).expect("hedge ratio OLS failed");
+  let sol = design
+    .least_squares(&y_owned)
+    .expect("hedge ratio OLS failed");
   let alpha = sol.solution[0];
   let beta = sol.solution[1];
   let mut spread = Array1::<f64>::zeros(n);
@@ -141,9 +143,9 @@ pub fn pairs_signals(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   #[test]

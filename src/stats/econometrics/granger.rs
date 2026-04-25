@@ -93,9 +93,9 @@ fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   #[test]

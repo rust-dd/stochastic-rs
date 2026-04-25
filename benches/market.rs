@@ -116,5 +116,9 @@ fn bench_quote_update_propagation(c: &mut Criterion) {
   });
 }
 
-criterion_group!(benches, bench_reactive_bootstrap, bench_quote_update_propagation);
+criterion_group!(
+  benches,
+  bench_reactive_bootstrap,
+  bench_quote_update_propagation
+);
 criterion_main!(benches);

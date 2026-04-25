@@ -172,8 +172,9 @@ impl AutocallablePricer {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
+
+  use super::*;
 
   fn quarterly_obs(years: f64, n: usize) -> Array1<f64> {
     let dt = years / n as f64;
@@ -228,7 +229,10 @@ mod tests {
       steps_per_period: 4,
     };
     let phoenix = base.clone();
-    let athena = AutocallablePricer { memory: true, ..base };
+    let athena = AutocallablePricer {
+      memory: true,
+      ..base
+    };
     assert!(athena.price() >= phoenix.price() - 1e-3);
   }
 
@@ -253,7 +257,10 @@ mod tests {
       steps_per_period: 8,
     };
     let euro = base.clone();
-    let cont = AutocallablePricer { knock_in_style: KnockInStyle::Continuous, ..base };
+    let cont = AutocallablePricer {
+      knock_in_style: KnockInStyle::Continuous,
+      ..base
+    };
     assert!(cont.price() <= euro.price() + 1e-2);
   }
 

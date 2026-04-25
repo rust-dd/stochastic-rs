@@ -574,10 +574,10 @@ mod tests {
   use statrs::distribution::Normal;
 
   use super::*;
+  use crate::quant::OptionType;
   use crate::quant::pricing::bsm::BSMCoc;
   use crate::quant::pricing::bsm::BSMPricer;
   use crate::quant::pricing::malliavin_thalmaier::AssetParams;
-  use crate::quant::OptionType;
   use crate::traits::PricerExt;
 
   fn two_asset_params() -> MultiHestonParams<f64> {

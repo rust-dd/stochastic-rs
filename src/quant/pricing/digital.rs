@@ -243,10 +243,8 @@ impl SuperSharePricer {
     let v = self.sigma;
     let t = self.t;
     let sqrt_t = t.sqrt();
-    let d1 =
-      ((self.s / self.x_low).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
-    let d2 =
-      ((self.s / self.x_high).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
+    let d1 = ((self.s / self.x_low).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
+    let d2 = ((self.s / self.x_high).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let coc = ((self.b - self.r) * self.t).exp();
     self.s / self.x_low * coc * (n.cdf(d1) - n.cdf(d2))
   }
@@ -350,10 +348,7 @@ mod tests {
     };
     // BSM vanilla call ≈ 10.4506
     let vanilla = aon.price() - k * con.price();
-    assert!(
-      (vanilla - 10.4506).abs() < 0.005,
-      "decomposition={vanilla}"
-    );
+    assert!((vanilla - 10.4506).abs() < 0.005, "decomposition={vanilla}");
   }
 
   /// Gap call with $K_1 = K_2$ equals BSM vanilla call.
@@ -425,8 +420,14 @@ mod tests {
       t: 0.5,
       option_type: OptionType::Call,
     };
-    let up = CashOrNothingPricer { s: 100.0 + h, ..base.clone() };
-    let dn = CashOrNothingPricer { s: 100.0 - h, ..base.clone() };
+    let up = CashOrNothingPricer {
+      s: 100.0 + h,
+      ..base.clone()
+    };
+    let dn = CashOrNothingPricer {
+      s: 100.0 - h,
+      ..base.clone()
+    };
     let fd = (up.price() - dn.price()) / (2.0 * h);
     let analytic = base.delta();
     assert!((fd - analytic).abs() < 1e-4, "fd={fd}, analytic={analytic}");

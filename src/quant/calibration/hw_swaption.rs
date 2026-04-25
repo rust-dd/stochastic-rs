@@ -74,11 +74,7 @@ pub struct HullWhiteSwaptionCalibrator<'a> {
 
 impl<'a> HullWhiteSwaptionCalibrator<'a> {
   /// Construct a calibrator with sensible defaults.
-  pub fn new(
-    quotes: &'a [SwaptionQuote],
-    curve: &'a DiscountCurve<f64>,
-    notional: f64,
-  ) -> Self {
+  pub fn new(quotes: &'a [SwaptionQuote], curve: &'a DiscountCurve<f64>, notional: f64) -> Self {
     Self {
       quotes,
       curve,
@@ -97,11 +93,7 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
       notional: self.notional,
     };
     let (a0, s0) = self.initial_guess.unwrap_or((0.05, 0.01));
-    let simplex = vec![
-      vec![a0, s0],
-      vec![a0 * 1.5, s0],
-      vec![a0, s0 * 1.5],
-    ];
+    let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
 
     let mut converged = true;
     let best = match NelderMead::new(simplex.clone()).with_sd_tolerance(self.sd_tolerance) {
@@ -109,7 +101,11 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
         .configure(|s| s.max_iters(self.max_iters))
         .run()
       {
-        Ok(res) => res.state.get_best_param().cloned().unwrap_or_else(|| simplex[0].clone()),
+        Ok(res) => res
+          .state
+          .get_best_param()
+          .cloned()
+          .unwrap_or_else(|| simplex[0].clone()),
         Err(_) => {
           converged = false;
           simplex[0].clone()

@@ -68,12 +68,7 @@ impl<T: FloatExt, V: VolatilityModel<T>> Cap<T, V> {
     curves: &(impl CurveProvider<T> + ?Sized),
   ) -> T {
     self
-      .valuation(
-        valuation_date,
-        expiry_day_count,
-        discount_day_count,
-        curves,
-      )
+      .valuation(valuation_date, expiry_day_count, discount_day_count, curves)
       .npv
   }
 }
@@ -124,12 +119,7 @@ impl<T: FloatExt, V: VolatilityModel<T>> Floor<T, V> {
     curves: &(impl CurveProvider<T> + ?Sized),
   ) -> T {
     self
-      .valuation(
-        valuation_date,
-        expiry_day_count,
-        discount_day_count,
-        curves,
-      )
+      .valuation(valuation_date, expiry_day_count, discount_day_count, curves)
       .npv
   }
 }
@@ -160,10 +150,9 @@ impl<T: FloatExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> Collar<T, VC, 
     let cap = self
       .cap
       .valuation(valuation_date, expiry_day_count, discount_day_count, curves);
-    let floor =
-      self
-        .floor
-        .valuation(valuation_date, expiry_day_count, discount_day_count, curves);
+    let floor = self
+      .floor
+      .valuation(valuation_date, expiry_day_count, discount_day_count, curves);
     let npv = cap.npv - floor.npv;
     CollarValuation { npv, cap, floor }
   }
@@ -177,12 +166,7 @@ impl<T: FloatExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> Collar<T, VC, 
     curves: &(impl CurveProvider<T> + ?Sized),
   ) -> T {
     self
-      .valuation(
-        valuation_date,
-        expiry_day_count,
-        discount_day_count,
-        curves,
-      )
+      .valuation(valuation_date, expiry_day_count, discount_day_count, curves)
       .npv
   }
 }
@@ -212,8 +196,7 @@ fn price_cap_floor<T: FloatExt, V: VolatilityModel<T> + ?Sized>(
       continue;
     }
     let tau = expiry_day_count.year_fraction(valuation_date, coupon.period.accrual_start);
-    let tau_payment =
-      discount_day_count.year_fraction(valuation_date, coupon.period.payment_date);
+    let tau_payment = discount_day_count.year_fraction(valuation_date, coupon.period.payment_date);
     let discount_factor = curves.discount_curve().discount_factor(tau_payment);
     let forward = coupon.observed_rate.unwrap_or_else(|| {
       coupon

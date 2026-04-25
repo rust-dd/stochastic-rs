@@ -192,8 +192,7 @@ impl StulzRainbowPricer {
     // F_max + F_min = s1 e^{-q1T} + s2 e^{-q2T}, F_max - F_min = m12 + m21,
     // so F_min = (s1 e^{-q1T} + s2 e^{-q2T} - (m12 + m21)) / 2.
     let f_min = 0.5
-      * (self.s1 * (-self.q1 * self.t).exp() + self.s2 * (-self.q2 * self.t).exp()
-        - (m12 + m21));
+      * (self.s1 * (-self.q1 * self.t).exp() + self.s2 * (-self.q2 * self.t).exp() - (m12 + m21));
     call_min + self.k * (-self.r * self.t).exp() - f_min
   }
 
@@ -222,8 +221,8 @@ impl StulzRainbowPricer {
       t: self.t,
     }
     .price();
-    let f_max =
-      0.5 * (self.s1 * (-self.q1 * self.t).exp() + self.s2 * (-self.q2 * self.t).exp() + (m12 + m21));
+    let f_max = 0.5
+      * (self.s1 * (-self.q1 * self.t).exp() + self.s2 * (-self.q2 * self.t).exp() + (m12 + m21));
     call_max + self.k * (-self.r * self.t).exp() - f_max
   }
 }
@@ -265,7 +264,9 @@ impl McRainbowPricer {
     let drifts: Vec<f64> = (0..n_assets)
       .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.t)
       .collect();
-    let vols: Vec<f64> = (0..n_assets).map(|i| self.sigma[i] * self.t.sqrt()).collect();
+    let vols: Vec<f64> = (0..n_assets)
+      .map(|i| self.sigma[i] * self.t.sqrt())
+      .collect();
     let n_paths = self.n_paths;
 
     let mut all_z = vec![0.0_f64; n_paths * n_assets];
@@ -296,8 +297,9 @@ impl McRainbowPricer {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
+
+  use super::*;
 
   /// Stulz: $C_{\min} + C_{\max} = C_1 + C_2$ (vanilla call sum).
   #[test]

@@ -99,9 +99,10 @@ impl Observable for ObservableBase {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
+
+  use super::*;
 
   struct Counter(AtomicUsize);
 

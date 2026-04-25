@@ -35,7 +35,10 @@ pub struct PcaResult {
 /// every factor.
 pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult {
   let (t, p) = returns.dim();
-  assert!(t >= 2 && p >= 1, "need at least two observations and one asset");
+  assert!(
+    t >= 2 && p >= 1,
+    "need at least two observations and one asset"
+  );
   let mut means = Array1::<f64>::zeros(p);
   let mut centred = Array2::<f64>::zeros((t, p));
   for j in 0..p {
@@ -92,7 +95,6 @@ pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult
 #[cfg(test)]
 mod tests {
   use super::*;
-
   use crate::distributions::normal::SimdNormal;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {

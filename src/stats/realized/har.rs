@@ -154,19 +154,12 @@ fn residuals(x: &Array2<f64>, y: &Array1<f64>, beta: &Array1<f64>) -> Array1<f64
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
-  fn simulate_har_path(
-    n: usize,
-    c: f64,
-    bd: f64,
-    bw: f64,
-    bm: f64,
-    seed: u64,
-  ) -> Array1<f64> {
+  fn simulate_har_path(n: usize, c: f64, bd: f64, bw: f64, bm: f64, seed: u64) -> Array1<f64> {
     let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, seed);
     let mut shocks = vec![0.0_f64; n];
     dist.fill_slice_fast(&mut shocks);
@@ -174,8 +167,7 @@ mod tests {
     for t in MONTHLY_LAGS..n {
       let d = rv[t - 1];
       let w: f64 = (1..=WEEKLY_LAGS).map(|i| rv[t - i]).sum::<f64>() / WEEKLY_LAGS as f64;
-      let m: f64 =
-        (1..=MONTHLY_LAGS).map(|i| rv[t - i]).sum::<f64>() / MONTHLY_LAGS as f64;
+      let m: f64 = (1..=MONTHLY_LAGS).map(|i| rv[t - i]).sum::<f64>() / MONTHLY_LAGS as f64;
       let mean = c + bd * d + bw * w + bm * m;
       rv[t] = (mean + 0.05 * mean.abs() * shocks[t]).max(1e-8);
     }
@@ -203,10 +195,14 @@ mod tests {
     let recent = rv.slice(ndarray::s![rv.len() - MONTHLY_LAGS..]).to_owned();
     let f = model.forecast(recent.view());
     let last = recent[MONTHLY_LAGS - 1];
-    let w: f64 =
-      (1..=WEEKLY_LAGS).map(|i| recent[MONTHLY_LAGS - i]).sum::<f64>() / WEEKLY_LAGS as f64;
-    let m: f64 =
-      (1..=MONTHLY_LAGS).map(|i| recent[MONTHLY_LAGS - i]).sum::<f64>() / MONTHLY_LAGS as f64;
+    let w: f64 = (1..=WEEKLY_LAGS)
+      .map(|i| recent[MONTHLY_LAGS - i])
+      .sum::<f64>()
+      / WEEKLY_LAGS as f64;
+    let m: f64 = (1..=MONTHLY_LAGS)
+      .map(|i| recent[MONTHLY_LAGS - i])
+      .sum::<f64>()
+      / MONTHLY_LAGS as f64;
     let expected =
       model.fit.intercept + model.fit.beta_d * last + model.fit.beta_w * w + model.fit.beta_m * m;
     assert!((f - expected).abs() < 1e-12);

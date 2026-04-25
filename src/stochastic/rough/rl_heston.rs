@@ -311,6 +311,9 @@ mod tests {
     );
     let [_s, v] = p.sample();
     let mean: f64 = v.iter().sum::<f64>() / v.len() as f64;
-    assert!(mean > 0.0 && mean < 1.0, "mean variance out of sanity range: {mean}");
+    assert!(
+      mean > 0.0 && mean < 1.0,
+      "mean variance out of sanity range: {mean}"
+    );
   }
 }

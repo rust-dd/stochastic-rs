@@ -93,13 +93,17 @@ impl DoubleHestonParams {
     self.v1_0 = periodic_map(self.v1_0, P_V0.0, P_V0.1).max(0.0);
     self.kappa1 = periodic_map(self.kappa1, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
     self.theta1 = periodic_map(self.theta1, P_THETA.0, P_THETA.1).max(THETA_MIN);
-    self.sigma1 = periodic_map(self.sigma1, P_SIGMA.0, P_SIGMA.1).abs().max(SIGMA_MIN);
+    self.sigma1 = periodic_map(self.sigma1, P_SIGMA.0, P_SIGMA.1)
+      .abs()
+      .max(SIGMA_MIN);
     self.rho1 = periodic_map(self.rho1, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
 
     self.v2_0 = periodic_map(self.v2_0, P_V0.0, P_V0.1).max(0.0);
     self.kappa2 = periodic_map(self.kappa2, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
     self.theta2 = periodic_map(self.theta2, P_THETA.0, P_THETA.1).max(THETA_MIN);
-    self.sigma2 = periodic_map(self.sigma2, P_SIGMA.0, P_SIGMA.1).abs().max(SIGMA_MIN);
+    self.sigma2 = periodic_map(self.sigma2, P_SIGMA.0, P_SIGMA.1)
+      .abs()
+      .max(SIGMA_MIN);
     self.rho2 = periodic_map(self.rho2, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
 
     // Feller, factor 1.
@@ -131,11 +135,7 @@ impl DoubleHestonParams {
   }
 
   /// Convert to a [`DoubleHestonFourier`] model for pricing / vol surface generation.
-  pub fn to_model(
-    &self,
-    r: f64,
-    q: f64,
-  ) -> crate::quant::pricing::fourier::DoubleHestonFourier {
+  pub fn to_model(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::DoubleHestonFourier {
     crate::quant::pricing::fourier::DoubleHestonFourier {
       v1_0: self.v1_0,
       kappa1: self.kappa1,
@@ -217,11 +217,7 @@ impl DoubleHestonCalibrationResult {
     }
   }
 
-  pub fn to_model(
-    &self,
-    r: f64,
-    q: f64,
-  ) -> crate::quant::pricing::fourier::DoubleHestonFourier {
+  pub fn to_model(&self, r: f64, q: f64) -> crate::quant::pricing::fourier::DoubleHestonFourier {
     self.params().to_model(r, q)
   }
 }
@@ -500,8 +496,7 @@ impl DoubleHestonCalibrator {
       c_model[idx] = match self.option_type {
         OptionType::Call => call.max(0.0),
         OptionType::Put => {
-          let put =
-            call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
+          let put = call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
           put.max(0.0)
         }
       };
@@ -644,14 +639,8 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for DoubleHestonCalibrator {
             .enumerate()
             .map(|(idx, _)| {
               let tau = self.flat_t[idx];
-              let call = double_heston_call_price(
-                &params_eff,
-                self.s[idx],
-                self.k[idx],
-                self.r,
-                q_val,
-                tau,
-              );
+              let call =
+                double_heston_call_price(&params_eff, self.s[idx], self.k[idx], self.r, q_val, tau);
               let put =
                 call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
               (call.max(0.0), put.max(0.0))

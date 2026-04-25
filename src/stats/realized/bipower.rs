@@ -73,16 +73,11 @@ pub fn medrv<T: FloatExt>(returns: ArrayView1<T>) -> T {
     return T::zero();
   }
   let pi = T::from_f64_fast(std::f64::consts::PI);
-  let denom =
-    T::from_f64_fast(6.0) - T::from_f64_fast(4.0) * T::from_f64_fast(3.0).sqrt() + pi;
+  let denom = T::from_f64_fast(6.0) - T::from_f64_fast(4.0) * T::from_f64_fast(3.0).sqrt() + pi;
   let scale = pi / denom;
   let mut sum = T::zero();
   for i in 2..n {
-    let mut t = [
-      returns[i - 2].abs(),
-      returns[i - 1].abs(),
-      returns[i].abs(),
-    ];
+    let mut t = [returns[i - 2].abs(), returns[i - 1].abs(), returns[i].abs()];
     t.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let m = t[1];
     sum += m * m;
@@ -104,9 +99,8 @@ pub fn tripower_quarticity<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let mu_inv3 = T::one() / (mu_43.powi(3));
   let mut sum = T::zero();
   for i in 2..n {
-    sum += returns[i - 2].abs().powf(p43)
-        * returns[i - 1].abs().powf(p43)
-        * returns[i].abs().powf(p43);
+    sum +=
+      returns[i - 2].abs().powf(p43) * returns[i - 1].abs().powf(p43) * returns[i].abs().powf(p43);
   }
   T::from_usize_(n) * mu_inv3 * sum
 }
@@ -171,10 +165,10 @@ fn mu_p<T: FloatExt>(p: f64) -> T {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
   use ndarray::array;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {

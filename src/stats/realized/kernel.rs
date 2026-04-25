@@ -60,11 +60,7 @@ impl KernelType {
     match self {
       Self::Bartlett => {
         let one = T::one();
-        if x >= one {
-          T::zero()
-        } else {
-          one - x
-        }
+        if x >= one { T::zero() } else { one - x }
       }
       Self::Parzen => {
         if x >= T::one() {
@@ -108,8 +104,8 @@ impl KernelType {
           T::one()
         } else {
           let z = 6.0 * std::f64::consts::PI * xf / 5.0;
-          let val = (25.0 / (12.0 * std::f64::consts::PI.powi(2) * xf * xf))
-            * (z.sin() / z - z.cos());
+          let val =
+            (25.0 / (12.0 * std::f64::consts::PI.powi(2) * xf * xf)) * (z.sin() / z - z.cos());
           T::from_f64_fast(val)
         }
       }
@@ -166,9 +162,9 @@ fn autocovariance<T: FloatExt>(returns: ArrayView1<T>, lag: usize) -> T {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   fn iid_normal(seed: u64, n: usize, std: f64) -> Array1<f64> {

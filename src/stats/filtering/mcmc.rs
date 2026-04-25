@@ -53,7 +53,11 @@ where
   F: Fn(ArrayView1<f64>) -> f64,
 {
   let dim = initial.len();
-  assert_eq!(proposal_scale.len(), dim, "proposal_scale must match initial dim");
+  assert_eq!(
+    proposal_scale.len(),
+    dim,
+    "proposal_scale must match initial dim"
+  );
   assert!(n_samples >= 1);
   let mut rng = Deterministic(seed).rng();
   let dist_unit = SimdNormal::<f64>::with_seed(0.0, 1.0, seed.wrapping_add(1));
@@ -110,24 +114,24 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
+
+  use super::*;
 
   #[test]
   fn mh_recovers_standard_normal_moments() {
     let init = Array1::from(vec![0.0_f64]);
     let log_target = |x: ArrayView1<f64>| -0.5 * x[0] * x[0];
     let scale = Array1::from(vec![2.0_f64]);
-    let res = random_walk_metropolis(
-      init.view(),
-      log_target,
-      scale.view(),
-      20_000,
-      2_000,
-      17,
-    );
+    let res = random_walk_metropolis(init.view(), log_target, scale.view(), 20_000, 2_000, 17);
     let mean = res.samples.column(0).iter().sum::<f64>() / 20_000.0;
-    let var = res.samples.column(0).iter().map(|v| (v - mean).powi(2)).sum::<f64>() / 20_000.0;
+    let var = res
+      .samples
+      .column(0)
+      .iter()
+      .map(|v| (v - mean).powi(2))
+      .sum::<f64>()
+      / 20_000.0;
     assert!(mean.abs() < 0.1);
     assert!((var - 1.0).abs() < 0.15);
     assert!(res.acceptance_rate > 0.2 && res.acceptance_rate < 0.8);
@@ -144,14 +148,7 @@ mod tests {
       }
     };
     let scale = Array1::from(vec![0.3_f64]);
-    let res = random_walk_metropolis(
-      init.view(),
-      log_target,
-      scale.view(),
-      5_000,
-      500,
-      31,
-    );
+    let res = random_walk_metropolis(init.view(), log_target, scale.view(), 5_000, 500, 31);
     assert!(res.samples.column(0).iter().all(|&v| v >= 0.0));
   }
 }

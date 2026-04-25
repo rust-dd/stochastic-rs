@@ -262,9 +262,9 @@ pub fn build_curve<T: FloatExt>(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::sync::Arc;
 
+  use super::*;
   use crate::quant::market::quote::SimpleQuote;
 
   fn months_later(base: NaiveDate, months: i32) -> NaiveDate {
@@ -287,10 +287,8 @@ mod tests {
     let q_fra = Arc::new(SimpleQuote::<f64>::new(0.042));
     let q_swap = Arc::new(SimpleQuote::<f64>::new(0.045));
 
-    let dep_handle: Handle<dyn Quote<f64>> =
-      Handle::new(Arc::clone(&q_dep) as Arc<dyn Quote<f64>>);
-    let fra_handle: Handle<dyn Quote<f64>> =
-      Handle::new(Arc::clone(&q_fra) as Arc<dyn Quote<f64>>);
+    let dep_handle: Handle<dyn Quote<f64>> = Handle::new(Arc::clone(&q_dep) as Arc<dyn Quote<f64>>);
+    let fra_handle: Handle<dyn Quote<f64>> = Handle::new(Arc::clone(&q_fra) as Arc<dyn Quote<f64>>);
     let swap_handle: Handle<dyn Quote<f64>> =
       Handle::new(Arc::clone(&q_swap) as Arc<dyn Quote<f64>>);
 

@@ -215,16 +215,24 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
         + s[i - 1] * v2_prev.sqrt() * ds2[i - 1];
       s[i] = s[i - 1] + ds;
 
-      let dv1 = self.kappa1 * (self.theta1 - v1_prev) * dt
-        + self.sigma1 * v1_prev.sqrt() * dv1n[i - 1];
-      let dv2 = self.kappa2 * (self.theta2 - v2_prev) * dt
-        + self.sigma2 * v2_prev.sqrt() * dv2n[i - 1];
+      let dv1 =
+        self.kappa1 * (self.theta1 - v1_prev) * dt + self.sigma1 * v1_prev.sqrt() * dv1n[i - 1];
+      let dv2 =
+        self.kappa2 * (self.theta2 - v2_prev) * dt + self.sigma2 * v2_prev.sqrt() * dv2n[i - 1];
 
       let new_v1 = v1[i - 1] + dv1;
       let new_v2 = v2[i - 1] + dv2;
 
-      v1[i] = if use_sym { new_v1.abs() } else { new_v1.max(T::zero()) };
-      v2[i] = if use_sym { new_v2.abs() } else { new_v2.max(T::zero()) };
+      v1[i] = if use_sym {
+        new_v1.abs()
+      } else {
+        new_v1.max(T::zero())
+      };
+      v2[i] = if use_sym {
+        new_v2.abs()
+      } else {
+        new_v2.max(T::zero())
+      };
     }
 
     [s, v1, v2]

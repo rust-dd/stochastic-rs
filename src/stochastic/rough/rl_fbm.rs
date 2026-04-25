@@ -49,7 +49,12 @@ pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded> {
   markov: MarkovLift<T>,
 }
 
-fn build_markov<T: FloatExt>(hurst: T, n: usize, t: Option<T>, degree: Option<usize>) -> MarkovLift<T> {
+fn build_markov<T: FloatExt>(
+  hurst: T,
+  n: usize,
+  t: Option<T>,
+  degree: Option<usize>,
+) -> MarkovLift<T> {
   let dt = t.unwrap_or(T::one()) / T::from_usize_(n - 1);
   let deg = degree.unwrap_or_else(|| RlKernel::<T>::default_degree(n));
   let kernel = RlKernel::<T>::new(hurst, deg);
@@ -102,9 +107,12 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
       seed,
     }
     .sample();
-    self
-      .markov
-      .simulate(T::zero(), |_| T::zero(), |_| T::one(), dw.as_slice().expect("dw contiguous"))
+    self.markov.simulate(
+      T::zero(),
+      |_| T::zero(),
+      |_| T::one(),
+      dw.as_slice().expect("dw contiguous"),
+    )
   }
 
   /// Generate $m$ independent RL-fBM paths as an $(m, n)$ array. The
@@ -129,11 +137,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
       .simulate_batch(T::zero(), |_| T::zero(), |_| T::one(), dw.view())
   }
 
-  pub(crate) fn sample_batch_par_impl<S2: SeedExt>(
-    &self,
-    mut seed: S2,
-    m: usize,
-  ) -> Array2<T> {
+  pub(crate) fn sample_batch_par_impl<S2: SeedExt>(&self, mut seed: S2, m: usize) -> Array2<T> {
     let dw = self.build_dw_matrix(&mut seed, m);
     self
       .markov
@@ -209,8 +213,7 @@ mod tests {
       endpoints.push(*p.sample().last().unwrap());
     }
     let mean: f64 = endpoints.iter().sum::<f64>() / samples as f64;
-    let var: f64 =
-      endpoints.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / samples as f64;
+    let var: f64 = endpoints.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / samples as f64;
 
     let g = gamma(hurst + 0.5);
     let theoretical = t.powf(2.0 * hurst) / (2.0 * hurst * g * g);

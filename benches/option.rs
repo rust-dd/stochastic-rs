@@ -199,7 +199,8 @@ fn bench_bermudan_swaption_hw_tree(c: &mut Criterion) {
 fn bench_jamshidian_hw_swaption(c: &mut Criterion) {
   let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
   let rates = array![0.03, 0.035, 0.038, 0.04, 0.042];
-  let curve = DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve =
+    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
   let expiry = 1.0_f64;
   let coupon_times: Vec<f64> = (1..=20).map(|i| expiry + 0.5 * i as f64).collect();
   let accrual_factors = vec![0.5_f64; coupon_times.len()];

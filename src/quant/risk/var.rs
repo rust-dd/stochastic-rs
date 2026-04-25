@@ -144,9 +144,7 @@ pub(crate) fn losses_from_samples<T: FloatExt>(
 pub(crate) fn sample_quantile<T: FloatExt>(sorted: &[T], confidence: T) -> T {
   let n = sorted.len();
   assert!(n >= 1, "empty sample");
-  let idx = (confidence * T::from_usize_(n - 1))
-    .to_f64()
-    .unwrap_or(0.0);
+  let idx = (confidence * T::from_usize_(n - 1)).to_f64().unwrap_or(0.0);
   let lo = idx.floor() as usize;
   let hi = idx.ceil() as usize;
   if lo == hi {
@@ -159,10 +157,7 @@ pub(crate) fn sample_quantile<T: FloatExt>(sorted: &[T], confidence: T) -> T {
 
 pub(crate) fn assert_confidence<T: FloatExt>(c: T) {
   let v = c.to_f64().unwrap_or(0.0);
-  assert!(
-    v > 0.0 && v < 1.0,
-    "confidence must lie in (0, 1); got {v}"
-  );
+  assert!(v > 0.0 && v < 1.0, "confidence must lie in (0, 1); got {v}");
 }
 
 fn standard_normal_quantile(p: f64) -> f64 {

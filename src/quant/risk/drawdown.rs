@@ -36,8 +36,7 @@ pub fn running_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> Array1<T> {
 /// Maximum drawdown (most negative value of the running drawdown series).
 pub fn max_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> T {
   let dd = running_drawdown(equity);
-  dd
-    .iter()
+  dd.iter()
     .copied()
     .fold(T::zero(), |a, b| if b < a { b } else { a })
 }

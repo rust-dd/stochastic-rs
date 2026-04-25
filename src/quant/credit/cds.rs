@@ -338,11 +338,8 @@ impl<T: FloatExt> CreditDefaultSwap<T> {
       let delta_days = step.min((period_end - cursor).num_days());
       let next = cursor + chrono::Duration::days(delta_days);
 
-      let df_next = discount.discount_factor(tau_year_fraction(
-        discount_day_count,
-        valuation_date,
-        next,
-      ));
+      let df_next =
+        discount.discount_factor(tau_year_fraction(discount_day_count, valuation_date, next));
       let q_next = survival.survival_probability(tau_year_fraction(
         DayCountConvention::Actual365Fixed,
         valuation_date,

@@ -28,7 +28,9 @@ use stochastic_rs::quant::risk::var::PnlOrLoss;
 fn pnl_samples(n: usize, mean: f64, sigma: f64) -> Array1<f64> {
   let mut s: u64 = 0xDEAD_BEEF;
   let mut step = || {
-    s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+    s = s
+      .wrapping_mul(6_364_136_223_846_793_005)
+      .wrapping_add(1_442_695_040_888_963_407);
     (s >> 33) as u32 as f64 / u32::MAX as f64
   };
   let mut out = Array1::zeros(n);
@@ -85,7 +87,9 @@ fn bench_drawdown(c: &mut Criterion) {
 
 fn bench_bucket_dv01(c: &mut Criterion) {
   let times = array![0.25_f64, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0];
-  let rates = array![0.03_f64, 0.03, 0.03, 0.035, 0.035, 0.04, 0.04, 0.04, 0.045, 0.045];
+  let rates = array![
+    0.03_f64, 0.03, 0.03, 0.035, 0.035, 0.04, 0.04, 0.04, 0.045, 0.045
+  ];
   let curve = DiscountCurve::from_zero_rates(
     &times,
     &rates,
@@ -133,10 +137,20 @@ fn bench_stress_test(c: &mut Criterion) {
         long_shift: -0.005,
       },
     ),
-    Scenario::new("5Y kink")
-      .with_curve_shift("discount", CurveShift::KeyRate { pillar: 5.0, amount: 0.01 }),
-    Scenario::new("10Y kink")
-      .with_curve_shift("discount", CurveShift::KeyRate { pillar: 10.0, amount: 0.005 }),
+    Scenario::new("5Y kink").with_curve_shift(
+      "discount",
+      CurveShift::KeyRate {
+        pillar: 5.0,
+        amount: 0.01,
+      },
+    ),
+    Scenario::new("10Y kink").with_curve_shift(
+      "discount",
+      CurveShift::KeyRate {
+        pillar: 10.0,
+        amount: 0.005,
+      },
+    ),
     Scenario::new("spot -20%").with_shock("spot", Shock::Multiplicative(0.8)),
     Scenario::new("spot +20%").with_shock("spot", Shock::Multiplicative(1.2)),
   ];

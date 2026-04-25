@@ -85,14 +85,7 @@ impl CliquetPricer {
 
   /// $E^Q[\max(S_T/S_0 - K, 0)] = e^{(r-q)T} N(d_1) - K N(d_2)$ —
   /// undiscounted.
-  fn expected_max_return_minus(
-    r: f64,
-    q: f64,
-    sigma: f64,
-    t: f64,
-    k: f64,
-    n: &Normal,
-  ) -> f64 {
+  fn expected_max_return_minus(r: f64, q: f64, sigma: f64, t: f64, k: f64, n: &Normal) -> f64 {
     let v_sq = sigma * sigma;
     let drift = r - q;
     let sqrt_t = t.sqrt();
@@ -100,7 +93,6 @@ impl CliquetPricer {
     let d2 = d1 - sigma * sqrt_t;
     (drift * t).exp() * n.cdf(d1) - k * n.cdf(d2)
   }
-
 }
 
 /// Monte-Carlo cliquet pricer with optional global cap/floor on the sum of
@@ -192,7 +184,10 @@ mod tests {
     };
     let price = p.price();
     let expected = (-r * t).exp() * (((r - q) * t).exp() - 1.0);
-    assert!((price - expected).abs() < 1e-9, "price={price}, expected={expected}");
+    assert!(
+      (price - expected).abs() < 1e-9,
+      "price={price}, expected={expected}"
+    );
   }
 
   /// Cliquet with floor at 0 (capped only on the downside) is positive and
@@ -292,18 +287,20 @@ mod tests {
   /// Higher volatility increases a floored cliquet's value (vega positive).
   #[test]
   fn floored_cliquet_has_positive_vega() {
-    let make = |sigma: f64| CliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      t: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma,
-      local_floor: Some(0.0),
-      local_cap: None,
-    }
-    .price();
+    let make = |sigma: f64| {
+      CliquetPricer {
+        s: 100.0,
+        notional: 100.0,
+        m: 12,
+        t: 1.0,
+        r: 0.04,
+        q: 0.0,
+        sigma,
+        local_floor: Some(0.0),
+        local_cap: None,
+      }
+      .price()
+    };
     assert!(make(0.30) > make(0.15));
   }
 }

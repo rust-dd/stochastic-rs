@@ -77,9 +77,7 @@ pub fn realized_skewness<T: FloatExt>(returns: ArrayView1<T>) -> T {
   if rv <= T::zero() {
     return T::zero();
   }
-  let cube_sum = returns
-    .iter()
-    .fold(T::zero(), |acc, &r| acc + r * r * r);
+  let cube_sum = returns.iter().fold(T::zero(), |acc, &r| acc + r * r * r);
   T::from_usize_(n).sqrt() * cube_sum / rv.powf(T::from_f64_fast(1.5))
 }
 
@@ -113,8 +111,9 @@ pub fn realized_quarticity<T: FloatExt>(returns: ArrayView1<T>) -> T {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
+
+  use super::*;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol
@@ -143,7 +142,11 @@ mod tests {
     let (rs_minus, rs_plus) = realized_semivariance(r.view(), 0.0);
     let rv = realized_variance(r.view());
     assert!(approx(rs_minus + rs_plus, rv, 1e-15));
-    assert!(approx(rs_minus, 0.02_f64.powi(2) + 0.005_f64.powi(2), 1e-15));
+    assert!(approx(
+      rs_minus,
+      0.02_f64.powi(2) + 0.005_f64.powi(2),
+      1e-15
+    ));
     assert!(approx(rs_plus, 0.01_f64.powi(2) + 0.03_f64.powi(2), 1e-15));
   }
 

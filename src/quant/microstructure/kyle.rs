@@ -36,8 +36,14 @@ pub struct KyleEquilibrium<T: FloatExt> {
 
 /// Solve the single-period Kyle equilibrium.
 pub fn single_period_kyle<T: FloatExt>(prior_variance: T, noise_variance: T) -> KyleEquilibrium<T> {
-  assert!(prior_variance > T::zero(), "prior_variance must be positive");
-  assert!(noise_variance > T::zero(), "noise_variance must be positive");
+  assert!(
+    prior_variance > T::zero(),
+    "prior_variance must be positive"
+  );
+  assert!(
+    noise_variance > T::zero(),
+    "noise_variance must be positive"
+  );
   let beta = (noise_variance / prior_variance).sqrt();
   let lambda = T::from_f64_fast(0.5) * (prior_variance / noise_variance).sqrt();
   let expected_profit = T::from_f64_fast(0.5) * (prior_variance * noise_variance).sqrt();
@@ -70,7 +76,10 @@ pub fn multi_period_kyle<T: FloatExt>(
   noise_variance_per_round: T,
   n_periods: usize,
 ) -> Vec<KyleEquilibrium<T>> {
-  assert!(prior_variance > T::zero(), "prior_variance must be positive");
+  assert!(
+    prior_variance > T::zero(),
+    "prior_variance must be positive"
+  );
   assert!(
     noise_variance_per_round > T::zero(),
     "noise_variance_per_round must be positive"
@@ -82,12 +91,11 @@ pub fn multi_period_kyle<T: FloatExt>(
   let mut out = Vec::with_capacity(n_periods);
   for &alpha_n in &alphas {
     let one_minus_alpha = T::one() - alpha_n;
-    let lambda =
-      (alpha_n * sigma / (one_minus_alpha * noise_variance_per_round)).sqrt();
+    let lambda = (alpha_n * sigma / (one_minus_alpha * noise_variance_per_round)).sqrt();
     let beta = one_minus_alpha / (T::from_f64_fast(2.0) * lambda);
     let sigma_next = one_minus_alpha * sigma;
-    let expected_profit = lambda * noise_variance_per_round
-      + (sigma - sigma_next) / (T::from_f64_fast(4.0) * lambda);
+    let expected_profit =
+      lambda * noise_variance_per_round + (sigma - sigma_next) / (T::from_f64_fast(4.0) * lambda);
     out.push(KyleEquilibrium {
       beta,
       lambda,

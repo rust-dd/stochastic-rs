@@ -74,12 +74,7 @@ impl<T: ?Sized> Handle<T> {
 
   /// True iff the handle currently points at something.
   pub fn is_linked(&self) -> bool {
-    self
-      .inner
-      .link
-      .read()
-      .map(|g| g.is_some())
-      .unwrap_or(false)
+    self.inner.link.read().map(|g| g.is_some()).unwrap_or(false)
   }
 
   /// Borrow a strong pointer to the target (if linked).
@@ -170,9 +165,10 @@ impl<T: ?Sized + Send + Sync> Observable for Handle<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
+
+  use super::*;
 
   struct Counter(AtomicUsize);
   impl Observer for Counter {

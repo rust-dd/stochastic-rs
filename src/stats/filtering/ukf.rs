@@ -164,7 +164,10 @@ where
   }
   let s_inv = s.inv().expect("UKF innovation covariance singular");
   let kalman_gain = cross.dot(&s_inv);
-  let innovation: Array1<f64> = (0..m).map(|j| observation[j] - z_mean[j]).collect::<Vec<_>>().into();
+  let innovation: Array1<f64> = (0..m)
+    .map(|j| observation[j] - z_mean[j])
+    .collect::<Vec<_>>()
+    .into();
   let correction = kalman_gain.dot(&innovation);
   let mut mean_post = mean_pred.clone();
   for j in 0..n {
@@ -186,10 +189,10 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
   use ndarray::Array2;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   #[test]

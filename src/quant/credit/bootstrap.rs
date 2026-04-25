@@ -103,8 +103,7 @@ pub fn bootstrap_hazard<T: FloatExt>(
       quote.premium_day_count,
     );
 
-    let tau_k: T = DayCountConvention::Actual365Fixed
-      .year_fraction(valuation_date, quote.maturity);
+    let tau_k: T = DayCountConvention::Actual365Fixed.year_fraction(valuation_date, quote.maturity);
 
     let anchor_times = times.clone();
     let anchor_hazards = hazards.clone();
@@ -123,7 +122,9 @@ pub fn bootstrap_hazard<T: FloatExt>(
       );
 
       let valuation = cds.valuation(valuation_date, discount_day_count, discount, &curve);
-      (valuation.fair_spread - spread).to_f64().unwrap_or(f64::NAN)
+      (valuation.fair_spread - spread)
+        .to_f64()
+        .unwrap_or(f64::NAN)
     };
 
     let mut convergency = SimpleConvergency::<f64> {

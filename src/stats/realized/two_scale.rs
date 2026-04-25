@@ -111,9 +111,9 @@ fn average_subsample_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   fn simulate_noisy_path(seed: u64, n: usize, sigma: f64, omega: f64) -> (Array1<f64>, f64) {

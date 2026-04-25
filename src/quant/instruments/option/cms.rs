@@ -37,11 +37,7 @@ fn g_function<T: FloatExt>(s: T, n: T, delta: T) -> T {
 ///
 /// `swap_years` is the tenor of the CMS-referenced swap; `fixed_freq` is the
 /// number of fixed-leg payments per year of that swap.
-pub fn hagan_linear_tsr_convexity_factor<T: FloatExt>(
-  s0: T,
-  swap_years: T,
-  fixed_freq: T,
-) -> T {
+pub fn hagan_linear_tsr_convexity_factor<T: FloatExt>(s0: T, swap_years: T, fixed_freq: T) -> T {
   let delta = T::one() / fixed_freq;
   let n = swap_years * fixed_freq;
   let bump = s0.abs() * T::from_f64_fast(1e-4);
@@ -221,10 +217,8 @@ mod tests {
 
   #[test]
   fn payment_delay_adds_positive_adjustment() {
-    let nat =
-      hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, 2.0, 0.0);
-    let delayed =
-      hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, 2.0, 0.5);
+    let nat = hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, 2.0, 0.0);
+    let delayed = hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, 2.0, 0.5);
     assert!(delayed > nat, "delay must push adjustment upwards");
   }
 }

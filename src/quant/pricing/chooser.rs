@@ -183,9 +183,7 @@ impl ForwardStartPricer {
     let disc = (-self.r * tau).exp();
     match self.option_type {
       OptionType::Call => self.s * coc1 * (coc_tau * n.cdf(d1) - self.alpha * disc * n.cdf(d2)),
-      OptionType::Put => {
-        self.s * coc1 * (self.alpha * disc * n.cdf(-d2) - coc_tau * n.cdf(-d1))
-      }
+      OptionType::Put => self.s * coc1 * (self.alpha * disc * n.cdf(-d2) - coc_tau * n.cdf(-d1)),
     }
   }
 }
@@ -301,7 +299,10 @@ mod tests {
       t: 1.0,
       option_type: OptionType::Call,
     };
-    let high = ForwardStartPricer { sigma: 0.40, ..base.clone() };
+    let high = ForwardStartPricer {
+      sigma: 0.40,
+      ..base.clone()
+    };
     assert!(base.price() > 0.0);
     assert!(high.price() > base.price());
   }

@@ -165,11 +165,7 @@ impl<T: FloatExt> Scenario<T> {
   }
 
   /// Attach a curve shift keyed by curve name.
-  pub fn with_curve_shift(
-    mut self,
-    curve_key: impl Into<String>,
-    shift: CurveShift<T>,
-  ) -> Self {
+  pub fn with_curve_shift(mut self, curve_key: impl Into<String>, shift: CurveShift<T>) -> Self {
     self.curve_shifts.push((curve_key.into(), shift));
     self
   }

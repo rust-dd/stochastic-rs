@@ -69,7 +69,9 @@ impl<T: FloatExt, V: VolatilityModel<T>> EuropeanSwaption<T, V> {
     discount_day_count: DayCountConvention,
     curves: &(impl CurveProvider<T> + ?Sized),
   ) -> SwaptionValuation<T> {
-    let swap_valuation = self.swap.valuation(valuation_date, discount_day_count, curves);
+    let swap_valuation = self
+      .swap
+      .valuation(valuation_date, discount_day_count, curves);
     let annuity = swap_valuation.annuity;
     let forward_swap_rate = swap_valuation.fair_rate;
     let tau = expiry_day_count.year_fraction(valuation_date, self.expiry);
@@ -105,12 +107,7 @@ impl<T: FloatExt, V: VolatilityModel<T>> EuropeanSwaption<T, V> {
     curves: &(impl CurveProvider<T> + ?Sized),
   ) -> T {
     self
-      .valuation(
-        valuation_date,
-        expiry_day_count,
-        discount_day_count,
-        curves,
-      )
+      .valuation(valuation_date, expiry_day_count, discount_day_count, curves)
       .npv
   }
 }

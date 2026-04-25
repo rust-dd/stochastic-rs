@@ -74,7 +74,10 @@ pub fn sample_covariance<T: FloatExt>(returns: ArrayView2<T>) -> Array2<T> {
 /// $\hat\gamma = \|S - \mu I\|_F^2$.
 pub fn ledoit_wolf_shrinkage<T: FloatExt>(returns: ArrayView2<T>) -> LedoitWolfResult<T> {
   let (t, p) = returns.dim();
-  assert!(t >= 2 && p >= 1, "need at least two observations and one asset");
+  assert!(
+    t >= 2 && p >= 1,
+    "need at least two observations and one asset"
+  );
   let s = sample_covariance(returns);
   let mut means = Array1::<T>::zeros(p);
   for j in 0..p {
@@ -151,9 +154,9 @@ pub fn ledoit_wolf_shrinkage<T: FloatExt>(returns: ArrayView2<T>) -> LedoitWolfR
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {

@@ -66,5 +66,11 @@ fn bench_spread(c: &mut Criterion) {
   });
 }
 
-criterion_group!(benches, bench_almgren_chriss, bench_kyle, bench_impact, bench_spread);
+criterion_group!(
+  benches,
+  bench_almgren_chriss,
+  bench_kyle,
+  bench_impact,
+  bench_spread
+);
 criterion_main!(benches);

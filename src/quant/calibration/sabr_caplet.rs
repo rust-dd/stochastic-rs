@@ -136,7 +136,11 @@ impl SabrCapletCalibrator {
         .configure(|s| s.max_iters(self.max_iters))
         .run()
       {
-        Ok(res) => res.state.get_best_param().cloned().unwrap_or_else(|| simplex[0].clone()),
+        Ok(res) => res
+          .state
+          .get_best_param()
+          .cloned()
+          .unwrap_or_else(|| simplex[0].clone()),
         Err(_) => {
           converged = false;
           simplex[0].clone()

@@ -73,8 +73,7 @@ impl<T: FloatExt> RlKernel<T> {
     let mut weights = Array1::<T>::zeros(degree);
     for i in 0..degree {
       nodes[i] = T::from_f64_fast(nodes_f64[i]);
-      weights[i] =
-        T::from_f64_fast(weights_f64[i] * nodes_f64[i].exp() * inv_gamma_half_minus_h);
+      weights[i] = T::from_f64_fast(weights_f64[i] * nodes_f64[i].exp() * inv_gamma_half_minus_h);
     }
 
     Self {
@@ -184,8 +183,16 @@ mod tests {
     for (i, (xs, ws)) in scipy_first.iter().enumerate() {
       let dx = (nodes[i] - xs).abs();
       let dw = (weights[i] - ws).abs() / ws;
-      assert!(dx < 1e-10, "node {i}: got {} vs scipy {xs} (diff {dx})", nodes[i]);
-      assert!(dw < 1e-8, "weight {i}: got {} vs scipy {ws} (rel {dw})", weights[i]);
+      assert!(
+        dx < 1e-10,
+        "node {i}: got {} vs scipy {xs} (diff {dx})",
+        nodes[i]
+      );
+      assert!(
+        dw < 1e-8,
+        "weight {i}: got {} vs scipy {ws} (rel {dw})",
+        weights[i]
+      );
     }
   }
 

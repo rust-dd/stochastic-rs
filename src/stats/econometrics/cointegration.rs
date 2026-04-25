@@ -142,14 +142,7 @@ pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenResult {
     .collect();
   eigs.sort_by(|a, b| b.partial_cmp(a).unwrap());
   let trace: Array1<f64> = (0..k)
-    .map(|r| {
-      -(n_eff as f64)
-        * eigs
-          .iter()
-          .skip(r)
-          .map(|&l| (1.0 - l).ln())
-          .sum::<f64>()
-    })
+    .map(|r| -(n_eff as f64) * eigs.iter().skip(r).map(|&l| (1.0 - l).ln()).sum::<f64>())
     .collect::<Vec<_>>()
     .into();
   let mut crit = vec![0.0_f64; k];
@@ -177,7 +170,9 @@ fn residualise(y: &Array2<f64>, x: &Array2<f64>) -> Array2<f64> {
   }
   for col in 0..p {
     let target = y.column(col).to_owned();
-    let sol = x.least_squares(&target).expect("residualisation OLS failed");
+    let sol = x
+      .least_squares(&target)
+      .expect("residualisation OLS failed");
     let beta = sol.solution.clone();
     for row in 0..n {
       let mut yhat = 0.0;
@@ -198,10 +193,10 @@ fn osterwald_lenum_5pct() -> Vec<f64> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
   use ndarray::Array2;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {

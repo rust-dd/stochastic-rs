@@ -144,7 +144,13 @@ pub struct ArithmeticBasketLevyPricer {
 impl ArithmeticBasketLevyPricer {
   /// Price using Levy (1992) two-moment lognormal approximation.
   pub fn price(&self) -> f64 {
-    let m1 = first_moment(self.s.view(), self.weights.view(), self.q.view(), self.r, self.t);
+    let m1 = first_moment(
+      self.s.view(),
+      self.weights.view(),
+      self.q.view(),
+      self.r,
+      self.t,
+    );
     let m2 = second_moment(
       self.s.view(),
       self.weights.view(),
@@ -168,13 +174,7 @@ impl ArithmeticBasketLevyPricer {
   }
 }
 
-fn first_moment(
-  s: ArrayView1<f64>,
-  w: ArrayView1<f64>,
-  q: ArrayView1<f64>,
-  r: f64,
-  t: f64,
-) -> f64 {
+fn first_moment(s: ArrayView1<f64>, w: ArrayView1<f64>, q: ArrayView1<f64>, r: f64, t: f64) -> f64 {
   let mut m = 0.0;
   for i in 0..s.len() {
     m += w[i] * s[i] * ((r - q[i]) * t).exp();
@@ -195,8 +195,7 @@ fn second_moment(
   let mut m = 0.0;
   for i in 0..n {
     for j in 0..n {
-      let exponent =
-        ((r - q[i]) + (r - q[j]) + rho[[i, j]] * sigma[i] * sigma[j]) * t;
+      let exponent = ((r - q[i]) + (r - q[j]) + rho[[i, j]] * sigma[i] * sigma[j]) * t;
       m += w[i] * w[j] * s[i] * s[j] * exponent.exp();
     }
   }
@@ -250,7 +249,9 @@ impl McBasketPricer {
     let drifts: Vec<f64> = (0..n_assets)
       .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.t)
       .collect();
-    let vols: Vec<f64> = (0..n_assets).map(|i| self.sigma[i] * self.t.sqrt()).collect();
+    let vols: Vec<f64> = (0..n_assets)
+      .map(|i| self.sigma[i] * self.t.sqrt())
+      .collect();
     let phi = match self.option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
@@ -299,10 +300,21 @@ impl McBasketPricer {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
 
-  fn iid_basket(n: usize, sigma: f64, rho: f64) -> (Array1<f64>, Array1<f64>, Array1<f64>, Array1<f64>, Array2<f64>) {
+  use super::*;
+
+  fn iid_basket(
+    n: usize,
+    sigma: f64,
+    rho: f64,
+  ) -> (
+    Array1<f64>,
+    Array1<f64>,
+    Array1<f64>,
+    Array1<f64>,
+    Array2<f64>,
+  ) {
     let s = Array1::from_elem(n, 100.0);
     let w = Array1::from_elem(n, 1.0 / n as f64);
     let sig = Array1::from_elem(n, sigma);

@@ -34,10 +34,7 @@ pub struct FamaMacBethResult {
 
 /// Run a Fama-MacBeth regression. `returns[t, i]` is asset `i`'s return at
 /// time `t`; `factors[t, k]` is factor `k`'s realisation at time `t`.
-pub fn fama_macbeth(
-  returns: ArrayView2<f64>,
-  factors: ArrayView2<f64>,
-) -> FamaMacBethResult {
+pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaMacBethResult {
   let (t, n) = returns.dim();
   let (tt, k) = factors.dim();
   assert_eq!(
@@ -55,9 +52,7 @@ pub fn fama_macbeth(
   let mut betas = Array2::<f64>::zeros((n, k + 1));
   for asset in 0..n {
     let y: Array1<f64> = returns.column(asset).to_owned();
-    let sol = design_ts
-      .least_squares(&y)
-      .expect("first-pass OLS failed");
+    let sol = design_ts.least_squares(&y).expect("first-pass OLS failed");
     for j in 0..(k + 1) {
       betas[[asset, j]] = sol.solution[j];
     }
@@ -72,9 +67,7 @@ pub fn fama_macbeth(
   let mut gamma_series = Array2::<f64>::zeros((t, k + 1));
   for time in 0..t {
     let y: Array1<f64> = returns.row(time).to_owned();
-    let sol = design_xs
-      .least_squares(&y)
-      .expect("second-pass OLS failed");
+    let sol = design_xs.least_squares(&y).expect("second-pass OLS failed");
     for j in 0..(k + 1) {
       gamma_series[[time, j]] = sol.solution[j];
     }
@@ -114,7 +107,6 @@ pub fn fama_macbeth(
 #[cfg(test)]
 mod tests {
   use super::*;
-
   use crate::distributions::normal::SimdNormal;
 
   #[test]
@@ -140,8 +132,7 @@ mod tests {
         let f = factors_buf[time];
         let beta_i = betas_buf[asset];
         let resid = resid_buf[time * n + asset];
-        returns[[time, asset]] =
-          true_intercept + beta_i * (true_premium + f) + resid;
+        returns[[time, asset]] = true_intercept + beta_i * (true_premium + f) + resid;
       }
     }
     let res = fama_macbeth(returns.view(), factors.view());

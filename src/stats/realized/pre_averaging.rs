@@ -47,10 +47,7 @@ pub fn pre_averaged_variance<T: FloatExt>(returns: ArrayView1<T>, theta: T) -> T
 }
 
 /// Pre-averaged variance estimator with explicit block length `kn`.
-pub fn pre_averaged_variance_with_block<T: FloatExt>(
-  returns: ArrayView1<T>,
-  kn: usize,
-) -> T {
+pub fn pre_averaged_variance_with_block<T: FloatExt>(returns: ArrayView1<T>, kn: usize) -> T {
   let n = returns.len();
   if n < kn || kn < 2 {
     return T::zero();
@@ -75,18 +72,14 @@ pub fn pre_averaged_variance_with_block<T: FloatExt>(
 #[inline]
 fn triangular_weight<T: FloatExt>(x: T) -> T {
   let half = T::from_f64_fast(0.5);
-  if x < half {
-    x
-  } else {
-    T::one() - x
-  }
+  if x < half { x } else { T::one() - x }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
 
+  use super::*;
   use crate::distributions::normal::SimdNormal;
 
   fn iid_normal(seed: u64, n: usize, std: f64) -> Array1<f64> {

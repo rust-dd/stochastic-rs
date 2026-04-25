@@ -110,7 +110,9 @@ impl<T: FloatExt> Deposit<T> {
     discount_day_count: DayCountConvention,
     curves: &(impl CurveProvider<T> + ?Sized),
   ) -> T {
-    self.valuation(valuation_date, discount_day_count, curves).npv
+    self
+      .valuation(valuation_date, discount_day_count, curves)
+      .npv
   }
 
   /// Fair (par) deposit rate making the contract zero-NPV.
@@ -128,16 +130,20 @@ impl<T: FloatExt> Deposit<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
 
+  use super::*;
   use crate::quant::curves::DiscountCurve;
   use crate::quant::curves::InterpolationMethod;
 
   fn flat_curve(r: f64, tenor_years: f64) -> DiscountCurve<f64> {
     let times = Array1::from(vec![0.25_f64, 0.5, 1.0, tenor_years]);
     let rates = Array1::from(vec![r; 4]);
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LogLinearOnDiscountFactors)
+    DiscountCurve::from_zero_rates(
+      &times,
+      &rates,
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    )
   }
 
   #[test]
@@ -160,7 +166,10 @@ mod tests {
       deposit.day_count,
     );
     assert!(
-      at_par.npv(val_date, DayCountConvention::Actual365Fixed, &curve).abs() < 1e-6
+      at_par
+        .npv(val_date, DayCountConvention::Actual365Fixed, &curve)
+        .abs()
+        < 1e-6
     );
   }
 }

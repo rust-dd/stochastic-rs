@@ -177,10 +177,7 @@ impl<T: FloatExt, S: SeedExt> FGN<T, S> {
   /// covariance — Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2
   /// Step 4, MATLAB listing "two independent fields").
   #[inline]
-  pub(crate) fn sample_pair_cpu_impl<S2: SeedExt>(
-    &self,
-    mut seed: S2,
-  ) -> (Array1<T>, Array1<T>) {
+  pub(crate) fn sample_pair_cpu_impl<S2: SeedExt>(&self, mut seed: S2) -> (Array1<T>, Array1<T>) {
     let len = 2 * self.n;
     let mut fgn_re = Array1::<T>::zeros(self.out_len);
     let mut fgn_im = Array1::<T>::zeros(self.out_len);
@@ -202,11 +199,7 @@ impl<T: FloatExt, S: SeedExt> FGN<T, S> {
       let mut rnd_view = ArrayViewMut1::from(rnd);
       ndfft_inplace_par(&mut rnd_view, &*self.fft_handler, 0);
       let src = rnd_view.slice(s![1..self.out_len + 1]);
-      for ((r, i), c) in fgn_re
-        .iter_mut()
-        .zip(fgn_im.iter_mut())
-        .zip(src.iter())
-      {
+      for ((r, i), c) in fgn_re.iter_mut().zip(fgn_im.iter_mut()).zip(src.iter()) {
         *r = c.re * self.scale;
         *i = c.im * self.scale;
       }
@@ -532,8 +525,7 @@ mod tests {
       );
     }
 
-    let mean_p =
-      prim.iter().flatten().sum::<f64>() / (prim.len() * n) as f64;
+    let mean_p = prim.iter().flatten().sum::<f64>() / (prim.len() * n) as f64;
     let mean_s = sec.iter().flatten().sum::<f64>() / (sec.len() * n) as f64;
     let var_p = prim
       .iter()

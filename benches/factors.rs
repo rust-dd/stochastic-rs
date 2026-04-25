@@ -5,7 +5,6 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use ndarray::Array2;
-
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::quant::factors::fama_macbeth;
 use stochastic_rs::quant::factors::ledoit_wolf_shrinkage;
@@ -63,5 +62,11 @@ fn bench_pairs(c: &mut Criterion) {
   });
 }
 
-criterion_group!(benches, bench_shrinkage, bench_pca, bench_fama_macbeth, bench_pairs);
+criterion_group!(
+  benches,
+  bench_shrinkage,
+  bench_pca,
+  bench_fama_macbeth,
+  bench_pairs
+);
 criterion_main!(benches);

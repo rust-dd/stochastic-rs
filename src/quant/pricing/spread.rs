@@ -213,7 +213,10 @@ mod tests {
     };
     let price = p.price();
     let intrinsic = 200.0 * (-0.01_f64 * 0.5).exp() - 100.0 * (-0.02_f64 * 0.5).exp();
-    assert!(price > intrinsic, "Margrabe deep ITM={price} vs intrinsic={intrinsic}");
+    assert!(
+      price > intrinsic,
+      "Margrabe deep ITM={price} vs intrinsic={intrinsic}"
+    );
   }
 
   /// Margrabe ↔ MC (K=0) consistency: with enough paths the MC spread call
