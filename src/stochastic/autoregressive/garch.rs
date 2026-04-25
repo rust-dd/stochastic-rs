@@ -33,6 +33,7 @@ use crate::traits::ProcessExt;
 /// # Notes
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
 /// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
+#[derive(Debug, Clone)]
 pub struct GARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,

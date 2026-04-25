@@ -10,6 +10,7 @@ use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
+#[derive(Debug, Clone)]
 pub struct Merton1976Pricer {
   /// Underlying price
   pub s: f64,

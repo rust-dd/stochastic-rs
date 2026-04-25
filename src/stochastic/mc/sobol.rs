@@ -68,6 +68,7 @@ fn compute_direction_numbers(s: u32, a: u32, m_init: &[u32]) -> [u32; BITS] {
 }
 
 /// Sobol low-discrepancy sequence generator.
+#[derive(Debug, Clone)]
 pub struct SobolSeq {
   n_dims: usize,
   direction: Vec<[u32; BITS]>,

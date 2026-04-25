@@ -63,6 +63,7 @@ impl<T: FloatExt> MtPayoff<T> {
 /// let payoff = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
 /// let deltas = engine.all_deltas(&payoff);
 /// ```
+#[derive(Debug, Clone)]
 pub struct MtGreeks<T: FloatExt> {
   pub params: MultiHestonParams<T>,
   /// Regularisation parameter `h`. Recommended `∈ [0.001, 0.1]`.

@@ -112,6 +112,7 @@ impl HestonPricer {
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct HestonPricerBuilder {
   s: f64,
   v0: f64,

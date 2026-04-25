@@ -73,7 +73,7 @@ impl<T: FloatExt> CFGNS<T, Deterministic> {
 
 impl<T: FloatExt, S: SeedExt> CFGNS<T, S> {
   /// Sample with an explicit seed, used by callers like CFBMS.
-  pub(crate) fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
+  pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(Deterministic(seed))
   }
 

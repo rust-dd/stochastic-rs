@@ -40,6 +40,7 @@ pub struct MultiHestonParams<T: FloatExt> {
 }
 
 /// Simulated paths from a multi-asset Heston model.
+#[derive(Debug, Clone)]
 pub struct MultiHestonPaths<T: FloatExt> {
   pub prices: Array2<T>,
   pub vols: Array2<T>,

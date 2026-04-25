@@ -12,7 +12,7 @@ use crate::quant::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FiniteDifferenceMethod {
   Explicit,
   Implicit,
@@ -20,6 +20,7 @@ pub enum FiniteDifferenceMethod {
   CrankNicolson,
 }
 
+#[derive(Debug, Clone)]
 pub struct FiniteDifferencePricer {
   /// Underlying price
   pub s: f64,

@@ -25,6 +25,7 @@ use crate::traits::ProcessExt;
 /// - `sigma`: Standard deviation of noise \(\epsilon_t\).
 /// - `n`: Length of time series.
 /// - `m`: Optional batch size.
+#[derive(Debug, Clone)]
 pub struct MAq<T: FloatExt, S: SeedExt = Unseeded> {
   /// MA coefficients
   pub theta: Array1<T>,

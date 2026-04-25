@@ -33,6 +33,7 @@ use crate::traits::ProcessExt;
 /// The log-price Cholesky decomposition (Eq. 2.7 with ρ₁=0):
 ///
 /// dx = (r−½v)dt + ρ_t√v dW̃^ν + ρ₂√v dW̃^ρ + √(1−ρ_t²−ρ₂²)√v dW̃^x
+#[derive(Debug, Clone)]
 pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
   // Market
   /// Risk-free rate.

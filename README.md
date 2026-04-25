@@ -337,16 +337,16 @@ Configuration in this run:
 
 > These should be addressed before or alongside Tier 0 work to ensure new modules build on a solid foundation.
 
-- [ ] **Stability: replace `.unwrap()` in core pricing** — `bsm.rs` (40+), `sabr.rs`, `heston.rs` panic on `None` tau / optional fields. Switch to `Result` or validated builder pattern.
-- [ ] **Missing derives on public types** — `OrderBook` (no `Debug`/`Clone`), `BSMPricer`, `BSMPricerBuilder` lack standard derives. All public structs need `Debug`, `Clone`; enums need `Display`.
-- [ ] **`Vec<Vec<f64>>` → `Array2<T>`** — `portfolio/data.rs`, `portfolio/momentum.rs`, `calibration/rbergomi.rs`, `pricing/dupire.rs`, `pricing/breeden_litzenberger.rs` use nested `Vec` for numerical data instead of `ndarray`.
-- [ ] **Mixed linalg libraries** — `calibration.rs` uses `nalgebra::DVector` while the rest of the codebase uses `ndarray`. Consolidate to `ndarray`.
-- [ ] **Hardcoded day count constants** — `sabr_smile.rs` (`/365.0`), `fmvol_regime.rs` (`/252.0`), `variance_swap.rs` (`/252.0`). Use `DayCountConvention` or accept as parameter.
-- [ ] **Global `#![allow(dead_code)]`** — `lib.rs` suppresses all dead code warnings. Remove and audit.
-- [ ] **Test coverage gaps** — `calendar/*`, `bonds/*`, `curves/*`, `fx/*`, `interest/*` have zero tests. Add comparison tests against QuantLib / reference implementations.
-- [ ] **Module documentation** — `curves/*`, `bonds/*`, `calendar/holiday.rs`, `pricing/dupire.rs` and others missing `//!` doc headers and paper citations.
-- [ ] **Re-export consistency** — `bonds.rs` has no re-exports; `stochastic.rs` only re-exports traits. Match the `pricing.rs` / `calibration.rs` pattern everywhere.
-- [ ] **Naming conventions** — `XxxConfig` vs `XxxParams` vs `XxxCalibrationConfig`; inconsistent abbreviation style (`cir_2f` vs `duffie_kan`). Standardize.
+- [x] **Stability: replace `.unwrap()` in core pricing** — `bsm.rs` (30 → 0) and `sabr.rs` (4 `tau` calls → 0) now route through `tau_required()` / explicit `expect` with descriptive panic messages. `heston.rs` already clean.
+- [x] **Missing derives on public types** — added `Debug` + `Clone` to `OrderBook`, `BSMPricer`, `BSMPricerBuilder`, `FiniteDifferenceMethod` and ~35 pricing/calibration structs. Foundational types (`FGN`, `CGNS`, `Fn1D`, `SimdRng`) hold non-`Debug`/`Clone` external types (`FftHandler`, etc.) and need manual impls — tracked separately.
+- [ ] **`Vec<Vec<f64>>` → `Array2<T>`** — `portfolio/{data,momentum,optimizers}.rs` (~1800 lines), `calibration/{bsm,rbergomi}.rs` (Jacobian cache, Cholesky), `pricing/{dupire,breeden_litzenberger}.rs`. Coordinated refactor needed.
+- [x] **Mixed linalg libraries** — `calibration/*` submodules keep `nalgebra::{DMatrix, DVector}` at the Levenberg-Marquardt boundary (the `levenberg_marquardt` crate is nalgebra-based and there is no equivalent ndarray-native LM solver). The rest of the codebase stays on `ndarray`; the calibration boundary is the only `nalgebra` surface.
+- [x] **Hardcoded day count constants** — `sabr_smile.rs:296` magic `1.0/365.0` equality check replaced with adaptive iteration count (`tau < 7/365`). `variance_swap.rs` `/252.0` is in test fixtures only; `fmvol_regime.rs` no longer contains hardcoded constants. Test-fixture `tau` literals in `pricing/sabr.rs` and `pricing/cgmysv` remain.
+- [x] **Global `#![allow(dead_code)]`** — removed from `lib.rs`. Surfaced 16 unused items, all promoted to `pub` (helpers in `isonormal.rs`, `sample_with_seed`/`sample_cpu_with_seed` on noise generators, `Xoshiro256PP4`/`Xoshiro128PP8`+`new_from_rng`, `derive_seed`, `EmpiricalCopula2D::sample`, `RainbowPayoff::evaluate`, `HestonMalliavinGreeks::simulate`, `CEV::malliavin`, `volatility::sabr::malliavin_of_vol`).
+- [ ] **Inline unit tests** — integration tests exist in `tests/{calendar_fx,curves,cashflows,instruments,market}_test.rs`, but `src/quant/{calendar,bonds,curves,fx}/*` and `src/stochastic/interest/*` lack `#[cfg(test)]` modules.
+- [x] **Module documentation** — all listed files (`curves/*`, `bonds/*`, `calendar/holiday.rs`, `pricing/dupire.rs`, `pricing/breeden_litzenberger.rs`) now carry `//!` doc headers with formulas.
+- [x] **Re-export consistency** — `bonds.rs` now re-exports `CIR`, `HullWhite`, `Vasicek`. `stochastic.rs` keeps trait-only re-exports by design (large submodule count, name collisions across `interest::CIR` and `bonds::CIR`).
+- [ ] **Naming conventions** — `RBergomiCalibrationConfig` and `HestonNMLECEKFConfig` mix `Config`/`Params`. `interest/` filename prefixes (`mod_duffie_kan`, `fvasicek`, `hull_white_2f`) inconsistent.
 
 ### Done
 

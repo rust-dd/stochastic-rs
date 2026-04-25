@@ -51,7 +51,7 @@ pub struct Trade {
   pub maker_id: u64,
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct OrderBook {
   bids: BTreeMap<Price, VecDeque<Order>>, // best bid = last key
   asks: BTreeMap<Price, VecDeque<Order>>, // best ask = first key

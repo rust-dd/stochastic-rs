@@ -11,6 +11,7 @@
 //!
 
 /// Variance swap pricing utilities.
+#[derive(Debug, Clone)]
 pub struct VarianceSwapPricer {
   /// Spot price.
   pub s: f64,

@@ -10,6 +10,7 @@ use statrs::distribution::Normal;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
+#[derive(Debug, Clone)]
 pub struct AsianPricer {
   /// Underlying price
   pub s: f64,

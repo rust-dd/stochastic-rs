@@ -38,6 +38,7 @@ use crate::traits::ProcessExt;
 /// # Notes
 /// - This is essentially a T-GARCH-like structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
+#[derive(Debug, Clone)]
 pub struct AGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,

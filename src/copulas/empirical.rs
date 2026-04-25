@@ -57,7 +57,7 @@ impl EmpiricalCopula2D {
     EmpiricalCopula2D { rank_data }
   }
 
-  fn sample(&self, _n: usize) -> Array2<f64> {
+  pub fn sample(&self, _n: usize) -> Array2<f64> {
     self.rank_data.clone()
   }
 }

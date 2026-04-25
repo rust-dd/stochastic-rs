@@ -51,7 +51,7 @@ impl<T: FloatExt> Poisson<T, Deterministic> {
 
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   /// Sample with an explicit seed, used by callers like CompoundPoisson.
-  pub(crate) fn sample_with_seed(&self, seed: u64) -> Array1<T> {
+  pub fn sample_with_seed(&self, seed: u64) -> Array1<T> {
     self.sample_impl(Deterministic(seed))
   }
 

@@ -29,6 +29,7 @@ use crate::traits::ProcessExt;
 /// dX_t = κ(μ − tanh(X_t)) dt + σ dW_t
 ///
 /// Output ρ_t = tanh(X_t) ∈ (−1, 1).
+#[derive(Debug, Clone)]
 pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed (κ > 0).
   pub kappa: T,

@@ -20,6 +20,7 @@ use ndarray::Array2;
 ///
 /// Two-step ridge regression for autoregressive models with many exogenous
 /// predictors, combined with GARCH(1,1) error modeling.
+#[derive(Debug, Clone)]
 pub struct DrrGarch {
   /// AR coefficient estimate
   pub alpha_ar: f64,
@@ -36,6 +37,7 @@ pub struct DrrGarch {
 }
 
 /// Result of DRR-GARCH fitting.
+#[derive(Debug, Clone)]
 pub struct DrrGarchFit {
   /// Fitted model
   pub model: DrrGarch,

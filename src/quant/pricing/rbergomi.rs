@@ -22,6 +22,7 @@ use crate::traits::ModelPricer;
 ///
 /// Wraps calibrated [`RBergomiParams`] and simulation settings to implement
 /// [`ModelPricer`], enabling integration with the vol-surface pipeline.
+#[derive(Debug, Clone)]
 pub struct RBergomiPricer {
   /// Calibrated rBergomi parameters (H, rho, eta, xi0).
   pub params: RBergomiParams,

@@ -145,7 +145,7 @@ impl<T: FloatExt, S: SeedExt> SABR<T, S> {
   ///
   /// The Malliavin derivative of the volaility process in the SABR model is given by:
   /// D_r \sigma_t = \alpha \sigma_t 1_{[0, T]}(r)
-  fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
+  pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
     let [f, v] = self.sample();
 
     let mut malliavin = Array1::<T>::zeros(self.n);

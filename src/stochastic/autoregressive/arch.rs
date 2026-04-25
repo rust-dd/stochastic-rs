@@ -25,6 +25,7 @@ use crate::traits::ProcessExt;
 /// - `alpha`: Array of ARCH coefficients.
 /// - `n`: Number of observations.
 /// - `m`: Optional batch size.
+#[derive(Debug, Clone)]
 pub struct ARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Omega (constant term in variance)
   pub omega: T,

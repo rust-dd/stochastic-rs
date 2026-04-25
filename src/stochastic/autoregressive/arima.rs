@@ -20,6 +20,7 @@ use crate::traits::ProcessExt;
 /// \]
 /// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
 /// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
+#[derive(Debug, Clone)]
 pub struct ARIMA<T: FloatExt, S: SeedExt = Unseeded> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
   pub ar_coefs: Array1<T>,

@@ -14,6 +14,7 @@ use ndarray::Array1;
 use crate::traits::FloatExt;
 
 /// MLMC configuration.
+#[derive(Debug, Clone)]
 pub struct Mlmc<T: FloatExt> {
   /// Target root-mean-square error.
   pub epsilon: T,

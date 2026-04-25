@@ -157,7 +157,7 @@ where
 }
 
 /// Ornstein-Uhlenbeck kernel function
-fn ker_ou(t: f64, u: f64, alpha: f64) -> f64 {
+pub fn ker_ou(t: f64, u: f64, alpha: f64) -> f64 {
   if u <= t {
     (-(alpha * (t - u))).exp()
   } else {
@@ -177,7 +177,7 @@ pub fn fbm_custom_inc_cov(idx: usize, hurst: f64) -> f64 {
 }
 
 // ARFIMA autocovariance function
-fn arfima_acf(idx: i32, d: f64, sigma: f64) -> f64 {
+pub fn arfima_acf(idx: i32, d: f64, sigma: f64) -> f64 {
   if idx == 0 {
     sigma.powi(2) * gamma(1.0 - 2.0 * d) / (gamma(1.0 - d).powi(2))
   } else {
@@ -187,7 +187,7 @@ fn arfima_acf(idx: i32, d: f64, sigma: f64) -> f64 {
 }
 
 // L2 inner product function using quad for numerical integration
-fn l2_unit_inner_product<F1, F2>(function1: F1, function2: F2) -> f64
+pub fn l2_unit_inner_product<F1, F2>(function1: F1, function2: F2) -> f64
 where
   F1: Fn(f64) -> f64,
   F2: Fn(f64) -> f64,
@@ -199,7 +199,7 @@ where
 
 // Fractional Lévy Ornstein-Uhlenbeck inner product function (Unstable)
 // https://projecteuclid.org/journals/bernoulli/volume-17/issue-1/Fractional-L%C3%A9vy-driven-OrnsteinUhlenbeck-processes-and-stochastic-differential-equations/10.3150/10-BEJ281.pdf
-fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
+pub fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
   if d <= 0.0 || d >= 1.0 {
     panic!("The 'd' parameter must be in the range (0, 1).");
   }

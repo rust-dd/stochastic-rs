@@ -34,6 +34,7 @@ pub enum BSMCoc {
   GarmanKohlhagen1983,
 }
 
+#[derive(Debug, Clone)]
 pub struct BSMPricer {
   /// Underlying price
   pub s: f64,
@@ -110,6 +111,7 @@ impl BSMPricer {
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct BSMPricerBuilder {
   s: f64,
   v: f64,
@@ -180,7 +182,7 @@ impl PricerExt for BSMPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
     let (d1, d2) = self.d1_d2();
     let n = Normal::default();
-    let tau = self.tau().unwrap();
+    let tau = self.tau_required();
 
     let call = self.s * ((self.b() - self.r) * tau).exp() * n.cdf(d1)
       - self.k * (-self.r * tau).exp() * n.cdf(d2);
@@ -236,11 +238,20 @@ impl TimeExt for BSMPricer {
 }
 
 impl BSMPricer {
+  /// Time to maturity, panicking with a descriptive message if neither `tau`
+  /// nor `eval`+`expiration` were provided.
+  fn tau_required(&self) -> f64 {
+    self
+      .tau()
+      .expect("BSMPricer: time to maturity is unset; set `tau` or both `eval` and `expiration`")
+  }
+
   /// Calculate d1
   fn d1_d2(&self) -> (f64, f64) {
-    let d1 = (1.0 / (self.v * self.tau().unwrap().sqrt()))
-      * ((self.s / self.k).ln() + (self.b() + 0.5 * self.v.powi(2)) * self.tau().unwrap());
-    let d2 = d1 - self.v * self.tau().unwrap().sqrt();
+    let tau = self.tau_required();
+    let d1 = (1.0 / (self.v * tau.sqrt()))
+      * ((self.s / self.k).ln() + (self.b() + 0.5 * self.v.powi(2)) * tau);
+    let d2 = d1 - self.v * tau.sqrt();
 
     (d1, d2)
   }
@@ -249,10 +260,15 @@ impl BSMPricer {
   fn b(&self) -> f64 {
     match self.b {
       BSMCoc::Bsm1973 => self.r,
-      BSMCoc::Merton1973 => self.r - self.q.unwrap(),
+      BSMCoc::Merton1973 => {
+        self.r - self.q.expect("BSMCoc::Merton1973 requires `q` (dividend yield)")
+      }
       BSMCoc::Black1976 => 0.0,
       BSMCoc::Asay1982 => 0.0,
-      BSMCoc::GarmanKohlhagen1983 => self.r_d.unwrap() - self.r_f.unwrap(),
+      BSMCoc::GarmanKohlhagen1983 => {
+        self.r_d.expect("BSMCoc::GarmanKohlhagen1983 requires `r_d`")
+          - self.r_f.expect("BSMCoc::GarmanKohlhagen1983 requires `r_f`")
+      }
     }
   }
 
@@ -260,7 +276,7 @@ impl BSMPricer {
   pub fn delta(&self) -> f64 {
     let (d1, _) = self.d1_d2();
     let n = Normal::default();
-    let tau = self.tau().unwrap();
+    let tau = self.tau_required();
     let exp_bt = ((self.b() - self.r) * tau).exp();
 
     if self.option_type == OptionType::Call {
@@ -272,11 +288,11 @@ impl BSMPricer {
 
   /// Calculate the gamma
   pub fn gamma(&self) -> f64 {
-    let T = self.tau().unwrap();
+    let T = self.tau_required();
     let (d1, _) = self.d1_d2();
     let n = Normal::default();
 
-    ((self.b() - self.r) * T).exp() * n.pdf(d1) / (self.s * self.v * self.tau().unwrap().sqrt())
+    ((self.b() - self.r) * T).exp() * n.pdf(d1) / (self.s * self.v * self.tau_required().sqrt())
   }
 
   /// Calculate the gamma percent
@@ -289,11 +305,11 @@ impl BSMPricer {
     let (d1, d2) = self.d1_d2();
     let n = Normal::default();
 
-    let exp_bt = ((self.b() - self.r) * self.tau().unwrap()).exp();
-    let exp_rt = (-self.r * self.tau().unwrap()).exp();
+    let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
+    let exp_rt = (-self.r * self.tau_required()).exp();
     let pdf_d1 = n.pdf(d1);
 
-    let first_term = -self.s * exp_bt * pdf_d1 * self.v / (2.0 * self.tau().unwrap().sqrt());
+    let first_term = -self.s * exp_bt * pdf_d1 * self.v / (2.0 * self.tau_required().sqrt());
 
     if self.option_type == OptionType::Call {
       let second_term = -(self.b() - self.r) * self.s * exp_bt * n.cdf(d1);
@@ -312,9 +328,9 @@ impl BSMPricer {
     let n = Normal::default();
 
     self.s
-      * ((self.b() - self.r) * self.tau().unwrap()).exp()
+      * ((self.b() - self.r) * self.tau_required()).exp()
       * n.pdf(d1)
-      * self.tau().unwrap().sqrt()
+      * self.tau_required().sqrt()
   }
 
   /// Calculate the rho
@@ -322,12 +338,12 @@ impl BSMPricer {
     let (_, d2) = self.d1_d2();
     let n = Normal::default();
 
-    let exp_rt = (-self.r * self.tau().unwrap()).exp();
+    let exp_rt = (-self.r * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      self.k * self.tau().unwrap() * exp_rt * n.cdf(d2)
+      self.k * self.tau_required() * exp_rt * n.cdf(d2)
     } else {
-      -self.k * self.tau().unwrap() * exp_rt * n.cdf(-d2)
+      -self.k * self.tau_required() * exp_rt * n.cdf(-d2)
     }
   }
 
@@ -343,7 +359,7 @@ impl BSMPricer {
     let v = self.v;
     let r = self.r;
     let b = self.b();
-    let tau = self.tau().unwrap();
+    let tau = self.tau_required();
     let (d1, d2) = self.d1_d2();
     let n = Normal::default();
 
@@ -366,7 +382,7 @@ impl BSMPricer {
     let (d1, d2) = self.d1_d2();
     let n = Normal::default();
 
-    -((self.b() - self.r) * self.tau().unwrap()).exp() * n.pdf(d1) * d2 / self.v
+    -((self.b() - self.r) * self.tau_required()).exp() * n.pdf(d1) * d2 / self.v
   }
 
   /// Calculate the zomma
@@ -385,7 +401,7 @@ impl BSMPricer {
   pub fn speed(&self) -> f64 {
     let (d1, _) = self.d1_d2();
 
-    -self.gamma() * (1.0 + d1 / (self.v * self.tau().unwrap().sqrt())) / self.s
+    -self.gamma() * (1.0 + d1 / (self.v * self.tau_required().sqrt())) / self.s
   }
 
   /// Calculate the color
@@ -394,8 +410,8 @@ impl BSMPricer {
 
     self.gamma()
       * (self.r - self.b()
-        + self.b() * d1 / (self.v * self.tau().unwrap().sqrt())
-        + (1.0 - d1 * d2) / (2.0 * self.tau().unwrap()))
+        + self.b() * d1 / (self.v * self.tau_required().sqrt())
+        + (1.0 - d1 * d2) / (2.0 * self.tau_required()))
   }
 
   /// Calculate the ultima
@@ -410,8 +426,8 @@ impl BSMPricer {
     let (d1, d2) = self.d1_d2();
 
     self.vega()
-      * (self.r - self.b() + self.b() * d1 / (self.v * self.tau().unwrap().sqrt())
-        - (d1 * d2 + 1.0) / (2.0 * self.tau().unwrap()))
+      * (self.r - self.b() + self.b() * d1 / (self.v * self.tau_required().sqrt())
+        - (d1 * d2 + 1.0) / (2.0 * self.tau_required()))
   }
 
   /// Calculating Lambda (elasticity)
@@ -425,12 +441,12 @@ impl BSMPricer {
     let (d1, _) = self.d1_d2();
     let n = Normal::default();
 
-    let exp_bt = ((self.b() - self.r) * self.tau().unwrap()).exp();
+    let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      -self.tau().unwrap() * self.s * exp_bt * n.cdf(d1)
+      -self.tau_required() * self.s * exp_bt * n.cdf(d1)
     } else {
-      self.tau().unwrap() * self.s * exp_bt * n.cdf(-d1)
+      self.tau_required() * self.s * exp_bt * n.cdf(-d1)
     }
   }
 
@@ -451,7 +467,7 @@ impl BSMPricer {
     let (_, d2) = self.d1_d2();
     let n = Normal::default();
 
-    let exp_rt = (-self.r * self.tau().unwrap()).exp();
+    let exp_rt = (-self.r * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
       -exp_rt * n.cdf(d2)
@@ -465,8 +481,8 @@ impl BSMPricer {
     let (_, d2) = self.d1_d2();
     let n = Normal::default();
 
-    n.pdf(d2) * (-self.r * self.tau().unwrap()).exp()
-      / (self.k * self.v * self.tau().unwrap().sqrt())
+    n.pdf(d2) * (-self.r * self.tau_required()).exp()
+      / (self.k * self.v * self.tau_required().sqrt())
   }
 }
 

@@ -46,6 +46,7 @@ use crate::traits::ProcessExt;
 ///    to produce the combined polynomial with cross-terms.
 /// 2. A single-pass SARMA recursion generates the "fully differenced" data.
 /// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
+#[derive(Debug, Clone)]
 pub struct SARIMA<T: FloatExt, S: SeedExt = Unseeded> {
   /// Non-seasonal AR coefficients, length p
   pub non_seasonal_ar_coefs: Array1<T>,

@@ -31,6 +31,7 @@ fn van_der_corput(mut index: usize, base: usize) -> f64 {
 }
 
 /// Halton low-discrepancy sequence generator.
+#[derive(Debug, Clone)]
 pub struct HaltonSeq {
   n_dims: usize,
 }

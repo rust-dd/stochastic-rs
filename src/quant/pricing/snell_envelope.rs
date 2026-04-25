@@ -34,6 +34,7 @@ pub struct SnellEnvelopeResult {
   pub exercise_boundary: Vec<(f64, f64)>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SnellEnvelopePricer {
   /// Spot level $S_0$.
   pub s: f64,

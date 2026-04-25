@@ -28,6 +28,7 @@ pub enum BarrierType {
 /// $$
 /// \text{Down-and-out call}=\begin{cases}A-C+F&K>H\\B-D+F&K\le H\end{cases}
 /// $$
+#[derive(Debug, Clone)]
 pub struct BarrierPricer {
   /// Spot price.
   pub s: f64,
@@ -176,6 +177,7 @@ impl BarrierPricer {
 /// $$
 /// V_0=\sum_{n=-N}^{N}\bigl[\text{image}_n^+-\text{image}_n^-\bigr]
 /// $$
+#[derive(Debug, Clone)]
 pub struct DoubleBarrierPricer {
   /// Spot price.
   pub s: f64,
@@ -254,6 +256,7 @@ impl DoubleBarrierPricer {
 }
 
 /// Monte Carlo barrier option pricer using GBM path simulation.
+#[derive(Debug, Clone)]
 pub struct MCBarrierPricer {
   /// Number of Monte Carlo paths.
   pub n_paths: usize,

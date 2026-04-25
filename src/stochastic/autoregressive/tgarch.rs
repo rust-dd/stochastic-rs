@@ -37,6 +37,7 @@ use crate::traits::ProcessExt;
 /// # Notes
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
+#[derive(Debug, Clone)]
 pub struct TGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,

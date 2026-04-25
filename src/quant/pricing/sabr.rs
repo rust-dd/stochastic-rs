@@ -248,14 +248,22 @@ impl TimeExt for SabrPricer {
 }
 
 impl SabrPricer {
+  /// Time to maturity, panicking with a descriptive message if neither `tau`
+  /// nor `eval`+`expiration` were provided.
+  fn tau_required(&self) -> f64 {
+    self
+      .tau()
+      .expect("SabrPricer: time to maturity is unset; set `tau` or both `eval` and `expiration`")
+  }
+
   pub fn forward(&self) -> f64 {
-    forward_fx(self.s, self.tau().unwrap(), self.r, self.q.unwrap_or(0.0))
+    forward_fx(self.s, self.tau_required(), self.r, self.q.unwrap_or(0.0))
   }
   pub fn sigma(&self) -> f64 {
     hagan_implied_vol(
       self.k,
       self.forward(),
-      self.tau().unwrap(),
+      self.tau_required(),
       self.alpha,
       self.beta,
       self.nu,
@@ -268,7 +276,7 @@ impl SabrPricer {
       self.k,
       self.forward(),
       self.sigma(),
-      self.tau().unwrap(),
+      self.tau_required(),
       self.q.unwrap_or(0.0),
       phi,
     )
@@ -286,7 +294,7 @@ impl PricerExt for SabrPricer {
       None,
       None,
       self.q,
-      Some(self.tau().unwrap()),
+      Some(self.tau_required()),
       self.eval,
       self.expiration,
       OptionType::Call,

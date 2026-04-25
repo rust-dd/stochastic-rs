@@ -27,6 +27,7 @@ use crate::traits::ProcessExt;
 /// - `n`: Length of the time series.
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
+#[derive(Debug, Clone)]
 pub struct ARp<T: FloatExt, S: SeedExt = Unseeded> {
   /// AR coefficients
   pub phi: Array1<T>,

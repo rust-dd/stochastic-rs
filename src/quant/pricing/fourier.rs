@@ -21,6 +21,7 @@ use num_complex::Complex64;
 use quadrature::double_exponential;
 
 /// Cumulants of the log-price distribution.
+#[derive(Debug, Clone)]
 pub struct Cumulants {
   /// First cumulant (mean of log-return).
   pub c1: f64,
@@ -47,6 +48,7 @@ pub trait FourierModelExt {
 /// Carr–Madan FFT pricer.
 ///
 /// Evaluates call prices across a grid of strikes with a single FFT pass.
+#[derive(Debug, Clone)]
 pub struct CarrMadanPricer {
   /// Number of FFT points (must be a power of 2).
   pub n: usize,
@@ -253,6 +255,7 @@ impl<T: FourierModelExt> crate::traits::ModelPricer for T {
 }
 
 /// Black–Scholes–Merton model for Fourier pricing.
+#[derive(Debug, Clone)]
 pub struct BSMFourier {
   pub sigma: f64,
   pub r: f64,
@@ -276,6 +279,7 @@ impl FourierModelExt for BSMFourier {
 }
 
 /// Heston stochastic volatility model for Fourier pricing.
+#[derive(Debug, Clone)]
 pub struct HestonFourier {
   pub v0: f64,
   pub kappa: f64,
@@ -348,6 +352,7 @@ impl FourierModelExt for HestonFourier {
 ///   model and an analytical formula in pricing American put option",
 ///   J. Comput. Appl. Math. 392, 113422,
 ///   <https://doi.org/10.1016/j.cam.2021.113422>
+#[derive(Debug, Clone)]
 pub struct DoubleHestonFourier {
   /// Initial variance of factor 1.
   pub v1_0: f64,
@@ -428,6 +433,7 @@ impl FourierModelExt for DoubleHestonFourier {
 }
 
 /// Variance Gamma model for Fourier pricing.
+#[derive(Debug, Clone)]
 pub struct VarianceGammaFourier {
   pub sigma: f64,
   pub theta: f64,
@@ -461,6 +467,7 @@ impl FourierModelExt for VarianceGammaFourier {
 }
 
 /// CGMY model for Fourier pricing.
+#[derive(Debug, Clone)]
 pub struct CGMYFourier {
   pub c: f64,
   pub g: f64,
@@ -509,6 +516,7 @@ impl FourierModelExt for CGMYFourier {
 }
 
 /// Merton jump-diffusion model for Fourier pricing.
+#[derive(Debug, Clone)]
 pub struct MertonJDFourier {
   pub sigma: f64,
   pub lambda: f64,
@@ -540,6 +548,7 @@ impl FourierModelExt for MertonJDFourier {
 }
 
 /// Kou double-exponential jump-diffusion model for Fourier pricing.
+#[derive(Debug, Clone)]
 pub struct KouFourier {
   pub sigma: f64,
   pub lambda: f64,
@@ -594,6 +603,7 @@ impl FourierModelExt for KouFourier {
 ///
 /// Source:
 /// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
+#[derive(Debug, Clone)]
 pub struct HKDEFourier {
   /// Initial variance.
   pub v0: f64,
@@ -690,6 +700,7 @@ impl FourierModelExt for HKDEFourier {
 /// $$
 ///
 /// Reference: Bates (1996), "Jumps and Stochastic Volatility"
+#[derive(Debug, Clone)]
 pub struct BatesFourier {
   pub v0: f64,
   pub kappa: f64,

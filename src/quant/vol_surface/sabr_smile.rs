@@ -293,11 +293,9 @@ impl SabrSmileCalibrator {
     // Initial guess: [k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]
     let x0 = [s + 0.1, s - 0.1, s + 0.1, s - 0.1, 0.6, 0.5];
 
-    let niter = if (tau - (1.0 / 365.0)).abs() < 1e-12 {
-      1000
-    } else {
-      100
-    };
+    // Short-tenor smiles need more LM iterations because the SABR Hagan
+    // expansion is steeper near zero-tau; threshold ≈ 1 trading week.
+    let niter = if tau < 7.0 / 365.0 { 1000 } else { 100 };
 
     let problem = SabrSmileProblem {
       s,

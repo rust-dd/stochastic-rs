@@ -22,6 +22,7 @@ use crate::quant::OptionType;
 ///
 /// A floating-strike lookback call gives the right to buy at the observed
 /// minimum; a put gives the right to sell at the observed maximum.
+#[derive(Debug, Clone)]
 pub struct FloatingLookbackPricer {
   /// Current underlying price.
   pub s: f64,
@@ -98,6 +99,7 @@ impl FloatingLookbackPricer {
 ///
 /// A fixed-strike lookback call pays $\max(S_{\max}-K,0)$;
 /// a put pays $\max(K-S_{\min},0)$.
+#[derive(Debug, Clone)]
 pub struct FixedLookbackPricer {
   /// Current underlying price.
   pub s: f64,

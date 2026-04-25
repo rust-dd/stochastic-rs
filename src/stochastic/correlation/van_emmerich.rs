@@ -17,6 +17,7 @@ use crate::traits::ProcessExt;
 ///
 /// The diffusion coefficient vanishes *linearly* at ±1, keeping the
 /// process inside (−1, 1) when κ ≥ σ²/(1 ± μ).
+#[derive(Debug, Clone)]
 pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded> {
   pub kappa: T,
   pub mu: T,

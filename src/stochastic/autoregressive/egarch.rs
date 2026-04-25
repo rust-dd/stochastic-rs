@@ -43,6 +43,7 @@ use crate::traits::ProcessExt;
 /// 1. We assume that `alpha` and `gamma` each have length \(p\).
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
+#[derive(Debug, Clone)]
 pub struct EGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term (\(\omega\)) in log-variance
   pub omega: T,

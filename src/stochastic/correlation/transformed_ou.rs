@@ -59,6 +59,7 @@ impl Transformation {
 ///
 /// and maps to correlation via ρ_t = f(X_t) where f is a
 /// [`Transformation`] (tanh or arctan).
+#[derive(Debug, Clone)]
 pub struct TransformedOU<T: FloatExt, S: SeedExt = Unseeded> {
   pub kappa: T,
   pub mu: T,

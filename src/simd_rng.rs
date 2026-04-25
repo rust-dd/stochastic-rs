@@ -46,7 +46,7 @@ fn rotl_u32x8(x: u32x8, k: u32) -> u32x8 {
 }
 
 /// 4-lane parallel xoshiro256++ engine (64-bit output per lane).
-struct Xoshiro256PP4 {
+pub struct Xoshiro256PP4 {
   s0: u64x4,
   s1: u64x4,
   s2: u64x4,
@@ -66,7 +66,7 @@ fn splitmix64_next(state: &mut u64) -> u64 {
 }
 
 impl Xoshiro256PP4 {
-  fn new_from_rng(rng: &mut impl RngCore) -> Self {
+  pub fn new_from_rng(rng: &mut impl RngCore) -> Self {
     let mut seed = [0u8; 128];
     rng.fill_bytes(&mut seed);
     let u = unsafe { core::mem::transmute::<[u8; 128], [u64; 16]>(seed) };
@@ -106,7 +106,7 @@ impl Xoshiro256PP4 {
   }
 }
 
-struct Xoshiro128PP8 {
+pub struct Xoshiro128PP8 {
   s0: u32x8,
   s1: u32x8,
   s2: u32x8,
@@ -114,7 +114,7 @@ struct Xoshiro128PP8 {
 }
 
 impl Xoshiro128PP8 {
-  fn new_from_rng(rng: &mut impl RngCore) -> Self {
+  pub fn new_from_rng(rng: &mut impl RngCore) -> Self {
     let mut seed = [0u8; 128];
     rng.fill_bytes(&mut seed);
     let u = unsafe { core::mem::transmute::<[u8; 128], [u32; 32]>(seed) };
@@ -253,7 +253,7 @@ impl SeedExt for Deterministic {
 
 /// Derives a child seed from a mutable parent seed.
 #[inline]
-pub(crate) fn derive_seed(state: &mut u64) -> u64 {
+pub fn derive_seed(state: &mut u64) -> u64 {
   splitmix64_next(state)
 }
 

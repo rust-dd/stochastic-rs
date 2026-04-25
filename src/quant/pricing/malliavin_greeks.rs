@@ -21,6 +21,7 @@ struct HestonElKhatibPath {
 }
 
 /// Container for the four standard Greeks.
+#[derive(Debug, Clone)]
 pub struct Greeks {
   pub delta: f64,
   pub gamma: f64,
@@ -29,6 +30,7 @@ pub struct Greeks {
 }
 
 /// Malliavin-weighted Greeks computation for a European call under GBM dynamics.
+#[derive(Debug, Clone)]
 pub struct GbmMalliavinGreeks {
   /// Spot price
   pub s0: f64,
@@ -52,7 +54,7 @@ impl GbmMalliavinGreeks {
   /// Simulate GBM paths and return terminal stock prices and terminal Brownian values.
   ///
   /// Returns `(S_T, W_T)` each of length `n_paths`.
-  fn simulate(&self) -> (Array1<f64>, Array1<f64>) {
+  pub fn simulate(&self) -> (Array1<f64>, Array1<f64>) {
     let mu = self.r - self.q;
     let dt = self.tau / (self.n_steps - 1) as f64;
 
@@ -222,6 +224,7 @@ impl GbmMalliavinGreeks {
 }
 
 /// Malliavin-weighted Greeks computation for a European call under Heston dynamics.
+#[derive(Debug, Clone)]
 pub struct HestonMalliavinGreeks {
   /// Spot price
   pub s0: f64,
@@ -256,7 +259,7 @@ impl HestonMalliavinGreeks {
   /// and full W1 (price-driving Brownian) paths.
   ///
   /// Returns `(S_T, payoff, V_paths, W1_paths)`.
-  fn simulate(&self) -> (Array1<f64>, Array1<f64>, Array2<f64>, Array2<f64>) {
+  pub fn simulate(&self) -> (Array1<f64>, Array1<f64>, Array2<f64>, Array2<f64>) {
     let dt = self.tau / (self.n_steps - 1) as f64;
 
     let heston = Heston::new(

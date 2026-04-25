@@ -139,6 +139,7 @@ fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
 /// let price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
 /// assert!(price > 0.0);
 /// ```
+#[derive(Debug, Clone)]
 pub struct RegimeSwitchingModel {
   /// M x M generator matrix for the continuous-time Markov chain.
   /// Each row must sum to zero. Off-diagonal entries are non-negative.
@@ -213,6 +214,7 @@ impl FourierModelExt for RegimeSwitchingModel {
 /// - Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method for
 ///   European Options Based on Fourier-Cosine Series Expansions"
 /// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
+#[derive(Debug, Clone)]
 pub struct CosPricer {
   /// Number of cosine expansion terms.
   pub n: usize,

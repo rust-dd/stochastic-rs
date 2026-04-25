@@ -7,6 +7,7 @@
 use crate::quant::Moneyness;
 use crate::quant::OptionType;
 
+#[derive(Debug, Clone)]
 pub struct DeltaHedge {
   /// Current option value used by strategy/PnL routines.
   pub c: f64,

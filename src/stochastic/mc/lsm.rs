@@ -17,6 +17,7 @@ use ndarray_linalg::LeastSquaresSvd;
 use crate::traits::FloatExt;
 
 /// Longstaff-Schwartz American option pricer.
+#[derive(Debug, Clone)]
 pub struct Lsm<T: FloatExt> {
   /// Risk-free rate.
   pub r: T,

@@ -124,7 +124,7 @@ impl<T: FloatExt> FGN<T, Deterministic> {
 
 impl<T: FloatExt, S: SeedExt> FGN<T, S> {
   /// Sample fGn using a specific deterministic seed.
-  pub(crate) fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
+  pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
     self.sample_cpu_impl(Deterministic(seed))
   }
 

@@ -49,7 +49,7 @@ pub enum RainbowPayoff {
 }
 
 impl RainbowPayoff {
-  fn evaluate(&self, prices: &[f64], k: f64) -> f64 {
+  pub fn evaluate(&self, prices: &[f64], k: f64) -> f64 {
     let max_p = prices.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let min_p = prices.iter().cloned().fold(f64::INFINITY, f64::min);
     match self {
