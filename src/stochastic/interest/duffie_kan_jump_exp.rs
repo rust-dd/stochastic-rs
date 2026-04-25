@@ -202,3 +202,19 @@ py_process_2x1d!(PyDuffieKanJumpExp, DuffieKanJumpExp,
   sig: (alpha, beta, gamma_, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, lambda_, jump_scale, n, r0=None, x0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, gamma_: f64, rho: f64, a1: f64, b1: f64, c1: f64, sigma1: f64, a2: f64, b2: f64, c2: f64, sigma2: f64, lambda_: f64, jump_scale: f64, n: usize, r0: Option<f64>, x0: Option<f64>, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn sample_returns_two_paths() {
+    let dkj = DuffieKanJumpExp::<f64>::new(
+      0.5, 0.04, 0.5, -0.3, 0.01, 0.0, 0.0, 0.01, 0.0, 0.5, 0.0, 0.005,
+      0.5, 0.01, 64, Some(0.05), Some(0.05), Some(1.0),
+    );
+    let [r, x] = dkj.sample();
+    assert_eq!(r.len(), 64);
+    assert_eq!(x.len(), 64);
+  }
+}

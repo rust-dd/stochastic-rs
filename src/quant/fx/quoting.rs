@@ -121,3 +121,26 @@ fn quote_priority(code: &str) -> u8 {
     _ => 10,
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::quant::fx::currency;
+
+  #[test]
+  fn currency_pair_display() {
+    let p = CurrencyPair::new(currency::EUR, currency::USD);
+    assert_eq!(format!("{p}"), "EUR/USD");
+  }
+
+  #[test]
+  fn cross_rate_eurusd_usdjpy_to_eurjpy() {
+    // EUR/USD = 1.10, USD/JPY = 150 -> EUR/JPY = 165
+    let eurusd = CurrencyPair::new(currency::EUR, currency::USD);
+    let usdjpy = CurrencyPair::new(currency::USD, currency::JPY);
+    let (pair, rate) = cross_rate(eurusd, 1.10, usdjpy, 150.0).unwrap();
+    assert_eq!(pair.base.code, "EUR");
+    assert_eq!(pair.quote.code, "JPY");
+    assert!((rate - 165.0_f64).abs() < 1e-12);
+  }
+}

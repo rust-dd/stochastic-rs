@@ -248,3 +248,39 @@ impl PyADG {
       .unwrap())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::Array1;
+
+  use super::*;
+
+  fn const_one(_t: f64) -> f64 {
+    1.0
+  }
+  fn const_zero(_t: f64) -> f64 {
+    0.0
+  }
+
+  #[test]
+  fn sample_runs() {
+    let xn = 2;
+    let sigma = Array1::<f64>::from_vec(vec![0.01, 0.01]);
+    let x0 = Array1::<f64>::from_vec(vec![0.05, 0.05]);
+    let adg = ADG::<f64>::new(
+      const_one as fn(f64) -> f64,
+      const_one as fn(f64) -> f64,
+      sigma,
+      const_zero as fn(f64) -> f64,
+      const_one as fn(f64) -> f64,
+      const_zero as fn(f64) -> f64,
+      32,
+      xn,
+      x0,
+      Some(1.0),
+    );
+    let path = adg.sample();
+    assert_eq!(path.nrows(), xn);
+    assert_eq!(path.ncols(), 32);
+  }
+}

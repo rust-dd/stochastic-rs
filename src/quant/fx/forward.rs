@@ -102,3 +102,41 @@ impl<T: FloatExt> FxForward<T> {
     domestic_rate - (forward / spot).ln() / maturity
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::quant::fx::currency;
+
+  fn pair() -> CurrencyPair {
+    CurrencyPair::new(currency::EUR, currency::USD)
+  }
+
+  #[test]
+  fn forward_rate_at_zero_maturity_equals_spot() {
+    let f = FxForward::<f64>::new(pair(), 1.10, 0.05, 0.03, 0.0);
+    assert!((f.forward_rate() - 1.10).abs() < 1e-12);
+  }
+
+  #[test]
+  fn covered_interest_parity_at_one_year() {
+    // F = S * exp((rd - rf) * T) = 1.10 * exp((0.05 - 0.03) * 1) = 1.10 * exp(0.02)
+    let f = FxForward::<f64>::new(pair(), 1.10, 0.05, 0.03, 1.0);
+    let expected = 1.10 * 0.02_f64.exp();
+    assert!((f.forward_rate() - expected).abs() < 1e-12);
+  }
+
+  #[test]
+  fn premium_positive_when_domestic_higher() {
+    let f = FxForward::<f64>::new(pair(), 1.10, 0.05, 0.03, 1.0);
+    assert!(f.premium() > 0.0);
+  }
+
+  #[test]
+  fn implied_domestic_round_trip() {
+    let f = FxForward::<f64>::new(pair(), 1.10, 0.05, 0.03, 1.0);
+    let fwd = f.forward_rate();
+    let r_d = FxForward::<f64>::implied_domestic_rate(1.10, fwd, 0.03, 1.0);
+    assert!((r_d - 0.05).abs() < 1e-12);
+  }
+}

@@ -324,30 +324,42 @@ pub(crate) fn build_portfolio_target_internal(
   let mu: Vec<f64> = scores.iter().map(|s| s.predicted_return).collect();
   let sigmas: Vec<f64> = scores.iter().map(|s| s.predicted_vol.max(0.0)).collect();
 
-  let aligned = aligned_returns
+  let aligned: ndarray::Array2<f64> = aligned_returns
     .filter(|r| r.len() == scores.len() && !r.is_empty() && r.iter().all(|x| !x.is_empty()))
     .map(align_return_series)
-    .unwrap_or_default();
+    .unwrap_or_else(|| ndarray::Array2::zeros((0, 0)));
 
-  let corr_mat: Vec<Vec<f64>> = if let Some(c) = corr {
-    c.to_vec()
-  } else if aligned.is_empty() {
-    identity_matrix(scores.len())
+  let corr_mat: ndarray::Array2<f64> = if let Some(c) = corr {
+    let n = c.len();
+    let mut m = ndarray::Array2::<f64>::zeros((n, n));
+    for (i, row) in c.iter().enumerate() {
+      for (j, &v) in row.iter().enumerate() {
+        m[(i, j)] = v;
+      }
+    }
+    m
+  } else if aligned.nrows() == 0 {
+    ndarray::Array2::eye(scores.len())
   } else {
-    correlation_matrix(&aligned)
+    correlation_matrix(aligned.view())
   };
 
-  let cov = covariance_matrix(&sigmas, &corr_mat);
+  let cov = covariance_matrix(&sigmas, corr_mat.view());
+
+  // Adapter to optimizer (still Vec<Vec<f64>>-based internally).
+  let cov_v: Vec<Vec<f64>> = cov.outer_iter().map(|r| r.to_vec()).collect();
+  let corr_v: Vec<Vec<f64>> = corr_mat.outer_iter().map(|r| r.to_vec()).collect();
+  let aligned_v: Vec<Vec<f64>> = aligned.outer_iter().map(|r| r.to_vec()).collect();
 
   let result = optimize_with_method(
     optimizer,
     &mu,
-    &cov,
-    Some(&corr_mat),
-    if aligned.is_empty() {
+    &cov_v,
+    Some(&corr_v),
+    if aligned.nrows() == 0 {
       None
     } else {
-      Some(aligned.as_slice())
+      Some(aligned_v.as_slice())
     },
     target_return,
     risk_free,
@@ -496,14 +508,6 @@ fn compute_portfolio_vol(
     .map(|((_, w), s)| (w * s).powi(2))
     .sum();
   var.sqrt()
-}
-
-fn identity_matrix(n: usize) -> Vec<Vec<f64>> {
-  let mut m = vec![vec![0.0; n]; n];
-  for (i, row) in m.iter_mut().enumerate() {
-    row[i] = 1.0;
-  }
-  m
 }
 
 fn mean(xs: &[f64]) -> f64 {

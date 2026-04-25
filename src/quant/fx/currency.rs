@@ -232,3 +232,34 @@ define_currencies! {
   XPD { "XPD", 964, "Palladium (troy ounce)", "XPD", 0 },
   XDR { "XDR", 960, "IMF Special Drawing Rights", "SDR", 0 },
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn from_code_known_currencies() {
+    assert_eq!(from_code("USD").unwrap().numeric, 840);
+    assert_eq!(from_code("EUR").unwrap().numeric, 978);
+    assert_eq!(from_code("JPY").unwrap().minor_unit, 0);
+    assert!(from_code("XXX").is_none());
+  }
+
+  #[test]
+  fn from_numeric_round_trip() {
+    let usd = from_numeric(840).unwrap();
+    assert_eq!(usd.code, "USD");
+    let eur = from_numeric(978).unwrap();
+    assert_eq!(eur.code, "EUR");
+  }
+
+  #[test]
+  fn jpy_zero_minor_units() {
+    assert_eq!(JPY.minor_unit, 0);
+  }
+
+  #[test]
+  fn currency_display_uses_code() {
+    assert_eq!(format!("{USD}"), "USD");
+  }
+}

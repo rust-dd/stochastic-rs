@@ -172,12 +172,12 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use crate::stochastic::interest::adg::PyADG;
   use crate::stochastic::interest::bgm::PyBGM;
   use crate::stochastic::interest::duffie_kan::PyDuffieKan;
-  use crate::stochastic::interest::fvasicek::PyFVasicek;
+  use crate::stochastic::interest::fractional_vasicek::PyFVasicek;
   use crate::stochastic::interest::hjm::PyHJM;
   use crate::stochastic::interest::ho_lee::PyHoLee;
   use crate::stochastic::interest::hull_white::PyHullWhite;
   use crate::stochastic::interest::hull_white_2f::PyHullWhite2F;
-  use crate::stochastic::interest::mod_duffie_kan::PyDuffieKanJumpExp;
+  use crate::stochastic::interest::duffie_kan_jump_exp::PyDuffieKanJumpExp;
   use crate::stochastic::interest::vasicek::PyVasicek;
   use crate::stochastic::interest::wu_zhang::PyWuZhangD;
   use crate::stochastic::jump::bates::PyBates;

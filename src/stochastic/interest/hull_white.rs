@@ -167,3 +167,26 @@ impl PyHullWhite {
       .unwrap())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn const_theta(_t: f64) -> f64 {
+    0.04
+  }
+
+  #[test]
+  fn sample_length_matches_n() {
+    let hw = HullWhite::<f64>::new(
+      const_theta as fn(f64) -> f64,
+      0.5,
+      0.01,
+      64,
+      Some(0.04),
+      Some(1.0),
+    );
+    let path = hw.sample();
+    assert_eq!(path.len(), 64);
+  }
+}

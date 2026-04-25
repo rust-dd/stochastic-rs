@@ -149,3 +149,31 @@ impl<T: FloatExt> NelsonSiegel<T> {
     best
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn long_rate_approaches_beta0() {
+    // y(τ→∞) → β₀
+    let ns = NelsonSiegel::<f64>::new(0.04, -0.02, 0.01, 0.5);
+    let r_long = ns.zero_rate(50.0);
+    assert!((r_long - 0.04).abs() < 1e-3, "{r_long} ≠ β0=0.04");
+  }
+
+  #[test]
+  fn short_rate_equals_beta0_plus_beta1() {
+    // y(τ→0) → β₀ + β₁
+    let ns = NelsonSiegel::<f64>::new(0.04, -0.02, 0.01, 0.5);
+    let r_short = ns.zero_rate(1e-6);
+    assert!((r_short - 0.02).abs() < 1e-3, "{r_short} ≠ β0+β1=0.02");
+  }
+
+  #[test]
+  fn discount_factor_at_zero_is_one() {
+    let ns = NelsonSiegel::<f64>::new(0.04, -0.02, 0.01, 0.5);
+    let df = ns.discount_factor(0.0);
+    assert!((df - 1.0).abs() < 1e-12);
+  }
+}

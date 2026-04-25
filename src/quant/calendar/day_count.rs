@@ -141,3 +141,50 @@ pub(crate) fn days_in_month(year: i32, month: u32) -> u32 {
     _ => unreachable!(),
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use chrono::NaiveDate;
+
+  use super::*;
+
+  #[test]
+  fn act365_full_year() {
+    let d1 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+    let yf: f64 = DayCountConvention::Actual365Fixed.year_fraction(d1, d2);
+    // 366 days (2024 is a leap year) / 365 = 1.0027397...
+    assert!((yf - 366.0 / 365.0).abs() < 1e-12);
+  }
+
+  #[test]
+  fn act360_full_year() {
+    let d1 = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let yf: f64 = DayCountConvention::Actual360.year_fraction(d1, d2);
+    // 365 days / 360
+    assert!((yf - 365.0 / 360.0).abs() < 1e-12);
+  }
+
+  #[test]
+  fn thirty360_full_year() {
+    let d1 = NaiveDate::from_ymd_opt(2023, 1, 15).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+    let yf: f64 = DayCountConvention::Thirty360.year_fraction(d1, d2);
+    assert!((yf - 1.0).abs() < 1e-12);
+  }
+
+  #[test]
+  fn leap_year_detection() {
+    assert!(is_leap_year(2024));
+    assert!(!is_leap_year(2023));
+    assert!(!is_leap_year(1900));
+    assert!(is_leap_year(2000));
+  }
+
+  #[test]
+  fn days_in_february_leap() {
+    assert_eq!(days_in_month(2024, 2), 29);
+    assert_eq!(days_in_month(2023, 2), 28);
+  }
+}

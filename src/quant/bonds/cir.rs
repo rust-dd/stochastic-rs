@@ -64,3 +64,38 @@ impl TimeExt for CIR {
     self.expiration
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn zcb_at_zero_tau_equals_one() {
+    let c = CIR {
+      r_t: 0.05,
+      theta: 0.5,
+      mu: 0.04,
+      sigma: 0.01,
+      tau: 0.0,
+      eval: None,
+      expiration: None,
+    };
+    let p = c.calculate_price();
+    assert!((p - 1.0).abs() < 1e-10, "P(t,t)=1 violated: {p}");
+  }
+
+  #[test]
+  fn zcb_finite_at_short_tau() {
+    let c = CIR {
+      r_t: 0.05,
+      theta: 0.5,
+      mu: 0.04,
+      sigma: 0.01,
+      tau: 1.0,
+      eval: None,
+      expiration: None,
+    };
+    let p = c.calculate_price();
+    assert!(p.is_finite() && p > 0.0, "ZCB must be finite-positive, got {p}");
+  }
+}

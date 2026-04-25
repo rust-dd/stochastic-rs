@@ -991,9 +991,17 @@ pub fn optimize_with_method(
     OptimizerMethod::InverseVol => optimize_inverse_vol(mu, cov, risk_free),
     OptimizerMethod::RiskParity => optimize_risk_parity(mu, cov, risk_free),
     OptimizerMethod::HRP => {
-      let corr_mat = corr
-        .map(|x| x.to_vec())
-        .unwrap_or_else(|| corr_from_cov(cov));
+      let corr_mat: Vec<Vec<f64>> = corr.map(|x| x.to_vec()).unwrap_or_else(|| {
+        let n = cov.len();
+        let mut m = ndarray::Array2::<f64>::zeros((n, n));
+        for (i, row) in cov.iter().enumerate() {
+          for (j, &v) in row.iter().enumerate() {
+            m[(i, j)] = v;
+          }
+        }
+        let c = corr_from_cov(m.view());
+        c.outer_iter().map(|r| r.to_vec()).collect()
+      });
       optimize_hrp(mu, cov, &corr_mat, risk_free)
     }
     OptimizerMethod::BlackLitterman => optimize_black_litterman(mu, cov, risk_free, target_return),

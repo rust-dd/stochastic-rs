@@ -674,7 +674,7 @@ struct MsoeEngine {
   weights: Vec<f64>,
   decay: Vec<f64>,
   second_moment: Vec<f64>,
-  chol_l: Vec<Vec<f64>>,
+  chol_l: ndarray::Array2<f64>,
 }
 
 impl MsoeEngine {
@@ -683,13 +683,11 @@ impl MsoeEngine {
     let decay = lambdas.iter().map(|x| (-x * dt).exp()).collect::<Vec<_>>();
     let cov = build_step_covariance(h, dt, &lambdas);
     let l = cholesky_lower_with_jitter(cov);
-    let mut chol_l = Vec::with_capacity(l.nrows());
+    let mut chol_l = ndarray::Array2::<f64>::zeros((l.nrows(), l.ncols()));
     for row in 0..l.nrows() {
-      let mut v = vec![0.0_f64; row + 1];
       for col in 0..=row {
-        v[col] = l[(row, col)];
+        chol_l[(row, col)] = l[(row, col)];
       }
-      chol_l.push(v);
     }
     let second_moment = precompute_second_moments(h, dt, steps, &lambdas, &weights);
 
@@ -717,8 +715,8 @@ impl MsoeEngine {
     debug_assert_eq!(out.len(), self.dim());
     for (idx, item) in out.iter_mut().enumerate().take(self.dim()) {
       let mut acc = 0.0;
-      for (col, l_rc) in self.chol_l[idx].iter().enumerate() {
-        acc += l_rc * z[col];
+      for col in 0..=idx {
+        acc += self.chol_l[(idx, col)] * z[col];
       }
       *item = acc;
     }

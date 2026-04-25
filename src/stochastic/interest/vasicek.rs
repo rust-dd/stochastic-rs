@@ -91,3 +91,23 @@ py_process_1d!(PyVasicek, Vasicek,
   sig: (theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn sample_length_matches_n() {
+    let v = Vasicek::<f64>::new(0.5, 0.04, 0.01, 100, Some(0.05), Some(1.0));
+    let path = v.sample();
+    assert_eq!(path.len(), 100);
+  }
+
+  #[test]
+  fn sample_starts_at_x0() {
+    let x0 = 0.05;
+    let v = Vasicek::<f64>::new(0.5, 0.04, 0.01, 100, Some(x0), Some(1.0));
+    let path = v.sample();
+    assert!((path[0] - x0).abs() < 1e-12);
+  }
+}

@@ -280,3 +280,40 @@ pub fn zero_rates_from_points<T: FloatExt>(points: &[CurvePoint<T>]) -> Array1<T
       .collect(),
   )
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn pts() -> Vec<CurvePoint<f64>> {
+    vec![
+      CurvePoint { time: 0.5, discount_factor: (-0.04_f64 * 0.5).exp() },
+      CurvePoint { time: 1.0, discount_factor: (-0.05_f64 * 1.0).exp() },
+      CurvePoint { time: 2.0, discount_factor: (-0.05_f64 * 2.0).exp() },
+    ]
+  }
+
+  #[test]
+  fn linear_at_pillar_recovers_discount_factor() {
+    let df = linear_on_zero_rates(&pts(), 1.0);
+    assert!((df - (-0.05_f64).exp()).abs() < 1e-12);
+  }
+
+  #[test]
+  fn log_linear_at_pillar_recovers_discount_factor() {
+    let df = log_linear_on_discount_factors(&pts(), 1.0);
+    assert!((df - (-0.05_f64).exp()).abs() < 1e-12);
+  }
+
+  #[test]
+  fn cubic_spline_at_pillar() {
+    let df = cubic_spline_on_zero_rates(&pts(), 1.0);
+    assert!((df - (-0.05_f64).exp()).abs() < 1e-9);
+  }
+
+  #[test]
+  fn monotone_convex_returns_finite() {
+    let r = monotone_convex(&pts(), 0.75);
+    assert!(r.is_finite());
+  }
+}

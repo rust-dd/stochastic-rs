@@ -235,3 +235,21 @@ impl PyBGM {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ndarray::Array1;
+
+  use super::*;
+
+  #[test]
+  fn bgm_sample_runs() {
+    let lambda = Array1::<f64>::from_vec(vec![0.2, 0.2, 0.2]);
+    let x0 = Array1::<f64>::from_vec(vec![0.03, 0.035, 0.04]);
+    let bgm = BGM::<f64>::new(lambda, x0, 3, Some(1.0), 50);
+    let path = bgm.sample();
+    // BGM produces a 2D matrix (n_rates × n_steps)
+    assert_eq!(path.nrows(), 3);
+    assert_eq!(path.ncols(), 50);
+  }
+}

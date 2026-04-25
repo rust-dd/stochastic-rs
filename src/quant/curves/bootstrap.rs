@@ -222,3 +222,27 @@ fn solve_swap_df<T: FloatExt>(
   }
   half * (lo + hi)
 }
+
+#[cfg(test)]
+mod tests {
+  use super::super::types::Instrument;
+  use super::super::types::InterpolationMethod;
+  use super::*;
+
+  #[test]
+  fn bootstrap_single_deposit() {
+    let inst: Vec<Instrument<f64>> = vec![Instrument::Deposit { maturity: 1.0, rate: 0.05 }];
+    let curve = bootstrap(&inst, InterpolationMethod::LinearOnZeroRates);
+    assert!(!curve.is_empty(), "bootstrap should produce at least one point");
+  }
+
+  #[test]
+  fn bootstrap_iterative_swap() {
+    let inst: Vec<Instrument<f64>> = vec![
+      Instrument::Deposit { maturity: 0.25, rate: 0.04 },
+      Instrument::Swap { maturity: 1.0, rate: 0.045, frequency: 2 },
+    ];
+    let curve = bootstrap_iterative(&inst, InterpolationMethod::LinearOnZeroRates, 1e-10, 50);
+    assert!(curve.len() >= 1);
+  }
+}

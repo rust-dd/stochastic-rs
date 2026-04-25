@@ -239,3 +239,37 @@ pub(crate) fn add_months(date: NaiveDate, months: i32, eom: bool) -> NaiveDate {
 
   NaiveDate::from_ymd_opt(target_year, target_month, day).unwrap()
 }
+
+#[cfg(test)]
+mod tests {
+  use chrono::NaiveDate;
+
+  use super::*;
+
+  #[test]
+  fn semiannual_two_year_schedule() {
+    let s = ScheduleBuilder::new(
+      NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+      NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+    )
+    .frequency(Frequency::SemiAnnual)
+    .build();
+    // 2 years semi-annual = 5 dates: t=0, +6m, +1y, +18m, +2y
+    assert_eq!(s.dates.len(), 5);
+  }
+
+  #[test]
+  fn frequency_periods_per_year() {
+    assert_eq!(Frequency::Annual.periods_per_year(), 1);
+    assert_eq!(Frequency::SemiAnnual.periods_per_year(), 2);
+    assert_eq!(Frequency::Quarterly.periods_per_year(), 4);
+    assert_eq!(Frequency::Monthly.periods_per_year(), 12);
+  }
+
+  #[test]
+  fn frequency_months() {
+    assert_eq!(Frequency::Annual.months(), 12);
+    assert_eq!(Frequency::SemiAnnual.months(), 6);
+    assert_eq!(Frequency::Quarterly.months(), 3);
+  }
+}

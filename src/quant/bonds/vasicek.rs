@@ -58,3 +58,54 @@ impl TimeExt for Vasicek {
     self.expiration
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn zcb_at_zero_tau_equals_one() {
+    let v = Vasicek {
+      r_t: 0.05,
+      theta: 0.5,
+      mu: 0.04,
+      sigma: 0.01,
+      tau: 0.0,
+      eval: None,
+      expiration: None,
+    };
+    let p = v.calculate_price();
+    assert!((p - 1.0).abs() < 1e-12, "P(t,t)=1 violated: {p}");
+  }
+
+  #[test]
+  fn zcb_decreases_with_rate() {
+    let make = |r| Vasicek {
+      r_t: r,
+      theta: 0.5,
+      mu: 0.04,
+      sigma: 0.01,
+      tau: 1.0,
+      eval: None,
+      expiration: None,
+    };
+    let p_low = make(0.02).calculate_price();
+    let p_high = make(0.08).calculate_price();
+    assert!(p_high < p_low, "ZCB should decrease with short rate");
+  }
+
+  #[test]
+  fn zcb_positive_and_below_one() {
+    let v = Vasicek {
+      r_t: 0.05,
+      theta: 0.5,
+      mu: 0.04,
+      sigma: 0.01,
+      tau: 5.0,
+      eval: None,
+      expiration: None,
+    };
+    let p = v.calculate_price();
+    assert!(p > 0.0 && p < 1.0, "ZCB out of range: {p}");
+  }
+}

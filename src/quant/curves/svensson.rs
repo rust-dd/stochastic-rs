@@ -171,3 +171,22 @@ impl<T: FloatExt> Svensson<T> {
     best
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn long_rate_approaches_beta0() {
+    let s = Svensson::<f64>::new(0.04, -0.02, 0.01, 0.005, 0.5, 2.0);
+    let r_long = s.zero_rate(50.0);
+    assert!((r_long - 0.04).abs() < 1e-3, "{r_long} ≠ β0=0.04");
+  }
+
+  #[test]
+  fn discount_factor_at_zero_is_one() {
+    let s = Svensson::<f64>::new(0.04, -0.02, 0.01, 0.005, 0.5, 2.0);
+    let df = s.discount_factor(0.0);
+    assert!((df - 1.0).abs() < 1e-12);
+  }
+}

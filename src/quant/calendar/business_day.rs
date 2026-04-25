@@ -82,3 +82,49 @@ fn advance_to_business_day(
   }
   date
 }
+
+#[cfg(test)]
+mod tests {
+  use chrono::NaiveDate;
+
+  use super::super::holiday::Calendar;
+  use super::super::holiday::HolidayCalendar;
+  use super::*;
+
+  #[test]
+  fn following_skips_weekend() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    // 2024-01-06 is Saturday; Following should give 2024-01-08 (Monday)
+    let saturday = NaiveDate::from_ymd_opt(2024, 1, 6).unwrap();
+    let monday = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+    assert_eq!(BusinessDayConvention::Following.adjust(saturday, &cal), monday);
+  }
+
+  #[test]
+  fn preceding_skips_weekend() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    let sunday = NaiveDate::from_ymd_opt(2024, 1, 7).unwrap();
+    let friday = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
+    assert_eq!(BusinessDayConvention::Preceding.adjust(sunday, &cal), friday);
+  }
+
+  #[test]
+  fn modified_following_stays_in_month() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    // 2024-03-30 is Saturday, 2024-03-31 is Sunday — Following would jump to April 1
+    // ModifiedFollowing must roll back to March 29 (Friday)
+    let saturday = NaiveDate::from_ymd_opt(2024, 3, 30).unwrap();
+    let friday = NaiveDate::from_ymd_opt(2024, 3, 29).unwrap();
+    assert_eq!(
+      BusinessDayConvention::ModifiedFollowing.adjust(saturday, &cal),
+      friday
+    );
+  }
+
+  #[test]
+  fn unadjusted_returns_same_date() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    let saturday = NaiveDate::from_ymd_opt(2024, 1, 6).unwrap();
+    assert_eq!(BusinessDayConvention::Unadjusted.adjust(saturday, &cal), saturday);
+  }
+}

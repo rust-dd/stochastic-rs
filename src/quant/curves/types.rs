@@ -131,3 +131,45 @@ pub struct CurvePoint<T: FloatExt> {
   pub time: T,
   pub discount_factor: T,
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn continuous_compounding_round_trip() {
+    let cc = Compounding::Continuous;
+    let r: f64 = 0.05;
+    let tau: f64 = 2.0;
+    let df = cc.discount_factor(r, tau);
+    assert!((df - (-r * tau).exp()).abs() < 1e-12);
+    assert!((cc.zero_rate(df, tau) - r).abs() < 1e-12);
+  }
+
+  #[test]
+  fn simple_compounding_round_trip() {
+    let sc = Compounding::Simple;
+    let r: f64 = 0.05;
+    let tau: f64 = 0.5;
+    let df = sc.discount_factor(r, tau);
+    assert!((df - 1.0 / (1.0 + r * tau)).abs() < 1e-12);
+    assert!((sc.zero_rate(df, tau) - r).abs() < 1e-12);
+  }
+
+  #[test]
+  fn periodic_compounding_round_trip() {
+    let pc = Compounding::Periodic(2);
+    let r: f64 = 0.04;
+    let tau: f64 = 1.0;
+    let df = pc.discount_factor(r, tau);
+    assert!((pc.zero_rate(df, tau) - r).abs() < 1e-10);
+  }
+
+  #[test]
+  fn instrument_maturity() {
+    let dep: Instrument<f64> = Instrument::Deposit { maturity: 0.5, rate: 0.03 };
+    assert_eq!(dep.maturity(), 0.5);
+    let fra: Instrument<f64> = Instrument::Fra { start: 0.5, end: 1.0, rate: 0.04 };
+    assert_eq!(fra.maturity(), 1.0);
+  }
+}

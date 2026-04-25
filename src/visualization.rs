@@ -504,12 +504,12 @@ mod tests {
   use crate::stochastic::interest::cir::CIR as RateCIR;
   use crate::stochastic::interest::cir_2f::CIR2F;
   use crate::stochastic::interest::duffie_kan::DuffieKan;
-  use crate::stochastic::interest::fvasicek::FVasicek;
+  use crate::stochastic::interest::fractional_vasicek::FVasicek;
   use crate::stochastic::interest::hjm::HJM;
   use crate::stochastic::interest::ho_lee::HoLee;
   use crate::stochastic::interest::hull_white::HullWhite;
   use crate::stochastic::interest::hull_white_2f::HullWhite2F;
-  use crate::stochastic::interest::mod_duffie_kan::DuffieKanJumpExp;
+  use crate::stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
   use crate::stochastic::interest::vasicek::Vasicek;
   use crate::stochastic::interest::wu_zhang::WuZhangD;
   use crate::stochastic::isonormal::ISONormal;

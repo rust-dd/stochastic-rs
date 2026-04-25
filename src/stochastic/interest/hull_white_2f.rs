@@ -192,3 +192,30 @@ impl PyHullWhite2F {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn const_k(_t: f64) -> f64 {
+    0.5
+  }
+
+  #[test]
+  fn sample_returns_two_paths() {
+    let hw2 = HullWhite2F::<f64>::new(
+      const_k as fn(f64) -> f64,
+      0.04,
+      0.01,
+      0.005,
+      -0.3,
+      0.4,
+      Some(0.04),
+      Some(1.0),
+      64,
+    );
+    let [x, u] = hw2.sample();
+    assert_eq!(x.len(), 64);
+    assert_eq!(u.len(), 64);
+  }
+}

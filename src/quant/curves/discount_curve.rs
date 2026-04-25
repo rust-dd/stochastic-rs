@@ -193,3 +193,32 @@ impl<T: FloatExt> DiscountCurve<T> {
     fwd
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::super::types::CurvePoint;
+  use super::*;
+
+  fn flat_curve() -> DiscountCurve<f64> {
+    let pts = vec![
+      CurvePoint { time: 0.5, discount_factor: (-0.05_f64 * 0.5).exp() },
+      CurvePoint { time: 1.0, discount_factor: (-0.05_f64 * 1.0).exp() },
+      CurvePoint { time: 2.0, discount_factor: (-0.05_f64 * 2.0).exp() },
+    ];
+    DiscountCurve::new(pts, InterpolationMethod::LogLinearOnDiscountFactors)
+  }
+
+  #[test]
+  fn discount_factor_below_one_for_positive_rate() {
+    let c = flat_curve();
+    assert!(c.discount_factor(1.0) < 1.0);
+    assert!(c.discount_factor(1.0) > 0.0);
+  }
+
+  #[test]
+  fn zero_rate_recovers_input_rate_on_log_linear() {
+    let c = flat_curve();
+    let r = c.zero_rate(1.0);
+    assert!((r - 0.05).abs() < 1e-10, "zero rate {r} != 0.05");
+  }
+}

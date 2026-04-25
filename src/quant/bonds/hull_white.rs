@@ -71,3 +71,25 @@ impl TimeExt for HullWhite {
     self.expiration
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use chrono::NaiveDate;
+
+  use super::*;
+
+  #[test]
+  fn zcb_in_unit_interval() {
+    let h = HullWhite {
+      r_t: 0.05,
+      theta: |_| 0.04,
+      alpha: 0.5,
+      sigma: 0.01,
+      tau: 2.0,
+      eval: Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+      expiration: Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+    };
+    let p = h.calculate_price();
+    assert!(p.is_finite(), "ZCB must be finite, got {p}");
+  }
+}

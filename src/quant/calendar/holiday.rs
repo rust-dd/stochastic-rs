@@ -485,3 +485,42 @@ fn is_observed_jp(date: NaiveDate, m: u32, d: u32, hol_month: u32, hol_day: u32)
   }
   false
 }
+
+#[cfg(test)]
+mod tests {
+  use chrono::NaiveDate;
+
+  use super::*;
+
+  #[test]
+  fn weekend_detection() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    // 2024-01-06 is Saturday, 2024-01-07 is Sunday
+    assert!(cal.is_weekend(NaiveDate::from_ymd_opt(2024, 1, 6).unwrap()));
+    assert!(cal.is_weekend(NaiveDate::from_ymd_opt(2024, 1, 7).unwrap()));
+    assert!(!cal.is_weekend(NaiveDate::from_ymd_opt(2024, 1, 8).unwrap()));
+  }
+
+  #[test]
+  fn us_independence_day() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    assert!(cal.is_holiday(NaiveDate::from_ymd_opt(2024, 7, 4).unwrap()));
+  }
+
+  #[test]
+  fn target_christmas() {
+    let cal = Calendar::new(HolidayCalendar::Target);
+    assert!(cal.is_holiday(NaiveDate::from_ymd_opt(2024, 12, 25).unwrap()));
+  }
+
+  #[test]
+  fn manual_holiday_addition() {
+    let mut cal = Calendar::new(HolidayCalendar::UnitedStates);
+    let date = NaiveDate::from_ymd_opt(2024, 3, 15).unwrap();
+    assert!(!cal.is_holiday(date));
+    cal.add_holiday(date);
+    assert!(cal.is_holiday(date));
+    cal.remove_holiday(date);
+    assert!(!cal.is_holiday(date));
+  }
+}
