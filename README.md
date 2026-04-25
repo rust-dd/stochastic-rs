@@ -293,17 +293,17 @@ Configuration in this run:
 
 ### Tier 3 — Complex products (depends on: Tier 2)
 
-- [ ] **Exotic derivatives** (`quant::pricing`) ← *lattice, pricing ✓, optionally swaptions*
-  - [ ] Bermudan options (LSM and PDE)
-  - [ ] Basket and rainbow options
-  - [ ] Cliquet / ratchet options
-  - [ ] Auto-callable structures
-  - [ ] Digital / binary options (cash-or-nothing, asset-or-nothing)
-  - [ ] Chooser, compound, spread options
-- [ ] **Inflation** (`quant::inflation`) ← *fixed-income, cashflows*
-  - [ ] Zero-coupon and year-on-year inflation term structures
-  - [ ] CPI / RPI / HICP index objects
-  - [ ] Inflation-linked swaps and bonds
+- [x] **Exotic derivatives** (`quant::pricing`) ← *lattice, pricing ✓, optionally swaptions*
+  - [x] Bermudan options — Longstaff-Schwartz LSM (`BermudanLsmPricer`, requires `openblas`); PDE backstop via existing `finite_difference` American engine restricted to exercise dates
+  - [x] Basket and rainbow options — geometric closed-form, Levy moment-matching, MC; Stulz best-of-two and `n`-asset MC rainbow
+  - [x] Cliquet / ratchet options — closed-form forward-start chain plus MC with global cap/floor and memory
+  - [x] Auto-callable structures — phoenix and athena (memory) under continuous, discrete, and at-maturity knock-in
+  - [x] Digital / binary options — cash-or-nothing, asset-or-nothing, gap, supershare with closed-form Greeks
+  - [x] Chooser, compound, spread options — simple and complex chooser, Geske compound (CoC/PoC/CoP/PoP), Margrabe and MC spread (Kirk already in `kirk.rs`)
+- [x] **Inflation** (`quant::inflation`) ← *fixed-income, cashflows*
+  - [x] Zero-coupon and year-on-year inflation term structures (`ZeroCouponInflationCurve`, `YoyInflationCurve` with the shared `InflationCurve` trait)
+  - [x] CPI / RPI / HICP index objects (`PriceIndex`, `FixingHistory` with linear-interpolated reference ratio)
+  - [x] Inflation-linked swaps (`ZeroCouponInflationSwap`, `YearOnYearInflationSwap` with par-rate solvers); inflation-linked bond already lived in `quant::instruments::bond::inflation_linked`
 
 ### Independent — Stats & quant modules (no tier dependencies)
 

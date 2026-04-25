@@ -5,11 +5,19 @@
 //! $$
 //!
 pub mod asian;
+pub mod autocallable;
 pub mod barrier;
+pub mod basket;
+#[cfg(feature = "openblas")]
+pub mod bermudan;
 pub mod bjerksund_stensland;
 pub mod breeden_litzenberger;
 pub mod bsm;
 pub mod cgmysv;
+pub mod chooser;
+pub mod cliquet;
+pub mod compound;
+pub mod digital;
 pub mod dupire;
 pub mod finite_difference;
 pub mod fourier;
@@ -23,11 +31,13 @@ pub mod malliavin_greeks;
 pub mod malliavin_thalmaier;
 pub mod merton_jump;
 pub mod pnl;
+pub mod rainbow;
 pub mod rbergomi;
 pub mod regime_switching;
 pub mod sabr;
 pub mod slv;
 pub mod snell_envelope;
+pub mod spread;
 pub mod variance_swap;
 
 // Re-export Fourier infrastructure and model structs.
@@ -39,6 +49,26 @@ pub use cgmysv::CgmysvModel;
 pub use cgmysv::CgmysvParams;
 pub use cgmysv::CgmysvPricer;
 pub use cgmysv::McResult;
+pub use chooser::ComplexChooserPricer;
+pub use chooser::ForwardStartPricer;
+pub use chooser::SimpleChooserPricer;
+pub use cliquet::CliquetPricer;
+pub use cliquet::McCliquetPricer;
+pub use autocallable::AutocallablePricer;
+pub use autocallable::KnockInStyle;
+pub use basket::ArithmeticBasketLevyPricer;
+pub use basket::BasketAverageType;
+pub use basket::GeometricBasketPricer;
+#[cfg(feature = "openblas")]
+pub use basket::McBasketPricer;
+#[cfg(feature = "openblas")]
+pub use bermudan::BermudanLsmPricer;
+pub use compound::CompoundPricer;
+pub use compound::CompoundType;
+pub use digital::AssetOrNothingPricer;
+pub use digital::CashOrNothingPricer;
+pub use digital::GapPricer;
+pub use digital::SuperSharePricer;
 pub use fourier::BSMFourier;
 pub use fourier::BatesFourier;
 pub use fourier::CGMYFourier;
@@ -56,8 +86,14 @@ pub use fourier::VarianceGammaFourier;
 pub use heston::HestonPricer;
 pub use heston_stoch_corr::HscmModel;
 pub use kirk::KirkSpreadPricer;
+#[cfg(feature = "openblas")]
+pub use rainbow::McRainbowPricer;
+pub use rainbow::RainbowPayoff;
+pub use rainbow::StulzRainbowPricer;
 pub use rbergomi::RBergomiPricer;
 pub use sabr::SabrModel;
+pub use spread::MargrabePricer;
+pub use spread::McSpreadPricer;
 pub use slv::HestonSlvParams;
 pub use slv::HestonSlvPricer;
 pub use slv::LeverageSurface;

@@ -15,6 +15,7 @@ pub mod credit;
 pub mod curves;
 pub mod fourier_malliavin;
 pub mod fx;
+pub mod inflation;
 pub mod instruments;
 pub mod lattice;
 pub mod loss;
