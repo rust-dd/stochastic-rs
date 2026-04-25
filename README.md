@@ -10,15 +10,25 @@ A high-performance Rust library for simulating stochastic processes, with first-
 
 ## Features
 
-- **85+ stochastic models** - 31 diffusions (OU, CIR, GBM, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, ...), 15 jump processes (Merton, Kou, CGMY, bilateral gamma, ...), 9 stochastic volatility models (Heston, SABR, Bergomi, rough Bergomi, HKDE, ...), 13 interest rate models (Hull-White, HJM, Vasicek, ...), and base processes (fBM, Poisson, LFSM, ...)
-- **MLE engine** - maximum likelihood estimation for 1-D diffusion models with 6 transition density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS optimizer via argmin, and 22 built-in process implementations
-- **Quant toolbox** - option pricing (Fourier, barrier, lookback, Asian, variance swaps, regime-switching), calibration (Heston, SABR, Lévy, SVJ, rough Bergomi), and finite-difference methods
-- **Copulas** - bivariate, multivariate, and empirical copulas with correlation utilities
-- **Statistics** - kernel density estimation, fractional OU estimation, and CIR parameter fitting
-- **SIMD-optimized** - fractional Gaussian noise, fractional Brownian motion, and all probability distributions use wide SIMD for fast sample generation
-- **Parallel sampling** - `sample_par(m)` generates `m` independent paths in parallel via rayon
-- **Generic precision** - most models support both `f32` and `f64`
-- **Python bindings** - full stochastic model coverage with numpy integration; all models return numpy arrays (others coming soon)
+- **85+ stochastic processes** — 31 diffusions (OU, CIR, GBM, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, …), 15 jump processes (Merton, Kou, CGMY, bilateral gamma, …), 9 stochastic-volatility models (Heston, SABR, Bergomi, rough Bergomi, HKDE, …), 13 short-rate / HJM / BGM models, plus base processes (fBM, fGN, Poisson, Hawkes, Lévy, LFSM, …). Each carries a generic-precision `ProcessExt<T>` impl and CUDA / SIMD acceleration where applicable.
+- **Pricing** — closed-form (BSM, Bachelier, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz best-of-two, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain) · Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston · Monte Carlo (basket, rainbow, cliquet with cap/floor and memory, autocallable phoenix / athena, spread) · finite difference (explicit / implicit / Crank-Nicolson, American) · Bermudan LSM · Heston SLV (Guyon–Labordère)
+- **Fixed income** — yield-curve bootstrapping (deposit / FRA / future / swap), Nelson-Siegel / Svensson, multi-curve (OIS vs SOFR), discount-curve interpolation (linear / log-linear / cubic / monotone-convex) · vanilla / OIS / basis / cross-currency IRS · fixed-rate / floating-rate / inflation-linked / amortizing bonds · YTM / Macaulay / modified duration / convexity / Z-spread / OAS · cap / floor / collar / European & Bermudan swaptions with Hull-White, Black-Karasinski and G2++ tree engines · Jamshidian analytic European swaption · SABR / Shifted-SABR caplet calibration · CMS with Hagan linear-TSR
+- **Calibration** — Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), Stochastic Volatility Jump (SVJ), rough Bergomi, double Heston, BSM (multi-maturity), HKDE, Hull-White swaption-grid via Levenberg-Marquardt
+- **Risk** — VaR (Gaussian / historical / Monte Carlo), CVaR / expected shortfall, drawdown metrics, Sharpe / Sortino / Information-Ratio / Calmar (no hard-coded annualisation), instrument-level Greeks via finite differences, bucket DV01, scenario / shock / curve-shift stress framework
+- **Credit** — Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, JLT migration matrices with pure-Rust Padé-13 matrix exponential
+- **Inflation** — zero-coupon and YoY inflation curves, CPI / RPI / HICP indices with linear-interpolated reference ratio, ZC and YoY inflation swaps with par-rate solver
+- **Microstructure** — Almgren-Chriss optimal execution, Kyle (1985) strategic-trading equilibria, Bouchaud propagator with power-law / exponential / custom kernels, Roll / Corwin-Schultz spread estimators, full price-time priority order book
+- **Statistics** — Hurst estimators, ADF / KPSS / Phillips-Perron / Leybourne-McCabe / ERS stationarity, Jarque-Bera / Shapiro-Francia / Anderson-Darling normality, periodogram / spectrum-search · realized variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett / Parzen / Tukey-Hanning / Cubic / Quadratic-Spectral) with BNHLS bandwidth, semivariance, realized skew / kurtosis, HAR-RV, Jacod pre-averaging, TSRV, multi-scale RV, BNS jump test · Engle-Granger and Johansen cointegration, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint · particle filter / UKF / random-walk Metropolis-Hastings · MLE engine for 1-D diffusions with 6 transition-density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia) and L-BFGS via argmin, plus dedicated Heston MLE / NMLE-CEKF
+- **Factors & strategies** — PCA, two-pass Fama-MacBeth, Ledoit-Wolf shrinkage, cointegrated pairs trading (hedge ratio, spread, z-score, signal generator), forecast-momentum-volatility regime engine
+- **Distributions** — `DistributionSampler<T>`-driven SIMD bulk sampling and `sample_matrix` for normal, log-normal, exponential (uniform / ziggurat), beta, gamma, chi-squared, Student-t, Poisson, alpha-stable, NIG, bilateral gamma, binomial, Cauchy, Pareto, Weibull
+- **Copulas** — Clayton, Frank, Gumbel, Joe, Galambos, AMH, Gaussian, Student-t, Plackett, FGM bivariate; Gaussian, Student-t, vine multivariate; empirical, with correlation utilities
+- **Advanced Monte Carlo** — variance reduction (antithetic, control variates, importance sampling, stratified), quasi-MC (Sobol, Halton), Multi-Level Monte Carlo, Longstaff-Schwartz LSM
+- **Volatility surface** — implied-vol surface from market data, SVI / SSVI, arbitrage-free interpolation / extrapolation, smile and skew analytics
+- **Calendar & day count** — ACT/360, ACT/365, 30/360, ACT/ACT · Following / Modified Following / Preceding · US, UK, TARGET, Tokyo holiday calendars · pluggable `CalendarExt` · `ScheduleBuilder` for coupon / payment dates
+- **FX** — ISO 4217 currency definitions, FX quoting / cross-rate / triangulation, FX forward via covered interest parity (continuous and simple compounding)
+- **Performance** — wide SIMD (`f64x4` / `f32x8`) for FGN, fBM, all distributions; `sample_par(m)` for `m` independent paths via rayon; CUDA backend for FGN; thread-local FFT scratch buffers
+- **Generic precision** — all numerical code is generic over `T: FloatExt`, supporting both `f32` and `f64`
+- **Python bindings** — full coverage of stochastic models with numpy integration; all sample paths return numpy arrays
 
 ## Installation
 
@@ -26,7 +36,7 @@ A high-performance Rust library for simulating stochastic processes, with first-
 
 ```toml
 [dependencies]
-stochastic-rs = "1.5.0"
+stochastic-rs = "2.0.0-beta.1"
 ```
 
 ### Bindings
