@@ -289,7 +289,7 @@ impl McBasketPricer {
             log_g.exp()
           }
         };
-        ((phi * (basket - self.k)).max(0.0)) as f64
+        (phi * (basket - self.k)).max(0.0)
       })
       .sum();
 

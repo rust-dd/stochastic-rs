@@ -168,6 +168,27 @@ name = "risk"
 harness = false
 
 [[bench]]
+name = "realized"
+harness = false
+
+[[bench]]
+name = "microstructure"
+harness = false
+
+[[bench]]
+name = "factors"
+harness = false
+required-features = ["openblas"]
+
+[[bench]]
+name = "econometrics"
+harness = false
+
+[[bench]]
+name = "filtering"
+harness = false
+
+[[bench]]
 name = "lattice"
 harness = false
 

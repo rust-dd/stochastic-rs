@@ -158,8 +158,8 @@ fn snap_to_levels<T: FloatExt>(
     .iter()
     .map(|&date| {
       let tau: T = day_count.year_fraction(valuation_date, date);
-      let level = (tau / dt).to_f64().unwrap_or(0.0).round().max(0.0) as usize;
-      level
+      
+      (tau / dt).to_f64().unwrap_or(0.0).round().max(0.0) as usize
     })
     .collect()
 }

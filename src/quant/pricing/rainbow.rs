@@ -286,7 +286,7 @@ impl McRainbowPricer {
         let s_t: Vec<f64> = (0..n_assets)
           .map(|i| self.s[i] * (drifts[i] + vols[i] * zc[i]).exp())
           .collect();
-        self.payoff.evaluate(&s_t, self.k) as f64
+        self.payoff.evaluate(&s_t, self.k)
       })
       .sum();
 

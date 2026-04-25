@@ -307,29 +307,31 @@ Configuration in this run:
 
 ### Independent — Stats & quant modules (no tier dependencies)
 
-- [ ] **Realized volatility & microstructure noise** (`stats::realized`)
-  - [ ] Realized variance, bipower variation, kernel-based RV
-  - [ ] Realized semivariance, realized skewness and kurtosis
-  - [ ] HAR (Heterogeneous Autoregressive) model
-  - [ ] Noise-robust estimators — pre-averaging, two-scale RV
-- [ ] **Econometrics** (`stats::econometrics`)
-  - [ ] Cointegration — Johansen test, Engle-Granger two-step
-  - [ ] Granger causality
-  - [ ] Hidden Markov Models for regime detection
-  - [ ] Changepoint detection
-- [ ] **Bayesian inference & filtering** (`stats::filtering`)
-  - [ ] Particle filters for general state-space models
-  - [ ] Unscented Kalman Filter
-  - [ ] MCMC samplers (Metropolis-Hastings, HMC) for calibration
-- [ ] **Factor models & statistical arbitrage** (`quant::factors`)
-  - [ ] PCA-based factor models
-  - [ ] Cross-sectional regression (Fama-MacBeth)
-  - [ ] Covariance shrinkage (Ledoit-Wolf)
-  - [ ] Pairs trading / stat arb framework
-- [ ] **Market microstructure** (`quant::microstructure`) ← *order_book ✓, hawkes ✓*
-  - [ ] Almgren-Chriss optimal execution
-  - [ ] Market impact models (Kyle, transient impact)
-  - [ ] Bid-ask spread models
+- [x] **Realized volatility & microstructure noise** (`stats::realized`)
+  - [x] Realized variance, bipower variation, MinRV, MedRV, tripower quarticity, flat-top realized kernel (Bartlett/Parzen/Tukey-Hanning/Tukey-Hanning2/Cubic/Quadratic-Spectral) with BNHLS bandwidth heuristic
+  - [x] Realized semivariance (downside / upside), realized skewness and kurtosis (Amaya et al. 2015)
+  - [x] HAR-RV (Corsi 2009) with OLS fit and one-step-ahead forecasts
+  - [x] Noise-robust estimators — Jacod et al. pre-averaging, Zhang-Mykland-Aït-Sahalia TSRV, Zhang multi-scale RV
+  - [x] Barndorff-Nielsen / Shephard ratio jump test (Huang–Tauchen finite-sample variant)
+- [x] **Econometrics** (`stats::econometrics`)
+  - [x] Cointegration — Engle-Granger two-step (with Phillips-Ouliaris critical values) and Johansen trace test on the VECM eigenvalue problem
+  - [x] Granger causality F-test on nested VAR(p) regressions with regularised-incomplete-beta p-values
+  - [x] Gaussian-emission Hidden Markov Model with Baum-Welch training, log-space scaled forward-backward and Viterbi decoding
+  - [x] Changepoint detection — Page (1954) CUSUM control chart and Killick-Fearnhead-Eckley (2012) PELT for the squared-error mean-shift cost
+- [x] **Bayesian inference & filtering** (`stats::filtering`)
+  - [x] Bootstrap / SIR particle filter with multinomial / systematic / stratified resampling and ESS-triggered adaptation
+  - [x] Unscented Kalman Filter — single-step predict + update with $2n+1$ sigma points and tunable $(\alpha, \beta, \kappa)$
+  - [x] Random-Walk Metropolis-Hastings sampler with Gaussian proposal, burn-in and acceptance-rate diagnostics
+- [x] **Factor models & statistical arbitrage** (`quant::factors`)
+  - [x] PCA factor decomposition via SVD with explained-variance ratios, loadings and time-series scores
+  - [x] Two-pass Fama-MacBeth cross-sectional regression with t-statistics and per-period premia series
+  - [x] Ledoit-Wolf (2004) covariance shrinkage to scaled-identity target with data-driven optimal intensity
+  - [x] Cointegrated pairs-trading framework — hedge-ratio OLS, spread, z-score, entry/exit signal generator
+- [x] **Market microstructure** (`quant::microstructure`) ← *order_book ✓, hawkes ✓*
+  - [x] Almgren-Chriss closed-form optimal execution with mean-variance frontier, buy/sell support, expected cost and variance decomposition
+  - [x] Single-period and multi-period Kyle (1985) strategic-trading equilibria via backward $\alpha$-recursion
+  - [x] Bouchaud propagator transient-impact model with power-law / exponential / custom kernels (path and current-tick impact)
+  - [x] Roll (1984) implicit spread, realised effective spread, Corwin-Schultz (2012) high-low spread estimator
 
 ### Quality improvements (pre-v2 hardening)
 

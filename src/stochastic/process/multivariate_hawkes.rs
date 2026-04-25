@@ -104,7 +104,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
       // Propose next event time
       let u = T::one() - T::sample_uniform_simd(&mut rng);
       let dt = -u.ln() / lambda_bar;
-      t = t + dt;
+      t += dt;
 
       if t >= self.t_max {
         break;
@@ -129,13 +129,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
       let v = T::sample_uniform_simd(&mut rng) * lambda_bar;
       let mut cumsum = T::zero();
       for i in 0..d {
-        cumsum = cumsum + lambdas[i];
+        cumsum += lambdas[i];
         if v <= cumsum {
           // Event accepted on component i
           events[i].push(t);
           // Excite all components from source i
           for k in 0..d {
-            s[k][i] = s[k][i] + self.alpha[[k, i]];
+            s[k][i] += self.alpha[[k, i]];
           }
           break;
         }

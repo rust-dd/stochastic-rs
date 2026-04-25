@@ -161,7 +161,7 @@ impl McCliquetPricer {
           sum_returns += r_capped;
           s_curr = s_next;
         }
-        sum_returns.min(c_g).max(f_g) as f64
+        sum_returns.min(c_g).max(f_g)
       })
       .sum();
     self.notional * (-self.r * self.t).exp() * sum / self.n_paths as f64

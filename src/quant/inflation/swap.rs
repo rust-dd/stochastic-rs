@@ -104,7 +104,7 @@ impl<T: FloatExt> YearOnYearInflationSwap<T> {
       };
       let r_curr = curve.forward_index_ratio(t_i);
       let yoy = r_curr / r_prev - T::one();
-      pv = pv + self.notional * yoy * self.accrual_factors[i] * self.nominal_discount_factors[i];
+      pv += self.notional * yoy * self.accrual_factors[i] * self.nominal_discount_factors[i];
       prev_t = t_i;
     }
     pv
@@ -114,8 +114,7 @@ impl<T: FloatExt> YearOnYearInflationSwap<T> {
   pub fn fixed_leg_pv(&self) -> T {
     let mut pv = T::zero();
     for i in 0..self.payment_times.len() {
-      pv = pv
-        + self.notional
+      pv += self.notional
           * self.fixed_rate
           * self.accrual_factors[i]
           * self.nominal_discount_factors[i];
@@ -133,8 +132,7 @@ impl<T: FloatExt> YearOnYearInflationSwap<T> {
     let inf_pv = self.inflation_leg_pv(curve);
     let mut weight = T::zero();
     for i in 0..self.payment_times.len() {
-      weight = weight
-        + self.notional * self.accrual_factors[i] * self.nominal_discount_factors[i];
+      weight += self.notional * self.accrual_factors[i] * self.nominal_discount_factors[i];
     }
     if weight.abs() < T::epsilon() {
       return T::zero();

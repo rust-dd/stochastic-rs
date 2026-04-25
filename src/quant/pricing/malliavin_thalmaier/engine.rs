@@ -512,7 +512,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
         let mut prod = deriv[j];
         for (k, &cutoff_k) in cutoff.iter().enumerate() {
           if k != j {
-            prod = prod * cutoff_k;
+            prod *= cutoff_k;
           }
         }
         prod

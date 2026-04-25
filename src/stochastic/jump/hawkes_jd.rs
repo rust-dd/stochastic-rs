@@ -151,7 +151,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HawkesJD<T, S> {
       let u = uniform.sample_fast();
       let jump = if u < jump_prob {
         // Jump occurs — excite intensity
-        lambda = lambda + self.alpha;
+        lambda += self.alpha;
         jump_normal.sample_fast()
       } else {
         T::zero()
