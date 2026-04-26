@@ -15,6 +15,10 @@ use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+/// PascalCase alias for [`KOU`]. The all-caps form is kept for back-compat but
+/// new code should prefer `Kou`.
+pub type Kou<T, D, S = Unseeded> = KOU<T, D, S>;
+
 /// Kou process
 ///
 /// <https://www.columbia.edu/~sk75/MagSci02.pdf>

@@ -120,6 +120,77 @@ impl<T: SimdFloatExt> Clone for SimdLogNormal<T> {
   }
 }
 
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdLogNormal<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    use statrs::distribution::Continuous;
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
+    statrs::distribution::LogNormal::new(mu, sigma)
+      .unwrap()
+      .pdf(x)
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    use statrs::distribution::ContinuousCDF;
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
+    statrs::distribution::LogNormal::new(mu, sigma)
+      .unwrap()
+      .cdf(x)
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    use statrs::distribution::ContinuousCDF;
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
+    statrs::distribution::LogNormal::new(mu, sigma)
+      .unwrap()
+      .inverse_cdf(p)
+  }
+
+  fn mean(&self) -> f64 {
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
+    (mu + 0.5 * sigma * sigma).exp()
+  }
+
+  fn median(&self) -> f64 {
+    self.mu.to_f64().unwrap().exp()
+  }
+
+  fn mode(&self) -> f64 {
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
+    (mu - sigma * sigma).exp()
+  }
+
+  fn variance(&self) -> f64 {
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
+    let s2 = sigma * sigma;
+    (s2.exp() - 1.0) * (2.0 * mu + s2).exp()
+  }
+
+  fn skewness(&self) -> f64 {
+    let sigma = self.sigma.to_f64().unwrap();
+    let s2 = sigma * sigma;
+    (s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt()
+  }
+
+  fn kurtosis(&self) -> f64 {
+    // Excess kurtosis.
+    let sigma = self.sigma.to_f64().unwrap();
+    let s2 = sigma * sigma;
+    (4.0 * s2).exp() + 2.0 * (3.0 * s2).exp() + 3.0 * (2.0 * s2).exp() - 6.0
+  }
+
+  fn entropy(&self) -> f64 {
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
+    0.5 + 0.5 * (2.0 * std::f64::consts::PI * sigma * sigma).ln() + mu
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdLogNormal<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

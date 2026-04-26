@@ -44,8 +44,9 @@ impl BSMCalibrationResult {
 }
 
 impl crate::traits::ToModel for BSMCalibrationResult {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(BSMCalibrationResult::to_model(self, r, q))
+  type Model = crate::pricing::fourier::BSMFourier;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    BSMCalibrationResult::to_model(self, r, q)
   }
 }
 

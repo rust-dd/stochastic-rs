@@ -19,7 +19,7 @@ gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
 cuda-native = ["dep:cudarc"]
 metal = ["dep:metal"]
 accelerate = []
-python = ["dep:pyo3", "stochastic-rs-distributions/python"]
+python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
 
 [dependencies]
 stochastic-rs-core = { path = "../stochastic-rs-core", version = "2.0.0-beta.1" }
@@ -58,6 +58,7 @@ cudarc = { version = "0.19.2", optional = true, features = ["cuda-12080", "cuda-
 gpu-fft = { version = "1.1.1", optional = true }
 metal = { version = "0.33.0", optional = true }
 pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
+numpy = { version = "0.27", optional = true }
 
 [dev-dependencies]
 romu = "0.8.0"

@@ -202,8 +202,9 @@ pub struct HKDECalibrationResult {
 }
 
 impl crate::traits::ToModel for HKDECalibrationResult {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(HKDECalibrationResult::to_model(self, r, q))
+  type Model = HKDEFourier;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    HKDECalibrationResult::to_model(self, r, q)
   }
 }
 

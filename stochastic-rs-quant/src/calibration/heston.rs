@@ -112,8 +112,9 @@ impl HestonParams {
 }
 
 impl crate::traits::ToModel for HestonParams {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(HestonParams::to_model(self, r, q))
+  type Model = crate::pricing::fourier::HestonFourier;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    HestonParams::to_model(self, r, q)
   }
 }
 

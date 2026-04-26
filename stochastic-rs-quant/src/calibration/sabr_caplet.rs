@@ -40,6 +40,26 @@ pub struct SabrCapletCalibrationResult {
   pub converged: bool,
 }
 
+impl SabrCapletCalibrationResult {
+  /// Convert to a [`SabrModel`](crate::pricing::sabr::SabrModel) for pricing /
+  /// vol-surface generation.
+  pub fn to_model(&self) -> crate::pricing::sabr::SabrModel {
+    crate::pricing::sabr::SabrModel {
+      alpha: self.alpha,
+      beta: self.beta,
+      nu: self.nu,
+      rho: self.rho,
+    }
+  }
+}
+
+impl crate::traits::ToModel for SabrCapletCalibrationResult {
+  type Model = crate::pricing::sabr::SabrModel;
+  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
+    SabrCapletCalibrationResult::to_model(self)
+  }
+}
+
 /// SABR caplet smile calibrator — fits $(\alpha,\nu,\rho)$ for a single
 /// expiry.
 #[derive(Debug, Clone)]

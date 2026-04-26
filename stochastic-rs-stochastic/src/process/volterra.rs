@@ -129,10 +129,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
   }
 }
 
-py_process_1d!(PyVolterra, Volterra,
-  sig: (kernel_type, kernel_param, n, t=None, seed=None, dtype=None),
-  params: (kernel_type: String, kernel_param: f64, n: usize, t: Option<f64>)
-);
+// PyVolterra wrapper requires custom (String, f64) → VolterraKernel adapter;
+// reintroduce it as a hand-written PyO3 class in stochastic-rs-py rather than
+// via the generic py_process_1d! macro.
+//
+// py_process_1d!(PyVolterra, Volterra, ...);
 
 #[cfg(test)]
 mod tests {

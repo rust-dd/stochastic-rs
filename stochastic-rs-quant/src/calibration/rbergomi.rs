@@ -367,8 +367,9 @@ impl RBergomiCalibrationResult {
 }
 
 impl crate::traits::ToModel for RBergomiCalibrationResult {
-  fn to_model(&self, _r: f64, _q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(RBergomiCalibrationResult::to_model(self))
+  type Model = crate::pricing::rbergomi::RBergomiPricer;
+  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
+    RBergomiCalibrationResult::to_model(self)
   }
 }
 

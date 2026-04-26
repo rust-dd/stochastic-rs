@@ -34,8 +34,15 @@ pub use stochastic_rs_viz as visualization;
 
 /// Convenience prelude that re-exports the most commonly used types and traits.
 ///
+/// Bring this in scope to get the canonical trait set (`ProcessExt`,
+/// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
+/// without pulling them one by one.
+///
 /// ```ignore
 /// use stochastic_rs::prelude::*;
+///
+/// let bm = stochastic_rs::stochastic::process::bm::BM::new(1000, Some(1.0));
+/// let path = bm.sample();
 /// ```
 pub mod prelude {
   pub use crate::traits::{

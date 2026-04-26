@@ -4,6 +4,11 @@
 //! F_{X_1,\dots,X_d}(x)=C\left(F_1(x_1),\dots,F_d(x_d)\right)
 //! $$
 //!
+//! **Note:** the `*Copula2D` types in this module are deprecated and superseded
+//! by [`crate::bivariate`] / [`crate::multivariate`]. Will be removed in 2.0
+//! stable. New code should use the trait-based copula API.
+#![allow(deprecated)]
+
 use ndarray::Array1;
 use ndarray::Array2;
 use plotly::Plot;
@@ -52,7 +57,15 @@ pub fn cdf_gumbel(u: f64, v: f64, theta: f64) -> f64 {
   (-s.powf(1.0 / theta)).exp()
 }
 
-/// Gaussian copula (2D)
+/// Gaussian copula (2D).
+///
+/// **Deprecated:** Use [`crate::multivariate::GaussianMultivariate`] (with the
+/// `openblas` feature) for the canonical Gaussian copula API. This 2D wrapper
+/// is kept for back-compat and will be removed in 2.0 stable.
+#[deprecated(
+  since = "2.0.0-beta.2",
+  note = "Use crate::multivariate::GaussianMultivariate (openblas feature) instead. Will be removed in 2.0 stable."
+)]
 #[derive(Clone, Debug)]
 pub struct GaussianCopula2D {
   /// 2D mean vector, e.g. [0.0, 0.0]
@@ -100,7 +113,14 @@ impl NCopula2DExt for GaussianCopula2D {
   }
 }
 
-/// Gumbel copula (2D) - CORRECT (Archimedean) sampling
+/// Gumbel copula (2D) — Archimedean sampling.
+///
+/// **Deprecated:** Use [`crate::bivariate::Gumbel`] for the canonical API
+/// (`BivariateExt`). Will be removed in 2.0 stable.
+#[deprecated(
+  since = "2.0.0-beta.2",
+  note = "Use crate::bivariate::Gumbel (BivariateExt) instead. Will be removed in 2.0 stable."
+)]
 #[derive(Clone, Debug)]
 pub struct GumbelCopula2D {
   /// alpha >= 1 (Gumbel parameter)
@@ -136,7 +156,14 @@ impl NCopula2DExt for GumbelCopula2D {
   }
 }
 
-/// Clayton copula (2D) - CORRECT (Archimedean) sampling
+/// Clayton copula (2D) — Archimedean sampling.
+///
+/// **Deprecated:** Use [`crate::bivariate::Clayton`] for the canonical API
+/// (`BivariateExt`). Will be removed in 2.0 stable.
+#[deprecated(
+  since = "2.0.0-beta.2",
+  note = "Use crate::bivariate::Clayton (BivariateExt) instead. Will be removed in 2.0 stable."
+)]
 #[derive(Clone, Debug)]
 pub struct ClaytonCopula2D {
   /// alpha > 0 (Clayton parameter)

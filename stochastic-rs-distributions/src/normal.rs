@@ -337,6 +337,73 @@ impl<T: SimdFloatExt, const N: usize> Clone for SimdNormal<T, N> {
   }
 }
 
+impl<T: SimdFloatExt, const N: usize> crate::traits::DistributionExt for SimdNormal<T, N> {
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    let mu = self.mean.to_f64().unwrap();
+    let sigma = self.std_dev.to_f64().unwrap();
+    num_complex::Complex64::new(0.0, mu * t).exp() * (-0.5 * sigma * sigma * t * t).exp()
+  }
+
+  fn pdf(&self, x: f64) -> f64 {
+    use statrs::distribution::Continuous;
+    let mu = self.mean.to_f64().unwrap();
+    let sigma = self.std_dev.to_f64().unwrap();
+    statrs::distribution::Normal::new(mu, sigma).unwrap().pdf(x)
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    use statrs::distribution::ContinuousCDF;
+    let mu = self.mean.to_f64().unwrap();
+    let sigma = self.std_dev.to_f64().unwrap();
+    statrs::distribution::Normal::new(mu, sigma).unwrap().cdf(x)
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    use statrs::distribution::ContinuousCDF;
+    let mu = self.mean.to_f64().unwrap();
+    let sigma = self.std_dev.to_f64().unwrap();
+    statrs::distribution::Normal::new(mu, sigma)
+      .unwrap()
+      .inverse_cdf(p)
+  }
+
+  fn mean(&self) -> f64 {
+    self.mean.to_f64().unwrap()
+  }
+
+  fn median(&self) -> f64 {
+    self.mean.to_f64().unwrap()
+  }
+
+  fn mode(&self) -> f64 {
+    self.mean.to_f64().unwrap()
+  }
+
+  fn variance(&self) -> f64 {
+    let s = self.std_dev.to_f64().unwrap();
+    s * s
+  }
+
+  fn skewness(&self) -> f64 {
+    0.0
+  }
+
+  fn kurtosis(&self) -> f64 {
+    0.0
+  }
+
+  fn entropy(&self) -> f64 {
+    let s = self.std_dev.to_f64().unwrap();
+    0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * s * s).ln()
+  }
+
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    let mu = self.mean.to_f64().unwrap();
+    let s = self.std_dev.to_f64().unwrap();
+    (mu * t + 0.5 * s * s * t * t).exp()
+  }
+}
+
 impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   /// Fills a slice with standard normal N(0,1) samples using the internal SIMD RNG.
   pub fn fill_standard_fast(&self, out: &mut [T]) {

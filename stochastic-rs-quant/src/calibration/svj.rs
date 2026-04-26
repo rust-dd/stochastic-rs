@@ -163,8 +163,9 @@ pub struct SVJCalibrationResult {
 }
 
 impl crate::traits::ToModel for SVJCalibrationResult {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(SVJCalibrationResult::to_model(self, r, q))
+  type Model = crate::pricing::fourier::BatesFourier;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    SVJCalibrationResult::to_model(self, r, q)
   }
 }
 

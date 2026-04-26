@@ -80,8 +80,8 @@ pub fn build_surface(
 /// * `q` - Dividend yield
 /// * `strikes` - Strike prices (ascending)
 /// * `maturities` - Maturities in years (ascending)
-pub fn build_surface_from_model(
-  model: &dyn ModelPricer,
+pub fn build_surface_from_model<M: ModelPricer + ?Sized>(
+  model: &M,
   s: f64,
   r: f64,
   q: f64,
@@ -100,8 +100,8 @@ pub fn build_surface_from_model(
 /// let result = heston_calibrator.calibrate();
 /// let surface = build_surface_from_calibration(&result, s, r, q, &strikes, &mats);
 /// ```
-pub fn build_surface_from_calibration(
-  calibration: &dyn ToModel,
+pub fn build_surface_from_calibration<C: ToModel>(
+  calibration: &C,
   s: f64,
   r: f64,
   q: f64,
@@ -109,7 +109,7 @@ pub fn build_surface_from_calibration(
   maturities: &[f64],
 ) -> VolSurfaceResult {
   let model = calibration.to_model(r, q);
-  build_surface_from_model(model.as_ref(), s, r, q, strikes, maturities)
+  build_surface_from_model(&model, s, r, q, strikes, maturities)
 }
 
 /// Build SVI/SSVI fits and diagnostics from an existing implied vol surface.
@@ -489,18 +489,18 @@ mod tests {
       sigma: 0.3,
       rho: -0.7,
     };
-    let boxed: Box<dyn crate::traits::ModelPricer> = ToModel::to_model(&params, 0.05, 0.0);
+    let pricer = ToModel::to_model(&params, 0.05, 0.0);
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
 
-    let result = build_surface_from_model(boxed.as_ref(), 100.0, 0.05, 0.0, &strikes, &maturities);
+    let result = build_surface_from_model(&pricer, 100.0, 0.05, 0.0, &strikes, &maturities);
     assert_eq!(result.svi_params.len(), 3);
 
     // Verify prices match direct model
     use crate::traits::ModelPricer;
     let direct = model.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
-    let via_trait = boxed.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
+    let via_trait = pricer.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       (direct - via_trait).abs() < 1e-10,
       "ToModel should produce identical prices: direct={direct}, trait={via_trait}"

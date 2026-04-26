@@ -30,11 +30,46 @@ A high-performance Rust library for simulating stochastic processes, with first-
 
 ## Installation
 
-### Rust
+### Rust — umbrella crate (everything)
 
 ```toml
 [dependencies]
-stochastic-rs = "2.0.0-beta.1"
+stochastic-rs = "2.0.0-beta.2"
+```
+
+```rust
+use stochastic_rs::prelude::*; // FloatExt, ProcessExt, ModelPricer, OptionType, ...
+use stochastic_rs::stochastic::diffusion::gbm::GBM;
+use stochastic_rs::quant::pricing::heston::HestonPricer;
+```
+
+### Rust — pick the sub-crates you need
+
+The crate is split into a workspace; pull in only what you use to keep build
+times and dependency surface minimal.
+
+```toml
+[dependencies]
+stochastic-rs-distributions = "2.0.0-beta.2"  # SIMD distribution sampling
+stochastic-rs-stochastic    = "2.0.0-beta.2"  # 140+ process types
+stochastic-rs-copulas       = "2.0.0-beta.2"  # bivariate / multivariate copulas
+stochastic-rs-stats         = "2.0.0-beta.2"  # estimators
+stochastic-rs-quant         = "2.0.0-beta.2"  # pricing / calibration / vol surface
+stochastic-rs-ai            = "2.0.0-beta.2"  # neural surrogates (candle)
+stochastic-rs-viz           = "2.0.0-beta.2"  # plotly grid plotter
+```
+
+Topology:
+
+```
+stochastic-rs-core (simd_rng)
+ └→ stochastic-rs-distributions (FloatExt, SimdFloatExt, distribution types)
+     ├→ stochastic-rs-stochastic (ProcessExt + 140+ processes)
+     ├→ stochastic-rs-copulas (BivariateExt, etc.)
+     └→ stochastic-rs-stats (estimators)
+         └→ stochastic-rs-quant (PricerExt, ModelPricer, calibration, vol surface)
+             ├→ stochastic-rs-ai (HestonNn / OneFactorNn / RoughBergomiNn)
+             └→ stochastic-rs-viz (GridPlotter)
 ```
 
 ### Bindings

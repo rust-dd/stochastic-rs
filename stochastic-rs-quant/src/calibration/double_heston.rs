@@ -154,8 +154,9 @@ impl DoubleHestonParams {
 }
 
 impl crate::traits::ToModel for DoubleHestonParams {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(DoubleHestonParams::to_model(self, r, q))
+  type Model = crate::pricing::fourier::DoubleHestonFourier;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    DoubleHestonParams::to_model(self, r, q)
   }
 }
 
@@ -223,8 +224,9 @@ impl DoubleHestonCalibrationResult {
 }
 
 impl crate::traits::ToModel for DoubleHestonCalibrationResult {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(self.params().to_model(r, q))
+  type Model = crate::pricing::fourier::DoubleHestonFourier;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    self.params().to_model(r, q)
   }
 }
 

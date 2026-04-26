@@ -139,6 +139,76 @@ impl<T: SimdFloatExt> Clone for SimdGamma<T> {
   }
 }
 
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    use statrs::distribution::Continuous;
+    let alpha = self.alpha.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    // statrs Gamma takes (shape, rate) where rate = 1/scale.
+    statrs::distribution::Gamma::new(alpha, 1.0 / scale)
+      .unwrap()
+      .pdf(x)
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    use statrs::distribution::ContinuousCDF;
+    let alpha = self.alpha.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    statrs::distribution::Gamma::new(alpha, 1.0 / scale)
+      .unwrap()
+      .cdf(x)
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    use statrs::distribution::ContinuousCDF;
+    let alpha = self.alpha.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    statrs::distribution::Gamma::new(alpha, 1.0 / scale)
+      .unwrap()
+      .inverse_cdf(p)
+  }
+
+  fn mean(&self) -> f64 {
+    self.alpha.to_f64().unwrap() * self.scale.to_f64().unwrap()
+  }
+
+  fn mode(&self) -> f64 {
+    let alpha = self.alpha.to_f64().unwrap();
+    if alpha < 1.0 {
+      0.0
+    } else {
+      (alpha - 1.0) * self.scale.to_f64().unwrap()
+    }
+  }
+
+  fn variance(&self) -> f64 {
+    let alpha = self.alpha.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    alpha * scale * scale
+  }
+
+  fn skewness(&self) -> f64 {
+    let alpha = self.alpha.to_f64().unwrap();
+    2.0 / alpha.sqrt()
+  }
+
+  fn kurtosis(&self) -> f64 {
+    // Excess kurtosis.
+    let alpha = self.alpha.to_f64().unwrap();
+    6.0 / alpha
+  }
+
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    let alpha = self.alpha.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    if t < 1.0 / scale {
+      (1.0 - scale * t).powf(-alpha)
+    } else {
+      f64::INFINITY
+    }
+  }
+}
+
 impl<T: SimdFloatExt> Distribution<T> for SimdGamma<T> {
   fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
     let idx = unsafe { &mut *self.index.get() };

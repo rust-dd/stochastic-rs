@@ -44,8 +44,9 @@ pub struct SabrCalibrationResult {
 }
 
 impl crate::traits::ToModel for SabrCalibrationResult {
-  fn to_model(&self, _r: f64, _q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(SabrCalibrationResult::to_model(self))
+  type Model = crate::pricing::sabr::SabrModel;
+  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
+    SabrCalibrationResult::to_model(self)
   }
 }
 

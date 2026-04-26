@@ -1,16 +1,114 @@
-//! Macro shims.
+//! PyO3 wrapper macros for distribution types.
 //!
-//! The actual Python wrapper code generation lives in `stochastic-rs-py`;
-//! these no-op definitions exist so that macro invocations inline in the
-//! distribution source files compile cleanly under the workspace layout.
-//! When the umbrella crate is compiled with `feature = "python"`, the
-//! `stochastic-rs-py` crate re-creates the bindings from scratch.
+//! Generate `PyXxx` newtype + `#[pymethods]` impl for each `Simd*` distribution
+//! when the `python` feature is enabled. The `stochastic-rs-py` cdylib then
+//! collects and registers them.
 
+#[cfg(feature = "python")]
+#[macro_export]
+macro_rules! py_distribution {
+  ($py_name:ident, $inner:ident,
+    sig: ($($sig:tt)*),
+    params: ($($param:ident : $pty:ty),* $(,)?)
+  ) => {
+    #[pyo3::prelude::pyclass(unsendable)]
+    pub struct $py_name {
+      inner_f32: Option<$inner<f32>>,
+      inner_f64: Option<$inner<f64>>,
+    }
+
+    #[pyo3::prelude::pymethods]
+    impl $py_name {
+      #[new]
+      #[pyo3(signature = ($($sig)*))]
+      fn new($($param: $pty,)* dtype: Option<&str>) -> Self {
+        match dtype.unwrap_or("f64") {
+          "f32" => Self {
+            inner_f32: Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param)),*)),
+            inner_f64: None,
+          },
+          _ => Self {
+            inner_f32: None,
+            inner_f64: Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param)),*)),
+          },
+        }
+      }
+
+      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use $crate::DistributionSampler;
+        use numpy::IntoPyArray;
+        use pyo3::IntoPyObjectExt;
+        if let Some(ref inner) = self.inner_f64 {
+          inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+        } else if let Some(ref inner) = self.inner_f32 {
+          inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+        } else {
+          unreachable!()
+        }
+      }
+
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use $crate::DistributionSampler;
+        use numpy::IntoPyArray;
+        use pyo3::IntoPyObjectExt;
+        if let Some(ref inner) = self.inner_f64 {
+          inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+        } else if let Some(ref inner) = self.inner_f32 {
+          inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+        } else {
+          unreachable!()
+        }
+      }
+    }
+  };
+}
+
+#[cfg(not(feature = "python"))]
 #[macro_export]
 macro_rules! py_distribution {
   ($($tt:tt)*) => {};
 }
 
+#[cfg(feature = "python")]
+#[macro_export]
+macro_rules! py_distribution_int {
+  ($py_name:ident, $inner:ident,
+    sig: ($($sig:tt)*),
+    params: ($($param:ident : $pty:ty),* $(,)?)
+  ) => {
+    #[pyo3::prelude::pyclass(unsendable)]
+    pub struct $py_name {
+      inner: $inner<i64>,
+    }
+
+    #[pyo3::prelude::pymethods]
+    impl $py_name {
+      #[new]
+      #[pyo3(signature = ($($sig)*))]
+      fn new($($param: $pty),*) -> Self {
+        Self {
+          inner: $inner::new($($param),*),
+        }
+      }
+
+      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use $crate::DistributionSampler;
+        use numpy::IntoPyArray;
+        use pyo3::IntoPyObjectExt;
+        self.inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+      }
+
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
+        use $crate::DistributionSampler;
+        use numpy::IntoPyArray;
+        use pyo3::IntoPyObjectExt;
+        self.inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+      }
+    }
+  };
+}
+
+#[cfg(not(feature = "python"))]
 #[macro_export]
 macro_rules! py_distribution_int {
   ($($tt:tt)*) => {};

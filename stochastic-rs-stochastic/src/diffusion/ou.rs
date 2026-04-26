@@ -14,6 +14,10 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+/// PascalCase alias for [`OU`]. The all-caps form is kept for back-compat but
+/// new code should prefer `Ou`.
+pub type Ou<T, S = Unseeded> = OU<T, S>;
+
 #[derive(Clone, Copy)]
 pub struct OU<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.

@@ -121,7 +121,7 @@ impl FractalDim {
 /// # Arguments
 /// * `closes` — Daily (or intraday) close prices as `ArrayView1`,
 ///   length >= 30.
-pub fn estimate_hurst(closes: &ndarray::ArrayView1<f64>) -> f64 {
+pub fn estimate_hurst(closes: ndarray::ArrayView1<f64>) -> f64 {
   let n = closes.len();
   if n < 30 {
     return 0.1;

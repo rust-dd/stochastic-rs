@@ -22,7 +22,6 @@ use argmin::core::Gradient;
 use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
-use ndarray::Array1;
 use statrs::function::gamma::gamma;
 
 use crate::traits::FloatExt;
@@ -461,7 +460,7 @@ pub fn estimate_from_prices(closes: &[f64]) -> FukasawaResult {
 }
 
 /// FloatExt generic wrapper.
-pub fn estimate_from_prices_generic<T: FloatExt>(closes: &Array1<T>) -> FukasawaResult {
+pub fn estimate_from_prices_generic<T: FloatExt>(closes: ndarray::ArrayView1<T>) -> FukasawaResult {
   let closes_f64: Vec<f64> = closes.iter().map(|x| x.to_f64().unwrap()).collect();
   estimate_from_prices(&closes_f64)
 }

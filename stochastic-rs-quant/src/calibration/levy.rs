@@ -83,29 +83,52 @@ pub struct LevyCalibrationResult {
   pub iterations: usize,
 }
 
+/// Variant-dispatching wrapper around the five Lévy Fourier pricers.
+///
+/// Used by [`LevyCalibrationResult::to_model`] so the result remains a
+/// concrete `ModelPricer` (no `Box<dyn>`).
+#[derive(Clone, Debug)]
+pub enum LevyModel {
+  VarianceGamma(crate::pricing::fourier::VarianceGammaFourier),
+  Nig(crate::pricing::fourier::CGMYFourier),
+  Cgmy(crate::pricing::fourier::CGMYFourier),
+  MertonJd(crate::pricing::fourier::MertonJDFourier),
+  Kou(crate::pricing::fourier::KouFourier),
+}
+
+impl crate::traits::ModelPricer for LevyModel {
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    match self {
+      LevyModel::VarianceGamma(m) => m.price_call(s, k, r, q, tau),
+      LevyModel::Nig(m) => m.price_call(s, k, r, q, tau),
+      LevyModel::Cgmy(m) => m.price_call(s, k, r, q, tau),
+      LevyModel::MertonJd(m) => m.price_call(s, k, r, q, tau),
+      LevyModel::Kou(m) => m.price_call(s, k, r, q, tau),
+    }
+  }
+}
+
 impl crate::traits::ToModel for LevyCalibrationResult {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
+  type Model = LevyModel;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
     LevyCalibrationResult::to_model(self, r, q)
   }
 }
 
 impl LevyCalibrationResult {
   /// Convert to a Fourier model for pricing / vol surface generation.
-  ///
-  /// Returns a boxed [`ModelPricer`] because the concrete type depends
-  /// on the calibrated model variant.
-  pub fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
+  pub fn to_model(&self, r: f64, q: f64) -> LevyModel {
     use crate::pricing::fourier::*;
     let p = &self.params;
     match self.model_type {
-      LevyModelType::VarianceGamma => Box::new(VarianceGammaFourier {
+      LevyModelType::VarianceGamma => LevyModel::VarianceGamma(VarianceGammaFourier {
         sigma: p[0],
         theta: p[1],
         nu: p[2],
         r,
         q,
       }),
-      LevyModelType::NIG => Box::new(CGMYFourier {
+      LevyModelType::NIG => LevyModel::Nig(CGMYFourier {
         c: p[0],
         g: p[1],
         m: p[2],
@@ -113,7 +136,7 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::CGMY => Box::new(CGMYFourier {
+      LevyModelType::CGMY => LevyModel::Cgmy(CGMYFourier {
         c: p[0],
         g: p[1],
         m: p[2],
@@ -121,7 +144,7 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::MertonJD => Box::new(MertonJDFourier {
+      LevyModelType::MertonJD => LevyModel::MertonJd(MertonJDFourier {
         sigma: p[0],
         lambda: p[1],
         mu_j: p[2],
@@ -129,7 +152,7 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::Kou => Box::new(KouFourier {
+      LevyModelType::Kou => LevyModel::Kou(KouFourier {
         sigma: p[0],
         lambda: p[1],
         p_up: p[2],

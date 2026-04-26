@@ -55,6 +55,28 @@ pub struct HullWhiteCalibrationResult {
   pub market_prices: Vec<f64>,
 }
 
+impl HullWhiteCalibrationResult {
+  /// Convert to a [`HullWhiteTreeModel`](crate::lattice::HullWhiteTreeModel)
+  /// for short-rate / interest-rate option valuation via the lattice pipeline.
+  ///
+  /// Hull-White lattice models do **not** plug into the equity vol-surface
+  /// pipeline (`ToModel` / `ModelPricer`); they consume a yield curve and a
+  /// time grid and produce a discount tree. Use the lattice instruments
+  /// (`Cap`, `Floor`, `BermudanSwaption`, …) for valuation.
+  pub fn to_short_rate_model(
+    &self,
+    initial_rate: f64,
+    theta: f64,
+  ) -> crate::lattice::short_rate::HullWhiteTreeModel<f64> {
+    crate::lattice::short_rate::HullWhiteTreeModel::new(
+      initial_rate,
+      self.mean_reversion,
+      theta,
+      self.sigma,
+    )
+  }
+}
+
 /// Hull-White calibrator.
 #[derive(Debug, Clone)]
 pub struct HullWhiteSwaptionCalibrator<'a> {

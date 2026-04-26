@@ -67,8 +67,9 @@ impl From<HscmCalibrationResult> for crate::pricing::heston_stoch_corr::HscmMode
 }
 
 impl crate::traits::ToModel for HscmCalibrationResult {
-  fn to_model(&self, _r: f64, _q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(HscmCalibrationResult::to_model(self))
+  type Model = crate::pricing::heston_stoch_corr::HscmModel;
+  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
+    HscmCalibrationResult::to_model(self)
   }
 }
 

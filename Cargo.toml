@@ -238,10 +238,17 @@ metal = ["dep:metal"]
 gpu-cuda = ["gpu", "dep:cubecl-cuda"]
 gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
 jemalloc = ["dep:tikv-jemallocator"]
-# NOTE: Python bindings are being migrated to `stochastic-rs-py` (Phase 6 follow-up).
-# The umbrella `python` feature is temporarily a no-op until that crate ships
-# the regenerated PyO3 wrappers.
-python = ["dep:pyo3", "dep:numpy", "stochastic-rs-distributions/python"]
+# Python bindings live in `stochastic-rs-py` (separate cdylib). Enabling
+# `python` here just turns on the upstream feature flags so the umbrella
+# build is consistent with the cdylib build. The actual Python module
+# (`stochastic_rs`) is produced by `cargo build -p stochastic-rs-py` or
+# via `maturin develop` from the `stochastic-rs-py` directory.
+python = [
+    "dep:pyo3",
+    "dep:numpy",
+    "stochastic-rs-distributions/python",
+    "stochastic-rs-stochastic/python",
+]
 mimalloc = ["dep:mimalloc"]
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars", "dep:tokio-test"]
 hotpath = ["dep:hotpath", "hotpath/hotpath"]
@@ -249,7 +256,7 @@ hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
 
 [lib]
 name = "stochastic_rs"
-crate-type = ["lib", "cdylib"]
+crate-type = ["lib"]
 path = "src/lib.rs"
 doctest = false
 

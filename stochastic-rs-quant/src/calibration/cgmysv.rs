@@ -39,12 +39,13 @@ pub struct CgmysvCalibrationResult {
 }
 
 impl crate::traits::ToModel for CgmysvCalibrationResult {
-  fn to_model(&self, r: f64, q: f64) -> Box<dyn crate::traits::ModelPricer> {
-    Box::new(CgmysvModel {
+  type Model = CgmysvModel;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    CgmysvModel {
       params: self.params.clone(),
       r,
       q,
-    })
+    }
   }
 }
 
