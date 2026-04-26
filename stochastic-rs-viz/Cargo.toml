@@ -1,0 +1,28 @@
+[package]
+name = "stochastic-rs-viz"
+version = "2.0.0-beta.1"
+edition = "2024"
+license = "MIT"
+description = "Plotly-based visualization for stochastic-rs processes and distributions."
+repository = "https://github.com/dancixx/stochastic-rs"
+publish = false
+
+[lib]
+doctest = false
+
+[features]
+default = []
+
+[dependencies]
+stochastic-rs-core = { path = "../stochastic-rs-core", version = "2.0.0-beta.1" }
+stochastic-rs-distributions = { path = "../stochastic-rs-distributions", version = "2.0.0-beta.1" }
+stochastic-rs-stochastic = { path = "../stochastic-rs-stochastic", version = "2.0.0-beta.1" }
+plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
+ndarray = "0.17.2"
+num-complex = "0.4.6"
+num-traits = "0.2.19"
+
+[dev-dependencies]
+rand = "0.9.2"
+rand_distr = "0.5.1"
+ndarray = "0.17.2"
