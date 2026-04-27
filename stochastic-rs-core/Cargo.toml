@@ -5,7 +5,6 @@ edition = "2024"
 license = "MIT"
 description = "Core traits, SIMD RNG, and macros for stochastic-rs."
 repository = "https://github.com/dancixx/stochastic-rs"
-publish = false
 
 [lib]
 doctest = false

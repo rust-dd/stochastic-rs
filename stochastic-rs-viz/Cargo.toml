@@ -5,7 +5,6 @@ edition = "2024"
 license = "MIT"
 description = "Plotly-based visualization for stochastic-rs processes and distributions."
 repository = "https://github.com/dancixx/stochastic-rs"
-publish = false
 
 [lib]
 doctest = false

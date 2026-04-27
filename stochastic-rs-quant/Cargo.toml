@@ -5,7 +5,6 @@ edition = "2024"
 license = "MIT"
 description = "Quantitative finance: pricing, calibration, vol surfaces, instruments."
 repository = "https://github.com/dancixx/stochastic-rs"
-publish = false
 
 [lib]
 doctest = false

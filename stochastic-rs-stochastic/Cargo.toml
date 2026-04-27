@@ -5,7 +5,6 @@ edition = "2024"
 license = "MIT"
 description = "Stochastic process simulation."
 repository = "https://github.com/dancixx/stochastic-rs"
-publish = false
 
 [lib]
 doctest = false
