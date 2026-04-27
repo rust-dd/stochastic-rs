@@ -1,0 +1,33 @@
+[package]
+name = "stochastic-rs-distributions"
+version = "2.0.0-beta.2"
+edition = "2024"
+license = "MIT"
+description = "Probability distributions with SIMD bulk sampling."
+repository = "https://github.com/dancixx/stochastic-rs"
+publish = false
+
+[lib]
+doctest = false
+
+[features]
+default = []
+python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python"]
+
+[dependencies]
+stochastic-rs-core = { workspace = true }
+ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+wide = { workspace = true }
+num-traits = { workspace = true }
+num-complex = { workspace = true, features = ["rand"] }
+rayon = { workspace = true }
+pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+numpy = { workspace = true, optional = true }
+plotly = { workspace = true, features = ["plotly_ndarray"] }
+statrs = { workspace = true }
+
+[dev-dependencies]
+romu = { workspace = true }
+statrs = { workspace = true }

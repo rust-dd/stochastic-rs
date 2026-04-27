@@ -7,21 +7,21 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use stochastic_rs::stochastic::diffusion::fouque::FouqueOU2D;
-use stochastic_rs::stochastic::interest::hjm::HJM;
+use stochastic_rs::stochastic::interest::hjm::Hjm;
 use stochastic_rs::stochastic::interest::wu_zhang::WuZhangD;
-use stochastic_rs::stochastic::noise::cgns::CGNS;
+use stochastic_rs::stochastic::noise::cgns::Cgns;
 use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::traits::ProcessExt;
 
 fn bench_cgns(c: &mut Criterion) {
-  let mut group = c.benchmark_group("GnBatching/CGNS");
+  let mut group = c.benchmark_group("GnBatching/Cgns");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
   let n = 100_000usize;
   let rho = 0.6f64;
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &n| {
-    let proc = CGNS::<f64>::new(rho, n, Some(1.0));
+    let proc = Cgns::<f64>::new(rho, n, Some(1.0));
     b.iter(|| black_box(proc.sample()));
   });
 
@@ -98,14 +98,14 @@ fn sigma_fn(_t: f64, _tm: f64) -> f64 {
 }
 
 fn bench_hjm(c: &mut Criterion) {
-  let mut group = c.benchmark_group("GnBatching/HJM");
+  let mut group = c.benchmark_group("GnBatching/Hjm");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
   let n = 50_000usize;
   let t_max = 1.0f64;
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &n| {
-    let proc = HJM::<f64>::new(
+    let proc = Hjm::<f64>::new(
       a_fn as fn(f64) -> f64,
       b_fn as fn(f64) -> f64,
       p_fn as fn(f64, f64) -> f64,

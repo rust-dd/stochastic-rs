@@ -1,0 +1,67 @@
+[package]
+name = "stochastic-rs-stochastic"
+version = "2.0.0-beta.2"
+edition = "2024"
+license = "MIT"
+description = "Stochastic process simulation."
+repository = "https://github.com/dancixx/stochastic-rs"
+publish = false
+
+[lib]
+doctest = false
+
+[features]
+default = []
+openblas = ["dep:ndarray-linalg", "dep:openblas-src"]
+gpu = ["dep:cubecl", "dep:gpu-fft"]
+gpu-cuda = ["gpu", "dep:cubecl-cuda"]
+gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
+cuda-native = ["dep:cudarc"]
+metal = ["dep:metal"]
+accelerate = []
+python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
+
+[dependencies]
+stochastic-rs-core = { workspace = true }
+stochastic-rs-distributions = { workspace = true }
+ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
+ndarray-linalg = { workspace = true, features = ["openblas-system"], optional = true }
+ndarray-rand = { workspace = true }
+ndarray-stats = { workspace = true }
+ndrustfft = { workspace = true }
+num-complex = { workspace = true, features = ["rand"] }
+num-traits = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+rayon = { workspace = true }
+roots = { workspace = true }
+kendalls = { workspace = true }
+levenberg-marquardt = { workspace = true }
+argmin = { workspace = true }
+argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] }
+gauss-quad = { workspace = true }
+quadrature = { workspace = true }
+nalgebra = { workspace = true }
+either = { workspace = true }
+anyhow = { workspace = true }
+wide = { workspace = true }
+sci-rs = { workspace = true }
+scilib = { workspace = true }
+linreg = { workspace = true }
+openblas-src = { workspace = true, features = ["cblas"], optional = true }
+parking_lot = { workspace = true }
+ordered-float = { workspace = true }
+statrs = { workspace = true }
+plotly = { workspace = true, features = ["plotly_ndarray"] }
+cubecl = { workspace = true, optional = true, default-features = false }
+cubecl-cuda = { workspace = true, optional = true }
+cubecl-wgpu = { workspace = true, optional = true }
+cudarc = { workspace = true, optional = true, features = ["cuda-12080", "cuda-version-from-build-system"] }
+gpu-fft = { workspace = true, optional = true }
+metal = { workspace = true, optional = true }
+pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+numpy = { workspace = true, optional = true }
+
+[dev-dependencies]
+romu = { workspace = true }
+stochastic-rs-stats = { workspace = true }

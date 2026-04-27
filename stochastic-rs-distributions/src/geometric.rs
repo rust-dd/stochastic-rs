@@ -1,0 +1,129 @@
+//! # Geometric
+//!
+//! $$
+//! \mathbb{P}(X=k)=(1-p)^{k-1}p,\ k\ge 1
+//! $$
+//!
+use std::cell::UnsafeCell;
+
+use num_traits::PrimInt;
+use rand::Rng;
+use rand_distr::Distribution;
+use wide::f64x8;
+
+use crate::simd_rng::SimdRng;
+
+const SMALL_GEOMETRIC_THRESHOLD: usize = 16;
+
+pub struct SimdGeometric<T: PrimInt> {
+  p: f64,
+  buffer: UnsafeCell<[T; 16]>,
+  index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
+}
+
+impl<T: PrimInt> SimdGeometric<T> {
+  #[inline]
+  pub fn new(p: f64) -> Self {
+    Self::from_seed_source(p, &mut crate::simd_rng::Unseeded)
+  }
+
+  /// Creates a geometric distribution with a deterministic seed.
+  #[inline]
+  pub fn with_seed(p: f64, seed: u64) -> Self {
+    Self::from_seed_source(p, &mut crate::simd_rng::Deterministic(seed))
+  }
+
+  /// Creates a geometric distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  pub fn from_seed_source(p: f64, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+    Self {
+      p,
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(seed.rng()),
+    }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
+  }
+
+  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let ln1p = (1.0 - self.p).ln();
+    if out.len() < SMALL_GEOMETRIC_THRESHOLD {
+      let inv_ln1p = 1.0 / ln1p;
+      for x in out.iter_mut() {
+        let u = rng.next_f64();
+        let g = (u.ln() * inv_ln1p).floor();
+        *x = num_traits::cast(g.max(0.0) as u64).unwrap_or(T::zero());
+      }
+      return;
+    }
+    let inv_ln1p = f64x8::splat(1.0 / ln1p);
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      let u = rng.next_f64_array();
+      let v = f64x8::from(u);
+      let g = (v.ln() * inv_ln1p).floor();
+      let tmp = g.to_array();
+      for (o, &t) in chunk.iter_mut().zip(tmp.iter()) {
+        *o = num_traits::cast(t.max(0.0) as u64).unwrap_or(T::zero());
+      }
+    }
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      let u = rng.next_f64_array();
+      let v = f64x8::from(u);
+      let g = (v.ln() * inv_ln1p).floor();
+      let tmp = g.to_array();
+      for i in 0..rem.len() {
+        rem[i] = num_traits::cast(tmp[i].max(0.0) as u64).unwrap_or(T::zero());
+      }
+    }
+  }
+
+  fn refill_buffer(&self) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice_fast(buf);
+    unsafe {
+      *self.index.get() = 0;
+    }
+  }
+}
+
+impl<T: PrimInt> Clone for SimdGeometric<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.p)
+  }
+}
+
+impl<T: PrimInt> Distribution<T> for SimdGeometric<T> {
+  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+    let idx = unsafe { &mut *self.index.get() };
+    if *idx >= 16 {
+      self.refill_buffer();
+    }
+    let val = unsafe { (*self.buffer.get())[*idx] };
+    *idx += 1;
+    val
+  }
+}
+
+py_distribution_int!(PyGeometric, SimdGeometric,
+  sig: (p),
+  params: (p: f64)
+);

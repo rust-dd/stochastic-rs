@@ -7,16 +7,16 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::stats::mle::DensityApprox;
 use stochastic_rs::stats::mle::fit_mle;
-use stochastic_rs::stochastic::diffusion::cir::CIR;
-use stochastic_rs::stochastic::diffusion::ou::OU;
+use stochastic_rs::stochastic::diffusion::cir::Cir;
+use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::traits::ProcessExt;
 
 fn bench_density_eval(c: &mut Criterion) {
   let mut group = c.benchmark_group("density_eval");
   group.measurement_time(Duration::from_secs(3));
 
-  let cir = CIR::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
-  let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
+  let cir = Cir::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
+  let ou = Ou::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
   let dt = 1.0 / 250.0;
 
   for (name, density) in [
@@ -26,16 +26,16 @@ fn bench_density_eval(c: &mut Criterion) {
     ("ShojiOzaki", DensityApprox::ShojiOzaki),
     ("Elerian", DensityApprox::Elerian),
   ] {
-    group.bench_function(BenchmarkId::new("CIR", name), |b| {
+    group.bench_function(BenchmarkId::new("Cir", name), |b| {
       b.iter(|| black_box(density.density(&cir, 0.4, 0.41, 0.0, dt)))
     });
-    group.bench_function(BenchmarkId::new("OU", name), |b| {
+    group.bench_function(BenchmarkId::new("Ou", name), |b| {
       b.iter(|| black_box(density.density(&ou, 0.5, 0.55, 0.0, 0.01)))
     });
   }
 
-  // OU Exact
-  group.bench_function(BenchmarkId::new("OU", "Exact"), |b| {
+  // Ou Exact
+  group.bench_function(BenchmarkId::new("Ou", "Exact"), |b| {
     b.iter(|| black_box(DensityApprox::Exact.density(&ou, 0.5, 0.55, 0.0, 0.01)))
   });
 
@@ -47,11 +47,11 @@ fn bench_log_likelihood(c: &mut Criterion) {
   group.measurement_time(Duration::from_secs(3));
 
   for &n in &[1_000usize, 5_000, 10_000] {
-    let ou = OU::seeded(2.0, 1.0, 0.3, n + 1, Some(1.0), Some(10.0), 42);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, n + 1, Some(1.0), Some(10.0), 42);
     let path = ou.sample();
     let dt = 10.0 / n as f64;
 
-    group.bench_function(BenchmarkId::new("OU/Euler", n), |b| {
+    group.bench_function(BenchmarkId::new("Ou/Euler", n), |b| {
       b.iter(|| {
         let mut sum = 0.0f64;
         for i in 0..path.len() - 1 {
@@ -62,7 +62,7 @@ fn bench_log_likelihood(c: &mut Criterion) {
       })
     });
 
-    group.bench_function(BenchmarkId::new("OU/Kessler", n), |b| {
+    group.bench_function(BenchmarkId::new("Ou/Kessler", n), |b| {
       b.iter(|| {
         let mut sum = 0.0f64;
         for i in 0..path.len() - 1 {
@@ -83,21 +83,21 @@ fn bench_mle_fit(c: &mut Criterion) {
   group.sample_size(10);
 
   for &(n, label) in &[(1_000usize, "1k"), (5_000, "5k")] {
-    // OU Euler
-    let ou = OU::seeded(2.0, 1.0, 0.3, n + 1, Some(1.0), Some(10.0), 42);
+    // Ou Euler
+    let ou = Ou::seeded(2.0, 1.0, 0.3, n + 1, Some(1.0), Some(10.0), 42);
     let path = ou.sample();
     let dt = 10.0 / n as f64;
 
-    group.bench_function(BenchmarkId::new("OU/Euler", label), |b| {
+    group.bench_function(BenchmarkId::new("Ou/Euler", label), |b| {
       b.iter(|| {
-        let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+        let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
         black_box(fit_mle(&mut ou_fit, &path, dt, DensityApprox::Euler, None))
       })
     });
 
-    group.bench_function(BenchmarkId::new("OU/Kessler", label), |b| {
+    group.bench_function(BenchmarkId::new("Ou/Kessler", label), |b| {
       b.iter(|| {
-        let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+        let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
         black_box(fit_mle(
           &mut ou_fit,
           &path,
@@ -108,14 +108,14 @@ fn bench_mle_fit(c: &mut Criterion) {
       })
     });
 
-    // CIR Kessler
-    let cir = CIR::seeded(3.0, 0.3, 0.2, n + 1, Some(0.4), Some(10.0), None, 42);
+    // Cir Kessler
+    let cir = Cir::seeded(3.0, 0.3, 0.2, n + 1, Some(0.4), Some(10.0), None, 42);
     let cir_path = cir.sample();
     let cir_dt = 10.0 / n as f64;
 
-    group.bench_function(BenchmarkId::new("CIR/Kessler", label), |b| {
+    group.bench_function(BenchmarkId::new("Cir/Kessler", label), |b| {
       b.iter(|| {
-        let mut cir_fit = CIR::seeded(1.0, 0.5, 0.3, 100, Some(0.4), Some(1.0), None, 0);
+        let mut cir_fit = Cir::seeded(1.0, 0.5, 0.3, 100, Some(0.4), Some(1.0), None, 0);
         black_box(fit_mle(
           &mut cir_fit,
           &cir_path,

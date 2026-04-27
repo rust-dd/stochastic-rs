@@ -1,4 +1,4 @@
-//! Hotpath profiler for distributions, simd_rng, and FGN.
+//! Hotpath profiler for distributions, simd_rng, and Fgn.
 //!
 //! ```sh
 //! cargo bench --bench hotpath_profile --features='hotpath-alloc'
@@ -8,7 +8,7 @@ use std::hint::black_box;
 use stochastic_rs::distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs::distributions::exp::SimdExpZig;
 use stochastic_rs::distributions::normal::SimdNormal;
-use stochastic_rs::stochastic::noise::fgn::FGN;
+use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
 const N_SAMPLES: usize = 1_000_000;
@@ -109,13 +109,13 @@ fn profile_alpha_stable_cauchy_f64(n: usize) {
 #[hotpath::measure]
 fn profile_fgn_construction(n: usize, hurst: f64) {
   for _ in 0..64 {
-    let fgn = FGN::<f64>::new(hurst, n, Some(1.0));
+    let fgn = Fgn::<f64>::new(hurst, n, Some(1.0));
     black_box(&fgn);
   }
 }
 
 #[hotpath::measure]
-fn profile_fgn_sample(fgn: &FGN<f64>, m: usize) {
+fn profile_fgn_sample(fgn: &Fgn<f64>, m: usize) {
   for _ in 0..m {
     let path = fgn.sample();
     black_box(&path);
@@ -146,11 +146,11 @@ fn main() {
   profile_alpha_stable_gaussian_f64(N_SAMPLES);
   profile_alpha_stable_cauchy_f64(N_SAMPLES);
 
-  println!("[6/7] FGN construction (n={FGN_STEPS}, 64x)...");
+  println!("[6/7] Fgn construction (n={FGN_STEPS}, 64x)...");
   profile_fgn_construction(FGN_STEPS, 0.7);
 
-  println!("[7/7] FGN sampling (n={FGN_STEPS}, {FGN_PATHS} paths)...");
-  let fgn = FGN::<f64>::new(0.7, FGN_STEPS, Some(1.0));
+  println!("[7/7] Fgn sampling (n={FGN_STEPS}, {FGN_PATHS} paths)...");
+  let fgn = Fgn::<f64>::new(0.7, FGN_STEPS, Some(1.0));
   profile_fgn_sample(&fgn, FGN_PATHS);
 
   println!("\nDone.\n");

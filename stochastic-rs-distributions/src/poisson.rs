@@ -1,0 +1,135 @@
+//! # Poisson
+//!
+//! $$
+//! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
+//! $$
+//!
+use std::cell::UnsafeCell;
+
+use num_traits::PrimInt;
+use rand::Rng;
+use rand_distr::Distribution;
+
+use crate::simd_rng::SimdRng;
+
+pub struct SimdPoisson<T: PrimInt> {
+  cdf: Box<[f64]>,
+  buffer: UnsafeCell<[T; 16]>,
+  index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<SimdRng>,
+}
+
+impl<T: PrimInt> SimdPoisson<T> {
+  #[inline]
+  fn build_cdf(lambda: f64) -> Box<[f64]> {
+    let mut cdf = Vec::new();
+    let mut pmf = (-lambda).exp();
+    let mut cum = pmf;
+    cdf.push(cum);
+
+    loop {
+      pmf *= lambda / (cdf.len() as f64);
+      cum += pmf;
+      if cum >= 1.0 - 1e-15 {
+        cdf.push(1.0);
+        break;
+      }
+      cdf.push(cum);
+    }
+
+    cdf.into_boxed_slice()
+  }
+
+  /// Construct a Poisson sampler with rate `lambda`.
+  ///
+  /// `lambda` is `f64` regardless of the output type `T`: the rate parameter
+  /// is intrinsically real-valued and the internal CDF table is built in
+  /// `f64` precision. The generic `T: PrimInt` controls only the *output*
+  /// integer width (`u32`, `u64`, `i64`, …), not the rate type.
+  pub fn new(lambda: f64) -> Self {
+    Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
+  }
+
+  pub fn from_seed_source(lambda: f64, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+    assert!(lambda > 0.0);
+    Self {
+      cdf: Self::build_cdf(lambda),
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(seed.rng()),
+    }
+  }
+
+  /// Returns a single sample using the internal SIMD RNG.
+  #[inline]
+  pub fn sample_fast(&self) -> T {
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer_fast();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
+  }
+
+  fn refill_buffer_fast(&self) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice(rng, buf);
+    unsafe {
+      *self.index.get() = 0;
+    }
+  }
+
+  /// Fills `out` using the internal SIMD RNG.
+  #[inline]
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    self.fill_slice(rng, out);
+  }
+
+  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    for x in out.iter_mut() {
+      let u: f64 = rng.random();
+      let k = self.cdf.partition_point(|&p| p < u);
+      *x = num_traits::cast(k).unwrap_or(T::zero());
+    }
+  }
+
+  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice(rng, buf);
+    unsafe {
+      *self.index.get() = 0;
+    }
+  }
+}
+
+impl<T: PrimInt> Clone for SimdPoisson<T> {
+  fn clone(&self) -> Self {
+    Self {
+      cdf: self.cdf.clone(),
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(SimdRng::new()),
+    }
+  }
+}
+
+impl<T: PrimInt> Distribution<T> for SimdPoisson<T> {
+  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+    let idx = unsafe { &mut *self.index.get() };
+    if *idx >= 16 {
+      self.refill_buffer(rng);
+    }
+    let val = unsafe { (*self.buffer.get())[*idx] };
+    *idx += 1;
+    val
+  }
+}
+
+py_distribution_int!(PyPoissonD, SimdPoisson,
+  sig: (lambda_),
+  params: (lambda_: f64)
+);

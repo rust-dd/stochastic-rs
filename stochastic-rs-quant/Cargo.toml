@@ -1,0 +1,64 @@
+[package]
+name = "stochastic-rs-quant"
+version = "2.0.0-beta.2"
+edition = "2024"
+license = "MIT"
+description = "Quantitative finance: pricing, calibration, vol surfaces, instruments."
+repository = "https://github.com/dancixx/stochastic-rs"
+publish = false
+
+[lib]
+doctest = false
+
+[features]
+default = []
+openblas = ["dep:ndarray-linalg", "dep:openblas-src"]
+yahoo = ["dep:yahoo_finance_api", "dep:time", "dep:polars", "dep:tokio-test"]
+python = ["dep:pyo3"]
+
+[dependencies]
+stochastic-rs-core = { workspace = true }
+stochastic-rs-distributions = { workspace = true }
+stochastic-rs-stochastic = { workspace = true }
+stochastic-rs-stats = { workspace = true }
+stochastic-rs-copulas = { workspace = true }
+ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
+ndarray-stats = { workspace = true }
+ndarray-linalg = { workspace = true, features = ["openblas-system"], optional = true }
+openblas-src = { workspace = true, features = ["cblas"], optional = true }
+ndarray-rand = { workspace = true }
+ndarray-npy = { workspace = true }
+ndrustfft = { workspace = true }
+nalgebra = { workspace = true }
+num-traits = { workspace = true }
+num-complex = { workspace = true, features = ["rand"] }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+rayon = { workspace = true }
+roots = { workspace = true }
+kendalls = { workspace = true }
+statrs = { workspace = true }
+levenberg-marquardt = { workspace = true }
+linreg = { workspace = true }
+argmin = { workspace = true }
+argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] }
+gauss-quad = { workspace = true }
+quadrature = { workspace = true }
+sci-rs = { workspace = true }
+scilib = { workspace = true }
+slsqp = { workspace = true }
+implied-vol = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+anyhow = { workspace = true }
+either = { workspace = true }
+ordered-float = { workspace = true }
+plotly = { workspace = true, features = ["plotly_ndarray"] }
+flate2 = { workspace = true }
+owens-t = { workspace = true }
+wide = { workspace = true }
+time = { workspace = true, features = ["formatting", "parsing"], optional = true }
+polars = { workspace = true, features = ["lazy"], optional = true }
+yahoo_finance_api = { workspace = true, optional = true }
+tokio-test = { workspace = true, optional = true }
+pyo3 = { workspace = true, features = ["extension-module"], optional = true }

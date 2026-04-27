@@ -5,7 +5,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use stochastic_rs::stochastic::noise::fgn::FGN;
+use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
 fn bench_fgn_single_path_cpu_vs_gpu(c: &mut Criterion) {
@@ -17,7 +17,7 @@ fn bench_fgn_single_path_cpu_vs_gpu(c: &mut Criterion) {
   let hurst = 0.7f32;
 
   for &n in &[1024usize, 4096, 16384, 65536] {
-    let fgn = FGN::new(hurst, n, None);
+    let fgn = Fgn::new(hurst, n, None);
 
     let _ = fgn
       .sample_gpu(1)
@@ -58,7 +58,7 @@ fn bench_fgn_batch_cpu_vs_gpu(c: &mut Criterion) {
 
   for &(n, m) in &cases {
     let label = format!("n={n},m={m}");
-    let fgn = FGN::new(hurst, n, None);
+    let fgn = Fgn::new(hurst, n, None);
 
     let _ = fgn.sample_gpu(m).expect("GPU batch warmup should succeed");
 

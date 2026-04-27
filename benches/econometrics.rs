@@ -4,7 +4,6 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
-use ndarray::Array2;
 use stochastic_rs::distributions::normal::SimdNormal;
 #[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::GaussianHmm;

@@ -1,0 +1,18 @@
+[package]
+name = "stochastic-rs-py"
+version = "2.0.0-beta.2"
+edition = "2024"
+license = "MIT"
+description = "Python (pyo3) bindings for stochastic-rs."
+repository = "https://github.com/dancixx/stochastic-rs"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+stochastic-rs-core = { workspace = true, features = ["python"] }
+stochastic-rs-distributions = { workspace = true, features = ["python"] }
+stochastic-rs-stochastic = { workspace = true, features = ["python"] }
+pyo3 = { workspace = true, features = ["extension-module"] }

@@ -10,7 +10,57 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  # Quick check: every sub-crate compiles independently with default features.
+  # This catches broken inter-crate boundaries before the heavier coverage job
+  # exercises the full umbrella.
+  check_subcrates:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate:
+          - stochastic-rs-core
+          - stochastic-rs-distributions
+          - stochastic-rs-stochastic
+          - stochastic-rs-copulas
+          - stochastic-rs-stats
+          - stochastic-rs-quant
+          - stochastic-rs-ai
+          - stochastic-rs-viz
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Cargo check (${{ matrix.crate }})
+        run: cargo check -p ${{ matrix.crate }} --no-default-features
+
+  # Umbrella + features matrix.
+  check_umbrella:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - "" # default
+          - "ai"
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Cargo check (features=${{ matrix.features }})
+        run: |
+          if [ -z "${{ matrix.features }}" ]; then
+            cargo check -p stochastic-rs --all-targets
+          else
+            cargo check -p stochastic-rs --all-targets --features "${{ matrix.features }}"
+          fi
+
+  # Full test run with openblas + coverage.
+  test_with_coverage:
     runs-on: ubuntu-latest
 
     steps:
@@ -40,7 +90,7 @@ jobs:
           RUSTFLAGS: "-C instrument-coverage -C codegen-units=1 -C debuginfo=0"
           LLVM_PROFILE_FILE: "coverage-%p-%m.profraw"
         run: |
-          cargo test --all --features openblas --verbose
+          cargo test --workspace --exclude stochastic-rs-py --features openblas --verbose
 
       - name: Generate coverage report
         run: |

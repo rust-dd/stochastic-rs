@@ -1,0 +1,175 @@
+//! # Agrach
+//!
+//! $$
+//! \sigma_t^2=\omega+\sum_{i=1}^p(\alpha_i+\delta_i\mathbf 1_{\{X_{t-i}<0\}})X_{t-i}^2
+//! +\sum_{j=1}^q\beta_j\sigma_{t-j}^2
+//! $$
+//!
+use ndarray::Array1;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
+
+use crate::traits::FloatExt;
+use crate::traits::ProcessExt;
+
+/// A generic Asymmetric Garch(p,q) model (A-Garch),
+/// allowing a separate "delta" term for negative-lag effects.
+///
+/// One possible form:
+/// \[
+///   \sigma_t^2
+///     = \omega
+///       + \sum_{i=1}^p \Bigl[\alpha_i X_{t-i}^2
+///                             + \delta_i X_{t-i}^2 \mathbf{1}_{\{X_{t-i}<0\}}\Bigr]
+///       + \sum_{j=1}^q \beta_j \sigma_{t-j}^2,
+///   \quad X_t = \sigma_t \cdot z_t, \quad z_t \sim \mathcal{N}(0,1).
+/// \]
+///
+/// # Parameters
+/// - `omega`: Constant term \(\omega\).
+/// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for positive squared terms.
+/// - `delta`: Array \(\{\delta_1, \ldots, \delta_p\}\) for negative-lag extra effect.
+/// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\).
+/// - `n`:     Length of the time series.
+/// - `m`:     Optional batch size (unused by default).
+///
+/// # Notes
+/// - This is essentially a T-Garch-like structure but with different naming (`delta`).
+/// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
+#[derive(Debug, Clone)]
+pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Constant term in conditional variance dynamics.
+  pub omega: T,
+  /// Model shape / loading parameter.
+  pub alpha: Array1<T>,
+  /// Model shape / asymmetry parameter.
+  pub delta: Array1<T>,
+  /// Model slope / loading parameter.
+  pub beta: Array1<T>,
+  /// Number of discrete simulation points (or samples).
+  pub n: usize,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
+}
+
+impl<T: FloatExt> Agarch<T> {
+  pub fn new(omega: T, alpha: Array1<T>, delta: Array1<T>, beta: Array1<T>, n: usize) -> Self {
+    assert!(omega > T::zero(), "Agarch requires omega > 0");
+    assert!(
+      alpha.len() == delta.len(),
+      "Agarch requires alpha.len() == delta.len()"
+    );
+    Self {
+      omega,
+      alpha,
+      delta,
+      beta,
+      n,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<T: FloatExt> Agarch<T, Deterministic> {
+  /// Create a new Agarch model with a deterministic seed for reproducible output.
+  pub fn seeded(
+    omega: T,
+    alpha: Array1<T>,
+    delta: Array1<T>,
+    beta: Array1<T>,
+    n: usize,
+    seed: u64,
+  ) -> Self {
+    assert!(omega > T::zero(), "Agarch requires omega > 0");
+    assert!(
+      alpha.len() == delta.len(),
+      "Agarch requires alpha.len() == delta.len()"
+    );
+    Self {
+      omega,
+      alpha,
+      delta,
+      beta,
+      n,
+      seed: Deterministic(seed),
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
+  type Output = Array1<T>;
+
+  fn sample(&self) -> Self::Output {
+    let p = self.alpha.len();
+    let q = self.beta.len();
+
+    // Generate white noise z_t ~ N(0,1)
+    let mut z_arr = Array1::<T>::zeros(self.n);
+    if self.n > 0 {
+      let slice = z_arr.as_slice_mut().expect("contiguous");
+      let mut seed = self.seed;
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+      normal.fill_slice_fast(slice);
+    }
+    let z = &z_arr;
+
+    // Arrays for X_t and sigma_t^2
+    let mut x = Array1::<T>::zeros(self.n);
+    let mut sigma2 = Array1::<T>::zeros(self.n);
+    let var_floor = T::from_f64_fast(1e-12);
+
+    // Summation for unconditional variance init
+    let sum_alpha = self.alpha.iter().cloned().sum();
+    let sum_delta_half = self.delta.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
+    let sum_beta = self.beta.iter().cloned().sum();
+    let denom = T::one() - sum_alpha - sum_delta_half - sum_beta;
+    assert!(
+      denom > T::zero(),
+      "Agarch requires sum(alpha) + 0.5*sum(delta) + sum(beta) < 1 for finite unconditional variance"
+    );
+
+    for t in 0..self.n {
+      if t == 0 {
+        sigma2[t] = self.omega / denom;
+      } else {
+        let mut var_t = self.omega;
+        // p-lag terms
+        for i in 1..=p {
+          if t >= i {
+            let x_lag = x[t - i];
+            let indicator = if x_lag < T::zero() {
+              T::one()
+            } else {
+              T::zero()
+            };
+
+            var_t +=
+              self.alpha[i - 1] * x_lag.powi(2) + self.delta[i - 1] * x_lag.powi(2) * indicator;
+          }
+        }
+        // q-lag terms
+        for j in 1..=q {
+          if t >= j {
+            var_t += self.beta[j - 1] * sigma2[t - j];
+          }
+        }
+        sigma2[t] = var_t;
+      }
+      assert!(
+        sigma2[t].is_finite() && sigma2[t] > T::zero(),
+        "Agarch produced non-positive or non-finite conditional variance at t={}",
+        t
+      );
+      x[t] = sigma2[t].max(var_floor).sqrt() * z[t];
+    }
+
+    x
+  }
+}
+
+py_process_1d!(PyAgarch, Agarch,
+  sig: (omega, alpha, delta, beta, n, seed=None, dtype=None),
+  params: (omega: f64, alpha: Vec<f64>, delta: Vec<f64>, beta: Vec<f64>, n: usize)
+);
