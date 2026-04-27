@@ -18,13 +18,13 @@
 //!
 use ndarray::Array1;
 use scilib::math::basic::gamma;
-
-use stochastic_rs_distributions::exp::SimdExp;
-use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::non_central_chi_squared;
+use stochastic_rs_distributions::uniform::SimdUniform;
+
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;

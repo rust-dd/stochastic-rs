@@ -11,11 +11,11 @@ use std::fmt;
 
 use ndarray::Array2;
 use rayon::prelude::*;
+use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::model::CgmysvParams;
 use crate::OptionType;
 use crate::pricing::barrier::BarrierType;
-use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 use crate::traits::ProcessExt;
 
 /// Monte Carlo pricing result with standard error.

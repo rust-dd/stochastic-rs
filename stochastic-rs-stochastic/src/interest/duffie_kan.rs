@@ -5,10 +5,10 @@
 //! $$
 //!
 use ndarray::Array1;
-
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -177,8 +177,22 @@ mod tests {
   #[test]
   fn sample_returns_two_paths() {
     let dk = DuffieKan::<f64>::new(
-      0.5, 0.04, 0.5, -0.3, 0.01, 0.0, 0.0, 0.01, 0.0, 0.5, 0.0, 0.005, 64,
-      Some(0.05), Some(0.05), Some(1.0),
+      0.5,
+      0.04,
+      0.5,
+      -0.3,
+      0.01,
+      0.0,
+      0.0,
+      0.01,
+      0.0,
+      0.5,
+      0.0,
+      0.005,
+      64,
+      Some(0.05),
+      Some(0.05),
+      Some(1.0),
     );
     let [r, x] = dk.sample();
     assert_eq!(r.len(), 64);

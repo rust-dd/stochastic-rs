@@ -10,8 +10,8 @@ use ndarray::Array1;
 use ndarray::array;
 use ndarray::s;
 use statrs::function::gamma::gamma;
-
 use stochastic_rs_stochastic::noise::fgn::Fgn;
+
 use crate::traits::ProcessExt;
 
 /// Structured result of an fOU parameter estimator.
@@ -710,8 +710,9 @@ impl FOUParameterEstimationV4 {
 
 #[cfg(test)]
 mod fou_v4_tests {
-  use super::FOUParameterEstimationV4;
   use stochastic_rs_stochastic::diffusion::fou::Fou;
+
+  use super::FOUParameterEstimationV4;
   use crate::traits::ProcessExt;
 
   #[test]

@@ -99,10 +99,10 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
 mod tests {
   use ndarray::ArrayView1;
   use rand::Rng;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::JarqueBeraConfig;
   use super::jarque_bera_test;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   #[test]
   fn jarque_bera_accepts_normal_sample() {

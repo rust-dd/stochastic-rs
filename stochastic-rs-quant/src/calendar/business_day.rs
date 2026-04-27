@@ -97,7 +97,10 @@ mod tests {
     // 2024-01-06 is Saturday; Following should give 2024-01-08 (Monday)
     let saturday = NaiveDate::from_ymd_opt(2024, 1, 6).unwrap();
     let monday = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
-    assert_eq!(BusinessDayConvention::Following.adjust(saturday, &cal), monday);
+    assert_eq!(
+      BusinessDayConvention::Following.adjust(saturday, &cal),
+      monday
+    );
   }
 
   #[test]
@@ -105,7 +108,10 @@ mod tests {
     let cal = Calendar::new(HolidayCalendar::UnitedStates);
     let sunday = NaiveDate::from_ymd_opt(2024, 1, 7).unwrap();
     let friday = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
-    assert_eq!(BusinessDayConvention::Preceding.adjust(sunday, &cal), friday);
+    assert_eq!(
+      BusinessDayConvention::Preceding.adjust(sunday, &cal),
+      friday
+    );
   }
 
   #[test]
@@ -125,6 +131,9 @@ mod tests {
   fn unadjusted_returns_same_date() {
     let cal = Calendar::new(HolidayCalendar::UnitedStates);
     let saturday = NaiveDate::from_ymd_opt(2024, 1, 6).unwrap();
-    assert_eq!(BusinessDayConvention::Unadjusted.adjust(saturday, &cal), saturday);
+    assert_eq!(
+      BusinessDayConvention::Unadjusted.adjust(saturday, &cal),
+      saturday
+    );
   }
 }

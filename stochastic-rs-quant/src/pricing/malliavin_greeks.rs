@@ -6,11 +6,11 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
-
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston;
+
 use crate::traits::ProcessExt;
 
 struct HestonElKhatibPath {

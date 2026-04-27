@@ -10,6 +10,16 @@ pub mod calibration;
 pub mod pricing;
 pub mod time;
 
+pub use calibration::CalibrationResult;
+pub use calibration::Calibrator;
+pub use calibration::ToModel;
+pub use calibration::ToShortRateModel;
+pub use pricing::GreeksExt;
+pub use pricing::ModelPricer;
+pub use pricing::PricerExt;
+pub use stochastic_rs_copulas::traits::BivariateExt;
+#[cfg(feature = "openblas")]
+pub use stochastic_rs_copulas::traits::MultivariateExt;
 pub use stochastic_rs_distributions::traits::DistributionExt;
 pub use stochastic_rs_distributions::traits::DistributionSampler;
 pub use stochastic_rs_distributions::traits::FloatExt;
@@ -23,16 +33,4 @@ pub use stochastic_rs_stochastic::traits::MultiDimensional;
 pub use stochastic_rs_stochastic::traits::OneDimensional;
 pub use stochastic_rs_stochastic::traits::ProcessExt;
 pub use stochastic_rs_stochastic::traits::TwoDimensional;
-
-pub use stochastic_rs_copulas::traits::BivariateExt;
-#[cfg(feature = "openblas")]
-pub use stochastic_rs_copulas::traits::MultivariateExt;
-
-pub use calibration::CalibrationResult;
-pub use calibration::Calibrator;
-pub use calibration::ToModel;
-pub use calibration::ToShortRateModel;
-pub use pricing::GreeksExt;
-pub use pricing::ModelPricer;
-pub use pricing::PricerExt;
 pub use time::TimeExt;

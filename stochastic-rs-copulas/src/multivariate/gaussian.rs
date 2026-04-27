@@ -14,9 +14,9 @@ use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::CopulaType;
-use stochastic_rs_distributions::normal::SimdNormal;
 use crate::traits::MultivariateExt;
 
 #[derive(Debug, Clone, Default)]

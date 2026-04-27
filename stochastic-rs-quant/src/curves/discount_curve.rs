@@ -201,9 +201,18 @@ mod tests {
 
   fn flat_curve() -> DiscountCurve<f64> {
     let pts = vec![
-      CurvePoint { time: 0.5, discount_factor: (-0.05_f64 * 0.5).exp() },
-      CurvePoint { time: 1.0, discount_factor: (-0.05_f64 * 1.0).exp() },
-      CurvePoint { time: 2.0, discount_factor: (-0.05_f64 * 2.0).exp() },
+      CurvePoint {
+        time: 0.5,
+        discount_factor: (-0.05_f64 * 0.5).exp(),
+      },
+      CurvePoint {
+        time: 1.0,
+        discount_factor: (-0.05_f64 * 1.0).exp(),
+      },
+      CurvePoint {
+        time: 2.0,
+        discount_factor: (-0.05_f64 * 2.0).exp(),
+      },
     ];
     DiscountCurve::new(pts, InterpolationMethod::LogLinearOnDiscountFactors)
   }

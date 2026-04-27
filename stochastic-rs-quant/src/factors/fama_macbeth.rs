@@ -106,8 +106,9 @@ pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaM
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_distributions::normal::SimdNormal;
+
+  use super::*;
 
   #[test]
   fn fama_macbeth_recovers_factor_premium() {

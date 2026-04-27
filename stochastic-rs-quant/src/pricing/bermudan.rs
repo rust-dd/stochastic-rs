@@ -17,8 +17,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray_linalg::LeastSquaresSvd;
-
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
+
 use crate::traits::ProcessExt;
 
 /// Bermudan pricer driven by a path matrix and a set of exercise indices.

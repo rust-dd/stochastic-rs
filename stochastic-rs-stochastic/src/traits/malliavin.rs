@@ -1,7 +1,6 @@
 //! Finite-difference Malliavin sensitivity traits.
 
 use ndarray::Array1;
-
 use stochastic_rs_distributions::traits::FloatExt;
 
 use crate::noise::gn::Gn;

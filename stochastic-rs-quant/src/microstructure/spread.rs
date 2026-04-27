@@ -131,9 +131,9 @@ pub fn corwin_schultz_spread<T: FloatExt>(high: ArrayView1<T>, low: ArrayView1<T
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol

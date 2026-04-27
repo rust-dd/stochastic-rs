@@ -101,10 +101,11 @@ pub trait DiffusionModel: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_stochastic::diffusion::cir::Cir;
   use stochastic_rs_stochastic::diffusion::gbm::Gbm;
   use stochastic_rs_stochastic::diffusion::ou::Ou;
+
+  use super::*;
   use crate::traits::ProcessExt;
 
   #[test]

@@ -134,12 +134,8 @@ impl<T: FloatExt, I: RateIndex<T>> ForwardRateAgreement<T, I> {
     discount_day_count: DayCountConvention,
     curves: &(impl CurveProvider<T> + ?Sized),
   ) -> FraValuation<T> {
-    let period = crate::cashflows::AccrualPeriod::new(
-      self.start,
-      self.end,
-      self.payment,
-      self.day_count,
-    );
+    let period =
+      crate::cashflows::AccrualPeriod::new(self.start, self.end, self.payment, self.day_count);
     let forward = self.index.forward_rate(curves, valuation_date, &period);
     let alpha = period.accrual_factor;
 

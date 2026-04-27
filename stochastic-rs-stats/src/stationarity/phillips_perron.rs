@@ -60,10 +60,7 @@ pub struct PhillipsPerronResult {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn phillips_perron_test(
-  y: ArrayView1<f64>,
-  cfg: PhillipsPerronConfig,
-) -> PhillipsPerronResult {
+pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> PhillipsPerronResult {
   let y = y
     .as_slice()
     .expect("phillips_perron_test requires a contiguous ArrayView1");

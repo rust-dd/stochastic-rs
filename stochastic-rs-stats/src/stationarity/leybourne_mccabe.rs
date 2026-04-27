@@ -1,9 +1,8 @@
+use ndarray::ArrayView1;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand_distr::Distribution;
 use rand_distr::Normal;
-
-use ndarray::ArrayView1;
 
 use super::common::fit_ar;
 use super::common::regress_on_deterministics;

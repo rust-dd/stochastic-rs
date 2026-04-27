@@ -1,7 +1,5 @@
 use ndarray::Array1;
 use ndarray::array;
-
-use super::DiffusionModel;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
@@ -27,6 +25,8 @@ use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
 use stochastic_rs_stochastic::process::bm::Bm;
+
+use super::DiffusionModel;
 
 fn log_bessel_i(nu: f64, z: f64) -> f64 {
   use statrs::function::gamma::ln_gamma;

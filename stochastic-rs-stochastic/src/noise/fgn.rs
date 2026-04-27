@@ -42,8 +42,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 #[cfg(feature = "python")]
 pub use python::PyFgn;
-
 use stochastic_rs_core::simd_rng::SeedExt;
+
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 

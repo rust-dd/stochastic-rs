@@ -15,11 +15,11 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use rand::RngCore;
-
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::normal::SimdNormal;
+
 use crate::traits::SimdFloatExt;
 
 /// Particle resampling scheme.
@@ -263,8 +263,9 @@ pub fn gaussian_random_walk_transition(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_distributions::normal::SimdNormal;
+
+  use super::*;
 
   #[test]
   fn particle_filter_tracks_random_walk() {

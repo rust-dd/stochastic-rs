@@ -5,10 +5,10 @@
 //! $$
 //!
 use ndarray::Array1;
-
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+
 use crate::diffusion::fou::Fou;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;

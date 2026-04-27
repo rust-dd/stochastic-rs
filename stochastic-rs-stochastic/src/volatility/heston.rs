@@ -5,11 +5,11 @@
 //! $$
 //!
 use ndarray::Array1;
-
-use super::HestonPow;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+
+use super::HestonPow;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;

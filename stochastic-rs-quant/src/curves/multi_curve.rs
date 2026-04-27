@@ -155,9 +155,18 @@ mod tests {
   fn flat(rate: f64) -> DiscountCurve<f64> {
     DiscountCurve::new(
       vec![
-        CurvePoint { time: 0.5, discount_factor: (-rate * 0.5).exp() },
-        CurvePoint { time: 1.0, discount_factor: (-rate * 1.0).exp() },
-        CurvePoint { time: 2.0, discount_factor: (-rate * 2.0).exp() },
+        CurvePoint {
+          time: 0.5,
+          discount_factor: (-rate * 0.5).exp(),
+        },
+        CurvePoint {
+          time: 1.0,
+          discount_factor: (-rate * 1.0).exp(),
+        },
+        CurvePoint {
+          time: 2.0,
+          discount_factor: (-rate * 2.0).exp(),
+        },
       ],
       InterpolationMethod::LogLinearOnDiscountFactors,
     )
@@ -176,6 +185,9 @@ mod tests {
     let mut mc = MultiCurve::new(flat(0.04));
     mc.add_forecast("3M", flat(0.04));
     let spread = mc.basis_spread("3M", 0.5, 1.0).unwrap();
-    assert!(spread.abs() < 1e-9, "spread should be zero for identical curves: {spread}");
+    assert!(
+      spread.abs() < 1e-9,
+      "spread should be zero for identical curves: {spread}"
+    );
   }
 }

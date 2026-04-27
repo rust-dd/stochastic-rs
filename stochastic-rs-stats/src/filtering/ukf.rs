@@ -191,9 +191,9 @@ where
 mod tests {
   use ndarray::Array1;
   use ndarray::Array2;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   #[test]
   fn ukf_tracks_linear_random_walk() {

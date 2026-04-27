@@ -17,10 +17,10 @@
 //! - https://arxiv.org/abs/2406.18004
 use ndarray::Array1;
 use num_complex::Complex;
-
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;

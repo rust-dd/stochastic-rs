@@ -22,13 +22,13 @@
 //! Reference: Bilokon & Wong (2026), doi:10.1017/jpr.2025.10071.
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::kernel::RlKernel;
 use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;

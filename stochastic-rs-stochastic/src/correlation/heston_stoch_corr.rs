@@ -15,11 +15,11 @@
 //! Returns `[S, v, ρ]` — three paths.
 
 use ndarray::Array1;
-
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
+
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 

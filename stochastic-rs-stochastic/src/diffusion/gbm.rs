@@ -12,11 +12,11 @@ use statrs::distribution::LogNormal;
 use statrs::statistics::Distribution as StatDistribution;
 use statrs::statistics::Median;
 use statrs::statistics::Mode;
-
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
+
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;

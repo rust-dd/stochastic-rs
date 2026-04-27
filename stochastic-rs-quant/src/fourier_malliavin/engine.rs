@@ -385,9 +385,10 @@ fn fejer_inversion<T: FloatExt>(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_stochastic::volatility::HestonPow;
   use stochastic_rs_stochastic::volatility::heston::Heston;
+
+  use super::*;
   use crate::traits::ProcessExt;
 
   fn heston_paths() -> (Vec<f64>, Vec<f64>, Vec<f64>) {

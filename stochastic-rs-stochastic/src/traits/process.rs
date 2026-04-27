@@ -1,9 +1,5 @@
 //! `ProcessExt` and dimensional output markers.
 
-use ndarray::Array1;
-use ndarray::Array2;
-use ndarray::parallel::prelude::*;
-
 #[cfg(any(
   feature = "gpu",
   feature = "cuda-native",
@@ -18,7 +14,9 @@ use anyhow::Result;
   feature = "metal"
 ))]
 use either::Either;
-
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::parallel::prelude::*;
 use stochastic_rs_distributions::traits::FloatExt;
 
 /// Stochastic process simulation trait.

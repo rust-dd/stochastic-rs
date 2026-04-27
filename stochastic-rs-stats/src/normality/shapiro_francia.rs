@@ -133,11 +133,11 @@ pub fn shapiro_francia_test(
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
+  use stochastic_rs_distributions::exp::SimdExp;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::ShapiroFranciaConfig;
   use super::shapiro_francia_test;
-  use stochastic_rs_distributions::exp::SimdExp;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   #[test]
   fn shapiro_francia_accepts_normal_sample() {

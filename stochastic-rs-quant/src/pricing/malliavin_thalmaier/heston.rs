@@ -3,10 +3,10 @@
 //! See Malliavin & Thalmaier (2006), Chapter 4.
 
 use ndarray::Array2;
-
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::volatility::heston::Heston;
+
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 

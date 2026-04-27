@@ -1,11 +1,11 @@
 use ndarray::Array1;
-
-use super::clamp_open01;
-use stochastic_rs_distributions::poisson::SimdPoisson;
-use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::poisson::SimdPoisson;
+use stochastic_rs_distributions::uniform::SimdUniform;
+
+use super::clamp_open01;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 

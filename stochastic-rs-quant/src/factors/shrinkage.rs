@@ -155,9 +155,9 @@ pub fn ledoit_wolf_shrinkage<T: FloatExt>(returns: ArrayView2<T>) -> LedoitWolfR
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol

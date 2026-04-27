@@ -7,7 +7,6 @@
 use num_complex::Complex64;
 use scilib::math::bessel::i_nu;
 use statrs::function::gamma::gamma;
-
 use stochastic_rs_distributions::normal::SimdNormal;
 
 /// Cox-Ingersoll-Ross (Cir) process future value.

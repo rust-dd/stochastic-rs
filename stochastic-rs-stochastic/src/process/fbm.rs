@@ -37,10 +37,10 @@ use numpy::ndarray::Array2;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 use statrs::function::gamma;
-
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -222,9 +222,9 @@ impl PyFbm {
 #[cfg(test)]
 mod tests {
   use statrs::function::erf::erf;
+  use stochastic_rs_stats::fd::FractalDim;
 
   use super::*;
-  use stochastic_rs_stats::fd::FractalDim;
 
   fn nearest_quantile(sorted: &[f64], p: f64) -> f64 {
     let idx = (((sorted.len() - 1) as f64) * p).round() as usize;

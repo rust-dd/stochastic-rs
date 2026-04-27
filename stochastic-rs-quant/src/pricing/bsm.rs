@@ -279,13 +279,20 @@ impl BSMPricer {
     match self.b {
       BSMCoc::Bsm1973 => self.r,
       BSMCoc::Merton1973 => {
-        self.r - self.q.expect("BSMCoc::Merton1973 requires `q` (dividend yield)")
+        self.r
+          - self
+            .q
+            .expect("BSMCoc::Merton1973 requires `q` (dividend yield)")
       }
       BSMCoc::Black1976 => 0.0,
       BSMCoc::Asay1982 => 0.0,
       BSMCoc::GarmanKohlhagen1983 => {
-        self.r_d.expect("BSMCoc::GarmanKohlhagen1983 requires `r_d`")
-          - self.r_f.expect("BSMCoc::GarmanKohlhagen1983 requires `r_f`")
+        self
+          .r_d
+          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_d`")
+          - self
+            .r_f
+            .expect("BSMCoc::GarmanKohlhagen1983 requires `r_f`")
       }
     }
   }

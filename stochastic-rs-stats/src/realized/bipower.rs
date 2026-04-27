@@ -167,9 +167,9 @@ fn mu_p<T: FloatExt>(p: f64) -> T {
 mod tests {
   use ndarray::Array1;
   use ndarray::array;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol

@@ -21,7 +21,6 @@ use plotly::layout::Annotation;
 use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
 use plotly::layout::Margin;
-
 use stochastic_rs_distributions::traits::FloatExt;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -473,8 +472,6 @@ mod tests {
   use plotly::Surface;
   use rand_distr::Exp;
   use rand_distr::Normal;
-
-  use super::*;
   use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
   use stochastic_rs_stochastic::autoregressive::ar::ARp;
   use stochastic_rs_stochastic::autoregressive::arch::Arch;
@@ -506,12 +503,12 @@ mod tests {
   use stochastic_rs_stochastic::interest::cir::Cir as RateCIR;
   use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
   use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
+  use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
   use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
   use stochastic_rs_stochastic::interest::hjm::Hjm;
   use stochastic_rs_stochastic::interest::ho_lee::HoLee;
   use stochastic_rs_stochastic::interest::hull_white::HullWhite;
   use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
-  use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
   use stochastic_rs_stochastic::interest::vasicek::Vasicek;
   use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
   use stochastic_rs_stochastic::isonormal::IsoNormal;
@@ -560,6 +557,8 @@ mod tests {
   use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
   use stochastic_rs_stochastic::volatility::sabr::Sabr;
   use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
+
+  use super::*;
 
   fn f_const_001(_: f64) -> f64 {
     0.01
@@ -1311,7 +1310,6 @@ mod tests {
     use plotly::common::Line;
     use plotly::layout::Margin;
     use rand::rng;
-
     use stochastic_rs_stochastic::sde::NoiseModel;
     use stochastic_rs_stochastic::sde::Sde;
     use stochastic_rs_stochastic::sde::SdeMethod;

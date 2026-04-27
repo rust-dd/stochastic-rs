@@ -14,10 +14,10 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::normal::SimdNormal;
+
 use crate::traits::SimdFloatExt;
 
 /// Result of a Metropolis-Hastings run.

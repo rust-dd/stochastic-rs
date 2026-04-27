@@ -35,11 +35,7 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
   }
 
   /// Creates a Cauchy distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(
-    x0: T,
-    gamma: T,
-    seed: &mut impl crate::simd_rng::SeedExt,
-  ) -> Self {
+  pub fn from_seed_source(x0: T, gamma: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(gamma > T::zero());
     Self {
       x0,

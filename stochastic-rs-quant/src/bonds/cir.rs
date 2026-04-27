@@ -96,6 +96,9 @@ mod tests {
       expiration: None,
     };
     let p = c.calculate_price();
-    assert!(p.is_finite() && p > 0.0, "ZCB must be finite-positive, got {p}");
+    assert!(
+      p.is_finite() && p > 0.0,
+      "ZCB must be finite-positive, got {p}"
+    );
   }
 }

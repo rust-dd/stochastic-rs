@@ -167,9 +167,16 @@ mod tests {
 
   #[test]
   fn instrument_maturity() {
-    let dep: Instrument<f64> = Instrument::Deposit { maturity: 0.5, rate: 0.03 };
+    let dep: Instrument<f64> = Instrument::Deposit {
+      maturity: 0.5,
+      rate: 0.03,
+    };
     assert_eq!(dep.maturity(), 0.5);
-    let fra: Instrument<f64> = Instrument::Fra { start: 0.5, end: 1.0, rate: 0.04 };
+    let fra: Instrument<f64> = Instrument::Fra {
+      start: 0.5,
+      end: 1.0,
+      rate: 0.04,
+    };
     assert_eq!(fra.maturity(), 1.0);
   }
 }

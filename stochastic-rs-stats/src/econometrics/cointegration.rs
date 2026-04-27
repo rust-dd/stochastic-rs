@@ -195,9 +195,9 @@ fn osterwald_lenum_5pct() -> Vec<f64> {
 mod tests {
   use ndarray::Array1;
   use ndarray::Array2;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
     let dist = SimdNormal::<f64>::with_seed(0.0, sigma, seed);

@@ -15,15 +15,23 @@
 //! use stochastic_rs::stochastic::numerics::{HaltonSeq, SobolSeq, Mlmc};
 //! ```
 
-pub use crate::isonormal::{
-  IsoNormal, arfima_acf, cov_ld, fbm_custom_inc_cov, ker_ou, l2_unit_inner_product,
-};
-pub use crate::ito::{DiffusionProcessFn, Function2D, ItoCalculator, ItoResult};
+pub use crate::isonormal::IsoNormal;
+pub use crate::isonormal::arfima_acf;
+pub use crate::isonormal::cov_ld;
+pub use crate::isonormal::fbm_custom_inc_cov;
+pub use crate::isonormal::ker_ou;
+pub use crate::isonormal::l2_unit_inner_product;
+pub use crate::ito::DiffusionProcessFn;
+pub use crate::ito::Function2D;
+pub use crate::ito::ItoCalculator;
+pub use crate::ito::ItoResult;
 pub use crate::mc::McEstimate;
 pub use crate::mc::halton::HaltonSeq;
 #[cfg(feature = "openblas")]
 pub use crate::mc::lsm::Lsm;
-pub use crate::mc::mlmc::{Mlmc, MlmcResult};
+pub use crate::mc::mlmc::Mlmc;
+pub use crate::mc::mlmc::MlmcResult;
 pub use crate::mc::sobol::SobolSeq;
 pub use crate::rough::kernel::RlKernel;
-pub use crate::rough::markov_lift::{MarkovLift, RoughSimd};
+pub use crate::rough::markov_lift::MarkovLift;
+pub use crate::rough::markov_lift::RoughSimd;

@@ -16,6 +16,13 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 use ndarray::Array1;
 use num_complex::Complex64;
+use stochastic_rs_stats::heston_mle::HestonMleResult;
+use stochastic_rs_stats::heston_mle::nmle_heston;
+use stochastic_rs_stats::heston_mle::nmle_heston_with_delta;
+use stochastic_rs_stats::heston_mle::pmle_heston;
+use stochastic_rs_stats::heston_mle::pmle_heston_with_delta;
+use stochastic_rs_stats::heston_nml_cekf::HestonNMLECEKFConfig;
+use stochastic_rs_stats::heston_nml_cekf::nmle_cekf_heston;
 
 use super::GL_U_MAX;
 use super::gauss_legendre_64;
@@ -25,13 +32,6 @@ use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
 use crate::pricing::heston::HestonPricer;
-use stochastic_rs_stats::heston_mle::HestonMleResult;
-use stochastic_rs_stats::heston_mle::nmle_heston;
-use stochastic_rs_stats::heston_mle::nmle_heston_with_delta;
-use stochastic_rs_stats::heston_mle::pmle_heston;
-use stochastic_rs_stats::heston_mle::pmle_heston_with_delta;
-use stochastic_rs_stats::heston_nml_cekf::HestonNMLECEKFConfig;
-use stochastic_rs_stats::heston_nml_cekf::nmle_cekf_heston;
 use crate::traits::PricerExt;
 
 const EPS: f64 = 1e-8;
@@ -1043,10 +1043,10 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-
-  use super::*;
   use stochastic_rs_stochastic::volatility::HestonPow;
   use stochastic_rs_stochastic::volatility::heston::Heston as HestonProcess;
+
+  use super::*;
   use crate::traits::ProcessExt;
 
   // Analytical reference: Gil-Pelaez Heston (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7)

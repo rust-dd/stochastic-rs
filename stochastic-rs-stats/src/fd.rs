@@ -208,9 +208,9 @@ pub fn hurst_from_signal(signal: ndarray::ArrayView1<f64>) -> f64 {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_stochastic::process::fbm::Fbm;
 
   use super::FractalDim;
-  use stochastic_rs_stochastic::process::fbm::Fbm;
   use crate::traits::ProcessExt;
 
   #[test]

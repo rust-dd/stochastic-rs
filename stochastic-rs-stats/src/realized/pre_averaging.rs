@@ -78,9 +78,9 @@ fn triangular_weight<T: FloatExt>(x: T) -> T {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   fn iid_normal(seed: u64, n: usize, std: f64) -> Array1<f64> {
     let dist = SimdNormal::<f64>::with_seed(0.0, std, seed);

@@ -10,9 +10,9 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::stack;
+use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::CopulaType;
-use stochastic_rs_distributions::uniform::SimdUniform;
 use crate::traits::BivariateExt;
 
 #[derive(Debug, Clone)]

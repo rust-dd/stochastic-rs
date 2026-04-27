@@ -35,11 +35,7 @@ impl<T: SimdFloatExt> SimdPareto<T> {
   }
 
   /// Creates a Pareto distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(
-    x_m: T,
-    alpha: T,
-    seed: &mut impl crate::simd_rng::SeedExt,
-  ) -> Self {
+  pub fn from_seed_source(x_m: T, alpha: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(x_m > T::zero() && alpha > T::zero());
     Self {
       x_m,

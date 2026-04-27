@@ -1,9 +1,8 @@
 //! Calibration traits — `Calibrator`, `CalibrationResult`, `ToModel`,
 //! `ToShortRateModel`.
 
-use crate::CalibrationLossScore;
-
 use super::pricing::ModelPricer;
+use crate::CalibrationLossScore;
 
 /// Trait for calibration results that can produce a [`ModelPricer`].
 ///

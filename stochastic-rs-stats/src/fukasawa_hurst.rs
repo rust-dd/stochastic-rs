@@ -485,7 +485,6 @@ mod tests {
     use rand::rngs::StdRng;
     use rand_distr::Distribution;
     use rand_distr::StandardNormal;
-
     use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let true_h = 0.3_f64;
@@ -534,7 +533,6 @@ mod tests {
     use rand::rngs::StdRng;
     use rand_distr::Distribution;
     use rand_distr::StandardNormal;
-
     use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let m = 72_usize;
@@ -600,7 +598,6 @@ mod tests {
     use rand::rngs::StdRng;
     use rand_distr::Distribution;
     use rand_distr::StandardNormal;
-
     use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let true_h_values = [0.1, 0.3, 0.5];

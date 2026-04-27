@@ -418,12 +418,13 @@ impl FiniteDifferencePricer {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_stochastic::K;
+  use stochastic_rs_stochastic::S0;
+
   use super::FiniteDifferenceMethod;
   use super::FiniteDifferencePricer;
   use crate::OptionStyle;
   use crate::OptionType;
-  use stochastic_rs_stochastic::K;
-  use stochastic_rs_stochastic::S0;
   use crate::traits::PricerExt;
 
   fn atm_pricer(style: OptionStyle, r#type: OptionType, method: FiniteDifferenceMethod) -> f64 {

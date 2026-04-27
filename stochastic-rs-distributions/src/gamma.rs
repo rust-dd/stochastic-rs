@@ -36,11 +36,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
 
   /// Creates a gamma distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
-  pub fn from_seed_source(
-    alpha: T,
-    scale: T,
-    seed: &mut impl crate::simd_rng::SeedExt,
-  ) -> Self {
+  pub fn from_seed_source(alpha: T, scale: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
     assert!(alpha > T::zero() && scale > T::zero());
     Self {
       alpha,

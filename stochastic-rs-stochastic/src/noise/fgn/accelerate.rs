@@ -13,9 +13,9 @@ use ndarray::Array1;
 use ndarray::Array2;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::Fgn;
-use stochastic_rs_core::simd_rng::SeedExt;
 use crate::traits::FloatExt;
 
 #[repr(C)]

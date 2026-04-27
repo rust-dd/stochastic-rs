@@ -85,7 +85,10 @@ mod tests {
     for &t in &[-0.7, -0.3, 0.0, 0.2, 0.8] {
       let r = tau_to_corr(t);
       let t2 = corr_to_tau(r);
-      assert!((t - t2).abs() < 1e-12, "round-trip failed: {t} -> {r} -> {t2}");
+      assert!(
+        (t - t2).abs() < 1e-12,
+        "round-trip failed: {t} -> {r} -> {t2}"
+      );
     }
   }
 

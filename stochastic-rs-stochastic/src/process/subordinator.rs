@@ -24,9 +24,8 @@ pub use gamma_subordinator::GammaSubordinator;
 pub use ig_subordinator::IGSubordinator;
 pub use inverse_alpha_stable::InverseAlphaStableSubordinator;
 pub use poisson_subordinator::PoissonSubordinator;
-pub use tempered_stable::TemperedStableSubordinator;
-
 use stochastic_rs_distributions::uniform::SimdUniform;
+pub use tempered_stable::TemperedStableSubordinator;
 
 #[inline]
 pub(crate) fn clamp_open01(u: f64) -> f64 {

@@ -10,10 +10,10 @@ use ndarray::prelude::*;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft_inplace_par;
 use num_complex::Complex;
-
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+
 use crate::traits::FloatExt;
 
 pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded> {
@@ -212,9 +212,9 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_stats::fd::FractalDim;
 
   use super::Fgn;
-  use stochastic_rs_stats::fd::FractalDim;
 
   fn generate_fgn_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
     let fgn = Fgn::<f64>::new(h, n, Some(t));

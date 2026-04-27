@@ -1,15 +1,15 @@
 use ndarray::Array1;
-
-use super::sample_positive_stable;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+
+use super::sample_positive_stable;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 

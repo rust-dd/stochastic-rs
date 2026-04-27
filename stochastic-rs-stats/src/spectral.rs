@@ -361,6 +361,7 @@ pub fn dominant_frequency_fft(
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::DetrendMethod;
   use super::PeriodogramConfig;
@@ -370,7 +371,6 @@ mod tests {
   use super::dominant_frequency_fft;
   use super::fft_spectrum_search;
   use super::periodogram_fft;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   fn sine_wave(freq_hz: f64, sampling_rate: f64, n: usize, amplitude: f64, phase: f64) -> Vec<f64> {
     (0..n)
@@ -486,7 +486,8 @@ mod tests {
       exclude_dc: false,
     };
 
-    let peak = dominant_frequency_fft(ArrayView1::from(&x), cfg).expect("expected at least one peak");
+    let peak =
+      dominant_frequency_fft(ArrayView1::from(&x), cfg).expect("expected at least one peak");
     assert!(peak.frequency_hz.is_finite());
     assert!(peak.power.is_finite() && peak.power >= 0.0);
     assert!((0.0..=fs / 2.0).contains(&peak.frequency_hz));

@@ -16,11 +16,11 @@
 //! - Decreusefond, L. & Üstünel, A. S. (1999), "Stochastic Analysis of the Fractional Brownian Motion"
 
 use ndarray::Array1;
-
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
+
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -158,9 +158,9 @@ impl PyVolterra {
       "fbm" | "fractional_bm" | "fractionalbm" => VolterraKernel::FractionalBM { h: param },
       "power_law" | "powerlaw" => VolterraKernel::PowerLaw { gamma: param },
       "exponential" | "exp" => VolterraKernel::Exponential { beta: param },
-      other => panic!(
-        "unknown Volterra kernel '{other}': expected 'fbm', 'power_law', or 'exponential'"
-      ),
+      other => {
+        panic!("unknown Volterra kernel '{other}': expected 'fbm', 'power_law', or 'exponential'")
+      }
     };
     match seed {
       Some(sd) => Self {
@@ -177,6 +177,7 @@ impl PyVolterra {
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     crate::py_dispatch_f64!(self, |inner| inner
       .sample()
@@ -189,6 +190,7 @@ impl PyVolterra {
     use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
+
     use crate::traits::ProcessExt;
     crate::py_dispatch_f64!(self, |inner| {
       let paths = inner.sample_par(m);

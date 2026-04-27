@@ -7,8 +7,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
-
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+
 use crate::traits::PricerExt;
 use crate::traits::ProcessExt;
 use crate::traits::TimeExt;

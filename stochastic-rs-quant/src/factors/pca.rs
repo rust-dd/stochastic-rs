@@ -94,8 +94,9 @@ pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_distributions::normal::SimdNormal;
+
+  use super::*;
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol

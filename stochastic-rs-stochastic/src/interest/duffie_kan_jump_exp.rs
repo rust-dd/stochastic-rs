@@ -6,12 +6,12 @@
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;
-
-use stochastic_rs_distributions::exp::SimdExp;
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
+
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -210,8 +210,24 @@ mod tests {
   #[test]
   fn sample_returns_two_paths() {
     let dkj = DuffieKanJumpExp::<f64>::new(
-      0.5, 0.04, 0.5, -0.3, 0.01, 0.0, 0.0, 0.01, 0.0, 0.5, 0.0, 0.005,
-      0.5, 0.01, 64, Some(0.05), Some(0.05), Some(1.0),
+      0.5,
+      0.04,
+      0.5,
+      -0.3,
+      0.01,
+      0.0,
+      0.0,
+      0.01,
+      0.0,
+      0.5,
+      0.0,
+      0.005,
+      0.5,
+      0.01,
+      64,
+      Some(0.05),
+      Some(0.05),
+      Some(1.0),
     );
     let [r, x] = dkj.sample();
     assert_eq!(r.len(), 64);

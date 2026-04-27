@@ -21,9 +21,9 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 #[cfg(feature = "ai")]
 pub use stochastic_rs_ai as ai;
 pub use stochastic_rs_copulas as copulas;
+pub use stochastic_rs_core::simd_rng;
 pub use stochastic_rs_distributions as distributions;
 pub use stochastic_rs_quant as quant;
-pub use stochastic_rs_core::simd_rng;
 pub use stochastic_rs_stats as stats;
 pub use stochastic_rs_stochastic as stochastic;
 pub mod traits;
@@ -45,9 +45,21 @@ pub use stochastic_rs_viz as visualization;
 /// let path = bm.sample();
 /// ```
 pub mod prelude {
-  pub use crate::traits::{
-    BivariateExt, CalibrationResult, Calibrator, DistributionExt, DistributionSampler, FloatExt,
-    GreeksExt, ModelPricer, PricerExt, ProcessExt, SimdFloatExt, TimeExt, ToModel,
-  };
-  pub use stochastic_rs_quant::{Moneyness, OptionStyle, OptionType};
+  pub use stochastic_rs_quant::Moneyness;
+  pub use stochastic_rs_quant::OptionStyle;
+  pub use stochastic_rs_quant::OptionType;
+
+  pub use crate::traits::BivariateExt;
+  pub use crate::traits::CalibrationResult;
+  pub use crate::traits::Calibrator;
+  pub use crate::traits::DistributionExt;
+  pub use crate::traits::DistributionSampler;
+  pub use crate::traits::FloatExt;
+  pub use crate::traits::GreeksExt;
+  pub use crate::traits::ModelPricer;
+  pub use crate::traits::PricerExt;
+  pub use crate::traits::ProcessExt;
+  pub use crate::traits::SimdFloatExt;
+  pub use crate::traits::TimeExt;
+  pub use crate::traits::ToModel;
 }

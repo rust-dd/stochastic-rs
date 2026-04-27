@@ -33,7 +33,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_distributions::studentt::PyStudentT;
   use stochastic_rs_distributions::uniform::PyUniform;
   use stochastic_rs_distributions::weibull::PyWeibull;
-
   // Stochastic — autoregressive
   use stochastic_rs_stochastic::autoregressive::agrach::PyAgarch;
   use stochastic_rs_stochastic::autoregressive::ar::PyARp;
@@ -44,7 +43,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::autoregressive::ma::PyMAq;
   use stochastic_rs_stochastic::autoregressive::sarima::PySarima;
   use stochastic_rs_stochastic::autoregressive::tgarch::PyTgarch;
-
   // Stochastic — diffusion
   use stochastic_rs_stochastic::diffusion::cev::PyCev;
   use stochastic_rs_stochastic::diffusion::cfou::PyCfou;
@@ -64,7 +62,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::diffusion::ou::PyOu;
   use stochastic_rs_stochastic::diffusion::quadratic::PyQuadratic;
   use stochastic_rs_stochastic::diffusion::verhulst::PyVerhulst;
-
   // Stochastic — interest rates
   use stochastic_rs_stochastic::interest::adg::PyAdg;
   use stochastic_rs_stochastic::interest::bgm::PyBgm;
@@ -77,7 +74,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::interest::hull_white_2f::PyHullWhite2F;
   use stochastic_rs_stochastic::interest::vasicek::PyVasicek;
   use stochastic_rs_stochastic::interest::wu_zhang::PyWuZhangD;
-
   // Stochastic — jump
   use stochastic_rs_stochastic::jump::bates::PyBates;
   use stochastic_rs_stochastic::jump::bilateral_gamma::PyBilateralGamma;
@@ -95,14 +91,12 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::jump::nig::PyNig;
   use stochastic_rs_stochastic::jump::rdts::PyRdts;
   use stochastic_rs_stochastic::jump::vg::PyVg;
-
   // Stochastic — noise
   use stochastic_rs_stochastic::noise::cfgns::PyCfgns;
   use stochastic_rs_stochastic::noise::cgns::PyCgns;
   use stochastic_rs_stochastic::noise::fgn::PyFgn;
   use stochastic_rs_stochastic::noise::gn::PyGn;
   use stochastic_rs_stochastic::noise::wn::PyWn;
-
   // Stochastic — process
   use stochastic_rs_stochastic::process::bm::PyBm;
   use stochastic_rs_stochastic::process::cbms::PyCbms;
@@ -114,7 +108,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::process::hawkes::PyHawkes;
   use stochastic_rs_stochastic::process::lfsm::PyLfsm;
   use stochastic_rs_stochastic::process::poisson::PyPoisson;
-  use stochastic_rs_stochastic::process::volterra::PyVolterra;
   use stochastic_rs_stochastic::process::subordinator::alpha_stable::PyAlphaStableSubordinator;
   use stochastic_rs_stochastic::process::subordinator::ctrw::PyCtrw;
   use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::PyGammaSubordinator;
@@ -122,10 +115,9 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::PyInverseAlphaStableSubordinator;
   use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PyPoissonSubordinator;
   use stochastic_rs_stochastic::process::subordinator::tempered_stable::PyTemperedStableSubordinator;
-
+  use stochastic_rs_stochastic::process::volterra::PyVolterra;
   // Stochastic — sheet
   use stochastic_rs_stochastic::sheet::fbs::PyFbs;
-
   // Stochastic — volatility
   use stochastic_rs_stochastic::volatility::bates_svj::PyBatesSvj;
   use stochastic_rs_stochastic::volatility::bergomi::PyBergomi;

@@ -144,9 +144,9 @@ pub fn pairs_signals(
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   #[test]
   fn signals_flat_when_spread_within_band() {

@@ -116,11 +116,11 @@ mod tests {
   use ndarray::ArrayView1;
   use rand::SeedableRng;
   use rand::rngs::StdRng;
+  use stochastic_rs_distributions::normal::SimdNormal;
+  use stochastic_rs_distributions::uniform::SimdUniform;
 
   use super::AndersonDarlingConfig;
   use super::anderson_darling_normal_test;
-  use stochastic_rs_distributions::normal::SimdNormal;
-  use stochastic_rs_distributions::uniform::SimdUniform;
 
   #[test]
   fn anderson_darling_accepts_normal_sample() {
@@ -135,7 +135,8 @@ mod tests {
       let mut rng = StdRng::seed_from_u64(seed);
       let mut x = vec![0.0; 4000];
       dist.fill_slice(&mut rng, &mut x);
-      let res = anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
+      let res =
+        anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
       best_p = best_p.max(res.p_value);
     }
     assert!(

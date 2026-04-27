@@ -13,12 +13,12 @@ pub mod traits;
 
 pub use stochastic_rs_core::simd_rng;
 pub use stochastic_rs_distributions as distributions;
+pub use stochastic_rs_distributions::traits::DistributionExt;
+pub use stochastic_rs_distributions::traits::SimdFloatExt;
 
 pub use crate::traits::Malliavin2DExt;
 pub use crate::traits::MalliavinExt;
 pub use crate::traits::ProcessExt;
-pub use stochastic_rs_distributions::traits::DistributionExt;
-pub use stochastic_rs_distributions::traits::SimdFloatExt;
 
 pub mod aliases;
 pub mod autoregressive;

@@ -155,9 +155,9 @@ fn residuals(x: &Array2<f64>, y: &Array1<f64>, beta: &Array1<f64>) -> Array1<f64
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   fn simulate_har_path(n: usize, c: f64, bd: f64, bw: f64, bm: f64, seed: u64) -> Array1<f64> {
     let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, seed);

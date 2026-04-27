@@ -40,10 +40,11 @@ impl<T: FloatExt> CrrModel<T> {
     let tree = BinomialTree::from_crr(s, up, down, p, self.steps, dt);
     let discount = (-r * dt).exp();
     let terminal_states = tree.states.last().expect("tree has at least one level");
-    let terminal_values = Array1::from_iter(terminal_states.iter().map(|&state| match option_type {
-      OptionType::Call => (state - k).max(T::zero()),
-      OptionType::Put => (k - state).max(T::zero()),
-    }));
+    let terminal_values =
+      Array1::from_iter(terminal_states.iter().map(|&state| match option_type {
+        OptionType::Call => (state - k).max(T::zero()),
+        OptionType::Put => (k - state).max(T::zero()),
+      }));
     tree.backward_induct(terminal_values, |_, _, _| discount)
   }
 }

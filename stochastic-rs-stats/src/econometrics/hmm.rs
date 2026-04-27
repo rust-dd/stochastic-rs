@@ -278,9 +278,9 @@ fn log_gauss_pdf(x: f64, mean: f64, std: f64) -> f64 {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use stochastic_rs_distributions::normal::SimdNormal;
 
   #[test]
   fn viterbi_recovers_two_state_path() {
