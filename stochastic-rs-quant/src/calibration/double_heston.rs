@@ -230,6 +230,26 @@ impl crate::traits::ToModel for DoubleHestonCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(crate::LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
+impl crate::traits::Calibrator for DoubleHestonCalibrator {
+  type InitialGuess = DoubleHestonParams;
+  type Output = DoubleHestonCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    DoubleHestonCalibrator::calibrate(self, initial)
+  }
+}
+
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,
 /// computed as the sum of two independent Heston contributions.
 fn double_heston_cf(p: &DoubleHestonParams, r: f64, q: f64, tau: f64, u: Complex64) -> Complex64 {

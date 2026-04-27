@@ -1,4 +1,4 @@
-//! General transformed OU stochastic correlation (Section 2.1).
+//! General transformed Ou stochastic correlation (Section 2.1).
 
 use ndarray::Array1;
 
@@ -10,7 +10,7 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Bounded transformation mapping ℝ → (−1, 1) for constructing
-/// stochastic correlation processes from an underlying OU process.
+/// stochastic correlation processes from an underlying Ou process.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Transformation {
   /// ρ = tanh(x).  Steeper near 0; boundaries approached exponentially.
@@ -51,7 +51,7 @@ impl Transformation {
   }
 }
 
-/// General transformed OU stochastic correlation (Section 2.1).
+/// General transformed Ou stochastic correlation (Section 2.1).
 ///
 /// Simulates the Ornstein-Uhlenbeck process in X-space:
 ///

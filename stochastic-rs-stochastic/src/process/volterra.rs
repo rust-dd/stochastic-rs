@@ -129,11 +129,78 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
   }
 }
 
-// PyVolterra wrapper requires custom (String, f64) → VolterraKernel adapter;
-// reintroduce it as a hand-written PyO3 class in stochastic-rs-py rather than
-// via the generic py_process_1d! macro.
-//
-// py_process_1d!(PyVolterra, Volterra, ...);
+// PyVolterra is hand-written rather than expanded from the `py_process_1d!`
+// macro because the constructor takes a [`VolterraKernel`] sum type, not the
+// flat positional `(f64, f64, ...)` parameter list the macro assumes.
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyVolterra {
+  inner: Option<Volterra<f64>>,
+  seeded: Option<Volterra<f64, Deterministic>>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyVolterra {
+  /// Build a Volterra process.
+  ///
+  /// # Arguments
+  /// * `kernel` — `"fbm"`, `"power_law"` (alias `"powerlaw"`), or `"exponential"`.
+  /// * `param` — the kernel's scalar parameter: Hurst $H$ for `"fbm"`,
+  ///   exponent $\gamma$ for `"power_law"`, decay $\beta$ for `"exponential"`.
+  /// * `n` — number of grid points.
+  /// * `t` — time horizon (default $1$).
+  /// * `seed` — optional u64 seed for reproducibility.
+  #[new]
+  #[pyo3(signature = (kernel, param, n, t = None, seed = None))]
+  fn new(kernel: &str, param: f64, n: usize, t: Option<f64>, seed: Option<u64>) -> Self {
+    let kernel = match kernel.to_ascii_lowercase().as_str() {
+      "fbm" | "fractional_bm" | "fractionalbm" => VolterraKernel::FractionalBM { h: param },
+      "power_law" | "powerlaw" => VolterraKernel::PowerLaw { gamma: param },
+      "exponential" | "exp" => VolterraKernel::Exponential { beta: param },
+      other => panic!(
+        "unknown Volterra kernel '{other}': expected 'fbm', 'power_law', or 'exponential'"
+      ),
+    };
+    match seed {
+      Some(sd) => Self {
+        inner: None,
+        seeded: Some(Volterra::<f64, Deterministic>::seeded(kernel, n, t, sd)),
+      },
+      None => Self {
+        inner: Some(Volterra::<f64>::new(kernel, n, t)),
+        seeded: None,
+      },
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use pyo3::IntoPyObjectExt;
+    use crate::traits::ProcessExt;
+    crate::py_dispatch_f64!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
+  }
+
+  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use numpy::ndarray::Array2;
+    use pyo3::IntoPyObjectExt;
+    use crate::traits::ProcessExt;
+    crate::py_dispatch_f64!(self, |inner| {
+      let paths = inner.sample_par(m);
+      let n = paths[0].len();
+      let mut result = Array2::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py).into_py_any(py).unwrap()
+    })
+  }
+}
 
 #[cfg(test)]
 mod tests {
@@ -156,7 +223,7 @@ mod tests {
 
   #[test]
   fn volterra_fbm_h05_is_bm() {
-    // H=0.5 → K(t,s) = 1/Γ(1) = 1 → X_t = W_t (standard BM)
+    // H=0.5 → K(t,s) = 1/Γ(1) = 1 → X_t = W_t (standard Bm)
     let v = Volterra::<f64, Deterministic>::seeded(
       VolterraKernel::FractionalBM { h: 0.5 },
       200,
@@ -164,7 +231,7 @@ mod tests {
       42,
     );
     let path = v.sample();
-    // Variance of BM at t=1 should be ~1
+    // Variance of Bm at t=1 should be ~1
     let var: f64 = path.iter().map(|&x| x * x).sum::<f64>() / path.len() as f64;
     // Very rough check — just ensure it's not degenerate
     assert!(var > 0.001, "variance = {var}");

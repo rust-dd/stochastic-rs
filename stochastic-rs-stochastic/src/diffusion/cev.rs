@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CEV<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -31,7 +31,7 @@ pub struct CEV<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> CEV<T> {
+impl<T: FloatExt> Cev<T> {
   pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
       mu,
@@ -45,7 +45,7 @@ impl<T: FloatExt> CEV<T> {
   }
 }
 
-impl<T: FloatExt> CEV<T, Deterministic> {
+impl<T: FloatExt> Cev<T, Deterministic> {
   pub fn seeded(
     mu: T,
     sigma: T,
@@ -67,10 +67,10 @@ impl<T: FloatExt> CEV<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CEV<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cev<T, S> {
   type Output = Array1<T>;
 
-  /// Sample the CEV process
+  /// Sample the Cev process
   fn sample(&self) -> Self::Output {
     let mut cev = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -90,7 +90,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CEV<T, S> {
     let mut tail_view = cev.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("CEV output tail must be contiguous");
+      .expect("Cev output tail must be contiguous");
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
@@ -105,13 +105,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CEV<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> CEV<T, S> {
-  /// Calculate the Malliavin derivative of the CEV process
+impl<T: FloatExt, S: SeedExt> Cev<T, S> {
+  /// Calculate the Malliavin derivative of the Cev process
   ///
-  /// The Malliavin derivative of the CEV process is given by
+  /// The Malliavin derivative of the Cev process is given by
   /// D_r S_t = \sigma S_t^{\gamma} * 1_{[0, r]}(r) exp(\int_0^r (\mu - \frac{\gamma^2 \sigma^2 S_u^{2\gamma - 2}}{2}) du + \int_0^r \gamma \sigma S_u^{\gamma - 1} dW_u)
   ///
-  /// The Malliavin derivative of the CEV process shows the sensitivity of the stock price with respect to the Wiener process.
+  /// The Malliavin derivative of the Cev process shows the sensitivity of the stock price with respect to the Wiener process.
   pub fn malliavin(&self) -> [Array1<T>; 2] {
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
@@ -149,7 +149,7 @@ impl<T: FloatExt, S: SeedExt> CEV<T, S> {
   }
 }
 
-py_process_1d!(PyCEV, CEV,
+py_process_1d!(PyCev, Cev,
   sig: (mu, sigma, gamma, n, x0=None, t=None, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, gamma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

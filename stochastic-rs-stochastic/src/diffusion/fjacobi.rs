@@ -9,7 +9,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -30,7 +30,7 @@ pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
 }
 
 impl<T: FloatExt> FJacobi<T> {
@@ -51,7 +51,7 @@ impl<T: FloatExt> FJacobi<T> {
       x0,
       t,
       seed: Unseeded,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
@@ -83,7 +83,7 @@ impl<T: FloatExt> FJacobi<T, Deterministic> {
       x0,
       t,
       seed: Deterministic(seed),
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }

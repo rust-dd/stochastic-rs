@@ -5,7 +5,7 @@
 //! V_{\mathrm{swpn}}=A\,[s\Phi(d_1)-K\Phi(d_2)]
 //! $$
 //!
-//! Closed-form Black-76, Bachelier, and SABR caplet/floorlet formulae with
+//! Closed-form Black-76, Bachelier, and Sabr caplet/floorlet formulae with
 //! European cap, floor, collar, and swaption wrappers on top of the library
 //! curve and swap stack; Bermudan swaptions priced on the Hull-White trinomial
 //! lattice from `quant::lattice`.

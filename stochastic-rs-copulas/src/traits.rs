@@ -202,8 +202,3 @@ pub trait MultivariateExt {
   fn cdf(&self, X: ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 }
 
-pub trait NCopula2DExt {
-  fn sample(&self, n: usize) -> ndarray::Array2<f64>;
-
-  fn get_params(&self) -> Vec<f64>;
-}

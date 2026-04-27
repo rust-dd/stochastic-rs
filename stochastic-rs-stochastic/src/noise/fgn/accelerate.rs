@@ -1,6 +1,6 @@
 //! # Accelerate / vDSP
 //!
-//! macOS-optimized FGN sampling using Apple's Accelerate framework (vDSP FFT).
+//! macOS-optimized Fgn sampling using Apple's Accelerate framework (vDSP FFT).
 //! Uses the AMX coprocessor and NEON SIMD on Apple Silicon.
 //! Split-complex format, in-place FFT, zero external dependencies.
 //!
@@ -14,7 +14,7 @@ use ndarray::Array2;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 
-use super::FGN;
+use super::Fgn;
 use stochastic_rs_core::simd_rng::SeedExt;
 use crate::traits::FloatExt;
 
@@ -121,7 +121,7 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   pub(crate) fn sample_accelerate_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     let n = self.n;
     let offset = self.offset;

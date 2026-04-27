@@ -25,7 +25,7 @@ use crate::traits::ProcessExt;
 
 /// Hawkes-driven jump diffusion process (log-price).
 ///
-/// Combines GBM diffusion with self-exciting Hawkes jump arrivals
+/// Combines Gbm diffusion with self-exciting Hawkes jump arrivals
 /// and log-normal jump sizes.
 pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift $\mu$.

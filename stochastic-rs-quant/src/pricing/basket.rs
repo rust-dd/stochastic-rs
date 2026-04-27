@@ -34,8 +34,8 @@ use crate::OptionType;
 #[cfg(feature = "openblas")]
 use crate::traits::FloatExt;
 
-/// Geometric basket call/put on $n$ correlated GBM assets. Uses the fact
-/// that the weighted geometric mean is log-normal under GBM.
+/// Geometric basket call/put on $n$ correlated Gbm assets. Uses the fact
+/// that the weighted geometric mean is log-normal under Gbm.
 ///
 /// $$
 /// G_T = \prod_{i=1}^n S_{i,T}^{w_i},\qquad

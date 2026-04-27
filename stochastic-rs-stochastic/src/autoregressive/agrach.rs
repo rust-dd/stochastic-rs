@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// A generic Asymmetric GARCH(p,q) model (A-GARCH),
+/// A generic Asymmetric Garch(p,q) model (A-Garch),
 /// allowing a separate "delta" term for negative-lag effects.
 ///
 /// One possible form:
@@ -36,10 +36,10 @@ use crate::traits::ProcessExt;
 /// - `m`:     Optional batch size (unused by default).
 ///
 /// # Notes
-/// - This is essentially a T-GARCH-like structure but with different naming (`delta`).
+/// - This is essentially a T-Garch-like structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
 #[derive(Debug, Clone)]
-pub struct AGARCH<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Model shape / loading parameter.
@@ -54,12 +54,12 @@ pub struct AGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> AGARCH<T> {
+impl<T: FloatExt> Agarch<T> {
   pub fn new(omega: T, alpha: Array1<T>, delta: Array1<T>, beta: Array1<T>, n: usize) -> Self {
-    assert!(omega > T::zero(), "AGARCH requires omega > 0");
+    assert!(omega > T::zero(), "Agarch requires omega > 0");
     assert!(
       alpha.len() == delta.len(),
-      "AGARCH requires alpha.len() == delta.len()"
+      "Agarch requires alpha.len() == delta.len()"
     );
     Self {
       omega,
@@ -72,8 +72,8 @@ impl<T: FloatExt> AGARCH<T> {
   }
 }
 
-impl<T: FloatExt> AGARCH<T, Deterministic> {
-  /// Create a new AGARCH model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Agarch<T, Deterministic> {
+  /// Create a new Agarch model with a deterministic seed for reproducible output.
   pub fn seeded(
     omega: T,
     alpha: Array1<T>,
@@ -82,10 +82,10 @@ impl<T: FloatExt> AGARCH<T, Deterministic> {
     n: usize,
     seed: u64,
   ) -> Self {
-    assert!(omega > T::zero(), "AGARCH requires omega > 0");
+    assert!(omega > T::zero(), "Agarch requires omega > 0");
     assert!(
       alpha.len() == delta.len(),
-      "AGARCH requires alpha.len() == delta.len()"
+      "Agarch requires alpha.len() == delta.len()"
     );
     Self {
       omega,
@@ -98,7 +98,7 @@ impl<T: FloatExt> AGARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AGARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -127,7 +127,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AGARCH<T, S> {
     let denom = T::one() - sum_alpha - sum_delta_half - sum_beta;
     assert!(
       denom > T::zero(),
-      "AGARCH requires sum(alpha) + 0.5*sum(delta) + sum(beta) < 1 for finite unconditional variance"
+      "Agarch requires sum(alpha) + 0.5*sum(delta) + sum(beta) < 1 for finite unconditional variance"
     );
 
     for t in 0..self.n {
@@ -159,7 +159,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AGARCH<T, S> {
       }
       assert!(
         sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "AGARCH produced non-positive or non-finite conditional variance at t={}",
+        "Agarch produced non-positive or non-finite conditional variance at t={}",
         t
       );
       x[t] = sigma2[t].max(var_floor).sqrt() * z[t];
@@ -169,7 +169,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AGARCH<T, S> {
   }
 }
 
-py_process_1d!(PyAGARCH, AGARCH,
+py_process_1d!(PyAgarch, Agarch,
   sig: (omega, alpha, delta, beta, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, delta: Vec<f64>, beta: Vec<f64>, n: usize)
 );

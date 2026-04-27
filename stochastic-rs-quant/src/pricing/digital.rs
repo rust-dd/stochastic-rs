@@ -106,6 +106,18 @@ impl CashOrNothingPricer {
   }
 }
 
+impl crate::traits::GreeksExt for CashOrNothingPricer {
+  fn delta(&self) -> f64 {
+    CashOrNothingPricer::delta(self)
+  }
+  fn gamma(&self) -> f64 {
+    CashOrNothingPricer::gamma(self)
+  }
+  fn vega(&self) -> f64 {
+    CashOrNothingPricer::vega(self)
+  }
+}
+
 /// Asset-or-nothing digital pays the underlying when the option finishes in
 /// the money.
 ///
@@ -167,6 +179,12 @@ impl AssetOrNothingPricer {
     let d1 = ((self.s / self.k).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
     (d1, d2)
+  }
+}
+
+impl crate::traits::GreeksExt for AssetOrNothingPricer {
+  fn delta(&self) -> f64 {
+    AssetOrNothingPricer::delta(self)
   }
 }
 

@@ -1,6 +1,6 @@
-//! # SABR
+//! # Sabr
 //!
-//! Implied-volatility approximation and pricing under the SABR stochastic
+//! Implied-volatility approximation and pricing under the Sabr stochastic
 //! volatility model.
 //!
 //! **Reference:** P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
@@ -27,7 +27,7 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
   s * ((r_d - r_f) * tau).exp()
 }
 
-/// Hagan et al. (2002) SABR implied-vol approximation for general β.
+/// Hagan et al. (2002) Sabr implied-vol approximation for general β.
 ///
 /// Implements Eq. A.69a from:
 /// P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
@@ -84,7 +84,7 @@ pub fn hagan_implied_vol_beta1(k: f64, f: f64, tau: f64, alpha: f64, nu: f64, rh
   hagan_implied_vol(k, f, tau, alpha, 1.0, nu, rho)
 }
 
-/// Compute SABR α from an ATM lognormal vol by solving the Hagan (2002) ATM
+/// Compute Sabr α from an ATM lognormal vol by solving the Hagan (2002) ATM
 /// condition (Eq. A.69b) as a cubic polynomial in α (quadratic when β = 1).
 ///
 /// $$
@@ -177,7 +177,7 @@ pub fn model_price_hagan_general(
   bs_price_fx(s, k, r_d, r_f, tau, sigma)
 }
 
-/// Pricer that uses SABR (Hagan 2002, general β) to produce an implied vol,
+/// Pricer that uses Sabr (Hagan 2002, general β) to produce an implied vol,
 /// then prices via Black-GK.
 #[derive(Clone, Copy, Debug)]
 pub struct SabrPricer {
@@ -191,7 +191,7 @@ pub struct SabrPricer {
   pub q: Option<f64>,
   /// Model shape/loading parameter.
   pub alpha: f64,
-  /// CEV exponent (0 = normal, 1 = lognormal).
+  /// Cev exponent (0 = normal, 1 = lognormal).
   pub beta: f64,
   /// Volatility-of-volatility parameter.
   pub nu: f64,
@@ -231,6 +231,79 @@ impl SabrPricer {
       tau,
       eval,
       expiration,
+    }
+  }
+
+  pub fn builder(
+    s: f64,
+    k: f64,
+    r: f64,
+    alpha: f64,
+    beta: f64,
+    nu: f64,
+    rho: f64,
+  ) -> SabrPricerBuilder {
+    SabrPricerBuilder {
+      s,
+      k,
+      r,
+      q: None,
+      alpha,
+      beta,
+      nu,
+      rho,
+      tau: None,
+      eval: None,
+      expiration: None,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct SabrPricerBuilder {
+  s: f64,
+  k: f64,
+  r: f64,
+  q: Option<f64>,
+  alpha: f64,
+  beta: f64,
+  nu: f64,
+  rho: f64,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+}
+
+impl SabrPricerBuilder {
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn build(self) -> SabrPricer {
+    SabrPricer {
+      s: self.s,
+      k: self.k,
+      r: self.r,
+      q: self.q,
+      alpha: self.alpha,
+      beta: self.beta,
+      nu: self.nu,
+      rho: self.rho,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
     }
   }
 }
@@ -320,7 +393,7 @@ impl PricerExt for SabrPricer {
   }
 }
 
-/// SABR model parameters (model only, no market data).
+/// Sabr model parameters (model only, no market data).
 ///
 /// Implements [`ModelPricer`] via the Hagan (2002) implied-vol formula
 /// plugged into Black-Scholes.
@@ -508,7 +581,7 @@ mod tests {
       ),
       // β=0.7 long-dated
       (0.30, 50.0, 2.0, 0.7, 0.1, 0.4, 9.409442654142710e-01),
-      // β=0 (normal SABR)
+      // β=0 (normal Sabr)
       (0.25, 100.0, 1.0, 0.0, 0.0, 0.3, 2.475118650781591e+01),
     ];
 

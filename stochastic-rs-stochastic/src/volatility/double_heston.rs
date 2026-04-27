@@ -26,7 +26,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -69,9 +69,9 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
   /// First factor's correlated Gaussian noise source: $(W_1^S, W_1^v)$.
-  cgns1: CGNS<T>,
+  cgns1: Cgns<T>,
   /// Second factor's correlated Gaussian noise source: $(W_2^S, W_2^v)$.
-  cgns2: CGNS<T>,
+  cgns2: Cgns<T>,
 }
 
 impl<T: FloatExt> DoubleHeston<T> {
@@ -123,8 +123,8 @@ impl<T: FloatExt> DoubleHeston<T> {
       t,
       use_sym,
       seed: Unseeded,
-      cgns1: CGNS::new(rho1, n - 1, t),
-      cgns2: CGNS::new(rho2, n - 1, t),
+      cgns1: Cgns::new(rho1, n - 1, t),
+      cgns2: Cgns::new(rho2, n - 1, t),
     }
   }
 }
@@ -179,8 +179,8 @@ impl<T: FloatExt> DoubleHeston<T, Deterministic> {
       t,
       use_sym,
       seed: Deterministic(seed),
-      cgns1: CGNS::new(rho1, n - 1, t),
-      cgns2: CGNS::new(rho2, n - 1, t),
+      cgns1: Cgns::new(rho1, n - 1, t),
+      cgns2: Cgns::new(rho2, n - 1, t),
     }
   }
 }

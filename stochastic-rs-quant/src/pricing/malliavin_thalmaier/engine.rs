@@ -602,7 +602,7 @@ mod tests {
     }
   }
 
-  /// Degenerált Heston (ξ→0) ~ GBM → összehasonlítás BS analitikus delta-val.
+  /// Degenerált Heston (ξ→0) ~ Gbm → összehasonlítás BS analitikus delta-val.
   fn gbm_like_params() -> MultiHestonParams<f64> {
     let a = AssetParams {
       s0: 100.0,
@@ -640,7 +640,7 @@ mod tests {
   }
 
   /// Scenario used for the Greeks experiment in Kohatsu-Higa--Yasuda (2010),
-  /// Figure 5/6, but simulated here in the near-GBM limit of the multi-Heston
+  /// Figure 5/6, but simulated here in the near-Gbm limit of the multi-Heston
   /// engine so we can compare against the exact Black-Scholes benchmark.
   fn paper_bs_digital_put_params(s01: f64, n_steps: usize) -> MultiHestonParams<f64> {
     let a1 = AssetParams {
@@ -920,7 +920,7 @@ mod tests {
     assert!(e.price(&p) > 0.0);
   }
 
-  /// **Validation 1**: MC price vs BS closed-form (degenerált Heston ≈ GBM).
+  /// **Validation 1**: MC price vs BS closed-form (degenerált Heston ≈ Gbm).
   ///
   /// BS call: C = S·N(d₁) − K·e^{−rT}·N(d₂), σ = √v₀ = 0.2.
   /// Ha ξ ≈ 0, a Heston MC ár konvergálnia kell a BS-hez.
@@ -992,7 +992,7 @@ mod tests {
     assert!(mt_delta.is_finite(), "M-T delta = {mt_delta} not finite");
   }
 
-  /// **Validation 3**: BS analitikus delta vs FD delta a GBM limitben.
+  /// **Validation 3**: BS analitikus delta vs FD delta a Gbm limitben.
   ///
   /// Ez validálja hogy a szimuláció maga helyes (BS delta = N(d₁) ≈ 0.6368).
   #[test]

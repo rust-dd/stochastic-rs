@@ -78,6 +78,20 @@ impl BjerksundStensland2002Pricer {
     }
   }
 
+  pub fn builder(s: f64, v: f64, k: f64, r: f64) -> BjerksundStensland2002PricerBuilder {
+    BjerksundStensland2002PricerBuilder {
+      s,
+      v,
+      k,
+      r,
+      q: None,
+      tau: None,
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Call,
+    }
+  }
+
   /// Cost of carry: b = r - q
   fn b(&self) -> f64 {
     self.r - self.q.unwrap_or(0.0)
@@ -204,6 +218,55 @@ impl BjerksundStensland2002Pricer {
 
     // Ensure at least the European value
     f64::max(value, e_value)
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct BjerksundStensland2002PricerBuilder {
+  s: f64,
+  v: f64,
+  k: f64,
+  r: f64,
+  q: Option<f64>,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+  option_type: OptionType,
+}
+
+impl BjerksundStensland2002PricerBuilder {
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn option_type(mut self, option_type: OptionType) -> Self {
+    self.option_type = option_type;
+    self
+  }
+  pub fn build(self) -> BjerksundStensland2002Pricer {
+    BjerksundStensland2002Pricer {
+      s: self.s,
+      v: self.v,
+      k: self.k,
+      r: self.r,
+      q: self.q,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
+      option_type: self.option_type,
+    }
   }
 }
 

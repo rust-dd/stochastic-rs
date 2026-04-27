@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Implements an EGARCH(p,q) model:
+/// Implements an Egarch(p,q) model:
 ///
 /// \[
 ///   \ln(\sigma_t^2)
@@ -44,7 +44,7 @@ use crate::traits::ProcessExt;
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
 #[derive(Debug, Clone)]
-pub struct EGARCH<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term (\(\omega\)) in log-variance
   pub omega: T,
   /// Magnitude effect coefficients (\(\alpha_1, \ldots, \alpha_p\))
@@ -59,12 +59,12 @@ pub struct EGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> EGARCH<T> {
-  /// Create a new EGARCH model with the given parameters.
+impl<T: FloatExt> Egarch<T> {
+  /// Create a new Egarch model with the given parameters.
   pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
     assert!(
       alpha.len() == gamma.len(),
-      "EGARCH requires alpha.len() == gamma.len()"
+      "Egarch requires alpha.len() == gamma.len()"
     );
     Self {
       omega,
@@ -77,8 +77,8 @@ impl<T: FloatExt> EGARCH<T> {
   }
 }
 
-impl<T: FloatExt> EGARCH<T, Deterministic> {
-  /// Create a new EGARCH model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Egarch<T, Deterministic> {
+  /// Create a new Egarch model with a deterministic seed for reproducible output.
   pub fn seeded(
     omega: T,
     alpha: Array1<T>,
@@ -89,7 +89,7 @@ impl<T: FloatExt> EGARCH<T, Deterministic> {
   ) -> Self {
     assert!(
       alpha.len() == gamma.len(),
-      "EGARCH requires alpha.len() == gamma.len()"
+      "Egarch requires alpha.len() == gamma.len()"
     );
     Self {
       omega,
@@ -102,7 +102,7 @@ impl<T: FloatExt> EGARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for EGARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -159,13 +159,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for EGARCH<T, S> {
       // Convert log_sigma2[t] to sigma_t and compute X_t
       assert!(
         log_sigma2[t].is_finite(),
-        "EGARCH produced non-finite log-variance at t={}",
+        "Egarch produced non-finite log-variance at t={}",
         t
       );
       let sigma_t = (log_sigma2[t].exp()).sqrt();
       assert!(
         sigma_t.is_finite() && sigma_t > T::zero(),
-        "EGARCH produced non-positive or non-finite sigma at t={}",
+        "Egarch produced non-positive or non-finite sigma at t={}",
         t
       );
       x[t] = sigma_t * z[t];
@@ -175,7 +175,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for EGARCH<T, S> {
   }
 }
 
-py_process_1d!(PyEGARCH, EGARCH,
+py_process_1d!(PyEgarch, Egarch,
   sig: (omega, alpha, gamma_, beta, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize)
 );

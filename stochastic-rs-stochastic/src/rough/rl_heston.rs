@@ -4,7 +4,7 @@
 //! \begin{aligned} dS_t &= \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^s_t,\qquad d\langle W^s, W^v\rangle_t = \rho\,dt \\ V_t &= V_0 + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \kappa(\theta - V_s)\,ds + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \nu\sqrt{V_s}\,dW^v_s \end{aligned}
 //! $$
 //!
-//! The variance process is a Volterra-CIR with Riemann–Liouville kernel
+//! The variance process is a Volterra-Cir with Riemann–Liouville kernel
 //! (El Euch–Rosenbaum 2019), simulated via the Bilokon–Wong modified fast
 //! algorithm — a single Markov-lift with $f(V)=\kappa(\theta-V)$ and
 //! $g(V)=\nu\sqrt{V^+}$ — while the asset price is integrated with a
@@ -25,11 +25,11 @@ use super::markov_lift::RoughSimd;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Rough Heston model with Volterra-CIR variance and correlated GBM asset.
+/// Rough Heston model with Volterra-Cir variance and correlated Gbm asset.
 #[derive(Clone)]
 pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent $H \in (0, 1/2)$ of the variance kernel.
@@ -56,7 +56,7 @@ pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded> {
   pub degree: Option<usize>,
   /// Seed strategy.
   pub seed: S,
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
   markov: MarkovLift<T>,
 }
 
@@ -108,7 +108,7 @@ impl<T: FloatExt> RlHeston<T> {
       t,
       degree,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
       markov: build_markov(hurst, n, t, degree),
     }
   }
@@ -145,7 +145,7 @@ impl<T: FloatExt> RlHeston<T, Deterministic> {
       t,
       degree,
       seed: Deterministic(seed),
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
       markov: build_markov(hurst, n, t, degree),
     }
   }

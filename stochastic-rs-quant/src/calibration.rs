@@ -33,6 +33,7 @@ pub use cgmysv::CgmysvCalibrator;
 pub use double_heston::DoubleHestonCalibrationResult;
 pub use double_heston::DoubleHestonCalibrator;
 pub use double_heston::DoubleHestonParams;
+pub use heston::HestonCalibrationResult;
 pub use heston::HestonCalibrator;
 pub use heston::HestonParams;
 pub use heston_stoch_corr::HscmCalibrationResult;

@@ -1,7 +1,7 @@
-//! # IG
+//! # Ig
 //!
 //! $$
-//! L_t\sim\mathrm{IG}(\mu t,\lambda t),\quad X_t=L_t\text{ or time-change driver}
+//! L_t\sim\mathrm{Ig}(\mu t,\lambda t),\quad X_t=L_t\text{ or time-change driver}
 //! $$
 //!
 use ndarray::Array1;
@@ -13,7 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct IG<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Ig<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model asymmetry / nonlinearity parameter.
   pub gamma: T,
   /// Number of discrete simulation points (or samples).
@@ -25,7 +25,7 @@ pub struct IG<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> IG<T> {
+impl<T: FloatExt> Ig<T> {
   pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(gamma > T::zero(), "gamma must be positive");
     Self {
@@ -38,7 +38,7 @@ impl<T: FloatExt> IG<T> {
   }
 }
 
-impl<T: FloatExt> IG<T, Deterministic> {
+impl<T: FloatExt> Ig<T, Deterministic> {
   pub fn seeded(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
     assert!(gamma > T::zero(), "gamma must be positive");
     Self {
@@ -51,14 +51,14 @@ impl<T: FloatExt> IG<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> IG<T, S> {
+impl<T: FloatExt, S: SeedExt> Ig<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for IG<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ig<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -72,7 +72,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for IG<T, S> {
     }
 
     let dt = self.dt();
-    // Single-parameter IG subordinator:
+    // Single-parameter Ig subordinator:
     // increments are strictly positive and independent over grid steps.
     let mean = self.gamma * dt;
     let shape = mean * mean;
@@ -89,7 +89,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for IG<T, S> {
   }
 }
 
-py_process_1d!(PyIG, IG,
+py_process_1d!(PyIg, Ig,
   sig: (gamma_, n, x0=None, t=None, seed=None, dtype=None),
   params: (gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
@@ -101,7 +101,7 @@ mod tests {
 
   #[test]
   fn ig_path_is_non_decreasing() {
-    let p = IG::new(1.0_f64, 256, Some(0.0), Some(1.0));
+    let p = Ig::new(1.0_f64, 256, Some(0.0), Some(1.0));
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
@@ -109,7 +109,7 @@ mod tests {
 
   #[test]
   fn n_eq_1_keeps_initial_value() {
-    let p = IG::new(1.0_f64, 1, Some(3.5), Some(1.0));
+    let p = Ig::new(1.0_f64, 1, Some(3.5), Some(1.0));
     let x = p.sample();
     assert_eq!(x.len(), 1);
     assert_eq!(x[0], 3.5);

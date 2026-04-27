@@ -50,6 +50,30 @@ impl crate::traits::ToModel for BSMCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for BSMCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
+impl crate::traits::Calibrator for BSMCalibrator {
+  type InitialGuess = BSMParams;
+  type Output = BSMCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    let mut this = self.clone();
+    if let Some(p) = initial {
+      this.set_initial_guess(p);
+    }
+    BSMCalibrator::calibrate(&this)
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct BSMParams {
   /// Implied volatility

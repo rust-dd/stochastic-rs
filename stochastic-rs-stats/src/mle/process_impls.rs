@@ -4,13 +4,13 @@ use ndarray::array;
 use super::DiffusionModel;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
-use stochastic_rs_stochastic::diffusion::cev::CEV;
-use stochastic_rs_stochastic::diffusion::cir::CIR;
-use stochastic_rs_stochastic::diffusion::ckls::CKLS;
+use stochastic_rs_stochastic::diffusion::cev::Cev;
+use stochastic_rs_stochastic::diffusion::cir::Cir;
+use stochastic_rs_stochastic::diffusion::ckls::Ckls;
 use stochastic_rs_stochastic::diffusion::feller::FellerLogistic;
 use stochastic_rs_stochastic::diffusion::feller_root::FellerRoot;
-use stochastic_rs_stochastic::diffusion::gbm::GBM;
-use stochastic_rs_stochastic::diffusion::gbm_ih::GBMIH;
+use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+use stochastic_rs_stochastic::diffusion::gbm_ih::GbmIh;
 use stochastic_rs_stochastic::diffusion::gompertz::Gompertz;
 use stochastic_rs_stochastic::diffusion::hyperbolic::Hyperbolic;
 use stochastic_rs_stochastic::diffusion::hyperbolic2::Hyperbolic2;
@@ -20,13 +20,13 @@ use stochastic_rs_stochastic::diffusion::linear_sde::LinearSDE;
 use stochastic_rs_stochastic::diffusion::logistic::Logistic;
 use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCIR;
 use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonLinearSDE;
-use stochastic_rs_stochastic::diffusion::ou::OU;
+use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::diffusion::pearson::Pearson;
 use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
 use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
-use stochastic_rs_stochastic::process::bm::BM;
+use stochastic_rs_stochastic::process::bm::Bm;
 
 fn log_bessel_i(nu: f64, z: f64) -> f64 {
   use statrs::function::gamma::ln_gamma;
@@ -51,7 +51,7 @@ fn log_bessel_i(nu: f64, z: f64) -> f64 {
   nu * log_half_z + max_log + sum.ln()
 }
 
-impl<S: SeedExt> DiffusionModel for BM<f64, S> {
+impl<S: SeedExt> DiffusionModel for Bm<f64, S> {
   fn num_params(&self) -> usize {
     0
   }
@@ -76,7 +76,7 @@ impl<S: SeedExt> DiffusionModel for BM<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for GBMIH<f64, S> {
+impl<S: SeedExt> DiffusionModel for GbmIh<f64, S> {
   fn num_params(&self) -> usize {
     2
   }
@@ -104,7 +104,7 @@ impl<S: SeedExt> DiffusionModel for GBMIH<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for GBM<f64, S> {
+impl<S: SeedExt> DiffusionModel for Gbm<f64, S> {
   fn num_params(&self) -> usize {
     2
   }
@@ -145,7 +145,7 @@ impl<S: SeedExt> DiffusionModel for GBM<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for OU<f64, S> {
+impl<S: SeedExt> DiffusionModel for Ou<f64, S> {
   fn num_params(&self) -> usize {
     3
   }
@@ -188,7 +188,7 @@ impl<S: SeedExt> DiffusionModel for OU<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for CIR<f64, S> {
+impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   fn num_params(&self) -> usize {
     3
   }
@@ -239,7 +239,7 @@ impl<S: SeedExt> DiffusionModel for CIR<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for CEV<f64, S> {
+impl<S: SeedExt> DiffusionModel for Cev<f64, S> {
   fn num_params(&self) -> usize {
     3
   }
@@ -268,7 +268,7 @@ impl<S: SeedExt> DiffusionModel for CEV<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for CKLS<f64, S> {
+impl<S: SeedExt> DiffusionModel for Ckls<f64, S> {
   fn num_params(&self) -> usize {
     4
   }
@@ -818,12 +818,12 @@ mod tests {
 
   #[test]
   fn gbm_process_ext_with_mle() {
-    let gbm = GBM::seeded(0.05, 0.2, 2501, Some(100.0), Some(10.0), 42);
+    let gbm = Gbm::seeded(0.05, 0.2, 2501, Some(100.0), Some(10.0), 42);
     let path = gbm.sample();
     assert_eq!(path.len(), 2501);
 
     let dt = 10.0 / 2500.0;
-    let mut gbm_fit = GBM::seeded(0.0, 0.5, 100, Some(100.0), Some(1.0), 0);
+    let mut gbm_fit = Gbm::seeded(0.0, 0.5, 100, Some(100.0), Some(1.0), 0);
     let result = fit_mle(&mut gbm_fit, &path, dt, DensityApprox::Euler, None);
     assert!(
       (result.params[1] - 0.2).abs() < 0.15,
@@ -834,12 +834,12 @@ mod tests {
 
   #[test]
   fn ou_process_ext_with_mle() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 123);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 123);
     let path = ou.sample();
     assert_eq!(path.len(), 2501);
 
     let dt = 10.0 / 2500.0;
-    let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+    let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
     let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Exact, None);
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
@@ -855,12 +855,12 @@ mod tests {
 
   #[test]
   fn cir_process_ext_with_mle() {
-    let cir = CIR::seeded(2.0, 0.04, 0.1, 5001, Some(0.04), Some(20.0), None, 55);
+    let cir = Cir::seeded(2.0, 0.04, 0.1, 5001, Some(0.04), Some(20.0), None, 55);
     let path = cir.sample();
     assert_eq!(path.len(), 5001);
 
     let dt = 20.0 / 5000.0;
-    let mut cir_fit = CIR::seeded(1.0, 0.05, 0.2, 100, Some(0.04), Some(1.0), None, 0);
+    let mut cir_fit = Cir::seeded(1.0, 0.05, 0.2, 100, Some(0.04), Some(1.0), None, 0);
     let result = fit_mle(&mut cir_fit, &path, dt, DensityApprox::Euler, None);
     assert!(
       (result.params[1] - 0.04).abs() < 0.03,
@@ -871,11 +871,11 @@ mod tests {
 
   #[test]
   fn ou_sample_then_mle_roundtrip() {
-    let ou = OU::seeded(3.0, 2.0, 0.5, 10001, Some(2.0), Some(10.0), 77);
+    let ou = Ou::seeded(3.0, 2.0, 0.5, 10001, Some(2.0), Some(10.0), 77);
     let path: Array1<f64> = ProcessExt::<f64>::sample(&ou);
 
     let dt = 10.0 / 10000.0;
-    let mut ou_fit = OU::seeded(1.0, 1.0, 1.0, 100, Some(1.0), Some(1.0), 0);
+    let mut ou_fit = Ou::seeded(1.0, 1.0, 1.0, 100, Some(1.0), Some(1.0), 0);
     let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Exact, None);
 
     assert!(
@@ -897,12 +897,12 @@ mod tests {
 
   #[test]
   fn cev_process_ext_with_mle() {
-    let cev = CEV::seeded(0.05, 0.3, 0.7, 2501, Some(100.0), Some(10.0), 42);
+    let cev = Cev::seeded(0.05, 0.3, 0.7, 2501, Some(100.0), Some(10.0), 42);
     let path = cev.sample();
     assert_eq!(path.len(), 2501);
 
     let dt = 10.0 / 2500.0;
-    let mut cev_fit = CEV::seeded(0.0, 0.5, 0.5, 100, Some(100.0), Some(1.0), 0);
+    let mut cev_fit = Cev::seeded(0.0, 0.5, 0.5, 100, Some(100.0), Some(1.0), 0);
     let result = fit_mle(&mut cev_fit, &path, dt, DensityApprox::Euler, None);
 
     assert!(

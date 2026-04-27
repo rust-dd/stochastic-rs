@@ -1,4 +1,4 @@
-//! # HKDE (Heston + Kou Double-Exponential Jumps)
+//! # Hkde (Heston + Kou Double-Exponential Jumps)
 //!
 //! $$
 //! \begin{aligned}
@@ -22,12 +22,12 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Heston + Kou Double-Exponential jump-diffusion process.
-pub struct HKDE<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate (or risk-free rate minus dividend yield).
   pub mu: T,
   /// Mean-reversion speed of variance.
@@ -58,10 +58,10 @@ pub struct HKDE<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy.
   pub seed: S,
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> HKDE<T> {
+impl<T: FloatExt> Hkde<T> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     mu: T,
@@ -104,12 +104,12 @@ impl<T: FloatExt> HKDE<T> {
       t,
       use_sym,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> HKDE<T, Deterministic> {
+impl<T: FloatExt> Hkde<T, Deterministic> {
   #[allow(clippy::too_many_arguments)]
   pub fn seeded(
     mu: T,
@@ -146,12 +146,12 @@ impl<T: FloatExt> HKDE<T, Deterministic> {
       t,
       use_sym,
       seed: Deterministic(seed),
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> HKDE<T, S> {
+impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
   /// Kou double-exponential jump compensator: E[e^J - 1]
   #[inline]
   fn k_bar(&self) -> T {
@@ -181,7 +181,7 @@ impl<T: FloatExt, S: SeedExt> HKDE<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HKDE<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -246,8 +246,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HKDE<T, S> {
 mod tests {
   use super::*;
 
-  fn default_hkde() -> HKDE<f64> {
-    HKDE::new(
+  fn default_hkde() -> Hkde<f64> {
+    Hkde::new(
       0.05,
       1.5,
       0.04,
@@ -281,7 +281,7 @@ mod tests {
 
   #[test]
   fn no_jumps_reduces_to_heston() {
-    let p = HKDE::seeded(
+    let p = Hkde::seeded(
       0.05,
       1.5,
       0.04,
@@ -309,7 +309,7 @@ mod tests {
 
   #[test]
   fn seeded_is_deterministic() {
-    let p1 = HKDE::seeded(
+    let p1 = Hkde::seeded(
       0.05,
       1.5,
       0.04,
@@ -326,7 +326,7 @@ mod tests {
       None,
       123,
     );
-    let p2 = HKDE::seeded(
+    let p2 = Hkde::seeded(
       0.05,
       1.5,
       0.04,

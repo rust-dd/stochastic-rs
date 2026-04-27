@@ -73,6 +73,15 @@ impl crate::traits::ToModel for HscmCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for HscmCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.rmse
+  }
+  fn converged(&self) -> bool {
+    self.rmse.is_finite()
+  }
+}
+
 impl HscmCalibrationResult {
   /// Convert to an [`HscmModel`] for pricing / vol surface generation.
   pub fn to_model(&self) -> crate::pricing::heston_stoch_corr::HscmModel {

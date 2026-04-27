@@ -10,7 +10,7 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -35,7 +35,7 @@ where
   pub v0: Option<T>,
   pub t: Option<T>,
   pub use_sym: Option<bool>,
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
   pub cpoisson: CompoundPoisson<T, D>,
   pub seed: S,
 }
@@ -83,7 +83,7 @@ where
       v0,
       t,
       use_sym,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
       cpoisson,
       seed: Unseeded,
     }
@@ -134,7 +134,7 @@ where
       v0,
       t,
       use_sym,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
       cpoisson,
       seed: Deterministic(seed),
     }

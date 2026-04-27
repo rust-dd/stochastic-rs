@@ -16,7 +16,7 @@ mod metal;
 #[cfg(feature = "python")]
 mod python;
 
-pub use core::FGN;
+pub use core::Fgn;
 
 #[cfg(any(
   feature = "gpu",
@@ -41,13 +41,13 @@ use ndarray::Array1;
 ))]
 use ndarray::Array2;
 #[cfg(feature = "python")]
-pub use python::PyFGN;
+pub use python::PyFgn;
 
 use stochastic_rs_core::simd_rng::SeedExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-impl<T: FloatExt, S: SeedExt> FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   /// Sample two independent fGn paths in a single FFT / RNG pass.
   ///
   /// Both paths have the same covariance structure as [`sample`](Self::sample)
@@ -69,7 +69,7 @@ impl<T: FloatExt, S: SeedExt> FGN<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fgn<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {

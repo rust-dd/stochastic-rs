@@ -255,7 +255,7 @@ impl DoubleBarrierPricer {
   }
 }
 
-/// Monte Carlo barrier option pricer using GBM path simulation.
+/// Monte Carlo barrier option pricer using Gbm path simulation.
 #[derive(Debug, Clone)]
 pub struct MCBarrierPricer {
   /// Number of Monte Carlo paths.

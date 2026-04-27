@@ -475,76 +475,76 @@ mod tests {
   use rand_distr::Normal;
 
   use super::*;
-  use stochastic_rs_stochastic::autoregressive::agrach::AGARCH;
+  use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
   use stochastic_rs_stochastic::autoregressive::ar::ARp;
-  use stochastic_rs_stochastic::autoregressive::arch::ARCH;
-  use stochastic_rs_stochastic::autoregressive::arima::ARIMA;
-  use stochastic_rs_stochastic::autoregressive::egarch::EGARCH;
-  use stochastic_rs_stochastic::autoregressive::garch::GARCH;
+  use stochastic_rs_stochastic::autoregressive::arch::Arch;
+  use stochastic_rs_stochastic::autoregressive::arima::Arima;
+  use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
+  use stochastic_rs_stochastic::autoregressive::garch::Garch;
   use stochastic_rs_stochastic::autoregressive::ma::MAq;
-  use stochastic_rs_stochastic::autoregressive::sarima::SARIMA;
-  use stochastic_rs_stochastic::autoregressive::tgarch::TGARCH;
-  use stochastic_rs_stochastic::diffusion::cev::CEV;
-  use stochastic_rs_stochastic::diffusion::cfou::CFOU;
-  use stochastic_rs_stochastic::diffusion::cir::CIR as DiffCIR;
-  use stochastic_rs_stochastic::diffusion::fcir::FCIR;
+  use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
+  use stochastic_rs_stochastic::autoregressive::tgarch::Tgarch;
+  use stochastic_rs_stochastic::diffusion::cev::Cev;
+  use stochastic_rs_stochastic::diffusion::cfou::Cfou;
+  use stochastic_rs_stochastic::diffusion::cir::Cir as DiffCIR;
+  use stochastic_rs_stochastic::diffusion::fcir::Fcir;
   use stochastic_rs_stochastic::diffusion::feller::FellerLogistic;
-  use stochastic_rs_stochastic::diffusion::fgbm::FGBM;
+  use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
   use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
-  use stochastic_rs_stochastic::diffusion::fou::FOU;
+  use stochastic_rs_stochastic::diffusion::fou::Fou;
   use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
-  use stochastic_rs_stochastic::diffusion::gbm::GBM;
-  use stochastic_rs_stochastic::diffusion::gbm_ih::GBMIH;
+  use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+  use stochastic_rs_stochastic::diffusion::gbm_ih::GbmIh;
   use stochastic_rs_stochastic::diffusion::gompertz::Gompertz;
   use stochastic_rs_stochastic::diffusion::jacobi::Jacobi;
   use stochastic_rs_stochastic::diffusion::kimura::Kimura;
-  use stochastic_rs_stochastic::diffusion::ou::OU;
+  use stochastic_rs_stochastic::diffusion::ou::Ou;
   use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
   use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
-  use stochastic_rs_stochastic::interest::adg::ADG;
-  use stochastic_rs_stochastic::interest::bgm::BGM;
-  use stochastic_rs_stochastic::interest::cir::CIR as RateCIR;
-  use stochastic_rs_stochastic::interest::cir_2f::CIR2F;
+  use stochastic_rs_stochastic::interest::adg::Adg;
+  use stochastic_rs_stochastic::interest::bgm::Bgm;
+  use stochastic_rs_stochastic::interest::cir::Cir as RateCIR;
+  use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
   use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
   use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
-  use stochastic_rs_stochastic::interest::hjm::HJM;
+  use stochastic_rs_stochastic::interest::hjm::Hjm;
   use stochastic_rs_stochastic::interest::ho_lee::HoLee;
   use stochastic_rs_stochastic::interest::hull_white::HullWhite;
   use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
   use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
   use stochastic_rs_stochastic::interest::vasicek::Vasicek;
   use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
-  use stochastic_rs_stochastic::isonormal::ISONormal;
+  use stochastic_rs_stochastic::isonormal::IsoNormal;
   use stochastic_rs_stochastic::isonormal::fbm_custom_inc_cov;
   use stochastic_rs_stochastic::jump::bates::Bates1996;
-  use stochastic_rs_stochastic::jump::cgmy::CGMY;
-  use stochastic_rs_stochastic::jump::cts::CTS;
-  use stochastic_rs_stochastic::jump::ig::IG;
-  use stochastic_rs_stochastic::jump::jump_fou::JumpFOU;
+  use stochastic_rs_stochastic::jump::cgmy::Cgmy;
+  use stochastic_rs_stochastic::jump::cts::Cts;
+  use stochastic_rs_stochastic::jump::ig::Ig;
+  use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
   use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
   use stochastic_rs_stochastic::jump::kobol::KoBoL;
-  use stochastic_rs_stochastic::jump::kou::KOU;
+  use stochastic_rs_stochastic::jump::kou::Kou;
   use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
   use stochastic_rs_stochastic::jump::merton::Merton;
-  use stochastic_rs_stochastic::jump::nig::NIG;
-  use stochastic_rs_stochastic::jump::rdts::RDTS;
-  use stochastic_rs_stochastic::jump::vg::VG;
-  use stochastic_rs_stochastic::noise::cfgns::CFGNS;
-  use stochastic_rs_stochastic::noise::cgns::CGNS;
-  use stochastic_rs_stochastic::noise::fgn::FGN;
+  use stochastic_rs_stochastic::jump::nig::Nig;
+  use stochastic_rs_stochastic::jump::rdts::Rdts;
+  use stochastic_rs_stochastic::jump::vg::Vg;
+  use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+  use stochastic_rs_stochastic::noise::cgns::Cgns;
+  use stochastic_rs_stochastic::noise::fgn::Fgn;
   use stochastic_rs_stochastic::noise::gn::Gn;
   use stochastic_rs_stochastic::noise::wn::Wn;
-  use stochastic_rs_stochastic::process::bm::BM;
-  use stochastic_rs_stochastic::process::cbms::CBMS;
+  use stochastic_rs_stochastic::process::bm::Bm;
+  use stochastic_rs_stochastic::process::cbms::Cbms;
   use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
-  use stochastic_rs_stochastic::process::cfbms::CFBMS;
+  use stochastic_rs_stochastic::process::cfbms::Cfbms;
   use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
   use stochastic_rs_stochastic::process::customjt::CustomJt;
-  use stochastic_rs_stochastic::process::fbm::FBM;
-  use stochastic_rs_stochastic::process::lfsm::LFSM;
+  use stochastic_rs_stochastic::process::fbm::Fbm;
+  use stochastic_rs_stochastic::process::lfsm::Lfsm;
   use stochastic_rs_stochastic::process::poisson::Poisson;
   use stochastic_rs_stochastic::process::subordinator::AlphaStableSubordinator;
-  use stochastic_rs_stochastic::process::subordinator::CTRW;
+  use stochastic_rs_stochastic::process::subordinator::Ctrw;
   use stochastic_rs_stochastic::process::subordinator::CtrwJumpLaw;
   use stochastic_rs_stochastic::process::subordinator::CtrwWaitingLaw;
   use stochastic_rs_stochastic::process::subordinator::GammaSubordinator;
@@ -552,14 +552,14 @@ mod tests {
   use stochastic_rs_stochastic::process::subordinator::InverseAlphaStableSubordinator;
   use stochastic_rs_stochastic::process::subordinator::PoissonSubordinator;
   use stochastic_rs_stochastic::process::subordinator::TemperedStableSubordinator;
-  use stochastic_rs_stochastic::sheet::fbs::FBS;
+  use stochastic_rs_stochastic::sheet::fbs::Fbs;
   use stochastic_rs_stochastic::volatility::HestonPow;
   use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
   use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
   use stochastic_rs_stochastic::volatility::heston::Heston;
   use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
-  use stochastic_rs_stochastic::volatility::sabr::SABR;
-  use stochastic_rs_stochastic::volatility::svcgmy::SVCGMY;
+  use stochastic_rs_stochastic::volatility::sabr::Sabr;
+  use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
   fn f_const_001(_: f64) -> f64 {
     0.01
@@ -632,7 +632,7 @@ mod tests {
     let sheet_m = 3;
     let sheet_n = 64;
 
-    let mut isonormal_fbm = ISONormal::new(
+    let mut isonormal_fbm = IsoNormal::new(
       |aux_idx, idx| fbm_custom_inc_cov(aux_idx.abs_diff(idx), 0.7),
       (0..n).collect(),
     );
@@ -668,18 +668,18 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &ARIMA::new(
+      &Arima::new(
         Array1::from_vec(vec![0.4]),
         Array1::from_vec(vec![0.3]),
         1,
         0.1,
         n,
       ),
-      "Autoreg: ARIMA(1,1,1)",
+      "Autoreg: Arima(1,1,1)",
       traj,
     );
     grid = grid.register(
-      &SARIMA::new(
+      &Sarima::new(
         Array1::from_vec(vec![0.3]),
         Array1::from_vec(vec![0.2]),
         Array1::from_vec(vec![0.2]),
@@ -690,67 +690,67 @@ mod tests {
         0.08,
         n,
       ),
-      "Autoreg: SARIMA",
+      "Autoreg: Sarima",
       traj,
     );
     grid = grid.register(
-      &ARCH::new(0.05, Array1::from_vec(vec![0.2, 0.1]), n),
-      "Autoreg: ARCH",
+      &Arch::new(0.05, Array1::from_vec(vec![0.2, 0.1]), n),
+      "Autoreg: Arch",
       traj,
     );
     grid = grid.register(
-      &GARCH::new(
+      &Garch::new(
         0.03,
         Array1::from_vec(vec![0.12]),
         Array1::from_vec(vec![0.8]),
         n,
       ),
-      "Autoreg: GARCH",
+      "Autoreg: Garch",
       traj,
     );
     grid = grid.register(
-      &TGARCH::new(
+      &Tgarch::new(
         0.03,
         Array1::from_vec(vec![0.08]),
         Array1::from_vec(vec![0.05]),
         Array1::from_vec(vec![0.85]),
         n,
       ),
-      "Autoreg: TGARCH",
+      "Autoreg: Tgarch",
       traj,
     );
     grid = grid.register(
-      &EGARCH::new(
+      &Egarch::new(
         -0.1,
         Array1::from_vec(vec![0.1]),
         Array1::from_vec(vec![-0.05]),
         Array1::from_vec(vec![0.9]),
         n,
       ),
-      "Autoreg: EGARCH",
+      "Autoreg: Egarch",
       traj,
     );
     grid = grid.register(
-      &AGARCH::new(
+      &Agarch::new(
         0.03,
         Array1::from_vec(vec![0.1]),
         Array1::from_vec(vec![0.04]),
         Array1::from_vec(vec![0.84]),
         n,
       ),
-      "Autoreg: AGARCH",
+      "Autoreg: Agarch",
       traj,
     );
 
     grid = grid.register(&Wn::new(n, Some(0.0), Some(1.0)), "Noise: White", traj);
     grid = grid.register(&Gn::new(n, Some(1.0)), "Noise: Gaussian", traj);
-    grid = grid.register(&FGN::new(0.7, n, Some(1.0)), "Noise: FGN", traj);
-    grid = grid.register(&CGNS::new(-0.4, n, Some(1.0)), "Noise: CGNS", traj);
-    grid = grid.register(&CFGNS::new(0.7, -0.3, n, Some(1.0)), "Noise: CFGNS", traj);
+    grid = grid.register(&Fgn::new(0.7, n, Some(1.0)), "Noise: Fgn", traj);
+    grid = grid.register(&Cgns::new(-0.4, n, Some(1.0)), "Noise: Cgns", traj);
+    grid = grid.register(&Cfgns::new(0.7, -0.3, n, Some(1.0)), "Noise: Cfgns", traj);
 
-    grid = grid.register(&BM::new(n, Some(1.0)), "Process: BM", traj);
-    grid = grid.register(&FBM::new(0.7, n, Some(1.0)), "Process: FBM", traj);
-    grid = grid.register_paths(isonormal_paths, "Process: fBM via ISONormal (H=0.7)");
+    grid = grid.register(&Bm::new(n, Some(1.0)), "Process: Bm", traj);
+    grid = grid.register(&Fbm::new(0.7, n, Some(1.0)), "Process: Fbm", traj);
+    grid = grid.register_paths(isonormal_paths, "Process: fBM via IsoNormal (H=0.7)");
     grid = grid.register(
       &Poisson::new(2.0, Some(n), Some(1.0)),
       "Process: Poisson",
@@ -788,11 +788,11 @@ mod tests {
       "Process: CompoundCustom",
       traj,
     );
-    grid = grid.register(&CBMS::new(0.35, n, Some(1.0)), "Process: CBMS", traj);
-    grid = grid.register(&CFBMS::new(0.7, 0.35, n, Some(1.0)), "Process: CFBMS", traj);
+    grid = grid.register(&Cbms::new(0.35, n, Some(1.0)), "Process: Cbms", traj);
+    grid = grid.register(&Cfbms::new(0.7, 0.35, n, Some(1.0)), "Process: Cfbms", traj);
     grid = grid.register(
-      &LFSM::new(1.7, 0.0, 0.8, 1.0, n, Some(0.0), Some(1.0)),
-      "Process: LFSM",
+      &Lfsm::new(1.7, 0.0, 0.8, 1.0, n, Some(0.0), Some(1.0)),
+      "Process: Lfsm",
       traj,
     );
     grid = grid.register(
@@ -817,7 +817,7 @@ mod tests {
     );
     grid = grid.register(
       &IGSubordinator::new(1.5, 2.0, n, Some(0.0), Some(1.0)),
-      "Process: IG Subordinator",
+      "Process: Ig Subordinator",
       traj,
     );
     grid = grid.register(
@@ -826,7 +826,7 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &CTRW::new(
+      &Ctrw::new(
         CtrwWaitingLaw::Exponential { rate: 2.0 },
         CtrwJumpLaw::Normal {
           mean: 0.0,
@@ -836,28 +836,28 @@ mod tests {
         Some(0.0),
         Some(1.0),
       ),
-      "Process: CTRW",
+      "Process: Ctrw",
       traj,
     );
 
     grid = grid.register(
-      &OU::new(2.0, 0.0, 0.2, n, Some(0.0), Some(1.0)),
-      "Diffusion: OU",
+      &Ou::new(2.0, 0.0, 0.2, n, Some(0.0), Some(1.0)),
+      "Diffusion: Ou",
       traj,
     );
     grid = grid.register(
-      &GBM::new(0.05, 0.2, n, Some(100.0), Some(1.0)),
-      "Diffusion: GBM",
+      &Gbm::new(0.05, 0.2, n, Some(100.0), Some(1.0)),
+      "Diffusion: Gbm",
       traj,
     );
     grid = grid.register(
       &DiffCIR::new(2.5, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false)),
-      "Diffusion: CIR",
+      "Diffusion: Cir",
       traj,
     );
     grid = grid.register(
-      &CEV::new(0.04, 0.2, 0.8, n, Some(1.0), Some(1.0)),
-      "Diffusion: CEV",
+      &Cev::new(0.04, 0.2, 0.8, n, Some(1.0), Some(1.0)),
+      "Diffusion: Cev",
       traj,
     );
     grid = grid.register(
@@ -891,8 +891,8 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &FCIR::new(0.7, 2.5, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false)),
-      "Diffusion: FCIR",
+      &Fcir::new(0.7, 2.5, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false)),
+      "Diffusion: Fcir",
       traj,
     );
     grid = grid.register(
@@ -901,28 +901,28 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &FOU::new(0.7, 2.0, 0.0, 0.2, n, Some(0.0), Some(1.0)),
-      "Diffusion: FOU",
+      &Fou::new(0.7, 2.0, 0.0, 0.2, n, Some(0.0), Some(1.0)),
+      "Diffusion: Fou",
       traj,
     );
     grid = grid.register(
-      &CFOU::new(0.7, 1.8, 3.0, 0.4, n, Some(0.0), Some(0.0), Some(1.0)),
+      &Cfou::new(0.7, 1.8, 3.0, 0.4, n, Some(0.0), Some(0.0), Some(1.0)),
       "Diffusion: Complex fOU",
       traj,
     );
     grid = grid.register(
-      &FGBM::new(0.7, 0.04, 0.2, n, Some(100.0), Some(1.0)),
-      "Diffusion: FGBM",
+      &Fgbm::new(0.7, 0.04, 0.2, n, Some(100.0), Some(1.0)),
+      "Diffusion: Fgbm",
       traj,
     );
     grid = grid.register(
-      &GBMIH::new(0.04, 0.2, n, Some(100.0), Some(1.0), None),
-      "Diffusion: GBMIH",
+      &GbmIh::new(0.04, 0.2, n, Some(100.0), Some(1.0), None),
+      "Diffusion: GbmIh",
       traj,
     );
     grid = grid.register(
       &FouqueOU2D::new(1.5, 0.0, 0.3, 0.0, n, Some(0.0), Some(0.0), Some(1.0)),
-      "Diffusion: Fouque OU 2D",
+      "Diffusion: Fouque Ou 2D",
       traj,
     );
 
@@ -938,7 +938,7 @@ mod tests {
     );
     grid = grid.register(
       &RateCIR::new(2.5, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false)),
-      "Interest: CIR (Alias)",
+      "Interest: Cir (Alias)",
       traj,
     );
     grid = grid.register(
@@ -974,7 +974,7 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &HJM::new(
+      &Hjm::new(
         f_const_001 as fn(f64) -> f64,
         f_const_002 as fn(f64) -> f64,
         f_hjm_p as fn(f64, f64) -> f64,
@@ -988,22 +988,22 @@ mod tests {
         Some(0.01),
         Some(1.0),
       ),
-      "Interest: HJM",
+      "Interest: Hjm",
       traj,
     );
     grid = grid.register(
-      &BGM::new(
+      &Bgm::new(
         Array1::from_vec(vec![0.2, 0.15]),
         Array1::from_vec(vec![0.02, 0.025]),
         2,
         Some(1.0),
         n,
       ),
-      "Interest: BGM",
+      "Interest: Bgm",
       traj,
     );
     grid = grid.register(
-      &ADG::new(
+      &Adg::new(
         f_adg_k as fn(f64) -> f64,
         f_adg_theta as fn(f64) -> f64,
         Array1::from_vec(vec![0.02, 0.018]),
@@ -1015,7 +1015,7 @@ mod tests {
         Array1::from_vec(vec![0.01, 0.015]),
         Some(1.0),
       ),
-      "Interest: ADG",
+      "Interest: Adg",
       traj,
     );
     grid = grid.register(
@@ -1080,34 +1080,34 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &CIR2F::new(
+      &Cir2F::new(
         RateCIR::new(2.5, 0.03, 0.12, n, Some(0.03), Some(1.0), Some(false)),
         RateCIR::new(2.0, 0.02, 0.1, n, Some(0.02), Some(1.0), Some(false)),
         f_phi_small as fn(f64) -> f64,
       ),
-      "Interest: CIR 2F",
+      "Interest: Cir 2F",
       traj,
     );
 
     grid = grid.register(
-      &VG::new(0.0, 0.2, 0.15, n, Some(0.0), Some(1.0)),
-      "Jump: VG",
+      &Vg::new(0.0, 0.2, 0.15, n, Some(0.0), Some(1.0)),
+      "Jump: Vg",
       traj,
     );
     grid = grid.register(
-      &NIG::new(0.0, 0.2, 0.3, n, Some(0.0), Some(1.0)),
-      "Jump: NIG",
+      &Nig::new(0.0, 0.2, 0.3, n, Some(0.0), Some(1.0)),
+      "Jump: Nig",
       traj,
     );
-    grid = grid.register(&IG::new(1.0, n, Some(0.0), Some(1.0)), "Jump: IG", traj);
+    grid = grid.register(&Ig::new(1.0, n, Some(0.0), Some(1.0)), "Jump: Ig", traj);
     grid = grid.register(
-      &RDTS::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
-      "Jump: RDTS",
+      &Rdts::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
+      "Jump: Rdts",
       traj,
     );
     grid = grid.register(
-      &CTS::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
-      "Jump: CTS",
+      &Cts::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
+      "Jump: Cts",
       traj,
     );
 
@@ -1115,13 +1115,13 @@ mod tests {
     let m = 5.0;
     let y = 0.7;
 
-    let c = CGMY::<f64>::c_for_unit_variance(g, m, y);
+    let c = Cgmy::<f64>::c_for_unit_variance(g, m, y);
     // KoBoL: in case of p=q=1 D_for_unit_variance == C_for_unit_variance
     let d = KoBoL::<f64>::d_for_unit_variance(1.0, 1.0, g, m, y);
 
     grid = grid.register(
-      &CGMY::<f64>::new(c, g, m, y, n, j, Some(0.0), Some(1.0)),
-      "Jump: CGMY (unit var, symmetric)",
+      &Cgmy::<f64>::new(c, g, m, y, n, j, Some(0.0), Some(1.0)),
+      "Jump: Cgmy (unit var, symmetric)",
       traj,
     );
 
@@ -1146,7 +1146,7 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &KOU::new(
+      &Kou::new(
         0.03,
         0.2,
         1.0,
@@ -1156,7 +1156,7 @@ mod tests {
         Some(1.0),
         normal_cpoisson(1.0, n, 0.12),
       ),
-      "Jump: KOU",
+      "Jump: Kou",
       traj,
     );
     grid = grid.register(
@@ -1172,7 +1172,7 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &JumpFOU::new(
+      &JumpFou::new(
         0.7,
         2.0,
         0.03,
@@ -1182,7 +1182,7 @@ mod tests {
         Some(1.0),
         normal_cpoisson(1.0, n, 0.08),
       ),
-      "Jump: Jump-FOU",
+      "Jump: Jump-Fou",
       traj,
     );
     grid = grid.register(
@@ -1197,7 +1197,7 @@ mod tests {
         Exp::new(20.0).expect("positive exponential rate"),
         Exp::new(30.0).expect("positive exponential rate"),
       ),
-      "Jump: Jump-FOU Custom",
+      "Jump: Jump-Fou Custom",
       traj,
     );
     grid = grid.register_with_component_labels(
@@ -1257,12 +1257,12 @@ mod tests {
       traj,
     );
     grid = grid.register(
-      &SABR::new(0.4, 0.7, -0.3, n, Some(1.0), Some(0.3), Some(1.0)),
-      "Volatility: SABR",
+      &Sabr::new(0.4, 0.7, -0.3, n, Some(1.0), Some(0.3), Some(1.0)),
+      "Volatility: Sabr",
       traj,
     );
     grid = grid.register(
-      &SVCGMY::new(
+      &Svcgmy::new(
         3.0,
         4.0,
         0.7,
@@ -1276,13 +1276,13 @@ mod tests {
         Some(0.04),
         Some(1.0),
       ),
-      "Volatility: SVCGMY",
+      "Volatility: Svcgmy",
       traj,
     );
 
     grid.show();
 
-    let fbs_field = FBS::new(0.7, sheet_m, sheet_n, 2.0).sample();
+    let fbs_field = Fbs::new(0.7, sheet_m, sheet_n, 2.0).sample();
     let z: Vec<Vec<f64>> = fbs_field.outer_iter().map(|row| row.to_vec()).collect();
     let x: Vec<f64> = (0..sheet_n)
       .map(|i| i as f64 / (sheet_n.saturating_sub(1).max(1) as f64))
@@ -1292,11 +1292,11 @@ mod tests {
       .collect();
 
     let mut sheet_plot = Plot::new();
-    let surface = Surface::new(z).x(x).y(y).name("Sheet: FBS");
+    let surface = Surface::new(z).x(x).y(y).name("Sheet: Fbs");
     sheet_plot.add_trace(surface);
     sheet_plot.set_layout(
       Layout::new()
-        .title("Sheet: FBS (3D Surface)")
+        .title("Sheet: Fbs (3D Surface)")
         .height(900)
         .width(1200),
     );
@@ -1338,7 +1338,7 @@ mod tests {
     let mut plot = Plot::new();
     plot.set_layout(
       Layout::new()
-        .title("GBM: SDE Solver Methods Comparison (dS = 0.05 S dt + 0.2 S dW)")
+        .title("Gbm: SDE Solver Methods Comparison (dS = 0.05 S dt + 0.2 S dW)")
         .auto_size(true)
         .height(700)
         .margin(Margin::new().left(60).right(30).top(80).bottom(50)),

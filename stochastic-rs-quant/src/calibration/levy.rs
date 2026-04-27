@@ -8,9 +8,9 @@
 //! characteristic-function-based pricing and Levenberg-Marquardt optimisation.
 //!
 //! Supported models:
-//! - Variance Gamma (VG)
-//! - Normal Inverse Gaussian (NIG)
-//! - CGMY
+//! - Variance Gamma (Vg)
+//! - Normal Inverse Gaussian (Nig)
+//! - Cgmy
 //! - Merton Jump-Diffusion
 //! - Kou Double-Exponential Jump-Diffusion
 //!
@@ -46,9 +46,9 @@ pub enum LevyModelType {
   /// Variance Gamma: $\psi(\xi)=-\frac{1}{\nu}\ln\!\bigl(1-i\theta\nu\xi+\tfrac12\sigma^2\nu\xi^2\bigr)$
   VarianceGamma,
   /// Normal Inverse Gaussian: $\psi(\xi)=\delta\bigl(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+i\xi)^2}\bigr)$
-  NIG,
-  /// CGMY: $\psi(\xi)=C\,\Gamma(-Y)\bigl[(M-i\xi)^Y-M^Y+(G+i\xi)^Y-G^Y\bigr]$
-  CGMY,
+  Nig,
+  /// Cgmy: $\psi(\xi)=C\,\Gamma(-Y)\bigl[(M-i\xi)^Y-M^Y+(G+i\xi)^Y-G^Y\bigr]$
+  Cgmy,
   /// Merton Jump-Diffusion: $\psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr)$
   MertonJD,
   /// Kou Double-Exponential: $\psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(\frac{p\eta_1}{\eta_1-i\xi}+\frac{(1-p)\eta_2}{\eta_2+i\xi}-1\bigr)$
@@ -115,6 +115,26 @@ impl crate::traits::ToModel for LevyCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for LevyCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(crate::LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
+impl crate::traits::Calibrator for LevyCalibrator {
+  type InitialGuess = Vec<f64>;
+  type Output = LevyCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    LevyCalibrator::calibrate(self, initial)
+  }
+}
+
 impl LevyCalibrationResult {
   /// Convert to a Fourier model for pricing / vol surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> LevyModel {
@@ -128,7 +148,7 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::NIG => LevyModel::Nig(CGMYFourier {
+      LevyModelType::Nig => LevyModel::Nig(CGMYFourier {
         c: p[0],
         g: p[1],
         m: p[2],
@@ -136,7 +156,7 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::CGMY => LevyModel::Cgmy(CGMYFourier {
+      LevyModelType::Cgmy => LevyModel::Cgmy(CGMYFourier {
         c: p[0],
         g: p[1],
         m: p[2],
@@ -217,7 +237,7 @@ fn levy_char_exponent(model_type: LevyModelType, params: &[f64], xi: Complex64) 
         + Complex64::new(0.5 * sigma * sigma * nu, 0.0) * xi * xi;
       -inner.ln() / nu
     }
-    LevyModelType::NIG => {
+    LevyModelType::Nig => {
       // params: [alpha, beta, delta]
       let alpha = params[0];
       let beta = params[1];
@@ -230,7 +250,7 @@ fn levy_char_exponent(model_type: LevyModelType, params: &[f64], xi: Complex64) 
       let branch = (Complex64::new(a2, 0.0) - shifted * shifted).sqrt();
       delta * (base - branch)
     }
-    LevyModelType::CGMY => {
+    LevyModelType::Cgmy => {
       // params: [C, G, M, Y]
       let c = params[0];
       let g = params[1];
@@ -271,7 +291,7 @@ fn levy_char_exponent(model_type: LevyModelType, params: &[f64], xi: Complex64) 
   }
 }
 
-/// $\Gamma(-Y)$ for CGMY, using reflection formula.
+/// $\Gamma(-Y)$ for Cgmy, using reflection formula.
 fn gamma_neg_y_fn(y: f64) -> Complex64 {
   // For Y < 0, Gamma(-Y) = Gamma(|Y|) is real positive, straightforward.
   // For 0 < Y < 2, Y != 1, use reflection: Gamma(-Y) = -pi / (Y * sin(pi*Y) * Gamma(Y))
@@ -384,8 +404,8 @@ fn fourier_option_price(
 fn param_count(model_type: LevyModelType) -> usize {
   match model_type {
     LevyModelType::VarianceGamma => 3, // sigma, theta, nu
-    LevyModelType::NIG => 3,           // alpha, beta, delta
-    LevyModelType::CGMY => 4,          // C, G, M, Y
+    LevyModelType::Nig => 3,           // alpha, beta, delta
+    LevyModelType::Cgmy => 4,          // C, G, M, Y
     LevyModelType::MertonJD => 4,      // sigma, lambda, mu_j, sigma_j
     LevyModelType::Kou => 5,           // sigma, lambda, p_up, eta1, eta2
   }
@@ -396,10 +416,10 @@ fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
     LevyModelType::VarianceGamma => {
       vec![(0.01, 2.0), (-1.0, 1.0), (0.01, 5.0)]
     }
-    LevyModelType::NIG => {
+    LevyModelType::Nig => {
       vec![(0.01, 50.0), (-50.0, 50.0), (0.001, 5.0)]
     }
-    LevyModelType::CGMY => {
+    LevyModelType::Cgmy => {
       vec![(0.001, 10.0), (0.01, 50.0), (0.01, 50.0), (-1.0, 1.999)]
     }
     LevyModelType::MertonJD => {
@@ -420,8 +440,8 @@ fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
 fn default_params(model_type: LevyModelType) -> Vec<f64> {
   match model_type {
     LevyModelType::VarianceGamma => vec![0.2, -0.1, 0.5],
-    LevyModelType::NIG => vec![15.0, -5.0, 0.5],
-    LevyModelType::CGMY => vec![1.0, 10.0, 15.0, 0.5],
+    LevyModelType::Nig => vec![15.0, -5.0, 0.5],
+    LevyModelType::Cgmy => vec![1.0, 10.0, 15.0, 0.5],
     LevyModelType::MertonJD => vec![0.15, 1.0, -0.05, 0.1],
     LevyModelType::Kou => vec![0.15, 3.0, 0.5, 10.0, 10.0],
   }
@@ -433,8 +453,8 @@ fn project_params(model_type: LevyModelType, params: &mut [f64]) {
   for (p, (lo, hi)) in params.iter_mut().zip(bounds.iter()) {
     *p = p.clamp(*lo, *hi);
   }
-  // NIG additional constraint: alpha > |beta|
-  if model_type == LevyModelType::NIG {
+  // Nig additional constraint: alpha > |beta|
+  if model_type == LevyModelType::Nig {
     let alpha = params[0];
     let beta = params[1];
     if alpha <= beta.abs() {
@@ -682,7 +702,7 @@ mod tests {
   // S=100, r=0.05, q=0, T=1.0
   const STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
 
-  // VG: sigma=0.2, theta=-0.1, nu=0.5
+  // Vg: sigma=0.2, theta=-0.1, nu=0.5
   const VG_REF: [f64; 9] = [
     25.056158, 20.941767, 17.091301, 13.572373, 10.453503, 7.795810, 5.640544, 3.991334, 2.793823,
   ];
@@ -694,7 +714,7 @@ mod tests {
 
   #[test]
   fn vg_pricer_matches_reference() {
-    // Verify our internal Fourier pricer reproduces reference VG prices
+    // Verify our internal Fourier pricer reproduces reference Vg prices
     let params = [0.2, -0.1, 0.5]; // sigma, theta, nu
     for (i, &k) in STRIKES.iter().enumerate() {
       let price = fourier_call_price(
@@ -708,7 +728,7 @@ mod tests {
       );
       assert!(
         (price - VG_REF[i]).abs() < 0.05,
-        "VG K={k}: got {price:.6}, expected {:.6}",
+        "Vg K={k}: got {price:.6}, expected {:.6}",
         VG_REF[i]
       );
     }
@@ -743,10 +763,10 @@ mod tests {
     let result = calibrator.calibrate(None);
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.1,
-      "VG RMSE={:.6}",
+      "Vg RMSE={:.6}",
       result.loss.get(LossMetric::Rmse)
     );
-    println!("VG recovered params: {:?}", result.params);
+    println!("Vg recovered params: {:?}", result.params);
   }
 
   #[test]
@@ -787,7 +807,7 @@ mod tests {
     );
 
     let result = calibrator.calibrate(None);
-    println!("VG params: {:?}, loss: {:?}", result.params, result.loss);
+    println!("Vg params: {:?}, loss: {:?}", result.params, result.loss);
   }
 
   #[test]

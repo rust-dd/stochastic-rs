@@ -1,4 +1,4 @@
-//! # GBM
+//! # Gbm
 //!
 //! $$
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dW_t,\quad S_0=s_0
@@ -21,7 +21,7 @@ use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct GBM<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -37,7 +37,7 @@ pub struct GBM<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> GBM<T> {
+impl<T: FloatExt> Gbm<T> {
   pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
     let mu_f64 = mu.to_f64().unwrap();
@@ -59,7 +59,7 @@ impl<T: FloatExt> GBM<T> {
   }
 }
 
-impl<T: FloatExt> GBM<T, Deterministic> {
+impl<T: FloatExt> Gbm<T, Deterministic> {
   pub fn seeded(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
     let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
     let mu_f64 = mu.to_f64().unwrap();
@@ -81,7 +81,7 @@ impl<T: FloatExt> GBM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gbm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -104,7 +104,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBM<T, S> {
     let mut tail_view = gbm.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("GBM output tail must be contiguous");
+      .expect("Gbm output tail must be contiguous");
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
@@ -119,13 +119,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBM<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> GBM<T, S> {
-  /// Malliavin derivative of the GBM process
+impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
+  /// Malliavin derivative of the Gbm process
   ///
-  /// The Malliavin derivative of the GBM process is given by
+  /// The Malliavin derivative of the Gbm process is given by
   /// `D_r S_t = \sigma S_t \mathbf{1}_{0 \le r \le t}`.
   ///
-  /// The Malliavin derivate of the GBM shows the sensitivity of the stock price with respect to the Wiener process.
+  /// The Malliavin derivate of the Gbm shows the sensitivity of the stock price with respect to the Wiener process.
   pub fn malliavin(&self) -> [Array1<T>; 2] {
     let gbm = self.sample();
     let mut m = Array1::zeros(self.n);
@@ -140,7 +140,7 @@ impl<T: FloatExt, S: SeedExt> GBM<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> DistributionExt for GBM<T, S> {
+impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
   fn pdf(&self, x: f64) -> f64 {
     self.distribution.as_ref().map_or(0.0, |d| d.pdf(x))
   }
@@ -198,7 +198,7 @@ impl<T: FloatExt, S: SeedExt> DistributionExt for GBM<T, S> {
   }
 }
 
-py_process_1d!(PyGBM, GBM,
+py_process_1d!(PyGbm, Gbm,
   sig: (mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

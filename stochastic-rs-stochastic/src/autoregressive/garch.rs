@@ -13,7 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Implements a general GARCH(p,q) model.
+/// Implements a general Garch(p,q) model.
 ///
 /// \[
 ///   \sigma_t^2
@@ -24,7 +24,7 @@ use crate::traits::ProcessExt;
 /// \]
 ///
 /// # Parameters
-/// - `omega`: Constant term (\(\omega\)) in the GARCH variance equation.
+/// - `omega`: Constant term (\(\omega\)) in the Garch variance equation.
 /// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for past squared observations.
 /// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\) for past variances.
 /// - `n`:     Length of the time series.
@@ -34,7 +34,7 @@ use crate::traits::ProcessExt;
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
 /// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
 #[derive(Debug, Clone)]
-pub struct GARCH<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Garch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Model shape / loading parameter.
@@ -47,10 +47,10 @@ pub struct GARCH<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> GARCH<T> {
+impl<T: FloatExt> Garch<T> {
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize) -> Self {
-    assert!(omega > T::zero(), "GARCH requires omega > 0");
-    GARCH {
+    assert!(omega > T::zero(), "Garch requires omega > 0");
+    Garch {
       omega,
       alpha,
       beta,
@@ -60,11 +60,11 @@ impl<T: FloatExt> GARCH<T> {
   }
 }
 
-impl<T: FloatExt> GARCH<T, Deterministic> {
-  /// Create a new GARCH model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Garch<T, Deterministic> {
+  /// Create a new Garch model with a deterministic seed for reproducible output.
   pub fn seeded(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: u64) -> Self {
-    assert!(omega > T::zero(), "GARCH requires omega > 0");
-    GARCH {
+    assert!(omega > T::zero(), "Garch requires omega > 0");
+    Garch {
       omega,
       alpha,
       beta,
@@ -74,7 +74,7 @@ impl<T: FloatExt> GARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Garch<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -101,7 +101,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GARCH<T, S> {
     let denom = T::one() - sum_alpha - sum_beta;
     assert!(
       denom > T::zero(),
-      "GARCH requires sum(alpha) + sum(beta) < 1 for finite unconditional variance"
+      "Garch requires sum(alpha) + sum(beta) < 1 for finite unconditional variance"
     );
 
     for t in 0..self.n {
@@ -126,7 +126,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GARCH<T, S> {
       }
       assert!(
         sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "GARCH produced non-positive or non-finite conditional variance at t={}",
+        "Garch produced non-positive or non-finite conditional variance at t={}",
         t
       );
       // X_t = sigma_t * z[t]
@@ -137,7 +137,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GARCH<T, S> {
   }
 }
 
-py_process_1d!(PyGARCH, GARCH,
+py_process_1d!(PyGarch, Garch,
   sig: (omega, alpha, beta, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, beta: Vec<f64>, n: usize)
 );

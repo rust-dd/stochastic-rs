@@ -1,4 +1,4 @@
-//! # LFSM
+//! # Lfsm
 //!
 //! $$
 //! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)\,dL_u^{\alpha}
@@ -13,7 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Linear fractional stable motion (LFSM), also commonly referred to as
+/// Linear fractional stable motion (Lfsm), also commonly referred to as
 /// Levy fractional stable motion in discretized form.
 ///
 /// The implementation uses a one-sided moving-average discretization with
@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 ///
 /// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
 /// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
-pub struct LFSM<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
   /// Smaller values produce heavier tails and larger jumps.
   pub alpha: T,
@@ -44,14 +44,14 @@ pub struct LFSM<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> LFSM<T> {
+impl<T: FloatExt> Lfsm<T> {
   pub fn new(alpha: T, beta: T, hurst: T, scale: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
     assert!((-T::one()..=T::one()).contains(&beta));
     assert!(scale > T::zero());
     assert!(
       hurst > T::one() / alpha && hurst < T::one(),
-      "LFSM requires 1/alpha < hurst < 1 for this discretization"
+      "Lfsm requires 1/alpha < hurst < 1 for this discretization"
     );
     Self {
       alpha,
@@ -66,7 +66,7 @@ impl<T: FloatExt> LFSM<T> {
   }
 }
 
-impl<T: FloatExt> LFSM<T, Deterministic> {
+impl<T: FloatExt> Lfsm<T, Deterministic> {
   pub fn seeded(
     alpha: T,
     beta: T,
@@ -82,7 +82,7 @@ impl<T: FloatExt> LFSM<T, Deterministic> {
     assert!(scale > T::zero());
     assert!(
       hurst > T::one() / alpha && hurst < T::one(),
-      "LFSM requires 1/alpha < hurst < 1 for this discretization"
+      "Lfsm requires 1/alpha < hurst < 1 for this discretization"
     );
     Self {
       alpha,
@@ -97,14 +97,14 @@ impl<T: FloatExt> LFSM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> LFSM<T, S> {
+impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for LFSM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lfsm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -148,7 +148,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for LFSM<T, S> {
   }
 }
 
-py_process_1d!(PyLFSM, LFSM,
+py_process_1d!(PyLfsm, Lfsm,
   sig: (alpha, beta, hurst, scale, n, x0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, hurst: f64, scale: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
@@ -159,7 +159,7 @@ mod tests {
 
   #[test]
   fn lfsm_path_is_finite() {
-    let p = LFSM::new(1.7_f64, 0.0, 0.8, 1.0, 256, Some(0.0), Some(1.0));
+    let p = Lfsm::new(1.7_f64, 0.0, 0.8, 1.0, 256, Some(0.0), Some(1.0));
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));

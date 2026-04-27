@@ -1,4 +1,4 @@
-//! # CIR
+//! # Cir
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
@@ -10,7 +10,7 @@ use statrs::function::gamma::gamma;
 
 use stochastic_rs_distributions::normal::SimdNormal;
 
-/// Cox-Ingersoll-Ross (CIR) process future value.
+/// Cox-Ingersoll-Ross (Cir) process future value.
 pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
   let c = (2.0 * theta) / ((1.0 - (-theta * t).exp()) * sigma.powi(2));
 
@@ -28,7 +28,7 @@ pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
   chi2 / (2.0 * c)
 }
 
-/// Cox-Ingersoll-Ross (CIR) process PDF.
+/// Cox-Ingersoll-Ross (Cir) process PDF.
 pub fn pdf(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, r_T: f64) -> f64 {
   let c = (2.0 * theta) / ((1.0 - (-theta * t).exp()) * sigma.powi(2));
   let q = (2.0 * theta * mu) / sigma.powi(2) - 1.0;
@@ -39,7 +39,7 @@ pub fn pdf(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, r_T: f64) -> f64 {
   c * (-u - v).exp() * (u / v).powf(q / 2.0) * Iq.re
 }
 
-/// Cox-Ingersoll-Ross (CIR) process Asymptotic PDF.
+/// Cox-Ingersoll-Ross (Cir) process Asymptotic PDF.
 pub fn apdf(theta: f64, mu: f64, sigma: f64, r_t: f64) -> f64 {
   let beta = 2.0 * theta / sigma.powi(2);
   let alpha = 2.0 * theta * mu / sigma.powi(2);

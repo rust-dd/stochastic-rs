@@ -52,6 +52,62 @@ impl AsianPricer {
       expiration,
     }
   }
+
+  pub fn builder(s: f64, v: f64, k: f64, r: f64) -> AsianPricerBuilder {
+    AsianPricerBuilder {
+      s,
+      v,
+      k,
+      r,
+      q: None,
+      tau: None,
+      eval: None,
+      expiration: None,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct AsianPricerBuilder {
+  s: f64,
+  v: f64,
+  k: f64,
+  r: f64,
+  q: Option<f64>,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+}
+
+impl AsianPricerBuilder {
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn build(self) -> AsianPricer {
+    AsianPricer {
+      s: self.s,
+      v: self.v,
+      k: self.k,
+      r: self.r,
+      q: self.q,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
+    }
+  }
 }
 
 impl PricerExt for AsianPricer {

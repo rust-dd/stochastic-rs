@@ -1,4 +1,4 @@
-//! # CKLS
+//! # Ckls
 //!
 //! $$
 //! dX_t=(\theta_1+\theta_2 X_t)\,dt+\theta_3 X_t^{\theta_4}\,dW_t
@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CKLS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Ckls<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift intercept parameter.
   pub theta1: T,
   /// Drift slope parameter.
@@ -33,7 +33,7 @@ pub struct CKLS<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> CKLS<T> {
+impl<T: FloatExt> Ckls<T> {
   pub fn new(
     theta1: T,
     theta2: T,
@@ -56,7 +56,7 @@ impl<T: FloatExt> CKLS<T> {
   }
 }
 
-impl<T: FloatExt> CKLS<T, Deterministic> {
+impl<T: FloatExt> Ckls<T, Deterministic> {
   pub fn seeded(
     theta1: T,
     theta2: T,
@@ -80,7 +80,7 @@ impl<T: FloatExt> CKLS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CKLS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ckls<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -101,7 +101,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CKLS<T, S> {
     let mut tail_view = ckls.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("CKLS output tail must be contiguous");
+      .expect("Ckls output tail must be contiguous");
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
@@ -118,7 +118,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CKLS<T, S> {
   }
 }
 
-py_process_1d!(PyCKLS, CKLS,
+py_process_1d!(PyCkls, Ckls,
   sig: (theta1, theta2, theta3, theta4, n, x0=None, t=None, seed=None, dtype=None),
   params: (theta1: f64, theta2: f64, theta3: f64, theta4: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

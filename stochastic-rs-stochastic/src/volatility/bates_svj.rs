@@ -18,11 +18,11 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BatesSVJ<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -57,10 +57,10 @@ pub struct BatesSVJ<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> BatesSVJ<T> {
+impl<T: FloatExt> BatesSvj<T> {
   pub fn new(
     mu: Option<T>,
     b: Option<T>,
@@ -105,12 +105,12 @@ impl<T: FloatExt> BatesSVJ<T> {
       t,
       use_sym,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> BatesSVJ<T, Deterministic> {
+impl<T: FloatExt> BatesSvj<T, Deterministic> {
   pub fn seeded(
     mu: Option<T>,
     b: Option<T>,
@@ -156,12 +156,12 @@ impl<T: FloatExt> BatesSVJ<T, Deterministic> {
       t,
       use_sym,
       seed: Deterministic(seed),
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> BatesSVJ<T, S> {
+impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
   #[inline]
   fn kappa_j(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp() - T::one()
@@ -178,7 +178,7 @@ impl<T: FloatExt, S: SeedExt> BatesSVJ<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSVJ<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -248,7 +248,7 @@ mod tests {
 
   #[test]
   fn variance_stays_non_negative() {
-    let p = BatesSVJ::new(
+    let p = BatesSvj::new(
       Some(0.05_f64),
       None,
       None,
@@ -272,7 +272,7 @@ mod tests {
 
   #[test]
   fn price_stays_positive() {
-    let p = BatesSVJ::new(
+    let p = BatesSvj::new(
       Some(0.05_f64),
       None,
       None,
@@ -296,7 +296,7 @@ mod tests {
 
   #[test]
   fn drift_prefers_r_minus_rf() {
-    let p = BatesSVJ::new(
+    let p = BatesSvj::new(
       Some(0.9_f64),
       Some(0.7),
       Some(0.4),
@@ -319,7 +319,7 @@ mod tests {
 
   #[test]
   fn drift_uses_b_if_rates_missing() {
-    let p = BatesSVJ::new(
+    let p = BatesSvj::new(
       Some(0.9_f64),
       Some(0.7),
       None,
@@ -342,7 +342,7 @@ mod tests {
 
   #[test]
   fn drift_falls_back_to_mu() {
-    let p = BatesSVJ::new(
+    let p = BatesSvj::new(
       Some(0.9_f64),
       None,
       None,
@@ -366,16 +366,16 @@ mod tests {
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
-pub struct PyBatesSVJ {
-  inner_f32: Option<BatesSVJ<f32>>,
-  inner_f64: Option<BatesSVJ<f64>>,
-  seeded_f32: Option<BatesSVJ<f32, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<BatesSVJ<f64, crate::simd_rng::Deterministic>>,
+pub struct PyBatesSvj {
+  inner_f32: Option<BatesSvj<f32>>,
+  inner_f64: Option<BatesSvj<f64>>,
+  seeded_f32: Option<BatesSvj<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<BatesSvj<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
-impl PyBatesSVJ {
+impl PyBatesSvj {
   #[new]
   #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None))]
   fn new(
@@ -406,7 +406,7 @@ impl PyBatesSVJ {
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
-        s.seeded_f32 = Some(BatesSVJ::seeded(
+        s.seeded_f32 = Some(BatesSvj::seeded(
           mu.map(|v| v as f32),
           b.map(|v| v as f32),
           r.map(|v| v as f32),
@@ -427,12 +427,12 @@ impl PyBatesSVJ {
         ));
       }
       (Some(sd), _) => {
-        s.seeded_f64 = Some(BatesSVJ::seeded(
+        s.seeded_f64 = Some(BatesSvj::seeded(
           mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, sd,
         ));
       }
       (None, "f32") => {
-        s.inner_f32 = Some(BatesSVJ::new(
+        s.inner_f32 = Some(BatesSvj::new(
           mu.map(|v| v as f32),
           b.map(|v| v as f32),
           r.map(|v| v as f32),
@@ -452,7 +452,7 @@ impl PyBatesSVJ {
         ));
       }
       (None, _) => {
-        s.inner_f64 = Some(BatesSVJ::new(
+        s.inner_f64 = Some(BatesSvj::new(
           mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym,
         ));
       }

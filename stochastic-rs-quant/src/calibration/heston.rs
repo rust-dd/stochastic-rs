@@ -197,6 +197,56 @@ impl From<DVector<f64>> for HestonParams {
   }
 }
 
+/// Calibration result for the Heston model.
+///
+/// Wraps the calibrated parameters together with loss / convergence
+/// diagnostics so [`HestonCalibrator`] satisfies the [`Calibrator`](crate::traits::Calibrator)
+/// trait. The legacy `HestonCalibrator::calibrate(&self) -> HestonParams`
+/// API stays available for back-compat.
+#[derive(Clone, Debug)]
+pub struct HestonCalibrationResult {
+  pub params: HestonParams,
+  pub loss: CalibrationLossScore,
+  pub converged: bool,
+}
+
+impl HestonCalibrationResult {
+  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::HestonFourier {
+    self.params.to_model(r, q)
+  }
+}
+
+impl crate::traits::ToModel for HestonCalibrationResult {
+  type Model = crate::pricing::fourier::HestonFourier;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+    self.params.to_model(r, q)
+  }
+}
+
+impl crate::traits::CalibrationResult for HestonCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
+impl crate::traits::Calibrator for HestonCalibrator {
+  type InitialGuess = HestonParams;
+  type Output = HestonCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    let mut this = self.clone();
+    if let Some(p) = initial {
+      this.set_initial_guess(p);
+    }
+    this.calibrate_with_result()
+  }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct CuiCfTerms {
   iu: Complex64,
@@ -357,12 +407,34 @@ impl HestonCalibrator {
 
 impl HestonCalibrator {
   pub fn calibrate(&self) -> HestonParams {
+    self.calibrate_with_result().params
+  }
+
+  /// Run calibration and return a full result struct (params + loss + converged).
+  ///
+  /// Used by the [`Calibrator`](crate::traits::Calibrator) trait impl to provide
+  /// uniform access to convergence and loss-metric diagnostics across the
+  /// calibrator family.
+  pub fn calibrate_with_result(&self) -> HestonCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
-    let (result, ..) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    let converged = report.termination.was_successful();
+    let params = result.effective_params();
 
-    result.effective_params()
+    let c_model = result.compute_model_prices_for_numeric(&params);
+    let loss = CalibrationLossScore::compute_selected(
+      result.c_market.as_slice(),
+      c_model.as_slice(),
+      result.loss_metrics,
+    );
+
+    HestonCalibrationResult {
+      params,
+      loss,
+      converged,
+    }
   }
 
   pub fn set_initial_guess(&mut self, params: HestonParams) {

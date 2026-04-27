@@ -19,12 +19,12 @@ pub mod tgarch;
 mod tests {
   use ndarray::Array1;
 
-  use super::agrach::AGARCH;
+  use super::agrach::Agarch;
   use super::ar::ARp;
-  use super::egarch::EGARCH;
-  use super::garch::GARCH;
-  use super::sarima::SARIMA;
-  use super::tgarch::TGARCH;
+  use super::egarch::Egarch;
+  use super::garch::Garch;
+  use super::sarima::Sarima;
+  use super::tgarch::Tgarch;
   use crate::traits::ProcessExt;
 
   #[test]
@@ -43,7 +43,7 @@ mod tests {
   #[test]
   fn egarch_rejects_mismatched_alpha_gamma_lengths() {
     let result = std::panic::catch_unwind(|| {
-      let _ = EGARCH::<f64>::new(
+      let _ = Egarch::<f64>::new(
         0.0,
         Array1::from_vec(vec![0.1, 0.2]),
         Array1::from_vec(vec![0.1]),
@@ -57,7 +57,7 @@ mod tests {
   #[test]
   fn tgarch_rejects_mismatched_alpha_gamma_lengths() {
     let result = std::panic::catch_unwind(|| {
-      let _ = TGARCH::<f64>::new(
+      let _ = Tgarch::<f64>::new(
         0.05,
         Array1::from_vec(vec![0.1, 0.05]),
         Array1::from_vec(vec![0.1]),
@@ -71,7 +71,7 @@ mod tests {
   #[test]
   fn agarch_rejects_mismatched_alpha_delta_lengths() {
     let result = std::panic::catch_unwind(|| {
-      let _ = AGARCH::<f64>::new(
+      let _ = Agarch::<f64>::new(
         0.05,
         Array1::from_vec(vec![0.1, 0.05]),
         Array1::from_vec(vec![0.1]),
@@ -85,7 +85,7 @@ mod tests {
   #[test]
   fn sarima_rejects_zero_season_length() {
     let result = std::panic::catch_unwind(|| {
-      let _ = SARIMA::<f64>::new(
+      let _ = Sarima::<f64>::new(
         Array1::from_vec(vec![0.3]),
         Array1::from_vec(vec![0.1]),
         Array1::from_vec(vec![0.2]),
@@ -103,7 +103,7 @@ mod tests {
   #[test]
   fn garch_rejects_non_stationary_parameters_at_sampling() {
     let result = std::panic::catch_unwind(|| {
-      let model = GARCH::<f64>::new(
+      let model = Garch::<f64>::new(
         0.05,
         Array1::from_vec(vec![0.7]),
         Array1::from_vec(vec![0.4]),
@@ -116,7 +116,7 @@ mod tests {
 
   #[test]
   fn garch_valid_parameters_produce_finite_sample() {
-    let model = GARCH::<f64>::new(
+    let model = Garch::<f64>::new(
       0.05,
       Array1::from_vec(vec![0.08]),
       Array1::from_vec(vec![0.9]),

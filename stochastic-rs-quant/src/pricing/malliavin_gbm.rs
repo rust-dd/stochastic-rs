@@ -1,4 +1,4 @@
-//! # Malliavin GBM
+//! # Malliavin Gbm
 //!
 //! $$
 //! \Delta=\mathbb E\!\left[e^{-rT}\Phi(S_T)\,\frac{W_T}{S_0\sigma T}\right]
@@ -8,7 +8,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
 
-use stochastic_rs_stochastic::diffusion::gbm::GBM;
+use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use crate::traits::PricerExt;
 use crate::traits::ProcessExt;
 use crate::traits::TimeExt;
@@ -29,10 +29,10 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
   0.5 * (1.0 + x.signum() * (1.0 - (-(x.abs()) / l).exp()))
 }
 
-/// Vanilla call/put pricer using GBM paths and a Malliavin-based conditional estimator.
+/// Vanilla call/put pricer using Gbm paths and a Malliavin-based conditional estimator.
 ///
 /// The idea:
-/// - Simulate GBM paths S_t on [0, T] using the existing GBM module.
+/// - Simulate Gbm paths S_t on [0, T] using the existing Gbm module.
 /// - Reconstruct the Brownian paths W_t from S_t.
 /// - Use the Malliavin weight (coef) to estimate the conditional call price
 ///   C(t, S_t^{(i)}) for each path i.
@@ -141,17 +141,17 @@ impl GbmMalliavinPricer {
     self.call_put_from_conditional(t, &c_t)
   }
 
-  /// Simulate GBM paths S_t using the existing GBM<f64> module.
+  /// Simulate Gbm paths S_t using the existing Gbm<f64> module.
   ///
   /// Returns:
   ///   S: shape (M, N), with S[i, k] = S^{(i)}_{t_k}
   fn sample_paths(&self) -> Array2<f64> {
-    // Time horizon in years for the GBM simulation.
+    // Time horizon in years for the Gbm simulation.
     let T = self.tau().unwrap_or_else(|| self.calculate_tau_in_years());
     let mu = self.r - self.q.unwrap_or(0.0);
 
-    // Construct a GBM process with Euler discretization on [0, T].
-    let gbm = GBM::new(mu, self.v, self.n_steps, Some(self.s), Some(T));
+    // Construct a Gbm process with Euler discretization on [0, T].
+    let gbm = Gbm::new(mu, self.v, self.n_steps, Some(self.s), Some(T));
 
     let m = self.n_paths;
     let n = self.n_steps;
@@ -184,14 +184,14 @@ impl GbmMalliavinPricer {
     let mu = self.r - q;
     let dt = T / (self.n_steps - 1) as f64;
 
-    // Simulate GBM paths S
+    // Simulate Gbm paths S
     let S = self.sample_paths();
     let m = S.nrows();
     let n = S.ncols();
 
     // Reconstruct Brownian paths W from S:
     //
-    // GBM Euler step:
+    // Gbm Euler step:
     //   S_k = S_{k-1} + μ S_{k-1} dt + σ S_{k-1} dW_{k-1}
     // => dW_{k-1} = (S_k - S_{k-1} - μ S_{k-1} dt) / (σ S_{k-1})
     //
@@ -227,7 +227,7 @@ impl GbmMalliavinPricer {
     // Payoff φ(S_T) = (S_T - K)^+
     let payoff: Array1<f64> = s_T.iter().map(|&x_T| (x_T - self.k).max(0.0)).collect();
 
-    // Malliavin-weight (coef) for GBM:
+    // Malliavin-weight (coef) for Gbm:
     //
     //   coef^{(i)} = ((T W_t^{(i)} - t_eval W_T^{(i)}) / (T - t_eval) + σ t_eval) / S_t^{(i)}
     //
@@ -287,7 +287,7 @@ impl GbmMalliavinPricer {
     let mu = self.r - q;
     let dt = T / (self.n_steps - 1) as f64;
 
-    // Simulate GBM paths S
+    // Simulate Gbm paths S
     let S = self.sample_paths();
     let m = S.nrows();
     let n = S.ncols();

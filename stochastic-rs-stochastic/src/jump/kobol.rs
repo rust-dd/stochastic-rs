@@ -1,6 +1,6 @@
-//! # KoBoL / CTS (general tempered stable family)
+//! # KoBoL / Cts (general tempered stable family)
 //!
-//! Lévy measure (one common KoBoL/CTS parametrization):
+//! Lévy measure (one common KoBoL/Cts parametrization):
 //! $$
 //! \nu(dx)=D\left(p\,e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
 //! \;+\;q\,e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx
@@ -11,12 +11,12 @@
 //! - λ_+ , λ_- > 0 tempering rates
 //! - α in (0,2) activity
 //!
-//! Differences vs your CGMY code:
+//! Differences vs your Cgmy code:
 //! - sign selection: P(+)=p/(p+q) instead of fixed 1/2
 //! - series constant uses D(p+q) instead of 2C
 //! - drift uses D*p and D*q (if α<1; else set 0)
 //!
-//! CGMY is a special case of this if you set:
+//! Cgmy is a special case of this if you set:
 //! - D = C
 //! - p = q = 1
 //! - λ_+ = G, λ_- = M

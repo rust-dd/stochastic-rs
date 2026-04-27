@@ -164,7 +164,7 @@ impl<T: FloatExt> Mlmc<T> {
 mod tests {
   use super::*;
 
-  /// MLMC for a GBM European call with Euler discretization.
+  /// MLMC for a Gbm European call with Euler discretization.
   ///
   /// BS call price for S=100, K=100, r=5%, σ=20%, T=1 ≈ 10.45.
   #[test]

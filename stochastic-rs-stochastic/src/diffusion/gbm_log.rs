@@ -1,4 +1,4 @@
-//! # GBM Log
+//! # Gbm Log
 //!
 //! $$
 //! \ln(S_{t+dt}/S_t) = (\mu - \tfrac12\sigma^2)\,dt + \sigma\sqrt{dt}\,Z,\quad Z\sim\mathcal{N}(0,1)
@@ -16,7 +16,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct GBMLog<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -37,7 +37,7 @@ pub struct GBMLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> GBMLog<T> {
+impl<T: FloatExt> GbmLog<T> {
   pub fn new(
     mu: Option<T>,
     b: Option<T>,
@@ -64,7 +64,7 @@ impl<T: FloatExt> GBMLog<T> {
   }
 }
 
-impl<T: FloatExt> GBMLog<T, Deterministic> {
+impl<T: FloatExt> GbmLog<T, Deterministic> {
   pub fn seeded(
     mu: Option<T>,
     b: Option<T>,
@@ -92,7 +92,7 @@ impl<T: FloatExt> GBMLog<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> GBMLog<T, S> {
+impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -109,7 +109,7 @@ impl<T: FloatExt, S: SeedExt> GBMLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBMLog<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GbmLog<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -135,7 +135,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBMLog<T, S> {
     let mut tail_view = s.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("GBMLog output tail must be contiguous");
+      .expect("GbmLog output tail must be contiguous");
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
@@ -157,7 +157,7 @@ mod tests {
 
   #[test]
   fn price_stays_positive() {
-    let p = GBMLog::new(
+    let p = GbmLog::new(
       Some(0.05_f64),
       None,
       None,
@@ -172,7 +172,7 @@ mod tests {
   }
 }
 
-py_process_1d!(PyGBMLog, GBMLog,
+py_process_1d!(PyGbmLog, GbmLog,
   sig: (mu=None, b=None, r=None, r_f=None, *, sigma, n, s0=None, t=None, seed=None, dtype=None),
   params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, n: usize, s0: Option<f64>, t: Option<f64>)
 );

@@ -1,4 +1,4 @@
-//! Teng Modified OU stochastic correlation (Eq. 19/20, Lemma 1).
+//! Teng Modified Ou stochastic correlation (Eq. 19/20, Lemma 1).
 //!
 //! $$
 //! dX_t = \kappa(\mu - \tanh(X_t))\,dt + \sigma\,dW_t, \quad \rho_t = \tanh(X_t)
@@ -23,9 +23,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Teng modified-OU stochastic correlation process.
+/// Teng modified-Ou stochastic correlation process.
 ///
-/// Simulates in X-space via the modified OU (Eq. 19):
+/// Simulates in X-space via the modified Ou (Eq. 19):
 /// dX_t = κ(μ − tanh(X_t)) dt + σ dW_t
 ///
 /// Output ρ_t = tanh(X_t) ∈ (−1, 1).
@@ -149,7 +149,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TengSCP<T, S> {
     rho[0] = x.tanh();
 
     for i in 1..self.n {
-      // Modified OU: dX = κ(μ - tanh(X))dt + σ dW
+      // Modified Ou: dX = κ(μ - tanh(X))dt + σ dW
       let drift = self.kappa * (self.mu - x.tanh());
       x = x + drift * dt + self.sigma * gn[i - 1];
       rho[i] = x.tanh();

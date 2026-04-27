@@ -4,8 +4,8 @@
 //! [`ModelSurface::vol_surface()`] via a blanket implementation that prices
 //! a grid of European calls and inverts to implied volatility.
 //!
-//! All [`FourierModelExt`] models (Heston, Bates, VG, NIG, CGMY, MertonJD,
-//! Kou, HKDE) get [`ModelPricer`] via a blanket impl in `fourier.rs`.
+//! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJD,
+//! Kou, Hkde) get [`ModelPricer`] via a blanket impl in `fourier.rs`.
 //! Non-Fourier models ([`SabrModel`], [`HscmModel`]) have explicit impls.
 
 use ndarray::Array2;
@@ -19,7 +19,7 @@ use crate::traits::ModelPricer;
 ///
 /// Any [`ModelPricer`] automatically gets this via a blanket implementation.
 /// The default prices calls across the (strike, maturity) grid and inverts
-/// to implied vol. Models like SABR can override for efficiency.
+/// to implied vol. Models like Sabr can override for efficiency.
 pub trait ModelSurface: ModelPricer {
   /// Generate an implied vol surface on the given grid.
   fn vol_surface(
@@ -172,7 +172,7 @@ mod tests {
         let iv = surface.ivs[[j, i]];
         assert!(
           iv.is_finite() && iv > 0.0,
-          "SABR IV should be positive: iv={iv}"
+          "Sabr IV should be positive: iv={iv}"
         );
       }
     }
@@ -197,7 +197,7 @@ mod tests {
         let iv = surface.ivs[[j, i]];
         assert!(
           iv.is_finite() && iv > 0.0,
-          "VG IV should be positive: iv={iv} at T={}, K={}",
+          "Vg IV should be positive: iv={iv} at T={}, K={}",
           maturities[j],
           strikes[i]
         );

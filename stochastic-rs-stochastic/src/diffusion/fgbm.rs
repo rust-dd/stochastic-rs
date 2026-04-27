@@ -9,11 +9,11 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FGBM<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Drift / long-run mean-level parameter.
@@ -28,10 +28,10 @@ pub struct FGBM<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> FGBM<T> {
+impl<T: FloatExt> Fgbm<T> {
   #[must_use]
   pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(n >= 2, "n must be at least 2");
@@ -44,12 +44,12 @@ impl<T: FloatExt> FGBM<T> {
       x0,
       t,
       seed: Unseeded,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> FGBM<T, Deterministic> {
+impl<T: FloatExt> Fgbm<T, Deterministic> {
   #[must_use]
   pub fn seeded(
     hurst: T,
@@ -70,12 +70,12 @@ impl<T: FloatExt> FGBM<T, Deterministic> {
       x0,
       t,
       seed: Deterministic(seed),
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FGBM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fgbm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -94,7 +94,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FGBM<T, S> {
   }
 }
 
-py_process_1d!(PyFGBM, FGBM,
+py_process_1d!(PyFgbm, Fgbm,
   sig: (hurst, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

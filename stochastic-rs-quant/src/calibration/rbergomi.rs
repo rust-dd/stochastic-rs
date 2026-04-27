@@ -373,6 +373,30 @@ impl crate::traits::ToModel for RBergomiCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for RBergomiCalibrationResult {
+  fn rmse(&self) -> f64 {
+    // `final_loss` is a Wasserstein-1 distance averaged over maturities;
+    // we expose its square root so the magnitude is comparable to per-quote
+    // RMSE values from price-fitting calibrators.
+    self.final_loss.abs().sqrt()
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+}
+
+impl crate::traits::Calibrator for RBergomiCalibrator {
+  type InitialGuess = RBergomiParams;
+  type Output = RBergomiCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    let mut this = self.clone();
+    if let Some(p) = initial {
+      this.params = p;
+    }
+    RBergomiCalibrator::calibrate(&mut this)
+  }
+}
+
 #[derive(Clone)]
 pub struct RBergomiCalibrator {
   /// Spot level $S_0$.

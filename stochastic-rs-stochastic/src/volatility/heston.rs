@@ -10,7 +10,7 @@ use super::HestonPow;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -42,7 +42,7 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
   /// Noise generator
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
 }
 
 impl<T: FloatExt> Heston<T> {
@@ -79,7 +79,7 @@ impl<T: FloatExt> Heston<T> {
       pow,
       use_sym,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
@@ -119,7 +119,7 @@ impl<T: FloatExt> Heston<T, Deterministic> {
       pow,
       use_sym,
       seed: Deterministic(seed),
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }

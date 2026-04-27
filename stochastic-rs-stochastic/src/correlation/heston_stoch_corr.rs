@@ -26,7 +26,7 @@ use crate::traits::ProcessExt;
 /// Single-asset Heston model with stochastic price-vol correlation.
 ///
 /// The correlation ρ_t between the asset log-return and variance
-/// innovations follows a modified OU process (Eq. 2.10):
+/// innovations follows a modified Ou process (Eq. 2.10):
 ///
 /// dρ_t = (1−ρ²)\[κ_r(μ_r−ρ_t)−σ_r²ρ_t\]dt + (1−ρ²)σ_r dW^ρ
 ///
@@ -41,7 +41,7 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Initial spot price.
   pub s0: T,
 
-  // CIR variance: dv = κ_v(μ_v − v)dt + σ_v√v dW^v
+  // Cir variance: dv = κ_v(μ_v − v)dt + σ_v√v dW^v
   /// Initial variance.
   pub v0: T,
   /// Mean-reversion speed of variance.
@@ -51,7 +51,7 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Vol-of-vol.
   pub sigma_v: T,
 
-  // Stochastic correlation (modified OU, tanh): ρ = tanh(X)
+  // Stochastic correlation (modified Ou, tanh): ρ = tanh(X)
   /// Initial correlation (ρ₀ ∈ (−1, 1)).
   pub rho0: T,
   /// Mean-reversion speed of correlation.
@@ -170,9 +170,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
       gn
     };
 
-    let dw_v = gen_noise(&mut seed); // variance BM
-    let dw_rho = gen_noise(&mut seed); // correlation BM
-    let dw_x = gen_noise(&mut seed); // independent price BM
+    let dw_v = gen_noise(&mut seed); // variance Bm
+    let dw_rho = gen_noise(&mut seed); // correlation Bm
+    let dw_x = gen_noise(&mut seed); // independent price Bm
 
     let mut s_path = Array1::<T>::zeros(self.n);
     let mut v_path = Array1::<T>::zeros(self.n);
@@ -193,13 +193,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
     rho_path[0] = x_corr.tanh();
 
     for i in 1..self.n {
-      // ── Correlation dynamics (modified OU in X-space) ──
+      // ── Correlation dynamics (modified Ou in X-space) ──
       let corr_drift = self.kappa_r * (self.mu_r - x_corr.tanh());
       x_corr = x_corr + corr_drift * dt + self.sigma_r * dw_rho[i - 1];
       let rho_t = x_corr.tanh();
       rho_path[i] = rho_t;
 
-      // ── Variance dynamics (CIR) ──
+      // ── Variance dynamics (Cir) ──
       let v_prev = v_path[i - 1].max(zero);
       v_path[i] = (v_prev
         + self.kappa_v * (self.mu_v - v_prev) * dt

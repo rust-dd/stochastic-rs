@@ -10,7 +10,7 @@
 //! Yield Curves", arXiv:1006.4767 (2010).
 //!
 //! Reference: Bianchetti & Carlicchi, "Interest Rates After The Credit Crunch:
-//! Multiple-Curve Vanilla Derivatives and SABR", arXiv:1103.2567 (2011).
+//! Multiple-Curve Vanilla Derivatives and Sabr", arXiv:1103.2567 (2011).
 //!
 //! Reference: Moreni & Pallavicini, "FX Modelling in Collateralized Markets:
 //! foreign measures, basis curves, and pricing formulae", arXiv:1508.04321 (2015).

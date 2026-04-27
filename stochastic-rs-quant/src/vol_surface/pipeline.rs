@@ -71,7 +71,7 @@ pub fn build_surface(
 /// Build a complete volatility surface from any calibrated model.
 ///
 /// Works with all `ModelPricer` implementations: Heston, Bates/SVJ, Lévy
-/// (VG, NIG, CGMY, Merton, Kou), HSCM, SABR, or any custom model.
+/// (Vg, Nig, Cgmy, Merton, Kou), HSCM, Sabr, or any custom model.
 ///
 /// # Arguments
 /// * `model` - Calibrated model implementing [`ModelPricer`]

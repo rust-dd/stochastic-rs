@@ -4,7 +4,7 @@
 //! $$
 //! L_t = Z_{V_t} + \rho v_t, \quad V_t = \int_0^t v_s ds,
 //! $$
-//! where $Z$ is a standard CGMY process (independent of $v$) and $v$ follows CIR:
+//! where $Z$ is a standard Cgmy process (independent of $v$) and $v$ follows Cir:
 //! $$
 //! dv_t=\kappa(\eta-v_t)dt+\zeta\sqrt{v_t}dW_t.
 //! $$
@@ -29,21 +29,21 @@ use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// CGMY Stochastic Volatility process (CGMYSV)
+/// Cgmy Stochastic Volatility process (CGMYSV)
 ///
 /// Paper: <https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf>
-pub struct SVCGMY<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded> {
   /// Positive tempering parameter λ+ > 0
   pub lambda_plus: T,
   /// Negative tempering parameter λ− > 0
   pub lambda_minus: T,
   /// Activity parameter α (0 < α < 2)
   pub alpha: T,
-  /// CIR mean reversion κ > 0
+  /// Cir mean reversion κ > 0
   pub kappa: T,
-  /// CIR long-term level η >= 0
+  /// Cir long-term level η >= 0
   pub eta: T,
-  /// CIR vol-of-vol ζ > 0
+  /// Cir vol-of-vol ζ > 0
   pub zeta: T,
   /// Loading parameter ρ
   pub rho: T,
@@ -61,7 +61,7 @@ pub struct SVCGMY<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> SVCGMY<T> {
+impl<T: FloatExt> Svcgmy<T> {
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -109,7 +109,7 @@ impl<T: FloatExt> SVCGMY<T> {
   }
 }
 
-impl<T: FloatExt> SVCGMY<T, Deterministic> {
+impl<T: FloatExt> Svcgmy<T, Deterministic> {
   pub fn seeded(
     lambda_plus: T,
     lambda_minus: T,
@@ -158,10 +158,10 @@ impl<T: FloatExt> SVCGMY<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SVCGMY<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
   type Output = [Array1<T>; 2];
 
-  /// Returns `[L, v]` — the CGMYSV log-increment path and the CIR variance path.
+  /// Returns `[L, v]` — the CGMYSV log-increment path and the Cir variance path.
   fn sample(&self) -> Self::Output {
     let mut seed = self.seed;
 
@@ -185,7 +185,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SVCGMY<T, S> {
       / (T::from_f64_fast(g)
         * (self.lambda_plus.powf(self.alpha - f2) + self.lambda_minus.powf(self.alpha - f2)));
 
-    // CIR exact-step constants (paper)
+    // Cir exact-step constants (paper)
     let c = (f2 * self.kappa) / ((T::one() - (-self.kappa * dt).exp()) * self.zeta.powi(2));
     let df = T::from_usize_(4) * self.kappa * self.eta / self.zeta.powi(2);
 
@@ -275,7 +275,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SVCGMY<T, S> {
   }
 }
 
-py_process_2x1d!(PySVCGMY, SVCGMY,
+py_process_2x1d!(PySvcgmy, Svcgmy,
   sig: (lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0=None, v0=None, t=None, seed=None, dtype=None),
   params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>)
 );

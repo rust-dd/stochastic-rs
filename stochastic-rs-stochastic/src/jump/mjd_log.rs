@@ -22,7 +22,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct MJDLog<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -48,7 +48,7 @@ pub struct MJDLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> MJDLog<T> {
+impl<T: FloatExt> MjdLog<T> {
   pub fn new(
     mu: Option<T>,
     b: Option<T>,
@@ -83,7 +83,7 @@ impl<T: FloatExt> MJDLog<T> {
   }
 }
 
-impl<T: FloatExt> MJDLog<T, Deterministic> {
+impl<T: FloatExt> MjdLog<T, Deterministic> {
   pub fn seeded(
     mu: Option<T>,
     b: Option<T>,
@@ -119,7 +119,7 @@ impl<T: FloatExt> MJDLog<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> MJDLog<T, S> {
+impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -141,7 +141,7 @@ impl<T: FloatExt, S: SeedExt> MJDLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MJDLog<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -180,7 +180,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MJDLog<T, S> {
     let mut tail_view = s.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("MJDLog output tail must be contiguous");
+      .expect("MjdLog output tail must be contiguous");
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
 
@@ -216,7 +216,7 @@ mod tests {
 
   #[test]
   fn price_stays_positive() {
-    let p = MJDLog::new(
+    let p = MjdLog::new(
       Some(0.05_f64),
       None,
       None,
@@ -234,7 +234,7 @@ mod tests {
   }
 }
 
-py_process_1d!(PyMJDLog, MJDLog,
+py_process_1d!(PyMjdLog, MjdLog,
   sig: (mu=None, b=None, r=None, r_f=None, *, sigma, lambda_, nu, omega, n, s0=None, t=None, seed=None, dtype=None),
   params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, lambda_: f64, nu: f64, omega: f64, n: usize, s0: Option<f64>, t: Option<f64>)
 );

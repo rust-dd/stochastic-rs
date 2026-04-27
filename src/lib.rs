@@ -41,13 +41,13 @@ pub use stochastic_rs_viz as visualization;
 /// ```ignore
 /// use stochastic_rs::prelude::*;
 ///
-/// let bm = stochastic_rs::stochastic::process::bm::BM::new(1000, Some(1.0));
+/// let bm = stochastic_rs::stochastic::process::bm::Bm::new(1000, Some(1.0));
 /// let path = bm.sample();
 /// ```
 pub mod prelude {
   pub use crate::traits::{
-    BivariateExt, DistributionExt, DistributionSampler, FloatExt, ModelPricer, PricerExt,
-    ProcessExt, SimdFloatExt, TimeExt, ToModel,
+    BivariateExt, CalibrationResult, Calibrator, DistributionExt, DistributionSampler, FloatExt,
+    GreeksExt, ModelPricer, PricerExt, ProcessExt, SimdFloatExt, TimeExt, ToModel,
   };
   pub use stochastic_rs_quant::{Moneyness, OptionStyle, OptionType};
 }

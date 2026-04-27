@@ -1,4 +1,4 @@
-//! # HJM
+//! # Hjm
 //!
 //! $$
 //! df(t,T)=\alpha(t,T)dt+\sigma(t,T)\,dW_t
@@ -15,11 +15,11 @@ use crate::traits::Fn1D;
 use crate::traits::Fn2D;
 use crate::traits::ProcessExt;
 
-/// HJM-style Euler simulator.
+/// Hjm-style Euler simulator.
 ///
 /// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
-/// does not enforce the no-arbitrage HJM drift restriction between `alpha` and `sigma`.
-pub struct HJM<T: FloatExt, S: SeedExt = Unseeded> {
+/// does not enforce the no-arbitrage Hjm drift restriction between `alpha` and `sigma`.
+pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model coefficient / user-supplied drift term.
   pub a: Fn1D<T>,
   /// Model coefficient / user-supplied diffusion term.
@@ -48,7 +48,7 @@ pub struct HJM<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> HJM<T> {
+impl<T: FloatExt> Hjm<T> {
   pub fn new(
     a: impl Into<Fn1D<T>>,
     b: impl Into<Fn1D<T>>,
@@ -81,7 +81,7 @@ impl<T: FloatExt> HJM<T> {
   }
 }
 
-impl<T: FloatExt> HJM<T, Deterministic> {
+impl<T: FloatExt> Hjm<T, Deterministic> {
   pub fn seeded(
     a: impl Into<Fn1D<T>>,
     b: impl Into<Fn1D<T>>,
@@ -115,7 +115,7 @@ impl<T: FloatExt> HJM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HJM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
   type Output = [Array1<T>; 3];
 
   fn sample(&self) -> Self::Output {
@@ -140,7 +140,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HJM<T, S> {
     {
       let r_slice = r
         .as_slice_mut()
-        .expect("HJM short-rate path must be contiguous in memory");
+        .expect("Hjm short-rate path must be contiguous in memory");
       let r_tail = &mut r_slice[1..];
       let normal_r = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
       normal_r.fill_slice_fast(r_tail);
@@ -148,7 +148,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HJM<T, S> {
     {
       let p_slice = p
         .as_slice_mut()
-        .expect("HJM bond-price path must be contiguous in memory");
+        .expect("Hjm bond-price path must be contiguous in memory");
       let p_tail = &mut p_slice[1..];
       let normal_p = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
       normal_p.fill_slice_fast(p_tail);
@@ -156,7 +156,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HJM<T, S> {
     {
       let f_slice = f_
         .as_slice_mut()
-        .expect("HJM forward-rate path must be contiguous in memory");
+        .expect("Hjm forward-rate path must be contiguous in memory");
       let f_tail = &mut f_slice[1..];
       let normal_f = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
       normal_f.fill_slice_fast(f_tail);
@@ -179,14 +179,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HJM<T, S> {
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
-pub struct PyHJM {
-  inner: Option<HJM<f64>>,
-  seeded: Option<HJM<f64, crate::simd_rng::Deterministic>>,
+pub struct PyHjm {
+  inner: Option<Hjm<f64>>,
+  seeded: Option<Hjm<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
-impl PyHJM {
+impl PyHjm {
   #[new]
   #[pyo3(signature = (a, b, p, q, v, alpha, sigma, n, r0=None, p0=None, f0=None, t=None, seed=None))]
   fn new(
@@ -208,7 +208,7 @@ impl PyHJM {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(HJM::seeded(
+        seeded: Some(Hjm::seeded(
           Fn1D::Py(a),
           Fn1D::Py(b),
           Fn2D::Py(p),
@@ -225,7 +225,7 @@ impl PyHJM {
         )),
       },
       None => Self {
-        inner: Some(HJM::new(
+        inner: Some(Hjm::new(
           Fn1D::Py(a),
           Fn1D::Py(b),
           Fn2D::Py(p),
@@ -289,7 +289,7 @@ mod tests {
 
   #[test]
   fn default_t_max_is_one() {
-    let model = HJM::new(
+    let model = Hjm::new(
       zero_1d as fn(f64) -> f64,
       zero_1d as fn(f64) -> f64,
       tmax_2d as fn(f64, f64) -> f64,

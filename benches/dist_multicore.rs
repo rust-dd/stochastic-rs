@@ -299,7 +299,7 @@ fn main() {
     &multi,
   );
   run_case(
-    "NIG<f64>",
+    "Nig<f64>",
     &SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0),
     fm,
     fnn,

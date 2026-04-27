@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct VG<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Vg<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Diffusion / noise scale parameter.
@@ -30,7 +30,7 @@ pub struct VG<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> VG<T> {
+impl<T: FloatExt> Vg<T> {
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(nu > T::zero(), "nu must be positive");
     Self {
@@ -45,7 +45,7 @@ impl<T: FloatExt> VG<T> {
   }
 }
 
-impl<T: FloatExt> VG<T, Deterministic> {
+impl<T: FloatExt> Vg<T, Deterministic> {
   pub fn seeded(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
     assert!(nu > T::zero(), "nu must be positive");
     Self {
@@ -60,14 +60,14 @@ impl<T: FloatExt> VG<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> VG<T, S> {
+impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for VG<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Vg<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -104,14 +104,14 @@ mod tests {
 
   #[test]
   fn n_eq_1_keeps_initial_value() {
-    let p = VG::new(0.1_f64, 0.2, 0.3, 1, Some(2.5), Some(1.0));
+    let p = Vg::new(0.1_f64, 0.2, 0.3, 1, Some(2.5), Some(1.0));
     let x = p.sample();
     assert_eq!(x.len(), 1);
     assert_eq!(x[0], 2.5);
   }
 }
 
-py_process_1d!(PyVG, VG,
+py_process_1d!(PyVg, Vg,
   sig: (mu, sigma, nu, n, x0=None, t=None, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, nu: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

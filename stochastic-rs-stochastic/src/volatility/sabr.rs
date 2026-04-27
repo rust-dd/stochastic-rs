@@ -1,4 +1,4 @@
-//! # SABR
+//! # Sabr
 //!
 //! $$
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
@@ -9,11 +9,11 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct SABR<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model shape / loading parameter.
   pub alpha: T,
   /// Model slope / loading parameter.
@@ -30,10 +30,10 @@ pub struct SABR<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> SABR<T> {
+impl<T: FloatExt> Sabr<T> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -45,7 +45,7 @@ impl<T: FloatExt> SABR<T> {
   ) -> Self {
     assert!(
       beta >= T::zero() && beta <= T::one(),
-      "beta must be in [0, 1] for SABR"
+      "beta must be in [0, 1] for Sabr"
     );
     assert!(alpha >= T::zero(), "alpha must be non-negative");
     if let Some(v0) = v0 {
@@ -61,12 +61,12 @@ impl<T: FloatExt> SABR<T> {
       v0,
       t,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> SABR<T, Deterministic> {
+impl<T: FloatExt> Sabr<T, Deterministic> {
   pub fn seeded(
     alpha: T,
     beta: T,
@@ -79,7 +79,7 @@ impl<T: FloatExt> SABR<T, Deterministic> {
   ) -> Self {
     assert!(
       beta >= T::zero() && beta <= T::one(),
-      "beta must be in [0, 1] for SABR"
+      "beta must be in [0, 1] for Sabr"
     );
     assert!(alpha >= T::zero(), "alpha must be non-negative");
     if let Some(v0) = v0 {
@@ -95,12 +95,12 @@ impl<T: FloatExt> SABR<T, Deterministic> {
       v0,
       t,
       seed: Deterministic(seed),
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SABR<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sabr<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -134,16 +134,16 @@ mod tests {
 
   #[test]
   fn volatility_stays_non_negative() {
-    let p = SABR::new(0.4_f64, 0.5, -0.3, 256, Some(1.0), Some(0.2), Some(1.0));
+    let p = Sabr::new(0.4_f64, 0.5, -0.3, 256, Some(1.0), Some(0.2), Some(1.0));
     let [_f, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));
   }
 }
 
-impl<T: FloatExt, S: SeedExt> SABR<T, S> {
-  /// Calculate the Malliavin derivative of the SABR model
+impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
+  /// Calculate the Malliavin derivative of the Sabr model
   ///
-  /// The Malliavin derivative of the volaility process in the SABR model is given by:
+  /// The Malliavin derivative of the volaility process in the Sabr model is given by:
   /// D_r \sigma_t = \alpha \sigma_t 1_{[0, T]}(r)
   pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
     let [f, v] = self.sample();
@@ -158,7 +158,7 @@ impl<T: FloatExt, S: SeedExt> SABR<T, S> {
   }
 }
 
-py_process_2x1d!(PySABR, SABR,
+py_process_2x1d!(PySabr, Sabr,
   sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>)
 );

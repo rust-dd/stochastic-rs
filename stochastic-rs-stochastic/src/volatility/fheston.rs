@@ -10,7 +10,7 @@ use statrs::function::gamma::gamma;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -115,9 +115,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
       T::zero()
     };
 
-    // Use CGNS for rho-correlated noise: [gn_vol, gn_price]
+    // Use Cgns for rho-correlated noise: [gn_vol, gn_price]
     let rho = self.rho.unwrap_or(T::zero());
-    let cgns = CGNS::new(rho, n_steps, self.t);
+    let cgns = Cgns::new(rho, n_steps, self.t);
     let [gn_vol, gn_price] = cgns.sample();
 
     let mut yt = Array1::<T>::zeros(self.n);
@@ -161,7 +161,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
         + self.c1.unwrap_or(T::one()) * self.nu * zt[i]
         + self.c2.unwrap_or(T::one()) * self.nu * integral / T::from_f64_fast(g);
 
-      // Price path: gn_price is already rho-correlated with gn_vol via CGNS
+      // Price path: gn_price is already rho-correlated with gn_vol via Cgns
       let vi = v2[i - 1].max(T::zero());
       let log_inc = (mu - half * vi) * dt + vi.sqrt() * gn_price[i - 1];
       s[i] = s[i - 1] * log_inc.exp();

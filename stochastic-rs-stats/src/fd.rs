@@ -210,7 +210,7 @@ mod tests {
   use ndarray::Array1;
 
   use super::FractalDim;
-  use stochastic_rs_stochastic::process::fbm::FBM;
+  use stochastic_rs_stochastic::process::fbm::Fbm;
   use crate::traits::ProcessExt;
 
   #[test]
@@ -219,7 +219,7 @@ mod tests {
     let d_theory = 2.0 - h;
     let n = 4096_usize;
     let m = 192_usize;
-    let fbm = FBM::new(h, n, Some(1.0));
+    let fbm = Fbm::new(h, n, Some(1.0));
 
     let mut d_sum = 0.0;
     for _ in 0..m {
@@ -241,7 +241,7 @@ mod tests {
     let n = 4096_usize;
     let kmax = 32_usize;
     let m = 96_usize;
-    let fbm = FBM::new(h, n, Some(1.0));
+    let fbm = Fbm::new(h, n, Some(1.0));
 
     let mut d_sum = 0.0;
     for _ in 0..m {

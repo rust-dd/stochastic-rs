@@ -10,7 +10,7 @@ use ndarray::s;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -33,7 +33,7 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
 }
 
 impl<T: FloatExt> RoughBergomi<T> {
@@ -57,7 +57,7 @@ impl<T: FloatExt> RoughBergomi<T> {
       n,
       t,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
@@ -84,7 +84,7 @@ impl<T: FloatExt> RoughBergomi<T, Deterministic> {
       n,
       t,
       seed: Deterministic(seed),
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }

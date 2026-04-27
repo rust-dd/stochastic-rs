@@ -480,14 +480,14 @@ mod tests {
     use rand_distr::Distribution;
     use rand_distr::StandardNormal;
 
-    use stochastic_rs_stochastic::diffusion::fou::FOU;
+    use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let true_h = 0.3_f64;
     let m = 72_usize;
     let n_days = 500_usize;
     let delta = 1.0 / 250.0;
 
-    let fou = FOU::new(
+    let fou = Fou::new(
       true_h,
       0.001,
       -3.2,
@@ -529,14 +529,14 @@ mod tests {
     use rand_distr::Distribution;
     use rand_distr::StandardNormal;
 
-    use stochastic_rs_stochastic::diffusion::fou::FOU;
+    use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let m = 72_usize;
     let n_days = 500_usize;
     let delta = 1.0 / 250.0;
 
     let estimate_h = |true_h: f64, seed: u64| -> f64 {
-      let fou = FOU::new(
+      let fou = Fou::new(
         true_h,
         0.001,
         -3.2,
@@ -595,7 +595,7 @@ mod tests {
     use rand_distr::Distribution;
     use rand_distr::StandardNormal;
 
-    use stochastic_rs_stochastic::diffusion::fou::FOU;
+    use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let true_h_values = [0.1, 0.3, 0.5];
     let eta_0 = 1.0;
@@ -611,7 +611,7 @@ mod tests {
     for &true_h in &true_h_values {
       // Simulate fOU log-vol path at daily frequency
       let n_vol = n_days + 1;
-      let fou = FOU::new(
+      let fou = Fou::new(
         true_h,
         alpha,
         c,

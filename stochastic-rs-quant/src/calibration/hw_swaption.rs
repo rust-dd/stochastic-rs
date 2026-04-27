@@ -77,6 +77,27 @@ impl HullWhiteCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for HullWhiteCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.rmse
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+}
+
+impl<'a> crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'a> {
+  type InitialGuess = (f64, f64);
+  type Output = HullWhiteCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    let mut this = self.clone();
+    if let Some(guess) = initial {
+      this.initial_guess = Some(guess);
+    }
+    HullWhiteSwaptionCalibrator::calibrate(&this)
+  }
+}
+
 /// Hull-White calibrator.
 #[derive(Debug, Clone)]
 pub struct HullWhiteSwaptionCalibrator<'a> {

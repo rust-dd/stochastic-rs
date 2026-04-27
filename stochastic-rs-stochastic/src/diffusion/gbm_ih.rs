@@ -1,4 +1,4 @@
-//! # GBM Ih
+//! # Gbm Ih
 //!
 //! $$
 //! dS_t=\mu(t)S_t\,dt+\sigma(t)S_t\,dW_t
@@ -14,9 +14,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Inhomogeneous GBM with time-dependent volatility
+/// Inhomogeneous Gbm with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
-pub struct GBMIH<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift / long-run mean-level parameter.
   pub mu: T,
   /// Baseline sigma used when `sigmas` is None
@@ -33,8 +33,8 @@ pub struct GBMIH<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> GBMIH<T> {
-  /// Create a new GBMIH instance with the given parameters.
+impl<T: FloatExt> GbmIh<T> {
+  /// Create a new GbmIh instance with the given parameters.
   pub fn new(
     mu: T,
     sigma: T,
@@ -59,7 +59,7 @@ impl<T: FloatExt> GBMIH<T> {
   }
 }
 
-impl<T: FloatExt> GBMIH<T, Deterministic> {
+impl<T: FloatExt> GbmIh<T, Deterministic> {
   pub fn seeded(
     mu: T,
     sigma: T,
@@ -85,7 +85,7 @@ impl<T: FloatExt> GBMIH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBMIH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GbmIh<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Array1<T> {
@@ -107,7 +107,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBMIH<T, S> {
     let mut tail_view = x.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("GBMIH output tail must be contiguous");
+      .expect("GbmIh output tail must be contiguous");
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
@@ -123,7 +123,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GBMIH<T, S> {
   }
 }
 
-py_process_1d!(PyGBMIH, GBMIH,
+py_process_1d!(PyGbmIh, GbmIh,
   sig: (mu, sigma, n, x0=None, t=None, sigmas=None, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, sigmas: Option<Vec<f64>>)
 );

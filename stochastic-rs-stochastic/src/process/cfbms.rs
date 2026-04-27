@@ -9,11 +9,11 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cfgns::CFGNS;
+use crate::noise::cfgns::Cfgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CFBMS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst parameter (`0 < H < 1`) shared by both components.
   pub hurst: T,
   /// Instantaneous correlation between the two fractional-noise drivers.
@@ -24,10 +24,10 @@ pub struct CFBMS<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  cfgns: CFGNS<T>,
+  cfgns: Cfgns<T>,
 }
 
-impl<T: FloatExt> CFBMS<T> {
+impl<T: FloatExt> Cfbms<T> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
@@ -44,12 +44,12 @@ impl<T: FloatExt> CFBMS<T> {
       n,
       t,
       seed: Unseeded,
-      cfgns: CFGNS::new(hurst, rho, n - 1, t),
+      cfgns: Cfgns::new(hurst, rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> CFBMS<T, Deterministic> {
+impl<T: FloatExt> Cfbms<T, Deterministic> {
   pub fn seeded(hurst: T, rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
@@ -66,12 +66,12 @@ impl<T: FloatExt> CFBMS<T, Deterministic> {
       n,
       t,
       seed: Deterministic(seed),
-      cfgns: CFGNS::new(hurst, rho, n - 1, t),
+      cfgns: Cfgns::new(hurst, rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFBMS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfbms<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -90,7 +90,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFBMS<T, S> {
   }
 }
 
-py_process_2x1d!(PyCFBMS, CFBMS,
+py_process_2x1d!(PyCfbms, Cfbms,
   sig: (hurst, rho, n, t=None, seed=None, dtype=None),
   params: (hurst: f64, rho: f64, n: usize, t: Option<f64>)
 );

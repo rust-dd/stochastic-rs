@@ -41,11 +41,11 @@ use statrs::function::gamma;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FBM<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
   pub hurst: T,
   /// Number of discrete time points in the generated path.
@@ -54,10 +54,10 @@ pub struct FBM<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> FBM<T> {
+impl<T: FloatExt> Fbm<T> {
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
@@ -66,12 +66,12 @@ impl<T: FloatExt> FBM<T> {
       n,
       t,
       seed: Unseeded,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> FBM<T, Deterministic> {
+impl<T: FloatExt> Fbm<T, Deterministic> {
   pub fn seeded(hurst: T, n: usize, t: Option<T>, seed: u64) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
@@ -80,12 +80,12 @@ impl<T: FloatExt> FBM<T, Deterministic> {
       n,
       t,
       seed: Deterministic(seed),
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -127,7 +127,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBM<T, S> {
   feature = "accelerate",
   feature = "metal"
 ))]
-impl<T: FloatExt, S: SeedExt> FBM<T, S> {
+impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
   fn fgn_to_fbm(
     n: usize,
     fgn_out: Either<Array1<T>, Array2<T>>,
@@ -154,7 +154,7 @@ impl<T: FloatExt, S: SeedExt> FBM<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> FBM<T, S> {
+impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
   /// Calculate the Malliavin derivative
   ///
   /// The Malliavin derivative of the fractional Brownian motion is given by:
@@ -179,24 +179,24 @@ impl<T: FloatExt, S: SeedExt> FBM<T, S> {
 
 #[cfg(feature = "python")]
 #[pyclass]
-pub struct PyFBM {
-  inner: Option<FBM<f64>>,
-  seeded: Option<FBM<f64, crate::simd_rng::Deterministic>>,
+pub struct PyFbm {
+  inner: Option<Fbm<f64>>,
+  seeded: Option<Fbm<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
-impl PyFBM {
+impl PyFbm {
   #[new]
   #[pyo3(signature = (hurst, n, t=None, seed=None))]
   fn new(hurst: f64, n: usize, t: Option<f64>, seed: Option<u64>) -> Self {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(FBM::seeded(hurst, n, t, s)),
+        seeded: Some(Fbm::seeded(hurst, n, t, s)),
       },
       None => Self {
-        inner: Some(FBM::new(hurst, n, t)),
+        inner: Some(Fbm::new(hurst, n, t)),
         seeded: None,
       },
     }
@@ -253,7 +253,7 @@ mod tests {
     let t = 1.0_f64;
     let n = 2048_usize;
     let m = 6000_usize;
-    let fbm = FBM::new(h, n, Some(t));
+    let fbm = Fbm::new(h, n, Some(t));
 
     let mut endpoints = Vec::with_capacity(m);
     for _ in 0..m {
@@ -304,7 +304,7 @@ mod tests {
     let t_max = 1.0_f64;
     let n = 2048_usize;
     let m = 5000_usize;
-    let fbm = FBM::new(h, n, Some(t_max));
+    let fbm = Fbm::new(h, n, Some(t_max));
     let dt = t_max / (n as f64 - 1.0);
     let idxs = [n / 4, n / 2, 3 * n / 4, n - 1];
 
@@ -362,7 +362,7 @@ mod tests {
     let t_max = 1.0_f64;
     let n = 2048_usize;
     let m = 2200_usize;
-    let fbm = FBM::new(h, n, Some(t_max));
+    let fbm = Fbm::new(h, n, Some(t_max));
     let dt = t_max / (n as f64 - 1.0);
     let idxs = [n / 16, n / 8, n / 4, n / 2, n - 1];
 
@@ -405,7 +405,7 @@ mod tests {
     let n = 4096_usize;
     let m = 160_usize;
     let kmax = 32_usize;
-    let fbm = FBM::new(h, n, Some(1.0));
+    let fbm = Fbm::new(h, n, Some(1.0));
 
     let mut d_vario_sum = 0.0;
     let mut d_higuchi_sum = 0.0;

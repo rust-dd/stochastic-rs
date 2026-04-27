@@ -1,4 +1,4 @@
-//! # BM
+//! # Bm
 //!
 //! $$
 //! B_t=\int_0^t dW_s,\quad B_t-B_s\sim\mathcal N(0,t-s)
@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BM<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Bm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Number of discrete time points in the generated path.
   pub n: usize,
   /// Total simulation horizon (defaults to `1` if `None`).
@@ -23,7 +23,7 @@ pub struct BM<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> BM<T> {
+impl<T: FloatExt> Bm<T> {
   pub fn new(n: usize, t: Option<T>) -> Self {
     Self {
       n,
@@ -33,7 +33,7 @@ impl<T: FloatExt> BM<T> {
   }
 }
 
-impl<T: FloatExt> BM<T, Deterministic> {
+impl<T: FloatExt> Bm<T, Deterministic> {
   pub fn seeded(n: usize, t: Option<T>, seed: u64) -> Self {
     Self {
       n,
@@ -43,7 +43,7 @@ impl<T: FloatExt> BM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -57,7 +57,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BM<T, S> {
     let mut tail_view = bm.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("BM output tail must be contiguous");
+      .expect("Bm output tail must be contiguous");
 
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &mut seed);
@@ -73,7 +73,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BM<T, S> {
   }
 }
 
-py_process_1d!(PyBM, BM,
+py_process_1d!(PyBm, Bm,
   sig: (n, t=None, seed=None, dtype=None),
   params: (n: usize, t: Option<f64>)
 );
@@ -87,7 +87,7 @@ mod tests {
   #[test]
   fn test_bm() {
     let start = Instant::now();
-    let bm = BM::new(10000, Some(1.0));
+    let bm = Bm::new(10000, Some(1.0));
     for _ in 0..10000 {
       let m = bm.sample();
       assert_eq!(m.len(), 10000);
@@ -95,7 +95,7 @@ mod tests {
     println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
 
     let start = Instant::now();
-    let bm = BM::new(10000, Some(1.0));
+    let bm = Bm::new(10000, Some(1.0));
     for _ in 0..10000 {
       let m = bm.sample();
       assert_eq!(m.len(), 10000);
@@ -105,7 +105,7 @@ mod tests {
 
   #[test]
   fn test_bm_movement_1000_iterations() {
-    let bm = BM::new(1000, Some(1.0));
+    let bm = Bm::new(1000, Some(1.0));
 
     let mut max_abs_value: f64 = 0.0;
     let mut min_abs_value: f64 = f64::MAX;
@@ -124,12 +124,12 @@ mod tests {
     }
 
     let avg_last_value = last_value_sum / 1000.0;
-    println!("BM Movement Test (1000 iterations):");
+    println!("Bm Movement Test (1000 iterations):");
     println!("  Average last value: {}", avg_last_value);
     println!("  Maximum absolute last value: {}", max_abs_value);
     println!("  Minimum absolute last value: {}", min_abs_value);
 
-    assert!(max_abs_value > 0.0, "BM should have non-zero movement");
+    assert!(max_abs_value > 0.0, "Bm should have non-zero movement");
     assert!(
       avg_last_value.abs() < 2.0,
       "Average position should stay relatively close to zero"

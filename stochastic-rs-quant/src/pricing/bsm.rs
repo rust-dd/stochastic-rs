@@ -178,6 +178,24 @@ impl BSMPricerBuilder {
   }
 }
 
+impl crate::traits::GreeksExt for BSMPricer {
+  fn delta(&self) -> f64 {
+    BSMPricer::delta(self)
+  }
+  fn gamma(&self) -> f64 {
+    BSMPricer::gamma(self)
+  }
+  fn vega(&self) -> f64 {
+    BSMPricer::vega(self)
+  }
+  fn theta(&self) -> f64 {
+    BSMPricer::theta(self)
+  }
+  fn rho(&self) -> f64 {
+    BSMPricer::rho(self)
+  }
+}
+
 impl PricerExt for BSMPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
     let (d1, d2) = self.d1_d2();

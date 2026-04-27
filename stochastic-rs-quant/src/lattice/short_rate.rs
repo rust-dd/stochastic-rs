@@ -277,7 +277,7 @@ impl<T: FloatExt> BlackKarasinskiTree<T> {
 
 /// G2++ two-factor tree engine.
 ///
-/// The factor trees are built exactly as independent Gaussian OU trees and
+/// The factor trees are built exactly as independent Gaussian Ou trees and
 /// coupled at each step by a moment-matched 3x3 joint transition correction
 /// that preserves the one-factor marginals and injects the requested
 /// instantaneous correlation. This is sufficient as a Tier 0 foundation for

@@ -13,7 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Implements an ARCH(m) model:
+/// Implements an Arch(m) model:
 ///
 /// \[
 ///   \sigma_t^2 = \omega + \sum_{i=1}^m \alpha_i X_{t-i}^2,
@@ -22,11 +22,11 @@ use crate::traits::ProcessExt;
 ///
 /// # Fields
 /// - `omega`: Constant term.
-/// - `alpha`: Array of ARCH coefficients.
+/// - `alpha`: Array of Arch coefficients.
 /// - `n`: Number of observations.
 /// - `m`: Optional batch size.
 #[derive(Debug, Clone)]
-pub struct ARCH<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Arch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Omega (constant term in variance)
   pub omega: T,
   /// Coefficients alpha_i
@@ -37,10 +37,10 @@ pub struct ARCH<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> ARCH<T> {
-  /// Create a new ARCH model.
+impl<T: FloatExt> Arch<T> {
+  /// Create a new Arch model.
   pub fn new(omega: T, alpha: Array1<T>, n: usize) -> Self {
-    assert!(omega > T::zero(), "ARCH requires omega > 0");
+    assert!(omega > T::zero(), "Arch requires omega > 0");
     Self {
       omega,
       alpha,
@@ -50,10 +50,10 @@ impl<T: FloatExt> ARCH<T> {
   }
 }
 
-impl<T: FloatExt> ARCH<T, Deterministic> {
-  /// Create a new ARCH model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Arch<T, Deterministic> {
+  /// Create a new Arch model with a deterministic seed for reproducible output.
   pub fn seeded(omega: T, alpha: Array1<T>, n: usize, seed: u64) -> Self {
-    assert!(omega > T::zero(), "ARCH requires omega > 0");
+    assert!(omega > T::zero(), "Arch requires omega > 0");
     Self {
       omega,
       alpha,
@@ -63,7 +63,7 @@ impl<T: FloatExt> ARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arch<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -89,7 +89,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARCH<T, S> {
       }
       assert!(
         var_t.is_finite() && var_t > T::zero(),
-        "ARCH produced non-positive or non-finite conditional variance at t={}",
+        "Arch produced non-positive or non-finite conditional variance at t={}",
         t
       );
       let sigma_t = var_t.max(var_floor).sqrt();
@@ -100,7 +100,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARCH<T, S> {
   }
 }
 
-py_process_1d!(PyARCH, ARCH,
+py_process_1d!(PyArch, Arch,
   sig: (omega, alpha, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, n: usize)
 );

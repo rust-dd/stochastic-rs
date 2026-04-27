@@ -1,6 +1,6 @@
-//! # SABR Smile
+//! # Sabr Smile
 //!
-//! FX volatility smile calibrator using the Hagan (2002) SABR approximation
+//! FX volatility smile calibrator using the Hagan (2002) Sabr approximation
 //! with general β support.
 //!
 //! **Reference:** P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
@@ -57,7 +57,7 @@ pub struct SabrSmileCalibrator {
   pub r_d: f64,
   /// Foreign rate r_f
   pub r_f: f64,
-  /// CEV exponent (0 = normal, 1 = lognormal)
+  /// Cev exponent (0 = normal, 1 = lognormal)
   pub beta: f64,
   /// Quotes for one tenor
   pub quotes: SabrSmileQuotes,
@@ -293,7 +293,7 @@ impl SabrSmileCalibrator {
     // Initial guess: [k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]
     let x0 = [s + 0.1, s - 0.1, s + 0.1, s - 0.1, 0.6, 0.5];
 
-    // Short-tenor smiles need more LM iterations because the SABR Hagan
+    // Short-tenor smiles need more LM iterations because the Sabr Hagan
     // expansion is steeper near zero-tau; threshold ≈ 1 trading week.
     let niter = if tau < 7.0 / 365.0 { 1000 } else { 100 };
 
@@ -333,7 +333,7 @@ impl SabrSmileCalibrator {
     }
   }
 
-  /// Build and write an HTML plot of the SABR smile using calibrated params and sensible K range.
+  /// Build and write an HTML plot of the Sabr smile using calibrated params and sensible K range.
   pub fn plot(&self, res: &SabrSmileResult) {
     let tau = self.quotes.tau;
     let (k_min, k_max) = (
@@ -362,12 +362,12 @@ impl SabrSmileCalibrator {
 
     let trace = Scatter::new(xs, ys)
       .mode(Mode::Lines)
-      .name(format!("SABR beta={}", self.beta));
+      .name(format!("Sabr beta={}", self.beta));
     let mut plot = Plot::new();
     plot.add_trace(trace);
     plot.set_layout(
       Layout::new()
-        .title(Title::from("SABR Smile"))
+        .title(Title::from("Sabr Smile"))
         .x_axis(Axis::new().title("Strike price"))
         .y_axis(Axis::new().title("Implied volatility")),
     );
@@ -470,7 +470,7 @@ impl SabrSmileCalibrator {
     plot.set_layout(
       Layout::new()
         .title(Title::from(&format!(
-          "SABR Smile (β={}) — ATM/RR/BF calibrated strikes",
+          "Sabr Smile (β={}) — ATM/RR/BF calibrated strikes",
           beta
         )))
         .x_axis(Axis::new().title("Strike"))
@@ -482,7 +482,7 @@ impl SabrSmileCalibrator {
   }
 }
 
-/// Solve for strike K such that the FX delta equals the desired value under SABR (general β).
+/// Solve for strike K such that the FX delta equals the desired value under Sabr (general β).
 pub fn strike_for_delta(
   s: f64,
   r_d: f64,

@@ -26,7 +26,14 @@ pub mod calibration;
 pub mod cashflows;
 pub mod credit;
 pub mod curves;
+/// Portfolio-analytics utilities (PCA, Fama-MacBeth, shrinkage covariance,
+/// pairs trading) that live alongside the pricing pipeline but do not feed
+/// back into it. Standalone domain — keep when pulling in `stochastic-rs-quant`
+/// for portfolio analytics; safe to ignore when only pricing.
 pub mod factors;
+/// Non-parametric Fourier-Malliavin volatility / leverage / quarticity
+/// estimators (Malliavin & Mancino). Standalone realised-variance utilities
+/// — not currently consumed by the calibration or vol-surface pipelines.
 pub mod fourier_malliavin;
 pub mod fx;
 pub mod inflation;
@@ -34,7 +41,14 @@ pub mod instruments;
 pub mod lattice;
 pub mod loss;
 pub mod market;
+/// Market-microstructure / execution analytics — Almgren-Chriss optimal
+/// liquidation, Kyle's lambda, propagator price-impact models. Standalone
+/// domain — does not feed back into the pricing or calibration pipelines.
 pub mod microstructure;
+/// Limit-order-book data structures (`Side`, `LimitOrder`, `OrderBook`).
+/// Hidden from generated docs because the structures are self-contained and
+/// have no integration points with the pricing or calibration pipelines.
+#[doc(hidden)]
 pub mod order_book;
 pub mod portfolio;
 pub mod pricing;

@@ -132,7 +132,7 @@ mod tests {
     let dt = tau / n_steps as f64;
     let sqrt_dt = dt.sqrt();
 
-    // Generate GBM paths (log-Euler for positivity)
+    // Generate Gbm paths (log-Euler for positivity)
     let mut paths = Array2::<f64>::zeros((n_paths, n_steps + 1));
     for i in 0..n_paths {
       paths[[i, 0]] = s0;

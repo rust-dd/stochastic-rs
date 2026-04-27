@@ -1,4 +1,4 @@
-//! # CGMY (Carr–Geman–Madan–Yor)
+//! # Cgmy (Carr–Geman–Madan–Yor)
 //!
 //! Lévy measure:
 //! $$
@@ -31,7 +31,7 @@ use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CGMY<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded> {
   /// Overall jump intensity scale C > 0
   pub c: T,
   /// Positive tempering parameter G > 0
@@ -51,7 +51,7 @@ pub struct CGMY<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> CGMY<T> {
+impl<T: FloatExt> Cgmy<T> {
   pub fn new(
     c: T,
     lambda_plus: T,
@@ -99,7 +99,7 @@ impl<T: FloatExt> CGMY<T> {
   }
 }
 
-impl<T: FloatExt> CGMY<T, Deterministic> {
+impl<T: FloatExt> Cgmy<T, Deterministic> {
   pub fn seeded(
     c: T,
     lambda_plus: T,
@@ -138,7 +138,7 @@ impl<T: FloatExt> CGMY<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGMY<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -230,7 +230,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGMY<T, S> {
   }
 }
 
-py_process_1d!(PyCGMY, CGMY,
+py_process_1d!(PyCgmy, Cgmy,
   sig: (c, lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
   params: (c: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
 );

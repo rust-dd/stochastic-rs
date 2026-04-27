@@ -466,7 +466,7 @@ impl FourierModelExt for VarianceGammaFourier {
   }
 }
 
-/// CGMY model for Fourier pricing.
+/// Cgmy model for Fourier pricing.
 #[derive(Debug, Clone)]
 pub struct CGMYFourier {
   pub c: f64,
@@ -589,7 +589,7 @@ impl FourierModelExt for KouFourier {
   }
 }
 
-/// Heston + Kou Double-Exponential jump model (HKDE) for Fourier pricing.
+/// Heston + Kou Double-Exponential jump model (Hkde) for Fourier pricing.
 ///
 /// $$
 /// dS_t = (r-q)S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S + J_t\,S_t\,dN_t
@@ -788,10 +788,10 @@ mod tests {
   // Common market: S=100, r=0.05, q=0.01, T=1, is_call=true
   //
   // BSM   sigma=0.15                  → 7.94871378854164
-  // VG    sigma=0.2, theta=0.1, nu=0.85 → 10.13935062748614
-  // CGMY  C=0.02, G=5, M=15, Y=1.2   → 5.80222163947386
+  // Vg    sigma=0.2, theta=0.1, nu=0.85 → 10.13935062748614
+  // Cgmy  C=0.02, G=5, M=15, Y=1.2   → 5.80222163947386
   // MJD   sigma=0.12, lam=0.4, muj=-0.12, sigj=0.18 → 8.675684635426279
-  // NIG   alpha=15, beta=-5, delta=0.5 → 9.63000693130414
+  // Nig   alpha=15, beta=-5, delta=0.5 → 9.63000693130414
   // Kou   sigma=0.15, lam=3, p=0.2, eta1=25, eta2=10 → 11.92430307601936
   //
   // BSM (r=0.05, q=0, sigma=0.2, T=1, K=100) → 10.45058357218556 (analytical)
@@ -849,7 +849,7 @@ mod tests {
 
   #[test]
   fn carr_madan_vg_reference() {
-    // VG sigma=0.2, theta=0.1, nu=0.85, r=0.05, q=0.01, T=1, K=100 → 10.13935
+    // Vg sigma=0.2, theta=0.1, nu=0.85, r=0.05, q=0.01, T=1, K=100 → 10.13935
     let model = VarianceGammaFourier {
       sigma: 0.2,
       theta: 0.1,
@@ -862,13 +862,13 @@ mod tests {
     let expected = 10.13935062748614;
     assert!(
       (price - expected).abs() < TOL_FOURIER,
-      "Carr-Madan VG: got={price}, expected={expected}"
+      "Carr-Madan Vg: got={price}, expected={expected}"
     );
   }
 
   #[test]
   fn carr_madan_cgmy_reference() {
-    // CGMY C=0.02, G=5, M=15, Y=1.2, r=0.05, q=0.01, T=1, K=100 → 5.80222
+    // Cgmy C=0.02, G=5, M=15, Y=1.2, r=0.05, q=0.01, T=1, K=100 → 5.80222
     let model = CGMYFourier {
       c: 0.02,
       g: 5.0,
@@ -882,7 +882,7 @@ mod tests {
     let expected = 5.80222163947386;
     assert!(
       (price - expected).abs() < TOL_FOURIER,
-      "Carr-Madan CGMY: got={price}, expected={expected}"
+      "Carr-Madan Cgmy: got={price}, expected={expected}"
     );
   }
 
@@ -976,7 +976,7 @@ mod tests {
 
   #[test]
   fn hkde_zero_jumps_equals_heston() {
-    // HKDE with lam=0 should equal Heston
+    // Hkde with lam=0 should equal Heston
     let heston = HestonFourier {
       v0: 0.04,
       kappa: 2.0,
@@ -1004,7 +1004,7 @@ mod tests {
     let hkde_price = pricer.price_call(&hkde, 100.0, 100.0, 0.05, 1.0);
     assert!(
       (heston_price - hkde_price).abs() < TOL_TIGHT,
-      "HKDE(lam=0) vs Heston: hkde={hkde_price}, heston={heston_price}"
+      "Hkde(lam=0) vs Heston: hkde={hkde_price}, heston={heston_price}"
     );
   }
 
@@ -1027,7 +1027,7 @@ mod tests {
     let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
     assert!(
       price > 0.0,
-      "HKDE call price should be positive, got={price}"
+      "Hkde call price should be positive, got={price}"
     );
   }
 
@@ -1052,7 +1052,7 @@ mod tests {
     let p3 = pricer.price_call(&model, 100.0, 110.0, 0.05, 1.0);
     assert!(
       p1 > p2 && p2 > p3,
-      "HKDE call should decrease with strike: p(90)={p1}, p(100)={p2}, p(110)={p3}"
+      "Hkde call should decrease with strike: p(90)={p1}, p(100)={p2}, p(110)={p3}"
     );
   }
 
@@ -1075,7 +1075,7 @@ mod tests {
     let lw_price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     assert!(
       (cm_price - lw_price).abs() < TOL_FOURIER,
-      "HKDE Lewis vs Carr-Madan: lewis={lw_price}, cm={cm_price}"
+      "Hkde Lewis vs Carr-Madan: lewis={lw_price}, cm={cm_price}"
     );
   }
 }

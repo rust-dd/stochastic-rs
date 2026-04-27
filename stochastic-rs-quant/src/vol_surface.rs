@@ -28,7 +28,7 @@
 //!                      ─────────────────────────────────────►  └─ calendar_spread_free
 //!                                                                    │
 //!                      SabrSmileCalibrator ──────────────────► .local_vol_surface()
-//!                        (ATM/RR/BF quotes → SABR smile)      .is_arbitrage_free()
+//!                        (ATM/RR/BF quotes → Sabr smile)      .is_arbitrage_free()
 //! ```
 //!
 //! All calibration results expose `.to_model()` (or implement [`ToModel`]) returning
@@ -78,7 +78,7 @@
 //!     &[90., 95., 100., 105., 110.], &[0.25, 0.5, 1.0]);
 //! ```
 //!
-//! ### Lévy models (VG, NIG, CGMY, Merton, Kou)
+//! ### Lévy models (Vg, Nig, Cgmy, Merton, Kou)
 //!
 //! ```rust,ignore
 //! use stochastic_rs::quant::calibration::{LevyCalibrator, LevyModelType, MarketSlice};
@@ -132,7 +132,7 @@
 //!     &[90., 95., 100., 105., 110.], &[0.25, 0.5, 1.0]);
 //! ```
 //!
-//! ### SABR (per-slice, stitched with SSVI)
+//! ### Sabr (per-slice, stitched with SSVI)
 //!
 //! ```rust,ignore
 //! use stochastic_rs::quant::calibration::{SabrCalibrator, SabrParams};
@@ -140,7 +140,7 @@
 //! use stochastic_rs::quant::OptionType;
 //! use nalgebra::DVector;
 //!
-//! // Calibrate SABR per slice
+//! // Calibrate Sabr per slice
 //! let taus = [0.25, 0.5, 1.0];
 //! let strikes = [90., 95., 100., 105., 110.];
 //! let sabr_results: Vec<_> = taus.iter().map(|&tau| {

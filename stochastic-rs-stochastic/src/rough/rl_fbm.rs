@@ -7,7 +7,7 @@
 //! Direct (non-cumulative) path generation via the Bilokon–Wong modified fast
 //! algorithm: the power-law kernel is replaced by a sum of $N' \approx \log n$
 //! exponentials, and the whole path is built as the superposition of
-//! independent OU-like Markov factors driven by the same Brownian motion.
+//! independent Ou-like Markov factors driven by the same Brownian motion.
 //!
 //! The [`MarkovLift`] stepper (with the kernel quadrature) is built once per
 //! struct in [`new`]/[`seeded`] and reused across every [`sample`] and
@@ -17,7 +17,7 @@
 //! Not to be confused with Mandelbrot–Van Ness fBM: the two share the
 //! covariance structure asymptotically, but RL-fBM has non-stationary
 //! increments near $t = 0$. For classical stationary fGn / MVN-fBM use
-//! [`FGN`](crate::noise::fgn::FGN).
+//! [`Fgn`](crate::noise::fgn::Fgn).
 //!
 //! Reference: Bilokon & Wong (2026), doi:10.1017/jpr.2025.10071.
 use ndarray::Array1;

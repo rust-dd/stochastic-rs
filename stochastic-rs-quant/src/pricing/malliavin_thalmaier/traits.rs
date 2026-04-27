@@ -1,6 +1,6 @@
 //! Generic multi-asset stochastic volatility trait.
 //!
-//! Any SV model (Heston, SABR, 3/2, rough Bergomi, …) can implement
+//! Any SV model (Heston, Sabr, 3/2, rough Bergomi, …) can implement
 //! [`MultiSvPaths`] to plug into the M-T Greeks engine.
 
 use ndarray::Array2;

@@ -14,12 +14,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// PascalCase alias for [`OU`]. The all-caps form is kept for back-compat but
-/// new code should prefer `Ou`.
-pub type Ou<T, S = Unseeded> = OU<T, S>;
-
 #[derive(Clone, Copy)]
-pub struct OU<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Ou<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Drift / long-run mean-level parameter.
@@ -36,7 +32,7 @@ pub struct OU<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> OU<T> {
+impl<T: FloatExt> Ou<T> {
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     Self {
       theta,
@@ -50,7 +46,7 @@ impl<T: FloatExt> OU<T> {
   }
 }
 
-impl<T: FloatExt> OU<T, Deterministic> {
+impl<T: FloatExt> Ou<T, Deterministic> {
   pub fn seeded(
     theta: T,
     mu: T,
@@ -72,7 +68,7 @@ impl<T: FloatExt> OU<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for OU<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ou<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -95,7 +91,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for OU<T, S> {
     let mut tail_view = ou.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("OU output tail must be contiguous");
+      .expect("Ou output tail must be contiguous");
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
@@ -110,7 +106,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for OU<T, S> {
   }
 }
 
-py_process_1d!(PyOU, OU,
+py_process_1d!(PyOu, Ou,
   sig: (theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

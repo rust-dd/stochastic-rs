@@ -22,9 +22,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Regime-switching GBM process.
+/// Regime-switching Gbm process.
 ///
-/// The stock follows GBM in each regime with a different volatility.
+/// The stock follows Gbm in each regime with a different volatility.
 /// Regime transitions are governed by a CTMC generator matrix Q.
 pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate (e.g. r - q).

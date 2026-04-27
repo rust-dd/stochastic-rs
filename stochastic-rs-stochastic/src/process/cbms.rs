@@ -9,11 +9,11 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CBMS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded> {
   /// Instantaneous correlation between the two Brownian components.
   pub rho: T,
   /// Number of discrete time points in each path.
@@ -22,10 +22,10 @@ pub struct CBMS<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  cgns: CGNS<T>,
+  cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> CBMS<T> {
+impl<T: FloatExt> Cbms<T> {
   pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
@@ -37,12 +37,12 @@ impl<T: FloatExt> CBMS<T> {
       n,
       t,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> CBMS<T, Deterministic> {
+impl<T: FloatExt> Cbms<T, Deterministic> {
   pub fn seeded(rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
@@ -54,12 +54,12 @@ impl<T: FloatExt> CBMS<T, Deterministic> {
       n,
       t,
       seed: Deterministic(seed),
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> CBMS<T, S> {
+impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   #[inline]
   fn cumsum_noise(&self, noise: [Array1<T>; 2]) -> [Array1<T>; 2] {
     let [cgn1, cgn2] = &noise;
@@ -73,7 +73,7 @@ impl<T: FloatExt, S: SeedExt> CBMS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CBMS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cbms<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -83,7 +83,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CBMS<T, S> {
   }
 }
 
-py_process_2x1d!(PyCBMS, CBMS,
+py_process_2x1d!(PyCbms, Cbms,
   sig: (rho, n, t=None, seed=None, dtype=None),
   params: (rho: f64, n: usize, t: Option<f64>)
 );

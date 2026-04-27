@@ -1,4 +1,4 @@
-//! # CIR
+//! # Cir
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
@@ -7,11 +7,11 @@
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
-/// CIR model for zero-coupon bond pricing
+/// Cir model for zero-coupon bond pricing
 /// dR(t) = theta(mu - R(t))dt + sigma * sqrt(R(t))dW(t)
 /// where R(t) is the short rate.
 #[derive(Default, Debug)]
-pub struct CIR {
+pub struct Cir {
   /// Short rate
   pub r_t: f64,
   /// Long-term mean of the short rate
@@ -28,7 +28,7 @@ pub struct CIR {
   pub expiration: Option<chrono::NaiveDate>,
 }
 
-impl PricerExt for CIR {
+impl PricerExt for Cir {
   fn calculate_call_put(&self) -> (f64, f64) {
     let price = self.calculate_price();
     (price, price)
@@ -48,7 +48,7 @@ impl PricerExt for CIR {
   }
 }
 
-impl TimeExt for CIR {
+impl TimeExt for Cir {
   fn calculate_tau_in_days(&self) -> f64 {
     self.tau
   }
@@ -71,7 +71,7 @@ mod tests {
 
   #[test]
   fn zcb_at_zero_tau_equals_one() {
-    let c = CIR {
+    let c = Cir {
       r_t: 0.05,
       theta: 0.5,
       mu: 0.04,
@@ -86,7 +86,7 @@ mod tests {
 
   #[test]
   fn zcb_finite_at_short_tau() {
-    let c = CIR {
+    let c = Cir {
       r_t: 0.05,
       theta: 0.5,
       mu: 0.04,

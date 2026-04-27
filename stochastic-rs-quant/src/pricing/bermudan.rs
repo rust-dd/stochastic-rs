@@ -18,7 +18,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray_linalg::LeastSquaresSvd;
 
-use stochastic_rs_stochastic::diffusion::gbm_log::GBMLog;
+use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 use crate::traits::ProcessExt;
 
 /// Bermudan pricer driven by a path matrix and a set of exercise indices.
@@ -117,8 +117,8 @@ impl BermudanLsmPricer {
   }
 }
 
-/// Generate `n_paths` independent GBM paths on a uniform time grid using
-/// the project's [`GBMLog`] process (log-Euler scheme). Returns an
+/// Generate `n_paths` independent Gbm paths on a uniform time grid using
+/// the project's [`GbmLog`] process (log-Euler scheme). Returns an
 /// `(n_paths, n_steps + 1)` matrix where column `0` is the spot and column
 /// `n_steps` the terminal value.
 pub fn generate_gbm_paths(
@@ -131,7 +131,7 @@ pub fn generate_gbm_paths(
   n_steps: usize,
 ) -> Array2<f64> {
   let b = r - q;
-  let process = GBMLog::<f64>::new(
+  let process = GbmLog::<f64>::new(
     None,
     Some(b),
     None,

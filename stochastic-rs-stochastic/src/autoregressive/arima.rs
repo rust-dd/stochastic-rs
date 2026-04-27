@@ -13,7 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Implements an ARIMA(p, d, q) process using explicit backshift notation:
+/// Implements an Arima(p, d, q) process using explicit backshift notation:
 ///
 /// \[
 ///   \phi(B)\,(1 - B)^d X_t = \theta(B)\,\epsilon_t,
@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 /// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
 /// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
 #[derive(Debug, Clone)]
-pub struct ARIMA<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Arima<T: FloatExt, S: SeedExt = Unseeded> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
   pub ar_coefs: Array1<T>,
   /// MA coefficients (\(\theta_1,\dots,\theta_q\)) as an Array1
@@ -36,10 +36,10 @@ pub struct ARIMA<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> ARIMA<T> {
-  /// Create a new ARIMA model with the given parameters.
+impl<T: FloatExt> Arima<T> {
+  /// Create a new Arima model with the given parameters.
   pub fn new(ar_coefs: Array1<T>, ma_coefs: Array1<T>, d: usize, sigma: T, n: usize) -> Self {
-    assert!(sigma > T::zero(), "ARIMA requires sigma > 0");
+    assert!(sigma > T::zero(), "Arima requires sigma > 0");
     Self {
       ar_coefs,
       ma_coefs,
@@ -51,8 +51,8 @@ impl<T: FloatExt> ARIMA<T> {
   }
 }
 
-impl<T: FloatExt> ARIMA<T, Deterministic> {
-  /// Create a new ARIMA model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Arima<T, Deterministic> {
+  /// Create a new Arima model with a deterministic seed for reproducible output.
   pub fn seeded(
     ar_coefs: Array1<T>,
     ma_coefs: Array1<T>,
@@ -61,7 +61,7 @@ impl<T: FloatExt> ARIMA<T, Deterministic> {
     n: usize,
     seed: u64,
   ) -> Self {
-    assert!(sigma > T::zero(), "ARIMA requires sigma > 0");
+    assert!(sigma > T::zero(), "Arima requires sigma > 0");
     Self {
       ar_coefs,
       ma_coefs,
@@ -73,7 +73,7 @@ impl<T: FloatExt> ARIMA<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arima<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -108,7 +108,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARIMA<T, S> {
       arma_series[t] = val;
     }
 
-    // Inverse difference d times -> ARIMA(p,d,q)
+    // Inverse difference d times -> Arima(p,d,q)
     let mut result = arma_series;
     for _ in 0..self.d {
       result = Self::inverse_difference(&result);
@@ -118,7 +118,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARIMA<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> Arima<T, S> {
   /// Inverse differencing once, converting Y into X:
   /// X[0] = Y[0],  X[t] = X[t-1] + Y[t], for t=1..(n-1).
   fn inverse_difference(y: &Array1<T>) -> Array1<T> {
@@ -135,7 +135,7 @@ impl<T: FloatExt, S: SeedExt> ARIMA<T, S> {
   }
 }
 
-py_process_1d!(PyARIMA, ARIMA,
+py_process_1d!(PyArima, Arima,
   sig: (ar_coefs, ma_coefs, d, sigma, n, seed=None, dtype=None),
   params: (ar_coefs: Vec<f64>, ma_coefs: Vec<f64>, d: usize, sigma: f64, n: usize)
 );

@@ -1,4 +1,4 @@
-//! # HKDE (Heston + Kou Double-Exponential) Calibration
+//! # Hkde (Heston + Kou Double-Exponential) Calibration
 //!
 //! $$
 //! \begin{aligned}
@@ -17,7 +17,7 @@
 //! $$
 //!
 //! The characteristic function factorises as
-//! $\phi_{\mathrm{HKDE}}(\xi,t) = \phi_{\mathrm{Hes}}(\xi,t)\,\phi_{\mathrm{Kou}}(\xi,t)$
+//! $\phi_{\mathrm{Hkde}}(\xi,t) = \phi_{\mathrm{Hes}}(\xi,t)\,\phi_{\mathrm{Kou}}(\xi,t)$
 //! and is provided by [`HKDEFourier`](crate::pricing::fourier::HKDEFourier).
 //!
 //! The nine-dimensional parameter vector $\theta=(v_0,\kappa,\theta,\sigma_v,\rho,
@@ -97,7 +97,7 @@ const P_P_UP: (f64, f64) = (0.001, 0.999);
 const P_ETA1: (f64, f64) = (1.01, 50.0);
 const P_ETA2: (f64, f64) = (0.1, 50.0);
 
-/// HKDE model parameters — Heston stochastic volatility augmented by a
+/// Hkde model parameters — Heston stochastic volatility augmented by a
 /// Kou double-exponential jump component.
 #[derive(Clone, Copy, Debug)]
 pub struct HKDEParams {
@@ -183,7 +183,7 @@ impl From<DVector<f64>> for HKDEParams {
   }
 }
 
-/// Calibration result for the HKDE model.
+/// Calibration result for the Hkde model.
 #[derive(Clone, Debug)]
 pub struct HKDECalibrationResult {
   pub v0: f64,
@@ -227,7 +227,7 @@ impl HKDECalibrationResult {
   }
 }
 
-/// HKDE least-squares calibrator using Levenberg-Marquardt.
+/// Hkde least-squares calibrator using Levenberg-Marquardt.
 ///
 /// Source:
 /// - Levenberg (1944), https://doi.org/10.1090/qam/10666
@@ -687,7 +687,7 @@ fn market_weight(
   1.0 / vega_norm
 }
 
-/// Reference calibrated HKDE parameters from Agazzotti et al. (2025), Table 1.
+/// Reference calibrated Hkde parameters from Agazzotti et al. (2025), Table 1.
 ///
 /// All values correspond to single-name equity option surfaces observed on
 /// 2024-02-20. They are exposed as constants so downstream users and tests
@@ -761,19 +761,19 @@ pub mod paper_table1 {
 
 /// Reference calibration error metrics from Agazzotti et al. (2025), Table 2.
 ///
-/// These values correspond to HKDE calibrated against market option data on
+/// These values correspond to Hkde calibrated against market option data on
 /// 2024-02-20 and are reproduced here as a documentation / sanity aid.
 /// Reaching them exactly requires the underlying proprietary quotes.
 #[allow(dead_code)]
 pub mod paper_table2 {
-  /// HKDE mean absolute percentage error per ticker, Table 2.
+  /// Hkde mean absolute percentage error per ticker, Table 2.
   pub const MAPE: [(&str, f64); 4] = [
     ("AMZN", 0.0261),
     ("NFLX", 0.0488),
     ("SHOP", 0.0266),
     ("SPOT", 0.0339),
   ];
-  /// HKDE root-mean-square error per ticker, Table 2.
+  /// Hkde root-mean-square error per ticker, Table 2.
   pub const RMSE: [(&str, f64); 4] = [
     ("AMZN", 0.01433),
     ("NFLX", 0.10048),
@@ -833,7 +833,7 @@ mod tests {
 
   #[test]
   fn hkde_calibrate_recovers_heston_prices() {
-    // HKDE with lam=0 must reproduce Heston prices. We use the analytical
+    // Hkde with lam=0 must reproduce Heston prices. We use the analytical
     // Heston reference as synthetic market data and verify the calibrator
     // finds parameters that match it closely.
     let n = STRIKES.len();
@@ -863,14 +863,14 @@ mod tests {
     // 9 parameters, 9 data points — expect a good fit.
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.5,
-      "HKDE→Heston RMSE={:.6}",
+      "Hkde→Heston RMSE={:.6}",
       result.loss.get(LossMetric::Rmse)
     );
   }
 
   #[test]
   fn hkde_calibrate_self_consistency() {
-    // Generate synthetic market prices from a known HKDE model, then
+    // Generate synthetic market prices from a known Hkde model, then
     // verify the calibrator recovers a loss close to zero when started
     // from a perturbed initial guess.
     let truth = ref_hkde_params();
@@ -923,7 +923,7 @@ mod tests {
     let result = calibrator.calibrate(None);
     assert!(
       result.loss.get(LossMetric::Rmse) < 1.0,
-      "HKDE self-consistency RMSE={:.6}",
+      "Hkde self-consistency RMSE={:.6}",
       result.loss.get(LossMetric::Rmse)
     );
   }
@@ -931,7 +931,7 @@ mod tests {
   #[test]
   fn hkde_calibrate_from_slices_multi_maturity() {
     // Joint calibration across three maturity slices. Truth is a known
-    // HKDE model; we verify the calibrator produces a small aggregate
+    // Hkde model; we verify the calibrator produces a small aggregate
     // pricing error when started from a perturbed guess.
     use crate::calibration::levy::MarketSlice;
 
@@ -992,7 +992,7 @@ mod tests {
     let result = calibrator.calibrate(None);
     assert!(
       result.loss.get(LossMetric::Rmse) < 1.0,
-      "HKDE multi-maturity RMSE={:.6}",
+      "Hkde multi-maturity RMSE={:.6}",
       result.loss.get(LossMetric::Rmse)
     );
   }

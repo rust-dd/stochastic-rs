@@ -15,7 +15,7 @@ use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct ADG<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Adg<T: FloatExt, S: SeedExt = Unseeded> {
   /// Jump-size adjustment / shape parameter.
   pub k: Fn1D<T>,
   /// Long-run target level / model location parameter.
@@ -40,7 +40,7 @@ pub struct ADG<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> ADG<T> {
+impl<T: FloatExt> Adg<T> {
   pub fn new(
     k: impl Into<Fn1D<T>>,
     theta: impl Into<Fn1D<T>>,
@@ -83,7 +83,7 @@ impl<T: FloatExt> ADG<T> {
   }
 }
 
-impl<T: FloatExt> ADG<T, Deterministic> {
+impl<T: FloatExt> Adg<T, Deterministic> {
   pub fn seeded(
     k: impl Into<Fn1D<T>>,
     theta: impl Into<Fn1D<T>>,
@@ -127,7 +127,7 @@ impl<T: FloatExt> ADG<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ADG<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
@@ -144,7 +144,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ADG<T, S> {
       let mut row = adg.row_mut(i);
       let row_slice = row
         .as_slice_mut()
-        .expect("ADG state row must be contiguous in memory");
+        .expect("Adg state row must be contiguous in memory");
       row_slice[0] = self.x0[i];
       if self.n <= 1 {
         continue;
@@ -178,14 +178,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ADG<T, S> {
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
-pub struct PyADG {
-  inner: Option<ADG<f64>>,
-  seeded: Option<ADG<f64, crate::simd_rng::Deterministic>>,
+pub struct PyAdg {
+  inner: Option<Adg<f64>>,
+  seeded: Option<Adg<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
-impl PyADG {
+impl PyAdg {
   #[new]
   #[pyo3(signature = (k, theta, sigma, phi, b, c, n, xn, x0, t=None, seed=None))]
   fn new(
@@ -204,7 +204,7 @@ impl PyADG {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(ADG::seeded(
+        seeded: Some(Adg::seeded(
           Fn1D::Py(k),
           Fn1D::Py(theta),
           ndarray::Array1::from_vec(sigma),
@@ -219,7 +219,7 @@ impl PyADG {
         )),
       },
       None => Self {
-        inner: Some(ADG::new(
+        inner: Some(Adg::new(
           Fn1D::Py(k),
           Fn1D::Py(theta),
           ndarray::Array1::from_vec(sigma),
@@ -267,7 +267,7 @@ mod tests {
     let xn = 2;
     let sigma = Array1::<f64>::from_vec(vec![0.01, 0.01]);
     let x0 = Array1::<f64>::from_vec(vec![0.05, 0.05]);
-    let adg = ADG::<f64>::new(
+    let adg = Adg::<f64>::new(
       const_one as fn(f64) -> f64,
       const_one as fn(f64) -> f64,
       sigma,

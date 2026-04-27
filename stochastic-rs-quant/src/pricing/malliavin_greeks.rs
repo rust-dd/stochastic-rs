@@ -8,7 +8,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_stochastic::diffusion::gbm::GBM;
+use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use crate::traits::ProcessExt;
@@ -29,7 +29,7 @@ pub struct Greeks {
   pub rho: f64,
 }
 
-/// Malliavin-weighted Greeks computation for a European call under GBM dynamics.
+/// Malliavin-weighted Greeks computation for a European call under Gbm dynamics.
 #[derive(Debug, Clone)]
 pub struct GbmMalliavinGreeks {
   /// Spot price
@@ -51,14 +51,14 @@ pub struct GbmMalliavinGreeks {
 }
 
 impl GbmMalliavinGreeks {
-  /// Simulate GBM paths and return terminal stock prices and terminal Brownian values.
+  /// Simulate Gbm paths and return terminal stock prices and terminal Brownian values.
   ///
   /// Returns `(S_T, W_T)` each of length `n_paths`.
   pub fn simulate(&self) -> (Array1<f64>, Array1<f64>) {
     let mu = self.r - self.q;
     let dt = self.tau / (self.n_steps - 1) as f64;
 
-    let gbm = GBM::new(mu, self.sigma, self.n_steps, Some(self.s0), Some(self.tau));
+    let gbm = Gbm::new(mu, self.sigma, self.n_steps, Some(self.s0), Some(self.tau));
 
     let mut s_terminal = Array1::<f64>::zeros(self.n_paths);
     let mut w_terminal = Array1::<f64>::zeros(self.n_paths);
@@ -67,7 +67,7 @@ impl GbmMalliavinGreeks {
       let path = gbm.sample();
       let n = path.len();
 
-      // Reconstruct W_T from the GBM path:
+      // Reconstruct W_T from the Gbm path:
       //   dW_k = (S_{k+1} - S_k - mu * S_k * dt) / (sigma * S_k)
       //   W_T  = sum of all dW_k
       let mut w = 0.0;
@@ -877,7 +877,7 @@ mod tests {
     let delta = greeks.delta_el_khatib_with_seed(0x5EED);
     assert!(
       delta > 0.3 && delta < 0.9,
-      "El-Khatib delta should reduce to the GBM Malliavin range, got {delta}"
+      "El-Khatib delta should reduce to the Gbm Malliavin range, got {delta}"
     );
   }
 

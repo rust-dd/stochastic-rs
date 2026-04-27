@@ -1,4 +1,4 @@
-//! # CIR 2f
+//! # Cir 2f
 //!
 //! $$
 //! r_t=x_t+y_t,\ dx_t=\kappa_1(\theta_1-x_t)dt+\sigma_1\sqrt{x_t}dW_t^1,\ dy_t=\kappa_2(\theta_2-y_t)dt+\sigma_2\sqrt{y_t}dW_t^2
@@ -6,7 +6,7 @@
 //!
 use ndarray::Array1;
 
-use super::cir::CIR;
+use super::cir::Cir;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -14,24 +14,24 @@ use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::ProcessExt;
 
-pub struct CIR2F<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
   /// Model parameter controlling process dynamics.
-  pub x: CIR<T, S>,
+  pub x: Cir<T, S>,
   /// Model parameter controlling process dynamics.
-  pub y: CIR<T, S>,
+  pub y: Cir<T, S>,
   /// Autoregressive coefficient vector.
   pub phi: Fn1D<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 
-impl<T: FloatExt> CIR2F<T> {
-  pub fn new(x: CIR<T>, y: CIR<T>, phi: impl Into<Fn1D<T>>) -> Self {
-    assert_eq!(x.n, y.n, "x and y CIR factors must use the same n");
+impl<T: FloatExt> Cir2F<T> {
+  pub fn new(x: Cir<T>, y: Cir<T>, phi: impl Into<Fn1D<T>>) -> Self {
+    assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
     if let (Some(tx), Some(ty)) = (x.t, y.t) {
       assert!(
         (tx - ty).abs() <= T::from_f64_fast(1e-12),
-        "x and y CIR factors must use the same time horizon"
+        "x and y Cir factors must use the same time horizon"
       );
     }
     Self {
@@ -43,18 +43,18 @@ impl<T: FloatExt> CIR2F<T> {
   }
 }
 
-impl<T: FloatExt> CIR2F<T, Deterministic> {
+impl<T: FloatExt> Cir2F<T, Deterministic> {
   pub fn seeded(
-    x: CIR<T, Deterministic>,
-    y: CIR<T, Deterministic>,
+    x: Cir<T, Deterministic>,
+    y: Cir<T, Deterministic>,
     phi: impl Into<Fn1D<T>>,
     seed: u64,
   ) -> Self {
-    assert_eq!(x.n, y.n, "x and y CIR factors must use the same n");
+    assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
     if let (Some(tx), Some(ty)) = (x.t, y.t) {
       assert!(
         (tx - ty).abs() <= T::from_f64_fast(1e-12),
-        "x and y CIR factors must use the same time horizon"
+        "x and y Cir factors must use the same time horizon"
       );
     }
     Self {
@@ -66,7 +66,7 @@ impl<T: FloatExt> CIR2F<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CIR2F<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir2F<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -92,9 +92,9 @@ mod tests {
 
   #[test]
   fn default_time_horizon_is_one() {
-    let x = CIR::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
-    let y = CIR::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
-    let model = CIR2F::new(x, y, phi_fn as fn(f64) -> f64);
+    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
+    let y = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
+    let model = Cir2F::new(x, y, phi_fn as fn(f64) -> f64);
 
     let out = model.sample();
     assert!((out[0] - 0.0).abs() < 1e-12);
@@ -103,10 +103,10 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "x and y CIR factors must use the same n")]
+  #[should_panic(expected = "x and y Cir factors must use the same n")]
   fn mismatched_lengths_panic() {
-    let x = CIR::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), Some(1.0), Some(false));
-    let y = CIR::new(0.0_f64, 0.0, 0.0, 4, Some(0.0), Some(1.0), Some(false));
-    let _ = CIR2F::new(x, y, phi_fn as fn(f64) -> f64);
+    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), Some(1.0), Some(false));
+    let y = Cir::new(0.0_f64, 0.0, 0.0, 4, Some(0.0), Some(1.0), Some(false));
+    let _ = Cir2F::new(x, y, phi_fn as fn(f64) -> f64);
   }
 }

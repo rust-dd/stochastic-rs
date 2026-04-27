@@ -1,7 +1,7 @@
 //! # stochastic-rs-copulas
 //!
 //! Bivariate, multivariate, univariate and empirical copulas with shared
-//! trait infrastructure (`BivariateExt`, `MultivariateExt`, `NCopula2DExt`).
+//! trait infrastructure (`BivariateExt`, `MultivariateExt`).
 
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
@@ -18,12 +18,10 @@ pub use stochastic_rs_distributions as distributions;
 pub use crate::traits::BivariateExt;
 #[cfg(feature = "openblas")]
 pub use crate::traits::MultivariateExt;
-pub use crate::traits::NCopula2DExt;
 
 pub mod bivariate;
 pub mod correlation;
 pub mod empirical;
 #[cfg(feature = "openblas")]
 pub mod multivariate;
-pub mod samples;
 pub mod univariate;

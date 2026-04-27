@@ -3,7 +3,7 @@
 //! $$
 //! \sigma_{\mathrm{Black}}(F,K,\tau),\qquad
 //! \sigma_{\mathrm{Bachelier}}(F,K,\tau),\qquad
-//! \sigma_{\mathrm{SABR}}(F,K,\tau)
+//! \sigma_{\mathrm{Sabr}}(F,K,\tau)
 //! $$
 //!
 //! Reference: Hagan, Kumar, Lesniewski, Woodward, "Managing Smile Risk",
@@ -73,22 +73,22 @@ impl<T: FloatExt> VolatilityModel<T> for BachelierVolatility<T> {
   }
 }
 
-/// SABR implied-volatility surface using the Hagan (2002) general-$\beta$
+/// Sabr implied-volatility surface using the Hagan (2002) general-$\beta$
 /// lognormal expansion.
 #[derive(Debug, Clone, Copy)]
 pub struct SabrVolatility<T: FloatExt> {
-  /// SABR level parameter $\alpha$.
+  /// Sabr level parameter $\alpha$.
   pub alpha: T,
-  /// SABR CEV exponent $\beta$ ($\beta=0$ normal, $\beta=1$ lognormal).
+  /// Sabr Cev exponent $\beta$ ($\beta=0$ normal, $\beta=1$ lognormal).
   pub beta: T,
-  /// SABR volatility of volatility $\nu$.
+  /// Sabr volatility of volatility $\nu$.
   pub nu: T,
-  /// SABR correlation $\rho$.
+  /// Sabr correlation $\rho$.
   pub rho: T,
 }
 
 impl<T: FloatExt> SabrVolatility<T> {
-  /// Build a SABR implied-volatility surface.
+  /// Build a Sabr implied-volatility surface.
   pub fn new(alpha: T, beta: T, nu: T, rho: T) -> Self {
     Self {
       alpha,
@@ -118,7 +118,7 @@ impl<T: FloatExt> VolatilityModel<T> for SabrVolatility<T> {
   }
 }
 
-/// Shifted SABR for negative or near-zero rates.
+/// Shifted Sabr for negative or near-zero rates.
 ///
 /// The displacement $s$ is added to both forward and strike so that the
 /// underlying Hagan expansion sees a positive shifted forward
@@ -130,20 +130,20 @@ impl<T: FloatExt> VolatilityModel<T> for SabrVolatility<T> {
 /// Wilmott Magazine (2008).
 #[derive(Debug, Clone, Copy)]
 pub struct ShiftedSabrVolatility<T: FloatExt> {
-  /// SABR level parameter $\alpha$ in the shifted coordinates.
+  /// Sabr level parameter $\alpha$ in the shifted coordinates.
   pub alpha: T,
-  /// SABR CEV exponent $\beta$.
+  /// Sabr Cev exponent $\beta$.
   pub beta: T,
-  /// SABR volatility of volatility $\nu$.
+  /// Sabr volatility of volatility $\nu$.
   pub nu: T,
-  /// SABR correlation $\rho$.
+  /// Sabr correlation $\rho$.
   pub rho: T,
   /// Displacement $s$ so that $F_s = F + s$ and $K_s = K + s$.
   pub shift: T,
 }
 
 impl<T: FloatExt> ShiftedSabrVolatility<T> {
-  /// Build a shifted SABR volatility surface with displacement `shift`.
+  /// Build a shifted Sabr volatility surface with displacement `shift`.
   pub fn new(alpha: T, beta: T, nu: T, rho: T, shift: T) -> Self {
     Self {
       alpha,

@@ -1,4 +1,4 @@
-//! # BGM
+//! # Bgm
 //!
 //! $$
 //! dL_i(t)=\mu_i(t)L_i(t)dt+\sigma_i(t)L_i(t)dW_t
@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct BGM<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift/volatility multiplier for each forward rate.
   pub lambda: Array1<T>,
   /// Initial forward rates for each path.
@@ -29,7 +29,7 @@ pub struct BGM<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> BGM<T> {
+impl<T: FloatExt> Bgm<T> {
   pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize) -> Self {
     assert_eq!(
       lambda.len(),
@@ -56,7 +56,7 @@ impl<T: FloatExt> BGM<T> {
   }
 }
 
-impl<T: FloatExt> BGM<T, Deterministic> {
+impl<T: FloatExt> Bgm<T, Deterministic> {
   pub fn seeded(
     lambda: Array1<T>,
     x0: Array1<T>,
@@ -90,7 +90,7 @@ impl<T: FloatExt> BGM<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BGM<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Self::Output {
@@ -115,7 +115,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BGM<T, S> {
       let mut row = fwd.row_mut(i);
       let row_slice = row
         .as_slice_mut()
-        .expect("BGM row must be contiguous in memory");
+        .expect("Bgm row must be contiguous in memory");
       let tail = &mut row_slice[1..];
       let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
       normal.fill_slice_fast(tail);
@@ -132,16 +132,16 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BGM<T, S> {
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
-pub struct PyBGM {
-  inner_f32: Option<BGM<f32>>,
-  inner_f64: Option<BGM<f64>>,
-  seeded_f32: Option<BGM<f32, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<BGM<f64, crate::simd_rng::Deterministic>>,
+pub struct PyBgm {
+  inner_f32: Option<Bgm<f32>>,
+  inner_f64: Option<Bgm<f64>>,
+  seeded_f32: Option<Bgm<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<Bgm<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
-impl PyBGM {
+impl PyBgm {
   #[new]
   #[pyo3(signature = (lambda_, x0, xn, n, t=None, seed=None, dtype=None))]
   fn new(
@@ -160,7 +160,7 @@ impl PyBGM {
         Self {
           inner_f32: None,
           inner_f64: None,
-          seeded_f32: Some(BGM::seeded(
+          seeded_f32: Some(Bgm::seeded(
             lambda_f32,
             x0_f32,
             xn,
@@ -178,14 +178,14 @@ impl PyBGM {
           inner_f32: None,
           inner_f64: None,
           seeded_f32: None,
-          seeded_f64: Some(BGM::seeded(lambda_arr, x0_arr, xn, t, n, s)),
+          seeded_f64: Some(Bgm::seeded(lambda_arr, x0_arr, xn, t, n, s)),
         }
       }
       (None, "f32") => {
         let lambda_f32 = ndarray::Array1::from_vec(lambda_.iter().map(|&v| v as f32).collect());
         let x0_f32 = ndarray::Array1::from_vec(x0.iter().map(|&v| v as f32).collect());
         Self {
-          inner_f32: Some(BGM::new(lambda_f32, x0_f32, xn, t.map(|v| v as f32), n)),
+          inner_f32: Some(Bgm::new(lambda_f32, x0_f32, xn, t.map(|v| v as f32), n)),
           inner_f64: None,
           seeded_f32: None,
           seeded_f64: None,
@@ -196,7 +196,7 @@ impl PyBGM {
         let x0_arr = ndarray::Array1::from_vec(x0);
         Self {
           inner_f32: None,
-          inner_f64: Some(BGM::new(lambda_arr, x0_arr, xn, t, n)),
+          inner_f64: Some(Bgm::new(lambda_arr, x0_arr, xn, t, n)),
           seeded_f32: None,
           seeded_f64: None,
         }
@@ -246,9 +246,9 @@ mod tests {
   fn bgm_sample_runs() {
     let lambda = Array1::<f64>::from_vec(vec![0.2, 0.2, 0.2]);
     let x0 = Array1::<f64>::from_vec(vec![0.03, 0.035, 0.04]);
-    let bgm = BGM::<f64>::new(lambda, x0, 3, Some(1.0), 50);
+    let bgm = Bgm::<f64>::new(lambda, x0, 3, Some(1.0), 50);
     let path = bgm.sample();
-    // BGM produces a 2D matrix (n_rates × n_steps)
+    // Bgm produces a 2D matrix (n_rates × n_steps)
     assert_eq!(path.nrows(), 3);
     assert_eq!(path.ncols(), 50);
   }

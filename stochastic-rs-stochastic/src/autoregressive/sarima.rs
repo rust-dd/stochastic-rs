@@ -13,9 +13,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Implements a SARIMA model, often denoted:
+/// Implements a Sarima model, often denoted:
 ///
-/// SARIMA(p, d, q) (P, D, Q)_s
+/// Sarima(p, d, q) (P, D, Q)_s
 ///
 /// using the "backshift" definition:
 /// \[
@@ -47,7 +47,7 @@ use crate::traits::ProcessExt;
 /// 2. A single-pass SARMA recursion generates the "fully differenced" data.
 /// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
 #[derive(Debug, Clone)]
-pub struct SARIMA<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded> {
   /// Non-seasonal AR coefficients, length p
   pub non_seasonal_ar_coefs: Array1<T>,
   /// Non-seasonal MA coefficients, length q
@@ -70,8 +70,8 @@ pub struct SARIMA<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> SARIMA<T> {
-  /// Create a new SARIMA model
+impl<T: FloatExt> Sarima<T> {
+  /// Create a new Sarima model
   pub fn new(
     non_seasonal_ar_coefs: Array1<T>,
     non_seasonal_ma_coefs: Array1<T>,
@@ -83,9 +83,9 @@ impl<T: FloatExt> SARIMA<T> {
     sigma: T,
     n: usize,
   ) -> Self {
-    assert!(sigma > T::zero(), "SARIMA requires sigma > 0");
-    assert!(s > 0, "SARIMA requires season length s > 0");
-    SARIMA {
+    assert!(sigma > T::zero(), "Sarima requires sigma > 0");
+    assert!(s > 0, "Sarima requires season length s > 0");
+    Sarima {
       non_seasonal_ar_coefs,
       non_seasonal_ma_coefs,
       seasonal_ar_coefs,
@@ -100,8 +100,8 @@ impl<T: FloatExt> SARIMA<T> {
   }
 }
 
-impl<T: FloatExt> SARIMA<T, Deterministic> {
-  /// Create a new SARIMA model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Sarima<T, Deterministic> {
+  /// Create a new Sarima model with a deterministic seed for reproducible output.
   #[allow(non_snake_case)]
   pub fn seeded(
     non_seasonal_ar_coefs: Array1<T>,
@@ -115,9 +115,9 @@ impl<T: FloatExt> SARIMA<T, Deterministic> {
     n: usize,
     seed: u64,
   ) -> Self {
-    assert!(sigma > T::zero(), "SARIMA requires sigma > 0");
-    assert!(s > 0, "SARIMA requires season length s > 0");
-    SARIMA {
+    assert!(sigma > T::zero(), "Sarima requires sigma > 0");
+    assert!(s > 0, "Sarima requires season length s > 0");
+    Sarima {
       non_seasonal_ar_coefs,
       non_seasonal_ma_coefs,
       seasonal_ar_coefs,
@@ -132,7 +132,7 @@ impl<T: FloatExt> SARIMA<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sarima<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -192,7 +192,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SARIMA<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> SARIMA<T, S> {
+impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
   /// Multiply the non-seasonal AR polynomial φ(B) with the seasonal AR polynomial Φ(Bˢ).
   ///
   /// φ(B) = 1 - φ_1 B - ... - φ_p B^p
@@ -314,7 +314,7 @@ impl<T: FloatExt, S: SeedExt> SARIMA<T, S> {
   }
 }
 
-py_process_1d!(PySARIMA, SARIMA,
+py_process_1d!(PySarima, Sarima,
   sig: (non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, d_seasonal, s, sigma, n, seed=None, dtype=None),
   params: (non_seasonal_ar_coefs: Vec<f64>, non_seasonal_ma_coefs: Vec<f64>, seasonal_ar_coefs: Vec<f64>, seasonal_ma_coefs: Vec<f64>, d: usize, d_seasonal: usize, s: usize, sigma: f64, n: usize)
 );

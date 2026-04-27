@@ -1,6 +1,6 @@
-//! # SABR
+//! # Sabr
 //!
-//! Price-based SABR calibrator using Levenberg-Marquardt.
+//! Price-based Sabr calibrator using Levenberg-Marquardt.
 //!
 //! **Reference:** P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
 //! *Managing Smile Risk*, Wilmott Magazine, pp. 84–108, 2002.
@@ -30,7 +30,7 @@ const RHO_BOUND: f64 = 0.9999;
 const ALPHA_MIN: f64 = 1e-6;
 const NU_MIN: f64 = 1e-6;
 
-/// Calibration result for the SABR model.
+/// Calibration result for the Sabr model.
 #[derive(Clone, Debug)]
 pub struct SabrCalibrationResult {
   pub alpha: f64,
@@ -62,11 +62,35 @@ impl SabrCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for SabrCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
+impl crate::traits::Calibrator for SabrCalibrator {
+  type InitialGuess = SabrParams;
+  type Output = SabrCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    let mut this = self.clone();
+    if let Some(p) = initial {
+      this.params = Some(p.projected());
+    }
+    SabrCalibrator::calibrate(&this)
+  }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SabrParams {
   /// Model shape/loading parameter.
   pub alpha: f64,
-  /// CEV exponent (0 = normal, 1 = lognormal).
+  /// Cev exponent (0 = normal, 1 = lognormal).
   pub beta: f64,
   /// Volatility-of-volatility parameter.
   pub nu: f64,

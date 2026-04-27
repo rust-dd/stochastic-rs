@@ -78,6 +78,89 @@ impl FiniteDifferencePricer {
       method,
     }
   }
+
+  pub fn builder(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    t_n: usize,
+    s_n: usize,
+  ) -> FiniteDifferencePricerBuilder {
+    FiniteDifferencePricerBuilder {
+      s,
+      v,
+      k,
+      r,
+      t_n,
+      s_n,
+      tau: None,
+      eval: None,
+      expiration: None,
+      option_style: OptionStyle::default(),
+      option_type: OptionType::Call,
+      method: FiniteDifferenceMethod::default(),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct FiniteDifferencePricerBuilder {
+  s: f64,
+  v: f64,
+  k: f64,
+  r: f64,
+  t_n: usize,
+  s_n: usize,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+  option_style: OptionStyle,
+  option_type: OptionType,
+  method: FiniteDifferenceMethod,
+}
+
+impl FiniteDifferencePricerBuilder {
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn option_style(mut self, option_style: OptionStyle) -> Self {
+    self.option_style = option_style;
+    self
+  }
+  pub fn option_type(mut self, option_type: OptionType) -> Self {
+    self.option_type = option_type;
+    self
+  }
+  pub fn method(mut self, method: FiniteDifferenceMethod) -> Self {
+    self.method = method;
+    self
+  }
+  pub fn build(self) -> FiniteDifferencePricer {
+    FiniteDifferencePricer {
+      s: self.s,
+      v: self.v,
+      k: self.k,
+      r: self.r,
+      t_n: self.t_n,
+      s_n: self.s_n,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
+      option_style: self.option_style,
+      option_type: self.option_type,
+      method: self.method,
+    }
+  }
 }
 
 impl PricerExt for FiniteDifferencePricer {

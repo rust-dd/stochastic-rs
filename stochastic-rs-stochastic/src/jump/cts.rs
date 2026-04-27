@@ -1,4 +1,4 @@
-//! # CTS
+//! # Cts
 //!
 //! $$
 //! \nu(dx)=c_+e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}dx+c_-e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}dx
@@ -16,10 +16,10 @@ use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// CTS process (Classical Tempered Stable process)
+/// Cts process (Classical Tempered Stable process)
 /// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
 ///
-pub struct CTS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cts<T: FloatExt, S: SeedExt = Unseeded> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -37,8 +37,8 @@ pub struct CTS<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> CTS<T> {
-  /// Create a new CTS process
+impl<T: FloatExt> Cts<T> {
+  /// Create a new Cts process
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -68,7 +68,7 @@ impl<T: FloatExt> CTS<T> {
   }
 }
 
-impl<T: FloatExt> CTS<T, Deterministic> {
+impl<T: FloatExt> Cts<T, Deterministic> {
   pub fn seeded(
     lambda_plus: T,
     lambda_minus: T,
@@ -99,7 +99,7 @@ impl<T: FloatExt> CTS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cts<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -180,7 +180,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTS<T, S> {
   }
 }
 
-py_process_1d!(PyCTS, CTS,
+py_process_1d!(PyCts, Cts,
   sig: (lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
   params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
 );

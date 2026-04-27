@@ -15,7 +15,7 @@ use rayon::prelude::*;
 use super::model::CgmysvParams;
 use crate::OptionType;
 use crate::pricing::barrier::BarrierType;
-use stochastic_rs_stochastic::volatility::svcgmy::SVCGMY;
+use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 use crate::traits::ProcessExt;
 
 /// Monte Carlo pricing result with standard error.
@@ -58,7 +58,7 @@ impl CgmysvPricer {
     let p = &self.params;
     let n = self.n_steps + 1;
 
-    let process = SVCGMY::new(
+    let process = Svcgmy::new(
       p.lambda_plus,
       p.lambda_minus,
       p.alpha,

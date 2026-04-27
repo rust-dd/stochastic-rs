@@ -16,7 +16,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 
-pub struct FGN<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Internal FFT length (power-of-two padded).
@@ -35,14 +35,14 @@ pub struct FGN<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   pub fn dt(&self) -> T {
     let step_count = self.out_len.max(1);
     self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
   }
 }
 
-impl<T: FloatExt> FGN<T> {
+impl<T: FloatExt> Fgn<T> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
     if !(T::zero()..=T::one()).contains(&hurst) {
@@ -105,9 +105,9 @@ impl<T: FloatExt> FGN<T> {
   }
 }
 
-impl<T: FloatExt> FGN<T, Deterministic> {
+impl<T: FloatExt> Fgn<T, Deterministic> {
   pub fn seeded(hurst: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    let base = FGN::<T>::new(hurst, n, t);
+    let base = Fgn::<T>::new(hurst, n, t);
     Self {
       hurst: base.hurst,
       n: base.n,
@@ -122,7 +122,7 @@ impl<T: FloatExt> FGN<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   /// Sample fGn using a specific deterministic seed.
   pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
     self.sample_cpu_impl(Deterministic(seed))
@@ -213,11 +213,11 @@ impl<T: FloatExt, S: SeedExt> FGN<T, S> {
 mod tests {
   use ndarray::Array1;
 
-  use super::FGN;
+  use super::Fgn;
   use stochastic_rs_stats::fd::FractalDim;
 
   fn generate_fgn_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
-    let fgn = FGN::<f64>::new(h, n, Some(t));
+    let fgn = Fgn::<f64>::new(h, n, Some(t));
     let mut out = Vec::with_capacity(m);
     for _ in 0..m {
       out.push(fgn.sample_cpu().to_vec());
@@ -261,7 +261,7 @@ mod tests {
     for &h in &hs {
       for &n in &ns {
         for &t in &ts {
-          let fgn = FGN::<f64>::new(h, n, Some(t));
+          let fgn = Fgn::<f64>::new(h, n, Some(t));
 
           // Internal FFT length is padded, but dt/scale must follow requested n.
           assert!(fgn.n >= n && fgn.n.is_power_of_two());
@@ -413,7 +413,7 @@ mod tests {
     let m = 240_usize;
     let kmax = 32_usize;
 
-    let fgn = FGN::<f64>::new(h, n, Some(t));
+    let fgn = Fgn::<f64>::new(h, n, Some(t));
     let mut endpoints = Vec::with_capacity(m);
     let mut d_vario_sum = 0.0_f64;
     let mut d_higuchi_sum = 0.0_f64;
@@ -494,7 +494,7 @@ mod tests {
     let t = 1.0_f64;
     let pairs_count = 1024_usize;
 
-    let fgn = FGN::<f64>::new(h, n, Some(t));
+    let fgn = Fgn::<f64>::new(h, n, Some(t));
     let mut prim = Vec::with_capacity(pairs_count);
     let mut sec = Vec::with_capacity(pairs_count);
     for _ in 0..pairs_count {
@@ -549,7 +549,7 @@ mod tests {
   /// simpler determinism-across-identical-seed property.
   #[test]
   fn sample_pair_is_deterministic_with_seed() {
-    let fgn = FGN::<f64>::new(0.55, 1024, Some(1.0));
+    let fgn = Fgn::<f64>::new(0.55, 1024, Some(1.0));
     let (a1, b1) = fgn.sample_pair_cpu_with_seed(7);
     let (a2, b2) = fgn.sample_pair_cpu_with_seed(7);
     assert_eq!(a1, a2);

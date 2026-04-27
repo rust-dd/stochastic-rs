@@ -187,6 +187,26 @@ impl SVJCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for SVJCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
+impl crate::traits::Calibrator for SVJCalibrator {
+  type InitialGuess = SVJParams;
+  type Output = SVJCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    SVJCalibrator::calibrate(self, initial)
+  }
+}
+
 /// SVJ (Bates) least-squares calibrator using Levenberg-Marquardt.
 ///
 /// Source:

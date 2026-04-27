@@ -14,21 +14,21 @@ use crate::pricing::fourier::FourierModelExt;
 
 /// Parameters for the CGMYSV process (Eq. 4).
 ///
-/// Combines a standard CGMY jump process $Z_t$ with a CIR stochastic
+/// Combines a standard Cgmy jump process $Z_t$ with a Cir stochastic
 /// time change $\mathcal{V}_t = \int_0^t v_s\,ds$.
 #[derive(Debug, Clone)]
 pub struct CgmysvParams {
-  /// Activity parameter $\alpha \in (0,2)$ (Y in CGMY notation).
+  /// Activity parameter $\alpha \in (0,2)$ (Y in Cgmy notation).
   pub alpha: f64,
-  /// Positive tempering $\lambda_+ > 0$ (G in CGMY notation).
+  /// Positive tempering $\lambda_+ > 0$ (G in Cgmy notation).
   pub lambda_plus: f64,
-  /// Negative tempering $\lambda_- > 0$ (M in CGMY notation).
+  /// Negative tempering $\lambda_- > 0$ (M in Cgmy notation).
   pub lambda_minus: f64,
-  /// CIR mean reversion rate $\kappa > 0$.
+  /// Cir mean reversion rate $\kappa > 0$.
   pub kappa: f64,
-  /// CIR long-run mean $\eta > 0$.
+  /// Cir long-run mean $\eta > 0$.
   pub eta: f64,
-  /// CIR volatility of volatility $\zeta > 0$.
+  /// Cir volatility of volatility $\zeta > 0$.
   pub zeta: f64,
   /// Coupling parameter $\rho$.
   pub rho: f64,
@@ -50,7 +50,7 @@ pub struct CgmysvModel {
 }
 
 impl CgmysvParams {
-  /// Standard CGMY normalising constant
+  /// Standard Cgmy normalising constant
   /// $C = \bigl(\Gamma(2-\alpha)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})\bigr)^{-1}$.
   pub fn norm_const(&self) -> f64 {
     let g2a = gamma(2.0 - self.alpha);
@@ -58,7 +58,7 @@ impl CgmysvParams {
       / (g2a * (self.lambda_plus.powf(self.alpha - 2.0) + self.lambda_minus.powf(self.alpha - 2.0)))
   }
 
-  /// Lévy symbol of the standard CGMY distribution $\psi_{\mathrm{stdCGMY}}(u)$ (Eq. 3).
+  /// Lévy symbol of the standard Cgmy distribution $\psi_{\mathrm{stdCGMY}}(u)$ (Eq. 3).
   ///
   /// $$
   /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)\,D}\,iu
@@ -82,7 +82,7 @@ impl CgmysvParams {
     drift + jumps
   }
 
-  /// CIR joint characteristic function $\Phi_t(a,b,x) = E[\exp(a\mathcal V_t + ib\,v_t)\mid v_0=x]$ (Eq. 2).
+  /// Cir joint characteristic function $\Phi_t(a,b,x) = E[\exp(a\mathcal V_t + ib\,v_t)\mid v_0=x]$ (Eq. 2).
   ///
   /// Following Kim (2021) / Lamberton–Lapeyre (1996) Prop. 6.2.5 verbatim:
   /// $\gamma = \sqrt{\kappa^2 - 2\zeta^2 i a}$.

@@ -1,5 +1,5 @@
 //! `FloatExt` implementations for `f64` and `f32`, plus thread-local scratch
-//! buffers used by the FGN circulant embedding.
+//! buffers used by the Fgn circulant embedding.
 
 use std::cell::RefCell;
 

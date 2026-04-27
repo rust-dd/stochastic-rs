@@ -9,14 +9,14 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Fractional Cox-Ingersoll-Ross (FCIR) process.
+/// Fractional Cox-Ingersoll-Ross (Fcir) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
-/// where X(t) is the FCIR process.
-pub struct FCIR<T: FloatExt, S: SeedExt = Unseeded> {
+/// where X(t) is the Fcir process.
+pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Long-run target level / model location parameter.
@@ -35,10 +35,10 @@ pub struct FCIR<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> FCIR<T> {
+impl<T: FloatExt> Fcir<T> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -66,12 +66,12 @@ impl<T: FloatExt> FCIR<T> {
       t,
       use_sym,
       seed: Unseeded,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> FCIR<T, Deterministic> {
+impl<T: FloatExt> Fcir<T, Deterministic> {
   #[must_use]
   pub fn seeded(
     hurst: T,
@@ -100,12 +100,12 @@ impl<T: FloatExt> FCIR<T, Deterministic> {
       t,
       use_sym,
       seed: Deterministic(seed),
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FCIR<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fcir<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -130,7 +130,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FCIR<T, S> {
   }
 }
 
-py_process_1d!(PyFCIR, FCIR,
+py_process_1d!(PyFcir, Fcir,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
   params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
 );

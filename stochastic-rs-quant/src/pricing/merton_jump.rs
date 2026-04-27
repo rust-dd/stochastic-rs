@@ -80,6 +80,107 @@ impl Merton1976Pricer {
       b,
     }
   }
+
+  pub fn builder(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    lambda: f64,
+    gamma: f64,
+    m: usize,
+  ) -> Merton1976PricerBuilder {
+    Merton1976PricerBuilder {
+      s,
+      v,
+      k,
+      r,
+      r_d: None,
+      r_f: None,
+      q: None,
+      lambda,
+      gamma,
+      m,
+      tau: None,
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Call,
+      b: BSMCoc::Bsm1973,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct Merton1976PricerBuilder {
+  s: f64,
+  v: f64,
+  k: f64,
+  r: f64,
+  r_d: Option<f64>,
+  r_f: Option<f64>,
+  q: Option<f64>,
+  lambda: f64,
+  gamma: f64,
+  m: usize,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+  option_type: OptionType,
+  b: BSMCoc,
+}
+
+impl Merton1976PricerBuilder {
+  pub fn r_d(mut self, r_d: f64) -> Self {
+    self.r_d = Some(r_d);
+    self
+  }
+  pub fn r_f(mut self, r_f: f64) -> Self {
+    self.r_f = Some(r_f);
+    self
+  }
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn option_type(mut self, option_type: OptionType) -> Self {
+    self.option_type = option_type;
+    self
+  }
+  pub fn coc(mut self, b: BSMCoc) -> Self {
+    self.b = b;
+    self
+  }
+  pub fn build(self) -> Merton1976Pricer {
+    Merton1976Pricer {
+      s: self.s,
+      v: self.v,
+      k: self.k,
+      r: self.r,
+      r_d: self.r_d,
+      r_f: self.r_f,
+      q: self.q,
+      lambda: self.lambda,
+      gamma: self.gamma,
+      m: self.m,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
+      option_type: self.option_type,
+      b: self.b,
+    }
+  }
 }
 
 impl PricerExt for Merton1976Pricer {

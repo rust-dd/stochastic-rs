@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Implements a general T-GARCH (GJR-GARCH)(p,q) model:
+/// Implements a general T-Garch (GJR-Garch)(p,q) model:
 ///
 /// \[
 ///   \sigma_t^2
@@ -38,7 +38,7 @@ use crate::traits::ProcessExt;
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
 #[derive(Debug, Clone)]
-pub struct TGARCH<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Tgarch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Model shape / loading parameter.
@@ -53,12 +53,12 @@ pub struct TGARCH<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> TGARCH<T> {
+impl<T: FloatExt> Tgarch<T> {
   pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
-    assert!(omega > T::zero(), "TGARCH requires omega > 0");
+    assert!(omega > T::zero(), "Tgarch requires omega > 0");
     assert!(
       alpha.len() == gamma.len(),
-      "TGARCH requires alpha.len() == gamma.len()"
+      "Tgarch requires alpha.len() == gamma.len()"
     );
     Self {
       omega,
@@ -71,8 +71,8 @@ impl<T: FloatExt> TGARCH<T> {
   }
 }
 
-impl<T: FloatExt> TGARCH<T, Deterministic> {
-  /// Create a new TGARCH model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Tgarch<T, Deterministic> {
+  /// Create a new Tgarch model with a deterministic seed for reproducible output.
   pub fn seeded(
     omega: T,
     alpha: Array1<T>,
@@ -81,10 +81,10 @@ impl<T: FloatExt> TGARCH<T, Deterministic> {
     n: usize,
     seed: u64,
   ) -> Self {
-    assert!(omega > T::zero(), "TGARCH requires omega > 0");
+    assert!(omega > T::zero(), "Tgarch requires omega > 0");
     assert!(
       alpha.len() == gamma.len(),
-      "TGARCH requires alpha.len() == gamma.len()"
+      "Tgarch requires alpha.len() == gamma.len()"
     );
     Self {
       omega,
@@ -97,7 +97,7 @@ impl<T: FloatExt> TGARCH<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TGARCH<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Tgarch<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -125,7 +125,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TGARCH<T, S> {
     let denom = T::one() - sum_alpha - sum_gamma_half - sum_beta;
     assert!(
       denom > T::zero(),
-      "TGARCH requires sum(alpha) + 0.5*sum(gamma) + sum(beta) < 1 for finite unconditional variance"
+      "Tgarch requires sum(alpha) + 0.5*sum(gamma) + sum(beta) < 1 for finite unconditional variance"
     );
 
     for t in 0..self.n {
@@ -162,7 +162,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TGARCH<T, S> {
       }
       assert!(
         sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "TGARCH produced non-positive or non-finite conditional variance at t={}",
+        "Tgarch produced non-positive or non-finite conditional variance at t={}",
         t
       );
       // X_t = sigma_t * z_t
@@ -173,7 +173,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TGARCH<T, S> {
   }
 }
 
-py_process_1d!(PyTGARCH, TGARCH,
+py_process_1d!(PyTgarch, Tgarch,
   sig: (omega, alpha, gamma_, beta, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize)
 );

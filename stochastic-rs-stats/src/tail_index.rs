@@ -5,7 +5,7 @@
 //! $$
 //!
 //! Log-log regression on the empirical survival function to estimate
-//! the tail exponent, with CGMY-specific mappings for α, λ₊, λ₋.
+//! the tail exponent, with Cgmy-specific mappings for α, λ₊, λ₋.
 
 use ndarray::ArrayView1;
 
@@ -81,21 +81,21 @@ fn tail_exponent_from_kurtosis(data: &ArrayView1<f64>, mean: f64, var: f64) -> f
   (4.0 - 0.5 * excess).clamp(1.5, 5.0)
 }
 
-/// Map a tail exponent to the CGMY α (Y) parameter.
+/// Map a tail exponent to the Cgmy α (Y) parameter.
 ///
 /// α = 2 − 2/ξ, clamped to (0.1, 1.9).
 pub fn tail_exponent_to_cgmy_alpha(xi: f64) -> f64 {
   (2.0 - 2.0 / xi.max(0.5)).clamp(0.1, 1.9)
 }
 
-/// Estimate CGMY α directly from sample data.
+/// Estimate Cgmy α directly from sample data.
 ///
 /// Combines [`estimate_tail_exponent`] and [`tail_exponent_to_cgmy_alpha`].
 pub fn estimate_cgmy_alpha(data: &ArrayView1<f64>, mean: f64, var: f64) -> f64 {
   tail_exponent_to_cgmy_alpha(estimate_tail_exponent(data, mean, var))
 }
 
-/// Estimate CGMY λ₊ / λ₋ (exponential tempering) from tail quantile
+/// Estimate Cgmy λ₊ / λ₋ (exponential tempering) from tail quantile
 /// magnitudes.
 ///
 /// λ ≈ 1 / E[|tail returns|], computed separately for positive and

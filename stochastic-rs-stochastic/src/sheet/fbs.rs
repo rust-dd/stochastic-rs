@@ -21,7 +21,7 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
-pub struct FBS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Number of parallel paths / first-grid resolution.
@@ -34,7 +34,7 @@ pub struct FBS<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> FBS<T> {
+impl<T: FloatExt> Fbs<T> {
   pub fn new(hurst: T, m: usize, n: usize, r: T) -> Self {
     Self {
       hurst,
@@ -46,8 +46,8 @@ impl<T: FloatExt> FBS<T> {
   }
 }
 
-impl<T: FloatExt> FBS<T, Deterministic> {
-  /// Create a new FBS model with a deterministic seed for reproducible output.
+impl<T: FloatExt> Fbs<T, Deterministic> {
+  /// Create a new Fbs model with a deterministic seed for reproducible output.
   pub fn seeded(hurst: T, m: usize, n: usize, r: T, seed: u64) -> Self {
     Self {
       hurst,
@@ -59,7 +59,7 @@ impl<T: FloatExt> FBS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
   type Output = Array2<T>;
 
   fn sample(&self) -> Array2<T> {
@@ -148,7 +148,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> FBS<T, S> {
+impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   fn rho(x: (T, T), y: (T, T), r: T, alpha: T) -> (T, T, T) {
     let one = T::one();
     let two = T::from_usize_(2);
@@ -181,7 +181,7 @@ impl<T: FloatExt, S: SeedExt> FBS<T, S> {
   }
 }
 
-py_process_2d!(PyFBS, FBS,
+py_process_2d!(PyFbs, Fbs,
   sig: (hurst, m, n, r, seed=None, dtype=None),
   params: (hurst: f64, m: usize, n: usize, r: f64)
 );

@@ -6,14 +6,14 @@
 //!
 use ndarray::Array1;
 
-use super::fgn::FGN;
+use super::fgn::Fgn;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct CFGNS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Instantaneous correlation parameter.
@@ -24,10 +24,10 @@ pub struct CFGNS<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> CFGNS<T> {
+impl<T: FloatExt> Cfgns<T> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
@@ -44,12 +44,12 @@ impl<T: FloatExt> CFGNS<T> {
       n,
       t,
       seed: Unseeded,
-      fgn: FGN::new(hurst, n, t),
+      fgn: Fgn::new(hurst, n, t),
     }
   }
 }
 
-impl<T: FloatExt> CFGNS<T, Deterministic> {
+impl<T: FloatExt> Cfgns<T, Deterministic> {
   pub fn seeded(hurst: T, rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
@@ -66,13 +66,13 @@ impl<T: FloatExt> CFGNS<T, Deterministic> {
       n,
       t,
       seed: Deterministic(seed),
-      fgn: FGN::new(hurst, n, t),
+      fgn: Fgn::new(hurst, n, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> CFGNS<T, S> {
-  /// Sample with an explicit seed, used by callers like CFBMS.
+impl<T: FloatExt, S: SeedExt> Cfgns<T, S> {
+  /// Sample with an explicit seed, used by callers like Cfbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(Deterministic(seed))
   }
@@ -93,7 +93,7 @@ impl<T: FloatExt, S: SeedExt> CFGNS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFGNS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfgns<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -101,7 +101,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFGNS<T, S> {
   }
 }
 
-py_process_2x1d!(PyCFGNS, CFGNS,
+py_process_2x1d!(PyCfgns, Cfgns,
   sig: (hurst, rho, n, t=None, seed=None, dtype=None),
   params: (hurst: f64, rho: f64, n: usize, t: Option<f64>)
 );

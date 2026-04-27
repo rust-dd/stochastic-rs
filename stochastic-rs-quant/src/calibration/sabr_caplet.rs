@@ -1,4 +1,4 @@
-//! Per-expiry SABR smile calibration for caplets / swaptions.
+//! Per-expiry Sabr smile calibration for caplets / swaptions.
 //!
 //! $$
 //! (\hat\alpha,\hat\nu,\hat\rho)=\arg\min_{\alpha,\nu,\rho}
@@ -6,7 +6,7 @@
 //!   -\sigma_i^{mkt}\bigr)^2
 //! $$
 //!
-//! The CEV exponent $\beta$ is held fixed at a user-supplied value (commonly
+//! The Cev exponent $\beta$ is held fixed at a user-supplied value (commonly
 //! 0.5 or 1.0). The three free parameters $(\alpha,\nu,\rho)$ are minimized
 //! against the supplied per-strike Black-76 implied volatilities by
 //! Nelder-Mead.
@@ -21,16 +21,16 @@ use argmin::solver::neldermead::NelderMead;
 
 use crate::pricing::sabr::hagan_implied_vol;
 
-/// Calibration result for a SABR caplet smile.
+/// Calibration result for a Sabr caplet smile.
 #[derive(Debug, Clone)]
 pub struct SabrCapletCalibrationResult {
-  /// SABR level $\alpha$.
+  /// Sabr level $\alpha$.
   pub alpha: f64,
-  /// SABR CEV exponent $\beta$ (held fixed during calibration).
+  /// Sabr Cev exponent $\beta$ (held fixed during calibration).
   pub beta: f64,
-  /// SABR volatility of volatility $\nu$.
+  /// Sabr volatility of volatility $\nu$.
   pub nu: f64,
-  /// SABR correlation $\rho$.
+  /// Sabr correlation $\rho$.
   pub rho: f64,
   /// Root-mean-square vol error across strikes.
   pub rmse: f64,
@@ -60,7 +60,28 @@ impl crate::traits::ToModel for SabrCapletCalibrationResult {
   }
 }
 
-/// SABR caplet smile calibrator — fits $(\alpha,\nu,\rho)$ for a single
+impl crate::traits::CalibrationResult for SabrCapletCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.rmse
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+}
+
+impl crate::traits::Calibrator for SabrCapletCalibrator {
+  type InitialGuess = (f64, f64, f64);
+  type Output = SabrCapletCalibrationResult;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+    let mut this = self.clone();
+    if let Some(g) = initial {
+      this.initial_guess = Some(g);
+    }
+    SabrCapletCalibrator::calibrate(&this)
+  }
+}
+
+/// Sabr caplet smile calibrator — fits $(\alpha,\nu,\rho)$ for a single
 /// expiry.
 #[derive(Debug, Clone)]
 pub struct SabrCapletCalibrator {
@@ -68,7 +89,7 @@ pub struct SabrCapletCalibrator {
   pub forward: f64,
   /// Expiry $\tau$ in years.
   pub expiry: f64,
-  /// Fixed CEV exponent $\beta$.
+  /// Fixed Cev exponent $\beta$.
   pub beta: f64,
   /// Market strikes.
   pub strikes: Vec<f64>,

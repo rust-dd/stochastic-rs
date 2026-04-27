@@ -21,7 +21,7 @@ use num_complex::Complex;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -29,7 +29,7 @@ use crate::traits::ProcessExt;
 ///
 /// Source:
 /// - https://arxiv.org/abs/2406.18004
-pub struct CFOU<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent of the driving fractional Brownian motion.
   pub hurst: T,
   /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
@@ -48,10 +48,10 @@ pub struct CFOU<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> CFOU<T> {
+impl<T: FloatExt> Cfou<T> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -77,12 +77,12 @@ impl<T: FloatExt> CFOU<T> {
       x2_0,
       t,
       seed: Unseeded,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> CFOU<T, Deterministic> {
+impl<T: FloatExt> Cfou<T, Deterministic> {
   #[must_use]
   pub fn seeded(
     hurst: T,
@@ -109,12 +109,12 @@ impl<T: FloatExt> CFOU<T, Deterministic> {
       x2_0,
       t,
       seed: Deterministic(seed),
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFOU<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfou<T, S> {
   type Output = Array1<Complex<T>>;
 
   /// Samples the complex path directly as `Z_t = X_1(t) + i X_2(t)`.
@@ -151,7 +151,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CFOU<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> CFOU<T, S> {
+impl<T: FloatExt, S: SeedExt> Cfou<T, S> {
   /// Samples the process and returns explicit real/imaginary components.
   #[must_use]
   pub fn sample_components(&self) -> [Array1<T>; 2] {
@@ -166,19 +166,19 @@ impl<T: FloatExt, S: SeedExt> CFOU<T, S> {
   }
 }
 
-py_process_2d!(PyCFOU, CFOU,
+py_process_2d!(PyCfou, Cfou,
   sig: (hurst, lambda, omega, a, n, x1_0=None, x2_0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, lambda: f64, omega: f64, a: f64, n: usize, x1_0: Option<f64>, x2_0: Option<f64>, t: Option<f64>)
 );
 
 #[cfg(test)]
 mod tests {
-  use super::CFOU;
+  use super::Cfou;
   use crate::traits::ProcessExt;
 
   #[test]
   fn cfou_sample_is_complex_and_finite() {
-    let p = CFOU::<f64>::new(0.7, 1.2, 3.0, 0.4, 256, Some(0.0), Some(0.0), Some(1.0));
+    let p = Cfou::<f64>::new(0.7, 1.2, 3.0, 0.4, 256, Some(0.0), Some(0.0), Some(1.0));
     let z = p.sample();
 
     assert_eq!(z.len(), 256);
@@ -187,7 +187,7 @@ mod tests {
 
   #[test]
   fn cfou_components_are_finite() {
-    let p = CFOU::<f64>::new(0.65, 0.9, 2.5, 0.6, 128, Some(0.1), Some(-0.1), Some(1.0));
+    let p = Cfou::<f64>::new(0.65, 0.9, 2.5, 0.6, 128, Some(0.1), Some(-0.1), Some(1.0));
     let [x1, x2] = p.sample_components();
     assert_eq!(x1.len(), 128);
     assert_eq!(x2.len(), 128);

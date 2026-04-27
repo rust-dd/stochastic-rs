@@ -12,7 +12,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Fouque slow–fast OU system
+/// Fouque slow–fast Ou system
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
@@ -133,9 +133,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FouqueOU2D<T, S> {
     let eps_inv = T::one() / eps;
 
     for i in 1..self.n {
-      // Slow OU
+      // Slow Ou
       x[i] = x[i - 1] + self.kappa * (self.theta - x[i - 1]) * dt + eps * gn_x[i - 1];
-      // Fast OU
+      // Fast Ou
       y[i] = y[i - 1] + eps_inv * (self.alpha - y[i - 1]) * dt + sqrt_eps_inv * gn_y[i - 1];
     }
 

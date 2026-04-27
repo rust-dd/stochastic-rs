@@ -9,11 +9,11 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FOU<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fou<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Mean-reversion speed.
@@ -30,10 +30,10 @@ pub struct FOU<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> FOU<T> {
+impl<T: FloatExt> Fou<T> {
   #[must_use]
   pub fn new(hurst: T, theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(n >= 2, "n must be at least 2");
@@ -47,12 +47,12 @@ impl<T: FloatExt> FOU<T> {
       x0,
       t,
       seed: Unseeded,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt> FOU<T, Deterministic> {
+impl<T: FloatExt> Fou<T, Deterministic> {
   #[must_use]
   pub fn seeded(
     hurst: T,
@@ -75,12 +75,12 @@ impl<T: FloatExt> FOU<T, Deterministic> {
       x0,
       t,
       seed: Deterministic(seed),
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FOU<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fou<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -99,20 +99,20 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FOU<T, S> {
   }
 }
 
-py_process_1d!(PyFOU, FOU,
+py_process_1d!(PyFou, Fou,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
 
 #[cfg(test)]
 mod tests {
-  use super::FOU;
+  use super::Fou;
   use crate::traits::ProcessExt;
 
   #[test]
   #[should_panic(expected = "n must be at least 2")]
   fn fou_requires_at_least_two_points() {
-    let _ = FOU::<f64>::new(0.7, 1.0, 0.0, 0.2, 1, Some(0.0), Some(1.0));
+    let _ = Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 1, Some(0.0), Some(1.0));
   }
 
   #[test]
@@ -123,7 +123,7 @@ mod tests {
     let x0 = 0.2_f64;
     let t = 1.0_f64;
 
-    let p = FOU::<f64>::new(0.7, theta, mu, 0.0, n, Some(x0), Some(t));
+    let p = Fou::<f64>::new(0.7, theta, mu, 0.0, n, Some(x0), Some(t));
     let x = p.sample();
 
     let dt = t / (n as f64 - 1.0);
@@ -146,7 +146,7 @@ mod tests {
     for &h in &hs {
       for &n in &ns {
         for &t in &ts {
-          let p = FOU::<f64>::new(h, theta, mu, 0.0, n, Some(x0), Some(t));
+          let p = Fou::<f64>::new(h, theta, mu, 0.0, n, Some(x0), Some(t));
           let x = p.sample();
 
           let dt = t / (n as f64 - 1.0);
@@ -165,7 +165,7 @@ mod tests {
 
   #[test]
   fn fou_sample_is_finite() {
-    let p = FOU::<f64>::new(0.65, 1.0, 0.0, 0.5, 256, Some(0.1), Some(1.0));
+    let p = Fou::<f64>::new(0.65, 1.0, 0.0, 0.5, 256, Some(0.1), Some(1.0));
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));

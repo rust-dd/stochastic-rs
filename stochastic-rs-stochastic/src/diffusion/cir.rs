@@ -1,4 +1,4 @@
-//! # CIR
+//! # Cir
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
@@ -14,10 +14,10 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Cox-Ingersoll-Ross (CIR) process.
+/// Cox-Ingersoll-Ross (Cir) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
-/// where X(t) is the CIR process.
-pub struct CIR<T: FloatExt, S: SeedExt = Unseeded> {
+/// where X(t) is the Cir process.
+pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Drift / long-run mean-level parameter.
@@ -36,8 +36,8 @@ pub struct CIR<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> CIR<T> {
-  /// Create a new CIR process.
+impl<T: FloatExt> Cir<T> {
+  /// Create a new Cir process.
   pub fn new(
     theta: T,
     mu: T,
@@ -65,7 +65,7 @@ impl<T: FloatExt> CIR<T> {
   }
 }
 
-impl<T: FloatExt> CIR<T, Deterministic> {
+impl<T: FloatExt> Cir<T, Deterministic> {
   pub fn seeded(
     theta: T,
     mu: T,
@@ -94,10 +94,10 @@ impl<T: FloatExt> CIR<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CIR<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir<T, S> {
   type Output = Array1<T>;
 
-  /// Sample the Cox-Ingersoll-Ross (CIR) process
+  /// Sample the Cox-Ingersoll-Ross (Cir) process
   fn sample(&self) -> Self::Output {
     let mut cir = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -117,7 +117,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CIR<T, S> {
     let mut tail_view = cir.slice_mut(s![1..]);
     let tail = tail_view
       .as_slice_mut()
-      .expect("CIR output tail must be contiguous");
+      .expect("Cir output tail must be contiguous");
     let mut seed = self.seed;
     let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
     normal.fill_slice_fast(tail);
@@ -136,7 +136,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CIR<T, S> {
   }
 }
 
-py_process_1d!(PyCIR, CIR,
+py_process_1d!(PyCir, Cir,
   sig: (theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
   params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
 );

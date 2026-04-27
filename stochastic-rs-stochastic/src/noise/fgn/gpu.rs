@@ -1,6 +1,6 @@
 //! # CubeCL GPU
 //!
-//! Cross-platform GPU-accelerated FGN sampling via CubeCL.
+//! Cross-platform GPU-accelerated Fgn sampling via CubeCL.
 //! Supports CUDA (gpu-cuda), Metal/Vulkan/WebGPU (gpu-wgpu).
 //!
 //! FFT uses shared-memory radix-2 for local stages and radix-4 butterfly
@@ -12,7 +12,7 @@ use either::Either;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use super::FGN;
+use super::Fgn;
 use stochastic_rs_core::simd_rng::SeedExt;
 use crate::traits::FloatExt;
 
@@ -415,7 +415,7 @@ mod backend {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> FGN<T, S> {
+impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   pub(crate) fn sample_gpu_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
     {

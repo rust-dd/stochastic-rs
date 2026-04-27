@@ -10,12 +10,12 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct JumpFOU<T, D, S: SeedExt = Unseeded>
+pub struct JumpFou<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -28,11 +28,11 @@ where
   pub x0: Option<T>,
   pub t: Option<T>,
   pub cpoisson: CompoundPoisson<T, D>,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
   pub seed: S,
 }
 
-impl<T, D> JumpFOU<T, D>
+impl<T, D> JumpFou<T, D>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -58,13 +58,13 @@ where
       x0,
       t,
       cpoisson,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
       seed: Unseeded,
     }
   }
 }
 
-impl<T, D> JumpFOU<T, D, Deterministic>
+impl<T, D> JumpFou<T, D, Deterministic>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -91,13 +91,13 @@ where
       x0,
       t,
       cpoisson,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
       seed: Deterministic(seed),
     }
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for JumpFOU<T, D, S>
+impl<T, D, S: SeedExt> ProcessExt<T> for JumpFou<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -125,18 +125,18 @@ where
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
-pub struct PyJumpFOU {
-  inner_f32: Option<JumpFOU<f32, crate::traits::CallableDist<f32>>>,
-  inner_f64: Option<JumpFOU<f64, crate::traits::CallableDist<f64>>>,
+pub struct PyJumpFou {
+  inner_f32: Option<JumpFou<f32, crate::traits::CallableDist<f32>>>,
+  inner_f64: Option<JumpFou<f64, crate::traits::CallableDist<f64>>>,
   seeded_f32:
-    Option<JumpFOU<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
+    Option<JumpFou<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
   seeded_f64:
-    Option<JumpFOU<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+    Option<JumpFou<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
-impl PyJumpFOU {
+impl PyJumpFou {
   #[new]
   #[pyo3(signature = (hurst, theta, mu, sigma, distribution, lambda_, n, x0=None, t=None, seed=None, dtype=None))]
   fn new(
@@ -168,7 +168,7 @@ impl PyJumpFOU {
         );
         match seed {
           Some(sd) => {
-            s.seeded_f32 = Some(JumpFOU::seeded(
+            s.seeded_f32 = Some(JumpFou::seeded(
               hurst as f32,
               theta as f32,
               mu as f32,
@@ -181,7 +181,7 @@ impl PyJumpFOU {
             ));
           }
           None => {
-            s.inner_f32 = Some(JumpFOU::new(
+            s.inner_f32 = Some(JumpFou::new(
               hurst as f32,
               theta as f32,
               mu as f32,
@@ -201,12 +201,12 @@ impl PyJumpFOU {
         );
         match seed {
           Some(sd) => {
-            s.seeded_f64 = Some(JumpFOU::seeded(
+            s.seeded_f64 = Some(JumpFou::seeded(
               hurst, theta, mu, sigma, n, x0, t, cpoisson, sd,
             ));
           }
           None => {
-            s.inner_f64 = Some(JumpFOU::new(hurst, theta, mu, sigma, n, x0, t, cpoisson));
+            s.inner_f64 = Some(JumpFou::new(hurst, theta, mu, sigma, n, x0, t, cpoisson));
           }
         }
       }

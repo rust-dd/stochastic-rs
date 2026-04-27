@@ -119,7 +119,7 @@ fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
 
 /// Regime-switching diffusion model for Fourier pricing.
 ///
-/// The stock follows GBM with regime-dependent volatility. Regime transitions
+/// The stock follows Gbm with regime-dependent volatility. Regime transitions
 /// are governed by a continuous-time Markov chain with generator matrix `q_matrix`.
 ///
 /// # Example

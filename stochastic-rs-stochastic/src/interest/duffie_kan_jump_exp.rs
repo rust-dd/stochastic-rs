@@ -12,7 +12,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::cgns::CGNS;
+use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -56,7 +56,7 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
   /// Correlated Gaussian noise generator for the diffusion part.
-  cgns: CGNS<T, S>,
+  cgns: Cgns<T, S>,
 }
 
 impl<T: FloatExt> DuffieKanJumpExp<T> {
@@ -100,7 +100,7 @@ impl<T: FloatExt> DuffieKanJumpExp<T> {
       x0,
       t,
       seed: Unseeded,
-      cgns: CGNS::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t),
     }
   }
 }
@@ -149,7 +149,7 @@ impl<T: FloatExt> DuffieKanJumpExp<T, Deterministic> {
       x0,
       t,
       seed: Deterministic(seed),
-      cgns: CGNS::seeded(rho, n - 1, t, child.0),
+      cgns: Cgns::seeded(rho, n - 1, t, child.0),
     }
   }
 }

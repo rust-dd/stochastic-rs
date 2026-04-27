@@ -117,7 +117,7 @@
 //! - **Gaussian** (`NoiseModel::Gaussian`): Standard Brownian motion with i.i.d.
 //!   $\mathcal{N}(0, \Delta t)$ increments.
 //! - **Fractional** (`NoiseModel::Fractional`): Fractional Brownian motion with Hurst parameter
-//!   $H \in (0, 1)$, generated via the [`FGN`] module. Requires setting the `hursts` field with
+//!   $H \in (0, 1)$, generated via the [`Fgn`] module. Requires setting the `hursts` field with
 //!   one Hurst parameter per dimension.
 //!
 //! ## Output
@@ -160,7 +160,7 @@ use ndarray::Axis;
 use ndarray::s;
 use rand::Rng;
 
-use super::noise::fgn::FGN;
+use super::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -275,8 +275,8 @@ where
         let mut incs = Array3::zeros((n_paths, steps, dim));
 
         if let Some(h) = &self.hursts {
-          let fgns: Vec<FGN<T>> = (0..dim)
-            .map(|d| FGN::new(h[d], steps, Some(t1 - t0)))
+          let fgns: Vec<Fgn<T>> = (0..dim)
+            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0)))
             .collect();
 
           for p in 0..n_paths {

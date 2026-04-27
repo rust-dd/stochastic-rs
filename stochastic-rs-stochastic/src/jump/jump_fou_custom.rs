@@ -10,7 +10,7 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::noise::fgn::FGN;
+use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -28,7 +28,7 @@ where
   pub t: Option<T>,
   pub jump_times: D,
   pub jump_sizes: D,
-  fgn: FGN<T>,
+  fgn: Fgn<T>,
   pub seed: S,
 }
 
@@ -60,7 +60,7 @@ where
       t,
       jump_times,
       jump_sizes,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
       seed: Unseeded,
     }
   }
@@ -95,7 +95,7 @@ where
       t,
       jump_times,
       jump_sizes,
-      fgn: FGN::new(hurst, n - 1, t),
+      fgn: Fgn::new(hurst, n - 1, t),
       seed: Deterministic(seed),
     }
   }

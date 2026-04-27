@@ -32,17 +32,17 @@ use crate::traits::FloatExt;
 /// # Example
 ///
 /// ```ignore
-/// use stochastic_rs::stochastic::isonormal::{fbm_custom_inc_cov, ISONormal};
+/// use stochastic_rs::stochastic::isonormal::{fbm_custom_inc_cov, IsoNormal};
 ///
 /// let inner_product = |_aux_idx: usize, idx: usize| -> f64 { fbm_custom_inc_cov(idx, 0.7) };
 /// let index_functions = vec![0, 1, 2, 3, 4];
-/// let mut iso_normal = ISONormal::new(inner_product, index_functions);
+/// let mut iso_normal = IsoNormal::new(inner_product, index_functions);
 /// let _path = iso_normal.get_path();
 /// ```
 ///
 /// In this example, an Isonormal process is defined using the fractional Brownian motion covariance increments.
 ///
-pub struct ISONormal<F>
+pub struct IsoNormal<F>
 where
   F: Fn(usize, usize) -> f64,
 {
@@ -53,12 +53,12 @@ where
   fft_handler: Option<FftHandler<f64>>,
 }
 
-impl<F> ISONormal<F>
+impl<F> IsoNormal<F>
 where
   F: Fn(usize, usize) -> f64,
 {
   pub fn new(inner_product: F, index_functions: Vec<usize>) -> Self {
-    ISONormal {
+    IsoNormal {
       inner_product,
       index_functions,
       inner_product_structure: None,

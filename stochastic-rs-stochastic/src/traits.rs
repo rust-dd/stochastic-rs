@@ -4,12 +4,6 @@
 //! difference Malliavin sensitivities.
 
 use ndarray::Array1;
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
 use ndarray::Array2;
 use ndarray::parallel::prelude::*;
 
@@ -41,6 +35,24 @@ pub use stochastic_rs_distributions::traits::SimdFloatExt;
 
 use crate::noise::gn::Gn;
 
+/// Stochastic process simulation trait.
+///
+/// Each process exposes `sample()` returning a [`Self::Output`] and
+/// `sample_par(m)` returning `m` independent samples via Rayon.
+///
+/// ## GPU coverage
+///
+/// The `sample_gpu` / `sample_cuda_native` / `sample_metal` / `sample_accelerate`
+/// methods are opt-in overrides; default impls return `Err`. Currently the
+/// only processes with GPU implementations are [`Fgn`](crate::noise::fgn::Fgn)
+/// and [`Fbm`](crate::process::fbm::Fbm), which both rely on the FFT-based
+/// circulant-embedding path under `feature = "gpu"`.
+///
+/// **Roadmap (P3/18):** GPU implementations for Heston, RoughBergomi, Cir2F,
+/// Bgm, and Hjm remain TODO. These models use *standard* Brownian noise,
+/// not fractional, so the Fgn GPU path is not directly reusable — they
+/// need bespoke kernels for variance updates (e.g. Andersen QE for Cir-type
+/// dynamics) and correlated noise generation. Track issue when implementing.
 pub trait ProcessExt<T: FloatExt>: Send + Sync {
   type Output: Send;
 
@@ -70,6 +82,58 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
     anyhow::bail!("Metal GPU sampling is not supported for this process")
   }
 }
+
+/// Marker for processes whose [`ProcessExt::sample`] returns a single
+/// 1D trajectory `Array1<T>`.
+///
+/// Auto-implemented via a blanket impl for any `P: ProcessExt<T, Output = Array1<T>>`,
+/// so the user only needs to query the marker — no manual `impl` lines on each
+/// process struct. Use this in generic code that should only operate on single-path
+/// processes (e.g. `Bm`, `Ou`, `Gbm`, `Vasicek`).
+///
+/// ```ignore
+/// fn last_value<T: FloatExt, P: OneDimensional<T>>(p: &P) -> T {
+///   *p.sample().last().unwrap()
+/// }
+/// ```
+pub trait OneDimensional<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {}
+
+impl<T: FloatExt, P> OneDimensional<T> for P where P: ProcessExt<T, Output = Array1<T>> {}
+
+/// Marker for processes whose [`ProcessExt::sample`] returns `N` aligned
+/// 1D trajectories `[Array1<T>; N]`.
+///
+/// Auto-implemented for any `P: ProcessExt<T, Output = [Array1<T>; N]>`.
+/// Stochastic-volatility models (`Heston`, `Bergomi`, `Sabr`, `RBergomi`)
+/// use `N = 2` (asset + variance); 3-state models (`HestonStochCorr`,
+/// `DoubleHeston`, `Hjm`) use `N = 3`.
+pub trait MultiDimensional<T: FloatExt, const N: usize>:
+  ProcessExt<T, Output = [Array1<T>; N]>
+{
+}
+
+impl<T: FloatExt, P, const N: usize> MultiDimensional<T, N> for P where
+  P: ProcessExt<T, Output = [Array1<T>; N]>
+{
+}
+
+/// Convenience marker for the common 2-state case `[Array1<T>; 2]`.
+///
+/// Subtrait of [`MultiDimensional<T, 2>`]. Useful for asset-plus-variance
+/// stochastic-vol models like `Heston`, `Bergomi`, `Sabr`.
+pub trait TwoDimensional<T: FloatExt>: MultiDimensional<T, 2> {}
+
+impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
+
+/// Marker for processes whose [`ProcessExt::sample`] returns an `Array2<T>`
+/// matrix — a discretised curve or sheet rather than a single path.
+///
+/// Auto-implemented for any `P: ProcessExt<T, Output = Array2<T>>`. Used by
+/// interest-rate term-structure models (`Bgm`, `Hjm`-with-tenors,
+/// `WuZhangD`) and stochastic-sheet processes (`Fbs`).
+pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
+
+impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}
 
 pub trait MalliavinExt<T: FloatExt> {
   fn sample_with_noise(&self, noise: &Array1<T>) -> Array1<T>;

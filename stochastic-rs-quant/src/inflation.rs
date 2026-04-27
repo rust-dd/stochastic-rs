@@ -17,7 +17,7 @@
 //!
 //! Source:
 //! - Jarrow, R. & Yildirim, Y. (2003), "Pricing Treasury Inflation
-//!   Protected Securities and Related Derivatives using an HJM Model",
+//!   Protected Securities and Related Derivatives using an Hjm Model",
 //!   J. Financial & Quantitative Analysis 38, DOI: 10.2307/4126763
 //! - Mercurio, F. (2005), "Pricing Inflation-Indexed Derivatives",
 //!   *Quantitative Finance* 5, DOI: 10.1080/14697680500148851

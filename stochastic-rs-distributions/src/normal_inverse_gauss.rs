@@ -1,7 +1,7 @@
 //! # Normal Inverse Gauss
 //!
 //! $$
-//! X\sim\mathrm{NIG}(\alpha,\beta,\delta,\mu),\ \psi(u)=\mu u+\delta\left(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+iu)^2}\right)
+//! X\sim\mathrm{Nig}(\alpha,\beta,\delta,\mu),\ \psi(u)=\mu u+\delta\left(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+iu)^2}\right)
 //! $$
 //!
 use std::cell::UnsafeCell;
@@ -57,9 +57,9 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
   ) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),
-      "NIG: alpha must be > |beta|"
+      "Nig: alpha must be > |beta|"
     );
-    assert!(delta > T::zero(), "NIG: delta must be positive");
+    assert!(delta > T::zero(), "Nig: delta must be positive");
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let ig_mean = delta / gamma;
     let ig_shape = delta * delta;

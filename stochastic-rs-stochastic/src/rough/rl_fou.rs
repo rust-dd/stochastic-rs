@@ -1,4 +1,4 @@
-//! # Fractional OU driven by Riemann–Liouville fBM (RFSV log-volatility)
+//! # Fractional Ou driven by Riemann–Liouville fBM (RFSV log-volatility)
 //!
 //! $$
 //! dX_t = \kappa(\mu - X_t)\,dt + \nu\,dW^H_t,\qquad H \in (0, 1/2)
@@ -6,7 +6,7 @@
 //!
 //! The RFSV log-volatility dynamics of Gatheral, Jaisson & Rosenbaum (2018).
 //! The noise is RL-fBM generated non-cumulatively via the Bilokon–Wong
-//! modified fast algorithm; the OU drift is integrated with the usual Euler
+//! modified fast algorithm; the Ou drift is integrated with the usual Euler
 //! rule on the resulting increments $\delta W^H_n = W^H_{t_{n+1}} - W^H_{t_n}$.
 //!
 //! Reference: Bayer C., Friz P., Gatheral J. *Pricing under rough volatility*.

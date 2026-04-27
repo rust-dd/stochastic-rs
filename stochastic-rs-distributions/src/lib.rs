@@ -731,7 +731,7 @@ mod tests {
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -3.0, 3.0);
       let trace = Scatter::new(xs.clone(), bins)
-        .name("NIG(2,0) - SIMD")
+        .name("Nig(2,0) - SIMD")
         .mode(Mode::Lines)
         .line(Line::new().shape(LineShape::Linear))
         .x_axis(&xa)
@@ -744,7 +744,7 @@ mod tests {
       let samples_rd: Vec<f32> = (0..sample_size).map(|_| rd.sample(&mut rng)).collect();
       let (_, bins_rd) = make_histogram(&samples_rd, 100, -3.0, 3.0);
       let trace_rd = Scatter::new(xs, bins_rd)
-        .name("NIG(2,0) - rand_distr")
+        .name("Nig(2,0) - rand_distr")
         .mode(Mode::Lines)
         .line(
           Line::new()

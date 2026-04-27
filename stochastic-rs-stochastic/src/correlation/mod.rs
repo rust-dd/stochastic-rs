@@ -9,7 +9,7 @@
 //! - [`TransformedOU`]: ρ_t = f(X_t) where dX = κ(μ−X)dt + σ dW
 //!   (Section 2.1; supports [`Transformation::Tanh`] and [`Transformation::Arctan`])
 //! - [`VanEmmerich`]: dρ = κ(μ−ρ)dt + σ√(1−ρ²) dW  (Eq. 15)
-//! - [`TengSCP`]: Modified OU in X-space, ρ = tanh(X)  (Eq. 19/20)
+//! - [`TengSCP`]: Modified Ou in X-space, ρ = tanh(X)  (Eq. 19/20)
 //!
 
 pub mod heston_stoch_corr;
@@ -29,7 +29,7 @@ use crate::traits::FloatExt;
 /// Construct a pair of Brownian increments whose instantaneous
 /// correlation follows a pre-computed path (Eq. 43 in Teng et al. 2016).
 ///
-/// For *constant* correlation, use [`crate::noise::cgns::CGNS`]
+/// For *constant* correlation, use [`crate::noise::cgns::Cgns`]
 /// instead — it is faster and generic over `T: FloatExt`.
 ///
 /// Given a correlation path ρ₀, ρ₁, …, ρ_{n−1} and two independent

@@ -1,7 +1,7 @@
 //! # Heston with Stochastic Correlation
 //!
 //! Characteristic-function based pricer for the Heston model where the
-//! price-variance correlation ρ_t follows a mean-reverting OU process
+//! price-variance correlation ρ_t follows a mean-reverting Ou process
 //! (Teng, Ehrhardt & Günther, 2016).
 //!
 //! $$
@@ -113,6 +113,41 @@ impl HestonStochCorrPricer {
     }
   }
 
+  #[allow(clippy::too_many_arguments)]
+  pub fn builder(
+    s: f64,
+    r: f64,
+    k: f64,
+    v0: f64,
+    kappa_v: f64,
+    theta_v: f64,
+    sigma_v: f64,
+    rho0: f64,
+    kappa_r: f64,
+    mu_r: f64,
+    sigma_r: f64,
+    rho2: f64,
+  ) -> HestonStochCorrPricerBuilder {
+    HestonStochCorrPricerBuilder {
+      s,
+      r,
+      q: None,
+      k,
+      v0,
+      kappa_v,
+      theta_v,
+      sigma_v,
+      rho0,
+      kappa_r,
+      mu_r,
+      sigma_r,
+      rho2,
+      tau: None,
+      eval: None,
+      expiration: None,
+    }
+  }
+
   /// Evaluate the characteristic function φ(u) via RK4 integration
   /// of the ODE system for (A, C, D).
   ///
@@ -213,6 +248,65 @@ impl HestonStochCorrPricer {
     let mut p = self.clone();
     p.k = k;
     p.price_call_carr_madan()
+  }
+}
+
+#[derive(Clone)]
+pub struct HestonStochCorrPricerBuilder {
+  s: f64,
+  r: f64,
+  q: Option<f64>,
+  k: f64,
+  v0: f64,
+  kappa_v: f64,
+  theta_v: f64,
+  sigma_v: f64,
+  rho0: f64,
+  kappa_r: f64,
+  mu_r: f64,
+  sigma_r: f64,
+  rho2: f64,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+}
+
+impl HestonStochCorrPricerBuilder {
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn build(self) -> HestonStochCorrPricer {
+    HestonStochCorrPricer {
+      s: self.s,
+      r: self.r,
+      q: self.q,
+      k: self.k,
+      v0: self.v0,
+      kappa_v: self.kappa_v,
+      theta_v: self.theta_v,
+      sigma_v: self.sigma_v,
+      rho0: self.rho0,
+      kappa_r: self.kappa_r,
+      mu_r: self.mu_r,
+      sigma_r: self.sigma_r,
+      rho2: self.rho2,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
+    }
   }
 }
 

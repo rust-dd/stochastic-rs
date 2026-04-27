@@ -15,15 +15,11 @@ use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// PascalCase alias for [`KOU`]. The all-caps form is kept for back-compat but
-/// new code should prefer `Kou`.
-pub type Kou<T, D, S = Unseeded> = KOU<T, D, S>;
-
 /// Kou process
 ///
 /// <https://www.columbia.edu/~sk75/MagSci02.pdf>
 ///
-pub struct KOU<T, D, S: SeedExt = Unseeded>
+pub struct Kou<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -39,7 +35,7 @@ where
   pub seed: S,
 }
 
-impl<T, D> KOU<T, D>
+impl<T, D> Kou<T, D>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -69,7 +65,7 @@ where
   }
 }
 
-impl<T, D> KOU<T, D, Deterministic>
+impl<T, D> Kou<T, D, Deterministic>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -99,7 +95,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for KOU<T, D, S>
+impl<T, D, S: SeedExt> ProcessExt<T> for Kou<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -143,16 +139,16 @@ where
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
-pub struct PyKOU {
-  inner_f32: Option<KOU<f32, crate::traits::CallableDist<f32>>>,
-  inner_f64: Option<KOU<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32: Option<KOU<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<KOU<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+pub struct PyKou {
+  inner_f32: Option<Kou<f32, crate::traits::CallableDist<f32>>>,
+  inner_f64: Option<Kou<f64, crate::traits::CallableDist<f64>>>,
+  seeded_f32: Option<Kou<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<Kou<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
-impl PyKOU {
+impl PyKou {
   #[new]
   #[pyo3(signature = (alpha, sigma, lambda_, theta, distribution, n, x0=None, t=None, seed=None, dtype=None))]
   fn new(
@@ -182,7 +178,7 @@ impl PyKOU {
         );
         match seed {
           Some(sd) => {
-            s.seeded_f32 = Some(KOU::seeded(
+            s.seeded_f32 = Some(Kou::seeded(
               alpha as f32,
               sigma as f32,
               lambda_ as f32,
@@ -195,7 +191,7 @@ impl PyKOU {
             ));
           }
           None => {
-            s.inner_f32 = Some(KOU::new(
+            s.inner_f32 = Some(Kou::new(
               alpha as f32,
               sigma as f32,
               lambda_ as f32,
@@ -215,12 +211,12 @@ impl PyKOU {
         );
         match seed {
           Some(sd) => {
-            s.seeded_f64 = Some(KOU::seeded(
+            s.seeded_f64 = Some(Kou::seeded(
               alpha, sigma, lambda_, theta, n, x0, t, cpoisson, sd,
             ));
           }
           None => {
-            s.inner_f64 = Some(KOU::new(alpha, sigma, lambda_, theta, n, x0, t, cpoisson));
+            s.inner_f64 = Some(Kou::new(alpha, sigma, lambda_, theta, n, x0, t, cpoisson));
           }
         }
       }

@@ -9,7 +9,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::diffusion::ou::OU;
+use crate::diffusion::ou::Ou;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -28,7 +28,7 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  ou: OU<T, S>,
+  ou: Ou<T, S>,
 }
 
 impl<T: FloatExt> Vasicek<T> {
@@ -41,7 +41,7 @@ impl<T: FloatExt> Vasicek<T> {
       x0,
       t,
       seed: Unseeded,
-      ou: OU::new(theta, mu, sigma, n, x0, t),
+      ou: Ou::new(theta, mu, sigma, n, x0, t),
     }
   }
 }
@@ -66,7 +66,7 @@ impl<T: FloatExt> Vasicek<T, Deterministic> {
       x0,
       t,
       seed: Deterministic(seed),
-      ou: OU {
+      ou: Ou {
         theta,
         mu,
         sigma,

@@ -10,27 +10,27 @@ use numpy::PyArray2;
 use numpy::ndarray::Array2;
 use pyo3::prelude::*;
 
-use super::FGN;
+use super::Fgn;
 use crate::traits::ProcessExt;
 
 #[pyclass]
-pub struct PyFGN {
-  inner: Option<FGN<f64>>,
-  seeded: Option<FGN<f64, crate::simd_rng::Deterministic>>,
+pub struct PyFgn {
+  inner: Option<Fgn<f64>>,
+  seeded: Option<Fgn<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[pymethods]
-impl PyFGN {
+impl PyFgn {
   #[new]
   #[pyo3(signature = (hurst, n, t=None, seed=None))]
   fn new(hurst: f64, n: usize, t: Option<f64>, seed: Option<u64>) -> Self {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(FGN::seeded(hurst, n, t, s)),
+        seeded: Some(Fgn::seeded(hurst, n, t, s)),
       },
       None => Self {
-        inner: Some(FGN::new(hurst, n, t)),
+        inner: Some(Fgn::new(hurst, n, t)),
         seeded: None,
       },
     }

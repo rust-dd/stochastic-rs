@@ -13,7 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// Waiting-time distribution for CTRW.
+/// Waiting-time distribution for Ctrw.
 pub enum CtrwWaitingLaw<T: FloatExt> {
   Exponential { rate: T },
   Gamma { shape: T, rate: T },
@@ -21,7 +21,7 @@ pub enum CtrwWaitingLaw<T: FloatExt> {
   PositiveStable { alpha: T, scale: T },
 }
 
-/// Jump-size distribution for CTRW.
+/// Jump-size distribution for Ctrw.
 pub enum CtrwJumpLaw<T: FloatExt> {
   Normal { mean: T, std: T },
   SymmetricStable { alpha: T, scale: T },
@@ -29,7 +29,7 @@ pub enum CtrwJumpLaw<T: FloatExt> {
 }
 
 /// Continuous-time random walk sampled on a fixed output grid.
-pub struct CTRW<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded> {
   pub waiting: CtrwWaitingLaw<T>,
   pub jumps: CtrwJumpLaw<T>,
   pub n: usize,
@@ -39,7 +39,7 @@ pub struct CTRW<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> CTRW<T> {
+impl<T: FloatExt> Ctrw<T> {
   pub fn new(
     waiting: CtrwWaitingLaw<T>,
     jumps: CtrwJumpLaw<T>,
@@ -58,7 +58,7 @@ impl<T: FloatExt> CTRW<T> {
   }
 }
 
-impl<T: FloatExt> CTRW<T, Deterministic> {
+impl<T: FloatExt> Ctrw<T, Deterministic> {
   pub fn seeded(
     waiting: CtrwWaitingLaw<T>,
     jumps: CtrwJumpLaw<T>,
@@ -78,7 +78,7 @@ impl<T: FloatExt> CTRW<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -95,7 +95,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
     enum WaitingSampler<T: FloatExt> {
       Exp(SimdExp<T>),
       Gamma(SimdGamma<T>),
-      IG(SimdInverseGauss<T>),
+      Ig(SimdInverseGauss<T>),
       PosStable { alpha: f64, scale: f64 },
     }
     enum JumpSampler<T: FloatExt> {
@@ -112,14 +112,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
       CtrwWaitingLaw::Exponential { rate } => {
         assert!(
           rate > T::zero(),
-          "CTRW Exponential waiting requires rate > 0"
+          "Ctrw Exponential waiting requires rate > 0"
         );
         WaitingSampler::Exp(SimdExp::from_seed_source(rate, &mut seed))
       }
       CtrwWaitingLaw::Gamma { shape, rate } => {
         assert!(
           shape > T::zero() && rate > T::zero(),
-          "CTRW Gamma waiting requires shape > 0 and rate > 0"
+          "Ctrw Gamma waiting requires shape > 0 and rate > 0"
         );
         WaitingSampler::Gamma(SimdGamma::from_seed_source(
           shape,
@@ -130,14 +130,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
         assert!(
           mu > T::zero() && lambda > T::zero(),
-          "CTRW IG waiting requires mu > 0 and lambda > 0"
+          "Ctrw Ig waiting requires mu > 0 and lambda > 0"
         );
-        WaitingSampler::IG(SimdInverseGauss::from_seed_source(mu, lambda, &mut seed))
+        WaitingSampler::Ig(SimdInverseGauss::from_seed_source(mu, lambda, &mut seed))
       }
       CtrwWaitingLaw::PositiveStable { alpha, scale } => {
         assert!(
           alpha > T::zero() && alpha < T::one() && scale > T::zero(),
-          "CTRW positive-stable waiting requires alpha in (0,1) and scale > 0"
+          "Ctrw positive-stable waiting requires alpha in (0,1) and scale > 0"
         );
         WaitingSampler::PosStable {
           alpha: alpha.to_f64().unwrap(),
@@ -148,13 +148,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
 
     let jump_sampler = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
-        assert!(std > T::zero(), "CTRW normal jumps require std > 0");
+        assert!(std > T::zero(), "Ctrw normal jumps require std > 0");
         JumpSampler::Normal(SimdNormal::from_seed_source(mean, std, &mut seed))
       }
       CtrwJumpLaw::SymmetricStable { alpha, scale } => {
         assert!(
           alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
-          "CTRW stable jumps require alpha in (0,2] and scale > 0"
+          "Ctrw stable jumps require alpha in (0,2] and scale > 0"
         );
         JumpSampler::Stable(SimdAlphaStable::from_seed_source(
           alpha,
@@ -165,7 +165,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
         ))
       }
       CtrwJumpLaw::Rademacher { scale } => {
-        assert!(scale > T::zero(), "CTRW rademacher jumps require scale > 0");
+        assert!(scale > T::zero(), "Ctrw rademacher jumps require scale > 0");
         JumpSampler::Rademacher(scale)
       }
     };
@@ -176,7 +176,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
     let mut next_event = match &waiting_sampler {
       WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
       WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
-      WaitingSampler::IG(d) => d.sample_fast().to_f64().unwrap(),
+      WaitingSampler::Ig(d) => d.sample_fast().to_f64().unwrap(),
       WaitingSampler::PosStable { alpha, scale } => {
         scale * sample_positive_stable(*alpha, &uniform)
       }
@@ -203,7 +203,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
         let wait = match &waiting_sampler {
           WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
           WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
-          WaitingSampler::IG(d) => d.sample_fast().to_f64().unwrap(),
+          WaitingSampler::Ig(d) => d.sample_fast().to_f64().unwrap(),
           WaitingSampler::PosStable { alpha, scale } => {
             scale * sample_positive_stable(*alpha, &uniform)
           }
@@ -224,14 +224,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CTRW<T, S> {
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
-pub struct PyCTRW {
-  inner_f32: Option<CTRW<f32>>,
-  inner_f64: Option<CTRW<f64>>,
+pub struct PyCtrw {
+  inner_f32: Option<Ctrw<f32>>,
+  inner_f64: Option<Ctrw<f64>>,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
-impl PyCTRW {
+impl PyCtrw {
   #[new]
   #[pyo3(signature = (
     waiting_law,
@@ -326,7 +326,7 @@ impl PyCTRW {
           },
         };
         Self {
-          inner_f32: Some(CTRW::new(
+          inner_f32: Some(Ctrw::new(
             waiting_f32,
             jumps_f32,
             n,
@@ -338,7 +338,7 @@ impl PyCTRW {
       }
       _ => Self {
         inner_f32: None,
-        inner_f64: Some(CTRW::new(waiting_f64, jumps_f64, n, x0, t)),
+        inner_f64: Some(Ctrw::new(waiting_f64, jumps_f64, n, x0, t)),
       },
     }
   }

@@ -1,6 +1,6 @@
-//! # DRR-GARCH
+//! # DRR-Garch
 //!
-//! Double Ridge Regression with GARCH(1,1) errors.
+//! Double Ridge Regression with Garch(1,1) errors.
 //!
 //! $$
 //! y_{t+1} = \alpha \cdot y_t + \beta' x_t + \varepsilon_{t+1}, \quad
@@ -8,7 +8,7 @@
 //! $$
 //!
 //! Two-step ridge regression for autoregressive models with many exogenous
-//! predictors, combined with GARCH(1,1) error modeling.
+//! predictors, combined with Garch(1,1) error modeling.
 //!
 //! Reference: Yi He (2024) "Ridge Regression Under Dense Factor Augmented
 //! Models", JASA 2024, Vol 119, No. 546.
@@ -16,17 +16,17 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-/// DRR-GARCH: Double Ridge Regression with GARCH(1,1) errors.
+/// DRR-Garch: Double Ridge Regression with Garch(1,1) errors.
 ///
 /// Two-step ridge regression for autoregressive models with many exogenous
-/// predictors, combined with GARCH(1,1) error modeling.
+/// predictors, combined with Garch(1,1) error modeling.
 #[derive(Debug, Clone)]
 pub struct DrrGarch {
   /// AR coefficient estimate
   pub alpha_ar: f64,
   /// Ridge regression coefficients for exogenous variables
   pub beta: Array1<f64>,
-  /// GARCH(1,1) parameters: (omega, alpha, beta)
+  /// Garch(1,1) parameters: (omega, alpha, beta)
   pub garch_params: (f64, f64, f64),
   /// Intercept
   pub intercept: f64,
@@ -36,7 +36,7 @@ pub struct DrrGarch {
   pub lambda2: f64,
 }
 
-/// Result of DRR-GARCH fitting.
+/// Result of DRR-Garch fitting.
 #[derive(Debug, Clone)]
 pub struct DrrGarchFit {
   /// Fitted model
@@ -213,7 +213,7 @@ pub fn cross_validate_lambda(
   (corrected, scores)
 }
 
-/// Fit GARCH(1,1) to residuals using method-of-moments estimation.
+/// Fit Garch(1,1) to residuals using method-of-moments estimation.
 ///
 /// Returns (omega, alpha1, beta1) where
 ///   sigma^2_t = omega + alpha1 * eps^2_{t-1} + beta1 * sigma^2_{t-1}
@@ -227,7 +227,7 @@ pub fn cross_validate_lambda(
 /// variance is correct.
 pub fn fit_garch11(residuals: &Array1<f64>) -> (f64, f64, f64) {
   let n = residuals.len();
-  assert!(n >= 4, "Need at least 4 residuals to fit GARCH(1,1)");
+  assert!(n >= 4, "Need at least 4 residuals to fit Garch(1,1)");
 
   // Compute mean and variance of residuals
   let mean_eps: f64 = residuals.iter().sum::<f64>() / n as f64;
@@ -235,7 +235,7 @@ pub fn fit_garch11(residuals: &Array1<f64>) -> (f64, f64, f64) {
   let gamma0: f64 = eps_centered.iter().map(|e| e * e).sum::<f64>() / n as f64;
 
   if gamma0 < 1e-15 {
-    // Residuals are essentially zero -- return trivial GARCH
+    // Residuals are essentially zero -- return trivial Garch
     return (1e-10, 0.01, 0.01);
   }
 
@@ -280,8 +280,8 @@ pub fn fit_garch11(residuals: &Array1<f64>) -> (f64, f64, f64) {
     0.0
   };
 
-  // Method-of-moments estimator for GARCH(1,1):
-  // For GARCH(1,1), the ACF of squared residuals satisfies:
+  // Method-of-moments estimator for Garch(1,1):
+  // For Garch(1,1), the ACF of squared residuals satisfies:
   //   rho_1 = alpha + beta * rho_1  =>  not quite, the exact relation is
   //   rho_1 = alpha * kappa + (alpha + beta) * rho_1... but this gets complex.
   //
@@ -320,7 +320,7 @@ pub fn fit_garch11(residuals: &Array1<f64>) -> (f64, f64, f64) {
   (omega, alpha1, beta1)
 }
 
-/// Fit the DRR-GARCH model.
+/// Fit the DRR-Garch model.
 ///
 /// # Arguments
 /// * `y` - Response time series of length n.
@@ -333,7 +333,7 @@ pub fn fit_garch11(residuals: &Array1<f64>) -> (f64, f64, f64) {
 ///    penalty lambda1 to estimate the AR coefficient alpha.
 /// 2. **Step 2 (Main Ridge with CV):** Regress residuals r_t = y_{t+1} - alpha*y_t
 ///    on x_t with CV-selected lambda2.
-/// 3. **Step 3:** Fit GARCH(1,1) to the final residuals.
+/// 3. **Step 3:** Fit Garch(1,1) to the final residuals.
 pub fn fit_drr_garch(
   y: &Array1<f64>,
   x: &Array2<f64>,
@@ -389,7 +389,7 @@ pub fn fit_drr_garch(
   // Final ridge fit with selected lambda2
   let beta_hat = ridge_solve(&x_lag, &residuals_step1, lam2);
 
-  // ---- Step 3: Compute final residuals and fit GARCH(1,1) ----
+  // ---- Step 3: Compute final residuals and fit Garch(1,1) ----
   let predicted = x_lag.dot(&beta_hat);
   let final_residuals = &residuals_step1 - &predicted;
 
@@ -560,7 +560,7 @@ mod tests {
 
   #[test]
   fn garch_fit_recovers_reasonable_params() {
-    // Generate GARCH(1,1) data
+    // Generate Garch(1,1) data
     let n = 1000;
     let omega = 0.05;
     let alpha = 0.08;

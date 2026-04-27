@@ -4,7 +4,7 @@
 //! \mathbb E[e^{-\lambda S_t}] = e^{-t\phi(\lambda)},\qquad \lambda \ge 0
 //! $$
 //!
-//! Collection of monotone Levy-process style drivers and a CTRW helper.
+//! Collection of monotone Levy-process style drivers and a Ctrw helper.
 
 pub mod alpha_stable;
 pub mod ctrw;
@@ -17,7 +17,7 @@ pub mod tempered_stable;
 use std::f64::consts::PI;
 
 pub use alpha_stable::AlphaStableSubordinator;
-pub use ctrw::CTRW;
+pub use ctrw::Ctrw;
 pub use ctrw::CtrwJumpLaw;
 pub use ctrw::CtrwWaitingLaw;
 pub use gamma_subordinator::GammaSubordinator;
@@ -45,7 +45,7 @@ pub(crate) fn sample_positive_stable(alpha: f64, uniform: &SimdUniform<f64>) -> 
 #[cfg(test)]
 mod tests {
   use super::AlphaStableSubordinator;
-  use super::CTRW;
+  use super::Ctrw;
   use super::CtrwJumpLaw;
   use super::CtrwWaitingLaw;
   use super::GammaSubordinator;
@@ -100,7 +100,7 @@ mod tests {
 
   #[test]
   fn ctrw_path_is_finite() {
-    let p = CTRW::new(
+    let p = Ctrw::new(
       CtrwWaitingLaw::Exponential { rate: 2.0_f64 },
       CtrwJumpLaw::Normal {
         mean: 0.0,

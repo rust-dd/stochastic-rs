@@ -13,7 +13,7 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct CGNS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded> {
   /// Instantaneous correlation parameter.
   pub rho: T,
   /// Number of discrete simulation points (or samples).
@@ -24,7 +24,7 @@ pub struct CGNS<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> CGNS<T> {
+impl<T: FloatExt> Cgns<T> {
   pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
@@ -40,7 +40,7 @@ impl<T: FloatExt> CGNS<T> {
   }
 }
 
-impl<T: FloatExt> CGNS<T, Deterministic> {
+impl<T: FloatExt> Cgns<T, Deterministic> {
   pub fn seeded(rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
@@ -56,8 +56,8 @@ impl<T: FloatExt> CGNS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> CGNS<T, S> {
-  /// Sample with an explicit seed, used by callers like CBMS.
+impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
+  /// Sample with an explicit seed, used by callers like Cbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(Deterministic(seed))
   }
@@ -72,8 +72,8 @@ impl<T: FloatExt, S: SeedExt> CGNS<T, S> {
     }
 
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(self.n)).sqrt();
-    let gn1_slice = gn1.as_slice_mut().expect("CGNS noise 1 must be contiguous");
-    let z_slice = z.as_slice_mut().expect("CGNS noise 2 must be contiguous");
+    let gn1_slice = gn1.as_slice_mut().expect("Cgns noise 1 must be contiguous");
+    let z_slice = z.as_slice_mut().expect("Cgns noise 2 must be contiguous");
     let n1 = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
       T::zero(),
       sqrt_dt,
@@ -101,7 +101,7 @@ impl<T: FloatExt, S: SeedExt> CGNS<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGNS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgns<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
@@ -109,7 +109,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CGNS<T, S> {
   }
 }
 
-py_process_2x1d!(PyCGNS, CGNS,
+py_process_2x1d!(PyCgns, Cgns,
   sig: (rho, n, t=None, seed=None, dtype=None),
   params: (rho: f64, n: usize, t: Option<f64>)
 );

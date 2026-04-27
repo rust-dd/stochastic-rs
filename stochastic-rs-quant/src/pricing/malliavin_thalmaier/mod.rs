@@ -23,7 +23,7 @@
 //! bias `O(h ln 1/h)` and variance `O(ln 1/h)` for `d = 2`.
 //!
 //! Works for any Itô diffusion satisfying the Hörmander condition: Heston,
-//! SABR, 3/2, Stein–Stein, rough Bergomi, CEV, Bates, etc.
+//! Sabr, 3/2, Stein–Stein, rough Bergomi, Cev, Bates, etc.
 //!
 //! # References
 //!

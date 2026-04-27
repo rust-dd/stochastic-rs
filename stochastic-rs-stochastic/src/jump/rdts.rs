@@ -1,4 +1,4 @@
-//! # RDTS
+//! # Rdts
 //!
 //! $$
 //! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx\quad(\text{rapidly decaying tempered stable})
@@ -16,9 +16,9 @@ use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-/// RDTS process (Rapidly Decreasing Tempered Stable process)
+/// Rdts process (Rapidly Decreasing Tempered Stable process)
 /// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
-pub struct RDTS<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -36,8 +36,8 @@ pub struct RDTS<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> RDTS<T> {
-  /// Create a new RDTS process
+impl<T: FloatExt> Rdts<T> {
+  /// Create a new Rdts process
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -67,7 +67,7 @@ impl<T: FloatExt> RDTS<T> {
   }
 }
 
-impl<T: FloatExt> RDTS<T, Deterministic> {
+impl<T: FloatExt> Rdts<T, Deterministic> {
   pub fn seeded(
     lambda_plus: T,
     lambda_minus: T,
@@ -98,7 +98,7 @@ impl<T: FloatExt> RDTS<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RDTS<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Rdts<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -146,7 +146,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RDTS<T, S> {
       let numerator = self.alpha * P[j];
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
 
-      // RDTS: term2 = 0.5 * sqrt(E_j) * U_j^{1/alpha} / |V_j|
+      // Rdts: term2 = 0.5 * sqrt(E_j) * U_j^{1/alpha} / |V_j|
       let term2 =
         T::from_f64_fast(0.5) * E[j].powf(T::from_f64_fast(0.5)) * U[j].powf(T::one() / self.alpha)
           / v_j.abs();
@@ -185,7 +185,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RDTS<T, S> {
   }
 }
 
-py_process_1d!(PyRDTS, RDTS,
+py_process_1d!(PyRdts, Rdts,
   sig: (lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
   params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
 );

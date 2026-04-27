@@ -105,6 +105,55 @@ impl ImpliedVolSurface {
     }
   }
 
+  /// Build a surface directly from a pre-computed implied-vol grid.
+  ///
+  /// Useful when the IVs come from an upstream source that already inverted
+  /// (or never needed to invert) Black-Scholes — for example AI surrogates
+  /// such as `stochastic_rs_ai::volatility::HestonNn::predict_surface`,
+  /// which output IVs directly in the standard `(N_T, N_K)` layout.
+  ///
+  /// # Arguments
+  /// * `strikes` — strike prices in ascending order, length `N_K`
+  /// * `maturities` — expiries in years, length `N_T`
+  /// * `forwards` — forward prices for each maturity, length `N_T`
+  /// * `ivs` — implied volatility grid of shape `(N_T, N_K)`
+  #[must_use]
+  pub fn from_iv_grid(
+    strikes: Vec<f64>,
+    maturities: Vec<f64>,
+    forwards: Vec<f64>,
+    ivs: Array2<f64>,
+  ) -> Self {
+    let nt = maturities.len();
+    let nk = strikes.len();
+    assert_eq!(ivs.dim(), (nt, nk), "ivs shape must be (N_T, N_K)");
+    assert_eq!(forwards.len(), nt, "forwards length must match maturities");
+
+    let mut total_variance = Array2::<f64>::from_elem((nt, nk), f64::NAN);
+    let mut log_moneyness = Array2::<f64>::zeros((nt, nk));
+
+    for j in 0..nt {
+      let f = forwards[j];
+      let t = maturities[j];
+      for i in 0..nk {
+        log_moneyness[[j, i]] = (strikes[i] / f).ln();
+        let iv = ivs[[j, i]];
+        if iv.is_finite() && iv > 0.0 {
+          total_variance[[j, i]] = iv * iv * t;
+        }
+      }
+    }
+
+    Self {
+      strikes,
+      maturities,
+      forwards,
+      ivs,
+      total_variance,
+      log_moneyness,
+    }
+  }
+
   /// Build from a flat list of [`OptionQuote`]s.
   ///
   /// Quotes are sorted and grouped by maturity, then by strike.

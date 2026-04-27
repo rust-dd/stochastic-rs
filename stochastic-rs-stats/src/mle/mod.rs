@@ -102,14 +102,14 @@ pub trait DiffusionModel: Send + Sync {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use stochastic_rs_stochastic::diffusion::cir::CIR;
-  use stochastic_rs_stochastic::diffusion::gbm::GBM;
-  use stochastic_rs_stochastic::diffusion::ou::OU;
+  use stochastic_rs_stochastic::diffusion::cir::Cir;
+  use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+  use stochastic_rs_stochastic::diffusion::ou::Ou;
   use crate::traits::ProcessExt;
 
   #[test]
   fn euler_density_positive() {
-    let ou = OU::seeded(1.5, 0.5, 0.2, 100, None, Some(1.0), 0);
+    let ou = Ou::seeded(1.5, 0.5, 0.2, 100, None, Some(1.0), 0);
     let d = DensityApprox::Euler.density(&ou, 0.3, 0.35, 0.0, 0.01);
     assert!(d > 0.0);
     assert!(d.is_finite());
@@ -117,7 +117,7 @@ mod tests {
 
   #[test]
   fn all_densities_positive_for_ou() {
-    let ou = OU::seeded(1.5, 0.5, 0.2, 100, None, Some(1.0), 0);
+    let ou = Ou::seeded(1.5, 0.5, 0.2, 100, None, Some(1.0), 0);
     let densities = [
       DensityApprox::Exact,
       DensityApprox::Euler,
@@ -139,11 +139,11 @@ mod tests {
 
   #[test]
   fn mle_gbm_via_process_ext() {
-    let gbm = GBM::seeded(0.05, 0.2, 2501, Some(100.0), Some(10.0), 99);
+    let gbm = Gbm::seeded(0.05, 0.2, 2501, Some(100.0), Some(10.0), 99);
     let path = gbm.sample();
     let dt = 10.0 / 2500.0;
 
-    let mut gbm_fit = GBM::seeded(0.0, 0.5, 100, Some(100.0), Some(1.0), 0);
+    let mut gbm_fit = Gbm::seeded(0.0, 0.5, 100, Some(100.0), Some(1.0), 0);
     let result = fit_mle(&mut gbm_fit, &path, dt, DensityApprox::Euler, None);
 
     assert!(
@@ -155,11 +155,11 @@ mod tests {
 
   #[test]
   fn mle_ou_euler_via_process_ext() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 123);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 123);
     let path = ou.sample();
     let dt = 10.0 / 2500.0;
 
-    let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+    let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
     let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Euler, None);
 
     assert!(
@@ -179,11 +179,11 @@ mod tests {
 
   #[test]
   fn mle_ou_exact_via_process_ext() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 77);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 77);
     let path = ou.sample();
     let dt = 10.0 / 2500.0;
 
-    let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+    let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
     let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Exact, None);
 
     assert!(
@@ -200,11 +200,11 @@ mod tests {
 
   #[test]
   fn mle_cir_euler_via_process_ext() {
-    let cir = CIR::seeded(2.0, 0.04, 0.1, 5001, Some(0.04), Some(20.0), None, 55);
+    let cir = Cir::seeded(2.0, 0.04, 0.1, 5001, Some(0.04), Some(20.0), None, 55);
     let path = cir.sample();
     let dt = 20.0 / 5000.0;
 
-    let mut cir_fit = CIR::seeded(1.0, 0.05, 0.2, 100, Some(0.04), Some(1.0), None, 0);
+    let mut cir_fit = Cir::seeded(1.0, 0.05, 0.2, 100, Some(0.04), Some(1.0), None, 0);
     let result = fit_mle(&mut cir_fit, &path, dt, DensityApprox::Euler, None);
 
     assert!(
@@ -217,11 +217,11 @@ mod tests {
 
   #[test]
   fn mle_ou_shoji_ozaki_via_process_ext() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 200);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 200);
     let path = ou.sample();
     let dt = 10.0 / 2500.0;
 
-    let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+    let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
     let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::ShojiOzaki, None);
 
     assert!(
@@ -238,11 +238,11 @@ mod tests {
 
   #[test]
   fn mle_ou_kessler_via_process_ext() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 300);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 2501, Some(1.0), Some(10.0), 300);
     let path = ou.sample();
     let dt = 10.0 / 2500.0;
 
-    let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+    let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
     let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Kessler, None);
 
     assert!(
@@ -254,79 +254,79 @@ mod tests {
 
   #[test]
   fn density_cir_euler_reference() {
-    let cir = CIR::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
+    let cir = Cir::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
     let dt = 1.0 / 250.0;
     let d = DensityApprox::Euler.density(&cir, 0.4, 0.41, 0.0, dt);
     // reference value: 18.715933204468332
     assert!(
       (d - 18.715933204468332).abs() < 1e-8,
-      "CIR Euler: got {d}, expected 18.715933204468332"
+      "Cir Euler: got {d}, expected 18.715933204468332"
     );
   }
 
   #[test]
   fn density_cir_kessler_reference() {
-    let cir = CIR::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
+    let cir = Cir::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
     let dt = 1.0 / 250.0;
     let d = DensityApprox::Kessler.density(&cir, 0.4, 0.41, 0.0, dt);
     // reference value: 18.734374214427948
     assert!(
       (d - 18.734374214427948).abs() < 1e-6,
-      "CIR Kessler: got {d}, expected 18.734374214427948"
+      "Cir Kessler: got {d}, expected 18.734374214427948"
     );
   }
 
   #[test]
   fn density_ou_exact_reference() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::Exact.density(&ou, 0.5, 0.55, 0.0, 0.01);
     // reference value: 5.399419276877125
     assert!(
       (d - 5.399419276877125).abs() < 1e-8,
-      "OU Exact: got {d}, expected 5.399419276877125"
+      "Ou Exact: got {d}, expected 5.399419276877125"
     );
   }
 
   #[test]
   fn density_ou_euler_reference() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::Euler.density(&ou, 0.5, 0.55, 0.0, 0.01);
     // reference value: 5.467002489199778
     assert!(
       (d - 5.467002489199778).abs() < 1e-8,
-      "OU Euler: got {d}, expected 5.467002489199778"
+      "Ou Euler: got {d}, expected 5.467002489199778"
     );
   }
 
   #[test]
   fn density_ou_shoji_ozaki_reference() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::ShojiOzaki.density(&ou, 0.5, 0.55, 0.0, 0.01);
     // reference value: 5.399419278094993
     assert!(
       (d - 5.399419278094993).abs() < 1e-6,
-      "OU ShojiOzaki: got {d}, expected 5.399419278094993"
+      "Ou ShojiOzaki: got {d}, expected 5.399419278094993"
     );
   }
 
   #[test]
   fn density_ou_kessler_reference() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
     let d = DensityApprox::Kessler.density(&ou, 0.5, 0.55, 0.0, 0.01);
     // reference value: 5.447446973872427
     assert!(
       (d - 5.447446973872427).abs() < 1e-6,
-      "OU Kessler: got {d}, expected 5.447446973872427"
+      "Ou Kessler: got {d}, expected 5.447446973872427"
     );
   }
 
   #[test]
   fn cir_kessler_mle() {
-    let cir = CIR::seeded(3.0, 0.3, 0.2, 1251, Some(0.4), Some(5.0), None, 42);
+    let cir = Cir::seeded(3.0, 0.3, 0.2, 1251, Some(0.4), Some(5.0), None, 42);
     let path = cir.sample();
     let dt = 5.0 / 1250.0;
 
-    let mut cir_fit = CIR::seeded(1.0, 0.5, 0.3, 100, Some(0.4), Some(1.0), None, 0);
+    let mut cir_fit = Cir::seeded(1.0, 0.5, 0.3, 100, Some(0.4), Some(1.0), None, 0);
     let result = fit_mle(&mut cir_fit, &path, dt, DensityApprox::Kessler, None);
 
     assert!(
@@ -351,7 +351,7 @@ mod tests {
 
   #[test]
   fn ou_all_densities_agree() {
-    let ou = OU::seeded(2.0, 1.0, 0.3, 5001, Some(1.0), Some(10.0), 77);
+    let ou = Ou::seeded(2.0, 1.0, 0.3, 5001, Some(1.0), Some(10.0), 77);
     let path = ou.sample();
     let dt = 10.0 / 5000.0;
 
@@ -365,7 +365,7 @@ mod tests {
 
     let mut results = Vec::new();
     for (name, dens) in &densities {
-      let mut ou_fit = OU::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+      let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
       let result = fit_mle(&mut ou_fit, &path, dt, *dens, None);
       results.push((*name, result));
     }

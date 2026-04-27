@@ -1,7 +1,7 @@
-//! # NIG
+//! # Nig
 //!
 //! $$
-//! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{IG}(\delta t,\gamma)
+//! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{Ig}(\delta t,\gamma)
 //! $$
 //!
 use ndarray::Array1;
@@ -14,7 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct NIG<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Nig<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run target level / model location parameter.
   pub theta: T,
   /// Diffusion / noise scale parameter.
@@ -30,7 +30,7 @@ pub struct NIG<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> NIG<T> {
+impl<T: FloatExt> Nig<T> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
@@ -45,7 +45,7 @@ impl<T: FloatExt> NIG<T> {
   }
 }
 
-impl<T: FloatExt> NIG<T, Deterministic> {
+impl<T: FloatExt> Nig<T, Deterministic> {
   pub fn seeded(
     theta: T,
     sigma: T,
@@ -68,14 +68,14 @@ impl<T: FloatExt> NIG<T, Deterministic> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> NIG<T, S> {
+impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for NIG<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Nig<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
@@ -89,7 +89,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for NIG<T, S> {
     }
 
     let dt = self.dt();
-    // For NIG: G_dt ~ IG(mean=dt, shape=dt^2/kappa).
+    // For Nig: G_dt ~ Ig(mean=dt, shape=dt^2/kappa).
     let shape = dt * dt / self.kappa;
     let mut seed = self.seed;
     let ig_dist = SimdInverseGauss::from_seed_source(dt, shape, &mut seed);
@@ -114,14 +114,14 @@ mod tests {
 
   #[test]
   fn n_eq_1_keeps_initial_value() {
-    let p = NIG::new(0.1_f64, 0.2, 0.3, 1, Some(4.0), Some(1.0));
+    let p = Nig::new(0.1_f64, 0.2, 0.3, 1, Some(4.0), Some(1.0));
     let x = p.sample();
     assert_eq!(x.len(), 1);
     assert_eq!(x[0], 4.0);
   }
 }
 
-py_process_1d!(PyNIG, NIG,
+py_process_1d!(PyNig, Nig,
   sig: (theta, sigma, kappa, n, x0=None, t=None, seed=None, dtype=None),
   params: (theta: f64, sigma: f64, kappa: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );

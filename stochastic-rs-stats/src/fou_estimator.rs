@@ -11,8 +11,46 @@ use ndarray::array;
 use ndarray::s;
 use statrs::function::gamma::gamma;
 
-use stochastic_rs_stochastic::noise::fgn::FGN;
+use stochastic_rs_stochastic::noise::fgn::Fgn;
 use crate::traits::ProcessExt;
+
+/// Structured result of an fOU parameter estimator.
+///
+/// The four `FOUParameterEstimation*::estimate_parameters` versions all
+/// return a `(hurst, sigma, mu, theta)` tuple; this struct wraps that with
+/// named fields so calibrator seed-passing is unambiguous and shows up in
+/// debug output / serialisation cleanly.
+///
+/// Build with [`From<(f64, f64, f64, f64)>`] — the estimator output tuple
+/// is converted positionally as `(hurst, sigma, mu, theta)`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FouEstimateResult {
+  /// Hurst exponent $H \in (0, 1)$.
+  pub hurst: f64,
+  /// Diffusion / noise scale $\sigma$.
+  pub sigma: f64,
+  /// Long-run mean $\mu$.
+  pub mu: f64,
+  /// Mean-reversion speed $\theta$.
+  pub theta: f64,
+}
+
+impl From<(f64, f64, f64, f64)> for FouEstimateResult {
+  fn from((hurst, sigma, mu, theta): (f64, f64, f64, f64)) -> Self {
+    Self {
+      hurst,
+      sigma,
+      mu,
+      theta,
+    }
+  }
+}
+
+impl From<FouEstimateResult> for (f64, f64, f64, f64) {
+  fn from(r: FouEstimateResult) -> Self {
+    (r.hurst, r.sigma, r.mu, r.theta)
+  }
+}
 
 // Version 1: FOUParameterEstimationV1 with linear filter methods
 pub struct FOUParameterEstimationV1 {
@@ -377,7 +415,7 @@ impl FOUParameterEstimationV3 {
     let fgn_length = self.series_length * M;
 
     // Generate fGN sample of length fgn_length
-    let fgn = FGN::new(self.hurst, fgn_length - 1, Some(self.T));
+    let fgn = Fgn::new(self.hurst, fgn_length - 1, Some(self.T));
     let fgn_sample = fgn.sample();
 
     // Initialize full_fou array
@@ -673,7 +711,7 @@ impl FOUParameterEstimationV4 {
 #[cfg(test)]
 mod fou_v4_tests {
   use super::FOUParameterEstimationV4;
-  use stochastic_rs_stochastic::diffusion::fou::FOU;
+  use stochastic_rs_stochastic::diffusion::fou::Fou;
   use crate::traits::ProcessExt;
 
   #[test]
@@ -681,7 +719,7 @@ mod fou_v4_tests {
     let n = 1024usize;
     let h_true = 0.7;
     let sigma_true = 0.35;
-    let path = FOU::<f64>::new(h_true, 1.5, 0.0, sigma_true, n, Some(0.0), Some(1.0)).sample();
+    let path = Fou::<f64>::new(h_true, 1.5, 0.0, sigma_true, n, Some(0.0), Some(1.0)).sample();
 
     let mut est = FOUParameterEstimationV4::new(path, Some(1.0 / (n - 1) as f64), 2, 2.0);
     est.set_hurst(h_true);
@@ -700,7 +738,7 @@ mod fou_v4_tests {
   #[test]
   fn fou_v4_estimated_hurst_in_range_when_not_fixed() {
     let n = 768usize;
-    let path = FOU::<f64>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0)).sample();
+    let path = Fou::<f64>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0)).sample();
     let mut est = FOUParameterEstimationV4::new(path, Some(1.0 / (n - 1) as f64), 2, 2.0);
 
     let (h, sigma, _mu, theta) = est.estimate_parameters();

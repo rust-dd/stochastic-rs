@@ -9,7 +9,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use crate::diffusion::fou::FOU;
+use crate::diffusion::fou::Fou;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -31,7 +31,7 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
   /// Model parameter controlling process dynamics.
-  pub fou: FOU<T, S>,
+  pub fou: Fou<T, S>,
 }
 
 impl<T: FloatExt> FVasicek<T> {
@@ -45,7 +45,7 @@ impl<T: FloatExt> FVasicek<T> {
       x0,
       t,
       seed: Unseeded,
-      fou: FOU::new(hurst, theta, mu, sigma, n, x0, t),
+      fou: Fou::new(hurst, theta, mu, sigma, n, x0, t),
     }
   }
 }
@@ -72,7 +72,7 @@ impl<T: FloatExt> FVasicek<T, Deterministic> {
       x0,
       t,
       seed: Deterministic(seed),
-      fou: FOU::seeded(hurst, theta, mu, sigma, n, x0, t, child.0),
+      fou: Fou::seeded(hurst, theta, mu, sigma, n, x0, t, child.0),
     }
   }
 }
