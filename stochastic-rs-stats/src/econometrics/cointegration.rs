@@ -62,8 +62,7 @@ pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrange
     residuals[i] = y[i] - alpha - beta * x[i];
   }
   let cfg = ADFConfig::default();
-  let r_slice: Vec<f64> = residuals.iter().copied().collect();
-  let adf = adf_test(&r_slice, cfg);
+  let adf = adf_test(residuals.view(), cfg);
   let crit = phillips_ouliaris_critical_values_two_var();
   let reject = adf.statistic < crit.1;
   EngleGrangerResult {
