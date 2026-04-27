@@ -24,6 +24,7 @@
 //! Reference: Ballabio, "Implementing QuantLib", Leanpub (2020) — design of
 //! the Observable/Observer/Handle pattern used here.
 
+pub mod book;
 pub mod fra;
 pub mod handle;
 pub mod indices;
@@ -32,6 +33,8 @@ pub mod observable;
 pub mod quote;
 pub mod rate_helper;
 
+pub use book::half_spread_quote;
+pub use book::mid_quote;
 pub use fra::ForwardRateAgreement;
 pub use fra::FraPosition;
 pub use fra::FraValuation;

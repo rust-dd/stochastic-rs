@@ -226,7 +226,7 @@ pub fn nmle_cekf_heston(s: Array1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLE
 
   for i in 0..cfg.max_iters {
     let (v_hat, _p_hat) = cekf_pass(&s, params, &cfg);
-    let nmle = nmle_heston_with_delta(s.clone(), v_hat.clone(), cfg.r, cfg.delta);
+    let nmle = nmle_heston_with_delta(s.view(), v_hat.view(), cfg.r, cfg.delta);
     let updated = HestonNMLECEKFParams::from(nmle).projected();
     let blended = blend_params(params, updated, cfg.param_damping).projected();
 
@@ -247,7 +247,7 @@ pub fn nmle_cekf_heston(s: Array1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLE
 
   // Keep output state trajectory consistent with the reported final parameters.
   let (v_final, p_final) = cekf_pass(&s, params, &cfg);
-  let mle_final = nmle_heston_with_delta(s, v_final.clone(), cfg.r, cfg.delta);
+  let mle_final = nmle_heston_with_delta(s.view(), v_final.view(), cfg.r, cfg.delta);
   let p = HestonNMLECEKFParams::from(mle_final).projected();
 
   HestonNMLECEKFResult {

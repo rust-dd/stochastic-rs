@@ -98,6 +98,25 @@ pub trait ToModel {
   fn to_model(&self, r: f64, q: f64) -> Self::Model;
 }
 
+/// Bridge from a short-rate calibration result to a concrete tree / lattice model.
+///
+/// Parallel to [`ToModel`], but for the rates pipeline. Short-rate models
+/// (Hull-White, Black-Karasinski, G2++) consume an initial yield curve and a
+/// drift offset (`theta`), not spot/strike, so they cannot implement
+/// [`ModelPricer`] directly. Instead, calibrators (e.g. swaption / cap /
+/// floor calibrators) implement this trait to produce a lattice model that
+/// the [`crate::lattice`] instruments and bond / swaption pricers consume.
+pub trait ToShortRateModel {
+  /// Concrete short-rate model produced by this calibration result.
+  type Model;
+  /// Build the model from the calibration result.
+  ///
+  /// `initial_rate` is the time-0 short rate observed from the curve;
+  /// `theta` is the drift function offset (often derived from the curve and
+  /// passed in by the caller).
+  fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model;
+}
+
 /// Trait for models that can price European options at arbitrary (K, T) points.
 ///
 /// Unlike [`PricerExt`], which bundles market data and strike into the pricer,

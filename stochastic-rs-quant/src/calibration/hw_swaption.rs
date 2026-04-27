@@ -77,6 +77,13 @@ impl HullWhiteCalibrationResult {
   }
 }
 
+impl crate::traits::ToShortRateModel for HullWhiteCalibrationResult {
+  type Model = crate::lattice::short_rate::HullWhiteTreeModel<f64>;
+  fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model {
+    HullWhiteCalibrationResult::to_short_rate_model(self, initial_rate, theta)
+  }
+}
+
 impl crate::traits::CalibrationResult for HullWhiteCalibrationResult {
   fn rmse(&self) -> f64 {
     self.rmse

@@ -23,7 +23,7 @@ use ndarray::ArrayView1;
 /// * `data`  — Raw sample (e.g. log-returns) as `ArrayView1`.
 /// * `mean`  — Pre-computed sample mean.
 /// * `var`   — Pre-computed sample variance (> 0).
-pub fn estimate_tail_exponent(data: &ArrayView1<f64>, mean: f64, var: f64) -> f64 {
+pub fn estimate_tail_exponent(data: ArrayView1<f64>, mean: f64, var: f64) -> f64 {
   if data.len() < 50 {
     return tail_exponent_from_kurtosis(data, mean, var);
   }
@@ -67,7 +67,7 @@ pub fn estimate_tail_exponent(data: &ArrayView1<f64>, mean: f64, var: f64) -> f6
 }
 
 /// Kurtosis-based fallback for the tail exponent.
-fn tail_exponent_from_kurtosis(data: &ArrayView1<f64>, mean: f64, var: f64) -> f64 {
+fn tail_exponent_from_kurtosis(data: ArrayView1<f64>, mean: f64, var: f64) -> f64 {
   if data.len() < 4 || var < 1e-15 {
     return 3.0;
   }
@@ -91,7 +91,7 @@ pub fn tail_exponent_to_cgmy_alpha(xi: f64) -> f64 {
 /// Estimate Cgmy α directly from sample data.
 ///
 /// Combines [`estimate_tail_exponent`] and [`tail_exponent_to_cgmy_alpha`].
-pub fn estimate_cgmy_alpha(data: &ArrayView1<f64>, mean: f64, var: f64) -> f64 {
+pub fn estimate_cgmy_alpha(data: ArrayView1<f64>, mean: f64, var: f64) -> f64 {
   tail_exponent_to_cgmy_alpha(estimate_tail_exponent(data, mean, var))
 }
 
@@ -108,7 +108,7 @@ pub fn estimate_cgmy_alpha(data: &ArrayView1<f64>, mean: f64, var: f64) -> f64 {
 ///
 /// # Returns
 /// (λ₊, λ₋)
-pub fn estimate_cgmy_lambdas(data: &ArrayView1<f64>, mean: f64, sigma: f64) -> (f64, f64) {
+pub fn estimate_cgmy_lambdas(data: ArrayView1<f64>, mean: f64, sigma: f64) -> (f64, f64) {
   if data.len() < 30 {
     let base = (1.0 / sigma).max(1.0);
     return (base, base);
@@ -171,7 +171,7 @@ mod tests {
 
     let m: f64 = data.sum() / data.len() as f64;
     let v: f64 = data.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (data.len() - 1) as f64;
-    let xi = estimate_tail_exponent(&data.view(), m, v);
+    let xi = estimate_tail_exponent(data.view(), m, v);
     assert!(
       xi > 2.0,
       "Expected high tail exponent for Gaussian, got {xi}"
@@ -183,7 +183,7 @@ mod tests {
     let data = Array1::from_vec(vec![0.01, -0.02, 0.015, -0.005, 0.03, -0.01, 0.005, -0.025]);
     let m = data.sum() / data.len() as f64;
     let v = data.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (data.len() - 1) as f64;
-    let alpha = estimate_cgmy_alpha(&data.view(), m, v);
+    let alpha = estimate_cgmy_alpha(data.view(), m, v);
     assert!(alpha >= 0.1 && alpha <= 1.9, "alpha out of range: {alpha}");
   }
 
@@ -193,7 +193,7 @@ mod tests {
     let m = data.sum() / data.len() as f64;
     let v = data.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (data.len() - 1) as f64;
     let sigma = v.sqrt();
-    let (lp, lm) = estimate_cgmy_lambdas(&data.view(), m, sigma);
+    let (lp, lm) = estimate_cgmy_lambdas(data.view(), m, sigma);
     assert!(
       lp > 0.0 && lm > 0.0,
       "lambdas must be positive: ({lp}, {lm})"

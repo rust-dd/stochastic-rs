@@ -157,11 +157,11 @@ pub fn estimate_hurst(closes: ndarray::ArrayView1<f64>) -> f64 {
         .filter(|&r| r.is_finite() && r > 0.0)
         .collect(),
     );
-    return hurst_from_signal(&abs_rets.view());
+    return hurst_from_signal(abs_rets.view());
   }
 
   let vol_arr = Array1::from_vec(vol_proxy);
-  let h_rv = hurst_from_signal(&vol_arr.view());
+  let h_rv = hurst_from_signal(vol_arr.view());
 
   let abs_arr = Array1::from_vec(
     rets
@@ -170,7 +170,7 @@ pub fn estimate_hurst(closes: ndarray::ArrayView1<f64>) -> f64 {
       .filter(|&r| r.is_finite() && r > 0.0)
       .collect(),
   );
-  let h_abs = hurst_from_signal(&abs_arr.view());
+  let h_abs = hurst_from_signal(abs_arr.view());
 
   // Cross-validate: if estimates disagree by > 0.15, use the lower (conservative)
   if (h_rv - h_abs).abs() > 0.15 {
@@ -187,7 +187,7 @@ pub fn estimate_hurst(closes: ndarray::ArrayView1<f64>) -> f64 {
 ///
 /// # Arguments
 /// * `signal` — Positive-valued time series as `ArrayView1`.
-pub fn hurst_from_signal(signal: &ndarray::ArrayView1<f64>) -> f64 {
+pub fn hurst_from_signal(signal: ndarray::ArrayView1<f64>) -> f64 {
   if signal.len() < 20 {
     return 0.1;
   }

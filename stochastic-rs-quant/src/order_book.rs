@@ -319,6 +319,20 @@ impl OrderBook {
     Some((price.into_inner(), queue.iter().map(|o| o.size).sum()))
   }
 
+  /// Mid-price (average of best bid and best ask). `None` if either side is empty.
+  pub fn mid(&self) -> Option<f64> {
+    let (b, _) = self.best_bid()?;
+    let (a, _) = self.best_ask()?;
+    Some((b + a) / 2.0)
+  }
+
+  /// Bid-ask spread (best ask − best bid). `None` if either side is empty.
+  pub fn spread(&self) -> Option<f64> {
+    let (b, _) = self.best_bid()?;
+    let (a, _) = self.best_ask()?;
+    Some(a - b)
+  }
+
   pub fn depth(&self) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
     let bids = self
       .bids

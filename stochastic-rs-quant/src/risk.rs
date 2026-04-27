@@ -28,6 +28,7 @@
 //! Management, 17(4), 27–31 (1991). DOI: 10.3905/jpm.1991.409343
 
 pub mod drawdown;
+pub mod execution;
 pub mod expected_shortfall;
 pub mod greeks;
 pub mod performance;
@@ -38,6 +39,7 @@ pub use drawdown::DrawdownStats;
 pub use drawdown::max_drawdown;
 pub use drawdown::max_drawdown_duration;
 pub use drawdown::running_drawdown;
+pub use execution::liquidity_adjusted_var;
 pub use expected_shortfall::expected_shortfall;
 pub use expected_shortfall::gaussian_es;
 pub use expected_shortfall::historical_es;
@@ -56,6 +58,7 @@ pub use scenario::Scenario;
 pub use scenario::ScenarioResult;
 pub use scenario::Shock;
 pub use scenario::StressTest;
+pub use var::PnlOrLoss;
 pub use var::VarMethod;
 pub use var::gaussian_var;
 pub use var::historical_var;

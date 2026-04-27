@@ -21,7 +21,7 @@ use ndarray::ArrayView1;
 ///
 /// # Arguments
 /// * `closes` — Price series as `ArrayView1`, length >= 20.
-pub fn estimate_leverage_rho(closes: &ArrayView1<f64>) -> f64 {
+pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> f64 {
   let n = closes.len();
   if n < 20 {
     return -0.5;
@@ -81,7 +81,7 @@ mod tests {
   #[test]
   fn leverage_rho_short_data_returns_default() {
     let closes = Array1::from_elem(10, 100.0);
-    assert_eq!(estimate_leverage_rho(&closes.view()), -0.5);
+    assert_eq!(estimate_leverage_rho(closes.view()), -0.5);
   }
 
   #[test]
@@ -97,7 +97,7 @@ mod tests {
       vals.push(last * (1.0 + r));
     }
     let closes = Array1::from_vec(vals);
-    let rho = estimate_leverage_rho(&closes.view());
+    let rho = estimate_leverage_rho(closes.view());
     assert!(rho >= -0.99 && rho <= 0.99, "rho out of range: {rho}");
   }
 }

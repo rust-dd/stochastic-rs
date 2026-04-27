@@ -508,9 +508,9 @@ impl HestonCalibrator {
         }
         let p: HestonParams = if self.mle_delta.is_some() {
           let delta = self.inferred_mle_delta(s.len());
-          nmle_heston_with_delta(s, v, r, delta).into()
+          nmle_heston_with_delta(s.view(), v.view(), r, delta).into()
         } else {
-          nmle_heston(s, v, r).into()
+          nmle_heston(s.view(), v.view(), r).into()
         };
         Some(p.projected())
       }
@@ -521,9 +521,9 @@ impl HestonCalibrator {
         }
         let p: HestonParams = if self.mle_delta.is_some() {
           let delta = self.inferred_mle_delta(s.len());
-          pmle_heston_with_delta(s, v, r, delta).into()
+          pmle_heston_with_delta(s.view(), v.view(), r, delta).into()
         } else {
-          pmle_heston(s, v, r).into()
+          pmle_heston(s.view(), v.view(), r).into()
         };
         Some(p.projected())
       }

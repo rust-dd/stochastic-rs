@@ -17,9 +17,11 @@
 
 use crate::traits::FloatExt;
 
+pub mod equity;
 pub mod short_rate;
 pub mod tree;
 
+pub use equity::CrrModel;
 pub use short_rate::BlackKarasinskiTree;
 pub use short_rate::BlackKarasinskiTreeModel;
 pub use short_rate::CurveFittedHullWhiteModel;

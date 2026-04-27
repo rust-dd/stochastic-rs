@@ -4,7 +4,7 @@
 //! \hat\theta=\arg\max_\theta \sum_{i=1}^n \log f(x_i\mid\theta)
 //! $$
 //!
-use ndarray::Array1;
+use ndarray::ArrayView1;
 
 #[derive(Clone, Debug)]
 pub struct HestonMleResult {
@@ -26,7 +26,7 @@ pub struct HestonMleResult {
 /// - Wang et al. (2018), NMLE closed-form estimators
 ///   https://doi.org/10.1007/s11432-017-9215-8
 ///   http://scis.scichina.com/en/2018/042202.pdf
-pub fn nmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
+pub fn nmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleResult {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let n_obs = v.len();
   assert!(n_obs >= 2, "nmle_heston requires at least 2 observations");
@@ -41,8 +41,8 @@ pub fn nmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
 ///   https://doi.org/10.1007/s11432-017-9215-8
 ///   http://scis.scichina.com/en/2018/042202.pdf
 pub fn nmle_heston_with_delta(
-  s: Array1<f64>,
-  v: Array1<f64>,
+  s: ArrayView1<f64>,
+  v: ArrayView1<f64>,
   r: f64,
   delta: f64,
 ) -> HestonMleResult {
@@ -138,7 +138,7 @@ pub fn nmle_heston_with_delta(
 /// - Wang et al. (2018), PMLE closed-form estimators
 ///   https://doi.org/10.1007/s11432-017-9215-8
 ///   http://scis.scichina.com/en/2018/042202.pdf
-pub fn pmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
+pub fn pmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleResult {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let n_obs = v.len();
   assert!(n_obs >= 2, "pmle_heston requires at least 2 observations");
@@ -153,8 +153,8 @@ pub fn pmle_heston(s: Array1<f64>, v: Array1<f64>, r: f64) -> HestonMleResult {
 ///   https://doi.org/10.1007/s11432-017-9215-8
 ///   http://scis.scichina.com/en/2018/042202.pdf
 pub fn pmle_heston_with_delta(
-  s: Array1<f64>,
-  v: Array1<f64>,
+  s: ArrayView1<f64>,
+  v: ArrayView1<f64>,
   r: f64,
   delta: f64,
 ) -> HestonMleResult {
@@ -263,7 +263,7 @@ mod tests {
   fn nmle_heston_panics_on_mismatched_lengths() {
     let s = Array1::from(vec![100.0, 101.0, 102.0]);
     let v = Array1::from(vec![0.04, 0.05]);
-    let _ = nmle_heston(s, v, 0.01);
+    let _ = nmle_heston(s.view(), v.view(), 0.01);
   }
 
   #[test]
@@ -271,7 +271,7 @@ mod tests {
   fn nmle_heston_panics_on_short_series() {
     let s = Array1::from(vec![100.0]);
     let v = Array1::from(vec![0.04]);
-    let _ = nmle_heston(s, v, 0.01);
+    let _ = nmle_heston(s.view(), v.view(), 0.01);
   }
 
   #[test]
@@ -279,7 +279,7 @@ mod tests {
   fn nmle_heston_with_delta_panics_on_non_positive_step() {
     let s = Array1::from(vec![100.0, 101.0]);
     let v = Array1::from(vec![0.04, 0.05]);
-    let _ = nmle_heston_with_delta(s, v, 0.01, 0.0);
+    let _ = nmle_heston_with_delta(s.view(), v.view(), 0.01, 0.0);
   }
 
   #[test]
@@ -287,7 +287,7 @@ mod tests {
   fn pmle_heston_with_delta_panics_on_non_positive_step() {
     let s = Array1::from(vec![100.0, 101.0]);
     let v = Array1::from(vec![0.04, 0.05]);
-    let _ = pmle_heston_with_delta(s, v, 0.01, 0.0);
+    let _ = pmle_heston_with_delta(s.view(), v.view(), 0.01, 0.0);
   }
 
   #[test]
@@ -330,7 +330,7 @@ mod tests {
       s[i] = log_s_next.exp();
     }
 
-    let est = nmle_heston(s, v, r);
+    let est = nmle_heston(s.view(), v.view(), r);
 
     assert!(est.kappa.is_finite() && est.kappa > 0.0);
     assert!(est.theta.is_finite() && est.theta > 0.0);
@@ -399,7 +399,7 @@ mod tests {
       s[i] = log_s_next.exp();
     }
 
-    let est = pmle_heston(s, v, r);
+    let est = pmle_heston(s.view(), v.view(), r);
     assert!(est.kappa.is_finite() && est.kappa > 0.0);
     assert!(est.theta.is_finite() && est.theta > 0.0);
     assert!(est.sigma.is_finite() && est.sigma > 0.0);

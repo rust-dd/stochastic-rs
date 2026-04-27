@@ -154,6 +154,50 @@ impl ImpliedVolSurface {
     }
   }
 
+  /// Build a surface from an AI surrogate's flat output vector.
+  ///
+  /// Bridges [`stochastic_rs_ai::volatility::StochVolNn::predict_surface`]
+  /// (and the specialized `HestonNn` / `RBergomiNn` / `OneFactorNn` wrappers)
+  /// to the vol-surface pipeline. The neural network returns a flat
+  /// `Vec<f32>` of length `N_T * N_K` in row-major `(maturity, strike)`
+  /// order; this constructor reshapes and lifts to `f64`.
+  ///
+  /// # Arguments
+  /// * `strikes` — strike prices in ascending order, length `N_K`
+  /// * `maturities` — expiries in years, length `N_T`
+  /// * `forwards` — forward prices for each maturity, length `N_T`
+  /// * `flat_ivs` — flat row-major IV grid of length `N_T * N_K`
+  ///
+  /// # Example
+  ///
+  /// ```ignore
+  /// let flat = nn.predict_surface(&params)?;          // Vec<f32>, len N_T*N_K
+  /// let surf = ImpliedVolSurface::from_flat_iv_grid(
+  ///     strikes, maturities, forwards, &flat,
+  /// );
+  /// ```
+  #[must_use]
+  pub fn from_flat_iv_grid(
+    strikes: Vec<f64>,
+    maturities: Vec<f64>,
+    forwards: Vec<f64>,
+    flat_ivs: &[f32],
+  ) -> Self {
+    let nt = maturities.len();
+    let nk = strikes.len();
+    assert_eq!(
+      flat_ivs.len(),
+      nt * nk,
+      "flat_ivs length must equal N_T * N_K = {} * {} = {}",
+      nt,
+      nk,
+      nt * nk,
+    );
+    let ivs = Array2::from_shape_vec((nt, nk), flat_ivs.iter().map(|&v| v as f64).collect())
+      .expect("shape (N_T, N_K) is consistent with flat_ivs length");
+    Self::from_iv_grid(strikes, maturities, forwards, ivs)
+  }
+
   /// Build from a flat list of [`OptionQuote`]s.
   ///
   /// Quotes are sorted and grouped by maturity, then by strike.

@@ -45,10 +45,9 @@ pub mod market;
 /// liquidation, Kyle's lambda, propagator price-impact models. Standalone
 /// domain — does not feed back into the pricing or calibration pipelines.
 pub mod microstructure;
-/// Limit-order-book data structures (`Side`, `LimitOrder`, `OrderBook`).
-/// Hidden from generated docs because the structures are self-contained and
-/// have no integration points with the pricing or calibration pipelines.
-#[doc(hidden)]
+/// Limit-order-book data structures (`Side`, `Order`, `Trade`, `OrderBook`)
+/// with bid/ask matching and cancel. Bridged to the reactive market-data
+/// stack via [`market::book::mid_quote`] / [`market::book::half_spread_quote`].
 pub mod order_book;
 pub mod portfolio;
 pub mod pricing;
