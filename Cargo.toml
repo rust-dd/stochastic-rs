@@ -309,7 +309,14 @@ required-features = ["hotpath"]
 ai = ["dep:stochastic-rs-ai"]
 cuda-native = ["dep:cudarc", "cudarc/cufft"]
 default = []
-openblas = ["dep:ndarray-linalg", "dep:openblas-src"]
+openblas = [
+    "dep:ndarray-linalg",
+    "dep:openblas-src",
+    "stochastic-rs-copulas/openblas",
+    "stochastic-rs-quant/openblas",
+    "stochastic-rs-stats/openblas",
+    "stochastic-rs-stochastic/openblas",
+]
 accelerate = []
 gpu = ["dep:cubecl", "dep:gpu-fft"]
 metal = ["dep:metal"]

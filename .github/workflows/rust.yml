@@ -90,7 +90,7 @@ jobs:
           RUSTFLAGS: "-C instrument-coverage -C codegen-units=1 -C debuginfo=0"
           LLVM_PROFILE_FILE: "coverage-%p-%m.profraw"
         run: |
-          cargo test --workspace --features openblas --verbose
+          cargo test --workspace --exclude stochastic-rs-py --features openblas --verbose
 
       - name: Generate coverage report
         run: |
