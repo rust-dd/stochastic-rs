@@ -63,4 +63,3 @@ numpy = { workspace = true, optional = true }
 
 [dev-dependencies]
 romu = { workspace = true }
-stochastic-rs-stats = { workspace = true }

@@ -222,7 +222,6 @@ impl PyFbm {
 #[cfg(test)]
 mod tests {
   use statrs::function::erf::erf;
-  use stochastic_rs_stats::fd::FractalDim;
 
   use super::*;
 
@@ -398,33 +397,7 @@ mod tests {
     );
   }
 
-  #[test]
-  fn fbm_fractal_dimension_matches_theory() {
-    let h = 0.72_f64;
-    let d_theory = 2.0 - h;
-    let n = 4096_usize;
-    let m = 160_usize;
-    let kmax = 32_usize;
-    let fbm = Fbm::new(h, n, Some(1.0));
-
-    let mut d_vario_sum = 0.0;
-    let mut d_higuchi_sum = 0.0;
-    for _ in 0..m {
-      let x = fbm.sample();
-      let fd = FractalDim::new(x);
-      d_vario_sum += fd.variogram(Some(2.0));
-      d_higuchi_sum += fd.higuchi_fd(kmax);
-    }
-    let d_vario = d_vario_sum / m as f64;
-    let d_higuchi = d_higuchi_sum / m as f64;
-
-    assert!(
-      (d_vario - d_theory).abs() < 0.05,
-      "variogram FD mismatch: D_est={d_vario}, D={d_theory}"
-    );
-    assert!(
-      (d_higuchi - d_theory).abs() < 0.05,
-      "higuchi FD mismatch: D_est={d_higuchi}, D={d_theory}"
-    );
-  }
+  // `fbm_fractal_dimension_matches_theory` lives in
+  // `stochastic-rs-stats/tests/fractal_dim_validation.rs` because it exercises
+  // the `FractalDim` estimator from the stats crate.
 }
