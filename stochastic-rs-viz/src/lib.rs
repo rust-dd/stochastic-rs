@@ -1437,7 +1437,10 @@ mod tests {
       }
     }
 
-    plot.write_html("target/sde_gbm_methods.html");
-    plot.show();
+    let mut path = std::env::temp_dir();
+    path.push("stochastic_rs_sde_gbm_methods.html");
+    plot.write_html(&path);
+    assert!(path.exists(), "expected plot HTML at {}", path.display());
+    let _ = std::fs::remove_file(path);
   }
 }
