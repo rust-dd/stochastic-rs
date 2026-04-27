@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
-stochastic-rs-core = { path = "../stochastic-rs-core", version = "2.0.0-beta.1", features = ["python"] }
-stochastic-rs-distributions = { path = "../stochastic-rs-distributions", version = "2.0.0-beta.1", features = ["python"] }
-stochastic-rs-stochastic = { path = "../stochastic-rs-stochastic", version = "2.0.0-beta.1", features = ["python"] }
-pyo3 = { version = "0.27", features = ["extension-module"] }
+stochastic-rs-core = { workspace = true, features = ["python"] }
+stochastic-rs-distributions = { workspace = true, features = ["python"] }
+stochastic-rs-stochastic = { workspace = true, features = ["python"] }
+pyo3 = { workspace = true, features = ["extension-module"] }

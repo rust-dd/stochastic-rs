@@ -11,6 +11,98 @@ members = [
     "stochastic-rs-py",
 ]
 
+[workspace.dependencies]
+# Internal crates
+stochastic-rs-core = { path = "stochastic-rs-core", version = "2.0.0-beta.1" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "2.0.0-beta.1" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "2.0.0-beta.1" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "2.0.0-beta.1" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "2.0.0-beta.1" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "2.0.0-beta.1" }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "2.0.0-beta.1" }
+stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.0.0-beta.1" }
+
+# Math / numerical core
+ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
+ndarray-linalg = { version = "0.18.1", features = ["openblas-system"] }
+ndarray-npy = "0.10.0"
+ndarray-rand = "0.16.0"
+ndarray-stats = "0.7.0"
+ndrustfft = "0.6.2"
+num-complex = { version = "0.4.6", features = ["rand"] }
+num-traits = "0.2.19"
+nalgebra = "0.33.2"
+
+# RNG / parallel / SIMD
+rand = "0.9.2"
+rand_distr = "0.5.1"
+rayon = "1.11.0"
+wide = "1.3.0"
+
+# Statistics / fitting / optimisation
+statrs = "0.18.0"
+kendalls = "1.0.0"
+linreg = "0.2.0"
+levenberg-marquardt = "0.14.0"
+argmin = "0.11.0"
+argmin-math = { version = "0.5", features = ["ndarray_latest-nolinalg", "vec"] }
+gauss-quad = "0.3.1"
+quadrature = "0.1.2"
+roots = "0.0.8"
+slsqp = "1.0.0"
+scilib = "1.0.0"
+sci-rs = "0.4.1"
+owens-t = "0.1.5"
+
+# General utility
+anyhow = "1.0.89"
+either = "1.15.0"
+parking_lot = "0.12.5"
+ordered-float = "5.0.0"
+chrono = "0.4.38"
+flate2 = "1.1.2"
+
+# Pricing-specific
+implied-vol = "2.0.0"
+
+# Visualisation
+plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
+
+# Native math (gated)
+openblas-src = { version = "0.10", features = ["cblas"] }
+
+# Python bindings
+pyo3 = { version = "0.27", features = ["extension-module"] }
+numpy = "0.27"
+
+# AI / ML
+candle-core = "0.9.2"
+candle-datasets = "0.9.2"
+candle-nn = "0.9.2"
+polars = { version = "0.43.1", features = ["lazy"] }
+
+# GPU
+cubecl = { version = "0.9.0", default-features = false }
+cubecl-cuda = "0.9.0"
+cubecl-wgpu = "0.9.0"
+cudarc = { version = "0.19.2", features = ["cuda-12080", "cuda-version-from-build-system"] }
+gpu-fft = "1.1.1"
+metal = "0.33.0"
+
+# Allocators / profiling
+mimalloc = "0.1.48"
+tikv-jemallocator = "0.6.1"
+hotpath = "0.14"
+
+# Yahoo finance
+time = { version = "0.3.36", features = ["formatting", "parsing"] }
+yahoo_finance_api = "2.3.0"
+tokio-test = "0.4.4"
+
+# Dev
+romu = "0.8.0"
+criterion = { version = "0.8", features = ["html_reports"] }
+
 [package]
 name = "stochastic-rs"
 version = "2.0.0-beta.1"
@@ -22,90 +114,76 @@ documentation = "https://docs.rs/stochastic-rs/latest/stochastic_rs/"
 repository = "https://github.com/dancixx/stochastic-rs"
 readme = "README.md"
 keywords = ["stochastic", "quant", "finance", "simulation", "statistics"]
-exclude = [
-    "**/*.tar.gz",
-    "data/**",
-    "trainsets/**",
-    "src/ai/volatility/*TrainSet.txt.gz",
-]
+exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "src/ai/volatility/*TrainSet.txt.gz", ]
 
 [dependencies]
-stochastic-rs-core = { path = "stochastic-rs-core", version = "2.0.0-beta.1" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "2.0.0-beta.1" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "2.0.0-beta.1" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "2.0.0-beta.1" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "2.0.0-beta.1" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "2.0.0-beta.1" }
-stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.0.0-beta.1" }
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "2.0.0-beta.1", optional = true }
-anyhow = "1.0.89"
-argmin = "0.11.0"
-argmin-math = { version = "0.5", features = ["ndarray_latest-nolinalg", "vec"] }
-candle-core = { version = "0.9.2", optional = true }
-candle-datasets = { version = "0.9.2", optional = true }
-candle-nn = { version = "0.9.2", optional = true }
-chrono = "0.4.38"
-cubecl = { version = "0.9.0", optional = true, default-features = false }
-cubecl-cuda = { version = "0.9.0", optional = true }
-cubecl-wgpu = { version = "0.9.0", optional = true }
-cudarc = { version = "0.19.2", optional = true, features = [
-    "cuda-12080",
-    "cuda-version-from-build-system",
-] }
-either = "1.15.0"
-flate2 = "1.1.2"
-gpu-fft = { version = "1.1.1", optional = true }
-gauss-quad = "0.3.1"
-implied-vol = "2.0.0"
-kendalls = "1.0.0"
-levenberg-marquardt = "0.14.0"
-linreg = "0.2.0"
-openblas-src = { version = "0.10", features = ["cblas"], optional = true }
-metal = { version = "0.33.0", optional = true }
-mimalloc = { version = "0.1.48", optional = true }
-nalgebra = "0.33.2"
-ndarray = { version = "0.17.2", features = [
-    "rayon",
-    "matrixmultiply-threading",
-] }
-ndarray-linalg = { version = "0.18.1", features = ["openblas-system"], optional = true }
-ndarray-npy = "0.10.0"
-ndarray-rand = "0.16.0"
-ndarray-stats = "0.7.0"
-ndrustfft = "0.6.2"
-num-complex = { version = "0.4.6", features = ["rand"] }
-num-traits = "0.2.19"
-numpy = { version = "0.27", optional = true }
-pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
-ordered-float = "5.0.0"
-owens-t = "0.1.5"
-plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
-polars = { version = "0.43.1", features = ["lazy"], optional = true }
-quadrature = "0.1.2"
-rand = "0.9.2"
-rand_distr = "0.5.1"
-rayon = "1.11.0"
-roots = "0.0.8"
-sci-rs = "0.4.1"
-scilib = "1.0.0"
-slsqp = "1.0.0"
-statrs = "0.18.0"
-tikv-jemallocator = { version = "0.6.1", optional = true }
-time = { version = "0.3.36", features = [
-    "formatting",
-    "parsing",
-], optional = true }
-tokio-test = { version = "0.4.4", optional = true }
-wide = "1.3.0"
-hotpath = { version = "0.14", optional = true }
-yahoo_finance_api = { version = "2.3.0", optional = true }
-parking_lot = "0.12.5"
+stochastic-rs-core = { workspace = true }
+stochastic-rs-distributions = { workspace = true }
+stochastic-rs-stochastic = { workspace = true }
+stochastic-rs-copulas = { workspace = true }
+stochastic-rs-stats = { workspace = true }
+stochastic-rs-quant = { workspace = true }
+stochastic-rs-viz = { workspace = true }
+stochastic-rs-ai = { workspace = true, optional = true }
+anyhow = { workspace = true }
+argmin = { workspace = true }
+argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] }
+candle-core = { workspace = true, optional = true }
+candle-datasets = { workspace = true, optional = true }
+candle-nn = { workspace = true, optional = true }
+chrono = { workspace = true }
+cubecl = { workspace = true, optional = true, default-features = false }
+cubecl-cuda = { workspace = true, optional = true }
+cubecl-wgpu = { workspace = true, optional = true }
+cudarc = { workspace = true, optional = true, features = [ "cuda-12080", "cuda-version-from-build-system", ] }
+either = { workspace = true }
+flate2 = { workspace = true }
+gpu-fft = { workspace = true, optional = true }
+gauss-quad = { workspace = true }
+implied-vol = { workspace = true }
+kendalls = { workspace = true }
+levenberg-marquardt = { workspace = true }
+linreg = { workspace = true }
+openblas-src = { workspace = true, features = ["cblas"], optional = true }
+metal = { workspace = true, optional = true }
+mimalloc = { workspace = true, optional = true }
+nalgebra = { workspace = true }
+ndarray = { workspace = true, features = [ "rayon", "matrixmultiply-threading", ] }
+ndarray-linalg = { workspace = true, features = ["openblas-system"], optional = true }
+ndarray-npy = { workspace = true }
+ndarray-rand = { workspace = true }
+ndarray-stats = { workspace = true }
+ndrustfft = { workspace = true }
+num-complex = { workspace = true, features = ["rand"] }
+num-traits = { workspace = true }
+numpy = { workspace = true, optional = true }
+pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+ordered-float = { workspace = true }
+owens-t = { workspace = true }
+plotly = { workspace = true, features = ["plotly_ndarray"] }
+polars = { workspace = true, features = ["lazy"], optional = true }
+quadrature = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+rayon = { workspace = true }
+roots = { workspace = true }
+sci-rs = { workspace = true }
+scilib = { workspace = true }
+slsqp = { workspace = true }
+statrs = { workspace = true }
+tikv-jemallocator = { workspace = true, optional = true }
+time = { workspace = true, features = [ "formatting", "parsing", ], optional = true }
+tokio-test = { workspace = true, optional = true }
+wide = { workspace = true }
+hotpath = { workspace = true, optional = true }
+yahoo_finance_api = { workspace = true, optional = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
-criterion = { version = "0.8", features = ["html_reports"] }
-rand = "0.9.2"
-rand_distr = "0.5.1"
-romu = "0.8.0"
+criterion = { workspace = true, features = ["html_reports"] }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+romu = { workspace = true }
 
 [[bench]]
 name = "distributions"
@@ -243,12 +321,7 @@ jemalloc = ["dep:tikv-jemallocator"]
 # build is consistent with the cdylib build. The actual Python module
 # (`stochastic_rs`) is produced by `cargo build -p stochastic-rs-py` or
 # via `maturin develop` from the `stochastic-rs-py` directory.
-python = [
-    "dep:pyo3",
-    "dep:numpy",
-    "stochastic-rs-distributions/python",
-    "stochastic-rs-stochastic/python",
-]
+python = [ "dep:pyo3", "dep:numpy", "stochastic-rs-distributions/python", "stochastic-rs-stochastic/python", ]
 mimalloc = ["dep:mimalloc"]
 yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars", "dep:tokio-test"]
 hotpath = ["dep:hotpath", "hotpath/hotpath"]

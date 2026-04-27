@@ -14,20 +14,20 @@ doctest = false
 default = []
 
 [dependencies]
-stochastic-rs-core = { path = "../stochastic-rs-core", version = "2.0.0-beta.1" }
-stochastic-rs-distributions = { path = "../stochastic-rs-distributions", version = "2.0.0-beta.1" }
-stochastic-rs-stochastic = { path = "../stochastic-rs-stochastic", version = "2.0.0-beta.1" }
-candle-core = "0.9.2"
-candle-datasets = "0.9.2"
-candle-nn = "0.9.2"
-polars = { version = "0.43.1", features = ["lazy"] }
-ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
-ndarray-npy = "0.10.0"
-ndarray-rand = "0.16.0"
-flate2 = "1.1.2"
-rand = "0.9.2"
-rand_distr = "0.5.1"
-num-traits = "0.2.19"
-anyhow = "1.0.89"
-parking_lot = "0.12.5"
-plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
+stochastic-rs-core = { workspace = true }
+stochastic-rs-distributions = { workspace = true }
+stochastic-rs-stochastic = { workspace = true }
+candle-core = { workspace = true }
+candle-datasets = { workspace = true }
+candle-nn = { workspace = true }
+polars = { workspace = true, features = ["lazy"] }
+ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
+ndarray-npy = { workspace = true }
+ndarray-rand = { workspace = true }
+flate2 = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+num-traits = { workspace = true }
+anyhow = { workspace = true }
+parking_lot = { workspace = true }
+plotly = { workspace = true, features = ["plotly_ndarray"] }
