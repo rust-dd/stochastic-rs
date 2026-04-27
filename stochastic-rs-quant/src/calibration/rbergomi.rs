@@ -216,6 +216,23 @@ pub struct RBergomiParams {
 }
 
 impl RBergomiParams {
+  /// Seed from a fractional OU estimate.
+  ///
+  /// Bridges [`stochastic_rs_stats::fou_estimator::FouEstimateResult`] (Hurst,
+  /// sigma, mu, theta) into an `RBergomiParams` initial guess. Only the
+  /// Hurst exponent transfers directly; `rho` defaults to `-0.7`, `eta` is
+  /// taken as the FOU `sigma`, and `xi0` is filled with a flat constant
+  /// derived from `mu` (long-run variance proxy). Use as a starting point for
+  /// the Levenberg-Marquardt solver.
+  pub fn seed_from_fou(fou: stochastic_rs_stats::fou_estimator::FouEstimateResult) -> Self {
+    Self {
+      hurst: fou.hurst.clamp(H_MIN, H_MAX),
+      rho: -0.7,
+      eta: fou.sigma.abs().max(ETA_MIN),
+      xi0: RBergomiXi0::Constant(fou.mu.abs().max(1e-4)),
+    }
+  }
+
   pub fn project_in_place(&mut self) {
     self.hurst = self.hurst.clamp(H_MIN, H_MAX);
     self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);

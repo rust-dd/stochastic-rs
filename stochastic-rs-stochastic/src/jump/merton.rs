@@ -4,6 +4,23 @@
 //! \frac{dS_t}{S_{t^-}}=(\mu-\lambda\kappa)dt+\sigma dW_t+(Y-1)dN_t
 //! $$
 //!
+//! ## Generic distribution parameter `D`
+//!
+//! `Merton<T, D, S>` is generic over the jump-size distribution `D`, which
+//! must implement [`rand_distr::Distribution<T>`]. Common choices:
+//!
+//! - [`SimdNormal<T>`](stochastic_rs_distributions::normal::SimdNormal) for
+//!   the classical lognormal-jump Merton (1976) model
+//! - [`SimdLaplace<T>`] / a custom asymmetric double-exponential for Kou-style
+//!   jumps
+//! - any user-defined `Distribution<T>`
+//!
+//! Python bindings (under the `python` feature) need a monomorphic type
+//! signature, so the `PyMerton` wrapper fixes `D = SimdNormal<f64>`. If
+//! you need a different jump distribution from Python, prefer the SVJ /
+//! Bates calibrators, or compose your own wrapper struct on the Rust side
+//! and re-bind via PyO3.
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;

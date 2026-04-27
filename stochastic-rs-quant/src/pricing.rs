@@ -19,6 +19,7 @@ pub mod cliquet;
 pub mod compound;
 pub mod digital;
 pub mod dupire;
+pub mod execution_cost;
 pub mod finite_difference;
 pub mod fourier;
 pub mod heston;

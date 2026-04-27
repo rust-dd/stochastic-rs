@@ -68,6 +68,32 @@ pub struct MarketSlice {
   pub t: f64,
 }
 
+impl MarketSlice {
+  /// Build a `MarketSlice` from evaluation and expiration dates using a
+  /// day-count convention.
+  ///
+  /// Bridges the `tau`-only calibrator API with date-native market data —
+  /// callers can pass `chrono::NaiveDate` instead of pre-computed
+  /// year-fractions. Mirrors the `eval` / `expiration` pattern available on
+  /// pricers via [`crate::traits::TimeExt::tau_with_dcc`].
+  pub fn from_dates(
+    strikes: Vec<f64>,
+    prices: Vec<f64>,
+    is_call: Vec<bool>,
+    eval: chrono::NaiveDate,
+    expiration: chrono::NaiveDate,
+    dcc: crate::calendar::DayCountConvention,
+  ) -> Self {
+    let t = dcc.year_fraction(eval, expiration);
+    Self {
+      strikes,
+      prices,
+      is_call,
+      t,
+    }
+  }
+}
+
 /// Calibration result for a Lévy model.
 #[derive(Clone, Debug)]
 pub struct LevyCalibrationResult {

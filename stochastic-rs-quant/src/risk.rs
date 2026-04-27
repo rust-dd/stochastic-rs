@@ -27,6 +27,7 @@
 //! Reference: Sortino & van der Meer, "Downside Risk", Journal of Portfolio
 //! Management, 17(4), 27–31 (1991). DOI: 10.3905/jpm.1991.409343
 
+pub mod credit;
 pub mod drawdown;
 pub mod execution;
 pub mod expected_shortfall;
@@ -35,6 +36,8 @@ pub mod performance;
 pub mod scenario;
 pub mod var;
 
+pub use credit::expected_credit_loss;
+pub use credit::probability_of_default_before;
 pub use drawdown::DrawdownStats;
 pub use drawdown::max_drawdown;
 pub use drawdown::max_drawdown_duration;

@@ -24,4 +24,5 @@ pub mod correlation;
 pub mod empirical;
 #[cfg(feature = "openblas")]
 pub mod multivariate;
+pub mod process_coupling;
 pub mod univariate;

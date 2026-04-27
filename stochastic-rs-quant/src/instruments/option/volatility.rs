@@ -6,6 +6,22 @@
 //! \sigma_{\mathrm{Sabr}}(F,K,\tau)
 //! $$
 //!
+//! ## Why a separate trait from [`ModelPricer`](crate::traits::ModelPricer)?
+//!
+//! [`ModelPricer`] is the canonical pricing trait for *equity* options:
+//! `price_call(s, k, r, q, tau)` consumes spot, strike, rates, and dividend
+//! yield and returns an option price. [`VolatilityModel`] sits one layer
+//! lower for *interest-rate* options: given a forward $F$ (e.g. forward
+//! Libor / SOFR rate or swap rate) and strike $K$, it returns the implied
+//! volatility (Black-76 lognormal or Bachelier normal) — the actual
+//! caplet / cap / floor / swaption pricer then consumes that volatility
+//! together with its own day-count and discount machinery.
+//!
+//! These are intentionally parallel traits: the rates pipeline uses forwards
+//! and tenor structure, the equity pipeline uses spots and dividend yields.
+//! Unifying them would require collapsing fundamentally different inputs
+//! into a single signature.
+//!
 //! Reference: Hagan, Kumar, Lesniewski, Woodward, "Managing Smile Risk",
 //! Wilmott Magazine (2002).
 

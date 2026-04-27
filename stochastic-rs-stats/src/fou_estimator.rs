@@ -97,7 +97,7 @@ pub enum FilterType {
 }
 
 impl FOUParameterEstimationV1 {
-  pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
+  pub fn estimate_parameters(&mut self) -> FouEstimateResult {
     self.linear_filter();
 
     if self.hurst.is_none() {
@@ -108,12 +108,12 @@ impl FOUParameterEstimationV1 {
     self.mu_estimator();
     self.theta_estimator();
 
-    (
+    FouEstimateResult::from((
       self.hurst.unwrap(),
       self.sigma.unwrap(),
       self.mu.unwrap(),
       self.theta.unwrap(),
-    )
+    ))
   }
 
   pub fn set_hurst(&mut self, hurst: f64) {
@@ -266,7 +266,7 @@ impl FOUParameterEstimationV2 {
     }
   }
 
-  pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
+  pub fn estimate_parameters(&mut self) -> FouEstimateResult {
     if self.hurst.is_none() {
       self.hurst_estimator();
     }
@@ -274,12 +274,12 @@ impl FOUParameterEstimationV2 {
     self.mu_estimator();
     self.theta_estimator();
 
-    (
+    FouEstimateResult::from((
       self.hurst.unwrap(),
       self.sigma.unwrap(),
       self.mu.unwrap(),
       self.theta.unwrap(),
-    )
+    ))
   }
 
   pub fn set_hurst(&mut self, hurst: f64) {
@@ -393,19 +393,19 @@ impl FOUParameterEstimationV3 {
     }
   }
 
-  pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
+  pub fn estimate_parameters(&mut self) -> FouEstimateResult {
     self.get_path();
     self.hurst_estimator();
     self.sigma_estimator();
     self.mu_estimator();
     self.alpha_estimator();
 
-    (
+    FouEstimateResult::from((
       self.estimated_hurst.unwrap(),
       self.estimated_sigma.unwrap(),
       self.estimated_mu.unwrap(),
       self.estimated_alpha.unwrap(),
-    )
+    ))
   }
 
   fn get_path(&mut self) {
@@ -548,7 +548,7 @@ impl FOUParameterEstimationV4 {
     }
   }
 
-  pub fn estimate_parameters(&mut self) -> (f64, f64, f64, f64) {
+  pub fn estimate_parameters(&mut self) -> FouEstimateResult {
     if self.hurst.is_none() {
       self.hurst_estimator();
     }
@@ -558,12 +558,12 @@ impl FOUParameterEstimationV4 {
     self.mu_estimator();
     self.theta_estimator();
 
-    (
+    FouEstimateResult::from((
       self.hurst.unwrap(),
       self.sigma.unwrap(),
       self.mu.unwrap(),
       self.theta.unwrap(),
-    )
+    ))
   }
 
   pub fn set_hurst(&mut self, hurst: f64) {
@@ -724,7 +724,8 @@ mod fou_v4_tests {
 
     let mut est = FOUParameterEstimationV4::new(path, Some(1.0 / (n - 1) as f64), 2, 2.0);
     est.set_hurst(h_true);
-    let (h, sigma, mu, theta) = est.estimate_parameters();
+    let res = est.estimate_parameters();
+    let (h, sigma, mu, theta) = (res.hurst, res.sigma, res.mu, res.theta);
     println!(
       "FOUV4 fixed-H test => estimated: H={:.6}, sigma={:.6}, mu={:.6}, theta={:.6} | true: H={:.6}, sigma={:.6}",
       h, sigma, mu, theta, h_true, sigma_true
@@ -742,7 +743,8 @@ mod fou_v4_tests {
     let path = Fou::<f64>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0)).sample();
     let mut est = FOUParameterEstimationV4::new(path, Some(1.0 / (n - 1) as f64), 2, 2.0);
 
-    let (h, sigma, _mu, theta) = est.estimate_parameters();
+    let res = est.estimate_parameters();
+    let (h, sigma, theta) = (res.hurst, res.sigma, res.theta);
     println!(
       "FOUV4 free-H test  => estimated: H={:.6}, sigma={:.6}, theta={:.6}",
       h, sigma, theta
