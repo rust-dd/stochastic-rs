@@ -53,6 +53,74 @@ impl Dupire {
       dc_dt,
     }
   }
+
+  /// Builder for fluent construction with sensible defaults.
+  pub fn builder(ks: Vec<f64>, ts: Vec<f64>, calls: Array2<f64>) -> DupireBuilder {
+    DupireBuilder {
+      ks,
+      ts,
+      calls,
+      r: 0.0,
+      q: 0.0,
+      eps: 1e-6,
+      dc_dk: None,
+      d2c_dk2: None,
+      dc_dt: None,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct DupireBuilder {
+  ks: Vec<f64>,
+  ts: Vec<f64>,
+  calls: Array2<f64>,
+  r: f64,
+  q: f64,
+  eps: f64,
+  dc_dk: Option<Array2<f64>>,
+  d2c_dk2: Option<Array2<f64>>,
+  dc_dt: Option<Array2<f64>>,
+}
+
+impl DupireBuilder {
+  pub fn r(mut self, r: f64) -> Self {
+    self.r = r;
+    self
+  }
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = q;
+    self
+  }
+  pub fn eps(mut self, eps: f64) -> Self {
+    self.eps = eps;
+    self
+  }
+  pub fn dc_dk(mut self, dc_dk: Array2<f64>) -> Self {
+    self.dc_dk = Some(dc_dk);
+    self
+  }
+  pub fn d2c_dk2(mut self, d2c_dk2: Array2<f64>) -> Self {
+    self.d2c_dk2 = Some(d2c_dk2);
+    self
+  }
+  pub fn dc_dt(mut self, dc_dt: Array2<f64>) -> Self {
+    self.dc_dt = Some(dc_dt);
+    self
+  }
+  pub fn build(self) -> Dupire {
+    Dupire {
+      ks: self.ks,
+      ts: self.ts,
+      calls: self.calls,
+      r: self.r,
+      q: self.q,
+      eps: self.eps,
+      dc_dk: self.dc_dk,
+      d2c_dk2: self.d2c_dk2,
+      dc_dt: self.dc_dt,
+    }
+  }
 }
 
 impl Dupire {

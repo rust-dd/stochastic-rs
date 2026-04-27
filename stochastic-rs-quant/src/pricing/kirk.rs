@@ -79,6 +79,77 @@ impl KirkSpreadPricer {
       expiration,
     }
   }
+
+  /// Builder for fluent construction.
+  pub fn builder(f1: f64, f2: f64, x: f64, r: f64) -> KirkSpreadPricerBuilder {
+    KirkSpreadPricerBuilder {
+      f1,
+      f2,
+      x,
+      r,
+      v1: 0.0,
+      v2: 0.0,
+      corr: 0.0,
+      tau: None,
+      eval: None,
+      expiration: None,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct KirkSpreadPricerBuilder {
+  f1: f64,
+  f2: f64,
+  x: f64,
+  r: f64,
+  v1: f64,
+  v2: f64,
+  corr: f64,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+}
+
+impl KirkSpreadPricerBuilder {
+  pub fn v1(mut self, v1: f64) -> Self {
+    self.v1 = v1;
+    self
+  }
+  pub fn v2(mut self, v2: f64) -> Self {
+    self.v2 = v2;
+    self
+  }
+  pub fn corr(mut self, corr: f64) -> Self {
+    self.corr = corr;
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn build(self) -> KirkSpreadPricer {
+    KirkSpreadPricer {
+      f1: self.f1,
+      f2: self.f2,
+      x: self.x,
+      r: self.r,
+      v1: self.v1,
+      v2: self.v2,
+      corr: self.corr,
+      tau: self.tau,
+      eval: self.eval,
+      expiration: self.expiration,
+    }
+  }
 }
 
 impl PricerExt for KirkSpreadPricer {

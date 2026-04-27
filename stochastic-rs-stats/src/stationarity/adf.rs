@@ -1,3 +1,5 @@
+use ndarray::ArrayView1;
+
 use super::common::CriticalValues;
 use super::common::DeterministicTerm;
 use super::common::LagSelection;
@@ -50,7 +52,10 @@ pub struct ADFResult {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn adf_test(y: &[f64], cfg: ADFConfig) -> ADFResult {
+pub fn adf_test(y: ArrayView1<f64>, cfg: ADFConfig) -> ADFResult {
+  let y = y
+    .as_slice()
+    .expect("adf_test requires a contiguous ArrayView1");
   validate_series(y, 20);
   assert!(
     cfg.alpha > 0.0 && cfg.alpha < 1.0,
@@ -135,7 +140,7 @@ mod tests {
       lag_selection: LagSelection::Fixed(4),
       ..ADFConfig::default()
     };
-    let res = adf_test(&x, cfg);
+    let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(
       res.reject_unit_root,
       "expected unit-root rejection, got {res:?}"
@@ -151,7 +156,7 @@ mod tests {
       alpha: 0.01,
       ..ADFConfig::default()
     };
-    let res = adf_test(&x, cfg);
+    let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(
       !res.reject_unit_root,
       "expected no rejection for random walk, got {res:?}"

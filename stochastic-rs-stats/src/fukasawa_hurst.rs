@@ -371,7 +371,10 @@ fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f
 ///
 /// Uses a dense grid search followed by L-BFGS refinement of the
 /// Whittle quasi-likelihood with Paxson spectral density correction.
-pub fn estimate(log_rv: &[f64], m: usize, delta: f64) -> FukasawaResult {
+pub fn estimate(log_rv: ndarray::ArrayView1<f64>, m: usize, delta: f64) -> FukasawaResult {
+  let log_rv = log_rv
+    .as_slice()
+    .expect("estimate requires a contiguous ArrayView1");
   let n = log_rv.len();
   assert!(n >= 30, "need at least 30 observations, got {n}");
 
@@ -446,7 +449,10 @@ pub fn estimate(log_rv: &[f64], m: usize, delta: f64) -> FukasawaResult {
 ///
 /// Computes log realized variance (squared daily returns) and applies
 /// the Fukasawa estimator with `m = 1` (daily data, no intraday).
-pub fn estimate_from_prices(closes: &[f64]) -> FukasawaResult {
+pub fn estimate_from_prices(closes: ndarray::ArrayView1<f64>) -> FukasawaResult {
+  let closes = closes
+    .as_slice()
+    .expect("estimate_from_prices requires a contiguous ArrayView1");
   assert!(closes.len() >= 31, "need at least 31 prices");
 
   let log_rv: Vec<f64> = (1..closes.len())
@@ -456,13 +462,13 @@ pub fn estimate_from_prices(closes: &[f64]) -> FukasawaResult {
     })
     .collect();
 
-  estimate(&log_rv, 1, 1.0 / 250.0)
+  estimate(ndarray::ArrayView1::from(&log_rv), 1, 1.0 / 250.0)
 }
 
 /// FloatExt generic wrapper.
 pub fn estimate_from_prices_generic<T: FloatExt>(closes: ndarray::ArrayView1<T>) -> FukasawaResult {
   let closes_f64: Vec<f64> = closes.iter().map(|x| x.to_f64().unwrap()).collect();
-  estimate_from_prices(&closes_f64)
+  estimate_from_prices(ndarray::ArrayView1::from(&closes_f64))
 }
 
 #[cfg(test)]
@@ -511,7 +517,7 @@ mod tests {
       log_rv[day] = rv.max(1e-20).ln();
     }
 
-    let result = estimate(&log_rv, m, delta);
+    let result = estimate(ndarray::ArrayView1::from(&log_rv), m, delta);
     let err = (result.hurst - true_h).abs();
     assert!(
       err < 0.1,
@@ -558,7 +564,7 @@ mod tests {
         }
         log_rv[day] = rv.max(1e-20).ln();
       }
-      estimate(&log_rv, m, delta).hurst
+      estimate(ndarray::ArrayView1::from(&log_rv), m, delta).hurst
     };
 
     let h_rough = estimate_h(0.1, 77);
@@ -576,7 +582,7 @@ mod tests {
     for i in 1..500 {
       prices[i] = prices[i - 1] * (1.0 + 0.001 * ((i as f64) * 0.1).sin());
     }
-    let result = estimate_from_prices(&prices);
+    let result = estimate_from_prices(ndarray::ArrayView1::from(&prices));
     assert!(
       result.hurst > 0.0 && result.hurst < 0.5,
       "H={:.2}",
@@ -640,7 +646,7 @@ mod tests {
         log_rv[day] = rv_sum.max(1e-20).ln();
       }
 
-      let result = estimate(&log_rv, m, delta);
+      let result = estimate(ndarray::ArrayView1::from(&log_rv), m, delta);
       let err = (result.hurst - true_h).abs();
 
       println!("{:<10.2} {:<10.2} {:<10.3}", true_h, result.hurst, err);

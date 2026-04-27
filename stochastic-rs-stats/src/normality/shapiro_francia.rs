@@ -1,3 +1,4 @@
+use ndarray::ArrayView1;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand_distr::Distribution;
@@ -76,7 +77,13 @@ fn shapiro_francia_statistic_sorted(sorted: &[f64]) -> f64 {
 ///
 /// # Panics
 /// Panics if the sample has fewer than 8 points or contains non-finite values.
-pub fn shapiro_francia_test(sample: &[f64], cfg: ShapiroFranciaConfig) -> ShapiroFranciaResult {
+pub fn shapiro_francia_test(
+  sample: ArrayView1<f64>,
+  cfg: ShapiroFranciaConfig,
+) -> ShapiroFranciaResult {
+  let sample = sample
+    .as_slice()
+    .expect("shapiro_francia_test requires a contiguous ArrayView1");
   assert!(
     sample.len() >= 8,
     "Shapiro-Francia requires at least 8 observations"
@@ -125,6 +132,8 @@ pub fn shapiro_francia_test(sample: &[f64], cfg: ShapiroFranciaConfig) -> Shapir
 
 #[cfg(test)]
 mod tests {
+  use ndarray::ArrayView1;
+
   use super::ShapiroFranciaConfig;
   use super::shapiro_francia_test;
   use stochastic_rs_distributions::exp::SimdExp;
@@ -142,7 +151,7 @@ mod tests {
       bootstrap_seed: 7,
       ..ShapiroFranciaConfig::default()
     };
-    let res = shapiro_francia_test(&x, cfg);
+    let res = shapiro_francia_test(ArrayView1::from(&x), cfg);
     assert!(
       res.p_value > 0.01,
       "p-value too small for normal sample: {res:?}"
@@ -161,7 +170,7 @@ mod tests {
       bootstrap_seed: 11,
       ..ShapiroFranciaConfig::default()
     };
-    let res = shapiro_francia_test(&x, cfg);
+    let res = shapiro_francia_test(ArrayView1::from(&x), cfg);
     assert!(
       res.reject_normality,
       "expected rejection for non-normal sample, got {res:?}"

@@ -26,6 +26,15 @@ use stochastic_rs_distributions::traits::FloatExt;
 /// Each process exposes `sample()` returning a [`Self::Output`] and
 /// `sample_par(m)` returning `m` independent samples via Rayon.
 ///
+/// ## Time-horizon (`t`) convention
+///
+/// Most process structs hold `t: Option<T>`. When `t.is_none()`, implementations
+/// fall back to `T::one()` (i.e. one unit of time, conventionally one year for
+/// finance models). This matches the convention used across the workspace and
+/// the audit document; do **not** rely on it implicitly for interest-rate or
+/// volatility models where the horizon meaningfully drives parameter scaling
+/// (Vasicek, CIR, BGM, HJM, Heston, Bergomi). For those, set `t` explicitly.
+///
 /// ## GPU coverage
 ///
 /// The `sample_gpu` / `sample_cuda_native` / `sample_metal` / `sample_accelerate`

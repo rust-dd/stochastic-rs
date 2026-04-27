@@ -3,6 +3,8 @@ use rand::rngs::StdRng;
 use rand_distr::Distribution;
 use rand_distr::Normal;
 
+use ndarray::ArrayView1;
+
 use super::common::fit_ar;
 use super::common::regress_on_deterministics;
 use super::common::validate_series;
@@ -121,7 +123,13 @@ fn simulate_ar(phi: &[f64], sigma: f64, n: usize, rng: &mut StdRng) -> Vec<f64> 
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn leybourne_mccabe_test(y: &[f64], cfg: LeybourneMcCabeConfig) -> LeybourneMcCabeResult {
+pub fn leybourne_mccabe_test(
+  y: ArrayView1<f64>,
+  cfg: LeybourneMcCabeConfig,
+) -> LeybourneMcCabeResult {
+  let y = y
+    .as_slice()
+    .expect("leybourne_mccabe_test requires a contiguous ArrayView1");
   validate_series(y, 40);
   assert!(cfg.ar_lags > 0, "ar_lags must be positive");
   assert!(
@@ -208,7 +216,7 @@ mod tests {
       bootstrap_seed: 17,
       ..LeybourneMcCabeConfig::default()
     };
-    let res = leybourne_mccabe_test(&x, cfg);
+    let res = leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(
       !res.reject_stationarity,
       "expected no rejection for stationary series, got {res:?}"

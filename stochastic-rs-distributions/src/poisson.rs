@@ -40,6 +40,12 @@ impl<T: PrimInt> SimdPoisson<T> {
     cdf.into_boxed_slice()
   }
 
+  /// Construct a Poisson sampler with rate `lambda`.
+  ///
+  /// `lambda` is `f64` regardless of the output type `T`: the rate parameter
+  /// is intrinsically real-valued and the internal CDF table is built in
+  /// `f64` precision. The generic `T: PrimInt` controls only the *output*
+  /// integer width (`u32`, `u64`, `i64`, …), not the rate type.
   pub fn new(lambda: f64) -> Self {
     Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
   }
@@ -74,6 +80,13 @@ impl<T: PrimInt> SimdPoisson<T> {
     unsafe {
       *self.index.get() = 0;
     }
+  }
+
+  /// Fills `out` using the internal SIMD RNG.
+  #[inline]
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    self.fill_slice(rng, out);
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {

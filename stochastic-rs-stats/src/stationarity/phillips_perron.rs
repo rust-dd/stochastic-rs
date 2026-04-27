@@ -1,3 +1,5 @@
+use ndarray::ArrayView1;
+
 use super::common::CriticalValues;
 use super::common::DeterministicTerm;
 use super::common::adf_critical_values;
@@ -58,7 +60,13 @@ pub struct PhillipsPerronResult {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn phillips_perron_test(y: &[f64], cfg: PhillipsPerronConfig) -> PhillipsPerronResult {
+pub fn phillips_perron_test(
+  y: ArrayView1<f64>,
+  cfg: PhillipsPerronConfig,
+) -> PhillipsPerronResult {
+  let y = y
+    .as_slice()
+    .expect("phillips_perron_test requires a contiguous ArrayView1");
   validate_series(y, 20);
   assert!(
     cfg.alpha > 0.0 && cfg.alpha < 1.0,
@@ -157,7 +165,7 @@ mod tests {
       lags: Some(12),
       ..PhillipsPerronConfig::default()
     };
-    let res = phillips_perron_test(&x, cfg);
+    let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg);
     assert_eq!(
       res.reject_unit_root,
       Some(true),
@@ -175,7 +183,7 @@ mod tests {
       alpha: 0.01,
       ..PhillipsPerronConfig::default()
     };
-    let res = phillips_perron_test(&x, cfg);
+    let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg);
     assert_eq!(
       res.reject_unit_root,
       Some(false),

@@ -1,5 +1,27 @@
 //! # Generic SDE Solver
 //!
+//! ## When to use this vs. the concrete process structs
+//!
+//! The crate ships ~140 concrete process structs (`Bm`, `Gbm`, `Heston`,
+//! `Vasicek`, …) implementing [`crate::traits::ProcessExt`]. Those are the
+//! preferred entry points for built-in models — they have hand-optimised
+//! samplers (FFT circulant embedding, Andersen QE, antithetic, GPU paths, etc.)
+//! and integrate with the broader pipeline (`ModelPricer`, `MalliavinExt`,
+//! visualization, Python bindings).
+//!
+//! This [`Sde`] type is the **research / custom-SDE** alternative: a
+//! flexible generic solver that takes user-supplied drift and diffusion
+//! closures and discretises them with Euler–Maruyama, Milstein, midpoint
+//! RK2, or implicit Euler. Use it when:
+//!
+//! - Your SDE is not in the catalogue of built-in processes
+//! - You want to compare integration schemes side-by-side
+//! - You're implementing a one-off model and don't need a dedicated struct
+//!
+//! Outputs flow through `Array1<T>` / `Array2<T>` and so do not require a
+//! separate `ProcessExt` impl, but they are also not auto-discoverable to
+//! the rest of the pricing / Greeks / vol-surface stack.
+//!
 //! Numerical solver for $d$-dimensional Itô stochastic differential equations of the form
 //!
 //! $$

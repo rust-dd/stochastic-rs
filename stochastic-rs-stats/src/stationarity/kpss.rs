@@ -1,3 +1,5 @@
+use ndarray::ArrayView1;
+
 use super::common::newey_west_long_run_variance;
 use super::common::regress_on_deterministics;
 use super::common::schwert_max_lags;
@@ -90,7 +92,10 @@ fn kpss_critical_values(trend: KPSSTrend) -> KPSSCriticalValues {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn kpss_test(y: &[f64], cfg: KPSSConfig) -> KPSSResult {
+pub fn kpss_test(y: ArrayView1<f64>, cfg: KPSSConfig) -> KPSSResult {
+  let y = y
+    .as_slice()
+    .expect("kpss_test requires a contiguous ArrayView1");
   validate_series(y, 20);
   assert!(
     cfg.alpha > 0.0 && cfg.alpha < 1.0,
@@ -167,7 +172,7 @@ mod tests {
   #[test]
   fn kpss_keeps_stationarity_for_ar1() {
     let x = simulate_ar1(0.75, 2000, 0x4B505353);
-    let res = kpss_test(&x, KPSSConfig::default());
+    let res = kpss_test(ndarray::ArrayView1::from(&x), KPSSConfig::default());
     assert!(
       !res.reject_stationarity,
       "expected no rejection for stationary series, got {res:?}"
@@ -177,7 +182,7 @@ mod tests {
   #[test]
   fn kpss_rejects_stationarity_for_random_walk() {
     let x = simulate_random_walk(2000, 0x4B505354);
-    let res = kpss_test(&x, KPSSConfig::default());
+    let res = kpss_test(ndarray::ArrayView1::from(&x), KPSSConfig::default());
     assert!(
       res.reject_stationarity,
       "expected rejection for random walk, got {res:?}"

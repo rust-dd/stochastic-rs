@@ -1,3 +1,4 @@
+use ndarray::ArrayView1;
 use statrs::distribution::ChiSquared;
 use statrs::distribution::ContinuousCDF;
 
@@ -33,7 +34,10 @@ pub struct JarqueBeraResult {
 ///
 /// # Panics
 /// Panics if the sample has fewer than 8 points or contains non-finite values.
-pub fn jarque_bera_test(sample: &[f64], cfg: JarqueBeraConfig) -> JarqueBeraResult {
+pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> JarqueBeraResult {
+  let sample = sample
+    .as_slice()
+    .expect("jarque_bera_test requires a contiguous ArrayView1");
   assert!(
     sample.len() >= 8,
     "Jarque-Bera requires at least 8 observations"
@@ -93,6 +97,7 @@ pub fn jarque_bera_test(sample: &[f64], cfg: JarqueBeraConfig) -> JarqueBeraResu
 
 #[cfg(test)]
 mod tests {
+  use ndarray::ArrayView1;
   use rand::Rng;
 
   use super::JarqueBeraConfig;
@@ -106,7 +111,7 @@ mod tests {
     let mut x = vec![0.0; 5000];
     dist.fill_slice(&mut rng, &mut x);
 
-    let res = jarque_bera_test(&x, JarqueBeraConfig::default());
+    let res = jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default());
     assert!(
       res.p_value > 0.01,
       "p-value too small for normal sample: {res:?}"
@@ -125,7 +130,7 @@ mod tests {
       *v += if u < 0.5 { -2.0 } else { 2.0 };
     }
 
-    let res = jarque_bera_test(&x, JarqueBeraConfig::default());
+    let res = jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default());
     assert!(
       res.reject_normality,
       "expected rejection for non-normal sample, got {res:?}"

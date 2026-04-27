@@ -65,6 +65,13 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
     z
   }
 
+  /// Fills `out` using the internal SIMD RNG.
+  #[inline]
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    self.fill_slice(rng, out);
+  }
+
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
     let mm = T::splat(self.mu);
     let ss = T::splat(self.sigma);

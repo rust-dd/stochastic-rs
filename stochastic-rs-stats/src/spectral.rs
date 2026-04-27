@@ -3,6 +3,7 @@
 use std::f64::consts::PI;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use num_complex::Complex64;
@@ -189,7 +190,10 @@ fn apply_window_in_place(data: &mut [f64], window: WindowFunction) -> f64 {
 ///
 /// # Panics
 /// Panics on invalid configuration, non-finite signal values, or too short signal.
-pub fn periodogram_fft(signal: &[f64], cfg: PeriodogramConfig) -> PeriodogramResult {
+pub fn periodogram_fft(signal: ArrayView1<f64>, cfg: PeriodogramConfig) -> PeriodogramResult {
+  let signal = signal
+    .as_slice()
+    .expect("periodogram_fft requires a contiguous ArrayView1");
   assert!(
     signal.len() >= 4,
     "signal must contain at least 4 observations"
@@ -259,7 +263,10 @@ pub fn periodogram_fft(signal: &[f64], cfg: PeriodogramConfig) -> PeriodogramRes
 ///
 /// # Panics
 /// Panics on invalid configuration.
-pub fn fft_spectrum_search(signal: &[f64], cfg: SpectrumSearchConfig) -> Vec<SpectrumPeak> {
+pub fn fft_spectrum_search(
+  signal: ArrayView1<f64>,
+  cfg: SpectrumSearchConfig,
+) -> Vec<SpectrumPeak> {
   assert!(cfg.top_k > 0, "top_k must be positive");
 
   let pg = periodogram_fft(signal, cfg.periodogram);
@@ -344,7 +351,7 @@ pub fn fft_spectrum_search(signal: &[f64], cfg: SpectrumSearchConfig) -> Vec<Spe
 
 /// Convenience function returning the strongest frequency peak.
 pub fn dominant_frequency_fft(
-  signal: &[f64],
+  signal: ArrayView1<f64>,
   mut cfg: SpectrumSearchConfig,
 ) -> Option<SpectrumPeak> {
   cfg.top_k = 1;
@@ -353,6 +360,8 @@ pub fn dominant_frequency_fft(
 
 #[cfg(test)]
 mod tests {
+  use ndarray::ArrayView1;
+
   use super::DetrendMethod;
   use super::PeriodogramConfig;
   use super::SpectrumScaling;
@@ -387,7 +396,7 @@ mod tests {
       onesided: true,
       scaling: SpectrumScaling::Power,
     };
-    let pg = periodogram_fft(&x, cfg);
+    let pg = periodogram_fft(ArrayView1::from(&x), cfg);
 
     let (idx, _) = pg
       .spectrum
@@ -434,7 +443,7 @@ mod tests {
       exclude_dc: true,
     };
 
-    let peaks = fft_spectrum_search(&x, cfg);
+    let peaks = fft_spectrum_search(ArrayView1::from(&x), cfg);
     assert_eq!(peaks.len(), 2, "expected 2 peaks, got {peaks:?}");
 
     let mut freqs = peaks.iter().map(|p| p.frequency_hz).collect::<Vec<_>>();
@@ -477,7 +486,7 @@ mod tests {
       exclude_dc: false,
     };
 
-    let peak = dominant_frequency_fft(&x, cfg).expect("expected at least one peak");
+    let peak = dominant_frequency_fft(ArrayView1::from(&x), cfg).expect("expected at least one peak");
     assert!(peak.frequency_hz.is_finite());
     assert!(peak.power.is_finite() && peak.power >= 0.0);
     assert!((0.0..=fs / 2.0).contains(&peak.frequency_hz));
@@ -518,7 +527,7 @@ mod tests {
       exclude_dc: true,
     };
 
-    let peaks = fft_spectrum_search(&signal, cfg);
+    let peaks = fft_spectrum_search(ArrayView1::from(&signal), cfg);
     assert!(
       !peaks.is_empty(),
       "no spectral peaks found on sunspot series"

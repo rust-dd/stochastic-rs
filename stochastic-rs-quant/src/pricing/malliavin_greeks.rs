@@ -223,6 +223,21 @@ impl GbmMalliavinGreeks {
   }
 }
 
+impl crate::traits::GreeksExt for GbmMalliavinGreeks {
+  fn delta(&self) -> f64 {
+    GbmMalliavinGreeks::delta(self)
+  }
+  fn gamma(&self) -> f64 {
+    GbmMalliavinGreeks::gamma(self)
+  }
+  fn vega(&self) -> f64 {
+    GbmMalliavinGreeks::vega(self)
+  }
+  fn rho(&self) -> f64 {
+    GbmMalliavinGreeks::rho_greek(self)
+  }
+}
+
 /// Malliavin-weighted Greeks computation for a European call under Heston dynamics.
 #[derive(Debug, Clone)]
 pub struct HestonMalliavinGreeks {
@@ -738,6 +753,18 @@ impl HestonMalliavinGreeks {
     }
 
     discount * (sum_up - sum_dn) / (m * 2.0 * dv)
+  }
+}
+
+impl crate::traits::GreeksExt for HestonMalliavinGreeks {
+  fn delta(&self) -> f64 {
+    HestonMalliavinGreeks::delta(self)
+  }
+  fn gamma(&self) -> f64 {
+    HestonMalliavinGreeks::gamma(self)
+  }
+  fn vega(&self) -> f64 {
+    HestonMalliavinGreeks::vega_v0(self)
   }
 }
 

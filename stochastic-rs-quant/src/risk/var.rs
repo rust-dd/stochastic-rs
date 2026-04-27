@@ -131,6 +131,32 @@ pub fn monte_carlo_var<T: FloatExt>(
   historical_var(simulated_samples, confidence, orientation)
 }
 
+/// Monte-Carlo VaR with an injected sampler.
+///
+/// Bridges [`crate::traits::DistributionSampler`] (re-exported via
+/// `stochastic_rs_distributions`) into the VaR pipeline so users can replace
+/// the implicit Gaussian assumption with heavy-tailed alternatives such as
+/// `SimdStudentT`, `SimdAlphaStable`, or `SimdParetoTail`.
+///
+/// # Arguments
+/// * `sampler` — any type implementing `DistributionSampler<T>`
+/// * `n_samples` — number of MC draws
+/// * `confidence` — VaR confidence level
+/// * `orientation` — input is PnL or Loss
+pub fn monte_carlo_var_with_sampler<T, D>(
+  sampler: &D,
+  n_samples: usize,
+  confidence: T,
+  orientation: PnlOrLoss,
+) -> T
+where
+  T: FloatExt,
+  D: stochastic_rs_distributions::traits::DistributionSampler<T>,
+{
+  let samples = sampler.sample_n(n_samples);
+  monte_carlo_var(samples.view(), confidence, orientation)
+}
+
 pub(crate) fn losses_from_samples<T: FloatExt>(
   samples: ArrayView1<T>,
   orientation: PnlOrLoss,

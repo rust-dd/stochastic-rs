@@ -1,3 +1,5 @@
+use ndarray::ArrayView1;
+
 use super::common::CriticalValues;
 use super::common::DeterministicTerm;
 use super::common::LagSelection;
@@ -106,7 +108,10 @@ fn gls_detrend(y: &[f64], trend: ERSTrend) -> Vec<f64> {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn ers_dfgls_test(y: &[f64], cfg: ERSConfig) -> ERSResult {
+pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ERSConfig) -> ERSResult {
+  let y = y
+    .as_slice()
+    .expect("ers_dfgls_test requires a contiguous ArrayView1");
   validate_series(y, 20);
   assert!(
     cfg.alpha > 0.0 && cfg.alpha < 1.0,
@@ -183,7 +188,7 @@ mod tests {
       lag_selection: LagSelection::Fixed(4),
       ..ERSConfig::default()
     };
-    let res = ers_dfgls_test(&x, cfg);
+    let res = ers_dfgls_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(res.reject_unit_root, "expected rejection, got {res:?}");
   }
 }

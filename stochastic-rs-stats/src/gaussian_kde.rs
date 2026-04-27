@@ -7,6 +7,7 @@
 use std::f64::consts::PI;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 /// A struct representing a Gaussian Kernel Density Estimator (KDE).
 ///
@@ -63,7 +64,7 @@ impl GaussianKDE {
   ///
   /// A `GaussianKDE` instance with bandwidth estimated by Silverman's rule.
   pub fn with_silverman_bandwidth(data: Array1<f64>) -> Self {
-    let h = silverman_bandwidth(&data);
+    let h = silverman_bandwidth(data.view());
     Self { data, bandwidth: h }
   }
 
@@ -148,7 +149,7 @@ impl GaussianKDE {
 /// # Returns
 ///
 /// The estimated bandwidth.
-pub fn silverman_bandwidth(data: &Array1<f64>) -> f64 {
+pub fn silverman_bandwidth(data: ArrayView1<f64>) -> f64 {
   let n = data.len() as f64;
   if n < 2.0 {
     // If there's only one data point or empty, fallback to something minimal.

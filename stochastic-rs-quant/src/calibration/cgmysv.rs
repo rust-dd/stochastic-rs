@@ -49,6 +49,18 @@ impl crate::traits::ToModel for CgmysvCalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for CgmysvCalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
 /// CGMYSV calibrator via Fourier pricing + Levenberg-Marquardt.
 #[derive(Clone)]
 pub struct CgmysvCalibrator {

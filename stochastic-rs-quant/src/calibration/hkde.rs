@@ -208,6 +208,18 @@ impl crate::traits::ToModel for HKDECalibrationResult {
   }
 }
 
+impl crate::traits::CalibrationResult for HKDECalibrationResult {
+  fn rmse(&self) -> f64 {
+    self.loss.get(crate::LossMetric::Rmse)
+  }
+  fn converged(&self) -> bool {
+    self.converged
+  }
+  fn loss_score(&self) -> Option<&CalibrationLossScore> {
+    Some(&self.loss)
+  }
+}
+
 impl HKDECalibrationResult {
   /// Convert to a [`HKDEFourier`] model for pricing / vol-surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> HKDEFourier {

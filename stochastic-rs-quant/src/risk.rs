@@ -63,4 +63,5 @@ pub use var::VarMethod;
 pub use var::gaussian_var;
 pub use var::historical_var;
 pub use var::monte_carlo_var;
+pub use var::monte_carlo_var_with_sampler;
 pub use var::value_at_risk;

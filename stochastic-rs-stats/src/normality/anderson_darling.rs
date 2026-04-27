@@ -1,3 +1,4 @@
+use ndarray::ArrayView1;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Normal;
 
@@ -60,9 +61,12 @@ fn ad_pvalue_from_adjusted_statistic(a2_star: f64) -> f64 {
 /// # Panics
 /// Panics if the sample has fewer than 8 points or contains non-finite values.
 pub fn anderson_darling_normal_test(
-  sample: &[f64],
+  sample: ArrayView1<f64>,
   cfg: AndersonDarlingConfig,
 ) -> AndersonDarlingResult {
+  let sample = sample
+    .as_slice()
+    .expect("anderson_darling_normal_test requires a contiguous ArrayView1");
   assert!(
     sample.len() >= 8,
     "Anderson-Darling requires at least 8 observations"
@@ -109,6 +113,7 @@ pub fn anderson_darling_normal_test(
 
 #[cfg(test)]
 mod tests {
+  use ndarray::ArrayView1;
   use rand::SeedableRng;
   use rand::rngs::StdRng;
 
@@ -130,7 +135,7 @@ mod tests {
       let mut rng = StdRng::seed_from_u64(seed);
       let mut x = vec![0.0; 4000];
       dist.fill_slice(&mut rng, &mut x);
-      let res = anderson_darling_normal_test(&x, AndersonDarlingConfig::default());
+      let res = anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
       best_p = best_p.max(res.p_value);
     }
     assert!(
@@ -146,7 +151,7 @@ mod tests {
     let mut x = vec![0.0; 4000];
     dist.fill_slice(&mut rng, &mut x);
 
-    let res = anderson_darling_normal_test(&x, AndersonDarlingConfig::default());
+    let res = anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
     assert!(
       res.reject_normality,
       "expected rejection for non-normal sample, got {res:?}"

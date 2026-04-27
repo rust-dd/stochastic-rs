@@ -95,6 +95,22 @@ impl SnellEnvelopePricer {
     }
   }
 
+  /// Builder for fluent construction with sensible defaults.
+  pub fn builder(s: f64, v: f64, k: f64, r: f64) -> SnellEnvelopePricerBuilder {
+    SnellEnvelopePricerBuilder {
+      s,
+      v,
+      k,
+      r,
+      q: None,
+      steps: 100,
+      tau: None,
+      eval: None,
+      expiration: None,
+      option_type: OptionType::Call,
+    }
+  }
+
   fn price_american(&self, option_type: OptionType) -> f64 {
     let tau = self.tau_or_from_dates();
     assert!(tau.is_finite() && tau > 0.0, "tau must be positive");
@@ -204,6 +220,61 @@ impl SnellEnvelopePricer {
       early_exercise_premium: am_values[0] - eu_values[0],
       exercise_boundary,
     }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct SnellEnvelopePricerBuilder {
+  s: f64,
+  v: f64,
+  k: f64,
+  r: f64,
+  q: Option<f64>,
+  steps: usize,
+  tau: Option<f64>,
+  eval: Option<chrono::NaiveDate>,
+  expiration: Option<chrono::NaiveDate>,
+  option_type: OptionType,
+}
+
+impl SnellEnvelopePricerBuilder {
+  pub fn q(mut self, q: f64) -> Self {
+    self.q = Some(q);
+    self
+  }
+  pub fn steps(mut self, steps: usize) -> Self {
+    self.steps = steps;
+    self
+  }
+  pub fn tau(mut self, tau: f64) -> Self {
+    self.tau = Some(tau);
+    self
+  }
+  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
+    self.eval = Some(eval);
+    self
+  }
+  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
+    self.expiration = Some(expiration);
+    self
+  }
+  pub fn option_type(mut self, option_type: OptionType) -> Self {
+    self.option_type = option_type;
+    self
+  }
+  pub fn build(self) -> SnellEnvelopePricer {
+    SnellEnvelopePricer::new(
+      self.s,
+      self.v,
+      self.k,
+      self.r,
+      self.q,
+      self.steps,
+      self.tau,
+      self.eval,
+      self.expiration,
+      self.option_type,
+    )
   }
 }
 
