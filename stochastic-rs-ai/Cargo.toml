@@ -5,6 +5,7 @@ edition = "2024"
 license = "MIT"
 description = "AI / neural surrogates for volatility models."
 repository = "https://github.com/dancixx/stochastic-rs"
+exclude = ["src/volatility/*TrainSet.txt.gz", "**/*.gz"]
 
 [lib]
 doctest = false
