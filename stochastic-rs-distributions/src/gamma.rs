@@ -143,7 +143,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     // f(x) = x^(α−1) e^(−x/θ) / (θ^α Γ(α))
-    let log_pdf = (alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha);
+    let log_pdf =
+      (alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha);
     log_pdf.exp()
   }
 
@@ -176,7 +177,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
     // 30 Newton iterations using f(x) = P(α, x/θ) − p, f'(x) = pdf(x).
     for _ in 0..30 {
       let f = crate::special::gamma_p(alpha, x / scale) - p;
-      let pdf = ((alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha)).exp();
+      let pdf =
+        ((alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha))
+          .exp();
       if pdf <= 0.0 {
         break;
       }
@@ -241,7 +244,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
   fn entropy(&self) -> f64 {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    alpha + scale.ln() + crate::special::ln_gamma(alpha)
+    alpha
+      + scale.ln()
+      + crate::special::ln_gamma(alpha)
       + (1.0 - alpha) * crate::special::digamma(alpha)
   }
 

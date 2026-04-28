@@ -80,7 +80,7 @@ impl VineMultivariate {
   }
 
   fn transform_to_normal(&self, u: &Array2<f64>) -> Array2<f64> {
-        let eps = 1e-12;
+    let eps = 1e-12;
     let mut z = u.clone();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
@@ -104,7 +104,7 @@ impl MultivariateExt for VineMultivariate {
     self.require_fitted()?;
     let l = self.chol_lower.as_ref().unwrap();
     let d = self.dim;
-        let mut g = Array2::<f64>::zeros((n, d));
+    let mut g = Array2::<f64>::zeros((n, d));
     for i in 0..n {
       for j in 0..d {
         g[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
@@ -225,7 +225,7 @@ impl MultivariateExt for VineMultivariate {
     let z = self.transform_to_normal(&X);
     let l = self.chol_lower.as_ref().unwrap();
     let m = 4000usize;
-        let mut g = Array2::<f64>::zeros((m, self.dim));
+    let mut g = Array2::<f64>::zeros((m, self.dim));
     for i in 0..m {
       for j in 0..self.dim {
         g[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));

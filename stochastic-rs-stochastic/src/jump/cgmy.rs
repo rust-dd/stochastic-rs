@@ -142,7 +142,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
 

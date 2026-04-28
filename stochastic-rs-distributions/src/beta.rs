@@ -132,8 +132,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    let log_pdf =
-      (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
+    let log_pdf = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
     log_pdf.exp()
   }
 
@@ -156,8 +155,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     let mut x = a / (a + b); // start at the mean
     for _ in 0..60 {
       let f = crate::special::beta_i(a, b, x) - p;
-      let log_pdf =
-        (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
+      let log_pdf = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
       let pdf = log_pdf.exp();
       if pdf <= 0.0 {
         break;

@@ -139,11 +139,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
   fn cdf(&self, x: f64) -> f64 {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    if x < xm {
-      0.0
-    } else {
-      1.0 - (xm / x).powf(a)
-    }
+    if x < xm { 0.0 } else { 1.0 - (xm / x).powf(a) }
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {

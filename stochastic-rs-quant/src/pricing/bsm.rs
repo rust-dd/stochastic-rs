@@ -316,8 +316,7 @@ impl BSMPricer {
     let T = self.tau_required();
     let (d1, _) = self.d1_d2();
 
-    ((self.b() - self.r) * T).exp() * norm_pdf(d1)
-      / (self.s * self.v * self.tau_required().sqrt())
+    ((self.b() - self.r) * T).exp() * norm_pdf(d1) / (self.s * self.v * self.tau_required().sqrt())
   }
 
   /// Calculate the gamma percent

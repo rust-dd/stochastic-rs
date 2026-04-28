@@ -146,8 +146,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     let k = x as i64;
     let lambda = self.lambda();
     // P(N=k) = exp(−λ) λ^k / k! = exp(k ln λ − λ − ln Γ(k+1))
-    let log_pmf =
-      k as f64 * lambda.ln() - lambda - crate::special::ln_gamma((k + 1) as f64);
+    let log_pmf = k as f64 * lambda.ln() - lambda - crate::special::ln_gamma((k + 1) as f64);
     log_pmf.exp()
   }
 
@@ -171,11 +170,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
       return f64::INFINITY;
     }
     // Use the cached cumulative table built in `build_cdf`.
-    match self
-      .cdf
-      .iter()
-      .position(|&c| c >= p)
-    {
+    match self.cdf.iter().position(|&c| c >= p) {
       Some(k) => k as f64,
       None => (self.cdf.len() - 1) as f64,
     }

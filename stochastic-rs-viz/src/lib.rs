@@ -504,12 +504,7 @@ pub fn plot_distribution<T: FloatExt>(samples: &Array1<T>, path: &str, title: &s
 }
 
 /// Convenience: plot a 3D vol-surface (strikes × maturities × IV) to an HTML file.
-pub fn plot_vol_surface(
-  strikes: &[f64],
-  maturities: &[f64],
-  ivs: &Array2<f64>,
-  path: &str,
-) {
+pub fn plot_vol_surface(strikes: &[f64], maturities: &[f64], ivs: &Array2<f64>, path: &str) {
   use plotly::Surface;
   assert_eq!(
     ivs.dim(),

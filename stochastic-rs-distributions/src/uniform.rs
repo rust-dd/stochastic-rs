@@ -131,11 +131,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
   fn pdf(&self, x: f64) -> f64 {
     let a = self.low.to_f64().unwrap();
     let b = a + self.scale.to_f64().unwrap();
-    if x >= a && x <= b {
-      1.0 / (b - a)
-    } else {
-      0.0
-    }
+    if x >= a && x <= b { 1.0 / (b - a) } else { 0.0 }
   }
 
   fn cdf(&self, x: f64) -> f64 {

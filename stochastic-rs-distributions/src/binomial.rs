@@ -184,8 +184,8 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
 
   fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
     // φ(t) = (1 - p + p e^{it})^n
-    let z =
-      num_complex::Complex64::new(1.0 - self.p, 0.0) + num_complex::Complex64::new(0.0, t).exp().scale(self.p);
+    let z = num_complex::Complex64::new(1.0 - self.p, 0.0)
+      + num_complex::Complex64::new(0.0, t).exp().scale(self.p);
     z.powi(self.n as i32)
   }
 

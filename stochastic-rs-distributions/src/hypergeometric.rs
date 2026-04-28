@@ -127,8 +127,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
     }
     // P = C(K, k) C(N−K, n−k) / C(N, n) — compute via log-Γ for stability.
     let lg = |z: i64| crate::special::ln_gamma((z + 1) as f64);
-    let log_pmf = lg(big_k) - lg(k) - lg(big_k - k)
-      + lg(big_n - big_k)
+    let log_pmf = lg(big_k) - lg(k) - lg(big_k - k) + lg(big_n - big_k)
       - lg(n - k)
       - lg(big_n - big_k - (n - k))
       - (lg(big_n) - lg(n) - lg(big_n - n));

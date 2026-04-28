@@ -163,7 +163,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
 
   /// Returns `[L, v]` — the CGMYSV log-increment path and the Cir variance path.
   fn sample(&self) -> Self::Output {
-
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
 

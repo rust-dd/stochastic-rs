@@ -70,7 +70,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
     let k = self.df.to_f64().unwrap();
     let half_k = 0.5 * k;
     // f(x) = x^(k/2 − 1) e^(−x/2) / (2^(k/2) Γ(k/2))
-    let log_pdf = (half_k - 1.0) * x.ln() - 0.5 * x - half_k * std::f64::consts::LN_2
+    let log_pdf = (half_k - 1.0) * x.ln()
+      - 0.5 * x
+      - half_k * std::f64::consts::LN_2
       - crate::special::ln_gamma(half_k);
     log_pdf.exp()
   }
@@ -101,7 +103,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
     let half_k = 0.5 * k;
     for _ in 0..30 {
       let f = crate::special::gamma_p(half_k, 0.5 * x) - p;
-      let log_pdf = (half_k - 1.0) * x.ln() - 0.5 * x - half_k * std::f64::consts::LN_2
+      let log_pdf = (half_k - 1.0) * x.ln()
+        - 0.5 * x
+        - half_k * std::f64::consts::LN_2
         - crate::special::ln_gamma(half_k);
       let pdf = log_pdf.exp();
       if pdf <= 0.0 {

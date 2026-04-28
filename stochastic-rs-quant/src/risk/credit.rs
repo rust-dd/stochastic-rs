@@ -23,12 +23,7 @@ use crate::traits::FloatExt;
 ///
 /// $\mathrm{ECL} = (1 - Q(t)) \cdot \mathrm{LGD} \cdot \mathrm{exposure}$,
 /// where $Q$ is the survival probability and LGD = 1 − recovery.
-pub fn expected_credit_loss<T: FloatExt>(
-  curve: &SurvivalCurve<T>,
-  t: T,
-  lgd: T,
-  exposure: T,
-) -> T {
+pub fn expected_credit_loss<T: FloatExt>(curve: &SurvivalCurve<T>, t: T, lgd: T, exposure: T) -> T {
   let q = curve.survival_probability(t);
   (T::one() - q) * lgd * exposure
 }
@@ -48,8 +43,11 @@ mod tests {
     use ndarray::Array1;
     let times = Array1::from(vec![1.0_f64, 5.0]);
     let hazards = Array1::from(vec![0.01_f64, 0.01]);
-    let curve =
-      SurvivalCurve::<f64>::from_hazard_rates(&times, &hazards, HazardInterpolation::PiecewiseConstantHazard);
+    let curve = SurvivalCurve::<f64>::from_hazard_rates(
+      &times,
+      &hazards,
+      HazardInterpolation::PiecewiseConstantHazard,
+    );
     let ecl_short = expected_credit_loss(&curve, 1.0, 0.6, 1_000.0);
     let ecl_long = expected_credit_loss(&curve, 5.0, 0.6, 1_000.0);
     assert!(ecl_long > ecl_short);

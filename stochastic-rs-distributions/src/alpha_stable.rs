@@ -288,9 +288,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
   }
 
   fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::inv_cdf for SimdAlphaStable has no closed form"
-    )
+    unimplemented!("DistributionExt::inv_cdf for SimdAlphaStable has no closed form")
   }
 
   fn mean(&self) -> f64 {

@@ -166,8 +166,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
     let g3 = gamma(1.0 + 3.0 * inv_k);
     let g4 = gamma(1.0 + 4.0 * inv_k);
     let sigma2 = g2 - g1 * g1;
-    (-6.0 * g1.powi(4) + 12.0 * g1 * g1 * g2 - 3.0 * g2 * g2 - 4.0 * g1 * g3 + g4)
-      / sigma2.powi(2)
+    (-6.0 * g1.powi(4) + 12.0 * g1 * g1 * g2 - 3.0 * g2 * g2 - 4.0 * g1 * g3 + g4) / sigma2.powi(2)
   }
 
   fn entropy(&self) -> f64 {
