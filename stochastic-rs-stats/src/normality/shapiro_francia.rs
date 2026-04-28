@@ -3,8 +3,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand_distr::Distribution;
 use rand_distr::StandardNormal;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::ndtri;
 
 /// Configuration for the Shapiro-Francia normality test.
 #[derive(Debug, Clone, Copy)]
@@ -54,11 +53,10 @@ fn shapiro_francia_statistic_sorted(sorted: &[f64]) -> f64 {
     return 1.0;
   }
 
-  let std_normal = Normal::new(0.0, 1.0).expect("standard normal must be valid");
   let mut m = Vec::with_capacity(n);
   for i in 0..n {
     let p = (i as f64 + 1.0 - 0.375) / (n_f + 0.25);
-    m.push(std_normal.inverse_cdf(p));
+    m.push(ndtri(p));
   }
   let m_norm = m.iter().map(|v| v * v).sum::<f64>().sqrt();
   if m_norm <= 0.0 {

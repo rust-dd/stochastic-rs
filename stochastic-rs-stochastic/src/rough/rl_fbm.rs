@@ -199,7 +199,7 @@ mod tests {
 
   #[test]
   fn variance_at_horizon_matches_theory_within_mc_error() {
-    use statrs::function::gamma::gamma;
+    use stochastic_rs_distributions::special::gamma;
     let hurst = 0.2_f64;
     let n = 512;
     let t = 1.0_f64;

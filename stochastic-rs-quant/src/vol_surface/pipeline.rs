@@ -154,10 +154,8 @@ mod tests {
   use super::*;
 
   fn make_test_prices() -> (Vec<f64>, Vec<f64>, Vec<f64>, Array2<f64>) {
-    use statrs::distribution::ContinuousCDF;
-    use statrs::distribution::Normal;
+    use stochastic_rs_distributions::special::norm_cdf;
 
-    let normal = Normal::new(0.0, 1.0).unwrap();
     let s = 100.0;
     let r = 0.05;
 
@@ -176,7 +174,7 @@ mod tests {
         let sigma = base_vol + skew * moneyness;
         let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
         let d2 = d1 - sigma * t.sqrt();
-        prices[[j, i]] = f * normal.cdf(d1) - k * normal.cdf(d2);
+        prices[[j, i]] = f * norm_cdf(d1) - k * norm_cdf(d2);
       }
     }
 

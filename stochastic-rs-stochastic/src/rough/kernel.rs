@@ -25,8 +25,8 @@ use std::num::NonZeroUsize;
 
 use gauss_quad::laguerre::GaussLaguerre;
 use ndarray::Array1;
-use statrs::function::gamma::gamma;
-use statrs::function::gamma::ln_gamma;
+use stochastic_rs_distributions::special::gamma;
+use stochastic_rs_distributions::special::ln_gamma;
 
 use crate::traits::FloatExt;
 

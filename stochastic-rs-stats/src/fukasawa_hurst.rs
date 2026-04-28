@@ -22,7 +22,7 @@ use argmin::core::Gradient;
 use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
-use statrs::function::gamma::gamma;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::traits::FloatExt;
 

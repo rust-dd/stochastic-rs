@@ -1,6 +1,5 @@
 use ndarray::ArrayView1;
-use statrs::distribution::ChiSquared;
-use statrs::distribution::ContinuousCDF;
+use stochastic_rs_distributions::special::gamma_p;
 
 /// Configuration for the Jarque-Bera normality test.
 #[derive(Debug, Clone, Copy)]
@@ -83,8 +82,10 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
   let excess_kurtosis = kurtosis - 3.0;
   let statistic = (n / 6.0) * (skewness * skewness + 0.25 * excess_kurtosis * excess_kurtosis);
 
-  let chi2 = ChiSquared::new(2.0).expect("chi-square df=2 must be valid");
-  let p_value = (1.0 - chi2.cdf(statistic)).clamp(0.0, 1.0);
+  // χ²(df=2) survival function: P(X > t) = 1 − P(1, t/2) = exp(−t/2).
+  // Use the regularised lower incomplete gamma to make the dependency
+  // explicit and uniform with other CDF use sites.
+  let p_value = (1.0 - gamma_p(1.0, 0.5 * statistic)).clamp(0.0, 1.0);
 
   JarqueBeraResult {
     statistic,

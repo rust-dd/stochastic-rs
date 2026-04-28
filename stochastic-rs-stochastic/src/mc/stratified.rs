@@ -14,8 +14,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::ndtri;
 
 use super::McEstimate;
 use crate::traits::FloatExt;
@@ -25,7 +24,6 @@ use crate::traits::FloatExt;
 /// Divides `[0,1]` into `n` equal strata, draws one uniform per stratum,
 /// and applies `Φ⁻¹`.
 pub fn stratified_normals_1d<T: FloatExt>(n: usize) -> Array1<T> {
-  let normal = Normal::new(0.0, 1.0).unwrap();
   let mut rng = rand::rng();
   let n_f = n as f64;
   let mut out = Array1::<T>::zeros(n);
@@ -33,7 +31,7 @@ pub fn stratified_normals_1d<T: FloatExt>(n: usize) -> Array1<T> {
   for k in 0..n {
     let u: f64 = rng.random();
     let u_strat = (k as f64 + u) / n_f;
-    let z = normal.inverse_cdf(u_strat.clamp(1e-10, 1.0 - 1e-10));
+    let z = ndtri(u_strat.clamp(1e-10, 1.0 - 1e-10));
     out[k] = T::from_f64_fast(z);
   }
 

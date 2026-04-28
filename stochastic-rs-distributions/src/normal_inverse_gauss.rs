@@ -158,22 +158,18 @@ impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<T> {
   fn pdf(&self, _x: f64) -> f64 {
     // Closed-form pdf requires the modified Bessel function of the second
-    // kind K₁; not currently available in `statrs`.
+    // kind K₁; not currently available.
     unimplemented!(
       "DistributionExt::pdf for SimdNormalInverseGauss requires K_1 (modified Bessel of 2nd kind, order 1); not implemented"
     )
   }
 
   fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::cdf for SimdNormalInverseGauss has no closed form"
-    )
+    unimplemented!("DistributionExt::cdf for SimdNormalInverseGauss has no closed form")
   }
 
   fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::inv_cdf for SimdNormalInverseGauss has no closed form"
-    )
+    unimplemented!("DistributionExt::inv_cdf for SimdNormalInverseGauss has no closed form")
   }
 
   fn mean(&self) -> f64 {
@@ -226,10 +222,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<
     let m = self.mu.to_f64().unwrap();
     let gamma = (a * a - b * b).sqrt();
     let beta_plus_it = num_complex::Complex64::new(b, t);
-    let inner =
-      num_complex::Complex64::new(a * a, 0.0) - beta_plus_it * beta_plus_it;
-    let exponent =
-      num_complex::Complex64::new(0.0, m * t) + (num_complex::Complex64::new(gamma, 0.0) - inner.sqrt()).scale(d);
+    let inner = num_complex::Complex64::new(a * a, 0.0) - beta_plus_it * beta_plus_it;
+    let exponent = num_complex::Complex64::new(0.0, m * t)
+      + (num_complex::Complex64::new(gamma, 0.0) - inner.sqrt()).scale(d);
     exponent.exp()
   }
 

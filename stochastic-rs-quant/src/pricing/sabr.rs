@@ -13,8 +13,7 @@
 //!
 use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::pricing::bsm::BSMCoc;
@@ -139,8 +138,7 @@ pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> 
 /// Delta on forward with premium included
 pub fn fx_delta_from_forward(k: f64, f: f64, sigma: f64, tau: f64, r_f: f64, phi: f64) -> f64 {
   let d2 = (f / k).ln() / (sigma * tau.sqrt()) - 0.5 * sigma * tau.sqrt();
-  let n = Normal::new(0.0, 1.0).unwrap();
-  let nd2 = n.cdf(phi * d2);
+  let nd2 = norm_cdf(phi * d2);
   phi * (-r_f * tau).exp() * (k / f) * nd2
 }
 

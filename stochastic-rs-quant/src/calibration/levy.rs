@@ -327,13 +327,13 @@ fn gamma_neg_y_fn(y: f64) -> Complex64 {
     return Complex64::new(1e15, 0.0);
   }
   if y < 0.0 {
-    Complex64::new(statrs::function::gamma::gamma(-y), 0.0)
+    Complex64::new(stochastic_rs_distributions::special::gamma(-y), 0.0)
   } else if (y - 1.0).abs() < EPS {
     // Y = 1 is a pole; clamp to nearby value.
-    Complex64::new(statrs::function::gamma::gamma(-0.999), 0.0)
+    Complex64::new(stochastic_rs_distributions::special::gamma(-0.999), 0.0)
   } else {
     // Reflection: Gamma(-Y) = -pi / (Y * sin(pi*Y) * Gamma(Y))
-    let g = statrs::function::gamma::gamma(y);
+    let g = stochastic_rs_distributions::special::gamma(y);
     let sin_val = (std::f64::consts::PI * y).sin();
     if sin_val.abs() < EPS || g.abs() < EPS {
       Complex64::new(1e15, 0.0)

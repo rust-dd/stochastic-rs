@@ -17,7 +17,7 @@
 //! DOI: 10.1093/jjfinec/nbi025
 
 use ndarray::ArrayView1;
-use statrs::function::erf::erf;
+use stochastic_rs_distributions::special::erf;
 
 use crate::realized::variance::realized_quarticity;
 use crate::realized::variance::realized_variance;
@@ -159,7 +159,7 @@ pub fn bns_jump_test<T: FloatExt>(returns: ArrayView1<T>, alpha: f64) -> BnsJump
 
 fn mu_p<T: FloatExt>(p: f64) -> T {
   // E|Z|^p with Z ~ N(0, 1) = 2^{p/2} \Gamma((p+1)/2) / \sqrt{\pi}
-  let g = statrs::function::gamma::gamma((p + 1.0) / 2.0);
+  let g = stochastic_rs_distributions::special::gamma((p + 1.0) / 2.0);
   T::from_f64_fast(2.0_f64.powf(p / 2.0) * g / std::f64::consts::PI.sqrt())
 }
 

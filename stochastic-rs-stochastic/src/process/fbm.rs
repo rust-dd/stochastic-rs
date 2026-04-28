@@ -36,7 +36,6 @@ use numpy::PyArray2;
 use numpy::ndarray::Array2;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
-use statrs::function::gamma;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -165,7 +164,7 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
   pub fn malliavin(&self) -> Array1<T> {
     let dt = self.fgn.dt();
     let mut m = Array1::zeros(self.n);
-    let g = gamma::gamma(self.hurst.to_f64().unwrap() + 0.5);
+    let g = stochastic_rs_distributions::special::gamma(self.hurst.to_f64().unwrap() + 0.5);
 
     for i in 0..self.n {
       m[i] = T::one() / T::from_f64_fast(g)
@@ -220,7 +219,7 @@ impl PyFbm {
 
 #[cfg(test)]
 mod tests {
-  use statrs::function::erf::erf;
+  use stochastic_rs_distributions::special::erf;
 
   use super::*;
 

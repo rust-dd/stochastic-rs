@@ -29,7 +29,7 @@ use stochastic_rs_stochastic::process::bm::Bm;
 use super::DiffusionModel;
 
 fn log_bessel_i(nu: f64, z: f64) -> f64 {
-  use statrs::function::gamma::ln_gamma;
+  use stochastic_rs_distributions::special::ln_gamma;
 
   if z.abs() < 1e-30 {
     return f64::NEG_INFINITY;

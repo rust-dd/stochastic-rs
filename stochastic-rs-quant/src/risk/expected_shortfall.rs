@@ -16,9 +16,8 @@
 //! Expected Shortfall is a coherent risk measure, unlike VaR.
 
 use ndarray::ArrayView1;
-use statrs::distribution::Continuous;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::ndtri;
+use stochastic_rs_distributions::special::norm_pdf;
 
 use super::var::PnlOrLoss;
 use super::var::VarMethod;
@@ -65,9 +64,8 @@ pub fn gaussian_es<T: FloatExt>(
     / T::from_usize_(n - 1);
   let sigma = var.sqrt();
   let c = confidence.to_f64().unwrap();
-  let normal = Normal::new(0.0, 1.0).expect("standard normal");
-  let q = normal.inverse_cdf(c);
-  let phi_q = normal.pdf(q);
+  let q = ndtri(c);
+  let phi_q = norm_pdf(q);
   let factor = T::from_f64_fast(phi_q / (1.0 - c));
   mean + sigma * factor
 }

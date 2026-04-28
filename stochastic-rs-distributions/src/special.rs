@@ -1,7 +1,6 @@
 //! Special functions used by the closed-form `DistributionExt` impls.
 //!
-//! All implementations are self-contained — no dependency on `statrs` or any
-//! other distribution / special-function crate. Algorithms are textbook
+//! Algorithms are textbook
 //! (Numerical Recipes 3e; Abramowitz & Stegun; Acklam 1998 for `ndtri`;
 //! Lanczos for `ln_gamma`).
 
@@ -216,6 +215,18 @@ pub fn gamma_p(a: f64, x: f64) -> f64 {
 #[inline]
 pub fn gamma_q(a: f64, x: f64) -> f64 {
   1.0 - gamma_p(a, x)
+}
+
+/// Unregularised lower incomplete gamma γ(a, x) = ∫₀ˣ tᵃ⁻¹ e⁻ᵗ dt = P(a,x)·Γ(a).
+#[inline]
+pub fn gamma_li(a: f64, x: f64) -> f64 {
+  gamma_p(a, x) * gamma(a)
+}
+
+/// Unregularised upper incomplete gamma Γ(a, x) = ∫ₓ^∞ tᵃ⁻¹ e⁻ᵗ dt = Q(a,x)·Γ(a).
+#[inline]
+pub fn gamma_ui(a: f64, x: f64) -> f64 {
+  gamma_q(a, x) * gamma(a)
 }
 
 fn gser(a: f64, x: f64) -> f64 {

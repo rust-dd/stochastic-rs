@@ -6,9 +6,8 @@
 //!
 use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
-use statrs::distribution::Continuous;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::OptionType;
 use crate::traits::PricerExt;
@@ -199,13 +198,12 @@ impl crate::traits::GreeksExt for BSMPricer {
 impl PricerExt for BSMPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
     let tau = self.tau_required();
 
-    let call = self.s * ((self.b() - self.r) * tau).exp() * n.cdf(d1)
-      - self.k * (-self.r * tau).exp() * n.cdf(d2);
-    let put = -self.s * ((self.b() - self.r) * tau).exp() * n.cdf(-d1)
-      + self.k * (-self.r * tau).exp() * n.cdf(-d2);
+    let call = self.s * ((self.b() - self.r) * tau).exp() * norm_cdf(d1)
+      - self.k * (-self.r * tau).exp() * norm_cdf(d2);
+    let put = -self.s * ((self.b() - self.r) * tau).exp() * norm_cdf(-d1)
+      + self.k * (-self.r * tau).exp() * norm_cdf(-d2);
 
     (call, put)
   }
@@ -303,14 +301,13 @@ impl BSMPricer {
   /// Calculate the delta
   pub fn delta(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
     let tau = self.tau_required();
     let exp_bt = ((self.b() - self.r) * tau).exp();
 
     if self.option_type == OptionType::Call {
-      exp_bt * n.cdf(d1)
+      exp_bt * norm_cdf(d1)
     } else {
-      exp_bt * (n.cdf(d1) - 1.0)
+      exp_bt * (norm_cdf(d1) - 1.0)
     }
   }
 
@@ -318,9 +315,9 @@ impl BSMPricer {
   pub fn gamma(&self) -> f64 {
     let T = self.tau_required();
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
 
-    ((self.b() - self.r) * T).exp() * n.pdf(d1) / (self.s * self.v * self.tau_required().sqrt())
+    ((self.b() - self.r) * T).exp() * norm_pdf(d1)
+      / (self.s * self.v * self.tau_required().sqrt())
   }
 
   /// Calculate the gamma percent
@@ -331,21 +328,20 @@ impl BSMPricer {
   /// Calculate the theta
   pub fn theta(&self) -> f64 {
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
     let exp_rt = (-self.r * self.tau_required()).exp();
-    let pdf_d1 = n.pdf(d1);
+    let pdf_d1 = norm_pdf(d1);
 
     let first_term = -self.s * exp_bt * pdf_d1 * self.v / (2.0 * self.tau_required().sqrt());
 
     if self.option_type == OptionType::Call {
-      let second_term = -(self.b() - self.r) * self.s * exp_bt * n.cdf(d1);
-      let third_term = -self.r * self.k * exp_rt * n.cdf(d2);
+      let second_term = -(self.b() - self.r) * self.s * exp_bt * norm_cdf(d1);
+      let third_term = -self.r * self.k * exp_rt * norm_cdf(d2);
       first_term + second_term + third_term
     } else {
-      let second_term = (self.b() - self.r) * self.s * exp_bt * n.cdf(-d1);
-      let third_term = -self.r * self.k * exp_rt * n.cdf(-d2);
+      let second_term = (self.b() - self.r) * self.s * exp_bt * norm_cdf(-d1);
+      let third_term = -self.r * self.k * exp_rt * norm_cdf(-d2);
       first_term + second_term + third_term
     }
   }
@@ -353,25 +349,23 @@ impl BSMPricer {
   /// Calculate the vega
   pub fn vega(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
 
     self.s
       * ((self.b() - self.r) * self.tau_required()).exp()
-      * n.pdf(d1)
+      * norm_pdf(d1)
       * self.tau_required().sqrt()
   }
 
   /// Calculate the rho
   pub fn rho(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_rt = (-self.r * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      self.k * self.tau_required() * exp_rt * n.cdf(d2)
+      self.k * self.tau_required() * exp_rt * norm_cdf(d2)
     } else {
-      -self.k * self.tau_required() * exp_rt * n.cdf(-d2)
+      -self.k * self.tau_required() * exp_rt * norm_cdf(-d2)
     }
   }
 
@@ -389,18 +383,17 @@ impl BSMPricer {
     let b = self.b();
     let tau = self.tau_required();
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_bt = ((b - r) * tau).exp();
-    let pdf_d1 = n.pdf(d1);
+    let pdf_d1 = norm_pdf(d1);
     let sqrt_T = tau.sqrt();
 
     match self.option_type {
       OptionType::Call => {
-        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) + (b - r) * n.cdf(d1))
+        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) + (b - r) * norm_cdf(d1))
       }
       OptionType::Put => {
-        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) - (b - r) * n.cdf(-d1))
+        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) - (b - r) * norm_cdf(-d1))
       }
     }
   }
@@ -408,9 +401,8 @@ impl BSMPricer {
   /// Calculate the vanna
   pub fn vanna(&self) -> f64 {
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
 
-    -((self.b() - self.r) * self.tau_required()).exp() * n.pdf(d1) * d2 / self.v
+    -((self.b() - self.r) * self.tau_required()).exp() * norm_pdf(d1) * d2 / self.v
   }
 
   /// Calculate the zomma
@@ -467,49 +459,45 @@ impl BSMPricer {
   /// Calculate the phi
   pub fn phi(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      -self.tau_required() * self.s * exp_bt * n.cdf(d1)
+      -self.tau_required() * self.s * exp_bt * norm_cdf(d1)
     } else {
-      self.tau_required() * self.s * exp_bt * n.cdf(-d1)
+      self.tau_required() * self.s * exp_bt * norm_cdf(-d1)
     }
   }
 
   /// Calculate the zeta
   pub fn zeta(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
     if self.option_type == OptionType::Call {
-      n.cdf(d2)
+      norm_cdf(d2)
     } else {
-      -n.cdf(-d2)
+      -norm_cdf(-d2)
     }
   }
 
   /// Calculate the strike delta
   pub fn strike_delta(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_rt = (-self.r * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      -exp_rt * n.cdf(d2)
+      -exp_rt * norm_cdf(d2)
     } else {
-      exp_rt * n.cdf(-d2)
+      exp_rt * norm_cdf(-d2)
     }
   }
 
   /// Calculate the strike gamma
   pub fn strike_gamma(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
-    n.pdf(d2) * (-self.r * self.tau_required()).exp()
+    norm_pdf(d2) * (-self.r * self.tau_required()).exp()
       / (self.k * self.v * self.tau_required().sqrt())
   }
 }

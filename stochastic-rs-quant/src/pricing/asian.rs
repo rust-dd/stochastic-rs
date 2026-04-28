@@ -4,8 +4,7 @@
 //! V_0=e^{-rT}\,\mathbb E\!\left[\left(\frac1T\int_0^T S_tdt-K\right)^+\right]
 //! $$
 //!
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
@@ -118,12 +117,10 @@ impl PricerExt for AsianPricer {
     let d1 = ((self.s / self.k).ln() + (b + 0.5 * v.powi(2) * T)) / (v * T.sqrt());
     let d2 = d1 - v * T.sqrt();
 
-    let N = Normal::new(0.0, 1.0).unwrap();
-
-    let call =
-      self.s * ((b - self.r) * T).exp() * N.cdf(d1) - self.k * (-self.r * T).exp() * N.cdf(d2);
-    let put =
-      -self.s * ((b - self.r) * T).exp() * N.cdf(-d1) + self.k * (-self.r * T).exp() * N.cdf(-d2);
+    let call = self.s * ((b - self.r) * T).exp() * norm_cdf(d1)
+      - self.k * (-self.r * T).exp() * norm_cdf(d2);
+    let put = -self.s * ((b - self.r) * T).exp() * norm_cdf(-d1)
+      + self.k * (-self.r * T).exp() * norm_cdf(-d2);
 
     (call, put)
   }

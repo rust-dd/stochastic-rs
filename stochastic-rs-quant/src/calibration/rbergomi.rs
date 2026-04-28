@@ -29,8 +29,8 @@ use std::sync::Arc;
 
 use nalgebra::DMatrix;
 use rayon::prelude::*;
-use statrs::function::gamma::gamma;
-use statrs::function::gamma::gamma_li;
+use stochastic_rs_distributions::special::gamma;
+use stochastic_rs_distributions::special::gamma_li;
 
 const H_MIN: f64 = 1e-3;
 const H_MAX: f64 = 0.499;

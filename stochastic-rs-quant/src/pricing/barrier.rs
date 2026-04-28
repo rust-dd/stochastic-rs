@@ -9,8 +9,7 @@
 //! - Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Barriers"
 //!
 use rayon::prelude::*;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 
@@ -55,7 +54,6 @@ pub struct BarrierPricer {
 impl BarrierPricer {
   /// Price the barrier option using Reiner–Rubinstein closed-form formulas.
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let s = self.s;
     let k = self.k;
     let h = self.h;
@@ -90,26 +88,26 @@ impl BarrierPricer {
 
     let hs = h / s;
 
-    let a = phi * s * (-q * t).exp() * n.cdf(phi * x1)
-      - phi * k * (-r * t).exp() * n.cdf(phi * x1 - phi * sigma_sqrt_t);
+    let a = phi * s * (-q * t).exp() * norm_cdf(phi * x1)
+      - phi * k * (-r * t).exp() * norm_cdf(phi * x1 - phi * sigma_sqrt_t);
 
-    let b = phi * s * (-q * t).exp() * n.cdf(phi * x2)
-      - phi * k * (-r * t).exp() * n.cdf(phi * x2 - phi * sigma_sqrt_t);
+    let b = phi * s * (-q * t).exp() * norm_cdf(phi * x2)
+      - phi * k * (-r * t).exp() * norm_cdf(phi * x2 - phi * sigma_sqrt_t);
 
-    let c = phi * s * (-q * t).exp() * hs.powf(2.0 * (mu + 1.0)) * n.cdf(eta * y1)
-      - phi * k * (-r * t).exp() * hs.powf(2.0 * mu) * n.cdf(eta * y1 - eta * sigma_sqrt_t);
+    let c = phi * s * (-q * t).exp() * hs.powf(2.0 * (mu + 1.0)) * norm_cdf(eta * y1)
+      - phi * k * (-r * t).exp() * hs.powf(2.0 * mu) * norm_cdf(eta * y1 - eta * sigma_sqrt_t);
 
-    let d = phi * s * (-q * t).exp() * hs.powf(2.0 * (mu + 1.0)) * n.cdf(eta * y2)
-      - phi * k * (-r * t).exp() * hs.powf(2.0 * mu) * n.cdf(eta * y2 - eta * sigma_sqrt_t);
+    let d = phi * s * (-q * t).exp() * hs.powf(2.0 * (mu + 1.0)) * norm_cdf(eta * y2)
+      - phi * k * (-r * t).exp() * hs.powf(2.0 * mu) * norm_cdf(eta * y2 - eta * sigma_sqrt_t);
 
     let e = rebate
       * (-r * t).exp()
-      * (n.cdf(eta * x2 - eta * sigma_sqrt_t)
-        - hs.powf(2.0 * mu) * n.cdf(eta * y2 - eta * sigma_sqrt_t));
+      * (norm_cdf(eta * x2 - eta * sigma_sqrt_t)
+        - hs.powf(2.0 * mu) * norm_cdf(eta * y2 - eta * sigma_sqrt_t));
 
     let f = rebate
-      * (hs.powf(mu + lambda) * n.cdf(eta * z)
-        + hs.powf(mu - lambda) * n.cdf(eta * z - 2.0 * eta * lambda * sigma_sqrt_t));
+      * (hs.powf(mu + lambda) * norm_cdf(eta * z)
+        + hs.powf(mu - lambda) * norm_cdf(eta * z - 2.0 * eta * lambda * sigma_sqrt_t));
 
     match (self.barrier_type, self.option_type) {
       (BarrierType::DownAndIn, OptionType::Call) => {
@@ -207,7 +205,6 @@ impl DoubleBarrierPricer {
 
   /// Price with a specified number of series terms.
   pub fn price_with_terms(&self, num_terms: i32) -> f64 {
-    let n_dist = Normal::new(0.0, 1.0).unwrap();
     let s = self.s;
     let k = self.k;
     let h_u = self.h_upper;
@@ -241,12 +238,12 @@ impl DoubleBarrierPricer {
       let hs_ref = (h_l / s).powf(2.0 * nf * (mu + 1.0));
 
       let direct = hs_pow
-        * (phi * s * (-q * t).exp() * n_dist.cdf(phi * d1n)
-          - phi * k * (-r * t).exp() * n_dist.cdf(phi * d1n - phi * sigma_sqrt_t));
+        * (phi * s * (-q * t).exp() * norm_cdf(phi * d1n)
+          - phi * k * (-r * t).exp() * norm_cdf(phi * d1n - phi * sigma_sqrt_t));
 
       let reflected = hs_ref
-        * (phi * s * (-q * t).exp() * n_dist.cdf(phi * d2n)
-          - phi * k * (-r * t).exp() * n_dist.cdf(phi * d2n - phi * sigma_sqrt_t));
+        * (phi * s * (-q * t).exp() * norm_cdf(phi * d2n)
+          - phi * k * (-r * t).exp() * norm_cdf(phi * d2n - phi * sigma_sqrt_t));
 
       price += direct - reflected;
     }

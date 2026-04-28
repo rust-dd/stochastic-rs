@@ -10,8 +10,7 @@
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.2
 //!
 use owens_t::biv_norm;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 
@@ -42,7 +41,6 @@ pub struct SimpleChooserPricer {
 
 impl SimpleChooserPricer {
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let v = self.sigma;
     let v2 = v * v;
     let b = self.r - self.q;
@@ -51,10 +49,10 @@ impl SimpleChooserPricer {
     let d = ((self.s / self.k).ln() + (b + 0.5 * v2) * self.t) / (v * sqrt_t);
     let y = ((self.s / self.k).ln() + b * self.t + 0.5 * v2 * self.t1) / (v * sqrt_t1);
 
-    self.s * (-self.q * self.t).exp() * n.cdf(d)
-      - self.k * (-self.r * self.t).exp() * n.cdf(d - v * sqrt_t)
-      - self.s * (-self.q * self.t).exp() * n.cdf(-y)
-      + self.k * (-self.r * self.t).exp() * n.cdf(-y + v * sqrt_t1)
+    self.s * (-self.q * self.t).exp() * norm_cdf(d)
+      - self.k * (-self.r * self.t).exp() * norm_cdf(d - v * sqrt_t)
+      - self.s * (-self.q * self.t).exp() * norm_cdf(-y)
+      + self.k * (-self.r * self.t).exp() * norm_cdf(-y + v * sqrt_t1)
   }
 }
 
@@ -129,7 +127,6 @@ impl ComplexChooserPricer {
   }
 
   fn put_call_diff(&self, s: f64) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let v = self.sigma;
     let v2 = v * v;
     let b = self.r - self.q;
@@ -139,10 +136,10 @@ impl ComplexChooserPricer {
     let d2c = d1c - v * tau_c.sqrt();
     let d1p = ((s / self.k_put).ln() + (b + 0.5 * v2) * tau_p) / (v * tau_p.sqrt());
     let d2p = d1p - v * tau_p.sqrt();
-    let call = s * ((b - self.r) * tau_c).exp() * n.cdf(d1c)
-      - self.k_call * (-self.r * tau_c).exp() * n.cdf(d2c);
-    let put = self.k_put * (-self.r * tau_p).exp() * n.cdf(-d2p)
-      - s * ((b - self.r) * tau_p).exp() * n.cdf(-d1p);
+    let call = s * ((b - self.r) * tau_c).exp() * norm_cdf(d1c)
+      - self.k_call * (-self.r * tau_c).exp() * norm_cdf(d2c);
+    let put = self.k_put * (-self.r * tau_p).exp() * norm_cdf(-d2p)
+      - s * ((b - self.r) * tau_p).exp() * norm_cdf(-d1p);
     call - put
   }
 }
@@ -171,7 +168,6 @@ pub struct ForwardStartPricer {
 
 impl ForwardStartPricer {
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let tau = self.t - self.t1;
     let v = self.sigma;
     let v2 = v * v;
@@ -182,8 +178,12 @@ impl ForwardStartPricer {
     let coc_tau = ((b - self.r) * tau).exp();
     let disc = (-self.r * tau).exp();
     match self.option_type {
-      OptionType::Call => self.s * coc1 * (coc_tau * n.cdf(d1) - self.alpha * disc * n.cdf(d2)),
-      OptionType::Put => self.s * coc1 * (self.alpha * disc * n.cdf(-d2) - coc_tau * n.cdf(-d1)),
+      OptionType::Call => {
+        self.s * coc1 * (coc_tau * norm_cdf(d1) - self.alpha * disc * norm_cdf(d2))
+      }
+      OptionType::Put => {
+        self.s * coc1 * (self.alpha * disc * norm_cdf(-d2) - coc_tau * norm_cdf(-d1))
+      }
     }
   }
 }

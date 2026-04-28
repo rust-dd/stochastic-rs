@@ -36,7 +36,6 @@ rand_distr = { workspace = true }
 rayon = { workspace = true }
 roots = { workspace = true }
 kendalls = { workspace = true }
-statrs = { workspace = true }
 levenberg-marquardt = { workspace = true }
 linreg = { workspace = true }
 argmin = { workspace = true }

@@ -621,7 +621,7 @@ mod tests {
     let path = step.simulate(0.0, |_| c, |_| 0.0, &dw);
 
     let exponent = hurst + 0.5;
-    let gamma_h_three_half = statrs::function::gamma::gamma(hurst + 1.5);
+    let gamma_h_three_half = stochastic_rs_distributions::special::gamma(hurst + 1.5);
     for i in 1..n {
       let t = dt * i as f64;
       let truth = c * t.powf(exponent) / gamma_h_three_half;

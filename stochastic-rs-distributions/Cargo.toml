@@ -28,4 +28,3 @@ plotly = { workspace = true, features = ["plotly_ndarray"] }
 
 [dev-dependencies]
 romu = { workspace = true }
-statrs = { workspace = true }

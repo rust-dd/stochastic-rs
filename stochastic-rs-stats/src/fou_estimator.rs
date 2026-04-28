@@ -9,7 +9,7 @@ use std::f64::consts::SQRT_2;
 use ndarray::Array1;
 use ndarray::array;
 use ndarray::s;
-use statrs::function::gamma::gamma;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 
 use crate::traits::ProcessExt;

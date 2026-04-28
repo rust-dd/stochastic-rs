@@ -6,16 +6,13 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use statrs::distribution::Continuous;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::LogNormal;
-use statrs::statistics::Distribution as StatDistribution;
-use statrs::statistics::Median;
-use statrs::statistics::Mode;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::special::ndtri;
+use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
@@ -32,7 +29,9 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<T>,
   /// Total simulation horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  distribution: Option<LogNormal>,
+  /// Cached parameters of the terminal log-normal: ln S_T ∼ N(`ln_mu`, `ln_sigma`).
+  ln_mu: f64,
+  ln_sigma: f64,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
@@ -53,7 +52,8 @@ impl<T: FloatExt> Gbm<T> {
       n,
       x0,
       t,
-      distribution: LogNormal::new(mu_ln, sigma_ln).ok(),
+      ln_mu: mu_ln,
+      ln_sigma: sigma_ln,
       seed: Unseeded,
     }
   }
@@ -75,7 +75,8 @@ impl<T: FloatExt> Gbm<T, Deterministic> {
       n,
       x0,
       t,
-      distribution: LogNormal::new(mu_ln, sigma_ln).ok(),
+      ln_mu: mu_ln,
+      ln_sigma: sigma_ln,
       seed: Deterministic::new(seed),
     }
   }
@@ -139,61 +140,52 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   }
 }
 
+// Terminal distribution of the Gbm: S_T ∼ LogNormal(ln_mu, ln_sigma) where
+// ln_mu = ln(S_0) + (μ − ½σ²)·T,   ln_sigma = σ·√T.
 impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
   fn pdf(&self, x: f64) -> f64 {
-    self.distribution.as_ref().map_or(0.0, |d| d.pdf(x))
+    if x <= 0.0 {
+      return 0.0;
+    }
+    let z = (x.ln() - self.ln_mu) / self.ln_sigma;
+    norm_pdf(z) / (self.ln_sigma * x)
   }
 
   fn cdf(&self, x: f64) -> f64 {
-    self.distribution.as_ref().map_or(0.0, |d| d.cdf(x))
+    if x <= 0.0 {
+      return 0.0;
+    }
+    norm_cdf((x.ln() - self.ln_mu) / self.ln_sigma)
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {
-    self.distribution.as_ref().map_or(0.0, |d| d.inverse_cdf(p))
+    (self.ln_mu + self.ln_sigma * ndtri(p)).exp()
   }
 
   fn mean(&self) -> f64 {
-    self
-      .distribution
-      .as_ref()
-      .and_then(|d| d.mean())
-      .unwrap_or(0.0)
+    (self.ln_mu + 0.5 * self.ln_sigma * self.ln_sigma).exp()
   }
 
   fn mode(&self) -> f64 {
-    self
-      .distribution
-      .as_ref()
-      .and_then(|d| d.mode())
-      .unwrap_or(0.0)
+    (self.ln_mu - self.ln_sigma * self.ln_sigma).exp()
   }
 
   fn median(&self) -> f64 {
-    self.distribution.as_ref().map_or(0.0, |d| d.median())
+    self.ln_mu.exp()
   }
 
   fn variance(&self) -> f64 {
-    self
-      .distribution
-      .as_ref()
-      .and_then(|d| d.variance())
-      .unwrap_or(0.0)
+    let s2 = self.ln_sigma * self.ln_sigma;
+    (s2.exp() - 1.0) * (2.0 * self.ln_mu + s2).exp()
   }
 
   fn skewness(&self) -> f64 {
-    self
-      .distribution
-      .as_ref()
-      .and_then(|d| d.skewness())
-      .unwrap_or(0.0)
+    let s2 = self.ln_sigma * self.ln_sigma;
+    (s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt()
   }
 
   fn entropy(&self) -> f64 {
-    self
-      .distribution
-      .as_ref()
-      .and_then(|d| d.entropy())
-      .unwrap_or(0.0)
+    0.5 + 0.5 * (2.0 * std::f64::consts::PI * self.ln_sigma * self.ln_sigma).ln() + self.ln_mu
   }
 }
 

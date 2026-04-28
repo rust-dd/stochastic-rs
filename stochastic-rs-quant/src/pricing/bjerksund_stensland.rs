@@ -20,8 +20,7 @@
 //! <https://www.researchgate.net/publication/228801918>
 
 use owens_t::biv_norm;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::traits::PricerExt;
@@ -99,23 +98,20 @@ impl BjerksundStensland2002Pricer {
 
   /// European GBS call price (used as lower bound).
   fn gbs_call(&self, fs: f64, x: f64, t: f64, r: f64, b: f64, v: f64) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let d1 = ((fs / x).ln() + (b + 0.5 * v * v) * t) / (v * t.sqrt());
     let d2 = d1 - v * t.sqrt();
-    fs * ((b - r) * t).exp() * n.cdf(d1) - x * (-r * t).exp() * n.cdf(d2)
+    fs * ((b - r) * t).exp() * norm_cdf(d1) - x * (-r * t).exp() * norm_cdf(d2)
   }
 
   /// European GBS put price.
   fn gbs_put(&self, fs: f64, x: f64, t: f64, r: f64, b: f64, v: f64) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let d1 = ((fs / x).ln() + (b + 0.5 * v * v) * t) / (v * t.sqrt());
     let d2 = d1 - v * t.sqrt();
-    x * (-r * t).exp() * n.cdf(-d2) - fs * ((b - r) * t).exp() * n.cdf(-d1)
+    x * (-r * t).exp() * norm_cdf(-d2) - fs * ((b - r) * t).exp() * norm_cdf(-d1)
   }
 
   /// The $\phi$ intermediate function.
   fn phi(&self, fs: f64, t: f64, gamma: f64, h: f64, i: f64, r: f64, b: f64, v: f64) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let v2 = v * v;
     let d1 = -((fs / h).ln() + (b + (gamma - 0.5) * v2) * t) / (v * t.sqrt());
     let d2 = d1 - 2.0 * (i / fs).ln() / (v * t.sqrt());
@@ -123,7 +119,7 @@ impl BjerksundStensland2002Pricer {
     let lambda = -r + gamma * b + 0.5 * gamma * (gamma - 1.0) * v2;
     let kappa = 2.0 * b / v2 + (2.0 * gamma - 1.0);
 
-    (lambda * t).exp() * fs.powf(gamma) * (n.cdf(d1) - (i / fs).powf(kappa) * n.cdf(d2))
+    (lambda * t).exp() * fs.powf(gamma) * (norm_cdf(d1) - (i / fs).powf(kappa) * norm_cdf(d2))
   }
 
   /// The $\psi$ intermediate function (uses bivariate normal CDF).

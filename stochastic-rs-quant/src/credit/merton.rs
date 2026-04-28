@@ -26,16 +26,16 @@
 //! E_0=V_0\Phi(d_1)-De^{-rT}\Phi(d_2).
 //! $$
 
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 /// Analytical Merton structural model.
 ///
 /// Parameters are fixed at construction; all quantities are functions of a
 /// user-supplied time-to-maturity `tau`.  All numeric results are `f64` because
-/// the model relies on the `statrs` normal distribution which only supports
-/// double precision; higher-level types that are generic over `T: FloatExt`
-/// should convert into `f64` before calling this model.
+/// the model uses the standard-normal CDF from
+/// [`stochastic_rs_distributions::special`], which only supports double
+/// precision; higher-level types that are generic over `T: FloatExt` should
+/// convert into `f64` before calling this model.
 #[derive(Debug, Clone)]
 pub struct MertonStructural {
   /// Initial asset value $V_0$.
@@ -81,14 +81,10 @@ impl MertonStructural {
     (d1, d2)
   }
 
-  fn normal() -> Normal {
-    Normal::new(0.0, 1.0).expect("standard normal")
-  }
-
   /// Risk-neutral default probability $\mathbb{Q}(\tau_d \le T) = \Phi(-d_2)$.
   pub fn risk_neutral_default_probability(&self, tau: f64) -> f64 {
     let (_, d2) = self.d1_d2(tau);
-    Self::normal().cdf(-d2)
+    norm_cdf(-d2)
   }
 
   /// Real-world default probability using a user-supplied real drift $\mu$.
@@ -101,7 +97,7 @@ impl MertonStructural {
     let dd = ((self.asset_value / self.debt_face_value).ln()
       + (asset_drift - self.asset_payout - 0.5 * self.asset_volatility.powi(2)) * tau)
       / sigma_sqrt_t;
-    Self::normal().cdf(-dd)
+    norm_cdf(-dd)
   }
 
   /// Survival probability $Q(T)=1-\mathbb{Q}(\tau_d\le T)$.
@@ -117,9 +113,8 @@ impl MertonStructural {
   /// Equity value $E_0=V_0 e^{-qT}\Phi(d_1)-De^{-rT}\Phi(d_2)$.
   pub fn equity_value(&self, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(tau);
-    let n = Self::normal();
-    self.asset_value * (-self.asset_payout * tau).exp() * n.cdf(d1)
-      - self.debt_face_value * (-self.risk_free_rate * tau).exp() * n.cdf(d2)
+    self.asset_value * (-self.asset_payout * tau).exp() * norm_cdf(d1)
+      - self.debt_face_value * (-self.risk_free_rate * tau).exp() * norm_cdf(d2)
   }
 
   /// Risky debt value $B_0 = V_0 e^{-qT} - E_0$.
@@ -147,12 +142,12 @@ impl MertonStructural {
   /// $$
   pub fn implied_recovery(&self, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(tau);
-    let n = Self::normal();
-    let denom = self.debt_face_value * n.cdf(-d2);
+    let denom = self.debt_face_value * norm_cdf(-d2);
     if denom <= 0.0 {
       return 0.0;
     }
-    self.asset_value * ((self.risk_free_rate - self.asset_payout) * tau).exp() * n.cdf(-d1) / denom
+    self.asset_value * ((self.risk_free_rate - self.asset_payout) * tau).exp() * norm_cdf(-d1)
+      / denom
   }
 
   /// Leverage ratio $L=D e^{-rT}/V_0$.

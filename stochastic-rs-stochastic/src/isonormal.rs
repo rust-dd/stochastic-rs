@@ -12,7 +12,7 @@ use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use ndrustfft::ndfft_inplace;
 use num_complex::Complex64;
-use statrs::function::gamma::gamma;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::traits::FloatExt;
 
