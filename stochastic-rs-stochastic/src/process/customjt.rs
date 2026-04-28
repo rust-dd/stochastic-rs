@@ -54,7 +54,7 @@ where
       n,
       t_max,
       distribution,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -145,7 +145,7 @@ where
   D: Distribution<T> + Send + Sync,
 {
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> Array1<T> {
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
     if let Some(n) = self.n {
       let mut random = Array1::<T>::zeros(n);
       let mut rng = seed.rng();
@@ -184,6 +184,6 @@ where
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    self.sample_impl(self.seed)
+    self.sample_impl(&self.seed)
   }
 }

@@ -44,7 +44,7 @@ impl<T: FloatExt> Poisson<T, Deterministic> {
       lambda,
       n,
       t_max,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -52,12 +52,12 @@ impl<T: FloatExt> Poisson<T, Deterministic> {
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   /// Sample with an explicit seed, used by callers like CompoundPoisson.
   pub fn sample_with_seed(&self, seed: u64) -> Array1<T> {
-    self.sample_impl(Deterministic(seed))
+    self.sample_impl(&Deterministic::new(seed))
   }
 
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> Array1<T> {
-    let distr = SimdExp::from_seed_source(self.lambda, &mut seed);
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
+    let distr = SimdExp::from_seed_source(self.lambda, seed);
 
     if let Some(n) = self.n {
       let mut poisson = Array1::<T>::zeros(n);
@@ -117,7 +117,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Poisson<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    self.sample_impl(self.seed)
+    self.sample_impl(&self.seed)
   }
 }
 

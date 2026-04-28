@@ -136,7 +136,7 @@ where
       use_sym,
       cgns: Cgns::new(rho, n - 1, t),
       cpoisson,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }

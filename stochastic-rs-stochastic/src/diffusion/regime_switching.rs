@@ -97,7 +97,7 @@ impl<T: FloatExt> RegimeSwitchingDiffusion<T, Deterministic> {
       n,
       s0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -232,11 +232,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
 
     let mut dw = Array1::<T>::zeros(n_inc);
     let dw_slice = dw.as_slice_mut().unwrap();
-    let mut seed = self.seed;
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
     normal.fill_slice_fast(dw_slice);
 
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
     let mut state = self.initial_state;
 
     for i in 1..self.n {

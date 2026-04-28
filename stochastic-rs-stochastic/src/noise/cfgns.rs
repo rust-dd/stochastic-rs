@@ -65,7 +65,7 @@ impl<T: FloatExt> Cfgns<T, Deterministic> {
       rho,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       fgn: Fgn::new(hurst, n, t),
     }
   }
@@ -74,16 +74,16 @@ impl<T: FloatExt> Cfgns<T, Deterministic> {
 impl<T: FloatExt, S: SeedExt> Cfgns<T, S> {
   /// Sample with an explicit seed, used by callers like Cfbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
-    self.sample_impl(Deterministic(seed))
+    self.sample_impl(&Deterministic::new(seed))
   }
 
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> [Array1<T>; 2] {
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {
     let child1 = seed.derive();
     let child2 = seed.derive();
-    let fgn1 = self.fgn.sample_cpu_impl(child1);
-    let z = self.fgn.sample_cpu_impl(child2);
+    let fgn1 = self.fgn.sample_cpu_impl(&child1);
+    let z = self.fgn.sample_cpu_impl(&child2);
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut fgn2 = Array1::zeros(self.n);
     for i in 0..self.n {
@@ -97,7 +97,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfgns<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    self.sample_impl(self.seed)
+    self.sample_impl(&self.seed)
   }
 }
 

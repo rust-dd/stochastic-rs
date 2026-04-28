@@ -149,7 +149,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   /// Uses an automatically generated random seed.
   #[inline]
   pub fn new(mean: T, std_dev: T) -> Self {
-    Self::from_seed_source(mean, std_dev, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(mean, std_dev, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a normal distribution with a deterministic seed.
@@ -158,14 +158,14 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   /// identical sample sequences.
   #[inline]
   pub fn with_seed(mean: T, std_dev: T, seed: u64) -> Self {
-    Self::from_seed_source(mean, std_dev, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(mean, std_dev, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates a normal distribution with an RNG obtained from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   ///
   /// This is the core constructor — `new()` and `with_seed()` delegate here.
   /// Monomorphised at compile time, zero runtime branching.
-  pub fn from_seed_source(mean: T, std_dev: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(mean: T, std_dev: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -345,26 +345,22 @@ impl<T: SimdFloatExt, const N: usize> crate::traits::DistributionExt for SimdNor
   }
 
   fn pdf(&self, x: f64) -> f64 {
-    use statrs::distribution::Continuous;
     let mu = self.mean.to_f64().unwrap();
     let sigma = self.std_dev.to_f64().unwrap();
-    statrs::distribution::Normal::new(mu, sigma).unwrap().pdf(x)
+    let z = (x - mu) / sigma;
+    crate::special::norm_pdf(z) / sigma
   }
 
   fn cdf(&self, x: f64) -> f64 {
-    use statrs::distribution::ContinuousCDF;
     let mu = self.mean.to_f64().unwrap();
     let sigma = self.std_dev.to_f64().unwrap();
-    statrs::distribution::Normal::new(mu, sigma).unwrap().cdf(x)
+    crate::special::norm_cdf((x - mu) / sigma)
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {
-    use statrs::distribution::ContinuousCDF;
     let mu = self.mean.to_f64().unwrap();
     let sigma = self.std_dev.to_f64().unwrap();
-    statrs::distribution::Normal::new(mu, sigma)
-      .unwrap()
-      .inverse_cdf(p)
+    mu + sigma * crate::special::ndtri(p)
   }
 
   fn mean(&self) -> f64 {
@@ -534,9 +530,9 @@ py_distribution!(PyNormal, SimdNormal,
 #[cfg(test)]
 mod tests {
   use rand_distr::Distribution;
-  use statrs::function::erf::erf;
 
   use super::SimdNormal;
+  use crate::special::erf;
 
   fn mean(samples: &[f64]) -> f64 {
     samples.iter().sum::<f64>() / samples.len() as f64

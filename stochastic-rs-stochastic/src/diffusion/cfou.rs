@@ -108,7 +108,7 @@ impl<T: FloatExt> Cfou<T, Deterministic> {
       x1_0,
       x2_0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       fgn: Fgn::new(hurst, n - 1, t),
     }
   }
@@ -126,10 +126,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfou<T, S> {
   /// Source:
   /// - https://arxiv.org/abs/2406.18004
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let dt = self.fgn.dt();
-    let noise_1 = self.fgn.sample_cpu_impl(seed.derive());
-    let noise_2 = self.fgn.sample_cpu_impl(seed.derive());
+    let noise_1 = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let noise_2 = self.fgn.sample_cpu_impl(&self.seed.derive());
     let gamma = Complex::new(self.lambda, -self.omega);
     let dt_c = Complex::new(dt, T::zero());
     let noise_scale = (self.a * T::from_f64_fast(0.5)).sqrt();

@@ -59,7 +59,7 @@ where
     "proposal_scale must match initial dim"
   );
   assert!(n_samples >= 1);
-  let mut rng = Deterministic(seed).rng();
+  let mut rng = Deterministic::new(seed).rng();
   let dist_unit = SimdNormal::<f64>::with_seed(0.0, 1.0, seed.wrapping_add(1));
   let mut current = initial.to_owned();
   let mut current_logp = log_target(current.view());

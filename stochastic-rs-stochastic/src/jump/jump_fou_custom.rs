@@ -96,7 +96,7 @@ where
       jump_times,
       jump_sizes,
       fgn: Fgn::new(hurst, n - 1, t),
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -117,8 +117,7 @@ where
       return jump_fou;
     }
     jump_fou[0] = self.x0.unwrap_or(T::zero());
-    let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
     let mut next_jump_time = self.jump_times.sample(&mut rng);
     if next_jump_time <= T::zero() {
       panic!("jump_times distribution must return strictly positive inter-arrival times");

@@ -91,7 +91,7 @@ impl<T: FloatExt> RlFBm<T, Deterministic> {
       n,
       t,
       degree,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       markov,
     }
   }
@@ -100,11 +100,11 @@ impl<T: FloatExt> RlFBm<T, Deterministic> {
 impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
   /// Core single-path sampler accepting an external seed, used by downstream
   /// processes that derive a child seed for their noise.
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: S2) -> Array1<T> {
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
     let dw = Gn::<T, S2> {
       n: self.n - 1,
       t: self.t,
-      seed,
+      seed: seed.clone(),
     }
     .sample();
     self.markov.simulate(
@@ -119,32 +119,30 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
   /// underlying Markov-lift runs path-parallel SIMD (cache-tiled), matching
   /// the Python `RoughHestonFast` batching pattern — single-threaded.
   pub fn sample_batch(&self, m: usize) -> Array2<T> {
-    let mut seed = self.seed;
-    self.sample_batch_impl(seed.derive(), m)
+    self.sample_batch_impl(&self.seed.derive(), m)
   }
 
   /// Multi-core version of [`sample_batch`] — rayon parallelises the outer
   /// tile loop so batch-SIMD and core scheduling compound.
   pub fn sample_batch_par(&self, m: usize) -> Array2<T> {
-    let mut seed = self.seed;
-    self.sample_batch_par_impl(seed.derive(), m)
+    self.sample_batch_par_impl(&self.seed.derive(), m)
   }
 
-  pub(crate) fn sample_batch_impl<S2: SeedExt>(&self, mut seed: S2, m: usize) -> Array2<T> {
-    let dw = self.build_dw_matrix(&mut seed, m);
+  pub(crate) fn sample_batch_impl<S2: SeedExt>(&self, seed: &S2, m: usize) -> Array2<T> {
+    let dw = self.build_dw_matrix(seed, m);
     self
       .markov
       .simulate_batch(T::zero(), |_| T::zero(), |_| T::one(), dw.view())
   }
 
-  pub(crate) fn sample_batch_par_impl<S2: SeedExt>(&self, mut seed: S2, m: usize) -> Array2<T> {
-    let dw = self.build_dw_matrix(&mut seed, m);
+  pub(crate) fn sample_batch_par_impl<S2: SeedExt>(&self, seed: &S2, m: usize) -> Array2<T> {
+    let dw = self.build_dw_matrix(seed, m);
     self
       .markov
       .simulate_batch_par(T::zero(), |_| T::zero(), |_| T::one(), dw.view())
   }
 
-  fn build_dw_matrix<S2: SeedExt>(&self, seed: &mut S2, m: usize) -> Array2<T> {
+  fn build_dw_matrix<S2: SeedExt>(&self, seed: &S2, m: usize) -> Array2<T> {
     let n_minus_1 = self.n - 1;
     let mut dw = Array2::<T>::zeros((m, n_minus_1));
     for p in 0..m {
@@ -164,7 +162,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFBm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    self.sample_impl(self.seed)
+    self.sample_impl(&self.seed)
   }
 }
 

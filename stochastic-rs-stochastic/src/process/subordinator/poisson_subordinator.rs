@@ -44,7 +44,7 @@ impl<T: FloatExt> PoissonSubordinator<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -65,8 +65,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for PoissonSubordinator<T, S> {
     let dt = t_max / T::from_usize_(self.n - 1);
     let lambda_dt = (self.lambda * dt).to_f64().unwrap();
     let poisson = SimdPoisson::<u32>::new(lambda_dt);
-    let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
     for i in 1..self.n {
       let k = poisson.sample(&mut rng) as usize;
       out[i] = out[i - 1] + T::from_usize_(k);

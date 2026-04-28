@@ -99,7 +99,7 @@ impl<T: FloatExt> RoughHeston<T, Deterministic> {
       mu: None,
       s0: None,
       rho: None,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }

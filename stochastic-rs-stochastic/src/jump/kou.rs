@@ -90,7 +90,7 @@ where
       x0,
       t,
       cpoisson,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -112,8 +112,7 @@ where
     let sqrt_dt = dt.sqrt();
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
-      let mut seed = self.seed;
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(gn_slice);
     }
 

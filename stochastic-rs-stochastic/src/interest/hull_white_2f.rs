@@ -79,7 +79,7 @@ impl<T: FloatExt> HullWhite2F<T, Deterministic> {
     n: usize,
     seed: u64,
   ) -> Self {
-    let mut s = Deterministic(seed);
+    let s = Deterministic::new(seed);
     let child = s.derive();
     Self {
       k: k.into(),
@@ -91,8 +91,8 @@ impl<T: FloatExt> HullWhite2F<T, Deterministic> {
       x0,
       t,
       n,
-      seed: Deterministic(seed),
-      cgns: Cgns::seeded(rho, n - 1, t, child.0),
+      seed: Deterministic::new(seed),
+      cgns: Cgns::seeded(rho, n - 1, t, child.current()),
     }
   }
 }

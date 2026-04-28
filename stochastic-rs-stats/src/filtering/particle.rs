@@ -82,7 +82,7 @@ where
     I: Fn(&mut SimdRng) -> Array1<f64>,
   {
     assert!(n_particles >= 1);
-    let mut rng = Deterministic(seed).rng();
+    let mut rng = Deterministic::new(seed).rng();
     let first = init(&mut rng);
     let dim = first.len();
     let mut particles = Array2::<f64>::zeros((n_particles, dim));

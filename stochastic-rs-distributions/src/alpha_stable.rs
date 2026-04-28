@@ -33,7 +33,7 @@ pub struct SimdAlphaStable<T: SimdFloatExt> {
 impl<T: SimdFloatExt> SimdAlphaStable<T> {
   #[inline]
   pub fn new(alpha: T, beta: T, scale: T, location: T) -> Self {
-    Self::from_seed_source(alpha, beta, scale, location, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(alpha, beta, scale, location, &crate::simd_rng::Unseeded)
   }
 
   /// Creates an alpha-stable distribution with a deterministic seed.
@@ -44,7 +44,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       beta,
       scale,
       location,
-      &mut crate::simd_rng::Deterministic(seed),
+      &crate::simd_rng::Deterministic::new(seed),
     )
   }
 
@@ -54,7 +54,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     beta: T,
     scale: T,
     location: T,
-    seed: &mut impl crate::simd_rng::SeedExt,
+    seed: &impl crate::simd_rng::SeedExt,
   ) -> Self {
     assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
     assert!((-T::one()..=T::one()).contains(&beta));
@@ -270,6 +270,112 @@ impl<T: SimdFloatExt> Distribution<T> for SimdAlphaStable<T> {
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
     val
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
+  fn pdf(&self, _x: f64) -> f64 {
+    // No closed form. Use numerical CF inversion (FFT or quadrature) on top.
+    unimplemented!(
+      "DistributionExt::pdf for SimdAlphaStable has no closed form (use numerical Fourier inversion of `characteristic_function`)"
+    )
+  }
+
+  fn cdf(&self, _x: f64) -> f64 {
+    unimplemented!(
+      "DistributionExt::cdf for SimdAlphaStable has no closed form (use numerical Fourier inversion of `characteristic_function`)"
+    )
+  }
+
+  fn inv_cdf(&self, _p: f64) -> f64 {
+    unimplemented!(
+      "DistributionExt::inv_cdf for SimdAlphaStable has no closed form"
+    )
+  }
+
+  fn mean(&self) -> f64 {
+    let alpha = self.alpha.to_f64().unwrap();
+    if alpha > 1.0 {
+      self.location.to_f64().unwrap()
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn median(&self) -> f64 {
+    // For α-stable, the median equals the location parameter when β = 0.
+    if self.beta.to_f64().unwrap() == 0.0 {
+      self.location.to_f64().unwrap()
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn mode(&self) -> f64 {
+    if self.beta.to_f64().unwrap() == 0.0 {
+      self.location.to_f64().unwrap()
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn variance(&self) -> f64 {
+    let alpha = self.alpha.to_f64().unwrap();
+    if alpha == 2.0 {
+      // Gaussian limit: σ² = 2 c²
+      let c = self.scale.to_f64().unwrap();
+      2.0 * c * c
+    } else {
+      f64::INFINITY
+    }
+  }
+
+  fn skewness(&self) -> f64 {
+    if self.alpha.to_f64().unwrap() == 2.0 {
+      0.0
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn kurtosis(&self) -> f64 {
+    if self.alpha.to_f64().unwrap() == 2.0 {
+      0.0
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    // Standard S1 parameterisation:
+    //   φ(t) = exp{ iμt − |c·t|^α [ 1 − iβ sgn(t) Φ ] }
+    // where Φ = tan(πα/2) for α ≠ 1, and Φ = −(2/π) ln|t| for α = 1.
+    let alpha = self.alpha.to_f64().unwrap();
+    let beta = self.beta.to_f64().unwrap();
+    let c = self.scale.to_f64().unwrap();
+    let mu = self.location.to_f64().unwrap();
+    let abs_ct_alpha = (c * t.abs()).powf(alpha);
+    let sgn_t = t.signum();
+    let phi = if (alpha - 1.0).abs() < 1e-15 {
+      -(2.0 / std::f64::consts::PI) * t.abs().ln()
+    } else {
+      (std::f64::consts::PI * alpha / 2.0).tan()
+    };
+    let bracket = num_complex::Complex64::new(1.0, -beta * sgn_t * phi);
+    let exponent = num_complex::Complex64::new(0.0, mu * t) - bracket.scale(abs_ct_alpha);
+    exponent.exp()
+  }
+
+  fn moment_generating_function(&self, _t: f64) -> f64 {
+    if self.alpha.to_f64().unwrap() == 2.0 {
+      // Gaussian limit: M(t) = exp(μt + c²t²)
+      let mu = self.location.to_f64().unwrap();
+      let c = self.scale.to_f64().unwrap();
+      (mu * _t + c * c * _t * _t).exp()
+    } else {
+      // MGF only exists in the Gaussian limit (α = 2).
+      f64::NAN
+    }
   }
 }
 

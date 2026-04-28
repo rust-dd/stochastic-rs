@@ -92,7 +92,7 @@ impl<T: FloatExt> Lfsm<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -119,13 +119,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lfsm<T, S> {
     let kernel_scale = dt.powf(d);
     let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
 
-    let mut seed = self.seed;
     let stable = SimdAlphaStable::from_seed_source(
       self.alpha,
       self.beta,
       innovation_scale,
       T::zero(),
-      &mut seed,
+      &self.seed,
     );
     let mut innovations = Array1::<T>::zeros(self.n - 1);
     stable.fill_slice_fast(innovations.as_slice_mut().unwrap());

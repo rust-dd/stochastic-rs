@@ -55,7 +55,7 @@ impl<T: FloatExt> Vg<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -81,11 +81,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Vg<T, S> {
     }
 
     let dt = self.dt();
-    let mut seed = self.seed;
-    let gamma = SimdGamma::from_seed_source(dt / self.nu, self.nu, &mut seed);
+    let gamma = SimdGamma::from_seed_source(dt / self.nu, self.nu, &self.seed);
     let mut gammas = Array1::<T>::zeros(self.n - 1);
     gamma.fill_slice_fast(gammas.as_slice_mut().unwrap());
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
     let mut z = Array1::<T>::zeros(self.n - 1);
     normal.fill_slice_fast(z.as_slice_mut().unwrap());
 

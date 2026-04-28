@@ -69,7 +69,7 @@ impl<T: FloatExt> Hawkes<T, Deterministic> {
       beta,
       n,
       t_max,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -80,7 +80,7 @@ impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
   /// Between events the intensity is monotone-decreasing, so the upper bound
   /// $\bar\lambda = \mu + S$ (evaluated right after the last accepted event)
   /// is tight and acceptance is efficient.
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> Array1<T> {
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
     assert!(self.mu > T::zero(), "baseline intensity μ must be positive");
     assert!(self.alpha >= T::zero(), "excitation α must be non-negative");
     assert!(self.beta > T::zero(), "decay rate β must be positive");
@@ -180,7 +180,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hawkes<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    self.sample_impl(self.seed)
+    self.sample_impl(&self.seed)
   }
 }
 
@@ -225,10 +225,12 @@ mod tests {
 
   #[test]
   fn hawkes_deterministic() {
-    let h = Hawkes::seeded(0.5, 0.3, 1.0, Some(20), None, 123);
-    let a = h.sample();
-    let b = h.sample();
-    assert_eq!(a, b);
+    // Inter-instance reproducibility: two separately built instances with the
+    // same seed produce the same first path. Intra-instance, successive
+    // `.sample()` calls advance the seed and yield different paths.
+    let h1 = Hawkes::seeded(0.5, 0.3, 1.0, Some(20), None, 123);
+    let h2 = Hawkes::seeded(0.5, 0.3, 1.0, Some(20), None, 123);
+    assert_eq!(h1.sample(), h2.sample());
   }
 
   #[test]

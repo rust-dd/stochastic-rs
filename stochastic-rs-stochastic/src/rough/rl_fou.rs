@@ -97,7 +97,7 @@ impl<T: FloatExt> RlFOU<T, Deterministic> {
       x0,
       t,
       degree,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       fbm: RlFBm::new(hurst, n, t, degree),
     }
   }
@@ -108,8 +108,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOU<T, S> {
   /// The RL-fBM noise is generated in a single batch via
   /// [`RlFBm::sample_batch`], then each path is Euler-integrated independently.
   pub fn sample_batch(&self, m: usize) -> Array2<T> {
-    let mut seed = self.seed;
-    let fbm = self.fbm.sample_batch_impl(seed.derive(), m);
+    let fbm = self.fbm.sample_batch_impl(&self.seed.derive(), m);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let x0 = self.x0.unwrap_or(T::zero());
     let mut out = Array2::<T>::zeros((m, self.n));
@@ -131,8 +130,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFOU<T, S> {
 
   fn sample(&self) -> Self::Output {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
-    let mut seed = self.seed;
-    let fbm = self.fbm.sample_impl(seed.derive());
+    let fbm = self.fbm.sample_impl(&self.seed.derive());
 
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());

@@ -38,7 +38,7 @@ impl<T: FloatExt> Gn<T, Deterministic> {
     Gn {
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -61,8 +61,7 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
       return;
     }
     let std_dev = self.dt().sqrt();
-    let mut seed = self.seed;
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &self.seed);
     normal.fill_slice_fast(&mut out[..len]);
   }
 

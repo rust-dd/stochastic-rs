@@ -98,7 +98,7 @@ impl<T: FloatExt> RlBlackScholes<T, Deterministic> {
       n,
       t,
       degree,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       fbm: RlFBm::new(hurst, n, t, degree),
     }
   }
@@ -109,8 +109,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholes<T, S> {
   /// Each path is $S_0 \exp(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t)$
   /// applied pointwise to a batch of RL-fBM paths.
   pub fn sample_batch(&self, m: usize) -> Array2<T> {
-    let mut seed = self.seed;
-    let fbm = self.fbm.sample_batch_impl(seed.derive(), m);
+    let fbm = self.fbm.sample_batch_impl(&self.seed.derive(), m);
 
     let horizon = self.t.unwrap_or(T::one());
     let dt = horizon / T::from_usize_(self.n - 1);
@@ -134,8 +133,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlBlackScholes<T, S>
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let fbm = self.fbm.sample_impl(seed.derive());
+    let fbm = self.fbm.sample_impl(&self.seed.derive());
 
     let horizon = self.t.unwrap_or(T::one());
     let dt = horizon / T::from_usize_(self.n - 1);

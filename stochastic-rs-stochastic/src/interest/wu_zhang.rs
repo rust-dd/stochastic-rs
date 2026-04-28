@@ -204,7 +204,7 @@ impl<T: FloatExt> WuZhangD<T, Deterministic> {
       xn,
       t,
       n,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -219,7 +219,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
       T::zero()
     };
     let sqrt_dt = dt.sqrt();
-    let mut seed = self.seed;
     let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
     let (mut f_rows, mut v_rows) = fv.view_mut().split_at(Axis(0), self.xn);
     for i in 0..self.xn {
@@ -241,12 +240,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
 
       {
         let f_tail = &mut f_slice[1..];
-        let normal_f = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+        let normal_f = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
         normal_f.fill_slice_fast(f_tail);
       }
       {
         let v_tail = &mut v_slice[1..];
-        let normal_v = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+        let normal_v = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
         normal_v.fill_slice_fast(v_tail);
       }
 

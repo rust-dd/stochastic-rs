@@ -25,7 +25,7 @@ pub struct SimdUniform<T: SimdFloatExt> {
 impl<T: SimdFloatExt> SimdUniform<T> {
   #[inline]
   pub fn new(low: T, high: T) -> Self {
-    Self::from_seed_source(low, high, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(low, high, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a uniform distribution with a deterministic seed.
@@ -34,11 +34,11 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   /// identical sample sequences.
   #[inline]
   pub fn with_seed(low: T, high: T, seed: u64) -> Self {
-    Self::from_seed_source(low, high, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(low, high, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates a uniform distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(low: T, high: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(low: T, high: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
     Self {
@@ -124,6 +124,88 @@ impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
     let val = unsafe { (*self.buffer.get())[*index] };
     *index += 1;
     val
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    let a = self.low.to_f64().unwrap();
+    let b = a + self.scale.to_f64().unwrap();
+    if x >= a && x <= b {
+      1.0 / (b - a)
+    } else {
+      0.0
+    }
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    let a = self.low.to_f64().unwrap();
+    let b = a + self.scale.to_f64().unwrap();
+    if x < a {
+      0.0
+    } else if x >= b {
+      1.0
+    } else {
+      (x - a) / (b - a)
+    }
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    let a = self.low.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    a + p * scale
+  }
+
+  fn mean(&self) -> f64 {
+    self.low.to_f64().unwrap() + 0.5 * self.scale.to_f64().unwrap()
+  }
+
+  fn median(&self) -> f64 {
+    self.mean()
+  }
+
+  fn mode(&self) -> f64 {
+    // Any point in [a, b] is a mode; report the midpoint.
+    self.mean()
+  }
+
+  fn variance(&self) -> f64 {
+    let scale = self.scale.to_f64().unwrap();
+    scale * scale / 12.0
+  }
+
+  fn skewness(&self) -> f64 {
+    0.0
+  }
+
+  fn kurtosis(&self) -> f64 {
+    // Excess kurtosis.
+    -6.0 / 5.0
+  }
+
+  fn entropy(&self) -> f64 {
+    self.scale.to_f64().unwrap().ln()
+  }
+
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    // φ(t) = (e^{itb} - e^{ita}) / (it(b-a))
+    let a = self.low.to_f64().unwrap();
+    let b = a + self.scale.to_f64().unwrap();
+    if t == 0.0 {
+      return num_complex::Complex64::new(1.0, 0.0);
+    }
+    let eitb = num_complex::Complex64::new(0.0, t * b).exp();
+    let eita = num_complex::Complex64::new(0.0, t * a).exp();
+    (eitb - eita) / num_complex::Complex64::new(0.0, t * (b - a))
+  }
+
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    let a = self.low.to_f64().unwrap();
+    let b = a + self.scale.to_f64().unwrap();
+    if t == 0.0 {
+      return 1.0;
+    }
+    ((b * t).exp() - (a * t).exp()) / (t * (b - a))
   }
 }
 

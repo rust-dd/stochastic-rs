@@ -79,7 +79,7 @@ impl<T: FloatExt> Fbm<T, Deterministic> {
       hurst,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       fgn: Fgn::new(hurst, n - 1, t),
     }
   }
@@ -89,8 +89,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let fgn = self.fgn.sample_cpu_impl(seed.derive());
+    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
     let mut fbm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
@@ -252,14 +251,13 @@ mod tests {
     let t = 1.0_f64;
     let n = 2048_usize;
     let m = 6000_usize;
-    // `Fbm::sample(&self)` re-derives from the stored seed every call, so a
-    // single seeded instance would return the *same* path each time. We need
-    // `m` independent paths, so seed each draw separately from a base seed.
-    let base_seed = 0xF_B_C0FFEE_u64;
+    // Seeded `Fbm::sample(&self)` advances the internal atomic seed state
+    // each call, so a single instance yields `m` independent paths
+    // deterministically.
+    let fbm = Fbm::seeded(h, n, Some(t), 0xF_B_C0FFEE_u64);
 
     let mut endpoints = Vec::with_capacity(m);
-    for i in 0..m {
-      let fbm = Fbm::seeded(h, n, Some(t), base_seed.wrapping_add(i as u64));
+    for _ in 0..m {
       let x = fbm.sample();
       endpoints.push(x[n - 1]);
     }

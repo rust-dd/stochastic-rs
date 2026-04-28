@@ -178,7 +178,7 @@ impl<T: FloatExt> DoubleHeston<T, Deterministic> {
       n,
       t,
       use_sym,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       cgns1: Cgns::new(rho1, n - 1, t),
       cgns2: Cgns::new(rho2, n - 1, t),
     }
@@ -191,9 +191,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns1.dt();
-    let mut seed = self.seed;
-    let [ds1, dv1n] = &self.cgns1.sample_impl(seed.derive());
-    let [ds2, dv2n] = &self.cgns2.sample_impl(seed.derive());
+    let [ds1, dv1n] = &self.cgns1.sample_impl(&self.seed.derive());
+    let [ds2, dv2n] = &self.cgns2.sample_impl(&self.seed.derive());
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v1 = Array1::<T>::zeros(self.n);

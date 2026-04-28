@@ -117,7 +117,7 @@ impl<T: FloatExt> Fgn<T, Deterministic> {
       scale: base.scale,
       sqrt_eigenvalues: base.sqrt_eigenvalues,
       fft_handler: base.fft_handler,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -125,16 +125,16 @@ impl<T: FloatExt> Fgn<T, Deterministic> {
 impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   /// Sample fGn using a specific deterministic seed.
   pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
-    self.sample_cpu_impl(Deterministic(seed))
+    self.sample_cpu_impl(&Deterministic::new(seed))
   }
 
   pub(crate) fn sample_cpu(&self) -> Array1<T> {
-    self.sample_cpu_impl(self.seed)
+    self.sample_cpu_impl(&self.seed)
   }
 
   /// Core fGn sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
-  pub(crate) fn sample_cpu_impl<S2: SeedExt>(&self, mut seed: S2) -> Array1<T> {
+  pub(crate) fn sample_cpu_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
     let len = 2 * self.n;
     let mut fgn = Array1::<T>::zeros(self.out_len);
 
@@ -144,7 +144,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
       let normal = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
         T::zero(),
         T::one(),
-        &mut seed,
+        seed,
       );
       normal.fill_slice_fast(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
@@ -165,11 +165,11 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
 
   /// Sample a pair of independent fGn paths using a specific deterministic seed.
   pub(crate) fn sample_pair_cpu_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
-    self.sample_pair_cpu_impl(Deterministic(seed))
+    self.sample_pair_cpu_impl(&Deterministic::new(seed))
   }
 
   pub(crate) fn sample_pair_cpu(&self) -> (Array1<T>, Array1<T>) {
-    self.sample_pair_cpu_impl(self.seed)
+    self.sample_pair_cpu_impl(&self.seed)
   }
 
   /// Two independent fGn paths per FFT call. Re and Im of the circulant
@@ -177,7 +177,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   /// covariance — Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2
   /// Step 4, MATLAB listing "two independent fields").
   #[inline]
-  pub(crate) fn sample_pair_cpu_impl<S2: SeedExt>(&self, mut seed: S2) -> (Array1<T>, Array1<T>) {
+  pub(crate) fn sample_pair_cpu_impl<S2: SeedExt>(&self, seed: &S2) -> (Array1<T>, Array1<T>) {
     let len = 2 * self.n;
     let mut fgn_re = Array1::<T>::zeros(self.out_len);
     let mut fgn_im = Array1::<T>::zeros(self.out_len);
@@ -188,7 +188,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
       let normal = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
         T::zero(),
         T::one(),
-        &mut seed,
+        seed,
       );
       normal.fill_slice_fast(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {

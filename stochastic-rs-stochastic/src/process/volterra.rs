@@ -87,7 +87,7 @@ impl<T: FloatExt> Volterra<T, Deterministic> {
       kernel,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -99,12 +99,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
   ///
   /// Complexity: $O(n^2)$ due to full history convolution.
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
     let sqrt_dt = dt.sqrt();
 
-    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &mut seed);
+    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &self.seed);
 
     // Pre-generate Brownian increments
     let mut dw = Array1::<T>::zeros(self.n);
@@ -241,14 +240,21 @@ mod tests {
 
   #[test]
   fn volterra_seeded_deterministic() {
-    let v = Volterra::<f64, Deterministic>::seeded(
+    // Two separately built instances with the same seed reproduce each other's first path.
+    // (Same instance, repeated `.sample()` calls advance the seed state and produce
+    // different paths — that is the desired behaviour for Monte Carlo reuse.)
+    let v1 = Volterra::<f64, Deterministic>::seeded(
       VolterraKernel::FractionalBM { h: 0.7 },
       50,
       Some(1.0),
       123,
     );
-    let p1 = v.sample();
-    let p2 = v.sample();
-    assert_eq!(p1, p2);
+    let v2 = Volterra::<f64, Deterministic>::seeded(
+      VolterraKernel::FractionalBM { h: 0.7 },
+      50,
+      Some(1.0),
+      123,
+    );
+    assert_eq!(v1.sample(), v2.sample());
   }
 }

@@ -28,18 +28,18 @@ pub struct SimdStudentT<T: SimdFloatExt> {
 impl<T: SimdFloatExt> SimdStudentT<T> {
   #[inline]
   pub fn new(nu: T) -> Self {
-    Self::from_seed_source(nu, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(nu, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a Student's t-distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(nu: T, seed: u64) -> Self {
-    Self::from_seed_source(nu, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(nu, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates a Student's t-distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, chisq, main rng) gets an independent stream.
-  pub fn from_seed_source(nu: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(nu: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     Self {
       nu,
       normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),
@@ -124,6 +124,125 @@ impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
     val
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    let nu = self.nu.to_f64().unwrap();
+    // f(x) = Γ((ν+1)/2) / (√(νπ) Γ(ν/2)) · (1 + x²/ν)^(−(ν+1)/2)
+    let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))
+      - 0.5 * (nu * std::f64::consts::PI).ln()
+      - crate::special::ln_gamma(0.5 * nu);
+    let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
+    (log_norm + log_kernel).exp()
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    // For x ≥ 0:  F(x) = 1 − ½ I_{ν/(ν+x²)}(ν/2, ½)
+    // By symmetry F(−x) = 1 − F(x).
+    let nu = self.nu.to_f64().unwrap();
+    let t = nu / (nu + x * x);
+    let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
+    if x >= 0.0 { 1.0 - half } else { half }
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    if p <= 0.0 {
+      return f64::NEG_INFINITY;
+    }
+    if p >= 1.0 {
+      return f64::INFINITY;
+    }
+    let nu = self.nu.to_f64().unwrap();
+    // Use the Cornish-Fisher-style normal seed and refine with Newton's method.
+    let z = crate::special::ndtri(p);
+    let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
+    for _ in 0..40 {
+      let cdf = {
+        let t = nu / (nu + x * x);
+        let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
+        if x >= 0.0 { 1.0 - half } else { half }
+      };
+      let f = cdf - p;
+      let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))
+        - 0.5 * (nu * std::f64::consts::PI).ln()
+        - crate::special::ln_gamma(0.5 * nu);
+      let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
+      let pdf = (log_norm + log_kernel).exp();
+      if pdf <= 0.0 {
+        break;
+      }
+      let dx = f / pdf;
+      let new_x = x - dx;
+      if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
+        return new_x;
+      }
+      x = new_x;
+    }
+    x
+  }
+
+  fn mean(&self) -> f64 {
+    if self.nu.to_f64().unwrap() > 1.0 {
+      0.0
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn median(&self) -> f64 {
+    0.0
+  }
+
+  fn mode(&self) -> f64 {
+    0.0
+  }
+
+  fn variance(&self) -> f64 {
+    let nu = self.nu.to_f64().unwrap();
+    if nu > 2.0 {
+      nu / (nu - 2.0)
+    } else if nu > 1.0 {
+      f64::INFINITY
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn skewness(&self) -> f64 {
+    if self.nu.to_f64().unwrap() > 3.0 {
+      0.0
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn kurtosis(&self) -> f64 {
+    let nu = self.nu.to_f64().unwrap();
+    if nu > 4.0 {
+      6.0 / (nu - 4.0)
+    } else if nu > 2.0 {
+      f64::INFINITY
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn entropy(&self) -> f64 {
+    let nu = self.nu.to_f64().unwrap();
+    let half_nu = 0.5 * nu;
+    let half_nu_p1 = 0.5 * (nu + 1.0);
+    half_nu_p1 * (crate::special::digamma(half_nu_p1) - crate::special::digamma(half_nu))
+      + 0.5 * nu.ln()
+      + crate::special::ln_gamma(half_nu)
+      - crate::special::ln_gamma(half_nu_p1)
+      + 0.5 * std::f64::consts::PI.ln()
+  }
+
+  fn moment_generating_function(&self, _t: f64) -> f64 {
+    // MGF does not exist for the Student-t distribution.
+    f64::NAN
   }
 }
 

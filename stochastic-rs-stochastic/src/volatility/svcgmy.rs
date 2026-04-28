@@ -153,7 +153,7 @@ impl<T: FloatExt> Svcgmy<T, Deterministic> {
       x0,
       v0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -163,7 +163,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
 
   /// Returns `[L, v]` — the CGMYSV log-increment path and the Cir variance path.
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
 
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
@@ -200,8 +199,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
     let J = self.j;
     let size = J + 1; // index 0 is reserved (Γ0=0)
 
-    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &mut seed);
-    let exp = SimdExp::from_seed_source(T::one(), &mut seed);
+    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &self.seed);
+    let exp = SimdExp::from_seed_source(T::one(), &self.seed);
 
     // U_j ~ Unif(0,1), E_j ~ Exp(1), τ_j ~ Unif(0,T)
     let mut U = Array1::<T>::zeros(size);
