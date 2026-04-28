@@ -165,7 +165,7 @@ impl HestonStochCorrPricer {
   /// Characteristic function accepting complex u (needed for Carr-Madan
   /// where we evaluate at u − (α+1)i).
   pub fn char_func_complex(&self, u: Complex64) -> Complex64 {
-    let tau = self.tau().unwrap_or(1.0);
+    let tau = self.tau_or_from_dates();
     let x0 = self.s.ln();
     let iu = Complex64::i() * u;
     let r = self.r;
@@ -219,7 +219,7 @@ impl HestonStochCorrPricer {
   ///
   /// where α = 1.25 is the damping factor.
   pub fn price_call_carr_madan(&self) -> f64 {
-    let tau = self.tau().unwrap_or(1.0);
+    let tau = self.tau_or_from_dates();
     let alpha = 1.25_f64;
     let log_k = self.k.ln();
     let r = self.r;
@@ -312,7 +312,7 @@ impl HestonStochCorrPricerBuilder {
 
 impl PricerExt for HestonStochCorrPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
-    let tau = self.tau().unwrap_or(1.0);
+    let tau = self.tau_or_from_dates();
     let q = self.q.unwrap_or(0.0);
 
     let call = self.price_call_carr_madan();
@@ -329,11 +329,15 @@ impl PricerExt for HestonStochCorrPricer {
     use implied_vol::DefaultSpecialFn;
     use implied_vol::ImpliedBlackVolatility;
 
+    let tau = self.calculate_tau_in_years();
+    let q = self.q.unwrap_or(0.0);
+    let forward = self.s * ((self.r - q) * tau).exp();
+    let undiscounted_price = c_price * (self.r * tau).exp();
     ImpliedBlackVolatility::builder()
-      .option_price(c_price)
-      .forward(self.s)
+      .option_price(undiscounted_price)
+      .forward(forward)
       .strike(self.k)
-      .expiry(self.calculate_tau_in_days())
+      .expiry(tau)
       .is_call(option_type == OptionType::Call)
       .build()
       .and_then(|iv| iv.calculate::<DefaultSpecialFn>())

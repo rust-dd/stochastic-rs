@@ -112,7 +112,7 @@ impl AsianPricerBuilder {
 
 impl PricerExt for AsianPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
-    let T = self.calculate_tau_in_days();
+    let T = self.calculate_tau_in_years();
     let v = self.v / 3.0_f64.sqrt();
     let b = 0.5 * (self.r - self.q.unwrap_or(0.0) - 0.5 * v.powi(2) / 6.0);
     let d1 = ((self.s / self.k).ln() + (b + 0.5 * v.powi(2) * T)) / (v * T.sqrt());

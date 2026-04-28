@@ -96,7 +96,7 @@ impl PricerExt for GbmMalliavinPricer {
 impl GbmMalliavinPricer {
   fn call_put_from_conditional(&self, t_eval: f64, c_t: &Array1<f64>) -> (f64, f64) {
     // Use maturity in years, consistent with the reference implementation and drift/discounting.
-    let T = self.tau().unwrap_or_else(|| self.calculate_tau_in_years());
+    let T = self.calculate_tau_in_years();
     assert!(t_eval > 0.0 && t_eval < T, "t_eval must be in (0, T)");
 
     // Time-0 call price via tower property:
@@ -147,7 +147,7 @@ impl GbmMalliavinPricer {
   ///   S: shape (M, N), with S[i, k] = S^{(i)}_{t_k}
   fn sample_paths(&self) -> Array2<f64> {
     // Time horizon in years for the Gbm simulation.
-    let T = self.tau().unwrap_or_else(|| self.calculate_tau_in_years());
+    let T = self.calculate_tau_in_years();
     let mu = self.r - self.q.unwrap_or(0.0);
 
     // Construct a Gbm process with Euler discretization on [0, T].
@@ -177,7 +177,7 @@ impl GbmMalliavinPricer {
   /// where H is the Heaviside step function and coef^{(j)} is the Malliavin weight.
   pub fn conditional_call_malliavin(&self, t_eval: f64) -> (Array1<f64>, Array1<f64>) {
     // Work with maturity in years to stay consistent with the reference script.
-    let T = self.tau().unwrap_or_else(|| self.calculate_tau_in_years());
+    let T = self.calculate_tau_in_years();
     assert!(t_eval > 0.0 && t_eval < T, "t_eval must be in (0, T)");
 
     let q = self.q.unwrap_or(0.0);
@@ -280,7 +280,7 @@ impl GbmMalliavinPricer {
   ///   - Localized C^M(t, S_t^{(i)}): shape (M,)
   pub fn conditional_call_malliavin_localized(&self, t_eval: f64) -> (Array1<f64>, Array1<f64>) {
     // Work with maturity in years to stay consistent with the reference script.
-    let T = self.tau().unwrap_or_else(|| self.calculate_tau_in_years());
+    let T = self.calculate_tau_in_years();
     assert!(t_eval > 0.0 && t_eval < T, "t_eval must be in (0, T)");
 
     let q = self.q.unwrap_or(0.0);

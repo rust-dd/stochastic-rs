@@ -171,7 +171,7 @@ impl HestonPricerBuilder {
 
 impl PricerExt for HestonPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
-    let tau = self.tau().unwrap_or(1.0);
+    let tau = self.tau_or_from_dates();
 
     let call = self.s * (-self.q.unwrap_or(0.0) * tau).exp() * self.p(1, tau)
       - self.k * (-self.r * tau).exp() * self.p(2, tau);
@@ -185,11 +185,15 @@ impl PricerExt for HestonPricer {
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
+    let tau = self.calculate_tau_in_years();
+    let q = self.q.unwrap_or(0.0);
+    let forward = self.s * ((self.r - q) * tau).exp();
+    let undiscounted_price = c_price * (self.r * tau).exp();
     ImpliedBlackVolatility::builder()
-      .option_price(c_price)
-      .forward(self.s)
+      .option_price(undiscounted_price)
+      .forward(forward)
       .strike(self.k)
-      .expiry(self.calculate_tau_in_days())
+      .expiry(tau)
       .is_call(option_type == OptionType::Call)
       .build()
       .and_then(|iv| iv.calculate::<DefaultSpecialFn>())

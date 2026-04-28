@@ -20,7 +20,7 @@ pub struct Cir {
   pub mu: f64,
   /// Volatility
   pub sigma: f64,
-  /// Maturity of the bond in days
+  /// Maturity of the bond in years
   pub tau: f64,
   /// Evaluation date
   pub eval: Option<chrono::NaiveDate>,
@@ -35,7 +35,7 @@ impl PricerExt for Cir {
   }
 
   fn calculate_price(&self) -> f64 {
-    let tau = self.calculate_tau_in_days();
+    let tau = self.tau;
 
     let h = (self.theta.powi(2) + 2.0 * self.sigma.powi(2)).sqrt();
     let A = ((2.0 * h * ((self.theta + h) * (tau / 2.0)).exp())
@@ -49,9 +49,6 @@ impl PricerExt for Cir {
 }
 
 impl TimeExt for Cir {
-  fn calculate_tau_in_days(&self) -> f64 {
-    self.tau
-  }
   fn tau(&self) -> Option<f64> {
     Some(self.tau)
   }

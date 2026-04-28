@@ -252,10 +252,14 @@ mod tests {
     let t = 1.0_f64;
     let n = 2048_usize;
     let m = 6000_usize;
-    let fbm = Fbm::new(h, n, Some(t));
+    // `Fbm::sample(&self)` re-derives from the stored seed every call, so a
+    // single seeded instance would return the *same* path each time. We need
+    // `m` independent paths, so seed each draw separately from a base seed.
+    let base_seed = 0xF_B_C0FFEE_u64;
 
     let mut endpoints = Vec::with_capacity(m);
-    for _ in 0..m {
+    for i in 0..m {
+      let fbm = Fbm::seeded(h, n, Some(t), base_seed.wrapping_add(i as u64));
       let x = fbm.sample();
       endpoints.push(x[n - 1]);
     }

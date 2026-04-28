@@ -321,12 +321,12 @@ impl TimeExt for SabrPricer {
 }
 
 impl SabrPricer {
-  /// Time to maturity, panicking with a descriptive message if neither `tau`
-  /// nor `eval`+`expiration` were provided.
+  /// Time to maturity in years, derived from `tau` if set, otherwise from
+  /// `eval`+`expiration` via [`TimeExt::tau_or_from_dates`].
+  ///
+  /// Panics if neither was provided.
   fn tau_required(&self) -> f64 {
-    self
-      .tau()
-      .expect("SabrPricer: time to maturity is unset; set `tau` or both `eval` and `expiration`")
+    self.tau_or_from_dates()
   }
 
   pub fn forward(&self) -> f64 {
@@ -381,11 +381,15 @@ impl PricerExt for SabrPricer {
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
+    let tau = self.calculate_tau_in_years();
+    let q = self.q.unwrap_or(0.0);
+    let forward = self.s * ((self.r - q) * tau).exp();
+    let undiscounted_price = c_price * (self.r * tau).exp();
     ImpliedBlackVolatility::builder()
-      .option_price(c_price)
-      .forward(self.s)
+      .option_price(undiscounted_price)
+      .forward(forward)
       .strike(self.k)
-      .expiry(self.calculate_tau_in_days())
+      .expiry(tau)
       .is_call(option_type == OptionType::Call)
       .build()
       .and_then(|iv| iv.calculate::<DefaultSpecialFn>())

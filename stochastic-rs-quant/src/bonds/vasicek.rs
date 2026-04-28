@@ -20,7 +20,7 @@ pub struct Vasicek {
   pub mu: f64,
   /// Volatility
   pub sigma: f64,
-  /// Maturity of the bond in days
+  /// Maturity of the bond in years
   pub tau: f64,
   /// Evaluation date
   pub eval: Option<chrono::NaiveDate>,
@@ -35,7 +35,7 @@ impl PricerExt for Vasicek {
   }
 
   fn calculate_price(&self) -> f64 {
-    let tau = self.calculate_tau_in_days();
+    let tau = self.tau;
 
     let B = (1.0 - (-self.theta * tau).exp()) / self.theta;
     let A = (self.mu - (self.sigma.powi(2) / (2.0 * self.theta.powi(2)))) * (B - tau)

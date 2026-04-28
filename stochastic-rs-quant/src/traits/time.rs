@@ -36,10 +36,6 @@ pub trait TimeExt {
     }
   }
 
-  fn calculate_tau_in_days(&self) -> f64 {
-    self.tau_or_from_dates() * 365.0
-  }
-
   fn calculate_tau_in_years(&self) -> f64 {
     self.tau_or_from_dates()
   }

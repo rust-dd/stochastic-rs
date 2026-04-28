@@ -341,7 +341,7 @@ impl FiniteDifferencePricer {
   }
 
   fn calculate_grid(&self) -> (f64, f64, Array1<f64>, usize) {
-    let tau = self.tau.unwrap_or(1.0);
+    let tau = self.tau_or_from_dates();
     let dt = tau / self.t_n as f64;
     let s_max = self.s * 3.0;
     let ds = s_max / self.s_n as f64;
@@ -363,12 +363,12 @@ impl FiniteDifferencePricer {
         if s == 0.0 {
           0.0
         } else {
-          s - self.k * (-self.r * (self.tau.unwrap_or(1.0) - tau)).exp()
+          s - self.k * (-self.r * (self.tau_or_from_dates() - tau)).exp()
         }
       }
       OptionType::Put => {
         if s == 0.0 {
-          self.k * (-self.r * (self.tau.unwrap_or(1.0) - tau)).exp()
+          self.k * (-self.r * (self.tau_or_from_dates() - tau)).exp()
         } else {
           0.0
         }
