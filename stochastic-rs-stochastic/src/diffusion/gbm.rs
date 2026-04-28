@@ -4,8 +4,8 @@
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dW_t,\quad S_0=s_0
 //! $$
 //!
-use ndarray::s;
 use ndarray::Array1;
+use ndarray::s;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
