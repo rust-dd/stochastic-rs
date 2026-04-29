@@ -58,8 +58,13 @@ pub trait ToShortRateModel {
 pub trait Calibrator {
   /// Optional initial-guess type.
   type InitialGuess;
-  /// Calibration output. Must implement [`CalibrationResult`].
-  type Output: CalibrationResult;
+  /// Calibrated parameter set. Must match [`Output::Params`](CalibrationResult::Params)
+  /// so generic pipelines can recover the same `Params` type from the
+  /// calibrator and from its result.
+  type Params: Clone;
+  /// Calibration output. Must implement [`CalibrationResult`] and produce
+  /// the same [`Params`](Self::Params).
+  type Output: CalibrationResult<Params = Self::Params>;
   /// Error returned when calibration cannot produce a result.
   type Error;
 
@@ -80,12 +85,26 @@ pub trait Calibrator {
 /// `rmse` / `mae` (when the calibrator runs Nelder-Mead or similar). This
 /// trait unifies both: `rmse()` is always available, [`loss_score()`](Self::loss_score)
 /// returns `Some(&CalibrationLossScore)` when the richer breakdown is computed.
+///
+/// The associated [`Params`](Self::Params) type lets generic code recover the
+/// calibrated parameter vector regardless of the concrete result type. The
+/// [`params`](Self::params) method returns an owned clone — fields on the
+/// concrete result struct stay accessible directly for ergonomic point use.
 pub trait CalibrationResult {
+  /// Calibrated parameter set produced by the calibrator. Returned owned by
+  /// [`params`](Self::params).
+  type Params: Clone;
+
   /// Root-mean-square pricing error on the calibration grid.
   fn rmse(&self) -> f64;
 
   /// Whether the underlying optimiser reported convergence.
   fn converged(&self) -> bool;
+
+  /// Owned snapshot of the calibrated parameters. Cloning is cheap because
+  /// `Params` is typically a small POD-like struct (single floats / a short
+  /// vector).
+  fn params(&self) -> Self::Params;
 
   /// Structured loss-metric breakdown when available. `None` for
   /// calibrators that only track scalar `rmse`/`mae`.

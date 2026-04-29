@@ -63,11 +63,20 @@ impl SabrCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for SabrCalibrationResult {
+  type Params = SabrParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    SabrParams {
+      alpha: self.alpha,
+      beta: self.beta,
+      nu: self.nu,
+      rho: self.rho,
+    }
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -76,6 +85,7 @@ impl crate::traits::CalibrationResult for SabrCalibrationResult {
 
 impl crate::traits::Calibrator for SabrCalibrator {
   type InitialGuess = SabrParams;
+  type Params = SabrParams;
   type Output = SabrCalibrationResult;
   type Error = anyhow::Error;
 

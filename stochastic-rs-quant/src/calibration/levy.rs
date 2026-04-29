@@ -94,6 +94,16 @@ impl MarketSlice {
   }
 }
 
+/// Calibrated parameter set for a Lévy model — the parameter vector together
+/// with its [`LevyModelType`] tag (the vector layout depends on the model).
+#[derive(Clone, Debug)]
+pub struct LevyParams {
+  /// Calibrated parameter vector. Layout is model-specific.
+  pub values: Vec<f64>,
+  /// Lévy model variant the vector belongs to.
+  pub model_type: LevyModelType,
+}
+
 /// Calibration result for a Lévy model.
 #[derive(Clone, Debug)]
 pub struct LevyCalibrationResult {
@@ -142,8 +152,15 @@ impl crate::traits::ToModel for LevyCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for LevyCalibrationResult {
+  type Params = LevyParams;
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
+  }
+  fn params(&self) -> Self::Params {
+    LevyParams {
+      values: self.params.clone(),
+      model_type: self.model_type,
+    }
   }
   fn converged(&self) -> bool {
     self.converged
@@ -155,6 +172,7 @@ impl crate::traits::CalibrationResult for LevyCalibrationResult {
 
 impl crate::traits::Calibrator for LevyCalibrator {
   type InitialGuess = Vec<f64>;
+  type Params = LevyParams;
   type Output = LevyCalibrationResult;
   type Error = anyhow::Error;
 

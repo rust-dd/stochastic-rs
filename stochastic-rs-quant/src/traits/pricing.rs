@@ -10,20 +10,6 @@ pub trait PricerExt: super::time::TimeExt {
   fn implied_volatility(&self, _c_price: f64, _option_type: OptionType) -> f64 {
     f64::NAN
   }
-
-  /// Legacy positional Greeks vector. Retained for backwards compatibility
-  /// with v2.0.0-beta.2; new code should implement [`GreeksExt`] and consume
-  /// the typed [`Greeks`] struct via [`GreeksExt::greeks`].
-  ///
-  /// The default returns an empty vector; pricers that historically populated
-  /// this list keep their implementation.
-  #[deprecated(
-    since = "2.0.0-beta.3",
-    note = "use GreeksExt::greeks() — this method loses type information (positional, no names)"
-  )]
-  fn derivatives(&self) -> Vec<f64> {
-    vec![]
-  }
 }
 
 /// Aggregate Greek values produced by [`GreeksExt::greeks`].

@@ -391,6 +391,7 @@ impl crate::traits::ToModel for RBergomiCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for RBergomiCalibrationResult {
+  type Params = RBergomiParams;
   fn rmse(&self) -> f64 {
     // `final_loss` is a Wasserstein-1 distance averaged over maturities;
     // we expose its square root so the magnitude is comparable to per-quote
@@ -400,10 +401,14 @@ impl crate::traits::CalibrationResult for RBergomiCalibrationResult {
   fn converged(&self) -> bool {
     self.converged
   }
+  fn params(&self) -> Self::Params {
+    self.calibrated_params.clone()
+  }
 }
 
 impl crate::traits::Calibrator for RBergomiCalibrator {
   type InitialGuess = RBergomiParams;
+  type Params = RBergomiParams;
   type Output = RBergomiCalibrationResult;
   type Error = anyhow::Error;
 

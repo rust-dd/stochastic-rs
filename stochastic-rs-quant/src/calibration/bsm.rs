@@ -51,11 +51,15 @@ impl crate::traits::ToModel for BSMCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for BSMCalibrationResult {
+  type Params = BSMParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    BSMParams { v: self.v }
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -64,6 +68,7 @@ impl crate::traits::CalibrationResult for BSMCalibrationResult {
 
 impl crate::traits::Calibrator for BSMCalibrator {
   type InitialGuess = BSMParams;
+  type Params = BSMParams;
   type Output = BSMCalibrationResult;
   type Error = anyhow::Error;
 
@@ -459,6 +464,7 @@ mod tests {
 
   #[test]
   fn calibrator_trait_returns_result() {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
     let s = 100.0_f64;
     let k = 100.0_f64;
@@ -485,10 +491,11 @@ mod tests {
     let result: Result<BSMCalibrationResult, anyhow::Error> =
       Calibrator::calibrate(&calibrator, None);
     let result = result.expect("trait calibrate must succeed");
+    let params = CalibrationResult::params(&result);
     assert!(
-      (result.v - true_sigma).abs() < 1e-3,
-      "trait Calibrator path recovered sigma {} (expected ~{})",
-      result.v,
+      (params.v - true_sigma).abs() < 1e-3,
+      "trait Calibrator path recovered sigma {} via CalibrationResult::params (expected ~{})",
+      params.v,
       true_sigma
     );
   }

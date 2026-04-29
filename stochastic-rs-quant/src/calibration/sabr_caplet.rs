@@ -21,6 +21,18 @@ use argmin::solver::neldermead::NelderMead;
 
 use crate::pricing::sabr::hagan_implied_vol;
 
+/// Calibrated parameter set for a Sabr caplet smile.
+///
+/// Parallels [`crate::calibration::SabrParams`] but is dedicated to the
+/// caplet calibrator so the two pipelines can evolve independently.
+#[derive(Debug, Clone, Copy)]
+pub struct SabrCapletParams {
+  pub alpha: f64,
+  pub beta: f64,
+  pub nu: f64,
+  pub rho: f64,
+}
+
 /// Calibration result for a Sabr caplet smile.
 #[derive(Debug, Clone)]
 pub struct SabrCapletCalibrationResult {
@@ -61,16 +73,26 @@ impl crate::traits::ToModel for SabrCapletCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for SabrCapletCalibrationResult {
+  type Params = SabrCapletParams;
   fn rmse(&self) -> f64 {
     self.rmse
   }
   fn converged(&self) -> bool {
     self.converged
   }
+  fn params(&self) -> Self::Params {
+    SabrCapletParams {
+      alpha: self.alpha,
+      beta: self.beta,
+      nu: self.nu,
+      rho: self.rho,
+    }
+  }
 }
 
 impl crate::traits::Calibrator for SabrCapletCalibrator {
   type InitialGuess = (f64, f64, f64);
+  type Params = SabrCapletParams;
   type Output = SabrCapletCalibrationResult;
   type Error = anyhow::Error;
 

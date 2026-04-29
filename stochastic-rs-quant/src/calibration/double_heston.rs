@@ -231,11 +231,15 @@ impl crate::traits::ToModel for DoubleHestonCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
+  type Params = DoubleHestonParams;
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    DoubleHestonCalibrationResult::params(self)
   }
   fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {
     Some(&self.loss)
@@ -244,6 +248,7 @@ impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
 
 impl crate::traits::Calibrator for DoubleHestonCalibrator {
   type InitialGuess = DoubleHestonParams;
+  type Params = DoubleHestonParams;
   type Output = DoubleHestonCalibrationResult;
   type Error = anyhow::Error;
 

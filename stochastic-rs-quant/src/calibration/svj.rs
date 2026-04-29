@@ -188,11 +188,24 @@ impl SVJCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for SVJCalibrationResult {
+  type Params = SVJParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    SVJParams {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma_v: self.sigma_v,
+      rho: self.rho,
+      lambda: self.lambda,
+      mu_j: self.mu_j,
+      sigma_j: self.sigma_j,
+    }
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -201,6 +214,7 @@ impl crate::traits::CalibrationResult for SVJCalibrationResult {
 
 impl crate::traits::Calibrator for SVJCalibrator {
   type InitialGuess = SVJParams;
+  type Params = SVJParams;
   type Output = SVJCalibrationResult;
   type Error = anyhow::Error;
 

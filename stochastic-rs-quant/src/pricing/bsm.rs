@@ -242,16 +242,6 @@ impl PricerExt for BSMPricer {
       .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
       .unwrap_or(f64::NAN)
   }
-
-  fn derivatives(&self) -> Vec<f64> {
-    vec![
-      self.delta(),
-      self.gamma(),
-      self.theta(),
-      self.vega(),
-      self.rho(),
-    ]
-  }
 }
 
 impl TimeExt for BSMPricer {

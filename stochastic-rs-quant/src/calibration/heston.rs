@@ -224,11 +224,15 @@ impl crate::traits::ToModel for HestonCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for HestonCalibrationResult {
+  type Params = HestonParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    self.params.clone()
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -237,6 +241,7 @@ impl crate::traits::CalibrationResult for HestonCalibrationResult {
 
 impl crate::traits::Calibrator for HestonCalibrator {
   type InitialGuess = HestonParams;
+  type Params = HestonParams;
   type Output = HestonCalibrationResult;
   type Error = anyhow::Error;
 
