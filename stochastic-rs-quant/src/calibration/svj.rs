@@ -202,8 +202,10 @@ impl crate::traits::CalibrationResult for SVJCalibrationResult {
 impl crate::traits::Calibrator for SVJCalibrator {
   type InitialGuess = SVJParams;
   type Output = SVJCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
-    SVJCalibrator::calibrate(self, initial)
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    Ok(SVJCalibrator::calibrate(self, initial))
   }
 }
 

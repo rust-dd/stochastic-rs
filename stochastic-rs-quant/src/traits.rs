@@ -14,6 +14,7 @@ pub use calibration::CalibrationResult;
 pub use calibration::Calibrator;
 pub use calibration::ToModel;
 pub use calibration::ToShortRateModel;
+pub use pricing::Greeks;
 pub use pricing::GreeksExt;
 pub use pricing::ModelPricer;
 pub use pricing::PricerExt;

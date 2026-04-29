@@ -405,12 +405,14 @@ impl crate::traits::CalibrationResult for RBergomiCalibrationResult {
 impl crate::traits::Calibrator for RBergomiCalibrator {
   type InitialGuess = RBergomiParams;
   type Output = RBergomiCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.params = p;
     }
-    RBergomiCalibrator::calibrate(&mut this)
+    Ok(RBergomiCalibrator::calibrate(&mut this))
   }
 }
 

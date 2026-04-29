@@ -72,12 +72,14 @@ impl crate::traits::CalibrationResult for SabrCapletCalibrationResult {
 impl crate::traits::Calibrator for SabrCapletCalibrator {
   type InitialGuess = (f64, f64, f64);
   type Output = SabrCapletCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(g) = initial {
       this.initial_guess = Some(g);
     }
-    SabrCapletCalibrator::calibrate(&this)
+    Ok(SabrCapletCalibrator::calibrate(&this))
   }
 }
 

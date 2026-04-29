@@ -46,16 +46,31 @@ pub trait ToShortRateModel {
 /// Each calibrator declares an [`InitialGuess`](Calibrator::InitialGuess) type
 /// (use `()` if no initial guess is supported) and an [`Output`](Calibrator::Output)
 /// type that implements [`CalibrationResult`]. The trait gives a single entry
-/// point — `calibrate(initial)` — that returns rich diagnostic information
-/// (loss / convergence) regardless of the underlying optimiser.
+/// point — `calibrate(initial)` — that returns either rich diagnostic
+/// information (loss / convergence) on success or an
+/// [`Error`](Calibrator::Error) when the optimiser fails before producing a
+/// usable result.
+///
+/// Implementations are encouraged to use [`anyhow::Error`] for the
+/// [`Error`](Calibrator::Error) type; that is the convention in this crate
+/// and lets callers chain `?` propagation with other quant library
+/// operations.
 pub trait Calibrator {
   /// Optional initial-guess type.
   type InitialGuess;
   /// Calibration output. Must implement [`CalibrationResult`].
   type Output: CalibrationResult;
+  /// Error returned when calibration cannot produce a result.
+  type Error;
 
   /// Run calibration. Pass `None` to let the calibrator infer an initial guess.
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output;
+  ///
+  /// Returns `Ok(result)` on success and `Err(_)` if the optimiser failed
+  /// before producing a usable [`Output`](Self::Output). A successful return
+  /// does **not** guarantee convergence — inspect
+  /// [`CalibrationResult::converged`](CalibrationResult::converged) on the
+  /// `Ok` value.
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error>;
 }
 
 /// Common interface for calibration results.
@@ -76,5 +91,26 @@ pub trait CalibrationResult {
   /// calibrators that only track scalar `rmse`/`mae`.
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     None
+  }
+
+  /// Iterations consumed by the optimiser. Returns `None` when the
+  /// underlying optimiser does not expose an iteration count (or when
+  /// the calibrator chose not to record it).
+  fn iterations(&self) -> Option<usize> {
+    None
+  }
+
+  /// Optimiser-supplied status / termination message. Returns `None`
+  /// when the calibrator does not surface one.
+  fn message(&self) -> Option<&str> {
+    None
+  }
+
+  /// Worst-case absolute pricing error on the calibration grid. Returns
+  /// [`f64::NAN`] by default — calibrators that record the residual
+  /// vector should override this. Many calibration pipelines care more
+  /// about the worst residual than the RMSE.
+  fn max_error(&self) -> f64 {
+    f64::NAN
   }
 }

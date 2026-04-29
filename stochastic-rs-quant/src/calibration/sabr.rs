@@ -77,12 +77,14 @@ impl crate::traits::CalibrationResult for SabrCalibrationResult {
 impl crate::traits::Calibrator for SabrCalibrator {
   type InitialGuess = SabrParams;
   type Output = SabrCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.params = Some(p.projected());
     }
-    SabrCalibrator::calibrate(&this)
+    Ok(SabrCalibrator::calibrate(&this))
   }
 }
 

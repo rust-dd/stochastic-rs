@@ -96,12 +96,14 @@ impl crate::traits::CalibrationResult for HullWhiteCalibrationResult {
 impl<'a> crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'a> {
   type InitialGuess = (f64, f64);
   type Output = HullWhiteCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(guess) = initial {
       this.initial_guess = Some(guess);
     }
-    HullWhiteSwaptionCalibrator::calibrate(&this)
+    Ok(HullWhiteSwaptionCalibrator::calibrate(&this))
   }
 }
 

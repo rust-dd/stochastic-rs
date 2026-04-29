@@ -245,8 +245,10 @@ impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
 impl crate::traits::Calibrator for DoubleHestonCalibrator {
   type InitialGuess = DoubleHestonParams;
   type Output = DoubleHestonCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
-    DoubleHestonCalibrator::calibrate(self, initial)
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    Ok(DoubleHestonCalibrator::calibrate(self, initial))
   }
 }
 

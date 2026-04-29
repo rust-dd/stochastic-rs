@@ -193,6 +193,18 @@ impl crate::traits::GreeksExt for BSMPricer {
   fn rho(&self) -> f64 {
     BSMPricer::rho(self)
   }
+  fn vanna(&self) -> f64 {
+    BSMPricer::vanna(self)
+  }
+  fn charm(&self) -> f64 {
+    BSMPricer::charm(self)
+  }
+  fn volga(&self) -> f64 {
+    BSMPricer::vomma(self)
+  }
+  fn veta(&self) -> f64 {
+    BSMPricer::dvega_dtime(self)
+  }
 }
 
 impl PricerExt for BSMPricer {
@@ -621,6 +633,48 @@ mod tests {
     );
     let iv = dates_pricer.implied_volatility(c_dates, OptionType::Call);
     assert!((iv - 0.2).abs() < 1e-6, "IV from date-based pricer: {iv}");
+  }
+
+  #[test]
+  fn bsm_greeks_ext_exposes_second_order() {
+    use crate::traits::GreeksExt;
+    let bsm = BSMPricer::new(
+      100.0,
+      0.2,
+      100.0,
+      0.05,
+      None,
+      None,
+      None,
+      Some(1.0),
+      None,
+      None,
+      OptionType::Call,
+      BSMCoc::Bsm1973,
+    );
+    let vanna = GreeksExt::vanna(&bsm);
+    let charm = GreeksExt::charm(&bsm);
+    let volga = GreeksExt::volga(&bsm);
+    let veta = GreeksExt::veta(&bsm);
+    assert_eq!(vanna, bsm.vanna());
+    assert_eq!(charm, bsm.charm());
+    assert_eq!(volga, bsm.vomma());
+    assert_eq!(veta, bsm.dvega_dtime());
+    assert!(
+      vanna.is_finite() && charm.is_finite() && volga.is_finite() && veta.is_finite(),
+      "second-order Greeks should be finite at-the-money"
+    );
+
+    let greeks = GreeksExt::greeks(&bsm);
+    assert_eq!(greeks.delta, bsm.delta());
+    assert_eq!(greeks.gamma, bsm.gamma());
+    assert_eq!(greeks.vega, bsm.vega());
+    assert_eq!(greeks.theta, bsm.theta());
+    assert_eq!(greeks.rho, bsm.rho());
+    assert_eq!(greeks.vanna, bsm.vanna());
+    assert_eq!(greeks.charm, bsm.charm());
+    assert_eq!(greeks.volga, bsm.vomma());
+    assert_eq!(greeks.veta, bsm.dvega_dtime());
   }
 
   #[test]

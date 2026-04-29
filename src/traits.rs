@@ -13,6 +13,7 @@ pub use stochastic_rs_distributions::traits::Fn2D;
 pub use stochastic_rs_distributions::traits::SimdFloatExt;
 pub use stochastic_rs_quant::traits::CalibrationResult;
 pub use stochastic_rs_quant::traits::Calibrator;
+pub use stochastic_rs_quant::traits::Greeks;
 pub use stochastic_rs_quant::traits::GreeksExt;
 pub use stochastic_rs_quant::traits::ModelPricer;
 pub use stochastic_rs_quant::traits::PricerExt;

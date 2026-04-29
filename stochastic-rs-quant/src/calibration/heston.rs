@@ -238,12 +238,14 @@ impl crate::traits::CalibrationResult for HestonCalibrationResult {
 impl crate::traits::Calibrator for HestonCalibrator {
   type InitialGuess = HestonParams;
   type Output = HestonCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.set_initial_guess(p);
     }
-    this.calibrate_with_result()
+    Ok(this.calibrate_with_result())
   }
 }
 
