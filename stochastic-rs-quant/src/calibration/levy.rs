@@ -177,7 +177,7 @@ impl crate::traits::Calibrator for LevyCalibrator {
   type Error = anyhow::Error;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    Ok(LevyCalibrator::calibrate(self, initial))
+    Ok(self.solve(initial))
   }
 }
 
@@ -561,8 +561,7 @@ impl LevyCalibrator {
     self.calibration_history.borrow().clone()
   }
 
-  /// Run the calibration, returning the result.
-  pub fn calibrate(&self, initial_params: Option<Vec<f64>>) -> LevyCalibrationResult {
+  fn solve(&self, initial_params: Option<Vec<f64>>) -> LevyCalibrationResult {
     let mut problem = self.clone();
     if let Some(p) = initial_params {
       assert_eq!(
@@ -743,6 +742,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for LevyCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   // Analytical reference prices (Gil-Pelaez inversion)
   // S=100, r=0.05, q=0, T=1.0
@@ -806,7 +806,7 @@ mod tests {
     let calibrator =
       LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, vec![market]);
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.1,
       "Vg RMSE={:.6}",
@@ -826,7 +826,7 @@ mod tests {
 
     let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.05, 0.0, vec![market]);
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.1,
       "MJD RMSE={:.6}",
@@ -852,7 +852,7 @@ mod tests {
       vec![market],
     );
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     println!("Vg params: {:?}, loss: {:?}", result.params, result.loss);
   }
 
@@ -867,7 +867,7 @@ mod tests {
 
     let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.03, 0.01, vec![market]);
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     println!(
       "Merton params: {:?}, loss: {:?}",
       result.params, result.loss

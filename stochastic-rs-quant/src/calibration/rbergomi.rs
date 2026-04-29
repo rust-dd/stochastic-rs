@@ -417,7 +417,7 @@ impl crate::traits::Calibrator for RBergomiCalibrator {
     if let Some(p) = initial {
       this.params = p;
     }
-    Ok(RBergomiCalibrator::calibrate(&mut this))
+    Ok(this.solve())
   }
 }
 
@@ -547,7 +547,7 @@ impl RBergomiCalibrator {
     grad
   }
 
-  pub fn calibrate(&mut self) -> RBergomiCalibrationResult {
+  fn solve(&mut self) -> RBergomiCalibrationResult {
     self.history.borrow_mut().clear();
 
     self.params.project_in_place();
@@ -1037,6 +1037,7 @@ fn precompute_second_moments(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   #[test]
   fn test_empirical_wasserstein_1_matches_simple_case() {
@@ -1096,7 +1097,7 @@ mod tests {
       improvement_tol: 1e-5,
     };
 
-    let mut calibrator = RBergomiCalibrator::new(
+    let calibrator = RBergomiCalibrator::new(
       100.0,
       0.01,
       init_params.clone(),
@@ -1105,7 +1106,7 @@ mod tests {
       true,
     );
 
-    let result = calibrator.calibrate();
+    let result = calibrator.calibrate(None).unwrap();
 
     println!(
       "rBergomi calibration: initial_loss={:.6}, final_loss={:.6}, iterations={}",

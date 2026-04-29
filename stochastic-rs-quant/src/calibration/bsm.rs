@@ -77,7 +77,7 @@ impl crate::traits::Calibrator for BSMCalibrator {
     if let Some(p) = initial {
       this.set_initial_guess(p);
     }
-    Ok(BSMCalibrator::calibrate(&this))
+    Ok(this.solve())
   }
 }
 
@@ -210,7 +210,7 @@ impl BSMCalibrator {
 }
 
 impl BSMCalibrator {
-  pub fn calibrate(&self) -> BSMCalibrationResult {
+  fn solve(&self) -> BSMCalibrationResult {
     let (result, report) = LevenbergMarquardt::new().minimize(self.clone());
     let converged = report.termination.was_successful();
     let c_model: Vec<f64> = result
@@ -367,6 +367,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   #[test]
   fn test_calibrate() {
@@ -403,7 +404,7 @@ mod tests {
       option_type,
     );
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 
   #[test]
@@ -449,7 +450,7 @@ mod tests {
       None,
       OptionType::Call,
     );
-    let result = calibrator.calibrate();
+    let result = calibrator.calibrate(None).unwrap();
     println!(
       "recovered sigma = {:.6}  (truth {:.4})  converged = {}",
       result.v, true_sigma, result.converged
@@ -465,7 +466,6 @@ mod tests {
   #[test]
   fn calibrator_trait_returns_result() {
     use crate::traits::CalibrationResult;
-    use crate::traits::Calibrator;
     let s = 100.0_f64;
     let k = 100.0_f64;
     let true_sigma = 0.20_f64;

@@ -94,7 +94,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
     if let Some(p) = initial {
       this.params = Some(p.projected());
     }
-    Ok(SabrCalibrator::calibrate(&this))
+    Ok(this.solve())
   }
 }
 
@@ -194,7 +194,7 @@ impl SabrCalibrator {
 }
 
 impl SabrCalibrator {
-  pub fn calibrate(&self) -> SabrCalibrationResult {
+  fn solve(&self) -> SabrCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
@@ -396,6 +396,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   #[test]
   fn test_sabr_calibrate_price_based() {
@@ -449,6 +450,6 @@ mod tests {
       true,
     );
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 }

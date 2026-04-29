@@ -101,7 +101,7 @@ impl crate::traits::Calibrator for SabrCapletCalibrator {
     if let Some(g) = initial {
       this.initial_guess = Some(g);
     }
-    Ok(SabrCapletCalibrator::calibrate(&this))
+    Ok(this.solve())
   }
 }
 
@@ -156,8 +156,7 @@ impl SabrCapletCalibrator {
     }
   }
 
-  /// Run the calibration.
-  pub fn calibrate(&self) -> SabrCapletCalibrationResult {
+  fn solve(&self) -> SabrCapletCalibrationResult {
     let weights = self
       .weights
       .clone()

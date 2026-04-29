@@ -20,15 +20,6 @@ struct HestonElKhatibPath {
   dw_v: Array1<f64>,
 }
 
-/// Container for the four standard Greeks.
-#[derive(Debug, Clone)]
-pub struct Greeks {
-  pub delta: f64,
-  pub gamma: f64,
-  pub vega: f64,
-  pub rho: f64,
-}
-
 /// Malliavin-weighted Greeks computation for a European call under Gbm dynamics.
 #[derive(Debug, Clone)]
 pub struct GbmMalliavinGreeks {
@@ -179,8 +170,16 @@ impl GbmMalliavinGreeks {
     sum / m
   }
 
-  /// Compute all four Greeks in a single pass (single simulation).
-  pub fn all_greeks(&self) -> Greeks {
+  /// Compute all four Malliavin Greeks in a single MC pass.
+  ///
+  /// Sharing simulated paths between the four estimators ensures the
+  /// returned [`crate::traits::Greeks`] are mutually consistent — calling
+  /// `delta()`, `gamma()`, `vega()`, `rho()` individually each runs a
+  /// fresh simulation and would mix four different sample paths.
+  /// First-order Greeks not produced by this Malliavin formula
+  /// (`theta`, second-order `vanna`/`charm`/`volga`/`veta`) are returned
+  /// as NaN.
+  pub fn all_greeks(&self) -> crate::traits::Greeks {
     let (s_t, w_t) = self.simulate();
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
@@ -214,11 +213,16 @@ impl GbmMalliavinGreeks {
       sum_rho += disc_payoff * w_rho;
     }
 
-    Greeks {
+    crate::traits::Greeks {
       delta: sum_delta / m,
       gamma: sum_gamma / m,
       vega: sum_vega / m,
+      theta: f64::NAN,
       rho: sum_rho / m,
+      vanna: f64::NAN,
+      charm: f64::NAN,
+      volga: f64::NAN,
+      veta: f64::NAN,
     }
   }
 }
@@ -241,18 +245,7 @@ impl crate::traits::GreeksExt for GbmMalliavinGreeks {
   /// Greeks would mix four different sample paths. [`Self::all_greeks`] uses
   /// a single shared simulation and returns mutually consistent estimators.
   fn greeks(&self) -> crate::traits::Greeks {
-    let g = self.all_greeks();
-    crate::traits::Greeks {
-      delta: g.delta,
-      gamma: g.gamma,
-      vega: g.vega,
-      theta: f64::NAN,
-      rho: g.rho,
-      vanna: f64::NAN,
-      charm: f64::NAN,
-      volga: f64::NAN,
-      veta: f64::NAN,
-    }
+    self.all_greeks()
   }
 }
 

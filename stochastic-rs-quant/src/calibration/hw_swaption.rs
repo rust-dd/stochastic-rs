@@ -120,7 +120,7 @@ impl<'a> crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'a> {
     if let Some(guess) = initial {
       this.initial_guess = Some(guess);
     }
-    Ok(HullWhiteSwaptionCalibrator::calibrate(&this))
+    Ok(this.solve())
   }
 }
 
@@ -154,8 +154,7 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
     }
   }
 
-  /// Run the Nelder-Mead minimization.
-  pub fn calibrate(&self) -> HullWhiteCalibrationResult {
+  fn solve(&self) -> HullWhiteCalibrationResult {
     let problem = HullWhiteCost {
       quotes: self.quotes.to_vec(),
       curve_points: serialize_curve(self.curve),

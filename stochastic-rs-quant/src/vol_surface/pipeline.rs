@@ -152,6 +152,7 @@ mod tests {
   use ndarray::Array2;
 
   use super::*;
+  use crate::traits::Calibrator;
 
   fn make_test_prices() -> (Vec<f64>, Vec<f64>, Vec<f64>, Array2<f64>) {
     use stochastic_rs_distributions::special::norm_cdf;
@@ -305,10 +306,10 @@ mod tests {
       OptionType::Call,
       false,
     );
-    let params = cal.calibrate();
+    let calibration = cal.calibrate(None).unwrap();
 
     let result = build_surface_from_calibration(
-      &params,
+      &calibration,
       100.0,
       0.05,
       0.0,
@@ -374,7 +375,7 @@ mod tests {
       OptionType::Call,
       false,
     );
-    let result = cal.calibrate(None);
+    let result = cal.calibrate(None).unwrap();
     assert!(result.converged, "SVJ should converge");
 
     let surface = build_surface_from_calibration(
@@ -425,7 +426,7 @@ mod tests {
       .collect();
 
     let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, slices);
-    let result = cal.calibrate(None);
+    let result = cal.calibrate(None).unwrap();
 
     let surface = build_surface_from_calibration(
       &result,
