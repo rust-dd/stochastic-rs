@@ -2,10 +2,7 @@
 //!
 //! Market quotes, fixing histories, and handles notify registered observers
 //! when their underlying value changes. Observers drive lazy recomputation
-//! in downstream pricers — matching the design used by QuantLib.
-//!
-//! Reference: Ballabio, "Implementing QuantLib", Leanpub (2020),
-//! Chapter "Observers and Observables".
+//! in downstream pricers via a classic Observer / Observable pattern.
 
 use std::sync::Arc;
 use std::sync::Mutex;

@@ -56,8 +56,12 @@ pub mod prelude {
   pub use crate::traits::DistributionSampler;
   pub use crate::traits::FloatExt;
   pub use crate::traits::GreeksExt;
+  pub use crate::traits::Instrument;
+  pub use crate::traits::InstrumentExt;
   pub use crate::traits::ModelPricer;
   pub use crate::traits::PricerExt;
+  pub use crate::traits::PricingEngine;
+  pub use crate::traits::PricingResult;
   pub use crate::traits::ProcessExt;
   pub use crate::traits::SimdFloatExt;
   pub use crate::traits::TimeExt;

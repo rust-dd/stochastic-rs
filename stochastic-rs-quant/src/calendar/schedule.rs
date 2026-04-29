@@ -3,8 +3,7 @@
 //! Generates periodic date schedules with business day adjustment,
 //! stub handling, and end-of-month preservation.
 //!
-//! Reference: QuantLib — `MakeSchedule` builder;
-//! ISDA 2006 Definitions, Sections 4.15–4.16.
+//! Reference: ISDA 2006 Definitions, Sections 4.15–4.16.
 
 use chrono::Datelike;
 use chrono::NaiveDate;

@@ -21,10 +21,10 @@
 //! Reference: Gellert & Schlögl, "Short Rate Dynamics: A Fed Funds and SOFR
 //! perspective", arXiv:2101.04308 (2021).
 //!
-//! Reference: Ballabio, "Implementing QuantLib", Leanpub (2020) — design of
-//! the Observable/Observer/Handle pattern used here.
+//! Observable / Observer / Handle pattern adapted for reactive market data.
 
 pub mod book;
+pub mod cached;
 pub mod fra;
 pub mod handle;
 pub mod indices;
@@ -35,6 +35,8 @@ pub mod rate_helper;
 
 pub use book::half_spread_quote;
 pub use book::mid_quote;
+pub use cached::Cached;
+pub use cached::MarketObserver;
 pub use fra::ForwardRateAgreement;
 pub use fra::FraPosition;
 pub use fra::FraValuation;

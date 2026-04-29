@@ -198,7 +198,7 @@ Default features remain `default = []`.
 Every new module must include:
 
 1. **Comparison test** (`tests/my_module_test.rs`):
-   - Validate output against reference (QuantLib, Python, R, MATLAB, or paper's tables/figures)
+   - Validate output against reference (Python, R, MATLAB, or paper's tables/figures)
    - Test trait integrations (e.g., custom `CalendarExt` impl, `sample_par` correctness)
    - Test edge cases (zero maturity, degenerate parameters, boundary conditions)
 

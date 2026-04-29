@@ -16,8 +16,13 @@
 //! Modified Duration and Convexity and Bonds Valuation", arXiv:1206.6998 (2012).
 
 pub mod bond;
+pub mod equity;
 pub mod option;
 pub mod swap;
+
+pub use equity::DigitalKind;
+pub use equity::DigitalOption;
+pub use equity::EuropeanOption;
 
 pub use bond::AmortizingFixedRateBond;
 pub use bond::BondAnalytics;
@@ -56,4 +61,8 @@ pub use swap::CrossCurrencyBasisSwapValuation;
 pub use swap::CrossCurrencySwapDirection;
 pub use swap::SwapDirection;
 pub use swap::SwapValuation;
+pub use swap::TotalReturnSwap;
+pub use swap::TrsDirection;
+pub use swap::TrsPeriod;
+pub use swap::TrsValuation;
 pub use swap::VanillaInterestRateSwap;

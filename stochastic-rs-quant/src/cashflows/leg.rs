@@ -1,6 +1,4 @@
 //! Leg construction helpers.
-//!
-//! Reference: QuantLib fixed-income leg builders.
 
 use chrono::NaiveDate;
 
