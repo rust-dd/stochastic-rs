@@ -50,7 +50,7 @@ Every new module must cite its source. Add a doc comment at the top of the file 
 
 ## 7. Prefer maintained libraries over raw implementations
 
-Do not rewrite algorithms that already exist in well-maintained crates (e.g., `ndarray-linalg`, `argmin`, `roots`, `ndrustfft`, `statrs`). Use existing crate implementations and only write custom code when no suitable crate exists.
+Do not rewrite algorithms that already exist in well-maintained crates (e.g., `ndarray-linalg`, `argmin`, `roots`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
 
 ## 8. Latest dependency versions
 

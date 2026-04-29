@@ -6,9 +6,8 @@
 //!
 use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
-use statrs::distribution::Continuous;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::OptionType;
 use crate::traits::PricerExt;
@@ -194,18 +193,29 @@ impl crate::traits::GreeksExt for BSMPricer {
   fn rho(&self) -> f64 {
     BSMPricer::rho(self)
   }
+  fn vanna(&self) -> f64 {
+    BSMPricer::vanna(self)
+  }
+  fn charm(&self) -> f64 {
+    BSMPricer::charm(self)
+  }
+  fn volga(&self) -> f64 {
+    BSMPricer::vomma(self)
+  }
+  fn veta(&self) -> f64 {
+    BSMPricer::dvega_dtime(self)
+  }
 }
 
 impl PricerExt for BSMPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
     let tau = self.tau_required();
 
-    let call = self.s * ((self.b() - self.r) * tau).exp() * n.cdf(d1)
-      - self.k * (-self.r * tau).exp() * n.cdf(d2);
-    let put = -self.s * ((self.b() - self.r) * tau).exp() * n.cdf(-d1)
-      + self.k * (-self.r * tau).exp() * n.cdf(-d2);
+    let call = self.s * ((self.b() - self.r) * tau).exp() * norm_cdf(d1)
+      - self.k * (-self.r * tau).exp() * norm_cdf(d2);
+    let put = -self.s * ((self.b() - self.r) * tau).exp() * norm_cdf(-d1)
+      + self.k * (-self.r * tau).exp() * norm_cdf(-d2);
 
     (call, put)
   }
@@ -219,25 +229,18 @@ impl PricerExt for BSMPricer {
   }
 
   fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
+    let tau = self.calculate_tau_in_years();
+    let forward = self.s * (self.b() * tau).exp();
+    let undiscounted_price = c_price * (self.r * tau).exp();
     ImpliedBlackVolatility::builder()
-      .option_price(c_price)
-      .forward(self.s)
+      .option_price(undiscounted_price)
+      .forward(forward)
       .strike(self.k)
-      .expiry(self.calculate_tau_in_days())
+      .expiry(tau)
       .is_call(option_type == OptionType::Call)
       .build()
       .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
       .unwrap_or(f64::NAN)
-  }
-
-  fn derivatives(&self) -> Vec<f64> {
-    vec![
-      self.delta(),
-      self.gamma(),
-      self.theta(),
-      self.vega(),
-      self.rho(),
-    ]
   }
 }
 
@@ -256,12 +259,12 @@ impl TimeExt for BSMPricer {
 }
 
 impl BSMPricer {
-  /// Time to maturity, panicking with a descriptive message if neither `tau`
-  /// nor `eval`+`expiration` were provided.
+  /// Time to maturity in years, derived from `tau` if set, otherwise from
+  /// `eval`+`expiration` via [`TimeExt::tau_or_from_dates`].
+  ///
+  /// Panics if neither was provided.
   fn tau_required(&self) -> f64 {
-    self
-      .tau()
-      .expect("BSMPricer: time to maturity is unset; set `tau` or both `eval` and `expiration`")
+    self.tau_or_from_dates()
   }
 
   /// Calculate d1
@@ -300,14 +303,13 @@ impl BSMPricer {
   /// Calculate the delta
   pub fn delta(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
     let tau = self.tau_required();
     let exp_bt = ((self.b() - self.r) * tau).exp();
 
     if self.option_type == OptionType::Call {
-      exp_bt * n.cdf(d1)
+      exp_bt * norm_cdf(d1)
     } else {
-      exp_bt * (n.cdf(d1) - 1.0)
+      exp_bt * (norm_cdf(d1) - 1.0)
     }
   }
 
@@ -315,9 +317,8 @@ impl BSMPricer {
   pub fn gamma(&self) -> f64 {
     let T = self.tau_required();
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
 
-    ((self.b() - self.r) * T).exp() * n.pdf(d1) / (self.s * self.v * self.tau_required().sqrt())
+    ((self.b() - self.r) * T).exp() * norm_pdf(d1) / (self.s * self.v * self.tau_required().sqrt())
   }
 
   /// Calculate the gamma percent
@@ -328,21 +329,20 @@ impl BSMPricer {
   /// Calculate the theta
   pub fn theta(&self) -> f64 {
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
     let exp_rt = (-self.r * self.tau_required()).exp();
-    let pdf_d1 = n.pdf(d1);
+    let pdf_d1 = norm_pdf(d1);
 
     let first_term = -self.s * exp_bt * pdf_d1 * self.v / (2.0 * self.tau_required().sqrt());
 
     if self.option_type == OptionType::Call {
-      let second_term = -(self.b() - self.r) * self.s * exp_bt * n.cdf(d1);
-      let third_term = -self.r * self.k * exp_rt * n.cdf(d2);
+      let second_term = -(self.b() - self.r) * self.s * exp_bt * norm_cdf(d1);
+      let third_term = -self.r * self.k * exp_rt * norm_cdf(d2);
       first_term + second_term + third_term
     } else {
-      let second_term = (self.b() - self.r) * self.s * exp_bt * n.cdf(-d1);
-      let third_term = -self.r * self.k * exp_rt * n.cdf(-d2);
+      let second_term = (self.b() - self.r) * self.s * exp_bt * norm_cdf(-d1);
+      let third_term = -self.r * self.k * exp_rt * norm_cdf(-d2);
       first_term + second_term + third_term
     }
   }
@@ -350,25 +350,23 @@ impl BSMPricer {
   /// Calculate the vega
   pub fn vega(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
 
     self.s
       * ((self.b() - self.r) * self.tau_required()).exp()
-      * n.pdf(d1)
+      * norm_pdf(d1)
       * self.tau_required().sqrt()
   }
 
   /// Calculate the rho
   pub fn rho(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_rt = (-self.r * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      self.k * self.tau_required() * exp_rt * n.cdf(d2)
+      self.k * self.tau_required() * exp_rt * norm_cdf(d2)
     } else {
-      -self.k * self.tau_required() * exp_rt * n.cdf(-d2)
+      -self.k * self.tau_required() * exp_rt * norm_cdf(-d2)
     }
   }
 
@@ -386,18 +384,17 @@ impl BSMPricer {
     let b = self.b();
     let tau = self.tau_required();
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_bt = ((b - r) * tau).exp();
-    let pdf_d1 = n.pdf(d1);
+    let pdf_d1 = norm_pdf(d1);
     let sqrt_T = tau.sqrt();
 
     match self.option_type {
       OptionType::Call => {
-        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) + (b - r) * n.cdf(d1))
+        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) + (b - r) * norm_cdf(d1))
       }
       OptionType::Put => {
-        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) - (b - r) * n.cdf(-d1))
+        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) - (b - r) * norm_cdf(-d1))
       }
     }
   }
@@ -405,9 +402,8 @@ impl BSMPricer {
   /// Calculate the vanna
   pub fn vanna(&self) -> f64 {
     let (d1, d2) = self.d1_d2();
-    let n = Normal::default();
 
-    -((self.b() - self.r) * self.tau_required()).exp() * n.pdf(d1) * d2 / self.v
+    -((self.b() - self.r) * self.tau_required()).exp() * norm_pdf(d1) * d2 / self.v
   }
 
   /// Calculate the zomma
@@ -464,49 +460,45 @@ impl BSMPricer {
   /// Calculate the phi
   pub fn phi(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      -self.tau_required() * self.s * exp_bt * n.cdf(d1)
+      -self.tau_required() * self.s * exp_bt * norm_cdf(d1)
     } else {
-      self.tau_required() * self.s * exp_bt * n.cdf(-d1)
+      self.tau_required() * self.s * exp_bt * norm_cdf(-d1)
     }
   }
 
   /// Calculate the zeta
   pub fn zeta(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
     if self.option_type == OptionType::Call {
-      n.cdf(d2)
+      norm_cdf(d2)
     } else {
-      -n.cdf(-d2)
+      -norm_cdf(-d2)
     }
   }
 
   /// Calculate the strike delta
   pub fn strike_delta(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
     let exp_rt = (-self.r * self.tau_required()).exp();
 
     if self.option_type == OptionType::Call {
-      -exp_rt * n.cdf(d2)
+      -exp_rt * norm_cdf(d2)
     } else {
-      exp_rt * n.cdf(-d2)
+      exp_rt * norm_cdf(-d2)
     }
   }
 
   /// Calculate the strike gamma
   pub fn strike_gamma(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let n = Normal::default();
 
-    n.pdf(d2) * (-self.r * self.tau_required()).exp()
+    norm_pdf(d2) * (-self.r * self.tau_required()).exp()
       / (self.k * self.v * self.tau_required().sqrt())
   }
 }
@@ -554,6 +546,148 @@ mod tests {
 
     let (call, ..) = bsm.calculate_call_put();
     let iv = bsm.implied_volatility(call, OptionType::Call);
-    println!("Implied Volatility: {}", iv);
+    assert!(
+      (iv - 0.2).abs() < 1e-6,
+      "IV round-trip failed: input sigma=0.2, recovered iv={iv}"
+    );
+  }
+
+  #[test]
+  fn bsm_iv_round_trip_across_strikes_and_maturities() {
+    for &tau in &[0.25_f64, 1.0, 2.0] {
+      for &k in &[90.0_f64, 100.0, 110.0] {
+        for &sigma in &[0.1_f64, 0.2, 0.4] {
+          let bsm = BSMPricer::new(
+            100.0,
+            sigma,
+            k,
+            0.03,
+            None,
+            None,
+            None,
+            Some(tau),
+            None,
+            None,
+            OptionType::Call,
+            BSMCoc::Bsm1973,
+          );
+          let (call, _) = bsm.calculate_call_put();
+          let iv = bsm.implied_volatility(call, OptionType::Call);
+          assert!(
+            (iv - sigma).abs() < 1e-4,
+            "IV round-trip mismatch: tau={tau}, k={k}, sigma_in={sigma}, sigma_out={iv}"
+          );
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn bsm_dates_match_tau_pricing() {
+    use chrono::NaiveDate;
+    let eval = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+    let expiration = NaiveDate::from_ymd_opt(2027, 1, 2).unwrap();
+    let dates_pricer = BSMPricer::new(
+      100.0,
+      0.2,
+      100.0,
+      0.05,
+      None,
+      None,
+      None,
+      None,
+      Some(eval),
+      Some(expiration),
+      OptionType::Call,
+      BSMCoc::Bsm1973,
+    );
+    let tau_pricer = BSMPricer::new(
+      100.0,
+      0.2,
+      100.0,
+      0.05,
+      None,
+      None,
+      None,
+      Some(dates_pricer.calculate_tau_in_years()),
+      None,
+      None,
+      OptionType::Call,
+      BSMCoc::Bsm1973,
+    );
+    let (c_dates, p_dates) = dates_pricer.calculate_call_put();
+    let (c_tau, p_tau) = tau_pricer.calculate_call_put();
+    assert!(
+      (c_dates - c_tau).abs() < 1e-12 && (p_dates - p_tau).abs() < 1e-12,
+      "date-based pricing diverged from tau-based: dates=({c_dates},{p_dates}), tau=({c_tau},{p_tau})"
+    );
+    let iv = dates_pricer.implied_volatility(c_dates, OptionType::Call);
+    assert!((iv - 0.2).abs() < 1e-6, "IV from date-based pricer: {iv}");
+  }
+
+  #[test]
+  fn bsm_greeks_ext_exposes_second_order() {
+    use crate::traits::GreeksExt;
+    let bsm = BSMPricer::new(
+      100.0,
+      0.2,
+      100.0,
+      0.05,
+      None,
+      None,
+      None,
+      Some(1.0),
+      None,
+      None,
+      OptionType::Call,
+      BSMCoc::Bsm1973,
+    );
+    let vanna = GreeksExt::vanna(&bsm);
+    let charm = GreeksExt::charm(&bsm);
+    let volga = GreeksExt::volga(&bsm);
+    let veta = GreeksExt::veta(&bsm);
+    assert_eq!(vanna, bsm.vanna());
+    assert_eq!(charm, bsm.charm());
+    assert_eq!(volga, bsm.vomma());
+    assert_eq!(veta, bsm.dvega_dtime());
+    assert!(
+      vanna.is_finite() && charm.is_finite() && volga.is_finite() && veta.is_finite(),
+      "second-order Greeks should be finite at-the-money"
+    );
+
+    let greeks = GreeksExt::greeks(&bsm);
+    assert_eq!(greeks.delta, bsm.delta());
+    assert_eq!(greeks.gamma, bsm.gamma());
+    assert_eq!(greeks.vega, bsm.vega());
+    assert_eq!(greeks.theta, bsm.theta());
+    assert_eq!(greeks.rho, bsm.rho());
+    assert_eq!(greeks.vanna, bsm.vanna());
+    assert_eq!(greeks.charm, bsm.charm());
+    assert_eq!(greeks.volga, bsm.vomma());
+    assert_eq!(greeks.veta, bsm.dvega_dtime());
+  }
+
+  #[test]
+  fn bsm_iv_round_trip_with_dividend_yield() {
+    let bsm = BSMPricer::new(
+      100.0,
+      0.25,
+      105.0,
+      0.04,
+      None,
+      None,
+      Some(0.02),
+      Some(1.0),
+      None,
+      None,
+      OptionType::Call,
+      BSMCoc::Merton1973,
+    );
+    let (call, _) = bsm.calculate_call_put();
+    let iv = bsm.implied_volatility(call, OptionType::Call);
+    assert!(
+      (iv - 0.25).abs() < 1e-6,
+      "Merton1973 IV round-trip failed: input sigma=0.25, recovered iv={iv}"
+    );
   }
 }

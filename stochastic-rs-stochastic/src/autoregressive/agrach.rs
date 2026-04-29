@@ -93,7 +93,7 @@ impl<T: FloatExt> Agarch<T, Deterministic> {
       delta,
       beta,
       n,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -109,8 +109,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
     let mut z_arr = Array1::<T>::zeros(self.n);
     if self.n > 0 {
       let slice = z_arr.as_slice_mut().expect("contiguous");
-      let mut seed = self.seed;
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
       normal.fill_slice_fast(slice);
     }
     let z = &z_arr;

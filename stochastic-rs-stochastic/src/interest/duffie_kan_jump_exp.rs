@@ -127,7 +127,7 @@ impl<T: FloatExt> DuffieKanJumpExp<T, Deterministic> {
     t: Option<T>,
     seed: u64,
   ) -> Self {
-    let mut s = Deterministic(seed);
+    let s = Deterministic::new(seed);
     let child = s.derive();
     Self {
       alpha,
@@ -148,8 +148,8 @@ impl<T: FloatExt> DuffieKanJumpExp<T, Deterministic> {
       r0,
       x0,
       t,
-      seed: Deterministic(seed),
-      cgns: Cgns::seeded(rho, n - 1, t, child.0),
+      seed: Deterministic::new(seed),
+      cgns: Cgns::seeded(rho, n - 1, t, child.current()),
     }
   }
 }
@@ -166,11 +166,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKanJumpExp<T, S> {
     r[0] = self.r0.unwrap_or(T::zero());
     x[0] = self.x0.unwrap_or(T::zero());
 
-    let mut seed = self.seed;
-    let exp_dist = SimdExp::from_seed_source(self.lambda, &mut seed);
-    let jump_dist = SimdNormal::<T, 64>::from_seed_source(T::zero(), self.jump_scale, &mut seed);
+    let exp_dist = SimdExp::from_seed_source(self.lambda, &self.seed);
+    let jump_dist = SimdNormal::<T, 64>::from_seed_source(T::zero(), self.jump_scale, &self.seed);
 
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
     let mut next_jump_time = exp_dist.sample(&mut rng);
 
     for i in 1..self.n {

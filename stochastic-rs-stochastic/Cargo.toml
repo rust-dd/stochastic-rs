@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs-stochastic"
-version = "2.0.0-beta.2"
+version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "Stochastic process simulation."
@@ -50,7 +50,6 @@ linreg = { workspace = true }
 openblas-src = { workspace = true, features = ["cblas"], optional = true }
 parking_lot = { workspace = true }
 ordered-float = { workspace = true }
-statrs = { workspace = true }
 plotly = { workspace = true, features = ["plotly_ndarray"] }
 cubecl = { workspace = true, optional = true, default-features = false }
 cubecl-cuda = { workspace = true, optional = true }

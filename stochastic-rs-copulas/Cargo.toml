@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs-copulas"
-version = "2.0.0-beta.2"
+version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "Bivariate, multivariate, and empirical copulas."
@@ -29,7 +29,6 @@ rand = { workspace = true }
 rand_distr = { workspace = true }
 roots = { workspace = true }
 kendalls = { workspace = true }
-statrs = { workspace = true }
 levenberg-marquardt = { workspace = true }
 argmin = { workspace = true }
 argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] }

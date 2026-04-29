@@ -25,18 +25,18 @@ pub struct SimdGamma<T: SimdFloatExt> {
 impl<T: SimdFloatExt> SimdGamma<T> {
   #[inline]
   pub fn new(alpha: T, scale: T) -> Self {
-    Self::from_seed_source(alpha, scale, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(alpha, scale, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a gamma distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(alpha: T, scale: T, seed: u64) -> Self {
-    Self::from_seed_source(alpha, scale, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(alpha, scale, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates a gamma distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
-  pub fn from_seed_source(alpha: T, scale: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(alpha: T, scale: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     assert!(alpha > T::zero() && scale > T::zero());
     Self {
       alpha,
@@ -137,31 +137,60 @@ impl<T: SimdFloatExt> Clone for SimdGamma<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
   fn pdf(&self, x: f64) -> f64 {
-    use statrs::distribution::Continuous;
+    if x <= 0.0 {
+      return 0.0;
+    }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    // statrs Gamma takes (shape, rate) where rate = 1/scale.
-    statrs::distribution::Gamma::new(alpha, 1.0 / scale)
-      .unwrap()
-      .pdf(x)
+    // f(x) = x^(α−1) e^(−x/θ) / (θ^α Γ(α))
+    let log_pdf =
+      (alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha);
+    log_pdf.exp()
   }
 
   fn cdf(&self, x: f64) -> f64 {
-    use statrs::distribution::ContinuousCDF;
+    if x <= 0.0 {
+      return 0.0;
+    }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    statrs::distribution::Gamma::new(alpha, 1.0 / scale)
-      .unwrap()
-      .cdf(x)
+    crate::special::gamma_p(alpha, x / scale)
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {
-    use statrs::distribution::ContinuousCDF;
+    // Newton-bisection hybrid on the CDF.
+    if p <= 0.0 {
+      return 0.0;
+    }
+    if p >= 1.0 {
+      return f64::INFINITY;
+    }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    statrs::distribution::Gamma::new(alpha, 1.0 / scale)
-      .unwrap()
-      .inverse_cdf(p)
+    // Start from the Wilson-Hilferty Gaussian approximation.
+    let z = crate::special::ndtri(p);
+    let mut x = alpha * (1.0 - 1.0 / (9.0 * alpha) + z / (3.0 * alpha.sqrt())).powi(3);
+    if x <= 0.0 {
+      x = 0.5 * alpha;
+    }
+    x *= scale;
+    // 30 Newton iterations using f(x) = P(α, x/θ) − p, f'(x) = pdf(x).
+    for _ in 0..30 {
+      let f = crate::special::gamma_p(alpha, x / scale) - p;
+      let pdf =
+        ((alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha))
+          .exp();
+      if pdf <= 0.0 {
+        break;
+      }
+      let dx = f / pdf;
+      let new_x = (x - dx).max(x * 1e-12);
+      if (new_x - x).abs() < 1e-14 * x.max(1.0) {
+        return new_x;
+      }
+      x = new_x;
+    }
+    x
   }
 
   fn mean(&self) -> f64 {
@@ -202,6 +231,27 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
     } else {
       f64::INFINITY
     }
+  }
+
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    // φ(t) = (1 − i θ t)^{−α}
+    let alpha = self.alpha.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    let denom = num_complex::Complex64::new(1.0, -scale * t);
+    denom.powf(-alpha)
+  }
+
+  fn entropy(&self) -> f64 {
+    let alpha = self.alpha.to_f64().unwrap();
+    let scale = self.scale.to_f64().unwrap();
+    alpha
+      + scale.ln()
+      + crate::special::ln_gamma(alpha)
+      + (1.0 - alpha) * crate::special::digamma(alpha)
+  }
+
+  fn median(&self) -> f64 {
+    self.inv_cdf(0.5)
   }
 }
 

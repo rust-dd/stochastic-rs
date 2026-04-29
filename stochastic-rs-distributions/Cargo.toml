@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs-distributions"
-version = "2.0.0-beta.2"
+version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "Probability distributions with SIMD bulk sampling."
@@ -25,8 +25,6 @@ rayon = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
 plotly = { workspace = true, features = ["plotly_ndarray"] }
-statrs = { workspace = true }
 
 [dev-dependencies]
 romu = { workspace = true }
-statrs = { workspace = true }

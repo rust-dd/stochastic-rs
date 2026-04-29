@@ -155,7 +155,7 @@ impl<T: FloatExt> BatesSvj<T, Deterministic> {
       v0,
       t,
       use_sym,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       cgns: Cgns::new(rho, n - 1, t),
     }
   }
@@ -182,9 +182,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = &self.cgns.sample_impl(seed.derive());
+    let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
@@ -198,8 +197,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
     let drift = self.drift();
     let kappa_j = self.kappa_j();
 
-    let z_std = SimdNormal::<f64, 64>::from_seed_source(0.0, 1.0, &mut seed);
-    let mut rng = seed.rng();
+    let z_std = SimdNormal::<f64, 64>::from_seed_source(0.0, 1.0, &self.seed);
+    let mut rng = self.seed.rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(

@@ -61,7 +61,7 @@ impl<T: FloatExt> Cir2F<T, Deterministic> {
       x,
       y,
       phi: phi.into(),
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }

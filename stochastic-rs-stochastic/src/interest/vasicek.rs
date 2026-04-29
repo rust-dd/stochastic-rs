@@ -56,7 +56,7 @@ impl<T: FloatExt> Vasicek<T, Deterministic> {
     t: Option<T>,
     seed: u64,
   ) -> Self {
-    let mut s = Deterministic(seed);
+    let s = Deterministic::new(seed);
     let child = s.derive();
     Self {
       mu,
@@ -65,7 +65,7 @@ impl<T: FloatExt> Vasicek<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       ou: Ou {
         theta,
         mu,

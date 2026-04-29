@@ -63,11 +63,20 @@ impl SabrCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for SabrCalibrationResult {
+  type Params = SabrParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    SabrParams {
+      alpha: self.alpha,
+      beta: self.beta,
+      nu: self.nu,
+      rho: self.rho,
+    }
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -76,13 +85,16 @@ impl crate::traits::CalibrationResult for SabrCalibrationResult {
 
 impl crate::traits::Calibrator for SabrCalibrator {
   type InitialGuess = SabrParams;
+  type Params = SabrParams;
   type Output = SabrCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.params = Some(p.projected());
     }
-    SabrCalibrator::calibrate(&this)
+    Ok(this.solve())
   }
 }
 
@@ -182,7 +194,7 @@ impl SabrCalibrator {
 }
 
 impl SabrCalibrator {
-  pub fn calibrate(&self) -> SabrCalibrationResult {
+  fn solve(&self) -> SabrCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
@@ -384,6 +396,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   #[test]
   fn test_sabr_calibrate_price_based() {
@@ -437,6 +450,6 @@ mod tests {
       true,
     );
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 }

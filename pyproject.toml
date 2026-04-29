@@ -18,9 +18,14 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rust-dd/stochastic-rs"
-Repository = "https://github.com/rust-dd/stochastic-rs"
+Homepage = "https://github.com/dancixx/stochastic-rs"
+Repository = "https://github.com/dancixx/stochastic-rs"
 Documentation = "https://docs.rs/stochastic-rs"
 
+# The Python module is produced by the `stochastic-rs-py` cdylib crate (see
+# stochastic-rs-py/Cargo.toml), not by the workspace umbrella `stochastic-rs`
+# (which is a regular `lib`). `manifest-path` redirects maturin to the right
+# crate so `maturin build` / `maturin develop` work from the workspace root.
 [tool.maturin]
-features = ["python"]
+manifest-path = "stochastic-rs-py/Cargo.toml"
+module-name = "stochastic_rs"

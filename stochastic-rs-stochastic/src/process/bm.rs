@@ -38,7 +38,7 @@ impl<T: FloatExt> Bm<T, Deterministic> {
     Self {
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -59,8 +59,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bm<T, S> {
       .as_slice_mut()
       .expect("Bm output tail must be contiguous");
 
-    let mut seed = self.seed;
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &self.seed);
     normal.fill_slice_fast(tail);
 
     let mut acc = T::zero();

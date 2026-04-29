@@ -10,9 +10,8 @@
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4
 //! - Hull, J. (2018), "Options, Futures, and Other Derivatives", 10th ed., §26.9
 //!
-use statrs::distribution::Continuous;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::OptionType;
 
@@ -45,18 +44,16 @@ pub struct CashOrNothingPricer {
 impl CashOrNothingPricer {
   /// Closed-form price.
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let (_, d2) = self.d1_d2();
     let disc = (-self.r * self.t).exp();
     match self.option_type {
-      OptionType::Call => self.cash * disc * n.cdf(d2),
-      OptionType::Put => self.cash * disc * n.cdf(-d2),
+      OptionType::Call => self.cash * disc * norm_cdf(d2),
+      OptionType::Put => self.cash * disc * norm_cdf(-d2),
     }
   }
 
   /// Delta: $\partial V/\partial S$.
   pub fn delta(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let (_, d2) = self.d1_d2();
     let disc = (-self.r * self.t).exp();
     let denom = self.s * self.sigma * self.t.sqrt();
@@ -64,12 +61,11 @@ impl CashOrNothingPricer {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
-    sign * self.cash * disc * n.pdf(d2) / denom
+    sign * self.cash * disc * norm_pdf(d2) / denom
   }
 
   /// Gamma: $\partial^2 V/\partial S^2$.
   pub fn gamma(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let (_, d2) = self.d1_d2();
     let disc = (-self.r * self.t).exp();
     let s = self.s;
@@ -80,20 +76,19 @@ impl CashOrNothingPricer {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
-    let pdf = n.pdf(d2);
+    let pdf = norm_pdf(d2);
     -sign * self.cash * disc * pdf * (1.0 + d2 * (v * sqrt_t)) / (s * s * v * sqrt_t)
   }
 
   /// Vega: $\partial V/\partial \sigma$.
   pub fn vega(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let (d1, d2) = self.d1_d2();
     let disc = (-self.r * self.t).exp();
     let sign = match self.option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
-    -sign * self.cash * disc * n.pdf(d2) * d1 / self.sigma
+    -sign * self.cash * disc * norm_pdf(d2) * d1 / self.sigma
   }
 
   fn d1_d2(&self) -> (f64, f64) {
@@ -145,31 +140,29 @@ pub struct AssetOrNothingPricer {
 impl AssetOrNothingPricer {
   /// Closed-form price.
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let (d1, _) = self.d1_d2();
     let coc = ((self.b - self.r) * self.t).exp();
     match self.option_type {
-      OptionType::Call => self.s * coc * n.cdf(d1),
-      OptionType::Put => self.s * coc * n.cdf(-d1),
+      OptionType::Call => self.s * coc * norm_cdf(d1),
+      OptionType::Put => self.s * coc * norm_cdf(-d1),
     }
   }
 
   /// Delta.
   pub fn delta(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let (d1, _) = self.d1_d2();
     let coc = ((self.b - self.r) * self.t).exp();
     let v = self.sigma;
     let sqrt_t = self.t.sqrt();
     let cdf_term = match self.option_type {
-      OptionType::Call => n.cdf(d1),
-      OptionType::Put => n.cdf(-d1),
+      OptionType::Call => norm_cdf(d1),
+      OptionType::Put => norm_cdf(-d1),
     };
     let sign = match self.option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
-    coc * cdf_term + sign * coc * n.pdf(d1) / (v * sqrt_t)
+    coc * cdf_term + sign * coc * norm_pdf(d1) / (v * sqrt_t)
   }
 
   fn d1_d2(&self) -> (f64, f64) {
@@ -217,7 +210,6 @@ pub struct GapPricer {
 
 impl GapPricer {
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let v = self.sigma;
     let t = self.t;
     let sqrt_t = t.sqrt();
@@ -226,8 +218,8 @@ impl GapPricer {
     let coc = ((self.b - self.r) * self.t).exp();
     let disc = (-self.r * self.t).exp();
     match self.option_type {
-      OptionType::Call => self.s * coc * n.cdf(d1) - self.k2 * disc * n.cdf(d2),
-      OptionType::Put => self.k2 * disc * n.cdf(-d2) - self.s * coc * n.cdf(-d1),
+      OptionType::Call => self.s * coc * norm_cdf(d1) - self.k2 * disc * norm_cdf(d2),
+      OptionType::Put => self.k2 * disc * norm_cdf(-d2) - self.s * coc * norm_cdf(-d1),
     }
   }
 }
@@ -257,14 +249,13 @@ pub struct SuperSharePricer {
 
 impl SuperSharePricer {
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let v = self.sigma;
     let t = self.t;
     let sqrt_t = t.sqrt();
     let d1 = ((self.s / self.x_low).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let d2 = ((self.s / self.x_high).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let coc = ((self.b - self.r) * self.t).exp();
-    self.s / self.x_low * coc * (n.cdf(d1) - n.cdf(d2))
+    self.s / self.x_low * coc * (norm_cdf(d1) - norm_cdf(d2))
   }
 }
 

@@ -94,6 +94,16 @@ impl MarketSlice {
   }
 }
 
+/// Calibrated parameter set for a Lévy model — the parameter vector together
+/// with its [`LevyModelType`] tag (the vector layout depends on the model).
+#[derive(Clone, Debug)]
+pub struct LevyParams {
+  /// Calibrated parameter vector. Layout is model-specific.
+  pub values: Vec<f64>,
+  /// Lévy model variant the vector belongs to.
+  pub model_type: LevyModelType,
+}
+
 /// Calibration result for a Lévy model.
 #[derive(Clone, Debug)]
 pub struct LevyCalibrationResult {
@@ -142,8 +152,15 @@ impl crate::traits::ToModel for LevyCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for LevyCalibrationResult {
+  type Params = LevyParams;
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
+  }
+  fn params(&self) -> Self::Params {
+    LevyParams {
+      values: self.params.clone(),
+      model_type: self.model_type,
+    }
   }
   fn converged(&self) -> bool {
     self.converged
@@ -155,9 +172,12 @@ impl crate::traits::CalibrationResult for LevyCalibrationResult {
 
 impl crate::traits::Calibrator for LevyCalibrator {
   type InitialGuess = Vec<f64>;
+  type Params = LevyParams;
   type Output = LevyCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
-    LevyCalibrator::calibrate(self, initial)
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    Ok(self.solve(initial))
   }
 }
 
@@ -327,13 +347,13 @@ fn gamma_neg_y_fn(y: f64) -> Complex64 {
     return Complex64::new(1e15, 0.0);
   }
   if y < 0.0 {
-    Complex64::new(statrs::function::gamma::gamma(-y), 0.0)
+    Complex64::new(stochastic_rs_distributions::special::gamma(-y), 0.0)
   } else if (y - 1.0).abs() < EPS {
     // Y = 1 is a pole; clamp to nearby value.
-    Complex64::new(statrs::function::gamma::gamma(-0.999), 0.0)
+    Complex64::new(stochastic_rs_distributions::special::gamma(-0.999), 0.0)
   } else {
     // Reflection: Gamma(-Y) = -pi / (Y * sin(pi*Y) * Gamma(Y))
-    let g = statrs::function::gamma::gamma(y);
+    let g = stochastic_rs_distributions::special::gamma(y);
     let sin_val = (std::f64::consts::PI * y).sin();
     if sin_val.abs() < EPS || g.abs() < EPS {
       Complex64::new(1e15, 0.0)
@@ -541,8 +561,7 @@ impl LevyCalibrator {
     self.calibration_history.borrow().clone()
   }
 
-  /// Run the calibration, returning the result.
-  pub fn calibrate(&self, initial_params: Option<Vec<f64>>) -> LevyCalibrationResult {
+  fn solve(&self, initial_params: Option<Vec<f64>>) -> LevyCalibrationResult {
     let mut problem = self.clone();
     if let Some(p) = initial_params {
       assert_eq!(
@@ -723,6 +742,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for LevyCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   // Analytical reference prices (Gil-Pelaez inversion)
   // S=100, r=0.05, q=0, T=1.0
@@ -786,7 +806,7 @@ mod tests {
     let calibrator =
       LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, vec![market]);
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.1,
       "Vg RMSE={:.6}",
@@ -806,7 +826,7 @@ mod tests {
 
     let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.05, 0.0, vec![market]);
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.1,
       "MJD RMSE={:.6}",
@@ -832,7 +852,7 @@ mod tests {
       vec![market],
     );
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     println!("Vg params: {:?}, loss: {:?}", result.params, result.loss);
   }
 
@@ -847,7 +867,7 @@ mod tests {
 
     let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.03, 0.01, vec![market]);
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     println!(
       "Merton params: {:?}, loss: {:?}",
       result.params, result.loss

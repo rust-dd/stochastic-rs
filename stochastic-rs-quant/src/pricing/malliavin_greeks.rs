@@ -20,15 +20,6 @@ struct HestonElKhatibPath {
   dw_v: Array1<f64>,
 }
 
-/// Container for the four standard Greeks.
-#[derive(Debug, Clone)]
-pub struct Greeks {
-  pub delta: f64,
-  pub gamma: f64,
-  pub vega: f64,
-  pub rho: f64,
-}
-
 /// Malliavin-weighted Greeks computation for a European call under Gbm dynamics.
 #[derive(Debug, Clone)]
 pub struct GbmMalliavinGreeks {
@@ -179,8 +170,16 @@ impl GbmMalliavinGreeks {
     sum / m
   }
 
-  /// Compute all four Greeks in a single pass (single simulation).
-  pub fn all_greeks(&self) -> Greeks {
+  /// Compute all four Malliavin Greeks in a single MC pass.
+  ///
+  /// Sharing simulated paths between the four estimators ensures the
+  /// returned [`crate::traits::Greeks`] are mutually consistent — calling
+  /// `delta()`, `gamma()`, `vega()`, `rho()` individually each runs a
+  /// fresh simulation and would mix four different sample paths.
+  /// First-order Greeks not produced by this Malliavin formula
+  /// (`theta`, second-order `vanna`/`charm`/`volga`/`veta`) are returned
+  /// as NaN.
+  pub fn all_greeks(&self) -> crate::traits::Greeks {
     let (s_t, w_t) = self.simulate();
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
@@ -214,11 +213,16 @@ impl GbmMalliavinGreeks {
       sum_rho += disc_payoff * w_rho;
     }
 
-    Greeks {
+    crate::traits::Greeks {
       delta: sum_delta / m,
       gamma: sum_gamma / m,
       vega: sum_vega / m,
+      theta: f64::NAN,
       rho: sum_rho / m,
+      vanna: f64::NAN,
+      charm: f64::NAN,
+      volga: f64::NAN,
+      veta: f64::NAN,
     }
   }
 }
@@ -235,6 +239,13 @@ impl crate::traits::GreeksExt for GbmMalliavinGreeks {
   }
   fn rho(&self) -> f64 {
     GbmMalliavinGreeks::rho_greek(self)
+  }
+  /// Override the trait default — calling `delta()`/`gamma()`/`vega()`/`rho()`
+  /// individually each runs an independent MC simulation, so the resulting
+  /// Greeks would mix four different sample paths. [`Self::all_greeks`] uses
+  /// a single shared simulation and returns mutually consistent estimators.
+  fn greeks(&self) -> crate::traits::Greeks {
+    self.all_greeks()
   }
 }
 
@@ -756,6 +767,66 @@ impl HestonMalliavinGreeks {
   }
 }
 
+impl HestonMalliavinGreeks {
+  /// Single-pass delta + gamma (sharing simulated paths). Vega is computed
+  /// separately by [`Self::vega_v0`] because it uses an independent
+  /// finite-difference bump with common-random-numbers and cannot share
+  /// paths with the Malliavin estimator.
+  fn delta_gamma_single_pass(&self) -> (f64, f64) {
+    let dt = self.tau / (self.n_steps - 1) as f64;
+    let discount = (-self.r * self.tau).exp();
+    let m = self.n_paths as f64;
+
+    let heston = Heston::new(
+      Some(self.s0),
+      Some(self.v0),
+      self.kappa,
+      self.theta,
+      self.xi,
+      self.rho,
+      self.r,
+      self.n_steps,
+      Some(self.tau),
+      HestonPow::Sqrt,
+      Some(false),
+    );
+
+    let mut sum_delta = 0.0;
+    let mut sum_gamma = 0.0;
+
+    for _ in 0..self.n_paths {
+      let [s_path, v_path] = heston.sample();
+      let payoff = (s_path[self.n_steps - 1] - self.k).max(0.0);
+
+      let mut numerator = 0.0;
+      let mut int_v = 0.0;
+
+      for k in 0..(self.n_steps - 1) {
+        let v_k = v_path[k].max(1e-12);
+        let sqrt_v_k = v_k.sqrt();
+        int_v += v_k * dt;
+
+        let s_prev = s_path[k];
+        let dw_s = if s_prev.abs() > 1e-14 {
+          (s_path[k + 1] - s_prev - self.r * s_prev * dt) / (sqrt_v_k * s_prev)
+        } else {
+          0.0
+        };
+        numerator += sqrt_v_k * dw_s;
+      }
+
+      let int_v_safe = int_v.max(1e-12);
+      let pi_delta = numerator / (self.s0 * int_v_safe);
+      let pi_gamma = pi_delta * pi_delta - self.tau / (self.s0 * self.s0 * int_v_safe);
+      let disc_payoff = discount * payoff;
+      sum_delta += disc_payoff * pi_delta;
+      sum_gamma += disc_payoff * pi_gamma;
+    }
+
+    (sum_delta / m, sum_gamma / m)
+  }
+}
+
 impl crate::traits::GreeksExt for HestonMalliavinGreeks {
   fn delta(&self) -> f64 {
     HestonMalliavinGreeks::delta(self)
@@ -765,6 +836,26 @@ impl crate::traits::GreeksExt for HestonMalliavinGreeks {
   }
   fn vega(&self) -> f64 {
     HestonMalliavinGreeks::vega_v0(self)
+  }
+  /// Override the trait default — calling `delta()` and `gamma()`
+  /// individually each runs an independent Heston simulation, mixing two
+  /// disjoint sets of paths. This impl shares one MC pass between delta
+  /// and gamma. Vega still runs its own bumped-CRN simulation (it cannot
+  /// share paths with the Malliavin estimator).
+  fn greeks(&self) -> crate::traits::Greeks {
+    let (delta, gamma) = self.delta_gamma_single_pass();
+    let vega = self.vega_v0();
+    crate::traits::Greeks {
+      delta,
+      gamma,
+      vega,
+      theta: f64::NAN,
+      rho: f64::NAN,
+      vanna: f64::NAN,
+      charm: f64::NAN,
+      volga: f64::NAN,
+      veta: f64::NAN,
+    }
   }
 }
 

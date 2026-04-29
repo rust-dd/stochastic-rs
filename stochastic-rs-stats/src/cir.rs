@@ -6,8 +6,8 @@
 //!
 use num_complex::Complex64;
 use scilib::math::bessel::i_nu;
-use statrs::function::gamma::gamma;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::special::gamma;
 
 /// Cox-Ingersoll-Ross (Cir) process future value.
 pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {

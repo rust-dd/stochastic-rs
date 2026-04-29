@@ -12,7 +12,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray_linalg::LeastSquaresSvd;
-use statrs::function::beta::beta_reg;
+use stochastic_rs_distributions::special::beta_i as beta_reg;
 
 /// Result of a Granger-causality F-test.
 #[derive(Debug, Clone)]

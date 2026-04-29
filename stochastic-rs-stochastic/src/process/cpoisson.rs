@@ -53,7 +53,7 @@ where
     Self {
       distribution,
       poisson,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -82,8 +82,7 @@ where
     }
 
     let poisson = SimdPoisson::<u32>::new(lambda_dt);
-    let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
     for i in 1..n {
       let jump_count = poisson.sample(&mut rng);
       let mut jump_sum = T::zero();
@@ -125,9 +124,8 @@ where
     }
 
     let poisson = SimdPoisson::<u32>::new(lambda_dt);
-    let mut seed = self.seed;
-    seed.derive(); // skip one to differ from sample_grid_increments
-    let mut rng = seed.rng();
+    self.seed.derive(); // skip one to differ from sample_grid_increments
+    let mut rng = self.seed.rng();
     for i in 1..n {
       let jump_count = poisson.sample(&mut rng);
       increments[i] = self.relative_jump_from_count(jump_count, &mut rng);
@@ -145,11 +143,10 @@ where
   type Output = [Array1<T>; 3];
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let poisson = self.poisson.sample_impl(seed.derive());
+    let poisson = self.poisson.sample_impl(&self.seed.derive());
     let mut jumps = Array1::<T>::zeros(poisson.len());
-    seed.derive();
-    let mut rng = seed.rng();
+    self.seed.derive();
+    let mut rng = self.seed.rng();
     for i in 1..poisson.len() {
       jumps[i] = self.distribution.sample(&mut rng);
     }

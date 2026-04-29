@@ -144,7 +144,7 @@ impl<T: FloatExt> RlHeston<T, Deterministic> {
       n,
       t,
       degree,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       cgns: Cgns::new(rho, n - 1, t),
       markov: build_markov(hurst, n, t, degree),
     }
@@ -155,13 +155,12 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHeston<T, S> {
   /// Generate $m$ independent rough Heston paths.
   /// Returns `[spot_paths, variance_paths]` where each is an $(m, n)$ array.
   pub fn sample_batch(&self, m: usize) -> [Array2<T>; 2] {
-    let mut seed = self.seed;
     let n_minus_1 = self.n - 1;
 
     let mut dw_s = Array2::<T>::zeros((m, n_minus_1));
     let mut dw_v = Array2::<T>::zeros((m, n_minus_1));
     for p in 0..m {
-      let [s_row, v_row] = self.cgns.sample_impl(seed.derive());
+      let [s_row, v_row] = self.cgns.sample_impl(&self.seed.derive());
       dw_s.row_mut(p).assign(&s_row);
       dw_v.row_mut(p).assign(&v_row);
     }
@@ -200,8 +199,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
 
   fn sample(&self) -> Self::Output {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
-    let mut seed = self.seed;
-    let [dw_s, dw_v] = self.cgns.sample_impl(seed.derive());
+    let [dw_s, dw_v] = self.cgns.sample_impl(&self.seed.derive());
 
     let kappa = self.kappa;
     let theta = self.theta;

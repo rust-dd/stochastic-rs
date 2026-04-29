@@ -209,11 +209,25 @@ impl crate::traits::ToModel for HKDECalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for HKDECalibrationResult {
+  type Params = HKDEParams;
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    HKDEParams {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma_v: self.sigma_v,
+      rho: self.rho,
+      lambda: self.lambda,
+      p_up: self.p_up,
+      eta1: self.eta1,
+      eta2: self.eta2,
+    }
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)

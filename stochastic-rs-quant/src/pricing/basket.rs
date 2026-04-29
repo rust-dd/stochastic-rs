@@ -27,8 +27,7 @@ use ndarray_linalg::Cholesky;
 use ndarray_linalg::UPLO;
 #[cfg(feature = "openblas")]
 use rayon::prelude::*;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 #[cfg(feature = "openblas")]
@@ -99,13 +98,12 @@ impl GeometricBasketPricer {
     let g_fwd = (log_g0 + mu_g * self.t).exp();
     let disc = (-self.r * self.t).exp();
 
-    let n = Normal::new(0.0, 1.0).unwrap();
     let sqrt_t = self.t.sqrt();
     let d1 = ((g_fwd / self.k).ln() + 0.5 * sigma_g_sq * self.t) / (sigma_g * sqrt_t);
     let d2 = d1 - sigma_g * sqrt_t;
     match self.option_type {
-      OptionType::Call => disc * (g_fwd * n.cdf(d1) - self.k * n.cdf(d2)),
-      OptionType::Put => disc * (self.k * n.cdf(-d2) - g_fwd * n.cdf(-d1)),
+      OptionType::Call => disc * (g_fwd * norm_cdf(d1) - self.k * norm_cdf(d2)),
+      OptionType::Put => disc * (self.k * norm_cdf(-d2) - g_fwd * norm_cdf(-d1)),
     }
   }
 }
@@ -162,14 +160,13 @@ impl ArithmeticBasketLevyPricer {
     );
     let var = (m2 / (m1 * m1)).ln().max(1e-14);
     let sigma_eff = (var / self.t).sqrt();
-    let n = Normal::new(0.0, 1.0).unwrap();
     let sqrt_t = self.t.sqrt();
     let d1 = ((m1 / self.k).ln() + 0.5 * var) / (sigma_eff * sqrt_t);
     let d2 = d1 - sigma_eff * sqrt_t;
     let disc = (-self.r * self.t).exp();
     match self.option_type {
-      OptionType::Call => disc * (m1 * n.cdf(d1) - self.k * n.cdf(d2)),
-      OptionType::Put => disc * (self.k * n.cdf(-d2) - m1 * n.cdf(-d1)),
+      OptionType::Call => disc * (m1 * norm_cdf(d1) - self.k * norm_cdf(d2)),
+      OptionType::Put => disc * (self.k * norm_cdf(-d2) - m1 * norm_cdf(-d1)),
     }
   }
 }

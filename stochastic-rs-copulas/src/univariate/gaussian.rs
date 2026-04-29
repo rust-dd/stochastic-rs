@@ -5,13 +5,14 @@
 //! $$
 //!
 use ndarray::Array1;
-use statrs::distribution::Continuous;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::ndtri;
+use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
 #[derive(Debug, Clone, Default)]
 pub struct GaussianUnivariate {
-  dist: Option<Normal>, // statrs Normal distribution
+  /// `Some((mean, std))` once `fit` has been called; `None` otherwise.
+  params: Option<(f64, f64)>,
 }
 
 impl GaussianUnivariate {
@@ -19,50 +20,45 @@ impl GaussianUnivariate {
     Self::default()
   }
 
-  /// Fit mean and std to data column, then store a statrs Normal distribution.
+  /// Fit mean and std to data column, then cache the closed-form parameters.
   pub fn fit(&mut self, column: &Array1<f64>) {
     let n = column.len() as f64;
     if n < 2.0 {
-      // fallback: something trivial
-      self.dist = Some(Normal::new(0.0, 1.0).unwrap());
+      // fallback: standard normal
+      self.params = Some((0.0, 1.0));
       return;
     }
     let mean = column.mean().unwrap_or(0.0);
     let var = column.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
     let std = var.sqrt().max(1e-12);
-
-    // Create a Normal distribution
-    self.dist = Some(Normal::new(mean, std).unwrap());
+    self.params = Some((mean, std));
   }
 
   pub fn is_fitted(&self) -> bool {
-    self.dist.is_some()
+    self.params.is_some()
   }
 
-  /// Shortcut for the underlying normal CDF.
+  /// Normal CDF using the cached `(mean, std)`.
   pub fn cdf(&self, x: f64) -> f64 {
-    if let Some(d) = &self.dist {
-      d.cdf(x)
-    } else {
-      0.5
+    match self.params {
+      Some((mu, sigma)) => norm_cdf((x - mu) / sigma),
+      None => 0.5,
     }
   }
 
-  /// Shortcut for the underlying normal PDF.
+  /// Normal pdf using the cached `(mean, std)`.
   pub fn pdf(&self, x: f64) -> f64 {
-    if let Some(d) = &self.dist {
-      d.pdf(x)
-    } else {
-      1.0
+    match self.params {
+      Some((mu, sigma)) => norm_pdf((x - mu) / sigma) / sigma,
+      None => 1.0,
     }
   }
 
-  /// Shortcut for the underlying normal PPF (inverse CDF).
+  /// Normal quantile (inverse CDF) using the cached `(mean, std)`.
   pub fn ppf(&self, p: f64) -> f64 {
-    if let Some(d) = &self.dist {
-      d.inverse_cdf(p)
-    } else {
-      0.0
+    match self.params {
+      Some((mu, sigma)) => mu + sigma * ndtri(p),
+      None => 0.0,
     }
   }
 }

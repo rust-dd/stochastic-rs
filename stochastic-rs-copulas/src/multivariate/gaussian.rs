@@ -12,9 +12,9 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::special::ndtri;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use super::CopulaType;
 use crate::traits::MultivariateExt;
@@ -79,13 +79,12 @@ impl GaussianMultivariate {
 
   /// Transform U in (0,1)^{n x d} to Z in R^{n x d} via standard normal inverse CDF.
   fn transform_to_normal(&self, u: &Array2<f64>) -> Array2<f64> {
-    let std_norm = Normal::new(0.0, 1.0).unwrap();
     let eps = 1e-12;
     let mut z = u.clone();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = val.clamp(eps, 1.0 - eps);
-        *val = std_norm.inverse_cdf(clamped);
+        *val = ndtri(clamped);
       }
     }
     z
@@ -182,11 +181,10 @@ impl MultivariateExt for GaussianMultivariate {
     // z = g * L^T
     let z = g.dot(&l.t());
     // Transform to uniforms using standard normal CDF
-    let std_norm = Normal::new(0.0, 1.0).unwrap();
     let mut u = z.clone();
     for mut row in u.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
-        *val = std_norm.cdf(*val);
+        *val = norm_cdf(*val);
       }
     }
     Ok(u)

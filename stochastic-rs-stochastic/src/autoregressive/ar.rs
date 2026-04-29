@@ -82,7 +82,7 @@ impl<T: FloatExt> ARp<T, Deterministic> {
       sigma,
       n,
       x0,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -95,8 +95,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARp<T, S> {
     let mut noise = Array1::<T>::zeros(self.n);
     if self.n > 0 {
       let slice = noise.as_slice_mut().expect("contiguous");
-      let mut seed = self.seed;
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), self.sigma, &mut seed);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), self.sigma, &self.seed);
       normal.fill_slice_fast(slice);
     }
     let noise = &noise;

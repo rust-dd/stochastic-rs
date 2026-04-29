@@ -94,7 +94,7 @@ impl<T: FloatExt> Sabr<T, Deterministic> {
       f0,
       v0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       cgns: Cgns::new(rho, n - 1, t),
     }
   }
@@ -105,8 +105,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sabr<T, S> {
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
-    let mut seed = self.seed;
-    let [cgn1, cgn2] = &self.cgns.sample_impl(seed.derive());
+    let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
     let mut f_ = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);

@@ -92,7 +92,7 @@ where
       t,
       cpoisson,
       fgn: Fgn::new(hurst, n - 1, t),
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }

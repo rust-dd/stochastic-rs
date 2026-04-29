@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs-quant"
-version = "2.0.0-beta.2"
+version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "Quantitative finance: pricing, calibration, vol surfaces, instruments."
@@ -36,7 +36,6 @@ rand_distr = { workspace = true }
 rayon = { workspace = true }
 roots = { workspace = true }
 kendalls = { workspace = true }
-statrs = { workspace = true }
 levenberg-marquardt = { workspace = true }
 linreg = { workspace = true }
 argmin = { workspace = true }

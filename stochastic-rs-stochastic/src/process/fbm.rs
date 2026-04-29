@@ -36,7 +36,6 @@ use numpy::PyArray2;
 use numpy::ndarray::Array2;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
-use statrs::function::gamma;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -79,7 +78,7 @@ impl<T: FloatExt> Fbm<T, Deterministic> {
       hurst,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       fgn: Fgn::new(hurst, n - 1, t),
     }
   }
@@ -89,8 +88,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbm<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let fgn = self.fgn.sample_cpu_impl(seed.derive());
+    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
     let mut fbm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
@@ -166,7 +164,7 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
   pub fn malliavin(&self) -> Array1<T> {
     let dt = self.fgn.dt();
     let mut m = Array1::zeros(self.n);
-    let g = gamma::gamma(self.hurst.to_f64().unwrap() + 0.5);
+    let g = stochastic_rs_distributions::special::gamma(self.hurst.to_f64().unwrap() + 0.5);
 
     for i in 0..self.n {
       m[i] = T::one() / T::from_f64_fast(g)
@@ -221,7 +219,7 @@ impl PyFbm {
 
 #[cfg(test)]
 mod tests {
-  use statrs::function::erf::erf;
+  use stochastic_rs_distributions::special::erf;
 
   use super::*;
 
@@ -252,7 +250,10 @@ mod tests {
     let t = 1.0_f64;
     let n = 2048_usize;
     let m = 6000_usize;
-    let fbm = Fbm::new(h, n, Some(t));
+    // Seeded `Fbm::sample(&self)` advances the internal atomic seed state
+    // each call, so a single instance yields `m` independent paths
+    // deterministically.
+    let fbm = Fbm::seeded(h, n, Some(t), 0xF_B_C0FFEE_u64);
 
     let mut endpoints = Vec::with_capacity(m);
     for _ in 0..m {

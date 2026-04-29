@@ -88,7 +88,7 @@ where
       jumps_distribution,
       jump_times_distribution,
       customjt,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -102,10 +102,9 @@ where
   type Output = [Array1<T>; 3];
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let p = self.customjt.sample_impl(seed.derive());
+    let p = self.customjt.sample_impl(&self.seed.derive());
     let mut jumps = Array1::<T>::zeros(self.n.unwrap_or(p.len()));
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
     for i in 1..p.len() {
       jumps[i] = self.jumps_distribution.sample(&mut rng);
     }

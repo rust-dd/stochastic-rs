@@ -4,53 +4,96 @@ use ndarray::Array1;
 use num_complex::Complex64;
 use rand::Rng;
 
+/// Analytical descriptors of a distribution.
+///
+/// All methods are provided with default implementations that **panic** via
+/// [`unimplemented!()`]. Implementors override the methods that have a known
+/// closed form for that distribution. This is intentional: silently returning
+/// zero (the previous default) masked missing implementations and produced
+/// downstream numerical bugs in pricing / calibration code.
 pub trait DistributionExt {
   fn characteristic_function(&self, _t: f64) -> Complex64 {
-    Complex64::new(0.0, 0.0)
+    unimplemented!(
+      "DistributionExt::characteristic_function is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn pdf(&self, _x: f64) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::pdf is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn cdf(&self, _x: f64) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::cdf is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn inv_cdf(&self, _p: f64) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::inv_cdf is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn mean(&self) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::mean is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn median(&self) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::median is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn mode(&self) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::mode is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn variance(&self) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::variance is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn skewness(&self) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::skewness is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn kurtosis(&self) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::kurtosis is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn entropy(&self) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::entropy is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 
   fn moment_generating_function(&self, _t: f64) -> f64 {
-    0.0
+    unimplemented!(
+      "DistributionExt::moment_generating_function is not implemented for {}",
+      std::any::type_name::<Self>()
+    )
   }
 }
 

@@ -188,11 +188,24 @@ impl SVJCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for SVJCalibrationResult {
+  type Params = SVJParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    SVJParams {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma_v: self.sigma_v,
+      rho: self.rho,
+      lambda: self.lambda,
+      mu_j: self.mu_j,
+      sigma_j: self.sigma_j,
+    }
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -201,9 +214,12 @@ impl crate::traits::CalibrationResult for SVJCalibrationResult {
 
 impl crate::traits::Calibrator for SVJCalibrator {
   type InitialGuess = SVJParams;
+  type Params = SVJParams;
   type Output = SVJCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
-    SVJCalibrator::calibrate(self, initial)
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    Ok(self.solve(initial))
   }
 }
 
@@ -393,8 +409,7 @@ impl SVJCalibrator {
 }
 
 impl SVJCalibrator {
-  /// Run the calibration.
-  pub fn calibrate(&self, initial_params: Option<SVJParams>) -> SVJCalibrationResult {
+  fn solve(&self, initial_params: Option<SVJParams>) -> SVJCalibrationResult {
     let mut problem = self.clone();
     if let Some(p) = initial_params {
       problem.params = Some(p.projected());
@@ -620,6 +635,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SVJCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   // Analytical reference: Heston (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7)
   // S=100, r=0.05, q=0, T=1.0
@@ -676,7 +692,7 @@ mod tests {
       false,
     );
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     // SVJ has 8 params fitting 9 points from a 5-param submodel; local minima expected
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.5,
@@ -730,7 +746,7 @@ mod tests {
       true,
     );
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     println!(
       "SVJ result: v0={}, kappa={}, theta={}, sigma_v={}, rho={}, lambda={}, mu_j={}, sigma_j={}",
       result.v0,

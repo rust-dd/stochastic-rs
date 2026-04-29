@@ -7,6 +7,7 @@
 //! reaching into the foundation crates directly.
 
 pub mod calibration;
+pub mod instrument;
 pub mod pricing;
 pub mod time;
 
@@ -14,6 +15,12 @@ pub use calibration::CalibrationResult;
 pub use calibration::Calibrator;
 pub use calibration::ToModel;
 pub use calibration::ToShortRateModel;
+pub use instrument::Instrument;
+pub use instrument::InstrumentExt;
+pub use instrument::PricingEngine;
+pub use instrument::PricingResult;
+pub use instrument::StandardResult;
+pub use pricing::Greeks;
 pub use pricing::GreeksExt;
 pub use pricing::ModelPricer;
 pub use pricing::PricerExt;

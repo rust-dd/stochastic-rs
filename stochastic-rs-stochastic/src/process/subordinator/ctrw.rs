@@ -73,7 +73,7 @@ impl<T: FloatExt> Ctrw<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -106,7 +106,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
 
     let t_max = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let dt = t_max / (self.n - 1) as f64;
-    let mut seed = self.seed;
 
     let waiting_sampler = match self.waiting {
       CtrwWaitingLaw::Exponential { rate } => {
@@ -114,7 +113,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
           rate > T::zero(),
           "Ctrw Exponential waiting requires rate > 0"
         );
-        WaitingSampler::Exp(SimdExp::from_seed_source(rate, &mut seed))
+        WaitingSampler::Exp(SimdExp::from_seed_source(rate, &self.seed))
       }
       CtrwWaitingLaw::Gamma { shape, rate } => {
         assert!(
@@ -124,7 +123,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
         WaitingSampler::Gamma(SimdGamma::from_seed_source(
           shape,
           T::one() / rate,
-          &mut seed,
+          &self.seed,
         ))
       }
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
@@ -132,7 +131,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
           mu > T::zero() && lambda > T::zero(),
           "Ctrw Ig waiting requires mu > 0 and lambda > 0"
         );
-        WaitingSampler::Ig(SimdInverseGauss::from_seed_source(mu, lambda, &mut seed))
+        WaitingSampler::Ig(SimdInverseGauss::from_seed_source(mu, lambda, &self.seed))
       }
       CtrwWaitingLaw::PositiveStable { alpha, scale } => {
         assert!(
@@ -149,7 +148,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
     let jump_sampler = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
         assert!(std > T::zero(), "Ctrw normal jumps require std > 0");
-        JumpSampler::Normal(SimdNormal::from_seed_source(mean, std, &mut seed))
+        JumpSampler::Normal(SimdNormal::from_seed_source(mean, std, &self.seed))
       }
       CtrwJumpLaw::SymmetricStable { alpha, scale } => {
         assert!(
@@ -161,7 +160,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
           T::zero(),
           scale,
           T::zero(),
-          &mut seed,
+          &self.seed,
         ))
       }
       CtrwJumpLaw::Rademacher { scale } => {
@@ -170,7 +169,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
       }
     };
 
-    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &mut seed);
+    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &self.seed);
     let mut x = x0.to_f64().unwrap();
 
     let mut next_event = match &waiting_sampler {

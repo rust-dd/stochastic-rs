@@ -62,7 +62,7 @@ impl<T: FloatExt> Cev<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -91,8 +91,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cev<T, S> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Cev output tail must be contiguous");
-    let mut seed = self.seed;
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
@@ -121,8 +120,7 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
       let sqrt_dt = dt.sqrt();
-      let mut seed = self.seed;
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(gn_slice);
     }
     let cev = self.sample();

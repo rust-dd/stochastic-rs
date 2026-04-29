@@ -31,7 +31,7 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
 impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
   #[inline]
   pub fn new(alpha: T, beta: T, delta: T, mu: T) -> Self {
-    Self::from_seed_source(alpha, beta, delta, mu, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(alpha, beta, delta, mu, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a normal-inverse Gaussian distribution with a deterministic seed.
@@ -42,7 +42,7 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
       beta,
       delta,
       mu,
-      &mut crate::simd_rng::Deterministic(seed),
+      &crate::simd_rng::Deterministic::new(seed),
     )
   }
 
@@ -53,7 +53,7 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     beta: T,
     delta: T,
     mu: T,
-    seed: &mut impl crate::simd_rng::SeedExt,
+    seed: &impl crate::simd_rng::SeedExt,
   ) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),
@@ -152,6 +152,96 @@ impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
     val
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<T> {
+  fn pdf(&self, _x: f64) -> f64 {
+    // Closed-form pdf requires the modified Bessel function of the second
+    // kind K₁; not currently available.
+    unimplemented!(
+      "DistributionExt::pdf for SimdNormalInverseGauss requires K_1 (modified Bessel of 2nd kind, order 1); not implemented"
+    )
+  }
+
+  fn cdf(&self, _x: f64) -> f64 {
+    unimplemented!("DistributionExt::cdf for SimdNormalInverseGauss has no closed form")
+  }
+
+  fn inv_cdf(&self, _p: f64) -> f64 {
+    unimplemented!("DistributionExt::inv_cdf for SimdNormalInverseGauss has no closed form")
+  }
+
+  fn mean(&self) -> f64 {
+    let a = self.alpha.to_f64().unwrap();
+    let b = self.beta.to_f64().unwrap();
+    let d = self.delta.to_f64().unwrap();
+    let m = self.mu.to_f64().unwrap();
+    let gamma = (a * a - b * b).sqrt();
+    m + d * b / gamma
+  }
+
+  fn median(&self) -> f64 {
+    f64::NAN
+  }
+
+  fn mode(&self) -> f64 {
+    // For NIG the mode is μ + δβ / sqrt(α² − β²) · (1 − ...) — no simple closed form.
+    f64::NAN
+  }
+
+  fn variance(&self) -> f64 {
+    let a = self.alpha.to_f64().unwrap();
+    let b = self.beta.to_f64().unwrap();
+    let d = self.delta.to_f64().unwrap();
+    let gamma = (a * a - b * b).sqrt();
+    d * a * a / gamma.powi(3)
+  }
+
+  fn skewness(&self) -> f64 {
+    let a = self.alpha.to_f64().unwrap();
+    let b = self.beta.to_f64().unwrap();
+    let d = self.delta.to_f64().unwrap();
+    let gamma = (a * a - b * b).sqrt();
+    3.0 * b / (a * (d * gamma).sqrt())
+  }
+
+  fn kurtosis(&self) -> f64 {
+    let a = self.alpha.to_f64().unwrap();
+    let b = self.beta.to_f64().unwrap();
+    let d = self.delta.to_f64().unwrap();
+    let gamma = (a * a - b * b).sqrt();
+    3.0 * (1.0 + 4.0 * b * b / (a * a)) / (d * gamma)
+  }
+
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    // φ(t) = exp{ iμt + δ (γ - sqrt(α² - (β + it)²)) },  γ = sqrt(α² - β²)
+    let a = self.alpha.to_f64().unwrap();
+    let b = self.beta.to_f64().unwrap();
+    let d = self.delta.to_f64().unwrap();
+    let m = self.mu.to_f64().unwrap();
+    let gamma = (a * a - b * b).sqrt();
+    let beta_plus_it = num_complex::Complex64::new(b, t);
+    let inner = num_complex::Complex64::new(a * a, 0.0) - beta_plus_it * beta_plus_it;
+    let exponent = num_complex::Complex64::new(0.0, m * t)
+      + (num_complex::Complex64::new(gamma, 0.0) - inner.sqrt()).scale(d);
+    exponent.exp()
+  }
+
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    // M(t) = exp{ μt + δ (γ - sqrt(α² - (β + t)²)) }
+    let a = self.alpha.to_f64().unwrap();
+    let b = self.beta.to_f64().unwrap();
+    let d = self.delta.to_f64().unwrap();
+    let m = self.mu.to_f64().unwrap();
+    let gamma = (a * a - b * b).sqrt();
+    let bt = b + t;
+    let inner = a * a - bt * bt;
+    if inner < 0.0 {
+      f64::INFINITY
+    } else {
+      (m * t + d * (gamma - inner.sqrt())).exp()
+    }
   }
 }
 

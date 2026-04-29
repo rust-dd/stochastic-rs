@@ -140,7 +140,7 @@ impl<T: FloatExt> HestonStochCorr<T, Deterministic> {
       rho2,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -149,7 +149,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
   type Output = [Array1<T>; 3]; // [S, v, rho]
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
@@ -161,7 +160,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
     let zero = T::zero();
 
     // 3 independent noise streams: dW̃^ν, dW̃^ρ, dW̃^x
-    let gen_noise = |seed: &mut S| -> Array1<T> {
+    let gen_noise = |seed: &S| -> Array1<T> {
       let mut gn = Array1::<T>::zeros(n_steps);
       if let Some(slice) = gn.as_slice_mut() {
         let normal = SimdNormal::<T>::from_seed_source(zero, sqrt_dt, seed);
@@ -170,9 +169,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
       gn
     };
 
-    let dw_v = gen_noise(&mut seed); // variance Bm
-    let dw_rho = gen_noise(&mut seed); // correlation Bm
-    let dw_x = gen_noise(&mut seed); // independent price Bm
+    let dw_v = gen_noise(&self.seed); // variance Bm
+    let dw_rho = gen_noise(&self.seed); // correlation Bm
+    let dw_x = gen_noise(&self.seed); // independent price Bm
 
     let mut s_path = Array1::<T>::zeros(self.n);
     let mut v_path = Array1::<T>::zeros(self.n);

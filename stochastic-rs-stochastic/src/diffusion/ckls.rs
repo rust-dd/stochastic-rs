@@ -75,7 +75,7 @@ impl<T: FloatExt> Ckls<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -102,8 +102,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ckls<T, S> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Ckls output tail must be contiguous");
-    let mut seed = self.seed;
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {

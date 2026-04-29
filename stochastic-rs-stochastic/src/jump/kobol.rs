@@ -148,7 +148,7 @@ impl<T: FloatExt> KoBoL<T, Deterministic> {
       j,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -157,8 +157,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for KoBoL<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
 
@@ -184,8 +182,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for KoBoL<T, S> {
     let J = self.j;
     let size = J + 1; // index 0 reserved (Γ0=0)
 
-    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &mut seed);
-    let exp = SimdExp::from_seed_source(T::one(), &mut seed);
+    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &self.seed);
+    let exp = SimdExp::from_seed_source(T::one(), &self.seed);
 
     let mut U = Array1::<T>::zeros(size);
     uniform.fill_slice_fast(U.as_slice_mut().unwrap());

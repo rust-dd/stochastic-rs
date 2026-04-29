@@ -25,18 +25,18 @@ pub struct SimdLogNormal<T: SimdFloatExt> {
 impl<T: SimdFloatExt> SimdLogNormal<T> {
   #[inline]
   pub fn new(mu: T, sigma: T) -> Self {
-    Self::from_seed_source(mu, sigma, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(mu, sigma, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a log-normal distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(mu: T, sigma: T, seed: u64) -> Self {
-    Self::from_seed_source(mu, sigma, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(mu, sigma, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates a log-normal distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
-  pub fn from_seed_source(mu: T, sigma: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(mu: T, sigma: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     assert!(sigma > T::zero());
     Self {
       mu,
@@ -125,30 +125,28 @@ impl<T: SimdFloatExt> Clone for SimdLogNormal<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdLogNormal<T> {
   fn pdf(&self, x: f64) -> f64 {
-    use statrs::distribution::Continuous;
+    if x <= 0.0 {
+      return 0.0;
+    }
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    statrs::distribution::LogNormal::new(mu, sigma)
-      .unwrap()
-      .pdf(x)
+    let z = (x.ln() - mu) / sigma;
+    crate::special::norm_pdf(z) / (sigma * x)
   }
 
   fn cdf(&self, x: f64) -> f64 {
-    use statrs::distribution::ContinuousCDF;
+    if x <= 0.0 {
+      return 0.0;
+    }
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    statrs::distribution::LogNormal::new(mu, sigma)
-      .unwrap()
-      .cdf(x)
+    crate::special::norm_cdf((x.ln() - mu) / sigma)
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {
-    use statrs::distribution::ContinuousCDF;
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    statrs::distribution::LogNormal::new(mu, sigma)
-      .unwrap()
-      .inverse_cdf(p)
+    (mu + sigma * crate::special::ndtri(p)).exp()
   }
 
   fn mean(&self) -> f64 {

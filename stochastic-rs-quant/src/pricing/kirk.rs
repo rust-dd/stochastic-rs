@@ -18,8 +18,7 @@
 //! Reference: Kirk, E. (1995). "Correlation in the Energy Markets."
 //! In *Managing Energy Price Risk*, Risk Publications, pp. 71-78.
 
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
@@ -155,7 +154,6 @@ impl KirkSpreadPricerBuilder {
 impl PricerExt for KirkSpreadPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
     let tau = self.tau_or_from_dates();
-    let n = Normal::new(0.0, 1.0).unwrap();
 
     // Ratio transformation: F = F1 / (F2 + X)
     let denom = self.f2 + self.x;
@@ -173,8 +171,8 @@ impl PricerExt for KirkSpreadPricer {
 
     let df = (-self.r * tau).exp();
 
-    let call = denom * (f * df * n.cdf(d1) - df * n.cdf(d2));
-    let put = denom * (df * n.cdf(-d2) - f * df * n.cdf(-d1));
+    let call = denom * (f * df * norm_cdf(d1) - df * norm_cdf(d2));
+    let put = denom * (df * norm_cdf(-d2) - f * df * norm_cdf(-d1));
 
     (call, put)
   }

@@ -16,12 +16,12 @@
 
 use ndarray::Array1;
 use rand_distr::Distribution;
-use statrs::function::gamma::gamma;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
@@ -126,7 +126,7 @@ impl<T: FloatExt> FBatesSvj<T, Deterministic> {
       omega,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -143,9 +143,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
     };
 
     // Use Cgns for rho-correlated noise: [gn_vol, gn_price]
-    let mut seed = self.seed;
     let cgns = Cgns::new(self.rho, n_steps, self.t);
-    let [gn_vol, gn_price] = cgns.sample_impl(seed.derive());
+    let [gn_vol, gn_price] = cgns.sample_impl(&self.seed.derive());
 
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);
@@ -170,8 +169,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
     let kappa_j = (self.nu + half * self.omega * self.omega).exp() - T::one();
 
     // Jump RNG
-    let z_std = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
-    let mut rng = seed.rng();
+    let z_std = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let mut rng = self.seed.rng();
     let lambda_dt = self.lambda.to_f64().unwrap() * dt.to_f64().unwrap();
     let pois = if lambda_dt > 0.0 {
       Some(SimdPoisson::<u32>::new(lambda_dt))

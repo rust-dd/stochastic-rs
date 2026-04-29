@@ -111,6 +111,110 @@ impl<T: PrimInt> Distribution<T> for SimdHypergeometric<T> {
   }
 }
 
+impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    if x < 0.0 || x.fract() != 0.0 {
+      return 0.0;
+    }
+    let k = x as i64;
+    let big_n = self.n_total as i64;
+    let big_k = self.k_success as i64;
+    let n = self.n_draws as i64;
+    let k_min = (n - (big_n - big_k)).max(0);
+    let k_max = n.min(big_k);
+    if k < k_min || k > k_max {
+      return 0.0;
+    }
+    // P = C(K, k) C(N−K, n−k) / C(N, n) — compute via log-Γ for stability.
+    let lg = |z: i64| crate::special::ln_gamma((z + 1) as f64);
+    let log_pmf = lg(big_k) - lg(k) - lg(big_k - k) + lg(big_n - big_k)
+      - lg(n - k)
+      - lg(big_n - big_k - (n - k))
+      - (lg(big_n) - lg(n) - lg(big_n - n));
+    log_pmf.exp()
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    if x < 0.0 {
+      return 0.0;
+    }
+    let k = x.floor() as i64;
+    let big_n = self.n_total as i64;
+    let big_k = self.k_success as i64;
+    let n = self.n_draws as i64;
+    let k_min = (n - (big_n - big_k)).max(0);
+    let k_max = n.min(big_k);
+    if k >= k_max {
+      return 1.0;
+    }
+    // No closed form — sum the pmf from k_min to ⌊x⌋.
+    let mut acc = 0.0;
+    for j in k_min..=k {
+      acc += self.pdf(j as f64);
+    }
+    acc.clamp(0.0, 1.0)
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    let big_n = self.n_total as i64;
+    let big_k = self.k_success as i64;
+    let n = self.n_draws as i64;
+    let k_min = (n - (big_n - big_k)).max(0);
+    let k_max = n.min(big_k);
+    if p <= 0.0 {
+      return k_min as f64;
+    }
+    if p >= 1.0 {
+      return k_max as f64;
+    }
+    let mut acc = 0.0;
+    for j in k_min..=k_max {
+      acc += self.pdf(j as f64);
+      if acc >= p {
+        return j as f64;
+      }
+    }
+    k_max as f64
+  }
+
+  fn mean(&self) -> f64 {
+    self.n_draws as f64 * self.k_success as f64 / self.n_total as f64
+  }
+
+  fn median(&self) -> f64 {
+    self.mean().floor()
+  }
+
+  fn mode(&self) -> f64 {
+    let n = self.n_draws as f64;
+    let k = self.k_success as f64;
+    let big_n = self.n_total as f64;
+    ((n + 1.0) * (k + 1.0) / (big_n + 2.0)).floor()
+  }
+
+  fn variance(&self) -> f64 {
+    let n = self.n_draws as f64;
+    let k = self.k_success as f64;
+    let big_n = self.n_total as f64;
+    n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0))
+  }
+
+  fn skewness(&self) -> f64 {
+    let n = self.n_draws as f64;
+    let k = self.k_success as f64;
+    let big_n = self.n_total as f64;
+    ((big_n - 2.0 * k) * (big_n - 1.0).sqrt() * (big_n - 2.0 * n))
+      / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0))
+  }
+
+  fn moment_generating_function(&self, _t: f64) -> f64 {
+    // MGF involves the hypergeometric function; not implemented in closed form.
+    unimplemented!(
+      "DistributionExt::moment_generating_function for SimdHypergeometric requires the Gauss hypergeometric ₂F₁; not implemented"
+    )
+  }
+}
+
 py_distribution_int!(PyHypergeometric, SimdHypergeometric,
   sig: (n_total, k_success, n_draws),
   params: (n_total: u32, k_success: u32, n_draws: u32)

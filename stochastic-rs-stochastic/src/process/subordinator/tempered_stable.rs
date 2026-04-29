@@ -81,7 +81,7 @@ impl<T: FloatExt> TemperedStableSubordinator<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -109,9 +109,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TemperedStableSubordinator<T, S>
     let lambda0 = (c / alpha) * eps.powf(-alpha);
     let small_jump_drift = dt * c * eps.powf(1.0 - alpha) / (1.0 - alpha);
 
-    let mut seed = self.seed;
-    let poisson = SimdPoisson::<u32>::from_seed_source(lambda0 * dt, &mut seed);
-    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &mut seed);
+    let poisson = SimdPoisson::<u32>::from_seed_source(lambda0 * dt, &self.seed);
+    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &self.seed);
     let mut level = out[0].to_f64().unwrap();
     for i in 1..self.n {
       let n_candidates = poisson.sample_fast() as usize;

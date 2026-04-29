@@ -63,7 +63,7 @@ impl<T: FloatExt> Nig<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -91,11 +91,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Nig<T, S> {
     let dt = self.dt();
     // For Nig: G_dt ~ Ig(mean=dt, shape=dt^2/kappa).
     let shape = dt * dt / self.kappa;
-    let mut seed = self.seed;
-    let ig_dist = SimdInverseGauss::from_seed_source(dt, shape, &mut seed);
+    let ig_dist = SimdInverseGauss::from_seed_source(dt, shape, &self.seed);
     let mut ig = Array1::<T>::zeros(self.n - 1);
     ig_dist.fill_slice_fast(ig.as_slice_mut().unwrap());
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
     let mut z = Array1::<T>::zeros(self.n - 1);
     normal.fill_slice_fast(z.as_slice_mut().unwrap());
 

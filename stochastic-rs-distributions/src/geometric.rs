@@ -25,17 +25,17 @@ pub struct SimdGeometric<T: PrimInt> {
 impl<T: PrimInt> SimdGeometric<T> {
   #[inline]
   pub fn new(p: f64) -> Self {
-    Self::from_seed_source(p, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(p, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a geometric distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(p: f64, seed: u64) -> Self {
-    Self::from_seed_source(p, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(p, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates a geometric distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(p: f64, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(p: f64, seed: &impl crate::simd_rng::SeedExt) -> Self {
     Self {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
@@ -120,6 +120,81 @@ impl<T: PrimInt> Distribution<T> for SimdGeometric<T> {
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
     val
+  }
+}
+
+impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
+  // Convention here: support k ∈ {1, 2, ...} (the "shifted" geometric, P(X=k) = (1-p)^(k-1) p).
+
+  fn pdf(&self, x: f64) -> f64 {
+    if x < 1.0 || x.fract() != 0.0 {
+      return 0.0;
+    }
+    let k = x as u64;
+    (1.0 - self.p).powi(k as i32 - 1) * self.p
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    if x < 1.0 {
+      return 0.0;
+    }
+    let k = x.floor() as u64;
+    1.0 - (1.0 - self.p).powi(k as i32)
+  }
+
+  fn inv_cdf(&self, prob: f64) -> f64 {
+    // Smallest k such that 1-(1-p)^k ≥ prob ⟹ k = ⌈ln(1-prob)/ln(1-p)⌉
+    if prob <= 0.0 {
+      return 1.0;
+    }
+    if prob >= 1.0 {
+      return f64::INFINITY;
+    }
+    ((1.0 - prob).ln() / (1.0 - self.p).ln()).ceil()
+  }
+
+  fn mean(&self) -> f64 {
+    1.0 / self.p
+  }
+
+  fn median(&self) -> f64 {
+    (-(2.0_f64.ln()) / (1.0 - self.p).ln()).ceil()
+  }
+
+  fn mode(&self) -> f64 {
+    1.0
+  }
+
+  fn variance(&self) -> f64 {
+    (1.0 - self.p) / (self.p * self.p)
+  }
+
+  fn skewness(&self) -> f64 {
+    (2.0 - self.p) / (1.0 - self.p).sqrt()
+  }
+
+  fn kurtosis(&self) -> f64 {
+    6.0 + self.p * self.p / (1.0 - self.p)
+  }
+
+  fn entropy(&self) -> f64 {
+    let q = 1.0 - self.p;
+    -(q * q.ln() + self.p * self.p.ln()) / self.p
+  }
+
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    // φ(t) = p e^{it} / (1 - (1-p) e^{it})
+    let eit = num_complex::Complex64::new(0.0, t).exp();
+    eit.scale(self.p) / (num_complex::Complex64::new(1.0, 0.0) - eit.scale(1.0 - self.p))
+  }
+
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    let q = 1.0 - self.p;
+    if q * t.exp() < 1.0 {
+      self.p * t.exp() / (1.0 - q * t.exp())
+    } else {
+      f64::INFINITY
+    }
   }
 }
 

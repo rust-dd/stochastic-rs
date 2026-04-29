@@ -83,7 +83,7 @@ impl<T: FloatExt> RoughBergomi<T, Deterministic> {
       rho,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       cgns: Cgns::new(rho, n - 1, t),
     }
   }
@@ -94,8 +94,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
-    let mut seed = self.seed;
-    let [cgn1, z] = &self.cgns.sample_impl(seed.derive());
+    let [cgn1, z] = &self.cgns.sample_impl(&self.seed.derive());
 
     let mut s = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::<T>::zeros(self.n);

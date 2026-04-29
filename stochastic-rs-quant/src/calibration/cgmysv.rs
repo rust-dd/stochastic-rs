@@ -50,11 +50,15 @@ impl crate::traits::ToModel for CgmysvCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for CgmysvCalibrationResult {
+  type Params = crate::pricing::cgmysv::CgmysvParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    self.params.clone()
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)

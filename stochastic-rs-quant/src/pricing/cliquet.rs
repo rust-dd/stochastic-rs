@@ -20,8 +20,7 @@
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
 //!
 use rayon::prelude::*;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::traits::FloatExt;
 
@@ -66,32 +65,31 @@ impl CliquetPricer {
   /// period of length $\tau$ — undiscounted; the BSM scaling invariance
   /// makes this the same for every period.
   fn expected_period_payoff(&self, tau: f64) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let v = self.sigma;
     let drift = self.r - self.q;
     match (self.local_floor, self.local_cap) {
       (None, None) => (drift * tau).exp() - 1.0,
-      (Some(f), None) => f + Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + f, &n),
+      (Some(f), None) => f + Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + f),
       (None, Some(c)) => {
         let unbounded = (drift * tau).exp() - 1.0;
-        unbounded - Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + c, &n)
+        unbounded - Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + c)
       }
       (Some(f), Some(c)) => {
-        f + Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + f, &n)
-          - Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + c, &n)
+        f + Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + f)
+          - Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + c)
       }
     }
   }
 
   /// $E^Q[\max(S_T/S_0 - K, 0)] = e^{(r-q)T} N(d_1) - K N(d_2)$ —
   /// undiscounted.
-  fn expected_max_return_minus(r: f64, q: f64, sigma: f64, t: f64, k: f64, n: &Normal) -> f64 {
+  fn expected_max_return_minus(r: f64, q: f64, sigma: f64, t: f64, k: f64) -> f64 {
     let v_sq = sigma * sigma;
     let drift = r - q;
     let sqrt_t = t.sqrt();
     let d1 = ((1.0 / k).ln() + (drift + 0.5 * v_sq) * t) / (sigma * sqrt_t);
     let d2 = d1 - sigma * sqrt_t;
-    (drift * t).exp() * n.cdf(d1) - k * n.cdf(d2)
+    (drift * t).exp() * norm_cdf(d1) - k * norm_cdf(d2)
   }
 }
 

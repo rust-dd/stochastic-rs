@@ -51,11 +51,15 @@ impl crate::traits::ToModel for BSMCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for BSMCalibrationResult {
+  type Params = BSMParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    BSMParams { v: self.v }
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -64,13 +68,16 @@ impl crate::traits::CalibrationResult for BSMCalibrationResult {
 
 impl crate::traits::Calibrator for BSMCalibrator {
   type InitialGuess = BSMParams;
+  type Params = BSMParams;
   type Output = BSMCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.set_initial_guess(p);
     }
-    BSMCalibrator::calibrate(&this)
+    Ok(this.solve())
   }
 }
 
@@ -122,8 +129,6 @@ pub struct BSMCalibrator {
   pub loss_metrics: &'static [LossMetric],
   /// Levenberg-Marquardt algorithm residauls.
   calibration_history: RefCell<Vec<CalibrationHistory<BSMParams>>>,
-  /// Derivate matrix.
-  derivates: RefCell<Vec<Vec<f64>>>,
 }
 
 impl BSMCalibrator {
@@ -155,7 +160,6 @@ impl BSMCalibrator {
       option_type,
       loss_metrics: &LossMetric::ALL,
       calibration_history: RefCell::new(Vec::new()),
-      derivates: RefCell::new(Vec::new()),
     }
   }
 
@@ -201,13 +205,12 @@ impl BSMCalibrator {
       option_type,
       loss_metrics: &LossMetric::ALL,
       calibration_history: RefCell::new(Vec::new()),
-      derivates: RefCell::new(Vec::new()),
     }
   }
 }
 
 impl BSMCalibrator {
-  pub fn calibrate(&self) -> BSMCalibrationResult {
+  fn solve(&self) -> BSMCalibrationResult {
     let (result, report) = LevenbergMarquardt::new().minimize(self.clone());
     let converged = report.termination.was_successful();
     let c_model: Vec<f64> = result
@@ -271,7 +274,6 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
     let n = self.c_market.len();
     let mut c_model = DVector::zeros(n);
     let mut vegas: Vec<f64> = Vec::with_capacity(n);
-    let mut derivates = Vec::new();
 
     for (idx, _) in self.c_market.iter().enumerate() {
       let pricer = BSMPricer::new(
@@ -312,10 +314,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
             self.loss_metrics,
           ),
         });
-      derivates.push(pricer.derivatives());
     }
-
-    let _ = std::mem::replace(&mut *self.derivates.borrow_mut(), derivates);
 
     // Vega-weighted residuals approximate minimizing implied vol differences
     let mut residuals = DVector::zeros(n);
@@ -368,6 +367,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   #[test]
   fn test_calibrate() {
@@ -404,7 +404,7 @@ mod tests {
       option_type,
     );
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 
   #[test]
@@ -450,7 +450,7 @@ mod tests {
       None,
       OptionType::Call,
     );
-    let result = calibrator.calibrate();
+    let result = calibrator.calibrate(None).unwrap();
     println!(
       "recovered sigma = {:.6}  (truth {:.4})  converged = {}",
       result.v, true_sigma, result.converged
@@ -460,6 +460,43 @@ mod tests {
       "expected ~{}, got {}",
       true_sigma,
       result.v
+    );
+  }
+
+  #[test]
+  fn calibrator_trait_returns_result() {
+    use crate::traits::CalibrationResult;
+    let s = 100.0_f64;
+    let k = 100.0_f64;
+    let true_sigma = 0.20_f64;
+    let pricer = BSMPricer::builder(s, true_sigma, k, 0.03)
+      .tau(0.5)
+      .coc(BSMCoc::Bsm1973)
+      .build();
+    let (call, _) = pricer.calculate_call_put();
+
+    let calibrator = BSMCalibrator::new(
+      BSMParams { v: 0.4 },
+      DVector::from_vec(vec![call]),
+      DVector::from_vec(vec![s]),
+      DVector::from_vec(vec![k]),
+      0.03,
+      None,
+      None,
+      None,
+      0.5,
+      OptionType::Call,
+    );
+
+    let result: Result<BSMCalibrationResult, anyhow::Error> =
+      Calibrator::calibrate(&calibrator, None);
+    let result = result.expect("trait calibrate must succeed");
+    let params = CalibrationResult::params(&result);
+    assert!(
+      (params.v - true_sigma).abs() < 1e-3,
+      "trait Calibrator path recovered sigma {} via CalibrationResult::params (expected ~{})",
+      params.v,
+      true_sigma
     );
   }
 }

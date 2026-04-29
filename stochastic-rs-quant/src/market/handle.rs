@@ -4,9 +4,6 @@
 //! runtime. Pricers hold a [`Handle<T>`] once and automatically pick up
 //! updates when the back-pointer is relinked — without touching the
 //! dependency graph.
-//!
-//! Reference: Ballabio, "Implementing QuantLib", Leanpub (2020),
-//! Chapter "Handles".
 
 use std::sync::Arc;
 use std::sync::RwLock;

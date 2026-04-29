@@ -65,7 +65,7 @@ impl<T: FloatExt> MultivariateHawkes<T, Deterministic> {
       alpha,
       beta,
       t_max,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -78,8 +78,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
   /// Returns a `Vec` of length D, where each element contains the
   /// event arrival times for that component.
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
     let d = self.mu.len();
 
     // S[i][j] = running self-exciting component from source j to target i

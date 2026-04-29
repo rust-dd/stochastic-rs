@@ -18,11 +18,16 @@
 pub mod basis;
 pub mod cross_currency;
 mod shared;
+pub mod trs;
 mod types;
 pub mod vanilla;
 
 pub use basis::BasisSwap;
 pub use cross_currency::CrossCurrencyBasisSwap;
+pub use trs::TotalReturnSwap;
+pub use trs::TrsDirection;
+pub use trs::TrsPeriod;
+pub use trs::TrsValuation;
 pub use types::BasisSwapValuation;
 pub use types::CrossCurrencyBasisSwapValuation;
 pub use types::CrossCurrencySwapDirection;

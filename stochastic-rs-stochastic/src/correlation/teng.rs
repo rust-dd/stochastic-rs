@@ -70,7 +70,7 @@ impl<T: FloatExt> TengSCP<T, Deterministic> {
       rho0,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -121,7 +121,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TengSCP<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
@@ -132,7 +131,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TengSCP<T, S> {
 
     let mut gn = Array1::<T>::zeros(n_steps);
     if let Some(slice) = gn.as_slice_mut() {
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(slice);
     }
 

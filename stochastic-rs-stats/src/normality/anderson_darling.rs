@@ -1,6 +1,5 @@
 use ndarray::ArrayView1;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 /// Configuration for the Anderson-Darling normality test.
 #[derive(Debug, Clone, Copy)]
@@ -88,13 +87,13 @@ pub fn anderson_darling_normal_test(
   let (mean, std) = mean_std(&sorted);
   assert!(std > 0.0, "Anderson-Darling requires non-constant sample");
 
-  let normal = Normal::new(mean, std).expect("normal params must be valid");
   let eps = 1e-15;
+  let cdf = |x: f64| norm_cdf((x - mean) / std);
 
   let mut sum = 0.0;
   for i in 0..n {
-    let f_i = normal.cdf(sorted[i]).clamp(eps, 1.0 - eps);
-    let f_j = normal.cdf(sorted[n - 1 - i]).clamp(eps, 1.0 - eps);
+    let f_i = cdf(sorted[i]).clamp(eps, 1.0 - eps);
+    let f_j = cdf(sorted[n - 1 - i]).clamp(eps, 1.0 - eps);
     let k = (2 * (i + 1) - 1) as f64;
     sum += k * (f_i.ln() + (1.0 - f_j).ln());
   }

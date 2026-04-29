@@ -114,7 +114,7 @@ impl<T: FloatExt> DuffieKan<T, Deterministic> {
     t: Option<T>,
     seed: u64,
   ) -> Self {
-    let mut s = Deterministic(seed);
+    let s = Deterministic::new(seed);
     let child = s.derive();
     Self {
       alpha,
@@ -133,8 +133,8 @@ impl<T: FloatExt> DuffieKan<T, Deterministic> {
       r0,
       x0,
       t,
-      seed: Deterministic(seed),
-      cgns: Cgns::seeded(rho, n - 1, t, child.0),
+      seed: Deterministic::new(seed),
+      cgns: Cgns::seeded(rho, n - 1, t, child.current()),
     }
   }
 }

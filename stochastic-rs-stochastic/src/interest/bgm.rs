@@ -85,7 +85,7 @@ impl<T: FloatExt> Bgm<T, Deterministic> {
       xn,
       t,
       n,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -109,7 +109,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
 
     let n_increments = self.n - 1;
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(n_increments)).sqrt();
-    let mut seed = self.seed;
 
     for i in 0..self.xn {
       let mut row = fwd.row_mut(i);
@@ -117,7 +116,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
         .as_slice_mut()
         .expect("Bgm row must be contiguous in memory");
       let tail = &mut row_slice[1..];
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(tail);
 
       for j in 1..self.n {

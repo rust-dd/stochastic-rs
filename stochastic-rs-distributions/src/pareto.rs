@@ -25,17 +25,17 @@ pub struct SimdPareto<T: SimdFloatExt> {
 impl<T: SimdFloatExt> SimdPareto<T> {
   #[inline]
   pub fn new(x_m: T, alpha: T) -> Self {
-    Self::from_seed_source(x_m, alpha, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(x_m, alpha, &crate::simd_rng::Unseeded)
   }
 
   /// Creates a Pareto distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(x_m: T, alpha: T, seed: u64) -> Self {
-    Self::from_seed_source(x_m, alpha, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(x_m, alpha, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates a Pareto distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(x_m: T, alpha: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(x_m: T, alpha: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     assert!(x_m > T::zero() && alpha > T::zero());
     Self {
       x_m,
@@ -122,6 +122,89 @@ impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
     val
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    let xm = self.x_m.to_f64().unwrap();
+    let a = self.alpha.to_f64().unwrap();
+    if x < xm {
+      0.0
+    } else {
+      a * xm.powf(a) / x.powf(a + 1.0)
+    }
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    let xm = self.x_m.to_f64().unwrap();
+    let a = self.alpha.to_f64().unwrap();
+    if x < xm { 0.0 } else { 1.0 - (xm / x).powf(a) }
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    let xm = self.x_m.to_f64().unwrap();
+    let a = self.alpha.to_f64().unwrap();
+    xm / (1.0 - p).powf(1.0 / a)
+  }
+
+  fn mean(&self) -> f64 {
+    let xm = self.x_m.to_f64().unwrap();
+    let a = self.alpha.to_f64().unwrap();
+    if a > 1.0 {
+      xm * a / (a - 1.0)
+    } else {
+      f64::INFINITY
+    }
+  }
+
+  fn median(&self) -> f64 {
+    let xm = self.x_m.to_f64().unwrap();
+    let a = self.alpha.to_f64().unwrap();
+    xm * 2.0_f64.powf(1.0 / a)
+  }
+
+  fn mode(&self) -> f64 {
+    self.x_m.to_f64().unwrap()
+  }
+
+  fn variance(&self) -> f64 {
+    let xm = self.x_m.to_f64().unwrap();
+    let a = self.alpha.to_f64().unwrap();
+    if a > 2.0 {
+      xm * xm * a / ((a - 1.0).powi(2) * (a - 2.0))
+    } else {
+      f64::INFINITY
+    }
+  }
+
+  fn skewness(&self) -> f64 {
+    let a = self.alpha.to_f64().unwrap();
+    if a > 3.0 {
+      2.0 * (1.0 + a) / (a - 3.0) * ((a - 2.0) / a).sqrt()
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn kurtosis(&self) -> f64 {
+    let a = self.alpha.to_f64().unwrap();
+    if a > 4.0 {
+      6.0 * (a.powi(3) + a.powi(2) - 6.0 * a - 2.0) / (a * (a - 3.0) * (a - 4.0))
+    } else {
+      f64::NAN
+    }
+  }
+
+  fn entropy(&self) -> f64 {
+    let xm = self.x_m.to_f64().unwrap();
+    let a = self.alpha.to_f64().unwrap();
+    (xm / a).ln() + 1.0 / a + 1.0
+  }
+
+  fn moment_generating_function(&self, _t: f64) -> f64 {
+    // MGF does not exist for t > 0 (heavy tail).
+    f64::NAN
   }
 }
 

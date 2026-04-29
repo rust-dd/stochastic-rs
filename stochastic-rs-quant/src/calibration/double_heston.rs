@@ -231,11 +231,15 @@ impl crate::traits::ToModel for DoubleHestonCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
+  type Params = DoubleHestonParams;
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    DoubleHestonCalibrationResult::params(self)
   }
   fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {
     Some(&self.loss)
@@ -244,9 +248,12 @@ impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
 
 impl crate::traits::Calibrator for DoubleHestonCalibrator {
   type InitialGuess = DoubleHestonParams;
+  type Params = DoubleHestonParams;
   type Output = DoubleHestonCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
-    DoubleHestonCalibrator::calibrate(self, initial)
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    Ok(self.solve(initial))
   }
 }
 
@@ -426,11 +433,7 @@ impl DoubleHestonCalibrator {
     }
   }
 
-  /// Run the calibration via Levenberg-Marquardt.
-  pub fn calibrate(
-    &self,
-    initial_params: Option<DoubleHestonParams>,
-  ) -> DoubleHestonCalibrationResult {
+  fn solve(&self, initial_params: Option<DoubleHestonParams>) -> DoubleHestonCalibrationResult {
     let mut problem = self.clone();
     if let Some(p) = initial_params {
       problem.params = Some(p.projected());
@@ -689,6 +692,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for DoubleHestonCalibrator {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   // Reference Heston (v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
   // S=100, r=0.05, q=0, T=1.0. A double Heston with v1_0+v2_0 = 0.04 and
@@ -784,7 +788,7 @@ mod tests {
       false,
     );
 
-    let result = calibrator.calibrate(None);
+    let result = calibrator.calibrate(None).unwrap();
     assert!(
       result.loss.get(LossMetric::Rmse) < 0.6,
       "Double Heston calibration RMSE={:.6}",

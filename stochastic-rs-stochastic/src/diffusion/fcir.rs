@@ -99,7 +99,7 @@ impl<T: FloatExt> Fcir<T, Deterministic> {
       x0,
       t,
       use_sym,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       fgn: Fgn::new(hurst, n - 1, t),
     }
   }
@@ -109,9 +109,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fcir<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let dt = self.fgn.dt();
-    let fgn = self.fgn.sample_cpu_impl(seed.derive());
+    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
 
     let mut fcir = Array1::<T>::zeros(self.n);
     fcir[0] = self.x0.unwrap_or(T::zero());

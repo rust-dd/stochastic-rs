@@ -4,9 +4,6 @@
 //! [`SimpleQuote`] is a mutable value with change notifications; the
 //! composite [`DerivedQuote`] / [`CompositeQuote`] types build new quotes
 //! from existing ones and forward notifications.
-//!
-//! Reference: Ballabio, "Implementing QuantLib", Leanpub (2020),
-//! Chapter "Quotes".
 
 use std::sync::Arc;
 use std::sync::RwLock;

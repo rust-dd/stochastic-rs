@@ -570,9 +570,8 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
 mod tests {
   use ndarray::Array2;
   use owens_t::biv_norm;
-  use statrs::distribution::Continuous;
-  use statrs::distribution::ContinuousCDF;
-  use statrs::distribution::Normal;
+  use stochastic_rs_distributions::special::norm_cdf;
+  use stochastic_rs_distributions::special::norm_pdf;
 
   use super::*;
   use crate::OptionType;
@@ -686,11 +685,10 @@ mod tests {
     let a1 = ((k1 / s1).ln() - (r - 0.5 * sigma1 * sigma1) * tau) / (sigma1 * root_t);
     let a2 = ((k2 / s2).ln() - (r - 0.5 * sigma2 * sigma2) * tau) / (sigma2 * root_t);
     let disc = (-r * tau).exp();
-    let stdn = Normal::new(0.0, 1.0).unwrap();
     let cdf = |x: f64, y: f64, corr: f64| -> f64 { biv_norm(-x, -y, corr) };
     let price = disc * cdf(a1, a2, rho);
-    let conditional = stdn.cdf((a2 - rho * a1) / (1.0 - rho * rho).sqrt());
-    let delta = disc * (-(stdn.pdf(a1) * conditional) / (s1 * sigma1 * root_t));
+    let conditional = norm_cdf((a2 - rho * a1) / (1.0 - rho * rho).sqrt());
+    let delta = disc * (-(norm_pdf(a1) * conditional) / (s1 * sigma1 * root_t));
     (price, delta)
   }
 

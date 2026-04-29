@@ -114,7 +114,7 @@ impl<T: FloatExt> MjdLog<T, Deterministic> {
       n,
       s0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -165,8 +165,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
 
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
 
-    let mut seed = self.seed;
-    let mut rng = seed.rng();
+    let mut rng = self.seed.rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(
@@ -181,10 +180,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
     let tail = tail_view
       .as_slice_mut()
       .expect("MjdLog output tail must be contiguous");
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
     normal.fill_slice_fast(tail);
 
-    let jump_normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &mut seed);
+    let jump_normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
 
     for z in tail.iter_mut() {
       let diff = self.sigma * *z;

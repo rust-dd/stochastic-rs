@@ -47,10 +47,10 @@ impl<T: PrimInt> SimdPoisson<T> {
   /// `f64` precision. The generic `T: PrimInt` controls only the *output*
   /// integer width (`u32`, `u64`, `i64`, …), not the rate type.
   pub fn new(lambda: f64) -> Self {
-    Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(lambda, &crate::simd_rng::Unseeded)
   }
 
-  pub fn from_seed_source(lambda: f64, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(lambda: f64, seed: &impl crate::simd_rng::SeedExt) -> Self {
     assert!(lambda > 0.0);
     Self {
       cdf: Self::build_cdf(lambda),
@@ -126,6 +126,102 @@ impl<T: PrimInt> Distribution<T> for SimdPoisson<T> {
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
     val
+  }
+}
+
+impl<T: PrimInt> SimdPoisson<T> {
+  /// Recover the rate parameter from the precomputed CDF table.
+  /// `cdf[0] = e^{-λ}`, so `λ = -ln(cdf[0])`.
+  #[inline]
+  fn lambda(&self) -> f64 {
+    -self.cdf[0].ln()
+  }
+}
+
+impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    if x < 0.0 || x.fract() != 0.0 {
+      return 0.0;
+    }
+    let k = x as i64;
+    let lambda = self.lambda();
+    // P(N=k) = exp(−λ) λ^k / k! = exp(k ln λ − λ − ln Γ(k+1))
+    let log_pmf = k as f64 * lambda.ln() - lambda - crate::special::ln_gamma((k + 1) as f64);
+    log_pmf.exp()
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    if x < 0.0 {
+      return 0.0;
+    }
+    let k = x.floor() as usize;
+    if k >= self.cdf.len() {
+      1.0
+    } else {
+      self.cdf[k]
+    }
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    if p <= 0.0 {
+      return 0.0;
+    }
+    if p >= 1.0 {
+      return f64::INFINITY;
+    }
+    // Use the cached cumulative table built in `build_cdf`.
+    match self.cdf.iter().position(|&c| c >= p) {
+      Some(k) => k as f64,
+      None => (self.cdf.len() - 1) as f64,
+    }
+  }
+
+  fn mean(&self) -> f64 {
+    self.lambda()
+  }
+
+  fn median(&self) -> f64 {
+    // Approximation: ⌊λ + 1/3 - 0.02/λ⌋
+    let l = self.lambda();
+    (l + 1.0 / 3.0 - 0.02 / l).floor()
+  }
+
+  fn mode(&self) -> f64 {
+    self.lambda().floor()
+  }
+
+  fn variance(&self) -> f64 {
+    self.lambda()
+  }
+
+  fn skewness(&self) -> f64 {
+    1.0 / self.lambda().sqrt()
+  }
+
+  fn kurtosis(&self) -> f64 {
+    1.0 / self.lambda()
+  }
+
+  fn entropy(&self) -> f64 {
+    // Closed form not elementary; fall back to an asymptotic expansion that's
+    // accurate to leading order: H(λ) ≈ ½ ln(2π e λ) - 1/(12λ) - 1/(24λ²) - ...
+    let l = self.lambda();
+    0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * l).ln()
+      - 1.0 / (12.0 * l)
+      - 1.0 / (24.0 * l * l)
+      - 19.0 / (360.0 * l.powi(3))
+  }
+
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    // φ(t) = exp(λ (e^{it} - 1))
+    let eit = num_complex::Complex64::new(0.0, t).exp();
+    (eit - num_complex::Complex64::new(1.0, 0.0))
+      .scale(self.lambda())
+      .exp()
+  }
+
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    (self.lambda() * (t.exp() - 1.0)).exp()
   }
 }
 

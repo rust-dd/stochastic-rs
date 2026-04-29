@@ -38,6 +38,15 @@ pub struct SwaptionQuote {
   pub weight: Option<f64>,
 }
 
+/// Calibrated parameter set for the Hull-White short-rate model.
+#[derive(Debug, Clone)]
+pub struct HullWhiteParams {
+  /// Mean reversion speed $a$.
+  pub mean_reversion: f64,
+  /// Short-rate volatility $\sigma$.
+  pub sigma: f64,
+}
+
 /// Hull-White calibration result.
 #[derive(Debug, Clone)]
 pub struct HullWhiteCalibrationResult {
@@ -85,23 +94,33 @@ impl crate::traits::ToShortRateModel for HullWhiteCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for HullWhiteCalibrationResult {
+  type Params = HullWhiteParams;
   fn rmse(&self) -> f64 {
     self.rmse
   }
   fn converged(&self) -> bool {
     self.converged
   }
+  fn params(&self) -> Self::Params {
+    HullWhiteParams {
+      mean_reversion: self.mean_reversion,
+      sigma: self.sigma,
+    }
+  }
 }
 
 impl<'a> crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'a> {
   type InitialGuess = (f64, f64);
+  type Params = HullWhiteParams;
   type Output = HullWhiteCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(guess) = initial {
       this.initial_guess = Some(guess);
     }
-    HullWhiteSwaptionCalibrator::calibrate(&this)
+    Ok(this.solve())
   }
 }
 
@@ -135,8 +154,7 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
     }
   }
 
-  /// Run the Nelder-Mead minimization.
-  pub fn calibrate(&self) -> HullWhiteCalibrationResult {
+  fn solve(&self) -> HullWhiteCalibrationResult {
     let problem = HullWhiteCost {
       quotes: self.quotes.to_vec(),
       curve_points: serialize_curve(self.curve),

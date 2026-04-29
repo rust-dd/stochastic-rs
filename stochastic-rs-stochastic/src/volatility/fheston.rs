@@ -5,10 +5,10 @@
 //! $$
 //!
 use ndarray::Array1;
-use statrs::function::gamma::gamma;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
@@ -99,7 +99,7 @@ impl<T: FloatExt> RoughHeston<T, Deterministic> {
       mu: None,
       s0: None,
       rho: None,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }

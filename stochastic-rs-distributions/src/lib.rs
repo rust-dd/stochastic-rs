@@ -16,6 +16,7 @@ use wide::f64x8;
 mod macros;
 
 pub mod float_impls;
+pub mod special;
 pub mod traits;
 
 #[cfg(feature = "python")]

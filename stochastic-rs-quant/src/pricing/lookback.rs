@@ -13,8 +13,7 @@
 //! - Conze, A. & Viswanathan, R. (1991), "Path Dependent Options: The Case of Lookback Options"
 //! - Haug, E.G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
 //!
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 
@@ -44,7 +43,6 @@ pub struct FloatingLookbackPricer {
 
 impl FloatingLookbackPricer {
   pub fn price(&self) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let s = self.s;
     let r = self.r;
     let q = self.q;
@@ -59,15 +57,16 @@ impl FloatingLookbackPricer {
         let s_min = self.s_min.unwrap_or(s);
         let a1 = ((s / s_min).ln() + (b + 0.5 * sigma2) * t) / (sigma * sqrt_t);
 
-        let term1 = s * (-q * t).exp() * n.cdf(a1);
-        let term2 = s_min * (-r * t).exp() * n.cdf(a1 - sigma * sqrt_t);
+        let term1 = s * (-q * t).exp() * norm_cdf(a1);
+        let term2 = s_min * (-r * t).exp() * norm_cdf(a1 - sigma * sqrt_t);
 
         let premium = if b.abs() < 1e-10 {
-          s * (-r * t).exp() * sigma * sqrt_t * n.cdf(a1).max(0.0) * sigma
+          s * (-r * t).exp() * sigma * sqrt_t * norm_cdf(a1).max(0.0) * sigma
         } else {
           let coeff = s * (-r * t).exp() * sigma2 / (2.0 * b);
-          let bracket = (s / s_min).powf(-2.0 * b / sigma2) * n.cdf(-a1 + 2.0 * b * sqrt_t / sigma)
-            - (b * t).exp() * n.cdf(-a1);
+          let bracket = (s / s_min).powf(-2.0 * b / sigma2)
+            * norm_cdf(-a1 + 2.0 * b * sqrt_t / sigma)
+            - (b * t).exp() * norm_cdf(-a1);
           coeff * bracket
         };
 
@@ -77,15 +76,15 @@ impl FloatingLookbackPricer {
         let s_max = self.s_max.unwrap_or(s);
         let b1 = ((s / s_max).ln() + (b + 0.5 * sigma2) * t) / (sigma * sqrt_t);
 
-        let term1 = s_max * (-r * t).exp() * n.cdf(-b1 + sigma * sqrt_t);
-        let term2 = s * (-q * t).exp() * n.cdf(-b1);
+        let term1 = s_max * (-r * t).exp() * norm_cdf(-b1 + sigma * sqrt_t);
+        let term2 = s * (-q * t).exp() * norm_cdf(-b1);
 
         let premium = if b.abs() < 1e-10 {
-          s * (-r * t).exp() * sigma * sqrt_t * n.cdf(-b1).max(0.0) * sigma
+          s * (-r * t).exp() * sigma * sqrt_t * norm_cdf(-b1).max(0.0) * sigma
         } else {
           let coeff = s * (-r * t).exp() * sigma2 / (2.0 * b);
-          let bracket = (b * t).exp() * n.cdf(b1)
-            - (s / s_max).powf(-2.0 * b / sigma2) * n.cdf(b1 - 2.0 * b * sqrt_t / sigma);
+          let bracket = (b * t).exp() * norm_cdf(b1)
+            - (s / s_max).powf(-2.0 * b / sigma2) * norm_cdf(b1 - 2.0 * b * sqrt_t / sigma);
           coeff * bracket
         };
 

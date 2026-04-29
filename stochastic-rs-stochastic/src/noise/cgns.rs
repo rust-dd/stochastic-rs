@@ -51,7 +51,7 @@ impl<T: FloatExt> Cgns<T, Deterministic> {
       rho,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -59,12 +59,12 @@ impl<T: FloatExt> Cgns<T, Deterministic> {
 impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
   /// Sample with an explicit seed, used by callers like Cbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
-    self.sample_impl(Deterministic(seed))
+    self.sample_impl(&Deterministic::new(seed))
   }
 
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, mut seed: S2) -> [Array1<T>; 2] {
+  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {
     let mut gn1 = Array1::<T>::zeros(self.n);
     let mut z = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -77,12 +77,12 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
     let n1 = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
       T::zero(),
       sqrt_dt,
-      &mut seed,
+      seed,
     );
     let n2 = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
       T::zero(),
       sqrt_dt,
-      &mut seed,
+      seed,
     );
     n1.fill_slice_fast(gn1_slice);
     n2.fill_slice_fast(z_slice);
@@ -105,7 +105,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgns<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    self.sample_impl(self.seed)
+    self.sample_impl(&self.seed)
   }
 }
 

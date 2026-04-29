@@ -13,14 +13,14 @@ members = [
 
 [workspace.dependencies]
 # Internal crates
-stochastic-rs-core = { path = "stochastic-rs-core", version = "2.0.0-beta.2" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "2.0.0-beta.2" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "2.0.0-beta.2" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "2.0.0-beta.2" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "2.0.0-beta.2" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "2.0.0-beta.2" }
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "2.0.0-beta.2" }
-stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.0.0-beta.2" }
+stochastic-rs-core = { path = "stochastic-rs-core", version = "2.0.0-beta.3" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "2.0.0-beta.3" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "2.0.0-beta.3" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "2.0.0-beta.3" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "2.0.0-beta.3" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "2.0.0-beta.3" }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "2.0.0-beta.3" }
+stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.0.0-beta.3" }
 
 # Math / numerical core
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
@@ -40,7 +40,6 @@ rayon = "1.11.0"
 wide = "1.3.0"
 
 # Statistics / fitting / optimisation
-statrs = "0.18.0"
 kendalls = "1.0.0"
 linreg = "0.2.0"
 levenberg-marquardt = "0.14.0"
@@ -105,7 +104,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 
 [package]
 name = "stochastic-rs"
-version = "2.0.0-beta.2"
+version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "A Rust library for quant finance and simulating stochastic processes."
@@ -170,7 +169,6 @@ roots = { workspace = true }
 sci-rs = { workspace = true }
 scilib = { workspace = true }
 slsqp = { workspace = true }
-statrs = { workspace = true }
 tikv-jemallocator = { workspace = true, optional = true }
 time = { workspace = true, features = [ "formatting", "parsing", ], optional = true }
 tokio-test = { workspace = true, optional = true }
@@ -307,7 +305,7 @@ required-features = ["hotpath"]
 
 [features]
 ai = ["dep:stochastic-rs-ai"]
-cuda-native = ["dep:cudarc", "cudarc/cufft"]
+cuda-native = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda-native"]
 default = []
 openblas = [
     "dep:ndarray-linalg",
@@ -317,11 +315,11 @@ openblas = [
     "stochastic-rs-stats/openblas",
     "stochastic-rs-stochastic/openblas",
 ]
-accelerate = []
-gpu = ["dep:cubecl", "dep:gpu-fft"]
-metal = ["dep:metal"]
-gpu-cuda = ["gpu", "dep:cubecl-cuda"]
-gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
+accelerate = ["stochastic-rs-stochastic/accelerate"]
+gpu = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/gpu"]
+metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
+gpu-cuda = ["gpu", "dep:cubecl-cuda", "stochastic-rs-stochastic/gpu-cuda"]
+gpu-wgpu = ["gpu", "dep:cubecl-wgpu", "stochastic-rs-stochastic/gpu-wgpu"]
 jemalloc = ["dep:tikv-jemallocator"]
 # Python bindings live in `stochastic-rs-py` (separate cdylib). Enabling
 # `python` here just turns on the upstream feature flags so the umbrella
@@ -346,5 +344,8 @@ codegen-units = 1
 lto = true
 
 [package.metadata.docs.rs]
-all-features = true
+# Avoid `all-features = true`: it pulls in native GPU SDKs (cubecl-cuda,
+# cudarc, metal), system OpenBLAS, pyo3 link, and yahoo's tokio-test
+# dev-only feature, none of which build cleanly on docs.rs.
+features = ["openblas", "ai", "yahoo"]
 rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

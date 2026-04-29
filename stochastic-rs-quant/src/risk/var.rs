@@ -19,8 +19,7 @@ use std::fmt::Display;
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::ndtri;
 
 use crate::traits::FloatExt;
 
@@ -187,7 +186,5 @@ pub(crate) fn assert_confidence<T: FloatExt>(c: T) {
 }
 
 fn standard_normal_quantile(p: f64) -> f64 {
-  Normal::new(0.0, 1.0)
-    .expect("standard normal")
-    .inverse_cdf(p)
+  ndtri(p)
 }

@@ -53,7 +53,7 @@ impl<T: FloatExt> Cbms<T, Deterministic> {
       rho,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       cgns: Cgns::new(rho, n - 1, t),
     }
   }
@@ -77,8 +77,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cbms<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let noise = self.cgns.sample_impl(seed.derive());
+    let noise = self.cgns.sample_impl(&self.seed.derive());
     self.cumsum_noise(noise)
   }
 }

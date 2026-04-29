@@ -117,7 +117,7 @@ impl<T: FloatExt> HawkesJD<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -126,15 +126,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HawkesJD<T, S> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
     let sqrt_dt = dt.sqrt();
     let two = T::from_usize_(2);
 
-    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &mut seed);
-    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &mut seed);
-    let jump_normal = SimdNormal::<T, 64>::from_seed_source(self.mu_j, self.sigma_j, &mut seed);
+    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &self.seed);
+    let jump_normal = SimdNormal::<T, 64>::from_seed_source(self.mu_j, self.sigma_j, &self.seed);
 
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());
@@ -220,21 +219,26 @@ mod tests {
 
   #[test]
   fn hawkes_jd_seeded_deterministic() {
-    let hjd = HawkesJD::seeded(
-      0.05,
-      0.2,
-      3.0,
-      1.5,
-      5.0,
-      -0.01,
-      0.05,
-      100,
-      Some(0.0),
-      Some(1.0),
-      42,
-    );
-    let p1 = hjd.sample();
-    let p2 = hjd.sample();
-    assert_eq!(p1, p2);
+    // Two separately built instances with the same seed reproduce each other's
+    // first path. (Same instance, repeated `.sample()` calls advance the seed
+    // state and produce different paths — desired for Monte Carlo reuse.)
+    let mk = || {
+      HawkesJD::seeded(
+        0.05,
+        0.2,
+        3.0,
+        1.5,
+        5.0,
+        -0.01,
+        0.05,
+        100,
+        Some(0.0),
+        Some(1.0),
+        42,
+      )
+    };
+    let a = mk();
+    let b = mk();
+    assert_eq!(a.sample(), b.sample());
   }
 }

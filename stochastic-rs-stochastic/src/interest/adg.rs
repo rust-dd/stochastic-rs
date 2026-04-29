@@ -122,7 +122,7 @@ impl<T: FloatExt> Adg<T, Deterministic> {
       xn,
       x0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -137,7 +137,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
       T::zero()
     };
     let sqrt_dt = dt.sqrt();
-    let mut seed = self.seed;
 
     let mut adg = Array2::<T>::zeros((self.xn, self.n));
     for i in 0..self.xn {
@@ -151,7 +150,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
       }
 
       let tail = &mut row_slice[1..];
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(tail);
 
       for j in 1..self.n {

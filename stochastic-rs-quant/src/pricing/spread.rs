@@ -11,8 +11,7 @@
 //! - Kirk, E. (1995), "Correlation in the Energy Markets" — see [`super::kirk`] for non-zero strikes.
 //!
 use rayon::prelude::*;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::traits::FloatExt;
@@ -54,12 +53,11 @@ impl MargrabePricer {
       return (self.s1 * (-self.q1 * self.t).exp() - self.s2 * (-self.q2 * self.t).exp()).max(0.0);
     }
     let v = v_sq.sqrt();
-    let n = Normal::new(0.0, 1.0).unwrap();
     let sqrt_t = self.t.sqrt();
     let d1 = ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.t) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
-    self.s1 * (-self.q1 * self.t).exp() * n.cdf(d1)
-      - self.s2 * (-self.q2 * self.t).exp() * n.cdf(d2)
+    self.s1 * (-self.q1 * self.t).exp() * norm_cdf(d1)
+      - self.s2 * (-self.q2 * self.t).exp() * norm_cdf(d2)
   }
 
   /// Greek delta with respect to $S_1$.
@@ -70,10 +68,9 @@ impl MargrabePricer {
       return (-self.q1 * self.t).exp();
     }
     let v = v_sq.sqrt();
-    let n = Normal::new(0.0, 1.0).unwrap();
     let sqrt_t = self.t.sqrt();
     let d1 = ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.t) / (v * sqrt_t);
-    (-self.q1 * self.t).exp() * n.cdf(d1)
+    (-self.q1 * self.t).exp() * norm_cdf(d1)
   }
 
   /// Greek delta with respect to $S_2$.
@@ -84,11 +81,10 @@ impl MargrabePricer {
       return -(-self.q2 * self.t).exp();
     }
     let v = v_sq.sqrt();
-    let n = Normal::new(0.0, 1.0).unwrap();
     let sqrt_t = self.t.sqrt();
     let d1 = ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.t) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
-    -(-self.q2 * self.t).exp() * n.cdf(d2)
+    -(-self.q2 * self.t).exp() * norm_cdf(d2)
   }
 }
 

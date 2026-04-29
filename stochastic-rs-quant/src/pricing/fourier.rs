@@ -497,7 +497,7 @@ impl FourierModelExt for CGMYFourier {
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
-    let gamma_fn = |z: f64| statrs::function::gamma::gamma(z);
+    let gamma_fn = |z: f64| stochastic_rs_distributions::special::gamma(z);
     Cumulants {
       c1: self.c
         * gamma_fn(1.0 - self.y)
@@ -768,12 +768,12 @@ fn gamma_neg_y(y: f64) -> f64 {
     return 1e15;
   }
   if y < 0.0 {
-    return statrs::function::gamma::gamma(-y);
+    return stochastic_rs_distributions::special::gamma(-y);
   }
   if (y - 1.0).abs() < 1e-8 {
-    return statrs::function::gamma::gamma(-0.999);
+    return stochastic_rs_distributions::special::gamma(-0.999);
   }
-  let g = statrs::function::gamma::gamma(y);
+  let g = stochastic_rs_distributions::special::gamma(y);
   let sin_val = (std::f64::consts::PI * y).sin();
   if sin_val.abs() < 1e-8 || g.abs() < 1e-8 {
     return 1e15;

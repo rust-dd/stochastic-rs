@@ -34,6 +34,20 @@ pub struct MarketOption {
   pub rate: f64,
 }
 
+/// Calibrated parameter set for the Heston-stochastic-correlation model.
+#[derive(Clone, Debug)]
+pub struct HscmParams {
+  pub kappa_v: f64,
+  pub theta_v: f64,
+  pub sigma_v: f64,
+  pub v0: f64,
+  pub kappa_r: f64,
+  pub mu_r: f64,
+  pub sigma_r: f64,
+  pub rho0: f64,
+  pub rho2: f64,
+}
+
 /// Result of HSCM calibration.
 #[derive(Clone, Debug)]
 pub struct HscmCalibrationResult {
@@ -74,11 +88,25 @@ impl crate::traits::ToModel for HscmCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for HscmCalibrationResult {
+  type Params = HscmParams;
   fn rmse(&self) -> f64 {
     self.rmse
   }
   fn converged(&self) -> bool {
     self.rmse.is_finite()
+  }
+  fn params(&self) -> Self::Params {
+    HscmParams {
+      kappa_v: self.kappa_v,
+      theta_v: self.theta_v,
+      sigma_v: self.sigma_v,
+      v0: self.v0,
+      kappa_r: self.kappa_r,
+      mu_r: self.mu_r,
+      sigma_r: self.sigma_r,
+      rho0: self.rho0,
+      rho2: self.rho2,
+    }
   }
 }
 

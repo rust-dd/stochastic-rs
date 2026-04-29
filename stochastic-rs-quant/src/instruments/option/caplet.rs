@@ -16,8 +16,7 @@
 //! Reference: D. Brigo & F. Mercurio, "Interest Rate Models — Theory and
 //! Practice", Springer, 2nd ed. (2006), §1.5.
 
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use super::types::InterestRateOptionKind;
 use super::types::VolatilityQuoteKind;
@@ -39,8 +38,7 @@ pub fn black_forward_caplet<T: FloatExt>(forward: T, strike: T, tau: T, sigma: T
   let sqrt_t = t.sqrt();
   let d1 = ((f / k).ln() + 0.5 * v * v * t) / (v * sqrt_t);
   let d2 = d1 - v * sqrt_t;
-  let n = Normal::default();
-  T::from_f64_fast(f * n.cdf(d1) - k * n.cdf(d2))
+  T::from_f64_fast(f * norm_cdf(d1) - k * norm_cdf(d2))
 }
 
 /// Black-76 floorlet undiscounted forward value $K\Phi(-d_2)-F\Phi(-d_1)$.
@@ -55,8 +53,7 @@ pub fn black_forward_floorlet<T: FloatExt>(forward: T, strike: T, tau: T, sigma:
   let sqrt_t = t.sqrt();
   let d1 = ((f / k).ln() + 0.5 * v * v * t) / (v * sqrt_t);
   let d2 = d1 - v * sqrt_t;
-  let n = Normal::default();
-  T::from_f64_fast(k * n.cdf(-d2) - f * n.cdf(-d1))
+  T::from_f64_fast(k * norm_cdf(-d2) - f * norm_cdf(-d1))
 }
 
 /// Bachelier caplet undiscounted forward value.
@@ -70,9 +67,8 @@ pub fn bachelier_forward_caplet<T: FloatExt>(forward: T, strike: T, tau: T, sigm
   }
   let sqrt_vt = v * t.sqrt();
   let d = (f - k) / sqrt_vt;
-  let n = Normal::default();
   let pdf = (-0.5 * d * d).exp() / (2.0 * std::f64::consts::PI).sqrt();
-  T::from_f64_fast((f - k) * n.cdf(d) + sqrt_vt * pdf)
+  T::from_f64_fast((f - k) * norm_cdf(d) + sqrt_vt * pdf)
 }
 
 /// Bachelier floorlet undiscounted forward value.
@@ -86,9 +82,8 @@ pub fn bachelier_forward_floorlet<T: FloatExt>(forward: T, strike: T, tau: T, si
   }
   let sqrt_vt = v * t.sqrt();
   let d = (f - k) / sqrt_vt;
-  let n = Normal::default();
   let pdf = (-0.5 * d * d).exp() / (2.0 * std::f64::consts::PI).sqrt();
-  T::from_f64_fast((k - f) * n.cdf(-d) + sqrt_vt * pdf)
+  T::from_f64_fast((k - f) * norm_cdf(-d) + sqrt_vt * pdf)
 }
 
 /// Caplet or floorlet price discounted to the valuation date.

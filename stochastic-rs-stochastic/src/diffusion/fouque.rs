@@ -87,7 +87,7 @@ impl<T: FloatExt> FouqueOU2D<T, Deterministic> {
       x0,
       y0,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -96,7 +96,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FouqueOU2D<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> [Array1<T>; 2] {
-    let mut seed = self.seed;
     let mut x = Array1::<T>::zeros(self.n);
     let mut y = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -118,12 +117,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FouqueOU2D<T, S> {
     let nx = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
       T::zero(),
       sqrt_dt,
-      &mut seed,
+      &self.seed,
     );
     let ny = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
       T::zero(),
       sqrt_dt,
-      &mut seed,
+      &self.seed,
     );
     nx.fill_slice_fast(&mut gn_x);
     ny.fill_slice_fast(&mut gn_y);

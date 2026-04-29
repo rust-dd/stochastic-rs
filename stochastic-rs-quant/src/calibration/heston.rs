@@ -201,8 +201,7 @@ impl From<DVector<f64>> for HestonParams {
 ///
 /// Wraps the calibrated parameters together with loss / convergence
 /// diagnostics so [`HestonCalibrator`] satisfies the [`Calibrator`](crate::traits::Calibrator)
-/// trait. The legacy `HestonCalibrator::calibrate(&self) -> HestonParams`
-/// API stays available for back-compat.
+/// trait.
 #[derive(Clone, Debug)]
 pub struct HestonCalibrationResult {
   pub params: HestonParams,
@@ -224,11 +223,15 @@ impl crate::traits::ToModel for HestonCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for HestonCalibrationResult {
+  type Params = HestonParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
   fn converged(&self) -> bool {
     self.converged
+  }
+  fn params(&self) -> Self::Params {
+    self.params.clone()
   }
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
@@ -237,13 +240,16 @@ impl crate::traits::CalibrationResult for HestonCalibrationResult {
 
 impl crate::traits::Calibrator for HestonCalibrator {
   type InitialGuess = HestonParams;
+  type Params = HestonParams;
   type Output = HestonCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.set_initial_guess(p);
     }
-    this.calibrate_with_result()
+    Ok(this.solve())
   }
 }
 
@@ -406,16 +412,7 @@ impl HestonCalibrator {
 }
 
 impl HestonCalibrator {
-  pub fn calibrate(&self) -> HestonParams {
-    self.calibrate_with_result().params
-  }
-
-  /// Run calibration and return a full result struct (params + loss + converged).
-  ///
-  /// Used by the [`Calibrator`](crate::traits::Calibrator) trait impl to provide
-  /// uniform access to convergence and loss-metric diagnostics across the
-  /// calibrator family.
-  pub fn calibrate_with_result(&self) -> HestonCalibrationResult {
+  fn solve(&self) -> HestonCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
@@ -460,11 +457,6 @@ impl HestonCalibrator {
 
   pub fn set_nmle_cekf_config(&mut self, cfg: HestonNMLECEKFConfig) {
     self.nmle_cekf_config = Some(cfg);
-  }
-
-  pub fn calibrate_cui(&mut self) -> HestonParams {
-    self.jacobian_method = HestonJacobianMethod::CuiAnalytic;
-    self.calibrate()
   }
 
   /// Retrieve the collected calibration history.
@@ -1047,6 +1039,7 @@ mod tests {
   use stochastic_rs_stochastic::volatility::heston::Heston as HestonProcess;
 
   use super::*;
+  use crate::traits::Calibrator;
   use crate::traits::ProcessExt;
 
   // Analytical reference: Gil-Pelaez Heston (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7)
@@ -1171,7 +1164,7 @@ mod tests {
       true,
     );
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 
   #[test]
@@ -1249,7 +1242,7 @@ mod tests {
       true,
     );
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 
   #[test]
@@ -1326,7 +1319,7 @@ mod tests {
     calibrator.set_mle_seed_method(HestonMleSeedMethod::Pmle);
     calibrator.set_mle_delta(Some(t / (n - 1) as f64));
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 
   #[test]
@@ -1410,7 +1403,7 @@ mod tests {
       ..HestonNMLECEKFConfig::default()
     });
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
   }
 
   #[test]
@@ -1454,7 +1447,7 @@ mod tests {
       true,
     );
 
-    calibrator.calibrate();
+    calibrator.calibrate(None).unwrap();
     let history = calibrator.history();
     println!("{:?}", history);
   }

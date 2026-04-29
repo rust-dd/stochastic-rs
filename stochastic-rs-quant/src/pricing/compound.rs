@@ -12,8 +12,7 @@
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.3
 //!
 use owens_t::biv_norm;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 
@@ -78,7 +77,6 @@ impl CompoundPricer {
     let v2 = v * v;
     let b = self.r - self.q;
     let s_star = self.critical_inner_price();
-    let n = Normal::new(0.0, 1.0).unwrap();
     let cdf2 = |x: f64, y: f64, rho: f64| -> f64 { biv_norm(-x, -y, rho) };
 
     let z1 = ((self.s / s_star).ln() + (b + 0.5 * v2) * self.t1) / (v * self.t1.sqrt());
@@ -95,20 +93,20 @@ impl CompoundPricer {
       CompoundType::CallOnCall => {
         self.s * coc_t2 * cdf2(z1, y1, rho)
           - self.k2 * disc_t2 * cdf2(z2, y2, rho)
-          - self.k1 * disc_t1 * n.cdf(z2)
+          - self.k1 * disc_t1 * norm_cdf(z2)
       }
       CompoundType::PutOnCall => {
         self.k2 * disc_t2 * cdf2(-z2, y2, -rho) - self.s * coc_t2 * cdf2(-z1, y1, -rho)
-          + self.k1 * disc_t1 * n.cdf(-z2)
+          + self.k1 * disc_t1 * norm_cdf(-z2)
       }
       CompoundType::CallOnPut => {
         self.k2 * disc_t2 * cdf2(-z2, -y2, rho)
           - self.s * coc_t2 * cdf2(-z1, -y1, rho)
-          - self.k1 * disc_t1 * n.cdf(-z2)
+          - self.k1 * disc_t1 * norm_cdf(-z2)
       }
       CompoundType::PutOnPut => {
         self.s * coc_t2 * cdf2(z1, -y1, -rho) - self.k2 * disc_t2 * cdf2(z2, -y2, -rho)
-          + self.k1 * disc_t1 * n.cdf(z2)
+          + self.k1 * disc_t1 * norm_cdf(z2)
       }
     }
   }
@@ -146,7 +144,6 @@ impl CompoundPricer {
   }
 
   fn inner_price(&self, s: f64) -> f64 {
-    let n = Normal::new(0.0, 1.0).unwrap();
     let v = self.sigma;
     let v2 = v * v;
     let b = self.r - self.q;
@@ -155,10 +152,12 @@ impl CompoundPricer {
     let d2 = d1 - v * tau.sqrt();
     match self.compound_type.inner() {
       OptionType::Call => {
-        s * ((b - self.r) * tau).exp() * n.cdf(d1) - self.k2 * (-self.r * tau).exp() * n.cdf(d2)
+        s * ((b - self.r) * tau).exp() * norm_cdf(d1)
+          - self.k2 * (-self.r * tau).exp() * norm_cdf(d2)
       }
       OptionType::Put => {
-        self.k2 * (-self.r * tau).exp() * n.cdf(-d2) - s * ((b - self.r) * tau).exp() * n.cdf(-d1)
+        self.k2 * (-self.r * tau).exp() * norm_cdf(-d2)
+          - s * ((b - self.r) * tau).exp() * norm_cdf(-d1)
       }
     }
   }

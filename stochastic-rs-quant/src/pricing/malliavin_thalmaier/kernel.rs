@@ -3,7 +3,7 @@
 //! See Kohatsu-Higa & Yasuda (2008), §2.2 and §3 for the regularisation.
 
 use ndarray::Array2;
-use statrs::function::gamma::gamma;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::traits::FloatExt;
 

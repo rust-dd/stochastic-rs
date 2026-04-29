@@ -12,8 +12,8 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::ndtri;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use super::CopulaType;
 use crate::correlation::kendall_tau;
@@ -82,13 +82,12 @@ impl TreeMultivariate {
   }
 
   fn transform_to_normal(&self, u: &Array2<f64>) -> Array2<f64> {
-    let std_norm = Normal::new(0.0, 1.0).unwrap();
     let eps = 1e-12;
     let mut z = u.clone();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = (*val).max(eps).min(1.0 - eps);
-        *val = std_norm.inverse_cdf(clamped);
+        *val = ndtri(clamped);
       }
     }
     z
@@ -191,17 +190,16 @@ impl MultivariateExt for TreeMultivariate {
     let d = self.dim;
     // standard normals
     let mut z = Array2::<f64>::zeros((n, d));
-    let std_norm = Normal::new(0.0, 1.0).unwrap();
     for i in 0..n {
       for j in 0..d {
-        z[[i, j]] = std_norm.inverse_cdf(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
+        z[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
       }
     }
     let z = z.dot(&l.t());
     let mut u = z.clone();
     for mut row in u.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
-        *val = std_norm.cdf(*val);
+        *val = norm_cdf(*val);
       }
     }
     Ok(u)
@@ -280,11 +278,10 @@ impl MultivariateExt for TreeMultivariate {
     let l = self.chol_lower.as_ref().unwrap();
     let m = 4000usize;
     let g = {
-      let std_norm = Normal::new(0.0, 1.0).unwrap();
       let mut g = Array2::<f64>::zeros((m, self.dim));
       for i in 0..m {
         for j in 0..self.dim {
-          g[[i, j]] = std_norm.inverse_cdf(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
+          g[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
         }
       }
       g

@@ -29,8 +29,8 @@ use std::sync::Arc;
 
 use nalgebra::DMatrix;
 use rayon::prelude::*;
-use statrs::function::gamma::gamma;
-use statrs::function::gamma::gamma_li;
+use stochastic_rs_distributions::special::gamma;
+use stochastic_rs_distributions::special::gamma_li;
 
 const H_MIN: f64 = 1e-3;
 const H_MAX: f64 = 0.499;
@@ -391,6 +391,7 @@ impl crate::traits::ToModel for RBergomiCalibrationResult {
 }
 
 impl crate::traits::CalibrationResult for RBergomiCalibrationResult {
+  type Params = RBergomiParams;
   fn rmse(&self) -> f64 {
     // `final_loss` is a Wasserstein-1 distance averaged over maturities;
     // we expose its square root so the magnitude is comparable to per-quote
@@ -400,17 +401,23 @@ impl crate::traits::CalibrationResult for RBergomiCalibrationResult {
   fn converged(&self) -> bool {
     self.converged
   }
+  fn params(&self) -> Self::Params {
+    self.calibrated_params.clone()
+  }
 }
 
 impl crate::traits::Calibrator for RBergomiCalibrator {
   type InitialGuess = RBergomiParams;
+  type Params = RBergomiParams;
   type Output = RBergomiCalibrationResult;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Self::Output {
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.params = p;
     }
-    RBergomiCalibrator::calibrate(&mut this)
+    Ok(this.solve())
   }
 }
 
@@ -540,7 +547,7 @@ impl RBergomiCalibrator {
     grad
   }
 
-  pub fn calibrate(&mut self) -> RBergomiCalibrationResult {
+  fn solve(&mut self) -> RBergomiCalibrationResult {
     self.history.borrow_mut().clear();
 
     self.params.project_in_place();
@@ -851,7 +858,7 @@ pub fn simulate_rbergomi_terminal_samples(
     .map(|path_idx| {
       let path_seed = seed
         .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1)));
-      let mut seed_ext = crate::simd_rng::Deterministic(path_seed);
+      let mut seed_ext = crate::simd_rng::Deterministic::new(path_seed);
       let normal =
         crate::distributions::normal::SimdNormal::<f64>::from_seed_source(0.0, 1.0, &mut seed_ext);
       let dim = engine.dim();
@@ -1030,6 +1037,7 @@ fn precompute_second_moments(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
   #[test]
   fn test_empirical_wasserstein_1_matches_simple_case() {
@@ -1089,7 +1097,7 @@ mod tests {
       improvement_tol: 1e-5,
     };
 
-    let mut calibrator = RBergomiCalibrator::new(
+    let calibrator = RBergomiCalibrator::new(
       100.0,
       0.01,
       init_params.clone(),
@@ -1098,7 +1106,7 @@ mod tests {
       true,
     );
 
-    let result = calibrator.calibrate();
+    let result = calibrator.calibrate(None).unwrap();
 
     println!(
       "rBergomi calibration: initial_loss={:.6}, final_loss={:.6}, iterations={}",

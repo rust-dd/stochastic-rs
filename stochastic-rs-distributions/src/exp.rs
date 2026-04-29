@@ -119,17 +119,17 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   /// Uses an automatically generated random seed.
   #[inline]
   pub fn new(lambda: T) -> Self {
-    Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(lambda, &crate::simd_rng::Unseeded)
   }
 
   /// Creates an exponential distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(lambda: T, seed: u64) -> Self {
-    Self::from_seed_source(lambda, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(lambda, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates an exponential distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(lambda: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     let _ = exp_zig_tables();
     assert!(lambda > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -303,6 +303,76 @@ impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdExpZig<T, N> {
   }
 }
 
+impl<T: SimdFloatExt, const N: usize> crate::traits::DistributionExt for SimdExpZig<T, N> {
+  fn pdf(&self, x: f64) -> f64 {
+    let lambda = self.lambda.to_f64().unwrap();
+    if x < 0.0 {
+      0.0
+    } else {
+      lambda * (-lambda * x).exp()
+    }
+  }
+
+  fn cdf(&self, x: f64) -> f64 {
+    let lambda = self.lambda.to_f64().unwrap();
+    if x < 0.0 {
+      0.0
+    } else {
+      1.0 - (-lambda * x).exp()
+    }
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    let lambda = self.lambda.to_f64().unwrap();
+    -(1.0 - p).ln() / lambda
+  }
+
+  fn mean(&self) -> f64 {
+    1.0 / self.lambda.to_f64().unwrap()
+  }
+
+  fn median(&self) -> f64 {
+    std::f64::consts::LN_2 / self.lambda.to_f64().unwrap()
+  }
+
+  fn mode(&self) -> f64 {
+    0.0
+  }
+
+  fn variance(&self) -> f64 {
+    let l = self.lambda.to_f64().unwrap();
+    1.0 / (l * l)
+  }
+
+  fn skewness(&self) -> f64 {
+    2.0
+  }
+
+  fn kurtosis(&self) -> f64 {
+    6.0
+  }
+
+  fn entropy(&self) -> f64 {
+    1.0 - self.lambda.to_f64().unwrap().ln()
+  }
+
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    // φ(t) = λ / (λ - it)
+    let lambda = self.lambda.to_f64().unwrap();
+    let denom = num_complex::Complex64::new(lambda, -t);
+    num_complex::Complex64::new(lambda, 0.0) / denom
+  }
+
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    let lambda = self.lambda.to_f64().unwrap();
+    if t < lambda {
+      lambda / (lambda - t)
+    } else {
+      f64::INFINITY
+    }
+  }
+}
+
 /// Convenience wrapper around `SimdExpZig` with a default buffer size.
 /// Provides the same API with less generic noise.
 pub struct SimdExp<T: SimdFloatExt> {
@@ -313,17 +383,17 @@ impl<T: SimdFloatExt> SimdExp<T> {
   /// Creates a new exponential distribution with rate `lambda`.
   #[inline]
   pub fn new(lambda: T) -> Self {
-    Self::from_seed_source(lambda, &mut crate::simd_rng::Unseeded)
+    Self::from_seed_source(lambda, &crate::simd_rng::Unseeded)
   }
 
   /// Creates an exponential distribution with a deterministic seed.
   #[inline]
   pub fn with_seed(lambda: T, seed: u64) -> Self {
-    Self::from_seed_source(lambda, &mut crate::simd_rng::Deterministic(seed))
+    Self::from_seed_source(lambda, &crate::simd_rng::Deterministic::new(seed))
   }
 
   /// Creates an exponential distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(lambda: T, seed: &mut impl crate::simd_rng::SeedExt) -> Self {
+  pub fn from_seed_source(lambda: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
     Self {
       inner: SimdExpZig::from_seed_source(lambda, seed),
     }
@@ -352,6 +422,45 @@ impl<T: SimdFloatExt> Distribution<T> for SimdExp<T> {
   #[inline(always)]
   fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
     self.inner.sample(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdExp<T> {
+  fn pdf(&self, x: f64) -> f64 {
+    self.inner.pdf(x)
+  }
+  fn cdf(&self, x: f64) -> f64 {
+    self.inner.cdf(x)
+  }
+  fn inv_cdf(&self, p: f64) -> f64 {
+    self.inner.inv_cdf(p)
+  }
+  fn mean(&self) -> f64 {
+    self.inner.mean()
+  }
+  fn median(&self) -> f64 {
+    self.inner.median()
+  }
+  fn mode(&self) -> f64 {
+    self.inner.mode()
+  }
+  fn variance(&self) -> f64 {
+    self.inner.variance()
+  }
+  fn skewness(&self) -> f64 {
+    self.inner.skewness()
+  }
+  fn kurtosis(&self) -> f64 {
+    self.inner.kurtosis()
+  }
+  fn entropy(&self) -> f64 {
+    self.inner.entropy()
+  }
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+    self.inner.characteristic_function(t)
+  }
+  fn moment_generating_function(&self, t: f64) -> f64 {
+    self.inner.moment_generating_function(t)
   }
 }
 

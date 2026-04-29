@@ -53,16 +53,26 @@ pub struct Xoshiro256PP4 {
   s3: u64x4,
 }
 
-/// SplitMix64 bijective mixer. Advances `state` by a golden-ratio constant
-/// and applies two rounds of xor-shift-multiply to produce a well-distributed
-/// output. Used both for initial seeding and for [`derive_seed`].
+/// SplitMix64 bijective mixer (post-increment stage).
+///
+/// Two rounds of xor-shift-multiply applied to a pre-incremented state.
+/// Use this together with an external increment by `0x9e37_79b9_7f4a_7c15`
+/// (golden-ratio odd constant) to mirror the canonical SplitMix64 stream.
 #[inline(always)]
-fn splitmix64_next(state: &mut u64) -> u64 {
-  *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
-  let mut z = *state;
+fn splitmix64_mix(state: u64) -> u64 {
+  let mut z = state;
   z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
   z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
   z ^ (z >> 31)
+}
+
+/// SplitMix64 bijective mixer. Advances `state` by a golden-ratio constant
+/// and applies the two-round mixer to produce a well-distributed output.
+/// Used both for initial seeding and for [`derive_seed`].
+#[inline(always)]
+fn splitmix64_next(state: &mut u64) -> u64 {
+  *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+  splitmix64_mix(*state)
 }
 
 impl Xoshiro256PP4 {
@@ -205,18 +215,24 @@ pub fn rng() -> SimdRng {
 /// - [`Unseeded`] — fresh random RNG each time (default, zero cost)
 /// - [`Deterministic`] — reproducible streams from a fixed seed
 ///
-/// Each call to [`rng()`](SeedExt::rng) produces an independent [`SimdRng`].
-/// [`derive()`](SeedExt::derive) creates a child seed for propagation
-/// to sub-components (distributions, noise modules).
+/// Each call to [`rng()`](SeedExt::rng) produces an independent [`SimdRng`]
+/// **and advances** the seed's internal state, so successive calls produce
+/// different streams. [`derive()`](SeedExt::derive) likewise advances state
+/// and returns a child seed for propagation to sub-components.
+///
+/// State is stored with interior mutability (atomic for [`Deterministic`])
+/// so methods take `&self` and remain callable from `&self` Process contexts
+/// — e.g. `ProcessExt::sample(&self)` can advance the seed without an
+/// outer `&mut`.
 ///
 /// All branching is resolved at compile time via monomorphisation.
-pub trait SeedExt: Copy + Clone + Send + Sync + 'static {
+pub trait SeedExt: Clone + Send + Sync + 'static {
   /// Create an independent [`SimdRng`] and advance internal state.
-  fn rng(&mut self) -> SimdRng;
+  fn rng(&self) -> SimdRng;
 
-  /// Derive a child seed for sub-component propagation.
+  /// Derive a child seed for sub-component propagation, advancing internal state.
   #[doc(hidden)]
-  fn derive(&mut self) -> Self;
+  fn derive(&self) -> Self;
 }
 
 /// No seed — each RNG is independently random. Zero overhead.
@@ -224,30 +240,67 @@ pub trait SeedExt: Copy + Clone + Send + Sync + 'static {
 pub struct Unseeded;
 
 /// Deterministic seed — reproducible output from a fixed `u64`.
-#[derive(Copy, Clone, Debug)]
-pub struct Deterministic(pub u64);
+///
+/// State is stored in an [`AtomicU64`] so `derive`/`rng` calls advance
+/// state through `&self`. Cloning snapshots the current state.
+#[derive(Debug)]
+pub struct Deterministic {
+  state: AtomicU64,
+}
+
+impl Deterministic {
+  /// Construct from a raw seed value.
+  #[inline]
+  pub const fn new(seed: u64) -> Self {
+    Self {
+      state: AtomicU64::new(seed),
+    }
+  }
+
+  /// Atomically advance the splitmix state and return the next mixed output.
+  #[inline(always)]
+  fn next_u64(&self) -> u64 {
+    let new_state = self
+      .state
+      .fetch_add(0x9e37_79b9_7f4a_7c15, Ordering::Relaxed)
+      .wrapping_add(0x9e37_79b9_7f4a_7c15);
+    splitmix64_mix(new_state)
+  }
+
+  /// Snapshot the current internal state (primarily for debug / diagnostics).
+  #[inline]
+  pub fn current(&self) -> u64 {
+    self.state.load(Ordering::Relaxed)
+  }
+}
+
+impl Clone for Deterministic {
+  fn clone(&self) -> Self {
+    Self::new(self.current())
+  }
+}
 
 impl SeedExt for Unseeded {
   #[inline(always)]
-  fn rng(&mut self) -> SimdRng {
+  fn rng(&self) -> SimdRng {
     SimdRng::new()
   }
 
   #[inline(always)]
-  fn derive(&mut self) -> Self {
+  fn derive(&self) -> Self {
     Unseeded
   }
 }
 
 impl SeedExt for Deterministic {
   #[inline(always)]
-  fn rng(&mut self) -> SimdRng {
-    SimdRng::from_seed(splitmix64_next(&mut self.0))
+  fn rng(&self) -> SimdRng {
+    SimdRng::from_seed(self.next_u64())
   }
 
   #[inline(always)]
-  fn derive(&mut self) -> Self {
-    Deterministic(splitmix64_next(&mut self.0))
+  fn derive(&self) -> Self {
+    Deterministic::new(self.next_u64())
   }
 }
 

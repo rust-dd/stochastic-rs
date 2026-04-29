@@ -15,8 +15,7 @@
 //! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
 //! Springer 2nd ed. (2006), §3.3.
 
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use super::types::SwaptionDirection;
 use crate::curves::DiscountCurve;
@@ -125,7 +124,6 @@ pub fn price_jamshidian_hull_white<T: FloatExt>(
   }
 
   let p0 = curve.discount_factor(t0);
-  let normal = Normal::default();
 
   let mut total = T::zero();
   for i in 0..n {
@@ -158,11 +156,11 @@ pub fn price_jamshidian_hull_white<T: FloatExt>(
       let pti = p_ti.to_f64().unwrap_or(0.0);
       match direction {
         SwaptionDirection::Payer => {
-          let zbp = xp0 * normal.cdf(-h + sp) - pti * normal.cdf(-h);
+          let zbp = xp0 * norm_cdf(-h + sp) - pti * norm_cdf(-h);
           cashflows[i] * T::from_f64_fast(zbp)
         }
         SwaptionDirection::Receiver => {
-          let zbc = pti * normal.cdf(h) - xp0 * normal.cdf(h - sp);
+          let zbc = pti * norm_cdf(h) - xp0 * norm_cdf(h - sp);
           cashflows[i] * T::from_f64_fast(zbc)
         }
       }

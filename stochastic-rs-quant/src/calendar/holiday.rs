@@ -4,8 +4,8 @@
 //! (ECB), Tokyo (TSE). Arbitrary combinations are supported via
 //! [`Calendar::joint`].
 //!
-//! Reference: QuantLib — calendar implementations;
-//! ECB TARGET2 closing days; JPX business-day calendar.
+//! Reference: ECB TARGET2 closing days; JPX business-day calendar;
+//! exchange-published market-holiday tables.
 
 use std::collections::BTreeSet;
 

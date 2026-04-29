@@ -140,7 +140,7 @@ impl<T: FloatExt> HestonLog<T, Deterministic> {
       v0,
       t,
       use_sym,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
     }
   }
 }
@@ -161,7 +161,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonLog<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
     if self.n == 0 {
@@ -183,8 +182,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonLog<T, S> {
     let mut dws = vec![T::zero(); n_increments];
     let mut z = vec![T::zero(); n_increments];
     let mut dwv = vec![T::zero(); n_increments];
-    let n1 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
-    let n2 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &mut seed);
+    let n1 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+    let n2 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
     n1.fill_slice_fast(&mut dws);
     n2.fill_slice_fast(&mut z);
     let corr_scale = (T::one() - self.rho * self.rho).sqrt();

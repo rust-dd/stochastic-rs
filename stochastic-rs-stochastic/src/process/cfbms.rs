@@ -65,7 +65,7 @@ impl<T: FloatExt> Cfbms<T, Deterministic> {
       rho,
       n,
       t,
-      seed: Deterministic(seed),
+      seed: Deterministic::new(seed),
       cfgns: Cfgns::new(hurst, rho, n - 1, t),
     }
   }
@@ -75,8 +75,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfbms<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
-    let mut seed = self.seed;
-    let [fgn1, fgn2] = self.cfgns.sample_impl(seed.derive());
+    let [fgn1, fgn2] = self.cfgns.sample_impl(&self.seed.derive());
 
     let mut fbm1 = Array1::<T>::zeros(self.n);
     let mut fbm2 = Array1::<T>::zeros(self.n);
