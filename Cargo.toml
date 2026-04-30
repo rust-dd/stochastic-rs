@@ -326,9 +326,23 @@ jemalloc = ["dep:tikv-jemallocator"]
 # build is consistent with the cdylib build. The actual Python module
 # (`stochastic_rs`) is produced by `cargo build -p stochastic-rs-py` or
 # via `maturin develop` from the `stochastic-rs-py` directory.
-python = [ "dep:pyo3", "dep:numpy", "stochastic-rs-distributions/python", "stochastic-rs-stochastic/python", ]
+python = [
+    "dep:pyo3",
+    "dep:numpy",
+    "stochastic-rs-distributions/python",
+    "stochastic-rs-stochastic/python",
+    "stochastic-rs-copulas/python",
+    "stochastic-rs-stats/python",
+    "stochastic-rs-quant/python",
+]
 mimalloc = ["dep:mimalloc"]
-yahoo = ["dep:time", "dep:yahoo_finance_api", "dep:polars", "dep:tokio-test"]
+yahoo = [
+    "dep:time",
+    "dep:yahoo_finance_api",
+    "dep:polars",
+    "dep:tokio-test",
+    "stochastic-rs-quant/yahoo",
+]
 hotpath = ["dep:hotpath", "hotpath/hotpath"]
 hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
 

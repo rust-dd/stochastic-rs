@@ -12,7 +12,11 @@ doctest = false
 [features]
 default = []
 openblas = ["dep:ndarray-linalg", "dep:openblas-src"]
-python = ["dep:pyo3"]
+python = [
+    "dep:pyo3",
+    "stochastic-rs-core/python",
+    "stochastic-rs-distributions/python",
+]
 
 [dependencies]
 stochastic-rs-core = { workspace = true }
