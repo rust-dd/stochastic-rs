@@ -35,7 +35,7 @@ A high-performance Rust library for simulating stochastic processes, with first-
 
 ```toml
 [dependencies]
-stochastic-rs = "2.0.0-beta.3"
+stochastic-rs = "2.0.0-rc.0"
 ```
 
 ```rust
@@ -51,13 +51,13 @@ times and dependency surface minimal.
 
 ```toml
 [dependencies]
-stochastic-rs-distributions = "2.0.0-beta.3"  # SIMD distribution sampling
-stochastic-rs-stochastic    = "2.0.0-beta.3"  # 140+ process types
-stochastic-rs-copulas       = "2.0.0-beta.3"  # bivariate / multivariate copulas
-stochastic-rs-stats         = "2.0.0-beta.3"  # estimators
-stochastic-rs-quant         = "2.0.0-beta.3"  # pricing / calibration / vol surface
-stochastic-rs-ai            = "2.0.0-beta.3"  # neural surrogates (candle)
-stochastic-rs-viz           = "2.0.0-beta.3"  # plotly grid plotter
+stochastic-rs-distributions = "2.0.0-rc.0"  # SIMD distribution sampling
+stochastic-rs-stochastic    = "2.0.0-rc.0"  # 140+ process types
+stochastic-rs-copulas       = "2.0.0-rc.0"  # bivariate / multivariate copulas
+stochastic-rs-stats         = "2.0.0-rc.0"  # estimators
+stochastic-rs-quant         = "2.0.0-rc.0"  # pricing / calibration / vol surface
+stochastic-rs-ai            = "2.0.0-rc.0"  # neural surrogates (candle)
+stochastic-rs-viz           = "2.0.0-rc.0"  # plotly grid plotter
 ```
 
 Topology:
