@@ -40,6 +40,9 @@ rayon = "1.11.0"
 wide = "1.3.0"
 
 # Statistics / fitting / optimisation
+# `statrs` is dev-deps only — used for cross-validating our closed-form
+# `DistributionExt` impls. Production code never delegates to it.
+statrs = "0.18.0"
 kendalls = "1.0.0"
 linreg = "0.2.0"
 levenberg-marquardt = "0.14.0"

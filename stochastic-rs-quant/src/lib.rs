@@ -5,6 +5,12 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
+// Doc comments use KaTeX math blocks ($$ ... $$) that clippy mis-detects as
+// list items. The actual rustdoc rendering (with `docs/katex-header.html`)
+// is correct.
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(clippy::needless_range_loop)]
 
 #[macro_use]
 mod macros;

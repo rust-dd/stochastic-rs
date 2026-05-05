@@ -29,6 +29,9 @@ pub trait Plottable<T: FloatExt> {
   fn component_name(&self, idx: usize) -> String;
   fn component(&self, idx: usize) -> Vec<f64>;
   fn len(&self) -> usize;
+  fn is_empty(&self) -> bool {
+    self.len() == 0
+  }
 }
 
 impl<T: FloatExt> Plottable<T> for Array1<T> {

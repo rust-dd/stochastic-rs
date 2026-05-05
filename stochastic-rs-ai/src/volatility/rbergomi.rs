@@ -59,6 +59,13 @@ impl RBergomiNn {
     self.inner.train(params, surfaces, config)
   }
 
+  /// Predict an implied-volatility surface for the given parameter vector.
+  ///
+  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`] in row-major order
+  /// (maturity-major). Pass the result to
+  /// `stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_flat_iv_grid`
+  /// with the trained-on strike / maturity / forward grid to plug it into
+  /// the rest of the pricing/calibration toolchain.
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }

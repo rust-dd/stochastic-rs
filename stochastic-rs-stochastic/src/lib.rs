@@ -5,6 +5,9 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
+// Numerical-loop indices are kept as-is; iterator chains hurt readability
+// in matrix/path index code where i, j, k carry mathematical meaning.
+#![allow(clippy::needless_range_loop)]
 
 #[macro_use]
 mod macros;

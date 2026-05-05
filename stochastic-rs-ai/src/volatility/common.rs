@@ -682,8 +682,8 @@ pub fn write_surface_fit_plot_html<P: AsRef<Path>>(
   }
 
   let layout = Layout::new()
-    .height((rows * 360) as usize)
-    .width((cols * 520) as usize)
+    .height(rows * 360)
+    .width(cols * 520)
     .title(Title::from(title))
     .grid(
       LayoutGrid::new()

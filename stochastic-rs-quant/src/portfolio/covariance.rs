@@ -39,7 +39,7 @@ pub fn portfolio_variance<T: FloatExt>(weights: &[T], cov: ArrayView2<T>) -> T {
   let mut acc = T::zero();
   for i in 0..p {
     for j in 0..p {
-      acc = acc + weights[i] * weights[j] * cov[[i, j]];
+      acc += weights[i] * weights[j] * cov[[i, j]];
     }
   }
   acc

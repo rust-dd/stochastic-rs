@@ -5,6 +5,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
+#![allow(clippy::needless_range_loop)]
 
 #[macro_use]
 mod macros;

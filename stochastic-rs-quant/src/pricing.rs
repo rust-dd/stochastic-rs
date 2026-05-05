@@ -104,6 +104,7 @@ pub use slv::calibrate_from_dupire;
 pub use slv::calibrate_leverage;
 pub use spread::MargrabePricer;
 pub use spread::McSpreadPricer;
+pub use execution_cost::execution_adjusted_price;
 pub use variance_swap::VarianceSwapPricer;
 pub use variance_swap::VolatilitySwapPricer;
 pub use variance_swap::replication_weights;

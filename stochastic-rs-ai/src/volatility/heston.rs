@@ -59,6 +59,14 @@ impl HestonNn {
     self.inner.train(params, surfaces, config)
   }
 
+  /// Predict an implied-volatility surface for the given parameter vector.
+  ///
+  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`] in row-major order
+  /// (maturity-major). To bridge into the rest of the library, feed the
+  /// result directly into
+  /// `stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_flat_iv_grid`
+  /// together with the strike / maturity / forward grid the model was
+  /// trained on.
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }

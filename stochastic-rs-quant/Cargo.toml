@@ -4,7 +4,11 @@ version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "Quantitative finance: pricing, calibration, vol surfaces, instruments."
+homepage = "https://github.com/dancixx/stochastic-rs"
+documentation = "https://docs.rs/stochastic-rs-quant"
 repository = "https://github.com/dancixx/stochastic-rs"
+keywords = ["quant", "finance", "pricing", "options", "calibration"]
+categories = ["finance", "mathematics", "simulation"]
 
 [lib]
 doctest = false

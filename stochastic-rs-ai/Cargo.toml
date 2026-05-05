@@ -4,7 +4,11 @@ version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "AI / neural surrogates for volatility models."
+homepage = "https://github.com/dancixx/stochastic-rs"
+documentation = "https://docs.rs/stochastic-rs-ai"
 repository = "https://github.com/dancixx/stochastic-rs"
+keywords = ["volatility", "neural-network", "finance", "quant", "surrogate"]
+categories = ["finance", "mathematics", "science"]
 exclude = ["src/volatility/*TrainSet.txt.gz", "**/*.gz"]
 
 [lib]

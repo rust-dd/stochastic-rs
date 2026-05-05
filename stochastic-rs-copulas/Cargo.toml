@@ -4,7 +4,11 @@ version = "2.0.0-beta.3"
 edition = "2024"
 license = "MIT"
 description = "Bivariate, multivariate, and empirical copulas."
+homepage = "https://github.com/dancixx/stochastic-rs"
+documentation = "https://docs.rs/stochastic-rs-copulas"
 repository = "https://github.com/dancixx/stochastic-rs"
+keywords = ["copula", "dependence", "statistics", "gaussian", "vine"]
+categories = ["mathematics", "simulation", "science"]
 
 [lib]
 doctest = false

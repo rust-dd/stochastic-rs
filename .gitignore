@@ -1,17 +1,46 @@
+# Rust build artifacts
 /target
 /Cargo.lock
 flamegraph.svg
-*.env
-venv
-CI.yml
-/test
+
+# Editor / IDE
 .idea/
 .zed
-
-*.py
-.venv/
-tests
 settings.local.json
-paper
-docs
-examples
+
+# Environment / secrets
+*.env
+CI.yml
+
+# Python (helper scripts + venvs are not part of the Rust project)
+*.py
+venv/
+.venv/
+
+# Personal scratch
+paper/
+/test
+
+# LaTeX intermediates (the docs/ directory holds .tex sources that build
+# locally; only the resulting markdown audits + the katex header live in git)
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Generated docs/ artefacts (data dumps, plotly HTML, compiled PDFs, .tex)
+docs/*.dat
+docs/*.html
+!docs/katex-header.html
+docs/*.tex
+docs/*.pdf
+
+# Python bytecode
+__pycache__/
+*.pyc
