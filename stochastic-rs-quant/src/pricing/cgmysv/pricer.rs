@@ -101,8 +101,17 @@ impl CgmysvPricer {
   /// Price a European option via Monte Carlo (Section 4.1).
   pub fn price_european(&self, k: f64, tau: f64, option_type: OptionType) -> McResult {
     let (s_paths, _) = self.generate_price_paths(tau);
-    let discount = (-self.r * tau).exp();
+    self.european_on_paths(&s_paths, k, tau, option_type)
+  }
 
+  fn european_on_paths(
+    &self,
+    s_paths: &Array2<f64>,
+    k: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> McResult {
+    let discount = (-self.r * tau).exp();
     let payoffs: Vec<f64> = (0..self.n_paths)
       .map(|i| {
         let s_t = s_paths[[i, self.n_steps]];
@@ -122,6 +131,17 @@ impl CgmysvPricer {
   /// following Rachev et al. (2011), Chapter 15.
   pub fn price_american(&self, k: f64, tau: f64, option_type: OptionType) -> McResult {
     let (s_paths, v_paths) = self.generate_price_paths(tau);
+    self.american_on_paths(&s_paths, &v_paths, k, tau, option_type)
+  }
+
+  fn american_on_paths(
+    &self,
+    s_paths: &Array2<f64>,
+    v_paths: &Array2<f64>,
+    k: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> McResult {
     let dt = tau / self.n_steps as f64;
 
     let payoff = |s: f64| match option_type {
@@ -399,13 +419,18 @@ mod tests {
   }
 
   /// American put ≥ European put (early exercise premium).
+  ///
+  /// Uses common random numbers: both prices computed on the same path set
+  /// so the comparison is dominated by the LSM exercise policy quality
+  /// rather than cross-method MC noise.
   #[test]
   fn american_put_geq_european() {
     let pricer = paper_pricer(3000);
     let tau = 28.0 / 365.0;
-    let eu = pricer.price_european(2500.0, tau, OptionType::Put);
-    let am = pricer.price_american(2500.0, tau, OptionType::Put);
-    println!("American vs European put (K=2500, T=28d, N=3000)");
+    let (s_paths, v_paths) = pricer.generate_price_paths(tau);
+    let eu = pricer.european_on_paths(&s_paths, 2500.0, tau, OptionType::Put);
+    let am = pricer.american_on_paths(&s_paths, &v_paths, 2500.0, tau, OptionType::Put);
+    println!("American vs European put (K=2500, T=28d, N=3000, common paths)");
     println!("  American: {am}");
     println!("  European: {eu}");
     assert!(
