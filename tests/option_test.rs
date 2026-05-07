@@ -515,6 +515,7 @@ fn cms_caplet_produces_finite_positive_price() {
 fn hw_calibration_recovers_self_consistent_params() {
   use stochastic_rs::quant::calibration::HullWhiteSwaptionCalibrator;
   use stochastic_rs::quant::calibration::SwaptionQuote;
+  use stochastic_rs::traits::Calibrator;
 
   let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
   let rates = array![0.03, 0.035, 0.038, 0.04, 0.042];
@@ -572,7 +573,7 @@ fn hw_calibration_recovers_self_consistent_params() {
     max_iters: 400,
     sd_tolerance: 1e-10,
   };
-  let result = calibrator.calibrate();
+  let result = calibrator.calibrate(None).unwrap();
   assert!(
     (result.mean_reversion - target_a).abs() < 0.02,
     "a recovery: got {}, target {target_a}",
@@ -594,9 +595,8 @@ fn implied_vol_solve(atm_forward_value: f64, forward: f64, _strike: f64, tau: f6
     let sqrt_t = tau.sqrt();
     let d1 = 0.5 * mid * sqrt_t;
     let d2 = -d1;
-    let n = statrs::distribution::Normal::default();
-    use statrs::distribution::ContinuousCDF;
-    let price = forward * (n.cdf(d1) - n.cdf(d2));
+    use stochastic_rs::distributions::special::norm_cdf;
+    let price = forward * (norm_cdf(d1) - norm_cdf(d2));
     if (price - target).abs() < 1e-12 {
       return mid;
     }
@@ -613,6 +613,7 @@ fn implied_vol_solve(atm_forward_value: f64, forward: f64, _strike: f64, tau: f6
 fn sabr_caplet_calibration_recovers_self_consistent_params() {
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;
   use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
+  use stochastic_rs::traits::Calibrator;
 
   let target_alpha = 0.035_f64;
   let target_beta = 0.5;
@@ -648,7 +649,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
     max_iters: 800,
     sd_tolerance: 1e-12,
   };
-  let res = cal.calibrate();
+  let res = cal.calibrate(None).unwrap();
   assert!(res.rmse < 1e-6, "RMSE too large: {}", res.rmse);
   assert!((res.alpha - target_alpha).abs() < 1e-3);
   assert!((res.nu - target_nu).abs() < 1e-2);

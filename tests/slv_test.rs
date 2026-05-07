@@ -191,5 +191,5 @@ fn slv_pricer_flat_vol_vs_bsm_sanity() {
 }
 
 fn normal_cdf(x: f64) -> f64 {
-  0.5 * (1.0 + statrs::function::erf::erf(x / std::f64::consts::SQRT_2))
+  stochastic_rs::distributions::special::norm_cdf(x)
 }

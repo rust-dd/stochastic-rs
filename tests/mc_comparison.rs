@@ -11,8 +11,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use statrs::distribution::ContinuousCDF;
-use statrs::distribution::Normal;
+use stochastic_rs::distributions::special::norm_cdf;
 use stochastic_rs::stochastic::mc;
 use stochastic_rs::stochastic::mc::halton::HaltonSeq;
 use stochastic_rs::stochastic::mc::lsm::Lsm;
@@ -22,18 +21,16 @@ use stochastic_rs::traits::FloatExt;
 
 /// Black-Scholes call price (analytical reference).
 fn bs_call(s: f64, k: f64, r: f64, sigma: f64, tau: f64) -> f64 {
-  let n = Normal::new(0.0, 1.0).unwrap();
   let d1 = ((s / k).ln() + (r + 0.5 * sigma * sigma) * tau) / (sigma * tau.sqrt());
   let d2 = d1 - sigma * tau.sqrt();
-  s * n.cdf(d1) - k * (-r * tau).exp() * n.cdf(d2)
+  s * norm_cdf(d1) - k * (-r * tau).exp() * norm_cdf(d2)
 }
 
 /// Black-Scholes put price (analytical reference).
 fn bs_put(s: f64, k: f64, r: f64, sigma: f64, tau: f64) -> f64 {
-  let n = Normal::new(0.0, 1.0).unwrap();
   let d1 = ((s / k).ln() + (r + 0.5 * sigma * sigma) * tau) / (sigma * tau.sqrt());
   let d2 = d1 - sigma * tau.sqrt();
-  k * (-r * tau).exp() * n.cdf(-d2) - s * n.cdf(-d1)
+  k * (-r * tau).exp() * norm_cdf(-d2) - s * norm_cdf(-d1)
 }
 
 /// Build a Gbm payoff closure: generate a Gbm terminal price from standard
@@ -234,7 +231,7 @@ fn stratified_vs_bs_call() {
 /// Instead we use f(x) = exp(-sum x_i²) whose integral has a closed form.
 /// For d = 1: ∫₀¹ exp(-x²) dx = √π/2 · erf(1) ≈ 0.74682.
 fn exp_neg_x_sq_integral_1d() -> f64 {
-  std::f64::consts::PI.sqrt() / 2.0 * statrs::function::erf::erf(1.0)
+  std::f64::consts::PI.sqrt() / 2.0 * stochastic_rs::distributions::special::erf(1.0)
 }
 
 /// Sobol QMC error decreases faster than MC error as N grows.

@@ -268,7 +268,7 @@ fn variance_comparison() {
     let var_c = c_end.iter().map(|v| (v - mean_c).powi(2)).sum::<f64>() / samples as f64;
     let var_r = r_end.iter().map(|v| (v - mean_r).powi(2)).sum::<f64>() / samples as f64;
     let theory_c = t.powf(2.0 * h);
-    let g = statrs::function::gamma::gamma(h + 0.5);
+    let g = stochastic_rs::distributions::special::gamma(h + 0.5);
     let theory_rl = t.powf(2.0 * h) / (2.0 * h * g * g);
     println!(
       "{:>6.2} {:>14.6} {:>14.6} {:>14.6} {:>14.6}",
