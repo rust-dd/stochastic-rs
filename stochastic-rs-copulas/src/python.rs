@@ -93,12 +93,17 @@ macro_rules! py_bivariate {
         Ok(out.into_pyarray(py))
       }
 
+      #[pyo3(signature = (n, seed=None))]
       fn sample<'py>(
         &mut self,
         py: Python<'py>,
         n: usize,
+        seed: Option<u64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
-        let arr: Array2<f64> = BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?;
+        let arr: Array2<f64> = match seed {
+          Some(s) => BivariateExt::sample_with_seed(&mut self.inner, n, s).map_err(err_to_py)?,
+          None => BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?,
+        };
         Ok(arr.into_pyarray(py))
       }
     }

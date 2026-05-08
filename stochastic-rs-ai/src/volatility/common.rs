@@ -387,6 +387,49 @@ impl StochVolNn {
     Ok(arr.row(0).to_vec())
   }
 
+  /// Build an [`ImpliedVolSurface`] by running the network on `params` and
+  /// reshaping the flat prediction into the standard `(N_T, N_K)` layout.
+  ///
+  /// The network's `output_dim` must equal `maturities.len() × strikes.len()`,
+  /// and the prediction must already be in the IV (sigma) domain — the
+  /// surrogates trained on Romano-Touzi data satisfy both.
+  ///
+  /// `forwards` carries the per-maturity forward used to compute log-moneyness
+  /// and total variance inside the surface struct.
+  ///
+  /// Available with the `quant` cargo feature.
+  #[cfg(feature = "quant")]
+  pub fn predict_implied_vol_surface(
+    &self,
+    params: &[f32],
+    strikes: Vec<f64>,
+    maturities: Vec<f64>,
+    forwards: Vec<f64>,
+  ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface> {
+    let n_k = strikes.len();
+    let n_t = maturities.len();
+    if forwards.len() != n_t {
+      bail!("forwards length must match maturities");
+    }
+    if self.spec.output_dim != n_k * n_t {
+      bail!(
+        "model output_dim {} does not match strikes×maturities = {} × {} = {}",
+        self.spec.output_dim,
+        n_k,
+        n_t,
+        n_k * n_t,
+      );
+    }
+    let pred = self.predict_surface(params)?;
+    let ivs = Array2::<f64>::from_shape_vec(
+      (n_t, n_k),
+      pred.into_iter().map(|v| v as f64).collect(),
+    )?;
+    Ok(stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
+      strikes, maturities, forwards, ivs,
+    ))
+  }
+
   pub fn predict_surfaces(&self, params: &Array2<f32>) -> Result<Array2<f32>> {
     let scaler = self
       .output_scaler

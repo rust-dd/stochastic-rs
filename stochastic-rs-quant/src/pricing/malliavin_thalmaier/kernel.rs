@@ -39,7 +39,7 @@ pub fn grad_poisson_reg<T: FloatExt>(x: &[T], h: T) -> Vec<T> {
 
 /// Regularised second derivative kernel
 /// `K^h_{i,j}(x) = ∂²Q_d^h(x) / (∂x_i ∂x_j)`.
-fn kernel_k_ij_h<T: FloatExt>(x: &[T], h: T, i: usize, j: usize) -> T {
+pub fn kernel_k_ij_h<T: FloatExt>(x: &[T], h: T, i: usize, j: usize) -> T {
   let d = x.len();
   assert!(i < d && j < d, "kernel indices out of bounds");
   let ad: T = sphere_area(d);

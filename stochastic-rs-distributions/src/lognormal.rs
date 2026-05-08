@@ -205,6 +205,6 @@ impl<T: SimdFloatExt> Distribution<T> for SimdLogNormal<T> {
 }
 
 py_distribution!(PyLogNormal, SimdLogNormal,
-  sig: (mu, sigma, dtype=None),
+  sig: (mu, sigma, seed=None, dtype=None),
   params: (mu: f64, sigma: f64)
 );

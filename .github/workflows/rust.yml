@@ -77,6 +77,34 @@ jobs:
       - name: cargo clippy (workspace)
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
 
+  # In-process Python smoke test (audit §7.9): builds the cdylib via
+  # `maturin develop` and exercises the 5 main API surfaces (distributions,
+  # stochastic, copulas, stats, quant) including seed-determinism for the
+  # samplers that accept a `seed=` keyword.
+  python_smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install OpenBLAS
+        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
+      # `maturin develop` requires an active virtualenv on Linux; the
+      # ubuntu-latest runner does not have one by default. Create one and
+      # invoke maturin / python via the venv's binaries (no `source` so
+      # each `run:` block — which is its own shell — still picks it up).
+      - name: Set up venv + install build deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install maturin numpy
+      - name: maturin develop (openblas)
+        run: .venv/bin/maturin develop --release --features openblas
+      - name: Run python_smoke.py
+        run: .venv/bin/python stochastic-rs-py/python_smoke.py
+
   # Full test run with openblas + coverage.
   test_with_coverage:
     runs-on: ubuntu-latest

@@ -74,6 +74,22 @@ impl RBergomiNn {
     self.inner.predict_surfaces(params)
   }
 
+  /// Bridge to `stochastic-rs-quant`: predict and package as
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
+  /// Available with the `quant` cargo feature.
+  #[cfg(feature = "quant")]
+  pub fn predict_implied_vol_surface(
+    &self,
+    params: &[f32; INPUT_DIM],
+    strikes: Vec<f64>,
+    maturities: Vec<f64>,
+    forwards: Vec<f64>,
+  ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface> {
+    self
+      .inner
+      .predict_implied_vol_surface(params, strikes, maturities, forwards)
+  }
+
   pub fn save<P: AsRef<Path>>(&self, dir: P) -> Result<()> {
     self.inner.save(dir)
   }

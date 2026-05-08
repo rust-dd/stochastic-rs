@@ -209,6 +209,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
 }
 
 py_distribution!(PyPareto, SimdPareto,
-  sig: (x_m, alpha, dtype=None),
+  sig: (x_m, alpha, seed=None, dtype=None),
   params: (x_m: f64, alpha: f64)
 );

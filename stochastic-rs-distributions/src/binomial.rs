@@ -73,6 +73,36 @@ impl<T: PrimInt> SimdBinomial<T> {
   }
 
   pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+    if self.n == 0 {
+      for x in out.iter_mut() {
+        *x = T::zero();
+      }
+      return;
+    }
+
+    let p_eff = if self.p > 0.5 { 1.0 - self.p } else { self.p };
+    let np_eff = (self.n as f64) * p_eff;
+
+    if np_eff < 30.0 && p_eff > 0.0 && p_eff < 1.0 {
+      let log_q = (1.0 - p_eff).ln();
+      for x in out.iter_mut() {
+        let mut count: u32 = 0;
+        let mut total: i64 = 0;
+        loop {
+          let u: f64 = rng.random();
+          let g = (u.ln() / log_q).floor() as i64 + 1;
+          total += g;
+          if total > self.n as i64 {
+            break;
+          }
+          count += 1;
+        }
+        let result = if self.p > 0.5 { self.n - count } else { count };
+        *x = num_traits::cast(result).unwrap_or(T::zero());
+      }
+      return;
+    }
+
     for x in out.iter_mut() {
       let mut count = 0u32;
       for _ in 0..self.n {
@@ -207,6 +237,87 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
 }
 
 py_distribution_int!(PyBinomial, SimdBinomial,
-  sig: (n, p),
+  sig: (n, p, seed=None),
   params: (n: u32, p: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::DistributionExt;
+
+  fn moments(samples: &[u32]) -> (f64, f64) {
+    let n = samples.len() as f64;
+    let mean = samples.iter().map(|&x| x as f64).sum::<f64>() / n;
+    let var = samples
+      .iter()
+      .map(|&x| {
+        let d = x as f64 - mean;
+        d * d
+      })
+      .sum::<f64>()
+      / n;
+    (mean, var)
+  }
+
+  #[test]
+  fn small_n_path_matches_population_moments() {
+    let n = 20u32;
+    let p = 0.3;
+    let dist = SimdBinomial::<u32>::with_seed(n, p, 42);
+    let mut buf = vec![0u32; 50_000];
+    dist.fill_slice_fast(&mut buf);
+    let (mean, var) = moments(&buf);
+    let expected_mean = dist.mean();
+    let expected_var = dist.variance();
+    assert!(
+      (mean - expected_mean).abs() < 0.05,
+      "mean drift: got {mean}, expected {expected_mean}"
+    );
+    assert!(
+      (var - expected_var).abs() < 0.2,
+      "variance drift: got {var}, expected {expected_var}"
+    );
+  }
+
+  #[test]
+  fn large_n_small_p_wait_path_matches_population() {
+    let n = 5_000u32;
+    let p = 0.005;
+    let dist = SimdBinomial::<u32>::with_seed(n, p, 7);
+    let mut buf = vec![0u32; 50_000];
+    dist.fill_slice_fast(&mut buf);
+    let (mean, var) = moments(&buf);
+    let expected_mean = dist.mean();
+    let expected_var = dist.variance();
+    assert!(
+      (mean - expected_mean).abs() < 0.5,
+      "wait-method mean drift: got {mean}, expected {expected_mean}"
+    );
+    assert!(
+      (var / expected_var - 1.0).abs() < 0.1,
+      "wait-method variance drift: got {var}, expected {expected_var}"
+    );
+  }
+
+  #[test]
+  fn large_n_p_close_to_one_uses_complement() {
+    let n = 5_000u32;
+    let p = 0.998;
+    let dist = SimdBinomial::<u32>::with_seed(n, p, 11);
+    let mut buf = vec![0u32; 20_000];
+    dist.fill_slice_fast(&mut buf);
+    let (mean, var) = moments(&buf);
+    assert!(buf.iter().all(|&x| x <= n));
+    assert!((mean - dist.mean()).abs() < 0.5);
+    assert!((var / dist.variance() - 1.0).abs() < 0.15);
+  }
+
+  #[test]
+  fn n_zero_returns_zeros() {
+    let dist = SimdBinomial::<u32>::new(0, 0.5);
+    let mut buf = vec![0u32; 32];
+    dist.fill_slice_fast(&mut buf);
+    assert!(buf.iter().all(|&x| x == 0));
+  }
+}

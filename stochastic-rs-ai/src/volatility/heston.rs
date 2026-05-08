@@ -75,6 +75,24 @@ impl HestonNn {
     self.inner.predict_surfaces(params)
   }
 
+  /// Bridge to `stochastic-rs-quant`: predict and package as
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
+  ///
+  /// `strikes`, `maturities`, `forwards` describe the grid the network was
+  /// trained on. Available with the `quant` cargo feature.
+  #[cfg(feature = "quant")]
+  pub fn predict_implied_vol_surface(
+    &self,
+    params: &[f32; INPUT_DIM],
+    strikes: Vec<f64>,
+    maturities: Vec<f64>,
+    forwards: Vec<f64>,
+  ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface> {
+    self
+      .inner
+      .predict_implied_vol_surface(params, strikes, maturities, forwards)
+  }
+
   pub fn save<P: AsRef<Path>>(&self, dir: P) -> Result<()> {
     self.inner.save(dir)
   }
@@ -142,6 +160,38 @@ mod tests {
     assert!(max_diff < 1e-4);
 
     let _ = fs::remove_dir_all(&save_dir);
+    Ok(())
+  }
+
+  #[cfg(feature = "quant")]
+  #[test]
+  fn predict_implied_vol_surface_roundtrip() -> Result<()> {
+    let device = Device::Cpu;
+    let (params, surfaces) = synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, 64, OUTPUT_DIM, 11);
+    let mut model = HestonNn::new(&device)?;
+    let cfg = TrainConfig {
+      epochs: 5,
+      ..TrainConfig::default()
+    };
+    model.train(&params, &surfaces, &cfg)?;
+
+    // 8 maturities × 11 strikes = OUTPUT_DIM 88.
+    let strikes: Vec<f64> = (0..11).map(|i| 0.5 + 0.1 * i as f64).collect();
+    let maturities: Vec<f64> = vec![0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0];
+    let forwards = vec![1.0; maturities.len()];
+    let sample = [
+      params[[0, 0]],
+      params[[0, 1]],
+      params[[0, 2]],
+      params[[0, 3]],
+      params[[0, 4]],
+    ];
+
+    let surface =
+      model.predict_implied_vol_surface(&sample, strikes.clone(), maturities.clone(), forwards)?;
+    assert_eq!(surface.ivs.dim(), (maturities.len(), strikes.len()));
+    assert_eq!(surface.strikes.len(), strikes.len());
+    assert_eq!(surface.maturities.len(), maturities.len());
     Ok(())
   }
 

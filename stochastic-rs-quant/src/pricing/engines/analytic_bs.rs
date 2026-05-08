@@ -114,7 +114,7 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
     let r = Self::read_quote(&self.risk_free, 0.0);
     let q = Self::read_quote(&self.dividend_yield, 0.0);
     let b = r - q;
-    let t = opt.tau.unwrap_or(0.0);
+    let t = opt.tau.unwrap_or(f64::NAN);
     let npv = match opt.kind {
       DigitalKind::CashOrNothing { cash } => CashOrNothingPricer {
         s,

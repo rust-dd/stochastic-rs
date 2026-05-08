@@ -250,6 +250,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdInverseGauss<T> {
 }
 
 py_distribution!(PyInverseGauss, SimdInverseGauss,
-  sig: (mu, lambda_, dtype=None),
+  sig: (mu, lambda_, seed=None, dtype=None),
   params: (mu: f64, lambda_: f64)
 );

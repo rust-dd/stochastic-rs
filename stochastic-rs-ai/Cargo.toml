@@ -16,11 +16,15 @@ doctest = false
 
 [features]
 default = []
+# Bridge feature: enables `StochVolNn::predict_implied_vol_surface` which
+# packages a Nn prediction into a `stochastic_rs_quant::ImpliedVolSurface`.
+quant = ["dep:stochastic-rs-quant"]
 
 [dependencies]
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 stochastic-rs-stochastic = { workspace = true }
+stochastic-rs-quant = { workspace = true, optional = true }
 candle-core = { workspace = true }
 candle-datasets = { workspace = true }
 candle-nn = { workspace = true }

@@ -206,6 +206,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
 }
 
 py_distribution!(PyUniform, SimdUniform,
-  sig: (low, high, dtype=None),
+  sig: (low, high, seed=None, dtype=None),
   params: (low: f64, high: f64)
 );

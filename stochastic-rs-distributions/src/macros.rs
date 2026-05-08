@@ -21,13 +21,27 @@ macro_rules! py_distribution {
     impl $py_name {
       #[new]
       #[pyo3(signature = ($($sig)*))]
-      fn new($($param: $pty,)* dtype: Option<&str>) -> Self {
-        match dtype.unwrap_or("f64") {
-          "f32" => Self {
+      fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>) -> Self {
+        match (seed, dtype.unwrap_or("f64")) {
+          (Some(sd), "f32") => Self {
+            inner_f32: Some($inner::from_seed_source(
+              $(stochastic_rs_core::python::IntoF32::into_f32($param),)*
+              &stochastic_rs_core::simd_rng::Deterministic::new(sd),
+            )),
+            inner_f64: None,
+          },
+          (Some(sd), _) => Self {
+            inner_f32: None,
+            inner_f64: Some($inner::from_seed_source(
+              $(stochastic_rs_core::python::IntoF64::into_f64($param),)*
+              &stochastic_rs_core::simd_rng::Deterministic::new(sd),
+            )),
+          },
+          (None, "f32") => Self {
             inner_f32: Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param)),*)),
             inner_f64: None,
           },
-          _ => Self {
+          (None, _) => Self {
             inner_f32: None,
             inner_f64: Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param)),*)),
           },
@@ -85,9 +99,17 @@ macro_rules! py_distribution_int {
     impl $py_name {
       #[new]
       #[pyo3(signature = ($($sig)*))]
-      fn new($($param: $pty),*) -> Self {
-        Self {
-          inner: $inner::new($($param),*),
+      fn new($($param: $pty,)* seed: Option<u64>) -> Self {
+        match seed {
+          Some(sd) => Self {
+            inner: $inner::from_seed_source(
+              $($param,)*
+              &stochastic_rs_core::simd_rng::Deterministic::new(sd),
+            ),
+          },
+          None => Self {
+            inner: $inner::new($($param),*),
+          },
         }
       }
 

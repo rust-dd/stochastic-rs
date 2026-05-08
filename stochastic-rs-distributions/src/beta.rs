@@ -238,6 +238,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
 }
 
 py_distribution!(PyBeta, SimdBeta,
-  sig: (alpha, beta, dtype=None),
+  sig: (alpha, beta, seed=None, dtype=None),
   params: (alpha: f64, beta: f64)
 );

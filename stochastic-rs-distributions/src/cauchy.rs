@@ -186,6 +186,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
 }
 
 py_distribution!(PyCauchy, SimdCauchy,
-  sig: (x0, gamma_, dtype=None),
+  sig: (x0, gamma_, seed=None, dtype=None),
   params: (x0: f64, gamma_: f64)
 );

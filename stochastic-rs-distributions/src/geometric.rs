@@ -199,6 +199,6 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
 }
 
 py_distribution_int!(PyGeometric, SimdGeometric,
-  sig: (p),
+  sig: (p, seed=None),
   params: (p: f64)
 );

@@ -238,6 +238,6 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
 }
 
 py_distribution_int!(PyHypergeometric, SimdHypergeometric,
-  sig: (n_total, k_success, n_draws),
+  sig: (n_total, k_success, n_draws, seed=None),
   params: (n_total: u32, k_success: u32, n_draws: u32)
 );

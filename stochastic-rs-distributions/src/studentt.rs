@@ -247,6 +247,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
 }
 
 py_distribution!(PyStudentT, SimdStudentT,
-  sig: (nu, dtype=None),
+  sig: (nu, seed=None, dtype=None),
   params: (nu: f64)
 );

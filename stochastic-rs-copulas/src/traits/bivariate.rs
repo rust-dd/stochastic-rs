@@ -54,6 +54,30 @@ pub trait BivariateExt {
   fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
   fn sample(&mut self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
+    self.sample_with_uniform(
+      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0),
+      n,
+    )
+  }
+
+  /// Deterministic sampler. Returns the same paths for a fixed `seed`.
+  fn sample_with_seed(
+    &mut self,
+    n: usize,
+    seed: u64,
+  ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
+    self.sample_with_uniform(
+      stochastic_rs_distributions::uniform::SimdUniform::<f64>::with_seed(0.0, 1.0, seed),
+      n,
+    )
+  }
+
+  #[doc(hidden)]
+  fn sample_with_uniform(
+    &mut self,
+    ud: stochastic_rs_distributions::uniform::SimdUniform<f64>,
+    n: usize,
+  ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     if self.tau().is_none() {
       return Err("Tau is not defined".into());
     }
@@ -64,7 +88,6 @@ pub trait BivariateExt {
       return Err("Tau must be in the interval (-1, 1)".into());
     }
 
-    let ud = stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0);
     let mut v = Array1::<f64>::zeros(n);
     ud.fill_slice_fast(v.as_slice_mut().unwrap());
     let mut c = Array1::<f64>::zeros(n);

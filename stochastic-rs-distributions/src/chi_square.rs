@@ -175,6 +175,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
 }
 
 py_distribution!(PyChiSquared, SimdChiSquared,
-  sig: (k, dtype=None),
+  sig: (k, seed=None, dtype=None),
   params: (k: f64)
 );

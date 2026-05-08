@@ -246,6 +246,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<
 }
 
 py_distribution!(PyNormalInverseGauss, SimdNormalInverseGauss,
-  sig: (alpha, beta, delta, mu, dtype=None),
+  sig: (alpha, beta, delta, mu, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, delta: f64, mu: f64)
 );

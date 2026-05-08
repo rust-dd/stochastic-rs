@@ -226,6 +226,6 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
 }
 
 py_distribution_int!(PyPoissonD, SimdPoisson,
-  sig: (lambda_),
+  sig: (lambda_, seed=None),
   params: (lambda_: f64)
 );

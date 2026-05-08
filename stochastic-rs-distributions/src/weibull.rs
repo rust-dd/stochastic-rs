@@ -178,6 +178,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
 }
 
 py_distribution!(PyWeibull, SimdWeibull,
-  sig: (lambda_, k, dtype=None),
+  sig: (lambda_, k, seed=None, dtype=None),
   params: (lambda_: f64, k: f64)
 );

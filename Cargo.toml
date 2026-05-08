@@ -307,7 +307,7 @@ harness = false
 required-features = ["hotpath"]
 
 [features]
-ai = ["dep:stochastic-rs-ai"]
+ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda-native = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda-native"]
 default = []
 openblas = [

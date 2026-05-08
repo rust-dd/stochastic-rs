@@ -61,6 +61,16 @@ pub struct SabrSmileCalibrator {
   pub beta: f64,
   /// Quotes for one tenor
   pub quotes: SabrSmileQuotes,
+  /// Tau threshold below which the calibrator uses extra basin-hopping
+  /// iterations. The Hagan expansion is steeper near zero-tau, so short
+  /// tenors need a longer search. Default: `7/365` (~1 trading week).
+  pub short_tenor_threshold: f64,
+  /// Basin-hopping iterations when `tau < short_tenor_threshold`.
+  /// Default: 1000.
+  pub short_tenor_iters: usize,
+  /// Basin-hopping iterations when `tau >= short_tenor_threshold`.
+  /// Default: 100.
+  pub long_tenor_iters: usize,
 }
 
 impl SabrSmileCalibrator {
@@ -71,7 +81,23 @@ impl SabrSmileCalibrator {
       r_f,
       beta,
       quotes,
+      short_tenor_threshold: 7.0 / 365.0,
+      short_tenor_iters: 1000,
+      long_tenor_iters: 100,
     }
+  }
+
+  /// Override the short-tenor cutoff (in years).
+  pub fn with_short_tenor_threshold(mut self, threshold: f64) -> Self {
+    self.short_tenor_threshold = threshold;
+    self
+  }
+
+  /// Override basin-hopping iterations for short and long tenor regimes.
+  pub fn with_basin_hopping_iters(mut self, short: usize, long: usize) -> Self {
+    self.short_tenor_iters = short;
+    self.long_tenor_iters = long;
+    self
   }
 }
 
@@ -293,9 +319,11 @@ impl SabrSmileCalibrator {
     // Initial guess: [k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]
     let x0 = [s + 0.1, s - 0.1, s + 0.1, s - 0.1, 0.6, 0.5];
 
-    // Short-tenor smiles need more LM iterations because the Sabr Hagan
-    // expansion is steeper near zero-tau; threshold ≈ 1 trading week.
-    let niter = if tau < 7.0 / 365.0 { 1000 } else { 100 };
+    let niter = if tau < self.short_tenor_threshold {
+      self.short_tenor_iters
+    } else {
+      self.long_tenor_iters
+    };
 
     let problem = SabrSmileProblem {
       s,
