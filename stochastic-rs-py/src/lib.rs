@@ -245,23 +245,40 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyCIRBond;
   use stochastic_rs_quant::python::PyCarrMadanPricer;
   use stochastic_rs_quant::python::PyCashOrNothingPricer;
+  use stochastic_rs_quant::python::PyCliquetPricer;
+  use stochastic_rs_quant::python::PyCompoundPricer;
+  use stochastic_rs_quant::python::PyDoubleBarrierPricer;
   use stochastic_rs_quant::python::PyDoubleHestonCalibrator;
   use stochastic_rs_quant::python::PyDoubleHestonFourier;
+  use stochastic_rs_quant::python::PyDrawdownStats;
+  use stochastic_rs_quant::python::PyExpectedShortfall;
+  use stochastic_rs_quant::python::PyFixedLookbackPricer;
   use stochastic_rs_quant::python::PyFloatingLookbackPricer;
+  use stochastic_rs_quant::python::PyGapPricer;
+  use stochastic_rs_quant::python::PyHKDECalibrator;
   use stochastic_rs_quant::python::PyHKDEFourier;
   use stochastic_rs_quant::python::PyHestonCalibrator;
   use stochastic_rs_quant::python::PyHestonFourier;
   use stochastic_rs_quant::python::PyHestonPricer;
+  use stochastic_rs_quant::python::PyImpliedVolSurface;
+  use stochastic_rs_quant::python::PyKirkSpreadPricer;
   use stochastic_rs_quant::python::PyKouFourier;
   use stochastic_rs_quant::python::PyLevyCalibrator;
+  use stochastic_rs_quant::python::PyMCBarrierPricer;
   use stochastic_rs_quant::python::PyMarketSlice;
   use stochastic_rs_quant::python::PyMerton1976Pricer;
   use stochastic_rs_quant::python::PyMertonJDFourier;
+  use stochastic_rs_quant::python::PyRBergomiCalibrator;
   use stochastic_rs_quant::python::PySVJCalibrator;
   use stochastic_rs_quant::python::PySabrCalibrator;
   use stochastic_rs_quant::python::PySabrPricer;
+  use stochastic_rs_quant::python::PySimpleChooserPricer;
+  use stochastic_rs_quant::python::PySsviCalibrator;
   use stochastic_rs_quant::python::PySsviParams;
+  use stochastic_rs_quant::python::PySuperSharePricer;
+  use stochastic_rs_quant::python::PySviCalibrator;
   use stochastic_rs_quant::python::PySviRawParams;
+  use stochastic_rs_quant::python::PyVaR;
   use stochastic_rs_quant::python::PyVarianceGammaFourier;
   use stochastic_rs_quant::python::PyVarianceSwapPricer;
   use stochastic_rs_quant::python::PyVasicekBond;
@@ -298,8 +315,80 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyLevyCalibrator>()?;
   m.add_class::<PySviRawParams>()?;
   m.add_class::<PySsviParams>()?;
+  m.add_class::<PyCompoundPricer>()?;
+  m.add_class::<PySimpleChooserPricer>()?;
+  m.add_class::<PyCliquetPricer>()?;
+  m.add_class::<PyGapPricer>()?;
+  m.add_class::<PySuperSharePricer>()?;
+  m.add_class::<PyFixedLookbackPricer>()?;
+  m.add_class::<PyDoubleBarrierPricer>()?;
+  m.add_class::<PyMCBarrierPricer>()?;
+  m.add_class::<PyKirkSpreadPricer>()?;
+  m.add_class::<PyImpliedVolSurface>()?;
+  m.add_class::<PySviCalibrator>()?;
+  m.add_class::<PySsviCalibrator>()?;
+  m.add_class::<PyHKDECalibrator>()?;
+  m.add_class::<PyRBergomiCalibrator>()?;
+  m.add_class::<PyVaR>()?;
+  m.add_class::<PyExpectedShortfall>()?;
+  m.add_class::<PyDrawdownStats>()?;
+
+  use stochastic_rs_quant::python::PyAlmgrenChrissPlan;
+  use stochastic_rs_quant::python::PyCgmysvCalibrator;
+  use stochastic_rs_quant::python::PyDiscountCurve;
+  use stochastic_rs_quant::python::PyKyleEquilibrium;
+  use stochastic_rs_quant::python::PyNelsonSiegel;
+  use stochastic_rs_quant::python::PyOrderBook;
+  use stochastic_rs_quant::python::PySabrCapletCalibrator;
+  use stochastic_rs_quant::python::PyZeroCouponInflationCurve;
+  m.add_class::<PyAlmgrenChrissPlan>()?;
+  m.add_class::<PyKyleEquilibrium>()?;
+  m.add_class::<PyOrderBook>()?;
+  m.add_class::<PyDiscountCurve>()?;
+  m.add_class::<PyNelsonSiegel>()?;
+  m.add_class::<PyZeroCouponInflationCurve>()?;
+  m.add_class::<PySabrCapletCalibrator>()?;
+  m.add_class::<PyCgmysvCalibrator>()?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::multi_period_kyle,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::roll_spread,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::effective_spread,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::corwin_schultz_spread,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::propagator_price_impact,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::ledoit_wolf_shrinkage,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::sample_covariance,
+    m
+  )?)?;
+  #[cfg(feature = "openblas")]
+  {
+    use stochastic_rs_quant::python::PyFamaMacBeth;
+    use stochastic_rs_quant::python::PyPCA;
+    use stochastic_rs_quant::python::PyPairsStrategy;
+    m.add_class::<PyPCA>()?;
+    m.add_class::<PyFamaMacBeth>()?;
+    m.add_class::<PyPairsStrategy>()?;
+  }
 
   use stochastic_rs_copulas::python::PyClayton;
+  use stochastic_rs_copulas::python::PyEmpiricalCopula2D;
   use stochastic_rs_copulas::python::PyFrank;
   use stochastic_rs_copulas::python::PyGumbel;
   use stochastic_rs_copulas::python::PyIndependence;
@@ -308,6 +397,23 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyGumbel>()?;
   m.add_class::<PyFrank>()?;
   m.add_class::<PyIndependence>()?;
+  m.add_class::<PyEmpiricalCopula2D>()?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_copulas::python::kendall_tau_matrix,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_copulas::python::tau_matrix_to_corr_matrix,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_copulas::python::tau_to_corr,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_copulas::python::corr_to_tau,
+    m
+  )?)?;
 
   use stochastic_rs_stats::python::PyAndersonDarling;
   use stochastic_rs_stats::python::PyBNSJumpTest;
@@ -340,6 +446,42 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyGaussianKDE>()?;
   m.add_class::<PyTailIndex>()?;
   m.add_class::<PyLeverage>()?;
+
+  use stochastic_rs_stats::python::PyCusum;
+  use stochastic_rs_stats::python::PyPelt;
+  use stochastic_rs_stats::python::PyPeriodogramFFT;
+  use stochastic_rs_stats::python::PyPreAveragedVariance;
+  m.add_class::<PyCusum>()?;
+  m.add_class::<PyPelt>()?;
+  m.add_class::<PyPeriodogramFFT>()?;
+  m.add_class::<PyPreAveragedVariance>()?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_stats::python::random_walk_metropolis,
+    m
+  )?)?;
+  #[cfg(feature = "openblas")]
+  {
+    use stochastic_rs_stats::python::PyADFTest;
+    use stochastic_rs_stats::python::PyERSTest;
+    use stochastic_rs_stats::python::PyEngleGranger;
+    use stochastic_rs_stats::python::PyGaussianHmm;
+    use stochastic_rs_stats::python::PyGranger;
+    use stochastic_rs_stats::python::PyHarRv;
+    use stochastic_rs_stats::python::PyJohansen;
+    use stochastic_rs_stats::python::PyKPSSTest;
+    use stochastic_rs_stats::python::PyLeybourneMcCabeTest;
+    use stochastic_rs_stats::python::PyPhillipsPerronTest;
+    m.add_class::<PyADFTest>()?;
+    m.add_class::<PyKPSSTest>()?;
+    m.add_class::<PyPhillipsPerronTest>()?;
+    m.add_class::<PyERSTest>()?;
+    m.add_class::<PyLeybourneMcCabeTest>()?;
+    m.add_class::<PyHarRv>()?;
+    m.add_class::<PyEngleGranger>()?;
+    m.add_class::<PyJohansen>()?;
+    m.add_class::<PyGranger>()?;
+    m.add_class::<PyGaussianHmm>()?;
+  }
 
   Ok(())
 }

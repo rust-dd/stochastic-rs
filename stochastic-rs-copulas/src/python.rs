@@ -123,3 +123,65 @@ py_bivariate!(
   "Independence",
   || crate::bivariate::independence::Independence::new()
 );
+
+#[pyclass(name = "EmpiricalCopula2D", unsendable)]
+pub struct PyEmpiricalCopula2D {
+  inner: crate::empirical::EmpiricalCopula2D,
+}
+
+#[pymethods]
+impl PyEmpiricalCopula2D {
+  /// Build a 2D empirical copula from two equal-length series via rank-transform.
+  #[new]
+  fn new<'py>(
+    x: numpy::PyReadonlyArray1<'py, f64>,
+    y: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> Self {
+    let x_arr = x.as_array().to_owned();
+    let y_arr = y.as_array().to_owned();
+    Self {
+      inner: crate::empirical::EmpiricalCopula2D::new_from_two_series(&x_arr, &y_arr),
+    }
+  }
+
+  fn rank_data<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+    self.inner.rank_data.clone().into_pyarray(py)
+  }
+
+  fn sample<'py>(&self, py: Python<'py>, n: usize) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+    self.inner.sample(n).into_pyarray(py)
+  }
+}
+
+/// Kendall's τ pairwise matrix from an `(n, k)` data matrix.
+#[pyfunction]
+pub fn kendall_tau_matrix<'py>(
+  py: Python<'py>,
+  data: numpy::PyReadonlyArray2<'py, f64>,
+) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+  let arr = data.as_array().to_owned();
+  let out = crate::correlation::kendall_tau(&arr);
+  out.into_pyarray(py)
+}
+
+/// Convert a Kendall τ matrix to a Gaussian copula correlation matrix
+/// elementwise via $\rho_{ij} = \sin(\pi \tau_{ij} / 2)$.
+#[pyfunction]
+pub fn tau_matrix_to_corr_matrix<'py>(
+  py: Python<'py>,
+  tau: numpy::PyReadonlyArray2<'py, f64>,
+) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+  let arr = tau.as_array().to_owned();
+  let out = crate::correlation::tau_matrix_to_corr_matrix(&arr);
+  out.into_pyarray(py)
+}
+
+#[pyfunction]
+pub fn tau_to_corr(tau: f64) -> f64 {
+  crate::correlation::tau_to_corr(tau)
+}
+
+#[pyfunction]
+pub fn corr_to_tau(rho: f64) -> f64 {
+  crate::correlation::corr_to_tau(rho)
+}

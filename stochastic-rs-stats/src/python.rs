@@ -214,6 +214,203 @@ pub struct PyKPSSTest {
 }
 
 #[cfg(feature = "openblas")]
+#[pyclass(name = "PhillipsPerronTest", unsendable)]
+pub struct PyPhillipsPerronTest {
+  inner: crate::stationarity::phillips_perron::PhillipsPerronResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyPhillipsPerronTest {
+  /// `deterministic`: "n" / "c" / "ct". `test_type`: "tau" or "rho".
+  #[new]
+  #[pyo3(signature = (y, deterministic="c", test_type="tau", lags=None, alpha=0.05))]
+  fn new<'py>(
+    y: PyReadonlyArray1<'py, f64>,
+    deterministic: &str,
+    test_type: &str,
+    lags: Option<usize>,
+    alpha: f64,
+  ) -> PyResult<Self> {
+    use crate::stationarity::DeterministicTerm;
+    use crate::stationarity::phillips_perron::PPTestType;
+    let det = match deterministic.to_ascii_lowercase().as_str() {
+      "n" | "none" => DeterministicTerm::None,
+      "c" | "constant" => DeterministicTerm::Constant,
+      "ct" | "trend" => DeterministicTerm::ConstantTrend,
+      o => {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+          "deterministic must be 'n'/'c'/'ct', got '{o}'"
+        )));
+      }
+    };
+    let tt = match test_type.to_ascii_lowercase().as_str() {
+      "tau" => PPTestType::Tau,
+      "rho" => PPTestType::Rho,
+      o => {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+          "test_type must be 'tau' or 'rho', got '{o}'"
+        )));
+      }
+    };
+    let cfg = crate::stationarity::phillips_perron::PhillipsPerronConfig {
+      deterministic: det,
+      test_type: tt,
+      lags,
+      alpha,
+    };
+    Ok(Self {
+      inner: crate::stationarity::phillips_perron::phillips_perron_test(y.as_array(), cfg),
+    })
+  }
+
+  #[getter]
+  fn statistic(&self) -> f64 {
+    self.inner.statistic
+  }
+  #[getter]
+  fn used_lags(&self) -> usize {
+    self.inner.used_lags
+  }
+  #[getter]
+  fn reject_unit_root(&self) -> Option<bool> {
+    self.inner.reject_unit_root
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "ERSTest", unsendable)]
+pub struct PyERSTest {
+  inner: crate::stationarity::ers_dfgls::ERSResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyERSTest {
+  /// Elliott-Rothenberg-Stock DF-GLS unit-root test.
+  /// `trend`: "c" (constant) or "ct" (constant + trend).
+  #[new]
+  #[pyo3(signature = (y, trend="c", lag_selection="aic", max_lags=None, alpha=0.05))]
+  fn new<'py>(
+    y: PyReadonlyArray1<'py, f64>,
+    trend: &str,
+    lag_selection: &str,
+    max_lags: Option<usize>,
+    alpha: f64,
+  ) -> PyResult<Self> {
+    use crate::stationarity::LagSelection;
+    use crate::stationarity::ers_dfgls::ERSTrend;
+    let tr = match trend.to_ascii_lowercase().as_str() {
+      "c" | "constant" => ERSTrend::Constant,
+      "ct" | "trend" => ERSTrend::ConstantTrend,
+      o => {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+          "trend must be 'c' or 'ct', got '{o}'"
+        )));
+      }
+    };
+    let sel = match lag_selection.to_ascii_lowercase().as_str() {
+      "aic" => LagSelection::Aic,
+      "bic" => LagSelection::Bic,
+      s => match s.parse::<usize>() {
+        Ok(p) => LagSelection::Fixed(p),
+        Err(_) => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "lag_selection must be 'aic'/'bic'/integer, got '{s}'"
+          )));
+        }
+      },
+    };
+    let cfg = crate::stationarity::ers_dfgls::ERSConfig {
+      trend: tr,
+      lag_selection: sel,
+      max_lags,
+      alpha,
+    };
+    Ok(Self {
+      inner: crate::stationarity::ers_dfgls::ers_dfgls_test(y.as_array(), cfg),
+    })
+  }
+
+  #[getter]
+  fn statistic(&self) -> f64 {
+    self.inner.statistic
+  }
+  #[getter]
+  fn used_lags(&self) -> usize {
+    self.inner.used_lags
+  }
+  #[getter]
+  fn nobs(&self) -> usize {
+    self.inner.nobs
+  }
+  #[getter]
+  fn reject_unit_root(&self) -> bool {
+    self.inner.reject_unit_root
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "LeybourneMcCabeTest", unsendable)]
+pub struct PyLeybourneMcCabeTest {
+  inner: crate::stationarity::leybourne_mccabe::LeybourneMcCabeResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyLeybourneMcCabeTest {
+  /// Leybourne-McCabe stationarity test (parametric bootstrap p-value).
+  #[new]
+  #[pyo3(signature = (y, trend="level", ar_lags=1, bootstrap_samples=400, bootstrap_seed=1234, alpha=0.05))]
+  fn new<'py>(
+    y: PyReadonlyArray1<'py, f64>,
+    trend: &str,
+    ar_lags: usize,
+    bootstrap_samples: usize,
+    bootstrap_seed: u64,
+    alpha: f64,
+  ) -> PyResult<Self> {
+    use crate::stationarity::leybourne_mccabe::LMTrend;
+    let tr = match trend.to_ascii_lowercase().as_str() {
+      "level" | "c" => LMTrend::Level,
+      "trend" | "ct" => LMTrend::Trend,
+      o => {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+          "trend must be 'level' or 'trend', got '{o}'"
+        )));
+      }
+    };
+    let cfg = crate::stationarity::leybourne_mccabe::LeybourneMcCabeConfig {
+      trend: tr,
+      ar_lags,
+      bootstrap_samples,
+      bootstrap_seed,
+      alpha,
+    };
+    Ok(Self {
+      inner: crate::stationarity::leybourne_mccabe::leybourne_mccabe_test(y.as_array(), cfg),
+    })
+  }
+
+  #[getter]
+  fn statistic(&self) -> f64 {
+    self.inner.statistic
+  }
+  #[getter]
+  fn ar_lags(&self) -> usize {
+    self.inner.ar_lags
+  }
+  #[getter]
+  fn p_value(&self) -> f64 {
+    self.inner.p_value
+  }
+  #[getter]
+  fn reject_stationarity(&self) -> bool {
+    self.inner.reject_stationarity
+  }
+}
+
+#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyKPSSTest {
   #[new]
@@ -743,5 +940,401 @@ impl PyTwoScaleRV {
   #[getter]
   fn variance(&self) -> f64 {
     self.rv
+  }
+}
+
+#[pyclass(name = "PreAveragedVariance", unsendable)]
+pub struct PyPreAveragedVariance {
+  value: f64,
+}
+
+#[pymethods]
+impl PyPreAveragedVariance {
+  /// Pre-averaging realised variance (Jacod et al. 2009) with explicit `theta`.
+  #[new]
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, theta: f64) -> Self {
+    Self {
+      value: crate::realized::pre_averaging::pre_averaged_variance(returns.as_array(), theta),
+    }
+  }
+
+  #[getter]
+  fn variance(&self) -> f64 {
+    self.value
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "HarRv", unsendable)]
+pub struct PyHarRv {
+  inner: crate::realized::har::HarRv,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyHarRv {
+  /// Fit HAR-RV (Corsi 2009) on a daily realised-variance history.
+  #[new]
+  fn new<'py>(daily_rv: PyReadonlyArray1<'py, f64>) -> Self {
+    Self {
+      inner: crate::realized::har::HarRv::fit(daily_rv.as_array()),
+    }
+  }
+
+  #[getter]
+  fn intercept(&self) -> f64 {
+    self.inner.fit.intercept
+  }
+  #[getter]
+  fn beta_d(&self) -> f64 {
+    self.inner.fit.beta_d
+  }
+  #[getter]
+  fn beta_w(&self) -> f64 {
+    self.inner.fit.beta_w
+  }
+  #[getter]
+  fn beta_m(&self) -> f64 {
+    self.inner.fit.beta_m
+  }
+  #[getter]
+  fn r_squared(&self) -> f64 {
+    self.inner.fit.r_squared
+  }
+  #[getter]
+  fn nobs(&self) -> usize {
+    self.inner.fit.nobs
+  }
+
+  /// One-step-ahead point forecast given recent daily-RV history.
+  fn forecast<'py>(&self, recent_daily_rv: PyReadonlyArray1<'py, f64>) -> f64 {
+    self.inner.forecast(recent_daily_rv.as_array())
+  }
+}
+
+#[pyclass(name = "Cusum", unsendable)]
+pub struct PyCusum {
+  inner: crate::econometrics::changepoint::CusumResult,
+}
+
+#[pymethods]
+impl PyCusum {
+  /// CUSUM control chart with reference value `k` (half the smallest shift in
+  /// SD units) and threshold `h`.
+  #[new]
+  fn new<'py>(series: PyReadonlyArray1<'py, f64>, k: f64, h: f64) -> Self {
+    Self {
+      inner: crate::econometrics::changepoint::cusum(series.as_array(), k, h),
+    }
+  }
+
+  fn upper<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.upper.clone().into_pyarray(py)
+  }
+  fn lower<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.lower.clone().into_pyarray(py)
+  }
+  #[getter]
+  fn alarms(&self) -> Vec<usize> {
+    self.inner.alarms.clone()
+  }
+}
+
+#[pyclass(name = "Pelt", unsendable)]
+pub struct PyPelt {
+  inner: crate::econometrics::changepoint::PeltResult,
+}
+
+#[pymethods]
+impl PyPelt {
+  /// PELT changepoint detection with mean-shift cost and `penalty` per
+  /// changepoint. `min_size` enforces a minimum segment length.
+  #[new]
+  #[pyo3(signature = (series, penalty, min_size=1))]
+  fn new<'py>(series: PyReadonlyArray1<'py, f64>, penalty: f64, min_size: usize) -> Self {
+    Self {
+      inner: crate::econometrics::changepoint::pelt(series.as_array(), penalty, min_size),
+    }
+  }
+
+  #[getter]
+  fn changepoints(&self) -> Vec<usize> {
+    self.inner.changepoints.clone()
+  }
+  #[getter]
+  fn cost(&self) -> f64 {
+    self.inner.cost
+  }
+}
+
+/// Spectral / periodogram bindings — Welch / Bartlett / Parzen periodograms via FFT.
+#[pyclass(name = "PeriodogramFFT", unsendable)]
+pub struct PyPeriodogramFFT {
+  inner: crate::spectral::PeriodogramResult,
+}
+
+#[pymethods]
+impl PyPeriodogramFFT {
+  /// FFT periodogram with default config (mean-detrend, Hann window, one-sided density).
+  #[new]
+  #[pyo3(signature = (signal, sampling_rate=1.0))]
+  fn new<'py>(signal: PyReadonlyArray1<'py, f64>, sampling_rate: f64) -> Self {
+    let mut cfg = crate::spectral::PeriodogramConfig::default();
+    cfg.sampling_rate = sampling_rate;
+    Self {
+      inner: crate::spectral::periodogram_fft(signal.as_array(), cfg),
+    }
+  }
+
+  fn frequencies(&self) -> Vec<f64> {
+    self.inner.frequencies.clone()
+  }
+  fn spectrum(&self) -> Vec<f64> {
+    self.inner.spectrum.clone()
+  }
+  #[getter]
+  fn resolution_hz(&self) -> f64 {
+    self.inner.resolution_hz
+  }
+  #[getter]
+  fn nfft(&self) -> usize {
+    self.inner.nfft
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "EngleGranger", unsendable)]
+pub struct PyEngleGranger {
+  inner: crate::econometrics::cointegration::EngleGrangerResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyEngleGranger {
+  /// Engle-Granger 2-step cointegration test for `y_t = α + β x_t + ε_t`.
+  #[new]
+  fn new<'py>(y: PyReadonlyArray1<'py, f64>, x: PyReadonlyArray1<'py, f64>) -> Self {
+    Self {
+      inner: crate::econometrics::cointegration::engle_granger_test(y.as_array(), x.as_array()),
+    }
+  }
+
+  #[getter]
+  fn alpha(&self) -> f64 {
+    self.inner.alpha
+  }
+  #[getter]
+  fn beta(&self) -> f64 {
+    self.inner.beta
+  }
+  #[getter]
+  fn adf_statistic(&self) -> f64 {
+    self.inner.adf_statistic
+  }
+  #[getter]
+  fn critical_values(&self) -> (f64, f64, f64) {
+    self.inner.critical_values
+  }
+  #[getter]
+  fn reject_no_cointegration(&self) -> bool {
+    self.inner.reject_no_cointegration
+  }
+  fn residuals<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.residuals.clone().into_pyarray(py)
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "Johansen", unsendable)]
+pub struct PyJohansen {
+  inner: crate::econometrics::cointegration::JohansenResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyJohansen {
+  /// Johansen trace test on an `(t, k)` matrix.
+  #[new]
+  #[pyo3(signature = (series, lags=1))]
+  fn new<'py>(series: numpy::PyReadonlyArray2<'py, f64>, lags: usize) -> Self {
+    Self {
+      inner: crate::econometrics::cointegration::johansen_test(series.as_array(), lags),
+    }
+  }
+
+  fn eigenvalues<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.eigenvalues.clone().into_pyarray(py)
+  }
+  fn trace_statistics<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.trace_statistics.clone().into_pyarray(py)
+  }
+  fn trace_critical_5pct<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.trace_critical_5pct.clone().into_pyarray(py)
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "Granger", unsendable)]
+pub struct PyGranger {
+  inner: crate::econometrics::granger::GrangerResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyGranger {
+  /// Granger causality of `x` → `y` with `lags` lags at significance `alpha`.
+  #[new]
+  #[pyo3(signature = (y, x, lags, alpha=0.05))]
+  fn new<'py>(
+    y: PyReadonlyArray1<'py, f64>,
+    x: PyReadonlyArray1<'py, f64>,
+    lags: usize,
+    alpha: f64,
+  ) -> Self {
+    Self {
+      inner: crate::econometrics::granger::granger_causality(
+        y.as_array(),
+        x.as_array(),
+        lags,
+        alpha,
+      ),
+    }
+  }
+
+  #[getter]
+  fn f_statistic(&self) -> f64 {
+    self.inner.f_statistic
+  }
+  #[getter]
+  fn p_value(&self) -> f64 {
+    self.inner.p_value
+  }
+  #[getter]
+  fn lags(&self) -> usize {
+    self.inner.lags
+  }
+  #[getter]
+  fn nobs(&self) -> usize {
+    self.inner.nobs
+  }
+  #[getter]
+  fn reject_no_causality(&self) -> bool {
+    self.inner.reject_no_causality
+  }
+}
+
+/// Random-walk Metropolis-Hastings with a Python-callable log target.
+///
+/// `log_target` is a Python function `numpy.ndarray -> float` that may return
+/// `-inf` to encode hard constraints. The chain runs in pure Python-callback
+/// mode (single-threaded, GIL-bound), so it is most useful for low-dimensional
+/// parameter spaces. For performance-critical work consider porting the
+/// log-density to Rust and exposing it as a closed-form distribution instead.
+#[pyfunction]
+#[pyo3(signature = (initial, log_target, proposal_scale, n_samples, burn_in=1000, seed=42))]
+pub fn random_walk_metropolis<'py>(
+  py: Python<'py>,
+  initial: PyReadonlyArray1<'py, f64>,
+  log_target: pyo3::PyObject,
+  proposal_scale: PyReadonlyArray1<'py, f64>,
+  n_samples: usize,
+  burn_in: usize,
+  seed: u64,
+) -> PyResult<(
+  pyo3::Bound<'py, numpy::PyArray2<f64>>,
+  pyo3::Bound<'py, numpy::PyArray1<f64>>,
+  f64,
+)> {
+  use ndarray::ArrayView1;
+  use numpy::IntoPyArray;
+  let init_arr = initial.as_array().to_owned();
+  let scale_arr = proposal_scale.as_array().to_owned();
+  let log_target_ref = &log_target;
+  let target_fn = |theta: ArrayView1<f64>| -> f64 {
+    let theta_owned: Vec<f64> = theta.iter().copied().collect();
+    let theta_pyarr = numpy::PyArray1::from_vec(py, theta_owned);
+    let res = log_target_ref.call1(py, (theta_pyarr,));
+    match res {
+      Ok(obj) => obj.extract::<f64>(py).unwrap_or(f64::NEG_INFINITY),
+      Err(_) => f64::NEG_INFINITY,
+    }
+  };
+  let res = crate::filtering::mcmc::random_walk_metropolis(
+    init_arr.view(),
+    target_fn,
+    scale_arr.view(),
+    n_samples,
+    burn_in,
+    seed,
+  );
+  Ok((
+    res.samples.into_pyarray(py),
+    res.log_targets.into_pyarray(py),
+    res.acceptance_rate,
+  ))
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "GaussianHmm", unsendable)]
+pub struct PyGaussianHmm {
+  inner: crate::econometrics::hmm::GaussianHmm,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyGaussianHmm {
+  /// Construct a Gaussian-emission HMM with `K` hidden states.
+  #[new]
+  fn new<'py>(
+    initial: PyReadonlyArray1<'py, f64>,
+    transitions: numpy::PyReadonlyArray2<'py, f64>,
+    means: PyReadonlyArray1<'py, f64>,
+    stds: PyReadonlyArray1<'py, f64>,
+  ) -> Self {
+    Self {
+      inner: crate::econometrics::hmm::GaussianHmm::new(
+        initial.as_array().to_owned(),
+        transitions.as_array().to_owned(),
+        means.as_array().to_owned(),
+        stds.as_array().to_owned(),
+      ),
+    }
+  }
+
+  fn n_states(&self) -> usize {
+    self.inner.n_states()
+  }
+
+  fn log_likelihood<'py>(&self, observations: PyReadonlyArray1<'py, f64>) -> f64 {
+    self.inner.log_likelihood(observations.as_array())
+  }
+
+  fn viterbi<'py>(
+    &self,
+    py: Python<'py>,
+    observations: PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<usize>> {
+    use numpy::IntoPyArray;
+    self
+      .inner
+      .viterbi(observations.as_array())
+      .into_pyarray(py)
+  }
+
+  /// Train via Baum-Welch EM and return `(iterations, log_likelihood, converged)`.
+  fn baum_welch<'py>(
+    &mut self,
+    observations: PyReadonlyArray1<'py, f64>,
+    max_iter: usize,
+    tol: f64,
+  ) -> (usize, f64, bool) {
+    let fit = self.inner.baum_welch(observations.as_array(), max_iter, tol);
+    (fit.iterations, fit.log_likelihood, fit.converged)
   }
 }

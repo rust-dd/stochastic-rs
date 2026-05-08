@@ -25,6 +25,7 @@ openblas = [
 yahoo = ["dep:yahoo_finance_api", "dep:time", "dep:polars", "dep:tokio-test"]
 python = [
     "dep:pyo3",
+    "dep:numpy",
     "stochastic-rs-core/python",
     "stochastic-rs-distributions/python",
     "stochastic-rs-stochastic/python",
@@ -77,3 +78,4 @@ polars = { workspace = true, features = ["lazy"], optional = true }
 yahoo_finance_api = { workspace = true, optional = true }
 tokio-test = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+numpy = { workspace = true, optional = true }

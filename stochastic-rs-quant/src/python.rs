@@ -1245,3 +1245,1399 @@ impl PyLevyCalibrator {
     ))
   }
 }
+
+#[pyclass(name = "CompoundPricer", unsendable)]
+pub struct PyCompoundPricer {
+  inner: crate::pricing::compound::CompoundPricer,
+}
+
+#[pymethods]
+impl PyCompoundPricer {
+  /// `compound_type`: one of "call_on_call" / "call_on_put" / "put_on_call" / "put_on_put".
+  #[new]
+  fn new(
+    s: f64,
+    k1: f64,
+    k2: f64,
+    t1: f64,
+    t2: f64,
+    r: f64,
+    q: f64,
+    sigma: f64,
+    compound_type: &str,
+  ) -> PyResult<Self> {
+    use crate::pricing::compound::CompoundType;
+    let ct = match compound_type.to_ascii_lowercase().as_str() {
+      "call_on_call" | "coc" => CompoundType::CallOnCall,
+      "call_on_put" | "cop" => CompoundType::CallOnPut,
+      "put_on_call" | "poc" => CompoundType::PutOnCall,
+      "put_on_put" | "pop" => CompoundType::PutOnPut,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "compound_type must be one of call_on_call/call_on_put/put_on_call/put_on_put, got '{o}'"
+        )));
+      }
+    };
+    Ok(Self {
+      inner: crate::pricing::compound::CompoundPricer {
+        s,
+        k1,
+        k2,
+        t1,
+        t2,
+        r,
+        q,
+        sigma,
+        compound_type: ct,
+      },
+    })
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.price()
+  }
+}
+
+#[pyclass(name = "SimpleChooserPricer", unsendable)]
+pub struct PySimpleChooserPricer {
+  inner: crate::pricing::chooser::SimpleChooserPricer,
+}
+
+#[pymethods]
+impl PySimpleChooserPricer {
+  #[new]
+  fn new(s: f64, k: f64, r: f64, q: f64, sigma: f64, t1: f64, t: f64) -> Self {
+    Self {
+      inner: crate::pricing::chooser::SimpleChooserPricer {
+        s,
+        k,
+        r,
+        q,
+        sigma,
+        t1,
+        t,
+      },
+    }
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.price()
+  }
+}
+
+#[pyclass(name = "CliquetPricer", unsendable)]
+pub struct PyCliquetPricer {
+  inner: crate::pricing::cliquet::CliquetPricer,
+}
+
+#[pymethods]
+impl PyCliquetPricer {
+  #[new]
+  #[pyo3(signature = (s, notional, m, t, r, q, sigma, local_floor=None, local_cap=None))]
+  fn new(
+    s: f64,
+    notional: f64,
+    m: usize,
+    t: f64,
+    r: f64,
+    q: f64,
+    sigma: f64,
+    local_floor: Option<f64>,
+    local_cap: Option<f64>,
+  ) -> Self {
+    Self {
+      inner: crate::pricing::cliquet::CliquetPricer {
+        s,
+        notional,
+        m,
+        t,
+        r,
+        q,
+        sigma,
+        local_floor,
+        local_cap,
+      },
+    }
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.price()
+  }
+}
+
+#[pyclass(name = "GapPricer", unsendable)]
+pub struct PyGapPricer {
+  inner: crate::pricing::digital::GapPricer,
+}
+
+#[pymethods]
+impl PyGapPricer {
+  #[new]
+  #[pyo3(signature = (s, k1, k2, r, b, sigma, t, option_type="call"))]
+  fn new(
+    s: f64,
+    k1: f64,
+    k2: f64,
+    r: f64,
+    b: f64,
+    sigma: f64,
+    t: f64,
+    option_type: &str,
+  ) -> PyResult<Self> {
+    let ot = parse_option_type(option_type)?;
+    Ok(Self {
+      inner: crate::pricing::digital::GapPricer {
+        s,
+        k1,
+        k2,
+        r,
+        b,
+        sigma,
+        t,
+        option_type: ot,
+      },
+    })
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.price()
+  }
+}
+
+#[pyclass(name = "SuperSharePricer", unsendable)]
+pub struct PySuperSharePricer {
+  inner: crate::pricing::digital::SuperSharePricer,
+}
+
+#[pymethods]
+impl PySuperSharePricer {
+  #[new]
+  fn new(s: f64, x_low: f64, x_high: f64, r: f64, b: f64, sigma: f64, t: f64) -> Self {
+    Self {
+      inner: crate::pricing::digital::SuperSharePricer {
+        s,
+        x_low,
+        x_high,
+        r,
+        b,
+        sigma,
+        t,
+      },
+    }
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.price()
+  }
+}
+
+#[pyclass(name = "FixedLookbackPricer", unsendable)]
+pub struct PyFixedLookbackPricer {
+  inner: crate::pricing::lookback::FixedLookbackPricer,
+}
+
+#[pymethods]
+impl PyFixedLookbackPricer {
+  #[new]
+  #[pyo3(signature = (s, k, r, q, sigma, t, option_type="call", s_min=None, s_max=None))]
+  fn new(
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    sigma: f64,
+    t: f64,
+    option_type: &str,
+    s_min: Option<f64>,
+    s_max: Option<f64>,
+  ) -> PyResult<Self> {
+    let ot = parse_option_type(option_type)?;
+    Ok(Self {
+      inner: crate::pricing::lookback::FixedLookbackPricer {
+        s,
+        k,
+        s_min,
+        s_max,
+        r,
+        q,
+        sigma,
+        t,
+        option_type: ot,
+      },
+    })
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.price()
+  }
+}
+
+#[pyclass(name = "DoubleBarrierPricer", unsendable)]
+pub struct PyDoubleBarrierPricer {
+  inner: crate::pricing::barrier::DoubleBarrierPricer,
+}
+
+#[pymethods]
+impl PyDoubleBarrierPricer {
+  #[new]
+  #[pyo3(signature = (s, k, h_upper, h_lower, r, q, sigma, t, option_type="call"))]
+  fn new(
+    s: f64,
+    k: f64,
+    h_upper: f64,
+    h_lower: f64,
+    r: f64,
+    q: f64,
+    sigma: f64,
+    t: f64,
+    option_type: &str,
+  ) -> PyResult<Self> {
+    let ot = parse_option_type(option_type)?;
+    Ok(Self {
+      inner: crate::pricing::barrier::DoubleBarrierPricer {
+        s,
+        k,
+        h_upper,
+        h_lower,
+        r,
+        q,
+        sigma,
+        t,
+        option_type: ot,
+      },
+    })
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.price()
+  }
+}
+
+#[pyclass(name = "MCBarrierPricer", unsendable)]
+pub struct PyMCBarrierPricer {
+  inner: crate::pricing::barrier::MCBarrierPricer,
+}
+
+#[pymethods]
+impl PyMCBarrierPricer {
+  #[new]
+  #[pyo3(signature = (n_paths=10000, n_steps=252))]
+  fn new(n_paths: usize, n_steps: usize) -> Self {
+    Self {
+      inner: crate::pricing::barrier::MCBarrierPricer { n_paths, n_steps },
+    }
+  }
+
+  /// `barrier_type`: one of "up_in" / "up_out" / "down_in" / "down_out".
+  #[pyo3(signature = (s, k, h, r, sigma, t, barrier_type, option_type="call"))]
+  fn price(
+    &self,
+    s: f64,
+    k: f64,
+    h: f64,
+    r: f64,
+    sigma: f64,
+    t: f64,
+    barrier_type: &str,
+    option_type: &str,
+  ) -> PyResult<f64> {
+    use crate::pricing::barrier::BarrierType;
+    let bt = match barrier_type.to_ascii_lowercase().as_str() {
+      "up_in" | "ui" => BarrierType::UpAndIn,
+      "up_out" | "uo" => BarrierType::UpAndOut,
+      "down_in" | "di" => BarrierType::DownAndIn,
+      "down_out" | "do" => BarrierType::DownAndOut,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "barrier_type must be one of up_in/up_out/down_in/down_out, got '{o}'"
+        )));
+      }
+    };
+    let ot = parse_option_type(option_type)?;
+    Ok(self.inner.price(s, k, h, r, sigma, t, bt, ot))
+  }
+}
+
+#[pyclass(name = "KirkSpreadPricer", unsendable)]
+pub struct PyKirkSpreadPricer {
+  inner: crate::pricing::kirk::KirkSpreadPricer,
+}
+
+#[pymethods]
+impl PyKirkSpreadPricer {
+  #[new]
+  fn new(f1: f64, f2: f64, x: f64, r: f64, v1: f64, v2: f64, corr: f64, tau: f64) -> Self {
+    Self {
+      inner: crate::pricing::kirk::KirkSpreadPricer::new(
+        f1,
+        f2,
+        x,
+        r,
+        v1,
+        v2,
+        corr,
+        Some(tau),
+        None,
+        None,
+      ),
+    }
+  }
+
+  fn price(&self) -> f64 {
+    self.inner.calculate_price()
+  }
+}
+
+/// Implied vol surface — built from a `(N_T, N_K)` price grid via FFT
+/// inversion.
+#[pyclass(name = "ImpliedVolSurface", unsendable)]
+pub struct PyImpliedVolSurface {
+  inner: crate::vol_surface::implied::ImpliedVolSurface,
+}
+
+#[pymethods]
+impl PyImpliedVolSurface {
+  /// Build from a Heston Fourier model + grid via Carr-Madan FFT.
+  #[staticmethod]
+  fn from_heston(
+    model: &PyHestonFourier,
+    s: f64,
+    r: f64,
+    q: f64,
+    strikes: Vec<f64>,
+    maturities: Vec<f64>,
+  ) -> Self {
+    Self {
+      inner: crate::vol_surface::model_surface::fourier_model_surface_fft(
+        &model.inner,
+        s,
+        r,
+        q,
+        &strikes,
+        &maturities,
+      ),
+    }
+  }
+
+  /// Build from a Bates Fourier model + grid via Carr-Madan FFT.
+  #[staticmethod]
+  fn from_bates(
+    model: &PyBatesFourier,
+    s: f64,
+    r: f64,
+    q: f64,
+    strikes: Vec<f64>,
+    maturities: Vec<f64>,
+  ) -> Self {
+    Self {
+      inner: crate::vol_surface::model_surface::fourier_model_surface_fft(
+        &model.inner,
+        s,
+        r,
+        q,
+        &strikes,
+        &maturities,
+      ),
+    }
+  }
+
+  fn strikes(&self) -> Vec<f64> {
+    self.inner.strikes.clone()
+  }
+  fn maturities(&self) -> Vec<f64> {
+    self.inner.maturities.clone()
+  }
+
+  /// Returns the IV grid as a flattened `(N_T, N_K)` row-major numpy array.
+  fn ivs<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.ivs.clone().into_pyarray(py)
+  }
+}
+
+/// Standalone SVI single-slice calibrator (least-squares fit of a single
+/// `SviRawParams` to a `(log_moneyness, total_variance)` slice).
+#[pyclass(name = "SviCalibrator", unsendable)]
+pub struct PySviCalibrator {
+  fitted: crate::vol_surface::svi::SviRawParams<f64>,
+}
+
+#[pymethods]
+impl PySviCalibrator {
+  #[new]
+  fn new(log_moneyness: Vec<f64>, total_variance: Vec<f64>) -> Self {
+    Self {
+      fitted: crate::vol_surface::svi::calibrate_svi(&log_moneyness, &total_variance, None),
+    }
+  }
+
+  /// `(a, b, rho, m, sigma)`.
+  fn params(&self) -> (f64, f64, f64, f64, f64) {
+    let p = &self.fitted;
+    (p.a, p.b, p.rho, p.m, p.sigma)
+  }
+
+  fn implied_vol(&self, k: f64, t: f64) -> f64 {
+    self.fitted.implied_vol(k, t)
+  }
+
+  fn total_variance(&self, k: f64) -> f64 {
+    self.fitted.total_variance(k)
+  }
+}
+
+/// Standalone SSVI joint multi-slice calibrator.
+#[pyclass(name = "SsviCalibrator", unsendable)]
+pub struct PySsviCalibrator {
+  fitted: crate::vol_surface::ssvi::SsviParams<f64>,
+}
+
+#[pymethods]
+impl PySsviCalibrator {
+  /// `slices`: list of `(log_moneyness, total_variance, theta_atm)` triplets.
+  #[new]
+  fn new(slices: Vec<(Vec<f64>, Vec<f64>, f64)>) -> Self {
+    let inner_slices: Vec<crate::vol_surface::ssvi::SsviSlice<f64>> = slices
+      .into_iter()
+      .map(
+        |(log_moneyness, total_variance, theta)| crate::vol_surface::ssvi::SsviSlice {
+          log_moneyness,
+          total_variance,
+          theta,
+        },
+      )
+      .collect();
+    Self {
+      fitted: crate::vol_surface::ssvi::calibrate_ssvi(&inner_slices, None),
+    }
+  }
+
+  /// `(rho, eta, gamma)`.
+  fn params(&self) -> (f64, f64, f64) {
+    let p = &self.fitted;
+    (p.rho, p.eta, p.gamma)
+  }
+
+  fn implied_vol(&self, k: f64, theta: f64, t: f64) -> f64 {
+    self.fitted.implied_vol(k, theta, t)
+  }
+}
+
+#[pyclass(name = "HKDECalibrator", unsendable)]
+pub struct PyHKDECalibrator {
+  inner: crate::calibration::hkde::HKDECalibrator,
+}
+
+#[pymethods]
+impl PyHKDECalibrator {
+  /// Heston + Kou double-exponential jump joint calibration over multiple maturities.
+  #[new]
+  #[pyo3(signature = (slices, s, r, option_type="call", q=None))]
+  fn new(
+    slices: Vec<PyMarketSlice>,
+    s: f64,
+    r: f64,
+    option_type: &str,
+    q: Option<f64>,
+  ) -> PyResult<Self> {
+    let ot = parse_option_type(option_type)?;
+    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+      slices.into_iter().map(|s| s.inner).collect();
+    Ok(Self {
+      inner: crate::calibration::hkde::HKDECalibrator::from_slices(
+        None,
+        &inner_slices,
+        s,
+        r,
+        q,
+        ot,
+        false,
+      ),
+    })
+  }
+
+  /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, p_up, eta1, eta2, converged, loss_rmse)`.
+  #[allow(clippy::type_complexity)]
+  fn calibrate(
+    &self,
+  ) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
+    let res = self.inner.calibrate(None);
+    Ok((
+      res.v0,
+      res.kappa,
+      res.theta,
+      res.sigma_v,
+      res.rho,
+      res.lambda,
+      res.p_up,
+      res.eta1,
+      res.eta2,
+      res.converged,
+      res.loss.get(crate::types::LossMetric::Rmse),
+    ))
+  }
+}
+
+/// Rough Bergomi calibrator (Wasserstein-1 path matching, projected Adam).
+#[pyclass(name = "RBergomiCalibrator", unsendable)]
+pub struct PyRBergomiCalibrator {
+  inner: crate::calibration::rbergomi::RBergomiCalibrator,
+}
+
+#[pymethods]
+impl PyRBergomiCalibrator {
+  /// `slices`: list of `(maturity, terminal_samples)` pairs.
+  /// Initial guess uses Hurst=0.1, rho=-0.7, eta=2.0, xi0=Constant(0.04).
+  #[new]
+  #[pyo3(signature = (s0, r, slices, hurst=0.1, rho=-0.7, eta=2.0, xi0=0.04, max_iters=60, paths=1024))]
+  fn new(
+    s0: f64,
+    r: f64,
+    slices: Vec<(f64, Vec<f64>)>,
+    hurst: f64,
+    rho: f64,
+    eta: f64,
+    xi0: f64,
+    max_iters: usize,
+    paths: usize,
+  ) -> Self {
+    use crate::calibration::rbergomi::*;
+    let inner_slices: Vec<RBergomiMarketSlice> = slices
+      .into_iter()
+      .map(|(maturity, terminal_samples)| RBergomiMarketSlice {
+        maturity,
+        terminal_samples,
+      })
+      .collect();
+    let params = RBergomiParams {
+      hurst,
+      rho,
+      eta,
+      xi0: RBergomiXi0::Constant(xi0),
+    };
+    let mut cfg = RBergomiCalibrationConfig {
+      max_iters,
+      paths,
+      ..RBergomiCalibrationConfig::default()
+    };
+    cfg.paths = paths;
+    Self {
+      inner: RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false),
+    }
+  }
+
+  /// Returns `(hurst, rho, eta, xi0_const, final_loss, iterations, converged)`.
+  fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, usize, bool)> {
+    use crate::calibration::rbergomi::RBergomiXi0;
+    use crate::traits::Calibrator;
+    let res = self
+      .inner
+      .calibrate(None)
+      .map_err(|e| PyValueError::new_err(format!("rBergomi calibration failed: {e}")))?;
+    let p = &res.calibrated_params;
+    let xi0_const = match &p.xi0 {
+      RBergomiXi0::Constant(c) => *c,
+      _ => 0.0,
+    };
+    Ok((
+      p.hurst,
+      p.rho,
+      p.eta,
+      xi0_const,
+      res.final_loss,
+      res.iterations,
+      res.converged,
+    ))
+  }
+}
+
+/// Value-at-Risk with Gaussian / historical / Monte-Carlo methods.
+#[pyclass(name = "VaR", unsendable)]
+pub struct PyVaR {
+  value: f64,
+  method: String,
+}
+
+#[pymethods]
+impl PyVaR {
+  /// `method`: one of "gaussian" / "historical" / "monte_carlo".
+  /// `orientation`: "pnl" (default — losses are `-x`) or "loss".
+  #[new]
+  #[pyo3(signature = (samples, confidence=0.99, method="historical", orientation="pnl"))]
+  fn new<'py>(
+    samples: numpy::PyReadonlyArray1<'py, f64>,
+    confidence: f64,
+    method: &str,
+    orientation: &str,
+  ) -> PyResult<Self> {
+    use crate::risk::var::PnlOrLoss;
+    use crate::risk::var::VarMethod;
+    let m = match method.to_ascii_lowercase().as_str() {
+      "gaussian" => VarMethod::Gaussian,
+      "historical" => VarMethod::Historical,
+      "monte_carlo" | "mc" => VarMethod::MonteCarlo,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "method must be one of gaussian/historical/monte_carlo, got '{o}'"
+        )));
+      }
+    };
+    let pol = match orientation.to_ascii_lowercase().as_str() {
+      "pnl" => PnlOrLoss::Pnl,
+      "loss" => PnlOrLoss::Loss,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "orientation must be 'pnl' or 'loss', got '{o}'"
+        )));
+      }
+    };
+    let value = crate::risk::var::value_at_risk(samples.as_array(), confidence, pol, m);
+    Ok(Self {
+      value,
+      method: format!("{m:?}"),
+    })
+  }
+
+  #[getter]
+  fn value(&self) -> f64 {
+    self.value
+  }
+  #[getter]
+  fn method(&self) -> String {
+    self.method.clone()
+  }
+}
+
+#[pyclass(name = "ExpectedShortfall", unsendable)]
+pub struct PyExpectedShortfall {
+  value: f64,
+}
+
+#[pymethods]
+impl PyExpectedShortfall {
+  #[new]
+  #[pyo3(signature = (samples, confidence=0.99, method="historical", orientation="pnl"))]
+  fn new<'py>(
+    samples: numpy::PyReadonlyArray1<'py, f64>,
+    confidence: f64,
+    method: &str,
+    orientation: &str,
+  ) -> PyResult<Self> {
+    use crate::risk::var::PnlOrLoss;
+    use crate::risk::var::VarMethod;
+    let m = match method.to_ascii_lowercase().as_str() {
+      "gaussian" => VarMethod::Gaussian,
+      "historical" => VarMethod::Historical,
+      "monte_carlo" | "mc" => VarMethod::MonteCarlo,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "method must be one of gaussian/historical/monte_carlo, got '{o}'"
+        )));
+      }
+    };
+    let pol = match orientation.to_ascii_lowercase().as_str() {
+      "pnl" => PnlOrLoss::Pnl,
+      "loss" => PnlOrLoss::Loss,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "orientation must be 'pnl' or 'loss', got '{o}'"
+        )));
+      }
+    };
+    let value = crate::risk::expected_shortfall::expected_shortfall(
+      samples.as_array(),
+      confidence,
+      pol,
+      m,
+    );
+    Ok(Self { value })
+  }
+
+  #[getter]
+  fn value(&self) -> f64 {
+    self.value
+  }
+}
+
+#[pyclass(name = "DrawdownStats", unsendable)]
+pub struct PyDrawdownStats {
+  inner: crate::risk::drawdown::DrawdownStats<f64>,
+}
+
+#[pymethods]
+impl PyDrawdownStats {
+  #[new]
+  fn new<'py>(equity: numpy::PyReadonlyArray1<'py, f64>) -> Self {
+    Self {
+      inner: crate::risk::drawdown::DrawdownStats::from_equity(equity.as_array()),
+    }
+  }
+
+  #[getter]
+  fn max(&self) -> f64 {
+    self.inner.max
+  }
+  #[getter]
+  fn max_index(&self) -> usize {
+    self.inner.max_index
+  }
+  #[getter]
+  fn longest_duration(&self) -> usize {
+    self.inner.longest_duration
+  }
+  #[getter]
+  fn average(&self) -> f64 {
+    self.inner.average
+  }
+
+  fn series<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.series.clone().into_pyarray(py)
+  }
+}
+
+#[pyclass(name = "AlmgrenChrissPlan", unsendable)]
+pub struct PyAlmgrenChrissPlan {
+  inner: crate::microstructure::almgren_chriss::AlmgrenChrissPlan<f64>,
+}
+
+#[pymethods]
+impl PyAlmgrenChrissPlan {
+  /// Compute the Almgren-Chriss optimal-execution schedule.
+  /// `direction`: "sell" (default) or "buy".
+  #[new]
+  #[pyo3(signature = (
+    total_shares, horizon, n_intervals, volatility, gamma, eta, lambda_,
+    epsilon=0.0, direction="sell"
+  ))]
+  fn new(
+    total_shares: f64,
+    horizon: f64,
+    n_intervals: usize,
+    volatility: f64,
+    gamma: f64,
+    eta: f64,
+    lambda_: f64,
+    epsilon: f64,
+    direction: &str,
+  ) -> PyResult<Self> {
+    use crate::microstructure::almgren_chriss::{
+      AlmgrenChrissParams, ExecutionDirection, optimal_execution,
+    };
+    let dir = match direction.to_ascii_lowercase().as_str() {
+      "sell" => ExecutionDirection::Sell,
+      "buy" => ExecutionDirection::Buy,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "direction must be 'sell' or 'buy', got '{o}'"
+        )));
+      }
+    };
+    let params = AlmgrenChrissParams {
+      total_shares,
+      direction: dir,
+      horizon,
+      n_intervals,
+      volatility,
+      gamma,
+      eta,
+      epsilon,
+      lambda: lambda_,
+    };
+    Ok(Self {
+      inner: optimal_execution(&params),
+    })
+  }
+
+  fn inventory<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.inventory.clone().into_pyarray(py)
+  }
+  fn trades<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.trades.clone().into_pyarray(py)
+  }
+  fn rates<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.rates.clone().into_pyarray(py)
+  }
+  #[getter]
+  fn kappa(&self) -> f64 {
+    self.inner.kappa
+  }
+  #[getter]
+  fn expected_cost(&self) -> f64 {
+    self.inner.expected_cost
+  }
+  #[getter]
+  fn variance(&self) -> f64 {
+    self.inner.variance
+  }
+  fn risk_adjusted_cost(&self, lambda: f64) -> f64 {
+    self.inner.risk_adjusted_cost(lambda)
+  }
+}
+
+#[pyclass(name = "KyleEquilibrium", unsendable)]
+pub struct PyKyleEquilibrium {
+  inner: crate::microstructure::kyle::KyleEquilibrium<f64>,
+}
+
+#[pymethods]
+impl PyKyleEquilibrium {
+  /// Single-period Kyle (1985) equilibrium.
+  #[new]
+  fn new(prior_variance: f64, noise_variance: f64) -> Self {
+    Self {
+      inner: crate::microstructure::kyle::single_period_kyle(prior_variance, noise_variance),
+    }
+  }
+
+  #[getter]
+  fn beta(&self) -> f64 {
+    self.inner.beta
+  }
+  /// Kyle's lambda (price-impact coefficient).
+  #[getter]
+  fn lambda(&self) -> f64 {
+    self.inner.lambda
+  }
+  #[getter]
+  fn posterior_variance(&self) -> f64 {
+    self.inner.posterior_variance
+  }
+  #[getter]
+  fn expected_profit(&self) -> f64 {
+    self.inner.expected_profit
+  }
+}
+
+#[pyfunction]
+#[pyo3(signature = (prior_variance, noise_variance_per_round, n_periods))]
+pub fn multi_period_kyle(
+  prior_variance: f64,
+  noise_variance_per_round: f64,
+  n_periods: usize,
+) -> Vec<(f64, f64, f64, f64)> {
+  let v = crate::microstructure::kyle::multi_period_kyle(
+    prior_variance,
+    noise_variance_per_round,
+    n_periods,
+  );
+  v.into_iter()
+    .map(|e| (e.beta, e.lambda, e.posterior_variance, e.expected_profit))
+    .collect()
+}
+
+#[pyfunction]
+pub fn roll_spread<'py>(prices: numpy::PyReadonlyArray1<'py, f64>) -> f64 {
+  crate::microstructure::spread::roll_spread(prices.as_array())
+}
+
+#[pyfunction]
+pub fn effective_spread<'py>(
+  trade_price: numpy::PyReadonlyArray1<'py, f64>,
+  mid: numpy::PyReadonlyArray1<'py, f64>,
+) -> f64 {
+  crate::microstructure::spread::effective_spread(trade_price.as_array(), mid.as_array())
+}
+
+#[pyfunction]
+pub fn corwin_schultz_spread<'py>(
+  high: numpy::PyReadonlyArray1<'py, f64>,
+  low: numpy::PyReadonlyArray1<'py, f64>,
+) -> f64 {
+  crate::microstructure::spread::corwin_schultz_spread(high.as_array(), low.as_array())
+}
+
+#[pyfunction]
+#[pyo3(signature = (signed_volumes, kernel="powerlaw", g0=1.0, beta=0.5))]
+pub fn propagator_price_impact<'py>(
+  signed_volumes: numpy::PyReadonlyArray1<'py, f64>,
+  kernel: &str,
+  g0: f64,
+  beta: f64,
+) -> PyResult<f64> {
+  use crate::microstructure::impact::ImpactKernel;
+  let k = match kernel.to_ascii_lowercase().as_str() {
+    "powerlaw" | "power_law" => ImpactKernel::<f64>::PowerLaw,
+    "exponential" | "exp" => ImpactKernel::<f64>::Exponential,
+    o => {
+      return Err(PyValueError::new_err(format!(
+        "kernel must be 'powerlaw' or 'exponential', got '{o}'"
+      )));
+    }
+  };
+  Ok(crate::microstructure::impact::propagator_price_impact(
+    signed_volumes.as_array(),
+    k,
+    g0,
+    beta,
+  ))
+}
+
+/// Limit order book — supports add / cancel / market-order execution.
+#[pyclass(name = "OrderBook", unsendable)]
+pub struct PyOrderBook {
+  inner: crate::order_book::OrderBook,
+}
+
+fn parse_side(s: &str) -> PyResult<crate::order_book::Side> {
+  match s.to_ascii_lowercase().as_str() {
+    "buy" | "b" | "bid" => Ok(crate::order_book::Side::Buy),
+    "sell" | "s" | "ask" | "offer" => Ok(crate::order_book::Side::Sell),
+    o => Err(PyValueError::new_err(format!(
+      "side must be 'buy' or 'sell', got '{o}'"
+    ))),
+  }
+}
+
+#[pymethods]
+impl PyOrderBook {
+  #[new]
+  fn new() -> Self {
+    Self {
+      inner: crate::order_book::OrderBook::new(),
+    }
+  }
+
+  /// Add a limit order. Returns `(order_id, [(price, size, taker_id, maker_id)] of immediate fills)`.
+  fn add_order(
+    &mut self,
+    side: &str,
+    price: f64,
+    size: f64,
+  ) -> PyResult<(u64, Vec<(f64, f64, u64, u64)>)> {
+    let s = parse_side(side)?;
+    let (id, trades) = self.inner.add_order(s, price, size);
+    Ok((
+      id,
+      trades
+        .into_iter()
+        .map(|t| (t.price, t.size, t.taker_id, t.maker_id))
+        .collect(),
+    ))
+  }
+
+  /// Execute a market order. Returns `(taker_id, [trades], remaining_unfilled_size)`.
+  fn execute_order(
+    &mut self,
+    side: &str,
+    size: f64,
+  ) -> PyResult<(u64, Vec<(f64, f64, u64, u64)>, f64)> {
+    let s = parse_side(side)?;
+    let (id, trades, remaining) = self.inner.execute_order(s, size);
+    Ok((
+      id,
+      trades
+        .into_iter()
+        .map(|t| (t.price, t.size, t.taker_id, t.maker_id))
+        .collect(),
+      remaining,
+    ))
+  }
+
+  fn cancel_order(&mut self, id: u64) -> bool {
+    self.inner.cancel_order(id)
+  }
+
+  fn best_bid(&self) -> Option<(f64, f64)> {
+    self.inner.best_bid()
+  }
+  fn best_ask(&self) -> Option<(f64, f64)> {
+    self.inner.best_ask()
+  }
+  fn mid(&self) -> Option<f64> {
+    self.inner.mid()
+  }
+  fn spread(&self) -> Option<f64> {
+    self.inner.spread()
+  }
+  /// Returns `(bids, asks)` where each side is `[(price, total_size)]`.
+  fn depth(&self) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
+    self.inner.depth()
+  }
+}
+
+#[pyclass(name = "DiscountCurve", unsendable)]
+pub struct PyDiscountCurve {
+  inner: crate::curves::discount_curve::DiscountCurve<f64>,
+}
+
+#[pymethods]
+impl PyDiscountCurve {
+  /// Build from `(maturities, zero_rates)` arrays under continuous compounding.
+  /// `interp`: "linear" / "log_df" / "cubic" / "monotone_convex".
+  #[staticmethod]
+  #[pyo3(signature = (maturities, zero_rates, interp="linear"))]
+  fn from_zero_rates<'py>(
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+    zero_rates: numpy::PyReadonlyArray1<'py, f64>,
+    interp: &str,
+  ) -> PyResult<Self> {
+    use crate::curves::types::InterpolationMethod;
+    let im = match interp.to_ascii_lowercase().as_str() {
+      "linear" | "linear_zr" => InterpolationMethod::LinearOnZeroRates,
+      "log_df" | "loglinear_df" => InterpolationMethod::LogLinearOnDiscountFactors,
+      "cubic" | "cubic_zr" => InterpolationMethod::CubicSplineOnZeroRates,
+      "monotone_convex" | "mc" => InterpolationMethod::MonotoneConvex,
+      o => {
+        return Err(PyValueError::new_err(format!(
+          "interp must be linear/log_df/cubic/monotone_convex, got '{o}'"
+        )));
+      }
+    };
+    let mat = maturities.as_array().to_owned();
+    let zr = zero_rates.as_array().to_owned();
+    Ok(Self {
+      inner: crate::curves::discount_curve::DiscountCurve::from_zero_rates(&mat, &zr, im),
+    })
+  }
+
+  fn discount_factor(&self, t: f64) -> f64 {
+    self.inner.discount_factor(t)
+  }
+  fn zero_rate(&self, t: f64) -> f64 {
+    self.inner.zero_rate(t)
+  }
+  fn forward_rate(&self, t1: f64, t2: f64) -> f64 {
+    self.inner.forward_rate(t1, t2)
+  }
+  fn par_rate(&self, maturity: f64, frequency: u32) -> f64 {
+    self.inner.par_rate(maturity, frequency)
+  }
+
+  /// Vectorised zero rates on a maturity array.
+  fn zero_rates<'py>(
+    &self,
+    py: Python<'py>,
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    let mat = maturities.as_array().to_owned();
+    self.inner.zero_rates(&mat).into_pyarray(py)
+  }
+}
+
+#[pyclass(name = "NelsonSiegel", unsendable)]
+pub struct PyNelsonSiegel {
+  inner: crate::curves::nelson_siegel::NelsonSiegel<f64>,
+}
+
+#[pymethods]
+impl PyNelsonSiegel {
+  #[new]
+  fn new(beta0: f64, beta1: f64, beta2: f64, lambda: f64) -> Self {
+    Self {
+      inner: crate::curves::nelson_siegel::NelsonSiegel::new(beta0, beta1, beta2, lambda),
+    }
+  }
+
+  /// Fit Nelson-Siegel parameters to market zero rates (requires openblas feature).
+  #[cfg(feature = "openblas")]
+  #[staticmethod]
+  fn fit_curve<'py>(
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+    market_rates: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> Self {
+    let mat = maturities.as_array().to_owned();
+    let mr = market_rates.as_array().to_owned();
+    Self {
+      inner: <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(&mat, &mr),
+    }
+  }
+
+  fn zero_rate(&self, tau: f64) -> f64 {
+    self.inner.zero_rate(tau)
+  }
+  fn forward_rate(&self, tau: f64) -> f64 {
+    self.inner.forward_rate(tau)
+  }
+  fn discount_factor(&self, tau: f64) -> f64 {
+    self.inner.discount_factor(tau)
+  }
+}
+
+#[pyclass(name = "SabrCapletCalibrator", unsendable)]
+pub struct PySabrCapletCalibrator {
+  inner: crate::calibration::sabr_caplet::SabrCapletCalibrator,
+}
+
+#[pymethods]
+impl PySabrCapletCalibrator {
+  /// SABR caplet smile calibrator — fits `(α, ν, ρ)` for a single expiry,
+  /// β held fixed.
+  #[new]
+  fn new(
+    forward: f64,
+    expiry: f64,
+    beta: f64,
+    strikes: Vec<f64>,
+    market_vols: Vec<f64>,
+  ) -> Self {
+    Self {
+      inner: crate::calibration::sabr_caplet::SabrCapletCalibrator::new(
+        forward,
+        expiry,
+        beta,
+        strikes,
+        market_vols,
+      ),
+    }
+  }
+
+  /// Returns `(alpha, beta, nu, rho, rmse, converged)`.
+  fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, bool)> {
+    use crate::traits::Calibrator;
+    let res = self
+      .inner
+      .calibrate(None)
+      .map_err(|e| PyValueError::new_err(format!("SABR caplet calibration failed: {e}")))?;
+    Ok((
+      res.alpha,
+      res.beta,
+      res.nu,
+      res.rho,
+      res.rmse,
+      res.converged,
+    ))
+  }
+}
+
+#[pyclass(name = "CgmysvCalibrator", unsendable)]
+pub struct PyCgmysvCalibrator {
+  inner: crate::calibration::cgmysv::CgmysvCalibrator,
+}
+
+#[pymethods]
+impl PyCgmysvCalibrator {
+  /// CGMYSV (Carr-Geman-Madan-Yor + stochastic volatility) calibrator
+  /// via Lewis Fourier pricing + Levenberg-Marquardt.
+  #[new]
+  fn new(slices: Vec<PyMarketSlice>, s: f64, r: f64, q: f64) -> Self {
+    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+      slices.into_iter().map(|s| s.inner).collect();
+    Self {
+      inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, inner_slices),
+    }
+  }
+
+  /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0, converged, loss_rmse, iterations)`.
+  #[allow(clippy::type_complexity)]
+  fn calibrate(
+    &self,
+  ) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64, usize)> {
+    let res = self.inner.calibrate(None);
+    let p = &res.params;
+    Ok((
+      p.alpha,
+      p.lambda_plus,
+      p.lambda_minus,
+      p.kappa,
+      p.eta,
+      p.zeta,
+      p.rho,
+      p.v0,
+      res.converged,
+      res.loss.get(crate::types::LossMetric::Rmse),
+      res.iterations,
+    ))
+  }
+}
+
+#[pyclass(name = "ZeroCouponInflationCurve", unsendable)]
+pub struct PyZeroCouponInflationCurve {
+  inner: crate::inflation::curve::ZeroCouponInflationCurve<f64>,
+}
+
+#[pymethods]
+impl PyZeroCouponInflationCurve {
+  /// Build a zero-coupon inflation curve from `(pillars, breakevens)`.
+  #[new]
+  fn new<'py>(
+    pillars: numpy::PyReadonlyArray1<'py, f64>,
+    breakevens: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> Self {
+    Self {
+      inner: crate::inflation::curve::ZeroCouponInflationCurve::new(
+        pillars.as_array().to_owned(),
+        breakevens.as_array().to_owned(),
+      ),
+    }
+  }
+}
+
+#[pyfunction]
+pub fn ledoit_wolf_shrinkage<'py>(
+  py: Python<'py>,
+  returns: numpy::PyReadonlyArray2<'py, f64>,
+) -> (pyo3::Bound<'py, numpy::PyArray2<f64>>, f64) {
+  use numpy::IntoPyArray;
+  let res = crate::factors::shrinkage::ledoit_wolf_shrinkage(returns.as_array());
+  (res.covariance.into_pyarray(py), res.alpha)
+}
+
+#[pyfunction]
+pub fn sample_covariance<'py>(
+  py: Python<'py>,
+  returns: numpy::PyReadonlyArray2<'py, f64>,
+) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+  use numpy::IntoPyArray;
+  let res = crate::factors::shrinkage::sample_covariance(returns.as_array());
+  res.into_pyarray(py)
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "PCA", unsendable)]
+pub struct PyPCA {
+  inner: crate::factors::pca::PcaResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyPCA {
+  /// PCA on a `(T, N)` returns matrix; `k=0` keeps all factors.
+  #[new]
+  #[pyo3(signature = (returns, k=0))]
+  fn new<'py>(returns: numpy::PyReadonlyArray2<'py, f64>, k: usize) -> Self {
+    Self {
+      inner: crate::factors::pca::pca_decompose(returns.as_array(), k),
+    }
+  }
+
+  fn singular_values<'py>(
+    &self,
+    py: Python<'py>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.singular_values.clone().into_pyarray(py)
+  }
+  fn eigenvalues<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.eigenvalues.clone().into_pyarray(py)
+  }
+  fn explained_variance_ratio<'py>(
+    &self,
+    py: Python<'py>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self
+      .inner
+      .explained_variance_ratio
+      .clone()
+      .into_pyarray(py)
+  }
+  fn loadings<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.loadings.clone().into_pyarray(py)
+  }
+  fn scores<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.scores.clone().into_pyarray(py)
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "FamaMacBeth", unsendable)]
+pub struct PyFamaMacBeth {
+  inner: crate::factors::fama_macbeth::FamaMacBethResult,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyFamaMacBeth {
+  /// Two-pass Fama-MacBeth cross-sectional regression on `(T, N)` returns
+  /// and `(T, K)` factors.
+  #[new]
+  fn new<'py>(
+    returns: numpy::PyReadonlyArray2<'py, f64>,
+    factors: numpy::PyReadonlyArray2<'py, f64>,
+  ) -> Self {
+    Self {
+      inner: crate::factors::fama_macbeth::fama_macbeth(returns.as_array(), factors.as_array()),
+    }
+  }
+
+  fn gamma<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.gamma.clone().into_pyarray(py)
+  }
+  fn std_errors<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.std_errors.clone().into_pyarray(py)
+  }
+  fn t_statistics<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.t_statistics.clone().into_pyarray(py)
+  }
+  fn betas<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.betas.clone().into_pyarray(py)
+  }
+}
+
+#[cfg(feature = "openblas")]
+#[pyclass(name = "PairsStrategy", unsendable)]
+pub struct PyPairsStrategy {
+  inner: crate::factors::pairs::PairsStrategy,
+}
+
+#[cfg(feature = "openblas")]
+#[pymethods]
+impl PyPairsStrategy {
+  /// Build a pairs-trading strategy from cointegration regression of `y` on `x`.
+  /// `entry_z`: enter when `|z| ≥ entry_z`. `exit_z`: close when `|z| ≤ exit_z`.
+  #[new]
+  #[pyo3(signature = (y, x, entry_z=2.0, exit_z=0.5))]
+  fn new<'py>(
+    y: numpy::PyReadonlyArray1<'py, f64>,
+    x: numpy::PyReadonlyArray1<'py, f64>,
+    entry_z: f64,
+    exit_z: f64,
+  ) -> Self {
+    Self {
+      inner: crate::factors::pairs::pairs_signals(y.as_array(), x.as_array(), entry_z, exit_z),
+    }
+  }
+
+  #[getter]
+  fn alpha(&self) -> f64 {
+    self.inner.alpha
+  }
+  #[getter]
+  fn beta(&self) -> f64 {
+    self.inner.beta
+  }
+  #[getter]
+  fn spread_mean(&self) -> f64 {
+    self.inner.spread_mean
+  }
+  #[getter]
+  fn spread_std(&self) -> f64 {
+    self.inner.spread_std
+  }
+
+  fn spread<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.spread.clone().into_pyarray(py)
+  }
+  fn z_score<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.z_score.clone().into_pyarray(py)
+  }
+  /// Returns signals as an integer array: -1 = ShortSpread, 0 = Flat, +1 = LongSpread.
+  fn signals<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<i64>> {
+    use numpy::IntoPyArray;
+    let arr: ndarray::Array1<i64> = self
+      .inner
+      .signals
+      .iter()
+      .map(|s| match s {
+        crate::factors::pairs::PairsSignal::LongSpread => 1i64,
+        crate::factors::pairs::PairsSignal::ShortSpread => -1i64,
+        crate::factors::pairs::PairsSignal::Flat => 0i64,
+      })
+      .collect();
+    arr.into_pyarray(py)
+  }
+}

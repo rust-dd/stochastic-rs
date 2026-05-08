@@ -11,6 +11,15 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 doctest = false
 
+[features]
+default = []
+openblas = [
+    "stochastic-rs-copulas/openblas",
+    "stochastic-rs-stats/openblas",
+    "stochastic-rs-stochastic/openblas",
+    "stochastic-rs-quant/openblas",
+]
+
 [dependencies]
 stochastic-rs-core = { workspace = true, features = ["python"] }
 stochastic-rs-distributions = { workspace = true, features = ["python"] }
