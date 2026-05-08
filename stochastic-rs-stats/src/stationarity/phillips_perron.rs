@@ -56,6 +56,15 @@ pub struct PhillipsPerronResult {
   pub reject_unit_root: Option<bool>,
 }
 
+impl crate::traits::HypothesisTest for PhillipsPerronResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+  fn null_rejected(&self) -> Option<bool> {
+    self.reject_unit_root
+  }
+}
+
 /// Phillips-Perron unit-root test.
 ///
 /// # Panics

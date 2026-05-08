@@ -10,6 +10,8 @@ use std::error::Error;
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
+use roots::SimpleConvergency;
+use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
@@ -134,9 +136,29 @@ impl BivariateExt for Frank {
   }
 
   fn compute_theta(&self) -> f64 {
-    self
-      .least_squares(Self::_tau_to_theta, 1.0, f64::MIN.ln(), f64::MAX.ln())
-      .unwrap_or(1.0)
+    let tau = self.tau.unwrap();
+
+    if tau.abs() < 1e-12 {
+      return 0.0;
+    }
+    if tau >= 1.0 {
+      return f64::INFINITY;
+    }
+    if tau <= -1.0 {
+      return f64::NEG_INFINITY;
+    }
+
+    let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
+    let mut convergency = SimpleConvergency {
+      eps: 1e-8,
+      max_iter: 100,
+    };
+    let (lo, hi) = if tau > 0.0 {
+      (1e-8_f64, 50.0_f64)
+    } else {
+      (-50.0_f64, -1e-8_f64)
+    };
+    find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(0.0)
   }
 }
 
@@ -145,36 +167,44 @@ impl Frank {
     Ok((-self.theta.unwrap() * z).exp() - 1.0)
   }
 
+  /// Residual `τ(θ) − τ_target` for the Frank tau↔theta relation
+  /// `τ(θ) = 1 − 4/θ + (4/θ²) · ∫₀^θ t/(eᵗ − 1) dt` (Genest-MacKay 1986).
+  /// For θ < 0 the integral is taken in the negative direction
+  /// (i.e. `−∫_θ^0`) so the formula is well-defined on `(−∞, ∞)\{0}`.
   fn _tau_to_theta(tau: f64, alpha: f64) -> f64 {
-    let integrand = |u: f64| u / (u.exp() - 1.0);
-    let quad = GaussLegendre::new(std::num::NonZeroUsize::new(5).unwrap());
-    let integral = quad.integrate(f64::EPSILON, alpha, integrand);
-    4.0 * (integral - 1.0) / alpha + 1.0 - tau
-  }
-
-  // TODO: Improve this implementation
-  fn least_squares<F>(
-    &self,
-    f: F,
-    initial_guess: f64,
-    lower_bound: f64,
-    upper_bound: f64,
-  ) -> Option<f64>
-  where
-    F: Fn(f64, f64) -> f64,
-  {
-    let mut guess = initial_guess;
-    let tol = 1e-6;
-    for _ in 0..1000 {
-      let v = f(self.tau.unwrap(), guess);
-      if v.abs() < tol {
-        return Some(guess);
-      }
-      guess -= v * 0.01;
-      if guess < lower_bound || guess > upper_bound {
-        return None;
-      }
+    if alpha.abs() < 1e-15 {
+      // Independence limit: τ(0) = 0.
+      return -tau;
     }
-    None
+    let abs_a = alpha.abs();
+    let integrand = |u: f64| {
+      if u.abs() < 1e-15 {
+        1.0
+      } else {
+        u / (u.exp() - 1.0)
+      }
+    };
+    // The integrand t/(eᵗ−1) drops from 1 at t=0 to e^{-t} for large t.
+    // Naive Gauss-Legendre over [0, |alpha|] under-resolves the spike near 0
+    // for large |alpha|; split into chunks of width ≤ 1 with 8 nodes each
+    // (effectively a piecewise high-order rule) for stable integration.
+    let quad = GaussLegendre::new(std::num::NonZeroUsize::new(8).unwrap());
+    let chunk_w = 1.0_f64;
+    let n_chunks = (abs_a / chunk_w).ceil() as usize;
+    let mut integral_pos = 0.0_f64;
+    for k in 0..n_chunks {
+      let lo = (k as f64) * chunk_w;
+      let hi = ((k + 1) as f64 * chunk_w).min(abs_a);
+      integral_pos += quad.integrate(lo, hi, integrand);
+    }
+    // For α < 0, ∫₀^α t/(eᵗ−1) dt = −α²/2 − ∫₀^|α| u/(eᵘ−1) du.
+    // (Substitute u = −t and use u/(e⁻ᵘ−1) = −u − u/(eᵘ−1).)
+    let integral = if alpha > 0.0 {
+      integral_pos
+    } else {
+      -alpha * alpha / 2.0 - integral_pos
+    };
+    let tau_theta = 1.0 - 4.0 / alpha + 4.0 * integral / (alpha * alpha);
+    tau_theta - tau
   }
 }

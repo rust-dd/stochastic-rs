@@ -122,7 +122,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
     let mut log_sigma2 = Array1::<T>::zeros(self.n);
 
     // For normal(0,1), the expected absolute value is sqrt(2/pi)
-    let e_abs_z = (2.0 / std::f64::consts::PI).sqrt();
+    let e_abs_z = T::from_f64_fast((2.0_f64 / std::f64::consts::PI).sqrt());
 
     for t in 0..self.n {
       if t == 0 {
@@ -138,7 +138,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
             let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
 
             // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
-            shock_term += self.alpha[i - 1] * (z_t_i.abs() - T::from_f64_fast(e_abs_z))
+            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z)
               + self.gamma[i - 1] * z_t_i;
           }
         }

@@ -22,12 +22,24 @@ pub struct SimdBinomial<T: PrimInt> {
 
 impl<T: PrimInt> SimdBinomial<T> {
   pub fn new(n: u32, p: f64) -> Self {
+    Self::from_seed_source(n, p, &crate::simd_rng::Unseeded)
+  }
+
+  /// Creates a binomial sampler with a deterministic seed.
+  pub fn with_seed(n: u32, p: f64, seed: u64) -> Self {
+    Self::from_seed_source(n, p, &crate::simd_rng::Deterministic::new(seed))
+  }
+
+  /// Creates a binomial sampler with an RNG obtained from a
+  /// [`SeedExt`](crate::simd_rng::SeedExt) source. The core constructor —
+  /// `new()` and `with_seed()` delegate here.
+  pub fn from_seed_source(n: u32, p: f64, seed: &impl crate::simd_rng::SeedExt) -> Self {
     Self {
       n,
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
 

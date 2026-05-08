@@ -48,6 +48,15 @@ pub struct ADFResult {
   pub reject_unit_root: bool,
 }
 
+impl crate::traits::HypothesisTest for ADFResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.reject_unit_root)
+  }
+}
+
 /// Augmented Dickey-Fuller unit-root test.
 ///
 /// # Panics

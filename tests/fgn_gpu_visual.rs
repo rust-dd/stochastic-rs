@@ -77,6 +77,7 @@ mod gpu_visual {
   }
 
   #[test]
+  #[ignore = "visual: writes HTML, no assertions; run with --ignored"]
   fn plot_cpu_vs_gpu_autocovariance() {
     let n = 1024;
     let m = 4096;
@@ -119,6 +120,7 @@ mod gpu_visual {
   }
 
   #[test]
+  #[ignore = "visual: writes HTML, no assertions; run with --ignored"]
   fn plot_gpu_fgn_trajectories() {
     let n = 1024;
     let traj = 8;
@@ -141,6 +143,7 @@ mod gpu_visual {
   }
 
   #[test]
+  #[ignore = "visual: writes HTML, no assertions; run with --ignored"]
   fn plot_gpu_fbm_trajectories() {
     let n = 1024;
     let traj = 8;

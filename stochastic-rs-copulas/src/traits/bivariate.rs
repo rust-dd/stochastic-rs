@@ -29,7 +29,9 @@ pub trait BivariateExt {
 
   fn check_theta(&self) -> Result<(), String> {
     let (lower, upper) = self.theta_bounds();
-    let theta = self.theta().unwrap();
+    let theta = self
+      .theta()
+      .ok_or_else(|| "theta is not set; call set_theta or fit first".to_string())?;
     let invalid = self.invalid_thetas();
 
     if !(lower <= theta && theta <= upper) || invalid.contains(&theta) {

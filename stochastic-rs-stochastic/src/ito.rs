@@ -4,6 +4,15 @@
 //! df(t,X_t)=\left(f_t+a f_x+\tfrac12 b^2 f_{xx}\right)dt + b f_x dW_t
 //! $$
 //!
+//! ## Precision
+//!
+//! This module is **`f64`-only by design**. The `DiffusionProcessFn`
+//! and `Function2D` user-supplied closures take `f64` arguments (a
+//! finite-difference Itô calculator does not benefit meaningfully from
+//! `f32` precision, and `f32` would lose accuracy on the central
+//! differences). For generic-precision SDE simulation use
+//! [`crate::sde::Sde`] (`<T: FloatExt>`) or any of the strongly-typed
+//! [`crate::traits::ProcessExt`] processes.
 use ndarray::Array1;
 
 use crate::traits::FloatExt;

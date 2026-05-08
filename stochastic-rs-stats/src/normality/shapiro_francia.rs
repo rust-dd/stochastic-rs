@@ -37,6 +37,15 @@ pub struct ShapiroFranciaResult {
   pub reject_normality: bool,
 }
 
+impl crate::traits::HypothesisTest for ShapiroFranciaResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.reject_normality)
+  }
+}
+
 fn shapiro_francia_statistic_sorted(sorted: &[f64]) -> f64 {
   let n = sorted.len();
   let n_f = n as f64;

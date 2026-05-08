@@ -136,3 +136,36 @@ impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
 pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
 
 impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}
+
+/// Marker for processes whose [`ProcessExt::sample`] returns a runtime-sized
+/// collection of 1D trajectories `Vec<Array1<T>>`.
+///
+/// Auto-implemented for any `P: ProcessExt<T, Output = Vec<Array1<T>>>`.
+/// Used when the dimensionality `D` is determined by a runtime parameter and
+/// each component carries its own (possibly variable-length) trace —
+/// e.g. [`crate::process::multivariate_hawkes::MultivariateHawkes`], whose
+/// per-component event-time vectors have process-dependent lengths.
+pub trait VariableDimensional<T: FloatExt>: ProcessExt<T, Output = Vec<Array1<T>>> {}
+
+impl<T: FloatExt, P> VariableDimensional<T> for P where
+  P: ProcessExt<T, Output = Vec<Array1<T>>>
+{
+}
+
+/// Marker for processes whose [`ProcessExt::sample`] returns a complex-valued
+/// 1D trajectory `Array1<Complex<T>>`.
+///
+/// Auto-implemented for any `P: ProcessExt<T, Output = Array1<Complex<T>>>`.
+/// Used by complex-state diffusions such as
+/// [`crate::diffusion::cfou::Cfou`], where the joint dynamics of two
+/// real OU components are expressed as a single complex Ornstein-Uhlenbeck
+/// `Z_t = X_1(t) + i X_2(t)`.
+pub trait ComplexPathOutput<T: FloatExt>:
+  ProcessExt<T, Output = ndarray::Array1<num_complex::Complex<T>>>
+{
+}
+
+impl<T: FloatExt, P> ComplexPathOutput<T> for P where
+  P: ProcessExt<T, Output = ndarray::Array1<num_complex::Complex<T>>>
+{
+}

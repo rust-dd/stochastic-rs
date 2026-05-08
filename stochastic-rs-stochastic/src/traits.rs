@@ -10,11 +10,13 @@ pub mod process;
 
 pub use malliavin::Malliavin2DExt;
 pub use malliavin::MalliavinExt;
+pub use process::ComplexPathOutput;
 pub use process::CurveOutput;
 pub use process::MultiDimensional;
 pub use process::OneDimensional;
 pub use process::ProcessExt;
 pub use process::TwoDimensional;
+pub use process::VariableDimensional;
 #[cfg(feature = "python")]
 pub use stochastic_rs_distributions::traits::CallableDist;
 pub use stochastic_rs_distributions::traits::DistributionExt;

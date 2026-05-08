@@ -1,24 +1,32 @@
 //! # Vasicek
 //!
 //! $$
-//! dr_t=a(b-r_t)dt+\sigma dW_t
+//! dr_t=\theta(\mu-r_t)dt+\sigma dW_t
 //! $$
 //!
+//! Field-name convention matches the SDE above:
+//! - `theta` is the **mean-reversion speed** (rate at which `r_t` reverts).
+//! - `mu` is the **long-run mean** (level the process reverts to).
+//!
+//! This matches the convention used elsewhere in the workspace
+//! (`stochastic_rs_stats::fou_estimator::FouEstimateResult`,
+//! `stochastic_rs_stochastic::diffusion::ou::Ou`,
+//! `stochastic_rs_stochastic::interest::vasicek::Vasicek`).
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
-/// Vasicek model for zero-coupon bond pricing
-/// dR(t) = theta(mu - R(t))dt + sigma dW(t)
-/// where R(t) is the short rate.
+/// Vasicek model for zero-coupon bond pricing.
+///
+/// `dR(t) = θ(μ − R(t)) dt + σ dW(t)` where `R(t)` is the short rate.
 #[derive(Default, Debug)]
 pub struct Vasicek {
-  /// Short rate
+  /// Short rate at evaluation date.
   pub r_t: f64,
-  /// Long-term mean of the short rate
+  /// Mean-reversion speed (κ in the SDE).
   pub theta: f64,
-  /// Mean reversion speed
+  /// Long-run mean of the short rate (the level `r_t` reverts to).
   pub mu: f64,
-  /// Volatility
+  /// Volatility.
   pub sigma: f64,
   /// Maturity of the bond in years
   pub tau: f64,
@@ -56,6 +64,39 @@ impl TimeExt for Vasicek {
 
   fn expiration(&self) -> Option<chrono::NaiveDate> {
     self.expiration
+  }
+}
+
+impl Vasicek {
+  /// Build a `Vasicek` bond pricer from an
+  /// [`stochastic_rs_stats::fou_estimator::FouEstimateResult`] (the output of
+  /// `estimate_fou_v1` / `estimate_fou_v2` / `estimate_fou_v4`).
+  ///
+  /// Field correspondence: `theta = est.theta` (mean-reversion speed),
+  /// `mu = est.mu` (long-run level), `sigma = est.sigma`.
+  ///
+  /// **Caveat.** The fOU estimator can produce a Hurst exponent `H ≠ 0.5`,
+  /// but the closed-form Vasicek bond price `A − B·r` is derived for
+  /// **standard Brownian** noise (`H = 0.5`). For `H ≠ 0.5` this constructor
+  /// silently uses the drift / scale / level estimates with the standard-noise
+  /// pricer — accurate only as a Markov first-order approximation. For
+  /// genuine fractional pricing, use the rough-volatility models in
+  /// `stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek` or
+  /// `stochastic_rs_stochastic::rough::*`.
+  pub fn from_fou_estimate(
+    est: &stochastic_rs_stats::fou_estimator::FouEstimateResult,
+    r_t: f64,
+    tau: f64,
+  ) -> Self {
+    Self {
+      r_t,
+      theta: est.theta,
+      mu: est.mu,
+      sigma: est.sigma,
+      tau,
+      eval: None,
+      expiration: None,
+    }
   }
 }
 
@@ -107,5 +148,23 @@ mod tests {
     };
     let p = v.calculate_price();
     assert!(p > 0.0 && p < 1.0, "ZCB out of range: {p}");
+  }
+
+  #[test]
+  fn from_fou_estimate_maps_fields_directly() {
+    let est = stochastic_rs_stats::fou_estimator::FouEstimateResult {
+      hurst: 0.5,
+      sigma: 0.012,
+      mu: 0.035,
+      theta: 0.42,
+    };
+    let v = Vasicek::from_fou_estimate(&est, 0.04, 2.0);
+    assert_eq!(v.r_t, 0.04);
+    assert_eq!(v.theta, 0.42);
+    assert_eq!(v.mu, 0.035);
+    assert_eq!(v.sigma, 0.012);
+    assert_eq!(v.tau, 2.0);
+    let p = v.calculate_price();
+    assert!(p > 0.0 && p < 1.0);
   }
 }

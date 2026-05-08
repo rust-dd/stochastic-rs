@@ -119,6 +119,6 @@ impl BivariateExt for Independence {
   }
 
   fn compute_theta(&self) -> f64 {
-    panic!("There is no theta to calculate")
+    0.0
   }
 }

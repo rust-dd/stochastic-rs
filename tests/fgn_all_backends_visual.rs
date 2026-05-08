@@ -95,6 +95,7 @@ mod all_backends {
   }
 
   #[test]
+  #[ignore = "visual: writes HTML, no assertions; run with --ignored"]
   fn plot_all_backends_autocovariance() {
     let n = 1024;
     let m = 4096;
@@ -136,6 +137,7 @@ mod all_backends {
   }
 
   #[test]
+  #[ignore = "visual: writes HTML, no assertions; run with --ignored"]
   fn plot_all_backends_fgn_trajectories() {
     let n = 1024;
     let traj = 5;
@@ -160,6 +162,7 @@ mod all_backends {
   }
 
   #[test]
+  #[ignore = "visual: writes HTML, no assertions; run with --ignored"]
   fn plot_all_backends_fbm_trajectories() {
     let n = 1024;
     let traj = 5;

@@ -144,8 +144,8 @@ impl BivariateExt for Gumbel {
   fn compute_theta(&self) -> f64 {
     let tau = self.tau.unwrap();
 
-    if tau == 1.0 {
-      panic!("Tau cannot be 1.0 for Gumbel copula");
+    if tau >= 1.0 {
+      return f64::INFINITY;
     }
 
     1.0 / (1.0 - tau)

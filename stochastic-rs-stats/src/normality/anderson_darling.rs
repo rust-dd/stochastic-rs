@@ -27,6 +27,15 @@ pub struct AndersonDarlingResult {
   pub reject_normality: bool,
 }
 
+impl crate::traits::HypothesisTest for AndersonDarlingResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.reject_normality)
+  }
+}
+
 fn mean_std(sample: &[f64]) -> (f64, f64) {
   let n = sample.len() as f64;
   let mean = sample.iter().sum::<f64>() / n;

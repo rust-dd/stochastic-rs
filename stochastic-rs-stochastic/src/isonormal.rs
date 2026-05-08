@@ -4,6 +4,16 @@
 //! \mathbb{E}[W(h)W(g)] = \langle h, g \rangle_{\mathcal H}
 //! $$
 //!
+//! ## Precision
+//!
+//! This module is **`f64`-only by design**. The path generator relies on
+//! `ndrustfft::FftHandler<f64>` and `num_complex::Complex64`, and
+//! `gauss_quad::GaussLegendre` (used by [`l2_unit_inner_product`]) is
+//! parameterised over `f64`. None of these have a stable `f32` analogue
+//! in the current dependency stack, so the entire module commits to
+//! `f64`. Generic-precision Hilbert-space samplers should use
+//! [`crate::noise::fgn::Fgn`] or the strongly-typed
+//! [`crate::traits::ProcessExt`] processes instead.
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::concatenate;

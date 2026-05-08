@@ -68,6 +68,7 @@ fn fd_all_deltas(
 
 /// Digital put 2D: M-T with closed-form g kernel (arctan + ln) vs FD.
 #[test]
+#[ignore = "benchmark: 50k path MC; run with: cargo test --release --features openblas mt_vs_fd_digital_put_2d -- --ignored --nocapture"]
 fn mt_vs_fd_digital_put_2d() {
   let n_paths = 50_000;
   let params = make_params_2d();
@@ -118,6 +119,7 @@ fn mt_vs_fd_digital_put_2d() {
 
 /// Price comparison: M-T MC price vs analytical bounds.
 #[test]
+#[ignore = "benchmark: 50k path MC; run with: cargo test --release --features openblas mt_digital_put_2d_price_sanity -- --ignored --nocapture"]
 fn mt_digital_put_2d_price_sanity() {
   let n_paths = 50_000;
   let params = make_params_2d();

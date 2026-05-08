@@ -16,6 +16,7 @@ use stochastic_rs::stats::econometrics::granger_causality;
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
 
+#[cfg(feature = "openblas")]
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
   let dist = SimdNormal::<f64>::with_seed(0.0, sigma, seed);
   let mut steps = vec![0.0_f64; n];

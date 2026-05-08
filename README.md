@@ -7,9 +7,14 @@
 
 A high-performance Rust library for simulating stochastic processes, with first-class bindings. Built for quantitative finance, statistical modeling and synthetic data generation.
 
+> **Upgrading from v1.x?** See [`docs/V1_TO_V2.md`](docs/V1_TO_V2.md) for the
+> v1 → v2 migration guide (workspace split, prelude, `Calibrator` /
+> `CalibrationResult` Result-based API, `Instrument` / `PricingEngine`
+> decoupling, `Greeks` aggregator, deprecated process aliases).
+
 ## Features
 
-- **85+ stochastic processes** — 31 diffusions (OU, CIR, GBM, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, …), 15 jump processes (Merton, Kou, CGMY, bilateral gamma, …), 9 stochastic-volatility models (Heston, SABR, Bergomi, rough Bergomi, HKDE, …), 13 short-rate / HJM / LMM models (Vasicek, CIR, Hull-White, HJM, Wu-Zhang, Duffie-Kan, Ho-Lee, fractional Vasicek, drift-coupled LIBOR Market Model `Lmm` with spot-LIBOR drift and tenor-aware log-Euler stepping, …), plus base processes (fBM, fGN, Poisson, Hawkes, Lévy, LFSM, …) and the `Bgm` parallel uncoupled-rate sampler (Euler-stepped multiplicative martingales — **not** a coupled BGM/LMM; for that, see `Lmm`). Each carries a generic-precision `ProcessExt<T>` impl and CUDA / SIMD acceleration where applicable.
+- **120+ stochastic processes** — 31 diffusions (OU, CIR, GBM, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, …), 15 jump processes (Merton, Kou, CGMY, bilateral gamma, …), 9 stochastic-volatility models (Heston, SABR, Bergomi, rough Bergomi, HKDE, …), 13 short-rate / HJM / LMM models (Vasicek, CIR, Hull-White, HJM, Wu-Zhang, Duffie-Kan, Ho-Lee, fractional Vasicek, drift-coupled LIBOR Market Model `Lmm` with spot-LIBOR drift and tenor-aware log-Euler stepping, …), plus base processes (fBM, fGN, Poisson, Hawkes, Lévy, LFSM, …) and the `Bgm` parallel uncoupled-rate sampler (Euler-stepped multiplicative martingales — **not** a coupled BGM/LMM; for that, see `Lmm`). Each carries a generic-precision `ProcessExt<T>` impl and CUDA / SIMD acceleration where applicable.
 - **Pricing** — closed-form (BSM, Bachelier, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz best-of-two, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain) · Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston · Monte Carlo (basket, rainbow, cliquet with cap/floor and memory, autocallable phoenix / athena, spread) · finite difference (explicit / implicit / Crank-Nicolson, American) · Bermudan LSM · Heston SLV (Guyon–Labordère)
 - **Fixed income** — yield-curve bootstrapping (deposit / FRA / future / swap), Nelson-Siegel / Svensson, multi-curve (OIS vs SOFR), discount-curve interpolation (linear / log-linear / cubic / monotone-convex) · vanilla / OIS / basis / cross-currency IRS · fixed-rate / floating-rate / inflation-linked / amortizing bonds · YTM / Macaulay / modified duration / convexity / Z-spread / OAS · cap / floor / collar / European & Bermudan swaptions with Hull-White, Black-Karasinski and G2++ tree engines · Jamshidian analytic European swaption · SABR / Shifted-SABR caplet calibration · CMS with Hagan linear-TSR
 - **Calibration** — Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), Stochastic Volatility Jump (SVJ), rough Bergomi, double Heston, BSM (multi-maturity), HKDE, Hull-White swaption-grid via Levenberg-Marquardt
@@ -52,7 +57,7 @@ times and dependency surface minimal.
 ```toml
 [dependencies]
 stochastic-rs-distributions = "2.0.0-rc.0"  # SIMD distribution sampling
-stochastic-rs-stochastic    = "2.0.0-rc.0"  # 140+ process types
+stochastic-rs-stochastic    = "2.0.0-rc.0"  # 120+ process types
 stochastic-rs-copulas       = "2.0.0-rc.0"  # bivariate / multivariate copulas
 stochastic-rs-stats         = "2.0.0-rc.0"  # estimators
 stochastic-rs-quant         = "2.0.0-rc.0"  # pricing / calibration / vol surface
@@ -65,7 +70,7 @@ Topology:
 ```
 stochastic-rs-core (simd_rng)
  └→ stochastic-rs-distributions (FloatExt, SimdFloatExt, distribution types)
-     ├→ stochastic-rs-stochastic (ProcessExt + 140+ processes)
+     ├→ stochastic-rs-stochastic (ProcessExt + 120+ processes)
      ├→ stochastic-rs-copulas (BivariateExt, etc.)
      └→ stochastic-rs-stats (estimators)
          └→ stochastic-rs-quant (PricerExt, ModelPricer, calibration, vol surface)
@@ -172,6 +177,13 @@ fn main() {
 ```
 
 ### Bindings
+
+> **Scope (v2.0).** The Python wheel currently exposes the **distribution** and
+> **stochastic-process** sampling layers (102 PyO3 classes). Pricing /
+> calibration (`stochastic-rs-quant`), copulas, statistics estimators, neural
+> surrogates (`stochastic-rs-ai`) and visualisation are **not yet exposed** to
+> Python — they remain Rust-only for the 2.0 line. Python coverage of the
+> remaining sub-crates is tracked for a 2.x follow-up.
 
 All models return numpy arrays. Use `dtype="f32"` or `dtype="f64"` (default) to control precision.
 

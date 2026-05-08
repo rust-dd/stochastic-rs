@@ -58,6 +58,15 @@ pub struct ERSResult {
   pub reject_unit_root: bool,
 }
 
+impl crate::traits::HypothesisTest for ERSResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.reject_unit_root)
+  }
+}
+
 fn gls_detrend(y: &[f64], trend: ERSTrend) -> Vec<f64> {
   validate_series(y, 20);
   let n = y.len();

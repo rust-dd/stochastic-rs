@@ -71,6 +71,15 @@ pub struct KPSSResult {
   pub reject_stationarity: bool,
 }
 
+impl crate::traits::HypothesisTest for KPSSResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.reject_stationarity)
+  }
+}
+
 fn kpss_critical_values(trend: KPSSTrend) -> KPSSCriticalValues {
   match trend {
     KPSSTrend::Level => KPSSCriticalValues {

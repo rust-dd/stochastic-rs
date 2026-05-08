@@ -57,6 +57,15 @@ pub struct LeybourneMcCabeResult {
   pub reject_stationarity: bool,
 }
 
+impl crate::traits::HypothesisTest for LeybourneMcCabeResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.reject_stationarity)
+  }
+}
+
 fn detrend_series(y: &[f64], trend: LMTrend) -> Vec<f64> {
   match trend {
     LMTrend::Level => {
