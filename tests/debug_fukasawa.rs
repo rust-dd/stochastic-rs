@@ -1,10 +1,16 @@
 //! Debug: print the Whittle likelihood surface for known fBM.
+//!
+//! This is a manual diagnostic, not a regression test — it prints the
+//! periodogram and NLL surface for visual inspection. Run explicitly via
+//! `cargo test -- --ignored likelihood_surface` when investigating Fukasawa
+//! behaviour.
 
 use stochastic_rs::stats::fukasawa_hurst;
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::traits::ProcessExt;
 
 #[test]
+#[ignore = "diagnostic-only: prints likelihood surface, no assertions"]
 fn likelihood_surface() {
   let true_h = 0.3_f64;
   let n = 1024;

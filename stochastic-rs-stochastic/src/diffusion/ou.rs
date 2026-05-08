@@ -16,11 +16,13 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct Ou<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Long-run target level / model location parameter.
+  /// Mean-reversion speed (κ in the SDE `dX = κ(θ − X) dt + σ dW`). Controls
+  /// how fast `X` is pulled back toward [`mu`](Self::mu).
   pub theta: T,
-  /// Drift / long-run mean-level parameter.
+  /// Long-run mean level (θ in the SDE). The value `X` reverts to as
+  /// `t → ∞`.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion / noise scale parameter (σ in the SDE).
   pub sigma: T,
   /// Number of discrete simulation points (or samples).
   pub n: usize,

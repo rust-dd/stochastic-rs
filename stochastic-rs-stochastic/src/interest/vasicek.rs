@@ -13,12 +13,18 @@ use crate::diffusion::ou::Ou;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+/// Vasicek short-rate model — internally wraps [`Ou`] with the same parameter
+/// semantics: in the SDE `dr = a(b − r) dt + σ dW` (file header) the Rust
+/// field [`theta`](Self::theta) corresponds to `a` (mean-reversion speed)
+/// and [`mu`](Self::mu) corresponds to `b` (long-run mean level).
 pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Long-run target level / model location parameter.
+  /// Mean-reversion speed (`a` in the SDE). Controls how fast `r` is pulled
+  /// back toward [`mu`](Self::mu).
   pub theta: T,
-  /// Drift / long-run mean-level parameter.
+  /// Long-run mean level (`b` in the SDE). The value `r` reverts to as
+  /// `t → ∞`.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion / noise scale parameter (`σ` in the SDE).
   pub sigma: T,
   /// Number of discrete simulation points (or samples).
   pub n: usize,

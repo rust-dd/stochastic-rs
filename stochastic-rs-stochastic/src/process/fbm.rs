@@ -23,7 +23,8 @@ use ndarray::Array1;
   feature = "gpu",
   feature = "cuda-native",
   feature = "accelerate",
-  feature = "metal"
+  feature = "metal",
+  feature = "python"
 ))]
 use ndarray::Array2;
 #[cfg(feature = "python")]
@@ -32,8 +33,6 @@ use numpy::IntoPyArray;
 use numpy::PyArray1;
 #[cfg(feature = "python")]
 use numpy::PyArray2;
-#[cfg(feature = "python")]
-use numpy::ndarray::Array2;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;

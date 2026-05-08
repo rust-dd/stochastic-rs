@@ -90,10 +90,9 @@ impl FOUParameterEstimationV1 {
   }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum FilterType {
   Daubechies,
-  Classical,
 }
 
 impl FOUParameterEstimationV1 {
@@ -182,27 +181,15 @@ impl FOUParameterEstimationV1 {
   }
 
   fn get_filter_coefficients(&self) -> (Array1<f64>, usize) {
-    let a: Array1<f64>;
-    let L: usize;
-    if self.filter_type == FilterType::Daubechies {
-      a = array![
+    let a: Array1<f64> = match self.filter_type {
+      FilterType::Daubechies => array![
         0.482962913144534 / SQRT_2,
         -0.836516303737808 / SQRT_2,
         0.224143868042013 / SQRT_2,
         0.12940952255126 / SQRT_2
-      ];
-      L = a.len();
-    } else if self.filter_type == FilterType::Classical {
-      unimplemented!("Classical filter not implemented yet.");
-    } else {
-      a = array![
-        0.482962913144534 / SQRT_2,
-        -0.836516303737808 / SQRT_2,
-        0.224143868042013 / SQRT_2,
-        0.12940952255126 / SQRT_2
-      ];
-      L = a.len();
-    }
+      ],
+    };
+    let L = a.len();
     (a, L)
   }
 

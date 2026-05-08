@@ -31,7 +31,10 @@ use stochastic_rs_distributions::traits::FloatExt;
 /// finance models). This matches the convention used across the workspace and
 /// the audit document; do **not** rely on it implicitly for interest-rate or
 /// volatility models where the horizon meaningfully drives parameter scaling
-/// (Vasicek, CIR, BGM, HJM, Heston, Bergomi). For those, set `t` explicitly.
+/// (Vasicek, CIR, HJM, Heston, Bergomi). For those, set `t` explicitly. Note
+/// that [`crate::interest::bgm::Bgm`] despite its name is **not** a coupled
+/// LMM/BGM (see its module doc); it is a parallel array of independent
+/// Euler-stepped multiplicative martingales.
 ///
 /// ## GPU coverage
 ///
@@ -42,10 +45,14 @@ use stochastic_rs_distributions::traits::FloatExt;
 /// circulant-embedding path under `feature = "gpu"`.
 ///
 /// **Roadmap (P3/18):** GPU implementations for Heston, RoughBergomi, Cir2F,
-/// Bgm, and Hjm remain TODO. These models use *standard* Brownian noise,
+/// and Hjm remain TODO. These processes use *standard* Brownian noise,
 /// not fractional, so the Fgn GPU path is not directly reusable — they
 /// need bespoke kernels for variance updates (e.g. Andersen QE for Cir-type
-/// dynamics) and correlated noise generation. Track issue when implementing.
+/// dynamics) and correlated noise generation. ([`Bgm`](crate::interest::bgm::Bgm)
+/// is excluded from the GPU roadmap on purpose: it is a parallel array of
+/// uncoupled Euler-stepped multiplicative martingales, not a market model
+/// — see its module doc — so a GPU sampler would just be `xn` independent
+/// `Gbm`-style streams and offers no algorithmic interest.)
 pub trait ProcessExt<T: FloatExt>: Send + Sync {
   type Output: Send;
 
@@ -122,8 +129,10 @@ impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
 /// matrix — a discretised curve or sheet rather than a single path.
 ///
 /// Auto-implemented for any `P: ProcessExt<T, Output = Array2<T>>`. Used by
-/// interest-rate term-structure models (`Bgm`, `Hjm`-with-tenors,
-/// `WuZhangD`) and stochastic-sheet processes (`Fbs`).
+/// interest-rate term-structure models (`Hjm`-with-tenors, `WuZhangD`),
+/// stochastic-sheet processes (`Fbs`), and the parallel-rate primitive
+/// `Bgm` (which despite its name is not a coupled BGM/LMM — see its module
+/// doc).
 pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
 
 impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}

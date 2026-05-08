@@ -15,14 +15,20 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Cox-Ingersoll-Ross (Cir) process.
-/// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW(t)
-/// where X(t) is the Cir process.
+///
+/// `dX(t) = theta * (mu - X(t)) * dt + sigma * sqrt(X(t)) * dW(t)`
+///
+/// In the SDE notation `dX = κ(θ − X) dt + σ √X dW` the Rust field
+/// [`theta`](Self::theta) corresponds to κ (mean-reversion speed) and
+/// [`mu`](Self::mu) corresponds to θ (long-run mean level).
 pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Long-run target level / model location parameter.
+  /// Mean-reversion speed (κ in the SDE). Controls how fast `X` is pulled
+  /// back toward [`mu`](Self::mu).
   pub theta: T,
-  /// Drift / long-run mean-level parameter.
+  /// Long-run mean level (θ in the SDE). The value `X` reverts to as
+  /// `t → ∞`.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion / noise scale parameter (σ in the SDE).
   pub sigma: T,
   /// Number of discrete simulation points (or samples).
   pub n: usize,

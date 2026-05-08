@@ -1,8 +1,19 @@
 //! # Tree
 //!
 //! $$
-//! \text{Tree copula factorization over pair-copulas on spanning levels}
+//! \widehat C \;=\; \text{Gauss}\bigl(R(\hat\tau,\,\text{MST})\bigr),\quad
+//! R_{ij}=\sin\!\tfrac{\pi}{2}\,\hat\tau_{ij}^{\text{(MST-path)}}
 //! $$
+//!
+//! **Scope (Gaussian-collapsed implied-correlation copula, NOT a real R-vine):**
+//! [`TreeMultivariate`] builds a maximum-spanning-tree (MST) over pairwise
+//! `|τ → ρ|` and uses the resulting tree topology to derive a single
+//! correlation matrix that is consistent along the MST edges; sampling and
+//! scoring then reduce to a **standard Gaussian copula** with that implied
+//! correlation. It is **not** a true pair-copula construction: only Gaussian
+//! pair components are used and only the tree edges contribute pairwise
+//! Kendall τ information. For genuine non-Gaussian pair-copula construction
+//! (mixed Clayton / Gumbel / Frank R-vines) plan a 2.x dedicated module.
 //!
 use std::error::Error;
 
@@ -19,6 +30,11 @@ use super::CopulaType;
 use crate::correlation::kendall_tau;
 use crate::traits::MultivariateExt;
 
+/// Gaussian copula whose correlation matrix is **derived from a maximum
+/// spanning tree** over pairwise Kendall τ. Despite the `Tree` name this is
+/// **not a pair-copula construction** — sampling and scoring reduce to a
+/// standard Gaussian copula with the MST-implied correlation. See module
+/// header for the precise scope.
 #[derive(Debug, Clone, Default)]
 pub struct TreeMultivariate {
   dim: usize,

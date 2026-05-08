@@ -1,6 +1,24 @@
 //! # Vine
 //!
 //! $$
+//! \widehat C \;=\; \text{Gauss}\bigl(R(\hat\tau,\,\text{star-C-vine})\bigr),\qquad
+//! R_{ij}=\rho_{ir}\,\rho_{rj}\;\text{ for non-root }i,j\ \text{ via root }r
+//! $$
+//!
+//! **Scope (Gaussian-collapsed implied-correlation copula, NOT a real R-vine):**
+//! [`VineMultivariate`] picks the highest-Kendall-τ-degree node as a star-C-vine
+//! root `r` and sets the implied correlation `ρ_{ij} = ρ_{ir} ρ_{rj}` for
+//! non-root pairs. Sampling and scoring reduce to a **standard Gaussian
+//! copula** with that implied correlation. It is **not** a true pair-copula
+//! construction: only Gaussian pair components are used and only the
+//! star-tree edges contribute pairwise τ information. Truncated R-vines with
+//! mixed pair families (Clayton / Gumbel / Frank / Joe) are planned for a 2.x
+//! dedicated `pcc` module.
+//!
+//! Original general formula for reference (not what this implementation
+//! computes):
+//!
+//! $$
 //! c(u)=\prod_{m=1}^{d-1}\prod_{e\in E_m} c_{a_e,b_e\mid D_e}(u_{a_e\mid D_e},u_{b_e\mid D_e})
 //! $$
 //!
@@ -19,6 +37,11 @@ use super::CopulaType;
 use crate::correlation::kendall_tau;
 use crate::traits::MultivariateExt;
 
+/// Gaussian copula whose correlation matrix is **derived from a star
+/// C-vine** rooted at the highest-Kendall-τ-degree node. Despite the `Vine`
+/// name this is **not a pair-copula construction** — sampling and scoring
+/// reduce to a standard Gaussian copula with the star-implied correlation.
+/// See module header for the precise scope.
 #[derive(Debug, Clone, Default)]
 pub struct VineMultivariate {
   dim: usize,

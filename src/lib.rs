@@ -10,7 +10,9 @@
 #![allow(clippy::too_many_arguments)]
 //#![warn(missing_docs)]
 
-#[cfg(feature = "mimalloc")]
+// Mutually exclusive global allocators. If both features are enabled (e.g.
+// `cargo check --all-features` for CI smoke testing), `jemalloc` wins.
+#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

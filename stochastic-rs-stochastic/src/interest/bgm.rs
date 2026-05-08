@@ -1,8 +1,60 @@
 //! # Bgm
 //!
 //! $$
-//! dL_i(t)=\mu_i(t)L_i(t)dt+\sigma_i(t)L_i(t)dW_t
+//! L_i(t+dt) = L_i(t)\,\bigl(1 + \lambda_i\,\Delta W_t^{(i)}\bigr),\qquad
+//! \Delta W_t^{(i)}\sim \mathcal N(0,\,\Delta t),\quad
+//! W^{(i)}\perp W^{(j)}\ \text{for}\ i\ne j
 //! $$
+//!
+//! **⚠️ Scope warning — this is NOT a BGM / LIBOR Market Model in the standard
+//! sense, and the per-step recurrence is NOT exact log-normal evolution.**
+//! Despite the type name, the implementation samples `xn` **independent**
+//! per-rate paths by **forward-Euler discretization** of the formal SDE
+//! `dL_i = λ_i L_i dW^{(i)}`:
+//!
+//! - Each rate `L_i` is driven by its **own independent** Brownian motion
+//!   `W^{(i)}` (separate `SimdNormal::from_seed_source` call per row inside
+//!   the [`ProcessExt::sample`](crate::traits::ProcessExt) impl).
+//! - There is **no tenor / accrual-period structure** (no `δ_j`, no payment
+//!   dates), so concepts like "the j-th forward measure" or
+//!   "spot-LIBOR measure" do not even apply here.
+//! - The drift coupling `µ_i = −σ_i Σ_{j>i} (τ_j δ_j σ_j L_j)/(1+δ_j L_j)`
+//!   that defines BGM/LMM under a common measure is **not** present; nor is
+//!   it conceptually meaningful for the current type, since there is no
+//!   tenor structure to derive it from.
+//! - The recurrence `L(t+dt) = L(t)(1 + λ·ΔW)` is a **discrete-time
+//!   martingale by construction** (`E[L(t+dt)|L(t)] = L(t)` since
+//!   `E[ΔW] = 0`), but it is **not** a log-normal sample — the marginal
+//!   distribution of `L(t)` is not log-normal at any finite `dt`. The exact
+//!   log-normal evolution `L(t+dt) = L(t)·exp(−½ λ² dt + λ ΔW)` is **not**
+//!   used. In particular, paths can become **negative** when
+//!   `λ·ΔW < −1` (a non-trivial event whenever `λ √dt` is large compared to
+//!   one), so the impl differs qualitatively from a geometric Brownian
+//!   motion. Only in the limit `dt → 0` does the law converge to log-normal.
+//!
+//! Suitable for:
+//!
+//! - **Single-path** Monte-Carlo where you only care about the (Euler-biased)
+//!   marginal of one `L_i` and `λ_i √dt ≪ 1`;
+//! - **Sanity / smoke testing** that consumes a matrix-shaped output of
+//!   `(xn, n)` rate-like paths;
+//! - **Demoware / teaching examples** illustrating Euler-Maruyama on a
+//!   driftless multiplicative SDE.
+//!
+//! **NOT suitable for:**
+//!
+//! - Caplet / floorlet calibration (no tenor structure, no measure framework,
+//!   Euler-vs-exact-lognormal bias);
+//! - Swaption / Bermudan swaption pricing (requires the joint distribution
+//!   of multiple correlated rates under a common measure);
+//! - Any product whose payoff depends on cross-rate dependence, since the
+//!   rates here are statistically **independent**;
+//! - Any path-sensitive product where negative `L` values would be ill-defined
+//!   (e.g., direct exponentiation, Black-formula payoffs on the path).
+//!
+//! A proper drift-coupled, factor-correlated LMM (with tenor / accrual
+//! structure, change-of-numéraire drifts, low-rank correlation matrix, and
+//! exact log-normal stepping) is planned for a 2.x `interest::lmm` module.
 //!
 use ndarray::Array1;
 use ndarray::Array2;
@@ -14,12 +66,23 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+/// **NOT a BGM / LIBOR Market Model** despite the name — see the module
+/// header for the precise scope. Samples `xn` **independent** discrete-time
+/// martingale paths `L_i` via the forward-Euler recurrence
+/// `L_i(t+dt) = L_i(t)·(1 + λ_i·ΔW_t^{(i)})` for the formal SDE
+/// `dL_i = λ_i L_i dW^{(i)}`. The discrete law is **not log-normal** at
+/// finite `dt` (paths may go negative when `λ √dt` is not small); only the
+/// continuous-time limit is log-normal. No tenor structure, no measure
+/// choice, no cross-forward drift coupling.
 pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Drift/volatility multiplier for each forward rate.
+  /// Per-rate noise scale `λ_i` in the Euler step
+  /// `L_i(t+dt) = L_i(t)·(1 + λ_i·ΔW)`. **Not** a Black/log-normal vol —
+  /// the discrete recurrence is an Euler approximation, not exact log-normal
+  /// evolution (see module doc).
   pub lambda: Array1<T>,
-  /// Initial forward rates for each path.
+  /// Initial values `L_i(0)` (one entry per simulated rate).
   pub x0: Array1<T>,
-  /// Number of forward rates (rows) to simulate.
+  /// Number of independent rate paths to simulate (one per matrix row).
   pub xn: usize,
   /// Total time horizon.
   pub t: Option<T>,
