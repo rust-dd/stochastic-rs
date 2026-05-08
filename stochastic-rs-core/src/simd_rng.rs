@@ -193,11 +193,16 @@ fn initial_seed() -> u64 {
     .map(|d| d.as_nanos())
     .unwrap_or(0);
   let t_lo = t as u64;
-  let t_hi = (t >> 64) as u64;
   let pid = std::process::id() as u64;
   let x = 0u64;
-  let addr = (&x as *const u64 as usize) as u64;
-  let mut seed = t_lo ^ t_hi.rotate_left(23) ^ pid.rotate_left(11) ^ addr.rotate_left(37);
+  // Stack ASLR slide and text ASLR slide are independent on Linux/macOS/Windows,
+  // so mixing both buys real entropy beyond the wall-clock + pid combination.
+  let stack_addr = (&x as *const u64 as usize) as u64;
+  let text_addr = (initial_seed as fn() -> u64 as usize) as u64;
+  let mut seed = t_lo
+    ^ pid.rotate_left(11)
+    ^ stack_addr.rotate_left(37)
+    ^ text_addr.rotate_left(53);
   splitmix64_next(&mut seed)
 }
 

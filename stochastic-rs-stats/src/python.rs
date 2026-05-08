@@ -833,7 +833,7 @@ impl PyHestonNMLECEKF {
       max_iters,
       ..default_cfg
     };
-    let arr = s.as_array().to_owned();
+    let arr = s.as_array();
     Self {
       inner: crate::heston_nml_cekf::nmle_cekf_heston(arr, cfg),
     }

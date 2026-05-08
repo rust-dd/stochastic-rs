@@ -40,6 +40,14 @@ pub struct GridPlotter {
   title: String,
   x_gap: f64,
   y_gap: f64,
+  /// Per-component auto-rescale threshold. When the ratio between the largest
+  /// component max and the smallest non-zero component max exceeds this value,
+  /// each smaller component is silently scaled up so all components share a
+  /// y-range. The trace name and hover tooltip carry the scale factor. `None`
+  /// disables the rescale and plots raw values.
+  ///
+  /// Default: `Some(20.0)`.
+  rescale_threshold: Option<f64>,
 }
 
 impl Default for GridPlotter {
@@ -58,7 +66,15 @@ impl GridPlotter {
       title: String::new(),
       x_gap: 0.06,
       y_gap: 0.12,
+      rescale_threshold: Some(20.0),
     }
+  }
+
+  /// Set the per-component auto-rescale threshold. Pass `None` to disable.
+  /// See [`GridPlotter::rescale_threshold`] field doc.
+  pub fn rescale_threshold(mut self, threshold: Option<f64>) -> Self {
+    self.rescale_threshold = threshold.filter(|t| t.is_finite() && *t > 1.0);
+    self
   }
 
   pub fn title(mut self, title: &str) -> Self {
@@ -305,7 +321,11 @@ impl GridPlotter {
         .filter(|&v| v > 0.0)
         .fold(f64::INFINITY, f64::min);
       let mut comp_scale = vec![1.0f64; n_components];
-      if n_components > 1 && min_nonzero.is_finite() && global_max / min_nonzero > 20.0 {
+      if let Some(threshold) = self.rescale_threshold
+        && n_components > 1
+        && min_nonzero.is_finite()
+        && global_max / min_nonzero > threshold
+      {
         for (i, &m) in comp_max.iter().enumerate() {
           if m > 0.0 {
             comp_scale[i] = global_max / m;

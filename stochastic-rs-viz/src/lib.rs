@@ -995,4 +995,20 @@ mod tests {
     let bad = Array2::<f64>::zeros((3, 5));
     plot_vol_surface(&strikes, &maturities, &bad, "/tmp/should_not_exist.html");
   }
+
+  #[test]
+  fn grid_plotter_rescale_threshold_disabled_writes_html() {
+    let bm = Bm::new(64, Some(1.0));
+    let grid = GridPlotter::new()
+      .title("rescale-threshold=None smoke")
+      .cols(1)
+      .rescale_threshold(None)
+      .register(&bm, "Bm", 1);
+    let plot = grid.plot();
+    let mut out = std::env::temp_dir();
+    out.push("stochastic_rs_test_rescale_disabled.html");
+    plot.write_html(&out);
+    assert!(out.exists(), "plot did not write file");
+    let _ = std::fs::remove_file(out);
+  }
 }

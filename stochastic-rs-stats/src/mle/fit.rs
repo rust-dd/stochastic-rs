@@ -6,7 +6,7 @@ use argmin::core::Gradient;
 use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
-use ndarray::Array1;
+use ndarray::{Array1, ArrayView1};
 use parking_lot::Mutex;
 
 use super::DiffusionModel;
@@ -47,7 +47,7 @@ impl fmt::Display for MleResult {
 /// Argmin problem wrapper for MLE optimisation.
 struct MleProblem<'a> {
   model: Mutex<&'a mut dyn DiffusionModel>,
-  sample: &'a Array1<f64>,
+  sample: ArrayView1<'a, f64>,
   dt: f64,
   density: DensityApprox,
   bounds: Vec<(f64, f64)>,
@@ -139,7 +139,7 @@ impl Gradient for MleProblem<'_> {
 ///   <https://doi.org/10.1007/BF01589116>
 pub fn fit_mle(
   model: &mut dyn DiffusionModel,
-  sample: &Array1<f64>,
+  sample: ArrayView1<f64>,
   dt: f64,
   density: DensityApprox,
   param_bounds: Option<Vec<(f64, f64)>>,

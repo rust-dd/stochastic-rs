@@ -534,7 +534,7 @@ impl HestonCalibrator {
         {
           cfg.initial_v0 = v_ts[0];
         }
-        let out = nmle_cekf_heston(s, cfg);
+        let out = nmle_cekf_heston(s.view(), cfg);
         let p: HestonParams = out.params.into();
         Some(p.projected())
       }

@@ -824,7 +824,7 @@ mod tests {
 
     let dt = 10.0 / 2500.0;
     let mut gbm_fit = Gbm::seeded(0.0, 0.5, 100, Some(100.0), Some(1.0), 0);
-    let result = fit_mle(&mut gbm_fit, &path, dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None);
     assert!(
       (result.params[1] - 0.2).abs() < 0.15,
       "sigma estimate too far: {} vs 0.2",
@@ -840,7 +840,7 @@ mod tests {
 
     let dt = 10.0 / 2500.0;
     let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-    let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Exact, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None);
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
       "mu estimate too far: {} vs 1.0",
@@ -861,7 +861,7 @@ mod tests {
 
     let dt = 20.0 / 5000.0;
     let mut cir_fit = Cir::seeded(1.0, 0.05, 0.2, 100, Some(0.04), Some(1.0), None, 0);
-    let result = fit_mle(&mut cir_fit, &path, dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None);
     assert!(
       (result.params[1] - 0.04).abs() < 0.03,
       "mu estimate too far: {} vs 0.04",
@@ -876,7 +876,7 @@ mod tests {
 
     let dt = 10.0 / 10000.0;
     let mut ou_fit = Ou::seeded(1.0, 1.0, 1.0, 100, Some(1.0), Some(1.0), 0);
-    let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Exact, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None);
 
     assert!(
       (result.params[0] - 3.0).abs() < 2.0,
@@ -903,7 +903,7 @@ mod tests {
 
     let dt = 10.0 / 2500.0;
     let mut cev_fit = Cev::seeded(0.0, 0.5, 0.5, 100, Some(100.0), Some(1.0), 0);
-    let result = fit_mle(&mut cev_fit, &path, dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut cev_fit, path.view(), dt, DensityApprox::Euler, None);
 
     assert!(
       (result.params[1] - 0.3).abs() < 0.2,

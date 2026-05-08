@@ -145,7 +145,7 @@ mod tests {
     let dt = 10.0 / 2500.0;
 
     let mut gbm_fit = Gbm::seeded(0.0, 0.5, 100, Some(100.0), Some(1.0), 0);
-    let result = fit_mle(&mut gbm_fit, &path, dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None);
 
     assert!(
       (result.params[1] - 0.2).abs() < 0.15,
@@ -161,7 +161,7 @@ mod tests {
     let dt = 10.0 / 2500.0;
 
     let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-    let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None);
 
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
@@ -185,7 +185,7 @@ mod tests {
     let dt = 10.0 / 2500.0;
 
     let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-    let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Exact, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None);
 
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
@@ -206,7 +206,7 @@ mod tests {
     let dt = 20.0 / 5000.0;
 
     let mut cir_fit = Cir::seeded(1.0, 0.05, 0.2, 100, Some(0.04), Some(1.0), None, 0);
-    let result = fit_mle(&mut cir_fit, &path, dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None);
 
     assert!(
       (result.params[1] - 0.04).abs() < 0.03,
@@ -223,7 +223,7 @@ mod tests {
     let dt = 10.0 / 2500.0;
 
     let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-    let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::ShojiOzaki, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::ShojiOzaki, None);
 
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
@@ -244,7 +244,7 @@ mod tests {
     let dt = 10.0 / 2500.0;
 
     let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-    let result = fit_mle(&mut ou_fit, &path, dt, DensityApprox::Kessler, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Kessler, None);
 
     assert!(
       (result.params[2] - 0.3).abs() < 0.15,
@@ -328,7 +328,7 @@ mod tests {
     let dt = 5.0 / 1250.0;
 
     let mut cir_fit = Cir::seeded(1.0, 0.5, 0.3, 100, Some(0.4), Some(1.0), None, 0);
-    let result = fit_mle(&mut cir_fit, &path, dt, DensityApprox::Kessler, None);
+    let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Kessler, None);
 
     assert!(
       (result.params[0] - 3.0).abs() < 3.0,
@@ -367,7 +367,7 @@ mod tests {
     let mut results = Vec::new();
     for (name, dens) in &densities {
       let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-      let result = fit_mle(&mut ou_fit, &path, dt, *dens, None);
+      let result = fit_mle(&mut ou_fit, path.view(), dt, *dens, None);
       results.push((*name, result));
     }
 

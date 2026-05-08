@@ -4,7 +4,7 @@
 //! \hat V_{k+1}=\bar V_{k+1}+K_{k+1}\bigl(z_{k+1}-h(\bar V_{k+1})\bigr)
 //! $$
 //!
-use ndarray::Array1;
+use ndarray::{Array1, ArrayView1};
 
 use crate::heston_mle::HestonMleResult;
 use crate::heston_mle::nmle_heston_with_delta;
@@ -117,7 +117,7 @@ fn blend_params(
 }
 
 fn cekf_pass(
-  s: &Array1<f64>,
+  s: ArrayView1<f64>,
   params: HestonNMLECEKFParams,
   cfg: &HestonNMLECEKFConfig,
 ) -> (Array1<f64>, Array1<f64>) {
@@ -195,7 +195,7 @@ fn cekf_pass(
 /// - Wang et al. (2018), NMLE-CEKF framework
 ///   https://doi.org/10.1007/s11432-017-9215-8
 ///   http://scis.scichina.com/en/2018/042202.pdf
-pub fn nmle_cekf_heston(s: Array1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLECEKFResult {
+pub fn nmle_cekf_heston(s: ArrayView1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLECEKFResult {
   assert!(s.len() >= 2, "nmle_cekf_heston requires at least 2 prices");
   assert!(
     cfg.delta.is_finite() && cfg.delta > 0.0,
@@ -225,8 +225,8 @@ pub fn nmle_cekf_heston(s: Array1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLE
   let mut iters = 0;
 
   for i in 0..cfg.max_iters {
-    let (v_hat, _p_hat) = cekf_pass(&s, params, &cfg);
-    let nmle = nmle_heston_with_delta(s.view(), v_hat.view(), cfg.r, cfg.delta);
+    let (v_hat, _p_hat) = cekf_pass(s, params, &cfg);
+    let nmle = nmle_heston_with_delta(s, v_hat.view(), cfg.r, cfg.delta);
     let updated = HestonNMLECEKFParams::from(nmle).projected();
     let blended = blend_params(params, updated, cfg.param_damping).projected();
 
@@ -246,8 +246,8 @@ pub fn nmle_cekf_heston(s: Array1<f64>, cfg: HestonNMLECEKFConfig) -> HestonNMLE
   }
 
   // Keep output state trajectory consistent with the reported final parameters.
-  let (v_final, p_final) = cekf_pass(&s, params, &cfg);
-  let mle_final = nmle_heston_with_delta(s.view(), v_final.view(), cfg.r, cfg.delta);
+  let (v_final, p_final) = cekf_pass(s, params, &cfg);
+  let mle_final = nmle_heston_with_delta(s, v_final.view(), cfg.r, cfg.delta);
   let p = HestonNMLECEKFParams::from(mle_final).projected();
 
   HestonNMLECEKFResult {
@@ -339,7 +339,7 @@ mod tests {
       ..HestonNMLECEKFConfig::default()
     };
 
-    let out = nmle_cekf_heston(s, cfg);
+    let out = nmle_cekf_heston(s.view(), cfg);
 
     assert_eq!(out.vol_path.len(), n_obs);
     assert_eq!(out.cov_path.len(), n_obs);
@@ -368,7 +368,7 @@ mod tests {
       ..HestonNMLECEKFConfig::default()
     };
 
-    let out = nmle_cekf_heston(s, cfg);
+    let out = nmle_cekf_heston(s.view(), cfg);
     assert!(out.vol_path.iter().all(|x| x.is_finite() && *x > 0.0));
     assert!(out.params.kappa > 0.0);
     assert!(out.params.theta > 0.0);

@@ -91,7 +91,7 @@ fn bench_mle_fit(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("Ou/Euler", label), |b| {
       b.iter(|| {
         let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-        black_box(fit_mle(&mut ou_fit, &path, dt, DensityApprox::Euler, None))
+        black_box(fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None))
       })
     });
 
@@ -100,7 +100,7 @@ fn bench_mle_fit(c: &mut Criterion) {
         let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
         black_box(fit_mle(
           &mut ou_fit,
-          &path,
+          path.view(),
           dt,
           DensityApprox::Kessler,
           None,
@@ -118,7 +118,7 @@ fn bench_mle_fit(c: &mut Criterion) {
         let mut cir_fit = Cir::seeded(1.0, 0.5, 0.3, 100, Some(0.4), Some(1.0), None, 0);
         black_box(fit_mle(
           &mut cir_fit,
-          &cir_path,
+          cir_path.view(),
           cir_dt,
           DensityApprox::Kessler,
           None,
