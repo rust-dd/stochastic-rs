@@ -52,9 +52,11 @@
 //! - Any path-sensitive product where negative `L` values would be ill-defined
 //!   (e.g., direct exponentiation, Black-formula payoffs on the path).
 //!
-//! A proper drift-coupled, factor-correlated LMM (with tenor / accrual
-//! structure, change-of-numéraire drifts, low-rank correlation matrix, and
-//! exact log-normal stepping) is planned for a 2.x `interest::lmm` module.
+//! For a proper drift-coupled, factor-correlated LIBOR Market Model with
+//! tenor structure, change-of-numéraire drifts, correlation matrix, and
+//! log-Euler positivity-preserving stepping, see
+//! [`crate::interest::lmm::Lmm`] (added 2026-05-08; spot-LIBOR measure,
+//! Glasserman 2003 §3.7).
 //!
 use ndarray::Array1;
 use ndarray::Array2;

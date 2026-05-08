@@ -15,5 +15,6 @@ pub mod hjm;
 pub mod ho_lee;
 pub mod hull_white;
 pub mod hull_white_2f;
+pub mod lmm;
 pub mod vasicek;
 pub mod wu_zhang;

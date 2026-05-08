@@ -11,13 +11,13 @@ umbrella that re-exports everything via `pub use`.
 stochastic-rs/                        (workspace root + umbrella)
 ├── stochastic-rs-core/               — simd_rng (foundation)
 ├── stochastic-rs-distributions/      — FloatExt/SimdFloatExt + distributions
-├── stochastic-rs-stochastic/         — ProcessExt + 140+ processes
+├── stochastic-rs-stochastic/         — ProcessExt + 120+ processes (incl. interest::lmm::Lmm drift-coupled LMM)
 ├── stochastic-rs-copulas/            — BivariateExt + copulas
 ├── stochastic-rs-stats/              — estimators
 ├── stochastic-rs-quant/              — pricing/calibration/vol_surface + PricerExt/ModelPricer/ToModel
 ├── stochastic-rs-ai/                 — neural surrogates (feature-gated upstream)
 ├── stochastic-rs-viz/                — Plotly grid plotter
-└── stochastic-rs-py/                 — placeholder (Phase 6 follow-up)
+└── stochastic-rs-py/                 — pyo3 cdylib (102 PyO3 classes for distributions + stochastic; quant/copulas/stats/ai are 2.x follow-up). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
 ```
 
 The umbrella crate `stochastic-rs` keeps the existing public API
@@ -45,13 +45,16 @@ Always run `cargo clippy` to adopt the latest compiler recommendations.
 - `SimdFloatExt` — SIMD-friendly subset of `FloatExt`
 - `ProcessExt<T>` — stochastic process simulation; lives in `stochastic-rs-stochastic::traits`
 - `MalliavinExt<T>` / `Malliavin2DExt<T>` — finite-difference Malliavin Greeks
-- `BivariateExt` / `MultivariateExt` / `NCopula2DExt` — copula traits in `stochastic-rs-copulas::traits`
+- `BivariateExt` / `MultivariateExt` — copula traits in `stochastic-rs-copulas::traits` (note: `NCopula2DExt` was removed in v2.0 — bivariate samplers consolidated under `BivariateExt`)
 - `TimeExt` / `PricerExt` — option pricing with date support (`tau_with_dcc` for day-count-aware maturity)
 - `ModelPricer` — concrete-typed pricer interface (no `&dyn` / `Box<dyn>`)
-- `ToModel` — `Calibrator → Concrete pricer` bridge via associated type `Model: ModelPricer`
+- `ToModel` / `ToShortRateModel` — `Calibrator → Concrete pricer` bridge via associated type
 - `FourierModelExt` — characteristic function models (blanket impl → `ModelPricer` → `ModelSurface`)
+- `Calibrator` / `CalibrationResult` — unified calibration trait surface (Result-based, `type Params`, `type Error = anyhow::Error`)
+- `Instrument` / `InstrumentExt` / `PricingEngine` / `PricingResult` — QuantLib-style decoupling (`AnalyticBSEngine`, `AnalyticHestonEngine`)
+- `GreeksExt` + `Greeks` struct — first- + second-order Greeks (delta/gamma/vega/theta/rho/vanna/charm/volga/veta), aggregator with single-pass override for MC pricers
 - `CalendarExt` — pluggable holiday calendars for business day adjustment
-- `DistributionExt` — characteristic function / pdf / cdf / moments; implemented for Normal/LogNormal/Gamma (others stub to 0.0)
+- `DistributionExt` — characteristic function / pdf / cdf / moments. **18/19** distributions implement closed-form (only `ComplexDistribution` lacks; 5 named no-closed-form `unimplemented!()` cases on specific moments — see `project_distribution_ext_status.md` memory). Defaults `unimplemented!("not implemented for {type_name}")`, **never `0.0`**.
 
 ## Prelude
 
@@ -59,9 +62,15 @@ Always run `cargo clippy` to adopt the latest compiler recommendations.
 use stochastic_rs::prelude::*;
 ```
 
-Brings: `BivariateExt`, `DistributionExt`, `DistributionSampler`, `FloatExt`,
-`ModelPricer`, `PricerExt`, `ProcessExt`, `SimdFloatExt`, `TimeExt`,
-`ToModel`, `Moneyness`, `OptionStyle`, `OptionType`.
+Brings 20 items in 5 groups:
+
+- **Trait core**: `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
+- **Pricing**: `PricerExt`, `ModelPricer`, `GreeksExt`
+- **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
+- **Instrument / engine**: `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult`
+- **Option types**: `Moneyness`, `OptionStyle`, `OptionType`
+
+`MalliavinExt` / `Malliavin2DExt` are intentionally **not** in the prelude (0 in-tree impls — deferred). Reach via `stochastic_rs::traits::MalliavinExt`. `MultivariateExt` (openblas-only) and `CallableDist` (python-only) likewise reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free.
 
 ## Skills
 

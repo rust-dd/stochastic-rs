@@ -444,6 +444,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "interactive: opens a browser via plot.show(); run with --ignored when generating combined plots"]
   fn combined_all_distributions() {
     // Create a 5x4 grid for 17 distributions
     let mut plot = Plot::new();
@@ -1039,6 +1040,7 @@ mod tests {
   use std::time::Instant;
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_normal_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1081,6 +1083,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_lognormal_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1123,6 +1126,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_exp_simd_vs_rand() {
     let n = 10_000_000usize;
     let lambda = 1.5f32;
@@ -1166,6 +1170,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_exp_zig_simd_vs_rand() {
     let n = 10_000_000usize;
     let lambda = 1.5f32;
@@ -1220,6 +1225,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_cauchy_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1262,6 +1268,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_gamma_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1304,6 +1311,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_weibull_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1346,6 +1354,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_beta_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1388,6 +1397,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_chisq_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1430,6 +1440,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_studentt_simd_vs_rand() {
     let n = 10_000_000usize;
     let warmup = 1_000_000usize;
@@ -1472,6 +1483,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
   fn bench_poisson_simd_vs_rand() {
     let n = 5_000_000usize;
     let warmup = 500_000usize;
@@ -1603,6 +1615,7 @@ mod tests {
   }
 
   #[test]
+  #[ignore = "perf benchmark summary (~119s): run with --ignored or via cargo bench"]
   fn bench_summary_table() {
     let n_f = 5_000_000usize; // samples for continuous/f32
     let n_i = 5_000_000usize; // samples for discrete/u32

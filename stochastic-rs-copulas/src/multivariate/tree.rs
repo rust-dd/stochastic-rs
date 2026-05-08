@@ -23,6 +23,7 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -204,12 +205,15 @@ impl MultivariateExt for TreeMultivariate {
     self.require_fitted()?;
     let l = self.chol_lower.as_ref().unwrap();
     let d = self.dim;
-    // standard normals
+    // Standard normals via the project's SIMD RNG (uses the global seed
+    // counter, threaded through SimdRng::new()); replaces the previous
+    // `rand::random::<f64>()` per-element call which broke the seed chain.
     let mut z = Array2::<f64>::zeros((n, d));
-    for i in 0..n {
-      for j in 0..d {
-        z[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
-      }
+    {
+      let buf = z
+        .as_slice_mut()
+        .expect("TreeMultivariate sample buffer must be contiguous");
+      SimdNormal::<f64>::new(0.0, 1.0).fill_slice_fast(buf);
     }
     let z = z.dot(&l.t());
     let mut u = z.clone();
@@ -295,11 +299,10 @@ impl MultivariateExt for TreeMultivariate {
     let m = 4000usize;
     let g = {
       let mut g = Array2::<f64>::zeros((m, self.dim));
-      for i in 0..m {
-        for j in 0..self.dim {
-          g[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
-        }
-      }
+      let buf = g
+        .as_slice_mut()
+        .expect("TreeMultivariate cdf MC buffer must be contiguous");
+      SimdNormal::<f64>::new(0.0, 1.0).fill_slice_fast(buf);
       g
     };
     let y = g.dot(&l.t());

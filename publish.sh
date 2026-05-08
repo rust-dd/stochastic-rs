@@ -3,9 +3,10 @@
 # then publish the umbrella crate.
 #
 # Usage:
-#   ./publish.sh                 # publish for real
-#   ./publish.sh --dry-run       # validate without uploading
+#   ./publish.sh                 # publish for real (runs gate: fmt + clippy + tests)
+#   ./publish.sh --dry-run       # validate without uploading (still runs gate)
 #   ./publish.sh --allow-dirty   # publish with uncommitted changes
+#   ./publish.sh --skip-gate     # bypass fmt/clippy/test gate (NOT recommended)
 #
 # Notes:
 # - `stochastic-rs-py` is intentionally skipped (publish = false in its
@@ -19,15 +20,37 @@ set -euo pipefail
 
 DRY_RUN=()
 ALLOW_DIRTY=()
+SKIP_GATE=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run)     DRY_RUN=(--dry-run) ;;
     --allow-dirty) ALLOW_DIRTY=(--allow-dirty) ;;
+    --skip-gate)   SKIP_GATE=1 ;;
     -h|--help)
       sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown flag: $arg" >&2; exit 1 ;;
   esac
 done
+
+# Pre-publish gate: clippy + workspace test (excluding the cdylib-only py
+# crate). Catches the kinds of regressions audit §5.3 flagged. Skip with
+# `--skip-gate` if you really must (e.g., re-running after a transient
+# crates.io upload failure on a known-good commit).
+if [[ $SKIP_GATE -eq 0 ]]; then
+  echo "==> pre-publish gate: cargo fmt --check"
+  cargo fmt --all -- --check
+
+  echo "==> pre-publish gate: cargo clippy --workspace --no-default-features"
+  cargo clippy --workspace --no-default-features --all-targets -- -D warnings
+
+  echo "==> pre-publish gate: cargo test --workspace --exclude stochastic-rs-py"
+  # Default features only — keeps the gate tractable on CI / local dev.
+  # `openblas` / `ai` / `yahoo` combinations are exercised by the GitHub
+  # Actions workflow before tagging.
+  cargo test --workspace --exclude stochastic-rs-py --no-default-features
+else
+  echo "==> WARNING: --skip-gate is set; skipping clippy + workspace test"
+fi
 
 # (crate, extra_flags) — order matters: each crate must come AFTER its deps.
 PUBLISH_ORDER=(

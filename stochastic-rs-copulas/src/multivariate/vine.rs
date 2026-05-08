@@ -30,6 +30,7 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -127,11 +128,15 @@ impl MultivariateExt for VineMultivariate {
     self.require_fitted()?;
     let l = self.chol_lower.as_ref().unwrap();
     let d = self.dim;
+    // Standard normals via the project's SIMD RNG (seed-aware via the
+    // global counter); replaces `rand::random::<f64>()` which broke the
+    // SeedExt chain.
     let mut g = Array2::<f64>::zeros((n, d));
-    for i in 0..n {
-      for j in 0..d {
-        g[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
-      }
+    {
+      let buf = g
+        .as_slice_mut()
+        .expect("VineMultivariate sample buffer must be contiguous");
+      SimdNormal::<f64>::new(0.0, 1.0).fill_slice_fast(buf);
     }
     let z = g.dot(&l.t());
     let mut u = z.clone();
@@ -249,10 +254,11 @@ impl MultivariateExt for VineMultivariate {
     let l = self.chol_lower.as_ref().unwrap();
     let m = 4000usize;
     let mut g = Array2::<f64>::zeros((m, self.dim));
-    for i in 0..m {
-      for j in 0..self.dim {
-        g[[i, j]] = ndtri(rand::random::<f64>().clamp(1e-12, 1.0 - 1e-12));
-      }
+    {
+      let buf = g
+        .as_slice_mut()
+        .expect("VineMultivariate cdf MC buffer must be contiguous");
+      SimdNormal::<f64>::new(0.0, 1.0).fill_slice_fast(buf);
     }
     let y = g.dot(&l.t());
     let mut out = Array1::<f64>::zeros(z.nrows());

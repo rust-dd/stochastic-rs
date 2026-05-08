@@ -91,7 +91,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gbm<T, S> {
       return gbm;
     }
 
-    gbm[0] = self.x0.unwrap_or(T::zero());
+    // Default x0 = 1 (consistent with the constructor's `ln_mu` derivation
+    // at lines 41/64, which uses `x0.unwrap_or(T::one())`). A GBM started at
+    // 0 stays at 0 (the SDE `dGBM = µ·GBM dt + σ·GBM dW` has zero as an
+    // absorbing fixed point), so defaulting to 0 is degenerate; using 1
+    // matches the marginal-distribution convention of the type.
+    gbm[0] = self.x0.unwrap_or(T::one());
     if self.n == 1 {
       return gbm;
     }

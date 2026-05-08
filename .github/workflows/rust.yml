@@ -29,14 +29,13 @@ jobs:
           - stochastic-rs-viz
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (${{ matrix.crate }})
         run: cargo check -p ${{ matrix.crate }} --no-default-features
 
-  # Umbrella + features matrix.
+  # Umbrella + features matrix. Covers feature combinations that exercise
+  # cross-crate cfg-gated code (notably the python+gpu Array2 overlap caught
+  # by the 2026-05-07 audit §4.1).
   check_umbrella:
     runs-on: ubuntu-latest
     strategy:
@@ -45,12 +44,18 @@ jobs:
         features:
           - "" # default
           - "ai"
+          - "openblas"
+          - "yahoo"
+          - "python"
+          - "gpu"
+          - "python,gpu"
+          - "openblas,ai,yahoo"
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - name: Install OpenBLAS (when needed)
+        if: contains(matrix.features, 'openblas')
+        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
+      - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (features=${{ matrix.features }})
         run: |
           if [ -z "${{ matrix.features }}" ]; then
@@ -58,6 +63,19 @@ jobs:
           else
             cargo check -p stochastic-rs --all-targets --features "${{ matrix.features }}"
           fi
+
+  # Lint + format gates. Catches drift independently of the feature matrix.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+      - name: cargo clippy (workspace)
+        run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
 
   # Full test run with openblas + coverage.
   test_with_coverage:
@@ -69,10 +87,8 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
 
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly
-          override: true
           components: llvm-tools-preview
 
       - name: Add llvm-tools to PATH
