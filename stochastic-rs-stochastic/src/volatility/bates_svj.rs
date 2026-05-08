@@ -22,6 +22,20 @@ use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+#[inline]
+fn validate_drift_args<T: FloatExt>(
+  mu: Option<T>,
+  b: Option<T>,
+  r: Option<T>,
+  r_f: Option<T>,
+  type_name: &'static str,
+) {
+  let has_r_pair = r.is_some() && r_f.is_some();
+  if !(has_r_pair || b.is_some() || mu.is_some()) {
+    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
+  }
+}
+
 pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
@@ -86,6 +100,7 @@ impl<T: FloatExt> BatesSvj<T> {
     );
     assert!(omega >= T::zero(), "omega must be >= 0");
     assert!(lambda >= T::zero(), "lambda must be >= 0");
+    validate_drift_args(mu, b, r, r_f, "BatesSvj");
 
     Self {
       mu,
@@ -137,6 +152,7 @@ impl<T: FloatExt> BatesSvj<T, Deterministic> {
     );
     assert!(omega >= T::zero(), "omega must be >= 0");
     assert!(lambda >= T::zero(), "lambda must be >= 0");
+    validate_drift_args(mu, b, r, r_f, "BatesSvj");
 
     Self {
       mu,
@@ -173,7 +189,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
       (_, _, Some(r), Some(r_f)) => r - r_f,
       (_, Some(b), _, _) => b,
       (Some(mu), _, _, _) => mu,
-      _ => panic!("one of (r and r_f), b, or mu must be provided"),
+      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
     }
   }
 }

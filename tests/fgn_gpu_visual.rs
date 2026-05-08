@@ -182,8 +182,8 @@ mod gpu_visual {
       for path in &paths {
         let arr = Array1::from_vec(path.to_vec());
         let fd = FractalDim::new(arr);
-        h_vario_sum += 2.0 - fd.variogram(Some(2.0));
-        h_higuchi_sum += 2.0 - fd.higuchi_fd(32);
+        h_vario_sum += 2.0 - fd.variogram(Some(2.0)).expect("variogram on fGN path");
+        h_higuchi_sum += 2.0 - fd.higuchi_fd(32).expect("Higuchi on fGN path");
       }
       let h_vario = h_vario_sum / m as f64;
       let h_higuchi = h_higuchi_sum / m as f64;

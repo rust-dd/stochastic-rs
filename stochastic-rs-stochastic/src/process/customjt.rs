@@ -29,12 +29,20 @@ where
   pub seed: S,
 }
 
+#[inline]
+fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name: &'static str) {
+  if n.is_none() && t_max.is_none() {
+    panic!("{type_name}: n or t_max must be provided");
+  }
+}
+
 impl<T, D> CustomJt<T, D>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
   pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D) -> Self {
+    validate_n_or_tmax(n, t_max, "CustomJt");
     CustomJt {
       n,
       t_max,
@@ -50,6 +58,7 @@ where
   D: Distribution<T> + Send + Sync,
 {
   pub fn seeded(n: Option<usize>, t_max: Option<T>, distribution: D, seed: u64) -> Self {
+    validate_n_or_tmax(n, t_max, "CustomJt");
     CustomJt {
       n,
       t_max,
@@ -171,7 +180,7 @@ where
 
       Array1::from(x)
     } else {
-      panic!("n or t_max must be provided");
+      unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
     }
   }
 }

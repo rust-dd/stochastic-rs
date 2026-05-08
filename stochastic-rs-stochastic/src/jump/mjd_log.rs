@@ -22,6 +22,20 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+#[inline]
+fn validate_drift_args<T: FloatExt>(
+  mu: Option<T>,
+  b: Option<T>,
+  r: Option<T>,
+  r_f: Option<T>,
+  type_name: &'static str,
+) {
+  let has_r_pair = r.is_some() && r_f.is_some();
+  if !(has_r_pair || b.is_some() || mu.is_some()) {
+    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
+  }
+}
+
 pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate
   pub mu: Option<T>,
@@ -66,6 +80,7 @@ impl<T: FloatExt> MjdLog<T> {
     assert!(sigma >= T::zero(), "sigma must be >= 0");
     assert!(lambda >= T::zero(), "lambda must be >= 0");
     assert!(omega >= T::zero(), "omega must be >= 0");
+    validate_drift_args(mu, b, r, r_f, "MjdLog");
     Self {
       mu,
       b,
@@ -102,6 +117,7 @@ impl<T: FloatExt> MjdLog<T, Deterministic> {
     assert!(sigma >= T::zero(), "sigma must be >= 0");
     assert!(lambda >= T::zero(), "lambda must be >= 0");
     assert!(omega >= T::zero(), "omega must be >= 0");
+    validate_drift_args(mu, b, r, r_f, "MjdLog");
     Self {
       mu,
       b,
@@ -126,7 +142,7 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
       (Some(r), Some(r_f), _, _) => r - r_f,
       (_, _, Some(b), _) => b,
       (_, _, _, Some(mu)) => mu,
-      _ => panic!("one of (r and r_f), b, or mu must be provided"),
+      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
     }
   }
 

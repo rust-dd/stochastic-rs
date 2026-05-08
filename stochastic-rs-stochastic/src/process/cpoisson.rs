@@ -74,9 +74,12 @@ where
     }
 
     let lambda_dt = (self.poisson.lambda * dt).to_f64().unwrap();
-    if !(lambda_dt.is_finite()) {
-      panic!("lambda * dt must be finite");
-    }
+    assert!(
+      lambda_dt.is_finite(),
+      "CompoundPoisson: lambda * dt must be finite (got lambda={}, dt={})",
+      self.poisson.lambda.to_f64().unwrap_or(f64::NAN),
+      dt.to_f64().unwrap_or(f64::NAN),
+    );
     if lambda_dt <= 0.0 {
       return increments;
     }
@@ -116,9 +119,12 @@ where
     }
 
     let lambda_dt = (self.poisson.lambda * dt).to_f64().unwrap();
-    if !(lambda_dt.is_finite()) {
-      panic!("lambda * dt must be finite");
-    }
+    assert!(
+      lambda_dt.is_finite(),
+      "CompoundPoisson: lambda * dt must be finite (got lambda={}, dt={})",
+      self.poisson.lambda.to_f64().unwrap_or(f64::NAN),
+      dt.to_f64().unwrap_or(f64::NAN),
+    );
     if lambda_dt <= 0.0 {
       return increments;
     }

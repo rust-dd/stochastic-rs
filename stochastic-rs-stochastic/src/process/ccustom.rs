@@ -50,7 +50,7 @@ where
     customjt: CustomJt<T, D2>,
   ) -> Self {
     if n.is_none() && t_max.is_none() {
-      panic!("n or t_max must be provided");
+      panic!("CompoundCustom: n or t_max must be provided");
     }
 
     Self {
@@ -79,7 +79,7 @@ where
     seed: u64,
   ) -> Self {
     if n.is_none() && t_max.is_none() {
-      panic!("n or t_max must be provided");
+      panic!("CompoundCustom: n or t_max must be provided");
     }
 
     Self {

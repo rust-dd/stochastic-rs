@@ -119,9 +119,12 @@ where
     jump_fou[0] = self.x0.unwrap_or(T::zero());
     let mut rng = self.seed.rng();
     let mut next_jump_time = self.jump_times.sample(&mut rng);
-    if next_jump_time <= T::zero() {
-      panic!("jump_times distribution must return strictly positive inter-arrival times");
-    }
+    assert!(
+      next_jump_time > T::zero(),
+      "JumpFOUCustom: jump_times closure must return strictly positive inter-arrival times \
+       (this is a runtime contract on the user-supplied distribution; if the distribution \
+       can return ≤0 values, wrap it in `.max(eps)` or use a strictly-positive distribution)"
+    );
 
     for i in 1..self.n {
       let current_time = T::from_usize_(i) * dt;
@@ -129,9 +132,10 @@ where
       while next_jump_time <= current_time {
         jump_sum += self.jump_sizes.sample(&mut rng);
         let delta = self.jump_times.sample(&mut rng);
-        if delta <= T::zero() {
-          panic!("jump_times distribution must return strictly positive inter-arrival times");
-        }
+        assert!(
+          delta > T::zero(),
+          "JumpFOUCustom: jump_times closure must return strictly positive inter-arrival times"
+        );
         next_jump_time += delta;
       }
 

@@ -48,8 +48,16 @@ pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+#[inline]
+fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name: &'static str) {
+  if n.is_none() && t_max.is_none() {
+    panic!("{type_name}: n or t_max must be provided");
+  }
+}
+
 impl<T: FloatExt> Hawkes<T> {
   pub fn new(mu: T, alpha: T, beta: T, n: Option<usize>, t_max: Option<T>) -> Self {
+    validate_n_or_tmax(n, t_max, "Hawkes");
     Hawkes {
       mu,
       alpha,
@@ -63,6 +71,7 @@ impl<T: FloatExt> Hawkes<T> {
 
 impl<T: FloatExt> Hawkes<T, Deterministic> {
   pub fn seeded(mu: T, alpha: T, beta: T, n: Option<usize>, t_max: Option<T>, seed: u64) -> Self {
+    validate_n_or_tmax(n, t_max, "Hawkes");
     Hawkes {
       mu,
       alpha,
@@ -171,7 +180,7 @@ impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
 
       Array1::from(events)
     } else {
-      panic!("n or t_max must be provided");
+      unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
     }
   }
 }

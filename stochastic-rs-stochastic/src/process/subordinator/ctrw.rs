@@ -271,7 +271,7 @@ impl PyCtrw {
         scale: waiting_p2.unwrap_or(1.0),
       },
       _ => panic!(
-        "invalid waiting_law '{}'; expected one of: exponential, gamma, inverse_gaussian, positive_stable",
+        "PyCtrw: invalid waiting_law '{}' — expected one of 'exponential' | 'gamma' | 'inverse_gaussian' | 'inversegaussian' | 'ig' | 'stable' | 'positive_stable' | 'positivestable'",
         waiting_law
       ),
     };
@@ -289,7 +289,7 @@ impl PyCtrw {
         scale: jump_p1.abs(),
       },
       _ => panic!(
-        "invalid jump_law '{}'; expected one of: normal, symmetric_stable, rademacher",
+        "PyCtrw: invalid jump_law '{}' — expected one of 'normal' | 'symmetric_stable' | 'symmetricstable' | 'stable' | 'rademacher'",
         jump_law
       ),
     };

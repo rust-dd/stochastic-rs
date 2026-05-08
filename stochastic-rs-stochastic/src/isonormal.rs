@@ -200,16 +200,18 @@ where
 // Fractional Lévy Ornstein-Uhlenbeck inner product function (Unstable)
 // https://projecteuclid.org/journals/bernoulli/volume-17/issue-1/Fractional-L%C3%A9vy-driven-OrnsteinUhlenbeck-processes-and-stochastic-differential-equations/10.3150/10-BEJ281.pdf
 pub fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
-  if d <= 0.0 || d >= 1.0 {
-    panic!("The 'd' parameter must be in the range (0, 1).");
-  }
+  assert!(
+    d > 0.0 && d < 1.0,
+    "isonormal::cov_ld: parameter 'd' must be in the open interval (0, 1) (got {d})"
+  );
 
   let gamma_term = gamma(2.0 * d + 2.0);
   let sin_term = ((std::f64::consts::PI * (d + 0.5)).sin()).abs();
   let denominator = 2.0 * gamma_term * sin_term;
-  if denominator == 0.0 {
-    panic!("The denominator is zero.");
-  }
+  assert!(
+    denominator != 0.0,
+    "isonormal::cov_ld: degenerate denominator (likely d at the boundary of its domain; got d={d})"
+  );
 
   let t_term = t.abs().powf(2.0 * d + 1.0);
   let s_term = s.abs().powf(2.0 * d + 1.0);

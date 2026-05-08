@@ -16,6 +16,25 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
+/// Construction-time validator for log-normal-family drift parametrisations
+/// where the user can supply any of `(r, r_f)` (foreign-currency / dividend
+/// pair), `b` (cost-of-carry), or `mu` (direct drift). Panics at the API
+/// boundary if none are provided — moved here from the v1 deferred panic
+/// inside `sample()` so the user gets immediate feedback at construction.
+#[inline]
+fn validate_drift_args<T: FloatExt>(
+  mu: Option<T>,
+  b: Option<T>,
+  r: Option<T>,
+  r_f: Option<T>,
+  type_name: &'static str,
+) {
+  let has_r_pair = r.is_some() && r_f.is_some();
+  if !(has_r_pair || b.is_some() || mu.is_some()) {
+    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
+  }
+}
+
 pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate
   pub mu: Option<T>,
@@ -50,6 +69,7 @@ impl<T: FloatExt> GbmLog<T> {
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(sigma >= T::zero(), "sigma must be >= 0");
+    validate_drift_args(mu, b, r, r_f, "GbmLog");
     Self {
       mu,
       b,
@@ -78,6 +98,7 @@ impl<T: FloatExt> GbmLog<T, Deterministic> {
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(sigma >= T::zero(), "sigma must be >= 0");
+    validate_drift_args(mu, b, r, r_f, "GbmLog");
     Self {
       mu,
       b,
@@ -95,11 +116,13 @@ impl<T: FloatExt> GbmLog<T, Deterministic> {
 impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
   #[inline]
   fn drift(&self) -> T {
+    // Construction-time `validate_drift_args` guarantees at least one option
+    // is set; this match is total at runtime.
     match (self.r, self.r_f, self.b, self.mu) {
       (Some(r), Some(r_f), _, _) => r - r_f,
       (_, _, Some(b), _) => b,
       (_, _, _, Some(mu)) => mu,
-      _ => panic!("one of (r and r_f), b, or mu must be provided"),
+      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
     }
   }
 

@@ -198,7 +198,7 @@ mod all_backends {
           .iter()
           .map(|p| {
             let fd = FractalDim::new(Array1::from_vec(p.clone()));
-            2.0 - fd.higuchi_fd(32)
+            2.0 - fd.higuchi_fd(32).expect("Higuchi on fGN path")
           })
           .sum();
         s / paths.len() as f64

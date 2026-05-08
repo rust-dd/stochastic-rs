@@ -1,9 +1,39 @@
 //! # Bergomi
 //!
 //! $$
-//! dS_t=S_t\sqrt{v_t}dW_t^1,\quad v_t=\xi_0(t)\exp\!\left(\eta X_t-\tfrac12\eta^2 t^{2H}\right)
+//! dS_t=S_t\sqrt{v_t}\,dW_t^1,\quad v_t = v_0^2\,\exp\!\bigl(\nu\,W_t^2 - \tfrac12\nu^2 t\bigr)
 //! $$
 //!
+//! **Scope (single-factor log-normal Bergomi, NOT the full Bergomi 2009
+//! one-factor model).** This implementation evolves the spot variance as
+//!
+//! ```text
+//! v(t_i) = v_0² · exp(ν · Σ_{j<i} cgn2_j  −  ½ ν² t_i)
+//! ```
+//!
+//! where `cgn2_j` is a step of the correlated Gaussian noise process and
+//! `Σ_{j<i} cgn2_j` is the discrete Brownian motion `W_{t_i}^2`. Compared
+//! with the canonical Bergomi (2009) one-factor model
+//! `v_t = ξ_0(t) exp(η X_t − ½ η² t^{2H})` with mean-reverting OU driver
+//! `dX_t = -κ X_t dt + ν dW_t^2`, this implementation hard-codes:
+//!
+//! - **`H = ½`** (no roughness — the variance martingale correction is
+//!   `½ η² t`, not `½ η² t^{2H}`).
+//! - **`κ = 0`** (no mean-reversion of the variance driver — `X_t` reduces
+//!   to a Brownian motion).
+//! - **`ξ_0(t) ≡ v_0²`** (flat initial variance term-structure; no
+//!   forward-variance curve input).
+//!
+//! Use this type for log-normal-vol smoke tests, GBM-with-stochastic-vol
+//! sanity checks, or as a baseline for educational comparison. For a
+//! genuine rough Bergomi (Volterra integral driver, `H < ½`) see
+//! [`crate::volatility::rbergomi::RoughBergomi`] (which is itself a
+//! scaled-Brownian approximation — see its module doc) or build a
+//! high-fidelity simulator on top of [`crate::rough::MarkovLift`] or
+//! [`crate::process::volterra::Volterra`].
+//!
+//! Reference: Bergomi, "Smile Dynamics II", Risk 18(10), 67-73 (2005);
+//! Bergomi, "Stochastic Volatility Modeling" (2016) §7.
 use ndarray::Array1;
 use ndarray::s;
 use stochastic_rs_core::simd_rng::Deterministic;

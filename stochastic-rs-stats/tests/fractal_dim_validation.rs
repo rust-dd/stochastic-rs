@@ -18,8 +18,8 @@ fn fbm_fractal_dimension_matches_theory() {
   for _ in 0..m {
     let x = fbm.sample();
     let fd = FractalDim::new(x);
-    d_vario_sum += fd.variogram(Some(2.0));
-    d_higuchi_sum += fd.higuchi_fd(kmax);
+    d_vario_sum += fd.variogram(Some(2.0)).expect("variogram on fBM path");
+    d_higuchi_sum += fd.higuchi_fd(kmax).expect("Higuchi on fBM path");
   }
   let d_vario = d_vario_sum / m as f64;
   let d_higuchi = d_higuchi_sum / m as f64;
@@ -57,10 +57,10 @@ fn fbm_hurst_and_fractal_dimension_from_fgn_increments() {
     endpoints.push(fbm[n]);
 
     let fd = FractalDim::new(Array1::from_vec(fbm));
-    d_vario_sum += fd.variogram(Some(2.0));
+    d_vario_sum += fd.variogram(Some(2.0)).expect("variogram on fBM path");
 
     if path_idx % 2 == 0 {
-      d_higuchi_sum += fd.higuchi_fd(kmax);
+      d_higuchi_sum += fd.higuchi_fd(kmax).expect("Higuchi on fBM path");
       d_higuchi_count += 1;
     }
   }

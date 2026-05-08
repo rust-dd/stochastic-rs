@@ -158,7 +158,9 @@ impl PyVolterra {
       "power_law" | "powerlaw" => VolterraKernel::PowerLaw { gamma: param },
       "exponential" | "exp" => VolterraKernel::Exponential { beta: param },
       other => {
-        panic!("unknown Volterra kernel '{other}': expected 'fbm', 'power_law', or 'exponential'")
+        panic!(
+          "PyVolterra: unknown kernel '{other}' — expected one of 'fbm' | 'fractional_bm' | 'fractionalbm' | 'power_law' | 'powerlaw' | 'exponential' | 'exp'"
+        )
       }
     };
     match seed {

@@ -45,9 +45,10 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
 impl<T: FloatExt> Fgn<T> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
-    if !(T::zero()..=T::one()).contains(&hurst) {
-      panic!("Hurst parameter must be between 0 and 1");
-    }
+    assert!(
+      (T::zero()..=T::one()).contains(&hurst),
+      "Fgn: Hurst parameter must be in [0, 1]"
+    );
 
     let offset = n.next_power_of_two() - n;
     let out_len = n;

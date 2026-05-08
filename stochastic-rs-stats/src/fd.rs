@@ -5,9 +5,56 @@
 //! $$
 //!
 use std::f64::consts::LN_2;
+use std::fmt;
 
 use linreg::linear_regression;
 use ndarray::Array1;
+
+/// Errors returned by [`FractalDim`] estimators.
+///
+/// Replaces the `panic!()` failure modes of the v1 API; estimators now
+/// surface degenerate / non-finite path conditions through this enum and
+/// callers can decide whether to fall back, return NaN, or propagate.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FdError {
+  /// Path has fewer points than the estimator needs.
+  PathTooShort {
+    got: usize,
+    required: usize,
+  },
+  /// `p` parameter must be strictly positive.
+  NonPositiveP(f64),
+  /// `kmax` parameter must be at least 2 for Higuchi.
+  KmaxTooSmall(usize),
+  /// Variogram or curve-length computation produced a non-finite or
+  /// non-positive value (e.g. constant path, all-zero increments).
+  DegeneratePath,
+  /// Higuchi regression has fewer than two valid scales after filtering.
+  NotEnoughScales,
+  /// Underlying linear regression failed.
+  RegressionFailed,
+}
+
+impl fmt::Display for FdError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      FdError::PathTooShort { got, required } => write!(
+        f,
+        "path has {} points, fractal-dim estimator needs at least {}",
+        got, required
+      ),
+      FdError::NonPositiveP(p) => write!(f, "p must be positive (got {})", p),
+      FdError::KmaxTooSmall(k) => {
+        write!(f, "kmax must be at least 2 for Higuchi (got {})", k)
+      }
+      FdError::DegeneratePath => write!(f, "variogram is undefined for degenerate path"),
+      FdError::NotEnoughScales => write!(f, "Higuchi regression has fewer than 2 valid scales"),
+      FdError::RegressionFailed => write!(f, "linear regression failed"),
+    }
+  }
+}
+
+impl std::error::Error for FdError {}
 
 /// Fractal dimension.
 pub struct FractalDim {
@@ -21,15 +68,23 @@ impl FractalDim {
     Self { x }
   }
 
-  /// Calculate the variogram of the path.
-  pub fn variogram(&self, p: Option<f64>) -> f64 {
+  /// Calculate the variogram-based fractal dimension of the path.
+  ///
+  /// Returns `Err(FdError::PathTooShort)` for paths with `< 3` points,
+  /// `Err(FdError::NonPositiveP)` for `p ≤ 0`, and
+  /// `Err(FdError::DegeneratePath)` when the variogram is undefined
+  /// (e.g. constant path).
+  pub fn variogram(&self, p: Option<f64>) -> Result<f64, FdError> {
     if self.x.len() < 3 {
-      panic!("A path must have at least 3 points to calculate the variogram.");
+      return Err(FdError::PathTooShort {
+        got: self.x.len(),
+        required: 3,
+      });
     }
 
     let p = p.unwrap_or(1.0);
     if p <= 0.0 {
-      panic!("p must be positive for variogram-based fractal dimension.");
+      return Err(FdError::NonPositiveP(p));
     }
     let sum1: f64 = (1..self.x.len())
       .map(|i| (self.x[i] - self.x[i - 1]).abs().powf(p))
@@ -45,20 +100,29 @@ impl FractalDim {
     let v1 = vp(sum1, 1, self.x.len());
     let v2 = vp(sum2, 2, self.x.len());
     if v1 <= 0.0 || v2 <= 0.0 || !v1.is_finite() || !v2.is_finite() {
-      panic!("Variogram is undefined for degenerate/non-finite path increments.");
+      return Err(FdError::DegeneratePath);
     }
 
-    2.0 - (1.0 / p) * ((v2.ln() - v1.ln()) / LN_2)
+    Ok(2.0 - (1.0 / p) * ((v2.ln() - v1.ln()) / LN_2))
   }
 
   /// Calculate the Higuchi fractal dimension of the path.
-  pub fn higuchi_fd(&self, kmax: usize) -> f64 {
+  ///
+  /// Returns `Err(FdError::PathTooShort)` for `< 3` points,
+  /// `Err(FdError::KmaxTooSmall)` for `kmax < 2`,
+  /// `Err(FdError::NotEnoughScales)` when fewer than two valid scales
+  /// survive the finiteness filter, and `Err(FdError::RegressionFailed)`
+  /// if the underlying linear regression cannot be solved.
+  pub fn higuchi_fd(&self, kmax: usize) -> Result<f64, FdError> {
     let n_times = self.x.len();
     if n_times < 3 {
-      panic!("A path must have at least 3 points for Higuchi fractal dimension.");
+      return Err(FdError::PathTooShort {
+        got: n_times,
+        required: 3,
+      });
     }
     if kmax < 2 {
-      panic!("kmax must be at least 2 for Higuchi fractal dimension.");
+      return Err(FdError::KmaxTooSmall(kmax));
     }
 
     let k_upper = kmax.min(n_times - 1);
@@ -100,12 +164,12 @@ impl FractalDim {
     }
 
     if used < 2 {
-      panic!("Not enough valid scales for Higuchi regression.");
+      return Err(FdError::NotEnoughScales);
     }
     let x = &x_reg.as_slice().unwrap()[..used];
     let y = &y_reg.as_slice().unwrap()[..used];
-    let (slope, _) = linear_regression(x, y).unwrap();
-    slope
+    let (slope, _) = linear_regression(x, y).map_err(|_| FdError::RegressionFailed)?;
+    Ok(slope)
   }
 }
 
@@ -183,7 +247,9 @@ pub fn estimate_hurst(closes: ndarray::ArrayView1<f64>) -> f64 {
 /// Estimate Hurst exponent from an arbitrary positive signal via Higuchi FD.
 ///
 /// Converts fractal dimension D to H = 2 − D, clamped to \[0.05, 0.45\].
-/// Returns 0.1 on degenerate input.
+/// Returns 0.1 on degenerate input or when the underlying Higuchi
+/// estimator returns [`FdError`] (no panic / unwind required since
+/// `higuchi_fd` is now [`Result`]-based).
 ///
 /// # Arguments
 /// * `signal` — Positive-valued time series as `ArrayView1`.
@@ -194,12 +260,8 @@ pub fn hurst_from_signal(signal: ndarray::ArrayView1<f64>) -> f64 {
   let owned = signal.to_owned();
   let kmax = 64.min(signal.len() / 4).max(4);
 
-  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-    let fd = FractalDim::new(owned);
-    fd.higuchi_fd(kmax)
-  }));
-
-  match result {
+  let fd = FractalDim::new(owned);
+  match fd.higuchi_fd(kmax) {
     Ok(d) if d.is_finite() && d > 1.0 && d < 2.0 => (2.0 - d).clamp(0.05, 0.45),
     _ => 0.1,
   }
@@ -210,6 +272,7 @@ mod tests {
   use ndarray::Array1;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
+  use super::FdError;
   use super::FractalDim;
   use crate::traits::ProcessExt;
 
@@ -225,7 +288,7 @@ mod tests {
     for _ in 0..m {
       let x = fbm.sample();
       let fd = FractalDim::new(x);
-      d_sum += fd.variogram(Some(2.0));
+      d_sum += fd.variogram(Some(2.0)).expect("variogram should succeed on fBM path");
     }
     let d_est = d_sum / m as f64;
     assert!(
@@ -247,7 +310,7 @@ mod tests {
     for _ in 0..m {
       let x = fbm.sample();
       let fd = FractalDim::new(x);
-      d_sum += fd.higuchi_fd(kmax);
+      d_sum += fd.higuchi_fd(kmax).expect("Higuchi should succeed on fBM path");
     }
     let d_est = d_sum / m as f64;
     assert!(
@@ -257,10 +320,35 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "Variogram is undefined")]
   fn variogram_rejects_degenerate_path() {
     let x = Array1::from_elem(128, 1.0);
     let fd = FractalDim::new(x);
-    let _ = fd.variogram(Some(2.0));
+    assert_eq!(fd.variogram(Some(2.0)), Err(FdError::DegeneratePath));
+  }
+
+  #[test]
+  fn variogram_rejects_short_path() {
+    let x = Array1::from_vec(vec![1.0, 2.0]);
+    let fd = FractalDim::new(x);
+    match fd.variogram(None) {
+      Err(FdError::PathTooShort { got: 2, required: 3 }) => {}
+      other => panic!("expected PathTooShort, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn variogram_rejects_non_positive_p() {
+    let x = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0]);
+    let fd = FractalDim::new(x);
+    assert_eq!(fd.variogram(Some(0.0)), Err(FdError::NonPositiveP(0.0)));
+    assert_eq!(fd.variogram(Some(-1.0)), Err(FdError::NonPositiveP(-1.0)));
+  }
+
+  #[test]
+  fn higuchi_rejects_kmax_too_small() {
+    let x = Array1::from_vec((0..100).map(|i| i as f64).collect());
+    let fd = FractalDim::new(x);
+    assert_eq!(fd.higuchi_fd(0), Err(FdError::KmaxTooSmall(0)));
+    assert_eq!(fd.higuchi_fd(1), Err(FdError::KmaxTooSmall(1)));
   }
 }

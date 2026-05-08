@@ -1,9 +1,57 @@
 //! # Rbergomi
 //!
 //! $$
-//! dS_t=S_t\sqrt{v_t}dW_t^1,\quad X_t=\int_0^t (t-s)^{H-1/2}dW_s^2
+//! dS_t=S_t\sqrt{v_t}\,dW_t^1,\qquad
+//! v(t_i) = v_0^2\,\exp\!\Bigl(\nu\sqrt{2H}\,t_i^{H-1/2}\sum_{j<i}\!Z_j
+//!                         \;-\;\tfrac12\nu^2 t_i^{2H}\Bigr)
 //! $$
 //!
+//! **Scope (scaled-Brownian-motion approximation of rough Bergomi —
+//! variance-matched, NOT a true Volterra integral).** The canonical
+//! Bayer-Friz-Gatheral (2016) rough Bergomi defines the log-variance
+//! driver as the **Volterra fractional Brownian motion**
+//!
+//! ```text
+//! W^H_t = √(2H) · ∫_0^t (t − s)^{H − ½} dW_s^2
+//! ```
+//!
+//! whose autocovariance encodes long memory and pathwise roughness. This
+//! implementation **does not** evaluate that Volterra integral. Instead
+//! it uses the simpler discrete recipe
+//!
+//! ```text
+//! v(t_i) = v_0² · exp[ ν · √(2H) · t_i^{H − ½} · Σ_{j<i} Z_j
+//!                      − ½ ν² · t_i^{2H} ]
+//! ```
+//!
+//! where the time-dependent kernel weight `(t_i − s_j)^{H − ½}` inside
+//! the integrand has been **factored out** as a single multiplicative
+//! factor `t_i^{H − ½}` applied to the cumulative sum of i.i.d. Gaussian
+//! increments. The two coincide only when `H = ½` (Brownian case);
+//! everywhere else this is an approximation that:
+//!
+//! - **preserves** the marginal variance scaling `Var[X_t] ∝ t^{2H}`
+//!   (hence the `½ ν² t^{2H}` correction term matches the proper
+//!   model);
+//! - **does not preserve** the fBM autocovariance structure
+//!   `Cov[X_s, X_t] ≠ ½(t^{2H} + s^{2H} − |t − s|^{2H})` — paths sampled
+//!   here lack the long-memory / antipersistence kernel of true fBM.
+//!
+//! For applications where only the marginal variance and one-step
+//! variance dynamics matter (e.g. teaching, smile-shape playgrounds,
+//! Monte-Carlo stress tests of the BFG-style log-normal envelope), this
+//! is fine. **For calibration / pricing where joint distributional
+//! accuracy of `v_t` matters (caplets, swaptions, path-dependent rough
+//! products), use a true Volterra simulator** — e.g.
+//! [`crate::rough::MarkovLift`] (Bilokon-Wong 2026 generalised
+//! Gauss-Laguerre exponential-sum representation; SIMD-batched) or
+//! [`crate::rough::rl_heston::RlHeston`] / [`crate::rough::rl_bs::RlBs`]
+//! built on top of it, or [`crate::process::volterra::Volterra`] for the
+//! raw fractional integral.
+//!
+//! Reference: Bayer, Friz, Gatheral, "Pricing under rough volatility",
+//! Quantitative Finance 16(6), 887-904 (2016) — for the canonical model
+//! that this implementation approximates.
 use ndarray::Array1;
 use ndarray::s;
 use stochastic_rs_core::simd_rng::Deterministic;
