@@ -48,7 +48,7 @@ fn clayton_tau_one_returns_infinity() {
 fn gumbel_theta_from_tau_closed_form() {
   // Gumbel: θ = 1 / (1 - τ), τ ∈ [0, 1).
   for &tau in &[0.0_f64, 0.1, 0.25, 0.5, 0.75, 0.9] {
-    let mut g = Gumbel::new(None, Some(tau));
+    let g = Gumbel::new(None, Some(tau));
     let theta = g.compute_theta();
     let expected = 1.0 / (1.0 - tau);
     approx_eq(theta, expected, 1e-12);
@@ -57,14 +57,14 @@ fn gumbel_theta_from_tau_closed_form() {
 
 #[test]
 fn gumbel_tau_one_returns_infinity() {
-  let mut g = Gumbel::new(None, Some(1.0));
+  let g = Gumbel::new(None, Some(1.0));
   let theta = g.compute_theta();
   assert!(theta.is_infinite() && theta > 0.0);
 }
 
 #[test]
 fn frank_theta_zero_for_independence() {
-  let mut f = Frank::new(None, Some(0.0));
+  let f = Frank::new(None, Some(0.0));
   let theta = f.compute_theta();
   approx_eq(theta, 0.0, 1e-9);
 }
@@ -72,14 +72,14 @@ fn frank_theta_zero_for_independence() {
 #[test]
 fn frank_theta_sign_matches_tau() {
   // Frank theta has the same sign as tau, opposite sign for negative tau.
-  let mut f_pos = Frank::new(None, Some(0.5));
+  let f_pos = Frank::new(None, Some(0.5));
   let theta_pos = f_pos.compute_theta();
   assert!(
     theta_pos > 0.0,
     "expected positive θ for τ > 0, got {theta_pos}"
   );
 
-  let mut f_neg = Frank::new(None, Some(-0.5));
+  let f_neg = Frank::new(None, Some(-0.5));
   let theta_neg = f_neg.compute_theta();
   assert!(
     theta_neg < 0.0,
@@ -89,10 +89,10 @@ fn frank_theta_sign_matches_tau() {
 
 #[test]
 fn frank_extreme_tau_returns_infinity() {
-  let mut f1 = Frank::new(None, Some(1.0));
+  let f1 = Frank::new(None, Some(1.0));
   assert!(f1.compute_theta().is_infinite());
 
-  let mut fm1 = Frank::new(None, Some(-1.0));
+  let fm1 = Frank::new(None, Some(-1.0));
   assert!(fm1.compute_theta().is_infinite() && fm1.compute_theta() < 0.0);
 }
 
@@ -108,7 +108,7 @@ fn independence_theta_is_zero() {
 #[test]
 fn frank_tau_theta_roundtrip() {
   for &tau in &[-0.6_f64, -0.3, 0.1, 0.3, 0.5, 0.7] {
-    let mut f = Frank::new(None, Some(tau));
+    let f = Frank::new(None, Some(tau));
     let theta = f.compute_theta();
     assert!(theta.is_finite(), "θ blew up for τ={tau}");
     // Re-evaluate the tau formula at the recovered theta and check residual ≈ 0.
@@ -138,7 +138,7 @@ fn clayton_tau_theta_roundtrip() {
 #[test]
 fn gumbel_tau_theta_roundtrip() {
   for &tau in &[0.05_f64, 0.25, 0.5, 0.75, 0.95] {
-    let mut g = Gumbel::new(None, Some(tau));
+    let g = Gumbel::new(None, Some(tau));
     let theta = g.compute_theta();
     let tau_back = (theta - 1.0) / theta;
     approx_eq(tau_back, tau, 1e-12);
