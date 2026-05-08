@@ -220,7 +220,7 @@ mod tests {
     let h = Hawkes::seeded(0.5, 0.3, 1.0, None, Some(100.0), 42);
     let events = h.sample();
     // Must have at least t₀ = 0
-    assert!(events.len() >= 1);
+    assert!(!events.is_empty());
     assert_eq!(events[0], 0.0);
     // All events within horizon
     for &t in events.iter() {
@@ -248,7 +248,7 @@ mod tests {
     let paths = h.sample_par(10);
     assert_eq!(paths.len(), 10);
     for p in &paths {
-      assert!(p.len() >= 1);
+      assert!(!p.is_empty());
       assert_eq!(p[0], 0.0);
     }
   }

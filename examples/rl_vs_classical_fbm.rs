@@ -63,7 +63,7 @@ fn timing_table() -> Vec<TimingPoint> {
     for &n in &sizes {
       let classical = Fbm::<f64>::new(h, n, Some(1.0));
       let rl = RlFBm::<f64>::new(h, n, Some(1.0), None);
-      let iters = (5_000_000 / n).max(40).min(2_000);
+      let iters = (5_000_000 / n).clamp(40, 2_000);
       let t_classical = bench_time(|| classical.sample(), iters);
       let t_rl = bench_time(|| rl.sample(), iters);
       let ratio = t_rl / t_classical;

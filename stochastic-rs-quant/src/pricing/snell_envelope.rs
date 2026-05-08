@@ -411,7 +411,7 @@ mod tests {
     assert!(!result.exercise_boundary.is_empty());
 
     for &(t, s_star) in &result.exercise_boundary {
-      assert!(t >= 0.0 && t < 1.0);
+      assert!((0.0..1.0).contains(&t));
       assert!(s_star > 0.0 && s_star <= 100.0);
     }
 

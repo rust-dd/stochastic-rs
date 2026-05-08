@@ -252,7 +252,7 @@ mod tests {
     // Seeded `Fbm::sample(&self)` advances the internal atomic seed state
     // each call, so a single instance yields `m` independent paths
     // deterministically.
-    let fbm = Fbm::seeded(h, n, Some(t), 0xF_B_C0FFEE_u64);
+    let fbm = Fbm::seeded(h, n, Some(t), 0xFBC0_FFEE_u64);
 
     let mut endpoints = Vec::with_capacity(m);
     for _ in 0..m {

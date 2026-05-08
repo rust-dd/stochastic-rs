@@ -297,8 +297,6 @@ impl McRainbowPricer {
 
 #[cfg(test)]
 mod tests {
-  use ndarray::array;
-
   use super::*;
 
   /// Stulz: $C_{\min} + C_{\max} = C_1 + C_2$ (vanilla call sum).

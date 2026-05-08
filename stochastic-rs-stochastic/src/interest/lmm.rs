@@ -263,10 +263,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lmm<T, S> {
             for j in eta_idx..=n {
               let mut rho_nj = T::zero();
               for p in 0..=j.min(n) {
-                rho_nj = rho_nj + chol_ref[(n, p)] * chol_ref[(j, p)];
+                rho_nj += chol_ref[(n, p)] * chol_ref[(j, p)];
               }
               let denom = T::one() + delta[j] * prev[j];
-              drift = drift + (delta[j] * rho_nj * self.sigma[j] * prev[j]) / denom;
+              drift += (delta[j] * rho_nj * self.sigma[j] * prev[j]) / denom;
             }
             drift = drift * self.sigma[n];
           }
@@ -320,7 +320,7 @@ fn cholesky_lower<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {
     for j in 0..=i {
       let mut sum = T::zero();
       for k in 0..j {
-        sum = sum + l[(i, k)] * l[(j, k)];
+        sum += l[(i, k)] * l[(j, k)];
       }
       let v = rho[(i, j)] - sum;
       if i == j {

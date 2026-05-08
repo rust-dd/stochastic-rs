@@ -184,7 +184,7 @@ mod tests {
     let m = data.sum() / data.len() as f64;
     let v = data.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (data.len() - 1) as f64;
     let alpha = estimate_cgmy_alpha(data.view(), m, v);
-    assert!(alpha >= 0.1 && alpha <= 1.9, "alpha out of range: {alpha}");
+    assert!((0.1..=1.9).contains(&alpha), "alpha out of range: {alpha}");
   }
 
   #[test]

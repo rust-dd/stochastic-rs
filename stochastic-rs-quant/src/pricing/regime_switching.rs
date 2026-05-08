@@ -527,7 +527,7 @@ mod tests {
     q_mat[[0, 0]] = Complex64::new(-0.5 * t, 0.0);
     q_mat[[0, 1]] = Complex64::new(0.5 * t, 0.0);
     q_mat[[1, 0]] = Complex64::new(1.0 * t, 0.0);
-    q_mat[[1, 1]] = Complex64::new(-1.0 * t, 0.0);
+    q_mat[[1, 1]] = Complex64::new(-t, 0.0);
     let result = matrix_exp_complex(&q_mat);
 
     for i in 0..2 {

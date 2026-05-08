@@ -881,11 +881,11 @@ mod tests {
     let mu = 0.05;
     let sigma = 0.2;
     let x0 = array![100.0];
-    let t0 = 0.0;
-    let t1 = 1.0;
-    let dt = 0.001;
+    let t0: f64 = 0.0;
+    let t1: f64 = 1.0;
+    let dt: f64 = 0.001;
     let n_paths = 5;
-    let steps = (((t1 - t0) / dt) as f64).ceil() as usize;
+    let steps = ((t1 - t0) / dt).ceil() as usize;
 
     let t_axis: Vec<f64> = (0..=steps).map(|i| t0 + i as f64 * dt).collect();
 

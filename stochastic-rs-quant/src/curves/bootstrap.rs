@@ -256,6 +256,6 @@ mod tests {
       },
     ];
     let curve = bootstrap_iterative(&inst, InterpolationMethod::LinearOnZeroRates, 1e-10, 50);
-    assert!(curve.len() >= 1);
+    assert!(!curve.is_empty());
   }
 }

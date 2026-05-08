@@ -98,6 +98,6 @@ mod tests {
     }
     let closes = Array1::from_vec(vals);
     let rho = estimate_leverage_rho(closes.view());
-    assert!(rho >= -0.99 && rho <= 0.99, "rho out of range: {rho}");
+    assert!((-0.99..=0.99).contains(&rho), "rho out of range: {rho}");
   }
 }

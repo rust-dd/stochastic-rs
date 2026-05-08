@@ -1056,7 +1056,7 @@ mod tests {
       xi0: RBergomiXi0::Constant(0.04),
     };
 
-    let maturities = vec![0.25, 0.5, 1.0];
+    let maturities = [0.25, 0.5, 1.0];
     let mut market_slices = Vec::with_capacity(maturities.len());
     for (i, &t) in maturities.iter().enumerate() {
       let market_samples = simulate_rbergomi_terminal_samples(

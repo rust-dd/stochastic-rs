@@ -291,7 +291,7 @@ mod tests {
     );
     let [_s, z] = p.sample();
     for &state in z.iter() {
-      assert!(state >= 0.0 && state < 3.0, "invalid state={state}");
+      assert!((0.0..3.0).contains(&state), "invalid state={state}");
     }
   }
 

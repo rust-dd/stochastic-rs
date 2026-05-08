@@ -264,10 +264,10 @@ mod tests {
     let cir = Cir::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
     let dt = 1.0 / 250.0;
     let d = DensityApprox::Euler.density(&cir, 0.4, 0.41, 0.0, dt);
-    // reference value: 18.715933204468332
+    // reference value: 18.71593320446833
     assert!(
-      (d - 18.715933204468332).abs() < 1e-8,
-      "Cir Euler: got {d}, expected 18.715933204468332"
+      (d - 18.71593320446833).abs() < 1e-8,
+      "Cir Euler: got {d}, expected 18.71593320446833"
     );
   }
 
