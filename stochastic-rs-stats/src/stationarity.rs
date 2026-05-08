@@ -2,6 +2,9 @@
 
 mod common;
 
+pub use common::DeterministicTerm;
+pub use common::LagSelection;
+
 pub mod adf;
 pub mod ers_dfgls;
 pub mod kpss;

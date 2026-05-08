@@ -15,4 +15,9 @@ doctest = false
 stochastic-rs-core = { workspace = true, features = ["python"] }
 stochastic-rs-distributions = { workspace = true, features = ["python"] }
 stochastic-rs-stochastic = { workspace = true, features = ["python"] }
+stochastic-rs-copulas = { workspace = true, features = ["python"] }
+stochastic-rs-stats = { workspace = true, features = ["python"] }
+stochastic-rs-quant = { workspace = true, features = ["python"] }
 pyo3 = { workspace = true, features = ["extension-module"] }
+numpy = { workspace = true }
+ndarray = { workspace = true }

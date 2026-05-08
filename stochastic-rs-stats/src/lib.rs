@@ -35,3 +35,6 @@ pub mod spectral;
 #[cfg(feature = "openblas")]
 pub mod stationarity;
 pub mod tail_index;
+
+#[cfg(feature = "python")]
+pub mod python;

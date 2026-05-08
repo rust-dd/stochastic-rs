@@ -68,3 +68,6 @@ pub use types::LossMetric;
 pub use types::Moneyness;
 pub use types::OptionStyle;
 pub use types::OptionType;
+
+#[cfg(feature = "python")]
+pub mod python;

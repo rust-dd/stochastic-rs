@@ -22,6 +22,7 @@ openblas = [
 ]
 python = [
     "dep:pyo3",
+    "dep:numpy",
     "stochastic-rs-core/python",
     "stochastic-rs-distributions/python",
     "stochastic-rs-stochastic/python",
@@ -58,3 +59,4 @@ ndrustfft = { workspace = true }
 anyhow = { workspace = true }
 either = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+numpy = { workspace = true, optional = true }
