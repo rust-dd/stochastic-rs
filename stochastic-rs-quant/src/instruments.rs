@@ -20,10 +20,6 @@ pub mod equity;
 pub mod option;
 pub mod swap;
 
-pub use equity::DigitalKind;
-pub use equity::DigitalOption;
-pub use equity::EuropeanOption;
-
 pub use bond::AmortizingFixedRateBond;
 pub use bond::BondAnalytics;
 pub use bond::BondPrice;
@@ -31,6 +27,9 @@ pub use bond::FixedRateBond;
 pub use bond::FloatingRateBond;
 pub use bond::InflationLinkedBond;
 pub use bond::ZeroCouponBond;
+pub use equity::DigitalKind;
+pub use equity::DigitalOption;
+pub use equity::EuropeanOption;
 pub use option::BachelierVolatility;
 pub use option::BermudanSwaption;
 pub use option::BermudanSwaptionValuation;

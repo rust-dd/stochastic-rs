@@ -205,7 +205,10 @@ mod tests {
     let v = trs.value_flat(0.04);
     // For r=4%, quarterly: per-period gap ≈ 0.5·0.04²·0.25 = 2e-4.
     assert!(v.fair_spread.abs() < 5e-4, "fair_spread={}", v.fair_spread);
-    assert!(v.fair_spread > 0.0, "TR ≥ simple-funding ⇒ fair spread positive");
+    assert!(
+      v.fair_spread > 0.0,
+      "TR ≥ simple-funding ⇒ fair spread positive"
+    );
   }
 
   #[test]
@@ -255,7 +258,11 @@ mod tests {
     let v0 = trs.value_flat(0.04);
     trs.spread = v0.fair_spread;
     let v1 = trs.value_flat(0.04);
-    assert!(v1.net_pv.abs() < 1e-7, "net_pv at fair spread = {}", v1.net_pv);
+    assert!(
+      v1.net_pv.abs() < 1e-7,
+      "net_pv at fair spread = {}",
+      v1.net_pv
+    );
   }
 
   #[test]

@@ -89,12 +89,7 @@ pub enum DigitalKind {
 }
 
 impl DigitalOption {
-  pub const fn cash_or_nothing(
-    strike: f64,
-    option_type: OptionType,
-    cash: f64,
-    tau: f64,
-  ) -> Self {
+  pub const fn cash_or_nothing(strike: f64, option_type: OptionType, cash: f64, tau: f64) -> Self {
     Self {
       strike,
       option_type,

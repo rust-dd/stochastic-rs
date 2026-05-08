@@ -223,7 +223,13 @@ mod tests {
     let dt = 10.0 / 2500.0;
 
     let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::ShojiOzaki, None);
+    let result = fit_mle(
+      &mut ou_fit,
+      path.view(),
+      dt,
+      DensityApprox::ShojiOzaki,
+      None,
+    );
 
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,

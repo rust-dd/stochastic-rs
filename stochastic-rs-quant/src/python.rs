@@ -208,11 +208,10 @@ impl PyMerton1976Pricer {
     m: usize,
   ) -> PyResult<Self> {
     let ot = parse_option_type(option_type)?;
-    let mut builder = crate::pricing::merton_jump::Merton1976Pricer::builder(
-      s, v, k, r, lambda_, gamma, m,
-    )
-    .tau(tau)
-    .option_type(ot);
+    let mut builder =
+      crate::pricing::merton_jump::Merton1976Pricer::builder(s, v, k, r, lambda_, gamma, m)
+        .tau(tau)
+        .option_type(ot);
     if let Some(qv) = q {
       builder = builder.q(qv);
     }
@@ -799,15 +798,7 @@ pub struct PyAssetOrNothingPricer {
 impl PyAssetOrNothingPricer {
   #[new]
   #[pyo3(signature = (s, k, r, b, sigma, t, option_type="call"))]
-  fn new(
-    s: f64,
-    k: f64,
-    r: f64,
-    b: f64,
-    sigma: f64,
-    t: f64,
-    option_type: &str,
-  ) -> PyResult<Self> {
+  fn new(s: f64, k: f64, r: f64, b: f64, sigma: f64, t: f64, option_type: &str) -> PyResult<Self> {
     let ot = parse_option_type(option_type)?;
     Ok(Self {
       inner: crate::pricing::digital::AssetOrNothingPricer {
@@ -1174,9 +1165,7 @@ impl PyDoubleHestonCalibrator {
 
   /// Returns `(v1_0, kappa1, theta1, sigma1, rho1, v2_0, kappa2, theta2, sigma2, rho2, converged, loss_rmse)`.
   #[allow(clippy::type_complexity)]
-  fn calibrate(
-    &self,
-  ) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
+  fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
     use crate::traits::Calibrator;
     let res = self
       .inner
@@ -1758,9 +1747,7 @@ impl PyHKDECalibrator {
 
   /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, p_up, eta1, eta2, converged, loss_rmse)`.
   #[allow(clippy::type_complexity)]
-  fn calibrate(
-    &self,
-  ) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
+  fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
     let res = self.inner.calibrate(None);
     Ok((
       res.v0,
@@ -1944,12 +1931,8 @@ impl PyExpectedShortfall {
         )));
       }
     };
-    let value = crate::risk::expected_shortfall::expected_shortfall(
-      samples.as_array(),
-      confidence,
-      pol,
-      m,
-    );
+    let value =
+      crate::risk::expected_shortfall::expected_shortfall(samples.as_array(), confidence, pol, m);
     Ok(Self { value })
   }
 
@@ -2021,9 +2004,9 @@ impl PyAlmgrenChrissPlan {
     epsilon: f64,
     direction: &str,
   ) -> PyResult<Self> {
-    use crate::microstructure::almgren_chriss::{
-      AlmgrenChrissParams, ExecutionDirection, optimal_execution,
-    };
+    use crate::microstructure::almgren_chriss::AlmgrenChrissParams;
+    use crate::microstructure::almgren_chriss::ExecutionDirection;
+    use crate::microstructure::almgren_chriss::optimal_execution;
     let dir = match direction.to_ascii_lowercase().as_str() {
       "sell" => ExecutionDirection::Sell,
       "buy" => ExecutionDirection::Buy,
@@ -2368,13 +2351,7 @@ impl PySabrCapletCalibrator {
   /// SABR caplet smile calibrator — fits `(α, ν, ρ)` for a single expiry,
   /// β held fixed.
   #[new]
-  fn new(
-    forward: f64,
-    expiry: f64,
-    beta: f64,
-    strikes: Vec<f64>,
-    market_vols: Vec<f64>,
-  ) -> Self {
+  fn new(forward: f64, expiry: f64, beta: f64, strikes: Vec<f64>, market_vols: Vec<f64>) -> Self {
     Self {
       inner: crate::calibration::sabr_caplet::SabrCapletCalibrator::new(
         forward,
@@ -2424,9 +2401,7 @@ impl PyCgmysvCalibrator {
 
   /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0, converged, loss_rmse, iterations)`.
   #[allow(clippy::type_complexity)]
-  fn calibrate(
-    &self,
-  ) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64, usize)> {
+  fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64, usize)> {
     let res = self.inner.calibrate(None);
     let p = &res.params;
     Ok((
@@ -2511,10 +2486,7 @@ impl PyPCA {
     }
   }
 
-  fn singular_values<'py>(
-    &self,
-    py: Python<'py>,
-  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+  fn singular_values<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.singular_values.clone().into_pyarray(py)
   }
@@ -2527,11 +2499,7 @@ impl PyPCA {
     py: Python<'py>,
   ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
-    self
-      .inner
-      .explained_variance_ratio
-      .clone()
-      .into_pyarray(py)
+    self.inner.explained_variance_ratio.clone().into_pyarray(py)
   }
   fn loadings<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;

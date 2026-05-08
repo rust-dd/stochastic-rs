@@ -113,13 +113,13 @@ mod tests {
   use stochastic_rs_stochastic::process::subordinator::PoissonSubordinator;
   use stochastic_rs_stochastic::process::subordinator::TemperedStableSubordinator;
   use stochastic_rs_stochastic::sheet::fbs::Fbs;
+  use stochastic_rs_stochastic::traits::ProcessExt;
   use stochastic_rs_stochastic::volatility::HestonPow;
   use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
   use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
   use stochastic_rs_stochastic::volatility::heston::Heston;
   use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
   use stochastic_rs_stochastic::volatility::sabr::Sabr;
-  use stochastic_rs_stochastic::traits::ProcessExt;
   use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
   use super::*;

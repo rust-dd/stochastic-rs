@@ -738,9 +738,7 @@ impl PyGaussianKDE {
   #[staticmethod]
   fn silverman<'py>(data: PyReadonlyArray1<'py, f64>) -> Self {
     Self {
-      inner: crate::gaussian_kde::GaussianKDE::with_silverman_bandwidth(
-        data.as_array().to_owned(),
-      ),
+      inner: crate::gaussian_kde::GaussianKDE::with_silverman_bandwidth(data.as_array().to_owned()),
     }
   }
 
@@ -820,12 +818,7 @@ impl PyHestonNMLECEKF {
   /// NMLE-CEKF (Wang et al. 2018) Heston estimator from spot path only.
   #[new]
   #[pyo3(signature = (s, r=0.0, delta=None, max_iters=12))]
-  fn new<'py>(
-    s: PyReadonlyArray1<'py, f64>,
-    r: f64,
-    delta: Option<f64>,
-    max_iters: usize,
-  ) -> Self {
+  fn new<'py>(s: PyReadonlyArray1<'py, f64>, r: f64, delta: Option<f64>, max_iters: usize) -> Self {
     let default_cfg = crate::heston_nml_cekf::HestonNMLECEKFConfig::default();
     let cfg = crate::heston_nml_cekf::HestonNMLECEKFConfig {
       r,
@@ -1322,10 +1315,7 @@ impl PyGaussianHmm {
     observations: PyReadonlyArray1<'py, f64>,
   ) -> pyo3::Bound<'py, numpy::PyArray1<usize>> {
     use numpy::IntoPyArray;
-    self
-      .inner
-      .viterbi(observations.as_array())
-      .into_pyarray(py)
+    self.inner.viterbi(observations.as_array()).into_pyarray(py)
   }
 
   /// Train via Baum-Welch EM and return `(iterations, log_likelihood, converged)`.
@@ -1335,7 +1325,9 @@ impl PyGaussianHmm {
     max_iter: usize,
     tol: f64,
   ) -> (usize, f64, bool) {
-    let fit = self.inner.baum_welch(observations.as_array(), max_iter, tol);
+    let fit = self
+      .inner
+      .baum_welch(observations.as_array(), max_iter, tol);
     (fit.iterations, fit.log_likelihood, fit.converged)
   }
 }

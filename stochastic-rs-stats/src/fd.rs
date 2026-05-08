@@ -18,10 +18,7 @@ use ndarray::Array1;
 #[derive(Debug, Clone, PartialEq)]
 pub enum FdError {
   /// Path has fewer points than the estimator needs.
-  PathTooShort {
-    got: usize,
-    required: usize,
-  },
+  PathTooShort { got: usize, required: usize },
   /// `p` parameter must be strictly positive.
   NonPositiveP(f64),
   /// `kmax` parameter must be at least 2 for Higuchi.
@@ -288,7 +285,9 @@ mod tests {
     for _ in 0..m {
       let x = fbm.sample();
       let fd = FractalDim::new(x);
-      d_sum += fd.variogram(Some(2.0)).expect("variogram should succeed on fBM path");
+      d_sum += fd
+        .variogram(Some(2.0))
+        .expect("variogram should succeed on fBM path");
     }
     let d_est = d_sum / m as f64;
     assert!(
@@ -310,7 +309,9 @@ mod tests {
     for _ in 0..m {
       let x = fbm.sample();
       let fd = FractalDim::new(x);
-      d_sum += fd.higuchi_fd(kmax).expect("Higuchi should succeed on fBM path");
+      d_sum += fd
+        .higuchi_fd(kmax)
+        .expect("Higuchi should succeed on fBM path");
     }
     let d_est = d_sum / m as f64;
     assert!(
@@ -331,7 +332,10 @@ mod tests {
     let x = Array1::from_vec(vec![1.0, 2.0]);
     let fd = FractalDim::new(x);
     match fd.variogram(None) {
-      Err(FdError::PathTooShort { got: 2, required: 3 }) => {}
+      Err(FdError::PathTooShort {
+        got: 2,
+        required: 3,
+      }) => {}
       other => panic!("expected PathTooShort, got {:?}", other),
     }
   }

@@ -138,10 +138,7 @@ pub struct PyEmpiricalCopula2D {
 impl PyEmpiricalCopula2D {
   /// Build a 2D empirical copula from two equal-length series via rank-transform.
   #[new]
-  fn new<'py>(
-    x: numpy::PyReadonlyArray1<'py, f64>,
-    y: numpy::PyReadonlyArray1<'py, f64>,
-  ) -> Self {
+  fn new<'py>(x: numpy::PyReadonlyArray1<'py, f64>, y: numpy::PyReadonlyArray1<'py, f64>) -> Self {
     let x_arr = x.as_array().to_owned();
     let y_arr = y.as_array().to_owned();
     Self {

@@ -6,7 +6,8 @@ use argmin::core::Gradient;
 use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
-use ndarray::{Array1, ArrayView1};
+use ndarray::Array1;
+use ndarray::ArrayView1;
 use parking_lot::Mutex;
 
 use super::DiffusionModel;

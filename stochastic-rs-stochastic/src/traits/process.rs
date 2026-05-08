@@ -147,10 +147,7 @@ impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2
 /// per-component event-time vectors have process-dependent lengths.
 pub trait VariableDimensional<T: FloatExt>: ProcessExt<T, Output = Vec<Array1<T>>> {}
 
-impl<T: FloatExt, P> VariableDimensional<T> for P where
-  P: ProcessExt<T, Output = Vec<Array1<T>>>
-{
-}
+impl<T: FloatExt, P> VariableDimensional<T> for P where P: ProcessExt<T, Output = Vec<Array1<T>>> {}
 
 /// Marker for processes whose [`ProcessExt::sample`] returns a complex-valued
 /// 1D trajectory `Array1<Complex<T>>`.

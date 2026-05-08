@@ -421,13 +421,13 @@ impl StochVolNn {
       );
     }
     let pred = self.predict_surface(params)?;
-    let ivs = Array2::<f64>::from_shape_vec(
-      (n_t, n_k),
-      pred.into_iter().map(|v| v as f64).collect(),
-    )?;
-    Ok(stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
-      strikes, maturities, forwards, ivs,
-    ))
+    let ivs =
+      Array2::<f64>::from_shape_vec((n_t, n_k), pred.into_iter().map(|v| v as f64).collect())?;
+    Ok(
+      stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
+        strikes, maturities, forwards, ivs,
+      ),
+    )
   }
 
   pub fn predict_surfaces(&self, params: &Array2<f32>) -> Result<Array2<f32>> {

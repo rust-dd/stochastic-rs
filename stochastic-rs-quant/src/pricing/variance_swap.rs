@@ -65,7 +65,11 @@ impl VarianceSwapPricer {
   /// forward. Strikes must be sorted ascending. Trapezoidal weights are
   /// used for the $\int P(K)/K^2 dK + \int C(K)/K^2 dK$ contribution.
   pub fn fair_strike_replication(&self, strikes: &[f64], otm_prices: &[f64]) -> f64 {
-    assert_eq!(strikes.len(), otm_prices.len(), "strikes / prices length mismatch");
+    assert_eq!(
+      strikes.len(),
+      otm_prices.len(),
+      "strikes / prices length mismatch"
+    );
     let n = strikes.len();
     if n < 2 || self.t <= 0.0 {
       return 0.0;
@@ -99,8 +103,7 @@ impl VarianceSwapPricer {
     }
 
     let drift = (self.r - self.q) * self.t;
-    let fair = (2.0 / self.t)
-      * (drift - (fwd / k0 - 1.0) - (k0 / self.s).ln() + disc * integral);
+    let fair = (2.0 / self.t) * (drift - (fwd / k0 - 1.0) - (k0 / self.s).ln() + disc * integral);
     fair.max(0.0)
   }
 
@@ -225,13 +228,7 @@ impl VolatilitySwapPricer {
   /// \frac{\sigma^2(V_0 - \theta)^2 (1-e^{-2\kappa T})}{2\kappa^3 T^2}$
   /// to leading order; the closed form is messier — we use a tractable
   /// approximation suitable for short maturities.
-  pub fn fair_strike_heston(
-    v0: f64,
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    t: f64,
-  ) -> f64 {
+  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, t: f64) -> f64 {
     let pricer = VarianceSwapPricer {
       s: 1.0,
       r: 0.0,
@@ -242,9 +239,8 @@ impl VolatilitySwapPricer {
     if kappa.abs() < 1e-10 || t <= 0.0 {
       return k_var.max(0.0).sqrt();
     }
-    let dispersion =
-      (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * t).exp()))
-        / (2.0 * kappa.powi(3) * t * t);
+    let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * t).exp()))
+      / (2.0 * kappa.powi(3) * t * t);
     Self::fair_strike_from_var(k_var, dispersion.max(0.0))
   }
 }
@@ -291,9 +287,7 @@ mod tests {
 
   #[test]
   fn pnl_scales_with_notional() {
-    assert!(
-      (VarianceSwapPricer::pnl(0.06, 0.04, 100_000.0) - 2_000.0).abs() < 1e-9
-    );
+    assert!((VarianceSwapPricer::pnl(0.06, 0.04, 100_000.0) - 2_000.0).abs() < 1e-9);
   }
 
   #[test]
@@ -343,7 +337,10 @@ mod tests {
       t: 50.0,
     };
     let k_var = p.fair_strike_heston(0.09, 2.0, 0.04);
-    assert!((k_var - 0.04).abs() < 0.01, "K_var={k_var} should approach θ=0.04");
+    assert!(
+      (k_var - 0.04).abs() < 0.01,
+      "K_var={k_var} should approach θ=0.04"
+    );
   }
 
   #[test]
@@ -397,6 +394,9 @@ mod tests {
     let k_var = p.fair_strike_replication(&strikes, &prices);
     let target = sigma * sigma;
     let rel_err = (k_var - target).abs() / target;
-    assert!(rel_err < 0.02, "K_var={k_var}, expected≈{target}, rel_err={rel_err}");
+    assert!(
+      rel_err < 0.02,
+      "K_var={k_var}, expected≈{target}, rel_err={rel_err}"
+    );
   }
 }

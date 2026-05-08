@@ -91,7 +91,13 @@ fn bench_mle_fit(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("Ou/Euler", label), |b| {
       b.iter(|| {
         let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
-        black_box(fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None))
+        black_box(fit_mle(
+          &mut ou_fit,
+          path.view(),
+          dt,
+          DensityApprox::Euler,
+          None,
+        ))
       })
     });
 

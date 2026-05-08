@@ -74,7 +74,8 @@ fn main() {
   let bs_engine = AnalyticBSEngine::new(spot.clone(), vol.clone(), rate.clone(), div.clone());
 
   let heston_params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.30, -0.7);
-  let heston_engine = AnalyticHestonEngine::new(spot.clone(), rate.clone(), div.clone(), heston_params);
+  let heston_engine =
+    AnalyticHestonEngine::new(spot.clone(), rate.clone(), div.clone(), heston_params);
 
   // -----------------------------------------------------------------------
   // 3. Portfolio: equity option + variance swap + TRS
@@ -87,9 +88,21 @@ fn main() {
   let bs_put = bs_engine.calculate(&put);
 
   println!("Portfolio leg 1 — equity options (Black-Scholes vs Heston):");
-  println!("  Call(K=110, T=1) BS    : NPV={:.4}  Δ={:.4}", bs_call.npv(), bs_call.greeks().unwrap().delta);
-  println!("  Call(K=110, T=1) Heston: NPV={:.4}  Δ={:.4}", heston_call.npv(), heston_call.greeks().unwrap().delta);
-  println!("  Put (K= 95, T=1) BS    : NPV={:.4}  Δ={:.4}\n", bs_put.npv(), bs_put.greeks().unwrap().delta);
+  println!(
+    "  Call(K=110, T=1) BS    : NPV={:.4}  Δ={:.4}",
+    bs_call.npv(),
+    bs_call.greeks().unwrap().delta
+  );
+  println!(
+    "  Call(K=110, T=1) Heston: NPV={:.4}  Δ={:.4}",
+    heston_call.npv(),
+    heston_call.greeks().unwrap().delta
+  );
+  println!(
+    "  Put (K= 95, T=1) BS    : NPV={:.4}  Δ={:.4}\n",
+    bs_put.npv(),
+    bs_put.greeks().unwrap().delta
+  );
 
   let var_swap = VarianceSwapPricer {
     s: spot_q.value(),
@@ -98,15 +111,20 @@ fn main() {
     t: 1.0,
   };
   let k_var_bsm = var_swap.fair_strike_bsm(vol_q.value());
-  let k_var_heston = var_swap.fair_strike_heston(
-    heston_params.v0,
-    heston_params.kappa,
-    heston_params.theta,
-  );
+  let k_var_heston =
+    var_swap.fair_strike_heston(heston_params.v0, heston_params.kappa, heston_params.theta);
 
   println!("Portfolio leg 2 — variance swap (fair variance strike):");
-  println!("  K_var (BSM,  σ=20%) = {:.6}  → vol = {:.4}%", k_var_bsm, k_var_bsm.sqrt() * 100.0);
-  println!("  K_var (Heston BL00) = {:.6}  → vol = {:.4}%\n", k_var_heston, k_var_heston.sqrt() * 100.0);
+  println!(
+    "  K_var (BSM,  σ=20%) = {:.6}  → vol = {:.4}%",
+    k_var_bsm,
+    k_var_bsm.sqrt() * 100.0
+  );
+  println!(
+    "  K_var (Heston BL00) = {:.6}  → vol = {:.4}%\n",
+    k_var_heston,
+    k_var_heston.sqrt() * 100.0
+  );
 
   let trs = TotalReturnSwap {
     notional: 10_000_000.0,
@@ -126,7 +144,11 @@ fn main() {
   println!("Portfolio leg 3 — total return swap (1y, quarterly resets):");
   println!("  equity-leg PV  = {:>14.2}", trs_v.equity_leg_pv);
   println!("  funding-leg PV = {:>14.2}", trs_v.funding_leg_pv);
-  println!("  fair spread    = {:.6} ({:.2} bps)\n", trs_v.fair_spread, trs_v.fair_spread * 1e4);
+  println!(
+    "  fair spread    = {:.6} ({:.2} bps)\n",
+    trs_v.fair_spread,
+    trs_v.fair_spread * 1e4
+  );
 
   // -----------------------------------------------------------------------
   // 4. Reactive update: bump spot, all engines re-price automatically
@@ -135,8 +157,17 @@ fn main() {
   spot_q.set_value(105.0);
   let bs_after = bs_engine.calculate(&call);
   let heston_after = heston_engine.calculate(&call);
-  println!("  Call BS     NPV: {:.4} → {:.4}  (Δ ~ {:.4})", bs_call.npv(), bs_after.npv(), bs_after.greeks().unwrap().delta);
-  println!("  Call Heston NPV: {:.4} → {:.4}\n", heston_call.npv(), heston_after.npv());
+  println!(
+    "  Call BS     NPV: {:.4} → {:.4}  (Δ ~ {:.4})",
+    bs_call.npv(),
+    bs_after.npv(),
+    bs_after.greeks().unwrap().delta
+  );
+  println!(
+    "  Call Heston NPV: {:.4} → {:.4}\n",
+    heston_call.npv(),
+    heston_after.npv()
+  );
   spot_q.set_value(100.0);
 
   // -----------------------------------------------------------------------
@@ -152,7 +183,10 @@ fn main() {
   let fwd = 1.10;
   let smile = VannaVolgaSmile::build(fx_quotes, fwd, 0.5, 0.02);
   println!("FX vol smile (EUR/USD, 6m, Vanna-Volga):");
-  println!("  pivots: K_25P={:.4}  K_ATM={:.4}  K_25C={:.4}", smile.k_put, smile.k_atm, smile.k_call);
+  println!(
+    "  pivots: K_25P={:.4}  K_ATM={:.4}  K_25C={:.4}",
+    smile.k_put, smile.k_atm, smile.k_call
+  );
   for k_step in [-0.05, -0.025, 0.0, 0.025, 0.05] {
     let k = fwd + k_step;
     let v = smile.vol_at_strike(k);

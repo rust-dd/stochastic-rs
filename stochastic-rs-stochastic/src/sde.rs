@@ -783,11 +783,9 @@ mod tests {
 
   /// Geometric Brownian motion `dS = μS dt + σS dW` has analytical mean
   /// `E[S_T] = S_0 · exp(μ·T)`. Each method should hit it within MC tolerance.
-  fn gbm_sde() -> Sde<
-    f64,
-    impl Fn(&Array1<f64>, f64) -> Array1<f64>,
-    impl Fn(&Array1<f64>, f64) -> Array2<f64>,
-  > {
+  fn gbm_sde()
+  -> Sde<f64, impl Fn(&Array1<f64>, f64) -> Array1<f64>, impl Fn(&Array1<f64>, f64) -> Array2<f64>>
+  {
     let mu = 0.05;
     let sigma = 0.20;
     Sde::new(

@@ -14,12 +14,11 @@
 //! - $\sigma_{25C} = \sigma_{ATM} + \sigma_{BF} + \tfrac12\,\sigma_{RR}$
 //! - $\sigma_{25P} = \sigma_{ATM} + \sigma_{BF} - \tfrac12\,\sigma_{RR}$
 
-use crate::OptionType;
-
 use super::delta::AtmConvention;
 use super::delta::FxDeltaConvention;
 use super::delta::atm_strike;
 use super::delta::strike_from_delta;
+use crate::OptionType;
 
 /// FX market quote bundle (ATM + 25Δ risk reversal + 25Δ butterfly).
 ///

@@ -118,7 +118,15 @@ pub fn strike_from_delta(
       forward * (-d1 * sigma * sqrt_t + 0.5 * sigma * sigma * tau).exp()
     }
     FxDeltaConvention::SpotPremiumAdjusted | FxDeltaConvention::ForwardPremiumAdjusted => {
-      brent_strike(target_delta, forward, sigma, tau, r_f, option_type, convention)
+      brent_strike(
+        target_delta,
+        forward,
+        sigma,
+        tau,
+        r_f,
+        option_type,
+        convention,
+      )
     }
   }
 }
@@ -158,8 +166,7 @@ fn brent_strike(
   }
   for _ in 0..200 {
     let mid = 0.5 * (lo + hi);
-    let f_mid =
-      delta(mid, forward, sigma, tau, r_f, option_type, convention) - target_delta;
+    let f_mid = delta(mid, forward, sigma, tau, r_f, option_type, convention) - target_delta;
     if f_mid.abs() < 1e-12 || (hi - lo) / mid < 1e-12 {
       return mid;
     }
@@ -199,30 +206,86 @@ mod tests {
 
   #[test]
   fn dns_pa_strike_is_below_forward() {
-    let k = atm_strike(F, SIGMA, TAU, AtmConvention::DeltaNeutralStraddlePremiumAdjusted);
+    let k = atm_strike(
+      F,
+      SIGMA,
+      TAU,
+      AtmConvention::DeltaNeutralStraddlePremiumAdjusted,
+    );
     assert!(k < F);
   }
 
   #[test]
   fn forward_delta_call_25_round_trip() {
-    let k = strike_from_delta(0.25, F, SIGMA, TAU, R_F, OptionType::Call, FxDeltaConvention::Forward);
-    let d = delta(k, F, SIGMA, TAU, R_F, OptionType::Call, FxDeltaConvention::Forward);
+    let k = strike_from_delta(
+      0.25,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Call,
+      FxDeltaConvention::Forward,
+    );
+    let d = delta(
+      k,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Call,
+      FxDeltaConvention::Forward,
+    );
     assert!((d - 0.25).abs() < 5e-7, "k={k} d={d}");
   }
 
   #[test]
   fn spot_delta_put_25_round_trip() {
-    let k = strike_from_delta(-0.25, F, SIGMA, TAU, R_F, OptionType::Put, FxDeltaConvention::Spot);
-    let d = delta(k, F, SIGMA, TAU, R_F, OptionType::Put, FxDeltaConvention::Spot);
+    let k = strike_from_delta(
+      -0.25,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Put,
+      FxDeltaConvention::Spot,
+    );
+    let d = delta(
+      k,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Put,
+      FxDeltaConvention::Spot,
+    );
     assert!((d + 0.25).abs() < 5e-7, "k={k} d={d}");
   }
 
   #[test]
   fn spot_call_delta_smaller_than_forward_call_delta() {
     let k = F;
-    let d_spot = delta(k, F, SIGMA, TAU, R_F, OptionType::Call, FxDeltaConvention::Spot);
-    let d_fwd = delta(k, F, SIGMA, TAU, R_F, OptionType::Call, FxDeltaConvention::Forward);
-    assert!(d_spot < d_fwd, "spot Δ ({d_spot}) should be smaller than forward Δ ({d_fwd})");
+    let d_spot = delta(
+      k,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Call,
+      FxDeltaConvention::Spot,
+    );
+    let d_fwd = delta(
+      k,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Call,
+      FxDeltaConvention::Forward,
+    );
+    assert!(
+      d_spot < d_fwd,
+      "spot Δ ({d_spot}) should be smaller than forward Δ ({d_fwd})"
+    );
   }
 
   #[test]
@@ -253,8 +316,28 @@ mod tests {
     // K = F·exp(σ²τ/2) ⇒ d1 = σ√τ/2, so Φ(d1) - Φ(-d1) = symmetric in
     // forward delta convention.
     let k = atm_strike(F, SIGMA, TAU, AtmConvention::DeltaNeutralStraddle);
-    let d_call = delta(k, F, SIGMA, TAU, R_F, OptionType::Call, FxDeltaConvention::Forward);
-    let d_put = delta(k, F, SIGMA, TAU, R_F, OptionType::Put, FxDeltaConvention::Forward);
-    assert!((d_call + d_put).abs() < 1e-8, "Δ_call + Δ_put = {} (expected 0)", d_call + d_put);
+    let d_call = delta(
+      k,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Call,
+      FxDeltaConvention::Forward,
+    );
+    let d_put = delta(
+      k,
+      F,
+      SIGMA,
+      TAU,
+      R_F,
+      OptionType::Put,
+      FxDeltaConvention::Forward,
+    );
+    assert!(
+      (d_call + d_put).abs() < 1e-8,
+      "Δ_call + Δ_put = {} (expected 0)",
+      d_call + d_put
+    );
   }
 }

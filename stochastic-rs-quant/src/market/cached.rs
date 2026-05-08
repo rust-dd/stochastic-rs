@@ -102,7 +102,10 @@ pub struct Cached<T> {
 impl<T: std::fmt::Debug> std::fmt::Debug for Cached<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("Cached")
-      .field("value", &self.value.lock().ok().map(|g| format!("{:?}", *g)))
+      .field(
+        "value",
+        &self.value.lock().ok().map(|g| format!("{:?}", *g)),
+      )
       .field("observer", &self.observer)
       .finish()
   }
@@ -154,8 +157,8 @@ mod tests {
 
   use super::*;
   use crate::market::SimpleQuote;
-  use crate::market::quote::Quote;
   use crate::market::handle::RelinkableHandle;
+  use crate::market::quote::Quote;
 
   #[test]
   fn observer_set_by_underlying_change() {
@@ -172,10 +175,9 @@ mod tests {
   fn cached_value_recomputes_after_change() {
     let q = Arc::new(SimpleQuote::<f64>::new(2.0));
     let q_clone = Arc::clone(&q);
-    let cache = Cached::new(
-      vec![Arc::clone(&q) as Arc<dyn Observable>],
-      move || q_clone.value().powi(2),
-    );
+    let cache = Cached::new(vec![Arc::clone(&q) as Arc<dyn Observable>], move || {
+      q_clone.value().powi(2)
+    });
     assert!((cache.get() - 4.0).abs() < 1e-12);
     q.set_value(3.0);
     assert!((cache.get() - 9.0).abs() < 1e-12);
@@ -187,18 +189,19 @@ mod tests {
     let q = Arc::new(SimpleQuote::<f64>::new(1.0));
     let counter_clone = Arc::clone(&counter);
     let q_clone = Arc::clone(&q);
-    let cache = Cached::new(
-      vec![Arc::clone(&q) as Arc<dyn Observable>],
-      move || {
-        counter_clone.fetch_add(1, Ordering::SeqCst);
-        q_clone.value() + 1.0
-      },
-    );
+    let cache = Cached::new(vec![Arc::clone(&q) as Arc<dyn Observable>], move || {
+      counter_clone.fetch_add(1, Ordering::SeqCst);
+      q_clone.value() + 1.0
+    });
     assert_eq!(counter.load(Ordering::SeqCst), 1, "eager init counted once");
     let _ = cache.get();
     let _ = cache.get();
     let _ = cache.get();
-    assert_eq!(counter.load(Ordering::SeqCst), 1, "no recompute without change");
+    assert_eq!(
+      counter.load(Ordering::SeqCst),
+      1,
+      "no recompute without change"
+    );
   }
 
   #[test]
@@ -209,10 +212,12 @@ mod tests {
     let read_handle_for_observer: Arc<dyn Observable> =
       Arc::new(read_handle.clone()) as Arc<dyn Observable>;
     let read_handle_for_compute = read_handle.clone();
-    let cache = Cached::new(
-      vec![read_handle_for_observer],
-      move || read_handle_for_compute.current().map(|q| q.value()).unwrap_or(f64::NAN),
-    );
+    let cache = Cached::new(vec![read_handle_for_observer], move || {
+      read_handle_for_compute
+        .current()
+        .map(|q| q.value())
+        .unwrap_or(f64::NAN)
+    });
     assert!((cache.get() - 1.0).abs() < 1e-12);
     let q2 = Arc::new(SimpleQuote::<f64>::new(7.0));
     h.link_to(q2);
@@ -224,13 +229,10 @@ mod tests {
     let counter = Arc::new(AtomicUsize::new(0));
     let counter_clone = Arc::clone(&counter);
     let q = Arc::new(SimpleQuote::<f64>::new(0.0));
-    let cache = Cached::new(
-      vec![Arc::clone(&q) as Arc<dyn Observable>],
-      move || {
-        counter_clone.fetch_add(1, Ordering::SeqCst);
-        42.0
-      },
-    );
+    let cache = Cached::new(vec![Arc::clone(&q) as Arc<dyn Observable>], move || {
+      counter_clone.fetch_add(1, Ordering::SeqCst);
+      42.0
+    });
     let n0 = counter.load(Ordering::SeqCst);
     cache.observer().invalidate();
     let _ = cache.get();

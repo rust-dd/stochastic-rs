@@ -138,8 +138,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
             let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
 
             // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
-            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z)
-              + self.gamma[i - 1] * z_t_i;
+            shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
           }
         }
 

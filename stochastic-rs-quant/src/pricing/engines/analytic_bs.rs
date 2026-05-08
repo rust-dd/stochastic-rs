@@ -194,7 +194,10 @@ mod tests {
     let v_lo = engine.calculate(&opt).npv();
     vol_quote.set_value(0.30);
     let v_hi = engine.calculate(&opt).npv();
-    assert!(v_hi > v_lo, "higher vol should raise call price (lo={v_lo}, hi={v_hi})");
+    assert!(
+      v_hi > v_lo,
+      "higher vol should raise call price (lo={v_lo}, hi={v_hi})"
+    );
   }
 
   #[test]

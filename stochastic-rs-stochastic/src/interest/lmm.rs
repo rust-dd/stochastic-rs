@@ -122,12 +122,19 @@ impl<T: FloatExt> Lmm<T> {
   /// positive-definite). Panics if shape is wrong or Cholesky fails.
   pub fn with_correlation(mut self, rho: Array2<T>) -> Self {
     let m = self.l0.len();
-    assert_eq!(rho.nrows(), m, "correlation rows must equal number of Libors");
-    assert_eq!(rho.ncols(), m, "correlation cols must equal number of Libors");
+    assert_eq!(
+      rho.nrows(),
+      m,
+      "correlation rows must equal number of Libors"
+    );
+    assert_eq!(
+      rho.ncols(),
+      m,
+      "correlation cols must equal number of Libors"
+    );
     self.chol = Some(cholesky_lower(&rho));
     self
   }
-
 }
 
 fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &Array1<T>) {
@@ -137,10 +144,7 @@ fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &A
   assert_eq!(l0.len(), m, "l0 length must equal tenor.len() - 1");
   assert_eq!(sigma.len(), m, "sigma length must equal tenor.len() - 1");
   for i in 0..m {
-    assert!(
-      tenor[i + 1] > tenor[i],
-      "tenor must be strictly increasing"
-    );
+    assert!(tenor[i + 1] > tenor[i], "tenor must be strictly increasing");
     assert!(l0[i] > T::zero(), "initial Libor L_n(0) must be positive");
     assert!(sigma[i] >= T::zero(), "volatility σ_n must be non-negative");
   }
@@ -275,8 +279,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lmm<T, S> {
 
         // Log-Euler step with frozen drift.
         let z_nk = z_corr[(n, k)];
-        let log_inc = (drift - half * self.sigma[n] * self.sigma[n]) * dt
-          + self.sigma[n] * sqrt_dt * z_nk;
+        let log_inc =
+          (drift - half * self.sigma[n] * self.sigma[n]) * dt + self.sigma[n] * sqrt_dt * z_nk;
         next[n] = prev[n] * log_inc.exp();
       }
 

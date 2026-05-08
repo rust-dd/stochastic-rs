@@ -4,7 +4,8 @@
 //! \hat V_{k+1}=\bar V_{k+1}+K_{k+1}\bigl(z_{k+1}-h(\bar V_{k+1})\bigr)
 //! $$
 //!
-use ndarray::{Array1, ArrayView1};
+use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use crate::heston_mle::HestonMleResult;
 use crate::heston_mle::nmle_heston_with_delta;
