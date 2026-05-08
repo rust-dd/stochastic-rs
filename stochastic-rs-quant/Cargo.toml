@@ -18,9 +18,19 @@ default = []
 openblas = [
     "dep:ndarray-linalg",
     "dep:openblas-src",
+    "ndarray-linalg/openblas-system",
     "stochastic-rs-copulas/openblas",
     "stochastic-rs-stats/openblas",
     "stochastic-rs-stochastic/openblas",
+]
+openblas-static = [
+    "dep:ndarray-linalg",
+    "dep:openblas-src",
+    "ndarray-linalg/openblas-static",
+    "openblas-src/static",
+    "stochastic-rs-copulas/openblas-static",
+    "stochastic-rs-stats/openblas-static",
+    "stochastic-rs-stochastic/openblas-static",
 ]
 yahoo = ["dep:yahoo_finance_api", "dep:time", "dep:polars", "dep:tokio-test"]
 python = [
@@ -41,7 +51,7 @@ stochastic-rs-stats = { workspace = true }
 stochastic-rs-copulas = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
 ndarray-stats = { workspace = true }
-ndarray-linalg = { workspace = true, features = ["openblas-system"], optional = true }
+ndarray-linalg = { workspace = true, optional = true }
 openblas-src = { workspace = true, features = ["cblas"], optional = true }
 ndarray-rand = { workspace = true }
 ndarray-npy = { workspace = true }

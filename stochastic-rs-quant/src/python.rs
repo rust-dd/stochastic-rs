@@ -2465,6 +2465,12 @@ impl PyZeroCouponInflationCurve {
       ),
     }
   }
+
+  /// Forward CPI index ratio $I(0, T)/I(0, 0) = (1 + b(T))^T$.
+  fn forward_index_ratio(&self, t: f64) -> f64 {
+    use crate::inflation::curve::InflationCurve;
+    self.inner.forward_index_ratio(t)
+  }
 }
 
 #[pyfunction]

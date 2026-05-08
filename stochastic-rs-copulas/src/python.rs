@@ -109,7 +109,7 @@ py_bivariate!(
   PyClayton,
   crate::bivariate::clayton::Clayton,
   "Clayton",
-  || crate::bivariate::clayton::Clayton::new()
+  crate::bivariate::clayton::Clayton::new
 );
 py_bivariate!(PyGumbel, crate::bivariate::gumbel::Gumbel, "Gumbel", || {
   crate::bivariate::gumbel::Gumbel::new(None, None)
@@ -121,7 +121,7 @@ py_bivariate!(
   PyIndependence,
   crate::bivariate::independence::Independence,
   "Independence",
-  || crate::bivariate::independence::Independence::new()
+  crate::bivariate::independence::Independence::new
 );
 
 #[pyclass(name = "EmpiricalCopula2D", unsendable)]

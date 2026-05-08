@@ -826,14 +826,13 @@ impl PyHestonNMLECEKF {
     delta: Option<f64>,
     max_iters: usize,
   ) -> Self {
-    let mut cfg = crate::heston_nml_cekf::HestonNMLECEKFConfig {
+    let default_cfg = crate::heston_nml_cekf::HestonNMLECEKFConfig::default();
+    let cfg = crate::heston_nml_cekf::HestonNMLECEKFConfig {
       r,
+      delta: delta.unwrap_or(default_cfg.delta),
       max_iters,
-      ..crate::heston_nml_cekf::HestonNMLECEKFConfig::default()
+      ..default_cfg
     };
-    if let Some(d) = delta {
-      cfg.delta = d;
-    }
     let arr = s.as_array().to_owned();
     Self {
       inner: crate::heston_nml_cekf::nmle_cekf_heston(arr, cfg),
@@ -1081,8 +1080,10 @@ impl PyPeriodogramFFT {
   #[new]
   #[pyo3(signature = (signal, sampling_rate=1.0))]
   fn new<'py>(signal: PyReadonlyArray1<'py, f64>, sampling_rate: f64) -> Self {
-    let mut cfg = crate::spectral::PeriodogramConfig::default();
-    cfg.sampling_rate = sampling_rate;
+    let cfg = crate::spectral::PeriodogramConfig {
+      sampling_rate,
+      ..crate::spectral::PeriodogramConfig::default()
+    };
     Self {
       inner: crate::spectral::periodogram_fft(signal.as_array(), cfg),
     }
@@ -1241,7 +1242,7 @@ impl PyGranger {
 pub fn random_walk_metropolis<'py>(
   py: Python<'py>,
   initial: PyReadonlyArray1<'py, f64>,
-  log_target: pyo3::PyObject,
+  log_target: pyo3::Py<pyo3::PyAny>,
   proposal_scale: PyReadonlyArray1<'py, f64>,
   n_samples: usize,
   burn_in: usize,

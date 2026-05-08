@@ -29,3 +29,12 @@ Documentation = "https://docs.rs/stochastic-rs"
 [tool.maturin]
 manifest-path = "stochastic-rs-py/Cargo.toml"
 module-name = "stochastic_rs"
+# `features` is intentionally NOT pinned here — the `.github/workflows/pypi.yml`
+# wheel builds pass platform-specific features explicitly:
+#   * Linux + macOS → `--features openblas` (system-link + auditwheel/delocate
+#     bundling)
+#   * Windows       → `--features openblas-static` (vendored, statically linked
+#     OpenBLAS via `openblas-src` because the prebuilt MinGW `.lib` does not
+#     link cleanly with MSVC)
+# Local `maturin develop` defaults to the empty feature set; pass
+# `--features openblas` if you want the full surface during development.

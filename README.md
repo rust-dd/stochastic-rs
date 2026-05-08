@@ -84,12 +84,34 @@ stochastic-rs-core (simd_rng)
 pip install stochastic-rs
 ```
 
+**Linux (x86_64/aarch64) and macOS (arm64/x86_64) wheels** are built with the
+`openblas` feature so they carry the full surface — distributions, stochastic
+processes, pricers, calibrators, vol-surface models, copulas, stats estimators,
+ADF/KPSS/HMM/PCA/Fama-MacBeth and friends. The linked OpenBLAS is bundled into
+the wheel via `auditwheel` (Linux, automatic in the `manylinux` container) and
+`delocate-wheel` (macOS), so a plain `pip install` works without any extra
+system dependency.
+
+**Windows (x64) wheel** is built without the `openblas` feature — the
+`openblas-src` crate does not currently support static linking on the MSVC
+target. The Windows wheel therefore *omits* the 15 BLAS-backed classes:
+`ADFTest`, `KPSSTest`, `PhillipsPerronTest`, `ERSTest`, `LeybourneMcCabeTest`,
+`EngleGranger`, `Johansen`, `Granger`, `GaussianHmm`, `HarRv`, `PCA`,
+`FamaMacBeth`, `PairsStrategy`, `NelsonSiegel.fit_curve`, and the multivariate
+Gaussian copula. Everything else (~195 classes / 12 module-level functions)
+works identically. Windows users who need the BLAS-gated surface should
+source-build with vcpkg following the OpenBLAS section below.
+
 For development builds from source (requires [maturin](https://www.maturin.rs/)):
 
 ```bash
 pip install maturin
-maturin develop --release
+maturin develop --release   # uses [tool.maturin] features = ["openblas"] from pyproject.toml
 ```
+
+A development source build does need a system OpenBLAS (see the next section)
+because `cargo` resolves it at link time. End users installing from the prebuilt
+PyPI wheel do not.
 
 ### OpenBLAS (required for `openblas` feature)
 
@@ -178,12 +200,14 @@ fn main() {
 
 ### Bindings
 
-> **Scope (v2.0).** The Python wheel currently exposes the **distribution** and
-> **stochastic-process** sampling layers (102 PyO3 classes). Pricing /
-> calibration (`stochastic-rs-quant`), copulas, statistics estimators, neural
-> surrogates (`stochastic-rs-ai`) and visualisation are **not yet exposed** to
-> Python — they remain Rust-only for the 2.0 line. Python coverage of the
-> remaining sub-crates is tracked for a 2.x follow-up.
+> **Scope (v2.0).** The Python wheel exposes **210 entries** — 198 PyO3 classes
+> plus 12 module-level functions — covering distributions, stochastic-process
+> sampling, the full quant pricing / calibration / vol-surface stack, bivariate
+> copulas, the realised-vol / hypothesis-test / Hurst-estimator stats layer, risk
+> (VaR/ES/drawdown), microstructure (Almgren-Chriss, Kyle, order book), curves
+> (DiscountCurve, Nelson-Siegel) and factor models (PCA / Fama-MacBeth / pairs).
+> Neural surrogates (`stochastic-rs-ai`) and visualisation (`stochastic-rs-viz`)
+> remain Rust-only.
 
 All models return numpy arrays. Use `dtype="f32"` or `dtype="f64"` (default) to control precision.
 

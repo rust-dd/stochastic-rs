@@ -15,7 +15,13 @@ doctest = false
 
 [features]
 default = []
-openblas = ["dep:ndarray-linalg", "dep:openblas-src"]
+openblas = ["dep:ndarray-linalg", "dep:openblas-src", "ndarray-linalg/openblas-system"]
+openblas-static = [
+    "dep:ndarray-linalg",
+    "dep:openblas-src",
+    "ndarray-linalg/openblas-static",
+    "openblas-src/static",
+]
 python = [
     "dep:pyo3",
     "dep:numpy",
@@ -28,7 +34,7 @@ stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
 ndarray-stats = { workspace = true }
-ndarray-linalg = { workspace = true, features = ["openblas-system"], optional = true }
+ndarray-linalg = { workspace = true, optional = true }
 openblas-src = { workspace = true, features = ["cblas"], optional = true }
 ndarray-rand = { workspace = true }
 nalgebra = { workspace = true }

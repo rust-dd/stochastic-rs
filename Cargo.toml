@@ -24,7 +24,7 @@ stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.0.0-rc.0" }
 
 # Math / numerical core
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
-ndarray-linalg = { version = "0.18.1", features = ["openblas-system"] }
+ndarray-linalg = { version = "0.18.1", default-features = false }
 ndarray-npy = "0.10.0"
 ndarray-rand = "0.16.0"
 ndarray-stats = "0.7.0"
@@ -151,7 +151,7 @@ metal = { workspace = true, optional = true }
 mimalloc = { workspace = true, optional = true }
 nalgebra = { workspace = true }
 ndarray = { workspace = true, features = [ "rayon", "matrixmultiply-threading", ] }
-ndarray-linalg = { workspace = true, features = ["openblas-system"], optional = true }
+ndarray-linalg = { workspace = true, optional = true }
 ndarray-npy = { workspace = true }
 ndarray-rand = { workspace = true }
 ndarray-stats = { workspace = true }
@@ -313,10 +313,24 @@ default = []
 openblas = [
     "dep:ndarray-linalg",
     "dep:openblas-src",
+    "ndarray-linalg/openblas-system",
     "stochastic-rs-copulas/openblas",
     "stochastic-rs-quant/openblas",
     "stochastic-rs-stats/openblas",
     "stochastic-rs-stochastic/openblas",
+]
+# Vendored / static OpenBLAS — used by the Windows wheel CI job because the
+# MSVC toolchain cannot reliably link the prebuilt MinGW `.lib`. Unix targets
+# stay on `openblas` (system-link) for faster developer builds.
+openblas-static = [
+    "dep:ndarray-linalg",
+    "dep:openblas-src",
+    "ndarray-linalg/openblas-static",
+    "openblas-src/static",
+    "stochastic-rs-copulas/openblas-static",
+    "stochastic-rs-quant/openblas-static",
+    "stochastic-rs-stats/openblas-static",
+    "stochastic-rs-stochastic/openblas-static",
 ]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
 gpu = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/gpu"]

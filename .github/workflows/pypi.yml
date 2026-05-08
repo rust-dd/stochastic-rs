@@ -27,35 +27,17 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --features openblas
           manylinux: auto
+          before-script-linux: |
+            # manylinux2014 (CentOS 7) → yum / manylinux_2_28 (AlmaLinux 8) → dnf.
+            # Try dnf first, fall back to yum.
+            (command -v dnf && dnf install -y openblas-devel) \
+              || yum install -y openblas-devel
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
-          path: dist
-
-  windows:
-    runs-on: ${{ matrix.platform.runner }}
-    strategy:
-      matrix:
-        platform:
-          - runner: windows-latest
-            target: x64
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
-          architecture: ${{ matrix.platform.target }}
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          args: --release --out dist --find-interpreter
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-windows-${{ matrix.platform.target }}
           path: dist
 
   macos:
@@ -65,14 +47,63 @@ jobs:
         platform:
           - runner: macos-14
             target: aarch64
+            mac_arch: arm64
           - runner: macos-13
             target: x86_64
+            mac_arch: x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Install OpenBLAS
+        run: |
+          brew install openblas
+          echo "OPENBLAS_DIR=$(brew --prefix openblas)" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$(brew --prefix openblas)/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --find-interpreter --features openblas
+      - name: Bundle OpenBLAS into wheels
+        run: |
+          python -m pip install --upgrade pip delocate
+          mkdir -p dist/repaired
+          for whl in dist/*.whl; do
+            delocate-wheel --require-archs ${{ matrix.platform.mac_arch }} -w dist/repaired -v "$whl"
+          done
+          rm -f dist/*.whl
+          mv dist/repaired/*.whl dist/
+          rmdir dist/repaired
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.platform.target }}
+          path: dist
+
+  windows:
+    # The Windows wheel is built WITHOUT the `openblas` feature: `openblas-src`
+    # does not support `static` on `*-windows-*` targets, and the prebuilt
+    # MinGW `.lib` does not link cleanly with MSVC. Consequence: 15 classes
+    # gated behind `openblas` (ADF/KPSS/PhillipsPerron/ERS/LeybourneMcCabe,
+    # EngleGranger/Johansen/Granger/GaussianHmm, HarRv, PCA/FamaMacBeth/
+    # PairsStrategy, NelsonSiegel.fit_curve) are absent from the Windows wheel.
+    # Sampling, pricing, calibration, copulas and non-BLAS stats remain.
+    # Windows users who need the BLAS-gated surface should source-build with
+    # vcpkg (see README "OpenBLAS" section).
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform:
+          - target: x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+          architecture: ${{ matrix.platform.target }}
+      - name: Build wheels (no openblas)
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
@@ -80,7 +111,7 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-macos-${{ matrix.platform.target }}
+          name: wheels-windows-${{ matrix.platform.target }}
           path: dist
 
   sdist:
@@ -101,7 +132,7 @@ jobs:
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [linux, windows, macos, sdist]
+    needs: [linux, macos, windows, sdist]
     environment: pypi
     permissions:
       id-token: write

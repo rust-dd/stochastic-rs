@@ -15,7 +15,13 @@ doctest = false
 
 [features]
 default = []
-openblas = ["dep:ndarray-linalg", "dep:openblas-src"]
+openblas = ["dep:ndarray-linalg", "dep:openblas-src", "ndarray-linalg/openblas-system"]
+openblas-static = [
+    "dep:ndarray-linalg",
+    "dep:openblas-src",
+    "ndarray-linalg/openblas-static",
+    "openblas-src/static",
+]
 gpu = ["dep:cubecl", "dep:gpu-fft"]
 gpu-cuda = ["gpu", "dep:cubecl-cuda"]
 gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
@@ -28,7 +34,7 @@ python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-d
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-linalg = { workspace = true, features = ["openblas-system"], optional = true }
+ndarray-linalg = { workspace = true, optional = true }
 ndarray-rand = { workspace = true }
 ndarray-stats = { workspace = true }
 ndrustfft = { workspace = true }

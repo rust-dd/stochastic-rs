@@ -19,6 +19,16 @@ openblas = [
     "stochastic-rs-stochastic/openblas",
     "stochastic-rs-quant/openblas",
 ]
+# Vendored / static OpenBLAS — only used by the Windows wheel CI job because
+# the prebuilt MinGW `.lib` does not link cleanly with MSVC. Linux + macOS
+# wheels use `openblas` (system-link) and bundle libopenblas via
+# `auditwheel` / `delocate-wheel` post-processing.
+openblas-static = [
+    "stochastic-rs-copulas/openblas-static",
+    "stochastic-rs-stats/openblas-static",
+    "stochastic-rs-stochastic/openblas-static",
+    "stochastic-rs-quant/openblas-static",
+]
 
 [dependencies]
 stochastic-rs-core = { workspace = true, features = ["python"] }
