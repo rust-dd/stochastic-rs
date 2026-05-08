@@ -74,8 +74,17 @@ macro_rules! py_process_1d {
         use numpy::ndarray::Array2;
         use $crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
+        // The default `ProcessExt::sample_par` uses `rayon::into_par_iter`,
+        // which races on the shared `Deterministic` state and breaks the
+        // seed-determinism guarantee. Serialize on the seeded path; keep the
+        // parallel path for the unseeded one.
+        let is_seeded = self.seeded_f32.is_some() || self.seeded_f64.is_some();
         $crate::py_dispatch!(self, |inner| {
-          let paths = inner.sample_par(m);
+          let paths: Vec<_> = if is_seeded {
+            (0..m).map(|_| inner.sample()).collect()
+          } else {
+            inner.sample_par(m)
+          };
           let n = paths[0].len();
           let mut result = Array2::zeros((m, n));
           for (i, path) in paths.iter().enumerate() {
@@ -139,8 +148,14 @@ macro_rules! py_process_2x1d {
         use numpy::ndarray::Array2;
         use $crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
+        // Serialize on the seeded path (see `py_process_1d!` rationale).
+        let is_seeded = self.seeded_f32.is_some() || self.seeded_f64.is_some();
         $crate::py_dispatch!(self, |inner| {
-          let samples = inner.sample_par(m);
+          let samples: Vec<_> = if is_seeded {
+            (0..m).map(|_| inner.sample()).collect()
+          } else {
+            inner.sample_par(m)
+          };
           let n = samples[0][0].len();
           let mut r0 = Array2::zeros((m, n));
           let mut r1 = Array2::zeros((m, n));
@@ -202,8 +217,14 @@ macro_rules! py_process_2d {
         use numpy::IntoPyArray;
         use $crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
+        // Serialize on the seeded path (see `py_process_1d!` rationale).
+        let is_seeded = self.seeded_f32.is_some() || self.seeded_f64.is_some();
         $crate::py_dispatch!(self, |inner| {
-          let samples = inner.sample_par(m);
+          let samples: Vec<_> = if is_seeded {
+            (0..m).map(|_| inner.sample()).collect()
+          } else {
+            inner.sample_par(m)
+          };
           pyo3::types::PyList::new(
             py,
             samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
