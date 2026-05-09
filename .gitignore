@@ -14,6 +14,7 @@ CI.yml
 
 # Python (helper scripts + venvs are not part of the Rust project)
 *.py
+!stochastic-rs-py/python_smoke.py
 venv/
 .venv/
 

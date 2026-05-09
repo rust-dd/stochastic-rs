@@ -297,6 +297,9 @@ impl McRainbowPricer {
 
 #[cfg(test)]
 mod tests {
+  #[cfg(feature = "openblas")]
+  use ndarray::array;
+
   use super::*;
 
   /// Stulz: $C_{\min} + C_{\max} = C_1 + C_2$ (vanilla call sum).
