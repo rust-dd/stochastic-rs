@@ -485,7 +485,7 @@ impl PyCIRBond {
   }
 }
 
-#[pyclass(name = "MarketSlice", unsendable)]
+#[pyclass(name = "MarketSlice", from_py_object, unsendable)]
 #[derive(Clone)]
 pub struct PyMarketSlice {
   pub inner: crate::calibration::levy::MarketSlice,
