@@ -22,6 +22,7 @@ impl IntoF32 for f64 {
     self as f32
   }
 }
+
 impl IntoF64 for f64 {
   type Target = f64;
   fn into_f64(self) -> f64 {
@@ -35,6 +36,7 @@ impl IntoF32 for Option<f64> {
     self.map(|v| v as f32)
   }
 }
+
 impl IntoF64 for Option<f64> {
   type Target = Option<f64>;
   fn into_f64(self) -> Option<f64> {
@@ -48,6 +50,7 @@ impl IntoF32 for usize {
     self
   }
 }
+
 impl IntoF64 for usize {
   type Target = usize;
   fn into_f64(self) -> usize {
@@ -61,6 +64,7 @@ impl IntoF32 for Option<usize> {
     self
   }
 }
+
 impl IntoF64 for Option<usize> {
   type Target = Option<usize>;
   fn into_f64(self) -> Option<usize> {
@@ -74,6 +78,7 @@ impl IntoF32 for Option<bool> {
     self
   }
 }
+
 impl IntoF64 for Option<bool> {
   type Target = Option<bool>;
   fn into_f64(self) -> Option<bool> {
@@ -87,6 +92,7 @@ impl IntoF32 for Vec<f64> {
     Array1::from_vec(self).mapv(|v| v as f32)
   }
 }
+
 impl IntoF64 for Vec<f64> {
   type Target = Array1<f64>;
   fn into_f64(self) -> Array1<f64> {
@@ -100,6 +106,7 @@ impl IntoF32 for Option<Vec<f64>> {
     self.map(|v| Array1::from_vec(v).mapv(|x| x as f32))
   }
 }
+
 impl IntoF64 for Option<Vec<f64>> {
   type Target = Option<Array1<f64>>;
   fn into_f64(self) -> Option<Array1<f64>> {
@@ -113,6 +120,7 @@ impl IntoF32 for u32 {
     self
   }
 }
+
 impl IntoF64 for u32 {
   type Target = u32;
   fn into_f64(self) -> u32 {
@@ -126,6 +134,7 @@ impl IntoF32 for String {
     self
   }
 }
+
 impl IntoF64 for String {
   type Target = String;
   fn into_f64(self) -> String {
