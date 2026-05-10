@@ -118,7 +118,10 @@ impl<T: FloatExt> FMVol<T> {
       times.len()
     );
     let n = prices.len() - 1;
-    assert!(max_freq >= n_freq, "max_freq={max_freq} must be ≥ n_freq={n_freq}");
+    assert!(
+      max_freq >= n_freq,
+      "max_freq={max_freq} must be ≥ n_freq={n_freq}"
+    );
     let dx = fourier_coefficients_dx(prices, times, period, max_freq);
     Self {
       dx,

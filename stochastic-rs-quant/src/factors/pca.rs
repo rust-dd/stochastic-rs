@@ -67,12 +67,10 @@ pub fn try_pca_decompose<T: FloatExt>(
   let (u_opt, sigma, vt_opt) = centred
     .svd(true, true)
     .map_err(|e| crate::factors::FactorsError::SvdFailed(e.to_string()))?;
-  let u = u_opt.ok_or_else(|| {
-    crate::factors::FactorsError::SvdFailed("U not returned from SVD".into())
-  })?;
-  let vt = vt_opt.ok_or_else(|| {
-    crate::factors::FactorsError::SvdFailed("Vt not returned from SVD".into())
-  })?;
+  let u = u_opt
+    .ok_or_else(|| crate::factors::FactorsError::SvdFailed("U not returned from SVD".into()))?;
+  let vt = vt_opt
+    .ok_or_else(|| crate::factors::FactorsError::SvdFailed("Vt not returned from SVD".into()))?;
   let v = vt.t().to_owned();
   let r = sigma.len();
   let kk = if k == 0 { r } else { k.min(r) };

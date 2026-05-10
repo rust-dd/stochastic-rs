@@ -94,17 +94,9 @@ impl BreedenLitzenberger {
       .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
     let n = self.strikes.len();
     if d2c.len() != n {
-      anyhow::bail!(
-        "d2c_dk2 length {} must equal strikes.len()={n}",
-        d2c.len()
-      );
+      anyhow::bail!("d2c_dk2 length {} must equal strikes.len()={n}", d2c.len());
     }
 
-    Ok(
-      d2c
-        .iter()
-        .map(|d| (self.r * self.tau).exp() * d)
-        .collect(),
-    )
+    Ok(d2c.iter().map(|d| (self.r * self.tau).exp() * d).collect())
   }
 }

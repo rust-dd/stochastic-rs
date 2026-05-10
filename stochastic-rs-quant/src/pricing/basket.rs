@@ -247,10 +247,7 @@ impl McBasketPricer {
         self.rho.shape()
       );
     }
-    if self.weights.len() != n_assets
-      || self.sigma.len() != n_assets
-      || self.q.len() != n_assets
-    {
+    if self.weights.len() != n_assets || self.sigma.len() != n_assets || self.q.len() != n_assets {
       anyhow::bail!(
         "weights/sigma/q lengths must match n_assets={n_assets} (got {}/{}/{})",
         self.weights.len(),

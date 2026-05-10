@@ -242,7 +242,10 @@ impl Dupire {
     let nk = self.ks.len();
 
     if dc_dk.dim() != (nt, nk) {
-      anyhow::bail!("dc_dk shape {:?} must equal (N_T, N_K) = ({nt}, {nk})", dc_dk.dim());
+      anyhow::bail!(
+        "dc_dk shape {:?} must equal (N_T, N_K) = ({nt}, {nk})",
+        dc_dk.dim()
+      );
     }
     if d2c_dk2.dim() != (nt, nk) {
       anyhow::bail!(
@@ -251,7 +254,10 @@ impl Dupire {
       );
     }
     if dc_dt.dim() != (nt, nk) {
-      anyhow::bail!("dc_dt shape {:?} must equal (N_T, N_K) = ({nt}, {nk})", dc_dt.dim());
+      anyhow::bail!(
+        "dc_dt shape {:?} must equal (N_T, N_K) = ({nt}, {nk})",
+        dc_dt.dim()
+      );
     }
 
     let mut sigma = Array2::<f64>::from_elem((nt, nk), f64::NAN);

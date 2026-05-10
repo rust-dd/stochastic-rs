@@ -1873,8 +1873,9 @@ impl PyRBergomiCalibrator {
       ..RBergomiCalibrationConfig::default()
     };
     cfg.paths = paths;
-    let inner = RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false)
-      .map_err(|e| PyValueError::new_err(format!("RBergomi calibrator construction failed: {e}")))?;
+    let inner = RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false).map_err(|e| {
+      PyValueError::new_err(format!("RBergomi calibrator construction failed: {e}"))
+    })?;
     Ok(Self { inner })
   }
 
