@@ -164,27 +164,39 @@ cargo build --features cuda-native
 
 ### Native CPU optimization (optional)
 
-Builds default to a portable x86-64 / aarch64 baseline so the resulting
+Builds default to the plain `x86-64` / `aarch64` baseline so the resulting
 binary or wheel runs on any CPU of the same architecture. To squeeze more
 performance out of the SIMD-heavy paths (`SimdNormal`, `Fgn` Davies–Harte,
-`fill_slice`, etc.), opt into your local CPU's full instruction set via
-`RUSTFLAGS`:
+`fill_slice`, etc.), raise the floor via `RUSTFLAGS`:
 
 ```bash
-# All CPU features the build host supports (AVX-512, BMI2, FMA, …).
+# Local dev / benchmarks: use every feature the build host supports.
+# The resulting binary only runs on this exact CPU family.
 RUSTFLAGS="-C target-cpu=native" cargo build --release
 RUSTFLAGS="-C target-cpu=native" cargo bench
 
-# Or pin a portable level (recommended for shared CI / Docker images):
-RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release   # AVX2 baseline
-RUSTFLAGS="-C target-cpu=x86-64-v4" cargo build --release   # AVX-512 baseline
+# Higher x86-64 baselines (binary runs on any CPU meeting the level):
+#   v2 — SSE4.2 + POPCNT     (x86_64 CPUs since ~2009)
+#   v3 — AVX2 + BMI2 + FMA   (x86_64 CPUs since ~2013–2015)
+#   v4 — AVX-512             (most server CPUs only; absent from all
+#                             AMD Zen 1–3 and Intel client 12th-gen+)
+RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release
 ```
 
-> ⚠️ **Do not use `target-cpu=native` for binaries you ship** (PyPI wheels,
-> Docker images, prebuilt artifacts). The output only runs on CPUs that
-> have *at least* the build host's feature set — users on older hardware
-> will hit `SIGILL`/segfaults on the first specialized instruction. Use
-> a portable level (`x86-64-v2`/`v3`) for distributables.
+> ⚠️ **Public distribution (PyPI wheels, openly shared Docker images):
+> keep the default `x86-64` baseline.** `pip` wheel tags don't dispatch
+> by CPU feature level, so a `v3` wheel will `SIGILL` on any pre-2013
+> hardware (AMD Bulldozer/Piledriver, Sandy/Ivy Bridge, Atom variants).
+> Use `v2`/`v3`/`v4` only for deployments where you've verified every
+> target host clears the level — typical examples are an internal Docker
+> fleet, a homogeneous HPC cluster, or a CI runner pinned to a known SKU.
+> Use `target-cpu=native` only for local dev and benchmarks.
+
+> 🔁 **`RUSTFLAGS` busts the build cache.** Every distinct value triggers
+> a full workspace rebuild, and the env var fully *replaces* (does not
+> merge with) `[build] rustflags = […]` in any `.cargo/config.toml`. For
+> persistent local optimization, prefer a `[target.<triple>] rustflags`
+> entry in `~/.cargo/config.toml` so it composes with project configs.
 
 ## Usage
 
