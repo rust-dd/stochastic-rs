@@ -258,6 +258,10 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyHKDECalibrator;
   use stochastic_rs_quant::python::PyHKDEFourier;
   use stochastic_rs_quant::python::PyHestonCalibrator;
+  use stochastic_rs_quant::python::PyHscmCalibrator;
+  use stochastic_rs_quant::python::PyHscmMarketOption;
+  use stochastic_rs_quant::python::PyHscmModel;
+  use stochastic_rs_quant::python::PyHullWhiteBond;
   use stochastic_rs_quant::python::PyHestonFourier;
   use stochastic_rs_quant::python::PyHestonPricer;
   use stochastic_rs_quant::python::PyImpliedVolSurface;
@@ -308,6 +312,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyCarrMadanPricer>()?;
   m.add_class::<PyVasicekBond>()?;
   m.add_class::<PyCIRBond>()?;
+  m.add_class::<PyHullWhiteBond>()?;
   m.add_class::<PyMarketSlice>()?;
   m.add_class::<PyBSMCalibrator>()?;
   m.add_class::<PyHestonCalibrator>()?;
@@ -330,6 +335,9 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PySviCalibrator>()?;
   m.add_class::<PySsviCalibrator>()?;
   m.add_class::<PyHKDECalibrator>()?;
+  m.add_class::<PyHscmModel>()?;
+  m.add_class::<PyHscmMarketOption>()?;
+  m.add_class::<PyHscmCalibrator>()?;
   m.add_class::<PyRBergomiCalibrator>()?;
   m.add_class::<PyVaR>()?;
   m.add_class::<PyExpectedShortfall>()?;
@@ -377,6 +385,10 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   )?)?;
   m.add_function(pyo3::wrap_pyfunction!(
     stochastic_rs_quant::python::sample_covariance,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::empirical_cvar,
     m
   )?)?;
   #[cfg(feature = "openblas")]

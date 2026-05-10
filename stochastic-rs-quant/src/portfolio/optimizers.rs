@@ -109,7 +109,7 @@ fn long_short_simplex(n: usize) -> Vec<Vec<f64>> {
 /// `cvar_tail_proportion = 1 - confidence`. The runtime assertion below
 /// makes accidentally passing a confidence-level value (e.g. `0.95`) panic
 /// loudly rather than silently averaging nearly the whole distribution.
-fn empirical_cvar(returns: &mut [f64], alpha: f64) -> f64 {
+pub fn empirical_cvar(returns: &mut [f64], alpha: f64) -> f64 {
   if returns.is_empty() {
     return 0.0;
   }

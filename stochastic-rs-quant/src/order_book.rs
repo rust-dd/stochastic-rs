@@ -170,7 +170,7 @@ impl OrderBook {
     let taker_id = self.next_id;
     let timestamp = SystemTime::now()
       .duration_since(UNIX_EPOCH)
-      .unwrap_or_else(|_| std::time::Duration::ZERO)
+      .unwrap_or(std::time::Duration::ZERO)
       .as_micros();
     let mut trades = Vec::<Trade>::new();
 

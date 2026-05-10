@@ -492,7 +492,7 @@ mod tests {
     let n_days = 500_usize;
     let delta = 1.0 / 250.0;
 
-    let fou = Fou::new(
+    let fou = Fou::seeded(
       true_h,
       0.001,
       -3.2,
@@ -500,6 +500,7 @@ mod tests {
       n_days + 1,
       Some(-3.2),
       Some(n_days as f64 * delta),
+      42,
     );
     let log_vol_sq: ndarray::Array1<f64> = fou.sample();
 
@@ -540,7 +541,7 @@ mod tests {
     let delta = 1.0 / 250.0;
 
     let estimate_h = |true_h: f64, seed: u64| -> f64 {
-      let fou = Fou::new(
+      let fou = Fou::seeded(
         true_h,
         0.001,
         -3.2,
@@ -548,6 +549,7 @@ mod tests {
         n_days + 1,
         Some(-3.2),
         Some(n_days as f64 * delta),
+        seed,
       );
       let log_vol_sq: ndarray::Array1<f64> = fou.sample();
       let mut rng = StdRng::seed_from_u64(seed);
@@ -614,7 +616,7 @@ mod tests {
     for &true_h in &true_h_values {
       // Simulate fOU log-vol path at daily frequency
       let n_vol = n_days + 1;
-      let fou = Fou::new(
+      let fou = Fou::seeded(
         true_h,
         alpha,
         c,
@@ -622,6 +624,7 @@ mod tests {
         n_vol,
         Some(c),
         Some(n_days as f64 * delta),
+        7,
       );
       let log_vol_sq: ndarray::Array1<f64> = fou.sample();
 
