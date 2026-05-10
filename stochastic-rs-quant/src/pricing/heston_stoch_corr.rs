@@ -169,6 +169,9 @@ impl HestonStochCorrPricer {
     let x0 = self.s.ln();
     let iu = Complex64::i() * u;
     let r = self.r;
+    // Dividend yield: enters the log-stock drift as (r - q), not the discount.
+    let q = self.q.unwrap_or(0.0);
+    let drift = r - q;
     let kv = self.kappa_v;
     let mv = self.theta_v;
     let sv = self.sigma_v;
@@ -187,8 +190,11 @@ impl HestonStochCorrPricer {
     let dt = tau / n_steps as f64;
 
     let rhs = |_a: Complex64, c: Complex64, d: Complex64| -> (Complex64, Complex64, Complex64) {
-      let da =
-        iu * r + kv * mv * d + kr * mr * c + 0.5 * sr * sr * c * c + sr * rho2 * m_aux * iu * c;
+      let da = iu * drift
+        + kv * mv * d
+        + kr * mr * c
+        + 0.5 * sr * sr * c * c
+        + sr * rho2 * m_aux * iu * c;
       let dc = sv * v0 * iu * d - kr * c;
       let dd = -0.5 * u * u + 0.5 * sv * sv * d * d - 0.5 * iu - kv * d;
       (da, dc, dd)
@@ -209,6 +215,8 @@ impl HestonStochCorrPricer {
       d += dt / 6.0 * (k1d + 2.0 * k2d + 2.0 * k3d + k4d);
     }
 
+    // Discount at the risk-free rate r (not r-q): the put-call-parity caller
+    // applies the q-discount on the spot side.
     (-r * tau + a + iu * x0 + c * self.rho0 + d * v0).exp()
   }
 
@@ -376,8 +384,8 @@ pub struct HscmModel {
 }
 
 impl crate::traits::ModelPricer for HscmModel {
-  fn price_call(&self, s: f64, k: f64, r: f64, _q: f64, tau: f64) -> f64 {
-    let pricer = HestonStochCorrPricer::new(
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let mut pricer = HestonStochCorrPricer::new(
       s,
       r,
       k,
@@ -392,6 +400,7 @@ impl crate::traits::ModelPricer for HscmModel {
       self.rho2,
       tau,
     );
+    pricer.q = Some(q);
     pricer.price_call_carr_madan()
   }
 }
@@ -464,6 +473,58 @@ mod tests {
     assert!(
       (parity_lhs - parity_rhs).abs() < 0.5,
       "put-call parity violated: C-P={parity_lhs:.4}, S-K·e^(-rτ)={parity_rhs:.4}"
+    );
+  }
+
+  /// Regression: dividend yield must enter the log-stock drift via `(r - q)`,
+  /// not be silently dropped. Pre-fix, the ChF used `iu * r` in the drift
+  /// while put-call parity used the q-discounted forward, producing
+  /// mutually-inconsistent call/put prices for q > 0.
+  #[test]
+  fn put_call_parity_with_dividend_yield() {
+    let mut pricer = HestonStochCorrPricer::new(
+      100.0, 0.05, 95.0, 0.04, 2.0, 0.04, 0.3, -0.7, 5.0, -0.5, 0.2, 0.3, 0.5,
+    );
+    pricer.q = Some(0.03); // 3% dividend yield
+    let (call, put) = pricer.calculate_call_put();
+    let tau = pricer.tau().unwrap();
+    let q = pricer.q.unwrap();
+    // C - P = S·exp(-qτ) - K·exp(-rτ)
+    let parity_rhs = pricer.s * (-q * tau).exp() - pricer.k * (-pricer.r * tau).exp();
+    let parity_lhs = call - put;
+    assert!(
+      (parity_lhs - parity_rhs).abs() < 0.5,
+      "put-call parity with q={q} violated: C-P={parity_lhs:.4} vs S·e^(-qτ)-K·e^(-rτ)={parity_rhs:.4}"
+    );
+  }
+
+  /// Regression: `HscmModel::price_call` must thread `q` to the underlying
+  /// Carr-Madan pricer. Pre-fix, `_q` was discarded so calling
+  /// `model.price_call(s, k, r, q=0.05, tau)` produced the q=0 price.
+  #[test]
+  fn hscm_model_pricer_uses_dividend_yield() {
+    use crate::traits::ModelPricer;
+    let model = HscmModel {
+      v0: 0.04,
+      kappa_v: 2.0,
+      theta_v: 0.04,
+      sigma_v: 0.3,
+      rho0: -0.7,
+      kappa_r: 5.0,
+      mu_r: -0.5,
+      sigma_r: 0.2,
+      rho2: 0.3,
+    };
+    let s = 100.0;
+    let k = 100.0;
+    let r = 0.05;
+    let tau = 0.5;
+    let p_no_div = model.price_call(s, k, r, 0.0, tau);
+    let p_with_div = model.price_call(s, k, r, 0.05, tau);
+    // ATM call must be cheaper with positive dividend yield (forward shift down).
+    assert!(
+      p_with_div < p_no_div - 0.1,
+      "HscmModel must respect dividend yield: q=0 → {p_no_div:.4}, q=0.05 → {p_with_div:.4}"
     );
   }
 

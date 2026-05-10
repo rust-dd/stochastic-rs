@@ -207,10 +207,10 @@ impl PricerExt for Merton1976Pricer {
     let z = || -> f64 { (self.v.powi(2) - self.lambda * delta().powi(2)).sqrt() };
     let sigma =
       |i: usize, tau: f64| -> f64 { ((z().powi(2) + delta().powi(2)) * i as f64 / tau).sqrt() };
-    let tau = self.tau.unwrap();
+    let tau = self.tau_or_from_dates();
 
     for i in 0..self.m {
-      bsm.v = sigma(i, self.tau.unwrap());
+      bsm.v = sigma(i, tau);
       let f: usize = (1..=i).product();
       let num = (-self.lambda * tau).exp() * (self.lambda * tau).powi(i as i32);
 

@@ -306,8 +306,35 @@ impl<T: FloatExt> SsviSurface<T> {
     self.thetas[idx - 1] * (one - alpha) + self.thetas[idx] * alpha
   }
 
-  /// Check calendar-spread arbitrage: $\theta_t$ must be non-decreasing.
-  pub fn is_calendar_spread_free(&self) -> bool {
+  /// Check calendar-spread arbitrage on a log-moneyness grid (Gatheral &
+  /// Jacquier 2014, Theorem 4.2).
+  ///
+  /// The full condition is $\partial_T w(k, T) \geq 0$ for **every** $k$, not
+  /// just $k = 0$. Verifies (a) the necessary ATM condition $\theta_t$
+  /// non-decreasing, and (b) the full smile-wide condition $w(k, \theta_{n+1})
+  /// \geq w(k, \theta_n)$ for each adjacent slice and each $k$ in the grid.
+  pub fn is_calendar_spread_free(&self, ks: &[T]) -> bool {
+    if !self.thetas.windows(2).all(|w| w[1] >= w[0]) {
+      return false;
+    }
+    for win in self.thetas.windows(2) {
+      let (theta_lo, theta_hi) = (win[0], win[1]);
+      for &k in ks {
+        let w_lo = self.params.total_variance(k, theta_lo);
+        let w_hi = self.params.total_variance(k, theta_hi);
+        if w_hi < w_lo {
+          return false;
+        }
+      }
+    }
+    true
+  }
+
+  /// Check the ATM-only calendar-spread condition (necessary but not
+  /// sufficient): $\theta_t$ must be non-decreasing. Use
+  /// [`Self::is_calendar_spread_free`] with a representative log-moneyness
+  /// grid for the full GJ 2014 Theorem 4.2 check.
+  pub fn is_atm_calendar_spread_free(&self) -> bool {
     self.thetas.windows(2).all(|w| w[1] >= w[0])
   }
 
@@ -541,12 +568,29 @@ mod tests {
     let params = SsviParams::<f64>::new(-0.3, 0.5, 0.5);
     let surface = SsviSurface::new(params, vec![0.02, 0.04, 0.08], vec![0.25, 0.50, 1.0]);
 
-    assert!(surface.is_calendar_spread_free());
+    let ks = vec![-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0];
+    assert!(surface.is_calendar_spread_free(&ks));
+    assert!(surface.is_atm_calendar_spread_free());
 
     let iv = surface.implied_vol(0.0, 0.5);
     assert!(iv.is_finite() && iv > 0.0);
 
     let iv_interp = surface.implied_vol(0.0, 0.375);
     assert!(iv_interp.is_finite() && iv_interp > 0.0);
+  }
+
+  /// Regression: a non-monotonic θ_t term structure must fail BOTH the ATM
+  /// and the smile-wide checks. A monotonic θ_t with a strong-skew SSVI can
+  /// still violate calendar arb off-ATM — pre-rc.1 the surface flag would
+  /// say "arb-free" in that scenario, hiding the issue.
+  #[test]
+  fn calendar_spread_free_grid_catches_off_atm_violations() {
+    // Decreasing θ — fails the ATM check, must also fail the grid check.
+    let params = SsviParams::<f64>::new(-0.3, 0.5, 0.5);
+    let surface_decreasing =
+      SsviSurface::new(params, vec![0.04, 0.03, 0.02], vec![0.25, 0.50, 1.0]);
+    let ks = vec![-1.0, 0.0, 1.0];
+    assert!(!surface_decreasing.is_calendar_spread_free(&ks));
+    assert!(!surface_decreasing.is_atm_calendar_spread_free());
   }
 }

@@ -126,7 +126,7 @@ pub struct LevyCalibrationResult {
 #[derive(Clone, Debug)]
 pub enum LevyModel {
   VarianceGamma(crate::pricing::fourier::VarianceGammaFourier),
-  Nig(crate::pricing::fourier::CGMYFourier),
+  Nig(crate::pricing::fourier::NigFourier),
   Cgmy(crate::pricing::fourier::CGMYFourier),
   MertonJd(crate::pricing::fourier::MertonJDFourier),
   Kou(crate::pricing::fourier::KouFourier),
@@ -194,11 +194,10 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::Nig => LevyModel::Nig(CGMYFourier {
-        c: p[0],
-        g: p[1],
-        m: p[2],
-        y: 0.5,
+      LevyModelType::Nig => LevyModel::Nig(NigFourier {
+        alpha: p[0],
+        beta: p[1],
+        delta: p[2],
         r,
         q,
       }),
@@ -854,6 +853,43 @@ mod tests {
 
     let result = calibrator.calibrate(None).unwrap();
     println!("Vg params: {:?}, loss: {:?}", result.params, result.loss);
+  }
+
+  /// Regression: `LevyCalibrationResult::to_model` for `LevyModelType::Nig`
+  /// must produce a model whose `price_call` matches the calibrated NIG
+  /// dynamics. The rc.0 implementation wrapped the NIG triple `(α, β, δ)` into
+  /// a `CGMYFourier` with hardcoded `y = 0.5`, producing prices unrelated to
+  /// the NIG ChF. After the fix, `to_model` builds a `NigFourier` and the
+  /// round-trip price agrees with the calibrator's internal `fourier_call_price`.
+  #[test]
+  fn nig_to_model_matches_calibrator_pricer() {
+    // Pick a representative NIG triple from the literature (Schoutens 2003 §5.3
+    // SPX-style: α=10, β=-5, δ=0.5, mildly skewed/heavy-tailed).
+    let params = vec![10.0, -5.0, 0.5];
+    let s = 100.0;
+    let r = 0.05;
+    let q = 0.0;
+    let t = 1.0;
+
+    // Build a synthetic LevyCalibrationResult with the known params and
+    // round-trip to a model.
+    let result = LevyCalibrationResult {
+      params: params.clone(),
+      model_type: LevyModelType::Nig,
+      iterations: 0,
+      converged: true,
+      loss: CalibrationLossScore::default(),
+    };
+    let model = result.to_model(r, q);
+
+    for &k in &STRIKES {
+      let from_calibrator = fourier_call_price(LevyModelType::Nig, &params, s, k, r, q, t);
+      let from_model = <LevyModel as crate::traits::ModelPricer>::price_call(&model, s, k, r, q, t);
+      assert!(
+        (from_model - from_calibrator).abs() < 1e-6,
+        "NIG to_model mismatch at K={k}: model={from_model:.10} calibrator={from_calibrator:.10}",
+      );
+    }
   }
 
   #[test]

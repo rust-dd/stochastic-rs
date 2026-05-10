@@ -328,7 +328,8 @@ mod tests {
     let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
 
     let ssvi = surface.fit_ssvi(None);
-    assert!(ssvi.is_calendar_spread_free());
+    let ks: Vec<f64> = (-3..=3).map(|i| i as f64 * 0.5).collect();
+    assert!(ssvi.is_calendar_spread_free(&ks));
 
     let iv_model = surface.ivs[[1, 10]];
     let iv_ssvi = ssvi.implied_vol(surface.log_moneyness[[1, 10]], maturities[1]);

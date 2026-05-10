@@ -99,13 +99,29 @@ fn long_short_simplex(n: usize) -> Vec<Vec<f64>> {
   simplex
 }
 
+/// Empirical CVaR (Conditional Value-at-Risk).
+///
+/// **Convention:** `alpha` is the **tail proportion** to average — `0.05`
+/// means "average the worst 5% of returns". This is the **opposite** of the
+/// confidence-level convention used by [`crate::risk::var::value_at_risk`]
+/// and [`crate::risk::expected_shortfall::expected_shortfall`], where
+/// `confidence = 0.95` selects the worst 5%. Translation:
+/// `cvar_tail_proportion = 1 - confidence`. The runtime assertion below
+/// makes accidentally passing a confidence-level value (e.g. `0.95`) panic
+/// loudly rather than silently averaging nearly the whole distribution.
 fn empirical_cvar(returns: &mut [f64], alpha: f64) -> f64 {
   if returns.is_empty() {
     return 0.0;
   }
+  assert!(
+    alpha > 0.0 && alpha < 0.5,
+    "empirical_cvar `alpha` is the tail proportion (typical values 0.01–0.10), \
+     not a confidence level. Got {alpha}. If you meant a confidence c (e.g. 0.95), \
+     pass `1.0 - c` instead."
+  );
 
   returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-  let cutoff = ((returns.len() as f64) * alpha.clamp(0.0, 1.0)).ceil() as usize;
+  let cutoff = ((returns.len() as f64) * alpha).ceil() as usize;
   let cutoff = cutoff.max(1).min(returns.len());
   let tail_mean: f64 = returns[..cutoff].iter().sum::<f64>() / cutoff as f64;
 
@@ -1054,5 +1070,28 @@ mod tests {
     assert!(result.weights.is_empty());
     assert_eq!(result.expected_return, 0.0);
     assert_eq!(result.volatility, 0.0);
+  }
+
+  /// Regression: confidence-style values (e.g. `0.95`) passed as
+  /// `cvar_alpha` must panic loudly. The rc.0 implementation accepted any
+  /// `alpha ∈ [0, 1]`, silently averaging nearly the whole distribution
+  /// when users got the convention backwards. rc.1 rejects `alpha >= 0.5`.
+  #[test]
+  #[should_panic(expected = "tail proportion")]
+  fn empirical_cvar_rejects_confidence_level_misuse() {
+    let mut returns = vec![-0.05, -0.03, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04];
+    let _ = empirical_cvar(&mut returns, 0.95);
+  }
+
+  #[test]
+  fn empirical_cvar_accepts_typical_tail_proportions() {
+    let mut returns: Vec<f64> = (-50..=50).map(|i| i as f64 * 0.001).collect();
+    let cvar_5pct = empirical_cvar(&mut returns.clone(), 0.05);
+    let cvar_10pct = empirical_cvar(&mut returns, 0.10);
+    // CVaR at 5% tail must be MORE negative (worse loss) than 10% tail.
+    assert!(
+      cvar_5pct >= cvar_10pct,
+      "5% tail CVaR ({cvar_5pct}) must be ≥ 10% tail CVaR ({cvar_10pct}) (more loss)"
+    );
   }
 }

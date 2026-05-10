@@ -126,16 +126,27 @@ pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult
     .map(|(svi, &tau)| super::analytics::svi_analytics(svi, tau))
     .collect();
 
+  // Union of log-moneyness grids across all maturity slices — used both for
+  // butterfly checks (per slice) and for the full smile-wide calendar-spread
+  // condition (Gatheral & Jacquier 2014 Theorem 4.2).
+  let mut calendar_ks: Vec<f64> = Vec::new();
   let butterfly_checks: Vec<(bool, f64)> = (0..nt)
     .map(|j| {
       let slice = iv_surface.smile_slice(j);
       let theta = slice.to_ssvi_slice().theta;
-      let ks: Vec<f64> = slice.log_moneyness;
-      super::arbitrage::check_butterfly_ssvi(&ssvi_surface.params, theta, &ks)
+      let ks: Vec<f64> = slice.log_moneyness.clone();
+      let result =
+        super::arbitrage::check_butterfly_ssvi(&ssvi_surface.params, theta, &ks);
+      calendar_ks.extend(ks);
+      result
     })
     .collect();
 
-  let calendar_spread_free = ssvi_surface.is_calendar_spread_free();
+  // De-dupe & sort calendar k-grid for cheaper / deterministic checking.
+  calendar_ks.sort_by(|a, b| a.total_cmp(b));
+  calendar_ks.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
+
+  let calendar_spread_free = ssvi_surface.is_calendar_spread_free(&calendar_ks);
 
   VolSurfaceResult {
     iv_surface: iv_surface.clone(),

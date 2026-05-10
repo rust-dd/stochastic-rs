@@ -75,11 +75,12 @@ impl RBergomiPricer {
     self
   }
 
-  fn mc_call_price(&self, s: f64, k: f64, r: f64, tau: f64) -> f64 {
+  fn mc_call_price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let samples = simulate_rbergomi_terminal_samples(
       &self.params,
       s,
       r,
+      q,
       tau,
       self.n_paths,
       self.steps_per_year,
@@ -95,6 +96,7 @@ impl RBergomiPricer {
         &self.params,
         s,
         r,
+        q,
         tau,
         self.n_paths,
         self.steps_per_year,
@@ -111,8 +113,8 @@ impl RBergomiPricer {
 }
 
 impl ModelPricer for RBergomiPricer {
-  fn price_call(&self, s: f64, k: f64, r: f64, _q: f64, tau: f64) -> f64 {
-    self.mc_call_price(s, k, r, tau)
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.mc_call_price(s, k, r, q, tau)
   }
 }
 
@@ -152,6 +154,30 @@ mod tests {
     assert!(
       c_90 > c_100 && c_100 > c_110,
       "Call should decrease with strike: c90={c_90}, c100={c_100}, c110={c_110}"
+    );
+  }
+
+  /// Regression: the pricer must thread `q` to `simulate_rbergomi_terminal_samples`.
+  /// Pre-fix the `_q` argument was discarded, so the simulated forward was
+  /// `S_0·e^(r·T)` rather than `S_0·e^((r-q)·T)`. With seeded RNG this gave
+  /// identical prices for q=0 and q>0 — a silent dynamics bug.
+  #[test]
+  fn rbergomi_pricer_respects_dividend_yield() {
+    let params = RBergomiParams {
+      hurst: 0.1,
+      rho: -0.7,
+      eta: 1.9,
+      xi0: RBergomiXi0::Constant(0.04),
+    };
+    let pricer = RBergomiPricer::new(params).with_paths(80_000);
+    let p_no_div = pricer.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
+    let p_with_div = pricer.price_call(100.0, 100.0, 0.05, 0.05, 1.0);
+    // With shared seed, the only difference between the two MC runs is the q
+    // term in the drift. ATM call must be cheaper with positive q (forward
+    // shift down) — strictly so given fixed seed and 80k paths.
+    assert!(
+      p_with_div < p_no_div - 0.5,
+      "ATM rBergomi call must drop when q > 0: q=0 → {p_no_div:.4}, q=0.05 → {p_with_div:.4}"
     );
   }
 }

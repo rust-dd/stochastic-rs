@@ -234,6 +234,17 @@ impl crate::traits::CalibrationResult for HKDECalibrationResult {
   }
 }
 
+impl crate::traits::Calibrator for HKDECalibrator {
+  type InitialGuess = HKDEParams;
+  type Params = HKDEParams;
+  type Output = HKDECalibrationResult;
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    Ok(HKDECalibrator::calibrate(self, initial))
+  }
+}
+
 impl HKDECalibrationResult {
   /// Convert to a [`HKDEFourier`] model for pricing / vol-surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> HKDEFourier {

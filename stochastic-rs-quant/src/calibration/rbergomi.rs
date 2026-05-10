@@ -427,6 +427,9 @@ pub struct RBergomiCalibrator {
   pub s0: f64,
   /// Risk-free rate $r$.
   pub r: f64,
+  /// Continuous dividend yield $q$ (or foreign rate for FX). Defaults to 0
+  /// when constructed via [`Self::new`]; set with [`Self::with_dividend_yield`].
+  pub q: f64,
   /// Current parameter guess.
   pub params: RBergomiParams,
   /// Distribution targets for each maturity.
@@ -477,12 +480,20 @@ impl RBergomiCalibrator {
     Self {
       s0,
       r,
+      q: 0.0,
       params: params.projected(),
       market_slices,
       config,
       record_history,
       history: Rc::new(RefCell::new(Vec::new())),
     }
+  }
+
+  /// Set the continuous dividend yield $q$ (or foreign rate for FX). Default 0.
+  pub fn with_dividend_yield(mut self, q: f64) -> Self {
+    assert!(q.is_finite(), "q must be finite");
+    self.q = q;
+    self
   }
 
   pub fn history(&self) -> Vec<RBergomiCalibrationHistory> {
@@ -508,6 +519,7 @@ impl RBergomiCalibrator {
         &p,
         self.s0,
         self.r,
+        self.q,
         slice.maturity,
         self.config.paths,
         self.config.steps_per_year,
@@ -821,10 +833,16 @@ pub fn bid_ask_tolerance(bid: &[f64], ask: &[f64]) -> f64 {
 
 /// Simulates terminal prices under the rBergomi model with an mSOE approximation
 /// for the Volterra kernel history term.
+///
+/// The log-stock drift is `(r - q - 0.5·V_t) dt`. The `q` argument is the
+/// continuously-compounded dividend yield (or foreign rate for FX); callers
+/// who don't pay dividends should pass `0.0`.
+#[allow(clippy::too_many_arguments)]
 pub fn simulate_rbergomi_terminal_samples(
   params: &RBergomiParams,
   s0: f64,
   r: f64,
+  q: f64,
   maturity: f64,
   paths: usize,
   steps_per_year: usize,
@@ -878,7 +896,7 @@ pub fn simulate_rbergomi_terminal_samples(
         let d_w = xi[0];
         let d_w_perp = normal.sample_fast() * sqrt_dt;
 
-        let drift = (r - 0.5 * v_prev) * dt;
+        let drift = (r - q - 0.5 * v_prev) * dt;
         let diffusion = v_prev.sqrt() * (rho * d_w + rho_orth * d_w_perp);
         s *= (drift + diffusion).exp();
 
@@ -1063,6 +1081,7 @@ mod tests {
         &true_params,
         100.0,
         0.01,
+        0.0,
         t,
         512,
         96,

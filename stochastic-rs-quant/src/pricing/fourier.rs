@@ -138,18 +138,49 @@ impl CarrMadanPricer {
   }
 
   /// Price a single call option by interpolating the FFT surface.
+  ///
+  /// **Out-of-grid strikes:** when `k` is so deep ITM/OTM that `ln(k)` falls
+  /// outside `[log_strikes.first(), log_strikes.last()]`, returns
+  /// `f64::NAN`. The previous v2.0.0-rc.0 behavior returned `0.0`, which
+  /// produced silent-zero residuals at the wings of any calibration that
+  /// stretched past the FFT grid (catastrophe options, very deep ITM/OTM FX
+  /// risk-reversals). NaN propagation forces calibration loops to detect
+  /// the issue rather than carry on with a falsely-perfect zero residual.
+  /// Use [`Self::strike_in_grid`] to test before pricing, or construct the
+  /// pricer with a larger `n` / smaller `eta` for wider coverage.
   pub fn price_call(&self, model: &dyn FourierModelExt, s: f64, k: f64, r: f64, t: f64) -> f64 {
     let (log_strikes, prices) = self.price_call_surface(model, s, r, t);
     let target = k.ln();
+    let n = log_strikes.len();
 
-    // Linear interpolation
-    for i in 0..log_strikes.len() - 1 {
+    if target < log_strikes[0] || target > log_strikes[n - 1] {
+      return f64::NAN;
+    }
+
+    for i in 0..n - 1 {
       if log_strikes[i] <= target && target <= log_strikes[i + 1] {
         let w = (target - log_strikes[i]) / (log_strikes[i + 1] - log_strikes[i]);
         return prices[i] * (1.0 - w) + prices[i + 1] * w;
       }
     }
-    0.0
+    unreachable!("CarrMadan interpolation fall-through despite grid bracketing");
+  }
+
+  /// Returns `true` if a strike `k` falls inside the FFT log-strike grid for
+  /// the given model / market state. Use this before [`Self::price_call`] to
+  /// detect / extend the grid rather than accept a NaN.
+  pub fn strike_in_grid(
+    &self,
+    model: &dyn FourierModelExt,
+    s: f64,
+    k: f64,
+    r: f64,
+    t: f64,
+  ) -> bool {
+    let (log_strikes, _) = self.price_call_surface(model, s, r, t);
+    let target = k.ln();
+    let n = log_strikes.len();
+    target >= log_strikes[0] && target <= log_strikes[n - 1]
   }
 
   /// Price a single put option via put-call parity.
@@ -589,6 +620,79 @@ impl FourierModelExt for KouFourier {
   }
 }
 
+/// Normal Inverse Gaussian (NIG) Lévy model for Fourier pricing.
+///
+/// Characteristic exponent (Barndorff-Nielsen 1997, with the standard
+/// martingale correction so $E[S_T] = S_0 e^{(r-q)T}$):
+///
+/// $$
+/// \psi(\xi) = \delta\bigl(\sqrt{\alpha^2 - \beta^2}
+///                          - \sqrt{\alpha^2 - (\beta + i\xi)^2}\bigr).
+/// $$
+///
+/// Parameters:
+/// - $\alpha > 0$: tail heaviness.
+/// - $\beta \in (-\alpha, \alpha)$: skewness.
+/// - $\delta > 0$: scale.
+///
+/// References:
+/// - Barndorff-Nielsen (1997), "Normal inverse Gaussian distributions and
+///   stochastic volatility modelling", Scand. J. Statist. 24, 1-13.
+/// - Schoutens (2003), *Lévy Processes in Finance*, §5.3.
+#[derive(Debug, Clone)]
+pub struct NigFourier {
+  /// Tail heaviness ($\alpha > 0$).
+  pub alpha: f64,
+  /// Skewness ($-\alpha < \beta < \alpha$).
+  pub beta: f64,
+  /// Scale ($\delta > 0$).
+  pub delta: f64,
+  /// Risk-free rate.
+  pub r: f64,
+  /// Dividend yield.
+  pub q: f64,
+}
+
+impl FourierModelExt for NigFourier {
+  fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
+    let i = Complex64::i();
+    let alpha = self.alpha;
+    let beta = self.beta;
+    let delta = self.delta;
+    let a2 = alpha * alpha;
+
+    // Real-valued base: sqrt(α² - β²) (positive since |β| < α).
+    let base = (a2 - beta * beta).sqrt();
+    // Complex shifted root: sqrt(α² - (β + iξ)²).
+    let shifted = Complex64::new(beta, 0.0) + i * xi;
+    let branch = (Complex64::new(a2, 0.0) - shifted * shifted).sqrt();
+    let psi = delta * (Complex64::new(base, 0.0) - branch);
+
+    // Martingale correction: ω = -ψ(-i) so the discounted price is a martingale.
+    // ψ(-i) = δ·(√(α²-β²) - √(α²-(β+1)²)) is real.
+    let omega = -delta * (base - (a2 - (beta + 1.0).powi(2)).sqrt());
+
+    (i * xi * (self.r - self.q + omega) * t + psi * t).exp()
+  }
+
+  fn cumulants(&self, t: f64) -> Cumulants {
+    // First few cumulants of the NIG process at time t.
+    // c_n = κ_n^{NIG} · t where κ_1 = δβ/√(α²-β²), κ_2 = δα²/(α²-β²)^{3/2}, etc.
+    let alpha = self.alpha;
+    let beta = self.beta;
+    let delta = self.delta;
+    let a2 = alpha * alpha;
+    let b2 = beta * beta;
+    let denom = (a2 - b2).sqrt();
+    let denom3 = denom.powi(3);
+    let c1 = (self.r - self.q) * t + delta * beta / denom * t;
+    let c2 = delta * a2 / denom3 * t;
+    // c4 in NIG: 3 δ α² (α² + 4β²) / (α² - β²)^(7/2) · t
+    let c4 = 3.0 * delta * a2 * (a2 + 4.0 * b2) / (a2 - b2).powf(3.5) * t;
+    Cumulants { c1, c2, c4 }
+  }
+}
+
 /// Heston + Kou Double-Exponential jump model (Hkde) for Fourier pricing.
 ///
 /// $$
@@ -815,6 +919,48 @@ mod tests {
       (price - expected).abs() < TOL_FOURIER,
       "Carr-Madan BSM: got={price}, expected={expected}"
     );
+  }
+
+  /// Regression: out-of-grid strikes must NOT silently return `0.0`. The
+  /// rc.0 behavior was a hard `0.0` fallback whenever `ln(k)` fell outside
+  /// `[log_strikes.first(), log_strikes.last()]` — that produced silent-zero
+  /// residuals at the wings of any calibration that stretched past the FFT
+  /// grid. rc.1 returns `f64::NAN` instead, so calibration objectives are
+  /// poisoned (forcing the user to detect / fix) rather than silently fitting.
+  #[test]
+  fn carr_madan_out_of_grid_returns_nan_not_zero() {
+    let model = BSMFourier {
+      sigma: 0.15,
+      r: 0.05,
+      q: 0.0,
+    };
+    let pricer = CarrMadanPricer::default();
+    let s = 100.0;
+    let r = 0.05;
+    let t = 1.0;
+
+    // Default grid: n=4096, eta=0.25 → log-strike range ≈ [-12.57, 12.57].
+    // K = 1e-9 (ln K ≈ -20.7) and K = 1e9 (ln K ≈ +20.7) are both well outside.
+    let p_itm = pricer.price_call(&model, s, 1e-9, r, t);
+    assert!(
+      p_itm.is_nan(),
+      "Out-of-grid deep-ITM must return NaN to flag truncation, got {p_itm}"
+    );
+
+    let p_otm = pricer.price_call(&model, s, 1e9, r, t);
+    assert!(
+      p_otm.is_nan(),
+      "Out-of-grid deep-OTM must return NaN to flag truncation, got {p_otm}"
+    );
+
+    // In-grid call still prices correctly.
+    let p_atm = pricer.price_call(&model, s, 100.0, r, t);
+    assert!(p_atm.is_finite() && p_atm > 0.0);
+
+    // strike_in_grid sanity check.
+    assert!(!pricer.strike_in_grid(&model, s, 1e-9, r, t));
+    assert!(!pricer.strike_in_grid(&model, s, 1e9, r, t));
+    assert!(pricer.strike_in_grid(&model, s, 100.0, r, t));
   }
 
   #[test]

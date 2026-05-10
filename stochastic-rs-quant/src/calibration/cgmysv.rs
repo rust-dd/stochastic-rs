@@ -65,6 +65,17 @@ impl crate::traits::CalibrationResult for CgmysvCalibrationResult {
   }
 }
 
+impl crate::traits::Calibrator for CgmysvCalibrator {
+  type InitialGuess = Vec<f64>;
+  type Params = crate::pricing::cgmysv::CgmysvParams;
+  type Output = CgmysvCalibrationResult;
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    Ok(CgmysvCalibrator::calibrate(self, initial))
+  }
+}
+
 /// CGMYSV calibrator via Fourier pricing + Levenberg-Marquardt.
 #[derive(Clone)]
 pub struct CgmysvCalibrator {

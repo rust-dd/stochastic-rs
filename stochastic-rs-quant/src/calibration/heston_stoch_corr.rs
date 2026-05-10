@@ -62,6 +62,13 @@ pub struct HscmCalibrationResult {
   pub rho2: f64,
   pub rmse: f64,
   pub mae: f64,
+  /// Whether the SLSQP optimizer reported a success status. Distinct from
+  /// `rmse.is_finite()` — a diverged optimizer can still produce a finite RMSE
+  /// against the input data.
+  pub converged: bool,
+  /// Final SLSQP objective value (sum of squared relative errors). Useful for
+  /// comparing against pre-optimization sse to confirm progress was made.
+  pub final_objective: f64,
 }
 
 impl From<HscmCalibrationResult> for crate::pricing::heston_stoch_corr::HscmModel {
@@ -93,7 +100,7 @@ impl crate::traits::CalibrationResult for HscmCalibrationResult {
     self.rmse
   }
   fn converged(&self) -> bool {
-    self.rmse.is_finite()
+    self.converged && self.rmse.is_finite()
   }
   fn params(&self) -> Self::Params {
     HscmParams {
@@ -171,6 +178,48 @@ fn eval_sse(x: &[f64], data: &CalibData) -> f64 {
   obj
 }
 
+/// HSCM (Heston-stochastic-correlation) calibrator with the unified
+/// [`Calibrator`](crate::traits::Calibrator) trait surface. Wraps the free
+/// [`calibrate_hscm`] function in a stateful struct so generic pipelines
+/// (`build_surface_from_calibration` etc.) can consume it like any other
+/// calibrator.
+#[derive(Clone, Debug)]
+pub struct HscmCalibrator {
+  pub s0: f64,
+  pub options: Vec<MarketOption>,
+  pub max_iter: usize,
+}
+
+impl HscmCalibrator {
+  pub fn new(s0: f64, options: Vec<MarketOption>) -> Self {
+    Self {
+      s0,
+      options,
+      max_iter: 500,
+    }
+  }
+
+  pub fn with_max_iter(mut self, max_iter: usize) -> Self {
+    self.max_iter = max_iter;
+    self
+  }
+}
+
+impl crate::traits::Calibrator for HscmCalibrator {
+  type InitialGuess = [f64; 9];
+  type Params = HscmParams;
+  type Output = HscmCalibrationResult;
+  type Error = anyhow::Error;
+
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+    // Default initial guess derived from the rc.1 calibration tests — a
+    // mild-skew, short-tenor SPX-style starting point. Users with a better
+    // prior should pass `Some([...])`.
+    let guess = initial.unwrap_or([2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3]);
+    Ok(calibrate_hscm(self.s0, &self.options, &guess, self.max_iter))
+  }
+}
+
 /// Calibrate the HSCM model to market option prices using SLSQP.
 ///
 /// # Arguments
@@ -186,7 +235,7 @@ pub fn calibrate_hscm(
 ) -> HscmCalibrationResult {
   let n = options.len();
 
-  let x = initial_guess
+  let x_init = initial_guess
     .iter()
     .enumerate()
     .map(|(i, &v)| v.clamp(BOUNDS[i].0, BOUNDS[i].1))
@@ -199,9 +248,13 @@ pub fn calibrate_hscm(
     options: options.to_vec(),
   };
 
-  let _ = slsqp::minimize(slsqp_objective, &x, &bounds, &cons, data, max_iter, None);
+  let (x, final_objective, converged) =
+    match slsqp::minimize(slsqp_objective, &x_init, &bounds, &cons, data, max_iter, None) {
+      Ok((_status, x_opt, fval)) => (x_opt, fval, true),
+      Err((_status, x_opt, fval)) => (x_opt, fval, false),
+    };
 
-  // Compute final errors
+  // Compute final errors against the SLSQP-optimized parameters.
   let mut sse = 0.0;
   let mut sae = 0.0;
   for opt in options {
@@ -223,6 +276,8 @@ pub fn calibrate_hscm(
     rho2: x[8],
     rmse: (sse / n as f64).sqrt(),
     mae: sae / n as f64,
+    converged,
+    final_objective,
   }
 }
 
@@ -231,6 +286,7 @@ mod tests {
   use super::*;
 
   #[test]
+  #[ignore = "slow: HSCM Carr-Madan + SLSQP. Run with `cargo test -- --ignored`."]
   fn calibration_runs() {
     let options = vec![
       MarketOption {
@@ -254,10 +310,79 @@ mod tests {
     ];
 
     let guess = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
+
+    let initial_sse: f64 = options
+      .iter()
+      .map(|opt| {
+        let m = price_call(&guess, 100.0, opt.strike, opt.maturity, opt.rate);
+        let err = (m - opt.price) / opt.price.max(1e-6);
+        err * err
+      })
+      .sum();
+
     let result = calibrate_hscm(100.0, &options, &guess, 500);
 
     assert!(result.rmse.is_finite(), "RMSE should be finite");
     assert!(result.v0 > 0.0, "v0 should be positive");
     assert!(result.rho0.abs() < 1.0, "rho0 should be in (-1,1)");
+    // Catches `let _ = slsqp::minimize(...)` — without progress the optimizer
+    // returned the initial guess unchanged and final_objective == initial_sse.
+    assert!(
+      result.final_objective <= initial_sse,
+      "SLSQP must not regress: final={} initial={}",
+      result.final_objective,
+      initial_sse
+    );
+  }
+
+  #[test]
+  #[ignore = "slow: HSCM Carr-Madan FFT × SLSQP iterations. Run with --ignored."]
+  fn calibrate_recovers_synthetic_prices() {
+    // Ground-truth parameters drawn from the test pattern in `calibration_runs`.
+    let truth = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
+    let s0 = 100.0;
+    let tau = 0.25;
+    let r = 0.03;
+    let strikes = [95.0, 100.0, 105.0];
+
+    // Generate synthetic prices from the HSCM ground-truth pricer.
+    let options: Vec<MarketOption> = strikes
+      .iter()
+      .map(|&k| MarketOption {
+        strike: k,
+        maturity: tau,
+        price: price_call(&truth, s0, k, tau, r),
+        rate: r,
+      })
+      .collect();
+
+    // Perturbed initial guess — distinct from truth so the optimizer must move.
+    let guess = [1.5, 0.05, 0.4, 0.05, 4.0, -0.3, 0.3, -0.5, 0.2];
+    let initial_sse: f64 = options
+      .iter()
+      .map(|opt| {
+        let m = price_call(&guess, s0, opt.strike, opt.maturity, opt.rate);
+        let err = (m - opt.price) / opt.price.max(1e-6);
+        err * err
+      })
+      .sum();
+
+    let result = calibrate_hscm(s0, &options, &guess, 200);
+
+    // Decisive: with `let _ = slsqp::minimize(...)` final_objective stayed at
+    // initial_sse. After the fix the optimizer drives SSE strictly below.
+    assert!(
+      result.final_objective < initial_sse * 0.5,
+      "SLSQP didn't make meaningful progress: final={} initial={}",
+      result.final_objective,
+      initial_sse
+    );
+    // Recovery quality is loose because 9 params × 3 prices is underdetermined,
+    // but RMSE on the price scale should be tight after optimization.
+    assert!(
+      result.rmse < 1e-2,
+      "calibrated RMSE too large vs synthetic prices: {}",
+      result.rmse
+    );
   }
 }

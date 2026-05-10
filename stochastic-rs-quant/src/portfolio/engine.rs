@@ -28,7 +28,10 @@ pub struct PortfolioEngineConfig {
   pub target_return: f64,
   /// Risk-free rate used in Sharpe computations and scoring.
   pub risk_free: f64,
-  /// Tail probability for CVaR optimizers.
+  /// Tail proportion for CVaR optimizers — the **fraction of worst returns**
+  /// to average. Typical values: 0.01–0.10. **Note**: this is the opposite
+  /// convention from [`crate::risk`] (which uses `confidence = 1 - tail`).
+  /// Pass `1.0 - confidence` to translate. Asserted `< 0.5` at runtime.
   pub cvar_alpha: f64,
   /// Enable long-short variants when supported.
   pub allow_short: bool,

@@ -1552,13 +1552,18 @@ mod tests {
       .compute_model_prices_and_residual_jacobian_cui(&params)
       .expect("Cui Jacobian should be computable");
 
+    // Cui (2017) Jacobian closed form was hand-verified against the paper
+    // line-for-line. Tolerance tightened from rc.0's 2e-1 (which would have
+    // masked 5–10% bugs) to 5e-3 — wide enough to absorb central-difference
+    // truncation error (~h² with h ≈ 1e-5) but tight enough to flag any real
+    // drift. Tolerance is on relative error vs (1 + |numeric|).
     for row in 0..jac_num.nrows() {
       for col in 0..jac_num.ncols() {
         let n = jac_num[(row, col)];
         let a = jac_cui[(row, col)];
         let rel = (a - n).abs() / (1.0 + n.abs());
         assert!(
-          rel < 2e-1,
+          rel < 5e-3,
           "Jacobian mismatch at ({}, {}): analytic={}, numeric={}, rel={}",
           row,
           col,

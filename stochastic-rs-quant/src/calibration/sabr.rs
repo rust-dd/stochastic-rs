@@ -123,20 +123,39 @@ impl SabrParams {
   }
 }
 
+/// Lossless round-trip [α, β, ν, ρ]. Use [`SabrParams::as_lm_vec`] for the
+/// 3-vec [α, ν, ρ] form the Levenberg-Marquardt solver operates on.
 impl From<SabrParams> for DVector<f64> {
   fn from(p: SabrParams) -> Self {
-    DVector::from_vec(vec![p.alpha, p.nu, p.rho])
+    DVector::from_vec(vec![p.alpha, p.beta, p.nu, p.rho])
   }
 }
 
+/// Lossless round-trip from a 4-vec [α, β, ν, ρ]. Panics on a vector with
+/// fewer than 4 elements (e.g. an LM 3-vec).
 impl From<DVector<f64>> for SabrParams {
   fn from(v: DVector<f64>) -> Self {
+    assert_eq!(
+      v.len(),
+      4,
+      "SabrParams::from(DVector) expects 4 elements [alpha, beta, nu, rho], got {}",
+      v.len()
+    );
     SabrParams {
       alpha: v[0],
-      beta: 1.0,
-      nu: v[1],
-      rho: v[2],
+      beta: v[1],
+      nu: v[2],
+      rho: v[3],
     }
+  }
+}
+
+impl SabrParams {
+  /// 3-vec [α, ν, ρ] used by the LM optimiser. β is excluded because the
+  /// calibrator does not optimise it — β is a user-set CEV exponent. Use the
+  /// 4-vec [`From`] / [`Into`] for lossless round-trip.
+  pub(crate) fn as_lm_vec(self) -> DVector<f64> {
+    DVector::from_vec(vec![self.alpha, self.nu, self.rho])
   }
 }
 
@@ -287,7 +306,7 @@ impl SabrCalibrator {
   fn numeric_jacobian(&self, p: &SabrParams) -> DMatrix<f64> {
     let n = self.c_market.len();
     let m = 3usize; // alpha, nu, rho
-    let base: DVector<f64> = (*p).into();
+    let base: DVector<f64> = p.as_lm_vec();
     let mut J = DMatrix::zeros(n, m);
     for col in 0..m {
       let x = base[col];
@@ -345,7 +364,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
     self.params = Some(p);
   }
   fn params(&self) -> DVector<f64> {
-    self.effective_params().into()
+    self.effective_params().as_lm_vec()
   }
   fn residuals(&self) -> Option<DVector<f64>> {
     let p = self.effective_params();
@@ -397,6 +416,31 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
 mod tests {
   use super::*;
   use crate::traits::Calibrator;
+
+  /// Regression: `SabrParams ↔ DVector` round-trip must preserve β. The rc.0
+  /// `From` impls used a 3-vec layout that silently dropped β on the way out
+  /// and forced β = 1.0 on the way back, so any β ≠ 1 was unfittable.
+  #[test]
+  fn sabr_params_dvector_round_trip_preserves_beta() {
+    for &beta in &[0.0, 0.25, 0.5, 0.75, 1.0] {
+      let p = SabrParams {
+        alpha: 0.18,
+        beta,
+        nu: 0.62,
+        rho: -0.31,
+      };
+      let v: DVector<f64> = p.into();
+      let p2: SabrParams = v.into();
+      assert!((p.alpha - p2.alpha).abs() < 1e-15);
+      assert!(
+        (p.beta - p2.beta).abs() < 1e-15,
+        "β must round-trip: input {beta}, got {}",
+        p2.beta
+      );
+      assert!((p.nu - p2.nu).abs() < 1e-15);
+      assert!((p.rho - p2.rho).abs() < 1e-15);
+    }
+  }
 
   #[test]
   fn test_sabr_calibrate_price_based() {
