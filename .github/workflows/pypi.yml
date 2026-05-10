@@ -16,24 +16,40 @@ jobs:
         platform:
           - runner: ubuntu-22.04
             target: x86_64
+            manylinux: auto
           - runner: ubuntu-22.04
             target: aarch64
+            manylinux: 2_28
+            container: quay.io/pypa/manylinux_2_28_aarch64
+            qemu: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Set up QEMU
+        if: ${{ matrix.platform.qemu }}
+        uses: docker/setup-qemu-action@v3
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter --features openblas
-          manylinux: auto
+          manylinux: ${{ matrix.platform.manylinux }}
+          container: ${{ matrix.platform.container }}
           before-script-linux: |
-            # manylinux2014 (CentOS 7) → yum / manylinux_2_28 (AlmaLinux 8) → dnf.
-            # Try dnf first, fall back to yum.
-            (command -v dnf && dnf install -y openblas-devel) \
-              || yum install -y openblas-devel
+            set -e
+            if command -v dnf >/dev/null 2>&1; then
+              dnf install -y openblas-devel
+            elif command -v yum >/dev/null 2>&1; then
+              yum install -y openblas-devel
+            elif command -v apt-get >/dev/null 2>&1; then
+              apt-get update
+              apt-get install -y libopenblas-dev
+            else
+              echo "No supported package manager found to install OpenBLAS" >&2
+              exit 1
+            fi
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
