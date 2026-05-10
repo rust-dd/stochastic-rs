@@ -88,6 +88,9 @@ cubecl = { version = "0.9.0", default-features = false }
 cubecl-cuda = "0.9.0"
 cubecl-wgpu = "0.9.0"
 cudarc = { version = "0.19.2", features = ["cuda-12080", "cuda-version-from-build-system"] }
+cuda-core = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "aef2b4fefab6230bfea46d483c0b8bcbb63c089d" }
+cuda-device = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "aef2b4fefab6230bfea46d483c0b8bcbb63c089d" }
+cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "aef2b4fefab6230bfea46d483c0b8bcbb63c089d" }
 gpu-fft = "1.1.1"
 metal = "0.33.0"
 
@@ -138,6 +141,9 @@ cubecl = { workspace = true, optional = true, default-features = false }
 cubecl-cuda = { workspace = true, optional = true }
 cubecl-wgpu = { workspace = true, optional = true }
 cudarc = { workspace = true, optional = true, features = [ "cuda-12080", "cuda-version-from-build-system", ] }
+cuda-core = { workspace = true, optional = true }
+cuda-device = { workspace = true, optional = true }
+cuda-host = { workspace = true, optional = true }
 either = { workspace = true }
 flate2 = { workspace = true }
 gpu-fft = { workspace = true, optional = true }
@@ -219,6 +225,11 @@ required-features = ["gpu"]
 name = "fgn_cuda_native"
 harness = false
 required-features = ["cuda-native"]
+
+[[bench]]
+name = "fgn_cuda_oxide"
+harness = false
+required-features = ["cuda-oxide-experimental"]
 
 [[bench]]
 name = "fgn_all_backends"
@@ -309,6 +320,12 @@ required-features = ["hotpath"]
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda-native = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda-native"]
+cuda-oxide-experimental = [
+    "dep:cuda-core",
+    "dep:cuda-device",
+    "dep:cuda-host",
+    "stochastic-rs-stochastic/cuda-oxide-experimental",
+]
 default = []
 openblas = [
     "dep:ndarray-linalg",
