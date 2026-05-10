@@ -145,8 +145,7 @@ impl PricerExt for HullWhite {
 
     // Exponent: B·f^M(0,t) - σ²/(4a)·(1-e^{-2at})·B² - B·r(t)
     let exponent =
-      b * self.f0_at_t - (sigma * sigma) / (4.0 * a) * (1.0 - (-2.0 * a * t).exp()) * b * b
-        - b * r;
+      b * self.f0_at_t - (sigma * sigma) / (4.0 * a) * (1.0 - (-2.0 * a * t).exp()) * b * b - b * r;
 
     self.p0_at_maturity / self.p0_at_t * exponent.exp()
   }
@@ -169,7 +168,8 @@ impl TimeExt for HullWhite {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::curves::types::{CurvePoint, InterpolationMethod};
+  use crate::curves::types::CurvePoint;
+  use crate::curves::types::InterpolationMethod;
 
   fn flat_curve(rate: f64) -> DiscountCurve<f64> {
     // Anchor t=0 explicitly with D(0)=1 so log-linear interpolation gives the
@@ -193,10 +193,7 @@ mod tests {
     let curve = flat_curve(0.05);
     let h = HullWhite::from_curve(&curve, 0.05, 0.5, 0.01, 0.5, 0.0, None, None);
     let p = h.calculate_price();
-    assert!(
-      (p - 1.0).abs() < 1e-12,
-      "P(t,t) must be 1, got {p}"
-    );
+    assert!((p - 1.0).abs() < 1e-12, "P(t,t) must be 1, got {p}");
   }
 
   #[test]

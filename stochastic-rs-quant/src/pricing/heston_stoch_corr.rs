@@ -190,11 +190,8 @@ impl HestonStochCorrPricer {
     let dt = tau / n_steps as f64;
 
     let rhs = |_a: Complex64, c: Complex64, d: Complex64| -> (Complex64, Complex64, Complex64) {
-      let da = iu * drift
-        + kv * mv * d
-        + kr * mr * c
-        + 0.5 * sr * sr * c * c
-        + sr * rho2 * m_aux * iu * c;
+      let da =
+        iu * drift + kv * mv * d + kr * mr * c + 0.5 * sr * sr * c * c + sr * rho2 * m_aux * iu * c;
       let dc = sv * v0 * iu * d - kr * c;
       let dd = -0.5 * u * u + 0.5 * sv * sv * d * d - 0.5 * iu - kv * d;
       (da, dc, dd)

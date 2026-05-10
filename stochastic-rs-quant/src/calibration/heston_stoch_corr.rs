@@ -216,7 +216,12 @@ impl crate::traits::Calibrator for HscmCalibrator {
     // mild-skew, short-tenor SPX-style starting point. Users with a better
     // prior should pass `Some([...])`.
     let guess = initial.unwrap_or([2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3]);
-    Ok(calibrate_hscm(self.s0, &self.options, &guess, self.max_iter))
+    Ok(calibrate_hscm(
+      self.s0,
+      &self.options,
+      &guess,
+      self.max_iter,
+    ))
   }
 }
 
@@ -248,11 +253,18 @@ pub fn calibrate_hscm(
     options: options.to_vec(),
   };
 
-  let (x, final_objective, converged) =
-    match slsqp::minimize(slsqp_objective, &x_init, &bounds, &cons, data, max_iter, None) {
-      Ok((_status, x_opt, fval)) => (x_opt, fval, true),
-      Err((_status, x_opt, fval)) => (x_opt, fval, false),
-    };
+  let (x, final_objective, converged) = match slsqp::minimize(
+    slsqp_objective,
+    &x_init,
+    &bounds,
+    &cons,
+    data,
+    max_iter,
+    None,
+  ) {
+    Ok((_status, x_opt, fval)) => (x_opt, fval, true),
+    Err((_status, x_opt, fval)) => (x_opt, fval, false),
+  };
 
   // Compute final errors against the SLSQP-optimized parameters.
   let mut sse = 0.0;

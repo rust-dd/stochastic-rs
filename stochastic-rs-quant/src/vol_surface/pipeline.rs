@@ -135,8 +135,7 @@ pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult
       let slice = iv_surface.smile_slice(j);
       let theta = slice.to_ssvi_slice().theta;
       let ks: Vec<f64> = slice.log_moneyness.clone();
-      let result =
-        super::arbitrage::check_butterfly_ssvi(&ssvi_surface.params, theta, &ks);
+      let result = super::arbitrage::check_butterfly_ssvi(&ssvi_surface.params, theta, &ks);
       calendar_ks.extend(ks);
       result
     })

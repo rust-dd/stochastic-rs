@@ -243,7 +243,11 @@ mod tests {
       single.beta
     );
     assert!(
-      approx(multi[0].posterior_variance, single.posterior_variance, 1e-12),
+      approx(
+        multi[0].posterior_variance,
+        single.posterior_variance,
+        1e-12
+      ),
       "posterior_variance mismatch: multi={} single={}",
       multi[0].posterior_variance,
       single.posterior_variance
@@ -274,11 +278,7 @@ mod tests {
       "λ_1 = {}",
       eqs[0].lambda
     );
-    assert!(
-      approx(eqs[0].beta, 0.6669, 1e-3),
-      "β_1 = {}",
-      eqs[0].beta
-    );
+    assert!(approx(eqs[0].beta, 0.6669, 1e-3), "β_1 = {}", eqs[0].beta);
     assert!(
       approx(eqs[0].posterior_variance, 0.6920, 1e-3),
       "Σ_1 = {}",
@@ -290,11 +290,7 @@ mod tests {
       "λ_2 = {}",
       eqs[1].lambda
     );
-    assert!(
-      approx(eqs[1].beta, 1.2022, 1e-3),
-      "β_2 = {}",
-      eqs[1].beta
-    );
+    assert!(approx(eqs[1].beta, 1.2022, 1e-3), "β_2 = {}", eqs[1].beta);
     assert!(
       approx(eqs[1].posterior_variance, 0.3460, 1e-3),
       "Σ_2 = {}",
