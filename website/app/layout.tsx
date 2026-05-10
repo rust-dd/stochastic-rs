@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   },
   description:
     'High-performance Rust library for stochastic process simulation, quantitative finance, and statistical modelling.',
-  metadataBase: new URL('https://stochastic-rs.vercel.app'),
+  metadataBase: new URL('https://stochastic.rust-dd.com'),
 };
 
 export default function Layout({ children }: { children: ReactNode }) {

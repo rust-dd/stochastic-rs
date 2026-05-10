@@ -13,8 +13,10 @@ where they pay off, and first-class Python bindings via PyO3.
 
 ## Documentation
 
-The full docs site lives under [`website/`](website/) (Fumadocs +
-Next.js). Local preview:
+📖 **[stochastic.rust-dd.com](https://stochastic.rust-dd.com)** —
+full docs site (Fumadocs + Next.js, deployed on Vercel).
+
+Local preview from source under [`website/`](website/):
 
 ```bash
 cd website
@@ -67,8 +69,8 @@ use stochastic_rs::quant::pricing::heston::HestonPricer;
 
 For per-sub-crate (lean) builds, OpenBLAS / CUDA / Metal / cubecl /
 Accelerate feature flags, native CPU optimisation, and SIMD details,
-see the [installation guide](website/content/docs/getting-started/installation-rust.mdx)
-in the docs site.
+see the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
+on the docs site.
 
 ### Python
 
@@ -87,7 +89,7 @@ Linux (x86_64 / aarch64) and macOS (arm64 / x86_64) wheels ship with
 the `openblas` feature on. The Windows wheel omits the 15
 BLAS-backed classes; everything else (≈195 classes / 12 functions)
 works identically. See the
-[Python bindings page](website/content/docs/python.mdx) for the parity
+[Python bindings page](https://stochastic.rust-dd.com/docs/python) for the parity
 table and the source-build path with vcpkg.
 
 ## Quickstart
@@ -133,7 +135,7 @@ print(f"delta={g.delta:.4f}, vega={g.vega:.4f}")
 
 More end-to-end recipes (Heston calibration, fBM Hurst estimation,
 vol-surface from quotes, Python interop) live in the
-[tutorials section](website/content/docs/tutorials.mdx).
+[tutorials section](https://stochastic.rust-dd.com/docs/tutorials).
 
 ## Benchmarks
 
@@ -183,7 +185,7 @@ discrete. Most distributions: `1024 × 1024`; heavy discrete: `512 × 512`.
 | Hypergeo (512²)     |  20.99  |   2.76  |  7.60×  |
 
 (Full table — 18 distributions — on the
-[benchmarks page](website/content/docs/benchmarks.mdx).)
+[benchmarks page](https://stochastic.rust-dd.com/docs/benchmarks).)
 
 `Normal` single-thread `fill_slice` vs the upstream `rand_distr` baseline:
 
