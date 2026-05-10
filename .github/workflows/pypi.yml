@@ -74,20 +74,29 @@ jobs:
           python-version: 3.x
       - name: Install OpenBLAS
         run: |
-          brew install openblas
-          echo "OPENBLAS_DIR=$(brew --prefix openblas)" >> "$GITHUB_ENV"
-          echo "PKG_CONFIG_PATH=$(brew --prefix openblas)/lib/pkgconfig" >> "$GITHUB_ENV"
+          set -euo pipefail
+          brew install openblas gcc
+          openblas_prefix="$(brew --prefix openblas)"
+          gcc_prefix="$(brew --prefix gcc)"
+          gcc_lib_dir="$gcc_prefix/lib/gcc/current"
+          {
+            echo "OPENBLAS_DIR=$openblas_prefix"
+            echo "PKG_CONFIG_PATH=$openblas_prefix/lib/pkgconfig"
+            echo "MACOS_DYLIB_PATHS=$gcc_lib_dir:$openblas_prefix/lib"
+          } >> "$GITHUB_ENV"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter --features openblas
+          args: --release --out dist --find-interpreter --features openblas --auditwheel skip
       - name: Bundle OpenBLAS into wheels
         run: |
           python -m pip install --upgrade pip delocate
           mkdir -p dist/repaired
           for whl in dist/*.whl; do
-            delocate-wheel --require-archs ${{ matrix.platform.mac_arch }} -w dist/repaired -v "$whl"
+            DYLD_LIBRARY_PATH="$MACOS_DYLIB_PATHS" \
+            DYLD_FALLBACK_LIBRARY_PATH="$MACOS_DYLIB_PATHS" \
+              python -m delocate.cmd.delocate_wheel --require-archs ${{ matrix.platform.mac_arch }} -w dist/repaired -v "$whl"
           done
           rm -f dist/*.whl
           mv dist/repaired/*.whl dist/
