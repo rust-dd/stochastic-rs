@@ -162,6 +162,30 @@ Requires NVIDIA CUDA Toolkit (12.x+) and a compatible GPU.
 cargo build --features cuda-native
 ```
 
+### Native CPU optimization (optional)
+
+Builds default to a portable x86-64 / aarch64 baseline so the resulting
+binary or wheel runs on any CPU of the same architecture. To squeeze more
+performance out of the SIMD-heavy paths (`SimdNormal`, `Fgn` Davies–Harte,
+`fill_slice`, etc.), opt into your local CPU's full instruction set via
+`RUSTFLAGS`:
+
+```bash
+# All CPU features the build host supports (AVX-512, BMI2, FMA, …).
+RUSTFLAGS="-C target-cpu=native" cargo build --release
+RUSTFLAGS="-C target-cpu=native" cargo bench
+
+# Or pin a portable level (recommended for shared CI / Docker images):
+RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release   # AVX2 baseline
+RUSTFLAGS="-C target-cpu=x86-64-v4" cargo build --release   # AVX-512 baseline
+```
+
+> ⚠️ **Do not use `target-cpu=native` for binaries you ship** (PyPI wheels,
+> Docker images, prebuilt artifacts). The output only runs on CPUs that
+> have *at least* the build host's feature set — users on older hardware
+> will hit `SIGILL`/segfaults on the first specialized instruction. Use
+> a portable level (`x86-64-v2`/`v3`) for distributables.
+
 ## Usage
 
 ### Rust
