@@ -258,12 +258,12 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyHKDECalibrator;
   use stochastic_rs_quant::python::PyHKDEFourier;
   use stochastic_rs_quant::python::PyHestonCalibrator;
+  use stochastic_rs_quant::python::PyHestonFourier;
+  use stochastic_rs_quant::python::PyHestonPricer;
   use stochastic_rs_quant::python::PyHscmCalibrator;
   use stochastic_rs_quant::python::PyHscmMarketOption;
   use stochastic_rs_quant::python::PyHscmModel;
   use stochastic_rs_quant::python::PyHullWhiteBond;
-  use stochastic_rs_quant::python::PyHestonFourier;
-  use stochastic_rs_quant::python::PyHestonPricer;
   use stochastic_rs_quant::python::PyImpliedVolSurface;
   use stochastic_rs_quant::python::PyKirkSpreadPricer;
   use stochastic_rs_quant::python::PyKouFourier;

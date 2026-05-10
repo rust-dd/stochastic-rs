@@ -890,7 +890,11 @@ fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
     return Some(Vec::new());
   }
   let m = nalgebra::DMatrix::from_fn(n, n, |i, j| {
-    mat.get(i).and_then(|row| row.get(j)).copied().unwrap_or(0.0)
+    mat
+      .get(i)
+      .and_then(|row| row.get(j))
+      .copied()
+      .unwrap_or(0.0)
   });
   let inv = m.try_inverse()?;
   // try_inverse internally checks for near-singularity; reject if the

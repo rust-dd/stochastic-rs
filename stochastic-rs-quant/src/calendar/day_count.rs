@@ -172,7 +172,11 @@ fn actual_actual_afb(d1: NaiveDate, d2: NaiveDate) -> f64 {
   if d1 == d2 {
     return 0.0;
   }
-  let (start, end, sign) = if d1 < d2 { (d1, d2, 1.0) } else { (d2, d1, -1.0) };
+  let (start, end, sign) = if d1 < d2 {
+    (d1, d2, 1.0)
+  } else {
+    (d2, d1, -1.0)
+  };
   let days = (end - start).num_days() as f64;
   let mut has_feb29 = false;
   for y in start.year()..=end.year() {
@@ -204,7 +208,9 @@ fn business_day_count_weekdays(d1: NaiveDate, d2: NaiveDate) -> i64 {
       Weekday::Sat | Weekday::Sun => {}
       _ => count += 1,
     }
-    day = day.succ_opt().expect("date overflow in business_day_count_weekdays");
+    day = day
+      .succ_opt()
+      .expect("date overflow in business_day_count_weekdays");
   }
   sign * count
 }

@@ -284,8 +284,7 @@ mod tests {
 
   #[test]
   fn build_curve_matches_direct_bootstrap() {
-    let val_date =
-      NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 is a valid date literal");
+    let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 is a valid date literal");
     let d3m = months_later(val_date, 3);
     let d6m = months_later(val_date, 6);
     let d2y = months_later(val_date, 24);
@@ -320,8 +319,7 @@ mod tests {
 
   #[test]
   fn helper_reflects_updated_quote() {
-    let val_date =
-      NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 is a valid date literal");
+    let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 is a valid date literal");
     let q = Arc::new(SimpleQuote::<f64>::new(0.02));
     let handle: Handle<dyn Quote<f64>> = Handle::new(Arc::clone(&q) as Arc<dyn Quote<f64>>);
     let helper = DepositRateHelper::new(

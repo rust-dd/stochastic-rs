@@ -2834,9 +2834,7 @@ impl PyHscmModel {
       ));
     }
     if rho0.abs() >= 1.0 || rho2.abs() >= 1.0 || mu_r.abs() >= 1.0 {
-      return Err(PyValueError::new_err(
-        "|rho0|, |rho2|, |mu_r| must be < 1",
-      ));
+      return Err(PyValueError::new_err("|rho0|, |rho2|, |mu_r| must be < 1"));
     }
     Ok(Self {
       inner: crate::pricing::heston_stoch_corr::HscmModel {

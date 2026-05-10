@@ -419,8 +419,9 @@ fn invert_matrix<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::array;
+
+  use super::*;
 
   /// Reference values for `expm` of the 2-state generator
   /// Q = [[-0.1, 0.1], [0.05, -0.05]] computed with scipy.linalg.expm

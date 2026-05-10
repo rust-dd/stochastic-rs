@@ -38,7 +38,12 @@ impl std::fmt::Display for ImpliedSurfaceError {
         f,
         "missing forward for tau={tau}; supply (tau, forward) for every distinct quote maturity"
       ),
-      Self::FlatLengthMismatch { got, nt, nk, expected } => write!(
+      Self::FlatLengthMismatch {
+        got,
+        nt,
+        nk,
+        expected,
+      } => write!(
         f,
         "flat_ivs length {got} must equal N_T * N_K = {nt} * {nk} = {expected}"
       ),

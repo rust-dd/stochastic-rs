@@ -150,8 +150,9 @@ pub fn gaussian_var_es<T: FloatExt>(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
+
+  use super::*;
 
   /// RU correction: with n=10 samples and α=0.85 (target tail size 1.5),
   /// the historical ES averages the worst 1.5 samples — i.e. the worst

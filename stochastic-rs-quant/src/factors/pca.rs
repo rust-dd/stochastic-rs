@@ -60,8 +60,12 @@ pub fn try_pca_decompose<T: FloatExt>(
     let col = returns.column(j);
     // FloatExt: Default + ToPrimitive ensures to_f64() always returns Some(...).
     // unwrap_or_default keeps the fall-back explicit and silences clippy.
-    let m =
-      col.iter().fold(T::zero(), |a, &v| a + v).to_f64().unwrap_or_default() / t as f64;
+    let m = col
+      .iter()
+      .fold(T::zero(), |a, &v| a + v)
+      .to_f64()
+      .unwrap_or_default()
+      / t as f64;
     means[j] = m;
     for i in 0..t {
       centred[[i, j]] = returns[[i, j]].to_f64().unwrap_or_default() - m;
