@@ -103,7 +103,10 @@ jobs:
       - name: maturin develop (openblas)
         run: .venv/bin/maturin develop --release --features openblas
       - name: Run python_smoke.py
-        run: .venv/bin/python stochastic-rs-py/python_smoke.py
+        # `-u` flushes prints so the last `[OK]`/`[FAIL]` line before any
+        # crash shows up in the log; `-X faulthandler` prints a C+Python
+        # traceback on SIGSEGV, pinning the crashing native call.
+        run: .venv/bin/python -X faulthandler -u stochastic-rs-py/python_smoke.py
 
   # Full test run with openblas + coverage.
   test_with_coverage:

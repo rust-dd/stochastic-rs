@@ -10,7 +10,9 @@
 #
 # Notes:
 # - `stochastic-rs-py` is intentionally skipped (publish = false in its
-#   Cargo.toml — it is a placeholder cdylib).
+#   Cargo.toml — it is a maturin-built cdylib for PyPI, not a crates.io
+#   crate). 210 PyO3 entries across distributions/stochastic/quant/copulas/
+#   stats; release via `.github/workflows/pypi.yml`.
 # - Crates already published at the current local version are skipped, so the
 #   script is safe to re-run if a publish fails partway through.
 # - Modern cargo (>=1.66) waits for the registry index to sync after each
