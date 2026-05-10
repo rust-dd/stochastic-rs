@@ -304,7 +304,9 @@ fn basin_hopping_opt(
       *x = (*x).clamp(problem.bounds_lo[i], problem.bounds_hi[i]);
     }
 
-    let linesearch = MoreThuenteLineSearch::new().with_c(1e-4, 0.9).unwrap();
+    let linesearch = MoreThuenteLineSearch::new()
+      .with_c(1e-4, 0.9)
+      .expect("Wolfe params (1e-4, 0.9) satisfy 0 < c1 < c2 < 1 by construction");
     let solver = LBFGS::new(linesearch, 10);
 
     let x_init = x_trial.to_vec();

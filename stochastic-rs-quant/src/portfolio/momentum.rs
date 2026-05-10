@@ -456,6 +456,17 @@ pub fn decile_analysis(scores: &[MomentumScore]) -> Vec<DecileBucket> {
   buckets
 }
 
+/// Assign within-leg weights for one momentum leg (long-only or short-only).
+///
+/// **`ScoreWeighted` normalisation:** weights are `|score_i| / sum(|score_j|)`
+/// over the supplied `indices`. The resulting weights are **non-negative and
+/// sum to 1 within the supplied leg**. When called on a short basket, callers
+/// who want the short-side weights to also sum to 1 (so total long+short
+/// gross exposure is 2) get that for free; callers who want a dollar-neutral
+/// long/short with equal long and short notionals (sum to 1 each) should call
+/// `assign_weights` separately for each leg and concatenate. Callers who
+/// want long-side `+w_i` and short-side `−w_i` to sum to 0 (net-zero
+/// exposure) must apply the sign downstream.
 fn assign_weights(
   indices: &[usize],
   scores: &[MomentumScore],

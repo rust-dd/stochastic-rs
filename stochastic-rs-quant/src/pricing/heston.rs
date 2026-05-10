@@ -220,7 +220,7 @@ impl HestonPricer {
     match j {
       1 => 0.5,
       2 => -0.5,
-      _ => panic!("Invalid j"),
+      _ => unreachable!("Heston P_j index must be 1 or 2"),
     }
   }
 
@@ -228,7 +228,7 @@ impl HestonPricer {
     match j {
       1 => self.kappa + self.lambda.unwrap_or(0.0) - self.rho * self.sigma,
       2 => self.kappa + self.lambda.unwrap_or(0.0),
-      _ => panic!("Invalid j"),
+      _ => unreachable!("Heston P_j index must be 1 or 2"),
     }
   }
 

@@ -442,6 +442,9 @@ mod tests {
     let k = 3.8;
     let r = 0.065;
     let q = Some(0.022);
+    // 30 calendar days expressed as ACT/365 year fraction (Hagan 2002 SABR
+    // examples conventionally use ACT/365); we keep the literal here to
+    // match published reference values rather than route through DayCount.
     let tau = 30.0 / 365.0;
     let pr = SabrPricer::new(s, k, r, q, 0.11, 1.0, 0.6, 0.5, Some(tau), None, None);
     let (c, p) = pr.calculate_call_put();

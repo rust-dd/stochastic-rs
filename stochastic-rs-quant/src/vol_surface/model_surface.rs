@@ -61,10 +61,14 @@ pub trait ModelSurface: ModelPricer {
 /// Blanket: every [`ModelPricer`] gets [`ModelSurface`] for free.
 impl<T: ModelPricer + ?Sized> ModelSurface for T {}
 
-/// Generate an implied vol surface using Carr-Madan FFT for faster pricing.
+/// Generate an implied vol surface using Carr-Madan FFT for faster pricing
+/// with the default `(N_pow2 = 12, alpha = 0.75)` damping settings.
 ///
 /// For large grids, FFT is significantly faster than per-strike Gil-Pelaez
 /// quadrature since it prices all log-strikes simultaneously.
+///
+/// To override the FFT grid size or damping factor, use
+/// [`fourier_model_surface_fft_with`] which exposes both as parameters.
 pub fn fourier_model_surface_fft(
   model: &impl FourierModelExt,
   s: f64,
@@ -73,6 +77,30 @@ pub fn fourier_model_surface_fft(
   strikes: &[f64],
   maturities: &[f64],
 ) -> ImpliedVolSurface {
+  fourier_model_surface_fft_with(model, s, r, q, strikes, maturities, 12, 0.75)
+}
+
+/// Generate an implied vol surface using Carr-Madan FFT with caller-supplied
+/// FFT settings.
+///
+/// - `n_pow2`: FFT grid is `2^n_pow2` log-strike points. Higher gives a denser
+///   strike grid and a wider strike range (so deep wings hit-the-grid less
+///   often) at the cost of an O(N log N) FFT. Typical: 12 (4096) or 13 (8192).
+/// - `alpha`: Carr-Madan damping factor. Must be > 0. Lower values reduce
+///   the integrand's contribution near `u=0`; higher values pull the
+///   integration tail in. Typical: 0.75 (the Lord-Kahl 2010 sweet spot for
+///   moderate-vol equity smiles); use 0.25-0.5 for low-vol smiles, 1.0-1.5
+///   for high-skew rough-vol surfaces.
+pub fn fourier_model_surface_fft_with(
+  model: &impl FourierModelExt,
+  s: f64,
+  r: f64,
+  q: f64,
+  strikes: &[f64],
+  maturities: &[f64],
+  n_pow2: usize,
+  alpha: f64,
+) -> ImpliedVolSurface {
   let nt = maturities.len();
   let nk = strikes.len();
   let forwards: Vec<f64> = maturities
@@ -80,7 +108,7 @@ pub fn fourier_model_surface_fft(
     .map(|&t| s * ((r - q) * t).exp())
     .collect();
 
-  let cm = CarrMadanPricer::new(12, 0.75);
+  let cm = CarrMadanPricer::new(n_pow2, alpha);
 
   let mut prices = Array2::<f64>::zeros((nt, nk));
 

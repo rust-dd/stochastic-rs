@@ -240,7 +240,14 @@ impl HullWhiteCost {
         * self.notional;
 
       let p_exp = curve.discount_factor(quote.expiry);
-      let p_end = curve.discount_factor(*coupon_times.last().unwrap());
+      // `coupon_times` is built from `(1..=n_payments)` after `n_payments.max(1)`
+      // above, so it is non-empty by construction. Use `expect` to encode the
+      // invariant rather than blank `unwrap`.
+      let p_end = curve.discount_factor(
+        *coupon_times
+          .last()
+          .expect("coupon_times non-empty by n_payments.max(1) construction"),
+      );
       let fair_rate = (p_exp - p_end) / (annuity / self.notional).max(1e-14);
       let forward_value = black_forward_caplet(fair_rate, fair_rate, quote.expiry, quote.black_vol);
       let market_price = annuity * forward_value;

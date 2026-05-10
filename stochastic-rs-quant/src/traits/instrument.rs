@@ -6,7 +6,9 @@
 //! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
 //! let bs  = AnalyticBSEngine::new(spot, vol, rate, div);
 //! let r   = bs.calculate(&opt);
-//! println!("NPV = {}, Δ = {}", r.npv(), r.greeks().unwrap().delta);
+//! if let Some(g) = r.greeks() {
+//!     println!("NPV = {}, Δ = {}", r.npv(), g.delta);
+//! }
 //!
 //! // Swap engines without touching the instrument:
 //! let heston = AnalyticHestonEngine::new(spot, params, rate, div);

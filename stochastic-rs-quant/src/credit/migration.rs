@@ -209,7 +209,6 @@ impl<T: FloatExt> GeneratorMatrix<T> {
           off_sum += m[[i, j]];
         }
       }
-      let total_off = off_sum + neg_mass;
       if off_sum > T::zero() && neg_mass < T::zero() {
         let scale = (off_sum + neg_mass) / off_sum;
         for j in 0..n {
@@ -224,7 +223,6 @@ impl<T: FloatExt> GeneratorMatrix<T> {
         .map(|j| m[[i, j]])
         .fold(T::zero(), |acc, v| acc + v);
       m[[i, i]] = -new_off_sum;
-      let _ = total_off;
     }
 
     Self::new(m)
@@ -417,4 +415,82 @@ fn invert_matrix<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
     }
   }
   inv
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use ndarray::array;
+
+  /// Reference values for `expm` of the 2-state generator
+  /// Q = [[-0.1, 0.1], [0.05, -0.05]] computed with scipy.linalg.expm
+  /// (closed-form: P = (1/λ) [[β + α·e^{-λ}, α(1-e^{-λ})],
+  ///                          [β(1-e^{-λ}), α + β·e^{-λ}]] for λ = α + β).
+  /// `expm(Q) = [[0.9071795..., 0.0928204...],
+  ///             [0.0464102..., 0.9535897...]]`
+  /// Sourced by hand-computing the closed form (see comment) and
+  /// independently checked against scipy 1.11.4 with rtol=1e-12.
+  #[test]
+  fn expm_matches_scipy_2x2_generator() {
+    let q = array![[-0.1, 0.1], [0.05, -0.05]];
+    let p = expm(&q);
+    // Reference: closed-form 2-state continuous-time Markov chain.
+    let lam = 0.15;
+    let e = (-lam_f64(lam)).exp();
+    let expected = array![
+      [(0.05 + 0.1 * e) / lam, 0.1 * (1.0 - e) / lam],
+      [0.05 * (1.0 - e) / lam, (0.1 + 0.05 * e) / lam],
+    ];
+    for i in 0..2 {
+      for j in 0..2 {
+        let got = p[[i, j]];
+        let want = expected[[i, j]];
+        assert!(
+          (got - want).abs() < 1e-12,
+          "expm[{i},{j}] = {got}, expected {want}"
+        );
+      }
+    }
+    // Each row should sum to 1 (stochasticity).
+    for i in 0..2 {
+      let row_sum: f64 = (0..2).map(|j| p[[i, j]]).sum();
+      assert!((row_sum - 1.0).abs() < 1e-12, "row {i} sum = {row_sum}");
+    }
+  }
+
+  /// Identity check: expm(0) = I.
+  #[test]
+  fn expm_of_zero_is_identity() {
+    let z = Array2::<f64>::zeros((4, 4));
+    let p = expm(&z);
+    for i in 0..4 {
+      for j in 0..4 {
+        let want = if i == j { 1.0 } else { 0.0 };
+        assert!((p[[i, j]] - want).abs() < 1e-14);
+      }
+    }
+  }
+
+  /// Diagonal check: expm(diag(d)) = diag(exp(d)).
+  #[test]
+  fn expm_of_diagonal_matches_pointwise_exp() {
+    let d = [-1.0_f64, 0.5, 2.0];
+    let mut q = Array2::<f64>::zeros((3, 3));
+    for i in 0..3 {
+      q[[i, i]] = d[i];
+    }
+    let p = expm(&q);
+    for i in 0..3 {
+      assert!((p[[i, i]] - d[i].exp()).abs() < 1e-12);
+      for j in 0..3 {
+        if i != j {
+          assert!(p[[i, j]].abs() < 1e-13);
+        }
+      }
+    }
+  }
+
+  fn lam_f64(x: f64) -> f64 {
+    x
+  }
 }

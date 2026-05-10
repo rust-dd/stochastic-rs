@@ -15,6 +15,39 @@ use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
 use ndarray::Array2;
 
+/// Error returned by the falliable [`ImpliedVolSurface`] constructors.
+#[derive(Debug, Clone)]
+pub enum ImpliedSurfaceError {
+  /// A quote's maturity has no matching forward in the supplied
+  /// `forwards` slice. Add a `(tau, forward)` entry to `forwards` for
+  /// every distinct quote maturity.
+  MissingForward { tau: f64 },
+  /// `flat_ivs.len()` did not equal `N_T * N_K`.
+  FlatLengthMismatch {
+    got: usize,
+    nt: usize,
+    nk: usize,
+    expected: usize,
+  },
+}
+
+impl std::fmt::Display for ImpliedSurfaceError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::MissingForward { tau } => write!(
+        f,
+        "missing forward for tau={tau}; supply (tau, forward) for every distinct quote maturity"
+      ),
+      Self::FlatLengthMismatch { got, nt, nk, expected } => write!(
+        f,
+        "flat_ivs length {got} must equal N_T * N_K = {nt} * {nk} = {expected}"
+      ),
+    }
+  }
+}
+
+impl std::error::Error for ImpliedSurfaceError {}
+
 /// Market data for a single option quote.
 #[derive(Clone, Debug)]
 pub struct OptionQuote {
@@ -202,8 +235,22 @@ impl ImpliedVolSurface {
   ///
   /// Quotes are sorted and grouped by maturity, then by strike.
   /// Forward prices are required for each unique maturity.
+  ///
+  /// Panics on missing forwards. Use [`Self::try_from_quotes`] for a
+  /// falliable variant returning [`ImpliedSurfaceError`].
   #[must_use]
   pub fn from_quotes(quotes: &[OptionQuote], forwards: &[(f64, f64)]) -> Self {
+    Self::try_from_quotes(quotes, forwards)
+      .expect("from_quotes: forwards missing — use try_from_quotes for the Result variant")
+  }
+
+  /// Falliable variant of [`Self::from_quotes`] returning
+  /// [`ImpliedSurfaceError::MissingForward`] when a quote's maturity
+  /// has no matching forward in `forwards`.
+  pub fn try_from_quotes(
+    quotes: &[OptionQuote],
+    forwards: &[(f64, f64)],
+  ) -> Result<Self, ImpliedSurfaceError> {
     let mut tau_set: Vec<f64> = quotes.iter().map(|q| q.tau).collect();
     tau_set.sort_by(|a, b| a.partial_cmp(b).unwrap());
     tau_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
@@ -222,11 +269,12 @@ impl ImpliedVolSurface {
     let fwd_vec: Vec<f64> = tau_set
       .iter()
       .map(|t| {
-        *fwd_map
+        fwd_map
           .get(&t.to_bits())
-          .unwrap_or_else(|| panic!("missing forward for tau={t}"))
+          .copied()
+          .ok_or(ImpliedSurfaceError::MissingForward { tau: *t })
       })
-      .collect();
+      .collect::<Result<_, _>>()?;
 
     for q in quotes {
       let j = tau_set
@@ -273,14 +321,14 @@ impl ImpliedVolSurface {
       }
     }
 
-    Self {
+    Ok(Self {
       strikes: strike_set,
       maturities: tau_set,
       forwards: fwd_vec,
       ivs,
       total_variance,
       log_moneyness,
-    }
+    })
   }
 
   /// Extract a single smile slice (implied vols for one maturity).

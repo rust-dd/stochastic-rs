@@ -581,7 +581,11 @@ fn build_one_factor_trinomial_tree<T: FloatExt, M: OneFactorShortRateModel<T>>(
           let variance = model.diffusion(time, state).powi(2) * dt;
 
           if variance <= T::min_positive_val() {
-            let j = (((mean - x0) / dx).round().to_f64().unwrap()) as isize;
+            // mean/x0/dx are all derived from finite model coefficients here,
+            // but defensively fall back to the centre node (j=0) if any
+            // intermediate produces NaN (e.g. zero-diffusion *and* zero-drift
+            // pathological inputs that bypass earlier validation).
+            let j = (((mean - x0) / dx).round().to_f64().unwrap_or(0.0)) as isize;
             let j = j.clamp(-next_center + 1, next_center - 1);
             return TrinomialBranch {
               center_index: (j + next_center) as usize,
@@ -591,7 +595,7 @@ fn build_one_factor_trinomial_tree<T: FloatExt, M: OneFactorShortRateModel<T>>(
             };
           }
 
-          let j = (((mean - x0) / dx).round().to_f64().unwrap()) as isize;
+          let j = (((mean - x0) / dx).round().to_f64().unwrap_or(0.0)) as isize;
           let j = j.clamp(-next_center + 1, next_center - 1);
           let target = x0 + T::from_f64_fast(j as f64) * dx;
           let eta = mean - target;

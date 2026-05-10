@@ -74,6 +74,15 @@ impl std::fmt::Display for CurrencyPair {
 /// Both input pairs must share exactly one currency.
 ///
 /// Example: EUR/USD = 1.10, USD/JPY = 150.0 → EUR/JPY = 165.0
+///
+/// **Caveat — base/quote ordering:** the constructed pair's `(base, quote)`
+/// is determined by which legs share a currency, **not** by FX market
+/// priority order (EUR > GBP > AUD > NZD > USD > CAD > CHF > JPY).
+/// Calling `cross_rate(usdjpy, ..., eurusd, ...)` with USD as the shared
+/// leg returns a `(JPY, EUR)` pair (JPY-base) rather than the
+/// market-conventional EUR-base. Callers who need market-priority
+/// normalization should post-process the result by checking
+/// `quote_priority` and inverting the pair + rate when required.
 pub fn cross_rate<T: FloatExt>(
   pair1: CurrencyPair,
   rate1: T,

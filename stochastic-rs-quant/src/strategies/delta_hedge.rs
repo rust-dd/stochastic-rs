@@ -87,6 +87,24 @@ impl DeltaHedge {
     self.c_delta * self.contract_size
   }
 
+  /// Classify the option as DOTM / OTM / ATM / ITM / DITM using
+  /// asymmetric thresholds.
+  ///
+  /// **Threshold semantics:** `moneyness_ratio = S/K` for a call,
+  /// `K/S` for a put — so the side that "goes ITM" always sees a ratio
+  /// above 1.
+  /// - `ditm_threshold` is a one-sided **upper** cut: `ratio >
+  ///   ditm_threshold` ⇒ Deep-ITM. Typical: 1.10 (10% past strike).
+  /// - `dotm_threshold` is a one-sided **lower** cut: `ratio <
+  ///   dotm_threshold` ⇒ Deep-OTM. Typical: 0.90.
+  /// - `atm_threshold` and `itm_threshold` together form a symmetric
+  ///   ATM band around 1.0 (`atm_threshold` close to 1, e.g. 0.99,
+  ///   makes the ATM band wide).
+  ///
+  /// These thresholds are **deliberately one-sided**: a 1.05 ratio is
+  /// "in the money" for a call but the implementation does not test
+  /// `1.0 - x` symmetrically below 1, since the OTM bucket already
+  /// covers that side.
   pub fn moneyness(&self) -> Moneyness {
     let moneyness_ratio = match self.option_type {
       OptionType::Call => self.s / self.k,

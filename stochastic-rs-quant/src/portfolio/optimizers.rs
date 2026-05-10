@@ -879,65 +879,33 @@ fn hrp_cluster_var(indices: &[usize], cov: &[Vec<f64>]) -> f64 {
   var
 }
 
-#[allow(clippy::needless_range_loop)]
+/// Matrix inversion via nalgebra's LU with partial pivoting. Faster and
+/// more numerically stable than the previous hand-rolled Gauss-Jordan
+/// path on the typical 50-100×100 covariance matrices that
+/// Black-Litterman / mean-variance encounter. Returns `None` for
+/// singular / near-singular inputs (matches the previous semantics).
 fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
   let n = mat.len();
   if n == 0 {
     return Some(Vec::new());
   }
-
-  let mut aug = vec![vec![0.0; 2 * n]; n];
+  let m = nalgebra::DMatrix::from_fn(n, n, |i, j| {
+    mat.get(i).and_then(|row| row.get(j)).copied().unwrap_or(0.0)
+  });
+  let inv = m.try_inverse()?;
+  // try_inverse internally checks for near-singularity; reject if the
+  // result has any non-finite entries (defence-in-depth against
+  // pathological inputs that LU partial pivoting accepts).
+  if inv.iter().any(|x| !x.is_finite()) {
+    return None;
+  }
+  let mut out = vec![vec![0.0; n]; n];
   for i in 0..n {
     for j in 0..n {
-      aug[i][j] = mat
-        .get(i)
-        .and_then(|row| row.get(j))
-        .copied()
-        .unwrap_or(0.0);
-    }
-    aug[i][n + i] = 1.0;
-  }
-
-  for col in 0..n {
-    let mut max_row = col;
-    let mut max_val = aug[col][col].abs();
-    for row in (col + 1)..n {
-      if aug[row][col].abs() > max_val {
-        max_val = aug[row][col].abs();
-        max_row = row;
-      }
-    }
-
-    if max_val < 1e-15 {
-      return None;
-    }
-
-    aug.swap(col, max_row);
-
-    let pivot = aug[col][col];
-    for j in 0..(2 * n) {
-      aug[col][j] /= pivot;
-    }
-
-    for row in 0..n {
-      if row == col {
-        continue;
-      }
-      let factor = aug[row][col];
-      for j in 0..(2 * n) {
-        aug[row][j] -= factor * aug[col][j];
-      }
+      out[i][j] = inv[(i, j)];
     }
   }
-
-  let mut inv = vec![vec![0.0; n]; n];
-  for i in 0..n {
-    for j in 0..n {
-      inv[i][j] = aug[i][n + j];
-    }
-  }
-
-  Some(inv)
+  Some(out)
 }
 
 /// Black-Litterman optimizer with identity views and Markowitz post-solve.

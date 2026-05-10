@@ -58,10 +58,13 @@ pub fn try_pca_decompose<T: FloatExt>(
   let mut centred = Array2::<f64>::zeros((t, p));
   for j in 0..p {
     let col = returns.column(j);
-    let m = col.iter().fold(T::zero(), |a, &v| a + v).to_f64().unwrap() / t as f64;
+    // FloatExt: Default + ToPrimitive ensures to_f64() always returns Some(...).
+    // unwrap_or_default keeps the fall-back explicit and silences clippy.
+    let m =
+      col.iter().fold(T::zero(), |a, &v| a + v).to_f64().unwrap_or_default() / t as f64;
     means[j] = m;
     for i in 0..t {
-      centred[[i, j]] = returns[[i, j]].to_f64().unwrap() - m;
+      centred[[i, j]] = returns[[i, j]].to_f64().unwrap_or_default() - m;
     }
   }
   let (u_opt, sigma, vt_opt) = centred

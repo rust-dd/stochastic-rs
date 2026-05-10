@@ -27,62 +27,15 @@ use num_complex::Complex64;
 use super::fourier::Cumulants;
 use super::fourier::FourierModelExt;
 
-fn mat_mul_complex(a: &Array2<Complex64>, b: &Array2<Complex64>) -> Array2<Complex64> {
-  let n = a.nrows();
-  let mut c = Array2::<Complex64>::zeros((n, n));
-  for i in 0..n {
-    for j in 0..n {
-      let mut s = Complex64::new(0.0, 0.0);
-      for k in 0..n {
-        s += a[[i, k]] * b[[k, j]];
-      }
-      c[[i, j]] = s;
-    }
-  }
-  c
-}
-
-fn mat_add_complex(a: &Array2<Complex64>, b: &Array2<Complex64>) -> Array2<Complex64> {
-  let n = a.nrows();
-  let mut c = Array2::<Complex64>::zeros((n, n));
-  for i in 0..n {
-    for j in 0..n {
-      c[[i, j]] = a[[i, j]] + b[[i, j]];
-    }
-  }
-  c
-}
-
-fn mat_identity_complex(n: usize) -> Array2<Complex64> {
-  let mut m = Array2::<Complex64>::zeros((n, n));
-  for i in 0..n {
-    m[[i, i]] = Complex64::new(1.0, 0.0);
-  }
-  m
-}
-
-fn mat_scale_complex(a: &Array2<Complex64>, s: Complex64) -> Array2<Complex64> {
-  let n = a.nrows();
-  let mut c = Array2::<Complex64>::zeros((n, n));
-  for i in 0..n {
-    for j in 0..n {
-      c[[i, j]] = a[[i, j]] * s;
-    }
-  }
-  c
-}
-
 fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
-  let mut norm = 0.0_f64;
-  let n = a.nrows();
-  for i in 0..n {
-    let mut row_sum = 0.0;
-    for j in 0..n {
-      row_sum += a[[i, j]].norm();
-    }
-    norm = norm.max(row_sum);
-  }
-  norm
+  // ndarray's `mapv(Complex64::norm)` + per-row sum + max gives us the
+  // infinity norm in three lines without a hand-written triple loop.
+  let abs = a.mapv(|z| z.norm());
+  abs
+    .rows()
+    .into_iter()
+    .map(|row| row.sum())
+    .fold(0.0_f64, f64::max)
 }
 
 fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
@@ -97,21 +50,22 @@ fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
     0
   };
 
-  let scale = Complex64::new((2.0_f64).powi(s as i32), 0.0);
-  let scaled = mat_scale_complex(a, Complex64::new(1.0, 0.0) / scale);
+  let scale_factor = Complex64::new(1.0, 0.0) / Complex64::new((2.0_f64).powi(s as i32), 0.0);
+  let scaled = a.mapv(|z| z * scale_factor);
 
-  let mut result = mat_identity_complex(n);
-  let mut term = mat_identity_complex(n);
+  let identity: Array2<Complex64> = Array2::eye(n);
+  let mut result = identity.clone();
+  let mut term = identity;
 
   for k in 1..=20 {
-    term = mat_mul_complex(&term, &scaled);
+    term = term.dot(&scaled);
     let factor = Complex64::new(1.0 / k as f64, 0.0);
-    term = mat_scale_complex(&term, factor);
-    result = mat_add_complex(&result, &term);
+    term.mapv_inplace(|z| z * factor);
+    result += &term;
   }
 
   for _ in 0..s {
-    result = mat_mul_complex(&result, &result);
+    result = result.dot(&result);
   }
 
   result

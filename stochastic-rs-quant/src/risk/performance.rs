@@ -55,6 +55,14 @@ pub fn sharpe_ratio<T: FloatExt>(
 ///
 /// $$\mathrm{Sortino}=\frac{\bar r-\mathrm{MAR}}{\sigma_{\text{down}}}\sqrt{k},$$
 /// where the downside deviation uses only returns below MAR.
+///
+/// **Convention (Bawa-Lindenberg):** the downside deviation divisor is `n`
+/// (the full sample size), **not** the count of below-MAR observations.
+/// This matches the original Bawa & Lindenberg (1977) lower partial moment
+/// formulation and the implementation in `pyfolio` / `quantstats`. Sortino
+/// & Price (1994) and Sortino & Forsey (1996) use `n_downside` instead, so
+/// figures from those texts will differ by a factor of `sqrt(n /
+/// n_downside)`.
 pub fn sortino_ratio<T: FloatExt>(
   returns: ArrayView1<T>,
   mar_per_period: T,

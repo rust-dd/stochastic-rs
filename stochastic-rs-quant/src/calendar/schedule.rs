@@ -96,6 +96,23 @@ impl Schedule {
   }
 }
 
+/// Stub period convention for schedules whose total length is not an
+/// integer multiple of the payment period. Per ISDA 2006 §4.15.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StubConvention {
+  /// Short stub at the start of the schedule (the first period is shorter
+  /// than the regular period). Default for [`DateGenerationRule::Backward`].
+  ShortFirst,
+  /// Long stub at the start of the schedule (the first period absorbs both
+  /// the irregular remainder and one regular period).
+  LongFirst,
+  /// Short stub at the end of the schedule. Default for
+  /// [`DateGenerationRule::Forward`].
+  ShortLast,
+  /// Long stub at the end of the schedule.
+  LongLast,
+}
+
 /// Fluent builder for [`Schedule`].
 #[derive(Debug, Clone)]
 pub struct ScheduleBuilder {
@@ -106,6 +123,10 @@ pub struct ScheduleBuilder {
   convention: BusinessDayConvention,
   rule: DateGenerationRule,
   end_of_month: bool,
+  /// Explicit stub convention. When `None`, defaults to `ShortFirst` for
+  /// backward generation and `ShortLast` for forward generation (the
+  /// implicit pre-rc.2 behaviour).
+  stub: Option<StubConvention>,
 }
 
 impl ScheduleBuilder {
@@ -118,7 +139,17 @@ impl ScheduleBuilder {
       convention: BusinessDayConvention::ModifiedFollowing,
       rule: DateGenerationRule::Backward,
       end_of_month: false,
+      stub: None,
     }
+  }
+
+  /// Set the stub convention. By default (no call), the builder picks
+  /// `ShortFirst` for backward generation and `ShortLast` for forward
+  /// generation; pass `LongFirst` / `LongLast` to merge the irregular
+  /// stub with the next regular period instead.
+  pub fn stub(mut self, stub: StubConvention) -> Self {
+    self.stub = Some(stub);
+    self
   }
 
   pub fn frequency(mut self, frequency: Frequency) -> Self {
@@ -166,6 +197,35 @@ impl ScheduleBuilder {
     raw_dates.sort();
     raw_dates.dedup();
 
+    // Apply long-stub merging when the user has explicitly requested it.
+    // Short-stub conventions (`ShortFirst` / `ShortLast`) match the default
+    // `generate_*` output, so no extra work is needed in those cases.
+    let stub = self.stub.unwrap_or(match self.rule {
+      DateGenerationRule::Backward => StubConvention::ShortFirst,
+      DateGenerationRule::Forward => StubConvention::ShortLast,
+    });
+    if raw_dates.len() >= 3 {
+      match stub {
+        StubConvention::LongFirst => {
+          // Merge first stub with the next regular period: drop dates[1].
+          // Only applies when there *is* a stub (start ≠ first regular date).
+          let stub_period_months = months_between(raw_dates[0], raw_dates[1]);
+          if stub_period_months != period {
+            raw_dates.remove(1);
+          }
+        }
+        StubConvention::LongLast => {
+          // Merge last stub with the previous regular period: drop dates[n-2].
+          let n = raw_dates.len();
+          let stub_period_months = months_between(raw_dates[n - 2], raw_dates[n - 1]);
+          if stub_period_months != period {
+            raw_dates.remove(n - 2);
+          }
+        }
+        StubConvention::ShortFirst | StubConvention::ShortLast => {}
+      }
+    }
+
     let adjusted = match &self.calendar {
       Some(cal) => raw_dates
         .iter()
@@ -179,6 +239,15 @@ impl ScheduleBuilder {
       adjusted_dates: adjusted,
     }
   }
+}
+
+/// Approximate calendar months between two dates (sign-preserving). Used
+/// only to detect "is this a stub period?" — exact day-count is irrelevant.
+fn months_between(a: NaiveDate, b: NaiveDate) -> i32 {
+  use chrono::Datelike;
+  let years = b.year() - a.year();
+  let months = b.month() as i32 - a.month() as i32;
+  years * 12 + months
 }
 
 fn generate_backward(

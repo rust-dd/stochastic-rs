@@ -64,6 +64,11 @@ impl VarianceSwapPricer {
   /// $K \geq K_0$ — with $K_0$ identified as the strike closest to the
   /// forward. Strikes must be sorted ascending. Trapezoidal weights are
   /// used for the $\int P(K)/K^2 dK + \int C(K)/K^2 dK$ contribution.
+  ///
+  /// **Preconditions:** `strikes` must contain only finite (non-NaN) values.
+  /// NaN strikes will cause the closest-to-forward selection to panic via
+  /// `partial_cmp().unwrap()` since NaN is unordered. Filter NaN at the
+  /// caller side (real exchange data should never carry NaN strikes).
   pub fn fair_strike_replication(&self, strikes: &[f64], otm_prices: &[f64]) -> f64 {
     assert_eq!(
       strikes.len(),
@@ -78,6 +83,10 @@ impl VarianceSwapPricer {
       strikes.windows(2).all(|w| w[0] <= w[1]),
       "strikes must be sorted ascending"
     );
+    debug_assert!(
+      strikes.iter().all(|k| k.is_finite()),
+      "strikes must be finite (no NaN)"
+    );
 
     let fwd = self.forward();
     let disc = (self.r * self.t).exp();
@@ -85,7 +94,12 @@ impl VarianceSwapPricer {
     let k0_idx = strikes
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| (*a - fwd).abs().partial_cmp(&(*b - fwd).abs()).unwrap())
+      .min_by(|(_, a), (_, b)| {
+        (*a - fwd)
+          .abs()
+          .partial_cmp(&(*b - fwd).abs())
+          .unwrap_or(std::cmp::Ordering::Equal)
+      })
       .map(|(i, _)| i)
       .unwrap_or(0);
     let k0 = strikes[k0_idx];

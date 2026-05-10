@@ -14,14 +14,26 @@
 //!
 //! ## Pricing methods
 //!
-//! - **Carr-Madan** dampened Fourier transform (robust)
+//! - **Dampened Fourier inversion** via double-exponential quadrature on
+//!   the Carr-Madan-style modified call transform. The transform itself
+//!   is the Carr-Madan (1999) construction (damping factor α on the call
+//!   payoff to make the integrand integrable along the real axis); the
+//!   inversion is computed by Takahasi-Mori (1974) double-exponential
+//!   quadrature rather than the FFT, since the chf is computed from a
+//!   numerical Riccati ODE per evaluation point and an FFT grid would
+//!   amortise to a single-point cost only at very high strike counts.
 //!
 //! ## References
 //!
 //! - Teng, Ehrhardt & Günther (2016), *On the Heston model with stochastic
 //!   correlation*, Int. J. Theor. Appl. Finance 19(6).
-//! - Carr & Madan (1999), *Option valuation using the FFT*.
-//! - Tanaś, R. — <https://github.com/tanasr/HestonStochCorr>
+//! - Carr & Madan (1999), *Option valuation using the FFT* — the dampened
+//!   transform; here applied without the FFT step.
+//! - Takahasi & Mori (1974), *Double exponential formulas for numerical
+//!   integration*, Publ. Res. Inst. Math. Sci. 9(3) — the inversion
+//!   quadrature scheme actually used.
+//! - Tanas, R. — <https://github.com/tanasr/HestonStochCorr> (reference
+//!   Python implementation).
 
 use std::f64::consts::FRAC_1_PI;
 

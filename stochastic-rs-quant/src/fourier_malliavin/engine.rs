@@ -151,10 +151,21 @@ impl<T: FloatExt> FMVol<T> {
     self.max_freq
   }
 
+  /// Default smoothing window for spot-volatility / spot-leverage / spot-quarticity:
+  /// `m ≈ √N`. This is the canonical Malliavin-Mancino choice (Malliavin & Mancino
+  /// 2009, eq. 4.5 / Mancino-Recchioni 2015 §3): the bias from a finite Cesàro
+  /// window scales like `1/m` while the variance of the Fourier-coefficient
+  /// estimator scales like `m/N`, so balancing the two gives the `m ≈ N^{1/2}`
+  /// optimum. The cast truncates the square root toward zero, which is
+  /// intentional — we want `m ≤ √N` rather than rounding up across the
+  /// bias/variance crossover.
   fn resolve_m(&self, m: Option<usize>) -> usize {
     m.unwrap_or((self.n_freq as f64).sqrt() as usize)
   }
 
+  /// Default smoothing window for the volvol / leverage estimators: `m ≈ N^{0.4}`.
+  /// Slower-than-square-root window to keep the estimator's variance bounded
+  /// for the cube/quartic cumulants, per Mancino-Recchioni (2015) §4.
   fn resolve_m_volvol(&self, m: Option<usize>) -> usize {
     m.unwrap_or((self.n_freq as f64).powf(0.4) as usize)
   }

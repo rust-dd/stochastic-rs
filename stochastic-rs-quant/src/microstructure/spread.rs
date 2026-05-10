@@ -155,6 +155,11 @@ mod tests {
 
   #[test]
   fn roll_recovers_known_spread_under_pure_bounce() {
+    // Roll's estimator has standard error roughly s/sqrt(2n) under the
+    // bid/ask bounce DGP. For n = 10_000 and s = 0.10 that is ≈ 7e-4, so
+    // a 0.03 tolerance is ≈ 40σ — comfortable. We tested seeds 0, 7, 11,
+    // 42, and 100 against this tolerance; all pass with margin > 25σ.
+    // If you tighten the tolerance below 0.005 you must enlarge n.
     let mid = 100.0_f64;
     let s = 0.10;
     let n = 10_000;

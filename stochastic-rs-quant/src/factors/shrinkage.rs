@@ -15,7 +15,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
-use ndarray::Axis;
 
 use crate::traits::FloatExt;
 
@@ -143,7 +142,6 @@ pub fn ledoit_wolf_shrinkage<T: FloatExt>(returns: ArrayView2<T>) -> LedoitWolfR
       cov[[i, j]] = alpha * target + one_minus * s[[i, j]];
     }
   }
-  let _ = Axis(1);
   LedoitWolfResult {
     covariance: cov,
     sample: s,

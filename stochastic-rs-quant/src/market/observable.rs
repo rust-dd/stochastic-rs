@@ -61,8 +61,23 @@ impl ObservableBase {
   }
 
   /// Number of registered observers still alive.
+  ///
+  /// **Poisoning policy:** if a previous observer panicked while holding
+  /// the registry lock, recover by reading the inner state (eprintln for
+  /// observability) rather than crashing the process. The cleared set
+  /// of registrations may be slightly lossy in that scenario, which is
+  /// the better outcome than a process-wide crash for a long-running
+  /// market-data feed.
   pub fn observer_count(&self) -> usize {
-    let mut obs = self.observers.lock().expect("observable poisoned");
+    let mut obs = match self.observers.lock() {
+      Ok(g) => g,
+      Err(p) => {
+        eprintln!(
+          "warning: observable mutex poisoned (observer panicked); recovering and retaining live weaks"
+        );
+        p.into_inner()
+      }
+    };
     obs.retain(|w| w.strong_count() > 0);
     obs.len()
   }
@@ -70,7 +85,13 @@ impl ObservableBase {
 
 impl Observable for ObservableBase {
   fn register_observer(&self, observer: Weak<dyn Observer + Send + Sync>) {
-    let mut obs = self.observers.lock().expect("observable poisoned");
+    let mut obs = match self.observers.lock() {
+      Ok(g) => g,
+      Err(p) => {
+        eprintln!("warning: observable mutex poisoned during register; recovering");
+        p.into_inner()
+      }
+    };
     obs.retain(|w| w.strong_count() > 0);
     obs.push(observer);
   }
@@ -78,7 +99,13 @@ impl Observable for ObservableBase {
   fn notify_observers(&self) {
     let mut alive: Vec<Arc<dyn Observer + Send + Sync>> = Vec::new();
     {
-      let mut obs = self.observers.lock().expect("observable poisoned");
+      let mut obs = match self.observers.lock() {
+        Ok(g) => g,
+        Err(p) => {
+          eprintln!("warning: observable mutex poisoned during notify; recovering");
+          p.into_inner()
+        }
+      };
       obs.retain(|w| {
         if let Some(strong) = w.upgrade() {
           alive.push(strong);

@@ -212,7 +212,10 @@ impl SnellEnvelopePricer {
       }
     }
 
-    exercise_boundary.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    // boundary times come from `(i as f64) * dt` with `i, dt` finite, so NaN
+    // is unreachable here; fall back to Equal in case future refactors plumb
+    // user data through this path.
+    exercise_boundary.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
     SnellEnvelopeResult {
       price: am_values[0],

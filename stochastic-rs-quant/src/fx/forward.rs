@@ -35,8 +35,8 @@ impl<T: FloatExt> std::fmt::Display for FxForward<T> {
       f,
       "FxForward({}, spot={:.6}, T={:.4})",
       self.pair,
-      self.spot.to_f64().unwrap(),
-      self.maturity.to_f64().unwrap()
+      self.spot.to_f64().unwrap_or(f64::NAN),
+      self.maturity.to_f64().unwrap_or(f64::NAN)
     )
   }
 }

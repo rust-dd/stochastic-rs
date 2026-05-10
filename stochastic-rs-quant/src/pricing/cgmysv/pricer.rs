@@ -344,6 +344,11 @@ mod tests {
   }
 
   /// Table 4 reference: Lewis call ≈ 19.66 (paper FFT = 19.659).
+  /// Maturity literals (`28.0 / 365.0`, `25.0 / 365.0`) below are the
+  /// published S&P 500 option maturities from Carr-Geman-Madan-Yor &
+  /// Schoutens (CGMYSV) Tables 4-6 reproduced verbatim — keeping them as
+  /// inline literals avoids hiding the paper's calibration days behind a
+  /// helper.
   #[test]
   fn table4_lewis_call() {
     let model = CgmysvModel {

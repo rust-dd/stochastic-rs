@@ -523,6 +523,12 @@ impl PyVasicekBond {
   }
 }
 
+/// CIR zero-coupon bond pricer. **Field naming convention** (matches the
+/// workspace SDE `dR = theta·(mu - R)·dt + sigma·sqrt(R)·dW`):
+/// - `theta`: mean-reversion **speed** (κ in Brigo §3.2.3).
+/// - `mu`: **long-run mean** of the short rate (θ in Brigo).
+/// Calibrators that follow Brigo's symbols (e.g. `kappa`, `theta`) need to
+/// rename `kappa` → `theta` and `theta` → `mu` when constructing a `CIRBond`.
 #[pyclass(name = "CIRBond", unsendable)]
 pub struct PyCIRBond {
   inner: crate::bonds::cir::Cir,
@@ -530,6 +536,8 @@ pub struct PyCIRBond {
 
 #[pymethods]
 impl PyCIRBond {
+  /// Construct CIR ZCB pricer. `theta` is the mean-reversion speed; `mu`
+  /// is the long-run mean. See struct doc for the naming convention.
   #[new]
   fn new(r_t: f64, theta: f64, mu: f64, sigma: f64, tau: f64) -> Self {
     Self {

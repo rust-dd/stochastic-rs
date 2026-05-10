@@ -17,9 +17,16 @@ use ndarray::ArrayView1;
 use crate::traits::FloatExt;
 
 /// Running drawdown series.  Entry $i$ is $V_i/\max_{s\le i}V_s - 1$.
+///
+/// `peak` is initialised to `T::neg_infinity()` so the first observation
+/// always becomes the running peak — even for series that start with a
+/// negative value or below `T::min_positive_val()`. The drawdown formula
+/// itself only makes sense on strictly-positive equity series; values
+/// outside that domain pin `out[i] = 0` since the ratio `v / peak - 1`
+/// has no economic meaning for non-positive peaks.
 pub fn running_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> Array1<T> {
   let mut out = Array1::zeros(equity.len());
-  let mut peak = T::min_positive_val();
+  let mut peak = T::neg_infinity();
   for (i, &v) in equity.iter().enumerate() {
     if v > peak {
       peak = v;
@@ -42,8 +49,14 @@ pub fn max_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> T {
 }
 
 /// Length of the longest drawdown period (in observations).
+///
+/// Counts the longest run of *consecutive* observations strictly below the
+/// most-recent running peak (excludes the peak observation itself). For an
+/// alternative definition that measures the longest peak-to-recovery
+/// distance — including the unrecovered tail when the series never
+/// returns to its previous peak — see [`max_peak_to_recovery_duration`].
 pub fn max_drawdown_duration<T: FloatExt>(equity: ArrayView1<T>) -> usize {
-  let mut peak = T::min_positive_val();
+  let mut peak = T::neg_infinity();
   let mut current = 0usize;
   let mut longest = 0usize;
   for &v in equity.iter() {
@@ -55,6 +68,51 @@ pub fn max_drawdown_duration<T: FloatExt>(equity: ArrayView1<T>) -> usize {
       if current > longest {
         longest = current;
       }
+    }
+  }
+  longest
+}
+
+/// Longest peak-to-recovery distance (in observations).
+///
+/// For each peak that is followed by at least one strictly-below-peak
+/// observation, counts the number of bars from the peak until the
+/// equity series next reaches that peak (or higher). Returns the
+/// maximum such distance. Unrecovered tail-drawdowns at the end of the
+/// series count as `equity.len() - 1 - peak_index`, since the recovery
+/// never happens — this matches the "time-under-water" convention used
+/// by Magdon-Ismail & Atiya (2004) and the `MaxDD Duration` metric on
+/// Bloomberg / Refinitiv.
+///
+/// Monotonically-increasing series report `0` (no underwater episodes).
+pub fn max_peak_to_recovery_duration<T: FloatExt>(equity: ArrayView1<T>) -> usize {
+  let n = equity.len();
+  if n == 0 {
+    return 0;
+  }
+  let mut peak = T::neg_infinity();
+  let mut peak_idx: usize = 0;
+  let mut been_below = false;
+  let mut longest = 0usize;
+  for (i, &v) in equity.iter().enumerate() {
+    if v >= peak {
+      if been_below {
+        let dist = i - peak_idx;
+        if dist > longest {
+          longest = dist;
+        }
+      }
+      peak = v;
+      peak_idx = i;
+      been_below = false;
+    } else {
+      been_below = true;
+    }
+  }
+  if been_below {
+    let dist = n - 1 - peak_idx;
+    if dist > longest {
+      longest = dist;
     }
   }
   longest

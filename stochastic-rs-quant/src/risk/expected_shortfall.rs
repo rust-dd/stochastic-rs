@@ -70,7 +70,25 @@ pub fn gaussian_es<T: FloatExt>(
   mean + sigma * factor
 }
 
-/// Historical ES — average of losses in the upper $(1-\alpha)$ tail.
+/// Historical ES — Rockafellar-Uryasev (2002) coherent estimator.
+///
+/// $$
+/// \mathrm{ES}_\alpha = \frac{1}{n(1-\alpha)}
+///   \Big[\sum_{i: L_i > \mathrm{VaR}_\alpha} L_i
+///        + (n(1-\alpha) - \#\{i: L_i > \mathrm{VaR}_\alpha\})\,\mathrm{VaR}_\alpha\Big].
+/// $$
+///
+/// The term `(n(1-α) - #{strict tail})` is the **finite-sample
+/// tail-share correction** introduced by Rockafellar-Uryasev: when the
+/// (1-α) quantile lands inside a tied cluster of samples, this fractional
+/// weight on `VaR` accounts for the partial slice of the cluster that
+/// belongs to the tail. Without the correction (the previous "average of
+/// losses ≥ VaR" formula), ties bias the estimator and the result is no
+/// longer coherent (Artzner et al. 1999).
+///
+/// Reference: Rockafellar, R. T. & Uryasev, S. (2002), "Conditional
+/// Value-at-Risk for General Loss Distributions", *J. Banking & Finance*
+/// 26(7), 1443-1471, eq. (17).
 pub fn historical_es<T: FloatExt>(
   samples: ArrayView1<T>,
   confidence: T,
@@ -81,15 +99,32 @@ pub fn historical_es<T: FloatExt>(
   let n = losses.len();
   assert!(n >= 1, "need at least one observation for historical ES");
   let mut sorted = losses.to_vec();
-  sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+  sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
   let var = sample_quantile(&sorted, confidence);
 
-  let tail: Vec<T> = sorted.iter().copied().filter(|&v| v >= var).collect();
-  if tail.is_empty() {
+  // Rockafellar-Uryasev finite-sample formula:
+  //   strict_tail = {L_i > VaR}    (strictly above)
+  //   strict_sum  = Σ L_i  over strict_tail
+  //   target      = n * (1 - α)    (expected tail size, possibly fractional)
+  //   weight_var  = max(target - |strict_tail|, 0)   (slice of ties on VaR)
+  //   ES          = (strict_sum + weight_var * VaR) / target
+  let confidence_f64 = confidence.to_f64().unwrap_or(0.0);
+  let target = (n as f64) * (1.0 - confidence_f64);
+  if target <= 0.0 {
     return var;
   }
-  tail.iter().fold(T::zero(), |acc, &v| acc + v) / T::from_usize_(tail.len())
+  let mut strict_sum = T::zero();
+  let mut strict_count = 0usize;
+  for &l in sorted.iter() {
+    if l > var {
+      strict_sum += l;
+      strict_count += 1;
+    }
+  }
+  let weight_var = (target - strict_count as f64).max(0.0);
+  let total = strict_sum + var * T::from_f64_fast(weight_var);
+  total / T::from_f64_fast(target)
 }
 
 /// Monte-Carlo ES alias of [`historical_es`], kept separate for intent.
@@ -111,4 +146,43 @@ pub fn gaussian_var_es<T: FloatExt>(
     gaussian_var(samples, confidence, orientation),
     gaussian_es(samples, confidence, orientation),
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use ndarray::Array1;
+
+  /// RU correction: with n=10 samples and α=0.85 (target tail size 1.5),
+  /// the historical ES averages the worst 1.5 samples — i.e. the worst
+  /// observation fully + half of the second-worst. Without the
+  /// correction, the previous code used to return either the single
+  /// worst loss (when VaR strictly < worst) or the simple mean of the
+  /// two worst observations.
+  #[test]
+  fn historical_es_ru_finite_sample_correction() {
+    // Distinct sorted losses; PnlOrLoss::Loss means samples are losses
+    // already (no sign flip).
+    let losses = Array1::from_vec(vec![
+      -3.0_f64, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0,
+    ]);
+    let es = historical_es(losses.view(), 0.85, PnlOrLoss::Loss);
+    // n*(1-α) = 1.5; sample_quantile at 0.85 lands at the 9th
+    // ordered sample (≈ 5.0) by linear interpolation. Strictly above
+    // that quantile is the single observation 10.0; weight_var =
+    // 1.5 − 1 = 0.5; ES = (10.0 + 0.5·5.0) / 1.5 ≈ 8.333...
+    // (Exact value depends on the implementation of sample_quantile;
+    // we assert the ES sits between the worst and second-worst losses,
+    // which is the RU coherence property.)
+    assert!(es > 5.0, "ES = {es} must exceed second-worst loss");
+    assert!(es < 10.0, "ES = {es} must be below worst loss");
+  }
+
+  /// All-equal losses: ES collapses to that constant value.
+  #[test]
+  fn historical_es_constant_losses() {
+    let losses = Array1::from_vec(vec![1.5_f64; 50]);
+    let es = historical_es(losses.view(), 0.95, PnlOrLoss::Loss);
+    assert!((es - 1.5).abs() < 1e-12, "ES = {es}, expected 1.5");
+  }
 }

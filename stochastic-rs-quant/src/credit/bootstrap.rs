@@ -85,7 +85,7 @@ pub fn bootstrap_hazard<T: FloatExt>(
   let mut times: Vec<T> = Vec::with_capacity(sorted.len());
   let mut hazards: Vec<T> = Vec::with_capacity(sorted.len());
 
-  for (k, quote) in sorted.iter().enumerate() {
+  for quote in sorted.iter() {
     let recovery = quote
       .recovery_rate
       .map(T::from_f64_fast)
@@ -147,8 +147,6 @@ pub fn bootstrap_hazard<T: FloatExt>(
 
     times.push(tau_k);
     hazards.push(h_k);
-
-    let _ = k;
   }
 
   SurvivalCurve::from_hazard_rates(

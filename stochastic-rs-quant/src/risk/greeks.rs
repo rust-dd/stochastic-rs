@@ -66,11 +66,15 @@ where
 
 /// Per-pillar DV01 of a valuation closure on a discount curve.
 ///
-/// For each pillar `i`, the i-th zero rate is bumped by `bump_size` and the
-/// closure is re-evaluated.  The result is `(V(bump_up) - V(bump_down)) / 2`
-/// which, when `bump_size = 1 bp`, equals the dollar change per 1 bp move at
-/// that pillar (with natural sign: a long bond position has a negative DV01
-/// because PV drops when rates rise).
+/// For each pillar `i`, the i-th zero rate is bumped up and down by `bump_size`
+/// and the closure is re-evaluated. The returned bucket entry is
+/// `(V(bump_up) - V(bump_down)) / 2`, i.e. the central-difference dollar change
+/// in PV per `bump_size` rate move at that pillar.
+///
+/// **Sign convention:** the returned value is a *signed PV sensitivity*, not
+/// the market-positive DV01. A long bond position has a *negative* bucket
+/// value (PV drops when rates rise). To recover the conventional positive
+/// "DV01 per 1 bp" quote, negate and pass `bump_size = 1 bp`.
 pub fn bucket_dv01<T: FloatExt, F>(
   curve: &DiscountCurve<T>,
   bump_size: T,

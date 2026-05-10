@@ -90,9 +90,12 @@ impl Display for InterpolationMethod {
   }
 }
 
-/// Rate instrument type used in bootstrapping.
+/// Rate instrument type used in bootstrapping. Renamed in rc.2 from
+/// `Instrument` to `BootstrapInstrument` to disambiguate from the
+/// `crate::instruments::*` namespace; the old name is re-exported as a
+/// type alias from `curves::Instrument` for backward compatibility.
 #[derive(Debug, Clone)]
-pub enum Instrument<T: FloatExt> {
+pub enum BootstrapInstrument<T: FloatExt> {
   /// Cash deposit: `(maturity_in_years, rate)`.
   Deposit { maturity: T, rate: T },
   /// Forward Rate Agreement: `(start, end, rate)`.
@@ -114,7 +117,10 @@ pub enum Instrument<T: FloatExt> {
   },
 }
 
-impl<T: FloatExt> Instrument<T> {
+/// Backward-compat alias. Prefer [`BootstrapInstrument`] in new code.
+pub type Instrument<T> = BootstrapInstrument<T>;
+
+impl<T: FloatExt> BootstrapInstrument<T> {
   /// The maturity (or end date) of the instrument.
   pub fn maturity(&self) -> T {
     match self {

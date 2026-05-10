@@ -267,18 +267,25 @@ mod tests {
   use super::*;
   use crate::market::quote::SimpleQuote;
 
+  /// Tests construct dates from literal y/m/d tuples that we know are valid
+  /// at write time, so unwrap → expect with an informative message: it
+  /// flags the failure clearly if a future refactor introduces a bad
+  /// literal, without forcing every test to return `Result`. Prod paths
+  /// keep using `?`-propagation since they receive dates from callers.
   fn months_later(base: NaiveDate, months: i32) -> NaiveDate {
     let total = base.year() * 12 + (base.month0() as i32) + months;
     let year = total.div_euclid(12);
     let month = (total.rem_euclid(12) + 1) as u32;
-    NaiveDate::from_ymd_opt(year, month, 1).unwrap()
+    NaiveDate::from_ymd_opt(year, month, 1)
+      .expect("test-helper: derived (year, month, 1) must be a valid date")
   }
 
   use chrono::Datelike;
 
   #[test]
   fn build_curve_matches_direct_bootstrap() {
-    let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+    let val_date =
+      NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 is a valid date literal");
     let d3m = months_later(val_date, 3);
     let d6m = months_later(val_date, 6);
     let d2y = months_later(val_date, 24);
@@ -313,13 +320,14 @@ mod tests {
 
   #[test]
   fn helper_reflects_updated_quote() {
-    let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+    let val_date =
+      NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 is a valid date literal");
     let q = Arc::new(SimpleQuote::<f64>::new(0.02));
     let handle: Handle<dyn Quote<f64>> = Handle::new(Arc::clone(&q) as Arc<dyn Quote<f64>>);
     let helper = DepositRateHelper::new(
       handle,
       val_date,
-      NaiveDate::from_ymd_opt(2025, 4, 1).unwrap(),
+      NaiveDate::from_ymd_opt(2025, 4, 1).expect("2025-04-01 is a valid date literal"),
       DayCountConvention::Actual360,
     );
     match helper.to_instrument(val_date).unwrap() {

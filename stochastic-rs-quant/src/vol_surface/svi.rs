@@ -104,7 +104,11 @@ impl<T: FloatExt> SviRawParams<T> {
     self.b >= zero && self.rho.abs() < one && self.sigma > zero && self.min_variance() >= zero
   }
 
-  /// Project parameters to satisfy admissibility constraints.
+  /// Project parameters to satisfy admissibility constraints (parameter
+  /// bounds + min-variance non-negativity). Does **not** enforce
+  /// butterfly arbitrage-freeness — use [`Self::is_butterfly_arb_free`]
+  /// (or [`Self::project_with_butterfly_check`]) when butterfly
+  /// arbitrage matters for downstream calibration.
   pub fn project(&mut self) {
     let zero = T::zero();
     let bound = T::from_f64_fast(0.9999);
@@ -116,6 +120,72 @@ impl<T: FloatExt> SviRawParams<T> {
     if v_min < zero {
       self.a -= v_min;
     }
+  }
+
+  /// Check butterfly arbitrage-freeness via Durrleman (2009) condition:
+  /// `g(k) := (1 - k·w'/(2w))^2 − (w')^2·(1/w + 1/4)/4 + w''/2 ≥ 0`
+  /// for every log-moneyness `k` on the supplied grid. `w(k)` is the
+  /// total variance returned by [`Self::total_variance`]; `w'`, `w''`
+  /// are its analytic derivatives.
+  ///
+  /// Returns `true` if `g(k) ≥ -tol` for all grid points; `tol`
+  /// defaults to `1e-9` to absorb floating-point noise around the
+  /// boundary.
+  ///
+  /// Reference: Gatheral & Jacquier (2014), "Arbitrage-free SVI volatility
+  /// surfaces", §4 / Durrleman (2009), eq. (1.2).
+  pub fn is_butterfly_arb_free(&self, ks: &[T]) -> bool {
+    self.is_butterfly_arb_free_with_tol(ks, T::from_f64_fast(1e-9))
+  }
+
+  /// Like [`Self::is_butterfly_arb_free`] with an explicit tolerance.
+  pub fn is_butterfly_arb_free_with_tol(&self, ks: &[T], tol: T) -> bool {
+    for &k in ks {
+      let g = self.durrleman_g(k);
+      if g < -tol {
+        return false;
+      }
+    }
+    true
+  }
+
+  /// Durrleman's `g(k)` density-positivity functional (Gatheral-Jacquier
+  /// 2014, eq. 4.1). The risk-neutral density of the underlying is
+  /// proportional to `g(k)`, so a negative `g(k)` at any strike implies
+  /// a butterfly-arbitrage opportunity. Exposed so callers can integrate
+  /// it into custom calibration penalty terms.
+  pub fn durrleman_g(&self, k: T) -> T {
+    let half = T::from_f64_fast(0.5);
+    let quarter = T::from_f64_fast(0.25);
+    let two = T::from_f64_fast(2.0);
+    let one = T::one();
+    let w = self.total_variance(k);
+    if w <= T::zero() {
+      // Below-zero total variance: outside the valid SVI domain. Return
+      // -∞ so the boolean check fails loudly.
+      return T::neg_infinity();
+    }
+    let km = k - self.m;
+    let r2 = (km * km + self.sigma * self.sigma).sqrt();
+    let w_prime = self.b * (self.rho + km / r2);
+    let w_double = self.b * self.sigma * self.sigma / (r2 * r2 * r2);
+    let term1 = {
+      let inner = one - k * w_prime / (two * w);
+      inner * inner
+    };
+    let term2 = w_prime * w_prime * quarter * (one / w + quarter);
+    let term3 = half * w_double;
+    term1 - term2 + term3
+  }
+
+  /// Project, then run [`Self::is_butterfly_arb_free`] over `ks`.
+  /// Returns `true` if butterfly arbitrage-free after projection,
+  /// `false` if the projected parameters still violate butterfly
+  /// arb-freeness on the grid (caller is then free to apply an
+  /// additional penalty / re-fit).
+  pub fn project_with_butterfly_check(&mut self, ks: &[T]) -> bool {
+    self.project();
+    self.is_butterfly_arb_free(ks)
   }
 
   /// Convert to Jump-Wings parameterization.
