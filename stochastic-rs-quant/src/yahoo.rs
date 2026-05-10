@@ -1,9 +1,19 @@
-//! # Yahoo
+//! # Yahoo (experimental)
 //!
 //! $$
 //! \text{market data stream }\mapsto\text{ cleaned OHLCV time series}
 //! $$
 //!
+//! **Status:** experimental, gated behind the `yahoo` feature. The public
+//! surface uses `unwrap()` extensively on network IO and Yahoo schema
+//! responses — production callers should expect runtime panics on network
+//! failure, rate limits, or upstream schema changes. A `Result`-returning
+//! variant (`stochastic-rs-yahoo` micro-crate) is on the 2.x roadmap.
+//!
+//! Prefer wrapping calls in `std::panic::catch_unwind` (or in async tasks
+//! with their own panic handlers) and supply your own retry / backoff layer
+//! for live use. Live `#[test]`s currently hit AAPL on every
+//! `cargo test --features yahoo` invocation; CI flakes are expected.
 use std::borrow::Cow;
 use std::fmt::Display;
 
@@ -36,8 +46,16 @@ pub struct Yahoo<'a> {
 }
 
 pub enum ReturnType {
+  /// Arithmetic return $r_t = (p_t - p_{t-1}) / p_{t-1}$.
   Arithmetic,
+  /// Logarithmic / continuously-compounded return $r_t = \ln(p_t / p_{t-1})$.
   Logarithmic,
+  /// Gross return $g_t = p_t / p_{t-1}$.
+  ///
+  /// **Naming note:** despite the variant name, this computes the gross
+  /// (multiplicative) return $p_t/p_{t-1}$, **not** the absolute price
+  /// difference $p_t - p_{t-1}$. The label is preserved for backward
+  /// compatibility; consider `GrossReturn` semantically.
   Absolute,
 }
 
@@ -46,7 +64,7 @@ impl Display for ReturnType {
     match self {
       ReturnType::Arithmetic => write!(f, "arithmetic"),
       ReturnType::Logarithmic => write!(f, "logarithmic"),
-      ReturnType::Absolute => write!(f, "absolute"),
+      ReturnType::Absolute => write!(f, "gross-return"),
     }
   }
 }

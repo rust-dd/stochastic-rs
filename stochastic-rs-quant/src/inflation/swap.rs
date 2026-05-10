@@ -94,6 +94,24 @@ impl<T: FloatExt> YearOnYearInflationSwap<T> {
 
   /// Inflation-leg PV: discounted sum of expected $I(t_i)/I(t_{i-1}) - 1$
   /// times accrual factors.
+  ///
+  /// **Deterministic-curve assumption.** This implementation uses
+  /// $E^{T_i}[I(t_i)/I(t_{i-1})] = I^{ZC}(t_i)/I^{ZC}(t_{i-1})$ — i.e. the
+  /// ratio of zero-coupon forward index levels under the deterministic
+  /// inflation curve. The exact YoY price under stochastic inflation requires
+  /// a **convexity adjustment** depending on the joint nominal/real volatility
+  /// structure (Mercurio 2005 §6, Brigo-Mercurio §16.5):
+  ///
+  /// $$
+  /// E^{T_i}\!\left[\frac{I(t_i)}{I(t_{i-1})}\right] = \frac{I^{ZC}(t_i)}{I^{ZC}(t_{i-1})}
+  ///   \cdot \exp\!\bigl(\text{cvx}(\sigma_n, \sigma_r, \rho, t_{i-1}, t_i, T_i)\bigr).
+  /// $$
+  ///
+  /// The deterministic form is exact only when nominal and real curves are
+  /// deterministic (or when the convexity correction is computed externally
+  /// and embedded in the input forwards). For Jarrow-Yildirim or HJM-type
+  /// stochastic-inflation calibrations, augment the input curve with the
+  /// convexity-corrected forward ratios before constructing the swap.
   pub fn inflation_leg_pv(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> T {
     let mut pv = T::zero();
     let mut prev_t = T::zero();

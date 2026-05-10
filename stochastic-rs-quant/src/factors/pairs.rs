@@ -86,9 +86,10 @@ pub fn pairs_signals(
     design[[i, 1]] = x[i];
   }
   let y_owned = y.to_owned();
-  let sol = design
-    .least_squares(&y_owned)
-    .expect("hedge ratio OLS failed");
+  let sol = design.least_squares(&y_owned).expect(
+    "pairs-trading hedge-ratio OLS failed (one of the inputs may be a constant series — \
+     try_pairs_signals returns Result for graceful handling)",
+  );
   let alpha = sol.solution[0];
   let beta = sol.solution[1];
   let mut spread = Array1::<f64>::zeros(n);

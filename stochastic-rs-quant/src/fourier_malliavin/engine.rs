@@ -41,7 +41,21 @@ impl<T: FloatExt> FMVol<T> {
   ///
   /// Sets `N = floor(n/2)` and pre-computes Fourier coefficients up to
   /// `N + M_max + L_max` where `M_max = floor(N^0.5)` and `L_max = floor(N^0.25)`.
+  ///
+  /// Panics if `prices.len() < 2` or `times.len() != prices.len()`.
   pub fn new(prices: &[T], times: &[T], period: T) -> Self {
+    assert!(
+      prices.len() >= 2,
+      "FMVol::new requires at least 2 price observations to form increments, got {}",
+      prices.len()
+    );
+    assert_eq!(
+      prices.len(),
+      times.len(),
+      "FMVol::new: prices.len()={} must equal times.len()={}",
+      prices.len(),
+      times.len()
+    );
     let n = prices.len() - 1;
     let big_n = n / 2;
     let m_max = (big_n as f64).sqrt() as usize;
@@ -60,7 +74,14 @@ impl<T: FloatExt> FMVol<T> {
   /// Build an engine from **uniformly spaced** observations (FFT-accelerated, O(n log n)).
   ///
   /// Assumes `t_l = l · T / n`; no explicit times array needed.
+  ///
+  /// Panics if `prices.len() < 2`.
   pub fn new_uniform(prices: &[T], period: T) -> Self {
+    assert!(
+      prices.len() >= 2,
+      "FMVol::new_uniform requires at least 2 price observations to form increments, got {}",
+      prices.len()
+    );
     let n = prices.len() - 1;
     let big_n = n / 2;
     let m_max = (big_n as f64).sqrt() as usize;
@@ -81,9 +102,23 @@ impl<T: FloatExt> FMVol<T> {
   /// `max_freq` controls how high the Fourier coefficients are computed.
   /// Must satisfy `max_freq ≥ n_freq`.
   /// For spot leverage / volvol / quarticity you need `max_freq ≥ N + M + L`.
+  ///
+  /// Panics if `prices.len() < 2`, `times.len() != prices.len()`, or `max_freq < n_freq`.
   pub fn with_freq(prices: &[T], times: &[T], period: T, n_freq: usize, max_freq: usize) -> Self {
+    assert!(
+      prices.len() >= 2,
+      "FMVol::with_freq requires at least 2 price observations to form increments, got {}",
+      prices.len()
+    );
+    assert_eq!(
+      prices.len(),
+      times.len(),
+      "FMVol::with_freq: prices.len()={} must equal times.len()={}",
+      prices.len(),
+      times.len()
+    );
     let n = prices.len() - 1;
-    assert!(max_freq >= n_freq, "max_freq must be ≥ n_freq");
+    assert!(max_freq >= n_freq, "max_freq={max_freq} must be ≥ n_freq={n_freq}");
     let dx = fourier_coefficients_dx(prices, times, period, max_freq);
     Self {
       dx,

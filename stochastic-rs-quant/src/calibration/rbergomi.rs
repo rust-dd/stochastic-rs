@@ -442,6 +442,9 @@ pub struct RBergomiCalibrator {
 }
 
 impl RBergomiCalibrator {
+  /// Construct a calibrator. Returns an error if any input is invalid
+  /// (non-finite spot/rate, non-positive config counts, malformed params,
+  /// or malformed market slices).
   pub fn new(
     s0: f64,
     r: f64,
@@ -449,35 +452,54 @@ impl RBergomiCalibrator {
     mut market_slices: Vec<RBergomiMarketSlice>,
     config: RBergomiCalibrationConfig,
     record_history: bool,
-  ) -> Self {
-    assert!(s0.is_finite() && s0 > 0.0, "s0 must be finite and positive");
-    assert!(r.is_finite(), "r must be finite");
-    assert!(config.paths > 0, "config.paths must be > 0");
-    assert!(
-      config.steps_per_year > 0,
-      "config.steps_per_year must be > 0"
-    );
-    assert!(config.msoe_terms > 0, "config.msoe_terms must be > 0");
-    assert!(config.max_iters > 0, "config.max_iters must be > 0");
-    assert!(
-      config.learning_rate.is_finite() && config.learning_rate > 0.0,
-      "config.learning_rate must be finite and > 0"
-    );
-    assert!(
-      config.finite_diff_eps.is_finite() && config.finite_diff_eps > 0.0,
-      "config.finite_diff_eps must be finite and > 0"
-    );
-    assert!(
-      config.improvement_tol.is_finite() && config.improvement_tol >= 0.0,
-      "config.improvement_tol must be finite and >= 0"
-    );
-    params.validate().expect("Invalid initial rBergomi params");
-    for slice in &market_slices {
-      slice.validate().expect("Invalid market slice");
+  ) -> anyhow::Result<Self> {
+    if !(s0.is_finite() && s0 > 0.0) {
+      anyhow::bail!("s0 must be finite and positive, got {s0}");
+    }
+    if !r.is_finite() {
+      anyhow::bail!("r must be finite, got {r}");
+    }
+    if config.paths == 0 {
+      anyhow::bail!("config.paths must be > 0");
+    }
+    if config.steps_per_year == 0 {
+      anyhow::bail!("config.steps_per_year must be > 0");
+    }
+    if config.msoe_terms == 0 {
+      anyhow::bail!("config.msoe_terms must be > 0");
+    }
+    if config.max_iters == 0 {
+      anyhow::bail!("config.max_iters must be > 0");
+    }
+    if !(config.learning_rate.is_finite() && config.learning_rate > 0.0) {
+      anyhow::bail!(
+        "config.learning_rate must be finite and > 0, got {}",
+        config.learning_rate
+      );
+    }
+    if !(config.finite_diff_eps.is_finite() && config.finite_diff_eps > 0.0) {
+      anyhow::bail!(
+        "config.finite_diff_eps must be finite and > 0, got {}",
+        config.finite_diff_eps
+      );
+    }
+    if !(config.improvement_tol.is_finite() && config.improvement_tol >= 0.0) {
+      anyhow::bail!(
+        "config.improvement_tol must be finite and >= 0, got {}",
+        config.improvement_tol
+      );
+    }
+    params
+      .validate()
+      .map_err(|e| anyhow::anyhow!("invalid initial rBergomi params: {e}"))?;
+    for (idx, slice) in market_slices.iter().enumerate() {
+      slice
+        .validate()
+        .map_err(|e| anyhow::anyhow!("invalid market slice at index {idx}: {e}"))?;
     }
     market_slices.sort_by(|a, b| a.maturity.total_cmp(&b.maturity));
 
-    Self {
+    Ok(Self {
       s0,
       r,
       q: 0.0,
@@ -486,7 +508,7 @@ impl RBergomiCalibrator {
       config,
       record_history,
       history: Rc::new(RefCell::new(Vec::new())),
-    }
+    })
   }
 
   /// Set the continuous dividend yield $q$ (or foreign rate for FX). Default 0.
@@ -1123,7 +1145,8 @@ mod tests {
       market_slices,
       config,
       true,
-    );
+    )
+    .expect("RBergomi calibrator construction must succeed in test");
 
     let result = calibrator.calibrate(None).unwrap();
 

@@ -71,6 +71,20 @@ pub struct SabrSmileCalibrator {
   /// Basin-hopping iterations when `tau >= short_tenor_threshold`.
   /// Default: 100.
   pub long_tenor_iters: usize,
+  /// Minimum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
+  /// `s * 0.5`. Override via [`Self::with_strike_bounds`] for low-spot
+  /// underlyings (penny FX) where `s * 0.5` is too tight, or for non-FX
+  /// underlyings (equity / commodity) where the FX-style multiplicative
+  /// bounds are wrong.
+  pub strike_lo: f64,
+  /// Maximum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
+  /// `s * 2.0`.
+  pub strike_hi: f64,
+  /// Tolerance on the final objective for [`SabrSmileResult::success`] to be
+  /// `true`. Default: `1e-3`. The previous "is finite" predicate marked
+  /// nonsense fits as successful — use this threshold to surface real
+  /// non-convergence to callers.
+  pub success_tol: f64,
 }
 
 impl SabrSmileCalibrator {
@@ -84,6 +98,9 @@ impl SabrSmileCalibrator {
       short_tenor_threshold: 7.0 / 365.0,
       short_tenor_iters: 1000,
       long_tenor_iters: 100,
+      strike_lo: s * 0.5,
+      strike_hi: s * 2.0,
+      success_tol: 1e-3,
     }
   }
 
@@ -97,6 +114,27 @@ impl SabrSmileCalibrator {
   pub fn with_basin_hopping_iters(mut self, short: usize, long: usize) -> Self {
     self.short_tenor_iters = short;
     self.long_tenor_iters = long;
+    self
+  }
+
+  /// Override the per-strike bounds for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`.
+  /// The defaults `(s * 0.5, s * 2.0)` work for typical equity / FX with a
+  /// well-defined spot. For penny FX, deep-OTM commodities, or any
+  /// non-multiplicative regime, supply explicit bounds.
+  pub fn with_strike_bounds(mut self, lo: f64, hi: f64) -> Self {
+    assert!(
+      lo > 0.0 && hi > lo,
+      "strike bounds must satisfy 0 < lo < hi"
+    );
+    self.strike_lo = lo;
+    self.strike_hi = hi;
+    self
+  }
+
+  /// Override the success tolerance applied to the final objective.
+  pub fn with_success_tol(mut self, tol: f64) -> Self {
+    assert!(tol >= 0.0, "success_tol must be >= 0");
+    self.success_tol = tol;
     self
   }
 }
@@ -306,8 +344,24 @@ fn basin_hopping_opt(
 impl SabrSmileCalibrator {
   pub fn calibrate(&self) -> SabrSmileResult {
     // Bounds: [k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]
-    let lo = [1.0, 1.0, 1.0, 1.0, 0.01, -0.99];
-    let hi = [10.0, 10.0, 10.0, 10.0, 10.0, 0.99];
+    // Strike bounds default to (s * 0.5, s * 2.0); override via
+    // `with_strike_bounds` for non-FX underlyings.
+    let lo = [
+      self.strike_lo,
+      self.strike_lo,
+      self.strike_lo,
+      self.strike_lo,
+      0.01,
+      -0.99,
+    ];
+    let hi = [
+      self.strike_hi,
+      self.strike_hi,
+      self.strike_hi,
+      self.strike_hi,
+      10.0,
+      0.99,
+    ];
 
     let s = self.s;
     let tau = self.quotes.tau;
@@ -357,7 +411,7 @@ impl SabrSmileCalibrator {
         rho,
       },
       objective: f_best,
-      success: f_best.is_finite(),
+      success: f_best.is_finite() && f_best < self.success_tol,
     }
   }
 

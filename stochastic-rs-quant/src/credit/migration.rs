@@ -66,8 +66,19 @@ impl<T: FloatExt> TransitionMatrix<T> {
   }
 
   /// Matrix reference to `P^k` — the $k$-period transition matrix.
+  ///
+  /// Convention: `power(0)` returns the identity matrix $I$ (vacuous transition,
+  /// state preserved with probability 1). `power(k)` for `k >= 1` is `P^k`
+  /// computed by repeated multiplication.
   pub fn power(&self, k: usize) -> TransitionMatrix<T> {
-    assert!(k >= 1, "power must be at least 1");
+    if k == 0 {
+      let n = self.matrix.nrows();
+      let mut id = Array2::<T>::zeros((n, n));
+      for i in 0..n {
+        id[[i, i]] = T::one();
+      }
+      return TransitionMatrix::new(id);
+    }
     let mut result = self.matrix.clone();
     for _ in 1..k {
       result = result.dot(&self.matrix);

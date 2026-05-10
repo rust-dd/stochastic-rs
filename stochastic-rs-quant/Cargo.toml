@@ -71,7 +71,6 @@ argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] 
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 sci-rs = { workspace = true }
-scilib = { workspace = true }
 slsqp = { workspace = true }
 implied-vol = { workspace = true }
 chrono = { workspace = true }

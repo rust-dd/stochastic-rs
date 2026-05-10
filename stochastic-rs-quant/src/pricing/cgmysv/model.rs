@@ -7,7 +7,7 @@
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001, Sections 2–3.
 
 use num_complex::Complex64;
-use scilib::math::basic::gamma;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::pricing::fourier::Cumulants;
 use crate::pricing::fourier::FourierModelExt;

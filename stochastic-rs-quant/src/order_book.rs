@@ -12,6 +12,12 @@ use std::time::UNIX_EPOCH;
 
 use ordered_float::OrderedFloat;
 
+/// Sub-share size threshold below which a maker order is considered fully
+/// consumed and removed from the book. Sequential partial fills with
+/// rounding-error residue (e.g. 1e-17) would otherwise leave makers
+/// permanently stuck in the queue.
+const EPSILON: f64 = 1e-9;
+
 /// A total‑ordered price key (wraps `f64` so it can live in a `BTreeMap`).
 pub type Price = OrderedFloat<f64>;
 
@@ -95,7 +101,7 @@ impl OrderBook {
                   taker_id,
                   maker_id: maker.id,
                 });
-                if maker.size == 0.0 {
+                if maker.size <= EPSILON {
                   let maker_id = maker.id;
                   queue.pop_front();
                   self.index.remove(&maker_id);
@@ -134,7 +140,7 @@ impl OrderBook {
                   taker_id,
                   maker_id: maker.id,
                 });
-                if maker.size == 0.0 {
+                if maker.size <= EPSILON {
                   let maker_id = maker.id;
                   queue.pop_front();
                   self.index.remove(&maker_id);
@@ -164,7 +170,7 @@ impl OrderBook {
     let taker_id = self.next_id;
     let timestamp = SystemTime::now()
       .duration_since(UNIX_EPOCH)
-      .expect("time went backwards")
+      .unwrap_or_else(|_| std::time::Duration::ZERO)
       .as_micros();
     let mut trades = Vec::<Trade>::new();
 
@@ -193,7 +199,7 @@ impl OrderBook {
                   taker_id,
                   maker_id: maker.id,
                 });
-                if maker.size == 0.0 {
+                if maker.size <= EPSILON {
                   // remove maker order → also drop from index
                   let maker_id = maker.id;
                   queue.pop_front();
@@ -252,7 +258,7 @@ impl OrderBook {
                   taker_id,
                   maker_id: maker.id,
                 });
-                if maker.size == 0.0 {
+                if maker.size <= EPSILON {
                   let maker_id = maker.id;
                   queue.pop_front();
                   self.index.remove(&maker_id);

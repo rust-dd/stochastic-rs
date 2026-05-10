@@ -5,7 +5,6 @@
 
 use std::fmt::Display;
 
-use chrono::Datelike;
 use chrono::NaiveDate;
 use ndarray::Array1;
 
@@ -390,15 +389,7 @@ fn linear_profile<T: FloatExt>(periods: usize, start: T, end: T) -> Array1<T> {
   }
 }
 
-fn add_months(date: NaiveDate, months: i32) -> NaiveDate {
-  let total = date.year() * 12 + date.month0() as i32 + months;
-  let target_year = total.div_euclid(12);
-  let target_month = (total.rem_euclid(12) + 1) as u32;
-  let max_day = days_in_month(target_year, target_month);
-  let day = date.day().min(max_day);
-  NaiveDate::from_ymd_opt(target_year, target_month, day)
-    .expect("target schedule date must be valid")
-}
+use crate::calendar::day_count::add_months_clamped as add_months;
 
 fn generate_unadjusted_schedule(
   effective: NaiveDate,
@@ -417,23 +408,4 @@ fn generate_unadjusted_schedule(
   }
   dates.push(termination);
   dates
-}
-
-fn days_in_month(year: i32, month: u32) -> u32 {
-  match month {
-    1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-    4 | 6 | 9 | 11 => 30,
-    2 => {
-      if is_leap_year(year) {
-        29
-      } else {
-        28
-      }
-    }
-    _ => unreachable!(),
-  }
-}
-
-fn is_leap_year(year: i32) -> bool {
-  (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }

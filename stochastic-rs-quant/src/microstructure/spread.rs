@@ -22,6 +22,14 @@ use crate::traits::FloatExt;
 
 /// Roll (1984) implicit effective spread:
 /// $s_{Roll} = 2\sqrt{\max(0, -\widehat{\mathrm{Cov}}(\Delta p_t, \Delta p_{t-1}))}$.
+///
+/// Estimator divides by the **number of cross-product terms** $n$ (i.e. the
+/// number of $(\Delta p_t, \Delta p_{t-1})$ pairs, which equals
+/// `diffs.len() - 1` for a length-$n$ price series). This matches Roll
+/// (1984)'s original derivation. The alternative $(n-1)$ divisor (sample
+/// autocovariance) is also defensible — both estimators are consistent and
+/// differ by $O(1/n)$ on long series. The current implementation uses the
+/// Roll-1984 convention.
 pub fn roll_spread<T: FloatExt>(prices: ArrayView1<T>) -> T {
   let n = prices.len();
   if n < 3 {

@@ -75,15 +75,36 @@ impl BreedenLitzenberger {
   /// Requires `d2c_dk2` field to be populated.
   ///
   /// Returns a Vec of length strikes.len() with the estimated density at each strike.
+  ///
+  /// Panics if `d2c_dk2` is `None` or has the wrong length — for a non-panicking
+  /// variant use [`Self::try_density_from_custom_derivatives`].
   #[must_use]
   pub fn density_from_custom_derivatives(&self) -> Vec<f64> {
+    self
+      .try_density_from_custom_derivatives()
+      .expect("density_from_custom_derivatives requires d2c_dk2 populated")
+  }
+
+  /// Falliable variant of [`Self::density_from_custom_derivatives`].
+  /// Returns an error if `d2c_dk2` is `None` or its length does not match `strikes`.
+  pub fn try_density_from_custom_derivatives(&self) -> anyhow::Result<Vec<f64>> {
     let d2c = self
       .d2c_dk2
       .as_ref()
-      .expect("d2c_dk2 must be provided for custom derivatives");
+      .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
     let n = self.strikes.len();
-    assert_eq!(d2c.len(), n, "d2c_dk2 must have same length as strikes");
+    if d2c.len() != n {
+      anyhow::bail!(
+        "d2c_dk2 length {} must equal strikes.len()={n}",
+        d2c.len()
+      );
+    }
 
-    d2c.iter().map(|d| (self.r * self.tau).exp() * d).collect()
+    Ok(
+      d2c
+        .iter()
+        .map(|d| (self.r * self.tau).exp() * d)
+        .collect(),
+    )
   }
 }

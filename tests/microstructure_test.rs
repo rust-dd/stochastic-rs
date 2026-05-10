@@ -32,13 +32,35 @@ fn ac_efficient_frontier_monotonic_in_lambda() {
 
 #[test]
 fn ac_buy_and_sell_are_mirror_images() {
+  // After the rc.2 fix to Almgren-Chriss `Buy` direction, all three series
+  // (`inventory`, `trades`, `rates`) flip sign so consumers see consistent
+  // buy-frame numbers. Previously only `rates` was flipped, leaving
+  // `inventory` and `trades` in the sell frame — see audit §1.4.7.
   let mut p = AlmgrenChrissParams::new(2_000.0_f64, 1.0, 25, 0.025, 5e-8, 5e-6, 1.0);
   let sell = optimal_execution(&p);
   p.direction = ExecutionDirection::Buy;
   let buy = optimal_execution(&p);
   for i in 0..p.n_intervals {
-    assert!((sell.trades[i] - buy.trades[i]).abs() < 1e-12);
-    assert!((sell.rates[i] + buy.rates[i]).abs() < 1e-12);
+    assert!(
+      (sell.trades[i] + buy.trades[i]).abs() < 1e-12,
+      "trades mirror: sell={}, buy={}",
+      sell.trades[i],
+      buy.trades[i]
+    );
+    assert!(
+      (sell.rates[i] + buy.rates[i]).abs() < 1e-12,
+      "rates mirror: sell={}, buy={}",
+      sell.rates[i],
+      buy.rates[i]
+    );
+  }
+  for i in 0..=p.n_intervals {
+    assert!(
+      (sell.inventory[i] + buy.inventory[i]).abs() < 1e-12,
+      "inventory mirror: sell={}, buy={}",
+      sell.inventory[i],
+      buy.inventory[i]
+    );
   }
 }
 

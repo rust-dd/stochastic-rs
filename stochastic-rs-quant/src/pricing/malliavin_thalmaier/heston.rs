@@ -53,6 +53,77 @@ impl<T: FloatExt> MultiHestonParams<T> {
     self.assets.len()
   }
 
+  /// Validate input parameters. Must be called before [`Self::sample`] / [`Self::sample_with_seed`]
+  /// when `cross_corr` is user-supplied: the underlying Cholesky factorisation
+  /// in `sample` panics on a non-positive-definite correlation matrix.
+  ///
+  /// Checks: `cross_corr` is `d×d`, symmetric, has unit diagonal, off-diagonals
+  /// in `[-1, 1]`, and is positive definite. Per-asset `|rho| < 1` is also
+  /// required so that the joint correlation structure is feasible.
+  pub fn validate(&self) -> anyhow::Result<()>
+  where
+    T: ndarray_linalg::Lapack,
+  {
+    use ndarray_linalg::Cholesky;
+    use ndarray_linalg::UPLO;
+
+    let d = self.n_assets();
+    if d == 0 {
+      anyhow::bail!("need at least one asset");
+    }
+    if self.cross_corr.shape() != [d, d] {
+      anyhow::bail!(
+        "cross_corr shape {:?} does not match n_assets={d}",
+        self.cross_corr.shape()
+      );
+    }
+    let one = T::one();
+    let neg_one = -one;
+    let tol = T::from_f64_fast(1e-10);
+    for i in 0..d {
+      for j in 0..d {
+        let v = self.cross_corr[[i, j]];
+        if i == j {
+          if num_traits::Float::abs(v - one) > tol {
+            anyhow::bail!("cross_corr[{i},{i}]={:?} is not 1", v);
+          }
+        } else {
+          if v < neg_one || v > one {
+            anyhow::bail!("cross_corr[{i},{j}]={:?} is outside [-1, 1]", v);
+          }
+          let v_sym = self.cross_corr[[j, i]];
+          if num_traits::Float::abs(v - v_sym) > tol {
+            anyhow::bail!("cross_corr is not symmetric at ({i},{j})");
+          }
+        }
+      }
+    }
+    for (i, a) in self.assets.iter().enumerate() {
+      if num_traits::Float::abs(a.rho) >= one {
+        anyhow::bail!("assets[{i}].rho={:?} must satisfy |rho| < 1", a.rho);
+      }
+    }
+    if self.n_steps < 2 {
+      anyhow::bail!("n_steps must be >= 2, got {}", self.n_steps);
+    }
+
+    let m = 2 * d;
+    let mut corr = Array2::<T>::eye(m);
+    for i in 0..d {
+      for j in 0..d {
+        corr[[i, j]] = self.cross_corr[[i, j]];
+      }
+    }
+    for i in 0..d {
+      corr[[i, d + i]] = self.assets[i].rho;
+      corr[[d + i, i]] = self.assets[i].rho;
+    }
+    corr.cholesky(UPLO::Lower).map_err(|e| {
+      anyhow::anyhow!("joint Brownian correlation matrix is not positive definite: {e}")
+    })?;
+    Ok(())
+  }
+
   fn sample_with_fill<F>(&self, mut fill_standard_normals: F) -> MultiHestonPaths<T>
   where
     F: FnMut(&mut [T]),
@@ -107,6 +178,11 @@ impl<T: FloatExt> MultiHestonParams<T> {
   }
 
   /// Simulate one set of paths. Requires LAPACK for Cholesky.
+  ///
+  /// **Precondition:** `self.cross_corr` must be a valid `d×d` symmetric
+  /// positive-definite correlation matrix (jointly with the per-asset `rho`s).
+  /// Call [`Self::validate`] up-front when the matrix is user-supplied —
+  /// the underlying Cholesky factorisation panics on a non-SPD input.
   pub fn sample(&self) -> MultiHestonPaths<T>
   where
     T: ndarray_linalg::Lapack,
@@ -143,9 +219,9 @@ impl<T: FloatExt> MultiHestonParams<T> {
       corr[[i, d + i]] = self.assets[i].rho;
       corr[[d + i, i]] = self.assets[i].rho;
     }
-    corr
-      .cholesky(UPLO::Lower)
-      .expect("correlation matrix not positive-definite")
+    corr.cholesky(UPLO::Lower).expect(
+      "correlation matrix not positive-definite — call MultiHestonParams::validate() up-front",
+    )
   }
 }
 
@@ -246,7 +322,23 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   }
 
   /// Inverse of the Malliavin covariance matrix. Requires LAPACK.
+  ///
+  /// Singular covariance can occur when terminal prices have a near-zero variance
+  /// (e.g. very low-vol regimes with too few paths) — call [`Self::try_gamma_inv`]
+  /// to surface this as an `Err` rather than a panic.
   pub fn gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T>
+  where
+    T: ndarray_linalg::Lapack,
+  {
+    self
+      .try_gamma_inv(cross_corr, tau)
+      .expect("Malliavin covariance matrix is singular — use try_gamma_inv to handle gracefully")
+  }
+
+  /// Falliable variant of [`Self::gamma_inv`]. Returns an error when the
+  /// Malliavin covariance is singular (typical cause: low-vol paths so the
+  /// $S_T \cdot \int_0^\tau (.) \, du$ integrand collapses).
+  pub fn try_gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> anyhow::Result<Array2<T>>
   where
     T: ndarray_linalg::Lapack,
   {
@@ -254,7 +346,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
     self
       .malliavin_cov(cross_corr, tau)
       .inv()
-      .expect("Malliavin covariance matrix is singular")
+      .map_err(|e| anyhow::anyhow!("Malliavin covariance matrix is singular: {e}"))
   }
 }
 

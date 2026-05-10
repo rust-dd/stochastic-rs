@@ -237,12 +237,39 @@ pub struct McBasketPricer {
 
 #[cfg(feature = "openblas")]
 impl McBasketPricer {
-  pub fn price(&self) -> f64 {
+  /// Falliable variant of [`Self::price`] that surfaces invalid inputs
+  /// (non-SPD correlation, dimension mismatch) as an `Err` instead of a panic.
+  pub fn try_price(&self) -> anyhow::Result<f64> {
     let n_assets = self.s.len();
-    let l: Array2<f64> = self
+    if self.rho.shape() != [n_assets, n_assets] {
+      anyhow::bail!(
+        "rho shape {:?} does not match n_assets={n_assets}",
+        self.rho.shape()
+      );
+    }
+    if self.weights.len() != n_assets
+      || self.sigma.len() != n_assets
+      || self.q.len() != n_assets
+    {
+      anyhow::bail!(
+        "weights/sigma/q lengths must match n_assets={n_assets} (got {}/{}/{})",
+        self.weights.len(),
+        self.sigma.len(),
+        self.q.len()
+      );
+    }
+    let _ = self
       .rho
       .cholesky(UPLO::Lower)
-      .expect("correlation matrix must be positive definite");
+      .map_err(|e| anyhow::anyhow!("correlation matrix is not positive definite: {e}"))?;
+    Ok(self.price())
+  }
+
+  pub fn price(&self) -> f64 {
+    let n_assets = self.s.len();
+    let l: Array2<f64> = self.rho.cholesky(UPLO::Lower).expect(
+      "correlation matrix must be positive definite — call try_price() to handle this gracefully",
+    );
     let drifts: Vec<f64> = (0..n_assets)
       .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.t)
       .collect();

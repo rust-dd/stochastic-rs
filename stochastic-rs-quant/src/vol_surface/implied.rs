@@ -350,19 +350,52 @@ impl SmileSlice {
   }
 
   /// Interpolate ATM total variance ($k = 0$) from the data.
+  ///
+  /// When the smile straddles $k = 0$, returns a linear interpolation between
+  /// the two adjacent grid points.
+  ///
+  /// When the smile is **one-sided** (all strikes ITM or all strikes OTM),
+  /// extrapolates linearly from the two innermost data points (closest to zero)
+  /// rather than returning a non-ATM endpoint as ATM. The previous behaviour
+  /// (returning `total_variance[0]` or `total_variance[n-1]`) silently biased
+  /// downstream global fits (e.g. SSVI's $\theta_t$ estimate) — see audit
+  /// §1.2.8.
   fn atm_total_variance(&self) -> f64 {
     let n = self.log_moneyness.len();
     if n == 0 {
       return 0.0;
     }
+    if n == 1 {
+      return self.total_variance[0];
+    }
 
     let idx = self.log_moneyness.partition_point(|&k| k < 0.0);
 
     if idx == 0 {
-      return self.total_variance[0];
+      // All strikes are k > 0 (one-sided OTM-call / ITM-put).
+      // Extrapolate linearly to k=0 using the two innermost (smallest k) points.
+      let k0 = self.log_moneyness[0];
+      let k1 = self.log_moneyness[1];
+      let w0 = self.total_variance[0];
+      let w1 = self.total_variance[1];
+      if (k1 - k0).abs() < 1e-14 {
+        return w0;
+      }
+      let slope = (w1 - w0) / (k1 - k0);
+      return w0 + slope * (0.0 - k0);
     }
     if idx >= n {
-      return self.total_variance[n - 1];
+      // All strikes are k < 0 (one-sided ITM-call / OTM-put).
+      // Extrapolate linearly to k=0 using the two innermost (largest k) points.
+      let k0 = self.log_moneyness[n - 2];
+      let k1 = self.log_moneyness[n - 1];
+      let w0 = self.total_variance[n - 2];
+      let w1 = self.total_variance[n - 1];
+      if (k1 - k0).abs() < 1e-14 {
+        return w1;
+      }
+      let slope = (w1 - w0) / (k1 - k0);
+      return w1 + slope * (0.0 - k1);
     }
 
     let k0 = self.log_moneyness[idx - 1];

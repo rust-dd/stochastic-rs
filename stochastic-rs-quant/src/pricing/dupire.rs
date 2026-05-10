@@ -211,31 +211,48 @@ impl Dupire {
   /// Requires `dc_dk`, `d2c_dk2`, and `dc_dt` fields to be populated.
   ///
   /// Returns Array2 (N_T, N_K) with σ_loc(K_i, T_j).
+  ///
+  /// Panics if any of the three custom-derivative fields is `None` — for a
+  /// non-panicking variant use [`Self::try_local_vol_surface_from_custom_derivatives`].
   #[must_use]
   pub fn local_vol_surface_from_custom_derivatives(&self) -> Array2<f64> {
+    self
+      .try_local_vol_surface_from_custom_derivatives()
+      .expect("local_vol_surface_from_custom_derivatives requires dc_dk/d2c_dk2/dc_dt populated")
+  }
+
+  /// Falliable variant of [`Self::local_vol_surface_from_custom_derivatives`].
+  /// Returns an error if any of `dc_dk`, `d2c_dk2`, `dc_dt` is `None` or has
+  /// the wrong shape.
+  pub fn try_local_vol_surface_from_custom_derivatives(&self) -> anyhow::Result<Array2<f64>> {
     let dc_dk = self
       .dc_dk
       .as_ref()
-      .expect("dc_dk must be provided for custom derivatives");
+      .ok_or_else(|| anyhow::anyhow!("dc_dk must be provided for custom derivatives"))?;
     let d2c_dk2 = self
       .d2c_dk2
       .as_ref()
-      .expect("d2c_dk2 must be provided for custom derivatives");
+      .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
     let dc_dt = self
       .dc_dt
       .as_ref()
-      .expect("dc_dt must be provided for custom derivatives");
+      .ok_or_else(|| anyhow::anyhow!("dc_dt must be provided for custom derivatives"))?;
 
     let nt = self.ts.len();
     let nk = self.ks.len();
 
-    assert_eq!(dc_dk.dim(), (nt, nk), "dc_dk must have shape (N_T, N_K)");
-    assert_eq!(
-      d2c_dk2.dim(),
-      (nt, nk),
-      "d2c_dk2 must have shape (N_T, N_K)"
-    );
-    assert_eq!(dc_dt.dim(), (nt, nk), "dc_dt must have shape (N_T, N_K)");
+    if dc_dk.dim() != (nt, nk) {
+      anyhow::bail!("dc_dk shape {:?} must equal (N_T, N_K) = ({nt}, {nk})", dc_dk.dim());
+    }
+    if d2c_dk2.dim() != (nt, nk) {
+      anyhow::bail!(
+        "d2c_dk2 shape {:?} must equal (N_T, N_K) = ({nt}, {nk})",
+        d2c_dk2.dim()
+      );
+    }
+    if dc_dt.dim() != (nt, nk) {
+      anyhow::bail!("dc_dt shape {:?} must equal (N_T, N_K) = ({nt}, {nk})", dc_dt.dim());
+    }
 
     let mut sigma = Array2::<f64>::from_elem((nt, nk), f64::NAN);
 
@@ -260,7 +277,7 @@ impl Dupire {
       }
     }
 
-    sigma
+    Ok(sigma)
   }
 
   /// Convenience: compute local volatility for a single maturity slice at time index j.
@@ -334,22 +351,46 @@ impl Dupire {
 
   /// Compute local volatility for a single maturity slice using pre-calculated partial derivatives.
   /// Requires `dc_dk`, `d2c_dk2`, and `dc_dt` fields to be populated.
+  ///
+  /// Panics if any of the three custom-derivative fields is `None` — for a
+  /// non-panicking variant use [`Self::try_local_vol_slice_from_custom_derivatives`].
   #[must_use]
   pub fn local_vol_slice_from_custom_derivatives(&self, j: usize) -> Vec<f64> {
-    assert!(j < self.ts.len());
+    self
+      .try_local_vol_slice_from_custom_derivatives(j)
+      .expect("local_vol_slice_from_custom_derivatives requires dc_dk/d2c_dk2/dc_dt populated")
+  }
 
+  /// Falliable variant of [`Self::local_vol_slice_from_custom_derivatives`].
+  /// Returns an error if any of `dc_dk`, `d2c_dk2`, `dc_dt` is `None`, has the
+  /// wrong shape, or `j` is out of range.
+  pub fn try_local_vol_slice_from_custom_derivatives(&self, j: usize) -> anyhow::Result<Vec<f64>> {
+    if j >= self.ts.len() {
+      anyhow::bail!("j={j} out of range for ts.len()={}", self.ts.len());
+    }
     let dc_dk = self
       .dc_dk
       .as_ref()
-      .expect("dc_dk must be provided for custom derivatives");
+      .ok_or_else(|| anyhow::anyhow!("dc_dk must be provided for custom derivatives"))?;
     let d2c_dk2 = self
       .d2c_dk2
       .as_ref()
-      .expect("d2c_dk2 must be provided for custom derivatives");
+      .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
     let dc_dt = self
       .dc_dt
       .as_ref()
-      .expect("dc_dt must be provided for custom derivatives");
+      .ok_or_else(|| anyhow::anyhow!("dc_dt must be provided for custom derivatives"))?;
+
+    let nt = self.ts.len();
+    let nk = self.ks.len();
+    if dc_dk.dim() != (nt, nk) || d2c_dk2.dim() != (nt, nk) || dc_dt.dim() != (nt, nk) {
+      anyhow::bail!(
+        "all custom-derivative arrays must have shape ({nt}, {nk}); got dc_dk={:?}, d2c_dk2={:?}, dc_dt={:?}",
+        dc_dk.dim(),
+        d2c_dk2.dim(),
+        dc_dt.dim()
+      );
+    }
 
     let row = self.calls.index_axis(Axis(0), j);
     let mut out = vec![f64::NAN; self.ks.len()];
@@ -373,6 +414,6 @@ impl Dupire {
       }
     }
 
-    out
+    Ok(out)
   }
 }

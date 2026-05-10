@@ -23,18 +23,36 @@ pub enum OptimizerMethod {
   BlackLitterman,
 }
 
+/// Error returned by [`OptimizerMethod::from_str`] for unrecognized inputs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnknownOptimizerMethod(pub String);
+
+impl std::fmt::Display for UnknownOptimizerMethod {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "unknown optimizer method '{}'. Valid: markowitz, mean-cvar, inverse-vol, \
+       risk-parity, hrp, black-litterman",
+      self.0
+    )
+  }
+}
+
+impl std::error::Error for UnknownOptimizerMethod {}
+
 impl std::str::FromStr for OptimizerMethod {
-  type Err = std::convert::Infallible;
+  type Err = UnknownOptimizerMethod;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    Ok(match s.to_lowercase().as_str() {
-      "cvar" | "mean-cvar" | "meancvar" => Self::MeanCVaR,
-      "inv-vol" | "inverse-vol" | "invvol" => Self::InverseVol,
-      "risk-parity" | "riskparity" => Self::RiskParity,
-      "hrp" => Self::HRP,
-      "bl" | "black-litterman" | "blacklitterman" => Self::BlackLitterman,
-      _ => Self::Markowitz,
-    })
+    match s.to_lowercase().as_str() {
+      "markowitz" | "mv" | "mean-variance" | "meanvariance" => Ok(Self::Markowitz),
+      "cvar" | "mean-cvar" | "meancvar" => Ok(Self::MeanCVaR),
+      "inv-vol" | "inverse-vol" | "invvol" => Ok(Self::InverseVol),
+      "risk-parity" | "riskparity" => Ok(Self::RiskParity),
+      "hrp" => Ok(Self::HRP),
+      "bl" | "black-litterman" | "blacklitterman" => Ok(Self::BlackLitterman),
+      _ => Err(UnknownOptimizerMethod(s.to_string())),
+    }
   }
 }
 

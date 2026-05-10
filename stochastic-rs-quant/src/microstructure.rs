@@ -6,8 +6,13 @@
 //!
 //! $$
 //! x_k = X\,\frac{\sinh(\kappa(T-t_k))}{\sinh(\kappa T)},\qquad
-//! \kappa = \sqrt{\lambda\sigma^2/\tilde\eta},\quad \tilde\eta = \eta - \gamma\tau/2.
+//! \kappa = \frac{1}{\tau}\,\mathrm{arccosh}\!\left(1 + \frac{\lambda\sigma^2 \tau^2}{2\tilde\eta}\right),\quad
+//! \tilde\eta = \eta - \gamma\tau/2.
 //! $$
+//!
+//! The closed-form for $\kappa$ above is the **discrete-time** Almgren-Chriss
+//! result (used by [`almgren_chriss`]); the continuous-time limit
+//! $\kappa = \sqrt{\lambda\sigma^2/\tilde\eta}$ is recovered as $\tau \to 0$.
 //!
 //! # References
 //! - Almgren, Chriss, "Optimal Execution of Portfolio Transactions", Journal

@@ -230,20 +230,13 @@ pub fn monotone_convex<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
   let fi = fwd[idx];
 
   let three = T::from_f64_fast(3.0);
-  let six = T::from_f64_fast(6.0);
-  let g = a * (T::one() - x * (T::from_f64_fast(4.0)) + three * x * x)
-    + b * (-two * x + three * x * x)
-    + (six * fi - two * a - b) * (two * x - three * x * x)
-    + (six * fi - a - two * b) * (-two * x + three * x * x);
 
-  let _ = g;
-  let integral = a * (x - two * x * x + x * x * x)
-    + b * (-x * x + x * x * x)
-    + (six * fi - two * a - b) * (x * x - x * x * x)
-    + (six * fi - a - two * b) * (-x * x + x * x * x);
-
-  let _ = integral;
-
+  // Cubic-Hermite zero-rate accumulator. The original Hagan-West (2006) §4
+  // monotone-convex scheme also requires the four corner cases (eqs 25–27)
+  // that flatten / monotonise the cubic in regions where the f-extrapolation
+  // would oscillate; those are not handled here, so this is a Tier-1 sketch
+  // suitable for smooth bootstrap inputs but not arbitrage-free for arbitrary
+  // forward shapes.
   let forward_adj =
     rt[idx - 1] + h * (a * x + (three * fi - two * a - b) * x * x + (a + b - two * fi) * x * x * x);
 

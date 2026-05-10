@@ -189,8 +189,18 @@ pub fn optimal_execution<T: FloatExt>(params: &AlmgrenChrissParams<T>) -> Almgre
   }
   let variance = params.volatility * params.volatility * tau * variance_acc;
 
+  // For a Buy execution we flip ALL three series (inventory, trades, rates)
+  // so the plan describes the inventory and trades a *buyer* would observe
+  // (i.e. inventory grows from 0 to +X over [0, T] and trades are positive
+  // additions to the book). The previous rc.0/rc.1 implementation only
+  // flipped `rates`, which left `inventory` and `trades` in sell-frame and
+  // produced "sell-shaped" numbers for downstream consumers.
   if matches!(params.direction, ExecutionDirection::Buy) {
+    for k in 0..=n {
+      inventory[k] = -inventory[k];
+    }
     for k in 0..n {
+      trades[k] = -trades[k];
       rates[k] = -rates[k];
     }
   }

@@ -35,6 +35,31 @@ pub mod pairs;
 pub mod pca;
 pub mod shrinkage;
 
+/// Error type returned by `try_*` variants of factor-model routines that may
+/// fail on rank-deficient inputs (pure noise, perfectly collinear columns,
+/// SVD non-convergence).
+#[derive(Debug)]
+pub enum FactorsError {
+  /// SVD on a numerical input failed to converge.
+  SvdFailed(String),
+  /// Ordinary-least-squares (linear regression) input was singular.
+  OlsFailed(String),
+  /// Generic numerical fault from a downstream linear-algebra routine.
+  Numerical(String),
+}
+
+impl std::fmt::Display for FactorsError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::SvdFailed(msg) => write!(f, "SVD failed: {msg}"),
+      Self::OlsFailed(msg) => write!(f, "OLS failed: {msg}"),
+      Self::Numerical(msg) => write!(f, "numerical fault: {msg}"),
+    }
+  }
+}
+
+impl std::error::Error for FactorsError {}
+
 #[cfg(feature = "openblas")]
 pub use fama_macbeth::FamaMacBethResult;
 #[cfg(feature = "openblas")]
@@ -49,5 +74,7 @@ pub use pairs::pairs_signals;
 pub use pca::PcaResult;
 #[cfg(feature = "openblas")]
 pub use pca::pca_decompose;
+#[cfg(feature = "openblas")]
+pub use pca::try_pca_decompose;
 pub use shrinkage::ledoit_wolf_shrinkage;
 pub use shrinkage::sample_covariance;

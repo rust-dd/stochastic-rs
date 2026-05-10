@@ -66,7 +66,7 @@ impl<T: ModelPricer + ?Sized> ModelSurface for T {}
 /// For large grids, FFT is significantly faster than per-strike Gil-Pelaez
 /// quadrature since it prices all log-strikes simultaneously.
 pub fn fourier_model_surface_fft(
-  model: &dyn FourierModelExt,
+  model: &impl FourierModelExt,
   s: f64,
   r: f64,
   q: f64,

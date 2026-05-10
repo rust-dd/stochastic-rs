@@ -33,12 +33,27 @@ pub struct PcaResult {
 
 /// PCA decomposition retaining the top `k` factors. If `k == 0` retains
 /// every factor.
+///
+/// Panics if the underlying SVD fails (rank-deficient input, non-finite
+/// values). Use [`try_pca_decompose`] for a falliable variant.
 pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult {
+  try_pca_decompose(returns, k)
+    .expect("pca_decompose: SVD failed; use try_pca_decompose for falliable variant")
+}
+
+/// Falliable variant of [`pca_decompose`]. Returns
+/// [`crate::factors::FactorsError::SvdFailed`] when the underlying SVD does
+/// not converge (typical cause: rank-deficient or non-finite input).
+pub fn try_pca_decompose<T: FloatExt>(
+  returns: ArrayView2<T>,
+  k: usize,
+) -> Result<PcaResult, crate::factors::FactorsError> {
   let (t, p) = returns.dim();
-  assert!(
-    t >= 2 && p >= 1,
-    "need at least two observations and one asset"
-  );
+  if t < 2 || p < 1 {
+    return Err(crate::factors::FactorsError::Numerical(format!(
+      "need at least two observations and one asset; got ({t}, {p})"
+    )));
+  }
   let mut means = Array1::<f64>::zeros(p);
   let mut centred = Array2::<f64>::zeros((t, p));
   for j in 0..p {
@@ -49,9 +64,15 @@ pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult
       centred[[i, j]] = returns[[i, j]].to_f64().unwrap() - m;
     }
   }
-  let (u_opt, sigma, vt_opt) = centred.svd(true, true).expect("SVD failed");
-  let u = u_opt.expect("U requested");
-  let vt = vt_opt.expect("Vt requested");
+  let (u_opt, sigma, vt_opt) = centred
+    .svd(true, true)
+    .map_err(|e| crate::factors::FactorsError::SvdFailed(e.to_string()))?;
+  let u = u_opt.ok_or_else(|| {
+    crate::factors::FactorsError::SvdFailed("U not returned from SVD".into())
+  })?;
+  let vt = vt_opt.ok_or_else(|| {
+    crate::factors::FactorsError::SvdFailed("Vt not returned from SVD".into())
+  })?;
   let v = vt.t().to_owned();
   let r = sigma.len();
   let kk = if k == 0 { r } else { k.min(r) };
@@ -82,14 +103,14 @@ pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult
     }
   }
   let singular_values: Vec<f64> = sigma.iter().take(kk).copied().collect();
-  PcaResult {
+  Ok(PcaResult {
     singular_values: Array1::from(singular_values),
     eigenvalues,
     explained_variance_ratio: explained,
     loadings,
     scores,
     means,
-  }
+  })
 }
 
 #[cfg(test)]

@@ -15,6 +15,7 @@ use super::momentum::build_portfolio;
 use super::momentum::build_portfolio_target_internal;
 use super::momentum::compute_scores;
 use super::momentum::decile_analysis;
+use super::optimizers::OptimizerConfig;
 use super::optimizers::optimize_with_method;
 use super::types::OptimizerMethod;
 use super::types::PortfolioResult;
@@ -35,6 +36,9 @@ pub struct PortfolioEngineConfig {
   pub cvar_alpha: f64,
   /// Enable long-short variants when supported.
   pub allow_short: bool,
+  /// Optimizer-internal config: `periods_per_year` (annualization, default
+  /// 252) and `lambda` (target-return penalty, default 10).
+  pub optimizer_config: OptimizerConfig,
 }
 
 impl Default for PortfolioEngineConfig {
@@ -45,6 +49,7 @@ impl Default for PortfolioEngineConfig {
       risk_free: 0.0,
       cvar_alpha: 0.05,
       allow_short: false,
+      optimizer_config: OptimizerConfig::default(),
     }
   }
 }
@@ -84,6 +89,7 @@ impl PortfolioEngine {
       self.config.risk_free,
       self.config.cvar_alpha,
       self.config.allow_short,
+      &self.config.optimizer_config,
     )
   }
 
@@ -178,6 +184,7 @@ mod tests {
       risk_free: 0.02,
       cvar_alpha: 0.05,
       allow_short: true,
+      optimizer_config: OptimizerConfig::default(),
     });
 
     let build = MomentumBuildConfig {

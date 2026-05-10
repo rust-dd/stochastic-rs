@@ -651,6 +651,22 @@ fn sanitize_probabilities<T: FloatExt>(down: &mut T, middle: &mut T, up: &mut T)
   }
 }
 
+/// Build correlated joint probabilities for a 2D trinomial lattice (G2++ /
+/// two-factor Hull-White) using the **symmetric-branch corner correction**:
+/// $\lambda = \rho / 12$ on the four corners.
+///
+/// **Tier-0 / sketch-grade:** the $\lambda = \rho/12$ correction matches
+/// the requested factor covariance **exactly** only for the symmetric
+/// trinomial branch ($p_u = p_d = 1/6$, $p_m = 2/3$, i.e. zero local drift).
+/// For drift-shifted branches ($p_u \neq p_d$, the usual case off the lattice
+/// midline), the correction does not hit the requested covariance — bias is
+/// proportional to the local drift. For typical $a \leq 0.05$, $dt \leq 0.25$,
+/// the resulting joint-probability error is on the order of $10^{-3}$,
+/// translating to a few-bps bias on multi-year products.
+///
+/// For a per-cell exact match across asymmetric branches, replace the corner
+/// correction with the linear system in Hull-White (2000), "The General
+/// Hull-White Model and Super-calibration", equations 16–18.
 pub(crate) fn correlated_joint_probabilities<T: FloatExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,

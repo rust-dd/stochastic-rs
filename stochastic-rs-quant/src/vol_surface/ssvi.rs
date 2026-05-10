@@ -143,6 +143,14 @@ impl<T: FloatExt> SsviParams<T> {
   }
 
   /// Project parameters to satisfy admissibility.
+  ///
+  /// Enforces the **butterfly bound** $\eta (1 + |\rho|) \leq 2$ (Gatheral &
+  /// Jacquier 2012, Theorem 4.1). This is necessary but **not sufficient**
+  /// for full GJ 2014 Theorem 4.2 calendar-spread-free admissibility, which
+  /// requires $\partial_T w(k, T) \geq 0$ for every $k$ — the cross-slice
+  /// constraint depends on the realised $\theta_t$ schedule and cannot be
+  /// expressed in $(\rho, \eta, \gamma)$ alone. Use
+  /// [`Self::project_with_theta_range`] when a $\theta$ range is known.
   pub fn project(&mut self) {
     let zero = T::zero();
     let one = T::one();
@@ -156,6 +164,36 @@ impl<T: FloatExt> SsviParams<T> {
 
     let max_eta = two / (one + self.rho.abs());
     self.eta = self.eta.min(max_eta);
+  }
+
+  /// Project parameters to satisfy admissibility **plus** the GJ 2014 power-law
+  /// SSVI calendar-spread-free condition over a known $\theta$ range.
+  ///
+  /// In addition to butterfly admissibility, enforces the sufficient condition
+  /// (Gatheral & Jacquier 2014, equation 4.4):
+  ///
+  /// $$
+  /// \frac{1}{4} \, \eta\, \theta_{max}^{-\gamma} \, (1 + |\rho|) \leq 1
+  /// $$
+  ///
+  /// which guarantees $\partial_\theta w(k, \theta) \geq 0$ for all $k$ and
+  /// all $\theta \in [\theta_{min}, \theta_{max}]$. The constraint is dominated
+  /// by the largest $\theta$ in the surface.
+  ///
+  /// `theta_max` is the largest ATM total variance across the surface. Pass
+  /// the maximum of `SsviSurface::thetas` (or a conservative upper bound).
+  pub fn project_with_theta_range(&mut self, theta_max: T) {
+    self.project();
+    if theta_max <= T::zero() || !theta_max.is_finite() {
+      return;
+    }
+    let one = T::one();
+    let four = T::from_f64_fast(4.0);
+    let calendar_bound =
+      four * <T as num_traits::Float>::powf(theta_max, self.gamma) / (one + self.rho.abs());
+    if self.eta > calendar_bound {
+      self.eta = calendar_bound;
+    }
   }
 
   fn as_f64(self) -> SsviParams<f64> {
@@ -457,27 +495,63 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SsviLmProblem {
     Some(r)
   }
 
+  /// Closed-form Jacobian of the SSVI total-variance residual w.r.t. the global
+  /// parameters $(\rho, \eta, \gamma)$.
+  ///
+  /// Replaces the rc.0/rc.1 1-sided forward-difference Jacobian (`h = 1e-7`,
+  /// O(h) error + 3 extra `total_variance` evaluations per data point) with
+  /// the analytic derivative — O(eps) error, no extra evals.
+  ///
+  /// Let $\phi(\theta) = \eta \theta^{-\gamma}$ and
+  /// $r = \sqrt{(\phi k + \rho)^2 + 1 - \rho^2}$. Then:
+  ///
+  /// $$
+  /// \begin{aligned}
+  /// \partial_{\rho} w &= \tfrac{\theta}{2}\left(\phi k + \tfrac{\phi k}{r}\right) \\
+  /// \partial_{\phi} w &= \tfrac{\theta k}{2}\left(\rho + \tfrac{\phi k + \rho}{r}\right) \\
+  /// \partial_{\eta} w &= \partial_{\phi} w \cdot \phi / \eta \\
+  /// \partial_{\gamma} w &= -\partial_{\phi} w \cdot \phi \ln \theta.
+  /// \end{aligned}
+  /// $$
   fn jacobian(&self) -> Option<DMatrix<f64>> {
     let p = SsviParams::<f64>::from_dvector(&self.params);
     let n: usize = self.slices.iter().map(|s| s.log_moneyness.len()).sum();
     let mut jac = DMatrix::zeros(n, 3);
-    let h = 1e-7;
 
     let mut idx = 0;
     for slice in &self.slices {
+      let theta = slice.theta;
+      if theta <= 0.0 || !theta.is_finite() {
+        for _ in 0..slice.log_moneyness.len() {
+          jac[(idx, 0)] = 0.0;
+          jac[(idx, 1)] = 0.0;
+          jac[(idx, 2)] = 0.0;
+          idx += 1;
+        }
+        continue;
+      }
+      let phi = p.eta * theta.powf(-p.gamma);
+      let log_theta = theta.ln();
+
       for i in 0..slice.log_moneyness.len() {
         let k = slice.log_moneyness[i];
-        let theta = slice.theta;
-        let w0 = p.total_variance(k, theta);
+        let pk_plus_rho = phi * k + p.rho;
+        let r2 = pk_plus_rho * pk_plus_rho + 1.0 - p.rho * p.rho;
+        let r = r2.max(1e-30).sqrt();
 
-        let p_rho = SsviParams::<f64>::new(p.rho + h, p.eta, p.gamma);
-        jac[(idx, 0)] = (p_rho.total_variance(k, theta) - w0) / h;
+        let dw_drho = 0.5 * theta * (phi * k + (phi * k) / r);
+        let dw_dphi = 0.5 * theta * k * (p.rho + pk_plus_rho / r);
 
-        let p_eta = SsviParams::<f64>::new(p.rho, p.eta + h, p.gamma);
-        jac[(idx, 1)] = (p_eta.total_variance(k, theta) - w0) / h;
+        let dw_deta = if p.eta.abs() > 1e-30 {
+          dw_dphi * phi / p.eta
+        } else {
+          0.0
+        };
+        let dw_dgamma = -dw_dphi * phi * log_theta;
 
-        let p_gamma = SsviParams::<f64>::new(p.rho, p.eta, p.gamma + h);
-        jac[(idx, 2)] = (p_gamma.total_variance(k, theta) - w0) / h;
+        jac[(idx, 0)] = dw_drho;
+        jac[(idx, 1)] = dw_deta;
+        jac[(idx, 2)] = dw_dgamma;
 
         idx += 1;
       }

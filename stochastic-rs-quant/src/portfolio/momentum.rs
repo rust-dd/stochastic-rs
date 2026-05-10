@@ -106,14 +106,31 @@ pub enum WeightScheme {
   ScoreWeighted,
 }
 
+/// Error returned by [`WeightScheme::from_str`] for unrecognized inputs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnknownWeightScheme(pub String);
+
+impl std::fmt::Display for UnknownWeightScheme {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "unknown weight scheme '{}'. Valid: equal, score-weighted",
+      self.0
+    )
+  }
+}
+
+impl std::error::Error for UnknownWeightScheme {}
+
 impl std::str::FromStr for WeightScheme {
-  type Err = std::convert::Infallible;
+  type Err = UnknownWeightScheme;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    Ok(match s.to_lowercase().as_str() {
-      "score" | "score-weighted" | "scoreweighted" => Self::ScoreWeighted,
-      _ => Self::Equal,
-    })
+    match s.to_lowercase().as_str() {
+      "equal" | "eq" => Ok(Self::Equal),
+      "score" | "score-weighted" | "scoreweighted" => Ok(Self::ScoreWeighted),
+      _ => Err(UnknownWeightScheme(s.to_string())),
+    }
   }
 }
 
@@ -365,6 +382,7 @@ pub(crate) fn build_portfolio_target_internal(
     risk_free,
     cvar_alpha,
     allow_short,
+    &super::optimizers::OptimizerConfig::default(),
   );
 
   positions_from_result(scores, &result)

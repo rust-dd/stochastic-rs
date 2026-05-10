@@ -238,24 +238,27 @@ impl HestonPricer {
     .sqrt()
   }
 
+  /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form:
+  /// g̃ = 1/g_original keeps log-argument on the principal branch for all τ.
   pub(self) fn g(&self, j: u8, phi: f64) -> Complex64 {
-    (self.b(j) - self.rho * self.sigma * Complex64::i() * phi + self.d(j, phi))
-      / (self.b(j) - self.rho * self.sigma * Complex64::i() * phi - self.d(j, phi))
+    (self.b(j) - self.rho * self.sigma * Complex64::i() * phi - self.d(j, phi))
+      / (self.b(j) - self.rho * self.sigma * Complex64::i() * phi + self.d(j, phi))
   }
 
   pub(self) fn C(&self, j: u8, phi: f64, tau: f64) -> Complex64 {
     (self.r - self.q.unwrap_or(0.0)) * Complex64::i() * phi * tau
       + (self.kappa * self.theta / self.sigma.powi(2))
-        * ((self.b(j) - self.rho * self.sigma * Complex64::i() * phi + self.d(j, phi)) * tau
+        * ((self.b(j) - self.rho * self.sigma * Complex64::i() * phi - self.d(j, phi)) * tau
           - 2.0
-            * ((1.0 - self.g(j, phi) * (self.d(j, phi) * tau).exp()) / (1.0 - self.g(j, phi))).ln())
+            * ((1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()) / (1.0 - self.g(j, phi)))
+              .ln())
   }
 
   pub(self) fn D(&self, j: u8, phi: f64, tau: f64) -> Complex64 {
-    ((self.b(j) - self.rho * self.sigma * Complex64::i() * phi + self.d(j, phi))
+    ((self.b(j) - self.rho * self.sigma * Complex64::i() * phi - self.d(j, phi))
       / self.sigma.powi(2))
-      * ((1.0 - (self.d(j, phi) * tau).exp())
-        / (1.0 - self.g(j, phi) * (self.d(j, phi) * tau).exp()))
+      * ((1.0 - (-self.d(j, phi) * tau).exp())
+        / (1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()))
   }
 
   pub(self) fn f(&self, j: u8, phi: f64, tau: f64) -> Complex64 {
@@ -327,5 +330,46 @@ mod tests {
     let (call, ..) = heston.calculate_call_put();
     let iv = heston.implied_volatility(call, OptionType::Call);
     println!("Implied Volatility: {}", iv);
+  }
+
+  /// Long-maturity / high-|ρ| regression: the Albrecher-Mayer-Schoutens-Tistaert
+  /// (2007) "Little Heston Trap" form must keep the principal-branch logarithm
+  /// stable for T = 5y, ρ = -0.9. Original Heston (1993) form develops a
+  /// branch-cut discontinuity in this regime; the Trap form does not.
+  #[test]
+  fn heston_little_trap_long_maturity_high_rho() {
+    let heston = HestonPricer::new(
+      100.0,
+      0.04,
+      100.0,
+      0.05,
+      Some(0.0),
+      -0.9, // high-|ρ|
+      2.0,
+      0.04,
+      0.3,
+      Some(0.0),
+      Some(5.0), // T = 5y
+      None,
+      None,
+    );
+
+    let (call, put) = heston.calculate_call_put();
+    assert!(
+      call.is_finite() && call > 0.0,
+      "Heston Trap form should give finite positive call at T=5y, ρ=-0.9: {call}"
+    );
+    assert!(
+      put.is_finite() && put > 0.0,
+      "Heston Trap form should give finite positive put at T=5y, ρ=-0.9: {put}"
+    );
+
+    // Sanity check: put-call parity.
+    let parity = call - put;
+    let expected = 100.0 * 1.0 - 100.0 * (-0.05_f64 * 5.0).exp();
+    assert!(
+      (parity - expected).abs() < 0.5,
+      "Put-call parity violated at T=5y: C-P={parity}, expected≈{expected}"
+    );
   }
 }

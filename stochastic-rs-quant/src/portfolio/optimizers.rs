@@ -128,7 +128,11 @@ fn empirical_cvar(returns: &mut [f64], alpha: f64) -> f64 {
   -tail_mean
 }
 
-fn portfolio_vol_from_returns(w: &[f64], aligned_returns: &[Vec<f64>]) -> f64 {
+fn portfolio_vol_from_returns(
+  w: &[f64],
+  aligned_returns: &[Vec<f64>],
+  periods_per_year: f64,
+) -> f64 {
   let n_periods = aligned_returns.first().map(|r| r.len()).unwrap_or(0);
   if n_periods < 2 {
     return 0.0;
@@ -145,15 +149,45 @@ fn portfolio_vol_from_returns(w: &[f64], aligned_returns: &[Vec<f64>]) -> f64 {
 
   let pm = sample_mean(&port_rets);
   let pvar = sample_variance(&port_rets, pm);
-  pvar.sqrt() * 252.0_f64.sqrt()
+  pvar.sqrt() * periods_per_year.sqrt()
+}
+
+/// Configuration for portfolio optimizer entry points.
+///
+/// `periods_per_year`: annualization factor for returns (252 = trading days,
+/// 252 = daily; 52 = weekly; 12 = monthly; 365 = calendar daily; 24*365 = hourly).
+/// Default 252.
+///
+/// `lambda`: target-return penalty coefficient in mean-variance / mean-CVaR
+/// objectives (`min Var + λ·(R − R*)²`). Default 10. Higher values pull the
+/// portfolio toward `target_return` more aggressively; lower values let the
+/// risk term dominate.
+#[derive(Clone, Debug)]
+pub struct OptimizerConfig {
+  pub periods_per_year: f64,
+  pub lambda: f64,
+}
+
+impl Default for OptimizerConfig {
+  fn default() -> Self {
+    Self {
+      periods_per_year: 252.0,
+      lambda: 10.0,
+    }
+  }
 }
 
 /// Markowitz mean-variance optimizer on simplex (long-only).
+///
+/// `lambda` is the target-return penalty coefficient
+/// (`min Var(w) + λ·(μ_p − R*)²`). Use [`OptimizerConfig::default`] for the
+/// historical 10.0 default, or tune per-frequency for non-daily portfolios.
 pub fn optimize_markowitz(
   mu: &[f64],
   cov: &[Vec<f64>],
   target_return: f64,
   risk_free: f64,
+  lambda: f64,
 ) -> PortfolioResult {
   let n = mu.len();
   if n == 0 {
@@ -186,7 +220,7 @@ pub fn optimize_markowitz(
     mu: mu.to_vec(),
     cov: cov.to_vec(),
     target_return,
-    penalty: 10.0,
+    penalty: lambda,
   };
 
   let x0 = vec![0.0; n];
@@ -238,6 +272,7 @@ pub fn optimize_markowitz_long_short(
   cov: &[Vec<f64>],
   target_return: f64,
   risk_free: f64,
+  lambda: f64,
 ) -> PortfolioResult {
   let n = mu.len();
   if n == 0 {
@@ -270,7 +305,7 @@ pub fn optimize_markowitz_long_short(
     mu: mu.to_vec(),
     cov: cov.to_vec(),
     target_return,
-    penalty: 10.0,
+    penalty: lambda,
   };
 
   let x0 = vec![0.0; n];
@@ -317,6 +352,7 @@ pub fn optimize_mean_cvar(
   target_return: f64,
   risk_free: f64,
   alpha: f64,
+  config: &OptimizerConfig,
 ) -> PortfolioResult {
   let n = mu.len();
   if n == 0 {
@@ -335,6 +371,7 @@ pub fn optimize_mean_cvar(
     target_return: f64,
     alpha: f64,
     penalty: f64,
+    periods_per_year_sqrt: f64,
   }
 
   impl CostFunction for CVaRCost {
@@ -352,7 +389,7 @@ pub fn optimize_mean_cvar(
         })
         .collect();
       let cvar = empirical_cvar(&mut port_returns, self.alpha);
-      let ann_cvar = cvar * 252.0_f64.sqrt();
+      let ann_cvar = cvar * self.periods_per_year_sqrt;
       let port_ret = dot(&w, &self.mu);
       let ret_penalty = (port_ret - self.target_return).powi(2);
 
@@ -366,7 +403,8 @@ pub fn optimize_mean_cvar(
     n_periods,
     target_return,
     alpha,
-    penalty: 10.0,
+    penalty: config.lambda,
+    periods_per_year_sqrt: config.periods_per_year.sqrt(),
   };
 
   let x0 = vec![0.0; n];
@@ -395,7 +433,7 @@ pub fn optimize_mean_cvar(
   };
 
   let expected_return = dot(&w, mu);
-  let volatility = portfolio_vol_from_returns(&w, aligned_returns);
+  let volatility = portfolio_vol_from_returns(&w, aligned_returns, config.periods_per_year);
   let sharpe = if volatility > 1e-15 {
     (expected_return - risk_free) / volatility
   } else {
@@ -417,6 +455,7 @@ pub fn optimize_mean_cvar_long_short(
   target_return: f64,
   risk_free: f64,
   alpha: f64,
+  config: &OptimizerConfig,
 ) -> PortfolioResult {
   let n = mu.len();
   if n == 0 {
@@ -435,6 +474,7 @@ pub fn optimize_mean_cvar_long_short(
     target_return: f64,
     alpha: f64,
     penalty: f64,
+    periods_per_year_sqrt: f64,
   }
 
   impl CostFunction for CVaRLSCost {
@@ -452,7 +492,7 @@ pub fn optimize_mean_cvar_long_short(
         })
         .collect();
       let cvar = empirical_cvar(&mut port_returns, self.alpha);
-      let ann_cvar = cvar * 252.0_f64.sqrt();
+      let ann_cvar = cvar * self.periods_per_year_sqrt;
       let port_ret = dot(&w, &self.mu);
       let ret_penalty = (port_ret - self.target_return).powi(2);
 
@@ -466,7 +506,8 @@ pub fn optimize_mean_cvar_long_short(
     n_periods,
     target_return,
     alpha,
-    penalty: 10.0,
+    penalty: config.lambda,
+    periods_per_year_sqrt: config.periods_per_year.sqrt(),
   };
 
   let x0 = vec![0.0; n];
@@ -489,7 +530,7 @@ pub fn optimize_mean_cvar_long_short(
   };
 
   let expected_return = dot(&w, mu);
-  let volatility = portfolio_vol_from_returns(&w, aligned_returns);
+  let volatility = portfolio_vol_from_returns(&w, aligned_returns, config.periods_per_year);
   let sharpe = if volatility > 1e-15 {
     (expected_return - risk_free) / volatility
   } else {
@@ -905,6 +946,7 @@ pub fn optimize_black_litterman(
   cov: &[Vec<f64>],
   risk_free: f64,
   target_return: f64,
+  lambda: f64,
 ) -> PortfolioResult {
   let n = mu.len();
   if n == 0 {
@@ -925,7 +967,7 @@ pub fn optimize_black_litterman(
 
   let tau_cov_inv = match mat_inverse(&tau_cov) {
     Some(inv) => inv,
-    None => return optimize_markowitz(mu, cov, target_return, risk_free),
+    None => return optimize_markowitz(mu, cov, target_return, risk_free, lambda),
   };
 
   let omega_inv_diag: Vec<f64> = (0..n)
@@ -951,7 +993,7 @@ pub fn optimize_black_litterman(
 
   let m_inv = match mat_inverse(&m) {
     Some(inv) => inv,
-    None => return optimize_markowitz(mu, cov, target_return, risk_free),
+    None => return optimize_markowitz(mu, cov, target_return, risk_free, lambda),
   };
 
   let tau_inv_pi = mat_vec_mul(&tau_cov_inv, &pi);
@@ -964,10 +1006,15 @@ pub fn optimize_black_litterman(
 
   let mu_bl = mat_vec_mul(&m_inv, &v);
 
-  optimize_markowitz(&mu_bl, cov, target_return, risk_free)
+  optimize_markowitz(&mu_bl, cov, target_return, risk_free, lambda)
 }
 
 /// Dispatch to selected optimizer with common configuration inputs.
+///
+/// `config` controls annualization (`periods_per_year`, default 252) and the
+/// target-return penalty coefficient (`lambda`, default 10) for mean-variance
+/// / mean-CVaR objectives. Pass `&OptimizerConfig::default()` to keep the
+/// rc.0/rc.1 behaviour, or tune for non-daily frequency portfolios.
 pub fn optimize_with_method(
   method: OptimizerMethod,
   mu: &[f64],
@@ -978,6 +1025,7 @@ pub fn optimize_with_method(
   risk_free: f64,
   cvar_alpha: f64,
   allow_short: bool,
+  config: &OptimizerConfig,
 ) -> PortfolioResult {
   if mu.is_empty() {
     return empty_result();
@@ -986,22 +1034,22 @@ pub fn optimize_with_method(
   match method {
     OptimizerMethod::Markowitz => {
       if allow_short {
-        optimize_markowitz_long_short(mu, cov, target_return, risk_free)
+        optimize_markowitz_long_short(mu, cov, target_return, risk_free, config.lambda)
       } else {
-        optimize_markowitz(mu, cov, target_return, risk_free)
+        optimize_markowitz(mu, cov, target_return, risk_free, config.lambda)
       }
     }
     OptimizerMethod::MeanCVaR => {
       if let Some(rets) = aligned_returns {
         if allow_short {
-          optimize_mean_cvar_long_short(mu, rets, target_return, risk_free, cvar_alpha)
+          optimize_mean_cvar_long_short(mu, rets, target_return, risk_free, cvar_alpha, config)
         } else {
-          optimize_mean_cvar(mu, rets, target_return, risk_free, cvar_alpha)
+          optimize_mean_cvar(mu, rets, target_return, risk_free, cvar_alpha, config)
         }
       } else if allow_short {
-        optimize_markowitz_long_short(mu, cov, target_return, risk_free)
+        optimize_markowitz_long_short(mu, cov, target_return, risk_free, config.lambda)
       } else {
-        optimize_markowitz(mu, cov, target_return, risk_free)
+        optimize_markowitz(mu, cov, target_return, risk_free, config.lambda)
       }
     }
     OptimizerMethod::InverseVol => optimize_inverse_vol(mu, cov, risk_free),
@@ -1020,7 +1068,9 @@ pub fn optimize_with_method(
       });
       optimize_hrp(mu, cov, &corr_mat, risk_free)
     }
-    OptimizerMethod::BlackLitterman => optimize_black_litterman(mu, cov, risk_free, target_return),
+    OptimizerMethod::BlackLitterman => {
+      optimize_black_litterman(mu, cov, risk_free, target_return, config.lambda)
+    }
   }
 }
 
@@ -1047,6 +1097,7 @@ mod tests {
       0.02,
       0.05,
       false,
+      &OptimizerConfig::default(),
     );
 
     let sum_w: f64 = result.weights.iter().sum();
@@ -1065,6 +1116,7 @@ mod tests {
       0.0,
       0.05,
       false,
+      &OptimizerConfig::default(),
     );
 
     assert!(result.weights.is_empty());

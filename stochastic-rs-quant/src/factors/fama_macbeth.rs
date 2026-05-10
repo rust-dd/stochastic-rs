@@ -52,7 +52,9 @@ pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaM
   let mut betas = Array2::<f64>::zeros((n, k + 1));
   for asset in 0..n {
     let y: Array1<f64> = returns.column(asset).to_owned();
-    let sol = design_ts.least_squares(&y).expect("first-pass OLS failed");
+    let sol = design_ts.least_squares(&y).expect(
+      "Fama-MacBeth first-pass OLS failed (rank-deficient factors? Pre-check via PCA on factor matrix)",
+    );
     for j in 0..(k + 1) {
       betas[[asset, j]] = sol.solution[j];
     }
@@ -67,7 +69,9 @@ pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaM
   let mut gamma_series = Array2::<f64>::zeros((t, k + 1));
   for time in 0..t {
     let y: Array1<f64> = returns.row(time).to_owned();
-    let sol = design_xs.least_squares(&y).expect("second-pass OLS failed");
+    let sol = design_xs.least_squares(&y).expect(
+      "Fama-MacBeth second-pass cross-sectional OLS failed (collinear betas? Verify factor independence)",
+    );
     for j in 0..(k + 1) {
       gamma_series[[time, j]] = sol.solution[j];
     }

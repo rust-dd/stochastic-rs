@@ -58,9 +58,20 @@ pub fn log_returns_series(closes: &[f64]) -> Array1<f64> {
   Array1::from(out)
 }
 
-/// Align multiple return series to common tail length.
+/// Align multiple return series to common tail length by **right-aligning**
+/// the last `min_len = min_i len(returns_i)` observations of each series.
 ///
 /// Each row of the output corresponds to one asset; columns are aligned time observations.
+///
+/// # Right-aligned assumption (caveat)
+///
+/// This function assumes **all input series end on the same date**. If asset
+/// A's last observation is 2026-05-10 and asset B's last is 2026-04-30, A's
+/// final 10 observations will be aligned with B's 2026-04-21..04-30 — i.e.,
+/// the columns are date-misaligned by 10 trading days.
+///
+/// For date-aware alignment use [`align_return_series_by_index`] (provide
+/// `start_indices`) or pre-align inputs to a common end date upstream.
 pub fn align_return_series(all_returns: &[Vec<f64>]) -> Array2<f64> {
   let n_assets = all_returns.len();
   let min_len = all_returns.iter().map(|r| r.len()).min().unwrap_or(0);
@@ -72,6 +83,45 @@ pub fn align_return_series(all_returns: &[Vec<f64>]) -> Array2<f64> {
     }
   }
   out
+}
+
+/// Align return series by explicit per-asset start indices (date-aware variant
+/// of [`align_return_series`]).
+///
+/// `start_indices[i]` is the offset into `all_returns[i]` from which to take
+/// the next `length` observations. Caller is responsible for choosing
+/// `start_indices` such that each `start_indices[i]..start_indices[i] + length`
+/// window corresponds to the same dates across assets.
+///
+/// Returns an `(n_assets, length)` matrix. Returns an error if any window
+/// would run past `all_returns[i].len()`.
+pub fn align_return_series_by_index(
+  all_returns: &[Vec<f64>],
+  start_indices: &[usize],
+  length: usize,
+) -> anyhow::Result<Array2<f64>> {
+  let n_assets = all_returns.len();
+  if start_indices.len() != n_assets {
+    anyhow::bail!(
+      "start_indices.len()={} must equal all_returns.len()={n_assets}",
+      start_indices.len()
+    );
+  }
+  let mut out = Array2::<f64>::zeros((n_assets, length));
+  for (i, r) in all_returns.iter().enumerate() {
+    let start = start_indices[i];
+    let end = start + length;
+    if end > r.len() {
+      anyhow::bail!(
+        "asset {i}: window [{start}, {end}) exceeds series length {}",
+        r.len()
+      );
+    }
+    for (j, &v) in r[start..end].iter().enumerate() {
+      out[(i, j)] = v;
+    }
+  }
+  Ok(out)
 }
 
 /// Build a Pearson correlation matrix from aligned return series.

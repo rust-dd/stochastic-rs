@@ -78,13 +78,61 @@ impl CarrMadanPricer {
     }
   }
 
+  /// Build a CarrMadan pricer with grid width sized via the model's cumulants
+  /// (Lord-Kahl 2007 / Andersen-Andreasen 2002 cumulant-based grid sizing).
+  ///
+  /// The current Carr-Madan FFT implementation centres the log-strike grid at
+  /// $\ln K = 0$ with half-width $L_{grid} = n \lambda / 2 = \pi / \eta$.
+  /// This routine adjusts $\eta$ so that $L_{grid} \ge \ln S_0 + L_{factor}
+  /// \cdot \sqrt{|c_2| + \sqrt{|c_4|}}$ — i.e., wide enough to bracket the
+  /// at-the-money log-strike $\ln S_0$ plus an `L_factor` (default 12) tail
+  /// buffer scaled by the model's second/fourth cumulants at maturity $t$.
+  ///
+  /// Skewed models (Heston/Bates with large |ρ|, KOU/HKDE with strong jump
+  /// bias) and very long maturities produce wider distributions; the default
+  /// symmetric grid is fine for typical equity options but can crop the wings
+  /// for long-dated FX risk-reversals or deep-OTM catastrophe options. This
+  /// builder produces a grid sized to keep the relevant strikes inside.
+  ///
+  /// Falls back to the default `(n=4096, η=0.25)` when cumulants are not
+  /// finite. `alpha` is left at the default damping coefficient (0.75).
+  ///
+  /// # Example
+  /// ```ignore
+  /// let pricer = CarrMadanPricer::cumulant_sized(&heston, /* t */ 5.0, /* s */ 100.0, 12.0);
+  /// let price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 5.0);
+  /// ```
+  pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, s: f64, l_factor: f64) -> Self {
+    let cumulants = model.cumulants(t);
+    if !cumulants.c2.is_finite() || cumulants.c2 <= 0.0 || !s.is_finite() || s <= 0.0 {
+      return Self::default();
+    }
+    let c4_term = if cumulants.c4.is_finite() && cumulants.c4 >= 0.0 {
+      cumulants.c4.sqrt()
+    } else {
+      0.0
+    };
+    let cumulant_buffer = l_factor * (cumulants.c2.abs() + c4_term).sqrt();
+    let required_half_width = s.ln().abs() + cumulant_buffer;
+    if !required_half_width.is_finite() || required_half_width <= 0.0 {
+      return Self::default();
+    }
+    let n = 4096_usize;
+    let eta = PI / required_half_width;
+    Self {
+      n,
+      alpha: 0.75,
+      eta: eta.max(0.001),
+    }
+  }
+
   /// Compute call prices on the FFT strike grid.
   ///
   /// Returns `(log_strikes, call_prices)` where `log_strikes` are
   /// $k_u = b + \lambda u$.
   pub fn price_call_surface(
     &self,
-    model: &dyn FourierModelExt,
+    model: &impl FourierModelExt,
     s: f64,
     r: f64,
     t: f64,
@@ -148,7 +196,7 @@ impl CarrMadanPricer {
   /// the issue rather than carry on with a falsely-perfect zero residual.
   /// Use [`Self::strike_in_grid`] to test before pricing, or construct the
   /// pricer with a larger `n` / smaller `eta` for wider coverage.
-  pub fn price_call(&self, model: &dyn FourierModelExt, s: f64, k: f64, r: f64, t: f64) -> f64 {
+  pub fn price_call(&self, model: &impl FourierModelExt, s: f64, k: f64, r: f64, t: f64) -> f64 {
     let (log_strikes, prices) = self.price_call_surface(model, s, r, t);
     let target = k.ln();
     let n = log_strikes.len();
@@ -171,7 +219,7 @@ impl CarrMadanPricer {
   /// detect / extend the grid rather than accept a NaN.
   pub fn strike_in_grid(
     &self,
-    model: &dyn FourierModelExt,
+    model: &impl FourierModelExt,
     s: f64,
     k: f64,
     r: f64,
@@ -186,7 +234,7 @@ impl CarrMadanPricer {
   /// Price a single put option via put-call parity.
   pub fn price_put(
     &self,
-    model: &dyn FourierModelExt,
+    model: &impl FourierModelExt,
     s: f64,
     k: f64,
     r: f64,
@@ -205,7 +253,7 @@ pub struct GilPelaezPricer;
 
 impl GilPelaezPricer {
   /// Price a European call using double-exponential quadrature.
-  pub fn price_call(model: &dyn FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
+  pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
     let ln_ks = (k / s).ln();
 
     let i_unit = Complex64::i();
@@ -254,7 +302,7 @@ impl GilPelaezPricer {
 pub struct LewisPricer;
 
 impl LewisPricer {
-  pub fn price_call(model: &dyn FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
+  pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
     let ln_ks = (k / s).ln();
     let disc = (-r * t).exp();
     let fwd_factor = ((r - q) * t).exp();
@@ -1091,6 +1139,36 @@ mod tests {
     assert!(
       (price - 10.474).abs() < 0.2,
       "Carr-Madan Heston: got={price}, expected≈10.474"
+    );
+  }
+
+  /// Lord-Kahl 2007 cumulant-based grid sizing should produce a pricer that
+  /// agrees with the default symmetric grid for moderate parameters, while
+  /// remaining configurable for skewed/long-maturity regimes.
+  #[test]
+  fn carr_madan_cumulant_sized_constructor() {
+    let model = HestonFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.0,
+    };
+    let cum_pricer = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 12.0);
+    assert!(cum_pricer.n.is_power_of_two(), "n must be power of two");
+    assert!(cum_pricer.n >= 4096, "n must be at least default 4096");
+    let price = cum_pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    assert!(
+      price.is_finite() && price > 0.0,
+      "cumulant_sized Carr-Madan must produce positive finite price, got {price}"
+    );
+    let default_pricer = CarrMadanPricer::default();
+    let default_price = default_pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    assert!(
+      (price - default_price).abs() < 1.0,
+      "cumulant_sized vs default Heston ATM should agree to within 1.0: cum={price}, def={default_price}"
     );
   }
 

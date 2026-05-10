@@ -3,6 +3,10 @@
 //! Pricing engines (analytic + Fourier), calibrators, vol-surface parameterisations,
 //! and bond-pricing closed forms exposed as `#[pyclass]` types. Registered by the
 //! `stochastic-rs-py` cdylib.
+//!
+//! **Refactor planned (2.0.x):** this 2600+-line module will be split into
+//! `python/{pricing, calibration, vol_surface, instruments, microstructure}.rs`
+//! for navigability. Public API unaffected. Tracked under audit §1.4.10.
 
 #![cfg(feature = "python")]
 #![allow(clippy::too_many_arguments)]
@@ -420,14 +424,75 @@ impl PyCarrMadanPricer {
     }
   }
 
+  /// Price a Heston call.
+  ///
+  /// **Out-of-grid strikes return `nan`** (changed from `0.0` in v2.0.0-rc.1).
+  /// Detect via `math.isnan()` and either widen the FFT grid (larger `n`) or
+  /// pre-check the strike with `strike_in_grid_heston(...)`.
   fn price_heston_call(&self, model: &PyHestonFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
     self.inner.price_call(&model.inner, s, k, r, tau)
   }
+  /// Price a Bates call. See `price_heston_call` for the NaN convention.
   fn price_bates_call(&self, model: &PyBatesFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
     self.inner.price_call(&model.inner, s, k, r, tau)
   }
+  /// Price a Kou call. See `price_heston_call` for the NaN convention.
   fn price_kou_call(&self, model: &PyKouFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
     self.inner.price_call(&model.inner, s, k, r, tau)
+  }
+
+  /// Returns true iff strike `k` is within the FFT log-strike grid for the
+  /// supplied Heston model and market state. Use to detect / widen the grid
+  /// before calling `price_heston_call` rather than handling NaN downstream.
+  fn strike_in_grid_heston(
+    &self,
+    model: &PyHestonFourier,
+    s: f64,
+    k: f64,
+    r: f64,
+    tau: f64,
+  ) -> bool {
+    self.inner.strike_in_grid(&model.inner, s, k, r, tau)
+  }
+}
+
+/// NIG (Normal Inverse Gaussian) Lévy model for Fourier pricing.
+///
+/// Parameters:
+/// - `alpha > 0`: tail heaviness
+/// - `beta`: skewness, must satisfy `|beta| < alpha`
+/// - `delta > 0`: scale
+/// - `r`: risk-free rate
+/// - `q`: dividend yield (default 0)
+#[pyclass(name = "NigFourier", unsendable)]
+#[derive(Clone)]
+pub struct PyNigFourier {
+  pub inner: crate::pricing::fourier::NigFourier,
+}
+
+#[pymethods]
+impl PyNigFourier {
+  #[new]
+  #[pyo3(signature = (alpha, beta, delta, r, q=0.0))]
+  fn new(alpha: f64, beta: f64, delta: f64, r: f64, q: f64) -> PyResult<Self> {
+    if alpha <= 0.0 {
+      return Err(PyValueError::new_err("alpha must be > 0"));
+    }
+    if !(beta.abs() < alpha) {
+      return Err(PyValueError::new_err("|beta| must be < alpha"));
+    }
+    if delta <= 0.0 {
+      return Err(PyValueError::new_err("delta must be > 0"));
+    }
+    Ok(Self {
+      inner: crate::pricing::fourier::NigFourier {
+        alpha,
+        beta,
+        delta,
+        r,
+        q,
+      },
+    })
   }
 }
 
@@ -1787,7 +1852,7 @@ impl PyRBergomiCalibrator {
     xi0: f64,
     max_iters: usize,
     paths: usize,
-  ) -> Self {
+  ) -> PyResult<Self> {
     use crate::calibration::rbergomi::*;
     let inner_slices: Vec<RBergomiMarketSlice> = slices
       .into_iter()
@@ -1808,9 +1873,9 @@ impl PyRBergomiCalibrator {
       ..RBergomiCalibrationConfig::default()
     };
     cfg.paths = paths;
-    Self {
-      inner: RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false),
-    }
+    let inner = RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false)
+      .map_err(|e| PyValueError::new_err(format!("RBergomi calibrator construction failed: {e}")))?;
+    Ok(Self { inner })
   }
 
   /// Returns `(hurst, rho, eta, xi0_const, final_loss, iterations, converged)`.

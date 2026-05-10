@@ -77,11 +77,33 @@ pub fn bootstrap<T: FloatExt>(
         rate,
         frequency,
       } => {
+        // Round-to-integer number of payments. The free-form Instrument::Swap
+        // path requires `maturity · frequency` to be **close** to an integer:
+        // a 1.4Y semi-annual swap (mat·freq = 2.8) would round to 3 payments,
+        // mismatching the swap-quote convention by 0.2 (~73 days). A
+        // calendar-day-driven 5.0027y semi-annual swap (mat·freq = 10.005)
+        // rounds cleanly to 10 with negligible bias.
+        //
+        // We allow a 0.1-payment-fraction tolerance (≈ 18 days at semi-annual,
+        // ≈ 9 days at quarterly), enough to absorb day-count noise but tight
+        // enough to flag real schedule mismatches. For non-integer maturities
+        // outside this tolerance, route through the date-aware
+        // `market::rate_helper::SwapRateHelper`, which builds an explicit
+        // payment schedule with the calendar.
+        let raw_payments = *maturity * T::from_f64_fast(*frequency as f64);
+        let rounded = raw_payments.round();
+        let mismatch = (raw_payments - rounded).abs();
+        assert!(
+          mismatch < T::from_f64_fast(0.1),
+          "Instrument::Swap requires maturity · frequency to be (close to) an integer \
+           (got maturity={:?}, frequency={}, payments mismatch {:?}). \
+           Use market::rate_helper::SwapRateHelper for date-aware non-integer schedules.",
+          maturity,
+          frequency,
+          mismatch
+        );
         let delta = T::one() / T::from_f64_fast(*frequency as f64);
-        let n_payments = (*maturity * T::from_f64_fast(*frequency as f64))
-          .round()
-          .to_f64()
-          .unwrap() as usize;
+        let n_payments = rounded.to_f64().unwrap() as usize;
 
         let mut annuity = T::zero();
         for i in 1..n_payments {

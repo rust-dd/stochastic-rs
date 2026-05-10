@@ -268,6 +268,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyMarketSlice;
   use stochastic_rs_quant::python::PyMerton1976Pricer;
   use stochastic_rs_quant::python::PyMertonJDFourier;
+  use stochastic_rs_quant::python::PyNigFourier;
   use stochastic_rs_quant::python::PyRBergomiCalibrator;
   use stochastic_rs_quant::python::PySVJCalibrator;
   use stochastic_rs_quant::python::PySabrCalibrator;
@@ -302,6 +303,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyCGMYFourier>()?;
   m.add_class::<PyMertonJDFourier>()?;
   m.add_class::<PyKouFourier>()?;
+  m.add_class::<PyNigFourier>()?;
   m.add_class::<PyBatesFourier>()?;
   m.add_class::<PyCarrMadanPricer>()?;
   m.add_class::<PyVasicekBond>()?;

@@ -224,6 +224,9 @@ fn generate_forward(
 /// Add `months` calendar months to `date`, clamping to month-end if needed.
 /// When `eom` is true and the input is the last day of its month, the result
 /// is also the last day of the target month.
+///
+/// Uses the canonical [`days_in_month`](crate::calendar::day_count::days_in_month)
+/// helper.
 pub(crate) fn add_months(date: NaiveDate, months: i32, eom: bool) -> NaiveDate {
   let total = date.year() * 12 + date.month0() as i32 + months;
   let target_year = total.div_euclid(12);
