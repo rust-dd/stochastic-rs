@@ -3,6 +3,7 @@
 #[cfg(any(
   feature = "gpu",
   feature = "cuda-native",
+  feature = "cuda-oxide-experimental",
   feature = "accelerate",
   feature = "metal"
 ))]
@@ -10,6 +11,7 @@ use anyhow::Result;
 #[cfg(any(
   feature = "gpu",
   feature = "cuda-native",
+  feature = "cuda-oxide-experimental",
   feature = "accelerate",
   feature = "metal"
 ))]
@@ -38,11 +40,11 @@ use stochastic_rs_distributions::traits::FloatExt;
 ///
 /// ## GPU coverage
 ///
-/// The `sample_gpu` / `sample_cuda_native` / `sample_metal` / `sample_accelerate`
-/// methods are opt-in overrides; default impls return `Err`. Currently the
-/// only processes with GPU implementations are [`Fgn`](crate::noise::fgn::Fgn)
-/// and [`Fbm`](crate::process::fbm::Fbm), which both rely on the FFT-based
-/// circulant-embedding path under `feature = "gpu"`.
+/// The `sample_gpu` / `sample_cuda_native` / `sample_cuda_oxide` /
+/// `sample_metal` / `sample_accelerate` methods are opt-in overrides; default
+/// impls return `Err`. Currently the only processes with GPU implementations
+/// are [`Fgn`](crate::noise::fgn::Fgn) and [`Fbm`](crate::process::fbm::Fbm),
+/// which both rely on the FFT-based circulant-embedding path.
 ///
 /// **Roadmap (P3/18):** GPU implementations for Heston, RoughBergomi, Cir2F,
 /// and Hjm remain TODO. These processes use *standard* Brownian noise,
@@ -70,6 +72,11 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   #[cfg(feature = "cuda-native")]
   fn sample_cuda_native(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     anyhow::bail!("cudarc native CUDA sampling is not supported for this process")
+  }
+
+  #[cfg(feature = "cuda-oxide-experimental")]
+  fn sample_cuda_oxide(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    anyhow::bail!("cuda-oxide experimental sampling is not supported for this process")
   }
 
   #[cfg(feature = "accelerate")]

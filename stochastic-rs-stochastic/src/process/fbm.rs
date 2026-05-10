@@ -7,6 +7,7 @@
 #[cfg(any(
   feature = "gpu",
   feature = "cuda-native",
+  feature = "cuda-oxide-experimental",
   feature = "accelerate",
   feature = "metal"
 ))]
@@ -14,6 +15,7 @@ use anyhow::Result;
 #[cfg(any(
   feature = "gpu",
   feature = "cuda-native",
+  feature = "cuda-oxide-experimental",
   feature = "accelerate",
   feature = "metal"
 ))]
@@ -22,6 +24,7 @@ use ndarray::Array1;
 #[cfg(any(
   feature = "gpu",
   feature = "cuda-native",
+  feature = "cuda-oxide-experimental",
   feature = "accelerate",
   feature = "metal",
   feature = "python"
@@ -107,6 +110,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbm<T, S> {
     Self::fgn_to_fbm(self.n, self.fgn.sample_cuda_native(m)?)
   }
 
+  #[cfg(feature = "cuda-oxide-experimental")]
+  fn sample_cuda_oxide(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+    Self::fgn_to_fbm(self.n, self.fgn.sample_cuda_oxide(m)?)
+  }
+
   #[cfg(feature = "accelerate")]
   fn sample_accelerate(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     Self::fgn_to_fbm(self.n, self.fgn.sample_accelerate(m)?)
@@ -121,6 +129,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbm<T, S> {
 #[cfg(any(
   feature = "gpu",
   feature = "cuda-native",
+  feature = "cuda-oxide-experimental",
   feature = "accelerate",
   feature = "metal"
 ))]
