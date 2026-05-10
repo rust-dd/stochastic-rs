@@ -1,0 +1,104 @@
+---
+title: Python bindings
+description: stochastic-rs-py — Python coverage for distributions, processes, pricers, calibrators, copulas, stats. NumPy in / out, 210 entries at v2.0.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Python bindings
+
+The `stochastic_rs` Python package wraps the Rust crates via PyO3. At
+**v2.0** the surface is **210 entries**: 198 PyO3
+classes plus 12 free functions across distributions, stochastic
+processes, pricers, calibrators, copulas, and stats. AI bindings are
+deferred to 2.x.
+
+## Installation
+
+See [Installation (Python)](/docs/getting-started/installation-python).
+
+## NumPy interop
+
+All `sample()` calls return `numpy.ndarray`. Bulk samplers
+(`sample_par(m, n)`) return `(m, n)`-shaped arrays. The default dtype
+is `float64`; pass `dtype="f32"` where the underlying sampler supports
+it.
+
+## End-to-end example — simulate, estimate, price
+
+A single Python script that touches four crates:
+
+```python
+import stochastic_rs as srs
+import numpy as np
+
+# 1. Simulate an OU path (stochastic crate)
+ou = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=4096, x0=0.0, t=1.0, seed=42)
+path = ou.sample()                    # shape (4096,)
+
+# 2. Estimate the Hurst exponent of an fBM path (stats crate)
+fgn = srs.Fgn(hurst=0.4, sigma=1.0, n=4096, t=1.0, seed=42)
+fbm = np.cumsum(fgn.sample())
+hurst = srs.fukasawa_hurst(fbm)
+print(f"H = {hurst.point:.3f} (true 0.4)")
+
+# 3. Price a Heston call (quant crate)
+pricer = srs.HestonPricer(
+    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
+    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+)
+print("Heston call =", pricer.price("call"))
+
+# 4. Sample from a Clayton copula (copulas crate)
+cop = srs.Clayton(theta=2.0, seed=42)
+u, v = cop.sample(10_000)
+print("τ̂ =", srs.kendall_tau(u, v))
+```
+
+## Bulk sampling — `sample_par(m, n)`
+
+```python
+import stochastic_rs as srs
+
+# 100_000 GBM paths × 252 daily steps in parallel
+gbm = srs.Gbm(mu=0.05, sigma=0.2, n=252, x0=100.0, t=1.0, seed=42)
+paths = gbm.sample_par(100_000)       # shape (100_000, 252)
+
+# Path-wise terminal payoff
+payoffs = np.maximum(paths[:, -1] - 100.0, 0.0)
+mc_call = np.exp(-0.05) * payoffs.mean()
+print("MC call =", mc_call)
+```
+
+## Three pipelines
+
+There are three ways a Rust type ends up in the Python package:
+
+1. **`py_distribution!` macro** — distributions wrap automatically when
+   you invoke the macro at the bottom of the source file.
+2. **`py_process_*!` macros** — processes use `py_process_1d!`,
+   `py_process_2x1d!`, or `py_process_2d!` depending on shape.
+3. **Hand-written `#[pyclass]` blocks** — pricers, calibrators, vol
+   surfaces, and estimators are wrapped by hand in
+   `stochastic-rs-quant/src/python.rs` and
+   `stochastic-rs-stats/src/python.rs`.
+
+For the file-by-file recipe see the
+[`python-bindings`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/python-bindings/SKILL.md)
+SKILL (comprehensive) or
+[`adding-python-binding`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/adding-python-binding/SKILL.md)
+(quickstart).
+
+## Common gotchas
+
+- **Seed reproducibility**. Every wrapper supports
+  `__init__(..., seed=None)`. Pass an explicit seed for tests; rely on
+  the thread-local default for production sampling.
+- **Dtype shims**. `IntoF32` / `IntoF64` shims convert Python `float`
+  parameters to the requested dtype. **All distribution parameters are
+  `f64`-typed** in the macro — the shim handles down-conversion to `f32`
+  when `dtype="f32"`.
+- **`sample_par(m, n)` shape**. The returned array is `(m, n)`, with
+  `m` independent paths along axis 0. This matches NumPy's row-major
+  default for downstream `.mean(axis=0)` reductions.

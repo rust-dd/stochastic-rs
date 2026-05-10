@@ -1,0 +1,4 @@
+{
+  "title": "Getting started",
+  "pages": ["installation-rust", "installation-python", "quickstart", "workspace-layout"]
+}

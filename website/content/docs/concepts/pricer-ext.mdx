@@ -1,0 +1,82 @@
+---
+title: PricerExt and ModelPricer
+description: The two pricer trait surfaces — date-aware PricerExt for vanilla flow, and concrete-typed ModelPricer for fast Greeks and calibration without &dyn.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# `PricerExt` and `ModelPricer`
+
+Two related but distinct surfaces.
+
+## `PricerExt<T>`
+
+Date-aware pricing surface. Every concrete pricer implements:
+
+```rust
+pub trait PricerExt<T: FloatExt> {
+    fn price(&self, opt: OptionType) -> T;
+    fn price_with_dcc(&self, opt: OptionType, valuation: NaiveDate, expiry: NaiveDate) -> T;
+}
+```
+
+The `_with_dcc` variant uses `TimeExt::tau_with_dcc(valuation, expiry,
+calendar, daycount)` to compute $\tau$ — necessary for production code
+that has to honour day-count conventions (ACT/360, ACT/365, 30/360,
+ACT/ACT) and holiday calendars.
+
+## `ModelPricer<T>`
+
+Concrete-typed pricer interface — no `&dyn`, no `Box<dyn>`. The trait
+exposes:
+
+```rust
+pub trait ModelPricer<T: FloatExt> {
+    type Model;     // e.g. HestonModel, BSMModel
+    fn price(&self, k: T, tau: T, opt: OptionType) -> T;
+    fn greeks(&self, k: T, tau: T, opt: OptionType) -> Greeks<T> { /* default FD */ }
+}
+```
+
+The `Model` associated type lets calibrators produce a concrete pricer
+without boxing. This is the surface on which fast calibration loops
+build.
+
+## Why two traits
+
+`PricerExt` is the user-facing API for one-off pricing of a specific
+contract. `ModelPricer` is the building block for vol surfaces and
+calibrators, where you price thousands of strikes against a single
+calibrated model and the type-erasure overhead of `&dyn` matters.
+
+Most pricers implement **both**. The `Model::Pricer` associated type
+on `ToModel` lets a calibrator produce the right concrete pricer:
+
+```rust
+pub trait ToModel {
+    type Pricer;
+    fn to_pricer(&self, params: &Self::Params) -> Self::Pricer;
+}
+```
+
+## Greeks via `GreeksExt`
+
+`Greeks` is a 9-field struct: delta, gamma, vega, theta, rho, vanna,
+charm, volga, veta.
+
+The default `greeks()` on `ModelPricer` is **finite-difference** — it
+re-prices with bumped parameters. This is fine for closed-form pricers
+(BSM, Bachelier, …) but expensive for MC pricers, where the path
+bundle is the long pole.
+
+MC pricers override `greeks()` with a **single-pass** implementation
+that re-uses the path bundle and bumps the discount / payoff inside the
+path-aggregation loop. See the
+[greeks-pattern SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/greeks-pattern/SKILL.md)
+for the exact protocol.
+
+## See also
+
+- [Calibrator and CalibrationResult](/docs/concepts/traits#calibrator-t-and-calibrationresult)
+- [Quant catalog](/docs/quant) — pricers, calibrators, vol surface, risk

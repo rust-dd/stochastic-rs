@@ -1,0 +1,286 @@
+---
+title: Installation (Rust)
+description: Add stochastic-rs to your Rust project — umbrella crate or per-sub-crate, with the right Cargo features and CPU / SIMD / GPU options.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Installation (Rust)
+
+## Umbrella crate (everything)
+
+```toml
+[dependencies]
+stochastic-rs = "2.0.0"
+```
+
+Then:
+
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::stochastic::diffusion::gbm::Gbm;
+use stochastic_rs::quant::pricing::heston::HestonPricer;
+```
+
+The umbrella re-exports everything via `pub use` from the sub-crates, so
+existing v1.x import paths keep working.
+
+## Per-sub-crate (lean)
+
+For minimal compile time and dependency surface, depend only on the
+sub-crates you need:
+
+```toml
+[dependencies]
+stochastic-rs-distributions = "2.0.0"   # SIMD distribution sampling
+stochastic-rs-stochastic    = "2.0.0"   # 120+ process types
+stochastic-rs-copulas       = "2.0.0"   # bivariate / multivariate copulas
+stochastic-rs-stats         = "2.0.0"   # estimators
+stochastic-rs-quant         = "2.0.0"   # pricing / calibration / vol surface
+stochastic-rs-ai            = "2.0.0"   # neural surrogates (candle)
+stochastic-rs-viz           = "2.0.0"   # plotly grid plotter
+```
+
+Topology:
+
+```
+stochastic-rs-core (simd_rng)
+ └→ stochastic-rs-distributions (FloatExt, SimdFloatExt, distributions)
+     ├→ stochastic-rs-stochastic (ProcessExt + 120+ processes)
+     ├→ stochastic-rs-copulas
+     └→ stochastic-rs-stats
+         └→ stochastic-rs-quant (PricerExt, calibration, vol surface)
+             ├→ stochastic-rs-ai
+             └→ stochastic-rs-viz
+```
+
+## Cargo features
+
+| Feature         | Owner crate                  | Pulls in                          | Use when                                              |
+|-----------------|------------------------------|-----------------------------------|-------------------------------------------------------|
+| `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
+| `viz`           | umbrella                     | `stochastic-rs-viz`, `plotly`     | Quick HTML plots                                      |
+| `openblas`      | `stats`, `quant`, `copulas`, `stochastic` | `ndarray-linalg/openblas-system` | MLE, multivariate copulas, Cholesky-heavy estimators  |
+| `openblas-static` | same                       | `ndarray-linalg/openblas-static`  | Vendored OpenBLAS — needed for the Windows wheel CI   |
+| `cuda-native`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
+| `gpu`           | `stochastic`                 | `cubecl`, `gpu-fft`               | Portable GPU kernel framework (CPU + GPU runtime)     |
+| `gpu-cuda`      | `stochastic`                 | `cubecl-cuda`                     | cubecl over CUDA (NVIDIA)                             |
+| `gpu-wgpu`      | `stochastic`                 | `cubecl-wgpu`                     | cubecl over WebGPU (NVIDIA / AMD / Apple via wgpu)    |
+| `metal`         | `stochastic`                 | `metal` (Apple framework)         | Direct Metal backend for FGN / fBM on macOS           |
+| `accelerate`    | `stochastic`                 | Apple Accelerate (vDSP)           | macOS-native FFT acceleration (no toolchain install)  |
+| `mimalloc` / `jemalloc` | umbrella             | `mimalloc` / `tikv-jemallocator`  | Drop-in allocator for long-running MC workloads       |
+| `python`        | umbrella + `stochastic-rs-py` | `pyo3`, `numpy`                  | Building the Python wheel via maturin                 |
+
+Default build (`cargo build`) is feature-light and links no GPU, no BLAS,
+and no Python. Pick features explicitly for the workload at hand.
+
+## SIMD support
+
+Numerical hot paths (FGN Davies-Harte, all `Simd*` distributions,
+`fill_slice` / `fill_slice_fast`) use the [`wide`](https://crates.io/crates/wide)
+crate for portable SIMD. Lane widths in this codebase are uniformly
+**8-lane** types:
+
+- `f32x8` — 8 × `f32` = 256 bits (AVX2 / NEON-pair)
+- `f64x8` — 8 × `f64` = 512 bits (AVX-512, or 2 × AVX2 / 2 × NEON fallback)
+- `i32x8` — for the integer Box-Muller / ziggurat tables
+
+`wide` selects the actual SIMD instructions at **build time** based on
+the active target features. The default x86-64 toolchain targets only
+SSE4.2, which means `f32x8` / `f64x8` compile to scalar loops. To
+unlock real SIMD, opt into a higher CPU baseline (next subsection).
+
+| Target arch              | Default ISA      | What `wide` emits without extra flags |
+|--------------------------|------------------|----------------------------------------|
+| `x86_64-…` (Linux, MSVC) | SSE4.2 (`v1`)    | Scalar fallback (no AVX)               |
+| `x86_64-…` with `+avx2`  | AVX2             | Full 256-bit SIMD on `f32x8`           |
+| `x86_64-…` with `+avx512f` | AVX-512        | Full 512-bit SIMD on `f64x8`           |
+| `aarch64-apple-darwin`   | NEON             | 128-bit NEON, two-pump for 256-bit ops |
+
+## Native CPU optimization
+
+Default builds target the plain `x86-64` / `aarch64` baseline so the
+resulting binary or wheel runs on any CPU of the same architecture.
+For SIMD-heavy paths (`SimdNormal::fill_slice_fast`, `Fgn` Davies-Harte,
+`sample_par`, …) the gap between `v1` and a tuned target is large
+enough to be worth raising the floor:
+
+```bash
+# Local dev / benchmarks: every feature the build host supports.
+# The resulting binary only runs on this exact CPU family.
+RUSTFLAGS="-C target-cpu=native" cargo build --release
+RUSTFLAGS="-C target-cpu=native" cargo bench
+
+# Higher x86-64 baselines (binary runs on any CPU meeting the level):
+#   v2 — SSE4.2 + POPCNT     (x86_64 CPUs since ~2009)
+#   v3 — AVX2 + BMI2 + FMA   (x86_64 CPUs since ~2013–2015)
+#   v4 — AVX-512             (most server CPUs only; absent from all
+#                             AMD Zen 1–3 and Intel client 12th-gen+)
+RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release
+```
+
+<Callout type="warn">
+**Public distribution (PyPI wheels, openly shared Docker images): keep
+the default `x86-64` baseline.** `pip` wheel tags don't dispatch by CPU
+feature level, so a `v3` wheel will `SIGILL` on any pre-2013 hardware
+(AMD Bulldozer/Piledriver, Sandy/Ivy Bridge, Atom variants). Use
+`v2`/`v3`/`v4` only for deployments where you've verified every target
+host clears the level — typical examples are an internal Docker fleet,
+a homogeneous HPC cluster, or a CI runner pinned to a known SKU. Use
+`target-cpu=native` only for local dev and benchmarks.
+</Callout>
+
+<Callout type="info">
+**`RUSTFLAGS` busts the build cache.** Every distinct value triggers a
+full workspace rebuild, and the env var fully **replaces** (does not
+merge with) `[build] rustflags = […]` in any `.cargo/config.toml`. For
+persistent local optimisation, prefer a `[target.<triple>] rustflags`
+entry in `~/.cargo/config.toml` so it composes with project configs.
+</Callout>
+
+## GPU support
+
+FGN and fBM ship four independent GPU / accelerator backends — pick the
+one that matches your hardware and toolchain.
+
+### `cuda-native` — direct CUDA (NVIDIA, recommended)
+
+Direct binding via [`cudarc`](https://crates.io/crates/cudarc) + cuFFT
++ a fused Philox RNG kernel. **No `.cu` files, no `nvcc` required** —
+the kernels ship as Rust strings and JIT through cudarc.
+
+Requires NVIDIA CUDA Toolkit 12.x and a compatible GPU.
+
+```bash
+cargo build --features cuda-native
+cargo bench --features cuda-native --bench fgn_cuda_native
+```
+
+```rust
+use stochastic_rs::stochastic::noise::fgn::Fgn;
+
+let fgn = Fgn::<f32>::new(/* hurst */ 0.7, 65536, None);
+let path  = fgn.sample_cuda_native(1)?;     // single path on GPU
+let batch = fgn.sample_cuda_native(1024)?;  // 1024 paths in one launch
+```
+
+### `gpu` / `gpu-cuda` / `gpu-wgpu` — cubecl portable kernels
+
+[`cubecl`](https://crates.io/crates/cubecl) is a CPU/GPU portable
+kernel framework. Useful when you want the same kernel to run on
+CUDA, WebGPU, and a CPU debug runtime.
+
+```bash
+# CUDA backend (NVIDIA)
+cargo build --features gpu-cuda
+
+# WebGPU backend (NVIDIA / AMD / Apple via wgpu — also runs in browsers)
+cargo build --features gpu-wgpu
+```
+
+```rust
+let path = fgn.sample_gpu(1)?;   // routes through whichever cubecl backend is active
+```
+
+### `metal` — direct Metal (macOS)
+
+Direct binding via the [`metal`](https://crates.io/crates/metal) crate.
+Targets Apple Silicon (M1/M2/M3/M4) and Intel Macs with discrete /
+integrated GPUs.
+
+```bash
+cargo build --features metal
+cargo bench --features metal --bench fgn_metal
+```
+
+```rust
+let path = fgn.sample_metal(1)?;
+```
+
+### `accelerate` — Apple Accelerate (macOS, no GPU)
+
+Routes the FFT through Apple's vDSP (part of the Accelerate framework
+shipped with macOS — no extra install). Lower latency than the GPU
+paths for medium-`n` workloads where launch overhead dominates.
+
+```bash
+cargo build --features accelerate
+cargo bench --features accelerate --bench fgn_accelerate
+```
+
+```rust
+let path = fgn.sample_accelerate(1)?;
+```
+
+### Choosing a backend
+
+| Backend      | Best for                                     | Latency floor | Throughput ceiling |
+|--------------|----------------------------------------------|---------------|---------------------|
+| CPU SIMD     | Small `n` (≤ 4 k), single path               | ≈ 8 µs        | rayon × cores       |
+| `accelerate` | Medium `n` (4 k–16 k), single path on macOS  | ≈ 30 µs       | one core            |
+| `metal`      | Large `n` + batches on macOS                 | ≈ 80 µs       | full GPU            |
+| `cuda-native` / `gpu-cuda` | Large `n` (≥ 16 k) + batches    | ≈ 80 µs       | full GPU            |
+| `gpu-wgpu`   | Cross-platform, browser / WASM targets       | ≈ 100 µs      | full GPU            |
+
+Concrete numbers and the cross-over point are on the
+[Benchmarks](/docs/benchmarks) page.
+
+## OpenBLAS (required for the `openblas` feature)
+
+The `openblas` feature pulls in `ndarray-linalg` for linear algebra
+(MLE, multivariate copulas, factor models, cointegration, HMM). It
+needs a system OpenBLAS with LAPACK.
+
+**Linux (Debian / Ubuntu)**
+
+```bash
+sudo apt install libopenblas-dev
+```
+
+**Linux (Fedora / RHEL)**
+
+```bash
+sudo dnf install openblas-devel
+```
+
+**macOS**
+
+```bash
+brew install openblas
+export OPENBLAS_DIR=$(brew --prefix openblas)
+```
+
+**Windows**
+
+The `openblas-src` crate does not currently support static linking on
+the MSVC target. For source builds use vcpkg with a prebuilt LAPACK
+binary; the Windows wheel CI job uses `openblas-static` with a vendored
+binary (the published Windows wheel **omits** the 15 BLAS-backed
+classes — see [Python bindings](/docs/python) for the exact list).
+
+```bash
+cargo build --features openblas
+```
+
+## Verify the install
+
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::stochastic::diffusion::ou::Ou;
+
+fn main() {
+    let p = Ou::<f64>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0));
+    let path = p.sample();
+    println!("OU path of length {}", path.len());
+}
+```
+
+Run with:
+
+```bash
+cargo run --release
+```
+
+If this prints `OU path of length 1000`, you are good. Continue with the
+[Quickstart](/docs/getting-started/quickstart).

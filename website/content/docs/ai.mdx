@@ -1,0 +1,85 @@
+---
+title: AI surrogates
+description: Neural-network volatility surrogates — Heston, one-factor Bergomi, rough Bergomi. Trained offline, inference at sub-millisecond speeds via candle.
+category: ai
+since: 2.0.0
+status: experimental
+features: ["ai"]
+---
+
+# AI surrogates
+
+The `stochastic-rs-ai` crate ships neural-network volatility surrogates
+for fast pricing / calibration. The crate is feature-gated behind
+`ai`; it pulls in `candle-core` for the inference runtime.
+
+> **Status: experimental.** The surrogates are useful for warm-starting
+> a calibrator or for sub-millisecond price approximations in a feedback
+> loop, not as the primary pricing surface for production trading.
+
+## Models shipped
+
+| Model              | Spec module                                | Training-set archive            |
+|--------------------|--------------------------------------------|----------------------------------|
+| **Heston**         | `volatility::heston::HestonNn`             | `HestonTrainSet.txt.gz`          |
+| **One-factor Bergomi** | `volatility::one_factor::OneFactorNn`  | `Bergomi1FactorTrainSet.txt.gz`  |
+| **Rough Bergomi**  | `volatility::rbergomi::RoughBergomiNn`     | `rBergomiTrainSet.txt.gz`        |
+
+## How they work
+
+Each surrogate maps `(model parameters, strike grid, expiry grid) →
+implied-vol surface`. The surrogate is a small MLP (3–5 hidden layers)
+trained offline on a Fourier-pricer-generated dataset. At inference
+time the pipeline is:
+
+1. Normalise the inputs via `BoundedScaler` / `StandardScaler`.
+2. Forward-pass through the MLP.
+3. Denormalise the output to a flat IV grid.
+4. Hand the grid to `ImpliedVolSurface::from_flat_iv_grid` for
+   downstream pricing or smile / skew analytics.
+
+## Example — Heston surrogate inference
+
+<Tabs items={['Rust']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::ai::volatility::heston::HestonNn;
+use stochastic_rs::quant::vol_surface::implied::ImpliedVolSurface;
+
+let nn = HestonNn::<f64>::load("heston.safetensors")?;
+
+let params = HestonParams {
+    kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.5, v0: 0.04,
+};
+let strikes  = vec![80.0, 90.0, 100.0, 110.0, 120.0];
+let expiries = vec![0.25, 0.5, 1.0, 2.0];
+
+// Inference returns a flat (strikes × expiries) IV grid in <1ms
+let iv_grid = nn.predict_surface(&params, &strikes, &expiries);
+
+let surface = ImpliedVolSurface::<f64>::from_flat_iv_grid(
+    &strikes, &expiries, &iv_grid, /* spot */ 100.0,
+);
+println!("ATM 1y IV = {:.4}", surface.iv_at(100.0, 1.0));
+```
+</Tab>
+</Tabs>
+
+## Training round-trip
+
+Every surrogate ships a `train_save_load_<model>` integration test that:
+
+1. Loads a known training-set archive
+2. Trains the MLP for a few epochs
+3. Saves to `safetensors`
+4. Reloads and asserts inference parity
+
+This guards the on-disk format from silent regressions.
+
+## Adding a surrogate
+
+See the
+[`vol-surrogate-nn`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/vol-surrogate-nn/SKILL.md)
+SKILL. It covers `StochVolModelSpec`, `BoundedScaler` / `StandardScaler`
+conventions, gzip-npy training-set loading, the round-trip test, and
+`predict_surface` integration with `ImpliedVolSurface::from_flat_iv_grid`.

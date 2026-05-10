@@ -1,0 +1,195 @@
+---
+title: Distributions
+description: 19 SIMD-accelerated distributions, all with closed-form pdf/cdf/cf/moments via DistributionExt. Bulk samplers; ziggurat, rejection, inversion.
+category: distribution
+since: 2.0.0
+status: stable
+---
+
+# Distributions
+
+The `stochastic-rs-distributions` crate ships **19 user-facing
+distributions**, every one of them with:
+
+- A `Simd<Name><T>` struct that implements `rand_distr::Distribution<T>`
+- Bulk fillers `fill_slice(rng, dst)` and `fill_slice_fast(dst)`
+- A
+  [`DistributionExt<T>`](/docs/concepts/distribution-ext)
+  impl with closed-form pdf / cdf / characteristic function / moments
+- A `py_distribution!`-generated `#[pyclass]` for Python use
+- A KS-test against the analytic CDF
+
+## The list
+
+### Continuous
+
+| Distribution                | Strategy                  |
+|-----------------------------|---------------------------|
+| Normal                      | Ziggurat                  |
+| Lognormal                   | Transformation (`exp(N)`) |
+| Cauchy                      | Inversion                 |
+| Student-t                   | Bailey transformation     |
+| Exponential                 | Inversion / ziggurat      |
+| Gamma                       | Marsaglia-Tsang ziggurat  |
+| Beta                        | Cheng / Jöhnk             |
+| Chi-squared                 | Composition (Gamma)       |
+| Non-central chi-squared     | Composition               |
+| Inverse Gaussian            | Michael-Schucany          |
+| Pareto                      | Inversion                 |
+| Weibull                     | Inversion                 |
+| Uniform                     | Inversion (trivial)       |
+| Alpha-stable                | Chambers-Mallows-Stuck    |
+| Normal Inverse Gaussian     | Inverse-Gaussian mixture  |
+
+### Discrete
+
+| Distribution        | Strategy                            |
+|---------------------|-------------------------------------|
+| Binomial            | BTPE / inversion                    |
+| Geometric           | Inversion                           |
+| Poisson             | Devroye / inversion (small λ) / PTRS |
+| Hypergeometric      | H-RUE                               |
+
+## Examples
+
+### Normal — bulk sampling and closed-form moments
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::traits::DistributionExt;
+use rand_distr::Distribution;
+
+let d = SimdNormal::<f64>::with_seed(/* mean */ 0.0, /* std */ 1.0, 42);
+
+// Single sample
+let mut rng = rand::thread_rng();
+let x: f64 = d.sample(&mut rng);
+
+// Bulk fill (uses internal RNG)
+let mut buf = vec![0.0_f64; 10_000];
+d.fill_slice_fast(&mut buf);
+
+// Closed-form analytics
+assert!((d.mean() - 0.0).abs() < 1e-12);
+assert!((d.variance() - 1.0).abs() < 1e-12);
+let pdf = d.pdf(0.0);                        // 1/sqrt(2π) ≈ 0.3989
+let cdf = d.cdf(1.96);                       // ≈ 0.975
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+import numpy as np
+
+d = srs.Normal(mean=0.0, std=1.0, seed=42)
+samples = d.sample(10_000)                   # numpy.ndarray
+matrix  = d.sample_par(100, 10_000)          # shape (100, 10_000)
+
+# Closed-form analytics
+print(d.mean(), d.variance())                # 0.0 1.0
+print(d.pdf(0.0), d.cdf(1.96))               # 0.3989, 0.975
+```
+</Tab>
+</Tabs>
+
+### Beta — bounded support distribution
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::distributions::beta::SimdBeta;
+use stochastic_rs::traits::DistributionExt;
+
+let d = SimdBeta::<f64>::with_seed(/* alpha */ 2.0, /* beta */ 5.0, 42);
+let mut buf = vec![0.0; 1_000];
+d.fill_slice_fast(&mut buf);
+assert!(buf.iter().all(|&x| x >= 0.0 && x <= 1.0));
+
+// E[X] = α / (α + β) = 2/7
+// Var = αβ / ((α+β)²(α+β+1)) = 10/(49·8)
+println!("mean={:.4}, var={:.4}", d.mean(), d.variance());
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+d = srs.Beta(alpha=2.0, beta=5.0, seed=42)
+samples = d.sample(1000)
+print(samples.min(), samples.max())          # in [0, 1]
+print(d.mean(), d.variance())                # 0.2857, 0.0255
+```
+</Tab>
+</Tabs>
+
+### Poisson — discrete count distribution
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::distributions::poisson::SimdPoisson;
+
+let d = SimdPoisson::<f64>::with_seed(/* lambda */ 4.0, 42);
+let mut buf = vec![0_u32; 10_000];
+d.fill_slice_fast(&mut buf);
+
+let mean = buf.iter().sum::<u32>() as f64 / 10_000.0;
+println!("sample mean = {:.3} (expect ≈ 4.0)", mean);
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+d = srs.Poisson(lam=4.0, seed=42)
+counts = d.sample(10_000)                    # int dtype
+print(counts.mean(), counts.var())           # both ≈ 4.0
+```
+</Tab>
+</Tabs>
+
+## Common patterns
+
+### Construction
+
+```rust
+let d = Foo::<T>::new(/* params */);                          // thread-local seed
+let d = Foo::<T>::with_seed(/* params */, /* seed */ 42);     // explicit seed
+let d = Foo::<T>::from_seed_source(/* params */, source);     // chain seeds
+```
+
+### Sampling
+
+```rust
+use rand_distr::Distribution;
+
+// Single sample (rng explicit)
+let mut rng = rand::thread_rng();
+let x: f64 = d.sample(&mut rng);
+
+// Bulk fill (uses internal RNG, applies SIMD)
+let mut buf = vec![0.0_f64; 10_000];
+d.fill_slice(&mut rng, &mut buf);
+d.fill_slice_fast(&mut buf);   // optimised internal pipeline
+```
+
+### Closed-form analytics
+
+```rust
+use stochastic_rs::traits::DistributionExt;
+
+let pdf = d.pdf(0.5);
+let cdf = d.cdf(0.5);
+let cf  = d.characteristic_fn(2.0);          // Complex<T>
+let m1  = d.mean();
+let m2  = d.variance();
+```
+
+## Adding a new distribution
+
+See the
+[`adding-distribution`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/adding-distribution/SKILL.md)
+SKILL — file-by-file recipe including the `py_distribution!` macro at
+the bottom.

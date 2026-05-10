@@ -1,0 +1,45 @@
+---
+title: Tutorials
+description: End-to-end walkthroughs — Heston calibration, fBm Hurst estimation, vol-surface from quotes, AI surrogate training, pairs, risk, execution, interop.
+category: tutorial
+since: 2.0.0
+status: stable
+---
+
+# Tutorials
+
+Long-form, end-to-end walkthroughs. Each tutorial builds one concrete
+artefact (a calibrated model, a vol surface, a backtested signal) from
+scratch, with full code in both Rust and Python.
+
+## Planned tutorials
+
+| Tutorial                              | What you build                                            |
+|---------------------------------------|-----------------------------------------------------------|
+| Heston calibration                    | Fit Heston to a market vol surface, generate Greeks       |
+| fBm Hurst estimation                  | Simulate fBM, recover H via Fukasawa                       |
+| Vol surface from quotes               | OTM quotes → IV grid → SVI/SSVI fit → arbitrage check     |
+| AI surrogate training                 | Train a Heston NN surrogate from scratch                   |
+| Pairs trading                         | Cointegration test → hedge ratio → z-score signal          |
+| Risk pipeline                         | VaR / CVaR / drawdown over a portfolio                     |
+| Microstructure execution              | Almgren-Chriss optimal execution on a synthetic LOB        |
+| Python interop                        | numpy → stochastic_rs → numpy round-trip in a notebook     |
+
+The tutorials are filled in incrementally. While they land, use the
+[Quickstart](/docs/getting-started/quickstart) plus the per-section
+example blocks under [Processes](/docs/processes),
+[Distributions](/docs/distributions), [Stats](/docs/stats), and
+[Quant](/docs/quant).
+
+## Format
+
+Each tutorial follows a consistent structure:
+
+1. **What you'll build** — a screenshot or a representative numerical
+   output up front, so you know if the tutorial is for you.
+2. **Prerequisites** — sub-crates, Cargo features, Python packages.
+3. **Setup** — the boilerplate.
+4. **Steps 1 … N** — each ≤ 30 lines of code, with prose explaining the
+   why.
+5. **Result** — numerical output, plot, or both.
+6. **Where to go next** — three cross-links into the catalog.

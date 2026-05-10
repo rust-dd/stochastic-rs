@@ -1,0 +1,73 @@
+---
+title: ProcessExt
+description: The trait every stochastic process implements — sample, sample_par, with the contract for path length, time grid, and parallel determinism.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# `ProcessExt<T>`
+
+Every stochastic process in `stochastic-rs-stochastic` — diffusion, jump,
+volatility, interest, rough, noise — implements `ProcessExt<T>`:
+
+```rust
+pub trait ProcessExt<T: FloatExt> {
+    /// Sample one path of length `n`.
+    fn sample(&self) -> Array1<T>;
+
+    /// Sample `m` independent paths of length `n` in parallel.
+    fn sample_par(&self, m: usize) -> Array2<T>;
+}
+```
+
+## Path length and time grid
+
+Construction of any process takes `(n, x0, t)`:
+
+- `n: usize` — number of steps (the returned path is length `n`)
+- `x0: Option<T>` — initial value; `None` ⇒ a sensible default per
+  process (e.g. 0 for OU, $\log(s_0)$ for log-GBM)
+- `t: Option<T>` — horizon; `None` ⇒ `1.0`
+
+The time grid is uniform: $\Delta t = t / n$. Non-uniform grids are
+handled by user code (sample at fine $\Delta t$, then resample).
+
+## Parallel sampling and determinism
+
+`sample_par(m)` uses Rayon. Each path gets a deterministic seed derived
+from the process's master seed plus the path index:
+
+```rust
+let seed_i = master_seed.wrapping_add(i as u64);
+```
+
+This means:
+
+- Same master seed ⇒ same `(m, n)` matrix, regardless of thread count.
+- `sample_par(1)` ≡ `sample()` only when both share the same master seed
+  initialisation path; in practice these have separate code paths and
+  are **not** byte-equivalent.
+
+FGN ships a `sample_pair` fast path that produces two independent
+paths in one FFT — a 2× shortcut over calling `sample()` twice while
+maintaining exact independence.
+
+## Acceleration
+
+Default implementation: CPU SIMD via `f64x4` / `f32x8` where the sampler
+allows. GPU backends (`cuda`, `metal`) are opt-in features and currently
+ship for FGN / fBM only — see the [add-gpu-sampler SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-gpu-sampler/SKILL.md).
+
+## Construction patterns
+
+Every process exposes:
+
+```rust
+let p = Foo::<T>::new(/* params */, n, x0, t);            // thread-local seed
+let p = Foo::<T>::with_seed(/* params */, n, x0, t, 42);  // explicit seed
+let p = Foo::<T>::from_seed_source(/* params */, n, x0, t, src);  // chain seeds
+```
+
+Use `with_seed` in tests (so they are deterministic) and `from_seed_source`
+when chaining processes (e.g. correlated Brownian factors).

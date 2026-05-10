@@ -1,0 +1,71 @@
+---
+title: Installation (Python)
+description: Install the stochastic-rs Python bindings — pre-built wheels via pip, or build locally with maturin and Bun-equivalent uv-pip workflow.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Installation (Python)
+
+The `stochastic_rs` Python package wraps the Rust crates via PyO3. At
+**v2.0** the surface covers **210 entries** — 198
+PyO3 classes plus 12 free functions across distributions, stochastic
+processes, pricers, calibrators, copulas, and stats.
+
+## From PyPI (pre-built wheels)
+
+```bash
+pip install stochastic-rs
+```
+
+Wheels are published for:
+
+- **CPython** 3.10 / 3.11 / 3.12 / 3.13
+- **Linux** (manylinux x86_64, aarch64), **macOS** (universal2),
+  **Windows** (x86_64)
+
+If your platform / ABI combination is missing, `pip` will fall back to
+building from source — that needs a Rust toolchain.
+
+## Build from source
+
+You need the Rust toolchain (`rustup`), Python ≥ 3.10, and `maturin`.
+
+```bash
+git clone https://github.com/dancixx/stochastic-rs.git
+cd stochastic-rs
+
+python -m venv .venv
+source .venv/bin/activate
+
+pip install maturin
+maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
+```
+
+The `manifest-path` flag is required because the Python crate lives in a
+sub-folder of the workspace. After this completes, `import stochastic_rs`
+will use the just-built shared library.
+
+## Verify
+
+```python
+import stochastic_rs as srs
+import numpy as np
+
+p = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
+path = p.sample()
+assert isinstance(path, np.ndarray)
+assert path.shape == (1000,)
+print("OK", path.mean(), path.std())
+```
+
+If this prints two finite numbers, you are good. Continue with the
+[Quickstart](/docs/getting-started/quickstart).
+
+## NumPy interop
+
+All `sample()` calls return `numpy.ndarray`. Bulk samplers
+(`sample_par(m, n)`) return `(m, n)`-shaped arrays. The dtype is
+`float64` by default; pass `dtype="f32"` for `float32` paths where the
+underlying sampler supports it (most distributions and processes do).

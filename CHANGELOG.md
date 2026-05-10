@@ -5,6 +5,15 @@ All notable changes to `stochastic-rs` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] — 2026-05-10
+
+First stable 2.0 release. Consolidates the contents of `2.0.0-rc.0`,
+`2.0.0-rc.1`, and `2.0.0-rc.2`. The release surface and API are
+identical to `2.0.0-rc.2`; this entry promotes the rc series to stable
+and bumps the published version on crates.io / PyPI accordingly.
+
+For the per-rc breakdown, see the entries below.
+
 ## [2.0.0-rc.2] — 2026-05-10
 
 Third release candidate. Closes the §1.6 stable-cut residuals **plus**
@@ -409,6 +418,7 @@ sub-crate. `numerics` namespace. Naming aliases (`OU`, `KOU`). Stats
 See `docs/API_AUDIT_2026-04.md` and `docs/WORKSPACE_MIGRATION.md` for the
 beta.1 baseline and the workspace migration plan.
 
+[2.0.0]: https://github.com/dancixx/stochastic-rs/releases/tag/v2.0.0
 [2.0.0-rc.2]: https://github.com/dancixx/stochastic-rs/releases/tag/v2.0.0-rc.2
 [2.0.0-rc.1]: https://github.com/dancixx/stochastic-rs/releases/tag/v2.0.0-rc.1
 [2.0.0-rc.0]: https://github.com/dancixx/stochastic-rs/releases/tag/v2.0.0-rc.0

@@ -45,3 +45,13 @@ docs/*.pdf
 # Python bytecode
 __pycache__/
 *.pyc
+
+# website/ (Fumadocs docs site — Bun)
+website/node_modules/
+website/.next/
+website/.turbo/
+website/.vercel/
+website/out/
+website/.source/
+website/.env*.local
+

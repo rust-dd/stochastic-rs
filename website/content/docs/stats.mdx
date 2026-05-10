@@ -1,0 +1,148 @@
+---
+title: Statistics & estimators
+description: Hurst estimators, MLE for 1-D diffusions with 6 transition densities, ADF/KPSS/Phillips-Perron, realized variance with BNHLS, HMM, changepoint.
+category: estimator
+since: 2.0.0
+status: stable
+---
+
+# Statistics & estimators
+
+The `stochastic-rs-stats` crate ships estimators for the most common
+quant-finance workflows. All estimators take an `ArrayView1<T>` (price
+or log-return series) and return a `*Result` struct with the point
+estimate, standard error, and a parametric or bootstrap p-value.
+
+## Sub-modules
+
+| Module                 | What's inside                                                                  |
+|------------------------|--------------------------------------------------------------------------------|
+| `mle`                  | MLE for 1-D diffusions, 6 transition-density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS via argmin. Plus the dedicated Heston MLE / NMLE-CEKF. |
+| `realized`             | Realised variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett, Parzen, Tukey-Hanning, Cubic, Quadratic-Spectral) with BNHLS bandwidth. Semivariance, realised skew / kurtosis, HAR-RV, Jacod pre-averaging, TSRV, multi-scale RV, BNS jump test. |
+| `normality`            | Jarque-Bera, Shapiro-Francia, Anderson-Darling                                 |
+| `stationarity`         | ADF, KPSS, Phillips-Perron, Leybourne-McCabe, ERS DF-GLS                       |
+| `econometrics`         | Engle-Granger and Johansen cointegration, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
+| `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
+| `fukasawa_hurst`       | Fukasawa estimator with L-BFGS-B + Paxson + Eq.16 corrections (intraday Table 1 validation) |
+| `gaussian_kde`         | Gaussian KDE                                                                   |
+| `tail_index`           | Hill estimator + variants                                                      |
+| `spectral`             | Periodogram and spectrum search                                                |
+| `leverage`             | Leverage-effect estimators                                                     |
+| `fou_estimator`        | fOU MLE with Hurst joint estimation                                            |
+
+## Examples
+
+### Realized variance from intraday returns
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::stats::realized::variance::RealizedVariance;
+use ndarray::ArrayView1;
+
+let log_returns: Vec<f64> = /* 1-min log-returns over a trading day */;
+let result = RealizedVariance::<f64>::new()
+    .estimate(ArrayView1::from(&log_returns));
+
+println!("RV  = {:.6}", result.point);
+println!("SE  = {:.6}", result.se);
+println!("ann = {:.4}", (result.point * 252.0).sqrt());  // annualised vol
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+import numpy as np
+
+log_returns = ...   # 1-min log-returns over a trading day
+res = srs.realized_variance(log_returns)
+print("RV  =", res.point)
+print("SE  =", res.se)
+print("ann =", np.sqrt(res.point * 252))
+```
+</Tab>
+</Tabs>
+
+### ADF stationarity test
+
+Null hypothesis: unit root (non-stationary). Reject if p-value < 0.05.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::stats::stationarity::adf::AugmentedDickeyFuller;
+
+let series: Vec<f64> = /* prices or log-returns */;
+let result = AugmentedDickeyFuller::<f64>::new()
+    .lag(5)
+    .test(ArrayView1::from(&series));
+
+if result.p_value < 0.05 {
+    println!("reject H0 (unit root) at 5% — series is stationary");
+} else {
+    println!("cannot reject unit root, p={:.3}", result.p_value);
+}
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+res = srs.adf_test(series, lag=5)
+print(f"t-stat={res.point:.3f}, p={res.p_value:.3f}")
+```
+</Tab>
+</Tabs>
+
+### Fukasawa Hurst estimator
+
+Strongly consistent Hurst estimate from high-frequency increments.
+Recommended for empirical roughness studies.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::stats::fukasawa_hurst::FukasawaHurst;
+use stochastic_rs::traits::ProcessExt;
+
+let true_h = 0.3;
+let path = Fgn::<f64>::with_seed(true_h, 1.0, 4096, Some(1.0), 42).sample();
+let res = FukasawaHurst::<f64>::new().estimate(path.view());
+
+println!("H̃ = {:.3} (true = {:.3})", res.point, true_h);
+println!("95% CI: [{:.3}, {:.3}]", res.ci_lower, res.ci_upper);
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+fgn = srs.Fgn(hurst=0.3, sigma=1.0, n=4096, t=1.0, seed=42)
+path = fgn.sample()
+res = srs.fukasawa_hurst(path)
+print(f"H̃ = {res.point:.3f}, CI=[{res.ci_lower:.3f}, {res.ci_upper:.3f}]")
+```
+</Tab>
+</Tabs>
+
+## Common pattern
+
+```rust
+use stochastic_rs::stats::fukasawa_hurst::FukasawaHurst;
+
+let est = FukasawaHurst::<f64>::new().estimate(path.view());
+println!("H = {:.3} ± {:.3}, p = {:.3}",
+         est.point, est.se, est.p_value);
+```
+
+`*Result` structs are flat — no boxed traits, no enums you have to
+match on. One struct per estimator, so calibrating loops can read
+`result.point` without dispatch overhead.
+
+## Adding an estimator
+
+See the
+[`stats-estimator`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/stats-estimator/SKILL.md)
+SKILL — covers the `ArrayView1<T>` input shape, `*Result` struct
+conventions, openblas gating, and the paper-citation requirement.

@@ -1,0 +1,158 @@
+---
+title: Stochastic processes
+description: 120+ stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+category: process
+since: 2.0.0
+status: stable
+---
+
+# Stochastic processes
+
+The `stochastic-rs-stochastic` crate ships **120+ processes** organised
+into six families. Every process implements
+[`ProcessExt<T>`](/docs/concepts/process-ext), with `sample()` and
+`sample_par(m)` returning `ndarray::Array1<T>` / `Array2<T>` paths.
+
+## Families
+
+| Family            | Count | Examples                                                        |
+|-------------------|-------|-----------------------------------------------------------------|
+| **Diffusion**     | 30    | OU, GBM (log + standard), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque |
+| **Jump**          | 16    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, Hawkes-JD, Lévy diffusion |
+| **Volatility**    | 11    | Heston, SABR, Bergomi, rough Bergomi, double-Heston, HKDE, Bates SVJ, fractional Bates SVJ, fractional Heston |
+| **Interest rate** | 14    | Vasicek, CIR, CIR 2-factor, Hull-White (1F + 2F), G2++, Ho-Lee, HJM, LMM, Wu-Zhang, Duffie-Kan |
+| **Rough**         | 6     | RL fBM, RL Heston, RL fOU, Markov lift, Volterra-kernel based     |
+| **Noise**         | 5     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN |
+
+## Examples
+
+### Geometric Brownian Motion
+
+The textbook log-normal diffusion $dS_t = \mu S_t\,dt + \sigma S_t\,dW_t$.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::stochastic::diffusion::gbm::Gbm;
+
+let p = Gbm::<f64>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0));
+let path = p.sample();              // Array1<f64>, length 1000
+let paths = p.sample_par(10_000);   // Array2<f64>, shape (10_000, 1000)
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+p = srs.Gbm(mu=0.05, sigma=0.2, n=1000, x0=100.0, t=1.0)
+path = p.sample()                   # numpy.ndarray, shape (1000,)
+paths = p.sample_par(10_000)        # shape (10_000, 1000)
+```
+</Tab>
+</Tabs>
+
+### Heston stochastic volatility
+
+Two-factor model $dS_t = \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^1_t$,
+$dV_t = \kappa(\theta - V_t)\,dt + \sigma\sqrt{V_t}\,dW^2_t$ with
+$d\langle W^1, W^2\rangle_t = \rho\,dt$.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::stochastic::volatility::heston::Heston;
+
+let p = Heston::<f64>::new(
+    /* mu */ 0.03, /* kappa */ 2.0, /* theta */ 0.04,
+    /* sigma */ 0.3, /* rho */ -0.7,
+    /* v0 */ 0.04, /* s0 */ 100.0,
+    /* n */ 1_000, /* t */ Some(1.0),
+);
+let (s_path, v_path) = p.sample();   // both Array1<f64>
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+p = srs.Heston(mu=0.03, kappa=2.0, theta=0.04,
+               sigma=0.3, rho=-0.7, v0=0.04, s0=100.0,
+               n=1000, t=1.0)
+s, v = p.sample()                   # both numpy arrays
+```
+</Tab>
+</Tabs>
+
+### Fractional Brownian motion
+
+Roughness controlled by the Hurst parameter $H \in (0, 1)$.
+$H = 0.5$ recovers standard Brownian motion; $H < 0.5$ is rough,
+$H > 0.5$ is persistent.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::stochastic::noise::fgn::Fgn;
+
+let fgn = Fgn::<f64>::with_seed(/* hurst */ 0.3, /* sigma */ 1.0,
+                                /* n */ 4096, /* t */ Some(1.0),
+                                /* seed */ 42);
+let increments = fgn.sample();
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+import numpy as np
+
+fgn = srs.Fgn(hurst=0.3, sigma=1.0, n=4096, t=1.0, seed=42)
+increments = fgn.sample()
+fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
+```
+</Tab>
+</Tabs>
+
+## Common patterns
+
+### Construction
+
+Every process exposes three constructors:
+
+```rust
+let p = Foo::<T>::new(/* params */, n, x0, t);                      // thread-local seed
+let p = Foo::<T>::with_seed(/* params */, n, x0, t, /* seed */ 42); // explicit seed
+let p = Foo::<T>::from_seed_source(/* params */, n, x0, t, source); // chain seeds
+```
+
+Use `with_seed` in tests (so they are deterministic) and
+`from_seed_source` when chaining processes (e.g. correlated Brownian
+factors).
+
+### Sampling
+
+```rust
+let path  = p.sample();          // Array1<T>, length n
+let paths = p.sample_par(m);     // Array2<T>, shape (m, n)
+```
+
+`sample_par(m)` uses Rayon. Each path gets a deterministic seed
+derived from the master seed plus the path index, so the result is
+thread-count-independent.
+
+### Acceleration
+
+CPU SIMD (`f64x4` / `f32x8`) is on by default. GPU samplers (CUDA / Metal)
+ship for FGN and fBM behind the `cuda` / `metal` features. See
+[Feature flags](/docs/concepts/feature-flags) for the matrix.
+
+## Adding a new process
+
+If you contribute, the four relevant SKILLs are:
+
+- [`add-diffusion-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-diffusion-process/SKILL.md) — GBM / OU / CIR / Heston-style
+- [`add-jump-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-jump-process/SKILL.md) — Merton-jump / Kou / Bates / compound-Poisson
+- [`add-fractional-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-fractional-process/SKILL.md) — fBM / rough Bergomi / fractional CIR
+- [`add-gpu-sampler`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-gpu-sampler/SKILL.md) — CUDA / Metal port
+
+Each contains the file-by-file recipe.

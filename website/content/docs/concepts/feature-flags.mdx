@@ -1,0 +1,73 @@
+---
+title: Feature flags
+description: Cargo features in stochastic-rs — what each one pulls in, how they propagate across the workspace, and which features your crates need.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Feature flags
+
+Cargo features in this workspace are **opt-in**. The default build
+links no GPU, no BLAS, no Python, no neural surrogates — just the pure
+Rust core.
+
+## The matrix
+
+| Feature      | Owner crate                 | Pulls in                             | Use when                                  |
+|--------------|-----------------------------|--------------------------------------|-------------------------------------------|
+| `ai`         | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
+| `cuda`       | `-stochastic`               | `cudarc`, `cuda-runtime`             | NVIDIA GPU FGN / fBM samplers             |
+| `metal`      | `-stochastic`               | `metal-rs`                           | macOS GPU FGN / fBM samplers              |
+| `openblas`   | `-stats`, `-quant`          | `ndarray-linalg/openblas`            | MLE, multivariate copulas, Cholesky-heavy |
+| `viz`        | umbrella                    | `stochastic-rs-viz`, `plotly`        | Quick HTML plots                          |
+| `python`     | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
+| `hotpath`    | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
+
+## Propagation
+
+A feature on the umbrella `stochastic-rs` crate maps to a feature on the
+relevant sub-crate. Example from the umbrella `Cargo.toml`:
+
+```toml
+[features]
+default = []
+ai      = ["stochastic-rs-ai"]
+viz     = ["stochastic-rs-viz"]
+cuda    = ["stochastic-rs-stochastic/cuda"]
+metal   = ["stochastic-rs-stochastic/metal"]
+openblas = [
+  "stochastic-rs-stats/openblas",
+  "stochastic-rs-quant/openblas",
+]
+```
+
+If you depend on a sub-crate directly (recommended for lean builds),
+you enable the feature on that sub-crate:
+
+```toml
+stochastic-rs-stats = { version = "2.0.0", features = ["openblas"] }
+```
+
+## Common gotchas
+
+- **`openblas` is platform-specific.** On macOS use
+  `RUSTFLAGS=-L/opt/homebrew/opt/openblas/lib` or the `system` linkage.
+  On Linux `apt install libopenblas-dev`.
+- **`cuda` requires the CUDA toolkit on the build machine.** CI builds
+  do not install it by default.
+- **`ai` is heavy.** It pulls in `candle-core`, which is a substantial
+  ML stack. Only enable when you actually need NN surrogates.
+
+## Defining a new feature
+
+When adding a new optional dependency, follow the
+[feature-flag-management SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/feature-flag-management/SKILL.md).
+The short version:
+
+1. Add the feature on the **owner** sub-crate (where the optional
+   dependency lives).
+2. Re-export the feature on the umbrella via
+   `feature_x = ["stochastic-rs-sub/feature_x"]`.
+3. Update the matrix above and the per-feature CI job.
+4. Add a `cfg`-gated module so default builds don't pull in the dep.

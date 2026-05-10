@@ -1,0 +1,126 @@
+---
+title: Traits overview
+description: The trait surface that organises the library — FloatExt, ProcessExt, DistributionExt, PricerExt, ModelPricer, Calibrator, GreeksExt, and friends.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Traits overview
+
+The library's organising principle is a small set of traits. Each trait
+captures one abstraction, with concrete types implementing the trait
+generically over the float type via [`FloatExt`](#floatext).
+
+## The trait map
+
+| Trait                     | Crate                          | Purpose                                                |
+|---------------------------|--------------------------------|--------------------------------------------------------|
+| `FloatExt`                | `stochastic-rs-distributions`  | Foundational float trait bound (`f32` / `f64`)         |
+| `SimdFloatExt`            | `stochastic-rs-distributions`  | SIMD-friendly subset of `FloatExt`                     |
+| `ProcessExt<T>`           | `stochastic-rs-stochastic`     | Stochastic process simulation (`sample`, `sample_par`) |
+| `DistributionExt<T>`      | `stochastic-rs-distributions`  | Closed-form pdf / cdf / cf / moments                   |
+| `BivariateExt<T>`         | `stochastic-rs-copulas`        | Bivariate copulas                                      |
+| `MultivariateExt<T>`      | `stochastic-rs-copulas`        | Multivariate copulas (openblas-only)                   |
+| `PricerExt<T>`            | `stochastic-rs-quant`          | Option pricing with date support                       |
+| `ModelPricer<T>`          | `stochastic-rs-quant`          | Concrete-typed pricer (no `&dyn`)                      |
+| `ToModel`, `ToShortRateModel` | `stochastic-rs-quant`      | Calibrator → Concrete pricer bridge                    |
+| `FourierModelExt<T>`      | `stochastic-rs-quant`          | Characteristic function models                         |
+| `Calibrator<T>`           | `stochastic-rs-quant`          | Result-based calibration (`type Params`, `type Error`) |
+| `Instrument`, `PricingEngine` | `stochastic-rs-quant`      | QuantLib-style decoupling of payoff vs engine          |
+| `GreeksExt<T>`            | `stochastic-rs-quant`          | First- + second-order Greeks aggregator                |
+| `MalliavinExt<T>`         | `stochastic-rs-stochastic`     | Finite-difference Malliavin Greeks                     |
+| `CalendarExt`             | `stochastic-rs-quant`          | Pluggable holiday calendars                            |
+| `TimeExt`                 | `stochastic-rs-quant`          | Day-count-aware maturity (`tau_with_dcc`)              |
+
+## `FloatExt`
+
+The trait every numerical type is generic over:
+
+```rust
+pub trait FloatExt: Float + …  {
+    // arithmetic, comparison, conversions
+    // closed-form math: erf, erfc, gamma, lgamma, beta, …
+    // RNG-friendly: ZERO, ONE, TWO, PI, TAU, EPSILON, …
+}
+```
+
+`f32` and `f64` are blanket-impl'd; user code rarely names the trait
+explicitly except as a bound:
+
+```rust
+pub fn my_pricer<T: FloatExt>(s0: T, k: T, t: T) -> T { /* … */ }
+```
+
+The `SimdFloatExt` subset is what bulk samplers rely on for
+`f32x8` / `f64x4` operations.
+
+## `ProcessExt<T>`
+
+Every stochastic process implements `ProcessExt<T>`:
+
+```rust
+pub trait ProcessExt<T: FloatExt> {
+    fn sample(&self) -> Array1<T>;
+    fn sample_par(&self, m: usize) -> Array2<T>;
+    // optional: malliavin-style methods via MalliavinExt
+}
+```
+
+`sample()` produces a single path of length `n` (the steps); `sample_par(m)`
+produces `m` independent paths in parallel via Rayon.
+
+## `DistributionExt<T>`
+
+Closed-form moments / pdf / cdf / characteristic function — implemented by
+**18/19** distributions in the library (5 named no-closed-form
+`unimplemented!()` cases on specific moments per the project status memo).
+
+```rust
+pub trait DistributionExt<T: FloatExt> {
+    fn pdf(&self, x: T) -> T;
+    fn cdf(&self, x: T) -> T;
+    fn characteristic_fn(&self, t: T) -> Complex<T>;
+    fn mean(&self) -> T;
+    fn variance(&self) -> T;
+    fn skewness(&self) -> T { unimplemented!("not implemented for {}", type_name) }
+    fn kurtosis(&self) -> T { unimplemented!("not implemented for {}", type_name) }
+}
+```
+
+> **Default behaviour**: unimplemented moments **panic** with a helpful
+> message — never silently return zero. This is a hard project rule.
+
+## `Calibrator<T>` and `CalibrationResult`
+
+Calibration is Result-based with associated types for the parameter
+struct and error:
+
+```rust
+pub trait Calibrator<T: FloatExt> {
+    type Params;
+    type Error;
+    fn calibrate(&self, market: &MarketData<T>) -> Result<CalibrationResult<Self>, Self::Error>;
+}
+```
+
+`CalibrationResult` carries the calibrated `Params`, the final RMSE,
+iteration count, and a success flag. See the
+[Quant catalog](/docs/quant) for the calibrators that ship today.
+
+## `GreeksExt<T>` and the `Greeks` aggregator
+
+All pricers that derive from `ModelPricer<T>` automatically get a default
+`greeks()` implementation via finite differences. MC pricers override
+the default with a single-pass computation that re-uses the path bundle.
+
+```rust
+pub struct Greeks<T> {
+    pub delta: T, pub gamma: T,
+    pub vega: T,  pub theta: T, pub rho: T,
+    pub vanna: T, pub charm: T,
+    pub volga: T, pub veta: T,
+}
+```
+
+See [Quant](/docs/quant) for the pricers that expose Greeks.

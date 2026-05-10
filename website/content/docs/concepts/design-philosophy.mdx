@@ -1,0 +1,99 @@
+---
+title: Design philosophy
+description: Why the library is shaped the way it is — generic over float, no statrs, paper-anchored implementations, comparison-test mandatory, plus non-goals.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Design philosophy
+
+What follows is the short version of the development rules at
+[`.claude/skills/dev-rules/SKILL.md`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/dev-rules/SKILL.md).
+If you contribute to the library, read that SKILL once. If you only
+*use* the library, this page is enough.
+
+## 1. Generic over float
+
+Every numerical type is generic over `T: FloatExt`. We support `f32`
+and `f64`. Reasons: GPU memory bandwidth (`f32`), embedded targets,
+and the option for higher-precision drop-ins later.
+
+This means the library never hard-codes `f64`. If you contribute, your
+new pricer / process / estimator must also be generic. The only
+exception is glue code that inherently lives in one precision (e.g.
+`numpy` interop with `dtype=float64`).
+
+## 2. Paper-anchored implementations
+
+Every model and algorithm carries a paper citation in the source file:
+
+```rust
+//! Reference: Heston (1993). DOI: 10.1093/rfs/6.2.327
+```
+
+The implementation **follows the paper exactly** — no simplifications,
+no "I think this is equivalent" rewrites. If a formula in the paper
+looks numerically unstable, the fix is to cite the *correction* paper
+that addresses the instability, not to silently rewrite.
+
+Comparison tests anchor the implementation to numerical tables in the
+paper.
+
+## 3. No `statrs` for distribution math
+
+Distribution closed forms are written from scratch in
+`stochastic-rs-distributions`, never delegated to
+`statrs::distribution::*`. The reasoning is on the
+[DistributionExt page](/docs/concepts/distribution-ext#why-no-statrs-distribution).
+
+## 4. `ndarray` everywhere, never `Vec<T>`
+
+All numerical arrays are `ndarray::Array1<T>` / `Array2<T>`. The library
+already depends on `ndarray`, `ndarray-stats`, and `ndrustfft`. Don't
+re-introduce `Vec<T>` for numerical data — it complicates SIMD and
+bulk-fill paths.
+
+## 5. Comparison test + criterion bench mandatory
+
+A new module ships with both:
+
+- A **comparison test** under `tests/` that validates output against the
+  reference implementation (Python, R, MATLAB, or paper tables).
+- A **criterion benchmark** under `benches/` that tracks performance.
+
+This rule is enforced by review, not CI — there is no automated check
+that a new module shipped tests + benches.
+
+## 6. Default behaviour: panic, never silent zero
+
+If a function cannot do its job (e.g. an unimplemented moment, a
+required feature is off, a contract violation), it **panics** with a
+helpful message. We never silently return 0, NaN, or `None` from
+something that semantically should compute a number.
+
+## 7. Result-based calibration
+
+`Calibrator<T>` returns `Result<CalibrationResult<Self>, Self::Error>`.
+The error type is `anyhow::Error` for easy chaining. The optimiser may
+fail to converge (bad seed, ill-posed surface, …) and the caller needs
+a graceful path — panicking deep inside an L-BFGS loop is not it.
+
+## Explicit non-goals
+
+- **Not a general-purpose Monte Carlo engine.** We have variance-reduction
+  techniques (antithetic, control variate, stratified, importance,
+  quasi-MC, MLMC), but the design priority is *quant-finance* MC, not
+  general PDE / SDE solving. (For the latter, look at `nalgebra-glm`,
+  `pyo3-numpy`, or research-grade libraries like `dolfin`.)
+
+- **Not a scipy.stats clone.** We ship the distributions and estimators
+  we need for the workflows the library is designed for. Asks like
+  "please add a Pearson-VII distribution" without a clear quant-finance
+  use case will be politely declined.
+
+- **Not a closed-source-quant replacement.** The vol-surface pipeline,
+  the calibrators, and the risk metrics are competitive but specifically
+  scoped: liquid-equity vanilla / lightly-exotic. Production deployments
+  in fixed-income / credit / OTC commodities will likely need their own
+  layer on top.

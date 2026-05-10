@@ -1,0 +1,56 @@
+---
+title: stochastic-rs
+description: A Rust library for stochastic process simulation, quantitative finance, statistics, copulas, distributions, and neural-network volatility models.
+category: concept
+status: stable
+since: 2.0.0
+---
+
+# stochastic-rs
+
+A Rust library for **stochastic process simulation, quantitative finance,
+statistics, copulas, distributions, and neural-network volatility models**.
+Generic over the float type (`f32` / `f64`), with SIMD acceleration on CPU
+and CUDA / Metal backends where they pay off, and first-class Python
+bindings via PyO3.
+
+## What's in here
+
+The workspace ships nine sub-crates (the `stochastic-rs` umbrella
+re-exports everything):
+
+```
+stochastic-rs-core             simd_rng (foundation)
+stochastic-rs-distributions    19 distributions, FloatExt + SimdFloatExt
+stochastic-rs-stochastic       120+ processes, ProcessExt
+stochastic-rs-copulas          bivariate + multivariate copulas
+stochastic-rs-stats            estimators (MLE, Hurst, realised, …)
+stochastic-rs-quant            pricing, calibration, vol surface, risk
+stochastic-rs-ai               neural surrogates (feature-gated)
+stochastic-rs-viz              Plotly grid plotter
+stochastic-rs-py               PyO3 cdylib (210 entries)
+```
+
+## Where to start
+
+- **New to the library?** [Quickstart](/docs/getting-started/quickstart) — install,
+  simulate a path, price an option, and read a Hurst estimate, end-to-end.
+- **Looking for a specific process / pricer?** Use the catalog index:
+  [Processes](/docs/processes), [Distributions](/docs/distributions),
+  [Quant](/docs/quant).
+- **Using Python?** Start with [Python bindings overview](/docs/python).
+
+## Navigation
+
+The left sidebar is grouped into:
+
+1. **Start here** — getting-started + concepts (traits, prelude, feature
+   flags). Read this section once, end-to-end, before you dive into
+   the catalog.
+2. **Reference** — one page per process / distribution / pricer /
+   calibrator / estimator / copula. Page templates are documented in
+   [the docs-writing SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/docs-writing/SKILL.md).
+3. **Bindings** — Python parity table and interop notes.
+4. **Guides** — long-form tutorials (Heston calibration, fBm Hurst
+   estimation, vol-surface pipeline, …) and benchmark dashboard.
+5. **Project** — migration, contributing, API reference.

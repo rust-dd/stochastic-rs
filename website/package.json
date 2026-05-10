@@ -1,0 +1,42 @@
+{
+  "name": "stochastic-rs-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Documentation site for stochastic-rs (Fumadocs + Next.js + Bun).",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "postinstall": "fumadocs-mdx",
+    "lint": "next lint",
+    "lint:mdx": "bun run scripts/lint-mdx.ts",
+    "audit": "bun run scripts/docs-audit.ts",
+    "python:parity": "bun run scripts/python-parity.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fumadocs-core": "^16.8.9",
+    "fumadocs-mdx": "^15.0.2",
+    "fumadocs-ui": "^16.8.9",
+    "katex": "^0.16.11",
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^16.2.6",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  }
+}

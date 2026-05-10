@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs-distributions"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 edition = "2024"
 license = "MIT"
 description = "Probability distributions with SIMD bulk sampling."

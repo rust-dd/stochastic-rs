@@ -1,0 +1,62 @@
+---
+title: Contributing
+description: How to contribute to stochastic-rs — coding conventions, the SKILL system that automates per-feature recipes, and the per-PR docs/tests/bench rule.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Contributing
+
+Contributions welcome. Every PR that adds a public type ships with
+**three** things, in this order:
+
+1. The implementation, with a paper citation in the source file.
+2. A comparison test against the cited paper's numerical example.
+3. A criterion bench under `benches/`.
+
+For documentation:
+
+4. A docs page under `website/content/docs/<section>.mdx` (or
+   `website/content/docs/<section>/<name>.mdx` if the section already
+   has multiple pages), following one of the eight templates in the
+   [`docs-writing`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/docs-writing/SKILL.md)
+   SKILL.
+5. A Python wrapper if the type is user-facing (per the
+   [`python-bindings`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/python-bindings/SKILL.md)
+   SKILL).
+
+## SKILLs — the per-feature recipes
+
+The `.claude/skills/` directory contains step-by-step recipes for each
+extension axis. **Read the relevant SKILL before opening a PR.** Each
+SKILL captures load-bearing project conventions plus the file-by-file
+order of operations.
+
+| SKILL                                                                                                     | Use when                                            |
+|-----------------------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| [`dev-rules`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/dev-rules/SKILL.md)       | Project-wide development conventions                |
+| [`new-module`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/new-module/SKILL.md)     | Creating any new top-level module                    |
+| [`add-diffusion-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-diffusion-process/SKILL.md) | New SDE process (GBM / OU / CIR style)              |
+| [`add-jump-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-jump-process/SKILL.md)           | Jump-diffusion / Lévy / compound-Poisson            |
+| [`add-fractional-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-fractional-process/SKILL.md) | Hurst-parameterised / rough process                 |
+| [`add-gpu-sampler`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-gpu-sampler/SKILL.md)             | Port a CPU sampler to CUDA / Metal                  |
+| [`adding-distribution`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/adding-distribution/SKILL.md)     | New univariate distribution                         |
+| [`copula-bivariate`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/copula-bivariate/SKILL.md)           | New bivariate copula                                |
+| [`stats-estimator`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/stats-estimator/SKILL.md)             | New statistical estimator                           |
+| [`calibration-pattern`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/calibration-pattern/SKILL.md)     | New calibrator                                       |
+| [`greeks-pattern`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/greeks-pattern/SKILL.md)               | Expose first- + second-order Greeks                  |
+| [`add-mc-variance-reduction`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-mc-variance-reduction/SKILL.md) | New MC variance-reduction technique                |
+| [`vol-surrogate-nn`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/vol-surrogate-nn/SKILL.md)           | New NN volatility surrogate                          |
+| [`bench-writing`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/bench-writing/SKILL.md)                 | Writing or refactoring criterion benches             |
+| [`integration-test-writing`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/integration-test-writing/SKILL.md) | Writing integration tests                          |
+| [`feature-flag-management`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/feature-flag-management/SKILL.md) | Adding / propagating Cargo features                 |
+| [`python-bindings`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/python-bindings/SKILL.md)             | Python (PyO3) wrapping                               |
+| [`adding-python-binding`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/adding-python-binding/SKILL.md) | Quickstart Python wrap                               |
+| [`docs-writing`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/docs-writing/SKILL.md)                   | Per-page docs templates + KaTeX gotchas              |
+| [`release-checklist`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/release-checklist/SKILL.md)         | Cutting an rc / stable / patch release               |
+
+## License
+
+Dual-licensed under MIT or Apache-2.0 at your option. By contributing
+you agree your code can be distributed under both.

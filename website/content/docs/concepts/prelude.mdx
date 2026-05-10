@@ -1,0 +1,96 @@
+---
+title: Prelude
+description: stochastic_rs::prelude — twenty items in five groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# Prelude
+
+```rust
+use stochastic_rs::prelude::*;
+```
+
+Brings **20 items in 5 groups**:
+
+## Trait core (7)
+
+```rust
+FloatExt, SimdFloatExt,
+ProcessExt, BivariateExt,
+DistributionExt, DistributionSampler,
+TimeExt
+```
+
+These are the bounds you write on generic functions. Almost every public
+function in the library carries `T: FloatExt`.
+
+## Pricing (3)
+
+```rust
+PricerExt, ModelPricer, GreeksExt
+```
+
+`PricerExt` is the historical name for the date-aware pricer trait;
+`ModelPricer` is the new concrete-typed surface (no `&dyn`); `GreeksExt`
+gives the unified Greeks aggregator on every pricer.
+
+## Calibration (3)
+
+```rust
+Calibrator, CalibrationResult, ToModel
+```
+
+`ToModel` is the bridge that lets a `Calibrator` produce a concrete
+pricer instance via the associated type — no boxed-trait gymnastics.
+
+## Instrument / engine (4)
+
+```rust
+Instrument, InstrumentExt,
+PricingEngine, PricingResult
+```
+
+The QuantLib-style decoupling: an `Instrument` describes the payoff and
+contract details, a `PricingEngine` does the actual numerics. Two engines
+ship today: `AnalyticBSEngine`, `AnalyticHestonEngine`. New engines
+implement `PricingEngine` against the relevant `Instrument` types.
+
+## Option types (3)
+
+```rust
+Moneyness, OptionStyle, OptionType
+```
+
+The three enums that cover ~all option specs in the library. `Moneyness`
+ATM / ITM / OTM; `OptionStyle` European / American / Bermudan; `OptionType`
+Call / Put.
+
+## What is *not* in the prelude (and why)
+
+- `MalliavinExt` / `Malliavin2DExt` — 0 in-tree implementations today;
+  reach via `stochastic_rs::traits::MalliavinExt`.
+- `MultivariateExt` — `openblas`-only; importing it from a default-build
+  would be a hard error. Reach via `traits::*`.
+- `CallableDist` — `python`-only; same reason.
+
+These are intentionally left out so the prelude is feature-flag-free —
+`use stochastic_rs::prelude::*;` works on every supported feature
+combination without surprises.
+
+## Importing concrete types
+
+The prelude ships only traits and option-type enums. You always name
+concrete types yourself:
+
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::calibration::heston::HestonCalibrator;
+```
+
+This is a deliberate trade-off: a prelude that ships every concrete type
+would be a 200+-line dump every editor has to autocomplete through. Keeping
+concrete-type imports explicit also makes grep-able code (`grep -r 'Ou::'`).

@@ -1,0 +1,25 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "---Start here---",
+    "getting-started",
+    "concepts",
+    "---Reference---",
+    "processes",
+    "distributions",
+    "copulas",
+    "stats",
+    "quant",
+    "ai",
+    "viz",
+    "---Bindings---",
+    "python",
+    "---Guides---",
+    "tutorials",
+    "benchmarks",
+    "---Project---",
+    "contributing",
+    "api"
+  ]
+}

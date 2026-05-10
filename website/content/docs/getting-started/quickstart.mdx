@@ -1,0 +1,126 @@
+---
+title: Quickstart
+description: A 5-minute end-to-end tour — simulate an OU path, price a Heston call, and run a Hurst estimator. Same code shown in Rust and Python side by side.
+category: tutorial
+since: 2.0.0
+status: stable
+---
+
+# Quickstart
+
+Three vignettes, each shown in Rust and Python. Pick whichever language
+you are working in — the API surface is intentionally close.
+
+## 1. Simulate an OU path
+
+The Ornstein-Uhlenbeck process
+
+$$ dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t,\quad X_0 = x_0 $$
+
+with $\theta = 2$, $\mu = 0$, $\sigma = 1$, $X_0 = 0$, on $t \in [0, 1]$
+with 1000 steps:
+
+### Rust
+
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::stochastic::diffusion::ou::Ou;
+
+fn main() {
+    let p = Ou::<f64>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0));
+    let path = p.sample();
+    println!("len = {}, mean = {:.3}", path.len(), path.mean().unwrap());
+}
+```
+
+### Python
+
+```python
+import stochastic_rs as srs
+
+p = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
+path = p.sample()
+print("len =", path.shape[0], "mean =", path.mean())
+```
+
+For the API contract see the [Processes catalog](/docs/processes).
+
+## 2. Price a Heston European call
+
+The Heston model is the workhorse stochastic-volatility model. The
+Fourier pricer uses Cui's analytic Jacobian for fast and stable
+characteristic-function evaluation.
+
+### Rust
+
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::types::OptionType;
+
+fn main() {
+    let pricer = HestonPricer::<f64>::new(
+        /* s0 */ 100.0, /* k */ 100.0, /* tau */ 1.0,
+        /* r */ 0.03, /* q */ 0.0,
+        /* v0 */ 0.04, /* kappa */ 2.0, /* theta */ 0.04,
+        /* sigma */ 0.3, /* rho */ -0.5,
+    );
+    let price = pricer.price(OptionType::Call);
+    let greeks = pricer.greeks(OptionType::Call);
+    println!("call = {:.4}, delta = {:.4}, vega = {:.4}",
+             price, greeks.delta, greeks.vega);
+}
+```
+
+### Python
+
+```python
+import stochastic_rs as srs
+
+pricer = srs.HestonPricer(
+    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
+    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+)
+price = pricer.price("call")
+greeks = pricer.greeks("call")
+print(f"call={price:.4f}, delta={greeks.delta:.4f}, vega={greeks.vega:.4f}")
+```
+
+## 3. Estimate Hurst from a fractional-Brownian path
+
+The Fukasawa estimator gives a strongly consistent Hurst estimate from
+high-frequency increments. It is the recommended estimator for empirical
+roughness studies.
+
+### Rust
+
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::stats::fukasawa_hurst::FukasawaHurst;
+
+fn main() {
+    let fgn = Fgn::<f64>::new(0.3, 1.0, 4096, Some(1.0));
+    let path = fgn.sample();
+    let est = FukasawaHurst::<f64>::new().estimate(path.view());
+    println!("H = {:.3} ± {:.3}", est.point, est.se);
+}
+```
+
+### Python
+
+```python
+import stochastic_rs as srs
+
+fgn = srs.Fgn(hurst=0.3, sigma=1.0, n=4096, t=1.0)
+path = fgn.sample()
+est = srs.fukasawa_hurst(path)
+print(f"H = {est.point:.3f} ± {est.se:.3f}")
+```
+
+## Where next
+
+- [Concepts: traits & prelude](/docs/concepts/traits) — the trait surface
+  is the single most important thing to internalise.
+- [Quant catalog](/docs/quant) — pricing, calibration, vol surface, risk.
+- [Python bindings](/docs/python) — full parity table.

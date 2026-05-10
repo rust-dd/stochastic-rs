@@ -1,0 +1,12 @@
+{
+  "title": "Concepts",
+  "pages": [
+    "traits",
+    "prelude",
+    "process-ext",
+    "distribution-ext",
+    "pricer-ext",
+    "feature-flags",
+    "design-philosophy"
+  ]
+}

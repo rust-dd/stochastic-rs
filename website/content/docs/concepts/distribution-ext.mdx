@@ -1,0 +1,73 @@
+---
+title: DistributionExt
+description: Closed-form pdf, cdf, characteristic function, and moments for every distribution — 18 of 19 closed-form, with five named unimplemented moments.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# `DistributionExt<T>`
+
+Closed-form analytics for every distribution that has them.
+
+```rust
+pub trait DistributionExt<T: FloatExt> {
+    fn pdf(&self, x: T) -> T;
+    fn cdf(&self, x: T) -> T;
+    fn characteristic_fn(&self, t: T) -> Complex<T>;
+    fn mean(&self) -> T;
+    fn variance(&self) -> T;
+    fn skewness(&self) -> T { unimplemented_moment::<T>() }
+    fn kurtosis(&self) -> T { unimplemented_moment::<T>() }
+}
+```
+
+## Coverage
+
+**18 / 19** distributions implement closed-form pdf, cdf, characteristic
+function, mean, and variance. The exception is `ComplexDistribution`,
+which is a wrapper used by Fourier-domain pricers and intentionally
+opaque.
+
+For higher-order moments, **5 named distributions** carry
+`unimplemented!` for skewness and / or kurtosis — those are documented
+on each distribution's reference page. The remaining 14 ship full
+closed-form skewness and excess kurtosis.
+
+## Default behaviour: panic, never zero
+
+Project rule: an unimplemented moment **panics** with a helpful
+message including the type name, never silently returns 0. This was a
+deliberate choice after a v1.x bug where a silent-zero kurtosis caused
+a downstream calibration to converge on garbage.
+
+```rust
+fn unimplemented_moment<T>() -> ! {
+    let name = std::any::type_name::<T>();
+    unimplemented!("moment not implemented for {name}")
+}
+```
+
+If you hit such a panic, you have two options:
+
+1. Use a different distribution if the moment is non-essential.
+2. Open an issue / PR — the `feedback_implementation.md` rule says
+   we follow papers exactly, so closed forms get added with a citation.
+
+## Why no `statrs::distribution::*`
+
+The library deliberately writes closed forms from scratch in
+`stochastic-rs-distributions`, never delegating to `statrs`. Reasons:
+
+1. **Generic precision**. `statrs` is `f64`-only. We need `f32`
+   support for GPU + memory-bound bulk sampling.
+2. **No-allocation guarantees**. `statrs` allocates in some cdfs; the
+   bulk samplers in this library cannot afford that.
+3. **Audit trail**. Every formula in this crate is anchored to a paper
+   citation, with a comparison test against the paper's numerical
+   tables. `statrs`'s implementations are competent but lack that
+   audit trail.
+
+See the per-distribution pages under
+[Distributions](/docs/distributions) for the formulas, tests, and
+references.

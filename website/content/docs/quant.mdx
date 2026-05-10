@@ -1,0 +1,160 @@
+---
+title: Quantitative finance
+description: Pricing, calibration, vol surface, risk, credit, curves, bonds, instruments, portfolio, microstructure — the stochastic-rs-quant crate.
+category: pricer
+since: 2.0.0
+status: stable
+---
+
+# Quantitative finance
+
+The `stochastic-rs-quant` crate is the largest sub-crate. It covers
+pricing, calibration, vol surface construction, risk, credit, yield
+curves, bonds, cashflows, instruments, portfolio, microstructure, and
+factor / strategy primitives.
+
+## Sub-areas
+
+| Area               | What's inside                                                                                              |
+|--------------------|------------------------------------------------------------------------------------------------------------|
+| **Pricing**        | Closed-form (BSM, Bachelier, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American). Bermudan LSM. Heston SLV (Guyon-Labordère). |
+| **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White swaption-grid via Levenberg-Marquardt. |
+| **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI, arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
+| **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework. |
+| **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
+| **Yield curves**   | Bootstrapping (deposit / FRA / future / swap), Nelson-Siegel / Svensson, multi-curve (OIS vs SOFR), discount-curve interpolation (linear / log-linear / cubic / monotone-convex). |
+| **Bonds**          | Fixed-rate / floating-rate / inflation-linked / amortizing bonds. YTM / Macaulay / modified duration / convexity / Z-spread / OAS. Vasicek / CIR / Hull-White short-rate bond pricing. |
+| **Cashflows**      | Coupon, leg, engine, schedule builder. Day-count + business-day conventions.                               |
+| **Instruments**    | Option (vanilla / barrier / Asian / lookback / digital), bond, swap, equity. Plus the QuantLib-style `Instrument` / `PricingEngine` decoupling. |
+| **Portfolio**      | Covariance estimation (sample, Ledoit-Wolf, OAS), momentum, optimisers (mean-variance, MVO with constraints).                                                                                                              |
+| **Microstructure** | Almgren-Chriss optimal execution, Kyle (1985) strategic-trading equilibria, Bouchaud propagator (power-law / exponential / custom kernels), Roll / Corwin-Schultz spread estimators, full price-time priority order book.                                                                              |
+| **Factors**        | PCA, two-pass Fama-MacBeth, Ledoit-Wolf shrinkage.                                                          |
+| **Strategies**     | Cointegrated pairs trading (hedge ratio, spread, z-score, signal generator), forecast-momentum-volatility regime engine, delta hedge.                                       |
+| **Inflation**      | Zero-coupon and YoY inflation curves, CPI / RPI / HICP indices with linear-interpolated reference ratio, ZC and YoY inflation swaps with par-rate solver.                |
+| **FX**             | ISO 4217 currency definitions, FX quoting / cross-rate / triangulation, FX forward via covered interest parity (continuous and simple compounding).                                                                            |
+| **Calendar**       | ACT/360, ACT/365, 30/360, ACT/ACT day-counts. Following / Modified Following / Preceding business-day adjustments. US, UK, TARGET, Tokyo holiday calendars. Pluggable `CalendarExt`. `ScheduleBuilder` for coupon / payment dates.                                |
+
+## Examples
+
+### Black-Scholes-Merton — closed-form European call
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::quant::pricing::bsm::BsmPricer;
+
+let pricer = BsmPricer::<f64>::new(
+    /* s0 */ 100.0, /* k */ 100.0, /* tau */ 1.0,
+    /* r */ 0.05, /* q */ 0.0, /* sigma */ 0.2,
+);
+let call = pricer.price(OptionType::Call);
+let put  = pricer.price(OptionType::Put);
+let g    = pricer.greeks(OptionType::Call);
+println!("call={:.4}, put={:.4}, delta={:.4}, vega={:.4}",
+         call, put, g.delta, g.vega);
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+pricer = srs.BsmPricer(s0=100, k=100, tau=1.0, r=0.05, q=0.0, sigma=0.2)
+print("call =", pricer.price("call"))
+print("put  =", pricer.price("put"))
+
+g = pricer.greeks("call")
+print(f"delta={g.delta:.4f}, gamma={g.gamma:.4f}, vega={g.vega:.4f}, "
+      f"theta={g.theta:.4f}, rho={g.rho:.4f}")
+```
+</Tab>
+</Tabs>
+
+### Heston — Fourier pricer with Cui analytic Jacobian
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::types::OptionType;
+use stochastic_rs::traits::{ModelPricer, GreeksExt};
+
+let pricer = HestonPricer::<f64>::new(
+    /* s0 */ 100.0, /* k */ 100.0, /* tau */ 1.0,
+    /* r */ 0.03, /* q */ 0.0,
+    /* v0 */ 0.04, /* kappa */ 2.0, /* theta */ 0.04,
+    /* sigma */ 0.3, /* rho */ -0.5,
+);
+let price = pricer.price(OptionType::Call);
+let g = pricer.greeks(OptionType::Call);
+println!("call={:.4}, delta={:.4}, vega={:.4}, vanna={:.4}",
+         price, g.delta, g.vega, g.vanna);
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+pricer = srs.HestonPricer(
+    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
+    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+)
+price = pricer.price("call")
+g = pricer.greeks("call")
+print(f"call={price:.4f}, delta={g.delta:.4f}, vega={g.vega:.4f}")
+```
+</Tab>
+</Tabs>
+
+### Heston calibration to a market vol surface
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::quant::calibration::heston::HestonCalibrator;
+use stochastic_rs::quant::vol_surface::implied::ImpliedVolSurface;
+use stochastic_rs::traits::Calibrator;
+
+let surface = ImpliedVolSurface::<f64>::from_market(
+    &strikes, &expiries, &iv_grid, /* spot */ 100.0,
+);
+let result = HestonCalibrator::<f64>::new(&surface).calibrate()?;
+
+let p = result.params;
+println!("kappa={:.3}, theta={:.4}, sigma={:.3}, rho={:.3}, v0={:.4}",
+         p.kappa, p.theta, p.sigma, p.rho, p.v0);
+println!("RMSE = {:.6} ({} iters)", result.rmse, result.iterations);
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+surface = srs.ImpliedVolSurface.from_market(
+    strikes=strikes, expiries=expiries, iv_grid=iv_grid, spot=100.0,
+)
+res = srs.HestonCalibrator(surface).calibrate()
+print(f"kappa={res.params.kappa:.3f}, theta={res.params.theta:.4f}, "
+      f"sigma={res.params.sigma:.3f}, rho={res.params.rho:.3f}, "
+      f"v0={res.params.v0:.4f}")
+print(f"RMSE = {res.rmse:.6f} ({res.iterations} iters)")
+```
+</Tab>
+</Tabs>
+
+## Trait overview
+
+The relevant traits live in [Concepts](/docs/concepts):
+
+- [`PricerExt` / `ModelPricer`](/docs/concepts/pricer-ext)
+- [`Calibrator`, `CalibrationResult`, `ToModel`](/docs/concepts/traits#calibrator-t-and-calibrationresult)
+- [Greeks aggregator](/docs/concepts/traits#greeksext-and-the-greeks-aggregator)
+
+## Adding a pricer / calibrator
+
+- [`calibration-pattern`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/calibration-pattern/SKILL.md)
+  — Heston / SABR / SVI / Lévy calibrators
+- [`greeks-pattern`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/greeks-pattern/SKILL.md)
+  — exposing first- + second-order Greeks
+- [`add-mc-variance-reduction`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-mc-variance-reduction/SKILL.md)
+  — antithetic / control-variate / quasi-MC / MLMC

@@ -1,0 +1,110 @@
+---
+title: Copulas
+description: Bivariate (Clayton, Frank, Gumbel, independence) and multivariate (Gaussian, tree, vine) copulas with the BivariateExt / MultivariateExt traits.
+category: copula
+since: 2.0.0
+status: stable
+---
+
+# Copulas
+
+The `stochastic-rs-copulas` crate ships bivariate and multivariate
+copulas plus correlation utilities and an empirical copula.
+
+## Bivariate (`BivariateExt<T>`)
+
+Archimedean and elliptical:
+
+| Copula        | Family       | Tail dependence    |
+|---------------|--------------|--------------------|
+| Clayton       | Archimedean  | Lower only         |
+| Frank         | Archimedean  | None (symmetric)   |
+| Gumbel        | Archimedean  | Upper only         |
+| Independence  | Trivial      | None               |
+
+The bivariate samplers are consolidated under `BivariateExt`; the v1.x
+`NCopula2DExt` was removed in v2.0.
+
+## Multivariate (`MultivariateExt<T>`)
+
+| Copula        | Family        | Notes                          |
+|---------------|---------------|--------------------------------|
+| Gaussian      | Elliptical    | Cholesky-based                 |
+| Tree          | Vine, simplified | Tree-structured Pair-copula |
+| Vine          | Vine, full    | R-vine / D-vine / C-vine       |
+
+> Multivariate copulas require the `openblas` feature for the Cholesky
+> factorisation. See [Feature flags](/docs/concepts/feature-flags).
+
+## Examples
+
+### Clayton — lower-tail dependence
+
+$\theta > 0$ produces lower-tail dependence, useful for modelling joint
+crashes in equity returns.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::copulas::bivariate::clayton::Clayton;
+use stochastic_rs::traits::BivariateExt;
+
+let cop = Clayton::<f64>::with_seed(/* theta */ 2.0, 42);
+let n = 10_000;
+let (u, v) = cop.sample(n);                  // both Array1<f64> in [0, 1]
+
+// Empirical Kendall's τ should be ≈ θ / (θ + 2) = 0.5
+let tau_hat = stochastic_rs::stats::tail_index::kendall_tau(u.view(), v.view());
+println!("τ̂ = {:.3}", tau_hat);
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+cop = srs.Clayton(theta=2.0, seed=42)
+u, v = cop.sample(10_000)
+print("Kendall's tau ≈", srs.kendall_tau(u, v))   # ≈ 0.5
+```
+</Tab>
+</Tabs>
+
+### Gaussian copula — multivariate sampling
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+```rust
+use stochastic_rs::copulas::multivariate::gaussian::GaussianCopula;
+use ndarray::array;
+
+let corr = array![
+    [1.0, 0.7, 0.3],
+    [0.7, 1.0, 0.5],
+    [0.3, 0.5, 1.0],
+];
+let cop = GaussianCopula::<f64>::with_seed(corr, 42);
+let samples = cop.sample(10_000);            // Array2<f64>, shape (10_000, 3)
+```
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+import numpy as np
+
+corr = np.array([
+    [1.0, 0.7, 0.3],
+    [0.7, 1.0, 0.5],
+    [0.3, 0.5, 1.0],
+])
+cop = srs.GaussianCopula(corr=corr, seed=42)
+samples = cop.sample(10_000)                 # shape (10_000, 3)
+```
+</Tab>
+</Tabs>
+
+## Adding a copula
+
+See the
+[`copula-bivariate`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/copula-bivariate/SKILL.md)
+SKILL — file-by-file recipe for Clayton / Frank / Gumbel / Joe /
+Plackett / FGM / extreme-value families.
