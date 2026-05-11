@@ -606,6 +606,23 @@ mod tests {
   use super::*;
   use crate::traits::ProcessExt;
 
+  /// Few-ULP tolerance for the v1/v2/v4 reference-regression tests. The
+  /// production estimator and the inline reference math are textually
+  /// identical but compile at two separate sites — under release +
+  /// `-C instrument-coverage`, codegen decisions (FMA contraction,
+  /// inlining) can diverge enough to produce a 1-ULP gap that propagates
+  /// through `(num/den).sqrt()`. Real algorithmic drift would dwarf this
+  /// floor by many orders of magnitude.
+  fn assert_close(actual: f64, expected: f64, label: &str) {
+    let rel_tol = 4.0 * f64::EPSILON;
+    let allowed = rel_tol.max(rel_tol * expected.abs());
+    let diff = (actual - expected).abs();
+    assert!(
+      diff <= allowed,
+      "{label}: actual={actual} expected={expected} diff={diff:e} allowed={allowed:e}",
+    );
+  }
+
   #[test]
   fn fou_v4_returns_finite_params_with_fixed_hurst() {
     let n = 1024usize;
@@ -755,34 +772,10 @@ mod tests {
 
     let res = estimate_fou_v1(path.view(), FilterType::Daubechies, Some(delta), None);
 
-    assert_eq!(
-      res.hurst.to_bits(),
-      hurst_ref.to_bits(),
-      "v1 hurst drift: refactored={} struct-era={}",
-      res.hurst,
-      hurst_ref
-    );
-    assert_eq!(
-      res.sigma.to_bits(),
-      sigma_ref.to_bits(),
-      "v1 sigma drift: refactored={} struct-era={}",
-      res.sigma,
-      sigma_ref
-    );
-    assert_eq!(
-      res.mu.to_bits(),
-      mu_ref.to_bits(),
-      "v1 mu drift: refactored={} struct-era={}",
-      res.mu,
-      mu_ref
-    );
-    assert_eq!(
-      res.theta.to_bits(),
-      theta_ref.to_bits(),
-      "v1 theta drift: refactored={} struct-era={}",
-      res.theta,
-      theta_ref
-    );
+    assert_close(res.hurst, hurst_ref, "v1 hurst");
+    assert_close(res.sigma, sigma_ref, "v1 sigma");
+    assert_close(res.mu, mu_ref, "v1 mu");
+    assert_close(res.theta, theta_ref, "v1 theta");
   }
 
   /// Bit-exact regression for v2 — same idea as
@@ -832,10 +825,10 @@ mod tests {
 
     let res = estimate_fou_v2(path.view(), Some(delta_ref), n, None);
 
-    assert_eq!(res.hurst.to_bits(), hurst_ref.to_bits());
-    assert_eq!(res.sigma.to_bits(), sigma_ref.to_bits());
-    assert_eq!(res.mu.to_bits(), mu_ref.to_bits());
-    assert_eq!(res.theta.to_bits(), theta_ref.to_bits());
+    assert_close(res.hurst, hurst_ref, "v2 hurst");
+    assert_close(res.sigma, sigma_ref, "v2 sigma");
+    assert_close(res.mu, mu_ref, "v2 mu");
+    assert_close(res.theta, theta_ref, "v2 theta");
   }
 
   /// Bit-exact regression for v4 — high-frequency power-variation estimator.
@@ -923,10 +916,10 @@ mod tests {
 
     let res = estimate_fou_v4(path.view(), Some(delta_ref), k, p, None, None);
 
-    assert_eq!(res.hurst.to_bits(), hurst_ref.to_bits());
-    assert_eq!(res.sigma.to_bits(), sigma_ref.to_bits());
-    assert_eq!(res.mu.to_bits(), mu_ref.to_bits());
-    assert_eq!(res.theta.to_bits(), theta_ref.to_bits());
+    assert_close(res.hurst, hurst_ref, "v4 hurst");
+    assert_close(res.sigma, sigma_ref, "v4 sigma");
+    assert_close(res.mu, mu_ref, "v4 mu");
+    assert_close(res.theta, theta_ref, "v4 theta");
   }
 
   #[test]
