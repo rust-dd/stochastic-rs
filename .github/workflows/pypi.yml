@@ -64,9 +64,6 @@ jobs:
           - runner: macos-14
             target: aarch64
             mac_arch: arm64
-          - runner: macos-13
-            target: x86_64
-            mac_arch: x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
