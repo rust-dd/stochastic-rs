@@ -78,6 +78,19 @@ pub fn default_cutting_freq_noisy(n: usize) -> (usize, usize, usize) {
   (big_n, big_m, big_l)
 }
 
+/// Default cutting frequencies for the Dirichlet/Cesàro **FE** spot-volatility
+/// estimator (MATLAB FSDA `FE_spot_vol` / `FE_spot_vol_FFT` convention):
+/// `N = floor((n − 1) / 2)`, `M = floor(√n · log(n))`.
+///
+/// The FE convention uses a wider Fejér window than the FM convention
+/// (`M ≈ √N`) — pair this with [`FMVol::spot_variance_fe`] for parity with
+/// the MATLAB output.
+pub fn default_cutting_freq_fe(n: usize) -> (usize, usize) {
+  let big_n = (n - 1) / 2;
+  let big_m = ((n as f64).sqrt() * (n as f64).ln()).floor() as usize;
+  (big_n, big_m)
+}
+
 /// Compute the MSE-optimal cutting frequency *N* for the Fourier estimator
 /// of integrated variance in the presence of microstructure noise.
 ///
