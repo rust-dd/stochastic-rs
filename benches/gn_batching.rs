@@ -50,8 +50,17 @@ fn bench_fouque(c: &mut Criterion) {
   let n = 100_000usize;
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &n| {
-    let proc =
-      FouqueOU2D::<f64, _>::new(1.0, 0.5, 0.1, 0.0, n, Some(0.0), Some(0.0), Some(1.0), Unseeded);
+    let proc = FouqueOU2D::<f64, _>::new(
+      1.0,
+      0.5,
+      0.1,
+      0.0,
+      n,
+      Some(0.0),
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    );
     b.iter(|| black_box(proc.sample()));
   });
 

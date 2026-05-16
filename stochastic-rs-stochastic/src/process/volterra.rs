@@ -67,12 +67,7 @@ pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded> {
 
 impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
   pub fn new(kernel: VolterraKernel, n: usize, t: Option<T>, seed: S) -> Self {
-    Self {
-      kernel,
-      n,
-      t,
-      seed,
-    }
+    Self { kernel, n, t, seed }
   }
 }
 

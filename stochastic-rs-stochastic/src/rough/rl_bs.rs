@@ -124,10 +124,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlBlackScholes<T, S>
 
 #[cfg(test)]
 mod tests {
-  use super::RlBlackScholes;
-  use crate::traits::ProcessExt;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::RlBlackScholes;
+  use crate::traits::ProcessExt;
 
   #[test]
   fn positive_path_and_correct_initial_value() {

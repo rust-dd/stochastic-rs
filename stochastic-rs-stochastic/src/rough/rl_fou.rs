@@ -115,10 +115,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFOU<T, S> {
 
 #[cfg(test)]
 mod tests {
-  use super::RlFOU;
-  use crate::traits::ProcessExt;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::RlFOU;
+  use crate::traits::ProcessExt;
 
   #[test]
   fn fou_sigma_zero_matches_deterministic_euler() {

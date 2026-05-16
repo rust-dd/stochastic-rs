@@ -629,7 +629,17 @@ mod tests {
     let n = 1024usize;
     let h_true = 0.7;
     let sigma_true = 0.35;
-    let path = Fou::<f64>::new(h_true, 1.5, 0.0, sigma_true, n, Some(0.0), Some(1.0), Unseeded).sample();
+    let path = Fou::<f64>::new(
+      h_true,
+      1.5,
+      0.0,
+      sigma_true,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    )
+    .sample();
 
     let res = estimate_fou_v4(
       path.view(),
@@ -718,8 +728,17 @@ mod tests {
 
     // Deterministic reference path (same params as the audit test fixture).
     let n = 512usize;
-    let path =
-      Fou::<f64, _>::new(0.6, 1.0, 0.0, 0.2, n, Some(0.0), Some(1.0), Deterministic::new(0xF0_E5_71_AA)).sample();
+    let path = Fou::<f64, _>::new(
+      0.6,
+      1.0,
+      0.0,
+      0.2,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(0xF0_E5_71_AA),
+    )
+    .sample();
     let delta = 1.0 / n as f64;
 
     // Daubechies coeffs
@@ -789,8 +808,17 @@ mod tests {
     use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let n = 512usize;
-    let path =
-      Fou::<f64, _>::new(0.6, 1.0, 0.0, 0.2, n, Some(0.0), Some(1.0), Deterministic::new(0xF0_E5_71_AA)).sample();
+    let path = Fou::<f64, _>::new(
+      0.6,
+      1.0,
+      0.0,
+      0.2,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(0xF0_E5_71_AA),
+    )
+    .sample();
     let delta_ref = 1.0 / n as f64;
 
     // Inline v1.x (struct-era) math
@@ -843,8 +871,17 @@ mod tests {
     let n = 512usize;
     let k = 2usize;
     let p = 2.0_f64;
-    let path =
-      Fou::<f64, _>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0), Deterministic::new(0xC0_FF_EE_42)).sample();
+    let path = Fou::<f64, _>::new(
+      0.65,
+      1.2,
+      0.0,
+      0.25,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(0xC0_FF_EE_42),
+    )
+    .sample();
     let delta_ref = 1.0 / (n - 1) as f64;
 
     // Inline reference math: power_variation, c_k_p, rho_k_h_zero, binomial.

@@ -30,15 +30,7 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt> Nig<T, S> {
-  pub fn new(
-    theta: T,
-    sigma: T,
-    kappa: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
+  pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
       theta,

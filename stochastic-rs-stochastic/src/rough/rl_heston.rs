@@ -189,10 +189,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
 
 #[cfg(test)]
 mod tests {
-  use super::RlHeston;
-  use crate::traits::ProcessExt;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::RlHeston;
+  use crate::traits::ProcessExt;
 
   #[test]
   #[should_panic(expected = "n must be at least 2")]

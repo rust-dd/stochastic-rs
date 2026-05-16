@@ -30,15 +30,7 @@ pub struct Vg<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt> Vg<T, S> {
-  pub fn new(
-    mu: T,
-    sigma: T,
-    nu: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
+  pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(nu > T::zero(), "nu must be positive");
     Self {
       mu,

@@ -65,15 +65,8 @@ mod tests {
 
   #[test]
   fn inverse_stable_is_non_decreasing() {
-    let p = InverseAlphaStableSubordinator::new(
-      0.7_f64,
-      1.0,
-      128,
-      Some(1.0),
-      2048,
-      Some(4.0),
-      Unseeded,
-    );
+    let p =
+      InverseAlphaStableSubordinator::new(0.7_f64, 1.0, 128, Some(1.0), 2048, Some(4.0), Unseeded);
     let e = p.sample();
     assert_eq!(e[0], 0.0);
     assert!(e.windows(2).into_iter().all(|w| w[1] >= w[0]));
@@ -102,16 +95,8 @@ mod tests {
 
   #[test]
   fn tempered_stable_subordinator_is_non_decreasing() {
-    let p = TemperedStableSubordinator::new(
-      0.7_f64,
-      1.0,
-      2.0,
-      0.05,
-      256,
-      Some(0.0),
-      Some(1.0),
-      Unseeded,
-    );
+    let p =
+      TemperedStableSubordinator::new(0.7_f64, 1.0, 2.0, 0.05, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
   }

@@ -44,7 +44,17 @@ fn bench_rl_fou_and_bs(c: &mut Criterion) {
   let n = 1024_usize;
 
   c.bench_function("RL_FOU/H=0.1", |b| {
-    let p = RlFOU::new(0.1_f64, 2.0, 0.0, 0.25, n, Some(0.0), Some(1.0), None, Unseeded);
+    let p = RlFOU::new(
+      0.1_f64,
+      2.0,
+      0.0,
+      0.25,
+      n,
+      Some(0.0),
+      Some(1.0),
+      None,
+      Unseeded,
+    );
     b.iter(|| black_box(p.sample()));
   });
 

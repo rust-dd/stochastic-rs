@@ -96,14 +96,7 @@ pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
-  pub fn new(
-    lambda: Array1<T>,
-    x0: Array1<T>,
-    xn: usize,
-    t: Option<T>,
-    n: usize,
-    seed: S,
-  ) -> Self {
+  pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize, seed: S) -> Self {
     assert_eq!(
       lambda.len(),
       xn,

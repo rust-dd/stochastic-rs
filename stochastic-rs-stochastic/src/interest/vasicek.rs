@@ -37,15 +37,7 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
-  pub fn new(
-    theta: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
+  pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
       mu,
       sigma,

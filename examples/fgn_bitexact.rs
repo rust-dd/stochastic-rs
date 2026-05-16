@@ -4,7 +4,8 @@
 //! ```sh
 //! cargo run --release --example fgn_bitexact
 //! ```
-use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 

@@ -81,8 +81,26 @@ mod tests {
   #[test]
   #[should_panic(expected = "x and y Cir factors must use the same n")]
   fn mismatched_lengths_panic() {
-    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), Some(1.0), Some(false), Unseeded);
-    let y = Cir::new(0.0_f64, 0.0, 0.0, 4, Some(0.0), Some(1.0), Some(false), Unseeded);
+    let x = Cir::new(
+      0.0_f64,
+      0.0,
+      0.0,
+      3,
+      Some(0.0),
+      Some(1.0),
+      Some(false),
+      Unseeded,
+    );
+    let y = Cir::new(
+      0.0_f64,
+      0.0,
+      0.0,
+      4,
+      Some(0.0),
+      Some(1.0),
+      Some(false),
+      Unseeded,
+    );
     let _ = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
   }
 }

@@ -27,7 +27,12 @@ impl PyFgn {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(Fgn::new(hurst, n, t, crate::simd_rng::Deterministic::new(s))),
+        seeded: Some(Fgn::new(
+          hurst,
+          n,
+          t,
+          crate::simd_rng::Deterministic::new(s),
+        )),
       },
       None => Self {
         inner: Some(Fgn::new(hurst, n, t, crate::simd_rng::Unseeded)),

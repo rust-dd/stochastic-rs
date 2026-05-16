@@ -195,8 +195,9 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
 
 #[cfg(test)]
 mod tests {
-  use super::Fgn;
   use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::Fgn;
 
   fn generate_fgn_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
     let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);

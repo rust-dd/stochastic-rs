@@ -51,7 +51,14 @@ impl GbmMalliavinGreeks {
     let mu = self.r - self.q;
     let dt = self.tau / (self.n_steps - 1) as f64;
 
-    let gbm = Gbm::new(mu, self.sigma, self.n_steps, Some(self.s0), Some(self.tau), Unseeded);
+    let gbm = Gbm::new(
+      mu,
+      self.sigma,
+      self.n_steps,
+      Some(self.s0),
+      Some(self.tau),
+      Unseeded,
+    );
 
     let mut s_terminal = Array1::<f64>::zeros(self.n_paths);
     let mut w_terminal = Array1::<f64>::zeros(self.n_paths);

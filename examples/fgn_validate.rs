@@ -15,7 +15,8 @@ use plotly::Scatter;
 use plotly::common::Line;
 use plotly::common::Mode;
 use plotly::layout::Axis;
-use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -119,7 +120,12 @@ fn plot_sample_paths(hursts: &[f64], colors: &[String]) {
   let time: Vec<f64> = (0..=N).map(|i| i as f64 * dt).collect();
 
   for (i, &h) in hursts.iter().enumerate() {
-    let fgn = Fgn::new(h, N, Some(T_HORIZON), Deterministic::new(SEED_BASE + i as u64));
+    let fgn = Fgn::new(
+      h,
+      N,
+      Some(T_HORIZON),
+      Deterministic::new(SEED_BASE + i as u64),
+    );
     let inc = fgn.sample();
     let fbm = fgn_to_fbm(inc.as_slice().unwrap());
     let trace = Scatter::new(time.clone(), fbm)
