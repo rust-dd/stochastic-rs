@@ -7,7 +7,6 @@
 use ndarray::Array1;
 use ndarray::Axis;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -36,7 +35,7 @@ where
   pub seed: S,
 }
 
-impl<T, D1, D2> CompoundCustom<T, D1, D2>
+impl<T, D1, D2, S: SeedExt> CompoundCustom<T, D1, D2, S>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,
@@ -48,6 +47,7 @@ where
     jumps_distribution: D1,
     jump_times_distribution: D2,
     customjt: CustomJt<T, D2>,
+    seed: S,
   ) -> Self {
     if n.is_none() && t_max.is_none() {
       panic!("CompoundCustom: n or t_max must be provided");
@@ -59,36 +59,7 @@ where
       jumps_distribution,
       jump_times_distribution,
       customjt,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T, D1, D2> CompoundCustom<T, D1, D2, Deterministic>
-where
-  T: FloatExt,
-  D1: Distribution<T> + Send + Sync,
-  D2: Distribution<T> + Send + Sync,
-{
-  pub fn seeded(
-    n: Option<usize>,
-    t_max: Option<T>,
-    jumps_distribution: D1,
-    jump_times_distribution: D2,
-    customjt: CustomJt<T, D2>,
-    seed: u64,
-  ) -> Self {
-    if n.is_none() && t_max.is_none() {
-      panic!("CompoundCustom: n or t_max must be provided");
-    }
-
-    Self {
-      n,
-      t_max,
-      jumps_distribution,
-      jump_times_distribution,
-      customjt,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -147,7 +118,7 @@ impl PyCompoundCustom {
             crate::traits::CallableDist::<f32>::new(b),
           )
         });
-        let customjt = CustomJt::new(n, t_max.map(|v| v as f32), customjt_dist);
+        let customjt = CustomJt::new(n, t_max.map(|v| v as f32), customjt_dist, Unseeded);
         Self {
           inner_f32: Some(CompoundCustom::new(
             n,
@@ -155,6 +126,7 @@ impl PyCompoundCustom {
             crate::traits::CallableDist::new(jumps_distribution),
             jt_dist,
             customjt,
+            Unseeded,
           )),
           inner_f64: None,
         }
@@ -168,7 +140,7 @@ impl PyCompoundCustom {
             crate::traits::CallableDist::<f64>::new(b),
           )
         });
-        let customjt = CustomJt::new(n, t_max, customjt_dist);
+        let customjt = CustomJt::new(n, t_max, customjt_dist, Unseeded);
         Self {
           inner_f32: None,
           inner_f64: Some(CompoundCustom::new(
@@ -177,6 +149,7 @@ impl PyCompoundCustom {
             crate::traits::CallableDist::new(jumps_distribution),
             jt_dist,
             customjt,
+            Unseeded,
           )),
         }
       }

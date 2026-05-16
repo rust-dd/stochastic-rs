@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -25,29 +24,15 @@ pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> FellerRoot<T> {
-  pub fn new(theta1: T, theta2: T, theta3: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      theta1,
-      theta2,
-      theta3,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> FellerRoot<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
+  pub fn new(
     theta1: T,
     theta2: T,
     theta3: T,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     Self {
       theta1,
@@ -56,7 +41,7 @@ impl<T: FloatExt> FellerRoot<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

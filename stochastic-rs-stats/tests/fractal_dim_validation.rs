@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stats::fd::FractalDim;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -11,7 +12,7 @@ fn fbm_fractal_dimension_matches_theory() {
   let n = 4096_usize;
   let m = 160_usize;
   let kmax = 32_usize;
-  let fbm = Fbm::<f64>::new(h, n, Some(1.0));
+  let fbm = Fbm::<f64>::new(h, n, Some(1.0), Unseeded);
 
   let mut d_vario_sum = 0.0;
   let mut d_higuchi_sum = 0.0;
@@ -42,7 +43,7 @@ fn fbm_hurst_and_fractal_dimension_from_fgn_increments() {
   let m = 240_usize;
   let kmax = 32_usize;
 
-  let fgn = Fgn::<f64>::new(h, n, Some(t));
+  let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
   let mut endpoints = Vec::with_capacity(m);
   let mut d_vario_sum = 0.0_f64;
   let mut d_higuchi_sum = 0.0_f64;

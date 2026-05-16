@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -37,28 +36,15 @@ pub struct MAq<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> MAq<T> {
+impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   /// Create a new MA(q) model with the given parameters.
-  pub fn new(theta: Array1<T>, sigma: T, n: usize) -> Self {
+  pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
     assert!(sigma > T::zero(), "MAq requires sigma > 0");
     Self {
       theta,
       sigma,
       n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> MAq<T, Deterministic> {
-  /// Create a new MA(q) model with a deterministic seed for reproducible output.
-  pub fn seeded(theta: Array1<T>, sigma: T, n: usize, seed: u64) -> Self {
-    assert!(sigma > T::zero(), "MAq requires sigma > 0");
-    Self {
-      theta,
-      sigma,
-      n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

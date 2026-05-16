@@ -35,6 +35,7 @@ use numpy::PyArray1;
 use numpy::PyArray2;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -55,30 +56,16 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded> {
   fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> Fbm<T> {
-  pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
+  pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
     Self {
       hurst,
       n,
       t,
-      seed: Unseeded,
-      fgn: Fgn::new(hurst, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Fbm<T, Deterministic> {
-  pub fn seeded(hurst: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-
-    Self {
-      hurst,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-      fgn: Fgn::new(hurst, n - 1, t),
+      seed,
+      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
     }
   }
 }
@@ -190,10 +177,10 @@ impl PyFbm {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(Fbm::seeded(hurst, n, t, s)),
+        seeded: Some(Fbm::new(hurst, n, t, Deterministic::new(s))),
       },
       None => Self {
-        inner: Some(Fbm::new(hurst, n, t)),
+        inner: Some(Fbm::new(hurst, n, t, Unseeded)),
         seeded: None,
       },
     }
@@ -218,6 +205,7 @@ impl PyFbm {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::special::erf;
 
   use super::*;
@@ -252,7 +240,7 @@ mod tests {
     // Seeded `Fbm::sample(&self)` advances the internal atomic seed state
     // each call, so a single instance yields `m` independent paths
     // deterministically.
-    let fbm = Fbm::seeded(h, n, Some(t), 0xFBC0_FFEE_u64);
+    let fbm = Fbm::new(h, n, Some(t), Deterministic::new(0xFBC0_FFEE_u64));
 
     let mut endpoints = Vec::with_capacity(m);
     for _ in 0..m {
@@ -303,7 +291,7 @@ mod tests {
     let t_max = 1.0_f64;
     let n = 2048_usize;
     let m = 5000_usize;
-    let fbm = Fbm::new(h, n, Some(t_max));
+    let fbm = Fbm::new(h, n, Some(t_max), Unseeded);
     let dt = t_max / (n as f64 - 1.0);
     let idxs = [n / 4, n / 2, 3 * n / 4, n - 1];
 
@@ -361,7 +349,7 @@ mod tests {
     let t_max = 1.0_f64;
     let n = 2048_usize;
     let m = 2200_usize;
-    let fbm = Fbm::new(h, n, Some(t_max));
+    let fbm = Fbm::new(h, n, Some(t_max), Unseeded);
     let dt = t_max / (n as f64 - 1.0);
     let idxs = [n / 16, n / 8, n / 4, n / 2, n - 1];
 

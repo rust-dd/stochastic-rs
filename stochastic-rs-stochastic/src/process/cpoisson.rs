@@ -8,7 +8,6 @@ use ndarray::Array1;
 use ndarray::Axis;
 use rand::Rng;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::poisson::SimdPoisson;
@@ -30,30 +29,16 @@ where
   pub seed: S,
 }
 
-impl<T, D> CompoundPoisson<T, D>
+impl<T, D, S: SeedExt> CompoundPoisson<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  pub fn new(distribution: D, poisson: Poisson<T>) -> Self {
+  pub fn new(distribution: D, poisson: Poisson<T>, seed: S) -> Self {
     Self {
       distribution,
       poisson,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T, D> CompoundPoisson<T, D, Deterministic>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  pub fn seeded(distribution: D, poisson: Poisson<T>, seed: u64) -> Self {
-    Self {
-      distribution,
-      poisson,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -181,7 +166,11 @@ mod tests {
 
   #[test]
   fn grid_increments_zero_for_zero_intensity() {
-    let cp = CompoundPoisson::new(ConstJump(1.0f64), Poisson::new(0.0, Some(16), Some(1.0)));
+    let cp = CompoundPoisson::new(
+      ConstJump(1.0f64),
+      Poisson::new(0.0, Some(16), Some(1.0), Unseeded),
+      Unseeded,
+    );
     let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
     assert_eq!(inc.len(), 16);
     assert!(inc.iter().all(|&x| x == 0.0));
@@ -189,14 +178,22 @@ mod tests {
 
   #[test]
   fn grid_increments_start_at_zero() {
-    let cp = CompoundPoisson::new(ConstJump(1.0f64), Poisson::new(2.0, Some(16), Some(1.0)));
+    let cp = CompoundPoisson::new(
+      ConstJump(1.0f64),
+      Poisson::new(2.0, Some(16), Some(1.0), Unseeded),
+      Unseeded,
+    );
     let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
     assert_eq!(inc[0], 0.0);
   }
 
   #[test]
   fn relative_increment_compounds_multiple_jumps() {
-    let cp = CompoundPoisson::new(ConstJump(0.1f64), Poisson::new(1.0, Some(4), Some(1.0)));
+    let cp = CompoundPoisson::new(
+      ConstJump(0.1f64),
+      Poisson::new(1.0, Some(4), Some(1.0), Unseeded),
+      Unseeded,
+    );
     let mut rng = crate::simd_rng::rng();
     let rel = cp.relative_jump_from_count(3, &mut rng);
     let expected = 1.1f64.powi(3) - 1.0;
@@ -227,7 +224,8 @@ impl PyCompoundPoisson {
       "f32" => Self {
         inner_f32: Some(CompoundPoisson::new(
           crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, n, t_max.map(|v| v as f32)),
+          Poisson::new(lambda_ as f32, n, t_max.map(|v| v as f32), Unseeded),
+          Unseeded,
         )),
         inner_f64: None,
       },
@@ -235,7 +233,8 @@ impl PyCompoundPoisson {
         inner_f32: None,
         inner_f64: Some(CompoundPoisson::new(
           crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, n, t_max),
+          Poisson::new(lambda_, n, t_max, Unseeded),
+          Unseeded,
         )),
       },
     }

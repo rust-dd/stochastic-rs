@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -32,7 +31,7 @@ where
   pub seed: S,
 }
 
-impl<T, D> JumpFOUCustom<T, D>
+impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -47,6 +46,7 @@ where
     t: Option<T>,
     jump_times: D,
     jump_sizes: D,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
@@ -60,43 +60,8 @@ where
       t,
       jump_times,
       jump_sizes,
-      fgn: Fgn::new(hurst, n - 1, t),
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T, D> JumpFOUCustom<T, D, Deterministic>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  pub fn seeded(
-    hurst: T,
-    theta: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    jump_times: D,
-    jump_sizes: D,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-
-    Self {
-      hurst,
-      mu,
-      sigma,
-      theta,
-      n,
-      x0,
-      t,
-      jump_times,
-      jump_sizes,
-      fgn: Fgn::new(hurst, n - 1, t),
-      seed: Deterministic::new(seed),
+      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      seed,
     }
   }
 }
@@ -177,6 +142,7 @@ mod tests {
       Some(1.0),
       ConstDist(0.2), // inter-arrival
       ConstDist(0.2), // jump size
+      Unseeded,
     );
 
     let x = p.sample();
@@ -222,6 +188,7 @@ impl PyJumpFOUCustom {
           t.map(|v| v as f32),
           crate::traits::CallableDist::new(jump_times),
           crate::traits::CallableDist::new(jump_sizes),
+          Unseeded,
         )),
         inner_f64: None,
       },
@@ -237,6 +204,7 @@ impl PyJumpFOUCustom {
           t,
           crate::traits::CallableDist::new(jump_times),
           crate::traits::CallableDist::new(jump_sizes),
+          Unseeded,
         )),
       },
     }

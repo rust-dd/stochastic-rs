@@ -24,35 +24,14 @@ pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Cgns<T> {
-  pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
+  pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    Self {
-      rho,
-      n,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Cgns<T, Deterministic> {
-  pub fn seeded(rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
-
-    Self {
-      rho,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-    }
+    Self { rho, n, t, seed }
   }
 }
 

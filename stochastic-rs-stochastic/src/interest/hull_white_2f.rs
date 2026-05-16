@@ -5,6 +5,7 @@
 //! $$
 //!
 use ndarray::Array1;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -35,10 +36,10 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  cgns: Cgns<T, S>,
+  cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> HullWhite2F<T> {
+impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
   pub fn new(
     k: impl Into<Fn1D<T>>,
     theta: T,
@@ -49,6 +50,7 @@ impl<T: FloatExt> HullWhite2F<T> {
     x0: Option<T>,
     t: Option<T>,
     n: usize,
+    seed: S,
   ) -> Self {
     Self {
       k: k.into(),
@@ -60,39 +62,8 @@ impl<T: FloatExt> HullWhite2F<T> {
       x0,
       t,
       n,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> HullWhite2F<T, Deterministic> {
-  pub fn seeded(
-    k: impl Into<Fn1D<T>>,
-    theta: T,
-    sigma1: T,
-    sigma2: T,
-    rho: T,
-    b: T,
-    x0: Option<T>,
-    t: Option<T>,
-    n: usize,
-    seed: u64,
-  ) -> Self {
-    let s = Deterministic::new(seed);
-    let child = s.derive();
-    Self {
-      k: k.into(),
-      theta,
-      sigma1,
-      sigma2,
-      rho,
-      b,
-      x0,
-      t,
-      n,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::seeded(rho, n - 1, t, child.current()),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }
@@ -102,7 +73,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite2F<T, S> {
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = &self.cgns.sample();
+    let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
     let mut x = Array1::<T>::zeros(self.n);
     let mut u = Array1::<T>::zeros(self.n);
@@ -148,7 +119,7 @@ impl PyHullWhite2F {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(HullWhite2F::seeded(
+        seeded: Some(HullWhite2F::new(
           Fn1D::Py(k),
           theta,
           sigma1,
@@ -158,7 +129,7 @@ impl PyHullWhite2F {
           x0,
           t,
           n,
-          s,
+          Deterministic::new(s),
         )),
       },
       None => Self {
@@ -172,6 +143,7 @@ impl PyHullWhite2F {
           x0,
           t,
           n,
+          Unseeded,
         )),
         seeded: None,
       },
@@ -213,6 +185,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       64,
+      Unseeded,
     );
     let [x, u] = hw2.sample();
     assert_eq!(x.len(), 64);

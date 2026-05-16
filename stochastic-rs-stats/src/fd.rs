@@ -267,6 +267,7 @@ pub fn hurst_from_signal(signal: ndarray::ArrayView1<f64>) -> f64 {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
   use super::FdError;
@@ -279,7 +280,7 @@ mod tests {
     let d_theory = 2.0 - h;
     let n = 4096_usize;
     let m = 192_usize;
-    let fbm = Fbm::new(h, n, Some(1.0));
+    let fbm = Fbm::new(h, n, Some(1.0), Unseeded);
 
     let mut d_sum = 0.0;
     for _ in 0..m {
@@ -303,7 +304,7 @@ mod tests {
     let n = 4096_usize;
     let kmax = 32_usize;
     let m = 96_usize;
-    let fbm = Fbm::new(h, n, Some(1.0));
+    let fbm = Fbm::new(h, n, Some(1.0), Unseeded);
 
     let mut d_sum = 0.0;
     for _ in 0..m {

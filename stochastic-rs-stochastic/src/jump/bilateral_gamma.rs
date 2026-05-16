@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::gamma::SimdGamma;
@@ -41,7 +40,7 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> BilateralGamma<T> {
+impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
   pub fn new(
     alpha_p: T,
     lambda_p: T,
@@ -50,6 +49,7 @@ impl<T: FloatExt> BilateralGamma<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(alpha_p > T::zero(), "alpha_p must be positive");
     assert!(lambda_p > T::zero(), "lambda_p must be positive");
@@ -63,35 +63,7 @@ impl<T: FloatExt> BilateralGamma<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> BilateralGamma<T, Deterministic> {
-  pub fn seeded(
-    alpha_p: T,
-    lambda_p: T,
-    alpha_m: T,
-    lambda_m: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(alpha_p > T::zero(), "alpha_p must be positive");
-    assert!(lambda_p > T::zero(), "lambda_p must be positive");
-    assert!(alpha_m > T::zero(), "alpha_m must be positive");
-    assert!(lambda_m > T::zero(), "lambda_m must be positive");
-    Self {
-      alpha_p,
-      lambda_p,
-      alpha_m,
-      lambda_m,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -162,7 +134,7 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> BilateralGammaMotion<T> {
+impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
   pub fn new(
     sigma: T,
     alpha_p: T,
@@ -172,6 +144,7 @@ impl<T: FloatExt> BilateralGammaMotion<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(alpha_p > T::zero(), "alpha_p must be positive");
     assert!(lambda_p > T::zero(), "lambda_p must be positive");
@@ -186,37 +159,7 @@ impl<T: FloatExt> BilateralGammaMotion<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> BilateralGammaMotion<T, Deterministic> {
-  pub fn seeded(
-    sigma: T,
-    alpha_p: T,
-    lambda_p: T,
-    alpha_m: T,
-    lambda_m: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(alpha_p > T::zero(), "alpha_p must be positive");
-    assert!(lambda_p > T::zero(), "lambda_p must be positive");
-    assert!(alpha_m > T::zero(), "alpha_m must be positive");
-    assert!(lambda_m > T::zero(), "lambda_m must be positive");
-    Self {
-      sigma,
-      alpha_p,
-      lambda_p,
-      alpha_m,
-      lambda_m,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -268,12 +211,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BilateralGammaMotion<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
   use crate::traits::ProcessExt;
 
   #[test]
   fn bg_n_eq_1_keeps_initial_value() {
-    let p = BilateralGamma::new(1.0_f64, 2.0, 1.5, 2.5, 1, Some(3.0), Some(1.0));
+    let p = BilateralGamma::new(1.0_f64, 2.0, 1.5, 2.5, 1, Some(3.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert_eq!(x.len(), 1);
     assert_eq!(x[0], 3.0);
@@ -281,7 +226,17 @@ mod tests {
 
   #[test]
   fn bgm_n_eq_1_keeps_initial_value() {
-    let p = BilateralGammaMotion::new(0.2_f64, 1.0, 2.0, 1.5, 2.5, 1, Some(3.0), Some(1.0));
+    let p = BilateralGammaMotion::new(
+      0.2_f64,
+      1.0,
+      2.0,
+      1.5,
+      2.5,
+      1,
+      Some(3.0),
+      Some(1.0),
+      Unseeded,
+    );
     let x = p.sample();
     assert_eq!(x.len(), 1);
     assert_eq!(x[0], 3.0);
@@ -289,14 +244,33 @@ mod tests {
 
   #[test]
   fn bg_seeded_correct_length() {
-    let p = BilateralGamma::seeded(1.0_f64, 2.0, 1.5, 2.5, 100, None, Some(1.0), 42);
+    let p = BilateralGamma::new(
+      1.0_f64,
+      2.0,
+      1.5,
+      2.5,
+      100,
+      None,
+      Some(1.0),
+      Deterministic::new(42),
+    );
     let x = p.sample();
     assert_eq!(x.len(), 100);
   }
 
   #[test]
   fn bgm_seeded_correct_length() {
-    let p = BilateralGammaMotion::seeded(0.2_f64, 1.0, 2.0, 1.5, 2.5, 100, None, Some(1.0), 42);
+    let p = BilateralGammaMotion::new(
+      0.2_f64,
+      1.0,
+      2.0,
+      1.5,
+      2.5,
+      100,
+      None,
+      Some(1.0),
+      Deterministic::new(42),
+    );
     let x = p.sample();
     assert_eq!(x.len(), 100);
   }

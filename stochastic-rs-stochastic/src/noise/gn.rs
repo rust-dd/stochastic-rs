@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -23,23 +22,9 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Gn<T> {
-  pub fn new(n: usize, t: Option<T>) -> Self {
-    Gn {
-      n,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Gn<T, Deterministic> {
-  pub fn seeded(n: usize, t: Option<T>, seed: u64) -> Self {
-    Gn {
-      n,
-      t,
-      seed: Deterministic::new(seed),
-    }
+impl<T: FloatExt, S: SeedExt> Gn<T, S> {
+  pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
+    Gn { n, t, seed }
   }
 }
 

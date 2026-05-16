@@ -15,7 +15,6 @@
 //! Returns `[S, v, ρ]` — three paths.
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -72,7 +71,7 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> HestonStochCorr<T> {
+impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     r: T,
@@ -88,6 +87,7 @@ impl<T: FloatExt> HestonStochCorr<T> {
     rho2: T,
     n: usize,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       r,
@@ -103,44 +103,7 @@ impl<T: FloatExt> HestonStochCorr<T> {
       rho2,
       n,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> HestonStochCorr<T, Deterministic> {
-  #[allow(clippy::too_many_arguments)]
-  pub fn seeded(
-    r: T,
-    s0: T,
-    v0: T,
-    kappa_v: T,
-    mu_v: T,
-    sigma_v: T,
-    rho0: T,
-    kappa_r: T,
-    mu_r: T,
-    sigma_r: T,
-    rho2: T,
-    n: usize,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      r,
-      s0,
-      v0,
-      kappa_v,
-      mu_v,
-      sigma_v,
-      rho0,
-      kappa_r,
-      mu_r,
-      sigma_r,
-      rho2,
-      n,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -225,26 +188,28 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
   fn produces_valid_paths() {
     // Parameters from Table 2 in the paper
-    let model = HestonStochCorr::seeded(
-      0.0_f64,   // r
-      100.0,     // s0
-      0.02,      // v0
-      2.1,       // kappa_v
-      0.03,      // mu_v
-      0.2,       // sigma_v
-      -0.4,      // rho0
-      3.4,       // kappa_r
-      -0.6,      // mu_r
-      0.1,       // sigma_r
-      0.4,       // rho2
-      500,       // n
-      Some(1.0), // t
-      42,        // seed
+    let model = HestonStochCorr::new(
+      0.0_f64,                // r
+      100.0,                  // s0
+      0.02,                   // v0
+      2.1,                    // kappa_v
+      0.03,                   // mu_v
+      0.2,                    // sigma_v
+      -0.4,                   // rho0
+      3.4,                    // kappa_r
+      -0.6,                   // mu_r
+      0.1,                    // sigma_r
+      0.4,                    // rho2
+      500,                    // n
+      Some(1.0),              // t
+      Deterministic::new(42), // seed
     );
     let [s, v, rho] = model.sample();
     assert_eq!(s.len(), 500);
@@ -265,7 +230,7 @@ mod tests {
   #[test]
   fn seeded_is_deterministic() {
     let mk = || {
-      HestonStochCorr::seeded(
+      HestonStochCorr::new(
         0.03_f64,
         100.0,
         0.04,
@@ -279,7 +244,7 @@ mod tests {
         0.3,
         200,
         Some(0.5),
-        99,
+        Deterministic::new(99),
       )
     };
     let [s1, _, _] = mk().sample();
@@ -291,7 +256,7 @@ mod tests {
 
   #[test]
   fn constant_corr_when_sigma_r_zero() {
-    let model = HestonStochCorr::seeded(
+    let model = HestonStochCorr::new(
       0.0_f64,
       100.0,
       0.04,
@@ -305,7 +270,7 @@ mod tests {
       0.0,
       300,
       Some(1.0),
-      55,
+      Deterministic::new(55),
     );
     let [_, _, rho] = model.sample();
     // With σ_r ≈ 0, correlation should stay near ρ₀ = -0.7

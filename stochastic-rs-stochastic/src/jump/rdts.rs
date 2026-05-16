@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use scilib::math::basic::gamma;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
@@ -36,7 +35,7 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Rdts<T> {
+impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
   /// Create a new Rdts process
   pub fn new(
     lambda_plus: T,
@@ -46,6 +45,7 @@ impl<T: FloatExt> Rdts<T> {
     j: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
     assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
@@ -62,38 +62,7 @@ impl<T: FloatExt> Rdts<T> {
       j,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Rdts<T, Deterministic> {
-  pub fn seeded(
-    lambda_plus: T,
-    lambda_minus: T,
-    alpha: T,
-    n: usize,
-    j: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
-    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
-    assert!(
-      alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha must be in (0, 2)"
-    );
-
-    Self {
-      lambda_plus,
-      lambda_minus,
-      alpha,
-      n,
-      j,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -126,7 +95,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Rdts<T, S> {
     let mut U = Array1::<T>::zeros(size);
     uniform.fill_slice_fast(U.as_slice_mut().unwrap());
     let E = Array1::from_shape_fn(size, |_| exp.sample_fast());
-    let P = Poisson::new(T::one(), Some(size), None).sample();
+    let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     uniform.fill_slice_fast(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;

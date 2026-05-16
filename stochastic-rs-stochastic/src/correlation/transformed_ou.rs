@@ -1,7 +1,6 @@
 //! General transformed Ou stochastic correlation (Section 2.1).
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -71,7 +70,7 @@ pub struct TransformedOU<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> TransformedOU<T> {
+impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
   pub fn new(
     kappa: T,
     mu: T,
@@ -80,6 +79,7 @@ impl<T: FloatExt> TransformedOU<T> {
     transform: Transformation,
     n: usize,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       kappa,
@@ -89,31 +89,7 @@ impl<T: FloatExt> TransformedOU<T> {
       transform,
       n,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> TransformedOU<T, Deterministic> {
-  pub fn seeded(
-    kappa: T,
-    mu: T,
-    sigma: T,
-    rho0: T,
-    transform: Transformation,
-    n: usize,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      kappa,
-      mu,
-      sigma,
-      rho0,
-      transform,
-      n,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -154,11 +130,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TransformedOU<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
   fn tanh_stays_bounded() {
-    let scp = TransformedOU::seeded(
+    let scp = TransformedOU::new(
       5.0_f64,
       0.0,
       1.5,
@@ -166,7 +144,7 @@ mod tests {
       Transformation::Tanh,
       2000,
       Some(2.0),
-      77,
+      Deterministic::new(77),
     );
     let path = scp.sample();
     assert_eq!(path.len(), 2000);
@@ -175,7 +153,7 @@ mod tests {
 
   #[test]
   fn arctan_stays_bounded() {
-    let scp = TransformedOU::seeded(
+    let scp = TransformedOU::new(
       5.0_f64,
       0.0,
       1.5,
@@ -183,7 +161,7 @@ mod tests {
       Transformation::Arctan,
       2000,
       Some(2.0),
-      88,
+      Deterministic::new(88),
     );
     let path = scp.sample();
     assert!(path.iter().all(|&r| r > -1.0 && r < 1.0));

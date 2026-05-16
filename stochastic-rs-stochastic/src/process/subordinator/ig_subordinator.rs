@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
@@ -24,8 +23,8 @@ pub struct IGSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> IGSubordinator<T> {
-  pub fn new(delta: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> IGSubordinator<T, S> {
+  pub fn new(delta: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(delta > T::zero(), "delta must be positive");
     assert!(gamma > T::zero(), "gamma must be positive");
     Self {
@@ -34,22 +33,7 @@ impl<T: FloatExt> IGSubordinator<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> IGSubordinator<T, Deterministic> {
-  pub fn seeded(delta: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
-    assert!(delta > T::zero(), "delta must be positive");
-    assert!(gamma > T::zero(), "gamma must be positive");
-    Self {
-      delta,
-      gamma,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

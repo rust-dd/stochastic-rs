@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -36,8 +35,8 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Gbm<T> {
-  pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
+  pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
     let mu_f64 = mu.to_f64().unwrap();
     let sigma_f64 = sigma.to_f64().unwrap();
@@ -54,30 +53,7 @@ impl<T: FloatExt> Gbm<T> {
       t,
       ln_mu: mu_ln,
       ln_sigma: sigma_ln,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Gbm<T, Deterministic> {
-  pub fn seeded(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
-    let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
-    let mu_f64 = mu.to_f64().unwrap();
-    let sigma_f64 = sigma.to_f64().unwrap();
-    let t_f64 = t.unwrap_or(T::one()).to_f64().unwrap();
-
-    let mu_ln = x0_f64.ln() + (mu_f64 - 0.5 * sigma_f64 * sigma_f64) * t_f64;
-    let sigma_ln = sigma_f64 * t_f64.sqrt();
-
-    Self {
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      ln_mu: mu_ln,
-      ln_sigma: sigma_ln,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -235,7 +211,7 @@ mod tests {
 
   #[test]
   fn invalid_terminal_distribution_returns_zero_fallbacks() {
-    let gbm = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0));
+    let gbm = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
 
     assert_eq!(gbm.pdf(100.0), 0.0);
     assert_eq!(gbm.cdf(100.0), 0.0);
@@ -250,7 +226,7 @@ mod tests {
 
   #[test]
   fn valid_terminal_distribution_is_positive_and_finite() {
-    let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0));
+    let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0), Unseeded);
 
     assert!(gbm.pdf(100.0).is_finite());
     assert!(gbm.pdf(100.0) > 0.0);

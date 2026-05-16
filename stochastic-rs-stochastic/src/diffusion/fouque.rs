@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -37,7 +36,7 @@ pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> FouqueOU2D<T> {
+impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
   pub fn new(
     kappa: T,
     theta: T,
@@ -47,6 +46,7 @@ impl<T: FloatExt> FouqueOU2D<T> {
     x0: Option<T>,
     y0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(epsilon > T::zero(), "epsilon must be positive");
 
@@ -59,35 +59,7 @@ impl<T: FloatExt> FouqueOU2D<T> {
       x0,
       y0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> FouqueOU2D<T, Deterministic> {
-  pub fn seeded(
-    kappa: T,
-    theta: T,
-    epsilon: T,
-    alpha: T,
-    n: usize,
-    x0: Option<T>,
-    y0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(epsilon > T::zero(), "epsilon must be positive");
-
-    Self {
-      kappa,
-      theta,
-      epsilon,
-      alpha,
-      n,
-      x0,
-      y0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

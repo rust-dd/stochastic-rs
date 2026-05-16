@@ -14,7 +14,6 @@
 //! - Merton (1976), "Option pricing when underlying stock returns are discontinuous"
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -51,7 +50,7 @@ pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> HawkesJD<T> {
+impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
   pub fn new(
     mu: T,
     sigma: T,
@@ -63,6 +62,7 @@ impl<T: FloatExt> HawkesJD<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(beta > T::zero(), "beta must be positive");
     assert!(alpha >= T::zero(), "alpha must be non-negative");
@@ -81,43 +81,7 @@ impl<T: FloatExt> HawkesJD<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> HawkesJD<T, Deterministic> {
-  pub fn seeded(
-    mu: T,
-    sigma: T,
-    mu_lambda: T,
-    alpha: T,
-    beta: T,
-    mu_j: T,
-    sigma_j: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(alpha >= T::zero(), "alpha must be non-negative");
-    assert!(
-      alpha / beta < T::one(),
-      "stationarity requires alpha/beta < 1"
-    );
-    Self {
-      mu,
-      sigma,
-      mu_lambda,
-      alpha,
-      beta,
-      mu_j,
-      sigma_j,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -174,6 +138,8 @@ py_process_1d!(PyHawkesJD, HawkesJD,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
@@ -189,6 +155,7 @@ mod tests {
       252,
       Some(0.0),
       Some(1.0),
+      Unseeded,
     );
     let path = hjd.sample();
     assert_eq!(path.len(), 252);
@@ -209,6 +176,7 @@ mod tests {
       1000,
       Some(0.0),
       Some(1.0),
+      Unseeded,
     );
     let path = hjd.sample();
     assert_eq!(path.len(), 1000);
@@ -223,7 +191,7 @@ mod tests {
     // first path. (Same instance, repeated `.sample()` calls advance the seed
     // state and produce different paths — desired for Monte Carlo reuse.)
     let mk = || {
-      HawkesJD::seeded(
+      HawkesJD::new(
         0.05,
         0.2,
         3.0,
@@ -234,7 +202,7 @@ mod tests {
         100,
         Some(0.0),
         Some(1.0),
-        42,
+        Deterministic::new(42),
       )
     };
     let a = mk();

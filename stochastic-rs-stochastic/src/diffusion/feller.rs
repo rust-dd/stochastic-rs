@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -35,7 +34,7 @@ pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> FellerLogistic<T> {
+impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
   pub fn new(
     kappa: T,
     theta: T,
@@ -44,6 +43,7 @@ impl<T: FloatExt> FellerLogistic<T> {
     x0: Option<T>,
     t: Option<T>,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     Self {
       kappa,
@@ -53,31 +53,7 @@ impl<T: FloatExt> FellerLogistic<T> {
       x0,
       t,
       use_sym,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> FellerLogistic<T, Deterministic> {
-  pub fn seeded(
-    kappa: T,
-    theta: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      kappa,
-      theta,
-      sigma,
-      n,
-      x0,
-      t,
-      use_sym,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

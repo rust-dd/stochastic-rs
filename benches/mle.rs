@@ -5,6 +5,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::mle::DensityApprox;
 use stochastic_rs::stats::mle::fit_mle;
 use stochastic_rs::stochastic::diffusion::cir::Cir;
@@ -15,8 +16,25 @@ fn bench_density_eval(c: &mut Criterion) {
   let mut group = c.benchmark_group("density_eval");
   group.measurement_time(Duration::from_secs(3));
 
-  let cir = Cir::seeded(3.0, 0.3, 0.2, 100, Some(0.4), Some(1.0), None, 0);
-  let ou = Ou::seeded(2.0, 1.0, 0.3, 100, Some(1.0), Some(1.0), 0);
+  let cir = Cir::new(
+    3.0,
+    0.3,
+    0.2,
+    100,
+    Some(0.4),
+    Some(1.0),
+    None,
+    Deterministic::new(0),
+  );
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
   let dt = 1.0 / 250.0;
 
   for (name, density) in [
@@ -47,7 +65,15 @@ fn bench_log_likelihood(c: &mut Criterion) {
   group.measurement_time(Duration::from_secs(3));
 
   for &n in &[1_000usize, 5_000, 10_000] {
-    let ou = Ou::seeded(2.0, 1.0, 0.3, n + 1, Some(1.0), Some(10.0), 42);
+    let ou = Ou::new(
+      2.0,
+      1.0,
+      0.3,
+      n + 1,
+      Some(1.0),
+      Some(10.0),
+      Deterministic::new(42),
+    );
     let path = ou.sample();
     let dt = 10.0 / n as f64;
 
@@ -84,13 +110,29 @@ fn bench_mle_fit(c: &mut Criterion) {
 
   for &(n, label) in &[(1_000usize, "1k"), (5_000, "5k")] {
     // Ou Euler
-    let ou = Ou::seeded(2.0, 1.0, 0.3, n + 1, Some(1.0), Some(10.0), 42);
+    let ou = Ou::new(
+      2.0,
+      1.0,
+      0.3,
+      n + 1,
+      Some(1.0),
+      Some(10.0),
+      Deterministic::new(42),
+    );
     let path = ou.sample();
     let dt = 10.0 / n as f64;
 
     group.bench_function(BenchmarkId::new("Ou/Euler", label), |b| {
       b.iter(|| {
-        let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+        let mut ou_fit = Ou::new(
+          1.0,
+          0.5,
+          0.5,
+          100,
+          Some(1.0),
+          Some(1.0),
+          Deterministic::new(0),
+        );
         black_box(fit_mle(
           &mut ou_fit,
           path.view(),
@@ -103,7 +145,15 @@ fn bench_mle_fit(c: &mut Criterion) {
 
     group.bench_function(BenchmarkId::new("Ou/Kessler", label), |b| {
       b.iter(|| {
-        let mut ou_fit = Ou::seeded(1.0, 0.5, 0.5, 100, Some(1.0), Some(1.0), 0);
+        let mut ou_fit = Ou::new(
+          1.0,
+          0.5,
+          0.5,
+          100,
+          Some(1.0),
+          Some(1.0),
+          Deterministic::new(0),
+        );
         black_box(fit_mle(
           &mut ou_fit,
           path.view(),
@@ -115,13 +165,31 @@ fn bench_mle_fit(c: &mut Criterion) {
     });
 
     // Cir Kessler
-    let cir = Cir::seeded(3.0, 0.3, 0.2, n + 1, Some(0.4), Some(10.0), None, 42);
+    let cir = Cir::new(
+      3.0,
+      0.3,
+      0.2,
+      n + 1,
+      Some(0.4),
+      Some(10.0),
+      None,
+      Deterministic::new(42),
+    );
     let cir_path = cir.sample();
     let cir_dt = 10.0 / n as f64;
 
     group.bench_function(BenchmarkId::new("Cir/Kessler", label), |b| {
       b.iter(|| {
-        let mut cir_fit = Cir::seeded(1.0, 0.5, 0.3, 100, Some(0.4), Some(1.0), None, 0);
+        let mut cir_fit = Cir::new(
+          1.0,
+          0.5,
+          0.3,
+          100,
+          Some(0.4),
+          Some(1.0),
+          None,
+          Deterministic::new(0),
+        );
         black_box(fit_mle(
           &mut cir_fit,
           cir_path.view(),

@@ -6,7 +6,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -54,33 +53,14 @@ pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Agarch<T> {
-  pub fn new(omega: T, alpha: Array1<T>, delta: Array1<T>, beta: Array1<T>, n: usize) -> Self {
-    assert!(omega > T::zero(), "Agarch requires omega > 0");
-    assert!(
-      alpha.len() == delta.len(),
-      "Agarch requires alpha.len() == delta.len()"
-    );
-    Self {
-      omega,
-      alpha,
-      delta,
-      beta,
-      n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Agarch<T, Deterministic> {
-  /// Create a new Agarch model with a deterministic seed for reproducible output.
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
+  pub fn new(
     omega: T,
     alpha: Array1<T>,
     delta: Array1<T>,
     beta: Array1<T>,
     n: usize,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(omega > T::zero(), "Agarch requires omega > 0");
     assert!(
@@ -93,7 +73,7 @@ impl<T: FloatExt> Agarch<T, Deterministic> {
       delta,
       beta,
       n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

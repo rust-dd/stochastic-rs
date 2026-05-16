@@ -4,6 +4,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::rough::rl_bs::RlBlackScholes;
 use stochastic_rs::stochastic::rough::rl_fbm::RlFBm;
 use stochastic_rs::stochastic::rough::rl_fou::RlFOU;
@@ -16,7 +17,7 @@ fn bench_rl_fbm_by_size(c: &mut Criterion) {
 
   for &n in &[256_usize, 1024, 4096] {
     group.bench_with_input(BenchmarkId::new("bilokon_wong", n), &n, |b, &n| {
-      let p = RlFBm::new(hurst, n, Some(1.0), None);
+      let p = RlFBm::new(hurst, n, Some(1.0), None, Unseeded);
       b.iter(|| black_box(p.sample()));
     });
   }
@@ -31,7 +32,7 @@ fn bench_rl_fbm_by_hurst(c: &mut Criterion) {
   for &h in &[0.05_f64, 0.1, 0.2, 0.3, 0.45] {
     let label = format!("H={h:.2}");
     group.bench_with_input(BenchmarkId::new("bilokon_wong", &label), &h, |b, &h| {
-      let p = RlFBm::new(h, n, Some(1.0), None);
+      let p = RlFBm::new(h, n, Some(1.0), None, Unseeded);
       b.iter(|| black_box(p.sample()));
     });
   }
@@ -43,12 +44,22 @@ fn bench_rl_fou_and_bs(c: &mut Criterion) {
   let n = 1024_usize;
 
   c.bench_function("RL_FOU/H=0.1", |b| {
-    let p = RlFOU::new(0.1_f64, 2.0, 0.0, 0.25, n, Some(0.0), Some(1.0), None);
+    let p = RlFOU::new(
+      0.1_f64,
+      2.0,
+      0.0,
+      0.25,
+      n,
+      Some(0.0),
+      Some(1.0),
+      None,
+      Unseeded,
+    );
     b.iter(|| black_box(p.sample()));
   });
 
   c.bench_function("RL_BlackScholes/H=0.3", |b| {
-    let p = RlBlackScholes::new(0.3_f64, 100.0, 0.05, 0.2, n, Some(0.5), None);
+    let p = RlBlackScholes::new(0.3_f64, 100.0, 0.05, 0.2, n, Some(0.5), None, Unseeded);
     b.iter(|| black_box(p.sample()));
   });
 }
@@ -70,6 +81,7 @@ fn bench_rl_heston(c: &mut Criterion) {
         n,
         Some(1.0),
         None,
+        Unseeded,
       );
       b.iter(|| black_box(p.sample()));
     });
@@ -92,7 +104,7 @@ fn bench_rl_fbm_throughput(c: &mut Criterion) {
     group.throughput(Throughput::Elements(m as u64));
 
     group.bench_with_input(BenchmarkId::new("sample_loop", m), &m, |b, &m| {
-      let p = RlFBm::new(hurst, n, Some(1.0), None);
+      let p = RlFBm::new(hurst, n, Some(1.0), None, Unseeded);
       b.iter(|| {
         for _ in 0..m {
           black_box(p.sample());
@@ -101,17 +113,17 @@ fn bench_rl_fbm_throughput(c: &mut Criterion) {
     });
 
     group.bench_with_input(BenchmarkId::new("sample_par", m), &m, |b, &m| {
-      let p = RlFBm::new(hurst, n, Some(1.0), None);
+      let p = RlFBm::new(hurst, n, Some(1.0), None, Unseeded);
       b.iter(|| black_box(p.sample_par(m)));
     });
 
     group.bench_with_input(BenchmarkId::new("sample_batch", m), &m, |b, &m| {
-      let p = RlFBm::new(hurst, n, Some(1.0), None);
+      let p = RlFBm::new(hurst, n, Some(1.0), None, Unseeded);
       b.iter(|| black_box(p.sample_batch(m)));
     });
 
     group.bench_with_input(BenchmarkId::new("sample_batch_par", m), &m, |b, &m| {
-      let p = RlFBm::new(hurst, n, Some(1.0), None);
+      let p = RlFBm::new(hurst, n, Some(1.0), None, Unseeded);
       b.iter(|| black_box(p.sample_batch_par(m)));
     });
   }
@@ -140,6 +152,7 @@ fn bench_rl_heston_throughput(c: &mut Criterion) {
         n,
         Some(1.0),
         None,
+        Unseeded,
       );
       b.iter(|| black_box(p.sample_par(m)));
     });
@@ -157,6 +170,7 @@ fn bench_rl_heston_throughput(c: &mut Criterion) {
         n,
         Some(1.0),
         None,
+        Unseeded,
       );
       b.iter(|| black_box(p.sample_batch(m)));
     });

@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -33,7 +32,7 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> Sabr<T> {
+impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -42,6 +41,7 @@ impl<T: FloatExt> Sabr<T> {
     f0: Option<T>,
     v0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(
       beta >= T::zero() && beta <= T::one(),
@@ -60,42 +60,8 @@ impl<T: FloatExt> Sabr<T> {
       f0,
       v0,
       t,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Sabr<T, Deterministic> {
-  pub fn seeded(
-    alpha: T,
-    beta: T,
-    rho: T,
-    n: usize,
-    f0: Option<T>,
-    v0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(
-      beta >= T::zero() && beta <= T::one(),
-      "beta must be in [0, 1] for Sabr"
-    );
-    assert!(alpha >= T::zero(), "alpha must be non-negative");
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
-
-    Self {
-      alpha,
-      beta,
-      rho,
-      n,
-      f0,
-      v0,
-      t,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::new(rho, n - 1, t),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }
@@ -133,7 +99,16 @@ mod tests {
 
   #[test]
   fn volatility_stays_non_negative() {
-    let p = Sabr::new(0.4_f64, 0.5, -0.3, 256, Some(1.0), Some(0.2), Some(1.0));
+    let p = Sabr::new(
+      0.4_f64,
+      0.5,
+      -0.3,
+      256,
+      Some(1.0),
+      Some(0.2),
+      Some(1.0),
+      Unseeded,
+    );
     let [_f, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));
   }

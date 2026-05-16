@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -33,7 +32,7 @@ pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> GbmIh<T> {
+impl<T: FloatExt, S: SeedExt> GbmIh<T, S> {
   /// Create a new GbmIh instance with the given parameters.
   pub fn new(
     mu: T,
@@ -42,6 +41,7 @@ impl<T: FloatExt> GbmIh<T> {
     x0: Option<T>,
     t: Option<T>,
     sigmas: Option<Array1<T>>,
+    seed: S,
   ) -> Self {
     if let Some(s) = &sigmas {
       assert_eq!(s.len(), n.saturating_sub(1), "sigmas length must be n - 1");
@@ -54,33 +54,7 @@ impl<T: FloatExt> GbmIh<T> {
       x0,
       t,
       sigmas,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> GbmIh<T, Deterministic> {
-  pub fn seeded(
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    sigmas: Option<Array1<T>>,
-    seed: u64,
-  ) -> Self {
-    if let Some(s) = &sigmas {
-      assert_eq!(s.len(), n.saturating_sub(1), "sigmas length must be n - 1");
-    }
-
-    Self {
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      sigmas,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

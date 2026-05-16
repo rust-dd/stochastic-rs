@@ -11,7 +11,6 @@
 //! Log-spot simulation guarantees $S_t > 0$.
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -66,7 +65,7 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> HestonLog<T> {
+impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
   pub fn new(
     mu: Option<T>,
     b: Option<T>,
@@ -81,6 +80,7 @@ impl<T: FloatExt> HestonLog<T> {
     v0: Option<T>,
     t: Option<T>,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(kappa >= T::zero(), "kappa must be >= 0");
@@ -109,56 +109,7 @@ impl<T: FloatExt> HestonLog<T> {
       v0,
       t,
       use_sym,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> HestonLog<T, Deterministic> {
-  pub fn seeded(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
-    kappa: T,
-    theta: T,
-    xi: T,
-    rho: T,
-    n: usize,
-    s0: Option<T>,
-    v0: Option<T>,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(kappa >= T::zero(), "kappa must be >= 0");
-    assert!(theta >= T::zero(), "theta must be >= 0");
-    assert!(xi >= T::zero(), "xi must be >= 0");
-    assert!(
-      rho >= -T::one() && rho <= T::one(),
-      "rho must be in [-1, 1]"
-    );
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be >= 0");
-    }
-    validate_drift_args(mu, b, r, r_f, "HestonLog");
-
-    Self {
-      mu,
-      b,
-      r,
-      r_f,
-      kappa,
-      theta,
-      xi,
-      rho,
-      n,
-      s0,
-      v0,
-      t,
-      use_sym,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -257,6 +208,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       Some(false),
+      Unseeded,
     );
     let [s, _v] = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
@@ -278,6 +230,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       Some(false),
+      Unseeded,
     );
     let [_s, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));

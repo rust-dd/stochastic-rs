@@ -13,7 +13,6 @@
 use ndarray::Array1;
 use ndarray::s;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -62,7 +61,7 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> MjdLog<T> {
+impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
   pub fn new(
     mu: Option<T>,
     b: Option<T>,
@@ -75,6 +74,7 @@ impl<T: FloatExt> MjdLog<T> {
     n: usize,
     s0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(sigma >= T::zero(), "sigma must be >= 0");
@@ -93,44 +93,7 @@ impl<T: FloatExt> MjdLog<T> {
       n,
       s0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> MjdLog<T, Deterministic> {
-  pub fn seeded(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
-    sigma: T,
-    lambda: T,
-    nu: T,
-    omega: T,
-    n: usize,
-    s0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(sigma >= T::zero(), "sigma must be >= 0");
-    assert!(lambda >= T::zero(), "lambda must be >= 0");
-    assert!(omega >= T::zero(), "omega must be >= 0");
-    validate_drift_args(mu, b, r, r_f, "MjdLog");
-    Self {
-      mu,
-      b,
-      r,
-      r_f,
-      sigma,
-      lambda,
-      nu,
-      omega,
-      n,
-      s0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -243,6 +206,7 @@ mod tests {
       256,
       Some(100.0),
       Some(1.0),
+      Unseeded,
     );
     let s = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));

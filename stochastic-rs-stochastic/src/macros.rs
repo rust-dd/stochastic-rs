@@ -54,10 +54,10 @@ macro_rules! py_process_1d {
       fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>) -> Self {
         let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
         match (seed, dtype.unwrap_or("f64")) {
-          (Some(sd), "f32") => { s.seeded_f32 = Some($inner::seeded($(stochastic_rs_core::python::IntoF32::into_f32($param),)* sd)); },
-          (Some(sd), _) => { s.seeded_f64 = Some($inner::seeded($(stochastic_rs_core::python::IntoF64::into_f64($param),)* sd)); },
-          (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param)),*)); },
-          (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param)),*)); },
+          (Some(sd), "f32") => { s.seeded_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+          (Some(sd), _) => { s.seeded_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+          (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
+          (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
         }
         s
       }
@@ -125,10 +125,10 @@ macro_rules! py_process_2x1d {
       fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>) -> Self {
         let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
         match (seed, dtype.unwrap_or("f64")) {
-          (Some(sd), "f32") => { s.seeded_f32 = Some($inner::seeded($(stochastic_rs_core::python::IntoF32::into_f32($param),)* sd)); },
-          (Some(sd), _) => { s.seeded_f64 = Some($inner::seeded($(stochastic_rs_core::python::IntoF64::into_f64($param),)* sd)); },
-          (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param)),*)); },
-          (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param)),*)); },
+          (Some(sd), "f32") => { s.seeded_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+          (Some(sd), _) => { s.seeded_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+          (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
+          (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
         }
         s
       }
@@ -198,10 +198,10 @@ macro_rules! py_process_2d {
       fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>) -> Self {
         let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
         match (seed, dtype.unwrap_or("f64")) {
-          (Some(sd), "f32") => { s.seeded_f32 = Some($inner::seeded($(stochastic_rs_core::python::IntoF32::into_f32($param),)* sd)); },
-          (Some(sd), _) => { s.seeded_f64 = Some($inner::seeded($(stochastic_rs_core::python::IntoF64::into_f64($param),)* sd)); },
-          (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param)),*)); },
-          (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param)),*)); },
+          (Some(sd), "f32") => { s.seeded_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+          (Some(sd), _) => { s.seeded_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+          (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
+          (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
         }
         s
       }

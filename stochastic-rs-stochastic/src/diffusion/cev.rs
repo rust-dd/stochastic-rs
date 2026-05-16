@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -31,8 +30,8 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Cev<T> {
-  pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Cev<T, S> {
+  pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
       mu,
       sigma,
@@ -40,29 +39,7 @@ impl<T: FloatExt> Cev<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Cev<T, Deterministic> {
-  pub fn seeded(
-    mu: T,
-    sigma: T,
-    gamma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      mu,
-      sigma,
-      gamma,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

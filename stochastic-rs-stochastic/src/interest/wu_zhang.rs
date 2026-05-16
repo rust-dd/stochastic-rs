@@ -7,6 +7,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -38,7 +39,7 @@ pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> WuZhangD<T> {
+impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
   pub fn new(
     alpha: Array1<T>,
     beta: Array1<T>,
@@ -49,6 +50,7 @@ impl<T: FloatExt> WuZhangD<T> {
     xn: usize,
     t: Option<T>,
     n: usize,
+    seed: S,
   ) -> Self {
     assert_eq!(
       alpha.len(),
@@ -118,93 +120,7 @@ impl<T: FloatExt> WuZhangD<T> {
       xn,
       t,
       n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> WuZhangD<T, Deterministic> {
-  pub fn seeded(
-    alpha: Array1<T>,
-    beta: Array1<T>,
-    nu: Array1<T>,
-    lambda: Array1<T>,
-    x0: Array1<T>,
-    v0: Array1<T>,
-    xn: usize,
-    t: Option<T>,
-    n: usize,
-    seed: u64,
-  ) -> Self {
-    assert_eq!(
-      alpha.len(),
-      xn,
-      "alpha length ({}) must match xn ({})",
-      alpha.len(),
-      xn
-    );
-    assert_eq!(
-      beta.len(),
-      xn,
-      "beta length ({}) must match xn ({})",
-      beta.len(),
-      xn
-    );
-    assert_eq!(
-      nu.len(),
-      xn,
-      "nu length ({}) must match xn ({})",
-      nu.len(),
-      xn
-    );
-    assert_eq!(
-      lambda.len(),
-      xn,
-      "lambda length ({}) must match xn ({})",
-      lambda.len(),
-      xn
-    );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
-    );
-    assert_eq!(
-      v0.len(),
-      xn,
-      "v0 length ({}) must match xn ({})",
-      v0.len(),
-      xn
-    );
-    assert!(
-      alpha.iter().all(|&x| x >= T::zero()),
-      "alpha entries must be non-negative"
-    );
-    assert!(
-      beta.iter().all(|&x| x >= T::zero()),
-      "beta entries must be non-negative"
-    );
-    assert!(
-      nu.iter().all(|&x| x >= T::zero()),
-      "nu entries must be non-negative"
-    );
-    assert!(
-      v0.iter().all(|&x| x >= T::zero()),
-      "v0 entries must be non-negative"
-    );
-    Self {
-      alpha,
-      beta,
-      nu,
-      lambda,
-      x0,
-      v0,
-      xn,
-      t,
-      n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -287,6 +203,7 @@ mod tests {
       1,
       Some(2.0),
       3,
+      Unseeded,
     );
     let fv = model.sample();
     let v = fv.row(1);
@@ -307,6 +224,7 @@ mod tests {
       1,
       Some(1.0),
       16,
+      Unseeded,
     );
   }
 }
@@ -345,7 +263,7 @@ impl PyWuZhangD {
         Self {
           inner_f32: None,
           inner_f64: None,
-          seeded_f32: Some(WuZhangD::seeded(
+          seeded_f32: Some(WuZhangD::new(
             to_f32_arr(alpha),
             to_f32_arr(beta),
             to_f32_arr(nu),
@@ -355,7 +273,7 @@ impl PyWuZhangD {
             xn,
             t.map(|v| v as f32),
             n,
-            s,
+            Deterministic::new(s),
           )),
           seeded_f64: None,
         }
@@ -366,7 +284,7 @@ impl PyWuZhangD {
           inner_f32: None,
           inner_f64: None,
           seeded_f32: None,
-          seeded_f64: Some(WuZhangD::seeded(
+          seeded_f64: Some(WuZhangD::new(
             to_arr(alpha),
             to_arr(beta),
             to_arr(nu),
@@ -376,7 +294,7 @@ impl PyWuZhangD {
             xn,
             t,
             n,
-            s,
+            Deterministic::new(s),
           )),
         }
       }
@@ -394,6 +312,7 @@ impl PyWuZhangD {
             xn,
             t.map(|v| v as f32),
             n,
+            Unseeded,
           )),
           inner_f64: None,
           seeded_f32: None,
@@ -414,6 +333,7 @@ impl PyWuZhangD {
             xn,
             t,
             n,
+            Unseeded,
           )),
           seeded_f32: None,
           seeded_f64: None,

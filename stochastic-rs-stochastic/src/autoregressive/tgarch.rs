@@ -6,7 +6,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -53,33 +52,14 @@ pub struct Tgarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Tgarch<T> {
-  pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
-    assert!(omega > T::zero(), "Tgarch requires omega > 0");
-    assert!(
-      alpha.len() == gamma.len(),
-      "Tgarch requires alpha.len() == gamma.len()"
-    );
-    Self {
-      omega,
-      alpha,
-      gamma,
-      beta,
-      n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Tgarch<T, Deterministic> {
-  /// Create a new Tgarch model with a deterministic seed for reproducible output.
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> Tgarch<T, S> {
+  pub fn new(
     omega: T,
     alpha: Array1<T>,
     gamma: Array1<T>,
     beta: Array1<T>,
     n: usize,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(omega > T::zero(), "Tgarch requires omega > 0");
     assert!(
@@ -92,7 +72,7 @@ impl<T: FloatExt> Tgarch<T, Deterministic> {
       gamma,
       beta,
       n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

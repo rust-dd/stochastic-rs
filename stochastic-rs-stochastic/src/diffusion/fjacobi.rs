@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -33,32 +32,9 @@ pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded> {
   fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> FJacobi<T> {
+impl<T: FloatExt, S: SeedExt> FJacobi<T, S> {
   #[must_use]
-  pub fn new(hurst: T, alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(alpha > T::zero(), "alpha must be positive");
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(sigma > T::zero(), "sigma must be positive");
-    assert!(alpha < beta, "alpha must be less than beta");
-
-    Self {
-      hurst,
-      alpha,
-      beta,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-      fgn: Fgn::new(hurst, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> FJacobi<T, Deterministic> {
-  #[must_use]
-  pub fn seeded(
+  pub fn new(
     hurst: T,
     alpha: T,
     beta: T,
@@ -66,7 +42,7 @@ impl<T: FloatExt> FJacobi<T, Deterministic> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(alpha > T::zero(), "alpha must be positive");
@@ -82,8 +58,8 @@ impl<T: FloatExt> FJacobi<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
-      fgn: Fgn::new(hurst, n - 1, t),
+      seed,
+      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
     }
   }
 }

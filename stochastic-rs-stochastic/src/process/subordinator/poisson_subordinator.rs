@@ -1,6 +1,5 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::poisson::SimdPoisson;
@@ -23,28 +22,15 @@ pub struct PoissonSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> PoissonSubordinator<T> {
-  pub fn new(lambda: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> PoissonSubordinator<T, S> {
+  pub fn new(lambda: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(lambda > T::zero(), "lambda must be positive");
     Self {
       lambda,
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> PoissonSubordinator<T, Deterministic> {
-  pub fn seeded(lambda: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
-    assert!(lambda > T::zero(), "lambda must be positive");
-    Self {
-      lambda,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

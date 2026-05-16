@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -25,8 +24,8 @@ pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Cir2F<T> {
-  pub fn new(x: Cir<T>, y: Cir<T>, phi: impl Into<Fn1D<T>>) -> Self {
+impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
+  pub fn new(x: Cir<T, S>, y: Cir<T, S>, phi: impl Into<Fn1D<T>>, seed: S) -> Self {
     assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
     if let (Some(tx), Some(ty)) = (x.t, y.t) {
       assert!(
@@ -38,30 +37,7 @@ impl<T: FloatExt> Cir2F<T> {
       x,
       y,
       phi: phi.into(),
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Cir2F<T, Deterministic> {
-  pub fn seeded(
-    x: Cir<T, Deterministic>,
-    y: Cir<T, Deterministic>,
-    phi: impl Into<Fn1D<T>>,
-    seed: u64,
-  ) -> Self {
-    assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
-    if let (Some(tx), Some(ty)) = (x.t, y.t) {
-      assert!(
-        (tx - ty).abs() <= T::from_f64_fast(1e-12),
-        "x and y Cir factors must use the same time horizon"
-      );
-    }
-    Self {
-      x,
-      y,
-      phi: phi.into(),
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -92,9 +68,9 @@ mod tests {
 
   #[test]
   fn default_time_horizon_is_one() {
-    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
-    let y = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false));
-    let model = Cir2F::new(x, y, phi_fn as fn(f64) -> f64);
+    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false), Unseeded);
+    let y = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false), Unseeded);
+    let model = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
 
     let out = model.sample();
     assert!((out[0] - 0.0).abs() < 1e-12);
@@ -105,8 +81,26 @@ mod tests {
   #[test]
   #[should_panic(expected = "x and y Cir factors must use the same n")]
   fn mismatched_lengths_panic() {
-    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), Some(1.0), Some(false));
-    let y = Cir::new(0.0_f64, 0.0, 0.0, 4, Some(0.0), Some(1.0), Some(false));
-    let _ = Cir2F::new(x, y, phi_fn as fn(f64) -> f64);
+    let x = Cir::new(
+      0.0_f64,
+      0.0,
+      0.0,
+      3,
+      Some(0.0),
+      Some(1.0),
+      Some(false),
+      Unseeded,
+    );
+    let y = Cir::new(
+      0.0_f64,
+      0.0,
+      0.0,
+      4,
+      Some(0.0),
+      Some(1.0),
+      Some(false),
+      Unseeded,
+    );
+    let _ = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
   }
 }

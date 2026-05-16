@@ -22,7 +22,6 @@
 //! Reference: Bilokon & Wong (2026), doi:10.1017/jpr.2025.10071.
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -61,12 +60,12 @@ fn build_markov<T: FloatExt>(
   MarkovLift::new(kernel, dt)
 }
 
-impl<T: FloatExt> RlFBm<T> {
+impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
   /// Build an RL-fBM generator for Hurst $H$ on an $n$-point grid. The
   /// underlying [`MarkovLift`] is constructed once here and reused by every
   /// sampling call.
   #[must_use]
-  pub fn new(hurst: T, n: usize, t: Option<T>, degree: Option<usize>) -> Self {
+  pub fn new(hurst: T, n: usize, t: Option<T>, degree: Option<usize>, seed: S) -> Self {
     assert!(n >= 2, "n must be at least 2");
     let markov = build_markov(hurst, n, t, degree);
     Self {
@@ -74,24 +73,7 @@ impl<T: FloatExt> RlFBm<T> {
       n,
       t,
       degree,
-      seed: Unseeded,
-      markov,
-    }
-  }
-}
-
-impl<T: FloatExt> RlFBm<T, Deterministic> {
-  /// Same as [`new`](Self::new) with a fixed seed.
-  #[must_use]
-  pub fn seeded(hurst: T, n: usize, t: Option<T>, degree: Option<usize>, seed: u64) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    let markov = build_markov(hurst, n, t, degree);
-    Self {
-      hurst,
-      n,
-      t,
-      degree,
-      seed: Deterministic::new(seed),
+      seed,
       markov,
     }
   }
@@ -168,18 +150,21 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFBm<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::RlFBm;
   use crate::traits::ProcessExt;
 
   #[test]
   #[should_panic(expected = "n must be at least 2")]
   fn rejects_too_short_grid() {
-    let _ = RlFBm::<f64>::new(0.3, 1, Some(1.0), None);
+    let _ = RlFBm::<f64>::new(0.3, 1, Some(1.0), None, Unseeded);
   }
 
   #[test]
   fn starts_at_zero_and_is_finite() {
-    let p = RlFBm::seeded(0.25_f64, 256, Some(1.0), None, 42);
+    let p = RlFBm::new(0.25_f64, 256, Some(1.0), None, Deterministic::new(42));
     let path = p.sample();
     assert_eq!(path.len(), 256);
     assert_eq!(path[0], 0.0);
@@ -188,7 +173,7 @@ mod tests {
 
   #[test]
   fn batch_shape_and_first_column_is_zero() {
-    let p = RlFBm::seeded(0.2_f64, 64, Some(1.0), Some(25), 11);
+    let p = RlFBm::new(0.2_f64, 64, Some(1.0), Some(25), Deterministic::new(11));
     let paths = p.sample_batch(17);
     assert_eq!(paths.dim(), (17, 64));
     for row in 0..17 {
@@ -207,7 +192,13 @@ mod tests {
 
     let mut endpoints: Vec<f64> = Vec::with_capacity(samples);
     for k in 0..samples {
-      let p = RlFBm::seeded(hurst, n, Some(t), Some(40), 1_000 + k as u64);
+      let p = RlFBm::new(
+        hurst,
+        n,
+        Some(t),
+        Some(40),
+        Deterministic::new(1_000 + k as u64),
+      );
       endpoints.push(*p.sample().last().unwrap());
     }
     let mean: f64 = endpoints.iter().sum::<f64>() / samples as f64;

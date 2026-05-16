@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::gamma::SimdGamma;
@@ -23,8 +22,8 @@ pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> GammaSubordinator<T> {
-  pub fn new(nu: T, rate: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
+  pub fn new(nu: T, rate: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(nu > T::zero(), "nu must be positive");
     assert!(rate > T::zero(), "rate must be positive");
     Self {
@@ -33,22 +32,7 @@ impl<T: FloatExt> GammaSubordinator<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> GammaSubordinator<T, Deterministic> {
-  pub fn seeded(nu: T, rate: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
-    assert!(nu > T::zero(), "nu must be positive");
-    assert!(rate > T::zero(), "rate must be positive");
-    Self {
-      nu,
-      rate,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

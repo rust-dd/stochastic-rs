@@ -4,6 +4,8 @@
 //! ```sh
 //! cargo run --release --example fgn_bitexact
 //! ```
+use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -17,8 +19,8 @@ fn main() {
 
   for &h in &hursts {
     for &n in &ns {
-      let fgn_a = Fgn::<f64>::new(h, n, Some(1.0));
-      let fgn_b = Fgn::<f64>::new(h, n, Some(1.0));
+      let fgn_a = Fgn::<f64, _>::new(h, n, Some(1.0), Unseeded);
+      let fgn_b = Fgn::<f64, _>::new(h, n, Some(1.0), Unseeded);
 
       assert_eq!(fgn_a.sqrt_eigenvalues.len(), fgn_b.sqrt_eigenvalues.len());
       let max_diff: f64 = fgn_a
@@ -42,8 +44,8 @@ fn main() {
   for &h in &hursts {
     for &n in &ns {
       for &seed in &seeds {
-        let fgn_a = Fgn::seeded(h, n, Some(1.0), seed);
-        let fgn_b = Fgn::seeded(h, n, Some(1.0), seed);
+        let fgn_a = Fgn::new(h, n, Some(1.0), Deterministic::new(seed));
+        let fgn_b = Fgn::new(h, n, Some(1.0), Deterministic::new(seed));
 
         let path_a = fgn_a.sample();
         let path_b = fgn_b.sample();
@@ -67,7 +69,7 @@ fn main() {
   for &h in &hursts {
     for &n in &ns {
       for t in [0.5, 1.0, 2.5] {
-        let fgn = Fgn::<f64>::new(h, n, Some(t));
+        let fgn = Fgn::<f64, _>::new(h, n, Some(t), Unseeded);
         let expected_dt = t / n as f64;
         assert!(
           (fgn.dt() - expected_dt).abs() < 1e-15,

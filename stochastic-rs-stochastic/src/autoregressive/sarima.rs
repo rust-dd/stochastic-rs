@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -70,8 +69,9 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Sarima<T> {
+impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
   /// Create a new Sarima model
+  #[allow(non_snake_case)]
   pub fn new(
     non_seasonal_ar_coefs: Array1<T>,
     non_seasonal_ma_coefs: Array1<T>,
@@ -82,6 +82,7 @@ impl<T: FloatExt> Sarima<T> {
     s: usize,
     sigma: T,
     n: usize,
+    seed: S,
   ) -> Self {
     assert!(sigma > T::zero(), "Sarima requires sigma > 0");
     assert!(s > 0, "Sarima requires season length s > 0");
@@ -95,39 +96,7 @@ impl<T: FloatExt> Sarima<T> {
       s,
       sigma,
       n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Sarima<T, Deterministic> {
-  /// Create a new Sarima model with a deterministic seed for reproducible output.
-  #[allow(non_snake_case)]
-  pub fn seeded(
-    non_seasonal_ar_coefs: Array1<T>,
-    non_seasonal_ma_coefs: Array1<T>,
-    seasonal_ar_coefs: Array1<T>,
-    seasonal_ma_coefs: Array1<T>,
-    d: usize,
-    D: usize,
-    s: usize,
-    sigma: T,
-    n: usize,
-    seed: u64,
-  ) -> Self {
-    assert!(sigma > T::zero(), "Sarima requires sigma > 0");
-    assert!(s > 0, "Sarima requires season length s > 0");
-    Sarima {
-      non_seasonal_ar_coefs,
-      non_seasonal_ma_coefs,
-      seasonal_ar_coefs,
-      seasonal_ma_coefs,
-      d,
-      D,
-      s,
-      sigma,
-      n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

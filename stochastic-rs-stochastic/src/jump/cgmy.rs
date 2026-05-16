@@ -21,7 +21,6 @@
 
 use ndarray::Array1;
 use scilib::math::basic::gamma;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
@@ -51,7 +50,7 @@ pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Cgmy<T> {
+impl<T: FloatExt, S: SeedExt> Cgmy<T, S> {
   pub fn new(
     c: T,
     lambda_plus: T,
@@ -61,6 +60,7 @@ impl<T: FloatExt> Cgmy<T> {
     j: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(c > T::zero(), "c (C) must be positive");
     assert!(lambda_plus > T::zero(), "lambda_plus (G) must be positive");
@@ -84,7 +84,7 @@ impl<T: FloatExt> Cgmy<T> {
       j,
       x0,
       t,
-      seed: Unseeded,
+      seed,
     }
   }
 
@@ -96,45 +96,6 @@ impl<T: FloatExt> Cgmy<T> {
       * (lambda_plus.powf(alpha - T::from_usize_(2))
         + lambda_minus.powf(alpha - T::from_usize_(2))))
     .powi(-1)
-  }
-}
-
-impl<T: FloatExt> Cgmy<T, Deterministic> {
-  pub fn seeded(
-    c: T,
-    lambda_plus: T,
-    lambda_minus: T,
-    alpha: T,
-    n: usize,
-    j: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(c > T::zero(), "c (C) must be positive");
-    assert!(lambda_plus > T::zero(), "lambda_plus (G) must be positive");
-    assert!(
-      lambda_minus > T::zero(),
-      "lambda_minus (M) must be positive"
-    );
-    assert!(
-      alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha (Y) must be in (0, 2)"
-    );
-    assert!(n >= 2, "n must be >= 2");
-    assert!(j >= 2, "j must be >= 2 (because we index from 1..j)");
-
-    Self {
-      c,
-      lambda_plus,
-      lambda_minus,
-      alpha,
-      n,
-      j,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
-    }
   }
 }
 
@@ -171,7 +132,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
     let E = Array1::from_shape_fn(size, |_| exp.sample_fast());
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
-    let P = Poisson::new(T::one(), Some(size), None).sample();
+    let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
 
     // τ_j ~ Unif(0,T)
     let mut tau_raw = Array1::<T>::zeros(size);

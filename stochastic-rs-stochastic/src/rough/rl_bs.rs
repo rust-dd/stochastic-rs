@@ -16,7 +16,6 @@
 //! Working Paper (2008).
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -47,7 +46,7 @@ pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded> {
   fbm: RlFBm<T>,
 }
 
-impl<T: FloatExt> RlBlackScholes<T> {
+impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -57,6 +56,7 @@ impl<T: FloatExt> RlBlackScholes<T> {
     n: usize,
     t: Option<T>,
     degree: Option<usize>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(s0 > T::zero(), "s0 must be positive");
@@ -69,37 +69,8 @@ impl<T: FloatExt> RlBlackScholes<T> {
       n,
       t,
       degree,
-      seed: Unseeded,
-      fbm: RlFBm::new(hurst, n, t, degree),
-    }
-  }
-}
-
-impl<T: FloatExt> RlBlackScholes<T, Deterministic> {
-  #[must_use]
-  pub fn seeded(
-    hurst: T,
-    s0: T,
-    r: T,
-    sigma: T,
-    n: usize,
-    t: Option<T>,
-    degree: Option<usize>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(s0 > T::zero(), "s0 must be positive");
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
-    Self {
-      hurst,
-      s0,
-      r,
-      sigma,
-      n,
-      t,
-      degree,
-      seed: Deterministic::new(seed),
-      fbm: RlFBm::new(hurst, n, t, degree),
+      seed,
+      fbm: RlFBm::new(hurst, n, t, degree, Unseeded),
     }
   }
 }
@@ -153,12 +124,24 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlBlackScholes<T, S>
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::RlBlackScholes;
   use crate::traits::ProcessExt;
 
   #[test]
   fn positive_path_and_correct_initial_value() {
-    let p = RlBlackScholes::seeded(0.3_f64, 100.0, 0.05, 0.2, 200, Some(0.5), None, 2);
+    let p = RlBlackScholes::new(
+      0.3_f64,
+      100.0,
+      0.05,
+      0.2,
+      200,
+      Some(0.5),
+      None,
+      Deterministic::new(2),
+    );
     let s = p.sample();
     assert_eq!(s[0], 100.0);
     assert!(s.iter().all(|v| *v > 0.0 && v.is_finite()));
@@ -172,7 +155,7 @@ mod tests {
     let r = 0.05;
     let n = 128;
     let t = 1.0;
-    let p = RlBlackScholes::<f64>::new(0.2, s0, r, 0.0, n, Some(t), None);
+    let p = RlBlackScholes::<f64>::new(0.2, s0, r, 0.0, n, Some(t), None, Unseeded);
     let s = p.sample();
     let dt = t / (n as f64 - 1.0);
     for i in 0..n {
@@ -193,7 +176,7 @@ mod tests {
     let samples = 4_000_usize;
     let mut sum = 0.0_f64;
     for k in 0..samples {
-      let p = RlBlackScholes::seeded(
+      let p = RlBlackScholes::new(
         0.25_f64,
         s0,
         r,
@@ -201,7 +184,7 @@ mod tests {
         128,
         Some(t),
         Some(35),
-        10_000 + k as u64,
+        Deterministic::new(10_000 + k as u64),
       );
       sum += *p.sample().last().unwrap();
     }

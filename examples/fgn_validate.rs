@@ -15,6 +15,8 @@ use plotly::Scatter;
 use plotly::common::Line;
 use plotly::common::Mode;
 use plotly::layout::Axis;
+use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -47,7 +49,7 @@ fn empirical_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
 }
 
 fn generate_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
-  let fgn = Fgn::<f64>::new(h, n, Some(t));
+  let fgn = Fgn::<f64, _>::new(h, n, Some(t), Unseeded);
   (0..m).map(|_| fgn.sample().to_vec()).collect()
 }
 
@@ -118,7 +120,12 @@ fn plot_sample_paths(hursts: &[f64], colors: &[String]) {
   let time: Vec<f64> = (0..=N).map(|i| i as f64 * dt).collect();
 
   for (i, &h) in hursts.iter().enumerate() {
-    let fgn = Fgn::seeded(h, N, Some(T_HORIZON), SEED_BASE + i as u64);
+    let fgn = Fgn::new(
+      h,
+      N,
+      Some(T_HORIZON),
+      Deterministic::new(SEED_BASE + i as u64),
+    );
     let inc = fgn.sample();
     let fbm = fgn_to_fbm(inc.as_slice().unwrap());
     let trace = Scatter::new(time.clone(), fbm)
@@ -191,7 +198,7 @@ fn plot_eigenvalues(hursts: &[f64], colors: &[String]) {
   let mut plot = Plot::new();
 
   for (i, &h) in hursts.iter().enumerate() {
-    let fgn = Fgn::<f64>::new(h, N, Some(T_HORIZON));
+    let fgn = Fgn::<f64, _>::new(h, N, Some(T_HORIZON), Unseeded);
     let eig_vals: Vec<f64> = fgn.sqrt_eigenvalues.iter().copied().collect();
     let indices: Vec<f64> = (0..eig_vals.len()).map(|j| j as f64).collect();
 

@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::uniform::SimdUniform;
@@ -27,35 +26,15 @@ pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> InverseAlphaStableSubordinator<T> {
-  pub fn new(alpha: T, c: T, n: usize, t: Option<T>, u_steps: usize, u_max: Option<T>) -> Self {
-    assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
-    );
-    assert!(c > T::zero(), "c must be positive");
-    assert!(u_steps >= 2, "u_steps must be >= 2");
-    Self {
-      alpha,
-      c,
-      n,
-      t,
-      u_steps,
-      u_max,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> InverseAlphaStableSubordinator<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
+  pub fn new(
     alpha: T,
     c: T,
     n: usize,
     t: Option<T>,
     u_steps: usize,
     u_max: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
@@ -70,7 +49,7 @@ impl<T: FloatExt> InverseAlphaStableSubordinator<T, Deterministic> {
       t,
       u_steps,
       u_max,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

@@ -33,6 +33,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::array;
 use ndarray::s;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 
@@ -347,7 +348,7 @@ impl FOUParameterEstimationV3 {
 
     let fgn_length = self.series_length * M;
 
-    let fgn = Fgn::new(self.hurst, fgn_length - 1, Some(self.T));
+    let fgn = Fgn::new(self.hurst, fgn_length - 1, Some(self.T), Unseeded);
     let fgn_sample = fgn.sample();
 
     let mut full_fou = Array1::zeros(fgn_length);
@@ -628,7 +629,17 @@ mod tests {
     let n = 1024usize;
     let h_true = 0.7;
     let sigma_true = 0.35;
-    let path = Fou::<f64>::new(h_true, 1.5, 0.0, sigma_true, n, Some(0.0), Some(1.0)).sample();
+    let path = Fou::<f64>::new(
+      h_true,
+      1.5,
+      0.0,
+      sigma_true,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    )
+    .sample();
 
     let res = estimate_fou_v4(
       path.view(),
@@ -648,7 +659,7 @@ mod tests {
   #[test]
   fn fou_v4_estimated_hurst_in_range_when_not_fixed() {
     let n = 768usize;
-    let path = Fou::<f64>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0)).sample();
+    let path = Fou::<f64>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0), Unseeded).sample();
 
     let res = estimate_fou_v4(path.view(), Some(1.0 / (n - 1) as f64), 2, 2.0, None, None);
 
@@ -659,7 +670,7 @@ mod tests {
   #[test]
   fn fou_v1_runs_on_fbm_path() {
     let n = 1024usize;
-    let path = Fou::<f64>::new(0.7, 1.5, 0.0, 0.35, n, Some(0.0), Some(1.0)).sample();
+    let path = Fou::<f64>::new(0.7, 1.5, 0.0, 0.35, n, Some(0.0), Some(1.0), Unseeded).sample();
     let res = estimate_fou_v1(path.view(), FilterType::Daubechies, None, None);
     assert!(res.hurst.is_finite());
     assert!(res.sigma.is_finite() && res.sigma > 0.0);
@@ -670,7 +681,7 @@ mod tests {
   #[test]
   fn fou_v2_runs_on_fbm_path() {
     let n = 1024usize;
-    let path = Fou::<f64>::new(0.7, 1.5, 0.0, 0.35, n, Some(0.0), Some(1.0)).sample();
+    let path = Fou::<f64>::new(0.7, 1.5, 0.0, 0.35, n, Some(0.0), Some(1.0), Unseeded).sample();
     let res = estimate_fou_v2(path.view(), None, n, None);
     assert!(res.hurst.is_finite());
     assert!(res.sigma.is_finite() && res.sigma > 0.0);
@@ -681,7 +692,7 @@ mod tests {
   #[test]
   fn fou_v1_with_hurst_override_skips_estimation() {
     let n = 512usize;
-    let path = Fou::<f64>::new(0.6, 1.0, 0.0, 0.2, n, Some(0.0), Some(1.0)).sample();
+    let path = Fou::<f64>::new(0.6, 1.0, 0.0, 0.2, n, Some(0.0), Some(1.0), Unseeded).sample();
     let h_pinned = 0.42;
     let res = estimate_fou_v1(path.view(), FilterType::Daubechies, None, Some(h_pinned));
     assert_eq!(res.hurst, h_pinned);
@@ -712,12 +723,22 @@ mod tests {
   #[test]
   fn fou_v1_bit_exact_against_struct_era_inline_reference() {
     use ndarray::array;
+    use stochastic_rs_core::simd_rng::Deterministic;
     use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     // Deterministic reference path (same params as the audit test fixture).
     let n = 512usize;
-    let path =
-      Fou::<f64, _>::seeded(0.6, 1.0, 0.0, 0.2, n, Some(0.0), Some(1.0), 0xF0_E5_71_AA).sample();
+    let path = Fou::<f64, _>::new(
+      0.6,
+      1.0,
+      0.0,
+      0.2,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(0xF0_E5_71_AA),
+    )
+    .sample();
     let delta = 1.0 / n as f64;
 
     // Daubechies coeffs
@@ -783,11 +804,21 @@ mod tests {
   /// moments-based estimator.
   #[test]
   fn fou_v2_bit_exact_against_struct_era_inline_reference() {
+    use stochastic_rs_core::simd_rng::Deterministic;
     use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let n = 512usize;
-    let path =
-      Fou::<f64, _>::seeded(0.6, 1.0, 0.0, 0.2, n, Some(0.0), Some(1.0), 0xF0_E5_71_AA).sample();
+    let path = Fou::<f64, _>::new(
+      0.6,
+      1.0,
+      0.0,
+      0.2,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(0xF0_E5_71_AA),
+    )
+    .sample();
     let delta_ref = 1.0 / n as f64;
 
     // Inline v1.x (struct-era) math
@@ -834,13 +865,23 @@ mod tests {
   /// Bit-exact regression for v4 — high-frequency power-variation estimator.
   #[test]
   fn fou_v4_bit_exact_against_struct_era_inline_reference() {
+    use stochastic_rs_core::simd_rng::Deterministic;
     use stochastic_rs_stochastic::diffusion::fou::Fou;
 
     let n = 512usize;
     let k = 2usize;
     let p = 2.0_f64;
-    let path =
-      Fou::<f64, _>::seeded(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0), 0xC0_FF_EE_42).sample();
+    let path = Fou::<f64, _>::new(
+      0.65,
+      1.2,
+      0.0,
+      0.25,
+      n,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(0xC0_FF_EE_42),
+    )
+    .sample();
     let delta_ref = 1.0 / (n - 1) as f64;
 
     // Inline reference math: power_variation, c_k_p, rho_k_h_zero, binomial.

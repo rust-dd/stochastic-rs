@@ -18,7 +18,6 @@
 //!
 use ndarray::Array1;
 use scilib::math::basic::gamma;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
@@ -61,7 +60,7 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Svcgmy<T> {
+impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -75,6 +74,7 @@ impl<T: FloatExt> Svcgmy<T> {
     x0: Option<T>,
     v0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
     assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
@@ -104,56 +104,7 @@ impl<T: FloatExt> Svcgmy<T> {
       x0,
       v0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Svcgmy<T, Deterministic> {
-  pub fn seeded(
-    lambda_plus: T,
-    lambda_minus: T,
-    alpha: T,
-    kappa: T,
-    eta: T,
-    zeta: T,
-    rho: T,
-    n: usize,
-    j: usize,
-    x0: Option<T>,
-    v0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
-    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
-    assert!(
-      alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha must be in (0, 2)"
-    );
-    assert!(kappa > T::zero(), "kappa must be positive");
-    assert!(eta >= T::zero(), "eta must be non-negative");
-    assert!(zeta > T::zero(), "zeta must be positive");
-    assert!(n >= 2, "n must be >= 2");
-
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
-
-    Self {
-      lambda_plus,
-      lambda_minus,
-      alpha,
-      kappa,
-      eta,
-      zeta,
-      rho,
-      n,
-      j,
-      x0,
-      v0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -210,7 +161,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
     let tau = tau_raw * t_max;
 
     // Γ_0=0, Γ_j = Γ_{j-1} + E'_j; we reuse Poisson-generator-as-arrival-times for Γ_j
-    let P = Poisson::new(T::one(), Some(size), None).sample();
+    let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
 
     // c(τ_j) = C * v_{k-1} where (k-1)dt < τ_j <= k dt
     let mut c_tau = Array1::<T>::zeros(size);

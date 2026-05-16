@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -40,7 +41,7 @@ pub struct Adg<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Adg<T> {
+impl<T: FloatExt, S: SeedExt> Adg<T, S> {
   pub fn new(
     k: impl Into<Fn1D<T>>,
     theta: impl Into<Fn1D<T>>,
@@ -52,6 +53,7 @@ impl<T: FloatExt> Adg<T> {
     xn: usize,
     x0: Array1<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert_eq!(
       sigma.len(),
@@ -78,51 +80,7 @@ impl<T: FloatExt> Adg<T> {
       xn,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Adg<T, Deterministic> {
-  pub fn seeded(
-    k: impl Into<Fn1D<T>>,
-    theta: impl Into<Fn1D<T>>,
-    sigma: Array1<T>,
-    phi: impl Into<Fn1D<T>>,
-    b: impl Into<Fn1D<T>>,
-    c: impl Into<Fn1D<T>>,
-    n: usize,
-    xn: usize,
-    x0: Array1<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert_eq!(
-      sigma.len(),
-      xn,
-      "sigma length ({}) must match xn ({})",
-      sigma.len(),
-      xn
-    );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
-    );
-    Self {
-      k: k.into(),
-      theta: theta.into(),
-      sigma,
-      phi: phi.into(),
-      b: b.into(),
-      c: c.into(),
-      n,
-      xn,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -203,7 +161,7 @@ impl PyAdg {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(Adg::seeded(
+        seeded: Some(Adg::new(
           Fn1D::Py(k),
           Fn1D::Py(theta),
           ndarray::Array1::from_vec(sigma),
@@ -214,7 +172,7 @@ impl PyAdg {
           xn,
           ndarray::Array1::from_vec(x0),
           t,
-          s,
+          Deterministic::new(s),
         )),
       },
       None => Self {
@@ -229,6 +187,7 @@ impl PyAdg {
           xn,
           ndarray::Array1::from_vec(x0),
           t,
+          Unseeded,
         )),
         seeded: None,
       },
@@ -277,6 +236,7 @@ mod tests {
       xn,
       x0,
       Some(1.0),
+      Unseeded,
     );
     let path = adg.sample();
     assert_eq!(path.nrows(), xn);

@@ -17,7 +17,6 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -40,8 +39,8 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> MultivariateHawkes<T> {
-  pub fn new(mu: Array1<T>, alpha: Array2<T>, beta: Array2<T>, t_max: T) -> Self {
+impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
+  pub fn new(mu: Array1<T>, alpha: Array2<T>, beta: Array2<T>, t_max: T, seed: S) -> Self {
     let d = mu.len();
     assert_eq!(alpha.shape(), [d, d], "alpha must be (D, D)");
     assert_eq!(beta.shape(), [d, d], "beta must be (D, D)");
@@ -50,22 +49,7 @@ impl<T: FloatExt> MultivariateHawkes<T> {
       alpha,
       beta,
       t_max,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> MultivariateHawkes<T, Deterministic> {
-  pub fn seeded(mu: Array1<T>, alpha: Array2<T>, beta: Array2<T>, t_max: T, seed: u64) -> Self {
-    let d = mu.len();
-    assert_eq!(alpha.shape(), [d, d]);
-    assert_eq!(beta.shape(), [d, d]);
-    Self {
-      mu,
-      alpha,
-      beta,
-      t_max,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -157,7 +141,7 @@ mod tests {
     let mu = array![1.0_f64, 1.5];
     let alpha = Array2::from_shape_vec((2, 2), vec![0.3, 0.1, 0.2, 0.4]).unwrap();
     let beta = Array2::from_shape_vec((2, 2), vec![2.0, 2.0, 2.0, 2.0]).unwrap();
-    let h = MultivariateHawkes::new(mu, alpha, beta, 10.0);
+    let h = MultivariateHawkes::new(mu, alpha, beta, 10.0, Unseeded);
     let events = h.sample();
     assert_eq!(events.len(), 2);
     assert!(events[0].len() > 1, "component 0 should have events");
@@ -170,11 +154,11 @@ mod tests {
     let mu = array![2.0_f64, 2.0];
     let alpha_diag = Array2::from_shape_vec((2, 2), vec![0.5, 0.0, 0.0, 0.5]).unwrap();
     let beta = Array2::from_shape_vec((2, 2), vec![3.0, 3.0, 3.0, 3.0]).unwrap();
-    let h1 = MultivariateHawkes::new(mu.clone(), alpha_diag, beta.clone(), 50.0);
+    let h1 = MultivariateHawkes::new(mu.clone(), alpha_diag, beta.clone(), 50.0, Unseeded);
 
     // With cross-excitation
     let alpha_full = Array2::from_shape_vec((2, 2), vec![0.5, 0.5, 0.5, 0.5]).unwrap();
-    let h2 = MultivariateHawkes::new(mu, alpha_full, beta, 50.0);
+    let h2 = MultivariateHawkes::new(mu, alpha_full, beta, 50.0, Unseeded);
 
     let n_trials = 20;
     let avg1: f64 = (0..n_trials)
@@ -199,7 +183,7 @@ mod tests {
     let mu = array![3.0_f64];
     let alpha = Array2::from_shape_vec((1, 1), vec![1.0]).unwrap();
     let beta = Array2::from_shape_vec((1, 1), vec![5.0]).unwrap();
-    let h = MultivariateHawkes::new(mu, alpha, beta, 10.0);
+    let h = MultivariateHawkes::new(mu, alpha, beta, 10.0, Unseeded);
     let events = h.sample();
     assert_eq!(events.len(), 1);
     assert!(events[0].len() > 2, "should have multiple events");

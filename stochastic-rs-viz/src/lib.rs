@@ -35,6 +35,7 @@ mod tests {
   use plotly::common::Mode;
   use rand_distr::Exp;
   use rand_distr::Normal;
+  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
   use stochastic_rs_stochastic::autoregressive::ar::ARp;
   use stochastic_rs_stochastic::autoregressive::arch::Arch;
@@ -183,7 +184,8 @@ mod tests {
   fn normal_cpoisson(lambda: f64, n: usize, jump_sigma: f64) -> CompoundPoisson<f64, Normal<f64>> {
     CompoundPoisson::new(
       Normal::new(0.0, jump_sigma).expect("valid normal"),
-      Poisson::new(lambda, Some(n), Some(1.0)),
+      Poisson::new(lambda, Some(n), Some(1.0), Unseeded),
+      Unseeded,
     )
   }
 
@@ -221,12 +223,12 @@ mod tests {
       .y_gap(5.00);
 
     grid = grid.register(
-      &ARp::new(Array1::from_vec(vec![0.65, -0.2]), 0.08, n, None),
+      &ARp::new(Array1::from_vec(vec![0.65, -0.2]), 0.08, n, None, Unseeded),
       "Autoreg: AR(2)",
       traj,
     );
     grid = grid.register(
-      &MAq::new(Array1::from_vec(vec![0.5, -0.2]), 0.1, n),
+      &MAq::new(Array1::from_vec(vec![0.5, -0.2]), 0.1, n, Unseeded),
       "Autoreg: MA(2)",
       traj,
     );
@@ -237,6 +239,7 @@ mod tests {
         1,
         0.1,
         n,
+        Unseeded,
       ),
       "Autoreg: Arima(1,1,1)",
       traj,
@@ -252,12 +255,13 @@ mod tests {
         12,
         0.08,
         n,
+        Unseeded,
       ),
       "Autoreg: Sarima",
       traj,
     );
     grid = grid.register(
-      &Arch::new(0.05, Array1::from_vec(vec![0.2, 0.1]), n),
+      &Arch::new(0.05, Array1::from_vec(vec![0.2, 0.1]), n, Unseeded),
       "Autoreg: Arch",
       traj,
     );
@@ -267,6 +271,7 @@ mod tests {
         Array1::from_vec(vec![0.12]),
         Array1::from_vec(vec![0.8]),
         n,
+        Unseeded,
       ),
       "Autoreg: Garch",
       traj,
@@ -278,6 +283,7 @@ mod tests {
         Array1::from_vec(vec![0.05]),
         Array1::from_vec(vec![0.85]),
         n,
+        Unseeded,
       ),
       "Autoreg: Tgarch",
       traj,
@@ -289,6 +295,7 @@ mod tests {
         Array1::from_vec(vec![-0.05]),
         Array1::from_vec(vec![0.9]),
         n,
+        Unseeded,
       ),
       "Autoreg: Egarch",
       traj,
@@ -300,22 +307,35 @@ mod tests {
         Array1::from_vec(vec![0.04]),
         Array1::from_vec(vec![0.84]),
         n,
+        Unseeded,
       ),
       "Autoreg: Agarch",
       traj,
     );
 
-    grid = grid.register(&Wn::new(n, Some(0.0), Some(1.0)), "Noise: White", traj);
-    grid = grid.register(&Gn::new(n, Some(1.0)), "Noise: Gaussian", traj);
-    grid = grid.register(&Fgn::new(0.7, n, Some(1.0)), "Noise: Fgn", traj);
-    grid = grid.register(&Cgns::new(-0.4, n, Some(1.0)), "Noise: Cgns", traj);
-    grid = grid.register(&Cfgns::new(0.7, -0.3, n, Some(1.0)), "Noise: Cfgns", traj);
+    grid = grid.register(
+      &Wn::new(n, Some(0.0), Some(1.0), Unseeded),
+      "Noise: White",
+      traj,
+    );
+    grid = grid.register(&Gn::new(n, Some(1.0), Unseeded), "Noise: Gaussian", traj);
+    grid = grid.register(&Fgn::new(0.7, n, Some(1.0), Unseeded), "Noise: Fgn", traj);
+    grid = grid.register(
+      &Cgns::new(-0.4, n, Some(1.0), Unseeded),
+      "Noise: Cgns",
+      traj,
+    );
+    grid = grid.register(
+      &Cfgns::new(0.7, -0.3, n, Some(1.0), Unseeded),
+      "Noise: Cfgns",
+      traj,
+    );
 
-    grid = grid.register(&Bm::new(n, Some(1.0)), "Process: Bm", traj);
-    grid = grid.register(&Fbm::new(0.7, n, Some(1.0)), "Process: Fbm", traj);
+    grid = grid.register(&Bm::new(n, Some(1.0), Unseeded), "Process: Bm", traj);
+    grid = grid.register(&Fbm::new(0.7, n, Some(1.0), Unseeded), "Process: Fbm", traj);
     grid = grid.register_paths(isonormal_paths, "Process: fBM via IsoNormal (H=0.7)");
     grid = grid.register(
-      &Poisson::new(2.0, Some(n), Some(1.0)),
+      &Poisson::new(2.0, Some(n), Some(1.0), Unseeded),
       "Process: Poisson",
       traj,
     );
@@ -324,6 +344,7 @@ mod tests {
         Some(n),
         Some(1.0),
         Exp::new(10.0).expect("positive exponential rate"),
+        Unseeded,
       ),
       "Process: CustomJt",
       traj,
@@ -331,7 +352,8 @@ mod tests {
     grid = grid.register(
       &CompoundPoisson::new(
         Normal::new(0.0, 0.15).expect("valid normal"),
-        Poisson::new(1.2, Some(n), Some(1.0)),
+        Poisson::new(1.2, Some(n), Some(1.0), Unseeded),
+        Unseeded,
       ),
       "Process: CompoundPoisson",
       traj,
@@ -346,45 +368,55 @@ mod tests {
           Some(n),
           Some(1.0),
           Exp::new(15.0).expect("positive exponential rate"),
+          Unseeded,
         ),
+        Unseeded,
       ),
       "Process: CompoundCustom",
       traj,
     );
-    grid = grid.register(&Cbms::new(0.35, n, Some(1.0)), "Process: Cbms", traj);
-    grid = grid.register(&Cfbms::new(0.7, 0.35, n, Some(1.0)), "Process: Cfbms", traj);
     grid = grid.register(
-      &Lfsm::new(1.7, 0.0, 0.8, 1.0, n, Some(0.0), Some(1.0)),
+      &Cbms::new(0.35, n, Some(1.0), Unseeded),
+      "Process: Cbms",
+      traj,
+    );
+    grid = grid.register(
+      &Cfbms::new(0.7, 0.35, n, Some(1.0), Unseeded),
+      "Process: Cfbms",
+      traj,
+    );
+    grid = grid.register(
+      &Lfsm::new(1.7, 0.0, 0.8, 1.0, n, Some(0.0), Some(1.0), Unseeded),
       "Process: Lfsm",
       traj,
     );
     grid = grid.register(
-      &AlphaStableSubordinator::new(0.7, 1.0, n, Some(0.0), Some(1.0)),
+      &AlphaStableSubordinator::new(0.7, 1.0, n, Some(0.0), Some(1.0), Unseeded),
       "Process: AlphaStable Subordinator",
       traj,
     );
     grid = grid.register(
-      &InverseAlphaStableSubordinator::new(0.7, 1.0, n, Some(1.0), 2048, Some(4.0)),
+      &InverseAlphaStableSubordinator::new(0.7, 1.0, n, Some(1.0), 2048, Some(4.0), Unseeded),
       "Process: Inverse AlphaStable",
       traj,
     );
     grid = grid.register(
-      &PoissonSubordinator::new(2.0, n, Some(0.0), Some(1.0)),
+      &PoissonSubordinator::new(2.0, n, Some(0.0), Some(1.0), Unseeded),
       "Process: Poisson Subordinator",
       traj,
     );
     grid = grid.register(
-      &GammaSubordinator::new(3.0, 5.0, n, Some(0.0), Some(1.0)),
+      &GammaSubordinator::new(3.0, 5.0, n, Some(0.0), Some(1.0), Unseeded),
       "Process: Gamma Subordinator",
       traj,
     );
     grid = grid.register(
-      &IGSubordinator::new(1.5, 2.0, n, Some(0.0), Some(1.0)),
+      &IGSubordinator::new(1.5, 2.0, n, Some(0.0), Some(1.0), Unseeded),
       "Process: Ig Subordinator",
       traj,
     );
     grid = grid.register(
-      &TemperedStableSubordinator::new(0.7, 1.0, 2.0, 0.05, n, Some(0.0), Some(1.0)),
+      &TemperedStableSubordinator::new(0.7, 1.0, 2.0, 0.05, n, Some(0.0), Some(1.0), Unseeded),
       "Process: Tempered Stable Subordinator",
       traj,
     );
@@ -398,114 +430,172 @@ mod tests {
         n,
         Some(0.0),
         Some(1.0),
+        Unseeded,
       ),
       "Process: Ctrw",
       traj,
     );
 
     grid = grid.register(
-      &Ou::new(2.0, 0.0, 0.2, n, Some(0.0), Some(1.0)),
+      &Ou::new(2.0, 0.0, 0.2, n, Some(0.0), Some(1.0), Unseeded),
       "Diffusion: Ou",
       traj,
     );
     grid = grid.register(
-      &Gbm::new(0.05, 0.2, n, Some(100.0), Some(1.0)),
+      &Gbm::new(0.05, 0.2, n, Some(100.0), Some(1.0), Unseeded),
       "Diffusion: Gbm",
       traj,
     );
     grid = grid.register(
-      &DiffCIR::new(2.5, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false)),
+      &DiffCIR::new(
+        2.5,
+        0.04,
+        0.2,
+        n,
+        Some(0.04),
+        Some(1.0),
+        Some(false),
+        Unseeded,
+      ),
       "Diffusion: Cir",
       traj,
     );
     grid = grid.register(
-      &Cev::new(0.04, 0.2, 0.8, n, Some(1.0), Some(1.0)),
+      &Cev::new(0.04, 0.2, 0.8, n, Some(1.0), Some(1.0), Unseeded),
       "Diffusion: Cev",
       traj,
     );
     grid = grid.register(
-      &FellerLogistic::new(2.0, 1.0, 0.3, n, Some(0.5), Some(1.0), Some(false)),
+      &FellerLogistic::new(
+        2.0,
+        1.0,
+        0.3,
+        n,
+        Some(0.5),
+        Some(1.0),
+        Some(false),
+        Unseeded,
+      ),
       "Diffusion: Feller Logistic",
       traj,
     );
     grid = grid.register(
-      &Verhulst::new(1.2, 2.0, 0.2, n, Some(0.5), Some(1.0), Some(true)),
+      &Verhulst::new(1.2, 2.0, 0.2, n, Some(0.5), Some(1.0), Some(true), Unseeded),
       "Diffusion: Verhulst",
       traj,
     );
     grid = grid.register(
-      &Gompertz::new(1.0, 0.8, 0.2, n, Some(1.0), Some(1.0)),
+      &Gompertz::new(1.0, 0.8, 0.2, n, Some(1.0), Some(1.0), Unseeded),
       "Diffusion: Gompertz",
       traj,
     );
     grid = grid.register(
-      &Kimura::new(1.0, 0.3, n, Some(0.4), Some(1.0)),
+      &Kimura::new(1.0, 0.3, n, Some(0.4), Some(1.0), Unseeded),
       "Diffusion: Kimura",
       traj,
     );
     grid = grid.register(
-      &Quadratic::new(0.1, -0.2, 0.05, 0.15, n, Some(1.0), Some(1.0)),
+      &Quadratic::new(0.1, -0.2, 0.05, 0.15, n, Some(1.0), Some(1.0), Unseeded),
       "Diffusion: Quadratic",
       traj,
     );
     grid = grid.register(
-      &Jacobi::new(0.8, 1.4, 0.4, n, Some(0.3), Some(1.0)),
+      &Jacobi::new(0.8, 1.4, 0.4, n, Some(0.3), Some(1.0), Unseeded),
       "Diffusion: Jacobi",
       traj,
     );
     grid = grid.register(
-      &Fcir::new(0.7, 2.5, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false)),
+      &Fcir::new(
+        0.7,
+        2.5,
+        0.04,
+        0.2,
+        n,
+        Some(0.04),
+        Some(1.0),
+        Some(false),
+        Unseeded,
+      ),
       "Diffusion: Fcir",
       traj,
     );
     grid = grid.register(
-      &FJacobi::new(0.7, 0.8, 1.4, 0.35, n, Some(0.3), Some(1.0)),
+      &FJacobi::new(0.7, 0.8, 1.4, 0.35, n, Some(0.3), Some(1.0), Unseeded),
       "Diffusion: FJacobi",
       traj,
     );
     grid = grid.register(
-      &Fou::new(0.7, 2.0, 0.0, 0.2, n, Some(0.0), Some(1.0)),
+      &Fou::new(0.7, 2.0, 0.0, 0.2, n, Some(0.0), Some(1.0), Unseeded),
       "Diffusion: Fou",
       traj,
     );
     grid = grid.register(
-      &Cfou::new(0.7, 1.8, 3.0, 0.4, n, Some(0.0), Some(0.0), Some(1.0)),
+      &Cfou::new(
+        0.7,
+        1.8,
+        3.0,
+        0.4,
+        n,
+        Some(0.0),
+        Some(0.0),
+        Some(1.0),
+        Unseeded,
+      ),
       "Diffusion: Complex fOU",
       traj,
     );
     grid = grid.register(
-      &Fgbm::new(0.7, 0.04, 0.2, n, Some(100.0), Some(1.0)),
+      &Fgbm::new(0.7, 0.04, 0.2, n, Some(100.0), Some(1.0), Unseeded),
       "Diffusion: Fgbm",
       traj,
     );
     grid = grid.register(
-      &GbmIh::new(0.04, 0.2, n, Some(100.0), Some(1.0), None),
+      &GbmIh::new(0.04, 0.2, n, Some(100.0), Some(1.0), None, Unseeded),
       "Diffusion: GbmIh",
       traj,
     );
     grid = grid.register(
-      &FouqueOU2D::new(1.5, 0.0, 0.3, 0.0, n, Some(0.0), Some(0.0), Some(1.0)),
+      &FouqueOU2D::new(
+        1.5,
+        0.0,
+        0.3,
+        0.0,
+        n,
+        Some(0.0),
+        Some(0.0),
+        Some(1.0),
+        Unseeded,
+      ),
       "Diffusion: Fouque Ou 2D",
       traj,
     );
 
     grid = grid.register(
-      &Vasicek::new(3.0, 0.03, 0.02, n, Some(0.03), Some(1.0)),
+      &Vasicek::new(3.0, 0.03, 0.02, n, Some(0.03), Some(1.0), Unseeded),
       "Interest: Vasicek",
       traj,
     );
     grid = grid.register(
-      &FVasicek::new(0.7, 2.0, 0.03, 0.02, n, Some(0.03), Some(1.0)),
+      &FVasicek::new(0.7, 2.0, 0.03, 0.02, n, Some(0.03), Some(1.0), Unseeded),
       "Interest: Fractional Vasicek",
       traj,
     );
     grid = grid.register(
-      &RateCIR::new(2.5, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false)),
+      &RateCIR::new(
+        2.5,
+        0.04,
+        0.2,
+        n,
+        Some(0.04),
+        Some(1.0),
+        Some(false),
+        Unseeded,
+      ),
       "Interest: Cir (Alias)",
       traj,
     );
     grid = grid.register(
-      &HoLee::new(None, Some(0.01), 0.01, n, Some(1.0)),
+      &HoLee::new(None, Some(0.01), 0.01, n, Some(1.0), Unseeded),
       "Interest: Ho-Lee",
       traj,
     );
@@ -517,6 +607,7 @@ mod tests {
         n,
         Some(0.02),
         Some(1.0),
+        Unseeded,
       ),
       "Interest: Hull-White",
       traj,
@@ -532,6 +623,7 @@ mod tests {
         Some(0.02),
         Some(1.0),
         n,
+        Unseeded,
       ),
       "Interest: Hull-White 2F",
       traj,
@@ -550,6 +642,7 @@ mod tests {
         Some(1.0),
         Some(0.01),
         Some(1.0),
+        Unseeded,
       ),
       "Interest: Hjm",
       traj,
@@ -561,6 +654,7 @@ mod tests {
         2,
         Some(1.0),
         n,
+        Unseeded,
       ),
       "Interest: Bgm",
       traj,
@@ -577,6 +671,7 @@ mod tests {
         2,
         Array1::from_vec(vec![0.01, 0.015]),
         Some(1.0),
+        Unseeded,
       ),
       "Interest: Adg",
       traj,
@@ -599,6 +694,7 @@ mod tests {
         Some(0.02),
         Some(0.01),
         Some(1.0),
+        Unseeded,
       ),
       "Interest: Duffie-Kan",
       traj,
@@ -623,6 +719,7 @@ mod tests {
         Some(0.02),
         Some(0.01),
         Some(1.0),
+        Unseeded,
       ),
       "Interest: Duffie-Kan Jump Exp",
       traj,
@@ -638,38 +735,62 @@ mod tests {
         2,
         Some(1.0),
         n,
+        Unseeded,
       ),
       "Interest: Wu-Zhang",
       traj,
     );
     grid = grid.register(
       &Cir2F::new(
-        RateCIR::new(2.5, 0.03, 0.12, n, Some(0.03), Some(1.0), Some(false)),
-        RateCIR::new(2.0, 0.02, 0.1, n, Some(0.02), Some(1.0), Some(false)),
+        RateCIR::new(
+          2.5,
+          0.03,
+          0.12,
+          n,
+          Some(0.03),
+          Some(1.0),
+          Some(false),
+          Unseeded,
+        ),
+        RateCIR::new(
+          2.0,
+          0.02,
+          0.1,
+          n,
+          Some(0.02),
+          Some(1.0),
+          Some(false),
+          Unseeded,
+        ),
         f_phi_small as fn(f64) -> f64,
+        Unseeded,
       ),
       "Interest: Cir 2F",
       traj,
     );
 
     grid = grid.register(
-      &Vg::new(0.0, 0.2, 0.15, n, Some(0.0), Some(1.0)),
+      &Vg::new(0.0, 0.2, 0.15, n, Some(0.0), Some(1.0), Unseeded),
       "Jump: Vg",
       traj,
     );
     grid = grid.register(
-      &Nig::new(0.0, 0.2, 0.3, n, Some(0.0), Some(1.0)),
+      &Nig::new(0.0, 0.2, 0.3, n, Some(0.0), Some(1.0), Unseeded),
       "Jump: Nig",
       traj,
     );
-    grid = grid.register(&Ig::new(1.0, n, Some(0.0), Some(1.0)), "Jump: Ig", traj);
     grid = grid.register(
-      &Rdts::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
+      &Ig::new(1.0, n, Some(0.0), Some(1.0), Unseeded),
+      "Jump: Ig",
+      traj,
+    );
+    grid = grid.register(
+      &Rdts::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0), Unseeded),
       "Jump: Rdts",
       traj,
     );
     grid = grid.register(
-      &Cts::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0)),
+      &Cts::new(4.0, 5.0, 0.7, n, j, Some(0.0), Some(1.0), Unseeded),
       "Jump: Cts",
       traj,
     );
@@ -683,13 +804,13 @@ mod tests {
     let d = KoBoL::<f64>::d_for_unit_variance(1.0, 1.0, g, m, y);
 
     grid = grid.register(
-      &Cgmy::<f64>::new(c, g, m, y, n, j, Some(0.0), Some(1.0)),
+      &Cgmy::<f64>::new(c, g, m, y, n, j, Some(0.0), Some(1.0), Unseeded),
       "Jump: Cgmy (unit var, symmetric)",
       traj,
     );
 
     grid = grid.register(
-      &KoBoL::<f64>::new(d, 1.0, 1.0, g, m, y, n, j, Some(0.0), Some(1.0)),
+      &KoBoL::<f64>::new(d, 1.0, 1.0, g, m, y, n, j, Some(0.0), Some(1.0), Unseeded),
       "Jump: KoBoL (unit var, p=q=1)",
       traj,
     );
@@ -704,6 +825,7 @@ mod tests {
         Some(0.0),
         Some(1.0),
         normal_cpoisson(1.0, n, 0.1),
+        Unseeded,
       ),
       "Jump: Merton",
       traj,
@@ -718,6 +840,7 @@ mod tests {
         Some(0.0),
         Some(1.0),
         normal_cpoisson(1.0, n, 0.12),
+        Unseeded,
       ),
       "Jump: Kou",
       traj,
@@ -730,6 +853,7 @@ mod tests {
         Some(0.0),
         Some(1.0),
         normal_cpoisson(1.0, n, 0.08),
+        Unseeded,
       ),
       "Jump: Levy Diffusion",
       traj,
@@ -744,6 +868,7 @@ mod tests {
         Some(0.03),
         Some(1.0),
         normal_cpoisson(1.0, n, 0.08),
+        Unseeded,
       ),
       "Jump: Jump-Fou",
       traj,
@@ -759,6 +884,7 @@ mod tests {
         Some(1.0),
         Exp::new(20.0).expect("positive exponential rate"),
         Exp::new(30.0).expect("positive exponential rate"),
+        Unseeded,
       ),
       "Jump: Jump-Fou Custom",
       traj,
@@ -781,6 +907,7 @@ mod tests {
         Some(1.0),
         Some(false),
         normal_cpoisson(0.8, n, 0.05),
+        Unseeded,
       ),
       "Jump: Bates 1996 (S: solid, v: dashed)",
       &["S", "v"],
@@ -800,27 +927,58 @@ mod tests {
         Some(1.0),
         HestonPow::Sqrt,
         Some(false),
+        Unseeded,
       ),
       "Volatility: Heston",
       traj,
     );
     grid = grid.register(
-      &Bergomi::new(0.4, Some(0.2), Some(100.0), 0.01, -0.6, n, Some(1.0)),
+      &Bergomi::new(
+        0.4,
+        Some(0.2),
+        Some(100.0),
+        0.01,
+        -0.6,
+        n,
+        Some(1.0),
+        Unseeded,
+      ),
       "Volatility: Bergomi",
       traj,
     );
     grid = grid.register(
-      &RoughBergomi::new(0.1, 0.4, Some(0.2), Some(100.0), 0.01, -0.6, n, Some(1.0)),
+      &RoughBergomi::new(
+        0.1,
+        0.4,
+        Some(0.2),
+        Some(100.0),
+        0.01,
+        -0.6,
+        n,
+        Some(1.0),
+        Unseeded,
+      ),
       "Volatility: Rough Bergomi",
       traj,
     );
     grid = grid.register(
-      &RoughHeston::new(0.8, Some(0.2), 0.04, 1.5, 0.3, None, None, Some(1.0), n),
+      &RoughHeston::new(
+        0.8,
+        Some(0.2),
+        0.04,
+        1.5,
+        0.3,
+        None,
+        None,
+        Some(1.0),
+        n,
+        Unseeded,
+      ),
       "Volatility: Rough Heston",
       traj,
     );
     grid = grid.register(
-      &Sabr::new(0.4, 0.7, -0.3, n, Some(1.0), Some(0.3), Some(1.0)),
+      &Sabr::new(0.4, 0.7, -0.3, n, Some(1.0), Some(0.3), Some(1.0), Unseeded),
       "Volatility: Sabr",
       traj,
     );
@@ -838,6 +996,7 @@ mod tests {
         Some(0.0),
         Some(0.04),
         Some(1.0),
+        Unseeded,
       ),
       "Volatility: Svcgmy",
       traj,
@@ -845,7 +1004,7 @@ mod tests {
 
     grid.show();
 
-    let fbs_field = Fbs::new(0.7, sheet_m, sheet_n, 2.0).sample();
+    let fbs_field = Fbs::new(0.7, sheet_m, sheet_n, 2.0, Unseeded).sample();
     let z: Vec<Vec<f64>> = fbs_field.outer_iter().map(|row| row.to_vec()).collect();
     let x: Vec<f64> = (0..sheet_n)
       .map(|i| i as f64 / (sheet_n.saturating_sub(1).max(1) as f64))
@@ -952,7 +1111,7 @@ mod tests {
 
   #[test]
   fn plot_process_writes_html() {
-    let bm = Bm::new(64, Some(1.0));
+    let bm = Bm::new(64, Some(1.0), Unseeded);
     let path_arr = bm.sample();
     let mut out = std::env::temp_dir();
     out.push("stochastic_rs_test_plot_process.html");
@@ -998,7 +1157,7 @@ mod tests {
 
   #[test]
   fn grid_plotter_rescale_threshold_disabled_writes_html() {
-    let bm = Bm::new(64, Some(1.0));
+    let bm = Bm::new(64, Some(1.0), Unseeded);
     let grid = GridPlotter::new()
       .title("rescale-threshold=None smoke")
       .cols(1)

@@ -54,6 +54,7 @@
 //! that this implementation approximates.
 use ndarray::Array1;
 use ndarray::s;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -84,7 +85,7 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> RoughBergomi<T> {
+impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
   pub fn new(
     hurst: T,
     nu: T,
@@ -94,6 +95,7 @@ impl<T: FloatExt> RoughBergomi<T> {
     rho: T,
     n: usize,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     RoughBergomi {
       hurst,
@@ -104,35 +106,8 @@ impl<T: FloatExt> RoughBergomi<T> {
       rho,
       n,
       t,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> RoughBergomi<T, Deterministic> {
-  pub fn seeded(
-    hurst: T,
-    nu: T,
-    v0: Option<T>,
-    s0: Option<T>,
-    r: T,
-    rho: T,
-    n: usize,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    RoughBergomi {
-      hurst,
-      nu,
-      v0,
-      s0,
-      r,
-      rho,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::new(rho, n - 1, t),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }
@@ -201,7 +176,7 @@ impl PyRoughBergomi {
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
-        s.seeded_f32 = Some(RoughBergomi::seeded(
+        s.seeded_f32 = Some(RoughBergomi::new(
           hurst as f32,
           nu as f32,
           v0.map(|v| v as f32),
@@ -210,11 +185,21 @@ impl PyRoughBergomi {
           rho as f32,
           n,
           t.map(|v| v as f32),
-          sd,
+          Deterministic::new(sd),
         ));
       }
       (Some(sd), _) => {
-        s.seeded_f64 = Some(RoughBergomi::seeded(hurst, nu, v0, s0, r, rho, n, t, sd));
+        s.seeded_f64 = Some(RoughBergomi::new(
+          hurst,
+          nu,
+          v0,
+          s0,
+          r,
+          rho,
+          n,
+          t,
+          Deterministic::new(sd),
+        ));
       }
       (None, "f32") => {
         s.inner_f32 = Some(RoughBergomi::new(
@@ -226,10 +211,11 @@ impl PyRoughBergomi {
           rho as f32,
           n,
           t.map(|v| v as f32),
+          Unseeded,
         ));
       }
       (None, _) => {
-        s.inner_f64 = Some(RoughBergomi::new(hurst, nu, v0, s0, r, rho, n, t));
+        s.inner_f64 = Some(RoughBergomi::new(hurst, nu, v0, s0, r, rho, n, t, Unseeded));
       }
     }
     s

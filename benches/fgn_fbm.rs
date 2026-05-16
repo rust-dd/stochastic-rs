@@ -4,6 +4,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::traits::ProcessExt;
@@ -14,7 +15,7 @@ fn bench_fgn_by_size(c: &mut Criterion) {
 
   for &n in &[256, 1024, 4096, 16384, 65536] {
     group.bench_with_input(BenchmarkId::new("ndrustfft", n), &n, |b, &n| {
-      let fgn = Fgn::new(hurst, n, None);
+      let fgn = Fgn::new(hurst, n, None, Unseeded);
       b.iter(|| black_box(fgn.sample()));
     });
   }
@@ -30,7 +31,7 @@ fn bench_fgn_by_hurst(c: &mut Criterion) {
     let label = format!("H={:.1}", h);
 
     group.bench_with_input(BenchmarkId::new("ndrustfft", &label), &h, |b, &h| {
-      let fgn = Fgn::new(h, n, None);
+      let fgn = Fgn::new(h, n, None, Unseeded);
       b.iter(|| black_box(fgn.sample()));
     });
   }
@@ -45,12 +46,12 @@ fn bench_fgn_f32_vs_f64(c: &mut Criterion) {
   let hurst_f32 = 0.7f32;
 
   group.bench_function("f64/ndrustfft", |b| {
-    let fgn = Fgn::new(hurst_f64, n, None);
+    let fgn = Fgn::new(hurst_f64, n, None, Unseeded);
     b.iter(|| black_box(fgn.sample()));
   });
 
   group.bench_function("f32/ndrustfft", |b| {
-    let fgn = Fgn::new(hurst_f32, n, None);
+    let fgn = Fgn::new(hurst_f32, n, None, Unseeded);
     b.iter(|| black_box(fgn.sample()));
   });
 
@@ -64,12 +65,12 @@ fn bench_fgn_sample_par(c: &mut Criterion) {
 
   for &m in &[10, 100, 1000] {
     group.bench_with_input(BenchmarkId::new("sample_par", m), &m, |b, &m| {
-      let fgn = Fgn::new(hurst, n, None);
+      let fgn = Fgn::new(hurst, n, None, Unseeded);
       b.iter(|| black_box(fgn.sample_par(m)));
     });
 
     group.bench_with_input(BenchmarkId::new("sample_sequential", m), &m, |b, &m| {
-      let fgn = Fgn::new(hurst, n, None);
+      let fgn = Fgn::new(hurst, n, None, Unseeded);
       b.iter(|| {
         let v: Vec<_> = (0..m).map(|_| fgn.sample()).collect();
         black_box(v)
@@ -86,7 +87,7 @@ fn bench_fbm_by_size(c: &mut Criterion) {
 
   for &n in &[256, 1024, 4096, 16384, 65536] {
     group.bench_with_input(BenchmarkId::new("sample", n), &n, |b, &n| {
-      let fbm = Fbm::new(hurst, n, None);
+      let fbm = Fbm::new(hurst, n, None, Unseeded);
       b.iter(|| black_box(fbm.sample()));
     });
   }
@@ -101,12 +102,12 @@ fn bench_fbm_sample_par(c: &mut Criterion) {
 
   for &m in &[10, 100, 1000] {
     group.bench_with_input(BenchmarkId::new("sample_par", m), &m, |b, &m| {
-      let fbm = Fbm::new(hurst, n, None);
+      let fbm = Fbm::new(hurst, n, None, Unseeded);
       b.iter(|| black_box(fbm.sample_par(m)));
     });
 
     group.bench_with_input(BenchmarkId::new("sample_sequential", m), &m, |b, &m| {
-      let fbm = Fbm::new(hurst, n, None);
+      let fbm = Fbm::new(hurst, n, None, Unseeded);
       b.iter(|| {
         let v: Vec<_> = (0..m).map(|_| fbm.sample()).collect();
         black_box(v)

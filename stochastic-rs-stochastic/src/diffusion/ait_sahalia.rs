@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -30,7 +29,7 @@ pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> AitSahalia<T> {
+impl<T: FloatExt, S: SeedExt> AitSahalia<T, S> {
   pub fn new(
     am1: T,
     a0: T,
@@ -43,6 +42,7 @@ impl<T: FloatExt> AitSahalia<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       am1,
@@ -56,39 +56,7 @@ impl<T: FloatExt> AitSahalia<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> AitSahalia<T, Deterministic> {
-  pub fn seeded(
-    am1: T,
-    a0: T,
-    a1: T,
-    a2: T,
-    b0: T,
-    b1: T,
-    b2: T,
-    b3: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      am1,
-      a0,
-      a1,
-      a2,
-      b0,
-      b1,
-      b2,
-      b3,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

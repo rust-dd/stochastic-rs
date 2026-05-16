@@ -17,6 +17,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray_linalg::LeastSquaresSvd;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 
 use crate::traits::ProcessExt;
@@ -140,6 +141,7 @@ pub fn generate_gbm_paths(
     n_steps + 1,
     Some(s0),
     Some(t),
+    Unseeded,
   );
   let samples = process.sample_par(n_paths);
   let mut paths = Array2::<f64>::zeros((n_paths, n_steps + 1));

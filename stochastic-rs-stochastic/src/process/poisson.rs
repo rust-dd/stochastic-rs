@@ -34,26 +34,14 @@ fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name
   }
 }
 
-impl<T: FloatExt> Poisson<T> {
-  pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
+  pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
     validate_n_or_tmax(n, t_max, "Poisson");
     Poisson {
       lambda,
       n,
       t_max,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Poisson<T, Deterministic> {
-  pub fn seeded(lambda: T, n: Option<usize>, t_max: Option<T>, seed: u64) -> Self {
-    validate_n_or_tmax(n, t_max, "Poisson");
-    Poisson {
-      lambda,
-      n,
-      t_max,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

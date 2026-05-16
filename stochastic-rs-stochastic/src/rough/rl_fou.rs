@@ -13,7 +13,6 @@
 //! Quantitative Finance 16 (2016), 887–904.
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -46,7 +45,7 @@ pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded> {
   fbm: RlFBm<T>,
 }
 
-impl<T: FloatExt> RlFOU<T> {
+impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -57,6 +56,7 @@ impl<T: FloatExt> RlFOU<T> {
     x0: Option<T>,
     t: Option<T>,
     degree: Option<usize>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     Self {
@@ -68,37 +68,8 @@ impl<T: FloatExt> RlFOU<T> {
       x0,
       t,
       degree,
-      seed: Unseeded,
-      fbm: RlFBm::new(hurst, n, t, degree),
-    }
-  }
-}
-
-impl<T: FloatExt> RlFOU<T, Deterministic> {
-  #[must_use]
-  pub fn seeded(
-    hurst: T,
-    kappa: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    degree: Option<usize>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    Self {
-      hurst,
-      kappa,
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      degree,
-      seed: Deterministic::new(seed),
-      fbm: RlFBm::new(hurst, n, t, degree),
+      seed,
+      fbm: RlFBm::new(hurst, n, t, degree, Unseeded),
     }
   }
 }
@@ -144,6 +115,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFOU<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::RlFOU;
   use crate::traits::ProcessExt;
 
@@ -155,7 +129,7 @@ mod tests {
     let x0 = 0.2_f64;
     let t = 1.0_f64;
 
-    let p = RlFOU::<f64>::new(0.3, kappa, mu, 0.0, n, Some(x0), Some(t), None);
+    let p = RlFOU::<f64>::new(0.3, kappa, mu, 0.0, n, Some(x0), Some(t), None, Unseeded);
     let x = p.sample();
 
     let dt = t / (n as f64 - 1.0);
@@ -168,7 +142,7 @@ mod tests {
 
   #[test]
   fn finite_output_at_typical_rfsv_parameters() {
-    let p = RlFOU::seeded(
+    let p = RlFOU::new(
       0.1_f64,
       2.0,
       0.15_f64.ln(),
@@ -177,7 +151,7 @@ mod tests {
       Some(0.15_f64.ln()),
       Some(1.0),
       None,
-      7,
+      Deterministic::new(7),
     );
     let x = p.sample();
     assert_eq!(x.len(), 512);

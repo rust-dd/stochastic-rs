@@ -5,6 +5,7 @@
 //! $$
 //!
 use ndarray::Array1;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -48,7 +49,7 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Hjm<T> {
+impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
   pub fn new(
     a: impl Into<Fn1D<T>>,
     b: impl Into<Fn1D<T>>,
@@ -62,6 +63,7 @@ impl<T: FloatExt> Hjm<T> {
     p0: Option<T>,
     f0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       a: a.into(),
@@ -76,41 +78,7 @@ impl<T: FloatExt> Hjm<T> {
       p0,
       f0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Hjm<T, Deterministic> {
-  pub fn seeded(
-    a: impl Into<Fn1D<T>>,
-    b: impl Into<Fn1D<T>>,
-    p: impl Into<Fn2D<T>>,
-    q: impl Into<Fn2D<T>>,
-    v: impl Into<Fn2D<T>>,
-    alpha: impl Into<Fn2D<T>>,
-    sigma: impl Into<Fn2D<T>>,
-    n: usize,
-    r0: Option<T>,
-    p0: Option<T>,
-    f0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      a: a.into(),
-      b: b.into(),
-      p: p.into(),
-      q: q.into(),
-      v: v.into(),
-      alpha: alpha.into(),
-      sigma: sigma.into(),
-      n,
-      r0,
-      p0,
-      f0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -207,7 +175,7 @@ impl PyHjm {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(Hjm::seeded(
+        seeded: Some(Hjm::new(
           Fn1D::Py(a),
           Fn1D::Py(b),
           Fn2D::Py(p),
@@ -220,7 +188,7 @@ impl PyHjm {
           p0,
           f0,
           t,
-          s,
+          Deterministic::new(s),
         )),
       },
       None => Self {
@@ -237,6 +205,7 @@ impl PyHjm {
           p0,
           f0,
           t,
+          Unseeded,
         )),
         seeded: None,
       },
@@ -301,6 +270,7 @@ mod tests {
       Some(0.0),
       Some(0.0),
       None,
+      Unseeded,
     );
 
     let [_r, p, _f] = model.sample();

@@ -6,6 +6,8 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::volatility::HestonPow;
@@ -49,7 +51,14 @@ impl GbmMalliavinGreeks {
     let mu = self.r - self.q;
     let dt = self.tau / (self.n_steps - 1) as f64;
 
-    let gbm = Gbm::new(mu, self.sigma, self.n_steps, Some(self.s0), Some(self.tau));
+    let gbm = Gbm::new(
+      mu,
+      self.sigma,
+      self.n_steps,
+      Some(self.s0),
+      Some(self.tau),
+      Unseeded,
+    );
 
     let mut s_terminal = Array1::<f64>::zeros(self.n_paths);
     let mut w_terminal = Array1::<f64>::zeros(self.n_paths);
@@ -300,6 +309,7 @@ impl HestonMalliavinGreeks {
       Some(self.tau),
       HestonPow::Sqrt,
       Some(false),
+      Unseeded,
     );
 
     let mut s_terminal = Array1::<f64>::zeros(self.n_paths);
@@ -506,6 +516,7 @@ impl HestonMalliavinGreeks {
       Some(self.tau),
       HestonPow::Sqrt,
       Some(false),
+      Unseeded,
     );
 
     let mut sum = 0.0;
@@ -559,6 +570,7 @@ impl HestonMalliavinGreeks {
       Some(self.tau),
       HestonPow::Sqrt,
       Some(false),
+      Unseeded,
     );
 
     let mut sum = 0.0;
@@ -679,6 +691,7 @@ impl HestonMalliavinGreeks {
       Some(self.tau),
       HestonPow::Sqrt,
       Some(false),
+      Unseeded,
     );
 
     let mut sum = 0.0;
@@ -728,7 +741,7 @@ impl HestonMalliavinGreeks {
     for i in 0..self.n_paths {
       let seed = 0xCAFE_u64.wrapping_add(i as u64);
 
-      let heston_up = Heston::seeded(
+      let heston_up = Heston::new(
         Some(self.s0),
         Some(self.v0 + dv),
         self.kappa,
@@ -740,9 +753,9 @@ impl HestonMalliavinGreeks {
         Some(self.tau),
         HestonPow::Sqrt,
         Some(false),
-        seed,
+        Deterministic::new(seed),
       );
-      let heston_dn = Heston::seeded(
+      let heston_dn = Heston::new(
         Some(self.s0),
         Some((self.v0 - dv).max(1e-6)),
         self.kappa,
@@ -754,7 +767,7 @@ impl HestonMalliavinGreeks {
         Some(self.tau),
         HestonPow::Sqrt,
         Some(false),
-        seed,
+        Deterministic::new(seed),
       );
 
       let [s_up, _] = heston_up.sample();
@@ -789,6 +802,7 @@ impl HestonMalliavinGreeks {
       Some(self.tau),
       HestonPow::Sqrt,
       Some(false),
+      Unseeded,
     );
 
     let mut sum_delta = 0.0;

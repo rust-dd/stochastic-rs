@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -27,24 +26,8 @@ pub struct Pearson<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Pearson<T> {
-  pub fn new(kappa: T, mu: T, a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      kappa,
-      mu,
-      a,
-      b,
-      c,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Pearson<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> Pearson<T, S> {
+  pub fn new(
     kappa: T,
     mu: T,
     a: T,
@@ -53,7 +36,7 @@ impl<T: FloatExt> Pearson<T, Deterministic> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     Self {
       kappa,
@@ -64,7 +47,7 @@ impl<T: FloatExt> Pearson<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

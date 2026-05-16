@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -25,24 +24,13 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Wn<T> {
-  pub fn new(n: usize, mean: Option<T>, std_dev: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Wn<T, S> {
+  pub fn new(n: usize, mean: Option<T>, std_dev: Option<T>, seed: S) -> Self {
     Wn {
       n,
       mean,
       std_dev,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Wn<T, Deterministic> {
-  pub fn seeded(n: usize, mean: Option<T>, std_dev: Option<T>, seed: u64) -> Self {
-    Wn {
-      n,
-      mean,
-      std_dev,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

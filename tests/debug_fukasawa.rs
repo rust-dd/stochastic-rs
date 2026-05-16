@@ -5,6 +5,7 @@
 //! `cargo test -- --ignored likelihood_surface` when investigating Fukasawa
 //! behaviour.
 
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stats::fukasawa_hurst;
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::traits::ProcessExt;
@@ -14,7 +15,7 @@ use stochastic_rs::traits::ProcessExt;
 fn likelihood_surface() {
   let true_h = 0.3_f64;
   let n = 1024;
-  let fbm = Fbm::new(true_h, n, Some(1.0));
+  let fbm = Fbm::new(true_h, n, Some(1.0), Unseeded);
   let path = fbm.sample();
 
   // fGN increments → log squared increments (as "log RV")

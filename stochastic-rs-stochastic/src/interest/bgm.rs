@@ -60,6 +60,7 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -94,8 +95,8 @@ pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Bgm<T> {
-  pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize) -> Self {
+impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
+  pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize, seed: S) -> Self {
     assert_eq!(
       lambda.len(),
       xn,
@@ -116,41 +117,7 @@ impl<T: FloatExt> Bgm<T> {
       xn,
       t,
       n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Bgm<T, Deterministic> {
-  pub fn seeded(
-    lambda: Array1<T>,
-    x0: Array1<T>,
-    xn: usize,
-    t: Option<T>,
-    n: usize,
-    seed: u64,
-  ) -> Self {
-    assert_eq!(
-      lambda.len(),
-      xn,
-      "lambda length ({}) must match xn ({})",
-      lambda.len(),
-      xn
-    );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
-    );
-    Self {
-      lambda,
-      x0,
-      xn,
-      t,
-      n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -224,13 +191,13 @@ impl PyBgm {
         Self {
           inner_f32: None,
           inner_f64: None,
-          seeded_f32: Some(Bgm::seeded(
+          seeded_f32: Some(Bgm::new(
             lambda_f32,
             x0_f32,
             xn,
             t.map(|v| v as f32),
             n,
-            s,
+            Deterministic::new(s),
           )),
           seeded_f64: None,
         }
@@ -242,14 +209,28 @@ impl PyBgm {
           inner_f32: None,
           inner_f64: None,
           seeded_f32: None,
-          seeded_f64: Some(Bgm::seeded(lambda_arr, x0_arr, xn, t, n, s)),
+          seeded_f64: Some(Bgm::new(
+            lambda_arr,
+            x0_arr,
+            xn,
+            t,
+            n,
+            Deterministic::new(s),
+          )),
         }
       }
       (None, "f32") => {
         let lambda_f32 = ndarray::Array1::from_vec(lambda_.iter().map(|&v| v as f32).collect());
         let x0_f32 = ndarray::Array1::from_vec(x0.iter().map(|&v| v as f32).collect());
         Self {
-          inner_f32: Some(Bgm::new(lambda_f32, x0_f32, xn, t.map(|v| v as f32), n)),
+          inner_f32: Some(Bgm::new(
+            lambda_f32,
+            x0_f32,
+            xn,
+            t.map(|v| v as f32),
+            n,
+            Unseeded,
+          )),
           inner_f64: None,
           seeded_f32: None,
           seeded_f64: None,
@@ -260,7 +241,7 @@ impl PyBgm {
         let x0_arr = ndarray::Array1::from_vec(x0);
         Self {
           inner_f32: None,
-          inner_f64: Some(Bgm::new(lambda_arr, x0_arr, xn, t, n)),
+          inner_f64: Some(Bgm::new(lambda_arr, x0_arr, xn, t, n, Unseeded)),
           seeded_f32: None,
           seeded_f64: None,
         }
@@ -310,7 +291,7 @@ mod tests {
   fn bgm_sample_runs() {
     let lambda = Array1::<f64>::from_vec(vec![0.2, 0.2, 0.2]);
     let x0 = Array1::<f64>::from_vec(vec![0.03, 0.035, 0.04]);
-    let bgm = Bgm::<f64>::new(lambda, x0, 3, Some(1.0), 50);
+    let bgm = Bgm::<f64>::new(lambda, x0, 3, Some(1.0), 50, Unseeded);
     let path = bgm.sample();
     // Bgm produces a 2D matrix (n_rates × n_steps)
     assert_eq!(path.nrows(), 3);

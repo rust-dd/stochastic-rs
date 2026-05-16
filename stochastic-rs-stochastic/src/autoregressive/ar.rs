@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -41,9 +40,9 @@ pub struct ARp<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> ARp<T> {
+impl<T: FloatExt, S: SeedExt> ARp<T, S> {
   /// Create a new AR process with given coefficients and noise standard deviation.
-  pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>) -> Self {
+  pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
     assert!(sigma > T::zero(), "ARp requires sigma > 0");
     if let Some(init) = &x0 {
       let required = phi.len().min(n);
@@ -59,30 +58,7 @@ impl<T: FloatExt> ARp<T> {
       sigma,
       n,
       x0,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> ARp<T, Deterministic> {
-  /// Create a new AR process with a deterministic seed for reproducible output.
-  pub fn seeded(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: u64) -> Self {
-    assert!(sigma > T::zero(), "ARp requires sigma > 0");
-    if let Some(init) = &x0 {
-      let required = phi.len().min(n);
-      assert!(
-        init.len() >= required,
-        "ARp requires x0.len() >= min(phi.len(), n) (got {}, need at least {})",
-        init.len(),
-        required
-      );
-    }
-    Self {
-      phi,
-      sigma,
-      n,
-      x0,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

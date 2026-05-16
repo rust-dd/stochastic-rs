@@ -42,9 +42,9 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   }
 }
 
-impl<T: FloatExt> Fgn<T> {
+impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   #[must_use]
-  pub fn new(hurst: T, n: usize, t: Option<T>) -> Self {
+  pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
       "Fgn: Hurst parameter must be in [0, 1]"
@@ -101,24 +101,7 @@ impl<T: FloatExt> Fgn<T> {
       scale: T::from_usize_(scale_n).powf(-hurst) * t.unwrap_or(T::one()).powf(hurst),
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
       fft_handler,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Fgn<T, Deterministic> {
-  pub fn seeded(hurst: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    let base = Fgn::<T>::new(hurst, n, t);
-    Self {
-      hurst: base.hurst,
-      n: base.n,
-      offset: base.offset,
-      out_len: base.out_len,
-      t: base.t,
-      scale: base.scale,
-      sqrt_eigenvalues: base.sqrt_eigenvalues,
-      fft_handler: base.fft_handler,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -212,10 +195,12 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::Fgn;
 
   fn generate_fgn_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f64>::new(h, n, Some(t));
+    let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
     let mut out = Vec::with_capacity(m);
     for _ in 0..m {
       out.push(fgn.sample_cpu().to_vec());
@@ -259,7 +244,7 @@ mod tests {
     for &h in &hs {
       for &n in &ns {
         for &t in &ts {
-          let fgn = Fgn::<f64>::new(h, n, Some(t));
+          let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
 
           // Internal FFT length is padded, but dt/scale must follow requested n.
           assert!(fgn.n >= n && fgn.n.is_power_of_two());
@@ -430,7 +415,7 @@ mod tests {
     let t = 1.0_f64;
     let pairs_count = 1024_usize;
 
-    let fgn = Fgn::<f64>::new(h, n, Some(t));
+    let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
     let mut prim = Vec::with_capacity(pairs_count);
     let mut sec = Vec::with_capacity(pairs_count);
     for _ in 0..pairs_count {
@@ -485,7 +470,7 @@ mod tests {
   /// simpler determinism-across-identical-seed property.
   #[test]
   fn sample_pair_is_deterministic_with_seed() {
-    let fgn = Fgn::<f64>::new(0.55, 1024, Some(1.0));
+    let fgn = Fgn::<f64>::new(0.55, 1024, Some(1.0), Unseeded);
     let (a1, b1) = fgn.sample_pair_cpu_with_seed(7);
     let (a2, b2) = fgn.sample_pair_cpu_with_seed(7);
     assert_eq!(a1, a2);

@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::poisson::SimdPoisson;
@@ -33,30 +32,8 @@ pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> TemperedStableSubordinator<T> {
-  pub fn new(alpha: T, c: T, mu: T, epsilon: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
-    );
-    assert!(c > T::zero(), "c must be positive");
-    assert!(mu > T::zero(), "mu must be positive");
-    assert!(epsilon > T::zero(), "epsilon must be positive");
-    Self {
-      alpha,
-      c,
-      mu,
-      epsilon,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> TemperedStableSubordinator<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
+  pub fn new(
     alpha: T,
     c: T,
     mu: T,
@@ -64,7 +41,7 @@ impl<T: FloatExt> TemperedStableSubordinator<T, Deterministic> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
@@ -81,7 +58,7 @@ impl<T: FloatExt> TemperedStableSubordinator<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

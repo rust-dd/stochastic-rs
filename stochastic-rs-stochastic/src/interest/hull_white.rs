@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -32,7 +33,7 @@ pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> HullWhite<T> {
+impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
   pub fn new(
     theta: impl Into<Fn1D<T>>,
     alpha: T,
@@ -40,6 +41,7 @@ impl<T: FloatExt> HullWhite<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       theta: theta.into(),
@@ -48,29 +50,7 @@ impl<T: FloatExt> HullWhite<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> HullWhite<T, Deterministic> {
-  pub fn seeded(
-    theta: impl Into<Fn1D<T>>,
-    alpha: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      theta: theta.into(),
-      alpha,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -137,18 +117,26 @@ impl PyHullWhite {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(HullWhite::seeded(
+        seeded: Some(HullWhite::new(
           Fn1D::Py(theta),
           alpha,
           sigma,
           n,
           x0,
           t,
-          s,
+          Deterministic::new(s),
         )),
       },
       None => Self {
-        inner: Some(HullWhite::new(Fn1D::Py(theta), alpha, sigma, n, x0, t)),
+        inner: Some(HullWhite::new(
+          Fn1D::Py(theta),
+          alpha,
+          sigma,
+          n,
+          x0,
+          t,
+          Unseeded,
+        )),
         seeded: None,
       },
     }
@@ -184,6 +172,7 @@ mod tests {
       64,
       Some(0.04),
       Some(1.0),
+      Unseeded,
     );
     let path = hw.sample();
     assert_eq!(path.len(), 64);

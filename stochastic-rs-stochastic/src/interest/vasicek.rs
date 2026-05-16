@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -37,8 +36,8 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
   ou: Ou<T, S>,
 }
 
-impl<T: FloatExt> Vasicek<T> {
-  pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
+  pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
       mu,
       sigma,
@@ -46,41 +45,8 @@ impl<T: FloatExt> Vasicek<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-      ou: Ou::new(theta, mu, sigma, n, x0, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Vasicek<T, Deterministic> {
-  pub fn seeded(
-    theta: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    let s = Deterministic::new(seed);
-    let child = s.derive();
-    Self {
-      mu,
-      sigma,
-      theta,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
-      ou: Ou {
-        theta,
-        mu,
-        sigma,
-        n,
-        x0,
-        t,
-        seed: child,
-      },
+      ou: Ou::new(theta, mu, sigma, n, x0, t, seed.derive()),
+      seed,
     }
   }
 }
@@ -104,7 +70,7 @@ mod tests {
 
   #[test]
   fn sample_length_matches_n() {
-    let v = Vasicek::<f64>::new(0.5, 0.04, 0.01, 100, Some(0.05), Some(1.0));
+    let v = Vasicek::<f64>::new(0.5, 0.04, 0.01, 100, Some(0.05), Some(1.0), Unseeded);
     let path = v.sample();
     assert_eq!(path.len(), 100);
   }
@@ -112,7 +78,7 @@ mod tests {
   #[test]
   fn sample_starts_at_x0() {
     let x0 = 0.05;
-    let v = Vasicek::<f64>::new(0.5, 0.04, 0.01, 100, Some(x0), Some(1.0));
+    let v = Vasicek::<f64>::new(0.5, 0.04, 0.01, 100, Some(x0), Some(1.0), Unseeded);
     let path = v.sample();
     assert!((path[0] - x0).abs() < 1e-12);
   }

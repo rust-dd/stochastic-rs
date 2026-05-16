@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -31,8 +30,8 @@ pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Jacobi<T> {
-  pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Jacobi<T, S> {
+  pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(alpha > T::zero(), "alpha must be positive");
     assert!(beta > T::zero(), "beta must be positive");
     assert!(sigma > T::zero(), "sigma must be positive");
@@ -45,34 +44,7 @@ impl<T: FloatExt> Jacobi<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Jacobi<T, Deterministic> {
-  pub fn seeded(
-    alpha: T,
-    beta: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(alpha > T::zero(), "alpha must be positive");
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(sigma > T::zero(), "sigma must be positive");
-    assert!(alpha < beta, "alpha must be less than beta");
-
-    Self {
-      alpha,
-      beta,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

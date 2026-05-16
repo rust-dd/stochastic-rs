@@ -5,6 +5,7 @@
 //! $$
 //!
 use ndarray::Array1;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -45,7 +46,7 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> Heston<T> {
+impl<T: FloatExt, S: SeedExt> Heston<T, S> {
   pub fn new(
     s0: Option<T>,
     v0: Option<T>,
@@ -58,6 +59,7 @@ impl<T: FloatExt> Heston<T> {
     t: Option<T>,
     pow: HestonPow,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     assert!(kappa >= T::zero(), "kappa must be non-negative");
     assert!(theta >= T::zero(), "theta must be non-negative");
@@ -78,48 +80,8 @@ impl<T: FloatExt> Heston<T> {
       t,
       pow,
       use_sym,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Heston<T, Deterministic> {
-  pub fn seeded(
-    s0: Option<T>,
-    v0: Option<T>,
-    kappa: T,
-    theta: T,
-    sigma: T,
-    rho: T,
-    mu: T,
-    n: usize,
-    t: Option<T>,
-    pow: HestonPow,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    assert!(kappa >= T::zero(), "kappa must be non-negative");
-    assert!(theta >= T::zero(), "theta must be non-negative");
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
-
-    Self {
-      s0,
-      v0,
-      kappa,
-      theta,
-      sigma,
-      rho,
-      mu,
-      n,
-      t,
-      pow,
-      use_sym,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::new(rho, n - 1, t),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }
@@ -223,6 +185,7 @@ mod tests {
       Some(1.0),
       HestonPow::Sqrt,
       Some(false),
+      Unseeded,
     );
   }
 
@@ -240,6 +203,7 @@ mod tests {
       Some(1.0),
       HestonPow::Sqrt,
       Some(false),
+      Unseeded,
     );
     let [_s, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));
@@ -287,7 +251,7 @@ impl PyHeston {
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
-        s.seeded_f32 = Some(Heston::seeded(
+        s.seeded_f32 = Some(Heston::new(
           s0.map(|v| v as f32),
           v0.map(|v| v as f32),
           kappa as f32,
@@ -299,12 +263,23 @@ impl PyHeston {
           t.map(|v| v as f32),
           hp,
           use_sym,
-          sd,
+          Deterministic::new(sd),
         ));
       }
       (Some(sd), _) => {
-        s.seeded_f64 = Some(Heston::seeded(
-          s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym, sd,
+        s.seeded_f64 = Some(Heston::new(
+          s0,
+          v0,
+          kappa,
+          theta,
+          sigma,
+          rho,
+          mu,
+          n,
+          t,
+          hp,
+          use_sym,
+          Deterministic::new(sd),
         ));
       }
       (None, "f32") => {
@@ -320,11 +295,12 @@ impl PyHeston {
           t.map(|v| v as f32),
           hp,
           use_sym,
+          Unseeded,
         ));
       }
       (None, _) => {
         s.inner_f64 = Some(Heston::new(
-          s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym,
+          s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym, Unseeded,
         ));
       }
     }

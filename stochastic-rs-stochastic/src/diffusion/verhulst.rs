@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -35,7 +34,7 @@ pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Verhulst<T> {
+impl<T: FloatExt, S: SeedExt> Verhulst<T, S> {
   pub fn new(
     r: T,
     k: T,
@@ -44,6 +43,7 @@ impl<T: FloatExt> Verhulst<T> {
     x0: Option<T>,
     t: Option<T>,
     clamp: Option<bool>,
+    seed: S,
   ) -> Self {
     Self {
       r,
@@ -53,31 +53,7 @@ impl<T: FloatExt> Verhulst<T> {
       x0,
       t,
       clamp,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Verhulst<T, Deterministic> {
-  pub fn seeded(
-    r: T,
-    k: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    clamp: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      r,
-      k,
-      sigma,
-      n,
-      x0,
-      t,
-      clamp,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
