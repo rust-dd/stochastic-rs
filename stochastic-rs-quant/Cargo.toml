@@ -1,6 +1,6 @@
 [package]
 name = "stochastic-rs-quant"
-version = "2.0.0"
+version.workspace = true
 edition = "2024"
 license = "MIT"
 description = "Quantitative finance: pricing, calibration, vol surfaces, instruments."
