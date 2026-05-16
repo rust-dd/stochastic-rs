@@ -5,6 +5,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -15,7 +16,7 @@ fn bench_single(c: &mut Criterion) {
   g.sample_size(40);
 
   for &n in &[1024usize, 4096, 16384, 65536] {
-    let fgn = Fgn::new(0.7f32, n, None);
+    let fgn = Fgn::new(0.7f32, n, None, Unseeded);
 
     // warmup
     let _ = fgn.sample_gpu(1);
@@ -52,7 +53,7 @@ fn bench_batch(c: &mut Criterion) {
     (16384, 512),
   ];
   for &(n, m) in &cases {
-    let fgn = Fgn::new(0.7f32, n, None);
+    let fgn = Fgn::new(0.7f32, n, None, Unseeded);
     let _ = fgn.sample_gpu(m);
     let _ = fgn.sample_metal(m);
     let _ = fgn.sample_accelerate(m);
