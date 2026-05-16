@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -36,34 +35,18 @@ fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name
   }
 }
 
-impl<T, D> CustomJt<T, D>
+impl<T, D, S: SeedExt> CustomJt<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D) -> Self {
+  pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D, seed: S) -> Self {
     validate_n_or_tmax(n, t_max, "CustomJt");
     CustomJt {
       n,
       t_max,
       distribution,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T, D> CustomJt<T, D, Deterministic>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  pub fn seeded(n: Option<usize>, t_max: Option<T>, distribution: D, seed: u64) -> Self {
-    validate_n_or_tmax(n, t_max, "CustomJt");
-    CustomJt {
-      n,
-      t_max,
-      distribution,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -92,6 +75,7 @@ impl PyCustomJt {
           n,
           t_max.map(|v| v as f32),
           crate::traits::CallableDist::new(distribution),
+          Unseeded,
         )),
         inner_f64: None,
       },
@@ -101,6 +85,7 @@ impl PyCustomJt {
           n,
           t_max,
           crate::traits::CallableDist::new(distribution),
+          Unseeded,
         )),
       },
     }

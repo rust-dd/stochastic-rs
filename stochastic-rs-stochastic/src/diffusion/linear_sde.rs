@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -25,8 +24,8 @@ pub struct LinearSDE<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> LinearSDE<T> {
-  pub fn new(a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> LinearSDE<T, S> {
+  pub fn new(a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
       a,
       b,
@@ -34,21 +33,7 @@ impl<T: FloatExt> LinearSDE<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> LinearSDE<T, Deterministic> {
-  pub fn seeded(a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
-    Self {
-      a,
-      b,
-      c,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

@@ -11,6 +11,7 @@ use std::fmt;
 
 use ndarray::Array2;
 use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::model::CgmysvParams;
@@ -71,6 +72,7 @@ impl CgmysvPricer {
       Some(p.rho * p.v0),
       Some(p.v0),
       Some(tau),
+      Unseeded,
     );
 
     let results: Vec<[ndarray::Array1<f64>; 2]> = (0..self.n_paths)

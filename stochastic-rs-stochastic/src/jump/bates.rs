@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -54,7 +55,7 @@ where
   pub seed: S,
 }
 
-impl<T, D> Bates1996<T, D>
+impl<T, D, S: SeedExt> Bates1996<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -76,6 +77,7 @@ where
     t: Option<T>,
     use_sym: Option<bool>,
     cpoisson: CompoundPoisson<T, D>,
+    seed: S,
   ) -> Self {
     if let Some(v0) = v0 {
       assert!(v0 >= T::zero(), "v0 must be non-negative");
@@ -98,61 +100,9 @@ where
       v0,
       t,
       use_sym,
-      cgns: Cgns::new(rho, n - 1, t),
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
       cpoisson,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T, D> Bates1996<T, D, Deterministic>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  pub fn seeded(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
-    lambda: T,
-    k: T,
-    alpha: T,
-    beta: T,
-    sigma: T,
-    rho: T,
-    n: usize,
-    s0: Option<T>,
-    v0: Option<T>,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    cpoisson: CompoundPoisson<T, D>,
-    seed: u64,
-  ) -> Self {
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
-    validate_drift_args(mu, b, r, r_f, "Bates1996");
-
-    Self {
-      mu,
-      b,
-      r,
-      r_f,
-      lambda,
-      k,
-      alpha,
-      beta,
-      sigma,
-      rho,
-      n,
-      s0,
-      v0,
-      t,
-      use_sym,
-      cgns: Cgns::new(rho, n - 1, t),
-      cpoisson,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -259,11 +209,12 @@ impl PyBates {
       "f32" => {
         let cpoisson = CompoundPoisson::new(
           crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32)),
+          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32), Unseeded),
+          Unseeded,
         );
         match seed {
           Some(sd) => {
-            s.seeded_f32 = Some(Bates1996::seeded(
+            s.seeded_f32 = Some(Bates1996::new(
               mu.map(|v| v as f32),
               b.map(|v| v as f32),
               r.map(|v| v as f32),
@@ -280,7 +231,7 @@ impl PyBates {
               t.map(|v| v as f32),
               use_sym,
               cpoisson,
-              sd,
+              Deterministic::new(sd),
             ));
           }
           None => {
@@ -301,6 +252,7 @@ impl PyBates {
               t.map(|v| v as f32),
               use_sym,
               cpoisson,
+              Unseeded,
             ));
           }
         }
@@ -308,18 +260,35 @@ impl PyBates {
       _ => {
         let cpoisson = CompoundPoisson::new(
           crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, Some(n), t),
+          Poisson::new(lambda_, Some(n), t, Unseeded),
+          Unseeded,
         );
         match seed {
           Some(sd) => {
-            s.seeded_f64 = Some(Bates1996::seeded(
-              mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson,
-              sd,
+            s.seeded_f64 = Some(Bates1996::new(
+              mu,
+              b,
+              r,
+              r_f,
+              lambda_,
+              k,
+              alpha,
+              beta,
+              sigma,
+              rho,
+              n,
+              s0,
+              v0,
+              t,
+              use_sym,
+              cpoisson,
+              Deterministic::new(sd),
             ));
           }
           None => {
             s.inner_f64 = Some(Bates1996::new(
               mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson,
+              Unseeded,
             ));
           }
         }
@@ -384,7 +353,8 @@ mod tests {
   ) -> Bates1996<f64, Normal<f64>> {
     let cpoisson = CompoundPoisson::new(
       Normal::new(0.0, 1.0).expect("valid normal"),
-      Poisson::new(1.0, Some(8), Some(1.0)),
+      Poisson::new(1.0, Some(8), Some(1.0), Unseeded),
+      Unseeded,
     );
     Bates1996::new(
       mu,
@@ -403,6 +373,7 @@ mod tests {
       Some(1.0),
       Some(false),
       cpoisson,
+      Unseeded,
     )
   }
 

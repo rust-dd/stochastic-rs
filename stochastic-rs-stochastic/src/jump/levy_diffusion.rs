@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -29,7 +30,7 @@ where
   pub seed: S,
 }
 
-impl<T, D> LevyDiffusion<T, D>
+impl<T, D, S: SeedExt> LevyDiffusion<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -41,6 +42,7 @@ where
     x0: Option<T>,
     t: Option<T>,
     cpoisson: CompoundPoisson<T, D>,
+    seed: S,
   ) -> Self {
     Self {
       gamma,
@@ -49,33 +51,7 @@ where
       x0,
       t,
       cpoisson,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T, D> LevyDiffusion<T, D, Deterministic>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  pub fn seeded(
-    gamma: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    cpoisson: CompoundPoisson<T, D>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      gamma,
-      sigma,
-      n,
-      x0,
-      t,
-      cpoisson,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -153,18 +129,19 @@ impl PyLevyDiffusion {
       "f32" => {
         let cpoisson = CompoundPoisson::new(
           crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32)),
+          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32), Unseeded),
+          Unseeded,
         );
         match seed {
           Some(sd) => {
-            s.seeded_f32 = Some(LevyDiffusion::seeded(
+            s.seeded_f32 = Some(LevyDiffusion::new(
               gamma_ as f32,
               sigma as f32,
               n,
               x0.map(|v| v as f32),
               t.map(|v| v as f32),
               cpoisson,
-              sd,
+              Deterministic::new(sd),
             ));
           }
           None => {
@@ -175,6 +152,7 @@ impl PyLevyDiffusion {
               x0.map(|v| v as f32),
               t.map(|v| v as f32),
               cpoisson,
+              Unseeded,
             ));
           }
         }
@@ -182,14 +160,25 @@ impl PyLevyDiffusion {
       _ => {
         let cpoisson = CompoundPoisson::new(
           crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, Some(n), t),
+          Poisson::new(lambda_, Some(n), t, Unseeded),
+          Unseeded,
         );
         match seed {
           Some(sd) => {
-            s.seeded_f64 = Some(LevyDiffusion::seeded(gamma_, sigma, n, x0, t, cpoisson, sd));
+            s.seeded_f64 = Some(LevyDiffusion::new(
+              gamma_,
+              sigma,
+              n,
+              x0,
+              t,
+              cpoisson,
+              Deterministic::new(sd),
+            ));
           }
           None => {
-            s.inner_f64 = Some(LevyDiffusion::new(gamma_, sigma, n, x0, t, cpoisson));
+            s.inner_f64 = Some(LevyDiffusion::new(
+              gamma_, sigma, n, x0, t, cpoisson, Unseeded,
+            ));
           }
         }
       }

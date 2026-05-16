@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
@@ -44,30 +43,8 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Lfsm<T> {
-  pub fn new(alpha: T, beta: T, hurst: T, scale: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
-    assert!((-T::one()..=T::one()).contains(&beta));
-    assert!(scale > T::zero());
-    assert!(
-      hurst > T::one() / alpha && hurst < T::one(),
-      "Lfsm requires 1/alpha < hurst < 1 for this discretization"
-    );
-    Self {
-      alpha,
-      beta,
-      hurst,
-      scale,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Lfsm<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
+  pub fn new(
     alpha: T,
     beta: T,
     hurst: T,
@@ -75,7 +52,7 @@ impl<T: FloatExt> Lfsm<T, Deterministic> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
     assert!((-T::one()..=T::one()).contains(&beta));
@@ -92,7 +69,7 @@ impl<T: FloatExt> Lfsm<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -158,7 +135,7 @@ mod tests {
 
   #[test]
   fn lfsm_path_is_finite() {
-    let p = Lfsm::new(1.7_f64, 0.0, 0.8, 1.0, 256, Some(0.0), Some(1.0));
+    let p = Lfsm::new(1.7_f64, 0.0, 0.8, 1.0, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));

@@ -16,6 +16,7 @@
 //! - Decreusefond, L. & Üstünel, A. S. (1999), "Stochastic Analysis of the Fractional Brownian Motion"
 
 use ndarray::Array1;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -64,31 +65,22 @@ pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Volterra<T> {
-  pub fn new(kernel: VolterraKernel, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
+  pub fn new(kernel: VolterraKernel, n: usize, t: Option<T>, seed: S) -> Self {
     Self {
       kernel,
       n,
       t,
-      seed: Unseeded,
+      seed,
     }
-  }
-
-  /// Fractional Brownian motion with Hurst parameter $H$.
-  pub fn fbm(h: f64, n: usize, t: Option<T>) -> Self {
-    assert!(h > 0.0 && h < 1.0, "Hurst parameter must be in (0,1)");
-    Self::new(VolterraKernel::FractionalBM { h }, n, t)
   }
 }
 
-impl<T: FloatExt> Volterra<T, Deterministic> {
-  pub fn seeded(kernel: VolterraKernel, n: usize, t: Option<T>, seed: u64) -> Self {
-    Self {
-      kernel,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-    }
+impl<T: FloatExt> Volterra<T, Unseeded> {
+  /// Fractional Brownian motion with Hurst parameter $H$.
+  pub fn fbm(h: f64, n: usize, t: Option<T>) -> Self {
+    assert!(h > 0.0 && h < 1.0, "Hurst parameter must be in (0,1)");
+    Self::new(VolterraKernel::FractionalBM { h }, n, t, Unseeded)
   }
 }
 
@@ -166,10 +158,15 @@ impl PyVolterra {
     match seed {
       Some(sd) => Self {
         inner: None,
-        seeded: Some(Volterra::<f64, Deterministic>::seeded(kernel, n, t, sd)),
+        seeded: Some(Volterra::<f64, Deterministic>::new(
+          kernel,
+          n,
+          t,
+          Deterministic::new(sd),
+        )),
       },
       None => Self {
-        inner: Some(Volterra::<f64>::new(kernel, n, t)),
+        inner: Some(Volterra::<f64>::new(kernel, n, t, Unseeded)),
         seeded: None,
       },
     }
@@ -207,6 +204,8 @@ impl PyVolterra {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
@@ -219,7 +218,12 @@ mod tests {
 
   #[test]
   fn volterra_exponential_kernel() {
-    let v = Volterra::<f64>::new(VolterraKernel::Exponential { beta: 1.0 }, 100, Some(1.0));
+    let v = Volterra::<f64>::new(
+      VolterraKernel::Exponential { beta: 1.0 },
+      100,
+      Some(1.0),
+      Unseeded,
+    );
     let path = v.sample();
     assert_eq!(path.len(), 100);
   }
@@ -227,11 +231,11 @@ mod tests {
   #[test]
   fn volterra_fbm_h05_is_bm() {
     // H=0.5 → K(t,s) = 1/Γ(1) = 1 → X_t = W_t (standard Bm)
-    let v = Volterra::<f64, Deterministic>::seeded(
+    let v = Volterra::<f64, Deterministic>::new(
       VolterraKernel::FractionalBM { h: 0.5 },
       200,
       Some(1.0),
-      42,
+      Deterministic::new(42),
     );
     let path = v.sample();
     // Variance of Bm at t=1 should be ~1
@@ -245,17 +249,17 @@ mod tests {
     // Two separately built instances with the same seed reproduce each other's first path.
     // (Same instance, repeated `.sample()` calls advance the seed state and produce
     // different paths — that is the desired behaviour for Monte Carlo reuse.)
-    let v1 = Volterra::<f64, Deterministic>::seeded(
+    let v1 = Volterra::<f64, Deterministic>::new(
       VolterraKernel::FractionalBM { h: 0.7 },
       50,
       Some(1.0),
-      123,
+      Deterministic::new(123),
     );
-    let v2 = Volterra::<f64, Deterministic>::seeded(
+    let v2 = Volterra::<f64, Deterministic>::new(
       VolterraKernel::FractionalBM { h: 0.7 },
       50,
       Some(1.0),
-      123,
+      Deterministic::new(123),
     );
     assert_eq!(v1.sample(), v2.sample());
   }

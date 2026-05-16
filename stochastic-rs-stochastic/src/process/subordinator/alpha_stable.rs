@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::uniform::SimdUniform;
@@ -24,8 +23,8 @@ pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> AlphaStableSubordinator<T> {
-  pub fn new(alpha: T, c: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
+  pub fn new(alpha: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
       "alpha must be in (0,1)"
@@ -37,25 +36,7 @@ impl<T: FloatExt> AlphaStableSubordinator<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> AlphaStableSubordinator<T, Deterministic> {
-  pub fn seeded(alpha: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
-    assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
-    );
-    assert!(c > T::zero(), "c must be positive");
-    Self {
-      alpha,
-      c,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

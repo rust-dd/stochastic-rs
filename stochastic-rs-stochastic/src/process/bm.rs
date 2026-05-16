@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -23,23 +22,9 @@ pub struct Bm<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Bm<T> {
-  pub fn new(n: usize, t: Option<T>) -> Self {
-    Self {
-      n,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Bm<T, Deterministic> {
-  pub fn seeded(n: usize, t: Option<T>, seed: u64) -> Self {
-    Self {
-      n,
-      t,
-      seed: Deterministic::new(seed),
-    }
+impl<T: FloatExt, S: SeedExt> Bm<T, S> {
+  pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
+    Self { n, t, seed }
   }
 }
 
@@ -86,7 +71,7 @@ mod tests {
   #[test]
   fn test_bm() {
     let start = Instant::now();
-    let bm = Bm::new(10000, Some(1.0));
+    let bm = Bm::new(10000, Some(1.0), Unseeded);
     for _ in 0..10000 {
       let m = bm.sample();
       assert_eq!(m.len(), 10000);
@@ -94,7 +79,7 @@ mod tests {
     println!("Time elapsed: {:?} ms", start.elapsed().as_millis());
 
     let start = Instant::now();
-    let bm = Bm::new(10000, Some(1.0));
+    let bm = Bm::new(10000, Some(1.0), Unseeded);
     for _ in 0..10000 {
       let m = bm.sample();
       assert_eq!(m.len(), 10000);
@@ -104,7 +89,7 @@ mod tests {
 
   #[test]
   fn test_bm_movement_1000_iterations() {
-    let bm = Bm::new(1000, Some(1.0));
+    let bm = Bm::new(1000, Some(1.0), Unseeded);
 
     let mut max_abs_value: f64 = 0.0;
     let mut min_abs_value: f64 = f64::MAX;

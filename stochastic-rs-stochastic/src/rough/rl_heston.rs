@@ -18,7 +18,6 @@
 //! 3–38.
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -72,7 +71,7 @@ fn build_markov<T: FloatExt>(
   MarkovLift::new(kernel, dt)
 }
 
-impl<T: FloatExt> RlHeston<T> {
+impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   #[must_use]
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -87,6 +86,7 @@ impl<T: FloatExt> RlHeston<T> {
     n: usize,
     t: Option<T>,
     degree: Option<usize>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(kappa >= T::zero(), "kappa must be non-negative");
@@ -107,45 +107,8 @@ impl<T: FloatExt> RlHeston<T> {
       n,
       t,
       degree,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-      markov: build_markov(hurst, n, t, degree),
-    }
-  }
-}
-
-impl<T: FloatExt> RlHeston<T, Deterministic> {
-  #[must_use]
-  #[allow(clippy::too_many_arguments)]
-  pub fn seeded(
-    hurst: T,
-    s0: Option<T>,
-    v0: Option<T>,
-    kappa: T,
-    theta: T,
-    sigma: T,
-    rho: T,
-    mu: T,
-    n: usize,
-    t: Option<T>,
-    degree: Option<usize>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    Self {
-      hurst,
-      s0,
-      v0,
-      kappa,
-      theta,
-      sigma,
-      rho,
-      mu,
-      n,
-      t,
-      degree,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::new(rho, n - 1, t),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
       markov: build_markov(hurst, n, t, degree),
     }
   }
@@ -228,6 +191,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
 mod tests {
   use super::RlHeston;
   use crate::traits::ProcessExt;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
 
   #[test]
   #[should_panic(expected = "n must be at least 2")]
@@ -244,12 +209,13 @@ mod tests {
       1,
       Some(1.0),
       None,
+      Unseeded,
     );
   }
 
   #[test]
   fn variance_stays_non_negative() {
-    let p = RlHeston::seeded(
+    let p = RlHeston::new(
       0.12_f64,
       Some(100.0),
       Some(0.04),
@@ -261,7 +227,7 @@ mod tests {
       256,
       Some(1.0),
       None,
-      11,
+      Deterministic::new(11),
     );
     let [s, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));
@@ -270,7 +236,7 @@ mod tests {
 
   #[test]
   fn batch_shape_and_nonneg_variance() {
-    let p = RlHeston::seeded(
+    let p = RlHeston::new(
       0.12_f64,
       Some(100.0),
       Some(0.04),
@@ -282,7 +248,7 @@ mod tests {
       64,
       Some(1.0),
       Some(25),
-      17,
+      Deterministic::new(17),
     );
     let [spots, variances] = p.sample_batch(13);
     assert_eq!(spots.dim(), (13, 64));
@@ -293,7 +259,7 @@ mod tests {
 
   #[test]
   fn heston_limit_h_half_asymptotic_variance_is_finite() {
-    let p = RlHeston::seeded(
+    let p = RlHeston::new(
       0.49_f64,
       Some(100.0),
       Some(0.04),
@@ -305,7 +271,7 @@ mod tests {
       512,
       Some(1.0),
       None,
-      3,
+      Deterministic::new(3),
     );
     let [_s, v] = p.sample();
     let mean: f64 = v.iter().sum::<f64>() / v.len() as f64;

@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -38,7 +37,7 @@ pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded> {
   fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> Fcir<T> {
+impl<T: FloatExt, S: SeedExt> Fcir<T, S> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -49,6 +48,7 @@ impl<T: FloatExt> Fcir<T> {
     x0: Option<T>,
     t: Option<T>,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(
@@ -65,42 +65,8 @@ impl<T: FloatExt> Fcir<T> {
       x0,
       t,
       use_sym,
-      seed: Unseeded,
-      fgn: Fgn::new(hurst, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Fcir<T, Deterministic> {
-  #[must_use]
-  pub fn seeded(
-    hurst: T,
-    theta: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(
-      T::from_usize_(2) * theta * mu >= sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
-
-    Self {
-      hurst,
-      theta,
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      use_sym,
-      seed: Deterministic::new(seed),
-      fgn: Fgn::new(hurst, n - 1, t),
+      seed,
+      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
     }
   }
 }

@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -33,28 +32,9 @@ pub struct Fou<T: FloatExt, S: SeedExt = Unseeded> {
   fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> Fou<T> {
+impl<T: FloatExt, S: SeedExt> Fou<T, S> {
   #[must_use]
-  pub fn new(hurst: T, theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-
-    Self {
-      hurst,
-      theta,
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-      fgn: Fgn::new(hurst, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Fou<T, Deterministic> {
-  #[must_use]
-  pub fn seeded(
+  pub fn new(
     hurst: T,
     theta: T,
     mu: T,
@@ -62,7 +42,7 @@ impl<T: FloatExt> Fou<T, Deterministic> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
@@ -74,8 +54,8 @@ impl<T: FloatExt> Fou<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
-      fgn: Fgn::new(hurst, n - 1, t),
+      seed,
+      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
     }
   }
 }
@@ -105,13 +85,15 @@ py_process_1d!(PyFou, Fou,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::Fou;
   use crate::traits::ProcessExt;
 
   #[test]
   #[should_panic(expected = "n must be at least 2")]
   fn fou_requires_at_least_two_points() {
-    let _ = Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 1, Some(0.0), Some(1.0));
+    let _ = Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 1, Some(0.0), Some(1.0), Unseeded);
   }
 
   #[test]
@@ -122,7 +104,7 @@ mod tests {
     let x0 = 0.2_f64;
     let t = 1.0_f64;
 
-    let p = Fou::<f64>::new(0.7, theta, mu, 0.0, n, Some(x0), Some(t));
+    let p = Fou::<f64>::new(0.7, theta, mu, 0.0, n, Some(x0), Some(t), Unseeded);
     let x = p.sample();
 
     let dt = t / (n as f64 - 1.0);
@@ -145,7 +127,7 @@ mod tests {
     for &h in &hs {
       for &n in &ns {
         for &t in &ts {
-          let p = Fou::<f64>::new(h, theta, mu, 0.0, n, Some(x0), Some(t));
+          let p = Fou::<f64>::new(h, theta, mu, 0.0, n, Some(x0), Some(t), Unseeded);
           let x = p.sample();
 
           let dt = t / (n as f64 - 1.0);
@@ -164,7 +146,7 @@ mod tests {
 
   #[test]
   fn fou_sample_is_finite() {
-    let p = Fou::<f64>::new(0.65, 1.0, 0.0, 0.5, 256, Some(0.1), Some(1.0));
+    let p = Fou::<f64>::new(0.65, 1.0, 0.0, 0.5, 256, Some(0.1), Some(1.0), Unseeded);
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));

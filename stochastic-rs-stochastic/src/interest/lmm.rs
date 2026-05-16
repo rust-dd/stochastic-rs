@@ -70,7 +70,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -102,10 +101,16 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Lmm<T> {
-  /// Construct an LMM with independent forward factors (identity correlation)
-  /// and an automatic seed.
-  pub fn new(tenor: Array1<T>, l0: Array1<T>, sigma: Array1<T>, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
+  /// Construct an LMM with independent forward factors (identity correlation).
+  pub fn new(
+    tenor: Array1<T>,
+    l0: Array1<T>,
+    sigma: Array1<T>,
+    n: usize,
+    t: Option<T>,
+    seed: S,
+  ) -> Self {
     validate_lmm_inputs(&tenor, &l0, &sigma);
     Self {
       tenor,
@@ -114,7 +119,7 @@ impl<T: FloatExt> Lmm<T> {
       chol: None,
       n,
       t,
-      seed: Unseeded,
+      seed,
     }
   }
 
@@ -147,38 +152,6 @@ fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &A
     assert!(tenor[i + 1] > tenor[i], "tenor must be strictly increasing");
     assert!(l0[i] > T::zero(), "initial Libor L_n(0) must be positive");
     assert!(sigma[i] >= T::zero(), "volatility σ_n must be non-negative");
-  }
-}
-
-impl<T: FloatExt> Lmm<T, Deterministic> {
-  /// Construct a deterministically-seeded LMM (independent factors).
-  pub fn seeded(
-    tenor: Array1<T>,
-    l0: Array1<T>,
-    sigma: Array1<T>,
-    n: usize,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    validate_lmm_inputs(&tenor, &l0, &sigma);
-    Self {
-      tenor,
-      l0,
-      sigma,
-      chol: None,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-    }
-  }
-
-  /// Attach a forward correlation matrix `rho`.
-  pub fn with_correlation(mut self, rho: Array2<T>) -> Self {
-    let m = self.l0.len();
-    assert_eq!(rho.nrows(), m);
-    assert_eq!(rho.ncols(), m);
-    self.chol = Some(cholesky_lower(&rho));
-    self
   }
 }
 
@@ -336,6 +309,8 @@ fn cholesky_lower<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   fn flat_tenor(m: usize, dt: f64) -> Array1<f64> {
@@ -348,7 +323,8 @@ mod tests {
     let tenor = flat_tenor(m, 0.5); // T_0=0, T_1=0.5, ..., T_4=2.0
     let l0 = Array1::from(vec![0.03, 0.035, 0.04, 0.045]);
     let sigma = Array1::from(vec![0.20, 0.20, 0.20, 0.20]);
-    let lmm: Lmm<f64, Deterministic> = Lmm::seeded(tenor, l0, sigma, 100, Some(2.0), 42);
+    let lmm: Lmm<f64, Deterministic> =
+      Lmm::new(tenor, l0, sigma, 100, Some(2.0), Deterministic::new(42));
     let path = lmm.sample();
     assert_eq!(path.shape(), &[m, 100]);
     // Initial column matches l0.
@@ -377,7 +353,7 @@ mod tests {
       }
     }
     let lmm: Lmm<f64, Deterministic> =
-      Lmm::seeded(tenor, l0, sigma, 50, Some(3.0), 123).with_correlation(rho);
+      Lmm::new(tenor, l0, sigma, 50, Some(3.0), Deterministic::new(123)).with_correlation(rho);
     let path = lmm.sample();
     assert_eq!(path.shape(), &[m, 50]);
     for v in path.iter() {
@@ -390,9 +366,16 @@ mod tests {
     let tenor = flat_tenor(2, 0.5);
     let l0 = Array1::from(vec![0.03, 0.035]);
     let sigma = Array1::from(vec![0.2, 0.2]);
-    let a: Lmm<f64, Deterministic> =
-      Lmm::seeded(tenor.clone(), l0.clone(), sigma.clone(), 30, Some(1.0), 7);
-    let b: Lmm<f64, Deterministic> = Lmm::seeded(tenor, l0, sigma, 30, Some(1.0), 7);
+    let a: Lmm<f64, Deterministic> = Lmm::new(
+      tenor.clone(),
+      l0.clone(),
+      sigma.clone(),
+      30,
+      Some(1.0),
+      Deterministic::new(7),
+    );
+    let b: Lmm<f64, Deterministic> =
+      Lmm::new(tenor, l0, sigma, 30, Some(1.0), Deterministic::new(7));
     let pa = a.sample();
     let pb = b.sample();
     for (x, y) in pa.iter().zip(pb.iter()) {

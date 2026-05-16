@@ -5,7 +5,6 @@
 //! $$
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -28,8 +27,8 @@ pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> VanEmmerich<T> {
-  pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> VanEmmerich<T, S> {
+  pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self {
       kappa,
       mu,
@@ -37,21 +36,7 @@ impl<T: FloatExt> VanEmmerich<T> {
       rho0,
       n,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> VanEmmerich<T, Deterministic> {
-  pub fn seeded(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    Self {
-      kappa,
-      mu,
-      sigma,
-      rho0,
-      n,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -98,11 +83,21 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for VanEmmerich<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
   fn stays_bounded() {
-    let scp = VanEmmerich::seeded(5.0_f64, -0.3, 0.8, -0.3, 1000, Some(1.0), 42);
+    let scp = VanEmmerich::new(
+      5.0_f64,
+      -0.3,
+      0.8,
+      -0.3,
+      1000,
+      Some(1.0),
+      Deterministic::new(42),
+    );
     let path = scp.sample();
     assert_eq!(path.len(), 1000);
     assert!(path.iter().all(|&r| r > -1.0 && r < 1.0));

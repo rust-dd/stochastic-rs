@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -35,23 +34,8 @@ pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Quadratic<T> {
-  pub fn new(alpha: T, beta: T, gamma: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      alpha,
-      beta,
-      gamma,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Quadratic<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> Quadratic<T, S> {
+  pub fn new(
     alpha: T,
     beta: T,
     gamma: T,
@@ -59,7 +43,7 @@ impl<T: FloatExt> Quadratic<T, Deterministic> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     Self {
       alpha,
@@ -69,7 +53,7 @@ impl<T: FloatExt> Quadratic<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

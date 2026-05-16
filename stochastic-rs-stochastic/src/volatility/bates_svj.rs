@@ -12,6 +12,7 @@
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -74,7 +75,7 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> BatesSvj<T> {
+impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
   pub fn new(
     mu: Option<T>,
     b: Option<T>,
@@ -92,6 +93,7 @@ impl<T: FloatExt> BatesSvj<T> {
     v0: Option<T>,
     t: Option<T>,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(
@@ -119,60 +121,8 @@ impl<T: FloatExt> BatesSvj<T> {
       v0,
       t,
       use_sym,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> BatesSvj<T, Deterministic> {
-  pub fn seeded(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
-    lambda: T,
-    nu: T,
-    omega: T,
-    alpha: T,
-    beta: T,
-    sigma: T,
-    rho: T,
-    n: usize,
-    s0: Option<T>,
-    v0: Option<T>,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(
-      rho >= -T::one() && rho <= T::one(),
-      "rho must be in [-1, 1]"
-    );
-    assert!(omega >= T::zero(), "omega must be >= 0");
-    assert!(lambda >= T::zero(), "lambda must be >= 0");
-    validate_drift_args(mu, b, r, r_f, "BatesSvj");
-
-    Self {
-      mu,
-      b,
-      r,
-      r_f,
-      lambda,
-      nu,
-      omega,
-      alpha,
-      beta,
-      sigma,
-      rho,
-      n,
-      s0,
-      v0,
-      t,
-      use_sym,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::new(rho, n - 1, t),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }
@@ -280,6 +230,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       Some(false),
+      Unseeded,
     );
     let [_s, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));
@@ -304,6 +255,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       Some(false),
+      Unseeded,
     );
     let [s, _v] = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
@@ -328,6 +280,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       None,
+      Unseeded,
     );
     assert!((p.drift() - 0.3).abs() < 1e-12);
   }
@@ -351,6 +304,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       None,
+      Unseeded,
     );
     assert!((p.drift() - 0.7).abs() < 1e-12);
   }
@@ -374,6 +328,7 @@ mod tests {
       Some(0.04),
       Some(1.0),
       None,
+      Unseeded,
     );
     assert!((p.drift() - 0.9).abs() < 1e-12);
   }
@@ -421,7 +376,7 @@ impl PyBatesSvj {
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
-        s.seeded_f32 = Some(BatesSvj::seeded(
+        s.seeded_f32 = Some(BatesSvj::new(
           mu.map(|v| v as f32),
           b.map(|v| v as f32),
           r.map(|v| v as f32),
@@ -438,12 +393,28 @@ impl PyBatesSvj {
           v0.map(|v| v as f32),
           t.map(|v| v as f32),
           use_sym,
-          sd,
+          Deterministic::new(sd),
         ));
       }
       (Some(sd), _) => {
-        s.seeded_f64 = Some(BatesSvj::seeded(
-          mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, sd,
+        s.seeded_f64 = Some(BatesSvj::new(
+          mu,
+          b,
+          r,
+          r_f,
+          lambda_,
+          nu,
+          omega,
+          alpha,
+          beta,
+          sigma,
+          rho,
+          n,
+          s0,
+          v0,
+          t,
+          use_sym,
+          Deterministic::new(sd),
         ));
       }
       (None, "f32") => {
@@ -464,11 +435,13 @@ impl PyBatesSvj {
           v0.map(|v| v as f32),
           t.map(|v| v as f32),
           use_sym,
+          Unseeded,
         ));
       }
       (None, _) => {
         s.inner_f64 = Some(BatesSvj::new(
           mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym,
+          Unseeded,
         ));
       }
     }

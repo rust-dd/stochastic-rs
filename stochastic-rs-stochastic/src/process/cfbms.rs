@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -27,8 +26,8 @@ pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded> {
   cfgns: Cfgns<T>,
 }
 
-impl<T: FloatExt> Cfbms<T> {
-  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
+  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
       "Hurst parameter must be in (0, 1)"
@@ -43,30 +42,8 @@ impl<T: FloatExt> Cfbms<T> {
       rho,
       n,
       t,
-      seed: Unseeded,
-      cfgns: Cfgns::new(hurst, rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Cfbms<T, Deterministic> {
-  pub fn seeded(hurst: T, rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    assert!(
-      (T::zero()..=T::one()).contains(&hurst),
-      "Hurst parameter must be in (0, 1)"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
-
-    Self {
-      hurst,
-      rho,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-      cfgns: Cfgns::new(hurst, rho, n - 1, t),
+      seed,
+      cfgns: Cfgns::new(hurst, rho, n - 1, t, Unseeded),
     }
   }
 }

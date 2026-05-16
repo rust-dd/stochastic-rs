@@ -22,7 +22,6 @@
 //!   <https://doi.org/10.1016/j.cam.2021.113422>
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -74,7 +73,7 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded> {
   cgns2: Cgns<T>,
 }
 
-impl<T: FloatExt> DoubleHeston<T> {
+impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     s0: Option<T>,
@@ -92,6 +91,7 @@ impl<T: FloatExt> DoubleHeston<T> {
     n: usize,
     t: Option<T>,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     assert!(kappa1 >= T::zero(), "kappa1 must be non-negative");
     assert!(theta1 >= T::zero(), "theta1 must be non-negative");
@@ -122,65 +122,9 @@ impl<T: FloatExt> DoubleHeston<T> {
       n,
       t,
       use_sym,
-      seed: Unseeded,
-      cgns1: Cgns::new(rho1, n - 1, t),
-      cgns2: Cgns::new(rho2, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> DoubleHeston<T, Deterministic> {
-  #[allow(clippy::too_many_arguments)]
-  pub fn seeded(
-    s0: Option<T>,
-    v1_0: Option<T>,
-    v2_0: Option<T>,
-    kappa1: T,
-    theta1: T,
-    sigma1: T,
-    rho1: T,
-    kappa2: T,
-    theta2: T,
-    sigma2: T,
-    rho2: T,
-    mu: T,
-    n: usize,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    assert!(kappa1 >= T::zero(), "kappa1 must be non-negative");
-    assert!(theta1 >= T::zero(), "theta1 must be non-negative");
-    assert!(sigma1 >= T::zero(), "sigma1 must be non-negative");
-    assert!(kappa2 >= T::zero(), "kappa2 must be non-negative");
-    assert!(theta2 >= T::zero(), "theta2 must be non-negative");
-    assert!(sigma2 >= T::zero(), "sigma2 must be non-negative");
-    if let Some(v) = v1_0 {
-      assert!(v >= T::zero(), "v1_0 must be non-negative");
-    }
-    if let Some(v) = v2_0 {
-      assert!(v >= T::zero(), "v2_0 must be non-negative");
-    }
-
-    Self {
-      s0,
-      v1_0,
-      v2_0,
-      kappa1,
-      theta1,
-      sigma1,
-      rho1,
-      kappa2,
-      theta2,
-      sigma2,
-      rho2,
-      mu,
-      n,
-      t,
-      use_sym,
-      seed: Deterministic::new(seed),
-      cgns1: Cgns::new(rho1, n - 1, t),
-      cgns2: Cgns::new(rho2, n - 1, t),
+      seed,
+      cgns1: Cgns::new(rho1, n - 1, t, Unseeded),
+      cgns2: Cgns::new(rho2, n - 1, t, Unseeded),
     }
   }
 }
@@ -240,6 +184,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
@@ -261,6 +207,7 @@ mod tests {
       8,
       Some(1.0),
       Some(false),
+      Unseeded,
     );
   }
 
@@ -282,6 +229,7 @@ mod tests {
       128,
       Some(1.0),
       Some(true),
+      Unseeded,
     );
     let [_s, v1, v2] = p.sample();
     assert!(v1.iter().all(|x| *x >= 0.0));
@@ -290,7 +238,7 @@ mod tests {
 
   #[test]
   fn stock_path_is_finite() {
-    let p = DoubleHeston::seeded(
+    let p = DoubleHeston::new(
       Some(100.0_f64),
       Some(0.02),
       Some(0.02),
@@ -306,7 +254,7 @@ mod tests {
       64,
       Some(0.5),
       Some(true),
-      42,
+      Deterministic::new(42),
     );
     let [s, _, _] = p.sample();
     assert!(s.iter().all(|x| x.is_finite()));

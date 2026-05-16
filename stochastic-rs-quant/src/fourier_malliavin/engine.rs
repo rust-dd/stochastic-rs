@@ -578,6 +578,7 @@ fn fejer_inversion<T: FloatExt>(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_stochastic::volatility::HestonPow;
   use stochastic_rs_stochastic::volatility::heston::Heston;
   use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
@@ -588,7 +589,7 @@ mod tests {
   fn heston_paths() -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let n = 23401_usize;
     let t = 1.0_f64;
-    let heston = Heston::seeded(
+    let heston = Heston::new(
       Some(100.0),
       Some(0.4),
       2.0,
@@ -600,7 +601,7 @@ mod tests {
       Some(t),
       HestonPow::Sqrt,
       Some(false),
-      42,
+      Deterministic::new(42),
     );
     let [s, v] = heston.sample();
     let dt = t / (n as f64 - 1.0);
@@ -914,7 +915,7 @@ mod tests {
   fn heston2d_paths() -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
     let n = 23401_usize;
     let t = 1.0_f64;
-    let h = Heston2D::<f64, stochastic_rs_stochastic::simd_rng::Deterministic>::seeded(
+    let h = Heston2D::<f64, _>::new(
       [Some(0.0_f64), Some(0.0_f64)],
       [Some(0.4_f64), Some(0.4_f64)],
       [0.0, 0.0],
@@ -925,7 +926,7 @@ mod tests {
       n,
       Some(t),
       Some(false),
-      42,
+      Deterministic::new(42),
     );
     let [x1, v1, x2, v2] = h.sample();
     let dt = t / (n as f64 - 1.0);

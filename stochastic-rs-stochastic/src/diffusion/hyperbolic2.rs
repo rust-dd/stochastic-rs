@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -27,7 +26,7 @@ pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Hyperbolic2<T> {
+impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
   pub fn new(
     beta: T,
     gamma: T,
@@ -37,6 +36,7 @@ impl<T: FloatExt> Hyperbolic2<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       beta,
@@ -47,33 +47,7 @@ impl<T: FloatExt> Hyperbolic2<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Hyperbolic2<T, Deterministic> {
-  pub fn seeded(
-    beta: T,
-    gamma: T,
-    delta: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      beta,
-      gamma,
-      delta,
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

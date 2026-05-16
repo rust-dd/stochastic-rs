@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -31,9 +30,9 @@ pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded> {
   fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> Fgbm<T> {
+impl<T: FloatExt, S: SeedExt> Fgbm<T, S> {
   #[must_use]
-  pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+  pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
     Self {
@@ -43,34 +42,8 @@ impl<T: FloatExt> Fgbm<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-      fgn: Fgn::new(hurst, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Fgbm<T, Deterministic> {
-  #[must_use]
-  pub fn seeded(
-    hurst: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-
-    Self {
-      hurst,
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
-      fgn: Fgn::new(hurst, n - 1, t),
+      seed,
+      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
     }
   }
 }

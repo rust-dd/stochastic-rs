@@ -17,7 +17,6 @@
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::poisson::SimdPoisson;
@@ -61,7 +60,7 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> Hkde<T> {
+impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     mu: T,
@@ -78,6 +77,7 @@ impl<T: FloatExt> Hkde<T> {
     s0: Option<T>,
     t: Option<T>,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(
@@ -103,50 +103,8 @@ impl<T: FloatExt> Hkde<T> {
       s0,
       t,
       use_sym,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Hkde<T, Deterministic> {
-  #[allow(clippy::too_many_arguments)]
-  pub fn seeded(
-    mu: T,
-    kappa: T,
-    theta: T,
-    sigma_v: T,
-    rho: T,
-    v0: T,
-    lambda: T,
-    p_up: T,
-    eta1: T,
-    eta2: T,
-    n: usize,
-    s0: Option<T>,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-
-    Self {
-      mu,
-      kappa,
-      theta,
-      sigma_v,
-      rho,
-      v0,
-      lambda,
-      p_up,
-      eta1,
-      eta2,
-      n,
-      s0,
-      t,
-      use_sym,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::new(rho, n - 1, t),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }
@@ -243,6 +201,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   fn default_hkde() -> Hkde<f64> {
@@ -261,6 +221,7 @@ mod tests {
       Some(100.0),
       Some(1.0),
       Some(false),
+      Unseeded,
     )
   }
 
@@ -280,7 +241,7 @@ mod tests {
 
   #[test]
   fn no_jumps_reduces_to_heston() {
-    let p = Hkde::seeded(
+    let p = Hkde::new(
       0.05,
       1.5,
       0.04,
@@ -295,7 +256,7 @@ mod tests {
       Some(100.0),
       Some(1.0),
       Some(false),
-      42,
+      Deterministic::new(42),
     );
     let [s, _v] = p.sample();
     // With no jumps, should behave like Heston - just check it runs and produces reasonable values
@@ -308,7 +269,7 @@ mod tests {
 
   #[test]
   fn seeded_is_deterministic() {
-    let p1 = Hkde::seeded(
+    let p1 = Hkde::new(
       0.05,
       1.5,
       0.04,
@@ -323,9 +284,9 @@ mod tests {
       Some(100.0),
       Some(1.0),
       None,
-      123,
+      Deterministic::new(123),
     );
-    let p2 = Hkde::seeded(
+    let p2 = Hkde::new(
       0.05,
       1.5,
       0.04,
@@ -340,7 +301,7 @@ mod tests {
       Some(100.0),
       Some(1.0),
       None,
-      123,
+      Deterministic::new(123),
     );
     let [s1, v1] = p1.sample();
     let [s2, v2] = p2.sample();

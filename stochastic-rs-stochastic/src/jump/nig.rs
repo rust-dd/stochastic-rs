@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
@@ -30,30 +29,15 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Nig<T> {
-  pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    assert!(kappa > T::zero(), "kappa must be positive");
-    Self {
-      theta,
-      sigma,
-      kappa,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Nig<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> Nig<T, S> {
+  pub fn new(
     theta: T,
     sigma: T,
     kappa: T,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
@@ -63,7 +47,7 @@ impl<T: FloatExt> Nig<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -113,7 +97,7 @@ mod tests {
 
   #[test]
   fn n_eq_1_keeps_initial_value() {
-    let p = Nig::new(0.1_f64, 0.2, 0.3, 1, Some(4.0), Some(1.0));
+    let p = Nig::new(0.1_f64, 0.2, 0.3, 1, Some(4.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert_eq!(x.len(), 1);
     assert_eq!(x[0], 4.0);

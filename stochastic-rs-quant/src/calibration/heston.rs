@@ -1035,6 +1035,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_stochastic::volatility::HestonPow;
   use stochastic_rs_stochastic::volatility::heston::Heston as HestonProcess;
 
@@ -1195,6 +1196,7 @@ mod tests {
       Some(t),
       HestonPow::Sqrt,
       Some(true),
+      Deterministic::new(42),
     );
 
     let [s_ts, v_ts] = process.sample();
@@ -1272,6 +1274,7 @@ mod tests {
       Some(t),
       HestonPow::Sqrt,
       Some(true),
+      Deterministic::new(42),
     );
     let [s_ts, v_ts] = process.sample();
 
@@ -1349,6 +1352,7 @@ mod tests {
       Some(t),
       HestonPow::Sqrt,
       Some(true),
+      Deterministic::new(42),
     );
     let [s_ts, _v_ts] = process.sample();
 

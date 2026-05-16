@@ -18,6 +18,7 @@ pub mod tgarch;
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::agrach::Agarch;
   use super::ar::ARp;
@@ -35,6 +36,7 @@ mod tests {
         0.1,
         16,
         Some(Array1::from_vec(vec![0.0])),
+        Unseeded,
       );
     });
     assert!(result.is_err());
@@ -49,6 +51,7 @@ mod tests {
         Array1::from_vec(vec![0.1]),
         Array1::from_vec(vec![0.9]),
         32,
+        Unseeded,
       );
     });
     assert!(result.is_err());
@@ -63,6 +66,7 @@ mod tests {
         Array1::from_vec(vec![0.1]),
         Array1::from_vec(vec![0.8]),
         32,
+        Unseeded,
       );
     });
     assert!(result.is_err());
@@ -77,6 +81,7 @@ mod tests {
         Array1::from_vec(vec![0.1]),
         Array1::from_vec(vec![0.8]),
         32,
+        Unseeded,
       );
     });
     assert!(result.is_err());
@@ -95,6 +100,7 @@ mod tests {
         0,
         0.1,
         64,
+        Unseeded,
       );
     });
     assert!(result.is_err());
@@ -108,6 +114,7 @@ mod tests {
         Array1::from_vec(vec![0.7]),
         Array1::from_vec(vec![0.4]),
         128,
+        Unseeded,
       );
       let _ = model.sample();
     });
@@ -121,6 +128,7 @@ mod tests {
       Array1::from_vec(vec![0.08]),
       Array1::from_vec(vec![0.9]),
       256,
+      Unseeded,
     );
     let path = model.sample();
     assert_eq!(path.len(), 256);

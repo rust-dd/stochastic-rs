@@ -15,7 +15,6 @@
 //!
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -55,8 +54,8 @@ fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name
   }
 }
 
-impl<T: FloatExt> Hawkes<T> {
-  pub fn new(mu: T, alpha: T, beta: T, n: Option<usize>, t_max: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
+  pub fn new(mu: T, alpha: T, beta: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
     validate_n_or_tmax(n, t_max, "Hawkes");
     Hawkes {
       mu,
@@ -64,21 +63,7 @@ impl<T: FloatExt> Hawkes<T> {
       beta,
       n,
       t_max,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Hawkes<T, Deterministic> {
-  pub fn seeded(mu: T, alpha: T, beta: T, n: Option<usize>, t_max: Option<T>, seed: u64) -> Self {
-    validate_n_or_tmax(n, t_max, "Hawkes");
-    Hawkes {
-      mu,
-      alpha,
-      beta,
-      n,
-      t_max,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -200,11 +185,13 @@ py_process_1d!(PyHawkes, Hawkes,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
   fn hawkes_n_mode() {
-    let h = Hawkes::seeded(0.5, 0.3, 1.0, Some(50), None, 42);
+    let h = Hawkes::new(0.5, 0.3, 1.0, Some(50), None, Deterministic::new(42));
     let events = h.sample();
     assert_eq!(events.len(), 50);
     // Arrival times must be non-decreasing
@@ -217,7 +204,7 @@ mod tests {
 
   #[test]
   fn hawkes_t_max_mode() {
-    let h = Hawkes::seeded(0.5, 0.3, 1.0, None, Some(100.0), 42);
+    let h = Hawkes::new(0.5, 0.3, 1.0, None, Some(100.0), Deterministic::new(42));
     let events = h.sample();
     // Must have at least t₀ = 0
     assert!(!events.is_empty());
@@ -237,14 +224,14 @@ mod tests {
     // Inter-instance reproducibility: two separately built instances with the
     // same seed produce the same first path. Intra-instance, successive
     // `.sample()` calls advance the seed and yield different paths.
-    let h1 = Hawkes::seeded(0.5, 0.3, 1.0, Some(20), None, 123);
-    let h2 = Hawkes::seeded(0.5, 0.3, 1.0, Some(20), None, 123);
+    let h1 = Hawkes::new(0.5, 0.3, 1.0, Some(20), None, Deterministic::new(123));
+    let h2 = Hawkes::new(0.5, 0.3, 1.0, Some(20), None, Deterministic::new(123));
     assert_eq!(h1.sample(), h2.sample());
   }
 
   #[test]
   fn hawkes_sample_par() {
-    let h = Hawkes::new(0.5, 0.3, 1.0, None, Some(50.0));
+    let h = Hawkes::new(0.5, 0.3, 1.0, None, Some(50.0), Unseeded);
     let paths = h.sample_par(10);
     assert_eq!(paths.len(), 10);
     for p in &paths {
@@ -256,7 +243,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "stationarity")]
   fn hawkes_rejects_supercritical() {
-    let h = Hawkes::<f64>::new(0.5, 2.0, 1.0, Some(10), None);
+    let h = Hawkes::<f64>::new(0.5, 2.0, 1.0, Some(10), None, Unseeded);
     h.sample();
   }
 
@@ -264,7 +251,7 @@ mod tests {
   fn hawkes_clustering() {
     // With self-excitation, inter-arrival times should cluster
     // (more events bunch together compared to Poisson)
-    let h = Hawkes::seeded(0.5, 0.8, 1.0, None, Some(1000.0), 7);
+    let h = Hawkes::new(0.5, 0.8, 1.0, None, Some(1000.0), Deterministic::new(7));
     let events = h.sample();
     let n = events.len();
     assert!(n > 1);

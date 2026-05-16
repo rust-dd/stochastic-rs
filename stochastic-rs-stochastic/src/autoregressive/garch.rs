@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -47,29 +46,15 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Garch<T> {
-  pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize) -> Self {
+impl<T: FloatExt, S: SeedExt> Garch<T, S> {
+  pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: S) -> Self {
     assert!(omega > T::zero(), "Garch requires omega > 0");
     Garch {
       omega,
       alpha,
       beta,
       n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Garch<T, Deterministic> {
-  /// Create a new Garch model with a deterministic seed for reproducible output.
-  pub fn seeded(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: u64) -> Self {
-    assert!(omega > T::zero(), "Garch requires omega > 0");
-    Garch {
-      omega,
-      alpha,
-      beta,
-      n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

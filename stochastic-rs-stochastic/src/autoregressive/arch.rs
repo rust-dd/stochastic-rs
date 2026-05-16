@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -37,28 +36,15 @@ pub struct Arch<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Arch<T> {
+impl<T: FloatExt, S: SeedExt> Arch<T, S> {
   /// Create a new Arch model.
-  pub fn new(omega: T, alpha: Array1<T>, n: usize) -> Self {
+  pub fn new(omega: T, alpha: Array1<T>, n: usize, seed: S) -> Self {
     assert!(omega > T::zero(), "Arch requires omega > 0");
     Self {
       omega,
       alpha,
       n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Arch<T, Deterministic> {
-  /// Create a new Arch model with a deterministic seed for reproducible output.
-  pub fn seeded(omega: T, alpha: Array1<T>, n: usize, seed: u64) -> Self {
-    assert!(omega > T::zero(), "Arch requires omega > 0");
-    Self {
-      omega,
-      alpha,
-      n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

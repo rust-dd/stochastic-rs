@@ -1,6 +1,7 @@
 //! Finite-difference Malliavin sensitivity traits.
 
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::traits::FloatExt;
 
 use crate::noise::gn::Gn;
@@ -17,7 +18,7 @@ pub trait MalliavinExt<T: FloatExt> {
   where
     F: Fn(&Array1<T>) -> T,
   {
-    let gn = Gn::new(self.n() - 1, self.t());
+    let gn = Gn::new(self.n() - 1, self.t(), Unseeded);
     let mut noise = gn.sample();
     let path = self.sample_with_noise(&noise);
     let f_original = f(&path);

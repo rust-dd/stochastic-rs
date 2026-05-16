@@ -1,5 +1,6 @@
 //! Dumps Fgn reference data (eigenvalues + deterministic paths) to npy files.
 use ndarray_npy::write_npy;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -10,7 +11,7 @@ fn main() {
   std::fs::create_dir_all("target/fgn_ref").unwrap();
 
   for &(h, n) in cases {
-    let fgn = Fgn::seeded(h, n, Some(1.0), seed);
+    let fgn = Fgn::new(h, n, Some(1.0), Deterministic::new(seed));
     let eig = fgn.sqrt_eigenvalues.as_ref().clone();
     let path = fgn.sample();
 

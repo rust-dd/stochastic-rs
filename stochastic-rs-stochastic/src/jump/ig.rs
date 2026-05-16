@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
@@ -25,28 +24,15 @@ pub struct Ig<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Ig<T> {
-  pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Ig<T, S> {
+  pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(gamma > T::zero(), "gamma must be positive");
     Self {
       gamma,
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Ig<T, Deterministic> {
-  pub fn seeded(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: u64) -> Self {
-    assert!(gamma > T::zero(), "gamma must be positive");
-    Self {
-      gamma,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -100,7 +86,7 @@ mod tests {
 
   #[test]
   fn ig_path_is_non_decreasing() {
-    let p = Ig::new(1.0_f64, 256, Some(0.0), Some(1.0));
+    let p = Ig::new(1.0_f64, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
@@ -108,7 +94,7 @@ mod tests {
 
   #[test]
   fn n_eq_1_keeps_initial_value() {
-    let p = Ig::new(1.0_f64, 1, Some(3.5), Some(1.0));
+    let p = Ig::new(1.0_f64, 1, Some(3.5), Some(1.0), Unseeded);
     let x = p.sample();
     assert_eq!(x.len(), 1);
     assert_eq!(x[0], 3.5);

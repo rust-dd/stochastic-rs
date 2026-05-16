@@ -12,7 +12,6 @@ use ndarray::s;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use num_complex::Complex;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -34,27 +33,14 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Fbs<T> {
-  pub fn new(hurst: T, m: usize, n: usize, r: T) -> Self {
+impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
+  pub fn new(hurst: T, m: usize, n: usize, r: T, seed: S) -> Self {
     Self {
       hurst,
       m,
       n,
       r,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Fbs<T, Deterministic> {
-  /// Create a new Fbs model with a deterministic seed for reproducible output.
-  pub fn seeded(hurst: T, m: usize, n: usize, r: T, seed: u64) -> Self {
-    Self {
-      hurst,
-      m,
-      n,
-      r,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

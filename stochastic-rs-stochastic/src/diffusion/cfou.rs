@@ -17,7 +17,6 @@
 //! - https://arxiv.org/abs/2406.18004
 use ndarray::Array1;
 use num_complex::Complex;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -51,7 +50,7 @@ pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded> {
   fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> Cfou<T> {
+impl<T: FloatExt, S: SeedExt> Cfou<T, S> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -62,6 +61,7 @@ impl<T: FloatExt> Cfou<T> {
     x1_0: Option<T>,
     x2_0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     assert!(lambda > T::zero(), "lambda must be positive");
@@ -76,40 +76,8 @@ impl<T: FloatExt> Cfou<T> {
       x1_0,
       x2_0,
       t,
-      seed: Unseeded,
-      fgn: Fgn::new(hurst, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Cfou<T, Deterministic> {
-  #[must_use]
-  pub fn seeded(
-    hurst: T,
-    lambda: T,
-    omega: T,
-    a: T,
-    n: usize,
-    x1_0: Option<T>,
-    x2_0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(lambda > T::zero(), "lambda must be positive");
-    assert!(a > T::zero(), "a must be positive");
-
-    Self {
-      hurst,
-      lambda,
-      omega,
-      a,
-      n,
-      x1_0,
-      x2_0,
-      t,
-      seed: Deterministic::new(seed),
-      fgn: Fgn::new(hurst, n - 1, t),
+      seed,
+      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
     }
   }
 }
@@ -172,12 +140,24 @@ py_process_2d!(PyCfou, Cfou,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::Cfou;
   use crate::traits::ProcessExt;
 
   #[test]
   fn cfou_sample_is_complex_and_finite() {
-    let p = Cfou::<f64>::new(0.7, 1.2, 3.0, 0.4, 256, Some(0.0), Some(0.0), Some(1.0));
+    let p = Cfou::<f64>::new(
+      0.7,
+      1.2,
+      3.0,
+      0.4,
+      256,
+      Some(0.0),
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    );
     let z = p.sample();
 
     assert_eq!(z.len(), 256);
@@ -186,7 +166,17 @@ mod tests {
 
   #[test]
   fn cfou_components_are_finite() {
-    let p = Cfou::<f64>::new(0.65, 0.9, 2.5, 0.6, 128, Some(0.1), Some(-0.1), Some(1.0));
+    let p = Cfou::<f64>::new(
+      0.65,
+      0.9,
+      2.5,
+      0.6,
+      128,
+      Some(0.1),
+      Some(-0.1),
+      Some(1.0),
+      Unseeded,
+    );
     let [x1, x2] = p.sample_components();
     assert_eq!(x1.len(), 128);
     assert_eq!(x2.len(), 128);

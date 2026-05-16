@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -49,10 +48,10 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  cgns: Cgns<T, S>,
+  cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> DuffieKan<T> {
+impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
   pub fn new(
     alpha: T,
     beta: T,
@@ -70,6 +69,7 @@ impl<T: FloatExt> DuffieKan<T> {
     r0: Option<T>,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       alpha,
@@ -88,53 +88,8 @@ impl<T: FloatExt> DuffieKan<T> {
       r0,
       x0,
       t,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> DuffieKan<T, Deterministic> {
-  pub fn seeded(
-    alpha: T,
-    beta: T,
-    gamma: T,
-    rho: T,
-    a1: T,
-    b1: T,
-    c1: T,
-    sigma1: T,
-    a2: T,
-    b2: T,
-    c2: T,
-    sigma2: T,
-    n: usize,
-    r0: Option<T>,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    let s = Deterministic::new(seed);
-    let child = s.derive();
-    Self {
-      alpha,
-      beta,
-      gamma,
-      rho,
-      a1,
-      b1,
-      c1,
-      sigma1,
-      a2,
-      b2,
-      c2,
-      sigma2,
-      n,
-      r0,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::seeded(rho, n - 1, t, child.current()),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }
@@ -144,7 +99,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKan<T, S> {
 
   fn sample(&self) -> Self::Output {
     let dt = self.cgns.dt();
-    let [cgn1, cgn2] = &self.cgns.sample();
+    let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
     let mut r = Array1::<T>::zeros(self.n);
     let mut x = Array1::<T>::zeros(self.n);
@@ -193,6 +148,7 @@ mod tests {
       Some(0.05),
       Some(0.05),
       Some(1.0),
+      Unseeded,
     );
     let [r, x] = dk.sample();
     assert_eq!(r.len(), 64);

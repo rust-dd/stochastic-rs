@@ -14,7 +14,6 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -45,7 +44,7 @@ pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> RegimeSwitchingDiffusion<T> {
+impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
   pub fn new(
     mu: T,
     q_matrix: Array2<T>,
@@ -54,6 +53,7 @@ impl<T: FloatExt> RegimeSwitchingDiffusion<T> {
     n: usize,
     s0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     let m = vols.len();
     assert_eq!(q_matrix.nrows(), m, "Q must be M×M");
@@ -68,36 +68,7 @@ impl<T: FloatExt> RegimeSwitchingDiffusion<T> {
       n,
       s0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> RegimeSwitchingDiffusion<T, Deterministic> {
-  pub fn seeded(
-    mu: T,
-    q_matrix: Array2<T>,
-    vols: Array1<T>,
-    initial_state: usize,
-    n: usize,
-    s0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    let m = vols.len();
-    assert_eq!(q_matrix.nrows(), m);
-    assert_eq!(q_matrix.ncols(), m);
-    assert!(initial_state < m);
-
-    Self {
-      mu,
-      q_matrix,
-      vols,
-      initial_state,
-      n,
-      s0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -256,6 +227,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -273,6 +245,7 @@ mod tests {
       1000,
       Some(100.0),
       Some(1.0),
+      Unseeded,
     );
     let [s, _z] = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
@@ -288,6 +261,7 @@ mod tests {
       1000,
       Some(100.0),
       Some(1.0),
+      Unseeded,
     );
     let [_s, z] = p.sample();
     for &state in z.iter() {
@@ -298,8 +272,16 @@ mod tests {
   #[test]
   fn single_regime_like_gbm() {
     let q1 = array![[0.0]];
-    let p =
-      RegimeSwitchingDiffusion::seeded(0.05, q1, array![0.2], 0, 1000, Some(100.0), Some(1.0), 42);
+    let p = RegimeSwitchingDiffusion::new(
+      0.05,
+      q1,
+      array![0.2],
+      0,
+      1000,
+      Some(100.0),
+      Some(1.0),
+      Deterministic::new(42),
+    );
     let [s, z] = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
     assert!(z.iter().all(|x| (*x - 0.0_f64).abs() < 1e-10));
@@ -307,7 +289,7 @@ mod tests {
 
   #[test]
   fn seeded_is_deterministic() {
-    let p1 = RegimeSwitchingDiffusion::seeded(
+    let p1 = RegimeSwitchingDiffusion::new(
       0.05,
       q3(),
       array![0.15, 0.25, 0.35],
@@ -315,9 +297,9 @@ mod tests {
       100,
       Some(100.0),
       Some(1.0),
-      42,
+      Deterministic::new(42),
     );
-    let p2 = RegimeSwitchingDiffusion::seeded(
+    let p2 = RegimeSwitchingDiffusion::new(
       0.05,
       q3(),
       array![0.15, 0.25, 0.35],
@@ -325,7 +307,7 @@ mod tests {
       100,
       Some(100.0),
       Some(1.0),
-      42,
+      Deterministic::new(42),
     );
     let [s1, z1] = p1.sample();
     let [s2, z2] = p2.sample();
@@ -359,6 +341,7 @@ mod tests {
       10,
       Some(100.0),
       Some(1.0),
+      Unseeded,
     );
     let pm = p.transition_prob_matrix(0.01_f64);
     for i in 0..3 {

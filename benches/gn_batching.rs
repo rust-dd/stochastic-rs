@@ -6,6 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::fouque::FouqueOU2D;
 use stochastic_rs::stochastic::interest::hjm::Hjm;
 use stochastic_rs::stochastic::interest::wu_zhang::WuZhangD;
@@ -21,12 +22,12 @@ fn bench_cgns(c: &mut Criterion) {
   let rho = 0.6f64;
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &n| {
-    let proc = Cgns::<f64>::new(rho, n, Some(1.0));
+    let proc = Cgns::<f64, _>::new(rho, n, Some(1.0), Unseeded);
     b.iter(|| black_box(proc.sample()));
   });
 
   group.bench_with_input(BenchmarkId::new("old_style", n), &n, |b, &n| {
-    let gn = Gn::<f64>::new(n, Some(1.0));
+    let gn = Gn::<f64, _>::new(n, Some(1.0), Unseeded);
     b.iter(|| {
       let gn1 = gn.sample();
       let z = gn.sample();
@@ -49,12 +50,13 @@ fn bench_fouque(c: &mut Criterion) {
   let n = 100_000usize;
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &n| {
-    let proc = FouqueOU2D::<f64>::new(1.0, 0.5, 0.1, 0.0, n, Some(0.0), Some(0.0), Some(1.0));
+    let proc =
+      FouqueOU2D::<f64, _>::new(1.0, 0.5, 0.1, 0.0, n, Some(0.0), Some(0.0), Some(1.0), Unseeded);
     b.iter(|| black_box(proc.sample()));
   });
 
   group.bench_with_input(BenchmarkId::new("old_style", n), &n, |b, &n| {
-    let gn = Gn::<f64>::new(n - 1, Some(1.0));
+    let gn = Gn::<f64, _>::new(n - 1, Some(1.0), Unseeded);
     let dt = gn.dt();
     b.iter(|| {
       let gn_x = gn.sample();
@@ -105,7 +107,7 @@ fn bench_hjm(c: &mut Criterion) {
   let t_max = 1.0f64;
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &n| {
-    let proc = Hjm::<f64>::new(
+    let proc = Hjm::<f64, _>::new(
       a_fn as fn(f64) -> f64,
       b_fn as fn(f64) -> f64,
       p_fn as fn(f64, f64) -> f64,
@@ -118,12 +120,13 @@ fn bench_hjm(c: &mut Criterion) {
       Some(1.0),
       Some(0.02),
       Some(t_max),
+      Unseeded,
     );
     b.iter(|| black_box(proc.sample()));
   });
 
   group.bench_with_input(BenchmarkId::new("old_style", n), &n, |b, &n| {
-    let gn = Gn::<f64>::new(n - 1, Some(t_max));
+    let gn = Gn::<f64, _>::new(n - 1, Some(t_max), Unseeded);
     let dt = gn.dt();
     b.iter(|| {
       let mut r = Array1::<f64>::zeros(n);
@@ -165,7 +168,7 @@ fn bench_wuzhang(c: &mut Criterion) {
   let v0 = Array1::from_elem(xn, 0.04f64);
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &_n| {
-    let proc = WuZhangD::<f64>::new(
+    let proc = WuZhangD::<f64, _>::new(
       alpha.clone(),
       beta.clone(),
       nu.clone(),
@@ -175,12 +178,13 @@ fn bench_wuzhang(c: &mut Criterion) {
       xn,
       Some(1.0),
       n,
+      Unseeded,
     );
     b.iter(|| black_box(proc.sample()));
   });
 
   group.bench_with_input(BenchmarkId::new("old_style", n), &n, |b, &_n| {
-    let gn = Gn::<f64>::new(n - 1, Some(1.0));
+    let gn = Gn::<f64, _>::new(n - 1, Some(1.0), Unseeded);
     let dt = gn.dt();
     b.iter(|| {
       let mut fv = ndarray::Array2::<f64>::zeros((2 * xn, n));

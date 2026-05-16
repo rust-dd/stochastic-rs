@@ -15,6 +15,7 @@ use rand_distr::Distribution;
 use rand_distr::Exp;
 use rand_distr::Normal;
 use stochastic_rs::distributions::exp::SimdExp;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::customjt::CustomJt;
@@ -102,7 +103,7 @@ fn bench_poisson_process(c: &mut Criterion) {
   group.warm_up_time(Duration::from_millis(500));
 
   for &n in &[4_000usize, 100_000usize] {
-    let model = Poisson::<f64>::new(3.0, Some(n), Some(1.0));
+    let model = Poisson::<f64, _>::new(3.0, Some(n), Some(1.0), Unseeded);
 
     group.bench_with_input(BenchmarkId::new("current/sample_n", n), &n, |b, &_n| {
       b.iter(|| {
@@ -121,7 +122,7 @@ fn bench_poisson_process(c: &mut Criterion) {
 
   for &(lambda, t_max) in &[(50.0_f64, 1.0_f64), (500.0_f64, 1.0_f64)] {
     let label = format!("lambda={lambda},t={t_max}");
-    let model = Poisson::<f64>::new(lambda, None, Some(t_max));
+    let model = Poisson::<f64, _>::new(lambda, None, Some(t_max), Unseeded);
 
     group.bench_with_input(
       BenchmarkId::new("current/sample_tmax", &label),
@@ -149,7 +150,7 @@ fn bench_poisson_process(c: &mut Criterion) {
   for &n in &[4_000usize, 100_000usize] {
     let exp_current = Exp::new(3.0).expect("valid rate");
     let exp_legacy = Exp::new(3.0).expect("valid rate");
-    let model = CustomJt::<f64, _>::new(Some(n), Some(1.0), exp_current);
+    let model = CustomJt::<f64, _, _>::new(Some(n), Some(1.0), exp_current, Unseeded);
 
     group.bench_with_input(BenchmarkId::new("current/customjt_n", n), &n, |b, &_n| {
       b.iter(|| {
@@ -170,7 +171,7 @@ fn bench_poisson_process(c: &mut Criterion) {
     let exp_current = Exp::new(lambda).expect("valid rate");
     let exp_legacy = Exp::new(lambda).expect("valid rate");
     let label = format!("lambda={lambda},t={t_max}");
-    let model = CustomJt::<f64, _>::new(None, Some(t_max), exp_current);
+    let model = CustomJt::<f64, _, _>::new(None, Some(t_max), exp_current, Unseeded);
 
     group.bench_with_input(
       BenchmarkId::new("current/customjt_tmax", &label),
@@ -197,8 +198,8 @@ fn bench_poisson_process(c: &mut Criterion) {
 
   for &n in &[4_000usize, 100_000usize] {
     let jump_dist = Normal::new(0.0, 1.0).expect("valid normal params");
-    let poisson = Poisson::<f64>::new(3.0, Some(n), Some(1.0));
-    let model = CompoundPoisson::new(jump_dist, poisson);
+    let poisson = Poisson::<f64, _>::new(3.0, Some(n), Some(1.0), Unseeded);
+    let model = CompoundPoisson::new(jump_dist, poisson, Unseeded);
 
     group.bench_with_input(
       BenchmarkId::new("current/compound_poisson_sample", n),
@@ -227,13 +228,14 @@ fn bench_poisson_process(c: &mut Criterion) {
     let jump_dist = Normal::new(0.0, 1.0).expect("valid normal params");
     let jump_times_distribution = Exp::new(3.0).expect("valid rate");
     let customjt_distribution = Exp::new(3.0).expect("valid rate");
-    let customjt = CustomJt::<f64, _>::new(Some(n), Some(1.0), customjt_distribution);
+    let customjt = CustomJt::<f64, _, _>::new(Some(n), Some(1.0), customjt_distribution, Unseeded);
     let model = CompoundCustom::new(
       Some(n),
       Some(1.0),
       jump_dist,
       jump_times_distribution,
       customjt,
+      Unseeded,
     );
 
     group.bench_with_input(

@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -31,32 +32,14 @@ pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> HoLee<T> {
-  pub fn new(f_T: Option<Fn1D<T>>, theta: Option<T>, sigma: T, n: usize, t: Option<T>) -> Self {
-    assert!(
-      theta.is_some() || f_T.is_some(),
-      "theta or f_T must be provided"
-    );
-
-    Self {
-      f_T,
-      theta,
-      sigma,
-      n,
-      t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> HoLee<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
+  pub fn new(
     f_T: Option<Fn1D<T>>,
     theta: Option<T>,
     sigma: T,
     n: usize,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(
       theta.is_some() || f_T.is_some(),
@@ -69,7 +52,7 @@ impl<T: FloatExt> HoLee<T, Deterministic> {
       sigma,
       n,
       t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -134,6 +117,7 @@ mod tests {
       0.0_f64,
       3,
       Some(1.0),
+      Unseeded,
     );
     let r = p.sample();
     assert!((r[1] - 0.5).abs() < 1e-12);
@@ -164,10 +148,17 @@ impl PyHoLee {
     match seed {
       Some(s) => Self {
         inner: None,
-        seeded: Some(HoLee::seeded(f_T.map(Fn1D::Py), theta, sigma, n, t, s)),
+        seeded: Some(HoLee::new(
+          f_T.map(Fn1D::Py),
+          theta,
+          sigma,
+          n,
+          t,
+          Deterministic::new(s),
+        )),
       },
       None => Self {
-        inner: Some(HoLee::new(f_T.map(Fn1D::Py), theta, sigma, n, t)),
+        inner: Some(HoLee::new(f_T.map(Fn1D::Py), theta, sigma, n, t, Unseeded)),
         seeded: None,
       },
     }

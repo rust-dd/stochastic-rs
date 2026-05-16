@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -34,24 +33,8 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
   pub fou: Fou<T, S>,
 }
 
-impl<T: FloatExt> FVasicek<T> {
-  pub fn new(hurst: T, theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>) -> Self {
-    Self {
-      hurst,
-      theta,
-      mu,
-      sigma,
-      n,
-      x0,
-      t,
-      seed: Unseeded,
-      fou: Fou::new(hurst, theta, mu, sigma, n, x0, t),
-    }
-  }
-}
-
-impl<T: FloatExt> FVasicek<T, Deterministic> {
-  pub fn seeded(
+impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
+  pub fn new(
     hurst: T,
     theta: T,
     mu: T,
@@ -59,10 +42,8 @@ impl<T: FloatExt> FVasicek<T, Deterministic> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    seed: u64,
+    seed: S,
   ) -> Self {
-    let s = Deterministic::new(seed);
-    let child = s.derive();
     Self {
       hurst,
       theta,
@@ -71,8 +52,8 @@ impl<T: FloatExt> FVasicek<T, Deterministic> {
       n,
       x0,
       t,
-      seed: Deterministic::new(seed),
-      fou: Fou::seeded(hurst, theta, mu, sigma, n, x0, t, child.current()),
+      fou: Fou::new(hurst, theta, mu, sigma, n, x0, t, seed.derive()),
+      seed,
     }
   }
 }
@@ -96,7 +77,7 @@ mod tests {
 
   #[test]
   fn sample_length_matches_n() {
-    let v = FVasicek::<f64>::new(0.7, 0.5, 0.04, 0.01, 64, Some(0.05), Some(1.0));
+    let v = FVasicek::<f64>::new(0.7, 0.5, 0.04, 0.01, 64, Some(0.05), Some(1.0), Unseeded);
     let path = v.sample();
     assert_eq!(path.len(), 64);
   }

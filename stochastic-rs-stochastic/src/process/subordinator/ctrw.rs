@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
@@ -39,13 +38,14 @@ pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Ctrw<T> {
+impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
   pub fn new(
     waiting: CtrwWaitingLaw<T>,
     jumps: CtrwJumpLaw<T>,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       waiting,
@@ -53,27 +53,7 @@ impl<T: FloatExt> Ctrw<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Ctrw<T, Deterministic> {
-  pub fn seeded(
-    waiting: CtrwWaitingLaw<T>,
-    jumps: CtrwJumpLaw<T>,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      waiting,
-      jumps,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -331,13 +311,14 @@ impl PyCtrw {
             n,
             x0.map(|v| v as f32),
             t.map(|v| v as f32),
+            Unseeded,
           )),
           inner_f64: None,
         }
       }
       _ => Self {
         inner_f32: None,
-        inner_f64: Some(Ctrw::new(waiting_f64, jumps_f64, n, x0, t)),
+        inner_f64: Some(Ctrw::new(waiting_f64, jumps_f64, n, x0, t, Unseeded)),
       },
     }
   }

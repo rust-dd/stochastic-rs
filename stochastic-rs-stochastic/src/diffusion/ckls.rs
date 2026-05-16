@@ -6,7 +6,6 @@
 //!
 use ndarray::Array1;
 use ndarray::s;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -33,7 +32,7 @@ pub struct Ckls<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Ckls<T> {
+impl<T: FloatExt, S: SeedExt> Ckls<T, S> {
   pub fn new(
     theta1: T,
     theta2: T,
@@ -42,6 +41,7 @@ impl<T: FloatExt> Ckls<T> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       theta1,
@@ -51,31 +51,7 @@ impl<T: FloatExt> Ckls<T> {
       n,
       x0,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Ckls<T, Deterministic> {
-  pub fn seeded(
-    theta1: T,
-    theta2: T,
-    theta3: T,
-    theta4: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      theta1,
-      theta2,
-      theta3,
-      theta4,
-      n,
-      x0,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

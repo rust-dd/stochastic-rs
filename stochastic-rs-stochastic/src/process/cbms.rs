@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -25,8 +24,8 @@ pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
-impl<T: FloatExt> Cbms<T> {
-  pub fn new(rho: T, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
+  pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
@@ -36,25 +35,8 @@ impl<T: FloatExt> Cbms<T> {
       rho,
       n,
       t,
-      seed: Unseeded,
-      cgns: Cgns::new(rho, n - 1, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Cbms<T, Deterministic> {
-  pub fn seeded(rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
-
-    Self {
-      rho,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-      cgns: Cgns::new(rho, n - 1, t),
+      seed,
+      cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
 }

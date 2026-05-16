@@ -16,7 +16,6 @@
 
 use ndarray::Array1;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -58,7 +57,7 @@ pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> FBatesSvj<T> {
+impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     hurst: T,
@@ -74,6 +73,7 @@ impl<T: FloatExt> FBatesSvj<T> {
     omega: T,
     n: usize,
     t: Option<T>,
+    seed: S,
   ) -> Self {
     Self {
       hurst,
@@ -89,44 +89,7 @@ impl<T: FloatExt> FBatesSvj<T> {
       omega,
       n,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> FBatesSvj<T, Deterministic> {
-  #[allow(clippy::too_many_arguments)]
-  pub fn seeded(
-    hurst: T,
-    mu: T,
-    s0: T,
-    v0: T,
-    theta: T,
-    kappa: T,
-    xi: T,
-    rho: T,
-    lambda: T,
-    nu: T,
-    omega: T,
-    n: usize,
-    t: Option<T>,
-    seed: u64,
-  ) -> Self {
-    Self {
-      hurst,
-      mu,
-      s0,
-      v0,
-      theta,
-      kappa,
-      xi,
-      rho,
-      lambda,
-      nu,
-      omega,
-      n,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -143,7 +106,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
     };
 
     // Use Cgns for rho-correlated noise: [gn_vol, gn_price]
-    let cgns = Cgns::new(self.rho, n_steps, self.t);
+    let cgns = Cgns::new(self.rho, n_steps, self.t, Unseeded);
     let [gn_vol, gn_price] = cgns.sample_impl(&self.seed.derive());
 
     let mut yt = Array1::<T>::zeros(self.n);
@@ -222,11 +185,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
   fn price_stays_positive() {
-    let m = FBatesSvj::seeded(
+    let m = FBatesSvj::new(
       0.1_f64,
       0.05,
       100.0,
@@ -240,7 +205,7 @@ mod tests {
       0.1,
       256,
       Some(1.0),
-      42,
+      Deterministic::new(42),
     );
     let [s, _v] = m.sample();
     assert!(
@@ -251,7 +216,7 @@ mod tests {
 
   #[test]
   fn variance_path_is_finite() {
-    let m = FBatesSvj::seeded(
+    let m = FBatesSvj::new(
       0.15_f64,
       0.05,
       100.0,
@@ -265,7 +230,7 @@ mod tests {
       0.1,
       256,
       Some(1.0),
-      99,
+      Deterministic::new(99),
     );
     let [_s, v] = m.sample();
     assert!(v.iter().all(|x| x.is_finite()), "variance must be finite");
@@ -274,7 +239,7 @@ mod tests {
   #[test]
   fn seeded_is_deterministic() {
     let mk = || {
-      FBatesSvj::seeded(
+      FBatesSvj::new(
         0.1_f64,
         0.05,
         100.0,
@@ -288,7 +253,7 @@ mod tests {
         0.1,
         128,
         Some(0.5),
-        77,
+        Deterministic::new(77),
       )
     };
     let [s1, _] = mk().sample();
@@ -301,7 +266,7 @@ mod tests {
   #[test]
   fn reduces_to_rough_heston_without_jumps() {
     // With λ=0, should be identical to RoughHeston
-    let m = FBatesSvj::seeded(
+    let m = FBatesSvj::new(
       0.1_f64,
       0.05,
       100.0,
@@ -315,7 +280,7 @@ mod tests {
       0.0,
       128,
       Some(0.5),
-      55,
+      Deterministic::new(55),
     );
     let [s, v] = m.sample();
     assert!(s.iter().all(|x| x.is_finite() && *x > 0.0));

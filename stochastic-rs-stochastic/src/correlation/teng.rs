@@ -15,7 +15,6 @@
 //! Closed-form stationary density: f(ρ̃) ∝ (1+ρ̃)^{a+b}(1−ρ̃)^{a−b}.
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -47,8 +46,8 @@ pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> TengSCP<T> {
-  pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
+  pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self {
       kappa,
       mu,
@@ -56,21 +55,7 @@ impl<T: FloatExt> TengSCP<T> {
       rho0,
       n,
       t,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> TengSCP<T, Deterministic> {
-  pub fn seeded(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    Self {
-      kappa,
-      mu,
-      sigma,
-      rho0,
-      n,
-      t,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -165,11 +150,21 @@ py_process_1d!(PyTengSCP, TengSCP,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
   fn stays_bounded() {
-    let scp = TengSCP::seeded(8.0_f64, 0.0, 1.2, 0.3, 2000, Some(2.0), 123);
+    let scp = TengSCP::new(
+      8.0_f64,
+      0.0,
+      1.2,
+      0.3,
+      2000,
+      Some(2.0),
+      Deterministic::new(123),
+    );
     let path = scp.sample();
     assert!(path.iter().all(|&r| r > -1.0 && r < 1.0));
   }
@@ -177,7 +172,7 @@ mod tests {
   #[test]
   fn mean_reverts() {
     let mu = -0.4_f64;
-    let scp = TengSCP::seeded(12.0, mu, 0.5, 0.5, 5000, Some(10.0), 99);
+    let scp = TengSCP::new(12.0, mu, 0.5, 0.5, 5000, Some(10.0), Deterministic::new(99));
     let path = scp.sample();
     let tail = &path.as_slice().unwrap()[4000..];
     let avg: f64 = tail.iter().sum::<f64>() / tail.len() as f64;
@@ -189,7 +184,7 @@ mod tests {
 
   #[test]
   fn stationary_density_peaks_near_mu() {
-    let scp = TengSCP::new(8.0_f64, 0.3, 0.5, 0.0, 100, None);
+    let scp = TengSCP::new(8.0_f64, 0.3, 0.5, 0.0, 100, None, Unseeded);
     let d_at_mu = scp.stationary_density_unnorm(0.3);
     let d_at_0 = scp.stationary_density_unnorm(0.0);
     assert!(d_at_mu > d_at_0);
@@ -197,8 +192,26 @@ mod tests {
 
   #[test]
   fn seeded_reproducibility() {
-    let p1 = TengSCP::seeded(5.0_f64, 0.0, 0.8, 0.0, 200, Some(1.0), 42).sample();
-    let p2 = TengSCP::seeded(5.0_f64, 0.0, 0.8, 0.0, 200, Some(1.0), 42).sample();
+    let p1 = TengSCP::new(
+      5.0_f64,
+      0.0,
+      0.8,
+      0.0,
+      200,
+      Some(1.0),
+      Deterministic::new(42),
+    )
+    .sample();
+    let p2 = TengSCP::new(
+      5.0_f64,
+      0.0,
+      0.8,
+      0.0,
+      200,
+      Some(1.0),
+      Deterministic::new(42),
+    )
+    .sample();
     for i in 0..200 {
       assert!((p1[i] - p2[i]).abs() < 1e-14, "diverged at i={i}");
     }

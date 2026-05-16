@@ -27,8 +27,8 @@ pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded> {
   fgn: Fgn<T>,
 }
 
-impl<T: FloatExt> Cfgns<T> {
-  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>) -> Self {
+impl<T: FloatExt, S: SeedExt> Cfgns<T, S> {
+  pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
       "Hurst parameter must be in (0, 1)"
@@ -43,30 +43,8 @@ impl<T: FloatExt> Cfgns<T> {
       rho,
       n,
       t,
-      seed: Unseeded,
-      fgn: Fgn::new(hurst, n, t),
-    }
-  }
-}
-
-impl<T: FloatExt> Cfgns<T, Deterministic> {
-  pub fn seeded(hurst: T, rho: T, n: usize, t: Option<T>, seed: u64) -> Self {
-    assert!(
-      (T::zero()..=T::one()).contains(&hurst),
-      "Hurst parameter must be in (0, 1)"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
-
-    Self {
-      hurst,
-      rho,
-      n,
-      t,
-      seed: Deterministic::new(seed),
-      fgn: Fgn::new(hurst, n, t),
+      seed,
+      fgn: Fgn::new(hurst, n, t, Unseeded),
     }
   }
 }

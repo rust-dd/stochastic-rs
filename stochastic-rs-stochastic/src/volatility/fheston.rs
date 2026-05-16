@@ -5,6 +5,7 @@
 //! $$
 //!
 use ndarray::Array1;
+#[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -43,7 +44,7 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> RoughHeston<T> {
+impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
   pub fn new(
     hurst: T,
     v0: Option<T>,
@@ -54,6 +55,7 @@ impl<T: FloatExt> RoughHeston<T> {
     c2: Option<T>,
     t: Option<T>,
     n: usize,
+    seed: S,
   ) -> Self {
     RoughHeston {
       hurst,
@@ -68,38 +70,7 @@ impl<T: FloatExt> RoughHeston<T> {
       mu: None,
       s0: None,
       rho: None,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> RoughHeston<T, Deterministic> {
-  pub fn seeded(
-    hurst: T,
-    v0: Option<T>,
-    theta: T,
-    kappa: T,
-    nu: T,
-    c1: Option<T>,
-    c2: Option<T>,
-    t: Option<T>,
-    n: usize,
-    seed: u64,
-  ) -> Self {
-    RoughHeston {
-      hurst,
-      v0,
-      theta,
-      kappa,
-      nu,
-      c1,
-      c2,
-      t,
-      n,
-      mu: None,
-      s0: None,
-      rho: None,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }
@@ -117,7 +88,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
 
     // Use Cgns for rho-correlated noise: [gn_vol, gn_price]
     let rho = self.rho.unwrap_or(T::zero());
-    let cgns = Cgns::new(rho, n_steps, self.t);
+    let cgns = Cgns::new(rho, n_steps, self.t, Unseeded);
     let [gn_vol, gn_price] = cgns.sample();
 
     let mut yt = Array1::<T>::zeros(self.n);
@@ -209,7 +180,7 @@ impl PyRoughHeston {
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
-        let mut m = RoughHeston::seeded(
+        let mut m = RoughHeston::new(
           hurst as f32,
           v0.map(|v| v as f32),
           theta as f32,
@@ -219,7 +190,7 @@ impl PyRoughHeston {
           c2.map(|v| v as f32),
           t.map(|v| v as f32),
           n,
-          sd,
+          Deterministic::new(sd),
         );
         m.mu = mu.map(|v| v as f32);
         m.s0 = s0.map(|v| v as f32);
@@ -227,7 +198,18 @@ impl PyRoughHeston {
         obj.seeded_f32 = Some(m);
       }
       (Some(sd), _) => {
-        let mut m = RoughHeston::seeded(hurst, v0, theta, kappa, nu, c1, c2, t, n, sd);
+        let mut m = RoughHeston::new(
+          hurst,
+          v0,
+          theta,
+          kappa,
+          nu,
+          c1,
+          c2,
+          t,
+          n,
+          Deterministic::new(sd),
+        );
         m.mu = mu;
         m.s0 = s0;
         m.rho = rho;
@@ -244,6 +226,7 @@ impl PyRoughHeston {
           c2.map(|v| v as f32),
           t.map(|v| v as f32),
           n,
+          Unseeded,
         );
         m.mu = mu.map(|v| v as f32);
         m.s0 = s0.map(|v| v as f32);
@@ -251,7 +234,7 @@ impl PyRoughHeston {
         obj.inner_f32 = Some(m);
       }
       (None, _) => {
-        let mut m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n);
+        let mut m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n, Unseeded);
         m.mu = mu;
         m.s0 = s0;
         m.rho = rho;

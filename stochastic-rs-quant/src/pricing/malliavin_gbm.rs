@@ -7,6 +7,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
 use crate::traits::PricerExt;
@@ -151,7 +152,7 @@ impl GbmMalliavinPricer {
     let mu = self.r - self.q.unwrap_or(0.0);
 
     // Construct a Gbm process with Euler discretization on [0, T].
-    let gbm = Gbm::new(mu, self.v, self.n_steps, Some(self.s), Some(T));
+    let gbm = Gbm::new(mu, self.v, self.n_steps, Some(self.s), Some(T), Unseeded);
 
     let m = self.n_paths;
     let n = self.n_steps;

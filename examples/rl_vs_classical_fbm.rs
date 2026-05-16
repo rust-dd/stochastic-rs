@@ -22,7 +22,7 @@ use plotly::layout::Annotation;
 use plotly::layout::Axis;
 use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
-use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::{Deterministic, Unseeded};
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::stochastic::rough::RlFBm;
 use stochastic_rs::traits::ProcessExt;
@@ -61,8 +61,8 @@ fn timing_table() -> Vec<TimingPoint> {
   );
   for &h in &hursts {
     for &n in &sizes {
-      let classical = Fbm::<f64>::new(h, n, Some(1.0));
-      let rl = RlFBm::<f64>::new(h, n, Some(1.0), None);
+      let classical = Fbm::<f64, _>::new(h, n, Some(1.0), Unseeded);
+      let rl = RlFBm::<f64, _>::new(h, n, Some(1.0), None, Unseeded);
       let iters = (5_000_000 / n).clamp(40, 2_000);
       let t_classical = bench_time(|| classical.sample(), iters);
       let t_rl = bench_time(|| rl.sample(), iters);
@@ -155,8 +155,8 @@ fn write_timing_plot(points: &[TimingPoint], out_path: &str) {
 }
 
 fn sample_paths(hurst: f64, n: usize, seed: u64) -> (Array1<f64>, Array1<f64>) {
-  let classical = Fbm::<f64, Deterministic>::seeded(hurst, n, Some(1.0), seed);
-  let rl = RlFBm::<f64, Deterministic>::seeded(hurst, n, Some(1.0), None, seed);
+  let classical = Fbm::<f64, _>::new(hurst, n, Some(1.0), Deterministic::new(seed));
+  let rl = RlFBm::<f64, _>::new(hurst, n, Some(1.0), None, Deterministic::new(seed));
   (classical.sample(), rl.sample())
 }
 
@@ -258,8 +258,8 @@ fn variance_comparison() {
     let mut c_end = Vec::with_capacity(samples);
     let mut r_end = Vec::with_capacity(samples);
     for k in 0..samples {
-      let classical = Fbm::<f64, Deterministic>::seeded(h, n, Some(t), 10_000 + k as u64);
-      let rl = RlFBm::<f64, Deterministic>::seeded(h, n, Some(t), None, 10_000 + k as u64);
+      let classical = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(10_000 + k as u64));
+      let rl = RlFBm::<f64, _>::new(h, n, Some(t), None, Deterministic::new(10_000 + k as u64));
       c_end.push(*classical.sample().last().unwrap());
       r_end.push(*rl.sample().last().unwrap());
     }

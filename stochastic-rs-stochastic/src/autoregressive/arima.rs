@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -36,30 +35,15 @@ pub struct Arima<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Arima<T> {
+impl<T: FloatExt, S: SeedExt> Arima<T, S> {
   /// Create a new Arima model with the given parameters.
-  pub fn new(ar_coefs: Array1<T>, ma_coefs: Array1<T>, d: usize, sigma: T, n: usize) -> Self {
-    assert!(sigma > T::zero(), "Arima requires sigma > 0");
-    Self {
-      ar_coefs,
-      ma_coefs,
-      d,
-      sigma,
-      n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Arima<T, Deterministic> {
-  /// Create a new Arima model with a deterministic seed for reproducible output.
-  pub fn seeded(
+  pub fn new(
     ar_coefs: Array1<T>,
     ma_coefs: Array1<T>,
     d: usize,
     sigma: T,
     n: usize,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(sigma > T::zero(), "Arima requires sigma > 0");
     Self {
@@ -68,7 +52,7 @@ impl<T: FloatExt> Arima<T, Deterministic> {
       d,
       sigma,
       n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

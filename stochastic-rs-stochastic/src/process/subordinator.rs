@@ -43,6 +43,8 @@ pub(crate) fn sample_positive_stable(alpha: f64, uniform: &SimdUniform<f64>) -> 
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::AlphaStableSubordinator;
   use super::Ctrw;
   use super::CtrwJumpLaw;
@@ -56,14 +58,22 @@ mod tests {
 
   #[test]
   fn alpha_stable_subordinator_is_non_decreasing() {
-    let p = AlphaStableSubordinator::new(0.7_f64, 1.0, 256, Some(0.0), Some(1.0));
+    let p = AlphaStableSubordinator::new(0.7_f64, 1.0, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
   }
 
   #[test]
   fn inverse_stable_is_non_decreasing() {
-    let p = InverseAlphaStableSubordinator::new(0.7_f64, 1.0, 128, Some(1.0), 2048, Some(4.0));
+    let p = InverseAlphaStableSubordinator::new(
+      0.7_f64,
+      1.0,
+      128,
+      Some(1.0),
+      2048,
+      Some(4.0),
+      Unseeded,
+    );
     let e = p.sample();
     assert_eq!(e[0], 0.0);
     assert!(e.windows(2).into_iter().all(|w| w[1] >= w[0]));
@@ -71,28 +81,37 @@ mod tests {
 
   #[test]
   fn poisson_subordinator_is_non_decreasing() {
-    let p = PoissonSubordinator::new(2.0_f64, 256, Some(0.0), Some(1.0));
+    let p = PoissonSubordinator::new(2.0_f64, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
   }
 
   #[test]
   fn gamma_subordinator_is_non_decreasing() {
-    let p = GammaSubordinator::new(3.0_f64, 5.0, 256, Some(0.0), Some(1.0));
+    let p = GammaSubordinator::new(3.0_f64, 5.0, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
   }
 
   #[test]
   fn ig_subordinator_is_non_decreasing() {
-    let p = IGSubordinator::new(1.5_f64, 2.0, 256, Some(0.0), Some(1.0));
+    let p = IGSubordinator::new(1.5_f64, 2.0, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
   }
 
   #[test]
   fn tempered_stable_subordinator_is_non_decreasing() {
-    let p = TemperedStableSubordinator::new(0.7_f64, 1.0, 2.0, 0.05, 256, Some(0.0), Some(1.0));
+    let p = TemperedStableSubordinator::new(
+      0.7_f64,
+      1.0,
+      2.0,
+      0.05,
+      256,
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    );
     let x = p.sample();
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
   }
@@ -108,6 +127,7 @@ mod tests {
       512,
       Some(0.0),
       Some(1.0),
+      Unseeded,
     );
     let x = p.sample();
     assert_eq!(x.len(), 512);

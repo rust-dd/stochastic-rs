@@ -6,7 +6,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -59,33 +58,15 @@ pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt> Egarch<T> {
+impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
   /// Create a new Egarch model with the given parameters.
-  pub fn new(omega: T, alpha: Array1<T>, gamma: Array1<T>, beta: Array1<T>, n: usize) -> Self {
-    assert!(
-      alpha.len() == gamma.len(),
-      "Egarch requires alpha.len() == gamma.len()"
-    );
-    Self {
-      omega,
-      alpha,
-      gamma,
-      beta,
-      n,
-      seed: Unseeded,
-    }
-  }
-}
-
-impl<T: FloatExt> Egarch<T, Deterministic> {
-  /// Create a new Egarch model with a deterministic seed for reproducible output.
-  pub fn seeded(
+  pub fn new(
     omega: T,
     alpha: Array1<T>,
     gamma: Array1<T>,
     beta: Array1<T>,
     n: usize,
-    seed: u64,
+    seed: S,
   ) -> Self {
     assert!(
       alpha.len() == gamma.len(),
@@ -97,7 +78,7 @@ impl<T: FloatExt> Egarch<T, Deterministic> {
       gamma,
       beta,
       n,
-      seed: Deterministic::new(seed),
+      seed,
     }
   }
 }

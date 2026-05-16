@@ -181,6 +181,7 @@ use ndarray::ArrayView1;
 use ndarray::Axis;
 use ndarray::s;
 use rand::Rng;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::noise::fgn::Fgn;
 use crate::traits::FloatExt;
@@ -298,7 +299,7 @@ where
 
         if let Some(h) = &self.hursts {
           let fgns: Vec<Fgn<T>> = (0..dim)
-            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0)))
+            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded))
             .collect();
 
           for p in 0..n_paths {

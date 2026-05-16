@@ -20,7 +20,6 @@
 //! and the convention expected by `FMVol`.
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -130,7 +129,7 @@ fn validate_params<T: FloatExt>(
   }
 }
 
-impl<T: FloatExt> Heston2D<T> {
+impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     x0: [Option<T>; 2],
@@ -143,6 +142,7 @@ impl<T: FloatExt> Heston2D<T> {
     n: usize,
     t: Option<T>,
     use_sym: Option<bool>,
+    seed: S,
   ) -> Self {
     validate_params(&v0, &theta, &kappa, &sigma, &rho, n);
     let chol = cholesky_4x4::<T>(rho);
@@ -157,41 +157,7 @@ impl<T: FloatExt> Heston2D<T> {
       n,
       t,
       use_sym,
-      seed: Unseeded,
-      chol,
-    }
-  }
-}
-
-impl<T: FloatExt> Heston2D<T, Deterministic> {
-  #[allow(clippy::too_many_arguments)]
-  pub fn seeded(
-    x0: [Option<T>; 2],
-    v0: [Option<T>; 2],
-    mu: [T; 2],
-    theta: [T; 2],
-    kappa: [T; 2],
-    sigma: [T; 2],
-    rho: [T; 6],
-    n: usize,
-    t: Option<T>,
-    use_sym: Option<bool>,
-    seed: u64,
-  ) -> Self {
-    validate_params(&v0, &theta, &kappa, &sigma, &rho, n);
-    let chol = cholesky_4x4::<T>(rho);
-    Self {
-      x0,
-      v0,
-      mu,
-      theta,
-      kappa,
-      sigma,
-      rho,
-      n,
-      t,
-      use_sym,
-      seed: Deterministic::new(seed),
+      seed,
       chol,
     }
   }
@@ -267,6 +233,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston2D<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   fn rho_default<T: FloatExt>() -> [T; 6] {
@@ -284,7 +252,7 @@ mod tests {
 
   #[test]
   fn shapes_match_n() {
-    let h = Heston2D::<f64>::new(
+    let h = Heston2D::<f64, _>::new(
       [Some(0.0), Some(0.0)],
       [Some(0.4), Some(0.4)],
       [0.0, 0.0],
@@ -295,6 +263,7 @@ mod tests {
       512,
       Some(1.0),
       Some(false),
+      Unseeded,
     );
     let [x1, v1, x2, v2] = h.sample();
     assert_eq!(x1.len(), 512);
@@ -308,7 +277,7 @@ mod tests {
   #[test]
   fn seeded_is_deterministic() {
     let mk = || {
-      Heston2D::<f64, Deterministic>::seeded(
+      Heston2D::<f64, Deterministic>::new(
         [Some(0.0), Some(0.0)],
         [Some(0.4), Some(0.4)],
         [0.0, 0.0],
@@ -319,7 +288,7 @@ mod tests {
         128,
         Some(1.0),
         Some(false),
-        42,
+        Deterministic::new(42),
       )
     };
     let [a, _, b, _] = mk().sample();
@@ -337,7 +306,7 @@ mod tests {
     // sqrt(v_1)/sqrt(v_2) = ρ_W1W2 (when variances are constant on average).
     let rho_w1w2 = 0.8_f64;
     let rho: [f64; 6] = [0.0, 0.0, 0.0, 0.0, 0.0, rho_w1w2];
-    let h = Heston2D::<f64, Deterministic>::seeded(
+    let h = Heston2D::<f64, Deterministic>::new(
       [Some(0.0), Some(0.0)],
       [Some(0.4), Some(0.4)],
       [0.0, 0.0],
@@ -348,7 +317,7 @@ mod tests {
       20_000,
       Some(1.0),
       Some(false),
-      7,
+      Deterministic::new(7),
     );
     let [x1, _v1, x2, _v2] = h.sample();
     let r1: Vec<f64> = (1..x1.len()).map(|i| x1[i] - x1[i - 1]).collect();
@@ -375,7 +344,7 @@ mod tests {
   #[should_panic(expected = "not PSD")]
   fn rejects_non_psd_correlation() {
     let bad: [f64; 6] = [0.99, 0.99, 0.99, 0.99, 0.99, -0.99];
-    let _ = Heston2D::<f64>::new(
+    let _ = Heston2D::<f64, _>::new(
       [Some(0.0), Some(0.0)],
       [Some(0.4), Some(0.4)],
       [0.0, 0.0],
@@ -386,6 +355,7 @@ mod tests {
       16,
       Some(1.0),
       Some(false),
+      Unseeded,
     );
   }
 }
