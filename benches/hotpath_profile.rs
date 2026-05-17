@@ -8,6 +8,7 @@ use std::hint::black_box;
 use stochastic_rs::distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs::distributions::exp::SimdExpZig;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -109,7 +110,7 @@ fn profile_alpha_stable_cauchy_f64(n: usize) {
 #[hotpath::measure]
 fn profile_fgn_construction(n: usize, hurst: f64) {
   for _ in 0..64 {
-    let fgn = Fgn::<f64>::new(hurst, n, Some(1.0));
+    let fgn = Fgn::<f64>::new(hurst, n, Some(1.0), Unseeded);
     black_box(&fgn);
   }
 }
@@ -150,7 +151,7 @@ fn main() {
   profile_fgn_construction(FGN_STEPS, 0.7);
 
   println!("[7/7] Fgn sampling (n={FGN_STEPS}, {FGN_PATHS} paths)...");
-  let fgn = Fgn::<f64>::new(0.7, FGN_STEPS, Some(1.0));
+  let fgn = Fgn::<f64>::new(0.7, FGN_STEPS, Some(1.0), Unseeded);
   profile_fgn_sample(&fgn, FGN_PATHS);
 
   println!("\nDone.\n");

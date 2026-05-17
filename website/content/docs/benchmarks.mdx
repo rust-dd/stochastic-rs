@@ -92,39 +92,33 @@ Test grid: `n ∈ {1024, 4096, 16384, 65536}` for single paths and
 Use this bench to discover the cross-over point on your machine
 between scalar / SIMD CPU, CPU-FFT (Accelerate), and GPU.
 
-## Distribution sampling — multicore
+## Normal sampling vs `rand_distr` (single-thread, `fill_slice`)
 
-Measured with `cargo bench --bench dist_multicore`. Configuration:
+Measured with `cargo bench --bench dist_multicore`. Single-thread `fill_slice`,
+median of 7 runs. Compares three implementations of the **same** workload
+(write `n` `N(0, 1)` samples into a pre-allocated `Vec<f64>`):
 
-- `sample_matrix` benchmark
-- 1-thread vs 14-thread rayon pools
-- Most distributions: `1024 × 1024`; heavy discrete samplers: `512 × 512`
+- **`SimdNormal::fill_slice`** — our SIMD Ziggurat with the `wide`-based RNG.
+- **`rand_distr + SimdRng`** — `rand_distr::Normal::sample` consuming our
+  `SimdRng`. Isolates the Normal algorithm — both paths share the same
+  uniform stream.
+- **`rand_distr + rand::rng()`** — out-of-box upstream: `rand_distr::Normal`
+  on `rand::rng()` (`ThreadRng`-backed `ChaCha`).
 
-| Distribution        | Shape         | 1T (ms) | MT (ms) | Speedup |
-|---------------------|---------------|--------:|--------:|--------:|
-| Normal `f64`        | 1024 × 1024   |   1.77  |   0.32  |  5.58×  |
-| Exp `f64`           | 1024 × 1024   |   1.57  |   0.30  |  5.19×  |
-| Uniform `f64`       | 1024 × 1024   |   0.38  |   0.09  |  4.00×  |
-| Cauchy `f64`        | 1024 × 1024   |   7.11  |   1.01  |  7.08×  |
-| LogNormal `f64`     | 1024 × 1024   |   5.61  |   0.79  |  7.07×  |
-| Gamma `f64`         | 1024 × 1024   |   5.07  |   0.80  |  6.38×  |
-| ChiSq `f64`         | 1024 × 1024   |   5.12  |   0.74  |  6.94×  |
-| StudentT `f64`      | 1024 × 1024   |   7.66  |   1.03  |  7.43×  |
-| Beta `f64`          | 1024 × 1024   |  11.80  |   1.57  |  7.50×  |
-| Weibull `f64`       | 1024 × 1024   |  12.32  |   1.86  |  6.62×  |
-| Pareto `f64`        | 1024 × 1024   |   7.36  |   1.08  |  6.80×  |
-| InvGauss `f64`      | 1024 × 1024   |   2.83  |   0.49  |  5.73×  |
-| NIG `f64`           | 1024 × 1024   |   6.17  |   0.81  |  7.61×  |
-| AlphaStable `f64`   | 1024 × 1024   |  46.17  |   5.29  |  8.73×  |
-| Poisson `i64`       | 1024 × 1024   |   2.23  |   0.38  |  5.90×  |
-| Geometric `u64`     | 1024 × 1024   |   2.93  |   0.49  |  6.01×  |
-| Binomial `u32`      | 512 × 512     |  20.37  |   3.01  |  6.78×  |
-| Hypergeo `u32`      | 512 × 512     |  20.87  |   3.05  |  6.85×  |
+|      n  | `SimdNormal` (µs) | `rand_distr + SimdRng` (µs) | speedup | `rand_distr + rand::rng()` (µs) | speedup |
+|--------:|------------------:|-----------------------------:|--------:|---------------------------------:|--------:|
+|       4 |             0.008 |                        0.013 |  1.73×  |                            0.032 |  4.22×  |
+|       8 |             0.014 |                        0.026 |  1.78×  |                            0.065 |  4.52×  |
+|      16 |             0.029 |                        0.051 |  1.79×  |                            0.128 |  4.47×  |
+|      64 |             0.109 |                        0.208 |  1.90×  |                            0.508 |  4.64×  |
+|     256 |             0.432 |                        0.840 |  1.94×  |                            2.029 |  4.70×  |
+|   4 096 |             6.975 |                       13.176 |  1.89×  |                           32.382 |  4.64×  |
+|  65 536 |           113.458 |                      212.406 |  1.87×  |                          520.219 |  4.59×  |
 
-`Normal` single-thread kernel comparison (`fill_slice`, same run):
-
-- vs `rand_distr + SimdRng` — ≈ **1.60×** to **1.78×**
-- vs `rand_distr + rand::rng()` — ≈ **4.06×** to **4.46×**
+The **`rand_distr + SimdRng`** column shows the pure algorithmic win at the
+distribution level (our SIMD Ziggurat fast-path beats the scalar reference
+Ziggurat ~1.7–1.9×). The **`rand_distr + rand::rng()`** column shows the
+full pipeline win including the SIMD RNG itself (~4.2–4.7×).
 
 ## v2.1 SIMD RNG / Ziggurat speedups
 
