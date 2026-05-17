@@ -15,6 +15,7 @@ use criterion::criterion_main;
 use stochastic_rs::distributions::SimdNormalDual;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_core::simd_rng_dual::SimdRngDual;
 
 const SIZES: &[(&str, usize)] = &[
