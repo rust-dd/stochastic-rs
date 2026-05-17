@@ -6,6 +6,7 @@
     "process-ext",
     "distribution-ext",
     "pricer-ext",
+    "seeding",
     "feature-flags",
     "design-philosophy"
   ]

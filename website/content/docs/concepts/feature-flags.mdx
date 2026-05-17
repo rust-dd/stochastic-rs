@@ -14,15 +14,16 @@ Rust core.
 
 ## The matrix
 
-| Feature      | Owner crate                 | Pulls in                             | Use when                                  |
-|--------------|-----------------------------|--------------------------------------|-------------------------------------------|
-| `ai`         | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
-| `cuda`       | `-stochastic`               | `cudarc`, `cuda-runtime`             | NVIDIA GPU FGN / fBM samplers             |
-| `metal`      | `-stochastic`               | `metal-rs`                           | macOS GPU FGN / fBM samplers              |
-| `openblas`   | `-stats`, `-quant`          | `ndarray-linalg/openblas`            | MLE, multivariate copulas, Cholesky-heavy |
-| `viz`        | umbrella                    | `stochastic-rs-viz`, `plotly`        | Quick HTML plots                          |
-| `python`     | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
-| `hotpath`    | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
+| Feature           | Owner crate                 | Pulls in                             | Use when                                  |
+|-------------------|-----------------------------|--------------------------------------|-------------------------------------------|
+| `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
+| `cuda`            | `-stochastic`               | `cudarc`, `cuda-runtime`             | NVIDIA GPU FGN / fBM samplers             |
+| `metal`           | `-stochastic`               | `metal-rs`                           | macOS GPU FGN / fBM samplers              |
+| `openblas`        | `-stats`, `-quant`          | `ndarray-linalg/openblas`            | MLE, multivariate copulas, Cholesky-heavy |
+| `viz`             | umbrella                    | `stochastic-rs-viz`, `plotly`        | Quick HTML plots                          |
+| `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
+| `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
+| `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~5–11 % bulk Ziggurat speedup on Apple Silicon — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
 
 ## Propagation
 
@@ -39,6 +40,10 @@ metal   = ["stochastic-rs-stochastic/metal"]
 openblas = [
   "stochastic-rs-stats/openblas",
   "stochastic-rs-quant/openblas",
+]
+dual-stream-rng = [
+  "stochastic-rs-core/dual-stream-rng",
+  "stochastic-rs-distributions/dual-stream-rng",
 ]
 ```
 

@@ -255,6 +255,16 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   /// internal state. Used by generic distributions that are parametric over
   /// the underlying RNG type (e.g. `SimdNormal<T, N, R>`).
   fn rng_ext<R: SimdRngExt>(&self) -> R;
+
+  /// Reset the internal seed state in place where meaningful.
+  ///
+  /// No-op for [`Unseeded`] — auto-seeded streams have no fixed point to
+  /// reset to. For [`Deterministic`] this atomically replaces the current
+  /// `state`, so a subsequent `rng()` / `rng_ext()` / `derive()` produces
+  /// the stream rooted at the new `seed`. Lets a single
+  /// `ProcessExt`-style instance replay or sweep different seeds without
+  /// rebuilding the process — `fbm.seed.reseed(seed); fbm.sample();`.
+  fn reseed(&self, _seed: u64) {}
 }
 
 /// No seed — each RNG is independently random. Zero overhead.
@@ -293,6 +303,15 @@ impl Deterministic {
   #[inline]
   pub fn current(&self) -> u64 {
     self.state.load(Ordering::Relaxed)
+  }
+
+  /// Atomically replace the internal `state` with `seed`. Subsequent
+  /// stream-advancing calls (`rng`, `rng_ext`, `derive`) start from this
+  /// seed, so the holder reproduces the same stream as
+  /// `Deterministic::new(seed)` would.
+  #[inline]
+  pub fn reset(&self, seed: u64) {
+    self.state.store(seed, Ordering::Relaxed);
   }
 }
 
@@ -333,6 +352,11 @@ impl SeedExt for Deterministic {
   #[inline(always)]
   fn rng_ext<R: SimdRngExt>(&self) -> R {
     R::from_seed(self.next_u64())
+  }
+
+  #[inline(always)]
+  fn reseed(&self, seed: u64) {
+    self.reset(seed);
   }
 }
 
