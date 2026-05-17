@@ -132,7 +132,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdNormalInverseGauss<
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdNormalInverseGauss<T, R> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt
+  for SimdNormalInverseGauss<T, R>
+{
   fn pdf(&self, _x: f64) -> f64 {
     // Closed-form pdf requires the modified Bessel function of the second
     // kind K₁; not currently available.

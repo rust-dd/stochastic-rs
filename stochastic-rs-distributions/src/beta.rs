@@ -10,10 +10,10 @@ use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
 use super::SimdFloatExt;
 use super::gamma::SimdGamma;
+use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 const SMALL_BETA_THRESHOLD: usize = 16;
 
