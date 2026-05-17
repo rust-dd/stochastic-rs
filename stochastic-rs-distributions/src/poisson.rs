@@ -40,7 +40,6 @@ impl<T: PrimInt> SimdPoisson<T> {
     cdf.into_boxed_slice()
   }
 
-
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: f64, seed: &S) -> Self {
     assert!(lambda > 0.0);
     Self {

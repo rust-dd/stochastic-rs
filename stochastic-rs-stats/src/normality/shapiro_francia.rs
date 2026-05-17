@@ -140,6 +140,7 @@ pub fn shapiro_francia_test(
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
+  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_distributions::exp::SimdExp;
   use stochastic_rs_distributions::normal::SimdNormal;
 

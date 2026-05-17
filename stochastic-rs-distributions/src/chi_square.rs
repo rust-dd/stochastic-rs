@@ -17,8 +17,6 @@ pub struct SimdChiSquared<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdChiSquared<T> {
-
-
   /// Creates a chi-squared distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(k: T, seed: &S) -> Self {
     Self {

@@ -527,9 +527,7 @@ impl SimdRng {
     let fb: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_b) };
     let ra = (fa - one).to_array();
     let rb = (fb - one).to_array();
-    [
-      ra[0], ra[1], ra[2], ra[3], rb[0], rb[1], rb[2], rb[3],
-    ]
+    [ra[0], ra[1], ra[2], ra[3], rb[0], rb[1], rb[2], rb[3]]
   }
 
   /// Returns 8 uniform `f32` values in `[0, 1)`.

@@ -167,6 +167,7 @@ fn mu_p<T: FloatExt>(p: f64) -> T {
 mod tests {
   use ndarray::Array1;
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;

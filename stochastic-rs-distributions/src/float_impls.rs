@@ -2,10 +2,10 @@
 //! buffers used by the Fgn circulant embedding.
 
 use std::cell::RefCell;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use ndarray::Array1;
 use num_complex::Complex;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::normal::SimdNormal;
 use crate::traits::FloatExt;
@@ -28,9 +28,7 @@ impl FloatExt for f64 {
     }
     STANDARD_NORMAL_F64.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| {
-        Box::new(SimdNormal::new(0.0, 1.0, &Unseeded))
-      });
+      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0, &Unseeded)));
       dist.fill_standard_fast(out);
     });
   }
@@ -73,9 +71,7 @@ impl FloatExt for f32 {
     }
     STANDARD_NORMAL_F32.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| {
-        Box::new(SimdNormal::new(0.0, 1.0, &Unseeded))
-      });
+      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0, &Unseeded)));
       dist.fill_standard_fast(out);
     });
   }

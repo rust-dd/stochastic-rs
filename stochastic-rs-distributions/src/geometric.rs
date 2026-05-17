@@ -5,11 +5,11 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use num_traits::PrimInt;
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 use wide::f64x8;
 
 use crate::simd_rng::SimdRng;
@@ -24,8 +24,6 @@ pub struct SimdGeometric<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdGeometric<T> {
-
-
   pub fn new<S: crate::simd_rng::SeedExt>(p: f64, seed: &S) -> Self {
     Self {
       p,

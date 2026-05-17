@@ -3,15 +3,14 @@
 use std::cmp::Ordering;
 use std::error::Error;
 
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
-
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::stack;
 use ndarray_stats::QuantileExt;
 use roots::SimpleConvergency;
 use roots::find_root_brent;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::bivariate::CopulaType as BivariateCopulaType;
 

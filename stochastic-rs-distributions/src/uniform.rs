@@ -5,10 +5,10 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
@@ -24,8 +24,6 @@ pub struct SimdUniform<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdUniform<T> {
-
-
   pub fn new<S: crate::simd_rng::SeedExt>(low: T, high: T, seed: &S) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");

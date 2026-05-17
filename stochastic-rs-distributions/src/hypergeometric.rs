@@ -6,11 +6,11 @@
 //!
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use num_traits::PrimInt;
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::simd_rng::SimdRng;
 
@@ -25,7 +25,6 @@ pub struct SimdHypergeometric<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdHypergeometric<T> {
-
   pub fn new<S: crate::simd_rng::SeedExt>(
     n_total: u32,
     k_success: u32,

@@ -5,10 +5,10 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
@@ -26,8 +26,6 @@ pub struct SimdInverseGauss<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdInverseGauss<T> {
-
-
   /// Creates an inverse-Gaussian distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, lambda: T, seed: &S) -> Self {
     assert!(mu > T::zero() && lambda > T::zero());

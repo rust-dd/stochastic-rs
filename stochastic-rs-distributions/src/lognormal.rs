@@ -5,10 +5,10 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
@@ -24,8 +24,6 @@ pub struct SimdLogNormal<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdLogNormal<T> {
-
-
   /// Creates a log-normal distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, sigma: T, seed: &S) -> Self {

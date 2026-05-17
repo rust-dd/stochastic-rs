@@ -120,6 +120,7 @@ pub fn try_pca_decompose<T: FloatExt>(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;

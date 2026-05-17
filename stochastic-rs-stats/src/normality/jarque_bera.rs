@@ -109,6 +109,7 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
 mod tests {
   use ndarray::ArrayView1;
   use rand::Rng;
+  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::JarqueBeraConfig;

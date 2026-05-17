@@ -139,6 +139,7 @@ pub fn corwin_schultz_spread<T: FloatExt>(high: ArrayView1<T>, low: ArrayView1<T
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;

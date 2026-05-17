@@ -153,6 +153,7 @@ pub fn ledoit_wolf_shrinkage<T: FloatExt>(returns: ArrayView2<T>) -> LedoitWolfR
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;

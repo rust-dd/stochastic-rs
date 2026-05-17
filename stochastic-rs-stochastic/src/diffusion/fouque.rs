@@ -86,16 +86,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FouqueOU2D<T, S> {
     let mut gn_x = vec![T::zero(); n_increments];
     let mut gn_y = vec![T::zero(); n_increments];
 
-    let nx = stochastic_rs_distributions::normal::SimdNormal::<T>::new(
-      T::zero(),
-      sqrt_dt,
-      &self.seed,
-    );
-    let ny = stochastic_rs_distributions::normal::SimdNormal::<T>::new(
-      T::zero(),
-      sqrt_dt,
-      &self.seed,
-    );
+    let nx =
+      stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+    let ny =
+      stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
     nx.fill_slice_fast(&mut gn_x);
     ny.fill_slice_fast(&mut gn_y);
 

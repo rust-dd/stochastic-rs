@@ -100,11 +100,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
           shape > T::zero() && rate > T::zero(),
           "Ctrw Gamma waiting requires shape > 0 and rate > 0"
         );
-        WaitingSampler::Gamma(SimdGamma::new(
-          shape,
-          T::one() / rate,
-          &self.seed,
-        ))
+        WaitingSampler::Gamma(SimdGamma::new(shape, T::one() / rate, &self.seed))
       }
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
         assert!(

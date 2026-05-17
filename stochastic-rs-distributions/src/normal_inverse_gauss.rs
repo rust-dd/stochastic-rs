@@ -5,10 +5,10 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::inverse_gauss::SimdInverseGauss;
@@ -30,14 +30,7 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
-
-  pub fn new<S: crate::simd_rng::SeedExt>(
-    alpha: T,
-    beta: T,
-    delta: T,
-    mu: T,
-    seed: &S,
-  ) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, beta: T, delta: T, mu: T, seed: &S) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),
       "Nig: alpha must be > |beta|"

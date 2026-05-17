@@ -5,10 +5,10 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
@@ -24,8 +24,6 @@ pub struct SimdPareto<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdPareto<T> {
-
-
   pub fn new<S: crate::simd_rng::SeedExt>(x_m: T, alpha: T, seed: &S) -> Self {
     assert!(x_m > T::zero() && alpha > T::zero());
     Self {
