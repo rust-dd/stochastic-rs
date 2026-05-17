@@ -5,6 +5,7 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
@@ -64,7 +65,7 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
 
 impl<T: SimdFloatExt> Clone for SimdWeibull<T> {
   fn clone(&self) -> Self {
-    Self::new(self.lambda, T::one() / self.inv_k, &crate::simd_rng::Unseeded)
+    Self::new(self.lambda, T::one() / self.inv_k, &Unseeded)
   }
 }
 

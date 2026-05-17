@@ -6,6 +6,7 @@
 //!
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::gamma::SimdGamma;
@@ -43,7 +44,7 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
 
 impl<T: SimdFloatExt> Clone for SimdChiSquared<T> {
   fn clone(&self) -> Self {
-    Self::new(self.df, &crate::simd_rng::Unseeded)
+    Self::new(self.df, &Unseeded)
   }
 }
 

@@ -15,13 +15,13 @@ use stochastic_rs::stats::filtering::unscented_kalman_step;
 
 #[test]
 fn particle_filter_with_systematic_resampling_runs_to_completion() {
-  let init_dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(1));
+  let init_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
   let init_fn = move |_rng: &mut SimdRng| {
     let mut a = [0.0_f64];
     init_dist.fill_slice_fast(&mut a);
     Array1::from(vec![a[0]])
   };
-  let trans_dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(2));
+  let trans_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(2));
   let transition = move |prev: ArrayView1<f64>, _rng: &mut SimdRng| {
     let mut a = [0.0_f64];
     trans_dist.fill_slice_fast(&mut a);

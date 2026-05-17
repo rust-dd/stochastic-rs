@@ -22,7 +22,7 @@
 //!     JarqueBeraConfig, jarque_bera_test,
 //! };
 //!
-//! let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+//! let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
 //! let mut sample = vec![0.0; 5_000];
 //! dist.fill_slice_fast(&mut sample);
 //!

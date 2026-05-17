@@ -50,7 +50,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for PoissonSubordinator<T, S> {
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
     let lambda_dt = (self.lambda * dt).to_f64().unwrap();
-    let poisson = SimdPoisson::<u32>::new(lambda_dt, &stochastic_rs_core::simd_rng::Unseeded);
+    let poisson = SimdPoisson::<u32>::new(lambda_dt, &Unseeded);
     let mut rng = self.seed.rng();
     for i in 1..self.n {
       let k = poisson.sample(&mut rng) as usize;

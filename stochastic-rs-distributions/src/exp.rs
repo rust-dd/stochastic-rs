@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 use wide::CmpLt;
 use wide::i32x8;
 
@@ -268,7 +269,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
 
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Clone for SimdExpZig<T, N, R> {
   fn clone(&self) -> Self {
-    Self::new(self.lambda, &crate::simd_rng::Unseeded)
+    Self::new(self.lambda, &Unseeded)
   }
 }
 
@@ -394,7 +395,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdExp<T, R> {
 
 impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdExp<T, R> {
   fn clone(&self) -> Self {
-    Self::new(self.inner.lambda, &crate::simd_rng::Unseeded)
+    Self::new(self.inner.lambda, &Unseeded)
   }
 }
 
@@ -453,6 +454,7 @@ py_distribution!(PyExp, SimdExp,
 #[cfg(test)]
 mod tests {
   use rand_distr::Distribution;
+  use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::SimdExp;
   use super::SimdExpZig;
@@ -489,7 +491,7 @@ mod tests {
     let lambda = 1.8_f64;
     let mean_target = 1.0 / lambda;
 
-    let dist = SimdExp::<f64>::new(lambda, &crate::simd_rng::Unseeded);
+    let dist = SimdExp::<f64>::new(lambda, &Unseeded);
     let mut rng = rand::rng();
     let mut samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
 
@@ -518,7 +520,7 @@ mod tests {
     const N: usize = 32_000;
     let lambda = 0.65_f64;
 
-    let dist = SimdExpZig::<f64>::new(lambda, &crate::simd_rng::Unseeded);
+    let dist = SimdExpZig::<f64>::new(lambda, &Unseeded);
     let mut rng = rand::rng();
     let mut samples = vec![0.0_f64; N];
     dist.fill_slice(&mut rng, &mut samples);

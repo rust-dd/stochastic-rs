@@ -11,7 +11,7 @@ use stochastic_rs::quant::factors::pca_decompose;
 use stochastic_rs::quant::factors::sample_covariance;
 
 fn standard_normal_matrix(seed: u64, t: usize, p: usize) -> Array2<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
+  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
   let mut buf = vec![0.0_f64; t * p];
   dist.fill_slice_fast(&mut buf);
   Array2::from_shape_vec((t, p), buf).unwrap()
@@ -33,7 +33,7 @@ fn shrinkage_matrix_within_unit_interval() {
 
 #[test]
 fn pca_collinear_factor_dominates_variance() {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(23));
+  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(23));
   let mut z = vec![0.0_f64; 500];
   dist.fill_slice_fast(&mut z);
   let mut x = Array2::<f64>::zeros((500, 5));
@@ -61,7 +61,7 @@ fn fama_macbeth_finite_under_no_factor_signal() {
 fn pairs_round_trip_position_management() {
   use ndarray::Array1;
   let n = 600usize;
-  let dist = SimdNormal::<f64>::new(0.0, 0.005, &stochastic_rs_core::simd_rng::Deterministic::new(41));
+  let dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(41));
   let mut shocks = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut shocks);
   let mut x = Array1::<f64>::zeros(n);

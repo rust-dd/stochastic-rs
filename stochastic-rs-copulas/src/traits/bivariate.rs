@@ -3,6 +3,9 @@
 use std::cmp::Ordering;
 use std::error::Error;
 
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
+
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::stack;
@@ -55,7 +58,7 @@ pub trait BivariateExt {
 
   fn sample(&mut self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     self.sample_with_uniform(
-      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded),
+      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0, &Unseeded),
       n,
     )
   }
@@ -70,7 +73,7 @@ pub trait BivariateExt {
       stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(
         0.0,
         1.0,
-        &stochastic_rs_core::simd_rng::Deterministic::new(seed),
+        &Deterministic::new(seed),
       ),
       n,
     )

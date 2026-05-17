@@ -8,6 +8,7 @@ use std::cell::UnsafeCell;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
@@ -239,13 +240,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
 
 impl<T: SimdFloatExt> Clone for SimdAlphaStable<T> {
   fn clone(&self) -> Self {
-    Self::new(
-      self.alpha,
-      self.beta,
-      self.scale,
-      self.location,
-      &crate::simd_rng::Unseeded,
-    )
+    Self::new(self.alpha, self.beta, self.scale, self.location, &Unseeded)
   }
 }
 
@@ -378,13 +373,7 @@ mod tests {
 
   #[test]
   fn alpha_stable_samples_are_finite() {
-    let dist = SimdAlphaStable::new(
-      1.7_f64,
-      0.3,
-      1.0,
-      0.0,
-      &stochastic_rs_core::simd_rng::Unseeded,
-    );
+    let dist = SimdAlphaStable::new(1.7_f64, 0.3, 1.0, 0.0, &Unseeded);
     let mut rng = rand::rng();
     for _ in 0..1024 {
       let x = dist.sample(&mut rng);

@@ -60,7 +60,7 @@ where
   );
   assert!(n_samples >= 1);
   let mut rng = Deterministic::new(seed).rng();
-  let dist_unit = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(seed.wrapping_add(1)));
+  let dist_unit = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed.wrapping_add(1)));
   let mut current = initial.to_owned();
   let mut current_logp = log_target(current.view());
   assert!(

@@ -16,7 +16,7 @@ pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
   let lambda = 2.0 * c * r_t * (-theta * t).exp();
   let df = ((4.0 * theta * mu) / sigma.powi(2)) as usize;
 
-  let normal = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+  let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
   let chi2 = (0..df)
     .map(|_| {
       let z = normal.sample_fast();

@@ -539,6 +539,7 @@ py_distribution!(PyNormal, SimdNormal,
 #[cfg(test)]
 mod tests {
   use rand_distr::Distribution;
+  use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::SimdNormal;
   use crate::special::erf;
@@ -572,7 +573,7 @@ mod tests {
     let mu = -0.75_f64;
     let sigma = 1.35_f64;
 
-    let dist = SimdNormal::<f64>::new(mu, sigma, &crate::simd_rng::Unseeded);
+    let dist = SimdNormal::<f64>::new(mu, sigma, &Unseeded);
     let mut rng = rand::rng();
     let mut samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
 

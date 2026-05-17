@@ -5,6 +5,7 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
@@ -98,7 +99,7 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
 
 impl<T: SimdFloatExt> Clone for SimdCauchy<T> {
   fn clone(&self) -> Self {
-    Self::new(self.x0, self.gamma, &crate::simd_rng::Unseeded)
+    Self::new(self.x0, self.gamma, &Unseeded)
   }
 }
 

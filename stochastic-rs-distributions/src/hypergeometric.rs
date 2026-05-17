@@ -6,6 +6,7 @@
 //!
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use num_traits::PrimInt;
 use rand::Rng;
@@ -101,7 +102,7 @@ impl<T: PrimInt> SimdHypergeometric<T> {
 
 impl<T: PrimInt> Clone for SimdHypergeometric<T> {
   fn clone(&self) -> Self {
-    Self::new(self.n_total, self.k_success, self.n_draws, &crate::simd_rng::Unseeded)
+    Self::new(self.n_total, self.k_success, self.n_draws, &Unseeded)
   }
 }
 

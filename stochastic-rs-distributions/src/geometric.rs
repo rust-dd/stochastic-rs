@@ -5,6 +5,7 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use num_traits::PrimInt;
 use rand::Rng;
@@ -95,7 +96,7 @@ impl<T: PrimInt> SimdGeometric<T> {
 
 impl<T: PrimInt> Clone for SimdGeometric<T> {
   fn clone(&self) -> Self {
-    Self::new(self.p, &crate::simd_rng::Unseeded)
+    Self::new(self.p, &Unseeded)
   }
 }
 

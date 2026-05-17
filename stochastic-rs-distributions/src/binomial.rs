@@ -9,6 +9,7 @@ use std::cell::UnsafeCell;
 use num_traits::PrimInt;
 use rand::Rng;
 use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::simd_rng::SimdRng;
 
@@ -21,8 +22,6 @@ pub struct SimdBinomial<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdBinomial<T> {
-
-
   /// Creates a binomial sampler with an RNG obtained from a
   /// [`SeedExt`](crate::simd_rng::SeedExt) source. The core constructor —
   /// `new()` and `with_seed()` delegate here.
@@ -119,7 +118,7 @@ impl<T: PrimInt> SimdBinomial<T> {
 
 impl<T: PrimInt> Clone for SimdBinomial<T> {
   fn clone(&self) -> Self {
-    Self::new(self.n, self.p, &crate::simd_rng::Unseeded)
+    Self::new(self.n, self.p, &Unseeded)
   }
 }
 
@@ -236,6 +235,9 @@ py_distribution_int!(PyBinomial, SimdBinomial,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::*;
   use crate::traits::DistributionExt;
 
@@ -257,7 +259,7 @@ mod tests {
   fn small_n_path_matches_population_moments() {
     let n = 20u32;
     let p = 0.3;
-    let dist = SimdBinomial::<u32>::new(n, p, &stochastic_rs_core::simd_rng::Deterministic::new(42));
+    let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(42));
     let mut buf = vec![0u32; 50_000];
     dist.fill_slice_fast(&mut buf);
     let (mean, var) = moments(&buf);
@@ -277,7 +279,7 @@ mod tests {
   fn large_n_small_p_wait_path_matches_population() {
     let n = 5_000u32;
     let p = 0.005;
-    let dist = SimdBinomial::<u32>::new(n, p, &stochastic_rs_core::simd_rng::Deterministic::new(7));
+    let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(7));
     let mut buf = vec![0u32; 50_000];
     dist.fill_slice_fast(&mut buf);
     let (mean, var) = moments(&buf);
@@ -297,7 +299,7 @@ mod tests {
   fn large_n_p_close_to_one_uses_complement() {
     let n = 5_000u32;
     let p = 0.998;
-    let dist = SimdBinomial::<u32>::new(n, p, &stochastic_rs_core::simd_rng::Deterministic::new(11));
+    let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(11));
     let mut buf = vec![0u32; 20_000];
     dist.fill_slice_fast(&mut buf);
     let (mean, var) = moments(&buf);
@@ -308,7 +310,7 @@ mod tests {
 
   #[test]
   fn n_zero_returns_zeros() {
-    let dist = SimdBinomial::<u32>::new(0, 0.5, &stochastic_rs_core::simd_rng::Unseeded);
+    let dist = SimdBinomial::<u32>::new(0, 0.5, &Unseeded);
     let mut buf = vec![0u32; 32];
     dist.fill_slice_fast(&mut buf);
     assert!(buf.iter().all(|&x| x == 0));

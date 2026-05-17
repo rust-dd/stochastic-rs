@@ -5,6 +5,7 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
@@ -38,7 +39,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   }
 
   pub fn unit() -> Self {
-    Self::new(T::zero(), T::one(), &crate::simd_rng::Unseeded)
+    Self::new(T::zero(), T::one(), &Unseeded)
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -99,7 +100,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
 
 impl<T: SimdFloatExt> Clone for SimdUniform<T> {
   fn clone(&self) -> Self {
-    Self::new(self.low, self.low + self.scale, &crate::simd_rng::Unseeded)
+    Self::new(self.low, self.low + self.scale, &Unseeded)
   }
 }
 

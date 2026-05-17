@@ -299,8 +299,8 @@ mod tests {
 
   #[test]
   fn baum_welch_log_likelihood_does_not_decrease() {
-    let dist0 = SimdNormal::<f64>::new(-1.0, 0.5, &stochastic_rs_core::simd_rng::Deterministic::new(1));
-    let dist1 = SimdNormal::<f64>::new(1.5, 0.4, &stochastic_rs_core::simd_rng::Deterministic::new(2));
+    let dist0 = SimdNormal::<f64>::new(-1.0, 0.5, &Deterministic::new(1));
+    let dist1 = SimdNormal::<f64>::new(1.5, 0.4, &Deterministic::new(2));
     let mut a = vec![0.0_f64; 100];
     let mut b = vec![0.0_f64; 100];
     dist0.fill_slice_fast(&mut a);

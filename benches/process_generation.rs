@@ -24,7 +24,7 @@ fn bench_process_generation(c: &mut Criterion) {
 
     group.bench_with_input(BenchmarkId::new("normal/fill_slice", n), &n, |b, &n| {
       let mut rng = rand::rng();
-      let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &stochastic_rs_core::simd_rng::Unseeded);
+      let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &Unseeded);
       let mut out = vec![0.0f64; n.saturating_sub(1)];
       b.iter(|| {
         dist.fill_slice(&mut rng, &mut out);
@@ -110,7 +110,7 @@ fn bench_process_generation(c: &mut Criterion) {
     );
 
     let mut rng = rand::rng();
-    let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &stochastic_rs_core::simd_rng::Unseeded);
+    let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &Unseeded);
     let mut increments = vec![0.0f64; n.saturating_sub(1)];
     dist.fill_slice(&mut rng, &mut increments);
 

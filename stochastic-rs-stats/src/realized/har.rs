@@ -160,7 +160,7 @@ mod tests {
   use super::*;
 
   fn simulate_har_path(n: usize, c: f64, bd: f64, bw: f64, bm: f64, seed: u64) -> Array1<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut shocks = vec![0.0_f64; n];
     dist.fill_slice_fast(&mut shocks);
     let mut rv = Array1::<f64>::from_elem(n, c / (1.0 - bd - bw - bm).max(1e-3));

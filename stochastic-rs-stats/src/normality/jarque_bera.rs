@@ -116,7 +116,7 @@ mod tests {
 
   #[test]
   fn jarque_bera_accepts_normal_sample() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
     let mut rng = rand::rng();
     let mut x = vec![0.0; 5000];
     dist.fill_slice(&mut rng, &mut x);
@@ -130,7 +130,7 @@ mod tests {
 
   #[test]
   fn jarque_bera_rejects_heavy_tail_sample() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
     let mut rng = rand::rng();
     let mut x = vec![0.0; 5000];
     dist.fill_slice(&mut rng, &mut x);

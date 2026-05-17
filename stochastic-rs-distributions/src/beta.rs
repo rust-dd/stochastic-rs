@@ -5,6 +5,7 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
@@ -100,7 +101,7 @@ impl<T: SimdFloatExt> SimdBeta<T> {
 
 impl<T: SimdFloatExt> Clone for SimdBeta<T> {
   fn clone(&self) -> Self {
-    Self::new(self.alpha, self.beta, &crate::simd_rng::Unseeded)
+    Self::new(self.alpha, self.beta, &Unseeded)
   }
 }
 

@@ -176,7 +176,7 @@ impl MultivariateExt for GaussianMultivariate {
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap(); // (d x d)
     // Sample standard normals G ~ N(0, I) of shape (n x d)
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
     let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
     // z = g * L^T
     let z = g.dot(&l.t());
@@ -247,7 +247,7 @@ impl MultivariateExt for GaussianMultivariate {
     let mut out = Array1::<f64>::zeros(n);
 
     // Pre-sample standard normals for efficiency: (m x d)
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
     let g = Array2::from_shape_fn((m_samples, self.dim), |_| normal.sample_fast());
     let y = g.dot(&l.t()); // (m x d) ~ MVN(0, corr)
 

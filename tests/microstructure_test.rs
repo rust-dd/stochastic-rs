@@ -96,7 +96,7 @@ fn impact_propagator_path_is_cumulative() {
 fn roll_recovers_spread_under_simulated_bounce() {
   let mid = 50.0_f64;
   let s = 0.05;
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(17));
+  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(17));
   let mut signs = vec![0.0_f64; 20_000];
   dist.fill_slice_fast(&mut signs);
   let p = Array1::from_iter(signs.iter().map(|&z| {

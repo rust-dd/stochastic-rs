@@ -136,7 +136,7 @@ mod tests {
     // true normal ~1% of the time, and SimdNormal outputs differ across
     // platforms (SIMD vs scalar fallback), so a single seed can be unlucky on
     // some CI targets.
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
     let seeds = [42u64, 123, 999];
     let mut best_p = 0.0_f64;
     for seed in seeds {
@@ -155,7 +155,7 @@ mod tests {
 
   #[test]
   fn anderson_darling_rejects_uniform_sample() {
-    let dist = SimdUniform::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
+    let dist = SimdUniform::<f64>::new(0.0, 1.0, &Unseeded);
     let mut rng = StdRng::seed_from_u64(42);
     let mut x = vec![0.0; 4000];
     dist.fill_slice(&mut rng, &mut x);

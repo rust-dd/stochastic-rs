@@ -5,6 +5,7 @@
 //! $$
 //!
 use std::cell::UnsafeCell;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use rand::Rng;
 use rand_distr::Distribution;
@@ -121,7 +122,7 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
 
 impl<T: SimdFloatExt> Clone for SimdNormalInverseGauss<T> {
   fn clone(&self) -> Self {
-    Self::new(self.alpha, self.beta, self.delta, self.mu, &crate::simd_rng::Unseeded)
+    Self::new(self.alpha, self.beta, self.delta, self.mu, &Unseeded)
   }
 }
 

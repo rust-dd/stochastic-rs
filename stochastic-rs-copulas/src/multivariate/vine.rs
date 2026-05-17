@@ -136,7 +136,7 @@ impl MultivariateExt for VineMultivariate {
       let buf = g
         .as_slice_mut()
         .expect("VineMultivariate sample buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded).fill_slice_fast(buf);
+      SimdNormal::<f64>::new(0.0, 1.0, &Unseeded).fill_slice_fast(buf);
     }
     let z = g.dot(&l.t());
     let mut u = z.clone();
@@ -258,7 +258,7 @@ impl MultivariateExt for VineMultivariate {
       let buf = g
         .as_slice_mut()
         .expect("VineMultivariate cdf MC buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded).fill_slice_fast(buf);
+      SimdNormal::<f64>::new(0.0, 1.0, &Unseeded).fill_slice_fast(buf);
     }
     let y = g.dot(&l.t());
     let mut out = Array1::<f64>::zeros(z.nrows());

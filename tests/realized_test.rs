@@ -2,6 +2,7 @@
 
 use ndarray::Array1;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::realized::KernelType;
 use stochastic_rs::stats::realized::bipower_variation;
 use stochastic_rs::stats::realized::bns_jump_test;
@@ -22,15 +23,15 @@ use stochastic_rs::stats::realized::tripower_quarticity;
 use stochastic_rs::stats::realized::two_scale_rv;
 
 fn iid_returns(seed: u64, n: usize, std: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, std, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
+  let dist = SimdNormal::<f64>::new(0.0, std, &Deterministic::new(seed));
   let mut out = Array1::<f64>::zeros(n);
   dist.fill_slice_fast(out.as_slice_mut().unwrap());
   out
 }
 
 fn noisy_price_path(seed: u64, n: usize, sigma: f64, omega: f64) -> Array1<f64> {
-  let dx = SimdNormal::<f64>::new(0.0, sigma, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
-  let dn = SimdNormal::<f64>::new(0.0, omega, &stochastic_rs_core::simd_rng::Deterministic::new(seed.wrapping_add(1)));
+  let dx = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+  let dn = SimdNormal::<f64>::new(0.0, omega, &Deterministic::new(seed.wrapping_add(1)));
   let mut steps = vec![0.0_f64; n];
   dx.fill_slice_fast(&mut steps);
   let mut noise = vec![0.0_f64; n + 1];
@@ -128,7 +129,7 @@ fn noise_robust_estimators_finite_under_microstructure() {
 #[test]
 fn har_round_trip_recovers_intercept_at_steady_state() {
   use stochastic_rs::stats::realized::HarRv;
-  let dist = SimdNormal::<f64>::new(0.0, 0.000_05, &stochastic_rs_core::simd_rng::Deterministic::new(42));
+  let dist = SimdNormal::<f64>::new(0.0, 0.000_05, &Deterministic::new(42));
   let mut shocks = vec![0.0_f64; 1_000];
   dist.fill_slice_fast(&mut shocks);
   let mut rv = Array1::<f64>::from_elem(1_000, 0.0001);

@@ -163,7 +163,7 @@ mod tests {
     let mid = 100.0_f64;
     let s = 0.10;
     let n = 10_000;
-    let buy_sell = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(11));
+    let buy_sell = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
     let mut signs = vec![0.0_f64; n];
     buy_sell.fill_slice_fast(&mut signs);
     let p = Array1::from_iter(signs.iter().map(|&z| {
