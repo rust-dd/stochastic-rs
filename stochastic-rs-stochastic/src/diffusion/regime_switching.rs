@@ -203,7 +203,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
 
     let mut dw = Array1::<T>::zeros(n_inc);
     let dw_slice = dw.as_slice_mut().unwrap();
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
     normal.fill_slice_fast(dw_slice);
 
     let mut rng = self.seed.rng();

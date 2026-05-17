@@ -15,7 +15,7 @@ use stochastic_rs::quant::microstructure::roll_spread;
 use stochastic_rs::quant::microstructure::single_period_kyle;
 
 fn signed_orders(n: usize, seed: u64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, seed);
+  let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
   let mut z = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut z);
   Array1::from_iter(z.iter().map(|&v| if v >= 0.0 { 1.0 } else { -1.0 }))
@@ -52,7 +52,7 @@ fn bench_impact(c: &mut Criterion) {
 }
 
 fn bench_spread(c: &mut Criterion) {
-  let dist = SimdNormal::<f64>::with_seed(100.0, 0.05, 7);
+  let dist = SimdNormal::<f64>::new(100.0, 0.05, &stochastic_rs_core::simd_rng::Deterministic::new(7));
   let mut buf = vec![0.0_f64; 50_000];
   dist.fill_slice_fast(&mut buf);
   let p = Array1::from(buf);

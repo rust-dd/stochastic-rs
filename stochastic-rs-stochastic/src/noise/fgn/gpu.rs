@@ -322,7 +322,7 @@ mod backend {
     let mut rh = vec![0.0f32; total];
     let mut ih = vec![0.0f32; total];
     {
-      let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0);
+      let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       normal.fill_slice_fast(&mut rh);
       normal.fill_slice_fast(&mut ih);
     }

@@ -213,7 +213,7 @@ impl MultivariateExt for TreeMultivariate {
       let buf = z
         .as_slice_mut()
         .expect("TreeMultivariate sample buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0).fill_slice_fast(buf);
+      SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded).fill_slice_fast(buf);
     }
     let z = z.dot(&l.t());
     let mut u = z.clone();
@@ -302,7 +302,7 @@ impl MultivariateExt for TreeMultivariate {
       let buf = g
         .as_slice_mut()
         .expect("TreeMultivariate cdf MC buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0).fill_slice_fast(buf);
+      SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded).fill_slice_fast(buf);
       g
     };
     let y = g.dot(&l.t());

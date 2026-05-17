@@ -109,7 +109,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
         .as_slice_mut()
         .expect("Hjm short-rate path must be contiguous in memory");
       let r_tail = &mut r_slice[1..];
-      let normal_r = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+      let normal_r = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
       normal_r.fill_slice_fast(r_tail);
     }
     {
@@ -117,7 +117,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
         .as_slice_mut()
         .expect("Hjm bond-price path must be contiguous in memory");
       let p_tail = &mut p_slice[1..];
-      let normal_p = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+      let normal_p = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
       normal_p.fill_slice_fast(p_tail);
     }
     {
@@ -125,7 +125,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
         .as_slice_mut()
         .expect("Hjm forward-rate path must be contiguous in memory");
       let f_tail = &mut f_slice[1..];
-      let normal_f = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+      let normal_f = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
       normal_f.fill_slice_fast(f_tail);
     }
 

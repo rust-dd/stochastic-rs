@@ -309,10 +309,23 @@ name = "hotpath_profile"
 harness = false
 required-features = ["hotpath"]
 
+[[bench]]
+name = "dual_stream_compare"
+harness = false
+required-features = ["dual-stream-rng"]
+
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda-native = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda-native"]
 default = []
+# Experimental: opt in to the dual-stream RNG (`SimdRngDual` /
+# `SimdNormalDual`). ~5–11% speedup on Ziggurat-based Normal/Exp bulk
+# fills on Apple Silicon; deterministic output differs from the
+# single-stream `SimdRng`. See `stochastic-rs-core` feature doc.
+dual-stream-rng = [
+    "stochastic-rs-core/dual-stream-rng",
+    "stochastic-rs-distributions/dual-stream-rng",
+]
 openblas = [
     "dep:ndarray-linalg",
     "dep:openblas-src",

@@ -149,6 +149,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(
         (self.lambda * dt).to_f64().unwrap(),
+        &stochastic_rs_core::simd_rng::Unseeded,
       ))
     } else {
       None
@@ -159,10 +160,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
     let tail = tail_view
       .as_slice_mut()
       .expect("MjdLog output tail must be contiguous");
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
     normal.fill_slice_fast(tail);
 
-    let jump_normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let jump_normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
 
     for z in tail.iter_mut() {
       let diff = self.sigma * *z;

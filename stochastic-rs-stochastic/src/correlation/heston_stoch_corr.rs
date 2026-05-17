@@ -126,7 +126,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
     let gen_noise = |seed: &S| -> Array1<T> {
       let mut gn = Array1::<T>::zeros(n_steps);
       if let Some(slice) = gn.as_slice_mut() {
-        let normal = SimdNormal::<T>::from_seed_source(zero, sqrt_dt, seed);
+        let normal = SimdNormal::<T>::new(zero, sqrt_dt, seed);
         normal.fill_slice_fast(slice);
       }
       gn

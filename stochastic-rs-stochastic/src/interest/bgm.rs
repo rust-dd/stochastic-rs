@@ -148,7 +148,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
         .as_slice_mut()
         .expect("Bgm row must be contiguous in memory");
       let tail = &mut row_slice[1..];
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(tail);
 
       for j in 1..self.n {

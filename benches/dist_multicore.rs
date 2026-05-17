@@ -64,7 +64,7 @@ where
 }
 
 fn bench_normal_fill_slice(n: usize, warmup: usize, runs: usize) -> (f64, f64, f64) {
-  let simd = SimdNormal::<f64>::new(0.0, 1.0);
+  let simd = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
   let rand_distr = rand_distr::Normal::<f64>::new(0.0, 1.0).expect("valid normal params");
   let mut out = vec![0.0f64; n];
   let iters = (262_144 / n.max(1)).clamp(1, 16_384);
@@ -171,7 +171,7 @@ fn main() {
 
   run_case(
     "Normal<f64>(ref)",
-    &SimdNormal::<f64>::new(0.0, 1.0),
+    &SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded),
     2048,
     2048,
     &single,
@@ -179,7 +179,7 @@ fn main() {
   );
   run_case(
     "Exp<f64>(ref)",
-    &SimdExp::<f64>::new(1.5),
+    &SimdExp::<f64>::new(1.5, &stochastic_rs_core::simd_rng::Unseeded),
     2048,
     2048,
     &single,
@@ -187,7 +187,7 @@ fn main() {
   );
   run_case(
     "Poisson<i64>(ref)",
-    &SimdPoisson::<i64>::new(1.5),
+    &SimdPoisson::<i64>::new(1.5, &stochastic_rs_core::simd_rng::Unseeded),
     2048,
     2048,
     &single,
@@ -204,7 +204,7 @@ fn main() {
 
   run_case(
     "Normal<f64>",
-    &SimdNormal::<f64>::new(0.0, 1.0),
+    &SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -212,7 +212,7 @@ fn main() {
   );
   run_case(
     "Exp<f64>",
-    &SimdExp::<f64>::new(1.5),
+    &SimdExp::<f64>::new(1.5, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -220,7 +220,7 @@ fn main() {
   );
   run_case(
     "Uniform<f64>",
-    &SimdUniform::<f64>::new(0.0, 1.0),
+    &SimdUniform::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -228,7 +228,7 @@ fn main() {
   );
   run_case(
     "Cauchy<f64>",
-    &SimdCauchy::<f64>::new(0.0, 1.0),
+    &SimdCauchy::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -236,7 +236,7 @@ fn main() {
   );
   run_case(
     "LogNormal<f64>",
-    &SimdLogNormal::<f64>::new(0.2, 0.8),
+    &SimdLogNormal::<f64>::new(0.2, 0.8, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -244,7 +244,7 @@ fn main() {
   );
   run_case(
     "Gamma<f64>",
-    &SimdGamma::<f64>::new(2.0, 2.0),
+    &SimdGamma::<f64>::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -252,7 +252,7 @@ fn main() {
   );
   run_case(
     "ChiSq<f64>",
-    &SimdChiSquared::<f64>::new(5.0),
+    &SimdChiSquared::<f64>::new(5.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -260,7 +260,7 @@ fn main() {
   );
   run_case(
     "StudentT<f64>",
-    &SimdStudentT::<f64>::new(5.0),
+    &SimdStudentT::<f64>::new(5.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -268,7 +268,7 @@ fn main() {
   );
   run_case(
     "Beta<f64>",
-    &SimdBeta::<f64>::new(2.0, 2.0),
+    &SimdBeta::<f64>::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -276,7 +276,7 @@ fn main() {
   );
   run_case(
     "Weibull<f64>",
-    &SimdWeibull::<f64>::new(1.0, 1.5),
+    &SimdWeibull::<f64>::new(1.0, 1.5, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -284,7 +284,7 @@ fn main() {
   );
   run_case(
     "Pareto<f64>",
-    &SimdPareto::<f64>::new(1.0, 1.5),
+    &SimdPareto::<f64>::new(1.0, 1.5, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -292,7 +292,7 @@ fn main() {
   );
   run_case(
     "InvGauss<f64>",
-    &SimdInverseGauss::<f64>::new(1.0, 2.0),
+    &SimdInverseGauss::<f64>::new(1.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -300,7 +300,7 @@ fn main() {
   );
   run_case(
     "Nig<f64>",
-    &SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0),
+    &SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -308,7 +308,7 @@ fn main() {
   );
   run_case(
     "AlphaStable<f64>",
-    &SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0),
+    &SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -317,7 +317,7 @@ fn main() {
 
   run_case(
     "Poisson<i64>",
-    &SimdPoisson::<i64>::new(2.5),
+    &SimdPoisson::<i64>::new(2.5, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -325,7 +325,7 @@ fn main() {
   );
   run_case(
     "Geometric<u64>",
-    &SimdGeometric::<u64>::new(0.3),
+    &SimdGeometric::<u64>::new(0.3, &stochastic_rs_core::simd_rng::Unseeded),
     fm,
     fnn,
     &single,
@@ -333,7 +333,7 @@ fn main() {
   );
   run_case(
     "Binomial<u32>",
-    &SimdBinomial::<u32>::new(32, 0.3),
+    &SimdBinomial::<u32>::new(32, 0.3, &stochastic_rs_core::simd_rng::Unseeded),
     im,
     inn,
     &single,
@@ -341,7 +341,7 @@ fn main() {
   );
   run_case(
     "Hypergeo<u32>",
-    &SimdHypergeometric::<u32>::new(500, 80, 32),
+    &SimdHypergeometric::<u32>::new(500, 80, 32, &stochastic_rs_core::simd_rng::Unseeded),
     im,
     inn,
     &single,

@@ -90,7 +90,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
     let dt = t_max / T::from_usize_(self.n - 1);
     let sqrt_dt = dt.sqrt();
 
-    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
 
     // Pre-generate Brownian increments
     let mut dw = Array1::<T>::zeros(self.n);

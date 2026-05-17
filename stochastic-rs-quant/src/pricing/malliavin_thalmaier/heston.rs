@@ -196,7 +196,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
   where
     T: ndarray_linalg::Lapack,
   {
-    let normal = SimdNormal::<T>::with_seed(T::zero(), T::one(), seed);
+    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &stochastic_rs_core::simd_rng::Deterministic::new(seed));
     self.sample_with_fill(|z| normal.fill_slice_fast(z))
   }
 

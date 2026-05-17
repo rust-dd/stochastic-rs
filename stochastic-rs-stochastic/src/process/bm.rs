@@ -44,7 +44,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bm<T, S> {
       .as_slice_mut()
       .expect("Bm output tail must be contiguous");
 
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), std_dev, &self.seed);
     normal.fill_slice_fast(tail);
 
     let mut acc = T::zero();

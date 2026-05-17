@@ -59,7 +59,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for AlphaStableSubordinator<T, S> {
     let c = self.c.to_f64().unwrap();
     let dt = t_max / (self.n - 1) as f64;
     let scale = (c * dt).powf(1.0 / alpha);
-    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &self.seed);
+    let uniform = SimdUniform::<f64>::new(0.0, 1.0, &self.seed);
     let mut level = path[0].to_f64().unwrap();
 
     for i in 1..self.n {

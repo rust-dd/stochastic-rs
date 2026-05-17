@@ -148,7 +148,7 @@ mod tests {
 
   #[test]
   fn shapiro_francia_accepts_normal_sample() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut rng = rand::rng();
     let mut x = vec![0.0; 700];
     dist.fill_slice(&mut rng, &mut x);
@@ -167,7 +167,7 @@ mod tests {
 
   #[test]
   fn shapiro_francia_rejects_skewed_sample() {
-    let dist = SimdExp::<f64>::new(1.0);
+    let dist = SimdExp::<f64>::new(1.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut rng = rand::rng();
     let mut x = vec![0.0; 700];
     dist.fill_slice(&mut rng, &mut x);

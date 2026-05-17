@@ -23,19 +23,9 @@ pub struct SimdGeometric<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdGeometric<T> {
-  #[inline]
-  pub fn new(p: f64) -> Self {
-    Self::from_seed_source(p, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a geometric distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(p: f64, seed: u64) -> Self {
-    Self::from_seed_source(p, &crate::simd_rng::Deterministic::new(seed))
-  }
 
-  /// Creates a geometric distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(p: f64, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(p: f64, seed: &S) -> Self {
     Self {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
@@ -105,7 +95,7 @@ impl<T: PrimInt> SimdGeometric<T> {
 
 impl<T: PrimInt> Clone for SimdGeometric<T> {
   fn clone(&self) -> Self {
-    Self::new(self.p)
+    Self::new(self.p, &crate::simd_rng::Unseeded)
   }
 }
 

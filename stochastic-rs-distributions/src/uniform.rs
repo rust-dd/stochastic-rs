@@ -23,22 +23,9 @@ pub struct SimdUniform<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdUniform<T> {
-  #[inline]
-  pub fn new(low: T, high: T) -> Self {
-    Self::from_seed_source(low, high, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a uniform distribution with a deterministic seed.
-  ///
-  /// Two instances created with the same parameters and seed produce
-  /// identical sample sequences.
-  #[inline]
-  pub fn with_seed(low: T, high: T, seed: u64) -> Self {
-    Self::from_seed_source(low, high, &crate::simd_rng::Deterministic::new(seed))
-  }
 
-  /// Creates a uniform distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(low: T, high: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(low: T, high: T, seed: &S) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
     Self {
@@ -51,7 +38,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   }
 
   pub fn unit() -> Self {
-    Self::new(T::zero(), T::one())
+    Self::new(T::zero(), T::one(), &crate::simd_rng::Unseeded)
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -112,7 +99,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
 
 impl<T: SimdFloatExt> Clone for SimdUniform<T> {
   fn clone(&self) -> Self {
-    Self::new(self.low, self.low + self.scale)
+    Self::new(self.low, self.low + self.scale, &crate::simd_rng::Unseeded)
   }
 }
 

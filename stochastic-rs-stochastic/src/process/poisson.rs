@@ -54,7 +54,7 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
 
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
-    let distr = SimdExp::from_seed_source(self.lambda, seed);
+    let distr = SimdExp::<T>::new(self.lambda, seed);
 
     if let Some(n) = self.n {
       let mut poisson = Array1::<T>::zeros(n);

@@ -55,7 +55,7 @@ pub trait BivariateExt {
 
   fn sample(&mut self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     self.sample_with_uniform(
-      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0),
+      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded),
       n,
     )
   }
@@ -67,7 +67,11 @@ pub trait BivariateExt {
     seed: u64,
   ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     self.sample_with_uniform(
-      stochastic_rs_distributions::uniform::SimdUniform::<f64>::with_seed(0.0, 1.0, seed),
+      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(
+        0.0,
+        1.0,
+        &stochastic_rs_core::simd_rng::Deterministic::new(seed),
+      ),
       n,
     )
   }

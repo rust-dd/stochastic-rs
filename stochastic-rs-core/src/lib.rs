@@ -5,3 +5,5 @@
 #[cfg(feature = "python")]
 pub mod python;
 pub mod simd_rng;
+#[cfg(feature = "dual-stream-rng")]
+pub mod simd_rng_dual;

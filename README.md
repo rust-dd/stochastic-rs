@@ -203,6 +203,33 @@ Driven by SIMD `u64→f64` / `u32→f32` magic-number conversion in `SimdRng`
 `fill_exp_scaled`, and an 8-at-a-time main loop in `fill_ziggurat` so
 `copy_from_slice` inlines to `stp` stores instead of a `memcpy` call.
 
+#### Opt-in: dual-stream RNG (`dual-stream-rng` feature)
+
+```toml
+[dependencies]
+stochastic-rs = { version = "2.1", features = ["dual-stream-rng"] }
+```
+
+Unlocks `SimdRngDual` (two parallel xoshiro engines) and `SimdNormalDual`
+(Ziggurat unrolled 2× over the dual streams). Measured against the
+single-stream `SimdNormal::fill_slice` on Apple Silicon
+(`cargo bench --bench dual_stream_compare --features dual-stream-rng`):
+
+|     n  | single (`SimdNormal`) | dual (`SimdNormalDual`) |   Δ   |
+|-------:|----------------------:|-------------------------:|------:|
+|     64 |              111.6 ns |                 105.5 ns | −5.5% |
+|    256 |              444.8 ns |                 418.3 ns | −6.0% |
+|   4 096 |              7.43 µs |                  6.60 µs |−11.2% |
+|  65 536 |             113.9 µs |                 106.6 µs | −6.4% |
+| 1 048 576 |            1.83 ms |                  1.70 ms | −6.8% |
+
+The win comes from hiding the 16 scalar `kn` / `wn` table-lookup latencies
+behind the second engine's `xoshiro` state update on a modern out-of-order
+core. Uniform fills are not bottlenecked on the engine so they see no
+speedup. Trade-off: `SimdRngDual::from_seed` does **not** reproduce
+`SimdRng::from_seed`'s bit-exact sequence (statistical properties are
+identical and KS-validated).
+
 ## Contributing
 
 Contributions are welcome — bug reports, feature suggestions, or PRs.

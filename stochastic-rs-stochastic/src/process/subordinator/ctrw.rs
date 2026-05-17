@@ -93,14 +93,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
           rate > T::zero(),
           "Ctrw Exponential waiting requires rate > 0"
         );
-        WaitingSampler::Exp(SimdExp::from_seed_source(rate, &self.seed))
+        WaitingSampler::Exp(SimdExp::new(rate, &self.seed))
       }
       CtrwWaitingLaw::Gamma { shape, rate } => {
         assert!(
           shape > T::zero() && rate > T::zero(),
           "Ctrw Gamma waiting requires shape > 0 and rate > 0"
         );
-        WaitingSampler::Gamma(SimdGamma::from_seed_source(
+        WaitingSampler::Gamma(SimdGamma::new(
           shape,
           T::one() / rate,
           &self.seed,
@@ -111,7 +111,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
           mu > T::zero() && lambda > T::zero(),
           "Ctrw Ig waiting requires mu > 0 and lambda > 0"
         );
-        WaitingSampler::Ig(SimdInverseGauss::from_seed_source(mu, lambda, &self.seed))
+        WaitingSampler::Ig(SimdInverseGauss::new(mu, lambda, &self.seed))
       }
       CtrwWaitingLaw::PositiveStable { alpha, scale } => {
         assert!(
@@ -128,14 +128,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
     let jump_sampler = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
         assert!(std > T::zero(), "Ctrw normal jumps require std > 0");
-        JumpSampler::Normal(SimdNormal::from_seed_source(mean, std, &self.seed))
+        JumpSampler::Normal(SimdNormal::new(mean, std, &self.seed))
       }
       CtrwJumpLaw::SymmetricStable { alpha, scale } => {
         assert!(
           alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
           "Ctrw stable jumps require alpha in (0,2] and scale > 0"
         );
-        JumpSampler::Stable(SimdAlphaStable::from_seed_source(
+        JumpSampler::Stable(SimdAlphaStable::new(
           alpha,
           T::zero(),
           scale,
@@ -149,7 +149,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ctrw<T, S> {
       }
     };
 
-    let uniform = SimdUniform::<f64>::from_seed_source(0.0, 1.0, &self.seed);
+    let uniform = SimdUniform::<f64>::new(0.0, 1.0, &self.seed);
     let mut x = x0.to_f64().unwrap();
 
     let mut next_event = match &waiting_sampler {

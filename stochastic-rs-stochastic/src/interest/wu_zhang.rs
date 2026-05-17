@@ -156,12 +156,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
 
       {
         let f_tail = &mut f_slice[1..];
-        let normal_f = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+        let normal_f = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
         normal_f.fill_slice_fast(f_tail);
       }
       {
         let v_tail = &mut v_slice[1..];
-        let normal_v = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+        let normal_v = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
         normal_v.fill_slice_fast(v_tail);
       }
 

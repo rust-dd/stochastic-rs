@@ -84,7 +84,7 @@ where
     let sqrt_dt = dt.sqrt();
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(gn_slice);
     }
 

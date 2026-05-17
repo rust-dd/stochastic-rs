@@ -16,7 +16,7 @@ use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
 
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::with_seed(0.0, sigma, seed);
+  let dist = SimdNormal::<f64>::new(0.0, sigma, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut steps);
   let mut out = Array1::<f64>::zeros(n);
@@ -53,7 +53,7 @@ fn pelt_segment_count_increases_with_lower_penalty() {
 #[test]
 fn engle_granger_full_pipeline() {
   let x = random_walk(31, 400, 1.0);
-  let dist = SimdNormal::<f64>::with_seed(0.0, 0.05, 33);
+  let dist = SimdNormal::<f64>::new(0.0, 0.05, &stochastic_rs_core::simd_rng::Deterministic::new(33));
   let mut eps = vec![0.0_f64; 400];
   dist.fill_slice_fast(&mut eps);
   let y: Array1<f64> = (0..400)
@@ -88,7 +88,7 @@ fn johansen_eigenvalues_decreasing_in_magnitude() {
 #[cfg(feature = "openblas")]
 #[test]
 fn granger_pvalue_in_unit_interval() {
-  let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, 71);
+  let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(71));
   let mut buf_a = vec![0.0_f64; 300];
   let mut buf_b = vec![0.0_f64; 300];
   dist.fill_slice_fast(&mut buf_a);
@@ -102,8 +102,8 @@ fn granger_pvalue_in_unit_interval() {
 #[cfg(feature = "openblas")]
 #[test]
 fn hmm_log_likelihood_finite_after_fit() {
-  let dist0 = SimdNormal::<f64>::with_seed(-2.0, 0.5, 1);
-  let dist1 = SimdNormal::<f64>::with_seed(2.0, 0.5, 2);
+  let dist0 = SimdNormal::<f64>::new(-2.0, 0.5, &stochastic_rs_core::simd_rng::Deterministic::new(1));
+  let dist1 = SimdNormal::<f64>::new(2.0, 0.5, &stochastic_rs_core::simd_rng::Deterministic::new(2));
   let mut a = vec![0.0_f64; 200];
   let mut b = vec![0.0_f64; 200];
   dist0.fill_slice_fast(&mut a);

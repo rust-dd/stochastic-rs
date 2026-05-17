@@ -163,12 +163,13 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
     let drift = self.drift();
     let kappa_j = self.kappa_j();
 
-    let z_std = SimdNormal::<f64, 64>::from_seed_source(0.0, 1.0, &self.seed);
+    let z_std = SimdNormal::<f64, 64>::new(0.0, 1.0, &self.seed);
     let mut rng = self.seed.rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(
         (self.lambda * dt).to_f64().unwrap(),
+        &stochastic_rs_core::simd_rng::Unseeded,
       ))
     } else {
       None

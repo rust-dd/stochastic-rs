@@ -92,12 +92,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BilateralGamma<T, S> {
 
     // Gamma(shape = alpha * dt, scale = 1/lambda)
     let gamma_p =
-      SimdGamma::from_seed_source(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed);
+      SimdGamma::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed);
     let mut gp = Array1::<T>::zeros(self.n - 1);
     gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
 
     let gamma_m =
-      SimdGamma::from_seed_source(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed);
+      SimdGamma::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed);
     let mut gm = Array1::<T>::zeros(self.n - 1);
     gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
 
@@ -188,16 +188,16 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BilateralGammaMotion<T, S> {
     let sqrt_dt = dt.sqrt();
 
     let gamma_p =
-      SimdGamma::from_seed_source(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed);
+      SimdGamma::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed);
     let mut gp = Array1::<T>::zeros(self.n - 1);
     gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
 
     let gamma_m =
-      SimdGamma::from_seed_source(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed);
+      SimdGamma::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed);
     let mut gm = Array1::<T>::zeros(self.n - 1);
     gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
 
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut z = Array1::<T>::zeros(self.n - 1);
     normal.fill_slice_fast(z.as_slice_mut().unwrap());
 

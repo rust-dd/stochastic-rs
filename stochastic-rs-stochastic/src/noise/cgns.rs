@@ -53,12 +53,12 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(self.n)).sqrt();
     let gn1_slice = gn1.as_slice_mut().expect("Cgns noise 1 must be contiguous");
     let z_slice = z.as_slice_mut().expect("Cgns noise 2 must be contiguous");
-    let n1 = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
+    let n1 = stochastic_rs_distributions::normal::SimdNormal::<T>::new(
       T::zero(),
       sqrt_dt,
       seed,
     );
-    let n2 = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
+    let n2 = stochastic_rs_distributions::normal::SimdNormal::<T>::new(
       T::zero(),
       sqrt_dt,
       seed,

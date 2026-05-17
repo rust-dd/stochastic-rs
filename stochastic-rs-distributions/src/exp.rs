@@ -13,7 +13,9 @@ use wide::CmpLt;
 use wide::i32x8;
 
 use super::SimdFloatExt;
+use crate::simd_rng::SeedExt;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 const ZIG_EXP_R: f64 = 7.697_117_470_131_487;
 const ZIG_EXP_V: f64 = 3.949_659_822_581_572e-3;
@@ -81,7 +83,12 @@ fn exp_zig_tables() -> &'static ExpZigTables {
 /// Otherwise performs rejection sampling within the rectangle.
 #[cold]
 #[inline(never)]
-fn efix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ExpZigTables, rng: &mut SimdRng) -> T {
+fn efix<T: SimdFloatExt, R: SimdRngExt>(
+  hz: i32,
+  iz: usize,
+  tables: &ExpZigTables,
+  rng: &mut R,
+) -> T {
   let mut hz = hz;
   let mut iz = iz;
 
@@ -106,30 +113,27 @@ fn efix<T: SimdFloatExt>(hz: i32, iz: usize, tables: &ExpZigTables, rng: &mut Si
 
 /// SIMD-accelerated exponential distribution using the Ziggurat algorithm.
 /// Generates Exp(1) samples internally, then scales by 1/lambda.
-/// The const generic `N` controls the internal buffer size.
-pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64> {
+///
+/// The const generic `N` controls the internal buffer size. The third
+/// generic `R: SimdRngExt` picks the backing RNG: default
+/// [`SimdRng`] (single-stream); the experimental
+/// `SimdRngDual` (dual-stream) is reachable via the
+/// [`SimdExpZigDual`](crate::SimdExpZigDual) type alias when the
+/// `dual-stream-rng` feature is enabled.
+pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = SimdRng> {
   lambda: T,
   buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
-  /// Creates a new exponential distribution with rate parameter `lambda`.
-  /// Uses an automatically generated random seed.
+impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
+  /// Creates an exponential distribution with rate `lambda` and the given
+  /// seed strategy (`Unseeded` for auto-seeded, `Deterministic::new(...)`
+  /// for a reproducible stream). Single canonical constructor following
+  /// the `Gbm::new(..., seed: S)` pattern used across the workspace.
   #[inline]
-  pub fn new(lambda: T) -> Self {
-    Self::from_seed_source(lambda, &crate::simd_rng::Unseeded)
-  }
-
-  /// Creates an exponential distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(lambda: T, seed: u64) -> Self {
-    Self::from_seed_source(lambda, &crate::simd_rng::Deterministic::new(seed))
-  }
-
-  /// Creates an exponential distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(lambda: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: SeedExt>(lambda: T, seed: &S) -> Self {
     let _ = exp_zig_tables();
     assert!(lambda > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
@@ -137,20 +141,20 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
       lambda,
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
   /// Generates a single Exp(1) sample using the scalar Ziggurat path.
   #[inline]
-  fn sample_exp1_one(rng: &mut SimdRng, tables: &ExpZigTables) -> T {
+  fn sample_exp1_one(rng: &mut R, tables: &ExpZigTables) -> T {
     let hz = rng.next_i32();
     let iz = (hz & 0xFF) as usize;
     let abs_hz = hz.unsigned_abs() as i64;
     if abs_hz < tables.ke[iz] as i64 {
       T::from_f64_fast((abs_hz as f64) * tables.we[iz])
     } else {
-      efix::<T>(hz, iz, tables, rng)
+      efix::<T, R>(hz, iz, tables, rng)
     }
   }
 
@@ -162,7 +166,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   /// Uses 8-wide SIMD for the fast-accept path; scalar fallback for
   /// edge cases multiplies by `factor` lane-by-lane.
   #[inline]
-  fn fill_exp_scaled(buf: &mut [T], rng: &mut SimdRng, factor: T) {
+  fn fill_exp_scaled(buf: &mut [T], rng: &mut R, factor: T) {
     let tables = exp_zig_tables();
     let len = buf.len();
     if len < SMALL_EXP_THRESHOLD {
@@ -220,7 +224,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
             if accept_arr[i] != 0 {
               buf[filled + i] = result_arr[i];
             } else {
-              buf[filled + i] = efix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng) * factor;
+              buf[filled + i] = efix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng) * factor;
             }
           }
         }
@@ -246,7 +250,7 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   }
 
   /// Fills a slice with Exp(λ) samples in a single SIMD pass.
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_exp_scaled(out, rng, T::one() / self.lambda);
   }
@@ -262,17 +266,17 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
   }
 }
 
-impl<T: SimdFloatExt, const N: usize> Clone for SimdExpZig<T, N> {
+impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Clone for SimdExpZig<T, N, R> {
   fn clone(&self) -> Self {
-    Self::new(self.lambda)
+    Self::new(self.lambda, &crate::simd_rng::Unseeded)
   }
 }
 
-impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdExpZig<T, N> {
+impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Distribution<T> for SimdExpZig<T, N, R> {
   /// Returns a single Exp(lambda) sample.
   /// Draws from a pre-filled buffer, refilling it when exhausted.
   #[inline(always)]
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= N {
       self.refill_buffer();
@@ -283,7 +287,9 @@ impl<T: SimdFloatExt, const N: usize> Distribution<T> for SimdExpZig<T, N> {
   }
 }
 
-impl<T: SimdFloatExt, const N: usize> crate::traits::DistributionExt for SimdExpZig<T, N> {
+impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> crate::traits::DistributionExt
+  for SimdExpZig<T, N, R>
+{
   fn pdf(&self, x: f64) -> f64 {
     let lambda = self.lambda.to_f64().unwrap();
     if x < 0.0 {
@@ -353,29 +359,24 @@ impl<T: SimdFloatExt, const N: usize> crate::traits::DistributionExt for SimdExp
   }
 }
 
-/// Convenience wrapper around `SimdExpZig` with a default buffer size.
-/// Provides the same API with less generic noise.
-pub struct SimdExp<T: SimdFloatExt> {
-  inner: SimdExpZig<T>,
+/// Convenience wrapper around [`SimdExpZig`] with a default buffer size.
+/// Provides the same API with less generic noise. Inherits the `R` backing
+/// RNG parameter from [`SimdExpZig`] so the dual-stream alias
+/// [`SimdExpDual`](crate::SimdExpDual) is just `SimdExp<T, SimdRngDual>`.
+pub struct SimdExp<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+  inner: SimdExpZig<T, 64, R>,
 }
 
-impl<T: SimdFloatExt> SimdExp<T> {
-  /// Creates a new exponential distribution with rate `lambda`.
+impl<T: SimdFloatExt, R: SimdRngExt> SimdExp<T, R> {
+  /// Creates an exponential distribution with rate `lambda` and the given
+  /// seed strategy. Single canonical constructor — pass
+  /// [`Unseeded`](crate::simd_rng::Unseeded) for auto or
+  /// [`Deterministic::new(seed)`](crate::simd_rng::Deterministic) for a
+  /// reproducible stream.
   #[inline]
-  pub fn new(lambda: T) -> Self {
-    Self::from_seed_source(lambda, &crate::simd_rng::Unseeded)
-  }
-
-  /// Creates an exponential distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(lambda: T, seed: u64) -> Self {
-    Self::from_seed_source(lambda, &crate::simd_rng::Deterministic::new(seed))
-  }
-
-  /// Creates an exponential distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(lambda: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: SeedExt>(lambda: T, seed: &S) -> Self {
     Self {
-      inner: SimdExpZig::from_seed_source(lambda, seed),
+      inner: SimdExpZig::new(lambda, seed),
     }
   }
 
@@ -386,26 +387,26 @@ impl<T: SimdFloatExt> SimdExp<T> {
   }
 
   /// Fills a slice with Exp(lambda) samples. Delegates to the inner `SimdExpZig`.
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
     self.inner.fill_slice(rng, out);
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdExp<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdExp<T, R> {
   fn clone(&self) -> Self {
-    Self::new(self.inner.lambda)
+    Self::new(self.inner.lambda, &crate::simd_rng::Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdExp<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdExp<T, R> {
   /// Returns a single Exp(lambda) sample. Delegates to the inner `SimdExpZig`.
   #[inline(always)]
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+  fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
     self.inner.sample(rng)
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdExp<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdExp<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     self.inner.pdf(x)
   }
@@ -488,7 +489,7 @@ mod tests {
     let lambda = 1.8_f64;
     let mean_target = 1.0 / lambda;
 
-    let dist = SimdExp::<f64>::new(lambda);
+    let dist = SimdExp::<f64>::new(lambda, &crate::simd_rng::Unseeded);
     let mut rng = rand::rng();
     let mut samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
 
@@ -517,7 +518,7 @@ mod tests {
     const N: usize = 32_000;
     let lambda = 0.65_f64;
 
-    let dist = SimdExpZig::<f64>::new(lambda);
+    let dist = SimdExpZig::<f64>::new(lambda, &crate::simd_rng::Unseeded);
     let mut rng = rand::rng();
     let mut samples = vec![0.0_f64; N];
     dist.fill_slice(&mut rng, &mut samples);

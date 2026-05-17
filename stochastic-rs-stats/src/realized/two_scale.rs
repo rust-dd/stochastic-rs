@@ -117,8 +117,8 @@ mod tests {
   use super::*;
 
   fn simulate_noisy_path(seed: u64, n: usize, sigma: f64, omega: f64) -> (Array1<f64>, f64) {
-    let dx = SimdNormal::<f64>::with_seed(0.0, sigma, seed);
-    let dn = SimdNormal::<f64>::with_seed(0.0, omega, seed.wrapping_add(1));
+    let dx = SimdNormal::<f64>::new(0.0, sigma, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
+    let dn = SimdNormal::<f64>::new(0.0, omega, &stochastic_rs_core::simd_rng::Deterministic::new(seed.wrapping_add(1)));
     let mut steps = vec![0.0_f64; n];
     dx.fill_slice_fast(&mut steps);
     let mut noise = vec![0.0_f64; n + 1];

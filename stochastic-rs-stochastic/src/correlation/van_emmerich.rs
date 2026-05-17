@@ -58,7 +58,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for VanEmmerich<T, S> {
 
     let mut gn = Array1::<T>::zeros(n_steps);
     if let Some(slice) = gn.as_slice_mut() {
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
       normal.fill_slice_fast(slice);
     }
 

@@ -132,11 +132,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
     let kappa_j = (self.nu + half * self.omega * self.omega).exp() - T::one();
 
     // Jump RNG
-    let z_std = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let z_std = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut rng = self.seed.rng();
     let lambda_dt = self.lambda.to_f64().unwrap() * dt.to_f64().unwrap();
     let pois = if lambda_dt > 0.0 {
-      Some(SimdPoisson::<u32>::new(lambda_dt))
+      Some(SimdPoisson::<u32>::new(lambda_dt, &stochastic_rs_core::simd_rng::Unseeded))
     } else {
       None
     };

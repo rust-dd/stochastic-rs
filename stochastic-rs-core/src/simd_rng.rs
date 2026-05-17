@@ -250,6 +250,11 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   /// Derive a child seed for sub-component propagation, advancing internal state.
   #[doc(hidden)]
   fn derive(&self) -> Self;
+
+  /// Create any [`SimdRngExt`] impl from this seed source, advancing the
+  /// internal state. Used by generic distributions that are parametric over
+  /// the underlying RNG type (e.g. `SimdNormal<T, N, R>`).
+  fn rng_ext<R: SimdRngExt>(&self) -> R;
 }
 
 /// No seed — each RNG is independently random. Zero overhead.
@@ -307,6 +312,11 @@ impl SeedExt for Unseeded {
   fn derive(&self) -> Self {
     Unseeded
   }
+
+  #[inline(always)]
+  fn rng_ext<R: SimdRngExt>(&self) -> R {
+    R::new()
+  }
 }
 
 impl SeedExt for Deterministic {
@@ -318,6 +328,107 @@ impl SeedExt for Deterministic {
   #[inline(always)]
   fn derive(&self) -> Self {
     Deterministic::new(self.next_u64())
+  }
+
+  #[inline(always)]
+  fn rng_ext<R: SimdRngExt>(&self) -> R {
+    R::from_seed(self.next_u64())
+  }
+}
+
+/// Common interface for the SIMD RNG backends used by generic distributions.
+///
+/// `SimdNormal<T, N, R>` and friends are monomorphised against this trait so
+/// the same struct definition serves both the single-stream [`SimdRng`] and
+/// the experimental dual-stream `SimdRngDual` (gated behind the
+/// `dual-stream-rng` feature). Implementations override
+/// [`HAS_PAIR_ILP`](Self::HAS_PAIR_ILP) and [`next_i32x8_pair`](Self::next_i32x8_pair)
+/// when they can usefully expose two independent batches per call —
+/// consumers branch on the const to pick a 16-lane unrolled body, otherwise
+/// they stay on the cheaper 8-lane body.
+pub trait SimdRngExt: Sized + Send + 'static {
+  /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) returns two
+  /// independent batches whose state updates can run in parallel. The
+  /// single-stream impl leaves this at the default `false`; the dual-stream
+  /// impl flips it to `true`. Consumers gate their loop unrolling on this
+  /// const so single-stream codegen does not pay any unroll overhead.
+  const HAS_PAIR_ILP: bool = false;
+
+  /// Globally-unique auto-seeded constructor.
+  fn new() -> Self;
+
+  /// Deterministic constructor from a single `u64` seed.
+  fn from_seed(seed: u64) -> Self;
+
+  /// Returns 8 i32 lanes from the 32-bit engine. Used in Ziggurat fast paths.
+  fn next_i32x8(&mut self) -> wide::i32x8;
+
+  /// Returns two `i32x8` batches. Default impl is two back-to-back calls
+  /// from the same engine — kept legal so any [`SimdRngExt`] can be
+  /// consumed by a `pair`-shaped algorithm. Dual-stream impls override
+  /// this to return batches from two **independent** engines so the
+  /// surrounding code can hide table-lookup latency between them.
+  #[inline(always)]
+  fn next_i32x8_pair(&mut self) -> (wide::i32x8, wide::i32x8) {
+    (self.next_i32x8(), self.next_i32x8())
+  }
+
+  /// Single random `i32`. Used by Ziggurat fallback paths.
+  fn next_i32(&mut self) -> i32;
+
+  /// Single uniform `f64` in `[0, 1)`. Used by Ziggurat tail / nfix paths.
+  fn next_f64(&mut self) -> f64;
+
+  /// Single uniform `f32` in `[0, 1)`.
+  fn next_f32(&mut self) -> f32;
+
+  /// Bulk-fill `out` with `U(0, 1)` `f64` values. Implementations should
+  /// write through the slice directly without an intermediate `[f64; 8]`.
+  fn fill_uniform_f64(&mut self, out: &mut [f64]);
+
+  /// Bulk-fill `out` with `U(0, 1)` `f32` values.
+  fn fill_uniform_f32(&mut self, out: &mut [f32]);
+}
+
+impl SimdRngExt for SimdRng {
+  #[inline(always)]
+  fn new() -> Self {
+    Self::new()
+  }
+
+  #[inline(always)]
+  fn from_seed(seed: u64) -> Self {
+    Self::from_seed(seed)
+  }
+
+  #[inline(always)]
+  fn next_i32x8(&mut self) -> wide::i32x8 {
+    self.next_i32x8()
+  }
+
+  #[inline(always)]
+  fn next_i32(&mut self) -> i32 {
+    self.next_i32()
+  }
+
+  #[inline(always)]
+  fn next_f64(&mut self) -> f64 {
+    self.next_f64()
+  }
+
+  #[inline(always)]
+  fn next_f32(&mut self) -> f32 {
+    self.next_f32()
+  }
+
+  #[inline(always)]
+  fn fill_uniform_f64(&mut self, out: &mut [f64]) {
+    self.fill_uniform_f64(out);
+  }
+
+  #[inline(always)]
+  fn fill_uniform_f32(&mut self, out: &mut [f32]) {
+    self.fill_uniform_f32(out);
   }
 }
 

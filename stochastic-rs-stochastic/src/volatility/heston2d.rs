@@ -180,7 +180,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston2D<T, S> {
     let mut e3 = Array1::<T>::zeros(n_steps);
     let mut e4 = Array1::<T>::zeros(n_steps);
     for arr in [&mut e1, &mut e2, &mut e3, &mut e4] {
-      let n_norm = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed.derive());
+      let n_norm = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed.derive());
       n_norm.fill_slice_fast(arr.as_slice_mut().expect("noise slice contiguous"));
     }
 

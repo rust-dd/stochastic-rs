@@ -140,8 +140,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for KoBoL<T, S> {
     let J = self.j;
     let size = J + 1; // index 0 reserved (Γ0=0)
 
-    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &self.seed);
-    let exp = SimdExp::from_seed_source(T::one(), &self.seed);
+    let uniform = SimdUniform::new(T::zero(), T::one(), &self.seed);
+    let exp = SimdExp::<T>::new(T::one(), &self.seed);
 
     let mut U = Array1::<T>::zeros(size);
     uniform.fill_slice_fast(U.as_slice_mut().unwrap());

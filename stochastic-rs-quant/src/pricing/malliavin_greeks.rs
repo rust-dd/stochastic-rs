@@ -627,8 +627,8 @@ impl HestonMalliavinGreeks {
   pub fn delta_el_khatib(&self) -> f64 {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let sqrt_dt = dt.sqrt();
-    let normal_s = SimdNormal::new(0.0, sqrt_dt);
-    let normal_perp = SimdNormal::new(0.0, sqrt_dt);
+    let normal_s = SimdNormal::new(0.0, sqrt_dt, &stochastic_rs_core::simd_rng::Unseeded);
+    let normal_perp = SimdNormal::new(0.0, sqrt_dt, &stochastic_rs_core::simd_rng::Unseeded);
 
     self.delta_el_khatib_from_normals(&normal_s, &normal_perp)
   }
@@ -637,8 +637,16 @@ impl HestonMalliavinGreeks {
   pub fn delta_el_khatib_with_seed(&self, seed: u64) -> f64 {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let sqrt_dt = dt.sqrt();
-    let normal_s = SimdNormal::with_seed(0.0, sqrt_dt, seed);
-    let normal_perp = SimdNormal::with_seed(0.0, sqrt_dt, seed ^ 0x9E37_79B9_7F4A_7C15);
+    let normal_s = SimdNormal::new(
+      0.0,
+      sqrt_dt,
+      &stochastic_rs_core::simd_rng::Deterministic::new(seed),
+    );
+    let normal_perp = SimdNormal::new(
+      0.0,
+      sqrt_dt,
+      &stochastic_rs_core::simd_rng::Deterministic::new(seed ^ 0x9E37_79B9_7F4A_7C15),
+    );
 
     self.delta_el_khatib_from_normals(&normal_s, &normal_perp)
   }

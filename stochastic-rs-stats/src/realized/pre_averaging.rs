@@ -83,15 +83,15 @@ mod tests {
   use super::*;
 
   fn iid_normal(seed: u64, n: usize, std: f64) -> Array1<f64> {
-    let dist = SimdNormal::<f64>::with_seed(0.0, std, seed);
+    let dist = SimdNormal::<f64>::new(0.0, std, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
     let mut out = Array1::<f64>::zeros(n);
     dist.fill_slice_fast(out.as_slice_mut().unwrap());
     out
   }
 
   fn noisy_returns(seed: u64, n: usize, sigma: f64, omega: f64) -> Array1<f64> {
-    let dx = SimdNormal::<f64>::with_seed(0.0, sigma, seed);
-    let dn = SimdNormal::<f64>::with_seed(0.0, omega, seed.wrapping_add(1));
+    let dx = SimdNormal::<f64>::new(0.0, sigma, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
+    let dn = SimdNormal::<f64>::new(0.0, omega, &stochastic_rs_core::simd_rng::Deterministic::new(seed.wrapping_add(1)));
     let mut steps = vec![0.0_f64; n];
     dx.fill_slice_fast(&mut steps);
     let mut noise = vec![0.0_f64; n + 1];

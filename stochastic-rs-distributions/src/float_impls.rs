@@ -27,7 +27,9 @@ impl FloatExt for f64 {
     }
     STANDARD_NORMAL_F64.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0)));
+      let dist = slot.get_or_insert_with(|| {
+        Box::new(SimdNormal::new(0.0, 1.0, &crate::simd_rng::Unseeded))
+      });
       dist.fill_standard_fast(out);
     });
   }
@@ -70,7 +72,9 @@ impl FloatExt for f32 {
     }
     STANDARD_NORMAL_F32.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0)));
+      let dist = slot.get_or_insert_with(|| {
+        Box::new(SimdNormal::new(0.0, 1.0, &crate::simd_rng::Unseeded))
+      });
       dist.fill_standard_fast(out);
     });
   }

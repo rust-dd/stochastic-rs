@@ -24,28 +24,12 @@ pub struct SimdHypergeometric<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdHypergeometric<T> {
-  pub fn new(n_total: u32, k_success: u32, n_draws: u32) -> Self {
-    Self::from_seed_source(n_total, k_success, n_draws, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a hypergeometric sampler with a deterministic seed.
-  pub fn with_seed(n_total: u32, k_success: u32, n_draws: u32, seed: u64) -> Self {
-    Self::from_seed_source(
-      n_total,
-      k_success,
-      n_draws,
-      &crate::simd_rng::Deterministic::new(seed),
-    )
-  }
-
-  /// Creates a hypergeometric sampler with an RNG obtained from a
-  /// [`SeedExt`](crate::simd_rng::SeedExt) source. The core constructor —
-  /// `new()` and `with_seed()` delegate here.
-  pub fn from_seed_source(
+  pub fn new<S: crate::simd_rng::SeedExt>(
     n_total: u32,
     k_success: u32,
     n_draws: u32,
-    seed: &impl crate::simd_rng::SeedExt,
+    seed: &S,
   ) -> Self {
     Self {
       n_total,
@@ -117,7 +101,7 @@ impl<T: PrimInt> SimdHypergeometric<T> {
 
 impl<T: PrimInt> Clone for SimdHypergeometric<T> {
   fn clone(&self) -> Self {
-    Self::new(self.n_total, self.k_success, self.n_draws)
+    Self::new(self.n_total, self.k_success, self.n_draws, &crate::simd_rng::Unseeded)
   }
 }
 

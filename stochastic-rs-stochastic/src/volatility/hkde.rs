@@ -160,6 +160,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(
         (self.lambda * dt).to_f64().unwrap(),
+        &stochastic_rs_core::simd_rng::Unseeded,
       ))
     } else {
       None

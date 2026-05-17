@@ -125,7 +125,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
     T::with_fgn_complex_scratch(len, |rnd| {
       // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
       let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-      let normal = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
+      let normal = stochastic_rs_distributions::normal::SimdNormal::<T>::new(
         T::zero(),
         T::one(),
         seed,
@@ -169,7 +169,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
     T::with_fgn_complex_scratch(len, |rnd| {
       // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
       let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-      let normal = stochastic_rs_distributions::normal::SimdNormal::<T>::from_seed_source(
+      let normal = stochastic_rs_distributions::normal::SimdNormal::<T>::new(
         T::zero(),
         T::one(),
         seed,

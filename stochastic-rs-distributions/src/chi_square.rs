@@ -16,22 +16,13 @@ pub struct SimdChiSquared<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdChiSquared<T> {
-  #[inline]
-  pub fn new(k: T) -> Self {
-    Self::from_seed_source(k, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a chi-squared distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(k: T, seed: u64) -> Self {
-    Self::from_seed_source(k, &crate::simd_rng::Deterministic::new(seed))
-  }
 
   /// Creates a chi-squared distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(k: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(k: T, seed: &S) -> Self {
     Self {
       df: k,
-      gamma: SimdGamma::from_seed_source(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed),
+      gamma: SimdGamma::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed),
     }
   }
 
@@ -52,7 +43,7 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
 
 impl<T: SimdFloatExt> Clone for SimdChiSquared<T> {
   fn clone(&self) -> Self {
-    Self::new(self.df)
+    Self::new(self.df, &crate::simd_rng::Unseeded)
   }
 }
 

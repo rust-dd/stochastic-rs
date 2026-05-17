@@ -40,17 +40,8 @@ impl<T: PrimInt> SimdPoisson<T> {
     cdf.into_boxed_slice()
   }
 
-  /// Construct a Poisson sampler with rate `lambda`.
-  ///
-  /// `lambda` is `f64` regardless of the output type `T`: the rate parameter
-  /// is intrinsically real-valued and the internal CDF table is built in
-  /// `f64` precision. The generic `T: PrimInt` controls only the *output*
-  /// integer width (`u32`, `u64`, `i64`, …), not the rate type.
-  pub fn new(lambda: f64) -> Self {
-    Self::from_seed_source(lambda, &crate::simd_rng::Unseeded)
-  }
 
-  pub fn from_seed_source(lambda: f64, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(lambda: f64, seed: &S) -> Self {
     assert!(lambda > 0.0);
     Self {
       cdf: Self::build_cdf(lambda),

@@ -92,7 +92,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
 
     let lam = fft_freq.mapv(|c| (c.re / scale).max(T::zero()).sqrt());
 
-    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
     let z = Array2::from_shape_fn((big_m, big_n), |_| {
       Complex::new(normal.sample_fast(), normal.sample_fast())
     });
@@ -115,7 +115,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
     let shift = field[[0, 0]];
     field.mapv_inplace(|v| v - shift);
 
-    let normal_scalar = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let normal_scalar = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut z_buf = [T::zero(); 2];
     normal_scalar.fill_slice_fast(&mut z_buf);
     let z1 = z_buf[0];

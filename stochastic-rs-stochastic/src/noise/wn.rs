@@ -46,7 +46,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Wn<T, S> {
       return out;
     }
     let out_slice = out.as_slice_mut().expect("Wn output must be contiguous");
-    let normal = SimdNormal::<T>::from_seed_source(mean, std_dev, &self.seed);
+    let normal = SimdNormal::<T>::new(mean, std_dev, &self.seed);
     normal.fill_slice_fast(out_slice);
     out
   }

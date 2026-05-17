@@ -66,7 +66,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Kimura<T, S> {
     let tail = tail_view
       .as_slice_mut()
       .expect("Kimura output tail must be contiguous");
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
     normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {

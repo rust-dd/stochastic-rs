@@ -31,30 +31,12 @@ pub struct SimdAlphaStable<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdAlphaStable<T> {
-  #[inline]
-  pub fn new(alpha: T, beta: T, scale: T, location: T) -> Self {
-    Self::from_seed_source(alpha, beta, scale, location, &crate::simd_rng::Unseeded)
-  }
-
-  /// Creates an alpha-stable distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(alpha: T, beta: T, scale: T, location: T, seed: u64) -> Self {
-    Self::from_seed_source(
-      alpha,
-      beta,
-      scale,
-      location,
-      &crate::simd_rng::Deterministic::new(seed),
-    )
-  }
-
-  /// Creates an alpha-stable distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(
+  pub fn new<S: crate::simd_rng::SeedExt>(
     alpha: T,
     beta: T,
     scale: T,
     location: T,
-    seed: &impl crate::simd_rng::SeedExt,
+    seed: &S,
   ) -> Self {
     assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
     assert!((-T::one()..=T::one()).contains(&beta));
@@ -257,7 +239,13 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
 
 impl<T: SimdFloatExt> Clone for SimdAlphaStable<T> {
   fn clone(&self) -> Self {
-    Self::new(self.alpha, self.beta, self.scale, self.location)
+    Self::new(
+      self.alpha,
+      self.beta,
+      self.scale,
+      self.location,
+      &crate::simd_rng::Unseeded,
+    )
   }
 }
 
@@ -390,7 +378,13 @@ mod tests {
 
   #[test]
   fn alpha_stable_samples_are_finite() {
-    let dist = SimdAlphaStable::new(1.7_f64, 0.3, 1.0, 0.0);
+    let dist = SimdAlphaStable::new(
+      1.7_f64,
+      0.3,
+      1.0,
+      0.0,
+      &stochastic_rs_core::simd_rng::Unseeded,
+    );
     let mut rng = rand::rng();
     for _ in 0..1024 {
       let x = dist.sample(&mut rng);

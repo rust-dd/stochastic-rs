@@ -58,7 +58,7 @@ fn sample_f32<T: FloatExt>(
   let mut real = vec![0.0f32; total];
   let mut imag = vec![0.0f32; total];
   {
-    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0);
+    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
     normal.fill_slice_fast(&mut real);
     normal.fill_slice_fast(&mut imag);
   }

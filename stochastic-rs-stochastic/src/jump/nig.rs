@@ -67,10 +67,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Nig<T, S> {
     let dt = self.dt();
     // For Nig: G_dt ~ Ig(mean=dt, shape=dt^2/kappa).
     let shape = dt * dt / self.kappa;
-    let ig_dist = SimdInverseGauss::from_seed_source(dt, shape, &self.seed);
+    let ig_dist = SimdInverseGauss::new(dt, shape, &self.seed);
     let mut ig = Array1::<T>::zeros(self.n - 1);
     ig_dist.fill_slice_fast(ig.as_slice_mut().unwrap());
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut z = Array1::<T>::zeros(self.n - 1);
     normal.fill_slice_fast(z.as_slice_mut().unwrap());
 

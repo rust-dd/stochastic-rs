@@ -46,7 +46,7 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
       return;
     }
     let std_dev = self.dt().sqrt();
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), std_dev, &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), std_dev, &self.seed);
     normal.fill_slice_fast(&mut out[..len]);
   }
 

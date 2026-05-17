@@ -465,7 +465,7 @@ mod tests {
     let fs = 100.0;
     let n = 2048;
 
-    let dist = SimdNormal::<f64>::new(0.0, 1.0);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut rng = rand::rng();
     let mut x = vec![0.0; n];
     dist.fill_slice(&mut rng, &mut x);

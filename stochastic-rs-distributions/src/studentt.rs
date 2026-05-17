@@ -26,24 +26,15 @@ pub struct SimdStudentT<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdStudentT<T> {
-  #[inline]
-  pub fn new(nu: T) -> Self {
-    Self::from_seed_source(nu, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a Student's t-distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(nu: T, seed: u64) -> Self {
-    Self::from_seed_source(nu, &crate::simd_rng::Deterministic::new(seed))
-  }
 
   /// Creates a Student's t-distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, chisq, main rng) gets an independent stream.
-  pub fn from_seed_source(nu: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(nu: T, seed: &S) -> Self {
     Self {
       nu,
-      normal: SimdNormal::from_seed_source(T::zero(), T::one(), seed),
-      chisq: SimdChiSquared::from_seed_source(nu, seed),
+      normal: SimdNormal::new(T::zero(), T::one(), seed),
+      chisq: SimdChiSquared::new(nu, seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(seed.rng()),
@@ -111,7 +102,7 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
 
 impl<T: SimdFloatExt> Clone for SimdStudentT<T> {
   fn clone(&self) -> Self {
-    Self::new(self.nu)
+    Self::new(self.nu, &crate::simd_rng::Unseeded)
   }
 }
 

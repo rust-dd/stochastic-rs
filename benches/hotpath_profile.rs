@@ -38,7 +38,7 @@ fn profile_simd_rng_f32(n: usize) {
 
 #[hotpath::measure]
 fn profile_normal_scalar_f64(n: usize) {
-  let dist: SimdNormal<f64> = SimdNormal::new(0.0, 1.0);
+  let dist: SimdNormal<f64> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
   let mut rng = rand::rng();
   let mut acc = 0.0_f64;
   for _ in 0..n {
@@ -49,7 +49,7 @@ fn profile_normal_scalar_f64(n: usize) {
 
 #[hotpath::measure]
 fn profile_normal_bulk_f64(n: usize) {
-  let dist: SimdNormal<f64> = SimdNormal::new(0.0, 1.0);
+  let dist: SimdNormal<f64> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
   let mut buf = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut buf);
   black_box(&buf);
@@ -57,7 +57,7 @@ fn profile_normal_bulk_f64(n: usize) {
 
 #[hotpath::measure]
 fn profile_normal_scalar_f32(n: usize) {
-  let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
+  let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
   let mut rng = rand::rng();
   let mut acc = 0.0_f32;
   for _ in 0..n {
@@ -68,7 +68,7 @@ fn profile_normal_scalar_f32(n: usize) {
 
 #[hotpath::measure]
 fn profile_normal_bulk_f32(n: usize) {
-  let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
+  let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
   let mut buf = vec![0.0_f32; n];
   dist.fill_slice_fast(&mut buf);
   black_box(&buf);
@@ -76,7 +76,7 @@ fn profile_normal_bulk_f32(n: usize) {
 
 #[hotpath::measure]
 fn profile_exp_bulk_f64(n: usize) {
-  let dist: SimdExpZig<f64> = SimdExpZig::new(1.5);
+  let dist: SimdExpZig<f64> = SimdExpZig::new(1.5, &stochastic_rs_core::simd_rng::Unseeded);
   let mut buf = vec![0.0_f64; n];
   let mut rng = rand::rng();
   dist.fill_slice(&mut rng, &mut buf);
@@ -85,7 +85,7 @@ fn profile_exp_bulk_f64(n: usize) {
 
 #[hotpath::measure]
 fn profile_alpha_stable_general_f64(n: usize) {
-  let dist = SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0);
+  let dist = SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0, &stochastic_rs_core::simd_rng::Unseeded);
   let mut buf = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut buf);
   black_box(&buf);
@@ -93,7 +93,7 @@ fn profile_alpha_stable_general_f64(n: usize) {
 
 #[hotpath::measure]
 fn profile_alpha_stable_gaussian_f64(n: usize) {
-  let dist = SimdAlphaStable::<f64>::new(2.0, 0.0, 1.0, 0.0);
+  let dist = SimdAlphaStable::<f64>::new(2.0, 0.0, 1.0, 0.0, &stochastic_rs_core::simd_rng::Unseeded);
   let mut buf = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut buf);
   black_box(&buf);
@@ -101,7 +101,7 @@ fn profile_alpha_stable_gaussian_f64(n: usize) {
 
 #[hotpath::measure]
 fn profile_alpha_stable_cauchy_f64(n: usize) {
-  let dist = SimdAlphaStable::<f64>::new(1.0, 0.5, 1.0, 0.0);
+  let dist = SimdAlphaStable::<f64>::new(1.0, 0.5, 1.0, 0.0, &stochastic_rs_core::simd_rng::Unseeded);
   let mut buf = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut buf);
   black_box(&buf);

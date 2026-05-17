@@ -199,7 +199,7 @@ mod tests {
   use super::*;
 
   fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-    let dist = SimdNormal::<f64>::with_seed(0.0, sigma, seed);
+    let dist = SimdNormal::<f64>::new(0.0, sigma, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
     let mut steps = vec![0.0_f64; n];
     dist.fill_slice_fast(&mut steps);
     let mut out = Array1::<f64>::zeros(n);
@@ -212,7 +212,7 @@ mod tests {
   #[test]
   fn engle_granger_rejects_under_cointegration() {
     let x = random_walk(7, 500, 1.0);
-    let dist = SimdNormal::<f64>::with_seed(0.0, 0.05, 11);
+    let dist = SimdNormal::<f64>::new(0.0, 0.05, &stochastic_rs_core::simd_rng::Deterministic::new(11));
     let mut eps = vec![0.0_f64; 500];
     dist.fill_slice_fast(&mut eps);
     let mut y = Array1::<f64>::zeros(500);

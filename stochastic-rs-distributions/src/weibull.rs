@@ -21,25 +21,16 @@ pub struct SimdWeibull<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdWeibull<T> {
-  #[inline]
-  pub fn new(lambda: T, k: T) -> Self {
-    Self::from_seed_source(lambda, k, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a Weibull distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(lambda: T, k: T, seed: u64) -> Self {
-    Self::from_seed_source(lambda, k, &crate::simd_rng::Deterministic::new(seed))
-  }
 
   /// Creates a Weibull distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (exp, main rng) gets an independent stream.
-  pub fn from_seed_source(lambda: T, k: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, k: T, seed: &S) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
     Self {
       lambda,
       inv_k: T::one() / k,
-      exp1: SimdExpZig::from_seed_source(T::one(), seed),
+      exp1: SimdExpZig::new(T::one(), seed),
       simd_rng: UnsafeCell::new(seed.rng()),
     }
   }
@@ -73,7 +64,7 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
 
 impl<T: SimdFloatExt> Clone for SimdWeibull<T> {
   fn clone(&self) -> Self {
-    Self::new(self.lambda, T::one() / self.inv_k)
+    Self::new(self.lambda, T::one() / self.inv_k, &crate::simd_rng::Unseeded)
   }
 }
 

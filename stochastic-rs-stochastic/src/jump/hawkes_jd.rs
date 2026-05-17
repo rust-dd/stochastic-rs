@@ -95,9 +95,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HawkesJD<T, S> {
     let sqrt_dt = dt.sqrt();
     let two = T::from_usize_(2);
 
-    let normal = SimdNormal::<T, 64>::from_seed_source(T::zero(), T::one(), &self.seed);
-    let uniform = SimdUniform::from_seed_source(T::zero(), T::one(), &self.seed);
-    let jump_normal = SimdNormal::<T, 64>::from_seed_source(self.mu_j, self.sigma_j, &self.seed);
+    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
+    let uniform = SimdUniform::new(T::zero(), T::one(), &self.seed);
+    let jump_normal = SimdNormal::<T, 64>::new(self.mu_j, self.sigma_j, &self.seed);
 
     let mut x = Array1::<T>::zeros(self.n);
     x[0] = self.x0.unwrap_or(T::zero());

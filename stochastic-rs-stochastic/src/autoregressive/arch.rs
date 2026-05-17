@@ -57,7 +57,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arch<T, S> {
     let mut z = Array1::<T>::zeros(self.n);
     if self.n > 0 {
       let slice = z.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+      let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
       normal.fill_slice_fast(slice);
     }
     let mut x = Array1::<T>::zeros(self.n);

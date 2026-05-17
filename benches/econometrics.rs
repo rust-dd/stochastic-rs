@@ -20,7 +20,7 @@ use stochastic_rs::stats::econometrics::pelt;
 
 #[cfg(feature = "openblas")]
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::with_seed(0.0, sigma, seed);
+  let dist = SimdNormal::<f64>::new(0.0, sigma, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut steps);
   let mut out = Array1::<f64>::zeros(n);
@@ -31,7 +31,7 @@ fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
 }
 
 fn iid_normal(seed: u64, n: usize) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, seed);
+  let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(seed));
   let mut buf = vec![0.0_f64; n];
   dist.fill_slice_fast(&mut buf);
   Array1::from(buf)
@@ -50,7 +50,7 @@ fn bench_changepoint(c: &mut Criterion) {
 #[cfg(feature = "openblas")]
 fn bench_cointegration(c: &mut Criterion) {
   let x = random_walk(11, 1_000, 1.0);
-  let dist = SimdNormal::<f64>::with_seed(0.0, 0.05, 13);
+  let dist = SimdNormal::<f64>::new(0.0, 0.05, &stochastic_rs_core::simd_rng::Deterministic::new(13));
   let mut eps = vec![0.0_f64; 1_000];
   dist.fill_slice_fast(&mut eps);
   let y: Array1<f64> = (0..1_000)
@@ -82,7 +82,7 @@ fn bench_granger(c: &mut Criterion) {
 
 #[cfg(feature = "openblas")]
 fn bench_hmm(c: &mut Criterion) {
-  let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, 31);
+  let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(31));
   let mut buf = vec![0.0_f64; 1_000];
   dist.fill_slice_fast(&mut buf);
   let obs = Array1::from(buf);

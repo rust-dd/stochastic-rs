@@ -62,7 +62,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ig<T, S> {
     // increments are strictly positive and independent over grid steps.
     let mean = self.gamma * dt;
     let shape = mean * mean;
-    let ig_dist = SimdInverseGauss::from_seed_source(mean, shape, &self.seed);
+    let ig_dist = SimdInverseGauss::new(mean, shape, &self.seed);
     let mut inc = Array1::<T>::zeros(self.n - 1);
     ig_dist.fill_slice_fast(inc.as_slice_mut().unwrap());
 

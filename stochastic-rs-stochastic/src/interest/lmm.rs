@@ -186,7 +186,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lmm<T, S> {
     let delta: Array1<T> = (0..m).map(|j| self.tenor[j + 1] - self.tenor[j]).collect();
 
     // Standard normal innovations for one full simulation: M factors × n_increments.
-    let normal = SimdNormal::<T>::from_seed_source(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut eps = Array2::<T>::zeros((m, n_increments));
     {
       let buf = eps

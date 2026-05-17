@@ -16,6 +16,10 @@ doctest = false
 [features]
 default = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python"]
+# Forwards `dual-stream-rng` to `stochastic-rs-core` and unlocks
+# `crate::normal_dual::SimdNormalDual` (Ziggurat unrolled 2× over the dual
+# RNG streams). See the core crate's feature doc for trade-offs.
+dual-stream-rng = ["stochastic-rs-core/dual-stream-rng"]
 
 [dependencies]
 stochastic-rs-core = { workspace = true }

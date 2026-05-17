@@ -23,19 +23,9 @@ pub struct SimdCauchy<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdCauchy<T> {
-  #[inline]
-  pub fn new(x0: T, gamma: T) -> Self {
-    Self::from_seed_source(x0, gamma, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a Cauchy distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(x0: T, gamma: T, seed: u64) -> Self {
-    Self::from_seed_source(x0, gamma, &crate::simd_rng::Deterministic::new(seed))
-  }
 
-  /// Creates a Cauchy distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(x0: T, gamma: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(x0: T, gamma: T, seed: &S) -> Self {
     assert!(gamma > T::zero());
     Self {
       x0,
@@ -108,7 +98,7 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
 
 impl<T: SimdFloatExt> Clone for SimdCauchy<T> {
   fn clone(&self) -> Self {
-    Self::new(self.x0, self.gamma)
+    Self::new(self.x0, self.gamma, &crate::simd_rng::Unseeded)
   }
 }
 

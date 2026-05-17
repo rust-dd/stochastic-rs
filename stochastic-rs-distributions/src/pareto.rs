@@ -23,19 +23,9 @@ pub struct SimdPareto<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt> SimdPareto<T> {
-  #[inline]
-  pub fn new(x_m: T, alpha: T) -> Self {
-    Self::from_seed_source(x_m, alpha, &crate::simd_rng::Unseeded)
-  }
 
-  /// Creates a Pareto distribution with a deterministic seed.
-  #[inline]
-  pub fn with_seed(x_m: T, alpha: T, seed: u64) -> Self {
-    Self::from_seed_source(x_m, alpha, &crate::simd_rng::Deterministic::new(seed))
-  }
 
-  /// Creates a Pareto distribution with an RNG from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn from_seed_source(x_m: T, alpha: T, seed: &impl crate::simd_rng::SeedExt) -> Self {
+  pub fn new<S: crate::simd_rng::SeedExt>(x_m: T, alpha: T, seed: &S) -> Self {
     assert!(x_m > T::zero() && alpha > T::zero());
     Self {
       x_m,
@@ -109,7 +99,7 @@ impl<T: SimdFloatExt> SimdPareto<T> {
 
 impl<T: SimdFloatExt> Clone for SimdPareto<T> {
   fn clone(&self) -> Self {
-    Self::new(self.x_m, self.alpha)
+    Self::new(self.x_m, self.alpha, &crate::simd_rng::Unseeded)
   }
 }
 

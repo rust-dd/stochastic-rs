@@ -46,6 +46,28 @@ pub mod lognormal;
 pub mod non_central_chi_squared;
 pub mod normal;
 pub mod normal_inverse_gauss;
+
+/// Type alias for `SimdNormal` backed by the experimental dual-stream RNG.
+///
+/// Enabled by the `dual-stream-rng` cargo feature. Production code continues
+/// to use the default [`normal::SimdNormal`] alias parameter
+/// (`R = SimdRng`); switching to this alias picks the same struct
+/// monomorphised over `SimdRngDual`, which unrolls the Ziggurat hot loop
+/// 2× for ≈ 5–11 % extra throughput on bulk Normal fills.
+#[cfg(feature = "dual-stream-rng")]
+pub type SimdNormalDual<T, const N: usize = 64> =
+  normal::SimdNormal<T, N, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
+
+/// Type alias for [`exp::SimdExp`] backed by the experimental dual-stream
+/// RNG. Same trade-offs as [`SimdNormalDual`].
+#[cfg(feature = "dual-stream-rng")]
+pub type SimdExpDual<T> = exp::SimdExp<T, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
+
+/// Type alias for [`exp::SimdExpZig`] (the bulk-fill primitive that powers
+/// [`exp::SimdExp`]) backed by the dual-stream RNG.
+#[cfg(feature = "dual-stream-rng")]
+pub type SimdExpZigDual<T, const N: usize = 64> =
+  exp::SimdExpZig<T, N, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
 pub mod pareto;
 pub mod poisson;
 pub mod studentt;
@@ -124,21 +146,21 @@ mod distribution_sampler_tests {
 
   #[test]
   fn sample_n_returns_requested_length() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
     let out = dist.sample_n(1024);
     assert_eq!(out.len(), 1024);
   }
 
   #[test]
   fn sample_matrix_float_has_expected_shape() {
-    let dist = SimdNormal::<f32>::new(0.0, 1.0);
+    let dist = SimdNormal::<f32>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
     let out = dist.sample_matrix(32, 64);
     assert_eq!(out.shape(), &[32, 64]);
   }
 
   #[test]
   fn sample_matrix_int_has_expected_shape() {
-    let dist = SimdPoisson::<i64>::new(1.5);
+    let dist = SimdPoisson::<i64>::new(1.5, &stochastic_rs_core::simd_rng::Unseeded);
     let out = dist.sample_matrix(16, 8);
     assert_eq!(out.shape(), &[16, 8]);
   }
@@ -461,7 +483,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(1, 1);
       let mut rng = rand::rng();
-      let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
+      let dist: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -4.0, 4.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -494,7 +516,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(1, 2);
       let mut rng = rand::rng();
-      let dist = SimdCauchy::new(0.0, 1.0);
+      let dist = SimdCauchy::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -10.0, 10.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -527,7 +549,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(1, 3);
       let mut rng = rand::rng();
-      let dist = SimdLogNormal::new(0.0, 1.0);
+      let dist = SimdLogNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 8.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -560,7 +582,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(1, 4);
       let mut rng = rand::rng();
-      let dist = SimdPareto::new(1.0, 1.5);
+      let dist = SimdPareto::new(1.0, 1.5, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 10.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -593,7 +615,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(2, 1);
       let mut rng = rand::rng();
-      let dist = SimdWeibull::new(1.0, 1.5);
+      let dist = SimdWeibull::new(1.0, 1.5, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 3.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -626,7 +648,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(2, 2);
       let mut rng = rand::rng();
-      let dist = SimdGamma::new(2.0, 2.0);
+      let dist = SimdGamma::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 120, 0.0, 20.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -659,7 +681,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(2, 3);
       let mut rng = rand::rng();
-      let dist = SimdBeta::new(2.0, 2.0);
+      let dist = SimdBeta::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 1.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -692,7 +714,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(2, 4);
       let mut rng = rng();
-      let dist = SimdInverseGauss::new(1.0, 2.0);
+      let dist = SimdInverseGauss::new(1.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 3.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -725,7 +747,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(3, 1);
       let mut rng = rand::rng();
-      let dist = SimdNormalInverseGauss::new(2.0, 0.0, 1.0, 0.0);
+      let dist = SimdNormalInverseGauss::new(2.0, 0.0, 1.0, 0.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, -3.0, 3.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -758,7 +780,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(3, 2);
       let mut rng = rng();
-      let dist = SimdStudentT::new(5.0);
+      let dist = SimdStudentT::new(5.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 120, -5.0, 5.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -791,7 +813,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(3, 3);
       let mut rng = rand::rng();
-      let dist = SimdBinomial::new(10, 0.3);
+      let dist = SimdBinomial::new(10, 0.3, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_discrete_pmf(&samples, 10);
 
@@ -827,7 +849,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(3, 4);
       let mut rng = rng();
-      let dist = SimdGeometric::new(0.25);
+      let dist = SimdGeometric::new(0.25, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_discrete_pmf(&samples, 20);
       let trace = Scatter::new(xs.clone(), bins)
@@ -863,7 +885,7 @@ mod tests {
       let (xa, ya) = subplot_axes(4, 1);
       let mut rng = rand::rng();
       // N=20, K=5, n=6
-      let dist = SimdHypergeometric::new(20, 5, 6);
+      let dist = SimdHypergeometric::new(20, 5, 6, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_discrete_pmf(&samples, 6);
 
@@ -899,7 +921,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(4, 2);
       let mut rng = rand::rng();
-      let dist = SimdPoisson::new(4.0);
+      let dist = SimdPoisson::new(4.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<u32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_discrete_pmf(&samples, 15);
 
@@ -935,7 +957,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(4, 3);
       let mut rng = rand::rng();
-      let dist = SimdUniform::new(0.0, 1.0);
+      let dist = SimdUniform::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 1.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -968,7 +990,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(4, 4);
       let mut rng = rand::rng();
-      let dist = SimdExp::new(1.5);
+      let dist = SimdExp::<f32>::new(1.5, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 4.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -1001,7 +1023,7 @@ mod tests {
     {
       let (xa, ya) = subplot_axes(5, 1);
       let mut rng = rand::rng();
-      let dist = SimdChiSquared::new(5.0);
+      let dist = SimdChiSquared::new(5.0, &stochastic_rs_core::simd_rng::Unseeded);
       let samples: Vec<f32> = (0..sample_size).map(|_| dist.sample(&mut rng)).collect();
       let (xs, bins) = make_histogram(&samples, 100, 0.0, 20.0);
       let trace = Scatter::new(xs.clone(), bins)
@@ -1043,7 +1065,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
+      let d: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1054,7 +1076,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
+    let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1086,7 +1108,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdLogNormal::new(0.2f32, 0.8);
+      let d = SimdLogNormal::new(0.2f32, 0.8, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1097,7 +1119,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdLogNormal::new(0.2, 0.8);
+    let simd = SimdLogNormal::new(0.2, 0.8, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1130,7 +1152,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdExp::new(lambda);
+      let d = SimdExp::<f32>::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1141,7 +1163,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdExp::new(lambda);
+    let simd = SimdExp::<f32>::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1174,8 +1196,8 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d: SimdExpZig<f32> = SimdExpZig::new(lambda);
-      let d2 = SimdExp::new(lambda);
+      let d: SimdExpZig<f32> = SimdExpZig::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
+      let d2 = SimdExp::<f32>::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Exp::<f32>::new(lambda).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1187,7 +1209,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let zig: SimdExpZig<f32> = SimdExpZig::new(lambda);
+    let zig: SimdExpZig<f32> = SimdExpZig::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
     let mut z_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1196,7 +1218,7 @@ mod tests {
     let dt_z = t0.elapsed();
 
     let mut rng = rand::rng();
-    let old = SimdExp::new(lambda);
+    let old = SimdExp::<f32>::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
     let mut o_sum = 0.0f32;
     let t1 = Instant::now();
     for _ in 0..n {
@@ -1228,7 +1250,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdCauchy::new(0.0f32, 1.0);
+      let d = SimdCauchy::new(0.0f32, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1239,7 +1261,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdCauchy::new(0.0, 1.0);
+    let simd = SimdCauchy::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1271,7 +1293,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdGamma::new(2.0f32, 2.0);
+      let d = SimdGamma::new(2.0f32, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1282,7 +1304,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdGamma::new(2.0, 2.0);
+    let simd = SimdGamma::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1314,7 +1336,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdWeibull::new(1.0f32, 1.5);
+      let d = SimdWeibull::new(1.0f32, 1.5, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1325,7 +1347,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdWeibull::new(1.0, 1.5);
+    let simd = SimdWeibull::new(1.0, 1.5, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1357,7 +1379,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdBeta::new(2.0f32, 2.0);
+      let d = SimdBeta::new(2.0f32, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1368,7 +1390,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdBeta::new(2.0, 2.0);
+    let simd = SimdBeta::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1400,7 +1422,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdChiSquared::new(5.0f32);
+      let d = SimdChiSquared::new(5.0f32, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1411,7 +1433,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdChiSquared::new(5.0);
+    let simd = SimdChiSquared::new(5.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1443,7 +1465,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdStudentT::new(5.0f32);
+      let d = SimdStudentT::new(5.0f32, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
       let mut s = 0.0f32;
       for _ in 0..warmup {
@@ -1454,7 +1476,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdStudentT::new(5.0);
+    let simd = SimdStudentT::new(5.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum = 0.0f32;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1486,7 +1508,7 @@ mod tests {
 
     {
       let mut rng = rand::rng();
-      let d = SimdPoisson::<u32>::new(4.0);
+      let d = SimdPoisson::<u32>::new(4.0, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
       let mut s: u64 = 0;
       for _ in 0..warmup {
@@ -1497,7 +1519,7 @@ mod tests {
     }
 
     let mut rng = rand::rng();
-    let simd = SimdPoisson::<u32>::new(4.0);
+    let simd = SimdPoisson::<u32>::new(4.0, &stochastic_rs_core::simd_rng::Unseeded);
     let mut s_sum: u64 = 0;
     let t0 = Instant::now();
     for _ in 0..n {
@@ -1621,7 +1643,7 @@ mod tests {
     // Normal
     {
       let mut rng = rand::rng();
-      let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0);
+      let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
       time_f32(
@@ -1636,7 +1658,7 @@ mod tests {
     // LogNormal
     {
       let mut rng = rand::rng();
-      let simd = SimdLogNormal::new(0.2, 0.8);
+      let simd = SimdLogNormal::new(0.2, 0.8, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
       time_f32(
@@ -1651,7 +1673,7 @@ mod tests {
     // Exp
     {
       let mut rng = rand::rng();
-      let simd = SimdExp::new(1.5);
+      let simd = SimdExp::<f32>::new(1.5, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Exp::<f32>::new(1.5).unwrap();
       time_f32(
@@ -1666,7 +1688,7 @@ mod tests {
     // Cauchy
     {
       let mut rng = rand::rng();
-      let simd = SimdCauchy::new(0.0, 1.0);
+      let simd = SimdCauchy::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
       time_f32(
@@ -1681,7 +1703,7 @@ mod tests {
     // Gamma
     {
       let mut rng = rand::rng();
-      let simd = SimdGamma::new(2.0, 2.0);
+      let simd = SimdGamma::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
       time_f32(
@@ -1696,7 +1718,7 @@ mod tests {
     // Weibull
     {
       let mut rng = rand::rng();
-      let simd = SimdWeibull::new(1.0, 1.5);
+      let simd = SimdWeibull::new(1.0, 1.5, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
       time_f32(
@@ -1711,7 +1733,7 @@ mod tests {
     // Beta
     {
       let mut rng = rand::rng();
-      let simd = SimdBeta::new(2.0, 2.0);
+      let simd = SimdBeta::new(2.0, 2.0, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
       time_f32(
@@ -1726,7 +1748,7 @@ mod tests {
     // Chi-Squared
     {
       let mut rng = rand::rng();
-      let simd = SimdChiSquared::new(5.0);
+      let simd = SimdChiSquared::new(5.0, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
       time_f32(
@@ -1741,7 +1763,7 @@ mod tests {
     // StudentT
     {
       let mut rng = rand::rng();
-      let simd = SimdStudentT::new(5.0);
+      let simd = SimdStudentT::new(5.0, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
       time_f32(
@@ -1756,7 +1778,7 @@ mod tests {
     // Poisson (discrete)
     {
       let mut rng = rand::rng();
-      let simd = SimdPoisson::new(4.0);
+      let simd = SimdPoisson::new(4.0, &stochastic_rs_core::simd_rng::Unseeded);
       let mut rng2 = rand::rng();
       let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
       time_u32(
@@ -1772,7 +1794,7 @@ mod tests {
     #[allow(unused)]
     {
       // If rand_distr had Pareto<f32>, uncomment below lines.
-      let _ = SimdPareto::new(1.0, 1.5);
+      let _ = SimdPareto::new(1.0, 1.5, &stochastic_rs_core::simd_rng::Unseeded);
     }
 
     // Print table
@@ -1795,7 +1817,7 @@ mod tests {
     let total = 5_000_000usize;
     for &size in &[8, 16, 64, 256, 1024, 10_000, 100_000] {
       let iters = total / size;
-      let simd = SimdNormal::<f32>::new(0.0, 1.0);
+      let simd = SimdNormal::<f32>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Unseeded);
       let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
       let mut buf = vec![0.0f32; size];
 

@@ -152,8 +152,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonLog<T, S> {
     let mut dws = vec![T::zero(); n_increments];
     let mut z = vec![T::zero(); n_increments];
     let mut dwv = vec![T::zero(); n_increments];
-    let n1 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
-    let n2 = SimdNormal::<T>::from_seed_source(T::zero(), sqrt_dt, &self.seed);
+    let n1 = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+    let n2 = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
     n1.fill_slice_fast(&mut dws);
     n2.fill_slice_fast(&mut z);
     let corr_scale = (T::one() - self.rho * self.rho).sqrt();

@@ -117,8 +117,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKanJumpExp<T, S> {
     r[0] = self.r0.unwrap_or(T::zero());
     x[0] = self.x0.unwrap_or(T::zero());
 
-    let exp_dist = SimdExp::from_seed_source(self.lambda, &self.seed);
-    let jump_dist = SimdNormal::<T, 64>::from_seed_source(T::zero(), self.jump_scale, &self.seed);
+    let exp_dist = SimdExp::<T>::new(self.lambda, &self.seed);
+    let jump_dist = SimdNormal::<T, 64>::new(T::zero(), self.jump_scale, &self.seed);
 
     let mut rng = self.seed.rng();
     let mut next_jump_time = exp_dist.sample(&mut rng);

@@ -172,7 +172,7 @@ mod tests {
 
   #[test]
   fn cusum_few_alarms_under_pure_noise() {
-    let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, 5);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(5));
     let mut buf = vec![0.0_f64; 1_000];
     dist.fill_slice_fast(&mut buf);
     let s = Array1::from(buf);
@@ -182,7 +182,7 @@ mod tests {
 
   #[test]
   fn cusum_detects_mean_shift() {
-    let dist = SimdNormal::<f64>::with_seed(0.0, 1.0, 7);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &stochastic_rs_core::simd_rng::Deterministic::new(7));
     let mut buf = vec![0.0_f64; 500];
     dist.fill_slice_fast(&mut buf);
     for v in buf.iter_mut().take(500).skip(250) {

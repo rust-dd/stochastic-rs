@@ -23,7 +23,7 @@ use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::traits::ProcessExt;
 
 fn legacy_sample_n(n: usize, lambda: f64) -> Array1<f64> {
-  let distr = SimdExp::new(lambda);
+  let distr = SimdExp::<f64>::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
   let exponentials = Array1::random(n, distr);
   let mut poisson = Array1::<f64>::zeros(n);
   for i in 1..n {
@@ -33,7 +33,7 @@ fn legacy_sample_n(n: usize, lambda: f64) -> Array1<f64> {
 }
 
 fn legacy_sample_tmax(lambda: f64, t_max: f64) -> Array1<f64> {
-  let distr = SimdExp::new(lambda);
+  let distr = SimdExp::<f64>::new(lambda, &stochastic_rs_core::simd_rng::Unseeded);
   let mut poisson = Array1::from(vec![0.0_f64]);
   let mut t = 0.0_f64;
 

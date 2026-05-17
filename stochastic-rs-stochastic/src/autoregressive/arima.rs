@@ -66,7 +66,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arima<T, S> {
     let mut noise = Array1::<T>::zeros(self.n);
     if self.n > 0 {
       let slice = noise.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::from_seed_source(T::zero(), self.sigma, &self.seed);
+      let normal = SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed);
       normal.fill_slice_fast(slice);
     }
     let mut arma_series = Array1::<T>::zeros(self.n);
