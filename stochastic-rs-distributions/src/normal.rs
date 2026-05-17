@@ -241,6 +241,11 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
   /// Core Ziggurat fill: generates N(mean, std_dev) samples into `buf`.
   /// Uses 8-wide SIMD for the fast-accept path (~97% of samples),
   /// falling back to scalar `nfix` for the rare edge cases.
+  ///
+  /// The main loop processes exactly 8 elements per iteration so the
+  /// `copy_from_slice` of the SIMD result compiles to inline `stp` stores
+  /// instead of a `memcpy` call. The final 0–7-element tail is filled
+  /// scalar-style via [`sample_one`].
   #[inline]
   fn fill_ziggurat(buf: &mut [T], rng: &mut SimdRng, mean: T, std_dev: T) {
     let len = buf.len();
@@ -256,7 +261,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     let mask127 = i32x8::splat(127);
     let mut filled = 0;
 
-    while filled < len {
+    while filled + 8 <= len {
       let hz = rng.next_i32x8();
       let iz = hz & mask127;
       let iz_arr = iz.to_array();
@@ -305,28 +310,26 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
         if accept.all() {
           let scaled = mean_simd + std_dev_simd * result;
           let scaled_arr = T::simd_to_array(scaled);
-          let take = (len - filled).min(8);
-          buf[filled..filled + take].copy_from_slice(&scaled_arr[..take]);
-          filled += take;
+          buf[filled..filled + 8].copy_from_slice(&scaled_arr);
         } else {
           let hz_arr = hz.to_array();
           let accept_arr = accept.to_array();
           let result_arr = T::simd_to_array(result);
           for i in 0..8 {
-            if filled >= len {
-              break;
-            }
             if accept_arr[i] != 0 {
-              buf[filled] = mean + std_dev * result_arr[i];
-              filled += 1;
+              buf[filled + i] = mean + std_dev * result_arr[i];
             } else {
               let x = nfix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng);
-              buf[filled] = mean + std_dev * x;
-              filled += 1;
+              buf[filled + i] = mean + std_dev * x;
             }
           }
         }
+        filled += 8;
       }
+    }
+    while filled < len {
+      buf[filled] = Self::sample_one(rng, tables, mean, std_dev);
+      filled += 1;
     }
   }
 }
@@ -421,6 +424,8 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
 
   /// Core Ziggurat fill for standard normal N(0,1) samples.
   /// Same SIMD fast-path as `fill_ziggurat` but skips mean/std_dev scaling.
+  /// Main loop processes exactly 8 per iteration so `copy_from_slice` inlines
+  /// to `stp` stores; final 0–7-element tail uses [`sample_one_standard`].
   #[inline]
   fn fill_ziggurat_standard(buf: &mut [T], rng: &mut SimdRng) {
     let len = buf.len();
@@ -434,7 +439,7 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
     let mask127 = i32x8::splat(127);
     let mut filled = 0;
 
-    while filled < len {
+    while filled + 8 <= len {
       let hz = rng.next_i32x8();
       let iz = hz & mask127;
       let iz_arr = iz.to_array();
@@ -482,27 +487,25 @@ impl<T: SimdFloatExt, const N: usize> SimdNormal<T, N> {
 
         if accept.all() {
           let result_arr = T::simd_to_array(result);
-          let take = (len - filled).min(8);
-          buf[filled..filled + take].copy_from_slice(&result_arr[..take]);
-          filled += take;
+          buf[filled..filled + 8].copy_from_slice(&result_arr);
         } else {
           let hz_arr = hz.to_array();
           let accept_arr = accept.to_array();
           let result_arr = T::simd_to_array(result);
           for i in 0..8 {
-            if filled >= len {
-              break;
-            }
             if accept_arr[i] != 0 {
-              buf[filled] = result_arr[i];
-              filled += 1;
+              buf[filled + i] = result_arr[i];
             } else {
-              buf[filled] = nfix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng);
-              filled += 1;
+              buf[filled + i] = nfix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng);
             }
           }
         }
+        filled += 8;
       }
+    }
+    while filled < len {
+      buf[filled] = Self::sample_one_standard(rng, tables);
+      filled += 1;
     }
   }
 }

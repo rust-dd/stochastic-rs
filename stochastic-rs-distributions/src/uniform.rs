@@ -79,22 +79,24 @@ impl<T: SimdFloatExt> SimdUniform<T> {
       }
       return;
     }
+    // Phase 1: fill the whole output with U(0, 1) via direct SIMD stores
+    // (one engine call per 4-lane f64 chunk / 8-lane f32 chunk).
+    T::fill_uniform_simd(rng, out);
+    // Phase 2: skip the affine transform on the [0, 1) fast path.
+    if self.low.is_zero() && self.scale == T::one() {
+      return;
+    }
     let low = T::splat(self.low);
     let scale = T::splat(self.scale);
-    let mut u = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
-      T::fill_uniform_simd(rng, &mut u);
-      let v = T::simd_from_array(u);
-      let vals = low + v * scale;
-      chunk.copy_from_slice(&T::simd_to_array(vals));
+      let mut tmp = [T::zero(); 8];
+      tmp.copy_from_slice(chunk);
+      let vals = T::simd_to_array(low + T::simd_from_array(tmp) * scale);
+      chunk.copy_from_slice(&vals);
     }
-    let rem = chunks.into_remainder();
-    if !rem.is_empty() {
-      T::fill_uniform_simd(rng, &mut u);
-      let v = T::simd_from_array(u);
-      let vals = T::simd_to_array(low + v * scale);
-      rem.copy_from_slice(&vals[..rem.len()]);
+    for x in chunks.into_remainder() {
+      *x = self.low + *x * self.scale;
     }
   }
 

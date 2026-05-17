@@ -166,31 +166,42 @@ Batch:
 CUDA wins for large `n` (≥ 16 k); CPU rayon dominates for medium `n`
 because of the GPU launch / transfer overhead.
 
-### Distribution sampling — multicore (`cargo bench --bench dist_multicore`)
+### Distribution sampling — `Normal` vs upstream `rand_distr`
 
-`sample_matrix`, 1-thread vs 14-thread rayon. `f64` continuous, integer
-discrete. Most distributions: `1024 × 1024`; heavy discrete: `512 × 512`.
+Single-thread `fill_slice`, median of 7 runs (`cargo bench --bench
+dist_multicore`). Comparison column:
 
-| Distribution        | 1T (ms) | MT (ms) | Speedup |
-|---------------------|--------:|--------:|--------:|
-| Normal              |   1.78  |   0.34  |  5.28×  |
-| Cauchy              |   6.23  |   0.90  |  6.96×  |
-| LogNormal           |   5.07  |   0.81  |  6.25×  |
-| Gamma               |   5.20  |   0.72  |  7.19×  |
-| StudentT            |   7.89  |   1.89  |  4.18×  |
-| Beta                |  11.85  |   1.68  |  7.04×  |
-| Weibull             |  13.17  |   1.73  |  7.59×  |
-| AlphaStable         |  42.52  |   5.36  |  7.94×  |
-| Poisson             |   2.28  |   0.42  |  5.40×  |
-| Hypergeo (512²)     |  20.99  |   2.76  |  7.60×  |
+- **`rand_distr + SimdRng`** — `rand_distr::Normal` consuming our `SimdRng`
+  (same uniform stream, only the Normal algorithm differs).
+- **`rand_distr + rand::rng()`** — the out-of-box upstream pipeline.
 
-(Full table — 18 distributions — on the
-[benchmarks page](https://stochastic.rust-dd.com/docs/benchmarks).)
+|     n  | `SimdNormal` (µs) | `rand_distr + SimdRng` (µs) | speedup | `rand_distr + rand::rng()` (µs) | speedup |
+|-------:|------------------:|-----------------------------:|--------:|---------------------------------:|--------:|
+|      4 |             0.008 |                        0.013 |  1.73×  |                            0.032 |  4.22×  |
+|      8 |             0.014 |                        0.026 |  1.78×  |                            0.065 |  4.52×  |
+|     16 |             0.029 |                        0.051 |  1.79×  |                            0.128 |  4.47×  |
+|     64 |             0.109 |                        0.208 |  1.90×  |                            0.508 |  4.64×  |
+|    256 |             0.432 |                        0.840 |  1.94×  |                            2.029 |  4.70×  |
+|  4 096 |             6.975 |                       13.176 |  1.89×  |                           32.382 |  4.64×  |
+| 65 536 |           113.458 |                      212.406 |  1.87×  |                          520.219 |  4.59×  |
 
-`Normal` single-thread `fill_slice` vs the upstream `rand_distr` baseline:
+### Single-sample speedup vs prior release
 
-- vs `rand_distr + SimdRng` — ≈ **1.21×** to **1.35×**
-- vs `rand_distr + rand::rng()` — ≈ **4.09×** to **4.61×**
+Criterion `dist.sample(rng)` loop, vs the `wide 1.3.0` baseline
+(`cargo bench --bench distributions -- --baseline before`):
+
+|       distribution | f32 / large       | f64 / large       | f64 / small       |
+|-------------------:|------------------:|------------------:|------------------:|
+|     `Uniform/simd` | **−57%** (≈ 2.3×) | **−77%** (≈ 4.4×) | **−58%** (≈ 2.4×) |
+|      `Normal/simd` | **−51%** (≈ 2.0×) | **−75%** (≈ 4.0×) | **−63%** (≈ 2.7×) |
+|    `Exp/simd N=64` | −3% (n.s.)        | **−73%** (≈ 3.7×) | —                 |
+|   `LogNormal/simd` | **−71%** (≈ 3.4×) | **−70%** (≈ 3.4×) | **−66%** (≈ 2.9×) |
+
+Driven by SIMD `u64→f64` / `u32→f32` magic-number conversion in `SimdRng`
+(direct-write `fill_uniform_f64` / `fill_uniform_f32` APIs that skip the
+`[f64; 8]` return-by-value round-trip), fused Exp(λ) scaling inside
+`fill_exp_scaled`, and an 8-at-a-time main loop in `fill_ziggurat` so
+`copy_from_slice` inlines to `stp` stores instead of a `memcpy` call.
 
 ## Contributing
 

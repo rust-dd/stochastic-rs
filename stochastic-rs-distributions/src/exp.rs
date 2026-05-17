@@ -154,22 +154,28 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     }
   }
 
-  /// Core Ziggurat fill for Exp(1) samples into `buf`.
-  /// Uses 8-wide SIMD for the fast-accept path, scalar fallback for edge cases.
+  /// Core Ziggurat fill for Exp(λ) samples into `buf`. The internal Ziggurat
+  /// path generates Exp(1) values which are then multiplied by `factor`
+  /// (= 1/λ) at the SIMD store step, fusing the previous two-pass
+  /// `fill_exp1` + `scale_in_place` pipeline into a single pass.
+  ///
+  /// Uses 8-wide SIMD for the fast-accept path; scalar fallback for
+  /// edge cases multiplies by `factor` lane-by-lane.
   #[inline]
-  fn fill_exp1(buf: &mut [T], rng: &mut SimdRng) {
+  fn fill_exp_scaled(buf: &mut [T], rng: &mut SimdRng, factor: T) {
     let tables = exp_zig_tables();
     let len = buf.len();
     if len < SMALL_EXP_THRESHOLD {
       for x in buf.iter_mut() {
-        *x = Self::sample_exp1_one(rng, tables);
+        *x = Self::sample_exp1_one(rng, tables) * factor;
       }
       return;
     }
     let mask255 = i32x8::splat(0xFF);
+    let factor_simd = T::splat(factor);
     let mut filled = 0;
 
-    while filled < len {
+    while filled + 8 <= len {
       let hz = rng.next_i32x8();
       let iz = hz & mask255;
       let iz_arr = iz.to_array();
@@ -201,48 +207,29 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
         ];
         let hz_float = T::simd_from_i32x8(abs_hz);
         let we_simd = T::simd_from_array(we_arr);
-        let result = hz_float * we_simd;
+        let result = hz_float * we_simd * factor_simd;
 
         if accept.all() {
           let result_arr = T::simd_to_array(result);
-          let take = (len - filled).min(8);
-          buf[filled..filled + take].copy_from_slice(&result_arr[..take]);
-          filled += take;
+          buf[filled..filled + 8].copy_from_slice(&result_arr);
         } else {
           let hz_arr = hz.to_array();
           let accept_arr = accept.to_array();
           let result_arr = T::simd_to_array(result);
           for i in 0..8 {
-            if filled >= len {
-              break;
-            }
             if accept_arr[i] != 0 {
-              buf[filled] = result_arr[i];
-              filled += 1;
+              buf[filled + i] = result_arr[i];
             } else {
-              buf[filled] = efix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng);
-              filled += 1;
+              buf[filled + i] = efix::<T>(hz_arr[i], iz_arr[i] as usize, tables, rng) * factor;
             }
           }
         }
+        filled += 8;
       }
     }
-  }
-
-  /// Multiplies every element in `buf` by `factor` using SIMD 8-wide chunks.
-  /// Used to convert Exp(1) samples to Exp(lambda) via scaling by 1/lambda.
-  #[inline]
-  fn scale_in_place(buf: &mut [T], factor: T) {
-    let factor_simd = T::splat(factor);
-    let mut chunks = buf.chunks_exact_mut(8);
-    for chunk in &mut chunks {
-      let mut tmp = [T::zero(); 8];
-      tmp.copy_from_slice(chunk);
-      let scaled = T::simd_to_array(T::simd_from_array(tmp) * factor_simd);
-      chunk.copy_from_slice(&scaled);
-    }
-    for x in chunks.into_remainder().iter_mut() {
-      *x = *x * factor;
+    while filled < len {
+      buf[filled] = Self::sample_exp1_one(rng, tables) * factor;
+      filled += 1;
     }
   }
 
@@ -258,24 +245,17 @@ impl<T: SimdFloatExt, const N: usize> SimdExpZig<T, N> {
     val
   }
 
-  /// Fills a slice with Exp(lambda) samples.
-  /// Generates Exp(1) first, then scales by 1/lambda (skipped when lambda==1).
+  /// Fills a slice with Exp(λ) samples in a single SIMD pass.
   pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
-    Self::fill_exp1(out, rng);
-    if self.lambda != T::one() {
-      Self::scale_in_place(out, T::one() / self.lambda);
-    }
+    Self::fill_exp_scaled(out, rng, T::one() / self.lambda);
   }
 
-  /// Refills the internal sample buffer with Exp(lambda) values.
+  /// Refills the internal sample buffer with Exp(λ) values.
   fn refill_buffer(&self) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let buf = unsafe { &mut *self.buffer.get() };
-    Self::fill_exp1(buf, rng);
-    if self.lambda != T::one() {
-      Self::scale_in_place(buf, T::one() / self.lambda);
-    }
+    Self::fill_exp_scaled(buf, rng, T::one() / self.lambda);
     unsafe {
       *self.index.get() = 0;
     }

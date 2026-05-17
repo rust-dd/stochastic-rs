@@ -10,7 +10,10 @@
 use rand::Rng;
 pub use stochastic_rs_core::simd_rng;
 use wide::f32x8;
+use wide::f64x4;
 use wide::f64x8;
+use wide::i32x4;
+use wide::i32x8;
 
 #[macro_use]
 mod macros;
@@ -209,15 +212,7 @@ impl SimdFloatExt for f32 {
   }
 
   fn fill_uniform_simd(rng: &mut crate::simd_rng::SimdRng, out: &mut [f32]) {
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
-      chunk.copy_from_slice(&rng.next_f32_array());
-    }
-    let rem = chunks.into_remainder();
-    if !rem.is_empty() {
-      let arr = rng.next_f32_array();
-      rem.copy_from_slice(&arr[..rem.len()]);
-    }
+    rng.fill_uniform_f32(out);
   }
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f32 {
@@ -314,15 +309,7 @@ impl SimdFloatExt for f64 {
   }
 
   fn fill_uniform_simd(rng: &mut crate::simd_rng::SimdRng, out: &mut [f64]) {
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
-      chunk.copy_from_slice(&rng.next_f64_array());
-    }
-    let rem = chunks.into_remainder();
-    if !rem.is_empty() {
-      let arr = rng.next_f64_array();
-      rem.copy_from_slice(&arr[..rem.len()]);
-    }
+    rng.fill_uniform_f64(out);
   }
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f64 {
@@ -335,7 +322,16 @@ impl SimdFloatExt for f64 {
   }
 
   fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {
-    f64x8::from_i32x8(v)
+    // `wide::f64x8::from_i32x8` falls back to 8 scalar `as f64` casts on
+    // AVX2 (no AVX-512). Going through `f64x4::from_i32x4` uses a single
+    // `vcvtdq2pd` per half, replacing 8 scalar conversions with 2 SIMD
+    // ones in the Ziggurat hot path.
+    let halves: [i32x4; 2] = unsafe { core::mem::transmute::<i32x8, [i32x4; 2]>(v) };
+    let fa = f64x4::from_i32x4(halves[0]).to_array();
+    let fb = f64x4::from_i32x4(halves[1]).to_array();
+    f64x8::new([
+      fa[0], fa[1], fa[2], fa[3], fb[0], fb[1], fb[2], fb[3],
+    ])
   }
 
   const PREFERS_F32_WN: bool = false;
