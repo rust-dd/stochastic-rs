@@ -191,6 +191,7 @@ where
 mod tests {
   use ndarray::Array1;
   use ndarray::Array2;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;

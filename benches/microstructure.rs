@@ -13,6 +13,7 @@ use stochastic_rs::quant::microstructure::optimal_execution;
 use stochastic_rs::quant::microstructure::propagator_impact_path;
 use stochastic_rs::quant::microstructure::roll_spread;
 use stochastic_rs::quant::microstructure::single_period_kyle;
+use stochastic_rs::simd_rng::Deterministic;
 
 fn signed_orders(n: usize, seed: u64) -> Array1<f64> {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));

@@ -8,6 +8,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::stats::filtering::ParticleFilter;
 #[cfg(feature = "openblas")]

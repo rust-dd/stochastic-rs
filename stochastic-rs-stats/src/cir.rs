@@ -6,6 +6,7 @@
 //!
 use num_complex::Complex64;
 use scilib::math::bessel::i_nu;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::gamma;
 

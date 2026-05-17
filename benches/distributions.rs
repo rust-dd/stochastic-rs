@@ -18,6 +18,7 @@ use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
+use stochastic_rs::simd_rng::Unseeded;
 
 const SMALL: usize = 1_000;
 const LARGE: usize = 100_000;

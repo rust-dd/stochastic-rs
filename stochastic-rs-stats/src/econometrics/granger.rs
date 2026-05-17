@@ -94,6 +94,7 @@ fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> f64 {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;

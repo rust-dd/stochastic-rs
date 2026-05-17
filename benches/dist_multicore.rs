@@ -24,6 +24,7 @@ use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
 use stochastic_rs::simd_rng::SimdRng;
+use stochastic_rs::simd_rng::Unseeded;
 
 fn median_ms(samples: &mut [f64]) -> f64 {
   samples.sort_by(f64::total_cmp);

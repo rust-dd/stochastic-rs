@@ -124,6 +124,7 @@ mod tests {
   use ndarray::ArrayView1;
   use rand::SeedableRng;
   use rand::rngs::StdRng;
+  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::uniform::SimdUniform;
 

@@ -4,6 +4,7 @@ use ndarray::Array1;
 #[cfg(feature = "openblas")]
 use ndarray::Array2;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::simd_rng::Deterministic;
 #[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;

@@ -11,6 +11,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::realized::KernelType;
 use stochastic_rs::stats::realized::bipower_variation;
 use stochastic_rs::stats::realized::bns_jump_test;

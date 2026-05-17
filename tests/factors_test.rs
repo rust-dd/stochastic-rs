@@ -9,6 +9,7 @@ use stochastic_rs::quant::factors::ledoit_wolf_shrinkage;
 use stochastic_rs::quant::factors::pairs_signals;
 use stochastic_rs::quant::factors::pca_decompose;
 use stochastic_rs::quant::factors::sample_covariance;
+use stochastic_rs::simd_rng::Deterministic;
 
 fn standard_normal_matrix(seed: u64, t: usize, p: usize) -> Array2<f64> {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));

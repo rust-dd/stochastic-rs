@@ -14,6 +14,7 @@ use stochastic_rs::quant::microstructure::propagator_impact_path;
 use stochastic_rs::quant::microstructure::propagator_price_impact;
 use stochastic_rs::quant::microstructure::roll_spread;
 use stochastic_rs::quant::microstructure::single_period_kyle;
+use stochastic_rs::simd_rng::Deterministic;
 
 #[test]
 fn ac_efficient_frontier_monotonic_in_lambda() {
