@@ -4,22 +4,22 @@
 //! X\sim\chi^2_\nu(\lambda),\quad f_X(x)=\tfrac12 e^{-(x+\lambda)/2}(x/\lambda)^{\nu/4-1/2}I_{\nu/2-1}(\sqrt{\lambda x})
 //! $$
 //!
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::chi_square::SimdChiSquared;
 use crate::normal::SimdNormal;
 use crate::traits::FloatExt;
 
-pub fn sample<T: FloatExt>(df: T, lambda: T) -> T {
+pub fn sample<T: FloatExt, S: SeedExt>(df: T, lambda: T, seed: &S) -> T {
   // χ²_nc(df, ncp) = χ²(df - 1) + (Z + √ncp)² for df ≥ 1
-  let normal = SimdNormal::<T, 64>::new(lambda.sqrt(), T::one(), &Unseeded);
+  let normal = SimdNormal::<T, 64>::new(lambda.sqrt(), T::one(), seed);
   let z = normal.sample_fast();
   let sq = z * z;
 
   let one = T::one();
   let rem = df - one;
   if rem > T::from_f64_fast(1e-10) {
-    let chi_squared = SimdChiSquared::<T>::new(rem, &Unseeded);
+    let chi_squared = SimdChiSquared::<T>::new(rem, seed);
     chi_squared.sample_fast() + sq
   } else {
     sq

@@ -166,13 +166,14 @@ fn build_bit_reverse_table(n: usize) -> Vec<u32> {
     .collect()
 }
 
-fn sample_f32<T: FloatExt>(
+fn sample_f32<T: FloatExt, S: SeedExt>(
   sqrt_eigs: &[f32],
   n: usize,
   m: usize,
   offset: usize,
   hurst: f64,
   t: f64,
+  seed_src: &S,
 ) -> Result<Either<Array1<T>, Array2<T>>> {
   let traj_size = 2 * n;
   let out_size = n - offset;
@@ -204,7 +205,7 @@ fn sample_f32<T: FloatExt>(
     shared,
   );
 
-  let seed: u32 = rand::Rng::random(&mut crate::simd_rng::rng());
+  let seed: u32 = rand::Rng::random(&mut seed_src.rng());
 
   // Single command buffer for the entire pipeline
   let cmd = ctx.queue.new_command_buffer();
@@ -293,6 +294,6 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
       .iter()
       .map(|x| x.to_f32().unwrap())
       .collect();
-    sample_f32::<T>(&eigs, n, m, offset, hurst, t)
+    sample_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed)
   }
 }

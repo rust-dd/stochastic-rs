@@ -302,13 +302,14 @@ mod backend {
     });
   }
 
-  pub(super) fn sample_gpu_f32<T: FloatExt>(
+  pub(super) fn sample_gpu_f32<T: FloatExt, S: stochastic_rs_core::simd_rng::SeedExt>(
     sqrt_eigs: &[f32],
     n: usize,
     m: usize,
     offset: usize,
     hurst: f64,
     t: f64,
+    seed: &S,
   ) -> Result<Either<Array1<T>, Array2<T>>> {
     let hb = hurst.to_bits();
     let tb = t.to_bits();
@@ -322,7 +323,7 @@ mod backend {
     let mut rh = vec![0.0f32; total];
     let mut ih = vec![0.0f32; total];
     {
-      let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, &Unseeded);
+      let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
       normal.fill_slice_fast(&mut rh);
       normal.fill_slice_fast(&mut ih);
     }
@@ -434,7 +435,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
         .iter()
         .map(|x| x.to_f32().unwrap())
         .collect();
-      backend::sample_gpu_f32::<T>(&eigs, n, m, offset, hurst, t)
+      backend::sample_gpu_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed)
     }
   }
 }

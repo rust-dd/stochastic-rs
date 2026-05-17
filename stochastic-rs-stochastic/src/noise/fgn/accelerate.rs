@@ -40,13 +40,14 @@ unsafe extern "C" {
   );
 }
 
-fn sample_f32<T: FloatExt>(
+fn sample_f32<T: FloatExt, S: SeedExt>(
   sqrt_eigs: &[f32],
   n: usize,
   m: usize,
   offset: usize,
   hurst: f64,
   t: f64,
+  seed: &S,
 ) -> Result<Either<Array1<T>, Array2<T>>> {
   let traj_size = 2 * n;
   let out_size = n - offset;
@@ -58,7 +59,7 @@ fn sample_f32<T: FloatExt>(
   let mut real = vec![0.0f32; total];
   let mut imag = vec![0.0f32; total];
   {
-    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, &Unseeded);
+    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
     normal.fill_slice_fast(&mut real);
     normal.fill_slice_fast(&mut imag);
   }
@@ -132,6 +133,6 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
       .iter()
       .map(|x| x.to_f32().unwrap())
       .collect();
-    sample_f32::<T>(&eigs, n, m, offset, hurst, t)
+    sample_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed)
   }
 }

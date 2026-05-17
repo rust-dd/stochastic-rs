@@ -141,7 +141,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
     // 1) Simulate v on the grid via noncentral chi-square
     for i in 1..self.n {
       let ncp = f2 * c * v[i - 1] * (-self.kappa * dt).exp();
-      let xi = non_central_chi_squared::sample(df, ncp);
+      let xi = non_central_chi_squared::sample(df, ncp, &self.seed);
       v[i] = xi / (f2 * c);
     }
 

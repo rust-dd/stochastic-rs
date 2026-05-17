@@ -245,13 +245,14 @@ fn array2_from_vec_f64<T: FloatExt>(v: Vec<f64>, m: usize, cols: usize) -> Array
   }
 }
 
-fn sample_f32<T: FloatExt>(
+fn sample_f32<T: FloatExt, S: SeedExt>(
   sqrt_eigs: &[f32],
   n: usize,
   m: usize,
   offset: usize,
   hurst: f64,
   t: f64,
+  seed_src: &S,
 ) -> Result<Either<Array1<T>, Array2<T>>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
@@ -306,7 +307,7 @@ fn sample_f32<T: FloatExt>(
   // 1. Fused generate normals + scale by eigenvalues
   let total_complex = (m * traj_size) as i32;
   let traj_i32 = traj_size as i32;
-  let seed: u64 = rand::Rng::random(&mut crate::simd_rng::rng());
+  let seed: u64 = rand::Rng::random(&mut seed_src.rng());
   let seq = RNG_SEQ.fetch_add(total_complex as u64, Ordering::Relaxed);
   unsafe {
     gpu
@@ -363,13 +364,14 @@ fn sample_f32<T: FloatExt>(
   Ok(Either::Right(fgn))
 }
 
-fn sample_f64<T: FloatExt>(
+fn sample_f64<T: FloatExt, S: SeedExt>(
   sqrt_eigs: &[f64],
   n: usize,
   m: usize,
   offset: usize,
   hurst: f64,
   t: f64,
+  seed_src: &S,
 ) -> Result<Either<Array1<T>, Array2<T>>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
@@ -424,7 +426,7 @@ fn sample_f64<T: FloatExt>(
   // 1. Fused generate + scale
   let total_complex = (m * traj_size) as i32;
   let traj_i32 = traj_size as i32;
-  let seed: u64 = rand::Rng::random(&mut crate::simd_rng::rng());
+  let seed: u64 = rand::Rng::random(&mut seed_src.rng());
   let seq = RNG_SEQ.fetch_add(total_complex as u64, Ordering::Relaxed);
   unsafe {
     gpu
@@ -494,7 +496,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
         .iter()
         .map(|x| x.to_f32().unwrap())
         .collect();
-      return sample_f32::<T>(&eigs, n, m, offset, hurst, t);
+      return sample_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed);
     }
 
     // Try f64 first, fall back to f32 on symbol/capability errors
@@ -503,7 +505,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
       .iter()
       .map(|x| x.to_f64().unwrap())
       .collect();
-    match sample_f64::<T>(&eigs_f64, n, m, offset, hurst, t) {
+    match sample_f64::<T, S>(&eigs_f64, n, m, offset, hurst, t, &self.seed) {
       Ok(out) => Ok(out),
       Err(_) => {
         let eigs_f32: Vec<f32> = self
@@ -511,7 +513,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
           .iter()
           .map(|x| x.to_f32().unwrap())
           .collect();
-        sample_f32::<T>(&eigs_f32, n, m, offset, hurst, t)
+        sample_f32::<T, S>(&eigs_f32, n, m, offset, hurst, t, &self.seed)
       }
     }
   }
