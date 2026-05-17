@@ -14,22 +14,23 @@ use super::SimdFloatExt;
 use super::inverse_gauss::SimdInverseGauss;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 const SMALL_NIG_THRESHOLD: usize = 16;
 
-pub struct SimdNormalInverseGauss<T: SimdFloatExt> {
+pub struct SimdNormalInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   alpha: T,
   beta: T,
   delta: T,
   mu: T,
-  ig: SimdInverseGauss<T>,
-  normal: SimdNormal<T>,
+  ig: SimdInverseGauss<T, R>,
+  normal: SimdNormal<T, 64, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, beta: T, delta: T, mu: T, seed: &S) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),
@@ -44,11 +45,11 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
       beta,
       delta,
       mu,
-      ig: SimdInverseGauss::new(ig_mean, ig_shape, seed),
-      normal: SimdNormal::new(T::zero(), T::one(), seed),
+      ig: SimdInverseGauss::<T, R>::new(ig_mean, ig_shape, seed),
+      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -65,7 +66,7 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     z
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
@@ -85,8 +86,8 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     let mut zbuf = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
-      self.ig.fill_slice(rng, &mut dbuf);
-      self.normal.fill_slice(rng, &mut zbuf);
+      self.ig.fill_slice_fast(&mut dbuf);
+      self.normal.fill_slice_fast(&mut zbuf);
       let d = T::simd_from_array(dbuf);
       let z = T::simd_from_array(zbuf);
       let x = mu + beta * d + T::simd_sqrt(d) * z;
@@ -94,8 +95,8 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.ig.fill_slice(rng, &mut dbuf);
-      self.normal.fill_slice(rng, &mut zbuf);
+      self.ig.fill_slice_fast(&mut dbuf);
+      self.normal.fill_slice_fast(&mut zbuf);
       for i in 0..rem.len() {
         let d = dbuf[i];
         let z = zbuf[i];
@@ -113,14 +114,14 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdNormalInverseGauss<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdNormalInverseGauss<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.alpha, self.beta, self.delta, self.mu, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdNormalInverseGauss<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer();
@@ -131,7 +132,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdNormalInverseGauss<T, R> {
   fn pdf(&self, _x: f64) -> f64 {
     // Closed-form pdf requires the modified Bessel function of the second
     // kind K₁; not currently available.

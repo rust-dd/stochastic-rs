@@ -12,6 +12,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 /// SIMD-backed alpha-stable distribution sampled with the
 /// Chambers-Mallows-Stuck method.
@@ -21,17 +22,17 @@ use crate::simd_rng::SimdRng;
 /// - `beta in [-1, 1]` is the skewness
 /// - `scale > 0`
 /// - `location` is the shift
-pub struct SimdAlphaStable<T: SimdFloatExt> {
+pub struct SimdAlphaStable<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   alpha: T,
   beta: T,
   scale: T,
   location: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdAlphaStable<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(
     alpha: T,
     beta: T,
@@ -49,7 +50,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       location,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -66,7 +67,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     z
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
@@ -81,7 +82,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     }
   }
 
-  fn fill_gaussian_branch(&self, out: &mut [T], rng: &mut SimdRng) {
+  fn fill_gaussian_branch(&self, out: &mut [T], rng: &mut R) {
     let two = T::splat(T::from(2.0).unwrap());
     let pi2 = T::splat(T::two_pi());
     let scale = T::splat(self.scale * T::from(2.0).unwrap().sqrt());
@@ -120,7 +121,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     }
   }
 
-  fn fill_alpha_not_one_branch(&self, out: &mut [T], rng: &mut SimdRng) {
+  fn fill_alpha_not_one_branch(&self, out: &mut [T], rng: &mut R) {
     let alpha = self.alpha;
     let beta = self.beta;
     let tan_term = (T::from_f64_fast(std::f64::consts::PI) * alpha / T::from(2.0).unwrap()).tan();
@@ -184,7 +185,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     }
   }
 
-  fn fill_alpha_one_branch(&self, out: &mut [T], rng: &mut SimdRng) {
+  fn fill_alpha_one_branch(&self, out: &mut [T], rng: &mut R) {
     let pi = T::from_f64_fast(std::f64::consts::PI);
     let half_pi = pi / T::from(2.0).unwrap();
     let two_over_pi = T::from(2.0).unwrap() / pi;
@@ -238,14 +239,14 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdAlphaStable<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdAlphaStable<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.alpha, self.beta, self.scale, self.location, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdAlphaStable<T> {
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdAlphaStable<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer();
@@ -256,7 +257,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdAlphaStable<T> {
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdAlphaStable<T, R> {
   fn pdf(&self, _x: f64) -> f64 {
     // No closed form. Use numerical CF inversion (FFT or quadrature) on top.
     unimplemented!(
@@ -373,7 +374,7 @@ mod tests {
 
   #[test]
   fn alpha_stable_samples_are_finite() {
-    let dist = SimdAlphaStable::new(1.7_f64, 0.3, 1.0, 0.0, &Unseeded);
+    let dist = SimdAlphaStable::<f64>::new(1.7_f64, 0.3, 1.0, 0.0, &Unseeded);
     let mut rng = rand::rng();
     for _ in 0..1024 {
       let x = dist.sample(&mut rng);

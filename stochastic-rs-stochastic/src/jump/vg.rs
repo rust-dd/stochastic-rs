@@ -65,7 +65,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Vg<T, S> {
     }
 
     let dt = self.dt();
-    let gamma = SimdGamma::new(dt / self.nu, self.nu, &self.seed);
+    let gamma = SimdGamma::<T>::new(dt / self.nu, self.nu, &self.seed);
     let mut gammas = Array1::<T>::zeros(self.n - 1);
     gamma.fill_slice_fast(gammas.as_slice_mut().unwrap());
     let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);

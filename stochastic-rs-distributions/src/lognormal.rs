@@ -13,17 +13,18 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
-pub struct SimdLogNormal<T: SimdFloatExt> {
+pub struct SimdLogNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   mu: T,
   sigma: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  normal: SimdNormal<T>,
-  simd_rng: UnsafeCell<SimdRng>,
+  normal: SimdNormal<T, 64, R>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdLogNormal<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
   /// Creates a log-normal distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, sigma: T, seed: &S) -> Self {
@@ -33,8 +34,8 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
       sigma,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      normal: SimdNormal::new(T::zero(), T::one(), seed),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -58,7 +59,7 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
     self.fill_slice(rng, out);
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
     let mm = T::splat(self.mu);
     let ss = T::splat(self.sigma);
     let mut tmp = [T::zero(); 16];
@@ -76,7 +77,7 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.normal.fill_slice(rng, &mut tmp[..rem.len()]);
+      self.normal.fill_slice_fast(&mut tmp[..rem.len()]);
       let mut done = 0;
       while done + 8 <= rem.len() {
         let mut a = [T::zero(); 8];
@@ -107,13 +108,13 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdLogNormal<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdLogNormal<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.mu, self.sigma, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdLogNormal<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdLogNormal<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     if x <= 0.0 {
       return 0.0;
@@ -182,8 +183,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdLogNormal<T> {
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdLogNormal<T> {
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdLogNormal<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer();

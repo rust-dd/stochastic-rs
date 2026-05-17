@@ -13,17 +13,18 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
-pub struct SimdGamma<T: SimdFloatExt> {
+pub struct SimdGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   alpha: T,
   scale: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  normal: SimdNormal<T>,
-  simd_rng: UnsafeCell<SimdRng>,
+  normal: SimdNormal<T, 64, R>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdGamma<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   /// Creates a gamma distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, scale: T, seed: &S) -> Self {
@@ -33,8 +34,8 @@ impl<T: SimdFloatExt> SimdGamma<T> {
       scale,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      normal: SimdNormal::new(T::zero(), T::one(), seed),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -51,7 +52,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     z
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
@@ -119,13 +120,13 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdGamma<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGamma<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.alpha, self.scale, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdGamma<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     if x <= 0.0 {
       return 0.0;
@@ -245,8 +246,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdGamma<T> {
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGamma<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer();

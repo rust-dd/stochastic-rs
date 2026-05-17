@@ -370,7 +370,7 @@ impl SeedExt for Deterministic {
 /// when they can usefully expose two independent batches per call —
 /// consumers branch on the const to pick a 16-lane unrolled body, otherwise
 /// they stay on the cheaper 8-lane body.
-pub trait SimdRngExt: Sized + Send + 'static {
+pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
   /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) returns two
   /// independent batches whose state updates can run in parallel. The
   /// single-stream impl leaves this at the default `false`; the dual-stream

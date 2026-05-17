@@ -12,18 +12,19 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 const SMALL_UNIFORM_THRESHOLD: usize = 16;
 
-pub struct SimdUniform<T: SimdFloatExt> {
+pub struct SimdUniform<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   low: T,
   scale: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdUniform<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(low: T, high: T, seed: &S) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
@@ -32,7 +33,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
       scale: high - low,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -53,7 +54,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     z
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
@@ -96,15 +97,15 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdUniform<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdUniform<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.low, self.low + self.scale, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdUniform<T, R> {
   #[inline(always)]
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= 16 {
       self.refill_buffer();
@@ -115,7 +116,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdUniform<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     let a = self.low.to_f64().unwrap();
     let b = a + self.scale.to_f64().unwrap();

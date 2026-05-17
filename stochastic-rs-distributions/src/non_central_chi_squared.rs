@@ -19,7 +19,7 @@ pub fn sample<T: FloatExt>(df: T, lambda: T) -> T {
   let one = T::one();
   let rem = df - one;
   if rem > T::from_f64_fast(1e-10) {
-    let chi_squared = SimdChiSquared::new(rem, &Unseeded);
+    let chi_squared = SimdChiSquared::<T>::new(rem, &Unseeded);
     chi_squared.sample_fast() + sq
   } else {
     sq

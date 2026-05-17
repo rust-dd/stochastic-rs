@@ -242,8 +242,8 @@ macro_rules! bench_dist {
 bench_dist!(
   bench_lognormal,
   "LogNormal",
-  SimdLogNormal::new(0.2f32, 0.8, &Unseeded),
-  SimdLogNormal::new(0.2f64, 0.8, &Unseeded),
+  SimdLogNormal::<f32>::new(0.2f32, 0.8, &Unseeded),
+  SimdLogNormal::<f64>::new(0.2f64, 0.8, &Unseeded),
   rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap(),
   rand_distr::LogNormal::<f64>::new(0.2, 0.8).unwrap()
 );
@@ -251,8 +251,8 @@ bench_dist!(
 bench_dist!(
   bench_cauchy,
   "Cauchy",
-  SimdCauchy::new(0.0f32, 1.0, &Unseeded),
-  SimdCauchy::new(0.0f64, 1.0, &Unseeded),
+  SimdCauchy::<f32>::new(0.0f32, 1.0, &Unseeded),
+  SimdCauchy::<f64>::new(0.0f64, 1.0, &Unseeded),
   rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap(),
   rand_distr::Cauchy::<f64>::new(0.0, 1.0).unwrap()
 );
@@ -260,8 +260,8 @@ bench_dist!(
 bench_dist!(
   bench_gamma,
   "Gamma",
-  SimdGamma::new(2.0f32, 2.0, &Unseeded),
-  SimdGamma::new(2.0f64, 2.0, &Unseeded),
+  SimdGamma::<f32>::new(2.0f32, 2.0, &Unseeded),
+  SimdGamma::<f64>::new(2.0f64, 2.0, &Unseeded),
   rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap(),
   rand_distr::Gamma::<f64>::new(2.0, 2.0).unwrap()
 );
@@ -269,8 +269,8 @@ bench_dist!(
 bench_dist!(
   bench_weibull,
   "Weibull",
-  SimdWeibull::new(1.0f32, 1.5, &Unseeded),
-  SimdWeibull::new(1.0f64, 1.5, &Unseeded),
+  SimdWeibull::<f32>::new(1.0f32, 1.5, &Unseeded),
+  SimdWeibull::<f64>::new(1.0f64, 1.5, &Unseeded),
   rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap(),
   rand_distr::Weibull::<f64>::new(1.0, 1.5).unwrap()
 );
@@ -278,8 +278,8 @@ bench_dist!(
 bench_dist!(
   bench_beta,
   "Beta",
-  SimdBeta::new(2.0f32, 2.0, &Unseeded),
-  SimdBeta::new(2.0f64, 2.0, &Unseeded),
+  SimdBeta::<f32>::new(2.0f32, 2.0, &Unseeded),
+  SimdBeta::<f64>::new(2.0f64, 2.0, &Unseeded),
   rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap(),
   rand_distr::Beta::<f64>::new(2.0, 2.0).unwrap()
 );
@@ -287,8 +287,8 @@ bench_dist!(
 bench_dist!(
   bench_chi_squared,
   "ChiSquared",
-  SimdChiSquared::new(5.0f32, &Unseeded),
-  SimdChiSquared::new(5.0f64, &Unseeded),
+  SimdChiSquared::<f32>::new(5.0f32, &Unseeded),
+  SimdChiSquared::<f64>::new(5.0f64, &Unseeded),
   rand_distr::ChiSquared::<f32>::new(5.0).unwrap(),
   rand_distr::ChiSquared::<f64>::new(5.0).unwrap()
 );
@@ -296,8 +296,8 @@ bench_dist!(
 bench_dist!(
   bench_studentt,
   "StudentT",
-  SimdStudentT::new(5.0f32, &Unseeded),
-  SimdStudentT::new(5.0f64, &Unseeded),
+  SimdStudentT::<f32>::new(5.0f32, &Unseeded),
+  SimdStudentT::<f64>::new(5.0f64, &Unseeded),
   rand_distr::StudentT::<f32>::new(5.0).unwrap(),
   rand_distr::StudentT::<f64>::new(5.0).unwrap()
 );
@@ -305,8 +305,8 @@ bench_dist!(
 bench_dist!(
   bench_pareto,
   "Pareto",
-  SimdPareto::new(1.0f32, 1.5, &Unseeded),
-  SimdPareto::new(1.0f64, 1.5, &Unseeded),
+  SimdPareto::<f32>::new(1.0f32, 1.5, &Unseeded),
+  SimdPareto::<f64>::new(1.0f64, 1.5, &Unseeded),
   rand_distr::Pareto::<f32>::new(1.0, 1.5).unwrap(),
   rand_distr::Pareto::<f64>::new(1.0, 1.5).unwrap()
 );
@@ -314,8 +314,8 @@ bench_dist!(
 bench_dist!(
   bench_uniform,
   "Uniform",
-  SimdUniform::new(0.0f32, 1.0, &Unseeded),
-  SimdUniform::new(0.0f64, 1.0, &Unseeded),
+  SimdUniform::<f32>::new(0.0f32, 1.0, &Unseeded),
+  SimdUniform::<f64>::new(0.0f64, 1.0, &Unseeded),
   rand_distr::Uniform::<f32>::new(0.0, 1.0).unwrap(),
   rand_distr::Uniform::<f64>::new(0.0, 1.0).unwrap()
 );

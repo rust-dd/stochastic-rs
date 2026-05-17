@@ -11,15 +11,16 @@ use rand::Rng;
 use rand_distr::Distribution;
 
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
-pub struct SimdPoisson<T: PrimInt> {
+pub struct SimdPoisson<T: PrimInt, R: SimdRngExt = SimdRng> {
   cdf: Box<[f64]>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: PrimInt> SimdPoisson<T> {
+impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
   #[inline]
   fn build_cdf(lambda: f64) -> Box<[f64]> {
     let mut cdf = Vec::new();
@@ -46,7 +47,7 @@ impl<T: PrimInt> SimdPoisson<T> {
       cdf: Self::build_cdf(lambda),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -79,7 +80,7 @@ impl<T: PrimInt> SimdPoisson<T> {
     self.fill_slice(rng, out);
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
     for x in out.iter_mut() {
       let u: f64 = rng.random();
       let k = self.cdf.partition_point(|&p| p < u);
@@ -87,7 +88,7 @@ impl<T: PrimInt> SimdPoisson<T> {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer<Rr: Rng + ?Sized>(&self, rng: &mut Rr) {
     let buf = unsafe { &mut *self.buffer.get() };
     self.fill_slice(rng, buf);
     unsafe {
@@ -96,19 +97,19 @@ impl<T: PrimInt> SimdPoisson<T> {
   }
 }
 
-impl<T: PrimInt> Clone for SimdPoisson<T> {
+impl<T: PrimInt, R: SimdRngExt> Clone for SimdPoisson<T, R> {
   fn clone(&self) -> Self {
     Self {
       cdf: self.cdf.clone(),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(SimdRng::new()),
+      simd_rng: UnsafeCell::new(R::new()),
     }
   }
 }
 
-impl<T: PrimInt> Distribution<T> for SimdPoisson<T> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdPoisson<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer(rng);
@@ -119,7 +120,7 @@ impl<T: PrimInt> Distribution<T> for SimdPoisson<T> {
   }
 }
 
-impl<T: PrimInt> SimdPoisson<T> {
+impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
   /// Recover the rate parameter from the precomputed CDF table.
   /// `cdf[0] = e^{-λ}`, so `λ = -ln(cdf[0])`.
   #[inline]
@@ -128,7 +129,7 @@ impl<T: PrimInt> SimdPoisson<T> {
   }
 }
 
-impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
+impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdPoisson<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     if x < 0.0 || x.fract() != 0.0 {
       return 0.0;

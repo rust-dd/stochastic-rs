@@ -31,10 +31,10 @@ pub trait SimdFloatExt: num_traits::Float + Default + Send + Sync + 'static {
   fn simd_powf(v: Self::Simd, exp: Self) -> Self::Simd;
   fn simd_floor(v: Self::Simd) -> Self::Simd;
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
-  fn fill_uniform_simd(rng: &mut crate::simd_rng::SimdRng, out: &mut [Self]);
+  fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [Self]);
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
   #[inline(always)]
-  fn sample_uniform_simd(rng: &mut crate::simd_rng::SimdRng) -> Self {
+  fn sample_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R) -> Self {
     let mut buf = [Self::zero(); 8];
     Self::fill_uniform_simd(rng, &mut buf);
     buf[0]

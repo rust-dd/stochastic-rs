@@ -13,15 +13,16 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::exp::SimdExpZig;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
-pub struct SimdWeibull<T: SimdFloatExt> {
+pub struct SimdWeibull<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   lambda: T,
   inv_k: T,
-  exp1: SimdExpZig<T>,
-  simd_rng: UnsafeCell<SimdRng>,
+  exp1: SimdExpZig<T, 64, R>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdWeibull<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
   /// Creates a Weibull distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (exp, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, k: T, seed: &S) -> Self {
@@ -30,7 +31,7 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
       lambda,
       inv_k: T::one() / k,
       exp1: SimdExpZig::new(T::one(), seed),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -42,9 +43,8 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     self.lambda * (-u.ln()).powf(self.inv_k)
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    self.exp1.fill_slice(rng, out);
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
+    self.exp1.fill_slice_fast(out);
     let lambda = T::splat(self.lambda);
     let inv_k = self.inv_k;
     let mut chunks = out.chunks_exact_mut(8);
@@ -61,22 +61,22 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdWeibull<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdWeibull<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.lambda, T::one() / self.inv_k, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdWeibull<T, R> {
   #[inline(always)]
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let u = T::sample_uniform_simd(rng).max(T::min_positive_val());
     self.lambda * (-u.ln()).powf(self.inv_k)
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdWeibull<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     let lambda = self.lambda.to_f64().unwrap();
     let k = 1.0 / self.inv_k.to_f64().unwrap();

@@ -122,7 +122,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
     let J = self.j;
     let size = J + 1; // index 0 reserved (Γ0=0)
 
-    let uniform = SimdUniform::new(T::zero(), T::one(), &self.seed);
+    let uniform = SimdUniform::<T>::new(T::zero(), T::one(), &self.seed);
     let exp = SimdExp::<T>::new(T::one(), &self.seed);
 
     // U_j ~ Unif(0,1)

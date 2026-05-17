@@ -14,29 +14,30 @@ use super::SimdFloatExt;
 use super::chi_square::SimdChiSquared;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 const SMALL_STUDENT_T_THRESHOLD: usize = 16;
 
-pub struct SimdStudentT<T: SimdFloatExt> {
+pub struct SimdStudentT<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   nu: T,
-  normal: SimdNormal<T>,
-  chisq: SimdChiSquared<T>,
+  normal: SimdNormal<T, 64, R>,
+  chisq: SimdChiSquared<T, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdStudentT<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
   /// Creates a Student's t-distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, chisq, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(nu: T, seed: &S) -> Self {
     Self {
       nu,
-      normal: SimdNormal::new(T::zero(), T::one(), seed),
+      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
       chisq: SimdChiSquared::new(nu, seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -53,7 +54,7 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     z
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
@@ -72,8 +73,8 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     let mut vbuf = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
-      self.normal.fill_slice(rng, &mut zbuf);
-      self.chisq.fill_slice(rng, &mut vbuf);
+      self.normal.fill_slice_fast(&mut zbuf);
+      self.chisq.fill_slice_fast(&mut vbuf);
       let z = T::simd_from_array(zbuf);
       let v = T::simd_from_array(vbuf);
       let x = z / T::simd_sqrt(v * inv_nu);
@@ -81,8 +82,8 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.normal.fill_slice(rng, &mut zbuf);
-      self.chisq.fill_slice(rng, &mut vbuf);
+      self.normal.fill_slice_fast(&mut zbuf);
+      self.chisq.fill_slice_fast(&mut vbuf);
       let z = T::simd_from_array(zbuf);
       let v = T::simd_from_array(vbuf);
       let x = T::simd_to_array(z / T::simd_sqrt(v * inv_nu));
@@ -99,14 +100,14 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdStudentT<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdStudentT<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.nu, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdStudentT<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer();
@@ -117,7 +118,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStudentT<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     let nu = self.nu.to_f64().unwrap();
     // f(x) = Γ((ν+1)/2) / (√(νπ) Γ(ν/2)) · (1 + x²/ν)^(−(ν+1)/2)

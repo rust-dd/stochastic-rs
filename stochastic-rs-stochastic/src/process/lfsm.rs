@@ -96,7 +96,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lfsm<T, S> {
     let kernel_scale = dt.powf(d);
     let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
 
-    let stable = SimdAlphaStable::new(
+    let stable = SimdAlphaStable::<T>::new(
       self.alpha,
       self.beta,
       innovation_scale,

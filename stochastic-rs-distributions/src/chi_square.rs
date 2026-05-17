@@ -8,20 +8,22 @@ use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 use super::SimdFloatExt;
 use super::gamma::SimdGamma;
 
-pub struct SimdChiSquared<T: SimdFloatExt> {
+pub struct SimdChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   df: T,
-  gamma: SimdGamma<T>,
+  gamma: SimdGamma<T, R>,
 }
 
-impl<T: SimdFloatExt> SimdChiSquared<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
   /// Creates a chi-squared distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(k: T, seed: &S) -> Self {
     Self {
       df: k,
-      gamma: SimdGamma::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed),
+      gamma: SimdGamma::<T, R>::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed),
     }
   }
 
@@ -31,7 +33,7 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
     self.gamma.sample_fast()
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.gamma.fill_slice_fast(out);
   }
 
@@ -40,19 +42,19 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdChiSquared<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdChiSquared<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.df, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdChiSquared<T> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdChiSquared<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
     self.gamma.sample(rng)
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdChiSquared<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     if x <= 0.0 {
       return 0.0;

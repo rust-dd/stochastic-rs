@@ -52,7 +52,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GammaSubordinator<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let shape = self.nu * dt;
     let scale = T::one() / self.rate;
-    let gamma = SimdGamma::new(shape, scale, &self.seed);
+    let gamma = SimdGamma::<T>::new(shape, scale, &self.seed);
     let mut inc = Array1::<T>::zeros(self.n - 1);
     gamma.fill_slice_fast(inc.as_slice_mut().unwrap());
     for i in 1..self.n {

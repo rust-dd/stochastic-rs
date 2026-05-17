@@ -13,29 +13,30 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 const SMALL_INVERSE_GAUSS_THRESHOLD: usize = 16;
 
-pub struct SimdInverseGauss<T: SimdFloatExt> {
+pub struct SimdInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   mu: T,
   lambda: T,
-  normal: SimdNormal<T>,
+  normal: SimdNormal<T, 64, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: SimdFloatExt> SimdInverseGauss<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
   /// Creates an inverse-Gaussian distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, lambda: T, seed: &S) -> Self {
     assert!(mu > T::zero() && lambda > T::zero());
     Self {
       mu,
       lambda,
-      normal: SimdNormal::new(T::zero(), T::one(), seed),
+      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -52,7 +53,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     z
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
@@ -85,7 +86,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     let mut ubuf = [T::zero(); 8];
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
-      self.normal.fill_slice(rng, &mut zbuf);
+      self.normal.fill_slice_fast(&mut zbuf);
       T::fill_uniform_simd(rng, &mut ubuf);
       let z = T::simd_from_array(zbuf);
       let u = T::simd_from_array(ubuf);
@@ -105,7 +106,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.normal.fill_slice(rng, &mut zbuf);
+      self.normal.fill_slice_fast(&mut zbuf);
       T::fill_uniform_simd(rng, &mut ubuf);
       let two_s = T::from(2.0).unwrap();
       let four_s = T::from(4.0).unwrap();
@@ -133,14 +134,14 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
   }
 }
 
-impl<T: SimdFloatExt> Clone for SimdInverseGauss<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdInverseGauss<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.mu, self.lambda, &Unseeded)
   }
 }
 
-impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdInverseGauss<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer();
@@ -151,7 +152,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdInverseGauss<T> {
+impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdInverseGauss<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();

@@ -12,16 +12,17 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
-pub struct SimdBinomial<T: PrimInt> {
+pub struct SimdBinomial<T: PrimInt, R: SimdRngExt = SimdRng> {
   n: u32,
   p: f64,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: PrimInt> SimdBinomial<T> {
+impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
   /// Creates a binomial sampler with an RNG obtained from a
   /// [`SeedExt`](crate::simd_rng::SeedExt) source. The core constructor —
   /// `new()` and `with_seed()` delegate here.
@@ -31,7 +32,7 @@ impl<T: PrimInt> SimdBinomial<T> {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -64,7 +65,7 @@ impl<T: PrimInt> SimdBinomial<T> {
     self.fill_slice(rng, out);
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
     if self.n == 0 {
       for x in out.iter_mut() {
         *x = T::zero();
@@ -107,7 +108,7 @@ impl<T: PrimInt> SimdBinomial<T> {
     }
   }
 
-  fn refill_buffer<R: Rng + ?Sized>(&self, rng: &mut R) {
+  fn refill_buffer<Rr: Rng + ?Sized>(&self, rng: &mut Rr) {
     let buf = unsafe { &mut *self.buffer.get() };
     self.fill_slice(rng, buf);
     unsafe {
@@ -116,14 +117,14 @@ impl<T: PrimInt> SimdBinomial<T> {
   }
 }
 
-impl<T: PrimInt> Clone for SimdBinomial<T> {
+impl<T: PrimInt, R: SimdRngExt> Clone for SimdBinomial<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.n, self.p, &Unseeded)
   }
 }
 
-impl<T: PrimInt> Distribution<T> for SimdBinomial<T> {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdBinomial<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer(rng);
@@ -134,7 +135,7 @@ impl<T: PrimInt> Distribution<T> for SimdBinomial<T> {
   }
 }
 
-impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
+impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdBinomial<T, R> {
   fn pdf(&self, x: f64) -> f64 {
     if x < 0.0 || x.fract() != 0.0 {
       return 0.0;

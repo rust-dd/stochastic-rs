@@ -13,23 +13,24 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use wide::f64x8;
 
 use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 
 const SMALL_GEOMETRIC_THRESHOLD: usize = 16;
 
-pub struct SimdGeometric<T: PrimInt> {
+pub struct SimdGeometric<T: PrimInt, R: SimdRngExt = SimdRng> {
   p: f64,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<SimdRng>,
+  simd_rng: UnsafeCell<R>,
 }
 
-impl<T: PrimInt> SimdGeometric<T> {
+impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(p: f64, seed: &S) -> Self {
     Self {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng()),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -46,7 +47,7 @@ impl<T: PrimInt> SimdGeometric<T> {
     z
   }
 
-  pub fn fill_slice<R: Rng + ?Sized>(&self, _rng: &mut R, out: &mut [T]) {
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
     self.fill_slice_fast(out);
   }
 
@@ -65,7 +66,8 @@ impl<T: PrimInt> SimdGeometric<T> {
     let inv_ln1p = f64x8::splat(1.0 / ln1p);
     let mut chunks = out.chunks_exact_mut(8);
     for chunk in &mut chunks {
-      let u = rng.next_f64_array();
+      let mut u = [0.0_f64; 8];
+      rng.fill_uniform_f64(&mut u);
       let v = f64x8::from(u);
       let tmp = (v.ln() * inv_ln1p).floor().to_array();
       for (o, &t) in chunk.iter_mut().zip(tmp.iter()) {
@@ -74,7 +76,8 @@ impl<T: PrimInt> SimdGeometric<T> {
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      let u = rng.next_f64_array();
+      let mut u = [0.0_f64; 8];
+      rng.fill_uniform_f64(&mut u);
       let v = f64x8::from(u);
       let tmp = (v.ln() * inv_ln1p).floor().to_array();
       for i in 0..rem.len() {
@@ -92,14 +95,14 @@ impl<T: PrimInt> SimdGeometric<T> {
   }
 }
 
-impl<T: PrimInt> Clone for SimdGeometric<T> {
+impl<T: PrimInt, R: SimdRngExt> Clone for SimdGeometric<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.p, &Unseeded)
   }
 }
 
-impl<T: PrimInt> Distribution<T> for SimdGeometric<T> {
-  fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> T {
+impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdGeometric<T, R> {
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
       self.refill_buffer();
@@ -110,7 +113,7 @@ impl<T: PrimInt> Distribution<T> for SimdGeometric<T> {
   }
 }
 
-impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
+impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdGeometric<T, R> {
   // Convention here: support k ∈ {1, 2, ...} (the "shifted" geometric, P(X=k) = (1-p)^(k-1) p).
 
   fn pdf(&self, x: f64) -> f64 {

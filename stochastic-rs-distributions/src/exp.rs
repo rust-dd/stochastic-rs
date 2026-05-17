@@ -252,6 +252,16 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
 
   /// Fills a slice with Exp(λ) samples in a single SIMD pass.
   pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  /// Fills a slice with Exp(λ) samples using the internal SIMD RNG directly.
+  /// Matches the `SimdNormal::fill_slice_fast` shape so nested-distribution
+  /// callers (e.g. [`crate::weibull::SimdWeibull`]) can bypass the trait
+  /// `Rng` bound when their backing `R: SimdRngExt` does not implement
+  /// `rand::Rng` outside the workspace's two known impls.
+  #[inline]
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_exp_scaled(out, rng, T::one() / self.lambda);
   }

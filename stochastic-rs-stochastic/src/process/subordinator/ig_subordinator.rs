@@ -54,7 +54,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for IGSubordinator<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let mu = (self.delta * dt) / self.gamma;
     let lambda = (self.delta * dt).powi(2);
-    let ig = SimdInverseGauss::new(mu, lambda, &self.seed);
+    let ig = SimdInverseGauss::<T>::new(mu, lambda, &self.seed);
     let mut inc = Array1::<T>::zeros(self.n - 1);
     ig.fill_slice_fast(inc.as_slice_mut().unwrap());
     for i in 1..self.n {
