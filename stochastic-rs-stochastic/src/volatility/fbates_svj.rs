@@ -136,7 +136,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
     let mut rng = self.seed.rng();
     let lambda_dt = self.lambda.to_f64().unwrap() * dt.to_f64().unwrap();
     let pois = if lambda_dt > 0.0 {
-      Some(SimdPoisson::<u32>::new(lambda_dt, &Unseeded))
+      Some(SimdPoisson::<u32>::new(lambda_dt, &self.seed))
     } else {
       None
     };

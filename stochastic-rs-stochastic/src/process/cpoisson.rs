@@ -69,7 +69,7 @@ where
       return increments;
     }
 
-    let poisson = SimdPoisson::<u32>::new(lambda_dt, &Unseeded);
+    let poisson = SimdPoisson::<u32>::new(lambda_dt, &self.seed);
     let mut rng = self.seed.rng();
     for i in 1..n {
       let jump_count = poisson.sample(&mut rng);
@@ -114,7 +114,7 @@ where
       return increments;
     }
 
-    let poisson = SimdPoisson::<u32>::new(lambda_dt, &Unseeded);
+    let poisson = SimdPoisson::<u32>::new(lambda_dt, &self.seed);
     self.seed.derive(); // skip one to differ from sample_grid_increments
     let mut rng = self.seed.rng();
     for i in 1..n {
