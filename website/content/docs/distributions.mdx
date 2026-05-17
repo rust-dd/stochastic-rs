@@ -58,10 +58,11 @@ distributions**, every one of them with:
 <Tab value="Rust">
 ```rust
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::DistributionExt;
 use rand_distr::Distribution;
 
-let d = SimdNormal::<f64>::with_seed(/* mean */ 0.0, /* std */ 1.0, 42);
+let d = SimdNormal::<f64>::new(/* mean */ 0.0, /* std */ 1.0, &Deterministic::new(42));
 
 // Single sample
 let mut rng = rand::thread_rng();
@@ -100,9 +101,10 @@ print(d.pdf(0.0), d.cdf(1.96))               # 0.3989, 0.975
 <Tab value="Rust">
 ```rust
 use stochastic_rs::distributions::beta::SimdBeta;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::DistributionExt;
 
-let d = SimdBeta::<f64>::with_seed(/* alpha */ 2.0, /* beta */ 5.0, 42);
+let d = SimdBeta::<f64>::new(/* alpha */ 2.0, /* beta */ 5.0, &Deterministic::new(42));
 let mut buf = vec![0.0; 1_000];
 d.fill_slice_fast(&mut buf);
 assert!(buf.iter().all(|&x| x >= 0.0 && x <= 1.0));
@@ -130,8 +132,9 @@ print(d.mean(), d.variance())                # 0.2857, 0.0255
 <Tab value="Rust">
 ```rust
 use stochastic_rs::distributions::poisson::SimdPoisson;
+use stochastic_rs::simd_rng::Deterministic;
 
-let d = SimdPoisson::<f64>::with_seed(/* lambda */ 4.0, 42);
+let d = SimdPoisson::<u32>::new(/* lambda */ 4.0, &Deterministic::new(42));
 let mut buf = vec![0_u32; 10_000];
 d.fill_slice_fast(&mut buf);
 
@@ -154,10 +157,20 @@ print(counts.mean(), counts.var())           # both ≈ 4.0
 
 ### Construction
 
+Every distribution follows the same `new(args, &seed)` constructor pattern — pass
+[`Unseeded`](/docs/concepts/seeding) for an auto-seeded RNG or
+[`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible
+stream. See the [seeding concept page](/docs/concepts/seeding) for the
+full design (including `SeedExt::reseed`, the generic `R: SimdRngExt`
+backing RNG, and the experimental `dual-stream-rng` feature).
+
 ```rust
-let d = Foo::<T>::new(/* params */);                          // thread-local seed
-let d = Foo::<T>::with_seed(/* params */, /* seed */ 42);     // explicit seed
-let d = Foo::<T>::from_seed_source(/* params */, source);     // chain seeds
+use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+
+let d = Foo::<T>::new(/* params */, &Unseeded);                       // auto-seeded
+let d = Foo::<T>::new(/* params */, &Deterministic::new(42));         // reproducible
+let d = Foo::<T>::new(/* params */, &shared_seed_source);             // share a seed source
+                                                                       // across sub-components
 ```
 
 ### Sampling

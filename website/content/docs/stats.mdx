@@ -102,12 +102,13 @@ Recommended for empirical roughness studies.
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
 ```rust
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stats::fukasawa_hurst::FukasawaHurst;
 use stochastic_rs::traits::ProcessExt;
 
 let true_h = 0.3;
-let path = Fgn::<f64>::with_seed(true_h, 1.0, 4096, Some(1.0), 42).sample();
+let path = Fgn::<f64, _>::new(true_h, 1.0, 4096, Some(1.0), Deterministic::new(42)).sample();
 let res = FukasawaHurst::<f64>::new().estimate(path.view());
 
 println!("H̃ = {:.3} (true = {:.3})", res.point, true_h);

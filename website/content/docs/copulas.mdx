@@ -49,12 +49,13 @@ crashes in equity returns.
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
 use stochastic_rs::traits::BivariateExt;
 
-let cop = Clayton::<f64>::with_seed(/* theta */ 2.0, 42);
-let n = 10_000;
-let (u, v) = cop.sample(n);                  // both Array1<f64> in [0, 1]
+let mut cop = Clayton::new();
+cop.set_tau(0.5);                            // τ ⇒ θ via Kendall inversion
+let _ = cop.compute_theta();
+let uv = cop.sample_with_seed(10_000, 42)?;  // Array2<f64>, shape (10_000, 2)
+let (u, v) = (uv.column(0), uv.column(1));   // both in [0, 1]
 
-// Empirical Kendall's τ should be ≈ θ / (θ + 2) = 0.5
-let tau_hat = stochastic_rs::stats::tail_index::kendall_tau(u.view(), v.view());
+let tau_hat = stochastic_rs::stats::tail_index::kendall_tau(u, v);
 println!("τ̂ = {:.3}", tau_hat);
 ```
 </Tab>
@@ -62,8 +63,9 @@ println!("τ̂ = {:.3}", tau_hat);
 ```python
 import stochastic_rs as srs
 
-cop = srs.Clayton(theta=2.0, seed=42)
-u, v = cop.sample(10_000)
+cop = srs.Clayton(theta=2.0)
+uv = cop.sample(10_000, seed=42)             # shape (10_000, 2)
+u, v = uv[:, 0], uv[:, 1]
 print("Kendall's tau ≈", srs.kendall_tau(u, v))   # ≈ 0.5
 ```
 </Tab>
@@ -71,10 +73,11 @@ print("Kendall's tau ≈", srs.kendall_tau(u, v))   # ≈ 0.5
 
 ### Gaussian copula — multivariate sampling
 
-<Tabs items={['Rust', 'Python']}>
+<Tabs items={['Rust']}>
 <Tab value="Rust">
 ```rust
-use stochastic_rs::copulas::multivariate::gaussian::GaussianCopula;
+use stochastic_rs::copulas::multivariate::gaussian::GaussianMultivariate;
+use stochastic_rs::traits::MultivariateExt;
 use ndarray::array;
 
 let corr = array![
@@ -82,23 +85,13 @@ let corr = array![
     [0.7, 1.0, 0.5],
     [0.3, 0.5, 1.0],
 ];
-let cop = GaussianCopula::<f64>::with_seed(corr, 42);
-let samples = cop.sample(10_000);            // Array2<f64>, shape (10_000, 3)
+let cop = GaussianMultivariate::new_with_corr(corr)?;
+let samples = cop.sample(10_000)?;           // Array2<f64>, shape (10_000, 3)
 ```
-</Tab>
-<Tab value="Python">
-```python
-import stochastic_rs as srs
-import numpy as np
 
-corr = np.array([
-    [1.0, 0.7, 0.3],
-    [0.7, 1.0, 0.5],
-    [0.3, 0.5, 1.0],
-])
-cop = srs.GaussianCopula(corr=corr, seed=42)
-samples = cop.sample(10_000)                 # shape (10_000, 3)
-```
+> The multivariate Gaussian copula depends on `ndarray-linalg` (the
+> `openblas` feature) for the Cholesky factorisation, so it is **not**
+> wrapped for Python — use the Rust API directly.
 </Tab>
 </Tabs>
 

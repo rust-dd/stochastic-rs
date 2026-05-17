@@ -93,11 +93,12 @@ $H > 0.5$ is persistent.
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
 ```rust
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 
-let fgn = Fgn::<f64>::with_seed(/* hurst */ 0.3, /* sigma */ 1.0,
-                                /* n */ 4096, /* t */ Some(1.0),
-                                /* seed */ 42);
+let fgn = Fgn::<f64, _>::new(/* hurst */ 0.3, /* sigma */ 1.0,
+                             /* n */ 4096, /* t */ Some(1.0),
+                             Deterministic::new(42));
 let increments = fgn.sample();
 ```
 </Tab>
@@ -117,17 +118,24 @@ fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
 
 ### Construction
 
-Every process exposes three constructors:
+Every process follows the same `new(args, seed)` pattern (mirrors the
+distribution constructors — see the [seeding concept
+page](/docs/concepts/seeding)). The seed argument is a value implementing
+[`SeedExt`](/docs/concepts/seeding):
 
 ```rust
-let p = Foo::<T>::new(/* params */, n, x0, t);                      // thread-local seed
-let p = Foo::<T>::with_seed(/* params */, n, x0, t, /* seed */ 42); // explicit seed
-let p = Foo::<T>::from_seed_source(/* params */, n, x0, t, source); // chain seeds
+use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+
+let p = Foo::<T, _>::new(/* params */, n, x0, t, Unseeded);                  // auto-seeded
+let p = Foo::<T, _>::new(/* params */, n, x0, t, Deterministic::new(42));    // reproducible
 ```
 
-Use `with_seed` in tests (so they are deterministic) and
-`from_seed_source` when chaining processes (e.g. correlated Brownian
-factors).
+Use `Deterministic` in tests so they replay bit-exactly; pass a shared
+`Deterministic` to several processes when chaining correlated factors —
+each call to `seed.rng()` / `seed.rng_ext()` atomically advances the
+internal counter, so the streams diverge despite the shared root seed.
+`SeedExt::reseed(u64)` swaps a `Deterministic` source in place to sweep
+seeds without rebuilding the process.
 
 ### Sampling
 

@@ -61,13 +61,21 @@ ship for FGN / fBM only — see the [add-gpu-sampler SKILL](https://github.com/d
 
 ## Construction patterns
 
-Every process exposes:
+Every process follows the same canonical `new(args, seed)` constructor
+(see the [seeding concept page](/docs/concepts/seeding) for the full
+design):
 
 ```rust
-let p = Foo::<T>::new(/* params */, n, x0, t);            // thread-local seed
-let p = Foo::<T>::with_seed(/* params */, n, x0, t, 42);  // explicit seed
-let p = Foo::<T>::from_seed_source(/* params */, n, x0, t, src);  // chain seeds
+use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+
+let p = Foo::<T, _>::new(/* params */, n, x0, t, Unseeded);                  // auto-seeded
+let p = Foo::<T, _>::new(/* params */, n, x0, t, Deterministic::new(42));    // reproducible
+let p = Foo::<T, _>::new(/* params */, n, x0, t, shared_seed_source);        // chain seeds
 ```
 
-Use `with_seed` in tests (so they are deterministic) and `from_seed_source`
-when chaining processes (e.g. correlated Brownian factors).
+Use `Deterministic` in tests so they replay bit-exactly. Pass a shared
+seed source when chaining correlated processes — each `seed.rng()` /
+`seed.rng_ext()` call atomically advances the internal counter, so the
+streams diverge despite the shared root. `SeedExt::reseed(u64)` swaps a
+`Deterministic` source in place to sweep seeds without rebuilding the
+process.
