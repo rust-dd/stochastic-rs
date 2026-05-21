@@ -41,7 +41,7 @@
 use ndarray::Array1;
 
 pub mod coefficients;
-mod engine;
+pub mod engine;
 
 pub use coefficients::convolution_coefficients;
 pub use coefficients::fourier_coefficients_dx;
