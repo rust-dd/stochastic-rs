@@ -13,14 +13,12 @@
 //! | [`higuchi::Higuchi`]          | Higuchi (1988) curve-length method                     |
 //! | [`variogram::Variogram`]      | Variogram-ratio (Constantine-Hall 1994), `p`-power     |
 //!
-//! For Hurst-exponent estimation use [`crate::hurst`] estimators
-//! directly — the `D = 2 - H` conversion adapter is no longer wired
-//! into the Hurst trait, since the natural output of Higuchi/Variogram
-//! is `D`, not `H`.  Convert manually when needed.
+//! Both also implement [`crate::hurst::HurstEstimator`] via
+//! `crate::hurst::fd_adapters`, so callers who want `H = 2 - D`
+//! directly can disambiguate the call by importing the relevant trait.
 
 use std::fmt;
 
-use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use crate::traits::FloatExt;
@@ -111,33 +109,6 @@ pub enum FdDiagnostic<T: FloatExt> {
   VariogramRatio { v_short: T, v_long: T },
   /// No diagnostic available.
   None,
-}
-
-/// **Deprecated** convenience wrapper, retained for v2.2 API
-/// compatibility.  New code should use [`Higuchi`] /
-/// [`Variogram`] directly through the [`FractalDimEstimator`] trait.
-#[derive(Clone, Debug)]
-pub struct FractalDim<T: FloatExt> {
-  pub x: Array1<T>,
-}
-
-impl<T: FloatExt> FractalDim<T> {
-  #[must_use]
-  pub fn new(x: Array1<T>) -> Self {
-    Self { x }
-  }
-
-  /// Variogram-based fractal dimension (p-power).  `p = None` defaults
-  /// to `1.0`.
-  pub fn variogram(&self, p: Option<T>) -> Result<T, FdError> {
-    let p = p.unwrap_or_else(|| T::from_f64_fast(1.0));
-    variogram::compute(self.x.view(), p)
-  }
-
-  /// Higuchi (1988) curve-length fractal dimension.
-  pub fn higuchi_fd(&self, kmax: usize) -> Result<T, FdError> {
-    higuchi::compute(self.x.view(), kmax)
-  }
 }
 
 /// Convenience: compute Higuchi FD directly from a view.  Free-function

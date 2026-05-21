@@ -5,7 +5,7 @@
 mod all_backends {
   use either::Either;
   use ndarray::Array1;
-  use stochastic_rs::stats::fd::FractalDim;
+  use stochastic_rs::stats::fractal_dim::{FractalDimEstimator, Higuchi};
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
@@ -200,8 +200,12 @@ mod all_backends {
         let s: f64 = paths
           .iter()
           .map(|p| {
-            let fd = FractalDim::new(Array1::from_vec(p.clone()));
-            2.0 - fd.higuchi_fd(32).expect("Higuchi on fGN path")
+            let arr = Array1::from_vec(p.clone());
+            let d = Higuchi::new(32)
+              .estimate(arr.view())
+              .expect("Higuchi on fGN path")
+              .d;
+            2.0 - d
           })
           .sum();
         s / paths.len() as f64

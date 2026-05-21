@@ -48,6 +48,13 @@ impl Default for Gph {
   }
 }
 
+impl Gph {
+  #[must_use]
+  pub fn new() -> Self {
+    Self::default()
+  }
+}
+
 impl<T: FloatExt> HurstEstimator<T> for Gph {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
     if !(0.1..1.0).contains(&self.bandwidth_alpha) {

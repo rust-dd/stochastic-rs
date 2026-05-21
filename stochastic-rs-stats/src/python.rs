@@ -457,7 +457,7 @@ impl PyKPSSTest {
 
 #[pyclass(name = "FukasawaHurst", unsendable)]
 pub struct PyFukasawaHurst {
-  inner: crate::fukasawa_hurst::FukasawaResult,
+  inner: crate::hurst::whittle::FukasawaResult,
 }
 
 #[pymethods]
@@ -466,7 +466,7 @@ impl PyFukasawaHurst {
   #[staticmethod]
   fn from_prices<'py>(closes: PyReadonlyArray1<'py, f64>) -> Self {
     Self {
-      inner: crate::fukasawa_hurst::estimate_from_prices(closes.as_array()),
+      inner: crate::hurst::whittle::estimate_from_prices(closes.as_array()),
     }
   }
 
@@ -475,7 +475,7 @@ impl PyFukasawaHurst {
   #[staticmethod]
   fn from_log_rv<'py>(log_rv: PyReadonlyArray1<'py, f64>, m: usize, delta: f64) -> Self {
     Self {
-      inner: crate::fukasawa_hurst::estimate(log_rv.as_array(), m, delta),
+      inner: crate::hurst::whittle::estimate(log_rv.as_array(), m, delta),
     }
   }
 

@@ -68,6 +68,16 @@ impl Default for Dfa {
   }
 }
 
+impl Dfa {
+  #[must_use]
+  pub fn new(order: usize) -> Self {
+    Self {
+      order,
+      ..Self::default()
+    }
+  }
+}
+
 impl<T: FloatExt> HurstEstimator<T> for Dfa {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
     let n = x.len();

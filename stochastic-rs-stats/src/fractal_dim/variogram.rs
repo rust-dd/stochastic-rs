@@ -32,6 +32,13 @@ impl Default for Variogram {
   }
 }
 
+impl Variogram {
+  #[must_use]
+  pub fn new(p: f64) -> Self {
+    Self { p }
+  }
+}
+
 impl<T: FloatExt> FractalDimEstimator<T> for Variogram {
   fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, FdError> {
     let n_obs = x.len();

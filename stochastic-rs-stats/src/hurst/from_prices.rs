@@ -1,7 +1,7 @@
 //! Convenience helpers: estimate `H` directly from a close-price
 //! series.  Wraps [`crate::fractal_dim::Higuchi`] (via the FBM relation
-//! `H = 2 - D`) and cross-validates two volatility proxies as in the
-//! legacy `fd::estimate_hurst` API.
+//! `H = 2 - D`) and cross-validates two volatility proxies (rolling
+//! mean-absolute-return vs raw absolute returns).
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -16,9 +16,6 @@ use crate::traits::FloatExt;
 /// (rolling mean absolute return), cross-validated against an absolute-
 /// return Higuchi estimate.  Returns `H ∈ [0.05, 0.45]`.  Falls back to
 /// `0.1` on insufficient data or unreliable estimate.
-///
-/// Matches the v2.2 `crate::fd::estimate_hurst` behaviour bit-for-bit
-/// so the deprecated re-export remains a drop-in.
 pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> f64 {
   let n = closes.len();
   if n < 30 {

@@ -8,7 +8,7 @@
 mod gpu_visual {
   use either::Either;
   use ndarray::Array1;
-  use stochastic_rs::stats::fd::FractalDim;
+  use stochastic_rs::stats::fractal_dim::{FractalDimEstimator, Higuchi, Variogram};
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
@@ -184,9 +184,16 @@ mod gpu_visual {
       let mut h_higuchi_sum = 0.0;
       for path in &paths {
         let arr = Array1::from_vec(path.to_vec());
-        let fd = FractalDim::new(arr);
-        h_vario_sum += 2.0 - fd.variogram(Some(2.0)).expect("variogram on fGN path");
-        h_higuchi_sum += 2.0 - fd.higuchi_fd(32).expect("Higuchi on fGN path");
+        let v_d = Variogram { p: 2.0 }
+          .estimate(arr.view())
+          .expect("variogram on fGN path")
+          .d;
+        let h_d = Higuchi { kmax: 32 }
+          .estimate(arr.view())
+          .expect("Higuchi on fGN path")
+          .d;
+        h_vario_sum += 2.0 - v_d;
+        h_higuchi_sum += 2.0 - h_d;
       }
       let h_vario = h_vario_sum / m as f64;
       let h_higuchi = h_higuchi_sum / m as f64;

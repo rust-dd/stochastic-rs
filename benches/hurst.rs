@@ -6,10 +6,16 @@ use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::stochastic::traits::ProcessExt;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stats::fractal_dim::{FractalDimEstimator, Higuchi, Variogram};
-use stochastic_rs_stats::hurst::{
-  Dfa, Gph, HurstEstimator, RescaledRange, VariationKind, Variations, Wavelet,
-};
+use stochastic_rs_stats::fractal_dim::FractalDimEstimator;
+use stochastic_rs_stats::fractal_dim::Higuchi;
+use stochastic_rs_stats::fractal_dim::Variogram;
+use stochastic_rs_stats::hurst::Dfa;
+use stochastic_rs_stats::hurst::Gph;
+use stochastic_rs_stats::hurst::HurstEstimator;
+use stochastic_rs_stats::hurst::RescaledRange;
+use stochastic_rs_stats::hurst::VariationKind;
+use stochastic_rs_stats::hurst::Variations;
+use stochastic_rs_stats::hurst::Wavelet;
 
 fn make_fbm_path(h: f64, n: usize, seed: u64) -> Array1<f64> {
   Fbm::<f64, _>::new(h, n, Some(1.0), Deterministic::new(seed)).sample()
@@ -39,11 +45,15 @@ fn bench_hurst_estimators(c: &mut Criterion) {
   let wavelet = Wavelet::default();
   group.bench_function("wavelet_d4", |b| b.iter(|| wavelet.estimate(fbm.view())));
 
-  let higuchi = Higuchi { kmax: 32 };
-  group.bench_function("higuchi", |b| b.iter(|| higuchi.estimate(fbm.view())));
+  let higuchi = Higuchi::new(32);
+  group.bench_function("higuchi", |b| {
+    b.iter(|| FractalDimEstimator::<f64>::estimate(&higuchi, fbm.view()))
+  });
 
-  let variogram = Variogram { p: 2.0 };
-  group.bench_function("variogram", |b| b.iter(|| variogram.estimate(fbm.view())));
+  let variogram = Variogram::new(2.0);
+  group.bench_function("variogram", |b| {
+    b.iter(|| FractalDimEstimator::<f64>::estimate(&variogram, fbm.view()))
+  });
 
   let variations = Variations {
     kind: VariationKind::CentralDiff,

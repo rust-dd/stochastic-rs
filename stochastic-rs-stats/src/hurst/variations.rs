@@ -54,6 +54,13 @@ impl Default for Variations {
   }
 }
 
+impl Variations {
+  #[must_use]
+  pub fn new(kind: VariationKind) -> Self {
+    Self { kind }
+  }
+}
+
 impl<T: FloatExt> HurstEstimator<T> for Variations {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
     let n = x.len();
@@ -219,9 +226,9 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
 /// Uses the non-overlapping (subsample-by-stride) variant so that
 /// `V_{stride=2} / V_{stride=1} → 2^{pH - 1}` (Coeurjolly scaling),
 /// matching the closed-form `H = (1 + log₂(V₂/V₁)) / p`.  The
-/// overlapping [`power_variation`] (used by [`crate::fou_estimator`]
-/// V4 for backward compatibility) does not satisfy this relation and
-/// produces biased Hurst estimates.
+/// overlapping [`power_variation`] (used by
+/// [`crate::fou_estimator::estimate_fou_v4`]) does not satisfy this
+/// relation and produces biased Hurst estimates.
 pub(crate) fn power_variation_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
@@ -240,9 +247,10 @@ pub(crate) fn power_variation_h_inner<T: FloatExt>(
 }
 
 /// `k`-th order `p`-power variation at the given stride, **overlapping**
-/// windows (step 1).  Retained for [`crate::fou_estimator`] V4
-/// backward-compat (its bit-exact regression test pins this exact
-/// formula).  Caller checks length / parameter validity.
+/// windows (step 1).  Used by
+/// [`crate::fou_estimator::estimate_fou_v4`] (its bit-exact regression
+/// test pins this exact formula).  Caller checks length / parameter
+/// validity.
 pub(crate) fn power_variation<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,

@@ -27,6 +27,13 @@ impl Default for Higuchi {
   }
 }
 
+impl Higuchi {
+  #[must_use]
+  pub fn new(kmax: usize) -> Self {
+    Self { kmax }
+  }
+}
+
 impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
   fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, FdError> {
     let n_obs = x.len();

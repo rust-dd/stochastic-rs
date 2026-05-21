@@ -6,7 +6,7 @@
 //! behaviour.
 
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stats::fukasawa_hurst;
+use stochastic_rs::stats::hurst::whittle;
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::traits::ProcessExt;
 
@@ -58,7 +58,7 @@ fn likelihood_surface() {
   println!("\nSpectral density g(λ, H, v=1.0) at λ=0.1:");
   for h_idx in &[5, 10, 20, 30, 40, 49] {
     let h = *h_idx as f64 * 0.01;
-    let g = fukasawa_hurst::spectral_density(0.1, h, 1.0, 1, ny, 500);
+    let g = whittle::spectral_density(0.1, h, 1.0, 1, ny, 500);
     println!("  H={:.2} → g={:.6}", h, g);
   }
 
@@ -72,7 +72,7 @@ fn likelihood_surface() {
     let h = *h_idx as f64 * 0.01;
     let mut vals = Vec::new();
     for &v in &[0.25, 0.5, 1.0, 2.0, 5.0] {
-      let nll = fukasawa_hurst::whittle_objective(&pgram, h, v, 1, ny, 1e-5, 500);
+      let nll = whittle::whittle_objective(&pgram, h, v, 1, ny, 1e-5, 500);
       vals.push(format!("{:.4}", nll));
     }
     println!(

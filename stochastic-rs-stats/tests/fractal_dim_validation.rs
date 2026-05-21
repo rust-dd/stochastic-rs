@@ -1,11 +1,10 @@
 //! Monte-Carlo FBM validation for fractal-dimension estimators
-//! ([`Higuchi`], [`Variogram`]).  Validates both the trait-based API
-//! ([`FractalDimEstimator`]) and the legacy struct API ([`FractalDim`]).
+//! ([`Higuchi`], [`Variogram`]) via the [`FractalDimEstimator`] trait.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stats::fractal_dim::{
-  FractalDim, FractalDimEstimator, Higuchi, Variogram,
+  FdDiagnostic, FractalDimEstimator, Higuchi, Variogram,
 };
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -18,8 +17,8 @@ fn fbm_fractal_dimension_matches_theory_via_trait() {
   let n = 4096_usize;
   let m = 160_usize;
   let fbm = Fbm::<f64>::new(h, n, Some(1.0), Unseeded);
-  let higuchi = Higuchi { kmax: 32 };
-  let variogram = Variogram { p: 2.0 };
+  let higuchi = Higuchi::new(32);
+  let variogram = Variogram::new(2.0);
 
   let mut d_vario_sum = 0.0;
   let mut d_higuchi_sum = 0.0;
@@ -42,42 +41,13 @@ fn fbm_fractal_dimension_matches_theory_via_trait() {
 }
 
 #[test]
-fn fbm_fractal_dimension_matches_theory_via_legacy_struct() {
-  let h = 0.72_f64;
-  let d_theory = 2.0 - h;
-  let n = 4096_usize;
-  let m = 160_usize;
-  let kmax = 32_usize;
-  let fbm = Fbm::<f64>::new(h, n, Some(1.0), Unseeded);
-
-  let mut d_vario_sum = 0.0;
-  let mut d_higuchi_sum = 0.0;
-  for _ in 0..m {
-    let x = fbm.sample();
-    let fd = FractalDim::new(x);
-    d_vario_sum += fd.variogram(Some(2.0)).expect("variogram on fBM path");
-    d_higuchi_sum += fd.higuchi_fd(kmax).expect("Higuchi on fBM path");
-  }
-  let d_vario = d_vario_sum / m as f64;
-  let d_higuchi = d_higuchi_sum / m as f64;
-
-  assert!(
-    (d_vario - d_theory).abs() < 0.05,
-    "variogram FD mismatch: D_est={d_vario}, D={d_theory}"
-  );
-  assert!(
-    (d_higuchi - d_theory).abs() < 0.05,
-    "higuchi FD mismatch: D_est={d_higuchi}, D={d_theory}"
-  );
-}
-
-#[test]
 fn fbm_hurst_and_fractal_dimension_from_fgn_increments() {
   let h = 0.78_f64;
   let n = 4096_usize;
   let t = 1.0_f64;
   let m = 240_usize;
-  let kmax = 32_usize;
+  let higuchi = Higuchi::new(32);
+  let variogram = Variogram::new(2.0);
 
   let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
   let mut endpoints = Vec::with_capacity(m);
@@ -93,11 +63,11 @@ fn fbm_hurst_and_fractal_dimension_from_fgn_increments() {
     }
     endpoints.push(fbm[n]);
 
-    let fd = FractalDim::new(Array1::from_vec(fbm));
-    d_vario_sum += fd.variogram(Some(2.0)).expect("variogram on fBM path");
+    let path = Array1::from_vec(fbm);
+    d_vario_sum += variogram.estimate(path.view()).expect("variogram on fBM").d;
 
     if path_idx % 2 == 0 {
-      d_higuchi_sum += fd.higuchi_fd(kmax).expect("Higuchi on fBM path");
+      d_higuchi_sum += higuchi.estimate(path.view()).expect("Higuchi on fBM").d;
       d_higuchi_count += 1;
     }
   }
@@ -142,11 +112,11 @@ fn higuchi_diagnostic_populates_logreg_fields() {
   let n = 4096_usize;
   let fbm = Fbm::<f64>::new(h, n, Some(1.0), Unseeded);
   let path = fbm.sample();
-  let r = Higuchi { kmax: 32 }
+  let r = Higuchi::new(32)
     .estimate(path.view())
     .expect("Higuchi diagnostic");
   match r.diagnostic {
-    stochastic_rs_stats::fractal_dim::FdDiagnostic::LogLogRegression {
+    FdDiagnostic::LogLogRegression {
       slope,
       log_scales,
       log_stats,
@@ -166,11 +136,11 @@ fn variogram_diagnostic_populates_ratio_fields() {
   let n = 4096_usize;
   let fbm = Fbm::<f64>::new(h, n, Some(1.0), Unseeded);
   let path = fbm.sample();
-  let r = Variogram { p: 2.0 }
+  let r = Variogram::new(2.0)
     .estimate(path.view())
     .expect("Variogram diagnostic");
   match r.diagnostic {
-    stochastic_rs_stats::fractal_dim::FdDiagnostic::VariogramRatio { v_short, v_long } => {
+    FdDiagnostic::VariogramRatio { v_short, v_long } => {
       assert!(v_short > 0.0 && v_long > 0.0);
     }
     _ => panic!("expected VariogramRatio diagnostic"),

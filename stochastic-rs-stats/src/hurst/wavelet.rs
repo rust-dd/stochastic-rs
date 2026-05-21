@@ -50,8 +50,7 @@ fn daubechies4_scaling() -> Vec<f64> {
   ]
 }
 
-/// Wavelet family used by [`Wavelet`].  Only Daubechies-4 is shipped
-/// in v2.3; D6 / D8 are deferred to v2.4.
+/// Wavelet family used by [`Wavelet`].  Currently only Daubechies-4.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WaveletKind {
   Daubechies4,
@@ -83,6 +82,13 @@ impl Default for Wavelet {
       j_min: 2,
       j_max: None,
     }
+  }
+}
+
+impl Wavelet {
+  #[must_use]
+  pub fn new() -> Self {
+    Self::default()
   }
 }
 

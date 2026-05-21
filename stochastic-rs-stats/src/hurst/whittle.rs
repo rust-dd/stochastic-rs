@@ -16,9 +16,9 @@
 //! - Correction terms `A¹` and `A²` for low-frequency truncation (eq. 16)
 //! - Multi-start L-BFGS-B optimisation (projected L-BFGS via argmin)
 //!
-//! Wrapped under the [`super::HurstEstimator`] trait as [`Whittle`].
-//! The legacy free functions [`estimate`] / [`estimate_from_prices`]
-//! remain available for callers that prefer the v2.2 signature.
+//! Wrapped under the [`super::HurstEstimator`] trait as [`Whittle`];
+//! free functions [`estimate`] / [`estimate_from_prices`] are also
+//! available for direct use.
 
 use argmin::core::CostFunction;
 use argmin::core::Executor;
@@ -35,8 +35,7 @@ use super::HurstEstimator;
 use super::HurstResult;
 use crate::traits::FloatExt;
 
-/// Estimation result mirroring the v2.2 `FukasawaResult` shape so the
-/// deprecated re-export from `crate::fukasawa_hurst` stays a drop-in.
+/// Estimation result from the adapted Whittle estimator.
 #[derive(Clone, Debug)]
 pub struct FukasawaResult {
   pub hurst: f64,
@@ -46,9 +45,9 @@ pub struct FukasawaResult {
 }
 
 /// Whittle estimator config (intraday bars + day fraction + numerical
-/// tuning constants).  Use [`Whittle::default`] for daily data (`m =
-/// 1`, `δ = 1/250`) — note this matches the high-bias setting of
-/// Fukasawa Table 1; pass `m ≥ 72` for accurate intraday RV input.
+/// tuning constants).  [`Whittle::default`] is daily data (`m = 1`,
+/// `δ = 1/250`) — note this matches the high-bias setting of Fukasawa
+/// Table 1; pass `m ≥ 72` for accurate intraday RV input.
 #[derive(Clone, Copy, Debug)]
 pub struct Whittle {
   /// Number of intraday observations per day.
@@ -71,6 +70,17 @@ impl Default for Whittle {
       psi: 1e-5,
       k_trunc: 500,
       j_max: 20,
+    }
+  }
+}
+
+impl Whittle {
+  #[must_use]
+  pub fn new(m: usize, delta: f64) -> Self {
+    Self {
+      m,
+      delta,
+      ..Self::default()
     }
   }
 }
