@@ -5,7 +5,8 @@
 mod all_backends {
   use either::Either;
   use ndarray::Array1;
-  use stochastic_rs::stats::fractal_dim::{FractalDimEstimator, Higuchi};
+  use stochastic_rs::stats::fractal_dim::FractalDimEstimator;
+  use stochastic_rs::stats::fractal_dim::Higuchi;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;

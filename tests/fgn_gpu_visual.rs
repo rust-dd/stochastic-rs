@@ -8,7 +8,9 @@
 mod gpu_visual {
   use either::Either;
   use ndarray::Array1;
-  use stochastic_rs::stats::fractal_dim::{FractalDimEstimator, Higuchi, Variogram};
+  use stochastic_rs::stats::fractal_dim::FractalDimEstimator;
+  use stochastic_rs::stats::fractal_dim::Higuchi;
+  use stochastic_rs::stats::fractal_dim::Variogram;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;

@@ -136,8 +136,7 @@ fn fou_v2_bit_exact_against_struct_era_inline_reference() {
       diff * diff
     })
     .sum();
-  let sigma_den_ref =
-    n_f * (4.0 - 2.0_f64.powf(2.0 * hurst_ref)) * delta_ref.powf(2.0 * hurst_ref);
+  let sigma_den_ref = n_f * (4.0 - 2.0_f64.powf(2.0 * hurst_ref)) * delta_ref.powf(2.0 * hurst_ref);
   let sigma_ref = (sigma_num_ref / sigma_den_ref).sqrt();
 
   let mu_ref = path.mean().unwrap();

@@ -94,7 +94,14 @@ impl<T: FloatExt> HurstEstimator<T> for Whittle {
       });
     }
     let log_rv: Vec<f64> = x.iter().map(|v| v.to_f64().unwrap_or(f64::NAN)).collect();
-    let result = run_estimate(&log_rv, self.m, self.delta, self.psi, self.k_trunc, self.j_max);
+    let result = run_estimate(
+      &log_rv,
+      self.m,
+      self.delta,
+      self.psi,
+      self.k_trunc,
+      self.j_max,
+    );
     Ok(HurstResult {
       hurst: T::from_f64_fast(result.hurst),
       std_err: None,
@@ -122,8 +129,8 @@ pub fn spectral_density(lambda: f64, h: f64, v: f64, m: usize, _n: usize, k_trun
   let mut sum = lambda.abs().powf(-alpha);
   for k in 1..=k_trunc {
     let kf = k as f64;
-    sum += (2.0 * pi * kf + lambda).abs().powf(-alpha)
-      + (2.0 * pi * kf - lambda).abs().powf(-alpha);
+    sum +=
+      (2.0 * pi * kf + lambda).abs().powf(-alpha) + (2.0 * pi * kf - lambda).abs().powf(-alpha);
   }
 
   let sin_half = (lambda / 2.0).sin();
@@ -241,7 +248,11 @@ pub fn whittle_objective(
       count += 1;
     }
   }
-  if count > 0 { sum / count as f64 } else { f64::INFINITY }
+  if count > 0 {
+    sum / count as f64
+  } else {
+    f64::INFINITY
+  }
 }
 
 fn whittle_objective_full(
@@ -265,7 +276,11 @@ fn whittle_objective_full(
   let a1 = correction_a1(psi, h, v, m);
   let a2 = correction_a2(gamma_buf, psi, h, v, j_max);
   let result = base + a1 + a2;
-  if result.is_finite() { result } else { f64::INFINITY }
+  if result.is_finite() {
+    result
+  } else {
+    f64::INFINITY
+  }
 }
 
 #[derive(Clone)]
@@ -428,7 +443,11 @@ pub fn estimate(log_rv: ArrayView1<f64>, m: usize, delta: f64) -> FukasawaResult
   let log_rv = log_rv
     .as_slice()
     .expect("estimate requires a contiguous ArrayView1");
-  assert!(log_rv.len() >= 30, "need at least 30 observations, got {}", log_rv.len());
+  assert!(
+    log_rv.len() >= 30,
+    "need at least 30 observations, got {}",
+    log_rv.len()
+  );
   run_estimate(log_rv, m, delta, 1e-5, 500, 20)
 }
 
@@ -457,7 +476,6 @@ pub fn estimate_from_prices_generic<T: FloatExt>(closes: ArrayView1<T>) -> Fukas
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
   use rand::SeedableRng;
   use rand::rngs::StdRng;
@@ -466,6 +484,7 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_stochastic::diffusion::fou::Fou;
 
+  use super::*;
   use crate::traits::ProcessExt;
 
   fn simulate_log_rv(true_h: f64, m: usize, n_days: usize, delta: f64, seed: u64) -> Vec<f64> {

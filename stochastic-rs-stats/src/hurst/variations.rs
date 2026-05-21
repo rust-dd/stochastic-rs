@@ -67,7 +67,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
     match self.kind {
       VariationKind::Daubechies => {
         if n < 8 {
-          return Err(HurstError::TooFewObservations { got: n, required: 8 });
+          return Err(HurstError::TooFewObservations {
+            got: n,
+            required: 8,
+          });
         }
         let (h, v1, v2) = daubechies_h_inner::<T>(x)?;
         Ok(HurstResult {
@@ -82,7 +85,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
       }
       VariationKind::CentralDiff => {
         if n < 5 {
-          return Err(HurstError::TooFewObservations { got: n, required: 5 });
+          return Err(HurstError::TooFewObservations {
+            got: n,
+            required: 5,
+          });
         }
         let (h, v1, v2) = central_diff_h_inner::<T>(x)?;
         Ok(HurstResult {
@@ -104,10 +110,7 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
         }
         let required = k + 2 + 1;
         if n < required {
-          return Err(HurstError::TooFewObservations {
-            got: n,
-            required,
-          });
+          return Err(HurstError::TooFewObservations { got: n, required });
         }
         let (h, v1, v2) = power_variation_h_inner::<T>(x, k, p)?;
         Ok(HurstResult {
@@ -180,7 +183,9 @@ pub(crate) fn daubechies_h_inner<T: FloatExt>(
   let a = daubechies_coeffs();
   let a_2 = a2_coefficients(&a);
   let v1 = lfilter_f64::<T>(&a, &array![1.0], x).mapv(|y| y * y).sum();
-  let v2 = lfilter_f64::<T>(&a_2, &array![1.0], x).mapv(|y| y * y).sum();
+  let v2 = lfilter_f64::<T>(&a_2, &array![1.0], x)
+    .mapv(|y| y * y)
+    .sum();
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
     return Err(HurstError::DegeneratePath);
   }
@@ -327,10 +332,10 @@ pub(crate) fn binomial(n: usize, k: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
+  use super::*;
   use crate::traits::ProcessExt;
 
   #[test]

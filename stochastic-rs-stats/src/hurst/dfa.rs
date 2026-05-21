@@ -85,7 +85,10 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
       return Err(HurstError::InvalidParameter("order", self.order as f64));
     }
     if !(0.0..1.0).contains(&self.overlap_pct) {
-      return Err(HurstError::InvalidParameter("overlap_pct", self.overlap_pct));
+      return Err(HurstError::InvalidParameter(
+        "overlap_pct",
+        self.overlap_pct,
+      ));
     }
     if self.min_window < self.order + 2 {
       return Err(HurstError::InvalidParameter(
@@ -103,7 +106,10 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
 
     let max_window = self.max_window.unwrap_or(n / 4).min(n / 2);
     if max_window <= self.min_window {
-      return Err(HurstError::InvalidParameter("max_window", max_window as f64));
+      return Err(HurstError::InvalidParameter(
+        "max_window",
+        max_window as f64,
+      ));
     }
     let windows = log_spaced_windows(self.min_window, max_window, self.n_windows);
     if windows.len() < 2 {
@@ -292,10 +298,10 @@ fn solve_symmetric(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
+  use super::*;
   use crate::traits::ProcessExt;
 
   #[test]
@@ -349,13 +355,19 @@ mod tests {
   fn detrend_constant_segment_zero_rss() {
     let seg = vec![3.0_f64; 16];
     let rss = detrend_rss(&seg, 1).unwrap();
-    assert!(rss.abs() < 1e-10, "constant detrend should leave 0 rss, got {rss}");
+    assert!(
+      rss.abs() < 1e-10,
+      "constant detrend should leave 0 rss, got {rss}"
+    );
   }
 
   #[test]
   fn detrend_linear_segment_zero_rss() {
     let seg: Vec<f64> = (0..16).map(|i| 2.0 + 0.5 * i as f64).collect();
     let rss = detrend_rss(&seg, 1).unwrap();
-    assert!(rss.abs() < 1e-10, "linear detrend should leave 0 rss, got {rss}");
+    assert!(
+      rss.abs() < 1e-10,
+      "linear detrend should leave 0 rss, got {rss}"
+    );
   }
 }

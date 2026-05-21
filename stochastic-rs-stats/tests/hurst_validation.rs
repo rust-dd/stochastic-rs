@@ -9,10 +9,15 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_stats::fractal_dim::{Higuchi, Variogram};
-use stochastic_rs_stats::hurst::{
-  Dfa, Gph, HurstEstimator, RescaledRange, VariationKind, Variations, Wavelet,
-};
+use stochastic_rs_stats::fractal_dim::Higuchi;
+use stochastic_rs_stats::fractal_dim::Variogram;
+use stochastic_rs_stats::hurst::Dfa;
+use stochastic_rs_stats::hurst::Gph;
+use stochastic_rs_stats::hurst::HurstEstimator;
+use stochastic_rs_stats::hurst::RescaledRange;
+use stochastic_rs_stats::hurst::VariationKind;
+use stochastic_rs_stats::hurst::Variations;
+use stochastic_rs_stats::hurst::Wavelet;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::traits::ProcessExt;
 

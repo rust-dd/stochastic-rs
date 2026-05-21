@@ -3,9 +3,10 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_stats::fractal_dim::{
-  FdDiagnostic, FractalDimEstimator, Higuchi, Variogram,
-};
+use stochastic_rs_stats::fractal_dim::FdDiagnostic;
+use stochastic_rs_stats::fractal_dim::FractalDimEstimator;
+use stochastic_rs_stats::fractal_dim::Higuchi;
+use stochastic_rs_stats::fractal_dim::Variogram;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::traits::ProcessExt;

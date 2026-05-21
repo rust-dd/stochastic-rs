@@ -50,9 +50,12 @@ pub mod whittle;
 pub use dfa::Dfa;
 pub use gph::Gph;
 pub use rs::RescaledRange;
-pub use variations::{VariationKind, Variations};
-pub use wavelet::{Wavelet, WaveletKind};
-pub use whittle::{FukasawaResult, Whittle};
+pub use variations::VariationKind;
+pub use variations::Variations;
+pub use wavelet::Wavelet;
+pub use wavelet::WaveletKind;
+pub use whittle::FukasawaResult;
+pub use whittle::Whittle;
 
 /// Unified Hurst-estimator interface.
 ///
@@ -150,7 +153,11 @@ impl fmt::Display for HurstError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       HurstError::TooFewObservations { got, required } => {
-        write!(f, "input has {} points, estimator needs at least {}", got, required)
+        write!(
+          f,
+          "input has {} points, estimator needs at least {}",
+          got, required
+        )
       }
       HurstError::DegeneratePath => write!(f, "path is constant or has zero variance"),
       HurstError::InvalidParameter(name, value) => {
@@ -220,7 +227,11 @@ pub(crate) fn weighted_linreg(
   }
   let slope = sxy / sxx;
   let intercept = ym - slope * xm;
-  let r_squared = if syy > 0.0 { (sxy * sxy) / (sxx * syy) } else { 0.0 };
+  let r_squared = if syy > 0.0 {
+    (sxy * sxy) / (sxx * syy)
+  } else {
+    0.0
+  };
   Some((slope, intercept, r_squared))
 }
 

@@ -470,8 +470,9 @@ fn rho_k_h_zero(k: usize, h: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_stochastic::diffusion::fou::Fou;
+
+  use super::*;
 
   #[test]
   fn fou_v4_returns_finite_params_with_fixed_hurst() {

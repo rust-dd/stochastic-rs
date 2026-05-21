@@ -79,12 +79,17 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
     };
     let n = series.len();
     if n < 32 {
-      return Err(HurstError::TooFewObservations { got: n, required: 32 });
+      return Err(HurstError::TooFewObservations {
+        got: n,
+        required: 32,
+      });
     }
     let mean = series.iter().sum::<f64>() / n as f64;
     let demeaned: Vec<f64> = series.iter().map(|v| *v - mean).collect();
 
-    let m = ((n as f64).powf(self.bandwidth_alpha).floor() as usize).max(8).min(n / 2);
+    let m = ((n as f64).powf(self.bandwidth_alpha).floor() as usize)
+      .max(8)
+      .min(n / 2);
     if m < 4 {
       return Err(HurstError::NotEnoughScales);
     }
@@ -140,10 +145,10 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
+  use super::*;
   use crate::traits::ProcessExt;
 
   #[test]
