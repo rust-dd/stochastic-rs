@@ -55,3 +55,4 @@ website/out/
 website/.source/
 website/.env*.local
 
+docs

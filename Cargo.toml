@@ -247,6 +247,10 @@ name = "mle"
 harness = false
 
 [[bench]]
+name = "hurst"
+harness = false
+
+[[bench]]
 name = "calendar"
 harness = false
 
