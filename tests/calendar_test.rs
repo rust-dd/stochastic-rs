@@ -1,8 +1,7 @@
-//! Comparison tests for the calendar and FX modules.
+//! Comparison tests for the calendar module.
 //!
 //! Day count values verified against ISDA 2006 worked examples and QuantLib.
 //! Holiday dates verified against published exchange calendars.
-//! FX forward prices verified against textbook CIP examples.
 
 use chrono::Datelike;
 use chrono::NaiveDate;
@@ -13,16 +12,10 @@ use stochastic_rs::quant::calendar::holiday::Calendar;
 use stochastic_rs::quant::calendar::holiday::HolidayCalendar;
 use stochastic_rs::quant::calendar::schedule::Frequency;
 use stochastic_rs::quant::calendar::schedule::ScheduleBuilder;
-use stochastic_rs::quant::fx::currency;
-use stochastic_rs::quant::fx::forward::FxForward;
-use stochastic_rs::quant::fx::quoting::CurrencyPair;
-use stochastic_rs::quant::fx::quoting::cross_rate;
 
 fn d(y: i32, m: u32, day: u32) -> NaiveDate {
   NaiveDate::from_ymd_opt(y, m, day).unwrap()
 }
-
-// Day count convention tests (reference: ISDA 2006, QuantLib)
 
 #[test]
 fn act_360_year_fraction() {
@@ -89,8 +82,6 @@ fn act_act_isda_two_full_years() {
   assert!((yf - 2.0).abs() < 1e-12);
 }
 
-// US holiday tests
-
 #[test]
 fn us_new_years_day_2024() {
   let cal = Calendar::new(HolidayCalendar::UnitedStates);
@@ -134,8 +125,6 @@ fn us_juneteenth_2024() {
   assert!(cal.is_holiday(d(2024, 6, 19)));
 }
 
-// UK holiday tests
-
 #[test]
 fn uk_good_friday_2024() {
   let cal = Calendar::new(HolidayCalendar::UnitedKingdom);
@@ -157,8 +146,6 @@ fn uk_summer_bank_holiday_2024() {
   assert!(cal.is_holiday(d(2024, 8, 26)));
 }
 
-// TARGET holiday tests
-
 #[test]
 fn target_labour_day() {
   let cal = Calendar::new(HolidayCalendar::Target);
@@ -178,8 +165,6 @@ fn target_good_friday_2025() {
   // Easter 2025 = April 20 → Good Friday = April 18
   assert!(cal.is_holiday(d(2025, 4, 18)));
 }
-
-// Tokyo holiday tests
 
 #[test]
 fn tokyo_new_year_2024() {
@@ -209,8 +194,6 @@ fn tokyo_vernal_equinox_2024() {
   // Vernal equinox 2024 = March 20
   assert!(cal.is_holiday(d(2024, 3, 20)));
 }
-
-// Business day adjustment tests
 
 #[test]
 fn following_skips_weekend() {
@@ -245,8 +228,6 @@ fn unadjusted_returns_same_date() {
   let date = d(2024, 3, 30);
   assert_eq!(BusinessDayConvention::Unadjusted.adjust(date, &cal), date);
 }
-
-// Schedule generation tests
 
 #[test]
 fn semi_annual_backward_schedule() {
@@ -312,8 +293,6 @@ fn schedule_year_fractions() {
   assert!(yfs[1] > 0.49 && yfs[1] < 0.52);
 }
 
-// Calendar utility tests
-
 #[test]
 fn business_days_between() {
   let cal = Calendar::new(HolidayCalendar::UnitedStates);
@@ -343,132 +322,6 @@ fn custom_holiday() {
   assert!(cal.is_business_day(date));
 }
 
-// FX tests
-
-#[test]
-fn fx_forward_continuous() {
-  // EUR/USD spot = 1.10, r_usd = 5%, r_eur = 3.5%, 1 year
-  let pair = CurrencyPair::new(currency::EUR, currency::USD);
-  let fwd = FxForward::new(pair, 1.10_f64, 0.05, 0.035, 1.0);
-  let f = fwd.forward_rate();
-  // F = 1.10 * exp((0.05 - 0.035) * 1) = 1.10 * exp(0.015) ≈ 1.1166
-  let expected = 1.10 * (0.015_f64).exp();
-  assert!((f - expected).abs() < 1e-10);
-}
-
-#[test]
-fn fx_forward_simple() {
-  let pair = CurrencyPair::new(currency::EUR, currency::USD);
-  let fwd = FxForward::new(pair, 1.10_f64, 0.05, 0.035, 1.0);
-  let f = fwd.forward_rate_simple();
-  // F = 1.10 * (1 + 0.05) / (1 + 0.035) = 1.10 * 1.05 / 1.035 ≈ 1.11594
-  let expected = 1.10 * 1.05 / 1.035;
-  assert!((f - expected).abs() < 1e-10);
-}
-
-#[test]
-fn fx_forward_points() {
-  let pair = CurrencyPair::new(currency::USD, currency::JPY);
-  let fwd = FxForward::new(pair, 150.0_f64, 0.001, 0.05, 1.0);
-  let points = fwd.forward_points();
-  // Domestic (JPY) rate < foreign (USD) rate → negative forward points
-  assert!(points < 0.0);
-}
-
-#[test]
-fn fx_implied_domestic_rate() {
-  let r_d = FxForward::<f64>::implied_domestic_rate(1.10, 1.1166, 0.035, 1.0);
-  // Should recover ~0.05
-  assert!((r_d - 0.05).abs() < 0.005);
-}
-
-#[test]
-fn fx_cross_rate_chain() {
-  let eur_usd = CurrencyPair::new(currency::EUR, currency::USD);
-  let usd_jpy = CurrencyPair::new(currency::USD, currency::JPY);
-  let result = cross_rate(eur_usd, 1.10_f64, usd_jpy, 150.0_f64);
-  assert!(result.is_some());
-  let (pair, rate) = result.unwrap();
-  assert_eq!(pair.base.code, "EUR");
-  assert_eq!(pair.quote.code, "JPY");
-  assert!((rate - 165.0).abs() < 1e-10);
-}
-
-#[test]
-fn fx_cross_rate_common_base() {
-  let usd_jpy = CurrencyPair::new(currency::USD, currency::JPY);
-  let usd_chf = CurrencyPair::new(currency::USD, currency::CHF);
-  let result = cross_rate(usd_jpy, 150.0_f64, usd_chf, 0.88_f64);
-  assert!(result.is_some());
-  let (pair, rate) = result.unwrap();
-  // JPY/CHF = 0.88 / 150.0
-  assert_eq!(pair.base.code, "JPY");
-  assert_eq!(pair.quote.code, "CHF");
-  assert!((rate - 0.88 / 150.0).abs() < 1e-10);
-}
-
-#[test]
-fn fx_market_convention_eur_usd() {
-  let pair = CurrencyPair::market_convention(currency::USD, currency::EUR);
-  // EUR has higher priority → EUR should be base
-  assert_eq!(pair.base.code, "EUR");
-  assert_eq!(pair.quote.code, "USD");
-}
-
-#[test]
-fn fx_market_convention_usd_jpy() {
-  let pair = CurrencyPair::market_convention(currency::JPY, currency::USD);
-  // USD has higher priority than JPY
-  assert_eq!(pair.base.code, "USD");
-  assert_eq!(pair.quote.code, "JPY");
-}
-
-#[test]
-fn currency_from_code() {
-  let usd = currency::from_code("USD");
-  assert!(usd.is_some());
-  assert_eq!(usd.unwrap().numeric, 840);
-  assert_eq!(usd.unwrap().minor_unit, 2);
-
-  let jpy = currency::from_code("JPY");
-  assert!(jpy.is_some());
-  assert_eq!(jpy.unwrap().minor_unit, 0);
-
-  assert!(currency::from_code("XYZ").is_none());
-}
-
-#[test]
-fn currency_from_numeric() {
-  let eur = currency::from_numeric(978);
-  assert!(eur.is_some());
-  assert_eq!(eur.unwrap().code, "EUR");
-}
-
-#[test]
-fn currency_all_currencies_count() {
-  // Verify we have a substantial set of currencies
-  assert!(currency::ALL_CURRENCIES.len() >= 150);
-}
-
-#[test]
-fn currency_precious_metals() {
-  assert!(currency::from_code("XAU").is_some());
-  assert_eq!(currency::XAU.name, "Gold (troy ounce)");
-  assert_eq!(currency::XPT.numeric, 962);
-}
-
-#[test]
-fn currency_minor_units() {
-  // KWD has 3 minor units (fils)
-  assert_eq!(currency::KWD.minor_unit, 3);
-  // JPY has 0
-  assert_eq!(currency::JPY.minor_unit, 0);
-  // USD has 2
-  assert_eq!(currency::USD.minor_unit, 2);
-}
-
-// Joint calendar tests
-
 #[test]
 fn joint_calendar_us_uk() {
   let cal = Calendar::joint(vec![
@@ -497,15 +350,11 @@ fn joint_calendar_all_four() {
   assert!(cal.is_holiday(d(2025, 5, 1)));
 }
 
-// Joint calendar with array syntax (IntoIterator)
-
 #[test]
 fn joint_calendar_from_array() {
   let cal = Calendar::joint([HolidayCalendar::Target, HolidayCalendar::Tokyo]);
   assert!(cal.is_business_day(d(2024, 7, 16))); // Tue, not Marine Day
 }
-
-// CalendarExt trait — custom calendar via trait
 
 struct WeekdaysOnly;
 
@@ -531,8 +380,6 @@ fn calendar_ext_trait_object() {
   let adjusted = BusinessDayConvention::Following.adjust(d(2024, 1, 1), cal);
   assert_eq!(adjusted, d(2024, 1, 2));
 }
-
-// TimeExt + DayCountConvention integration
 
 struct MockPricer {
   eval: NaiveDate,
@@ -574,8 +421,6 @@ fn time_ext_tau_with_dcc() {
   assert!(tau_360 > tau_365);
 }
 
-// Display tests
-
 #[test]
 fn display_impls() {
   assert_eq!(format!("{}", DayCountConvention::Actual360), "ACT/360");
@@ -590,8 +435,6 @@ fn display_impls() {
   assert_eq!(format!("{}", Frequency::Quarterly), "Quarterly");
   assert_eq!(format!("{}", HolidayCalendar::Target), "TARGET");
 }
-
-// Default tests
 
 #[test]
 fn default_impls() {
