@@ -433,4 +433,99 @@ mod tests {
       "Hkde Lewis vs Carr-Madan: lewis={lw_price}, cm={cm_price}"
     );
   }
+
+  /// Long-maturity / high-|ρ| regression: `HestonFourier::chf` must use the
+  /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form
+  /// (`g̃ = 1/g_original`, `exp(-d·t)`). Original Heston (1993) form develops a
+  /// branch-cut discontinuity at T = 5y, ρ = -0.9; the Trap form does not.
+  #[test]
+  fn heston_fourier_little_trap_long_maturity_high_rho() {
+    let model = HestonFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.9,
+      r: 0.05,
+      q: 0.0,
+    };
+    let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
+    assert!(
+      call.is_finite() && call > 0.0 && call < 100.0,
+      "HestonFourier Trap form: finite positive bounded call required at T=5y, ρ=-0.9, got {call}"
+    );
+  }
+
+  /// Same long-maturity / high-|ρ| stress for `DoubleHestonFourier::factor_cd` —
+  /// both factors must stay on the principal log-branch.
+  #[test]
+  fn double_heston_fourier_little_trap_long_maturity_high_rho() {
+    let model = DoubleHestonFourier {
+      v1_0: 0.04,
+      kappa1: 2.0,
+      theta1: 0.04,
+      sigma1: 0.3,
+      rho1: -0.9,
+      v2_0: 0.02,
+      kappa2: 1.0,
+      theta2: 0.03,
+      sigma2: 0.25,
+      rho2: -0.85,
+      r: 0.05,
+      q: 0.0,
+    };
+    let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
+    assert!(
+      call.is_finite() && call > 0.0 && call < 100.0,
+      "DoubleHestonFourier Trap form: finite positive bounded call required at T=5y, ρ_j=-0.9/-0.85, got {call}"
+    );
+  }
+
+  /// Same long-maturity / high-|ρ| stress for `HKDEFourier::chf` — the Heston
+  /// diffusion part must stay on the principal log-branch under the Kou jump CF.
+  #[test]
+  fn hkde_fourier_little_trap_long_maturity_high_rho() {
+    let model = HKDEFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma_v: 0.3,
+      rho: -0.9,
+      r: 0.05,
+      q: 0.0,
+      lam: 1.5,
+      p_up: 0.4,
+      eta1: 10.0,
+      eta2: 5.0,
+    };
+    let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
+    assert!(
+      call.is_finite() && call > 0.0 && call < 100.0,
+      "HKDEFourier Trap form: finite positive bounded call required at T=5y, ρ=-0.9, got {call}"
+    );
+  }
+
+  /// Same long-maturity / high-|ρ| stress for `BatesFourier::chf` — the Heston
+  /// diffusion part must stay on the principal log-branch under the Merton
+  /// log-normal jump CF.
+  #[test]
+  fn bates_fourier_little_trap_long_maturity_high_rho() {
+    let model = BatesFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma_v: 0.3,
+      rho: -0.9,
+      lambda: 0.3,
+      mu_j: -0.05,
+      sigma_j: 0.15,
+      r: 0.05,
+      q: 0.0,
+    };
+    let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
+    assert!(
+      call.is_finite() && call > 0.0 && call < 100.0,
+      "BatesFourier Trap form: finite positive bounded call required at T=5y, ρ=-0.9, got {call}"
+    );
+  }
 }

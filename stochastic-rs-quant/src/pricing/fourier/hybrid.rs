@@ -47,6 +47,10 @@ pub struct HKDEFourier {
 }
 
 impl FourierModelExt for HKDEFourier {
+  /// Heston diffusion uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
+  /// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·t)`); the Kou jump
+  /// CF is added linearly on top. Required for principal-branch stability at
+  /// long τ / high `|ρ|`.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
     let sigma_v2 = self.sigma_v * self.sigma_v;
@@ -125,6 +129,10 @@ pub struct BatesFourier {
 }
 
 impl FourierModelExt for BatesFourier {
+  /// Heston diffusion uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
+  /// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·t)`); the Merton
+  /// log-normal jump CF is added linearly on top. Required for principal-branch
+  /// stability at long τ / high `|ρ|`.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
     let sigma_v2 = self.sigma_v * self.sigma_v;

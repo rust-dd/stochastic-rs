@@ -34,6 +34,10 @@ use crate::calibration::gauss_legendre_64;
 ///   - i\xi\,T\,\lambda\bigl(e^{\mu_J+\frac12\sigma_J^2}-1\bigr)
 ///
 /// $$
+///
+/// The Heston diffusion part uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
+/// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·τ)`) so the
+/// log-argument stays on the principal branch at long τ / high `|ρ|`.
 pub(super) fn bates_cf(p: &SVJParams, s: f64, r: f64, q: f64, tau: f64, u: Complex64) -> Complex64 {
   let i = Complex64::i();
   let iu = i * u;

@@ -68,6 +68,29 @@ fn svj_calibrate_recovers_heston_prices() {
   );
 }
 
+/// Long-maturity / high-|ρ| regression: `bates_cf` must use the
+/// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form
+/// (`g̃ = 1/g_original`, `exp(-d·τ)`). Original Heston (1993) form develops a
+/// branch-cut discontinuity at T = 5y, ρ = -0.9; the Trap form does not.
+#[test]
+fn svj_bates_little_trap_long_maturity_high_rho() {
+  let p = SVJParams {
+    v0: 0.04,
+    kappa: 2.0,
+    theta: 0.04,
+    sigma_v: 0.3,
+    rho: -0.9,
+    lambda: 0.3,
+    mu_j: -0.05,
+    sigma_j: 0.15,
+  };
+  let call = bates_call_price(&p, 100.0, 100.0, 0.05, 0.0, 5.0);
+  assert!(
+    call.is_finite() && call > 0.0 && call < 100.0,
+    "SVJ bates_cf Trap form: finite positive bounded call required at T=5y, ρ=-0.9, got {call}"
+  );
+}
+
 #[test]
 fn test_svj_calibrate() {
   let s = vec![

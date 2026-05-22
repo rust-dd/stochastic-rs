@@ -38,6 +38,10 @@ pub(super) fn double_heston_cf(
 }
 
 /// Single Heston factor $(C_j, D_j)$ at Fourier argument `u`.
+///
+/// Uses the Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap"
+/// form (`g̃ = 1/g_original`, `exp(-d·τ)`) so each independent factor stays on
+/// the principal log-branch at long τ / high `|ρ_j|`.
 fn factor_cd(
   kappa: f64,
   theta: f64,

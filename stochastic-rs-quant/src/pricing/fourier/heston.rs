@@ -18,6 +18,11 @@ pub struct HestonFourier {
 }
 
 impl FourierModelExt for HestonFourier {
+  /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form:
+  /// `g̃ = 1/g_original` with `exp(-d·t)` keeps the principal-branch logarithm
+  /// stable for large τ and `|ρ| → 1`. Reverting to the original Heston (1993)
+  /// numerator `(κ - ρσiξ + d)` / `exp(+d·t)` triggers branch-cut jumps —
+  /// see the `heston_fourier_little_trap_long_maturity_high_rho` regression.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
     let sigma2 = self.sigma * self.sigma;
@@ -109,6 +114,10 @@ pub struct DoubleHestonFourier {
 
 impl DoubleHestonFourier {
   /// Compute a single Heston factor contribution $(C_j, D_j)$ evaluated at `xi`.
+  ///
+  /// Uses the Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap"
+  /// form (`g̃ = 1/g_original`, `exp(-d·t)`) so each factor stays on the
+  /// principal log-branch for large τ and `|ρ_j| → 1`.
   #[inline]
   fn factor_cd(
     kappa: f64,
