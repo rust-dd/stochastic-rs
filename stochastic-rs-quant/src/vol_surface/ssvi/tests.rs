@@ -98,8 +98,7 @@ fn ssvi_surface_interpolation() {
 #[test]
 fn calendar_spread_free_grid_catches_off_atm_violations() {
   let params = SsviParams::<f64>::new(-0.3, 0.5, 0.5);
-  let surface_decreasing =
-    SsviSurface::new(params, vec![0.04, 0.03, 0.02], vec![0.25, 0.50, 1.0]);
+  let surface_decreasing = SsviSurface::new(params, vec![0.04, 0.03, 0.02], vec![0.25, 0.50, 1.0]);
   let ks = vec![-1.0, 0.0, 1.0];
   assert!(!surface_decreasing.is_calendar_spread_free(&ks));
   assert!(!surface_decreasing.is_atm_calendar_spread_free());

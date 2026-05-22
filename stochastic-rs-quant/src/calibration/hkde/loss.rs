@@ -7,9 +7,14 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use super::calibrator::HKDECalibrator;
-use super::params::{
-  ETA1_MIN, ETA2_MIN, HKDEParams, KAPPA_MIN, P_P_UP, RHO_BOUND, SIGMA_V_MIN, THETA_MIN,
-};
+use super::params::ETA1_MIN;
+use super::params::ETA2_MIN;
+use super::params::HKDEParams;
+use super::params::KAPPA_MIN;
+use super::params::P_P_UP;
+use super::params::RHO_BOUND;
+use super::params::SIGMA_V_MIN;
+use super::params::THETA_MIN;
 use crate::CalibrationLossScore;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;

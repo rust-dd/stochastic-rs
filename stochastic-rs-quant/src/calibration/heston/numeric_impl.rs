@@ -7,9 +7,12 @@ use stochastic_rs_stats::heston_mle::pmle_heston_with_delta;
 use stochastic_rs_stats::heston_nml_cekf::nmle_cekf_heston;
 
 use super::calibrator::HestonCalibrator;
-use super::params::{
-  HestonJacobianMethod, HestonMleSeedMethod, HestonParams, KAPPA_MIN, RHO_BOUND, THETA_MIN,
-};
+use super::params::HestonJacobianMethod;
+use super::params::HestonMleSeedMethod;
+use super::params::HestonParams;
+use super::params::KAPPA_MIN;
+use super::params::RHO_BOUND;
+use super::params::THETA_MIN;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::PricerExt;

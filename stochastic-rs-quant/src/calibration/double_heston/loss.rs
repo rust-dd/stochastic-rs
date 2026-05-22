@@ -4,12 +4,20 @@ use nalgebra::DMatrix;
 use nalgebra::DVector;
 use num_complex::Complex64;
 
-use super::super::{GL_U_MAX, gauss_legendre_64, periodic_map};
+use super::super::GL_U_MAX;
+use super::super::gauss_legendre_64;
+use super::super::periodic_map;
 use super::calibrator::DoubleHestonCalibrator;
-use super::params::{
-  DoubleHestonParams, EPS, KAPPA_MIN, P_KAPPA, P_SIGMA, P_THETA, P_V0, RHO_BOUND, SIGMA_MIN,
-  THETA_MIN,
-};
+use super::params::DoubleHestonParams;
+use super::params::EPS;
+use super::params::KAPPA_MIN;
+use super::params::P_KAPPA;
+use super::params::P_SIGMA;
+use super::params::P_THETA;
+use super::params::P_V0;
+use super::params::RHO_BOUND;
+use super::params::SIGMA_MIN;
+use super::params::THETA_MIN;
 use crate::OptionType;
 
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,

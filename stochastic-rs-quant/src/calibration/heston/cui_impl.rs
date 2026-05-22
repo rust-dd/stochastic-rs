@@ -5,7 +5,10 @@ use nalgebra::DVector;
 use num_complex::Complex64;
 
 use super::calibrator::HestonCalibrator;
-use super::params::{CuiCfTerms, EPS, HestonParams, finite_c64};
+use super::params::CuiCfTerms;
+use super::params::EPS;
+use super::params::HestonParams;
+use super::params::finite_c64;
 use crate::OptionType;
 use crate::calibration::GL_U_MAX;
 use crate::calibration::gauss_legendre_64;

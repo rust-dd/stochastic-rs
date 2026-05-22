@@ -26,4 +26,5 @@ mod stepper;
 mod tests;
 
 pub use simd::RoughSimd;
-pub use stepper::{BATCH_TILE, MarkovLift};
+pub use stepper::BATCH_TILE;
+pub use stepper::MarkovLift;

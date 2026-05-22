@@ -1,8 +1,8 @@
 //! One-factor Hull-White / Vasicek trinomial-tree engine.
 
+use super::OneFactorShortRateModel;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
-use super::OneFactorShortRateModel;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::FloatExt;
 

@@ -10,10 +10,16 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::super::Fgn;
-use super::convert::{array2_from_vec_f32, array2_from_vec_f64};
-use super::state::{
-  CUFFT_FORWARD, GPU, RNG_SEQ, SIZED_F32, SIZED_F64, SizedCtxF32, SizedCtxF64, get_or_init_gpu,
-};
+use super::convert::array2_from_vec_f32;
+use super::convert::array2_from_vec_f64;
+use super::state::CUFFT_FORWARD;
+use super::state::GPU;
+use super::state::RNG_SEQ;
+use super::state::SIZED_F32;
+use super::state::SIZED_F64;
+use super::state::SizedCtxF32;
+use super::state::SizedCtxF64;
+use super::state::get_or_init_gpu;
 use crate::traits::FloatExt;
 
 fn sample_f32<T: FloatExt, S: SeedExt>(

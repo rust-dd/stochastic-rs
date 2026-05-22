@@ -3,7 +3,10 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
-use crate::{GridPlotter, plot_distribution, plot_process, plot_vol_surface};
+use crate::GridPlotter;
+use crate::plot_distribution;
+use crate::plot_process;
+use crate::plot_vol_surface;
 
 #[test]
 fn plot_process_writes_html() {

@@ -3,10 +3,10 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use super::TwoFactorShortRateModel;
+use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::correlated_joint_probabilities;
-use super::common::OrnsteinUhlenbeckFactor;
-use super::TwoFactorShortRateModel;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::FloatExt;
 

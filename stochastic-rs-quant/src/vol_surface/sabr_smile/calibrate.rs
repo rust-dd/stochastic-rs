@@ -5,18 +5,17 @@ use plotly::common::Title;
 use plotly::layout::Axis;
 use plotly::layout::Layout;
 
-use crate::calibration::sabr::SabrParams;
-use crate::pricing::sabr::alpha_from_atm_vol;
-use crate::pricing::sabr::forward_fx;
-use crate::pricing::sabr::fx_delta_from_forward;
-use crate::pricing::sabr::hagan_implied_vol;
-
 use super::objective::NVARS;
 use super::objective::SabrSmileProblem;
 use super::objective::basin_hopping_opt;
 use super::types::SabrSmileCalibrator;
 use super::types::SabrSmileQuotes;
 use super::types::SabrSmileResult;
+use crate::calibration::sabr::SabrParams;
+use crate::pricing::sabr::alpha_from_atm_vol;
+use crate::pricing::sabr::forward_fx;
+use crate::pricing::sabr::fx_delta_from_forward;
+use crate::pricing::sabr::hagan_implied_vol;
 
 impl SabrSmileCalibrator {
   pub fn calibrate(&self) -> SabrSmileResult {

@@ -12,7 +12,9 @@ mod params;
 mod result;
 
 pub use calibrator::HestonCalibrator;
-pub use params::{HestonJacobianMethod, HestonMleSeedMethod, HestonParams};
+pub use params::HestonJacobianMethod;
+pub use params::HestonMleSeedMethod;
+pub use params::HestonParams;
 pub use result::HestonCalibrationResult;
 
 #[cfg(test)]

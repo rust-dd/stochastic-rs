@@ -1,7 +1,10 @@
 use crate::GridPlotter;
-use crate::tests::categories::{
-  autoregressive, diffusion, interest, jump, noise_and_process, volatility_and_sheet,
-};
+use crate::tests::categories::autoregressive;
+use crate::tests::categories::diffusion;
+use crate::tests::categories::interest;
+use crate::tests::categories::jump;
+use crate::tests::categories::noise_and_process;
+use crate::tests::categories::volatility_and_sheet;
 
 #[test]
 fn plot_grid() {

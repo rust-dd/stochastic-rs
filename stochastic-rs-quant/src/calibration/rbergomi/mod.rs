@@ -36,11 +36,13 @@ pub(super) const ETA_MIN: f64 = 1e-8;
 pub(super) const XI0_MIN: f64 = 1e-8;
 
 pub use calibrator::RBergomiCalibrator;
-pub use loss::{bid_ask_tolerance, empirical_wasserstein_1};
-pub use params::{
-  RBergomiCalibrationConfig, RBergomiCalibrationHistory, RBergomiMarketSlice, RBergomiParams,
-  RBergomiXi0,
-};
+pub use loss::bid_ask_tolerance;
+pub use loss::empirical_wasserstein_1;
+pub use params::RBergomiCalibrationConfig;
+pub use params::RBergomiCalibrationHistory;
+pub use params::RBergomiMarketSlice;
+pub use params::RBergomiParams;
+pub use params::RBergomiXi0;
 pub use result::RBergomiCalibrationResult;
 pub use simulation::simulate_rbergomi_terminal_samples;
 

@@ -5,10 +5,10 @@
 
 use ndarray::Array1;
 
+use super::OneFactorShortRateModel;
+use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
-use super::common::OrnsteinUhlenbeckFactor;
-use super::OneFactorShortRateModel;
 use crate::curves::DiscountCurve;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::FloatExt;

@@ -7,7 +7,10 @@ use cudarc::driver::*;
 use cudarc::nvrtc;
 use parking_lot::Mutex;
 
-use super::kernels::{EXTRACT_F32, EXTRACT_F64, GEN_SCALE_F32, GEN_SCALE_F64};
+use super::kernels::EXTRACT_F32;
+use super::kernels::EXTRACT_F64;
+use super::kernels::GEN_SCALE_F32;
+use super::kernels::GEN_SCALE_F64;
 
 pub(super) const CUFFT_FORWARD: i32 = -1;
 

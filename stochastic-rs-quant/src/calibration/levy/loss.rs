@@ -4,7 +4,8 @@ use num_complex::Complex64;
 
 use super::EPS;
 use super::types::LevyModelType;
-use crate::calibration::{GL_U_MAX, gauss_legendre_64};
+use crate::calibration::GL_U_MAX;
+use crate::calibration::gauss_legendre_64;
 
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
 /// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.

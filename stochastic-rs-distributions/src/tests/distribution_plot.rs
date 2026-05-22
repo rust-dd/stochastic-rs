@@ -73,7 +73,15 @@ fn subplot_axes(row: usize, col: usize) -> (String, String) {
   (format!("x{}", index), format!("y{}", index))
 }
 
-fn add_trace(plot: &mut Plot, xs: Vec<f32>, ys: Vec<f32>, name: &str, dashed: bool, xa: &str, ya: &str) {
+fn add_trace(
+  plot: &mut Plot,
+  xs: Vec<f32>,
+  ys: Vec<f32>,
+  name: &str,
+  dashed: bool,
+  xa: &str,
+  ya: &str,
+) {
   let mut line = Line::new().shape(LineShape::Linear);
   if dashed {
     line = line.dash(DashType::Dash);
@@ -104,11 +112,27 @@ fn add_continuous_pair<F1, F2>(
   let (xa, ya) = axes;
   let samples: Vec<f32> = (0..n).map(|_| simd_sample()).collect();
   let (xs, ys) = make_histogram(&samples, bins, range.0, range.1);
-  add_trace(plot, xs.clone(), ys, &format!("{label} - SIMD"), false, &xa, &ya);
+  add_trace(
+    plot,
+    xs.clone(),
+    ys,
+    &format!("{label} - SIMD"),
+    false,
+    &xa,
+    &ya,
+  );
 
   let samples_rd: Vec<f32> = (0..n).map(|_| rand_sample()).collect();
   let (_, ys_rd) = make_histogram(&samples_rd, bins, range.0, range.1);
-  add_trace(plot, xs, ys_rd, &format!("{label} - rand_distr"), true, &xa, &ya);
+  add_trace(
+    plot,
+    xs,
+    ys_rd,
+    &format!("{label} - rand_distr"),
+    true,
+    &xa,
+    &ya,
+  );
 }
 
 fn add_discrete_pair<F1, F2>(
@@ -126,11 +150,27 @@ fn add_discrete_pair<F1, F2>(
   let (xa, ya) = axes;
   let samples: Vec<u32> = (0..n).map(|_| simd_sample()).collect();
   let (xs, ys) = make_discrete_pmf(&samples, max_range);
-  add_trace(plot, xs.clone(), ys, &format!("{label} - SIMD"), false, &xa, &ya);
+  add_trace(
+    plot,
+    xs.clone(),
+    ys,
+    &format!("{label} - SIMD"),
+    false,
+    &xa,
+    &ya,
+  );
 
   let samples_rd: Vec<u32> = (0..n).map(|_| rand_sample()).collect();
   let (_, ys_rd) = make_discrete_pmf(&samples_rd, max_range);
-  add_trace(plot, xs, ys_rd, &format!("{label} - rand_distr"), true, &xa, &ya);
+  add_trace(
+    plot,
+    xs,
+    ys_rd,
+    &format!("{label} - rand_distr"),
+    true,
+    &xa,
+    &ya,
+  );
 }
 
 #[test]

@@ -79,8 +79,9 @@ fn bsm_iv_round_trip_across_strikes_and_maturities() {
 
 #[test]
 fn bsm_dates_match_tau_pricing() {
-  use crate::traits::TimeExt;
   use chrono::NaiveDate;
+
+  use crate::traits::TimeExt;
   let eval = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
   let expiration = NaiveDate::from_ymd_opt(2027, 1, 2).unwrap();
   let dates_pricer = BSMPricer::new(

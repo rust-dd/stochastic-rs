@@ -15,10 +15,20 @@ use stochastic_rs_stochastic::interest::vasicek::Vasicek;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
 
 use crate::GridPlotter;
-use crate::tests::{
-  f_adg_b, f_adg_c, f_adg_k, f_adg_phi, f_adg_theta, f_const_001, f_const_002, f_hjm_alpha,
-  f_hjm_p, f_hjm_q, f_hjm_sigma, f_hjm_v, f_linear_small, f_phi_small,
-};
+use crate::tests::f_adg_b;
+use crate::tests::f_adg_c;
+use crate::tests::f_adg_k;
+use crate::tests::f_adg_phi;
+use crate::tests::f_adg_theta;
+use crate::tests::f_const_001;
+use crate::tests::f_const_002;
+use crate::tests::f_hjm_alpha;
+use crate::tests::f_hjm_p;
+use crate::tests::f_hjm_q;
+use crate::tests::f_hjm_sigma;
+use crate::tests::f_hjm_v;
+use crate::tests::f_linear_small;
+use crate::tests::f_phi_small;
 
 pub(crate) fn register(mut grid: GridPlotter, n: usize, traj: usize) -> GridPlotter {
   grid = grid.register(

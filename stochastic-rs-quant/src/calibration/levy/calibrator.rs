@@ -9,11 +9,15 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use super::EPS;
-use super::loss::{
-  default_params, fourier_call_price, fourier_option_price, param_bounds, param_count,
-  project_params,
-};
-use super::types::{LevyCalibrationResult, LevyModelType, MarketSlice};
+use super::loss::default_params;
+use super::loss::fourier_call_price;
+use super::loss::fourier_option_price;
+use super::loss::param_bounds;
+use super::loss::param_count;
+use super::loss::project_params;
+use super::types::LevyCalibrationResult;
+use super::types::LevyModelType;
+use super::types::MarketSlice;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::calibration::CalibrationHistory;

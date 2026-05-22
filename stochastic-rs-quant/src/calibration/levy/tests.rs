@@ -1,8 +1,12 @@
-use super::loss::fourier_call_price;
-use super::types::{LevyCalibrationResult, LevyModel, LevyModelType, MarketSlice};
 use super::LevyCalibrator;
+use super::loss::fourier_call_price;
+use super::types::LevyCalibrationResult;
+use super::types::LevyModel;
+use super::types::LevyModelType;
+use super::types::MarketSlice;
+use crate::CalibrationLossScore;
+use crate::LossMetric;
 use crate::traits::Calibrator;
-use crate::{CalibrationLossScore, LossMetric};
 
 // Analytical reference prices (Gil-Pelaez inversion)
 // S=100, r=0.05, q=0, T=1.0

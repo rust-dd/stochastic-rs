@@ -5,7 +5,8 @@ use nalgebra::Dyn;
 use nalgebra::Owned;
 
 use super::calibrator::HestonCalibrator;
-use super::params::{HestonJacobianMethod, HestonParams};
+use super::params::HestonJacobianMethod;
+use super::params::HestonParams;
 use crate::CalibrationLossScore;
 use crate::calibration::CalibrationHistory;
 use crate::pricing::heston::HestonPricer;

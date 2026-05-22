@@ -1,9 +1,8 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use crate::traits::PricerExt;
-
 use super::curves::PyDiscountCurve;
+use crate::traits::PricerExt;
 
 #[pyclass(name = "VasicekBond", unsendable)]
 pub struct PyVasicekBond {

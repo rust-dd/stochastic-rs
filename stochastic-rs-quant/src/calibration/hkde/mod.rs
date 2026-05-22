@@ -57,7 +57,8 @@ mod params;
 mod result;
 
 pub use calibrator::HKDECalibrator;
-pub use loss::{paper_table1, paper_table2};
+pub use loss::paper_table1;
+pub use loss::paper_table2;
 pub use params::HKDEParams;
 pub use result::HKDECalibrationResult;
 

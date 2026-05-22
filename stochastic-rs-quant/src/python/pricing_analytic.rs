@@ -1,8 +1,7 @@
 use pyo3::prelude::*;
 
-use crate::traits::PricerExt;
-
 use super::parse_option_type;
+use crate::traits::PricerExt;
 
 #[pyclass(name = "BSMPricer", unsendable)]
 pub struct PyBSMPricer {

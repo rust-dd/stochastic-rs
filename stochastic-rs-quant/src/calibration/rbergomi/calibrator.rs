@@ -2,9 +2,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::loss::empirical_wasserstein_1;
-use super::params::{
-  RBergomiCalibrationConfig, RBergomiCalibrationHistory, RBergomiMarketSlice, RBergomiParams,
-};
+use super::params::RBergomiCalibrationConfig;
+use super::params::RBergomiCalibrationHistory;
+use super::params::RBergomiMarketSlice;
+use super::params::RBergomiParams;
 use super::result::RBergomiCalibrationResult;
 use super::simulation::simulate_rbergomi_terminal_samples;
 

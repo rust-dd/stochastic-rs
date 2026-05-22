@@ -8,8 +8,14 @@ use nalgebra::Owned;
 use num_complex::Complex64;
 
 use super::SVJParams;
-use super::calibrator::{KAPPA_MIN, SIGMA_V_MIN, SVJCalibrator, THETA_MIN};
-use super::params::{EPS, P_MU_J, P_SIGMA_J, RHO_BOUND};
+use super::calibrator::KAPPA_MIN;
+use super::calibrator::SIGMA_V_MIN;
+use super::calibrator::SVJCalibrator;
+use super::calibrator::THETA_MIN;
+use super::params::EPS;
+use super::params::P_MU_J;
+use super::params::P_SIGMA_J;
+use super::params::RHO_BOUND;
 use crate::CalibrationLossScore;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
@@ -28,14 +34,7 @@ use crate::calibration::gauss_legendre_64;
 ///   - i\xi\,T\,\lambda\bigl(e^{\mu_J+\frac12\sigma_J^2}-1\bigr)
 ///
 /// $$
-pub(super) fn bates_cf(
-  p: &SVJParams,
-  s: f64,
-  r: f64,
-  q: f64,
-  tau: f64,
-  u: Complex64,
-) -> Complex64 {
+pub(super) fn bates_cf(p: &SVJParams, s: f64, r: f64, q: f64, tau: f64, u: Complex64) -> Complex64 {
   let i = Complex64::i();
   let iu = i * u;
   let rq = r - q;

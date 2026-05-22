@@ -6,7 +6,9 @@ use nalgebra::DVector;
 use ndarray::Array1;
 use stochastic_rs_stats::heston_nml_cekf::HestonNMLECEKFConfig;
 
-use super::params::{HestonJacobianMethod, HestonMleSeedMethod, HestonParams};
+use super::params::HestonJacobianMethod;
+use super::params::HestonMleSeedMethod;
+use super::params::HestonParams;
 use super::result::HestonCalibrationResult;
 use crate::CalibrationLossScore;
 use crate::LossMetric;

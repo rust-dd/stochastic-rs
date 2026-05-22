@@ -1,4 +1,8 @@
-use super::{ETA_MIN, H_MAX, H_MIN, RHO_BOUND, XI0_MIN};
+use super::ETA_MIN;
+use super::H_MAX;
+use super::H_MIN;
+use super::RHO_BOUND;
+use super::XI0_MIN;
 
 #[derive(Clone, Debug)]
 pub enum RBergomiXi0 {

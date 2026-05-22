@@ -38,7 +38,6 @@ mod xoshiro;
 pub use simd_rng::SimdRng;
 pub use xoshiro::Xoshiro128PP8;
 pub use xoshiro::Xoshiro256PP4;
-
 use xoshiro::splitmix64_mix;
 use xoshiro::splitmix64_next;
 

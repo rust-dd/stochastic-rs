@@ -14,8 +14,8 @@ mod weights;
 
 pub use engine::build_portfolio;
 pub use engine::build_portfolio_target;
-pub use engine::build_portfolio_target_with_corr;
 pub(crate) use engine::build_portfolio_target_internal;
+pub use engine::build_portfolio_target_with_corr;
 pub use signals::compute_scores;
 pub use signals::decile_analysis;
 pub use types::AssetModelEstimate;

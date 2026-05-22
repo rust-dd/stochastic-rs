@@ -1,9 +1,8 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use crate::traits::PricerExt;
-
 use super::parse_option_type;
+use crate::traits::PricerExt;
 
 #[pyclass(name = "AsianPricer", unsendable)]
 pub struct PyAsianPricer {

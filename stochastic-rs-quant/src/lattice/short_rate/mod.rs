@@ -12,14 +12,13 @@ mod hull_white;
 
 pub use black_karasinski::BlackKarasinskiTree;
 pub use black_karasinski::BlackKarasinskiTreeModel;
+pub(crate) use common::correlated_joint_probabilities;
 pub use curve_fitted_hw::CurveFittedHullWhiteModel;
 pub use curve_fitted_hw::CurveFittedHullWhiteTree;
 pub use g2pp::G2ppTree;
 pub use g2pp::G2ppTreeModel;
 pub use hull_white::HullWhiteTree;
 pub use hull_white::HullWhiteTreeModel;
-
-pub(crate) use common::correlated_joint_probabilities;
 
 /// Extensibility point for one-factor short-rate lattice models.
 pub trait OneFactorShortRateModel<T: FloatExt>: Clone + Send + Sync {

@@ -1,6 +1,8 @@
 use nalgebra::DVector;
 
-use super::calibrator::{KAPPA_MIN, SIGMA_V_MIN, THETA_MIN};
+use super::calibrator::KAPPA_MIN;
+use super::calibrator::SIGMA_V_MIN;
+use super::calibrator::THETA_MIN;
 
 pub(super) const EPS: f64 = 1e-8;
 pub(super) const RHO_BOUND: f64 = 0.9999;
