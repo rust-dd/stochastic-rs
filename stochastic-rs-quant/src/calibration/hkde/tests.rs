@@ -3,7 +3,6 @@ use crate::LossMetric;
 use crate::OptionType;
 use crate::pricing::fourier::HKDEFourier;
 use crate::traits::ModelPricer;
-use crate::traits::PricerExt;
 
 /// Analytical reference Heston prices at
 /// (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7),
