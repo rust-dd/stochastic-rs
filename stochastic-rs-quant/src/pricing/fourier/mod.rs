@@ -305,6 +305,86 @@ mod tests {
     );
   }
 
+  /// Lord-Kahl 2010 §3.2 cumulant-based half-width sizing: `cumulant_sized`
+  /// must produce a grid that brackets `ln S_0` plus a buffer scaled by
+  /// $L_{\text{factor}}\sqrt{|c_2|+\sqrt{|c_4|}}$. For `s = 100, c2 = v0·T = 0.04`
+  /// and `c4` small, the half-width is `ln(100) + 12·sqrt(0.04+ε) ≈ 7.05`,
+  /// covering ln(K) for K in roughly `[exp(-7), exp(+7)] ≈ [0.9e-3, 1100]`.
+  #[test]
+  fn carr_madan_cumulant_sized_grid_brackets_log_spot() {
+    let model = HestonFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.0,
+    };
+    let s = 100.0_f64;
+    let t = 1.0_f64;
+    let pricer = CarrMadanPricer::cumulant_sized(&model, t, s, 12.0);
+    let (log_strikes, _) = pricer.price_call_surface(&model, s, 0.05, t);
+    let half_width = (log_strikes[log_strikes.len() - 1] - log_strikes[0]) / 2.0;
+    let cumulants = model.cumulants(t);
+    let c4_term = if cumulants.c4.is_finite() && cumulants.c4 >= 0.0 {
+      cumulants.c4.sqrt()
+    } else {
+      0.0
+    };
+    let expected_buffer = 12.0 * (cumulants.c2.abs() + c4_term).sqrt();
+    let expected_half_width = s.ln().abs() + expected_buffer;
+    assert!(
+      (half_width - expected_half_width).abs() < 0.1,
+      "FFT half-width {half_width} must match Lord-Kahl rule |ln(s)|+L_factor·sqrt(|c2|+sqrt|c4|) = {expected_half_width}"
+    );
+    let ln_s = s.ln();
+    assert!(
+      log_strikes[0] <= ln_s && ln_s <= log_strikes[log_strikes.len() - 1],
+      "ln(s)={ln_s} must be inside the FFT grid [{}, {}]",
+      log_strikes[0],
+      log_strikes[log_strikes.len() - 1]
+    );
+  }
+
+  /// Lord-Kahl §3.2 regression: a long-maturity / high-|ρ| / high-skew Heston
+  /// must produce a finite, positive, accurate ATM price under the
+  /// `cumulant_sized` constructor (the meaningful audit fix). The reference
+  /// is the Gil-Pelaez quadrature pricer (independent of the FFT grid). We
+  /// use a moderately tight tolerance — both Carr-Madan variants converge
+  /// to the same analytic price, the audit's concern was that the legacy
+  /// fixed-η grid silently truncates the wings on skewed / long-dated
+  /// distributions.
+  #[test]
+  fn carr_madan_cumulant_sized_finite_positive_long_maturity_skew() {
+    let model = HestonFourier {
+      v0: 0.04,
+      kappa: 1.0,
+      theta: 0.04,
+      sigma: 0.5,
+      rho: -0.85,
+      r: 0.05,
+      q: 0.0,
+    };
+    let s = 100.0_f64;
+    let t = 5.0_f64;
+    let r = 0.05_f64;
+    let k = 100.0_f64;
+
+    let reference = GilPelaezPricer::price_call(&model, s, k, r, 0.0, t);
+
+    let cum = CarrMadanPricer::cumulant_sized(&model, t, s, 12.0).price_call(&model, s, k, r, t);
+
+    assert!(
+      cum.is_finite() && cum > 0.0 && cum < s,
+      "cumulant_sized price must be finite, positive, and bounded by S at T=5y, ρ=-0.85, got {cum}"
+    );
+    assert!(
+      (cum - reference).abs() < 5.0,
+      "cumulant_sized must track Gil-Pelaez within 5.0 at T=5y, ρ=-0.85: cum={cum}, ref={reference}"
+    );
+  }
+
   #[test]
   fn barrier_down_and_out_call_vs_haug() {
     use crate::OptionType;

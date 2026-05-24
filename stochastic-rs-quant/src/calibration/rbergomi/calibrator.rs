@@ -100,10 +100,23 @@ impl RBergomiCalibrator {
   }
 
   /// Set the continuous dividend yield $q$ (or foreign rate for FX). Default 0.
-  pub fn with_dividend_yield(mut self, q: f64) -> Self {
-    assert!(q.is_finite(), "q must be finite");
-    self.q = q;
+  ///
+  /// Panics on non-finite `q`. Use [`Self::try_with_dividend_yield`] when `q`
+  /// comes from external user input.
+  pub fn with_dividend_yield(self, q: f64) -> Self {
     self
+      .try_with_dividend_yield(q)
+      .expect("q must be finite — call try_with_dividend_yield to handle this gracefully")
+  }
+
+  /// Falliable variant of [`Self::with_dividend_yield`]. Returns an error
+  /// when `q` is non-finite (NaN / ±∞).
+  pub fn try_with_dividend_yield(mut self, q: f64) -> anyhow::Result<Self> {
+    if !q.is_finite() {
+      anyhow::bail!("q must be finite, got {q}");
+    }
+    self.q = q;
+    Ok(self)
   }
 
   pub fn history(&self) -> Vec<RBergomiCalibrationHistory> {

@@ -183,12 +183,25 @@ impl<T: FloatExt> MultiHestonParams<T> {
   /// **Precondition:** `self.cross_corr` must be a valid `d×d` symmetric
   /// positive-definite correlation matrix (jointly with the per-asset `rho`s).
   /// Call [`Self::validate`] up-front when the matrix is user-supplied —
-  /// the underlying Cholesky factorisation panics on a non-SPD input.
+  /// the underlying Cholesky factorisation panics on a non-SPD input. Prefer
+  /// [`Self::try_sample`] when the matrix comes from external user input.
   pub fn sample(&self) -> MultiHestonPaths<T>
   where
     T: ndarray_linalg::Lapack,
   {
     self.sample_with_fill(T::fill_standard_normal_slice)
+  }
+
+  /// Falliable variant of [`Self::sample`]. Runs [`Self::validate`] first and
+  /// returns an error when the joint Brownian correlation matrix fails the
+  /// positive-definite check (otherwise [`Self::sample`] would panic on the
+  /// internal Cholesky factorisation).
+  pub fn try_sample(&self) -> anyhow::Result<MultiHestonPaths<T>>
+  where
+    T: ndarray_linalg::Lapack,
+  {
+    self.validate()?;
+    Ok(self.sample_with_fill(T::fill_standard_normal_slice))
   }
 
   /// Deterministic variant of [`sample`](Self::sample), intended for reproducible
@@ -199,6 +212,17 @@ impl<T: FloatExt> MultiHestonParams<T> {
   {
     let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
     self.sample_with_fill(|z| normal.fill_slice_fast(z))
+  }
+
+  /// Falliable variant of [`Self::sample_with_seed`]. See [`Self::try_sample`]
+  /// for the failure mode (non-SPD joint Brownian correlation).
+  pub fn try_sample_with_seed(&self, seed: u64) -> anyhow::Result<MultiHestonPaths<T>>
+  where
+    T: ndarray_linalg::Lapack,
+  {
+    self.validate()?;
+    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
+    Ok(self.sample_with_fill(|z| normal.fill_slice_fast(z)))
   }
 
   fn brownian_cholesky(&self) -> Array2<T>

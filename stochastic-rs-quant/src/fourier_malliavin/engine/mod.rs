@@ -80,59 +80,77 @@ impl<T: FloatExt> FMVol<T> {
   /// Sets `N = floor(n/2)` and pre-computes Fourier coefficients up to
   /// `N + M_max + L_max` where `M_max = floor(N^0.5)` and `L_max = floor(N^0.25)`.
   ///
-  /// Panics if `prices.len() < 2` or `times.len() != prices.len()`.
+  /// Panics if `prices.len() < 2` or `times.len() != prices.len()`. Use
+  /// [`Self::try_new`] to surface these as `Err` instead.
   pub fn new(prices: &[T], times: &[T], period: T) -> Self {
-    assert!(
-      prices.len() >= 2,
-      "FMVol::new requires at least 2 price observations to form increments, got {}",
-      prices.len()
-    );
-    assert_eq!(
-      prices.len(),
-      times.len(),
-      "FMVol::new: prices.len()={} must equal times.len()={}",
-      prices.len(),
-      times.len()
-    );
+    Self::try_new(prices, times, period)
+      .expect("FMVol::new precondition violated — call try_new to handle this gracefully")
+  }
+
+  /// Falliable variant of [`Self::new`]. Returns an error when the input
+  /// length is `< 2` or `prices.len() != times.len()`.
+  pub fn try_new(prices: &[T], times: &[T], period: T) -> anyhow::Result<Self> {
+    if prices.len() < 2 {
+      anyhow::bail!(
+        "FMVol::try_new requires at least 2 price observations to form increments, got {}",
+        prices.len()
+      );
+    }
+    if prices.len() != times.len() {
+      anyhow::bail!(
+        "FMVol::try_new: prices.len()={} must equal times.len()={}",
+        prices.len(),
+        times.len()
+      );
+    }
     let n = prices.len() - 1;
     let big_n = n / 2;
     let m_max = (big_n as f64).sqrt() as usize;
     let l_max = (big_n as f64).powf(0.25) as usize;
     let max_freq = big_n + m_max + l_max;
     let dx = fourier_coefficients_dx(prices, times, period, max_freq);
-    Self {
+    Ok(Self {
       dx,
       period,
       n,
       n_freq: big_n,
       max_freq,
-    }
+    })
   }
 
   /// Build an engine from **uniformly spaced** observations (FFT-accelerated, O(n log n)).
   ///
   /// Assumes `t_l = l · T / n`; no explicit times array needed.
   ///
-  /// Panics if `prices.len() < 2`.
+  /// Panics if `prices.len() < 2`. Use [`Self::try_new_uniform`] to surface
+  /// this as `Err` instead.
   pub fn new_uniform(prices: &[T], period: T) -> Self {
-    assert!(
-      prices.len() >= 2,
-      "FMVol::new_uniform requires at least 2 price observations to form increments, got {}",
-      prices.len()
-    );
+    Self::try_new_uniform(prices, period)
+      .expect("FMVol::new_uniform precondition violated — call try_new_uniform to handle this gracefully")
+  }
+
+  /// Falliable variant of [`Self::new_uniform`]. Returns an error when
+  /// `prices.len() < 2`.
+  pub fn try_new_uniform(prices: &[T], period: T) -> anyhow::Result<Self> {
+    if prices.len() < 2 {
+      anyhow::bail!(
+        "FMVol::try_new_uniform requires at least 2 price observations to form increments, got {}",
+        prices.len()
+      );
+    }
     let n = prices.len() - 1;
     let big_n = n / 2;
     let m_max = (big_n as f64).sqrt() as usize;
     let l_max = (big_n as f64).powf(0.25) as usize;
     let max_freq = big_n + m_max + l_max;
     let dx = fourier_coefficients_dx_uniform(prices, period, max_freq);
-    Self {
+    Ok(Self {
       dx,
       period,
       n,
       n_freq: big_n,
       max_freq,
-    }
+    })
   }
 
   /// Build an engine with explicit cutting frequency *N* and maximum frequency.
@@ -141,33 +159,49 @@ impl<T: FloatExt> FMVol<T> {
   /// Must satisfy `max_freq ≥ n_freq`.
   /// For spot leverage / volvol / quarticity you need `max_freq ≥ N + M + L`.
   ///
-  /// Panics if `prices.len() < 2`, `times.len() != prices.len()`, or `max_freq < n_freq`.
+  /// Panics if `prices.len() < 2`, `times.len() != prices.len()`, or
+  /// `max_freq < n_freq`. Use [`Self::try_with_freq`] to surface these as
+  /// `Err` instead.
   pub fn with_freq(prices: &[T], times: &[T], period: T, n_freq: usize, max_freq: usize) -> Self {
-    assert!(
-      prices.len() >= 2,
-      "FMVol::with_freq requires at least 2 price observations to form increments, got {}",
-      prices.len()
-    );
-    assert_eq!(
-      prices.len(),
-      times.len(),
-      "FMVol::with_freq: prices.len()={} must equal times.len()={}",
-      prices.len(),
-      times.len()
-    );
+    Self::try_with_freq(prices, times, period, n_freq, max_freq)
+      .expect("FMVol::with_freq precondition violated — call try_with_freq to handle this gracefully")
+  }
+
+  /// Falliable variant of [`Self::with_freq`]. Returns an error when the
+  /// input length is `< 2`, `prices.len() != times.len()`, or
+  /// `max_freq < n_freq`.
+  pub fn try_with_freq(
+    prices: &[T],
+    times: &[T],
+    period: T,
+    n_freq: usize,
+    max_freq: usize,
+  ) -> anyhow::Result<Self> {
+    if prices.len() < 2 {
+      anyhow::bail!(
+        "FMVol::try_with_freq requires at least 2 price observations to form increments, got {}",
+        prices.len()
+      );
+    }
+    if prices.len() != times.len() {
+      anyhow::bail!(
+        "FMVol::try_with_freq: prices.len()={} must equal times.len()={}",
+        prices.len(),
+        times.len()
+      );
+    }
+    if max_freq < n_freq {
+      anyhow::bail!("FMVol::try_with_freq: max_freq={max_freq} must be ≥ n_freq={n_freq}");
+    }
     let n = prices.len() - 1;
-    assert!(
-      max_freq >= n_freq,
-      "max_freq={max_freq} must be ≥ n_freq={n_freq}"
-    );
     let dx = fourier_coefficients_dx(prices, times, period, max_freq);
-    Self {
+    Ok(Self {
       dx,
       period,
       n,
       n_freq,
       max_freq,
-    }
+    })
   }
 
   /// Primary cutting frequency *N*.
