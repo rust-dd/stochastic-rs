@@ -125,8 +125,9 @@ impl<T: FloatExt> FMVol<T> {
   /// Panics if `prices.len() < 2`. Use [`Self::try_new_uniform`] to surface
   /// this as `Err` instead.
   pub fn new_uniform(prices: &[T], period: T) -> Self {
-    Self::try_new_uniform(prices, period)
-      .expect("FMVol::new_uniform precondition violated — call try_new_uniform to handle this gracefully")
+    Self::try_new_uniform(prices, period).expect(
+      "FMVol::new_uniform precondition violated — call try_new_uniform to handle this gracefully",
+    )
   }
 
   /// Falliable variant of [`Self::new_uniform`]. Returns an error when
@@ -163,8 +164,9 @@ impl<T: FloatExt> FMVol<T> {
   /// `max_freq < n_freq`. Use [`Self::try_with_freq`] to surface these as
   /// `Err` instead.
   pub fn with_freq(prices: &[T], times: &[T], period: T, n_freq: usize, max_freq: usize) -> Self {
-    Self::try_with_freq(prices, times, period, n_freq, max_freq)
-      .expect("FMVol::with_freq precondition violated — call try_with_freq to handle this gracefully")
+    Self::try_with_freq(prices, times, period, n_freq, max_freq).expect(
+      "FMVol::with_freq precondition violated — call try_with_freq to handle this gracefully",
+    )
   }
 
   /// Falliable variant of [`Self::with_freq`]. Returns an error when the

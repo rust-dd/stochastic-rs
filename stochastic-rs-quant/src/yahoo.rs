@@ -79,8 +79,9 @@ impl<'a> Default for Yahoo<'a> {
   /// Panics if connector init fails (TLS / DNS / reqwest builder). Use
   /// [`Yahoo::try_default`] to surface the failure as `Err`.
   fn default() -> Self {
-    Self::try_default()
-      .expect("Yahoo::default: YahooConnector init failed — call try_default to handle this gracefully")
+    Self::try_default().expect(
+      "Yahoo::default: YahooConnector init failed — call try_default to handle this gracefully",
+    )
   }
 }
 
@@ -88,8 +89,8 @@ impl<'a> Yahoo<'a> {
   /// Falliable variant of [`Self::default`]. Returns an error if
   /// [`YahooConnector::new`] fails (TLS / DNS / reqwest builder).
   pub fn try_default() -> anyhow::Result<Self> {
-    let provider = YahooConnector::new()
-      .map_err(|e| anyhow::anyhow!("YahooConnector::new failed: {e}"))?;
+    let provider =
+      YahooConnector::new().map_err(|e| anyhow::anyhow!("YahooConnector::new failed: {e}"))?;
     Ok(Self {
       provider,
       symbol: None,
@@ -129,18 +130,21 @@ impl<'a> Yahoo<'a> {
 
   /// Falliable variant of [`Self::get_price_history`].
   pub fn try_get_price_history(&mut self) -> anyhow::Result<()> {
-    let symbol = self
-      .symbol
-      .as_deref()
-      .ok_or_else(|| anyhow::anyhow!("symbol must be set via set_symbol before fetching history"))?;
+    let symbol = self.symbol.as_deref().ok_or_else(|| {
+      anyhow::anyhow!("symbol must be set via set_symbol before fetching history")
+    })?;
     let start_date = self
       .start_date
       .ok_or_else(|| anyhow::anyhow!("start_date missing"))?;
     let end_date = self
       .end_date
       .ok_or_else(|| anyhow::anyhow!("end_date missing"))?;
-    let res = tokio_test::block_on(self.provider.get_quote_history(symbol, start_date, end_date))
-      .map_err(|e| anyhow::anyhow!("Yahoo get_quote_history failed for {symbol}: {e}"))?;
+    let res = tokio_test::block_on(
+      self
+        .provider
+        .get_quote_history(symbol, start_date, end_date),
+    )
+    .map_err(|e| anyhow::anyhow!("Yahoo get_quote_history failed for {symbol}: {e}"))?;
     let history = res
       .quotes()
       .map_err(|e| anyhow::anyhow!("Yahoo quotes() failed: {e}"))?;
@@ -170,10 +174,9 @@ impl<'a> Yahoo<'a> {
 
   /// Falliable variant of [`Self::get_options_chain`].
   pub fn try_get_options_chain(&mut self, option_type: &OptionType) -> anyhow::Result<()> {
-    let symbol = self
-      .symbol
-      .as_deref()
-      .ok_or_else(|| anyhow::anyhow!("symbol must be set via set_symbol before fetching options"))?;
+    let symbol = self.symbol.as_deref().ok_or_else(|| {
+      anyhow::anyhow!("symbol must be set via set_symbol before fetching options")
+    })?;
     let res = tokio_test::block_on(self.provider.search_options(symbol))
       .map_err(|e| anyhow::anyhow!("Yahoo search_options failed for {symbol}: {e}"))?;
     let result = res
