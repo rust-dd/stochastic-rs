@@ -36,6 +36,12 @@ pub fn calibrate_ssvi<T: FloatExt>(
     })
     .collect();
 
+  let theta_max = slices_f64
+    .iter()
+    .map(|s| s.theta)
+    .filter(|t| t.is_finite() && *t > 0.0)
+    .fold(0.0_f64, f64::max);
+
   let problem = SsviLmProblem {
     slices: slices_f64,
     params: init_f64.into_dvector(),
@@ -47,7 +53,14 @@ pub fn calibrate_ssvi<T: FloatExt>(
     .minimize(problem);
 
   let mut p64 = SsviParams::<f64>::from_dvector(&result.params);
-  p64.project();
+  // Enforce Gatheral-Jacquier 2014 power-law calendar-spread-free admissibility
+  // (eq.4.4) over the calibration's observed θ range. Falls back to butterfly-only
+  // projection when no positive θ is available (degenerate input).
+  if theta_max > 0.0 {
+    p64.project_with_theta_range(theta_max);
+  } else {
+    p64.project();
+  }
 
   SsviParams {
     rho: T::from_f64_fast(p64.rho),

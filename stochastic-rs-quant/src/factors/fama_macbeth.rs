@@ -34,14 +34,34 @@ pub struct FamaMacBethResult {
 
 /// Run a Fama-MacBeth regression. `returns[t, i]` is asset `i`'s return at
 /// time `t`; `factors[t, k]` is factor `k`'s realisation at time `t`.
+///
+/// Panics if either OLS pass is rank-deficient. Use [`try_fama_macbeth`] for
+/// a falliable variant returning [`crate::factors::FactorsError`].
 pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaMacBethResult {
+  try_fama_macbeth(returns, factors)
+    .expect("fama_macbeth: OLS pass failed; use try_fama_macbeth for falliable variant")
+}
+
+/// Falliable variant of [`fama_macbeth`]. Returns
+/// [`crate::factors::FactorsError::OlsFailed`] when either the first-pass
+/// time-series OLS or the second-pass cross-sectional OLS is rank-deficient.
+pub fn try_fama_macbeth(
+  returns: ArrayView2<f64>,
+  factors: ArrayView2<f64>,
+) -> Result<FamaMacBethResult, crate::factors::FactorsError> {
   let (t, n) = returns.dim();
   let (tt, k) = factors.dim();
-  assert_eq!(
-    t, tt,
-    "returns and factors must have the same number of rows"
-  );
-  assert!(t >= k + 2, "not enough observations");
+  if t != tt {
+    return Err(crate::factors::FactorsError::Numerical(format!(
+      "returns rows ({t}) must equal factors rows ({tt})"
+    )));
+  }
+  if t < k + 2 {
+    return Err(crate::factors::FactorsError::Numerical(format!(
+      "need at least k+2 = {} observations, got {t}",
+      k + 2
+    )));
+  }
   let mut design_ts = Array2::<f64>::zeros((t, k + 1));
   for r in 0..t {
     design_ts[[r, 0]] = 1.0;
@@ -52,9 +72,11 @@ pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaM
   let mut betas = Array2::<f64>::zeros((n, k + 1));
   for asset in 0..n {
     let y: Array1<f64> = returns.column(asset).to_owned();
-    let sol = design_ts.least_squares(&y).expect(
-      "Fama-MacBeth first-pass OLS failed (rank-deficient factors? Pre-check via PCA on factor matrix)",
-    );
+    let sol = design_ts.least_squares(&y).map_err(|e| {
+      crate::factors::FactorsError::OlsFailed(format!(
+        "first-pass OLS failed for asset {asset} (rank-deficient factors? Pre-check via PCA on factor matrix): {e}"
+      ))
+    })?;
     for j in 0..(k + 1) {
       betas[[asset, j]] = sol.solution[j];
     }
@@ -69,9 +91,11 @@ pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaM
   let mut gamma_series = Array2::<f64>::zeros((t, k + 1));
   for time in 0..t {
     let y: Array1<f64> = returns.row(time).to_owned();
-    let sol = design_xs.least_squares(&y).expect(
-      "Fama-MacBeth second-pass cross-sectional OLS failed (collinear betas? Verify factor independence)",
-    );
+    let sol = design_xs.least_squares(&y).map_err(|e| {
+      crate::factors::FactorsError::OlsFailed(format!(
+        "second-pass cross-sectional OLS failed at time {time} (collinear betas? Verify factor independence): {e}"
+      ))
+    })?;
     for j in 0..(k + 1) {
       gamma_series[[time, j]] = sol.solution[j];
     }
@@ -99,13 +123,13 @@ pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaM
       0.0
     };
   }
-  FamaMacBethResult {
+  Ok(FamaMacBethResult {
     gamma: gamma_mean,
     std_errors,
     t_statistics: t_stats,
     gamma_series,
     betas,
-  }
+  })
 }
 
 #[cfg(test)]

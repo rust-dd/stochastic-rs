@@ -4,16 +4,20 @@
 //! \text{market data stream }\mapsto\text{ cleaned OHLCV time series}
 //! $$
 //!
-//! **Status:** experimental, gated behind the `yahoo` feature. The public
-//! surface uses `unwrap()` extensively on network IO and Yahoo schema
-//! responses — production callers should expect runtime panics on network
-//! failure, rate limits, or upstream schema changes. A `Result`-returning
-//! variant (`stochastic-rs-yahoo` micro-crate) is on the 2.x roadmap.
+//! **Status:** experimental, gated behind the `yahoo` feature.
 //!
-//! Prefer wrapping calls in `std::panic::catch_unwind` (or in async tasks
-//! with their own panic handlers) and supply your own retry / backoff layer
-//! for live use. Live `#[test]`s currently hit AAPL on every
-//! `cargo test --features yahoo` invocation; CI flakes are expected.
+//! As of v2.3.0 Tier 1 the public surface exposes both panicking (`new`,
+//! `default`, `get_*`) and falliable (`try_default`, `try_get_*`) variants.
+//! Production callers should prefer the `try_*` variants and supply their
+//! own retry / backoff layer. The panicking variants are kept for backward
+//! compatibility but will be removed in v3.0.
+//!
+//! Live `#[test]`s that hit AAPL are marked `#[ignore]` so the default
+//! `cargo test --features yahoo` does not perform network IO; opt in with
+//! `cargo test --features yahoo -- --ignored` to run them.
+//!
+//! Tier 2-4 (provider trait, mock provider, multi-provider, streaming)
+//! tracked in `docs/YAHOO_INTEGRATION_PLAN.md`.
 use std::borrow::Cow;
 use std::fmt::Display;
 
@@ -70,9 +74,24 @@ impl Display for ReturnType {
 }
 
 impl<'a> Default for Yahoo<'a> {
+  /// Construct with a default [`YahooConnector`].
+  ///
+  /// Panics if connector init fails (TLS / DNS / reqwest builder). Use
+  /// [`Yahoo::try_default`] to surface the failure as `Err`.
   fn default() -> Self {
-    Self {
-      provider: YahooConnector::new().unwrap(),
+    Self::try_default()
+      .expect("Yahoo::default: YahooConnector init failed — call try_default to handle this gracefully")
+  }
+}
+
+impl<'a> Yahoo<'a> {
+  /// Falliable variant of [`Self::default`]. Returns an error if
+  /// [`YahooConnector::new`] fails (TLS / DNS / reqwest builder).
+  pub fn try_default() -> anyhow::Result<Self> {
+    let provider = YahooConnector::new()
+      .map_err(|e| anyhow::anyhow!("YahooConnector::new failed: {e}"))?;
+    Ok(Self {
+      provider,
       symbol: None,
       start_date: Some(OffsetDateTime::UNIX_EPOCH),
       end_date: Some(OffsetDateTime::now_utc()),
@@ -80,11 +99,9 @@ impl<'a> Default for Yahoo<'a> {
       options_chain: None,
       price_history: None,
       returns: None,
-    }
+    })
   }
-}
 
-impl<'a> Yahoo<'a> {
   /// Set symbol
   pub fn set_symbol(&mut self, symbol: &'a str) {
     self.symbol = Some(Cow::Borrowed(symbol));
@@ -100,18 +117,35 @@ impl<'a> Yahoo<'a> {
     self.end_date = Some(end_date);
   }
 
-  /// Get price history for symbol
+  /// Get price history for symbol.
+  ///
+  /// Panics on network IO failure, missing symbol, or Yahoo schema mismatch.
+  /// Use [`Self::try_get_price_history`] to handle these gracefully.
   pub fn get_price_history(&mut self) {
-    let res = tokio_test::block_on(self.provider.get_quote_history(
-      self.symbol.as_deref().unwrap(),
-      self.start_date.unwrap(),
-      self.end_date.unwrap(),
-    ))
-    .unwrap();
+    self
+      .try_get_price_history()
+      .expect("get_price_history: network or schema failure — call try_get_price_history to handle gracefully")
+  }
 
-    let history = res.quotes().unwrap();
+  /// Falliable variant of [`Self::get_price_history`].
+  pub fn try_get_price_history(&mut self) -> anyhow::Result<()> {
+    let symbol = self
+      .symbol
+      .as_deref()
+      .ok_or_else(|| anyhow::anyhow!("symbol must be set via set_symbol before fetching history"))?;
+    let start_date = self
+      .start_date
+      .ok_or_else(|| anyhow::anyhow!("start_date missing"))?;
+    let end_date = self
+      .end_date
+      .ok_or_else(|| anyhow::anyhow!("end_date missing"))?;
+    let res = tokio_test::block_on(self.provider.get_quote_history(symbol, start_date, end_date))
+      .map_err(|e| anyhow::anyhow!("Yahoo get_quote_history failed for {symbol}: {e}"))?;
+    let history = res
+      .quotes()
+      .map_err(|e| anyhow::anyhow!("Yahoo quotes() failed: {e}"))?;
     let df = df!(
-        "timestamp" => Series::new("timestamp".into(), &history.iter().map(|h| h.timestamp / 86_400).collect::<Vec<_>>()).cast(&DataType::Date).unwrap(),
+        "timestamp" => Series::new("timestamp".into(), &history.iter().map(|h| h.timestamp / 86_400).collect::<Vec<_>>()).cast(&DataType::Date).map_err(|e| anyhow::anyhow!("polars timestamp cast failed: {e}"))?,
         "volume" => &history.iter().map(|h| h.volume).collect::<Vec<_>>(),
         "open" => &history.iter().map(|h| h.open).collect::<Vec<_>>(),
         "high" => &history.iter().map(|h| h.high).collect::<Vec<_>>(),
@@ -119,20 +153,38 @@ impl<'a> Yahoo<'a> {
         "close" => &history.iter().map(|h| h.close).collect::<Vec<_>>(),
         "adjclose" => &history.iter().map(|h| h.adjclose).collect::<Vec<_>>(),
     )
-    .unwrap();
-
+    .map_err(|e| anyhow::anyhow!("polars DataFrame build failed: {e}"))?;
     self.price_history = Some(df);
+    Ok(())
   }
 
-  /// Get options for symbol
+  /// Get options for symbol.
+  ///
+  /// Panics on network IO failure, missing symbol, or Yahoo schema mismatch.
+  /// Use [`Self::try_get_options_chain`] to handle these gracefully.
   pub fn get_options_chain(&mut self, option_type: &OptionType) {
-    let res = tokio_test::block_on(
-      self
-        .provider
-        .search_options(self.symbol.as_deref().unwrap()),
-    )
-    .unwrap();
-    let options = &res.option_chain.result[0].options[0];
+    self
+      .try_get_options_chain(option_type)
+      .expect("get_options_chain: network or schema failure — call try_get_options_chain to handle gracefully")
+  }
+
+  /// Falliable variant of [`Self::get_options_chain`].
+  pub fn try_get_options_chain(&mut self, option_type: &OptionType) -> anyhow::Result<()> {
+    let symbol = self
+      .symbol
+      .as_deref()
+      .ok_or_else(|| anyhow::anyhow!("symbol must be set via set_symbol before fetching options"))?;
+    let res = tokio_test::block_on(self.provider.search_options(symbol))
+      .map_err(|e| anyhow::anyhow!("Yahoo search_options failed for {symbol}: {e}"))?;
+    let result = res
+      .option_chain
+      .result
+      .first()
+      .ok_or_else(|| anyhow::anyhow!("Yahoo option_chain.result empty for {symbol}"))?;
+    let options = result
+      .options
+      .first()
+      .ok_or_else(|| anyhow::anyhow!("Yahoo options array empty for {symbol}"))?;
     let options = match option_type {
       OptionType::Call => &options.calls,
       OptionType::Put => &options.puts,
@@ -155,24 +207,37 @@ impl<'a> Yahoo<'a> {
         "implied_volatility" => &options.iter().map(|o| o.implied_volatility).collect::<Vec<_>>(),
         "in_the_money" => &options.iter().map(|o| o.in_the_money).collect::<Vec<_>>()
     )
-    .unwrap();
+    .map_err(|e| anyhow::anyhow!("polars DataFrame build failed: {e}"))?;
 
     self.options_chain = Some(res);
     self.options = Some(df);
+    Ok(())
   }
 
-  /// Get returns for symbol
+  /// Get returns for symbol.
+  ///
+  /// Panics on network IO failure (when price_history is missing and a fetch
+  /// is triggered) or polars build failure. Use [`Self::try_get_returns`] to
+  /// handle these gracefully.
   pub fn get_returns(&mut self, r#type: ReturnType) {
+    self
+      .try_get_returns(r#type)
+      .expect("get_returns: network or polars failure — call try_get_returns to handle gracefully")
+  }
+
+  /// Falliable variant of [`Self::get_returns`].
+  pub fn try_get_returns(&mut self, r#type: ReturnType) -> anyhow::Result<()> {
     if self.price_history.is_none() {
-      self.get_price_history();
+      self.try_get_price_history()?;
     }
+    let price_history = self
+      .price_history
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("price_history empty after fetch attempt"))?;
 
     let cols = || col("*").exclude(["timestamp", "volume"]);
     let df = match r#type {
-      ReturnType::Arithmetic => self
-        .price_history
-        .as_ref()
-        .unwrap()
+      ReturnType::Arithmetic => price_history
         .clone()
         .lazy()
         .select(&[
@@ -180,14 +245,11 @@ impl<'a> Yahoo<'a> {
           col("volume"),
           (cols() / cols().shift(lit(1)) - lit(1))
             .name()
-            .suffix(&format!("_{}", &r#type)),
+            .suffix(&format!("_{}", r#type)),
         ])
         .collect()
-        .unwrap(),
-      ReturnType::Absolute => self
-        .price_history
-        .as_ref()
-        .unwrap()
+        .map_err(|e| anyhow::anyhow!("polars arithmetic-returns collect failed: {e}"))?,
+      ReturnType::Absolute => price_history
         .clone()
         .lazy()
         .select(&[
@@ -195,10 +257,10 @@ impl<'a> Yahoo<'a> {
           col("volume"),
           (cols() / cols().shift(lit(1)))
             .name()
-            .suffix(&format!("_{}", &r#type)),
+            .suffix(&format!("_{}", r#type)),
         ])
         .collect()
-        .unwrap(),
+        .map_err(|e| anyhow::anyhow!("polars gross-returns collect failed: {e}"))?,
       ReturnType::Logarithmic => {
         let ln = |col: &Series| -> Series {
           col
@@ -208,12 +270,12 @@ impl<'a> Yahoo<'a> {
             .into_series()
         };
 
-        let mut price_history = self.price_history.as_ref().unwrap().clone();
-        price_history.apply("open", ln).unwrap();
-        price_history.apply("high", ln).unwrap();
-        price_history.apply("low", ln).unwrap();
-        price_history.apply("close", ln).unwrap();
-        price_history.apply("adjclose", ln).unwrap();
+        let mut price_history = price_history.clone();
+        for col_name in ["open", "high", "low", "close", "adjclose"] {
+          price_history
+            .apply(col_name, ln)
+            .map_err(|e| anyhow::anyhow!("polars apply ln to {col_name} failed: {e}"))?;
+        }
 
         price_history
           .lazy()
@@ -222,14 +284,15 @@ impl<'a> Yahoo<'a> {
             col("volume"),
             (cols() - cols().shift(lit(1)))
               .name()
-              .suffix(&format!("_{}", &r#type)),
+              .suffix(&format!("_{}", r#type)),
           ])
           .collect()
-          .unwrap()
+          .map_err(|e| anyhow::anyhow!("polars log-returns collect failed: {e}"))?
       }
     };
 
     self.returns = Some(df);
+    Ok(())
   }
 }
 
@@ -237,42 +300,63 @@ impl<'a> Yahoo<'a> {
 mod tests {
   use super::*;
 
+  /// Live network test — fetches real AAPL data from Yahoo. Marked
+  /// `#[ignore]` so the default `cargo test --features yahoo` is offline;
+  /// run with `cargo test --features yahoo -- --ignored` to enable.
   #[test]
+  #[ignore = "live network test — requires Yahoo Finance reachability"]
   fn test_yahoo_get_price_history() {
     let mut yahoo = Yahoo::default();
     yahoo.set_symbol("AAPL");
     yahoo.get_price_history();
-    println!("{:?}", yahoo.price_history);
     assert!(yahoo.price_history.is_some());
   }
 
   #[test]
+  #[ignore = "live network test — requires Yahoo Finance reachability"]
   fn test_yahoo_get_options_chain() {
     let mut yahoo = Yahoo::default();
     yahoo.set_symbol("AAPL");
     yahoo.get_options_chain(&OptionType::Call);
-    println!("{:?}", yahoo.options);
     assert!(yahoo.options.is_some());
   }
 
   #[test]
+  #[ignore = "live network test — requires Yahoo Finance reachability"]
   fn test_yahoo_get_returns() {
     let mut yahoo = Yahoo::default();
     yahoo.set_symbol("AAPL");
     yahoo.get_returns(ReturnType::Arithmetic);
-    println!("{:?}", yahoo.returns);
     assert!(yahoo.returns.is_some());
 
     let mut yahoo = Yahoo::default();
     yahoo.set_symbol("AAPL");
     yahoo.get_returns(ReturnType::Logarithmic);
-    println!("{:?}", yahoo.returns);
     assert!(yahoo.returns.is_some());
 
     let mut yahoo = Yahoo::default();
     yahoo.set_symbol("AAPL");
     yahoo.get_returns(ReturnType::Absolute);
-    println!("{:?}", yahoo.returns);
     assert!(yahoo.returns.is_some());
+  }
+
+  /// Offline test of the falliable Result API — verifies error propagation
+  /// when symbol is unset, without network IO.
+  #[test]
+  fn try_get_price_history_errors_without_symbol() {
+    let mut yahoo = Yahoo::try_default().expect("connector init");
+    let err = yahoo.try_get_price_history().expect_err("symbol unset");
+    let msg = format!("{err}");
+    assert!(msg.contains("symbol"), "unexpected error message: {msg}");
+  }
+
+  #[test]
+  fn try_get_options_chain_errors_without_symbol() {
+    let mut yahoo = Yahoo::try_default().expect("connector init");
+    let err = yahoo
+      .try_get_options_chain(&OptionType::Call)
+      .expect_err("symbol unset");
+    let msg = format!("{err}");
+    assert!(msg.contains("symbol"), "unexpected error message: {msg}");
   }
 }

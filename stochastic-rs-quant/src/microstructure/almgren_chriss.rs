@@ -97,13 +97,23 @@ impl<T: FloatExt> AlmgrenChrissParams<T> {
 }
 
 /// Result of an Almgren-Chriss schedule computation.
+///
+/// **Sign convention:** For [`ExecutionDirection::Sell`], inventory starts at
+/// $+X$ and decreases to $0$; trades and rates are positive (shares being
+/// removed from the book). For [`ExecutionDirection::Buy`], all three series
+/// are sign-reversed: inventory starts at $-X$ and increases to $0$; trades
+/// and rates are negative (shares being added to the book). This matches the
+/// signed academic Almgren-Chriss formulation (Almgren-Chriss 2001 §2) where
+/// a buy is the sign-reverse of a sell.
 #[derive(Debug, Clone)]
 pub struct AlmgrenChrissPlan<T: FloatExt> {
-  /// Inventory holdings $x_k$ at the end of each interval, $x_0 = X, \dots, x_N = 0$.
+  /// Inventory holdings $x_k$ at the end of each interval. For Sell:
+  /// $x_0 = +X, \dots, x_N = 0$. For Buy: $x_0 = -X, \dots, x_N = 0$.
   pub inventory: Array1<T>,
-  /// Trade sizes $n_k = x_{k-1} - x_k$ executed at each step (positive = sells).
+  /// Trade sizes $n_k = x_{k-1} - x_k$ executed at each step. Positive for
+  /// Sell (shares sold), negative for Buy (shares acquired).
   pub trades: Array1<T>,
-  /// Trade rates $v_k = n_k / \tau$.
+  /// Trade rates $v_k = n_k / \tau$. Same sign as `trades`.
   pub rates: Array1<T>,
   /// Decay rate $\kappa$ (zero when `lambda == 0`).
   pub kappa: T,
@@ -189,12 +199,15 @@ pub fn optimal_execution<T: FloatExt>(params: &AlmgrenChrissParams<T>) -> Almgre
   }
   let variance = params.volatility * params.volatility * tau * variance_acc;
 
-  // For a Buy execution we flip ALL three series (inventory, trades, rates)
-  // so the plan describes the inventory and trades a *buyer* would observe
-  // (i.e. inventory grows from 0 to +X over [0, T] and trades are positive
-  // additions to the book). The previous rc.0/rc.1 implementation only
-  // flipped `rates`, which left `inventory` and `trades` in sell-frame and
-  // produced "sell-shaped" numbers for downstream consumers.
+  // For a Buy execution we flip ALL three series (inventory, trades, rates).
+  // Convention is *signed*: inventory[0] = -X (negative = short position to
+  // cover), inventory[N] = 0 (position fully built), trades[k] < 0 (negative
+  // = additions to the book / shares acquired), rates[k] < 0. This mirrors
+  // the academic Almgren-Chriss formulation where a buy is treated as the
+  // sign-reverse of a sell (Almgren-Chriss 2001 §2). The previous rc.0/rc.1
+  // implementation only flipped `rates`, which left `inventory` and `trades`
+  // in sell-frame and produced sign-inconsistent numbers for downstream
+  // consumers; this rc.2 fix flips all three series together.
   if matches!(params.direction, ExecutionDirection::Buy) {
     for k in 0..=n {
       inventory[k] = -inventory[k];
@@ -277,6 +290,27 @@ mod tests {
     for k in 0..p.n_intervals {
       assert!(approx(buy.rates[k], -sell.rates[k], 1e-12));
     }
+  }
+
+  #[test]
+  fn buy_direction_negates_all_three_series() {
+    let mut p = AlmgrenChrissParams::new(500.0_f64, 1.0, 5, 0.01, 1e-7, 1e-5, 0.5);
+    let sell = optimal_execution(&p);
+    p.direction = ExecutionDirection::Buy;
+    let buy = optimal_execution(&p);
+    for k in 0..=p.n_intervals {
+      assert!(approx(buy.inventory[k], -sell.inventory[k], 1e-12));
+    }
+    for k in 0..p.n_intervals {
+      assert!(approx(buy.trades[k], -sell.trades[k], 1e-12));
+      assert!(approx(buy.rates[k], -sell.rates[k], 1e-12));
+    }
+    // Buy inventory starts at -X (short position to cover) and ends at 0.
+    assert!(approx(buy.inventory[0], -500.0, 1e-9));
+    assert!(approx(buy.inventory[p.n_intervals], 0.0, 1e-12));
+    // Expected cost and variance are sign-insensitive (squared terms).
+    assert!(approx(buy.expected_cost, sell.expected_cost, 1e-9));
+    assert!(approx(buy.variance, sell.variance, 1e-9));
   }
 
   #[test]

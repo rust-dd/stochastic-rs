@@ -70,26 +70,58 @@ pub struct PairsStrategy {
 ///
 /// `entry_z`: enter when `|z| ≥ entry_z`. `exit_z`: close when `|z| ≤ exit_z`.
 /// Otherwise the previous signal persists. `entry_z` must exceed `exit_z`.
+///
+/// Panics if the hedge-ratio OLS is rank-deficient (constant input series).
+/// Use [`try_pairs_signals`] for a falliable variant returning
+/// [`crate::factors::FactorsError`].
 pub fn pairs_signals(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   entry_z: f64,
   exit_z: f64,
 ) -> PairsStrategy {
-  assert_eq!(y.len(), x.len(), "y and x must have equal length");
-  assert!(entry_z > exit_z, "entry_z must exceed exit_z");
+  try_pairs_signals(y, x, entry_z, exit_z)
+    .expect("pairs_signals: hedge-ratio OLS failed; use try_pairs_signals for falliable variant")
+}
+
+/// Falliable variant of [`pairs_signals`]. Returns
+/// [`crate::factors::FactorsError::OlsFailed`] when the hedge-ratio OLS is
+/// rank-deficient (e.g. one of the inputs is a constant series).
+pub fn try_pairs_signals(
+  y: ArrayView1<f64>,
+  x: ArrayView1<f64>,
+  entry_z: f64,
+  exit_z: f64,
+) -> Result<PairsStrategy, crate::factors::FactorsError> {
+  if y.len() != x.len() {
+    return Err(crate::factors::FactorsError::Numerical(format!(
+      "y.len()={} must equal x.len()={}",
+      y.len(),
+      x.len()
+    )));
+  }
+  if entry_z <= exit_z {
+    return Err(crate::factors::FactorsError::Numerical(format!(
+      "entry_z={entry_z} must exceed exit_z={exit_z}"
+    )));
+  }
   let n = y.len();
-  assert!(n >= 3, "need at least three observations");
+  if n < 3 {
+    return Err(crate::factors::FactorsError::Numerical(format!(
+      "need at least three observations, got {n}"
+    )));
+  }
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
     design[[i, 0]] = 1.0;
     design[[i, 1]] = x[i];
   }
   let y_owned = y.to_owned();
-  let sol = design.least_squares(&y_owned).expect(
-    "pairs-trading hedge-ratio OLS failed (one of the inputs may be a constant series — \
-     try_pairs_signals returns Result for graceful handling)",
-  );
+  let sol = design.least_squares(&y_owned).map_err(|e| {
+    crate::factors::FactorsError::OlsFailed(format!(
+      "pairs hedge-ratio OLS failed (one of the inputs may be a constant series): {e}"
+    ))
+  })?;
   let alpha = sol.solution[0];
   let beta = sol.solution[1];
   let mut spread = Array1::<f64>::zeros(n);
@@ -131,7 +163,7 @@ pub fn pairs_signals(
     };
     signals[i] = state;
   }
-  PairsStrategy {
+  Ok(PairsStrategy {
     alpha,
     beta,
     spread,
@@ -139,7 +171,7 @@ pub fn pairs_signals(
     signals,
     spread_mean: mean,
     spread_std: sd,
-  }
+  })
 }
 
 #[cfg(test)]

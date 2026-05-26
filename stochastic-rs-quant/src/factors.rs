@@ -65,11 +65,15 @@ pub use fama_macbeth::FamaMacBethResult;
 #[cfg(feature = "openblas")]
 pub use fama_macbeth::fama_macbeth;
 #[cfg(feature = "openblas")]
+pub use fama_macbeth::try_fama_macbeth;
+#[cfg(feature = "openblas")]
 pub use pairs::PairsSignal;
 #[cfg(feature = "openblas")]
 pub use pairs::PairsStrategy;
 #[cfg(feature = "openblas")]
 pub use pairs::pairs_signals;
+#[cfg(feature = "openblas")]
+pub use pairs::try_pairs_signals;
 #[cfg(feature = "openblas")]
 pub use pca::PcaResult;
 #[cfg(feature = "openblas")]
