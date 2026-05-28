@@ -93,6 +93,14 @@ impl Observer for MarketObserver {
 /// [`get`](Self::get) return the cached value if no upstream observable
 /// notified, and recompute via the supplied closure on the first read after
 /// any change. The cache is `Sync` and can be shared by clones of `Arc<Cached<T>>`.
+///
+/// **Design note (`Box<dyn Fn>`):** the `recompute` closure is intentionally
+/// erased — different `Cached<T>` instances in the same collection (e.g. a
+/// vector of cached curve points keyed by tenor) hold structurally different
+/// closures, so making the closure type a generic parameter would propagate
+/// to every caller and force heterogeneous collections to pin a single
+/// closure type via a wrapping enum. Heap-allocating one closure per cache
+/// is the canonical reactive-cache trade-off used by QuantLib's `LazyObject`.
 pub struct Cached<T> {
   value: Mutex<T>,
   recompute: Box<dyn Fn() -> T + Send + Sync>,

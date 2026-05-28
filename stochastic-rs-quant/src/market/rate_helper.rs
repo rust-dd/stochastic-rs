@@ -248,6 +248,14 @@ impl<T: FloatExt> RateHelper<T> for FuturesRateHelper<T> {
 ///
 /// Helpers whose quotes are invalid are silently skipped. The resulting
 /// `Vec` of [`Instrument`]s is sorted internally by [`bootstrap`].
+///
+/// **Design note (`&[&dyn RateHelper<T>]`):** the bootstrap input is
+/// intentionally heterogeneous — deposits, FRAs, futures, and swaps each
+/// implement [`RateHelper`] differently but must coexist in one slice for
+/// term-structure bootstrapping. A generic `[H: RateHelper<T>]` parameter
+/// would force one concrete helper type per call, defeating the purpose.
+/// The slice-of-trait-objects pattern is the canonical QuantLib /
+/// `RateHelper`-vector approach.
 pub fn build_curve<T: FloatExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,

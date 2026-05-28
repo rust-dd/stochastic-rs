@@ -142,9 +142,28 @@ fn sanitize_probabilities<T: FloatExt>(down: &mut T, middle: &mut T, up: &mut T)
   }
 }
 
+/// Symmetric-branch corner-correction denominator
+/// $4 \cdot 3 = 12$, derived as follows. The symmetric Hull-White trinomial
+/// branch has $p_u = p_d = 1/6$, $p_m = 2/3$ and node spacing
+/// $d_u = \sigma\sqrt{3 dt}$, so $\mathrm{Var}(X) = \sigma^2 dt$. To match
+/// $\mathrm{Cov}(X, Y) = \rho \sigma_X \sigma_Y dt$ via a shift $\lambda$ on
+/// the four corner cells of the joint probability table, the four corner
+/// contributions $\pm d_u^X d_u^Y$ telescope to $4 d_u^X d_u^Y \lambda$:
+///
+/// $$
+/// 4 \cdot 3 \sigma_X \sigma_Y dt \cdot \lambda = \rho \sigma_X \sigma_Y dt
+/// \implies \lambda = \rho / 12.
+/// $$
+///
+/// This factor is **exact** for the symmetric branch and **approximate** for
+/// drift-shifted (asymmetric) branches — see the docstring on
+/// [`correlated_joint_probabilities`] for the bias characterisation.
+pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
+
 /// Build correlated joint probabilities for a 2D trinomial lattice (G2++ /
 /// two-factor Hull-White) using the **symmetric-branch corner correction**:
-/// $\lambda = \rho / 12$ on the four corners.
+/// $\lambda = \rho / 12$ on the four corners (see
+/// [`SYMMETRIC_BRANCH_CORNER_DENOM`] for the derivation).
 ///
 /// **Tier-0 / sketch-grade:** the $\lambda = \rho/12$ correction matches
 /// the requested factor covariance **exactly** only for the symmetric
@@ -157,7 +176,9 @@ fn sanitize_probabilities<T: FloatExt>(down: &mut T, middle: &mut T, up: &mut T)
 ///
 /// For a per-cell exact match across asymmetric branches, replace the corner
 /// correction with the linear system in Hull-White (2000), "The General
-/// Hull-White Model and Super-calibration", equations 16–18.
+/// Hull-White Model and Super-calibration", equations 16–18. Tracked for
+/// v2.4+ — the current corner correction is the canonical QuantLib /
+/// Brigo-Mercurio textbook approach.
 pub(crate) fn correlated_joint_probabilities<T: FloatExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,
@@ -172,7 +193,7 @@ pub(crate) fn correlated_joint_probabilities<T: FloatExt>(
     }
   }
 
-  let mut lambda = rho / T::from_f64_fast(12.0);
+  let mut lambda = rho / T::from_f64_fast(SYMMETRIC_BRANCH_CORNER_DENOM);
   if lambda > T::zero() {
     let max_positive = joint[0][2].min(joint[2][0]);
     lambda = lambda.min(max_positive);

@@ -38,9 +38,12 @@ impl<T: FloatExt> MultiSvPaths<T> for super::heston::MultiHestonPaths<T> {
   }
 }
 
-/// Malliavin covariance matrix from generic paths.
+/// Malliavin covariance matrix from generic paths. `impl Trait` so the call
+/// site monomorphises and inlines the per-step `price`/`variance` accessor
+/// methods — the dyn-dispatch overhead was a measurable hot-path tax on
+/// terminal-price covariance sweeps.
 pub fn malliavin_cov_generic<T: FloatExt>(
-  paths: &dyn MultiSvPaths<T>,
+  paths: &(impl MultiSvPaths<T> + ?Sized),
   cross_corr: &Array2<T>,
   tau: T,
 ) -> Array2<T> {
@@ -64,9 +67,10 @@ pub fn malliavin_cov_generic<T: FloatExt>(
   gamma
 }
 
-/// Itô integral `∫√V_j dWⱼˢ` from generic paths.
+/// Itô integral `∫√V_j dWⱼˢ` from generic paths. `impl Trait` for inlining;
+/// see [`malliavin_cov_generic`] for the rationale.
 pub fn ito_integral_generic<T: FloatExt>(
-  paths: &dyn MultiSvPaths<T>,
+  paths: &(impl MultiSvPaths<T> + ?Sized),
   asset: usize,
   r: T,
   tau: T,
@@ -114,10 +118,10 @@ mod tests {
     };
     let paths = p.sample();
 
-    let gamma = malliavin_cov_generic(&paths as &dyn MultiSvPaths<f64>, &cross, 1.0);
+    let gamma = malliavin_cov_generic(&paths, &cross, 1.0);
     assert!(gamma[[0, 0]] > 0.0);
 
-    let ito = ito_integral_generic(&paths as &dyn MultiSvPaths<f64>, 0, 0.05, 1.0);
+    let ito = ito_integral_generic(&paths, 0, 0.05, 1.0);
     assert!(ito.is_finite());
   }
 }
