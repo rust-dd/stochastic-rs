@@ -9,4 +9,5 @@ pub mod adf;
 pub mod ers_dfgls;
 pub mod kpss;
 pub mod leybourne_mccabe;
+pub mod lo_mackinlay;
 pub mod phillips_perron;
