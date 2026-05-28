@@ -5,11 +5,10 @@
 //! and weekday extraction. Used by [`super::day_count`], [`super::schedule`],
 //! [`super::business_day`], and [`crate::cashflows`].
 //!
-//! Prior to v2.3.0 the helpers were duplicated across `day_count`,
-//! `schedule`, and a `cashflows` alias, producing **EOM inconsistency** —
-//! `ScheduleBuilder::end_of_month(true)` preserved end-of-month while
-//! cashflow leg generation silently did not. All call sites now route
-//! through [`add_months`] here.
+//! [`add_months`] takes an `eom: bool` flag implementing the ISDA EOM rule:
+//! when `true`, an input on the last day of its month maps to the last day
+//! of the target month; when `false`, the day-of-month is clamped to the
+//! target month's length on overflow.
 
 use chrono::Datelike;
 use chrono::NaiveDate;
