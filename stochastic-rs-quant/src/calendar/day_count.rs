@@ -263,20 +263,6 @@ fn actual_actual_isda(d1: NaiveDate, d2: NaiveDate) -> f64 {
 pub use super::date_math::days_in_month;
 pub use super::date_math::is_leap_year;
 
-/// Add `months` calendar months to `date`, clamping the day-of-month to the
-/// last day of the target month if necessary. Non-EOM-aware.
-///
-/// **Deprecated:** delegate to [`super::date_math::add_months`] with
-/// `eom = false` for the equivalent behaviour, or `eom = true` for the
-/// ISDA EOM rule. Will be removed in v3.0.
-#[deprecated(
-  since = "2.3.0",
-  note = "use `calendar::date_math::add_months(date, months, /* eom */ false)` instead"
-)]
-pub fn add_months_clamped(date: chrono::NaiveDate, months: i32) -> chrono::NaiveDate {
-  super::date_math::add_months(date, months, false)
-}
-
 #[cfg(test)]
 mod tests {
   use chrono::NaiveDate;
