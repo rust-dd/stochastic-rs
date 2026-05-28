@@ -5,12 +5,11 @@
 //!
 //! Reference: ISDA 2006 Definitions, Sections 4.15–4.16.
 
-use chrono::Datelike;
 use chrono::NaiveDate;
 
 use super::business_day::BusinessDayConvention;
+use super::date_math::add_months;
 use super::day_count::DayCountConvention;
-use super::day_count::days_in_month;
 use super::holiday::Calendar;
 use crate::traits::FloatExt;
 
@@ -288,27 +287,6 @@ fn generate_forward(
   }
   dates.push(termination);
   dates
-}
-
-/// Add `months` calendar months to `date`, clamping to month-end if needed.
-/// When `eom` is true and the input is the last day of its month, the result
-/// is also the last day of the target month.
-///
-/// Uses the canonical [`days_in_month`](crate::calendar::day_count::days_in_month)
-/// helper.
-pub(crate) fn add_months(date: NaiveDate, months: i32, eom: bool) -> NaiveDate {
-  let total = date.year() * 12 + date.month0() as i32 + months;
-  let target_year = total.div_euclid(12);
-  let target_month = (total.rem_euclid(12) + 1) as u32;
-  let max_day = days_in_month(target_year, target_month);
-
-  let day = if eom && date.day() == days_in_month(date.year(), date.month()) {
-    max_day
-  } else {
-    date.day().min(max_day)
-  };
-
-  NaiveDate::from_ymd_opt(target_year, target_month, day).unwrap()
 }
 
 #[cfg(test)]

@@ -260,41 +260,21 @@ fn actual_actual_isda(d1: NaiveDate, d2: NaiveDate) -> f64 {
   days_first / denom_first + full_years + days_last / denom_last
 }
 
-/// Canonical leap-year predicate. Re-exported from `calendar::day_count`.
-pub fn is_leap_year(year: i32) -> bool {
-  (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
-}
-
-/// Days in `month` of `year` (1..=12 for `month`). Re-exported canonical
-/// helper used across `calendar::schedule`, `cashflows::types`, and elsewhere.
-pub fn days_in_month(year: i32, month: u32) -> u32 {
-  match month {
-    1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-    4 | 6 | 9 | 11 => 30,
-    2 => {
-      if is_leap_year(year) {
-        29
-      } else {
-        28
-      }
-    }
-    _ => unreachable!(),
-  }
-}
+pub use super::date_math::days_in_month;
+pub use super::date_math::is_leap_year;
 
 /// Add `months` calendar months to `date`, clamping the day-of-month to the
-/// last day of the target month if necessary. The non-EOM variant used by
-/// `cashflows::types`. For EOM-aware behaviour use
-/// `calendar::schedule::add_months`.
+/// last day of the target month if necessary. Non-EOM-aware.
+///
+/// **Deprecated:** delegate to [`super::date_math::add_months`] with
+/// `eom = false` for the equivalent behaviour, or `eom = true` for the
+/// ISDA EOM rule. Will be removed in v3.0.
+#[deprecated(
+  since = "2.3.0",
+  note = "use `calendar::date_math::add_months(date, months, /* eom */ false)` instead"
+)]
 pub fn add_months_clamped(date: chrono::NaiveDate, months: i32) -> chrono::NaiveDate {
-  use chrono::Datelike;
-  let total = date.year() * 12 + date.month0() as i32 + months;
-  let target_year = total.div_euclid(12);
-  let target_month = (total.rem_euclid(12) + 1) as u32;
-  let max_day = days_in_month(target_year, target_month);
-  let day = date.day().min(max_day);
-  chrono::NaiveDate::from_ymd_opt(target_year, target_month, day)
-    .expect("target schedule date must be valid")
+  super::date_math::add_months(date, months, false)
 }
 
 #[cfg(test)]

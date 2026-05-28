@@ -12,6 +12,7 @@ use super::CurveProvider;
 use super::RateIndex;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
+use crate::calendar::date_math::add_months;
 use crate::traits::FloatExt;
 
 /// Single accrual period with a payment date.
@@ -345,7 +346,7 @@ impl<T: FloatExt> RateIndex<T> for CmsIndex<T> {
     let curve = curves
       .forecast_curve(self.curve_key())
       .unwrap_or_else(|| curves.discount_curve());
-    let swap_end = add_months(period.accrual_start, self.swap_tenor_months);
+    let swap_end = add_months(period.accrual_start, self.swap_tenor_months, /* eom */ false);
     let schedule = generate_unadjusted_schedule(
       period.accrual_start,
       swap_end,
@@ -389,8 +390,9 @@ fn linear_profile<T: FloatExt>(periods: usize, start: T, end: T) -> Array1<T> {
   }
 }
 
-use crate::calendar::day_count::add_months_clamped as add_months;
-
+/// Generate an unadjusted coupon-period grid `[effective, ..., termination]`.
+/// Non-EOM (the coupons-on-anniversary convention used by the cashflow leg
+/// generators). For EOM-aware schedules use [`crate::calendar::ScheduleBuilder`].
 fn generate_unadjusted_schedule(
   effective: NaiveDate,
   termination: NaiveDate,
@@ -399,7 +401,7 @@ fn generate_unadjusted_schedule(
   let mut dates = vec![effective];
   let mut i = 1_i32;
   loop {
-    let next = add_months(effective, period_months * i);
+    let next = add_months(effective, period_months * i, /* eom */ false);
     if next >= termination {
       break;
     }

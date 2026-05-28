@@ -10,11 +10,17 @@
 use chrono::NaiveDate;
 
 pub mod business_day;
+pub mod date_math;
 pub mod day_count;
 pub mod holiday;
 pub mod schedule;
 
 pub use business_day::BusinessDayConvention;
+pub use date_math::add_days;
+pub use date_math::add_months;
+pub use date_math::days_in_month;
+pub use date_math::is_leap_year;
+pub use date_math::weekday;
 pub use day_count::DayCountConvention;
 pub use holiday::Calendar;
 pub use holiday::HolidayCalendar;
