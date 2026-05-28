@@ -9,6 +9,7 @@ use chrono::NaiveDate;
 
 use super::business_day::BusinessDayConvention;
 use super::date_math::add_months;
+use super::date_math::snap_to_imm;
 use super::day_count::DayCountConvention;
 use super::holiday::Calendar;
 use crate::traits::FloatExt;
@@ -126,6 +127,9 @@ pub struct ScheduleBuilder {
   /// backward generation and `ShortLast` for forward generation (the
   /// implicit pre-rc.2 behaviour).
   stub: Option<StubConvention>,
+  /// Snap every generated date to the nearest IMM date (3rd Wednesday of
+  /// the same calendar quarter), per CME / LIFFE futures convention.
+  imm: bool,
 }
 
 impl ScheduleBuilder {
@@ -139,7 +143,16 @@ impl ScheduleBuilder {
       rule: DateGenerationRule::Backward,
       end_of_month: false,
       stub: None,
+      imm: false,
     }
+  }
+
+  /// Snap every generated date to its quarterly IMM date (3rd Wednesday
+  /// of the enclosing March / June / September / December bucket). Used
+  /// for futures-aligned schedules.
+  pub fn imm(mut self, flag: bool) -> Self {
+    self.imm = flag;
+    self
   }
 
   /// Set the stub convention. By default (no call), the builder picks
@@ -192,6 +205,12 @@ impl ScheduleBuilder {
         generate_forward(self.effective, self.termination, period, self.end_of_month)
       }
     };
+
+    if self.imm {
+      for d in raw_dates.iter_mut() {
+        *d = snap_to_imm(*d);
+      }
+    }
 
     raw_dates.sort();
     raw_dates.dedup();
@@ -320,5 +339,48 @@ mod tests {
     assert_eq!(Frequency::Annual.months(), 12);
     assert_eq!(Frequency::SemiAnnual.months(), 6);
     assert_eq!(Frequency::Quarterly.months(), 3);
+  }
+
+  #[test]
+  fn imm_quarterly_schedule_lands_on_third_wednesdays() {
+    let s = ScheduleBuilder::new(
+      NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
+      NaiveDate::from_ymd_opt(2025, 3, 1).unwrap(),
+    )
+    .frequency(Frequency::Quarterly)
+    .imm(true)
+    .build();
+    use chrono::Datelike as _;
+    for d in &s.dates {
+      assert_eq!(d.weekday(), chrono::Weekday::Wed, "{d} not Wednesday");
+      assert!((15..=21).contains(&d.day()), "{d} not in 3rd week");
+      assert!(
+        matches!(d.month(), 3 | 6 | 9 | 12),
+        "{d} not in IMM month"
+      );
+    }
+  }
+
+  #[test]
+  fn imm_flag_disabled_keeps_generated_dates() {
+    let s_plain = ScheduleBuilder::new(
+      NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
+      NaiveDate::from_ymd_opt(2025, 3, 1).unwrap(),
+    )
+    .frequency(Frequency::Quarterly)
+    .build();
+    let s_imm = ScheduleBuilder::new(
+      NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
+      NaiveDate::from_ymd_opt(2025, 3, 1).unwrap(),
+    )
+    .frequency(Frequency::Quarterly)
+    .imm(true)
+    .build();
+    use chrono::Datelike as _;
+    // Same length and final endpoint should match the IMM bucket of the
+    // termination, but the generic schedule keeps day-of-month 1.
+    assert_eq!(s_plain.dates.len(), s_imm.dates.len());
+    assert_eq!(s_plain.dates[0].day(), 1);
+    assert_ne!(s_imm.dates[0].day(), 1);
   }
 }

@@ -105,6 +105,40 @@ pub fn weekday(date: NaiveDate) -> Weekday {
   date.weekday()
 }
 
+/// Third-Wednesday IMM date of `(year, quarter_month)` where `quarter_month
+/// ∈ {3, 6, 9, 12}` for March / June / September / December. The standard
+/// CME / LIFFE quarterly futures and interest-rate-swap rolls land on these
+/// dates.
+///
+/// # Panics
+/// Panics on invalid month outside `{3, 6, 9, 12}`.
+pub fn imm_date(year: i32, quarter_month: u32) -> NaiveDate {
+  assert!(
+    matches!(quarter_month, 3 | 6 | 9 | 12),
+    "IMM quarter_month must be one of 3, 6, 9, 12; got {quarter_month}"
+  );
+  // First day of month, then advance to the first Wednesday, then +14 days.
+  let first = NaiveDate::from_ymd_opt(year, quarter_month, 1).expect("valid first-of-month");
+  let dow = first.weekday().num_days_from_monday() as i32; // Mon=0, Wed=2
+  let offset_to_first_wed = (2 - dow).rem_euclid(7);
+  let first_wed = first
+    .checked_add_signed(chrono::Duration::days(offset_to_first_wed as i64))
+    .expect("first Wednesday of month must exist");
+  add_days(first_wed, 14)
+}
+
+/// Snap `date` to the IMM date in the *same* quarter (March, June, September,
+/// December buckets — months `1..=3` map to March, `4..=6` to June, etc.).
+pub fn snap_to_imm(date: NaiveDate) -> NaiveDate {
+  let qmonth = match date.month() {
+    1..=3 => 3,
+    4..=6 => 6,
+    7..=9 => 9,
+    _ => 12,
+  };
+  imm_date(date.year(), qmonth)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -191,5 +225,60 @@ mod tests {
   fn weekday_known_value() {
     let mon = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
     assert_eq!(weekday(mon), Weekday::Mon);
+  }
+
+  #[test]
+  fn imm_date_matches_cme_calendar() {
+    // Authoritative CME futures-roll dates 2024:
+    //   IMM-Mar 2024 = 2024-03-20 (Wed)
+    //   IMM-Jun 2024 = 2024-06-19 (Wed)
+    //   IMM-Sep 2024 = 2024-09-18 (Wed)
+    //   IMM-Dec 2024 = 2024-12-18 (Wed)
+    assert_eq!(
+      imm_date(2024, 3),
+      NaiveDate::from_ymd_opt(2024, 3, 20).unwrap()
+    );
+    assert_eq!(
+      imm_date(2024, 6),
+      NaiveDate::from_ymd_opt(2024, 6, 19).unwrap()
+    );
+    assert_eq!(
+      imm_date(2024, 9),
+      NaiveDate::from_ymd_opt(2024, 9, 18).unwrap()
+    );
+    assert_eq!(
+      imm_date(2024, 12),
+      NaiveDate::from_ymd_opt(2024, 12, 18).unwrap()
+    );
+  }
+
+  #[test]
+  fn imm_date_always_lands_on_wednesday() {
+    for year in 2020..=2030 {
+      for qm in [3, 6, 9, 12] {
+        let d = imm_date(year, qm);
+        assert_eq!(d.weekday(), Weekday::Wed, "{year}-{qm} imm not Wed");
+        assert!((15..=21).contains(&d.day()), "{year}-{qm} out of 3rd-week");
+      }
+    }
+  }
+
+  #[test]
+  fn snap_to_imm_buckets_by_quarter() {
+    // 2024-01-15 should snap to IMM-Mar 2024.
+    let d = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+    assert_eq!(snap_to_imm(d), imm_date(2024, 3));
+    // 2024-07-01 → IMM-Sep 2024.
+    let d = NaiveDate::from_ymd_opt(2024, 7, 1).unwrap();
+    assert_eq!(snap_to_imm(d), imm_date(2024, 9));
+    // 2024-12-31 → IMM-Dec 2024.
+    let d = NaiveDate::from_ymd_opt(2024, 12, 31).unwrap();
+    assert_eq!(snap_to_imm(d), imm_date(2024, 12));
+  }
+
+  #[test]
+  #[should_panic(expected = "IMM quarter_month must be one of")]
+  fn imm_date_rejects_non_quarter_month() {
+    let _ = imm_date(2024, 4);
   }
 }

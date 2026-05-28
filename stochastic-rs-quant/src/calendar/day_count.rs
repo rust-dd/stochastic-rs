@@ -43,6 +43,12 @@ pub enum DayCountConvention {
   /// NL/365 (No-Leap): actual days minus any Feb-29 in the interval, divided
   /// by 365. Used in some Canadian / asset-backed-security pricing.
   NoLeap365,
+  /// Act/365L (Actual/365 Leap): denominator is 366 when the period
+  /// contains a February 29 (in any year it traverses), otherwise 365.
+  /// Standard sterling money-market convention; ISDA 2006 §4.16(i).
+  /// Distinct from `ActualActualISDA` (which splits the period at the
+  /// year boundary) and from `NoLeap365` (which adjusts the numerator).
+  Actual365Leap,
 }
 
 impl std::fmt::Display for DayCountConvention {
@@ -58,6 +64,7 @@ impl std::fmt::Display for DayCountConvention {
       Self::Business252 => write!(f, "BUS/252"),
       Self::Actual364 => write!(f, "ACT/364"),
       Self::NoLeap365 => write!(f, "NL/365"),
+      Self::Actual365Leap => write!(f, "ACT/365L"),
     }
   }
 }
@@ -100,6 +107,15 @@ impl DayCountConvention {
         let days = no_leap_day_count(d1, d2) as f64;
         T::from_f64_fast(days / 365.0)
       }
+      Self::Actual365Leap => {
+        let days = (d2 - d1).num_days() as f64;
+        let denom = if period_contains_feb29(d1, d2) {
+          366.0
+        } else {
+          365.0
+        };
+        T::from_f64_fast(days / denom)
+      }
     }
   }
 
@@ -110,7 +126,8 @@ impl DayCountConvention {
       | Self::Actual365Fixed
       | Self::ActualActualISDA
       | Self::ActualActualAFB
-      | Self::Actual364 => (d2 - d1).num_days(),
+      | Self::Actual364
+      | Self::Actual365Leap => (d2 - d1).num_days(),
       Self::Thirty360 => thirty360_usa(d1, d2),
       Self::Thirty360European => thirty360_european(d1, d2),
       Self::Thirty360EuropeanISDA => thirty360_european_isda(d1, d2),
@@ -263,6 +280,24 @@ fn actual_actual_isda(d1: NaiveDate, d2: NaiveDate) -> f64 {
 pub use super::date_math::days_in_month;
 pub use super::date_math::is_leap_year;
 
+/// True when `d1 < d2` and a February 29 strictly inside `(d1, d2]` exists
+/// in any year traversed by the period. Used by [`DayCountConvention::Actual365Leap`].
+fn period_contains_feb29(d1: NaiveDate, d2: NaiveDate) -> bool {
+  if d1 == d2 {
+    return false;
+  }
+  let (start, end) = if d1 < d2 { (d1, d2) } else { (d2, d1) };
+  for y in start.year()..=end.year() {
+    if let Some(feb29) = NaiveDate::from_ymd_opt(y, 2, 29)
+      && feb29 > start
+      && feb29 <= end
+    {
+      return true;
+    }
+  }
+  false
+}
+
 #[cfg(test)]
 mod tests {
   use chrono::NaiveDate;
@@ -307,5 +342,34 @@ mod tests {
   fn days_in_february_leap() {
     assert_eq!(days_in_month(2024, 2), 29);
     assert_eq!(days_in_month(2023, 2), 28);
+  }
+
+  #[test]
+  fn act365l_period_containing_feb29_uses_366_denominator() {
+    let d1 = NaiveDate::from_ymd_opt(2023, 12, 1).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2024, 12, 1).unwrap();
+    // 366 actual days, Feb 29 2024 inside the period → denom 366.
+    let yf: f64 = DayCountConvention::Actual365Leap.year_fraction(d1, d2);
+    assert!((yf - 1.0).abs() < 1e-12, "got {yf}");
+  }
+
+  #[test]
+  fn act365l_period_without_feb29_uses_365_denominator() {
+    let d1 = NaiveDate::from_ymd_opt(2025, 2, 1).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2025, 12, 1).unwrap();
+    let actual_days = (d2 - d1).num_days() as f64;
+    let yf: f64 = DayCountConvention::Actual365Leap.year_fraction(d1, d2);
+    assert!((yf - actual_days / 365.0).abs() < 1e-12, "got {yf}");
+  }
+
+  #[test]
+  fn act365l_feb28_in_non_leap_year_uses_365_not_366() {
+    let d1 = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2023, 3, 1).unwrap();
+    // 2023 is not a leap year; period contains Feb 1 through Feb 28 but no
+    // Feb 29 → denominator 365.
+    let yf: f64 = DayCountConvention::Actual365Leap.year_fraction(d1, d2);
+    let expected = 59.0 / 365.0;
+    assert!((yf - expected).abs() < 1e-12, "got {yf}");
   }
 }

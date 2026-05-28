@@ -49,15 +49,34 @@ impl HolidayCalendar {
   }
 }
 
+/// How constituent calendars combine in a [`Calendar::joint_with_mode`]
+/// construction.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum JointMode {
+  /// Union: a date is a holiday when **any** constituent calendar marks it
+  /// as such. Default and the convention used by QuantLib's `JointCalendar`
+  /// in `JoinHolidays` mode — appropriate when a settlement obligation
+  /// spans multiple markets and a holiday in *either* prevents settlement.
+  #[default]
+  AnyHoliday,
+  /// Intersection: a date is a holiday only when **every** constituent
+  /// calendar marks it as such. QuantLib `JoinBusinessDays`-equivalent —
+  /// appropriate for back-office reconciliation where work proceeds if
+  /// any market is open.
+  AllHolidays,
+}
+
 /// A calendar combining one or more algorithmic holiday schedules with
 /// optional user-defined extra holidays.
 ///
-/// A date is considered a holiday if *any* constituent calendar marks it
-/// as such, or if it appears in the extra-holiday set.
+/// Combine mode is controlled by [`JointMode`] (default
+/// [`JointMode::AnyHoliday`]); extra holidays are always taken as the
+/// union with the algorithmic set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Calendar {
   calendars: Vec<HolidayCalendar>,
   extra_holidays: BTreeSet<NaiveDate>,
+  mode: JointMode,
 }
 
 impl Calendar {
@@ -66,15 +85,27 @@ impl Calendar {
     Self {
       calendars: vec![kind],
       extra_holidays: BTreeSet::new(),
+      mode: JointMode::AnyHoliday,
     }
   }
 
-  /// Create a joint calendar from multiple schedules. A date is a holiday
-  /// if *any* constituent calendar considers it one.
+  /// Create a joint calendar from multiple schedules in union mode (a date
+  /// is a holiday if *any* constituent considers it one). Convenience
+  /// wrapper over [`Calendar::joint_with_mode`].
   pub fn joint(calendars: impl IntoIterator<Item = HolidayCalendar>) -> Self {
+    Self::joint_with_mode(calendars, JointMode::AnyHoliday)
+  }
+
+  /// Create a joint calendar from multiple schedules with an explicit
+  /// combine mode.
+  pub fn joint_with_mode(
+    calendars: impl IntoIterator<Item = HolidayCalendar>,
+    mode: JointMode,
+  ) -> Self {
     Self {
       calendars: calendars.into_iter().collect(),
       extra_holidays: BTreeSet::new(),
+      mode,
     }
   }
 
@@ -93,13 +124,19 @@ impl Calendar {
     matches!(date.weekday(), Weekday::Sat | Weekday::Sun)
   }
 
-  /// True if the date is a holiday in any constituent calendar
-  /// (excluding weekends).
+  /// True if the date is a holiday under the configured [`JointMode`]
+  /// (extra holidays are always merged as a union).
   pub fn is_holiday(&self, date: NaiveDate) -> bool {
     if self.extra_holidays.contains(&date) {
       return true;
     }
-    self.calendars.iter().any(|c| c.is_holiday(date))
+    if self.calendars.is_empty() {
+      return false;
+    }
+    match self.mode {
+      JointMode::AnyHoliday => self.calendars.iter().any(|c| c.is_holiday(date)),
+      JointMode::AllHolidays => self.calendars.iter().all(|c| c.is_holiday(date)),
+    }
   }
 
   /// True if the date is a business day (not a weekend and not a holiday).
@@ -522,5 +559,39 @@ mod tests {
     assert!(cal.is_holiday(date));
     cal.remove_holiday(date);
     assert!(!cal.is_holiday(date));
+  }
+
+  #[test]
+  fn joint_any_mode_is_union() {
+    let cal = Calendar::joint([HolidayCalendar::UnitedStates, HolidayCalendar::Target]);
+    // 2024-07-04 is a US holiday but not TARGET.
+    let jul4 = NaiveDate::from_ymd_opt(2024, 7, 4).unwrap();
+    assert!(cal.is_holiday(jul4), "union: US holiday counts");
+    // 2024-05-01 is TARGET (Labour Day) but not US.
+    let may1 = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
+    assert!(cal.is_holiday(may1), "union: TARGET holiday counts");
+  }
+
+  #[test]
+  fn joint_all_mode_is_intersection() {
+    let cal = Calendar::joint_with_mode(
+      [HolidayCalendar::UnitedStates, HolidayCalendar::Target],
+      JointMode::AllHolidays,
+    );
+    // US-only or TARGET-only days are *not* joint holidays under
+    // intersection mode.
+    let jul4 = NaiveDate::from_ymd_opt(2024, 7, 4).unwrap();
+    assert!(!cal.is_holiday(jul4), "intersection: US-only ≠ joint holiday");
+    let may1 = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
+    assert!(
+      !cal.is_holiday(may1),
+      "intersection: TARGET-only ≠ joint holiday"
+    );
+    // Christmas Day is a holiday in both → joint.
+    let dec25 = NaiveDate::from_ymd_opt(2024, 12, 25).unwrap();
+    assert!(
+      cal.is_holiday(dec25),
+      "intersection: Christmas is shared → joint holiday"
+    );
   }
 }
