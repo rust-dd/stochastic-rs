@@ -94,7 +94,8 @@ pub fn add_days(date: NaiveDate, days: i32) -> NaiveDate {
   } else {
     NaiveDate::MIN
   };
-  date.checked_add_signed(chrono::Duration::days(days as i64))
+  date
+    .checked_add_signed(chrono::Duration::days(days as i64))
     .unwrap_or(saturation)
 }
 
@@ -214,7 +215,10 @@ mod tests {
   #[test]
   fn add_days_basic() {
     let d = NaiveDate::from_ymd_opt(2024, 2, 28).unwrap();
-    assert_eq!(add_days(d, 1), NaiveDate::from_ymd_opt(2024, 2, 29).unwrap());
+    assert_eq!(
+      add_days(d, 1),
+      NaiveDate::from_ymd_opt(2024, 2, 29).unwrap()
+    );
     assert_eq!(
       add_days(d, -28),
       NaiveDate::from_ymd_opt(2024, 1, 31).unwrap()

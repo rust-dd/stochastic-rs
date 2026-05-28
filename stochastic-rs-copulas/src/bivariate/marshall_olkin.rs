@@ -338,6 +338,10 @@ mod tests {
     let x = array![[0.9_f64, 0.5]];
     let pd = c.partial_derivative(&x).unwrap();
     let expected = 0.5_f64 * 0.9_f64.powf(-0.5) * 0.5;
-    assert!(approx(pd[0], expected, 1e-12), "pd={}, expected {expected}", pd[0]);
+    assert!(
+      approx(pd[0], expected, 1e-12),
+      "pd={}, expected {expected}",
+      pd[0]
+    );
   }
 }

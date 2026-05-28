@@ -143,7 +143,10 @@ pub fn cusum_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: CusumConfig) -> C
   let k = x.ncols();
   assert!(k >= 1, "design matrix must have at least one regressor");
   validate_series(y_slice, k + 2);
-  assert!(cfg.alpha > 0.0 && cfg.alpha < 1.0, "alpha must be in (0, 1)");
+  assert!(
+    cfg.alpha > 0.0 && cfg.alpha < 1.0,
+    "alpha must be in (0, 1)"
+  );
 
   let t_total = y.len();
   let w = recursive_residuals(y.view(), x.view());
@@ -160,8 +163,7 @@ pub fn cusum_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: CusumConfig) -> C
 
 fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult {
   let w_mean = w.iter().sum::<f64>() / n_tilde;
-  let sigma2 =
-    w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (n_tilde - 1.0).max(1.0);
+  let sigma2 = w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (n_tilde - 1.0).max(1.0);
   let sigma = sigma2.max(0.0).sqrt();
   let sigma_safe = if sigma > 0.0 { sigma } else { 1.0 };
 
@@ -279,15 +281,19 @@ fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Vec<f64> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
   use ndarray_rand::RandomExt;
   use ndarray_rand::rand_distr::Normal;
   use rand::SeedableRng;
   use rand::rngs::StdRng;
 
+  use super::*;
+
   fn linear_design(n: usize) -> ndarray::Array2<f64> {
-    Array2::from_shape_fn((n, 2), |(i, j)| if j == 0 { 1.0 } else { i as f64 / n as f64 })
+    Array2::from_shape_fn(
+      (n, 2),
+      |(i, j)| if j == 0 { 1.0 } else { i as f64 / n as f64 },
+    )
   }
 
   fn simulate_stationary(n: usize, seed: u64) -> Array1<f64> {
@@ -314,10 +320,8 @@ mod tests {
     let mut y = Array1::zeros(n);
     for i in 0..n {
       let s = if i < shift_at { 1.0 } else { sigma_high };
-      let eps = ndarray_rand::rand_distr::Distribution::sample(
-        &Normal::new(0.0, s).unwrap(),
-        &mut rng,
-      );
+      let eps =
+        ndarray_rand::rand_distr::Distribution::sample(&Normal::new(0.0, s).unwrap(), &mut rng);
       y[i] = mu[i] + eps;
     }
     y
@@ -431,16 +435,10 @@ mod tests {
     );
     let w = &res.recursive_residuals;
     let w_mean = w.iter().sum::<f64>() / w.len() as f64;
-    let s2_w =
-      w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (w.len() as f64 - 1.0);
+    let s2_w = w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (w.len() as f64 - 1.0);
 
     // OLS σ² on the full sample.
-    let beta = x
-      .t()
-      .dot(&x)
-      .inv()
-      .unwrap()
-      .dot(&x.t().dot(&y));
+    let beta = x.t().dot(&x).inv().unwrap().dot(&x.t().dot(&y));
     let resid = &y - &x.dot(&beta);
     let s2_ols = resid.iter().map(|r| r * r).sum::<f64>() / (n as f64 - 2.0);
 

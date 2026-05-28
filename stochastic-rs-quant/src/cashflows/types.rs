@@ -346,7 +346,11 @@ impl<T: FloatExt> RateIndex<T> for CmsIndex<T> {
     let curve = curves
       .forecast_curve(self.curve_key())
       .unwrap_or_else(|| curves.discount_curve());
-    let swap_end = add_months(period.accrual_start, self.swap_tenor_months, /* eom */ false);
+    let swap_end = add_months(
+      period.accrual_start,
+      self.swap_tenor_months,
+      /* eom */ false,
+    );
     let schedule = generate_unadjusted_schedule(
       period.accrual_start,
       swap_end,

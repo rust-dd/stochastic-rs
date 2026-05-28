@@ -117,11 +117,7 @@ impl crate::traits::HypothesisTest for ApResult {
 /// Panics on non-finite inputs, `pi0` outside `(0, 0.5)`, `alpha` outside
 /// `(0, 1)`, or a sample too short to fit OLS on both pieces of the
 /// trimmed grid.
-pub fn andrews_ploberger_test(
-  y: ArrayView1<f64>,
-  x: ArrayView2<f64>,
-  cfg: ApConfig,
-) -> ApResult {
+pub fn andrews_ploberger_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ApConfig) -> ApResult {
   let y_slice = y
     .as_slice()
     .expect("andrews_ploberger_test requires a contiguous ArrayView1");
@@ -131,7 +127,10 @@ pub fn andrews_ploberger_test(
     "pi0 must be in (0, 0.5), got {}",
     cfg.pi0
   );
-  assert!(cfg.alpha > 0.0 && cfg.alpha < 1.0, "alpha must be in (0, 1)");
+  assert!(
+    cfg.alpha > 0.0 && cfg.alpha < 1.0,
+    "alpha must be in (0, 1)"
+  );
   let t_total = y.len();
   let k = x.ncols();
   assert!(k >= 1, "design matrix must have at least one regressor");
@@ -328,12 +327,13 @@ fn decide(stat: f64, kind: ApStatistic, k: usize, pi0: f64, alpha: f64) -> (f64,
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array2;
   use ndarray_rand::RandomExt;
   use ndarray_rand::rand_distr::Normal;
   use rand::SeedableRng;
   use rand::rngs::StdRng;
+
+  use super::*;
 
   fn simulate(
     n: usize,

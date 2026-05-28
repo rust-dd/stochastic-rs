@@ -281,15 +281,14 @@ fn integrate_g_hagan_west<T: FloatExt>(g0: T, g1: T, x: T) -> T {
   // Region 1: g₁+2g₀ and g₀+2g₁ have opposite signs (the no-correction case).
   // G(x) = 3(g₀+g₁)x² − 2(g₁+2g₀)x + g₀
   // ∫₀ˣ G = (g₀+g₁)x³ − (g₁+2g₀)x² + g₀ x
-  let region1 = (g1_plus_2g0 < zero && g0_plus_2g1 >= zero)
-    || (g1_plus_2g0 > zero && g0_plus_2g1 <= zero);
+  let region1 =
+    (g1_plus_2g0 < zero && g0_plus_2g1 >= zero) || (g1_plus_2g0 > zero && g0_plus_2g1 <= zero);
   if region1 {
     return (g0 + g1) * x * x * x - g1_plus_2g0 * x * x + g0 * x;
   }
 
   // Region 2: g₀ and g₁+2g₀ have opposite signs → flat-then-quadratic at η.
-  let region2 =
-    (g0 < zero && g1_plus_2g0 >= zero) || (g0 > zero && g1_plus_2g0 <= zero);
+  let region2 = (g0 < zero && g1_plus_2g0 >= zero) || (g0 > zero && g1_plus_2g0 <= zero);
   if region2 {
     let denom = g1 - g0;
     if denom == zero {
@@ -310,8 +309,7 @@ fn integrate_g_hagan_west<T: FloatExt>(g0: T, g1: T, x: T) -> T {
   }
 
   // Region 3: g₁ and g₀+2g₁ have opposite signs → quadratic-then-flat at η.
-  let region3 =
-    (g1 <= zero && g0_plus_2g1 > zero) || (g1 >= zero && g0_plus_2g1 < zero);
+  let region3 = (g1 <= zero && g0_plus_2g1 > zero) || (g1 >= zero && g0_plus_2g1 < zero);
   if region3 {
     let denom = g1 - g0;
     if denom == zero {
@@ -475,7 +473,10 @@ mod tests {
     for i in 1..=n {
       let t = 0.25 + (2.0 - 0.25) * (i as f64 / n as f64);
       let df = monotone_convex(&points, t);
-      assert!(df > 0.0 && df.is_finite(), "DF at t={t} non-positive or nan: {df}");
+      assert!(
+        df > 0.0 && df.is_finite(),
+        "DF at t={t} non-positive or nan: {df}"
+      );
       assert!(df <= 1.0 + 1e-10, "DF at t={t} above 1: {df}");
     }
   }

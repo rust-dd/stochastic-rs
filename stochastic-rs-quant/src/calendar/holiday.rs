@@ -581,7 +581,10 @@ mod tests {
     // US-only or TARGET-only days are *not* joint holidays under
     // intersection mode.
     let jul4 = NaiveDate::from_ymd_opt(2024, 7, 4).unwrap();
-    assert!(!cal.is_holiday(jul4), "intersection: US-only ≠ joint holiday");
+    assert!(
+      !cal.is_holiday(jul4),
+      "intersection: US-only ≠ joint holiday"
+    );
     let may1 = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
     assert!(
       !cal.is_holiday(may1),

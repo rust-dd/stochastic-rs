@@ -90,9 +90,8 @@ impl TCopula {
 
   /// Standard Student-t density $f_\nu(x)$.
   fn t_pdf(x: f64, nu: f64) -> f64 {
-    let log_norm = ln_gamma(0.5 * (nu + 1.0))
-      - 0.5 * (nu * std::f64::consts::PI).ln()
-      - ln_gamma(0.5 * nu);
+    let log_norm =
+      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
     let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
     (log_norm + log_kernel).exp()
   }
@@ -396,10 +395,7 @@ mod tests {
     let pt = array![[0.5_f64, 0.5]];
     let lhs = c_pos.cdf(&pt).unwrap()[0] + c_neg.cdf(&pt).unwrap()[0];
     let rhs = 2.0 * c_zero.cdf(&pt).unwrap()[0];
-    assert!(
-      approx(lhs, rhs, 1e-6),
-      "symmetry: lhs = {lhs}, rhs = {rhs}"
-    );
+    assert!(approx(lhs, rhs, 1e-6), "symmetry: lhs = {lhs}, rhs = {rhs}");
   }
 
   #[test]

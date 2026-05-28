@@ -239,7 +239,12 @@ mod tests {
     let cdf = c.cdf(&x).unwrap();
     for i in 0..x.nrows() {
       let expected = x[[i, 0]] * x[[i, 1]];
-      assert!(approx(cdf[i], expected, 1e-12), "row {i}: {} vs {}", cdf[i], expected);
+      assert!(
+        approx(cdf[i], expected, 1e-12),
+        "row {i}: {} vs {}",
+        cdf[i],
+        expected
+      );
     }
   }
 
@@ -279,7 +284,10 @@ mod tests {
     let tau = Joe::tau_residual(0.0, 2.0); // tau(2.0) - 0 = tau(2.0)
     c.set_tau(tau);
     let recovered = c.compute_theta();
-    assert!(approx(recovered, 2.0, 1e-6), "expected 2.0, got {recovered}");
+    assert!(
+      approx(recovered, 2.0, 1e-6),
+      "expected 2.0, got {recovered}"
+    );
   }
 
   #[test]

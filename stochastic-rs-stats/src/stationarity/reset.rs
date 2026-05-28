@@ -23,10 +23,10 @@
 
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::special::beta_i;
 
 use super::common::ols;
 use super::common::validate_series;
-use stochastic_rs_distributions::special::beta_i;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
 /// incomplete beta identity
@@ -103,7 +103,10 @@ pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> R
   assert!(cfg.max_power >= 2, "RESET requires max_power >= 2");
   assert!(t_total > k + q, "need T > k + q observations");
   validate_series(y_slice, k + q + 2);
-  assert!(cfg.alpha > 0.0 && cfg.alpha < 1.0, "alpha must be in (0, 1)");
+  assert!(
+    cfg.alpha > 0.0 && cfg.alpha < 1.0,
+    "alpha must be in (0, 1)"
+  );
 
   // Restricted OLS: y on x.
   let x_rows: Vec<Vec<f64>> = (0..t_total).map(|i| x.row(i).to_vec()).collect();
@@ -153,13 +156,14 @@ pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> R
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ndarray::Array1;
   use ndarray::Array2;
   use ndarray_rand::RandomExt;
   use ndarray_rand::rand_distr::Normal;
   use rand::SeedableRng;
   use rand::rngs::StdRng;
+
+  use super::*;
 
   fn design_with_intercept(x: &Array1<f64>) -> Array2<f64> {
     let n = x.len();

@@ -354,10 +354,7 @@ mod tests {
     for d in &s.dates {
       assert_eq!(d.weekday(), chrono::Weekday::Wed, "{d} not Wednesday");
       assert!((15..=21).contains(&d.day()), "{d} not in 3rd week");
-      assert!(
-        matches!(d.month(), 3 | 6 | 9 | 12),
-        "{d} not in IMM month"
-      );
+      assert!(matches!(d.month(), 3 | 6 | 9 | 12), "{d} not in IMM month");
     }
   }
 

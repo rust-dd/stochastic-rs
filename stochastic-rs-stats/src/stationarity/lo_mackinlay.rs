@@ -107,7 +107,10 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
     .as_slice()
     .expect("lo_mackinlay_test requires a contiguous ArrayView1");
   assert!(cfg.q >= 2, "q must be >= 2, got {}", cfg.q);
-  assert!(cfg.alpha > 0.0 && cfg.alpha < 1.0, "alpha must be in (0, 1)");
+  assert!(
+    cfg.alpha > 0.0 && cfg.alpha < 1.0,
+    "alpha must be in (0, 1)"
+  );
 
   let returns: Vec<f64> = if cfg.input_is_log_prices {
     validate_series(raw, cfg.q * 4 + 1);
@@ -171,7 +174,11 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
   let z_iid = nq_f.sqrt() * (variance_ratio - 1.0) / phi_iid.sqrt();
 
   // Heteroskedasticity-robust statistic (Lo-Mac eq.18).
-  let denom_delta_squared: f64 = returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>().powi(2);
+  let denom_delta_squared: f64 = returns
+    .iter()
+    .map(|r| (r - mean).powi(2))
+    .sum::<f64>()
+    .powi(2);
   let mut phi_robust = 0.0_f64;
   if denom_delta_squared > 0.0 {
     for j in 1..q {
@@ -312,7 +319,9 @@ mod tests {
   #[test]
   fn lo_mackinlay_accepts_returns_input_directly() {
     let prices = simulate_log_prices_random_walk(2000, 0.01, 0x4C4F4D34);
-    let returns: Vec<f64> = (1..prices.len()).map(|i| prices[i] - prices[i - 1]).collect();
+    let returns: Vec<f64> = (1..prices.len())
+      .map(|i| prices[i] - prices[i - 1])
+      .collect();
     let res_returns = lo_mackinlay_test(
       ndarray::ArrayView1::from(&returns),
       LoMacKinlayConfig {

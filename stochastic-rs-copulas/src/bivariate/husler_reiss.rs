@@ -98,8 +98,7 @@ impl HuslerReiss {
     for k in 1..n {
       let t = (k as f64) * h_grid;
       let a = Self::pickands(lambda, t);
-      let a_pp = (Self::pickands(lambda, (t + h_fd).min(1.0 - 1e-12))
-        - 2.0 * a
+      let a_pp = (Self::pickands(lambda, (t + h_fd).min(1.0 - 1e-12)) - 2.0 * a
         + Self::pickands(lambda, (t - h_fd).max(1e-12)))
         / (h_fd * h_fd);
       let w = if k % 2 == 0 { 2.0 } else { 4.0 };
