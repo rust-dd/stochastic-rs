@@ -1,6 +1,76 @@
 //! # stochastic-rs-quant
 //!
 //! Pricing, calibration, instruments, vol surfaces, curves, risk, microstructure.
+//!
+//! ## Module map
+//!
+//! Modules are grouped by role; this overview helps locate the right entry
+//! point. Each module's own `//!` doc explains its scope in detail.
+//!
+//! ### Pricing core
+//! - [`pricing`] — Black-Scholes, Heston, Bates, rBergomi, CGMYsv, basket /
+//!   rainbow / Asian / barrier / lookback / cliquet payoffs; Fourier
+//!   (Carr-Madan, Lewis, Gil-Pelaez); Malliavin-Thalmaier Greeks; SLV.
+//! - [`bonds`] — affine zero-coupon bond pricing (Vasicek, CIR, Hull-White,
+//!   G2++), duration / convexity.
+//! - [`fourier_malliavin`] — non-parametric realised volatility / leverage /
+//!   quarticity estimators (Malliavin-Mancino, Toscano et al.).
+//! - [`lattice`] — trinomial / Hull-White lattices for Bermudan payoffs.
+//!
+//! ### Calibration & vol surfaces
+//! - [`calibration`] — model fitters (BSM, Heston, Bates/SVJ, Double-Heston,
+//!   HSCM, HKDE, CGMYsv, rBergomi, SABR, Lévy, Hull-White swaption, SVI,
+//!   SSVI). Unified [`traits::Calibrator`] trait.
+//! - [`vol_surface`] — SVI, SSVI, SABR-FX-smile parametrisations and the
+//!   model-implied IV grid generator.
+//! - [`loss`] — calibration loss functions (RMSE/MAE/MRE/MAPE/IV-RMSE/
+//!   weighted-vega).
+//!
+//! ### Curves & instruments
+//! - [`curves`] — discount curve construction (linear, log-linear,
+//!   cubic-spline, monotone-convex), bootstrapping.
+//! - [`instruments`] — deposit / FRA / future / swap / swaption / bond /
+//!   inflation linker / FX forward / TRS via [`traits::Instrument`] +
+//!   [`traits::PricingEngine`].
+//! - [`cashflows`] — floating-rate periods, schedules, fixing-aware coupon
+//!   legs.
+//! - [`calendar`] — day-count (ACT/360, 30/360, ...), business-day adjusters,
+//!   schedule generation, pluggable holiday calendars via
+//!   [`calendar::CalendarExt`].
+//! - [`inflation`] — zero-coupon / YoY inflation curves and linked
+//!   instruments.
+//! - [`fx`] — delta / ATM conventions, FX forward, vanilla / barrier IV.
+//! - [`market`] — reactive market-data stack (observers, cached observables,
+//!   rate helpers, bid/ask quote bridging).
+//!
+//! ### Risk & analytics
+//! - [`risk`] — first + second-order Greeks aggregator, VaR / CVaR,
+//!   expected shortfall, drawdown, performance ratios.
+//! - [`credit`] — rating-migration matrices, generator estimation,
+//!   default-probability bootstrapping, CDS pricing.
+//! - [`portfolio`] — Markowitz / mean-CVaR / Black-Litterman / HRP / risk
+//!   parity optimisers, momentum / cross-sectional ranking pipelines.
+//! - [`factors`] — PCA, Ledoit-Wolf shrinkage covariance, Fama-MacBeth,
+//!   cointegrated pairs trading.
+//! - [`strategies`] — strategy primitives (currently `DeltaHedge`); a richer
+//!   `Strategy` trait + back-test engine tracked for 2.x.
+//!
+//! ### Microstructure & live data
+//! - [`microstructure`] — Almgren-Chriss optimal execution, Kyle's λ,
+//!   propagator impact, Roll / Corwin-Schultz spread estimators.
+//! - [`order_book`] — limit-order-book data structures (`Side`, `Order`,
+//!   `Trade`, `OrderBook`) with matching and cancel.
+//! - `yahoo` (feature-gated) — Yahoo Finance integration (experimental).
+//!
+//! ### Cross-cutting
+//! - [`traits`] — public trait surface ([`traits::ModelPricer`],
+//!   [`traits::PricerExt`], [`traits::Calibrator`], [`traits::GreeksExt`],
+//!   [`traits::Instrument`], [`traits::PricingEngine`], ...). The
+//!   characteristic-function bound `FourierModelExt` lives in
+//!   [`pricing::fourier`]; `TimeExt` lives in [`traits::time`];
+//!   `CalendarExt` lives in [`calendar`].
+//! - [`types`] — shared enum types (`Moneyness`, `OptionStyle`, `OptionType`,
+//!   `LossMetric`).
 
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]

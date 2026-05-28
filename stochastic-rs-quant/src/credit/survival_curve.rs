@@ -53,6 +53,9 @@ pub struct SurvivalPoint<T: FloatExt> {
 /// Calibrated survival curve $Q(t)=\mathbb{P}(\tau>t)$.
 #[derive(Debug, Clone)]
 pub struct SurvivalCurve<T: FloatExt> {
+  /// **Invariant:** `points` is never empty. [`Self::new`] inserts the
+  /// $(0, 1)$ anchor if absent, so every interior method can assume
+  /// `points.first()` and `points.last()` succeed.
   points: Vec<SurvivalPoint<T>>,
   method: HazardInterpolation,
 }
@@ -63,7 +66,11 @@ impl<T: FloatExt> SurvivalCurve<T> {
   /// Nodes are automatically sorted; a `(0, 1)` anchor is inserted if absent.
   pub fn new(points: Vec<SurvivalPoint<T>>, method: HazardInterpolation) -> Self {
     let mut pts = points;
-    pts.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+    pts.sort_by(|a, b| {
+      a.time
+        .partial_cmp(&b.time)
+        .unwrap_or(std::cmp::Ordering::Equal)
+    });
     if pts.is_empty() || pts[0].time > T::zero() {
       pts.insert(
         0,
@@ -157,7 +164,12 @@ impl<T: FloatExt> SurvivalCurve<T> {
       return T::one();
     }
 
-    let last = self.points.last().expect("survival curve has an anchor");
+    // Constructor invariant: `points` always contains the $(0, 1)$ anchor,
+    // so `last()` is `Some`. Falling back to `T::one()` is a defensive
+    // no-op for any future refactor that breaks the invariant.
+    let Some(last) = self.points.last() else {
+      return T::one();
+    };
     if t >= last.time {
       return extrapolate_flat_hazard(last.time, last.survival_probability, t);
     }
