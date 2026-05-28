@@ -215,7 +215,11 @@ impl Calendar {
 }
 
 // Easter computation via the Anonymous Gregorian (Meeus/Jones/Butcher) algorithm.
-fn easter_sunday(year: i32) -> NaiveDate {
+/// Western Easter Sunday for the given Gregorian year (Anonymous Gregorian
+/// / Meeus-Jones-Butcher algorithm). Many other holidays are derived as
+/// offsets: Good Friday = Easter − 2 days, Easter Monday = Easter + 1 day,
+/// Corpus Christi = Easter + 60 days, Carnival Tuesday = Easter − 47 days.
+pub fn easter_sunday(year: i32) -> NaiveDate {
   let a = year % 19;
   let b = year / 100;
   let c = year % 100;

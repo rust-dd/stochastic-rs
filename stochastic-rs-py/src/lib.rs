@@ -344,12 +344,17 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyDrawdownStats>()?;
 
   use stochastic_rs_quant::python::PyAlmgrenChrissPlan;
+  use stochastic_rs_quant::python::PyBusinessDayConvention;
+  use stochastic_rs_quant::python::PyCalendar;
   use stochastic_rs_quant::python::PyCgmysvCalibrator;
+  use stochastic_rs_quant::python::PyDayCount;
   use stochastic_rs_quant::python::PyDiscountCurve;
   use stochastic_rs_quant::python::PyKyleEquilibrium;
   use stochastic_rs_quant::python::PyNelsonSiegel;
   use stochastic_rs_quant::python::PyOrderBook;
   use stochastic_rs_quant::python::PySabrCapletCalibrator;
+  use stochastic_rs_quant::python::PySchedule;
+  use stochastic_rs_quant::python::PyScheduleBuilder;
   use stochastic_rs_quant::python::PyZeroCouponInflationCurve;
   m.add_class::<PyAlmgrenChrissPlan>()?;
   m.add_class::<PyKyleEquilibrium>()?;
@@ -359,6 +364,23 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyZeroCouponInflationCurve>()?;
   m.add_class::<PySabrCapletCalibrator>()?;
   m.add_class::<PyCgmysvCalibrator>()?;
+  m.add_class::<PyDayCount>()?;
+  m.add_class::<PyBusinessDayConvention>()?;
+  m.add_class::<PyCalendar>()?;
+  m.add_class::<PyScheduleBuilder>()?;
+  m.add_class::<PySchedule>()?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::py_days_between,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::py_easter_sunday,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_quant::python::py_imm_date,
+    m
+  )?)?;
   m.add_function(pyo3::wrap_pyfunction!(
     stochastic_rs_quant::python::multi_period_kyle,
     m

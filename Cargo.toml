@@ -77,7 +77,7 @@ plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
 openblas-src = { version = "0.10", features = ["cblas"] }
 
 # Python bindings
-pyo3 = { version = "0.28", features = ["extension-module"] }
+pyo3 = { version = "0.28", features = ["extension-module", "chrono"] }
 numpy = "0.28"
 
 # AI / ML

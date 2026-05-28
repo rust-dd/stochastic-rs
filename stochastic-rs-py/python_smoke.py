@@ -93,12 +93,53 @@ def check_quant_bsm():
     print(f"[OK]  BSMPricer ATM 1y σ=20%, r=5% → {price:.4f}")
 
 
+def check_calendar_layer():
+    import datetime
+
+    # DayCount: ACT/365F on a leap year.
+    dcc = sr.DayCount("Act365F")
+    yf = dcc.year_fraction(datetime.date(2024, 1, 1), datetime.date(2025, 1, 1))
+    assert abs(yf - 366.0 / 365.0) < 1e-12, f"ACT/365F leap year: {yf}"
+    print(f"[OK]  DayCount(Act365F) 2024→2025 yf = {yf:.6f}")
+
+    # Calendar factories + holiday lookup.
+    us = sr.Calendar.us_settlement()
+    target = sr.Calendar.target()
+    assert us.is_holiday(datetime.date(2024, 7, 4)), "US July 4 not flagged"
+    assert target.is_holiday(datetime.date(2024, 12, 25)), "TARGET Christmas not flagged"
+    print("[OK]  Calendar.us_settlement() / .target() factories")
+
+    # Joint AnyHoliday union.
+    joint = sr.Calendar.joint(["US", "TARGET"], mode="AnyHoliday")
+    assert joint.is_holiday(datetime.date(2024, 7, 4)), "joint Any: US July 4"
+    assert joint.is_holiday(datetime.date(2024, 5, 1)), "joint Any: TARGET May 1"
+    print("[OK]  Calendar.joint(['US', 'TARGET'], 'AnyHoliday')")
+
+    # ScheduleBuilder semi-annual 2y.
+    sb = sr.ScheduleBuilder(datetime.date(2024, 1, 15), datetime.date(2026, 1, 15))
+    sb.frequency("SemiAnnual")
+    sched = sb.build()
+    dates = sched.dates
+    assert len(dates) == 5, f"semi-annual 2y → 5 dates, got {len(dates)}"
+    assert dates[0] == datetime.date(2024, 1, 15)
+    assert dates[-1] == datetime.date(2026, 1, 15)
+    print(f"[OK]  ScheduleBuilder semi-annual 2y → {len(dates)} dates")
+
+    # BusinessDayConvention.Nearest on a Sunday.
+    bdc = sr.BusinessDayConvention("Nearest")
+    sun = datetime.date(2024, 1, 7)
+    adj = bdc.adjust(sun, us)
+    assert adj == datetime.date(2024, 1, 8), f"Nearest Sun → next Mon, got {adj}"
+    print(f"[OK]  BusinessDayConvention('Nearest') Sun → {adj}")
+
+
 CHECKS = [
     ("distributions", check_distributions_seed),
     ("stochastic", check_stochastic_seed),
     ("copulas", check_copula_seed),
     ("stats", check_stats_jb),
     ("quant", check_quant_bsm),
+    ("calendar", check_calendar_layer),
 ]
 
 
