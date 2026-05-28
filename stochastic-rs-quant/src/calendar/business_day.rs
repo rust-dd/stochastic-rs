@@ -26,6 +26,9 @@ pub enum BusinessDayConvention {
   /// Move to the preceding business day unless it crosses a month boundary,
   /// in which case move to the following business day.
   ModifiedPreceding,
+  /// Move to the nearest business day; on a tie (equal distance forward and
+  /// backward) prefer the following business day. ISDA 2006 §4.12.
+  Nearest,
 }
 
 impl std::fmt::Display for BusinessDayConvention {
@@ -36,6 +39,7 @@ impl std::fmt::Display for BusinessDayConvention {
       Self::ModifiedFollowing => write!(f, "Modified Following"),
       Self::Preceding => write!(f, "Preceding"),
       Self::ModifiedPreceding => write!(f, "Modified Preceding"),
+      Self::Nearest => write!(f, "Nearest"),
     }
   }
 }
@@ -66,6 +70,16 @@ impl BusinessDayConvention {
         } else {
           adjusted
         }
+      }
+      Self::Nearest => {
+        if calendar.is_business_day(date) {
+          return date;
+        }
+        let fwd = advance_to_business_day(date, 1, calendar);
+        let bwd = advance_to_business_day(date, -1, calendar);
+        let fwd_dist = (fwd - date).num_days();
+        let bwd_dist = (date - bwd).num_days();
+        if fwd_dist <= bwd_dist { fwd } else { bwd }
       }
     }
   }
@@ -135,5 +149,41 @@ mod tests {
       BusinessDayConvention::Unadjusted.adjust(saturday, &cal),
       saturday
     );
+  }
+
+  #[test]
+  fn nearest_picks_closer_business_day() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    // 2024-01-06 (Sat) — Friday 5th (bwd, 1 day) vs Monday 8th (fwd, 2 days)
+    // → Preceding (Friday) is closer.
+    let sat = NaiveDate::from_ymd_opt(2024, 1, 6).unwrap();
+    let fri = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
+    assert_eq!(BusinessDayConvention::Nearest.adjust(sat, &cal), fri);
+    // 2024-01-07 (Sun) — Friday 5th (bwd, 2) vs Monday 8th (fwd, 1)
+    // → Following (Monday) is closer.
+    let sun = NaiveDate::from_ymd_opt(2024, 1, 7).unwrap();
+    let mon = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+    assert_eq!(BusinessDayConvention::Nearest.adjust(sun, &cal), mon);
+  }
+
+  #[test]
+  fn nearest_on_business_day_is_identity() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    let wed = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
+    assert_eq!(BusinessDayConvention::Nearest.adjust(wed, &cal), wed);
+  }
+
+  #[test]
+  fn nearest_breaks_tie_with_following() {
+    // Manufacture a tie: pick a holiday with business days both sides
+    // exactly 1 day away. 2024-01-15 (Mon) = MLK Day, US calendar.
+    // Bwd: Fri Jan-12 (3 days), Fwd: Tue Jan-16 (1 day). Not a tie.
+    // For a true 1-1 tie we need a Wed holiday: use a custom calendar.
+    let mut cal = Calendar::new(HolidayCalendar::UnitedStates);
+    let wed = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
+    cal.add_holiday(wed);
+    // Tue Jan-9 (bwd, 1) vs Thu Jan-11 (fwd, 1) — tie, prefer Following.
+    let thu = NaiveDate::from_ymd_opt(2024, 1, 11).unwrap();
+    assert_eq!(BusinessDayConvention::Nearest.adjust(wed, &cal), thu);
   }
 }

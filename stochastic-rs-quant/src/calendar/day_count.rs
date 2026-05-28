@@ -49,6 +49,13 @@ pub enum DayCountConvention {
   /// Distinct from `ActualActualISDA` (which splits the period at the
   /// year boundary) and from `NoLeap365` (which adjusts the numerator).
   Actual365Leap,
+  /// Act/Act ICMA (= Act/Act ISMA): coupon-period-aware day count. The
+  /// year fraction is $(d_2 - d_1) / (f \cdot (r_2 - r_1))$ where $f$ is
+  /// the coupon frequency and $[r_1, r_2)$ the reference period.
+  /// **Without a reference period this variant falls back to ACT/365F**
+  /// — call [`DayCountConvention::year_fraction_icma`] for the proper
+  /// ICMA-correct computation. ISDA 2006 §4.16(f).
+  ActualActualIcma,
 }
 
 impl std::fmt::Display for DayCountConvention {
@@ -65,6 +72,7 @@ impl std::fmt::Display for DayCountConvention {
       Self::Actual364 => write!(f, "ACT/364"),
       Self::NoLeap365 => write!(f, "NL/365"),
       Self::Actual365Leap => write!(f, "ACT/365L"),
+      Self::ActualActualIcma => write!(f, "ACT/ACT ICMA"),
     }
   }
 }
@@ -116,7 +124,45 @@ impl DayCountConvention {
         };
         T::from_f64_fast(days / denom)
       }
+      Self::ActualActualIcma => {
+        // No reference period available on this path; fall back to ACT/365F
+        // (documented behaviour). Use [`year_fraction_icma`] for the
+        // coupon-period-aware computation.
+        let days = (d2 - d1).num_days() as f64;
+        T::from_f64_fast(days / 365.0)
+      }
     }
+  }
+
+  /// ACT/ACT ICMA year fraction with explicit reference (coupon) period.
+  /// Implements ISDA 2006 §4.16(f) / ICMA Rule 251.
+  ///
+  /// Given a calculation period $[d_1, d_2)$ contained in the reference
+  /// period $[r_1, r_2)$ paying $f$ coupons per year, returns
+  /// $\tau = (d_2 - d_1) / (f \cdot (r_2 - r_1))$.
+  ///
+  /// **Stub-period note:** for short / long stubs straddling more than one
+  /// reference period, the caller must split the calculation period at the
+  /// reference-period boundary and sum the contributions — this method
+  /// computes only a single contained segment.
+  ///
+  /// # Panics
+  /// Panics on `reference_end <= reference_start` or `frequency == 0`.
+  pub fn year_fraction_icma<T: FloatExt>(
+    d1: NaiveDate,
+    d2: NaiveDate,
+    reference_start: NaiveDate,
+    reference_end: NaiveDate,
+    frequency: u32,
+  ) -> T {
+    assert!(
+      reference_end > reference_start,
+      "ICMA reference_end must follow reference_start"
+    );
+    assert!(frequency > 0, "ICMA frequency must be positive (coupons/year)");
+    let calc_days = (d2 - d1).num_days() as f64;
+    let ref_days = (reference_end - reference_start).num_days() as f64;
+    T::from_f64_fast(calc_days / (frequency as f64 * ref_days))
   }
 
   /// Compute the day count (numerator) between two dates.
@@ -127,7 +173,8 @@ impl DayCountConvention {
       | Self::ActualActualISDA
       | Self::ActualActualAFB
       | Self::Actual364
-      | Self::Actual365Leap => (d2 - d1).num_days(),
+      | Self::Actual365Leap
+      | Self::ActualActualIcma => (d2 - d1).num_days(),
       Self::Thirty360 => thirty360_usa(d1, d2),
       Self::Thirty360European => thirty360_european(d1, d2),
       Self::Thirty360EuropeanISDA => thirty360_european_isda(d1, d2),
@@ -280,6 +327,14 @@ fn actual_actual_isda(d1: NaiveDate, d2: NaiveDate) -> f64 {
 pub use super::date_math::days_in_month;
 pub use super::date_math::is_leap_year;
 
+/// Day count between `d1` and `d2` under the given day-count convention.
+/// Equivalent to [`DayCountConvention::day_count`] called with the same
+/// arguments; provided as a free function for symmetry with QuantLib's
+/// `dayCounter.dayCount(d1, d2)` style and Python binding ergonomics.
+pub fn days_between(d1: NaiveDate, d2: NaiveDate, dcc: DayCountConvention) -> i64 {
+  dcc.day_count(d1, d2)
+}
+
 /// True when `d1 < d2` and a February 29 strictly inside `(d1, d2]` exists
 /// in any year traversed by the period. Used by [`DayCountConvention::Actual365Leap`].
 fn period_contains_feb29(d1: NaiveDate, d2: NaiveDate) -> bool {
@@ -363,6 +418,20 @@ mod tests {
   }
 
   #[test]
+  fn days_between_matches_dcc_day_count() {
+    let d1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2024, 4, 15).unwrap();
+    for dcc in [
+      DayCountConvention::Actual360,
+      DayCountConvention::Actual365Fixed,
+      DayCountConvention::Thirty360,
+      DayCountConvention::Thirty360European,
+    ] {
+      assert_eq!(days_between(d1, d2, dcc), dcc.day_count(d1, d2));
+    }
+  }
+
+  #[test]
   fn act365l_feb28_in_non_leap_year_uses_365_not_366() {
     let d1 = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap();
     let d2 = NaiveDate::from_ymd_opt(2023, 3, 1).unwrap();
@@ -371,5 +440,46 @@ mod tests {
     let yf: f64 = DayCountConvention::Actual365Leap.year_fraction(d1, d2);
     let expected = 59.0 / 365.0;
     assert!((yf - expected).abs() < 1e-12, "got {yf}");
+  }
+
+  #[test]
+  fn icma_full_coupon_period_is_exact_inverse_of_frequency() {
+    let r1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+    let r2 = NaiveDate::from_ymd_opt(2024, 7, 15).unwrap();
+    // Calculation = reference, semi-annual ⇒ τ = 1 / (2 · 1) = 0.5 exactly.
+    let yf: f64 =
+      DayCountConvention::year_fraction_icma(r1, r2, r1, r2, 2);
+    assert!((yf - 0.5).abs() < 1e-15, "got {yf}");
+  }
+
+  #[test]
+  fn icma_partial_period_scales_linearly() {
+    let r1 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let r2 = NaiveDate::from_ymd_opt(2024, 7, 1).unwrap();
+    let d1 = r1;
+    let d2 = NaiveDate::from_ymd_opt(2024, 4, 1).unwrap();
+    // 91 calc days / (2 · 182 ref days) = 91 / 364 = 0.25.
+    let yf: f64 =
+      DayCountConvention::year_fraction_icma(d1, d2, r1, r2, 2);
+    let expected = (d2 - d1).num_days() as f64 / (2.0 * (r2 - r1).num_days() as f64);
+    assert!((yf - expected).abs() < 1e-15, "got {yf}");
+  }
+
+  #[test]
+  fn icma_quarterly_full_period_recovers_quarter_year() {
+    let r1 = NaiveDate::from_ymd_opt(2024, 3, 31).unwrap();
+    let r2 = NaiveDate::from_ymd_opt(2024, 6, 30).unwrap();
+    let yf: f64 =
+      DayCountConvention::year_fraction_icma(r1, r2, r1, r2, 4);
+    assert!((yf - 0.25).abs() < 1e-15, "got {yf}");
+  }
+
+  #[test]
+  fn icma_fallback_without_reference_uses_act365f() {
+    let d1 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let d2 = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+    let yf: f64 = DayCountConvention::ActualActualIcma.year_fraction(d1, d2);
+    // ACT/365F fallback: 366 actual days (leap) / 365.
+    assert!((yf - 366.0 / 365.0).abs() < 1e-12, "got {yf}");
   }
 }

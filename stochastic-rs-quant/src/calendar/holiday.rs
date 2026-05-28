@@ -172,6 +172,25 @@ impl Calendar {
     }
     date
   }
+
+  /// Next business day **strictly after** `date`. Equivalent to
+  /// `advance(date, 1)` but expressed as a one-step lookup.
+  pub fn next_business_day(&self, date: NaiveDate) -> NaiveDate {
+    let mut d = date + Duration::days(1);
+    while !self.is_business_day(d) {
+      d += Duration::days(1);
+    }
+    d
+  }
+
+  /// Previous business day **strictly before** `date`.
+  pub fn previous_business_day(&self, date: NaiveDate) -> NaiveDate {
+    let mut d = date - Duration::days(1);
+    while !self.is_business_day(d) {
+      d -= Duration::days(1);
+    }
+    d
+  }
 }
 
 // Easter computation via the Anonymous Gregorian (Meeus/Jones/Butcher) algorithm.
@@ -570,6 +589,32 @@ mod tests {
     // 2024-05-01 is TARGET (Labour Day) but not US.
     let may1 = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
     assert!(cal.is_holiday(may1), "union: TARGET holiday counts");
+  }
+
+  #[test]
+  fn next_and_previous_business_day_skip_weekend() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    let fri = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
+    let mon = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+    assert_eq!(cal.next_business_day(fri), mon);
+    assert_eq!(cal.previous_business_day(mon), fri);
+  }
+
+  #[test]
+  fn next_business_day_is_strictly_after() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    let mon = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+    let tue = NaiveDate::from_ymd_opt(2024, 1, 9).unwrap();
+    assert_eq!(cal.next_business_day(mon), tue);
+  }
+
+  #[test]
+  fn previous_business_day_skips_holiday() {
+    let cal = Calendar::new(HolidayCalendar::UnitedStates);
+    // 2024-01-15 = MLK Day (Mon) → previous business day is Fri Jan-12.
+    let mlk = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+    let fri = NaiveDate::from_ymd_opt(2024, 1, 12).unwrap();
+    assert_eq!(cal.previous_business_day(mlk), fri);
   }
 
   #[test]
