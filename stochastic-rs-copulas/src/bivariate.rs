@@ -7,14 +7,20 @@
 pub use crate::traits::BivariateExt;
 
 pub mod clayton;
+pub mod fgm;
 pub mod frank;
 pub mod gumbel;
 pub mod independence;
+pub mod joe;
+pub mod plackett;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CopulaType {
   Clayton,
+  Fgm,
   Frank,
   Gumbel,
   Independence,
+  Joe,
+  Plackett,
 }
