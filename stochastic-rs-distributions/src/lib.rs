@@ -67,11 +67,17 @@ pub type SimdExpDual<T> = exp::SimdExp<T, stochastic_rs_core::simd_rng_dual::Sim
 #[cfg(feature = "dual-stream-rng")]
 pub type SimdExpZigDual<T, const N: usize = 64> =
   exp::SimdExpZig<T, N, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
+pub mod dirichlet;
+pub mod ged;
+pub mod gev;
 pub mod pareto;
 pub mod poisson;
+pub mod skellam;
 pub mod studentt;
+pub mod truncated;
 pub mod uniform;
 pub mod weibull;
+pub mod wishart;
 
 macro_rules! impl_distribution_sampler_float {
   ($($dist:ty),+ $(,)?) => {
