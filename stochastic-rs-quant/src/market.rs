@@ -30,8 +30,11 @@ pub mod handle;
 pub mod indices;
 pub mod money_market;
 pub mod observable;
+pub mod provider;
 pub mod quote;
 pub mod rate_helper;
+#[cfg(feature = "yahoo")]
+pub mod yahoo_provider;
 
 pub use book::half_spread_quote;
 pub use book::mid_quote;

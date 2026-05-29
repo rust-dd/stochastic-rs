@@ -336,6 +336,30 @@ impl ImpliedVolSurface {
     })
   }
 
+  /// Build an implied-vol surface directly from a market-data provider's
+  /// option chain. Fetches the chain for `symbol`, converts the quotes to
+  /// the `(OptionQuote, forwards)` inputs via
+  /// [`OptionChain::to_surface_inputs`](crate::market::provider::OptionChain::to_surface_inputs)
+  /// with carry $(r, q)$, then runs [`Self::try_from_quotes`].
+  ///
+  /// Works against any [`MarketDataProvider`](crate::market::provider::MarketDataProvider) —
+  /// the in-memory `MockProvider` for offline tests / examples, or the live
+  /// Yahoo connector behind the `yahoo` feature.
+  pub fn from_provider<P: crate::market::provider::MarketDataProvider>(
+    provider: &P,
+    symbol: &str,
+    r: f64,
+    q: f64,
+  ) -> anyhow::Result<Self> {
+    let chain = provider.option_chain(symbol)?;
+    let (quotes, forwards) = chain.to_surface_inputs(r, q);
+    if quotes.is_empty() {
+      anyhow::bail!("from_provider: option chain for '{symbol}' yielded no usable quotes");
+    }
+    Self::try_from_quotes(&quotes, &forwards)
+      .map_err(|e| anyhow::anyhow!("from_provider: surface build failed: {e}"))
+  }
+
   /// Extract a single smile slice (implied vols for one maturity).
   #[must_use]
   pub fn smile_slice(&self, maturity_idx: usize) -> SmileSlice {
@@ -498,6 +522,73 @@ mod tests {
   use ndarray::array;
 
   use super::*;
+
+  /// `from_provider` against a `MockProvider` whose option chain carries
+  /// undiscounted-Black call prices: the recovered implied vols must match
+  /// the σ those prices were generated from. Exercises the full Tier 3
+  /// provider → surface wiring offline.
+  #[test]
+  fn from_provider_recovers_surface_from_mock_chain() {
+    use stochastic_rs_distributions::special::norm_cdf;
+
+    use crate::market::provider::ChainQuote;
+    use crate::market::provider::MockProvider;
+    use crate::market::provider::OptionChain;
+
+    let s = 100.0_f64;
+    let r = 0.04_f64;
+    let sigma = 0.22_f64;
+    let strikes = [90.0_f64, 100.0, 110.0];
+    let taus = [0.5_f64, 1.0];
+
+    let mut quotes = Vec::new();
+    for &t in &taus {
+      let f = s * (r * t).exp();
+      for &k in &strikes {
+        let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
+        let d2 = d1 - sigma * t.sqrt();
+        let price = f * norm_cdf(d1) - k * norm_cdf(d2); // undiscounted Black
+        quotes.push(ChainQuote {
+          strike: k,
+          tau: t,
+          last: price,
+          bid: price,
+          ask: price,
+          implied_vol: sigma,
+          is_call: true,
+        });
+      }
+    }
+    let mut mp = MockProvider::new();
+    mp.insert_option_chain(OptionChain {
+      symbol: "ACME".to_string(),
+      spot: s,
+      quotes,
+    });
+
+    let surface = ImpliedVolSurface::from_provider(&mp, "ACME", r, 0.0).unwrap();
+    for j in 0..taus.len() {
+      for i in 0..strikes.len() {
+        let iv = surface.ivs[[j, i]];
+        assert!(
+          (iv - sigma).abs() < 1e-4,
+          "recovered iv={iv} vs σ={sigma} at T={}, K={}",
+          taus[j],
+          strikes[i]
+        );
+      }
+    }
+  }
+
+  /// `from_provider` propagates a provider error for a missing symbol.
+  #[test]
+  fn from_provider_errors_on_missing_symbol() {
+    use crate::market::provider::MockProvider;
+
+    let mp = MockProvider::new();
+    let res = ImpliedVolSurface::from_provider(&mp, "NOPE", 0.05, 0.0);
+    assert!(res.is_err());
+  }
 
   #[test]
   fn from_prices_round_trip() {
