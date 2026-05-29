@@ -7,11 +7,15 @@
 pub use crate::traits::MultivariateExt;
 
 pub mod gaussian;
+pub mod nac;
+pub mod t;
 pub mod tree;
 pub mod vine;
 
 pub enum CopulaType {
   Gaussian,
+  NestedArchimedean,
+  TMultivariate,
   Tree,
   Vine,
 }
