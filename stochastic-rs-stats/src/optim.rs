@@ -10,15 +10,21 @@
 /// Returns `(argmin, iterations, converged)`. The caller is responsible
 /// for any parameter reparameterisation (e.g. carrying log-parameters so
 /// the search stays in the positive orthant).
+///
+/// `max_iter` caps the simplex iterations: a smooth analytic objective
+/// (GMM / QMLE) converges in tens of iterations to the `1e-10` tolerance,
+/// but a Monte-Carlo objective with small resampling-induced kinks (the
+/// particle-filter likelihood) never hits that tolerance and should be
+/// capped at a few hundred iterations to bound runtime.
 pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
   start: [f64; 3],
+  max_iter: usize,
   f: F,
 ) -> ([f64; 3], usize, bool) {
   const ALPHA: f64 = 1.0;
   const GAMMA: f64 = 2.0;
   const RHO: f64 = 0.5;
   const SHRINK: f64 = 0.5;
-  const MAX_ITER: usize = 2000;
   const TOL: f64 = 1e-10;
 
   let mut simplex = [start, start, start, start];
@@ -33,7 +39,7 @@ pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
   ];
 
   let mut iters = 0;
-  while iters < MAX_ITER {
+  while iters < max_iter {
     iters += 1;
     let mut order = [0, 1, 2, 3];
     order.sort_by(|&a, &b| fvals[a].partial_cmp(&fvals[b]).unwrap());

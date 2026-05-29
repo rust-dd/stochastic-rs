@@ -158,7 +158,7 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
   };
   let sigma0 = (resid_var / scale.max(1e-12)).sqrt().clamp(1e-3, 10.0);
 
-  let (p, iters, converged) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], neg_ll);
+  let (p, iters, converged) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], 2000, neg_ll);
   let (kappa, theta, sigma) = (p[0].exp(), p[1].exp(), p[2].exp());
 
   QmleResult {

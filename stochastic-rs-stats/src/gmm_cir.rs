@@ -155,10 +155,9 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
   };
 
   // Stage 1: identity weighting.
-  let (p1, it1, conv1) = nelder_mead(
-    [kappa0.ln(), theta0.ln(), sigma0.ln()],
-    |p| objective(p[0].exp(), p[1].exp(), p[2].exp(), &identity),
-  );
+  let (p1, it1, conv1) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], 2000, |p| {
+    objective(p[0].exp(), p[1].exp(), p[2].exp(), &identity)
+  });
   let (k1, th1, s1) = (p1[0].exp(), p1[1].exp(), p1[2].exp());
 
   // Stage 2: efficient weighting Ŝ⁻¹ evaluated at the stage-1 estimate.
@@ -181,7 +180,7 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
   }
   let w2 = invert4(&s_hat).unwrap_or(identity);
 
-  let (p2, it2, conv2) = nelder_mead([p1[0], p1[1], p1[2]], |p| {
+  let (p2, it2, conv2) = nelder_mead([p1[0], p1[1], p1[2]], 2000, |p| {
     objective(p[0].exp(), p[1].exp(), p[2].exp(), &w2)
   });
   let (kappa, theta, sigma) = (p2[0].exp(), p2[1].exp(), p2[2].exp());

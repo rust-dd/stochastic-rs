@@ -148,8 +148,13 @@ where
     1.0 / normalised.iter().map(|w| w * w).sum::<f64>()
   }
 
-  /// One filter step on observation `y_t`.
-  pub fn step(&mut self, y_t: ArrayView1<f64>) {
+  /// One filter step on observation `y_t`. Returns the **incremental data
+  /// log-likelihood** $\log p(y_t \mid y_{1:t-1}) \approx \log \sum_i
+  /// w_{t-1,i}\,p(y_t \mid x_{t,i})$ — the normalising constant absorbed by
+  /// the weight update. Summing the per-step returns over the data gives
+  /// the particle-filter approximation of the marginal log-likelihood
+  /// (Kitagawa 1996), the objective of [`crate::particle_mle`].
+  pub fn step(&mut self, y_t: ArrayView1<f64>) -> f64 {
     let (n, d) = self.particles.dim();
     let mut new_particles = Array2::<f64>::zeros((n, d));
     for i in 0..n {
@@ -164,13 +169,19 @@ where
       self.log_weights[i] += (self.log_observation_lik)(new_particles.row(i), y_t);
     }
     self.particles = new_particles;
-    self.normalise_log_weights();
+    // The pre-normalisation log-sum-of-weights is the incremental
+    // log-likelihood: before the update the weights summed to 1, so this
+    // total is log Σ_i w_{t-1,i} p(y_t | x_{t,i}).
+    let incremental_loglik = self.normalise_log_weights();
     if self.effective_sample_size() < self.effective_threshold {
       self.resample();
     }
+    incremental_loglik
   }
 
-  fn normalise_log_weights(&mut self) {
+  /// Normalise the log-weights in place; returns the log-sum-exp
+  /// normalising constant (the step's incremental log-likelihood).
+  fn normalise_log_weights(&mut self) -> f64 {
     let max_lw = self
       .log_weights
       .iter()
@@ -186,6 +197,7 @@ where
     for lw in self.log_weights.iter_mut() {
       *lw -= log_total;
     }
+    log_total
   }
 
   fn resample(&mut self) {
