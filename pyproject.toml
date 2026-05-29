@@ -17,10 +17,18 @@ classifiers = [
   "Topic :: Office/Business :: Financial",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "numpy", "scipy"]
+
 [project.urls]
 Homepage = "https://github.com/dancixx/stochastic-rs"
 Repository = "https://github.com/dancixx/stochastic-rs"
 Documentation = "https://docs.rs/stochastic-rs"
+
+[tool.pytest.ini_options]
+testpaths = ["stochastic-rs-py/tests"]
+python_files = "test_*.py"
+addopts = "-q"
 
 # The Python module is produced by the `stochastic-rs-py` cdylib crate (see
 # stochastic-rs-py/Cargo.toml), not by the workspace umbrella `stochastic-rs`

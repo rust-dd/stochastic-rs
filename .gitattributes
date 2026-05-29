@@ -1,0 +1,9 @@
+# GitHub Linguist: this is a Rust library. Keep the language breakdown
+# Rust-only — the Python here is binding glue / smoke + pytest harness,
+# not a Python project, so exclude it from the language statistics.
+# `linguist-detectable=false` drops it from the language bar while still
+# showing the files in the tree and in diffs (unlike `linguist-vendored`,
+# which would collapse the diffs too).
+*.py linguist-detectable=false
+*.ipynb linguist-detectable=false
+docs/* linguist-documentation

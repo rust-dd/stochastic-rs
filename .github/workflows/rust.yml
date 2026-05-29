@@ -99,7 +99,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install maturin numpy
+          .venv/bin/pip install maturin numpy pytest scipy
       - name: maturin develop (openblas)
         run: .venv/bin/maturin develop --release --features openblas
       - name: Run python_smoke.py
@@ -107,6 +107,11 @@ jobs:
         # crash shows up in the log; `-X faulthandler` prints a C+Python
         # traceback on SIGSEGV, pinning the crashing native call.
         run: .venv/bin/python -X faulthandler -u stochastic-rs-py/python_smoke.py
+      - name: Run pytest suite
+        # The pytest suite (stochastic-rs-py/tests/) covers all five API
+        # surfaces beyond the smoke script; conftest.py skips with a clear
+        # message if the extension is somehow not importable.
+        run: .venv/bin/python -m pytest stochastic-rs-py/tests/ -v
 
   # Full test run with openblas + coverage.
   test_with_coverage:
