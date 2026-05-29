@@ -106,7 +106,7 @@ impl TMultivariate {
 
   /// Construct directly from a correlation matrix and degrees of freedom.
   pub fn new_with(corr: Array2<f64>, nu: f64) -> Result<Self, Box<dyn Error>> {
-    if !(nu > 0.0) {
+    if nu <= 0.0 || nu.is_nan() {
       return Err("Degrees of freedom must be positive".into());
     }
     let dim = corr.nrows();
@@ -135,7 +135,7 @@ impl TMultivariate {
   /// an external calibration (e.g. tail-coefficient match) and wants the
   /// copula to skip its own optimisation. Returns an error if $\nu \le 0$.
   pub fn set_degrees_of_freedom(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
-    if !(nu > 0.0) {
+    if nu <= 0.0 || nu.is_nan() {
       return Err("Degrees of freedom must be positive".into());
     }
     self.nu = nu;
