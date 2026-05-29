@@ -11,8 +11,8 @@
 //! density evaluation algorithms — sampling traverses h-inverses,
 //! conditional pseudo-observations traverse h-functions.
 //!
-//! The v2.3.0 scope ships closed-form $h$ and $h^{-1}$ for the five
-//! families with tractable analytic inverses:
+//! Closed-form $h$ and $h^{-1}$ are provided for the five families with
+//! tractable analytic inverses:
 //!
 //! - **Independence:** trivial identities.
 //! - **Gaussian** $\rho \in (-1, 1)$.
@@ -21,8 +21,7 @@
 //! - **Student-$t$** $\rho \in (-1, 1),\ \nu > 0$.
 //!
 //! The Gumbel / Joe pair families have no closed-form $h^{-1}$ (only an
-//! iterative bisection); they are scheduled for v2.4 alongside the
-//! arbitrary-family R-vine plumbing.
+//! iterative bisection) and are not yet included.
 //!
 //! Reference: Aas, Czado, Frigessi, Bakken (2009), "Pair-copula
 //! constructions of multiple dependence", *Insurance: Mathematics and
@@ -36,7 +35,7 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 /// Bivariate pair-copula family used as the building block of every
-/// PCC-based multivariate copula in this crate (D-vine in v2.3.0).
+/// PCC-based multivariate copula in this crate (D-vine, C-vine, R-vine).
 ///
 /// Every variant carries the family's parameters as fields so PCC trees
 /// can be stored as `Vec<Vec<PairCopula>>` without trait objects.

@@ -186,9 +186,9 @@ impl MultivariateExt for CVine {
 
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
     Err(
-      "CVine::fit not implemented in v2.3.0 — supply the tree explicitly via CVine::new \
+      "CVine::fit not implemented — supply the tree explicitly via CVine::new \
        and seed each PairCopula parameter from pairwise Kendall τ. Sequential MLE + \
-       AIC/BIC family selection (Dißmann 2013) is scheduled for v2.4."
+       AIC/BIC family selection (Dißmann 2013) is not yet implemented."
         .into(),
     )
   }
@@ -344,17 +344,17 @@ mod tests {
     assert!(CVine::new(1, vec![]).is_err());
   }
 
-  /// `fit` returns the v2.4 deferral pointer.
+  /// `fit` returns a descriptive not-implemented error.
   #[test]
-  fn cvine_fit_rejects_with_v24_pointer() {
+  fn cvine_fit_rejects_with_descriptive_error() {
     let mut cv = CVine::independence(3).unwrap();
     let data = ndarray::Array2::<f64>::from_elem((10, 3), 0.5);
     let res = cv.fit(data);
     assert!(res.is_err());
     let msg = res.unwrap_err().to_string();
     assert!(
-      msg.contains("v2.4") || msg.contains("MLE"),
-      "fit error should point at v2.4 sequential MLE; got: {msg}"
+      msg.contains("not implemented") || msg.contains("MLE"),
+      "fit error should point at the unimplemented sequential MLE; got: {msg}"
     );
   }
 }

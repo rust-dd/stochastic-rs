@@ -36,10 +36,10 @@
 //!
 //! Two-stage sequential MLE (Aas-Czado §5, Joe-Xu 1996): for each pair in
 //! each tree, fit the marginal copula by MLE on the current pseudo
-//! observations, then propagate via the h-function. v2.3.0 ships a
-//! Gaussian-only sequential fit (single-parameter per edge, closed-form
-//! Kendall-τ inversion); arbitrary-family fits are scheduled for v2.4
-//! alongside the AIC/BIC family-selection driver.
+//! observations, then propagate via the h-function. Structure + family
+//! selection (sequential MLE with an AIC/BIC family-selection driver) is
+//! not yet implemented; the user supplies the tree explicitly via
+//! [`DVine::new`].
 //!
 //! References:
 //! - Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009),
@@ -228,14 +228,13 @@ impl MultivariateExt for DVine {
   }
 
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    // Sequential pair-copula MLE / Kendall-τ inversion is a v2.4 item —
-    // the v2.3.0 scope ships D-vine *evaluation* (CDF/PDF/sample) on a
-    // user-supplied tree, deferring structure + family selection to the
-    // VineCopula-equivalent algorithm in v2.4.
+    // Sequential pair-copula MLE + structure/family selection is not yet
+    // implemented; D-vine *evaluation* (CDF/PDF/sample) works on a
+    // user-supplied tree built via `DVine::new`.
     Err(
-      "DVine::fit not implemented in v2.3.0 — supply the tree explicitly via DVine::new \
+      "DVine::fit not implemented — supply the tree explicitly via DVine::new \
        and seed each PairCopula parameter from pairwise Kendall τ. Sequential MLE + \
-       AIC/BIC family selection (Dißmann 2013) is scheduled for v2.4."
+       AIC/BIC family selection (Dißmann 2013) is not yet implemented."
         .into(),
     )
   }
@@ -402,18 +401,18 @@ mod tests {
     assert!(DVine::new(1, bad3).is_err());
   }
 
-  /// `fit` must return a descriptive error pointing at v2.4 sequential
-  /// MLE being out of scope for v2.3.0.
+  /// `fit` must return a descriptive error pointing at the unimplemented
+  /// sequential MLE path.
   #[test]
-  fn dvine_fit_rejects_with_v24_pointer() {
+  fn dvine_fit_rejects_with_descriptive_error() {
     let mut dv = DVine::independence(3).unwrap();
     let data = ndarray::Array2::<f64>::from_elem((10, 3), 0.5);
     let res = dv.fit(data);
     assert!(res.is_err());
     let msg = res.unwrap_err().to_string();
     assert!(
-      msg.contains("v2.4") || msg.contains("MLE"),
-      "fit error should point at v2.4 sequential MLE; got: {msg}"
+      msg.contains("not implemented") || msg.contains("MLE"),
+      "fit error should point at the unimplemented sequential MLE; got: {msg}"
     );
   }
 }

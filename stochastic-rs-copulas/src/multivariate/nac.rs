@@ -74,8 +74,8 @@ use super::CopulaType;
 use crate::traits::MultivariateExt;
 
 /// Single-parameter Archimedean family supported by [`NestedArchimedean`].
-/// All nodes of a NAC must share the same family (mixed-family NAC is
-/// deferred to v2.4+).
+/// All nodes of a NAC must share the same family; mixed-family NAC is not
+/// yet supported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NacFamily {
   /// Clayton: $\varphi_\theta(t) = (t^{-\theta} - 1)/\theta$,
@@ -340,22 +340,20 @@ impl NestedArchimedean {
       }
       (NacFamily::Clayton, Some(_)) => {
         // Nested Clayton: the conditional frailty V_c | V_p has LST
-        // exp(-V_p · ((1+s)^α - 1)) with α = θ_p/θ_c — an **exponentially
-        // tilted positive stable** distribution. Exact sampling requires
-        // Devroye's double-rejection (Hofert 2011, Algorithm 4) which is
-        // scheduled for v2.4+ (~200 LOC of specialised rejection logic).
-        //
-        // For v2.3.0 we surface this limitation up to `sample` so the
-        // caller does not silently get a biased copula. CDF / PDF /
-        // structure validation paths are NOT affected — they work for
+        // exp(-V_p · ((1+s)^α - 1)) with α = θ_p/θ_c — an exponentially
+        // tilted positive stable distribution. Exact sampling requires
+        // Devroye's double-rejection (Hofert 2011, Algorithm 4), which is
+        // not yet implemented. We surface this limitation up to `sample`
+        // so the caller does not silently get a biased copula; the CDF /
+        // PDF / structure-validation paths are unaffected and work for
         // arbitrarily nested Clayton trees.
         panic!(
-          "Nested-Clayton sampling is not implemented in v2.3.0 — \
+          "Nested-Clayton sampling is not implemented — \
            use NacFamily::Gumbel for nesting (correct Hofert (2011) \
            Algorithm 2), or call cdf / pdf on a nested-Clayton tree \
            (those paths are fully supported). Exact nested-Clayton \
            sampling via tilted-stable Devroye double-rejection is \
-           scheduled for v2.4."
+           not yet implemented."
         );
       }
     };
@@ -413,14 +411,14 @@ impl MultivariateExt for NestedArchimedean {
   }
 
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    // The structural parameters (tree topology + family) are NOT estimated
-    // from data in v2.3.0 — the user must supply them via `new()`. A full
-    // structure-+ parameter fit (Okhrin-Okhrin-Schmid 2013 HAC structure
-    // selection) is scheduled for v2.4+.
+    // The structural parameters (tree topology + family) are not estimated
+    // from data; the user supplies them via `new()`. A full structure +
+    // parameter fit (Okhrin-Okhrin-Schmid 2013 HAC structure selection) is
+    // not yet implemented.
     Err(
       "NestedArchimedean::fit not implemented — supply the tree via NestedArchimedean::new \
-       and use crate::correlation::kendall_tau on the marginal pairs to seed θ values \
-       (v2.3.0 design choice; structure learning is a v2.4+ item)."
+       and use crate::correlation::kendall_tau on the marginal pairs to seed θ values. \
+       Structure learning is not yet implemented."
         .into(),
     )
   }
@@ -444,10 +442,10 @@ impl MultivariateExt for NestedArchimedean {
     self.check_fit(&X)?;
     // Closed-form NAC densities (Hofert-Pham 2012) require the full
     // d-th-order generator-derivative recursion which is family-specific
-    // and scales as O(d²) per query; for the v2.3.0 scope we estimate the
-    // density via finite differences on the CDF along the d-cube vertex
-    // pattern. This is exact in the limit h → 0 and stable for h = 1e-4
-    // on well-conditioned NAC trees (θ_max / θ_min < 20).
+    // and scales as O(d²) per query; instead we estimate the density via
+    // finite differences on the CDF along the d-cube vertex pattern. This
+    // is exact in the limit h → 0 and stable for h = 1e-4 on
+    // well-conditioned NAC trees (θ_max / θ_min < 20).
     let d = self.dim;
     let h = 1e-4_f64;
     let denom = (2.0 * h).powi(d as i32);
@@ -517,11 +515,11 @@ mod tests {
   }
 
   /// 2-level Clayton NAC tree: root θ=1.5 with leaf 0 direct + a sub-tree
-  /// with θ=4.0 over leaves {1,2}. The **CDF** path is fully supported
-  /// (sampling is deferred to v2.4 — see `sample_node` Clayton-nested
-  /// branch); we therefore verify the structural property analytically:
-  /// for two outer-inner leaves the pair-margin is exchangeable Clayton on
-  /// the **root** generator, while for two inner-inner leaves it's
+  /// with θ=4.0 over leaves {1,2}. The CDF path is fully supported (nested
+  /// Clayton sampling is not — see `sample_node` Clayton-nested branch);
+  /// we therefore verify the structural property analytically: for two
+  /// outer-inner leaves the pair-margin is exchangeable Clayton on the
+  /// **root** generator, while for two inner-inner leaves it's
   /// exchangeable Clayton on the **inner** generator.
   #[test]
   fn nac_clayton_two_level_cdf_pair_margins() {
@@ -564,12 +562,12 @@ mod tests {
     );
   }
 
-  /// Nested-Clayton sampling is intentionally a panic in v2.3.0; calling
-  /// `sample` on a tree with at least one nested node must surface the
-  /// deferred-to-v2.4 message rather than silently returning biased data.
+  /// Nested-Clayton sampling intentionally panics; calling `sample` on a
+  /// tree with at least one nested node must surface the not-implemented
+  /// message rather than silently returning biased data.
   #[test]
   #[should_panic(expected = "Nested-Clayton sampling")]
-  fn nac_clayton_nested_sampling_panics_with_v24_pointer() {
+  fn nac_clayton_nested_sampling_panics() {
     let inner = NacNode::leaf_group(4.0, vec![1]);
     let root = NacNode {
       theta: 1.5,
@@ -677,7 +675,7 @@ mod tests {
   }
 
   /// `fit` must return a descriptive error pointing at structure learning
-  /// being out of v2.3.0 scope.
+  /// not being implemented.
   #[test]
   fn nac_fit_rejects_with_descriptive_error() {
     let root = NacNode::leaf_group(2.0, vec![0, 1]);
@@ -687,8 +685,8 @@ mod tests {
     assert!(res.is_err());
     let msg = res.unwrap_err().to_string();
     assert!(
-      msg.contains("structure") || msg.contains("v2.4"),
-      "fit error should explain the v2.3.0 design choice; got: {msg}"
+      msg.contains("structure") || msg.contains("not implemented"),
+      "fit error should explain that structure learning is not implemented; got: {msg}"
     );
   }
 }

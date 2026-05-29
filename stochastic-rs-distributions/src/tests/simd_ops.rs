@@ -1,7 +1,7 @@
-//! Unit tests for the seven SIMD ops added in v2.3.0:
-//! `simd_log1p`, `simd_expm1`, `simd_hypot`, `simd_fma`, `simd_erf`,
-//! `simd_erfc`, `simd_lgamma`. Verifies lane-wise agreement with the
-//! scalar `std` / closed-form references.
+//! Unit tests for the seven extra SIMD ops `simd_log1p`, `simd_expm1`,
+//! `simd_hypot`, `simd_fma`, `simd_erf`, `simd_erfc`, `simd_lgamma`.
+//! Verifies lane-wise agreement with the scalar `std` / closed-form
+//! references.
 
 use std::f32;
 use std::f64;

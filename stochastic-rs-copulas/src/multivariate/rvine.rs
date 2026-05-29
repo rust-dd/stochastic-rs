@@ -1,4 +1,4 @@
-//! # Regular vine (R-vine) — v2.3.0 thin wrapper
+//! # Regular vine (R-vine) — D-vine / C-vine wrapper
 //!
 //! The regular vine is a graph-theoretic generalisation of D-vines and
 //! C-vines (Bedford-Cooke 2002, Joe 2011, Dißmann 2013): an R-vine is a
@@ -6,26 +6,22 @@
 //! the **proximity condition** (two edges of $T_{k+1}$ must share a node
 //! of $T_k$).
 //!
-//! Generic R-vine evaluation requires either the Joe-Kurowicka 2011
-//! lower-triangular **structure matrix** representation or an explicit
-//! edge-list with the proximity-condition recursion that walks the
-//! conditional CDFs up the tree. Both, together with the **Dißmann
-//! 2013** sequential structure-selection algorithm, are scheduled for
-//! v2.4 (≈ 50-60 hours of implementation + cross-validation against the R
-//! `VineCopula` package).
+//! Generic free-form R-vine evaluation requires either the Joe-Kurowicka
+//! 2011 lower-triangular **structure matrix** representation or an
+//! explicit edge-list with the proximity-condition recursion that walks
+//! the conditional CDFs up the tree. That, together with the **Dißmann
+//! 2013** sequential structure-selection algorithm, is not yet
+//! implemented.
 //!
-//! ### v2.3.0 delivered surface
-//!
-//! `RVine` is an enum that wraps either a [`super::dvine::DVine`] or a
+//! [`RVine`] is an enum that wraps either a [`super::dvine::DVine`] or a
 //! [`super::cvine::CVine`] — the two structure-special cases of the
 //! regular vine. All `MultivariateExt` methods delegate to the wrapped
 //! type, giving a unified API; constructor methods exist for the two
-//! supported special cases. Free-form matrix R-vines panic on
-//! construction with a v2.4 pointer.
+//! supported special cases.
 //!
-//! For users who need general R-vines today, the v2.3.0 workaround is to
-//! pre-route through `DVine` (path-shaped tree) or `CVine` (star tree per
-//! tree-level) — both are special cases of the R-vine.
+//! For general R-vines, pre-route through `DVine` (path-shaped tree) or
+//! `CVine` (star tree per tree-level) — both are special cases of the
+//! R-vine.
 //!
 //! References:
 //! - Bedford, T., Cooke, R.M. (2002), "Vines — a new graphical model for
@@ -47,10 +43,10 @@ use super::cvine::CVine;
 use super::dvine::DVine;
 use crate::traits::MultivariateExt;
 
-/// Regular vine pair-copula construction wrapper. v2.3.0 supports the two
-/// structure-special cases (D-vine and C-vine) via this enum; the
-/// matrix-encoded generic R-vine variant is reserved for v2.4 (Dißmann
-/// 2013 sequential selection + density propagation per Joe-Kurowicka).
+/// Regular vine pair-copula construction wrapper over the two
+/// structure-special cases (D-vine and C-vine). The matrix-encoded
+/// generic R-vine variant (Dißmann 2013 sequential selection + density
+/// propagation per Joe-Kurowicka) is not yet implemented.
 #[derive(Debug, Clone)]
 pub enum RVine {
   /// Path-shaped trees — see [`super::dvine::DVine`].
