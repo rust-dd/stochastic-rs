@@ -272,7 +272,7 @@ mod tests {
     let d = 4.0 * kappa * theta / s2;
     let lambda = x_t * 4.0 * kappa * a / (s2 * (1.0 - a));
     // χ'²_d(λ) = χ²_{d + 2N}, N ~ Poisson(λ/2); central χ²_k = Gamma(k/2, 2).
-    let n_pois = Poisson::new(lambda / 2.0).unwrap().sample(rng) as f64;
+    let n_pois: f64 = Poisson::new(lambda / 2.0).unwrap().sample(rng);
     let shape = d / 2.0 + n_pois;
     let chi2 = if shape > 0.0 {
       Gamma::new(shape, 2.0).unwrap().sample(rng)
