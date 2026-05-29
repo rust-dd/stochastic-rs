@@ -49,6 +49,7 @@
 
 use ndarray::ArrayView1;
 
+use crate::optim::nelder_mead;
 use crate::traits::FloatExt;
 
 /// Result of the two-step GMM fit of the CIR variance process.
@@ -198,105 +199,6 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
     iterations: it1 + it2,
     converged: conv1 && conv2,
   }
-}
-
-/// Compact fixed-size Nelder-Mead simplex minimiser for the 3-parameter
-/// GMM objective (parameters carried in log-space so they stay positive).
-/// Returns `(argmin, iterations, converged)`.
-fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(start: [f64; 3], f: F) -> ([f64; 3], usize, bool) {
-  const ALPHA: f64 = 1.0;
-  const GAMMA: f64 = 2.0;
-  const RHO: f64 = 0.5;
-  const SIGMA: f64 = 0.5;
-  const MAX_ITER: usize = 2000;
-  const TOL: f64 = 1e-10;
-
-  // Initial simplex: start plus a perturbation along each axis.
-  let mut simplex = [start, start, start, start];
-  for i in 0..3 {
-    simplex[i + 1][i] += 0.1;
-  }
-  let mut fvals = [f(&simplex[0]), f(&simplex[1]), f(&simplex[2]), f(&simplex[3])];
-
-  let mut iters = 0;
-  while iters < MAX_ITER {
-    iters += 1;
-    // Order vertices by objective.
-    let mut order = [0, 1, 2, 3];
-    order.sort_by(|&a, &b| fvals[a].partial_cmp(&fvals[b]).unwrap());
-    let best = order[0];
-    let worst = order[3];
-    let second_worst = order[2];
-
-    if (fvals[worst] - fvals[best]).abs() < TOL {
-      return (simplex[best], iters, true);
-    }
-
-    // Centroid of all but the worst vertex.
-    let mut centroid = [0.0; 3];
-    for &o in &order[..3] {
-      for d in 0..3 {
-        centroid[d] += simplex[o][d] / 3.0;
-      }
-    }
-
-    let reflect = reflect_point(&centroid, &simplex[worst], ALPHA);
-    let f_reflect = f(&reflect);
-
-    if f_reflect < fvals[best] {
-      let expand = reflect_point(&centroid, &simplex[worst], ALPHA * GAMMA);
-      let f_expand = f(&expand);
-      if f_expand < f_reflect {
-        simplex[worst] = expand;
-        fvals[worst] = f_expand;
-      } else {
-        simplex[worst] = reflect;
-        fvals[worst] = f_reflect;
-      }
-    } else if f_reflect < fvals[second_worst] {
-      simplex[worst] = reflect;
-      fvals[worst] = f_reflect;
-    } else {
-      // Contraction.
-      let contract = contract_point(&centroid, &simplex[worst], RHO);
-      let f_contract = f(&contract);
-      if f_contract < fvals[worst] {
-        simplex[worst] = contract;
-        fvals[worst] = f_contract;
-      } else {
-        // Shrink toward the best vertex.
-        for &o in &order[1..] {
-          for d in 0..3 {
-            simplex[o][d] = simplex[best][d] + SIGMA * (simplex[o][d] - simplex[best][d]);
-          }
-          fvals[o] = f(&simplex[o]);
-        }
-      }
-    }
-  }
-  let mut best = 0;
-  for i in 1..4 {
-    if fvals[i] < fvals[best] {
-      best = i;
-    }
-  }
-  (simplex[best], iters, false)
-}
-
-fn reflect_point(centroid: &[f64; 3], worst: &[f64; 3], coef: f64) -> [f64; 3] {
-  let mut p = [0.0; 3];
-  for d in 0..3 {
-    p[d] = centroid[d] + coef * (centroid[d] - worst[d]);
-  }
-  p
-}
-
-fn contract_point(centroid: &[f64; 3], worst: &[f64; 3], coef: f64) -> [f64; 3] {
-  let mut p = [0.0; 3];
-  for d in 0..3 {
-    p[d] = centroid[d] + coef * (worst[d] - centroid[d]);
-  }
-  p
 }
 
 /// 4×4 Gauss-Jordan matrix inverse. Returns `None` on a singular pivot.

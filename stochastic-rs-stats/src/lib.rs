@@ -31,6 +31,8 @@ pub mod leverage;
 pub mod mle;
 pub use stochastic_rs_distributions::non_central_chi_squared;
 pub mod normality;
+pub(crate) mod optim;
+pub mod qmle;
 pub mod realized;
 pub mod spectral;
 #[cfg(feature = "openblas")]
