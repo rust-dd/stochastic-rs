@@ -421,6 +421,54 @@ fn time_ext_tau_with_dcc() {
   assert!(tau_360 > tau_365);
 }
 
+struct MockPricerWithDcc {
+  eval: NaiveDate,
+  expiration: NaiveDate,
+  dcc: Option<DayCountConvention>,
+}
+
+impl stochastic_rs::traits::TimeExt for MockPricerWithDcc {
+  fn tau(&self) -> Option<f64> {
+    None
+  }
+  fn eval(&self) -> Option<NaiveDate> {
+    Some(self.eval)
+  }
+  fn expiration(&self) -> Option<NaiveDate> {
+    Some(self.expiration)
+  }
+  fn dcc(&self) -> Option<DayCountConvention> {
+    self.dcc
+  }
+}
+
+#[test]
+fn time_ext_dcc_override_switches_tau_or_from_dates() {
+  use stochastic_rs::traits::TimeExt;
+
+  // Same dates, default vs Actual/360 override on a non-leap span.
+  let eval = d(2025, 1, 15);
+  let expiration = d(2025, 7, 15); // 181 days
+  let default = MockPricerWithDcc {
+    eval,
+    expiration,
+    dcc: None,
+  };
+  let act360 = MockPricerWithDcc {
+    eval,
+    expiration,
+    dcc: Some(DayCountConvention::Actual360),
+  };
+  assert!(
+    (default.tau_or_from_dates() - 181.0 / 365.0).abs() < 1e-12,
+    "dcc() == None must fall back to Actual/365 Fixed"
+  );
+  assert!(
+    (act360.tau_or_from_dates() - 181.0 / 360.0).abs() < 1e-12,
+    "dcc() == Some(Actual360) must be used by tau_or_from_dates"
+  );
+}
+
 #[test]
 fn display_impls() {
   assert_eq!(format!("{}", DayCountConvention::Actual360), "ACT/360");

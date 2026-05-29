@@ -229,6 +229,7 @@ fn delta_call_finite_in_3d() {
     tau: Some(1.0),
     eval: None,
     expiration: None,
+    dcc: None,
     option_type: OptionType::Call,
     b: BSMCoc::Bsm1973,
   };
@@ -266,6 +267,7 @@ fn delta_put_finite_in_3d() {
     tau: Some(1.0),
     eval: None,
     expiration: None,
+    dcc: None,
     option_type: OptionType::Put,
     b: BSMCoc::Bsm1973,
   };
@@ -372,6 +374,7 @@ fn price_converges_to_bs_when_xi_zero() {
     tau: Some(1.0),
     eval: None,
     expiration: None,
+    dcc: None,
     option_type: OptionType::Call,
     b: BSMCoc::Bsm1973,
   };
@@ -447,6 +450,7 @@ fn fd_delta_matches_bs_delta() {
     tau: Some(1.0),
     eval: None,
     expiration: None,
+    dcc: None,
     option_type: OptionType::Call,
     b: BSMCoc::Bsm1973,
   };

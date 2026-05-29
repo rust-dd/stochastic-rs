@@ -51,3 +51,44 @@ pub fn plot_vol_surface(strikes: &[f64], maturities: &[f64], ivs: &Array2<f64>, 
   plot.add_trace(Surface::new(z).x(strikes.to_vec()).y(maturities.to_vec()));
   plot.write_html(path);
 }
+
+/// Convenience: plot a 2D matrix as a heatmap (covariance, correlation,
+/// Greeks surface, sensitivity grid) to an HTML file.
+///
+/// `z` shape is `(len(y), len(x))` — row `j` corresponds to `y[j]`, column
+/// `i` to `x[i]`. `title` becomes both the plot title and the trace name.
+///
+/// ```ignore
+/// use ndarray::array;
+/// use stochastic_rs_viz::plot_heatmap;
+///
+/// let cov = array![[1.0, 0.3], [0.3, 1.0]];
+/// plot_heatmap(&cov, &["a", "b"], &["a", "b"], "covariance", "cov.html");
+/// ```
+pub fn plot_heatmap<X, Y>(z: &Array2<f64>, x: &[X], y: &[Y], title: &str, path: &str)
+where
+  X: ToString,
+  Y: ToString,
+{
+  use plotly::HeatMap;
+  use plotly::Layout;
+  use plotly::common::Title;
+  assert_eq!(
+    z.dim(),
+    (y.len(), x.len()),
+    "heatmap z shape must be (len(y), len(x))"
+  );
+  let z_rows: Vec<Vec<f64>> = (0..y.len())
+    .map(|j| (0..x.len()).map(|i| z[[j, i]]).collect())
+    .collect();
+  let x_labels: Vec<String> = x.iter().map(ToString::to_string).collect();
+  let y_labels: Vec<String> = y.iter().map(ToString::to_string).collect();
+  let mut plot = Plot::new();
+  plot.add_trace(
+    HeatMap::new(x_labels, y_labels, z_rows)
+      .name(title)
+      .show_legend(false),
+  );
+  plot.set_layout(Layout::new().title(Title::with_text(title)));
+  plot.write_html(path);
+}

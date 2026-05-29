@@ -53,7 +53,48 @@ impl Greeks {
       veta: f64::NAN,
     }
   }
+
+  /// Component index order used by the [`stochastic_rs_viz::Plottable`] impl
+  /// and the [`as_array`](Self::as_array) accessor. Stable so downstream
+  /// callers can hard-code positional access (`out[0] == delta` etc).
+  pub const COMPONENT_NAMES: [&'static str; 9] = [
+    "delta", "gamma", "vega", "theta", "rho", "vanna", "charm", "volga", "veta",
+  ];
+
+  /// Flatten into the canonical 9-element array matching [`COMPONENT_NAMES`].
+  pub fn as_array(&self) -> [f64; 9] {
+    [
+      self.delta, self.gamma, self.vega, self.theta, self.rho, self.vanna, self.charm,
+      self.volga, self.veta,
+    ]
+  }
 }
+
+#[cfg(feature = "viz")]
+impl stochastic_rs_viz::Plottable<f64> for Greeks {
+  fn n_components(&self) -> usize {
+    9
+  }
+
+  fn component_name(&self, idx: usize) -> String {
+    Self::COMPONENT_NAMES
+      .get(idx)
+      .map(|s| (*s).to_string())
+      .unwrap_or_default()
+  }
+
+  fn component(&self, idx: usize) -> Vec<f64> {
+    // A single Greeks struct is a 9-element point sample, not a series; we
+    // expose every Greek as a one-element vector so `GridPlotter` and
+    // `plot_distribution` consumers can treat each entry uniformly.
+    self.as_array().get(idx).copied().map(|v| vec![v]).unwrap_or_default()
+  }
+
+  fn len(&self) -> usize {
+    1
+  }
+}
+
 
 /// Trait for models that can price European options at arbitrary (K, T) points.
 ///
@@ -166,5 +207,60 @@ pub trait GreeksExt {
       volga: self.volga(),
       veta: self.veta(),
     }
+  }
+}
+
+#[cfg(test)]
+mod greeks_array_tests {
+  use super::Greeks;
+
+  #[test]
+  fn as_array_matches_component_names_order() {
+    let g = Greeks {
+      delta: 0.5,
+      gamma: 0.1,
+      vega: 0.2,
+      theta: -0.05,
+      rho: 0.3,
+      vanna: 0.4,
+      charm: 0.05,
+      volga: 0.6,
+      veta: -0.02,
+    };
+    let arr = g.as_array();
+    assert_eq!(arr.len(), Greeks::COMPONENT_NAMES.len());
+    assert_eq!(arr[0], g.delta);
+    assert_eq!(arr[8], g.veta);
+  }
+}
+
+#[cfg(all(test, feature = "viz"))]
+mod viz_tests {
+  use stochastic_rs_viz::Plottable;
+
+  use super::Greeks;
+
+  #[test]
+  fn plottable_for_greeks_exposes_nine_components() {
+    let g = Greeks {
+      delta: 0.5,
+      gamma: 0.1,
+      vega: 0.2,
+      theta: -0.05,
+      rho: 0.3,
+      vanna: 0.4,
+      charm: 0.05,
+      volga: 0.6,
+      veta: -0.02,
+    };
+    assert_eq!(g.n_components(), 9);
+    assert_eq!(g.len(), 1);
+    assert!(!g.is_empty());
+    assert_eq!(g.component_name(0), "delta");
+    assert_eq!(g.component_name(8), "veta");
+    assert_eq!(g.component_name(99), "");
+    assert_eq!(g.component(0), vec![0.5]);
+    assert_eq!(g.component(2), vec![0.2]);
+    assert!(g.component(99).is_empty());
   }
 }

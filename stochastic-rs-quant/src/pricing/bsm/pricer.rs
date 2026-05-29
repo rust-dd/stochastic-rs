@@ -48,6 +48,10 @@ pub struct BSMPricer {
   pub eval: Option<chrono::NaiveDate>,
   /// Expiration date
   pub expiration: Option<chrono::NaiveDate>,
+  /// Day-count convention used to derive τ from `(eval, expiration)` when
+  /// `tau` is not set explicitly. `None` falls back to Actual/365 Fixed via
+  /// [`TimeExt::tau_or_from_dates`].
+  pub dcc: Option<crate::calendar::DayCountConvention>,
   /// Option type
   pub option_type: OptionType,
   /// Cost of carry
@@ -80,6 +84,7 @@ impl BSMPricer {
       tau,
       eval,
       expiration,
+      dcc: None,
       option_type,
       b,
     }
@@ -97,6 +102,7 @@ impl BSMPricer {
       tau: None,
       eval: None,
       expiration: None,
+      dcc: None,
       option_type: OptionType::Call,
       b: BSMCoc::Bsm1973,
     }
@@ -115,6 +121,7 @@ pub struct BSMPricerBuilder {
   tau: Option<f64>,
   eval: Option<chrono::NaiveDate>,
   expiration: Option<chrono::NaiveDate>,
+  dcc: Option<crate::calendar::DayCountConvention>,
   option_type: OptionType,
   b: BSMCoc,
 }
@@ -144,6 +151,12 @@ impl BSMPricerBuilder {
     self.expiration = Some(expiration);
     self
   }
+  /// Day-count convention used when τ is derived from `(eval, expiration)`.
+  /// Ignored when `tau()` has been set explicitly. Defaults to Actual/365 Fixed.
+  pub fn dcc(mut self, dcc: crate::calendar::DayCountConvention) -> Self {
+    self.dcc = Some(dcc);
+    self
+  }
   pub fn option_type(mut self, option_type: OptionType) -> Self {
     self.option_type = option_type;
     self
@@ -164,6 +177,7 @@ impl BSMPricerBuilder {
       tau: self.tau,
       eval: self.eval,
       expiration: self.expiration,
+      dcc: self.dcc,
       option_type: self.option_type,
       b: self.b,
     }
@@ -248,6 +262,10 @@ impl TimeExt for BSMPricer {
 
   fn expiration(&self) -> Option<chrono::NaiveDate> {
     self.expiration
+  }
+
+  fn dcc(&self) -> Option<crate::calendar::DayCountConvention> {
+    self.dcc
   }
 }
 

@@ -8,7 +8,7 @@
 //!   2D matrix).
 //! - [`grid_plotter`] — `GridPlotter` builder for multi-subplot HTML grids.
 //! - [`convenience`] — one-shot `plot_process` / `plot_distribution` /
-//!   `plot_vol_surface` HTML writers.
+//!   `plot_vol_surface` / `plot_heatmap` HTML writers.
 
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
@@ -19,6 +19,7 @@ pub mod grid_plotter;
 pub mod plottable;
 
 pub use convenience::plot_distribution;
+pub use convenience::plot_heatmap;
 pub use convenience::plot_process;
 pub use convenience::plot_vol_surface;
 pub use grid_plotter::GridPlotter;

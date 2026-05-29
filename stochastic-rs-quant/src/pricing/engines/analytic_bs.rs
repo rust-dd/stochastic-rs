@@ -88,6 +88,7 @@ impl AnalyticBSEngine {
       tau: opt.tau,
       eval: opt.eval,
       expiration: opt.expiry,
+      dcc: None,
       option_type: opt_type,
       b: self.coc,
     }

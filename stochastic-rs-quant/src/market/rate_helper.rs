@@ -16,8 +16,11 @@ use chrono::NaiveDate;
 
 use super::handle::Handle;
 use super::quote::Quote;
+use crate::calendar::BusinessDayConvention;
+use crate::calendar::Calendar;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
+use crate::calendar::ScheduleBuilder;
 use crate::curves::DiscountCurve;
 use crate::curves::Instrument;
 use crate::curves::InterpolationMethod;
@@ -135,6 +138,17 @@ impl<T: FloatExt> RateHelper<T> for FraRateHelper<T> {
 }
 
 /// Vanilla fixed-vs-float swap helper for the long end of the curve.
+///
+/// When constructed via [`new`](Self::new) the helper hands off a uniform
+/// `δ = 1 / frequency` schedule to the bootstrapping engine — see
+/// [`Instrument::Swap`] for the closed-form pricing.
+///
+/// When configured via [`with_calendar`](Self::with_calendar) the helper
+/// builds an **explicit calendar-adjusted payment schedule** via
+/// [`ScheduleBuilder`] and routes through [`Instrument::SwapWithSchedule`],
+/// which prices the par leg from each calendar-noisy accrual `δ_i`
+/// individually. This removes the small day-count bias that the uniform
+/// path inherits when the real swap quote was business-day-adjusted.
 #[derive(Debug, Clone)]
 pub struct SwapRateHelper<T: FloatExt> {
   /// Quote handle producing the par swap rate.
@@ -147,10 +161,20 @@ pub struct SwapRateHelper<T: FloatExt> {
   pub fixed_frequency: Frequency,
   /// Day-count convention used to express the maturity in years.
   pub day_count: DayCountConvention,
+  /// Optional calendar for business-day-adjusted payment schedule
+  /// construction. When `None`, [`to_instrument`](Self::to_instrument) falls
+  /// back to the uniform [`Instrument::Swap`] path.
+  pub calendar: Option<Calendar>,
+  /// Business day convention applied to each generated payment date.
+  /// Honoured only when [`calendar`](Self::calendar) is `Some`. Defaults to
+  /// `ModifiedFollowing` (market standard) when set via `with_calendar`.
+  pub convention: Option<BusinessDayConvention>,
 }
 
 impl<T: FloatExt> SwapRateHelper<T> {
   /// Construct the helper from an observable swap rate quote and dates.
+  /// Routes through the uniform [`Instrument::Swap`] path; for
+  /// calendar-aware bootstrapping, follow with [`with_calendar`](Self::with_calendar).
   pub fn new(
     rate_quote: Handle<dyn Quote<T>>,
     settlement_date: NaiveDate,
@@ -164,7 +188,60 @@ impl<T: FloatExt> SwapRateHelper<T> {
       maturity_date,
       fixed_frequency,
       day_count,
+      calendar: None,
+      convention: None,
     }
+  }
+
+  /// Enable calendar-aware payment schedule construction. The helper now
+  /// generates an explicit [`Schedule`](crate::calendar::Schedule) via
+  /// [`ScheduleBuilder`] (backward generation, `ShortFirst` default stub)
+  /// and routes through [`Instrument::SwapWithSchedule`] in `to_instrument`.
+  pub fn with_calendar(
+    mut self,
+    calendar: Calendar,
+    convention: BusinessDayConvention,
+  ) -> Self {
+    self.calendar = Some(calendar);
+    self.convention = Some(convention);
+    self
+  }
+
+  /// Build the calendar-adjusted fixed-leg payment schedule. Returns the
+  /// uniform raw dates when no calendar has been configured.
+  ///
+  /// The schedule runs from `settlement_date` to `maturity_date` with the
+  /// configured `fixed_frequency`; payment dates are business-day-adjusted
+  /// according to [`convention`](Self::convention) when set.
+  pub fn built_schedule(&self) -> Vec<NaiveDate> {
+    let mut builder =
+      ScheduleBuilder::new(self.settlement_date, self.maturity_date).frequency(self.fixed_frequency);
+    if let Some(cal) = &self.calendar {
+      builder = builder.calendar(cal.clone());
+    }
+    if let Some(conv) = self.convention {
+      builder = builder.convention(conv);
+    }
+    let s = builder.build();
+    if self.calendar.is_some() {
+      s.adjusted_dates
+    } else {
+      s.dates
+    }
+  }
+
+  /// Year-fractions of every fixed-leg payment relative to
+  /// [`settlement_date`](Self::settlement_date), using the configured
+  /// [`day_count`](Self::day_count). Skips the leading `settlement_date`
+  /// entry so the resulting slice matches the [`Instrument::SwapWithSchedule`]
+  /// contract (one entry per fixed-leg payment).
+  pub fn payment_times(&self) -> Vec<T> {
+    let dates = self.built_schedule();
+    dates
+      .iter()
+      .skip(1)
+      .map(|&d| self.day_count.year_fraction(self.settlement_date, d))
+      .collect()
   }
 }
 
@@ -177,14 +254,33 @@ impl<T: FloatExt> RateHelper<T> for SwapRateHelper<T> {
 
   fn to_instrument(&self, valuation_date: NaiveDate) -> Option<Instrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
-    let maturity = self
-      .day_count
-      .year_fraction(valuation_date, self.maturity_date);
-    Some(Instrument::Swap {
-      maturity,
-      rate,
-      frequency: self.fixed_frequency.periods_per_year(),
-    })
+    if self.calendar.is_some() {
+      // Calendar-aware path: build explicit business-day-adjusted schedule
+      // anchored at `valuation_date` (not `settlement_date`) so the curve
+      // sees year-fractions relative to the bootstrap origin.
+      let dates = self.built_schedule();
+      let payment_times: Vec<T> = dates
+        .iter()
+        .skip(1)
+        .map(|&d| self.day_count.year_fraction(valuation_date, d))
+        .collect();
+      if payment_times.is_empty() {
+        return None;
+      }
+      Some(Instrument::SwapWithSchedule {
+        rate,
+        payment_times,
+      })
+    } else {
+      let maturity = self
+        .day_count
+        .year_fraction(valuation_date, self.maturity_date);
+      Some(Instrument::Swap {
+        maturity,
+        rate,
+        frequency: self.fixed_frequency.periods_per_year(),
+      })
+    }
   }
 }
 
@@ -344,6 +440,77 @@ mod tests {
     match helper.to_instrument(val_date).unwrap() {
       Instrument::Deposit { rate, .. } => assert!((rate - 0.035).abs() < 1e-12),
       _ => panic!("expected deposit"),
+    }
+  }
+
+  #[test]
+  fn swap_rate_helper_uniform_path_is_legacy_swap() {
+    // Helper constructed via `new()` (no calendar) must produce the legacy
+    // uniform-frequency `Instrument::Swap` variant.
+    let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 valid");
+    let mat = months_later(val_date, 24);
+    let q = Arc::new(SimpleQuote::<f64>::new(0.04));
+    let handle: Handle<dyn Quote<f64>> = Handle::new(Arc::clone(&q) as Arc<dyn Quote<f64>>);
+    let helper = SwapRateHelper::new(
+      handle,
+      val_date,
+      mat,
+      Frequency::SemiAnnual,
+      DayCountConvention::Actual365Fixed,
+    );
+    match helper.to_instrument(val_date).unwrap() {
+      Instrument::Swap {
+        rate, frequency, ..
+      } => {
+        assert!((rate - 0.04).abs() < 1e-12);
+        assert_eq!(frequency, 2);
+      }
+      other => panic!("expected uniform Instrument::Swap, got {other:?}"),
+    }
+  }
+
+  #[test]
+  fn swap_rate_helper_calendar_path_uses_explicit_schedule() {
+    use crate::calendar::BusinessDayConvention;
+    use crate::calendar::Calendar;
+    use crate::calendar::HolidayCalendar;
+
+    // Configure with TARGET calendar + ModifiedFollowing so that a Jan-1
+    // payment is rolled to the next business day. The resulting payment
+    // schedule must be non-uniform and routed through SwapWithSchedule.
+    let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 valid");
+    let mat = months_later(val_date, 24);
+    let q = Arc::new(SimpleQuote::<f64>::new(0.04));
+    let handle: Handle<dyn Quote<f64>> = Handle::new(Arc::clone(&q) as Arc<dyn Quote<f64>>);
+    let helper = SwapRateHelper::new(
+      handle,
+      val_date,
+      mat,
+      Frequency::SemiAnnual,
+      DayCountConvention::Actual365Fixed,
+    )
+    .with_calendar(
+      Calendar::new(HolidayCalendar::Target),
+      BusinessDayConvention::ModifiedFollowing,
+    );
+
+    // Calendar-aware payment_times must be strictly increasing and >= the
+    // raw uniform 6m grid (because of MF rollover on holidays).
+    let times: Vec<f64> = helper.payment_times();
+    assert_eq!(times.len(), 4, "semi-annual 2y → 4 fixed-leg payments");
+    for w in times.windows(2) {
+      assert!(w[0] < w[1], "payment_times must be strictly increasing");
+    }
+
+    match helper.to_instrument(val_date).unwrap() {
+      Instrument::SwapWithSchedule {
+        rate,
+        payment_times,
+      } => {
+        assert!((rate - 0.04).abs() < 1e-12);
+        assert_eq!(payment_times.len(), 4);
+      }
+      other => panic!("expected SwapWithSchedule, got {other:?}"),
     }
   }
 }

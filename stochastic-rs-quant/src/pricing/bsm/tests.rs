@@ -187,3 +187,78 @@ fn bsm_iv_round_trip_with_dividend_yield() {
     "Merton1973 IV round-trip failed: input sigma=0.25, recovered iv={iv}"
   );
 }
+
+#[test]
+fn bsm_custom_dcc_changes_tau_from_dates() {
+  use chrono::NaiveDate;
+
+  use crate::calendar::DayCountConvention;
+  use crate::traits::TimeExt;
+
+  // Spans a leap-year (2024 inclusive). Act/365F → 366/365, Act/360 → 366/360.
+  let eval = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+  let exp = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+  let default = BSMPricer::builder(100.0, 0.2, 100.0, 0.05)
+    .eval(eval)
+    .expiration(exp)
+    .build();
+  let act360 = BSMPricer::builder(100.0, 0.2, 100.0, 0.05)
+    .eval(eval)
+    .expiration(exp)
+    .dcc(DayCountConvention::Actual360)
+    .build();
+  assert!(
+    (default.calculate_tau_in_years() - 366.0 / 365.0).abs() < 1e-12,
+    "default DCC should match Act/365F leap-year fraction"
+  );
+  assert!(
+    (act360.calculate_tau_in_years() - 366.0 / 360.0).abs() < 1e-12,
+    "explicit Act/360 DCC should override the default"
+  );
+}
+
+#[test]
+fn bsm_explicit_tau_overrides_dcc() {
+  use chrono::NaiveDate;
+
+  use crate::calendar::DayCountConvention;
+  use crate::traits::TimeExt;
+
+  // `tau` is set explicitly → `dcc` must be ignored and date fields skipped.
+  let bsm = BSMPricer::builder(100.0, 0.2, 100.0, 0.05)
+    .tau(0.5)
+    .eval(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
+    .expiration(NaiveDate::from_ymd_opt(2025, 1, 1).unwrap())
+    .dcc(DayCountConvention::Actual360)
+    .build();
+  assert!(
+    (bsm.calculate_tau_in_years() - 0.5).abs() < 1e-12,
+    "explicit tau must win over dcc + date pair"
+  );
+}
+
+#[test]
+fn bsm_dcc_pricing_diverges_from_default() {
+  use chrono::NaiveDate;
+
+  // Same eval/exp dates but two different conventions: prices must differ
+  // because the cost-of-carry exponent `(b - r) * tau` and discount factor
+  // `exp(-r * tau)` scale with τ.
+  let eval = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+  let exp = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+  let default = BSMPricer::builder(100.0, 0.2, 100.0, 0.05)
+    .eval(eval)
+    .expiration(exp)
+    .build();
+  let act360 = BSMPricer::builder(100.0, 0.2, 100.0, 0.05)
+    .eval(eval)
+    .expiration(exp)
+    .dcc(crate::calendar::DayCountConvention::Actual360)
+    .build();
+  let p_default = default.calculate_price();
+  let p_act360 = act360.calculate_price();
+  assert!(
+    (p_default - p_act360).abs() > 1e-3,
+    "Act/365F vs Act/360 should produce visibly different ATM prices on a leap-year span (got {p_default} vs {p_act360})"
+  );
+}

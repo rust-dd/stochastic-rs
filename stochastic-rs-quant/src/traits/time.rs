@@ -11,8 +11,18 @@ pub trait TimeExt {
     None
   }
 
+  /// Day-count convention applied when deriving τ from `(eval, expiration)`.
+  /// Returns `None` to keep the historical default of Actual/365 Fixed; an
+  /// instrument that wants ISDA / ICMA / 30E semantics on its date-based τ
+  /// override this to plug into [`tau_or_from_dates`]. The override is
+  /// ignored when `tau()` returns `Some`.
+  fn dcc(&self) -> Option<crate::calendar::DayCountConvention> {
+    None
+  }
+
   /// Resolve the time-to-maturity τ from `tau()` or, if absent, from
-  /// `(eval, expiration)` via Actual/365 Fixed.
+  /// `(eval, expiration)` via the convention returned by [`dcc`]
+  /// (defaults to Actual/365 Fixed).
   ///
   /// Returns `f64::NAN` when neither path is available — consistent with the
   /// crate's missing-data convention (`Greeks::default = Greeks::nan()`,
@@ -24,18 +34,18 @@ pub trait TimeExt {
       return tau;
     }
     match (self.eval(), self.expiration()) {
-      (Some(e), Some(x)) => crate::calendar::DayCountConvention::Actual365Fixed.year_fraction(e, x),
+      (Some(e), Some(x)) => self
+        .dcc()
+        .unwrap_or(crate::calendar::DayCountConvention::Actual365Fixed)
+        .year_fraction(e, x),
       _ => f64::NAN,
     }
   }
 
-  /// Compute `tau` using a specific day count convention.
-  ///
-  /// If `tau` is set explicitly it is returned as-is. Otherwise the year
-  /// fraction is derived from `eval` / `expiration` using the given
-  /// [`DayCountConvention`](crate::calendar::DayCountConvention). Returns
-  /// `f64::NAN` when neither is set (matching the rest of the crate's
-  /// missing-data convention).
+  /// Compute `tau` using a specific day count convention, overriding both
+  /// the explicit `tau` slot and the instrument's [`dcc`] default. Returns
+  /// `f64::NAN` when neither `tau` nor a `(eval, expiration)` pair is set
+  /// (matching the rest of the crate's missing-data convention).
   fn tau_with_dcc(&self, dcc: crate::calendar::DayCountConvention) -> f64 {
     if let Some(tau) = self.tau() {
       return tau;

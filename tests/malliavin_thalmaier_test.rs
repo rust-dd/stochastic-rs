@@ -47,6 +47,7 @@ fn bs_pricer(k: f64, opt: OptionType) -> BSMPricer {
     tau: Some(1.0),
     eval: None,
     expiration: None,
+    dcc: None,
     option_type: opt,
     b: BSMCoc::Bsm1973,
   }

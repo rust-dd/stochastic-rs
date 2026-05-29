@@ -118,6 +118,44 @@ pub fn bootstrap<T: FloatExt>(
           discount_factor: df_n,
         });
       }
+      Instrument::SwapWithSchedule {
+        rate,
+        payment_times,
+      } => {
+        // Calendar-aware par swap: annuity from explicit non-uniform period
+        // accruals. Par condition
+        //   0 = S · Σ δ_i · D(t_i)  +  D(T) − 1
+        // with the final period rolled to the RHS:
+        //   1 = S · Σ_{i<n} δ_i · D(t_i)  +  (1 + S · δ_n) · D(T)
+        //   ⟹ D(T) = (1 − S · annuity_{<n}) / (1 + S · δ_n)
+        // where `δ_i = t_i − t_{i−1}` with the convention `t_0 = 0`.
+        assert!(
+          !payment_times.is_empty(),
+          "Instrument::SwapWithSchedule requires at least one payment time"
+        );
+        let n = payment_times.len();
+        let mut annuity = T::zero();
+        let mut prev = T::zero();
+        for (i, t_i) in payment_times.iter().enumerate() {
+          let delta_i = *t_i - prev;
+          if i + 1 < n {
+            let d_i = interpolation::interpolate_discount_factor(&points, *t_i, method);
+            annuity += delta_i * d_i;
+          }
+          prev = *t_i;
+        }
+        let delta_n = *payment_times.last().unwrap()
+          - if n >= 2 {
+            payment_times[n - 2]
+          } else {
+            T::zero()
+          };
+        let df_n = (T::one() - *rate * annuity) / (T::one() + *rate * delta_n);
+        points.push(CurvePoint {
+          time: *payment_times.last().unwrap(),
+          discount_factor: df_n,
+        });
+      }
     }
   }
 
@@ -186,6 +224,41 @@ pub fn bootstrap_iterative<T: FloatExt>(
         let df_n = solve_swap_df(&points, *maturity, *rate, *frequency, method, tol, max_iter);
         points.push(CurvePoint {
           time: *maturity,
+          discount_factor: df_n,
+        });
+      }
+      Instrument::SwapWithSchedule {
+        rate,
+        payment_times,
+      } => {
+        // Calendar-aware par swap with explicit accrual periods. Same par
+        // condition as the closed-form path; the iterative variant doesn't
+        // benefit from bisection here because the equation is already linear
+        // in D(T) once the inner annuity is fixed by the interpolated curve.
+        assert!(
+          !payment_times.is_empty(),
+          "Instrument::SwapWithSchedule requires at least one payment time"
+        );
+        let n = payment_times.len();
+        let mut annuity = T::zero();
+        let mut prev = T::zero();
+        for (i, t_i) in payment_times.iter().enumerate() {
+          let delta_i = *t_i - prev;
+          if i + 1 < n {
+            let d_i = interpolation::interpolate_discount_factor(&points, *t_i, method);
+            annuity += delta_i * d_i;
+          }
+          prev = *t_i;
+        }
+        let delta_n = *payment_times.last().unwrap()
+          - if n >= 2 {
+            payment_times[n - 2]
+          } else {
+            T::zero()
+          };
+        let df_n = (T::one() - *rate * annuity) / (T::one() + *rate * delta_n);
+        points.push(CurvePoint {
+          time: *payment_times.last().unwrap(),
           discount_factor: df_n,
         });
       }

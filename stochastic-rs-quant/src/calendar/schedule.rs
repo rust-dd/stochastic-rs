@@ -155,10 +155,24 @@ impl ScheduleBuilder {
     self
   }
 
-  /// Set the stub convention. By default (no call), the builder picks
-  /// `ShortFirst` for backward generation and `ShortLast` for forward
-  /// generation; pass `LongFirst` / `LongLast` to merge the irregular
-  /// stub with the next regular period instead.
+  /// Set the stub convention.
+  ///
+  /// **Defaults (when this method is not called):**
+  /// - [`DateGenerationRule::Backward`] → [`StubConvention::ShortFirst`]
+  /// - [`DateGenerationRule::Forward`] → [`StubConvention::ShortLast`]
+  ///
+  /// **Edge cases:**
+  /// - `LongFirst` / `LongLast` are **no-ops** when the schedule has no stub
+  ///   (i.e. when the total tenor is an integer multiple of the regular
+  ///   period). Detection is by comparing `months_between(stub_endpoints)`
+  ///   against the regular `period` — equal means no stub to merge.
+  /// - Long-merge applies only when the raw schedule has ≥ 3 dates; a
+  ///   2-date schedule (single period) is left untouched regardless of the
+  ///   chosen convention.
+  /// - Mixing a Long convention with the **opposite** direction (e.g.
+  ///   `Forward` + `LongFirst`) is allowed and merges the start-side stub
+  ///   if any was produced — useful when generating an end-anchored
+  ///   schedule but wanting the *first* irregular period absorbed.
   pub fn stub(mut self, stub: StubConvention) -> Self {
     self.stub = Some(stub);
     self
@@ -379,5 +393,99 @@ mod tests {
     assert_eq!(s_plain.dates.len(), s_imm.dates.len());
     assert_eq!(s_plain.dates[0].day(), 1);
     assert_ne!(s_imm.dates[0].day(), 1);
+  }
+
+  #[test]
+  fn backward_long_first_merges_short_initial_stub() {
+    // Tenor = 2y + 1m → backward semi-annual yields a 1-month short stub at
+    // the front. `LongFirst` must absorb that stub into the next regular
+    // period, dropping the second date.
+    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let termination = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
+    let short = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::SemiAnnual)
+      .backward()
+      .stub(StubConvention::ShortFirst)
+      .build();
+    let long = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::SemiAnnual)
+      .backward()
+      .stub(StubConvention::LongFirst)
+      .build();
+    assert_eq!(
+      long.dates.len() + 1,
+      short.dates.len(),
+      "LongFirst should drop exactly one intermediate date"
+    );
+    assert_eq!(long.dates.first(), short.dates.first());
+    assert_eq!(long.dates.last(), short.dates.last());
+  }
+
+  #[test]
+  fn backward_long_first_no_op_on_regular_grid() {
+    // Tenor = exact 2y semi-annual → no stub. `LongFirst` must be a no-op.
+    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let termination = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+    let short = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::SemiAnnual)
+      .backward()
+      .stub(StubConvention::ShortFirst)
+      .build();
+    let long = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::SemiAnnual)
+      .backward()
+      .stub(StubConvention::LongFirst)
+      .build();
+    assert_eq!(
+      long.dates, short.dates,
+      "LongFirst on a regular tenor must not drop any dates"
+    );
+  }
+
+  #[test]
+  fn forward_long_last_merges_short_trailing_stub() {
+    // Tenor = 2y + 1m forward semi-annual → 1-month short stub at the back.
+    // `LongLast` must absorb the stub into the previous regular period,
+    // dropping `dates[n-2]`.
+    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let termination = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
+    let short = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::SemiAnnual)
+      .forward()
+      .stub(StubConvention::ShortLast)
+      .build();
+    let long = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::SemiAnnual)
+      .forward()
+      .stub(StubConvention::LongLast)
+      .build();
+    assert_eq!(
+      long.dates.len() + 1,
+      short.dates.len(),
+      "LongLast should drop exactly one intermediate date"
+    );
+    assert_eq!(long.dates.first(), short.dates.first());
+    assert_eq!(long.dates.last(), short.dates.last());
+  }
+
+  #[test]
+  fn forward_long_last_no_op_on_regular_grid() {
+    // Exact 1y quarterly grid → no stub. `LongLast` must be a no-op.
+    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let termination = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+    let short = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::Quarterly)
+      .forward()
+      .stub(StubConvention::ShortLast)
+      .build();
+    let long = ScheduleBuilder::new(effective, termination)
+      .frequency(Frequency::Quarterly)
+      .forward()
+      .stub(StubConvention::LongLast)
+      .build();
+    assert_eq!(
+      long.dates, short.dates,
+      "LongLast on a regular tenor must not drop any dates"
+    );
   }
 }

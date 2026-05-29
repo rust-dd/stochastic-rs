@@ -5,6 +5,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 
 use crate::GridPlotter;
 use crate::plot_distribution;
+use crate::plot_heatmap;
 use crate::plot_process;
 use crate::plot_vol_surface;
 
@@ -52,6 +53,27 @@ fn plot_vol_surface_rejects_bad_shape() {
   let maturities = vec![0.25, 0.5];
   let bad = Array2::<f64>::zeros((3, 5));
   plot_vol_surface(&strikes, &maturities, &bad, "/tmp/should_not_exist.html");
+}
+
+#[test]
+fn plot_heatmap_writes_html() {
+  use ndarray::Array2;
+  // 2×2 sample covariance grid; row order = y[], column order = x[].
+  let cov: Array2<f64> = Array2::from_shape_vec((2, 2), vec![1.0, 0.3, 0.3, 1.0]).unwrap();
+  let mut out = std::env::temp_dir();
+  out.push("stochastic_rs_test_plot_heatmap.html");
+  plot_heatmap(&cov, &["a", "b"], &["a", "b"], "cov", out.to_str().unwrap());
+  assert!(out.exists(), "plot_heatmap did not write file");
+  let _ = std::fs::remove_file(out);
+}
+
+#[test]
+#[should_panic(expected = "heatmap z shape must be")]
+fn plot_heatmap_rejects_bad_shape() {
+  use ndarray::Array2;
+  let z: Array2<f64> = Array2::zeros((2, 5));
+  // x=3 cols but z says 5 → shape mismatch
+  plot_heatmap(&z, &["a", "b", "c"], &["r1", "r2"], "bad", "/tmp/no.html");
 }
 
 #[test]
