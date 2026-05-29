@@ -124,8 +124,9 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
 
   // Negative quasi-log-likelihood (minimised). Parameters carried in
   // log-space so κ, θ, σ stay strictly positive.
-  let neg_ll =
-    |p: &[f64; 3]| -> f64 { -quasi_log_likelihood(&x, dt, kind, p[0].exp(), p[1].exp(), p[2].exp()) };
+  let neg_ll = |p: &[f64; 3]| -> f64 {
+    -quasi_log_likelihood(&x, dt, kind, p[0].exp(), p[1].exp(), p[2].exp())
+  };
 
   // Initial guess from the AR(1) regression of X_{t+1} on X_t.
   let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
@@ -180,7 +181,10 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
 /// $\operatorname{Var}(\varepsilon) = \sigma^2(1-\beta^2)/(2\kappa)$.
 pub fn mle_ou_closed_form<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleResult {
   let n_obs = series.len();
-  assert!(n_obs >= 3, "mle_ou_closed_form requires at least 3 observations");
+  assert!(
+    n_obs >= 3,
+    "mle_ou_closed_form requires at least 3 observations"
+  );
   assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
   let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
   let m = n_obs - 1;
@@ -211,7 +215,8 @@ pub fn mle_ou_closed_form<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleRe
   let mut ll = 0.0;
   for t in 0..m {
     let pred = theta + (x[t] - theta) * beta;
-    ll += -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + (x[t + 1] - pred).powi(2) / var_eps);
+    ll +=
+      -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + (x[t + 1] - pred).powi(2) / var_eps);
   }
 
   QmleResult {
@@ -238,7 +243,15 @@ mod tests {
 
   /// Exact OU transition: Gaussian with mean θ+(X−θ)e^{−κΔ} and variance
   /// σ²(1−e^{−2κΔ})/(2κ).
-  fn simulate_ou(kappa: f64, theta: f64, sigma: f64, x0: f64, dt: f64, n: usize, seed: u64) -> Array1<f64> {
+  fn simulate_ou(
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
+    x0: f64,
+    dt: f64,
+    n: usize,
+    seed: u64,
+  ) -> Array1<f64> {
     let mut rng = StdRng::seed_from_u64(seed);
     let a = (-kappa * dt).exp();
     let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * kappa)).sqrt();
@@ -253,7 +266,15 @@ mod tests {
   }
 
   /// Exact CIR transition via non-central χ² (Poisson mixture of Gamma).
-  fn simulate_cir(kappa: f64, theta: f64, sigma: f64, x0: f64, dt: f64, n: usize, seed: u64) -> Array1<f64> {
+  fn simulate_cir(
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
+    x0: f64,
+    dt: f64,
+    n: usize,
+    seed: u64,
+  ) -> Array1<f64> {
     let mut rng = StdRng::seed_from_u64(seed);
     let a = (-kappa * dt).exp();
     let s2 = sigma * sigma;

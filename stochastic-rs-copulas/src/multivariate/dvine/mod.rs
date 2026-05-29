@@ -106,10 +106,7 @@ impl DVine {
         );
       }
     }
-    Ok(Self {
-      dim,
-      pair_copulas,
-    })
+    Ok(Self { dim, pair_copulas })
   }
 
   /// Build an **all-independence** D-vine of the given dimension. Useful
@@ -241,12 +238,14 @@ impl MultivariateExt for DVine {
 
   fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
     if X.ncols() != self.dim {
-      return Err(format!(
-        "Dimension mismatch: X has {} columns, D-vine has dim {}",
-        X.ncols(),
-        self.dim
-      )
-      .into());
+      return Err(
+        format!(
+          "Dimension mismatch: X has {} columns, D-vine has dim {}",
+          X.ncols(),
+          self.dim
+        )
+        .into(),
+      );
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err("Input X must be in [0,1] for the D-vine".into());
@@ -392,7 +391,11 @@ mod tests {
     assert!(DVine::new(3, bad1).is_err());
     // Wrong number of edges per tree.
     let bad2 = vec![
-      vec![PairCopula::Independence, PairCopula::Independence, PairCopula::Independence],
+      vec![
+        PairCopula::Independence,
+        PairCopula::Independence,
+        PairCopula::Independence,
+      ],
       vec![PairCopula::Independence],
     ];
     assert!(DVine::new(3, bad2).is_err());

@@ -66,7 +66,10 @@ pub fn bayesian_diffusion<T: FloatExt>(
   seed: u64,
 ) -> BayesianDiffusionResult {
   let n_obs = series.len();
-  assert!(n_obs >= 3, "bayesian_diffusion requires at least 3 observations");
+  assert!(
+    n_obs >= 3,
+    "bayesian_diffusion requires at least 3 observations"
+  );
   assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
   let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
 
@@ -91,8 +94,19 @@ pub fn bayesian_diffusion<T: FloatExt>(
 
   // Initialise the chain at the prior means (broadly central).
   let init = Array1::from(vec![prior_mu[0], prior_mu[1], prior_mu[2]]);
-  let scale = Array1::from(vec![proposal_scale[0], proposal_scale[1], proposal_scale[2]]);
-  let mh = random_walk_metropolis(init.view(), log_post, scale.view(), n_samples, burn_in, seed);
+  let scale = Array1::from(vec![
+    proposal_scale[0],
+    proposal_scale[1],
+    proposal_scale[2],
+  ]);
+  let mh = random_walk_metropolis(
+    init.view(),
+    log_post,
+    scale.view(),
+    n_samples,
+    burn_in,
+    seed,
+  );
 
   // Back-transform the log-parameter draws and summarise.
   let n = mh.samples.nrows();
@@ -139,7 +153,15 @@ mod tests {
 
   use super::*;
 
-  fn simulate_ou(kappa: f64, theta: f64, sigma: f64, x0: f64, dt: f64, n: usize, seed: u64) -> Array1<f64> {
+  fn simulate_ou(
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
+    x0: f64,
+    dt: f64,
+    n: usize,
+    seed: u64,
+  ) -> Array1<f64> {
     let mut rng = StdRng::seed_from_u64(seed);
     let a = (-kappa * dt).exp();
     let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * kappa)).sqrt();

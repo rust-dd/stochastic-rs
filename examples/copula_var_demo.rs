@@ -102,12 +102,7 @@ fn main() {
   }
 
   // 4) VaR estimates.
-  let gauss_var = value_at_risk(
-    pnl.view(),
-    confidence,
-    PnlOrLoss::Pnl,
-    VarMethod::Gaussian,
-  );
+  let gauss_var = value_at_risk(pnl.view(), confidence, PnlOrLoss::Pnl, VarMethod::Gaussian);
   let hist_var = value_at_risk(
     pnl.view(),
     confidence,
@@ -121,9 +116,7 @@ fn main() {
   let port_sigma = port_var.sqrt();
   let iid_var = -port_mu + port_sigma * norm_ppf(confidence);
 
-  println!(
-    "\nPortfolio (1-day, 99% VaR, equal-weight):"
-  );
+  println!("\nPortfolio (1-day, 99% VaR, equal-weight):");
   println!("  Gaussian VaR on Clayton-sampled P&L : {gauss_var:.5}");
   println!("  Historical VaR on Clayton-sampled P&L: {hist_var:.5}");
   println!("  Baseline i.i.d. Gaussian VaR         : {iid_var:.5}");

@@ -185,11 +185,13 @@ impl NestedArchimedean {
     let mut index_order = Vec::with_capacity(dim);
     root.collect_leaves(&mut index_order);
     if index_order.len() != dim {
-      return Err(format!(
-        "NAC tree exposes {} leaves but dim = {dim}",
-        index_order.len()
-      )
-      .into());
+      return Err(
+        format!(
+          "NAC tree exposes {} leaves but dim = {dim}",
+          index_order.len()
+        )
+        .into(),
+      );
     }
     let mut seen = vec![false; dim];
     for &j in &index_order {
@@ -224,18 +226,22 @@ impl NestedArchimedean {
   ) -> Result<(), Box<dyn Error>> {
     let theta_min = family.theta_min();
     if node.theta < theta_min {
-      return Err(format!(
-        "{family:?} node θ={} below family minimum {theta_min}",
-        node.theta
-      )
-      .into());
+      return Err(
+        format!(
+          "{family:?} node θ={} below family minimum {theta_min}",
+          node.theta
+        )
+        .into(),
+      );
     }
     if !is_root && node.theta < parent_theta {
-      return Err(format!(
-        "SNC violation: child θ={} < parent θ={} ({family:?})",
-        node.theta, parent_theta
-      )
-      .into());
+      return Err(
+        format!(
+          "SNC violation: child θ={} < parent θ={} ({family:?})",
+          node.theta, parent_theta
+        )
+        .into(),
+      );
     }
     for child in &node.children {
       Self::validate_node(family, child, node.theta, false)?;
@@ -425,12 +431,14 @@ impl MultivariateExt for NestedArchimedean {
 
   fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
     if X.ncols() != self.dim {
-      return Err(format!(
-        "Dimension mismatch: X has {} columns, NAC has dim {}",
-        X.ncols(),
-        self.dim
-      )
-      .into());
+      return Err(
+        format!(
+          "Dimension mismatch: X has {} columns, NAC has dim {}",
+          X.ncols(),
+          self.dim
+        )
+        .into(),
+      );
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err("Input X must be in [0,1] for NAC".into());

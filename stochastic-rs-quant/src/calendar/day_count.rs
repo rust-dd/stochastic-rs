@@ -159,7 +159,10 @@ impl DayCountConvention {
       reference_end > reference_start,
       "ICMA reference_end must follow reference_start"
     );
-    assert!(frequency > 0, "ICMA frequency must be positive (coupons/year)");
+    assert!(
+      frequency > 0,
+      "ICMA frequency must be positive (coupons/year)"
+    );
     let calc_days = (d2 - d1).num_days() as f64;
     let ref_days = (reference_end - reference_start).num_days() as f64;
     T::from_f64_fast(calc_days / (frequency as f64 * ref_days))
@@ -447,8 +450,7 @@ mod tests {
     let r1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
     let r2 = NaiveDate::from_ymd_opt(2024, 7, 15).unwrap();
     // Calculation = reference, semi-annual ⇒ τ = 1 / (2 · 1) = 0.5 exactly.
-    let yf: f64 =
-      DayCountConvention::year_fraction_icma(r1, r2, r1, r2, 2);
+    let yf: f64 = DayCountConvention::year_fraction_icma(r1, r2, r1, r2, 2);
     assert!((yf - 0.5).abs() < 1e-15, "got {yf}");
   }
 
@@ -459,8 +461,7 @@ mod tests {
     let d1 = r1;
     let d2 = NaiveDate::from_ymd_opt(2024, 4, 1).unwrap();
     // 91 calc days / (2 · 182 ref days) = 91 / 364 = 0.25.
-    let yf: f64 =
-      DayCountConvention::year_fraction_icma(d1, d2, r1, r2, 2);
+    let yf: f64 = DayCountConvention::year_fraction_icma(d1, d2, r1, r2, 2);
     let expected = (d2 - d1).num_days() as f64 / (2.0 * (r2 - r1).num_days() as f64);
     assert!((yf - expected).abs() < 1e-15, "got {yf}");
   }
@@ -469,8 +470,7 @@ mod tests {
   fn icma_quarterly_full_period_recovers_quarter_year() {
     let r1 = NaiveDate::from_ymd_opt(2024, 3, 31).unwrap();
     let r2 = NaiveDate::from_ymd_opt(2024, 6, 30).unwrap();
-    let yf: f64 =
-      DayCountConvention::year_fraction_icma(r1, r2, r1, r2, 4);
+    let yf: f64 = DayCountConvention::year_fraction_icma(r1, r2, r1, r2, 4);
     assert!((yf - 0.25).abs() < 1e-15, "got {yf}");
   }
 

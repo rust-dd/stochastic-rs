@@ -148,7 +148,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
       // 4. Asset update under risk-neutral log-Euler.
       let v_prev = sigma2[i - 1];
       let eps = normal_dist.sample_fast();
-      let log_inc = (self.mu - v_prev * T::from_f64_fast(0.5)) * dt + v_prev.sqrt() * dt.sqrt() * eps;
+      let log_inc =
+        (self.mu - v_prev * T::from_f64_fast(0.5)) * dt + v_prev.sqrt() * dt.sqrt() * eps;
       s[i] = s[i - 1] * log_inc.exp();
     }
 

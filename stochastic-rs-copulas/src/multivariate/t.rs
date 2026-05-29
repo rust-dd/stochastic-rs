@@ -495,11 +495,7 @@ mod tests {
   /// sampler produces uniforms on every coordinate.
   #[test]
   fn t_copula_samples_have_uniform_marginals() {
-    let corr = array![
-      [1.0, 0.4, 0.2],
-      [0.4, 1.0, 0.3],
-      [0.2, 0.3, 1.0]
-    ];
+    let corr = array![[1.0, 0.4, 0.2], [0.4, 1.0, 0.3], [0.2, 0.3, 1.0]];
     let cop = TMultivariate::new_with(corr, 5.0).expect("valid corr");
     let u = cop.sample(20_000).expect("sample");
     assert_eq!(u.ncols(), 3);
@@ -527,12 +523,7 @@ mod tests {
     let corr = array![[1.0, 0.5], [0.5, 1.0]];
     let t_cop = TMultivariate::new_with(corr.clone(), 200.0).unwrap();
     let g_cop = super::super::gaussian::GaussianMultivariate::new_with_corr(corr).unwrap();
-    let queries = array![
-      [0.25, 0.75],
-      [0.5, 0.5],
-      [0.1, 0.9],
-      [0.8, 0.3],
-    ];
+    let queries = array![[0.25, 0.75], [0.5, 0.5], [0.1, 0.9], [0.8, 0.3],];
     let t_pdf = t_cop.pdf(queries.clone()).unwrap();
     let g_pdf = g_cop.pdf(queries).unwrap();
     for i in 0..t_pdf.len() {
@@ -560,9 +551,11 @@ mod tests {
     //   f_{Σ,ν}(0,0) = Γ((ν+2)/2) / [Γ(ν/2) · ν · π · √|Σ|]
     //   f_ν(0)       = Γ((ν+1)/2) / [Γ(ν/2) · √(ν · π)]
     let det: f64 = 1.0 - 0.3 * 0.3;
-    let f_mv =
-      (ln_gamma(0.5 * (nu + 2.0)) - ln_gamma(0.5 * nu) - (nu * f64::consts::PI).ln() - 0.5 * det.ln())
-        .exp();
+    let f_mv = (ln_gamma(0.5 * (nu + 2.0))
+      - ln_gamma(0.5 * nu)
+      - (nu * f64::consts::PI).ln()
+      - 0.5 * det.ln())
+    .exp();
     let f_marg =
       (ln_gamma(0.5 * (nu + 1.0)) - ln_gamma(0.5 * nu) - 0.5 * (nu * f64::consts::PI).ln()).exp();
     let expected = f_mv / (f_marg * f_marg);

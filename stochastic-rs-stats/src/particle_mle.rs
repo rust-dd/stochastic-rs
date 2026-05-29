@@ -82,7 +82,14 @@ pub struct ParticleMleResult {
 /// systematic-resampling uniforms are seeded deterministically from
 /// `pf_seed`, giving common random numbers across parameter evaluations so
 /// the likelihood surface is smooth in $(\mu, \phi, \sigma_\eta)$.
-fn sv_pf_loglik(y: &[f64], mu: f64, phi: f64, sigma_eta: f64, n_particles: usize, pf_seed: u64) -> f64 {
+fn sv_pf_loglik(
+  y: &[f64],
+  mu: f64,
+  phi: f64,
+  sigma_eta: f64,
+  n_particles: usize,
+  pf_seed: u64,
+) -> f64 {
   let n = n_particles;
   let ln_n = (n as f64).ln();
   let ln_2pi = (2.0 * std::f64::consts::PI).ln();
@@ -94,7 +101,9 @@ fn sv_pf_loglik(y: &[f64], mu: f64, phi: f64, sigma_eta: f64, n_particles: usize
   let mut resample_rng = Deterministic::new(pf_seed ^ 0xA5A5_5A5A).rng();
 
   // Initialise particles from the stationary distribution.
-  let mut h: Vec<f64> = (0..n).map(|_| mu + stat_sd * normal.sample_fast()).collect();
+  let mut h: Vec<f64> = (0..n)
+    .map(|_| mu + stat_sd * normal.sample_fast())
+    .collect();
   let mut resampled = vec![0.0_f64; n];
   let mut log_obs = vec![0.0_f64; n];
 
@@ -152,7 +161,10 @@ pub fn particle_mle_sv<T: FloatExt>(
   seed: u64,
 ) -> ParticleMleResult {
   let n_obs = returns.len();
-  assert!(n_obs >= 10, "particle_mle_sv requires at least 10 observations");
+  assert!(
+    n_obs >= 10,
+    "particle_mle_sv requires at least 10 observations"
+  );
   assert!(n_particles >= 1, "n_particles must be positive");
   let y: Vec<f64> = returns.iter().map(|v| v.to_f64().unwrap()).collect();
 

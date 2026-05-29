@@ -197,11 +197,7 @@ impl<T: FloatExt> SwapRateHelper<T> {
   /// generates an explicit [`Schedule`](crate::calendar::Schedule) via
   /// [`ScheduleBuilder`] (backward generation, `ShortFirst` default stub)
   /// and routes through [`Instrument::SwapWithSchedule`] in `to_instrument`.
-  pub fn with_calendar(
-    mut self,
-    calendar: Calendar,
-    convention: BusinessDayConvention,
-  ) -> Self {
+  pub fn with_calendar(mut self, calendar: Calendar, convention: BusinessDayConvention) -> Self {
     self.calendar = Some(calendar);
     self.convention = Some(convention);
     self
@@ -214,8 +210,8 @@ impl<T: FloatExt> SwapRateHelper<T> {
   /// configured `fixed_frequency`; payment dates are business-day-adjusted
   /// according to [`convention`](Self::convention) when set.
   pub fn built_schedule(&self) -> Vec<NaiveDate> {
-    let mut builder =
-      ScheduleBuilder::new(self.settlement_date, self.maturity_date).frequency(self.fixed_frequency);
+    let mut builder = ScheduleBuilder::new(self.settlement_date, self.maturity_date)
+      .frequency(self.fixed_frequency);
     if let Some(cal) = &self.calendar {
       builder = builder.calendar(cal.clone());
     }

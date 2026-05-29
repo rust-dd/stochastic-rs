@@ -612,15 +612,13 @@ fn is_asx_holiday(date: NaiveDate) -> bool {
   }
 
   // Christmas Day (Dec 25, observed Mon/Tue if weekend).
-  if (m == 12 && d == 25 && w != Sat && w != Sun)
-    || (m == 12 && d == 27 && matches!(w, Mon | Tue))
+  if (m == 12 && d == 25 && w != Sat && w != Sun) || (m == 12 && d == 27 && matches!(w, Mon | Tue))
   {
     return true;
   }
 
   // Boxing Day (Dec 26, observed Mon/Tue if weekend).
-  if (m == 12 && d == 26 && w != Sat && w != Sun)
-    || (m == 12 && d == 28 && matches!(w, Mon | Tue))
+  if (m == 12 && d == 26 && w != Sat && w != Sun) || (m == 12 && d == 28 && matches!(w, Mon | Tue))
   {
     return true;
   }
@@ -849,34 +847,26 @@ fn is_hkex_holiday(date: NaiveDate) -> bool {
   }
 
   // Labour Day (May 1, observed Mon if Sun).
-  if (m == 5 && d == 1 && w != Sat && w != Sun)
-    || (m == 5 && d == 2 && w == Mon)
-  {
+  if (m == 5 && d == 1 && w != Sat && w != Sun) || (m == 5 && d == 2 && w == Mon) {
     return true;
   }
 
   // HKSAR Establishment Day (Jul 1, observed Mon if Sun).
-  if (m == 7 && d == 1 && w != Sat && w != Sun)
-    || (m == 7 && d == 2 && w == Mon)
-  {
+  if (m == 7 && d == 1 && w != Sat && w != Sun) || (m == 7 && d == 2 && w == Mon) {
     return true;
   }
 
   // National Day (Oct 1, observed Mon if Sun).
-  if (m == 10 && d == 1 && w != Sat && w != Sun)
-    || (m == 10 && d == 2 && w == Mon)
-  {
+  if (m == 10 && d == 1 && w != Sat && w != Sun) || (m == 10 && d == 2 && w == Mon) {
     return true;
   }
 
   // Christmas Day + Boxing Day, observed.
-  if (m == 12 && d == 25 && w != Sat && w != Sun)
-    || (m == 12 && d == 27 && matches!(w, Mon | Tue))
+  if (m == 12 && d == 25 && w != Sat && w != Sun) || (m == 12 && d == 27 && matches!(w, Mon | Tue))
   {
     return true;
   }
-  if (m == 12 && d == 26 && w != Sat && w != Sun)
-    || (m == 12 && d == 28 && matches!(w, Mon | Tue))
+  if (m == 12 && d == 26 && w != Sat && w != Sun) || (m == 12 && d == 28 && matches!(w, Mon | Tue))
   {
     return true;
   }
@@ -906,9 +896,7 @@ fn is_sgx_holiday(date: NaiveDate) -> bool {
   use Weekday::*;
 
   // New Year's Day (observed Mon if Sun; Sat stays).
-  if (m == 1 && d == 1 && w != Sat && w != Sun)
-    || (m == 1 && d == 2 && w == Mon)
-  {
+  if (m == 1 && d == 1 && w != Sat && w != Sun) || (m == 1 && d == 2 && w == Mon) {
     return true;
   }
 
@@ -920,23 +908,17 @@ fn is_sgx_holiday(date: NaiveDate) -> bool {
   }
 
   // Labour Day (observed Mon if Sun).
-  if (m == 5 && d == 1 && w != Sat && w != Sun)
-    || (m == 5 && d == 2 && w == Mon)
-  {
+  if (m == 5 && d == 1 && w != Sat && w != Sun) || (m == 5 && d == 2 && w == Mon) {
     return true;
   }
 
   // National Day (Aug 9, observed Mon if Sun).
-  if (m == 8 && d == 9 && w != Sat && w != Sun)
-    || (m == 8 && d == 10 && w == Mon)
-  {
+  if (m == 8 && d == 9 && w != Sat && w != Sun) || (m == 8 && d == 10 && w == Mon) {
     return true;
   }
 
   // Christmas Day (observed Mon if Sun).
-  if (m == 12 && d == 25 && w != Sat && w != Sun)
-    || (m == 12 && d == 26 && w == Mon)
-  {
+  if (m == 12 && d == 25 && w != Sat && w != Sun) || (m == 12 && d == 26 && w == Mon) {
     return true;
   }
 
@@ -1034,18 +1016,18 @@ mod tests {
   fn hkex_2024_official_holidays() {
     let cal = Calendar::new(HolidayCalendar::Hkex);
     let dates = [
-      (2024, 1, 1),  // New Year
-      (2024, 2, 12), // Lunar NY Day 2 (Day 1 = Sat Feb 10)
-      (2024, 2, 13), // Lunar NY Day 3
-      (2024, 3, 29), // Good Friday
-      (2024, 4, 1),  // Easter Monday
-      (2024, 4, 4),  // Ching Ming
-      (2024, 5, 1),  // Labour Day
-      (2024, 5, 15), // Buddha's Birthday
-      (2024, 6, 10), // Tuen Ng
-      (2024, 7, 1),  // HKSAR
-      (2024, 9, 18), // Day after Mid-Autumn
-      (2024, 10, 1), // National Day
+      (2024, 1, 1),   // New Year
+      (2024, 2, 12),  // Lunar NY Day 2 (Day 1 = Sat Feb 10)
+      (2024, 2, 13),  // Lunar NY Day 3
+      (2024, 3, 29),  // Good Friday
+      (2024, 4, 1),   // Easter Monday
+      (2024, 4, 4),   // Ching Ming
+      (2024, 5, 1),   // Labour Day
+      (2024, 5, 15),  // Buddha's Birthday
+      (2024, 6, 10),  // Tuen Ng
+      (2024, 7, 1),   // HKSAR
+      (2024, 9, 18),  // Day after Mid-Autumn
+      (2024, 10, 1),  // National Day
       (2024, 10, 11), // Chung Yeung
       (2024, 12, 25), // Christmas
       (2024, 12, 26), // Boxing Day
@@ -1084,8 +1066,14 @@ mod tests {
     // Monday substitute is reported as a market holiday.
     let sat = NaiveDate::from_ymd_opt(2026, 4, 25).unwrap();
     let mon = NaiveDate::from_ymd_opt(2026, 4, 27).unwrap();
-    assert!(!cal.is_holiday(sat), "weekend ANZAC suppressed (matches US convention)");
-    assert!(cal.is_weekend(sat), "Apr 25 2026 is Saturday (caught by is_weekend)");
+    assert!(
+      !cal.is_holiday(sat),
+      "weekend ANZAC suppressed (matches US convention)"
+    );
+    assert!(
+      cal.is_weekend(sat),
+      "Apr 25 2026 is Saturday (caught by is_weekend)"
+    );
     assert!(cal.is_holiday(mon), "Mon Apr 27 should be ANZAC substitute");
   }
 
@@ -1149,7 +1137,10 @@ mod tests {
     let pre = NaiveDate::from_ymd_opt(2023, 11, 20).unwrap();
     let post = NaiveDate::from_ymd_opt(2024, 11, 20).unwrap();
     assert!(!cal.is_holiday(pre), "Black Awareness was not B3 pre-2024");
-    assert!(cal.is_holiday(post), "Black Awareness is a B3 holiday from 2024");
+    assert!(
+      cal.is_holiday(post),
+      "Black Awareness is a B3 holiday from 2024"
+    );
   }
 
   #[test]
@@ -1157,9 +1148,15 @@ mod tests {
     let cal = Calendar::new(HolidayCalendar::B3);
     // 2024-09-07 = Sat. Brazilian holidays do NOT roll over.
     let sat = NaiveDate::from_ymd_opt(2024, 9, 7).unwrap();
-    assert!(cal.is_holiday(sat), "Sep 7 stays a holiday even on Saturday");
+    assert!(
+      cal.is_holiday(sat),
+      "Sep 7 stays a holiday even on Saturday"
+    );
     let next_mon = NaiveDate::from_ymd_opt(2024, 9, 9).unwrap();
-    assert!(!cal.is_holiday(next_mon), "no Mon substitute in BR convention");
+    assert!(
+      !cal.is_holiday(next_mon),
+      "no Mon substitute in BR convention"
+    );
   }
 
   #[test]

@@ -122,10 +122,7 @@ pub enum BootstrapInstrument<T: FloatExt> {
   /// variant's `δ = 1 / frequency` round-trip is not accurate enough.
   /// Built by [`crate::market::rate_helper::SwapRateHelper`] when configured
   /// via `with_calendar`.
-  SwapWithSchedule {
-    rate: T,
-    payment_times: Vec<T>,
-  },
+  SwapWithSchedule { rate: T, payment_times: Vec<T> },
 }
 
 /// Backward-compat alias. Prefer [`BootstrapInstrument`] in new code.
@@ -138,10 +135,9 @@ impl<T: FloatExt> BootstrapInstrument<T> {
       Self::Deposit { maturity, .. } => *maturity,
       Self::Fra { end, .. } | Self::Future { end, .. } => *end,
       Self::Swap { maturity, .. } => *maturity,
-      Self::SwapWithSchedule { payment_times, .. } => payment_times
-        .last()
-        .copied()
-        .unwrap_or_else(T::zero),
+      Self::SwapWithSchedule { payment_times, .. } => {
+        payment_times.last().copied().unwrap_or_else(T::zero)
+      }
     }
   }
 }

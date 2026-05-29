@@ -80,10 +80,7 @@ impl CVine {
         );
       }
     }
-    Ok(Self {
-      dim,
-      pair_copulas,
-    })
+    Ok(Self { dim, pair_copulas })
   }
 
   /// All-Independence C-vine of the given dimension.
@@ -195,12 +192,14 @@ impl MultivariateExt for CVine {
 
   fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
     if X.ncols() != self.dim {
-      return Err(format!(
-        "Dimension mismatch: X has {} columns, C-vine has dim {}",
-        X.ncols(),
-        self.dim
-      )
-      .into());
+      return Err(
+        format!(
+          "Dimension mismatch: X has {} columns, C-vine has dim {}",
+          X.ncols(),
+          self.dim
+        )
+        .into(),
+      );
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err("Input X must be in [0,1] for the C-vine".into());

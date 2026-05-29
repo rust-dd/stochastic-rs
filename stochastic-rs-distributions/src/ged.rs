@@ -93,8 +93,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdGed<T, R> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let z = ((x - mu) / a).abs();
-    let log_pdf =
-      b.ln() - (2.0 * a).ln() - crate::special::ln_gamma(1.0 / b) - z.powf(b);
+    let log_pdf = b.ln() - (2.0 * a).ln() - crate::special::ln_gamma(1.0 / b) - z.powf(b);
     log_pdf.exp()
   }
 
@@ -106,7 +105,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdGed<T, R> {
     // F(x) = 1/2 + sign(x - μ)/2 · γ(1/β, |z|^β) / Γ(1/β)
     let zb = z.abs().powf(b);
     let half_inc = 0.5 * crate::special::gamma_p(1.0 / b, zb);
-    if z >= 0.0 { 0.5 + half_inc } else { 0.5 - half_inc }
+    if z >= 0.0 {
+      0.5 + half_inc
+    } else {
+      0.5 - half_inc
+    }
   }
 }
 

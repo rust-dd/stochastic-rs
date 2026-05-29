@@ -216,8 +216,9 @@ impl PairCopula {
         let log_norm = ln_gamma(0.5 * (nu + 2.0)) + ln_gamma(0.5 * nu)
           - 2.0 * ln_gamma(0.5 * (nu + 1.0))
           - 0.5 * one_minus_rho2.ln();
-        let log_joint =
-          -0.5 * (nu + 2.0) * (1.0 + (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2)).ln();
+        let log_joint = -0.5
+          * (nu + 2.0)
+          * (1.0 + (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2)).ln();
         let log_marg = 0.5 * (nu + 1.0) * ((1.0 + x * x / nu).ln() + (1.0 + y * y / nu).ln());
         log_norm + log_joint + log_marg
       }
@@ -365,7 +366,10 @@ mod tests {
   #[test]
   fn student_t_h_large_nu_approaches_gaussian() {
     let g = PairCopula::Gaussian { rho: 0.4 };
-    let t = PairCopula::StudentT { rho: 0.4, nu: 200.0 };
+    let t = PairCopula::StudentT {
+      rho: 0.4,
+      nu: 200.0,
+    };
     for u in [0.2, 0.5, 0.8] {
       for v in [0.2, 0.5, 0.8] {
         let hg = g.h(u, v);

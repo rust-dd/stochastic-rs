@@ -88,7 +88,10 @@ fn main() {
   // 4) Greeks::as_array → 9-element canonical layout used by the optional
   //    `viz` feature's `Plottable` impl.
   let arr = greeks.as_array();
-  println!("\nGreeks::as_array (length = {}, COMPONENT_NAMES order):", arr.len());
+  println!(
+    "\nGreeks::as_array (length = {}, COMPONENT_NAMES order):",
+    arr.len()
+  );
   for (name, value) in stochastic_rs::quant::traits::Greeks::COMPONENT_NAMES
     .iter()
     .zip(arr.iter())

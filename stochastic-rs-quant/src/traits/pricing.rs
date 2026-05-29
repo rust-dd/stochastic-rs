@@ -64,8 +64,8 @@ impl Greeks {
   /// Flatten into the canonical 9-element array matching [`COMPONENT_NAMES`].
   pub fn as_array(&self) -> [f64; 9] {
     [
-      self.delta, self.gamma, self.vega, self.theta, self.rho, self.vanna, self.charm,
-      self.volga, self.veta,
+      self.delta, self.gamma, self.vega, self.theta, self.rho, self.vanna, self.charm, self.volga,
+      self.veta,
     ]
   }
 }
@@ -87,14 +87,18 @@ impl stochastic_rs_viz::Plottable<f64> for Greeks {
     // A single Greeks struct is a 9-element point sample, not a series; we
     // expose every Greek as a one-element vector so `GridPlotter` and
     // `plot_distribution` consumers can treat each entry uniformly.
-    self.as_array().get(idx).copied().map(|v| vec![v]).unwrap_or_default()
+    self
+      .as_array()
+      .get(idx)
+      .copied()
+      .map(|v| vec![v])
+      .unwrap_or_default()
   }
 
   fn len(&self) -> usize {
     1
   }
 }
-
 
 /// Trait for models that can price European options at arbitrary (K, T) points.
 ///

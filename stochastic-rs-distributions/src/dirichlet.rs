@@ -68,7 +68,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
     let alpha_f64: Vec<f64> = self.alpha.iter().map(|&a| a.to_f64().unwrap()).collect();
     let alpha_sum: f64 = alpha_f64.iter().sum();
     let log_norm = crate::special::ln_gamma(alpha_sum)
-      - alpha_f64.iter().map(|&a| crate::special::ln_gamma(a)).sum::<f64>();
+      - alpha_f64
+        .iter()
+        .map(|&a| crate::special::ln_gamma(a))
+        .sum::<f64>();
     let log_kernel: f64 = x
       .iter()
       .zip(alpha_f64.iter())

@@ -71,8 +71,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
     let std_f64 = std_dev.to_f64().unwrap();
     let lo_f64 = lower.to_f64().unwrap();
     let up_f64 = upper.to_f64().unwrap();
-    let norm_mass =
-      norm_cdf_scalar((up_f64 - mean_f64) / std_f64) - norm_cdf_scalar((lo_f64 - mean_f64) / std_f64);
+    let norm_mass = norm_cdf_scalar((up_f64 - mean_f64) / std_f64)
+      - norm_cdf_scalar((lo_f64 - mean_f64) / std_f64);
     Self {
       mean,
       std_dev,
@@ -320,9 +320,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdTruncatedBeta<T, R>
     }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    let log_norm = crate::special::ln_gamma(a + b)
-      - crate::special::ln_gamma(a)
-      - crate::special::ln_gamma(b);
+    let log_norm =
+      crate::special::ln_gamma(a + b) - crate::special::ln_gamma(a) - crate::special::ln_gamma(b);
     let log_kernel = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln();
     let base_pdf = (log_norm + log_kernel).exp();
     let norm_mass = self.cdf_helper(up) - self.cdf_helper(lo);
@@ -471,7 +470,9 @@ mod tests {
     let tn = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0, &Unseeded);
     let n = 1_000;
     let h = 3.0 / n as f64;
-    let s: f64 = (0..n).map(|k| tn.pdf(-1.0 + (k as f64 + 0.5) * h) * h).sum();
+    let s: f64 = (0..n)
+      .map(|k| tn.pdf(-1.0 + (k as f64 + 0.5) * h) * h)
+      .sum();
     assert!(
       (s - 1.0).abs() < 5e-3,
       "truncated normal pdf integrates to {s}, expected 1"

@@ -199,8 +199,7 @@ mod tests {
       sum += g.sample_fast();
     }
     let mean = sum / n as f64;
-    let gamma_term: f64 =
-      crate::special::ln_gamma(1.0 - xi).exp();
+    let gamma_term: f64 = crate::special::ln_gamma(1.0 - xi).exp();
     let expected = (gamma_term - 1.0) / xi;
     // Heavy-tail variance is ∞ for ξ ∈ [0.5, 1), so allow a 15% band on the mean.
     assert!(
@@ -218,10 +217,7 @@ mod tests {
     let up = 30.0_f64;
     let h = (up - lo) / n as f64;
     let s: f64 = (0..n).map(|k| g.pdf(lo + (k as f64 + 0.5) * h) * h).sum();
-    assert!(
-      (s - 1.0).abs() < 1e-3,
-      "Gumbel PDF integrates to {s}"
-    );
+    assert!((s - 1.0).abs() < 1e-3, "Gumbel PDF integrates to {s}");
   }
 
   /// CDF matches inverse-CDF identity: F(F⁻¹(u)) = u on a grid.
@@ -247,7 +243,10 @@ mod tests {
     assert_eq!(hi, -1.0 / xi); // = 2.0
     for _ in 0..2_000 {
       let x = g.sample_fast();
-      assert!(x <= hi + 1e-9, "Reverse Weibull sample {x} exceeds bound {hi}");
+      assert!(
+        x <= hi + 1e-9,
+        "Reverse Weibull sample {x} exceeds bound {hi}"
+      );
     }
   }
 }

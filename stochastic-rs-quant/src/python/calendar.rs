@@ -26,18 +26,12 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
     "Act360" | "Actual360" | "ACT/360" => Ok(DayCountConvention::Actual360),
     "Act365F" | "Actual365Fixed" | "ACT/365F" => Ok(DayCountConvention::Actual365Fixed),
     "Thirty360" | "30/360" => Ok(DayCountConvention::Thirty360),
-    "Thirty360E" | "Thirty360European" | "30E/360" => {
-      Ok(DayCountConvention::Thirty360European)
-    }
+    "Thirty360E" | "Thirty360European" | "30E/360" => Ok(DayCountConvention::Thirty360European),
     "Thirty360EIsda" | "Thirty360EuropeanISDA" | "30E/360 ISDA" => {
       Ok(DayCountConvention::Thirty360EuropeanISDA)
     }
-    "ActActIsda" | "ActualActualISDA" | "ACT/ACT ISDA" => {
-      Ok(DayCountConvention::ActualActualISDA)
-    }
-    "ActActAfb" | "ActualActualAFB" | "ACT/ACT AFB" => {
-      Ok(DayCountConvention::ActualActualAFB)
-    }
+    "ActActIsda" | "ActualActualISDA" | "ACT/ACT ISDA" => Ok(DayCountConvention::ActualActualISDA),
+    "ActActAfb" | "ActualActualAFB" | "ACT/ACT AFB" => Ok(DayCountConvention::ActualActualAFB),
     "ActActIcma" | "ActualActualICMA" | "ACT/ACT ICMA" | "ActualActualISMA" => {
       Ok(DayCountConvention::ActualActualIcma)
     }
@@ -45,9 +39,7 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
     "Act364" | "Actual364" | "ACT/364" => Ok(DayCountConvention::Actual364),
     "NoLeap365" | "NL/365" => Ok(DayCountConvention::NoLeap365),
     "Act365L" | "Actual365Leap" | "ACT/365L" => Ok(DayCountConvention::Actual365Leap),
-    other => Err(PyValueError::new_err(format!(
-      "unknown DayCount: {other}"
-    ))),
+    other => Err(PyValueError::new_err(format!("unknown DayCount: {other}"))),
   }
 }
 
@@ -93,7 +85,11 @@ fn parse_bdc(name: &str) -> PyResult<BusinessDayConvention> {
   }
 }
 
-#[pyclass(module = "stochastic_rs", name = "BusinessDayConvention", from_py_object)]
+#[pyclass(
+  module = "stochastic_rs",
+  name = "BusinessDayConvention",
+  from_py_object
+)]
 #[derive(Clone, Copy)]
 pub struct PyBusinessDayConvention {
   inner: BusinessDayConvention,
@@ -137,9 +133,7 @@ fn parse_joint_mode(name: &str) -> PyResult<JointMode> {
   match name {
     "AnyHoliday" | "Any" | "Union" => Ok(JointMode::AnyHoliday),
     "AllHolidays" | "All" | "Intersection" => Ok(JointMode::AllHolidays),
-    other => Err(PyValueError::new_err(format!(
-      "unknown JointMode: {other}"
-    ))),
+    other => Err(PyValueError::new_err(format!("unknown JointMode: {other}"))),
   }
 }
 
@@ -217,8 +211,7 @@ impl PyCalendar {
   #[staticmethod]
   #[pyo3(signature = (names, mode = "AnyHoliday"))]
   fn joint(names: Vec<String>, mode: &str) -> PyResult<Self> {
-    let cals: Result<Vec<_>, _> =
-      names.iter().map(|n| parse_holiday_calendar(n)).collect();
+    let cals: Result<Vec<_>, _> = names.iter().map(|n| parse_holiday_calendar(n)).collect();
     Ok(Self {
       inner: Calendar::joint_with_mode(cals?, parse_joint_mode(mode)?),
     })
@@ -267,9 +260,7 @@ fn parse_frequency(name: &str) -> PyResult<Frequency> {
     "SemiAnnual" => Ok(Frequency::SemiAnnual),
     "Quarterly" => Ok(Frequency::Quarterly),
     "Monthly" => Ok(Frequency::Monthly),
-    other => Err(PyValueError::new_err(format!(
-      "unknown Frequency: {other}"
-    ))),
+    other => Err(PyValueError::new_err(format!("unknown Frequency: {other}"))),
   }
 }
 

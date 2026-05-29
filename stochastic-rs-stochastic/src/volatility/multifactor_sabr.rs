@@ -206,10 +206,10 @@ mod tests {
     let p = MultifactorSabr::<f64, _>::new(
       Some(1.0),
       Some(0.2),
-      vec![0.5],            // single knot → 2 buckets
-      vec![0.3, 0.7],       // β: 0.3 short end, 0.7 long end
-      vec![-0.5, -0.2],     // ρ term structure
-      vec![0.4, 0.3],       // ν term structure
+      vec![0.5],        // single knot → 2 buckets
+      vec![0.3, 0.7],   // β: 0.3 short end, 0.7 long end
+      vec![-0.5, -0.2], // ρ term structure
+      vec![0.4, 0.3],   // ν term structure
       512,
       Some(1.0),
       Unseeded,
@@ -226,7 +226,7 @@ mod tests {
     let p = MultifactorSabr::<f64, _>::new(
       Some(1.0),
       Some(0.2),
-      vec![],          // no knots → 1 bucket
+      vec![], // no knots → 1 bucket
       vec![0.5],
       vec![-0.3],
       vec![0.4],
@@ -296,8 +296,8 @@ mod tests {
     let _ = MultifactorSabr::<f64, _>::new(
       Some(1.0),
       Some(0.2),
-      vec![0.5],       // 2 buckets
-      vec![0.5],       // β has only 1 entry → mismatch
+      vec![0.5], // 2 buckets
+      vec![0.5], // β has only 1 entry → mismatch
       vec![-0.3, -0.2],
       vec![0.4, 0.3],
       64,

@@ -94,7 +94,8 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
       let xt = x[t];
       let xnext = x[t + 1];
       let m = theta + (xt - theta) * a;
-      let var = xt * (s2 / kappa) * (a - a * a) + theta * (s2 / (2.0 * kappa)) * (1.0 - a) * (1.0 - a);
+      let var =
+        xt * (s2 / kappa) * (a - a * a) + theta * (s2 / (2.0 * kappa)) * (1.0 - a) * (1.0 - a);
       let e = xnext - m;
       let u = e * e - var;
       let row = [e, e * xt, u, u * xt];
@@ -132,7 +133,11 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
     num += (x[t] - sample_mean) * (x[t + 1] - sample_mean);
     den += (x[t] - sample_mean).powi(2);
   }
-  let ac1 = if den > 0.0 { (num / den).clamp(1e-4, 0.999) } else { 0.5 };
+  let ac1 = if den > 0.0 {
+    (num / den).clamp(1e-4, 0.999)
+  } else {
+    0.5
+  };
   let kappa0 = (-ac1.ln() / dt).clamp(1e-3, 50.0);
   let mut resid_var = 0.0;
   for t in 0..n_obs - 1 {
@@ -265,7 +270,14 @@ mod tests {
   /// $c = \sigma^2(1-a)/(4\kappa)$, $d = 4\kappa\theta/\sigma^2$,
   /// $\lambda = X_t\,4\kappa a / (\sigma^2(1-a))$, $a = e^{-\kappa\Delta}$.
   /// Non-central χ² sampled as a Poisson mixture of central χ² (= Gamma).
-  fn cir_exact_step(x_t: f64, kappa: f64, theta: f64, sigma: f64, dt: f64, rng: &mut StdRng) -> f64 {
+  fn cir_exact_step(
+    x_t: f64,
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
+    dt: f64,
+    rng: &mut StdRng,
+  ) -> f64 {
     let a = (-kappa * dt).exp();
     let s2 = sigma * sigma;
     let c = s2 * (1.0 - a) / (4.0 * kappa);
