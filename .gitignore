@@ -6,6 +6,7 @@ flamegraph.svg
 # Editor / IDE
 .idea/
 .zed
+.claude/
 settings.local.json
 
 # Environment / secrets
