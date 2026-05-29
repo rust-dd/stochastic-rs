@@ -23,6 +23,7 @@ pub mod filtering;
 pub mod fou_estimator;
 pub mod fractal_dim;
 pub mod gaussian_kde;
+pub mod gmm_cir;
 pub mod heston_mle;
 pub mod heston_nml_cekf;
 pub mod hurst;
