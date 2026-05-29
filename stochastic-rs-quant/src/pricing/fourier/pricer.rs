@@ -62,15 +62,16 @@ impl CarrMadanPricer {
   /// distribution mass for moderate skew/kurtosis without diluting the
   /// FFT resolution.
   ///
-  /// **Grid centring note:** The FFT grid stays centred at $\ln K = 0$.
-  /// True Lord-Kahl grid centring (around the model-implied log-asset mean
-  /// $\mu_T = \ln S_0 + c_1$) requires the **fractional FFT** (FRFT,
-  /// Bailey-Swarztrauber 1991), since the standard FFT phase
-  /// $e^{-2\pi i j u / N}$ does not tolerate an arbitrary grid shift while
-  /// keeping the Carr-Madan damping factor on the principal branch. FRFT
-  /// integration is on the v2.4+ roadmap; the cumulant-sized half-width
-  /// here already gives the dominant accuracy gain for production Heston /
-  /// Bates / Lévy calibration workloads.
+  /// **Grid centring note:** This pricer keeps the FFT grid centred at
+  /// $\ln K = 0$, since the standard FFT phase $e^{-2\pi i j u / N}$ does
+  /// not tolerate an arbitrary grid shift. For true Lord-Kahl grid
+  /// centring around the model-implied log-asset mean
+  /// $\mu_T = \ln S_0 + c_1$ — which puts the FFT resolution where the
+  /// option is price-sensitive and reaches the same accuracy on a much
+  /// smaller grid — use [`super::FrftCarrMadanPricer`], the fractional-FFT
+  /// variant. The cumulant-sized half-width here already gives the
+  /// dominant accuracy gain for production Heston / Bates / Lévy
+  /// calibration workloads.
   ///
   /// Falls back to the default `(n=4096, η=0.25)` when cumulants are not
   /// finite. `alpha` is left at the default damping coefficient (0.75).

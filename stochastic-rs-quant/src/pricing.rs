@@ -82,6 +82,7 @@ pub use fourier::CarrMadanPricer;
 pub use fourier::Cumulants;
 pub use fourier::DoubleHestonFourier;
 pub use fourier::FourierModelExt;
+pub use fourier::FrftCarrMadanPricer;
 pub use fourier::GilPelaezPricer;
 pub use fourier::HKDEFourier;
 pub use fourier::HestonFourier;
