@@ -6,6 +6,7 @@
 //!
 pub mod bates_svj;
 pub mod bergomi;
+pub mod bns;
 pub mod double_heston;
 pub mod fbates_svj;
 pub mod fheston;
@@ -13,6 +14,8 @@ pub mod heston;
 pub mod heston2d;
 pub mod heston_log;
 pub mod hkde;
+pub mod multifactor_heston;
+pub mod multifactor_sabr;
 pub mod rbergomi;
 pub mod sabr;
 pub mod svcgmy;
