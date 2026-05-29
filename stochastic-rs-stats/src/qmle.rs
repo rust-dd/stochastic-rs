@@ -69,7 +69,14 @@ pub struct QmleResult {
 
 /// Exact conditional mean and variance of the transition $X_{t+\Delta}
 /// \mid X_t$ for the given diffusion family.
-fn conditional_moments(kind: DiffusionKind, x: f64, kappa: f64, theta: f64, sigma: f64, dt: f64) -> (f64, f64) {
+pub(crate) fn conditional_moments(
+  kind: DiffusionKind,
+  x: f64,
+  kappa: f64,
+  theta: f64,
+  sigma: f64,
+  dt: f64,
+) -> (f64, f64) {
   let a = (-kappa * dt).exp();
   let mean = theta + (x - theta) * a;
   let s2 = sigma * sigma;
@@ -84,6 +91,27 @@ fn conditional_moments(kind: DiffusionKind, x: f64, kappa: f64, theta: f64, sigm
   (mean, var.max(1e-300))
 }
 
+/// Gaussian quasi-log-likelihood of a discretely-observed diffusion path
+/// `x` (interval `dt`) at parameters $(\kappa, \theta, \sigma)$. Shared by
+/// [`qmle`] and the Bayesian sampler in
+/// [`crate::bayesian_diffusion`](crate::bayesian_diffusion).
+pub(crate) fn quasi_log_likelihood(
+  x: &[f64],
+  dt: f64,
+  kind: DiffusionKind,
+  kappa: f64,
+  theta: f64,
+  sigma: f64,
+) -> f64 {
+  let mut ll = 0.0;
+  for t in 0..x.len() - 1 {
+    let (m, var) = conditional_moments(kind, x[t], kappa, theta, sigma, dt);
+    let resid = x[t + 1] - m;
+    ll += -0.5 * ((2.0 * std::f64::consts::PI * var).ln() + resid * resid / var);
+  }
+  ll
+}
+
 /// Fit a mean-reverting diffusion by Gaussian QMLE.
 ///
 /// `series` is the discretely-observed path, `dt` the sampling interval.
@@ -96,18 +124,8 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
 
   // Negative quasi-log-likelihood (minimised). Parameters carried in
   // log-space so κ, θ, σ stay strictly positive.
-  let neg_ll = |p: &[f64; 3]| -> f64 {
-    let kappa = p[0].exp();
-    let theta = p[1].exp();
-    let sigma = p[2].exp();
-    let mut nll = 0.0;
-    for t in 0..n_obs - 1 {
-      let (m, var) = conditional_moments(kind, x[t], kappa, theta, sigma, dt);
-      let resid = x[t + 1] - m;
-      nll += 0.5 * ((2.0 * std::f64::consts::PI * var).ln() + resid * resid / var);
-    }
-    nll
-  };
+  let neg_ll =
+    |p: &[f64; 3]| -> f64 { -quasi_log_likelihood(&x, dt, kind, p[0].exp(), p[1].exp(), p[2].exp()) };
 
   // Initial guess from the AR(1) regression of X_{t+1} on X_t.
   let sample_mean = x.iter().sum::<f64>() / x.len() as f64;

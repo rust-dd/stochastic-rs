@@ -16,6 +16,7 @@ pub use stochastic_rs_core::simd_rng;
 pub use stochastic_rs_distributions as distributions;
 pub use stochastic_rs_stochastic as stochastic;
 
+pub mod bayesian_diffusion;
 pub mod cir;
 pub mod double_exp;
 pub mod econometrics;
