@@ -68,23 +68,24 @@ PUBLISH_ORDER=(
 )
 
 local_version() {
-  # extract the [package] version from a crate's Cargo.toml
+  # Resolved version of a workspace member. The sub-crates use
+  # `version.workspace = true`, so a plain Cargo.toml grep finds nothing —
+  # cargo metadata resolves the inherited workspace version instead.
   local crate="$1"
-  local manifest
-  if [[ "$crate" == "stochastic-rs" ]]; then
-    manifest="Cargo.toml"
-  else
-    manifest="$crate/Cargo.toml"
-  fi
-  awk '/^\[package\]/{p=1; next} /^\[/{p=0} p && /^version[[:space:]]*=/{gsub(/"/,"",$3); print $3; exit}' "$manifest"
+  cargo metadata --no-deps --format-version 1 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(next((p['version'] for p in d['packages'] if p['name']=='$crate'), ''))" \
+    2>/dev/null
 }
 
-registry_version() {
-  # latest version on crates.io, "-" if not published
-  local crate="$1"
-  curl -fsS "https://crates.io/api/v1/crates/$crate" 2>/dev/null \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('crate',{}).get('newest_version','-'))" \
-    2>/dev/null || echo "-"
+registry_has_version() {
+  # "yes" if $crate@$version is already on the crates.io index, else "no".
+  # crates.io rejects requests without a User-Agent — omitting it made the
+  # check always report unpublished and try to re-publish an existing version.
+  local crate="$1" version="$2"
+  curl -fsS -H "User-Agent: stochastic-rs publish.sh (dancixx@gmail.com)" \
+    "https://crates.io/api/v1/crates/$crate/versions" 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if '$version' in [v['num'] for v in d.get('versions',[])] else 'no')" \
+    2>/dev/null || echo "no"
 }
 
 publish_one() {
@@ -96,14 +97,14 @@ publish_one() {
     read -r -a extra <<< "${spec#* }"
   fi
 
-  local lv rv
+  local lv published
   lv=$(local_version "$crate")
-  rv=$(registry_version "$crate")
+  published=$(registry_has_version "$crate" "$lv")
 
   echo
-  echo "==> $crate (local=$lv, registry=$rv)"
+  echo "==> $crate (local=$lv, on crates.io=$published)"
 
-  if [[ ${#DRY_RUN[@]} -eq 0 && "$lv" == "$rv" ]]; then
+  if [[ ${#DRY_RUN[@]} -eq 0 && "$published" == "yes" ]]; then
     echo "    already published at $lv — skipping"
     return 0
   fi
