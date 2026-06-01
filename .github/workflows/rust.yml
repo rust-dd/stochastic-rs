@@ -199,11 +199,19 @@ jobs:
             --ignore-not-existing \
             --llvm \
             -o lcov.info
+          # nextest writes one profraw per test (~1300 files, >1 GB total).
+          # grcov has merged them into lcov.info above, so delete them — else
+          # the Codecov upload sweeps up a gigabyte of raw profiling data
+          # instead of the single lcov report, which Codecov cannot parse.
+          find . -name '*.profraw' -delete
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           files: lcov.info
+          # Upload only lcov.info; do not let the CLI discover/attach anything
+          # else in the tree (belt-and-braces with the profraw cleanup above).
+          disable_search: true
           fail_ci_if_error: true
           verbose: true
         env:

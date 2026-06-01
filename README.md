@@ -1,7 +1,7 @@
-![Build Workflow](https://github.com/dancixx/stochastic-rs/actions/workflows/rust.yml/badge.svg)
+![Build Workflow](https://github.com/rust-dd/stochastic-rs/actions/workflows/rust.yml/badge.svg)
 [![Crates.io](https://img.shields.io/crates/v/stochastic-rs?style=flat-square)](https://crates.io/crates/stochastic-rs)
 ![License](https://img.shields.io/crates/l/stochastic-rs?style=flat-square)
-[![codecov](https://codecov.io/gh/dancixx/stochastic-rs/graph/badge.svg?token=SCSp3z7BQJ)](https://codecov.io/gh/dancixx/stochastic-rs)
+[![codecov](https://codecov.io/gh/rust-dd/stochastic-rs/graph/badge.svg)](https://codecov.io/gh/rust-dd/stochastic-rs)
 
 # stochastic-rs
 
@@ -241,4 +241,4 @@ Open an issue or start a discussion on GitHub. Per-feature recipes
 
 ## License
 
-MIT — see [LICENSE](https://github.com/dancixx/stochastic-rs/blob/main/LICENSE).
+MIT — see [LICENSE](https://github.com/rust-dd/stochastic-rs/blob/main/LICENSE).
