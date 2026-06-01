@@ -96,23 +96,25 @@ table and the source-build path with vcpkg.
 
 ```rust
 use stochastic_rs::prelude::*;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
-use stochastic_rs::quant::types::OptionType;
 
 fn main() {
-    // Mean-reverting OU path
-    let p = Ou::<f64>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0));
-    let path = p.sample();
+    // Mean-reverting Ornstein-Uhlenbeck path: Ou::new(theta, mu, sigma, n, x0, t, seed)
+    let ou = Ou::<f64>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0), Unseeded);
+    let path = ou.sample();
+    println!("OU path points: {}", path.len());
 
-    // Heston European call with first- and second-order Greeks
-    let pricer = HestonPricer::<f64>::new(
-        100.0, 100.0, 1.0, 0.03, 0.0,
-        0.04, 2.0, 0.04, 0.3, -0.5,
+    // Heston (1993) European option, closed form. HestonPricer::new args:
+    // s, v0, k, r, q, rho, kappa, theta, sigma, lambda, tau, eval, expiration
+    let pricer = HestonPricer::new(
+        100.0, 0.04, 100.0, 0.03, Some(0.0),
+        -0.5, 2.0, 0.04, 0.3, Some(0.0),
+        Some(1.0), None, None,
     );
-    let price = pricer.price(OptionType::Call);
-    let greeks = pricer.greeks(OptionType::Call);
-    println!("call={:.4}, delta={:.4}, vega={:.4}", price, greeks.delta, greeks.vega);
+    let (call, put) = pricer.calculate_call_put();
+    println!("call={call:.4}, put={put:.4}");
 }
 ```
 

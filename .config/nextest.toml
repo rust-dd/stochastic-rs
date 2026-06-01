@@ -1,0 +1,36 @@
+# cargo-nextest configuration.
+#
+# The CI profiles print every test as it completes (`status-level = "pass"`),
+# so the GitHub Actions log shows a running `(N/total)` counter — i.e. which
+# test number is executing / how far the run has progressed. `slow-timeout`
+# marks long-running tests with a `SLOW [> …]` line and, after enough periods,
+# terminates a genuinely hung test so a single runaway cannot stall the job.
+
+[profile.default]
+# Local default: surface slow tests, keep the per-test pass lines off to avoid
+# drowning interactive runs (use `--profile ci` to see the counter locally).
+slow-timeout = "60s"
+final-status-level = "slow"
+
+# Fast correctness gate (`test` job, no coverage instrumentation).
+[profile.ci]
+status-level = "pass"           # one line per finished test → running (N/total) counter
+final-status-level = "slow"
+failure-output = "immediate-final"
+fail-fast = false               # run the whole suite so every failure is reported
+# Without coverage the heaviest MC tests run in a few minutes even on a small
+# runner; 60s × 20 = 20 min is a pure hang-detector well above any legit test.
+slow-timeout = { period = "60s", terminate-after = 20 }
+
+# Coverage tracker (`test_with_coverage` job). `-C instrument-coverage` makes
+# the heavy Malliavin / Fourier-Malliavin / rBergomi Monte-Carlo tests 5–10×
+# slower, so these tests legitimately run for many minutes. We only *mark*
+# slow tests (the `SLOW [> …]` line surfaces which ones) and never terminate
+# them — a false kill would spuriously fail the job; the 240-minute job-level
+# timeout is the backstop for a genuine hang.
+[profile.ci-coverage]
+status-level = "pass"
+final-status-level = "slow"
+failure-output = "immediate-final"
+fail-fast = false
+slow-timeout = "120s"

@@ -154,7 +154,7 @@
 //! ```rust
 //! use ndarray::{array, Array1, Array2};
 //! use rand::rng;
-//! use stochastic_rs::stochastic::sde::{Sde, SdeMethod, NoiseModel};
+//! use stochastic_rs_stochastic::sde::{Sde, SdeMethod, NoiseModel};
 //!
 //! // Geometric Brownian Motion: dS = mu*S*dt + sigma*S*dW
 //! let mu = 0.05_f64;

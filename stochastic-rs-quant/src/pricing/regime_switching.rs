@@ -80,8 +80,8 @@ fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
 ///
 /// ```
 /// use ndarray::{array, Array2};
-/// use stochastic_rs::quant::pricing::regime_switching::RegimeSwitchingModel;
-/// use stochastic_rs::quant::pricing::fourier::{FourierModelExt, LewisPricer};
+/// use stochastic_rs_quant::pricing::regime_switching::RegimeSwitchingModel;
+/// use stochastic_rs_quant::pricing::fourier::{FourierModelExt, LewisPricer};
 ///
 /// let model = RegimeSwitchingModel {
 ///   q_matrix: array![[-0.5, 0.5], [1.0, -1.0]],

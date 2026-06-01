@@ -113,9 +113,43 @@ jobs:
         # message if the extension is somehow not importable.
         run: .venv/bin/python -m pytest stochastic-rs-py/tests/ -v
 
-  # Full test run with openblas + coverage.
+  # Fast correctness gate: the whole workspace test-suite via cargo-nextest
+  # (no coverage instrumentation), so a failing/flaky test surfaces in minutes
+  # instead of only inside the multi-hour coverage job. The `ci` nextest
+  # profile prints one line per finished test with a running `(N/total)`
+  # counter, so the log shows which test is executing and how far along the
+  # run is.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install OpenBLAS
+        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      # `--release` because the heavy Monte-Carlo tests (Malliavin, rBergomi,
+      # Fourier-Malliavin) are unusably slow unoptimised; `--exclude
+      # stochastic-rs-py` because the cdylib is exercised by pytest in the
+      # python_smoke job. Mirrors the coverage job's feature set for parity.
+      - name: cargo nextest run (workspace)
+        run: cargo nextest run --workspace --exclude stochastic-rs-py --features openblas --profile ci
+      # nextest does not run doctests; this gates the crates' doc examples
+      # (e.g. the README quickstart rendered on docs.rs) that plain `cargo
+      # test` used to cover. `--release` reuses the artifacts built above.
+      - name: cargo test --doc (workspace)
+        run: cargo test --release --workspace --exclude stochastic-rs-py --features openblas --doc
+
+  # Full test run with openblas + coverage. Heavyweight + instrumented, so it
+  # only runs on pushes to main; the fast `test` job gates pull requests.
   test_with_coverage:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    timeout-minutes: 240
 
     steps:
       - uses: actions/checkout@v3
@@ -133,6 +167,11 @@ jobs:
       - name: Install grcov
         run: cargo install grcov
 
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Clean Build Artifacts
         run: cargo clean
 
@@ -144,8 +183,11 @@ jobs:
           CARGO_PROFILE_RELEASE_DEBUG: "1"
           RUSTFLAGS: "-C instrument-coverage"
           LLVM_PROFILE_FILE: "coverage-%p-%m.profraw"
+        # nextest runs each test in its own process (one profraw per test, kept
+        # unique by the %p pid above) and the `ci-coverage` profile prints the
+        # running (N/total) counter; grcov then merges every profraw as before.
         run: |
-          cargo test --release --workspace --exclude stochastic-rs-py --features openblas
+          cargo nextest run --release --workspace --exclude stochastic-rs-py --features openblas --profile ci-coverage
 
       - name: Generate coverage report
         run: |
