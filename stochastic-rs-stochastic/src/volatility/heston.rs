@@ -228,7 +228,10 @@ impl HestonScheme for AndersenQe {
 
     let s0 = model.s0.unwrap_or(T::one());
     let v0 = model.v0.unwrap_or(T::zero()).max(T::zero());
-    assert!(s0 > T::zero(), "Andersen QE evolves log-spot, so s0 must be > 0");
+    assert!(
+      s0 > T::zero(),
+      "Andersen QE evolves log-spot, so s0 must be > 0"
+    );
 
     let mut s = Array1::<T>::zeros(n);
     let mut v = Array1::<T>::zeros(n);
@@ -415,7 +418,10 @@ mod tests {
     let mean_v = sum_v / m as f64;
     let v_exact = theta + (v0 - theta) * (-kappa * t).exp();
 
-    assert!(nonneg, "QE variance must stay non-negative (Feller violated here)");
+    assert!(
+      nonneg,
+      "QE variance must stay non-negative (Feller violated here)"
+    );
     assert!(
       (mean_v - v_exact).abs() / v_exact < 0.05,
       "QE E[V_T] = {mean_v}, exact CIR mean = {v_exact}"
