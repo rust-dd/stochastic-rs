@@ -9,8 +9,6 @@ use std::ffi::c_void;
 
 use anyhow::Result;
 use ndarray::Array2;
-use rayon::iter::IntoParallelIterator;
-use rayon::iter::ParallelIterator;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::Fgn;

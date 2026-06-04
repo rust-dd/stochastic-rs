@@ -21,7 +21,12 @@ const LOCAL_STAGES: usize = 9; // log2(512)
 /// Shared-memory sub-FFT: loads a contiguous tile of BLOCK elements,
 /// performs LOCAL_STAGES radix-2 butterfly stages entirely in shared
 /// memory (one sync per stage), then writes back.
-#[allow(clippy::approx_constant, clippy::excessive_precision)]
+#[allow(
+  clippy::approx_constant,
+  clippy::excessive_precision,
+  clippy::identity_op,
+  clippy::modulo_one
+)]
 #[cube(launch)]
 fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
   let tid = UNIT_POS as usize;

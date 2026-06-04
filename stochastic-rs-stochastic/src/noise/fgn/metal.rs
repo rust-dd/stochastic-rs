@@ -227,7 +227,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   // 2. FFT butterfly stages
   let grid_fft = MTLSize::new((total / 2) as u64, 1, 1);
   for stage in 0..log_n {
-    let hs = (1u32 << stage) as u32;
+    let hs = 1u32 << stage;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.butterfly_pso);
     enc.set_buffer(0, Some(&real_buf), 0);
