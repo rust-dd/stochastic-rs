@@ -237,6 +237,11 @@ harness = false
 required-features = ["cuda-oxide-experimental"]
 
 [[bench]]
+name = "fgn_cuda_compare"
+harness = false
+required-features = ["cuda-native", "gpu-cuda"]
+
+[[bench]]
 name = "fgn_all_backends"
 harness = false
 required-features = ["gpu-wgpu", "metal", "accelerate"]
