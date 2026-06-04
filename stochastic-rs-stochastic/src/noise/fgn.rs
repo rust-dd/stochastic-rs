@@ -9,8 +9,6 @@ mod accelerate;
 mod core;
 #[cfg(feature = "cuda-native")]
 mod cuda_native;
-#[cfg(feature = "cuda-oxide-experimental")]
-mod cuda_oxide;
 #[cfg(feature = "gpu")]
 mod gpu;
 #[cfg(feature = "metal")]
