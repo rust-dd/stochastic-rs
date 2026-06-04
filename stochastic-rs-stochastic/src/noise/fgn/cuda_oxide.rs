@@ -1,268 +1,66 @@
 //! # cuda-oxide Experimental CUDA
 //!
-//! Experimental Fgn sampling implemented entirely as NVlabs `cuda-oxide` Rust
-//! kernels: Philox/Box-Muller generation, eigenvalue scaling, radix-2 FFT, and
-//! output extraction. This is intentionally separate from the stable
-//! `cuda-native` backend while the cuda-oxide compiler/runtime are still alpha.
+//! Experimental Fgn sampling whose device kernels are written in pure Rust and
+//! compiled to NVVM IR by the NVlabs `cuda-oxide` rustc codegen backend. The
+//! kernels live in the device-only `fgn-oxide-kernels` crate; their NVVM IR is
+//! generated once (by the maintainer, via `cargo oxide`) and committed here as
+//! `fgn_oxide_kernels.ll`. It is `include_bytes!`-embedded and lowered to a
+//! cubin at runtime with libNVVM + nvJitLink, so a plain downstream
+//! `cargo build` runs with no `cargo oxide` / precompile step.
+//!
+//! This backend is intentionally separate from the stable `cuda-native`
+//! backend while the cuda-oxide compiler/runtime are still alpha.
 
 use std::any::TypeId;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use cuda_core::DeviceBuffer;
 use cuda_core::LaunchConfig;
-use cuda_device::DisjointSlice;
-use cuda_device::kernel;
-use cuda_device::thread;
 use cuda_host::cuda_launch;
-use cuda_host::load_kernel_module;
+use fgn_oxide_kernels::*;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::Fgn;
 use crate::traits::FloatExt;
 
-const MODULE_ENV: &str = "STOCHASTIC_RS_CUDA_OXIDE_MODULE";
-const DEFAULT_MODULE: &str = "stochastic-rs-stochastic";
-const TAU_F32: f32 = 6.283_185_5;
-const TAU_F64: f64 = 6.283_185_307_179_586;
+/// NVVM IR for the fGN device kernels, generated once with the cuda-oxide
+/// rustc codegen backend (`fgn-oxide-kernels` crate) and committed. Embedded so
+/// downstream needs no `cargo oxide`; lowered to a cubin on first use below.
+const FGN_OXIDE_NVVM_IR: &[u8] = include_bytes!("fgn_oxide_kernels.ll");
 
 static RNG_SEQ: AtomicU64 = AtomicU64::new(0);
 
-#[inline]
-fn reverse_bits_n(mut x: usize, bits: usize) -> usize {
-  let mut y = 0usize;
-  let mut i = 0usize;
-  while i < bits {
-    y = (y << 1) | (x & 1);
-    x >>= 1;
-    i += 1;
+/// Path to the cubin lowered from [`FGN_OXIDE_NVVM_IR`], cached for the process.
+/// Compilation is deterministic per GPU arch, so one compile serves every call.
+static FGN_OXIDE_CUBIN_PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+/// Lower the embedded NVVM IR to a cubin (libNVVM + nvJitLink, linking
+/// `libdevice` for the `ln`/`sqrt`/`cos`/`sin` the RNG uses) and return its
+/// path, cached after the first call. The IR is written to a temp file because
+/// the runtime's `build_cubin_from_ll` is path-based. Needs the CUDA Toolkit's
+/// libNVVM at runtime — but no `cargo oxide` / precompile step downstream.
+fn fgn_oxide_module_path(arch: &str) -> Result<&'static str> {
+  if let Some(path) = FGN_OXIDE_CUBIN_PATH.get() {
+    return Ok(path.to_str().expect("cubin path is valid UTF-8"));
   }
-  y
-}
-
-#[inline]
-fn philox2x32_10(tid: usize, seed: u64, seq: u64) -> (u32, u32) {
-  let ctr = tid as u64 + seq;
-  let mut lo = ctr as u32;
-  let mut hi = (ctr >> 32) as u32;
-  let mut k = seed as u32;
-  let mut i = 0;
-  while i < 10 {
-    let p = 0xD251_1F53_u64 * lo as u64;
-    lo = ((p >> 32) as u32) ^ hi ^ k;
-    hi = p as u32;
-    k = k.wrapping_add(0x9E37_79B9);
-    i += 1;
-  }
-  (lo, hi)
-}
-
-#[kernel]
-pub fn gen_scale_f32(
-  mut data: DisjointSlice<f32>,
-  sqrt_eigs: &[f32],
-  traj_size: usize,
-  total_complex: usize,
-  seed: u64,
-  seq: u64,
-) {
-  let tid = thread::index_1d().get();
-  if tid < total_complex {
-    let (lo, hi) = philox2x32_10(tid, seed, seq);
-    let u1 = (lo as f32 + 0.5) * 2.328_306_4e-10;
-    let u2 = (hi as f32 + 0.5) * 2.328_306_4e-10;
-    let r = (-2.0 * u1.ln()).sqrt();
-    let angle = TAU_F32 * u2;
-    let eig = sqrt_eigs[tid % traj_size];
-    let base = 2 * tid;
-    unsafe {
-      let ptr = data.as_mut_ptr();
-      *ptr.add(base) = r * angle.cos() * eig;
-      *ptr.add(base + 1) = r * angle.sin() * eig;
-    }
-  }
-}
-
-#[kernel]
-pub fn bit_reverse_f32(mut data: DisjointSlice<f32>, traj_size: usize, log_n: usize) {
-  let tid = thread::index_1d().get();
-  let batch = tid / traj_size;
-  let local = tid % traj_size;
-  let rev = reverse_bits_n(local, log_n);
-  if local < rev {
-    let i = 2 * (batch * traj_size + local);
-    let j = 2 * (batch * traj_size + rev);
-    unsafe {
-      let ptr = data.as_mut_ptr();
-      let ar = *ptr.add(i);
-      let ai = *ptr.add(i + 1);
-      *ptr.add(i) = *ptr.add(j);
-      *ptr.add(i + 1) = *ptr.add(j + 1);
-      *ptr.add(j) = ar;
-      *ptr.add(j + 1) = ai;
-    }
-  }
-}
-
-#[kernel]
-pub fn fft_stage_f32(mut data: DisjointSlice<f32>, traj_size: usize, half_stride: usize) {
-  let tid = thread::index_1d().get();
-  let butterflies_per_batch = traj_size / 2;
-  let batch = tid / butterflies_per_batch;
-  let local = tid % butterflies_per_batch;
-  let stride = half_stride * 2;
-  let group = local / half_stride;
-  let pos = local % half_stride;
-  let i_complex = batch * traj_size + group * stride + pos;
-  let j_complex = i_complex + half_stride;
-  let angle = -TAU_F32 * (pos as f32) / (stride as f32);
-  let wr = angle.cos();
-  let wi = angle.sin();
-
-  unsafe {
-    let ptr = data.as_mut_ptr();
-    let i = 2 * i_complex;
-    let j = 2 * j_complex;
-    let ar = *ptr.add(i);
-    let ai = *ptr.add(i + 1);
-    let br = *ptr.add(j);
-    let bi = *ptr.add(j + 1);
-    let tr = br * wr - bi * wi;
-    let ti = br * wi + bi * wr;
-    *ptr.add(i) = ar + tr;
-    *ptr.add(i + 1) = ai + ti;
-    *ptr.add(j) = ar - tr;
-    *ptr.add(j + 1) = ai - ti;
-  }
-}
-
-#[kernel]
-pub fn extract_real_f32(
-  data: &[f32],
-  mut output: DisjointSlice<f32>,
-  out_size: usize,
-  traj_size: usize,
-  scale: f32,
-) {
-  let tid = thread::index_1d();
-  if let Some(out) = output.get_mut(tid) {
-    let flat = tid.get();
-    let traj_id = flat / out_size;
-    let idx = flat % out_size;
-    *out = data[2 * (traj_id * traj_size + idx + 1)] * scale;
-  }
-}
-
-#[kernel]
-pub fn gen_scale_f64(
-  mut data: DisjointSlice<f64>,
-  sqrt_eigs: &[f64],
-  traj_size: usize,
-  total_complex: usize,
-  seed: u64,
-  seq: u64,
-) {
-  let tid = thread::index_1d().get();
-  if tid < total_complex {
-    let (lo, hi) = philox2x32_10(tid, seed, seq);
-    let u1 = (lo as f64 + 0.5) * 2.328_306_436_538_696_3e-10;
-    let u2 = (hi as f64 + 0.5) * 2.328_306_436_538_696_3e-10;
-    let r = (-2.0 * u1.ln()).sqrt();
-    let angle = TAU_F64 * u2;
-    let eig = sqrt_eigs[tid % traj_size];
-    let base = 2 * tid;
-    unsafe {
-      let ptr = data.as_mut_ptr();
-      *ptr.add(base) = r * angle.cos() * eig;
-      *ptr.add(base + 1) = r * angle.sin() * eig;
-    }
-  }
-}
-
-#[kernel]
-pub fn bit_reverse_f64(mut data: DisjointSlice<f64>, traj_size: usize, log_n: usize) {
-  let tid = thread::index_1d().get();
-  let batch = tid / traj_size;
-  let local = tid % traj_size;
-  let rev = reverse_bits_n(local, log_n);
-  if local < rev {
-    let i = 2 * (batch * traj_size + local);
-    let j = 2 * (batch * traj_size + rev);
-    unsafe {
-      let ptr = data.as_mut_ptr();
-      let ar = *ptr.add(i);
-      let ai = *ptr.add(i + 1);
-      *ptr.add(i) = *ptr.add(j);
-      *ptr.add(i + 1) = *ptr.add(j + 1);
-      *ptr.add(j) = ar;
-      *ptr.add(j + 1) = ai;
-    }
-  }
-}
-
-#[kernel]
-pub fn fft_stage_f64(mut data: DisjointSlice<f64>, traj_size: usize, half_stride: usize) {
-  let tid = thread::index_1d().get();
-  let butterflies_per_batch = traj_size / 2;
-  let batch = tid / butterflies_per_batch;
-  let local = tid % butterflies_per_batch;
-  let stride = half_stride * 2;
-  let group = local / half_stride;
-  let pos = local % half_stride;
-  let i_complex = batch * traj_size + group * stride + pos;
-  let j_complex = i_complex + half_stride;
-  let angle = -TAU_F64 * (pos as f64) / (stride as f64);
-  let wr = angle.cos();
-  let wi = angle.sin();
-
-  unsafe {
-    let ptr = data.as_mut_ptr();
-    let i = 2 * i_complex;
-    let j = 2 * j_complex;
-    let ar = *ptr.add(i);
-    let ai = *ptr.add(i + 1);
-    let br = *ptr.add(j);
-    let bi = *ptr.add(j + 1);
-    let tr = br * wr - bi * wi;
-    let ti = br * wi + bi * wr;
-    *ptr.add(i) = ar + tr;
-    *ptr.add(i + 1) = ai + ti;
-    *ptr.add(j) = ar - tr;
-    *ptr.add(j + 1) = ai - ti;
-  }
-}
-
-#[kernel]
-pub fn extract_real_f64(
-  data: &[f64],
-  mut output: DisjointSlice<f64>,
-  out_size: usize,
-  traj_size: usize,
-  scale: f64,
-) {
-  let tid = thread::index_1d();
-  if let Some(out) = output.get_mut(tid) {
-    let flat = tid.get();
-    let traj_id = flat / out_size;
-    let idx = flat % out_size;
-    *out = data[2 * (traj_id * traj_size + idx + 1)] * scale;
-  }
-}
-
-fn module_name() -> String {
-  if let Ok(name) = std::env::var(MODULE_ENV) {
-    return name;
-  }
-  std::env::current_exe()
-    .ok()
-    .and_then(|path| {
-      path
-        .file_stem()
-        .map(|name| name.to_string_lossy().into_owned())
-    })
-    .unwrap_or_else(|| DEFAULT_MODULE.to_string())
+  let dir = std::env::temp_dir().join("stochastic_rs_cuda_oxide");
+  std::fs::create_dir_all(&dir).map_err(|e| anyhow::anyhow!("cuda-oxide tmp dir: {e}"))?;
+  let ll_path = dir.join("fgn_oxide_kernels.ll");
+  std::fs::write(&ll_path, FGN_OXIDE_NVVM_IR).map_err(|e| anyhow::anyhow!("cuda-oxide write IR: {e}"))?;
+  let cubin = cuda_host::ltoir::build_cubin_from_ll(&ll_path, arch)
+    .map_err(|e| anyhow::anyhow!("cuda-oxide: build cubin from embedded NVVM IR: {e}"))?;
+  let _ = FGN_OXIDE_CUBIN_PATH.set(cubin);
+  Ok(
+    FGN_OXIDE_CUBIN_PATH
+      .get()
+      .expect("just set")
+      .to_str()
+      .expect("cubin path is valid UTF-8"),
+  )
 }
 
 fn array2_from_flat<T: FloatExt, U: Copy + Into<f64>>(
@@ -304,7 +102,6 @@ fn sample_f32<T: FloatExt>(
   offset: usize,
   hurst: f64,
   t: f64,
-  module_name: &str,
 ) -> Result<Array2<T>> {
   let out_size = n - offset;
   let traj_size = 2 * n;
@@ -313,8 +110,13 @@ fn sample_f32<T: FloatExt>(
 
   let ctx = cuda_core::CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext: {e}"))?;
   let stream = ctx.default_stream();
-  let module = load_kernel_module(&ctx, module_name)
-    .map_err(|e| anyhow::anyhow!("cuda-oxide module `{module_name}`: {e}"))?;
+  let (cc_major, cc_minor) = ctx
+    .compute_capability()
+    .map_err(|e| anyhow::anyhow!("cuda-oxide compute capability: {e}"))?;
+  let arch = format!("sm_{cc_major}{cc_minor}");
+  let module = ctx
+    .load_module_from_file(fgn_oxide_module_path(&arch)?)
+    .map_err(|e| anyhow::anyhow!("cuda-oxide load module: {e}"))?;
 
   let mut data_dev = DeviceBuffer::<f32>::zeroed(&stream, 2 * total_complex)
     .map_err(|e| anyhow::anyhow!("cuda-oxide alloc complex data: {e}"))?;
@@ -381,7 +183,6 @@ fn sample_f64<T: FloatExt>(
   offset: usize,
   hurst: f64,
   t: f64,
-  module_name: &str,
 ) -> Result<Array2<T>> {
   let out_size = n - offset;
   let traj_size = 2 * n;
@@ -390,8 +191,13 @@ fn sample_f64<T: FloatExt>(
 
   let ctx = cuda_core::CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext: {e}"))?;
   let stream = ctx.default_stream();
-  let module = load_kernel_module(&ctx, module_name)
-    .map_err(|e| anyhow::anyhow!("cuda-oxide module `{module_name}`: {e}"))?;
+  let (cc_major, cc_minor) = ctx
+    .compute_capability()
+    .map_err(|e| anyhow::anyhow!("cuda-oxide compute capability: {e}"))?;
+  let arch = format!("sm_{cc_major}{cc_minor}");
+  let module = ctx
+    .load_module_from_file(fgn_oxide_module_path(&arch)?)
+    .map_err(|e| anyhow::anyhow!("cuda-oxide load module: {e}"))?;
 
   let mut data_dev = DeviceBuffer::<f64>::zeroed(&stream, 2 * total_complex)
     .map_err(|e| anyhow::anyhow!("cuda-oxide alloc complex data: {e}"))?;
@@ -452,13 +258,13 @@ fn sample_f64<T: FloatExt>(
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// Sample with the experimental cuda-oxide backend using a specific module stem.
+  /// Sample with the experimental cuda-oxide backend.
   ///
-  /// The module stem must match the `.ptx`/`.ll` artifact generated by
-  /// `cargo oxide build`. For downstream binaries this is normally the package
-  /// or binary name; `sample_cuda_oxide` uses `STOCHASTIC_RS_CUDA_OXIDE_MODULE`
-  /// when set and falls back to `stochastic-rs-stochastic`.
-  pub fn sample_cuda_oxide_with_module(&self, m: usize, module_name: &str) -> Result<Array2<T>> {
+  /// Device kernels are embedded as NVVM IR and lowered to a cubin at runtime
+  /// (libNVVM + nvJitLink), so no `cargo oxide` precompile step is needed
+  /// downstream. `_module_name` is accepted for backwards compatibility but
+  /// ignored — the embedded module is always used.
+  pub fn sample_cuda_oxide_with_module(&self, m: usize, _module_name: &str) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
@@ -470,7 +276,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
         .iter()
         .map(|x| x.to_f32().unwrap())
         .collect();
-      return sample_f32::<T>(&eigs, n, m, offset, hurst, t, module_name);
+      return sample_f32::<T>(&eigs, n, m, offset, hurst, t);
     }
 
     let eigs: Vec<f64> = self
@@ -478,10 +284,10 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       .iter()
       .map(|x| x.to_f64().unwrap())
       .collect();
-    sample_f64::<T>(&eigs, n, m, offset, hurst, t, module_name)
+    sample_f64::<T>(&eigs, n, m, offset, hurst, t)
   }
 
   pub(crate) fn sample_cuda_oxide_impl(&self, m: usize) -> Result<Array2<T>> {
-    self.sample_cuda_oxide_with_module(m, &module_name())
+    self.sample_cuda_oxide_with_module(m, "")
   }
 }

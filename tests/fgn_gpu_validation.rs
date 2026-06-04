@@ -7,7 +7,7 @@
 //! If the GPU FFT is correct, empirical covariance from GPU samples must
 //! match this formula to within Monte Carlo noise.
 
-#[cfg(feature = "gpu-wgpu")]
+#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
 mod gpu_fft_validation {
   use stochastic_rs::simd_rng::Unseeded;
   use stochastic_rs::stochastic::device::CubeCl;

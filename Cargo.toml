@@ -10,6 +10,10 @@ members = [
     "stochastic-rs-viz",
     "stochastic-rs-py",
 ]
+# Device-only cuda-oxide kernel crate: its own `[workspace]` root (built
+# standalone with the cuda-oxide codegen backend to emit NVVM IR), excluded so
+# the umbrella workspace does not claim it as a member.
+exclude = ["stochastic-rs-stochastic/fgn-oxide-kernels"]
 
 [workspace.package]
 version = "2.3.0"
@@ -90,9 +94,9 @@ cubecl = { version = "0.9.0", default-features = false }
 cubecl-cuda = "0.9.0"
 cubecl-wgpu = "0.9.0"
 cudarc = { version = "0.19.2", features = ["cuda-12080", "cuda-version-from-build-system"] }
-cuda-core = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "aef2b4fefab6230bfea46d483c0b8bcbb63c089d" }
-cuda-device = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "aef2b4fefab6230bfea46d483c0b8bcbb63c089d" }
-cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "aef2b4fefab6230bfea46d483c0b8bcbb63c089d" }
+cuda-core = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
+cuda-device = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
+cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
 gpu-fft = "1.1.1"
 metal = "0.33.0"
 
@@ -326,6 +330,10 @@ required-features = ["hotpath"]
 name = "dual_stream_compare"
 harness = false
 required-features = ["dual-stream-rng"]
+
+[[example]]
+name = "cuda_fgn_analysis"
+required-features = ["cuda-native"]
 
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]

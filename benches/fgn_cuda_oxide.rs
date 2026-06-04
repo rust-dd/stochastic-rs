@@ -5,6 +5,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -22,7 +23,7 @@ fn bench_fgn_cuda_oxide(c: &mut Criterion) {
 
   for &(n, m) in &cases {
     let label = format!("n={n},m={m}");
-    let fgn = Fgn::new(0.7f32, n, None);
+    let fgn = Fgn::new(0.7f32, n, None, Unseeded);
     let _ = fgn
       .sample_cuda_oxide_with_module(m, "fgn_cuda_oxide")
       .expect("cuda-oxide warmup should succeed");
