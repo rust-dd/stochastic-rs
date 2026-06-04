@@ -21,6 +21,10 @@ pub struct Cpu;
 #[cfg(feature = "cuda-native")]
 pub struct CudaNative;
 
+/// cuda-oxide Rust → PTX.
+#[cfg(feature = "cuda-oxide-experimental")]
+pub struct CudaOxide;
+
 /// cubecl Rust kernels (CUDA or wgpu, per the compiled `cubecl-*` runtime).
 #[cfg(feature = "gpu")]
 pub struct CubeCl;
@@ -111,6 +115,7 @@ macro_rules! gpu_backend {
 }
 
 gpu_backend!("cuda-native", CudaNative => sample_cuda_native_impl);
+gpu_backend!("cuda-oxide-experimental", CudaOxide => sample_cuda_oxide_impl);
 gpu_backend!("gpu", CubeCl => sample_gpu_impl);
 gpu_backend!("metal", MetalNative => sample_metal_impl);
 gpu_backend!("accelerate", Accelerate => sample_accelerate_impl);

@@ -10,6 +10,10 @@ members = [
     "stochastic-rs-viz",
     "stochastic-rs-py",
 ]
+# Device-only cuda-oxide kernel crate: its own `[workspace]` root (built
+# standalone with the cuda-oxide codegen backend to emit NVVM IR), excluded so
+# the umbrella workspace does not claim it as a member.
+exclude = ["stochastic-rs-stochastic/fgn-oxide-kernels"]
 
 [workspace.package]
 version = "2.3.0"
@@ -90,6 +94,9 @@ cubecl = { version = "0.9.0", default-features = false }
 cubecl-cuda = "0.9.0"
 cubecl-wgpu = "0.9.0"
 cudarc = { version = "0.19.2", features = ["cuda-12080", "cuda-version-from-build-system"] }
+cuda-core = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
+cuda-device = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
+cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
 gpu-fft = "1.1.1"
 metal = "0.33.0"
 
@@ -140,6 +147,9 @@ cubecl = { workspace = true, optional = true, default-features = false }
 cubecl-cuda = { workspace = true, optional = true }
 cubecl-wgpu = { workspace = true, optional = true }
 cudarc = { workspace = true, optional = true, features = [ "cuda-12080", "cuda-version-from-build-system", ] }
+cuda-core = { workspace = true, optional = true }
+cuda-device = { workspace = true, optional = true }
+cuda-host = { workspace = true, optional = true }
 flate2 = { workspace = true }
 gpu-fft = { workspace = true, optional = true }
 gauss-quad = { workspace = true }
@@ -220,6 +230,11 @@ required-features = ["gpu"]
 name = "fgn_cuda_native"
 harness = false
 required-features = ["cuda-native"]
+
+[[bench]]
+name = "fgn_cuda_oxide"
+harness = false
+required-features = ["cuda-oxide-experimental"]
 
 [[bench]]
 name = "fgn_cuda_compare"
@@ -328,6 +343,12 @@ required-features = ["cuda-native"]
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda-native = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda-native"]
+cuda-oxide-experimental = [
+    "dep:cuda-core",
+    "dep:cuda-device",
+    "dep:cuda-host",
+    "stochastic-rs-stochastic/cuda-oxide-experimental",
+]
 default = []
 # Experimental: opt in to the dual-stream RNG (`SimdRngDual` /
 # `SimdNormalDual`). ~5–11% speedup on Ziggurat-based Normal/Exp bulk
