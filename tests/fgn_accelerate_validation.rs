@@ -2,22 +2,18 @@
 
 #[cfg(feature = "accelerate")]
 mod accel_validation {
-  use either::Either;
+  use stochastic_rs::simd_rng::Unseeded;
+  use stochastic_rs::stochastic::device::Accelerate;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::traits::ProcessExt;
 
   fn accel_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0));
-    match fgn
-      .sample_accelerate(m)
-      .expect("accelerate sampling failed")
-    {
-      Either::Left(p) => vec![p.iter().map(|&x| x as f64).collect()],
-      Either::Right(ps) => ps
-        .outer_iter()
-        .map(|r| r.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<Accelerate>();
+    fgn
+      .sample_par(m)
+      .into_iter()
+      .map(|p| p.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn lag_cov(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {

@@ -6,41 +6,38 @@
 
 #[cfg(feature = "gpu-wgpu")]
 mod gpu_visual {
-  use either::Either;
   use ndarray::Array1;
+  use stochastic_rs::simd_rng::Unseeded;
   use stochastic_rs::stats::fractal_dim::FractalDimEstimator;
   use stochastic_rs::stats::fractal_dim::Higuchi;
   use stochastic_rs::stats::fractal_dim::Variogram;
+  use stochastic_rs::stochastic::device::CubeCl;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
   use stochastic_rs::visualization::GridPlotter;
 
   fn gpu_fgn_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0));
-    match fgn.sample_gpu(m).expect("GPU Fgn sampling failed") {
-      Either::Left(p) => vec![p.iter().map(|&x| x as f64).collect()],
-      Either::Right(ps) => ps
-        .outer_iter()
-        .map(|r| r.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeCl>();
+    fgn
+      .sample_par(m)
+      .into_iter()
+      .map(|p| p.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn cpu_fgn_paths(h: f64, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f64>::new(h, n, Some(1.0));
+    let fgn = Fgn::<f64>::new(h, n, Some(1.0), Unseeded);
     fgn.sample_par(m).into_iter().map(|p| p.to_vec()).collect()
   }
 
   fn gpu_fbm_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fbm = Fbm::<f32>::new(h, n, Some(1.0));
-    match fbm.sample_gpu(m).expect("GPU Fbm sampling failed") {
-      Either::Left(p) => vec![p.iter().map(|&x| x as f64).collect()],
-      Either::Right(ps) => ps
-        .outer_iter()
-        .map(|r| r.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fbm = Fbm::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeCl>();
+    fbm
+      .sample_par(m)
+      .into_iter()
+      .map(|p| p.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn empirical_autocovariance(paths: &[Vec<f64>], max_lag: usize) -> Vec<f64> {

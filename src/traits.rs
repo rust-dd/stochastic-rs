@@ -24,6 +24,8 @@ pub use stochastic_rs_quant::traits::PricingResult;
 pub use stochastic_rs_quant::traits::StandardResult;
 pub use stochastic_rs_quant::traits::TimeExt;
 pub use stochastic_rs_quant::traits::ToModel;
+pub use stochastic_rs_stochastic::device::Backend;
+pub use stochastic_rs_stochastic::device::Cpu;
 pub use stochastic_rs_stochastic::traits::ComplexPathOutput;
 pub use stochastic_rs_stochastic::traits::CurveOutput;
 pub use stochastic_rs_stochastic::traits::Malliavin2DExt;

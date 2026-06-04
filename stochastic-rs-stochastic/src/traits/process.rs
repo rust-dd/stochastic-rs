@@ -1,19 +1,5 @@
 //! `ProcessExt` and dimensional output markers.
 
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-use anyhow::Result;
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-use either::Either;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::parallel::prelude::*;
@@ -36,23 +22,14 @@ use stochastic_rs_distributions::traits::FloatExt;
 /// LMM/BGM (see its module doc); it is a parallel array of independent
 /// Euler-stepped multiplicative martingales.
 ///
-/// ## GPU coverage
+/// ## Backend selection
 ///
-/// The `sample_gpu` / `sample_cuda_native` / `sample_metal` / `sample_accelerate`
-/// methods are opt-in overrides; default impls return `Err`. Currently the
-/// only processes with GPU implementations are [`Fgn`](crate::noise::fgn::Fgn)
-/// and [`Fbm`](crate::process::fbm::Fbm), which both rely on the FFT-based
-/// circulant-embedding path under `feature = "gpu"`.
-///
-/// **Roadmap (P3/18):** GPU implementations for Heston, RoughBergomi, Cir2F,
-/// and Hjm remain TODO. These processes use *standard* Brownian noise,
-/// not fractional, so the Fgn GPU path is not directly reusable — they
-/// need bespoke kernels for variance updates (e.g. Andersen QE for Cir-type
-/// dynamics) and correlated noise generation. ([`Bgm`](crate::interest::bgm::Bgm)
-/// is excluded from the GPU roadmap on purpose: it is a parallel array of
-/// uncoupled Euler-stepped multiplicative martingales, not a market model
-/// — see its module doc — so a GPU sampler would just be `xn` independent
-/// `Gbm`-style streams and offers no algorithmic interest.)
+/// Re-type a process to a compile-time sampling backend with the turbofish
+/// `process.on::<B>()` where `B: `[`Backend`](crate::device::Backend) (e.g.
+/// `process.on::<CudaNative>()`); the backend marker propagates to the
+/// process's noise source with no runtime branch. Only the fractional family
+/// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
+/// GPU marker only exists when its feature is compiled.
 pub trait ProcessExt<T: FloatExt>: Send + Sync {
   type Output: Send;
 
@@ -60,26 +37,6 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
 
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     (0..m).into_par_iter().map(|_| self.sample()).collect()
-  }
-
-  #[cfg(feature = "gpu")]
-  fn sample_gpu(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    anyhow::bail!("CubeCL GPU sampling is not supported for this process")
-  }
-
-  #[cfg(feature = "cuda-native")]
-  fn sample_cuda_native(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    anyhow::bail!("cudarc native CUDA sampling is not supported for this process")
-  }
-
-  #[cfg(feature = "accelerate")]
-  fn sample_accelerate(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    anyhow::bail!("Accelerate/vDSP sampling is not supported for this process")
-  }
-
-  #[cfg(feature = "metal")]
-  fn sample_metal(&self, _m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    anyhow::bail!("Metal GPU sampling is not supported for this process")
   }
 }
 

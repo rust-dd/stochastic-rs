@@ -283,7 +283,7 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   pub(crate) fn sample_metal_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     let n = self.n;
     let offset = self.offset;

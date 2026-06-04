@@ -260,7 +260,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
   Ok(Either::Right(fgn))
 }
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   pub(crate) fn sample_cuda_native_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     let n = self.n;
     let offset = self.offset;

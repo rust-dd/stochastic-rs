@@ -416,7 +416,7 @@ mod backend {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   pub(crate) fn sample_gpu_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
     #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
     {

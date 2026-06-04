@@ -6,6 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::device::CubeCl;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -19,23 +20,16 @@ fn bench_fgn_single_path_cpu_vs_gpu(c: &mut Criterion) {
 
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(hurst, n, None, Unseeded);
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CubeCl>();
 
-    let _ = fgn
-      .sample_gpu(1)
-      .expect("GPU single-path warmup should succeed");
+    let _ = dev.sample();
 
     group.bench_with_input(BenchmarkId::new("cpu/sample", n), &n, |b, &_n| {
       b.iter(|| black_box(fgn.sample()));
     });
 
     group.bench_with_input(BenchmarkId::new("gpu/sample_gpu_m1", n), &n, |b, &_n| {
-      b.iter(|| {
-        black_box(
-          fgn
-            .sample_gpu(1)
-            .expect("GPU single-path sampling should succeed"),
-        )
-      });
+      b.iter(|| black_box(dev.sample()));
     });
   }
 
@@ -60,8 +54,9 @@ fn bench_fgn_batch_cpu_vs_gpu(c: &mut Criterion) {
   for &(n, m) in &cases {
     let label = format!("n={n},m={m}");
     let fgn = Fgn::new(hurst, n, None, Unseeded);
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CubeCl>();
 
-    let _ = fgn.sample_gpu(m).expect("GPU batch warmup should succeed");
+    let _ = dev.sample_par(m);
 
     group.bench_with_input(
       BenchmarkId::new("cpu/sample_par", &label),
@@ -75,13 +70,7 @@ fn bench_fgn_batch_cpu_vs_gpu(c: &mut Criterion) {
       BenchmarkId::new("gpu/sample_gpu", &label),
       &(n, m),
       |b, &(_n, m)| {
-        b.iter(|| {
-          black_box(
-            fgn
-              .sample_gpu(m)
-              .expect("GPU batch sampling should succeed"),
-          )
-        });
+        b.iter(|| black_box(dev.sample_par(m)));
       },
     );
   }
