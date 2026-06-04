@@ -65,6 +65,5 @@ chrono = { workspace = true }
 parking_lot = { workspace = true }
 ndrustfft = { workspace = true }
 anyhow = { workspace = true }
-either = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }

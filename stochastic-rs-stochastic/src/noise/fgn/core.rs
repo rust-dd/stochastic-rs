@@ -218,8 +218,8 @@ impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {
     B::generate(self, seed)
   }
 
-  /// `m` fGN paths in one batched `B` call, `m × n` row-major.
-  pub(crate) fn noise_batch(&self, m: usize) -> Array2<T> {
+  /// `m` fGN paths in one batched `B` call, one [`Array1`] per path.
+  pub(crate) fn noise_batch(&self, m: usize) -> Vec<Array1<T>> {
     B::generate_batch(self, m)
   }
 }

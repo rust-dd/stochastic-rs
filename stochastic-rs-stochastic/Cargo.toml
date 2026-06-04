@@ -56,7 +56,6 @@ argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] 
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 nalgebra = { workspace = true }
-either = { workspace = true }
 anyhow = { workspace = true }
 wide = { workspace = true }
 sci-rs = { workspace = true }

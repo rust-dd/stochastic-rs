@@ -51,6 +51,5 @@ gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 owens-t = { workspace = true }
 plotly = { workspace = true, features = ["plotly_ndarray"] }
-either = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }

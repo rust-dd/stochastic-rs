@@ -3,9 +3,8 @@
 
 #[cfg(feature = "cuda-oxide-experimental")]
 mod cuda_oxide_validation {
-  use either::Either;
+  use stochastic_rs::simd_rng::Unseeded;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
-  use stochastic_rs::traits::ProcessExt;
 
   fn lag_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
     let mut s = 0.0;
@@ -20,17 +19,13 @@ mod cuda_oxide_validation {
   }
 
   fn cuda_oxide_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0));
-    match fgn
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded);
+    fgn
       .sample_cuda_oxide_with_module(m, "fgn_cuda_oxide_validation")
       .expect("cuda-oxide sampling failed")
-    {
-      Either::Left(path) => vec![path.iter().map(|&x| x as f64).collect()],
-      Either::Right(paths) => paths
-        .outer_iter()
-        .map(|row| row.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+      .outer_iter()
+      .map(|row| row.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   #[test]
@@ -60,11 +55,10 @@ mod cuda_oxide_validation {
 
   #[test]
   fn cuda_oxide_non_power_of_two_n_shape() {
-    let fgn = Fgn::<f32>::new(0.7, 3000, Some(1.0));
-    let out = fgn
+    let fgn = Fgn::<f32>::new(0.7, 3000, Some(1.0), Unseeded);
+    let batch = fgn
       .sample_cuda_oxide_with_module(8, "fgn_cuda_oxide_validation")
       .expect("cuda-oxide batch");
-    let batch = out.right().expect("m>1 returns Array2");
     assert_eq!(batch.shape(), &[8, 3000]);
   }
 }

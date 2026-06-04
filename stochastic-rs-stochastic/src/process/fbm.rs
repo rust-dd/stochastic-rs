@@ -73,7 +73,6 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
     self
       .fgn
       .noise_batch(m)
-      .outer_iter()
       .into_par_iter()
       .map(|fgn_row| {
         let mut fbm = Array1::<T>::zeros(self.n);

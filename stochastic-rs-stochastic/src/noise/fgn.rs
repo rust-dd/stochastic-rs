@@ -21,7 +21,6 @@ mod python;
 pub use core::Fgn;
 
 use ndarray::Array1;
-use ndarray::parallel::prelude::*;
 #[cfg(feature = "python")]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -56,12 +55,8 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
   }
 
   /// The `m` paths are generated in **one batched backend call** (a single FFT
-  /// plan over the whole batch), then copied out across all cores.
+  /// plan over the whole batch).
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     B::generate_batch(self, m)
-      .outer_iter()
-      .into_par_iter()
-      .map(|row| row.to_owned())
-      .collect()
   }
 }

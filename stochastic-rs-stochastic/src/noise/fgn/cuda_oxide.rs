@@ -17,8 +17,6 @@ use cuda_device::kernel;
 use cuda_device::thread;
 use cuda_host::cuda_launch;
 use cuda_host::load_kernel_module;
-use either::Either;
-use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
@@ -307,7 +305,7 @@ fn sample_f32<T: FloatExt>(
   hurst: f64,
   t: f64,
   module_name: &str,
-) -> Result<Either<Array1<T>, Array2<T>>> {
+) -> Result<Array2<T>> {
   let out_size = n - offset;
   let traj_size = 2 * n;
   let total_complex = m * traj_size;
@@ -373,10 +371,7 @@ fn sample_f32<T: FloatExt>(
     .to_host_vec(&stream)
     .map_err(|e| anyhow::anyhow!("cuda-oxide dtoh: {e}"))?;
   let fgn = array2_from_vec_f32::<T>(host, m, out_size);
-  if m == 1 {
-    return Ok(Either::Left(fgn.row(0).to_owned()));
-  }
-  Ok(Either::Right(fgn))
+  Ok(fgn)
 }
 
 fn sample_f64<T: FloatExt>(
@@ -387,7 +382,7 @@ fn sample_f64<T: FloatExt>(
   hurst: f64,
   t: f64,
   module_name: &str,
-) -> Result<Either<Array1<T>, Array2<T>>> {
+) -> Result<Array2<T>> {
   let out_size = n - offset;
   let traj_size = 2 * n;
   let total_complex = m * traj_size;
@@ -453,10 +448,7 @@ fn sample_f64<T: FloatExt>(
     .to_host_vec(&stream)
     .map_err(|e| anyhow::anyhow!("cuda-oxide dtoh: {e}"))?;
   let fgn = array2_from_vec_f64::<T>(host, m, out_size);
-  if m == 1 {
-    return Ok(Either::Left(fgn.row(0).to_owned()));
-  }
-  Ok(Either::Right(fgn))
+  Ok(fgn)
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
@@ -470,7 +462,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     &self,
     m: usize,
     module_name: &str,
-  ) -> Result<Either<Array1<T>, Array2<T>>> {
+  ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
@@ -493,7 +485,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     sample_f64::<T>(&eigs, n, m, offset, hurst, t, module_name)
   }
 
-  pub(crate) fn sample_cuda_oxide_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+  pub(crate) fn sample_cuda_oxide_impl(&self, m: usize) -> Result<Array2<T>> {
     self.sample_cuda_oxide_with_module(m, &module_name())
   }
 }

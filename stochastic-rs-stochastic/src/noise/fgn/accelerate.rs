@@ -8,8 +8,6 @@ use std::any::TypeId;
 use std::ffi::c_void;
 
 use anyhow::Result;
-use either::Either;
-use ndarray::Array1;
 use ndarray::Array2;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -48,7 +46,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   hurst: f64,
   t: f64,
   seed: &S,
-) -> Result<Either<Array1<T>, Array2<T>>> {
+) -> Result<Array2<T>> {
   let traj_size = 2 * n;
   let out_size = n - offset;
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
@@ -101,10 +99,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   }
 
   let fgn = arr2_f32::<T>(&output, m, out_size);
-  if m == 1 {
-    return Ok(Either::Left(fgn.row(0).to_owned()));
-  }
-  Ok(Either::Right(fgn))
+  Ok(fgn)
 }
 
 fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
@@ -123,7 +118,7 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  pub(crate) fn sample_accelerate_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+  pub(crate) fn sample_accelerate_impl(&self, m: usize) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
