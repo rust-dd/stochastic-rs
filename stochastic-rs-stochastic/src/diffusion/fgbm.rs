@@ -85,7 +85,17 @@ mod tests {
 
   #[test]
   fn fgbm_on_cpu_matches_plain_sample() {
-    let mk = || Fgbm::<f64, _>::new(0.7, 0.1, 0.2, 256, Some(1.0), Some(1.0), Deterministic::new(7));
+    let mk = || {
+      Fgbm::<f64, _>::new(
+        0.7,
+        0.1,
+        0.2,
+        256,
+        Some(1.0),
+        Some(1.0),
+        Deterministic::new(7),
+      )
+    };
     let plain = mk().sample();
     let on_cpu = mk().on::<Cpu>().sample();
 

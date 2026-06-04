@@ -27,7 +27,9 @@ fn cuda_native_single_path_shape() {
 fn cuda_native_batch_shape() {
   let fgn = Fgn::<f64>::new(0.7, 512, Some(1.0));
   let m = 64;
-  let result = fgn.sample_cuda_native_impl(m).expect("batch should succeed");
+  let result = fgn
+    .sample_cuda_native_impl(m)
+    .expect("batch should succeed");
   let batch = result.right().expect("m>1 should return Right(Array2)");
   assert_eq!(batch.shape(), &[m, 512]);
 }
@@ -43,7 +45,9 @@ fn cuda_native_f32_works() {
 #[test]
 fn cuda_native_non_power_of_two_n() {
   let fgn = Fgn::<f64>::new(0.7, 3000, Some(1.0));
-  let result = fgn.sample_cuda_native_impl(8).expect("non-pot n should work");
+  let result = fgn
+    .sample_cuda_native_impl(8)
+    .expect("non-pot n should work");
   let batch = result.right().expect("batch");
   assert_eq!(batch.shape(), &[8, 3000]);
 }

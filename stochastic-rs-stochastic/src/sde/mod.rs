@@ -179,6 +179,8 @@ mod gaussian;
 #[cfg(test)]
 mod tests;
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
@@ -186,8 +188,6 @@ use ndarray::ArrayView1;
 use ndarray::s;
 use rand::Rng;
 use stochastic_rs_core::simd_rng::Unseeded;
-
-use std::marker::PhantomData;
 
 use super::noise::fgn::Fgn;
 use crate::device::Backend;

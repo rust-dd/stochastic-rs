@@ -99,7 +99,10 @@ macro_rules! gpu_backend {
         fgn.$sampler(1).unwrap().row(0).to_owned()
       }
 
-      fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
+      fn generate_batch<T: FloatExt, S: SeedExt>(
+        fgn: &Fgn<T, S, Self>,
+        m: usize,
+      ) -> Vec<Array1<T>> {
         fgn
           .$sampler(m)
           .unwrap()

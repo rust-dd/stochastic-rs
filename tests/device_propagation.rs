@@ -6,11 +6,29 @@ use stochastic_rs::stochastic::process::fbm::Fbm;
 
 #[test]
 fn fou_on_cpu_matches_plain_sample_with_same_seed() {
-  let plain =
-    Fou::new(0.7_f64, 1.0, 0.0, 0.2, 64, Some(0.0), Some(1.0), Deterministic::new(7)).sample();
-  let on_cpu = Fou::new(0.7_f64, 1.0, 0.0, 0.2, 64, Some(0.0), Some(1.0), Deterministic::new(7))
-    .on::<Cpu>()
-    .sample();
+  let plain = Fou::new(
+    0.7_f64,
+    1.0,
+    0.0,
+    0.2,
+    64,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(7),
+  )
+  .sample();
+  let on_cpu = Fou::new(
+    0.7_f64,
+    1.0,
+    0.0,
+    0.2,
+    64,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(7),
+  )
+  .on::<Cpu>()
+  .sample();
   assert_eq!(plain, on_cpu);
 }
 

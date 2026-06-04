@@ -458,11 +458,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// `cargo oxide build`. For downstream binaries this is normally the package
   /// or binary name; `sample_cuda_oxide` uses `STOCHASTIC_RS_CUDA_OXIDE_MODULE`
   /// when set and falls back to `stochastic-rs-stochastic`.
-  pub fn sample_cuda_oxide_with_module(
-    &self,
-    m: usize,
-    module_name: &str,
-  ) -> Result<Array2<T>> {
+  pub fn sample_cuda_oxide_with_module(&self, m: usize, module_name: &str) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();

@@ -5,9 +5,9 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::parallel::prelude::*;
 #[cfg(feature = "python")]
 use ndarray::Array2;
+use ndarray::parallel::prelude::*;
 #[cfg(feature = "python")]
 use numpy::IntoPyArray;
 #[cfg(feature = "python")]
