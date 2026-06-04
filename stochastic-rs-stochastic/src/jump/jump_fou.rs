@@ -11,12 +11,14 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct JumpFou<T, D, S: SeedExt = Unseeded>
+pub struct JumpFou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -29,11 +31,11 @@ where
   pub x0: Option<T>,
   pub t: Option<T>,
   pub cpoisson: CompoundPoisson<T, D>,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
   pub seed: S,
 }
 
-impl<T, D, S: SeedExt> JumpFou<T, D, S>
+impl<T, D, S: SeedExt> JumpFou<T, D, S, Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -66,7 +68,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for JumpFou<T, D, S>
+impl<T, D, S: SeedExt, B: Backend> ProcessExt<T> for JumpFou<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -89,6 +91,28 @@ where
     }
 
     jump_fou
+  }
+}
+
+impl<T, D, S: SeedExt, B> JumpFou<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+  pub fn on<B2: Backend>(self) -> JumpFou<T, D, S, B2> {
+    JumpFou {
+      hurst: self.hurst,
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      cpoisson: self.cpoisson,
+      fgn: self.fgn.on::<B2>(),
+      seed: self.seed,
+    }
   }
 }
 

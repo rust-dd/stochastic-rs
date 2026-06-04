@@ -8,6 +8,8 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -15,7 +17,7 @@ use crate::traits::ProcessExt;
 /// Fractional Cox-Ingersoll-Ross (Fcir) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the Fcir process.
-pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Long-run target level / model location parameter.
@@ -34,10 +36,10 @@ pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Fcir<T, S> {
+impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -71,12 +73,12 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fcir<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fcir<T, S, B> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let fgn = self.fgn.noise(&self.seed.derive());
 
     let mut fcir = Array1::<T>::zeros(self.n);
     fcir[0] = self.x0.unwrap_or(T::zero());
@@ -92,6 +94,24 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fcir<T, S> {
     }
 
     fcir
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
+  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+  pub fn on<B2: Backend>(self) -> Fcir<T, S, B2> {
+    Fcir {
+      hurst: self.hurst,
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      use_sym: self.use_sym,
+      seed: self.seed,
+      fgn: self.fgn.on::<B2>(),
+    }
   }
 }
 

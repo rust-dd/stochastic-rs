@@ -8,11 +8,13 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Drift / long-run mean-level parameter.
@@ -27,10 +29,10 @@ pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Fgbm<T, S> {
+impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
   #[must_use]
   pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must be at least 2");
@@ -48,12 +50,12 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fgbm<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgbm<T, S, B> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let fgn = self.fgn.noise(&self.seed.derive());
 
     let mut fgbm = Array1::<T>::zeros(self.n);
     fgbm[0] = self.x0.unwrap_or(T::zero());
@@ -66,7 +68,44 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fgbm<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
+  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+  pub fn on<B2: Backend>(self) -> Fgbm<T, S, B2> {
+    Fgbm {
+      hurst: self.hurst,
+      mu: self.mu,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      seed: self.seed,
+      fgn: self.fgn.on::<B2>(),
+    }
+  }
+}
+
 py_process_1d!(PyFgbm, Fgbm,
   sig: (hurst, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::Fgbm;
+  use crate::device::Cpu;
+  use crate::traits::ProcessExt;
+
+  #[test]
+  fn fgbm_on_cpu_matches_plain_sample() {
+    let mk = || Fgbm::<f64, _>::new(0.7, 0.1, 0.2, 256, Some(1.0), Some(1.0), Deterministic::new(7));
+    let plain = mk().sample();
+    let on_cpu = mk().on::<Cpu>().sample();
+
+    assert_eq!(plain.len(), on_cpu.len());
+    for (a, b) in plain.iter().zip(on_cpu.iter()) {
+      assert_eq!(a, b);
+    }
+  }
+}

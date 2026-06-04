@@ -8,11 +8,13 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Model shape / loading parameter.
@@ -29,10 +31,10 @@ pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> FJacobi<T, S> {
+impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -64,12 +66,12 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FJacobi<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for FJacobi<T, S, B> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let fgn = self.fgn.noise(&self.seed.derive());
 
     let mut fjacobi = Array1::<T>::zeros(self.n);
     fjacobi[0] = self.x0.unwrap_or(T::zero());
@@ -87,6 +89,23 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FJacobi<T, S> {
     }
 
     fjacobi
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
+  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+  pub fn on<B2: Backend>(self) -> FJacobi<T, S, B2> {
+    FJacobi {
+      hurst: self.hurst,
+      alpha: self.alpha,
+      beta: self.beta,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      seed: self.seed,
+      fgn: self.fgn.on::<B2>(),
+    }
   }
 }
 

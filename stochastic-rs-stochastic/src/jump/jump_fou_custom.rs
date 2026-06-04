@@ -9,11 +9,13 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded>
+pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -27,11 +29,11 @@ where
   pub t: Option<T>,
   pub jump_times: D,
   pub jump_sizes: D,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
   pub seed: S,
 }
 
-impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S>
+impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S, Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -66,7 +68,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for JumpFOUCustom<T, D, S>
+impl<T, D, S: SeedExt, B: Backend> ProcessExt<T> for JumpFOUCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -111,6 +113,29 @@ where
     }
 
     jump_fou
+  }
+}
+
+impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+  pub fn on<B2: Backend>(self) -> JumpFOUCustom<T, D, S, B2> {
+    JumpFOUCustom {
+      hurst: self.hurst,
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      jump_times: self.jump_times,
+      jump_sizes: self.jump_sizes,
+      fgn: self.fgn.on::<B2>(),
+      seed: self.seed,
+    }
   }
 }
 
