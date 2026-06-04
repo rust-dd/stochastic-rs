@@ -18,47 +18,23 @@ mod python;
 
 pub use core::Fgn;
 
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-use anyhow::Result;
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-use either::Either;
 use ndarray::Array1;
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-use ndarray::Array2;
 #[cfg(feature = "python")]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
 
+use crate::device::Backend;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
-  /// Sample two independent fGn paths in a single FFT / RNG pass.
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  /// Sample two independent fGn paths in a single FFT / RNG pass (CPU).
   ///
-  /// Both paths have the same covariance structure as [`sample`](Self::sample)
-  /// and are statistically independent — Dietrich & Newsam (1997) and
-  /// Kroese & Botev (2013 §2.2) identify the real and imaginary parts of
-  /// the circulant-embedding FFT output as two independent realisations of
-  /// the target Gaussian field.
-  ///
-  /// For Monte-Carlo inner loops this ~halves wall time per path vs.
-  /// two back-to-back [`sample`](Self::sample) calls (one FFT / RNG pass
-  /// reused for both outputs).
+  /// Both paths have the same covariance structure as `sample` and are
+  /// statistically independent — Dietrich & Newsam (1997) and Kroese & Botev
+  /// (2013 §2.2) identify the real and imaginary parts of the circulant-
+  /// embedding FFT output as two independent realisations of the target field.
+  /// For Monte-Carlo inner loops this ~halves wall time per path.
   pub fn sample_pair(&self) -> (Array1<T>, Array1<T>) {
     self.sample_pair_cpu()
   }
@@ -69,30 +45,16 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fgn<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    self.sample_cpu()
+    B::generate(self, &self.seed)
   }
 
-  #[cfg(feature = "gpu")]
-  fn sample_gpu(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    self.sample_gpu_impl(m)
-  }
-
-  #[cfg(feature = "cuda-native")]
-  fn sample_cuda_native(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    self.sample_cuda_native_impl(m)
-  }
-
-  #[cfg(feature = "accelerate")]
-  fn sample_accelerate(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    self.sample_accelerate_impl(m)
-  }
-
-  #[cfg(feature = "metal")]
-  fn sample_metal(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    self.sample_metal_impl(m)
+  /// The `m` paths are generated in **one batched backend call** (a single FFT
+  /// plan over the whole batch).
+  fn sample_par(&self, m: usize) -> Vec<Self::Output> {
+    B::generate_batch(self, m)
   }
 }

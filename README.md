@@ -149,7 +149,7 @@ cargo bench --features cuda-native --bench fgn_cuda_native
 
 Single path:
 
-| n      | CPU `sample` | CUDA `sample_cuda_native(1)` | Speedup    |
+| n      | CPU `sample` | CUDA `.on(Device::CudaNative).sample()` | Speedup    |
 |-------:|-------------:|------------------------------:|-----------:|
 |  1,024 |       8.1 µs |                          46 µs|       0.18× |
 |  4,096 |        35 µs |                          84 µs|       0.42× |
@@ -158,7 +158,7 @@ Single path:
 
 Batch:
 
-| n, m         | CPU `sample_par` | CUDA `sample_cuda_native` | Speedup  |
+| n, m         | CPU `sample_par` | CUDA `.on(Device::CudaNative).sample_par` | Speedup  |
 |--------------|------------------:|---------------------------:|---------:|
 |   4,096, 32  |          147 µs   |                     117 µs |  **1.3×** |
 |   4,096, 512 |         1.78 ms   |                    2.37 ms |   0.75×   |

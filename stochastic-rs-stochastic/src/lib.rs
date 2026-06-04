@@ -19,6 +19,8 @@ pub use stochastic_rs_distributions as distributions;
 pub use stochastic_rs_distributions::traits::DistributionExt;
 pub use stochastic_rs_distributions::traits::SimdFloatExt;
 
+pub use crate::device::Backend;
+pub use crate::device::Cpu;
 pub use crate::traits::Malliavin2DExt;
 pub use crate::traits::MalliavinExt;
 pub use crate::traits::ProcessExt;
@@ -26,6 +28,7 @@ pub use crate::traits::ProcessExt;
 pub mod aliases;
 pub mod autoregressive;
 pub mod correlation;
+pub mod device;
 pub mod diffusion;
 pub mod interest;
 pub mod isonormal;

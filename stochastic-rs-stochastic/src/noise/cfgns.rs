@@ -10,10 +10,12 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::fgn::Fgn;
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Instantaneous correlation parameter.
@@ -24,10 +26,10 @@ pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Cfgns<T, S> {
+impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
@@ -49,19 +51,18 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Cfgns<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> Cfgns<T, S, B> {
   /// Sample with an explicit seed, used by callers like Cfbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(&Deterministic::new(seed))
   }
 
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
+  /// Uses one paired fGN pass (real/imag of a single circulant FFT) for the two
+  /// independent fields; on a GPU backend they come from a batch of two.
   #[inline]
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {
-    let child1 = seed.derive();
-    let child2 = seed.derive();
-    let fgn1 = self.fgn.sample_cpu_impl(&child1);
-    let z = self.fgn.sample_cpu_impl(&child2);
+    let (fgn1, z) = self.fgn.noise_pair(seed);
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut fgn2 = Array1::zeros(self.n);
     for i in 0..self.n {
@@ -71,13 +72,15 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfgns<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfgns<T, S, B> {
   type Output = [Array1<T>; 2];
 
   fn sample(&self) -> Self::Output {
     self.sample_impl(&self.seed)
   }
 }
+
+backend_switch!([T: FloatExt, S: SeedExt] Cfgns<T, S> { hurst, rho, n, t, seed } via fgn);
 
 py_process_2x1d!(PyCfgns, Cfgns,
   sig: (hurst, rho, n, t=None, seed=None, dtype=None),

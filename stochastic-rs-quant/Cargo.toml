@@ -77,7 +77,6 @@ implied-vol = { workspace = true }
 chrono = { workspace = true }
 parking_lot = { workspace = true }
 anyhow = { workspace = true }
-either = { workspace = true }
 ordered-float = { workspace = true }
 plotly = { workspace = true, features = ["plotly_ndarray"] }
 flate2 = { workspace = true }

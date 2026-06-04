@@ -6,6 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -19,10 +20,9 @@ fn bench_fgn_single_path_cpu_vs_cuda_native(c: &mut Criterion) {
 
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(hurst, n, None, Unseeded);
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CudaNative>();
 
-    let _ = fgn
-      .sample_cuda_native(1)
-      .expect("cuda-native single-path warmup should succeed");
+    let _ = dev.sample();
 
     group.bench_with_input(BenchmarkId::new("cpu/sample", n), &n, |b, &_n| {
       b.iter(|| black_box(fgn.sample()));
@@ -32,13 +32,7 @@ fn bench_fgn_single_path_cpu_vs_cuda_native(c: &mut Criterion) {
       BenchmarkId::new("cuda_native/sample_m1", n),
       &n,
       |b, &_n| {
-        b.iter(|| {
-          black_box(
-            fgn
-              .sample_cuda_native(1)
-              .expect("cuda-native single-path sampling should succeed"),
-          )
-        });
+        b.iter(|| black_box(dev.sample()));
       },
     );
   }
@@ -67,10 +61,9 @@ fn bench_fgn_batch_cpu_vs_cuda_native(c: &mut Criterion) {
   for &(n, m) in &cases {
     let label = format!("n={n},m={m}");
     let fgn = Fgn::new(hurst, n, None, Unseeded);
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CudaNative>();
 
-    let _ = fgn
-      .sample_cuda_native(m)
-      .expect("cuda-native batch warmup should succeed");
+    let _ = dev.sample_par(m);
 
     group.bench_with_input(
       BenchmarkId::new("cpu/sample_par", &label),
@@ -84,13 +77,7 @@ fn bench_fgn_batch_cpu_vs_cuda_native(c: &mut Criterion) {
       BenchmarkId::new("cuda_native/sample", &label),
       &(n, m),
       |b, &(_n, m)| {
-        b.iter(|| {
-          black_box(
-            fgn
-              .sample_cuda_native(m)
-              .expect("cuda-native batch sampling should succeed"),
-          )
-        });
+        b.iter(|| black_box(dev.sample_par(m)));
       },
     );
   }

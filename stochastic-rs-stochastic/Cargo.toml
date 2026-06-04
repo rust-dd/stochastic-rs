@@ -25,7 +25,7 @@ openblas-static = [
 gpu = ["dep:cubecl", "dep:gpu-fft"]
 gpu-cuda = ["gpu", "dep:cubecl-cuda"]
 gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
-cuda-native = ["dep:cudarc"]
+cuda-native = ["dep:cudarc", "cudarc/cufft"]
 metal = ["dep:metal"]
 accelerate = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
@@ -51,7 +51,6 @@ argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] 
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 nalgebra = { workspace = true }
-either = { workspace = true }
 anyhow = { workspace = true }
 wide = { workspace = true }
 sci-rs = { workspace = true }

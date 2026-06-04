@@ -51,9 +51,11 @@ pub mod prelude {
   pub use stochastic_rs_quant::OptionStyle;
   pub use stochastic_rs_quant::OptionType;
 
+  pub use crate::traits::Backend;
   pub use crate::traits::BivariateExt;
   pub use crate::traits::CalibrationResult;
   pub use crate::traits::Calibrator;
+  pub use crate::traits::Cpu;
   pub use crate::traits::DistributionExt;
   pub use crate::traits::DistributionSampler;
   pub use crate::traits::FloatExt;

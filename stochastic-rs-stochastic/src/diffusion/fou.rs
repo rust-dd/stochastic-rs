@@ -8,11 +8,13 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Fou<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Mean-reversion speed.
@@ -29,10 +31,10 @@ pub struct Fou<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Fou<T, S> {
+impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -60,12 +62,12 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fou<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fou<T, S, B> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let fgn = self.fgn.noise(&self.seed.derive());
 
     let mut fou = Array1::<T>::zeros(self.n);
     fou[0] = self.x0.unwrap_or(T::zero());
@@ -77,6 +79,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fou<T, S> {
     fou
   }
 }
+
+backend_switch!([T: FloatExt, S: SeedExt] Fou<T, S> { hurst, theta, mu, sigma, n, x0, t, seed } via fgn);
 
 py_process_1d!(PyFou, Fou,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),

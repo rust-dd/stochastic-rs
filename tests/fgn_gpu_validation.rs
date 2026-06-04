@@ -7,9 +7,10 @@
 //! If the GPU FFT is correct, empirical covariance from GPU samples must
 //! match this formula to within Monte Carlo noise.
 
-#[cfg(feature = "gpu-wgpu")]
+#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
 mod gpu_fft_validation {
-  use either::Either;
+  use stochastic_rs::simd_rng::Unseeded;
+  use stochastic_rs::stochastic::device::CubeCl;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::traits::ProcessExt;
 
@@ -36,18 +37,16 @@ mod gpu_fft_validation {
   }
 
   fn sample_gpu_paths(h: f32, n: usize, t: f32, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(t));
-    match fgn.sample_gpu(m).expect("GPU sampling failed") {
-      Either::Left(path) => vec![path.iter().map(|&x| x as f64).collect()],
-      Either::Right(paths) => paths
-        .outer_iter()
-        .map(|row| row.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fgn = Fgn::<f32>::new(h, n, Some(t), Unseeded).on::<CubeCl>();
+    fgn
+      .sample_par(m)
+      .into_iter()
+      .map(|path| path.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn sample_cpu_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f64>::new(h, n, Some(t));
+    let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
     fgn
       .sample_par(m)
       .into_iter()

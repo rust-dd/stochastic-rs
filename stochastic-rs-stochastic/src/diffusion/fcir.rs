@@ -8,6 +8,8 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -15,7 +17,7 @@ use crate::traits::ProcessExt;
 /// Fractional Cox-Ingersoll-Ross (Fcir) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the Fcir process.
-pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Long-run target level / model location parameter.
@@ -34,10 +36,10 @@ pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Fcir<T, S> {
+impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -71,12 +73,12 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fcir<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fcir<T, S, B> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
     let dt = self.fgn.dt();
-    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let fgn = self.fgn.noise(&self.seed.derive());
 
     let mut fcir = Array1::<T>::zeros(self.n);
     fcir[0] = self.x0.unwrap_or(T::zero());
@@ -94,6 +96,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fcir<T, S> {
     fcir
   }
 }
+
+backend_switch!([T: FloatExt, S: SeedExt] Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, use_sym, seed } via fgn);
 
 py_process_1d!(PyFcir, Fcir,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),

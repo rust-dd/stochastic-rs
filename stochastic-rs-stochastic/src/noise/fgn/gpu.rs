@@ -8,8 +8,6 @@
 //!
 use anyhow::Result;
 use cubecl::prelude::*;
-use either::Either;
-use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
@@ -23,7 +21,12 @@ const LOCAL_STAGES: usize = 9; // log2(512)
 /// Shared-memory sub-FFT: loads a contiguous tile of BLOCK elements,
 /// performs LOCAL_STAGES radix-2 butterfly stages entirely in shared
 /// memory (one sync per stage), then writes back.
-#[allow(clippy::approx_constant, clippy::excessive_precision)]
+#[allow(
+  clippy::approx_constant,
+  clippy::excessive_precision,
+  clippy::identity_op,
+  clippy::modulo_one
+)]
 #[cube(launch)]
 fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
   let tid = UNIT_POS as usize;
@@ -310,7 +313,7 @@ mod backend {
     hurst: f64,
     t: f64,
     seed: &S,
-  ) -> Result<Either<Array1<T>, Array2<T>>> {
+  ) -> Result<Array2<T>> {
     let hb = hurst.to_bits();
     let tb = t.to_bits();
     let traj_size = 2 * n;
@@ -394,10 +397,7 @@ mod backend {
     let out = f32::from_bytes(&bytes);
     let fgn = arr2::<T>(out, m, out_size);
     drop(guard);
-    if m == 1 {
-      return Ok(Either::Left(fgn.row(0).to_owned()));
-    }
-    Ok(Either::Right(fgn))
+    Ok(fgn)
   }
 
   fn arr2<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
@@ -416,8 +416,8 @@ mod backend {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
-  pub(crate) fn sample_gpu_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  pub(crate) fn sample_gpu_impl(&self, m: usize) -> Result<Array2<T>> {
     #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
     {
       let _ = m;

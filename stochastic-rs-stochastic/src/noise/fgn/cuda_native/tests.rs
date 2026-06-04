@@ -1,5 +1,5 @@
 use super::super::Fgn;
-use crate::traits::ProcessExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 fn lag_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
   let mut s = 0.0;
@@ -15,42 +15,42 @@ fn lag_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
 
 #[test]
 fn cuda_native_single_path_shape() {
-  let fgn = Fgn::<f64>::new(0.7, 1024, Some(1.0));
+  let fgn = Fgn::<f64>::new(0.7, 1024, Some(1.0), Unseeded);
   let result = fgn
-    .sample_cuda_native(1)
+    .sample_cuda_native_impl(1)
     .expect("single path should succeed");
-  let path = result.left().expect("m=1 should return Left(Array1)");
-  assert_eq!(path.len(), 1024);
+  assert_eq!(result.shape(), &[1, 1024]);
 }
 
 #[test]
 fn cuda_native_batch_shape() {
-  let fgn = Fgn::<f64>::new(0.7, 512, Some(1.0));
+  let fgn = Fgn::<f64>::new(0.7, 512, Some(1.0), Unseeded);
   let m = 64;
-  let result = fgn.sample_cuda_native(m).expect("batch should succeed");
-  let batch = result.right().expect("m>1 should return Right(Array2)");
+  let batch = fgn
+    .sample_cuda_native_impl(m)
+    .expect("batch should succeed");
   assert_eq!(batch.shape(), &[m, 512]);
 }
 
 #[test]
 fn cuda_native_f32_works() {
-  let fgn = Fgn::<f32>::new(0.7, 1024, Some(1.0));
-  let result = fgn.sample_cuda_native(4).expect("f32 should succeed");
-  let batch = result.right().expect("m>1 should return Right(Array2)");
+  let fgn = Fgn::<f32>::new(0.7, 1024, Some(1.0), Unseeded);
+  let batch = fgn.sample_cuda_native_impl(4).expect("f32 should succeed");
   assert_eq!(batch.shape(), &[4, 1024]);
 }
 
 #[test]
 fn cuda_native_non_power_of_two_n() {
-  let fgn = Fgn::<f64>::new(0.7, 3000, Some(1.0));
-  let result = fgn.sample_cuda_native(8).expect("non-pot n should work");
-  let batch = result.right().expect("batch");
+  let fgn = Fgn::<f64>::new(0.7, 3000, Some(1.0), Unseeded);
+  let batch = fgn
+    .sample_cuda_native_impl(8)
+    .expect("non-pot n should work");
   assert_eq!(batch.shape(), &[8, 3000]);
 }
 
 #[test]
 fn cuda_native_eigenvalues_structural() {
-  let fgn = Fgn::<f64>::new(0.72, 2048, Some(1.0));
+  let fgn = Fgn::<f64>::new(0.72, 2048, Some(1.0), Unseeded);
   let eigs = &*fgn.sqrt_eigenvalues;
 
   assert_eq!(eigs.len(), 2 * fgn.n);
@@ -77,7 +77,7 @@ fn cuda_native_eigenvalues_structural() {
 #[test]
 fn cuda_native_scale_matches_cpu() {
   for &n in &[1024_usize, 3000, 4096] {
-    let fgn = Fgn::<f64>::new(0.7, n, Some(2.0));
+    let fgn = Fgn::<f64>::new(0.7, n, Some(2.0), Unseeded);
     let cpu_scale = fgn.scale;
 
     let out_size = fgn.n - fgn.offset;
@@ -97,7 +97,7 @@ fn cuda_native_variance_matches_cpu() {
   let n = 2048_usize;
   let t = 1.0_f64;
   let m = 1024_usize;
-  let fgn = Fgn::<f64>::new(h, n, Some(t));
+  let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
 
   let cpu_paths: Vec<Vec<f64>> = (0..m).map(|_| fgn.sample_cpu().to_vec()).collect();
   let cpu_vals: Vec<f64> = cpu_paths.iter().flatten().copied().collect();
@@ -105,10 +105,9 @@ fn cuda_native_variance_matches_cpu() {
   let cpu_var =
     cpu_vals.iter().map(|x| (x - cpu_mean).powi(2)).sum::<f64>() / cpu_vals.len() as f64;
 
-  let cuda_result = fgn
-    .sample_cuda_native(m)
+  let cuda_batch = fgn
+    .sample_cuda_native_impl(m)
     .expect("cuda batch should succeed");
-  let cuda_batch = cuda_result.right().expect("batch");
   let cuda_vals: Vec<f64> = cuda_batch.iter().copied().collect();
   let cuda_mean = cuda_vals.iter().sum::<f64>() / cuda_vals.len() as f64;
   let cuda_var = cuda_vals
@@ -130,7 +129,7 @@ fn cuda_native_covariance_structure_matches_cpu() {
   let n = 2048_usize;
   let t = 1.0_f64;
   let m = 1024_usize;
-  let fgn = Fgn::<f64>::new(h, n, Some(t));
+  let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
 
   let cpu_paths: Vec<Vec<f64>> = (0..m).map(|_| fgn.sample_cpu().to_vec()).collect();
   let cpu_vals: Vec<f64> = cpu_paths.iter().flatten().copied().collect();
@@ -138,10 +137,9 @@ fn cuda_native_covariance_structure_matches_cpu() {
   let cpu_cov1 = lag_covariance(&cpu_paths, cpu_mean, 1);
   let cpu_cov4 = lag_covariance(&cpu_paths, cpu_mean, 4);
 
-  let cuda_result = fgn
-    .sample_cuda_native(m)
+  let cuda_batch = fgn
+    .sample_cuda_native_impl(m)
     .expect("cuda batch should succeed");
-  let cuda_batch = cuda_result.right().expect("batch");
   let cuda_paths: Vec<Vec<f64>> = cuda_batch.rows().into_iter().map(|r| r.to_vec()).collect();
   let cuda_vals: Vec<f64> = cuda_paths.iter().flatten().copied().collect();
   let cuda_mean = cuda_vals.iter().sum::<f64>() / cuda_vals.len() as f64;

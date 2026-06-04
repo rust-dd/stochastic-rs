@@ -4,29 +4,10 @@
 //! \mathbb E[B_t^H B_s^H]=\tfrac12\left(t^{2H}+s^{2H}-|t-s|^{2H}\right)
 //! $$
 //!
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-use anyhow::Result;
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-use either::Either;
 use ndarray::Array1;
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal",
-  feature = "python"
-))]
+#[cfg(feature = "python")]
 use ndarray::Array2;
+use ndarray::parallel::prelude::*;
 #[cfg(feature = "python")]
 use numpy::IntoPyArray;
 #[cfg(feature = "python")]
@@ -40,11 +21,13 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
   pub hurst: T,
   /// Number of discrete time points in the generated path.
@@ -53,10 +36,10 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
+impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must be at least 2");
 
@@ -70,11 +53,11 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbm<T, S> {
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   type Output = Array1<T>;
 
   fn sample(&self) -> Self::Output {
-    let fgn = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let fgn = self.fgn.noise(&self.seed.derive());
     let mut fbm = Array1::<T>::zeros(self.n);
 
     for i in 1..self.n {
@@ -84,61 +67,27 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbm<T, S> {
     fbm
   }
 
-  #[cfg(feature = "gpu")]
-  fn sample_gpu(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    Self::fgn_to_fbm(self.n, self.fgn.sample_gpu(m)?)
-  }
-
-  #[cfg(feature = "cuda-native")]
-  fn sample_cuda_native(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    Self::fgn_to_fbm(self.n, self.fgn.sample_cuda_native(m)?)
-  }
-
-  #[cfg(feature = "accelerate")]
-  fn sample_accelerate(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    Self::fgn_to_fbm(self.n, self.fgn.sample_accelerate(m)?)
-  }
-
-  #[cfg(feature = "metal")]
-  fn sample_metal(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
-    Self::fgn_to_fbm(self.n, self.fgn.sample_metal(m)?)
+  /// The `m` fGN noises are generated in one batched backend call, then each
+  /// path is assembled (cumulative sum) on the host across all cores.
+  fn sample_par(&self, m: usize) -> Vec<Self::Output> {
+    self
+      .fgn
+      .noise_batch(m)
+      .into_par_iter()
+      .map(|fgn_row| {
+        let mut fbm = Array1::<T>::zeros(self.n);
+        for i in 1..self.n {
+          fbm[i] = fbm[i - 1] + fgn_row[i - 1];
+        }
+        fbm
+      })
+      .collect()
   }
 }
 
-#[cfg(any(
-  feature = "gpu",
-  feature = "cuda-native",
-  feature = "accelerate",
-  feature = "metal"
-))]
-impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
-  fn fgn_to_fbm(
-    n: usize,
-    fgn_out: Either<Array1<T>, Array2<T>>,
-  ) -> Result<Either<Array1<T>, Array2<T>>> {
-    match fgn_out {
-      Either::Left(fgn_path) => {
-        let mut fbm = Array1::<T>::zeros(n);
-        for i in 1..n {
-          fbm[i] = fbm[i - 1] + fgn_path[i - 1];
-        }
-        Ok(Either::Left(fbm))
-      }
-      Either::Right(fgn_paths) => {
-        let rows = fgn_paths.nrows();
-        let mut fbm_paths = Array2::<T>::zeros((rows, n));
-        for r in 0..rows {
-          for i in 1..n {
-            fbm_paths[[r, i]] = fbm_paths[[r, i - 1]] + fgn_paths[[r, i - 1]];
-          }
-        }
-        Ok(Either::Right(fbm_paths))
-      }
-    }
-  }
-}
+backend_switch!([T: FloatExt, S: SeedExt] Fbm<T, S> { hurst, n, t, seed } via fgn);
 
-impl<T: FloatExt, S: SeedExt> Fbm<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
   /// Calculate the Malliavin derivative
   ///
   /// The Malliavin derivative of the fractional Brownian motion is given by:

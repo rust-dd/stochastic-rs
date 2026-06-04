@@ -3,62 +3,57 @@
 
 #[cfg(all(feature = "gpu-wgpu", feature = "metal", feature = "accelerate"))]
 mod all_backends {
-  use either::Either;
   use ndarray::Array1;
+  use stochastic_rs::simd_rng::Unseeded;
   use stochastic_rs::stats::fractal_dim::FractalDimEstimator;
   use stochastic_rs::stats::fractal_dim::Higuchi;
+  use stochastic_rs::stochastic::device::Accelerate;
+  use stochastic_rs::stochastic::device::CubeCl;
+  use stochastic_rs::stochastic::device::MetalNative;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
   use stochastic_rs::visualization::GridPlotter;
 
   fn cpu_fgn(h: f64, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f64>::new(h, n, Some(1.0));
+    let fgn = Fgn::<f64>::new(h, n, Some(1.0), Unseeded);
     fgn.sample_par(m).into_iter().map(|p| p.to_vec()).collect()
   }
 
   fn gpu_fgn(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0));
-    match fgn.sample_gpu(m).unwrap() {
-      Either::Left(p) => vec![p.iter().map(|&x| x as f64).collect()],
-      Either::Right(ps) => ps
-        .outer_iter()
-        .map(|r| r.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeCl>();
+    fgn
+      .sample_par(m)
+      .into_iter()
+      .map(|p| p.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn metal_fgn(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0));
-    match fgn.sample_metal(m).unwrap() {
-      Either::Left(p) => vec![p.iter().map(|&x| x as f64).collect()],
-      Either::Right(ps) => ps
-        .outer_iter()
-        .map(|r| r.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<MetalNative>();
+    fgn
+      .sample_par(m)
+      .into_iter()
+      .map(|p| p.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn accel_fgn(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0));
-    match fgn.sample_accelerate(m).unwrap() {
-      Either::Left(p) => vec![p.iter().map(|&x| x as f64).collect()],
-      Either::Right(ps) => ps
-        .outer_iter()
-        .map(|r| r.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<Accelerate>();
+    fgn
+      .sample_par(m)
+      .into_iter()
+      .map(|p| p.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn metal_fbm(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fbm = Fbm::<f32>::new(h, n, Some(1.0));
-    match fbm.sample_metal(m).unwrap() {
-      Either::Left(p) => vec![p.iter().map(|&x| x as f64).collect()],
-      Either::Right(ps) => ps
-        .outer_iter()
-        .map(|r| r.iter().map(|&x| x as f64).collect())
-        .collect(),
-    }
+    let fbm = Fbm::<f32>::new(h, n, Some(1.0), Unseeded).on::<MetalNative>();
+    fbm
+      .sample_par(m)
+      .into_iter()
+      .map(|p| p.iter().map(|&x| x as f64).collect())
+      .collect()
   }
 
   fn empirical_acov(paths: &[Vec<f64>], max_lag: usize) -> Vec<f64> {

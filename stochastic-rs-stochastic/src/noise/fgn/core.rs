@@ -4,6 +4,7 @@
 //! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use ndarray::prelude::*;
@@ -14,9 +15,11 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::traits::FloatExt;
 
-pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Internal FFT length (power-of-two padded).
@@ -33,16 +36,11 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded> {
   pub fft_handler: Arc<FftHandler<T>>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
+  /// Compile-time sampling backend marker (default [`Cpu`]).
+  _backend: PhantomData<B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
-  pub fn dt(&self) -> T {
-    let step_count = self.out_len.max(1);
-    self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
-  }
-}
-
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
+impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
@@ -102,11 +100,17 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
       fft_handler,
       seed,
+      _backend: PhantomData,
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  pub fn dt(&self) -> T {
+    let step_count = self.out_len.max(1);
+    self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
+  }
+
   /// Sample fGn using a specific deterministic seed.
   pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
     self.sample_cpu_impl(&Deterministic::new(seed))
@@ -184,6 +188,26 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
     });
 
     (fgn_re, fgn_im)
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
+
+impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {
+  /// One fGN increment vector on backend `B`. The host-side `seed` drives the
+  /// CPU path only; GPU backends use the fGN's internal RNG.
+  pub(crate) fn noise<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
+    B::generate(self, seed)
+  }
+
+  /// `m` fGN paths in one batched `B` call, one [`Array1`] per path.
+  pub(crate) fn noise_batch(&self, m: usize) -> Vec<Array1<T>> {
+    B::generate_batch(self, m)
+  }
+
+  /// Two independent fGN paths in one pass on backend `B`.
+  pub(crate) fn noise_pair<S2: SeedExt>(&self, seed: &S2) -> (Array1<T>, Array1<T>) {
+    B::generate_pair(self, seed)
   }
 }
 

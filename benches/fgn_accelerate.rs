@@ -6,6 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::device::Accelerate;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -17,13 +18,14 @@ fn bench_single(c: &mut Criterion) {
 
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
-    let _ = fgn.sample_accelerate(1);
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
+    let _ = dev.sample();
 
     g.bench_with_input(BenchmarkId::new("cpu", n), &n, |b, _| {
       b.iter(|| black_box(fgn.sample()));
     });
     g.bench_with_input(BenchmarkId::new("accelerate", n), &n, |b, _| {
-      b.iter(|| black_box(fgn.sample_accelerate(1).unwrap()));
+      b.iter(|| black_box(dev.sample()));
     });
   }
   g.finish();
@@ -44,7 +46,8 @@ fn bench_batch(c: &mut Criterion) {
   ];
   for &(n, m) in &cases {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
-    let _ = fgn.sample_accelerate(m);
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
+    let _ = dev.sample_par(m);
     let label = format!("n={n},m={m}");
 
     g.bench_with_input(BenchmarkId::new("cpu", &label), &(n, m), |b, &(_, m)| {
@@ -54,7 +57,7 @@ fn bench_batch(c: &mut Criterion) {
       BenchmarkId::new("accelerate", &label),
       &(n, m),
       |b, &(_, m)| {
-        b.iter(|| black_box(fgn.sample_accelerate(m).unwrap()));
+        b.iter(|| black_box(dev.sample_par(m)));
       },
     );
   }

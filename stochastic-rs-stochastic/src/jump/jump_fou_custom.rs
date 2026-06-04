@@ -9,11 +9,13 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
-pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded>
+pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -27,11 +29,11 @@ where
   pub t: Option<T>,
   pub jump_times: D,
   pub jump_sizes: D,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
   pub seed: S,
 }
 
-impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S>
+impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S, Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -66,7 +68,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for JumpFOUCustom<T, D, S>
+impl<T, D, S: SeedExt, B: Backend> ProcessExt<T> for JumpFOUCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -113,6 +115,9 @@ where
     jump_fou
   }
 }
+
+backend_switch!([T, D, S: SeedExt] JumpFOUCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed } via fgn
+  where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(test)]
 mod tests {

@@ -61,7 +61,6 @@ owens-t = "0.1.5"
 
 # General utility
 anyhow = "1.0.89"
-either = "1.15.0"
 parking_lot = "0.12.5"
 ordered-float = "5.0.0"
 chrono = "0.4.38"
@@ -141,7 +140,6 @@ cubecl = { workspace = true, optional = true, default-features = false }
 cubecl-cuda = { workspace = true, optional = true }
 cubecl-wgpu = { workspace = true, optional = true }
 cudarc = { workspace = true, optional = true, features = [ "cuda-12080", "cuda-version-from-build-system", ] }
-either = { workspace = true }
 flate2 = { workspace = true }
 gpu-fft = { workspace = true, optional = true }
 gauss-quad = { workspace = true }
@@ -222,6 +220,11 @@ required-features = ["gpu"]
 name = "fgn_cuda_native"
 harness = false
 required-features = ["cuda-native"]
+
+[[bench]]
+name = "fgn_cuda_compare"
+harness = false
+required-features = ["cuda-native", "gpu-cuda"]
 
 [[bench]]
 name = "fgn_all_backends"
@@ -317,6 +320,10 @@ required-features = ["hotpath"]
 name = "dual_stream_compare"
 harness = false
 required-features = ["dual-stream-rng"]
+
+[[example]]
+name = "cuda_fgn_analysis"
+required-features = ["cuda-native"]
 
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]

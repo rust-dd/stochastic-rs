@@ -4,8 +4,6 @@ use std::sync::atomic::Ordering;
 use anyhow::Result;
 use cudarc::cufft;
 use cudarc::driver::*;
-use either::Either;
-use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
@@ -30,7 +28,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   hurst: f64,
   t: f64,
   seed_src: &S,
-) -> Result<Either<Array1<T>, Array2<T>>> {
+) -> Result<Array2<T>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
   let out_size = n - offset;
@@ -135,10 +133,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   drop(sized);
 
   let fgn = array2_from_vec_f32::<T>(host, m, out_size);
-  if m == 1 {
-    return Ok(Either::Left(fgn.row(0).to_owned()));
-  }
-  Ok(Either::Right(fgn))
+  Ok(fgn)
 }
 
 fn sample_f64<T: FloatExt, S: SeedExt>(
@@ -149,7 +144,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
   hurst: f64,
   t: f64,
   seed_src: &S,
-) -> Result<Either<Array1<T>, Array2<T>>> {
+) -> Result<Array2<T>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
   let out_size = n - offset;
@@ -254,14 +249,11 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
   drop(sized);
 
   let fgn = array2_from_vec_f64::<T>(host, m, out_size);
-  if m == 1 {
-    return Ok(Either::Left(fgn.row(0).to_owned()));
-  }
-  Ok(Either::Right(fgn))
+  Ok(fgn)
 }
 
-impl<T: FloatExt, S: SeedExt> Fgn<T, S> {
-  pub(crate) fn sample_cuda_native_impl(&self, m: usize) -> Result<Either<Array1<T>, Array2<T>>> {
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  pub(crate) fn sample_cuda_native_impl(&self, m: usize) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
