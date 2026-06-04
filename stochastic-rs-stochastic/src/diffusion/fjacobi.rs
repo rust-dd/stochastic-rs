@@ -92,9 +92,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for FJacobi<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
-  backend_switch_on!(FJacobi<T, S> { hurst, alpha, beta, sigma, n, x0, t, seed }, fgn);
-}
+backend_switch!([T: FloatExt, S: SeedExt] FJacobi<T, S> { hurst, alpha, beta, sigma, n, x0, t, seed } via fgn);
 
 py_process_1d!(PyFJacobi, FJacobi,
   sig: (hurst, alpha, beta, sigma, n, x0=None, t=None, seed=None, dtype=None),

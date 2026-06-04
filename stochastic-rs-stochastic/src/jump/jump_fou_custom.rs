@@ -116,13 +116,8 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  backend_switch_on!(JumpFOUCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed }, fgn);
-}
+backend_switch!([T, D, S: SeedExt] JumpFOUCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed } via fgn
+  where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(test)]
 mod tests {

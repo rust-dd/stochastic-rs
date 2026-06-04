@@ -97,9 +97,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fcir<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
-  backend_switch_on!(Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, use_sym, seed }, fgn);
-}
+backend_switch!([T: FloatExt, S: SeedExt] Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, use_sym, seed } via fgn);
 
 py_process_1d!(PyFcir, Fcir,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),

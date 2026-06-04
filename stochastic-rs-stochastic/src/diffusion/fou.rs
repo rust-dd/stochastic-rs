@@ -80,9 +80,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fou<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
-  backend_switch_on!(Fou<T, S> { hurst, theta, mu, sigma, n, x0, t, seed }, fgn);
-}
+backend_switch!([T: FloatExt, S: SeedExt] Fou<T, S> { hurst, theta, mu, sigma, n, x0, t, seed } via fgn);
 
 py_process_1d!(PyFou, Fou,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),

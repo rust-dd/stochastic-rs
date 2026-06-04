@@ -189,9 +189,9 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 
     (fgn_re, fgn_im)
   }
-
-  backend_switch_on!(Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed }, phantom);
 }
+
+backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
 
 impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {
   /// One fGN increment vector on backend `B`. The host-side `seed` drives the

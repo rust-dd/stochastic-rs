@@ -80,9 +80,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfgns<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
-  backend_switch_on!(Cfgns<T, S> { hurst, rho, n, t, seed }, fgn);
-}
+backend_switch!([T: FloatExt, S: SeedExt] Cfgns<T, S> { hurst, rho, n, t, seed } via fgn);
 
 py_process_2x1d!(PyCfgns, Cfgns,
   sig: (hurst, rho, n, t=None, seed=None, dtype=None),

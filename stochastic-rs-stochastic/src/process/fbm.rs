@@ -85,9 +85,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
-  backend_switch_on!(Fbm<T, S> { hurst, n, t, seed }, fgn);
-}
+backend_switch!([T: FloatExt, S: SeedExt] Fbm<T, S> { hurst, n, t, seed } via fgn);
 
 impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
   /// Calculate the Malliavin derivative

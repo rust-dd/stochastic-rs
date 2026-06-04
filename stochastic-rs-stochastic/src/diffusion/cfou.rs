@@ -84,9 +84,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
-  backend_switch_on!(Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed }, fgn);
-}
+backend_switch!([T: FloatExt, S: SeedExt] Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed } via fgn);
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {
   type Output = Array1<Complex<T>>;

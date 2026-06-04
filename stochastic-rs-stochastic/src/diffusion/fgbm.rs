@@ -68,9 +68,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgbm<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
-  backend_switch_on!(Fgbm<T, S> { hurst, mu, sigma, n, x0, t, seed }, fgn);
-}
+backend_switch!([T: FloatExt, S: SeedExt] Fgbm<T, S> { hurst, mu, sigma, n, x0, t, seed } via fgn);
 
 py_process_1d!(PyFgbm, Fgbm,
   sig: (hurst, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),

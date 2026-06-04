@@ -270,13 +270,14 @@ where
   }
 }
 
+backend_switch!([T: FloatExt, F, G] Sde<T, F, G> { drift, diffusion, noise, hursts } via phantom
+  where F: Fn(&Array1<T>, T) -> Array1<T>, G: Fn(&Array1<T>, T) -> Array2<T>);
+
 impl<T: FloatExt, F, G, B: Backend> Sde<T, F, G, B>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  backend_switch_on!(Sde<T, F, G> { drift, diffusion, noise, hursts }, phantom);
-
   /// Solves the SDE and returns simulated paths.
   ///
   /// # Arguments

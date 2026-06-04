@@ -241,30 +241,42 @@ macro_rules! py_process_2d {
   ($($tt:tt)*) => {};
 }
 
-/// Compile-time backend switch: emits the `on::<B2>()` method that re-types a
-/// process to sample on another [`crate::device::Backend`] with zero runtime
-/// cost. Invoke it **inside** the process's `impl<.., B> Ty<.., B>` block, which
-/// supplies the generics and any `where` bounds; only the field list varies.
+/// Compile-time backend switch: generates the whole `impl` block whose
+/// `on::<B2>()` re-types a process to sample on another
+/// [`crate::device::Backend`] with zero runtime cost. The marker params `B`
+/// (source) and `B2` (target) are appended automatically — pass the remaining
+/// generics in `[..]`, the type without `B`, the moved fields, the storage
+/// form, then any trailing `where` bounds.
 ///
-/// Two forms, by how the process stores its backend marker:
-/// - `fgn`     — carried through an inner `fgn: Fgn<_, _, B>` field.
-/// - `phantom` — carried through a `_backend: PhantomData<B>` field.
-macro_rules! backend_switch_on {
-  ($ty:ident <$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? }, fgn) => {
-    /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-    pub fn on<B2: $crate::device::Backend>(self) -> $ty<$($targ),+, B2> {
-      $ty {
-        $($field: self.$field,)*
-        fgn: self.fgn.on::<B2>(),
+/// Storage form:
+/// - `via fgn`     — backend carried through an inner `fgn: Fgn<_, _, B>` field.
+/// - `via phantom` — backend carried through a `_backend: PhantomData<B>` field.
+macro_rules! backend_switch {
+  (
+    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via fgn
+    $(where $($wc:tt)*)?
+  ) => {
+    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+      /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+      pub fn on<B2: $crate::device::Backend>(self) -> $ty<$($targ),+, B2> {
+        $ty {
+          $($field: self.$field,)*
+          fgn: self.fgn.on::<B2>(),
+        }
       }
     }
   };
-  ($ty:ident <$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? }, phantom) => {
-    /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-    pub fn on<B2: $crate::device::Backend>(self) -> $ty<$($targ),+, B2> {
-      $ty {
-        $($field: self.$field,)*
-        _backend: ::std::marker::PhantomData,
+  (
+    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via phantom
+    $(where $($wc:tt)*)?
+  ) => {
+    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+      /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+      pub fn on<B2: $crate::device::Backend>(self) -> $ty<$($targ),+, B2> {
+        $ty {
+          $($field: self.$field,)*
+          _backend: ::std::marker::PhantomData,
+        }
       }
     }
   };

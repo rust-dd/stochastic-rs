@@ -94,13 +94,8 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B> JumpFou<T, D, S, B>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  backend_switch_on!(JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, cpoisson, seed }, fgn);
-}
+backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, cpoisson, seed } via fgn
+  where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
