@@ -7,9 +7,10 @@ use ndarray::s;
 use rand::Rng;
 
 use super::Sde;
+use crate::device::Backend;
 use crate::traits::FloatExt;
 
-impl<T: FloatExt, F, G> Sde<T, F, G>
+impl<T: FloatExt, F, G, B: Backend> Sde<T, F, G, B>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> ndarray::Array2<T>,

@@ -222,6 +222,11 @@ impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {
   pub(crate) fn noise_batch(&self, m: usize) -> Vec<Array1<T>> {
     B::generate_batch(self, m)
   }
+
+  /// Two independent fGN paths in one pass on backend `B`.
+  pub(crate) fn noise_pair<S2: SeedExt>(&self, seed: &S2) -> (Array1<T>, Array1<T>) {
+    B::generate_pair(self, seed)
+  }
 }
 
 #[cfg(test)]

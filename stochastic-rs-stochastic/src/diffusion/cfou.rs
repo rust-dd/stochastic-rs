@@ -20,6 +20,8 @@ use num_complex::Complex;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
@@ -28,7 +30,7 @@ use crate::traits::ProcessExt;
 ///
 /// Source:
 /// - https://arxiv.org/abs/2406.18004
-pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent of the driving fractional Brownian motion.
   pub hurst: T,
   /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
@@ -47,10 +49,10 @@ pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  fgn: Fgn<T>,
+  fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> Cfou<T, S> {
+impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -82,7 +84,25 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfou<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
+  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
+  pub fn on<B2: Backend>(self) -> Cfou<T, S, B2> {
+    Cfou {
+      hurst: self.hurst,
+      lambda: self.lambda,
+      omega: self.omega,
+      a: self.a,
+      n: self.n,
+      x1_0: self.x1_0,
+      x2_0: self.x2_0,
+      t: self.t,
+      seed: self.seed,
+      fgn: self.fgn.on::<B2>(),
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {
   type Output = Array1<Complex<T>>;
 
   /// Samples the complex path directly as `Z_t = X_1(t) + i X_2(t)`.
@@ -95,8 +115,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfou<T, S> {
   /// - https://arxiv.org/abs/2406.18004
   fn sample(&self) -> Self::Output {
     let dt = self.fgn.dt();
-    let noise_1 = self.fgn.sample_cpu_impl(&self.seed.derive());
-    let noise_2 = self.fgn.sample_cpu_impl(&self.seed.derive());
+    let (noise_1, noise_2) = self.fgn.noise_pair(&self.seed.derive());
     let gamma = Complex::new(self.lambda, -self.omega);
     let dt_c = Complex::new(dt, T::zero());
     let noise_scale = (self.a * T::from_f64_fast(0.5)).sqrt();

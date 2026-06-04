@@ -187,7 +187,11 @@ use ndarray::s;
 use rand::Rng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use std::marker::PhantomData;
+
 use super::noise::fgn::Fgn;
+use crate::device::Backend;
+use crate::device::Cpu;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -225,7 +229,7 @@ pub enum SdeMethod {
 /// - `G`: Diffusion function `b(x, t) -> R^{d×d}`. Takes the current state and time,
 ///   returns the diffusion matrix where entry `[i, j]` maps noise dimension `j` to
 ///   state dimension `i`.
-pub struct Sde<T: FloatExt, F, G>
+pub struct Sde<T: FloatExt, F, G, B = Cpu>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
@@ -239,9 +243,10 @@ where
   /// Hurst parameters for fractional noise, one per dimension.
   /// Required when `noise` is [`NoiseModel::Fractional`], ignored otherwise.
   pub hursts: Option<Array1<T>>,
+  _backend: PhantomData<B>,
 }
 
-impl<T: FloatExt, F, G> Sde<T, F, G>
+impl<T: FloatExt, F, G> Sde<T, F, G, Cpu>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
@@ -260,6 +265,24 @@ where
       diffusion,
       noise,
       hursts,
+      _backend: PhantomData,
+    }
+  }
+}
+
+impl<T: FloatExt, F, G, B: Backend> Sde<T, F, G, B>
+where
+  F: Fn(&Array1<T>, T) -> Array1<T>,
+  G: Fn(&Array1<T>, T) -> Array2<T>,
+{
+  /// Re-type this solver to use backend `B2` for fractional noise (compile-time).
+  pub fn on<B2: Backend>(self) -> Sde<T, F, G, B2> {
+    Sde {
+      drift: self.drift,
+      diffusion: self.diffusion,
+      noise: self.noise,
+      hursts: self.hursts,
+      _backend: PhantomData,
     }
   }
 
@@ -302,8 +325,8 @@ where
         let mut incs = Array3::zeros((n_paths, steps, dim));
 
         if let Some(h) = &self.hursts {
-          let fgns: Vec<Fgn<T>> = (0..dim)
-            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded))
+          let fgns: Vec<Fgn<T, Unseeded, B>> = (0..dim)
+            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded).on::<B>())
             .collect();
 
           for p in 0..n_paths {
