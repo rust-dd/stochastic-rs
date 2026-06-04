@@ -40,13 +40,6 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   _backend: PhantomData<B>,
 }
 
-impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  pub fn dt(&self) -> T {
-    let step_count = self.out_len.max(1);
-    self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
-  }
-}
-
 impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
@@ -113,6 +106,11 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  pub fn dt(&self) -> T {
+    let step_count = self.out_len.max(1);
+    self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
+  }
+
   /// Sample fGn using a specific deterministic seed.
   pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
     self.sample_cpu_impl(&Deterministic::new(seed))
@@ -191,24 +189,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 
     (fgn_re, fgn_im)
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// Re-type this fGN to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> Fgn<T, S, B2> {
-    Fgn {
-      hurst: self.hurst,
-      n: self.n,
-      t: self.t,
-      offset: self.offset,
-      out_len: self.out_len,
-      scale: self.scale,
-      sqrt_eigenvalues: self.sqrt_eigenvalues,
-      fft_handler: self.fft_handler,
-      seed: self.seed,
-      _backend: PhantomData,
-    }
-  }
+  backend_switch_on!(Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed }, phantom);
 }
 
 impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {

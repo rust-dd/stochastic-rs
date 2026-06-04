@@ -84,100 +84,38 @@ impl Backend for Cpu {
   }
 }
 
-#[cfg(feature = "cuda-native")]
-impl Backend for CudaNative {
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
-    fgn: &Fgn<T, S, Self>,
-    _seed: &S2,
-  ) -> Array1<T> {
-    fgn.sample_cuda_native_impl(1).unwrap().row(0).to_owned()
-  }
+/// Generates a [`Backend`] impl for a GPU marker whose `$sampler` returns an
+/// `Array2<T>` of `m` paths. Single-path `generate` takes the first row; the
+/// host-side seed is unused (GPU backends carry their own RNG). Each marker and
+/// its impl are gated on the backend's feature.
+macro_rules! gpu_backend {
+  ($feat:literal, $marker:ident => $sampler:ident) => {
+    #[cfg(feature = $feat)]
+    impl Backend for $marker {
+      fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
+        fgn: &Fgn<T, S, Self>,
+        _seed: &S2,
+      ) -> Array1<T> {
+        fgn.$sampler(1).unwrap().row(0).to_owned()
+      }
 
-  fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
-    fgn
-      .sample_cuda_native_impl(m)
-      .unwrap()
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect()
-  }
+      fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
+        fgn
+          .$sampler(m)
+          .unwrap()
+          .outer_iter()
+          .map(|row| row.to_owned())
+          .collect()
+      }
+    }
+  };
 }
 
-#[cfg(feature = "cuda-oxide-experimental")]
-impl Backend for CudaOxide {
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
-    fgn: &Fgn<T, S, Self>,
-    _seed: &S2,
-  ) -> Array1<T> {
-    fgn.sample_cuda_oxide_impl(1).unwrap().row(0).to_owned()
-  }
-
-  fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
-    fgn
-      .sample_cuda_oxide_impl(m)
-      .unwrap()
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect()
-  }
-}
-
-#[cfg(feature = "gpu")]
-impl Backend for CubeCl {
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
-    fgn: &Fgn<T, S, Self>,
-    _seed: &S2,
-  ) -> Array1<T> {
-    fgn.sample_gpu_impl(1).unwrap().row(0).to_owned()
-  }
-
-  fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
-    fgn
-      .sample_gpu_impl(m)
-      .unwrap()
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect()
-  }
-}
-
-#[cfg(feature = "metal")]
-impl Backend for MetalNative {
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
-    fgn: &Fgn<T, S, Self>,
-    _seed: &S2,
-  ) -> Array1<T> {
-    fgn.sample_metal_impl(1).unwrap().row(0).to_owned()
-  }
-
-  fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
-    fgn
-      .sample_metal_impl(m)
-      .unwrap()
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect()
-  }
-}
-
-#[cfg(feature = "accelerate")]
-impl Backend for Accelerate {
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
-    fgn: &Fgn<T, S, Self>,
-    _seed: &S2,
-  ) -> Array1<T> {
-    fgn.sample_accelerate_impl(1).unwrap().row(0).to_owned()
-  }
-
-  fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
-    fgn
-      .sample_accelerate_impl(m)
-      .unwrap()
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect()
-  }
-}
+gpu_backend!("cuda-native", CudaNative => sample_cuda_native_impl);
+gpu_backend!("cuda-oxide-experimental", CudaOxide => sample_cuda_oxide_impl);
+gpu_backend!("gpu", CubeCl => sample_gpu_impl);
+gpu_backend!("metal", MetalNative => sample_metal_impl);
+gpu_backend!("accelerate", Accelerate => sample_accelerate_impl);
 
 #[cfg(test)]
 mod tests {

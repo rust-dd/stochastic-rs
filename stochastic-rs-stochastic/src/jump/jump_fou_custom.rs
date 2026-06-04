@@ -121,22 +121,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> JumpFOUCustom<T, D, S, B2> {
-    JumpFOUCustom {
-      hurst: self.hurst,
-      theta: self.theta,
-      mu: self.mu,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      jump_times: self.jump_times,
-      jump_sizes: self.jump_sizes,
-      fgn: self.fgn.on::<B2>(),
-      seed: self.seed,
-    }
-  }
+  backend_switch_on!(JumpFOUCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed }, fgn);
 }
 
 #[cfg(test)]

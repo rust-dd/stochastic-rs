@@ -81,20 +81,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fou<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> Fou<T, S, B2> {
-    Fou {
-      hurst: self.hurst,
-      theta: self.theta,
-      mu: self.mu,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      seed: self.seed,
-      fgn: self.fgn.on::<B2>(),
-    }
-  }
+  backend_switch_on!(Fou<T, S> { hurst, theta, mu, sigma, n, x0, t, seed }, fgn);
 }
 
 py_process_1d!(PyFou, Fou,

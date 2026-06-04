@@ -93,20 +93,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for FJacobi<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> FJacobi<T, S, B2> {
-    FJacobi {
-      hurst: self.hurst,
-      alpha: self.alpha,
-      beta: self.beta,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      seed: self.seed,
-      fgn: self.fgn.on::<B2>(),
-    }
-  }
+  backend_switch_on!(FJacobi<T, S> { hurst, alpha, beta, sigma, n, x0, t, seed }, fgn);
 }
 
 py_process_1d!(PyFJacobi, FJacobi,

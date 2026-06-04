@@ -69,19 +69,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgbm<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> Fgbm<T, S, B2> {
-    Fgbm {
-      hurst: self.hurst,
-      mu: self.mu,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      seed: self.seed,
-      fgn: self.fgn.on::<B2>(),
-    }
-  }
+  backend_switch_on!(Fgbm<T, S> { hurst, mu, sigma, n, x0, t, seed }, fgn);
 }
 
 py_process_1d!(PyFgbm, Fgbm,

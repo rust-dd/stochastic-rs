@@ -98,21 +98,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fcir<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> Fcir<T, S, B2> {
-    Fcir {
-      hurst: self.hurst,
-      theta: self.theta,
-      mu: self.mu,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      use_sym: self.use_sym,
-      seed: self.seed,
-      fgn: self.fgn.on::<B2>(),
-    }
-  }
+  backend_switch_on!(Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, use_sym, seed }, fgn);
 }
 
 py_process_1d!(PyFcir, Fcir,

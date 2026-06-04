@@ -85,21 +85,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> Cfou<T, S, B2> {
-    Cfou {
-      hurst: self.hurst,
-      lambda: self.lambda,
-      omega: self.omega,
-      a: self.a,
-      n: self.n,
-      x1_0: self.x1_0,
-      x2_0: self.x2_0,
-      t: self.t,
-      seed: self.seed,
-      fgn: self.fgn.on::<B2>(),
-    }
-  }
+  backend_switch_on!(Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed }, fgn);
 }
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {

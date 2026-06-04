@@ -99,21 +99,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> JumpFou<T, D, S, B2> {
-    JumpFou {
-      hurst: self.hurst,
-      theta: self.theta,
-      mu: self.mu,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      cpoisson: self.cpoisson,
-      fgn: self.fgn.on::<B2>(),
-      seed: self.seed,
-    }
-  }
+  backend_switch_on!(JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, cpoisson, seed }, fgn);
 }
 
 #[cfg(feature = "python")]

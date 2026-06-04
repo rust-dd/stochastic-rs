@@ -86,16 +86,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> Fbm<T, S, B2> {
-    Fbm {
-      hurst: self.hurst,
-      n: self.n,
-      t: self.t,
-      seed: self.seed,
-      fgn: self.fgn.on::<B2>(),
-    }
-  }
+  backend_switch_on!(Fbm<T, S> { hurst, n, t, seed }, fgn);
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {

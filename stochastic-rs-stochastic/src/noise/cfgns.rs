@@ -81,17 +81,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfgns<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-  pub fn on<B2: Backend>(self) -> Cfgns<T, S, B2> {
-    Cfgns {
-      hurst: self.hurst,
-      rho: self.rho,
-      n: self.n,
-      t: self.t,
-      seed: self.seed,
-      fgn: self.fgn.on::<B2>(),
-    }
-  }
+  backend_switch_on!(Cfgns<T, S> { hurst, rho, n, t, seed }, fgn);
 }
 
 py_process_2x1d!(PyCfgns, Cfgns,

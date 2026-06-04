@@ -275,16 +275,7 @@ where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  /// Re-type this solver to use backend `B2` for fractional noise (compile-time).
-  pub fn on<B2: Backend>(self) -> Sde<T, F, G, B2> {
-    Sde {
-      drift: self.drift,
-      diffusion: self.diffusion,
-      noise: self.noise,
-      hursts: self.hursts,
-      _backend: PhantomData,
-    }
-  }
+  backend_switch_on!(Sde<T, F, G> { drift, diffusion, noise, hursts }, phantom);
 
   /// Solves the SDE and returns simulated paths.
   ///
