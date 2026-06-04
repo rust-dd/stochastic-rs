@@ -59,7 +59,10 @@ fn main() {
   let dt = t / n as f64;
   let var_theory = dt.powf(2.0 * h);
 
-  println!("\n{:>4} {:>14} {:>14} {:>14} {:>10} {:>10}", "lag", "theory", "CPU", "CUDA", "CPU/th", "CUDA/th");
+  println!(
+    "\n{:>4} {:>14} {:>14} {:>14} {:>10} {:>10}",
+    "lag", "theory", "CPU", "CUDA", "CPU/th", "CUDA/th"
+  );
   println!("{}", "-".repeat(78));
 
   let mut lags = Vec::new();
@@ -105,7 +108,9 @@ fn main() {
   );
   cov_plot.set_layout(
     Layout::new()
-      .title(format!("FGN Autocovariance: CPU vs CUDA vs Theory (H={h}, n={n}, m={m})"))
+      .title(format!(
+        "FGN Autocovariance: CPU vs CUDA vs Theory (H={h}, n={n}, m={m})"
+      ))
       .x_axis(Axis::new().title("Lag k"))
       .y_axis(Axis::new().title("Cov(X_i, X_{i+k})")),
   );

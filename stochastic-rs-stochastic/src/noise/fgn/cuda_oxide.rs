@@ -50,7 +50,8 @@ fn fgn_oxide_module_path(arch: &str) -> Result<&'static str> {
   let dir = std::env::temp_dir().join("stochastic_rs_cuda_oxide");
   std::fs::create_dir_all(&dir).map_err(|e| anyhow::anyhow!("cuda-oxide tmp dir: {e}"))?;
   let ll_path = dir.join("fgn_oxide_kernels.ll");
-  std::fs::write(&ll_path, FGN_OXIDE_NVVM_IR).map_err(|e| anyhow::anyhow!("cuda-oxide write IR: {e}"))?;
+  std::fs::write(&ll_path, FGN_OXIDE_NVVM_IR)
+    .map_err(|e| anyhow::anyhow!("cuda-oxide write IR: {e}"))?;
   let cubin = cuda_host::ltoir::build_cubin_from_ll(&ll_path, arch)
     .map_err(|e| anyhow::anyhow!("cuda-oxide: build cubin from embedded NVVM IR: {e}"))?;
   let _ = FGN_OXIDE_CUBIN_PATH.set(cubin);
