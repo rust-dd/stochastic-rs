@@ -113,7 +113,27 @@ macro_rules! gpu_backend {
 gpu_backend!("cuda-native", CudaNative => sample_cuda_native_impl);
 gpu_backend!("gpu", CubeCl => sample_gpu_impl);
 gpu_backend!("metal", MetalNative => sample_metal_impl);
-gpu_backend!("accelerate", Accelerate => sample_accelerate_impl);
+
+/// Accelerate (vDSP) runs on the CPU, so the batch is parallelised across cores
+/// at the device level — one fast single-path FFT per task, like [`Cpu`] — not
+/// looped on-device like the true GPU backends. Each worker reuses its own
+/// thread-local vDSP setup and scratch.
+#[cfg(feature = "accelerate")]
+impl Backend for Accelerate {
+  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
+    fgn: &Fgn<T, S, Self>,
+    _seed: &S2,
+  ) -> Array1<T> {
+    fgn.sample_accelerate_impl(1).unwrap().row(0).to_owned()
+  }
+
+  fn generate_batch<T: FloatExt, S: SeedExt>(fgn: &Fgn<T, S, Self>, m: usize) -> Vec<Array1<T>> {
+    (0..m)
+      .into_par_iter()
+      .map(|_| fgn.sample_accelerate_impl(1).unwrap().row(0).to_owned())
+      .collect()
+  }
+}
 
 #[cfg(test)]
 mod tests {

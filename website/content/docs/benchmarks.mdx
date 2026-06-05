@@ -45,8 +45,8 @@ rl_rough
 ## FGN — CPU vs CUDA native
 
 `cuda-native` backend: cudarc + cuFFT + fused Philox RNG kernel
-(no `.cu` files, no `nvcc`). Environment: NVIDIA GPU, CUDA 12.x,
-Rust nightly, `--release` with LTO.
+(no `.cu` files, no `nvcc`). Environment: Intel i9-285K + NVIDIA RTX 4070
+SUPER, CUDA 12.x, Rust nightly, `--release` with LTO.
 
 ```bash
 cargo bench --features cuda-native --bench fgn_cuda_native
@@ -91,6 +91,69 @@ Test grid: `n ∈ {1024, 4096, 16384, 65536}` for single paths and
 `(n, m) ∈ {(4 096, 32), (4 096, 128), (4 096, 512), …}` for batches.
 Use this bench to discover the cross-over point on your machine
 between scalar / SIMD CPU, CPU-FFT (Accelerate), and GPU.
+
+### Single path (`f32`, H = 0.7)
+
+Single-path latency is the only dimension where the two test machines share a
+grid, so the backends are directly comparable. The **i9-285K / RTX 4070 SUPER**
+figures are converted from the `Melem/s` values in [`CUDA_BENCHMARK.md`](https://github.com/dancixx/stochastic-rs/blob/main/CUDA_BENCHMARK.md)
+(`fgn_cuda_compare`).
+
+**Apple M4 Max** (10 P + 4 E cores, 36 GB unified):
+
+| n      | CPU       | Accelerate | Metal      | CubeCL-wgpu |
+|-------:|----------:|-----------:|-----------:|------------:|
+|  1,024 | **11 µs** |    11.6 µs |     148 µs |      230 µs |
+|  4,096 |    49 µs  |  **45 µs** |     175 µs |      295 µs |
+| 16,384 |   202 µs  | **165 µs** |     220 µs |      543 µs |
+| 65,536 |   838 µs  |    677 µs  | **456 µs** |     1.66 ms |
+
+**Intel i9-285K + RTX 4070 SUPER** (`cudarc` + cuFFT, hand-written cubecl):
+
+| n      | CPU (i9-285K) | cuFFT (`cuda_native`) | cubecl (`gpu_cuda`) |
+|-------:|--------------:|----------------------:|--------------------:|
+|  1,024 |    **7.9 µs** |                 80 µs |              148 µs |
+|  4,096 |     **34 µs** |                 84 µs |              212 µs |
+| 16,384 |        144 µs |            **110 µs** |              514 µs |
+| 65,536 |        847 µs |            **189 µs** |             1.62 ms |
+
+Both SIMD CPUs dominate short paths (the i9-285K is the fastest of all up to
+`n = 4 k`); **cuFFT overtakes at `n ≈ 16 k`** and reaches **4.4× over the CPU at
+`n = 65 k`** (189 µs vs ~840 µs). On the Apple side the vDSP (Accelerate) FFT
+edges the `ndrustfft` CPU for mid-size single paths (`n = 4 k`–`16 k`), and Metal
+passes both only for the largest. The hand-written cubecl FFT
+(`gpu_cuda` / `CubeCL-wgpu`) is never competitive.
+
+### Batch throughput (`sample_par`, `f32`, H = 0.7) — Melem/s, higher is better
+
+**Apple M4 Max** — vDSP/Accelerate and the rayon CPU run neck-and-neck (both far
+ahead of the GPU backends):
+
+| n × m        | CPU | Accelerate | Metal | CubeCL-wgpu |
+|--------------|----:|-----------:|------:|------------:|
+| 4,096 × 32   | 532 |    **548** |   332 |          58 |
+| 4,096 × 512  | 744 |    **790** |   565 |          76 |
+| 16,384 × 128 | 670 |    **749** |   488 |          62 |
+| 16,384 × 512 | 676 |    **787** |   433 |          62 |
+
+**Intel i9-285K + RTX 4070 SUPER** — small `n` stays cache-resident on the
+24-core i9; batched cuFFT wins once `n ≥ 4 k`:
+
+| n × m           | CPU (i9-285K) | cuFFT   | cubecl |
+|-----------------|--------------:|--------:|-------:|
+| 1,024 × 16,384  |      **1751** |     557 |     49 |
+| 4,096 × 16,384  |           269 | **581** |     48 |
+| 4,096 × 65,536  |           118 | **383** |     42 |
+| 16,384 × 16,384 |            59 | **183** |     32 |
+| 65,536 × 4,096  |       **504** |     236 |     28 |
+
+The two machines' batch grids do not overlap (the Mac bench tops out at
+`m = 512`; the CUDA batch grid starts at `m = 1024`), so they are shown
+separately. **Takeaway:** for FGN the discrete-GPU win is real but narrow — it
+needs *both* a long path (`n ≥ 16 k` single, or `n ≥ 4 k × m ≥ 16 k` batch) *and*
+an NVIDIA-class FFT. On Apple Silicon the CPU-side FFTs win: `ndrustfft` + rayon
+and vDSP/Accelerate are interchangeable (both ~700–800 Melem/s in batch), while
+Metal only helps for the largest single paths.
 
 ## Normal sampling vs `rand_distr` (single-thread, `fill_slice`)
 

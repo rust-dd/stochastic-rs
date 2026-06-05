@@ -1,10 +1,21 @@
 //! # Accelerate / vDSP
 //!
 //! macOS-optimized Fgn sampling using Apple's Accelerate framework (vDSP FFT).
-//! Uses the AMX coprocessor and NEON SIMD on Apple Silicon.
 //! Split-complex format, in-place FFT, zero external dependencies.
 //!
+//! The vDSP FFT *setup* (twiddle tables) and the split-complex scratch buffers
+//! are cached per thread and reused across calls. Creating a setup or
+//! reallocating the buffers on every `sample()` (as a naive port would) costs
+//! far more than the transform itself — the setup is an `O(N)` twiddle
+//! precompute that Apple documents as create-once / reuse. The setup is
+//! read-only during `vDSP_fft_zip`, so a per-thread cache keyed by `log2n` is
+//! safe and needs no `Send`/`Sync` wrapper.
+//!
+//! This sampler is single-path optimal; batches are parallelised across cores
+//! at the device level (see [`crate::device`]), one task per path, each reusing
+//! its worker's cached setup and scratch.
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::ffi::c_void;
 
 use anyhow::Result;
@@ -36,8 +47,57 @@ unsafe extern "C" {
   );
 }
 
+/// A vDSP FFT setup owned by the thread that created it; freed on thread exit.
+struct FftSetup {
+  log2n: u64,
+  ptr: *mut c_void,
+}
+
+impl Drop for FftSetup {
+  fn drop(&mut self) {
+    unsafe { vDSP_destroy_fftsetup(self.ptr) };
+  }
+}
+
+/// Reusable split-complex scratch (`real`/`imag`), output staging, and an f32
+/// eigenvalue buffer for the non-`f32` precision path.
+struct Scratch {
+  real: Vec<f32>,
+  imag: Vec<f32>,
+  out: Vec<f32>,
+  eig: Vec<f32>,
+}
+
+thread_local! {
+  static SETUPS: RefCell<Vec<FftSetup>> = RefCell::new(Vec::new());
+  static SCRATCH: RefCell<Scratch> = RefCell::new(Scratch {
+    real: Vec::new(),
+    imag: Vec::new(),
+    out: Vec::new(),
+    eig: Vec::new(),
+  });
+}
+
+/// Returns a vDSP setup for `log2n`, creating it once per thread and reusing it
+/// thereafter. The returned pointer stays valid for the thread's lifetime (the
+/// owning [`FftSetup`] lives in the thread-local cache).
+fn cached_setup(log2n: u64) -> Result<*mut c_void> {
+  SETUPS.with(|cell| {
+    let mut setups = cell.borrow_mut();
+    if let Some(s) = setups.iter().find(|s| s.log2n == log2n) {
+      return Ok(s.ptr);
+    }
+    let ptr = unsafe { vDSP_create_fftsetup(log2n, FFT_RADIX2) };
+    if ptr.is_null() {
+      anyhow::bail!("vDSP_create_fftsetup failed for log2n={log2n}");
+    }
+    setups.push(FftSetup { log2n, ptr });
+    Ok(ptr)
+  })
+}
+
 fn sample_f32<T: FloatExt, S: SeedExt>(
-  sqrt_eigs: &[f32],
+  eig_t: &[T],
   n: usize,
   m: usize,
   offset: usize,
@@ -50,54 +110,66 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
   let total = m * traj_size;
   let log2n = traj_size.trailing_zeros() as u64;
+  let setup = cached_setup(log2n)?;
+  let is_f32 = TypeId::of::<T>() == TypeId::of::<f32>();
 
-  // Generate normals (split format)
-  let mut real = vec![0.0f32; total];
-  let mut imag = vec![0.0f32; total];
-  {
-    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
-    normal.fill_slice_fast(&mut real);
-    normal.fill_slice_fast(&mut imag);
-  }
+  SCRATCH.with(|cell| {
+    let Scratch {
+      real,
+      imag,
+      out,
+      eig,
+    } = &mut *cell.borrow_mut();
 
-  // Scale by eigenvalues
-  for i in 0..total {
-    let e = sqrt_eigs[i % traj_size];
-    real[i] *= e;
-    imag[i] *= e;
-  }
-
-  // vDSP FFT setup (reusable across batches)
-  let setup = unsafe { vDSP_create_fftsetup(log2n, FFT_RADIX2) };
-  if setup.is_null() {
-    anyhow::bail!("vDSP_create_fftsetup failed for log2n={log2n}");
-  }
-
-  // In-place FFT per batch — sequential loop.
-  // vDSP itself uses SIMD/AMX internally; rayon parallelism happens at the
-  // caller level via sample_par() if needed.
-  for b in 0..m {
-    let base = b * traj_size;
-    let mut sc = DSPSplitComplex {
-      realp: real[base..].as_mut_ptr(),
-      imagp: imag[base..].as_mut_ptr(),
+    // f32 eigenvalues: zero-copy when `T == f32`, else convert once into the
+    // cached `eig` buffer (no per-call allocation either way).
+    let eig_f32: &[f32] = if is_f32 {
+      // SAFETY: `T == f32`, checked above, and the eigenvalue slice is contiguous.
+      unsafe { std::slice::from_raw_parts(eig_t.as_ptr() as *const f32, eig_t.len()) }
+    } else {
+      eig.clear();
+      eig.extend(eig_t.iter().map(|x| x.to_f32().unwrap()));
+      eig.as_slice()
     };
-    unsafe { vDSP_fft_zip(setup, &mut sc, 1, log2n, FFT_FORWARD) };
-  }
 
-  unsafe { vDSP_destroy_fftsetup(setup) };
+    real.resize(total, 0.0);
+    imag.resize(total, 0.0);
+    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
+    normal.fill_slice_fast(real.as_mut_slice());
+    normal.fill_slice_fast(imag.as_mut_slice());
 
-  // Extract real parts [1..out_size+1] with scaling
-  let mut output = vec![0.0f32; m * out_size];
-  for b in 0..m {
-    let base = b * traj_size;
-    for j in 0..out_size {
-      output[b * out_size + j] = real[base + j + 1] * scale;
+    // Scale by the tiled eigenvalues (no per-element modulo).
+    for b in 0..m {
+      let base = b * traj_size;
+      for j in 0..traj_size {
+        let e = eig_f32[j];
+        real[base + j] *= e;
+        imag[base + j] *= e;
+      }
     }
-  }
 
-  let fgn = arr2_f32::<T>(&output, m, out_size);
-  Ok(fgn)
+    // In-place forward FFT per trajectory, sharing the cached setup.
+    for b in 0..m {
+      let base = b * traj_size;
+      let mut sc = DSPSplitComplex {
+        realp: real[base..].as_mut_ptr(),
+        imagp: imag[base..].as_mut_ptr(),
+      };
+      unsafe { vDSP_fft_zip(setup, &mut sc, 1, log2n, FFT_FORWARD) };
+    }
+
+    // Extract the real parts `[1..=out_size]` with scaling.
+    out.resize(m * out_size, 0.0);
+    for b in 0..m {
+      let base = b * traj_size;
+      let obase = b * out_size;
+      for j in 0..out_size {
+        out[obase + j] = real[base + j + 1] * scale;
+      }
+    }
+
+    Ok(arr2_f32::<T>(out.as_slice(), m, out_size))
+  })
 }
 
 fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
@@ -121,11 +193,10 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let eigs: Vec<f32> = self
+    let eig_t = self
       .sqrt_eigenvalues
-      .iter()
-      .map(|x| x.to_f32().unwrap())
-      .collect();
-    sample_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed)
+      .as_slice()
+      .expect("eigenvalues are contiguous");
+    sample_f32::<T, S>(eig_t, n, m, offset, hurst, t, &self.seed)
   }
 }
