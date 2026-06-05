@@ -26,9 +26,7 @@ fn bench_single_path(c: &mut Criterion) {
   group.sample_size(40);
 
   let hurst = 0.7f32;
-  for &n in &[
-    256usize, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144,
-  ] {
+  for &n in &[1024usize, 4096, 16384, 65536] {
     group.throughput(Throughput::Elements(n as u64));
 
     let cpu = Fgn::new(hurst, n, None, Unseeded);
@@ -60,23 +58,11 @@ fn bench_batch(c: &mut Criterion) {
   group.sample_size(10);
 
   let hurst = 0.7f32;
-  // Grid spans small → ~256k in n and → ~128k in m. Element count per case is
-  // capped near 268M (≈4.3 GB f32 device alloc) to fit the 12 GB RTX 4070 SUPER.
-  let cases = [
-    (1024usize, 1024usize),
-    (1024, 16384),
-    (1024, 131072),
-    (4096, 16384),
-    (4096, 65536),
-    (16384, 4096),
-    (16384, 16384),
-    (65536, 1024),
-    (65536, 4096),
-    (131072, 512),
-    (131072, 2048),
-    (262144, 256),
-    (262144, 1024),
-  ];
+  // Matches the Apple-side table (1k×1k, 4k×16k, 16k×16k) for a fair
+  // cross-machine comparison. Ordered largest-first so cuFFT's big 16k×16k
+  // device buffers are allocated before cubecl pools any VRAM (otherwise the
+  // two together OOM the 12 GB RTX 4070 SUPER).
+  let cases = [(16384usize, 16384usize), (4096, 16384), (1024, 1024)];
 
   for &(n, m) in &cases {
     group.throughput(Throughput::Elements((n * m) as u64));
@@ -84,10 +70,7 @@ fn bench_batch(c: &mut Criterion) {
 
     let cpu = Fgn::new(hurst, n, None, Unseeded);
     let native = Fgn::new(hurst, n, None, Unseeded).on::<CudaNative>();
-    let cubecl = Fgn::new(hurst, n, None, Unseeded).on::<CubeCl>();
-
-    let _ = native.sample_par(m);
-    let _ = cubecl.sample_par(m);
+    let _ = native.sample_par(m); // warm up cuFFT plan + device buffers
 
     group.bench_with_input(BenchmarkId::new("cpu", &label), &(n, m), |b, &(_n, m)| {
       b.iter(|| black_box(cpu.sample_par(m)));
@@ -99,13 +82,21 @@ fn bench_batch(c: &mut Criterion) {
         b.iter(|| black_box(native.sample_par(m)));
       },
     );
-    group.bench_with_input(
-      BenchmarkId::new("gpu_cuda", &label),
-      &(n, m),
-      |b, &(_n, m)| {
-        b.iter(|| black_box(cubecl.sample_par(m)));
-      },
-    );
+
+    // cubecl holds its own large device buffers alongside cuFFT's; skip it once
+    // the two together would exceed the 12 GB RTX 4070 SUPER (matches the Apple
+    // table, where CubeCL is "—" for the big batches).
+    if n.saturating_mul(m) <= 67_108_864 {
+      let cubecl = Fgn::new(hurst, n, None, Unseeded).on::<CubeCl>();
+      let _ = cubecl.sample_par(m);
+      group.bench_with_input(
+        BenchmarkId::new("gpu_cuda", &label),
+        &(n, m),
+        |b, &(_n, m)| {
+          b.iter(|| black_box(cubecl.sample_par(m)));
+        },
+      );
+    }
   }
 
   group.finish();
