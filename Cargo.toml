@@ -325,6 +325,10 @@ required-features = ["dual-stream-rng"]
 name = "cuda_fgn_analysis"
 required-features = ["cuda-native"]
 
+[[example]]
+name = "cuda_d2h_bw"
+required-features = ["cuda-native"]
+
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda-native = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda-native"]
