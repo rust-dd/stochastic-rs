@@ -1,10 +1,12 @@
 use std::any::TypeId;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use cudarc::cufft;
 use cudarc::driver::*;
 use ndarray::Array2;
+use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::super::Fgn;
@@ -12,6 +14,7 @@ use super::convert::array2_from_vec_f32;
 use super::convert::array2_from_vec_f64;
 use super::state::CUFFT_FORWARD;
 use super::state::GPU;
+use super::state::PinnedHost;
 use super::state::RNG_SEQ;
 use super::state::SIZED_F32;
 use super::state::SIZED_F64;
@@ -19,6 +22,63 @@ use super::state::SizedCtxF32;
 use super::state::SizedCtxF64;
 use super::state::get_or_init_gpu;
 use crate::traits::FloatExt;
+
+/// Output transfers at or above this byte size use the pinned-staging +
+/// parallel-copy path; smaller ones go direct via `clone_dtoh`, where the
+/// staging round-trip and rayon overhead aren't worth it.
+const STAGING_MIN_BYTES: usize = 32 << 20;
+
+/// Allocates an output `Vec<T>` and pre-faults its pages in parallel.
+///
+/// Call this right after the GPU kernels are launched: they run asynchronously,
+/// so faulting the fresh allocation here overlaps device compute instead of
+/// serialising as part of the post-transfer copy. The fault cost (not the PCIe
+/// transfer) is what dominates materialising a multi-hundred-MB result on the
+/// host, so hiding it under compute is the main lever left.
+fn alloc_prefaulted<T: Copy>(len: usize) -> Vec<T> {
+  let mut v = Vec::<T>::with_capacity(len);
+  #[allow(clippy::uninit_vec)]
+  unsafe {
+    v.set_len(len)
+  };
+  let bytes = len * std::mem::size_of::<T>();
+  let raw = unsafe { std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut u8, bytes) };
+  const CHUNK: usize = 1 << 22;
+  raw.par_chunks_mut(CHUNK).for_each(|c| c.fill(0));
+  v
+}
+
+/// DMAs a device buffer through the cached page-locked staging buffer at full
+/// PCIe bandwidth, then copies into `host` in parallel. `host` must already be
+/// allocated and pre-faulted (see [`alloc_prefaulted`]) so the copy is pure
+/// bandwidth with no first-touch faults.
+fn drain_into<T>(
+  stream: &Arc<CudaStream>,
+  d_out: &CudaSlice<T>,
+  staging: &PinnedHost<T>,
+  host: &mut [T],
+) -> Result<()>
+where
+  T: Copy + Send + Sync + DeviceRepr,
+{
+  let len = host.len();
+  debug_assert_eq!(staging.len, len, "staging buffer sized to the output");
+  let dst = unsafe { std::slice::from_raw_parts_mut(staging.ptr, len) };
+  stream
+    .memcpy_dtoh(d_out, dst)
+    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
+  stream
+    .synchronize()
+    .map_err(|e| anyhow::anyhow!("sync dtoh: {e}"))?;
+
+  let src = unsafe { std::slice::from_raw_parts(staging.ptr, len) };
+  const CHUNK: usize = 1 << 18;
+  host
+    .par_chunks_mut(CHUNK)
+    .zip(src.par_chunks(CHUNK))
+    .for_each(|(o, p)| o.copy_from_slice(p));
+  Ok(())
+}
 
 fn sample_f32<T: FloatExt, S: SeedExt>(
   sqrt_eigs: &[f32],
@@ -69,6 +129,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
         .stream
         .alloc_zeros::<f32>(m * out_size)
         .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
+      host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
       n,
       m,
       offset,
@@ -78,6 +139,8 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   }
 
   let s = sized.as_mut().unwrap();
+  let profile = std::env::var("STOCHASTIC_RS_CUDA_PROFILE").is_ok();
+  let tstart = std::time::Instant::now();
 
   // 1. Fused generate normals + scale by eigenvalues
   let total_complex = (m * traj_size) as i32;
@@ -124,15 +187,47 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
       .launch(LaunchConfig::for_num_elems(total_out as u32))
       .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
   }
+  // 4. DtoH. For large outputs, allocate + pre-fault the host buffer now while
+  // the async kernels above are still running, so the page faults overlap device
+  // compute; then DMA through the cached pinned staging and copy in parallel.
+  // Small outputs go direct.
+  let len = m * out_size;
+  let prefaulted =
+    (len * std::mem::size_of::<f32>() >= STAGING_MIN_BYTES).then(|| alloc_prefaulted::<f32>(len));
 
-  // 4. DtoH
-  let host = gpu
-    .stream
-    .clone_dtoh(&s.d_out)
-    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
+  let t_compute = if profile {
+    gpu.stream.synchronize().ok();
+    tstart.elapsed()
+  } else {
+    std::time::Duration::ZERO
+  };
+
+  let host = match prefaulted {
+    Some(mut host) => {
+      drain_into(&gpu.stream, &s.d_out, &s.host_pinned, &mut host)?;
+      host
+    }
+    None => gpu
+      .stream
+      .clone_dtoh(&s.d_out)
+      .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?,
+  };
+  let t_dtoh = if profile {
+    tstart.elapsed()
+  } else {
+    std::time::Duration::ZERO
+  };
   drop(sized);
 
   let fgn = array2_from_vec_f32::<T>(host, m, out_size);
+  if profile {
+    eprintln!(
+      "CUDAPROF f32 n={n} m={m} compute={:.2?} dtoh={:.2?} total={:.2?}",
+      t_compute,
+      t_dtoh.saturating_sub(t_compute),
+      tstart.elapsed()
+    );
+  }
   Ok(fgn)
 }
 
@@ -185,6 +280,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
         .stream
         .alloc_zeros::<f64>(m * out_size)
         .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
+      host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
       n,
       m,
       offset,
@@ -241,11 +337,22 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
       .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
   }
 
-  // 4. DtoH
-  let host = gpu
-    .stream
-    .clone_dtoh(&s.d_out)
-    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
+  // 4. DtoH. Pre-fault the host buffer (large outputs) while the async kernels
+  // run, then DMA through the cached pinned staging and copy in parallel; small
+  // outputs go direct.
+  let len = m * out_size;
+  let host = match (len * std::mem::size_of::<f64>() >= STAGING_MIN_BYTES)
+    .then(|| alloc_prefaulted::<f64>(len))
+  {
+    Some(mut host) => {
+      drain_into(&gpu.stream, &s.d_out, &s.host_pinned, &mut host)?;
+      host
+    }
+    None => gpu
+      .stream
+      .clone_dtoh(&s.d_out)
+      .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?,
+  };
   drop(sized);
 
   let fgn = array2_from_vec_f64::<T>(host, m, out_size);
