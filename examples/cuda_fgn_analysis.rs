@@ -1,9 +1,11 @@
 //! CUDA FGN analysis: covariance vector comparison (CPU vs CUDA) and FBM path plots.
 //!
 //! Run: cargo run --example cuda_fgn_analysis --features cuda-native --release
+use plotly::Layout;
+use plotly::Plot;
+use plotly::Scatter;
 use plotly::common::Mode;
 use plotly::layout::Axis;
-use plotly::{Layout, Plot, Scatter};
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;

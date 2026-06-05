@@ -1,5 +1,6 @@
-use super::super::Fgn;
 use stochastic_rs_core::simd_rng::Unseeded;
+
+use super::super::Fgn;
 
 fn lag_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
   let mut s = 0.0;

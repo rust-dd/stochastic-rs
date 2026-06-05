@@ -100,9 +100,13 @@ fn bench_batch_large(c: &mut Criterion) {
   // CPU / Accelerate / Metal cases all complete before it runs.
   for &(n, m) in &cases {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
-    g.bench_with_input(BenchmarkId::new("cpu", format!("n={n},m={m}")), &m, |b, &m| {
-      b.iter(|| black_box(fgn.sample_par(m)));
-    });
+    g.bench_with_input(
+      BenchmarkId::new("cpu", format!("n={n},m={m}")),
+      &m,
+      |b, &m| {
+        b.iter(|| black_box(fgn.sample_par(m)));
+      },
+    );
   }
   for &(n, m) in &cases {
     let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
