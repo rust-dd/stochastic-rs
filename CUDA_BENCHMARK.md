@@ -15,25 +15,25 @@ cargo bench --bench fgn_cuda_compare --features "cuda-native,gpu-cuda,mimalloc"
 
 | Backend | n=1k | n=4k | n=16k | n=64k |
 |---|--:|--:|--:|--:|
-| CPU (i9-285K) | **7.9 µs** | **35.8 µs** | 148 µs | 599 µs |
-| cuFFT (cudarc) | 52 µs | 76 µs | **111 µs** | **190 µs** |
-| cubecl | 145 µs | 210 µs | 509 µs | 1.71 ms |
+| CPU (i9-285K) | **7.9 µs** | **34.2 µs** | 150 µs | 601 µs |
+| cuFFT (cudarc) | 51 µs | 83 µs | **102 µs** | **219 µs** |
+| cubecl | 140 µs | 196 µs | 248 µs | 486 µs |
 
 ## Batch (`sample_par`, n × m)
 
 | Backend | 1k×1k | 4k×16k | 16k×16k |
 |---|--:|--:|--:|
-| CPU (i9-285K) | **549 µs** | **35.1 ms** | **155 ms** |
-| cuFFT (cudarc) | 719 µs | 53.9 ms | 449 ms |
-| cubecl | 25.9 ms | 2.29 s | — (OOM > 12 GB) |
+| CPU (i9-285K) | **556 µs** | **33.7 ms** | **143 ms** |
+| cuFFT (cudarc) | 716 µs | 53.6 ms | 481 ms |
+| cubecl | 889 µs | 81.6 ms | — (OOM > 12 GB) |
 
 ## PC vs Apple M4 Max (batch, lower = better)
 
 | n × m | PC CPU (i9) | Apple CPU | PC best GPU | Apple best GPU |
 |---|--:|--:|--:|--:|
-| 1k×1k | **549 µs** | 1.46 ms | cuFFT 719 µs | Metal 2.08 ms |
-| 4k×16k | **35.1 ms** | 80.8 ms | cuFFT 53.9 ms | Metal 160 ms |
-| 16k×16k | **155 ms** | 339 ms | cuFFT 449 ms | Metal 628 ms |
+| 1k×1k | **556 µs** | 1.46 ms | cuFFT 716 µs | Metal 2.08 ms |
+| 4k×16k | **33.7 ms** | 80.8 ms | cuFFT 53.6 ms | Metal 160 ms |
+| 16k×16k | **143 ms** | 339 ms | cuFFT 481 ms | Metal 628 ms |
 
 The PC wins every cell; the M4 Max's edge in the old run was purely the missing
 fast allocator.
@@ -55,12 +55,24 @@ fast allocator.
   device→host copy. For "generate then copy back to host", the CPU is the better
   choice on this hardware.
 
-## cubecl note
+## cubecl note (updated)
 
-cubecl is slow because of its hand-written radix-2 shared-memory FFT, not a
-buffer-size limit: it is already ~25 ms at 1k×1k (a few-MB buffer) and its
-throughput is roughly constant (~30–45 Melem/s) across all sizes — it is
-kernel-launch-bound. cubecl-CUDA has **no** 256 MB buffer cap (that is a wgpu
-limit). 16k×16k cubecl is skipped because cuFFT's ~5.4 GB device buffers plus
-cubecl's would exceed the 12 GB card (the grid runs largest-first so cuFFT
-allocates before cubecl pools VRAM).
+The updated cubecl backend is **dramatically faster** than the previous version:
+
+| case | old | new | speedup |
+|---|--:|--:|--:|
+| single n=16k | 509 µs | 248 µs | ~2× |
+| single n=64k | 1.71 ms | 486 µs | ~3.5× |
+| batch 1k×1k | 25.9 ms | 889 µs | ~29× |
+| batch 4k×16k | 2.29 s | 81.6 ms | ~28× |
+
+cubecl is no longer the outlier it was — it now lands within ~1.5–2× of cuFFT
+across the grid and scales with problem size like a real batched FFT (the old
+build was kernel-launch-bound at a roughly constant ~30–45 Melem/s regardless of
+size). It is still a step behind cuFFT (vendor-tuned plans) and behind the CPU
+for batches, for the same on-device-RNG + device→host-copy reasons above.
+
+16k×16k cubecl is still skipped: cuFFT's ~5.4 GB device buffers plus cubecl's
+own pools would exceed the 12 GB card (the grid runs largest-first, so cuFFT
+allocates before cubecl), and cubecl-CUDA has **no** 256 MB buffer cap (that is a
+wgpu limit, not a cubecl-CUDA one).
