@@ -122,6 +122,27 @@ unsafe impl Send for MetalCtx {}
 
 static CTX: Mutex<Option<MetalCtx>> = Mutex::new(None);
 
+/// Per-configuration GPU buffers, reused across same-size calls. Re-allocating
+/// the trajectory buffers and re-uploading the eigenvalue / bit-reverse tables
+/// on every call was the dominant per-call cost; the gen kernel overwrites
+/// `real`/`imag` each time, so reuse is safe.
+struct SizedMetal {
+  real_buf: Buffer,
+  imag_buf: Buffer,
+  out_buf: Buffer,
+  eig_buf: Buffer,
+  rev_buf: Buffer,
+  n: usize,
+  m: usize,
+  offset: usize,
+  hurst_bits: u64,
+  t_bits: u64,
+}
+
+unsafe impl Send for SizedMetal {}
+
+static SIZED: Mutex<Option<SizedMetal>> = Mutex::new(None);
+
 fn ensure_ctx() -> Result<()> {
   let mut g = CTX.lock();
   if g.is_some() {
@@ -184,24 +205,45 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let ctx = g.as_ref().unwrap();
   let dev = &ctx.device;
   let shared = MTLResourceOptions::StorageModeShared;
+  let hb = hurst.to_bits();
+  let tb = t.to_bits();
 
-  // GPU buffers (zero-copy unified memory)
-  let real_buf = dev.new_buffer((total * 4) as u64, shared);
-  let imag_buf = dev.new_buffer((total * 4) as u64, shared);
-  let out_buf = dev.new_buffer((m * out_size * 4) as u64, shared);
-
-  // Upload eigenvalues + bit-reverse table (small, one-time per config)
-  let eig_buf = dev.new_buffer_with_data(
-    sqrt_eigs.as_ptr() as *const _,
-    (sqrt_eigs.len() * 4) as u64,
-    shared,
-  );
-  let bit_rev = build_bit_reverse_table(traj_size);
-  let rev_buf = dev.new_buffer_with_data(
-    bit_rev.as_ptr() as *const _,
-    (bit_rev.len() * 4) as u64,
-    shared,
-  );
+  // Allocate trajectory buffers + upload the eigenvalue / bit-reverse tables
+  // once per configuration; reuse across same-size calls.
+  let mut sized = SIZED.lock();
+  let need = match &*sized {
+    Some(s) => s.n != n || s.m != m || s.offset != offset || s.hurst_bits != hb || s.t_bits != tb,
+    None => true,
+  };
+  if need {
+    let real_buf = dev.new_buffer((total * 4) as u64, shared);
+    let imag_buf = dev.new_buffer((total * 4) as u64, shared);
+    let out_buf = dev.new_buffer((m * out_size * 4) as u64, shared);
+    let eig_buf = dev.new_buffer_with_data(
+      sqrt_eigs.as_ptr() as *const _,
+      (sqrt_eigs.len() * 4) as u64,
+      shared,
+    );
+    let bit_rev = build_bit_reverse_table(traj_size);
+    let rev_buf = dev.new_buffer_with_data(
+      bit_rev.as_ptr() as *const _,
+      (bit_rev.len() * 4) as u64,
+      shared,
+    );
+    *sized = Some(SizedMetal {
+      real_buf,
+      imag_buf,
+      out_buf,
+      eig_buf,
+      rev_buf,
+      n,
+      m,
+      offset,
+      hurst_bits: hb,
+      t_bits: tb,
+    });
+  }
+  let s = sized.as_ref().unwrap();
 
   let seed: u32 = rand::Rng::random(&mut seed_src.rng());
 
@@ -214,10 +256,10 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   {
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.gen_pso);
-    enc.set_buffer(0, Some(&real_buf), 0);
-    enc.set_buffer(1, Some(&imag_buf), 0);
-    enc.set_buffer(2, Some(&eig_buf), 0);
-    enc.set_buffer(3, Some(&rev_buf), 0);
+    enc.set_buffer(0, Some(&s.real_buf), 0);
+    enc.set_buffer(1, Some(&s.imag_buf), 0);
+    enc.set_buffer(2, Some(&s.eig_buf), 0);
+    enc.set_buffer(3, Some(&s.rev_buf), 0);
     enc.set_bytes(4, 4, &ts_u32 as *const u32 as *const _);
     enc.set_bytes(5, 4, &seed as *const u32 as *const _);
     enc.dispatch_threads(MTLSize::new(total as u64, 1, 1), tg);
@@ -230,8 +272,8 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
     let hs = 1u32 << stage;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.butterfly_pso);
-    enc.set_buffer(0, Some(&real_buf), 0);
-    enc.set_buffer(1, Some(&imag_buf), 0);
+    enc.set_buffer(0, Some(&s.real_buf), 0);
+    enc.set_buffer(1, Some(&s.imag_buf), 0);
     enc.set_bytes(2, 4, &ts_u32 as *const u32 as *const _);
     enc.set_bytes(3, 4, &hs as *const u32 as *const _);
     enc.dispatch_threads(grid_fft, tg);
@@ -243,8 +285,8 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
     let os = out_size as u32;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.extract_pso);
-    enc.set_buffer(0, Some(&real_buf), 0);
-    enc.set_buffer(1, Some(&out_buf), 0);
+    enc.set_buffer(0, Some(&s.real_buf), 0);
+    enc.set_buffer(1, Some(&s.out_buf), 0);
     enc.set_bytes(2, 4, &os as *const u32 as *const _);
     enc.set_bytes(3, 4, &ts_u32 as *const u32 as *const _);
     enc.set_bytes(4, 4, &scale as *const f32 as *const _);
@@ -256,7 +298,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   cmd.wait_until_completed();
 
   // Zero-copy read from shared buffer
-  let out_ptr = out_buf.contents() as *const f32;
+  let out_ptr = s.out_buf.contents() as *const f32;
   let out_slice = unsafe { std::slice::from_raw_parts(out_ptr, m * out_size) };
 
   let fgn = arr2_f32::<T>(out_slice, m, out_size);

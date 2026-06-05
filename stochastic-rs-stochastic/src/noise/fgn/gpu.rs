@@ -30,7 +30,7 @@ const LOCAL_STAGES: usize = 9; // log2(512)
 #[cube(launch)]
 fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
   let tid = UNIT_POS as usize;
-  let base = CUBE_POS_X as usize * BLOCK;
+  let base = CUBE_POS as usize * BLOCK;
 
   let mut sr = SharedMemory::<F>::new(BLOCK);
   let mut si = SharedMemory::<F>::new(BLOCK);
@@ -239,19 +239,45 @@ fn extract_real<F: Float>(
   output[tid] = src_real[traj_id * traj_size + idx + 1] * scale;
 }
 
-fn bit_reverse_permute_batched(real: &mut [f32], imag: &mut [f32], n: usize, m: usize) {
-  let log_n = n.trailing_zeros() as usize;
-  let bits = usize::BITS as usize;
-  for b in 0..m {
-    let base = b * n;
-    for i in 0..n {
-      let j = i.reverse_bits() >> (bits - log_n);
-      if i < j {
-        real.swap(base + i, base + j);
-        imag.swap(base + i, base + j);
-      }
-    }
-  }
+/// GPU normal generation + eigenvalue scale + bit-reversed scatter, fused into
+/// one kernel — replaces the host-side RNG and the full host->device upload.
+/// Each thread produces one complex sample (two normals via a hash + Box-Muller),
+/// scales by its eigenvalue, and writes to the bit-reversed slot.
+#[allow(clippy::approx_constant, clippy::excessive_precision)]
+#[cube(launch)]
+fn gen_scale<F: Float>(
+  real: &mut Array<F>,
+  imag: &mut Array<F>,
+  eigs: &Array<F>,
+  rev: &Array<u32>,
+  seed: u32,
+  #[comptime] traj_size: usize,
+) {
+  let tid = ABSOLUTE_POS;
+  let g = tid as u32;
+  // Two decorrelated uniforms via integer hashing (Murmur3-style finalizer).
+  let mut a = (g * 2u32) ^ (seed * 2654435761u32);
+  a = a ^ (a >> 16);
+  a = a * 2246822519u32;
+  a = a ^ (a >> 13);
+  a = a * 3266489917u32;
+  a = a ^ (a >> 16);
+  let mut b = (g * 2u32 + 1u32) ^ (seed * 668265263u32);
+  b = b ^ (b >> 16);
+  b = b * 2246822519u32;
+  b = b ^ (b >> 13);
+  b = b * 3266489917u32;
+  b = b ^ (b >> 16);
+  let inv = F::new(2.3283064e-10);
+  let u1 = F::cast_from(a) * inv * F::new(0.999998) + F::new(1.0e-6);
+  let u2 = F::cast_from(b) * inv;
+  let radius = F::sqrt(F::new(-2.0) * F::ln(u1));
+  let angle = F::new(6.2831853071) * u2;
+  let j = tid % traj_size;
+  let e = eigs[j];
+  let dst = tid - j + rev[j] as usize;
+  real[dst] = radius * F::cos(angle) * e;
+  imag[dst] = radius * F::sin(angle) * e;
 }
 
 #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
@@ -305,6 +331,23 @@ mod backend {
     });
   }
 
+  /// Splits a 1D cube count into a 2D grid so no dimension exceeds WebGPU's
+  /// 65535 per-dimension limit. For the power-of-two counts this sampler emits
+  /// the split is exact (no over-dispatch, so the kernels need no bounds guard).
+  fn count_2d(cubes: u32) -> CubeCount {
+    if cubes <= 65535 {
+      CubeCount::Static(cubes.max(1), 1, 1)
+    } else {
+      let mut x = cubes;
+      let mut y = 1u32;
+      while x > 32768 {
+        x = x.div_ceil(2);
+        y *= 2;
+      }
+      CubeCount::Static(x, y, 1)
+    }
+  }
+
   pub(super) fn sample_gpu_f32<T: FloatExt, S: stochastic_rs_core::simd_rng::SeedExt>(
     sqrt_eigs: &[f32],
     n: usize,
@@ -322,34 +365,44 @@ mod backend {
     let total = m * traj_size;
     let log_n = traj_size.trailing_zeros() as usize;
 
-    // CPU: generate normals, scale, bit-reverse
-    let mut rh = vec![0.0f32; total];
-    let mut ih = vec![0.0f32; total];
-    {
-      let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
-      normal.fill_slice_fast(&mut rh);
-      normal.fill_slice_fast(&mut ih);
-    }
-    for i in 0..total {
-      let e = sqrt_eigs[i % traj_size];
-      rh[i] *= e;
-      ih[i] *= e;
-    }
-    bit_reverse_permute_batched(&mut rh, &mut ih, traj_size, m);
-
     ensure_ctx(n, m, offset, hb, tb);
     let guard = GPU_CTX.lock();
     let cl = &guard.as_ref().unwrap().client;
 
-    let hr = cl.create_from_slice(f32::as_bytes(&rh));
-    let hi = cl.create_from_slice(f32::as_bytes(&ih));
+    // Bit-reverse table + eigenvalues (small) uploaded; trajectory buffers empty.
+    let log_t = traj_size.trailing_zeros() as usize;
+    let bits = usize::BITS as usize;
+    let rev: Vec<u32> = (0..traj_size)
+      .map(|i| (i.reverse_bits() >> (bits - log_t)) as u32)
+      .collect();
+    let eig_h = cl.create_from_slice(f32::as_bytes(sqrt_eigs));
+    let rev_h = cl.create_from_slice(u32::as_bytes(&rev));
+    let hr = cl.empty(total * 4);
+    let hi = cl.empty(total * 4);
+
+    // GPU: generate normals + eigenvalue scale + bit-reversed scatter.
+    let seed_u: u32 = rand::Rng::random(&mut seed.rng());
+    unsafe {
+      gen_scale::launch::<f32, R>(
+        cl,
+        count_2d((total as u32).div_ceil(WG_SIZE as u32)),
+        CubeDim::new_1d(WG_SIZE as u32),
+        ArrayArg::from_raw_parts::<f32>(&hr, total, 1),
+        ArrayArg::from_raw_parts::<f32>(&hi, total, 1),
+        ArrayArg::from_raw_parts::<f32>(&eig_h, traj_size, 1),
+        ArrayArg::from_raw_parts::<u32>(&rev_h, traj_size, 1),
+        ScalarArg::new(seed_u & 0xffff),
+        traj_size,
+      )
+      .map_err(|e| anyhow::anyhow!("gen_scale: {e}"))?;
+    }
 
     // Phase 1: shared-memory local FFT (9 stages per 512-element tile, 1 launch)
     let n_tiles = (total / BLOCK) as u32;
     unsafe {
       fft_local::launch::<f32, R>(
         cl,
-        CubeCount::Static(n_tiles, 1, 1),
+        count_2d(n_tiles),
         CubeDim::new_1d(WG_SIZE as u32),
         ArrayArg::from_raw_parts::<f32>(&hr, total, 1),
         ArrayArg::from_raw_parts::<f32>(&hi, total, 1),
@@ -364,7 +417,7 @@ mod backend {
       unsafe {
         fft_butterfly::launch::<f32, R>(
           cl,
-          CubeCount::Static(nwg, 1, 1),
+          count_2d(nwg),
           CubeDim::new_1d(WG_SIZE as u32),
           ArrayArg::from_raw_parts::<f32>(&hr, total, 1),
           ArrayArg::from_raw_parts::<f32>(&hi, total, 1),
@@ -382,7 +435,7 @@ mod backend {
     unsafe {
       extract_real::launch::<f32, R>(
         cl,
-        CubeCount::Static(tout.div_ceil(WG_SIZE as u32), 1, 1),
+        count_2d(tout.div_ceil(WG_SIZE as u32)),
         CubeDim::new_1d(WG_SIZE as u32),
         ArrayArg::from_raw_parts::<f32>(&hr, total, 1),
         ArrayArg::from_raw_parts::<f32>(&oh, m * out_size, 1),

@@ -84,5 +84,55 @@ fn bench_batch(c: &mut Criterion) {
   g.finish();
 }
 
-criterion_group!(benches, bench_single, bench_batch);
+/// Large-batch throughput on the **same `n × m` grid as `CUDA_BENCHMARK.md`**, so
+/// the Apple figures line up with the i9-285K + RTX numbers. CPU, Accelerate and
+/// Metal scale to these sizes; wgpu (cubecl) panics above `1k × 1k` because its
+/// FFT dispatches more than WebGPU's 65535 workgroups-per-dimension limit.
+fn bench_batch_large(c: &mut Criterion) {
+  let mut g = c.benchmark_group("FGN_batch_large");
+  g.measurement_time(Duration::from_secs(4));
+  g.warm_up_time(Duration::from_millis(500));
+  g.sample_size(10);
+
+  let cases = [(1024usize, 1024usize), (4096, 16384), (16384, 16384)];
+
+  // Backend-outer ordering, riskiest (wgpu) last: it panics above 1k×1k, so the
+  // CPU / Accelerate / Metal cases all complete before it runs.
+  for &(n, m) in &cases {
+    let fgn = Fgn::new(0.7f32, n, None, Unseeded);
+    g.bench_with_input(BenchmarkId::new("cpu", format!("n={n},m={m}")), &m, |b, &m| {
+      b.iter(|| black_box(fgn.sample_par(m)));
+    });
+  }
+  for &(n, m) in &cases {
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
+    let _ = dev.sample_par(m);
+    g.bench_with_input(
+      BenchmarkId::new("accelerate", format!("n={n},m={m}")),
+      &m,
+      |b, &m| b.iter(|| black_box(dev.sample_par(m))),
+    );
+  }
+  for &(n, m) in &cases {
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<MetalNative>();
+    let _ = dev.sample_par(m);
+    g.bench_with_input(
+      BenchmarkId::new("metal", format!("n={n},m={m}")),
+      &m,
+      |b, &m| b.iter(|| black_box(dev.sample_par(m))),
+    );
+  }
+  for &(n, m) in &cases {
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<CubeCl>();
+    let _ = dev.sample_par(m);
+    g.bench_with_input(
+      BenchmarkId::new("gpu_cubecl", format!("n={n},m={m}")),
+      &m,
+      |b, &m| b.iter(|| black_box(dev.sample_par(m))),
+    );
+  }
+  g.finish();
+}
+
+criterion_group!(benches, bench_single, bench_batch, bench_batch_large);
 criterion_main!(benches);

@@ -54,6 +54,41 @@ mod gpu_fft_validation {
       .collect()
   }
 
+  /// Exercises the 2D-dispatch path: at n=512, m=32768 both `gen_scale`
+  /// (`total/256` cubes) and `fft_local` (`total/512` tiles) cross WebGPU's
+  /// 65535 per-dimension grid limit, so a wrong `CUBE_POS`/`ABSOLUTE_POS`
+  /// linearization would surface here as NaN or a covariance mismatch.
+  #[test]
+  fn gpu_fgn_2d_dispatch_covariance_matches_theory() {
+    let h = 0.7_f32;
+    let n = 512_usize;
+    let m = 32768_usize;
+
+    let paths = sample_gpu_paths(h, n, 1.0, m);
+    let values: Vec<f64> = paths.iter().flatten().copied().collect();
+    let count = values.len() as f64;
+    let mean = values.iter().sum::<f64>() / count;
+    let var = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / count;
+
+    let h64 = h as f64;
+    let dt = 1.0 / n as f64;
+    let var_th = dt.powf(2.0 * h64);
+    let cov1_th = var_th * unit_lag_covariance(h64, 1);
+    let cov1 = lag_covariance(&paths, mean, 1);
+
+    assert!(var.is_finite() && mean.is_finite(), "2D output not finite");
+    assert!(
+      (var / var_th - 1.0).abs() < 0.06,
+      "2D variance mismatch: emp={var}, theory={var_th}, ratio={}",
+      var / var_th
+    );
+    assert!(
+      (cov1 / cov1_th - 1.0).abs() < 0.08,
+      "2D cov(1) mismatch: emp={cov1}, theory={cov1_th}, ratio={}",
+      cov1 / cov1_th
+    );
+  }
+
   #[test]
   fn gpu_fgn_covariance_matches_theory() {
     let h = 0.72_f32;
