@@ -10,7 +10,6 @@ use std::sync::OnceLock;
 use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
-use wide::CmpLt;
 use wide::i32x8;
 
 use super::SimdFloatExt;
