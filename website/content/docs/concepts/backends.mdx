@@ -1,0 +1,80 @@
+---
+title: Sampling backends
+description: Compile-time GPU / accelerator backend selection for the fractional family via `.on::<B>()` — the `Backend` trait, its markers, and zero-cost dispatch.
+category: concept
+since: 2.4.0
+status: stable
+---
+
+# Sampling backends
+
+The fractional / fGN process family selects **where** its FFT-based sampling
+runs — CPU, CUDA, Metal, or Apple Accelerate — at **compile time**. A process is
+parameterised by a backend marker `B` (defaulting to `Cpu`); the `Backend` trait
+monomorphises `sample` / `sample_par` to that backend with **no runtime branch**.
+
+This replaces the ad-hoc per-backend methods (`sample_cuda_native`,
+`sample_gpu`, …) with one uniform selector. The low-level methods still exist,
+but `.on::<B>()` is the recommended API.
+
+## Switching backend
+
+Re-type the process with the `.on::<B>()` turbofish, then sample as usual:
+
+```rust
+use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::simd_rng::Unseeded;
+
+let cpu = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded).sample(); // default Cpu
+
+let gpu = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+    .on::<CudaNative>()
+    .sample();                                  // same call, runs on the GPU
+```
+
+`.on::<B>()` consumes the process and returns it re-typed to backend `B` — the
+fields are moved, nothing is copied, and the choice is resolved at compile time.
+
+## The `Backend` trait
+
+| Marker        | Feature                          | Backs onto                             | Hardware            |
+|---------------|----------------------------------|----------------------------------------|---------------------|
+| `Cpu`         | — (always available, default)    | `ndrustfft` + CPU SIMD, rayon batches  | any CPU             |
+| `CudaNative`  | `cuda-native`                    | `cudarc` + cuFFT, JIT Philox RNG       | NVIDIA, CUDA 12.x   |
+| `CubeCl`      | `gpu` / `gpu-cuda` / `gpu-wgpu`  | `cubecl` portable kernels              | NVIDIA / AMD / wgpu |
+| `MetalNative` | `metal`                          | hand-written MSL via the `metal` crate | Apple GPU (f32)     |
+| `Accelerate`  | `accelerate`                     | Apple vDSP FFT (CPU), rayon batches    | macOS               |
+
+`Backend` and `Cpu` are re-exported at `stochastic_rs::traits`; the GPU markers
+live under `stochastic_rs::stochastic::device` and **only exist when their
+feature is compiled**. Selecting an unavailable backend is therefore a *compile
+error*, not a silent runtime fallback.
+
+```rust
+use stochastic_rs::traits::{Backend, Cpu};          // always available
+#[cfg(feature = "metal")]
+use stochastic_rs::stochastic::device::MetalNative;  // feature-gated marker
+```
+
+## Which processes support it
+
+The backend type parameter is carried by the fractional / fGN family: `Fgn`,
+`Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`,
+`JumpFOUCustom`, and the generic `Sde`. These are the processes whose hot path is
+a circulant-embedding FFT, which is exactly what the GPU / accelerator backends
+speed up. Non-fractional processes sample on the CPU only.
+
+## Precision
+
+Apple GPUs have no `f64`, so `MetalNative` is **`f32` only**. `CudaNative`,
+`CubeCl`, and `Accelerate` support both `f32` and `f64`; the `Cpu` backend
+follows the process's `T` parameter.
+
+## When is GPU worth it?
+
+The discrete-GPU win is real but narrow — it shows up for large `n` (≥ 16 k) and
+batched sampling, while for small `n` the CPU SIMD path wins on launch latency.
+See the [Benchmarks](/docs/benchmarks) page for the cross-over numbers, and the
+[Feature flags](/docs/concepts/feature-flags) page for how to enable each
+backend.

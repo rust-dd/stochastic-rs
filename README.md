@@ -16,14 +16,6 @@ where they pay off, and first-class Python bindings via PyO3.
 📖 **[stochastic.rust-dd.com](https://stochastic.rust-dd.com)** —
 full docs site (Fumadocs + Next.js, deployed on Vercel).
 
-Local preview from source under [`website/`](website/):
-
-```bash
-cd website
-bun install
-bun run dev          # http://localhost:3000
-```
-
 Highlights:
 
 - **120+ stochastic processes** — diffusion, jump, fractional / rough,

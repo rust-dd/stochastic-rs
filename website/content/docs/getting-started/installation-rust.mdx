@@ -144,6 +144,26 @@ entry in `~/.cargo/config.toml` so it composes with project configs.
 FGN and fBM ship four independent GPU / accelerator backends — pick the
 one that matches your hardware and toolchain.
 
+### The `.on::<B>()` selector (recommended)
+
+Select a backend at compile time with `.on::<B>()`, then call `sample()` /
+`sample_par()` as usual — the dispatch is monomorphised, with no runtime branch:
+
+```rust
+use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::simd_rng::Unseeded;
+
+let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+    .on::<CudaNative>()      // CudaNative | CubeCl | MetalNative | Accelerate | Cpu
+    .sample();
+```
+
+The markers only exist when their feature is compiled, so an unavailable backend
+is a compile error rather than a runtime fallback. See the
+[Backends](/docs/concepts/backends) concept page. The per-backend `sample_*`
+methods below are the lower-level calls `.on::<B>()` dispatches to.
+
 ### `cuda-native` — direct CUDA (NVIDIA, recommended)
 
 Direct binding via [`cudarc`](https://crates.io/crates/cudarc) + cuFFT
@@ -159,8 +179,9 @@ cargo bench --features cuda-native --bench fgn_cuda_native
 
 ```rust
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::simd_rng::Unseeded;
 
-let fgn = Fgn::<f32>::new(/* hurst */ 0.7, 65536, None);
+let fgn = Fgn::<f32, _>::new(/* hurst */ 0.7, 65_536, None, Unseeded);
 let path  = fgn.sample_cuda_native(1)?;     // single path on GPU
 let batch = fgn.sample_cuda_native(1024)?;  // 1024 paths in one launch
 ```

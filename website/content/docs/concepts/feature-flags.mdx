@@ -17,13 +17,18 @@ Rust core.
 | Feature           | Owner crate                 | Pulls in                             | Use when                                  |
 |-------------------|-----------------------------|--------------------------------------|-------------------------------------------|
 | `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
-| `cuda`            | `-stochastic`               | `cudarc`, `cuda-runtime`             | NVIDIA GPU FGN / fBM samplers             |
-| `metal`           | `-stochastic`               | `metal-rs`                           | macOS GPU FGN / fBM samplers              |
+| `cuda-native`     | `-stochastic`               | `cudarc` + cuFFT                     | NVIDIA GPU FGN / fBM (`CudaNative` backend) |
+| `gpu` / `gpu-cuda` / `gpu-wgpu` | `-stochastic` | `cubecl` (+ `cubecl-cuda` / `-wgpu`) | Portable CUDA / WebGPU kernels (`CubeCl` backend) |
+| `metal`           | `-stochastic`               | `metal`                             | macOS GPU FGN / fBM (`MetalNative` backend) |
+| `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend) |
 | `openblas`        | `-stats`, `-quant`          | `ndarray-linalg/openblas`            | MLE, multivariate copulas, Cholesky-heavy |
 | `viz`             | umbrella                    | `stochastic-rs-viz`, `plotly`        | Quick HTML plots                          |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~5–11 % bulk Ziggurat speedup on Apple Silicon — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
+
+The GPU / accelerator features above select a sampling backend chosen at compile
+time with `.on::<B>()` — see the [Backends](/docs/concepts/backends) concept page.
 
 ## Propagation
 
@@ -35,8 +40,8 @@ relevant sub-crate. Example from the umbrella `Cargo.toml`:
 default = []
 ai      = ["stochastic-rs-ai"]
 viz     = ["stochastic-rs-viz"]
-cuda    = ["stochastic-rs-stochastic/cuda"]
-metal   = ["stochastic-rs-stochastic/metal"]
+cuda-native = ["dep:cudarc", "stochastic-rs-stochastic/cuda-native"]
+metal       = ["dep:metal", "stochastic-rs-stochastic/metal"]
 openblas = [
   "stochastic-rs-stats/openblas",
   "stochastic-rs-quant/openblas",
@@ -59,8 +64,8 @@ stochastic-rs-stats = { version = "2.2.0", features = ["openblas"] }
 - **`openblas` is platform-specific.** On macOS use
   `RUSTFLAGS=-L/opt/homebrew/opt/openblas/lib` or the `system` linkage.
   On Linux `apt install libopenblas-dev`.
-- **`cuda` requires the CUDA toolkit on the build machine.** CI builds
-  do not install it by default.
+- **`cuda-native` / `gpu-cuda` require the CUDA toolkit on the build
+  machine.** CI builds do not install it by default.
 - **`ai` is heavy.** It pulls in `candle-core`, which is a substantial
   ML stack. Only enable when you actually need NN surrogates.
 
