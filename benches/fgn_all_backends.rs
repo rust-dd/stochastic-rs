@@ -84,17 +84,24 @@ fn bench_batch(c: &mut Criterion) {
   g.finish();
 }
 
-/// Large-batch throughput on the **same `n × m` grid as `CUDA_BENCHMARK.md`**, so
-/// the Apple figures line up with the i9-285K + RTX numbers. CPU, Accelerate and
-/// Metal scale to these sizes; wgpu (cubecl) panics above `1k × 1k` because its
-/// FFT dispatches more than WebGPU's 65535 workgroups-per-dimension limit.
+/// Large-batch throughput on the **same `n × m` grid as `CUDA_BENCHMARK.md`**
+/// (plus a `64k × 16k` ~4.3 GB case at the GPU memory wall), so the Apple figures
+/// line up with the i9-285K + RTX numbers. CPU, Accelerate and Metal scale to all
+/// of these on the 36 GB unified M4 Max; wgpu (cubecl) handles up to `16k × 16k`
+/// but is skipped at `64k × 16k` (one buffer exceeds wgpu's
+/// `maxStorageBufferBindingSize`).
 fn bench_batch_large(c: &mut Criterion) {
   let mut g = c.benchmark_group("FGN_batch_large");
   g.measurement_time(Duration::from_secs(4));
   g.warm_up_time(Duration::from_millis(500));
   g.sample_size(10);
 
-  let cases = [(1024usize, 1024usize), (4096, 16384), (16384, 16384)];
+  let cases = [
+    (1024usize, 1024usize),
+    (4096, 16384),
+    (16384, 16384),
+    (65536, 16384),
+  ];
 
   // Backend-outer ordering, riskiest (wgpu) last: it panics above 1k×1k, so the
   // CPU / Accelerate / Metal cases all complete before it runs.
@@ -127,6 +134,12 @@ fn bench_batch_large(c: &mut Criterion) {
     );
   }
   for &(n, m) in &cases {
+    // wgpu rejects a single buffer past its maxStorageBufferBindingSize; the
+    // 64k×16k case is ~4.3 GB/buffer, well over it. cubecl scales fine up to
+    // 16k×16k (~1 GB), so skip only the oversized case (Apple table shows "—").
+    if n.saturating_mul(m) > 268_435_456 {
+      continue;
+    }
     let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<CubeCl>();
     let _ = dev.sample_par(m);
     g.bench_with_input(
