@@ -6,9 +6,9 @@
 @source '../node_modules/fumadocs-ui/dist/**/*.js';
 
 :root {
-  --color-fd-background: 0 0% 100%;
+  --color-fd-background: hsl(0 0% 100%);
 }
 
 .dark {
-  --color-fd-background: 240 5% 6%;
+  --color-fd-background: hsl(240 5% 6%);
 }
