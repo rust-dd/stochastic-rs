@@ -209,4 +209,3 @@ impl SimdFloatExt for f64 {
     f64::MIN_POSITIVE
   }
 }
-

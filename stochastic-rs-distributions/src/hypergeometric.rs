@@ -49,8 +49,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
         - crate::special::ln_gamma(b + 1.0)
         - crate::special::ln_gamma(a - b + 1.0)
     };
-    let mut log_pmf =
-      ln_c(kk, k_min as f64) + ln_c(nn - kk, nd - k_min as f64) - ln_c(nn, nd);
+    let mut log_pmf = ln_c(kk, k_min as f64) + ln_c(nn - kk, nd - k_min as f64) - ln_c(nn, nd);
     let len = (k_max - k_min + 1) as usize;
     let mut cdf = Vec::with_capacity(len);
     let mut cum = log_pmf.exp();

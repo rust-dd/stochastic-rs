@@ -87,10 +87,9 @@ impl BtrsConstants {
       if us >= 0.07 && v <= self.v_r {
         return k as u32;
       }
-      let log_accept = self.h
-        - crate::special::ln_gamma(k + 1.0)
-        - crate::special::ln_gamma(nf - k + 1.0)
-        + (k - self.m) * self.lpq;
+      let log_accept =
+        self.h - crate::special::ln_gamma(k + 1.0) - crate::special::ln_gamma(nf - k + 1.0)
+          + (k - self.m) * self.lpq;
       if (v * self.alpha / (self.a / (us * us) + self.b)).ln() <= log_accept {
         return k as u32;
       }

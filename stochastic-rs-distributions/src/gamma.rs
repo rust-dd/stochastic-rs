@@ -291,7 +291,13 @@ mod tests {
   }
 
   fn gamma_cdf(alpha: f64, scale: f64) -> impl FnMut(f64) -> f64 {
-    move |x| if x <= 0.0 { 0.0 } else { gamma_p(alpha, x / scale) }
+    move |x| {
+      if x <= 0.0 {
+        0.0
+      } else {
+        gamma_p(alpha, x / scale)
+      }
+    }
   }
 
   #[test]
