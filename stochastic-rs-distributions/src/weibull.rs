@@ -19,44 +19,83 @@ pub struct SimdWeibull<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   lambda: T,
   inv_k: T,
   exp1: SimdExpZig<T, 64, R>,
-  simd_rng: UnsafeCell<R>,
+  buffer: UnsafeCell<[T; 16]>,
+  index: UnsafeCell<usize>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
-  /// Creates a Weibull distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  /// Each sub-component (exp, main rng) gets an independent stream.
+  /// Creates a Weibull distribution with the RNG seeded from a
+  /// [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, k: T, seed: &S) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
     Self {
       lambda,
       inv_k: T::one() / k,
       exp1: SimdExpZig::new(T::one(), seed),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
     }
   }
 
   /// Returns a single sample using the internal SIMD RNG.
+  /// Draws from a pre-filled buffer of `λ · E^{1/k}` values (E ~ Exp(1)).
   #[inline]
   pub fn sample_fast(&self) -> T {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let u = T::sample_uniform_simd(rng).max(T::min_positive_val());
-    self.lambda * (-u.ln()).powf(self.inv_k)
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
   }
 
   pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.exp1.fill_slice_fast(out);
+    self.fill_slice_fast(out);
+  }
+
+  /// Fills `out` with `λ · E^{1/k}` samples. Exp(1) magnitudes are drawn in
+  /// 64-blocks into a stack buffer and the power transform runs 8-wide, so
+  /// `out` is written exactly once (no fill-then-transform double pass).
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
     let lambda = T::splat(self.lambda);
     let inv_k = self.inv_k;
-    let mut chunks = out.chunks_exact_mut(8);
+    let mut tmp = [T::zero(); 64];
+    let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
-      let mut tmp = [T::zero(); 8];
-      tmp.copy_from_slice(chunk);
-      let x = T::simd_from_array(tmp);
-      let y = lambda * T::simd_powf(x, inv_k);
-      chunk.copy_from_slice(&T::simd_to_array(y));
+      self.exp1.fill_slice_fast(&mut tmp);
+      for (sub, e8) in chunk.chunks_exact_mut(8).zip(tmp.chunks_exact(8)) {
+        let mut a = [T::zero(); 8];
+        a.copy_from_slice(e8);
+        let y = lambda * T::simd_powf(T::simd_from_array(a), inv_k);
+        sub.copy_from_slice(&T::simd_to_array(y));
+      }
     }
-    for x in chunks.into_remainder().iter_mut() {
-      *x = self.lambda * (*x).powf(inv_k);
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      let n = rem.len();
+      self.exp1.fill_slice_fast(&mut tmp[..n]);
+      let mut off = 0;
+      let mut sub = rem.chunks_exact_mut(8);
+      for s in &mut sub {
+        let mut a = [T::zero(); 8];
+        a.copy_from_slice(&tmp[off..off + 8]);
+        let y = lambda * T::simd_powf(T::simd_from_array(a), inv_k);
+        s.copy_from_slice(&T::simd_to_array(y));
+        off += 8;
+      }
+      for (i, x) in sub.into_remainder().iter_mut().enumerate() {
+        *x = self.lambda * tmp[off + i].powf(inv_k);
+      }
+    }
+  }
+
+  fn refill_buffer(&self) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice_fast(buf);
+    unsafe {
+      *self.index.get() = 0;
     }
   }
 }
@@ -70,9 +109,13 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdWeibull<T, R> {
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdWeibull<T, R> {
   #[inline(always)]
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let u = T::sample_uniform_simd(rng).max(T::min_positive_val());
-    self.lambda * (-u.ln()).powf(self.inv_k)
+    let idx = unsafe { &mut *self.index.get() };
+    if *idx >= 16 {
+      self.refill_buffer();
+    }
+    let val = unsafe { (*self.buffer.get())[*idx] };
+    *idx += 1;
+    val
   }
 }
 

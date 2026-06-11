@@ -50,16 +50,35 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
     self.alpha.len()
   }
 
-  /// Closed-form sample via independent Gamma marginals + simplex normalisation.
-  pub fn sample_fast(&self) -> Vec<T> {
-    let ys: Vec<T> = self.gammas.iter().map(|g| g.sample_fast()).collect();
-    let sum: T = ys.iter().fold(T::zero(), |a, &b| a + b);
+  /// Closed-form sample via independent Gamma marginals + simplex
+  /// normalisation, written into `out` (length must equal `dim`) without
+  /// any per-draw allocation.
+  pub fn sample_into(&self, out: &mut [T]) {
+    assert_eq!(
+      out.len(),
+      self.alpha.len(),
+      "out and α must have the same dim"
+    );
+    let mut sum = T::zero();
+    for (x, g) in out.iter_mut().zip(self.gammas.iter()) {
+      *x = g.sample_fast();
+      sum = sum + *x;
+    }
     let sum_safe = if sum > T::zero() {
       sum
     } else {
       T::from_f64_fast(1e-300)
     };
-    ys.into_iter().map(|y| y / sum_safe).collect()
+    for x in out.iter_mut() {
+      *x = *x / sum_safe;
+    }
+  }
+
+  /// Allocating convenience wrapper around [`sample_into`](Self::sample_into).
+  pub fn sample_fast(&self) -> Vec<T> {
+    let mut out = vec![T::zero(); self.alpha.len()];
+    self.sample_into(&mut out);
+    out
   }
 
   /// Log-density at point `x` (must lie on the open $K-1$-simplex).

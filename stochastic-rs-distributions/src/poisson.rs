@@ -14,6 +14,7 @@ use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 
 pub struct SimdPoisson<T: PrimInt, R: SimdRngExt = SimdRng> {
+  lambda: f64,
   cdf: Box<[f64]>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
@@ -21,17 +22,26 @@ pub struct SimdPoisson<T: PrimInt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
+  /// Builds the cumulative table from log-space pmf increments
+  /// `ln pmf_k = -λ + k ln λ - ln Γ(k+1)`. The naive multiplicative
+  /// recurrence starts at `exp(-λ)`, which underflows to 0 for λ ≳ 745 and
+  /// then never recovers — the loop would run forever. The secondary stop
+  /// condition covers accumulated-rounding cases where `cum` converges a
+  /// few ulp below the `1 - 1e-15` target: past `2λ` with pmf < 4e-18 the
+  /// remaining tail mass is below the table's own epsilon.
   #[inline]
   fn build_cdf(lambda: f64) -> Box<[f64]> {
     let mut cdf = Vec::new();
-    let mut pmf = (-lambda).exp();
-    let mut cum = pmf;
+    let ln_lambda = lambda.ln();
+    let mut log_pmf = -lambda;
+    let mut cum = log_pmf.exp();
     cdf.push(cum);
 
     loop {
-      pmf *= lambda / (cdf.len() as f64);
-      cum += pmf;
-      if cum >= 1.0 - 1e-15 {
+      let k = cdf.len() as f64;
+      log_pmf += ln_lambda - k.ln();
+      cum += log_pmf.exp();
+      if cum >= 1.0 - 1e-15 || (k > 2.0 * lambda && log_pmf < -40.0) {
         cdf.push(1.0);
         break;
       }
@@ -44,6 +54,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: f64, seed: &S) -> Self {
     assert!(lambda > 0.0);
     Self {
+      lambda,
       cdf: Self::build_cdf(lambda),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
@@ -100,6 +111,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
 impl<T: PrimInt, R: SimdRngExt> Clone for SimdPoisson<T, R> {
   fn clone(&self) -> Self {
     Self {
+      lambda: self.lambda,
       cdf: self.cdf.clone(),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
@@ -121,11 +133,11 @@ impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdPoisson<T, R> {
 }
 
 impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
-  /// Recover the rate parameter from the precomputed CDF table.
-  /// `cdf[0] = e^{-λ}`, so `λ = -ln(cdf[0])`.
+  /// The rate parameter λ (stored at construction — the old
+  /// `-ln(cdf[0])` recovery breaks down once `e^{-λ}` underflows).
   #[inline]
   fn lambda(&self) -> f64 {
-    -self.cdf[0].ln()
+    self.lambda
   }
 }
 
@@ -220,3 +232,47 @@ py_distribution_int!(PyPoissonD, SimdPoisson,
   sig: (lambda_, seed=None),
   params: (lambda_: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::SimdPoisson;
+  use crate::traits::DistributionExt;
+
+  /// λ ≳ 745 made the old multiplicative table build spin forever on an
+  /// underflowed `exp(-λ)`; the log-space build must terminate and sample
+  /// with the right mean.
+  #[test]
+  fn poisson_large_lambda_table_terminates() {
+    let dist = SimdPoisson::<u64>::new(800.0, &Deterministic::new(3));
+    let mut buf = vec![0u64; 4096];
+    dist.fill_slice_fast(&mut buf);
+    let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / buf.len() as f64;
+    assert!(
+      (mean - 800.0).abs() < 3.0,
+      "λ=800 sample mean drift: {mean}"
+    );
+    assert!((dist.mean() - 800.0).abs() < 1e-9);
+  }
+
+  /// Log-space build must reproduce the small-λ table semantics.
+  #[test]
+  fn poisson_small_lambda_moments() {
+    let dist = SimdPoisson::<u32>::new(3.5, &Deterministic::new(11));
+    let mut buf = vec![0u32; 100_000];
+    dist.fill_slice_fast(&mut buf);
+    let n = buf.len() as f64;
+    let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / n;
+    let var = buf
+      .iter()
+      .map(|&x| {
+        let d = x as f64 - mean;
+        d * d
+      })
+      .sum::<f64>()
+      / n;
+    assert!((mean - 3.5).abs() < 0.05, "mean drift: {mean}");
+    assert!((var - 3.5).abs() < 0.15, "variance drift: {var}");
+  }
+}

@@ -21,7 +21,7 @@ use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
-use stochastic_rs_distributions::non_central_chi_squared;
+use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquared;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::process::poisson::Poisson;
@@ -135,14 +135,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
         * (self.lambda_plus.powf(self.alpha - f2) + self.lambda_minus.powf(self.alpha - f2)));
 
     // Cir exact-step constants (paper)
-    let c = (f2 * self.kappa) / ((T::one() - (-self.kappa * dt).exp()) * self.zeta.powi(2));
+    let exp_kdt = (-self.kappa * dt).exp();
+    let c = (f2 * self.kappa) / ((T::one() - exp_kdt) * self.zeta.powi(2));
     let df = T::from_usize_(4) * self.kappa * self.eta / self.zeta.powi(2);
 
     // 1) Simulate v on the grid via noncentral chi-square
+    let nchi2 = SimdNonCentralChiSquared::<T>::new(df, &self.seed);
     for i in 1..self.n {
-      let ncp = f2 * c * v[i - 1] * (-self.kappa * dt).exp();
-      let xi = non_central_chi_squared::sample(df, ncp, &self.seed);
-      v[i] = xi / (f2 * c);
+      let ncp = f2 * c * v[i - 1] * exp_kdt;
+      v[i] = nchi2.sample_ncp(ncp) / (f2 * c);
     }
 
     // 2) Series random variables (Algorithm 1 uses j=1..J with Γ0=0)

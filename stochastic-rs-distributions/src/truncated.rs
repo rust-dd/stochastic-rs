@@ -34,13 +34,14 @@
 //! - Devroye, L. (1986), *Non-Uniform Random Variate Generation*,
 //!   Springer, §II.3 (general rejection).
 
+use std::cell::UnsafeCell;
+
 use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::beta::SimdBeta;
-use crate::exp::SimdExp;
 use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
 use crate::simd_rng::SimdRng;
@@ -56,10 +57,13 @@ pub struct SimdTruncatedNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   lower: T,
   upper: T,
   base: SimdNormal<T, 64, R>,
-  /// Cached probability mass $F(\text{upper}) - F(\text{lower})$ — needed
-  /// for the normalising constant of the density and the inverse-CDF
-  /// fallback in tight intervals.
+  /// Cached CDF values $F(\text{lower})$ / $F(\text{upper})$ and their
+  /// difference — the normalising constant of the density and the affine
+  /// map of the inverse-CDF fallback in tight intervals.
+  f_lo: f64,
+  f_up: f64,
   norm_mass: f64,
+  simd_rng: UnsafeCell<R>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
@@ -69,17 +73,18 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
     assert!(lower < upper, "lower bound must be < upper bound");
     let mean_f64 = mean.to_f64().unwrap();
     let std_f64 = std_dev.to_f64().unwrap();
-    let lo_f64 = lower.to_f64().unwrap();
-    let up_f64 = upper.to_f64().unwrap();
-    let norm_mass = norm_cdf_scalar((up_f64 - mean_f64) / std_f64)
-      - norm_cdf_scalar((lo_f64 - mean_f64) / std_f64);
+    let f_lo = norm_cdf_scalar((lower.to_f64().unwrap() - mean_f64) / std_f64);
+    let f_up = norm_cdf_scalar((upper.to_f64().unwrap() - mean_f64) / std_f64);
     Self {
       mean,
       std_dev,
       lower,
       upper,
       base: SimdNormal::<T, 64, R>::new(mean, std_dev, seed),
-      norm_mass,
+      f_lo,
+      f_up,
+      norm_mass: f_up - f_lo,
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
@@ -106,17 +111,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
 
   /// Inverse-CDF sample: $X = F^{-1}(F(\text{lower}) + U \cdot (F(\text{upper}) - F(\text{lower})))$.
   fn inverse_cdf_sample(&self) -> T {
-    let mean_f64 = self.mean.to_f64().unwrap();
-    let std_f64 = self.std_dev.to_f64().unwrap();
-    let lo_f64 = self.lower.to_f64().unwrap();
-    let up_f64 = self.upper.to_f64().unwrap();
-    let f_lo = norm_cdf_scalar((lo_f64 - mean_f64) / std_f64);
-    let f_up = norm_cdf_scalar((up_f64 - mean_f64) / std_f64);
-    let mut rng = rand::rng();
-    let u: f64 = rng.random_range(0.0..1.0);
-    let q = f_lo + u * (f_up - f_lo);
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let q = self.f_lo + rng.next_f64() * (self.f_up - self.f_lo);
     let z = crate::special::ndtri(q);
-    T::from_f64_fast(mean_f64 + std_f64 * z)
+    T::from_f64_fast(self.mean.to_f64().unwrap() + self.std_dev.to_f64().unwrap() * z)
   }
 }
 
@@ -170,8 +168,10 @@ pub struct SimdTruncatedExp<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   lambda: T,
   lower: T,
   upper: T,
+  f_lo: f64,
+  f_up: f64,
   norm_mass: f64,
-  _base: SimdExp<T, R>,
+  simd_rng: UnsafeCell<R>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedExp<T, R> {
@@ -192,28 +192,20 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedExp<T, R> {
       lambda,
       lower,
       upper,
+      f_lo,
+      f_up,
       norm_mass: f_up - f_lo,
-      _base: SimdExp::<T, R>::new(lambda, seed),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
   /// Closed-form inverse-CDF draw: $X = -\ln(1 - U(F(\text{upper}) - F(\text{lower})) - F(\text{lower}))/\lambda$.
   #[inline]
   pub fn sample_fast(&self) -> T {
-    let lam = self.lambda.to_f64().unwrap();
-    let lo = self.lower.to_f64().unwrap();
-    let up = self.upper.to_f64().unwrap();
-    let f_lo = 1.0 - (-lam * lo).exp();
-    let f_up = if up.is_infinite() {
-      1.0
-    } else {
-      1.0 - (-lam * up).exp()
-    };
-    let mut rng = rand::rng();
-    let u: f64 = rng.random_range(0.0..1.0);
-    let q = f_lo + u * (f_up - f_lo);
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let q = self.f_lo + rng.next_f64() * (self.f_up - self.f_lo);
     let arg = (1.0 - q).max(1e-300);
-    T::from_f64_fast(-arg.ln() / lam)
+    T::from_f64_fast(-arg.ln() / self.lambda.to_f64().unwrap())
   }
 }
 

@@ -66,24 +66,45 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
       }
       return;
     }
-    // Phase 1: fill the whole output with U(0, 1) via direct SIMD stores
-    // (one engine call per 4-lane f64 chunk / 8-lane f32 chunk).
-    T::fill_uniform_simd(rng, out);
-    // Phase 2: skip the affine transform on the [0, 1) fast path.
+    // [0, 1) fast path: fill the whole output with U(0, 1) via direct SIMD
+    // stores (one engine call per 4-lane f64 chunk / 8-lane f32 chunk).
     if self.low.is_zero() && self.scale == T::one() {
+      T::fill_uniform_simd(rng, out);
       return;
     }
+    // Affine path: generate U(0, 1) into a 256-element stack block (one
+    // tight engine loop, stays in L1), then apply the transform 8-wide on
+    // the way out — `out` is written exactly once instead of the previous
+    // fill-then-read-modify-write double pass over the whole slice.
     let low = T::splat(self.low);
     let scale = T::splat(self.scale);
-    let mut chunks = out.chunks_exact_mut(8);
+    let mut tmp = [T::zero(); 256];
+    let mut chunks = out.chunks_exact_mut(256);
     for chunk in &mut chunks {
-      let mut tmp = [T::zero(); 8];
-      tmp.copy_from_slice(chunk);
-      let vals = T::simd_to_array(low + T::simd_from_array(tmp) * scale);
-      chunk.copy_from_slice(&vals);
+      T::fill_uniform_simd(rng, &mut tmp);
+      for (sub, u8) in chunk.chunks_exact_mut(8).zip(tmp.chunks_exact(8)) {
+        let mut a = [T::zero(); 8];
+        a.copy_from_slice(u8);
+        let vals = T::simd_to_array(low + T::simd_from_array(a) * scale);
+        sub.copy_from_slice(&vals);
+      }
     }
-    for x in chunks.into_remainder() {
-      *x = self.low + *x * self.scale;
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+      let n = rem.len();
+      T::fill_uniform_simd(rng, &mut tmp[..n]);
+      let mut off = 0;
+      let mut sub = rem.chunks_exact_mut(8);
+      for s in &mut sub {
+        let mut a = [T::zero(); 8];
+        a.copy_from_slice(&tmp[off..off + 8]);
+        let vals = T::simd_to_array(low + T::simd_from_array(a) * scale);
+        s.copy_from_slice(&vals);
+        off += 8;
+      }
+      for (i, x) in sub.into_remainder().iter_mut().enumerate() {
+        *x = self.low + tmp[off + i] * self.scale;
+      }
     }
   }
 

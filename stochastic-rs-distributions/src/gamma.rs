@@ -4,6 +4,16 @@
 //! f(x)=\frac{\beta^\alpha}{\Gamma(\alpha)}x^{\alpha-1}e^{-\beta x},\ x>0
 //! $$
 //!
+//! Sampling: Marsaglia-Tsang squeeze method over the buffered SIMD normal
+//! and uniform sources. The squeeze loop itself stays scalar — an 8-lane
+//! batched variant was measured slower on 128-bit SIMD targets, where the
+//! lane bookkeeping outweighs the vectorised arithmetic and the inputs are
+//! already SIMD-amortised. `α < 1` is boosted via
+//! $\mathrm{Gamma}(\alpha) = \mathrm{Gamma}(\alpha+1) \cdot U^{1/\alpha}$.
+//!
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for
+//! generating gamma variables", *ACM TOMS* 26(3), 363-372,
+//! DOI: 10.1145/358407.358414.
 use std::cell::UnsafeCell;
 
 use rand::Rng;
@@ -56,57 +66,53 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
     self.fill_slice_fast(out);
   }
 
+  /// One scalar Marsaglia-Tsang draw of `d·v` (unscaled `Gamma(α_eff, 1)`),
+  /// used by short fills, tails and the rare SIMD lane rejections.
+  #[inline]
+  fn sample_mt_one(rng: &mut R, normal: &SimdNormal<T, 64, R>, d: T, c: T) -> T {
+    let c1 = T::from(0.0331).unwrap();
+    let half = T::from(0.5).unwrap();
+    loop {
+      let z = normal.sample_fast();
+      let t = T::one() + c * z;
+      let v = t * t * t;
+      if v <= T::zero() {
+        continue;
+      }
+      let u = T::sample_uniform_simd(rng);
+      let z2 = z * z;
+      if u < T::one() - c1 * z2 * z2 {
+        return d * v;
+      }
+      if u.ln() < half * z2 + d * (T::one() - v + v.ln()) {
+        return d * v;
+      }
+    }
+  }
+
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let third = T::from(1.0 / 3.0).unwrap();
-    let c1 = T::from(0.0331).unwrap();
-    let half = T::from(0.5).unwrap();
     let nine = T::from(9.0).unwrap();
+    let boosted = self.alpha < T::one();
+    let alpha_eff = if boosted {
+      self.alpha + T::one()
+    } else {
+      self.alpha
+    };
+    let d = alpha_eff - third;
+    let c = T::one() / (nine * d).sqrt();
 
-    if self.alpha < T::one() {
-      let alpha_plus_one = self.alpha + T::one();
-      let d = alpha_plus_one - third;
-      let c = T::one() / (nine * d).sqrt();
+    if boosted {
       let inv_alpha = T::one() / self.alpha;
       for x in out.iter_mut() {
-        let g = loop {
-          let z: T = self.normal.sample(rng);
-          let v = (T::one() + c * z).powi(3);
-          if v <= T::zero() {
-            continue;
-          }
-          let u: T = T::sample_uniform_simd(rng);
-          let z2 = z * z;
-          if u < T::one() - c1 * z2 * z2 {
-            break d * v;
-          }
-          if u.ln() < half * z2 + d * (T::one() - v + v.ln()) {
-            break d * v;
-          }
-        };
-        let u: T = T::sample_uniform_simd(rng);
+        let g = Self::sample_mt_one(rng, &self.normal, d, c);
+        let u = T::sample_uniform_simd(rng);
         *x = self.scale * g * u.powf(inv_alpha);
       }
     } else {
-      let d = self.alpha - third;
-      let c = T::one() / (nine * d).sqrt();
       for x in out.iter_mut() {
-        let val = loop {
-          let z: T = self.normal.sample(rng);
-          let v = (T::one() + c * z).powi(3);
-          if v <= T::zero() {
-            continue;
-          }
-          let u: T = T::sample_uniform_simd(rng);
-          let z2 = z * z;
-          if u < T::one() - c1 * z2 * z2 {
-            break d * v;
-          }
-          if u.ln() < half * z2 + d * (T::one() - v + v.ln()) {
-            break d * v;
-          }
-        };
-        *x = self.scale * val;
+        *x = self.scale * Self::sample_mt_one(rng, &self.normal, d, c);
       }
     }
   }
@@ -262,3 +268,59 @@ py_distribution!(PyGamma, SimdGamma,
   sig: (alpha, scale, seed=None, dtype=None),
   params: (alpha: f64, scale: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::SimdGamma;
+  use crate::special::gamma_p;
+
+  fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
+    samples.sort_by(f64::total_cmp);
+    let n = samples.len() as f64;
+    let mut d = 0.0_f64;
+    for (i, &x) in samples.iter().enumerate() {
+      let f = cdf(x).clamp(0.0, 1.0);
+      let i_f = i as f64;
+      let d_plus = ((i_f + 1.0) / n - f).abs();
+      let d_minus = (f - i_f / n).abs();
+      d = d.max(d_plus.max(d_minus));
+    }
+    d
+  }
+
+  fn gamma_cdf(alpha: f64, scale: f64) -> impl FnMut(f64) -> f64 {
+    move |x| if x <= 0.0 { 0.0 } else { gamma_p(alpha, x / scale) }
+  }
+
+  #[test]
+  fn simd_gamma_fill_matches_theoretical_distribution() {
+    const N: usize = 40_000;
+    let dist = SimdGamma::<f64>::new(2.5, 1.5, &Deterministic::new(42));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice_fast(&mut samples);
+    assert!(samples.iter().all(|x| x.is_finite() && *x > 0.0));
+    let d = ks_statistic(&mut samples, gamma_cdf(2.5, 1.5));
+    let ks_critical = 2.0 / (N as f64).sqrt();
+    assert!(
+      d < ks_critical,
+      "gamma KS statistic too large: D={d}, critical={ks_critical}"
+    );
+  }
+
+  #[test]
+  fn simd_gamma_boosted_alpha_below_one_matches_theory() {
+    const N: usize = 40_000;
+    let dist = SimdGamma::<f64>::new(0.5, 2.0, &Deterministic::new(7));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice_fast(&mut samples);
+    assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
+    let d = ks_statistic(&mut samples, gamma_cdf(0.5, 2.0));
+    let ks_critical = 2.0 / (N as f64).sqrt();
+    assert!(
+      d < ks_critical,
+      "boosted gamma KS statistic too large: D={d}, critical={ks_critical}"
+    );
+  }
+}

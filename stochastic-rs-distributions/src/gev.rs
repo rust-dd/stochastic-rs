@@ -45,6 +45,8 @@
 //! - McNeil, A.J., Frey, R., Embrechts, P. (2015),
 //!   *Quantitative Risk Management*, Princeton UP, §7.2.
 
+use std::cell::UnsafeCell;
+
 use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -55,47 +57,111 @@ use crate::simd_rng::SimdRngExt;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
 
+const SMALL_GEV_THRESHOLD: usize = 16;
+
 /// Generalized Extreme Value distribution. Three free parameters: location
 /// `μ`, scale `σ > 0`, shape `ξ`.
 ///
-/// The struct stores the parameters; sampling and density use the
-/// closed-form inverse-CDF / PDF derived in the module docs.
+/// Sampling uses the closed-form inverse CDF from the module docs on the
+/// internal SIMD RNG — bulk fills vectorise the `ln` / `powf` chain 8-wide.
 pub struct SimdGev<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   mu: T,
   sigma: T,
   xi: T,
-  _seed: std::marker::PhantomData<R>,
+  buffer: UnsafeCell<[T; 16]>,
+  index: UnsafeCell<usize>,
+  simd_rng: UnsafeCell<R>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
   /// Construct a GEV$(\mu, \sigma, \xi)$.
-  pub fn new<S: SeedExt>(mu: T, sigma: T, xi: T, _seed: &S) -> Self {
+  pub fn new<S: SeedExt>(mu: T, sigma: T, xi: T, seed: &S) -> Self {
     assert!(sigma > T::zero(), "σ must be positive");
     Self {
       mu,
       sigma,
       xi,
-      _seed: std::marker::PhantomData,
+      buffer: UnsafeCell::new([T::zero(); 16]),
+      index: UnsafeCell::new(16),
+      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
-  /// Single sample via inverse-CDF on an independent `Uniform(0, 1)`
-  /// draw from the thread RNG.
+  /// Returns a single sample using the internal SIMD RNG.
   #[inline]
   pub fn sample_fast(&self) -> T {
-    let mut rng = rand::rng();
-    let u: f64 = rng.random_range(1e-12..1.0 - 1e-12);
-    let mu = self.mu.to_f64().unwrap();
-    let sigma = self.sigma.to_f64().unwrap();
-    let xi = self.xi.to_f64().unwrap();
+    let index = unsafe { &mut *self.index.get() };
+    if *index >= 16 {
+      self.refill_buffer();
+    }
+    let buf = unsafe { &mut *self.buffer.get() };
+    let z = buf[*index];
+    *index += 1;
+    z
+  }
+
+  /// Clamp a uniform draw to the open unit interval so the `ln` chain stays
+  /// finite at the lane level (mirrors the `1e-12` guard of the scalar path).
+  #[inline]
+  fn clamp_open_unit(x: T) -> T {
+    let eps = T::from_f64_fast(1e-12);
+    x.max(eps).min(T::one() - eps)
+  }
+
+  /// One inverse-CDF draw on the internal RNG.
+  #[inline]
+  fn sample_one(&self, rng: &mut R, gumbel: bool) -> T {
+    let u = Self::clamp_open_unit(T::sample_uniform_simd(rng));
     let m_ln_u = -u.ln();
-    let x = if xi.abs() < 1e-12 {
-      // Gumbel limit ξ → 0: X = μ - σ · ln(-ln U).
-      mu - sigma * m_ln_u.ln()
+    if gumbel {
+      self.mu - self.sigma * m_ln_u.ln()
     } else {
-      mu - (sigma / xi) * (1.0 - m_ln_u.powf(-xi))
-    };
-    T::from_f64_fast(x)
+      self.mu - (self.sigma / self.xi) * (T::one() - m_ln_u.powf(-self.xi))
+    }
+  }
+
+  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
+    self.fill_slice_fast(out);
+  }
+
+  /// Fills `out` with GEV samples; the inverse-CDF transform runs 8-wide.
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let gumbel = self.xi.to_f64().unwrap().abs() < 1e-12;
+    if out.len() < SMALL_GEV_THRESHOLD {
+      for x in out.iter_mut() {
+        *x = self.sample_one(rng, gumbel);
+      }
+      return;
+    }
+    let mu = T::splat(self.mu);
+    let one = T::splat(T::one());
+    let mut u = [T::zero(); 8];
+    let mut chunks = out.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+      T::fill_uniform_simd(rng, &mut u);
+      for x in u.iter_mut() {
+        *x = Self::clamp_open_unit(*x);
+      }
+      let m_ln_u = -T::simd_ln(T::simd_from_array(u));
+      let x = if gumbel {
+        mu - T::splat(self.sigma) * T::simd_ln(m_ln_u)
+      } else {
+        mu - T::splat(self.sigma / self.xi) * (one - T::simd_powf(m_ln_u, -self.xi))
+      };
+      chunk.copy_from_slice(&T::simd_to_array(x));
+    }
+    for x in chunks.into_remainder().iter_mut() {
+      *x = self.sample_one(rng, gumbel);
+    }
+  }
+
+  fn refill_buffer(&self) {
+    let buf = unsafe { &mut *self.buffer.get() };
+    self.fill_slice_fast(buf);
+    unsafe {
+      *self.index.get() = 0;
+    }
   }
 
   /// Closed-form support: returns `(lo, hi)` as the open interval on
@@ -123,7 +189,13 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGev<T, R> {
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGev<T, R> {
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    self.sample_fast()
+    let idx = unsafe { &mut *self.index.get() };
+    if *idx >= 16 {
+      self.refill_buffer();
+    }
+    let val = unsafe { (*self.buffer.get())[*idx] };
+    *idx += 1;
+    val
   }
 }
 
@@ -230,6 +302,18 @@ mod tests {
       let x = -(1.0 / 0.2) * (1.0 - m_ln_u.powf(-0.2));
       let f = g.cdf(x);
       assert!((f - u).abs() < 1e-10, "F({x}) = {f}, expected {u}");
+    }
+  }
+
+  /// Deterministic seeds must reproduce identical streams (the seed was
+  /// silently ignored before the internal RNG landed).
+  #[test]
+  fn gev_deterministic_seed_reproduces_stream() {
+    use stochastic_rs_core::simd_rng::Deterministic;
+    let a = SimdGev::<f64>::new(0.5, 1.2, 0.3, &Deterministic::new(7));
+    let b = SimdGev::<f64>::new(0.5, 1.2, 0.3, &Deterministic::new(7));
+    for _ in 0..256 {
+      assert_eq!(a.sample_fast(), b.sample_fast());
     }
   }
 

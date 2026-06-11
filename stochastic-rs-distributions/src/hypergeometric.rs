@@ -4,8 +4,15 @@
 //! \mathbb{P}(X=k)=\frac{\binom{K}{k}\binom{N-K}{n-k}}{\binom{N}{n}}
 //! $$
 //!
+//! Sampling: inverse transform on a cumulative table precomputed over the
+//! support via the log-space pmf recurrence — one uniform plus a binary
+//! search per draw instead of the naive `n_draws` Bernoulli trials.
+//!
+//! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer
+//! generation of hypergeometric random variates", *Journal of Statistical
+//! Computation and Simulation* 22, 127-145, DOI: 10.1080/00949658508810839
+//! (inverse-transform family).
 use std::cell::UnsafeCell;
-use std::marker::PhantomData;
 
 use num_traits::PrimInt;
 use rand::Rng;
@@ -19,27 +26,63 @@ pub struct SimdHypergeometric<T: PrimInt, R: SimdRngExt = SimdRng> {
   n_total: u32,
   k_success: u32,
   n_draws: u32,
+  k_min: u32,
+  cdf: Box<[f64]>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
-  _marker: PhantomData<T>,
 }
 
 impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
+  /// Builds the cumulative table over the support `[k_min, k_max]`. The
+  /// pmf recurrence runs in log space, so edge-of-support underflow (far
+  /// tails of large populations) only zeroes the negligible tail terms
+  /// instead of poisoning the whole table.
+  fn build_cdf(n_total: u32, k_success: u32, n_draws: u32) -> (u32, Box<[f64]>) {
+    let nn = n_total as f64;
+    let kk = k_success as f64;
+    let nd = n_draws as f64;
+    let k_min = n_draws.saturating_sub(n_total - k_success);
+    let k_max = n_draws.min(k_success);
+    let ln_c = |a: f64, b: f64| {
+      crate::special::ln_gamma(a + 1.0)
+        - crate::special::ln_gamma(b + 1.0)
+        - crate::special::ln_gamma(a - b + 1.0)
+    };
+    let mut log_pmf =
+      ln_c(kk, k_min as f64) + ln_c(nn - kk, nd - k_min as f64) - ln_c(nn, nd);
+    let len = (k_max - k_min + 1) as usize;
+    let mut cdf = Vec::with_capacity(len);
+    let mut cum = log_pmf.exp();
+    cdf.push(cum.min(1.0));
+    for k in k_min..k_max {
+      let kf = k as f64;
+      log_pmf += ((kk - kf) * (nd - kf)).ln() - ((kf + 1.0) * (nn - kk - nd + kf + 1.0)).ln();
+      cum += log_pmf.exp();
+      cdf.push(cum.min(1.0));
+    }
+    cdf[len - 1] = 1.0;
+    (k_min, cdf.into_boxed_slice())
+  }
+
   pub fn new<S: crate::simd_rng::SeedExt>(
     n_total: u32,
     k_success: u32,
     n_draws: u32,
     seed: &S,
   ) -> Self {
+    assert!(k_success <= n_total, "k_success must be ≤ n_total");
+    assert!(n_draws <= n_total, "n_draws must be ≤ n_total");
+    let (k_min, cdf) = Self::build_cdf(n_total, k_success, n_draws);
     Self {
       n_total,
       k_success,
       n_draws,
+      k_min,
+      cdf,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
-      _marker: PhantomData,
     }
   }
 
@@ -74,20 +117,9 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
 
   pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
     for x in out.iter_mut() {
-      let mut count = 0u32;
-      let mut rem_succ = self.k_success;
-      let mut rem_tot = self.n_total;
-      let mut draws = self.n_draws;
-      while draws > 0 {
-        let u: f64 = rng.random();
-        if u < (rem_succ as f64) / (rem_tot as f64) {
-          count += 1;
-          rem_succ -= 1;
-        }
-        rem_tot -= 1;
-        draws -= 1;
-      }
-      *x = num_traits::cast(count).unwrap_or(T::zero());
+      let u: f64 = rng.random();
+      let k = self.k_min as usize + self.cdf.partition_point(|&p| p < u);
+      *x = num_traits::cast(k).unwrap_or(T::zero());
     }
   }
 
@@ -226,3 +258,60 @@ py_distribution_int!(PyHypergeometric, SimdHypergeometric,
   sig: (n_total, k_success, n_draws, seed=None),
   params: (n_total: u32, k_success: u32, n_draws: u32)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::SimdHypergeometric;
+  use crate::traits::DistributionExt;
+
+  #[test]
+  fn hypergeometric_inversion_matches_population_moments() {
+    let dist = SimdHypergeometric::<u32>::new(500, 200, 100, &Deterministic::new(21));
+    let mut buf = vec![0u32; 100_000];
+    dist.fill_slice_fast(&mut buf);
+    let n = buf.len() as f64;
+    let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / n;
+    let var = buf
+      .iter()
+      .map(|&x| {
+        let d = x as f64 - mean;
+        d * d
+      })
+      .sum::<f64>()
+      / n;
+    assert!(buf.iter().all(|&x| x <= 100));
+    assert!(
+      (mean - dist.mean()).abs() < 0.1,
+      "mean drift: {mean} vs {}",
+      dist.mean()
+    );
+    assert!(
+      (var / dist.variance() - 1.0).abs() < 0.05,
+      "variance drift: {var} vs {}",
+      dist.variance()
+    );
+  }
+
+  #[test]
+  fn hypergeometric_pmf_matches_empirical() {
+    const SAMPLES: usize = 200_000;
+    let dist = SimdHypergeometric::<u32>::new(60, 25, 20, &Deterministic::new(5));
+    let mut buf = vec![0u32; SAMPLES];
+    dist.fill_slice_fast(&mut buf);
+    let mut counts = [0usize; 21];
+    for &x in &buf {
+      counts[x as usize] += 1;
+    }
+    for (k, &got) in counts.iter().enumerate().take(14).skip(4) {
+      let pmf = dist.pdf(k as f64);
+      let expected = pmf * SAMPLES as f64;
+      let se = (expected * (1.0 - pmf)).sqrt();
+      assert!(
+        (got as f64 - expected).abs() < 5.0 * se + 1.0,
+        "PMF mismatch at k={k}: got {got}, expected {expected}"
+      );
+    }
+  }
+}

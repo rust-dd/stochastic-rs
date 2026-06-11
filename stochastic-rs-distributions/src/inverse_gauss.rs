@@ -82,35 +82,41 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
     let four = T::splat(T::from(4.0).unwrap());
     let mu = T::splat(self.mu);
     let lam = T::splat(self.lambda);
-    let mut zbuf = [T::zero(); 8];
-    let mut ubuf = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
+    let mut zbuf = [T::zero(); 64];
+    let mut ubuf = [T::zero(); 64];
+    let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
-      self.normal.fill_slice_fast(&mut zbuf);
+      self.normal.fill_standard_fast(&mut zbuf);
       T::fill_uniform_simd(rng, &mut ubuf);
-      let z = T::simd_from_array(zbuf);
-      let u = T::simd_from_array(ubuf);
-      let w = z * z;
-      let t1 = mu + (mu * mu * w) / (two * lam);
-      let rad = T::simd_sqrt(four * mu * lam * w + mu * mu * w * w);
-      let x = t1 - (mu / (two * lam)) * rad;
-      let check = mu / (mu + x);
-      let alt = (mu * mu) / x;
-      let ua = T::simd_to_array(u);
-      let xa = T::simd_to_array(x);
-      let ca = T::simd_to_array(check);
-      let aa = T::simd_to_array(alt);
-      for j in 0..8 {
-        chunk[j] = if ua[j] < ca[j] { xa[j] } else { aa[j] };
+      for (sub, (z8, u8)) in chunk
+        .chunks_exact_mut(8)
+        .zip(zbuf.chunks_exact(8).zip(ubuf.chunks_exact(8)))
+      {
+        let mut za = [T::zero(); 8];
+        za.copy_from_slice(z8);
+        let z = T::simd_from_array(za);
+        let w = z * z;
+        let t1 = mu + (mu * mu * w) / (two * lam);
+        let rad = T::simd_sqrt(four * mu * lam * w + mu * mu * w * w);
+        let x = t1 - (mu / (two * lam)) * rad;
+        let check = mu / (mu + x);
+        let alt = (mu * mu) / x;
+        let xa = T::simd_to_array(x);
+        let ca = T::simd_to_array(check);
+        let aa = T::simd_to_array(alt);
+        for j in 0..8 {
+          sub[j] = if u8[j] < ca[j] { xa[j] } else { aa[j] };
+        }
       }
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.normal.fill_slice_fast(&mut zbuf);
-      T::fill_uniform_simd(rng, &mut ubuf);
+      let n = rem.len();
+      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      T::fill_uniform_simd(rng, &mut ubuf[..n]);
       let two_s = T::from(2.0).unwrap();
       let four_s = T::from(4.0).unwrap();
-      for i in 0..rem.len() {
+      for i in 0..n {
         let z = zbuf[i];
         let u = ubuf[i];
         let w = z * z;

@@ -60,33 +60,40 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
 
   pub fn fill_slice_fast(&self, out: &mut [T]) {
     if out.len() < SMALL_BETA_THRESHOLD {
-      let mut rng = crate::simd_rng::SimdRng::new();
       for x in out.iter_mut() {
-        let a = self.gamma1.sample(&mut rng);
-        let b = self.gamma2.sample(&mut rng);
+        let a = self.gamma1.sample_fast();
+        let b = self.gamma2.sample_fast();
         *x = a / (a + b);
       }
       return;
     }
-    let mut g1 = [T::zero(); 8];
-    let mut g2 = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
+    let mut g1 = [T::zero(); 64];
+    let mut g2 = [T::zero(); 64];
+    let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
       self.gamma1.fill_slice_fast(&mut g1);
       self.gamma2.fill_slice_fast(&mut g2);
-      let a = T::simd_from_array(g1);
-      let b = T::simd_from_array(g2);
-      let x = a / (a + b);
-      chunk.copy_from_slice(&T::simd_to_array(x));
+      for (sub, (a8, b8)) in chunk
+        .chunks_exact_mut(8)
+        .zip(g1.chunks_exact(8).zip(g2.chunks_exact(8)))
+      {
+        let mut aa = [T::zero(); 8];
+        let mut ba = [T::zero(); 8];
+        aa.copy_from_slice(a8);
+        ba.copy_from_slice(b8);
+        let a = T::simd_from_array(aa);
+        let b = T::simd_from_array(ba);
+        sub.copy_from_slice(&T::simd_to_array(a / (a + b)));
+      }
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.gamma1.fill_slice_fast(&mut g1);
-      self.gamma2.fill_slice_fast(&mut g2);
-      let a = T::simd_from_array(g1);
-      let b = T::simd_from_array(g2);
-      let x = T::simd_to_array(a / (a + b));
-      rem.copy_from_slice(&x[..rem.len()]);
+      let n = rem.len();
+      self.gamma1.fill_slice_fast(&mut g1[..n]);
+      self.gamma2.fill_slice_fast(&mut g2[..n]);
+      for i in 0..n {
+        rem[i] = g1[i] / (g1[i] + g2[i]);
+      }
     }
   }
 

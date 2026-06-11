@@ -69,25 +69,32 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
       return;
     }
     let inv_nu = T::splat(T::one() / self.nu);
-    let mut zbuf = [T::zero(); 8];
-    let mut vbuf = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
+    let mut zbuf = [T::zero(); 64];
+    let mut vbuf = [T::zero(); 64];
+    let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
-      self.normal.fill_slice_fast(&mut zbuf);
+      self.normal.fill_standard_fast(&mut zbuf);
       self.chisq.fill_slice_fast(&mut vbuf);
-      let z = T::simd_from_array(zbuf);
-      let v = T::simd_from_array(vbuf);
-      let x = z / T::simd_sqrt(v * inv_nu);
-      chunk.copy_from_slice(&T::simd_to_array(x));
+      for (sub, (z8, v8)) in chunk
+        .chunks_exact_mut(8)
+        .zip(zbuf.chunks_exact(8).zip(vbuf.chunks_exact(8)))
+      {
+        let mut za = [T::zero(); 8];
+        let mut va = [T::zero(); 8];
+        za.copy_from_slice(z8);
+        va.copy_from_slice(v8);
+        let x = T::simd_from_array(za) / T::simd_sqrt(T::simd_from_array(va) * inv_nu);
+        sub.copy_from_slice(&T::simd_to_array(x));
+      }
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.normal.fill_slice_fast(&mut zbuf);
-      self.chisq.fill_slice_fast(&mut vbuf);
-      let z = T::simd_from_array(zbuf);
-      let v = T::simd_from_array(vbuf);
-      let x = T::simd_to_array(z / T::simd_sqrt(v * inv_nu));
-      rem.copy_from_slice(&x[..rem.len()]);
+      let n = rem.len();
+      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      self.chisq.fill_slice_fast(&mut vbuf[..n]);
+      for i in 0..n {
+        rem[i] = zbuf[i] / (vbuf[i] / self.nu).sqrt();
+      }
     }
   }
 
