@@ -81,58 +81,13 @@ impl SimdRng {
     unsafe { core::mem::transmute::<u32x8, i32x8>(raw) }
   }
 
-  /// Returns 8 uniform `f64` values in `[0, 1)`.
-  ///
-  /// Two SIMD iterations of the 64-bit xoshiro256++ engine give 4×u64 each.
-  /// The top 52 bits of each lane are OR-ed into the bit pattern of `1.0`,
-  /// producing a vector in `[1.0, 2.0)` reinterpretable as `f64x4`; the
-  /// subsequent SIMD subtract of `1.0` lands the result in `[0, 1)`.
-  /// 52-bit precision (1 ULP shy of the 53-bit scalar variant) in exchange
-  /// for a fully vectorised pipeline.
-  ///
-  /// For bulk fills prefer [`fill_uniform_f64`](Self::fill_uniform_f64),
-  /// which writes f64x4 stores directly into the caller's slice and avoids
-  /// the `[f64; 8]` return-by-value stack round-trip.
-  #[inline(always)]
-  pub fn next_f64_array(&mut self) -> [f64; 8] {
-    let a = self.f64_engine.next();
-    let b = self.f64_engine.next();
-    let magic = u64x4::splat(F64_MAGIC);
-    let one = f64x4::splat(1.0);
-    let bits_a = (a >> 12u32) | magic;
-    let bits_b = (b >> 12u32) | magic;
-    let fa: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_a) };
-    let fb: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_b) };
-    let ra = (fa - one).to_array();
-    let rb = (fb - one).to_array();
-    [ra[0], ra[1], ra[2], ra[3], rb[0], rb[1], rb[2], rb[3]]
-  }
-
-  /// Returns 8 uniform `f32` values in `[0, 1)`.
-  ///
-  /// One SIMD iteration of the 32-bit xoshiro128++ engine gives 8×u32. The
-  /// top 23 bits of each lane are OR-ed into the bit pattern of `1.0_f32`,
-  /// producing a vector in `[1.0, 2.0)` reinterpretable as `f32x8`; the
-  /// subsequent SIMD subtract of `1.0` lands the result in `[0, 1)`.
-  /// 23-bit precision in exchange for zero integer-to-float conversion cost.
-  ///
-  /// For bulk fills prefer [`fill_uniform_f32`](Self::fill_uniform_f32).
-  #[inline(always)]
-  pub fn next_f32_array(&mut self) -> [f32; 8] {
-    let a = self.f32_engine.next();
-    let bits = (a >> 9u32) | u32x8::splat(F32_MAGIC);
-    let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
-    (f - f32x8::splat(1.0)).to_array()
-  }
-
   /// Returns a single uniform `f64` in `[0, 1)`.
   ///
   /// Draws from an internal 8-element buffer. Refills via two unaligned
-  /// `f64x4` stores (magic-number trick) directly into the buffer — avoids
-  /// the `[f64; 8]` return-by-value round-trip that
-  /// [`next_f64_array`](Self::next_f64_array) pays when the caller copies
-  /// the result. This matters because every transcendental-heavy distribution
-  /// (Gamma, Beta, NIG, …) hits `next_f64` repeatedly.
+  /// `f64x4` stores (magic-number trick) directly into the buffer — no
+  /// `[f64; 8]` return-by-value stack round-trip. This matters because
+  /// every transcendental-heavy distribution (Gamma, Beta, NIG, …) hits
+  /// `next_f64` repeatedly.
   #[inline(always)]
   pub fn next_f64(&mut self) -> f64 {
     if self.f64_scalar_idx >= 8 {

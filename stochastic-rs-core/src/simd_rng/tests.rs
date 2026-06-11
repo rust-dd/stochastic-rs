@@ -5,8 +5,9 @@ use super::SimdRng;
 #[test]
 fn f64_in_range() {
   let mut rng = SimdRng::new();
+  let mut vals = [0.0_f64; 8];
   for _ in 0..1000 {
-    let vals = rng.next_f64_array();
+    rng.fill_uniform_f64(&mut vals);
     for v in vals {
       assert!((0.0..1.0).contains(&v), "f64 out of range: {v}");
     }
@@ -16,8 +17,9 @@ fn f64_in_range() {
 #[test]
 fn f32_in_range() {
   let mut rng = SimdRng::new();
+  let mut vals = [0.0_f32; 8];
   for _ in 0..1000 {
-    let vals = rng.next_f32_array();
+    rng.fill_uniform_f32(&mut vals);
     for v in vals {
       assert!((0.0..1.0).contains(&v), "f32 out of range: {v}");
     }

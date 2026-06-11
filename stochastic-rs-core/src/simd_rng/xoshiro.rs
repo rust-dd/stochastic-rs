@@ -7,7 +7,6 @@
 //! Both are seeded via SplitMix64 expansion of a single `u64`, which gives
 //! enough decorrelated state for the full 4×u64 / 8×u32 lane vectors.
 
-use rand::RngCore;
 use wide::u32x8;
 use wide::u64x4;
 
@@ -63,22 +62,6 @@ pub struct Xoshiro256PP4 {
 }
 
 impl Xoshiro256PP4 {
-  pub fn new_from_rng(rng: &mut impl RngCore) -> Self {
-    let mut seed = [0u8; 128];
-    rng.fill_bytes(&mut seed);
-    let mut u = [0u64; 16];
-    for (i, lane) in u.iter_mut().enumerate() {
-      let off = i * 8;
-      *lane = u64::from_le_bytes(seed[off..off + 8].try_into().unwrap());
-    }
-    Self {
-      s0: u64x4::new([u[0], u[1], u[2], u[3]]),
-      s1: u64x4::new([u[4], u[5], u[6], u[7]]),
-      s2: u64x4::new([u[8], u[9], u[10], u[11]]),
-      s3: u64x4::new([u[12], u[13], u[14], u[15]]),
-    }
-  }
-
   pub(super) fn new_from_u64(seed: u64) -> Self {
     let mut state = seed;
     let mut u = [0u64; 16];
@@ -116,22 +99,6 @@ pub struct Xoshiro128PP8 {
 }
 
 impl Xoshiro128PP8 {
-  pub fn new_from_rng(rng: &mut impl RngCore) -> Self {
-    let mut seed = [0u8; 128];
-    rng.fill_bytes(&mut seed);
-    let mut u = [0u32; 32];
-    for (i, lane) in u.iter_mut().enumerate() {
-      let off = i * 4;
-      *lane = u32::from_le_bytes(seed[off..off + 4].try_into().unwrap());
-    }
-    Self {
-      s0: u32x8::new([u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7]]),
-      s1: u32x8::new([u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]]),
-      s2: u32x8::new([u[16], u[17], u[18], u[19], u[20], u[21], u[22], u[23]]),
-      s3: u32x8::new([u[24], u[25], u[26], u[27], u[28], u[29], u[30], u[31]]),
-    }
-  }
-
   pub(super) fn new_from_u64(seed: u64) -> Self {
     let mut state = seed;
     let mut u = [0u32; 32];

@@ -141,9 +141,11 @@ fn nfix<T: SimdFloatExt, R: SimdRngExt>(hz: i32, iz: usize, tables: &ZigTables, 
 /// The third generic, `R: SimdRngExt`, selects the backing RNG. The default
 /// [`SimdRng`] is the single-stream production engine; the
 /// `dual-stream-rng` cargo feature enables `R = SimdRngDual` via the
-/// [`SimdNormalDual`](crate::SimdNormalDual) type alias, which lets the
-/// Ziggurat hot loop overlap two `xoshiro` state updates on a modern
-/// out-of-order core for ≈ 5–11 % extra throughput on bulk fills.
+/// `SimdNormalDual` type alias, whose Ziggurat main loop consumes two
+/// independent engine batches per iteration
+/// ([`SimdRngExt::HAS_PAIR_ILP`]). Measured +3–10 % (≈5 % typical) on
+/// 128-bit NEON Normal fills — modest because the table-gather chain
+/// dominates; expected to matter more on wider-SIMD hardware.
 pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = SimdRng> {
   mean: T,
   std_dev: T,
@@ -226,112 +228,160 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
     }
   }
 
-  /// Generates a single normal sample using the scalar Ziggurat path.
-  /// Used when the remaining buffer is smaller than the SIMD threshold.
-  #[inline]
-  fn sample_one(rng: &mut R, tables: &ZigTables, mean: T, std_dev: T) -> T {
-    let hz = rng.next_i32();
-    let iz = (hz & 127) as usize;
-    let z = if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
-      T::from_f64_fast(hz as f64 * tables.wn[iz])
-    } else {
-      nfix::<T, R>(hz, iz, tables, rng)
-    };
-    mean + std_dev * z
+  /// Processes one 8-lane Ziggurat batch from `hz` into `out[..8]`.
+  /// `STANDARD` folds the mean / std_dev scaling away at compile time.
+  #[inline(always)]
+  fn zig_batch8<const STANDARD: bool>(
+    hz: i32x8,
+    tables: &ZigTables,
+    mean: T,
+    std_dev: T,
+    mean_simd: T::Simd,
+    std_dev_simd: T::Simd,
+    rng: &mut R,
+    out: &mut [T],
+  ) {
+    let iz = hz & i32x8::splat(127);
+    let iz_arr = iz.to_array();
+    unsafe {
+      let kn_vals = i32x8::new([
+        *tables.kn.get_unchecked(iz_arr[0] as usize),
+        *tables.kn.get_unchecked(iz_arr[1] as usize),
+        *tables.kn.get_unchecked(iz_arr[2] as usize),
+        *tables.kn.get_unchecked(iz_arr[3] as usize),
+        *tables.kn.get_unchecked(iz_arr[4] as usize),
+        *tables.kn.get_unchecked(iz_arr[5] as usize),
+        *tables.kn.get_unchecked(iz_arr[6] as usize),
+        *tables.kn.get_unchecked(iz_arr[7] as usize),
+      ]);
+      let abs_hz = hz.abs();
+      let accept = abs_hz.simd_lt(kn_vals);
+
+      let wn_arr: [T; 8] = if T::PREFERS_F32_WN {
+        [
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[0] as usize)),
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[1] as usize)),
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[2] as usize)),
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[3] as usize)),
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[4] as usize)),
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[5] as usize)),
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[6] as usize)),
+          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[7] as usize)),
+        ]
+      } else {
+        [
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
+          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
+        ]
+      };
+      let hz_float = T::simd_from_i32x8(hz);
+      let result = hz_float * T::simd_from_array(wn_arr);
+
+      if accept.all() {
+        let scaled = if STANDARD {
+          result
+        } else {
+          mean_simd + std_dev_simd * result
+        };
+        out[..8].copy_from_slice(&T::simd_to_array(scaled));
+      } else {
+        let hz_arr = hz.to_array();
+        let accept_arr = accept.to_array();
+        let result_arr = T::simd_to_array(result);
+        for i in 0..8 {
+          let z = if accept_arr[i] != 0 {
+            result_arr[i]
+          } else {
+            nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng)
+          };
+          out[i] = if STANDARD { z } else { mean + std_dev * z };
+        }
+      }
+    }
   }
 
-  /// Core Ziggurat fill: generates `N(mean, std_dev)` samples into `buf`.
-  /// Uses 8-wide SIMD for the fast-accept path (~97% of samples), falling
-  /// back to scalar `nfix` for the rare edge cases. When the bound `R`
-  /// monomorphises to a dual-stream engine
-  /// ([`SimdRngExt::HAS_PAIR_ILP`] = true) the inner body is unrolled 2×
-  /// so the second engine's xoshiro state update can overlap the first
-  /// batch's table lookups + compute on a modern out-of-order core.
-  #[inline]
-  fn fill_ziggurat(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
+  /// Core Ziggurat fill: generates `N(mean, std_dev)` (or `N(0, 1)` when
+  /// `STANDARD`) samples into `buf` — 8-wide SIMD on the fast-accept path
+  /// (~97% of samples), scalar `nfix` for the rare edge cases.
+  ///
+  /// When the bound `R` reports [`SimdRngExt::HAS_PAIR_ILP`] the main loop
+  /// consumes [`next_i32x8_pair`](SimdRngExt::next_i32x8_pair) and processes
+  /// 16 lanes per iteration, so the two independent engine state updates
+  /// can overlap the batches' table lookups on an out-of-order core. The
+  /// branch is a monomorphised constant — single-stream codegen is
+  /// unchanged. Measured +3–10 % on 128-bit NEON (the gather chain
+  /// dominates the rest of the cost).
+  fn fill_zig_impl<const STANDARD: bool>(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
     let len = buf.len();
     let tables = zig_tables();
     if len < SMALL_NORMAL_THRESHOLD {
       for x in buf.iter_mut() {
-        *x = Self::sample_one(rng, tables, mean, std_dev);
+        let z = Self::sample_one_standard(rng, tables);
+        *x = if STANDARD { z } else { mean + std_dev * z };
       }
       return;
     }
     let mean_simd = T::splat(mean);
     let std_dev_simd = T::splat(std_dev);
-    let mask127 = i32x8::splat(127);
     let mut filled = 0;
 
-    while filled + 8 <= len {
-      let hz = rng.next_i32x8();
-      let iz = hz & mask127;
-      let iz_arr = iz.to_array();
-
-      unsafe {
-        let kn_vals = i32x8::new([
-          *tables.kn.get_unchecked(iz_arr[0] as usize),
-          *tables.kn.get_unchecked(iz_arr[1] as usize),
-          *tables.kn.get_unchecked(iz_arr[2] as usize),
-          *tables.kn.get_unchecked(iz_arr[3] as usize),
-          *tables.kn.get_unchecked(iz_arr[4] as usize),
-          *tables.kn.get_unchecked(iz_arr[5] as usize),
-          *tables.kn.get_unchecked(iz_arr[6] as usize),
-          *tables.kn.get_unchecked(iz_arr[7] as usize),
-        ]);
-        let abs_hz = hz.abs();
-        let accept = abs_hz.simd_lt(kn_vals);
-
-        let wn_arr: [T; 8] = if T::PREFERS_F32_WN {
-          [
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[0] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[1] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[2] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[3] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[4] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[5] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[6] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[7] as usize)),
-          ]
-        } else {
-          [
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
-          ]
-        };
-        let hz_float = T::simd_from_i32x8(hz);
-        let wn_simd = T::simd_from_array(wn_arr);
-        let result = hz_float * wn_simd;
-
-        if accept.all() {
-          let scaled = mean_simd + std_dev_simd * result;
-          let scaled_arr = T::simd_to_array(scaled);
-          buf[filled..filled + 8].copy_from_slice(&scaled_arr);
-        } else {
-          let hz_arr = hz.to_array();
-          let accept_arr = accept.to_array();
-          let result_arr = T::simd_to_array(result);
-          for i in 0..8 {
-            if accept_arr[i] != 0 {
-              buf[filled + i] = mean + std_dev * result_arr[i];
-            } else {
-              let x = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
-              buf[filled + i] = mean + std_dev * x;
-            }
-          }
-        }
-        filled += 8;
+    if R::HAS_PAIR_ILP {
+      while filled + 16 <= len {
+        let (hz_a, hz_b) = rng.next_i32x8_pair();
+        Self::zig_batch8::<STANDARD>(
+          hz_a,
+          tables,
+          mean,
+          std_dev,
+          mean_simd,
+          std_dev_simd,
+          rng,
+          &mut buf[filled..filled + 8],
+        );
+        Self::zig_batch8::<STANDARD>(
+          hz_b,
+          tables,
+          mean,
+          std_dev,
+          mean_simd,
+          std_dev_simd,
+          rng,
+          &mut buf[filled + 8..filled + 16],
+        );
+        filled += 16;
       }
     }
+    while filled + 8 <= len {
+      let hz = rng.next_i32x8();
+      Self::zig_batch8::<STANDARD>(
+        hz,
+        tables,
+        mean,
+        std_dev,
+        mean_simd,
+        std_dev_simd,
+        rng,
+        &mut buf[filled..filled + 8],
+      );
+      filled += 8;
+    }
     while filled < len {
-      buf[filled] = Self::sample_one(rng, tables, mean, std_dev);
+      let z = Self::sample_one_standard(rng, tables);
+      buf[filled] = if STANDARD { z } else { mean + std_dev * z };
       filled += 1;
     }
+  }
+
+  /// `N(mean, std_dev)` fill — thin wrapper over [`Self::fill_zig_impl`].
+  #[inline]
+  fn fill_ziggurat(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
+    Self::fill_zig_impl::<false>(buf, rng, mean, std_dev);
   }
 }
 
@@ -427,91 +477,11 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
     }
   }
 
-  /// Core Ziggurat fill for standard normal N(0,1) samples.
-  /// Same SIMD fast-path as `fill_ziggurat` but skips mean/std_dev scaling.
-  /// Main loop processes exactly 8 per iteration so `copy_from_slice` inlines
-  /// to `stp` stores; final 0–7-element tail uses [`sample_one_standard`].
+  /// Core Ziggurat fill for standard normal N(0,1) samples — thin wrapper
+  /// over [`Self::fill_zig_impl`] with the scaling compiled out.
   #[inline]
   fn fill_ziggurat_standard(buf: &mut [T], rng: &mut R) {
-    let len = buf.len();
-    let tables = zig_tables();
-    if len < SMALL_NORMAL_THRESHOLD {
-      for x in buf.iter_mut() {
-        *x = Self::sample_one_standard(rng, tables);
-      }
-      return;
-    }
-    let mask127 = i32x8::splat(127);
-    let mut filled = 0;
-
-    while filled + 8 <= len {
-      let hz = rng.next_i32x8();
-      let iz = hz & mask127;
-      let iz_arr = iz.to_array();
-
-      unsafe {
-        let kn_vals = i32x8::new([
-          *tables.kn.get_unchecked(iz_arr[0] as usize),
-          *tables.kn.get_unchecked(iz_arr[1] as usize),
-          *tables.kn.get_unchecked(iz_arr[2] as usize),
-          *tables.kn.get_unchecked(iz_arr[3] as usize),
-          *tables.kn.get_unchecked(iz_arr[4] as usize),
-          *tables.kn.get_unchecked(iz_arr[5] as usize),
-          *tables.kn.get_unchecked(iz_arr[6] as usize),
-          *tables.kn.get_unchecked(iz_arr[7] as usize),
-        ]);
-        let abs_hz = hz.abs();
-        let accept = abs_hz.simd_lt(kn_vals);
-
-        let wn_arr: [T; 8] = if T::PREFERS_F32_WN {
-          [
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[0] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[1] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[2] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[3] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[4] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[5] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[6] as usize)),
-            T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[7] as usize)),
-          ]
-        } else {
-          [
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
-            T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
-          ]
-        };
-        let hz_float = T::simd_from_i32x8(hz);
-        let wn_simd = T::simd_from_array(wn_arr);
-        let result = hz_float * wn_simd;
-
-        if accept.all() {
-          let result_arr = T::simd_to_array(result);
-          buf[filled..filled + 8].copy_from_slice(&result_arr);
-        } else {
-          let hz_arr = hz.to_array();
-          let accept_arr = accept.to_array();
-          let result_arr = T::simd_to_array(result);
-          for i in 0..8 {
-            if accept_arr[i] != 0 {
-              buf[filled + i] = result_arr[i];
-            } else {
-              buf[filled + i] = nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng);
-            }
-          }
-        }
-        filled += 8;
-      }
-    }
-    while filled < len {
-      buf[filled] = Self::sample_one_standard(rng, tables);
-      filled += 1;
-    }
+    Self::fill_zig_impl::<true>(buf, rng, T::zero(), T::one());
   }
 }
 
@@ -564,6 +534,24 @@ mod tests {
       d = d.max(d_plus.max(d_minus));
     }
     d
+  }
+
+  /// The dual-engine pair path interleaves batches from engines A and B —
+  /// every lane (including B's) must still be N(0, 1).
+  #[cfg(feature = "dual-stream-rng")]
+  #[test]
+  fn simd_normal_dual_pair_path_matches_theoretical_distribution() {
+    const N: usize = 40_000;
+    let dist = crate::SimdNormalDual::<f64>::new(0.0, 1.0, &Unseeded);
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_standard_fast(&mut samples);
+    assert!(samples.iter().all(|x| x.is_finite()));
+    let d = ks_statistic(&mut samples, |x| normal_cdf(x, 0.0, 1.0));
+    let ks_critical = 2.0 / (N as f64).sqrt();
+    assert!(
+      d < ks_critical,
+      "dual-path normal KS statistic too large: D={d}, critical={ks_critical}"
+    );
   }
 
   #[test]

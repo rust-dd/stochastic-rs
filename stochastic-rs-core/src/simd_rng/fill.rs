@@ -1,6 +1,6 @@
 //! Bulk-fill helpers — `fill_uniform_f64` / `fill_uniform_f32` write SIMD
-//! stores straight into a caller-supplied slice, skipping the `[f; 8]`
-//! return-by-value round-trip that the `next_*_array` accessors pay.
+//! stores straight into a caller-supplied slice, with no intermediate
+//! `[f; 8]` return-by-value round-trip.
 
 use wide::f32x8;
 use wide::f64x4;
@@ -13,12 +13,11 @@ use super::xoshiro::F64_MAGIC;
 
 impl SimdRng {
   /// Fills `out` with uniform `f64` values in `[0, 1)` using direct SIMD
-  /// stores. Avoids the `[f64; 8]` return-by-value round-trip that
-  /// [`next_f64_array`](Self::next_f64_array) pays — every 4-lane chunk is
-  /// written via an unaligned `f64x4` store (`vmovupd`), and any tail
-  /// shorter than 4 falls back to a scalar copy.
+  /// stores — every 4-lane chunk is written via an unaligned `f64x4` store
+  /// (`vmovupd`), and any tail shorter than 4 falls back to a scalar copy.
   ///
-  /// Same 52-bit precision as [`next_f64_array`](Self::next_f64_array).
+  /// 52-bit precision via the magic-number trick (1 ULP shy of the 53-bit
+  /// scalar variant) in exchange for a fully vectorised pipeline.
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
     let magic = u64x4::splat(F64_MAGIC);
@@ -50,8 +49,8 @@ impl SimdRng {
 
   /// Fills `out` with uniform `f32` values in `[0, 1)`. Each 8-lane chunk
   /// is written via an unaligned `f32x8` store; tails shorter than 8 fall
-  /// back to a scalar copy. 23-bit precision (same as
-  /// [`next_f32_array`](Self::next_f32_array)).
+  /// back to a scalar copy. 23-bit precision via the magic-number trick —
+  /// zero integer-to-float conversion cost.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
     let magic = u32x8::splat(F32_MAGIC);

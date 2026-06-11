@@ -29,27 +29,6 @@ pub trait SimdFloatExt: num_traits::Float + Default + Send + Sync + 'static {
   fn simd_tan(v: Self::Simd) -> Self::Simd;
   fn simd_max(a: Self::Simd, b: Self::Simd) -> Self::Simd;
   fn simd_powf(v: Self::Simd, exp: Self) -> Self::Simd;
-  fn simd_floor(v: Self::Simd) -> Self::Simd;
-  /// `ln(1 + v)` — accurate for small `|v|` where `ln(1 + v)` cancels.
-  fn simd_log1p(v: Self::Simd) -> Self::Simd;
-  /// `exp(v) - 1` — accurate for small `|v|` where `exp(v) - 1` cancels.
-  fn simd_expm1(v: Self::Simd) -> Self::Simd;
-  /// `sqrt(a² + b²)` with overflow protection.
-  fn simd_hypot(a: Self::Simd, b: Self::Simd) -> Self::Simd;
-  /// Fused multiply-add `a * b + c` — exposes the hardware FMA when
-  /// available and a tight `mul_add` fallback otherwise.
-  fn simd_fma(a: Self::Simd, b: Self::Simd, c: Self::Simd) -> Self::Simd;
-  /// Error function $\mathrm{erf}(x)$. Accurate to ≈ 1.5e-7 in `f32`,
-  /// ≈ 1.5e-12 in `f64` (Abramowitz-Stegun 7.1.26 rational approximation).
-  fn simd_erf(v: Self::Simd) -> Self::Simd;
-  /// Complementary error function $\mathrm{erfc}(x) = 1 - \mathrm{erf}(x)$.
-  /// Uses the same A&S rational approximation; tails are stable down to
-  /// `|x| < 6` (`f32`) / `|x| < 26` (`f64`).
-  fn simd_erfc(v: Self::Simd) -> Self::Simd;
-  /// Logarithm of the absolute Gamma function $\ln |\Gamma(x)|$.
-  /// Stirling-based with Lanczos correction; mean relative error
-  /// ≈ 1e-7 (`f32`) / ≈ 1e-12 (`f64`) for `x ∈ (0, 100]`.
-  fn simd_lgamma(v: Self::Simd) -> Self::Simd;
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [Self]);
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;

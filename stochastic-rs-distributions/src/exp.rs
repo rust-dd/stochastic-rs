@@ -158,13 +158,74 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
     }
   }
 
+  /// Processes one 8-lane exponential Ziggurat batch from `hz` into
+  /// `out[..8]`, scaled by `factor` (= 1/λ).
+  #[inline(always)]
+  fn exp_batch8(
+    hz: i32x8,
+    tables: &ExpZigTables,
+    factor: T,
+    factor_simd: T::Simd,
+    rng: &mut R,
+    out: &mut [T],
+  ) {
+    let iz = hz & i32x8::splat(0xFF);
+    let iz_arr = iz.to_array();
+    let abs_hz = hz.abs();
+    unsafe {
+      let ke_vals = i32x8::new([
+        *tables.ke.get_unchecked(iz_arr[0] as usize),
+        *tables.ke.get_unchecked(iz_arr[1] as usize),
+        *tables.ke.get_unchecked(iz_arr[2] as usize),
+        *tables.ke.get_unchecked(iz_arr[3] as usize),
+        *tables.ke.get_unchecked(iz_arr[4] as usize),
+        *tables.ke.get_unchecked(iz_arr[5] as usize),
+        *tables.ke.get_unchecked(iz_arr[6] as usize),
+        *tables.ke.get_unchecked(iz_arr[7] as usize),
+      ]);
+
+      let accept = abs_hz.simd_lt(ke_vals);
+
+      let we_arr: [T; 8] = [
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[0] as usize)),
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[1] as usize)),
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[2] as usize)),
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[3] as usize)),
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[4] as usize)),
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[5] as usize)),
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[6] as usize)),
+        T::from_f64_fast(*tables.we.get_unchecked(iz_arr[7] as usize)),
+      ];
+      let hz_float = T::simd_from_i32x8(abs_hz);
+      let result = hz_float * T::simd_from_array(we_arr) * factor_simd;
+
+      if accept.all() {
+        out[..8].copy_from_slice(&T::simd_to_array(result));
+      } else {
+        let hz_arr = hz.to_array();
+        let accept_arr = accept.to_array();
+        let result_arr = T::simd_to_array(result);
+        for i in 0..8 {
+          out[i] = if accept_arr[i] != 0 {
+            result_arr[i]
+          } else {
+            efix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng) * factor
+          };
+        }
+      }
+    }
+  }
+
   /// Core Ziggurat fill for Exp(λ) samples into `buf`. The internal Ziggurat
   /// path generates Exp(1) values which are then multiplied by `factor`
   /// (= 1/λ) at the SIMD store step, fusing the previous two-pass
   /// `fill_exp1` + `scale_in_place` pipeline into a single pass.
   ///
-  /// Uses 8-wide SIMD for the fast-accept path; scalar fallback for
-  /// edge cases multiplies by `factor` lane-by-lane.
+  /// Uses 8-wide SIMD for the fast-accept path; scalar fallback for edge
+  /// cases multiplies by `factor` lane-by-lane. When `R` reports
+  /// [`SimdRngExt::HAS_PAIR_ILP`] the main loop consumes
+  /// [`next_i32x8_pair`](SimdRngExt::next_i32x8_pair) and processes 16
+  /// lanes per iteration (const-folded away for single-stream engines).
   #[inline]
   fn fill_exp_scaled(buf: &mut [T], rng: &mut R, factor: T) {
     let tables = exp_zig_tables();
@@ -175,61 +236,42 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
       }
       return;
     }
-    let mask255 = i32x8::splat(0xFF);
     let factor_simd = T::splat(factor);
     let mut filled = 0;
 
+    if R::HAS_PAIR_ILP {
+      while filled + 16 <= len {
+        let (hz_a, hz_b) = rng.next_i32x8_pair();
+        Self::exp_batch8(
+          hz_a,
+          tables,
+          factor,
+          factor_simd,
+          rng,
+          &mut buf[filled..filled + 8],
+        );
+        Self::exp_batch8(
+          hz_b,
+          tables,
+          factor,
+          factor_simd,
+          rng,
+          &mut buf[filled + 8..filled + 16],
+        );
+        filled += 16;
+      }
+    }
     while filled + 8 <= len {
       let hz = rng.next_i32x8();
-      let iz = hz & mask255;
-      let iz_arr = iz.to_array();
-      let abs_hz = hz.abs();
-
-      unsafe {
-        let ke_vals = i32x8::new([
-          *tables.ke.get_unchecked(iz_arr[0] as usize),
-          *tables.ke.get_unchecked(iz_arr[1] as usize),
-          *tables.ke.get_unchecked(iz_arr[2] as usize),
-          *tables.ke.get_unchecked(iz_arr[3] as usize),
-          *tables.ke.get_unchecked(iz_arr[4] as usize),
-          *tables.ke.get_unchecked(iz_arr[5] as usize),
-          *tables.ke.get_unchecked(iz_arr[6] as usize),
-          *tables.ke.get_unchecked(iz_arr[7] as usize),
-        ]);
-
-        let accept = abs_hz.simd_lt(ke_vals);
-
-        let we_arr: [T; 8] = [
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[0] as usize)),
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[1] as usize)),
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[2] as usize)),
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[3] as usize)),
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[4] as usize)),
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[5] as usize)),
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[6] as usize)),
-          T::from_f64_fast(*tables.we.get_unchecked(iz_arr[7] as usize)),
-        ];
-        let hz_float = T::simd_from_i32x8(abs_hz);
-        let we_simd = T::simd_from_array(we_arr);
-        let result = hz_float * we_simd * factor_simd;
-
-        if accept.all() {
-          let result_arr = T::simd_to_array(result);
-          buf[filled..filled + 8].copy_from_slice(&result_arr);
-        } else {
-          let hz_arr = hz.to_array();
-          let accept_arr = accept.to_array();
-          let result_arr = T::simd_to_array(result);
-          for i in 0..8 {
-            if accept_arr[i] != 0 {
-              buf[filled + i] = result_arr[i];
-            } else {
-              buf[filled + i] = efix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng) * factor;
-            }
-          }
-        }
-        filled += 8;
-      }
+      Self::exp_batch8(
+        hz,
+        tables,
+        factor,
+        factor_simd,
+        rng,
+        &mut buf[filled..filled + 8],
+      );
+      filled += 8;
     }
     while filled < len {
       buf[filled] = Self::sample_exp1_one(rng, tables) * factor;
@@ -521,6 +563,26 @@ mod tests {
     assert!(
       d < ks_critical,
       "exp KS statistic too large: D={d}, critical={ks_critical}"
+    );
+  }
+
+  /// The dual-engine pair path interleaves batches from engines A and B —
+  /// every lane (including B's) must still be Exp(λ).
+  #[cfg(feature = "dual-stream-rng")]
+  #[test]
+  fn simd_exp_zig_dual_pair_path_matches_theoretical_distribution() {
+    const N: usize = 40_000;
+    let lambda = 0.9_f64;
+    let dist = crate::SimdExpZigDual::<f64>::new(lambda, &Unseeded);
+    let mut rng = rand::rng();
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice(&mut rng, &mut samples);
+    assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
+    let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
+    let ks_critical = 2.0 / (N as f64).sqrt();
+    assert!(
+      d < ks_critical,
+      "dual-path exp-zig KS statistic too large: D={d}, critical={ks_critical}"
     );
   }
 

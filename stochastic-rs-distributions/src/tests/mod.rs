@@ -5,4 +5,3 @@ mod bench_continuous_a;
 mod bench_continuous_b;
 mod bench_summary;
 mod distribution_plot;
-mod simd_ops;
