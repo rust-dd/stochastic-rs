@@ -127,10 +127,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
 
     // Samplers are built inside `sample` because their internal
     // UnsafeCell-backed buffers are not `Sync` — keeping them local lets
-    // `Bns` itself remain `Send + Sync` (required by `ProcessExt`).
-    let jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one(), &Unseeded);
-    let normal_dist = SimdNormal::<T>::new(T::zero(), T::one(), &Unseeded);
-    let mut rng = rand::rng();
+    // `Bns` itself remain `Send + Sync` (required by `ProcessExt`). Each
+    // sampler draws an independent stream derived from `self.seed`, so a
+    // `Deterministic` seed makes the whole path reproducible.
+    let jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one(), &self.seed.derive());
+    let normal_dist = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive());
+    let mut rng = self.seed.rng();
     for i in 1..self.n {
       // 1. Number of jumps in [t_{i-1}, t_i] from the compound-Poisson
       //    subordinator.
@@ -204,6 +206,8 @@ fn rand_poisson<R: Rng + ?Sized>(rng: &mut R, lambda: f64) -> u32 {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   /// Variance path stays strictly positive.
@@ -243,32 +247,67 @@ mod tests {
     assert!(s.iter().all(|x| *x > 0.0));
   }
 
-  /// Stationary mean of σ² under the BNS-Gamma model is E[Z₁] / (1 - e^{-λ}).
-  /// On a long horizon with many resamples, the time-averaged variance
-  /// should approach $\nu \cdot \omega$ (jump rate × mean jump size).
+  /// Stationary mean of σ² under the BNS-Gamma model is
+  /// $\nu\,\omega\cdot\lambda\Delta t / (1 - e^{-\lambda\Delta t}) \to \nu\,\omega$
+  /// as $\Delta t \to 0$ (jump rate × mean jump size). A single 40-unit path
+  /// with $\lambda = 1$ holds only ~15 effective samples, so its time-average
+  /// has an ~11% standard error — far too wide for a 20% band to pass
+  /// reliably. We average 128 independently seeded paths, shrinking the
+  /// estimator's standard error to ~1% and keeping the check reproducible.
   #[test]
   fn bns_stationary_variance_matches_jump_intensity() {
     let nu = 4.0_f64;
     let omega = 1.5_f64;
-    let p = Bns::<f64>::new(
-      Some(100.0),
-      omega * nu,
-      1.0,
-      0.0,
-      nu,
-      omega,
-      4096,
-      Some(40.0),
-      Unseeded,
-    );
-    let [_s, v] = p.sample();
-    let burn_in = 1024;
-    let mean: f64 = v.iter().skip(burn_in).copied().sum::<f64>() / (v.len() - burn_in) as f64;
     let expected = nu * omega;
+    let paths = 128usize;
+    let burn_in = 1024usize;
+    let mean: f64 = (0..paths)
+      .map(|i| {
+        let p = Bns::<f64, Deterministic>::new(
+          Some(100.0),
+          omega * nu,
+          1.0,
+          0.0,
+          nu,
+          omega,
+          4096,
+          Some(40.0),
+          Deterministic::new(i as u64),
+        );
+        let [_s, v] = p.sample();
+        v.iter().skip(burn_in).copied().sum::<f64>() / (v.len() - burn_in) as f64
+      })
+      .sum::<f64>()
+      / paths as f64;
     assert!(
-      (mean - expected).abs() / expected < 0.20,
+      (mean - expected).abs() / expected < 0.06,
       "BNS-Gamma stationary E[σ²] = {mean}, expected ≈ {expected}"
     );
+  }
+
+  /// A `Deterministic` seed makes the whole BNS path reproducible — the seed
+  /// must reach the jump, Gamma and normal streams inside `sample`.
+  #[test]
+  fn bns_seeded_is_deterministic() {
+    let mk = || {
+      Bns::<f64, Deterministic>::new(
+        Some(100.0),
+        0.04,
+        2.0,
+        0.0,
+        5.0,
+        2.0,
+        256,
+        Some(1.0),
+        Deterministic::new(42),
+      )
+    };
+    let [s1, v1] = mk().sample();
+    let [s2, v2] = mk().sample();
+    for i in 0..s1.len() {
+      assert!((s1[i] - s2[i]).abs() < 1e-12);
+      assert!((v1[i] - v2[i]).abs() < 1e-12);
+    }
   }
 
   /// Reject zero / negative jump intensity.
