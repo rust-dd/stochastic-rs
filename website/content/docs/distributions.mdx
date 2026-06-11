@@ -23,32 +23,32 @@ distributions**, every one of them with:
 
 ### Continuous
 
-| Distribution                | Strategy                  |
-|-----------------------------|---------------------------|
-| Normal                      | Ziggurat                  |
-| Lognormal                   | Transformation (`exp(N)`) |
-| Cauchy                      | Inversion                 |
-| Student-t                   | Bailey transformation     |
-| Exponential                 | Inversion / ziggurat      |
-| Gamma                       | Marsaglia-Tsang ziggurat  |
-| Beta                        | Cheng / Jöhnk             |
-| Chi-squared                 | Composition (Gamma)       |
-| Non-central chi-squared     | Composition               |
-| Inverse Gaussian            | Michael-Schucany          |
-| Pareto                      | Inversion                 |
-| Weibull                     | Inversion                 |
-| Uniform                     | Inversion (trivial)       |
-| Alpha-stable                | Chambers-Mallows-Stuck    |
-| Normal Inverse Gaussian     | Inverse-Gaussian mixture  |
+| Distribution                | Strategy                                  |
+|-----------------------------|-------------------------------------------|
+| Normal                      | Ziggurat                                  |
+| Lognormal                   | Transformation (`exp(N)`)                 |
+| Cauchy                      | Inversion                                 |
+| Student-t                   | Composition ($Z / \sqrt{\chi^2_\nu/\nu}$) |
+| Exponential                 | Ziggurat                                  |
+| Gamma                       | Marsaglia-Tsang squeeze                   |
+| Beta                        | Gamma-ratio composition                   |
+| Chi-squared                 | Composition (Gamma)                       |
+| Non-central chi-squared     | Composition ($\chi^2_{\nu-1} + (Z+\sqrt\lambda)^2$) |
+| Inverse Gaussian            | Michael-Schucany                          |
+| Pareto                      | Inversion                                 |
+| Weibull                     | Ziggurat (Exp) + power transform          |
+| Uniform                     | Inversion (trivial)                       |
+| Alpha-stable                | Chambers-Mallows-Stuck                    |
+| Normal Inverse Gaussian     | Inverse-Gaussian mixture                  |
 
 ### Discrete
 
-| Distribution        | Strategy                            |
-|---------------------|-------------------------------------|
-| Binomial            | BTPE / inversion                    |
-| Geometric           | Inversion                           |
-| Poisson             | Devroye / inversion (small λ) / PTRS |
-| Hypergeometric      | H-RUE                               |
+| Distribution        | Strategy                                     |
+|---------------------|----------------------------------------------|
+| Binomial            | BTRS rejection / geometric waiting-time      |
+| Geometric           | Inversion                                    |
+| Poisson             | Inverse transform (precomputed CDF table)    |
+| Hypergeometric      | Inverse transform (precomputed CDF table)    |
 
 ## Examples
 

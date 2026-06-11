@@ -184,20 +184,23 @@ them:
 ```
 
 Result on Apple Silicon (M-series, criterion
-`cargo bench --bench dual_stream_compare --features dual-stream-rng`):
+`cargo bench --bench dual_stream_compare --features dual-stream-rng`,
+2026-06-11):
 
 |         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |
 |----------:|----------------------:|------------------------:|-------:|
-|        64 |              111.6 ns |                105.5 ns |  −5.5% |
-|       256 |              444.8 ns |                418.3 ns |  −6.0% |
-|     4 096 |               7.43 µs |                 6.60 µs | −11.2% |
-|    65 536 |              113.9 µs |                106.6 µs |  −6.4% |
-| 1 048 576 |               1.83 ms |                 1.70 ms |  −6.8% |
+|        64 |              120.6 ns |                117.5 ns |  −2.6% |
+|       256 |              494.2 ns |                467.9 ns |  −5.3% |
+|     4 096 |               7.87 µs |                 7.42 µs |  −5.7% |
+|    65 536 |              126.2 µs |                122.4 µs |  −3.0% |
+| 1 048 576 |               2.02 ms |                 1.97 ms |  −2.2% |
 
-Uniform fills are *not* engine-bound (the per-chunk body is just a
-direct SIMD store, no table lookups, no rejection sampling), so they
-show no speedup — the OoO core already saturates its store ports
-without help. The win is concentrated on Ziggurat-style workloads.
+The gain is modest on 128-bit NEON because the scalar table-gather
+chain dominates the batch cost; wider-SIMD hardware is expected to
+benefit more. Exponential fills measure at parity. Uniform fills are
+*not* engine-bound (the per-chunk body is just a direct SIMD store, no
+table lookups, no rejection sampling), so they show no speedup beyond
+noise — the OoO core already saturates its store ports without help.
 
 ### Trade-offs
 

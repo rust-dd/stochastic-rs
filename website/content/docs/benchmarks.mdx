@@ -183,6 +183,39 @@ distribution level (our SIMD Ziggurat fast-path beats the scalar reference
 Ziggurat ~1.7–1.9×). The **`rand_distr + rand::rng()`** column shows the
 full pipeline win including the SIMD RNG itself (~4.2–4.7×).
 
+## v2.4 distribution sampler upgrades
+
+Algorithm-level fixes measured on Apple Silicon (single thread,
+`--release`, ns per sample, 2026-06-11). The first three replace
+per-draw construction or O(n) loops with constant-cost algorithms, so
+the speedups grow with the parameters:
+
+| Sampler | Before | After | Speedup |
+|---|---:|---:|---:|
+| Noncentral χ² in a per-step loop (`SimdNonCentralChiSquared`) | 359 ns | 8.2 ns | ~44× |
+| `SimdBinomial` n = 1000 (BTRS rejection, was O(n) per-trial) | 542 ns | 18.0 ns | ~30× |
+| `SimdHypergeometric` N = 500, n = 100 (CDF-table inversion) | O(n) | 2.6 ns | ~40× |
+| `SimdGev` (internal SIMD RNG, was thread-RNG per draw) | ~20 ns | 10.0 ns | 2× |
+| `SimdTruncatedExp` (cached CDF bounds + internal RNG) | ~15 ns | 5.0 ns | ~3× |
+| `SimdGed` (SIMD bulk fill + buffered sampling) | 20.2 ns | 16.3 ns | 1.2× |
+| `SimdWeibull` `sample_fast` (buffered, single-pass fill) | 10.7 ns | 8.4 ns | 1.3× |
+| `SimdStudentT` fill (64-element sub-fills above the SIMD threshold) | 8.9 ns | 7.0 ns | 1.3× |
+| `SimdBeta` fill | 12.9 ns | 10.6 ns | 1.2× |
+
+Context anchors from the same session: `SimdNormal` fill ≈ 1.7–2.0 ns,
+`SimdExpZig` fill ≈ 1.5 ns, uniform fill ≈ 0.35 ns per sample;
+`SimdGamma` (scalar Marsaglia-Tsang squeeze over the buffered SIMD
+sources) ≈ 5–6.3 ns vs 14–17.7 ns for `rand_distr::Gamma` on a thread
+RNG. The binomial BTRS path also beats `rand_distr`'s BTPE (29.5 ns at
+n = 1000). Two correctness fixes shipped alongside: `SimdPoisson` no
+longer hangs for λ ≳ 745 (log-space CDF build), and `SimdGev` now
+honours its `Deterministic` seed.
+
+An 8-lane SIMD-batched Marsaglia-Tsang gamma kernel was prototyped and
+measured **slower** than the scalar squeeze loop on 128-bit NEON
+(9.3 vs 6.3 ns — lane bookkeeping dominates), so the scalar loop stays;
+the experiment is recorded in the `gamma.rs` module docs.
+
 ## v2.1 SIMD RNG / Ziggurat speedups
 
 Criterion deltas vs the `wide 1.3.0` baseline (single-sample `dist.sample(rng)`
@@ -197,14 +230,15 @@ loop, `cargo bench --bench distributions -- --baseline before`):
 
 Drivers (sub-crate paths):
 
-- `stochastic-rs-core::simd_rng::next_f64_array` / `next_f32_array` —
-  8 scalar shift+cast+mul loops replaced by SIMD shift + magic-number
-  bit-cast + subtract (52-bit / 23-bit precision; sub-ULP impact on
-  Monte Carlo). The new
+- `stochastic-rs-core::simd_rng` uniform core — 8 scalar
+  shift+cast+mul loops replaced by SIMD shift + magic-number bit-cast +
+  subtract (52-bit / 23-bit precision; sub-ULP impact on Monte Carlo).
+  The
   [`fill_uniform_f64`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng/struct.SimdRng.html#method.fill_uniform_f64)
-  / `fill_uniform_f32` direct-write APIs skip the `[f64; 8]` /
-  `[f32; 8]` return-by-value round-trip — `vmovupd` directly into the
-  caller's slice. `next_f64` / `next_f32` refill their internal
+  / `fill_uniform_f32` direct-write APIs store `vmovupd` directly into
+  the caller's slice with no `[f64; 8]` / `[f32; 8]` return-by-value
+  round-trip (the interim `next_f64_array` / `next_f32_array` accessors
+  were removed in 2.4). `next_f64` / `next_f32` refill their internal
   buffers via the same inlined SIMD store.
 - `stochastic-rs-distributions::normal` / `exp` — `fill_ziggurat` main
   loop runs 8 lanes per iteration so `copy_from_slice(&scaled_arr)`
@@ -233,25 +267,32 @@ stochastic-rs = { version = "2.2", features = ["dual-stream-rng"] }
 ```
 
 Unlocks `stochastic_rs_core::simd_rng_dual::SimdRngDual` (two parallel
-xoshiro engines) and `stochastic_rs::distributions::normal_dual::SimdNormalDual`
-(Ziggurat unrolled 2× over the dual streams). Measured against the
-single-stream `SimdNormal::fill_slice` on Apple Silicon
+xoshiro engines) and the `stochastic_rs::distributions::SimdNormalDual` /
+`SimdExpZigDual` aliases. The Ziggurat main loop consumes two
+independent engine batches per iteration (`SimdRngExt::next_i32x8_pair`,
+gated on the `HAS_PAIR_ILP` const — single-stream codegen is
+unchanged). Measured against the single-stream `SimdNormal::fill_slice`
+on Apple Silicon, 2026-06-11
 (`cargo bench --bench dual_stream_compare --features dual-stream-rng`):
 
 |         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |
 |----------:|----------------------:|------------------------:|-------:|
-|        64 |              111.6 ns |                105.5 ns |  −5.5% |
-|       256 |              444.8 ns |                418.3 ns |  −6.0% |
-|     4 096 |               7.43 µs |                 6.60 µs | −11.2% |
-|    65 536 |              113.9 µs |                106.6 µs |  −6.4% |
-| 1 048 576 |               1.83 ms |                 1.70 ms |  −6.8% |
+|        64 |              120.6 ns |                117.5 ns |  −2.6% |
+|       256 |              494.2 ns |                467.9 ns |  −5.3% |
+|     4 096 |               7.87 µs |                 7.42 µs |  −5.7% |
+|    65 536 |              126.2 µs |                122.4 µs |  −3.0% |
+| 1 048 576 |               2.02 ms |                 1.97 ms |  −2.2% |
 
 The win is that a modern out-of-order core hides the 16 scalar
 `kn` / `wn` table-lookup latencies behind the second engine's `xoshiro`
-state update. Uniform-only fills are not engine-bound so they show no
-speedup. Trade-off: `SimdRngDual::from_seed` does **not** reproduce
+state update; it is modest on 128-bit NEON because the gather chain
+dominates the total cost. Exponential fills measure at parity. Uniform
+`f64` fills are not engine-bound (direct SIMD stores, no table
+lookups), so they show no speedup beyond noise (0 to −7% on L1-resident
+sizes). Trade-off: `SimdRngDual::from_seed` does **not** reproduce
 `SimdRng::from_seed`'s bit-exact sequence (statistical properties are
-identical and KS-validated).
+identical and KS-validated, including the engine-B lanes of the pair
+path).
 
 ## Establishing a baseline
 

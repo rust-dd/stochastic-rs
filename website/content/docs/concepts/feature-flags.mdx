@@ -25,7 +25,7 @@ Rust core.
 | `viz`             | umbrella                    | `stochastic-rs-viz`, `plotly`        | Quick HTML plots                          |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
-| `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~5–11 % bulk Ziggurat speedup on Apple Silicon — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
+| `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
 
 The GPU / accelerator features above select a sampling backend chosen at compile
 time with `.on::<B>()` — see the [Backends](/docs/concepts/backends) concept page.
