@@ -439,7 +439,7 @@ mod tests {
     for &x in &buf {
       counts[x as usize] += 1;
     }
-    for k in 30..=50 {
+    for (k, _) in counts.iter().enumerate().take(50 + 1).skip(30) {
       let pmf = dist.pdf(k as f64);
       let expected = pmf * SAMPLES as f64;
       let got = counts[k] as f64;
