@@ -31,7 +31,6 @@ candle-nn = { workspace = true }
 polars = { workspace = true, features = ["lazy"] }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = { workspace = true }
-ndarray-rand = { workspace = true }
 flate2 = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }

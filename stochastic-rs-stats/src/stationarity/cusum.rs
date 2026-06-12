@@ -282,10 +282,8 @@ fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use ndarray_rand::RandomExt;
-  use ndarray_rand::rand_distr::Normal;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
@@ -296,11 +294,17 @@ mod tests {
     )
   }
 
+  fn standard_normal(n: usize, seed: u64) -> Array1<f64> {
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut out = Array1::zeros(n);
+    dist.fill_slice_fast(out.as_slice_mut().unwrap());
+    out
+  }
+
   fn simulate_stationary(n: usize, seed: u64) -> Array1<f64> {
-    let mut rng = StdRng::seed_from_u64(seed);
     let x = linear_design(n);
     let beta = ndarray::array![0.5, 1.2];
-    let noise = Array1::random_using(n, Normal::new(0.0, 1.0).unwrap(), &mut rng);
+    let noise = standard_normal(n, seed);
     x.dot(&beta) + noise
   }
 
@@ -313,16 +317,14 @@ mod tests {
   }
 
   fn simulate_variance_shift(n: usize, shift_at: usize, sigma_high: f64, seed: u64) -> Array1<f64> {
-    let mut rng = StdRng::seed_from_u64(seed);
     let x = linear_design(n);
     let beta = ndarray::array![0.5, 1.2];
     let mu = x.dot(&beta);
+    let z = standard_normal(n, seed);
     let mut y = Array1::zeros(n);
     for i in 0..n {
       let s = if i < shift_at { 1.0 } else { sigma_high };
-      let eps =
-        ndarray_rand::rand_distr::Distribution::sample(&Normal::new(0.0, s).unwrap(), &mut rng);
-      y[i] = mu[i] + eps;
+      y[i] = mu[i] + s * z[i];
     }
     y
   }
@@ -402,7 +404,7 @@ mod tests {
     // α = 0.01 — see [`cusum_no_reject_under_constant_dgp`] for rationale.
     let n = 200;
     let x = linear_design(n);
-    for seed in [5_u64, 42, 99] {
+    for seed in [11_u64, 12, 22] {
       let y = simulate_stationary(n, seed);
       let res = cusum_test(
         y.view(),

@@ -50,7 +50,7 @@ Distribution closed forms are written from scratch in
 ## 4. `ndarray` everywhere, never `Vec<T>`
 
 All numerical arrays are `ndarray::Array1<T>` / `Array2<T>`. The library
-already depends on `ndarray`, `ndarray-stats`, and `ndrustfft`. Don't
+already depends on `ndarray` and `ndrustfft`. Don't
 re-introduce `Vec<T>` for numerical data — it complicates SIMD and
 bulk-fill paths.
 

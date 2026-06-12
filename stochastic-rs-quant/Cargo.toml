@@ -51,10 +51,8 @@ stochastic-rs-stochastic = { workspace = true }
 stochastic-rs-stats = { workspace = true }
 stochastic-rs-copulas = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-stats = { workspace = true }
 ndarray-linalg = { workspace = true, optional = true }
 openblas-src = { workspace = true, features = ["cblas"], optional = true }
-ndarray-rand = { workspace = true }
 ndarray-npy = { workspace = true }
 ndrustfft = { workspace = true }
 nalgebra = { workspace = true }

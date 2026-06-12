@@ -328,10 +328,8 @@ fn decide(stat: f64, kind: ApStatistic, k: usize, pi0: f64, alpha: f64) -> (f64,
 #[cfg(test)]
 mod tests {
   use ndarray::Array2;
-  use ndarray_rand::RandomExt;
-  use ndarray_rand::rand_distr::Normal;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
@@ -342,8 +340,9 @@ mod tests {
     break_frac: Option<f64>,
     seed: u64,
   ) -> (Array1<f64>, Array2<f64>) {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let x_col = Array1::random_using(n, Normal::new(0.0, 1.0).unwrap(), &mut rng);
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut x_col = Array1::<f64>::zeros(n);
+    dist.fill_slice_fast(x_col.as_slice_mut().unwrap());
     let mut design = Array2::<f64>::zeros((n, 2));
     let mut y = Array1::<f64>::zeros(n);
     let break_at = break_frac.map(|f| (f * n as f64) as usize);
@@ -354,8 +353,7 @@ mod tests {
         Some(t) if i >= t => beta2,
         _ => beta1,
       };
-      let eps =
-        ndarray_rand::rand_distr::Distribution::sample(&Normal::new(0.0, 0.5).unwrap(), &mut rng);
+      let eps = 0.5 * dist.sample_fast();
       y[i] = b0 + b1 * x_col[i] + eps;
     }
     (y, design)

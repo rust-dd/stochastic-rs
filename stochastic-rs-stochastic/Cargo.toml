@@ -35,8 +35,6 @@ stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
 ndarray-linalg = { workspace = true, optional = true }
-ndarray-rand = { workspace = true }
-ndarray-stats = { workspace = true }
 ndrustfft = { workspace = true }
 num-complex = { workspace = true, features = ["rand"] }
 num-traits = { workspace = true }

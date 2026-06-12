@@ -9,7 +9,6 @@ use ndarray::Array0;
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::Dim;
-use ndarray_rand::RandomExt;
 use rand::rng;
 use rand_distr::Distribution;
 use rand_distr::Exp;
@@ -24,7 +23,7 @@ use stochastic_rs::traits::ProcessExt;
 
 fn legacy_sample_n(n: usize, lambda: f64) -> Array1<f64> {
   let distr = SimdExp::<f64>::new(lambda, &Unseeded);
-  let exponentials = Array1::random(n, distr);
+  let exponentials = Array1::from_shape_fn(n, |_| distr.sample_fast());
   let mut poisson = Array1::<f64>::zeros(n);
   for i in 1..n {
     poisson[i] = poisson[i - 1] + exponentials[i - 1];
@@ -50,7 +49,8 @@ fn legacy_sample_tmax(lambda: f64, t_max: f64) -> Array1<f64> {
 }
 
 fn legacy_customjt_sample_n(n: usize, distribution: &Exp<f64>) -> Array1<f64> {
-  let random = Array1::random(n, distribution);
+  let mut r = rng();
+  let random = Array1::from_shape_fn(n, |_| distribution.sample(&mut r));
   let mut x = Array1::<f64>::zeros(n);
   for i in 1..n {
     x[i] = x[i - 1] + random[i - 1];
