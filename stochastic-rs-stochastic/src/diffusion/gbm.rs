@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -13,8 +12,10 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
@@ -60,43 +61,71 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gbm<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = GbmSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut gbm = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return gbm;
-    }
-
-    // Default x0 = 1 (consistent with the constructor's `ln_mu` derivation
-    // at lines 41/64, which uses `x0.unwrap_or(T::one())`). A GBM started at
-    // 0 stays at 0 (the SDE `dGBM = µ·GBM dt + σ·GBM dW` has zero as an
-    // absorbing fixed point), so defaulting to 0 is degenerate; using 1
-    // matches the marginal-distribution convention of the type.
-    gbm[0] = self.x0.unwrap_or(T::one());
-    if self.n == 1 {
-      return gbm;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> GbmSampler<T> {
+    // `saturating_sub(1).max(1)` keeps dt finite for the degenerate n ≤ 1
+    // cases; for n ≥ 2 it equals `n - 1`, so the noise std and hence the
+    // derived stream are identical to the pre-sampler path.
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let drift_scale = self.mu * dt;
-    let sqrt_dt = dt.sqrt();
-    let diff_scale = self.sigma;
-    let mut prev = gbm[0];
-    let mut tail_view = gbm.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Gbm output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    GbmSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::one()),
+      drift_scale: self.mu * dt,
+      diff_scale: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`Gbm`] sampling state: precomputed Euler scales and the owned
+/// Gaussian source, so a Monte-Carlo loop pays the `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct GbmSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  drift_scale: T,
+  diff_scale: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> GbmSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    // Default x0 = 1: a GBM started at 0 is absorbed at 0, so the marginal
+    // convention of the type uses 1 (matches the constructor's `ln_mu`).
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.x0;
     for z in tail.iter_mut() {
-      let next = prev + drift_scale * prev + diff_scale * prev * *z;
+      let next = prev + self.drift_scale * prev + self.diff_scale * prev * *z;
       *z = next;
       prev = next;
     }
+  }
+}
 
-    gbm
+impl<T: FloatExt> PathSampler<T> for GbmSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Gbm output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

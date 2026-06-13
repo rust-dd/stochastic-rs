@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Cox-Ingersoll-Ross (Cir) process.
@@ -73,42 +74,75 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = CirSampler<T>
+  where
+    Self: 's;
 
-  /// Sample the Cox-Ingersoll-Ross (Cir) process
-  fn sample(&self) -> Self::Output {
-    let mut cir = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return cir;
-    }
-
-    cir[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return cir;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> CirSampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let diff_scale = self.sigma;
-    let mut prev = cir[0];
-    let mut tail_view = cir.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Cir output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    CirSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      theta: self.theta,
+      mu: self.mu,
+      diff_scale: self.sigma,
+      use_sym: self.use_sym.unwrap_or(false),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`Cir`] sampling state.
+#[doc(hidden)]
+pub struct CirSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  dt: T,
+  theta: T,
+  mu: T,
+  diff_scale: T,
+  use_sym: bool,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> CirSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.x0;
     for z in tail.iter_mut() {
-      let dcir = self.theta * (self.mu - prev) * dt + diff_scale * prev.abs().sqrt() * *z;
-      let next = match self.use_sym.unwrap_or(false) {
+      let dcir = self.theta * (self.mu - prev) * self.dt + self.diff_scale * prev.abs().sqrt() * *z;
+      let next = match self.use_sym {
         true => (prev + dcir).abs(),
         false => (prev + dcir).max(T::zero()),
       };
       *z = next;
       prev = next;
     }
+  }
+}
 
-    cir
+impl<T: FloatExt> PathSampler<T> for CirSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Cir output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
@@ -46,38 +47,69 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cev<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = CevSampler<T>
+  where
+    Self: 's;
 
-  /// Sample the Cev process
-  fn sample(&self) -> Self::Output {
-    let mut cev = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return cev;
-    }
-
-    cev[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return cev;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> CevSampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let diff_scale = self.sigma;
-    let mut prev = cev[0];
-    let mut tail_view = cev.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Cev output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    CevSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      mu: self.mu,
+      diff_scale: self.sigma,
+      gamma: self.gamma,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`Cev`] sampling state.
+#[doc(hidden)]
+pub struct CevSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  dt: T,
+  mu: T,
+  diff_scale: T,
+  gamma: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> CevSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.x0;
     for z in tail.iter_mut() {
-      let next = prev + self.mu * prev * dt + diff_scale * prev.powf(self.gamma) * *z;
+      let next = prev + self.mu * prev * self.dt + self.diff_scale * prev.powf(self.gamma) * *z;
       *z = next;
       prev = next;
     }
+  }
+}
 
-    cev
+impl<T: FloatExt> PathSampler<T> for CevSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Cev output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

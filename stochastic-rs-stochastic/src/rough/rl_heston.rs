@@ -26,6 +26,7 @@ use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Rough Heston model with Volterra-Cir variance and correlated Gbm asset.
@@ -159,31 +160,97 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHeston<T, S> {
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = RlHestonSampler<'s, T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
+  fn sampler(&self) -> RlHestonSampler<'_, T, S> {
+    RlHestonSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::zero()),
+      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma: self.sigma,
+      mu: self.mu,
+      dt: self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1),
+      cgns: self.cgns,
+      markov: &self.markov,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`RlHeston`] sampling state: owns the correlated-Gaussian generator
+/// and the seed source, and borrows the prebuilt Markov-lift so a Monte-Carlo
+/// loop reuses both output buffers without rebuilding the kernel.
+#[doc(hidden)]
+pub struct RlHestonSampler<'a, T: FloatExt, S: SeedExt> {
+  n: usize,
+  s0: T,
+  v0: T,
+  kappa: T,
+  theta: T,
+  sigma: T,
+  mu: T,
+  dt: T,
+  cgns: Cgns<T>,
+  markov: &'a MarkovLift<T>,
+  seed: S,
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> RlHestonSampler<'_, T, S> {
+  fn fill_paths(&mut self, s: &mut [T], v_out: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [dw_s, dw_v] = self.cgns.sample_impl(&self.seed.derive());
 
     let kappa = self.kappa;
     let theta = self.theta;
     let sigma = self.sigma;
-    let v0 = self.v0.unwrap_or(T::zero()).max(T::zero());
     let v = self.markov.simulate(
-      v0,
+      self.v0,
       |vv| kappa * (theta - vv.max(T::zero())),
       |vv| sigma * vv.max(T::zero()).sqrt(),
       dw_v.as_slice().expect("dw_v must be contiguous"),
     );
 
-    let mut s = Array1::<T>::zeros(self.n);
-    s[0] = self.s0.unwrap_or(T::zero());
+    s[0] = self.s0;
     for i in 1..self.n {
       let v_prev = v[i - 1].max(T::zero());
       s[i] = s[i - 1] + self.mu * s[i - 1] * dt + s[i - 1] * v_prev.sqrt() * dw_s[i - 1];
     }
 
-    let v_clipped = v.map(|x| (*x).max(T::zero()));
-    [s, v_clipped]
+    for i in 0..self.n {
+      v_out[i] = v[i].max(T::zero());
+    }
+  }
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlHestonSampler<'_, T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("RlHeston output must be contiguous"),
+      v.as_slice_mut()
+        .expect("RlHeston output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
+    [s, v]
   }
 }
 

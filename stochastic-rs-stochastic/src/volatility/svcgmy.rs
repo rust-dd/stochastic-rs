@@ -26,6 +26,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Cgmy Stochastic Volatility process (CGMYSV)
@@ -111,18 +112,65 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = SvcgmySampler<T, S>
+  where
+    Self: 's;
 
-  /// Returns `[L, v]` — the CGMYSV log-increment path and the Cir variance path.
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> SvcgmySampler<T, S> {
+    SvcgmySampler {
+      lambda_plus: self.lambda_plus,
+      lambda_minus: self.lambda_minus,
+      alpha: self.alpha,
+      kappa: self.kappa,
+      eta: self.eta,
+      zeta: self.zeta,
+      rho: self.rho,
+      n: self.n,
+      j: self.j,
+      x0: self.x0.unwrap_or(T::zero()),
+      v0: self.v0.unwrap_or(T::zero()),
+      t: self.t,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`Svcgmy`] sampling state: owns the scalar parameters and the seed
+/// source. The Cir noncentral-χ² driver, the series uniforms/exponentials and
+/// the arrival-time Poisson generator are rebuilt per fill in the legacy
+/// seed-consumption order, so the first call reproduces the original stream
+/// bit-for-bit.
+#[doc(hidden)]
+pub struct SvcgmySampler<T: FloatExt, S: SeedExt> {
+  lambda_plus: T,
+  lambda_minus: T,
+  alpha: T,
+  kappa: T,
+  eta: T,
+  zeta: T,
+  rho: T,
+  n: usize,
+  j: usize,
+  x0: T,
+  v0: T,
+  t: Option<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
+  #[allow(non_snake_case)]
+  fn fill_paths(&mut self, x: &mut [T], v: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
 
-    let mut x = Array1::<T>::zeros(self.n);
-    let mut v = Array1::<T>::zeros(self.n);
     let mut y = Array1::<T>::zeros(self.n);
 
-    x[0] = self.x0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero());
+    x[0] = self.x0;
+    v[0] = self.v0;
     // y = L - rho * v  =>  L = y + rho * v
     y[0] = x[0] - self.rho * v[0];
 
@@ -220,7 +268,27 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
     for i in 1..self.n {
       x[i] = y[i] + self.rho * v[i];
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for SvcgmySampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [x, v] = out;
+    self.fill_paths(
+      x.as_slice_mut().expect("Svcgmy output must be contiguous"),
+      v.as_slice_mut().expect("Svcgmy output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut x = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      x.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
     [x, v]
   }
 }

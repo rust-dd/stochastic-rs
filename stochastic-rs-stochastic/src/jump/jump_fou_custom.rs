@@ -7,12 +7,16 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
+use crate::noise::fgn::FgnSampler;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
@@ -74,18 +78,75 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = JumpFOUCustomSampler<'s, T, D, B>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.fgn.dt();
-    let fgn = &self.fgn.sample();
-
-    let mut jump_fou = Array1::<T>::zeros(self.n);
-    if self.n <= 1 {
-      return jump_fou;
+  fn sampler(&self) -> JumpFOUCustomSampler<'_, T, D, B> {
+    // Owns the fractional-noise sampler (reproducing `fgn.sample()` on its
+    // first call) and an owned jump RNG derived from `self.seed`, and borrows
+    // the user-supplied inter-arrival / jump-size distributions. The fGn and
+    // jump seed sources are independent, so the first fill reproduces the
+    // legacy stream bit-for-bit; both owned sources advance on reuse.
+    JumpFOUCustomSampler {
+      n: self.n,
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt: self.fgn.dt(),
+      fgn_sampler: self.fgn.sampler(),
+      jump_times: &self.jump_times,
+      jump_sizes: &self.jump_sizes,
+      rng: self.seed.rng(),
     }
-    jump_fou[0] = self.x0.unwrap_or(T::zero());
-    let mut rng = self.seed.rng();
-    let mut next_jump_time = self.jump_times.sample(&mut rng);
+  }
+}
+
+/// Reusable [`JumpFOUCustom`] sampling state: owns the fractional-noise
+/// sampler and a jump RNG, and borrows the inter-arrival / jump-size
+/// distributions, so a Monte-Carlo loop pays the fGn `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct JumpFOUCustomSampler<'a, T, D, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: Backend,
+{
+  n: usize,
+  theta: T,
+  mu: T,
+  sigma: T,
+  x0: T,
+  dt: T,
+  fgn_sampler: FgnSampler<'a, T, Unseeded, B>,
+  jump_times: &'a D,
+  jump_sizes: &'a D,
+  rng: SimdRng,
+}
+
+impl<T, D, B> JumpFOUCustomSampler<'_, T, D, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: Backend,
+{
+  fn fill_path(&mut self, out: &mut [T]) {
+    // Match the legacy `n <= 1` path: return an all-zeros buffer (x0 is only
+    // applied once there are at least two points). `array1_from_fill` does not
+    // zero, so write it explicitly.
+    if out.len() <= 1 {
+      if let Some(first) = out.first_mut() {
+        *first = T::zero();
+      }
+      return;
+    }
+
+    let fgn = &self.fgn_sampler.sample();
+
+    out[0] = self.x0;
+    let mut next_jump_time = self.jump_times.sample(&mut self.rng);
     assert!(
       next_jump_time > T::zero(),
       "JumpFOUCustom: jump_times closure must return strictly positive inter-arrival times \
@@ -93,12 +154,12 @@ where
        can return ≤0 values, wrap it in `.max(eps)` or use a strictly-positive distribution)"
     );
 
-    for i in 1..self.n {
-      let current_time = T::from_usize_(i) * dt;
+    for i in 1..out.len() {
+      let current_time = T::from_usize_(i) * self.dt;
       let mut jump_sum = T::zero();
       while next_jump_time <= current_time {
-        jump_sum += self.jump_sizes.sample(&mut rng);
-        let delta = self.jump_times.sample(&mut rng);
+        jump_sum += self.jump_sizes.sample(&mut self.rng);
+        let delta = self.jump_times.sample(&mut self.rng);
         assert!(
           delta > T::zero(),
           "JumpFOUCustom: jump_times closure must return strictly positive inter-arrival times"
@@ -106,13 +167,33 @@ where
         next_jump_time += delta;
       }
 
-      jump_fou[i] = jump_fou[i - 1]
-        + self.theta * (self.mu - jump_fou[i - 1]) * dt
+      out[i] = out[i - 1]
+        + self.theta * (self.mu - out[i - 1]) * self.dt
         + self.sigma * fgn[i - 1]
         + jump_sum;
     }
+  }
+}
 
-    jump_fou
+impl<T, D, B> PathSampler<T> for JumpFOUCustomSampler<'_, T, D, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: Backend,
+{
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(
+      out
+        .as_slice_mut()
+        .expect("JumpFOUCustom output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

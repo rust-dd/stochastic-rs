@@ -12,8 +12,10 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Kou process
@@ -73,38 +75,94 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = KouSampler<'s, T, D>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> KouSampler<'_, T, D> {
+    // The diffusion source is owned and derived from `self.seed`; the
+    // compound-Poisson jump driver is borrowed and re-drawn per fill exactly
+    // as the legacy `sample()` did (it rebuilds its own RNG from
+    // `cpoisson.seed` each call). The two seed sources are independent, so the
+    // first fill reproduces the legacy stream bit-for-bit.
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
     } else {
       T::zero()
     };
-    let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
-    let sqrt_dt = dt.sqrt();
-    let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
+    let drift_dt = (self.alpha
+      - self.sigma.powf(T::from_usize_(2)) / T::from_usize_(2)
+      - self.lambda * self.theta)
+      * dt;
+    KouSampler {
+      n: self.n,
+      sigma: self.sigma,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      drift_dt,
+      cpoisson: &self.cpoisson,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Kou`] sampling state: owns the Gaussian diffusion source and
+/// borrows the compound-Poisson jump driver, so a Monte-Carlo loop pays the
+/// `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct KouSampler<'a, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  n: usize,
+  sigma: T,
+  x0: T,
+  dt: T,
+  drift_dt: T,
+  cpoisson: &'a CompoundPoisson<T, D>,
+  normal: SimdNormal<T>,
+}
+
+impl<T, D> KouSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+
+    let jump_increments = self.cpoisson.sample_grid_increments(out.len(), self.dt);
+    let mut gn = Array1::<T>::zeros(out.len() - 1);
     if let Some(gn_slice) = gn.as_slice_mut() {
-      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal.fill_slice_fast(gn_slice);
+      self.normal.fill_slice_fast(gn_slice);
     }
 
-    let mut merton = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return merton;
-    }
-    merton[0] = self.x0.unwrap_or(T::zero());
+    out[0] = self.x0;
 
-    for i in 1..self.n {
-      merton[i] = merton[i - 1]
-        + (self.alpha
-          - self.sigma.powf(T::from_usize_(2)) / T::from_usize_(2)
-          - self.lambda * self.theta)
-          * dt
-        + self.sigma * gn[i - 1]
-        + jump_increments[i];
+    for i in 1..out.len() {
+      out[i] = out[i - 1] + self.drift_dt + self.sigma * gn[i - 1] + jump_increments[i];
     }
+  }
+}
 
-    merton
+impl<T, D> PathSampler<T> for KouSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(out.as_slice_mut().expect("Kou output must be contiguous"));
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

@@ -57,6 +57,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Dynamic / multi-factor SABR with piecewise-constant `beta`, `rho` and
@@ -135,7 +136,7 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
   /// Index of the active bucket at time `time`: the number of knots
   /// less than or equal to `time`, clamped to the last bucket.
   #[inline]
-  fn bucket_at(&self, time: T) -> usize {
+  pub fn bucket_at(&self, time: T) -> usize {
     let mut idx = 0usize;
     for &knot in &self.knots {
       if time >= knot {
@@ -155,21 +156,76 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
   /// `(forward path, volatility path)`.
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = MultifactorSabrSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.dt();
+  fn sampler(&self) -> MultifactorSabrSampler<T, S> {
+    MultifactorSabrSampler {
+      n: self.n,
+      t: self.t,
+      f0: self.f0.unwrap_or(T::zero()),
+      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      knots: self.knots.clone(),
+      beta: self.beta.clone(),
+      rho: self.rho.clone(),
+      nu: self.nu.clone(),
+      dt: self.dt(),
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable dynamic-[`MultifactorSabr`] sampling state: owns the term-structure
+/// coefficient vectors and the seed source. The two independent Gaussian
+/// increment streams are rebuilt per fill via `self.seed.derive()` in the
+/// legacy order, so the first call reproduces the original stream bit-for-bit.
+#[doc(hidden)]
+pub struct MultifactorSabrSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  t: Option<T>,
+  f0: T,
+  v0: T,
+  knots: Vec<T>,
+  beta: Vec<T>,
+  rho: Vec<T>,
+  nu: Vec<T>,
+  dt: T,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> MultifactorSabrSampler<T, S> {
+  /// Index of the active bucket at time `time`: the number of knots
+  /// less than or equal to `time`, clamped to the last bucket.
+  #[inline]
+  fn bucket_at(&self, time: T) -> usize {
+    let mut idx = 0usize;
+    for &knot in &self.knots {
+      if time >= knot {
+        idx += 1;
+      } else {
+        break;
+      }
+    }
+    idx.min(self.beta.len() - 1)
+  }
+
+  fn fill_paths(&mut self, f_: &mut [T], v: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
 
     // Two independent standard-normal increment streams (std-dev √dt),
     // combined per step under the time-varying correlation ρ(t_i).
-    let gn1 = Gn::<T, _>::new(self.n - 1, self.t, self.seed.derive());
-    let gn2 = Gn::<T, _>::new(self.n - 1, self.t, self.seed.derive());
+    let gn1 = Gn::<T, S>::new(self.n - 1, self.t, self.seed.derive());
+    let gn2 = Gn::<T, S>::new(self.n - 1, self.t, self.seed.derive());
     let z1 = gn1.sample();
     let z2 = gn2.sample();
 
-    let mut f_ = Array1::<T>::zeros(self.n);
-    let mut v = Array1::<T>::zeros(self.n);
-    f_[0] = self.f0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero()).max(T::zero());
+    f_[0] = self.f0;
+    v[0] = self.v0;
 
     for i in 1..self.n {
       let time = T::from_usize_(i - 1) * dt;
@@ -189,7 +245,29 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
       // Exact step for dα = ν α dW: α_i = α_{i-1} exp(ν ΔW₂ − ½ν²Δt).
       v[i] = v_prev * (nu * dw2 - T::from_f64_fast(0.5) * nu * nu * dt).exp();
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultifactorSabrSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [f_, v] = out;
+    self.fill_paths(
+      f_.as_slice_mut()
+        .expect("MultifactorSabr output must be contiguous"),
+      v.as_slice_mut()
+        .expect("MultifactorSabr output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut f_ = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      f_.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
     [f_, v]
   }
 }

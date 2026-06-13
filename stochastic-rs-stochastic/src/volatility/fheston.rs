@@ -13,6 +13,7 @@ use stochastic_rs_distributions::special::gamma;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded> {
@@ -77,40 +78,81 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = RoughHestonSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> RoughHestonSampler<T> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
       T::zero()
     };
-
-    // Use Cgns for rho-correlated noise: [gn_vol, gn_price]
+    // Cgns for rho-correlated noise, with `Unseeded` baked in exactly as the
+    // legacy `sample` did (the noise ignores `self.seed`).
     let rho = self.rho.unwrap_or(T::zero());
-    let cgns = Cgns::new(rho, n_steps, self.t, Unseeded);
-    let [gn_vol, gn_price] = cgns.sample();
+    RoughHestonSampler {
+      n: self.n,
+      hurst: self.hurst,
+      theta: self.theta,
+      kappa: self.kappa,
+      nu: self.nu,
+      c1: self.c1.unwrap_or(T::one()),
+      c2: self.c2.unwrap_or(T::one()),
+      mu: self.mu.unwrap_or(T::zero()),
+      s0: self.s0.unwrap_or(T::one()),
+      v0_sq: self.v0.unwrap_or(T::one()).powi(2),
+      dt,
+      g: gamma(self.hurst.to_f64().unwrap() - 0.5),
+      cgns: Cgns::new(rho, n_steps, self.t, Unseeded),
+    }
+  }
+}
+
+/// Reusable [`RoughHeston`] sampling state: owns the (always-`Unseeded`)
+/// correlated-Gaussian generator and the precomputed Volterra-kernel constants
+/// so a Monte-Carlo loop reuses both output buffers.
+#[doc(hidden)]
+pub struct RoughHestonSampler<T: FloatExt> {
+  n: usize,
+  hurst: T,
+  theta: T,
+  kappa: T,
+  nu: T,
+  c1: T,
+  c2: T,
+  mu: T,
+  s0: T,
+  v0_sq: T,
+  dt: T,
+  g: f64,
+  cgns: Cgns<T>,
+}
+
+impl<T: FloatExt> RoughHestonSampler<T> {
+  fn fill_paths(&mut self, s: &mut [T], v2: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
+
+    let [gn_vol, gn_price] = self.cgns.sample();
 
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);
     let mut sigma_tilde2 = Array1::<T>::zeros(self.n);
-    let mut v2 = Array1::zeros(self.n);
-    let mut s = Array1::zeros(self.n);
 
-    if self.n == 0 {
-      return [s, v2];
-    }
-
-    let v0_sq = self.v0.unwrap_or(T::one()).powi(2);
-    let mu = self.mu.unwrap_or(T::zero());
-    let s0 = self.s0.unwrap_or(T::one());
+    let v0_sq = self.v0_sq;
+    let mu = self.mu;
 
     yt[0] = v0_sq;
     zt[0] = T::zero();
     sigma_tilde2[0] = v0_sq;
     v2[0] = v0_sq;
-    s[0] = s0;
-    let g = gamma(self.hurst.to_f64().unwrap() - 0.5);
+    s[0] = self.s0;
+    let g = self.g;
     let half = T::from_f64_fast(0.5);
 
     for i in 1..self.n {
@@ -128,16 +170,37 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
         })
         .sum::<T>();
 
-      v2[i] = yt[i]
-        + self.c1.unwrap_or(T::one()) * self.nu * zt[i]
-        + self.c2.unwrap_or(T::one()) * self.nu * integral / T::from_f64_fast(g);
+      v2[i] =
+        yt[i] + self.c1 * self.nu * zt[i] + self.c2 * self.nu * integral / T::from_f64_fast(g);
 
       // Price path: gn_price is already rho-correlated with gn_vol via Cgns
       let vi = v2[i - 1].max(T::zero());
       let log_inc = (mu - half * vi) * dt + vi.sqrt() * gn_price[i - 1];
       s[i] = s[i - 1] * log_inc.exp();
     }
+  }
+}
 
+impl<T: FloatExt> PathSampler<T> for RoughHestonSampler<T> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v2] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("RoughHeston output must be contiguous"),
+      v2.as_slice_mut()
+        .expect("RoughHeston output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v2 = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v2.as_slice_mut().expect("contiguous"),
+    );
     [s, v2]
   }
 }

@@ -14,6 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded> {
@@ -127,15 +128,52 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
   type Output = Array2<T>;
+  type Sampler<'s>
+    = WuZhangDSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> WuZhangDSampler<T, S> {
+    WuZhangDSampler {
+      alpha: self.alpha.clone(),
+      beta: self.beta.clone(),
+      nu: self.nu.clone(),
+      lambda: self.lambda.clone(),
+      x0: self.x0.clone(),
+      v0: self.v0.clone(),
+      xn: self.xn,
+      n: self.n,
+      t: self.t,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`WuZhangD`] sampling state: owns the per-pair parameter vectors,
+/// the initial curves and the seed source so a Monte-Carlo loop reuses the
+/// output matrix.
+#[doc(hidden)]
+pub struct WuZhangDSampler<T: FloatExt, S: SeedExt> {
+  alpha: Array1<T>,
+  beta: Array1<T>,
+  nu: Array1<T>,
+  lambda: Array1<T>,
+  x0: Array1<T>,
+  v0: Array1<T>,
+  xn: usize,
+  n: usize,
+  t: Option<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> WuZhangDSampler<T, S> {
+  fn fill_matrix(&mut self, fv: &mut Array2<T>) {
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
     } else {
       T::zero()
     };
     let sqrt_dt = dt.sqrt();
-    let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
     let (mut f_rows, mut v_rows) = fv.view_mut().split_at(Axis(0), self.xn);
     for i in 0..self.xn {
       let mut f_row = f_rows.row_mut(i);
@@ -179,7 +217,19 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
         f_slice[j] = f_old + df;
       }
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangDSampler<T, S> {
+  type Output = Array2<T>;
+
+  fn sample_into(&mut self, out: &mut Array2<T>) {
+    self.fill_matrix(out);
+  }
+
+  fn sample(&mut self) -> Array2<T> {
+    let mut fv = Array2::<T>::zeros((2 * self.xn, self.n));
+    self.fill_matrix(&mut fv);
     fv
   }
 }

@@ -21,6 +21,7 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[inline]
@@ -146,22 +147,72 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = BatesSvjSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn sampler(&self) -> BatesSvjSampler<T, S> {
+    BatesSvjSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::one()),
+      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      lambda: self.lambda,
+      nu: self.nu,
+      omega: self.omega,
+      alpha: self.alpha,
+      beta: self.beta,
+      sigma: self.sigma,
+      drift: self.drift(),
+      kappa_j: self.kappa_j(),
+      dt: self.cgns.dt(),
+      use_sym: self.use_sym.unwrap_or(false),
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`BatesSvj`] sampling state: owns the correlated-Gaussian generator
+/// and the seed source. The jump (Poisson + Normal) and asset/variance Brownian
+/// generators are rebuilt per fill in the legacy seed-consumption order, so the
+/// first call reproduces the original stream bit-for-bit.
+#[doc(hidden)]
+pub struct BatesSvjSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  s0: T,
+  v0: T,
+  lambda: T,
+  nu: T,
+  omega: T,
+  alpha: T,
+  beta: T,
+  sigma: T,
+  drift: T,
+  kappa_j: T,
+  dt: T,
+  use_sym: bool,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
+  fn fill_paths(&mut self, s: &mut [T], v: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut v = Array1::<T>::zeros(self.n);
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must be > 0 for log-price simulation"
+    );
+    s[0] = self.s0;
+    v[0] = self.v0;
 
-    let s0 = self.s0.unwrap_or(T::one());
-    assert!(s0 > T::zero(), "s0 must be > 0 for log-price simulation");
-    s[0] = s0;
-
-    v[0] = self.v0.unwrap_or(T::zero()).max(T::zero());
-
-    let drift = self.drift();
-    let kappa_j = self.kappa_j();
+    let drift = self.drift;
+    let kappa_j = self.kappa_j;
 
     let z_std = SimdNormal::<f64, 64>::new(0.0, 1.0, &self.seed);
     let mut rng = self.seed.rng();
@@ -176,7 +227,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
     };
 
     for i in 1..self.n {
-      let v_prev = match self.use_sym.unwrap_or(false) {
+      let v_prev = match self.use_sym {
         true => v[i - 1].abs(),
         false => v[i - 1].max(T::zero()),
       };
@@ -198,12 +249,34 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
       s[i] = s[i - 1] * log_inc.exp();
 
       let dv = (self.alpha - self.beta * v_prev) * dt + self.sigma * sqrt_v * cgn2[i - 1];
-      v[i] = match self.use_sym.unwrap_or(false) {
+      v[i] = match self.use_sym {
         true => (v_prev + dv).abs(),
         false => (v_prev + dv).max(T::zero()),
       };
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for BatesSvjSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("BatesSvj output must be contiguous"),
+      v.as_slice_mut()
+        .expect("BatesSvj output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
     [s, v]
   }
 }

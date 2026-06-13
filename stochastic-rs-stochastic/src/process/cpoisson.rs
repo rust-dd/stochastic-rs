@@ -14,6 +14,7 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use super::poisson::Poisson;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct CompoundPoisson<T, D, S: SeedExt = Unseeded>
@@ -132,8 +133,41 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = [Array1<T>; 3];
+  type Sampler<'s>
+    = CompoundPoissonSampler<'s, T, D, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> CompoundPoissonSampler<'_, T, D, S> {
+    CompoundPoissonSampler {
+      distribution: &self.distribution,
+      poisson: &self.poisson,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`CompoundPoisson`] sampling state: borrows the (non-`Clone`) jump
+/// distribution and Poisson driver and owns the seed source. The per-call output
+/// length is event-count-dependent, so the three buffers are reallocated each
+/// call; the seed advances exactly as the legacy `sample` body did.
+#[doc(hidden)]
+pub struct CompoundPoissonSampler<'a, T, D, S: SeedExt>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  distribution: &'a D,
+  poisson: &'a Poisson<T>,
+  seed: S,
+}
+
+impl<T, D, S: SeedExt> CompoundPoissonSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  fn sample_inner(&mut self) -> [Array1<T>; 3] {
     let poisson = self.poisson.sample_impl(&self.seed.derive());
     let mut jumps = Array1::<T>::zeros(poisson.len());
     self.seed.derive();
@@ -146,6 +180,22 @@ where
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
     [poisson, cum_jupms, jumps]
+  }
+}
+
+impl<T, D, S: SeedExt> PathSampler<T> for CompoundPoissonSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  type Output = [Array1<T>; 3];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+    *out = self.sample_inner();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 3] {
+    self.sample_inner()
   }
 }
 

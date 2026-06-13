@@ -67,6 +67,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// **NOT a BGM / LIBOR Market Model** despite the name — see the module
@@ -124,11 +125,39 @@ impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
   type Output = Array2<T>;
+  type Sampler<'s>
+    = BgmSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut fwd = Array2::<T>::zeros((self.xn, self.n));
+  fn sampler(&self) -> BgmSampler<T, S> {
+    BgmSampler {
+      lambda: self.lambda.clone(),
+      x0: self.x0.clone(),
+      xn: self.xn,
+      n: self.n,
+      t: self.t,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`Bgm`] sampling state: owns the per-rate scales, the initial
+/// curve and the seed source so a Monte-Carlo loop reuses the output matrix.
+#[doc(hidden)]
+pub struct BgmSampler<T: FloatExt, S: SeedExt> {
+  lambda: Array1<T>,
+  x0: Array1<T>,
+  xn: usize,
+  n: usize,
+  t: Option<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> BgmSampler<T, S> {
+  fn fill_matrix(&mut self, fwd: &mut Array2<T>) {
     if self.n == 0 {
-      return fwd;
+      return;
     }
 
     for i in 0..self.xn {
@@ -136,7 +165,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
     }
 
     if self.n == 1 {
-      return fwd;
+      return;
     }
 
     let n_increments = self.n - 1;
@@ -156,7 +185,19 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
         row_slice[j] = f_old + f_old * self.lambda[i] * row_slice[j];
       }
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for BgmSampler<T, S> {
+  type Output = Array2<T>;
+
+  fn sample_into(&mut self, out: &mut Array2<T>) {
+    self.fill_matrix(out);
+  }
+
+  fn sample(&mut self) -> Array2<T> {
+    let mut fwd = Array2::<T>::zeros((self.xn, self.n));
+    self.fill_matrix(&mut fwd);
     fwd
   }
 }

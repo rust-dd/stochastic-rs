@@ -16,9 +16,11 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Univariate Hawkes process with exponential kernel.
@@ -68,13 +70,16 @@ impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
-  /// Core sampling — Ogata's thinning with recursive exponential-kernel update.
-  ///
-  /// Between events the intensity is monotone-decreasing, so the upper bound
-  /// $\bar\lambda = \mu + S$ (evaluated right after the last accepted event)
-  /// is tight and acceptance is efficient.
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hawkes<T, S> {
+  type Output = Array1<T>;
+  type Sampler<'s>
+    = HawkesSampler<T>
+  where
+    Self: 's;
+
+  /// Builds the Ogata-thinning sampler. Validation of `μ`, `α`, `β` happens
+  /// here so a reused sampler pays it once.
+  fn sampler(&self) -> HawkesSampler<T> {
     assert!(self.mu > T::zero(), "baseline intensity μ must be positive");
     assert!(self.alpha >= T::zero(), "excitation α must be non-negative");
     assert!(self.beta > T::zero(), "decay rate β must be positive");
@@ -83,47 +88,12 @@ impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
       "stationarity requires α < β (branching ratio α/β < 1)"
     );
 
-    let mu = self.mu;
-    let alpha = self.alpha;
-    let beta = self.beta;
-    let mut rng = seed.rng();
-
-    // S tracks the self-exciting component: Σ α·exp(-β·(t - t_i))
-    let mut s = T::zero();
-    let mut t = T::zero();
-
-    if let Some(n) = self.n {
-      let mut events = Vec::with_capacity(n);
-      events.push(T::zero());
-
-      if n <= 1 {
-        return Array1::from(events);
-      }
-
-      while events.len() < n {
-        let lambda_bar = mu + s;
-        // Exp(λ̄) via inverse transform: −ln(U) / λ̄, U ∈ (0,1]
-        let u = T::one() - T::sample_uniform_simd(&mut rng);
-        let dt = -u.ln() / lambda_bar;
-        t += dt;
-
-        // Decay self-exciting component to candidate time
-        s = s * (-beta * dt).exp();
-
-        // Accept / reject (Ogata thinning)
-        let lambda_t = mu + s;
-        let d = T::sample_uniform_simd(&mut rng);
-        if d * lambda_bar <= lambda_t {
-          events.push(t);
-          s += alpha;
-        }
-      }
-
-      Array1::from(events)
+    let mode = if let Some(n) = self.n {
+      HawkesMode::Count { n }
     } else if let Some(t_max) = self.t_max {
       // Expected number of events: μ·T / (1 − α/β)
       let expected = if t_max > T::zero() {
-        (mu * t_max / (T::one() - alpha / beta))
+        (self.mu * t_max / (T::one() - self.alpha / self.beta))
           .to_f64()
           .unwrap_or(0.0)
       } else {
@@ -134,47 +104,129 @@ impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
       } else {
         1
       };
-      let mut events = Vec::with_capacity(cap);
-      events.push(T::zero());
-
-      if t_max <= T::zero() {
-        return Array1::from(events);
-      }
-
-      while t < t_max {
-        let lambda_bar = mu + s;
-        let u = T::one() - T::sample_uniform_simd(&mut rng);
-        let dt = -u.ln() / lambda_bar;
-        t += dt;
-
-        if t >= t_max {
-          break;
-        }
-
-        // Decay self-exciting component to candidate time
-        s = s * (-beta * dt).exp();
-
-        // Accept / reject
-        let lambda_t = mu + s;
-        let d = T::sample_uniform_simd(&mut rng);
-        if d * lambda_bar <= lambda_t {
-          events.push(t);
-          s += alpha;
-        }
-      }
-
-      Array1::from(events)
+      HawkesMode::Horizon { t_max, cap }
     } else {
       unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
+    };
+
+    HawkesSampler {
+      mu: self.mu,
+      alpha: self.alpha,
+      beta: self.beta,
+      rng: self.seed.rng(),
+      mode,
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hawkes<T, S> {
+/// Sampling regime: a fixed event count or a time horizon.
+enum HawkesMode<T: FloatExt> {
+  Count { n: usize },
+  Horizon { t_max: T, cap: usize },
+}
+
+/// Reusable [`Hawkes`] sampling state: the owned RNG driving Ogata's thinning
+/// and the precomputed sampling regime.
+///
+/// Between events the intensity is monotone-decreasing, so the upper bound
+/// $\bar\lambda = \mu + S$ (evaluated right after the last accepted event) is
+/// tight and acceptance is efficient.
+#[doc(hidden)]
+pub struct HawkesSampler<T: FloatExt> {
+  mu: T,
+  alpha: T,
+  beta: T,
+  rng: SimdRng,
+  mode: HawkesMode<T>,
+}
+
+impl<T: FloatExt> HawkesSampler<T> {
+  fn sample_count(&mut self, n: usize) -> Array1<T> {
+    let mu = self.mu;
+    let alpha = self.alpha;
+    let beta = self.beta;
+    let mut s = T::zero();
+    let mut t = T::zero();
+
+    let mut events = Vec::with_capacity(n);
+    events.push(T::zero());
+    if n <= 1 {
+      return Array1::from(events);
+    }
+
+    while events.len() < n {
+      let lambda_bar = mu + s;
+      // Exp(λ̄) via inverse transform: −ln(U) / λ̄, U ∈ (0,1]
+      let u = T::one() - T::sample_uniform_simd(&mut self.rng);
+      let dt = -u.ln() / lambda_bar;
+      t += dt;
+
+      // Decay self-exciting component to candidate time
+      s = s * (-beta * dt).exp();
+
+      // Accept / reject (Ogata thinning)
+      let lambda_t = mu + s;
+      let d = T::sample_uniform_simd(&mut self.rng);
+      if d * lambda_bar <= lambda_t {
+        events.push(t);
+        s += alpha;
+      }
+    }
+
+    Array1::from(events)
+  }
+
+  fn sample_horizon(&mut self, t_max: T, cap: usize) -> Array1<T> {
+    let mu = self.mu;
+    let alpha = self.alpha;
+    let beta = self.beta;
+    let mut s = T::zero();
+    let mut t = T::zero();
+
+    let mut events = Vec::with_capacity(cap);
+    events.push(T::zero());
+    if t_max <= T::zero() {
+      return Array1::from(events);
+    }
+
+    while t < t_max {
+      let lambda_bar = mu + s;
+      let u = T::one() - T::sample_uniform_simd(&mut self.rng);
+      let dt = -u.ln() / lambda_bar;
+      t += dt;
+
+      if t >= t_max {
+        break;
+      }
+
+      // Decay self-exciting component to candidate time
+      s = s * (-beta * dt).exp();
+
+      // Accept / reject
+      let lambda_t = mu + s;
+      let d = T::sample_uniform_simd(&mut self.rng);
+      if d * lambda_bar <= lambda_t {
+        events.push(t);
+        s += alpha;
+      }
+    }
+
+    Array1::from(events)
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for HawkesSampler<T> {
   type Output = Array1<T>;
 
-  fn sample(&self) -> Self::Output {
-    self.sample_impl(&self.seed)
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    *out = self.sample();
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    match self.mode {
+      HawkesMode::Count { n } => self.sample_count(n),
+      HawkesMode::Horizon { t_max, cap } => self.sample_horizon(t_max, cap),
+    }
   }
 }
 

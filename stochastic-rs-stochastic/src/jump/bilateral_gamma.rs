@@ -10,7 +10,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Bilateral Gamma process.
@@ -77,33 +79,70 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BilateralGamma<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = BilateralGammaSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut x = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return x;
-    }
-    x[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return x;
-    }
-
+  fn sampler(&self) -> BilateralGammaSampler<T> {
+    // Positive and negative gamma sources are derived from `self.seed` in the
+    // same order as the legacy `sample()`, so the first fill matches
+    // bit-for-bit; both owned sources advance on reuse for independent paths.
     let dt = self.dt();
+    BilateralGammaSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed),
+      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
+    }
+  }
+}
 
-    // Gamma(shape = alpha * dt, scale = 1/lambda)
-    let gamma_p = SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed);
-    let mut gp = Array1::<T>::zeros(self.n - 1);
-    gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
+/// Reusable [`BilateralGamma`] sampling state: owns the positive- and
+/// negative-side gamma sources so a Monte-Carlo loop pays their setup once.
+#[doc(hidden)]
+pub struct BilateralGammaSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  gamma_p: SimdGamma<T>,
+  gamma_m: SimdGamma<T>,
+}
 
-    let gamma_m = SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed);
-    let mut gm = Array1::<T>::zeros(self.n - 1);
-    gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
-
-    for i in 1..self.n {
-      x[i] = x[i - 1] + gp[i - 1] - gm[i - 1];
+impl<T: FloatExt> BilateralGammaSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
     }
 
-    x
+    let mut gp = Array1::<T>::zeros(out.len() - 1);
+    self.gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
+    let mut gm = Array1::<T>::zeros(out.len() - 1);
+    self.gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
+
+    for i in 1..out.len() {
+      out[i] = out[i - 1] + gp[i - 1] - gm[i - 1];
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(
+      out
+        .as_slice_mut()
+        .expect("BilateralGamma output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 
@@ -171,37 +210,78 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BilateralGammaMotion<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = BilateralGammaMotionSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut x = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return x;
-    }
-    x[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return x;
-    }
-
+  fn sampler(&self) -> BilateralGammaMotionSampler<T> {
+    // Gamma sources then the Gaussian source are derived from `self.seed` in
+    // the same order as the legacy `sample()`, so the first fill matches
+    // bit-for-bit; all owned sources advance on reuse for independent paths.
     let dt = self.dt();
-    let sqrt_dt = dt.sqrt();
+    BilateralGammaMotionSampler {
+      n: self.n,
+      sigma: self.sigma,
+      x0: self.x0.unwrap_or(T::zero()),
+      sqrt_dt: dt.sqrt(),
+      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed),
+      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
+}
 
-    let gamma_p = SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed);
-    let mut gp = Array1::<T>::zeros(self.n - 1);
-    gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
+/// Reusable [`BilateralGammaMotion`] sampling state: owns both gamma sources
+/// and the Gaussian source so a Monte-Carlo loop pays their setup once.
+#[doc(hidden)]
+pub struct BilateralGammaMotionSampler<T: FloatExt> {
+  n: usize,
+  sigma: T,
+  x0: T,
+  sqrt_dt: T,
+  gamma_p: SimdGamma<T>,
+  gamma_m: SimdGamma<T>,
+  normal: SimdNormal<T>,
+}
 
-    let gamma_m = SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed);
-    let mut gm = Array1::<T>::zeros(self.n - 1);
-    gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
-
-    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-    let mut z = Array1::<T>::zeros(self.n - 1);
-    normal.fill_slice_fast(z.as_slice_mut().unwrap());
-
-    for i in 1..self.n {
-      x[i] = x[i - 1] + self.sigma * sqrt_dt * z[i - 1] + gp[i - 1] - gm[i - 1];
+impl<T: FloatExt> BilateralGammaMotionSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
     }
 
-    x
+    let mut gp = Array1::<T>::zeros(out.len() - 1);
+    self.gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
+    let mut gm = Array1::<T>::zeros(out.len() - 1);
+    self.gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
+    let mut z = Array1::<T>::zeros(out.len() - 1);
+    self.normal.fill_slice_fast(z.as_slice_mut().unwrap());
+
+    for i in 1..out.len() {
+      out[i] = out[i - 1] + self.sigma * self.sqrt_dt * z[i - 1] + gp[i - 1] - gm[i - 1];
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for BilateralGammaMotionSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(
+      out
+        .as_slice_mut()
+        .expect("BilateralGammaMotion output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

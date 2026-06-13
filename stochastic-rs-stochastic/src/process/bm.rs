@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Bm<T: FloatExt, S: SeedExt = Unseeded> {
@@ -30,30 +31,59 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bm<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = BmSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut bm = Array1::<T>::zeros(self.n);
-    if self.n <= 1 {
-      return bm;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> BmSampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let std_dev = (self.t.unwrap_or(T::one()) / T::from_usize_(n_increments)).sqrt();
-    let mut tail_view = bm.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Bm output tail must be contiguous");
+    BmSampler {
+      n: self.n,
+      normal: SimdNormal::<T>::new(T::zero(), std_dev, &self.seed),
+    }
+  }
+}
 
-    let normal = SimdNormal::<T>::new(T::zero(), std_dev, &self.seed);
-    normal.fill_slice_fast(tail);
+/// Reusable [`Bm`] sampling state: the owned Gaussian increment source. The
+/// path is `B_0 = 0` followed by the running sum of the increments.
+#[doc(hidden)]
+pub struct BmSampler<T: FloatExt> {
+  n: usize,
+  normal: SimdNormal<T>,
+}
 
+impl<T: FloatExt> BmSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.len() <= 1 {
+      if let Some(first) = out.first_mut() {
+        *first = T::zero();
+      }
+      return;
+    }
+    out[0] = T::zero();
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
     let mut acc = T::zero();
     for x in tail.iter_mut() {
       acc += *x;
       *x = acc;
     }
+  }
+}
 
-    bm
+impl<T: FloatExt> PathSampler<T> for BmSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Bm output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

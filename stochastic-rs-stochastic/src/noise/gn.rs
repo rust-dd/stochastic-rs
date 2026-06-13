@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
@@ -30,12 +32,48 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gn<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = GnSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut out = Array1::<T>::zeros(self.n);
-    let out_slice = out.as_slice_mut().expect("Gn output must be contiguous");
-    self.fill_slice(out_slice);
-    out
+  fn sampler(&self) -> GnSampler<T> {
+    GnSampler {
+      n: self.n,
+      normal: SimdNormal::<T>::new(T::zero(), self.dt().sqrt(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Gn`] sampling state: the owned Gaussian source. Each path is `n`
+/// i.i.d. `N(0, dt)` increments (no leading zero, unlike [`Bm`]).
+#[doc(hidden)]
+pub struct GnSampler<T: FloatExt> {
+  n: usize,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> GnSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let len = self.n.min(out.len());
+    if len == 0 {
+      return;
+    }
+    self.normal.fill_slice_fast(&mut out[..len]);
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for GnSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Gn output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

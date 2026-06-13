@@ -22,7 +22,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Volterra kernel type.
@@ -81,37 +83,80 @@ impl<T: FloatExt> Volterra<T, Unseeded> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = VolterraSampler<T>
+  where
+    Self: 's;
 
-  /// $X_{t_i} = \sum_{j=1}^{i} K(t_i, t_{j-1})\,\Delta W_j$
-  ///
-  /// Complexity: $O(n^2)$ due to full history convolution.
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> VolterraSampler<T> {
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
-    let sqrt_dt = dt.sqrt();
+    VolterraSampler {
+      kernel: self.kernel,
+      n: self.n,
+      dt,
+      sqrt_dt: dt.sqrt(),
+      normal: SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
+}
 
-    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
+/// Reusable [`Volterra`] sampling state: the owned Gaussian source for the
+/// Brownian increments plus the precomputed time step and kernel.
+///
+/// $X_{t_i} = \sum_{j=1}^{i} K(t_i, t_{j-1})\,\Delta W_j$, complexity $O(n^2)$
+/// due to the full-history convolution.
+#[doc(hidden)]
+pub struct VolterraSampler<T: FloatExt> {
+  kernel: VolterraKernel,
+  n: usize,
+  dt: T,
+  sqrt_dt: T,
+  normal: SimdNormal<T, 64>,
+}
 
-    // Pre-generate Brownian increments
-    let mut dw = Array1::<T>::zeros(self.n);
-    normal.fill_slice_fast(dw.as_slice_mut().unwrap());
-    for val in dw.iter_mut() {
-      *val = *val * sqrt_dt;
+impl<T: FloatExt> VolterraSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = T::zero();
+    if out.len() == 1 {
+      return;
     }
 
-    let mut x = Array1::<T>::zeros(self.n);
+    // Pre-generate scaled Brownian increments.
+    let mut dw = Array1::<T>::zeros(self.n);
+    self.normal.fill_slice_fast(dw.as_slice_mut().unwrap());
+    for val in dw.iter_mut() {
+      *val = *val * self.sqrt_dt;
+    }
 
-    for i in 1..self.n {
-      let t_i = T::from_usize_(i) * dt;
+    for i in 1..out.len() {
+      let t_i = T::from_usize_(i) * self.dt;
       let mut sum = T::zero();
       for j in 1..=i {
-        let t_jm1 = T::from_usize_(j - 1) * dt;
+        let t_jm1 = T::from_usize_(j - 1) * self.dt;
         sum += self.kernel.eval(t_i, t_jm1) * dw[j];
       }
-      x[i] = sum;
+      out[i] = sum;
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for VolterraSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("Volterra output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

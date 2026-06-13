@@ -61,6 +61,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
@@ -114,22 +115,59 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = RoughBergomiSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn sampler(&self) -> RoughBergomiSampler<T, S> {
+    RoughBergomiSampler {
+      n: self.n,
+      hurst: self.hurst,
+      nu: self.nu,
+      v0_sq: self.v0.unwrap_or(T::one()).powi(2),
+      s0: self.s0.unwrap_or(T::from_usize_(100)),
+      r: self.r,
+      dt: self.cgns.dt(),
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`RoughBergomi`] sampling state: owns the correlated-Gaussian
+/// generator and the seed source so a Monte-Carlo loop reuses both output
+/// buffers and the noise setup.
+#[doc(hidden)]
+pub struct RoughBergomiSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  hurst: T,
+  nu: T,
+  v0_sq: T,
+  s0: T,
+  r: T,
+  dt: T,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
+  fn fill_paths(&mut self, s: &mut [T], v2: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [cgn1, z] = &self.cgns.sample_impl(&self.seed.derive());
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut v2 = Array1::<T>::zeros(self.n);
-    s[0] = self.s0.unwrap_or(T::from_usize_(100));
-    v2[0] = self.v0.unwrap_or(T::one()).powi(2);
+    s[0] = self.s0;
+    v2[0] = self.v0_sq;
 
     for i in 1..self.n {
       s[i] = s[i - 1] + self.r * s[i - 1] * dt + v2[i - 1].sqrt() * s[i - 1] * cgn1[i - 1];
 
       let sum_z = z.slice(s![..i]).sum();
       let t = T::from_usize_(i) * dt;
-      v2[i] = self.v0.unwrap_or(T::one()).powi(2)
+      v2[i] = self.v0_sq
         * (self.nu
           * (T::from_usize_(2) * self.hurst).sqrt()
           * t.powf(self.hurst - T::from_f64_fast(0.5))
@@ -137,7 +175,29 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
           - T::from_f64_fast(0.5) * self.nu.powi(2) * t.powf(T::from_usize_(2) * self.hurst))
         .exp();
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughBergomiSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v2] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("RoughBergomi output must be contiguous"),
+      v2.as_slice_mut()
+        .expect("RoughBergomi output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v2 = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v2.as_slice_mut().expect("contiguous"),
+    );
     [s, v2]
   }
 }
