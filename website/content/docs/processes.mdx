@@ -10,8 +10,10 @@ status: stable
 
 The `stochastic-rs-stochastic` crate ships **120+ processes** organised
 into six families. Every process implements
-[`ProcessExt<T>`](/docs/concepts/process-ext), with `sample()` and
-`sample_par(m)` returning `ndarray::Array1<T>` / `Array2<T>` paths.
+[`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path,
+`sample_map(m, f)` folds over `m` paths in parallel, and `sample_par(m)`
+returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor
+models).
 
 ## Families
 
@@ -38,7 +40,7 @@ use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
 let p = Gbm::<f64>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0));
 let path = p.sample();              // Array1<f64>, length 1000
-let paths = p.sample_par(10_000);   // Array2<f64>, shape (10_000, 1000)
+let paths = p.sample_par(10_000);   // Vec<Array1<f64>>, 10_000 paths of length 1000
 ```
 </Tab>
 <Tab value="Python">

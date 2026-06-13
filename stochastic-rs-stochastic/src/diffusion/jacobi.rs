@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded> {
@@ -51,46 +52,79 @@ impl<T: FloatExt, S: SeedExt> Jacobi<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Jacobi<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = JacobiSampler<T>
+  where
+    Self: 's;
 
-  /// Sample the Jacobi process
-  fn sample(&self) -> Self::Output {
-    let mut jacobi = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return jacobi;
-    }
-
-    jacobi[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return jacobi;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> JacobiSampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let diff_scale = self.sigma;
-    let mut prev = jacobi[0];
-    let mut tail_view = jacobi.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Jacobi output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    JacobiSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      alpha: self.alpha,
+      beta: self.beta,
+      diff_scale: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`Jacobi`] sampling state.
+#[doc(hidden)]
+pub struct JacobiSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  dt: T,
+  alpha: T,
+  beta: T,
+  diff_scale: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> JacobiSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.x0;
     for z in tail.iter_mut() {
       let next = match prev {
         _ if prev <= T::zero() => T::zero(),
         _ if prev >= T::one() => T::one(),
         _ => {
           prev
-            + (self.alpha - self.beta * prev) * dt
-            + diff_scale * (prev * (T::one() - prev)).sqrt() * *z
+            + (self.alpha - self.beta * prev) * self.dt
+            + self.diff_scale * (prev * (T::one() - prev)).sqrt() * *z
         }
       };
       *z = next;
       prev = next;
     }
+  }
+}
 
-    jacobi
+impl<T: FloatExt> PathSampler<T> for JacobiSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("Jacobi output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

@@ -8,10 +8,12 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Fou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
@@ -64,19 +66,58 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fou<T, S, B> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = FouSampler<'s, T, S, B>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.fgn.dt();
-    let fgn = self.fgn.noise(&self.seed.derive());
+  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
+  /// FFT plan + eigenvalues) and seed source. The first `sample` derives the
+  /// same child seed the legacy `sample()` did — bit-identical — and each
+  /// subsequent call advances the seed for an independent path.
+  fn sampler(&self) -> FouSampler<'_, T, S, B> {
+    FouSampler { fou: self }
+  }
+}
 
-    let mut fou = Array1::<T>::zeros(self.n);
-    fou[0] = self.x0.unwrap_or(T::zero());
+/// Reusable [`Fou`] sampling state: borrows the process for its inner [`Fgn`]
+/// and seed source. The path is an Euler discretisation of
+/// `dX = theta(mu - X) dt + sigma dB^H` started at `x0`.
+#[doc(hidden)]
+pub struct FouSampler<'a, T: FloatExt, S: SeedExt, B> {
+  fou: &'a Fou<T, S, B>,
+}
 
-    for i in 1..self.n {
-      fou[i] = fou[i - 1] + self.theta * (self.mu - fou[i - 1]) * dt + self.sigma * fgn[i - 1];
+impl<T: FloatExt, S: SeedExt, B: Backend> FouSampler<'_, T, S, B> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
     }
+    let p = self.fou;
+    let dt = p.fgn.dt();
+    let fgn = p.fgn.noise(&p.seed.derive());
 
-    fou
+    out[0] = p.x0.unwrap_or(T::zero());
+    let mut prev = out[0];
+    for (dst, inc) in out[1..].iter_mut().zip(fgn.iter()) {
+      let next = prev + p.theta * (p.mu - prev) * dt + p.sigma * *inc;
+      *dst = next;
+      prev = next;
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FouSampler<'_, T, S, B> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Fou output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.fou.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

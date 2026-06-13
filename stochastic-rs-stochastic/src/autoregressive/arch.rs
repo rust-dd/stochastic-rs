@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Implements an Arch(m) model:
@@ -51,24 +53,50 @@ impl<T: FloatExt, S: SeedExt> Arch<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arch<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = ArchSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let m = self.alpha.len();
-    let mut z = Array1::<T>::zeros(self.n);
-    if self.n > 0 {
-      let slice = z.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-      normal.fill_slice_fast(slice);
+  fn sampler(&self) -> ArchSampler<T> {
+    ArchSampler {
+      n: self.n,
+      omega: self.omega,
+      alpha: self.alpha.clone(),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
     }
-    let mut x = Array1::<T>::zeros(self.n);
+  }
+}
+
+/// Reusable [`Arch`] sampling state: owns the standard-normal innovation source
+/// and the variance coefficients so a Monte-Carlo loop pays the `SimdNormal`
+/// setup once.
+#[doc(hidden)]
+pub struct ArchSampler<T: FloatExt> {
+  n: usize,
+  omega: T,
+  alpha: Array1<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> ArchSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let n = out.len();
+    let m = self.alpha.len();
+
+    let mut z = Array1::<T>::zeros(n);
+    if n > 0 {
+      let slice = z.as_slice_mut().expect("contiguous");
+      self.normal.fill_slice_fast(slice);
+    }
     let var_floor = T::from_f64_fast(1e-12);
 
-    for t in 0..self.n {
+    for t in 0..n {
       // compute sigma_t^2
       let mut var_t = self.omega;
       for i in 1..=m {
         if t >= i {
-          let x_lag = x[t - i];
+          let x_lag = out[t - i];
           var_t += self.alpha[i - 1] * x_lag.powi(2);
         }
       }
@@ -78,10 +106,22 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arch<T, S> {
         t
       );
       let sigma_t = var_t.max(var_floor).sqrt();
-      x[t] = sigma_t * z[t];
+      out[t] = sigma_t * z[t];
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for ArchSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Arch output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

@@ -10,6 +10,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::diffusion::fou::Fou;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
@@ -60,9 +61,36 @@ impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FVasicek<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = FVasicekSampler<'s, T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Array1<T> {
-    self.fou.sample()
+  fn sampler(&self) -> FVasicekSampler<'_, T, S> {
+    FVasicekSampler { proc: self }
+  }
+}
+
+/// Reusable [`FVasicek`] sampling state. Borrows the process so each call
+/// resamples the wrapped fractional OU through its `Arc`-shared fGn FFT plan.
+///
+/// The inner [`Fou`] owns no persistent Gaussian source, so this samples
+/// through [`Fou::sample`] each call: the FFT plan and circulant eigenvalues
+/// are `Arc`-shared and reused, only the per-call `SimdNormal` is rebuilt.
+#[doc(hidden)]
+pub struct FVasicekSampler<'a, T: FloatExt, S: SeedExt> {
+  proc: &'a FVasicek<T, S>,
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for FVasicekSampler<'_, T, S> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    *out = self.proc.fou.sample();
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    self.proc.fou.sample()
   }
 }
 

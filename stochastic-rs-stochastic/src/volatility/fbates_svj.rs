@@ -24,6 +24,7 @@ use stochastic_rs_distributions::special::gamma;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
@@ -96,28 +97,77 @@ impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
   type Output = [Array1<T>; 2]; // [S, v]
+  type Sampler<'s>
+    = FBatesSvjSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> FBatesSvjSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
       T::zero()
     };
+    FBatesSvjSampler {
+      n: self.n,
+      hurst: self.hurst,
+      mu: self.mu,
+      s0: self.s0,
+      v0: self.v0,
+      theta: self.theta,
+      kappa: self.kappa,
+      xi: self.xi,
+      lambda: self.lambda,
+      nu: self.nu,
+      omega: self.omega,
+      dt,
+      g: T::from_f64_fast(gamma(self.hurst.to_f64().unwrap() - 0.5)),
+      // `Unseeded` baked into the Cgns exactly as the legacy `sample` did; the
+      // noise is drawn via `sample_impl(&self.seed.derive())`, so the Cgns's
+      // own seed is irrelevant.
+      cgns: Cgns::new(self.rho, n_steps, self.t, Unseeded),
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`FBatesSvj`] sampling state: owns the correlated-Gaussian generator
+/// and the seed source. The jump (Poisson + Normal) generators are rebuilt per
+/// fill in the legacy seed-consumption order, so the first call reproduces the
+/// original stream bit-for-bit.
+#[doc(hidden)]
+pub struct FBatesSvjSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  hurst: T,
+  mu: T,
+  s0: T,
+  v0: T,
+  theta: T,
+  kappa: T,
+  xi: T,
+  lambda: T,
+  nu: T,
+  omega: T,
+  dt: T,
+  g: T,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
+  fn fill_paths(&mut self, s: &mut [T], v2: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
 
     // Use Cgns for rho-correlated noise: [gn_vol, gn_price]
-    let cgns = Cgns::new(self.rho, n_steps, self.t, Unseeded);
-    let [gn_vol, gn_price] = cgns.sample_impl(&self.seed.derive());
+    let [gn_vol, gn_price] = self.cgns.sample_impl(&self.seed.derive());
 
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);
     let mut sigma_tilde2 = Array1::<T>::zeros(self.n);
-    let mut v2 = Array1::zeros(self.n);
-    let mut s = Array1::zeros(self.n);
-
-    if self.n == 0 {
-      return [s, v2];
-    }
 
     yt[0] = self.v0;
     zt[0] = T::zero();
@@ -125,7 +175,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
     v2[0] = self.v0;
     s[0] = self.s0;
 
-    let g = T::from_f64_fast(gamma(self.hurst.to_f64().unwrap() - 0.5));
+    let g = self.g;
     let half = T::from_f64_fast(0.5);
 
     // Jump compensation: κ_J = exp(ν + ½ω²) - 1
@@ -144,7 +194,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
     for i in 1..self.n {
       let t_i = dt * T::from_usize_(i);
 
-      // ── Rough variance dynamics (same as RoughHeston/fheston.rs) ──
+      // Rough variance dynamics (same as RoughHeston/fheston.rs)
       yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
       zt[i] = zt[i - 1] * (-self.kappa * dt).exp()
         + sigma_tilde2[i - 1].max(T::zero()).sqrt() * gn_vol[i - 1];
@@ -178,7 +228,29 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
         (self.mu - self.lambda * kappa_j - half * vi) * dt + vi.sqrt() * gn_price[i - 1] + jump_sum;
       s[i] = s[i - 1] * log_inc.exp();
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for FBatesSvjSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v2] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("FBatesSvj output must be contiguous"),
+      v2.as_slice_mut()
+        .expect("FBatesSvj output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v2 = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v2.as_slice_mut().expect("contiguous"),
+    );
     [s, v2]
   }
 }

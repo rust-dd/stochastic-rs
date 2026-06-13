@@ -24,6 +24,7 @@ use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Complex fractional Ornstein-Uhlenbeck process.
@@ -88,36 +89,66 @@ backend_switch!([T: FloatExt, S: SeedExt] Cfou<T, S> { hurst, lambda, omega, a, 
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {
   type Output = Array1<Complex<T>>;
+  type Sampler<'s>
+    = CfouSampler<'s, T, S, B>
+  where
+    Self: 's;
 
-  /// Samples the complex path directly as `Z_t = X_1(t) + i X_2(t)`.
-  ///
-  /// Euler step:
-  /// `Z_{k+1} = Z_k + (-(lambda - i omega) Z_k) dt + sqrt(a) Δζ_k`,
-  /// with `Δζ_k = (ΔB_k^{(1)} + iΔB_k^{(2)}) / sqrt(2)`.
-  ///
-  /// Source:
-  /// - https://arxiv.org/abs/2406.18004
-  fn sample(&self) -> Self::Output {
-    let dt = self.fgn.dt();
-    let (noise_1, noise_2) = self.fgn.noise_pair(&self.seed.derive());
-    let gamma = Complex::new(self.lambda, -self.omega);
+  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
+  /// FFT plan + eigenvalues) and seed source. The first `sample` derives the
+  /// same child seed the legacy `sample()` did — bit-identical — and each
+  /// subsequent call advances the seed for an independent path.
+  fn sampler(&self) -> CfouSampler<'_, T, S, B> {
+    CfouSampler { cfou: self }
+  }
+}
+
+/// Reusable [`Cfou`] sampling state: borrows the process for its inner [`Fgn`]
+/// and seed source. The path is the complex Euler step
+/// `Z_{k+1} = Z_k - (lambda - i omega) Z_k dt + sqrt(a) Δζ_k`, with
+/// `Δζ_k = (ΔB_k^{(1)} + i ΔB_k^{(2)}) / sqrt(2)`.
+///
+/// Source:
+/// - https://arxiv.org/abs/2406.18004
+#[doc(hidden)]
+pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {
+  cfou: &'a Cfou<T, S, B>,
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> CfouSampler<'_, T, S, B> {
+  fn fill_path(&mut self, out: &mut Array1<Complex<T>>) {
+    if out.is_empty() {
+      return;
+    }
+    let p = self.cfou;
+    let dt = p.fgn.dt();
+    let (noise_1, noise_2) = p.fgn.noise_pair(&p.seed.derive());
+    let gamma = Complex::new(p.lambda, -p.omega);
     let dt_c = Complex::new(dt, T::zero());
-    let noise_scale = (self.a * T::from_f64_fast(0.5)).sqrt();
+    let noise_scale = (p.a * T::from_f64_fast(0.5)).sqrt();
 
-    let mut z = Array1::from_elem(self.n, Complex::new(T::zero(), T::zero()));
-    z[0] = Complex::new(
-      self.x1_0.unwrap_or(T::zero()),
-      self.x2_0.unwrap_or(T::zero()),
-    );
+    out[0] = Complex::new(p.x1_0.unwrap_or(T::zero()), p.x2_0.unwrap_or(T::zero()));
 
-    for i in 1..self.n {
-      let z_prev = z[i - 1];
+    for i in 1..p.n {
+      let z_prev = out[i - 1];
       let drift = -gamma * z_prev;
       let d_zeta = Complex::new(noise_1[i - 1], noise_2[i - 1]);
-      z[i] = z_prev + drift * dt_c + d_zeta * noise_scale;
+      out[i] = z_prev + drift * dt_c + d_zeta * noise_scale;
     }
+  }
+}
 
-    z
+impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for CfouSampler<'_, T, S, B> {
+  type Output = Array1<Complex<T>>;
+
+  fn sample_into(&mut self, out: &mut Array1<Complex<T>>) {
+    self.fill_path(out);
+  }
+
+  fn sample(&mut self) -> Array1<Complex<T>> {
+    let mut out = Array1::<Complex<T>>::from_elem(self.cfou.n, Complex::new(T::zero(), T::zero()));
+    self.fill_path(&mut out);
+    out
   }
 }
 

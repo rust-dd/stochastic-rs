@@ -28,8 +28,10 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::kernel::RlKernel;
 use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
+use crate::buffer::array1_from_fill;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Riemann–Liouville fractional Brownian motion, Hurst $H \in (0, 1/2)$.
@@ -77,26 +79,16 @@ impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
       markov,
     }
   }
+
+  /// Borrow the precomputed [`MarkovLift`] stepper, so sibling processes
+  /// (`RlFOU`, `RlBlackScholes`) building their own samplers can clone the
+  /// kernel quadrature instead of reconstructing it.
+  pub(crate) fn markov(&self) -> &MarkovLift<T> {
+    &self.markov
+  }
 }
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
-  /// Core single-path sampler accepting an external seed, used by downstream
-  /// processes that derive a child seed for their noise.
-  pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
-    let dw = Gn::<T, S2> {
-      n: self.n - 1,
-      t: self.t,
-      seed: seed.clone(),
-    }
-    .sample();
-    self.markov.simulate(
-      T::zero(),
-      |_| T::zero(),
-      |_| T::one(),
-      dw.as_slice().expect("dw contiguous"),
-    )
-  }
-
   /// Generate $m$ independent RL-fBM paths as an $(m, n)$ array. The
   /// underlying Markov-lift runs path-parallel SIMD (cache-tiled), matching
   /// the Python `RoughHestonFast` batching pattern — single-threaded.
@@ -142,9 +134,63 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFBm<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = RlFBmSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    self.sample_impl(&self.seed)
+  fn sampler(&self) -> RlFBmSampler<T, S> {
+    RlFBmSampler {
+      n: self.n,
+      gn: Gn::<T, S> {
+        n: self.n - 1,
+        t: self.t,
+        seed: self.seed.clone(),
+      },
+      markov: self.markov.clone(),
+    }
+  }
+}
+
+/// Reusable [`RlFBm`] sampling state: owns the cloned [`MarkovLift`] stepper
+/// (with its kernel quadrature) and the Gaussian-increment source, so a
+/// Monte-Carlo loop re-runs neither Golub–Welsch nor the per-$\delta t$ factor
+/// precomputation. Each `fill_path` advances the owned `Gn` stream, so
+/// successive calls yield independent paths.
+#[doc(hidden)]
+pub struct RlFBmSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  gn: Gn<T, S>,
+  markov: MarkovLift<T>,
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBmSampler<T, S> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    let dw = self.gn.sample();
+    let path = self.markov.simulate(
+      T::zero(),
+      |_| T::zero(),
+      |_| T::one(),
+      dw.as_slice().expect("dw contiguous"),
+    );
+    out.copy_from_slice(path.as_slice().expect("markov path contiguous"));
+  }
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlFBmSampler<T, S> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("RlFBm output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

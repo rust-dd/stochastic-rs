@@ -7,9 +7,12 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct CustomJt<T, D, S: SeedExt = Unseeded>
@@ -138,34 +141,28 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Core sampling — monomorphised per seed strategy, zero runtime branching.
+  /// One-shot sample from any seed source. Retained for callers such as
+  /// [`crate::process::ccustom`] that need the event times directly.
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
-    if let Some(n) = self.n {
-      let mut random = Array1::<T>::zeros(n);
-      let mut rng = seed.rng();
-      for x in &mut random {
-        *x = self.distribution.sample(&mut rng);
-      }
-      let mut x = Array1::<T>::zeros(n);
-      for i in 1..n {
-        x[i] = x[i - 1] + random[i - 1];
-      }
-      x
+    self.sampler_impl(seed).sample()
+  }
+
+  /// Build the reusable sampling state from any seed source, deriving the RNG
+  /// exactly as the legacy `sample_impl` body did per mode.
+  pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> CustomJtSampler<'_, T, D> {
+    let mode = if let Some(n) = self.n {
+      CustomJtMode::Count { n }
     } else if let Some(t_max) = self.t_max {
-      let mut x = Vec::with_capacity(16);
-      x.push(T::zero());
-      let mut t = T::zero();
+      // Horizon mode advanced the seed once more before drawing.
       seed.derive();
-      let mut rng = seed.rng();
-
-      while t < t_max {
-        t += self.distribution.sample(&mut rng);
-        x.push(t);
-      }
-
-      Array1::from(x)
+      CustomJtMode::Horizon { t_max }
     } else {
       unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
+    };
+    CustomJtSampler {
+      distribution: &self.distribution,
+      rng: seed.rng(),
+      mode,
     }
   }
 }
@@ -176,8 +173,91 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = CustomJtSampler<'s, T, D>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    self.sample_impl(&self.seed)
+  fn sampler(&self) -> CustomJtSampler<'_, T, D> {
+    self.sampler_impl(&self.seed)
+  }
+}
+
+/// Sampling regime: a fixed event count or a time horizon (variable-length).
+enum CustomJtMode<T: FloatExt> {
+  Count { n: usize },
+  Horizon { t_max: T },
+}
+
+/// Reusable [`CustomJt`] sampling state: an owned RNG plus a borrow of the
+/// process's increment distribution (shared, `Sync`), and the sampling regime.
+#[doc(hidden)]
+pub struct CustomJtSampler<'a, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  distribution: &'a D,
+  rng: SimdRng,
+  mode: CustomJtMode<T>,
+}
+
+impl<T, D> CustomJtSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  /// Count-mode fill: `out[0] = 0`, then the running sum of `n - 1` draws.
+  fn fill_count(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = T::zero();
+    let mut acc = T::zero();
+    for x in out[1..].iter_mut() {
+      acc += self.distribution.sample(&mut self.rng);
+      *x = acc;
+    }
+  }
+
+  /// Horizon-mode: accumulate event times until the horizon is crossed.
+  fn sample_horizon(&mut self, t_max: T) -> Array1<T> {
+    let mut x = Vec::with_capacity(16);
+    x.push(T::zero());
+    let mut t = T::zero();
+    while t < t_max {
+      t += self.distribution.sample(&mut self.rng);
+      x.push(t);
+    }
+    Array1::from(x)
+  }
+}
+
+impl<T, D> PathSampler<T> for CustomJtSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    match self.mode {
+      CustomJtMode::Count { .. } => {
+        let slice = out
+          .as_slice_mut()
+          .expect("CustomJt output must be contiguous");
+        self.fill_count(slice);
+      }
+      CustomJtMode::Horizon { t_max } => {
+        *out = self.sample_horizon(t_max);
+      }
+    }
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    match self.mode {
+      CustomJtMode::Count { n } => array1_from_fill(n, |out| self.fill_count(out)),
+      CustomJtMode::Horizon { t_max } => self.sample_horizon(t_max),
+    }
   }
 }

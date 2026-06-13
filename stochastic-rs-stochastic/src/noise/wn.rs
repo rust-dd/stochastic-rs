@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
@@ -37,18 +39,50 @@ impl<T: FloatExt, S: SeedExt> Wn<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Wn<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = WnSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> WnSampler<T> {
     let mean = self.mean.unwrap_or(T::zero());
     let std_dev = self.std_dev.unwrap_or(T::one());
-    let mut out = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return out;
+    WnSampler {
+      n: self.n,
+      normal: SimdNormal::<T>::new(mean, std_dev, &self.seed),
     }
-    let out_slice = out.as_slice_mut().expect("Wn output must be contiguous");
-    let normal = SimdNormal::<T>::new(mean, std_dev, &self.seed);
-    normal.fill_slice_fast(out_slice);
-    out
+  }
+}
+
+/// Reusable [`Wn`] sampling state: the owned Gaussian source. Each path is `n`
+/// i.i.d. `N(mean, std_dev^2)` draws.
+#[doc(hidden)]
+pub struct WnSampler<T: FloatExt> {
+  n: usize,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> WnSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let len = self.n.min(out.len());
+    if len == 0 {
+      return;
+    }
+    self.normal.fill_slice_fast(&mut out[..len]);
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for WnSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Wn output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

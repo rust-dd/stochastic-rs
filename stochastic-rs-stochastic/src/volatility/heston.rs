@@ -16,6 +16,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use super::HestonPow;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Compile-time selector for the variance-discretisation scheme that
@@ -145,11 +146,32 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
 
 impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> ProcessExt<T> for Heston<T, S, Sch> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = HestonSampler<'s, T, S, Sch>
+  where
+    Self: 's;
 
-  /// Dispatches to the compile-time-selected scheme; monomorphised, so there
-  /// is no runtime branch on `Sch`.
-  fn sample(&self) -> Self::Output {
-    Sch::simulate(self)
+  fn sampler(&self) -> HestonSampler<'_, T, S, Sch> {
+    HestonSampler(self)
+  }
+}
+
+/// Borrow-based [`Heston`] sampler. The variance discretisation runs inside the
+/// compile-time-selected [`HestonScheme`], which owns its own RNG setup, so
+/// each call re-dispatches to `Sch::simulate`; there is nothing reusable to
+/// hoist across calls.
+#[doc(hidden)]
+pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme>(&'a Heston<T, S, Sch>);
+
+impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> PathSampler<T> for HestonSampler<'_, T, S, Sch> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    *out = Sch::simulate(self.0);
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    Sch::simulate(self.0)
   }
 }
 

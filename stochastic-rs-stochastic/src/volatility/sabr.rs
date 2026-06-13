@@ -10,6 +10,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
@@ -68,26 +69,81 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sabr<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = SabrSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn sampler(&self) -> SabrSampler<T, S> {
+    SabrSampler {
+      n: self.n,
+      f0: self.f0.unwrap_or(T::zero()),
+      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      alpha: self.alpha,
+      beta: self.beta,
+      dt: self.cgns.dt(),
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`Sabr`] sampling state: owns the correlated-Gaussian generator
+/// and the seed source so a Monte-Carlo loop reuses both output buffers.
+#[doc(hidden)]
+pub struct SabrSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  f0: T,
+  v0: T,
+  alpha: T,
+  beta: T,
+  dt: T,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> SabrSampler<T, S> {
+  fn fill_paths(&mut self, f_: &mut [T], v: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
-    let mut f_ = Array1::<T>::zeros(self.n);
-    let mut v = Array1::<T>::zeros(self.n);
-
-    f_[0] = self.f0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero()).max(T::zero());
+    f_[0] = self.f0;
+    v[0] = self.v0;
 
     for i in 1..self.n {
       let f_prev = f_[i - 1].max(T::zero());
       let v_prev = v[i - 1].max(T::zero());
       f_[i] = f_[i - 1] + v_prev * f_prev.powf(self.beta) * cgn1[i - 1];
       // Exact step for dV = alpha * V * dW preserves non-negativity.
-      v[i] =
-        v_prev * (self.alpha * cgn2[i - 1] - T::from_f64_fast(0.5) * self.alpha.powi(2) * dt).exp();
+      v[i] = v_prev
+        * (self.alpha * cgn2[i - 1] - T::from_f64_fast(0.5) * self.alpha.powi(2) * self.dt).exp();
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [f_arr, v_arr] = out;
+    let f_ = f_arr
+      .as_slice_mut()
+      .expect("Sabr output must be contiguous");
+    let v = v_arr
+      .as_slice_mut()
+      .expect("Sabr output must be contiguous");
+    self.fill_paths(f_, v);
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut f_ = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      f_.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
     [f_, v]
   }
 }

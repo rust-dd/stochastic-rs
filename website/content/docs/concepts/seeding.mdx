@@ -24,18 +24,42 @@ use stochastic_rs::simd_rng::Unseeded;
 
 | Strategy                | Behaviour                                       | When to use                              |
 |-------------------------|-------------------------------------------------|------------------------------------------|
-| **`Unseeded`**          | Auto-seeded via a thread-safe atomic counter.   | Default production sampling, no need for reproducibility. |
+| **`Unseeded`**          | Auto-seeded from a globally-unique sequence (see [contention](#auto-seeding-and-contention)). | Default production sampling, no need for reproducibility. |
 | **`Deterministic(u64)`**| Reproducible stream rooted at the seed.         | Unit tests, regression baselines, kalibration sweeps. |
 
 ```rust
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
-// auto-seeded — each call to `sample()` advances a global atomic counter
+// auto-seeded — each constructed RNG draws a fresh, globally-unique seed
 let gbm_a = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
 
 // reproducible — same `seed` parameter ⇒ same path
 let gbm_b = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Deterministic::new(42));
 ```
+
+## Auto-seeding and contention
+
+`Unseeded` draws each RNG's seed from one global golden-ratio sequence
+(`base, base+γ, base+2γ, …`, each mixed through SplitMix64). To keep that
+draw off a shared atomic on every construction, each thread reserves a
+**block** of $2^{18}$ consecutive steps and walks its block locally:
+
+```
+global atomic ──reserve 2^18·γ──► thread A's block ──► seed, seed+γ, …  (no atomic)
+              ──reserve 2^18·γ──► thread B's block ──► disjoint range
+```
+
+The block ranges are disjoint and γ is odd, so every seed is still a
+distinct multiple of γ — the same global-uniqueness contract as a
+per-construction atomic, but with one atomic per $2^{18}$ seeds instead of
+one per seed. Before this scheme the shared counter was hit once per RNG
+construction; under parallel Monte-Carlo that cache line ping-ponged across
+cores and serialised the workers. Removing it is the main reason short-path
+parallel sampling got faster (see
+[ProcessExt → performance](/docs/concepts/process-ext#performance)). The
+generator itself, the SplitMix64 seed expansion, and the whole
+`Deterministic` path are unchanged — `Deterministic` never touches this
+counter, so seeded streams are bit-identical to before.
 
 ## SeedExt
 
@@ -97,6 +121,16 @@ validates these end-to-end:
 5. **`reseed(s)` + sample** — reproduces what `Deterministic::new(s)`
    would produce.
 6. **`Unseeded.reseed(s)`** — no-op, no panic, sample still works.
+
+These are **serial** invariants. The sampler-level behaviour — distinct
+paths under reuse, no seed collision across the $2^{18}$ block boundary, and
+parallel independence for `sample_par` / `sample_map` — is validated
+separately in
+[`tests/sampler_v3_rng.rs`](https://github.com/dancixx/stochastic-rs/blob/main/tests/sampler_v3_rng.rs).
+Parallel sampling is statistically independent but **not** bit-reproducible
+across runs (worker scheduling decides which derived seed lands on which
+path); use a serial `sample()` loop when you need bit-exact replay. See
+[ProcessExt → parallel sampling and determinism](/docs/concepts/process-ext#parallel-sampling-and-determinism).
 
 ## SimdRngExt — generic backing RNG
 

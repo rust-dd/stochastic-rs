@@ -75,6 +75,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Drift-coupled LIBOR Market Model (BGM/Jamshidian) under the spot-LIBOR
@@ -157,20 +158,53 @@ fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &A
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lmm<T, S> {
   type Output = Array2<T>;
+  type Sampler<'s>
+    = LmmSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> LmmSampler<T, S> {
+    LmmSampler {
+      tenor: self.tenor.clone(),
+      l0: self.l0.clone(),
+      sigma: self.sigma.clone(),
+      chol: self.chol.clone(),
+      n: self.n,
+      t: self.t,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`Lmm`] sampling state: owns the tenor structure, the initial
+/// forward curve, the per-Libor volatilities, the optional Cholesky factor and
+/// the seed source so a Monte-Carlo loop reuses the output matrix. The full
+/// spot-LIBOR drift-coupling and frozen-drift log-Euler stepping live in
+/// [`LmmSampler::fill_matrix`] unchanged.
+#[doc(hidden)]
+pub struct LmmSampler<T: FloatExt, S: SeedExt> {
+  tenor: Array1<T>,
+  l0: Array1<T>,
+  sigma: Array1<T>,
+  chol: Option<Array2<T>>,
+  n: usize,
+  t: Option<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
+  fn fill_matrix(&mut self, path: &mut Array2<T>) {
     let m = self.l0.len();
     let n_steps = self.n;
-    let mut path = Array2::<T>::zeros((m, n_steps));
     if n_steps == 0 {
-      return path;
+      return;
     }
 
     for (n, &l0) in self.l0.iter().enumerate() {
       path[(n, 0)] = l0;
     }
     if n_steps == 1 {
-      return path;
+      return;
     }
 
     let t_max = self.tenor[m];
@@ -277,6 +311,19 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lmm<T, S> {
 
     let _ = path.axis_iter(Axis(0));
     let _ = path.slice(s![.., ..]);
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmSampler<T, S> {
+  type Output = Array2<T>;
+
+  fn sample_into(&mut self, out: &mut Array2<T>) {
+    self.fill_matrix(out);
+  }
+
+  fn sample(&mut self) -> Array2<T> {
+    let mut path = Array2::<T>::zeros((self.l0.len(), self.n));
+    self.fill_matrix(&mut path);
     path
   }
 }

@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Implements a general Garch(p,q) model.
@@ -61,22 +63,49 @@ impl<T: FloatExt, S: SeedExt> Garch<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Garch<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = GarchSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> GarchSampler<T> {
+    GarchSampler {
+      n: self.n,
+      omega: self.omega,
+      alpha: self.alpha.clone(),
+      beta: self.beta.clone(),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Garch`] sampling state: owns the standard-normal innovation source
+/// and the variance coefficients so a Monte-Carlo loop pays the `SimdNormal`
+/// setup once.
+#[doc(hidden)]
+pub struct GarchSampler<T: FloatExt> {
+  n: usize,
+  omega: T,
+  alpha: Array1<T>,
+  beta: Array1<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> GarchSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let n = out.len();
     let p = self.alpha.len();
     let q = self.beta.len();
 
     // Generate white noise z_t ~ N(0,1)
-    let mut z = Array1::<T>::zeros(self.n);
-    if self.n > 0 {
+    let mut z = Array1::<T>::zeros(n);
+    if n > 0 {
       let slice = z.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-      normal.fill_slice_fast(slice);
+      self.normal.fill_slice_fast(slice);
     }
 
-    // Arrays for X_t and sigma_t^2
-    let mut x = Array1::<T>::zeros(self.n);
-    let mut sigma2 = Array1::<T>::zeros(self.n);
+    // Array for sigma_t^2 (the output buffer holds X_t)
+    let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
     // Sum of alpha/beta for unconditional variance initialization
@@ -88,7 +117,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Garch<T, S> {
       "Garch requires sum(alpha) + sum(beta) < 1 for finite unconditional variance"
     );
 
-    for t in 0..self.n {
+    for t in 0..n {
       if t == 0 {
         sigma2[t] = self.omega / denom;
       } else {
@@ -97,7 +126,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Garch<T, S> {
         // Sum alpha_i * X_{t-i}^2
         for i in 1..=p {
           if t >= i {
-            var_t += self.alpha[i - 1] * x[t - i].powi(2);
+            var_t += self.alpha[i - 1] * out[t - i].powi(2);
           }
         }
         // Sum beta_j * sigma2[t-j]
@@ -114,10 +143,22 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Garch<T, S> {
         t
       );
       // X_t = sigma_t * z[t]
-      x[t] = sigma2[t].max(var_floor).sqrt() * z[t];
+      out[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for GarchSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Garch output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

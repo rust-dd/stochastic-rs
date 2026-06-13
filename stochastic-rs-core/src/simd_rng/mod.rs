@@ -50,11 +50,36 @@ fn global_seed_counter() -> &'static AtomicU64 {
   SEED_COUNTER.get_or_init(|| AtomicU64::new(initial_seed()))
 }
 
+/// Seeds handed to one thread per global reservation; re-reserving on
+/// exhaustion keeps the global atomic off every construction while the
+/// boundary path still gets exercised by ordinary workloads.
+const SEED_BLOCK_LEN: u64 = 1 << 18;
+
+std::thread_local! {
+  /// `(next_base, remaining)` of this thread's reserved gamma-sequence block.
+  static SEED_BLOCK: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
+}
+
+/// Uniqueness: the global counter strides `SEED_BLOCK_LEN·γ`, each thread
+/// strides `γ` inside its disjoint reservation, so every construction sees a
+/// distinct multiple of γ; γ odd ⇒ injective mod 2^64, and the splitmix64
+/// finalizer is a bijection ⇒ all outputs distinct — the same contract the
+/// per-construction atomic provided, without its cache-line contention.
 #[inline(always)]
 fn next_global_seed() -> u64 {
-  let base = global_seed_counter().fetch_add(SEED_GAMMA, Ordering::Relaxed);
-  let mut seed = base;
-  splitmix64_next(&mut seed)
+  SEED_BLOCK.with(|cell| {
+    let (base, left) = cell.get();
+    if left == 0 {
+      let block =
+        global_seed_counter().fetch_add(SEED_BLOCK_LEN.wrapping_mul(SEED_GAMMA), Ordering::Relaxed);
+      cell.set((block.wrapping_add(SEED_GAMMA), SEED_BLOCK_LEN - 1));
+      let mut seed = block;
+      return splitmix64_next(&mut seed);
+    }
+    cell.set((base.wrapping_add(SEED_GAMMA), left - 1));
+    let mut seed = base;
+    splitmix64_next(&mut seed)
+  })
 }
 
 #[inline]

@@ -11,14 +11,16 @@
 //! Log-spot scheme guarantees $S_t > 0$.
 //!
 use ndarray::Array1;
-use ndarray::s;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[inline]
@@ -122,29 +124,24 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = MjdLogSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut s = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return s;
-    }
-
-    let s0 = self.s0.unwrap_or(T::one());
-    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
-    s[0] = s0;
-    if self.n == 1 {
-      return s;
-    }
-
+  fn sampler(&self) -> MjdLogSampler<T> {
+    // RNG, the Poisson jump-count driver, the diffusion source and the
+    // jump-size source are derived from `self.seed` in the same order as the
+    // legacy `sample()`, so the first fill reproduces it bit-for-bit; all
+    // owned sources advance on reuse for independent paths.
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
     let drift = self.drift();
     let kappa_j = self.kappa_j();
     let half = T::from_f64_fast(0.5);
-
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
 
-    let mut rng = self.seed.rng();
+    let rng = self.seed.rng();
 
     let pois = if self.lambda > T::zero() {
       Some(SimdPoisson::<u32>::new(
@@ -155,26 +152,70 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
       None
     };
 
-    let mut prev = s0;
-    let mut tail_view = s.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("MjdLog output tail must be contiguous");
     let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
-
     let jump_normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+
+    MjdLogSampler {
+      n: self.n,
+      sigma: self.sigma,
+      nu: self.nu,
+      omega: self.omega,
+      s0: self.s0.unwrap_or(T::one()),
+      drift_ln,
+      rng,
+      pois,
+      normal,
+      jump_normal,
+    }
+  }
+}
+
+/// Reusable [`MjdLog`] sampling state: owns the jump-count RNG, the Poisson
+/// driver and both Gaussian sources (diffusion and jump-size) so a
+/// Monte-Carlo loop pays their setup once.
+#[doc(hidden)]
+pub struct MjdLogSampler<T: FloatExt> {
+  n: usize,
+  sigma: T,
+  nu: T,
+  omega: T,
+  s0: T,
+  drift_ln: T,
+  rng: SimdRng,
+  pois: Option<SimdPoisson<u32>>,
+  normal: SimdNormal<T>,
+  jump_normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> MjdLogSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+
+    let s0 = self.s0;
+    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
+    out[0] = s0;
+    if out.len() == 1 {
+      return;
+    }
+
+    let drift_ln = self.drift_ln;
+
+    let mut prev = s0;
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
 
     for z in tail.iter_mut() {
       let diff = self.sigma * *z;
 
       let mut jump_sum = T::zero();
-      if let Some(pois) = &pois {
-        let k: u32 = pois.sample(&mut rng);
+      if let Some(pois) = &self.pois {
+        let k: u32 = pois.sample(&mut self.rng);
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let mut z0 = [T::zero(); 1];
-          jump_normal.fill_slice_fast(&mut z0);
+          self.jump_normal.fill_slice_fast(&mut z0);
           jump_sum = self.nu * kf + self.omega * kf.sqrt() * z0[0];
         }
       }
@@ -184,8 +225,23 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
       *z = next;
       prev = next;
     }
+  }
+}
 
-    s
+impl<T: FloatExt> PathSampler<T> for MjdLogSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(
+      out
+        .as_slice_mut()
+        .expect("MjdLog output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

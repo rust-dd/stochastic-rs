@@ -19,9 +19,13 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
+use crate::buffer::array1_from_fill;
+use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Fractional Black–Scholes asset path driven by RL-fBM.
@@ -102,23 +106,84 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholes<T, S> {
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlBlackScholes<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = RlBlackScholesSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let fbm = self.fbm.sample_impl(&self.seed.derive());
-
+  fn sampler(&self) -> RlBlackScholesSampler<T, S> {
     let horizon = self.t.unwrap_or(T::one());
-    let dt = horizon / T::from_usize_(self.n - 1);
-    let two_h = T::from_f64_fast(2.0) * self.hurst;
-    let half_sigma_sq = T::from_f64_fast(0.5) * self.sigma * self.sigma;
-
-    let mut s = Array1::<T>::zeros(self.n);
-    s[0] = self.s0;
-    for i in 1..self.n {
-      let t_i = dt * T::from_usize_(i);
-      let log_s = self.r * t_i - half_sigma_sq * t_i.powf(two_h) + self.sigma * fbm[i];
-      s[i] = self.s0 * log_s.exp();
+    RlBlackScholesSampler {
+      n: self.n,
+      s0: self.s0,
+      r: self.r,
+      sigma: self.sigma,
+      dt: horizon / T::from_usize_(self.n - 1),
+      two_h: T::from_f64_fast(2.0) * self.hurst,
+      half_sigma_sq: T::from_f64_fast(0.5) * self.sigma * self.sigma,
+      gn: Gn::<T, S> {
+        n: self.n - 1,
+        t: self.t,
+        seed: self.seed.derive(),
+      },
+      markov: self.fbm.markov().clone(),
     }
-    s
+  }
+}
+
+/// Reusable [`RlBlackScholes`] sampling state: owns the cloned RL-fBM
+/// [`MarkovLift`] stepper and the Gaussian-increment source, plus the
+/// precomputed log-price scalars. `fill_path` regenerates the RL-fBM driver and
+/// applies the closed-form fractional Black–Scholes log-price pointwise; the
+/// owned `Gn` stream advances each call for independent paths.
+#[doc(hidden)]
+pub struct RlBlackScholesSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  s0: T,
+  r: T,
+  sigma: T,
+  dt: T,
+  two_h: T,
+  half_sigma_sq: T,
+  gn: Gn<T, S>,
+  markov: MarkovLift<T>,
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholesSampler<T, S> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    let dw = self.gn.sample();
+    let fbm = self.markov.simulate(
+      T::zero(),
+      |_| T::zero(),
+      |_| T::one(),
+      dw.as_slice().expect("dw contiguous"),
+    );
+
+    out[0] = self.s0;
+    for i in 1..out.len() {
+      let t_i = self.dt * T::from_usize_(i);
+      let log_s = self.r * t_i - self.half_sigma_sq * t_i.powf(self.two_h) + self.sigma * fbm[i];
+      out[i] = self.s0 * log_s.exp();
+    }
+  }
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlBlackScholesSampler<T, S> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("RlBlackScholes output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

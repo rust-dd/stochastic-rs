@@ -5,6 +5,8 @@ use ndarray::Array2;
 use ndarray::parallel::prelude::*;
 use stochastic_rs_distributions::traits::FloatExt;
 
+use super::sampler::PathSampler;
+
 /// Stochastic process simulation trait.
 ///
 /// Each process exposes `sample()` returning a [`Self::Output`] and
@@ -30,13 +32,75 @@ use stochastic_rs_distributions::traits::FloatExt;
 /// process's noise source with no runtime branch. Only the fractional family
 /// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
 /// GPU marker only exists when its feature is compiled.
+/// ## Sampling architecture
+///
+/// The public surface is [`sample`](Self::sample), [`sample_par`](Self::sample_par)
+/// and [`sample_map`](Self::sample_map). Under them sits a hidden
+/// [`PathSampler`] holding all per-call mutable state (RNG, distribution
+/// buffers, scratch, precomputed scales); [`sampler`](Self::sampler) builds
+/// one. The parallel methods construct **one sampler per rayon worker**
+/// instead of one per path, removing the per-path allocation and RNG-setup
+/// costs that dominate short-path Monte Carlo. [`sample_map`] folds over the
+/// paths reusing a single output buffer per worker; [`sample_par`] keeps
+/// every path, allocating each fresh (no buffer reuse, no clone).
+///
+/// Implementor footgun: the default `sample()` routes through `sampler()`,
+/// so a sampler must never call back into `ProcessExt::sample` of the same
+/// process unless that process overrides `sample` with a real body.
 pub trait ProcessExt<T: FloatExt>: Send + Sync {
   type Output: Send;
 
-  fn sample(&self) -> Self::Output;
+  /// Reusable sampling state. Implementation detail of the `sample*` methods,
+  /// not part of the public surface.
+  #[doc(hidden)]
+  type Sampler<'a>: PathSampler<T, Output = Self::Output>
+  where
+    Self: 'a;
 
+  /// Constructs the reusable sampling state. Implementation detail behind
+  /// [`sample`](Self::sample) / [`sample_map`](Self::sample_map).
+  #[doc(hidden)]
+  fn sampler(&self) -> Self::Sampler<'_>;
+
+  /// A single sampled path.
+  fn sample(&self) -> Self::Output {
+    self.sampler().sample()
+  }
+
+  /// Maps `f` over `m` independently sampled paths, reusing one sampler and
+  /// one output buffer per rayon worker (no per-path allocation or RNG
+  /// re-init). This is the parallel primitive.
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
+    (0..m)
+      .into_par_iter()
+      .map_init(
+        || (self.sampler(), None::<Self::Output>),
+        |(sampler, slot), _| match slot {
+          Some(buf) => {
+            sampler.sample_into(buf);
+            f(buf)
+          }
+          None => {
+            // First path on this worker: sample fresh (no wasted draw) and
+            // keep the buffer to reuse for the rest.
+            let buf = sampler.sample();
+            let r = f(&buf);
+            *slot = Some(buf);
+            r
+          }
+        },
+      )
+      .collect()
+  }
+
+  /// `m` independently sampled paths, kept. Like [`sample_map`](Self::sample_map)
+  /// it reuses one sampler per rayon worker, but allocates a fresh owned path
+  /// each step — cheaper than mapping then cloning when every path is wanted.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    (0..m).into_par_iter().map(|_| self.sample()).collect()
+    (0..m)
+      .into_par_iter()
+      .map_init(|| self.sampler(), |sampler, _| sampler.sample())
+      .collect()
   }
 }
 

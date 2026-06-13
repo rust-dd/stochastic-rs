@@ -10,7 +10,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Implements an Egarch(p,q) model:
@@ -85,27 +87,56 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = EgarchSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> EgarchSampler<T> {
+    EgarchSampler {
+      n: self.n,
+      omega: self.omega,
+      alpha: self.alpha.clone(),
+      gamma: self.gamma.clone(),
+      beta: self.beta.clone(),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Egarch`] sampling state: owns the standard-normal innovation
+/// source and the log-variance coefficients so a Monte-Carlo loop pays the
+/// `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct EgarchSampler<T: FloatExt> {
+  n: usize,
+  omega: T,
+  alpha: Array1<T>,
+  gamma: Array1<T>,
+  beta: Array1<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> EgarchSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let n = out.len();
     let p = self.alpha.len();
     let q = self.beta.len();
 
     // Generate white noise z_t ~ N(0,1)
-    let mut z = Array1::<T>::zeros(self.n);
-    if self.n > 0 {
+    let mut z = Array1::<T>::zeros(n);
+    if n > 0 {
       let slice = z.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-      normal.fill_slice_fast(slice);
+      self.normal.fill_slice_fast(slice);
     }
 
-    // Allocate arrays for the time series (X_t) and log of variance (log_sigma2)
-    let mut x = Array1::<T>::zeros(self.n);
-    let mut log_sigma2 = Array1::<T>::zeros(self.n);
+    // Scratch array for log of variance (the output buffer holds X_t)
+    let mut log_sigma2 = Array1::<T>::zeros(n);
 
     // For normal(0,1), the expected absolute value is sqrt(2/pi)
     let e_abs_z = T::from_f64_fast((2.0_f64 / std::f64::consts::PI).sqrt());
 
-    for t in 0..self.n {
+    for t in 0..n {
       if t == 0 {
         // Initialize log-variance (e.g., with omega)
         log_sigma2[t] = self.omega;
@@ -116,7 +147,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
           if t >= i {
             // Standardized residual from step t-i
             let sigma_t_i = (log_sigma2[t - i].exp()).sqrt();
-            let z_t_i = x[t - i] / sigma_t_i; // z_{t-i}
+            let z_t_i = out[t - i] / sigma_t_i; // z_{t-i}
 
             // Add alpha_i(|z_{t-i}| - E|z|) + gamma_i z_{t-i}
             shock_term += self.alpha[i - 1] * (z_t_i.abs() - e_abs_z) + self.gamma[i - 1] * z_t_i;
@@ -147,10 +178,24 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
         "Egarch produced non-positive or non-finite sigma at t={}",
         t
       );
-      x[t] = sigma_t * z[t];
+      out[t] = sigma_t * z[t];
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for EgarchSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("Egarch output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

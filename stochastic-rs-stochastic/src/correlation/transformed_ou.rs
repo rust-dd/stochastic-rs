@@ -5,7 +5,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Bounded transformation mapping ℝ → (−1, 1) for constructing
@@ -96,35 +98,81 @@ impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TransformedOU<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = TransformedOUSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> TransformedOUSampler<T> {
     let n_steps = self.n.saturating_sub(1);
-    if self.n == 0 {
-      return Array1::zeros(0);
-    }
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
       T::zero()
     };
-    let sqrt_dt = dt.sqrt();
+    TransformedOUSampler {
+      n: self.n,
+      kappa: self.kappa,
+      mu: self.mu,
+      sigma: self.sigma,
+      rho0: self.rho0,
+      transform: self.transform,
+      dt,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`TransformedOU`] sampling state: owns the Gaussian source and the
+/// precomputed step size, so a Monte-Carlo loop pays the `SimdNormal` setup
+/// once. `fill_path` Euler-steps the X-space Ou and maps through the bounded
+/// [`Transformation`] in place; the owned source advances each call for
+/// independent paths.
+#[doc(hidden)]
+pub struct TransformedOUSampler<T: FloatExt> {
+  n: usize,
+  kappa: T,
+  mu: T,
+  sigma: T,
+  rho0: T,
+  transform: Transformation,
+  dt: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> TransformedOUSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    let n_steps = out.len() - 1;
     let mut gn = Array1::<T>::zeros(n_steps);
     if let Some(slice) = gn.as_slice_mut() {
-      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal.fill_slice_fast(slice);
+      self.normal.fill_slice_fast(slice);
     }
 
-    let mut rho = Array1::zeros(self.n);
     let mut x = self.transform.inverse(self.rho0);
-    rho[0] = self.rho0;
-
-    for i in 1..self.n {
-      x = x + self.kappa * (self.mu - x) * dt + self.sigma * gn[i - 1];
-      rho[i] = self.transform.forward(x);
+    out[0] = self.rho0;
+    for i in 1..out.len() {
+      x = x + self.kappa * (self.mu - x) * self.dt + self.sigma * gn[i - 1];
+      out[i] = self.transform.forward(x);
     }
+  }
+}
 
-    rho
+impl<T: FloatExt> PathSampler<T> for TransformedOUSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("TransformedOU output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

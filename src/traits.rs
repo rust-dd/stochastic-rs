@@ -32,6 +32,7 @@ pub use stochastic_rs_stochastic::traits::Malliavin2DExt;
 pub use stochastic_rs_stochastic::traits::MalliavinExt;
 pub use stochastic_rs_stochastic::traits::MultiDimensional;
 pub use stochastic_rs_stochastic::traits::OneDimensional;
+pub use stochastic_rs_stochastic::traits::PathSampler;
 pub use stochastic_rs_stochastic::traits::ProcessExt;
 pub use stochastic_rs_stochastic::traits::TwoDimensional;
 pub use stochastic_rs_stochastic::traits::VariableDimensional;

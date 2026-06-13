@@ -22,9 +22,12 @@ use ndarray::Array1;
 #[cfg(feature = "python")]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
@@ -47,6 +50,21 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = FgnSampler<'s, T, S, B>
+  where
+    Self: 's;
+
+  /// A CPU sampler reusing the process's `Arc`-shared FFT plan and
+  /// eigenvalues plus an owned Gaussian source. Note: even for GPU backends
+  /// this samples on the CPU — GPU users should batch through
+  /// [`sample_par`](Self::sample_par), which dispatches to the backend.
+  fn sampler(&self) -> FgnSampler<'_, T, S, B> {
+    FgnSampler {
+      fgn: self,
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
 
   fn sample(&self) -> Self::Output {
     B::generate(self, &self.seed)
@@ -56,5 +74,28 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
   /// plan over the whole batch).
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     B::generate_batch(self, m)
+  }
+}
+
+/// Reusable CPU fGn sampler: borrows the process (for its FFT plan and
+/// eigenvalues) and owns the Gaussian source so a Monte-Carlo loop pays the
+/// `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
+  fgn: &'a Fgn<T, S, B>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FgnSampler<'_, T, S, B> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Fgn output must be contiguous");
+    self.fgn.fill_cpu(&mut self.normal, slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let out_len = self.fgn.out_len;
+    array1_from_fill(out_len, |out| self.fgn.fill_cpu(&mut self.normal, out))
   }
 }

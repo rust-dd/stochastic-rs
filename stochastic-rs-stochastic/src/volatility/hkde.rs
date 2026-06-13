@@ -23,6 +23,7 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Heston + Kou Double-Exponential jump-diffusion process.
@@ -117,7 +118,62 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
       + (T::one() - self.p_up) * self.eta2 / (self.eta2 + T::one())
       - T::one()
   }
+}
 
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
+  type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = HkdeSampler<T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> HkdeSampler<T, S> {
+    HkdeSampler {
+      n: self.n,
+      mu: self.mu,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma_v: self.sigma_v,
+      v0: self.v0,
+      lambda: self.lambda,
+      p_up: self.p_up,
+      eta1: self.eta1,
+      eta2: self.eta2,
+      s0: self.s0.unwrap_or(T::one()),
+      k_bar: self.k_bar(),
+      dt: self.cgns.dt(),
+      use_sym: self.use_sym.unwrap_or(false),
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`Hkde`] sampling state: owns the correlated-Gaussian generator and
+/// the seed source. The Poisson jump-count generator and per-jump Kou draws are
+/// rebuilt per fill in the legacy seed-consumption order, so the first call
+/// reproduces the original stream bit-for-bit.
+#[doc(hidden)]
+pub struct HkdeSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  mu: T,
+  kappa: T,
+  theta: T,
+  sigma_v: T,
+  v0: T,
+  lambda: T,
+  p_up: T,
+  eta1: T,
+  eta2: T,
+  s0: T,
+  k_bar: T,
+  dt: T,
+  use_sym: bool,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
   /// Sample a single Kou double-exponential jump size (log-jump).
   #[inline]
   fn sample_kou_jump<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> T {
@@ -137,24 +193,19 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
       -T::from_f64_fast(e)
     }
   }
-}
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
-  type Output = [Array1<T>; 2];
-
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn fill_paths(&mut self, s: &mut [T], v: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut v = Array1::<T>::zeros(self.n);
-
-    let s0 = self.s0.unwrap_or(T::one());
-    assert!(s0 > T::zero(), "s0 must be > 0");
-    s[0] = s0;
+    assert!(self.s0 > T::zero(), "s0 must be > 0");
+    s[0] = self.s0;
     v[0] = self.v0.max(T::zero());
 
-    let k_bar = self.k_bar();
+    let k_bar = self.k_bar;
     let mut rng = self.seed.rng();
 
     let pois = if self.lambda > T::zero() {
@@ -167,7 +218,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
     };
 
     for i in 1..self.n {
-      let v_prev = match self.use_sym.unwrap_or(false) {
+      let v_prev = match self.use_sym {
         true => v[i - 1].abs(),
         false => v[i - 1].max(T::zero()),
       };
@@ -190,12 +241,32 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
 
       // Variance dynamics (Heston)
       let dv = self.kappa * (self.theta - v_prev) * dt + self.sigma_v * sqrt_v * cgn2[i - 1];
-      v[i] = match self.use_sym.unwrap_or(false) {
+      v[i] = match self.use_sym {
         true => (v_prev + dv).abs(),
         false => (v_prev + dv).max(T::zero()),
       };
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for HkdeSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v] = out;
+    self.fill_paths(
+      s.as_slice_mut().expect("Hkde output must be contiguous"),
+      v.as_slice_mut().expect("Hkde output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
     [s, v]
   }
 }

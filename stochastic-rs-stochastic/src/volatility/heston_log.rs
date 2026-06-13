@@ -16,6 +16,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Construction-time validator for drift parametrisations. Panics at the
@@ -129,43 +130,86 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonLog<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = HestonLogSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut v = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return [s, v];
+  fn sampler(&self) -> HestonLogSampler<T> {
+    // `saturating_sub(1).max(1)` keeps the noise std finite for n ≤ 1, where
+    // the streams are never used; for n ≥ 2 it equals `n - 1`, so the std and
+    // hence the derived stream match the legacy `sample` exactly.
+    let n_increments = self.n.saturating_sub(1).max(1);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let sqrt_dt = dt.sqrt();
+    HestonLogSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::one()),
+      v0: self.v0.unwrap_or(self.theta).max(T::zero()),
+      drift: self.drift(),
+      kappa: self.kappa,
+      theta: self.theta,
+      xi: self.xi,
+      rho: self.rho,
+      dt,
+      use_sym: self.use_sym.unwrap_or(false),
+      n1: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
+      n2: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
     }
+  }
+}
 
-    let s0 = self.s0.unwrap_or(T::one());
-    assert!(s0 > T::zero(), "s0 must be > 0 for log-price simulation");
-    s[0] = s0;
+/// Reusable [`HestonLog`] sampling state: owns the two Gaussian streams (one
+/// driving the asset, one combined into the variance shock) and the
+/// precomputed drift / step size so a Monte-Carlo loop reuses both buffers.
+#[doc(hidden)]
+pub struct HestonLogSampler<T: FloatExt> {
+  n: usize,
+  s0: T,
+  v0: T,
+  drift: T,
+  kappa: T,
+  theta: T,
+  xi: T,
+  rho: T,
+  dt: T,
+  use_sym: bool,
+  n1: SimdNormal<T>,
+  n2: SimdNormal<T>,
+}
 
-    v[0] = self.v0.unwrap_or(self.theta).max(T::zero());
+impl<T: FloatExt> HestonLogSampler<T> {
+  fn fill_paths(&mut self, s: &mut [T], v: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must be > 0 for log-price simulation"
+    );
+    s[0] = self.s0;
+    v[0] = self.v0;
     if self.n == 1 {
-      return [s, v];
+      return;
     }
 
     let n_increments = self.n - 1;
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
+    let dt = self.dt;
     let mut dws = vec![T::zero(); n_increments];
     let mut z = vec![T::zero(); n_increments];
     let mut dwv = vec![T::zero(); n_increments];
-    let n1 = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    let n2 = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    n1.fill_slice_fast(&mut dws);
-    n2.fill_slice_fast(&mut z);
+    self.n1.fill_slice_fast(&mut dws);
+    self.n2.fill_slice_fast(&mut z);
     let corr_scale = (T::one() - self.rho * self.rho).sqrt();
     for i in 0..n_increments {
       dwv[i] = self.rho * dws[i] + corr_scale * z[i];
     }
 
-    let drift = self.drift();
+    let drift = self.drift;
     let half = T::from_f64_fast(0.5);
 
     for i in 1..self.n {
-      let v_prev = if self.use_sym.unwrap_or(false) {
+      let v_prev = if self.use_sym {
         v[i - 1].abs()
       } else {
         v[i - 1].max(T::zero())
@@ -177,13 +221,35 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonLog<T, S> {
       s[i] = s[i - 1] * log_inc.exp();
 
       let dv = self.kappa * (self.theta - v_prev) * dt + self.xi * sqrt_v * dwv[i - 1];
-      v[i] = if self.use_sym.unwrap_or(false) {
+      v[i] = if self.use_sym {
         (v_prev + dv).abs()
       } else {
         (v_prev + dv).max(T::zero())
       };
     }
+  }
+}
 
+impl<T: FloatExt> PathSampler<T> for HestonLogSampler<T> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("HestonLog output must be contiguous"),
+      v.as_slice_mut()
+        .expect("HestonLog output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
     [s, v]
   }
 }

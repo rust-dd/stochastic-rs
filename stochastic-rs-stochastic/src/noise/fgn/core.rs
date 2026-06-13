@@ -148,6 +148,36 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     fgn
   }
 
+  /// Fill `out` (length `out_len`) with one fGn path using a caller-owned
+  /// Gaussian source. Lets a [`FgnSampler`](super::FgnSampler) amortise the
+  /// `SimdNormal` construction across a Monte-Carlo loop; the FFT plan and
+  /// eigenvalues are already `Arc`-shared on the process and the complex
+  /// scratch is thread-local, so this allocates nothing.
+  #[inline]
+  pub(crate) fn fill_cpu(
+    &self,
+    normal: &mut stochastic_rs_distributions::normal::SimdNormal<T>,
+    out: &mut [T],
+  ) {
+    let len = 2 * self.n;
+    T::with_fgn_complex_scratch(len, |rnd| {
+      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
+      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+      normal.fill_slice_fast(flat);
+      for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
+        z.re = z.re * w;
+        z.im = z.im * w;
+      }
+
+      let mut rnd_view = ArrayViewMut1::from(rnd);
+      ndfft_inplace_par(&mut rnd_view, &*self.fft_handler, 0);
+      let src = rnd_view.slice(s![1..self.out_len + 1]);
+      for (dst, c) in out.iter_mut().zip(src.iter()) {
+        *dst = c.re * self.scale;
+      }
+    });
+  }
+
   /// Sample a pair of independent fGn paths using a specific deterministic seed.
   pub(crate) fn sample_pair_cpu_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
     self.sample_pair_cpu_impl(&Deterministic::new(seed))

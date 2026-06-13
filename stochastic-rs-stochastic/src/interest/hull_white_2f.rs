@@ -13,6 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
@@ -70,15 +71,54 @@ impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite2F<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = HullWhite2FSampler<'s, T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn sampler(&self) -> HullWhite2FSampler<'_, T, S> {
+    HullWhite2FSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      theta: self.theta,
+      sigma1: self.sigma1,
+      sigma2: self.sigma2,
+      b: self.b,
+      k: &self.k,
+      dt: self.cgns.dt(),
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`HullWhite2F`] sampling state. Borrows the process for its
+/// time-dependent drift `k(t)` and owns the correlated-Gaussian generator plus
+/// the seed source so a Monte-Carlo loop reuses both output buffers.
+#[doc(hidden)]
+pub struct HullWhite2FSampler<'a, T: FloatExt, S: SeedExt> {
+  n: usize,
+  x0: T,
+  theta: T,
+  sigma1: T,
+  sigma2: T,
+  b: T,
+  k: &'a Fn1D<T>,
+  dt: T,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> HullWhite2FSampler<'_, T, S> {
+  fn fill_paths(&mut self, x: &mut [T], u: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
-    let mut x = Array1::<T>::zeros(self.n);
-    let mut u = Array1::<T>::zeros(self.n);
-
-    x[0] = self.x0.unwrap_or(T::zero());
+    x[0] = self.x0;
+    u[0] = T::zero();
 
     for i in 1..self.n {
       x[i] = x[i - 1]
@@ -87,7 +127,30 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite2F<T, S> {
 
       u[i] = u[i - 1] - self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for HullWhite2FSampler<'_, T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [x_arr, u_arr] = out;
+    let x = x_arr
+      .as_slice_mut()
+      .expect("HullWhite2F output must be contiguous");
+    let u = u_arr
+      .as_slice_mut()
+      .expect("HullWhite2F output must be contiguous");
+    self.fill_paths(x, u);
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut x = Array1::<T>::zeros(self.n);
+    let mut u = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      x.as_slice_mut().expect("contiguous"),
+      u.as_slice_mut().expect("contiguous"),
+    );
     [x, u]
   }
 }

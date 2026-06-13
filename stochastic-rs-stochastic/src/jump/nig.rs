@@ -10,7 +10,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded> {
@@ -53,32 +55,72 @@ impl<T: FloatExt, S: SeedExt> Nig<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Nig<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = NigSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut nig = Array1::zeros(self.n);
-    if self.n == 0 {
-      return nig;
-    }
-    nig[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return nig;
-    }
-
+  fn sampler(&self) -> NigSampler<T> {
+    // For Nig: G_dt ~ Ig(mean=dt, shape=dt^2/kappa). The IG subordinator and
+    // the standard-normal source are derived from `self.seed` in the same
+    // order as the legacy `sample()`, so the first fill reproduces it
+    // bit-for-bit; both owned sources advance on reuse for independent paths.
     let dt = self.dt();
-    // For Nig: G_dt ~ Ig(mean=dt, shape=dt^2/kappa).
     let shape = dt * dt / self.kappa;
-    let ig_dist = SimdInverseGauss::<T>::new(dt, shape, &self.seed);
-    let mut ig = Array1::<T>::zeros(self.n - 1);
-    ig_dist.fill_slice_fast(ig.as_slice_mut().unwrap());
-    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-    let mut z = Array1::<T>::zeros(self.n - 1);
-    normal.fill_slice_fast(z.as_slice_mut().unwrap());
+    NigSampler {
+      n: self.n,
+      theta: self.theta,
+      sigma: self.sigma,
+      x0: self.x0.unwrap_or(T::zero()),
+      ig_dist: SimdInverseGauss::<T>::new(dt, shape, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
+}
 
-    for i in 1..self.n {
-      nig[i] = nig[i - 1] + self.theta * ig[i - 1] + self.sigma * ig[i - 1].sqrt() * z[i - 1]
+/// Reusable [`Nig`] sampling state: owns the inverse-Gaussian subordinator and
+/// the Gaussian source so a Monte-Carlo loop pays their setup once.
+#[doc(hidden)]
+pub struct NigSampler<T: FloatExt> {
+  n: usize,
+  theta: T,
+  sigma: T,
+  x0: T,
+  ig_dist: SimdInverseGauss<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> NigSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
     }
 
-    nig
+    let mut ig = Array1::<T>::zeros(out.len() - 1);
+    self.ig_dist.fill_slice_fast(ig.as_slice_mut().unwrap());
+    let mut z = Array1::<T>::zeros(out.len() - 1);
+    self.normal.fill_slice_fast(z.as_slice_mut().unwrap());
+
+    for i in 1..out.len() {
+      out[i] = out[i - 1] + self.theta * ig[i - 1] + self.sigma * ig[i - 1].sqrt() * z[i - 1]
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for NigSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(out.as_slice_mut().expect("Nig output must be contiguous"));
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

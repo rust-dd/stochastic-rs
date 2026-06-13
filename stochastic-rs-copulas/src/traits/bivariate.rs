@@ -6,7 +6,6 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::stack;
-use ndarray_stats::QuantileExt;
 use roots::SimpleConvergency;
 use roots::find_root_brent;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -130,7 +129,7 @@ pub trait BivariateExt {
   }
 
   fn check_marginal(&self, u: &Array1<f64>) -> Result<(), String> {
-    if !(0.0..=1.0).contains(u.min().unwrap()) || !(0.0..=1.0).contains(u.max().unwrap()) {
+    if !u.iter().all(|x| (0.0..=1.0).contains(x)) {
       return Err("Marginal values must be in the interval [0, 1]".into());
     }
 
@@ -138,10 +137,9 @@ pub trait BivariateExt {
     empirical_cdf.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Greater));
     let empirical_cdf = Array1::from(empirical_cdf);
     let uniform = Array1::linspace(0.0, 1.0, u.len());
-    let ks = (empirical_cdf - uniform).mapv(f64::abs);
-    let ks = ks.max().unwrap();
+    let ks = (empirical_cdf - uniform).fold(0.0_f64, |acc, &d| acc.max(d.abs()));
 
-    if *ks > 1.627 / (u.len() as f64).sqrt() {
+    if ks > 1.627 / (u.len() as f64).sqrt() {
       return Err("Marginal values do not follow a uniform distribution".into());
     }
 

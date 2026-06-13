@@ -158,10 +158,8 @@ pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> R
 mod tests {
   use ndarray::Array1;
   use ndarray::Array2;
-  use ndarray_rand::RandomExt;
-  use ndarray_rand::rand_distr::Normal;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
@@ -170,26 +168,29 @@ mod tests {
     Array2::from_shape_fn((n, 2), |(i, j)| if j == 0 { 1.0 } else { x[i] })
   }
 
+  fn normal_pair(n: usize, noise_sigma: f64, seed: u64) -> (Array1<f64>, Array1<f64>) {
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut x = Array1::zeros(n);
+    dist.fill_slice_fast(x.as_slice_mut().unwrap());
+    let mut noise = Array1::zeros(n);
+    dist.fill_slice_fast(noise.as_slice_mut().unwrap());
+    (x, noise * noise_sigma)
+  }
+
   fn simulate_linear(n: usize, seed: u64) -> (Array1<f64>, Array1<f64>) {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let x = Array1::random_using(n, Normal::new(0.0, 1.0).unwrap(), &mut rng);
-    let noise = Array1::random_using(n, Normal::new(0.0, 0.5).unwrap(), &mut rng);
+    let (x, noise) = normal_pair(n, 0.5, seed);
     let y = 1.0 + 2.0 * &x + &noise;
     (x, y)
   }
 
   fn simulate_quadratic(n: usize, seed: u64) -> (Array1<f64>, Array1<f64>) {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let x = Array1::random_using(n, Normal::new(0.0, 1.0).unwrap(), &mut rng);
-    let noise = Array1::random_using(n, Normal::new(0.0, 0.3).unwrap(), &mut rng);
+    let (x, noise) = normal_pair(n, 0.3, seed);
     let y = 1.0 + &x + &(&x * &x) + &noise;
     (x, y)
   }
 
   fn simulate_cubic(n: usize, seed: u64) -> (Array1<f64>, Array1<f64>) {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let x = Array1::random_using(n, Normal::new(0.0, 1.0).unwrap(), &mut rng);
-    let noise = Array1::random_using(n, Normal::new(0.0, 0.3).unwrap(), &mut rng);
+    let (x, noise) = normal_pair(n, 0.3, seed);
     let y = 1.0 + &x + &(&x * &x * &x) + &noise;
     (x, y)
   }

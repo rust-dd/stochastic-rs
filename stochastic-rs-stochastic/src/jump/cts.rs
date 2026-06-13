@@ -11,8 +11,10 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
+use crate::buffer::array1_from_fill;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Cts process (Classical Tempered Stable process)
@@ -70,8 +72,16 @@ impl<T: FloatExt, S: SeedExt> Cts<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cts<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = CtsSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> CtsSampler<T> {
+    // Uniform and Exp(1) sources are derived from `self.seed` in the same
+    // order as the legacy `sample()`, so the first fill reproduces it
+    // bit-for-bit; both owned sources advance on reuse. The seed-independent
+    // scale `C` and drift `b_t` are precomputed here.
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
 
@@ -87,24 +97,71 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cts<T, S> {
       * (self.lambda_plus.powf(self.alpha - T::one())
         - self.lambda_minus.powf(self.alpha - T::one()));
 
+    CtsSampler {
+      n: self.n,
+      j: self.j,
+      lambda_plus: self.lambda_plus,
+      lambda_minus: self.lambda_minus,
+      alpha: self.alpha,
+      x0: self.x0.unwrap_or(T::zero()),
+      t_max,
+      dt,
+      c: C,
+      b_t,
+      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
+      exp: SimdExp::<T>::new(T::one(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Cts`] sampling state: owns the uniform and exponential sources
+/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
+/// setup once. The Gamma arrival series, jump sizes and ordering are rebuilt
+/// per path inside `fill_path`.
+#[doc(hidden)]
+pub struct CtsSampler<T: FloatExt> {
+  n: usize,
+  j: usize,
+  lambda_plus: T,
+  lambda_minus: T,
+  alpha: T,
+  x0: T,
+  t_max: T,
+  dt: T,
+  c: T,
+  b_t: T,
+  uniform: SimdUniform<T>,
+  exp: SimdExp<T>,
+}
+
+impl<T: FloatExt> CtsSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+
+    let t_max = self.t_max;
+    let dt = self.dt;
+    let C = self.c;
+    let b_t = self.b_t;
+
     let J = self.j;
     let size = J + 1; // index 0 is reserved (Γ0=0)
 
-    let uniform = SimdUniform::<T>::new(T::zero(), T::one(), &self.seed);
-    let exp = SimdExp::<T>::new(T::one(), &self.seed);
-
     let mut U = Array1::<T>::zeros(size);
-    uniform.fill_slice_fast(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| exp.sample_fast());
+    self.uniform.fill_slice_fast(U.as_slice_mut().unwrap());
+    let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
     let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
-    uniform.fill_slice_fast(tau_raw.as_slice_mut().unwrap());
+    self
+      .uniform
+      .fill_slice_fast(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);
 
     for j in 1..size {
-      let v_j = if uniform.sample_fast() < T::from_f64_fast(0.5) {
+      let v_j = if self.uniform.sample_fast() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus
@@ -125,13 +182,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cts<T, S> {
         .unwrap()
     });
 
-    let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
+    out[0] = self.x0;
 
     let mut k: usize = 0;
     let mut cum_jumps = T::zero();
 
-    for i in 1..self.n {
+    for i in 1..out.len() {
       let t_i = T::from_usize_(i) * dt;
 
       while k < idx.len() && tau[idx[k]] <= t_i {
@@ -140,10 +196,21 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cts<T, S> {
       }
 
       // direct formula: x(t_i) = x0 + Σ_{τ_j <= t_i} jump_j + b_t * t_i
-      x[i] = x[0] + cum_jumps + b_t * t_i;
+      out[i] = self.x0 + cum_jumps + b_t * t_i;
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for CtsSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(out.as_slice_mut().expect("Cts output must be contiguous"));
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

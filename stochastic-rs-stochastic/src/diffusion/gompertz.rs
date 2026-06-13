@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
@@ -48,42 +49,77 @@ impl<T: FloatExt, S: SeedExt> Gompertz<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gompertz<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = GompertzSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut x = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return x;
-    }
-
-    let threshold = T::from_f64_fast(1e-12);
-    x[0] = self.x0.unwrap_or(T::zero()).max(threshold);
-    if self.n == 1 {
-      return x;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> GompertzSampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let diff_scale = self.sigma;
-    let mut prev = x[0];
-    let mut tail_view = x.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Gompertz output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    GompertzSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      a: self.a,
+      b: self.b,
+      diff_scale: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`Gompertz`] sampling state.
+#[doc(hidden)]
+pub struct GompertzSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  dt: T,
+  a: T,
+  b: T,
+  diff_scale: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> GompertzSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    let threshold = T::from_f64_fast(1e-12);
+    let x0 = self.x0.max(threshold);
+    out[0] = x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = x0;
     for z in tail.iter_mut() {
       let xi = prev.max(threshold);
-      let drift = (self.a - self.b * xi.ln()) * xi * dt;
-      let diff = diff_scale * xi * *z;
+      let drift = (self.a - self.b * xi.ln()) * xi * self.dt;
+      let diff = self.diff_scale * xi * *z;
       let next = xi + drift + diff;
       let clamped = next.max(threshold);
       *z = clamped;
       prev = clamped;
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for GompertzSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("Gompertz output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

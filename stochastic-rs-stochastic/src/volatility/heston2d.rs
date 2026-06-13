@@ -25,6 +25,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Bivariate Heston stochastic-volatility process.
@@ -167,37 +168,87 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston2D<T, S> {
   /// Output: `[x_1, v_1, x_2, v_2]` — log-prices and instantaneous variances
   /// for both assets, each of length `n`.
   type Output = [Array1<T>; 4];
+  type Sampler<'s>
+    = Heston2DSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> Heston2DSampler<T> {
     let t_total = self.t.unwrap_or(T::one());
     let n_steps = self.n - 1;
     let dt = t_total / T::from_usize_(n_steps);
     let sqrt_dt = dt.sqrt();
+    // Four independent N(0, dt) streams driven by derived seeds, built in the
+    // same e1..e4 order the legacy `sample` used so the first call reproduces
+    // its stream bit-for-bit.
+    let normals =
+      std::array::from_fn(|_| SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed.derive()));
+    Heston2DSampler {
+      n: self.n,
+      x0: [
+        self.x0[0].unwrap_or(T::zero()),
+        self.x0[1].unwrap_or(T::zero()),
+      ],
+      v0: [
+        self.v0[0].unwrap_or(T::zero()).max(T::zero()),
+        self.v0[1].unwrap_or(T::zero()).max(T::zero()),
+      ],
+      mu: self.mu,
+      theta: self.theta,
+      kappa: self.kappa,
+      sigma: self.sigma,
+      chol: self.chol,
+      dt,
+      use_sym: self.use_sym.unwrap_or(false),
+      normals,
+    }
+  }
+}
 
-    // Four independent N(0, dt) streams driven by derived seeds.
+/// Reusable [`Heston2D`] sampling state: owns the four independent Gaussian
+/// streams plus the precomputed Cholesky factor and step size so a Monte-Carlo
+/// loop reuses all four output buffers and the RNG setup.
+#[doc(hidden)]
+pub struct Heston2DSampler<T: FloatExt> {
+  n: usize,
+  x0: [T; 2],
+  v0: [T; 2],
+  mu: [T; 2],
+  theta: [T; 2],
+  kappa: [T; 2],
+  sigma: [T; 2],
+  chol: [T; 10],
+  dt: T,
+  use_sym: bool,
+  normals: [SimdNormal<T>; 4],
+}
+
+impl<T: FloatExt> Heston2DSampler<T> {
+  fn fill_paths(&mut self, x1: &mut [T], v1: &mut [T], x2: &mut [T], v2: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let n_steps = self.n - 1;
     let mut e1 = Array1::<T>::zeros(n_steps);
     let mut e2 = Array1::<T>::zeros(n_steps);
     let mut e3 = Array1::<T>::zeros(n_steps);
     let mut e4 = Array1::<T>::zeros(n_steps);
-    for arr in [&mut e1, &mut e2, &mut e3, &mut e4] {
-      let n_norm = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed.derive());
-      n_norm.fill_slice_fast(arr.as_slice_mut().expect("noise slice contiguous"));
-    }
+    let [n1, n2, n3, n4] = &self.normals;
+    n1.fill_slice_fast(e1.as_slice_mut().expect("noise slice contiguous"));
+    n2.fill_slice_fast(e2.as_slice_mut().expect("noise slice contiguous"));
+    n3.fill_slice_fast(e3.as_slice_mut().expect("noise slice contiguous"));
+    n4.fill_slice_fast(e4.as_slice_mut().expect("noise slice contiguous"));
 
     let [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44] = self.chol;
 
-    let mut x1 = Array1::<T>::zeros(self.n);
-    let mut v1 = Array1::<T>::zeros(self.n);
-    let mut x2 = Array1::<T>::zeros(self.n);
-    let mut v2 = Array1::<T>::zeros(self.n);
+    x1[0] = self.x0[0];
+    v1[0] = self.v0[0];
+    x2[0] = self.x0[1];
+    v2[0] = self.v0[1];
 
-    x1[0] = self.x0[0].unwrap_or(T::zero());
-    v1[0] = self.v0[0].unwrap_or(T::zero()).max(T::zero());
-    x2[0] = self.x0[1].unwrap_or(T::zero());
-    v2[0] = self.v0[1].unwrap_or(T::zero()).max(T::zero());
-
+    let dt = self.dt;
     let half = T::from_f64_fast(0.5);
-    let use_sym = self.use_sym.unwrap_or(false);
+    let use_sym = self.use_sym;
     for i in 1..self.n {
       let dz1 = l11 * e1[i - 1];
       let dz2 = l21 * e1[i - 1] + l22 * e2[i - 1];
@@ -226,7 +277,37 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston2D<T, S> {
       x1[i] = x1[i - 1] + (self.mu[0] - half * v1_prev) * dt + v1_prev.sqrt() * dw1;
       x2[i] = x2[i - 1] + (self.mu[1] - half * v2_prev) * dt + v2_prev.sqrt() * dw2;
     }
+  }
+}
 
+impl<T: FloatExt> PathSampler<T> for Heston2DSampler<T> {
+  type Output = [Array1<T>; 4];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 4]) {
+    let [x1, v1, x2, v2] = out;
+    self.fill_paths(
+      x1.as_slice_mut()
+        .expect("Heston2D output must be contiguous"),
+      v1.as_slice_mut()
+        .expect("Heston2D output must be contiguous"),
+      x2.as_slice_mut()
+        .expect("Heston2D output must be contiguous"),
+      v2.as_slice_mut()
+        .expect("Heston2D output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 4] {
+    let mut x1 = Array1::<T>::zeros(self.n);
+    let mut v1 = Array1::<T>::zeros(self.n);
+    let mut x2 = Array1::<T>::zeros(self.n);
+    let mut v2 = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      x1.as_slice_mut().expect("contiguous"),
+      v1.as_slice_mut().expect("contiguous"),
+      x2.as_slice_mut().expect("contiguous"),
+      v2.as_slice_mut().expect("contiguous"),
+    );
     [x1, v1, x2, v2]
   }
 }

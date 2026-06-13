@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Ckls<T: FloatExt, S: SeedExt = Unseeded> {
@@ -58,38 +59,73 @@ impl<T: FloatExt, S: SeedExt> Ckls<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ckls<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = CklsSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut ckls = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return ckls;
-    }
-
-    ckls[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return ckls;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> CklsSampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let mut prev = ckls[0];
-    let mut tail_view = ckls.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Ckls output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    CklsSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      theta1: self.theta1,
+      theta2: self.theta2,
+      theta3: self.theta3,
+      theta4: self.theta4,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`Ckls`] sampling state.
+#[doc(hidden)]
+pub struct CklsSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  dt: T,
+  theta1: T,
+  theta2: T,
+  theta3: T,
+  theta4: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> CklsSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.x0;
     for z in tail.iter_mut() {
       let next = prev
-        + (self.theta1 + self.theta2 * prev) * dt
+        + (self.theta1 + self.theta2 * prev) * self.dt
         + self.theta3 * prev.abs().powf(self.theta4) * *z;
       *z = next;
       prev = next;
     }
+  }
+}
 
-    ckls
+impl<T: FloatExt> PathSampler<T> for CklsSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Ckls output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

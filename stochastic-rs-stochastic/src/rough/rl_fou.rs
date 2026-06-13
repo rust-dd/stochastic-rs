@@ -16,9 +16,13 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
+use crate::buffer::array1_from_fill;
+use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Fractional Ornstein–Uhlenbeck driven by RL-fBM noise.
@@ -98,18 +102,78 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOU<T, S> {
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFOU<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = RlFOUSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
-    let fbm = self.fbm.sample_impl(&self.seed.derive());
-
-    let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
-    for i in 1..self.n {
-      let dfbm = fbm[i] - fbm[i - 1];
-      x[i] = x[i - 1] + self.kappa * (self.mu - x[i - 1]) * dt + self.sigma * dfbm;
+  fn sampler(&self) -> RlFOUSampler<T, S> {
+    RlFOUSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      kappa: self.kappa,
+      mu: self.mu,
+      sigma: self.sigma,
+      dt: self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1),
+      gn: Gn::<T, S> {
+        n: self.n - 1,
+        t: self.t,
+        seed: self.seed.derive(),
+      },
+      markov: self.fbm.markov().clone(),
     }
-    x
+  }
+}
+
+/// Reusable [`RlFOU`] sampling state: owns the cloned RL-fBM [`MarkovLift`]
+/// stepper and the Gaussian-increment source, plus the precomputed Euler
+/// scalars. `fill_path` regenerates the RL-fBM driver and Euler-integrates the
+/// Ou drift in place; the owned `Gn` stream advances each call for independent
+/// paths.
+#[doc(hidden)]
+pub struct RlFOUSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  x0: T,
+  kappa: T,
+  mu: T,
+  sigma: T,
+  dt: T,
+  gn: Gn<T, S>,
+  markov: MarkovLift<T>,
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOUSampler<T, S> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    let dw = self.gn.sample();
+    let fbm = self.markov.simulate(
+      T::zero(),
+      |_| T::zero(),
+      |_| T::one(),
+      dw.as_slice().expect("dw contiguous"),
+    );
+
+    out[0] = self.x0;
+    for i in 1..out.len() {
+      let dfbm = fbm[i] - fbm[i - 1];
+      out[i] = out[i - 1] + self.kappa * (self.mu - out[i - 1]) * self.dt + self.sigma * dfbm;
+    }
+  }
+}
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlFOUSampler<T, S> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("RlFOU output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

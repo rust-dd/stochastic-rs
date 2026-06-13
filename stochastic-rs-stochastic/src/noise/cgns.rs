@@ -10,6 +10,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
@@ -74,9 +75,45 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgns<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = CgnsSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    self.sample_impl(&self.seed)
+  fn sampler(&self) -> CgnsSampler<T, S> {
+    CgnsSampler { cgns: self.clone() }
+  }
+}
+
+/// Reusable [`Cgns`] sampling state: owns the (cheap, `Copy`) generator and its
+/// seed source. The first `sample` reproduces the legacy `sample_impl(&seed)`
+/// stream bit-for-bit; each subsequent call advances the owned seed for an
+/// independent correlated pair.
+#[doc(hidden)]
+pub struct CgnsSampler<T: FloatExt, S: SeedExt> {
+  cgns: Cgns<T, S>,
+}
+
+impl<T: FloatExt, S: SeedExt> CgnsSampler<T, S> {
+  fn fill_paths(&mut self, gn1_out: &mut [T], gn2_out: &mut [T]) {
+    let [gn1, gn2] = self.cgns.sample_impl(&self.cgns.seed);
+    gn1_out.copy_from_slice(gn1.as_slice().expect("Cgns noise 1 must be contiguous"));
+    gn2_out.copy_from_slice(gn2.as_slice().expect("Cgns noise 2 must be contiguous"));
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for CgnsSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [a, b] = out;
+    let gn1 = a.as_slice_mut().expect("Cgns output must be contiguous");
+    let gn2 = b.as_slice_mut().expect("Cgns output must be contiguous");
+    self.fill_paths(gn1, gn2);
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    self.cgns.sample_impl(&self.cgns.seed)
   }
 }
 

@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
@@ -40,36 +41,71 @@ impl<T: FloatExt, S: SeedExt> LinearSDE<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for LinearSDE<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = LinearSDESampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut x = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return x;
-    }
-
-    x[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return x;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> LinearSDESampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let mut prev = x[0];
-    let mut tail_view = x.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("LinearSDE output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    LinearSDESampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      a: self.a,
+      b: self.b,
+      c: self.c,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`LinearSDE`] sampling state.
+#[doc(hidden)]
+pub struct LinearSDESampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  dt: T,
+  a: T,
+  b: T,
+  c: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> LinearSDESampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.x0;
     for z in tail.iter_mut() {
-      let next = prev + (self.a + self.b * prev) * dt + self.c * prev * *z;
+      let next = prev + (self.a + self.b * prev) * self.dt + self.c * prev * *z;
       *z = next;
       prev = next;
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for LinearSDESampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("LinearSDE output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

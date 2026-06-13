@@ -13,6 +13,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded> {
@@ -107,15 +108,74 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKanJumpExp<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = DuffieKanJumpExpSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn sampler(&self) -> DuffieKanJumpExpSampler<T, S> {
+    DuffieKanJumpExpSampler {
+      n: self.n,
+      r0: self.r0.unwrap_or(T::zero()),
+      x0: self.x0.unwrap_or(T::zero()),
+      alpha: self.alpha,
+      beta: self.beta,
+      gamma: self.gamma,
+      a1: self.a1,
+      b1: self.b1,
+      c1: self.c1,
+      sigma1: self.sigma1,
+      a2: self.a2,
+      b2: self.b2,
+      c2: self.c2,
+      sigma2: self.sigma2,
+      lambda: self.lambda,
+      jump_scale: self.jump_scale,
+      dt: self.cgns.dt(),
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`DuffieKanJumpExp`] sampling state: owns the correlated-Gaussian
+/// generator and the seed source so a Monte-Carlo loop reuses both output
+/// buffers. The exponential inter-arrival driver and the Gaussian jump-size
+/// driver are rebuilt per call from the owned seed, reproducing the legacy
+/// stream on the first call and continuing it on subsequent ones.
+#[doc(hidden)]
+pub struct DuffieKanJumpExpSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  r0: T,
+  x0: T,
+  alpha: T,
+  beta: T,
+  gamma: T,
+  a1: T,
+  b1: T,
+  c1: T,
+  sigma1: T,
+  a2: T,
+  b2: T,
+  c2: T,
+  sigma2: T,
+  lambda: T,
+  jump_scale: T,
+  dt: T,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
+  fn fill_paths(&mut self, r: &mut [T], x: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
-    let mut r = Array1::<T>::zeros(self.n);
-    let mut x = Array1::<T>::zeros(self.n);
-    r[0] = self.r0.unwrap_or(T::zero());
-    x[0] = self.x0.unwrap_or(T::zero());
+    r[0] = self.r0;
+    x[0] = self.x0;
 
     let exp_dist = SimdExp::<T>::new(self.lambda, &self.seed);
     let jump_dist = SimdNormal::<T, 64>::new(T::zero(), self.jump_scale, &self.seed);
@@ -143,7 +203,30 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKanJumpExp<T, S> {
       r[i] = r_old + dr;
       x[i] = x_old + dx + jump_sum_x;
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for DuffieKanJumpExpSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [r_arr, x_arr] = out;
+    let r = r_arr
+      .as_slice_mut()
+      .expect("DuffieKanJumpExp output must be contiguous");
+    let x = x_arr
+      .as_slice_mut()
+      .expect("DuffieKanJumpExp output must be contiguous");
+    self.fill_paths(r, x);
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut r = Array1::<T>::zeros(self.n);
+    let mut x = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      r.as_slice_mut().expect("contiguous"),
+      x.as_slice_mut().expect("contiguous"),
+    );
     [r, x]
   }
 }

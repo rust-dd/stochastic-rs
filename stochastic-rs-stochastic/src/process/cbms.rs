@@ -10,6 +10,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded> {
@@ -41,26 +42,65 @@ impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
-  #[inline]
-  fn cumsum_noise(&self, noise: [Array1<T>; 2]) -> [Array1<T>; 2] {
-    let [cgn1, cgn2] = &noise;
-    let mut bm1 = Array1::<T>::zeros(self.n);
-    let mut bm2 = Array1::<T>::zeros(self.n);
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cbms<T, S> {
+  type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = CbmsSampler<T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> CbmsSampler<T, S> {
+    CbmsSampler {
+      n: self.n,
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`Cbms`] sampling state: owns the correlated-Gaussian generator and
+/// the seed source so a Monte-Carlo loop reuses both output buffers.
+#[doc(hidden)]
+pub struct CbmsSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> CbmsSampler<T, S> {
+  fn fill_paths(&mut self, bm1: &mut [T], bm2: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
+    bm1[0] = T::zero();
+    bm2[0] = T::zero();
     for i in 1..self.n {
       bm1[i] = bm1[i - 1] + cgn1[i - 1];
       bm2[i] = bm2[i - 1] + cgn2[i - 1];
     }
-    [bm1, bm2]
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cbms<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for CbmsSampler<T, S> {
   type Output = [Array1<T>; 2];
 
-  fn sample(&self) -> Self::Output {
-    let noise = self.cgns.sample_impl(&self.seed.derive());
-    self.cumsum_noise(noise)
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [bm1, bm2] = out;
+    self.fill_paths(
+      bm1.as_slice_mut().expect("Cbms output must be contiguous"),
+      bm2.as_slice_mut().expect("Cbms output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut bm1 = Array1::<T>::zeros(self.n);
+    let mut bm2 = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      bm1.as_slice_mut().expect("contiguous"),
+      bm2.as_slice_mut().expect("contiguous"),
+    );
+    [bm1, bm2]
   }
 }
 

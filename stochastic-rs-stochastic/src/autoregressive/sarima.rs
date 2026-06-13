@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Implements a Sarima model, often denoted:
@@ -103,13 +105,50 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sarima<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = SarimaSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut noise = Array1::<T>::zeros(self.n);
-    if self.n > 0 {
+  fn sampler(&self) -> SarimaSampler<T> {
+    SarimaSampler {
+      n: self.n,
+      non_seasonal_ar_coefs: self.non_seasonal_ar_coefs.clone(),
+      non_seasonal_ma_coefs: self.non_seasonal_ma_coefs.clone(),
+      seasonal_ar_coefs: self.seasonal_ar_coefs.clone(),
+      seasonal_ma_coefs: self.seasonal_ma_coefs.clone(),
+      d: self.d,
+      big_d: self.D,
+      s: self.s,
+      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Sarima`] sampling state: owns the Gaussian innovation source and
+/// the seasonal/non-seasonal ARMA coefficients so a Monte-Carlo loop pays the
+/// `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct SarimaSampler<T: FloatExt> {
+  n: usize,
+  non_seasonal_ar_coefs: Array1<T>,
+  non_seasonal_ma_coefs: Array1<T>,
+  seasonal_ar_coefs: Array1<T>,
+  seasonal_ma_coefs: Array1<T>,
+  d: usize,
+  big_d: usize,
+  s: usize,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> SarimaSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let n = out.len();
+
+    let mut noise = Array1::<T>::zeros(n);
+    if n > 0 {
       let slice = noise.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed);
-      normal.fill_slice_fast(slice);
+      self.normal.fill_slice_fast(slice);
     }
 
     // Multiply φ(B) and Φ(Bˢ) to get the combined AR polynomial.
@@ -117,19 +156,19 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sarima<T, S> {
     // Φ(Bˢ) = 1 - Φ_1 B^s - ... - Φ_P B^{Ps}
     // Product polynomial has terms at lags: i + j*s for all combinations.
     let ar_lags =
-      Self::multiply_ar_polynomials(&self.non_seasonal_ar_coefs, &self.seasonal_ar_coefs, self.s);
+      multiply_ar_polynomials(&self.non_seasonal_ar_coefs, &self.seasonal_ar_coefs, self.s);
 
     // Multiply θ(B) and Θ(Bˢ) to get the combined MA polynomial.
     // θ(B) = 1 + θ_1 B + ... + θ_q B^q
     // Θ(Bˢ) = 1 + Θ_1 B^s + ... + Θ_Q B^{Qs}
     let ma_lags =
-      Self::multiply_ma_polynomials(&self.non_seasonal_ma_coefs, &self.seasonal_ma_coefs, self.s);
+      multiply_ma_polynomials(&self.non_seasonal_ma_coefs, &self.seasonal_ma_coefs, self.s);
 
     // Single-pass SARMA recursion:
     // W_t = sum(ar_coef_k * W_{t-k}) + eps_t + sum(ma_coef_k * eps_{t-k})
-    let mut sarma_series = Array1::<T>::zeros(self.n);
+    let mut sarma_series = Array1::<T>::zeros(n);
 
-    for t in 0..self.n {
+    for t in 0..n {
       let mut val = noise[t];
 
       for &(lag, coef) in &ar_lags {
@@ -149,137 +188,151 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sarima<T, S> {
 
     // Invert seasonal differencing D times, then non-seasonal differencing d times
     let mut integrated = sarma_series;
-    for _ in 0..self.D {
-      integrated = Self::inverse_seasonal_difference(&integrated, self.s);
+    for _ in 0..self.big_d {
+      integrated = inverse_seasonal_difference(&integrated, self.s);
     }
     for _ in 0..self.d {
-      integrated = Self::inverse_difference(&integrated);
+      integrated = inverse_difference(&integrated);
     }
 
-    integrated
+    out.copy_from_slice(integrated.as_slice().expect("contiguous"));
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
-  /// Multiply the non-seasonal AR polynomial φ(B) with the seasonal AR polynomial Φ(Bˢ).
-  ///
-  /// φ(B) = 1 - φ_1 B - ... - φ_p B^p
-  /// Φ(Bˢ) = 1 - Φ_1 B^s - ... - Φ_P B^{Ps}
-  ///
-  /// Returns a vector of (lag, coefficient) pairs for the product polynomial
-  /// (excluding the constant term 1). The coefficients are the positive form
-  /// used in the recursion: W_t = sum(coef * W_{t-lag}) + ...
-  fn multiply_ar_polynomials(
-    non_seasonal: &Array1<T>,
-    seasonal: &Array1<T>,
-    s: usize,
-  ) -> Vec<(usize, T)> {
-    let p = non_seasonal.len();
-    let big_p = seasonal.len();
-    let max_lag = p + big_p * s;
+impl<T: FloatExt> PathSampler<T> for SarimaSampler<T> {
+  type Output = Array1<T>;
 
-    let mut combined = vec![T::zero(); max_lag + 1];
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("Sarima output must be contiguous");
+    self.fill_path(slice);
+  }
 
-    // φ(B) contributes lags 1..p
-    for i in 0..p {
-      combined[i + 1] += non_seasonal[i];
-    }
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
+  }
+}
 
-    // Φ(Bˢ) contributes lags s, 2s, ..., Ps
+/// Multiply the non-seasonal AR polynomial φ(B) with the seasonal AR polynomial Φ(Bˢ).
+///
+/// φ(B) = 1 - φ_1 B - ... - φ_p B^p
+/// Φ(Bˢ) = 1 - Φ_1 B^s - ... - Φ_P B^{Ps}
+///
+/// Returns a vector of (lag, coefficient) pairs for the product polynomial
+/// (excluding the constant term 1). The coefficients are the positive form
+/// used in the recursion: W_t = sum(coef * W_{t-lag}) + ...
+fn multiply_ar_polynomials<T: FloatExt>(
+  non_seasonal: &Array1<T>,
+  seasonal: &Array1<T>,
+  s: usize,
+) -> Vec<(usize, T)> {
+  let p = non_seasonal.len();
+  let big_p = seasonal.len();
+  let max_lag = p + big_p * s;
+
+  let mut combined = vec![T::zero(); max_lag + 1];
+
+  // φ(B) contributes lags 1..p
+  for i in 0..p {
+    combined[i + 1] += non_seasonal[i];
+  }
+
+  // Φ(Bˢ) contributes lags s, 2s, ..., Ps
+  for j in 0..big_p {
+    let lag_j = (j + 1) * s;
+    combined[lag_j] += seasonal[j];
+  }
+
+  // Cross-terms: -(-φ_i)(-Φ_j) = -φ_i*Φ_j at lag i+1+j*s
+  // In recursion form (positive): the cross-term subtracts
+  for i in 0..p {
     for j in 0..big_p {
-      let lag_j = (j + 1) * s;
-      combined[lag_j] += seasonal[j];
+      let lag = (i + 1) + (j + 1) * s;
+      combined[lag] -= non_seasonal[i] * seasonal[j];
     }
-
-    // Cross-terms: -(-φ_i)(-Φ_j) = -φ_i*Φ_j at lag i+1+j*s
-    // In recursion form (positive): the cross-term subtracts
-    for i in 0..p {
-      for j in 0..big_p {
-        let lag = (i + 1) + (j + 1) * s;
-        combined[lag] -= non_seasonal[i] * seasonal[j];
-      }
-    }
-
-    combined
-      .into_iter()
-      .enumerate()
-      .filter(|&(lag, _)| lag > 0)
-      .filter(|&(_, c)| c != T::zero())
-      .collect()
   }
 
-  /// Multiply the non-seasonal MA polynomial θ(B) with the seasonal MA polynomial Θ(Bˢ).
-  ///
-  /// θ(B) = 1 + θ_1 B + ... + θ_q B^q
-  /// Θ(Bˢ) = 1 + Θ_1 B^s + ... + Θ_Q B^{Qs}
-  ///
-  /// Returns a vector of (lag, coefficient) pairs for the product polynomial
-  /// (excluding the constant term 1).
-  fn multiply_ma_polynomials(
-    non_seasonal: &Array1<T>,
-    seasonal: &Array1<T>,
-    s: usize,
-  ) -> Vec<(usize, T)> {
-    let q = non_seasonal.len();
-    let big_q = seasonal.len();
-    let max_lag = q + big_q * s;
+  combined
+    .into_iter()
+    .enumerate()
+    .filter(|&(lag, _)| lag > 0)
+    .filter(|&(_, c)| c != T::zero())
+    .collect()
+}
 
-    let mut combined = vec![T::zero(); max_lag + 1];
+/// Multiply the non-seasonal MA polynomial θ(B) with the seasonal MA polynomial Θ(Bˢ).
+///
+/// θ(B) = 1 + θ_1 B + ... + θ_q B^q
+/// Θ(Bˢ) = 1 + Θ_1 B^s + ... + Θ_Q B^{Qs}
+///
+/// Returns a vector of (lag, coefficient) pairs for the product polynomial
+/// (excluding the constant term 1).
+fn multiply_ma_polynomials<T: FloatExt>(
+  non_seasonal: &Array1<T>,
+  seasonal: &Array1<T>,
+  s: usize,
+) -> Vec<(usize, T)> {
+  let q = non_seasonal.len();
+  let big_q = seasonal.len();
+  let max_lag = q + big_q * s;
 
-    // θ(B) contributes lags 1..q
-    for i in 0..q {
-      combined[i + 1] += non_seasonal[i];
-    }
+  let mut combined = vec![T::zero(); max_lag + 1];
 
-    // Θ(Bˢ) contributes lags s, 2s, ..., Qs
+  // θ(B) contributes lags 1..q
+  for i in 0..q {
+    combined[i + 1] += non_seasonal[i];
+  }
+
+  // Θ(Bˢ) contributes lags s, 2s, ..., Qs
+  for j in 0..big_q {
+    let lag_j = (j + 1) * s;
+    combined[lag_j] += seasonal[j];
+  }
+
+  // Cross-terms: θ_i * Θ_j at lag i+1+j*s
+  for i in 0..q {
     for j in 0..big_q {
-      let lag_j = (j + 1) * s;
-      combined[lag_j] += seasonal[j];
+      let lag = (i + 1) + (j + 1) * s;
+      combined[lag] += non_seasonal[i] * seasonal[j];
     }
-
-    // Cross-terms: θ_i * Θ_j at lag i+1+j*s
-    for i in 0..q {
-      for j in 0..big_q {
-        let lag = (i + 1) + (j + 1) * s;
-        combined[lag] += non_seasonal[i] * seasonal[j];
-      }
-    }
-
-    combined
-      .into_iter()
-      .enumerate()
-      .filter(|&(lag, _)| lag > 0)
-      .filter(|&(_, c)| c != T::zero())
-      .collect()
   }
 
-  fn inverse_difference(y: &Array1<T>) -> Array1<T> {
-    let n = y.len();
-    if n == 0 {
-      return y.clone();
-    }
-    let mut x = Array1::<T>::zeros(n);
-    x[0] = y[0];
-    for t in 1..n {
-      x[t] = x[t - 1] + y[t];
-    }
-    x
-  }
+  combined
+    .into_iter()
+    .enumerate()
+    .filter(|&(lag, _)| lag > 0)
+    .filter(|&(_, c)| c != T::zero())
+    .collect()
+}
 
-  fn inverse_seasonal_difference(y: &Array1<T>, s: usize) -> Array1<T> {
-    let n = y.len();
-    if n == 0 || s == 0 {
-      return y.clone();
-    }
-    let mut x = Array1::<T>::zeros(n);
-    for t in 0..s.min(n) {
-      x[t] = y[t];
-    }
-    for t in s..n {
-      x[t] = x[t - s] + y[t];
-    }
-    x
+fn inverse_difference<T: FloatExt>(y: &Array1<T>) -> Array1<T> {
+  let n = y.len();
+  if n == 0 {
+    return y.clone();
   }
+  let mut x = Array1::<T>::zeros(n);
+  x[0] = y[0];
+  for t in 1..n {
+    x[t] = x[t - 1] + y[t];
+  }
+  x
+}
+
+fn inverse_seasonal_difference<T: FloatExt>(y: &Array1<T>, s: usize) -> Array1<T> {
+  let n = y.len();
+  if n == 0 || s == 0 {
+    return y.clone();
+  }
+  let mut x = Array1::<T>::zeros(n);
+  for t in 0..s.min(n) {
+    x[t] = y[t];
+  }
+  for t in s..n {
+    x[t] = x[t - s] + y[t];
+  }
+  x
 }
 
 py_process_1d!(PySarima, Sarima,

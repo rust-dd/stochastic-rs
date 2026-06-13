@@ -19,6 +19,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Regime-switching Gbm process.
@@ -74,7 +75,9 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
-  fn transition_prob_matrix(&self, dt: T) -> Array2<T> {
+  /// One-step CTMC transition-probability matrix `exp(Q · dt)` for a step of
+  /// size `dt`, computed via scaling-and-squaring of the generator `Q`.
+  pub fn transition_prob_matrix(&self, dt: T) -> Array2<T> {
     let m = self.vols.len();
     let mut a = Array2::<T>::zeros((m, m));
     for i in 0..m {
@@ -85,7 +88,9 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     matrix_exp_real(&a)
   }
 
-  fn sample_next_regime<R: rand::Rng + ?Sized>(
+  /// Draw the next regime from the `current` regime's row of a one-step
+  /// transition matrix `p_matrix` via inverse-CDF sampling on `rng`.
+  pub fn sample_next_regime<R: rand::Rng + ?Sized>(
     &self,
     current: usize,
     p_matrix: &Array2<T>,
@@ -178,21 +183,82 @@ fn mat_mul<T: FloatExt>(a: &Array2<T>, b: &Array2<T>) -> Array2<T> {
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
   /// Returns [stock_prices, regime_states] where regime_states are cast to T.
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = RegimeSwitchingDiffusionSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut s_path = Array1::<T>::zeros(self.n);
-    let mut z_path = Array1::<T>::zeros(self.n);
+  fn sampler(&self) -> RegimeSwitchingDiffusionSampler<T, S> {
+    RegimeSwitchingDiffusionSampler {
+      mu: self.mu,
+      q_matrix: self.q_matrix.clone(),
+      vols: self.vols.clone(),
+      initial_state: self.initial_state,
+      n: self.n,
+      s0: self.s0.unwrap_or(T::one()),
+      t: self.t,
+      seed: self.seed.clone(),
+    }
+  }
+}
 
+/// Reusable [`RegimeSwitchingDiffusion`] sampling state: owns the generator
+/// matrix, per-regime volatilities and the seed source so a Monte-Carlo loop
+/// reuses both output buffers. Both the diffusion Gaussian stream and the
+/// regime-transition RNG are rebuilt per call from the cloned seed, in the same
+/// order as the legacy `sample` body.
+#[doc(hidden)]
+pub struct RegimeSwitchingDiffusionSampler<T: FloatExt, S: SeedExt> {
+  mu: T,
+  q_matrix: Array2<T>,
+  vols: Array1<T>,
+  initial_state: usize,
+  n: usize,
+  s0: T,
+  t: Option<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusionSampler<T, S> {
+  fn transition_prob_matrix(&self, dt: T) -> Array2<T> {
+    let m = self.vols.len();
+    let mut a = Array2::<T>::zeros((m, m));
+    for i in 0..m {
+      for j in 0..m {
+        a[[i, j]] = self.q_matrix[[i, j]] * dt;
+      }
+    }
+    matrix_exp_real(&a)
+  }
+
+  fn sample_next_regime<R: rand::Rng + ?Sized>(
+    &self,
+    current: usize,
+    p_matrix: &Array2<T>,
+    rng: &mut R,
+  ) -> usize {
+    let u: f64 = rng.random();
+    let m = self.vols.len();
+    let mut cum = T::zero();
+    for j in 0..m {
+      cum += p_matrix[[current, j]];
+      if T::from_f64_fast(u) <= cum {
+        return j;
+      }
+    }
+    m - 1
+  }
+
+  fn fill_paths(&mut self, s_path: &mut [T], z_path: &mut [T]) {
     if self.n == 0 {
-      return [s_path, z_path];
+      return;
     }
 
-    let s0 = self.s0.unwrap_or(T::one());
-    s_path[0] = s0;
+    s_path[0] = self.s0;
     z_path[0] = T::from_usize_(self.initial_state);
 
     if self.n <= 1 {
-      return [s_path, z_path];
+      return;
     }
 
     let n_inc = self.n - 1;
@@ -219,7 +285,29 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
       state = self.sample_next_regime(state, &p_matrix, &mut rng);
       z_path[i] = T::from_usize_(state);
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RegimeSwitchingDiffusionSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, z] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("RegimeSwitching output must be contiguous"),
+      z.as_slice_mut()
+        .expect("RegimeSwitching output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s_path = Array1::<T>::zeros(self.n);
+    let mut z_path = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s_path.as_slice_mut().expect("contiguous"),
+      z_path.as_slice_mut().expect("contiguous"),
+    );
     [s_path, z_path]
   }
 }

@@ -20,11 +20,14 @@ use pyo3::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
@@ -55,16 +58,21 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = FbmSampler<'s, T, S, B>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let fgn = self.fgn.noise(&self.seed.derive());
-    let mut fbm = Array1::<T>::zeros(self.n);
-
-    for i in 1..self.n {
-      fbm[i] = fbm[i - 1] + fgn[i - 1];
+  /// A CPU sampler: it reuses the inner [`Fgn`]'s `Arc`-shared FFT plan and
+  /// eigenvalues and owns a Gaussian source seeded from `self.seed.derive()`,
+  /// matching the legacy `sample()` stream on the first call. As with
+  /// [`Fgn::sampler`](crate::noise::fgn::Fgn), even GPU backends sample on the
+  /// CPU here — batch through [`sample_par`](Self::sample_par) for the GPU.
+  fn sampler(&self) -> FbmSampler<'_, T, S, B> {
+    FbmSampler {
+      fbm: self,
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
     }
-
-    fbm
   }
 
   /// The `m` fGN noises are generated in one batched backend call, then each
@@ -82,6 +90,52 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
         fbm
       })
       .collect()
+  }
+}
+
+/// Reusable [`Fbm`] sampling state: borrows the process for its inner [`Fgn`]
+/// (FFT plan + eigenvalues) and owns the Gaussian source, so a Monte-Carlo
+/// loop pays the `SimdNormal` setup once. The path is the cumulative sum of an
+/// fGn increment vector, with `B_0^H = 0`.
+#[doc(hidden)]
+pub struct FbmSampler<'a, T: FloatExt, S: SeedExt, B> {
+  fbm: &'a Fbm<T, S, B>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> FbmSampler<'_, T, S, B> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = T::zero();
+    if out.len() == 1 {
+      return;
+    }
+    let mut fgn = Array1::<T>::zeros(self.fbm.fgn.out_len);
+    self
+      .fbm
+      .fgn
+      .fill_cpu(&mut self.normal, fgn.as_slice_mut().unwrap());
+    let mut acc = out[0];
+    for (dst, inc) in out[1..].iter_mut().zip(fgn.iter()) {
+      acc += *inc;
+      *dst = acc;
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FbmSampler<'_, T, S, B> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Fbm output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.fbm.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 
