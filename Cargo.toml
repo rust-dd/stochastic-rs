@@ -321,6 +321,10 @@ required-features = ["dual-stream-rng"]
 name = "ndarray_overhead"
 harness = false
 
+[[bench]]
+name = "sampler_compare"
+harness = false
+
 [[example]]
 name = "cuda_fgn_analysis"
 required-features = ["cuda-native"]
