@@ -12,18 +12,18 @@ members = [
 ]
 
 [workspace.package]
-version = "2.4.0"
+version = "2.5.0"
 
 [workspace.dependencies]
 # Internal crates
-stochastic-rs-core = { path = "stochastic-rs-core", version = "2.4" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "2.4" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "2.4" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "2.4" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "2.4" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "2.4" }
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "2.4" }
-stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.4" }
+stochastic-rs-core = { path = "stochastic-rs-core", version = "2.5" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "2.5" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "2.5" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "2.5" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "2.5" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "2.5" }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "2.5" }
+stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.5" }
 
 # Math / numerical core
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
