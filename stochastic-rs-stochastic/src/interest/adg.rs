@@ -14,6 +14,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Adg<T: FloatExt, S: SeedExt = Unseeded> {
@@ -87,8 +88,38 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
   type Output = Array2<T>;
+  type Sampler<'s>
+    = AdgSampler<'s, T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> AdgSampler<'_, T, S> {
+    AdgSampler(self)
+  }
+}
+
+/// Borrow-based [`Adg`] sampler. The drift, level and observation maps are
+/// user-supplied [`Fn1D`] callables (not clonable, since the Python variant
+/// holds a `pyo3::Py`) and each row's Gaussian increments are generated inside
+/// the step body, so there is nothing reusable to hoist across calls beyond
+/// the borrowed process itself.
+#[doc(hidden)]
+pub struct AdgSampler<'a, T: FloatExt, S: SeedExt>(&'a Adg<T, S>);
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for AdgSampler<'_, T, S> {
+  type Output = Array2<T>;
+
+  fn sample_into(&mut self, out: &mut Array2<T>) {
+    *out = self.0.sample_inner();
+  }
+
+  fn sample(&mut self) -> Array2<T> {
+    self.0.sample_inner()
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> Adg<T, S> {
+  fn sample_inner(&self) -> Array2<T> {
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
     } else {

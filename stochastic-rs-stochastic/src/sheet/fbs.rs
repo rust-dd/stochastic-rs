@@ -17,6 +17,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
@@ -47,8 +48,37 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
   type Output = Array2<T>;
+  type Sampler<'s>
+    = FbsSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Array2<T> {
+  fn sampler(&self) -> FbsSampler<T, S> {
+    FbsSampler {
+      hurst: self.hurst,
+      m: self.m,
+      n: self.n,
+      r: self.r,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`Fbs`] sampling state: owns the seed source so a Monte-Carlo loop
+/// reuses the output field. The circulant-embedding covariance, FFT handlers and
+/// scratch are rebuilt per call; both the matrix and scalar Gaussian draws come
+/// from the cloned seed in the same order as the legacy `sample` body.
+#[doc(hidden)]
+pub struct FbsSampler<T: FloatExt, S: SeedExt> {
+  hurst: T,
+  m: usize,
+  n: usize,
+  r: T,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
+  fn sample_inner(&mut self) -> Array2<T> {
     let (m, n, r) = (self.m, self.n, self.r);
     let alpha = T::from_usize_(2) * self.hurst;
 
@@ -58,7 +88,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
     let mut cov = Array2::<T>::zeros((m, n));
     for i in 0..n {
       for j in 0..m {
-        cov[[j, i]] = Self::rho((tx[i], ty[j]), (tx[0], ty[0]), r, alpha).0;
+        cov[[j, i]] = Fbs::<T, S>::rho((tx[i], ty[j]), (tx[0], ty[0]), r, alpha).0;
       }
     }
 
@@ -110,7 +140,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
       }
     }
 
-    let (_, _, c2) = Self::rho((T::zero(), T::zero()), (T::zero(), T::zero()), r, alpha);
+    let (_, _, c2) = Fbs::<T, S>::rho((T::zero(), T::zero()), (T::zero(), T::zero()), r, alpha);
 
     let shift = field[[0, 0]];
     field.mapv_inplace(|v| v - shift);
@@ -130,6 +160,18 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
     field = &field + &correction;
 
     field
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for FbsSampler<T, S> {
+  type Output = Array2<T>;
+
+  fn sample_into(&mut self, out: &mut Array2<T>) {
+    *out = self.sample_inner();
+  }
+
+  fn sample(&mut self) -> Array2<T> {
+    self.sample_inner()
   }
 }
 

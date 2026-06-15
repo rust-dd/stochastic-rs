@@ -20,6 +20,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Single-asset Heston model with stochastic price-vol correlation.
@@ -110,8 +111,55 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
   type Output = [Array1<T>; 3]; // [S, v, rho]
+  type Sampler<'s>
+    = HestonStochCorrSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> HestonStochCorrSampler<T, S> {
+    HestonStochCorrSampler {
+      r: self.r,
+      s0: self.s0,
+      v0: self.v0,
+      kappa_v: self.kappa_v,
+      mu_v: self.mu_v,
+      sigma_v: self.sigma_v,
+      rho0: self.rho0,
+      kappa_r: self.kappa_r,
+      mu_r: self.mu_r,
+      sigma_r: self.sigma_r,
+      rho2: self.rho2,
+      n: self.n,
+      t: self.t,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`HestonStochCorr`] sampling state: owns the seed source so a
+/// Monte-Carlo loop reuses all three output buffers. The three Gaussian streams
+/// are rebuilt per call from the (cloned) seed, exactly as the legacy `sample`
+/// body did.
+#[doc(hidden)]
+pub struct HestonStochCorrSampler<T: FloatExt, S: SeedExt> {
+  r: T,
+  s0: T,
+  v0: T,
+  kappa_v: T,
+  mu_v: T,
+  sigma_v: T,
+  rho0: T,
+  kappa_r: T,
+  mu_r: T,
+  sigma_r: T,
+  rho2: T,
+  n: usize,
+  t: Option<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
+  fn fill_paths(&mut self, s_path: &mut [T], v_path: &mut [T], rho_path: &mut [T]) {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
@@ -136,12 +184,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
     let dw_rho = gen_noise(&self.seed); // correlation Bm
     let dw_x = gen_noise(&self.seed); // independent price Bm
 
-    let mut s_path = Array1::<T>::zeros(self.n);
-    let mut v_path = Array1::<T>::zeros(self.n);
-    let mut rho_path = Array1::<T>::zeros(self.n);
-
     if self.n == 0 {
-      return [s_path, v_path, rho_path];
+      return;
     }
 
     s_path[0] = self.s0;
@@ -181,8 +225,35 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
 
       s_path[i] = s_path[i - 1] * log_inc.exp();
     }
+  }
+}
 
-    [s_path, v_path, rho_path]
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
+  type Output = [Array1<T>; 3];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+    let [s, v, rho] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("HestonStochCorr output must be contiguous"),
+      v.as_slice_mut()
+        .expect("HestonStochCorr output must be contiguous"),
+      rho
+        .as_slice_mut()
+        .expect("HestonStochCorr output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 3] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    let mut rho = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+      rho.as_slice_mut().expect("contiguous"),
+    );
+    [s, v, rho]
   }
 }
 

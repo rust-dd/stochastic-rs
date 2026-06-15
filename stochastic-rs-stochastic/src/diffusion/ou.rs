@@ -5,12 +5,13 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
@@ -49,38 +50,68 @@ impl<T: FloatExt, S: SeedExt> Ou<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ou<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = OuSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut ou = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return ou;
-    }
-
-    ou[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return ou;
-    }
-
-    let n_increments = self.n - 1;
+  fn sampler(&self) -> OuSampler<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let drift_scale = self.theta * dt;
-    let sqrt_dt = dt.sqrt();
-    let diff_scale = self.sigma;
-    let mut prev = ou[0];
-    let mut tail_view = ou.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("Ou output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    OuSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      mu: self.mu,
+      drift_scale: self.theta * dt,
+      diff_scale: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
+/// Reusable [`Ou`] sampling state: precomputed mean-reversion scales and the
+/// owned Gaussian source.
+#[doc(hidden)]
+pub struct OuSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  mu: T,
+  drift_scale: T,
+  diff_scale: T,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> OuSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.x0;
     for z in tail.iter_mut() {
-      let next = prev + drift_scale * (self.mu - prev) + diff_scale * *z;
+      let next = prev + self.drift_scale * (self.mu - prev) + self.diff_scale * *z;
       *z = next;
       prev = next;
     }
+  }
+}
 
-    ou
+impl<T: FloatExt> PathSampler<T> for OuSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Ou output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

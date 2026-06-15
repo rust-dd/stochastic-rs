@@ -5,15 +5,16 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::s;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
@@ -59,29 +60,60 @@ impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HoLee<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = HoLeeSampler<'s, T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut r = Array1::<T>::zeros(self.n);
-    if self.n <= 1 {
-      return r;
+  fn sampler(&self) -> HoLeeSampler<'_, T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    HoLeeSampler {
+      n: self.n,
+      dt,
+      sigma: self.sigma,
+      diff_scale: self.sigma,
+      f_T: self.f_T.as_ref(),
+      theta: self.theta,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`HoLee`] sampling state. Borrows the process for its optional
+/// forward-curve function and owns the Gaussian source so a Monte-Carlo loop
+/// pays the `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct HoLeeSampler<'a, T: FloatExt> {
+  n: usize,
+  dt: T,
+  sigma: T,
+  diff_scale: T,
+  f_T: Option<&'a Fn1D<T>>,
+  theta: Option<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> HoLeeSampler<'_, T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.len() <= 1 {
+      if let Some(first) = out.first_mut() {
+        *first = T::zero();
+      }
+      return;
     }
 
-    let n_increments = self.n - 1;
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let diff_scale = self.sigma;
-    let mut prev = r[0];
-    let mut tail_view = r.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("HoLee output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+    let dt = self.dt;
+    let diff_scale = self.diff_scale;
+    out[0] = T::zero();
+    let mut prev = out[0];
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
 
     for (k, z) in tail.iter_mut().enumerate() {
       let i = k + 1;
       let t = T::from_usize_(i) * dt;
-      let drift = if let Some(ref f) = self.f_T {
+      let drift = if let Some(f) = self.f_T {
         let eps = dt.max(T::from_f64_fast(1e-8));
         let t_minus = (t - eps).max(T::zero());
         let t_plus = t + eps;
@@ -95,8 +127,20 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HoLee<T, S> {
       *z = next;
       prev = next;
     }
+  }
+}
 
-    r
+impl<T: FloatExt> PathSampler<T> for HoLeeSampler<'_, T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("HoLee output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

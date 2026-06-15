@@ -33,3 +33,24 @@ fn rng_core_works() {
   let b = rng.next_u64();
   assert_ne!(a, b);
 }
+
+#[test]
+fn next_global_seed_unique_across_threads() {
+  use std::collections::HashSet;
+  // 300k > SEED_BLOCK_LEN forces several block re-reservations per thread.
+  let handles: Vec<_> = (0..8)
+    .map(|_| {
+      std::thread::spawn(|| {
+        (0..300_000)
+          .map(|_| super::next_global_seed())
+          .collect::<Vec<u64>>()
+      })
+    })
+    .collect();
+  let mut seen = HashSet::new();
+  for h in handles {
+    for s in h.join().unwrap() {
+      assert!(seen.insert(s), "duplicate seed {s:#x}");
+    }
+  }
+}

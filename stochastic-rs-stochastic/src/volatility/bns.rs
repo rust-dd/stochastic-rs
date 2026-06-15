@@ -53,6 +53,7 @@ use stochastic_rs_distributions::FloatExt;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// BNS-Gamma stochastic volatility model. See module documentation for
@@ -112,24 +113,61 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
   /// `(log-stock path, variance σ² path)`.
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = BnsSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> BnsSampler<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let lam_dt = self.lambda * dt;
-    let decay = (-lam_dt).exp(); // e^{-λ·Δt}
-    let jump_rate_per_step = (self.nu * lam_dt).to_f64().unwrap();
+    BnsSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::one()),
+      sigma2_0: self.sigma2_0,
+      mu: self.mu,
+      jump_shape: self.jump_shape,
+      dt,
+      decay: (-lam_dt).exp(), // e^{-λ·Δt}
+      jump_rate_per_step: (self.nu * lam_dt).to_f64().unwrap(),
+      seed: self.seed.clone(),
+    }
+  }
+}
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut sigma2 = Array1::<T>::zeros(self.n);
+/// Reusable [`Bns`] sampling state: owns the seed source and the precomputed
+/// decay / jump-rate constants. The Gamma jump, Normal and Poisson generators
+/// are rebuilt per fill in the legacy seed-consumption order, so the first call
+/// reproduces the original stream bit-for-bit.
+#[doc(hidden)]
+pub struct BnsSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  s0: T,
+  sigma2_0: T,
+  mu: T,
+  jump_shape: T,
+  dt: T,
+  decay: T,
+  jump_rate_per_step: f64,
+  seed: S,
+}
 
-    s[0] = self.s0.unwrap_or(T::one());
+impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
+  fn fill_paths(&mut self, s: &mut [T], sigma2: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
+    let decay = self.decay;
+    let jump_rate_per_step = self.jump_rate_per_step;
+
+    s[0] = self.s0;
     sigma2[0] = self.sigma2_0;
 
-    // Samplers are built inside `sample` because their internal
-    // UnsafeCell-backed buffers are not `Sync` — keeping them local lets
-    // `Bns` itself remain `Send + Sync` (required by `ProcessExt`). Each
-    // sampler draws an independent stream derived from `self.seed`, so a
-    // `Deterministic` seed makes the whole path reproducible.
+    // Generators are built here (not held across the process) because their
+    // internal UnsafeCell-backed buffers are not `Sync`. Each draws a stream
+    // derived from `self.seed` in the legacy order, so a `Deterministic` seed
+    // makes the whole path reproducible.
     let jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one(), &self.seed.derive());
     let normal_dist = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive());
     let mut rng = self.seed.rng();
@@ -154,7 +192,29 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
         (self.mu - v_prev * T::from_f64_fast(0.5)) * dt + v_prev.sqrt() * dt.sqrt() * eps;
       s[i] = s[i - 1] * log_inc.exp();
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for BnsSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, sigma2] = out;
+    self.fill_paths(
+      s.as_slice_mut().expect("Bns output must be contiguous"),
+      sigma2
+        .as_slice_mut()
+        .expect("Bns output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut sigma2 = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      sigma2.as_slice_mut().expect("contiguous"),
+    );
     [s, sigma2]
   }
 }

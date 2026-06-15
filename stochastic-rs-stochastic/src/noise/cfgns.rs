@@ -13,6 +13,7 @@ use super::fgn::Fgn;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
@@ -74,9 +75,47 @@ impl<T: FloatExt, S: SeedExt, B: Backend> Cfgns<T, S, B> {
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfgns<T, S, B> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = CfgnsSampler<'s, T, S, B>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    self.sample_impl(&self.seed)
+  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
+  /// FFT plan + eigenvalues) and seed source. The first `sample` reproduces the
+  /// legacy `sample_impl(&seed)` stream bit-for-bit; each subsequent call
+  /// advances the seed for an independent correlated pair.
+  fn sampler(&self) -> CfgnsSampler<'_, T, S, B> {
+    CfgnsSampler { cfgns: self }
+  }
+}
+
+/// Reusable [`Cfgns`] sampling state: borrows the process for its inner [`Fgn`]
+/// (one paired fGN pass per call) and seed source.
+#[doc(hidden)]
+pub struct CfgnsSampler<'a, T: FloatExt, S: SeedExt, B> {
+  cfgns: &'a Cfgns<T, S, B>,
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> CfgnsSampler<'_, T, S, B> {
+  fn fill_paths(&mut self, fgn1_out: &mut [T], fgn2_out: &mut [T]) {
+    let [fgn1, fgn2] = self.cfgns.sample_impl(&self.cfgns.seed);
+    fgn1_out.copy_from_slice(fgn1.as_slice().expect("Cfgns noise 1 must be contiguous"));
+    fgn2_out.copy_from_slice(fgn2.as_slice().expect("Cfgns noise 2 must be contiguous"));
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for CfgnsSampler<'_, T, S, B> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [a, b] = out;
+    let fgn1 = a.as_slice_mut().expect("Cfgns output must be contiguous");
+    let fgn2 = b.as_slice_mut().expect("Cfgns output must be contiguous");
+    self.fill_paths(fgn1, fgn2);
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    self.cfgns.sample_impl(&self.cfgns.seed)
   }
 }
 

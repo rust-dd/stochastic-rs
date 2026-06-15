@@ -27,6 +27,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Double Heston stochastic volatility process.
@@ -132,21 +133,70 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
   /// Output tuple: `[S, v1, v2]`.
   type Output = [Array1<T>; 3];
+  type Sampler<'s>
+    = DoubleHestonSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns1.dt();
+  fn sampler(&self) -> DoubleHestonSampler<T, S> {
+    DoubleHestonSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::zero()),
+      v1_0: self.v1_0.unwrap_or(T::zero()).max(T::zero()),
+      v2_0: self.v2_0.unwrap_or(T::zero()).max(T::zero()),
+      kappa1: self.kappa1,
+      theta1: self.theta1,
+      sigma1: self.sigma1,
+      kappa2: self.kappa2,
+      theta2: self.theta2,
+      sigma2: self.sigma2,
+      mu: self.mu,
+      dt: self.cgns1.dt(),
+      use_sym: self.use_sym.unwrap_or(false),
+      cgns1: self.cgns1,
+      cgns2: self.cgns2,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`DoubleHeston`] sampling state: owns both correlated-Gaussian
+/// generators and the seed source so a Monte-Carlo loop reuses all three
+/// output buffers.
+#[doc(hidden)]
+pub struct DoubleHestonSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  s0: T,
+  v1_0: T,
+  v2_0: T,
+  kappa1: T,
+  theta1: T,
+  sigma1: T,
+  kappa2: T,
+  theta2: T,
+  sigma2: T,
+  mu: T,
+  dt: T,
+  use_sym: bool,
+  cgns1: Cgns<T>,
+  cgns2: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
+  fn fill_paths(&mut self, s: &mut [T], v1: &mut [T], v2: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [ds1, dv1n] = &self.cgns1.sample_impl(&self.seed.derive());
     let [ds2, dv2n] = &self.cgns2.sample_impl(&self.seed.derive());
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut v1 = Array1::<T>::zeros(self.n);
-    let mut v2 = Array1::<T>::zeros(self.n);
+    s[0] = self.s0;
+    v1[0] = self.v1_0;
+    v2[0] = self.v2_0;
 
-    s[0] = self.s0.unwrap_or(T::zero());
-    v1[0] = self.v1_0.unwrap_or(T::zero()).max(T::zero());
-    v2[0] = self.v2_0.unwrap_or(T::zero()).max(T::zero());
-
-    let use_sym = self.use_sym.unwrap_or(false);
+    let use_sym = self.use_sym;
 
     for i in 1..self.n {
       let v1_prev = v1[i - 1].max(T::zero());
@@ -177,7 +227,33 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
         new_v2.max(T::zero())
       };
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
+  type Output = [Array1<T>; 3];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+    let [s, v1, v2] = out;
+    self.fill_paths(
+      s.as_slice_mut()
+        .expect("DoubleHeston output must be contiguous"),
+      v1.as_slice_mut()
+        .expect("DoubleHeston output must be contiguous"),
+      v2.as_slice_mut()
+        .expect("DoubleHeston output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 3] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v1 = Array1::<T>::zeros(self.n);
+    let mut v2 = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v1.as_slice_mut().expect("contiguous"),
+      v2.as_slice_mut().expect("contiguous"),
+    );
     [s, v1, v2]
   }
 }

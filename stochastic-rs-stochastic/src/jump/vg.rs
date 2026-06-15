@@ -10,7 +10,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Vg<T: FloatExt, S: SeedExt = Unseeded> {
@@ -53,30 +55,70 @@ impl<T: FloatExt, S: SeedExt> Vg<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Vg<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = VgSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut vg = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return vg;
-    }
-    vg[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return vg;
-    }
-
+  fn sampler(&self) -> VgSampler<T> {
+    // Gamma subordinator and standard-normal source derived from `self.seed`
+    // in the same order as the legacy `sample()`, so the first fill matches
+    // bit-for-bit; both owned sources advance on reuse for independent paths.
     let dt = self.dt();
-    let gamma = SimdGamma::<T>::new(dt / self.nu, self.nu, &self.seed);
-    let mut gammas = Array1::<T>::zeros(self.n - 1);
-    gamma.fill_slice_fast(gammas.as_slice_mut().unwrap());
-    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-    let mut z = Array1::<T>::zeros(self.n - 1);
-    normal.fill_slice_fast(z.as_slice_mut().unwrap());
+    VgSampler {
+      n: self.n,
+      mu: self.mu,
+      sigma: self.sigma,
+      x0: self.x0.unwrap_or(T::zero()),
+      gamma: SimdGamma::<T>::new(dt / self.nu, self.nu, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
+}
 
-    for i in 1..self.n {
-      vg[i] = vg[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * z[i - 1];
+/// Reusable [`Vg`] sampling state: owns the gamma subordinator and the
+/// Gaussian source so a Monte-Carlo loop pays their setup once.
+#[doc(hidden)]
+pub struct VgSampler<T: FloatExt> {
+  n: usize,
+  mu: T,
+  sigma: T,
+  x0: T,
+  gamma: SimdGamma<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> VgSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
     }
 
-    vg
+    let mut gammas = Array1::<T>::zeros(out.len() - 1);
+    self.gamma.fill_slice_fast(gammas.as_slice_mut().unwrap());
+    let mut z = Array1::<T>::zeros(out.len() - 1);
+    self.normal.fill_slice_fast(z.as_slice_mut().unwrap());
+
+    for i in 1..out.len() {
+      out[i] = out[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * z[i - 1];
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for VgSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(out.as_slice_mut().expect("Vg output must be contiguous"));
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

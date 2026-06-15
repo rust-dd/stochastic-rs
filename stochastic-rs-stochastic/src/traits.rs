@@ -7,6 +7,7 @@
 
 pub mod malliavin;
 pub mod process;
+pub mod sampler;
 
 pub use malliavin::Malliavin2DExt;
 pub use malliavin::MalliavinExt;
@@ -17,6 +18,7 @@ pub use process::OneDimensional;
 pub use process::ProcessExt;
 pub use process::TwoDimensional;
 pub use process::VariableDimensional;
+pub use sampler::PathSampler;
 #[cfg(feature = "python")]
 pub use stochastic_rs_distributions::traits::CallableDist;
 pub use stochastic_rs_distributions::traits::DistributionExt;

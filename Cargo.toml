@@ -29,8 +29,6 @@ stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.4" }
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-linalg = { version = "0.18.1", default-features = false }
 ndarray-npy = "0.10.0"
-ndarray-rand = "0.16.0"
-ndarray-stats = "0.7.0"
 ndrustfft = "0.6.2"
 num-complex = { version = "0.4.6", features = ["rand"] }
 num-traits = "0.2.19"
@@ -154,8 +152,6 @@ nalgebra = { workspace = true }
 ndarray = { workspace = true, features = [ "rayon", "matrixmultiply-threading", ] }
 ndarray-linalg = { workspace = true, optional = true }
 ndarray-npy = { workspace = true }
-ndarray-rand = { workspace = true }
-ndarray-stats = { workspace = true }
 ndrustfft = { workspace = true }
 num-complex = { workspace = true, features = ["rand"] }
 num-traits = { workspace = true }
@@ -320,6 +316,14 @@ required-features = ["hotpath"]
 name = "dual_stream_compare"
 harness = false
 required-features = ["dual-stream-rng"]
+
+[[bench]]
+name = "ndarray_overhead"
+harness = false
+
+[[bench]]
+name = "sampler_compare"
+harness = false
 
 [[example]]
 name = "cuda_fgn_analysis"

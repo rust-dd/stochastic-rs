@@ -14,6 +14,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Hjm-style Euler simulator.
@@ -85,8 +86,38 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
   type Output = [Array1<T>; 3];
+  type Sampler<'s>
+    = HjmSampler<'s, T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> HjmSampler<'_, T, S> {
+    HjmSampler(self)
+  }
+}
+
+/// Borrow-based [`Hjm`] sampler. The three SDE components are driven by
+/// user-supplied [`Fn1D`] / [`Fn2D`] callables (not clonable, since the Python
+/// variant holds a `pyo3::Py`), and each component's Gaussian increments are
+/// generated inside the step body, so there is nothing reusable to hoist
+/// across calls beyond the borrowed process itself.
+#[doc(hidden)]
+pub struct HjmSampler<'a, T: FloatExt, S: SeedExt>(&'a Hjm<T, S>);
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for HjmSampler<'_, T, S> {
+  type Output = [Array1<T>; 3];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+    *out = self.0.sample_inner();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 3] {
+    self.0.sample_inner()
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
+  fn sample_inner(&self) -> [Array1<T>; 3] {
     let mut r = Array1::<T>::zeros(self.n);
     let mut p = Array1::<T>::zeros(self.n);
     let mut f_ = Array1::<T>::zeros(self.n);

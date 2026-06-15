@@ -14,6 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::noise::cgns::Cgns;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[inline]
@@ -129,35 +130,109 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = BatesSampler<'s, T, D>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn sampler(&self) -> BatesSampler<'_, T, D> {
+    BatesSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::zero()),
+      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      lambda: self.lambda,
+      k: self.k,
+      alpha: self.alpha,
+      beta: self.beta,
+      sigma: self.sigma,
+      drift: self.effective_drift(),
+      use_sym: self.use_sym.unwrap_or(false),
+      dt: self.cgns.dt(),
+      cgns: self.cgns,
+      cpoisson: &self.cpoisson,
+    }
+  }
+}
+
+/// Reusable [`Bates1996`] sampling state: owns the correlated-Gaussian generator
+/// and borrows the (non-`Clone`) compound-Poisson driver so a Monte-Carlo loop
+/// reuses both output buffers.
+#[doc(hidden)]
+pub struct BatesSampler<'a, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  n: usize,
+  s0: T,
+  v0: T,
+  lambda: T,
+  k: T,
+  alpha: T,
+  beta: T,
+  sigma: T,
+  drift: T,
+  use_sym: bool,
+  dt: T,
+  cgns: Cgns<T>,
+  cpoisson: &'a CompoundPoisson<T, D>,
+}
+
+impl<T, D> BatesSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  fn fill_paths(&mut self, s: &mut [T], v: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample();
     let jump_increments = self.cpoisson.sample_grid_relative_increments(self.n, dt);
 
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut v = Array1::<T>::zeros(self.n);
-
-    s[0] = self.s0.unwrap_or(T::zero());
-    v[0] = self.v0.unwrap_or(T::zero()).max(T::zero());
-
-    let drift = self.effective_drift();
+    s[0] = self.s0;
+    v[0] = self.v0;
 
     for i in 1..self.n {
       let v_prev = v[i - 1].max(T::zero());
       s[i] = s[i - 1]
-        + (drift - self.lambda * self.k) * s[i - 1] * dt
+        + (self.drift - self.lambda * self.k) * s[i - 1] * dt
         + s[i - 1] * v_prev.sqrt() * cgn1[i - 1]
         + s[i - 1] * jump_increments[i];
 
       let dv = (self.alpha - self.beta * v_prev) * dt + self.sigma * v_prev.sqrt() * cgn2[i - 1];
 
-      v[i] = match self.use_sym.unwrap_or(false) {
+      v[i] = match self.use_sym {
         true => (v[i - 1] + dv).abs(),
         false => (v[i - 1] + dv).max(T::zero()),
       }
     }
+  }
+}
 
+impl<T, D> PathSampler<T> for BatesSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [s, v] = out;
+    self.fill_paths(
+      s.as_slice_mut().expect("Bates output must be contiguous"),
+      v.as_slice_mut().expect("Bates output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut s = Array1::<T>::zeros(self.n);
+    let mut v = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      s.as_slice_mut().expect("contiguous"),
+      v.as_slice_mut().expect("contiguous"),
+    );
     [s, v]
   }
 }

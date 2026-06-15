@@ -10,7 +10,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// A generic Asymmetric Garch(p,q) model (A-Garch),
@@ -80,23 +82,52 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = AgarchSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> AgarchSampler<T> {
+    AgarchSampler {
+      n: self.n,
+      omega: self.omega,
+      alpha: self.alpha.clone(),
+      delta: self.delta.clone(),
+      beta: self.beta.clone(),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Agarch`] sampling state: owns the standard-normal innovation
+/// source and the variance coefficients so a Monte-Carlo loop pays the
+/// `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct AgarchSampler<T: FloatExt> {
+  n: usize,
+  omega: T,
+  alpha: Array1<T>,
+  delta: Array1<T>,
+  beta: Array1<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> AgarchSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let n = out.len();
     let p = self.alpha.len();
     let q = self.beta.len();
 
     // Generate white noise z_t ~ N(0,1)
-    let mut z_arr = Array1::<T>::zeros(self.n);
-    if self.n > 0 {
+    let mut z_arr = Array1::<T>::zeros(n);
+    if n > 0 {
       let slice = z_arr.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-      normal.fill_slice_fast(slice);
+      self.normal.fill_slice_fast(slice);
     }
     let z = &z_arr;
 
-    // Arrays for X_t and sigma_t^2
-    let mut x = Array1::<T>::zeros(self.n);
-    let mut sigma2 = Array1::<T>::zeros(self.n);
+    // Scratch array for sigma_t^2 (the output buffer holds X_t)
+    let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
     // Summation for unconditional variance init
@@ -109,7 +140,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
       "Agarch requires sum(alpha) + 0.5*sum(delta) + sum(beta) < 1 for finite unconditional variance"
     );
 
-    for t in 0..self.n {
+    for t in 0..n {
       if t == 0 {
         sigma2[t] = self.omega / denom;
       } else {
@@ -117,7 +148,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
         // p-lag terms
         for i in 1..=p {
           if t >= i {
-            let x_lag = x[t - i];
+            let x_lag = out[t - i];
             let indicator = if x_lag < T::zero() {
               T::one()
             } else {
@@ -141,10 +172,24 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
         "Agarch produced non-positive or non-finite conditional variance at t={}",
         t
       );
-      x[t] = sigma2[t].max(var_floor).sqrt() * z[t];
+      out[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for AgarchSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("Agarch output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

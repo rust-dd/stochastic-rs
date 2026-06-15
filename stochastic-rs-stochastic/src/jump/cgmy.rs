@@ -26,8 +26,10 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
+use crate::buffer::array1_from_fill;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded> {
@@ -101,8 +103,16 @@ impl<T: FloatExt, S: SeedExt> Cgmy<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = CgmySampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> CgmySampler<T> {
+    // Uniform and Exp(1) sources are derived from `self.seed` in the same
+    // order as the legacy `sample()`, so the first fill reproduces it
+    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // The seed-independent drift `b_t` is precomputed here.
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
 
@@ -119,31 +129,78 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
       T::zero()
     };
 
+    CgmySampler {
+      n: self.n,
+      j: self.j,
+      c: self.c,
+      lambda_plus: self.lambda_plus,
+      lambda_minus: self.lambda_minus,
+      alpha: self.alpha,
+      x0: self.x0.unwrap_or(T::zero()),
+      t_max,
+      dt,
+      b_t,
+      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
+      exp: SimdExp::<T>::new(T::one(), &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Cgmy`] sampling state: owns the uniform and exponential sources
+/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
+/// setup once. The Gamma arrival series, jump sizes and ordering are rebuilt
+/// per path inside `fill_path`.
+#[doc(hidden)]
+pub struct CgmySampler<T: FloatExt> {
+  n: usize,
+  j: usize,
+  c: T,
+  lambda_plus: T,
+  lambda_minus: T,
+  alpha: T,
+  x0: T,
+  t_max: T,
+  dt: T,
+  b_t: T,
+  uniform: SimdUniform<T>,
+  exp: SimdExp<T>,
+}
+
+impl<T: FloatExt> CgmySampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+
+    let t_max = self.t_max;
+    let dt = self.dt;
+    let C = self.c;
+    let b_t = self.b_t;
+
     let J = self.j;
     let size = J + 1; // index 0 reserved (Γ0=0)
 
-    let uniform = SimdUniform::<T>::new(T::zero(), T::one(), &self.seed);
-    let exp = SimdExp::<T>::new(T::one(), &self.seed);
-
     // U_j ~ Unif(0,1)
     let mut U = Array1::<T>::zeros(size);
-    uniform.fill_slice_fast(U.as_slice_mut().unwrap());
+    self.uniform.fill_slice_fast(U.as_slice_mut().unwrap());
     // E_j ~ Exp(1)
-    let E = Array1::from_shape_fn(size, |_| exp.sample_fast());
+    let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
     let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
 
     // τ_j ~ Unif(0,T)
     let mut tau_raw = Array1::<T>::zeros(size);
-    uniform.fill_slice_fast(tau_raw.as_slice_mut().unwrap());
+    self
+      .uniform
+      .fill_slice_fast(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);
 
     // NOTE: Here V_j is +G or -M with 0.5-0.5 probability
     for j in 1..size {
-      let v_j = if uniform.sample_fast() < T::from_f64_fast(0.5) {
+      let v_j = if self.uniform.sample_fast() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus
@@ -168,13 +225,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
         .unwrap()
     });
 
-    let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
+    out[0] = self.x0;
 
     let mut k: usize = 0;
     let mut cum_jumps = T::zero();
 
-    for i in 1..self.n {
+    for i in 1..out.len() {
       let t_i = T::from_usize_(i) * dt;
 
       while k < idx.len() && tau[idx[k]] <= t_i {
@@ -182,10 +238,21 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
         k += 1;
       }
 
-      x[i] = x[0] + cum_jumps + b_t * t_i;
+      out[i] = self.x0 + cum_jumps + b_t * t_i;
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for CgmySampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(out.as_slice_mut().expect("Cgmy output must be contiguous"));
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

@@ -1,10 +1,13 @@
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Poisson subordinator with unit jumps:
@@ -37,26 +40,65 @@ impl<T: FloatExt, S: SeedExt> PoissonSubordinator<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for PoissonSubordinator<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = PoissonSubordinatorSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut out = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return out;
-    }
-    out[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return out;
-    }
+  fn sampler(&self) -> PoissonSubordinatorSampler<T> {
+    let x0 = self.x0.unwrap_or(T::zero());
+    let n_increments = self.n.saturating_sub(1).max(1);
     let t_max = self.t.unwrap_or(T::one());
-    let dt = t_max / T::from_usize_(self.n - 1);
+    let dt = t_max / T::from_usize_(n_increments);
     let lambda_dt = (self.lambda * dt).to_f64().unwrap();
-    let poisson = SimdPoisson::<u32>::new(lambda_dt, &self.seed);
-    let mut rng = self.seed.rng();
-    for i in 1..self.n {
-      let k = poisson.sample(&mut rng) as usize;
+    PoissonSubordinatorSampler {
+      n: self.n,
+      x0,
+      poisson: SimdPoisson::<u32>::new(lambda_dt, &self.seed),
+      rng: self.seed.rng(),
+    }
+  }
+}
+
+/// Reusable [`PoissonSubordinator`] sampling state: the owned Poisson driver
+/// and its RNG. Each step adds a `Poisson(lambda * dt)` unit-jump count.
+#[doc(hidden)]
+pub struct PoissonSubordinatorSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  poisson: SimdPoisson<u32>,
+  rng: SimdRng,
+}
+
+impl<T: FloatExt> PoissonSubordinatorSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    for i in 1..out.len() {
+      let k = self.poisson.sample(&mut self.rng) as usize;
       out[i] = out[i - 1] + T::from_usize_(k);
     }
-    out
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for PoissonSubordinatorSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("PoissonSubordinator output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

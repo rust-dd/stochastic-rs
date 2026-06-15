@@ -9,8 +9,11 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::cir::Cir;
+use crate::buffer::array1_from_fill;
+use crate::diffusion::cir::CirSampler;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
@@ -44,17 +47,60 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir2F<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = Cir2FSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let x = self.x.sample();
-    let y = self.y.sample();
-
-    let n = x.len();
-
+  fn sampler(&self) -> Cir2FSampler<T> {
+    let n = self.x.n;
     let dt = self.x.t.unwrap_or(T::one()) / T::from_usize_(n - 1);
     let phi = Array1::<T>::from_shape_fn(n, |i| self.phi.call(T::from_usize_(i) * dt));
+    Cir2FSampler {
+      n,
+      x: self.x.sampler(),
+      y: self.y.sampler(),
+      phi,
+    }
+  }
+}
 
-    x + y + phi
+/// Reusable [`Cir2F`] sampling state — owns the two inner [`CirSampler`]s and
+/// the precomputed deterministic `φ(t)` curve, so each call resamples both
+/// factors and sums `x + y + φ`.
+#[doc(hidden)]
+pub struct Cir2FSampler<T: FloatExt> {
+  n: usize,
+  x: CirSampler<T>,
+  y: CirSampler<T>,
+  phi: Array1<T>,
+}
+
+impl<T: FloatExt> Cir2FSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let x = self.x.sample();
+    let y = self.y.sample();
+    for ((dst, (&xi, &yi)), &p) in out
+      .iter_mut()
+      .zip(x.iter().zip(y.iter()))
+      .zip(self.phi.iter())
+    {
+      *dst = xi + yi + p;
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for Cir2FSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Cir2F output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

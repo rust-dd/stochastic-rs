@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::diffusion::ou::Ou;
+use crate::diffusion::ou::OuSampler;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Vasicek short-rate model — internally wraps [`Ou`] with the same parameter
@@ -53,8 +55,33 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Vasicek<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = VasicekSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> VasicekSampler<T> {
+    VasicekSampler {
+      ou: self.ou.sampler(),
+    }
+  }
+}
+
+/// Reusable [`Vasicek`] sampling state — owns the inner [`OuSampler`], so the
+/// Vasicek path is the wrapped OU path with identical parameter semantics.
+#[doc(hidden)]
+pub struct VasicekSampler<T: FloatExt> {
+  ou: OuSampler<T>,
+}
+
+impl<T: FloatExt> PathSampler<T> for VasicekSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.ou.sample_into(out);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
     self.ou.sample()
   }
 }

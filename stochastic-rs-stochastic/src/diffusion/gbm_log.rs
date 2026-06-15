@@ -7,12 +7,13 @@
 //! Exact log-increment scheme guarantees $S_t > 0$.
 //!
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Construction-time validator for log-normal-family drift parametrisations
@@ -105,42 +106,72 @@ impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GbmLog<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = GbmLogSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut s = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return s;
-    }
-
-    let s0 = self.s0.unwrap_or(T::one());
-    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
-    s[0] = s0;
-    if self.n == 1 {
-      return s;
-    }
-
+  fn sampler(&self) -> GbmLogSampler<T> {
     let dt = self.dt();
-    let sqrt_dt = dt.sqrt();
     let drift = self.drift();
     let half = T::from_f64_fast(0.5);
     let drift_ln = (drift - half * self.sigma * self.sigma) * dt;
+    GbmLogSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::one()),
+      sigma: self.sigma,
+      drift_ln,
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+}
 
-    let mut prev = s0;
-    let mut tail_view = s.slice_mut(s![1..]);
-    let tail = tail_view
-      .as_slice_mut()
-      .expect("GbmLog output tail must be contiguous");
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(tail);
+/// Reusable [`GbmLog`] sampling state: precomputed log-drift and the owned
+/// Gaussian source.
+#[doc(hidden)]
+pub struct GbmLogSampler<T: FloatExt> {
+  n: usize,
+  s0: T,
+  sigma: T,
+  drift_ln: T,
+  normal: SimdNormal<T>,
+}
 
+impl<T: FloatExt> GbmLogSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    assert!(self.s0 > T::zero(), "s0 must be > 0 for log simulation");
+    out[0] = self.s0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice_fast(tail);
+    let mut prev = self.s0;
     for z in tail.iter_mut() {
-      let log_inc = drift_ln + self.sigma * *z;
+      let log_inc = self.drift_ln + self.sigma * *z;
       let next = prev * log_inc.exp();
       *z = next;
       prev = next;
     }
+  }
+}
 
-    s
+impl<T: FloatExt> PathSampler<T> for GbmLogSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("GbmLog output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

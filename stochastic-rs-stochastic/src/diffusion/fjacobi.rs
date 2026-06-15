@@ -8,10 +8,12 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
@@ -68,27 +70,66 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for FJacobi<T, S, B> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = FJacobiSampler<'s, T, S, B>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.fgn.dt();
-    let fgn = self.fgn.noise(&self.seed.derive());
+  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
+  /// FFT plan + eigenvalues) and seed source. The first `sample` derives the
+  /// same child seed the legacy `sample()` did — bit-identical — and each
+  /// subsequent call advances the seed for an independent path.
+  fn sampler(&self) -> FJacobiSampler<'_, T, S, B> {
+    FJacobiSampler { fjacobi: self }
+  }
+}
 
-    let mut fjacobi = Array1::<T>::zeros(self.n);
-    fjacobi[0] = self.x0.unwrap_or(T::zero());
+/// Reusable [`FJacobi`] sampling state: borrows the process for its inner
+/// [`Fgn`] and seed source. The path is an Euler discretisation of
+/// `dX = (alpha - beta X) dt + sigma sqrt(X(1 - X)) dB^H`, clamped into `[0, 1]`.
+#[doc(hidden)]
+pub struct FJacobiSampler<'a, T: FloatExt, S: SeedExt, B> {
+  fjacobi: &'a FJacobi<T, S, B>,
+}
 
-    for i in 1..self.n {
-      fjacobi[i] = match fjacobi[i - 1] {
-        _ if fjacobi[i - 1] <= T::zero() && i > 0 => T::zero(),
-        _ if fjacobi[i - 1] >= T::one() && i > 0 => T::one(),
+impl<T: FloatExt, S: SeedExt, B: Backend> FJacobiSampler<'_, T, S, B> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    let p = self.fjacobi;
+    let dt = p.fgn.dt();
+    let fgn = p.fgn.noise(&p.seed.derive());
+
+    out[0] = p.x0.unwrap_or(T::zero());
+    let mut prev = out[0];
+    for (dst, inc) in out[1..].iter_mut().zip(fgn.iter()) {
+      let next = match prev {
+        _ if prev <= T::zero() => T::zero(),
+        _ if prev >= T::one() => T::one(),
         _ => {
-          fjacobi[i - 1]
-            + (self.alpha - self.beta * fjacobi[i - 1]) * dt
-            + self.sigma * (fjacobi[i - 1] * (T::one() - fjacobi[i - 1])).sqrt() * fgn[i - 1]
+          prev + (p.alpha - p.beta * prev) * dt + p.sigma * (prev * (T::one() - prev)).sqrt() * *inc
         }
       };
+      *dst = next;
+      prev = next;
     }
+  }
+}
 
-    fjacobi
+impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FJacobiSampler<'_, T, S, B> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("FJacobi output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.fjacobi.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

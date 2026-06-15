@@ -12,6 +12,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::customjt::CustomJt;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct CompoundCustom<T, D1, D2, S: SeedExt = Unseeded>
@@ -71,8 +72,45 @@ where
   D2: Distribution<T> + Send + Sync,
 {
   type Output = [Array1<T>; 3];
+  type Sampler<'s>
+    = CompoundCustomSampler<'s, T, D1, D2, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> CompoundCustomSampler<'_, T, D1, D2, S> {
+    CompoundCustomSampler {
+      n: self.n,
+      jumps_distribution: &self.jumps_distribution,
+      customjt: &self.customjt,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`CompoundCustom`] sampling state: borrows the (non-`Clone`) jump and
+/// jump-time distributions and owns the seed source. The per-call output length
+/// is event-count-dependent, so the three buffers are reallocated each call; the
+/// seed advances exactly as the legacy `sample` body did.
+#[doc(hidden)]
+pub struct CompoundCustomSampler<'a, T, D1, D2, S: SeedExt>
+where
+  T: FloatExt,
+  D1: Distribution<T> + Send + Sync,
+  D2: Distribution<T> + Send + Sync,
+{
+  n: Option<usize>,
+  jumps_distribution: &'a D1,
+  customjt: &'a CustomJt<T, D2>,
+  seed: S,
+}
+
+impl<T, D1, D2, S: SeedExt> CompoundCustomSampler<'_, T, D1, D2, S>
+where
+  T: FloatExt,
+  D1: Distribution<T> + Send + Sync,
+  D2: Distribution<T> + Send + Sync,
+{
+  fn sample_inner(&mut self) -> [Array1<T>; 3] {
     let p = self.customjt.sample_impl(&self.seed.derive());
     let mut jumps = Array1::<T>::zeros(self.n.unwrap_or(p.len()));
     let mut rng = self.seed.rng();
@@ -84,6 +122,23 @@ where
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
     [p, cum_jupms, jumps]
+  }
+}
+
+impl<T, D1, D2, S: SeedExt> PathSampler<T> for CompoundCustomSampler<'_, T, D1, D2, S>
+where
+  T: FloatExt,
+  D1: Distribution<T> + Send + Sync,
+  D2: Distribution<T> + Send + Sync,
+{
+  type Output = [Array1<T>; 3];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+    *out = self.sample_inner();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 3] {
+    self.sample_inner()
   }
 }
 

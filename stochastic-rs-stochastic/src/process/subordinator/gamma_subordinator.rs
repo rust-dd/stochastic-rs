@@ -3,7 +3,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Gamma subordinator where `G_t ~ Gamma(nu * t, rate)`.
@@ -39,26 +41,66 @@ impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GammaSubordinator<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = GammaSubordinatorSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut out = Array1::<T>::zeros(self.n);
-    if self.n == 0 {
-      return out;
-    }
-    out[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return out;
-    }
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
+  fn sampler(&self) -> GammaSubordinatorSampler<T> {
+    let x0 = self.x0.unwrap_or(T::zero());
+    let n_increments = self.n.saturating_sub(1).max(1);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let shape = self.nu * dt;
     let scale = T::one() / self.rate;
-    let gamma = SimdGamma::<T>::new(shape, scale, &self.seed);
-    let mut inc = Array1::<T>::zeros(self.n - 1);
-    gamma.fill_slice_fast(inc.as_slice_mut().unwrap());
-    for i in 1..self.n {
-      out[i] = out[i - 1] + inc[i - 1];
+    GammaSubordinatorSampler {
+      n: self.n,
+      x0,
+      gamma: SimdGamma::<T>::new(shape, scale, &self.seed),
     }
-    out
+  }
+}
+
+/// Reusable [`GammaSubordinator`] sampling state: the owned Gamma increment
+/// source. The path is `x0` followed by the running sum of the increments.
+#[doc(hidden)]
+pub struct GammaSubordinatorSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  gamma: SimdGamma<T>,
+}
+
+impl<T: FloatExt> GammaSubordinatorSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.gamma.fill_slice_fast(tail);
+    let mut acc = self.x0;
+    for x in tail.iter_mut() {
+      acc += *x;
+      *x = acc;
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for GammaSubordinatorSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("GammaSubordinator output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

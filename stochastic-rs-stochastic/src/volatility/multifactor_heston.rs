@@ -38,6 +38,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Multifactor Heston model with `K` independent variance factors driving
@@ -115,15 +116,55 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
 impl<T: FloatExt, const K: usize, S: SeedExt> ProcessExt<T> for MultifactorHeston<T, K, S> {
   /// `(stock_path, [variance_path; K])`.
   type Output = (Array1<T>, [Array1<T>; K]);
+  type Sampler<'s>
+    = MultifactorHestonSampler<T, K, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns[0].dt();
-    let mut s = Array1::<T>::zeros(self.n);
-    let mut v = std::array::from_fn(|_| Array1::<T>::zeros(self.n));
+  fn sampler(&self) -> MultifactorHestonSampler<T, K, S> {
+    MultifactorHestonSampler {
+      n: self.n,
+      s0: self.s0.unwrap_or(T::zero()),
+      v0: std::array::from_fn(|k| self.v0[k].max(T::zero())),
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma: self.sigma,
+      mu: self.mu,
+      dt: self.cgns[0].dt(),
+      cgns: self.cgns.clone(),
+      seed: self.seed.clone(),
+    }
+  }
+}
 
-    s[0] = self.s0.unwrap_or(T::zero());
+/// Reusable [`MultifactorHeston`] sampling state: owns one correlated-Gaussian
+/// generator per factor plus the seed source so a Monte-Carlo loop reuses the
+/// stock buffer and all `K` variance buffers. Per-factor noise is re-derived in
+/// factor order, so the first call reproduces the original stream bit-for-bit.
+#[doc(hidden)]
+pub struct MultifactorHestonSampler<T: FloatExt, const K: usize, S: SeedExt> {
+  n: usize,
+  s0: T,
+  v0: [T; K],
+  kappa: [T; K],
+  theta: [T; K],
+  sigma: [T; K],
+  mu: T,
+  dt: T,
+  cgns: Vec<Cgns<T>>,
+  seed: S,
+}
+
+impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHestonSampler<T, K, S> {
+  fn fill_paths(&mut self, s: &mut [T], v: &mut [&mut [T]; K]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
+
+    s[0] = self.s0;
     for k in 0..K {
-      v[k][0] = self.v0[k].max(T::zero());
+      v[k][0] = self.v0[k];
     }
 
     // Pre-sample all factor noises so the inner loop is a tight scalar pass.
@@ -148,8 +189,36 @@ impl<T: FloatExt, const K: usize, S: SeedExt> ProcessExt<T> for MultifactorHesto
         v[k][i] = (v[k][i - 1] + dv).max(T::zero());
       }
     }
+  }
+}
 
-    (s, v)
+impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T> for MultifactorHestonSampler<T, K, S> {
+  type Output = (Array1<T>, [Array1<T>; K]);
+
+  fn sample_into(&mut self, out: &mut (Array1<T>, [Array1<T>; K])) {
+    let (s_arr, v_arr) = out;
+    let s = s_arr
+      .as_slice_mut()
+      .expect("MultifactorHeston stock output must be contiguous");
+    let mut v: [&mut [T]; K] = v_arr.each_mut().map(|arr| {
+      arr
+        .as_slice_mut()
+        .expect("MultifactorHeston variance output must be contiguous")
+    });
+    self.fill_paths(s, &mut v);
+  }
+
+  fn sample(&mut self) -> (Array1<T>, [Array1<T>; K]) {
+    let mut s_arr = Array1::<T>::zeros(self.n);
+    let mut v_arr: [Array1<T>; K] = std::array::from_fn(|_| Array1::<T>::zeros(self.n));
+    {
+      let s = s_arr.as_slice_mut().expect("contiguous");
+      let mut v: [&mut [T]; K] = v_arr
+        .each_mut()
+        .map(|arr| arr.as_slice_mut().expect("contiguous"));
+      self.fill_paths(s, &mut v);
+    }
+    (s_arr, v_arr)
   }
 }
 

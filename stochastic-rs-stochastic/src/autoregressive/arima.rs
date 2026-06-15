@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Implements an Arima(p, d, q) process using explicit backshift notation:
@@ -59,21 +61,49 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arima<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = ArimaSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> ArimaSampler<T> {
+    ArimaSampler {
+      n: self.n,
+      ar_coefs: self.ar_coefs.clone(),
+      ma_coefs: self.ma_coefs.clone(),
+      d: self.d,
+      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+    }
+  }
+}
+
+/// Reusable [`Arima`] sampling state: owns the Gaussian innovation source and
+/// the ARMA coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct ArimaSampler<T: FloatExt> {
+  n: usize,
+  ar_coefs: Array1<T>,
+  ma_coefs: Array1<T>,
+  d: usize,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> ArimaSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let n = out.len();
     let p = self.ar_coefs.len();
     let q = self.ma_coefs.len();
-    let mut noise = Array1::<T>::zeros(self.n);
-    if self.n > 0 {
+
+    let mut noise = Array1::<T>::zeros(n);
+    if n > 0 {
       let slice = noise.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed);
-      normal.fill_slice_fast(slice);
+      self.normal.fill_slice_fast(slice);
     }
-    let mut arma_series = Array1::<T>::zeros(self.n);
+    let mut arma_series = Array1::<T>::zeros(n);
 
     // Single-pass ARMA(p,q) recursion with shared noise:
     // X_t = sum_k(phi_k * X_{t-k}) + eps_t + sum_k(theta_k * eps_{t-k})
-    for t in 0..self.n {
+    for t in 0..n {
       let mut val = noise[t];
 
       for k in 1..=p {
@@ -94,28 +124,40 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arima<T, S> {
     // Inverse difference d times -> Arima(p,d,q)
     let mut result = arma_series;
     for _ in 0..self.d {
-      result = Self::inverse_difference(&result);
+      result = inverse_difference(&result);
     }
 
-    result
+    out.copy_from_slice(result.as_slice().expect("contiguous"));
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Arima<T, S> {
-  /// Inverse differencing once, converting Y into X:
-  /// X[0] = Y[0],  X[t] = X[t-1] + Y[t], for t=1..(n-1).
-  fn inverse_difference(y: &Array1<T>) -> Array1<T> {
-    let n = y.len();
-    if n == 0 {
-      return y.clone();
-    }
-    let mut x = Array1::<T>::zeros(n);
-    x[0] = y[0];
-    for t in 1..n {
-      x[t] = x[t - 1] + y[t];
-    }
-    x
+impl<T: FloatExt> PathSampler<T> for ArimaSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Arima output must be contiguous");
+    self.fill_path(slice);
   }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
+  }
+}
+
+/// Inverse differencing once, converting Y into X:
+/// X[0] = Y[0],  X[t] = X[t-1] + Y[t], for t=1..(n-1).
+fn inverse_difference<T: FloatExt>(y: &Array1<T>) -> Array1<T> {
+  let n = y.len();
+  if n == 0 {
+    return y.clone();
+  }
+  let mut x = Array1::<T>::zeros(n);
+  x[0] = y[0];
+  for t in 1..n {
+    x[t] = x[t - 1] + y[t];
+  }
+  x
 }
 
 py_process_1d!(PyArima, Arima,

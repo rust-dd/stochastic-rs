@@ -63,6 +63,7 @@ pub mod prelude {
   pub use crate::traits::Instrument;
   pub use crate::traits::InstrumentExt;
   pub use crate::traits::ModelPricer;
+  pub use crate::traits::PathSampler;
   pub use crate::traits::PricerExt;
   pub use crate::traits::PricingEngine;
   pub use crate::traits::PricingResult;

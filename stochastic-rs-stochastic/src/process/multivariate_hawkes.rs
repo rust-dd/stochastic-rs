@@ -21,6 +21,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// D-dimensional Hawkes process with exponential kernels.
@@ -56,12 +57,39 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
   type Output = Vec<Array1<T>>;
+  type Sampler<'s>
+    = MultivariateHawkesSampler<'s, T, S>
+  where
+    Self: 's;
 
+  fn sampler(&self) -> MultivariateHawkesSampler<'_, T, S> {
+    MultivariateHawkesSampler {
+      mu: &self.mu,
+      alpha: &self.alpha,
+      beta: &self.beta,
+      t_max: self.t_max,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`MultivariateHawkes`] sampling state: borrows the baseline
+/// intensities, excitation and decay matrices and owns the seed source. The
+/// component count is a runtime property of `mu`, and event counts differ per
+/// path, so each call rebuilds the output `Vec`; the RNG is freshly derived from
+/// the owned seed each call, exactly as the legacy `sample` body did.
+#[doc(hidden)]
+pub struct MultivariateHawkesSampler<'a, T: FloatExt, S: SeedExt> {
+  mu: &'a Array1<T>,
+  alpha: &'a Array2<T>,
+  beta: &'a Array2<T>,
+  t_max: T,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
   /// Multivariate Ogata thinning.
-  ///
-  /// Returns a `Vec` of length D, where each element contains the
-  /// event arrival times for that component.
-  fn sample(&self) -> Self::Output {
+  fn sample_inner(&mut self) -> Vec<Array1<T>> {
     let mut rng = self.seed.rng();
     let d = self.mu.len();
 
@@ -126,6 +154,18 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
     }
 
     events.into_iter().map(Array1::from_vec).collect()
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultivariateHawkesSampler<'_, T, S> {
+  type Output = Vec<Array1<T>>;
+
+  fn sample_into(&mut self, out: &mut Vec<Array1<T>>) {
+    *out = self.sample_inner();
+  }
+
+  fn sample(&mut self) -> Vec<Array1<T>> {
+    self.sample_inner()
   }
 }
 

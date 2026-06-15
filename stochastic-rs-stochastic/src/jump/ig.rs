@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Ig<T: FloatExt, S: SeedExt = Unseeded> {
@@ -46,31 +48,65 @@ impl<T: FloatExt, S: SeedExt> Ig<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ig<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = IgSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut ig = Array1::zeros(self.n);
-    if self.n == 0 {
-      return ig;
-    }
-    ig[0] = self.x0.unwrap_or(T::zero());
-    if self.n == 1 {
-      return ig;
-    }
-
+  fn sampler(&self) -> IgSampler<T> {
+    // Single-parameter Ig subordinator: increments are strictly positive and
+    // independent over grid steps. The IG source is derived from `self.seed`
+    // exactly as the legacy `sample()`, so the first fill matches bit-for-bit
+    // and the owned source advances on reuse for independent paths.
     let dt = self.dt();
-    // Single-parameter Ig subordinator:
-    // increments are strictly positive and independent over grid steps.
     let mean = self.gamma * dt;
     let shape = mean * mean;
-    let ig_dist = SimdInverseGauss::<T>::new(mean, shape, &self.seed);
-    let mut inc = Array1::<T>::zeros(self.n - 1);
-    ig_dist.fill_slice_fast(inc.as_slice_mut().unwrap());
+    IgSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      ig_dist: SimdInverseGauss::<T>::new(mean, shape, &self.seed),
+    }
+  }
+}
 
-    for i in 1..self.n {
-      ig[i] = ig[i - 1] + inc[i - 1];
+/// Reusable [`Ig`] sampling state: owns the inverse-Gaussian subordinator so a
+/// Monte-Carlo loop pays its setup once.
+#[doc(hidden)]
+pub struct IgSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  ig_dist: SimdInverseGauss<T>,
+}
+
+impl<T: FloatExt> IgSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
     }
 
-    ig
+    let mut inc = Array1::<T>::zeros(out.len() - 1);
+    self.ig_dist.fill_slice_fast(inc.as_slice_mut().unwrap());
+
+    for i in 1..out.len() {
+      out[i] = out[i - 1] + inc[i - 1];
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for IgSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(out.as_slice_mut().expect("Ig output must be contiguous"));
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

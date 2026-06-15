@@ -18,7 +18,7 @@ generically over the float type via [`FloatExt`](#floatext).
 |---------------------------|--------------------------------|--------------------------------------------------------|
 | `FloatExt`                | `stochastic-rs-distributions`  | Foundational float trait bound (`f32` / `f64`)         |
 | `SimdFloatExt`            | `stochastic-rs-distributions`  | SIMD-friendly subset of `FloatExt`                     |
-| `ProcessExt<T>`           | `stochastic-rs-stochastic`     | Stochastic process simulation (`sample`, `sample_par`) |
+| `ProcessExt<T>`           | `stochastic-rs-stochastic`     | Stochastic process simulation (`sample`, `sample_map`, `sample_par`) |
 | `DistributionExt<T>`      | `stochastic-rs-distributions`  | Closed-form pdf / cdf / cf / moments                   |
 | `BivariateExt<T>`         | `stochastic-rs-copulas`        | Bivariate copulas                                      |
 | `MultivariateExt<T>`      | `stochastic-rs-copulas`        | Multivariate copulas (openblas-only)                   |
@@ -60,15 +60,20 @@ The `SimdFloatExt` subset is what bulk samplers rely on for
 Every stochastic process implements `ProcessExt<T>`:
 
 ```rust
-pub trait ProcessExt<T: FloatExt> {
-    fn sample(&self) -> Array1<T>;
-    fn sample_par(&self, m: usize) -> Array2<T>;
+pub trait ProcessExt<T: FloatExt>: Send + Sync {
+    type Output: Send;                                    // Array1<T>, [Array1<T>; N], Array2<T>, …
+    fn sample(&self) -> Self::Output;
+    fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;
+    fn sample_par(&self, m: usize) -> Vec<Self::Output>;
     // optional: malliavin-style methods via MalliavinExt
 }
 ```
 
-`sample()` produces a single path of length `n` (the steps); `sample_par(m)`
-produces `m` independent paths in parallel via Rayon.
+`sample()` produces a single path; `sample_map(m, f)` folds `f` over `m`
+independent paths in parallel (reusing one buffer per worker — the fast
+Monte-Carlo path); `sample_par(m)` keeps every path. See
+[ProcessExt](/docs/concepts/process-ext) for the full contract and when to
+use which.
 
 ## `DistributionExt<T>`
 

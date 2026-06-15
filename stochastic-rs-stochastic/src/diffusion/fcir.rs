@@ -8,10 +8,12 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Fractional Cox-Ingersoll-Ross (Fcir) process.
@@ -75,25 +77,64 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
 
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fcir<T, S, B> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = FcirSampler<'s, T, S, B>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.fgn.dt();
-    let fgn = self.fgn.noise(&self.seed.derive());
+  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
+  /// FFT plan + eigenvalues) and seed source. The first `sample` derives the
+  /// same child seed the legacy `sample()` did — bit-identical — and each
+  /// subsequent call advances the seed for an independent path.
+  fn sampler(&self) -> FcirSampler<'_, T, S, B> {
+    FcirSampler { fcir: self }
+  }
+}
 
-    let mut fcir = Array1::<T>::zeros(self.n);
-    fcir[0] = self.x0.unwrap_or(T::zero());
+/// Reusable [`Fcir`] sampling state: borrows the process for its inner [`Fgn`]
+/// and seed source. The path is an Euler discretisation of
+/// `dX = theta(mu - X) dt + sigma sqrt(X) dB^H`, clamped at zero (or reflected
+/// when `use_sym`) so the variance stays non-negative.
+#[doc(hidden)]
+pub struct FcirSampler<'a, T: FloatExt, S: SeedExt, B> {
+  fcir: &'a Fcir<T, S, B>,
+}
 
-    for i in 1..self.n {
-      let dfcir = self.theta * (self.mu - fcir[i - 1]) * dt
-        + self.sigma * (fcir[i - 1]).abs().sqrt() * fgn[i - 1];
-
-      fcir[i] = match self.use_sym.unwrap_or(false) {
-        true => (fcir[i - 1] + dfcir).abs(),
-        false => (fcir[i - 1] + dfcir).max(T::zero()),
-      };
+impl<T: FloatExt, S: SeedExt, B: Backend> FcirSampler<'_, T, S, B> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
     }
+    let p = self.fcir;
+    let dt = p.fgn.dt();
+    let fgn = p.fgn.noise(&p.seed.derive());
+    let use_sym = p.use_sym.unwrap_or(false);
 
-    fcir
+    out[0] = p.x0.unwrap_or(T::zero());
+    let mut prev = out[0];
+    for (dst, inc) in out[1..].iter_mut().zip(fgn.iter()) {
+      let dfcir = p.theta * (p.mu - prev) * dt + p.sigma * prev.abs().sqrt() * *inc;
+      let next = match use_sym {
+        true => (prev + dfcir).abs(),
+        false => (prev + dfcir).max(T::zero()),
+      };
+      *dst = next;
+      prev = next;
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FcirSampler<'_, T, S, B> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Fcir output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.fcir.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

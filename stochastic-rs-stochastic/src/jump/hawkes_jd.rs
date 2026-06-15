@@ -19,7 +19,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Hawkes-driven jump diffusion process (log-price).
@@ -88,46 +90,106 @@ impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HawkesJD<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = HawkesJDSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> HawkesJDSampler<T> {
+    // Diffusion-noise, uniform thinning and jump-size sources are derived from
+    // `self.seed` in the same order as the legacy `sample()`, so the first
+    // fill matches bit-for-bit; all owned sources advance on reuse.
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
-    let sqrt_dt = dt.sqrt();
+    HawkesJDSampler {
+      n: self.n,
+      mu: self.mu,
+      sigma: self.sigma,
+      mu_lambda: self.mu_lambda,
+      alpha: self.alpha,
+      beta: self.beta,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt,
+      sqrt_dt: dt.sqrt(),
+      normal: SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed),
+      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
+      jump_normal: SimdNormal::<T, 64>::new(self.mu_j, self.sigma_j, &self.seed),
+    }
+  }
+}
+
+/// Reusable [`HawkesJD`] sampling state: owns the diffusion, thinning and
+/// jump-size sources so a Monte-Carlo loop pays their setup once. The
+/// self-exciting intensity is reset per path inside `fill_path`.
+#[doc(hidden)]
+pub struct HawkesJDSampler<T: FloatExt> {
+  n: usize,
+  mu: T,
+  sigma: T,
+  mu_lambda: T,
+  alpha: T,
+  beta: T,
+  x0: T,
+  dt: T,
+  sqrt_dt: T,
+  normal: SimdNormal<T, 64>,
+  uniform: SimdUniform<T>,
+  jump_normal: SimdNormal<T, 64>,
+}
+
+impl<T: FloatExt> HawkesJDSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
     let two = T::from_usize_(2);
 
-    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
-    let uniform = SimdUniform::<T>::new(T::zero(), T::one(), &self.seed);
-    let jump_normal = SimdNormal::<T, 64>::new(self.mu_j, self.sigma_j, &self.seed);
-
-    let mut x = Array1::<T>::zeros(self.n);
-    x[0] = self.x0.unwrap_or(T::zero());
+    out[0] = self.x0;
+    if out.len() == 1 {
+      return;
+    }
 
     let mut lambda = self.mu_lambda;
 
-    for i in 1..self.n {
+    for i in 1..out.len() {
       // Diffusion
-      let dw = normal.sample_fast() * sqrt_dt;
-      let drift = (self.mu - self.sigma * self.sigma / two) * dt;
+      let dw = self.normal.sample_fast() * self.sqrt_dt;
+      let drift = (self.mu - self.sigma * self.sigma / two) * self.dt;
 
       // Hawkes intensity: check for jump in [t_{i-1}, t_i]
-      let jump_prob = lambda * dt;
-      let u = uniform.sample_fast();
+      let jump_prob = lambda * self.dt;
+      let u = self.uniform.sample_fast();
       let jump = if u < jump_prob {
         // Jump occurs — excite intensity
         lambda += self.alpha;
-        jump_normal.sample_fast()
+        self.jump_normal.sample_fast()
       } else {
         T::zero()
       };
 
       // Mean-revert intensity
-      lambda = lambda + self.beta * (self.mu_lambda - lambda) * dt;
+      lambda = lambda + self.beta * (self.mu_lambda - lambda) * self.dt;
       lambda = lambda.max(T::zero());
 
-      x[i] = x[i - 1] + drift + self.sigma * dw + jump;
+      out[i] = out[i - 1] + drift + self.sigma * dw + jump;
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for HawkesJDSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(
+      out
+        .as_slice_mut()
+        .expect("HawkesJD output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

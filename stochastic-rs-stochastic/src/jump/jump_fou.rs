@@ -11,11 +11,14 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
+use crate::noise::fgn::FgnSampler;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct JumpFou<T, D, S: SeedExt = Unseeded, B = Cpu>
@@ -74,23 +77,94 @@ where
   D: Distribution<T> + Send + Sync,
 {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = JumpFouSampler<'s, T, D, B>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.fgn.dt();
-    let fgn = &self.fgn.sample();
-    let jump_increments = self.cpoisson.sample_grid_increments(self.n, dt);
+  fn sampler(&self) -> JumpFouSampler<'_, T, D, B> {
+    // Owns the fractional-noise sampler (which reproduces `fgn.sample()` on its
+    // first call and reuses the `Arc`-shared FFT plan) and borrows the
+    // compound-Poisson jump driver, re-drawn per fill exactly as the legacy
+    // `sample()` did. The fGn and jump seed sources are independent, so the
+    // first fill reproduces the legacy stream bit-for-bit.
+    JumpFouSampler {
+      n: self.n,
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+      x0: self.x0.unwrap_or(T::zero()),
+      dt: self.fgn.dt(),
+      fgn_sampler: self.fgn.sampler(),
+      cpoisson: &self.cpoisson,
+    }
+  }
+}
 
-    let mut jump_fou = Array1::<T>::zeros(self.n);
-    jump_fou[0] = self.x0.unwrap_or(T::zero());
+/// Reusable [`JumpFou`] sampling state: owns the fractional-noise sampler and
+/// borrows the compound-Poisson jump driver, so a Monte-Carlo loop pays the
+/// fGn `SimdNormal` setup once and reuses the FFT plan.
+#[doc(hidden)]
+pub struct JumpFouSampler<'a, T, D, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: Backend,
+{
+  n: usize,
+  theta: T,
+  mu: T,
+  sigma: T,
+  x0: T,
+  dt: T,
+  fgn_sampler: FgnSampler<'a, T, Unseeded, B>,
+  cpoisson: &'a CompoundPoisson<T, D>,
+}
 
-    for i in 1..self.n {
-      jump_fou[i] = jump_fou[i - 1]
-        + self.theta * (self.mu - jump_fou[i - 1]) * dt
+impl<T, D, B> JumpFouSampler<'_, T, D, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: Backend,
+{
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+
+    let fgn = &self.fgn_sampler.sample();
+    let jump_increments = self.cpoisson.sample_grid_increments(out.len(), self.dt);
+
+    out[0] = self.x0;
+
+    for i in 1..out.len() {
+      out[i] = out[i - 1]
+        + self.theta * (self.mu - out[i - 1]) * self.dt
         + self.sigma * fgn[i - 1]
         + jump_increments[i];
     }
+  }
+}
 
-    jump_fou
+impl<T, D, B> PathSampler<T> for JumpFouSampler<'_, T, D, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: Backend,
+{
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    self.fill_path(
+      out
+        .as_slice_mut()
+        .expect("JumpFou output must be contiguous"),
+    );
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

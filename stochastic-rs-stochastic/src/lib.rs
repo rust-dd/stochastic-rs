@@ -27,6 +27,7 @@ pub use crate::traits::ProcessExt;
 
 pub mod aliases;
 pub mod autoregressive;
+pub mod buffer;
 pub mod correlation;
 pub mod device;
 pub mod diffusion;

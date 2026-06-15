@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Implements an AR(p) model:
@@ -65,39 +67,76 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARp<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = ARpSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
+  fn sampler(&self) -> ARpSampler<T> {
+    ARpSampler {
+      n: self.n,
+      phi: self.phi.clone(),
+      x0: self.x0.clone(),
+      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+    }
+  }
+}
+
+/// Reusable [`ARp`] sampling state: owns the Gaussian innovation source and the
+/// model coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
+#[doc(hidden)]
+pub struct ARpSampler<T: FloatExt> {
+  n: usize,
+  phi: Array1<T>,
+  x0: Option<Array1<T>>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> ARpSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    let n = out.len();
     let p = self.phi.len();
-    let mut noise = Array1::<T>::zeros(self.n);
-    if self.n > 0 {
+
+    let mut noise = Array1::<T>::zeros(n);
+    if n > 0 {
       let slice = noise.as_slice_mut().expect("contiguous");
-      let normal = SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed);
-      normal.fill_slice_fast(slice);
+      self.normal.fill_slice_fast(slice);
     }
     let noise = &noise;
-    let mut series = Array1::<T>::zeros(self.n);
 
     // Fill initial conditions if provided
     if let Some(init) = &self.x0 {
       // Copy up to min(p, n)
-      for i in 0..p.min(self.n) {
-        series[i] = init[i];
+      for i in 0..p.min(n) {
+        out[i] = init[i];
       }
     }
 
     // AR recursion
-    let start = if self.x0.is_some() { p.min(self.n) } else { 0 };
-    for t in start..self.n {
+    let start = if self.x0.is_some() { p.min(n) } else { 0 };
+    for t in start..n {
       let mut val = T::zero();
       for k in 1..=p {
         if t >= k {
-          val += self.phi[k - 1] * series[t - k];
+          val += self.phi[k - 1] * out[t - k];
         }
       }
-      series[t] = val + noise[t];
+      out[t] = val + noise[t];
     }
+  }
+}
 
-    series
+impl<T: FloatExt> PathSampler<T> for ARpSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("ARp output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 

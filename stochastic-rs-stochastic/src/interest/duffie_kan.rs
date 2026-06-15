@@ -10,6 +10,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Standard Duffie–Kan two-factor model (continuous, no jumps).
@@ -96,16 +97,68 @@ impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKan<T, S> {
   type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = DuffieKanSampler<T, S>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let dt = self.cgns.dt();
+  fn sampler(&self) -> DuffieKanSampler<T, S> {
+    DuffieKanSampler {
+      n: self.n,
+      r0: self.r0.unwrap_or(T::zero()),
+      x0: self.x0.unwrap_or(T::zero()),
+      alpha: self.alpha,
+      beta: self.beta,
+      gamma: self.gamma,
+      a1: self.a1,
+      b1: self.b1,
+      c1: self.c1,
+      sigma1: self.sigma1,
+      a2: self.a2,
+      b2: self.b2,
+      c2: self.c2,
+      sigma2: self.sigma2,
+      dt: self.cgns.dt(),
+      cgns: self.cgns,
+      seed: self.seed.clone(),
+    }
+  }
+}
+
+/// Reusable [`DuffieKan`] sampling state: owns the correlated-Gaussian
+/// generator and the seed source so a Monte-Carlo loop reuses both output
+/// buffers.
+#[doc(hidden)]
+pub struct DuffieKanSampler<T: FloatExt, S: SeedExt> {
+  n: usize,
+  r0: T,
+  x0: T,
+  alpha: T,
+  beta: T,
+  gamma: T,
+  a1: T,
+  b1: T,
+  c1: T,
+  sigma1: T,
+  a2: T,
+  b2: T,
+  c2: T,
+  sigma2: T,
+  dt: T,
+  cgns: Cgns<T>,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> DuffieKanSampler<T, S> {
+  fn fill_paths(&mut self, r: &mut [T], x: &mut [T]) {
+    if self.n == 0 {
+      return;
+    }
+    let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed.derive());
 
-    let mut r = Array1::<T>::zeros(self.n);
-    let mut x = Array1::<T>::zeros(self.n);
-
-    r[0] = self.r0.unwrap_or(T::zero());
-    x[0] = self.x0.unwrap_or(T::zero());
+    r[0] = self.r0;
+    x[0] = self.x0;
 
     for i in 1..self.n {
       r[i] = r[i - 1]
@@ -115,7 +168,30 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKan<T, S> {
         + (self.a2 * r[i - 1] + self.b2 * x[i - 1] + self.c2) * dt
         + self.sigma2 * (self.alpha * r[i - 1] + self.beta * x[i - 1] + self.gamma) * cgn2[i - 1];
     }
+  }
+}
 
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for DuffieKanSampler<T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [r_arr, x_arr] = out;
+    let r = r_arr
+      .as_slice_mut()
+      .expect("DuffieKan output must be contiguous");
+    let x = x_arr
+      .as_slice_mut()
+      .expect("DuffieKan output must be contiguous");
+    self.fill_paths(r, x);
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let mut r = Array1::<T>::zeros(self.n);
+    let mut x = Array1::<T>::zeros(self.n);
+    self.fill_paths(
+      r.as_slice_mut().expect("contiguous"),
+      x.as_slice_mut().expect("contiguous"),
+    );
     [r, x]
   }
 }

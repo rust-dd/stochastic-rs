@@ -9,7 +9,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 
+use crate::buffer::array1_from_fill;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Linear fractional stable motion (Lfsm), also commonly referred to as
@@ -83,14 +85,12 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lfsm<T, S> {
   type Output = Array1<T>;
+  type Sampler<'s>
+    = LfsmSampler<T>
+  where
+    Self: 's;
 
-  fn sample(&self) -> Self::Output {
-    let mut x = Array1::<T>::zeros(self.n);
-    if self.n <= 1 {
-      return x;
-    }
-    x[0] = self.x0.unwrap_or(T::zero());
-
+  fn sampler(&self) -> LfsmSampler<T> {
     let dt = self.dt();
     let d = self.hurst - T::one() / self.alpha;
     let kernel_scale = dt.powf(d);
@@ -103,24 +103,76 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lfsm<T, S> {
       T::zero(),
       &self.seed,
     );
-    let mut innovations = Array1::<T>::zeros(self.n - 1);
-    stable.fill_slice_fast(innovations.as_slice_mut().unwrap());
 
-    let mut weights = Array1::<T>::zeros(self.n - 1);
-    for k in 0..(self.n - 1) {
+    // Moving-average weights `w_k = dt^d ((k+1)^d - k^d)` are deterministic,
+    // so they are computed once and reused across samples.
+    let weight_len = self.n.saturating_sub(1);
+    let mut weights = Array1::<T>::zeros(weight_len);
+    for k in 0..weight_len {
       let kf = T::from_usize_(k);
       weights[k] = kernel_scale * ((kf + T::one()).powf(d) - kf.powf(d));
     }
 
-    for i in 1..self.n {
+    LfsmSampler {
+      n: self.n,
+      x0: self.x0.unwrap_or(T::zero()),
+      stable,
+      weights,
+    }
+  }
+}
+
+/// Reusable [`Lfsm`] sampling state: the owned alpha-stable innovation source
+/// and the precomputed fractional moving-average weights.
+#[doc(hidden)]
+pub struct LfsmSampler<T: FloatExt> {
+  n: usize,
+  x0: T,
+  stable: SimdAlphaStable<T>,
+  weights: Array1<T>,
+}
+
+impl<T: FloatExt> LfsmSampler<T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    // Legacy behaviour: the degenerate `n <= 1` path returns zeros without
+    // writing `x0` (the `if n <= 1` guard preceded the `x[0] = x0` line).
+    if out.len() == 1 {
+      out[0] = T::zero();
+      return;
+    }
+    out[0] = self.x0;
+
+    let mut innovations = Array1::<T>::zeros(out.len() - 1);
+    self
+      .stable
+      .fill_slice_fast(innovations.as_slice_mut().unwrap());
+
+    let mut prev = self.x0;
+    for i in 1..out.len() {
       let mut inc = T::zero();
       for k in 0..i {
-        inc += weights[k] * innovations[i - 1 - k];
+        inc += self.weights[k] * innovations[i - 1 - k];
       }
-      x[i] = x[i - 1] + inc;
+      prev += inc;
+      out[i] = prev;
     }
+  }
+}
 
-    x
+impl<T: FloatExt> PathSampler<T> for LfsmSampler<T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out.as_slice_mut().expect("Lfsm output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
   }
 }
 
