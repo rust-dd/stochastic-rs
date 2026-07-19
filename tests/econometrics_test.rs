@@ -1,11 +1,9 @@
 //! Integration tests for the `stats::econometrics` module.
 
 use ndarray::Array1;
-#[cfg(feature = "openblas")]
 use ndarray::Array2;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
 #[cfg(feature = "openblas")]
@@ -100,7 +98,6 @@ fn granger_pvalue_in_unit_interval() {
   assert!((0.0..=1.0).contains(&res.p_value));
 }
 
-#[cfg(feature = "openblas")]
 #[test]
 fn hmm_log_likelihood_finite_after_fit() {
   let dist0 = SimdNormal::<f64>::new(-2.0, 0.5, &Deterministic::new(1));
