@@ -18,18 +18,27 @@
 //!
 //! where `a_d = 2π^{d/2} / Γ(d/2)` is the surface area of the unit sphere.
 //!
-//! The raw formula has infinite variance at `h = 0` (Kohatsu-Higa & Yasuda,
-//! 2008). Replacing `|x|` with `|x|_h = √(Σx² + h)` gives controllable
-//! bias `O(h ln 1/h)` and variance `O(ln 1/h)` for `d = 2`.
+//! The singular kernel is regularised numerically at a positive `h`. The
+//! resulting bias/variance trade-off depends on the payoff, model and chosen
+//! localization; the true Greek is recovered only in the appropriate
+//! `h → 0` limit.
 //!
-//! Works for any Itô diffusion satisfying the Hörmander condition: Heston,
-//! Sabr, 3/2, Stein–Stein, rough Bergomi, Cev, Bates, etc.
+//! This implementation provides exact conditional integration-by-parts
+//! weights when every stochastic variance path is independent of its price
+//! Brownian motion (`rho = 0`), including the constant-volatility case
+//! (`xi = 0`). [`MtGreeks::try_delta`](engine::MtGreeks::try_delta) and
+//! [`MtGreeks::try_all_deltas`](engine::MtGreeks::try_all_deltas) reject
+//! correlated stochastic-volatility parameters because those require the full
+//! Malliavin derivative and Skorohod-divergence correction. Cross-gamma and
+//! vega helpers are common-random-number finite differences, not M-T weights.
 //!
 //! # References
 //!
 //! - Malliavin, P. & Thalmaier, A. (2006). *Stochastic Calculus of Variations
 //!   in Mathematical Finance*. Springer. Theorem 4.23.
-//! - Kohatsu-Higa, A. & Yasuda, K. (2008). RIMS Kôkyûroku 1580, 124–135.
+//! - Kohatsu-Higa, A. & Yasuda, K. (2008). *Estimating Multi-dimensional
+//!   Density Functions through the Malliavin-Thalmaier Formula and Its
+//!   Application to Finance*. RIMS Kôkyûroku 1580, 124–135.
 //! - Bally, V. & Caramellino, L. *Lower bounds for the density of Itô
 //!   processes under weak regularity assumptions*. Preprint.
 //! <https://www.kurims.kyoto-u.ac.jp/~kyodo/kokyuroku/contents/pdf/1580-11.pdf>

@@ -11,10 +11,11 @@
 //! a full 4-dimensional correlation structure on `(Z_1, Z_2, W_1, W_2)` where
 //! `W_i` drives the log-price `x^i` and `Z_i` drives the variance `v^i`.
 //!
-//! Direct port of `Heston2D.m` from the MATLAB FSDA toolbox (Sanfelici &
-//! Toscano 2024, arXiv:2402.00172). The 6-element correlation vector matches
-//! the MATLAB convention element-for-element so the same parameters reproduce
-//! the same bivariate trajectories (up to RNG choice).
+//! Based on `Heston2D.m` from the MATLAB FSDA toolbox (Sanfelici & Toscano,
+//! arXiv:2402.00172). The correlation-vector ordering and Euler drift/diffusion
+//! terms match MATLAB. Negative Euler variance proposals are stabilised by
+//! reflection or full truncation, so paths can differ from the raw MATLAB Euler
+//! scheme even when the random draws agree.
 //!
 //! Output is **log-prices** `x_i`, not levels `S_i = exp(x_i)`, matching MATLAB
 //! and the convention expected by `FMVol`.
@@ -38,7 +39,8 @@ use crate::traits::ProcessExt;
 pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded> {
   /// Initial log-prices `[x_1(0), x_2(0)]`.
   pub x0: [Option<T>; 2],
-  /// Initial variances `[v_1(0), v_2(0)]`.
+  /// Initial variances `[v_1(0), v_2(0)]`; both entries must be present,
+  /// finite and strictly positive, matching the MATLAB source contract.
   pub v0: [Option<T>; 2],
   /// Drifts `[μ_1, μ_2]` of the log-price processes.
   pub mu: [T; 2],
@@ -54,7 +56,7 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded> {
   pub rho: [T; 6],
   /// Number of points (so `n - 1` time steps).
   pub n: usize,
-  /// Time horizon (defaults to 1 when omitted).
+  /// Positive finite time horizon (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Reflect negative variance to its absolute value (true) or floor at zero (false / None).
   pub use_sym: Option<bool>,
@@ -70,58 +72,76 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded> {
 /// ρ(Z2,W2), ρ(W1,W2)]` over the basis `(Z_1, Z_2, W_1, W_2)`. Panics if the
 /// correlation matrix is not positive semidefinite.
 fn cholesky_4x4<T: FloatExt>(rho: [T; 6]) -> [T; 10] {
-  // Numerical tolerance for clamping diagonal pivots that should be zero
-  // (rank-deficient but valid correlation matrices) but appear slightly
-  // negative due to floating-point error.
-  let tol = T::from_f64_fast(1e-10);
+  // A valid rank-deficient correlation matrix can produce a tiny negative pivot after rounding.
+  let tol = T::from_f64_fast(1e-10).max(T::from_f64_fast(100.0) * T::epsilon());
   let nonneg = |x: T, pivot: usize| {
     assert!(x >= -tol, "correlation matrix not PSD at pivot {}", pivot);
     x.max(T::zero())
+  };
+  let divide_or_zero = |residual: T, diagonal: T, pivot: usize| {
+    if diagonal > T::zero() {
+      residual / diagonal
+    } else {
+      assert!(
+        residual.abs() <= tol,
+        "correlation matrix not PSD at pivot {}",
+        pivot
+      );
+      T::zero()
+    }
   };
 
   let l11 = T::one();
   let l21 = rho[0];
   let l22 = nonneg(T::one() - l21 * l21, 2).sqrt();
   let l31 = rho[1];
-  let l32 = if l22 > T::zero() {
-    (rho[3] - l31 * l21) / l22
-  } else {
-    T::zero()
-  };
+  let l32 = divide_or_zero(rho[3] - l31 * l21, l22, 2);
   let l33 = nonneg(T::one() - l31 * l31 - l32 * l32, 3).sqrt();
   let l41 = rho[2];
-  let l42 = if l22 > T::zero() {
-    (rho[4] - l41 * l21) / l22
-  } else {
-    T::zero()
-  };
-  let l43 = if l33 > T::zero() {
-    (rho[5] - l41 * l31 - l42 * l32) / l33
-  } else {
-    T::zero()
-  };
+  let l42 = divide_or_zero(rho[4] - l41 * l21, l22, 2);
+  let l43 = divide_or_zero(rho[5] - l41 * l31 - l42 * l32, l33, 3);
   let l44 = nonneg(T::one() - l41 * l41 - l42 * l42 - l43 * l43, 4).sqrt();
   [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]
 }
 
 fn validate_params<T: FloatExt>(
+  x0: &[Option<T>; 2],
   v0: &[Option<T>; 2],
+  mu: &[T; 2],
   theta: &[T; 2],
   kappa: &[T; 2],
   sigma: &[T; 2],
   rho: &[T; 6],
   n: usize,
+  t: Option<T>,
 ) {
   assert!(n >= 2, "n must be >= 2");
+  if let Some(value) = t {
+    assert!(value.is_finite(), "t must be finite");
+    assert!(value > T::zero(), "t must be positive");
+  }
   for i in 0..2 {
+    if let Some(value) = x0[i] {
+      assert!(value.is_finite(), "x0[{}] must be finite", i);
+    }
+    let value = v0[i].expect("both initial variances v0 must be specified");
+    assert!(value.is_finite(), "v0[{}] must be finite", i);
+    assert!(value > T::zero(), "v0[{}] must be positive", i);
+    assert!(mu[i].is_finite(), "mu[{}] must be finite", i);
+    assert!(theta[i].is_finite(), "theta[{}] must be finite", i);
+    assert!(kappa[i].is_finite(), "kappa[{}] must be finite", i);
+    assert!(sigma[i].is_finite(), "sigma[{}] must be finite", i);
     assert!(kappa[i] >= T::zero(), "kappa[{}] must be non-negative", i);
     assert!(theta[i] >= T::zero(), "theta[{}] must be non-negative", i);
     assert!(sigma[i] >= T::zero(), "sigma[{}] must be non-negative", i);
-    if let Some(v) = v0[i] {
-      assert!(v >= T::zero(), "v0[{}] must be non-negative", i);
-    }
+    let feller_lhs = T::from_f64_fast(2.0) * kappa[i] * theta[i];
+    assert!(
+      feller_lhs >= sigma[i] * sigma[i],
+      "asset {i} does not satisfy the Feller condition"
+    );
   }
   for (idx, r) in rho.iter().enumerate() {
+    assert!(r.is_finite(), "rho[{}] must be finite", idx);
     assert!(
       *r >= -T::one() && *r <= T::one(),
       "rho[{}] out of [-1, 1]",
@@ -145,7 +165,7 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    validate_params(&v0, &theta, &kappa, &sigma, &rho, n);
+    validate_params(&x0, &v0, &mu, &theta, &kappa, &sigma, &rho, n, t);
     let chol = cholesky_4x4::<T>(rho);
     Self {
       x0,
@@ -178,9 +198,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston2D<T, S> {
     let n_steps = self.n - 1;
     let dt = t_total / T::from_usize_(n_steps);
     let sqrt_dt = dt.sqrt();
-    // Four independent N(0, dt) streams driven by derived seeds, built in the
-    // same e1..e4 order the legacy `sample` used so the first call reproduces
-    // its stream bit-for-bit.
+    // Derived streams preserve the historical e1..e4 draw order for seeded reproducibility.
     let normals =
       std::array::from_fn(|_| SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed.derive()));
     Heston2DSampler {
@@ -190,8 +208,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston2D<T, S> {
         self.x0[1].unwrap_or(T::zero()),
       ],
       v0: [
-        self.v0[0].unwrap_or(T::zero()).max(T::zero()),
-        self.v0[1].unwrap_or(T::zero()).max(T::zero()),
+        self.v0[0].expect("validated initial variance must be present"),
+        self.v0[1].expect("validated initial variance must be present"),
       ],
       mu: self.mu,
       theta: self.theta,
@@ -313,130 +331,4 @@ impl<T: FloatExt> PathSampler<T> for Heston2DSampler<T> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  fn rho_default<T: FloatExt>() -> [T; 6] {
-    // MATLAB Heston2D.m example: Rho=[0.5,-0.5,0,0,-0.5,0.5]
-    //   ρ(Z1,Z2)=0.5, ρ(Z1,W1)=-0.5, ρ(Z1,W2)=0, ρ(Z2,W1)=0, ρ(Z2,W2)=-0.5, ρ(W1,W2)=0.5
-    [
-      T::from_f64_fast(0.5),
-      T::from_f64_fast(-0.5),
-      T::zero(),
-      T::zero(),
-      T::from_f64_fast(-0.5),
-      T::from_f64_fast(0.5),
-    ]
-  }
-
-  #[test]
-  fn shapes_match_n() {
-    let h = Heston2D::<f64, _>::new(
-      [Some(0.0), Some(0.0)],
-      [Some(0.4), Some(0.4)],
-      [0.0, 0.0],
-      [0.4, 0.4],
-      [2.0, 2.0],
-      [1.0, 1.0],
-      rho_default(),
-      512,
-      Some(1.0),
-      Some(false),
-      Unseeded,
-    );
-    let [x1, v1, x2, v2] = h.sample();
-    assert_eq!(x1.len(), 512);
-    assert_eq!(v1.len(), 512);
-    assert_eq!(x2.len(), 512);
-    assert_eq!(v2.len(), 512);
-    assert!(v1.iter().all(|x| *x >= 0.0));
-    assert!(v2.iter().all(|x| *x >= 0.0));
-  }
-
-  #[test]
-  fn seeded_is_deterministic() {
-    let mk = || {
-      Heston2D::<f64, Deterministic>::new(
-        [Some(0.0), Some(0.0)],
-        [Some(0.4), Some(0.4)],
-        [0.0, 0.0],
-        [0.4, 0.4],
-        [2.0, 2.0],
-        [1.0, 1.0],
-        rho_default(),
-        128,
-        Some(1.0),
-        Some(false),
-        Deterministic::new(42),
-      )
-    };
-    let [a, _, b, _] = mk().sample();
-    let [c, _, d, _] = mk().sample();
-    for i in 0..a.len() {
-      assert!((a[i] - c[i]).abs() < 1e-12);
-      assert!((b[i] - d[i]).abs() < 1e-12);
-    }
-  }
-
-  #[test]
-  fn cross_correlation_matches_rho() {
-    // With a long path and ρ(W1,W2) = 0.8, the sample correlation of the
-    // log-price increments should be close to ρ_W1W2 · sqrt(v_1 v_2) /
-    // sqrt(v_1)/sqrt(v_2) = ρ_W1W2 (when variances are constant on average).
-    let rho_w1w2 = 0.8_f64;
-    let rho: [f64; 6] = [0.0, 0.0, 0.0, 0.0, 0.0, rho_w1w2];
-    let h = Heston2D::<f64, Deterministic>::new(
-      [Some(0.0), Some(0.0)],
-      [Some(0.4), Some(0.4)],
-      [0.0, 0.0],
-      [0.4, 0.4],
-      [2.0, 2.0],
-      [0.5, 0.5],
-      rho,
-      20_000,
-      Some(1.0),
-      Some(false),
-      Deterministic::new(7),
-    );
-    let [x1, _v1, x2, _v2] = h.sample();
-    let r1: Vec<f64> = (1..x1.len()).map(|i| x1[i] - x1[i - 1]).collect();
-    let r2: Vec<f64> = (1..x2.len()).map(|i| x2[i] - x2[i - 1]).collect();
-    let n = r1.len() as f64;
-    let mean1 = r1.iter().sum::<f64>() / n;
-    let mean2 = r2.iter().sum::<f64>() / n;
-    let cov: f64 = r1
-      .iter()
-      .zip(r2.iter())
-      .map(|(a, b)| (a - mean1) * (b - mean2))
-      .sum::<f64>()
-      / n;
-    let var1: f64 = r1.iter().map(|a| (a - mean1).powi(2)).sum::<f64>() / n;
-    let var2: f64 = r2.iter().map(|b| (b - mean2).powi(2)).sum::<f64>() / n;
-    let corr = cov / (var1.sqrt() * var2.sqrt());
-    assert!(
-      (corr - rho_w1w2).abs() < 0.05,
-      "sample corr {corr:.4} far from target {rho_w1w2}"
-    );
-  }
-
-  #[test]
-  #[should_panic(expected = "not PSD")]
-  fn rejects_non_psd_correlation() {
-    let bad: [f64; 6] = [0.99, 0.99, 0.99, 0.99, 0.99, -0.99];
-    let _ = Heston2D::<f64, _>::new(
-      [Some(0.0), Some(0.0)],
-      [Some(0.4), Some(0.4)],
-      [0.0, 0.0],
-      [0.4, 0.4],
-      [2.0, 2.0],
-      [1.0, 1.0],
-      bad,
-      16,
-      Some(1.0),
-      Some(false),
-      Unseeded,
-    );
-  }
-}
+mod tests;

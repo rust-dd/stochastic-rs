@@ -1,38 +1,15 @@
 //! Struct-based Fourier-Malliavin volatility estimation engine.
 //!
 //! References:
-//!   - Sanfelici & Toscano (2024), arXiv:2402.00172 — FMVol MATLAB library paper.
-//!   - Malliavin & Mancino (2002, 2009) — original method.
-//!   - Mancino & Recchioni (2015) — bias/variance analysis of second-order estimators.
-//!   - Toscano, Livieri, Mancino, Marmi (2024), arXiv:2112.14529 — CLTs for the volvol
-//!     Fourier estimator; eq.(3) defines the consistent estimator, eq.(4) the bias-corrected
-//!     rate-n^{1/4} variant, eq.(51) gives the bias-correction constant K.
+//! - Sanfelici & Toscano (2024), arXiv:2402.00172.
+//! - Malliavin & Mancino (2002, 2009).
+//! - Mancino & Recchioni (2015).
+//! - Toscano, Livieri, Mancino & Marmi (2022), arXiv:2112.14529v3.
 //!
-//! ## Numerical validation
-//!
-//! All estimators are validated against Heston-Sqrt ground-truth at fixture parameters
-//! (σ_v = 1.0, ρ = -0.5, V̄ = 0.4, T = 1.0, n = 23401 points):
-//!
-//! | Estimator                          | Ground-truth formula            | Test tolerance |
-//! |------------------------------------|---------------------------------|----------------|
-//! | `integrated_variance`              | ∫V_t dt (trapezoidal of v)      | rel_err < 15%  |
-//! | `spot_variance`                    | V_τ                             | MAE < 0.25     |
-//! | `integrated_leverage`              | σ_v · ρ · IV(T)                 | rel_err < 40%  |
-//! | `integrated_volvol` (eq.3)         | σ_v² · IV(T)                    | factor-of-3    |
-//! | `integrated_volvol_bias_corrected` | σ_v² · IV(T)                    | rel_err < 30%  |
-//! | `spot_leverage` (mean)             | σ_v · ρ · mean(V_τ)             | rel_err < 30%  |
-//! | `spot_volvol` (mean, eq.3)         | σ_v² · mean(V_τ)                | factor-of-3    |
-//! | `spot_volvol_bias_corrected`       | σ_v² · mean(V_τ)                | rel_err < 40%  |
-//!
-//! The `integrated_volvol` and `spot_volvol` (eq.3) estimators have a known ~2× finite-sample
-//! bias documented in Toscano-Livieri-Mancino-Marmi (2024) §3-§4. The bias-corrected
-//! variants (eq.4) subtract `K · quarticity` where `K = M²/(3n)` for the uniform-sampling
-//! default, reducing the bias to <10% on the Heston fixture.
-//!
-//! Tolerances reflect finite-sample variance of high-order moment estimators on a single
-//! Heston path. Tests catch structural bugs (sign errors, missing factors of T or 2π)
-//! while accommodating the expected estimator noise; the bias-corrected variants get
-//! much tighter tolerances because the dominant bias term is removed.
+//! The raw estimators retain the FMVol MATLAB conventions. The bias-corrected
+//! volatility-of-volatility estimators implement equations (4), (11), and
+//! (51) of Toscano et al., including the coefficient-level quarticity
+//! correction and the normalization for an arbitrary observation period.
 
 use ndarray::Array1;
 use num_complex::Complex;
@@ -44,9 +21,14 @@ use crate::traits::FloatExt;
 mod helpers;
 mod integrated;
 mod spot;
+mod validation;
 
 #[cfg(test)]
+mod bias_correction_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod validation_tests;
 
 /// Fourier-Malliavin volatility estimation engine.
 ///
@@ -68,6 +50,10 @@ pub struct FMVol<T: FloatExt> {
   pub(super) period: T,
   /// Number of price increments (*n*).
   pub(super) n: usize,
+  /// Largest observation interval.
+  pub(super) mesh: T,
+  /// Origin of the Fourier time coordinate.
+  pub(super) origin: T,
   /// Primary cutting frequency *N*.
   pub(super) n_freq: usize,
   /// Maximum frequency stored in `dx`.
@@ -77,42 +63,33 @@ pub struct FMVol<T: FloatExt> {
 impl<T: FloatExt> FMVol<T> {
   /// Build an engine from irregularly spaced observations.
   ///
-  /// Sets `N = floor(n/2)` and pre-computes Fourier coefficients up to
-  /// `N + M_max + L_max` where `M_max = floor(N^0.5)` and `L_max = floor(N^0.25)`.
+  /// Sets `N = floor(n/2)` and pre-computes every frequency needed by the
+  /// default raw and bias-corrected windows.
   ///
-  /// Panics if `prices.len() < 2` or `times.len() != prices.len()`. Use
-  /// [`Self::try_new`] to surface these as `Err` instead.
+  /// Panics when input or default-frequency validation fails. Use
+  /// [`Self::try_new`] to receive the validation error.
   pub fn new(prices: &[T], times: &[T], period: T) -> Self {
     Self::try_new(prices, times, period)
       .expect("FMVol::new precondition violated — call try_new to handle this gracefully")
   }
 
-  /// Falliable variant of [`Self::new`]. Returns an error when the input
-  /// length is `< 2` or `prices.len() != times.len()`.
+  /// Fallible variant of [`Self::new`].
+  ///
+  /// Prices and times must be finite, times must be strictly increasing and
+  /// span `period`, and the default frequency windows must lie below the
+  /// discrete Nyquist storage bound.
   pub fn try_new(prices: &[T], times: &[T], period: T) -> anyhow::Result<Self> {
-    if prices.len() < 2 {
-      anyhow::bail!(
-        "FMVol::try_new requires at least 2 price observations to form increments, got {}",
-        prices.len()
-      );
-    }
-    if prices.len() != times.len() {
-      anyhow::bail!(
-        "FMVol::try_new: prices.len()={} must equal times.len()={}",
-        prices.len(),
-        times.len()
-      );
-    }
-    let n = prices.len() - 1;
+    let (n, mesh, origin) = validation::validate_irregular_inputs(prices, times, period)?;
     let big_n = n / 2;
-    let m_max = (big_n as f64).sqrt() as usize;
-    let l_max = (big_n as f64).powf(0.25) as usize;
-    let max_freq = big_n + m_max + l_max;
+    let max_freq = validation::default_max_frequency(n, big_n, mesh)?;
+    validation::validate_frequency_bounds(n, big_n, max_freq)?;
     let dx = fourier_coefficients_dx(prices, times, period, max_freq);
     Ok(Self {
       dx,
       period,
       n,
+      mesh,
+      origin,
       n_freq: big_n,
       max_freq,
     })
@@ -122,33 +99,28 @@ impl<T: FloatExt> FMVol<T> {
   ///
   /// Assumes `t_l = l · T / n`; no explicit times array needed.
   ///
-  /// Panics if `prices.len() < 2`. Use [`Self::try_new_uniform`] to surface
-  /// this as `Err` instead.
+  /// Panics when input or default-frequency validation fails. Use
+  /// [`Self::try_new_uniform`] to receive the validation error.
   pub fn new_uniform(prices: &[T], period: T) -> Self {
     Self::try_new_uniform(prices, period).expect(
       "FMVol::new_uniform precondition violated — call try_new_uniform to handle this gracefully",
     )
   }
 
-  /// Falliable variant of [`Self::new_uniform`]. Returns an error when
-  /// `prices.len() < 2`.
+  /// Fallible variant of [`Self::new_uniform`].
   pub fn try_new_uniform(prices: &[T], period: T) -> anyhow::Result<Self> {
-    if prices.len() < 2 {
-      anyhow::bail!(
-        "FMVol::try_new_uniform requires at least 2 price observations to form increments, got {}",
-        prices.len()
-      );
-    }
-    let n = prices.len() - 1;
+    let n = validation::validate_uniform_inputs(prices, period)?;
+    let mesh = period / T::from_usize_(n);
     let big_n = n / 2;
-    let m_max = (big_n as f64).sqrt() as usize;
-    let l_max = (big_n as f64).powf(0.25) as usize;
-    let max_freq = big_n + m_max + l_max;
+    let max_freq = validation::default_max_frequency(n, big_n, mesh)?;
+    validation::validate_frequency_bounds(n, big_n, max_freq)?;
     let dx = fourier_coefficients_dx_uniform(prices, period, max_freq);
     Ok(Self {
       dx,
       period,
       n,
+      mesh,
+      origin: T::zero(),
       n_freq: big_n,
       max_freq,
     })
@@ -160,18 +132,15 @@ impl<T: FloatExt> FMVol<T> {
   /// Must satisfy `max_freq ≥ n_freq`.
   /// For spot leverage / volvol / quarticity you need `max_freq ≥ N + M + L`.
   ///
-  /// Panics if `prices.len() < 2`, `times.len() != prices.len()`, or
-  /// `max_freq < n_freq`. Use [`Self::try_with_freq`] to surface these as
-  /// `Err` instead.
+  /// Panics when input or frequency validation fails. Use
+  /// [`Self::try_with_freq`] to receive the validation error.
   pub fn with_freq(prices: &[T], times: &[T], period: T, n_freq: usize, max_freq: usize) -> Self {
     Self::try_with_freq(prices, times, period, n_freq, max_freq).expect(
       "FMVol::with_freq precondition violated — call try_with_freq to handle this gracefully",
     )
   }
 
-  /// Falliable variant of [`Self::with_freq`]. Returns an error when the
-  /// input length is `< 2`, `prices.len() != times.len()`, or
-  /// `max_freq < n_freq`.
+  /// Fallible variant of [`Self::with_freq`].
   pub fn try_with_freq(
     prices: &[T],
     times: &[T],
@@ -179,28 +148,15 @@ impl<T: FloatExt> FMVol<T> {
     n_freq: usize,
     max_freq: usize,
   ) -> anyhow::Result<Self> {
-    if prices.len() < 2 {
-      anyhow::bail!(
-        "FMVol::try_with_freq requires at least 2 price observations to form increments, got {}",
-        prices.len()
-      );
-    }
-    if prices.len() != times.len() {
-      anyhow::bail!(
-        "FMVol::try_with_freq: prices.len()={} must equal times.len()={}",
-        prices.len(),
-        times.len()
-      );
-    }
-    if max_freq < n_freq {
-      anyhow::bail!("FMVol::try_with_freq: max_freq={max_freq} must be ≥ n_freq={n_freq}");
-    }
-    let n = prices.len() - 1;
+    let (n, mesh, origin) = validation::validate_irregular_inputs(prices, times, period)?;
+    validation::validate_frequency_bounds(n, n_freq, max_freq)?;
     let dx = fourier_coefficients_dx(prices, times, period, max_freq);
     Ok(Self {
       dx,
       period,
       n,
+      mesh,
+      origin,
       n_freq,
       max_freq,
     })
@@ -219,5 +175,15 @@ impl<T: FloatExt> FMVol<T> {
   /// Time period.
   pub fn period(&self) -> T {
     self.period
+  }
+
+  /// Largest gap between consecutive observations.
+  pub fn mesh(&self) -> T {
+    self.mesh
+  }
+
+  /// Origin used by the Fourier phase convention.
+  pub fn time_origin(&self) -> T {
+    self.origin
   }
 }

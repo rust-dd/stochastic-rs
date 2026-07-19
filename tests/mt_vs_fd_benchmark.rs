@@ -1,41 +1,34 @@
-//! Benchmark: M-T vs FD for digital put 2D (closed-form g kernel).
+//! Ignored performance comparisons for seeded M-T and finite-difference Greeks.
 //!
-//! Requires the `openblas` feature. Run with:
-//! `cargo test --release --features openblas mt_vs_fd_benchmark -- --nocapture --test-threads=1`
+//! Run with `cargo test --release --features openblas --test mt_vs_fd_benchmark
+//! -- --ignored --test-threads=1`.
 
 #![cfg(feature = "openblas")]
 
-use std::time::Instant;
-
+use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs::quant::pricing::malliavin_thalmaier::engine::MtGreeks;
-use stochastic_rs::quant::pricing::malliavin_thalmaier::engine::MtPayoff;
-use stochastic_rs::quant::pricing::malliavin_thalmaier::heston::AssetParams;
-use stochastic_rs::quant::pricing::malliavin_thalmaier::heston::MultiHestonParams;
+use owens_t::biv_norm;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::AssetParams;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::MtGreeks;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::MtPayoff;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::MultiHestonParams;
 
 fn make_params_2d() -> MultiHestonParams<f64> {
-  let a1 = AssetParams {
+  let first = AssetParams {
     s0: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    xi: 0.3,
-    rho: -0.7,
+    xi: 0.0,
+    rho: 0.0,
   };
-  let a2 = AssetParams {
-    s0: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.3,
-    rho: -0.7,
-  };
-  let mut cross = Array2::<f64>::eye(2);
-  cross[[0, 1]] = 0.5;
-  cross[[1, 0]] = 0.5;
+  let second = first.clone();
+  let mut cross_corr = Array2::<f64>::eye(2);
+  cross_corr[[0, 1]] = 0.5;
+  cross_corr[[1, 0]] = 0.5;
   MultiHestonParams {
-    assets: vec![a1, a2],
-    cross_corr: cross,
+    assets: vec![first, second],
+    cross_corr,
     r: 0.05,
     tau: 1.0,
     n_steps: 252,
@@ -46,101 +39,66 @@ fn fd_all_deltas(
   params: &MultiHestonParams<f64>,
   payoff: &MtPayoff<f64>,
   n_paths: usize,
-) -> (Vec<f64>, f64) {
-  let d = params.n_assets();
+  seed: u64,
+) -> Array1<f64> {
   let bump = 0.5;
-  let mut deltas = vec![0.0; d];
-
-  let t0 = Instant::now();
-  for p in 0..d {
+  Array1::from_shape_fn(params.n_assets(), |asset| {
     let mut up = params.clone();
-    up.assets[p].s0 += bump;
-    let mut dn = params.clone();
-    dn.assets[p].s0 -= bump;
-
-    let price_up = MtGreeks::new(up, 0.01, n_paths).price(payoff);
-    let price_dn = MtGreeks::new(dn, 0.01, n_paths).price(payoff);
-    deltas[p] = (price_up - price_dn) / (2.0 * bump);
-  }
-  let elapsed = t0.elapsed().as_secs_f64();
-  (deltas, elapsed)
+    up.assets[asset].s0 += bump;
+    let mut down = params.clone();
+    down.assets[asset].s0 -= bump;
+    let price_up = MtGreeks::new(up, 0.01, n_paths).price_with_seed(payoff, seed);
+    let price_down = MtGreeks::new(down, 0.01, n_paths).price_with_seed(payoff, seed);
+    (price_up - price_down) / (2.0 * bump)
+  })
 }
 
-/// Digital put 2D: M-T with closed-form g kernel (arctan + ln) vs FD.
+/// Seeded common-random-number comparison for the digital-put Delta vector.
 #[test]
-#[ignore = "benchmark: 50k path MC; run with: cargo test --release --features openblas mt_vs_fd_digital_put_2d -- --ignored --nocapture"]
+#[ignore = "50,000-path M-T versus finite-difference performance comparison"]
 fn mt_vs_fd_digital_put_2d() {
   let n_paths = 50_000;
+  let seed = 0xd161_7a1f;
   let params = make_params_2d();
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
+  let fd_deltas = fd_all_deltas(&params, &payoff, n_paths, seed);
+  let mt_deltas = MtGreeks::new(params, 0.01, n_paths)
+    .try_all_deltas_with_seed(&payoff, seed)
+    .unwrap();
 
-  // FD: 4 MC runs (bump each asset up/down)
-  let (fd_deltas, fd_time) = fd_all_deltas(&params, &payoff, n_paths);
-
-  // M-T: 1 MC run, closed-form g kernel
-  let engine = MtGreeks::new(params.clone(), 0.01, n_paths);
-  let t0 = Instant::now();
-  let mt_deltas = engine.all_deltas(&payoff);
-  let mt_time = t0.elapsed().as_secs_f64();
-
-  let speedup = fd_time / mt_time;
-
-  println!("\n=== Digital Put 2D, {n_paths} paths ===");
-  println!(
-    "FD Δ₁={:.6}  Δ₂={:.6}  ({:.3}s, 4 MC runs)",
-    fd_deltas[0], fd_deltas[1], fd_time
-  );
-  println!(
-    "MT Δ₁={:.6}  Δ₂={:.6}  ({:.3}s, 1 MC run)",
-    mt_deltas[0], mt_deltas[1], mt_time
-  );
-  println!("Speedup: {speedup:.1}x");
-
-  // Both should be negative (higher spot → less likely to finish below strike)
-  println!("\nSign check:");
-  println!(
-    "  FD: Δ₁<0? {}  Δ₂<0? {}",
-    fd_deltas[0] < 0.0,
-    fd_deltas[1] < 0.0
-  );
-  println!(
-    "  MT: Δ₁<0? {}  Δ₂<0? {}",
-    mt_deltas[0] < 0.0,
-    mt_deltas[1] < 0.0
-  );
-
-  // By symmetry (same params), both deltas should be similar
-  println!("\nSymmetry check (same params → Δ₁ ≈ Δ₂):");
-  println!("  FD: |Δ₁-Δ₂| = {:.6}", (fd_deltas[0] - fd_deltas[1]).abs());
-  println!("  MT: |Δ₁-Δ₂| = {:.6}", (mt_deltas[0] - mt_deltas[1]).abs());
+  for asset in 0..2 {
+    let error = (mt_deltas[asset] - fd_deltas[asset]).abs();
+    assert!(
+      error < 0.002,
+      "asset {asset}: MT={}, FD={}, abs_error={error}",
+      mt_deltas[asset],
+      fd_deltas[asset]
+    );
+  }
 }
 
-/// Price comparison: M-T MC price vs analytical bounds.
+/// Reference: the constant-volatility bivariate Black--Scholes digital-put
+/// price is the discounted bivariate normal probability at the two log-strike
+/// thresholds.
 #[test]
-#[ignore = "benchmark: 50k path MC; run with: cargo test --release --features openblas mt_digital_put_2d_price_sanity -- --ignored --nocapture"]
-fn mt_digital_put_2d_price_sanity() {
+#[ignore = "50,000-path digital-put price comparison"]
+fn digital_put_price_matches_bivariate_black_scholes() {
   let n_paths = 50_000;
   let params = make_params_2d();
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
-
-  let engine = MtGreeks::new(params, 0.01, n_paths);
-  let price = engine.price(&payoff);
-
-  // ATM digital put on 2 correlated assets: price should be in (0, e^{-rT})
-  // Roughly: P(S1<K1 AND S2<K2) * e^{-rT}
-  // With positive drift and correlation, expect ~0.15-0.35
-  let discount = (-0.05_f64).exp();
-  println!("\n=== Digital Put 2D Price ===");
-  println!("MC price = {price:.6}");
-  println!("Discount = {discount:.6}");
-  println!("Implied P(ITM) = {:.4}", price / discount);
+  let price = MtGreeks::new(params, 0.01, n_paths).price_with_seed(&payoff, 0xb52d_0001);
+  let sigma = 0.2_f64;
+  let rate = 0.05;
+  let tau = 1.0;
+  let threshold = (0.5 * sigma * sigma - rate) * tau / (sigma * tau.sqrt());
+  let expected = (-rate * tau).exp() * biv_norm(-threshold, -threshold, 0.5);
 
   assert!(
-    price > 0.0 && price < discount,
-    "price {price} out of (0, {discount})"
+    (price - expected).abs() < 0.01,
+    "MC price={price}, Black--Scholes={expected}"
   );
 }

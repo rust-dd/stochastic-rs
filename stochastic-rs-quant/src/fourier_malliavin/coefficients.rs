@@ -26,20 +26,15 @@ pub fn fourier_coefficients_dx<T: FloatExt>(
     times.len(),
     "prices and times must have the same length"
   );
+  assert!(prices.len() >= 2, "need at least 2 price observations");
   let n = prices.len() - 1;
-  assert!(n > 0, "need at least 2 price observations");
   assert!(max_freq < n, "max_freq must be smaller than n");
 
   let const_ = T::from_f64_fast(std::f64::consts::TAU) / period;
   let inv_t = T::one() / period;
 
-  // Increments
-  let r: Array1<T> = Array1::from_vec((0..n).map(|l| prices[l + 1] - prices[l]).collect());
-
-  // Phases: neg_phases[l] = -const_ * t[l]
-  let neg_phases: Array1<T> = Array1::from_vec((0..n).map(|l| -const_ * times[l]).collect());
-
-  // Positive frequency coefficients (unnormalised)
+  let r = Array1::<T>::from_iter((0..n).map(|l| prices[l + 1] - prices[l]));
+  let neg_phases = Array1::<T>::from_iter((0..n).map(|l| -const_ * times[l]));
   let mut c_pos = Array1::<Complex<T>>::zeros(max_freq);
   for k in 1..=max_freq {
     let k_t = T::from_usize_(k);
@@ -53,10 +48,7 @@ pub fn fourier_coefficients_dx<T: FloatExt>(
     c_pos[k - 1] = Complex::new(re, im);
   }
 
-  // c_0 = sum(r)
-  let c_0: T = r.sum();
-
-  // Assemble: [c_{-max_freq}, …, c_0, …, c_{max_freq}] with 1/T scaling
+  let c_0 = r.sum();
   let total = 2 * max_freq + 1;
   let mut coeffs = Array1::<Complex<T>>::zeros(total);
 
@@ -77,34 +69,29 @@ pub fn fourier_coefficients_dx_uniform<T: FloatExt>(
   period: T,
   max_freq: usize,
 ) -> Array1<Complex<T>> {
+  assert!(prices.len() >= 2, "need at least 2 price observations");
   let n = prices.len() - 1;
-  assert!(n > 0, "need at least 2 price observations");
   assert!(max_freq < n, "max_freq must be smaller than n");
 
   let inv_t = T::one() / period;
 
-  // Increments
   let mut input = Array1::<Complex<T>>::zeros(n);
   for l in 0..n {
     input[l] = Complex::new(prices[l + 1] - prices[l], T::zero());
   }
 
-  // Forward FFT: DFT(r)[k] = Σ_{l} r[l] · exp(-i·2π·k·l/n)
   let mut fft_out = Array1::<Complex<T>>::zeros(n);
   let handler = FftHandler::<T>::new(n);
   ndfft(&input, &mut fft_out, &handler, 0);
 
-  // Assemble two-sided spectrum: c_k = DFT[k] / T
   let total = 2 * max_freq + 1;
   let mut coeffs = Array1::<Complex<T>>::zeros(total);
 
-  // k = 0
   coeffs[max_freq] = fft_out[0] * inv_t;
 
-  // k = 1..max_freq
   for k in 1..=max_freq {
     coeffs[max_freq + k] = fft_out[k] * inv_t;
-    coeffs[max_freq - k] = fft_out[k].conj() * inv_t; // c_{-k} = conj(c_k)
+    coeffs[max_freq - k] = fft_out[k].conj() * inv_t;
   }
 
   coeffs
@@ -116,7 +103,8 @@ pub fn fourier_coefficients_dx_uniform<T: FloatExt>(
 ///
 /// For *variance*, pass the same array for both `dx_a` and `dx_b`.
 ///
-/// Both inputs must satisfy `max_freq ≥ n_freq + m_freq`.
+/// `dx_a` must satisfy `max_freq ≥ n_freq`; `dx_b` must satisfy
+/// `max_freq ≥ n_freq + m_freq`.
 /// Returns coefficients for `k = −m_freq, …, m_freq` (length `2*m_freq+1`).
 pub fn convolution_coefficients<T: FloatExt>(
   dx_a: &Array1<Complex<T>>,
@@ -125,8 +113,23 @@ pub fn convolution_coefficients<T: FloatExt>(
   n_freq: usize,
   m_freq: usize,
 ) -> Array1<Complex<T>> {
+  assert!(!dx_a.is_empty(), "dx_a must not be empty");
+  assert!(!dx_b.is_empty(), "dx_b must not be empty");
+  assert!(dx_a.len() % 2 == 1, "dx_a must have odd length");
+  assert!(dx_b.len() % 2 == 1, "dx_b must have odd length");
+  let required = n_freq
+    .checked_add(m_freq)
+    .expect("n_freq + m_freq must not overflow");
   let center_a = (dx_a.len() - 1) / 2;
   let center_b = (dx_b.len() - 1) / 2;
+  assert!(
+    center_a >= n_freq,
+    "dx_a must store frequencies through n_freq"
+  );
+  assert!(
+    center_b >= required,
+    "dx_b must store frequencies through n_freq + m_freq"
+  );
 
   let total_out = 2 * m_freq + 1;
   let mut result = Array1::<Complex<T>>::zeros(total_out);
@@ -143,4 +146,28 @@ pub fn convolution_coefficients<T: FloatExt>(
   }
 
   result
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  #[should_panic(expected = "need at least 2 price observations")]
+  fn irregular_coefficients_reject_empty_input_before_subtracting_lengths() {
+    let _ = fourier_coefficients_dx::<f64>(&[], &[], 1.0, 0);
+  }
+
+  #[test]
+  #[should_panic(expected = "need at least 2 price observations")]
+  fn uniform_coefficients_reject_empty_input_before_subtracting_lengths() {
+    let _ = fourier_coefficients_dx_uniform::<f64>(&[], 1.0, 0);
+  }
+
+  #[test]
+  #[should_panic(expected = "dx_a must not be empty")]
+  fn convolution_rejects_empty_input_before_computing_centers() {
+    let empty = Array1::<Complex<f64>>::zeros(0);
+    let _ = convolution_coefficients(&empty, &empty, 1.0, 1, 1);
+  }
 }

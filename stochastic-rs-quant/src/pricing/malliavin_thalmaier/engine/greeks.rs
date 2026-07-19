@@ -2,10 +2,7 @@ use super::super::heston::MultiHestonParams;
 use super::payoff::MtPayoff;
 use crate::traits::FloatExt;
 
-/// Malliavin–Thalmaier Greeks engine.
-///
-/// Computes multi-asset Greeks using a single Skorohod integral per
-/// component, regardless of dimension.
+/// Malliavin–Thalmaier Greeks engine for the supported conditional model.
 ///
 /// # Example
 ///
@@ -17,7 +14,10 @@ use crate::traits::FloatExt;
 #[derive(Debug, Clone)]
 pub struct MtGreeks<T: FloatExt> {
   pub params: MultiHestonParams<T>,
-  /// Regularisation parameter `h`. Recommended `∈ [0.001, 0.1]`.
+  /// Positive Poisson-kernel regularisation parameter.
+  ///
+  /// Its bias/variance trade-off is payoff- and model-dependent; the paper
+  /// does not prescribe a universal numerical interval.
   pub h: T,
   pub n_paths: usize,
 }
@@ -26,7 +26,19 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
   /// Construct an M-T engine for the given model, regularization level and
   /// Monte Carlo path count.
   pub fn new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Self {
-    Self { params, h, n_paths }
+    Self::try_new(params, h, n_paths).expect("invalid Malliavin–Thalmaier engine parameters")
+  }
+
+  /// Fallible constructor with model and numerical-parameter validation.
+  pub fn try_new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> anyhow::Result<Self> {
+    params.validate()?;
+    if !num_traits::Float::is_finite(h) || h <= T::zero() {
+      anyhow::bail!("h must be finite and positive");
+    }
+    if n_paths == 0 {
+      anyhow::bail!("n_paths must be positive");
+    }
+    Ok(Self { params, h, n_paths })
   }
 
   /// Plain Monte Carlo price.
@@ -51,8 +63,13 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     let disc = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
     let mut sum = T::zero();
     for _ in 0..self.n_paths {
-      let st = sample().terminal_prices();
-      sum += disc * payoff.evaluate(&st);
+      let terminal = sample().terminal_prices_array();
+      sum += disc
+        * payoff.evaluate(
+          terminal
+            .as_slice()
+            .expect("terminal-price array must be contiguous"),
+        );
     }
     sum / T::from_usize_(self.n_paths)
   }

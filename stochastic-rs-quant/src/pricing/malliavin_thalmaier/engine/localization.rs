@@ -62,12 +62,12 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     loc: &MtLocalization<T>,
   ) -> Array2<T> {
     let d = self.params.n_assets();
-    let hi: Vec<T> = loc
+    let hi = loc
       .box_hi
       .iter()
       .zip(&loc.box_width)
       .map(|(&hi_j, &w_j)| hi_j + w_j)
-      .collect();
+      .collect::<Vec<_>>();
     let lo = vec![T::zero(); d];
     let payoff_fn = |x: &[T]| self.localized_mt_piece(payoff, x, loc);
 

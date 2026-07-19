@@ -14,6 +14,7 @@
 //!
 //! # Example
 //! ```ignore
+//! use ndarray::Array1;
 //! use stochastic_rs::quant::fourier_malliavin::FMVol;
 //!
 //! let engine = FMVol::new(&log_prices, &times, 1.0_f64);
@@ -23,8 +24,8 @@
 //! let il = engine.integrated_leverage(None);
 //!
 //! // Spot quantities at evaluation times
-//! let tau: Vec<f64> = (0..51).map(|i| i as f64 / 50.0).collect();
-//! let spot_var = engine.spot_variance(&tau, None);
+//! let tau = Array1::linspace(0.0, 1.0, 51);
+//! let spot_var = engine.spot_variance(tau.as_slice().unwrap(), None);
 //! ```
 //!
 //! # References
@@ -42,6 +43,9 @@ use ndarray::Array1;
 
 pub mod coefficients;
 pub mod engine;
+
+#[cfg(test)]
+mod optimal_cutting_tests;
 
 pub use coefficients::convolution_coefficients;
 pub use coefficients::fourier_coefficients_dx;
@@ -107,36 +111,57 @@ pub fn default_cutting_freq_fe(n: usize) -> (usize, usize) {
 /// 4. Evaluate the MSE of the Fourier estimator for each candidate *N*
 ///    and return the minimiser.
 ///
+/// The cited source derives the rule for regular sampling. For irregular
+/// timestamps this implementation applies a project-specific heuristic:
+/// quarticity uses the duration-adjusted fourth-power sum, the regular-grid
+/// spacing is replaced by `sum(Δt_i²) / T`, and the noise-bias kernel is
+/// the arithmetic mean of `D_N(Δt_i)` over the observed durations. These
+/// substitutions recover the cited formula exactly on a uniform grid, but
+/// they are not claimed as a theorem or MATLAB-library feature.
+///
 /// # Returns
 ///
 /// `OptimalCuttingResult { n_opt, noise_variance, mse_curve }`.
 pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttingResult {
-  assert_eq!(
-    prices.len(),
-    times.len(),
-    "prices and times must have the same length"
-  );
+  try_optimal_cutting_frequency(prices, times)
+    .expect("invalid input for optimal cutting-frequency estimation")
+}
+
+/// Fallible variant of [`optimal_cutting_frequency`].
+pub fn try_optimal_cutting_frequency(
+  prices: &[f64],
+  times: &[f64],
+) -> anyhow::Result<OptimalCuttingResult> {
+  if prices.len() != times.len() {
+    anyhow::bail!("prices and times must have the same length");
+  }
   let n_obs = prices.len();
-  assert!(n_obs >= 8, "need at least 8 observations");
-  let n = n_obs - 1; // number of increments
+  if n_obs < 8 {
+    anyhow::bail!("at least 8 observations are required");
+  }
+  if prices.iter().any(|price| !price.is_finite()) {
+    anyhow::bail!("all prices must be finite");
+  }
+  if times.iter().any(|time| !time.is_finite()) {
+    anyhow::bail!("all times must be finite");
+  }
+  if times.windows(2).any(|pair| pair[1] <= pair[0]) {
+    anyhow::bail!("times must be strictly increasing");
+  }
+  let n = n_obs - 1;
 
   let period = times[n_obs - 1] - times[0];
-  assert!(period > 0.0, "time period must be positive");
+  if !period.is_finite() || period <= 0.0 {
+    anyhow::bail!("time period must be positive and finite");
+  }
 
-  // sparse sampling
-  // Compute increments of prices
   let increments = Array1::from_vec((0..n).map(|i| prices[i + 1] - prices[i]).collect());
+  let durations = Array1::from_vec((0..n).map(|i| times[i + 1] - times[i]).collect());
 
-  // Find sparse step so that lag-1 autocorrelation of increments is
-  // below the Bartlett 95 % bound.
   let mut step = 1usize;
   loop {
-    let sparse_inc = if step == 1 {
-      increments.clone()
-    } else {
-      let sp: Vec<f64> = (0..n_obs).step_by(step).map(|i| prices[i]).collect();
-      Array1::from_vec((0..sp.len() - 1).map(|i| sp[i + 1] - sp[i]).collect())
-    };
+    let indices = sparse_indices(n_obs, step);
+    let sparse_inc = sampled_increments(prices, &indices);
 
     if sparse_inc.len() < 4 {
       break;
@@ -151,21 +176,17 @@ pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttin
     step += 1;
   }
 
-  // Sparse prices and their increments
-  let sparse_prices: Vec<f64> = (0..n_obs).step_by(step).map(|i| prices[i]).collect();
-  let sparse_inc = Array1::from_vec(
-    (0..sparse_prices.len() - 1)
-      .map(|i| sparse_prices[i + 1] - sparse_prices[i])
-      .collect(),
-  );
-  let n_sparse = sparse_inc.len();
+  let sparse = sparse_indices(n_obs, step);
+  let sparse_inc = sampled_increments(prices, &sparse);
+  let sparse_durations = sampled_durations(times, &sparse);
 
-  // RV and quarticity from sparse data
   let rv = sparse_inc.mapv(|r| r * r).sum();
-  let sum4 = sparse_inc.mapv(|r| r.powi(4)).sum();
-  let q = sum4 * n_sparse as f64 / (3.0 * period);
+  let q = sparse_inc
+    .iter()
+    .zip(sparse_durations.iter())
+    .map(|(&increment, &duration)| increment.powi(4) / (3.0 * duration))
+    .sum::<f64>();
 
-  // Noise moments from original data
   let sum_r2 = increments.mapv(|r| r * r).sum();
   let sum_r4 = increments.mapv(|r| r.powi(4)).sum();
 
@@ -181,9 +202,8 @@ pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttin
 
   let noise_variance = eeta2.max(0.0);
 
-  // MSE for each candidate N
   let n_max = n / 2;
-  let h = period / n as f64;
+  let effective_h = durations.mapv(|duration| duration * duration).sum() / period;
 
   let mut mse_curve = Array1::<f64>::zeros(n_max);
   let mut best_mse = f64::INFINITY;
@@ -191,16 +211,16 @@ pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttin
 
   for k in 1..=n_max {
     let trunc = (n / 2).min(k);
-    let rd = rescaled_dirichlet_kernel(trunc, h, period);
+    let rd = mean_rescaled_dirichlet_kernel(trunc, &durations, period);
     let rd2 = rd * rd;
 
     let alpha_fe = alpha * (1.0 + rd2 - 2.0 * rd);
     let beta_fe = beta * (1.0 + rd2 - 2.0 * rd);
     let gamma_fe = gamma
       + 4.0 * (eeta4 + (e2 / 2.0).powi(2)) * (2.0 * rd - rd2)
-      + 8.0 * std::f64::consts::PI * q / (2 * trunc + 1) as f64;
+      + quarticity_mse_term(period, q, trunc);
 
-    let mse = 2.0 * q * h + beta_fe * n as f64 + alpha_fe * (n as f64).powi(2) + gamma_fe;
+    let mse = 2.0 * q * effective_h + beta_fe * n as f64 + alpha_fe * (n as f64).powi(2) + gamma_fe;
 
     mse_curve[k - 1] = mse;
 
@@ -212,11 +232,11 @@ pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttin
 
   n_opt = n_opt.min(n_max).max(1);
 
-  OptimalCuttingResult {
+  Ok(OptimalCuttingResult {
     n_opt,
     noise_variance,
     mse_curve,
-  }
+  })
 }
 
 /// Result of [`optimal_cutting_frequency`].
@@ -252,8 +272,53 @@ fn lag1_autocorrelation(x: &Array1<f64>) -> f64 {
   if cov0.abs() < 1e-30 {
     return 0.0;
   }
-  let cov1: f64 = (1..n).map(|i| centered[i] * centered[i - 1]).sum();
+  let cov1 = (1..n).map(|i| centered[i] * centered[i - 1]).sum::<f64>();
   cov1 / cov0
+}
+
+fn sparse_indices(n_obs: usize, step: usize) -> Vec<usize> {
+  let mut indices = (0..n_obs).step_by(step).collect::<Vec<_>>();
+  if indices.last().copied() != Some(n_obs - 1) {
+    indices.push(n_obs - 1);
+  }
+  indices
+}
+
+fn sampled_increments(values: &[f64], indices: &[usize]) -> Array1<f64> {
+  Array1::from_vec(
+    indices
+      .windows(2)
+      .map(|pair| values[pair[1]] - values[pair[0]])
+      .collect(),
+  )
+}
+
+fn sampled_durations(times: &[f64], indices: &[usize]) -> Array1<f64> {
+  Array1::from_vec(
+    indices
+      .windows(2)
+      .map(|pair| times[pair[1]] - times[pair[0]])
+      .collect(),
+  )
+}
+
+fn quarticity_mse_term(period: f64, quarticity: f64, n_freq: usize) -> f64 {
+  4.0 * period * quarticity / (2 * n_freq + 1) as f64
+}
+
+fn mean_rescaled_dirichlet_kernel(big_n: usize, durations: &Array1<f64>, period: f64) -> f64 {
+  let first = durations[0];
+  if durations.iter().all(|duration| {
+    let scale = duration.abs().max(first.abs()).max(period.abs());
+    (*duration - first).abs() <= 16.0 * f64::EPSILON * scale
+  }) {
+    return rescaled_dirichlet_kernel(big_n, first, period);
+  }
+  durations
+    .iter()
+    .map(|duration| rescaled_dirichlet_kernel(big_n, *duration, period))
+    .sum::<f64>()
+    / durations.len() as f64
 }
 
 /// Rescaled Dirichlet kernel: D_N(t) = (1/(2N+1)) Σ_{s=-N}^{N} e^{i s 2π t / T}.
@@ -261,10 +326,10 @@ fn lag1_autocorrelation(x: &Array1<f64>) -> f64 {
 /// For real evaluation this simplifies to (1 + 2 Σ_{s=1}^{N} cos(s·2π·h/T)) / (2N+1)
 /// where h is the grid spacing.
 fn rescaled_dirichlet_kernel(big_n: usize, h: f64, period: f64) -> f64 {
-  let omega = std::f64::consts::TAU / period;
-  let mut sum = 1.0;
-  for s in 1..=big_n {
-    sum += 2.0 * (s as f64 * omega * h).cos();
+  let half_phase = std::f64::consts::PI * h / period;
+  let denominator = (2 * big_n + 1) as f64 * half_phase.sin();
+  if denominator.abs() <= f64::EPSILON {
+    return 1.0;
   }
-  sum / (2 * big_n + 1) as f64
+  ((2 * big_n + 1) as f64 * half_phase).sin() / denominator
 }

@@ -1,13 +1,14 @@
-//! Generic multi-asset stochastic volatility trait.
+//! Generic multi-asset path access for Malliavin–Thalmaier utilities.
 //!
-//! Any SV model (Heston, Sabr, 3/2, rough Bergomi, …) can implement
-//! [`MultiSvPaths`] to plug into the M-T Greeks engine.
+//! Implementing [`MultiSvPaths`] supplies path data only. Exact conditional
+//! Malliavin weights additionally require volatility paths independent of the
+//! price Brownian motions and an exponential log-price update.
 
 use ndarray::Array2;
 
 use crate::traits::FloatExt;
 
-/// Generic sampled paths from a multi-asset SV model.
+/// Read-only access to sampled multi-asset stochastic-volatility paths.
 pub trait MultiSvPaths<T: FloatExt> {
   fn n_assets(&self) -> usize;
   fn n_steps(&self) -> usize;
@@ -38,10 +39,10 @@ impl<T: FloatExt> MultiSvPaths<T> for super::heston::MultiHestonPaths<T> {
   }
 }
 
-/// Malliavin covariance matrix from generic paths. `impl Trait` so the call
-/// site monomorphises and inlines the per-step `price`/`variance` accessor
-/// methods — the dyn-dispatch overhead was a measurable hot-path tax on
-/// terminal-price covariance sweeps.
+/// Conditional Malliavin covariance matrix from generic paths.
+///
+/// This is exact when the variance paths are independent of the price noise.
+/// `impl Trait` lets the call site inline the per-step accessors.
 pub fn malliavin_cov_generic<T: FloatExt>(
   paths: &(impl MultiSvPaths<T> + ?Sized),
   cross_corr: &Array2<T>,
@@ -56,7 +57,7 @@ pub fn malliavin_cov_generic<T: FloatExt>(
     for j in 0..d {
       let st_i = paths.terminal_price(i);
       let st_j = paths.terminal_price(j);
-      let integral: T = (0..n - 1)
+      let integral = (0..n - 1)
         .map(|k| {
           (paths.variance(i, k).max(T::zero()) * paths.variance(j, k).max(T::zero())).sqrt() * dt
         })
@@ -67,8 +68,10 @@ pub fn malliavin_cov_generic<T: FloatExt>(
   gamma
 }
 
-/// Itô integral `∫√V_j dWⱼˢ` from generic paths. `impl Trait` for inlining;
-/// see [`malliavin_cov_generic`] for the rationale.
+/// Reconstruct `integral sqrt(V_j) dW_j^S` from generic log-Euler paths.
+///
+/// The reconstruction is exact for the exponential update
+/// `S_{k+1}/S_k = exp((r - V_k/2) dt + sqrt(V_k) dW_k)`.
 pub fn ito_integral_generic<T: FloatExt>(
   paths: &(impl MultiSvPaths<T> + ?Sized),
   asset: usize,
@@ -80,8 +83,10 @@ pub fn ito_integral_generic<T: FloatExt>(
   (0..n - 1)
     .map(|k| {
       let s = paths.price(asset, k);
-      if s.abs() > T::from_f64_fast(1e-14) {
-        paths.price(asset, k + 1) / s - T::one() - r * dt
+      let next = paths.price(asset, k + 1);
+      if s > T::zero() && next > T::zero() {
+        let variance = paths.variance(asset, k).max(T::zero());
+        (next / s).ln() - (r - T::from_f64_fast(0.5) * variance) * dt
       } else {
         T::zero()
       }
@@ -104,7 +109,7 @@ mod tests {
       kappa: 2.0,
       theta: 0.04,
       xi: 0.3,
-      rho: -0.7,
+      rho: 0.0,
     };
     let mut cross = Array2::<f64>::eye(2);
     cross[[0, 1]] = 0.5;
@@ -116,7 +121,7 @@ mod tests {
       tau: 1.0,
       n_steps: 100,
     };
-    let paths = p.sample();
+    let paths = p.sample_with_seed(0x7a_17_01);
 
     let gamma = malliavin_cov_generic(&paths, &cross, 1.0);
     assert!(gamma[[0, 0]] > 0.0);

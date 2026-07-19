@@ -11,9 +11,24 @@ use crate::traits::FloatExt;
 impl<T: FloatExt> FMVol<T> {
   /// Spot variance at evaluation times `tau`.
   pub fn spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
+    self
+      .try_spot_variance(tau, m_freq)
+      .expect("invalid spot variance window or evaluation time")
+  }
+
+  /// Fallible variant of [`Self::spot_variance`].
+  pub fn try_spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> anyhow::Result<Array1<T>> {
     let big_m = self.resolve_m(m_freq);
+    self.validate_tau(tau)?;
+    self.validate_m_window(big_m)?;
     let c_v = self.vol_coeffs(big_m);
-    fejer_inversion(&c_v, big_m, self.period, tau, T::from_usize_(big_m + 1))
+    Ok(fejer_inversion(
+      &c_v,
+      big_m,
+      self.period,
+      tau,
+      T::from_usize_(big_m + 1),
+    ))
   }
 
   /// Spot variance under the **FE** (Fourier-Estimator) Cesàro-kernel
@@ -25,20 +40,70 @@ impl<T: FloatExt> FMVol<T> {
   /// FE-style `(N, M)` defaults and pair with
   /// [`FMVol::with_freq`] so that `max_freq ≥ N + M`.
   ///
-  /// Panics if `m_freq.unwrap_or(default) < 2`.
+  /// Panics if the window is invalid. Use [`Self::try_spot_variance_fe`] to
+  /// handle invalid input without panicking.
   pub fn spot_variance_fe(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
+    self
+      .try_spot_variance_fe(tau, m_freq)
+      .expect("invalid FE spot variance window or evaluation time")
+  }
+
+  /// Fallible variant of [`Self::spot_variance_fe`].
+  pub fn try_spot_variance_fe(
+    &self,
+    tau: &[T],
+    m_freq: Option<usize>,
+  ) -> anyhow::Result<Array1<T>> {
     let big_m = m_freq.unwrap_or((self.n_freq as f64).sqrt() as usize);
-    assert!(big_m >= 2, "FE kernel requires M >= 2, got {big_m}");
+    if big_m < 2 {
+      anyhow::bail!("FE kernel requires M >= 2, got {big_m}");
+    }
+    self.validate_tau(tau)?;
+    self.validate_m_window(big_m)?;
     let c_v = self.vol_coeffs(big_m);
-    fejer_inversion(&c_v, big_m, self.period, tau, T::from_usize_(big_m))
+    Ok(fejer_inversion(
+      &c_v,
+      big_m,
+      self.period,
+      tau,
+      T::from_usize_(big_m),
+    ))
   }
 
   /// Spot covariance with another process at evaluation times `tau`.
   pub fn spot_covariance(&self, other: &Self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
+    self
+      .try_spot_covariance(other, tau, m_freq)
+      .expect("invalid spot covariance configuration")
+  }
+
+  /// Fallible variant of [`Self::spot_covariance`].
+  pub fn try_spot_covariance(
+    &self,
+    other: &Self,
+    tau: &[T],
+    m_freq: Option<usize>,
+  ) -> anyhow::Result<Array1<T>> {
+    self.validate_compatible_period(other)?;
+    self.validate_tau(tau)?;
     let big_n = self.n_freq.min(other.n_freq);
     let big_m = m_freq.unwrap_or((big_n as f64).sqrt() as usize);
+    if big_m == 0 {
+      anyhow::bail!("M must be positive");
+    }
+    let required = big_n
+      .checked_add(big_m)
+      .ok_or_else(|| anyhow::anyhow!("N + M overflows usize"))?;
+    self.validate_stored_frequency(required)?;
+    other.validate_stored_frequency(big_n)?;
     let c_c = convolution_coefficients(&other.dx, &self.dx, self.period, big_n, big_m);
-    fejer_inversion(&c_c, big_m, self.period, tau, T::from_usize_(big_m + 1))
+    Ok(fejer_inversion(
+      &c_c,
+      big_m,
+      self.period,
+      tau,
+      T::from_usize_(big_m + 1),
+    ))
   }
 
   /// Spot leverage at evaluation times `tau`.
@@ -48,8 +113,22 @@ impl<T: FloatExt> FMVol<T> {
     m_freq: Option<usize>,
     l_freq: Option<usize>,
   ) -> Array1<T> {
+    self
+      .try_spot_leverage(tau, m_freq, l_freq)
+      .expect("invalid spot leverage window or evaluation time")
+  }
+
+  /// Fallible variant of [`Self::spot_leverage`].
+  pub fn try_spot_leverage(
+    &self,
+    tau: &[T],
+    m_freq: Option<usize>,
+    l_freq: Option<usize>,
+  ) -> anyhow::Result<Array1<T>> {
     let big_m = self.resolve_m(m_freq);
     let big_l = l_freq.unwrap_or((self.n_freq as f64).powf(0.25) as usize);
+    self.validate_tau(tau)?;
+    self.validate_leverage_window(big_m, big_l)?;
     let const_ = self.const_();
     let c = self.center();
 
@@ -74,13 +153,33 @@ impl<T: FloatExt> FMVol<T> {
       c_lev[j_lev] = sum * scale;
     }
 
-    fejer_inversion(&c_lev, big_l, self.period, tau, T::from_usize_(big_l + 1))
+    Ok(fejer_inversion(
+      &c_lev,
+      big_l,
+      self.period,
+      tau,
+      T::from_usize_(big_l + 1),
+    ))
   }
 
   /// Spot volatility of volatility at evaluation times `tau`.
   pub fn spot_volvol(&self, tau: &[T], m_freq: Option<usize>, l_freq: Option<usize>) -> Array1<T> {
+    self
+      .try_spot_volvol(tau, m_freq, l_freq)
+      .expect("invalid spot volatility-of-volatility window or evaluation time")
+  }
+
+  /// Fallible variant of [`Self::spot_volvol`].
+  pub fn try_spot_volvol(
+    &self,
+    tau: &[T],
+    m_freq: Option<usize>,
+    l_freq: Option<usize>,
+  ) -> anyhow::Result<Array1<T>> {
     let big_m = self.resolve_m_volvol(m_freq);
     let big_l = l_freq.unwrap_or((self.n_freq as f64).powf(0.2) as usize);
+    self.validate_tau(tau)?;
+    self.validate_ml_window(big_m, big_l)?;
     let const_ = self.const_();
     let mm = big_m + big_l;
 
@@ -91,12 +190,6 @@ impl<T: FloatExt> FMVol<T> {
       c_dv[j] = Complex::<T>::new(T::zero(), T::from_f64_fast(k as f64) * const_) * c_v[j];
     }
 
-    assert!(
-      self.n_freq + mm <= self.max_freq,
-      "need max_freq ≥ N+M+L = {} but have {}",
-      self.n_freq + mm,
-      self.max_freq
-    );
     let c_v2 = convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, mm);
     let len_mm = 2 * mm + 1;
     let mut c_dv2 = Array1::<Complex<T>>::zeros(len_mm);
@@ -118,31 +211,53 @@ impl<T: FloatExt> FMVol<T> {
       c_w[j_w] = sum * scale;
     }
 
-    fejer_inversion(&c_w, big_l, self.period, tau, T::from_usize_(big_l + 1))
+    Ok(fejer_inversion(
+      &c_w,
+      big_l,
+      self.period,
+      tau,
+      T::from_usize_(big_l + 1),
+    ))
   }
 
-  /// Bias-corrected spot volatility-of-volatility (analogous to `integrated_volvol_bias_corrected`).
-  /// Subtracts `K · spot_quarticity(τ)` per evaluation point, where `K = M²/(3n)` per
-  /// Toscano-Livieri-Mancino-Marmi (2024) eq.51 under uniform sampling at the default `N = n/2`.
+  /// Bias-corrected spot volatility of volatility.
   ///
-  /// Uses `M ≈ N^{0.25}` default for the volvol window (matching `integrated_volvol_bias_corrected`),
-  /// distinct from the legacy `spot_volvol`'s `N^{0.2}` window. The smaller window is needed for the
-  /// bias correction's rate-`n^{1/4}` convergence regime.
+  /// Implements equation (11) of Toscano et al.: every Fourier coefficient
+  /// uses the inner `M`-Fejér derivative product and its matching unweighted
+  /// quarticity coefficient before the outer `L`-Fejér inversion.
   pub fn spot_volvol_bias_corrected(
     &self,
     tau: &[T],
     m_freq: Option<usize>,
     l_freq: Option<usize>,
   ) -> Array1<T> {
+    self
+      .try_spot_volvol_bias_corrected(tau, m_freq, l_freq)
+      .expect("invalid bias-corrected spot volatility-of-volatility window or evaluation time")
+  }
+
+  /// Fallible variant of [`Self::spot_volvol_bias_corrected`].
+  pub fn try_spot_volvol_bias_corrected(
+    &self,
+    tau: &[T],
+    m_freq: Option<usize>,
+    l_freq: Option<usize>,
+  ) -> anyhow::Result<Array1<T>> {
     let big_m = self.resolve_m_volvol_bc(m_freq);
-    let raw = self.spot_volvol(tau, Some(big_m), l_freq);
-    let quart = self.spot_quarticity(tau, Some(big_m), l_freq);
-    let k_const: T = self.compute_bias_correction_constant(big_m);
-    let mut out = Array1::<T>::zeros(tau.len());
-    for i in 0..tau.len() {
-      out[i] = raw[i] - k_const * quart[i];
+    let big_l = self.resolve_l_volvol_bc(l_freq, big_m);
+    if big_l > big_m.saturating_mul(2) {
+      anyhow::bail!("equation (11) requires L <= 2M");
     }
-    out
+    self.validate_tau(tau)?;
+    self.validate_ml_window(big_m, big_l)?;
+    let corrected = self.bias_corrected_volvol_coefficients(big_m, big_l);
+    Ok(fejer_inversion(
+      &corrected,
+      big_l,
+      self.period,
+      tau,
+      T::from_usize_(big_l + 1),
+    ))
   }
 
   /// Spot quarticity at evaluation times `tau`.
@@ -152,18 +267,26 @@ impl<T: FloatExt> FMVol<T> {
     m_freq: Option<usize>,
     l_freq: Option<usize>,
   ) -> Array1<T> {
+    self
+      .try_spot_quarticity(tau, m_freq, l_freq)
+      .expect("invalid spot quarticity window or evaluation time")
+  }
+
+  /// Fallible variant of [`Self::spot_quarticity`].
+  pub fn try_spot_quarticity(
+    &self,
+    tau: &[T],
+    m_freq: Option<usize>,
+    l_freq: Option<usize>,
+  ) -> anyhow::Result<Array1<T>> {
     let big_m = self.resolve_m(m_freq);
     let big_l = l_freq.unwrap_or(((self.n_freq as f64).sqrt()).sqrt() as usize);
+    self.validate_tau(tau)?;
+    self.validate_ml_window(big_m, big_l)?;
     let mm = big_m + big_l;
 
     let c_v = self.vol_coeffs(big_m);
 
-    assert!(
-      self.n_freq + mm <= self.max_freq,
-      "need max_freq ≥ N+M+L = {} but have {}",
-      self.n_freq + mm,
-      self.max_freq
-    );
     let c_v2 = convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, mm);
     let center_v2 = mm;
     let len_l = 2 * big_l + 1;
@@ -178,6 +301,12 @@ impl<T: FloatExt> FMVol<T> {
       c_q[j_q] = sum;
     }
 
-    fejer_inversion(&c_q, big_l, self.period, tau, T::from_usize_(big_l + 1))
+    Ok(fejer_inversion(
+      &c_q,
+      big_l,
+      self.period,
+      tau,
+      T::from_usize_(big_l + 1),
+    ))
   }
 }

@@ -2,6 +2,7 @@
 //!
 //! See Malliavin & Thalmaier (2006), Chapter 4.
 
+use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -10,6 +11,8 @@ use stochastic_rs_stochastic::volatility::heston::Heston;
 
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
+
+mod weights;
 
 /// Parameters for a single asset in a multi-asset Heston model.
 #[derive(Clone, Debug)]
@@ -47,6 +50,7 @@ pub struct MultiHestonPaths<T: FloatExt> {
   pub vols: Array2<T>,
   pub n_assets: usize,
   pub n_steps: usize,
+  conditional_weights_exact: bool,
 }
 
 impl<T: FloatExt> MultiHestonParams<T> {
@@ -54,13 +58,10 @@ impl<T: FloatExt> MultiHestonParams<T> {
     self.assets.len()
   }
 
-  /// Validate input parameters. Must be called before [`Self::sample`] / [`Self::sample_with_seed`]
-  /// when `cross_corr` is user-supplied: the underlying Cholesky factorisation
-  /// in `sample` panics on a non-positive-definite correlation matrix.
+  /// Validate model, time-grid and joint-correlation inputs.
   ///
-  /// Checks: `cross_corr` is `d×d`, symmetric, has unit diagonal, off-diagonals
-  /// in `[-1, 1]`, and is positive definite. Per-asset `|rho| < 1` is also
-  /// required so that the joint correlation structure is feasible.
+  /// This must be called before [`Self::sample`] or [`Self::sample_with_seed`]
+  /// for user-supplied parameters. Their fallible variants call it directly.
   pub fn validate(&self) -> anyhow::Result<()>
   where
     T: ndarray_linalg::Lapack,
@@ -71,6 +72,15 @@ impl<T: FloatExt> MultiHestonParams<T> {
     let d = self.n_assets();
     if d == 0 {
       anyhow::bail!("need at least one asset");
+    }
+    if self.n_steps < 2 {
+      anyhow::bail!("n_steps must be >= 2, got {}", self.n_steps);
+    }
+    if !num_traits::Float::is_finite(self.r) {
+      anyhow::bail!("r must be finite");
+    }
+    if !num_traits::Float::is_finite(self.tau) || self.tau <= T::zero() {
+      anyhow::bail!("tau must be finite and positive");
     }
     if self.cross_corr.shape() != [d, d] {
       anyhow::bail!(
@@ -84,6 +94,9 @@ impl<T: FloatExt> MultiHestonParams<T> {
     for i in 0..d {
       for j in 0..d {
         let v = self.cross_corr[[i, j]];
+        if !num_traits::Float::is_finite(v) {
+          anyhow::bail!("cross_corr[{i},{j}] must be finite");
+        }
         if i == j {
           if num_traits::Float::abs(v - one) > tol {
             anyhow::bail!("cross_corr[{i},{i}]={:?} is not 1", v);
@@ -100,12 +113,25 @@ impl<T: FloatExt> MultiHestonParams<T> {
       }
     }
     for (i, a) in self.assets.iter().enumerate() {
+      if !num_traits::Float::is_finite(a.s0) || a.s0 <= T::zero() {
+        anyhow::bail!("assets[{i}].s0 must be finite and positive");
+      }
+      for (name, value) in [
+        ("v0", a.v0),
+        ("kappa", a.kappa),
+        ("theta", a.theta),
+        ("xi", a.xi),
+      ] {
+        if !num_traits::Float::is_finite(value) || value < T::zero() {
+          anyhow::bail!("assets[{i}].{name} must be finite and non-negative");
+        }
+      }
+      if !num_traits::Float::is_finite(a.rho) {
+        anyhow::bail!("assets[{i}].rho must be finite");
+      }
       if num_traits::Float::abs(a.rho) >= one {
         anyhow::bail!("assets[{i}].rho={:?} must satisfy |rho| < 1", a.rho);
       }
-    }
-    if self.n_steps < 2 {
-      anyhow::bail!("n_steps must be >= 2, got {}", self.n_steps);
     }
 
     let m = 2 * d;
@@ -146,10 +172,14 @@ impl<T: FloatExt> MultiHestonParams<T> {
     }
 
     for step in 1..n {
-      let mut z_ind = vec![T::zero(); m];
-      fill_standard_normals(&mut z_ind);
+      let mut z_ind = Array1::<T>::zeros(m);
+      fill_standard_normals(
+        z_ind
+          .as_slice_mut()
+          .expect("freshly allocated normal array must be contiguous"),
+      );
 
-      let mut db = vec![T::zero(); m];
+      let mut db = Array1::<T>::zeros(m);
       for i in 0..m {
         let mut s = T::zero();
         for j in 0..=i {
@@ -161,9 +191,8 @@ impl<T: FloatExt> MultiHestonParams<T> {
       for i in 0..d {
         let v_prev = vols[[i, step - 1]].max(T::zero());
         let sqrt_v = <T as num_traits::Float>::sqrt(v_prev);
-        prices[[i, step]] = prices[[i, step - 1]]
-          + self.r * prices[[i, step - 1]] * dt
-          + sqrt_v * prices[[i, step - 1]] * db[i];
+        let log_return = (self.r - T::from_f64_fast(0.5) * v_prev) * dt + sqrt_v * db[i];
+        prices[[i, step]] = prices[[i, step - 1]] * <T as num_traits::Float>::exp(log_return);
         let dv = self.assets[i].kappa * (self.assets[i].theta - v_prev) * dt
           + self.assets[i].xi * sqrt_v * db[d + i];
         vols[[i, step]] = (v_prev + dv).max(T::zero());
@@ -175,6 +204,10 @@ impl<T: FloatExt> MultiHestonParams<T> {
       vols,
       n_assets: d,
       n_steps: n,
+      conditional_weights_exact: self
+        .assets
+        .iter()
+        .all(|params| params.xi == T::zero() || params.rho == T::zero()),
     }
   }
 
@@ -192,7 +225,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
     self.sample_with_fill(T::fill_standard_normal_slice)
   }
 
-  /// Falliable variant of [`Self::sample`]. Runs [`Self::validate`] first and
+  /// Fallible variant of [`Self::sample`]. Runs [`Self::validate`] first and
   /// returns an error when the joint Brownian correlation matrix fails the
   /// positive-definite check (otherwise [`Self::sample`] would panic on the
   /// internal Cholesky factorisation).
@@ -214,7 +247,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
     self.sample_with_fill(|z| normal.fill_slice_fast(z))
   }
 
-  /// Falliable variant of [`Self::sample_with_seed`]. See [`Self::try_sample`]
+  /// Fallible variant of [`Self::sample_with_seed`]. See [`Self::try_sample`]
   /// for the failure mode (non-SPD joint Brownian correlation).
   pub fn try_sample_with_seed(&self, seed: u64) -> anyhow::Result<MultiHestonPaths<T>>
   where
@@ -256,6 +289,10 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   /// Each `Heston` is sampled independently — use this when cross-asset
   /// correlation is zero. For correlated assets use
   /// [`MultiHestonParams::sample`] instead.
+  ///
+  /// The upstream `Heston` Euler sampler uses an arithmetic price update, so
+  /// paths built by this adapter are not eligible for the exact conditional
+  /// weights in [`Self::try_malliavin_weights`].
   pub fn from_hestons<S: SeedExt>(hestons: &[Heston<T, S>]) -> Self {
     let d = hestons.len();
     assert!(d > 0, "need at least one Heston instance");
@@ -278,190 +315,28 @@ impl<T: FloatExt> MultiHestonPaths<T> {
       vols,
       n_assets: d,
       n_steps: n,
+      conditional_weights_exact: false,
     }
   }
 
+  /// Whether the paths satisfy the independence assumptions of the
+  /// conditional Malliavin weights.
+  pub fn supports_conditional_malliavin_weights(&self) -> bool {
+    self.conditional_weights_exact
+  }
+
   pub fn terminal_prices(&self) -> Vec<T> {
+    self.terminal_prices_array().to_vec()
+  }
+
+  /// Terminal prices as a contiguous numeric array.
+  pub fn terminal_prices_array(&self) -> Array1<T> {
     (0..self.n_assets)
       .map(|i| self.prices[[i, self.n_steps - 1]])
       .collect()
   }
-
-  /// Malliavin covariance matrix `γ_F` (d × d).
-  pub fn malliavin_cov(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T> {
-    let d = self.n_assets;
-    let n = self.n_steps;
-    let dt = tau / T::from_usize_(n - 1);
-    let st = self.terminal_prices();
-
-    let mut g = Array2::<T>::zeros((d, d));
-    for i in 0..d {
-      for j in 0..d {
-        let mut integral = T::zero();
-        for k in 0..(n - 1) {
-          integral +=
-            (self.vols[[i, k]].max(T::zero()) * self.vols[[j, k]].max(T::zero())).sqrt() * dt;
-        }
-        g[[i, j]] = st[i] * st[j] * cross_corr[[i, j]] * integral;
-      }
-    }
-    g
-  }
-
-  /// Stochastic integral `I_j = ∫₀ᵀ √V_j dW_jˢ` reconstructed from prices.
-  pub fn ito_integral(&self, asset: usize, r: T, tau: T) -> T {
-    let n = self.n_steps;
-    let dt = tau / T::from_usize_(n - 1);
-    let mut sum = T::zero();
-    for k in 0..(n - 1) {
-      let s_prev = self.prices[[asset, k]];
-      if s_prev.abs() > T::from_f64_fast(1e-14) {
-        sum = sum + self.prices[[asset, k + 1]] / s_prev - T::one() - r * dt;
-      }
-    }
-    sum
-  }
-
-  /// Malliavin weight vector `H_{(i)}` for Delta of asset `p`.
-  pub fn malliavin_weights(
-    &self,
-    gamma_inv: &Array2<T>,
-    param_asset: usize,
-    r: T,
-    tau: T,
-    spots: &[T],
-  ) -> Vec<T> {
-    let d = self.n_assets;
-    let st = self.terminal_prices();
-    let tangent = st[param_asset] / spots[param_asset];
-    let ito: Vec<T> = (0..d).map(|j| self.ito_integral(j, r, tau)).collect();
-
-    (0..d)
-      .map(|i| {
-        let s: T = (0..d)
-          .map(|j| gamma_inv[[i, j]] * st[j] * ito[j])
-          .fold(T::zero(), |a, b| a + b);
-        tangent * s
-      })
-      .collect()
-  }
-
-  /// Inverse of the Malliavin covariance matrix. Requires LAPACK.
-  ///
-  /// Singular covariance can occur when terminal prices have a near-zero variance
-  /// (e.g. very low-vol regimes with too few paths) — call [`Self::try_gamma_inv`]
-  /// to surface this as an `Err` rather than a panic.
-  pub fn gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T>
-  where
-    T: ndarray_linalg::Lapack,
-  {
-    self
-      .try_gamma_inv(cross_corr, tau)
-      .expect("Malliavin covariance matrix is singular — use try_gamma_inv to handle gracefully")
-  }
-
-  /// Falliable variant of [`Self::gamma_inv`]. Returns an error when the
-  /// Malliavin covariance is singular (typical cause: low-vol paths so the
-  /// $S_T \cdot \int_0^\tau (.) \, du$ integrand collapses).
-  pub fn try_gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> anyhow::Result<Array2<T>>
-  where
-    T: ndarray_linalg::Lapack,
-  {
-    use ndarray_linalg::Inverse;
-    self
-      .malliavin_cov(cross_corr, tau)
-      .inv()
-      .map_err(|e| anyhow::anyhow!("Malliavin covariance matrix is singular: {e}"))
-  }
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn two_asset_params() -> MultiHestonParams<f64> {
-    let a = AssetParams {
-      s0: 100.0,
-      v0: 0.04,
-      kappa: 2.0,
-      theta: 0.04,
-      xi: 0.3,
-      rho: -0.7,
-    };
-    let mut cross = Array2::<f64>::eye(2);
-    cross[[0, 1]] = 0.5;
-    cross[[1, 0]] = 0.5;
-    MultiHestonParams {
-      assets: vec![a.clone(), a],
-      cross_corr: cross,
-      r: 0.05,
-      tau: 1.0,
-      n_steps: 100,
-    }
-  }
-
-  #[test]
-  fn simulation_positive_prices() {
-    let st = two_asset_params().sample().terminal_prices();
-    assert!(st[0] > 0.0, "S1_T = {}", st[0]);
-    assert!(st[1] > 0.0, "S2_T = {}", st[1]);
-  }
-
-  #[test]
-  fn malliavin_cov_positive_definite() {
-    let p = two_asset_params();
-    let paths = p.sample();
-    let g = paths.malliavin_cov(&p.cross_corr, p.tau);
-    let det = g[[0, 0]] * g[[1, 1]] - g[[0, 1]] * g[[1, 0]];
-    assert!(det > 0.0, "det(γ) = {det}");
-    assert!(g[[0, 0]] > 0.0);
-  }
-
-  #[test]
-  fn cholesky_roundtrip() {
-    use ndarray_linalg::Cholesky;
-    use ndarray_linalg::UPLO;
-
-    let mut a = Array2::<f64>::zeros((3, 3));
-    a[[0, 0]] = 4.0;
-    a[[0, 1]] = 2.0;
-    a[[0, 2]] = 0.5;
-    a[[1, 0]] = 2.0;
-    a[[1, 1]] = 5.0;
-    a[[1, 2]] = 1.0;
-    a[[2, 0]] = 0.5;
-    a[[2, 1]] = 1.0;
-    a[[2, 2]] = 3.0;
-
-    let l = a.cholesky(UPLO::Lower).unwrap();
-    for i in 0..3 {
-      for j in 0..3 {
-        let s: f64 = (0..3).map(|k| l[[i, k]] * l[[j, k]]).sum();
-        assert!(
-          (s - a[[i, j]]).abs() < 1e-10,
-          "LLᵀ[{i},{j}]={s} ≠ {}",
-          a[[i, j]]
-        );
-      }
-    }
-  }
-
-  #[test]
-  fn invert_roundtrip() {
-    use ndarray_linalg::Inverse;
-
-    let mut a = Array2::<f64>::zeros((2, 2));
-    a[[0, 0]] = 3.0;
-    a[[0, 1]] = 1.0;
-    a[[1, 0]] = 1.0;
-    a[[1, 1]] = 2.0;
-    let inv = a.inv().unwrap();
-    for i in 0..2 {
-      for j in 0..2 {
-        let s: f64 = (0..2).map(|k| a[[i, k]] * inv[[k, j]]).sum();
-        let e = if i == j { 1.0 } else { 0.0 };
-        assert!((s - e).abs() < 1e-10, "AA⁻¹[{i},{j}]={s} ≠ {e}");
-      }
-    }
-  }
-}
+#[path = "heston/tests.rs"]
+mod tests;
