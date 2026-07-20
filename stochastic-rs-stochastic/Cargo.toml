@@ -26,6 +26,12 @@ gpu = ["dep:cubecl", "dep:gpu-fft"]
 gpu-cuda = ["gpu", "dep:cubecl-cuda"]
 gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
 cuda-native = ["dep:cudarc", "cudarc/cufft"]
+cuda-oxide-experimental = [
+    "dep:cuda-core",
+    "dep:cuda-device",
+    "dep:cuda-host",
+    "dep:fgn-oxide-kernels",
+]
 metal = ["dep:metal"]
 accelerate = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
@@ -62,6 +68,14 @@ cubecl = { workspace = true, optional = true, default-features = false }
 cubecl-cuda = { workspace = true, optional = true }
 cubecl-wgpu = { workspace = true, optional = true }
 cudarc = { workspace = true, optional = true, features = ["cuda-12080", "cuda-version-from-build-system"] }
+cuda-core = { workspace = true, optional = true }
+cuda-device = { workspace = true, optional = true }
+cuda-host = { workspace = true, optional = true }
+# Device-only kernel crate (its own `[workspace]`); provides the `#[kernel]`
+# markers the host `cuda_launch!` calls resolve against. Built as host stubs by
+# a normal `cargo build`; its NVVM IR is pre-generated and embedded — see
+# `noise/fgn/cuda_oxide.rs`.
+fgn-oxide-kernels = { path = "fgn-oxide-kernels", optional = true }
 gpu-fft = { workspace = true, optional = true }
 metal = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
