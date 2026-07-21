@@ -99,6 +99,39 @@ mod tests {
   const TOL_FOURIER: f64 = 0.15;
   const TOL_TIGHT: f64 = 0.05;
 
+  /// Gil-Pelaez and Lewis both integrated to a fixed `φ_max = 100`, which
+  /// truncates the slowly-decaying tail of the short-dated Heston integrand.
+  /// Pre-fix at τ=0.005/ATM the price was 0.488 vs a converged 0.577, and at
+  /// τ=0.01/K=105 it was 0.0100 vs 0.0030 (over 3× too large). Both must now
+  /// match the converged inversion and agree with each other.
+  #[test]
+  fn fourier_pricers_match_converged_short_dated() {
+    let model = HestonFourier {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.30,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.0,
+    };
+    // (K, τ, converged call)
+    let cases = [(100.0, 0.005, 0.576581), (105.0, 0.01, 0.002966), (95.0, 0.01, 5.052617)];
+    for (k, t, expected) in cases {
+      let gp = GilPelaezPricer::price_call(&model, 100.0, k, 0.05, 0.0, t);
+      let lw = LewisPricer::price_call(&model, 100.0, k, 0.05, 0.0, t);
+      assert!(
+        (gp - expected).abs() < 1e-3,
+        "Gil-Pelaez at K={k}, τ={t}: got {gp}, converged {expected}"
+      );
+      assert!(
+        (lw - expected).abs() < 1e-3,
+        "Lewis at K={k}, τ={t}: got {lw}, converged {expected}"
+      );
+      assert!((gp - lw).abs() < 1e-3, "Gil-Pelaez {gp} and Lewis {lw} must agree");
+    }
+  }
+
   #[test]
   fn carr_madan_bsm_reference() {
     let model = BSMFourier {
