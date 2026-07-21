@@ -14,6 +14,7 @@ pub mod bjerksund_stensland;
 pub mod breeden_litzenberger;
 pub mod bsm;
 pub mod cgmysv;
+pub(crate) mod cf_quadrature;
 pub mod chooser;
 pub mod cliquet;
 pub mod compound;

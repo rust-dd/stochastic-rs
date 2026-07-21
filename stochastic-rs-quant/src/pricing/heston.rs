@@ -9,8 +9,8 @@ use std::f64::consts::FRAC_1_PI;
 use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
 use num_complex::Complex64;
-use quadrature::double_exponential;
 
+use super::cf_quadrature::integrate_to_convergence;
 use crate::OptionType;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
@@ -279,13 +279,74 @@ impl HestonPricer {
   /// - Heston, S. L. (1993)
   ///   https://doi.org/10.1093/rfs/6.2.327
   pub(self) fn p(&self, j: u8, tau: f64) -> f64 {
-    0.5 + FRAC_1_PI * double_exponential::integrate(self.re(j, tau), 0.00001, 50.0, 10e-6).integral
+    0.5 + FRAC_1_PI * integrate_to_convergence(self.re(j, tau), 0.00001, 1e-8)
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  fn price(v0: f64, k: f64, sigma: f64, tau: f64) -> f64 {
+    // Long-run variance θ = v0 for these references.
+    HestonPricer::new(
+      100.0,
+      v0,
+      k,
+      0.05,
+      Some(0.0),
+      -0.7,
+      1.5,
+      v0,
+      sigma,
+      Some(0.0),
+      Some(tau),
+      None,
+      None,
+    )
+    .calculate_call_put()
+    .0
+  }
+
+  /// Short-dated / low-variance options must match the converged Fourier
+  /// integral. The former fixed `φ_max = 50` truncated a tail that only
+  /// decays past `φ ~ 1/√(vτ)`, under-pricing these by 15-35%. Converged
+  /// references are from a `scipy.integrate.quad` inversion to `∞`, validated
+  /// against the repo's own long-dated `HESTON_REF`. The τ=1 case pins that
+  /// the already-accurate long-dated regime is unchanged.
+  #[test]
+  fn short_dated_matches_converged_reference() {
+    // (v0, K, σ, τ, converged call)
+    let cases = [
+      (0.04, 100.0, 0.30, 0.02, 1.177515),
+      (0.01, 100.0, 0.20, 0.03, 0.768268),
+      (0.04, 100.0, 0.30, 1.00, 10.361856),
+    ];
+    for (v0, k, sigma, tau, expected) in cases {
+      let c = price(v0, k, sigma, tau);
+      assert!(
+        (c - expected).abs() < 2e-3,
+        "Heston call at v0={v0}, K={k}, σ={sigma}, τ={tau}: got {c}, converged {expected}"
+      );
+    }
+  }
+
+  /// Deep-OTM short-dated calls must be non-negative and ~0, not the negative
+  /// (arbitrage-violating) or spuriously-positive values the fixed integration
+  /// bound produced. Pre-fix: τ=0.1/K=150 → −0.0347, τ=0.01/K=110 → +0.062.
+  /// This exercises `HestonPricer` directly (no `.max(0.0)` clamp), so it pins
+  /// the integral itself, not a downstream floor — the root cause behind the
+  /// negative model prices in calibration issue #14.
+  #[test]
+  fn deep_otm_short_dated_non_negative() {
+    for (v0, k, sigma, tau) in [(0.04, 150.0, 0.50, 0.10), (0.04, 110.0, 0.30, 0.01)] {
+      let c = price(v0, k, sigma, tau);
+      assert!(
+        c > -1e-3 && c < 1e-2,
+        "deep-OTM call at K={k}, τ={tau} must be non-negative and ~0, got {c}"
+      );
+    }
+  }
 
   #[test]
   fn heston_single_price() {

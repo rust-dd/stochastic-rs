@@ -21,6 +21,33 @@ fn paper_pricer() -> HestonStochCorrPricer {
   )
 }
 
+/// With the correlation process frozen (σ_ρ → 0, ρ pinned to a constant) the
+/// stochastic-correlation model collapses to standard Heston, so at ATM the
+/// two must price the same. The Carr-Madan inversion used a fixed `φ_max = 200`
+/// that truncated the short-dated tail: pre-fix at τ=0.02/ATM the two pricers
+/// disagreed by ~18%. Both are now integrated to convergence and agree to
+/// well under 1% down to τ=0.002.
+#[test]
+fn carr_madan_reduces_to_heston_short_dated() {
+  use crate::pricing::heston::HestonPricer;
+  let (rho, kappa, theta, sigma, v0, s, r) = (-0.7, 2.0, 0.04, 0.3, 0.04, 100.0, 0.03);
+  for tau in [0.02, 0.005, 0.002] {
+    let heston = HestonPricer::new(
+      s, v0, s, r, None, rho, kappa, theta, sigma, Some(0.0), Some(tau), None, None,
+    );
+    let heston_call = heston.calculate_call_put().0;
+    let hscm = HestonStochCorrPricer::new(
+      s, r, s, v0, kappa, theta, sigma, rho, 10.0, rho, 1e-10, 0.0, tau,
+    );
+    let hscm_call = hscm.price_call_carr_madan();
+    let reldiff = (heston_call - hscm_call).abs() / heston_call;
+    assert!(
+      reldiff < 0.01,
+      "HSCM(σ_ρ→0) must match Heston at τ={tau}: Heston={heston_call:.6}, HSCM={hscm_call:.6}, reldiff={reldiff:.4}"
+    );
+  }
+}
+
 #[test]
 fn char_func_at_zero_is_one() {
   let pricer = paper_pricer();

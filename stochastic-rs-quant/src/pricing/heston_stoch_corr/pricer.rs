@@ -4,9 +4,9 @@
 use std::f64::consts::FRAC_1_PI;
 
 use num_complex::Complex64;
-use quadrature::double_exponential;
 
 use super::model::HestonStochCorrPricer;
+use crate::pricing::cf_quadrature::integrate_to_convergence;
 use crate::traits::TimeExt;
 
 impl HestonStochCorrPricer {
@@ -34,7 +34,7 @@ impl HestonStochCorrPricer {
       val.re
     };
 
-    let integral = double_exponential::integrate(integrand, 0.0, 200.0, 1e-8).integral;
+    let integral = integrate_to_convergence(integrand, 0.0, 1e-8);
     let call = (-alpha * log_k).exp() * FRAC_1_PI * integral;
     call.max(0.0)
   }

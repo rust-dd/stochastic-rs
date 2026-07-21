@@ -7,9 +7,9 @@ use ndarray::Array1;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use num_complex::Complex64;
-use quadrature::double_exponential;
 
 use super::FourierModelExt;
+use crate::pricing::cf_quadrature::integrate_to_convergence;
 
 /// Carr–Madan FFT pricer.
 ///
@@ -261,10 +261,8 @@ impl GilPelaezPricer {
       (kernel * phi).re
     };
 
-    let p1 =
-      0.5 + FRAC_1_PI * double_exponential::integrate(integrand_p1, 1e-8, 100.0, 1e-8).integral;
-    let p2 =
-      0.5 + FRAC_1_PI * double_exponential::integrate(integrand_p2, 1e-8, 100.0, 1e-8).integral;
+    let p1 = 0.5 + FRAC_1_PI * integrate_to_convergence(integrand_p1, 1e-8, 1e-8);
+    let p2 = 0.5 + FRAC_1_PI * integrate_to_convergence(integrand_p2, 1e-8, 1e-8);
 
     let call = s * (-q * t).exp() * p1 - k * (-r * t).exp() * p2;
     call.max(0.0)
@@ -295,7 +293,7 @@ impl LewisPricer {
       (kernel * phi).re
     };
 
-    let integral = double_exponential::integrate(integrand, 1e-8, 100.0, 1e-8).integral;
+    let integral = integrate_to_convergence(integrand, 1e-8, 1e-8);
 
     let call = s * disc * fwd_factor - sqrt_sk * disc * FRAC_1_PI * integral;
     call.max(0.0)
