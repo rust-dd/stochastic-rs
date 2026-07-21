@@ -116,7 +116,11 @@ mod tests {
       q: 0.0,
     };
     // (K, τ, converged call)
-    let cases = [(100.0, 0.005, 0.576581), (105.0, 0.01, 0.002966), (95.0, 0.01, 5.052617)];
+    let cases = [
+      (100.0, 0.005, 0.576581),
+      (105.0, 0.01, 0.002966),
+      (95.0, 0.01, 5.052617),
+    ];
     for (k, t, expected) in cases {
       let gp = GilPelaezPricer::price_call(&model, 100.0, k, 0.05, 0.0, t);
       let lw = LewisPricer::price_call(&model, 100.0, k, 0.05, 0.0, t);
@@ -128,7 +132,10 @@ mod tests {
         (lw - expected).abs() < 1e-3,
         "Lewis at K={k}, τ={t}: got {lw}, converged {expected}"
       );
-      assert!((gp - lw).abs() < 1e-3, "Gil-Pelaez {gp} and Lewis {lw} must agree");
+      assert!(
+        (gp - lw).abs() < 1e-3,
+        "Gil-Pelaez {gp} and Lewis {lw} must agree"
+      );
     }
   }
 

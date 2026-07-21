@@ -33,7 +33,19 @@ fn carr_madan_reduces_to_heston_short_dated() {
   let (rho, kappa, theta, sigma, v0, s, r) = (-0.7, 2.0, 0.04, 0.3, 0.04, 100.0, 0.03);
   for tau in [0.02, 0.005, 0.002] {
     let heston = HestonPricer::new(
-      s, v0, s, r, None, rho, kappa, theta, sigma, Some(0.0), Some(tau), None, None,
+      s,
+      v0,
+      s,
+      r,
+      None,
+      rho,
+      kappa,
+      theta,
+      sigma,
+      Some(0.0),
+      Some(tau),
+      None,
+      None,
     );
     let heston_call = heston.calculate_call_put().0;
     let hscm = HestonStochCorrPricer::new(
