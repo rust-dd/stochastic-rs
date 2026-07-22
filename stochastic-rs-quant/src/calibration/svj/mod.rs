@@ -33,4 +33,7 @@ pub use params::SVJParams;
 pub use result::SVJCalibrationResult;
 
 #[cfg(test)]
+mod quadrature_tests;
+
+#[cfg(test)]
 mod tests;

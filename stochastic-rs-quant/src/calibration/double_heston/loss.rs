@@ -4,12 +4,10 @@ use nalgebra::DMatrix;
 use nalgebra::DVector;
 use num_complex::Complex64;
 
-use super::super::GL_U_MAX;
-use super::super::gauss_legendre_64;
+use super::super::integrate_gl_to_convergence;
 use super::super::periodic_map;
 use super::calibrator::DoubleHestonCalibrator;
 use super::params::DoubleHestonParams;
-use super::params::EPS;
 use super::params::KAPPA_MIN;
 use super::params::P_KAPPA;
 use super::params::P_SIGMA;
@@ -65,8 +63,8 @@ fn factor_cd(
   (c_val, d_val)
 }
 
-/// Price a European call option under the double Heston model via the
-/// Gil-Pelaez quadrature over 64-point Gauss-Legendre nodes.
+/// Price a European call option under the double Heston model via a
+/// convergence-controlled Gil-Pelaez quadrature.
 pub(super) fn double_heston_call_price(
   p: &DoubleHestonParams,
   s: f64,
@@ -75,43 +73,41 @@ pub(super) fn double_heston_call_price(
   q: f64,
   tau: f64,
 ) -> f64 {
-  let (nodes, weights) = gauss_legendre_64();
-  let scale = 0.5 * GL_U_MAX;
   let ln_ks = (k / s).ln();
-
-  let mut p1_int = 0.0_f64;
-  let mut p2_int = 0.0_f64;
-
   let phi_neg_i = double_heston_cf(p, r, q, tau, Complex64::new(0.0, -1.0));
   let phi_neg_i_norm = phi_neg_i.norm();
+  let disc_r = (-r * tau).exp();
+  let disc_q = (-q * tau).exp();
 
-  for (&x, &w) in nodes.iter().zip(weights.iter()) {
-    let u_real = scale * (x + 1.0);
-    let w_s = scale * w;
-    if u_real <= EPS {
-      continue;
-    }
+  let Some([integral]) = integrate_gl_to_convergence(
+    |u_real| {
+      let xi = Complex64::new(u_real, 0.0);
+      let xi_shift = Complex64::new(u_real, -1.0);
 
-    let xi = Complex64::new(u_real, 0.0);
-    let xi_shift = Complex64::new(u_real, -1.0);
+      let phi = double_heston_cf(p, r, q, tau, xi);
+      let phi_shift = double_heston_cf(p, r, q, tau, xi_shift);
 
-    let phi = double_heston_cf(p, r, q, tau, xi);
-    let phi_shift = double_heston_cf(p, r, q, tau, xi_shift);
+      let kernel = (Complex64::new(0.0, -u_real * ln_ks)).exp()
+        / (Complex64::i() * Complex64::new(u_real, 0.0));
 
-    let kernel =
-      (Complex64::new(0.0, -u_real * ln_ks)).exp() / (Complex64::i() * Complex64::new(u_real, 0.0));
+      let p1 = if phi_neg_i_norm > 1e-30 {
+        (kernel * phi_shift / phi_neg_i).re
+      } else {
+        0.0
+      };
+      Some([s * disc_q * p1 - k * disc_r * (kernel * phi).re])
+    },
+    1e-8,
+  ) else {
+    return f64::NAN;
+  };
 
-    p2_int += w_s * (kernel * phi).re;
-    if phi_neg_i_norm > 1e-30 {
-      p1_int += w_s * (kernel * phi_shift / phi_neg_i).re;
-    }
+  let call = 0.5 * (s * disc_q - k * disc_r) + FRAC_1_PI * integral;
+  if call.is_finite() {
+    call.max(0.0)
+  } else {
+    call
   }
-
-  let p1 = 0.5 + FRAC_1_PI * p1_int;
-  let p2 = 0.5 + FRAC_1_PI * p2_int;
-
-  let call = s * (-q * tau).exp() * p1 - k * (-r * tau).exp() * p2;
-  call.max(0.0)
 }
 
 impl DoubleHestonCalibrator {
@@ -124,10 +120,10 @@ impl DoubleHestonCalibrator {
       let tau = self.flat_t[idx];
       let call = double_heston_call_price(p, self.s[idx], self.k[idx], self.r, q_val, tau);
       c_model[idx] = match self.option_type {
-        OptionType::Call => call.max(0.0),
+        OptionType::Call => call,
         OptionType::Put => {
           let put = call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
-          put.max(0.0)
+          if put.is_finite() { put.max(0.0) } else { put }
         }
       };
     }

@@ -34,4 +34,7 @@ pub use types::LevyParams;
 pub use types::MarketSlice;
 
 #[cfg(test)]
+mod quadrature_tests;
+
+#[cfg(test)]
 mod tests;

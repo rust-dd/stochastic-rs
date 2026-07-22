@@ -39,4 +39,7 @@ pub use params::DoubleHestonParams;
 pub use result::DoubleHestonCalibrationResult;
 
 #[cfg(test)]
+mod quadrature_tests;
+
+#[cfg(test)]
 mod tests;

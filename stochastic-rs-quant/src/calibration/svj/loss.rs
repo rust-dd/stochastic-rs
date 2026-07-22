@@ -12,15 +12,13 @@ use super::calibrator::KAPPA_MIN;
 use super::calibrator::SIGMA_V_MIN;
 use super::calibrator::SVJCalibrator;
 use super::calibrator::THETA_MIN;
-use super::params::EPS;
 use super::params::P_MU_J;
 use super::params::P_SIGMA_J;
 use super::params::RHO_BOUND;
 use crate::CalibrationLossScore;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
-use crate::calibration::GL_U_MAX;
-use crate::calibration::gauss_legendre_64;
+use crate::calibration::integrate_gl_to_convergence;
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -65,39 +63,32 @@ pub(super) fn bates_cf(p: &SVJParams, s: f64, r: f64, q: f64, tau: f64, u: Compl
   log_phi.exp()
 }
 
-/// Price a European call option under the Bates/SVJ model using
-/// Gauss-Legendre quadrature over the Gil-Pelaez integral.
+/// Price a European call option under the Bates/SVJ model using a
+/// convergence-controlled Gauss-Legendre quadrature.
 pub(super) fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-  let (nodes, weights) = gauss_legendre_64();
-  let scale = 0.5 * GL_U_MAX;
-
-  let mut i1 = 0.0_f64;
-  let mut i2 = 0.0_f64;
-
-  for (&x, &w) in nodes.iter().zip(weights.iter()) {
-    let u_real = scale * (x + 1.0);
-    let w_s = scale * w;
-    if u_real <= EPS {
-      continue;
-    }
-
-    let xi = Complex64::new(u_real, 0.0);
-    let xi_shift = Complex64::new(u_real, -1.0);
-
-    let phi = bates_cf(p, s, r, q, tau, xi);
-    let phi_shift = bates_cf(p, s, r, q, tau, xi_shift);
-
-    let kernel = (Complex64::new(0.0, -u_real * k.ln())).exp()
-      / (Complex64::i() * Complex64::new(u_real, 0.0));
-
-    i1 += w_s * (kernel * phi_shift).re;
-    i2 += w_s * (kernel * phi).re;
-  }
+  let Some([integral]) = integrate_gl_to_convergence(
+    |u_real| {
+      let xi = Complex64::new(u_real, 0.0);
+      let xi_shift = Complex64::new(u_real, -1.0);
+      let phi = bates_cf(p, s, r, q, tau, xi);
+      let phi_shift = bates_cf(p, s, r, q, tau, xi_shift);
+      let kernel = (Complex64::new(0.0, -u_real * k.ln())).exp()
+        / (Complex64::i() * Complex64::new(u_real, 0.0));
+      Some([(kernel * (phi_shift - k * phi)).re])
+    },
+    1e-8,
+  ) else {
+    return f64::NAN;
+  };
 
   let disc_r = (-r * tau).exp();
   let disc_q = (-q * tau).exp();
-  let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * (i1 - k * i2);
-  call.max(0.0)
+  let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * integral;
+  if call.is_finite() {
+    call.max(0.0)
+  } else {
+    call
+  }
 }
 
 impl SVJCalibrator {
@@ -110,10 +101,10 @@ impl SVJCalibrator {
       let tau = self.flat_t[idx];
       let call = bates_call_price(p, self.s[idx], self.k[idx], self.r, q_val, tau);
       c_model[idx] = match self.option_type {
-        OptionType::Call => call.max(0.0),
+        OptionType::Call => call,
         OptionType::Put => {
           let put = call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
-          put.max(0.0)
+          if put.is_finite() { put.max(0.0) } else { put }
         }
       };
     }

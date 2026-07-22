@@ -10,8 +10,7 @@ use super::params::EPS;
 use super::params::HestonParams;
 use super::params::finite_c64;
 use crate::OptionType;
-use crate::calibration::GL_U_MAX;
-use crate::calibration::gauss_legendre_64;
+use crate::calibration::integrate_gl_to_convergence;
 
 impl HestonCalibrator {
   pub(super) fn cui_terms_for(
@@ -120,129 +119,123 @@ impl HestonCalibrator {
     k: f64,
     tau: f64,
   ) -> Option<(f64, [f64; 5])> {
-    let (nodes, weights) = gauss_legendre_64();
-    let scale = 0.5 * GL_U_MAX;
     let sigma = params.sigma;
     let sigma2 = sigma * sigma;
     let sigma3 = sigma2 * sigma;
 
-    let mut i1 = 0.0_f64;
-    let mut i2 = 0.0_f64;
-    let mut g1 = [0.0_f64; 5];
-    let mut g2 = [0.0_f64; 5];
+    let integrals = integrate_gl_to_convergence(
+      |u_real| {
+        let k_kernel = (Complex64::new(0.0, -u_real * k.ln())).exp()
+          / (Complex64::i() * Complex64::new(u_real, 0.0));
 
-    for (&x, &w) in nodes.iter().zip(weights.iter()) {
-      let u_real = scale * (x + 1.0);
-      let w_scaled = scale * w;
-      if u_real <= EPS {
-        continue;
-      }
-      let k_kernel = (Complex64::new(0.0, -u_real * k.ln())).exp()
-        / (Complex64::i() * Complex64::new(u_real, 0.0));
+        let terms_u = self.cui_terms_for(params, s, Complex64::new(u_real, 0.0), tau)?;
+        let terms_shift = self.cui_terms_for(params, s, Complex64::new(u_real, -1.0), tau)?;
 
-      let terms_u = self.cui_terms_for(params, s, Complex64::new(u_real, 0.0), tau)?;
-      let terms_shift = self.cui_terms_for(params, s, Complex64::new(u_real, -1.0), tau)?;
+        let d_prime_rho_u = -sigma * terms_u.iu * terms_u.xi / terms_u.d;
+        let d_prime_rho_shift = -sigma * terms_shift.iu * terms_shift.xi / terms_shift.d;
+        let xi_prime_rho_u = -sigma * terms_u.iu;
+        let xi_prime_rho_shift = -sigma * terms_shift.iu;
 
-      let d_prime_rho_u = -sigma * terms_u.iu * terms_u.xi / terms_u.d;
-      let d_prime_rho_shift = -sigma * terms_shift.iu * terms_shift.xi / terms_shift.d;
-      let xi_prime_rho_u = -sigma * terms_u.iu;
-      let xi_prime_rho_shift = -sigma * terms_shift.iu;
+        let d_prime_kappa_u = terms_u.xi / terms_u.d;
+        let d_prime_kappa_shift = terms_shift.xi / terms_shift.d;
+        let xi_prime_kappa = Complex64::new(1.0, 0.0);
 
-      let d_prime_kappa_u = terms_u.xi / terms_u.d;
-      let d_prime_kappa_shift = terms_shift.xi / terms_shift.d;
-      let xi_prime_kappa = Complex64::new(1.0, 0.0);
+        let d_prime_sigma_u =
+          (sigma * terms_u.u2_iu - params.rho * terms_u.iu * terms_u.xi) / terms_u.d;
+        let d_prime_sigma_shift = (sigma * terms_shift.u2_iu
+          - params.rho * terms_shift.iu * terms_shift.xi)
+          / terms_shift.d;
+        let xi_prime_sigma_u = -params.rho * terms_u.iu;
+        let xi_prime_sigma_shift = -params.rho * terms_shift.iu;
 
-      let d_prime_sigma_u =
-        (sigma * terms_u.u2_iu - params.rho * terms_u.iu * terms_u.xi) / terms_u.d;
-      let d_prime_sigma_shift =
-        (sigma * terms_shift.u2_iu - params.rho * terms_shift.iu * terms_shift.xi) / terms_shift.d;
-      let xi_prime_sigma_u = -params.rho * terms_u.iu;
-      let xi_prime_sigma_shift = -params.rho * terms_shift.iu;
+        let (d_a_rho_u, _d_b_rho_u, d_dlog_rho_u) =
+          self.cui_da_db_ddlog(&terms_u, d_prime_rho_u, xi_prime_rho_u, tau, false)?;
+        let (d_a_rho_shift, _d_b_rho_shift, d_dlog_rho_shift) = self.cui_da_db_ddlog(
+          &terms_shift,
+          d_prime_rho_shift,
+          xi_prime_rho_shift,
+          tau,
+          false,
+        )?;
 
-      let (d_a_rho_u, _d_b_rho_u, d_dlog_rho_u) =
-        self.cui_da_db_ddlog(&terms_u, d_prime_rho_u, xi_prime_rho_u, tau, false)?;
-      let (d_a_rho_shift, _d_b_rho_shift, d_dlog_rho_shift) = self.cui_da_db_ddlog(
-        &terms_shift,
-        d_prime_rho_shift,
-        xi_prime_rho_shift,
-        tau,
-        false,
-      )?;
+        let (d_a_kappa_u, _d_b_kappa_u, d_dlog_kappa_u) =
+          self.cui_da_db_ddlog(&terms_u, d_prime_kappa_u, xi_prime_kappa, tau, true)?;
+        let (d_a_kappa_shift, _d_b_kappa_shift, d_dlog_kappa_shift) =
+          self.cui_da_db_ddlog(&terms_shift, d_prime_kappa_shift, xi_prime_kappa, tau, true)?;
 
-      let (d_a_kappa_u, _d_b_kappa_u, d_dlog_kappa_u) =
-        self.cui_da_db_ddlog(&terms_u, d_prime_kappa_u, xi_prime_kappa, tau, true)?;
-      let (d_a_kappa_shift, _d_b_kappa_shift, d_dlog_kappa_shift) =
-        self.cui_da_db_ddlog(&terms_shift, d_prime_kappa_shift, xi_prime_kappa, tau, true)?;
+        let (d_a_sigma_u, _d_b_sigma_u, d_dlog_sigma_u) =
+          self.cui_da_db_ddlog(&terms_u, d_prime_sigma_u, xi_prime_sigma_u, tau, false)?;
+        let (d_a_sigma_shift, _d_b_sigma_shift, d_dlog_sigma_shift) = self.cui_da_db_ddlog(
+          &terms_shift,
+          d_prime_sigma_shift,
+          xi_prime_sigma_shift,
+          tau,
+          false,
+        )?;
 
-      let (d_a_sigma_u, _d_b_sigma_u, d_dlog_sigma_u) =
-        self.cui_da_db_ddlog(&terms_u, d_prime_sigma_u, xi_prime_sigma_u, tau, false)?;
-      let (d_a_sigma_shift, _d_b_sigma_shift, d_dlog_sigma_shift) = self.cui_da_db_ddlog(
-        &terms_shift,
-        d_prime_sigma_shift,
-        xi_prime_sigma_shift,
-        tau,
-        false,
-      )?;
+        let h_v0_u = -terms_u.a;
+        let h_theta_u = 2.0 * params.kappa / sigma2 * terms_u.dlog
+          - tau * params.kappa * params.rho * terms_u.iu / sigma;
+        let h_rho_u = -params.v0 * d_a_rho_u
+          + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_rho_u
+          - tau * params.kappa * params.theta * terms_u.iu / sigma;
+        let h_kappa_u = -params.v0 * d_a_kappa_u
+          + (2.0 * params.theta / sigma2) * terms_u.dlog
+          + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_kappa_u
+          - tau * params.theta * params.rho * terms_u.iu / sigma;
+        let h_sigma_u = -params.v0 * d_a_sigma_u
+          - (4.0 * params.kappa * params.theta / sigma3) * terms_u.dlog
+          + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_sigma_u
+          + tau * params.kappa * params.theta * params.rho * terms_u.iu / sigma2;
 
-      let h_v0_u = -terms_u.a;
-      let h_theta_u = 2.0 * params.kappa / sigma2 * terms_u.dlog
-        - tau * params.kappa * params.rho * terms_u.iu / sigma;
-      let h_rho_u = -params.v0 * d_a_rho_u
-        + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_rho_u
-        - tau * params.kappa * params.theta * terms_u.iu / sigma;
-      let h_kappa_u = -params.v0 * d_a_kappa_u
-        + (2.0 * params.theta / sigma2) * terms_u.dlog
-        + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_kappa_u
-        - tau * params.theta * params.rho * terms_u.iu / sigma;
-      let h_sigma_u = -params.v0 * d_a_sigma_u
-        - (4.0 * params.kappa * params.theta / sigma3) * terms_u.dlog
-        + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_sigma_u
-        + tau * params.kappa * params.theta * params.rho * terms_u.iu / sigma2;
+        let h_v0_shift = -terms_shift.a;
+        let h_theta_shift = 2.0 * params.kappa / sigma2 * terms_shift.dlog
+          - tau * params.kappa * params.rho * terms_shift.iu / sigma;
+        let h_rho_shift = -params.v0 * d_a_rho_shift
+          + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_rho_shift
+          - tau * params.kappa * params.theta * terms_shift.iu / sigma;
+        let h_kappa_shift = -params.v0 * d_a_kappa_shift
+          + (2.0 * params.theta / sigma2) * terms_shift.dlog
+          + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_kappa_shift
+          - tau * params.theta * params.rho * terms_shift.iu / sigma;
+        let h_sigma_shift = -params.v0 * d_a_sigma_shift
+          - (4.0 * params.kappa * params.theta / sigma3) * terms_shift.dlog
+          + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_sigma_shift
+          + tau * params.kappa * params.theta * params.rho * terms_shift.iu / sigma2;
 
-      let h_v0_shift = -terms_shift.a;
-      let h_theta_shift = 2.0 * params.kappa / sigma2 * terms_shift.dlog
-        - tau * params.kappa * params.rho * terms_shift.iu / sigma;
-      let h_rho_shift = -params.v0 * d_a_rho_shift
-        + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_rho_shift
-        - tau * params.kappa * params.theta * terms_shift.iu / sigma;
-      let h_kappa_shift = -params.v0 * d_a_kappa_shift
-        + (2.0 * params.theta / sigma2) * terms_shift.dlog
-        + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_kappa_shift
-        - tau * params.theta * params.rho * terms_shift.iu / sigma;
-      let h_sigma_shift = -params.v0 * d_a_sigma_shift
-        - (4.0 * params.kappa * params.theta / sigma3) * terms_shift.dlog
-        + (2.0 * params.kappa * params.theta / sigma2) * d_dlog_sigma_shift
-        + tau * params.kappa * params.theta * params.rho * terms_shift.iu / sigma2;
+        let dphi_u = [
+          terms_u.phi * h_v0_u,
+          terms_u.phi * h_kappa_u,
+          terms_u.phi * h_theta_u,
+          terms_u.phi * h_sigma_u,
+          terms_u.phi * h_rho_u,
+        ];
+        let dphi_shift = [
+          terms_shift.phi * h_v0_shift,
+          terms_shift.phi * h_kappa_shift,
+          terms_shift.phi * h_theta_shift,
+          terms_shift.phi * h_sigma_shift,
+          terms_shift.phi * h_rho_shift,
+        ];
 
-      let dphi_u = [
-        terms_u.phi * h_v0_u,
-        terms_u.phi * h_kappa_u,
-        terms_u.phi * h_theta_u,
-        terms_u.phi * h_sigma_u,
-        terms_u.phi * h_rho_u,
-      ];
-      let dphi_shift = [
-        terms_shift.phi * h_v0_shift,
-        terms_shift.phi * h_kappa_shift,
-        terms_shift.phi * h_theta_shift,
-        terms_shift.phi * h_sigma_shift,
-        terms_shift.phi * h_rho_shift,
-      ];
-
-      i1 += w_scaled * (k_kernel * terms_shift.phi).re;
-      i2 += w_scaled * (k_kernel * terms_u.phi).re;
-      for j in 0..5 {
-        g1[j] += w_scaled * (k_kernel * dphi_shift[j]).re;
-        g2[j] += w_scaled * (k_kernel * dphi_u[j]).re;
-      }
-    }
+        Some([
+          (k_kernel * (terms_shift.phi - k * terms_u.phi)).re,
+          (k_kernel * (dphi_shift[0] - k * dphi_u[0])).re,
+          (k_kernel * (dphi_shift[1] - k * dphi_u[1])).re,
+          (k_kernel * (dphi_shift[2] - k * dphi_u[2])).re,
+          (k_kernel * (dphi_shift[3] - k * dphi_u[3])).re,
+          (k_kernel * (dphi_shift[4] - k * dphi_u[4])).re,
+        ])
+      },
+      1e-8,
+    )?;
 
     let disc_r = (-self.r * tau).exp();
     let disc_q = (-self.q.unwrap_or(0.0) * tau).exp();
-    let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * (i1 - k * i2);
+    let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * integrals[0];
     let mut grad = [0.0_f64; 5];
     for j in 0..5 {
-      grad[j] = disc_r * FRAC_1_PI * (g1[j] - k * g2[j]);
+      grad[j] = disc_r * FRAC_1_PI * integrals[1 + j];
     }
 
     if call.is_finite() && grad.iter().all(|g| g.is_finite()) {

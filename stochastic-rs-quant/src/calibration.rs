@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 
 use gauss_quad::GaussLegendre;
 use nalgebra::DVector;
+use stochastic_rs_distributions::FloatExt;
 
 use crate::CalibrationLossScore;
 
@@ -24,7 +25,9 @@ pub mod sabr;
 pub mod sabr_caplet;
 pub mod svj;
 
-// Re-export key calibration types for convenience.
+#[cfg(test)]
+mod quadrature_tests;
+
 pub use bsm::BSMCalibrationResult;
 pub use bsm::BSMCalibrator;
 pub use bsm::BSMParams;
@@ -62,19 +65,85 @@ pub use svj::SVJCalibrationResult;
 pub use svj::SVJCalibrator;
 pub use svj::SVJParams;
 
-/// Default upper integration limit for Gil-Pelaez integrals in calibrators.
-pub(crate) const GL_U_MAX: f64 = 100.0;
+const GL_PANEL_WIDTH: f64 = 50.0;
+const GL_MAX_PANELS: usize = 256;
 
-/// Cached 64-point Gauss-Legendre nodes and weights via `gauss_quad` crate.
-pub(crate) fn gauss_legendre_64() -> (&'static [f64], &'static [f64]) {
-  static GL64: OnceLock<(Vec<f64>, Vec<f64>)> = OnceLock::new();
-  let (nodes, weights) = GL64.get_or_init(|| {
-    let quad = GaussLegendre::new(64.try_into().unwrap());
-    let nodes: Vec<f64> = quad.nodes().copied().collect();
-    let weights: Vec<f64> = quad.weights().copied().collect();
-    (nodes, weights)
-  });
-  (nodes.as_slice(), weights.as_slice())
+fn gauss_legendre_64() -> &'static GaussLegendre {
+  static GL64: OnceLock<GaussLegendre> = OnceLock::new();
+  GL64.get_or_init(|| GaussLegendre::new(64.try_into().unwrap()))
+}
+
+fn compensated_add<T: FloatExt>(sum: &mut T, correction: &mut T, value: T) {
+  let adjusted = value - *correction;
+  let next = *sum + adjusted;
+  *correction = (next - *sum) - adjusted;
+  *sum = next;
+}
+
+/// Integrate coupled characteristic-function terms over `[0, ∞)`.
+///
+/// Every fixed-width panel receives a fresh 64-point Gauss-Legendre rule, so
+/// extending the effective upper bound also increases the node count without
+/// reducing node density. Two consecutive panels must be negligible in every
+/// component; this keeps price and gradient integrals on the same converged
+/// domain and avoids stopping on a single oscillatory cancellation.
+pub(crate) fn integrate_gl_to_convergence<T: FloatExt, const N: usize, F>(
+  integrand: F,
+  tol: T,
+) -> Option<[T; N]>
+where
+  F: Fn(f64) -> Option<[T; N]>,
+{
+  debug_assert!(N > 0);
+  debug_assert!(tol.is_finite() && tol > T::zero());
+
+  let quadrature = gauss_legendre_64();
+  let half_width = 0.5 * GL_PANEL_WIDTH;
+  let mut total = [T::zero(); N];
+  let mut total_correction = [T::zero(); N];
+  let mut negligible_streak = 0usize;
+
+  for panel_index in 0..GL_MAX_PANELS {
+    let midpoint = (panel_index as f64 + 0.5) * GL_PANEL_WIDTH;
+    let mut panel = [T::zero(); N];
+    let mut panel_correction = [T::zero(); N];
+
+    for (node, weight) in quadrature.nodes().zip(quadrature.weights()) {
+      let values = integrand(midpoint + half_width * *node)?;
+      if values.iter().any(|value| !value.is_finite()) {
+        return None;
+      }
+
+      for component in 0..N {
+        compensated_add(
+          &mut panel[component],
+          &mut panel_correction[component],
+          T::from_f64_fast(half_width * *weight) * values[component],
+        );
+      }
+    }
+
+    for component in 0..N {
+      compensated_add(
+        &mut total[component],
+        &mut total_correction[component],
+        panel[component],
+      );
+    }
+
+    let negligible =
+      (0..N).all(|component| panel[component].abs() <= tol * total[component].abs().max(T::one()));
+    if negligible {
+      negligible_streak += 1;
+      if negligible_streak == 2 {
+        return Some(total);
+      }
+    } else {
+      negligible_streak = 0;
+    }
+  }
+
+  None
 }
 
 /// Periodic linear extension mapping `x` into `[c, d]`.
