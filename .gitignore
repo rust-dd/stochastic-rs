@@ -58,3 +58,4 @@ website/.source/
 website/.env*.local
 
 docs
+*.tsbuildinfo

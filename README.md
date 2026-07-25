@@ -1,12 +1,16 @@
 ![Build Workflow](https://github.com/rust-dd/stochastic-rs/actions/workflows/rust.yml/badge.svg)
 [![Crates.io](https://img.shields.io/crates/v/stochastic-rs?style=flat-square)](https://crates.io/crates/stochastic-rs)
+[![docs.rs](https://img.shields.io/docsrs/stochastic-rs?style=flat-square)](https://docs.rs/stochastic-rs)
+[![Downloads](https://img.shields.io/crates/d/stochastic-rs?style=flat-square)](https://crates.io/crates/stochastic-rs)
+[![PyPI](https://img.shields.io/pypi/v/stochastic-rs?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/stochastic-rs/)
 ![License](https://img.shields.io/crates/l/stochastic-rs?style=flat-square)
 [![codecov](https://codecov.io/gh/rust-dd/stochastic-rs/graph/badge.svg)](https://codecov.io/gh/rust-dd/stochastic-rs)
 
 # stochastic-rs
 
-A high-performance Rust library for stochastic process simulation,
-quantitative finance, statistics, copulas, distributions, and
+**Quantitative finance in Rust** — a high-performance library for
+stochastic process simulation, option pricing, model calibration,
+volatility surfaces, fixed income, risk, statistics, copulas, and
 neural-network volatility surrogates. Generic over `f32` / `f64`, with
 SIMD acceleration on CPU and CUDA / Metal / Accelerate / cubecl backends
 where they pay off, and first-class Python bindings via PyO3.
@@ -50,7 +54,7 @@ Highlights:
 
 ```toml
 [dependencies]
-stochastic-rs = "2.0.0"
+stochastic-rs = "2.5"
 ```
 
 ```rust

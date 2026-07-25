@@ -15,6 +15,10 @@ export const baseOptions: BaseLayoutProps = {
       active: 'nested-url',
     },
     {
+      text: 'Benchmarks',
+      url: '/docs/benchmarks',
+    },
+    {
       text: 'crates.io',
       url: 'https://crates.io/crates/stochastic-rs',
       external: true,
@@ -26,9 +30,9 @@ export const baseOptions: BaseLayoutProps = {
     },
     {
       text: 'GitHub',
-      url: 'https://github.com/dancixx/stochastic-rs',
+      url: 'https://github.com/rust-dd/stochastic-rs',
       external: true,
     },
   ],
-  githubUrl: 'https://github.com/dancixx/stochastic-rs',
+  githubUrl: 'https://github.com/rust-dd/stochastic-rs',
 };

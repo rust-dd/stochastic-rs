@@ -4,9 +4,9 @@ version.workspace = true
 edition = "2024"
 license = "MIT"
 description = "Bivariate, multivariate, and empirical copulas."
-homepage = "https://github.com/dancixx/stochastic-rs"
+homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-copulas"
-repository = "https://github.com/dancixx/stochastic-rs"
+repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["copula", "dependence", "statistics", "gaussian", "vine"]
 categories = ["mathematics", "simulation", "science"]
 

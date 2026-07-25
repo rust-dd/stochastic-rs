@@ -4,26 +4,60 @@ build-backend = "maturin"
 
 [project]
 name = "stochastic-rs"
-description = "A high-performance Rust library for simulating stochastic processes with first-class bindings."
+description = "Quantitative finance for Python, powered by Rust: 120+ stochastic processes, option pricing, model calibration, volatility surfaces, fixed income, risk and copulas — numpy-in / numpy-out."
 requires-python = ">=3.9"
 dynamic = ["version"]
 dependencies = ["numpy"]
 readme = "README.md"
 license = {text = "MIT"}
-keywords = ["stochastic", "quant", "finance", "simulation", "statistics"]
+keywords = [
+  "quantitative-finance",
+  "option-pricing",
+  "quantlib",
+  "stochastic-processes",
+  "monte-carlo",
+  "derivatives",
+  "volatility",
+  "heston",
+  "calibration",
+  "fixed-income",
+  "risk-management",
+  "copula",
+  "sde",
+  "rough-volatility",
+]
 classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Intended Audience :: Science/Research",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Rust",
-  "Topic :: Scientific/Engineering :: Mathematics",
   "Topic :: Office/Business :: Financial",
+  "Topic :: Office/Business :: Financial :: Investment",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "numpy", "scipy"]
 
 [project.urls]
-Homepage = "https://github.com/dancixx/stochastic-rs"
-Repository = "https://github.com/dancixx/stochastic-rs"
-Documentation = "https://docs.rs/stochastic-rs"
+Homepage = "https://stochastic.rust-dd.com"
+Documentation = "https://stochastic.rust-dd.com/docs/python"
+Repository = "https://github.com/rust-dd/stochastic-rs"
+Issues = "https://github.com/rust-dd/stochastic-rs/issues"
+Changelog = "https://github.com/rust-dd/stochastic-rs/releases"
 
 [tool.pytest.ini_options]
 testpaths = ["stochastic-rs-py/tests"]

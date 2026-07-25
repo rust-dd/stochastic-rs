@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use stochastic-rs in your research, please cite it as below."
+title: "stochastic-rs: quantitative finance and stochastic process simulation in Rust"
+abstract: >-
+  stochastic-rs is an open-source Rust library for quantitative finance and
+  stochastic process simulation. It provides 120+ stochastic processes
+  (diffusion, jump, fractional and rough volatility, short-rate, HJM, LMM),
+  option pricing and model calibration (Black-Scholes-Merton, Heston, SABR,
+  rough Bergomi, Levy, double Heston), volatility surface construction
+  (SVI, SSVI, SABR smile), fixed income and credit, statistical estimators
+  (Hurst exponent, maximum likelihood for diffusions, realised variance),
+  copulas, and neural-network volatility surrogates. Implementations are
+  generic over f32/f64, SIMD-accelerated on CPU with optional CUDA, Metal
+  and Accelerate backends, and exposed to Python through PyO3.
+type: software
+authors:
+  - family-names: Boros
+    given-names: Dániel
+    email: dancixx@gmail.com
+    orcid: "https://orcid.org/0009-0008-1207-2251"
+repository-code: "https://github.com/rust-dd/stochastic-rs"
+url: "https://stochastic.rust-dd.com"
+license: MIT
+version: 2.5.4
+date-released: "2026-07-25"
+keywords:
+  - quantitative finance
+  - stochastic processes
+  - option pricing
+  - model calibration
+  - Monte Carlo
+  - rough volatility
+  - fractional Brownian motion
+  - copulas
+  - Rust

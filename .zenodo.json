@@ -1,0 +1,45 @@
+{
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "mit",
+  "title": "stochastic-rs: quantitative finance and stochastic process simulation in Rust",
+  "description": "<p>stochastic-rs is an open-source Rust library for quantitative finance and stochastic process simulation.</p><p>It provides 120+ stochastic processes (diffusion, jump, fractional and rough volatility, short-rate, HJM, LMM), option pricing and model calibration (Black-Scholes-Merton, Heston, SABR, rough Bergomi, L&eacute;vy, double Heston), volatility surface construction (SVI, SSVI, SABR smile), fixed income and credit modelling, statistical estimators (Hurst exponent, maximum likelihood for diffusions, realised variance), copulas, market microstructure models, and neural-network volatility surrogates.</p><p>Implementations are generic over f32/f64, SIMD-accelerated on CPU with optional CUDA, Metal and Accelerate backends, and exposed to Python through PyO3.</p><p>Documentation: <a href=\"https://stochastic.rust-dd.com\">stochastic.rust-dd.com</a></p>",
+  "creators": [
+    {
+      "name": "Boros, Dániel",
+      "orcid": "0009-0008-1207-2251"
+    }
+  ],
+  "keywords": [
+    "quantitative finance",
+    "stochastic processes",
+    "option pricing",
+    "model calibration",
+    "Monte Carlo",
+    "rough volatility",
+    "fractional Brownian motion",
+    "stochastic volatility",
+    "copulas",
+    "fixed income",
+    "Rust",
+    "SIMD",
+    "GPU computing"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://stochastic.rust-dd.com",
+      "relation": "isDocumentedBy",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://crates.io/crates/stochastic-rs",
+      "relation": "isIdenticalTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://pypi.org/project/stochastic-rs/",
+      "relation": "isIdenticalTo",
+      "scheme": "url"
+    }
+  ]
+}

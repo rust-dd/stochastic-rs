@@ -7,6 +7,7 @@ import {
 } from 'fumadocs-ui/page';
 import { notFound } from 'next/navigation';
 import { getMDXComponents } from '@/mdx-components';
+import { SITE } from '@/lib/site';
 import type { Metadata } from 'next';
 
 export default async function Page(props: {
@@ -40,8 +41,24 @@ export async function generateMetadata(props: {
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
+  const title = page.data.title;
+  const description = page.data.description ?? SITE.description;
+
   return {
-    title: page.data.title,
-    description: page.data.description,
+    title,
+    description,
+    alternates: { canonical: page.url },
+    openGraph: {
+      type: 'article',
+      url: page.url,
+      siteName: SITE.name,
+      title,
+      description,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
   };
 }

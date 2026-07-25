@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.5.3"
+version = "2.5.4"
 
 [workspace.dependencies]
 # Internal crates
@@ -110,12 +110,13 @@ name = "stochastic-rs"
 version.workspace = true
 edition = "2024"
 license = "MIT"
-description = "A Rust library for quant finance and simulating stochastic processes."
-homepage = "https://github.com/dancixx/stochastic-rs"
+description = "Quantitative finance in Rust: 120+ stochastic processes, option pricing, model calibration, volatility surfaces, fixed income, risk and copulas — SIMD/GPU accelerated, with Python bindings."
+homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs/latest/stochastic_rs/"
-repository = "https://github.com/dancixx/stochastic-rs"
+repository = "https://github.com/rust-dd/stochastic-rs"
 readme = "README.md"
-keywords = ["stochastic", "quant", "finance", "simulation", "statistics"]
+keywords = ["quantitative-finance", "option-pricing", "quantlib", "stochastic-processes", "monte-carlo"]
+categories = ["finance", "mathematics", "science", "simulation", "algorithms"]
 exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "src/ai/volatility/*TrainSet.txt.gz", ]
 
 [dependencies]
