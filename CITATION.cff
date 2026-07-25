@@ -23,6 +23,14 @@ url: "https://stochastic.rust-dd.com"
 license: MIT
 version: 2.5.4
 date-released: "2026-07-25"
+doi: 10.5281/zenodo.21553307
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21553307
+    description: Concept DOI — always resolves to the latest release.
+  - type: doi
+    value: 10.5281/zenodo.21553308
+    description: Version DOI for v2.5.4.
 keywords:
   - quantitative finance
   - stochastic processes

@@ -5,6 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/stochastic-rs?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/stochastic-rs/)
 ![License](https://img.shields.io/crates/l/stochastic-rs?style=flat-square)
 [![codecov](https://codecov.io/gh/rust-dd/stochastic-rs/graph/badge.svg)](https://codecov.io/gh/rust-dd/stochastic-rs)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21553307.svg)](https://doi.org/10.5281/zenodo.21553307)
 
 # stochastic-rs
 
