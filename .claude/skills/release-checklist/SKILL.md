@@ -92,6 +92,10 @@ If this is a stable release (vX.Y.0), also update
 rc.2 → stable cycle taught us to keep this updated *as breaking changes
 land*, not at the very end.
 
+Bump `CITATION.cff` alongside the crate version — `version` and
+`date-released`. Leave the two `identifiers:` DOIs alone for now; the
+version DOI is only known after stage 5.5.
+
 ## Stage 4 — local publish dry run
 
 ```bash
@@ -119,6 +123,31 @@ git push origin "vX.Y.Z"
 
 If GPG signing isn't configured, drop `-s` and use the unsigned `-a`
 form. Confirm the tag rendered correctly on GitHub before stage 6.
+
+## Stage 5.5 — GitHub release and Zenodo DOI
+
+`gh release create vX.Y.Z` is what mints the DOI: the repo carries a Zenodo
+webhook on `release` events, so every release is archived automatically.
+Zenodo never backfills — a release created before the webhook existed has no
+DOI and cannot get one retroactively.
+
+`.zenodo.json` at the repo root controls the record's title, abstract,
+keywords and ORCID. Without it Zenodo names the record
+`rust-dd/stochastic-rs: vX.Y.Z` with an empty description, so keep it in the
+tree at tag time.
+
+```bash
+gh release create "vX.Y.Z" --title "vX.Y.Z" --notes-file notes.md
+
+# The record appears within ~30 s. Two DOIs come back:
+curl -s 'https://zenodo.org/api/records?q=title:%22stochastic-rs%22&all_versions=true' \
+  | python3 -c "import sys,json; [print(h.get('conceptdoi'), h.get('doi'), h['metadata'].get('version')) for h in json.load(sys.stdin)['hits']['hits']]"
+```
+
+- **Concept DOI** (`10.5281/zenodo.21553307`) always resolves to the newest
+  version. The README badge uses it, so it never needs touching.
+- **Version DOI** changes every release. Update the second `identifiers:`
+  entry in `CITATION.cff` with it, then commit.
 
 ## Stage 6 — publish to crates.io
 
