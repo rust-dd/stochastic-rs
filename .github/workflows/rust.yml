@@ -157,8 +157,14 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
 
+      # Pinned rather than tracking `@nightly`: nightly-2026-07-25
+      # (rustc da86f4d07) ICEs in rustc_codegen_ssa compiling `tokio` under
+      # `-C instrument-coverage`, which takes down this job and only this job.
+      # nightly-2026-07-22 (rustc 0e29c21d9) is the last known-good toolchain.
+      # Bump once the upstream codegen fix lands.
       - uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: nightly-2026-07-22
           components: llvm-tools-preview
 
       - name: Add llvm-tools to PATH
