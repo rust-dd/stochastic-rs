@@ -74,6 +74,55 @@ impl GaussianHmm {
     scaling.iter().map(|s| s.ln()).sum()
   }
 
+  /// Filtered state probabilities $P(s_t = k \mid y_1, \dots, y_t)$, one row
+  /// per observation.
+  ///
+  /// Each row depends only on observations up to and including that index,
+  /// unlike [`Self::viterbi`], whose decoded path at any index may be revised
+  /// by later observations. That makes this the estimator to use when the
+  /// filtered state feeds a decision taken at time `t`.
+  pub fn filtered_state_probs(&self, observations: ArrayView1<f64>) -> Array2<f64> {
+    self.forward(observations).0
+  }
+
+  /// Advance a filtered state distribution by one observation.
+  ///
+  /// $O(K^2)$ per call, so a streaming caller can keep a filtered state
+  /// current without re-running the forward pass over a growing history.
+  /// `prev` is the filtered distribution after the previous observation; pass
+  /// [`Self::initial`] to start. The result is normalised.
+  pub fn filter_step(&self, prev: ArrayView1<f64>, observation: f64) -> Array1<f64> {
+    let k = self.n_states();
+    assert_eq!(prev.len(), k, "prev must have one entry per state");
+    let mut next = Array1::<f64>::zeros(k);
+    for j in 0..k {
+      let mut acc = 0.0;
+      for i in 0..k {
+        acc += prev[i] * self.transitions[[i, j]];
+      }
+      next[j] = acc * gauss_pdf(observation, self.means[j], self.stds[j]);
+    }
+    let z: f64 = next.sum();
+    if z > 0.0 {
+      next /= z;
+    } else {
+      // Underflow (observation implausible under every state): fall back to the
+      // predictive distribution so the filter degrades instead of emitting NaN.
+      for j in 0..k {
+        let mut acc = 0.0;
+        for i in 0..k {
+          acc += prev[i] * self.transitions[[i, j]];
+        }
+        next[j] = acc;
+      }
+      let z: f64 = next.sum();
+      if z > 0.0 {
+        next /= z;
+      }
+    }
+    next
+  }
+
   /// Viterbi most-likely state sequence.
   pub fn viterbi(&self, observations: ArrayView1<f64>) -> Array1<usize> {
     let n = observations.len();
@@ -296,6 +345,104 @@ mod tests {
     let path = hmm.viterbi(obs.view());
     assert!(path.iter().take(6).all(|&s| s == 0));
     assert!(path.iter().skip(6).all(|&s| s == 1));
+  }
+
+  #[test]
+  fn filtered_probs_are_normalised_and_track_the_regime() {
+    let init = array![0.5, 0.5];
+    let trans = array![[0.95, 0.05], [0.05, 0.95]];
+    let means = array![-1.0, 1.0];
+    let stds = array![0.3, 0.3];
+    let hmm = GaussianHmm::new(init, trans, means, stds);
+    let obs = array![
+      -1.0_f64, -0.9, -1.1, -1.05, -0.95, -1.0, 1.0, 1.1, 0.9, 1.05, 0.95, 1.0
+    ];
+    let probs = hmm.filtered_state_probs(obs.view());
+
+    assert_eq!(probs.dim(), (obs.len(), 2));
+    for row in probs.rows() {
+      assert!((row.sum() - 1.0).abs() < 1e-9);
+      assert!(row.iter().all(|&p| (0.0..=1.0).contains(&p)));
+    }
+    assert!(probs[[5, 0]] > 0.9, "low-mean regime should dominate early");
+    assert!(
+      probs[[11, 1]] > 0.9,
+      "high-mean regime should dominate late"
+    );
+  }
+
+  #[test]
+  fn filtered_probs_depend_only_on_the_past() {
+    // The defining property for online use: truncating the series after t must
+    // not change the filtered distribution at t. Viterbi does not have this.
+    let init = array![0.5, 0.5];
+    let trans = array![[0.9, 0.1], [0.2, 0.8]];
+    let means = array![-1.0, 1.0];
+    let stds = array![0.5, 0.4];
+    let hmm = GaussianHmm::new(init, trans, means, stds);
+    let obs = array![
+      -1.0_f64, -0.6, 0.9, 1.2, -0.2, -1.4, 1.1, 0.7, -0.9, 1.3, 0.4, -1.1
+    ];
+    let full = hmm.filtered_state_probs(obs.view());
+
+    for t in 0..obs.len() {
+      let truncated = hmm.filtered_state_probs(obs.slice(ndarray::s![..=t]));
+      for k in 0..hmm.n_states() {
+        assert!(
+          (full[[t, k]] - truncated[[t, k]]).abs() < 1e-12,
+          "filtered prob at t={t}, state={k} changed when the future was removed"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn filter_step_matches_the_batch_forward_pass() {
+    let init = array![0.5, 0.5];
+    let trans = array![[0.9, 0.1], [0.2, 0.8]];
+    let means = array![-1.0, 1.0];
+    let stds = array![0.5, 0.4];
+    let hmm = GaussianHmm::new(init, trans, means, stds);
+    let obs = array![-1.0_f64, -0.6, 0.9, 1.2, -0.2, -1.4, 1.1, 0.7];
+    let batch = hmm.filtered_state_probs(obs.view());
+
+    // The first step consumes the initial distribution unchanged by any
+    // transition, so it is seeded from `initial` and then normalised.
+    let mut state = {
+      let mut first = Array1::<f64>::zeros(hmm.n_states());
+      for k in 0..hmm.n_states() {
+        first[k] = hmm.initial[k] * gauss_pdf(obs[0], hmm.means[k], hmm.stds[k]);
+      }
+      let z: f64 = first.sum();
+      first / z
+    };
+    for k in 0..hmm.n_states() {
+      assert!((state[k] - batch[[0, k]]).abs() < 1e-12);
+    }
+
+    for (t, &observation) in obs.iter().enumerate().skip(1) {
+      state = hmm.filter_step(state.view(), observation);
+      for k in 0..hmm.n_states() {
+        assert!(
+          (state[k] - batch[[t, k]]).abs() < 1e-12,
+          "streaming and batch filters diverged at t={t}, state={k}"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn filter_step_survives_an_implausible_observation() {
+    let init = array![0.5, 0.5];
+    let trans = array![[0.9, 0.1], [0.2, 0.8]];
+    let means = array![-1.0, 1.0];
+    let stds = array![0.1, 0.1];
+    let hmm = GaussianHmm::new(init, trans, means, stds);
+
+    let next = hmm.filter_step(hmm.initial.view(), 1e9);
+
+    assert!((next.sum() - 1.0).abs() < 1e-9, "must stay a distribution");
+    assert!(next.iter().all(|p| p.is_finite()), "must not emit NaN");
   }
 
   #[test]
