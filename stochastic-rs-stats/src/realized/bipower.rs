@@ -19,7 +19,6 @@
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::erf;
 
-use crate::realized::variance::realized_quarticity;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
@@ -134,10 +133,13 @@ pub fn bns_jump_test<T: FloatExt>(returns: ArrayView1<T>, alpha: f64) -> BnsJump
   let rv = realized_variance(returns).to_f64().unwrap();
   let bv = bipower_variation(returns).to_f64().unwrap();
   let tpq = tripower_quarticity(returns).to_f64().unwrap();
-  let rq = realized_quarticity(returns).to_f64().unwrap();
   let theta = (std::f64::consts::FRAC_PI_2).powi(2) + std::f64::consts::PI - 5.0;
   let nn = n as f64;
-  let ratio = (tpq.max(rq).max(1e-30)) / bv.max(1e-30).powi(2);
+  // The integrated-quarticity scale must come from TPQ alone. Realized
+  // quarticity is not jump-robust, so substituting it (or taking the larger of
+  // the two) inflates the denominator by exactly the jump the statistic is
+  // meant to detect, and the test loses its power against single jumps.
+  let ratio = tpq.max(1e-30) / bv.max(1e-30).powi(2);
   let denom = (theta * ratio.max(1.0)).sqrt();
   let statistic = if bv > 0.0 && rv > 0.0 && denom > 0.0 {
     nn.sqrt() * (rv.ln() - bv.ln()) / denom
@@ -223,6 +225,40 @@ mod tests {
     }
     let test = bns_jump_test(r.view(), 0.05);
     assert!(test.reject_no_jump);
+  }
+
+  #[test]
+  fn jump_test_rejects_a_single_moderate_jump() {
+    // One jump of ~15 sigma in a 256-return window: unmistakable to the eye,
+    // but small enough that a denominator built from non-jump-robust realized
+    // quarticity would swamp it and hide the rejection.
+    let mut r = iid_normal(17, 256, 0.005);
+    r[128] = 0.077;
+    let test = bns_jump_test(r.view(), 0.01);
+    assert!(
+      test.reject_no_jump,
+      "single jump must be detected, statistic was {}",
+      test.statistic
+    );
+    assert!(
+      test.statistic > 0.0,
+      "jump evidence lives in the upper tail"
+    );
+  }
+
+  #[test]
+  fn jump_test_statistic_grows_with_jump_size() {
+    let base = iid_normal(19, 256, 0.005);
+    let mut small = base.clone();
+    small[128] = 0.02;
+    let mut large = base.clone();
+    large[128] = 0.10;
+    let z_small = bns_jump_test(small.view(), 0.01).statistic;
+    let z_large = bns_jump_test(large.view(), 0.01).statistic;
+    assert!(
+      z_large > z_small,
+      "a bigger jump must not weaken the evidence: {z_small} -> {z_large}"
+    );
   }
 
   #[test]
