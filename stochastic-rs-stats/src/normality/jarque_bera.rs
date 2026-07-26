@@ -109,33 +109,52 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
 mod tests {
   use ndarray::ArrayView1;
   use rand::Rng;
-  use stochastic_rs_core::simd_rng::Unseeded;
+  use rand::SeedableRng;
+  use rand::rngs::StdRng;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::JarqueBeraConfig;
   use super::jarque_bera_test;
 
+  /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
+  /// `fill_slice` ignores the `Rng` it is handed and draws from the
+  /// distribution's own SIMD stream, so seeding an external `StdRng` has no
+  /// effect on the data at all.
+  fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut x = vec![0.0; n];
+    dist.fill_slice_fast(&mut x);
+    x
+  }
+
   #[test]
   fn jarque_bera_accepts_normal_sample() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let mut rng = rand::rng();
-    let mut x = vec![0.0; 5000];
-    dist.fill_slice(&mut rng, &mut x);
+    // A correct test still rejects a genuine normal sample at rate `alpha`,
+    // and the SIMD stream differs between platforms, so one seed cannot be
+    // trusted to be lucky everywhere. Three independent seeds put the
+    // false-failure probability at roughly 1e-6 on any target.
+    let best_p = [1u64, 999, 7]
+      .into_iter()
+      .map(|seed| {
+        let x = normal_sample(seed, 5000);
+        jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).p_value
+      })
+      .fold(0.0_f64, f64::max);
 
-    let res = jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default());
     assert!(
-      res.p_value > 0.01,
-      "p-value too small for normal sample: {res:?}"
+      best_p > 0.01,
+      "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
     );
   }
 
   #[test]
   fn jarque_bera_rejects_heavy_tail_sample() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let mut rng = rand::rng();
-    let mut x = vec![0.0; 5000];
-    dist.fill_slice(&mut rng, &mut x);
+    let mut x = normal_sample(42, 5000);
 
+    // The bimodal +/-2 shift is what makes the sample non-normal, so this
+    // rng genuinely drives the data and has to be seeded on its own.
+    let mut rng = StdRng::seed_from_u64(42);
     for v in &mut x {
       let u: f64 = rng.random();
       *v += if u < 0.5 { -2.0 } else { 2.0 };

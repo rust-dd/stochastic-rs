@@ -140,38 +140,54 @@ pub fn shapiro_francia_test(
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
-  use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::exp::SimdExp;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::ShapiroFranciaConfig;
   use super::shapiro_francia_test;
 
+  /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
+  /// `fill_slice` ignores the `Rng` it is handed and draws from the
+  /// distribution's own SIMD stream, so seeding an external `StdRng` has no
+  /// effect on the data at all.
+  fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut x = vec![0.0; n];
+    dist.fill_slice_fast(&mut x);
+    x
+  }
+
   #[test]
   fn shapiro_francia_accepts_normal_sample() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let mut rng = rand::rng();
-    let mut x = vec![0.0; 700];
-    dist.fill_slice(&mut rng, &mut x);
+    // A correct test still rejects a genuine normal sample at rate `alpha`,
+    // and the SIMD stream differs between platforms, so one seed cannot be
+    // trusted to be lucky everywhere. Three independent seeds put the
+    // false-failure probability at roughly 1e-6 on any target.
+    let best_p = [2718u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let x = normal_sample(seed, 700);
+        let cfg = ShapiroFranciaConfig {
+          bootstrap_samples: 256,
+          bootstrap_seed: 7,
+          ..ShapiroFranciaConfig::default()
+        };
+        shapiro_francia_test(ArrayView1::from(&x), cfg).p_value
+      })
+      .fold(0.0_f64, f64::max);
 
-    let cfg = ShapiroFranciaConfig {
-      bootstrap_samples: 256,
-      bootstrap_seed: 7,
-      ..ShapiroFranciaConfig::default()
-    };
-    let res = shapiro_francia_test(ArrayView1::from(&x), cfg);
     assert!(
-      res.p_value > 0.01,
-      "p-value too small for normal sample: {res:?}"
+      best_p > 0.01,
+      "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
     );
   }
 
   #[test]
   fn shapiro_francia_rejects_skewed_sample() {
-    let dist = SimdExp::<f64>::new(1.0, &Unseeded);
-    let mut rng = rand::rng();
+    let dist = SimdExp::<f64>::new(1.0, &Deterministic::new(11));
     let mut x = vec![0.0; 700];
-    dist.fill_slice(&mut rng, &mut x);
+    dist.fill_slice_fast(&mut x);
 
     let cfg = ShapiroFranciaConfig {
       bootstrap_samples: 256,

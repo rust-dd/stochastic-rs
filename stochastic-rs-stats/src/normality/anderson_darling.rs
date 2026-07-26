@@ -122,9 +122,7 @@ pub fn anderson_darling_normal_test(
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
-  use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::uniform::SimdUniform;
 
@@ -137,17 +135,21 @@ mod tests {
     // true normal ~1% of the time, and SimdNormal outputs differ across
     // platforms (SIMD vs scalar fallback), so a single seed can be unlucky on
     // some CI targets.
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let seeds = [42u64, 123, 999];
-    let mut best_p = 0.0_f64;
-    for seed in seeds {
-      let mut rng = StdRng::seed_from_u64(seed);
-      let mut x = vec![0.0; 4000];
-      dist.fill_slice(&mut rng, &mut x);
-      let res =
-        anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
-      best_p = best_p.max(res.p_value);
-    }
+    //
+    // The seed has to reach the distribution constructor. `fill_slice` ignores
+    // the `Rng` argument and draws from the distribution's own SIMD stream, so
+    // the earlier `StdRng::seed_from_u64` here controlled nothing and the three
+    // "seeds" were three unseeded draws.
+    let best_p = [42u64, 123, 999]
+      .into_iter()
+      .map(|seed| {
+        let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+        let mut x = vec![0.0; 4000];
+        dist.fill_slice_fast(&mut x);
+        anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default()).p_value
+      })
+      .fold(0.0_f64, f64::max);
+
     assert!(
       best_p > 0.01,
       "all seeds gave p-value <= 0.01 (best {best_p}); likely a bug"
@@ -156,10 +158,9 @@ mod tests {
 
   #[test]
   fn anderson_darling_rejects_uniform_sample() {
-    let dist = SimdUniform::<f64>::new(0.0, 1.0, &Unseeded);
-    let mut rng = StdRng::seed_from_u64(42);
+    let dist = SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(42));
     let mut x = vec![0.0; 4000];
-    dist.fill_slice(&mut rng, &mut x);
+    dist.fill_slice_fast(&mut x);
 
     let res = anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
     assert!(

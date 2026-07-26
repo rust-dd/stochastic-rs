@@ -442,6 +442,16 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdExp<T, R> {
   pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
     self.inner.fill_slice(rng, out);
   }
+
+  /// Fills a slice with Exp(lambda) samples using the internal SIMD RNG
+  /// directly. Mirrors [`SimdNormal::fill_slice_fast`] so callers that seed
+  /// through the constructor do not have to invent an [`Rng`] that
+  /// [`Self::fill_slice`] discards anyway.
+  ///
+  /// [`SimdNormal::fill_slice_fast`]: crate::normal::SimdNormal::fill_slice_fast
+  pub fn fill_slice_fast(&self, out: &mut [T]) {
+    self.inner.fill_slice_fast(out);
+  }
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdExp<T, R> {
