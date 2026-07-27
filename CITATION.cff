@@ -21,8 +21,8 @@ authors:
 repository-code: "https://github.com/rust-dd/stochastic-rs"
 url: "https://stochastic.rust-dd.com"
 license: MIT
-version: 2.5.4
-date-released: "2026-07-25"
+version: 2.6.0
+date-released: "2026-07-27"
 doi: 10.5281/zenodo.21553307
 identifiers:
   - type: doi
