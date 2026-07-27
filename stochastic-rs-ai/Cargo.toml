@@ -3,6 +3,7 @@ name = "stochastic-rs-ai"
 version.workspace = true
 edition = "2024"
 license = "MIT"
+readme = "README.md"
 description = "AI / neural surrogates for volatility models."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-ai"

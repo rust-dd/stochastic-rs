@@ -3,6 +3,7 @@ name = "stochastic-rs-stochastic"
 version.workspace = true
 edition = "2024"
 license = "MIT"
+readme = "README.md"
 description = "Stochastic process simulation."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-stochastic"

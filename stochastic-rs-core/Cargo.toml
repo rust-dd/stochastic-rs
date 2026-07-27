@@ -3,6 +3,7 @@ name = "stochastic-rs-core"
 version.workspace = true
 edition = "2024"
 license = "MIT"
+readme = "README.md"
 description = "Core traits, SIMD RNG, and macros for stochastic-rs."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-core"

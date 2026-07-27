@@ -3,6 +3,7 @@ name = "stochastic-rs-stats"
 version.workspace = true
 edition = "2024"
 license = "MIT"
+readme = "README.md"
 description = "Statistical estimators for stochastic processes."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-stats"

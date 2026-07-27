@@ -3,6 +3,7 @@ name = "stochastic-rs-copulas"
 version.workspace = true
 edition = "2024"
 license = "MIT"
+readme = "README.md"
 description = "Bivariate, multivariate, and empirical copulas."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-copulas"

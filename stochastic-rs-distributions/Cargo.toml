@@ -3,6 +3,7 @@ name = "stochastic-rs-distributions"
 version.workspace = true
 edition = "2024"
 license = "MIT"
+readme = "README.md"
 description = "Probability distributions with SIMD bulk sampling."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-distributions"

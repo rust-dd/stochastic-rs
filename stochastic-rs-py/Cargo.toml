@@ -3,6 +3,7 @@ name = "stochastic-rs-py"
 version.workspace = true
 edition = "2024"
 license = "MIT"
+readme = "README.md"
 description = "Python (pyo3) bindings for stochastic-rs."
 repository = "https://github.com/rust-dd/stochastic-rs"
 publish = false
