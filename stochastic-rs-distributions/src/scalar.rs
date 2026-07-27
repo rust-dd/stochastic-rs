@@ -25,10 +25,9 @@ use crate::traits::FloatExt;
 /// Normal distribution sampled by inverse CDF from the caller's RNG.
 ///
 /// Exact — [`ndtri`] is the inverse of the standard normal CDF — at the cost
-/// of one `ndtri` evaluation per draw. Measured at 3.07 ns/draw against
-/// 2.14 ns for [`SimdNormal::sample_fast`](crate::normal::SimdNormal), so
-/// roughly 1.44x; prefer `SimdNormal` for bulk work you drive yourself, and
-/// this where `Sync` is required.
+/// of one `ndtri` evaluation per draw, which costs roughly 1.8x a
+/// [`SimdNormal`](crate::normal::SimdNormal) draw. Prefer `SimdNormal` for
+/// bulk work you drive yourself, and this where `Sync` is required.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScalarNormal<T> {
   mean: T,
@@ -68,8 +67,10 @@ impl<T: FloatExt> Distribution<T> for ScalarNormal<T> {
 
 /// Exponential distribution sampled by inverse CDF from the caller's RNG.
 ///
-/// $F^{-1}(u) = -\ln(1-u)/\lambda$. Exact, stateless, and `Sync`; for bulk
-/// generation prefer [`SimdExp`](crate::exp::SimdExp).
+/// $F^{-1}(u) = -\ln(1-u)/\lambda$. Exact, stateless, and `Sync`. The
+/// logarithm costs roughly 2.8x a [`SimdExp`](crate::exp::SimdExp) draw,
+/// whose ziggurat avoids it on about 98% of samples — a wider gap than the
+/// normal case, so prefer `SimdExp` whenever `Sync` is not required.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScalarExp<T> {
   lambda: T,
