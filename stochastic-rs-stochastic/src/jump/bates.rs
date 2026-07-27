@@ -415,7 +415,7 @@ impl PyBates {
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Normal;
+  use stochastic_rs_distributions::scalar::ScalarNormal;
 
   use super::*;
   use crate::process::poisson::Poisson;
@@ -425,9 +425,9 @@ mod tests {
     b: Option<f64>,
     r: Option<f64>,
     r_f: Option<f64>,
-  ) -> Bates1996<f64, Normal<f64>> {
+  ) -> Bates1996<f64, ScalarNormal<f64>> {
     let cpoisson = CompoundPoisson::new(
-      Normal::new(0.0, 1.0).expect("valid normal"),
+      ScalarNormal::new(0.0, 1.0),
       Poisson::new(1.0, Some(8), Some(1.0), Unseeded),
       Unseeded,
     );

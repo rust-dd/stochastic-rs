@@ -233,11 +233,9 @@ pub(crate) fn expected_rs_iid(n: usize) -> f64 {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
-  use rand_distr::Distribution;
-  use rand_distr::StandardNormal;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
   use super::*;
@@ -255,9 +253,10 @@ mod tests {
 
   #[test]
   fn anis_lloyd_corrects_iid_bias() {
-    let mut rng = StdRng::seed_from_u64(42);
     let n = 2048_usize;
-    let x: Vec<f64> = (0..n).map(|_| StandardNormal.sample(&mut rng)).collect();
+    let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(0x125));
+    let mut x = vec![0.0_f64; n];
+    normals.fill_slice_fast(&mut x);
     let view = Array1::from_vec(x);
 
     // iid Gaussian is stationary noise — pass take_differences=false so

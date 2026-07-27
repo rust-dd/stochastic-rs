@@ -269,10 +269,8 @@ pub fn nmle_cekf_heston(s: ArrayView1<f64>, cfg: HestonNMLECEKFConfig) -> Heston
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
-  use rand_distr::Distribution;
-  use rand_distr::StandardNormal;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::HestonNMLECEKFConfig;
   use super::HestonNMLECEKFParams;
@@ -292,12 +290,11 @@ mod tests {
     s[0] = 100.0;
     v[0] = theta.max(1e-8);
 
-    let mut rng = StdRng::seed_from_u64(42);
-    let normal = StandardNormal;
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
 
     for i in 1..n_obs {
-      let zs: f64 = normal.sample(&mut rng);
-      let zv: f64 = normal.sample(&mut rng);
+      let zs: f64 = normal.sample_fast();
+      let zv: f64 = normal.sample_fast();
 
       let dw_s = delta.sqrt() * zs;
       let dw_v = delta.sqrt() * zv;

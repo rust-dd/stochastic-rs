@@ -207,25 +207,22 @@ pub fn particle_mle_sv<T: FloatExt>(
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
-  use rand_distr::Distribution;
-  use rand_distr::Normal;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   /// Simulate the SV model: AR(1) latent log-variance + conditionally
   /// Gaussian returns.
   fn simulate_sv(mu: f64, phi: f64, sigma_eta: f64, n: usize, seed: u64) -> Array1<f64> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let normal = Normal::new(0.0, 1.0).unwrap();
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let stat_sd = (sigma_eta * sigma_eta / (1.0 - phi * phi)).sqrt();
-    let mut h = mu + stat_sd * normal.sample(&mut rng);
+    let mut h = mu + stat_sd * normal.sample_fast();
     let mut y = Array1::<f64>::zeros(n);
     for t in 0..n {
-      let eps = normal.sample(&mut rng);
+      let eps = normal.sample_fast();
       y[t] = (h / 2.0).exp() * eps;
-      let eta = normal.sample(&mut rng);
+      let eta = normal.sample_fast();
       h = mu + phi * (h - mu) + sigma_eta * eta;
     }
     y

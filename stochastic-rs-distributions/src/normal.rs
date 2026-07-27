@@ -507,8 +507,7 @@ py_distribution!(PyNormal, SimdNormal,
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Distribution;
-  use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::SimdNormal;
   use crate::special::erf;
@@ -560,9 +559,9 @@ mod tests {
     let mu = -0.75_f64;
     let sigma = 1.35_f64;
 
-    let dist = SimdNormal::<f64>::new(mu, sigma, &Unseeded);
-    let mut rng = rand::rng();
-    let mut samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
+    let dist = SimdNormal::<f64>::new(mu, sigma, &Deterministic::new(0x4e07));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice_fast(&mut samples);
 
     assert!(
       samples.iter().all(|x| x.is_finite()),

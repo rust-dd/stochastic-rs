@@ -72,6 +72,7 @@ pub mod ged;
 pub mod gev;
 pub mod pareto;
 pub mod poisson;
+pub mod scalar;
 pub mod skellam;
 pub mod studentt;
 pub mod truncated;

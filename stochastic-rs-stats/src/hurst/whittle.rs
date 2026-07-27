@@ -477,11 +477,8 @@ pub fn estimate_from_prices_generic<T: FloatExt>(closes: ArrayView1<T>) -> Fukas
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
-  use rand_distr::Distribution;
-  use rand_distr::StandardNormal;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_stochastic::diffusion::fou::Fou;
 
   use super::*;
@@ -499,14 +496,14 @@ mod tests {
       Deterministic::new(seed),
     );
     let log_vol_sq: Array1<f64> = fou.sample();
-    let mut rng = StdRng::seed_from_u64(seed);
     let mut log_rv = vec![0.0_f64; n_days];
+    let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(0x7717));
     for day in 0..n_days {
       let sigma = log_vol_sq[day].exp().sqrt();
       let dt = delta / m as f64;
       let mut rv = 0.0;
       for _ in 0..m {
-        let z: f64 = StandardNormal.sample(&mut rng);
+        let z = normals.sample_fast();
         rv += (sigma * dt.sqrt() * z).powi(2);
       }
       log_rv[day] = rv.max(1e-20).ln();

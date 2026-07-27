@@ -1,5 +1,5 @@
-use rand_distr::Exp;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::scalar::ScalarExp;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
@@ -129,8 +129,8 @@ pub(crate) fn register(mut grid: GridPlotter, n: usize, j: usize, traj: usize) -
       n,
       Some(0.03),
       Some(1.0),
-      Exp::new(20.0).expect("positive exponential rate"),
-      Exp::new(30.0).expect("positive exponential rate"),
+      ScalarExp::new(20.0),
+      ScalarExp::new(30.0),
       Unseeded,
     ),
     "Jump: Jump-Fou Custom",

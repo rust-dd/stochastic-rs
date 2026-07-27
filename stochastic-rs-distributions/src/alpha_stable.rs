@@ -368,17 +368,15 @@ py_distribution!(PyAlphaStable, SimdAlphaStable,
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Distribution;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
   #[test]
   fn alpha_stable_samples_are_finite() {
-    let dist = SimdAlphaStable::<f64>::new(1.7_f64, 0.3, 1.0, 0.0, &Unseeded);
-    let mut rng = rand::rng();
-    for _ in 0..1024 {
-      let x = dist.sample(&mut rng);
-      assert!(x.is_finite());
-    }
+    let dist = SimdAlphaStable::<f64>::new(1.7_f64, 0.3, 1.0, 0.0, &Deterministic::new(0xa1fa));
+    let mut xs = vec![0.0_f64; 1024];
+    dist.fill_slice_fast(&mut xs);
+    assert!(xs.iter().all(|x| x.is_finite()));
   }
 }

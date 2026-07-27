@@ -1,6 +1,6 @@
-use rand_distr::Exp;
-use rand_distr::Normal;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::scalar::ScalarExp;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::isonormal::IsoNormal;
 use stochastic_rs_stochastic::isonormal::fbm_custom_inc_cov;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
@@ -81,18 +81,13 @@ pub(crate) fn register_process(mut grid: GridPlotter, n: usize, traj: usize) -> 
     traj,
   );
   grid = grid.register(
-    &CustomJt::new(
-      Some(n),
-      Some(1.0),
-      Exp::new(10.0).expect("positive exponential rate"),
-      Unseeded,
-    ),
+    &CustomJt::new(Some(n), Some(1.0), ScalarExp::new(10.0), Unseeded),
     "Process: CustomJt",
     traj,
   );
   grid = grid.register(
     &CompoundPoisson::new(
-      Normal::new(0.0, 0.15).expect("valid normal"),
+      ScalarNormal::new(0.0, 0.15),
       Poisson::new(1.2, Some(n), Some(1.0), Unseeded),
       Unseeded,
     ),
@@ -103,14 +98,9 @@ pub(crate) fn register_process(mut grid: GridPlotter, n: usize, traj: usize) -> 
     &CompoundCustom::new(
       Some(n),
       Some(1.0),
-      Normal::new(0.0, 0.1).expect("valid normal"),
-      Exp::new(15.0).expect("positive exponential rate"),
-      CustomJt::new(
-        Some(n),
-        Some(1.0),
-        Exp::new(15.0).expect("positive exponential rate"),
-        Unseeded,
-      ),
+      ScalarNormal::new(0.0, 0.1),
+      ScalarExp::new(15.0),
+      CustomJt::new(Some(n), Some(1.0), ScalarExp::new(15.0), Unseeded),
       Unseeded,
     ),
     "Process: CompoundCustom",

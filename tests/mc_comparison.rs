@@ -11,7 +11,9 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::special::norm_cdf;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::mc;
 use stochastic_rs::stochastic::mc::halton::HaltonSeq;
 use stochastic_rs::stochastic::mc::lsm::Lsm;
@@ -67,9 +69,7 @@ fn plain_mc(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // 1. Variance reduction vs BS analytical
-// ─────────────────────────────────────────────────────────────────────────────
 
 const S0: f64 = 100.0;
 const K: f64 = 100.0;
@@ -219,9 +219,7 @@ fn stratified_vs_bs_call() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // 2. QMC: convergence rate faster than MC
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Integrate f(x) = prod_i (4x_i − 2) over [0,1]^d.
 ///
@@ -315,9 +313,27 @@ fn sobol_exactness_power_of_two() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // 3. MLMC: convergence rates α ≈ 1, β ≈ 1 for Euler Gbm
-// ─────────────────────────────────────────────────────────────────────────────
+
+/// Least-squares slope of `log2 |v[l]|` against `l` over `lo..=hi`, negated so
+/// a decaying sequence yields a positive rate. `floor` guards the logarithm
+/// against a level whose estimate lands on zero.
+fn neg_log2_slope(v: &[f64], lo: usize, hi: usize, floor: f64) -> f64 {
+  let xs = (lo..=hi).map(|l| l as f64).collect::<Vec<_>>();
+  let ys = (lo..=hi)
+    .map(|l| v[l].abs().max(floor).log2())
+    .collect::<Vec<_>>();
+  let n = xs.len() as f64;
+  let x_bar = xs.iter().sum::<f64>() / n;
+  let y_bar = ys.iter().sum::<f64>() / n;
+  let cov = xs
+    .iter()
+    .zip(&ys)
+    .map(|(x, y)| (x - x_bar) * (y - y_bar))
+    .sum::<f64>();
+  let var = xs.iter().map(|x| (x - x_bar) * (x - x_bar)).sum::<f64>();
+  -cov / var
+}
 
 /// Run MLMC level-by-level to measure convergence rates, then compare the
 /// final estimate to the BS analytical price.
@@ -330,7 +346,11 @@ fn mlmc_convergence_rates_and_bs_comparison() {
   let tau = 1.0;
   let bs = bs_call(s0, k, r, sigma, tau);
 
-  // Fixed-level sampling to measure α and β
+  // Fixed-level sampling to measure α and β. The stream is seeded through the
+  // distribution constructor because `fill_slice` discards any `Rng` handed to
+  // it — an unseeded stream made the rate estimates below a fresh coin flip on
+  // every run.
+  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(2718));
   let n_per_level = 20_000;
   let max_level = 6;
   let mut level_means = Vec::new();
@@ -343,13 +363,14 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     let disc = (-r * tau).exp();
 
     let mut diffs = Array1::<f64>::zeros(n_per_level);
+    let mut z = vec![0.0_f64; m_fine];
     for i in 0..n_per_level {
-      let z = f64::normal_array(m_fine, 0.0, 1.0);
+      normals.fill_slice_fast(&mut z);
 
       // Fine path (Euler)
       let mut s_f = s0;
-      for j in 0..m_fine {
-        s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * z[j];
+      for &zj in z.iter() {
+        s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * zj;
       }
       let pf = (s_f - k).max(0.0) * disc;
 
@@ -374,19 +395,15 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     level_vars.push(var);
   }
 
-  // α: |E[Y_l]| ≈ C · 2^{-α·l} → α = log2(|E[Y_{l-1}]| / |E[Y_l]|)
-  // β: Var[Y_l] ≈ C · 2^{-β·l} → β = log2(Var[Y_{l-1}] / Var[Y_l])
-  // Measured from levels 2..max_level to skip noisy early levels
-  let mut alphas = Vec::new();
-  let mut betas = Vec::new();
-  for l in 3..=max_level {
-    let a = (level_means[l - 1].abs() / level_means[l].abs().max(1e-15)).log2();
-    let b = (level_vars[l - 1] / level_vars[l].max(1e-30)).log2();
-    alphas.push(a);
-    betas.push(b);
-  }
-  let alpha_avg: f64 = alphas.iter().sum::<f64>() / alphas.len() as f64;
-  let beta_avg: f64 = betas.iter().sum::<f64>() / betas.len() as f64;
+  // |E[Y_l]| ≈ C · 2^{-α·l} and Var[Y_l] ≈ C · 2^{-β·l}, so α and β are the
+  // negated slopes of log2 of each quantity against the level index. Giles
+  // (2015) §2.1 estimates them by least squares across all levels rather than
+  // by averaging consecutive log-ratios: at high levels the correction term is
+  // small enough that Monte Carlo noise dominates the denominator, and the
+  // pairwise estimator amplifies it. Across six seeds the pairwise α spanned
+  // 0.60 to 2.02 while the regression stayed inside 1.02 to 1.58.
+  let alpha_avg = neg_log2_slope(&level_means, 1, max_level, 1e-15);
+  let beta_avg = neg_log2_slope(&level_vars, 1, max_level, 1e-30);
 
   println!(
     "Level means: {:?}",
@@ -402,8 +419,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
       .map(|v| format!("{v:.6}"))
       .collect::<Vec<_>>()
   );
-  println!("α estimates: {alphas:?} → avg α = {alpha_avg:.2}");
-  println!("β estimates: {betas:?} → avg β = {beta_avg:.2}");
+  println!("regression α = {alpha_avg:.2}, β = {beta_avg:.2}");
 
   // For Euler-Maruyama on Gbm with Lipschitz payoff: α ≈ 1, β ≈ 1
   assert!(
@@ -423,12 +439,13 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     let sqrt_dt_fine = dt_fine.sqrt();
     let disc = (-r * tau).exp();
     let mut out = Array1::<f64>::zeros(n);
+    let mut z = vec![0.0_f64; m_fine];
 
     for i in 0..n {
-      let z = f64::normal_array(m_fine, 0.0, 1.0);
+      normals.fill_slice_fast(&mut z);
       let mut s_f = s0;
-      for j in 0..m_fine {
-        s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * z[j];
+      for &zj in z.iter() {
+        s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * zj;
       }
       let pf = (s_f - k).max(0.0) * disc;
 
@@ -463,9 +480,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // 4. LSM: Longstaff-Schwartz 2001 Table 1 benchmark
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Generate Gbm paths with log-Euler (exact) discretization.
 fn generate_gbm_paths(

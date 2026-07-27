@@ -124,10 +124,8 @@ pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> Ph
 
 #[cfg(test)]
 mod tests {
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
-  use rand_distr::Distribution;
-  use rand_distr::Normal;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::PPTestType;
   use super::PhillipsPerronConfig;
@@ -136,9 +134,8 @@ mod tests {
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = Normal::new(0.0, 1.0).unwrap();
-      let mut rng = StdRng::seed_from_u64(seed);
-      (0..n).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>()
+      let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+      (0..n).map(|_| dist.sample_fast()).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
@@ -150,9 +147,8 @@ mod tests {
 
   fn simulate_random_walk(n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = Normal::new(0.0, 1.0).unwrap();
-      let mut rng = StdRng::seed_from_u64(seed);
-      (0..n).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>()
+      let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+      (0..n).map(|_| dist.sample_fast()).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
@@ -187,7 +183,6 @@ mod tests {
       test_type: PPTestType::Tau,
       lags: Some(12),
       alpha: 0.01,
-      ..PhillipsPerronConfig::default()
     };
     let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg);
     assert_eq!(

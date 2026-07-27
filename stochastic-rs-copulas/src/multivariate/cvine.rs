@@ -34,6 +34,7 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
+use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::CopulaType;
 use super::dvine::PairCopula;
@@ -104,6 +105,23 @@ impl CVine {
   /// Aas-Czado (2009) Algorithm 3: invert independent uniforms $w$ to a
   /// single C-vine observation $u$. The pyramid `v[i][j]` stores
   /// conditional pseudo-observations at increasing conditioning depth.
+  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same `seed`
+  /// always yields the same matrix.
+  pub fn sample_seeded(&self, n: usize, seed: u64) -> Array2<f64> {
+    self.sample_with(n, &mut SimdRng::from_seed(seed))
+  }
+
+  fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
+    let mut out = Array2::<f64>::zeros((n, self.dim));
+    for r in 0..n {
+      let row = self.sample_one(rng);
+      for c in 0..self.dim {
+        out[[r, c]] = row[c].clamp(1e-12, 1.0 - 1e-12);
+      }
+    }
+    out
+  }
+
   fn sample_one<R: Rng + ?Sized>(&self, rng: &mut R) -> Array1<f64> {
     let d = self.dim;
     let w: Vec<f64> = (0..d).map(|_| rng.random::<f64>()).collect();
@@ -170,15 +188,7 @@ impl MultivariateExt for CVine {
   }
 
   fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    let mut rng = rand::rng();
-    let mut out = Array2::<f64>::zeros((n, self.dim));
-    for r in 0..n {
-      let row = self.sample_one(&mut rng);
-      for c in 0..self.dim {
-        out[[r, c]] = row[c].clamp(1e-12, 1.0 - 1e-12);
-      }
-    }
-    Ok(out)
+    Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {

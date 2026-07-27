@@ -1,8 +1,6 @@
 use ndarray::ArrayView1;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
-use rand_distr::Distribution;
-use rand_distr::StandardNormal;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 
 /// Configuration for the Shapiro-Francia normality test.
@@ -113,14 +111,12 @@ pub fn shapiro_francia_test(
   let obs_stat = shapiro_francia_statistic_sorted(&obs);
 
   let n = sample.len();
-  let mut rng = StdRng::seed_from_u64(cfg.bootstrap_seed);
+  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(cfg.bootstrap_seed));
   let mut normal_draw = vec![0.0; n];
 
   let mut left_tail_hits = 0usize;
   for _ in 0..cfg.bootstrap_samples {
-    for v in &mut normal_draw {
-      *v = StandardNormal.sample(&mut rng);
-    }
+    normals.fill_slice_fast(&mut normal_draw);
     normal_draw.sort_by(f64::total_cmp);
     let w = shapiro_francia_statistic_sorted(&normal_draw);
     if w <= obs_stat {

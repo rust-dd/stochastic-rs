@@ -13,7 +13,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use rand::Rng;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::special::ndtri;
 
 use super::McEstimate;
@@ -22,14 +22,24 @@ use crate::traits::FloatExt;
 /// Generate `n` stratified standard normal samples in one dimension.
 ///
 /// Divides `[0,1]` into `n` equal strata, draws one uniform per stratum,
-/// and applies `Φ⁻¹`.
+/// and applies `Φ⁻¹`. The stream is drawn from a fresh [`SimdRng`]; use
+/// [`stratified_normals_1d_seeded`] when the draw has to be reproducible.
 pub fn stratified_normals_1d<T: FloatExt>(n: usize) -> Array1<T> {
-  let mut rng = rand::rng();
+  stratified_normals_1d_with(n, &mut SimdRng::new())
+}
+
+/// Reproducible counterpart of [`stratified_normals_1d`]: the same `seed`
+/// always yields the same strata draws.
+pub fn stratified_normals_1d_seeded<T: FloatExt>(n: usize, seed: u64) -> Array1<T> {
+  stratified_normals_1d_with(n, &mut SimdRng::from_seed(seed))
+}
+
+fn stratified_normals_1d_with<T: FloatExt>(n: usize, rng: &mut SimdRng) -> Array1<T> {
   let n_f = n as f64;
   let mut out = Array1::<T>::zeros(n);
 
   for k in 0..n {
-    let u: f64 = rng.random();
+    let u = rng.next_f64();
     let u_strat = (k as f64 + u) / n_f;
     let z = ndtri(u_strat.clamp(1e-10, 1.0 - 1e-10));
     out[k] = T::from_f64_fast(z);
@@ -42,9 +52,27 @@ pub fn stratified_normals_1d<T: FloatExt>(n: usize) -> Array1<T> {
 ///
 /// Each dimension is independently stratified.
 pub fn stratified_normals<T: FloatExt>(n_samples: usize, dim: usize) -> Array2<T> {
+  stratified_normals_from(n_samples, dim, &mut SimdRng::new())
+}
+
+/// Reproducible counterpart of [`stratified_normals`]. Dimensions share one
+/// seeded stream, so the whole matrix is a function of `seed`.
+pub fn stratified_normals_seeded<T: FloatExt>(
+  n_samples: usize,
+  dim: usize,
+  seed: u64,
+) -> Array2<T> {
+  stratified_normals_from(n_samples, dim, &mut SimdRng::from_seed(seed))
+}
+
+fn stratified_normals_from<T: FloatExt>(
+  n_samples: usize,
+  dim: usize,
+  rng: &mut SimdRng,
+) -> Array2<T> {
   let mut out = Array2::<T>::zeros((n_samples, dim));
   for j in 0..dim {
-    let col = stratified_normals_1d::<T>(n_samples);
+    let col = stratified_normals_1d_with::<T>(n_samples, rng);
     for i in 0..n_samples {
       out[[i, j]] = col[i];
     }

@@ -174,6 +174,14 @@ pub struct HkdeSampler<T: FloatExt, S: SeedExt> {
 }
 
 impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
+  /// Inverse CDF of Exp(η): $F^{-1}(u) = -\ln(1-u)/\eta$. Written out rather
+  /// than delegating to an external distribution so the jump draws stay on
+  /// the caller's stream.
+  #[inline]
+  fn exp_inverse_cdf(u: f64, eta: f64) -> f64 {
+    -(1.0 - u).ln() / eta
+  }
+
   /// Sample a single Kou double-exponential jump size (log-jump).
   #[inline]
   fn sample_kou_jump<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> T {
@@ -181,15 +189,11 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
     let p = self.p_up.to_f64().unwrap();
     if u < p {
       // Upward jump: Exp(eta1)
-      let e: f64 = rand_distr::Exp::new(self.eta1.to_f64().unwrap())
-        .unwrap()
-        .sample(rng);
+      let e = Self::exp_inverse_cdf(rng.random::<f64>(), self.eta1.to_f64().unwrap());
       T::from_f64_fast(e)
     } else {
       // Downward jump: -Exp(eta2)
-      let e: f64 = rand_distr::Exp::new(self.eta2.to_f64().unwrap())
-        .unwrap()
-        .sample(rng);
+      let e = Self::exp_inverse_cdf(rng.random::<f64>(), self.eta2.to_f64().unwrap());
       -T::from_f64_fast(e)
     }
   }

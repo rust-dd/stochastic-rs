@@ -23,24 +23,73 @@ The rules here keep the suite reproducible, gateable, and pruned.
 ## 1. The pinned-seed mandate
 
 **Every test that draws random numbers must seed its RNG.** No
-`thread_rng()`, no `OsRng::default()`, no `random::<f64>()`. Use:
+`thread_rng()`, no `rand::rng()`, no `OsRng::default()`, no
+`random::<f64>()`.
+
+### 1.1 The seed goes through the constructor, never through an `Rng` argument
+
+This is the trap that cost a red CI on main. The workspace's SIMD
+distributions take an `Rng` parameter on `fill_slice` / `sample` **and
+ignore it** — they draw from their own internal stream, seeded at
+construction:
 
 ```rust
-use rand::SeedableRng;
-use rand::rngs::StdRng;
-
-#[test]
-fn my_test() {
-    let mut rng = StdRng::seed_from_u64(42);
-    // ...
+pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
+    self.fill_slice_fast(out)   // note the underscore on _rng
 }
 ```
 
-For processes that have a `seeded(...)` constructor (mandatory per
-`add-diffusion-process`):
+So this produces a *different sample on every run* despite looking seeded:
 
 ```rust
-let fou = Fou::seeded(0.3, 0.001, -3.2, 1.0, 500, None, None, /* seed */ 42);
+// WRONG — the StdRng is discarded; `&Unseeded` reseeds from entropy each run
+let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
+let mut rng = StdRng::seed_from_u64(42);
+dist.fill_slice(&mut rng, &mut x);
+```
+
+```rust
+// RIGHT — the seed reaches the stream that is actually used
+let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+dist.fill_slice_fast(&mut x);
+```
+
+`anderson_darling.rs` shipped the wrong form for months with a comment
+claiming it defended against flakiness. It did not; it was three unseeded
+draws. If a test hands an `Rng` to a `Simd*` distribution, that is a bug.
+
+### 1.2 Statistical assertions need more than one seed
+
+A correct hypothesis test still rejects a true null at rate `alpha`, and
+the SIMD stream differs between platforms — so a seed verified on
+aarch64 is an unverified coin flip on the x86_64 CI runner. For any
+assertion of the form "p-value must be large" or "estimate must be close",
+run **three pinned seeds and assert on the best**:
+
+```rust
+let best_p = [2718u64, 999, 42]
+  .into_iter()
+  .map(|seed| run_test(normal_sample(seed, 700)).p_value)
+  .fold(0.0_f64, f64::max);
+assert!(best_p > 0.01, "every seed gave p <= 0.01 (best {best_p}); likely a bug");
+```
+
+That puts false failures near 1e-6 on any target while staying bit-exact
+per platform.
+
+### 1.3 Prefer a robust estimator over a lenient threshold
+
+When a rate or slope is estimated from noisy level data, fix the
+*estimator*, not the tolerance. `mlmc_convergence_rates_and_bs_comparison`
+averaged consecutive log-ratios, which amplifies noise wherever the
+denominator is small; across six seeds its α spanned 0.60 to 2.02. A
+least-squares slope over all levels (Giles 2015 §2.1) held 1.02 to 1.58
+on the same data.
+
+For processes that take a seed source as the last constructor argument:
+
+```rust
+let fou = Fou::new(0.3, 0.001, -3.2, 1.0, 500, None, None, Deterministic::new(42));
 ```
 
 Pin the seed at a value where the test passes with margin > 5σ — the

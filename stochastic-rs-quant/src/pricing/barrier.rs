@@ -8,7 +8,11 @@
 //! - Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers"
 //! - Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Barriers"
 //!
+use rand::RngCore;
 use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
@@ -263,6 +267,11 @@ pub struct MCBarrierPricer {
 
 impl MCBarrierPricer {
   /// Price a barrier option via Monte Carlo with parallel path generation.
+  ///
+  /// The path seeds come from a fresh [`SimdRng`], so repeated calls give
+  /// independent estimates. Use [`Self::price_seeded`] when the estimate has
+  /// to be reproducible.
+  #[allow(clippy::too_many_arguments)]
   pub fn price(
     &self,
     s: f64,
@@ -274,6 +283,43 @@ impl MCBarrierPricer {
     barrier_type: BarrierType,
     option_type: OptionType,
   ) -> f64 {
+    let base = SimdRng::new().next_u64();
+    self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, base)
+  }
+
+  /// Reproducible counterpart of [`Self::price`]: the same `seed` always
+  /// yields the same estimate, independently of how rayon schedules the
+  /// paths, because each path derives its own stream from `seed` and its
+  /// index.
+  #[allow(clippy::too_many_arguments)]
+  pub fn price_seeded(
+    &self,
+    s: f64,
+    k: f64,
+    h: f64,
+    r: f64,
+    sigma: f64,
+    t: f64,
+    barrier_type: BarrierType,
+    option_type: OptionType,
+    seed: u64,
+  ) -> f64 {
+    self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, seed)
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  fn price_from(
+    &self,
+    s: f64,
+    k: f64,
+    h: f64,
+    r: f64,
+    sigma: f64,
+    t: f64,
+    barrier_type: BarrierType,
+    option_type: OptionType,
+    base_seed: u64,
+  ) -> f64 {
     let dt = t / self.n_steps as f64;
     let drift = (r - 0.5 * sigma * sigma) * dt;
     let vol = sigma * dt.sqrt();
@@ -281,13 +327,18 @@ impl MCBarrierPricer {
 
     let sum: f64 = (0..self.n_paths)
       .into_par_iter()
-      .map(|_| {
-        let mut rng = rand::rng();
+      .map(|path| {
+        // Golden-ratio stride keeps consecutive path seeds far apart in the
+        // splitmix state space, so neighbouring paths do not share a stream.
+        let seed = base_seed.wrapping_add((path as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
+        let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+        let mut z_buf = vec![0.0_f64; self.n_steps];
+        normals.fill_slice_fast(&mut z_buf);
+
         let mut s_curr = s;
         let mut barrier_hit = false;
 
-        for _ in 0..self.n_steps {
-          let z: f64 = rand_distr::Distribution::sample(&rand_distr::StandardNormal, &mut rng);
+        for &z in z_buf.iter() {
           s_curr *= (drift + vol * z).exp();
 
           match barrier_type {

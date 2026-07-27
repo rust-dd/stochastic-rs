@@ -67,6 +67,7 @@ use std::f64;
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::special::ln_gamma;
 
@@ -297,6 +298,27 @@ impl NestedArchimedean {
     numerator / denominator
   }
 
+  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same `seed`
+  /// always yields the same matrix.
+  pub fn sample_seeded(&self, n: usize, seed: u64) -> Array2<f64> {
+    self.sample_with(n, &mut SimdRng::from_seed(seed))
+  }
+
+  fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
+    let d = self.dim;
+    let mut out = Array2::<f64>::zeros((n, d));
+    for r in 0..n {
+      let mut row = Array1::<f64>::zeros(d);
+      // Root call: `parent_state = None` signals that V_0 must be sampled
+      // independently from the root family's frailty distribution.
+      self.sample_node(rng, &self.root, None, &mut row);
+      for j in 0..d {
+        out[[r, j]] = row[j];
+      }
+    }
+    out
+  }
+
   /// Recursive sample helper. `parent_state` carries (parent_theta,
   /// parent_frailty) when the node is a non-root descendant; `None`
   /// signals the root call, in which case the frailty is sampled
@@ -401,19 +423,7 @@ impl MultivariateExt for NestedArchimedean {
   }
 
   fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    let d = self.dim;
-    let mut out = Array2::<f64>::zeros((n, d));
-    let mut rng = rand::rng();
-    for r in 0..n {
-      let mut row = Array1::<f64>::zeros(d);
-      // Root call: `parent_state = None` signals that V_0 must be sampled
-      // independently from the root family's frailty distribution.
-      self.sample_node(&mut rng, &self.root, None, &mut row);
-      for j in 0..d {
-        out[[r, j]] = row[j];
-      }
-    }
-    Ok(out)
+    Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {

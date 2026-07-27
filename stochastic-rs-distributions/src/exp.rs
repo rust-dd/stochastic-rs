@@ -514,8 +514,7 @@ py_distribution!(PyExp, SimdExp,
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Distribution;
-  use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::SimdExp;
   use super::SimdExpZig;
@@ -552,9 +551,9 @@ mod tests {
     let lambda = 1.8_f64;
     let mean_target = 1.0 / lambda;
 
-    let dist = SimdExp::<f64>::new(lambda, &Unseeded);
-    let mut rng = rand::rng();
-    let mut samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
+    let dist = SimdExp::<f64>::new(lambda, &Deterministic::new(0x5115));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice_fast(&mut samples);
 
     assert!(
       samples.iter().all(|x| x.is_finite() && *x >= 0.0),
@@ -583,10 +582,9 @@ mod tests {
   fn simd_exp_zig_dual_pair_path_matches_theoretical_distribution() {
     const N: usize = 40_000;
     let lambda = 0.9_f64;
-    let dist = crate::SimdExpZigDual::<f64>::new(lambda, &Unseeded);
-    let mut rng = rand::rng();
+    let dist = crate::SimdExpZigDual::<f64>::new(lambda, &Deterministic::new(0x5116));
     let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut rng, &mut samples);
+    dist.fill_slice(&mut crate::simd_rng::SimdRng::new(), &mut samples);
     assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
     let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
     let ks_critical = 2.0 / (N as f64).sqrt();
@@ -601,10 +599,9 @@ mod tests {
     const N: usize = 32_000;
     let lambda = 0.65_f64;
 
-    let dist = SimdExpZig::<f64>::new(lambda, &Unseeded);
-    let mut rng = rand::rng();
+    let dist = SimdExpZig::<f64>::new(lambda, &Deterministic::new(0x5117));
     let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut rng, &mut samples);
+    dist.fill_slice_fast(&mut samples);
 
     assert!(
       samples.iter().all(|x| x.is_finite() && *x >= 0.0),

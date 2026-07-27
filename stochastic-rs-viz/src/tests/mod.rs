@@ -1,5 +1,5 @@
-use rand_distr::Normal;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 
@@ -68,9 +68,9 @@ pub(crate) fn normal_cpoisson(
   lambda: f64,
   n: usize,
   jump_sigma: f64,
-) -> CompoundPoisson<f64, Normal<f64>> {
+) -> CompoundPoisson<f64, ScalarNormal<f64>> {
   CompoundPoisson::new(
-    Normal::new(0.0, jump_sigma).expect("valid normal"),
+    ScalarNormal::new(0.0, jump_sigma),
     Poisson::new(lambda, Some(n), Some(1.0), Unseeded),
     Unseeded,
   )

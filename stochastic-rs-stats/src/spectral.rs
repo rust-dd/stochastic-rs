@@ -361,7 +361,7 @@ pub fn dominant_frequency_fft(
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
-  use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::DetrendMethod;
@@ -466,10 +466,9 @@ mod tests {
     let fs = 100.0;
     let n = 2048;
 
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let mut rng = rand::rng();
+    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(0x5ec7));
     let mut x = vec![0.0; n];
-    dist.fill_slice(&mut rng, &mut x);
+    dist.fill_slice_fast(&mut x);
 
     let cfg = SpectrumSearchConfig {
       periodogram: PeriodogramConfig {

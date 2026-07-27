@@ -146,10 +146,8 @@ fn credible_interval(v: &mut [f64]) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
-  use rand_distr::Distribution;
-  use rand_distr::Normal;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
@@ -162,14 +160,13 @@ mod tests {
     n: usize,
     seed: u64,
   ) -> Array1<f64> {
-    let mut rng = StdRng::seed_from_u64(seed);
     let a = (-kappa * dt).exp();
     let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * kappa)).sqrt();
-    let normal = Normal::new(0.0, 1.0).unwrap();
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut path = Array1::<f64>::zeros(n);
     path[0] = x0;
     for t in 1..n {
-      let z = normal.sample(&mut rng);
+      let z = normal.sample_fast();
       path[t] = theta + (path[t - 1] - theta) * a + sd * z;
     }
     path

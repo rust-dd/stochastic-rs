@@ -24,9 +24,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
-use rand::SeedableRng;
-use rand_distr::Distribution;
-use rand_distr::StandardNormal;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::ModelPricer;
 
@@ -161,7 +160,7 @@ pub fn calibrate_leverage(
 
   let mut leverage_grid = Array2::ones((n_steps, n_eval));
 
-  let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
   let mut x_particles = Array1::from_elem(n_particles, s0.ln());
   let mut v_particles = Array1::from_elem(n_particles, params.v0);
 
@@ -200,8 +199,8 @@ pub fn calibrate_leverage(
 
     // Evolve particles forward
     for p in 0..n_particles {
-      let dw_v: f64 = Distribution::<f64>::sample(&StandardNormal, &mut rng) * sqrt_dt;
-      let dw_ind: f64 = Distribution::<f64>::sample(&StandardNormal, &mut rng) * sqrt_dt;
+      let dw_v = normals.sample_fast() * sqrt_dt;
+      let dw_ind = normals.sample_fast() * sqrt_dt;
       let dw_x = params.rho * dw_v + rho_bar * dw_ind;
 
       let v_curr = v_particles[p].max(0.0);
@@ -340,7 +339,7 @@ impl HestonSlvPricer {
     let sigma_mixed = self.params.sigma_mixed();
     let rho_bar = (1.0 - self.params.rho * self.params.rho).sqrt();
 
-    let mut rng = rand::rngs::StdRng::seed_from_u64(self.seed);
+    let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(self.seed));
     let mut payoff_sum = 0.0;
 
     for _ in 0..self.n_paths {
@@ -349,8 +348,8 @@ impl HestonSlvPricer {
 
       for step in 0..n_steps {
         let t = (step as f64 + 1.0) * dt;
-        let dw_v: f64 = Distribution::<f64>::sample(&StandardNormal, &mut rng) * sqrt_dt;
-        let dw_ind: f64 = Distribution::<f64>::sample(&StandardNormal, &mut rng) * sqrt_dt;
+        let dw_v = normals.sample_fast() * sqrt_dt;
+        let dw_ind = normals.sample_fast() * sqrt_dt;
         let dw_x = self.params.rho * dw_v + rho_bar * dw_ind;
 
         let v_pos = v.max(0.0);

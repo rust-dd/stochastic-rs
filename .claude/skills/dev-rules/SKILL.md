@@ -52,6 +52,44 @@ Every new module must cite its source. Add a doc comment at the top of the file 
 
 Do not rewrite algorithms that already exist in well-maintained crates (e.g., `ndarray-linalg`, `argmin`, `roots`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
 
+Randomness is the standing exception — see §7a.
+
+## 7a. `rand` and `rand_distr` belong to benchmarks only
+
+Library code, tests and examples draw randomness from the workspace's own
+RNG and distributions. `rand::rng()`, `rand::thread_rng()` and every
+concrete `rand_distr` distribution (`Normal`, `Exp`, `Gamma`, `Poisson`,
+`StandardNormal`, …) are reserved for `benches/` and the `src/tests/bench_*`
+plot harnesses, where `rand_distr` is the *baseline being measured* and
+must stay.
+
+| Need | Use |
+|------|-----|
+| A raw RNG | `SimdRng::new()`, or `SimdRng::from_seed(s)` when reproducible |
+| Bulk Gaussian / exponential / … draws | `SimdNormal`, `SimdExp`, `SimdGamma`, `SimdPoisson`, seeded via `Deterministic::new(s)` or `Unseeded` |
+| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | `ScalarNormal`, `ScalarExp` from `stochastic_rs_distributions::scalar` |
+
+The last row is not a style preference. `Simd*` distributions own an
+`UnsafeCell` sample buffer, so they are `!Sync` by construction and cannot
+satisfy the `Send + Sync` bound that `ProcessExt` propagates into the
+jump-size slot of `CompoundPoisson`, `Bates1996`, `LevyDiffusion` and
+`JumpFOUCustom`. The stateless `Scalar*` types sample from the caller's
+RNG and exist precisely for that slot.
+
+Two traps worth naming:
+
+- **`fill_slice(rng, out)` ignores `rng`.** The `Simd*` types draw from
+  their own internal stream. Seeding an external `StdRng` and handing it
+  over changes nothing; the seed must go to the constructor.
+- **The `rand_distr::Distribution` trait import stays.** Our own `Simd*`
+  types implement it, so `use rand_distr::Distribution;` is still how
+  `.sample()` resolves. Removing those impls would break downstream users;
+  only the concrete `rand_distr` *distributions* are out.
+
+## 8. Latest dependency versions
+
+When adding a new dependency, always use the latest version available on crates.io. Check with `cargo search <crate>` before adding.
+
 ## 8. Latest dependency versions
 
 When adding a new dependency, always use the latest version available on crates.io. Check with `cargo search <crate>` before adding.

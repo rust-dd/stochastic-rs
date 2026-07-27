@@ -1,6 +1,6 @@
 //! Stationarity and unit-root tests (requires `openblas` feature).
 
-mod common;
+pub mod common;
 
 pub use common::DeterministicTerm;
 pub use common::LagSelection;

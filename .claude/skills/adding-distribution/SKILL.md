@@ -39,42 +39,42 @@ reviewer needs to verify that the proposal density majorises the target.
 ```rust
 // stochastic-rs-distributions/src/foo.rs
 
-use crate::traits::FloatExt;
+use crate::simd_rng::SeedExt;
+use crate::simd_rng::SimdRng;
+use crate::simd_rng::SimdRngExt;
 use crate::traits::DistributionExt;
-use rand::SeedableRng;
-use rand_xoshiro::Xoshiro256PlusPlus;
+use crate::traits::FloatExt;
 
-pub struct SimdFoo<T: FloatExt> {
-    pub a: T, pub b: T,            // distribution parameters (named, not args)
-    rng: std::cell::RefCell<Xoshiro256PlusPlus>,  // seeded RNG (interior mutability)
+pub struct SimdFoo<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = SimdRng> {
+    a: T, b: T,                        // distribution parameters
+    buffer: UnsafeCell<[T; N]>,        // amortised sample buffer
+    index: UnsafeCell<usize>,
+    simd_rng: UnsafeCell<R>,           // the stream that actually gets used
 }
 
-impl<T: FloatExt> SimdFoo<T> {
-    /// Construct with a thread-local RNG seed (default).
-    pub fn new(a: T, b: T) -> Self {
-        let seed = rand::random::<u64>();
-        Self::with_seed(a, b, seed)
-    }
-
-    /// Construct with an explicit seed. **Mandatory** — every distribution
-    /// has both `new` and `with_seed`.
-    pub fn with_seed(a: T, b: T, seed: u64) -> Self {
+impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdFoo<T, N, R> {
+    /// Single canonical constructor. The seed source is the last argument,
+    /// matching `Gbm::new(..., seed)` across the workspace: pass `&Unseeded`
+    /// for an entropy-seeded stream, `&Deterministic::new(s)` for a
+    /// reproducible one. There is no `with_seed` / `from_seed_source`.
+    #[inline]
+    pub fn new<S: SeedExt>(a: T, b: T, seed: &S) -> Self {
+        assert!(N >= 8, "buffer size must be at least 8");
         Self {
             a, b,
-            rng: std::cell::RefCell::new(Xoshiro256PlusPlus::seed_from_u64(seed)),
+            buffer: UnsafeCell::new([T::zero(); N]),
+            index: UnsafeCell::new(N),
+            simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
         }
     }
 
-    /// Construct from an existing seedable source (e.g. for chained streams).
-    pub fn from_seed_source<R: rand::SeedableRng>(a: T, b: T, src: R) -> Self {
-        let mut bytes = [0u8; 8];
-        src.fill_bytes(&mut bytes);
-        let seed = u64::from_le_bytes(bytes);
-        Self::with_seed(a, b, seed)
+    /// Bulk fill. **The `_rng` argument is ignored** — it exists only so the
+    /// type satisfies call sites that hand over an `Rng`. The samples come
+    /// from `self.simd_rng`, seeded in `new`. Keep the underscore: it is the
+    /// signal to readers that seeding an external RNG does nothing.
+    pub fn fill_slice<Rr: rand::Rng + ?Sized>(&self, _rng: &mut Rr, dst: &mut [T]) {
+        self.fill_slice_fast(dst)
     }
-
-    /// Bulk fill with parallel SIMD; respects internal seed.
-    pub fn fill_slice(&self, dst: &mut [T]) { /* ... */ }
 
     /// Bulk fill optimised for speed; may use different SIMD intrinsics.
     pub fn fill_slice_fast(&self, dst: &mut [T]) { /* ... */ }
@@ -198,14 +198,43 @@ m.add_class::<PyFoo>()?;
   `feedback_no_statrs_distributions` memory entry is explicit.
 - **Do not** return `0.0` from unimplemented moments. Use
   `unimplemented!("...")` so callers fail loudly.
-- **Do not** sample without a seeded path. Both `new` (thread-local
-  seed) and `with_seed` (explicit) are mandatory.
+- **Do not** invent `with_seed` / `from_seed_source`. One constructor,
+  `new(params.., seed: &S)`, where `S: SeedExt`.
+- **Do not** name the ignored `fill_slice` RNG parameter `rng`. It must be
+  `_rng`, or the next reader will believe seeding it has an effect — that
+  misreading shipped a flaky `anderson_darling` test for months.
+- **Do not** reach for `rand::rng()` or a concrete `rand_distr`
+  distribution anywhere outside `benches/`. See `dev-rules` §7a.
 - **Do not** skip the LaTeX `//!` header — the rust-docs need the
   formula for users skimming.
+
+## 8a. When the distribution must be `Sync`
+
+`Simd*` types are `!Sync` because of the `UnsafeCell` buffer, so they
+cannot be handed to a process that requires
+`D: Distribution<T> + Send + Sync` (the jump-size slot of
+`CompoundPoisson`, `Bates1996`, `LevyDiffusion`, `JumpFOUCustom`). If the
+new distribution is a plausible jump size, also add a stateless companion
+in `scalar.rs`:
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScalarFoo<T> { a: T, b: T }
+
+impl<T: FloatExt> Distribution<T> for ScalarFoo<T> {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+        // inverse CDF or another closed form, drawn from the caller's rng
+    }
+}
+```
+
+Parameters only, no interior mutability — that is what makes it `Sync`.
+`ScalarNormal` and `ScalarExp` are the reference impls.
 
 ## 9. Reference impls
 
 - `SimdNormal` (`normal.rs`) — ziggurat; the canonical reference.
+- `ScalarNormal` / `ScalarExp` (`scalar.rs`) — stateless, `Sync`.
 - `SimdExponential` (`exponential.rs`) — transformation; thinnest possible.
 - `SimdGamma` (`gamma.rs`) — ziggurat with shape > 1, transformation
   fallback for shape ≤ 1.
