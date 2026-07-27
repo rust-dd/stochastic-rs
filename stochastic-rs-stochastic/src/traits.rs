@@ -5,6 +5,7 @@
 //! Upstream traits are re-exported so call-sites can write
 //! `crate::traits::FloatExt` without reaching into `stochastic_rs_distributions`.
 
+pub mod jump;
 pub mod malliavin;
 pub mod process;
 pub mod sampler;
