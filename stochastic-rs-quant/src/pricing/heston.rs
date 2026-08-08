@@ -216,6 +216,20 @@ impl TimeExt for HestonPricer {
 }
 
 impl HestonPricer {
+  /// Returns analytic call and put derivatives with respect to initial variance.
+  ///
+  /// For each Heston probability, the derivative is evaluated under the
+  /// Fourier integral as `D_j f_j`. This avoids subtracting nearly equal option
+  /// prices in a finite difference. Put-call parity makes the two derivatives
+  /// identical when rates and dividend yield do not depend on initial variance.
+  pub fn calculate_call_put_initial_variance_vega(&self) -> (f64, f64) {
+    let tau = self.tau_or_from_dates();
+    let vega =
+      self.s * (-self.q.unwrap_or(0.0) * tau).exp() * self.p_initial_variance_derivative(1, tau)
+        - self.k * (-self.r * tau).exp() * self.p_initial_variance_derivative(2, tau);
+    (vega, vega)
+  }
+
   pub(self) fn u(&self, j: u8) -> f64 {
     match j {
       1 => 0.5,
@@ -273,6 +287,15 @@ impl HestonPricer {
     }
   }
 
+  fn re_initial_variance_derivative(&self, j: u8, tau: f64) -> impl Fn(f64) -> f64 {
+    let self_ = self.clone();
+    move |phi: f64| -> f64 {
+      (self_.D(j, phi, tau) * self_.f(j, phi, tau) * (-Complex64::i() * phi * self_.k.ln()).exp()
+        / (Complex64::i() * phi))
+        .re
+    }
+  }
+
   /// Risk-neutral probability integral `P_j` in the original Heston semi-closed form.
   ///
   /// Source:
@@ -280,6 +303,10 @@ impl HestonPricer {
   ///   https://doi.org/10.1093/rfs/6.2.327
   pub(self) fn p(&self, j: u8, tau: f64) -> f64 {
     0.5 + FRAC_1_PI * integrate_to_convergence(self.re(j, tau), 0.00001, 1e-8)
+  }
+
+  fn p_initial_variance_derivative(&self, j: u8, tau: f64) -> f64 {
+    FRAC_1_PI * integrate_to_convergence(self.re_initial_variance_derivative(j, tau), 0.00001, 1e-8)
   }
 }
 
@@ -368,6 +395,36 @@ mod tests {
 
     let (call, put) = heston.calculate_call_put();
     println!("Call Price: {}, Put Price: {}", call, put);
+  }
+
+  #[test]
+  fn analytic_initial_variance_vega_matches_a_resolved_centered_difference() {
+    let pricer = HestonPricer::new(
+      100.0,
+      0.05,
+      90.0,
+      0.03,
+      Some(0.02),
+      -0.8,
+      5.0,
+      0.1,
+      0.5,
+      Some(0.0),
+      Some(0.5),
+      None,
+      None,
+    );
+    let bump = 1e-3;
+    let mut up = pricer.clone();
+    up.v0 += bump;
+    let mut down = pricer.clone();
+    down.v0 -= bump;
+    let finite_difference =
+      (up.calculate_call_put().0 - down.calculate_call_put().0) / (2.0 * bump);
+    let (call, put) = pricer.calculate_call_put_initial_variance_vega();
+
+    assert!((call - finite_difference).abs() < 1e-4);
+    assert_eq!(call, put);
   }
 
   #[test]

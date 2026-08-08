@@ -25,6 +25,7 @@ pub mod execution_cost;
 pub mod finite_difference;
 pub mod fourier;
 pub mod heston;
+pub mod heston_malliavin;
 pub mod heston_stoch_corr;
 pub mod kirk;
 pub mod lookback;
@@ -43,8 +44,6 @@ pub mod snell_envelope;
 pub mod spread;
 pub mod variance_swap;
 
-// Re-export Fourier infrastructure and model structs.
-// Re-export commonly used pricers.
 pub use autocallable::AutocallablePricer;
 pub use autocallable::KnockInStyle;
 pub use basket::ArithmeticBasketLevyPricer;

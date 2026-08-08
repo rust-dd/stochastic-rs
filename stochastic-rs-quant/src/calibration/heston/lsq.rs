@@ -6,7 +6,9 @@ use nalgebra::Owned;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
-use super::params::HestonParams;
+use super::transform::apply_chain_rule;
+use super::transform::from_optimizer_coordinates;
+use super::transform::to_optimizer_coordinates;
 use crate::CalibrationLossScore;
 use crate::calibration::CalibrationHistory;
 use crate::pricing::heston::HestonPricer;
@@ -18,24 +20,25 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
   type ResidualStorage = Owned<f64, Dyn>;
 
   fn set_params(&mut self, params: &DVector<f64>) {
-    let p = HestonParams::from(params.clone()).projected();
-    self.params = Some(p);
+    self.params = Some(from_optimizer_coordinates(params));
   }
 
   fn params(&self) -> DVector<f64> {
-    self.effective_params().into()
+    to_optimizer_coordinates(&self.effective_params())
   }
 
   fn residuals(&self) -> Option<DVector<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
+    let weighted_residuals =
+      (self.c_market.clone() - c_model.clone()).component_mul(&self.residual_weights);
 
     if self.record_history {
       self
         .calibration_history
         .borrow_mut()
         .push(CalibrationHistory {
-          residuals: self.c_market.clone() - c_model.clone(),
+          residuals: weighted_residuals.clone(),
           call_put: self
             .c_market
             .iter()
@@ -69,18 +72,19 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         });
     }
 
-    Some(self.c_market.clone() - c_model)
+    Some(weighted_residuals)
   }
 
   fn jacobian(&self) -> Option<DMatrix<f64>> {
     let p = self.effective_params();
+    let optimizer_coordinates = to_optimizer_coordinates(&p);
     match self.jacobian_method {
-      HestonJacobianMethod::NumericFiniteDiff => Some(self.numeric_jacobian(&p)),
+      HestonJacobianMethod::NumericFiniteDiff => Some(self.numeric_optimizer_jacobian(&p)),
       HestonJacobianMethod::CuiAnalytic => {
         if let Some((_, jac)) = self.compute_model_prices_and_residual_jacobian_cui(&p) {
-          Some(jac)
+          Some(apply_chain_rule(jac, &optimizer_coordinates))
         } else {
-          Some(self.numeric_jacobian(&p))
+          Some(self.numeric_optimizer_jacobian(&p))
         }
       }
     }

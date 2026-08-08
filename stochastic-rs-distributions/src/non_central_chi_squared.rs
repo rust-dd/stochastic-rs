@@ -6,11 +6,16 @@
 //!
 //! Reference: Johnson, Kotz & Balakrishnan (1995), *Continuous Univariate
 //! Distributions* vol. 2, §29.2 — decomposition
-//! $\chi^2_\nu(\lambda) = \chi^2_{\nu-1} + (Z + \sqrt{\lambda})^2$ for $\nu \ge 1$.
+//! $\chi^2_\nu(\lambda) = \chi^2_{\nu-1} + (Z + \sqrt{\lambda})^2$ for $\nu \ge 1$,
+//! and §29.4 — Poisson mixture
+//! $\chi^2_\nu(\lambda) = \mathrm{Gamma}(\nu/2 + J,\ 2)$ with
+//! $J \sim \mathrm{Poisson}(\lambda/2)$, valid for every $\nu > 0$.
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::chi_square::SimdChiSquared;
+use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
+use crate::poisson::SimdPoisson;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::traits::FloatExt;
@@ -53,10 +58,25 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
   }
 }
 
-/// One-shot convenience wrapper around [`SimdNonCentralChiSquared`].
+/// One-shot noncentral chi-squared draw, exact for every `df > 0`.
 ///
-/// Constructs the sampler (two RNG seedings + buffer fills) per call — for
-/// repeated draws hold a [`SimdNonCentralChiSquared`] instead.
+/// For `df ≥ 1` this uses the Gaussian-shift decomposition of
+/// [`SimdNonCentralChiSquared`]; for `0 < df < 1`, where that decomposition
+/// does not exist, it falls back to the exact Poisson mixture
+/// `χ²_df(λ) = Gamma(df/2 + J, 2)` with `J ~ Poisson(λ/2)`. Constructs the
+/// sub-samplers per call — for repeated `df ≥ 1` draws hold a
+/// [`SimdNonCentralChiSquared`] instead.
 pub fn sample<T: FloatExt, S: SeedExt>(df: T, lambda: T, seed: &S) -> T {
-  SimdNonCentralChiSquared::<T>::new(df, seed).sample_ncp(lambda)
+  if df >= T::one() {
+    return SimdNonCentralChiSquared::<T>::new(df, seed).sample_ncp(lambda);
+  }
+  let two = T::from_f64_fast(2.0);
+  let half_lambda = (lambda / two).to_f64().unwrap_or(f64::NAN);
+  let mixture_jumps = if half_lambda > 0.0 {
+    SimdPoisson::<u64>::new(half_lambda, seed).sample_fast()
+  } else {
+    0
+  };
+  let shape = df / two + T::from_f64_fast(mixture_jumps as f64);
+  SimdGamma::<T>::new(shape, two, seed).sample_fast()
 }

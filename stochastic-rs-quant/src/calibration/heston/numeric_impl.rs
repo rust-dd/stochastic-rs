@@ -10,9 +10,9 @@ use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
 use super::params::HestonParams;
-use super::params::KAPPA_MIN;
-use super::params::RHO_BOUND;
-use super::params::THETA_MIN;
+use super::transform::canonicalize;
+use super::transform::from_optimizer_coordinates;
+use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::PricerExt;
@@ -106,12 +106,14 @@ impl HestonCalibrator {
   }
 
   pub(super) fn effective_params(&self) -> HestonParams {
-    if let Some(p) = &self.params {
-      return p.clone().projected();
-    }
-    self
-      .infer_initial_guess_from_series()
-      .unwrap_or_else(Self::fallback_params)
+    let projected = if let Some(p) = &self.params {
+      p.clone().projected()
+    } else {
+      self
+        .infer_initial_guess_from_series()
+        .unwrap_or_else(Self::fallback_params)
+    };
+    canonicalize(&projected)
   }
 
   pub(super) fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> DVector<f64> {
@@ -154,62 +156,51 @@ impl HestonCalibrator {
   }
 
   pub(super) fn residuals_for(&self, params: &HestonParams) -> DVector<f64> {
-    self.c_market.clone() - self.compute_model_prices_for(params)
+    (self.c_market.clone() - self.compute_model_prices_for(params))
+      .component_mul(&self.residual_weights)
   }
 
-  /// Numerically approximate the Jacobian via central differences.
+  /// Numerically approximate the residual Jacobian with respect to physical parameters.
+  #[cfg(test)]
   #[allow(non_snake_case)]
   pub(super) fn numeric_jacobian(&self, params: &HestonParams) -> DMatrix<f64> {
+    self.finite_difference_jacobian(params, false)
+  }
+
+  pub(super) fn numeric_optimizer_jacobian(&self, params: &HestonParams) -> DMatrix<f64> {
+    self.finite_difference_jacobian(params, true)
+  }
+
+  #[allow(non_snake_case)]
+  fn finite_difference_jacobian(
+    &self,
+    params: &HestonParams,
+    optimizer_denominator: bool,
+  ) -> DMatrix<f64> {
     let n = self.c_market.len();
     let p = 5usize;
-
-    let base_params_vec: DVector<f64> = params.clone().into();
+    let coordinates = to_optimizer_coordinates(params);
     let mut J = DMatrix::zeros(n, p);
 
     for col in 0..p {
-      let x = base_params_vec[col];
-      let mut h = 1e-5_f64.max(1e-3 * x.abs());
-
-      let mut params_plus = params.clone();
-      let mut params_minus = params.clone();
-
-      match col {
-        0 => {
-          params_plus.v0 = (x + h).max(0.0);
-          params_minus.v0 = (x - h).max(0.0);
-        }
-        1 => {
-          params_plus.kappa = (x + h).max(KAPPA_MIN);
-          params_minus.kappa = (x - h).max(KAPPA_MIN);
-        }
-        2 => {
-          params_plus.theta = (x + h).max(THETA_MIN);
-          params_minus.theta = (x - h).max(THETA_MIN);
-        }
-        3 => {
-          params_plus.sigma = (x + h).abs();
-          params_minus.sigma = (x - h).abs();
-        }
-        4 => {
-          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          params_plus.rho = clamp(x + h);
-          params_minus.rho = clamp(x - h);
-          if (params_plus.rho - params_minus.rho).abs() < 0.5 * h {
-            h = 1e-4;
-            params_plus.rho = clamp(x + h);
-            params_minus.rho = clamp(x - h);
-          }
-        }
-        _ => unreachable!(),
-      }
-
-      params_plus.project_in_place();
-      params_minus.project_in_place();
+      let h = 1e-5 * (1.0 + coordinates[col].abs());
+      let mut plus = coordinates.clone();
+      let mut minus = coordinates.clone();
+      plus[col] += h;
+      minus[col] -= h;
+      let params_plus = from_optimizer_coordinates(&plus);
+      let params_minus = from_optimizer_coordinates(&minus);
 
       let r_plus = self.residuals_for(&params_plus);
       let r_minus = self.residuals_for(&params_minus);
-
-      let diff = (r_plus - r_minus) / (2.0 * h);
+      let denominator = if optimizer_denominator {
+        2.0 * h
+      } else {
+        let plus_physical = DVector::from(params_plus);
+        let minus_physical = DVector::from(params_minus);
+        plus_physical[col] - minus_physical[col]
+      };
+      let diff = (r_plus - r_minus) / denominator;
       for row in 0..n {
         J[(row, col)] = diff[row];
       }

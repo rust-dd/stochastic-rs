@@ -10,6 +10,7 @@ mod lsq;
 mod numeric_impl;
 mod params;
 mod result;
+mod transform;
 
 pub use calibrator::HestonCalibrator;
 pub use params::HestonJacobianMethod;
@@ -18,7 +19,19 @@ pub use params::HestonParams;
 pub use result::HestonCalibrationResult;
 
 #[cfg(test)]
+mod control_tests;
+
+#[cfg(test)]
+mod projection_tests;
+
+#[cfg(test)]
 mod quadrature_tests;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod transform_tests;
+
+#[cfg(test)]
+mod weight_tests;

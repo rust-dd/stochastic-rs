@@ -29,6 +29,7 @@ pub mod heston_mle;
 pub mod heston_nml_cekf;
 pub mod hurst;
 pub mod leverage;
+pub mod log_realized_variance_qml;
 pub mod mle;
 pub use stochastic_rs_distributions::non_central_chi_squared;
 pub mod normality;
