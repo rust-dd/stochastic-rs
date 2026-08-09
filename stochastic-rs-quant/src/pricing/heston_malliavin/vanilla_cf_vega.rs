@@ -2,10 +2,10 @@
 
 use super::HestonMalliavinError;
 use super::HestonModel;
-use crate::OptionType;
 use super::VanillaPortfolio;
 use super::simulation::validate_model;
 use super::variance_vega::effective_initial_variance_bump;
+use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::PricerExt;
 

@@ -183,4 +183,3 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
     );
   }
 }
-

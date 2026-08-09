@@ -410,4 +410,3 @@ fn finite_payoff<P: TerminalPayoff + ?Sized>(
     Err(HestonMalliavinError::NonFinitePayoff)
   }
 }
-

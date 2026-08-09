@@ -70,7 +70,14 @@ pub fn apdf(theta: f64, mu: f64, sigma: f64, r_t: f64) -> f64 {
   (beta.powf(alpha) / gamma(alpha)) * r_t.powf(alpha - 1.0) * (-beta * r_t).exp()
 }
 
-fn sample_with_seed<S: SeedExt>(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, seed: &S) -> f64 {
+fn sample_with_seed<S: SeedExt>(
+  theta: f64,
+  mu: f64,
+  sigma: f64,
+  t: f64,
+  r_t: f64,
+  seed: &S,
+) -> f64 {
   if !valid_parameters(theta, mu, sigma, t, r_t) {
     return f64::NAN;
   }

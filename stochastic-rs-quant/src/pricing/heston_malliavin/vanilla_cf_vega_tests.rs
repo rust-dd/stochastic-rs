@@ -2,10 +2,10 @@ use super::HestonMalliavinError;
 use super::HestonModel;
 use super::HestonVanillaCfVegaConfig;
 use super::HestonVanillaCfVegaMethod;
-use crate::OptionType;
 use super::VanillaLeg;
 use super::VanillaPortfolio;
 use super::heston_vanilla_portfolio_cf_initial_variance_vega;
+use crate::OptionType;
 
 fn high_vol_of_vol_non_feller_model() -> HestonModel {
   HestonModel {

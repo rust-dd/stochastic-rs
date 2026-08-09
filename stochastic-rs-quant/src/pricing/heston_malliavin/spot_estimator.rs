@@ -130,4 +130,3 @@ fn spot_observation<P: TerminalPayoff + ?Sized>(
     discounted_payoff * path.spot_gamma_weight,
   ])
 }
-
