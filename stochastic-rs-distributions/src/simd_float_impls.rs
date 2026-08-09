@@ -66,7 +66,7 @@ impl SimdFloatExt for f32 {
   }
 
   fn simd_powf(v: f32x8, exp: f32) -> f32x8 {
-    v.powf(exp)
+    v.powf_simd(f32x8::splat(exp))
   }
 
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
@@ -159,7 +159,7 @@ impl SimdFloatExt for f64 {
   }
 
   fn simd_powf(v: f64x8, exp: f64) -> f64x8 {
-    v.powf(exp)
+    v.powf_simd(f64x8::splat(exp))
   }
 
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
