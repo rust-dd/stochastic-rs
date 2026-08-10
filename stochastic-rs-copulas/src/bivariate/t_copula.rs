@@ -310,6 +310,7 @@ impl BivariateExt for TCopula {
   /// ([`crate::bivariate::gaussian::GaussianCopula`]).
   /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     let rho = self.theta.unwrap();
     let nu = self.nu;
     let arg = -(((nu + 1.0) * (1.0 - rho) / (1.0 + rho)).sqrt());

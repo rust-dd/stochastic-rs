@@ -157,6 +157,7 @@ impl BivariateExt for Gumbel {
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
   /// Springer, Table 5.1.
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     let theta = self.theta.unwrap();
     TailDependence {
       lower: 0.0,
@@ -181,5 +182,16 @@ mod tests {
       2.0 - std::f64::consts::SQRT_2
     );
     assert_eq!(td.lower, 0.0);
+  }
+
+  /// θ=0.5 < `theta_bounds().0 = 1.0` — e.g. reachable via `fit()` on data
+  /// with slightly negative empirical τ, since `_compute_theta` discards
+  /// its own `check_theta()` result. Must panic, not silently return a
+  /// nonsensical (negative) `λ_U`.
+  #[test]
+  #[should_panic(expected = "tail_dependence requires a valid theta")]
+  fn gumbel_tail_dependence_panics_on_invalid_theta() {
+    let g = Gumbel::new(Some(0.5), None);
+    let _ = g.tail_dependence();
   }
 }

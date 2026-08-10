@@ -72,7 +72,34 @@ pub trait BivariateExt {
   /// tail dependence (Clayton, Gumbel, Joe, Galambos, Hüsler-Reiss,
   /// Marshall-Olkin, Student-t). See each family's module doc for the
   /// formula and its source.
+  ///
+  /// # Panics
+  ///
+  /// Implementations panic with a message beginning `"tail_dependence
+  /// requires a valid theta"` if the copula's shape parameter is unset or
+  /// outside its valid domain — see
+  /// [`BivariateExt::assert_theta_valid_for_tail_dependence`]. Every
+  /// other formula-producing method (`pdf`/`cdf`/`partial_derivative`/
+  /// `percent_point`) is gated by `check_fit()?`; `tail_dependence` has
+  /// no `Result` to propagate through, so it panics instead. This matters
+  /// because `_compute_theta` discards its own `check_theta()` result —
+  /// `fit()` on data whose empirical tau falls outside a family's
+  /// domain (e.g. negative tau for Gumbel) silently leaves `theta` out of
+  /// bounds, and without this guard `tail_dependence` would silently
+  /// return a nonsensical (even negative) coefficient.
   fn tail_dependence(&self) -> TailDependence<f64>;
+
+  /// Panics with a message beginning `"tail_dependence requires a valid
+  /// theta"` unless `theta` is set and satisfies
+  /// [`BivariateExt::theta_bounds`] / [`BivariateExt::invalid_thetas`].
+  /// Every [`BivariateExt::tail_dependence`] impl in this crate calls this
+  /// first (or an equivalent family-specific check, for families like
+  /// Marshall-Olkin that accept parameters outside the `theta` field).
+  fn assert_theta_valid_for_tail_dependence(&self) {
+    if let Err(e) = self.check_theta() {
+      panic!("tail_dependence requires a valid theta: {e}");
+    }
+  }
 
   fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 

@@ -175,6 +175,7 @@ impl BivariateExt for Clayton {
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
   /// Springer, Example 5.21 / Table 5.1.
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     let theta = self.theta.unwrap();
     TailDependence {
       lower: 2.0_f64.powf(-1.0 / theta),

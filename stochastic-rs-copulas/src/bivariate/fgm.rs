@@ -142,6 +142,7 @@ impl BivariateExt for Fgm {
   /// in either tail, for any $\theta \in [-1, 1]$.
   /// Reference: Nelsen, R.B. (2006), Table 5.1.
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     TailDependence {
       lower: 0.0,
       upper: 0.0,

@@ -214,6 +214,7 @@ impl BivariateExt for Plackett {
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
   /// Springer, §2.3 / Example 3.11 (module header).
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     TailDependence {
       lower: 0.0,
       upper: 0.0,

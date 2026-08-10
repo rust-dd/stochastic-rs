@@ -255,8 +255,22 @@ impl BivariateExt for MarshallOlkin {
   /// lower-tail dependence.
   /// Reference: Marshall, A.W., Olkin, I. (1967); Nelsen (2006) Example
   /// 5.22 (module header).
+  ///
+  /// Cannot use [`BivariateExt::assert_theta_valid_for_tail_dependence`]
+  /// directly: the legitimate [`MarshallOlkin::with_alpha_beta`]
+  /// construction path leaves `theta` as `None`, which the generic
+  /// `theta`-based guard would reject as unfit even though it's a valid
+  /// configuration. Validates the *resolved* `(alpha, beta)` against
+  /// their own domain instead — e.g. a raw `set_theta(5.0)` bypasses
+  /// `with_alpha_beta`'s constructor asserts and would otherwise report a
+  /// nonsensical `\lambda_U > 1`.
   fn tail_dependence(&self) -> TailDependence<f64> {
     let (alpha, beta) = self.resolve_params();
+    if !(alpha > 0.0 && alpha <= 1.0) || !(beta > 0.0 && beta <= 1.0) {
+      panic!(
+        "tail_dependence requires a valid theta: alpha={alpha} and beta={beta} must each lie in (0, 1]"
+      );
+    }
     TailDependence {
       lower: 0.0,
       upper: alpha.min(beta),
@@ -365,5 +379,16 @@ mod tests {
     let td = c.tail_dependence();
     assert!(approx(td.upper, 0.4, 1e-12), "got {}", td.upper);
     assert_eq!(td.lower, 0.0);
+  }
+
+  /// A raw `set_theta(5.0)` bypasses `with_alpha_beta`'s constructor
+  /// asserts, resolving to `(alpha, beta) = (5.0, 5.0)` — outside `(0, 1]`.
+  /// Must panic, not silently report `λ_U = 5.0`.
+  #[test]
+  #[should_panic(expected = "tail_dependence requires a valid theta")]
+  fn mo_tail_dependence_panics_on_invalid_theta() {
+    let mut c = MarshallOlkin::new();
+    c.set_theta(5.0);
+    let _ = c.tail_dependence();
   }
 }

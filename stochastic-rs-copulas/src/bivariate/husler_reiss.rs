@@ -252,6 +252,7 @@ impl BivariateExt for HuslerReiss {
   /// Hüsler-Reiss has no lower-tail dependence.
   /// Reference: Hüsler, J., Reiss, R.-D. (1989) (module header).
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     let lambda = self.theta.unwrap();
     TailDependence {
       lower: 0.0,

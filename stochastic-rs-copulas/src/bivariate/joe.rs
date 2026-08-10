@@ -226,6 +226,7 @@ impl BivariateExt for Joe {
   /// Reference: Joe, H. (1997), "Multivariate Models and Dependence
   /// Concepts", Chapman & Hall, §5.1.
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     let theta = self.theta.unwrap();
     TailDependence {
       lower: 0.0,

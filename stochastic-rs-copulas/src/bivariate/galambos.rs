@@ -246,6 +246,7 @@ impl BivariateExt for Galambos {
   /// lower-tail dependence.
   /// Reference: Galambos, J. (1975); Joe, H. (1997), §5.4.
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     let theta = self.theta.unwrap();
     TailDependence {
       lower: 0.0,

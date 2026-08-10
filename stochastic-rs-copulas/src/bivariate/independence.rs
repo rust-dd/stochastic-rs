@@ -126,6 +126,7 @@ impl BivariateExt for Independence {
 
   /// $C(u,v) = uv$ has no tail dependence in either tail by construction.
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     TailDependence {
       lower: 0.0,
       upper: 0.0,
@@ -139,8 +140,16 @@ mod tests {
 
   #[test]
   fn independence_tail_dependence_is_zero() {
-    let td = Independence::new().tail_dependence();
+    let mut c = Independence::new();
+    c.set_theta(0.0);
+    let td = c.tail_dependence();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "tail_dependence requires a valid theta")]
+  fn independence_tail_dependence_panics_when_theta_unset() {
+    let _ = Independence::new().tail_dependence();
   }
 }

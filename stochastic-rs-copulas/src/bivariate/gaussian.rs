@@ -225,6 +225,7 @@ impl BivariateExt for GaussianCopula {
   /// tail dependence".
   /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
   fn tail_dependence(&self) -> TailDependence<f64> {
+    self.assert_theta_valid_for_tail_dependence();
     TailDependence {
       lower: 0.0,
       upper: 0.0,
