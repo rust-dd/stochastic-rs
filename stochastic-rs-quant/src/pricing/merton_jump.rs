@@ -396,6 +396,15 @@ impl Merton1976Pricer {
 /// (matching [`BSMPricer::theta`] / `charm` / `dvega_dtime`, and the
 /// `λ ≤ 0` Black-Scholes limit below).
 ///
+/// `theta`/`charm`/`veta`'s `λ > 0` path additionally guards near expiry:
+/// at `τ ≤ h_τ` the down-`τ` bump in [`Merton1976Pricer::bumped`] would
+/// evaluate the price series at a negative time-to-maturity, producing
+/// per-term `NaN`s that [`Merton1976Pricer::greek_series`]'s `NaN`-floor
+/// silently zeroes out of the down-leg — turning an undefined derivative
+/// into large finite garbage instead of `NaN`. Mirrors
+/// [`HestonPricer::theta`](crate::pricing::heston::HestonPricer::theta)'s
+/// identical guard.
+///
 /// All 9 methods price through [`Merton1976Pricer::series_price`], not
 /// [`PricerExt::calculate_price`] — so, unlike `calculate_price()` itself,
 /// every Greek here stays finite for `m` past `calculate_call_put`'s
@@ -426,7 +435,11 @@ impl GreeksExt for Merton1976Pricer {
     if self.lambda <= 0.0 {
       return self.base_bsm(self.tau_or_from_dates()).theta();
     }
+    let tau = self.tau_or_from_dates();
     let h = Self::H_TAU;
+    if !(tau.is_finite() && tau > h) {
+      return f64::NAN;
+    }
     -(self.bumped(0.0, 0.0, h).series_price() - self.bumped(0.0, 0.0, -h).series_price())
       / (2.0 * h)
   }
@@ -448,8 +461,12 @@ impl GreeksExt for Merton1976Pricer {
     if self.lambda <= 0.0 {
       return self.base_bsm(self.tau_or_from_dates()).charm();
     }
-    let hs = self.h_s();
+    let tau = self.tau_or_from_dates();
     let ht = Self::H_TAU;
+    if !(tau.is_finite() && tau > ht) {
+      return f64::NAN;
+    }
+    let hs = self.h_s();
     -(self.bumped(hs, 0.0, ht).series_price()
       - self.bumped(hs, 0.0, -ht).series_price()
       - self.bumped(-hs, 0.0, ht).series_price()
@@ -471,8 +488,12 @@ impl GreeksExt for Merton1976Pricer {
     if self.lambda <= 0.0 {
       return self.base_bsm(self.tau_or_from_dates()).dvega_dtime();
     }
-    let hv = self.h_v();
+    let tau = self.tau_or_from_dates();
     let ht = Self::H_TAU;
+    if !(tau.is_finite() && tau > ht) {
+      return f64::NAN;
+    }
+    let hv = self.h_v();
     -(self.bumped(0.0, hv, ht).series_price()
       - self.bumped(0.0, hv, -ht).series_price()
       - self.bumped(0.0, -hv, ht).series_price()

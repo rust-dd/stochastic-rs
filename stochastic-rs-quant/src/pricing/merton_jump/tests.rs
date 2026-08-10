@@ -168,3 +168,18 @@ fn merton_greeks_finite_at_m50() {
     assert!(v.is_finite(), "{name} is not finite at m=50: {v}");
   }
 }
+
+/// At `τ` below the finite-difference step `H_TAU = 1e-5`, the `λ > 0`
+/// path's down-bump would evaluate the price series at a negative
+/// time-to-maturity. `theta`/`charm`/`veta` must return `NaN` there
+/// instead of the large finite garbage a silently-zeroed `NaN` term in the
+/// Poisson sum would otherwise produce — mirrors `HestonPricer::theta`'s
+/// identical near-expiry guard (`pricing::heston::tests`).
+#[test]
+fn merton_greeks_theta_charm_veta_nan_near_expiry() {
+  let mut m = merton(0.5, 0.3, 20);
+  m.tau = Some(1e-6);
+  assert!(m.theta().is_nan(), "theta should be NaN at tau=1e-6");
+  assert!(m.charm().is_nan(), "charm should be NaN at tau=1e-6");
+  assert!(m.veta().is_nan(), "veta should be NaN at tau=1e-6");
+}
