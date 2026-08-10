@@ -2,7 +2,15 @@
 //!
 //! Algorithms are textbook
 //! (Numerical Recipes 3e; Abramowitz & Stegun; Acklam 1998 for `ndtri`;
-//! Lanczos for `ln_gamma`).
+//! Lanczos for `ln_gamma`). Modified Bessel functions live in the
+//! [`bessel`] submodule, ported from the Cephes Math Library.
+
+pub mod bessel;
+
+pub use bessel::bessel_i0;
+pub use bessel::bessel_i1;
+pub use bessel::bessel_k0;
+pub use bessel::bessel_k1;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [

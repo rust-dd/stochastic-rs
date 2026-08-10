@@ -145,12 +145,19 @@ impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdNormalInverseGauss<
 impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt
   for SimdNormalInverseGauss<T, R>
 {
-  fn pdf(&self, _x: f64) -> f64 {
-    // Closed-form pdf requires the modified Bessel function of the second
-    // kind K₁; not currently available.
-    unimplemented!(
-      "DistributionExt::pdf for SimdNormalInverseGauss requires K_1 (modified Bessel of 2nd kind, order 1); not implemented"
-    )
+  fn pdf(&self, x: f64) -> f64 {
+    // f(x) = (αδ/π) exp(δγ + β(x−μ)) K₁(α q(x)) / q(x), γ = sqrt(α²−β²),
+    // q(x) = sqrt(δ² + (x−μ)²). Barndorff-Nielsen (1997) eq. 3.
+    let a = self.alpha.to_f64().unwrap();
+    let b = self.beta.to_f64().unwrap();
+    let d = self.delta.to_f64().unwrap();
+    let m = self.mu.to_f64().unwrap();
+    let gamma = (a * a - b * b).sqrt();
+    let q = (d * d + (x - m) * (x - m)).sqrt();
+    a * d / std::f64::consts::PI
+      * (d * gamma + b * (x - m)).exp()
+      * crate::special::bessel_k1(a * q)
+      / q
   }
 
   fn cdf(&self, _x: f64) -> f64 {
@@ -238,3 +245,61 @@ py_distribution!(PyNormalInverseGauss, SimdNormalInverseGauss,
   sig: (alpha, beta, delta, mu, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, delta: f64, mu: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::SimdNormalInverseGauss;
+  use crate::traits::DistributionExt;
+
+  fn trapezoid(lo: f64, hi: f64, n: usize, mut f: impl FnMut(f64) -> f64) -> f64 {
+    let h = (hi - lo) / n as f64;
+    let mut integral = 0.0;
+    let mut prev = f(lo);
+    for i in 1..=n {
+      let x = lo + h * i as f64;
+      let cur = f(x);
+      integral += 0.5 * (prev + cur) * h;
+      prev = cur;
+    }
+    integral
+  }
+
+  /// pdf integrates to 1: trapezoid over μ±40δ grid, tol 1e-6 (α=2, β=0.5, δ=1, μ=0).
+  #[test]
+  fn nig_pdf_integrates_to_one() {
+    let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0, &Deterministic::new(1));
+    let integral = trapezoid(-40.0, 40.0, 400_000, |x| dist.pdf(x));
+    assert!(
+      (integral - 1.0).abs() < 1e-6,
+      "NIG pdf integral = {integral}, expected 1.0"
+    );
+  }
+
+  /// First moment of pdf matches the existing closed-form mean() = μ + δβ/γ, tol 1e-5.
+  #[test]
+  fn nig_pdf_first_moment_matches_mean() {
+    let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0, &Deterministic::new(1));
+    let first_moment = trapezoid(-40.0, 40.0, 400_000, |x| x * dist.pdf(x));
+    let expected = dist.mean();
+    assert!(
+      (first_moment - expected).abs() < 1e-5,
+      "first moment = {first_moment}, mean() = {expected}"
+    );
+  }
+
+  #[test]
+  fn nig_pdf_symmetric_when_beta_zero() {
+    let mu = 0.5;
+    let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.0, 1.0, mu, &Deterministic::new(1));
+    for &h in &[0.1_f64, 0.5, 1.0, 2.0, 5.0] {
+      let left = dist.pdf(mu - h);
+      let right = dist.pdf(mu + h);
+      assert!(
+        (left - right).abs() < 1e-14,
+        "pdf not symmetric at h={h}: f(mu-h)={left}, f(mu+h)={right}"
+      );
+    }
+  }
+}
