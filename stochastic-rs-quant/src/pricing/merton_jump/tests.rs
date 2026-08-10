@@ -153,3 +153,18 @@ fn merton_greeks_all_finite() {
     g.delta
   );
 }
+
+/// All 9 Greeks stay finite at `m = 50` — the crate's Python binding's
+/// documented default, and well past `PricerExt::calculate_call_put`'s own
+/// `usize`-factorial overflow threshold (`m ≈ 21`; `(1..=21).product::<usize>()`
+/// panics in debug builds, silently wraps in release). `GreeksExt` routes
+/// every Greek through [`Merton1976Pricer::series_price`] instead, which
+/// has no such ceiling — this test is the direct regression check for that.
+#[test]
+fn merton_greeks_finite_at_m50() {
+  let m = merton(0.5, 0.3, 50);
+  let g = m.greeks();
+  for (name, v) in Greeks::COMPONENT_NAMES.iter().zip(g.as_array()) {
+    assert!(v.is_finite(), "{name} is not finite at m=50: {v}");
+  }
+}

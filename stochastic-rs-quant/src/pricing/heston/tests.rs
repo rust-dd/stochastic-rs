@@ -205,24 +205,41 @@ fn atm_pricer() -> HestonPricer {
 /// `HestonPricer`'s `GreeksExt` impl vs. `AnalyticHestonEngine::finite_diff_greeks`
 /// on the identical parameter set.
 ///
-/// Two different engine `bump` settings are used because the engine's
-/// `finite_diff_greeks` does not use the same finite-difference *order*
-/// for every Greek: `delta`/`gamma`/`vega` are central differences
-/// (`O(bump²)` error), but `theta` is a one-sided backward difference —
-/// only `price_at(τ)` and `price_at(τ - h_τ)`, no `τ + h_τ` — giving
-/// `O(bump)` error. `delta`/`gamma`/`vega` are compared at `bump = 1e-4`,
+/// `delta`/`gamma`/`vega` are checked tight (`rel < 1e-6`) at `bump = 1e-4`,
 /// which makes the engine's `h_S = S·bump` and `h_v0 = v0·bump` coincide
-/// exactly with this crate's own `h_S = S·1e-4` / `h_v0 = v0·1e-4` steps
-/// (an apples-to-apples comparison of the same central-difference formula
-/// at the same step, rather than two independently-tuned schemes that
-/// merely converge to the same limit). `theta` is compared at a much
-/// smaller `bump = 1e-7` instead: its one-sided scheme's `O(bump)` bias
-/// would otherwise dominate the `1e-6` relative tolerance even though both
-/// sides are computing the same analytic derivative. (`bump` below ~`1e-8`
-/// stops helping and then hurts — the underlying `p_j` characteristic-
-/// function integral is itself only converged to a `1e-8` relative
-/// tolerance, so too small a bump starts differencing quadrature noise
-/// instead of signal.)
+/// exactly with this crate's own `h_S = S·1e-4` / `h_v0 = v0·1e-4` steps —
+/// an apples-to-apples comparison of the same central-difference formula at
+/// the same step, rather than two independently-tuned schemes that merely
+/// converge to the same limit.
+///
+/// `theta` needs two separate checks, because `finite_diff_greeks`'s theta
+/// is a *one-sided backward* difference (`price_at(τ)` and
+/// `price_at(τ - h_τ)` only, no `τ + h_τ` term) computing the
+/// increasing-`τ` `+∂P/∂τ`, while [`HestonPricer::theta`] returns the
+/// calendar `-∂P/∂τ` [`GreeksExt::theta`]'s own doc mandates — a sign flip
+/// *and* an asymmetric (`O(bump)`, not this crate's `O(bump²)`) truncation
+/// error, so no single engine `bump` makes `direct.theta() == -engine_theta`
+/// to a tight tolerance while *also* reflecting the engine's real default:
+/// - `theta_tight` (`bump = 1e-7`) verifies `direct.theta()` converges to
+///   the negated analytic `∂P/∂τ` limit as `bump → 0` — i.e. that the sign
+///   flip and magnitude are both right — not that it agrees with the
+///   engine's *actual configured* precision. (`bump` below ~`1e-8` stops
+///   helping and then hurts: the underlying `p_j` characteristic-function
+///   integral is itself only converged to a `1e-8` relative tolerance, so a
+///   too-small bump starts differencing quadrature noise instead of
+///   signal.)
+/// - `theta_default` (`bump = 1e-3`, `AnalyticHestonEngine::new`'s own
+///   out-of-the-box default) pins the real-world gap a caller hitting the
+///   engine with its default settings would actually see. Tolerance is
+///   `O(bump)`-derived: a one-sided backward difference has leading error
+///   `≈ (h_τ/2)·|∂²P/∂τ²|`, i.e. relative error `≈ (h_τ/2)·|∂²P/∂τ² / ∂P/∂τ|`.
+///   The curvature ratio `|∂²P/∂τ² / ∂P/∂τ|` is read off empirically from
+///   the `bump = 1e-4` case (h_τ = τ·1e-4 = 1e-5), whose still-`O(h_τ)`
+///   residual against `theta_tight` was ≈ 2.1e-5 relative, giving
+///   `|∂²P/∂τ²/∂P/∂τ| ≈ 2·2.1e-5/1e-5 ≈ 4.2`; at the default `bump = 1e-3`
+///   (`h_τ = τ·1e-3 = 1e-4`, 10× larger), the same-order error should scale
+///   ≈ linearly to ≈ 2.1e-4 — `5e-4` below leaves headroom without hiding a
+///   regression.
 #[test]
 fn heston_greeks_match_engine_bumps() {
   let direct = atm_pricer();
@@ -233,14 +250,10 @@ fn heston_greeks_match_engine_bumps() {
   engine.bump = 1e-4;
   let central_diff_greeks = engine.calculate(&opt).greeks().unwrap();
 
-  engine.bump = 1e-7;
-  let theta_engine = engine.calculate(&opt).greeks().unwrap().theta;
-
   let cases = [
     ("delta", direct.delta(), central_diff_greeks.delta),
     ("gamma", direct.gamma(), central_diff_greeks.gamma),
     ("vega", direct.vega(), central_diff_greeks.vega),
-    ("theta", direct.theta(), theta_engine),
   ];
   for (name, mine, engine_val) in cases {
     let rel = (mine - engine_val).abs() / engine_val.abs().max(1e-8);
@@ -249,6 +262,24 @@ fn heston_greeks_match_engine_bumps() {
       "{name}: mine={mine}, engine={engine_val}, rel={rel}"
     );
   }
+
+  engine.bump = 1e-7;
+  let theta_tight = -engine.calculate(&opt).greeks().unwrap().theta;
+  let rel_tight = (direct.theta() - theta_tight).abs() / theta_tight.abs().max(1e-8);
+  assert!(
+    rel_tight < 1e-6,
+    "theta (tight, negated small-bump engine): mine={}, -engine_tight={theta_tight}, rel={rel_tight}",
+    direct.theta()
+  );
+
+  engine.bump = 1e-3;
+  let theta_default = -engine.calculate(&opt).greeks().unwrap().theta;
+  let rel_default = (direct.theta() - theta_default).abs() / theta_default.abs().max(1e-8);
+  assert!(
+    rel_default < 5e-4,
+    "theta (engine default bump=1e-3, negated): mine={}, -engine_default={theta_default}, rel={rel_default}",
+    direct.theta()
+  );
 }
 
 /// Every Greek is finite; gamma is positive (convexity); call delta sits

@@ -363,10 +363,14 @@ impl HestonPricer {
 /// finite-difference *that* analytic function instead of double
 /// finite-differencing the raw price.
 ///
-/// `theta`/`charm`/`veta` use the increasing-`τ` convention (`+∂/∂τ`), the
-/// same convention `AnalyticHestonEngine::finite_diff_greeks` uses — *not*
-/// the calendar `-∂/∂t` convention [`BSMPricer`](crate::pricing::bsm::BSMPricer)'s
-/// Greeks use.
+/// `theta`/`charm`/`veta` use the calendar `-∂/∂τ` convention mandated by
+/// [`GreeksExt::theta`]'s own doc (`∂V/∂t`) and matching
+/// [`BSMPricer`](crate::pricing::bsm::BSMPricer)'s / `Merton1976Pricer`'s
+/// Greeks — the negative of the raw `+∂P/∂τ` that
+/// [`AnalyticHestonEngine::finite_diff_greeks`](crate::pricing::engines::AnalyticHestonEngine)
+/// computes (that engine predates this trait impl and was never updated to
+/// match; see `heston/tests.rs::heston_greeks_match_engine_bumps` for how
+/// the two are reconciled in tests).
 impl GreeksExt for HestonPricer {
   fn delta(&self) -> f64 {
     let h = self.h_s();
@@ -396,7 +400,7 @@ impl GreeksExt for HestonPricer {
     if !(tau.is_finite() && tau > h) {
       return f64::NAN;
     }
-    (self.bumped(0.0, 0.0, h, 0.0).calculate_price()
+    -(self.bumped(0.0, 0.0, h, 0.0).calculate_price()
       - self.bumped(0.0, 0.0, -h, 0.0).calculate_price())
       / (2.0 * h)
   }
@@ -426,7 +430,7 @@ impl GreeksExt for HestonPricer {
       return f64::NAN;
     }
     let hs = self.h_s();
-    (self.bumped(hs, 0.0, ht, 0.0).calculate_price()
+    -(self.bumped(hs, 0.0, ht, 0.0).calculate_price()
       - self.bumped(hs, 0.0, -ht, 0.0).calculate_price()
       - self.bumped(-hs, 0.0, ht, 0.0).calculate_price()
       + self.bumped(-hs, 0.0, -ht, 0.0).calculate_price())
@@ -456,7 +460,7 @@ impl GreeksExt for HestonPricer {
     let p_tau_v0 = (self.bumped(0.0, 0.0, h, 0.0).v0_vega()
       - self.bumped(0.0, 0.0, -h, 0.0).v0_vega())
       / (2.0 * h);
-    2.0 * self.v0.sqrt() * p_tau_v0
+    -2.0 * self.v0.sqrt() * p_tau_v0
   }
 }
 

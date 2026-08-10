@@ -338,6 +338,25 @@ impl Merton1976Pricer {
       .sum()
   }
 
+  /// Overflow-safe re-implementation of [`PricerExt::calculate_price`]'s
+  /// Poisson sum, built on [`greek_series`](Self::greek_series) instead of
+  /// [`PricerExt::calculate_call_put`]'s own loop. Numerically identical to
+  /// `calculate_price()` for `m ≤ 20` — both compute `Σ w_n · BS_n(σ_n)`,
+  /// just accumulating the same weight `w_n` via a different (equally
+  /// valid) route — but unlike `calculate_call_put()`, this never
+  /// overflows for larger `m`, since
+  /// [`poisson_weight`](Self::poisson_weight) never materializes `n!` as
+  /// an integer. Every finite-difference Greek below calls this instead of
+  /// `calculate_price()`, so all 9 Greeks stay valid at `m` values
+  /// `calculate_call_put()` itself cannot handle (the crate's Python
+  /// binding documents a default of `m = 50`, past `calculate_call_put`'s
+  /// `m ≈ 21` `usize`-factorial overflow threshold — a pre-existing
+  /// limitation of that method, unrelated to `GreeksExt` and out of scope
+  /// to fix here).
+  fn series_price(&self) -> f64 {
+    self.greek_series(|bsm| bsm.calculate_price())
+  }
+
   const H_TAU: f64 = 1e-5;
 
   fn h_s(&self) -> f64 {
@@ -373,9 +392,15 @@ impl Merton1976Pricer {
 /// pricer instead — `σ_n` is itself a function of both (via
 /// [`Merton1976Pricer::term_vol`]), so a naive `Σ w_n · greek(σ_n)` would
 /// silently drop the chain-rule term and stop being the true derivative of
-/// [`PricerExt::calculate_price`]. `theta`/`charm`/`veta` use the calendar
-/// `-∂/∂τ` convention (matching [`BSMPricer::theta`] / `charm` /
-/// `dvega_dtime`, and the `λ ≤ 0` Black-Scholes limit below).
+/// the price. `theta`/`charm`/`veta` use the calendar `-∂/∂τ` convention
+/// (matching [`BSMPricer::theta`] / `charm` / `dvega_dtime`, and the
+/// `λ ≤ 0` Black-Scholes limit below).
+///
+/// All 9 methods price through [`Merton1976Pricer::series_price`], not
+/// [`PricerExt::calculate_price`] — so, unlike `calculate_price()` itself,
+/// every Greek here stays finite for `m` past `calculate_call_put`'s
+/// `usize`-factorial overflow threshold (`m ≈ 21`; see `series_price`'s
+/// doc).
 impl GreeksExt for Merton1976Pricer {
   fn delta(&self) -> f64 {
     self.greek_series(|bsm| bsm.delta())
@@ -394,8 +419,7 @@ impl GreeksExt for Merton1976Pricer {
       return self.base_bsm(self.tau_or_from_dates()).vega();
     }
     let h = self.h_v();
-    (self.bumped(0.0, h, 0.0).calculate_price() - self.bumped(0.0, -h, 0.0).calculate_price())
-      / (2.0 * h)
+    (self.bumped(0.0, h, 0.0).series_price() - self.bumped(0.0, -h, 0.0).series_price()) / (2.0 * h)
   }
 
   fn theta(&self) -> f64 {
@@ -403,7 +427,7 @@ impl GreeksExt for Merton1976Pricer {
       return self.base_bsm(self.tau_or_from_dates()).theta();
     }
     let h = Self::H_TAU;
-    -(self.bumped(0.0, 0.0, h).calculate_price() - self.bumped(0.0, 0.0, -h).calculate_price())
+    -(self.bumped(0.0, 0.0, h).series_price() - self.bumped(0.0, 0.0, -h).series_price())
       / (2.0 * h)
   }
 
@@ -413,10 +437,10 @@ impl GreeksExt for Merton1976Pricer {
     }
     let hs = self.h_s();
     let hv = self.h_v();
-    (self.bumped(hs, hv, 0.0).calculate_price()
-      - self.bumped(hs, -hv, 0.0).calculate_price()
-      - self.bumped(-hs, hv, 0.0).calculate_price()
-      + self.bumped(-hs, -hv, 0.0).calculate_price())
+    (self.bumped(hs, hv, 0.0).series_price()
+      - self.bumped(hs, -hv, 0.0).series_price()
+      - self.bumped(-hs, hv, 0.0).series_price()
+      + self.bumped(-hs, -hv, 0.0).series_price())
       / (4.0 * hs * hv)
   }
 
@@ -426,10 +450,10 @@ impl GreeksExt for Merton1976Pricer {
     }
     let hs = self.h_s();
     let ht = Self::H_TAU;
-    -(self.bumped(hs, 0.0, ht).calculate_price()
-      - self.bumped(hs, 0.0, -ht).calculate_price()
-      - self.bumped(-hs, 0.0, ht).calculate_price()
-      + self.bumped(-hs, 0.0, -ht).calculate_price())
+    -(self.bumped(hs, 0.0, ht).series_price()
+      - self.bumped(hs, 0.0, -ht).series_price()
+      - self.bumped(-hs, 0.0, ht).series_price()
+      + self.bumped(-hs, 0.0, -ht).series_price())
       / (4.0 * hs * ht)
   }
 
@@ -438,9 +462,8 @@ impl GreeksExt for Merton1976Pricer {
       return self.base_bsm(self.tau_or_from_dates()).vomma();
     }
     let h = self.h_v();
-    let p0 = self.calculate_price();
-    (self.bumped(0.0, h, 0.0).calculate_price() - 2.0 * p0
-      + self.bumped(0.0, -h, 0.0).calculate_price())
+    let p0 = self.series_price();
+    (self.bumped(0.0, h, 0.0).series_price() - 2.0 * p0 + self.bumped(0.0, -h, 0.0).series_price())
       / (h * h)
   }
 
@@ -450,10 +473,10 @@ impl GreeksExt for Merton1976Pricer {
     }
     let hv = self.h_v();
     let ht = Self::H_TAU;
-    -(self.bumped(0.0, hv, ht).calculate_price()
-      - self.bumped(0.0, hv, -ht).calculate_price()
-      - self.bumped(0.0, -hv, ht).calculate_price()
-      + self.bumped(0.0, -hv, -ht).calculate_price())
+    -(self.bumped(0.0, hv, ht).series_price()
+      - self.bumped(0.0, hv, -ht).series_price()
+      - self.bumped(0.0, -hv, ht).series_price()
+      + self.bumped(0.0, -hv, -ht).series_price())
       / (4.0 * hv * ht)
   }
 }
