@@ -40,17 +40,23 @@ use crate::traits::FloatExt;
 /// trivial $\hat\rho_0 = 1$ is not included).
 ///
 /// # Panics
-/// Panics if `x` has fewer than 2 observations, `max_lag == 0`, or
-/// `max_lag >= x.len()`.
+/// Panics if `x` has fewer than 2 observations, `max_lag == 0`,
+/// `max_lag >= x.len()`, `x` contains a non-finite value, or `x` is
+/// constant (`c_0 = 0`, which would make every `ρ̂_k` an undefined `0/0`).
 pub fn acf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
   let n = x.len();
   assert!(n >= 2, "acf requires at least 2 observations");
   assert!(max_lag > 0, "max_lag must be positive");
   assert!(max_lag < n, "max_lag must be less than the sample size");
+  assert!(
+    x.iter().all(|v| v.is_finite()),
+    "acf requires finite observations"
+  );
 
   let mean = x.iter().copied().sum::<T>() / T::from_usize_(n);
   let centered = x.iter().map(|&v| v - mean).collect::<Vec<_>>();
   let c0 = centered.iter().map(|&d| d * d).sum::<T>();
+  assert!(c0 > T::zero(), "acf requires a non-constant series");
 
   let mut rho = Array1::<T>::zeros(max_lag);
   for k in 1..=max_lag {
@@ -72,7 +78,9 @@ pub fn acf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
 /// $\phi_{1,1} = \hat\rho_1$, index `k-1` is $\phi_{k,k}$.
 ///
 /// # Panics
-/// Same as [`acf`], which this function calls internally to obtain
+/// Same as [`acf`] (fewer than 2 observations, `max_lag == 0`,
+/// `max_lag >= x.len()`, a non-finite value, or a constant series) — this
+/// function calls it internally to obtain
 /// $\hat\rho_1,\dots,\hat\rho_{\text{max\_lag}}$.
 pub fn pacf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
   let rho = acf(x, max_lag);
@@ -149,8 +157,9 @@ impl crate::traits::HypothesisTest for LjungBoxResult {
 /// Fit in Time Series Models", *Biometrika*, 65(2), 297-303.
 ///
 /// # Panics
-/// Panics if `lags <= fit_df`. Also panics per [`acf`]'s panics (called
-/// internally with `max_lag = lags`).
+/// Panics if `lags <= fit_df`. Also panics per [`acf`]'s panics (fewer than
+/// 2 observations, `max_lag == 0`, `max_lag >= x.len()`, a non-finite
+/// value, or a constant series) — called internally with `max_lag = lags`.
 pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> LjungBoxResult {
   assert!(
     lags > fit_df,
@@ -218,6 +227,22 @@ mod tests {
     assert!((rho[0] - 0.4).abs() < 1e-12, "rho1 = {}", rho[0]);
     assert!((rho[1] - (-0.1)).abs() < 1e-12, "rho2 = {}", rho[1]);
     assert!((rho[2] - (-0.4)).abs() < 1e-12, "rho3 = {}", rho[2]);
+  }
+
+  #[test]
+  #[should_panic(expected = "acf requires a non-constant series")]
+  fn acf_rejects_constant_series() {
+    let x = Array1::<f64>::from(vec![5.0; 20]);
+    let _ = acf(x.view(), 3);
+  }
+
+  #[test]
+  #[should_panic(expected = "acf requires finite observations")]
+  fn acf_rejects_non_finite_series() {
+    let mut v = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+    v[2] = f64::NAN;
+    let x = Array1::<f64>::from(v);
+    let _ = acf(x.view(), 3);
   }
 
   /// Durbin-Levinson base case: phi_{1,1} = rho_1 exactly.
