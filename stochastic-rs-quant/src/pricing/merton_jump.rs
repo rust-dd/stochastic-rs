@@ -185,39 +185,23 @@ impl Merton1976PricerBuilder {
 }
 
 impl PricerExt for Merton1976Pricer {
+  /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$,
+  /// routed through [`Merton1976Pricer::poisson_weight`]'s running-product
+  /// weight rather than an integer `n!` — the latter overflows `usize` past
+  /// `n \approx 21` (the crate's Python binding documents a default of
+  /// `m = 50`), silently producing garbage instead of a price. Numerically
+  /// identical to the pre-refactor factorial-based loop for `m \le 20` (see
+  /// `merton_price_m10_matches_pre_refactor_value` for the regression pin).
   fn calculate_call_put(&self) -> (f64, f64) {
-    let mut bsm = BSMPricer::new(
-      self.s,
-      self.v,
-      self.k,
-      self.r,
-      self.r_d,
-      self.r_f,
-      self.q,
-      self.tau,
-      self.eval,
-      self.expiration,
-      self.option_type,
-      self.b,
-    );
-
+    let tau = self.tau_or_from_dates();
     let mut call = 0.0;
     let mut put = 0.0;
 
-    let delta = || -> f64 { (self.v.powi(2) * self.gamma / self.lambda).sqrt() };
-    let z = || -> f64 { (self.v.powi(2) - self.lambda * delta().powi(2)).sqrt() };
-    let sigma =
-      |i: usize, tau: f64| -> f64 { ((z().powi(2) + delta().powi(2)) * i as f64 / tau).sqrt() };
-    let tau = self.tau_or_from_dates();
-
     for i in 0..self.m {
-      bsm.v = sigma(i, tau);
-      let f: usize = (1..=i).product();
-      let num = (-self.lambda * tau).exp() * (self.lambda * tau).powi(i as i32);
-
-      let (c, p) = bsm.calculate_call_put();
-      call += c * num / f as f64;
-      put += p * num / f as f64;
+      let weight = self.poisson_weight(i, tau);
+      let (c, p) = self.term_bsm(i, tau).calculate_call_put();
+      call += c * weight;
+      put += p * weight;
     }
 
     (call, put)

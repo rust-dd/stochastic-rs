@@ -167,6 +167,42 @@ fn merton_greeks_finite_at_m50() {
   for (name, v) in Greeks::COMPONENT_NAMES.iter().zip(g.as_array()) {
     assert!(v.is_finite(), "{name} is not finite at m=50: {v}");
   }
+  // `calculate_call_put` itself (not just the `GreeksExt` path) must also
+  // survive m=50 now that it is routed through `poisson_weight` instead of
+  // an integer `n!` — regression check for the overflow this refactor
+  // fixes (`(1..=i).product::<usize>()` panics in debug / wraps in release
+  // past `i ≈ 21`).
+  let (call, put) = m.calculate_call_put();
+  assert!(call.is_finite(), "call not finite at m=50: {call}");
+  assert!(put.is_finite(), "put not finite at m=50: {put}");
+}
+
+/// `calculate_call_put` was refactored to accumulate the Poisson weight
+/// `e^{-λτ}(λτ)^n/n!` via [`Merton1976Pricer::poisson_weight`]'s running
+/// product instead of an integer `n!` (which overflows past `n ≈ 20`). The
+/// two accumulation orders are mathematically identical but not guaranteed
+/// bit-for-bit equal, so this pins the m=10 call price to the value the
+/// *pre-refactor* factorial-based loop actually produced — computed by
+/// temporarily instrumenting the old code path with a `println!` before
+/// making any change, not derived from the new code. A tolerance of `1e-12`
+/// absolute leaves headroom for the differing floating-point operation
+/// order while still catching a real regression.
+#[test]
+fn merton_price_m10_matches_pre_refactor_value() {
+  let m = merton(0.5, 0.3, 10);
+  let (call, put) = m.calculate_call_put();
+  // Captured from the factorial-based `(1..=i).product::<usize>()` loop
+  // prior to the `poisson_weight` refactor.
+  let old_call = 1.883_106_823_679_627_8;
+  let old_put = 4.290_647_586_654_042;
+  assert!(
+    (call - old_call).abs() < 1e-12,
+    "call regressed: got {call}, pre-refactor {old_call}"
+  );
+  assert!(
+    (put - old_put).abs() < 1e-12,
+    "put regressed: got {put}, pre-refactor {old_put}"
+  );
 }
 
 /// At `τ` below the finite-difference step `H_TAU = 1e-5`, the `λ > 0`
