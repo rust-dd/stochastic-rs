@@ -45,6 +45,11 @@ use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
+/// Clamp used to evaluate [`GaussianCopula::partial_derivative`] just
+/// inside `(0, 1)` at the `v` boundary instead of returning a hardcoded
+/// constant there — see that method's doc for why a constant is wrong.
+const BOUNDARY_EPS: f64 = 1e-12;
+
 #[derive(Debug, Clone)]
 pub struct GaussianCopula {
   pub r#type: CopulaType,
@@ -170,6 +175,18 @@ impl BivariateExt for GaussianCopula {
   /// \Phi^{-1}(u)$, $y = \Phi^{-1}(v)$. Same "derivative w.r.t. the second
   /// argument, at fixed conditioning value" convention as
   /// [`crate::bivariate::clayton::Clayton::partial_derivative`].
+  ///
+  /// At the `v \to 0^+/1^-` boundary, `y = \Phi^{-1}(v) \to \mp\infty`, so
+  /// `(x-\rho y)/\sqrt{1-\rho^2} \to \pm\infty` when `\rho>0` but `\to
+  /// \mp\infty` when `\rho<0` — the boundary value's sign flips with the
+  /// sign of `\rho` — and at `\rho=0` the `\rho y` term vanishes
+  /// identically, leaving `\Phi(x)=u`, which depends on `u` rather than
+  /// being a constant. A single hardcoded `0.0`/`1.0` is therefore wrong
+  /// for at least one sign of `\rho` (and always wrong at `\rho=0`);
+  /// evaluating the same formula at `v` clamped just inside `(0,1)` instead
+  /// gives the mathematically correct directional limit (by continuity of
+  /// `\Phi`/`\Phi^{-1}` on the open interval) without a family of
+  /// hardcoded special cases.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
@@ -179,15 +196,7 @@ impl BivariateExt for GaussianCopula {
     let mut out = Array1::<f64>::zeros(u_col.len());
     for i in 0..u_col.len() {
       let u = u_col[i];
-      let v = v_col[i];
-      if v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = 1.0;
-        continue;
-      }
+      let v = v_col[i].clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
       let xx = ndtri(u);
       let yy = ndtri(v);
       out[i] = norm_cdf((xx - rho * yy) / sqrt_one_minus_rho2);
@@ -361,5 +370,43 @@ mod tests {
     let c = GaussianCopula::new();
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(&t).is_err());
+  }
+
+  /// `partial_derivative` must not jump to a hardcoded constant right at
+  /// the `v` boundary: its value at `v=1e-12` should be continuous with
+  /// its value at `v=1e-9`, tracking the true directional limit rather
+  /// than snapping to a wrong-signed `0.0`/`1.0` (the F8 regression this
+  /// guards). Checked at `\rho>0`, where the pre-fix code returned the
+  /// limits backwards (`0.0` near `v=0`, `1.0` near `v=1`, when the true
+  /// direction is the opposite — see the method's doc).
+  #[test]
+  fn gaussian_partial_derivative_no_jump_near_v_boundary() {
+    let mut c = GaussianCopula::new();
+    c.set_theta(0.7);
+    let u = 0.4_f64;
+    let near_zero_a = c.partial_derivative(&array![[u, 1e-12]]).unwrap()[0];
+    let near_zero_b = c.partial_derivative(&array![[u, 1e-9]]).unwrap()[0];
+    assert!(
+      approx(near_zero_a, near_zero_b, 1e-6),
+      "expected continuity near v=0: v=1e-12 -> {near_zero_a}, v=1e-9 -> {near_zero_b}"
+    );
+    let near_one_a = c.partial_derivative(&array![[u, 1.0 - 1e-12]]).unwrap()[0];
+    let near_one_b = c.partial_derivative(&array![[u, 1.0 - 1e-9]]).unwrap()[0];
+    assert!(
+      approx(near_one_a, near_one_b, 1e-6),
+      "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
+    );
+
+    // Directional regression check: for rho > 0, the true limit is *high*
+    // near v=0 and *low* near v=1 — the opposite of the pre-fix hardcoded
+    // 0.0/1.0.
+    assert!(
+      near_zero_a > 0.99,
+      "rho>0 should push the v->0+ limit toward 1, got {near_zero_a}"
+    );
+    assert!(
+      near_one_a < 0.01,
+      "rho>0 should push the v->1- limit toward 0, got {near_one_a}"
+    );
   }
 }

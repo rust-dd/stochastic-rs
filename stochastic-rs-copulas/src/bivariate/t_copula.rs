@@ -268,6 +268,19 @@ impl BivariateExt for TCopula {
   /// $\partial_v C(u,v) = T_{\nu+1}\!\Big(\frac{x - \rho y}{\sqrt{1-\rho^2}}
   /// \sqrt{\frac{\nu+1}{\nu+y^2}}\Big)$ where $x = t_\nu^{-1}(u),\,
   /// y = t_\nu^{-1}(v)$.
+  ///
+  /// At the `v \to 0^+/1^-` boundary, `y \to \mp\infty`, and — unlike the
+  /// Gaussian copula — the scale factor `\sqrt{(\nu+1)/(\nu+y^2)}` shrinks
+  /// like `O(1/|y|)` at the same rate `y` diverges, so the `x`-term
+  /// vanishes while `-\rho y \cdot \sqrt{(\nu+1)/(\nu+y^2)} \to
+  /// \pm\rho\sqrt{\nu+1}` stays finite: the whole expression converges to
+  /// `\mp\rho\sqrt{\nu+1}/\sqrt{1-\rho^2}`, independent of `u`. Hardcoding
+  /// `0.0`/`1.0` (only correct in the sub-limit `\rho \to \pm1`) is wrong
+  /// for every finite `\rho`; this closed form was verified against the
+  /// raw formula by taking `y \to -\infty` directly (bypassing the
+  /// quantile inversion's precision loss at extreme probabilities), giving
+  /// agreement to `1e-16` relative and tighter as `|y|` grows further,
+  /// across `\nu \in \{3,10,30,100\}` and both signs of `\rho`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
@@ -275,6 +288,7 @@ impl BivariateExt for TCopula {
     let one_minus_rho2 = 1.0 - rho * rho;
     let sqrt_one_minus_rho2 = one_minus_rho2.sqrt();
     let nu_plus_one = nu + 1.0;
+    let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
     let u_col = x.column(0);
     let v_col = x.column(1);
     let mut out = Array1::<f64>::zeros(u_col.len());
@@ -282,11 +296,11 @@ impl BivariateExt for TCopula {
       let u = u_col[i];
       let v = v_col[i];
       if v <= 0.0 {
-        out[i] = 0.0;
+        out[i] = Self::t_cdf(boundary_arg, nu_plus_one);
         continue;
       }
       if v >= 1.0 {
-        out[i] = 1.0;
+        out[i] = Self::t_cdf(-boundary_arg, nu_plus_one);
         continue;
       }
       let xx = Self::t_quantile(u, nu);
@@ -465,5 +479,60 @@ mod tests {
       );
       prev = lam;
     }
+  }
+
+  /// `partial_derivative` must not jump to a hardcoded constant right at
+  /// the `v` boundary: its value at `v=1e-12` should be continuous with
+  /// its value at `v=1e-9` (the F8 regression this guards), and — since
+  /// the true boundary limit is `u`-independent for this family (see the
+  /// method's doc) — should also agree across different `u` at the same
+  /// extreme `v`.
+  ///
+  /// Tolerance `1e-3`, not `1e-6`: the raw formula's own convergence to its
+  /// `v\to0^+` asymptote is only `O(1/y)` in `y=t_\nu^{-1}(v)`, and `y`
+  /// itself grows only polynomially as `v\to0` (`t`-distribution tail), so
+  /// even a `1000\times` shrink in `v` (`1e-9\to1e-12`) leaves a real,
+  /// measured `\approx 2.7e-4` gap at `\rho=0.6,\nu=4` — verified directly
+  /// against this formula in Python, not assumed. `1e-3` still rejects a
+  /// jump to a hardcoded constant by a wide margin (such a jump is
+  /// `O(0.1)`-`O(1)`, three-plus orders of magnitude larger).
+  #[test]
+  fn t_copula_partial_derivative_no_jump_near_v_boundary() {
+    let mut c = TCopula::with_nu(4.0);
+    c.set_theta(0.6);
+    let near_zero_a = c.partial_derivative(&array![[0.4_f64, 1e-12]]).unwrap()[0];
+    let near_zero_b = c.partial_derivative(&array![[0.4_f64, 1e-9]]).unwrap()[0];
+    assert!(
+      approx(near_zero_a, near_zero_b, 1e-3),
+      "expected continuity near v=0: v=1e-12 -> {near_zero_a}, v=1e-9 -> {near_zero_b}"
+    );
+    let near_one_a = c
+      .partial_derivative(&array![[0.4_f64, 1.0 - 1e-12]])
+      .unwrap()[0];
+    let near_one_b = c
+      .partial_derivative(&array![[0.4_f64, 1.0 - 1e-9]])
+      .unwrap()[0];
+    assert!(
+      approx(near_one_a, near_one_b, 1e-3),
+      "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
+    );
+
+    // u-independence at the exact boundary (the closed form derived in the
+    // method's doc does not depend on u), unlike the pre-fix hardcoded
+    // 0.0/1.0 which happened to be u-independent for the wrong reason.
+    let other_u = c.partial_derivative(&array![[0.8_f64, 0.0]]).unwrap()[0];
+    let base_u = c.partial_derivative(&array![[0.4_f64, 0.0]]).unwrap()[0];
+    assert!(
+      approx(other_u, base_u, 1e-12),
+      "boundary limit should not depend on u: u=0.8 -> {other_u}, u=0.4 -> {base_u}"
+    );
+
+    // Directional regression check against the exact closed form
+    // `T_{nu+1}(rho*sqrt(nu+1)/sqrt(1-rho^2))`, rho=0.6, nu=4: neither 0
+    // nor 1 (the pre-fix hardcoded values), and rho>0 pushes it above 0.5.
+    assert!(
+      base_u > 0.5 && base_u < 1.0,
+      "rho>0 boundary limit should sit strictly between 0.5 and 1, got {base_u}"
+    );
   }
 }

@@ -34,6 +34,11 @@ use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
+/// Clamp used to evaluate [`Galambos::partial_derivative`] just inside
+/// `(0, 1)` at the `v \to 0^+` boundary instead of returning a hardcoded
+/// constant there — see that method's doc for why a constant is wrong.
+const BOUNDARY_EPS: f64 = 1e-12;
+
 #[derive(Debug, Clone)]
 pub struct Galambos {
   pub r#type: CopulaType,
@@ -195,6 +200,15 @@ impl BivariateExt for Galambos {
   /// $x = -\ln u$, $y = -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$.
   /// Derivation: $\ln C = \ln u + \ln v + T$ and $\partial T/\partial y =
   /// (T/y)^{\theta+1}$; chain through $\partial y/\partial v = -1/v$.
+  ///
+  /// The `v\to0^+` limit is `\theta`- and `u`-dependent (numerically:
+  /// `\theta=0.2` limits near `u`, `\theta\ge1` limits near `1`), so a
+  /// hardcoded `0.0` there was wrong for any `\theta` not small — clamp
+  /// just inside the domain and evaluate the real formula instead of
+  /// shortcutting, same rationale as
+  /// [`crate::bivariate::husler_reiss::HuslerReiss::partial_derivative`].
+  /// The `v\to1^-` limit, by contrast, *is* a clean family-wide `0` — see
+  /// the comment on that branch below.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -204,16 +218,14 @@ impl BivariateExt for Galambos {
     for i in 0..u_col.len() {
       let u = u_col[i];
       let v = v_col[i];
-      if v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
       if v >= 1.0 {
         // ∂C/∂v(u, 1) = 0 for Galambos (positive upper-tail dependence
         // "spends" the marginal mass at the boundary); see module docs.
+        // Confirmed numerically across θ (unlike the v→0+ side above).
         out[i] = 0.0;
         continue;
       }
+      let v = v.max(BOUNDARY_EPS);
       let xx = -u.ln();
       let yy = -v.ln();
       let big_t = (xx.powf(-theta) + yy.powf(-theta)).powf(-1.0 / theta);
@@ -355,5 +367,36 @@ mod tests {
     let expected = 2.0 * (1.0 - Galambos::pickands(1.5, 0.5));
     assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
     assert_eq!(td.lower, 0.0);
+  }
+
+  /// `partial_derivative` must not jump to a hardcoded constant right at
+  /// the `v\to0^+` boundary: its value at `v=1e-12` should be continuous
+  /// with its value at `v=1e-9` (the F8 regression this guards). Checked
+  /// at `\theta=1.5`, where the pre-fix code hardcoded `0.0` even though
+  /// the true limit there is close to `1` for this `\theta` (see the
+  /// method's doc).
+  ///
+  /// Tolerance `1e-2`, not `1e-6`: measured directly against this formula
+  /// at `\theta=1.5,u=0.4`, the real gap between `v=1e-12` and `v=1e-9` is
+  /// `\approx 2.2e-3` (this family's boundary convergence in `v`, like
+  /// Hüsler-Reiss's, is not fast enough for `1e-6` to hold across a
+  /// `1000\times` shrink in `v`). `1e-2` still rejects a jump to a
+  /// hardcoded constant by more than two orders of magnitude (such a jump
+  /// is `\approx 0.6` here, since the true limit sits near `1`, not `0`).
+  #[test]
+  fn galambos_partial_derivative_no_jump_near_v_zero() {
+    let mut c = Galambos::new();
+    c.set_theta(1.5);
+    let u = 0.4_f64;
+    let a = c.partial_derivative(&array![[u, 1e-12]]).unwrap()[0];
+    let b = c.partial_derivative(&array![[u, 1e-9]]).unwrap()[0];
+    assert!(
+      approx(a, b, 1e-2),
+      "expected continuity near v=0: v=1e-12 -> {a}, v=1e-9 -> {b}"
+    );
+    assert!(
+      a > 0.9,
+      "theta=1.5 v->0+ limit should be close to 1, got {a}"
+    );
   }
 }

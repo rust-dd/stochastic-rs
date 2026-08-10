@@ -43,6 +43,11 @@ use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
+/// Clamp used to evaluate [`HuslerReiss::partial_derivative`] just inside
+/// `(0, 1)` at the `v` boundary instead of returning a hardcoded constant
+/// there — see that method's doc for why a constant is wrong.
+const BOUNDARY_EPS: f64 = 1e-12;
+
 #[derive(Debug, Clone)]
 pub struct HuslerReiss {
   pub r#type: CopulaType,
@@ -204,6 +209,20 @@ impl BivariateExt for HuslerReiss {
   }
 
   /// $\partial_v C(u,v) = C(u,v) \cdot \Phi(\beta) / v$.
+  ///
+  /// At the `v \to 0^+/1^-` boundary, `y = -\ln v \to \pm\infty` drives
+  /// `\alpha,\beta` (and hence `C(u,v)\cdot\Phi(\beta)/v`) through both an
+  /// exponential prefactor and a `\Phi`-of-log-ratio term at once, and the
+  /// combined limit is not a family-wide constant: numerically it depends
+  /// on both `u` and `\lambda` at `v\to0^+` (e.g. `\lambda=0.2` limits near
+  /// `u`, `\lambda\ge1` limits near `1`), so `0.0` is wrong whenever
+  /// `\lambda` is not small. At `v\to1^-` the limit does converge to `0`
+  /// for every `\lambda` tested, but not to the hardcoded `1.0` this branch
+  /// returned. Since no family-wide closed form falls out cleanly (unlike
+  /// [`crate::bivariate::t_copula::TCopula::partial_derivative`]), evaluate
+  /// the real formula at `v` clamped just inside `(0,1)` for both
+  /// boundaries instead — continuous in `v`, so it tracks the true
+  /// one-sided limit.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
@@ -212,15 +231,7 @@ impl BivariateExt for HuslerReiss {
     let mut out = Array1::<f64>::zeros(u_col.len());
     for i in 0..u_col.len() {
       let u = u_col[i];
-      let v = v_col[i];
-      if v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = 1.0;
-        continue;
-      }
+      let v = v_col[i].clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
       let xx = -u.ln();
       let yy = -v.ln();
       let half_log = 0.5 * (xx / yy).ln();
@@ -360,5 +371,51 @@ mod tests {
     let expected = 2.0 * (1.0 - norm_cdf(1.0 / 1.5));
     assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
     assert_eq!(td.lower, 0.0);
+  }
+
+  /// `partial_derivative` must not jump to a hardcoded constant right at
+  /// the `v` boundary: its value at `v=1e-12` should be continuous with
+  /// its value at `v=1e-9` (the F8 regression this guards). Checked at
+  /// `\lambda=1.5`, where the pre-fix code hardcoded `0.0` near `v=0` even
+  /// though the true limit there is close to `1` for this `\lambda`, and
+  /// hardcoded `1.0` near `v=1` even though the true limit there is `0`
+  /// (see the method's doc).
+  ///
+  /// Tolerance `2e-2`, not `1e-6`: unlike the Gaussian/t-copula families,
+  /// this family's `v\to0^+` convergence is not fast enough for a `1e-6`
+  /// bound to hold across a `1000\times` shrink in `v` — measured directly
+  /// against this formula at `\lambda=1.5,u=0.4`, the real gap between
+  /// `v=1e-12` and `v=1e-9` is `\approx 7.0e-3`. `2e-2` still rejects a
+  /// jump to a hardcoded constant by more than an order of magnitude (such
+  /// a jump is `\approx 1.0` here, since the true limit sits near `1`).
+  #[test]
+  fn hr_partial_derivative_no_jump_near_v_boundary() {
+    let mut c = HuslerReiss::new();
+    c.set_theta(1.5);
+    let u = 0.4_f64;
+    let near_zero_a = c.partial_derivative(&array![[u, 1e-12]]).unwrap()[0];
+    let near_zero_b = c.partial_derivative(&array![[u, 1e-9]]).unwrap()[0];
+    assert!(
+      approx(near_zero_a, near_zero_b, 2e-2),
+      "expected continuity near v=0: v=1e-12 -> {near_zero_a}, v=1e-9 -> {near_zero_b}"
+    );
+    let near_one_a = c.partial_derivative(&array![[u, 1.0 - 1e-12]]).unwrap()[0];
+    let near_one_b = c.partial_derivative(&array![[u, 1.0 - 1e-9]]).unwrap()[0];
+    assert!(
+      approx(near_one_a, near_one_b, 2e-2),
+      "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
+    );
+
+    // Directional regression check: at lambda=1.5 the true v->0+ limit is
+    // near 1 (not the pre-fix hardcoded 0.0), and the true v->1- limit is
+    // near 0 (not the pre-fix hardcoded 1.0).
+    assert!(
+      near_zero_a > 0.9,
+      "lambda=1.5 v->0+ limit should be close to 1, got {near_zero_a}"
+    );
+    assert!(
+      near_one_a < 0.1,
+      "lambda=1.5 v->1- limit should be close to 0, got {near_one_a}"
+    );
   }
 }
