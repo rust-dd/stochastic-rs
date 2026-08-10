@@ -152,8 +152,11 @@ impl AnalyticHestonEngine {
     let theta = if tau.is_finite() && tau > self.bump {
       let h_t = tau * self.bump;
       let p_t_dn = self.price_at(None, None, Some(tau - h_t), opt);
-      // θ = -∂P/∂t = ∂P/∂(T-t) sign convention.
-      -(p_t_dn - p0) / h_t
+      // Calendar convention θ = ∂P/∂t, matching `GreeksExt::theta`'s own
+      // doc and every other in-tree Greeks impl (`BSMPricer`,
+      // `Merton1976Pricer`, `HestonPricer`, `AnalyticBSEngine`). Since
+      // τ = T-t, ∂P/∂t = -∂P/∂τ ≈ -(p0 - p_t_dn)/h_t = (p_t_dn - p0)/h_t.
+      (p_t_dn - p0) / h_t
     } else {
       f64::NAN
     };

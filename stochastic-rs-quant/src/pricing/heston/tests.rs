@@ -214,16 +214,17 @@ fn atm_pricer() -> HestonPricer {
 ///
 /// `theta` needs two separate checks, because `finite_diff_greeks`'s theta
 /// is a *one-sided backward* difference (`price_at(τ)` and
-/// `price_at(τ - h_τ)` only, no `τ + h_τ` term) computing the
-/// increasing-`τ` `+∂P/∂τ`, while [`HestonPricer::theta`] returns the
-/// calendar `-∂P/∂τ` [`GreeksExt::theta`]'s own doc mandates — a sign flip
-/// *and* an asymmetric (`O(bump)`, not this crate's `O(bump²)`) truncation
-/// error, so no single engine `bump` makes `direct.theta() == -engine_theta`
-/// to a tight tolerance while *also* reflecting the engine's real default:
+/// `price_at(τ - h_τ)` only, no `τ + h_τ` term) — an asymmetric (`O(bump)`,
+/// not this crate's `O(bump²)`) truncation error — even though both paths
+/// now agree on the calendar `-∂P/∂τ` sign convention
+/// [`GreeksExt::theta`]'s own doc mandates ([`HestonPricer::theta`] and
+/// [`AnalyticHestonEngine::finite_diff_greeks`] used to disagree in sign;
+/// the engine's raw output has since been flipped to match), so no single
+/// engine `bump` makes `direct.theta() == engine_theta` to a tight
+/// tolerance while *also* reflecting the engine's real default:
 /// - `theta_tight` (`bump = 1e-7`) verifies `direct.theta()` converges to
-///   the negated analytic `∂P/∂τ` limit as `bump → 0` — i.e. that the sign
-///   flip and magnitude are both right — not that it agrees with the
-///   engine's *actual configured* precision. (`bump` below ~`1e-8` stops
+///   the analytic `-∂P/∂τ` limit as `bump → 0` — not that it agrees with
+///   the engine's *actual configured* precision. (`bump` below ~`1e-8` stops
 ///   helping and then hurts: the underlying `p_j` characteristic-function
 ///   integral is itself only converged to a `1e-8` relative tolerance, so a
 ///   too-small bump starts differencing quadrature noise instead of
@@ -264,20 +265,20 @@ fn heston_greeks_match_engine_bumps() {
   }
 
   engine.bump = 1e-7;
-  let theta_tight = -engine.calculate(&opt).greeks().unwrap().theta;
+  let theta_tight = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_tight = (direct.theta() - theta_tight).abs() / theta_tight.abs().max(1e-8);
   assert!(
     rel_tight < 1e-6,
-    "theta (tight, negated small-bump engine): mine={}, -engine_tight={theta_tight}, rel={rel_tight}",
+    "theta (tight-bump engine): mine={}, engine_tight={theta_tight}, rel={rel_tight}",
     direct.theta()
   );
 
   engine.bump = 1e-3;
-  let theta_default = -engine.calculate(&opt).greeks().unwrap().theta;
+  let theta_default = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_default = (direct.theta() - theta_default).abs() / theta_default.abs().max(1e-8);
   assert!(
     rel_default < 5e-4,
-    "theta (engine default bump=1e-3, negated): mine={}, -engine_default={theta_default}, rel={rel_default}",
+    "theta (engine default bump=1e-3): mine={}, engine_default={theta_default}, rel={rel_default}",
     direct.theta()
   );
 }
