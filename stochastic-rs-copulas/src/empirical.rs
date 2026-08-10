@@ -6,6 +6,9 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::uniform::SimdUniform;
 
 /// Empirical copula (2D) - rank-based transformation
 #[derive(Clone, Debug)]
@@ -57,7 +60,71 @@ impl EmpiricalCopula2D {
     EmpiricalCopula2D { rank_data }
   }
 
-  pub fn sample(&self, _n: usize) -> Array2<f64> {
-    self.rank_data.clone()
+  /// Bootstrap resample of `n` `(u, v)` rows drawn **with replacement**
+  /// from the rank-transformed empirical support, using the crate's
+  /// shared unseeded entropy stream (same default-randomness path as
+  /// e.g. [`crate::bivariate::independence::Independence::sample`]).
+  ///
+  /// This does not draw from the continuous copula; it resamples the `n`
+  /// observed `(u, v)` pairs, which is the standard nonparametric
+  /// bootstrap for an empirical copula (Deheuvels, 1979).
+  pub fn sample(&self, n: usize) -> Array2<f64> {
+    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0, &Unseeded), n)
+  }
+
+  /// Deterministic counterpart of [`EmpiricalCopula2D::sample`]: the same
+  /// `seed` reproduces the same `n` bootstrap draws.
+  pub fn sample_seeded(&self, n: usize, seed: u64) -> Array2<f64> {
+    self.sample_with_uniform(
+      SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(seed)),
+      n,
+    )
+  }
+
+  fn sample_with_uniform(&self, ud: SimdUniform<f64>, n: usize) -> Array2<f64> {
+    let n_rows = self.rank_data.nrows();
+    let mut out = Array2::<f64>::zeros((n, 2));
+    for i in 0..n {
+      let idx = ((ud.sample_fast() * n_rows as f64) as usize).min(n_rows - 1);
+      out[[i, 0]] = self.rank_data[[idx, 0]];
+      out[[i, 1]] = self.rank_data[[idx, 1]];
+    }
+    out
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn fixture() -> EmpiricalCopula2D {
+    let x = Array1::from_vec((0..50).map(|i| i as f64).collect());
+    let y = Array1::from_vec((0..50).map(|i| (i as f64 * 1.7) % 37.0).collect());
+    EmpiricalCopula2D::new_from_two_series(&x, &y)
+  }
+
+  /// Bootstrap resample: length equals `n` (not the original support size),
+  /// two calls with the same seed are identical, and every value stays in
+  /// the rank-transform's `[0, (n_support-1)/n_support]` image.
+  #[test]
+  fn empirical_sample_honors_n_and_seed() {
+    let ec = fixture();
+    let n = 17usize;
+    let a = ec.sample_seeded(n, 42);
+    let b = ec.sample_seeded(n, 42);
+    assert_eq!(a.nrows(), n);
+    assert_eq!(b.nrows(), n);
+    assert_eq!(a, b, "same seed must reproduce identical draws");
+    for row in a.rows() {
+      for &val in row.iter() {
+        assert!((0.0..1.0).contains(&val), "value {val} out of [0, 1)");
+      }
+    }
+
+    let c = ec.sample_seeded(n, 7);
+    assert_ne!(a, c, "different seeds should (almost surely) differ");
+
+    let unseeded = ec.sample(n);
+    assert_eq!(unseeded.nrows(), n);
   }
 }
