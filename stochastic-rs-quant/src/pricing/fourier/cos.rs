@@ -46,6 +46,23 @@ use crate::OptionType;
 /// `n` is the number of cosine expansion terms and `l` is the truncation
 /// half-width in cumulant-standard-deviations (Fang-Oosterlee's $L$).
 /// [`Default`] uses `n=256, l=10.0`, the paper's own §5.1 configuration.
+///
+/// # Truncation accuracy depends on `model.cumulants()`
+///
+/// The `[a, b]` truncation range — and therefore the entire expansion — is
+/// sized from `model.cumulants(t)`, not from `model.chf` directly. If a
+/// [`FourierModelExt`] implementor's `cumulants()` understates its
+/// log-return's true variance/kurtosis, `l=10` can be too narrow to cover
+/// the density's mass. The failure mode is silent: [`Self::price`] returns
+/// a finite, plausible-looking but **wrong** price, not a panic or `NaN`.
+/// This is not hypothetical — `HestonFourier::cumulants()` understates
+/// `c2` for common stochastic-volatility parameters (confirmed by
+/// finite-differencing `ln(chf)` against the formula's claimed value), so
+/// pricing a `HestonFourier` model needs `l` around `20.0..=40.0` rather
+/// than [`Default`] to converge (see the `cos_heston_matches_quadrature`
+/// test). When a model's `cumulants()` accuracy is unknown, raise `l` and
+/// confirm the price stabilizes under further increases, the way that test
+/// does, rather than trusting `Default` blindly.
 #[derive(Debug, Clone)]
 pub struct CosEngine {
   /// Number of cosine expansion terms.
@@ -167,8 +184,14 @@ mod tests {
   use crate::pricing::heston::HestonPricer;
   use crate::traits::PricerExt;
 
-  /// Reference: Fang & Oosterlee (2008) §5.1 — COS matches the Black-Scholes
-  /// analytic price to machine-level accuracy at N=256, L=10 for GBM.
+  /// Reference: Fang & Oosterlee (2008) §5.1. Verifies COS against the
+  /// in-tree analytic BSM pricer to `3e-5` — not machine precision: that
+  /// gap is the reference [`BSMPricer`]'s own `erf` approximation
+  /// (Abramowitz & Stegun 7.1.26, ~1.5e-7 relative error, documented in
+  /// `stochastic-rs-distributions/src/special.rs`), propagated through
+  /// `S`/`K·disc` (~O(100)). COS's own truncation error at N=256, L=10 is
+  /// independently machine-level — see `cos_converges_in_n`, and the `//`
+  /// comment below for the cross-check that isolated the `erf` floor.
   #[test]
   fn cos_bsm_matches_analytic() {
     let model = BSMFourier {
