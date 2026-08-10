@@ -148,6 +148,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt
   fn pdf(&self, x: f64) -> f64 {
     // f(x) = (αδ/π) exp(δγ + β(x−μ)) K₁(α q(x)) / q(x), γ = sqrt(α²−β²),
     // q(x) = sqrt(δ² + (x−μ)²). Barndorff-Nielsen (1997) eq. 3.
+    //
+    // Evaluated via K₁ᵉ(z) = e^z K₁(z) as
+    // exp(δγ + β(x−μ) − α q(x)) · K₁ᵉ(α q(x)) rather than
+    // exp(δγ + β(x−μ)) · K₁(α q(x)): for large |x−μ| the naive exponent
+    // overflows while K₁'s far branch underflows, and ∞ · 0 = NaN. The
+    // combined exponent is bounded above by δγ for every x, since
+    // α q(x) ≥ α|x−μ| ≥ |β(x−μ)| (q(x) ≥ |x−μ|, α > |β| by construction),
+    // so it underflows to 0 gracefully instead.
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let d = self.delta.to_f64().unwrap();
@@ -155,8 +163,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt
     let gamma = (a * a - b * b).sqrt();
     let q = (d * d + (x - m) * (x - m)).sqrt();
     a * d / std::f64::consts::PI
-      * (d * gamma + b * (x - m)).exp()
-      * crate::special::bessel_k1(a * q)
+      * (d * gamma + b * (x - m) - a * q).exp()
+      * crate::special::bessel_k1e(a * q)
       / q
   }
 
@@ -299,6 +307,40 @@ mod tests {
       assert!(
         (left - right).abs() < 1e-14,
         "pdf not symmetric at h={h}: f(mu-h)={left}, f(mu+h)={right}"
+      );
+    }
+  }
+
+  /// Regression: naively computing `exp(δγ+β(x−μ)) · K₁(α q(x))` overflows
+  /// the `exp` term (exponent ≈1001.9 > 709.78) while `K₁`'s far branch
+  /// underflows `exp(−4000)` to exact `0.0`, producing `∞ · 0 = NaN`. The
+  /// cancellation-safe `K₁ᵉ` route must instead underflow cleanly to `0.0`
+  /// (the true limiting density at this deviation is far below f64's
+  /// smallest positive value).
+  #[test]
+  fn nig_pdf_finite_for_large_deviation() {
+    let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0, &Deterministic::new(1));
+    let p = dist.pdf(2000.0);
+    assert!(p.is_finite(), "pdf(2000.0) = {p}, expected a finite value");
+    assert_eq!(
+      p, 0.0,
+      "pdf(2000.0) should underflow cleanly to 0.0, got {p}"
+    );
+  }
+
+  /// The high-skew regime (β/α close to 1) moves the overflow trigger
+  /// inward; sweep a range of moderately large deviations and require
+  /// every value to be finite and non-negative (a valid density never
+  /// goes negative or non-finite, however small).
+  #[test]
+  fn nig_pdf_finite_across_tail_sweep() {
+    let dist = SimdNormalInverseGauss::<f64>::new(2.0, 1.9, 1.0, 0.0, &Deterministic::new(1));
+    for i in 1..=200 {
+      let x = i as f64 * 10.0;
+      let p = dist.pdf(x);
+      assert!(
+        p.is_finite() && p >= 0.0,
+        "pdf({x}) = {p}, expected finite >= 0"
       );
     }
   }

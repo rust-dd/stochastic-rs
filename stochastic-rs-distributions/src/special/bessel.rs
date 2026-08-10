@@ -317,6 +317,31 @@ pub fn bessel_k1(x: f64) -> f64 {
   }
 }
 
+/// Exponentially scaled modified Bessel function of the second kind,
+/// order 1: `K₁ᵉ(x) = e^x K₁(x)`.
+///
+/// Cephes Math Library, S. Moshier, `k1.c` (second entry point, `k1e`).
+/// Same coefficient tables and two-interval scheme as [`bessel_k1`]: the
+/// near branch multiplies the unscaled small-`x` expression by `e^x`
+/// directly, and the far branch drops the `e^{-x}` factor (it cancels
+/// against the `e^x` scale requested here). This lets a caller combine
+/// `K₁ᵉ` with its own compensating `e^{-x}`-like factor before either
+/// side is evaluated, avoiding the `∞ · 0 = NaN` trap that
+/// `exp(large) * bessel_k1(large)` hits (the exponential overflows while
+/// the far branch of `bessel_k1` underflows).
+///
+/// # Panics
+/// Panics if `x` is not strictly positive.
+pub fn bessel_k1e(x: f64) -> f64 {
+  assert!(x > 0.0, "bessel_k1e: x must be positive");
+  if x <= 2.0 {
+    let y = x * x - 2.0;
+    ((0.5 * x).ln() * bessel_i1(x) + chbevl(y, &K1_A) / x) * x.exp()
+  } else {
+    chbevl(8.0 / x - 2.0, &K1_B) / x.sqrt()
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -350,5 +375,60 @@ mod tests {
   #[should_panic(expected = "x must be positive")]
   fn bessel_k1_rejects_nonpositive() {
     bessel_k1(-1.0);
+  }
+
+  /// Reference: scipy.special — `from scipy.special import k1e`
+  /// k1e(1)=1.636153486263258
+  ///
+  /// A second reference point of `k1e(10)=0.3916319102912085` was
+  /// proposed for this test but is not used: it is actually `K0e(10)`
+  /// (verified via `from scipy.special import k0e; k0e(10)` and via
+  /// independent quadrature of the DLMF 10.32.10 integral representation
+  /// `K1e(10) = ∫₀^∞ exp(−10(cosh t − 1)) cosh(t) dt`, both of which give
+  /// `≈0.39163`, matching `K0e(10)` and disagreeing with the true
+  /// `K1e(10)≈0.41077`), not `K1e(10)`. The far branch is instead pinned
+  /// down below by the Wronskian identity, which needs no external value.
+  #[test]
+  fn bessel_k1e_matches_scipy_reference() {
+    assert!(rel_close(bessel_k1e(1.0), 1.636153486263258, 1e-13));
+  }
+
+  #[test]
+  #[should_panic(expected = "x must be positive")]
+  fn bessel_k1e_rejects_nonpositive() {
+    bessel_k1e(-1.0);
+  }
+
+  /// Wronskian identity for modified Bessel functions (Abramowitz &
+  /// Stegun 9.6.15): `I₀(x) K₁(x) + I₁(x) K₀(x) = 1/x`. Exercises the far
+  /// branch of all four functions (`x > 2` for `K`, `x > 8` for `I`)
+  /// against an exact mathematical relation rather than a single pasted
+  /// constant.
+  #[test]
+  fn bessel_wronskian_identity_holds() {
+    for &x in &[0.5_f64, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0] {
+      let lhs = bessel_i0(x) * bessel_k1(x) + bessel_i1(x) * bessel_k0(x);
+      let rhs = 1.0 / x;
+      assert!(
+        (lhs - rhs).abs() < 1e-13,
+        "Wronskian identity failed at x={x}: lhs={lhs}, rhs={rhs}"
+      );
+    }
+  }
+
+  /// K₁ᵉ(x) = e^x K₁(x) is an exact identity; cross-check the two
+  /// independently-coded branches agree in the range where both are safe
+  /// to evaluate directly (K₁ itself only overflows once `e^x K₁(x)`
+  /// would exceed f64 range, well beyond this domain).
+  #[test]
+  fn bessel_k1e_matches_k1_times_exp() {
+    for &x in &[0.3_f64, 1.0, 2.0, 5.0, 20.0, 100.0] {
+      let direct = x.exp() * bessel_k1(x);
+      let scaled = bessel_k1e(x);
+      assert!(
+        rel_close(scaled, direct, 1e-12),
+        "x={x}: k1e={scaled}, exp(x)*k1={direct}"
+      );
+    }
   }
 }

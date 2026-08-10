@@ -11,6 +11,7 @@ pub use bessel::bessel_i0;
 pub use bessel::bessel_i1;
 pub use bessel::bessel_k0;
 pub use bessel::bessel_k1;
+pub use bessel::bessel_k1e;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [
