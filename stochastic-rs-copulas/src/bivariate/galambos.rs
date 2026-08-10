@@ -14,7 +14,7 @@
 //! $\theta \to 0$ recovers the independence copula ($A \equiv 1$); $\theta
 //! \to \infty$ recovers the comonotone copula ($A(t) = \max(t, 1-t)$).
 //!
-//! Tail dependence: $\lambda_U = 2^{-1/\theta} \cdot 2$ (upper),
+//! Tail dependence: $\lambda_U = 2^{-1/\theta}$ (upper),
 //! $\lambda_L = 0$ (lower).
 //!
 //! Reference: Galambos, J. (1975), "Order statistics of samples from
@@ -32,6 +32,7 @@ use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Galambos {
@@ -238,6 +239,19 @@ impl BivariateExt for Galambos {
     };
     find_root_brent(1e-4, 50.0, residual, &mut convergency).unwrap_or(1.0)
   }
+
+  /// Upper-tail dependence $\lambda_U = 2^{-1/\theta}$ (via the Pickands
+  /// relation $\lambda_U = 2(1 - A(1/2))$, see
+  /// [`Galambos::pickands`]/[`Galambos::tau_from_theta`]); Galambos has no
+  /// lower-tail dependence.
+  /// Reference: Galambos, J. (1975); Joe, H. (1997), §5.4.
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    let theta = self.theta.unwrap();
+    TailDependence {
+      lower: 0.0,
+      upper: 2.0_f64.powf(-1.0 / theta),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -330,5 +344,15 @@ mod tests {
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }
+  }
+
+  #[test]
+  fn galambos_tail_dependence_matches_pickands_formula() {
+    let mut c = Galambos::new();
+    c.set_theta(1.5);
+    let td = c.tail_dependence();
+    let expected = 2.0 * (1.0 - Galambos::pickands(1.5, 0.5));
+    assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
+    assert_eq!(td.lower, 0.0);
   }
 }

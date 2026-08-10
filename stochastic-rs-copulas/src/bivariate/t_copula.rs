@@ -46,6 +46,7 @@ use stochastic_rs_distributions::special::ndtri;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct TCopula {
@@ -99,6 +100,8 @@ impl TCopula {
   /// Standard Student-t CDF $F_\nu(x)$ via the regularised incomplete-beta
   /// identity $F_\nu(x) = 1 - \tfrac{1}{2} I_{\nu/(\nu+x^2)}(\nu/2, 1/2)$
   /// for $x \ge 0$.
+  /// Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of
+  /// Mathematical Functions", formula 26.7.1.
   fn t_cdf(x: f64, nu: f64) -> f64 {
     if !x.is_finite() {
       return if x > 0.0 { 1.0 } else { 0.0 };
@@ -299,6 +302,23 @@ impl BivariateExt for TCopula {
     let tau = self.tau.unwrap();
     (0.5 * std::f64::consts::PI * tau).sin().clamp(-1.0, 1.0)
   }
+
+  /// Symmetric tail dependence $\lambda_L = \lambda_U = 2\,t_{\nu+1}\!\big(
+  /// -\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)$, strictly positive for every
+  /// finite $\nu$ and $\rho \in (-1,1)$ — in contrast to the Gaussian
+  /// copula's asymptotic independence
+  /// ([`crate::bivariate::gaussian::GaussianCopula`]).
+  /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    let rho = self.theta.unwrap();
+    let nu = self.nu;
+    let arg = -(((nu + 1.0) * (1.0 - rho) / (1.0 + rho)).sqrt());
+    let lambda = 2.0 * Self::t_cdf(arg, nu + 1.0);
+    TailDependence {
+      lower: lambda,
+      upper: lambda,
+    }
+  }
 }
 
 #[cfg(test)]
@@ -413,5 +433,36 @@ mod tests {
       approx(pd, fd, 1e-3),
       "analytic ∂C/∂v = {pd}, finite-diff = {fd}"
     );
+  }
+
+  /// ρ=0.5, ν=3: λ = 2·t₄(−√(4·(1−0.5)/(1+0.5))), checked against the
+  /// in-tree `t_cdf` (regularised incomplete beta, A&S 26.7.1), plus
+  /// monotonicity of λ in ρ.
+  #[test]
+  fn t_copula_tail_dependence_symmetric_and_monotone() {
+    let mut c = TCopula::with_nu(3.0);
+    c.set_theta(0.5);
+    let td = c.tail_dependence();
+    assert!(approx(td.lower, td.upper, 1e-15), "symmetric: {td:?}");
+
+    let arg = -((4.0_f64 * (1.0 - 0.5) / (1.0 + 0.5)).sqrt());
+    let expected = 2.0 * TCopula::t_cdf(arg, 4.0);
+    assert!(
+      approx(td.lower, expected, 1e-12),
+      "λ={}, expected {expected}",
+      td.lower
+    );
+
+    let mut prev = 0.0_f64;
+    for &rho in &[-0.5_f64, -0.1, 0.3, 0.7, 0.9] {
+      let mut cc = TCopula::with_nu(3.0);
+      cc.set_theta(rho);
+      let lam = cc.tail_dependence().lower;
+      assert!(
+        lam > prev,
+        "λ should increase with ρ: ρ={rho}, λ={lam}, prev={prev}"
+      );
+      prev = lam;
+    }
   }
 }

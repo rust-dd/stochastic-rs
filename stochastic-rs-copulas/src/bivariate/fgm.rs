@@ -23,6 +23,7 @@ use ndarray::Array2;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Fgm {
@@ -136,6 +137,16 @@ impl BivariateExt for Fgm {
     let tau = self.tau.unwrap();
     (9.0 * tau / 2.0).clamp(-1.0, 1.0)
   }
+
+  /// FGM is a bounded perturbation of independence — no tail dependence
+  /// in either tail, for any $\theta \in [-1, 1]$.
+  /// Reference: Nelsen, R.B. (2006), Table 5.1.
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    }
+  }
 }
 
 #[cfg(test)]
@@ -191,5 +202,14 @@ mod tests {
     let c = Fgm::new();
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(&t).is_err());
+  }
+
+  #[test]
+  fn fgm_tail_dependence_is_zero() {
+    let mut c = Fgm::new();
+    c.set_theta(0.9);
+    let td = c.tail_dependence();
+    assert_eq!(td.lower, 0.0);
+    assert_eq!(td.upper, 0.0);
   }
 }

@@ -11,6 +11,7 @@ use ndarray::Array2;
 
 use super::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Gumbel {
@@ -149,5 +150,36 @@ impl BivariateExt for Gumbel {
     }
 
     1.0 / (1.0 - tau)
+  }
+
+  /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no
+  /// lower-tail dependence ($\lambda_L = 0$).
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
+  /// Springer, Table 5.1.
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    let theta = self.theta.unwrap();
+    TailDependence {
+      lower: 0.0,
+      upper: 2.0 - 2.0_f64.powf(1.0 / theta),
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Gumbel θ=2: λ_U = 2 − √2 = 0.585786437626905.
+  #[test]
+  fn gumbel_tail_dependence_closed_form() {
+    let g = Gumbel::new(Some(2.0), None);
+    let td = g.tail_dependence();
+    assert!(
+      (td.upper - (2.0 - std::f64::consts::SQRT_2)).abs() < 1e-12,
+      "λ_U={}, expected {}",
+      td.upper,
+      2.0 - std::f64::consts::SQRT_2
+    );
+    assert_eq!(td.lower, 0.0);
   }
 }

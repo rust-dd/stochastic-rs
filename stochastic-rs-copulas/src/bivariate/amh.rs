@@ -28,6 +28,7 @@ use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Amh {
@@ -216,6 +217,17 @@ impl BivariateExt for Amh {
     };
     find_root_brent(-1.0 + 1e-9, 1.0 - 1e-9, residual, &mut convergency).unwrap_or(0.0)
   }
+
+  /// AMH has no tail dependence in either tail, for any $\theta \in
+  /// [-1, 1)$.
+  /// Reference: Nelsen, R.B. (2006), Example 4.23 / Table 4.1 (module
+  /// header).
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    }
+  }
 }
 
 #[cfg(test)]
@@ -304,5 +316,14 @@ mod tests {
     c.set_tau(0.0);
     let theta = c.compute_theta();
     assert!(approx(theta, 0.0, 1e-6), "τ=0 should give θ=0, got {theta}");
+  }
+
+  #[test]
+  fn amh_tail_dependence_is_zero() {
+    let mut c = Amh::new();
+    c.set_theta(0.5);
+    let td = c.tail_dependence();
+    assert_eq!(td.lower, 0.0);
+    assert_eq!(td.upper, 0.0);
   }
 }

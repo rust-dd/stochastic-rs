@@ -18,6 +18,7 @@ pub use stochastic_rs_distributions as distributions;
 pub use crate::traits::BivariateExt;
 #[cfg(feature = "openblas")]
 pub use crate::traits::MultivariateExt;
+pub use crate::traits::TailDependence;
 
 pub mod bivariate;
 pub mod correlation;

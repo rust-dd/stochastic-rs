@@ -12,6 +12,7 @@
 
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::bivariate::frank::Frank;
+use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs_copulas::bivariate::independence::Independence;
 use stochastic_rs_copulas::traits::BivariateExt;
@@ -142,5 +143,17 @@ fn gumbel_tau_theta_roundtrip() {
     let theta = g.compute_theta();
     let tau_back = (theta - 1.0) / theta;
     approx_eq(tau_back, tau, 1e-12);
+  }
+}
+
+/// Gaussian: ρ = sin(πτ/2) (Kendall's τ inversion, Kruskal 1958).
+#[test]
+fn gaussian_theta_from_tau_closed_form() {
+  for &tau in &[-0.6_f64, -0.3, 0.0, 0.25, 0.5, 0.75, 0.9] {
+    let mut c = GaussianCopula::new();
+    c.set_tau(tau);
+    let theta = c.compute_theta();
+    let expected = (0.5 * std::f64::consts::PI * tau).sin();
+    approx_eq(theta, expected, 1e-12);
   }
 }

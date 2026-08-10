@@ -11,6 +11,7 @@ pub mod clayton;
 pub mod fgm;
 pub mod frank;
 pub mod galambos;
+pub mod gaussian;
 pub mod gumbel;
 pub mod husler_reiss;
 pub mod independence;
@@ -26,6 +27,7 @@ pub enum CopulaType {
   Fgm,
   Frank,
   Galambos,
+  Gaussian,
   Gumbel,
   HuslerReiss,
   Independence,

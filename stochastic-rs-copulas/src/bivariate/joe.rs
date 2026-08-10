@@ -24,6 +24,7 @@ use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Joe {
@@ -219,6 +220,18 @@ impl BivariateExt for Joe {
     };
     find_root_brent(1.0 + 1e-6, 50.0, residual, &mut convergency).unwrap_or(1.0)
   }
+
+  /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$ (same functional
+  /// form as Gumbel); Joe has no lower-tail dependence.
+  /// Reference: Joe, H. (1997), "Multivariate Models and Dependence
+  /// Concepts", Chapman & Hall, §5.1.
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    let theta = self.theta.unwrap();
+    TailDependence {
+      lower: 0.0,
+      upper: 2.0 - 2.0_f64.powf(1.0 / theta),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -299,5 +312,15 @@ mod tests {
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }
+  }
+
+  #[test]
+  fn joe_tail_dependence_matches_gumbel_form() {
+    let mut c = Joe::new();
+    c.set_theta(2.0);
+    let td = c.tail_dependence();
+    let expected = 2.0 - 2.0_f64.powf(0.5);
+    assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
+    assert_eq!(td.lower, 0.0);
   }
 }

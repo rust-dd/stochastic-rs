@@ -41,6 +41,7 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct HuslerReiss {
@@ -246,6 +247,17 @@ impl BivariateExt for HuslerReiss {
     };
     find_root_brent(1e-3, 20.0, residual, &mut convergency).unwrap_or(1.0)
   }
+
+  /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;
+  /// Hüsler-Reiss has no lower-tail dependence.
+  /// Reference: Hüsler, J., Reiss, R.-D. (1989) (module header).
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    let lambda = self.theta.unwrap();
+    TailDependence {
+      lower: 0.0,
+      upper: 2.0 * (1.0 - norm_cdf(1.0 / lambda)),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -337,5 +349,15 @@ mod tests {
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }
+  }
+
+  #[test]
+  fn hr_tail_dependence_matches_formula() {
+    let mut c = HuslerReiss::new();
+    c.set_theta(1.5);
+    let td = c.tail_dependence();
+    let expected = 2.0 * (1.0 - norm_cdf(1.0 / 1.5));
+    assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
+    assert_eq!(td.lower, 0.0);
   }
 }

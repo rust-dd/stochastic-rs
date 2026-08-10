@@ -15,6 +15,7 @@ use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Frank {
@@ -160,6 +161,16 @@ impl BivariateExt for Frank {
     };
     find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(0.0)
   }
+
+  /// Frank has no tail dependence in either tail, for any $\theta$.
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
+  /// Springer, Table 5.1.
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    }
+  }
 }
 
 impl Frank {
@@ -206,5 +217,18 @@ impl Frank {
     };
     let tau_theta = 1.0 - 4.0 / alpha + 4.0 * integral / (alpha * alpha);
     tau_theta - tau
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn frank_tail_dependence_is_zero() {
+    let f = Frank::new(Some(6.0), None);
+    let td = f.tail_dependence();
+    assert_eq!(td.lower, 0.0);
+    assert_eq!(td.upper, 0.0);
   }
 }

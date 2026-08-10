@@ -15,6 +15,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Independence {
@@ -121,5 +122,25 @@ impl BivariateExt for Independence {
 
   fn compute_theta(&self) -> f64 {
     0.0
+  }
+
+  /// $C(u,v) = uv$ has no tail dependence in either tail by construction.
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn independence_tail_dependence_is_zero() {
+    let td = Independence::new().tail_dependence();
+    assert_eq!(td.lower, 0.0);
+    assert_eq!(td.upper, 0.0);
   }
 }

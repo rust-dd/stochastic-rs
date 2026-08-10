@@ -27,6 +27,7 @@ use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Plackett {
@@ -208,6 +209,16 @@ impl BivariateExt for Plackett {
     };
     find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(1.0)
   }
+
+  /// Plackett has no tail dependence in either tail, for any $\theta > 0$.
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
+  /// Springer, §2.3 / Example 3.11 (module header).
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    }
+  }
 }
 
 #[cfg(test)]
@@ -282,5 +293,14 @@ mod tests {
     let c = Plackett::new();
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(&t).is_err());
+  }
+
+  #[test]
+  fn plackett_tail_dependence_is_zero() {
+    let mut c = Plackett::new();
+    c.set_theta(5.0);
+    let td = c.tail_dependence();
+    assert_eq!(td.lower, 0.0);
+    assert_eq!(td.upper, 0.0);
   }
 }

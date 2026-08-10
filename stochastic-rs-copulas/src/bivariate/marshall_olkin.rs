@@ -40,6 +40,7 @@ use ndarray::Array2;
 
 use crate::bivariate::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct MarshallOlkin {
@@ -248,6 +249,19 @@ impl BivariateExt for MarshallOlkin {
     }
     (2.0 * tau / (1.0 + tau)).clamp(0.0, 1.0)
   }
+
+  /// Upper-tail dependence $\lambda_U = \min(\alpha,\beta)$, carried
+  /// entirely by the singular component on $u^\alpha = v^\beta$; no
+  /// lower-tail dependence.
+  /// Reference: Marshall, A.W., Olkin, I. (1967); Nelsen (2006) Example
+  /// 5.22 (module header).
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    let (alpha, beta) = self.resolve_params();
+    TailDependence {
+      lower: 0.0,
+      upper: alpha.min(beta),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -343,5 +357,13 @@ mod tests {
       "pd={}, expected {expected}",
       pd[0]
     );
+  }
+
+  #[test]
+  fn mo_tail_dependence_matches_min_alpha_beta() {
+    let c = MarshallOlkin::with_alpha_beta(0.6, 0.4);
+    let td = c.tail_dependence();
+    assert!(approx(td.upper, 0.4, 1e-12), "got {}", td.upper);
+    assert_eq!(td.lower, 0.0);
   }
 }

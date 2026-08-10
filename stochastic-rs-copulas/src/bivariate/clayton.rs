@@ -12,6 +12,7 @@ use ndarray::Array2;
 
 use super::CopulaType;
 use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Clayton {
@@ -167,5 +168,37 @@ impl BivariateExt for Clayton {
     let tau = self.tau.unwrap();
 
     2.0 * tau / (1.0 - tau)
+  }
+
+  /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no
+  /// upper-tail dependence ($\lambda_U = 0$).
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
+  /// Springer, Example 5.21 / Table 5.1.
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    let theta = self.theta.unwrap();
+    TailDependence {
+      lower: 2.0_f64.powf(-1.0 / theta),
+      upper: 0.0,
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Clayton θ=2: λ_L = 2^{−1/2} = 0.707106781186…, λ_U = 0.
+  #[test]
+  fn clayton_tail_dependence_closed_form() {
+    let mut c = Clayton::new();
+    c.set_theta(2.0);
+    let td = c.tail_dependence();
+    assert!(
+      (td.lower - 2.0_f64.powf(-0.5)).abs() < 1e-12,
+      "λ_L={}, expected {}",
+      td.lower,
+      2.0_f64.powf(-0.5)
+    );
+    assert_eq!(td.upper, 0.0);
   }
 }

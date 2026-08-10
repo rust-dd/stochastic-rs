@@ -13,6 +13,20 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::bivariate::CopulaType as BivariateCopulaType;
 
+/// Upper- and lower-tail dependence coefficients
+/// $$
+/// \lambda_L = \lim_{u\to0^+} \frac{C(u,u)}{u}, \qquad
+/// \lambda_U = \lim_{u\to1^-} \frac{1 - 2u + C(u,u)}{1 - u}.
+/// $$
+/// Generic in `T` so the value type travels with the struct; every
+/// [`BivariateExt`] impl in this crate is `f64`-based, so
+/// [`BivariateExt::tail_dependence`] always returns `TailDependence<f64>`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TailDependence<T> {
+  pub lower: T,
+  pub upper: T,
+}
+
 pub trait BivariateExt {
   fn r#type(&self) -> BivariateCopulaType;
 
@@ -51,6 +65,14 @@ pub trait BivariateExt {
     self.set_theta(self.compute_theta());
     let _ = self.check_theta();
   }
+
+  /// Closed-form upper/lower tail-dependence coefficients for the current
+  /// `theta`. Required — not defaulted — because a silent `(0.0, 0.0)`
+  /// fallback would be a correctness bug for every family with nonzero
+  /// tail dependence (Clayton, Gumbel, Joe, Galambos, Hüsler-Reiss,
+  /// Marshall-Olkin, Student-t). See each family's module doc for the
+  /// formula and its source.
+  fn tail_dependence(&self) -> TailDependence<f64>;
 
   fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 

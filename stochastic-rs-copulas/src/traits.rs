@@ -8,5 +8,6 @@ pub mod bivariate;
 pub mod multivariate;
 
 pub use bivariate::BivariateExt;
+pub use bivariate::TailDependence;
 #[cfg(feature = "openblas")]
 pub use multivariate::MultivariateExt;
