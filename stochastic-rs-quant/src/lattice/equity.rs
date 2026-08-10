@@ -154,6 +154,38 @@ mod tests {
     );
   }
 
+  /// Complement of [`crr_american_call_no_dividend_equals_european`]: Merton
+  /// (1973)'s "never exercise early" result for calls requires `q = 0`.
+  /// With `q > 0` a call *can* be worth exercising early (the holder gives
+  /// up the dividend stream by continuing to hold), so this is the only
+  /// American-call test in this module where the early-exercise clamp in
+  /// `price_rollback` must actually bind rather than the American value
+  /// merely reproducing the European one. Cross-checked against
+  /// [`BjerksundStensland2002Pricer`]'s closed-form American approximation.
+  #[test]
+  fn crr_american_call_with_dividends_exceeds_european() {
+    let (s, k, r, q, sigma, tau) = (100.0, 100.0, 0.03, 0.07, 0.2, 1.0);
+    let model = CrrModel::new(sigma, 1000);
+    let european = model.price_call(s, k, r, q, tau);
+    let american = model.price_american(s, k, r, q, tau, OptionType::Call);
+    assert!(
+      american > european,
+      "expected strict early-exercise premium: american {american} vs european {european}"
+    );
+
+    let reference = BjerksundStensland2002Pricer::builder(s, sigma, k, r)
+      .q(q)
+      .tau(tau)
+      .option_type(OptionType::Call)
+      .build()
+      .calculate_price();
+    let rel_err = (american - reference).abs() / reference;
+    assert!(
+      rel_err < 1e-2,
+      "crr {american} vs bjerksund-stensland {reference} (rel err {rel_err})"
+    );
+  }
+
   #[test]
   fn crr_american_put_geq_european_put() {
     let model = CrrModel::new(0.2_f64, 500);
