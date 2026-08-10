@@ -79,7 +79,15 @@ impl Default for CosEngine {
 
 impl CosEngine {
   /// Build a COS engine with `n` expansion terms and half-width `l`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `l <= 0.0` or `n < 2`: a non-positive truncation half-width
+  /// or fewer than 2 expansion terms cannot span a meaningful density
+  /// support, and would otherwise silently produce finite-looking garbage
+  /// instead of a price.
   pub fn new(n: usize, l: f64) -> Self {
+    assert!(l > 0.0 && n >= 2, "CosEngine requires l > 0 and n >= 2");
     Self { n, l }
   }
 
@@ -97,6 +105,15 @@ impl CosEngine {
   /// Returns [`f64::NAN`] when the truncation range degenerates
   /// (`c2 + sqrt(c4)` not finite and positive, e.g. at `t=0`) — the crate
   /// convention is `NaN` for an undefined result, never a silent `0.0`.
+  /// `NaN` also propagates from a `model.chf` blow-up further down (e.g.
+  /// characteristic-function overflow for extreme parameters): the finite
+  /// sum is clamped at `0.0` from below (the truncated cosine series can
+  /// leave machine-epsilon-scale negative noise on a deep out-of-the-money
+  /// price whose true value is ~0, and a price can never be negative), but
+  /// that clamp checks for `NaN` explicitly first rather than using
+  /// `f64::max` directly — `f64::max` returns its non-`NaN` operand when
+  /// one side is `NaN`, which would otherwise turn the blow-up into a
+  /// silent `0.0` instead of the `NaN` this convention requires.
   pub fn price<M: FourierModelExt>(
     &self,
     model: &M,
@@ -137,7 +154,11 @@ impl CosEngine {
       price += weight * f_k * v_k;
     }
 
-    ((-r * t).exp() * price).max(0.0)
+    let discounted = (-r * t).exp() * price;
+    if discounted.is_nan() {
+      return f64::NAN;
+    }
+    discounted.max(0.0)
   }
 }
 
@@ -328,6 +349,45 @@ mod tests {
     assert!(
       price.is_nan(),
       "degenerate t=0 cumulants must give NaN, got {price}"
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "CosEngine requires l > 0 and n >= 2")]
+  fn cos_engine_new_rejects_nonpositive_l() {
+    CosEngine::new(256, 0.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "CosEngine requires l > 0 and n >= 2")]
+  fn cos_engine_new_rejects_too_few_terms() {
+    CosEngine::new(1, 10.0);
+  }
+
+  /// A characteristic function that returns `NaN` (standing in for a
+  /// user-supplied model overflowing its own `chf`) must exit `price` as
+  /// `NaN`, not the `0.0` `f64::max` would silently produce by picking its
+  /// non-`NaN` operand — see [`CosEngine::price`]'s doc.
+  #[test]
+  fn cos_price_preserves_nan_from_chf_blowup() {
+    struct NanModel;
+    impl FourierModelExt for NanModel {
+      fn chf(&self, _t: f64, _xi: Complex64) -> Complex64 {
+        Complex64::new(f64::NAN, f64::NAN)
+      }
+      fn cumulants(&self, _t: f64) -> super::super::Cumulants {
+        super::super::Cumulants {
+          c1: 0.0,
+          c2: 0.04,
+          c4: 0.0,
+        }
+      }
+    }
+    let price =
+      CosEngine::default().price(&NanModel, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
+    assert!(
+      price.is_nan(),
+      "NaN chf must propagate to a NaN price, got {price}"
     );
   }
 }
