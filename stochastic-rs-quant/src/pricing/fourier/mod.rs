@@ -14,6 +14,7 @@
 use num_complex::Complex64;
 
 mod bsm;
+mod cos;
 mod frft;
 mod heston;
 mod hybrid;
@@ -21,6 +22,7 @@ mod levy;
 mod pricer;
 
 pub use bsm::BSMFourier;
+pub use cos::CosEngine;
 pub use frft::FrftCarrMadanPricer;
 pub use frft::frft;
 pub use heston::DoubleHestonFourier;
