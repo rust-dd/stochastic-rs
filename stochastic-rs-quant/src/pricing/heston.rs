@@ -12,6 +12,7 @@ use num_complex::Complex64;
 
 use super::cf_quadrature::integrate_to_convergence;
 use crate::OptionType;
+use crate::traits::GreeksExt;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
@@ -310,184 +311,154 @@ impl HestonPricer {
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn price(v0: f64, k: f64, sigma: f64, tau: f64) -> f64 {
-    // Long-run variance θ = v0 for these references.
-    HestonPricer::new(
-      100.0,
-      v0,
-      k,
-      0.05,
-      Some(0.0),
-      -0.7,
-      1.5,
-      v0,
-      sigma,
-      Some(0.0),
-      Some(tau),
-      None,
-      None,
-    )
-    .calculate_call_put()
-    .0
+impl HestonPricer {
+  fn h_s(&self) -> f64 {
+    self.s.abs() * 1e-4
   }
 
-  /// Short-dated / low-variance options must match the converged Fourier
-  /// integral. The former fixed `φ_max = 50` truncated a tail that only
-  /// decays past `φ ~ 1/√(vτ)`, under-pricing these by 15-35%. Converged
-  /// references are from a `scipy.integrate.quad` inversion to `∞`, validated
-  /// against the repo's own long-dated `HESTON_REF`. The τ=1 case pins that
-  /// the already-accurate long-dated regime is unchanged.
-  #[test]
-  fn short_dated_matches_converged_reference() {
-    // (v0, K, σ, τ, converged call)
-    let cases = [
-      (0.04, 100.0, 0.30, 0.02, 1.177515),
-      (0.01, 100.0, 0.20, 0.03, 0.768268),
-      (0.04, 100.0, 0.30, 1.00, 10.361856),
-    ];
-    for (v0, k, sigma, tau, expected) in cases {
-      let c = price(v0, k, sigma, tau);
-      assert!(
-        (c - expected).abs() < 2e-3,
-        "Heston call at v0={v0}, K={k}, σ={sigma}, τ={tau}: got {c}, converged {expected}"
-      );
-    }
+  fn h_v(&self) -> f64 {
+    self.v0.abs().max(0.01) * 1e-4
   }
 
-  /// Deep-OTM short-dated calls must be non-negative and ~0, not the negative
-  /// (arbitrage-violating) or spuriously-positive values the fixed integration
-  /// bound produced. Pre-fix: τ=0.1/K=150 → −0.0347, τ=0.01/K=110 → +0.062.
-  /// This exercises `HestonPricer` directly (no `.max(0.0)` clamp), so it pins
-  /// the integral itself, not a downstream floor — the root cause behind the
-  /// negative model prices in calibration issue #14.
-  #[test]
-  fn deep_otm_short_dated_non_negative() {
-    for (v0, k, sigma, tau) in [(0.04, 150.0, 0.50, 0.10), (0.04, 110.0, 0.30, 0.01)] {
-      let c = price(v0, k, sigma, tau);
-      assert!(
-        c > -1e-3 && c < 1e-2,
-        "deep-OTM call at K={k}, τ={tau} must be non-negative and ~0, got {c}"
-      );
-    }
+  const H_TAU: f64 = 1e-5;
+  const H_R: f64 = 1e-5;
+
+  /// Clone with `s`/`v0`/`tau`/`r` bumped. `v0` is floored at `1e-12`
+  /// (mirrors [`AnalyticHestonEngine`](crate::pricing::engines::AnalyticHestonEngine)'s
+  /// own down-bump clamp) so a downward variance bump near zero cannot
+  /// produce a negative, model-invalid variance.
+  fn bumped(&self, ds: f64, dv0: f64, dtau: f64, dr: f64) -> Self {
+    let mut p = self.clone();
+    p.s += ds;
+    p.v0 = (p.v0 + dv0).max(1e-12);
+    let tau = p.tau_or_from_dates();
+    p.tau = Some(tau + dtau);
+    p.eval = None;
+    p.expiration = None;
+    p.r += dr;
+    p
   }
 
-  #[test]
-  fn heston_single_price() {
-    let heston = HestonPricer::new(
-      100.0,
-      0.05,
-      90.0,
-      0.03,
-      Some(0.02),
-      -0.8,
-      5.0,
-      0.05,
-      0.5,
-      Some(0.0),
-      Some(0.5),
-      None,
-      None,
-    );
-
-    let (call, put) = heston.calculate_call_put();
-    println!("Call Price: {}, Put Price: {}", call, put);
-  }
-
-  #[test]
-  fn analytic_initial_variance_vega_matches_a_resolved_centered_difference() {
-    let pricer = HestonPricer::new(
-      100.0,
-      0.05,
-      90.0,
-      0.03,
-      Some(0.02),
-      -0.8,
-      5.0,
-      0.1,
-      0.5,
-      Some(0.0),
-      Some(0.5),
-      None,
-      None,
-    );
-    let bump = 1e-3;
-    let mut up = pricer.clone();
-    up.v0 += bump;
-    let mut down = pricer.clone();
-    down.v0 -= bump;
-    let finite_difference =
-      (up.calculate_call_put().0 - down.calculate_call_put().0) / (2.0 * bump);
-    let (call, put) = pricer.calculate_call_put_initial_variance_vega();
-
-    assert!((call - finite_difference).abs() < 1e-4);
-    assert_eq!(call, put);
-  }
-
-  #[test]
-  fn heston_implied_volatility() {
-    let heston = HestonPricer::new(
-      100.0,
-      0.05,
-      90.0,
-      0.03,
-      Some(0.02),
-      -0.8,
-      5.0,
-      0.05,
-      0.5,
-      Some(0.0),
-      Some(1.0),
-      None,
-      None,
-    );
-
-    let (call, ..) = heston.calculate_call_put();
-    let iv = heston.implied_volatility(call, OptionType::Call);
-    println!("Implied Volatility: {}", iv);
-  }
-
-  /// Long-maturity / high-|ρ| regression: the Albrecher-Mayer-Schoutens-Tistaert
-  /// (2007) "Little Heston Trap" form must keep the principal-branch logarithm
-  /// stable for T = 5y, ρ = -0.9. Original Heston (1993) form develops a
-  /// branch-cut discontinuity in this regime; the Trap form does not.
-  #[test]
-  fn heston_little_trap_long_maturity_high_rho() {
-    let heston = HestonPricer::new(
-      100.0,
-      0.04,
-      100.0,
-      0.05,
-      Some(0.0),
-      -0.9, // high-|ρ|
-      2.0,
-      0.04,
-      0.3,
-      Some(0.0),
-      Some(5.0), // T = 5y
-      None,
-      None,
-    );
-
-    let (call, put) = heston.calculate_call_put();
-    assert!(
-      call.is_finite() && call > 0.0,
-      "Heston Trap form should give finite positive call at T=5y, ρ=-0.9: {call}"
-    );
-    assert!(
-      put.is_finite() && put > 0.0,
-      "Heston Trap form should give finite positive put at T=5y, ρ=-0.9: {put}"
-    );
-
-    // Sanity check: put-call parity.
-    let parity = call - put;
-    let expected = 100.0 * 1.0 - 100.0 * (-0.05_f64 * 5.0).exp();
-    assert!(
-      (parity - expected).abs() < 0.5,
-      "Put-call parity violated at T=5y: C-P={parity}, expected≈{expected}"
-    );
+  /// `∂(call price)/∂v0`, analytic (no finite difference) via
+  /// [`calculate_call_put_initial_variance_vega`](Self::calculate_call_put_initial_variance_vega).
+  /// Identical for call and put per that method's own doc.
+  fn v0_vega(&self) -> f64 {
+    self.calculate_call_put_initial_variance_vega().0
   }
 }
+
+/// Central finite-difference Greeks for the Heston (1993) semi-closed-form
+/// call price (the same price [`PricerExt::calculate_price`] returns —
+/// this pricer has no separate put path to differentiate).
+///
+/// `vega`/`vanna`/`volga`/`veta` bump the variance parameter `v0` — not
+/// `√v0` — mirroring
+/// [`AnalyticHestonEngine::finite_diff_greeks`](crate::pricing::engines::AnalyticHestonEngine),
+/// then convert to a volatility-space derivative via the chain rule
+/// `σ = √v0`:
+/// `∂P/∂σ = 2√v0 · ∂P/∂v0` and its higher partials. The `∂P/∂v0` building
+/// block itself is the analytic
+/// [`calculate_call_put_initial_variance_vega`](HestonPricer::calculate_call_put_initial_variance_vega)
+/// rather than a finite difference, for precision — vanna/volga/veta then
+/// finite-difference *that* analytic function instead of double
+/// finite-differencing the raw price.
+///
+/// `theta`/`charm`/`veta` use the increasing-`τ` convention (`+∂/∂τ`), the
+/// same convention `AnalyticHestonEngine::finite_diff_greeks` uses — *not*
+/// the calendar `-∂/∂t` convention [`BSMPricer`](crate::pricing::bsm::BSMPricer)'s
+/// Greeks use.
+impl GreeksExt for HestonPricer {
+  fn delta(&self) -> f64 {
+    let h = self.h_s();
+    (self.bumped(h, 0.0, 0.0, 0.0).calculate_price()
+      - self.bumped(-h, 0.0, 0.0, 0.0).calculate_price())
+      / (2.0 * h)
+  }
+
+  fn gamma(&self) -> f64 {
+    let h = self.h_s();
+    let p0 = self.calculate_price();
+    (self.bumped(h, 0.0, 0.0, 0.0).calculate_price() - 2.0 * p0
+      + self.bumped(-h, 0.0, 0.0, 0.0).calculate_price())
+      / (h * h)
+  }
+
+  fn vega(&self) -> f64 {
+    if self.v0 <= 0.0 {
+      return f64::NAN;
+    }
+    2.0 * self.v0.sqrt() * self.v0_vega()
+  }
+
+  fn theta(&self) -> f64 {
+    let tau = self.tau_or_from_dates();
+    let h = Self::H_TAU;
+    if !(tau.is_finite() && tau > h) {
+      return f64::NAN;
+    }
+    (self.bumped(0.0, 0.0, h, 0.0).calculate_price()
+      - self.bumped(0.0, 0.0, -h, 0.0).calculate_price())
+      / (2.0 * h)
+  }
+
+  fn rho(&self) -> f64 {
+    let h = Self::H_R;
+    (self.bumped(0.0, 0.0, 0.0, h).calculate_price()
+      - self.bumped(0.0, 0.0, 0.0, -h).calculate_price())
+      / (2.0 * h)
+  }
+
+  fn vanna(&self) -> f64 {
+    if self.v0 <= 0.0 {
+      return f64::NAN;
+    }
+    let h = self.h_s();
+    let p_s_v0 = (self.bumped(h, 0.0, 0.0, 0.0).v0_vega()
+      - self.bumped(-h, 0.0, 0.0, 0.0).v0_vega())
+      / (2.0 * h);
+    2.0 * self.v0.sqrt() * p_s_v0
+  }
+
+  fn charm(&self) -> f64 {
+    let tau = self.tau_or_from_dates();
+    let ht = Self::H_TAU;
+    if !(tau.is_finite() && tau > ht) {
+      return f64::NAN;
+    }
+    let hs = self.h_s();
+    (self.bumped(hs, 0.0, ht, 0.0).calculate_price()
+      - self.bumped(hs, 0.0, -ht, 0.0).calculate_price()
+      - self.bumped(-hs, 0.0, ht, 0.0).calculate_price()
+      + self.bumped(-hs, 0.0, -ht, 0.0).calculate_price())
+      / (4.0 * hs * ht)
+  }
+
+  fn volga(&self) -> f64 {
+    if self.v0 <= 0.0 {
+      return f64::NAN;
+    }
+    let h = self.h_v();
+    let p_v0v0 = (self.bumped(0.0, h, 0.0, 0.0).v0_vega()
+      - self.bumped(0.0, -h, 0.0, 0.0).v0_vega())
+      / (2.0 * h);
+    4.0 * self.v0 * p_v0v0 + 2.0 * self.v0_vega()
+  }
+
+  fn veta(&self) -> f64 {
+    if self.v0 <= 0.0 {
+      return f64::NAN;
+    }
+    let tau = self.tau_or_from_dates();
+    let h = Self::H_TAU;
+    if !(tau.is_finite() && tau > h) {
+      return f64::NAN;
+    }
+    let p_tau_v0 = (self.bumped(0.0, 0.0, h, 0.0).v0_vega()
+      - self.bumped(0.0, 0.0, -h, 0.0).v0_vega())
+      / (2.0 * h);
+    2.0 * self.v0.sqrt() * p_tau_v0
+  }
+}
+
+#[cfg(test)]
+mod tests;

@@ -7,6 +7,7 @@
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
 use crate::OptionType;
+use crate::traits::GreeksExt;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
@@ -244,3 +245,218 @@ impl TimeExt for Merton1976Pricer {
     self.expiration
   }
 }
+
+impl Merton1976Pricer {
+  /// Jump-size standard deviation implied by decomposing total volatility
+  /// `v` into a diffusive part and a jump part that together explain a
+  /// `gamma` fraction of the variance. Mirrors the private `delta()`
+  /// closure inside [`PricerExt::calculate_call_put`].
+  fn jump_size_std(&self) -> f64 {
+    (self.v.powi(2) * self.gamma / self.lambda).sqrt()
+  }
+
+  /// Diffusive volatility component (total variance minus the jump
+  /// contribution). Mirrors the private `z()` closure inside
+  /// [`PricerExt::calculate_call_put`].
+  fn diffusive_std(&self) -> f64 {
+    (self.v.powi(2) - self.lambda * self.jump_size_std().powi(2)).sqrt()
+  }
+
+  /// Per-term volatility used by the `n`-th element of the Poisson-weighted
+  /// series. Mirrors the private `sigma()` closure inside
+  /// [`PricerExt::calculate_call_put`], so Greeks built from it stay exact
+  /// derivatives of the price the pricer actually returns.
+  fn term_vol(&self, n: usize, tau: f64) -> f64 {
+    ((self.diffusive_std().powi(2) + self.jump_size_std().powi(2)) * n as f64 / tau).sqrt()
+  }
+
+  /// Poisson weight `e^{-λτ}(λτ)^n / n!` for the `n`-th term. Accumulates
+  /// `(λτ)^n / n!` as a running `f64` product rather than an integer `n!`
+  /// (which overflows `usize` past `n ≈ 20`, unlike the Poisson weight
+  /// itself — bounded in `[0, 1]` for every `n`).
+  fn poisson_weight(&self, n: usize, tau: f64) -> f64 {
+    let lt = self.lambda * tau;
+    let ratio = (0..n).fold(1.0, |acc, i| acc * lt / (i as f64 + 1.0));
+    (-lt).exp() * ratio
+  }
+
+  /// `BSMPricer` sharing every Merton field except volatility, which
+  /// defaults to `self.v` (the no-jump / Black-Scholes limit); callers
+  /// override `.v` per Poisson term.
+  fn base_bsm(&self, tau: f64) -> BSMPricer {
+    BSMPricer::new(
+      self.s,
+      self.v,
+      self.k,
+      self.r,
+      self.r_d,
+      self.r_f,
+      self.q,
+      Some(tau),
+      None,
+      None,
+      self.option_type,
+      self.b,
+    )
+  }
+
+  fn term_bsm(&self, n: usize, tau: f64) -> BSMPricer {
+    let mut bsm = self.base_bsm(tau);
+    bsm.v = self.term_vol(n, tau);
+    bsm
+  }
+
+  /// Poisson-weighted series over a closed-form BSM Greek. Exact whenever
+  /// the Greek's bump variable enters neither [`term_vol`](Self::term_vol)
+  /// nor [`poisson_weight`](Self::poisson_weight) — true for spot and
+  /// rate, which is why `delta`/`gamma`/`rho` use this path. `λ ≤ 0`
+  /// returns the single surviving (`n = 0`, weight 1) term directly,
+  /// sidestepping the `0/0` singularity
+  /// [`jump_size_std`](Self::jump_size_std) would otherwise hit.
+  ///
+  /// `n = 0` is always priced at `term_vol(0, τ) = 0` exactly (a property
+  /// of the existing price series, not of this method), which sends
+  /// `1/v`-shaped closed forms like [`BSMPricer::gamma`] to `0/0`. That
+  /// term's true contribution is its `v → 0⁺` limit, which is `0` for any
+  /// off-the-money strike (`norm_pdf(d1) → 0` exponentially, beating the
+  /// linear `1/v`) — so a `NaN` contribution here is floored to `0` rather
+  /// than poisoning the whole sum.
+  fn greek_series(&self, greek: impl Fn(&BSMPricer) -> f64) -> f64 {
+    let tau = self.tau_or_from_dates();
+    if self.lambda <= 0.0 {
+      return greek(&self.base_bsm(tau));
+    }
+    (0..self.m)
+      .map(|n| {
+        let contribution = self.poisson_weight(n, tau) * greek(&self.term_bsm(n, tau));
+        if contribution.is_nan() {
+          0.0
+        } else {
+          contribution
+        }
+      })
+      .sum()
+  }
+
+  const H_TAU: f64 = 1e-5;
+
+  fn h_s(&self) -> f64 {
+    self.s.abs() * 1e-4
+  }
+
+  fn h_v(&self) -> f64 {
+    self.v.abs().max(0.01) * 1e-4
+  }
+
+  /// Clone with `s`/`v`/`tau` bumped — backs the Greeks a naive Poisson
+  /// series would get wrong (see the [`GreeksExt`] impl doc below).
+  fn bumped(&self, ds: f64, dv: f64, dtau: f64) -> Self {
+    let mut p = self.clone();
+    p.s += ds;
+    p.v = (p.v + dv).max(1e-8);
+    let tau = p.tau_or_from_dates();
+    p.tau = Some(tau + dtau);
+    p.eval = None;
+    p.expiration = None;
+    p
+  }
+}
+
+/// Poisson-weighted-series Greeks for the Merton (1976) jump-diffusion
+/// model.
+///
+/// `delta`/`gamma`/`rho` are exact closed-form series over the
+/// corresponding [`BSMPricer`] Greek (`Σ w_n · greek(σ_n)`): neither the
+/// per-term volatility `σ_n` nor the Poisson weights `w_n` depend on spot
+/// or rate, so the naive series *is* the true derivative.
+/// `vega`/`theta`/`vanna`/`charm`/`volga`/`veta` bump `v`/`tau` on a cloned
+/// pricer instead — `σ_n` is itself a function of both (via
+/// [`Merton1976Pricer::term_vol`]), so a naive `Σ w_n · greek(σ_n)` would
+/// silently drop the chain-rule term and stop being the true derivative of
+/// [`PricerExt::calculate_price`]. `theta`/`charm`/`veta` use the calendar
+/// `-∂/∂τ` convention (matching [`BSMPricer::theta`] / `charm` /
+/// `dvega_dtime`, and the `λ ≤ 0` Black-Scholes limit below).
+impl GreeksExt for Merton1976Pricer {
+  fn delta(&self) -> f64 {
+    self.greek_series(|bsm| bsm.delta())
+  }
+
+  fn gamma(&self) -> f64 {
+    self.greek_series(|bsm| bsm.gamma())
+  }
+
+  fn rho(&self) -> f64 {
+    self.greek_series(|bsm| bsm.rho())
+  }
+
+  fn vega(&self) -> f64 {
+    if self.lambda <= 0.0 {
+      return self.base_bsm(self.tau_or_from_dates()).vega();
+    }
+    let h = self.h_v();
+    (self.bumped(0.0, h, 0.0).calculate_price() - self.bumped(0.0, -h, 0.0).calculate_price())
+      / (2.0 * h)
+  }
+
+  fn theta(&self) -> f64 {
+    if self.lambda <= 0.0 {
+      return self.base_bsm(self.tau_or_from_dates()).theta();
+    }
+    let h = Self::H_TAU;
+    -(self.bumped(0.0, 0.0, h).calculate_price() - self.bumped(0.0, 0.0, -h).calculate_price())
+      / (2.0 * h)
+  }
+
+  fn vanna(&self) -> f64 {
+    if self.lambda <= 0.0 {
+      return self.base_bsm(self.tau_or_from_dates()).vanna();
+    }
+    let hs = self.h_s();
+    let hv = self.h_v();
+    (self.bumped(hs, hv, 0.0).calculate_price()
+      - self.bumped(hs, -hv, 0.0).calculate_price()
+      - self.bumped(-hs, hv, 0.0).calculate_price()
+      + self.bumped(-hs, -hv, 0.0).calculate_price())
+      / (4.0 * hs * hv)
+  }
+
+  fn charm(&self) -> f64 {
+    if self.lambda <= 0.0 {
+      return self.base_bsm(self.tau_or_from_dates()).charm();
+    }
+    let hs = self.h_s();
+    let ht = Self::H_TAU;
+    -(self.bumped(hs, 0.0, ht).calculate_price()
+      - self.bumped(hs, 0.0, -ht).calculate_price()
+      - self.bumped(-hs, 0.0, ht).calculate_price()
+      + self.bumped(-hs, 0.0, -ht).calculate_price())
+      / (4.0 * hs * ht)
+  }
+
+  fn volga(&self) -> f64 {
+    if self.lambda <= 0.0 {
+      return self.base_bsm(self.tau_or_from_dates()).vomma();
+    }
+    let h = self.h_v();
+    let p0 = self.calculate_price();
+    (self.bumped(0.0, h, 0.0).calculate_price() - 2.0 * p0
+      + self.bumped(0.0, -h, 0.0).calculate_price())
+      / (h * h)
+  }
+
+  fn veta(&self) -> f64 {
+    if self.lambda <= 0.0 {
+      return self.base_bsm(self.tau_or_from_dates()).dvega_dtime();
+    }
+    let hv = self.h_v();
+    let ht = Self::H_TAU;
+    -(self.bumped(0.0, hv, ht).calculate_price()
+      - self.bumped(0.0, hv, -ht).calculate_price()
+      - self.bumped(0.0, -hv, ht).calculate_price()
+      + self.bumped(0.0, -hv, -ht).calculate_price())
+      / (4.0 * hv * ht)
+  }
+}
+
+#[cfg(test)]
+mod tests;
