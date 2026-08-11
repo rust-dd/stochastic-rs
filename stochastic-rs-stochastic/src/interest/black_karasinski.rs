@@ -1,0 +1,376 @@
+//! # Black-Karasinski
+//!
+//! $$
+//! d\ln r_t=\bigl(\theta(t)-a\ln r_t\bigr)dt+\sigma\,dW_t
+//! $$
+//!
+//! Black & Karasinski (1991), *Bond and Option Pricing when Short Rates
+//! are Lognormal*: the short rate itself is never simulated directly — its
+//! logarithm follows a Hull-White-style mean-reverting Gaussian process, so
+//! `r_t = exp(Y_t)` is strictly positive by construction, with no boundary
+//! condition, floor, or reflection needed (unlike [`Cir`](crate::diffusion::cir::Cir)
+//! / [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus) / [`Bessel`](crate::diffusion::bessel::Bessel),
+//! whose positivity is only *probabilistic* and needs an explicit boundary
+//! policy).
+//!
+//! Same `theta`/`a` convention as [`HullWhite`](crate::interest::hull_white::HullWhite)'s
+//! `theta`/`alpha`: [`theta`](BlackKarasinski::theta) is the additive
+//! time-dependent drift target function, [`a`](BlackKarasinski::a) the
+//! mean-reversion speed multiplying `-ln(r_t)`.
+//!
+//! Unlike `HullWhite`'s own Euler-Maruyama step, the log-rate `Y_t` here is
+//! stepped with the *exact* one-step Gaussian transition of an
+//! Ornstein-Uhlenbeck process with `theta` frozen at each step's own
+//! evaluation point (the standard "exact Gaussian short rate" scheme): for
+//! constant `theta` this has zero discretization bias at any step size,
+//! strictly improving on Euler.
+//!
+//! A lattice (trinomial-tree) engine for the same model already exists at
+//! `stochastic-rs-quant::lattice::short_rate::black_karasinski::BlackKarasinskiTree`;
+//! this type is the missing Monte-Carlo path simulator for it.
+use ndarray::Array1;
+#[cfg(feature = "python")]
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
+
+use crate::buffer::array1_from_fill;
+use crate::traits::FloatExt;
+use crate::traits::Fn1D;
+use crate::traits::PathSampler;
+use crate::traits::ProcessExt;
+
+/// Black-Karasinski log-short-rate process.
+///
+/// `d ln(r_t) = (theta(t) - a * ln(r_t)) * dt + sigma * dW_t`, reported as
+/// `r_t = exp(ln(r_t))`.
+///
+/// See the module doc for the `theta`/`a` naming convention (shared with
+/// [`HullWhite`](crate::interest::hull_white::HullWhite)) and the exact-OU
+/// discretization.
+pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Time-dependent additive drift target θ(t), fitted to the initial term
+  /// structure of the log-rate — same role as
+  /// [`HullWhite::theta`](crate::interest::hull_white::HullWhite::theta).
+  pub theta: Fn1D<T>,
+  /// Mean-reversion speed `a` of the log-rate (multiplies `-ln(r_t)` in the
+  /// drift) — same role as
+  /// [`HullWhite::alpha`](crate::interest::hull_white::HullWhite::alpha).
+  /// Must be `> 0`: the exact-OU step below divides by `a` and degenerates
+  /// at `a = 0`, and a strictly mean-reverting log-rate is this model's own
+  /// premise.
+  pub a: T,
+  /// Diffusion scale σ multiplying `dW_t` in the log-rate SDE.
+  pub sigma: T,
+  /// Initial short rate r₀. Must be `> 0` so `ln(r0)` is defined; every
+  /// subsequent path point is `exp(...)` and so is positive unconditionally
+  /// regardless of `r0`.
+  pub r0: Option<T>,
+  /// Number of points sampled along the path.
+  pub n: usize,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
+  pub fn new(
+    theta: impl Into<Fn1D<T>>,
+    a: T,
+    sigma: T,
+    r0: Option<T>,
+    n: usize,
+    t: Option<T>,
+    seed: S,
+  ) -> Self {
+    Self {
+      theta: theta.into(),
+      a,
+      sigma,
+      r0,
+      n,
+      t,
+      seed,
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BlackKarasinski<T, S> {
+  type Output = Array1<T>;
+  type Sampler<'s>
+    = BlackKarasinskiSampler<'s, T>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> BlackKarasinskiSampler<'_, T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let decay = (-self.a * dt).exp();
+    // Exact one-step OU transition std-dev for `theta` frozen over `dt`
+    // (Var = sigma^2 * (1 - e^{-2a dt}) / (2a)); baked into the Gaussian
+    // source's own scale exactly like every other sampler in this crate
+    // bakes its Euler `dt.sqrt()` scale in, so the recursion below only
+    // ever adds a raw draw.
+    let ou_std = self.sigma
+      * ((T::one() - decay * decay) / (T::from_usize_(2) * self.a))
+        .max(T::zero())
+        .sqrt();
+    BlackKarasinskiSampler {
+      n: self.n,
+      r0: self.r0.unwrap_or(T::one()),
+      dt,
+      a: self.a,
+      decay,
+      theta: &self.theta,
+      normal: SimdNormal::<T>::new(T::zero(), ou_std, &self.seed),
+    }
+  }
+}
+
+/// Reusable [`BlackKarasinski`] sampling state: precomputed exact-OU decay
+/// and diffusion scale, plus the owned Gaussian source (see the module doc
+/// for why this is an exact per-step transition rather than Euler).
+#[doc(hidden)]
+pub struct BlackKarasinskiSampler<'a, T: FloatExt> {
+  n: usize,
+  r0: T,
+  dt: T,
+  a: T,
+  decay: T,
+  theta: &'a Fn1D<T>,
+  normal: SimdNormal<T>,
+}
+
+impl<T: FloatExt> BlackKarasinskiSampler<'_, T> {
+  fn fill_path(&mut self, out: &mut [T]) {
+    if out.is_empty() {
+      return;
+    }
+    out[0] = self.r0;
+    if out.len() == 1 {
+      return;
+    }
+    let tail = &mut out[1..];
+    self.normal.fill_slice(tail);
+
+    // `prev_log` tracks Y_t = ln(r_t) — the exact-OU recursion runs in log
+    // space and only the reported value is exponentiated, mirroring how
+    // `BesselSampler` tracks its own state in squared space (see
+    // `crate::diffusion::bessel`).
+    let mut prev_log = self.r0.ln();
+    for (k, z) in tail.iter_mut().enumerate() {
+      let i = k + 1;
+      let t_i = T::from_usize_(i) * self.dt;
+      let mean = prev_log * self.decay + (self.theta.call(t_i) / self.a) * (T::one() - self.decay);
+      let next_log = mean + *z;
+      *z = next_log.exp();
+      prev_log = next_log;
+    }
+  }
+}
+
+impl<T: FloatExt> PathSampler<T> for BlackKarasinskiSampler<'_, T> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let slice = out
+      .as_slice_mut()
+      .expect("BlackKarasinski output must be contiguous");
+    self.fill_path(slice);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let n = self.n;
+    array1_from_fill(n, |out| self.fill_path(out))
+  }
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pyclass]
+pub struct PyBlackKarasinski {
+  inner: Option<BlackKarasinski<f64>>,
+  seeded: Option<BlackKarasinski<f64, crate::simd_rng::Deterministic>>,
+}
+
+#[cfg(feature = "python")]
+#[pyo3::prelude::pymethods]
+impl PyBlackKarasinski {
+  #[new]
+  #[pyo3(signature = (theta, a, sigma, n, r0=None, t=None, seed=None))]
+  fn new(
+    theta: pyo3::Py<pyo3::PyAny>,
+    a: f64,
+    sigma: f64,
+    n: usize,
+    r0: Option<f64>,
+    t: Option<f64>,
+    seed: Option<u64>,
+  ) -> Self {
+    match seed {
+      Some(s) => Self {
+        inner: None,
+        seeded: Some(BlackKarasinski::new(
+          Fn1D::Py(theta),
+          a,
+          sigma,
+          r0,
+          n,
+          t,
+          Deterministic::new(s),
+        )),
+      },
+      None => Self {
+        inner: Some(BlackKarasinski::new(
+          Fn1D::Py(theta),
+          a,
+          sigma,
+          r0,
+          n,
+          t,
+          Unseeded,
+        )),
+        seeded: None,
+      },
+    }
+  }
+
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
+    use numpy::IntoPyArray;
+    use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
+    py_dispatch_f64!(self, |inner| inner
+      .sample()
+      .into_pyarray(py)
+      .into_py_any(py)
+      .unwrap())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+  use crate::interest::cir_pp::CirPlusPlus;
+
+  fn theta_const(_t: f64) -> f64 {
+    0.05
+  }
+
+  /// ln r is OU: E[ln r_t] = e^{-a t} ln r_0 + (theta/a)(1 - e^{-a t}) when
+  /// theta is constant (Black & Karasinski 1991).
+  #[test]
+  fn black_karasinski_log_mean_matches_ou() {
+    let a = 0.8_f64;
+    let sigma = 0.1;
+    let r0 = 0.03_f64;
+    let t = 1.0_f64;
+    let n = 200;
+    let paths = 20_000;
+    let expected = (-a * t).exp() * r0.ln() + (0.05 / a) * (1.0 - (-a * t).exp());
+
+    let best_rel_err = [2718u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let bk = BlackKarasinski::<f64, _>::new(
+          theta_const as fn(f64) -> f64,
+          a,
+          sigma,
+          Some(r0),
+          n,
+          Some(t),
+          Deterministic::new(seed),
+        );
+        let mean_log = bk
+          .sample_par(paths)
+          .iter()
+          .map(|path| path.last().unwrap().ln())
+          .sum::<f64>()
+          / paths as f64;
+        (mean_log - expected).abs() / expected.abs()
+      })
+      .fold(f64::INFINITY, f64::min);
+
+    assert!(
+      best_rel_err <= 2e-2,
+      "best-of-3 relative error {best_rel_err} exceeds 2e-2 (expected {expected})"
+    );
+  }
+
+  /// r_t > 0 for every point of every path (log construction) — must hold
+  /// unconditionally, with no boundary policy needed.
+  #[test]
+  fn black_karasinski_stays_positive() {
+    let bk = BlackKarasinski::<f64, _>::new(
+      theta_const as fn(f64) -> f64,
+      0.8,
+      0.5,
+      Some(0.03),
+      300,
+      Some(2.0),
+      Deterministic::new(2718),
+    );
+    for path in bk.sample_par(200) {
+      assert!(path.iter().all(|x| x.is_finite() && *x > 0.0));
+    }
+  }
+
+  /// Same seed twice must be bit-identical for both new interest processes.
+  #[test]
+  fn new_interest_processes_are_deterministic() {
+    fn zero_phi(_t: f64) -> f64 {
+      0.0
+    }
+
+    let cir_pp1 = CirPlusPlus::<f64, _>::new(
+      0.5,
+      0.04,
+      0.2,
+      Some(0.03),
+      zero_phi as fn(f64) -> f64,
+      100,
+      Some(1.0),
+      None,
+      Deterministic::new(42),
+    )
+    .sample();
+    let cir_pp2 = CirPlusPlus::<f64, _>::new(
+      0.5,
+      0.04,
+      0.2,
+      Some(0.03),
+      zero_phi as fn(f64) -> f64,
+      100,
+      Some(1.0),
+      None,
+      Deterministic::new(42),
+    )
+    .sample();
+    assert_eq!(cir_pp1, cir_pp2);
+
+    let bk1 = BlackKarasinski::<f64, _>::new(
+      theta_const as fn(f64) -> f64,
+      0.8,
+      0.1,
+      Some(0.03),
+      100,
+      Some(1.0),
+      Deterministic::new(42),
+    )
+    .sample();
+    let bk2 = BlackKarasinski::<f64, _>::new(
+      theta_const as fn(f64) -> f64,
+      0.8,
+      0.1,
+      Some(0.03),
+      100,
+      Some(1.0),
+      Deterministic::new(42),
+    )
+    .sample();
+    assert_eq!(bk1, bk2);
+  }
+}

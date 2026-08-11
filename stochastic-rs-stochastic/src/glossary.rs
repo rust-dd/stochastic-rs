@@ -28,8 +28,9 @@
 //! | Role | Models (field) |
 //! |---|---|
 //! | Mean-reversion **speed** (κ in the model's own SDE) | [`Ou`](crate::diffusion::ou::Ou), [`Cir`](crate::diffusion::cir::Cir), [`Vasicek`](crate::interest::vasicek::Vasicek), [`FellerLogistic`](crate::diffusion::feller::FellerLogistic), [`Fou`](crate::diffusion::fou::Fou), [`Fcir`](crate::diffusion::fcir::Fcir), `JumpFou`/`JumpFOUCustom` (`theta`) |
+//! | Long-run **level** of a CIR-type mean-reverting factor (θ in the model's own literature notation; Brigo & Mercurio 2006 §3.9), paired with a *speed* field named `kappa` rather than `theta` — the opposite of the row directly above, where `theta` names [`Cir`](crate::diffusion::cir::Cir)'s own speed; a deliberate literature-notation choice for this type, not an inconsistency to unify | [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus) (`theta`) |
 //! | Long-run **variance level** (θ in the model's own SDE) | [`Heston`](crate::volatility::heston::Heston), [`RlHeston`](crate::rough::RlHeston), and the wider Heston family (`theta`) |
-//! | Time-dependent additive drift **target function** θ(t), fitted to the initial term structure | [`HullWhite`](crate::interest::hull_white::HullWhite), [`HullWhite2F`](crate::interest::hull_white_2f::HullWhite2F) (`theta: Fn1D<T>`); the same role is played by [`Adg`](crate::interest::adg::Adg)'s `k` field, which is named differently |
+//! | Time-dependent additive drift **target function** θ(t), fitted to the initial term structure | [`HullWhite`](crate::interest::hull_white::HullWhite), [`HullWhite2F`](crate::interest::hull_white_2f::HullWhite2F), [`BlackKarasinski`](crate::interest::black_karasinski::BlackKarasinski) (`theta: Fn1D<T>`); the same role is played by [`Adg`](crate::interest::adg::Adg)'s `k` field, which is named differently |
 //! | Jump-size **compensator** (κ/E\[Y−1\] in the model's own SDE), subtracted from the drift, scaled by `lambda` | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou) (`theta`); the same role is played by [`Bates1996`](crate::jump::bates::Bates1996)'s `k` field |
 //! | Skewness-in-subordinated-time (β in the model's own SDE) — **not** mean reversion; NIG has none | [`Nig`](crate::jump::nig::Nig) (`theta`) |
 //!
@@ -94,7 +95,7 @@
 //! | Role | Models (field) |
 //! |---|---|
 //! | Constant proportional drift rate — **no** mean reversion | [`Gbm`](crate::diffusion::gbm::Gbm), [`Fgbm`](crate::diffusion::fgbm::Fgbm), [`GbmIh`](crate::diffusion::gbm_ih::GbmIh), [`DisplacedDiffusion`](crate::diffusion::displaced_diffusion::DisplacedDiffusion) (`mu`) |
-//! | Long-run mean **level** (θ in the model's own SDE), reverted toward by a separate speed field | [`Ou`](crate::diffusion::ou::Ou), [`Cir`](crate::diffusion::cir::Cir), [`Vasicek`](crate::interest::vasicek::Vasicek), [`Fou`](crate::diffusion::fou::Fou), [`Fcir`](crate::diffusion::fcir::Fcir), `JumpFou`/`JumpFOUCustom` (`mu`) |
+//! | Long-run mean **level** (θ in the model's own SDE), reverted toward by a separate speed field | [`Ou`](crate::diffusion::ou::Ou), [`Cir`](crate::diffusion::cir::Cir), [`Vasicek`](crate::interest::vasicek::Vasicek), [`Fou`](crate::diffusion::fou::Fou), [`Fcir`](crate::diffusion::fcir::Fcir), `JumpFou`/`JumpFOUCustom` (`mu`); the same role is played by [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus)'s `theta` field, which is named differently |
 //! | Drift-in-subordinated-time (θ in the model's own SDE) — a skewness parameter, not a level | [`Vg`](crate::jump::vg::Vg) (`mu`) |
 //! | Baseline Poisson intensity vector — not a drift or level | [`MultivariateHawkes`](crate::process::multivariate_hawkes::MultivariateHawkes) (`mu`) |
 //! | Location parameter inside a rational drift term (not a rate) | [`Hyperbolic2`](crate::diffusion::hyperbolic2::Hyperbolic2) (`mu`) |
@@ -114,7 +115,7 @@
 //!
 //! | Role | Models (field) |
 //! |---|---|
-//! | Mean-reversion speed | [`Cir`](crate::diffusion::cir::Cir) (as `theta`), [`FellerLogistic`](crate::diffusion::feller::FellerLogistic), [`ThreeHalf`](crate::diffusion::three_half::ThreeHalf), [`Pearson`](crate::diffusion::pearson::Pearson) (`kappa`) |
+//! | Mean-reversion speed | [`Cir`](crate::diffusion::cir::Cir) (as `theta`), [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus), [`FellerLogistic`](crate::diffusion::feller::FellerLogistic), [`ThreeHalf`](crate::diffusion::three_half::ThreeHalf), [`Pearson`](crate::diffusion::pearson::Pearson) (`kappa`) |
 //! | Jump-size compensator (E\[Y−1\]-like term), unrelated to speed | [`Bates1996`](crate::jump::bates::Bates1996) (`k`) |
 //!
 //! ## ρ (rho)
@@ -123,6 +124,12 @@
 //! |---|---|
 //! | Instantaneous correlation between two driving Brownian motions (an input constant) | [`Heston`](crate::volatility::heston::Heston), [`Sabr`](crate::volatility::sabr::Sabr), [`Bates1996`](crate::jump::bates::Bates1996), [`HullWhite2F`](crate::interest::hull_white_2f::HullWhite2F), [`DuffieKanJumpExp`](crate::interest::duffie_kan_jump_exp::DuffieKanJumpExp) (`rho`) |
 //! | The modeled correlation **process** itself (an output, not an input) | [`TransformedOU`](crate::correlation::TransformedOU), [`VanEmmerich`](crate::correlation::VanEmmerich), [`TengSCP`](crate::correlation::TengSCP) (implicit; their `rho0` is the level it starts from / reverts to) |
+//!
+//! ## φ (phi)
+//!
+//! | Role | Models (field) |
+//! |---|---|
+//! | Deterministic time-dependent shift added to a CIR-type factor (or sum of factors) so the observed short rate matches today's initial term structure exactly (the shift-extension trick) | [`Cir2F`](crate::interest::cir_2f::Cir2F), [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus) (`phi: Fn1D<T>`) |
 //!
 //! ## The x₀ family (x0 / s0 / v0 / f0 / r0 / alpha0 / …)
 //!
@@ -135,7 +142,7 @@
 //! | `v0` | Variance / volatility state ([`Heston`](crate::volatility::heston::Heston), [`Bergomi`](crate::volatility::bergomi::Bergomi)) |
 //! | `f0` | Forward rate/price, for models built around a forward rather than a spot ([`Sabr`](crate::volatility::sabr::Sabr), [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr)) |
 //! | `alpha0` | Volatility state, specifically in [`Sabr`](crate::volatility::sabr::Sabr) / [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr) — named for the module's own α_t, not `v0`, after the Task 3 rename that resolved the `v0`-really-means-α₀ contradiction |
-//! | `r0` | Short rate ([`Hjm`](crate::interest::hjm::Hjm), [`DuffieKanJumpExp`](crate::interest::duffie_kan_jump_exp::DuffieKanJumpExp)) |
+//! | `r0` | Short rate ([`Hjm`](crate::interest::hjm::Hjm), [`DuffieKanJumpExp`](crate::interest::duffie_kan_jump_exp::DuffieKanJumpExp), [`BlackKarasinski`](crate::interest::black_karasinski::BlackKarasinski)) |
 //! | `p0` | Bond price / auxiliary level ([`Hjm`](crate::interest::hjm::Hjm)) |
 //! | `y0` | Secondary state variable, paired with a primary `x0` ([`FouqueOU2D`](crate::diffusion::fouque::FouqueOU2D)) |
 //! | `rho0` | Correlation level a stochastic-correlation process starts from / reverts to — the odd one out, since it anchors a correlation, not a price or rate ([`TransformedOU`](crate::correlation::TransformedOU), [`VanEmmerich`](crate::correlation::VanEmmerich)) |
