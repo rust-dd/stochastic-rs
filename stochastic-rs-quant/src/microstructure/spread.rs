@@ -166,7 +166,7 @@ mod tests {
     let n = 10_000;
     let buy_sell = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
     let mut signs = vec![0.0_f64; n];
-    buy_sell.fill_slice_fast(&mut signs);
+    buy_sell.fill_slice(&mut signs);
     let p = Array1::from_iter(signs.iter().map(|&z| {
       let sign = if z >= 0.0 { 1.0 } else { -1.0 };
       mid + 0.5 * s * sign

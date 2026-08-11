@@ -91,7 +91,7 @@ impl<T: FloatExt> FellerRootSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut prev = self.x0;
     for z in tail.iter_mut() {
       let drift = prev * (self.theta1 - prev * (self.theta3.powi(3) - self.theta1 * self.theta2));

@@ -288,7 +288,7 @@ mod tests {
       .map(|seed| {
         let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
         let mut x = vec![0.0; 2000];
-        dist.fill_slice_fast(&mut x);
+        dist.fill_slice(&mut x);
         ljung_box(ArrayView1::from(&x), 10, 0).p_value
       })
       .fold(0.0_f64, f64::max);

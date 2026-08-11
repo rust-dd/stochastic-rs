@@ -59,7 +59,7 @@ impl<T: FloatExt> GnSampler<T> {
     if len == 0 {
       return;
     }
-    self.normal.fill_slice_fast(&mut out[..len]);
+    self.normal.fill_slice(&mut out[..len]);
   }
 }
 
@@ -85,7 +85,7 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
     }
     let std_dev = self.dt().sqrt();
     let normal = SimdNormal::<T>::new(T::zero(), std_dev, &self.seed);
-    normal.fill_slice_fast(&mut out[..len]);
+    normal.fill_slice(&mut out[..len]);
   }
 
   pub fn dt(&self) -> T {

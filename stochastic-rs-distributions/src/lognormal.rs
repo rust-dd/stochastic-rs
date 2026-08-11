@@ -21,22 +21,42 @@ pub struct SimdLogNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   normal: SimdNormal<T, 64, R>,
-  simd_rng: UnsafeCell<R>,
+  stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
   /// Creates a log-normal distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  /// Each sub-component (normal, main rng) gets an independent stream.
+  ///
+  /// All sampling routes through the inner `normal`'s own stream (see
+  /// [`Self::fill_slice`]), so this type has no separate engine of its
+  /// own — `stream_seed` reuses `normal`'s already-captured value purely so
+  /// [`Self::fork`] has a stable anchor to derive parallel worker streams
+  /// from (see `SimdBeta::new` for the same reuse pattern).
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, sigma: T, seed: &S) -> Self {
     assert!(sigma > T::zero());
+    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let stream_seed = normal.stream_seed;
     Self {
       mu,
       sigma,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      normal,
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.mu,
+      self.sigma,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -52,20 +72,16 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
     z
   }
 
-  /// Fills `out` using the internal SIMD RNG.
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy).
   #[inline]
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    self.fill_slice(rng, out);
-  }
-
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
+  pub fn fill_slice(&self, out: &mut [T]) {
     let mm = T::splat(self.mu);
     let ss = T::splat(self.sigma);
     let mut tmp = [T::zero(); 16];
     let mut chunks = out.chunks_exact_mut(16);
     for chunk in &mut chunks {
-      self.normal.fill_16(rng, &mut tmp);
+      self.normal.fill_16(&mut tmp);
       for half in 0..2 {
         let base = half * 8;
         let mut a = [T::zero(); 8];
@@ -77,7 +93,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-      self.normal.fill_slice_fast(&mut tmp[..rem.len()]);
+      self.normal.fill_slice(&mut tmp[..rem.len()]);
       let mut done = 0;
       while done + 8 <= rem.len() {
         let mut a = [T::zero(); 8];
@@ -100,8 +116,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
 
   fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    self.fill_slice(rng, buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -184,6 +199,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdLogN
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdLogNormal<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

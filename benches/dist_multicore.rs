@@ -70,10 +70,9 @@ fn bench_normal_fill_slice(n: usize, warmup: usize, runs: usize) -> (f64, f64, f
   let mut out = vec![0.0f64; n];
   let iters = (262_144 / n.max(1)).clamp(1, 16_384);
 
-  let mut simd_rng = SimdRng::new();
   for _ in 0..warmup {
     for _ in 0..iters {
-      simd.fill_slice(&mut simd_rng, &mut out);
+      simd.fill_slice(&mut out);
     }
     black_box(&out);
   }
@@ -81,7 +80,7 @@ fn bench_normal_fill_slice(n: usize, warmup: usize, runs: usize) -> (f64, f64, f
   for _ in 0..runs {
     let t0 = Instant::now();
     for _ in 0..iters {
-      simd.fill_slice(&mut simd_rng, &mut out);
+      simd.fill_slice(&mut out);
     }
     black_box(&out);
     simd_times_ms.push(t0.elapsed().as_secs_f64() * 1_000.0 / iters as f64);

@@ -182,7 +182,7 @@ impl<T: FloatExt> CgmySampler<T> {
 
     // U_j ~ Unif(0,1)
     let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice_fast(U.as_slice_mut().unwrap());
+    self.uniform.fill_slice(U.as_slice_mut().unwrap());
     // E_j ~ Exp(1)
     let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
 
@@ -191,9 +191,7 @@ impl<T: FloatExt> CgmySampler<T> {
 
     // τ_j ~ Unif(0,T)
     let mut tau_raw = Array1::<T>::zeros(size);
-    self
-      .uniform
-      .fill_slice_fast(tau_raw.as_slice_mut().unwrap());
+    self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);

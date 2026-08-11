@@ -101,7 +101,7 @@ impl<T: FloatExt> Hyperbolic2Sampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut prev = self.x0;
     for z in tail.iter_mut() {
       let r = (self.delta * self.delta + (prev - self.mu) * (prev - self.mu)).sqrt();

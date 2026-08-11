@@ -244,7 +244,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
     T: ndarray_linalg::Lapack,
   {
     let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
-    self.sample_with_fill(|z| normal.fill_slice_fast(z))
+    self.sample_with_fill(|z| normal.fill_slice(z))
   }
 
   /// Fallible variant of [`Self::sample_with_seed`]. See [`Self::try_sample`]
@@ -255,7 +255,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
   {
     self.validate()?;
     let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
-    Ok(self.sample_with_fill(|z| normal.fill_slice_fast(z)))
+    Ok(self.sample_with_fill(|z| normal.fill_slice(z)))
   }
 
   fn brownian_cholesky(&self) -> Array2<T>

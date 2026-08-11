@@ -89,7 +89,7 @@ impl<T: FloatExt> IgSampler<T> {
     }
 
     let mut inc = Array1::<T>::zeros(out.len() - 1);
-    self.ig_dist.fill_slice_fast(inc.as_slice_mut().unwrap());
+    self.ig_dist.fill_slice(inc.as_slice_mut().unwrap());
 
     for i in 1..out.len() {
       out[i] = out[i - 1] + inc[i - 1];

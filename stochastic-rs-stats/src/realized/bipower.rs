@@ -181,7 +181,7 @@ mod tests {
   fn iid_normal(seed: u64, n: usize, std: f64) -> Array1<f64> {
     let dist = SimdNormal::<f64>::new(0.0, std, &Deterministic::new(seed));
     let mut out = Array1::<f64>::zeros(n);
-    dist.fill_slice_fast(out.as_slice_mut().unwrap());
+    dist.fill_slice(out.as_slice_mut().unwrap());
     out
   }
 

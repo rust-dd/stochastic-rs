@@ -103,10 +103,10 @@ mod tests {
   fn granger_does_not_reject_independent_series() {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
     let mut x_buf = vec![0.0_f64; 500];
-    dist.fill_slice_fast(&mut x_buf);
+    dist.fill_slice(&mut x_buf);
     let dist2 = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(13));
     let mut y_buf = vec![0.0_f64; 500];
-    dist2.fill_slice_fast(&mut y_buf);
+    dist2.fill_slice(&mut y_buf);
     let x = Array1::from(x_buf);
     let y = Array1::from(y_buf);
     let res = granger_causality(y.view(), x.view(), 4, 0.05);
@@ -117,10 +117,10 @@ mod tests {
   fn granger_rejects_when_x_drives_y() {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(17));
     let mut x_buf = vec![0.0_f64; 500];
-    dist.fill_slice_fast(&mut x_buf);
+    dist.fill_slice(&mut x_buf);
     let dist_eps = SimdNormal::<f64>::new(0.0, 0.3, &Deterministic::new(19));
     let mut eps = vec![0.0_f64; 500];
-    dist_eps.fill_slice_fast(&mut eps);
+    dist_eps.fill_slice(&mut eps);
     let mut y = vec![0.0_f64; 500];
     for i in 2..500 {
       y[i] = 0.5 * y[i - 1] + 0.7 * x_buf[i - 1] - 0.3 * x_buf[i - 2] + eps[i];

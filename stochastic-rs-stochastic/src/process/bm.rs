@@ -64,7 +64,7 @@ impl<T: FloatExt> BmSampler<T> {
     }
     out[0] = T::zero();
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut acc = T::zero();
     for x in tail.iter_mut() {
       acc += *x;

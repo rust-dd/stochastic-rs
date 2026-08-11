@@ -127,7 +127,7 @@ impl<T: FloatExt> VolterraSampler<T> {
 
     // Pre-generate scaled Brownian increments.
     let mut dw = Array1::<T>::zeros(self.n);
-    self.normal.fill_slice_fast(dw.as_slice_mut().unwrap());
+    self.normal.fill_slice(dw.as_slice_mut().unwrap());
     for val in dw.iter_mut() {
       *val = *val * self.sqrt_dt;
     }

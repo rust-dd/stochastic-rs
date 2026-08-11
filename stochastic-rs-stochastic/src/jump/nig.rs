@@ -101,9 +101,9 @@ impl<T: FloatExt> NigSampler<T> {
     }
 
     let mut ig = Array1::<T>::zeros(out.len() - 1);
-    self.ig_dist.fill_slice_fast(ig.as_slice_mut().unwrap());
+    self.ig_dist.fill_slice(ig.as_slice_mut().unwrap());
     let mut z = Array1::<T>::zeros(out.len() - 1);
-    self.normal.fill_slice_fast(z.as_slice_mut().unwrap());
+    self.normal.fill_slice(z.as_slice_mut().unwrap());
 
     for i in 1..out.len() {
       out[i] = out[i - 1] + self.theta * ig[i - 1] + self.sigma * ig[i - 1].sqrt() * z[i - 1]

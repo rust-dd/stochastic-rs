@@ -32,6 +32,7 @@ pub struct SimdGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   index: UnsafeCell<usize>,
   normal: SimdNormal<T, 64, R>,
   simd_rng: UnsafeCell<R>,
+  pub(crate) stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
@@ -39,14 +40,30 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   /// Each sub-component (normal, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, scale: T, seed: &S) -> Self {
     assert!(alpha > T::zero() && scale > T::zero());
+    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let stream_seed = seed.seed_value();
     Self {
       alpha,
       scale,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      normal,
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.alpha,
+      self.scale,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -60,10 +77,6 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
     let z = buf[*index];
     *index += 1;
     z
-  }
-
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
   }
 
   /// One scalar Marsaglia-Tsang draw of `d·v` (unscaled `Gamma(α_eff, 1)`),
@@ -90,7 +103,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
     }
   }
 
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy).
+  pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let third = T::from(1.0 / 3.0).unwrap();
     let nine = T::from(9.0).unwrap();
@@ -119,7 +134,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
 
   fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice_fast(buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -253,6 +268,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdGamm
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGamma<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
@@ -305,7 +323,7 @@ mod tests {
     const N: usize = 40_000;
     let dist = SimdGamma::<f64>::new(2.5, 1.5, &Deterministic::new(42));
     let mut samples = vec![0.0_f64; N];
-    dist.fill_slice_fast(&mut samples);
+    dist.fill_slice(&mut samples);
     assert!(samples.iter().all(|x| x.is_finite() && *x > 0.0));
     let d = ks_statistic(&mut samples, gamma_cdf(2.5, 1.5));
     let ks_critical = 2.0 / (N as f64).sqrt();
@@ -320,7 +338,7 @@ mod tests {
     const N: usize = 40_000;
     let dist = SimdGamma::<f64>::new(0.5, 2.0, &Deterministic::new(7));
     let mut samples = vec![0.0_f64; N];
-    dist.fill_slice_fast(&mut samples);
+    dist.fill_slice(&mut samples);
     assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
     let d = ks_statistic(&mut samples, gamma_cdf(0.5, 2.0));
     let ks_critical = 2.0 / (N as f64).sqrt();

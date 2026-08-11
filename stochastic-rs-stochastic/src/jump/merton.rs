@@ -150,7 +150,7 @@ where
     let jump_increments = self.cpoisson.sample_grid_increments(out.len(), self.dt);
     let mut gn = Array1::<T>::zeros(out.len() - 1);
     if let Some(gn_slice) = gn.as_slice_mut() {
-      self.normal.fill_slice_fast(gn_slice);
+      self.normal.fill_slice(gn_slice);
     }
 
     out[0] = self.x0;

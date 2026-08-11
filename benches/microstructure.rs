@@ -18,7 +18,7 @@ use stochastic_rs::simd_rng::Deterministic;
 fn signed_orders(n: usize, seed: u64) -> Array1<f64> {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
   let mut z = vec![0.0_f64; n];
-  dist.fill_slice_fast(&mut z);
+  dist.fill_slice(&mut z);
   Array1::from_iter(z.iter().map(|&v| if v >= 0.0 { 1.0 } else { -1.0 }))
 }
 
@@ -55,7 +55,7 @@ fn bench_impact(c: &mut Criterion) {
 fn bench_spread(c: &mut Criterion) {
   let dist = SimdNormal::<f64>::new(100.0, 0.05, &Deterministic::new(7));
   let mut buf = vec![0.0_f64; 50_000];
-  dist.fill_slice_fast(&mut buf);
+  dist.fill_slice(&mut buf);
   let p = Array1::from(buf);
   c.bench_function("roll_spread_50k", |b| {
     b.iter(|| std::hint::black_box(roll_spread(p.view())));

@@ -56,8 +56,8 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
     let z_slice = z.as_slice_mut().expect("Cgns noise 2 must be contiguous");
     let n1 = stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
     let n2 = stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
-    n1.fill_slice_fast(gn1_slice);
-    n2.fill_slice_fast(z_slice);
+    n1.fill_slice(gn1_slice);
+    n2.fill_slice(z_slice);
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut gn2 = Array1::zeros(self.n);
 

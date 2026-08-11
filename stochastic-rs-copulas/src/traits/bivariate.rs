@@ -143,9 +143,9 @@ pub trait BivariateExt {
     }
 
     let mut v = Array1::<f64>::zeros(n);
-    ud.fill_slice_fast(v.as_slice_mut().unwrap());
+    ud.fill_slice(v.as_slice_mut().unwrap());
     let mut c = Array1::<f64>::zeros(n);
-    ud.fill_slice_fast(c.as_slice_mut().unwrap());
+    ud.fill_slice(c.as_slice_mut().unwrap());
     let u = self.percent_point(&c, &v)?;
 
     Ok(stack![Axis(1), u, v])

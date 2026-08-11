@@ -97,7 +97,7 @@ impl<T: FloatExt> ArimaSampler<T> {
     let mut noise = Array1::<T>::zeros(n);
     if n > 0 {
       let slice = noise.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice_fast(slice);
+      self.normal.fill_slice(slice);
     }
     let mut arma_series = Array1::<T>::zeros(n);
 

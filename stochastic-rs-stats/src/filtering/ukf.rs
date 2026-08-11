@@ -201,10 +201,10 @@ mod tests {
     let n = 200usize;
     let dist = SimdNormal::<f64>::new(0.0, 0.5, &Deterministic::new(1));
     let mut steps = vec![0.0_f64; n];
-    dist.fill_slice_fast(&mut steps);
+    dist.fill_slice(&mut steps);
     let obs_noise = SimdNormal::<f64>::new(0.0, 0.3, &Deterministic::new(2));
     let mut obs_eps = vec![0.0_f64; n];
-    obs_noise.fill_slice_fast(&mut obs_eps);
+    obs_noise.fill_slice(&mut obs_eps);
     let mut x_true = vec![0.0_f64; n];
     for i in 1..n {
       x_true[i] = x_true[i - 1] + steps[i];

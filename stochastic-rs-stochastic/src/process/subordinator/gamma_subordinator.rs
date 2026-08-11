@@ -79,7 +79,7 @@ impl<T: FloatExt> GammaSubordinatorSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.gamma.fill_slice_fast(tail);
+    self.gamma.fill_slice(tail);
     let mut acc = self.x0;
     for x in tail.iter_mut() {
       acc += *x;

@@ -31,6 +31,7 @@ pub struct SimdHypergeometric<T: PrimInt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
+  stream_seed: u64,
 }
 
 impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
@@ -73,6 +74,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
     assert!(k_success <= n_total, "k_success must be ≤ n_total");
     assert!(n_draws <= n_total, "n_draws must be ≤ n_total");
     let (k_min, cdf) = Self::build_cdf(n_total, k_success, n_draws);
+    let stream_seed = seed.seed_value();
     Self {
       n_total,
       k_success,
@@ -81,8 +83,23 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
       cdf,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.n_total,
+      self.k_success,
+      self.n_draws,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -90,7 +107,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
   pub fn sample_fast(&self) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= 16 {
-      self.refill_buffer_fast();
+      self.refill_buffer();
     }
     let buf = unsafe { &mut *self.buffer.get() };
     let z = buf[*index];
@@ -98,33 +115,28 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
     z
   }
 
-  fn refill_buffer_fast(&self) {
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy). A draw that
+  /// overflows `T` saturates to `T::max_value()` rather than silently
+  /// reporting a `0` count; `debug_assert!` surfaces the overflow in debug
+  /// builds so undersized output types are caught during testing.
+  pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
-  }
-
-  /// Fills `out` using the internal SIMD RNG.
-  #[inline]
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    self.fill_slice(rng, out);
-  }
-
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
     for x in out.iter_mut() {
       let u: f64 = rng.random();
       let k = self.k_min as usize + self.cdf.partition_point(|&p| p < u);
-      *x = num_traits::cast(k).unwrap_or(T::zero());
+      let cast = num_traits::cast(k);
+      debug_assert!(
+        cast.is_some(),
+        "hypergeometric draw {k} overflowed the output integer type"
+      );
+      *x = cast.unwrap_or(T::max_value());
     }
   }
 
-  fn refill_buffer<Rr: Rng + ?Sized>(&self, rng: &mut Rr) {
+  fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -138,10 +150,13 @@ impl<T: PrimInt, R: SimdRngExt> Clone for SimdHypergeometric<T, R> {
 }
 
 impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdHypergeometric<T, R> {
-  fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
@@ -269,7 +284,7 @@ mod tests {
   fn hypergeometric_inversion_matches_population_moments() {
     let dist = SimdHypergeometric::<u32>::new(500, 200, 100, &Deterministic::new(21));
     let mut buf = vec![0u32; 100_000];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let n = buf.len() as f64;
     let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / n;
     let var = buf
@@ -298,7 +313,7 @@ mod tests {
     const SAMPLES: usize = 200_000;
     let dist = SimdHypergeometric::<u32>::new(60, 25, 20, &Deterministic::new(5));
     let mut buf = vec![0u32; SAMPLES];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let mut counts = [0usize; 21];
     for &x in &buf {
       counts[x as usize] += 1;

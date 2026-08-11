@@ -125,6 +125,7 @@ pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = Simd
   buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
+  pub(crate) stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
@@ -137,12 +138,26 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
     let _ = exp_zig_tables();
     assert!(lambda > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
+    let stream_seed = seed.seed_value();
     Self {
       lambda,
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.lambda,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Generates a single Exp(1) sample using the scalar Ziggurat path.
@@ -291,18 +306,11 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
     val
   }
 
-  /// Fills a slice with Exp(λ) samples in a single SIMD pass.
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
-  }
-
-  /// Fills a slice with Exp(λ) samples using the internal SIMD RNG directly.
-  /// Matches the `SimdNormal::fill_slice_fast` shape so nested-distribution
-  /// callers (e.g. [`crate::weibull::SimdWeibull`]) can bypass the trait
-  /// `Rng` bound when their backing `R: SimdRngExt` does not implement
-  /// `rand::Rng` outside the workspace's two known impls.
+  /// Fills a slice with Exp(λ) samples using the internal SIMD RNG stream —
+  /// the only stream this sampler draws from (see the crate-level RNG
+  /// policy: the seed goes to the constructor, not to sampling calls).
   #[inline]
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_exp_scaled(out, rng, T::one() / self.lambda);
   }
@@ -327,6 +335,10 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Clone for SimdExpZig<T, N, 
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Distribution<T> for SimdExpZig<T, N, R> {
   /// Returns a single Exp(lambda) sample.
   /// Draws from a pre-filled buffer, refilling it when exhausted.
+  ///
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   #[inline(always)]
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let index = unsafe { &mut *self.index.get() };
@@ -432,25 +444,29 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdExp<T, R> {
     }
   }
 
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.inner.stream_seed, stream_idx);
+    Self::new(
+      self.inner.lambda,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
+  }
+
   /// Returns a single Exp(lambda) sample using the internal SIMD RNG.
   #[inline]
   pub fn sample_fast(&self) -> T {
     self.inner.sample_fast()
   }
 
-  /// Fills a slice with Exp(lambda) samples. Delegates to the inner `SimdExpZig`.
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
-    self.inner.fill_slice(rng, out);
-  }
-
   /// Fills a slice with Exp(lambda) samples using the internal SIMD RNG
-  /// directly. Mirrors [`SimdNormal::fill_slice_fast`] so callers that seed
-  /// through the constructor do not have to invent an [`Rng`] that
-  /// [`Self::fill_slice`] discards anyway.
-  ///
-  /// [`SimdNormal::fill_slice_fast`]: crate::normal::SimdNormal::fill_slice_fast
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
-    self.inner.fill_slice_fast(out);
+  /// stream — the only stream this sampler draws from (see the
+  /// crate-level RNG policy). Delegates to the inner `SimdExpZig`.
+  pub fn fill_slice(&self, out: &mut [T]) {
+    self.inner.fill_slice(out);
   }
 }
 
@@ -462,6 +478,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdExp<T, R> {
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdExp<T, R> {
   /// Returns a single Exp(lambda) sample. Delegates to the inner `SimdExpZig`.
+  ///
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   #[inline(always)]
   fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
     self.inner.sample(rng)
@@ -513,106 +533,4 @@ py_distribution!(PyExp, SimdExp,
 );
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::SimdExp;
-  use super::SimdExpZig;
-
-  fn mean(samples: &[f64]) -> f64 {
-    samples.iter().sum::<f64>() / samples.len() as f64
-  }
-
-  fn exp_cdf(x: f64, lambda: f64) -> f64 {
-    if x <= 0.0 {
-      0.0
-    } else {
-      1.0 - (-lambda * x).exp()
-    }
-  }
-
-  fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
-    samples.sort_by(f64::total_cmp);
-    let n = samples.len() as f64;
-    let mut d = 0.0_f64;
-    for (i, &x) in samples.iter().enumerate() {
-      let f = cdf(x).clamp(0.0, 1.0);
-      let i_f = i as f64;
-      let d_plus = ((i_f + 1.0) / n - f).abs();
-      let d_minus = (f - i_f / n).abs();
-      d = d.max(d_plus.max(d_minus));
-    }
-    d
-  }
-
-  #[test]
-  fn simd_exp_matches_theoretical_distribution() {
-    const N: usize = 40_000;
-    let lambda = 1.8_f64;
-    let mean_target = 1.0 / lambda;
-
-    let dist = SimdExp::<f64>::new(lambda, &Deterministic::new(0x5115));
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_slice_fast(&mut samples);
-
-    assert!(
-      samples.iter().all(|x| x.is_finite() && *x >= 0.0),
-      "invalid exponential sample encountered"
-    );
-
-    let mean_emp = mean(&samples);
-    let mean_se = mean_target / (N as f64).sqrt();
-    assert!(
-      (mean_emp - mean_target).abs() < 6.0 * mean_se,
-      "exp mean mismatch: emp={mean_emp}, target={mean_target}, se={mean_se}"
-    );
-
-    let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
-    let ks_critical = 2.0 / (N as f64).sqrt();
-    assert!(
-      d < ks_critical,
-      "exp KS statistic too large: D={d}, critical={ks_critical}"
-    );
-  }
-
-  /// The dual-engine pair path interleaves batches from engines A and B —
-  /// every lane (including B's) must still be Exp(λ).
-  #[cfg(feature = "dual-stream-rng")]
-  #[test]
-  fn simd_exp_zig_dual_pair_path_matches_theoretical_distribution() {
-    const N: usize = 40_000;
-    let lambda = 0.9_f64;
-    let dist = crate::SimdExpZigDual::<f64>::new(lambda, &Deterministic::new(0x5116));
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut crate::simd_rng::SimdRng::new(), &mut samples);
-    assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
-    let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
-    let ks_critical = 2.0 / (N as f64).sqrt();
-    assert!(
-      d < ks_critical,
-      "dual-path exp-zig KS statistic too large: D={d}, critical={ks_critical}"
-    );
-  }
-
-  #[test]
-  fn simd_exp_zig_fill_slice_matches_theoretical_distribution() {
-    const N: usize = 32_000;
-    let lambda = 0.65_f64;
-
-    let dist = SimdExpZig::<f64>::new(lambda, &Deterministic::new(0x5117));
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_slice_fast(&mut samples);
-
-    assert!(
-      samples.iter().all(|x| x.is_finite() && *x >= 0.0),
-      "invalid exponential sample encountered"
-    );
-
-    let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
-    let ks_critical = 2.0 / (N as f64).sqrt();
-    assert!(
-      d < ks_critical,
-      "exp-zig KS statistic too large: D={d}, critical={ks_critical}"
-    );
-  }
-}
+mod tests;

@@ -116,7 +116,7 @@ pub fn shapiro_francia_test(
 
   let mut left_tail_hits = 0usize;
   for _ in 0..cfg.bootstrap_samples {
-    normals.fill_slice_fast(&mut normal_draw);
+    normals.fill_slice(&mut normal_draw);
     normal_draw.sort_by(f64::total_cmp);
     let w = shapiro_francia_statistic_sorted(&normal_draw);
     if w <= obs_stat {
@@ -150,7 +150,7 @@ mod tests {
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut x = vec![0.0; n];
-    dist.fill_slice_fast(&mut x);
+    dist.fill_slice(&mut x);
     x
   }
 
@@ -183,7 +183,7 @@ mod tests {
   fn shapiro_francia_rejects_skewed_sample() {
     let dist = SimdExp::<f64>::new(1.0, &Deterministic::new(11));
     let mut x = vec![0.0; 700];
-    dist.fill_slice_fast(&mut x);
+    dist.fill_slice(&mut x);
 
     let cfg = ShapiroFranciaConfig {
       bootstrap_samples: 256,

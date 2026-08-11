@@ -333,7 +333,7 @@ impl MCBarrierPricer {
         let seed = base_seed.wrapping_add((path as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
         let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
         let mut z_buf = vec![0.0_f64; self.n_steps];
-        normals.fill_slice_fast(&mut z_buf);
+        normals.fill_slice(&mut z_buf);
 
         let mut s_curr = s;
         let mut barrier_hit = false;

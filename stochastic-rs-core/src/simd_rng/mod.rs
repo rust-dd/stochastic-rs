@@ -114,6 +114,20 @@ pub fn derive_seed(state: &mut u64) -> u64 {
   splitmix64_next(state)
 }
 
+/// Derives a parallel worker's stream seed from a sampler's stored
+/// [`SeedExt::seed_value`] and a worker index.
+///
+/// Pure function of its two inputs: callers can derive any number of
+/// worker seeds, in any order, from the same `parent_seed` and always get
+/// the same per-`stream_idx` child back. This is what lets
+/// `DistributionSampler::sample_matrix`'s parallel fan-out reproduce the
+/// same per-chunk streams across two identically-[`Deterministic`]-seeded
+/// samplers regardless of how rayon schedules the chunks.
+#[inline]
+pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {
+  splitmix64_mix(parent_seed ^ stream_idx)
+}
+
 /// Compile-time seed strategy for zero-overhead determinism control.
 ///
 /// Two built-in implementations:
@@ -153,6 +167,18 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   /// `ProcessExt`-style instance replay or sweep different seeds without
   /// rebuilding the process — `fbm.seed.reseed(seed); fbm.sample();`.
   fn reseed(&self, _seed: u64) {}
+
+  /// Returns a fresh `u64` seed value, advancing internal state exactly as
+  /// [`rng`](Self::rng) / [`rng_ext`](Self::rng_ext) do (both are defined in
+  /// terms of this method, so calling it costs no extra state advance over
+  /// what constructing an RNG already did).
+  ///
+  /// Samplers with their own internal stream store the returned value (as
+  /// `stream_seed`) so a parallel fan-out (e.g.
+  /// `stochastic-rs-distributions`' `DistributionSampler::fork`) can later
+  /// derive reproducible, independent per-worker streams via
+  /// [`derive_fork_seed(stream_seed, stream_idx)`](derive_fork_seed).
+  fn seed_value(&self) -> u64;
 }
 
 /// No seed — each RNG is independently random. Zero overhead.
@@ -212,7 +238,7 @@ impl Clone for Deterministic {
 impl SeedExt for Unseeded {
   #[inline(always)]
   fn rng(&self) -> SimdRng {
-    SimdRng::new()
+    SimdRng::from_seed(self.seed_value())
   }
 
   #[inline(always)]
@@ -222,29 +248,43 @@ impl SeedExt for Unseeded {
 
   #[inline(always)]
   fn rng_ext<R: SimdRngExt>(&self) -> R {
-    R::new()
+    R::from_seed(self.seed_value())
+  }
+
+  #[inline(always)]
+  fn seed_value(&self) -> u64 {
+    // `next_global_seed()` is exactly what `SimdRng::new()` /
+    // `SimdRngDual::new()` feed to `from_seed` internally, so routing `rng`
+    // / `rng_ext` through this method is behavior-identical to their old
+    // direct `SimdRng::new()` / `R::new()` bodies.
+    next_global_seed()
   }
 }
 
 impl SeedExt for Deterministic {
   #[inline(always)]
   fn rng(&self) -> SimdRng {
-    SimdRng::from_seed(self.next_u64())
+    SimdRng::from_seed(self.seed_value())
   }
 
   #[inline(always)]
   fn derive(&self) -> Self {
-    Deterministic::new(self.next_u64())
+    Deterministic::new(self.seed_value())
   }
 
   #[inline(always)]
   fn rng_ext<R: SimdRngExt>(&self) -> R {
-    R::from_seed(self.next_u64())
+    R::from_seed(self.seed_value())
   }
 
   #[inline(always)]
   fn reseed(&self, seed: u64) {
     self.reset(seed);
+  }
+
+  #[inline(always)]
+  fn seed_value(&self) -> u64 {
+    self.next_u64()
   }
 }
 

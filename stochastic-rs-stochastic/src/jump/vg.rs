@@ -99,9 +99,9 @@ impl<T: FloatExt> VgSampler<T> {
     }
 
     let mut gammas = Array1::<T>::zeros(out.len() - 1);
-    self.gamma.fill_slice_fast(gammas.as_slice_mut().unwrap());
+    self.gamma.fill_slice(gammas.as_slice_mut().unwrap());
     let mut z = Array1::<T>::zeros(out.len() - 1);
-    self.normal.fill_slice_fast(z.as_slice_mut().unwrap());
+    self.normal.fill_slice(z.as_slice_mut().unwrap());
 
     for i in 1..out.len() {
       out[i] = out[i - 1] + self.mu * gammas[i - 1] + self.sigma * gammas[i - 1].sqrt() * z[i - 1];

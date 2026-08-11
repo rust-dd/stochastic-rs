@@ -118,7 +118,7 @@ impl<T: FloatExt> PoissonSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.distr.fill_slice(&mut self.rng, tail);
+    self.distr.fill_slice(tail);
     let mut acc = T::zero();
     for x in tail.iter_mut() {
       acc += *x;

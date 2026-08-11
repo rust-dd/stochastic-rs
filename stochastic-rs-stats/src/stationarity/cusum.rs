@@ -297,7 +297,7 @@ mod tests {
   fn standard_normal(n: usize, seed: u64) -> Array1<f64> {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut out = Array1::zeros(n);
-    dist.fill_slice_fast(out.as_slice_mut().unwrap());
+    dist.fill_slice(out.as_slice_mut().unwrap());
     out
   }
 

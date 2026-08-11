@@ -124,7 +124,7 @@ mod tests {
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut x = vec![0.0; n];
-    dist.fill_slice_fast(&mut x);
+    dist.fill_slice(&mut x);
     x
   }
 

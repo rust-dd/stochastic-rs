@@ -451,8 +451,8 @@ mod tests {
     let dist1 = SimdNormal::<f64>::new(1.5, 0.4, &Deterministic::new(2));
     let mut a = vec![0.0_f64; 100];
     let mut b = vec![0.0_f64; 100];
-    dist0.fill_slice_fast(&mut a);
-    dist1.fill_slice_fast(&mut b);
+    dist0.fill_slice(&mut a);
+    dist1.fill_slice(&mut b);
     let mut obs: Vec<f64> = a.into_iter().chain(b).collect();
     obs.shrink_to_fit();
     let observations = ndarray::Array1::from(obs);

@@ -148,7 +148,7 @@ impl<T: FloatExt> TransformedOUSampler<T> {
     let n_steps = out.len() - 1;
     let mut gn = Array1::<T>::zeros(n_steps);
     if let Some(slice) = gn.as_slice_mut() {
-      self.normal.fill_slice_fast(slice);
+      self.normal.fill_slice(slice);
     }
 
     let mut x = self.transform.inverse(self.rho0);

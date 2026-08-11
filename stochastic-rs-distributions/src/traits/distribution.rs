@@ -2,7 +2,6 @@
 
 use ndarray::Array1;
 use num_complex::Complex64;
-use rand::Rng;
 
 /// Analytical descriptors of a distribution.
 ///
@@ -101,8 +100,31 @@ pub trait DistributionExt {
 ///
 /// Implementors provide `fill_slice`; `sample_n` and `sample_matrix` are
 /// lock-free convenience methods that allocate and fill contiguous buffers.
+///
+/// There is no `fill_slice(rng, out)` overload: per the crate's RNG policy,
+/// the internal seeded stream is the only stream a sampler draws from.
+/// Construct with `Deterministic::new(seed)` for reproducible output; `Self`
+/// stores everything sampling needs, so these methods take no `Rng` of
+/// their own.
 pub trait DistributionSampler<T> {
-  fn fill_slice<R: Rng + ?Sized>(&self, rng: &mut R, out: &mut [T]);
+  /// Fills `out` by drawing from this sampler's own internal SIMD RNG
+  /// stream, seeded at construction.
+  fn fill_slice(&self, out: &mut [T]);
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out.
+  ///
+  /// Deterministic when `self` was constructed from a [`Deterministic`]
+  /// seed — the same `stream_idx` always yields a child with the same
+  /// output — so two identically-seeded samplers produce bit-identical
+  /// `sample_matrix` results regardless of thread count. Independent-random
+  /// when `self` was constructed from [`Unseeded`], matching the un-forked
+  /// parallel behavior.
+  ///
+  /// [`Deterministic`]: crate::simd_rng::Deterministic
+  /// [`Unseeded`]: crate::simd_rng::Unseeded
+  #[doc(hidden)]
+  fn fork(&self, stream_idx: u64) -> Self;
 
   #[inline]
   fn sample_n(&self, n: usize) -> Array1<T> {
@@ -115,8 +137,7 @@ pub trait DistributionSampler<T> {
       // fully initializes every element before `assume_init` below.
       std::slice::from_raw_parts_mut(flat_uninit.as_mut_ptr().cast::<T>(), flat_uninit.len())
     };
-    let mut rng = crate::simd_rng::SimdRng::new();
-    self.fill_slice(&mut rng, flat);
+    self.fill_slice(flat);
     unsafe {
       // SAFETY: all elements were initialized by `fill_slice` above.
       out.assume_init()
@@ -126,9 +147,15 @@ pub trait DistributionSampler<T> {
   #[inline]
   fn sample_matrix(&self, m: usize, n: usize) -> ndarray::Array2<T>
   where
-    Self: Clone + Send,
+    Self: Sized + Send,
     T: Send,
   {
+    // `Simd*` samplers own an `UnsafeCell` buffer and are deliberately
+    // `!Sync` (see the crate-level RNG policy), so the parallel branch
+    // below must never capture `&self` inside the `rayon::scope` closure —
+    // that would need `Self: Sync`, which no `Simd*` type can satisfy.
+    // Every worker is forked to an owned value on this thread first, and
+    // only owned `Self` values (already `Send`) cross into the closure.
     let mut out = ndarray::Array2::<T>::uninit((m, n));
     if m == 0 || n == 0 {
       return unsafe {
@@ -151,22 +178,21 @@ pub trait DistributionSampler<T> {
       .max(1)
       .min(max_workers_for_size);
     if workers == 1 {
-      let mut rng = crate::simd_rng::SimdRng::new();
-      self.fill_slice(&mut rng, flat);
+      self.fill_slice(flat);
       return unsafe {
         // SAFETY: all elements were initialized by `fill_slice`.
         out.assume_init()
       };
     }
     let chunk_len = total.div_ceil(workers);
-    let base = self.clone();
+    let forked_workers = (0..workers)
+      .map(|stream_idx| self.fork(stream_idx as u64))
+      .collect::<Vec<_>>();
 
     rayon::scope(move |scope| {
-      for chunk in flat.chunks_mut(chunk_len) {
-        let sampler = base.clone();
+      for (worker, chunk) in forked_workers.into_iter().zip(flat.chunks_mut(chunk_len)) {
         scope.spawn(move |_| {
-          let mut rng = crate::simd_rng::SimdRng::new();
-          sampler.fill_slice(&mut rng, chunk);
+          worker.fill_slice(chunk);
         });
       }
     });

@@ -99,7 +99,7 @@ fn roll_recovers_spread_under_simulated_bounce() {
   let s = 0.05;
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(17));
   let mut signs = vec![0.0_f64; 20_000];
-  dist.fill_slice_fast(&mut signs);
+  dist.fill_slice(&mut signs);
   let p = Array1::from_iter(signs.iter().map(|&z| {
     let sign = if z >= 0.0 { 1.0 } else { -1.0 };
     mid + 0.5 * s * sign

@@ -23,7 +23,7 @@ use stochastic_rs::stats::econometrics::pelt;
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
   let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
-  dist.fill_slice_fast(&mut steps);
+  dist.fill_slice(&mut steps);
   let mut out = Array1::<f64>::zeros(n);
   for i in 1..n {
     out[i] = out[i - 1] + steps[i];
@@ -34,7 +34,7 @@ fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
 fn iid_normal(seed: u64, n: usize) -> Array1<f64> {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
   let mut buf = vec![0.0_f64; n];
-  dist.fill_slice_fast(&mut buf);
+  dist.fill_slice(&mut buf);
   Array1::from(buf)
 }
 
@@ -53,7 +53,7 @@ fn bench_cointegration(c: &mut Criterion) {
   let x = random_walk(11, 1_000, 1.0);
   let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(13));
   let mut eps = vec![0.0_f64; 1_000];
-  dist.fill_slice_fast(&mut eps);
+  dist.fill_slice(&mut eps);
   let y: Array1<f64> = (0..1_000)
     .map(|i| 1.0 + 1.2 * x[i] + eps[i])
     .collect::<Vec<_>>()
@@ -85,7 +85,7 @@ fn bench_granger(c: &mut Criterion) {
 fn bench_hmm(c: &mut Criterion) {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(31));
   let mut buf = vec![0.0_f64; 1_000];
-  dist.fill_slice_fast(&mut buf);
+  dist.fill_slice(&mut buf);
   let obs = Array1::from(buf);
   c.bench_function("hmm_baum_welch_2state_1k", |b| {
     b.iter(|| {

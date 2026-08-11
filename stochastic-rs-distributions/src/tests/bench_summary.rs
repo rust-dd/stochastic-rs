@@ -280,10 +280,9 @@ fn bench_summary_table() {
     let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
     let mut buf = vec![0.0f32; size];
 
-    let mut rng = rand::rng();
     let t0 = Instant::now();
     for _ in 0..iters {
-      simd.fill_slice(&mut rng, &mut buf);
+      simd.fill_slice(&mut buf);
       std::hint::black_box(&buf);
     }
     let dt_simd = t0.elapsed().as_secs_f64() * 1000.0;

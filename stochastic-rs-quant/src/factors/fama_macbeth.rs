@@ -148,14 +148,14 @@ mod tests {
     let true_intercept = 0.001_f64;
     let factor_dist = SimdNormal::<f64>::new(0.0, 0.02, &Deterministic::new(1));
     let mut factors_buf = vec![0.0_f64; t];
-    factor_dist.fill_slice_fast(&mut factors_buf);
+    factor_dist.fill_slice(&mut factors_buf);
     let factors = Array2::from_shape_vec((t, k), factors_buf.clone()).unwrap();
     let beta_dist = SimdNormal::<f64>::new(1.0, 0.3, &Deterministic::new(2));
     let mut betas_buf = vec![0.0_f64; n];
-    beta_dist.fill_slice_fast(&mut betas_buf);
+    beta_dist.fill_slice(&mut betas_buf);
     let resid_dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(3));
     let mut resid_buf = vec![0.0_f64; t * n];
-    resid_dist.fill_slice_fast(&mut resid_buf);
+    resid_dist.fill_slice(&mut resid_buf);
     let mut returns = Array2::<f64>::zeros((t, n));
     for time in 0..t {
       for asset in 0..n {
@@ -175,10 +175,10 @@ mod tests {
   fn fama_macbeth_betas_match_first_pass_ols_dimensions() {
     let dist = SimdNormal::<f64>::new(0.0, 0.01, &Deterministic::new(5));
     let mut buf = vec![0.0_f64; 120 * 5];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let returns = Array2::from_shape_vec((120, 5), buf).unwrap();
     let mut fbuf = vec![0.0_f64; 120 * 2];
-    dist.fill_slice_fast(&mut fbuf);
+    dist.fill_slice(&mut fbuf);
     let factors = Array2::from_shape_vec((120, 2), fbuf).unwrap();
     let res = fama_macbeth(returns.view(), factors.view());
     assert_eq!(res.betas.dim(), (5, 3));

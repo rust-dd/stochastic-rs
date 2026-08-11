@@ -76,7 +76,7 @@ where
   for it in 0..(burn_in + n_samples) {
     let mut proposal = current.clone();
     let mut z = vec![0.0_f64; dim];
-    dist_unit.fill_slice_fast(&mut z);
+    dist_unit.fill_slice(&mut z);
     for j in 0..dim {
       proposal[j] += proposal_scale[j] * z[j];
     }

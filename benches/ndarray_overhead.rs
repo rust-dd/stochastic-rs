@@ -29,7 +29,7 @@ fn gbm_fill(path: &mut [f64], normal: &SimdNormal<f64>, drift_scale: f64, diff_s
   path[0] = 1.0;
   let mut prev = 1.0f64;
   let tail = &mut path[1..];
-  normal.fill_slice_fast(tail);
+  normal.fill_slice(tail);
   for z in tail.iter_mut() {
     let next = prev + drift_scale * prev + diff_scale * prev * *z;
     *z = next;

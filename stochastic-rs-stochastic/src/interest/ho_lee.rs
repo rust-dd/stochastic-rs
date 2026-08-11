@@ -108,7 +108,7 @@ impl<T: FloatExt> HoLeeSampler<'_, T> {
     out[0] = T::zero();
     let mut prev = out[0];
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
 
     for (k, z) in tail.iter_mut().enumerate() {
       let i = k + 1;

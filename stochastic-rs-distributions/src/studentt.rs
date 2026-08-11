@@ -25,20 +25,34 @@ pub struct SimdStudentT<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
+  stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
   /// Creates a Student's t-distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   /// Each sub-component (normal, chisq, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(nu: T, seed: &S) -> Self {
+    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let chisq = SimdChiSquared::new(nu, seed);
+    let stream_seed = seed.seed_value();
     Self {
       nu,
-      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
-      chisq: SimdChiSquared::new(nu, seed),
+      normal,
+      chisq,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(self.nu, &crate::simd_rng::Deterministic::new(child_seed))
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -54,11 +68,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     z
   }
 
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
-  }
-
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy).
+  pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     if out.len() < SMALL_STUDENT_T_THRESHOLD {
       for x in out.iter_mut() {
@@ -74,7 +86,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
       self.normal.fill_standard_fast(&mut zbuf);
-      self.chisq.fill_slice_fast(&mut vbuf);
+      self.chisq.fill_slice(&mut vbuf);
       for (sub, (z8, v8)) in chunk
         .chunks_exact_mut(8)
         .zip(zbuf.chunks_exact(8).zip(vbuf.chunks_exact(8)))
@@ -91,7 +103,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     if !rem.is_empty() {
       let n = rem.len();
       self.normal.fill_standard_fast(&mut zbuf[..n]);
-      self.chisq.fill_slice_fast(&mut vbuf[..n]);
+      self.chisq.fill_slice(&mut vbuf[..n]);
       for i in 0..n {
         rem[i] = zbuf[i] / (vbuf[i] / self.nu).sqrt();
       }
@@ -100,7 +112,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
 
   fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice_fast(buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -114,6 +126,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdStudentT<T, R> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdStudentT<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

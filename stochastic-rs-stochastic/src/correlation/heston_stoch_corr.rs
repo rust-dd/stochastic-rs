@@ -175,7 +175,7 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
       let mut gn = Array1::<T>::zeros(n_steps);
       if let Some(slice) = gn.as_slice_mut() {
         let normal = SimdNormal::<T>::new(zero, sqrt_dt, seed);
-        normal.fill_slice_fast(slice);
+        normal.fill_slice(slice);
       }
       gn
     };

@@ -37,7 +37,7 @@ fn bench_normal_fill_slice(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("single_stream", label), &n, |b, _| {
       let dist: SimdNormal<f64> = SimdNormal::new(0.0, 1.0, &Unseeded);
       b.iter(|| {
-        dist.fill_slice_fast(&mut buf);
+        dist.fill_slice(&mut buf);
         black_box(&buf);
       });
     });
@@ -45,7 +45,7 @@ fn bench_normal_fill_slice(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("dual_stream", label), &n, |b, _| {
       let dist: SimdNormalDual<f64> = SimdNormalDual::new(0.0, 1.0, &Unseeded);
       b.iter(|| {
-        dist.fill_slice_fast(&mut buf);
+        dist.fill_slice(&mut buf);
         black_box(&buf);
       });
     });

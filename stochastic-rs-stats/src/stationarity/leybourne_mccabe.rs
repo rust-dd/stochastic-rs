@@ -108,7 +108,7 @@ fn simulate_ar(phi: &[f64], noise: &SimdNormal<f64>, n: usize) -> Vec<f64> {
   let total = n + burnin;
   let mut x = vec![0.0; total];
   let mut eps = vec![0.0_f64; total];
-  noise.fill_slice_fast(&mut eps);
+  noise.fill_slice(&mut eps);
 
   for t in p..total {
     let mut value = eps[t];

@@ -226,7 +226,7 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
       let buf = eps
         .as_slice_mut()
         .expect("LMM eps buffer must be contiguous");
-      normal.fill_slice_fast(buf);
+      normal.fill_slice(buf);
     }
 
     // Pre-compute correlated standard normals: Z_n,k = Σ_j chol_{n,j} eps_{j,k}

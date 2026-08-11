@@ -202,7 +202,7 @@ mod tests {
   fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
     let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
     let mut steps = vec![0.0_f64; n];
-    dist.fill_slice_fast(&mut steps);
+    dist.fill_slice(&mut steps);
     let mut out = Array1::<f64>::zeros(n);
     for i in 1..n {
       out[i] = out[i - 1] + steps[i];
@@ -215,7 +215,7 @@ mod tests {
     let x = random_walk(7, 500, 1.0);
     let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(11));
     let mut eps = vec![0.0_f64; 500];
-    dist.fill_slice_fast(&mut eps);
+    dist.fill_slice(&mut eps);
     let mut y = Array1::<f64>::zeros(500);
     for i in 0..500 {
       y[i] = 2.0 + 0.7 * x[i] + eps[i];

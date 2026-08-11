@@ -140,7 +140,7 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
 
       let tail = &mut row_slice[1..];
       let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal.fill_slice_fast(tail);
+      normal.fill_slice(tail);
 
       for j in 1..self.n {
         let t = T::from_usize_(j) * dt;

@@ -80,7 +80,7 @@ impl<T: FloatExt> IGSubordinatorSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.ig.fill_slice_fast(tail);
+    self.ig.fill_slice(tail);
     let mut acc = self.x0;
     for x in tail.iter_mut() {
       acc += *x;

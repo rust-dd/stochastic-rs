@@ -202,13 +202,11 @@ impl<T: FloatExt> KoBoLSampler<T> {
     let size = J + 1; // index 0 reserved (Γ0=0)
 
     let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice_fast(U.as_slice_mut().unwrap());
+    self.uniform.fill_slice(U.as_slice_mut().unwrap());
     let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
     let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
-    self
-      .uniform
-      .fill_slice_fast(tau_raw.as_slice_mut().unwrap());
+    self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
 
     let mut jump_size = Array1::<T>::zeros(size);

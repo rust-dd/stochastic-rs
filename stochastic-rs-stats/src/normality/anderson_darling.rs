@@ -145,7 +145,7 @@ mod tests {
       .map(|seed| {
         let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
         let mut x = vec![0.0; 4000];
-        dist.fill_slice_fast(&mut x);
+        dist.fill_slice(&mut x);
         anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default()).p_value
       })
       .fold(0.0_f64, f64::max);
@@ -160,7 +160,7 @@ mod tests {
   fn anderson_darling_rejects_uniform_sample() {
     let dist = SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(42));
     let mut x = vec![0.0; 4000];
-    dist.fill_slice_fast(&mut x);
+    dist.fill_slice(&mut x);
 
     let res = anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
     assert!(

@@ -270,7 +270,7 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusionSampler<T, S> {
     let mut dw = Array1::<T>::zeros(n_inc);
     let dw_slice = dw.as_slice_mut().unwrap();
     let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    normal.fill_slice_fast(dw_slice);
+    normal.fill_slice(dw_slice);
 
     let mut rng = self.seed.rng();
     let mut state = self.initial_state;

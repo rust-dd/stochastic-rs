@@ -287,8 +287,8 @@ mod tests {
     let mut x_true = vec![0.0_f64; n];
     let mut steps = vec![0.0_f64; n];
     let mut obs_buf = vec![0.0_f64; n];
-    truth_dist.fill_slice_fast(&mut steps);
-    obs_noise.fill_slice_fast(&mut obs_buf);
+    truth_dist.fill_slice(&mut steps);
+    obs_noise.fill_slice(&mut obs_buf);
     for i in 1..n {
       x_true[i] = x_true[i - 1] + steps[i];
     }
@@ -298,14 +298,14 @@ mod tests {
     let init_fn = move |rng: &mut SimdRng| {
       let _ = rng;
       let mut a = [0.0_f64];
-      init.fill_slice_fast(&mut a);
+      init.fill_slice(&mut a);
       Array1::from(vec![a[0]])
     };
     let transition_dist = SimdNormal::<f64>::new(0.0, scale, &Deterministic::new(5));
     let transition = move |prev: ArrayView1<f64>, rng: &mut SimdRng| {
       let _ = rng;
       let mut a = [0.0_f64];
-      transition_dist.fill_slice_fast(&mut a);
+      transition_dist.fill_slice(&mut a);
       Array1::from(vec![prev[0] + a[0]])
     };
     let log_obs = move |x: ArrayView1<f64>, y: ArrayView1<f64>| {
@@ -330,7 +330,7 @@ mod tests {
     let transition_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
     let transition = move |prev: ArrayView1<f64>, _rng: &mut SimdRng| {
       let mut a = [0.0_f64];
-      transition_dist.fill_slice_fast(&mut a);
+      transition_dist.fill_slice(&mut a);
       Array1::from(vec![prev[0] + a[0]])
     };
     let log_obs = |x: ArrayView1<f64>, y: ArrayView1<f64>| {

@@ -87,7 +87,7 @@ impl<T: FloatExt> ArchSampler<T> {
     let mut z = Array1::<T>::zeros(n);
     if n > 0 {
       let slice = z.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice_fast(slice);
+      self.normal.fill_slice(slice);
     }
     let var_floor = T::from_f64_fast(1e-12);
 

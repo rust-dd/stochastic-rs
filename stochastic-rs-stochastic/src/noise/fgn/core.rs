@@ -131,7 +131,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
       let normal =
         stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
-      normal.fill_slice_fast(flat);
+      normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
         z.im = z.im * w;
@@ -163,7 +163,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     T::with_fgn_complex_scratch(len, |rnd| {
       // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
       let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-      normal.fill_slice_fast(flat);
+      normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
         z.im = z.im * w;
@@ -202,7 +202,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
       let normal =
         stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
-      normal.fill_slice_fast(flat);
+      normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
         z.im = z.im * w;

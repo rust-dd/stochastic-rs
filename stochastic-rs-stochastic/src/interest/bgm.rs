@@ -178,7 +178,7 @@ impl<T: FloatExt, S: SeedExt> BgmSampler<T, S> {
         .expect("Bgm row must be contiguous in memory");
       let tail = &mut row_slice[1..];
       let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal.fill_slice_fast(tail);
+      normal.fill_slice(tail);
 
       for j in 1..self.n {
         let f_old = row_slice[j - 1];

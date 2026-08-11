@@ -119,9 +119,9 @@ impl<T: FloatExt> BilateralGammaSampler<T> {
     }
 
     let mut gp = Array1::<T>::zeros(out.len() - 1);
-    self.gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
+    self.gamma_p.fill_slice(gp.as_slice_mut().unwrap());
     let mut gm = Array1::<T>::zeros(out.len() - 1);
-    self.gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
+    self.gamma_m.fill_slice(gm.as_slice_mut().unwrap());
 
     for i in 1..out.len() {
       out[i] = out[i - 1] + gp[i - 1] - gm[i - 1];
@@ -256,11 +256,11 @@ impl<T: FloatExt> BilateralGammaMotionSampler<T> {
     }
 
     let mut gp = Array1::<T>::zeros(out.len() - 1);
-    self.gamma_p.fill_slice_fast(gp.as_slice_mut().unwrap());
+    self.gamma_p.fill_slice(gp.as_slice_mut().unwrap());
     let mut gm = Array1::<T>::zeros(out.len() - 1);
-    self.gamma_m.fill_slice_fast(gm.as_slice_mut().unwrap());
+    self.gamma_m.fill_slice(gm.as_slice_mut().unwrap());
     let mut z = Array1::<T>::zeros(out.len() - 1);
-    self.normal.fill_slice_fast(z.as_slice_mut().unwrap());
+    self.normal.fill_slice(z.as_slice_mut().unwrap());
 
     for i in 1..out.len() {
       out[i] = out[i - 1] + self.sigma * self.sqrt_dt * z[i - 1] + gp[i - 1] - gm[i - 1];

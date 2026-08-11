@@ -152,6 +152,7 @@ pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = Simd
   buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
+  pub(crate) stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
@@ -173,13 +174,28 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
     let _ = zig_tables();
     assert!(std_dev > T::zero());
     assert!(N >= 8, "buffer size must be at least 8");
+    let stream_seed = seed.seed_value();
     Self {
       mean,
       std_dev,
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.mean,
+      self.std_dev,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single N(mean, std_dev) sample using the internal SIMD RNG.
@@ -195,16 +211,12 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
     z
   }
 
-  /// Fills a slice with normally distributed samples.
-  /// The `_rng` argument is accepted for API compatibility but ignored;
-  /// the internal SIMD RNG is used instead.
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
-  }
-
-  /// Fills a slice with normally distributed samples using the internal SIMD RNG directly.
+  /// Fills a slice with normally distributed samples using the internal
+  /// SIMD RNG stream — the only stream this sampler draws from (see the
+  /// crate-level RNG policy: the seed goes to the constructor, not to
+  /// sampling calls).
   #[inline]
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat(out, rng, self.mean, self.std_dev);
   }
@@ -212,7 +224,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
   /// Fills exactly 16 elements with normally distributed samples.
   /// Optimized hot-path for small fixed-size buffers.
   #[inline]
-  pub fn fill_16<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out16: &mut [T]) {
+  pub fn fill_16(&self, out16: &mut [T]) {
     debug_assert!(out16.len() >= 16);
     let rng = unsafe { &mut *self.simd_rng.get() };
     Self::fill_ziggurat(&mut out16[..16], rng, self.mean, self.std_dev);
@@ -488,6 +500,10 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Distribution<T> for SimdNormal<T, N, R> {
   /// Returns a single N(mean, std_dev) sample.
   /// Internally draws from a pre-filled buffer and refills it when exhausted.
+  ///
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= N {
@@ -506,80 +522,4 @@ py_distribution!(PyNormal, SimdNormal,
 );
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::SimdNormal;
-  use crate::special::erf;
-
-  fn mean(samples: &[f64]) -> f64 {
-    samples.iter().sum::<f64>() / samples.len() as f64
-  }
-
-  fn normal_cdf(x: f64, mean: f64, std_dev: f64) -> f64 {
-    let z = (x - mean) / (std_dev * 2.0_f64.sqrt());
-    0.5 * (1.0 + erf(z))
-  }
-
-  fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
-    samples.sort_by(f64::total_cmp);
-    let n = samples.len() as f64;
-    let mut d = 0.0_f64;
-    for (i, &x) in samples.iter().enumerate() {
-      let f = cdf(x).clamp(0.0, 1.0);
-      let i_f = i as f64;
-      let d_plus = ((i_f + 1.0) / n - f).abs();
-      let d_minus = (f - i_f / n).abs();
-      d = d.max(d_plus.max(d_minus));
-    }
-    d
-  }
-
-  /// The dual-engine pair path interleaves batches from engines A and B —
-  /// every lane (including B's) must still be N(0, 1).
-  #[cfg(feature = "dual-stream-rng")]
-  #[test]
-  fn simd_normal_dual_pair_path_matches_theoretical_distribution() {
-    const N: usize = 40_000;
-    let dist = crate::SimdNormalDual::<f64>::new(0.0, 1.0, &Unseeded);
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_standard_fast(&mut samples);
-    assert!(samples.iter().all(|x| x.is_finite()));
-    let d = ks_statistic(&mut samples, |x| normal_cdf(x, 0.0, 1.0));
-    let ks_critical = 2.0 / (N as f64).sqrt();
-    assert!(
-      d < ks_critical,
-      "dual-path normal KS statistic too large: D={d}, critical={ks_critical}"
-    );
-  }
-
-  #[test]
-  fn simd_normal_matches_theoretical_distribution() {
-    const N: usize = 40_000;
-    let mu = -0.75_f64;
-    let sigma = 1.35_f64;
-
-    let dist = SimdNormal::<f64>::new(mu, sigma, &Deterministic::new(0x4e07));
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_slice_fast(&mut samples);
-
-    assert!(
-      samples.iter().all(|x| x.is_finite()),
-      "non-finite normal sample encountered"
-    );
-
-    let mean_emp = mean(&samples);
-    let mean_se = sigma / (N as f64).sqrt();
-    assert!(
-      (mean_emp - mu).abs() < 6.0 * mean_se,
-      "normal mean mismatch: emp={mean_emp}, target={mu}, se={mean_se}"
-    );
-
-    let d = ks_statistic(&mut samples, |x| normal_cdf(x, mu, sigma));
-    let ks_critical = 2.0 / (N as f64).sqrt();
-    assert!(
-      d < ks_critical,
-      "normal KS statistic too large: D={d}, critical={ks_critical}"
-    );
-  }
-}
+mod tests;

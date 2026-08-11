@@ -16,7 +16,7 @@ use stochastic_rs::simd_rng::Deterministic;
 fn normal_matrix(seed: u64, t: usize, p: usize) -> Array2<f64> {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
   let mut buf = vec![0.0_f64; t * p];
-  dist.fill_slice_fast(&mut buf);
+  dist.fill_slice(&mut buf);
   Array2::from_shape_vec((t, p), buf).unwrap()
 }
 
@@ -51,7 +51,7 @@ fn bench_fama_macbeth(c: &mut Criterion) {
 fn bench_pairs(c: &mut Criterion) {
   let dist = SimdNormal::<f64>::new(0.0, 0.01, &Deterministic::new(23));
   let mut shocks = vec![0.0_f64; 5_000];
-  dist.fill_slice_fast(&mut shocks);
+  dist.fill_slice(&mut shocks);
   let mut x = Array1::<f64>::zeros(5_000);
   let mut y = Array1::<f64>::zeros(5_000);
   for i in 0..5_000 {

@@ -17,7 +17,7 @@ use stochastic_rs::stats::econometrics::pelt;
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
   let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
-  dist.fill_slice_fast(&mut steps);
+  dist.fill_slice(&mut steps);
   let mut out = Array1::<f64>::zeros(n);
   for i in 1..n {
     out[i] = out[i - 1] + steps[i];
@@ -54,7 +54,7 @@ fn engle_granger_full_pipeline() {
   let x = random_walk(31, 400, 1.0);
   let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(33));
   let mut eps = vec![0.0_f64; 400];
-  dist.fill_slice_fast(&mut eps);
+  dist.fill_slice(&mut eps);
   let y: Array1<f64> = (0..400)
     .map(|i| 1.0 + 1.5 * x[i] + eps[i])
     .collect::<Vec<_>>()
@@ -90,8 +90,8 @@ fn granger_pvalue_in_unit_interval() {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(71));
   let mut buf_a = vec![0.0_f64; 300];
   let mut buf_b = vec![0.0_f64; 300];
-  dist.fill_slice_fast(&mut buf_a);
-  dist.fill_slice_fast(&mut buf_b);
+  dist.fill_slice(&mut buf_a);
+  dist.fill_slice(&mut buf_b);
   let a = Array1::from(buf_a);
   let b = Array1::from(buf_b);
   let res = granger_causality(a.view(), b.view(), 4, 0.05);
@@ -104,8 +104,8 @@ fn hmm_log_likelihood_finite_after_fit() {
   let dist1 = SimdNormal::<f64>::new(2.0, 0.5, &Deterministic::new(2));
   let mut a = vec![0.0_f64; 200];
   let mut b = vec![0.0_f64; 200];
-  dist0.fill_slice_fast(&mut a);
-  dist1.fill_slice_fast(&mut b);
+  dist0.fill_slice(&mut a);
+  dist1.fill_slice(&mut b);
   let obs = Array1::from(a.into_iter().chain(b).collect::<Vec<_>>());
   let mut hmm = GaussianHmm::new(
     Array1::from(vec![0.5, 0.5]),

@@ -93,7 +93,7 @@ impl<T: FloatExt> GompertzSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut prev = x0;
     for z in tail.iter_mut() {
       let xi = prev.max(threshold);

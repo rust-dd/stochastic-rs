@@ -141,7 +141,7 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
         .expect("Hjm short-rate path must be contiguous in memory");
       let r_tail = &mut r_slice[1..];
       let normal_r = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal_r.fill_slice_fast(r_tail);
+      normal_r.fill_slice(r_tail);
     }
     {
       let p_slice = p
@@ -149,7 +149,7 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
         .expect("Hjm bond-price path must be contiguous in memory");
       let p_tail = &mut p_slice[1..];
       let normal_p = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal_p.fill_slice_fast(p_tail);
+      normal_p.fill_slice(p_tail);
     }
     {
       let f_slice = f_
@@ -157,7 +157,7 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
         .expect("Hjm forward-rate path must be contiguous in memory");
       let f_tail = &mut f_slice[1..];
       let normal_f = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal_f.fill_slice_fast(f_tail);
+      normal_f.fill_slice(f_tail);
     }
 
     let t_max = self.t.unwrap_or(T::one());

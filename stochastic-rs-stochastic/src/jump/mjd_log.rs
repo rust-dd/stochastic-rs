@@ -204,7 +204,7 @@ impl<T: FloatExt> MjdLogSampler<T> {
 
     let mut prev = s0;
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
 
     for z in tail.iter_mut() {
       let diff = self.sigma * *z;
@@ -215,7 +215,7 @@ impl<T: FloatExt> MjdLogSampler<T> {
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let mut z0 = [T::zero(); 1];
-          self.jump_normal.fill_slice_fast(&mut z0);
+          self.jump_normal.fill_slice(&mut z0);
           jump_sum = self.nu * kf + self.omega * kf.sqrt() * z0[0];
         }
       }

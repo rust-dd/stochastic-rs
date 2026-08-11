@@ -175,7 +175,7 @@ mod tests {
   fn cusum_few_alarms_under_pure_noise() {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(5));
     let mut buf = vec![0.0_f64; 1_000];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let s = Array1::from(buf);
     let res = cusum(s.view(), 0.5, 8.0);
     assert!(res.alarms.is_empty());
@@ -185,7 +185,7 @@ mod tests {
   fn cusum_detects_mean_shift() {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
     let mut buf = vec![0.0_f64; 500];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     for v in buf.iter_mut().take(500).skip(250) {
       *v += 5.0;
     }

@@ -365,7 +365,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     let mut diffs = Array1::<f64>::zeros(n_per_level);
     let mut z = vec![0.0_f64; m_fine];
     for i in 0..n_per_level {
-      normals.fill_slice_fast(&mut z);
+      normals.fill_slice(&mut z);
 
       // Fine path (Euler)
       let mut s_f = s0;
@@ -442,7 +442,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     let mut z = vec![0.0_f64; m_fine];
 
     for i in 0..n {
-      normals.fill_slice_fast(&mut z);
+      normals.fill_slice(&mut z);
       let mut s_f = s0;
       for &zj in z.iter() {
         s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * zj;

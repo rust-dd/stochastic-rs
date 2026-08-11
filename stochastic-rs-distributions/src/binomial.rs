@@ -104,6 +104,7 @@ pub struct SimdBinomial<T: PrimInt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
+  stream_seed: u64,
 }
 
 impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
@@ -112,14 +113,29 @@ impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
   /// `new()` and `with_seed()` delegate here.
   pub fn new<S: crate::simd_rng::SeedExt>(n: u32, p: f64, seed: &S) -> Self {
     assert!((0.0..=1.0).contains(&p), "p must be in [0, 1]");
+    let stream_seed = seed.seed_value();
     Self {
       n,
       p,
       btrs: BtrsConstants::setup(n, p),
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.n,
+      self.p,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -127,7 +143,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
   pub fn sample_fast(&self) -> T {
     let index = unsafe { &mut *self.index.get() };
     if *index >= 16 {
-      self.refill_buffer_fast();
+      self.refill_buffer();
     }
     let buf = unsafe { &mut *self.buffer.get() };
     let z = buf[*index];
@@ -135,23 +151,12 @@ impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
     z
   }
 
-  fn refill_buffer_fast(&self) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
-  }
-
-  /// Fills `out` using the internal SIMD RNG.
-  #[inline]
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    self.fill_slice(rng, out);
-  }
-
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, rng: &mut Rr, out: &mut [T]) {
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy). A draw that
+  /// overflows `T` saturates to `T::max_value()` rather than silently
+  /// reporting a `0` count; `debug_assert!` surfaces the overflow in debug
+  /// builds so undersized output types are caught during testing.
+  pub fn fill_slice(&self, out: &mut [T]) {
     if self.n == 0 {
       for x in out.iter_mut() {
         *x = T::zero();
@@ -159,13 +164,20 @@ impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
       return;
     }
 
+    let rng = unsafe { &mut *self.simd_rng.get() };
     let flipped = self.p > 0.5;
     let p_eff = if flipped { 1.0 - self.p } else { self.p };
 
     if p_eff <= 0.0 {
       let val = if flipped { self.n } else { 0 };
+      let cast = num_traits::cast(val);
+      debug_assert!(
+        cast.is_some(),
+        "binomial draw {val} overflowed the output integer type"
+      );
+      let cast = cast.unwrap_or(T::max_value());
       for x in out.iter_mut() {
-        *x = num_traits::cast(val).unwrap_or(T::zero());
+        *x = cast;
       }
       return;
     }
@@ -174,7 +186,12 @@ impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
       for x in out.iter_mut() {
         let k = btrs.sample(rng, self.n);
         let result = if btrs.flipped { self.n - k } else { k };
-        *x = num_traits::cast(result).unwrap_or(T::zero());
+        let cast = num_traits::cast(result);
+        debug_assert!(
+          cast.is_some(),
+          "binomial draw {result} overflowed the output integer type"
+        );
+        *x = cast.unwrap_or(T::max_value());
       }
       return;
     }
@@ -193,13 +210,18 @@ impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
         count += 1;
       }
       let result = if flipped { self.n - count } else { count };
-      *x = num_traits::cast(result).unwrap_or(T::zero());
+      let cast = num_traits::cast(result);
+      debug_assert!(
+        cast.is_some(),
+        "binomial draw {result} overflowed the output integer type"
+      );
+      *x = cast.unwrap_or(T::max_value());
     }
   }
 
-  fn refill_buffer<Rr: Rng + ?Sized>(&self, rng: &mut Rr) {
+  fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(rng, buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -213,10 +235,13 @@ impl<T: PrimInt, R: SimdRngExt> Clone for SimdBinomial<T, R> {
 }
 
 impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdBinomial<T, R> {
-  fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
+  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {
-      self.refill_buffer(rng);
+      self.refill_buffer();
     }
     let val = unsafe { (*self.buffer.get())[*idx] };
     *idx += 1;
@@ -351,7 +376,7 @@ mod tests {
     let p = 0.3;
     let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(42));
     let mut buf = vec![0u32; 50_000];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let (mean, var) = moments(&buf);
     let expected_mean = dist.mean();
     let expected_var = dist.variance();
@@ -371,7 +396,7 @@ mod tests {
     let p = 0.005;
     let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(7));
     let mut buf = vec![0u32; 50_000];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let (mean, var) = moments(&buf);
     let expected_mean = dist.mean();
     let expected_var = dist.variance();
@@ -391,7 +416,7 @@ mod tests {
     let p = 0.998;
     let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(11));
     let mut buf = vec![0u32; 20_000];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let (mean, var) = moments(&buf);
     assert!(buf.iter().all(|&x| x <= n));
     assert!((mean - dist.mean()).abs() < 0.5);
@@ -402,7 +427,7 @@ mod tests {
   fn n_zero_returns_zeros() {
     let dist = SimdBinomial::<u32>::new(0, 0.5, &Unseeded);
     let mut buf = vec![0u32; 32];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     assert!(buf.iter().all(|&x| x == 0));
   }
 
@@ -412,7 +437,7 @@ mod tests {
     let p = 0.37;
     let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(1234));
     let mut buf = vec![0u32; 100_000];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let (mean, var) = moments(&buf);
     assert!(buf.iter().all(|&x| x <= n));
     assert!(
@@ -434,7 +459,7 @@ mod tests {
     let p = 0.5;
     let dist = SimdBinomial::<u32>::new(n, p, &Deterministic::new(99));
     let mut buf = vec![0u32; SAMPLES];
-    dist.fill_slice_fast(&mut buf);
+    dist.fill_slice(&mut buf);
     let mut counts = [0usize; 81];
     for &x in &buf {
       counts[x as usize] += 1;

@@ -146,9 +146,7 @@ impl<T: FloatExt> LfsmSampler<T> {
     out[0] = self.x0;
 
     let mut innovations = Array1::<T>::zeros(out.len() - 1);
-    self
-      .stable
-      .fill_slice_fast(innovations.as_slice_mut().unwrap());
+    self.stable.fill_slice(innovations.as_slice_mut().unwrap());
 
     let mut prev = self.x0;
     for i in 1..out.len() {

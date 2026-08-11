@@ -16,15 +16,30 @@ use crate::simd_rng::SimdRngExt;
 pub struct SimdChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   df: T,
   gamma: SimdGamma<T, R>,
+  stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
   /// Creates a chi-squared distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(k: T, seed: &S) -> Self {
+    let gamma = SimdGamma::<T, R>::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed);
+    // No own engine to seed — reuse gamma's already-captured stream_seed as
+    // this sampler's fork anchor (see SimdBeta::new for the same pattern).
+    let stream_seed = gamma.stream_seed;
     Self {
       df: k,
-      gamma: SimdGamma::<T, R>::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed),
+      gamma,
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(self.df, &crate::simd_rng::Deterministic::new(child_seed))
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -33,12 +48,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
     self.gamma.sample_fast()
   }
 
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.gamma.fill_slice_fast(out);
-  }
-
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
-    self.gamma.fill_slice_fast(out);
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy).
+  pub fn fill_slice(&self, out: &mut [T]) {
+    self.gamma.fill_slice(out);
   }
 }
 
@@ -49,6 +62,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdChiSquared<T, R> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdChiSquared<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
     self.gamma.sample(rng)
   }

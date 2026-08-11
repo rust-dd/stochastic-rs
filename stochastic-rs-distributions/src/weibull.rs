@@ -21,6 +21,7 @@ pub struct SimdWeibull<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   exp1: SimdExpZig<T, 64, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
+  stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
@@ -28,13 +29,31 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
   /// [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, k: T, seed: &S) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
+    let exp1 = SimdExpZig::new(T::one(), seed);
+    // No own engine to seed — reuse exp1's already-captured stream_seed as
+    // this sampler's fork anchor (see SimdBeta::new for the same pattern).
+    let stream_seed = exp1.stream_seed;
     Self {
       lambda,
       inv_k: T::one() / k,
-      exp1: SimdExpZig::new(T::one(), seed),
+      exp1,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.lambda,
+      T::one() / self.inv_k,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -51,20 +70,18 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
     z
   }
 
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
-  }
-
-  /// Fills `out` with `λ · E^{1/k}` samples. Exp(1) magnitudes are drawn in
-  /// 64-blocks into a stack buffer and the power transform runs 8-wide, so
-  /// `out` is written exactly once (no fill-then-transform double pass).
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  /// Fills `out` with `λ · E^{1/k}` samples using the internal SIMD RNG
+  /// stream — the only stream this sampler draws from (see the
+  /// crate-level RNG policy). Exp(1) magnitudes are drawn in 64-blocks into
+  /// a stack buffer and the power transform runs 8-wide, so `out` is
+  /// written exactly once (no fill-then-transform double pass).
+  pub fn fill_slice(&self, out: &mut [T]) {
     let lambda = T::splat(self.lambda);
     let inv_k = self.inv_k;
     let mut tmp = [T::zero(); 64];
     let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
-      self.exp1.fill_slice_fast(&mut tmp);
+      self.exp1.fill_slice(&mut tmp);
       for (sub, e8) in chunk.chunks_exact_mut(8).zip(tmp.chunks_exact(8)) {
         let mut a = [T::zero(); 8];
         a.copy_from_slice(e8);
@@ -75,7 +92,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let n = rem.len();
-      self.exp1.fill_slice_fast(&mut tmp[..n]);
+      self.exp1.fill_slice(&mut tmp[..n]);
       let mut off = 0;
       let mut sub = rem.chunks_exact_mut(8);
       for s in &mut sub {
@@ -93,7 +110,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
 
   fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice_fast(buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -107,6 +124,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdWeibull<T, R> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdWeibull<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   #[inline(always)]
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };

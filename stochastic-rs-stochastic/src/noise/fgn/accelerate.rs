@@ -135,8 +135,8 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
     real.resize(total, 0.0);
     imag.resize(total, 0.0);
     let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
-    normal.fill_slice_fast(real.as_mut_slice());
-    normal.fill_slice_fast(imag.as_mut_slice());
+    normal.fill_slice(real.as_mut_slice());
+    normal.fill_slice(imag.as_mut_slice());
 
     // Scale by the tiled eigenvalues (no per-element modulo).
     for b in 0..m {

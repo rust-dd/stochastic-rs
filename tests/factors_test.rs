@@ -14,7 +14,7 @@ use stochastic_rs::simd_rng::Deterministic;
 fn standard_normal_matrix(seed: u64, t: usize, p: usize) -> Array2<f64> {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
   let mut buf = vec![0.0_f64; t * p];
-  dist.fill_slice_fast(&mut buf);
+  dist.fill_slice(&mut buf);
   Array2::from_shape_vec((t, p), buf).unwrap()
 }
 
@@ -36,7 +36,7 @@ fn shrinkage_matrix_within_unit_interval() {
 fn pca_collinear_factor_dominates_variance() {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(23));
   let mut z = vec![0.0_f64; 500];
-  dist.fill_slice_fast(&mut z);
+  dist.fill_slice(&mut z);
   let mut x = Array2::<f64>::zeros((500, 5));
   for t in 0..500 {
     x[[t, 0]] = z[t];
@@ -64,7 +64,7 @@ fn pairs_round_trip_position_management() {
   let n = 600usize;
   let dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(41));
   let mut shocks = vec![0.0_f64; n];
-  dist.fill_slice_fast(&mut shocks);
+  dist.fill_slice(&mut shocks);
   let mut x = Array1::<f64>::zeros(n);
   let mut y = Array1::<f64>::zeros(n);
   for i in 0..n {

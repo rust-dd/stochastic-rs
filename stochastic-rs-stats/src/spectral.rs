@@ -468,7 +468,7 @@ mod tests {
 
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(0x5ec7));
     let mut x = vec![0.0; n];
-    dist.fill_slice_fast(&mut x);
+    dist.fill_slice(&mut x);
 
     let cfg = SpectrumSearchConfig {
       periodogram: PeriodogramConfig {

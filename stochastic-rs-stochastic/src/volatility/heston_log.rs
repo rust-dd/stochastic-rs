@@ -198,8 +198,8 @@ impl<T: FloatExt> HestonLogSampler<T> {
     let mut dws = vec![T::zero(); n_increments];
     let mut z = vec![T::zero(); n_increments];
     let mut dwv = vec![T::zero(); n_increments];
-    self.n1.fill_slice_fast(&mut dws);
-    self.n2.fill_slice_fast(&mut z);
+    self.n1.fill_slice(&mut dws);
+    self.n2.fill_slice(&mut z);
     let corr_scale = (T::one() - self.rho * self.rho).sqrt();
     for i in 0..n_increments {
       dwv[i] = self.rho * dws[i] + corr_scale * z[i];

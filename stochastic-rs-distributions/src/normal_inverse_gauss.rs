@@ -28,6 +28,7 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
+  stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
@@ -40,17 +41,36 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let ig_mean = delta / gamma;
     let ig_shape = delta * delta;
+    let ig = SimdInverseGauss::<T, R>::new(ig_mean, ig_shape, seed);
+    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let stream_seed = seed.seed_value();
     Self {
       alpha,
       beta,
       delta,
       mu,
-      ig: SimdInverseGauss::<T, R>::new(ig_mean, ig_shape, seed),
-      normal: SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed),
+      ig,
+      normal,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.alpha,
+      self.beta,
+      self.delta,
+      self.mu,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -66,11 +86,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     z
   }
 
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
-  }
-
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy).
+  pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     if out.len() < SMALL_NIG_THRESHOLD {
       for x in out.iter_mut() {
@@ -86,7 +104,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     let mut zbuf = [T::zero(); 64];
     let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
-      self.ig.fill_slice_fast(&mut dbuf);
+      self.ig.fill_slice(&mut dbuf);
       self.normal.fill_standard_fast(&mut zbuf);
       for (sub, (d8, z8)) in chunk
         .chunks_exact_mut(8)
@@ -105,7 +123,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let n = rem.len();
-      self.ig.fill_slice_fast(&mut dbuf[..n]);
+      self.ig.fill_slice(&mut dbuf[..n]);
       self.normal.fill_standard_fast(&mut zbuf[..n]);
       for i in 0..n {
         let d = dbuf[i];
@@ -117,7 +135,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
 
   fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice_fast(buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -131,6 +149,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdNormalInverseGauss<T, R> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdNormalInverseGauss<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

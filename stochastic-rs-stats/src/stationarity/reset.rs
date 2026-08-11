@@ -171,9 +171,9 @@ mod tests {
   fn normal_pair(n: usize, noise_sigma: f64, seed: u64) -> (Array1<f64>, Array1<f64>) {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut x = Array1::zeros(n);
-    dist.fill_slice_fast(x.as_slice_mut().unwrap());
+    dist.fill_slice(x.as_slice_mut().unwrap());
     let mut noise = Array1::zeros(n);
-    dist.fill_slice_fast(noise.as_slice_mut().unwrap());
+    dist.fill_slice(noise.as_slice_mut().unwrap());
     (x, noise * noise_sigma)
   }
 

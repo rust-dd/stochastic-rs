@@ -252,10 +252,10 @@ impl<T: FloatExt> Heston2DSampler<T> {
     let mut e3 = Array1::<T>::zeros(n_steps);
     let mut e4 = Array1::<T>::zeros(n_steps);
     let [n1, n2, n3, n4] = &self.normals;
-    n1.fill_slice_fast(e1.as_slice_mut().expect("noise slice contiguous"));
-    n2.fill_slice_fast(e2.as_slice_mut().expect("noise slice contiguous"));
-    n3.fill_slice_fast(e3.as_slice_mut().expect("noise slice contiguous"));
-    n4.fill_slice_fast(e4.as_slice_mut().expect("noise slice contiguous"));
+    n1.fill_slice(e1.as_slice_mut().expect("noise slice contiguous"));
+    n2.fill_slice(e2.as_slice_mut().expect("noise slice contiguous"));
+    n3.fill_slice(e3.as_slice_mut().expect("noise slice contiguous"));
+    n4.fill_slice(e4.as_slice_mut().expect("noise slice contiguous"));
 
     let [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44] = self.chol;
 

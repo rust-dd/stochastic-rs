@@ -123,8 +123,8 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2DSampler<T, S> {
 
     let nx = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
     let ny = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    nx.fill_slice_fast(&mut gn_x);
-    ny.fill_slice_fast(&mut gn_y);
+    nx.fill_slice(&mut gn_x);
+    ny.fill_slice(&mut gn_y);
 
     let eps = self.epsilon;
     let sqrt_eps_inv = T::one() / eps.sqrt();

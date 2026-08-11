@@ -256,7 +256,7 @@ mod tests {
     let n = 2048_usize;
     let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(0x125));
     let mut x = vec![0.0_f64; n];
-    normals.fill_slice_fast(&mut x);
+    normals.fill_slice(&mut x);
     let view = Array1::from_vec(x);
 
     // iid Gaussian is stationary noise — pass take_differences=false so

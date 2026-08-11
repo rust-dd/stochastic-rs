@@ -342,7 +342,7 @@ mod tests {
   ) -> (Array1<f64>, Array2<f64>) {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut x_col = Array1::<f64>::zeros(n);
-    dist.fill_slice_fast(x_col.as_slice_mut().unwrap());
+    dist.fill_slice(x_col.as_slice_mut().unwrap());
     let mut design = Array2::<f64>::zeros((n, 2));
     let mut y = Array1::<f64>::zeros(n);
     let break_at = break_frac.map(|f| (f * n as f64) as usize);

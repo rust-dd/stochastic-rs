@@ -68,7 +68,7 @@ impl<T: FloatExt> WnSampler<T> {
     if len == 0 {
       return;
     }
-    self.normal.fill_slice_fast(&mut out[..len]);
+    self.normal.fill_slice(&mut out[..len]);
   }
 }
 

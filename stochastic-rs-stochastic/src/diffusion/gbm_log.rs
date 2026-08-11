@@ -148,7 +148,7 @@ impl<T: FloatExt> GbmLogSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut prev = self.s0;
     for z in tail.iter_mut() {
       let log_inc = self.drift_ln + self.sigma * *z;

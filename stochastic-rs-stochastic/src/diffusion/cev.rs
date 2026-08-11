@@ -89,7 +89,7 @@ impl<T: FloatExt> CevSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut prev = self.x0;
     for z in tail.iter_mut() {
       let next = prev + self.mu * prev * self.dt + self.diff_scale * prev.powf(self.gamma) * *z;
@@ -130,7 +130,7 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
     if let Some(gn_slice) = gn.as_slice_mut() {
       let sqrt_dt = dt.sqrt();
       let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal.fill_slice_fast(gn_slice);
+      normal.fill_slice(gn_slice);
     }
     let cev = self.sample();
 

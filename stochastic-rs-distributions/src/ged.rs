@@ -52,6 +52,7 @@ pub struct SimdGed<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
+  stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
@@ -59,15 +60,32 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
     assert!(alpha > T::zero(), "α must be > 0");
     assert!(beta > T::zero(), "β must be > 0");
     let inv_beta = T::one() / beta;
+    let gamma = SimdGamma::<T, R>::new(inv_beta, T::one(), seed);
+    let stream_seed = seed.seed_value();
     Self {
       mu,
       alpha,
       beta,
-      gamma: SimdGamma::<T, R>::new(inv_beta, T::one(), seed),
+      gamma,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
+      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.mu,
+      self.alpha,
+      self.beta,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -84,14 +102,12 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
     z
   }
 
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
-  }
-
-  /// Fills `out` via the gamma magnitude + random-sign bijection. Magnitudes
-  /// come from the bulk gamma fill and the $Y^{1/\beta}$ power runs 8-wide;
-  /// the sign bit is taken from the internal SIMD RNG's integer stream.
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  /// Fills `out` via the gamma magnitude + random-sign bijection, using the
+  /// internal SIMD RNG stream — the only stream this sampler draws from
+  /// (see the crate-level RNG policy). Magnitudes come from the bulk gamma
+  /// fill and the $Y^{1/\beta}$ power runs 8-wide; the sign bit is taken
+  /// from the internal SIMD RNG's integer stream.
+  pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
     let inv_beta = T::one() / self.beta;
     if out.len() < SMALL_GED_THRESHOLD {
@@ -106,7 +122,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
     let mut ybuf = [T::zero(); 64];
     let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
-      self.gamma.fill_slice_fast(&mut ybuf);
+      self.gamma.fill_slice(&mut ybuf);
       for (sub, y8) in chunk.chunks_exact_mut(8).zip(ybuf.chunks_exact(8)) {
         let mut a = [T::zero(); 8];
         a.copy_from_slice(y8);
@@ -127,7 +143,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
 
   fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice_fast(buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -141,6 +157,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGed<T, R> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGed<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

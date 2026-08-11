@@ -94,7 +94,7 @@ impl<T: FloatExt> JacobiSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut prev = self.x0;
     for z in tail.iter_mut() {
       let next = match prev {

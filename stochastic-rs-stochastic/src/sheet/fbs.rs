@@ -147,7 +147,7 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
 
     let normal_scalar = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut z_buf = [T::zero(); 2];
-    normal_scalar.fill_slice_fast(&mut z_buf);
+    normal_scalar.fill_slice(&mut z_buf);
     let z1 = z_buf[0];
     let z2 = z_buf[1];
 

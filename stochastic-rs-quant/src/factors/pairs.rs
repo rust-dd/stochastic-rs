@@ -196,7 +196,7 @@ mod tests {
     let mut x_buf = vec![0.0_f64; 200];
     let dist = SimdNormal::<f64>::new(0.0, 0.01, &Deterministic::new(1));
     let mut shocks = vec![0.0_f64; 200];
-    dist.fill_slice_fast(&mut shocks);
+    dist.fill_slice(&mut shocks);
     for i in 0..200 {
       x_buf[i] = 100.0 + 0.05 * i as f64;
       y_buf[i] = 2.0 * x_buf[i] + 1.0 + shocks[i];
@@ -212,7 +212,7 @@ mod tests {
   fn beta_recovered_from_linear_relationship() {
     let dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(7));
     let mut shocks = vec![0.0_f64; 500];
-    dist.fill_slice_fast(&mut shocks);
+    dist.fill_slice(&mut shocks);
     let mut x_buf = vec![0.0_f64; 500];
     let mut y_buf = vec![0.0_f64; 500];
     for i in 0..500 {

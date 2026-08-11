@@ -117,7 +117,7 @@ impl<T: FloatExt> NonLinearSdeSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.normal.fill_slice_fast(tail);
+    self.normal.fill_slice(tail);
     let mut prev = self.x0;
     for z in tail.iter_mut() {
       let safe_prev = if prev.abs() < T::from_f64_fast(1e-12) {

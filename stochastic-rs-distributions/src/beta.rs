@@ -24,6 +24,7 @@ pub struct SimdBeta<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   gamma2: SimdGamma<T, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
+  stream_seed: u64,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
@@ -31,14 +32,34 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
   /// Each sub-component (gamma1, gamma2) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, beta: T, seed: &S) -> Self {
     assert!(alpha > T::zero() && beta > T::zero());
+    let gamma1 = SimdGamma::<T, R>::new(alpha, T::one(), seed);
+    let gamma2 = SimdGamma::<T, R>::new(beta, T::one(), seed);
+    // No own engine to seed — reuse gamma1's already-captured stream_seed
+    // as this sampler's fork anchor rather than drawing a fresh value (that
+    // would shift gamma2's derivation relative to today's stream).
+    let stream_seed = gamma1.stream_seed;
     Self {
       alpha,
       beta,
-      gamma1: SimdGamma::<T, R>::new(alpha, T::one(), seed),
-      gamma2: SimdGamma::<T, R>::new(beta, T::one(), seed),
+      gamma1,
+      gamma2,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
+      stream_seed,
     }
+  }
+
+  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
+  /// parallel `sample_matrix` fan-out; see
+  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
+  #[doc(hidden)]
+  pub fn fork(&self, stream_idx: u64) -> Self {
+    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    Self::new(
+      self.alpha,
+      self.beta,
+      &crate::simd_rng::Deterministic::new(child_seed),
+    )
   }
 
   /// Returns a single sample using the internal SIMD RNG.
@@ -54,11 +75,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
     z
   }
 
-  pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out);
-  }
-
-  pub fn fill_slice_fast(&self, out: &mut [T]) {
+  /// Fills `out` using the internal SIMD RNG stream — the only stream this
+  /// sampler draws from (see the crate-level RNG policy).
+  pub fn fill_slice(&self, out: &mut [T]) {
     if out.len() < SMALL_BETA_THRESHOLD {
       for x in out.iter_mut() {
         let a = self.gamma1.sample_fast();
@@ -71,8 +90,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
     let mut g2 = [T::zero(); 64];
     let mut chunks = out.chunks_exact_mut(64);
     for chunk in &mut chunks {
-      self.gamma1.fill_slice_fast(&mut g1);
-      self.gamma2.fill_slice_fast(&mut g2);
+      self.gamma1.fill_slice(&mut g1);
+      self.gamma2.fill_slice(&mut g2);
       for (sub, (a8, b8)) in chunk
         .chunks_exact_mut(8)
         .zip(g1.chunks_exact(8).zip(g2.chunks_exact(8)))
@@ -89,8 +108,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let n = rem.len();
-      self.gamma1.fill_slice_fast(&mut g1[..n]);
-      self.gamma2.fill_slice_fast(&mut g2[..n]);
+      self.gamma1.fill_slice(&mut g1[..n]);
+      self.gamma2.fill_slice(&mut g2[..n]);
       for i in 0..n {
         rem[i] = g1[i] / (g1[i] + g2[i]);
       }
@@ -99,7 +118,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
 
   fn refill_buffer(&self) {
     let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice_fast(buf);
+    self.fill_slice(buf);
     unsafe {
       *self.index.get() = 0;
     }
@@ -113,6 +132,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdBeta<T, R> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdBeta<T, R> {
+  /// The `rng` argument is intentionally unused — this type draws from its
+  /// own internal SIMD stream seeded at construction. Use `Deterministic`
+  /// in the constructor for reproducibility.
   fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
     let idx = unsafe { &mut *self.index.get() };
     if *idx >= 16 {

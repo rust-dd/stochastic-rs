@@ -24,7 +24,7 @@
 //!
 //! let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
 //! let mut sample = vec![0.0; 5_000];
-//! dist.fill_slice_fast(&mut sample);
+//! dist.fill_slice(&mut sample);
 //!
 //! let res = jarque_bera_test(ArrayView1::from(&sample), JarqueBeraConfig::default());
 //! assert!(!res.reject_normality, "JB should not reject a true normal sample");

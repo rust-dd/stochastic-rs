@@ -122,7 +122,7 @@ impl<T: FloatExt> AgarchSampler<T> {
     let mut z_arr = Array1::<T>::zeros(n);
     if n > 0 {
       let slice = z_arr.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice_fast(slice);
+      self.normal.fill_slice(slice);
     }
     let z = &z_arr;
 
