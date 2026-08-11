@@ -1,8 +1,14 @@
 //! # Wu Zhang
 //!
 //! $$
-//! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
+//! dv_{i,t}=\beta_i(\alpha_i-v_{i,t})dt+\nu_i\sqrt{v_{i,t}}\,dW_{i,t}^v,\quad
+//! dF_{i,t}=\lambda_i F_{i,t}\sqrt{v_{i,t}}\,dW_{i,t}^F
 //! $$
+//!
+//! `xn` independent CEV/SABR-style forward-volatility pairs: each
+//! dimension's volatility `v_i` is a CIR-style square-root diffusion, and
+//! its forward `F_i` is driven multiplicatively by `v_i`'s own path
+//! (no cross-dimension coupling, no `dW^v`/`dW^F` correlation).
 //!
 use ndarray::Array1;
 use ndarray::Array2;

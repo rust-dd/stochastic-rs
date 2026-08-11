@@ -22,21 +22,31 @@ use crate::traits::ProcessExt;
 /// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
 /// does not enforce the no-arbitrage Hjm drift restriction between `alpha` and `sigma`.
 pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model coefficient / user-supplied drift term.
+  /// Time-dependent coefficient a(t) in the short rate's drift term
+  /// `a(t)·dt`.
   pub a: Fn1D<T>,
-  /// Model coefficient / user-supplied diffusion term.
+  /// Time-dependent coefficient b(t) multiplying the short rate's own
+  /// level in its update step.
   pub b: Fn1D<T>,
-  /// Order / lag count for the autoregressive component.
+  /// Time-dependent scaling function p(t,T) multiplying the entire
+  /// bracketed drift-plus-diffusion term of the bond-price component
+  /// (this is the model's own `p`, distinct from the `p` output array it
+  /// helps compute).
   pub p: Fn2D<T>,
-  /// Model coefficient / moving-average term parameter.
+  /// Time-dependent drift-rate function q(t,T) for the bond-price
+  /// component (multiplied by `dt` inside `p`'s bracket).
   pub q: Fn2D<T>,
-  /// Volatility / variance level or coefficient.
+  /// Time-dependent coefficient v(t,T) multiplying the bond-price
+  /// component's own level inside `p`'s bracket.
   pub v: Fn2D<T>,
-  /// Model shape / loading parameter.
+  /// Time-dependent forward-rate drift function α(t,T) (matches the
+  /// module header's own α(t,T) — HJM drift of `f(t,T)`).
   pub alpha: Fn2D<T>,
-  /// Diffusion / noise scale parameter.
+  /// Time-dependent forward-rate volatility function σ(t,T) (matches the
+  /// module header's own σ(t,T)).
   pub sigma: Fn2D<T>,
-  /// Number of discrete simulation points (or samples).
+  /// Number of time steps shared by all three output components
+  /// (`r`, `p`, `f`).
   pub n: usize,
   /// Initial short-rate / interest-rate level.
   pub r0: Option<T>,
@@ -44,7 +54,8 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
   pub p0: Option<T>,
   /// Initial forward-rate level.
   pub f0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Horizon shared by the short-rate, bond-price and forward-rate paths
+  /// (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

@@ -1,8 +1,17 @@
 //! # Hull White 2f
 //!
 //! $$
-//! dr_t=x_t+y_t,\ dx_t=-a x_t dt+\sigma_1 dW_t^1,\ dy_t=-b y_t dt+\sigma_2 dW_t^2
+//! dr_t=\bigl[\theta(t)+u_t-a\,r_t\bigr]dt+\sigma_1\,dW_t^1,\qquad
+//! du_t=-b\,u_t\,dt+\sigma_2\,dW_t^2
 //! $$
+//!
+//! State-space (Brigo–Mercurio §4.2-style) two-factor Hull-White: `r_t`
+//! (returned as `x` below) directly carries the short rate — the
+//! calibration function `θ(t)` and the auxiliary factor `u_t` both feed
+//! straight into `r`'s own drift. Output is `[r, u]`; unlike the
+//! equivalent G2++ parametrization, `r` is never formed by summing two
+//! independent zero-drift factors — `u_t` is that second factor, but it
+//! enters `r`'s drift directly rather than being added to it externally.
 //!
 use ndarray::Array1;
 #[cfg(feature = "python")]
@@ -29,13 +38,16 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
   pub sigma2: T,
   /// Instantaneous correlation parameter.
   pub rho: T,
-  /// Model coefficient / user-supplied diffusion term.
+  /// Mean-reversion speed b of the auxiliary factor u_t (multiplies
+  /// `-u_{t-1}` in u's own drift) — not a diffusion term despite the
+  /// field's former doc; `sigma1`/`sigma2` are the diffusion terms.
   pub b: T,
-  /// Initial value of the primary state variable.
+  /// Initial short rate r₀ (returned as `x[0]`).
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
+  /// omitted).
   pub t: Option<T>,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along each of the `r`/`u` paths.
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

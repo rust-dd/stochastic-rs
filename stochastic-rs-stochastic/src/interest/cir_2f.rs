@@ -17,11 +17,15 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model parameter controlling process dynamics.
+  /// First CIR factor `x_t` (own κ₁/θ₁/σ₁ carried inside the wrapped
+  /// [`Cir`]).
   pub x: Cir<T, S>,
-  /// Model parameter controlling process dynamics.
+  /// Second CIR factor `y_t` (own κ₂/θ₂/σ₂ carried inside the wrapped
+  /// [`Cir`]).
   pub y: Cir<T, S>,
-  /// Autoregressive coefficient vector.
+  /// Deterministic time-dependent shift φ(t) added to `x_t + y_t` so the
+  /// output short rate `r_t = x_t + y_t + φ(t)` can be fitted to an
+  /// initial term structure (shift extension, as in CIR++).
   pub phi: Fn1D<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

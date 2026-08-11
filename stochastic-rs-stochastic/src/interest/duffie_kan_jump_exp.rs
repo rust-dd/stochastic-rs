@@ -16,42 +16,60 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// Duffie–Kan two-factor model with an exponential-inter-arrival jump
+/// overlay on the auxiliary factor `x_t`. The per-factor drift and
+/// diffusion-loading coefficients below (`a1..c2`, `alpha`/`beta`/`gamma`)
+/// are the concrete, fixed-numeric form of the module header's abstract
+/// `K(Θ-X)dt+√(A+BX)dW` — see each field's own doc for exactly which term
+/// it multiplies.
 pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model shape / loading parameter.
+  /// Diffusion-loading coefficient on `r_t`, shared between both factors'
+  /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
+  /// itself scaled again by `sigma1`/`sigma2`).
   pub alpha: T,
-  /// Model slope / loading parameter.
+  /// Diffusion-loading coefficient on `x_t`, shared between both factors'
+  /// diffusion scaling.
   pub beta: T,
-  /// Model asymmetry / nonlinearity parameter.
+  /// Diffusion-loading intercept (constant term), shared between both
+  /// factors' diffusion scaling.
   pub gamma: T,
-  /// Instantaneous correlation parameter.
+  /// Instantaneous correlation ρ between the two driving Brownian motions
+  /// `dW1`/`dW2`.
   pub rho: T,
-  /// Model coefficient for factor 1.
+  /// Coefficient of `r_t` in r's own drift (factor-1 equation).
   pub a1: T,
-  /// Model coefficient for factor 1.
+  /// Coefficient of `x_t` in r's drift (cross-factor coupling,
+  /// factor-1 equation).
   pub b1: T,
-  /// Model coefficient for factor 1.
+  /// Constant drift intercept for r's equation (factor-1 equation).
   pub c1: T,
-  /// Diffusion/noise scale for factor 1.
+  /// Diffusion scale multiplying r's shared affine loading
+  /// (factor-1 equation).
   pub sigma1: T,
-  /// Model coefficient for factor 2.
+  /// Coefficient of `r_t` in x's drift (cross-factor coupling,
+  /// factor-2 equation).
   pub a2: T,
-  /// Model coefficient for factor 2.
+  /// Coefficient of `x_t` in x's own drift (factor-2 equation).
   pub b2: T,
-  /// Model coefficient for factor 2.
+  /// Constant drift intercept for x's equation (factor-2 equation).
   pub c2: T,
-  /// Diffusion/noise scale for factor 2.
+  /// Diffusion scale multiplying x's shared affine loading
+  /// (factor-2 equation).
   pub sigma2: T,
-  /// Jump intensity (rate for the exponential distribution).
+  /// Jump (exponential inter-arrival) intensity λ. Jumps enter `x_t`
+  /// only, not `r_t`.
   pub lambda: T,
-  /// Standard deviation for jump sizes.
+  /// Standard deviation of the Gaussian jump-size distribution added to
+  /// `x_t` at each jump.
   pub jump_scale: T,
-  /// Number of time steps.
+  /// Number of points sampled along each of the `r`/`x` paths.
   pub n: usize,
-  /// Initial value for r(t).
+  /// Initial short rate r₀.
   pub r0: Option<T>,
-  /// Initial value for x(t).
+  /// Initial value X₀ of the auxiliary factor.
   pub x0: Option<T>,
-  /// Total time horizon.
+  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
+  /// omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

@@ -1,8 +1,13 @@
 //! # Interest
 //!
-//! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
-//! $$
+//! Short-rate and forward-curve models for fixed income. Covers
+//! single-factor mean-reverting short-rate models (Vasicek, CIR, Hull-White
+//! with a calibrated θ(t)) and their two-factor extensions, affine
+//! multi-factor term-structure models (Duffie-Kan and its jump-augmented
+//! variant), the full HJM forward-rate framework, and market models of
+//! forward LIBOR rates (the drift-coupled [`lmm::Lmm`] and the simpler
+//! uncoupled [`bgm::Bgm`]). Each module's own header states its concrete
+//! short-rate or forward-rate SDE.
 //!
 pub mod adg;
 pub mod bgm;

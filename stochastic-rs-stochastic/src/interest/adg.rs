@@ -1,8 +1,14 @@
 //! # Adg
 //!
 //! $$
-//! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
+//! dX_{i,t}=(k(t)-\theta(t)X_{i,t})dt+\sigma_i dW_{i,t},\quad
+//! r_i(t)=\phi(t)+b(t)X_{i,t}+c(t)X_{i,t}^2
 //! $$
+//!
+//! `xn` independent latent factors, each an affine/quadratic-Gaussian-style
+//! diffusion with a time-dependent additive drift target `k(t)` and a
+//! time-dependent mean-reversion speed `θ(t)`, observed through a
+//! quadratic output map `phi(t) + b(t)X + c(t)X²`.
 //!
 use ndarray::Array1;
 use ndarray::Array2;
@@ -18,25 +24,34 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Adg<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Jump-size adjustment / shape parameter.
+  /// Time-dependent additive drift target function k(t) — the level each
+  /// latent factor is pulled toward, analogous to Hull-White's θ(t).
   pub k: Fn1D<T>,
-  /// Long-run target level / model location parameter.
+  /// Time-dependent mean-reversion speed function θ(t), multiplying the
+  /// pull-back term `−θ(t)·X_t`. Despite the name, this is a speed, not
+  /// a level — see `k` for the level.
   pub theta: Fn1D<T>,
-  /// Diffusion / noise scale parameter.
+  /// Per-factor diffusion scale vector σ_i, one entry per latent factor
+  /// (length `xn`).
   pub sigma: Array1<T>,
-  /// Autoregressive coefficient vector.
+  /// Time-dependent intercept φ(t) of the output observation equation
+  /// `r = φ(t) + b(t)·X + c(t)·X²`.
   pub phi: Fn1D<T>,
-  /// Model coefficient / user-supplied diffusion term.
+  /// Time-dependent linear loading b(t) on the latent factor in the
+  /// observation equation.
   pub b: Fn1D<T>,
-  /// Model coefficient for nonlinear drift/level terms.
+  /// Time-dependent quadratic loading c(t) on the squared latent factor
+  /// in the observation equation (the "quadratic" in quadratic-Gaussian).
   pub c: Fn1D<T>,
-  /// Number of discrete simulation points (or samples).
+  /// Number of time steps per latent-factor path.
   pub n: usize,
-  /// Model parameter controlling process dynamics.
+  /// Number of independent latent factors (rows of the output matrix);
+  /// each evolves as its own `dX_i = (k(t) − θ(t)X_i)dt + σ_i dW_i`.
   pub xn: usize,
-  /// Initial value of the primary state variable.
+  /// Initial values `X_i(0)` for each latent factor, length `xn`.
   pub x0: Array1<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] shared by all `xn` latent-factor paths
+  /// (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

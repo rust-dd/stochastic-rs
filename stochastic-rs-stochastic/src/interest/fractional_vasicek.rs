@@ -16,21 +16,26 @@ use crate::traits::ProcessExt;
 pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
-  /// Long-run target level / model location parameter.
+  /// Mean-reversion speed (`a` in the module header's `a(b-r_t)dt`) —
+  /// despite the name, this is the wrapped [`Fou::theta`] (speed), fed
+  /// straight through to it.
   pub theta: T,
-  /// Drift / long-run mean-level parameter.
+  /// Long-run mean level (`b` in the module header) — the wrapped
+  /// [`Fou::mu`], the level `r` reverts to.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `dB_t^H`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the fractional-Vasicek path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the fractional-Vasicek path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  /// Model parameter controlling process dynamics.
+  /// Wrapped fractional-OU process carrying the actual sampling state;
+  /// see module header — `FVasicek` is `Fou` under short-rate-model
+  /// parameter names.
   pub fou: Fou<T, S>,
 }
 
