@@ -41,6 +41,7 @@ pub enum CopulaType {
 mod tests {
   use crate::bivariate::clayton::Clayton;
   use crate::bivariate::frank::Frank;
+  use crate::bivariate::gumbel::Gumbel;
   use crate::traits::BivariateExt;
 
   /// `BivariateExt::sample_with_seed` is a trait-default method — no
@@ -49,6 +50,17 @@ mod tests {
   /// `multivariate::tests::every_multivariate_sampler_is_seedable_and_deterministic`.
   /// Same seed on the same object must replay bit-for-bit, and two
   /// independently-constructed, identically-seeded objects must agree.
+  ///
+  /// Frank and Gumbel are deliberately exercised at a non-boundary theta
+  /// (not the `theta == 0.0` / `theta == 1.0` independence special case
+  /// each family shortcuts around): both `percent_point` overrides used to
+  /// call `BivariateExt::percent_point(self, ..)` via UFCS on their own
+  /// non-boundary path, which — since each type overrides `percent_point`
+  /// — resolved back to that same override instead of the trait's default
+  /// body, recursing until the stack overflowed. Sampling at a real
+  /// (non-degenerate) theta is what actually exercises that path; a test
+  /// that only ever sampled at the independence boundary would never have
+  /// caught either bug.
   #[test]
   fn every_bivariate_sampler_is_seedable_and_deterministic() {
     let mut clayton = Clayton::new();
@@ -81,6 +93,23 @@ mod tests {
       frank.sample_with_seed(64, 42).unwrap(),
       frank_2.sample_with_seed(64, 42).unwrap(),
       "Frank cross-object"
+    );
+
+    // theta = 1 / (1 - 0.5) = 2.0 — well past the theta == 1.0 independence
+    // boundary that `Gumbel::percent_point` shortcuts around.
+    let mut gumbel = Gumbel::new(None, Some(0.5));
+    gumbel._compute_theta();
+    assert_eq!(
+      gumbel.sample_with_seed(64, 42).unwrap(),
+      gumbel.sample_with_seed(64, 42).unwrap(),
+      "Gumbel replay"
+    );
+    let mut gumbel_2 = Gumbel::new(None, Some(0.5));
+    gumbel_2._compute_theta();
+    assert_eq!(
+      gumbel.sample_with_seed(64, 42).unwrap(),
+      gumbel_2.sample_with_seed(64, 42).unwrap(),
+      "Gumbel cross-object"
     );
   }
 }
