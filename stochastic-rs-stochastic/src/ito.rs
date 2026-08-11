@@ -38,9 +38,11 @@ pub struct Function2D {
 
 /// A simple result structure holding the drift and diffusion terms from the Ito transformation.
 pub struct ItoResult {
-  /// Model parameter controlling process dynamics.
+  /// Combined `dt`-coefficient `∂f/∂t + μ ∂f/∂x + ½σ² ∂²f/∂x²` from Ito's
+  /// lemma applied to `f(t, X_t)`.
   pub drift_term: f64,
-  /// Model parameter controlling process dynamics.
+  /// Combined `dW_t`-coefficient `σ ∂f/∂x` from Ito's lemma applied to
+  /// `f(t, X_t)`.
   pub diffusion_term: f64,
 }
 
@@ -53,11 +55,14 @@ pub struct ItoResult {
 /// * `function` - The 2D function \(f(t, x)\) for Ito's lemma.
 /// * `h` - A small step used in the finite-difference approximation.
 pub struct ItoCalculator {
-  /// Model parameter controlling process dynamics.
+  /// The underlying SDE's drift/diffusion/jump functions being
+  /// transformed by Ito's lemma.
   pub process: DiffusionProcessFn,
-  /// Model parameter controlling process dynamics.
+  /// The twice-differentiable transformation `f(t, x)` Ito's lemma is
+  /// applied to.
   pub function: Function2D,
-  /// Model parameter controlling process dynamics.
+  /// Finite-difference step size for the central-difference derivative
+  /// approximations of `function`.
   pub h: f64,
 }
 

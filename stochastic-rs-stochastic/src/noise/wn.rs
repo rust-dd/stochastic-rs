@@ -16,7 +16,7 @@ use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct Wn<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Number of discrete simulation points (or samples).
+  /// Number of i.i.d. noise samples generated.
   pub n: usize,
   /// Target mean level for generated noise samples.
   pub mean: Option<T>,
