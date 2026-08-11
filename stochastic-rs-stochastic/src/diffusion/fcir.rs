@@ -49,9 +49,9 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   /// positive, but sub-Feller parameters are accepted rather than
   /// rejected, since the discretised step already keeps every sample
   /// non-negative — floored at zero by default, or reflected when
-  /// [`use_sym`](Self::use_sym) is `true`. In debug builds, a violation
-  /// not paired with `use_sym = Some(true)` prints a one-line diagnostic
-  /// to stderr; it never panics.
+  /// [`use_sym`](Self::use_sym) is `true`. A violation not paired with
+  /// `use_sym = Some(true)` unconditionally prints a one-line diagnostic
+  /// to stderr — including in release builds; it never panics.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -65,7 +65,6 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
-    #[cfg(debug_assertions)]
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
       eprintln!(
         "warning: Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
@@ -188,5 +187,24 @@ mod tests {
       path.iter().all(|x| x.is_finite()),
       "sub-Feller Fcir path must stay finite under use_sym = Some(true)"
     );
+  }
+
+  /// The default (floor-at-zero) scheme must also accept sub-Feller
+  /// parameters without panicking — only the diagnostic warning differs.
+  #[test]
+  fn fcir_accepts_sub_feller_without_use_sym() {
+    let fcir = Fcir::<f64, _>::new(
+      0.7,
+      0.5,
+      0.1,
+      1.0,
+      256,
+      Some(0.1),
+      Some(1.0),
+      None,
+      Deterministic::new(7),
+    );
+    let path = fcir.sample();
+    assert!(path.iter().all(|x| x.is_finite() && *x >= 0.0));
   }
 }

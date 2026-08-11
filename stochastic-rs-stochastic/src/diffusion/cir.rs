@@ -53,9 +53,11 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   /// which is the documented way to handle sub-Feller paths (matching the
   /// same-shaped variance factor in
   /// [`Heston`](crate::volatility::heston::Heston), which imposes no
-  /// Feller precondition at all). In debug builds, a violation not paired
-  /// with `use_sym = Some(true)` prints a one-line diagnostic to stderr;
-  /// it never panics, and release builds pay nothing for the check.
+  /// Feller precondition at all). A violation not paired with
+  /// `use_sym = Some(true)` unconditionally prints a one-line diagnostic
+  /// to stderr — including in release builds, where real Monte Carlo /
+  /// calibration runs happen and silently biased boundary handling is
+  /// exactly what a caller needs to know about; it never panics.
   pub fn new(
     theta: T,
     mu: T,
@@ -66,7 +68,6 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    #[cfg(debug_assertions)]
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
       eprintln!(
         "warning: Cir::new: Feller condition violated (2*theta*mu < sigma^2) \

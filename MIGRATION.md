@@ -165,10 +165,10 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   precondition was rejecting parameter sets the sampler already handles
   correctly — and was already absent on `Heston`'s (also-CIR) variance
   factor, which is the inconsistency this closes. Sub-Feller parameters
-  are now accepted unconditionally; in debug builds, constructing with a
-  Feller violation and `use_sym` not set to `Some(true)` prints a one-line
-  diagnostic to stderr (never panics); release builds pay nothing for the
-  check either way.
+  are now accepted unconditionally; constructing with a Feller violation
+  and `use_sym` not set to `Some(true)` unconditionally prints a one-line
+  diagnostic to stderr — in release builds too, since that's where real
+  Monte Carlo / calibration runs happen — but never panics.
 - `stochastic-rs-stochastic::volatility::heston2d`'s
   `rejects_matlab_feller_violation` test (asserted the old panic) is now
   `accepts_matlab_feller_violation_with_use_sym`, which builds with

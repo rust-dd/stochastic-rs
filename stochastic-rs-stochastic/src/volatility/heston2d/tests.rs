@@ -313,6 +313,31 @@ fn accepts_matlab_feller_violation_with_use_sym() {
   assert!(v2.iter().all(|x| *x >= 0.0));
 }
 
+/// The default (floor-at-zero) scheme must also accept the same
+/// sub-Feller parameters without panicking — only the diagnostic warning
+/// differs, mirroring the equivalent `Cir` / `Fcir` tests.
+#[test]
+fn accepts_matlab_feller_violation_without_use_sym() {
+  let model = Heston2D::<f64, _>::new(
+    [Some(0.0), Some(0.0)],
+    [Some(0.4), Some(0.4)],
+    [0.0, 0.0],
+    [0.04, 0.4],
+    [1.0, 2.0],
+    [1.0, 1.0],
+    rho_default(),
+    16,
+    Some(1.0),
+    Some(false),
+    Deterministic::new(5),
+  );
+  let [x1, v1, x2, v2] = model.sample();
+  assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
+  assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
+  assert!(v1.iter().all(|x| *x >= 0.0));
+  assert!(v2.iter().all(|x| *x >= 0.0));
+}
+
 /// Reference: FSDA `Heston2D.m` requires both initial variances to be positive.
 #[test]
 #[should_panic(expected = "v0[0] must be positive")]
