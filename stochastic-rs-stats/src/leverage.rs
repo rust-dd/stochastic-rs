@@ -7,6 +7,8 @@
 
 use ndarray::ArrayView1;
 
+use crate::hurst::HurstError;
+
 /// Estimate the leverage correlation (rho) between log-returns and
 /// volatility changes from a close-price series.
 ///
@@ -17,14 +19,27 @@ use ndarray::ArrayView1;
 /// Equities typically exhibit ρ ∈ [−0.9, −0.3] (leverage effect:
 /// negative returns increase future volatility).
 ///
-/// Returns −0.5 as a default when data is insufficient.
-///
 /// # Arguments
 /// * `closes` — Price series as `ArrayView1`, length >= 20.
-pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> f64 {
+///
+/// # Errors
+///
+/// Returns [`HurstError::TooFewObservations`] when `closes` (or the
+/// finite log-returns / return-pairs derived from it) is too short, and
+/// [`HurstError::DegeneratePath`] when the return / vol-change series has
+/// (near-)zero variance, making the Pearson correlation undefined.
+/// Reuses [`HurstError`] rather than a bespoke type: both estimators fail
+/// for the same reasons (too little data, degenerate input) on the same
+/// close-price series shape. Callers that want the pre-2.7 clamp-to-default
+/// behavior can write `estimate_leverage_rho(x).unwrap_or(-0.5)` explicitly
+/// — the function itself no longer guesses on your behalf.
+pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, HurstError> {
   let n = closes.len();
   if n < 20 {
-    return -0.5;
+    return Err(HurstError::TooFewObservations {
+      got: n,
+      required: 20,
+    });
   }
 
   let mut rets = Vec::with_capacity(n - 1);
@@ -35,14 +50,20 @@ pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> f64 {
     }
   }
   if rets.len() < 20 {
-    return -0.5;
+    return Err(HurstError::TooFewObservations {
+      got: rets.len(),
+      required: 20,
+    });
   }
 
   // Vol proxy: |r_t|
   let vol: Vec<f64> = rets.iter().map(|r| r.abs()).collect();
   let pairs = rets.len() - 1;
   if pairs < 10 {
-    return -0.5;
+    return Err(HurstError::TooFewObservations {
+      got: pairs,
+      required: 10,
+    });
   }
 
   let mut mean_x = 0.0;
@@ -67,9 +88,9 @@ pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> f64 {
 
   let denom = (sum_x2 * sum_y2).sqrt();
   if denom < 1e-15 {
-    return -0.5;
+    return Err(HurstError::DegeneratePath);
   }
-  (sum_xy / denom).clamp(-0.99, 0.99)
+  Ok((sum_xy / denom).clamp(-0.99, 0.99))
 }
 
 #[cfg(test)]
@@ -79,9 +100,24 @@ mod tests {
   use super::*;
 
   #[test]
-  fn leverage_rho_short_data_returns_default() {
+  fn leverage_rho_short_data_errs() {
     let closes = Array1::from_elem(10, 100.0);
-    assert_eq!(estimate_leverage_rho(closes.view()), -0.5);
+    assert_eq!(
+      estimate_leverage_rho(closes.view()),
+      Err(HurstError::TooFewObservations {
+        got: 10,
+        required: 20
+      })
+    );
+  }
+
+  #[test]
+  fn leverage_rho_constant_series_errs_degenerate() {
+    let closes = Array1::from_elem(50, 100.0);
+    assert_eq!(
+      estimate_leverage_rho(closes.view()),
+      Err(HurstError::DegeneratePath)
+    );
   }
 
   #[test]
@@ -97,7 +133,7 @@ mod tests {
       vals.push(last * (1.0 + r));
     }
     let closes = Array1::from_vec(vals);
-    let rho = estimate_leverage_rho(closes.view());
+    let rho = estimate_leverage_rho(closes.view()).expect("200-point noisy series must fit");
     assert!((-0.99..=0.99).contains(&rho), "rho out of range: {rho}");
   }
 }

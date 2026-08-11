@@ -4,6 +4,8 @@ use argmin::core::CostFunction;
 use argmin::core::Executor;
 use argmin::core::Gradient;
 use argmin::core::State;
+use argmin::core::TerminationReason;
+use argmin::core::TerminationStatus;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
 use ndarray::Array1;
@@ -28,6 +30,22 @@ pub struct MleResult {
   pub aic: f64,
   /// Bayesian Information Criterion.
   pub bic: f64,
+  /// Whether the L-BFGS run reached a recognised convergence criterion
+  /// (`SolverConverged` / `TargetCostReached`).
+  ///
+  /// `false` means [`params`](Self::params) is the untouched initial
+  /// guess passed in via `model`'s parameters at call time: either the
+  /// optimiser itself errored before completing a step, or it terminated
+  /// (max iterations, an internal line-search exit, timeout, interrupt)
+  /// without ever improving on that starting point. Previously this case
+  /// was indistinguishable from a genuine fit — the initial guess was
+  /// returned silently. Inspect this field (or propagate it) before
+  /// trusting [`params`](Self::params) downstream.
+  pub converged: bool,
+  /// Number of L-BFGS iterations performed. `0` when the optimiser
+  /// errored before its first step, or when the model has no free
+  /// parameters to fit (trivially `converged = true` in that case).
+  pub iterations: usize,
 }
 
 impl fmt::Display for MleResult {
@@ -41,6 +59,8 @@ impl fmt::Display for MleResult {
     writeln!(f, "  AIC          = {:.4}", self.aic)?;
     writeln!(f, "  BIC          = {:.4}", self.bic)?;
     writeln!(f, "  sample size  = {}", self.sample_size)?;
+    writeln!(f, "  converged    = {}", self.converged)?;
+    writeln!(f, "  iterations   = {}", self.iterations)?;
     Ok(())
   }
 }
@@ -113,6 +133,37 @@ impl Gradient for MleProblem<'_> {
   }
 }
 
+/// Resolves an L-BFGS [`Executor`] outcome into the parameter vector
+/// `fit_mle` should keep, plus the `converged` / `iterations` signals on
+/// [`MleResult`].
+///
+/// `Err` means the optimiser itself failed before completing a step:
+/// `init` is returned untouched and `converged` is `false` so callers can
+/// never mistake the fallback for a genuine fit (this is the case
+/// formerly handled by a silent `Err(_) => init`, with no signal that a
+/// fallback had occurred). On `Ok`, `converged` additionally requires
+/// argmin to report `SolverConverged` or `TargetCostReached` —
+/// `MaxItersReached`, `SolverExit` (e.g. an internal line-search
+/// failure), `Timeout` and `Interrupt` all mean the run stopped without
+/// meeting its own tolerance, so they also signal `false` even though
+/// the `Executor` itself did not error.
+fn resolve_fit_outcome(
+  result: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error>,
+  init: &[f64],
+) -> (Vec<f64>, bool, usize) {
+  match result {
+    Ok((best_param, status, iters)) => {
+      let converged = matches!(
+        status,
+        TerminationStatus::Terminated(TerminationReason::SolverConverged)
+          | TerminationStatus::Terminated(TerminationReason::TargetCostReached)
+      );
+      (best_param, converged, iters as usize)
+    }
+    Err(_) => (init.to_vec(), false, 0),
+  }
+}
+
 /// Fit a 1-D SDE model by Maximum Likelihood Estimation.
 ///
 /// The function minimises the negative log-likelihood
@@ -131,7 +182,10 @@ impl Gradient for MleProblem<'_> {
 /// * `param_bounds` - optional custom bounds (defaults to model's `param_bounds()`)
 ///
 /// # Returns
-/// An [`MleResult`] with estimated parameters, log-likelihood, AIC and BIC.
+/// An [`MleResult`] with estimated parameters, log-likelihood, AIC, BIC,
+/// and the `converged` / `iterations` optimiser signals. Always check
+/// `converged` before trusting `params` — a failed or non-converged run
+/// returns the initial guess rather than panicking or fabricating a fit.
 ///
 /// # References
 /// - Nocedal, J. (1980). *Mathematics of Computation*, 35(151), 773-782.
@@ -161,32 +215,37 @@ pub fn fit_mle(
 
   let x0 = model.params();
 
-  let best_params = if n_params == 0 {
-    x0.to_vec()
+  let (best_params, converged, iterations) = if n_params == 0 {
+    (x0.to_vec(), true, 0)
   } else {
     let init: Vec<f64> = x0.to_vec();
 
-    {
-      let problem = MleProblem {
-        model: Mutex::new(&mut *model),
-        sample,
-        dt,
-        density,
-        bounds: bounds.clone(),
-      };
+    let problem = MleProblem {
+      model: Mutex::new(&mut *model),
+      sample,
+      dt,
+      density,
+      bounds: bounds.clone(),
+    };
 
-      let linesearch = MoreThuenteLineSearch::new();
-      let solver = LBFGS::new(linesearch, 10);
+    let linesearch = MoreThuenteLineSearch::new();
+    let solver = LBFGS::new(linesearch, 10);
 
-      let result = Executor::new(problem, solver)
-        .configure(|state| state.param(init.clone()).max_iters(200))
-        .run();
+    let result = Executor::new(problem, solver)
+      .configure(|state| state.param(init.clone()).max_iters(200))
+      .run()
+      .map(|res| {
+        let best = res
+          .state
+          .get_best_param()
+          .cloned()
+          .unwrap_or_else(|| init.clone());
+        let status = res.state.get_termination_status().clone();
+        let iters = res.state.get_iter();
+        (best, status, iters)
+      });
 
-      match result {
-        Ok(res) => res.state.get_best_param().cloned().unwrap_or(init),
-        Err(_) => init,
-      }
-    }
+    resolve_fit_outcome(result, &init)
   };
 
   let clamped: Vec<f64> = best_params
@@ -216,5 +275,70 @@ pub fn fit_mle(
     sample_size: n_transitions,
     aic,
     bic,
+    converged,
+    iterations,
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn mle_result_signals_fallback() {
+    let init = vec![1.0, 2.0, 3.0];
+    let forced_failure: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error> =
+      Err(argmin::core::Error::msg("forced optimizer failure"));
+
+    let (params, converged, iterations) = resolve_fit_outcome(forced_failure, &init);
+
+    assert_eq!(
+      params, init,
+      "a failed optimizer run must return the untouched initial guess"
+    );
+    assert!(
+      !converged,
+      "a failed optimizer run must never silently report converged = true"
+    );
+    assert_eq!(iterations, 0);
+  }
+
+  #[test]
+  fn mle_result_signals_non_convergence_without_error() {
+    // MaxItersReached (and SolverExit / Timeout / Interrupt) is a normal
+    // `Ok` termination from argmin's perspective, not an `Err` — but it
+    // still means the run never actually converged, so it must signal
+    // `converged = false` exactly like the `Err` branch.
+    let init = vec![0.5];
+    let stalled: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error> = Ok((
+      init.clone(),
+      TerminationStatus::Terminated(TerminationReason::MaxItersReached),
+      200,
+    ));
+
+    let (params, converged, iterations) = resolve_fit_outcome(stalled, &init);
+
+    assert_eq!(params, init);
+    assert!(
+      !converged,
+      "MaxItersReached must not be reported as converged"
+    );
+    assert_eq!(iterations, 200);
+  }
+
+  #[test]
+  fn mle_result_signals_genuine_convergence() {
+    let fitted = vec![1.23, 4.56];
+    let ok: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error> = Ok((
+      fitted.clone(),
+      TerminationStatus::Terminated(TerminationReason::SolverConverged),
+      17,
+    ));
+
+    let (params, converged, iterations) = resolve_fit_outcome(ok, &[0.0, 0.0]);
+
+    assert_eq!(params, fitted);
+    assert!(converged);
+    assert_eq!(iterations, 17);
   }
 }

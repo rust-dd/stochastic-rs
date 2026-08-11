@@ -575,11 +575,15 @@ mod tests {
       sample_size: 1000,
       aic: 206.0,
       bic: 220.0,
+      converged: true,
+      iterations: 42,
     };
     let s = format!("{}", result);
     assert!(s.contains("kappa"));
     assert!(s.contains("mu"));
     assert!(s.contains("sigma"));
     assert!(s.contains("log-lik"));
+    assert!(s.contains("converged"));
+    assert!(s.contains("42"));
   }
 }

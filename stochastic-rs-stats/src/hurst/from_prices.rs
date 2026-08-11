@@ -6,6 +6,7 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use super::HurstError;
 use super::HurstEstimator;
 use crate::fractal_dim::Higuchi;
 use crate::traits::FloatExt;
@@ -14,12 +15,23 @@ use crate::traits::FloatExt;
 ///
 /// Uses Higuchi-fractal-dim on a rolling realized-vol proxy
 /// (rolling mean absolute return), cross-validated against an absolute-
-/// return Higuchi estimate.  Returns `H ∈ [0.05, 0.45]`.  Falls back to
-/// `0.1` on insufficient data or unreliable estimate.
-pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> f64 {
+/// return Higuchi estimate.  Returns `H ∈ [0.05, 0.45]` on success.
+///
+/// # Errors
+///
+/// Returns [`HurstError::TooFewObservations`] when `closes` (or the
+/// finite log-returns / vol-proxy derived from it) is too short, and
+/// propagates whatever [`hurst_from_signal`] returns for the underlying
+/// Higuchi fit. Callers that want the pre-2.7 clamp-to-default behavior
+/// can write `estimate_hurst(x).unwrap_or(0.1)` explicitly at the call
+/// site — the function itself no longer guesses on your behalf.
+pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> Result<f64, HurstError> {
   let n = closes.len();
   if n < 30 {
-    return 0.1;
+    return Err(HurstError::TooFewObservations {
+      got: n,
+      required: 30,
+    });
   }
   let rets: Vec<f64> = (1..n)
     .filter_map(|i| {
@@ -30,7 +42,10 @@ pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> f64 {
     })
     .collect();
   if rets.len() < 30 {
-    return 0.1;
+    return Err(HurstError::TooFewObservations {
+      got: rets.len(),
+      required: 30,
+    });
   }
 
   let window = 5.min(rets.len() / 4).max(2);
@@ -54,7 +69,7 @@ pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> f64 {
     return hurst_from_signal(abs_rets.view());
   }
 
-  let h_rv = hurst_from_signal(Array1::from_vec(vol_proxy).view());
+  let h_rv = hurst_from_signal(Array1::from_vec(vol_proxy).view())?;
   let abs_arr = Array1::from_vec(
     rets
       .iter()
@@ -62,35 +77,83 @@ pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> f64 {
       .filter(|r| r.is_finite() && *r > 0.0)
       .collect(),
   );
-  let h_abs = hurst_from_signal(abs_arr.view());
+  let h_abs = hurst_from_signal(abs_arr.view())?;
 
-  if (h_rv - h_abs).abs() > 0.15 {
+  Ok(if (h_rv - h_abs).abs() > 0.15 {
     h_rv.min(h_abs).clamp(0.05, 0.45)
   } else {
     (0.65 * h_rv + 0.35 * h_abs).clamp(0.05, 0.45)
-  }
+  })
 }
 
 /// Estimate `H` from an arbitrary positive signal via Higuchi FD.
 ///
-/// Falls back to `0.1` for degenerate / too-short input.  Result is
-/// clamped to `[0.05, 0.45]`.
-pub fn hurst_from_signal<T: FloatExt>(signal: ArrayView1<T>) -> f64 {
+/// Result is clamped to `[0.05, 0.45]` on success.
+///
+/// # Errors
+///
+/// Returns [`HurstError::TooFewObservations`] when `signal` has fewer
+/// than 20 points, propagates [`Higuchi`]'s own error, and returns
+/// [`HurstError::RegressionFailed`] when the fit produces a Hurst value
+/// outside `(0, 1)` (a degenerate log-log regression). Callers that want
+/// the pre-2.7 clamp-to-default behavior can write
+/// `hurst_from_signal(x).unwrap_or(0.1)` explicitly.
+pub fn hurst_from_signal<T: FloatExt>(signal: ArrayView1<T>) -> Result<f64, HurstError> {
   let n = signal.len();
   if n < 20 {
-    return 0.1;
+    return Err(HurstError::TooFewObservations {
+      got: n,
+      required: 20,
+    });
   }
   let kmax = 64.min(n / 4).max(4);
   let est = Higuchi { kmax };
-  match HurstEstimator::<T>::estimate(&est, signal) {
-    Ok(r) => {
-      let h = r.hurst.to_f64().unwrap_or(0.1);
-      if h.is_finite() && h > 0.0 && h < 1.0 {
-        h.clamp(0.05, 0.45)
-      } else {
-        0.1
-      }
-    }
-    Err(_) => 0.1,
+  let r = HurstEstimator::<T>::estimate(&est, signal)?;
+  let h = r.hurst.to_f64().ok_or(HurstError::RegressionFailed)?;
+  if h.is_finite() && h > 0.0 && h < 1.0 {
+    Ok(h.clamp(0.05, 0.45))
+  } else {
+    Err(HurstError::RegressionFailed)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::Array1;
+
+  use super::*;
+
+  #[test]
+  fn estimate_hurst_errs_on_degenerate_input() {
+    let closes = Array1::<f64>::from_elem(200, 100.0);
+    let result = estimate_hurst(closes.view());
+    assert!(
+      result.is_err(),
+      "constant price series must signal an error, not silently return 0.1"
+    );
+  }
+
+  #[test]
+  fn estimate_hurst_errs_on_short_input() {
+    let closes = Array1::from_vec(vec![100.0, 101.0, 99.5]);
+    assert_eq!(
+      estimate_hurst(closes.view()),
+      Err(HurstError::TooFewObservations {
+        got: 3,
+        required: 30
+      })
+    );
+  }
+
+  #[test]
+  fn hurst_from_signal_errs_on_short_input() {
+    let signal = Array1::from_vec(vec![0.1, 0.2, 0.3]);
+    assert_eq!(
+      hurst_from_signal(signal.view()),
+      Err(HurstError::TooFewObservations {
+        got: 3,
+        required: 20
+      })
+    );
   }
 }

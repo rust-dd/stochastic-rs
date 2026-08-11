@@ -78,10 +78,10 @@ impl PyLeverage {
   /// Estimate leverage correlation $\rho$ between price and volatility from
   /// a closing-price series.
   #[new]
-  fn new<'py>(closes: PyReadonlyArray1<'py, f64>) -> Self {
-    Self {
-      rho: crate::leverage::estimate_leverage_rho(closes.as_array()),
-    }
+  fn new<'py>(closes: PyReadonlyArray1<'py, f64>) -> PyResult<Self> {
+    let rho = crate::leverage::estimate_leverage_rho(closes.as_array())
+      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    Ok(Self { rho })
   }
 
   #[getter]

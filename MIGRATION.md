@@ -124,3 +124,31 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `TMultivariate::set_degrees_of_freedom`). `TCopula::with_nu` still
   panics on invalid input but now routes through `set_nu` instead of
   duplicating the check.
+
+### stochastic-rs-stats: no silent fallback without a signal
+
+- `MleResult` gains two fields, `converged: bool` and `iterations: usize`
+  (additive to the struct's data — existing field *reads* are unaffected,
+  but any code building an `MleResult` via a full struct literal, e.g. in
+  tests, must now supply the two new fields). `fit_mle`'s optimizer-failure
+  path — previously a silent `Err(_) => init` that returned the untouched
+  initial guess indistinguishable from a converged fit — now sets
+  `converged = false`. The same signal also covers every other non-success
+  termination (`MaxItersReached`, an internal line-search `SolverExit`,
+  `Timeout`, `Interrupt`): only `SolverConverged` / `TargetCostReached` set
+  `converged = true`. Always check `converged` before trusting `params`.
+- `hurst::from_prices::estimate_hurst` and
+  `hurst::from_prices::hurst_from_signal` now return `Result<f64,
+  HurstError>` instead of a bare `f64` (breaking). They previously
+  swallowed degenerate or too-short input into a magic `0.1` default with
+  no signal that the estimate was unreliable. Callers who want the pre-2.7
+  clamp write `.unwrap_or(0.1)` explicitly at the call site.
+- `leverage::estimate_leverage_rho` now returns `Result<f64, HurstError>`
+  instead of a bare `f64` (breaking) — reusing `HurstError` rather than a
+  bespoke type, since its failure modes (too few observations, a
+  degenerate/zero-variance return series) are the same shape as the Hurst
+  estimators' over the same close-price-series input. It previously
+  swallowed insufficient or degenerate data into a magic `-0.5` default
+  with no signal. Callers who want the pre-2.7 clamp write
+  `.unwrap_or(-0.5)` explicitly. The Python `Leverage` constructor now
+  raises `ValueError` instead of silently returning `-0.5`.
