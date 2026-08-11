@@ -96,6 +96,32 @@ pub trait DistributionExt {
   }
 }
 
+/// Target number of `T` elements per worker in
+/// [`DistributionSampler::sample_matrix`]'s chunked fan-out. Forking a
+/// worker stream (one [`fork`](DistributionSampler::fork) call) and
+/// dispatching one rayon task are both low-hundreds-of-nanoseconds costs;
+/// 16Ki elements per worker keeps that overhead a small fraction of a
+/// worker's own fill work for any matrix worth parallelizing over, while
+/// scaling worker count — and hence the exposed parallelism — linearly with
+/// the matrix size instead of pinning it to the machine's core count.
+const MIN_PAR_CHUNK: usize = 16 * 1024;
+
+/// Number of workers to split `total` output elements across in
+/// [`DistributionSampler::sample_matrix`].
+///
+/// A pure function of `total` alone. **Must never read
+/// `rayon::current_num_threads()`**: the worker count fixes how many times
+/// [`fork`](DistributionSampler::fork) is called before any worker starts
+/// filling, which fixes how many times a
+/// [`Deterministic`](crate::simd_rng::Deterministic) sampler's live fork
+/// state advances. If that count depended on the ambient thread-pool size,
+/// the same seed and the same `(m, n)` could produce different
+/// `sample_matrix` output on two machines (or two test runs) with different
+/// pool sizes — exactly the defect this function fixes.
+fn worker_count(total: usize) -> usize {
+  total.div_ceil(MIN_PAR_CHUNK).max(1).min(total)
+}
+
 /// Rust-side bulk sampling API for distribution structs.
 ///
 /// Implementors provide `fill_slice`; `sample_n` and `sample_matrix` are
@@ -156,17 +182,19 @@ pub trait DistributionSampler<T> {
   /// before any worker starts filling, and every `fork` call reads *and
   /// advances* this object's live state (a private cell distinct from the
   /// stream that drives real samples) — so worker 0, worker 1, … each draw
-  /// a *different* basis value, combined with their own `stream_idx` via
-  /// `derive_fork_seed(basis, stream_idx)`; it is not one basis shared
-  /// across the call and fanned out by index alone. Consequences:
+  /// their own *different* basis value from that live state, combined with
+  /// their own `stream_idx` via `derive_fork_seed(basis, stream_idx)`. It is
+  /// one fresh basis per worker, never one basis drawn once per call and
+  /// fanned out across workers by index. The worker count itself is a
+  /// pure function of `m * n` — never of `rayon::current_num_threads()` —
+  /// so how many times `fork` is called depends only on the matrix size.
+  /// Consequences:
   /// - Two [`Deterministic`]-seeded objects constructed from the same seed
-  ///   and run with the same worker count produce bit-identical output
-  ///   call-for-call: the *first* `sample_matrix` call on each agrees, the
-  ///   *second* call on each agrees, and so on — because their live states
-  ///   advance through the same sequence of `fork` calls in lockstep. A
-  ///   different worker count (e.g. a different
-  ///   `rayon::current_num_threads()`) changes how many times `fork` is
-  ///   called and breaks the correspondence.
+  ///   produce bit-identical output call-for-call: the *first*
+  ///   `sample_matrix` call on each agrees, the *second* call on each
+  ///   agrees, and so on — because their live states advance through the
+  ///   same sequence of `fork` calls in lockstep, on any machine and under
+  ///   any rayon thread-pool size.
   /// - Repeated calls on the *same* object never replay: the live state
   ///   advances every time the parallel path runs, for both
   ///   [`Deterministic`]- and [`Unseeded`]-constructed objects.
@@ -203,12 +231,8 @@ pub trait DistributionSampler<T> {
       // is initialized exactly once by the serial or parallel fill below.
       std::slice::from_raw_parts_mut(flat_uninit.as_mut_ptr().cast::<T>(), flat_uninit.len())
     };
-    const MIN_PAR_CHUNK: usize = 16 * 1024;
     let total = flat.len();
-    let max_workers_for_size = total.div_ceil(MIN_PAR_CHUNK).max(1);
-    let workers = rayon::current_num_threads()
-      .max(1)
-      .min(max_workers_for_size);
+    let workers = worker_count(total);
     if workers == 1 {
       self.fill_slice(flat);
       return unsafe {

@@ -44,21 +44,33 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   worker, sequentially on the caller thread, before any worker starts
   filling; each call reads *and advances* the sampler's own live state —
   an interior-mutable cell distinct from the stream driving real samples —
-  so every worker draws its own fresh basis value (not one basis shared
-  across the call and fanned out by index), combined with its
-  `stream_idx` via `splitmix64(basis ^ stream_idx)`. Two
+  so every worker draws its own fresh basis value: one fresh basis per
+  worker, never one basis drawn once per call and fanned out across
+  workers by index, combined with its `stream_idx` via
+  `derive_fork_seed(basis, stream_idx)`. No API signature changed; this is
+  a behavior fix.
+- **`sample_matrix`'s worker count no longer depends on the ambient
+  thread pool, and pinned-seed output may change again as a result.** The
+  fork mechanism above originally picked its worker count as
+  `min(rayon::current_num_threads(), size-derived cap)`, so two
+  identically-`Deterministic`-seeded samplers only agreed under a matching
+  thread-pool size — comparing them under a different
+  `rayon::current_num_threads()` changed how many times `fork` was called
+  and broke the correspondence. Worker count is now
+  `total.div_ceil(16 * 1024).max(1).min(total)` where `total = m * n` — a
+  pure function of the matrix size alone, never of
+  `rayon::current_num_threads()`, mirroring
+  `stochastic-rs-stochastic`'s `sample_par`/`sample_map` fix below. Two
   identically-`Deterministic`-seeded samplers now produce bit-identical
-  `sample_matrix` output call-for-call (first call matches first, second
-  matches second, ...) **for a fixed thread-pool size** — the worker
-  count is `min(rayon::current_num_threads(), size-derived cap)`, so the
-  same two samplers compared under a different
-  `rayon::current_num_threads()` are not guaranteed to agree, since that
-  changes how many times `fork` is called; repeated calls on the *same*
-  sampler never replay, for `Deterministic`- and `Unseeded`-constructed
-  samplers alike; and a serial call (below the parallel threshold) never
-  touches the fork basis, so interleaving serial and parallel calls stays
-  deterministic across two identically-seeded samplers. No API signature
-  changed; this is a behavior fix.
+  `sample_matrix` output call-for-call on any machine and under any rayon
+  thread-pool size; repeated calls on the *same* sampler still never
+  replay, for `Deterministic`- and `Unseeded`-constructed samplers alike;
+  and a serial call (below the parallel threshold) still never touches
+  the fork basis. Any caller who pinned expected `sample_matrix` values
+  while running under a thread-pool size other than what this size-only
+  rule now picks will see different output — this is a second,
+  independent output-changing fix layered on top of the fork mechanism
+  above, not a continuation of the same values.
 - `DistributionSampler` gained a new required method,
   `#[doc(hidden)] fn fork(&self, stream_idx: u64) -> Self`, and
   `sample_matrix`'s own bound changed from `Self: Clone + Send` to
@@ -375,10 +387,10 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   flattened, reproducing the exact global path order every time.
 - Guarantee: for a `Deterministic`-seeded process, the same seed and the
   same `m` now produce bit-identical `sample_par`/`sample_map` output on
-  any machine and under any rayon thread-pool size — strictly stronger than
+  any machine and under any rayon thread-pool size — the same guarantee
   `stochastic-rs-distributions`'s `DistributionSampler::sample_matrix` fix
-  above, which is still only reproducible for a fixed pool size. `Unseeded`
-  processes still draw fresh randomness on every call, exactly as before.
+  above now provides for its own `(m, n)` pair. `Unseeded` processes still
+  draw fresh randomness on every call, exactly as before.
 - No signature change on either method. `Fgn::sample_par` and
   `Fbm::sample_par` override the default with their own batched-backend
   implementations, so they do not go through this fix (they never used

@@ -122,14 +122,19 @@ pub fn derive_seed(state: &mut u64) -> u64 {
 /// pairs are derived around it. Each worker passes a *different*
 /// `parent_seed` here — `fork` reads and advances the sampler's shared
 /// fork-basis cell once per worker, so `stream_idx` alone does not select
-/// the basis. This function's purity is therefore not by itself what
-/// makes `DistributionSampler::sample_matrix`'s parallel fan-out
-/// reproducible; that guarantee comes from `fork` being invoked for every
-/// `stream_idx` sequentially on the caller thread, before any worker
-/// starts filling its chunk — two identically-[`Deterministic`]-seeded
-/// samplers issue that same sequential run of `fork` calls and so land on
-/// the same `(basis, stream_idx)` pairs regardless of how rayon later
-/// schedules the (already-seeded) fill work.
+/// the basis; it is one fresh basis per worker, not one basis drawn once
+/// per call and fanned out across workers by index. This function's purity
+/// is therefore not by itself what makes
+/// `DistributionSampler::sample_matrix`'s parallel fan-out reproducible;
+/// that guarantee comes from `fork` being invoked for every `stream_idx`
+/// sequentially on the caller thread, before any worker starts filling its
+/// chunk — two identically-[`Deterministic`]-seeded samplers issue that
+/// same sequential run of `fork` calls and so land on the same `(basis,
+/// stream_idx)` pairs regardless of how rayon later schedules the
+/// (already-seeded) fill work. `sample_matrix`'s worker count is itself a
+/// pure function of matrix size, never of `rayon::current_num_threads()`,
+/// so that agreement holds on any rayon thread-pool size, not only a fixed
+/// one.
 #[inline]
 pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {
   splitmix64_mix(parent_seed ^ stream_idx)

@@ -303,6 +303,27 @@ mod distribution_sampler_tests {
     });
   }
 
+  /// sample_matrix must be bit-identical across thread-pool sizes, not merely for
+  /// a fixed pool — the A1-a fix left worker count tied to current_num_threads().
+  #[test]
+  fn sample_matrix_is_thread_count_independent() {
+    let sample_under = |threads: usize| {
+      rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .expect("failed to build pool")
+        .install(|| {
+          let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+          dist.sample_matrix(200, 2000)
+        })
+    };
+    let under_1 = sample_under(1);
+    let under_4 = sample_under(4);
+    let under_8 = sample_under(8);
+    assert_eq!(under_1, under_4, "1-thread and 4-thread pools diverged");
+    assert_eq!(under_4, under_8, "4-thread and 8-thread pools diverged");
+  }
+
   /// `rand_distr::Distribution::sample`'s `rng` argument is documented as
   /// unused across every `Simd*` type — feeding it two genuinely different
   /// external RNGs must not change the output of a `Deterministic`-seeded
