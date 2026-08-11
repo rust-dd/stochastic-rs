@@ -43,7 +43,7 @@ pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run variance $\theta$.
   pub theta: T,
   /// Volatility of variance $\nu$.
-  pub sigma: T,
+  pub nu: T,
   /// Correlation between $W^s$ and $W^v$.
   pub rho: T,
   /// Asset drift $\mu$ (risk-free rate under $\mathbb{Q}$).
@@ -81,7 +81,7 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
     v0: Option<T>,
     kappa: T,
     theta: T,
-    sigma: T,
+    nu: T,
     rho: T,
     mu: T,
     n: usize,
@@ -92,7 +92,7 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
     assert!(n >= 2, "n must be at least 2");
     assert!(kappa >= T::zero(), "kappa must be non-negative");
     assert!(theta >= T::zero(), "theta must be non-negative");
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
+    assert!(nu >= T::zero(), "nu must be non-negative");
     if let Some(v0) = v0 {
       assert!(v0 >= T::zero(), "v0 must be non-negative");
     }
@@ -102,7 +102,7 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       v0,
       kappa,
       theta,
-      sigma,
+      nu,
       rho,
       mu,
       n,
@@ -131,12 +131,12 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHeston<T, S> {
 
     let kappa = self.kappa;
     let theta = self.theta;
-    let sigma = self.sigma;
+    let nu = self.nu;
     let v0 = self.v0.unwrap_or(T::zero()).max(T::zero());
     let variance = self.markov.simulate_batch(
       v0,
       |vv| kappa * (theta - vv.max(T::zero())),
-      |vv| sigma * vv.max(T::zero()).sqrt(),
+      |vv| nu * vv.max(T::zero()).sqrt(),
       dw_v.view(),
     );
 
@@ -172,7 +172,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
       v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
       kappa: self.kappa,
       theta: self.theta,
-      sigma: self.sigma,
+      nu: self.nu,
       mu: self.mu,
       dt: self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1),
       cgns: self.cgns,
@@ -192,7 +192,7 @@ pub struct RlHestonSampler<'a, T: FloatExt, S: SeedExt> {
   v0: T,
   kappa: T,
   theta: T,
-  sigma: T,
+  nu: T,
   mu: T,
   dt: T,
   cgns: Cgns<T>,
@@ -210,11 +210,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHestonSampler<'_, T, S> {
 
     let kappa = self.kappa;
     let theta = self.theta;
-    let sigma = self.sigma;
+    let nu = self.nu;
     let v = self.markov.simulate(
       self.v0,
       |vv| kappa * (theta - vv.max(T::zero())),
-      |vv| sigma * vv.max(T::zero()).sqrt(),
+      |vv| nu * vv.max(T::zero()).sqrt(),
       dw_v.as_slice().expect("dw_v must be contiguous"),
     );
 
@@ -256,6 +256,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlHestonSampler<'_,
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -346,6 +347,55 @@ mod tests {
     assert!(
       mean > 0.0 && mean < 1.0,
       "mean variance out of sanity range: {mean}"
+    );
+  }
+
+  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc
+  /// calls this quantity ν, so the field is `nu`. Larger ν must widen the
+  /// simulated variance dispersion.
+  #[test]
+  fn rl_heston_nu_drives_variance_dispersion() {
+    let small = RlHeston::new(
+      0.12_f64,
+      Some(100.0),
+      Some(0.04),
+      0.5,
+      0.04,
+      0.05,
+      -0.3,
+      0.0,
+      256,
+      Some(1.0),
+      None,
+      Deterministic::new(11),
+    );
+    let large = RlHeston::new(
+      0.12_f64,
+      Some(100.0),
+      Some(0.04),
+      0.5,
+      0.04,
+      0.5,
+      -0.3,
+      0.0,
+      256,
+      Some(1.0),
+      None,
+      Deterministic::new(11),
+    );
+    assert_eq!(small.nu, 0.05);
+    assert_eq!(large.nu, 0.5);
+
+    let variance = |x: &Array1<f64>| {
+      let mean = x.iter().sum::<f64>() / x.len() as f64;
+      x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64
+    };
+
+    let [_s_small, v_small] = small.sample();
+    let [_s_large, v_large] = large.sample();
+    assert!(
+      variance(&v_large) > variance(&v_small),
+      "larger nu must widen variance dispersion"
     );
   }
 }

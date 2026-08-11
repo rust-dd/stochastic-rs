@@ -255,6 +255,52 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   into `Sabr::new`, so they never had to match the Rust struct's field
   names). `MultifactorSabr` has no Python binding.
 
+### stochastic-rs-stochastic: rough-vol and Hull-White 2F field names now match their own documented SDE
+
+- `RlFOU::sigma` → `RlFOU::nu` and `RlHeston::sigma` → `RlHeston::nu`. Both
+  modules' own SDE (`dX_t=\kappa(\mu-X_t)dt+\nu dW^H_t` for `RlFOU`; the
+  Volterra-Cir variance diffusion `g(V)=\nu\sqrt{V^+}` for `RlHeston`) and
+  each field's own doc comment already called this quantity ν ("Diffusion
+  scale $\nu$" / "Volatility of variance $\nu$") — only the field's
+  identifier was wrong. Verified against the sampler arithmetic
+  (`self.sigma * dfbm` in `RlFOU`; `sigma * vv.max(0).sqrt()` in
+  `RlHeston`'s variance diffusion): both multiply exactly where ν belongs.
+  Neither file had a competing `nu` field, so this is a plain rename, not a
+  cross-swap. `RlHeston::theta` (long-run variance) was already correctly
+  named and is untouched. `RlFOU::new`/`RlHeston::new`'s positional
+  parameter order is unchanged; only code reading `.sigma` on a constructed
+  `RlFOU`/`RlHeston` needs to switch to `.nu`. Neither type has a Python
+  binding (`grep -rn "RlFOU\|RlHeston" stochastic-rs-py/` → no hits), so
+  there is no Python surface to preserve. Pure rename, verified
+  bit-identical for a fixed seed before and after.
+- `HullWhite2F::theta` → `HullWhite2F::a`: the field is used
+  multiplicatively (`- self.theta * x[i-1]`), i.e. it is the
+  mean-reversion **speed** that this module's own doc calls `a` in
+  `dx_t=-a x_t dt+\sigma_1 dW_t^1` — not an additive level. Keeping the
+  name `theta` for a speed also contradicted the sibling `hull_white.rs`,
+  whose `theta: Fn1D<T>` correctly holds the additive θ(t) drift term.
+- `HullWhite2F::k` → `HullWhite2F::theta`: verified `k` is in fact that
+  same additive, time-dependent calibration term — it is added directly
+  into the drift (`self.k.call(t) + u[i-1] - self.theta*x[i-1]`), exactly
+  the structural role `hull_white.rs`'s `theta: Fn1D<T>` plays
+  (`self.theta.call(t) - self.alpha*prev`). So the two Hull-White files
+  now agree on what `theta` means. `HullWhite2F::new`'s parameter list
+  keeps the exact same positional order, just with the two parameters
+  renamed to match — `HullWhite2F::new(theta, a, sigma1, sigma2, rho, b,
+  x0, t, n, seed)` — so any call site using positional arguments (the
+  only way to call it in Rust) needs no change; only code reading
+  `.theta`/`.k` on a constructed `HullWhite2F` needs to switch to
+  `.a`/`.theta`. `HullWhite2F::b` already matched the module doc's own
+  `b` symbol and is untouched. The simulation math is unchanged — this is
+  a pure rename, verified bit-identical for a fixed seed before and
+  after.
+- The Python surface is unaffected: `PyHullWhite2F::new`'s own function
+  parameters (and its `#[pyo3(signature = (k, theta, ...))]` keyword
+  names) are independent local bindings that forward positionally into
+  `HullWhite2F::new`, so the Python-visible keyword names stay `k=`/
+  `theta=` exactly as before (`tests/python_bindings_smoke.py` calls
+  `sr.PyHullWhite2F(k=..., theta=..., ...)` unchanged and still passes).
+
 ### stochastic-rs-copulas: unify quantile and degrees-of-freedom naming
 
 - `TMultivariate::degrees_of_freedom()` / `set_degrees_of_freedom()` →

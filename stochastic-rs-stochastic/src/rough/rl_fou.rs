@@ -35,7 +35,7 @@ pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run mean $\mu$.
   pub mu: T,
   /// Diffusion scale $\nu$.
-  pub sigma: T,
+  pub nu: T,
   /// Number of simulation points.
   pub n: usize,
   /// Initial value $X_0$.
@@ -55,7 +55,7 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
     hurst: T,
     kappa: T,
     mu: T,
-    sigma: T,
+    nu: T,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
@@ -67,7 +67,7 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
       hurst,
       kappa,
       mu,
-      sigma,
+      nu,
       n,
       x0,
       t,
@@ -93,7 +93,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOU<T, S> {
       for i in 1..self.n {
         let dfbm = fbm[[p, i]] - fbm[[p, i - 1]];
         out[[p, i]] =
-          out[[p, i - 1]] + self.kappa * (self.mu - out[[p, i - 1]]) * dt + self.sigma * dfbm;
+          out[[p, i - 1]] + self.kappa * (self.mu - out[[p, i - 1]]) * dt + self.nu * dfbm;
       }
     }
     out
@@ -113,7 +113,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFOU<T, S> {
       x0: self.x0.unwrap_or(T::zero()),
       kappa: self.kappa,
       mu: self.mu,
-      sigma: self.sigma,
+      nu: self.nu,
       dt: self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1),
       gn: Gn::<T, S> {
         n: self.n - 1,
@@ -136,7 +136,7 @@ pub struct RlFOUSampler<T: FloatExt, S: SeedExt> {
   x0: T,
   kappa: T,
   mu: T,
-  sigma: T,
+  nu: T,
   dt: T,
   gn: Gn<T, S>,
   markov: MarkovLift<T>,
@@ -158,7 +158,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOUSampler<T, S> {
     out[0] = self.x0;
     for i in 1..out.len() {
       let dfbm = fbm[i] - fbm[i - 1];
-      out[i] = out[i - 1] + self.kappa * (self.mu - out[i - 1]) * self.dt + self.sigma * dfbm;
+      out[i] = out[i - 1] + self.kappa * (self.mu - out[i - 1]) * self.dt + self.nu * dfbm;
     }
   }
 }
@@ -179,6 +179,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlFOUSampler<T, S> 
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -186,7 +187,7 @@ mod tests {
   use crate::traits::ProcessExt;
 
   #[test]
-  fn fou_sigma_zero_matches_deterministic_euler() {
+  fn fou_nu_zero_matches_deterministic_euler() {
     let kappa = 1.3_f64;
     let mu = 0.8_f64;
     let n = 129;
@@ -220,5 +221,52 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 512);
     assert!(x.iter().all(|v| v.is_finite()));
+  }
+
+  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc
+  /// calls this quantity ν, so the field is `nu`. Larger ν must widen the
+  /// simulated dispersion.
+  #[test]
+  fn rl_fou_nu_drives_dispersion() {
+    let hurst = 0.3_f64;
+    let kappa = 1.0_f64;
+    let mu = 0.0_f64;
+    let n = 256;
+    let t = 1.0_f64;
+
+    let small = RlFOU::new(
+      hurst,
+      kappa,
+      mu,
+      0.05,
+      n,
+      Some(0.0),
+      Some(t),
+      None,
+      Deterministic::new(42),
+    );
+    let large = RlFOU::new(
+      hurst,
+      kappa,
+      mu,
+      0.5,
+      n,
+      Some(0.0),
+      Some(t),
+      None,
+      Deterministic::new(42),
+    );
+    assert_eq!(small.nu, 0.05);
+    assert_eq!(large.nu, 0.5);
+
+    let variance = |x: &Array1<f64>| {
+      let mean = x.iter().sum::<f64>() / x.len() as f64;
+      x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64
+    };
+
+    assert!(
+      variance(&large.sample()) > variance(&small.sample()),
+      "larger nu must widen dispersion"
+    );
   }
 }

@@ -17,10 +17,12 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Jump-size adjustment / shape parameter.
-  pub k: Fn1D<T>,
-  /// Long-run target level / model location parameter.
-  pub theta: T,
+  /// Time-dependent drift target $\theta(t)$, fitted to the initial term
+  /// structure — the additive role `HullWhite::theta` plays for the
+  /// single-factor model.
+  pub theta: Fn1D<T>,
+  /// Mean-reversion speed $a$ of the primary state variable.
+  pub a: T,
   /// Diffusion/noise scale for factor 1.
   pub sigma1: T,
   /// Diffusion/noise scale for factor 2.
@@ -42,8 +44,8 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
 
 impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
   pub fn new(
-    k: impl Into<Fn1D<T>>,
-    theta: T,
+    theta: impl Into<Fn1D<T>>,
+    a: T,
     sigma1: T,
     sigma2: T,
     rho: T,
@@ -54,8 +56,8 @@ impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
     seed: S,
   ) -> Self {
     Self {
-      k: k.into(),
-      theta,
+      theta: theta.into(),
+      a,
       sigma1,
       sigma2,
       rho,
@@ -80,11 +82,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite2F<T, S> {
     HullWhite2FSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
-      theta: self.theta,
+      a: self.a,
       sigma1: self.sigma1,
       sigma2: self.sigma2,
       b: self.b,
-      k: &self.k,
+      theta: &self.theta,
       dt: self.cgns.dt(),
       cgns: self.cgns,
       seed: self.seed.clone(),
@@ -93,17 +95,17 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite2F<T, S> {
 }
 
 /// Reusable [`HullWhite2F`] sampling state. Borrows the process for its
-/// time-dependent drift `k(t)` and owns the correlated-Gaussian generator plus
-/// the seed source so a Monte-Carlo loop reuses both output buffers.
+/// time-dependent drift `theta(t)` and owns the correlated-Gaussian generator
+/// plus the seed source so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
 pub struct HullWhite2FSampler<'a, T: FloatExt, S: SeedExt> {
   n: usize,
   x0: T,
-  theta: T,
+  a: T,
   sigma1: T,
   sigma2: T,
   b: T,
-  k: &'a Fn1D<T>,
+  theta: &'a Fn1D<T>,
   dt: T,
   cgns: Cgns<T>,
   seed: S,
@@ -122,7 +124,7 @@ impl<T: FloatExt, S: SeedExt> HullWhite2FSampler<'_, T, S> {
 
     for i in 1..self.n {
       x[i] = x[i - 1]
-        + (self.k.call(T::from_usize_(i) * dt) + u[i - 1] - self.theta * x[i - 1]) * dt
+        + (self.theta.call(T::from_usize_(i) * dt) + u[i - 1] - self.a * x[i - 1]) * dt
         + self.sigma1 * cgn1[i - 1];
 
       u[i] = u[i - 1] - self.b * u[i - 1] * dt + self.sigma2 * cgn2[i - 1];
@@ -232,14 +234,14 @@ impl PyHullWhite2F {
 mod tests {
   use super::*;
 
-  fn const_k(_t: f64) -> f64 {
+  fn const_theta(_t: f64) -> f64 {
     0.5
   }
 
   #[test]
   fn sample_returns_two_paths() {
     let hw2 = HullWhite2F::<f64>::new(
-      const_k as fn(f64) -> f64,
+      const_theta as fn(f64) -> f64,
       0.04,
       0.01,
       0.005,
@@ -253,5 +255,48 @@ mod tests {
     let [x, u] = hw2.sample();
     assert_eq!(x.len(), 64);
     assert_eq!(u.len(), 64);
+  }
+
+  /// Guards the field-vs-doc contradiction fixed in A1-b: `theta` is the
+  /// additive time-dependent target θ(t) and `a` is the multiplicative
+  /// mean-reversion speed — matches this module's own SDE and the sibling
+  /// `HullWhite::theta`/`alpha` split. Also pins the pre-rename recursion
+  /// (with diffusion zeroed out) as a behavior-regression guard.
+  #[test]
+  fn hw2f_a_and_theta_zero_diffusion_matches_deterministic_euler() {
+    let a = 0.6_f64;
+    let b = 0.3_f64;
+    let n = 33;
+    let t = 1.0_f64;
+    let x0 = 0.02_f64;
+
+    let hw2 = HullWhite2F::<f64>::new(
+      const_theta as fn(f64) -> f64,
+      a,
+      0.0,
+      0.0,
+      -0.3,
+      b,
+      Some(x0),
+      Some(t),
+      n,
+      Unseeded,
+    );
+    assert_eq!(hw2.a, a);
+    assert_eq!(hw2.theta.call(0.25), const_theta(0.25));
+
+    let [x, u] = hw2.sample();
+
+    let dt = t / (n as f64 - 1.0);
+    let mut expected_x = x0;
+    let mut expected_u = 0.0_f64;
+    for i in 1..n {
+      let next_x = expected_x + (const_theta(i as f64 * dt) + expected_u - a * expected_x) * dt;
+      let next_u = expected_u - b * expected_u * dt;
+      expected_x = next_x;
+      expected_u = next_u;
+      assert!((x[i] - expected_x).abs() < 1e-12, "x mismatch at {i}");
+      assert!((u[i] - expected_u).abs() < 1e-12, "u mismatch at {i}");
+    }
   }
 }
