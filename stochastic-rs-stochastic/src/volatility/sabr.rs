@@ -158,6 +158,32 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
+  /// Calculate the Malliavin derivative of the Sabr model
+  ///
+  /// The Malliavin derivative of the volaility process in the Sabr model is given by:
+  /// D_r \sigma_t = \nu \sigma_t 1_{[0, T]}(r)
+  pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
+    let [f, v] = self.sample();
+
+    let mut malliavin = Array1::<T>::zeros(self.n);
+
+    for i in 0..self.n {
+      malliavin[i] = self.nu * *v.last().unwrap();
+    }
+
+    [f, v, malliavin]
+  }
+}
+
+// Python-visible parameter names stay `alpha`/`v0` (pre-existing public
+// API surface); they forward positionally into `Sabr::new`'s renamed
+// `nu`/`alpha0` parameters, so the Python signature is unaffected.
+py_process_2x1d!(PySabr, Sabr,
+  sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, seed=None, dtype=None),
+  params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>)
+);
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -222,29 +248,3 @@ mod tests {
     );
   }
 }
-
-impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
-  /// Calculate the Malliavin derivative of the Sabr model
-  ///
-  /// The Malliavin derivative of the volaility process in the Sabr model is given by:
-  /// D_r \sigma_t = \nu \sigma_t 1_{[0, T]}(r)
-  pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
-    let [f, v] = self.sample();
-
-    let mut malliavin = Array1::<T>::zeros(self.n);
-
-    for i in 0..self.n {
-      malliavin[i] = self.nu * *v.last().unwrap();
-    }
-
-    [f, v, malliavin]
-  }
-}
-
-// Python-visible parameter names stay `alpha`/`v0` (pre-existing public
-// API surface); they forward positionally into `Sabr::new`'s renamed
-// `nu`/`alpha0` parameters, so the Python signature is unaffected.
-py_process_2x1d!(PySabr, Sabr,
-  sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, seed=None, dtype=None),
-  params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>)
-);
