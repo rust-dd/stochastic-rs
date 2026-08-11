@@ -50,9 +50,9 @@ pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   pub nu: T,
   /// Std dev of jump log-size Z.
   pub omega: T,
-  /// Number of discrete simulation points.
+  /// Number of points sampled along the fractional-Bates path.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,

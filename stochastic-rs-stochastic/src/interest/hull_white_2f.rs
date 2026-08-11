@@ -36,7 +36,8 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
   pub sigma1: T,
   /// Diffusion/noise scale for factor 2.
   pub sigma2: T,
-  /// Instantaneous correlation parameter.
+  /// Instantaneous correlation ρ between the two driving Brownian motions
+  /// `dW1`/`dW2`.
   pub rho: T,
   /// Mean-reversion speed b of the auxiliary factor u_t (multiplies
   /// `-u_{t-1}` in u's own drift) — not a diffusion term despite the

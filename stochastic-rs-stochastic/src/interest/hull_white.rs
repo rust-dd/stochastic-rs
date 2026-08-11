@@ -18,17 +18,19 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Long-run target level / model location parameter.
+  /// Time-dependent drift target function θ(t), fitted to the initial
+  /// term structure — added directly into the drift alongside `-alpha*r`.
   pub theta: Fn1D<T>,
-  /// Model shape / loading parameter.
+  /// Mean-reversion speed α (multiplies `-r_t` in the drift) — not a
+  /// shape/loading parameter.
   pub alpha: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Hull-White path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial short rate r₀.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

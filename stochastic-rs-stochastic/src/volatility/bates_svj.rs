@@ -67,7 +67,7 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   pub s0: Option<T>,
   /// Initial variance level
   pub v0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted)
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Use symmetric (abs) instead of truncation (max(0)) for variance positivity
   pub use_sym: Option<bool>,

@@ -25,13 +25,13 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run mean level (`b` in the SDE). The value `r` reverts to as
   /// `t → ∞`.
   pub mu: T,
-  /// Diffusion / noise scale parameter (`σ` in the SDE).
+  /// Diffusion scale σ multiplying `dW_t` (`σ` in the SDE).
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Vasicek path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial short rate r₀.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

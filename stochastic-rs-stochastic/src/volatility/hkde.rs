@@ -52,7 +52,7 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Initial stock price.
   pub s0: Option<T>,
-  /// Total simulation horizon.
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Use symmetric (abs) for variance positivity.
   pub use_sym: Option<bool>,

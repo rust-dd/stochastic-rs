@@ -19,15 +19,18 @@ use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
 pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model parameter controlling process dynamics.
+  /// Observed forward-rate curve f(0,T), used to derive the
+  /// time-dependent drift `∂f/∂T(0,t) + σ²t` when supplied — mutually
+  /// exclusive with the constant-drift alternative `theta`.
   pub f_T: Option<Fn1D<T>>,
-  /// Long-run target level / model location parameter.
+  /// Constant drift rate θ(t) ≡ θ (module header's θ(t), taken constant
+  /// here), used when `f_T` is not supplied.
   pub theta: Option<T>,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Ho-Lee path.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
