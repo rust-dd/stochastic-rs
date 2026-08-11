@@ -64,9 +64,10 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant correlation between dW^v and dW^ρ.
   pub rho2: T,
 
-  /// Number of discrete simulation points.
+  /// Number of points sampled along each of the `[S, v, ρ]` paths.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1).
+  /// Simulation horizon [0, t] shared by all three paths (defaults to 1
+  /// when omitted).
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,

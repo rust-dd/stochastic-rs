@@ -40,9 +40,9 @@ pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded> {
   pub sigma: T,
   /// Initial correlation (ρ₀ ∈ (−1, 1)).
   pub rho0: T,
-  /// Number of discrete simulation points.
+  /// Number of points sampled along the correlation path.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,

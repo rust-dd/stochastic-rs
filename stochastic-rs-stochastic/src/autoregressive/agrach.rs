@@ -43,13 +43,14 @@ use crate::traits::ProcessExt;
 pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
-  /// Model shape / loading parameter.
+  /// Arch coefficients α_i (positive-squared-residual loading), length p.
   pub alpha: Array1<T>,
-  /// Model shape / asymmetry parameter.
+  /// Asymmetric extra loading δ_i applied when `X_{t-i}<0`, length p
+  /// (must match `alpha.len()`).
   pub delta: Array1<T>,
-  /// Model slope / loading parameter.
+  /// Garch coefficients β_j (past-variance persistence loading), length q.
   pub beta: Array1<T>,
-  /// Number of discrete simulation points (or samples).
+  /// Length of the generated time series.
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

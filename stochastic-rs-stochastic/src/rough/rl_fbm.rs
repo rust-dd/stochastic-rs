@@ -39,9 +39,9 @@ use crate::traits::ProcessExt;
 pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent.
   pub hurst: T,
-  /// Number of discrete simulation points.
+  /// Number of points sampled along the RL-fBM path.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Quadrature degree $N'$ (defaults to [`RlKernel::default_degree`] of `n`).
   pub degree: Option<usize>,

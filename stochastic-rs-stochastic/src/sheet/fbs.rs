@@ -22,13 +22,20 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Hurst exponent controlling roughness and long-memory.
+  /// Hurst exponent controlling roughness and long-memory (used for both
+  /// coordinate axes — this model is isotropic, not the anisotropic
+  /// `H_1`/`H_2` of the module header's general covariance formula).
   pub hurst: T,
-  /// Number of parallel paths / first-grid resolution.
+  /// Grid resolution along the sheet's second coordinate axis (rows of
+  /// the output `Array2`).
   pub m: usize,
-  /// Number of discrete simulation points (or samples).
+  /// Grid resolution along the sheet's first coordinate axis (columns of
+  /// the output `Array2`).
   pub n: usize,
-  /// Risk-free rate / drift adjustment parameter.
+  /// Physical domain extent for the simulation grid — the covariance
+  /// kernel in [`Fbs::rho`] is defined on `[0, r]²` with a cutoff at
+  /// distance `r`. Not a financial rate; this is a pure covariance-field
+  /// simulator.
   pub r: T,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

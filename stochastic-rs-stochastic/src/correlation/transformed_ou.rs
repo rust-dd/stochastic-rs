@@ -62,13 +62,24 @@ impl Transformation {
 /// [`Transformation`] (tanh or arctan).
 #[derive(Debug, Clone)]
 pub struct TransformedOU<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Mean-reversion speed κ of the underlying (unbounded) X-space Ou.
   pub kappa: T,
+  /// Long-run level μ of X-space, mapped through `transform` into the
+  /// correlation's own long-run level `transform.forward(mu)`.
   pub mu: T,
+  /// Diffusion scale σ of the underlying X-space Ou.
   pub sigma: T,
+  /// Initial correlation ρ₀ ∈ (−1, 1) — converted to X-space via
+  /// `transform.inverse(rho0)` to seed the underlying Ou.
   pub rho0: T,
+  /// Bounded map ℝ → (−1, 1) turning the X-space Ou into a correlation
+  /// process (tanh or arctan).
   pub transform: Transformation,
+  /// Number of points sampled along the correlation path.
   pub n: usize,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

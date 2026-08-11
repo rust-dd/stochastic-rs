@@ -38,11 +38,11 @@ use crate::traits::ProcessExt;
 pub struct Garch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
-  /// Model shape / loading parameter.
+  /// Arch coefficients α_i (past-squared-residual loading), length p.
   pub alpha: Array1<T>,
-  /// Model slope / loading parameter.
+  /// Garch coefficients β_j (past-variance persistence loading), length q.
   pub beta: Array1<T>,
-  /// Number of discrete simulation points (or samples).
+  /// Length of the generated time series.
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
