@@ -105,7 +105,6 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
-  #[allow(clippy::only_used_in_recursion)]
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
@@ -115,8 +114,7 @@ impl BivariateExt for Frank {
       return Ok(V.clone());
     }
 
-    let out = BivariateExt::percent_point(self, y, V)?;
-    Ok(out)
+    self.percent_point_numerical(y, V)
   }
 
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {

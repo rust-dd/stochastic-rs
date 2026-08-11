@@ -200,6 +200,22 @@ pub trait BivariateExt {
   fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.percent_point_numerical(y, V)
+  }
+
+  /// Brent-root-finding numerical inversion of
+  /// [`partial_derivative_scalar`](Self::partial_derivative_scalar) that
+  /// backs the default [`percent_point`](Self::percent_point). Exposed
+  /// under its own name so a family that overrides `percent_point` (to
+  /// special-case a degenerate parameter, say) has a way to fall back to
+  /// this generic implementation — calling `Self::percent_point` from
+  /// inside an override of that same method would just recurse into the
+  /// override instead of reaching this body.
+  fn percent_point_numerical(
+    &self,
+    y: &Array1<f64>,
+    V: &Array1<f64>,
+  ) -> Result<Array1<f64>, Box<dyn Error>> {
     let n = y.len();
     let mut results = Array1::zeros(n);
 
