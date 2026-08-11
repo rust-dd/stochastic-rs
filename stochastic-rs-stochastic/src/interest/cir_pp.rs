@@ -378,4 +378,34 @@ mod tests {
     assert_eq!(path.len(), 256);
     assert!(path.iter().all(|x| x.is_finite()));
   }
+
+  /// Same seed twice must be bit-identical.
+  #[test]
+  fn cir_pp_is_deterministic() {
+    let cir_pp1 = CirPlusPlus::<f64, _>::new(
+      0.5,
+      0.04,
+      0.2,
+      zero_phi as fn(f64) -> f64,
+      100,
+      Some(0.03),
+      Some(1.0),
+      None,
+      Deterministic::new(42),
+    )
+    .sample();
+    let cir_pp2 = CirPlusPlus::<f64, _>::new(
+      0.5,
+      0.04,
+      0.2,
+      zero_phi as fn(f64) -> f64,
+      100,
+      Some(0.03),
+      Some(1.0),
+      None,
+      Deterministic::new(42),
+    )
+    .sample();
+    assert_eq!(cir_pp1, cir_pp2);
+  }
 }

@@ -167,8 +167,6 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
-  use crate::diffusion::bessel::Bessel;
-  use crate::diffusion::bessel::SquaredBessel;
   use crate::diffusion::gbm::Gbm;
 
   /// β=0 must reproduce Gbm exactly: same parameters, same seed ⇒
@@ -242,24 +240,9 @@ mod tests {
     );
   }
 
-  /// Each new process type: sampling twice from independently constructed
-  /// instances with the same `Deterministic` seed must be bit-identical.
+  /// Same seed twice must be bit-identical.
   #[test]
-  fn new_diffusion_processes_are_deterministic() {
-    let besq1 =
-      SquaredBessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42))
-        .sample();
-    let besq2 =
-      SquaredBessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42))
-        .sample();
-    assert_eq!(besq1, besq2);
-
-    let bes1 =
-      Bessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42)).sample();
-    let bes2 =
-      Bessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42)).sample();
-    assert_eq!(bes1, bes2);
-
+  fn displaced_diffusion_is_deterministic() {
     let dd1 = DisplacedDiffusion::<f64, _>::new(
       0.05,
       0.2,

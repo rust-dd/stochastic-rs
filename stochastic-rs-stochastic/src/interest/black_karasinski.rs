@@ -294,7 +294,6 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
-  use crate::interest::cir_pp::CirPlusPlus;
 
   fn theta_const(_t: f64) -> f64 {
     0.05
@@ -455,39 +454,9 @@ mod tests {
     assert!(path.iter().all(|x| x.is_finite() && *x > 0.0));
   }
 
-  /// Same seed twice must be bit-identical for both new interest processes.
+  /// Same seed twice must be bit-identical.
   #[test]
-  fn new_interest_processes_are_deterministic() {
-    fn zero_phi(_t: f64) -> f64 {
-      0.0
-    }
-
-    let cir_pp1 = CirPlusPlus::<f64, _>::new(
-      0.5,
-      0.04,
-      0.2,
-      zero_phi as fn(f64) -> f64,
-      100,
-      Some(0.03),
-      Some(1.0),
-      None,
-      Deterministic::new(42),
-    )
-    .sample();
-    let cir_pp2 = CirPlusPlus::<f64, _>::new(
-      0.5,
-      0.04,
-      0.2,
-      zero_phi as fn(f64) -> f64,
-      100,
-      Some(0.03),
-      Some(1.0),
-      None,
-      Deterministic::new(42),
-    )
-    .sample();
-    assert_eq!(cir_pp1, cir_pp2);
-
+  fn black_karasinski_is_deterministic() {
     let bk1 = BlackKarasinski::<f64, _>::new(
       theta_const as fn(f64) -> f64,
       0.8,
