@@ -21,19 +21,25 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded> {
   pub hurst: T,
   /// Initial variance/volatility level.
   pub v0: Option<T>,
-  /// Long-run target level / model location parameter.
+  /// Long-run variance level θ the Markovian lifting factor `yt` reverts
+  /// toward (θ in the module header).
   pub theta: T,
-  /// Mean-reversion speed parameter.
+  /// Mean-reversion speed κ of the Markovian lifting factor `yt`.
   pub kappa: T,
-  /// Volatility-of-volatility / tail-thickness parameter.
+  /// Vol-of-vol ξ scaling both the local (`zt`) and memory (Volterra
+  /// integral) correction terms that lift the exact fractional kernel into
+  /// a bounded-state approximation.
   pub nu: T,
-  /// Model coefficient for factor 1.
+  /// Calibration coefficient scaling the local correction term `zt` in the
+  /// two-term rational approximation of the fractional kernel; `None`
+  /// defaults to 1 (the untruncated coefficient).
   pub c1: Option<T>,
-  /// Model coefficient for factor 2.
+  /// Calibration coefficient scaling the memory (Volterra-integral)
+  /// correction term in the same approximation; `None` defaults to 1.
   pub c2: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the rough-Heston path.
   pub n: usize,
   /// Drift of the log-price process (default 0).
   pub mu: Option<T>,

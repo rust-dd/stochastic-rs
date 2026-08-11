@@ -47,19 +47,22 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Volatility-of-volatility / tail-thickness parameter.
+  /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
-  /// Initial variance/volatility level.
+  /// Initial variance level v₀ (variance, not volatility — squared inside
+  /// the sampler to seed `v(t_0) = v_0²`).
   pub v0: Option<T>,
-  /// Initial asset/price level.
+  /// Initial asset price S₀.
   pub s0: Option<T>,
-  /// Risk-free rate / drift adjustment parameter.
+  /// Constant proportional drift rate of the asset (a GBM-style drift, not
+  /// a correlation — that role belongs to `rho`).
   pub r: T,
-  /// Instantaneous correlation parameter.
+  /// Correlation ρ between the asset's Brownian shock and the
+  /// log-variance driver's innovations.
   pub rho: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Bergomi path.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

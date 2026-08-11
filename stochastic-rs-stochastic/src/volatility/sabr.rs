@@ -22,17 +22,19 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Vol-of-vol $\nu$: diffusion coefficient of the volatility state
   /// $\alpha_t$ (see module docs for the SDE).
   pub nu: T,
-  /// Model slope / loading parameter.
+  /// CEV exponent β ∈ [0, 1] — elasticity of the forward's own volatility
+  /// (β=1 is lognormal SABR, β=0 is normal SABR).
   pub beta: T,
-  /// Instantaneous correlation parameter.
+  /// Instantaneous correlation ρ between the forward's and volatility's
+  /// driving Brownian motions.
   pub rho: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the SABR path.
   pub n: usize,
   /// Initial forward-rate level.
   pub f0: Option<T>,
   /// Initial volatility level $\alpha_0$.
   pub alpha0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

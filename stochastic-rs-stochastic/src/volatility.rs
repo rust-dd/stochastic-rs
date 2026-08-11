@@ -1,8 +1,13 @@
 //! # Volatility
 //!
-//! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
-//! $$
+//! Two-factor stochastic-volatility models: an asset (or forward) factor
+//! driven by a second, strictly-positive variance/volatility factor with
+//! its own mean-reverting or log-normal dynamics, correlated with the
+//! asset through an instantaneous ρ or a shared driving noise. Covers the
+//! Heston family (square-root variance), SABR family (log-normal
+//! volatility, CEV-elastic forward), Bergomi-style log-normal variance,
+//! jump-augmented variants (Bates, HKDE), and rough/fractional lifts.
+//! Each module's own header states its concrete SDE pair.
 //!
 pub mod bates_svj;
 pub mod bergomi;

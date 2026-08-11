@@ -77,11 +77,11 @@ pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded> {
   pub rho: Vec<T>,
   /// Vol-of-vol $\nu(t) \ge 0$ per bucket. Length `K + 1`.
   pub nu: Vec<T>,
-  /// Number of discrete simulation points.
+  /// Number of points sampled along the dynamic-SABR path.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy.
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 
