@@ -199,6 +199,9 @@ pub trait BivariateExt {
 
   fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
+  /// Inverse conditional: returns `u` such that `P(U ≤ u | V = v) = p`.
+  /// This is the canonical quantile-function name for this trait; see also
+  /// [`ppf`](Self::ppf), a SciPy-compatible alias.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.percent_point_numerical(y, V)
   }
@@ -235,6 +238,7 @@ pub trait BivariateExt {
     Ok(results)
   }
 
+  /// `ppf` is a SciPy-compatible alias for [`percent_point`](Self::percent_point).
   fn ppf(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.percent_point(y, V)
   }

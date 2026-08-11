@@ -96,9 +96,8 @@ impl TCopula {
   }
 
   /// Override the degrees of freedom. Mirrors the feature-gated
-  /// `TMultivariate::set_degrees_of_freedom`; returns an error instead of
-  /// silently accepting a value (e.g. negative or NaN) that produces NaN
-  /// downstream.
+  /// `TMultivariate::set_nu`; returns an error instead of silently
+  /// accepting a value (e.g. negative or NaN) that produces NaN downstream.
   pub fn set_nu(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
     if nu <= 0.0 || nu.is_nan() {
       return Err("Degrees of freedom must be positive".into());
@@ -555,7 +554,7 @@ mod tests {
   }
 
   /// `nu` is private; `set_nu` validates and `nu()` exposes the current
-  /// value. Mirrors `TMultivariate::set_degrees_of_freedom`.
+  /// value. Mirrors `TMultivariate::set_nu`.
   #[test]
   fn tcopula_nu_validated() {
     let mut c = TCopula::with_nu(4.0);

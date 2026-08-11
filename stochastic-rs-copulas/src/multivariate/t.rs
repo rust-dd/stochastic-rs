@@ -129,14 +129,15 @@ impl TMultivariate {
   }
 
   /// Current degrees of freedom $\nu$.
-  pub fn degrees_of_freedom(&self) -> f64 {
+  pub fn nu(&self) -> f64 {
     self.nu
   }
 
-  /// Override the degrees of freedom. Useful when the user picks $\nu$ from
-  /// an external calibration (e.g. tail-coefficient match) and wants the
-  /// copula to skip its own optimisation. Returns an error if $\nu \le 0$.
-  pub fn set_degrees_of_freedom(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
+  /// Override the degrees of freedom $\nu$. Useful when the user picks
+  /// $\nu$ from an external calibration (e.g. tail-coefficient match) and
+  /// wants the copula to skip its own optimisation. Returns an error if
+  /// $\nu \le 0$.
+  pub fn set_nu(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
     if nu <= 0.0 || nu.is_nan() {
       return Err("Degrees of freedom must be positive".into());
     }
@@ -611,7 +612,7 @@ mod tests {
     }
     // ν is the harder estimate; profile-likelihood gives ~2-unit error on
     // 5k samples — accept anything in [2.5, 12.0] as recovery of ν=5.
-    let nu_hat = fitted.degrees_of_freedom();
+    let nu_hat = fitted.nu();
     assert!(
       (2.5..=12.0).contains(&nu_hat),
       "ν recovered = {nu_hat}, expected ~5"
@@ -668,11 +669,25 @@ mod tests {
   fn t_copula_manual_nu_override() {
     let corr = array![[1.0, 0.3], [0.3, 1.0]];
     let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
-    cop.set_degrees_of_freedom(12.0).unwrap();
-    assert_eq!(cop.degrees_of_freedom(), 12.0);
+    cop.set_nu(12.0).unwrap();
+    assert_eq!(cop.nu(), 12.0);
     let _ = cop.sample(100).unwrap();
     let _ = cop.pdf(&array![[0.5, 0.5]]).unwrap();
-    let bad = cop.set_degrees_of_freedom(0.0);
+    let bad = cop.set_nu(0.0);
     assert!(bad.is_err(), "ν=0 must be rejected");
+  }
+
+  /// `nu()`/`set_nu()` mirror `TCopula`'s naming and validation contract
+  /// exactly, including the byte-identical error string on invalid input.
+  #[test]
+  fn t_multivariate_exposes_nu() {
+    let corr = array![[1.0, 0.3], [0.3, 1.0]];
+    let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
+    assert_eq!(cop.nu(), 4.0);
+    assert!(cop.set_nu(12.0).is_ok());
+    assert_eq!(cop.nu(), 12.0);
+    let err = cop.set_nu(0.0).unwrap_err();
+    assert_eq!(err.to_string(), "Degrees of freedom must be positive");
+    assert_eq!(cop.nu(), 12.0, "a failed set_nu must not mutate the field");
   }
 }

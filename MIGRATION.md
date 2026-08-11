@@ -148,9 +148,8 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 - `TCopula.nu` field is now private. Read it via the new `TCopula::nu()`
   getter; write it via the new `TCopula::set_nu(nu) -> Result<(),
   Box<dyn Error>>`, which validates `nu > 0` (mirrors
-  `TMultivariate::set_degrees_of_freedom`). `TCopula::with_nu` still
-  panics on invalid input but now routes through `set_nu` instead of
-  duplicating the check.
+  `TMultivariate::set_nu`). `TCopula::with_nu` still panics on invalid
+  input but now routes through `set_nu` instead of duplicating the check.
 
 ### stochastic-rs-stats: no silent fallback without a signal
 
@@ -227,3 +226,24 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `rejects_matlab_feller_violation` test (asserted the old panic) is now
   `accepts_matlab_feller_violation_with_use_sym`, which builds with
   `use_sym = Some(true)` and asserts the sampled path is finite instead.
+
+### stochastic-rs-copulas: unify quantile and degrees-of-freedom naming
+
+- `TMultivariate::degrees_of_freedom()` / `set_degrees_of_freedom()` →
+  `nu()` / `set_nu()` (breaking rename), matching `TCopula::nu()` /
+  `TCopula::set_nu()` — ν is the standard symbol for degrees of freedom,
+  so the two Student-t copula types now share one spelling instead of two
+  for the same quantity. The descriptive phrase moved into the `///` doc;
+  the error string (`"Degrees of freedom must be positive"`) is
+  byte-identical to before. Neither method is Python-visible (`TMultivariate`
+  is not wrapped in `python.rs`), so no Python-side change is needed.
+- `GaussianUnivariate` gains `percent_point(p)` as the canonical
+  quantile-function name, matching `BivariateExt::percent_point` and every
+  bivariate family. `ppf(p)` remains available as a documented
+  SciPy-compatible alias that delegates to `percent_point` — same
+  behavior, callers of `.ppf(...)` need no change.
+- `BivariateExt::ppf` (already present, previously undocumented) is now
+  explicitly documented as a SciPy-compatible alias for
+  `BivariateExt::percent_point`, the canonical name used internally by the
+  trait's default sampler and by all 13 bivariate families. No signature
+  or behavior change on either trait method.

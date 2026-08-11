@@ -335,7 +335,7 @@ impl NestedArchimedean {
         // reproducibility for every Clayton-family NAC, since this branch
         // fires on every row (the root frailty has no parent to inherit
         // determinism from).
-        let sub_seed: u64 = rng.random();
+        let sub_seed: u64 = rng.random::<u64>();
         let g = SimdGamma::<f64>::new(1.0 / node.theta, 1.0, &Deterministic::new(sub_seed));
         g.sample_fast()
       }
