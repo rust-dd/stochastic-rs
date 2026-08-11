@@ -50,7 +50,7 @@ where
   /// each jump.
   pub jump_sizes: D,
   fgn: Fgn<T, Unseeded, B>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

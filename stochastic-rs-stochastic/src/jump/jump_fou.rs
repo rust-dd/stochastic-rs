@@ -48,7 +48,7 @@ where
   /// Compound-Poisson jump driver adding `dJ_t` on top of the fOU path.
   pub cpoisson: CompoundPoisson<T, D>,
   fgn: Fgn<T, Unseeded, B>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

@@ -33,9 +33,9 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded> {
   /// the output `Array2`).
   pub n: usize,
   /// Physical domain extent for the simulation grid — the covariance
-  /// kernel in [`Fbs::rho`] is defined on `[0, r]²` with a cutoff at
-  /// distance `r`. Not a financial rate; this is a pure covariance-field
-  /// simulator.
+  /// kernel in this type's internal `rho` helper is defined on `[0, r]²`
+  /// with a cutoff at distance `r`. Not a financial rate; this is a pure
+  /// covariance-field simulator.
   pub r: T,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

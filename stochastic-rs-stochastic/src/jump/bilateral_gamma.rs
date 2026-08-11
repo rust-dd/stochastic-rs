@@ -39,7 +39,7 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 
@@ -169,7 +169,7 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

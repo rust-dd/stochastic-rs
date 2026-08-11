@@ -21,8 +21,9 @@ use crate::traits::ProcessExt;
 #[derive(Debug, Clone)]
 pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed κ of the correlation process itself (ρ_t is
-  /// the state being simulated directly, unlike [`TransformedOU`]'s
-  /// X-space indirection).
+  /// the state being simulated directly, unlike
+  /// [`TransformedOU`](crate::correlation::TransformedOU)'s X-space
+  /// indirection).
   pub kappa: T,
   /// Long-run correlation level μ ∈ (−1, 1) that ρ_t reverts toward.
   pub mu: T,
@@ -35,7 +36,7 @@ pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

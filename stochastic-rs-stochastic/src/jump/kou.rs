@@ -48,7 +48,7 @@ where
   /// Compound-Poisson jump driver generating the double-exponential
   /// log-jump sizes.
   pub cpoisson: CompoundPoisson<T, D>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

@@ -7,8 +7,9 @@
 //! Generic renewal-process jump-time generator: cumulative sum of
 //! user-supplied inter-arrival draws `τ_j ~ D`, replacing the fixed-rate
 //! exponential clock of a standard Poisson process. Produces jump *times*
-//! only — no jump sizes and no continuous diffusion; see [`CompoundCustom`]
-//! (`ccustom.rs`) for the type that attaches jump sizes on top.
+//! only — no jump sizes and no continuous diffusion; see
+//! [`CompoundCustom`](crate::process::ccustom::CompoundCustom) for the
+//! type that attaches jump sizes on top.
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;

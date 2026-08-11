@@ -64,7 +64,7 @@ pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Time horizon $T$.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

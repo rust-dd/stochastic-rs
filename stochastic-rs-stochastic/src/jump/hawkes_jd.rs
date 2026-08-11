@@ -49,7 +49,7 @@ pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<T>,
   /// Time horizon $T$.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

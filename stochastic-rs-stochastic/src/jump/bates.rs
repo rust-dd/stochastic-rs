@@ -79,7 +79,7 @@ where
   cgns: Cgns<T>,
   /// Compound-Poisson jump driver added to the asset's log-return.
   pub cpoisson: CompoundPoisson<T, D>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

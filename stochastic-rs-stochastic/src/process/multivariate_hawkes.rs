@@ -43,7 +43,7 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded> {
   /// Time horizon — event generation stops once simulated time exceeds
   /// this value.
   pub t_max: T,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

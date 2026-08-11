@@ -60,7 +60,7 @@ where
   pub t: Option<T>,
   /// Compound-Poisson jump driver generating the log-normal jump sizes.
   pub cpoisson: CompoundPoisson<T, D>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 

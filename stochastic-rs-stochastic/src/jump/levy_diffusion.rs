@@ -35,7 +35,7 @@ where
   pub t: Option<T>,
   /// Compound-Poisson driver providing the jump component `dL_t`.
   pub cpoisson: CompoundPoisson<T, D>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
 }
 
