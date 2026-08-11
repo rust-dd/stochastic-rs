@@ -15,11 +15,12 @@ use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Instantaneous correlation parameter.
+  /// Instantaneous correlation ρ between the two output Gaussian streams.
   pub rho: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along each correlated-Gaussian stream.
   pub n: usize,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for both streams (defaults to 1 when
+  /// omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

@@ -1,8 +1,14 @@
 //! # Process
 //!
-//! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
-//! $$
+//! Foundational point processes and building blocks that don't fit the
+//! diffusion/volatility/jump taxonomy: plain and correlated Brownian
+//! motion (`bm`, `cbms`), fractional Brownian motion and its correlated
+//! pair (`fbm`, `cfbms`), Poisson and Hawkes counting processes
+//! (`poisson`, `hawkes`, `multivariate_hawkes`), compound-jump generators
+//! with custom inter-arrival laws (`cpoisson`, `customjt`, `ccustom`),
+//! linear fractional stable motion (`lfsm`), the generic Volterra-kernel
+//! Gaussian process (`volterra`), and monotone Lévy subordinators
+//! (`subordinator`). Each module's own header states its concrete law.
 //!
 pub mod bm;
 pub mod cbms;

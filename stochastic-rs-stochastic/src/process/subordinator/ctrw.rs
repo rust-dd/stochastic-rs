@@ -31,10 +31,17 @@ pub enum CtrwJumpLaw<T: FloatExt> {
 
 /// Continuous-time random walk sampled on a fixed output grid.
 pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Inter-arrival-time (waiting-time) distribution between jumps.
   pub waiting: CtrwWaitingLaw<T>,
+  /// Jump-size distribution applied at each arrival.
   pub jumps: CtrwJumpLaw<T>,
+  /// Number of points sampled along the fixed output grid (the CTRW's own
+  /// jump times are continuous and generally fall between grid points).
   pub n: usize,
+  /// Initial value X₀ of the CTRW path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] the output grid spans (defaults to 1 when
+  /// omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

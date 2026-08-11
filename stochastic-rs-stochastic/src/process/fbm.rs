@@ -35,7 +35,7 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub hurst: T,
   /// Number of discrete time points in the generated path.
   pub n: usize,
-  /// Total simulation horizon (defaults to `1` if `None`).
+  /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

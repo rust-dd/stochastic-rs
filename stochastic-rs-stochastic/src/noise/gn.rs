@@ -16,9 +16,10 @@ use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct Gn<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Number of discrete simulation points (or samples).
+  /// Number of `N(0, dt)` increments sampled (no leading zero).
   pub n: usize,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] that `n` increments span (defaults to 1
+  /// when omitted); sets `dt = t / n`.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

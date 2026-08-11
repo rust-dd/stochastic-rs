@@ -20,7 +20,7 @@ pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded> {
   pub rho: T,
   /// Number of discrete time points in each path.
   pub n: usize,
-  /// Total simulation horizon (defaults to `1` if `None`).
+  /// Simulation horizon [0, t] for both paths (defaults to `1` if `None`).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

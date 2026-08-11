@@ -26,17 +26,24 @@ use crate::traits::ProcessExt;
 
 /// D-dimensional Hawkes process with exponential kernels.
 ///
-/// Output: `[Array1<T>; D]` — event times for each component, or
-/// a single `Array2<T>` of shape `(D, max_events)` via `sample()`.
+/// Output: `ProcessExt::Output = Vec<Array1<T>>` — one `Array1<T>` of
+/// event times per component (length D), each component's vector sized to
+/// however many events it actually had (event counts differ per
+/// component, so this is not a fixed-shape `Array2<T>`).
 pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded> {
   /// Baseline intensities $\mu_i > 0$, length D.
   pub mu: Array1<T>,
-  /// Excitation matrix $\alpha_{ij} \ge 0$, shape (D, D).
+  /// Excitation matrix $\alpha_{ij} \ge 0$, shape (D, D): size of the
+  /// intensity jump on component `i` triggered by an event on component
+  /// `j`.
   pub alpha: Array2<T>,
-  /// Decay matrix $\beta_{ij} > 0$, shape (D, D).
+  /// Decay matrix $\beta_{ij} > 0$, shape (D, D): rate at which the
+  /// `j`-to-`i` excitation from `alpha` fades back toward `mu_i`.
   pub beta: Array2<T>,
-  /// Time horizon.
+  /// Time horizon — event generation stops once simulated time exceeds
+  /// this value.
   pub t_max: T,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

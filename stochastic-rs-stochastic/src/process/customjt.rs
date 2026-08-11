@@ -1,8 +1,14 @@
 //! # Customjt
 //!
 //! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t+\sum_{k=1}^{dN_t}J_k
+//! T_k=\sum_{j=1}^{k}\tau_j,\quad \tau_j\sim D
 //! $$
+//!
+//! Generic renewal-process jump-time generator: cumulative sum of
+//! user-supplied inter-arrival draws `τ_j ~ D`, replacing the fixed-rate
+//! exponential clock of a standard Poisson process. Produces jump *times*
+//! only — no jump sizes and no continuous diffusion; see [`CompoundCustom`]
+//! (`ccustom.rs`) for the type that attaches jump sizes on top.
 //!
 use ndarray::Array1;
 use rand_distr::Distribution;

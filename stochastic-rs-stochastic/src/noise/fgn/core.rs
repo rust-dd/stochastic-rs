@@ -24,15 +24,21 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub hurst: T,
   /// Internal FFT length (power-of-two padded).
   pub n: usize,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] the requested (unpadded) fGn/fBm sample
+  /// spans (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Model parameter controlling process dynamics.
+  /// Padding introduced by rounding the requested length up to the next
+  /// power of two (`n.next_power_of_two() - n`); the first `offset`
+  /// entries of the padded circulant sample are discarded.
   pub offset: usize,
   pub(crate) out_len: usize,
   pub(crate) scale: T,
-  /// Model parameter controlling process dynamics.
+  /// Precomputed square roots of the circulant-embedding eigenvalues
+  /// (Davies–Harte), shared via `Arc` across samplers so repeated calls
+  /// reuse the same FFT-derived spectrum.
   pub sqrt_eigenvalues: Arc<Array1<T>>,
-  /// Model parameter controlling process dynamics.
+  /// Precomputed FFT plan for the padded circulant length, shared via
+  /// `Arc` across samplers.
   pub fft_handler: Arc<FftHandler<T>>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

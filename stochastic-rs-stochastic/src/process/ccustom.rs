@@ -1,8 +1,13 @@
 //! # Ccustom
 //!
 //! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t+\sum_{k=1}^{dN_t}J_k
+//! X_t=\sum_{k=1}^{N_t}J_k
 //! $$
+//!
+//! Compound jump process with a user-supplied inter-arrival-time
+//! distribution (via [`CustomJt`]) instead of a fixed-rate Poisson clock —
+//! no continuous diffusion component; this generates the pure jump sum
+//! `X_t`, meant to be added on top of a diffusion elsewhere.
 //!
 use ndarray::Array1;
 use ndarray::Axis;
