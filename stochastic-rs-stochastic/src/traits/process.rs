@@ -34,9 +34,14 @@ fn chunk_count(m: usize) -> usize {
 
 /// Splits `m` into `chunks` contiguous run lengths, as even as possible (the
 /// first `m % chunks` chunks get one extra path), yielded in chunk order.
+///
+/// `chunks == 0` only ever arises from `chunk_count(0)`; the `checked_div`/
+/// `checked_rem` fall back to `0` there (rather than relying on every caller
+/// to check `m` first) so this function stays total instead of panicking on
+/// the `m / 0` that a plain division would perform.
 fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
-  let base = m / chunks;
-  let rem = m % chunks;
+  let base = m.checked_div(chunks).unwrap_or(0);
+  let rem = m.checked_rem(chunks).unwrap_or(0);
   (0..chunks).map(move |i| base + usize::from(i < rem))
 }
 
