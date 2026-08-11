@@ -16,6 +16,15 @@ pub struct ComplexDistribution<Re, Im = Re> {
 }
 
 impl<Re, Im> ComplexDistribution<Re, Im> {
+  /// Creates a complex distribution by pairing two independent
+  /// sub-distributions, one per component.
+  ///
+  /// - `re` — distribution sampled for the real part of the output.
+  /// - `im` — distribution sampled for the imaginary part of the output.
+  ///
+  /// Unlike every other type in this crate, `re`/`im` are not shape or
+  /// scale parameters — they are full sub-distributions composed
+  /// together, sampled independently on every draw.
   pub fn new(re: Re, im: Im) -> Self {
     ComplexDistribution { re, im }
   }

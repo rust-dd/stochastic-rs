@@ -1,8 +1,11 @@
 //! # Gamma
 //!
 //! $$
-//! f(x)=\frac{\beta^\alpha}{\Gamma(\alpha)}x^{\alpha-1}e^{-\beta x},\ x>0
+//! f(x)=\frac{1}{\theta^\alpha\Gamma(\alpha)}x^{\alpha-1}e^{-x/\theta},\ x>0
 //! $$
+//!
+//! Scale parametrization (mean = αθ; NOT the rate form `β=1/θ` — the
+//! `scale` constructor argument below is θ, not β).
 //!
 //! Sampling: Marsaglia-Tsang squeeze method over the buffered SIMD normal
 //! and uniform sources. The squeeze loop itself stays scalar — an 8-lane
@@ -37,8 +40,15 @@ pub struct SimdGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
-  /// Creates a gamma distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  /// Each sub-component (normal, main rng) gets an independent stream.
+  /// Creates a gamma distribution.
+  ///
+  /// - `alpha` — shape α > 0 (matches the module header's α).
+  /// - `scale` — scale θ > 0 (matches the module header's θ; mean =
+  ///   α·θ). This is the scale parametrization — pass `1.0 / rate` if
+  ///   you have a rate-parametrized β instead.
+  ///
+  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
+  /// sub-component (normal, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, scale: T, seed: &S) -> Self {
     assert!(alpha > T::zero() && scale > T::zero());
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);

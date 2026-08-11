@@ -35,6 +35,11 @@ pub struct ScalarNormal<T> {
 }
 
 impl<T: FloatExt> ScalarNormal<T> {
+  /// Creates a stateless normal distribution.
+  ///
+  /// - `mean` — location μ.
+  /// - `std_dev` — scale σ > 0.
+  ///
   /// # Panics
   /// Panics if `std_dev` is not strictly positive.
   #[inline]
@@ -43,13 +48,15 @@ impl<T: FloatExt> ScalarNormal<T> {
     Self { mean, std_dev }
   }
 
-  /// Mean of the distribution.
+  /// Mean μ — the location the `ndtri`-based inverse-CDF draw is
+  /// centered on.
   #[inline]
   pub fn mean(&self) -> T {
     self.mean
   }
 
-  /// Standard deviation of the distribution.
+  /// Standard deviation σ > 0 — scales the `ndtri`-based inverse-CDF
+  /// draw.
   #[inline]
   pub fn std_dev(&self) -> T {
     self.std_dev
@@ -77,6 +84,10 @@ pub struct ScalarExp<T> {
 }
 
 impl<T: FloatExt> ScalarExp<T> {
+  /// Creates a stateless exponential distribution.
+  ///
+  /// - `lambda` — rate λ > 0 (mean = 1/λ).
+  ///
   /// # Panics
   /// Panics if `lambda` is not strictly positive.
   #[inline]
@@ -85,7 +96,7 @@ impl<T: FloatExt> ScalarExp<T> {
     Self { lambda }
   }
 
-  /// Rate parameter.
+  /// Rate λ (mean = 1/λ); consumed via `-ln(1-U)/λ` on each draw.
   #[inline]
   pub fn lambda(&self) -> T {
     self.lambda

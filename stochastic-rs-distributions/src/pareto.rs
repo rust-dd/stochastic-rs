@@ -27,6 +27,12 @@ pub struct SimdPareto<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
+  /// Creates a Pareto (Type I) distribution.
+  ///
+  /// - `x_m` — minimum/scale x_m > 0 (matches the module header's x_m);
+  ///   also the mode.
+  /// - `alpha` — tail index α > 0 (matches the module header's α);
+  ///   controls which moments exist (mean requires α>1, variance α>2).
   pub fn new<S: crate::simd_rng::SeedExt>(x_m: T, alpha: T, seed: &S) -> Self {
     assert!(x_m > T::zero() && alpha > T::zero());
     let stream_seed = seed.seed_value();

@@ -66,6 +66,16 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
     (k_min, cdf.into_boxed_slice())
   }
 
+  /// Creates a hypergeometric distribution (sampling without replacement
+  /// from a finite population).
+  ///
+  /// - `n_total` — population size (the module header's own N).
+  /// - `k_success` — number of "success" items in the population (the
+  ///   module header's own K).
+  /// - `n_draws` — number of items drawn from the population without
+  ///   replacement (the module header's own n) — an urn-draw-size
+  ///   parameter of the distribution itself, unrelated to how many i.i.d.
+  ///   variates a later `fill_slice`/`sample` call produces.
   pub fn new<S: crate::simd_rng::SeedExt>(
     n_total: u32,
     k_success: u32,

@@ -57,6 +57,15 @@ pub struct SimdGed<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
+  /// Creates a Subbotin/GED distribution.
+  ///
+  /// - `mu` — location μ (matches the module header's μ).
+  /// - `alpha` — scale α > 0 (matches the module header's α; NOT a
+  ///   shape parameter, unlike the `alpha` in
+  ///   [`SimdBeta`](crate::beta::SimdBeta)/[`SimdGamma`]).
+  /// - `beta` — tail exponent β > 0 (matches the module header's β;
+  ///   β=1 is Laplace, β=2 is Gaussian). Consumed internally as `1/beta`
+  ///   into a `Gamma(1/beta, 1)` magnitude sampler.
   pub fn new<S: SeedExt>(mu: T, alpha: T, beta: T, seed: &S) -> Self {
     assert!(alpha > T::zero(), "α must be > 0");
     assert!(beta > T::zero(), "β must be > 0");

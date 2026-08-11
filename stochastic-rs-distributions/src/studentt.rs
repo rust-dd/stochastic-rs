@@ -30,8 +30,13 @@ pub struct SimdStudentT<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
-  /// Creates a Student's t-distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  /// Each sub-component (normal, chisq, main rng) gets an independent stream.
+  /// Creates a Student's t-distribution via `Z/sqrt(V/nu)`, `Z` standard
+  /// normal, `V ~ ChiSquared(nu)`.
+  ///
+  /// - `nu` — degrees of freedom ν (matches the module header's ν).
+  ///
+  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
+  /// sub-component (normal, chisq, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(nu: T, seed: &S) -> Self {
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
     let chisq = SimdChiSquared::new(nu, seed);

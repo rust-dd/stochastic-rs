@@ -35,6 +35,16 @@ pub struct SimdAlphaStable<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
+  /// Creates an alpha-stable distribution, Chambers-Mallows-Stuck sampled.
+  ///
+  /// - `alpha` — stability index α ∈ (0, 2] (matches the module header's
+  ///   α; α=2 is Gaussian, α=1 with β=0 is Cauchy).
+  /// - `beta` — skewness β ∈ [-1, 1] (matches the module header's β).
+  /// - `scale` — scale γ > 0 (matches the module header's γ; NOT the
+  ///   `θ` used by [`SimdGamma`](crate::gamma::SimdGamma) — unrelated
+  ///   role, same word).
+  /// - `location` — shift δ applied after the γ-scaled draw (matches the
+  ///   module header's δ).
   pub fn new<S: crate::simd_rng::SeedExt>(
     alpha: T,
     beta: T,

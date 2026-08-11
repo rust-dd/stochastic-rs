@@ -29,8 +29,18 @@ pub struct SimdBeta<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
-  /// Creates a beta distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  /// Each sub-component (gamma1, gamma2) gets an independent stream.
+  /// Creates a beta distribution via the Gamma-ratio construction
+  /// `X = G1/(G1+G2)`, `G1 ~ Gamma(alpha, 1)`, `G2 ~ Gamma(beta, 1)`.
+  ///
+  /// - `alpha` — first shape α > 0 (matches the module header's α).
+  /// - `beta` — second shape β > 0 (matches the module header's β; NOT
+  ///   the asymmetry role `beta` plays in
+  ///   [`SimdNormalInverseGauss`](crate::normal_inverse_gauss::SimdNormalInverseGauss)
+  ///   or the tail exponent it plays in [`SimdGed`](crate::ged::SimdGed)
+  ///   — same word, unrelated role in each).
+  ///
+  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
+  /// sub-component (gamma1, gamma2) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, beta: T, seed: &S) -> Self {
     assert!(alpha > T::zero() && beta > T::zero());
     let gamma1 = SimdGamma::<T, R>::new(alpha, T::one(), seed);

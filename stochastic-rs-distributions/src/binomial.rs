@@ -109,9 +109,14 @@ pub struct SimdBinomial<T: PrimInt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
-  /// Creates a binomial sampler with an RNG obtained from a
-  /// [`SeedExt`](crate::simd_rng::SeedExt) source. The core constructor —
-  /// `new()` and `with_seed()` delegate here.
+  /// Creates a binomial sampler.
+  ///
+  /// - `n` — number of Bernoulli trials (matches the module header's n).
+  /// - `p` — per-trial success probability p ∈ [0, 1] (matches the
+  ///   module header's p).
+  ///
+  /// The RNG comes from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  /// The core constructor — `new()` and `with_seed()` delegate here.
   pub fn new<S: crate::simd_rng::SeedExt>(n: u32, p: f64, seed: &S) -> Self {
     assert!((0.0..=1.0).contains(&p), "p must be in [0, 1]");
     let stream_seed = seed.seed_value();

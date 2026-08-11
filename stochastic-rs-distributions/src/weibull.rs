@@ -26,8 +26,15 @@ pub struct SimdWeibull<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
-  /// Creates a Weibull distribution with the RNG seeded from a
-  /// [`SeedExt`](crate::simd_rng::SeedExt) source.
+  /// Creates a Weibull distribution.
+  ///
+  /// - `lambda` — scale λ > 0 (matches the module header's λ).
+  /// - `k` — shape k > 0 (matches the module header's k). Stored
+  ///   internally as `1/k` to avoid a division on every sample/pdf/cdf
+  ///   call — this constructor's own `k` parameter is the literal shape,
+  ///   not its reciprocal.
+  ///
+  /// The RNG is seeded from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, k: T, seed: &S) -> Self {
     assert!(lambda > T::zero() && k > T::zero());
     let exp1 = SimdExpZig::new(T::one(), seed);

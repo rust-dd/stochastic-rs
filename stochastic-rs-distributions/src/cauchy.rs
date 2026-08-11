@@ -27,6 +27,12 @@ pub struct SimdCauchy<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdCauchy<T, R> {
+  /// Creates a Cauchy distribution.
+  ///
+  /// - `x0` — location x₀ (matches the module header's x₀; also the
+  ///   median and mode).
+  /// - `gamma` — scale γ > 0 (matches the module header's γ; the
+  ///   half-width at half-maximum).
   pub fn new<S: crate::simd_rng::SeedExt>(x0: T, gamma: T, seed: &S) -> Self {
     assert!(gamma > T::zero());
     let stream_seed = seed.seed_value();

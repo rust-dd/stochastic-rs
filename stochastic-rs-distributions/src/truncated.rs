@@ -67,7 +67,13 @@ pub struct SimdTruncatedNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
-  /// Create a truncated normal with the given parameters.
+  /// Create a truncated normal.
+  ///
+  /// - `mean` — location μ of the untruncated base [`SimdNormal`].
+  /// - `std_dev` — scale σ > 0 of the untruncated base.
+  /// - `lower`, `upper` — truncation interval bounds (`lower < upper`);
+  ///   the base's own μ/σ are unchanged, only the support is restricted
+  ///   and renormalised.
   pub fn new<S: SeedExt>(mean: T, std_dev: T, lower: T, upper: T, seed: &S) -> Self {
     assert!(std_dev > T::zero(), "std_dev must be positive");
     assert!(lower < upper, "lower bound must be < upper bound");
@@ -175,6 +181,11 @@ pub struct SimdTruncatedExp<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedExp<T, R> {
+  /// Create a truncated exponential.
+  ///
+  /// - `lambda` — rate λ > 0 of the untruncated base Exp(λ).
+  /// - `lower`, `upper` — truncation interval bounds (`0 ≤ lower < upper`,
+  ///   `upper` may be infinite).
   pub fn new<S: SeedExt>(lambda: T, lower: T, upper: T, seed: &S) -> Self {
     assert!(lambda > T::zero(), "lambda must be positive");
     assert!(lower >= T::zero(), "lower bound must be ≥ 0");
@@ -261,6 +272,12 @@ pub struct SimdTruncatedBeta<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedBeta<T, R> {
+  /// Create a truncated beta.
+  ///
+  /// - `alpha`, `beta` — shape parameters of the untruncated base
+  ///   [`SimdBeta`] (both > 0), matching `SimdBeta::new`'s own roles.
+  /// - `lower`, `upper` — truncation interval bounds, both in [0, 1]
+  ///   with `lower < upper`.
   pub fn new<S: SeedExt>(alpha: T, beta: T, lower: T, upper: T, seed: &S) -> Self {
     assert!(alpha > T::zero() && beta > T::zero(), "α, β > 0");
     let lo = lower.to_f64().unwrap();
@@ -356,6 +373,14 @@ pub struct SimdTruncatedGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedGamma<T, R> {
+  /// Create a truncated gamma.
+  ///
+  /// - `shape` — shape k > 0 of the untruncated base [`SimdGamma`] (the
+  ///   same role `SimdGamma::new` calls `alpha` — this wrapper uses the
+  ///   `Gamma(k, θ)` letter instead).
+  /// - `scale` — scale θ > 0 of the untruncated base (matches
+  ///   `SimdGamma::new`'s own `scale`).
+  /// - `lower`, `upper` — truncation interval bounds (`0 ≤ lower < upper`).
   pub fn new<S: SeedExt>(shape: T, scale: T, lower: T, upper: T, seed: &S) -> Self {
     assert!(shape > T::zero(), "shape > 0");
     assert!(scale > T::zero(), "scale > 0");

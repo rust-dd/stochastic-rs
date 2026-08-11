@@ -33,6 +33,23 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
+  /// Creates a normal-inverse-Gaussian distribution via the Gaussian
+  /// mixture `X = mu + beta·d + sqrt(d)·Z`, `d` drawn from an internal
+  /// inverse-Gaussian subordinator.
+  ///
+  /// - `alpha` — tail heaviness α > 0, must exceed `|beta|` (matches the
+  ///   module header's α).
+  /// - `beta` — asymmetry β (matches the module header's β; a distinct
+  ///   role from the `beta` shape parameter in
+  ///   [`SimdBeta`](crate::beta::SimdBeta)/[`SimdGamma`](crate::gamma::SimdGamma)
+  ///   or the skewness in [`crate::alpha_stable::SimdAlphaStable`]).
+  /// - `delta` — scale δ > 0 (matches the module header's δ). Note this
+  ///   does **not** pass straight through as the subordinator's own
+  ///   mean/shape: internally `gamma = sqrt(alpha²−beta²)`, and the
+  ///   inverse-Gaussian subordinator is built with mean `delta/gamma`
+  ///   and shape `delta²`.
+  /// - `mu` — location/drift μ (matches the module header's μ);
+  ///   `mean() = mu + delta·beta/gamma`.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, beta: T, delta: T, mu: T, seed: &S) -> Self {
     assert!(
       alpha > T::zero() && alpha > beta.abs(),

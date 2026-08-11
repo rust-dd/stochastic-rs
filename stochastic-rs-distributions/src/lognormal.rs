@@ -26,7 +26,15 @@ pub struct SimdLogNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
-  /// Creates a log-normal distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  /// Creates a log-normal distribution.
+  ///
+  /// - `mu` — mean of **ln(X)**, not of X itself (matches the module
+  ///   header's μ; `mean() = exp(μ + σ²/2)` is the LogNormal-mean
+  ///   formula derived from it).
+  /// - `sigma` — standard deviation of **ln(X)**, not of X itself
+  ///   (matches the module header's σ), must be > 0.
+  ///
+  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   ///
   /// All sampling routes through the inner `normal`'s own stream (see
   /// [`Self::fill_slice`]), so this type has no separate engine of its

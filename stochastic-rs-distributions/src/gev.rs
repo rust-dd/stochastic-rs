@@ -77,6 +77,11 @@ pub struct SimdGev<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
   /// Construct a GEV$(\mu, \sigma, \xi)$.
+  ///
+  /// - `mu` — location μ (matches the module header's μ).
+  /// - `sigma` — scale σ > 0 (matches the module header's σ).
+  /// - `xi` — shape ξ (matches the module header's ξ); sign selects
+  ///   Fréchet (ξ>0), Gumbel (ξ=0), or reverse-Weibull (ξ<0).
   pub fn new<S: SeedExt>(mu: T, sigma: T, xi: T, seed: &S) -> Self {
     assert!(sigma > T::zero(), "σ must be positive");
     let stream_seed = seed.seed_value();

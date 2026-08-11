@@ -27,6 +27,13 @@ pub struct SimdUniform<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
+  /// Creates a uniform distribution on `[low, high)`.
+  ///
+  /// - `low` — lower bound a (matches the module header's a).
+  /// - `high` — upper bound b (matches the module header's b); stored
+  ///   internally as the interval width `high - low`, not as `high`
+  ///   itself, but that is purely an internal detail — this constructor's
+  ///   own `high` parameter is the literal upper bound.
   pub fn new<S: crate::simd_rng::SeedExt>(low: T, high: T, seed: &S) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");

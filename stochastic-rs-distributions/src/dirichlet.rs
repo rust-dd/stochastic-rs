@@ -34,6 +34,10 @@ pub struct SimdDirichlet<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
+  /// Creates a Dirichlet distribution over the `K = alpha.len()`-simplex.
+  ///
+  /// - `alpha` — concentration vector α₁..α_K (matches the module
+  ///   header's α), each entry > 0; K must be ≥ 2.
   pub fn new<S: SeedExt>(alpha: Vec<T>, seed: &S) -> Self {
     assert!(alpha.len() >= 2, "Dirichlet dim must be ≥ 2");
     for a in &alpha {

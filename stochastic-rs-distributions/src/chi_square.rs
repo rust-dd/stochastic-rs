@@ -22,7 +22,12 @@ pub struct SimdChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
-  /// Creates a chi-squared distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  /// Creates a chi-squared distribution, reparametrized internally as
+  /// `Gamma(k/2, scale=2)` (a χ²_k variate is exactly `2·Gamma(k/2, 1)`).
+  ///
+  /// - `k` — degrees of freedom (the module header's own ν).
+  ///
+  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(k: T, seed: &S) -> Self {
     let gamma = SimdGamma::<T, R>::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed);
     // No own engine to seed — reuse gamma's already-captured stream_seed as

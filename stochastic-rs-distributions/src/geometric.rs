@@ -27,6 +27,11 @@ pub struct SimdGeometric<T: PrimInt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
+  /// Creates a geometric distribution over the shifted support `k ≥ 1`
+  /// (matches the module header's own convention — number of trials
+  /// until, and including, the first success).
+  ///
+  /// - `p` — per-trial success probability p ∈ (0, 1].
   pub fn new<S: crate::simd_rng::SeedExt>(p: f64, seed: &S) -> Self {
     let stream_seed = seed.seed_value();
     Self {

@@ -55,6 +55,12 @@ impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
     cdf.into_boxed_slice()
   }
 
+  /// Creates a Poisson distribution.
+  ///
+  /// - `lambda` — rate λ > 0 (matches the module header's λ); mean and
+  ///   variance are both λ. Stored at construction — see this type's
+  ///   internal `build_cdf` for why the cumulative table must be built
+  ///   in log space once λ ≳ 745.
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: f64, seed: &S) -> Self {
     assert!(lambda > 0.0);
     let stream_seed = seed.seed_value();

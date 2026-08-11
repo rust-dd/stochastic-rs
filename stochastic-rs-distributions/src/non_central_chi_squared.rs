@@ -36,8 +36,14 @@ pub struct SimdNonCentralChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
-  /// Creates a sampler for χ²_df(·). The decomposition assumes `df ≥ 1`;
-  /// the central χ²_{df−1} term is dropped when `df ≈ 1`.
+  /// Creates a sampler for χ²_df(·).
+  ///
+  /// - `df` — degrees of freedom (the module header's own ν), fixed at
+  ///   construction. The noncentrality λ is **not** a constructor
+  ///   argument — it is supplied per draw to [`Self::sample_ncp`].
+  ///
+  /// The decomposition assumes `df ≥ 1`; the central χ²_{df−1} term is
+  /// dropped when `df ≈ 1`.
   pub fn new<S: SeedExt>(df: T, seed: &S) -> Self {
     let rem = df - T::one();
     Self {

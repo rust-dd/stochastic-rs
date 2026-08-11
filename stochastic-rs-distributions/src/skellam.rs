@@ -36,6 +36,11 @@ pub struct SimdSkellam<R: SimdRngExt = SimdRng> {
 
 impl<R: SimdRngExt> SimdSkellam<R> {
   /// Construct a Skellam$(\mu_1, \mu_2)$ random variable.
+  ///
+  /// - `mu1` — rate μ₁ > 0 of the minuend Poisson N₁ (matches the module
+  ///   header's μ₁).
+  /// - `mu2` — rate μ₂ > 0 of the subtrahend Poisson N₂ (matches the
+  ///   module header's μ₂). The output is `N₁ - N₂`.
   pub fn new<S: SeedExt>(mu1: f64, mu2: f64, seed: &S) -> Self {
     assert!(mu1 > 0.0 && mu2 > 0.0, "μ₁, μ₂ must be positive");
     Self {

@@ -29,7 +29,13 @@ pub struct SimdInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
-  /// Creates an inverse-Gaussian distribution with RNGs from a [`SeedExt`](crate::simd_rng::SeedExt) source.
+  /// Creates an inverse-Gaussian distribution.
+  ///
+  /// - `mu` — mean μ > 0 (matches the module header's μ).
+  /// - `lambda` — shape λ > 0 (matches the module header's λ; despite
+  ///   the name, this is a shape, not a rate — variance = μ³/λ).
+  ///
+  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, lambda: T, seed: &S) -> Self {
     assert!(mu > T::zero() && lambda > T::zero());
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
