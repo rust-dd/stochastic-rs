@@ -78,12 +78,22 @@
 //! | Linear-drift **slope** (mean-reversion speed κ), paired with `alpha`'s intercept role | [`Bates1996`](crate::jump::bates::Bates1996)'s variance factor, [`FJacobi`](crate::diffusion::fjacobi::FJacobi), [`Jacobi`](crate::diffusion::jacobi::Jacobi) (`beta`) |
 //! | Linear coefficient of a polynomial drift | [`Quadratic`](crate::diffusion::quadratic::Quadratic) (`beta`) |
 //! | Excitation-kernel decay rate (how fast a jump's influence fades) | [`Hawkes`](crate::process::hawkes::Hawkes), [`MultivariateHawkes`](crate::process::multivariate_hawkes::MultivariateHawkes) (`beta`) |
+//! | Displacement / shift applied to the driven state before GBM-style dynamics act on it (`S_t + beta`) | [`DisplacedDiffusion`](crate::diffusion::displaced_diffusion::DisplacedDiffusion) (`beta`) |
+//!
+//! ## δ (delta)
+//!
+//! | Role | Models (field) |
+//! |---|---|
+//! | Dimension of a (squared) Bessel process; δ ≥ 2 keeps it strictly positive | [`SquaredBessel`](crate::diffusion::bessel::SquaredBessel), [`Bessel`](crate::diffusion::bessel::Bessel) (`delta`) |
+//! | Curvature of a hyperbolic restoring drift term | [`Hyperbolic2`](crate::diffusion::hyperbolic2::Hyperbolic2) (`delta`) |
+//! | Scale of an Inverse-Gaussian subordinator | [`IGSubordinator`](crate::process::subordinator::ig_subordinator::IGSubordinator) (`delta`) |
+//! | Per-lag negative-shock (leverage) coefficient vector, unrelated to the scalar roles above | [`Agarch`](crate::autoregressive::agrach::Agarch) (`delta`) |
 //!
 //! ## μ (mu)
 //!
 //! | Role | Models (field) |
 //! |---|---|
-//! | Constant proportional drift rate — **no** mean reversion | [`Gbm`](crate::diffusion::gbm::Gbm), [`Fgbm`](crate::diffusion::fgbm::Fgbm), [`GbmIh`](crate::diffusion::gbm_ih::GbmIh) (`mu`) |
+//! | Constant proportional drift rate — **no** mean reversion | [`Gbm`](crate::diffusion::gbm::Gbm), [`Fgbm`](crate::diffusion::fgbm::Fgbm), [`GbmIh`](crate::diffusion::gbm_ih::GbmIh), [`DisplacedDiffusion`](crate::diffusion::displaced_diffusion::DisplacedDiffusion) (`mu`) |
 //! | Long-run mean **level** (θ in the model's own SDE), reverted toward by a separate speed field | [`Ou`](crate::diffusion::ou::Ou), [`Cir`](crate::diffusion::cir::Cir), [`Vasicek`](crate::interest::vasicek::Vasicek), [`Fou`](crate::diffusion::fou::Fou), [`Fcir`](crate::diffusion::fcir::Fcir), `JumpFou`/`JumpFOUCustom` (`mu`) |
 //! | Drift-in-subordinated-time (θ in the model's own SDE) — a skewness parameter, not a level | [`Vg`](crate::jump::vg::Vg) (`mu`) |
 //! | Baseline Poisson intensity vector — not a drift or level | [`MultivariateHawkes`](crate::process::multivariate_hawkes::MultivariateHawkes) (`mu`) |

@@ -9,10 +9,12 @@
 //! Each module's own header states its concrete `a(t, X_t)` / `b(t, X_t)`.
 //!
 pub mod ait_sahalia;
+pub mod bessel;
 pub mod cev;
 pub mod cfou;
 pub mod cir;
 pub mod ckls;
+pub mod displaced_diffusion;
 pub mod fcir;
 pub mod feller;
 pub mod feller_root;
