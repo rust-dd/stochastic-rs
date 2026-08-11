@@ -147,6 +147,11 @@
 //! | `y0` | Secondary state variable, paired with a primary `x0` ([`FouqueOU2D`](crate::diffusion::fouque::FouqueOU2D)) |
 //! | `rho0` | Correlation level a stochastic-correlation process starts from / reverts to — the odd one out, since it anchors a correlation, not a price or rate ([`TransformedOU`](crate::correlation::TransformedOU), [`VanEmmerich`](crate::correlation::VanEmmerich)) |
 //!
+//! [`BrownianBridge`](crate::process::brownian_bridge::BrownianBridge) pairs
+//! `x0` with `xt`, the pinned **terminal** value at `s = T` — the one field
+//! in this family that is not an initial value; named to mirror `x0` rather
+//! than to fit this table's own "Initial value of" column.
+//!
 //! ## Numbered-coefficient conventions (not collisions)
 //!
 //! A handful of models transcribe a paper that itself indexes its
