@@ -17,15 +17,16 @@ use crate::traits::ProcessExt;
 /// Inhomogeneous Gbm with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
 pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Drift / long-run mean-level parameter.
+  /// Constant proportional drift rate μ — no mean reversion (only the
+  /// diffusion coefficient is time-inhomogeneous in this model).
   pub mu: T,
-  /// Baseline sigma used when `sigmas` is None
+  /// Baseline diffusion scale σ used for every step when `sigmas` is None.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the inhomogeneous-GBM path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value S₀ of the inhomogeneous-GBM path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Optional per-step volatilities (length must be n-1)
   pub sigmas: Option<Array1<T>>,

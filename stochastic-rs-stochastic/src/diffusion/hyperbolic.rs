@@ -15,15 +15,17 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Mean-reversion speed parameter.
+  /// Nonlinear restoring-force strength κ in the drift `-κX_t/√(1+X_t²)`
+  /// (a bounded, hyperbolic-tangent-like pull toward 0, not a linear
+  /// mean-reversion speed).
   pub kappa: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the hyperbolic path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the hyperbolic path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

@@ -15,17 +15,18 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Drift / long-run mean-level parameter.
+  /// Constant proportional drift rate μ — CEV has no mean reversion.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `S_t^γ dW_t`.
   pub sigma: T,
-  /// Model asymmetry / nonlinearity parameter.
+  /// CEV elasticity exponent γ (γ=1 recovers GBM; γ<1 fattens the
+  /// left tail, the usual equity-market calibration).
   pub gamma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the CEV path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value S₀ of the CEV path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

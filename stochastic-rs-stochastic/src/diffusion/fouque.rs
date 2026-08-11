@@ -1,9 +1,14 @@
 //! # Fouque
 //!
 //! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
+//! dX_t=\kappa(\theta-X_t)dt+\varepsilon\,dW_t,\quad
+//! dY_t=\tfrac{1}{\varepsilon}(\alpha-Y_t)dt+\tfrac{1}{\sqrt{\varepsilon}}\,dZ_t
 //! $$
 //!
+//! Fouque–Papanicolaou–Sircar slow–fast Ou system: `X` mean-reverts on the
+//! ordinary (slow) time scale, `Y` mean-reverts on the fast `1/ε` time
+//! scale. As `ε → 0`, `Y` homogenizes and its effect on derived quantities
+//! reduces to its own long-run statistics.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -18,21 +23,24 @@ use crate::traits::ProcessExt;
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
 pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Mean-reversion speed parameter.
+  /// Mean-reversion speed of the slow factor `X_t`.
   pub kappa: T,
-  /// Long-run target level / model location parameter.
+  /// Long-run mean level of the slow factor `X_t`.
   pub theta: T,
-  /// Model parameter controlling process dynamics.
+  /// Time-scale separation parameter ε. `X_t` evolves on the ordinary time
+  /// scale; `Y_t`'s own mean-reversion speed and diffusion scale are fixed
+  /// at `1/ε` and `1/√ε` respectively (not separate fields).
   pub epsilon: T,
-  /// Model shape / loading parameter.
+  /// Long-run mean level of the fast factor `Y_t`.
   pub alpha: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along each of the `X`/`Y` paths.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the slow factor.
   pub x0: Option<T>,
-  /// Initial value of the secondary state variable.
+  /// Initial value Y₀ of the fast factor.
   pub y0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
+  /// omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

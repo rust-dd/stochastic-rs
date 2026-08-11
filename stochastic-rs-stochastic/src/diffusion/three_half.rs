@@ -17,15 +17,15 @@ use crate::traits::ProcessExt;
 pub struct ThreeHalf<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed parameter.
   pub kappa: T,
-  /// Long-run mean-level parameter.
+  /// Long-run mean level μ the drift `κX_t(μ−X_t)` reverts toward.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `X_t^{3/2} dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the 3/2 path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the 3/2 path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

@@ -19,15 +19,15 @@ use crate::traits::ProcessExt;
 pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
-  /// Drift / long-run mean-level parameter.
+  /// Constant proportional drift rate μ — fGBM has no mean reversion.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `S_t dB_t^H`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the fGBM path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value S₀ of the fGBM path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

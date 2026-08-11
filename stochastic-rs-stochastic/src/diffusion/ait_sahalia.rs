@@ -16,17 +16,34 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Inverse-state drift coefficient a₋₁ in `a₋₁/X_t + a_0 + a_1 X_t + a_2 X_t²`.
   pub am1: T,
+  /// Constant drift coefficient a₀.
   pub a0: T,
+  /// Linear drift coefficient a₁.
   pub a1: T,
+  /// Quadratic drift coefficient a₂.
   pub a2: T,
+  /// Constant term b₀ inside the square-rooted diffusion bracket
+  /// `√(b_0 + b_1 X_t + b_2 X_t^{b_3})` (unlike
+  /// [`NonLinearSDE`](super::nonlinear_sde::NonLinearSDE), this bracket
+  /// **is** square-rooted before scaling `dW_t`).
   pub b0: T,
+  /// Linear term b₁ inside the square-rooted diffusion bracket.
   pub b1: T,
+  /// Power-law term b₂ scaling `X_t^{b_3}` inside the square-rooted
+  /// diffusion bracket.
   pub b2: T,
+  /// Diffusion exponent b₃ applied to `X_t` inside the square-rooted
+  /// diffusion bracket.
   pub b3: T,
+  /// Number of points sampled along the Aït-Sahalia path.
   pub n: usize,
+  /// Initial value X₀ of the Aït-Sahalia path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

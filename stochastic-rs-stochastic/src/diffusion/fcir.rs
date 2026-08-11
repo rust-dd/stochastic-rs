@@ -22,17 +22,19 @@ use crate::traits::ProcessExt;
 pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
-  /// Long-run target level / model location parameter.
+  /// Mean-reversion speed (κ in the module header). Multiplies
+  /// `(mu - X_t)`, despite the field's own name.
   pub theta: T,
-  /// Drift / long-run mean-level parameter.
+  /// Long-run mean level (θ in the module header). The level `X`
+  /// reverts to between fractional-noise shocks.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `√X_t dB_t^H`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the fCIR path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the fCIR path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Enables symmetric/truncated update variant when true.
   pub use_sym: Option<bool>,

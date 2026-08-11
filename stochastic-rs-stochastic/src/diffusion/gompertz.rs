@@ -17,17 +17,20 @@ use crate::traits::ProcessExt;
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
 pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model coefficient / user-supplied drift term.
+  /// Growth-rate coefficient a in the drift `X_t(a - b·ln X_t)dt` — together
+  /// with `b`, sets the asymptotic level `exp(a/b)`.
   pub a: T,
-  /// Model coefficient / user-supplied diffusion term.
+  /// Log-growth deceleration coefficient b in the drift — NOT a diffusion
+  /// term despite the field's position; `b` multiplies `ln X_t` inside the
+  /// drift only. Together with `a`, sets the asymptotic level `exp(a/b)`.
   pub b: T,
-  /// Diffusion / noise scale parameter.
+  /// Proportional volatility scale σ multiplying `X_t dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Gompertz path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial population/level X₀ (floored at 1e-12 to keep `ln X_t` finite).
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

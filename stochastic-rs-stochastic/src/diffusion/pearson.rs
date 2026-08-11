@@ -16,14 +16,24 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct Pearson<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Mean-reversion speed κ.
   pub kappa: T,
+  /// Long-run mean level μ.
   pub mu: T,
+  /// Quadratic coefficient a inside the diffusion bracket
+  /// `2κ(aX_t²+bX_t+c)`.
   pub a: T,
+  /// Linear coefficient b inside the diffusion bracket.
   pub b: T,
+  /// Constant coefficient c inside the diffusion bracket.
   pub c: T,
+  /// Number of points sampled along the Pearson-diffusion path.
   pub n: usize,
+  /// Initial value X₀ of the Pearson-diffusion path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

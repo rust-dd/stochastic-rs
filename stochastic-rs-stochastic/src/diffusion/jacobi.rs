@@ -15,17 +15,20 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model shape / loading parameter.
+  /// Linear-drift intercept (κθ combined) in the reparametrized drift
+  /// `alpha - beta·X`, equivalent to `κ(θ-X)` with `alpha = κθ`. Must be
+  /// less than `beta` so the implied θ = alpha/beta stays in (0, 1), the
+  /// Jacobi boundary requirement.
   pub alpha: T,
-  /// Model slope / loading parameter.
+  /// Linear-drift slope (mean-reversion speed κ) in `alpha - beta·X`.
   pub beta: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `√(X_t(1-X_t)) dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Jacobi path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the Jacobi path (clamped into [0, 1]).
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

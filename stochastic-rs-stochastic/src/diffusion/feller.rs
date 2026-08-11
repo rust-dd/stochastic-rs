@@ -1,9 +1,11 @@
 //! # Feller
 //!
 //! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
+//! dX_t=\kappa(\theta-X_t)X_t\,dt+\sigma\sqrt{X_t}\,dW_t
 //! $$
 //!
+//! Feller–logistic diffusion: a CIR-style square-root diffusion term with a
+//! logistic (density-dependent) drift instead of CIR's linear drift.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -17,17 +19,18 @@ use crate::traits::ProcessExt;
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
 pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Mean-reversion speed parameter.
+  /// Mean-reversion / logistic-growth speed κ.
   pub kappa: T,
-  /// Long-run target level / model location parameter.
+  /// Carrying-capacity level θ the density-dependent drift `κ(θ−X)X` pulls
+  /// `X` toward.
   pub theta: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `√X_t dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Feller-logistic path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the Feller-logistic path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// If true, reflect at 0; otherwise clamp at 0
   pub use_sym: Option<bool>,

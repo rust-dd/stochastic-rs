@@ -40,13 +40,13 @@ pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub omega: T,
   /// Noise intensity parameter in `sqrt(a) d\zeta_t` (`a > 0`).
   pub a: T,
-  /// Number of discrete simulation points.
+  /// Number of points sampled along the complex fOU path.
   pub n: usize,
   /// Initial value of the real part `X_1(0)`.
   pub x1_0: Option<T>,
   /// Initial value of the imaginary part `X_2(0)`.
   pub x2_0: Option<T>,
-  /// Total simulation horizon.
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

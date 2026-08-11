@@ -1,7 +1,7 @@
 //! # Kimura
 //!
 //! $$
-//! dX_t=(a+bX_t)dt+\sigma\sqrt{X_t}\,dW_t
+//! dX_t=aX_t(1-X_t)\,dt+\sigma\sqrt{X_t(1-X_t)}\,dW_t
 //! $$
 //!
 use ndarray::Array1;
@@ -17,15 +17,16 @@ use crate::traits::ProcessExt;
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
 pub struct Kimura<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model coefficient / user-supplied drift term.
+  /// Drift-rate coefficient a (Wright–Fisher selection/growth rate) in
+  /// `aX_t(1-X_t)dt`.
   pub a: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ in `σ√(X_t(1-X_t)) dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Wright–Fisher path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial allele frequency X₀ ∈ [0, 1].
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

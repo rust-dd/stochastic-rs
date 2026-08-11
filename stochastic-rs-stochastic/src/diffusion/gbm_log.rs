@@ -46,11 +46,11 @@ pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub r_f: Option<T>,
   /// Volatility
   pub sigma: T,
-  /// Number of discrete time steps
+  /// Number of points sampled along the log-Euler GBM path.
   pub n: usize,
   /// Initial asset price (must be > 0)
   pub s0: Option<T>,
-  /// Total simulation horizon (defaults to 1)
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

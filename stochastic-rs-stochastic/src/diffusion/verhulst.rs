@@ -17,17 +17,20 @@ use crate::traits::ProcessExt;
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
 pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Risk-free rate / drift adjustment parameter.
+  /// Logistic growth rate r (matches the module header's own r in
+  /// `dX_t=rX_t(1−X_t/K)dt+...`).
   pub r: T,
-  /// Jump-size adjustment / shape parameter.
+  /// Carrying capacity K (matches the module header's own K) — the level
+  /// `X` saturates toward. Not a jump-size parameter; this model has no
+  /// jump process.
   pub k: T,
-  /// Diffusion / noise scale parameter.
+  /// Proportional diffusion scale σ multiplying `X_t dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the Verhulst path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the Verhulst path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// If true, clamp the state into [0, K] each step
   pub clamp: Option<bool>,

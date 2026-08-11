@@ -16,11 +16,18 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Mean-reversion speed κ pulling `X_t` toward 0 — this model has no
+  /// separate long-run-level field; it always reverts to 0.
   pub kappa: T,
+  /// Diffusion scale σ multiplying `√(1+X_t²) dW_t`.
   pub sigma: T,
+  /// Number of points sampled along the modified-CIR path.
   pub n: usize,
+  /// Initial value X₀ of the modified-CIR path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

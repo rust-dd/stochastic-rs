@@ -23,13 +23,13 @@ pub struct Fou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub theta: T,
   /// Long-run mean level.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `dB_t^H`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the fOU path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the fOU path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

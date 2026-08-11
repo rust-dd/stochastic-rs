@@ -28,13 +28,13 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
   /// Long-run mean level (θ in the SDE). The value `X` reverts to as
   /// `t → ∞`.
   pub mu: T,
-  /// Diffusion / noise scale parameter (σ in the SDE).
+  /// Diffusion scale σ multiplying `√X_t dW_t` (σ in the SDE).
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the CIR path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the CIR path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Enables symmetric/truncated update variant when true.
   pub use_sym: Option<bool>,

@@ -15,15 +15,17 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct RadialOU<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Radial drift parameter.
+  /// Radial restoring-force coefficient κ in the drift `κ/X_t − X_t`,
+  /// which repels `X` away from 0 while an ordinary OU-style `-X_t` term
+  /// still pulls it back at large `|X|`.
   pub kappa: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the radial-OU path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the radial-OU path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

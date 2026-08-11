@@ -1,7 +1,7 @@
 //! # Quadratic
 //!
 //! $$
-//! dX_t=(aX_t^2+bX_t+c)dt+\sigma X_t dW_t
+//! dX_t=(\gamma X_t^2+\beta X_t+\alpha)dt+\sigma X_t\,dW_t
 //! $$
 //!
 use ndarray::Array1;
@@ -17,19 +17,20 @@ use crate::traits::ProcessExt;
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
 pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model shape / loading parameter.
+  /// Constant term α in the drift `α + βX_t + γX_t²`.
   pub alpha: T,
-  /// Model slope / loading parameter.
+  /// Linear coefficient β in the drift.
   pub beta: T,
-  /// Model asymmetry / nonlinearity parameter.
+  /// Quadratic coefficient γ in the drift (adds curvature beyond the
+  /// linear OU-style term).
   pub gamma: T,
-  /// Diffusion / noise scale parameter.
+  /// Proportional diffusion scale σ multiplying `X_t dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the quadratic-diffusion path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the quadratic-diffusion path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

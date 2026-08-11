@@ -16,12 +16,20 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct LinearSDE<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Drift intercept a in `(a + bX_t)dt`.
   pub a: T,
+  /// Drift slope b (linear mean-reversion-like coefficient) in
+  /// `(a + bX_t)dt`.
   pub b: T,
+  /// Proportional diffusion scale c multiplying `X_t dW_t`.
   pub c: T,
+  /// Number of points sampled along the linear-SDE path.
   pub n: usize,
+  /// Initial value X₀ of the linear-SDE path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

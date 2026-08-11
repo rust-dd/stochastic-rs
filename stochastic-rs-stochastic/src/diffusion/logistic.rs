@@ -15,15 +15,17 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Logistic<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Carrying-capacity parameter.
+  /// Inverse carrying-capacity a (equilibrium level is 1/a) in the drift
+  /// `X_t(1-aX_t)`.
   pub a: T,
-  /// Diffusion / noise scale parameter.
+  /// Proportional diffusion scale b (matches the module header's own b) in
+  /// `bX_t dW_t`.
   pub b: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the logistic path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the logistic path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

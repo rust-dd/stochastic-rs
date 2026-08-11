@@ -16,12 +16,22 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Coefficient θ₁ setting the linear part of the drift
+  /// `X_t(θ_1 − X_t(θ_3³ − θ_1θ_2))`.
   pub theta1: T,
+  /// Coefficient θ₂, entering the drift's quadratic term only through the
+  /// combination `θ_3³ − θ_1θ_2`.
   pub theta2: T,
+  /// Coefficient θ₃: sets the diffusion scale (`θ_3 X_t^{3/2}`) and,
+  /// via `θ_3³`, also contributes to the drift's quadratic term.
   pub theta3: T,
+  /// Number of points sampled along the Feller-root path.
   pub n: usize,
+  /// Initial value X₀ of the Feller-root path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

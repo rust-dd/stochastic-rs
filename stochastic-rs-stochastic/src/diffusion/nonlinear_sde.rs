@@ -16,17 +16,31 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct NonLinearSDE<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Inverse-state drift coefficient a₋₁ in `a₋₁/X_t + a_0 + a_1 X_t + a_2 X_t²`.
   pub am1: T,
+  /// Constant drift coefficient a₀.
   pub a0: T,
+  /// Linear drift coefficient a₁.
   pub a1: T,
+  /// Quadratic drift coefficient a₂.
   pub a2: T,
+  /// Constant diffusion coefficient b₀ in `b_0 + b_1 X_t + b_2 X_t^{b_3}`
+  /// (unlike [`AitSahalia`](super::ait_sahalia::AitSahalia), this bracket is
+  /// **not** square-rooted — it is the diffusion coefficient directly).
   pub b0: T,
+  /// Linear diffusion coefficient b₁.
   pub b1: T,
+  /// Power-law diffusion coefficient b₂ scaling `X_t^{b_3}`.
   pub b2: T,
+  /// Diffusion exponent b₃ applied to `X_t`.
   pub b3: T,
+  /// Number of points sampled along the nonlinear-SDE path.
   pub n: usize,
+  /// Initial value X₀ of the nonlinear-SDE path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

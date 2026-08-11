@@ -35,13 +35,13 @@ pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
   pub vols: Array1<T>,
   /// Initial regime state (0-indexed).
   pub initial_state: usize,
-  /// Number of time steps.
+  /// Number of points sampled along the regime-switching path.
   pub n: usize,
   /// Initial stock price.
   pub s0: Option<T>,
-  /// Total simulation horizon.
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy.
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

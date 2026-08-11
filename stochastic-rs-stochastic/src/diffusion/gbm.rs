@@ -19,15 +19,17 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Drift / long-run mean-level parameter.
+  /// Constant proportional drift rate μ. GBM has no mean reversion — `mu`
+  /// is not a long-run level; it is the constant rate at which `S_t`
+  /// grows (or shrinks) in expectation.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `S_t dW_t`.
   pub sigma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the GBM path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value S₀ of the GBM path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Cached parameters of the terminal log-normal: ln S_T ∼ N(`ln_mu`, `ln_sigma`).
   ln_mu: f64,

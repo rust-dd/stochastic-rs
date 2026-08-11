@@ -16,14 +16,28 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded> {
+  /// Drift-shape coefficient β, the constant term inside the bracket
+  /// `β − γX_t/√(δ²+(X_t−μ)²)`.
   pub beta: T,
+  /// Drift-shape coefficient γ scaling the restoring term inside the same
+  /// bracket.
   pub gamma: T,
+  /// Curvature parameter δ > 0 of the hyperbolic restoring term near
+  /// `X_t = μ`.
   pub delta: T,
+  /// Location parameter μ the restoring term is centered on — not a drift
+  /// rate; it enters only through `(X_t − μ)²`.
   pub mu: T,
+  /// Diffusion scale σ multiplying `dW_t` (also rescales the drift bracket
+  /// by `σ²/2`).
   pub sigma: T,
+  /// Number of points sampled along the generalized-hyperbolic path.
   pub n: usize,
+  /// Initial value X₀ of the generalized-hyperbolic path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 
