@@ -134,26 +134,25 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BlackKarasinski<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let decay = (-self.a * dt).exp();
     // Exact one-step OU transition std-dev for `theta` frozen over `dt`
-    // (Var = sigma^2 * (1 - e^{-2a dt}) / (2a)); baked into the Gaussian
-    // source's own scale exactly like every other sampler in this crate
-    // bakes its Euler `dt.sqrt()` scale in, so the recursion below only
-    // ever adds a raw draw. At `a = 0` the ratio is a literal `0/0` (NaN);
-    // clamping to `min_positive_val` (never exactly zero) keeps this
-    // strictly positive so `SimdNormal::new`'s own `std_dev > 0` assertion
-    // never fires — `BlackKarasinski::new`'s warning already told the
-    // caller `a <= 0` is unsupported, and the *documented* failure mode is
-    // `fill_path`'s mean term poisoning the path with `NaN`, not a panic
-    // here.
-    let ou_std = self.sigma
-      * ((T::one() - decay * decay) / (T::from_usize_(2) * self.a))
-        .max(T::min_positive_val())
-        .sqrt();
+    // (Var = (1 - e^{-2a dt}) / (2a)), left unscaled by `sigma` — see
+    // `BlackKarasinskiSampler`'s doc for why `sigma` is applied at
+    // consumption in `fill_path` instead of baked in here. At `a = 0` the
+    // ratio is a literal `0/0` (NaN); clamping to `min_positive_val`
+    // (never exactly zero) keeps this strictly positive so
+    // `SimdNormal::new`'s own `std_dev > 0` assertion never fires —
+    // `BlackKarasinski::new`'s warning already told the caller `a <= 0` is
+    // unsupported, and the *documented* failure mode is `fill_path`'s mean
+    // term poisoning the path with `NaN`, not a panic here.
+    let ou_std = ((T::one() - decay * decay) / (T::from_usize_(2) * self.a))
+      .max(T::min_positive_val())
+      .sqrt();
     BlackKarasinskiSampler {
       n: self.n,
       r0: self.r0.unwrap_or(T::one()),
       dt,
       a: self.a,
       decay,
+      diff_scale: self.sigma,
       theta: &self.theta,
       normal: SimdNormal::<T>::new(T::zero(), ou_std, &self.seed),
     }
@@ -161,8 +160,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BlackKarasinski<T, S> {
 }
 
 /// Reusable [`BlackKarasinski`] sampling state: precomputed exact-OU decay
-/// and diffusion scale, plus the owned Gaussian source (see the module doc
-/// for why this is an exact per-step transition rather than Euler).
+/// and the owned Gaussian source (see the module doc for why this is an
+/// exact per-step transition rather than Euler). The source draws raw
+/// `N(0, ou_std)` and `sigma` is applied as a multiplier at consumption in
+/// `fill_path`, mirroring
+/// [`crate::process::brownian_bridge::BrownianBridge`] rather than baking
+/// the model's own scale into `std_dev` — the latter would make
+/// `SimdNormal::new`'s `assert!(std_dev > 0)` panic outright for `sigma =
+/// 0.0` (a legitimate, degenerate-but-valid input: a zero-vol
+/// Black-Karasinski path is just the deterministic OU-mean log-rate path).
 #[doc(hidden)]
 pub struct BlackKarasinskiSampler<'a, T: FloatExt> {
   n: usize,
@@ -170,6 +176,9 @@ pub struct BlackKarasinskiSampler<'a, T: FloatExt> {
   dt: T,
   a: T,
   decay: T,
+  /// Diffusion scale σ, applied as a multiplier at consumption rather than
+  /// baked into the Gaussian source's `std_dev` (see the struct doc).
+  diff_scale: T,
   theta: &'a Fn1D<T>,
   normal: SimdNormal<T>,
 }
@@ -195,7 +204,7 @@ impl<T: FloatExt> BlackKarasinskiSampler<'_, T> {
       let i = k + 1;
       let t_i = T::from_usize_(i) * self.dt;
       let mean = prev_log * self.decay + (self.theta.call(t_i) / self.a) * (T::one() - self.decay);
-      let next_log = mean + *z;
+      let next_log = mean + self.diff_scale * *z;
       *z = next_log.exp();
       prev_log = next_log;
     }
@@ -387,6 +396,63 @@ mod tests {
     // Only asserting "did not panic": a < 0 is documented to diverge, not
     // to stay in any particular finite range.
     let _ = negative_a.sample();
+  }
+
+  /// `sigma = 0.0` must not panic (regression: `SimdNormal::new` requires
+  /// `std_dev > 0`, so the diffusion scale must never be baked into it) and
+  /// must collapse to the exact deterministic OU-mean log-rate path:
+  /// `ln r_i = decay * ln r_{i-1} + (theta/a)(1 - decay)` for constant
+  /// `theta`, with no noise term.
+  #[test]
+  fn black_karasinski_zero_volatility_is_exact_ou_mean() {
+    let a = 0.8_f64;
+    let r0 = 0.03_f64;
+    let t = 1.0_f64;
+    let n = 50;
+    let dt = t / (n - 1) as f64;
+    let decay = (-a * dt).exp();
+
+    let bk = BlackKarasinski::<f64, _>::new(
+      theta_const as fn(f64) -> f64,
+      a,
+      0.0,
+      Some(r0),
+      n,
+      Some(t),
+      Deterministic::new(42),
+    );
+    let path = bk.sample();
+
+    assert_eq!(path[0], r0, "path[0] must equal r0 exactly");
+    let mut prev_log = r0.ln();
+    for &value in path.iter().skip(1) {
+      let mean = prev_log * decay + (0.05 / a) * (1.0 - decay);
+      assert!(
+        (value.ln() - mean).abs() < 1e-9,
+        "got ln(r)={}, expected {mean}",
+        value.ln()
+      );
+      prev_log = mean;
+    }
+  }
+
+  /// `sigma < 0` must not panic (regression: baking `sigma` into
+  /// `SimdNormal::new`'s `std_dev` made any negative value trip its
+  /// `std_dev > 0` assertion) — a negative diffusion scale is a sign flip
+  /// of each Gaussian draw, a no-op in law, not an invalid input.
+  #[test]
+  fn black_karasinski_negative_sigma_does_not_panic() {
+    let bk = BlackKarasinski::<f64, _>::new(
+      theta_const as fn(f64) -> f64,
+      0.8,
+      -0.2,
+      Some(0.03),
+      10,
+      Some(1.0),
+      Deterministic::new(42),
+    );
+    let path = bk.sample();
+    assert!(path.iter().all(|x| x.is_finite() && *x > 0.0));
   }
 
   /// Same seed twice must be bit-identical for both new interest processes.
