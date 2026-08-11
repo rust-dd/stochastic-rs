@@ -58,8 +58,9 @@ pub struct TCopula {
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
-  /// Degrees of freedom $\nu > 0$. Default 4.
-  pub nu: f64,
+  /// Degrees of freedom $\nu > 0$. Default 4. Private and validated — read
+  /// via [`TCopula::nu`], write via [`TCopula::set_nu`].
+  nu: f64,
 }
 
 impl Default for TCopula {
@@ -82,11 +83,28 @@ impl TCopula {
 
   /// Construct with explicit degrees of freedom.
   pub fn with_nu(nu: f64) -> Self {
-    assert!(nu > 0.0, "nu must be positive, got {nu}");
-    Self {
-      nu,
-      ..Self::default()
+    let mut c = Self::default();
+    if let Err(e) = c.set_nu(nu) {
+      panic!("nu must be positive, got {nu}: {e}");
     }
+    c
+  }
+
+  /// Current degrees of freedom $\nu$.
+  pub fn nu(&self) -> f64 {
+    self.nu
+  }
+
+  /// Override the degrees of freedom. Mirrors the feature-gated
+  /// `TMultivariate::set_degrees_of_freedom`; returns an error instead of
+  /// silently accepting a value (e.g. negative or NaN) that produces NaN
+  /// downstream.
+  pub fn set_nu(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
+    if nu <= 0.0 || nu.is_nan() {
+      return Err("Degrees of freedom must be positive".into());
+    }
+    self.nu = nu;
+    Ok(())
   }
 
   /// Standard Student-t density $f_\nu(x)$.
@@ -534,5 +552,17 @@ mod tests {
       base_u > 0.5 && base_u < 1.0,
       "rho>0 boundary limit should sit strictly between 0.5 and 1, got {base_u}"
     );
+  }
+
+  /// `nu` is private; `set_nu` validates and `nu()` exposes the current
+  /// value. Mirrors `TMultivariate::set_degrees_of_freedom`.
+  #[test]
+  fn tcopula_nu_validated() {
+    let mut c = TCopula::with_nu(4.0);
+    assert_eq!(c.nu(), 4.0);
+    assert!(c.set_nu(-5.0).is_err(), "negative nu must be rejected");
+    assert_eq!(c.nu(), 4.0, "a failed set_nu must not mutate the field");
+    assert!(c.set_nu(6.0).is_ok());
+    assert_eq!(c.nu(), 6.0);
   }
 }

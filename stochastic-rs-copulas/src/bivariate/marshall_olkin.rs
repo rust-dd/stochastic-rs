@@ -145,10 +145,26 @@ impl BivariateExt for MarshallOlkin {
     Err("Marshall-Olkin is not Archimedean — generator not defined".into())
   }
 
+  /// Overrides the default `theta`-only guard: a legitimate
+  /// [`MarshallOlkin::with_alpha_beta`] construction leaves `theta` as
+  /// `None`, which the generic check would otherwise misreport as unfit —
+  /// the same dual-parameterization accommodation
+  /// [`MarshallOlkin::tail_dependence`] already needs. Gating `pdf` / `cdf`
+  /// / `partial_derivative` behind this turns the unfit case into the
+  /// family-standard `Err("Fit the copula first")` instead of a panic from
+  /// `resolve_params().expect(..)`.
+  fn check_fit(&self) -> Result<(), Box<dyn Error>> {
+    if self.theta.is_none() && (self.alpha.is_none() || self.beta.is_none()) {
+      return Err("Fit the copula first".into());
+    }
+    Ok(())
+  }
+
   /// Absolutely continuous density. Returns `0` exactly on the singular
   /// curve $u^\alpha = v^\beta$ and `(1 - \alpha) u^{-\alpha}` /
   /// `(1 - \beta) v^{-\beta}` in the two open sectors.
   fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -177,6 +193,7 @@ impl BivariateExt for MarshallOlkin {
 
   /// CDF $C_{\alpha,\beta}(u,v) = \min(u^{1-\alpha} v, u v^{1-\beta})$.
   fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -210,6 +227,7 @@ impl BivariateExt for MarshallOlkin {
   /// $\partial_u C$. Continuous everywhere except across the singular
   /// curve (where it jumps).
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -390,5 +408,21 @@ mod tests {
     let mut c = MarshallOlkin::new();
     c.set_theta(5.0);
     let _ = c.tail_dependence();
+  }
+
+  /// pdf/cdf/partial_derivative on an unfit `MarshallOlkin` (neither
+  /// `theta` nor `(alpha, beta)` set) must return `Err`, matching every
+  /// sibling copula's `check_fit`-gated contract — not panic via
+  /// `resolve_params().expect(..)`.
+  #[test]
+  fn marshall_olkin_unfit_errs_like_siblings() {
+    let c = MarshallOlkin::new();
+    let x = array![[0.4_f64, 0.6]];
+    assert!(c.pdf(&x).is_err(), "pdf must Err, not panic, when unfit");
+    assert!(c.cdf(&x).is_err(), "cdf must Err, not panic, when unfit");
+    assert!(
+      c.partial_derivative(&x).is_err(),
+      "partial_derivative must Err, not panic, when unfit"
+    );
   }
 }

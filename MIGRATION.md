@@ -99,3 +99,28 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `sample_with_seed` was silently non-reproducible for any Clayton-family
   nested Archimedean copula. The root draw now derives its seed from the
   caller's own RNG stream.
+
+### stochastic-rs-copulas: unify trait signatures and error behavior
+
+- `MultivariateExt::{pdf, cdf, log_pdf}` now take `&Array2<f64>` instead
+  of `Array2<f64>` by value — every implementation already re-borrowed
+  internally, so callers previously paid for a clone (or a move) at call
+  sites for no benefit. Update call sites from `.pdf(x)` to `.pdf(&x)`
+  (drop any `.clone()` that existed only to satisfy the by-value
+  signature).
+- `BivariateExt::{sample, sample_with_seed}` now take `&self` instead of
+  `&mut self` — no implementation mutates during sampling.
+  `Independence::sample`'s override was updated to match; callers no
+  longer need a `mut` binding just to draw a sample.
+- `MarshallOlkin::{pdf, cdf, partial_derivative}` on an unfit copula
+  (neither `theta` nor `(alpha, beta)` set) now return `Err("Fit the
+  copula first")` instead of panicking through
+  `resolve_params().expect(..)` — matching every sibling bivariate
+  copula's `check_fit`-gated contract. `tail_dependence`'s existing
+  panic-on-invalid-theta contract is unchanged.
+- `TCopula.nu` field is now private. Read it via the new `TCopula::nu()`
+  getter; write it via the new `TCopula::set_nu(nu) -> Result<(),
+  Box<dyn Error>>`, which validates `nu > 0` (mirrors
+  `TMultivariate::set_degrees_of_freedom`). `TCopula::with_nu` still
+  panics on invalid input but now routes through `set_nu` instead of
+  duplicating the check.

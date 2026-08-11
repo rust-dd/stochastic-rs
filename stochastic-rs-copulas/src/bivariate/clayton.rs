@@ -202,4 +202,12 @@ mod tests {
     );
     assert_eq!(td.upper, 0.0);
   }
+
+  /// `sample` takes `&self`: no implementation mutates during sampling, so
+  /// an immutable binding must be enough to draw from it.
+  #[test]
+  fn bivariate_sample_takes_shared_ref() {
+    let c = Clayton::default();
+    let _ = c.sample(8);
+  }
 }

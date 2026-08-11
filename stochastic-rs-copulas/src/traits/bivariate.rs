@@ -103,7 +103,7 @@ pub trait BivariateExt {
 
   fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
-  fn sample(&mut self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     self.sample_with_uniform(
       stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0, &Unseeded),
       n,
@@ -111,11 +111,7 @@ pub trait BivariateExt {
   }
 
   /// Deterministic sampler. Returns the same paths for a fixed `seed`.
-  fn sample_with_seed(
-    &mut self,
-    n: usize,
-    seed: u64,
-  ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     self.sample_with_uniform(
       stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(
         0.0,
@@ -128,7 +124,7 @@ pub trait BivariateExt {
 
   #[doc(hidden)]
   fn sample_with_uniform(
-    &mut self,
+    &self,
     ud: stochastic_rs_distributions::uniform::SimdUniform<f64>,
     n: usize,
   ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {

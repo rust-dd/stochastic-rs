@@ -79,7 +79,7 @@ impl BivariateExt for Independence {
     Ok(())
   }
 
-  fn sample(&mut self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
     let ud = SimdUniform::<f64>::new(0.0, 1.0, &Unseeded);
     let u = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
     let v = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
