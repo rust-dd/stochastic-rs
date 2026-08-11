@@ -66,7 +66,7 @@ pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Initial forward-rate level.
   pub f0: Option<T>,
   /// Initial volatility level $\alpha_0$.
-  pub v0: Option<T>,
+  pub alpha0: Option<T>,
   /// Sorted time breakpoints in $(0, T)$. Length `K`; produces `K + 1`
   /// buckets. May be empty (then the model is the static SABR with the
   /// single bucket's coefficients).
@@ -88,7 +88,7 @@ pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded> {
 impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
   pub fn new(
     f0: Option<T>,
-    v0: Option<T>,
+    alpha0: Option<T>,
     knots: Vec<T>,
     beta: Vec<T>,
     rho: Vec<T>,
@@ -117,12 +117,12 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
     for w in knots.windows(2) {
       assert!(w[0] < w[1], "knots must be strictly increasing");
     }
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
+    if let Some(alpha0) = alpha0 {
+      assert!(alpha0 >= T::zero(), "alpha0 must be non-negative");
     }
     Self {
       f0,
-      v0,
+      alpha0,
       knots,
       beta,
       rho,
@@ -154,7 +154,8 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
-  /// `(forward path, volatility path)`.
+  /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
+  /// stochastic-volatility state `α` (see module docs for the SDE).
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = MultifactorSabrSampler<T, S>
@@ -166,7 +167,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
       n: self.n,
       t: self.t,
       f0: self.f0.unwrap_or(T::zero()),
-      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      alpha0: self.alpha0.unwrap_or(T::zero()).max(T::zero()),
       knots: self.knots.clone(),
       beta: self.beta.clone(),
       rho: self.rho.clone(),
@@ -186,7 +187,7 @@ pub struct MultifactorSabrSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   t: Option<T>,
   f0: T,
-  v0: T,
+  alpha0: T,
   knots: Vec<T>,
   beta: Vec<T>,
   rho: Vec<T>,
@@ -225,7 +226,7 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabrSampler<T, S> {
     let z2 = gn2.sample();
 
     f_[0] = self.f0;
-    v[0] = self.v0;
+    v[0] = self.alpha0;
 
     for i in 1..self.n {
       let time = T::from_usize_(i - 1) * dt;

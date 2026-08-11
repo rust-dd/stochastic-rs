@@ -227,6 +227,34 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `accepts_matlab_feller_violation_with_use_sym`, which builds with
   `use_sym = Some(true)` and asserts the sampled path is finite instead.
 
+### stochastic-rs-stochastic: Sabr/MultifactorSabr field names now match their own documented SDE
+
+- `Sabr`'s module doc has always stated the literature SDE `dF_t = α_t
+  F_t^β dW_t^1`, `dα_t = ν α_t dW_t^2` (α_t is the stochastic-volatility
+  *state*, ν is the constant vol-of-vol), but the struct stored ν in a
+  field named `alpha` and α's initial value in a field named `v0` —
+  contradicting the doc it sits under. Both are renamed to match:
+  `Sabr::alpha` → `Sabr::nu` (vol-of-vol) and `Sabr::v0` → `Sabr::alpha0`
+  (initial volatility state α₀). `Sabr::new`'s parameter list keeps the
+  exact same positional order, just with the two parameters renamed to
+  match — `Sabr::new(nu, beta, rho, n, f0, alpha0, t, seed)` — so any
+  call site using positional arguments (the only way to call it in Rust)
+  needs no change; only code reading `.alpha`/`.v0` on a constructed
+  `Sabr` needs to switch to `.nu`/`.alpha0`. The simulation math is
+  unchanged — this is a pure rename, verified bit-identical for a fixed
+  seed before and after.
+- `MultifactorSabr::v0` → `MultifactorSabr::alpha0` for the same reason:
+  the field's own doc comment already called it "$\alpha_0$" while the
+  field itself was named `v0`. `MultifactorSabr` already named its
+  vol-of-vol term-structure field `nu` correctly, so only this one field
+  changes. `MultifactorSabr::new`'s positional parameter order is
+  unchanged.
+- The Python surface is unaffected: `PySabr`'s constructor keeps the
+  keyword names `alpha`/`v0` (its `py_process_2x1d!` `sig:`/`params:`
+  identifiers are independent local bindings that forward positionally
+  into `Sabr::new`, so they never had to match the Rust struct's field
+  names). `MultifactorSabr` has no Python binding.
+
 ### stochastic-rs-copulas: unify quantile and degrees-of-freedom naming
 
 - `TMultivariate::degrees_of_freedom()` / `set_degrees_of_freedom()` →
