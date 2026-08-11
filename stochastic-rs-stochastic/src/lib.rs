@@ -31,6 +31,7 @@ pub mod buffer;
 pub mod correlation;
 pub mod device;
 pub mod diffusion;
+pub mod glossary;
 pub mod interest;
 pub mod isonormal;
 pub mod ito;
