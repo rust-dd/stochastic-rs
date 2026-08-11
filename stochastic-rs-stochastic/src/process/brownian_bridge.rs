@@ -51,13 +51,21 @@ use crate::traits::ProcessExt;
 /// last point is assigned `xt` directly rather than through one more
 /// (noisy) step.
 ///
-/// Euler-bias caveat: the discretization error is far from uniform across
-/// the path. The drift's own `1/(T-s)` term stays mild for most of `[0, T]`
-/// but grows sharply in the last few steps before the final-step guard
-/// takes over — measured at `n = 201` as ~0.75% relative variance error at
-/// the midpoint but ~65% one grid step before the end. Callers who need
-/// accurate statistics *near* (not just exactly at) the terminal boundary
-/// should use a much finer grid than one tuned only for interior accuracy.
+/// Exact per-step construction (Glasserman §3.1, cited in the module doc):
+/// because the bridge is Markov and Gaussian, drawing each interior point
+/// from its own exact conditional law given the previous point and the
+/// pinned endpoint reproduces the exact discretized-path law at any grid
+/// resolution — zero discretization bias, unlike a naive Euler step. The
+/// Euler mean step happens to already be exact here (the drift is linear
+/// in `X_s`); only Euler's *variance* step would be biased, and sharply so
+/// near the terminal boundary — a plain Euler scheme's per-step variance
+/// is off by ~0.75% at the midpoint but ~65% one grid step before the end,
+/// at `n = 201`. Each drawn increment is instead scaled by
+/// `sqrt((T - s_{k+1}) / (T - s_k))` so the per-step variance matches the
+/// exact conditional law directly; that scaling is theoretically zero at
+/// the true final step, which is why the explicit final-step guard below
+/// (assigning `xt` directly) exists only for bit-exactness, not to patch
+/// over a bias.
 pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
   pub sigma: T,
@@ -115,9 +123,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BrownianBridge<T, S> {
   }
 }
 
-/// Reusable [`BrownianBridge`] sampling state: precomputed Euler step size
-/// and the owned Gaussian source. The source draws raw `N(0, dt)` and
-/// `sigma` is applied as a multiplier at consumption in `fill_path`, mirroring
+/// Reusable [`BrownianBridge`] sampling state: precomputed step size and
+/// the owned Gaussian source. The source draws raw `N(0, dt)`; `fill_path`
+/// scales each draw by the exact per-step variance ratio (see the struct
+/// doc) and by `sigma` at consumption, mirroring
 /// [`crate::diffusion::bessel::Bessel`] / [`crate::diffusion::gbm::Gbm`] /
 /// [`crate::diffusion::ou::Ou`] / [`crate::diffusion::cir::Cir`] rather than
 /// baking the model's own scale into `std_dev` — the latter would make
@@ -156,8 +165,15 @@ impl<T: FloatExt> BrownianBridgeSampler<T> {
     let mut prev = self.x0;
     for (k, z) in interior.iter_mut().enumerate() {
       let s = T::from_usize_(k) * self.dt;
+      let s_next = s + self.dt;
       let drift = (self.xt - prev) / (self.t - s) * self.dt;
-      let next = prev + drift + self.sigma * *z;
+      // Exact per-step variance ratio (T - s_next)/(T - s) (Glasserman
+      // §3.1's sequential bridge construction): scales the raw N(0, dt)
+      // draw so this step's variance matches the exact conditional law
+      // instead of Euler's own sigma^2*dt, which is badly biased near the
+      // terminal boundary (see the struct doc).
+      let var_ratio = (self.t - s_next) / (self.t - s);
+      let next = prev + drift + self.sigma * var_ratio.sqrt() * *z;
       *z = next;
       prev = next;
     }
@@ -235,6 +251,45 @@ mod tests {
         let mean = samples.iter().map(|p| p[mid]).sum::<f64>() / paths as f64;
         let var =
           samples.iter().map(|p| (p[mid] - mean).powi(2)).sum::<f64>() / (paths as f64 - 1.0);
+        (var - expected).abs() / expected
+      })
+      .fold(f64::INFINITY, f64::min);
+
+    assert!(
+      best_rel_err <= 5e-2,
+      "best-of-3 relative error {best_rel_err} exceeds 5e-2 (expected {expected})"
+    );
+  }
+
+  /// Var[X_s] = σ² s(T−s)/T at grid point `n-2`, one step before the
+  /// terminal pin — the region where a plain Euler discretization was
+  /// measured at ~65% relative variance error (see the struct doc); the
+  /// exact per-step recursion must hold far tighter than the interior-only
+  /// midpoint check above, since that check alone would have missed the
+  /// original bias entirely.
+  #[test]
+  fn brownian_bridge_near_terminal_variance_matches_closed_form() {
+    let sigma = 0.4_f64;
+    let t = 1.0_f64;
+    let n = 201;
+    let paths = 20_000;
+    let near_terminal = n - 2;
+    let dt = t / (n - 1) as f64;
+    let s = near_terminal as f64 * dt;
+    let expected = sigma * sigma * s * (t - s) / t;
+
+    let best_rel_err = [2718u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let bridge =
+          BrownianBridge::<f64, _>::new(sigma, n, None, None, Some(t), Deterministic::new(seed));
+        let samples = bridge.sample_par(paths);
+        let mean = samples.iter().map(|p| p[near_terminal]).sum::<f64>() / paths as f64;
+        let var = samples
+          .iter()
+          .map(|p| (p[near_terminal] - mean).powi(2))
+          .sum::<f64>()
+          / (paths as f64 - 1.0);
         (var - expected).abs() / expected
       })
       .fold(f64::INFINITY, f64::min);
