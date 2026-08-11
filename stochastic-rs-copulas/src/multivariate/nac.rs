@@ -67,6 +67,7 @@ use std::f64;
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::special::ln_gamma;
@@ -298,12 +299,6 @@ impl NestedArchimedean {
     numerator / denominator
   }
 
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same `seed`
-  /// always yields the same matrix.
-  pub fn sample_seeded(&self, n: usize, seed: u64) -> Array2<f64> {
-    self.sample_with(n, &mut SimdRng::from_seed(seed))
-  }
-
   fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
     let d = self.dim;
     let mut out = Array2::<f64>::zeros((n, d));
@@ -334,12 +329,14 @@ impl NestedArchimedean {
     let v = match (self.family, parent_state) {
       (NacFamily::Clayton, None) => {
         // Root Clayton frailty: V ~ Gamma(shape = 1/θ, scale = 1) →
-        // LST = (1 + s)^{-1/θ} = ψ_Clayton(s) (LST-normalised).
-        let g = SimdGamma::<f64>::new(
-          1.0 / node.theta,
-          1.0,
-          &stochastic_rs_core::simd_rng::Unseeded,
-        );
+        // LST = (1 + s)^{-1/θ} = ψ_Clayton(s) (LST-normalised). Seeded
+        // from a sub-seed drawn off the caller's `rng` stream — a bare
+        // `Unseeded` source here would silently break `sample_with_seed`
+        // reproducibility for every Clayton-family NAC, since this branch
+        // fires on every row (the root frailty has no parent to inherit
+        // determinism from).
+        let sub_seed: u64 = rng.random();
+        let g = SimdGamma::<f64>::new(1.0 / node.theta, 1.0, &Deterministic::new(sub_seed));
         g.sample_fast()
       }
       (NacFamily::Gumbel, None) => {
@@ -426,6 +423,12 @@ impl MultivariateExt for NestedArchimedean {
     Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
+  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
+  /// `seed` always yields the same matrix.
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
+  }
+
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
     // The structural parameters (tree topology + family) are not estimated
     // from data; the user supplies them via `new()`. A full structure +
@@ -456,8 +459,8 @@ impl MultivariateExt for NestedArchimedean {
     Ok(())
   }
 
-  fn pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     // Closed-form NAC densities (Hofert-Pham 2012) require the full
     // d-th-order generator-derivative recursion which is family-specific
     // and scales as O(d²) per query; instead we estimate the density via
@@ -490,8 +493,8 @@ impl MultivariateExt for NestedArchimedean {
     Ok(out)
   }
 
-  fn cdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
@@ -550,7 +553,7 @@ mod tests {
     let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
     // Outer-inner pair margin: C(u_0, u_1, 1) = (u_0^{-θ_root} + u_1^{-θ_root} - 1)^{-1/θ_root}
     let q_outer_inner = ndarray::array![[0.3, 0.7, 1.0 - 1e-15]];
-    let c_oi = nac.cdf(q_outer_inner).unwrap()[0];
+    let c_oi = nac.cdf(&q_outer_inner).unwrap()[0];
     let theta_root: f64 = 1.5;
     let expected_oi =
       (0.3f64.powf(-theta_root) + 0.7f64.powf(-theta_root) - 1.0).powf(-1.0 / theta_root);
@@ -562,7 +565,7 @@ mod tests {
     );
     // Inner-inner pair margin: C(1, u_1, u_2) = (u_1^{-θ_inner} + u_2^{-θ_inner} - 1)^{-1/θ_inner}
     let q_inner_inner = ndarray::array![[1.0 - 1e-15, 0.3, 0.7]];
-    let c_ii = nac.cdf(q_inner_inner).unwrap()[0];
+    let c_ii = nac.cdf(&q_inner_inner).unwrap()[0];
     let theta_inner: f64 = 4.0;
     let expected_ii =
       (0.3f64.powf(-theta_inner) + 0.7f64.powf(-theta_inner) - 1.0).powf(-1.0 / theta_inner);
@@ -677,7 +680,7 @@ mod tests {
     let root = NacNode::leaf_group(0.01, vec![0, 1, 2]);
     let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
     let q = ndarray::array![[0.5, 0.5, 0.5], [0.2, 0.3, 0.4]];
-    let c = nac.cdf(q.clone()).unwrap();
+    let c = nac.cdf(&q).unwrap();
     let indep_1 = 0.5_f64.powi(3);
     let indep_2 = 0.2_f64 * 0.3 * 0.4;
     assert!(

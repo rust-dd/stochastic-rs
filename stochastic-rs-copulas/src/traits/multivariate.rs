@@ -13,15 +13,19 @@ pub trait MultivariateExt {
 
   fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>>;
 
+  /// Deterministic sampler. Returns the same matrix for a fixed `seed`,
+  /// mirroring [`crate::traits::BivariateExt::sample_with_seed`].
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, Box<dyn Error>>;
+
   fn fit(&mut self, X: ndarray::Array2<f64>) -> Result<(), Box<dyn Error>>;
 
   fn check_fit(&self, X: &ndarray::Array2<f64>) -> Result<(), Box<dyn Error>>;
 
-  fn pdf(&self, X: ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  fn pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 
-  fn log_pdf(&self, X: ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     Ok(self.pdf(X)?.ln())
   }
 
-  fn cdf(&self, X: ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 }

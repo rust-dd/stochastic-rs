@@ -130,12 +130,6 @@ impl DVine {
     &self.pair_copulas
   }
 
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same `seed`
-  /// always yields the same matrix.
-  pub fn sample_seeded(&self, n: usize, seed: u64) -> Array2<f64> {
-    self.sample_with(n, &mut SimdRng::from_seed(seed))
-  }
-
   fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
     let mut out = Array2::<f64>::zeros((n, self.dim));
     for r in 0..n {
@@ -234,6 +228,12 @@ impl MultivariateExt for DVine {
     Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
+  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
+  /// `seed` always yields the same matrix.
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
+  }
+
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
     // Sequential pair-copula MLE + structure/family selection is not yet
     // implemented; D-vine *evaluation* (CDF/PDF/sample) works on a
@@ -263,8 +263,8 @@ impl MultivariateExt for DVine {
     Ok(())
   }
 
-  fn pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
@@ -273,8 +273,8 @@ impl MultivariateExt for DVine {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
@@ -283,13 +283,13 @@ impl MultivariateExt for DVine {
     Ok(out)
   }
 
-  fn cdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     // Closed-form D-vine CDFs require numerical integration of the joint
     // density over a $d$-cube vertex pattern (equivalent to the NAC
     // finite-difference path); for d ≥ 3 a MC estimator via the sampler
     // is more reliable. We emit MC counts on 4000 samples per query —
     // ≈ 1.6% accuracy.
-    self.check_fit(&X)?;
+    self.check_fit(X)?;
     let m = 4_000usize;
     let sample = self.sample(m)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
@@ -336,7 +336,7 @@ mod tests {
       );
     }
     // log-density of any input is 0 for independence.
-    let lp = dv.log_pdf(array![[0.3, 0.6, 0.8]]).unwrap();
+    let lp = dv.log_pdf(&array![[0.3, 0.6, 0.8]]).unwrap();
     assert!(lp[0].abs() < 1e-12);
   }
 

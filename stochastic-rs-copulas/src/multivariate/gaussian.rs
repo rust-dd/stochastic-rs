@@ -12,6 +12,8 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
@@ -165,19 +167,20 @@ impl GaussianMultivariate {
     }
     Ok(())
   }
-}
 
-impl MultivariateExt for GaussianMultivariate {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::Gaussian
-  }
-
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  /// Shared sampling core for [`MultivariateExt::sample`] and
+  /// [`MultivariateExt::sample_with_seed`]; monomorphised per seed
+  /// strategy so the unseeded path pays no extra cost.
+  fn sample_from_seed<S: SeedExt>(
+    &self,
+    n: usize,
+    seed: &S,
+  ) -> Result<Array2<f64>, Box<dyn Error>> {
     self.require_fitted()?;
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap(); // (d x d)
     // Sample standard normals G ~ N(0, I) of shape (n x d)
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, seed);
     let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
     // z = g * L^T
     let z = g.dot(&l.t());
@@ -189,6 +192,20 @@ impl MultivariateExt for GaussianMultivariate {
       }
     }
     Ok(u)
+  }
+}
+
+impl MultivariateExt for GaussianMultivariate {
+  fn r#type(&self) -> CopulaType {
+    CopulaType::Gaussian
+  }
+
+  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.sample_from_seed(n, &Unseeded)
+  }
+
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
   /// Fit the Gaussian copula from U in (0,1)^{n x d}.
@@ -218,9 +235,9 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
-    let z = self.transform_to_normal(&X); // n x d
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
+    let z = self.transform_to_normal(X); // n x d
     let inv = self.inv_corr.as_ref().unwrap();
     let log_det = self.log_det_corr.unwrap();
 
@@ -239,9 +256,9 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
-    let z = self.transform_to_normal(&X); // n x d
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
+    let z = self.transform_to_normal(X); // n x d
     let l = self.chol_lower.as_ref().unwrap(); // d x d
     let n = z.nrows();
     let m_samples = 4000usize; // Monte Carlo samples per query point

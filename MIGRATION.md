@@ -68,3 +68,34 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   previously missing from the trait's coverage despite having the same
   internal-stream shape as every other float distribution) — additive,
   not breaking.
+
+### stochastic-rs-copulas: seedable sampling everywhere
+
+- `MultivariateExt` gained a new required method,
+  `sample_with_seed(n, seed) -> Result<Array2<f64>, Box<dyn Error>>`,
+  mirroring `BivariateExt::sample_with_seed`. Any external implementor of
+  `MultivariateExt` (the trait is feature-gated behind `openblas`) must add
+  this method.
+- `GaussianMultivariate`, `TMultivariate`, `VineMultivariate`,
+  `TreeMultivariate` previously had **no reproducible-sampling path** —
+  `sample` always drew from `Unseeded`. They now implement
+  `sample_with_seed`, routing the same internal Cholesky/χ² machinery
+  through a `Deterministic::new(seed)` source instead.
+- `RVine::sample_with_seed` forwards to the wrapped `DVine`/`CVine`
+  variant.
+- `EmpiricalCopula2D::sample_seeded` → `sample_with_seed` (renamed for
+  naming consistency with `BivariateExt::sample_with_seed`; not part of
+  any trait).
+- `CVine::sample_seeded`, `DVine::sample_seeded`,
+  `NestedArchimedean::sample_seeded` — all renamed to `sample_with_seed`
+  and moved from a bespoke inherent method into the `MultivariateExt`
+  trait implementation itself (same call syntax `x.sample_with_seed(n,
+  seed)`, but the method now requires `use
+  stochastic_rs_copulas::traits::MultivariateExt;` in scope, exactly like
+  the existing `.sample(n)`).
+- Fixed a latent determinism bug in `NestedArchimedean`: the Clayton
+  family's root frailty draw was hardcoded to `Unseeded` regardless of the
+  caller's seed (every row re-drew from a fresh unseeded `Gamma`), so
+  `sample_with_seed` was silently non-reproducible for any Clayton-family
+  nested Archimedean copula. The root draw now derives its seed from the
+  caller's own RNG stream.

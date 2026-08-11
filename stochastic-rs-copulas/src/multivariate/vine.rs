@@ -30,6 +30,8 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
@@ -118,26 +120,23 @@ impl VineMultivariate {
   fn tau_to_rho_gaussian(t: f64) -> f64 {
     (std::f64::consts::PI * 0.5 * t).sin()
   }
-}
 
-impl MultivariateExt for VineMultivariate {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::Vine
-  }
-
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  /// Shared sampling core for [`MultivariateExt::sample`] and
+  /// [`MultivariateExt::sample_with_seed`].
+  fn sample_from_seed<S: SeedExt>(
+    &self,
+    n: usize,
+    seed: &S,
+  ) -> Result<Array2<f64>, Box<dyn Error>> {
     self.require_fitted()?;
     let l = self.chol_lower.as_ref().unwrap();
     let d = self.dim;
-    // Standard normals via the project's SIMD RNG (seed-aware via the
-    // global counter); replaces `rand::random::<f64>()` which broke the
-    // SeedExt chain.
     let mut g = Array2::<f64>::zeros((n, d));
     {
       let buf = g
         .as_slice_mut()
         .expect("VineMultivariate sample buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, &Unseeded).fill_slice(buf);
+      SimdNormal::<f64>::new(0.0, 1.0, seed).fill_slice(buf);
     }
     let z = g.dot(&l.t());
     let mut u = z.clone();
@@ -147,6 +146,20 @@ impl MultivariateExt for VineMultivariate {
       }
     }
     Ok(u)
+  }
+}
+
+impl MultivariateExt for VineMultivariate {
+  fn r#type(&self) -> CopulaType {
+    CopulaType::Vine
+  }
+
+  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.sample_from_seed(n, &Unseeded)
+  }
+
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
   fn fit(&mut self, X: Array2<f64>) -> Result<(), Box<dyn Error>> {
@@ -232,9 +245,9 @@ impl MultivariateExt for VineMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
-    let z = self.transform_to_normal(&X);
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
+    let z = self.transform_to_normal(X);
     let inv = self.inv_corr.as_ref().unwrap();
     let log_det = self.log_det_corr.unwrap();
     let mut out = Array1::<f64>::zeros(z.nrows());
@@ -249,9 +262,9 @@ impl MultivariateExt for VineMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
-    let z = self.transform_to_normal(&X);
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
+    let z = self.transform_to_normal(X);
     let l = self.chol_lower.as_ref().unwrap();
     let m = 4000usize;
     let mut g = Array2::<f64>::zeros((m, self.dim));

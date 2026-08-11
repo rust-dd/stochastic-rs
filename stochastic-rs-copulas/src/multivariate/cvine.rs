@@ -105,12 +105,6 @@ impl CVine {
   /// Aas-Czado (2009) Algorithm 3: invert independent uniforms $w$ to a
   /// single C-vine observation $u$. The pyramid `v[i][j]` stores
   /// conditional pseudo-observations at increasing conditioning depth.
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same `seed`
-  /// always yields the same matrix.
-  pub fn sample_seeded(&self, n: usize, seed: u64) -> Array2<f64> {
-    self.sample_with(n, &mut SimdRng::from_seed(seed))
-  }
-
   fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
     let mut out = Array2::<f64>::zeros((n, self.dim));
     for r in 0..n {
@@ -191,6 +185,12 @@ impl MultivariateExt for CVine {
     Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
+  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
+  /// `seed` always yields the same matrix.
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
+  }
+
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
     Err(
       "CVine::fit not implemented — supply the tree explicitly via CVine::new \
@@ -217,8 +217,8 @@ impl MultivariateExt for CVine {
     Ok(())
   }
 
-  fn pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
@@ -227,8 +227,8 @@ impl MultivariateExt for CVine {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
@@ -237,11 +237,11 @@ impl MultivariateExt for CVine {
     Ok(out)
   }
 
-  fn cdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     // MC estimator on 4000 samples per query (same approach as D-vine and
     // multivariate t-copula): closed-form C-vine CDF requires nested
     // numerical integration in d ≥ 3 dims.
-    self.check_fit(&X)?;
+    self.check_fit(X)?;
     let m = 4_000usize;
     let sample = self.sample(m)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
@@ -285,7 +285,7 @@ mod tests {
         "marginal {j} mean = {m}, expected ~0.5"
       );
     }
-    let lp = cv.log_pdf(array![[0.2, 0.4, 0.7]]).unwrap();
+    let lp = cv.log_pdf(&array![[0.2, 0.4, 0.7]]).unwrap();
     assert!(lp[0].abs() < 1e-12);
   }
 

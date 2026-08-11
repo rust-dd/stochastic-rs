@@ -23,6 +23,8 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
@@ -162,6 +164,33 @@ impl TreeMultivariate {
     (adj, edge_r)
   }
 
+  /// Shared sampling core for [`MultivariateExt::sample`] and
+  /// [`MultivariateExt::sample_with_seed`].
+  fn sample_from_seed<S: SeedExt>(
+    &self,
+    n: usize,
+    seed: &S,
+  ) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.require_fitted()?;
+    let l = self.chol_lower.as_ref().unwrap();
+    let d = self.dim;
+    let mut z = Array2::<f64>::zeros((n, d));
+    {
+      let buf = z
+        .as_slice_mut()
+        .expect("TreeMultivariate sample buffer must be contiguous");
+      SimdNormal::<f64>::new(0.0, 1.0, seed).fill_slice(buf);
+    }
+    let z = z.dot(&l.t());
+    let mut u = z.clone();
+    for mut row in u.axis_iter_mut(Axis(0)) {
+      for val in row.iter_mut() {
+        *val = norm_cdf(*val);
+      }
+    }
+    Ok(u)
+  }
+
   fn corr_from_tree_edges(&self, adj: &[Vec<usize>], edge_r: &Array2<f64>) -> Array2<f64> {
     let d = edge_r.nrows();
     let mut corr = Array2::<f64>::zeros((d, d));
@@ -203,27 +232,11 @@ impl MultivariateExt for TreeMultivariate {
   }
 
   fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    self.require_fitted()?;
-    let l = self.chol_lower.as_ref().unwrap();
-    let d = self.dim;
-    // Standard normals via the project's SIMD RNG (uses the global seed
-    // counter, threaded through SimdRng::new()); replaces the previous
-    // `rand::random::<f64>()` per-element call which broke the seed chain.
-    let mut z = Array2::<f64>::zeros((n, d));
-    {
-      let buf = z
-        .as_slice_mut()
-        .expect("TreeMultivariate sample buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, &Unseeded).fill_slice(buf);
-    }
-    let z = z.dot(&l.t());
-    let mut u = z.clone();
-    for mut row in u.axis_iter_mut(Axis(0)) {
-      for val in row.iter_mut() {
-        *val = norm_cdf(*val);
-      }
-    }
-    Ok(u)
+    self.sample_from_seed(n, &Unseeded)
+  }
+
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
   fn fit(&mut self, X: Array2<f64>) -> Result<(), Box<dyn Error>> {
@@ -275,9 +288,9 @@ impl MultivariateExt for TreeMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
-    let z = self.transform_to_normal(&X);
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
+    let z = self.transform_to_normal(X);
     let inv = self.inv_corr.as_ref().unwrap();
     let log_det = self.log_det_corr.unwrap();
     let mut out = Array1::<f64>::zeros(z.nrows());
@@ -292,10 +305,10 @@ impl MultivariateExt for TreeMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     // Monte Carlo like Gaussian
-    let z = self.transform_to_normal(&X);
+    let z = self.transform_to_normal(X);
     let l = self.chol_lower.as_ref().unwrap();
     let m = 4000usize;
     let g = {

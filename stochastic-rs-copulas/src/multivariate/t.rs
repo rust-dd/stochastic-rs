@@ -56,6 +56,8 @@ use ndarray::Axis;
 use ndarray_linalg::Cholesky;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::UPLO;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -174,6 +176,39 @@ impl TMultivariate {
       return Err("Fit the copula or provide a correlation matrix first".into());
     }
     Ok(())
+  }
+
+  /// Shared sampling core for [`MultivariateExt::sample`] and
+  /// [`MultivariateExt::sample_with_seed`]. Both the normal and the
+  /// $\chi^2$ draw come from the **same** seed source (advancing its
+  /// interior state per construction), matching the crate-wide idiom for
+  /// composed distributions instead of reseeding each from the identical
+  /// raw `u64`.
+  fn sample_from_seed<S: SeedExt>(
+    &self,
+    n: usize,
+    seed: &S,
+  ) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.require_fitted()?;
+    let d = self.dim;
+    let l = self.chol_lower.as_ref().unwrap();
+    // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, seed);
+    let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
+    let z = g.dot(&l.t());
+    // W ~ χ²_ν / ν, independently per row.
+    let chi = SimdChiSquared::<f64>::new(self.nu, seed);
+    let mut u = Array2::<f64>::zeros((n, d));
+    for r in 0..n {
+      let w_raw = chi.sample_fast();
+      let w = (w_raw / self.nu).max(1e-300);
+      let scale = 1.0 / w.sqrt();
+      for c in 0..d {
+        let xc = z[[r, c]] * scale;
+        u[[r, c]] = Self::t_cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
+      }
+    }
+    Ok(u)
   }
 
   /// Standard Student-$t$ density $f_\nu(x)$ with the natural-log
@@ -368,26 +403,11 @@ impl MultivariateExt for TMultivariate {
   }
 
   fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    self.require_fitted()?;
-    let d = self.dim;
-    let l = self.chol_lower.as_ref().unwrap();
-    // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
-    let z = g.dot(&l.t());
-    // W ~ χ²_ν / ν, independently per row.
-    let chi = SimdChiSquared::<f64>::new(self.nu, &Unseeded);
-    let mut u = Array2::<f64>::zeros((n, d));
-    for r in 0..n {
-      let w_raw = chi.sample_fast();
-      let w = (w_raw / self.nu).max(1e-300);
-      let scale = 1.0 / w.sqrt();
-      for c in 0..d {
-        let xc = z[[r, c]] * scale;
-        u[[r, c]] = Self::t_cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
-      }
-    }
-    Ok(u)
+    self.sample_from_seed(n, &Unseeded)
+  }
+
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+    self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
   fn fit(&mut self, X: Array2<f64>) -> Result<(), Box<dyn Error>> {
@@ -416,9 +436,9 @@ impl MultivariateExt for TMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
-    let z = self.transform_to_t(&X);
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
+    let z = self.transform_to_t(X);
     let mv = self.mv_log_pdf(&z);
     let nu = self.nu;
     let mut out = Array1::<f64>::zeros(z.nrows());
@@ -432,9 +452,9 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
-    let z = self.transform_to_t(&X);
+  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
+    let z = self.transform_to_t(X);
     let mv = self.mv_log_pdf(&z);
     let nu = self.nu;
     let mut out = Array1::<f64>::zeros(z.nrows());
@@ -448,14 +468,14 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(&X)?;
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    self.check_fit(X)?;
     // Closed forms for the multivariate Student-t CDF exist only in d ≤ 2
     // (Dunnett-Sobel 1D reduction); for d ≥ 3 we estimate via the χ²-mixer
     // representation: 1/m Σ_r 1{ Z_r/√W_r ≤ z } with Z_r ~ N(0,Σ),
     // W_r ~ χ²_ν / ν. 4000 MC samples per query match the Gaussian copula
     // CDF estimator's tolerance.
-    let z = self.transform_to_t(&X);
+    let z = self.transform_to_t(X);
     let l = self.chol_lower.as_ref().unwrap();
     let n = z.nrows();
     let m = 4000usize;
@@ -524,8 +544,8 @@ mod tests {
     let t_cop = TMultivariate::new_with(corr.clone(), 200.0).unwrap();
     let g_cop = super::super::gaussian::GaussianMultivariate::new_with_corr(corr).unwrap();
     let queries = array![[0.25, 0.75], [0.5, 0.5], [0.1, 0.9], [0.8, 0.3],];
-    let t_pdf = t_cop.pdf(queries.clone()).unwrap();
-    let g_pdf = g_cop.pdf(queries).unwrap();
+    let t_pdf = t_cop.pdf(&queries).unwrap();
+    let g_pdf = g_cop.pdf(&queries).unwrap();
     for i in 0..t_pdf.len() {
       assert!(
         (t_pdf[i] - g_pdf[i]).abs() / g_pdf[i].max(1e-10) < 0.02,
@@ -545,7 +565,7 @@ mod tests {
     let nu = 6.0;
     let cop = TMultivariate::new_with(corr.clone(), nu).unwrap();
     let q = array![[0.5, 0.5]];
-    let pdf = cop.pdf(q).unwrap()[0];
+    let pdf = cop.pdf(&q).unwrap()[0];
     // Analytic value: at z=0 the multivariate kernel = 1, marginal kernel = 1.
     //   c(0.5, 0.5) = f_{Σ,ν}(0,0) / [f_ν(0)]^2
     //   f_{Σ,ν}(0,0) = Γ((ν+2)/2) / [Γ(ν/2) · ν · π · √|Σ|]
@@ -605,8 +625,8 @@ mod tests {
     let corr = array![[1.0, 0.4], [0.4, 1.0]];
     let cop = TMultivariate::new_with(corr, 6.0).unwrap();
     let q = array![[0.3, 0.7], [0.5, 0.5], [0.1, 0.9]];
-    let pdf = cop.pdf(q.clone()).unwrap();
-    let lp = cop.log_pdf(q).unwrap();
+    let pdf = cop.pdf(&q).unwrap();
+    let lp = cop.log_pdf(&q).unwrap();
     for i in 0..pdf.len() {
       assert!(
         (lp[i] - pdf[i].ln()).abs() < 1e-12,
@@ -631,7 +651,7 @@ mod tests {
     let mut bv = TCopula::with_nu(nu);
     bv.set_theta(rho);
     let q = array![[0.3, 0.6], [0.5, 0.5], [0.8, 0.2]];
-    let cdf_mv = mv.cdf(q.clone()).unwrap();
+    let cdf_mv = mv.cdf(&q).unwrap();
     let cdf_bv = bv.cdf(&q).unwrap();
     for i in 0..cdf_mv.len() {
       assert!(
@@ -651,7 +671,7 @@ mod tests {
     cop.set_degrees_of_freedom(12.0).unwrap();
     assert_eq!(cop.degrees_of_freedom(), 12.0);
     let _ = cop.sample(100).unwrap();
-    let _ = cop.pdf(array![[0.5, 0.5]]).unwrap();
+    let _ = cop.pdf(&array![[0.5, 0.5]]).unwrap();
     let bad = cop.set_degrees_of_freedom(0.0);
     assert!(bad.is_err(), "ν=0 must be rejected");
   }
