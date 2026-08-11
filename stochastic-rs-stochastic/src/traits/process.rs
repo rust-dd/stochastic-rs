@@ -7,6 +7,39 @@ use stochastic_rs_distributions::traits::FloatExt;
 
 use super::sampler::PathSampler;
 
+/// Target number of paths per chunk in [`ProcessExt::sample_par`] /
+/// [`ProcessExt::sample_map`]'s chunked fan-out. Building a sampler
+/// (`SimdNormal`-class construction) and dispatching one rayon task are both
+/// low-hundreds-of-nanoseconds costs; 8 paths per chunk keeps that overhead a
+/// small fraction of a chunk's own sampling work for any path length worth
+/// parallelizing over, while scaling chunk count — and hence the exposed
+/// parallelism — linearly with `m` instead of pinning it to the machine's
+/// core count.
+const MIN_PAR_PATHS: usize = 8;
+
+/// Number of chunks to split `m` paths into.
+///
+/// A pure function of `m` alone. **Must never read
+/// `rayon::current_num_threads()`**: the chunk count fixes how many times
+/// [`sampler()`](ProcessExt::sampler) is called before any chunk starts
+/// running, which fixes how many times a
+/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) process's
+/// shared seed state advances. If that count depended on the ambient
+/// thread-pool size, the same seed and the same `m` could produce different
+/// output on two machines (or two test runs) with different pool sizes —
+/// exactly the defect this module fixes.
+fn chunk_count(m: usize) -> usize {
+  m.div_ceil(MIN_PAR_PATHS).max(1).min(m)
+}
+
+/// Splits `m` into `chunks` contiguous run lengths, as even as possible (the
+/// first `m % chunks` chunks get one extra path), yielded in chunk order.
+fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
+  let base = m / chunks;
+  let rem = m % chunks;
+  (0..chunks).map(move |i| base + usize::from(i < rem))
+}
+
 /// Stochastic process simulation trait.
 ///
 /// Each process exposes `sample()` returning a [`Self::Output`] and
@@ -32,17 +65,27 @@ use super::sampler::PathSampler;
 /// process's noise source with no runtime branch. Only the fractional family
 /// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
 /// GPU marker only exists when its feature is compiled.
+///
 /// ## Sampling architecture
 ///
 /// The public surface is [`sample`](Self::sample), [`sample_par`](Self::sample_par)
 /// and [`sample_map`](Self::sample_map). Under them sits a hidden
 /// [`PathSampler`] holding all per-call mutable state (RNG, distribution
 /// buffers, scratch, precomputed scales); [`sampler`](Self::sampler) builds
-/// one. The parallel methods construct **one sampler per rayon worker**
-/// instead of one per path, removing the per-path allocation and RNG-setup
-/// costs that dominate short-path Monte Carlo. [`sample_map`] folds over the
-/// paths reusing a single output buffer per worker; [`sample_par`] keeps
-/// every path, allocating each fresh (no buffer reuse, no clone).
+/// one. The parallel methods split `m` paths into a fixed number of chunks —
+/// a pure function of `m`, never of the ambient thread pool — and construct
+/// **one sampler per chunk**, all sequentially on the calling thread before
+/// any chunk reaches rayon. That sequencing is what makes the fan-out
+/// deterministic: a
+/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) process's
+/// shared seed state advances once per chunk, in chunk-index order,
+/// regardless of which thread later runs which chunk or how many threads
+/// exist. [`sample_map`] folds over each chunk's paths reusing a single
+/// output buffer; [`sample_par`] keeps every path, allocating each fresh (no
+/// buffer reuse, no clone). Same seed + same `m` ⇒ bit-identical output on
+/// any machine and any thread-pool size;
+/// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still draw
+/// fresh randomness on every call.
 ///
 /// Implementor footgun: the default `sample()` routes through `sampler()`,
 /// so a sampler must never call back into `ProcessExt::sample` of the same
@@ -62,44 +105,97 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   #[doc(hidden)]
   fn sampler(&self) -> Self::Sampler<'_>;
 
+  /// Builds one pre-seeded sampler per chunk, paired with that chunk's path
+  /// count, **sequentially on the calling thread, before any chunk reaches
+  /// rayon**. Implementation detail behind [`sample_par`](Self::sample_par) /
+  /// [`sample_map`](Self::sample_map): this sequential construction is what
+  /// fixes the order in which a `Deterministic` process's shared seed state
+  /// is consumed, independent of how rayon later schedules the chunks.
+  #[doc(hidden)]
+  fn chunked_samplers(&self, m: usize) -> Vec<(Self::Sampler<'_>, usize)> {
+    let chunks = chunk_count(m);
+    chunk_lens(m, chunks)
+      .map(|len| (self.sampler(), len))
+      .collect()
+  }
+
   /// A single sampled path.
   fn sample(&self) -> Self::Output {
     self.sampler().sample()
   }
 
   /// Maps `f` over `m` independently sampled paths, reusing one sampler and
-  /// one output buffer per rayon worker (no per-path allocation or RNG
-  /// re-init). This is the parallel primitive.
+  /// one output buffer per chunk (no per-path allocation or RNG re-init).
+  /// This is the parallel primitive.
+  ///
+  /// **Reproducibility.** Same seed + same `m` ⇒ bit-identical output, on
+  /// any machine and under any rayon thread-pool size — see
+  /// [`chunked_samplers`](Self::chunked_samplers).
+  /// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still
+  /// draw fresh randomness on every call, exactly as before this guarantee
+  /// existed.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
-    (0..m)
+    if m == 0 {
+      return Vec::new();
+    }
+    if m == 1 {
+      return vec![f(&self.sample())];
+    }
+    self
+      .chunked_samplers(m)
       .into_par_iter()
-      .map_init(
-        || (self.sampler(), None::<Self::Output>),
-        |(sampler, slot), _| match slot {
-          Some(buf) => {
-            sampler.sample_into(buf);
-            f(buf)
-          }
-          None => {
-            // First path on this worker: sample fresh (no wasted draw) and
-            // keep the buffer to reuse for the rest.
+      .map(|(mut sampler, len)| {
+        let mut slot: Option<Self::Output> = None;
+        (0..len)
+          .map(|_| {
+            if let Some(buf) = slot.as_mut() {
+              sampler.sample_into(buf);
+              return f(buf);
+            }
+            // First path in this chunk: sample fresh (no wasted draw) and
+            // keep the buffer to reuse for the rest of the chunk.
             let buf = sampler.sample();
             let r = f(&buf);
-            *slot = Some(buf);
+            slot = Some(buf);
             r
-          }
-        },
-      )
+          })
+          .collect::<Vec<_>>()
+      })
+      // Chunks run on rayon, but `Vec::into_par_iter()` → `.map()` is an
+      // `IndexedParallelIterator`, so `.collect()` restores chunk order
+      // regardless of completion order; flattening then reproduces the
+      // exact global path order (chunk 0's paths, then chunk 1's, ...).
+      .collect::<Vec<_>>()
+      .into_iter()
+      .flatten()
       .collect()
   }
 
   /// `m` independently sampled paths, kept. Like [`sample_map`](Self::sample_map)
-  /// it reuses one sampler per rayon worker, but allocates a fresh owned path
-  /// each step — cheaper than mapping then cloning when every path is wanted.
+  /// it reuses one sampler per chunk, but allocates a fresh owned path each
+  /// step — cheaper than mapping then cloning when every path is wanted.
+  ///
+  /// **Reproducibility.** Same seed + same `m` ⇒ bit-identical output, on
+  /// any machine and under any rayon thread-pool size — see
+  /// [`chunked_samplers`](Self::chunked_samplers).
+  /// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still
+  /// draw fresh randomness on every call, exactly as before this guarantee
+  /// existed.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    (0..m)
+    if m == 0 {
+      return Vec::new();
+    }
+    if m == 1 {
+      return vec![self.sample()];
+    }
+    self
+      .chunked_samplers(m)
       .into_par_iter()
-      .map_init(|| self.sampler(), |sampler, _| sampler.sample())
+      .map(|(mut sampler, len)| (0..len).map(|_| sampler.sample()).collect::<Vec<_>>())
+      // Same order-preserving collect-then-flatten as `sample_map` above.
+      .collect::<Vec<_>>()
+      .into_iter()
+      .flatten()
       .collect()
   }
 }

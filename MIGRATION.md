@@ -347,3 +347,44 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `(theta, mu, sigma, n, x0, t, use_sym, seed)` tail. Same rationale, and
   the same already-agreeing Python keyword signature, as `BlackKarasinski`
   above.
+
+### stochastic-rs-stochastic: `ProcessExt::sample_par` / `sample_map` are now reproducible across thread counts
+
+- **Output values under a pinned seed will change.** A `Deterministic`-seeded
+  process's `sample_par(m)` / `sample_map(m, f)` previously returned
+  different paths from run to run — they were not reproducible at all, not
+  even under a fixed thread-pool size. Any code that hard-coded expected
+  `sample_par`/`sample_map` output for a given seed was already relying on
+  behavior the type never actually provided; the new values are the first
+  ones this API can honestly promise to repeat.
+- Root cause: both default methods ran `(0..m).into_par_iter().map_init(||
+  self.sampler(), ...)`. Rayon decides how many times `map_init`'s init
+  closure fires — and how the `m` items are grouped across those calls —
+  based on work-stealing at run time, not on `m`. Every `self.sampler()`
+  call advances a `Deterministic` process's shared atomic seed state
+  (`SeedExt::seed_value`), so the number and order of those advances, and
+  therefore the output, depended on scheduling. A reviewer measured three
+  runs of one pinned config giving means 4.01900 / 4.02577 / 4.00938.
+- Fix: `m` paths now split into `chunks = m.div_ceil(8).max(1).min(m)`
+  contiguous groups — a pure function of `m` alone, never of
+  `rayon::current_num_threads()` — and one sampler per chunk is built in a
+  plain sequential loop **on the calling thread, before any chunk reaches
+  rayon**. That fixes the seed-consumption order regardless of how rayon
+  later schedules the (already-built) chunks across however many threads
+  happen to exist. Chunk results are collected in chunk order and
+  flattened, reproducing the exact global path order every time.
+- Guarantee: for a `Deterministic`-seeded process, the same seed and the
+  same `m` now produce bit-identical `sample_par`/`sample_map` output on
+  any machine and under any rayon thread-pool size — strictly stronger than
+  `stochastic-rs-distributions`'s `DistributionSampler::sample_matrix` fix
+  above, which is still only reproducible for a fixed pool size. `Unseeded`
+  processes still draw fresh randomness on every call, exactly as before.
+- No signature change on either method. `Fgn::sample_par` and
+  `Fbm::sample_par` override the default with their own batched-backend
+  implementations, so they do not go through this fix (they never used
+  `map_init` in the first place) — every other process in the crate does.
+  Their own `Cpu`/`Accelerate` batch backends have an independent,
+  still-open instance of the same class of defect (each of the `m` batch
+  items derives its seed from the same shared atomic *inside* the parallel
+  region rather than before it), confirmed empirically but not addressed
+  here; tracked as follow-up work, not part of this fix.
