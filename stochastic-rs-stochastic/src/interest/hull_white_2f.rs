@@ -180,6 +180,11 @@ pub struct PyHullWhite2F {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHullWhite2F {
+  // Python-visible parameter names stay `k`/`theta` (pre-existing public
+  // API surface); `k=` forwards into `HullWhite2F::new`'s drift-function
+  // `theta` parameter and `theta=` forwards into its mean-reversion-speed
+  // `a` parameter, so the Python signature is unaffected but its keyword
+  // names map onto differently-named Rust parameters.
   #[new]
   #[pyo3(signature = (k, theta, sigma1, sigma2, rho, b, n, x0=None, t=None, seed=None))]
   fn new(

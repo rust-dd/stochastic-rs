@@ -27,8 +27,9 @@
 //!
 //! | Role | Models (field) |
 //! |---|---|
-//! | Mean-reversion **speed** (κ in the model's own SDE) | [`Ou`](crate::diffusion::ou::Ou), [`Cir`](crate::diffusion::cir::Cir), [`Vasicek`](crate::interest::vasicek::Vasicek), [`FellerLogistic`](crate::diffusion::feller::FellerLogistic), [`Fou`](crate::diffusion::fou::Fou), [`Fcir`](crate::diffusion::fcir::Fcir), `JumpFou`/`JumpFOUCustom` (`theta`) |
+//! | Mean-reversion **speed** (κ in the model's own SDE) | [`Ou`](crate::diffusion::ou::Ou), [`Cir`](crate::diffusion::cir::Cir), [`Vasicek`](crate::interest::vasicek::Vasicek), [`Fou`](crate::diffusion::fou::Fou), [`Fcir`](crate::diffusion::fcir::Fcir), `JumpFou`/`JumpFOUCustom` (`theta`); [`Adg`](crate::interest::adg::Adg) plays the same role via a time-dependent function rather than a constant (`theta: Fn1D<T>`) |
 //! | Long-run **level** of a CIR-type mean-reverting factor (θ in the model's own literature notation; Brigo & Mercurio 2006 §3.9), paired with a *speed* field named `kappa` rather than `theta` — the opposite of the row directly above, where `theta` names [`Cir`](crate::diffusion::cir::Cir)'s own speed; a deliberate literature-notation choice for this type, not an inconsistency to unify | [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus) (`theta`) |
+//! | Carrying-capacity **level** of a logistic-growth diffusion (θ in `κ(θ−X)X`), paired with a speed field named `kappa` rather than `theta` — the same naming inversion as the row above, for an unrelated (density-dependent, not CIR-linear) drift shape | [`FellerLogistic`](crate::diffusion::feller::FellerLogistic) (`theta`) |
 //! | Long-run **variance level** (θ in the model's own SDE) | [`Heston`](crate::volatility::heston::Heston), [`RlHeston`](crate::rough::RlHeston), and the wider Heston family (`theta`) |
 //! | Time-dependent additive drift **target function** θ(t), fitted to the initial term structure | [`HullWhite`](crate::interest::hull_white::HullWhite), [`HullWhite2F`](crate::interest::hull_white_2f::HullWhite2F), [`BlackKarasinski`](crate::interest::black_karasinski::BlackKarasinski) (`theta: Fn1D<T>`); the same role is played by [`Adg`](crate::interest::adg::Adg)'s `k` field, which is named differently |
 //! | Jump-size **compensator** (κ/E\[Y−1\] in the model's own SDE), subtracted from the drift, scaled by `lambda` | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou) (`theta`); the same role is played by [`Bates1996`](crate::jump::bates::Bates1996)'s `k` field |
@@ -43,6 +44,7 @@
 //!
 //! | Role | Models (field) |
 //! |---|---|
+//! | Mean-reversion speed | [`HullWhite`](crate::interest::hull_white::HullWhite) (`alpha`) |
 //! | Lévy tail/stability index Y ∈ (0, 2) | [`Cgmy`](crate::jump::cgmy::Cgmy), [`Cts`](crate::jump::cts::Cts), [`Rdts`](crate::jump::rdts::Rdts), `KoBoL` (`alpha`) |
 //! | Drift rate μ (despite the name) | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou) (`alpha`) |
 //! | Linear-drift **intercept** (κθ combined) in a reparametrized `drift = alpha − beta·X` form | [`Bates1996`](crate::jump::bates::Bates1996)'s variance factor, [`FJacobi`](crate::diffusion::fjacobi::FJacobi), [`Jacobi`](crate::diffusion::jacobi::Jacobi) (`alpha`) |
@@ -53,8 +55,14 @@
 //! ## σ (sigma)
 //!
 //! Mostly consistent: the diffusion scale of a Brownian driver. Two notes:
-//! - In the Heston family, `sigma` is the **vol-of-vol** — it scales the
-//!   *variance* process's own noise, one level removed from the asset.
+//! - In most of the Heston family, `sigma` is the **vol-of-vol** — it
+//!   scales the *variance* process's own noise, one level removed from the
+//!   asset. Two members spell this same role `xi` instead
+//!   ([`HestonLog`](crate::volatility::heston_log::HestonLog),
+//!   [`FBatesSvj`](crate::volatility::fbates_svj::FBatesSvj); see the ξ
+//!   section below), and [`Hkde`](crate::volatility::hkde::Hkde) spells it
+//!   `sigma_v` — a third and fourth spelling of the same role, not a new
+//!   meaning.
 //! - In jump models built as Brownian-subordinated Lévy processes
 //!   ([`Vg`](crate::jump::vg::Vg), [`Nig`](crate::jump::nig::Nig)), `sigma`
 //!   scales only the Gaussian half of the model, not overall dispersion.
@@ -67,9 +75,16 @@
 //!
 //! | Role | Models (field) |
 //! |---|---|
-//! | Vol-of-vol (diffusion scale of a stochastic-volatility state) | [`Sabr`](crate::volatility::sabr::Sabr), [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr), [`RlFOU`](crate::rough::RlFOU), [`RlHeston`](crate::rough::RlHeston), [`Bergomi`](crate::volatility::bergomi::Bergomi) (`nu`) |
+//! | Vol-of-vol (diffusion scale of a stochastic-volatility state) | [`Sabr`](crate::volatility::sabr::Sabr), [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr), [`RlFOU`](crate::rough::RlFOU), [`RlHeston`](crate::rough::RlHeston), [`Bergomi`](crate::volatility::bergomi::Bergomi), [`RoughBergomi`](crate::volatility::rbergomi::RoughBergomi), [`RoughHeston`](crate::volatility::fheston::RoughHeston) (`nu`) |
 //! | Variance rate of a gamma time-change (kurtosis/tail-thickness control) — not a volatility at all | [`Vg`](crate::jump::vg::Vg) (`nu`) |
-//! | Mean of a log-jump-size distribution (a **location**, not a scale) | [`MjdLog`](crate::jump::mjd_log::MjdLog) (`nu`) |
+//! | Mean of a log-jump-size distribution (a **location**, not a scale) | [`MjdLog`](crate::jump::mjd_log::MjdLog), [`BatesSvj`](crate::volatility::bates_svj::BatesSvj), [`FBatesSvj`](crate::volatility::fbates_svj::FBatesSvj) (`nu`) |
+//! | Jump (Poisson) intensity — an arrival rate, despite the letter this glossary's λ table otherwise reserves for that role | [`Bns`](crate::volatility::bns::Bns) (`nu`) |
+//!
+//! ## ξ (xi)
+//!
+//! | Role | Models (field) |
+//! |---|---|
+//! | Vol-of-vol (diffusion scale of a stochastic-volatility state) — the same role `nu`/`sigma` play elsewhere in this glossary (see the σ and ν sections above) | [`HestonLog`](crate::volatility::heston_log::HestonLog), [`FBatesSvj`](crate::volatility::fbates_svj::FBatesSvj) (`xi`) |
 //!
 //! ## β (beta)
 //!
@@ -117,6 +132,7 @@
 //! |---|---|
 //! | Mean-reversion speed | [`Cir`](crate::diffusion::cir::Cir) (as `theta`), [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus), [`FellerLogistic`](crate::diffusion::feller::FellerLogistic), [`ThreeHalf`](crate::diffusion::three_half::ThreeHalf), [`Pearson`](crate::diffusion::pearson::Pearson) (`kappa`) |
 //! | Jump-size compensator (E\[Y−1\]-like term), unrelated to speed | [`Bates1996`](crate::jump::bates::Bates1996) (`k`) |
+//! | Variance rate of an inverse-Gaussian subordinator (dispersion control, akin to `nu` in [`Vg`](crate::jump::vg::Vg)) — **not** a mean-reversion speed, despite the letter; NIG has no mean reversion | [`Nig`](crate::jump::nig::Nig) (`kappa`) |
 //!
 //! ## ρ (rho)
 //!
@@ -137,8 +153,8 @@
 //!
 //! | Field | Initial value of |
 //! |---|---|
-//! | `x0` | The generic primary state variable — used across most non-financially-typed processes |
-//! | `s0` | Spot / asset price ([`Gbm`](crate::diffusion::gbm::Gbm), [`Heston`](crate::volatility::heston::Heston), [`Bates1996`](crate::jump::bates::Bates1996)) |
+//! | `x0` | The generic primary state variable — used across most non-financially-typed processes; [`Gbm`](crate::diffusion::gbm::Gbm) is the financially-typed exception, spelling its asset-price initial value `x0` rather than `s0` |
+//! | `s0` | Spot / asset price ([`Heston`](crate::volatility::heston::Heston), [`Bates1996`](crate::jump::bates::Bates1996)) |
 //! | `v0` | Variance / volatility state ([`Heston`](crate::volatility::heston::Heston), [`Bergomi`](crate::volatility::bergomi::Bergomi)) |
 //! | `f0` | Forward rate/price, for models built around a forward rather than a spot ([`Sabr`](crate::volatility::sabr::Sabr), [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr)) |
 //! | `alpha0` | Volatility state, specifically in [`Sabr`](crate::volatility::sabr::Sabr) / [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr) — named for the module's own α_t, not `v0`, after the Task 3 rename that resolved the `v0`-really-means-α₀ contradiction |

@@ -253,7 +253,9 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   keyword names `alpha`/`v0` (its `py_process_2x1d!` `sig:`/`params:`
   identifiers are independent local bindings that forward positionally
   into `Sabr::new`, so they never had to match the Rust struct's field
-  names). `MultifactorSabr` has no Python binding.
+  names). `MultifactorSabr` has no Python binding. For bilingual callers:
+  Python's `alpha=` sets Rust's `nu` (vol-of-vol) and Python's `v0=` sets
+  Rust's `alpha0` (initial α-state).
 
 ### stochastic-rs-stochastic: rough-vol and Hull-White 2F field names now match their own documented SDE
 
@@ -300,6 +302,10 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `HullWhite2F::new`, so the Python-visible keyword names stay `k=`/
   `theta=` exactly as before (`tests/python_bindings_smoke.py` calls
   `sr.PyHullWhite2F(k=..., theta=..., ...)` unchanged and still passes).
+  This is the sharper mapping to learn, precisely because the names don't
+  change: Python's `theta=` is a **float speed** (Rust's `a`), while
+  Rust's own `.theta` is a drift **function** — the value Python's `k=`
+  supplies.
 
 ### stochastic-rs-copulas: unify quantile and degrees-of-freedom naming
 
