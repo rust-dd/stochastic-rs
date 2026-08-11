@@ -212,7 +212,7 @@ mod tests {
     let t = 1.0;
     let n = 200;
     let paths = 20_000;
-    let expected = (x0 + beta) * mu.exp() - beta;
+    let expected = (x0 + beta) * (mu * t).exp() - beta;
 
     let best_rel_err = [2718u64, 999, 42]
       .into_iter()

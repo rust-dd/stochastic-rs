@@ -57,9 +57,15 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed `a` of the log-rate (multiplies `-ln(r_t)` in the
   /// drift) — same role as
   /// [`HullWhite::alpha`](crate::interest::hull_white::HullWhite::alpha).
-  /// Must be `> 0`: the exact-OU step below divides by `a` and degenerates
-  /// at `a = 0`, and a strictly mean-reverting log-rate is this model's own
-  /// premise.
+  /// Should be `> 0`: a strictly mean-reverting log-rate is this model's own
+  /// premise, and the exact-OU step divides by `a` in both its mean and
+  /// variance terms. `a <= 0` is accepted rather than rejected — matching
+  /// this crate's [`Cir`](crate::diffusion::cir::Cir)-style boundary
+  /// convention — but is not made silently well-behaved: `a = 0` is a
+  /// literal `0/0` in the mean term, so every point after `r0` comes out
+  /// `NaN`, and `a < 0` makes the log-rate diverge instead of mean-revert.
+  /// [`BlackKarasinski::new`] unconditionally warns to stderr when this
+  /// happens; it never panics.
   pub a: T,
   /// Diffusion scale σ multiplying `dW_t` in the log-rate SDE.
   pub sigma: T,
@@ -76,6 +82,15 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
+  /// Create a new BlackKarasinski process.
+  ///
+  /// `a <= 0` is accepted rather than rejected — matching this crate's
+  /// [`Cir::new`](crate::diffusion::cir::Cir::new) boundary-condition
+  /// precedent — but unconditionally prints a one-line diagnostic to
+  /// stderr, including in release builds: the exact-OU step divides by `a`
+  /// in both its mean and variance terms, so `a = 0` poisons every point
+  /// after `r0` with `NaN` and `a < 0` makes the log-rate diverge instead
+  /// of mean-revert. Never panics.
   pub fn new(
     theta: impl Into<Fn1D<T>>,
     a: T,
@@ -85,6 +100,16 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    if a <= T::zero() {
+      eprintln!(
+        "warning: BlackKarasinski::new: mean-reversion speed a <= 0; the \
+         exact-OU step divides by a in both its mean and variance terms, so \
+         a = 0 produces a literal 0/0 in the mean term (every point after r0 \
+         comes out NaN) and a < 0 makes the log-rate diverge instead of \
+         mean-revert — pass a > 0 for a well-defined Black-Karasinski path"
+      );
+    }
+
     Self {
       theta: theta.into(),
       a,
@@ -112,10 +137,16 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BlackKarasinski<T, S> {
     // (Var = sigma^2 * (1 - e^{-2a dt}) / (2a)); baked into the Gaussian
     // source's own scale exactly like every other sampler in this crate
     // bakes its Euler `dt.sqrt()` scale in, so the recursion below only
-    // ever adds a raw draw.
+    // ever adds a raw draw. At `a = 0` the ratio is a literal `0/0` (NaN);
+    // clamping to `min_positive_val` (never exactly zero) keeps this
+    // strictly positive so `SimdNormal::new`'s own `std_dev > 0` assertion
+    // never fires — `BlackKarasinski::new`'s warning already told the
+    // caller `a <= 0` is unsupported, and the *documented* failure mode is
+    // `fill_path`'s mean term poisoning the path with `NaN`, not a panic
+    // here.
     let ou_std = self.sigma
       * ((T::one() - decay * decay) / (T::from_usize_(2) * self.a))
-        .max(T::zero())
+        .max(T::min_positive_val())
         .sqrt();
     BlackKarasinskiSampler {
       n: self.n,
@@ -316,6 +347,46 @@ mod tests {
     for path in bk.sample_par(200) {
       assert!(path.iter().all(|x| x.is_finite() && *x > 0.0));
     }
+  }
+
+  /// `a <= 0` must be accepted (never panic — construction warns to stderr
+  /// instead) but is documented as producing an unusable path: `a = 0` is a
+  /// literal 0/0 in the mean term, poisoning every point after `r0` with
+  /// `NaN`; `a < 0` stays finite but diverges instead of mean-reverting.
+  #[test]
+  fn black_karasinski_nonpositive_a_does_not_panic() {
+    let zero_a = BlackKarasinski::<f64, _>::new(
+      theta_const as fn(f64) -> f64,
+      0.0,
+      0.1,
+      Some(0.03),
+      10,
+      Some(1.0),
+      Deterministic::new(42),
+    );
+    let path = zero_a.sample();
+    assert!(
+      path[0].is_finite() && path[0] > 0.0,
+      "r0 itself is untouched by a: {}",
+      path[0]
+    );
+    assert!(
+      path.iter().skip(1).all(|x| x.is_nan()),
+      "a = 0 is documented to poison every point after r0 with NaN: {path:?}"
+    );
+
+    let negative_a = BlackKarasinski::<f64, _>::new(
+      theta_const as fn(f64) -> f64,
+      -0.3,
+      0.1,
+      Some(0.03),
+      10,
+      Some(1.0),
+      Deterministic::new(42),
+    );
+    // Only asserting "did not panic": a < 0 is documented to diverge, not
+    // to stay in any particular finite range.
+    let _ = negative_a.sample();
   }
 
   /// Same seed twice must be bit-identical for both new interest processes.

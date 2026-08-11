@@ -192,9 +192,20 @@ py_process_1d!(PySquaredBessel, SquaredBessel,
 /// an ~5e9 excursion, large enough to dominate a terminal-mean Monte Carlo
 /// estimate outright. Instead it runs the same, singularity-free BESQ(δ)
 /// recursion [`SquaredBesselSampler`] uses internally (`2√X` vanishes
-/// smoothly at the boundary, unlike `1/X`) and reports its square root —
-/// exact per the `Bessel = sqrt(SquaredBessel)` identity above, and the
+/// smoothly at the boundary, unlike `1/X`) and reports its square root — the
 /// standard way this process is simulated in practice.
+///
+/// This sidesteps the singularity, but it is worth being precise about what
+/// "exact" means here. The *law* identity `Bessel = sqrt(SquaredBessel)`
+/// above (Revuz & Yor) is exact for the true continuous-time SDEs at every
+/// `t`, which is why sampling BESQ and taking its square root is the right
+/// thing to do at all. The *discretization* itself is not bias-free: it is
+/// Euler-Maruyama on the BESQ recursion, which carries BESQ's own
+/// O(dt)-class discretization bias, further reshaped (not removed) by the
+/// nonlinear square root. This is a consistent, convergent approximation —
+/// the bias shrinks toward 0 as `n → ∞` — not an exact transition kernel the
+/// way, say, a noncentral-χ² exact CIR sampler would be. Worth keeping in
+/// mind when choosing step counts for a calibration.
 pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded> {
   /// Dimension δ (see [`SquaredBessel::delta`] — the same δ ≥ 2 threshold
   /// keeps the process strictly positive).
