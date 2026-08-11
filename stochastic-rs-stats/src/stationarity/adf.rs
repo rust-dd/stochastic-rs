@@ -11,7 +11,7 @@ use super::common::validate_series;
 
 /// Configuration for the Augmented Dickey-Fuller unit-root test.
 #[derive(Debug, Clone, Copy)]
-pub struct ADFConfig {
+pub struct AdfConfig {
   /// Deterministic terms included in the test regression.
   pub deterministic: DeterministicTerm,
   /// Lag-order selection strategy.
@@ -22,7 +22,7 @@ pub struct ADFConfig {
   pub alpha: f64,
 }
 
-impl Default for ADFConfig {
+impl Default for AdfConfig {
   fn default() -> Self {
     Self {
       deterministic: DeterministicTerm::Constant,
@@ -35,7 +35,7 @@ impl Default for ADFConfig {
 
 /// Result of the Augmented Dickey-Fuller test.
 #[derive(Debug, Clone, Copy)]
-pub struct ADFResult {
+pub struct AdfResult {
   /// ADF t-statistic for the lagged level coefficient.
   pub statistic: f64,
   /// Selected lag order.
@@ -48,7 +48,7 @@ pub struct ADFResult {
   pub reject_unit_root: bool,
 }
 
-impl crate::traits::HypothesisTest for ADFResult {
+impl crate::traits::HypothesisTest for AdfResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
@@ -61,7 +61,7 @@ impl crate::traits::HypothesisTest for ADFResult {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn adf_test(y: ArrayView1<f64>, cfg: ADFConfig) -> ADFResult {
+pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> AdfResult {
   let y = y
     .as_slice()
     .expect("adf_test requires a contiguous ArrayView1");
@@ -92,7 +92,7 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: ADFConfig) -> ADFResult {
   let critical_values = adf_critical_values(cfg.deterministic);
   let reject_unit_root = fit.statistic < critical_values.value_at(cfg.alpha);
 
-  ADFResult {
+  AdfResult {
     statistic: fit.statistic,
     used_lags,
     nobs: fit.nobs,
@@ -106,7 +106,7 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
-  use super::ADFConfig;
+  use super::AdfConfig;
   use super::adf_test;
   use crate::stationarity::common::DeterministicTerm;
   use crate::stationarity::common::LagSelection;
@@ -140,10 +140,10 @@ mod tests {
   #[test]
   fn adf_rejects_stationary_ar1() {
     let x = simulate_ar1(0.7, 2400, 0xADF1);
-    let cfg = ADFConfig {
+    let cfg = AdfConfig {
       deterministic: DeterministicTerm::Constant,
       lag_selection: LagSelection::Fixed(4),
-      ..ADFConfig::default()
+      ..AdfConfig::default()
     };
     let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(
@@ -155,11 +155,11 @@ mod tests {
   #[test]
   fn adf_random_walk_is_not_rejected_at_one_percent() {
     let x = simulate_random_walk(2400, 0xADF2);
-    let cfg = ADFConfig {
+    let cfg = AdfConfig {
       deterministic: DeterministicTerm::Constant,
       lag_selection: LagSelection::Fixed(4),
       alpha: 0.01,
-      ..ADFConfig::default()
+      ..AdfConfig::default()
     };
     let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(

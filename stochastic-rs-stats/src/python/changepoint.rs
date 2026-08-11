@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "Cusum", unsendable)]
 pub struct PyCusum {
-  inner: crate::econometrics::changepoint::CusumResult,
+  inner: crate::econometrics::changepoint::ChangepointCusumResult,
 }
 
 #[pymethods]

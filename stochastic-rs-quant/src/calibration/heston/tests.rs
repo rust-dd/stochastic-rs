@@ -1,6 +1,6 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stats::heston_nml_cekf::HestonNMLECEKFConfig;
+use stochastic_rs_stats::heston_nml_cekf::HestonNmleCekfConfig;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston as HestonProcess;
 
@@ -358,12 +358,12 @@ fn test_heston_calibrate_with_nmle_cekf_seed() {
   );
   calibrator.set_mle_seed_method(HestonMleSeedMethod::NmleCekf);
   calibrator.set_mle_delta(Some(t / (n - 1) as f64));
-  calibrator.set_nmle_cekf_config(HestonNMLECEKFConfig {
+  calibrator.set_nmle_cekf_config(HestonNmleCekfConfig {
     max_iters: 6,
     tol: 1e-5,
     param_damping: 0.6,
     initial_v0: v0,
-    ..HestonNMLECEKFConfig::default()
+    ..HestonNmleCekfConfig::default()
   });
 
   calibrator.calibrate(None).unwrap();

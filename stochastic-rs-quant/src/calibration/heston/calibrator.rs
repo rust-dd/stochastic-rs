@@ -6,7 +6,7 @@ use anyhow::bail;
 use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DVector;
 use ndarray::Array1;
-use stochastic_rs_stats::heston_nml_cekf::HestonNMLECEKFConfig;
+use stochastic_rs_stats::heston_nml_cekf::HestonNmleCekfConfig;
 
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
@@ -53,7 +53,7 @@ pub struct HestonCalibrator {
   /// Optional explicit sampling step used by MLE seed estimators.
   pub mle_delta: Option<f64>,
   /// Optional config for NMLE-CEKF seed when `mle_seed_method = NmleCekf`.
-  pub nmle_cekf_config: Option<HestonNMLECEKFConfig>,
+  pub nmle_cekf_config: Option<HestonNmleCekfConfig>,
   /// If true, record per-iteration calibration history.
   pub record_history: bool,
   /// Which loss metrics to compute when recording history.
@@ -264,7 +264,7 @@ impl HestonCalibrator {
     self.mle_delta = delta;
   }
 
-  pub fn set_nmle_cekf_config(&mut self, cfg: HestonNMLECEKFConfig) {
+  pub fn set_nmle_cekf_config(&mut self, cfg: HestonNmleCekfConfig) {
     self.nmle_cekf_config = Some(cfg);
   }
 

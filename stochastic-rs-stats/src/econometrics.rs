@@ -39,7 +39,7 @@ pub mod cointegration;
 pub mod granger;
 pub mod hmm;
 
-pub use changepoint::CusumResult;
+pub use changepoint::ChangepointCusumResult;
 pub use changepoint::PeltResult;
 pub use changepoint::cusum;
 pub use changepoint::pelt;

@@ -7,7 +7,7 @@ use super::common::validate_series;
 
 /// KPSS deterministic specification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KPSSTrend {
+pub enum KpssTrend {
   /// Stationary around a constant mean.
   Level,
   /// Trend-stationary around a linear trend.
@@ -16,14 +16,14 @@ pub enum KPSSTrend {
 
 /// KPSS critical values.
 #[derive(Debug, Clone, Copy)]
-pub struct KPSSCriticalValues {
+pub struct KpssCriticalValues {
   pub one_percent: f64,
   pub two_point_five_percent: f64,
   pub five_percent: f64,
   pub ten_percent: f64,
 }
 
-impl KPSSCriticalValues {
+impl KpssCriticalValues {
   fn value_at(self, alpha: f64) -> f64 {
     if alpha <= 0.01 {
       self.one_percent
@@ -39,19 +39,19 @@ impl KPSSCriticalValues {
 
 /// Configuration for the KPSS stationarity test.
 #[derive(Debug, Clone, Copy)]
-pub struct KPSSConfig {
+pub struct KpssConfig {
   /// Deterministic component under the null.
-  pub trend: KPSSTrend,
+  pub trend: KpssTrend,
   /// Newey-West lag length. If `None`, a Schwert-style default is used.
   pub lags: Option<usize>,
   /// Significance level used to compute `reject_stationarity`.
   pub alpha: f64,
 }
 
-impl Default for KPSSConfig {
+impl Default for KpssConfig {
   fn default() -> Self {
     Self {
-      trend: KPSSTrend::Level,
+      trend: KpssTrend::Level,
       lags: None,
       alpha: 0.05,
     }
@@ -60,18 +60,18 @@ impl Default for KPSSConfig {
 
 /// Result of the KPSS stationarity test.
 #[derive(Debug, Clone, Copy)]
-pub struct KPSSResult {
+pub struct KpssResult {
   /// KPSS LM statistic.
   pub statistic: f64,
   /// Newey-West lag length used.
   pub used_lags: usize,
   /// Critical values for this trend specification.
-  pub critical_values: KPSSCriticalValues,
+  pub critical_values: KpssCriticalValues,
   /// Whether the null (stationarity) is rejected at `alpha`.
   pub reject_stationarity: bool,
 }
 
-impl crate::traits::HypothesisTest for KPSSResult {
+impl crate::traits::HypothesisTest for KpssResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
@@ -80,15 +80,15 @@ impl crate::traits::HypothesisTest for KPSSResult {
   }
 }
 
-fn kpss_critical_values(trend: KPSSTrend) -> KPSSCriticalValues {
+fn kpss_critical_values(trend: KpssTrend) -> KpssCriticalValues {
   match trend {
-    KPSSTrend::Level => KPSSCriticalValues {
+    KpssTrend::Level => KpssCriticalValues {
       one_percent: 0.739,
       two_point_five_percent: 0.574,
       five_percent: 0.463,
       ten_percent: 0.347,
     },
-    KPSSTrend::Trend => KPSSCriticalValues {
+    KpssTrend::Trend => KpssCriticalValues {
       one_percent: 0.216,
       two_point_five_percent: 0.176,
       five_percent: 0.146,
@@ -101,7 +101,7 @@ fn kpss_critical_values(trend: KPSSTrend) -> KPSSCriticalValues {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn kpss_test(y: ArrayView1<f64>, cfg: KPSSConfig) -> KPSSResult {
+pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssResult {
   let y = y
     .as_slice()
     .expect("kpss_test requires a contiguous ArrayView1");
@@ -111,7 +111,7 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KPSSConfig) -> KPSSResult {
     "alpha must be in (0, 1)"
   );
 
-  let include_trend = matches!(cfg.trend, KPSSTrend::Trend);
+  let include_trend = matches!(cfg.trend, KpssTrend::Trend);
   let reg = regress_on_deterministics(y, include_trend);
   let resid = reg.residuals;
   let n = resid.len();
@@ -132,7 +132,7 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KPSSConfig) -> KPSSResult {
   let critical_values = kpss_critical_values(cfg.trend);
   let reject_stationarity = statistic > critical_values.value_at(cfg.alpha);
 
-  KPSSResult {
+  KpssResult {
     statistic,
     used_lags,
     critical_values,
@@ -145,7 +145,7 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
-  use super::KPSSConfig;
+  use super::KpssConfig;
   use super::kpss_test;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
@@ -182,7 +182,7 @@ mod tests {
       let x = simulate_ar1(0.75, 2000, seed);
       (
         seed,
-        kpss_test(ndarray::ArrayView1::from(&x), KPSSConfig::default()),
+        kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default()),
       )
     });
     let ok = runs.iter().any(|(_, r)| !r.reject_stationarity);
@@ -197,7 +197,7 @@ mod tests {
   #[test]
   fn kpss_rejects_stationarity_for_random_walk() {
     let x = simulate_random_walk(2000, 0x4B505354);
-    let res = kpss_test(ndarray::ArrayView1::from(&x), KPSSConfig::default());
+    let res = kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default());
     assert!(
       res.reject_stationarity,
       "expected rejection for random walk, got {res:?}"

@@ -180,6 +180,33 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `.unwrap_or(-0.5)` explicitly. The Python `Leverage` constructor now
   raises `ValueError` instead of silently returning `-0.5`.
 
+### stochastic-rs-stats: split CusumResult and normalize acronym casing
+
+- `econometrics::changepoint::CusumResult` → `ChangepointCusumResult`. Two
+  unrelated types shared the name `CusumResult` (this control-chart shape
+  with `upper`/`lower`/`alarms`, versus the `stationarity::cusum::CusumResult`
+  hypothesis-test shape implementing `HypothesisTest`), so glob-importing
+  both `econometrics::changepoint::*` and `stationarity::cusum::*` in the
+  same scope was ambiguous (`E0659`). `stationarity::cusum::CusumResult`
+  keeps its name as the more canonical "CUSUM test" meaning.
+- Acronym casing normalized to Rust RFC 430 (an acronym is one word in
+  UpperCamelCase, matching already-correct siblings like `GaussianHmm` and
+  `HestonCekfFilterResult` in the same modules): `HestonNMLECEKFConfig` →
+  `HestonNmleCekfConfig`, `HestonNMLECEKFResult` → `HestonNmleCekfResult`,
+  `HestonNMLECEKFParams` → `HestonNmleCekfParams`, `GaussianKDE` →
+  `GaussianKde`, `ADFConfig`/`ADFResult` → `AdfConfig`/`AdfResult`,
+  `KPSSConfig`/`KPSSResult`/`KPSSCriticalValues`/`KPSSTrend` →
+  `KpssConfig`/`KpssResult`/`KpssCriticalValues`/`KpssTrend`,
+  `ERSConfig`/`ERSResult`/`ERSTrend` → `ErsConfig`/`ErsResult`/`ErsTrend`,
+  `PPTestType` → `PpTestType`, `LMTrend` → `LmTrend`, and
+  `FOUParameterEstimationV3` → `FouParameterEstimationV3`. Free functions
+  (`adf_test`, `kpss_test`, `ers_dfgls_test`, `cusum_test`, …) were already
+  snake_case and are unaffected. Python-visible class names are unchanged —
+  every affected type is wrapped by a `#[pyclass(name = "...")]` binding
+  with an explicit name already pinned independently of the Rust type name
+  (e.g. `ADFTest`, `KPSSTest`, `HestonNMLECEKF`, `GaussianKDE` keep their
+  Python spelling).
+
 ### stochastic-rs-stochastic: sub-Feller Cir/Fcir/Heston2D paths are accepted, not rejected
 
 - `Cir::new`, `Fcir::new`, and `Heston2D::new` no longer hard-`assert!` the

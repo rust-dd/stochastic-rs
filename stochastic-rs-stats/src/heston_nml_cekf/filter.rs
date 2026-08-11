@@ -5,7 +5,7 @@ use ndarray::ArrayView1;
 
 use super::EPS;
 use super::HestonCekfError;
-use super::HestonNMLECEKFParams;
+use super::HestonNmleCekfParams;
 
 mod projection;
 mod step;
@@ -114,7 +114,7 @@ pub struct HestonCekfFilterResult {
 pub fn heston_cekf_step(
   previous: HestonCekfState,
   log_return: f64,
-  parameters: HestonNMLECEKFParams,
+  parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
 ) -> Result<HestonCekfStepResult, HestonCekfError> {
   validate_filter_config(config)?;
@@ -137,7 +137,7 @@ pub fn heston_cekf_step(
 /// Filters a positive price series once under fixed Heston parameters.
 pub fn filter_heston_cekf(
   prices: ArrayView1<'_, f64>,
-  parameters: HestonNMLECEKFParams,
+  parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
 ) -> Result<HestonCekfFilterResult, HestonCekfError> {
   validate_prices(prices)?;
@@ -153,7 +153,7 @@ pub fn filter_heston_cekf(
 
 pub(crate) fn filter_heston_cekf_batch(
   prices: ArrayView1<'_, f64>,
-  parameters: HestonNMLECEKFParams,
+  parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
 ) -> HestonCekfFilterResult {
   let initial = HestonCekfState {
@@ -197,7 +197,7 @@ pub(crate) fn validate_filter_config(
 }
 
 pub(crate) fn validate_parameters(
-  parameters: HestonNMLECEKFParams,
+  parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
 ) -> Result<(), HestonCekfError> {
   validate_positive("kappa", parameters.kappa)?;
@@ -240,7 +240,7 @@ pub(crate) fn validate_prices(prices: ArrayView1<'_, f64>) -> Result<(), HestonC
 
 fn filter_impl(
   prices: ArrayView1<'_, f64>,
-  parameters: HestonNMLECEKFParams,
+  parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
   initial: HestonCekfState,
   floor_policy: FloorPolicy,

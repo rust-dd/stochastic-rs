@@ -24,7 +24,7 @@
 //!   estimator (arXiv:1703.09372).  Hurst from
 //!   [`crate::hurst::variations::power_variation_h_inner`].
 //!
-//! In addition, [`FOUParameterEstimationV3`] is a Monte-Carlo
+//! In addition, [`FouParameterEstimationV3`] is a Monte-Carlo
 //! verification helper that simulates an fGN and then re-estimates;
 //! useful for measuring estimator bias / variance against ground
 //! truth, **not** for fitting real time series.
@@ -212,7 +212,7 @@ pub fn estimate_fou_v2(
 /// `Fgn::new(...)` using those parameters, and the estimator stage
 /// recovers them. Useful for measuring estimator bias / variance against
 /// a known ground truth, NOT for fitting a real observed time series.
-pub struct FOUParameterEstimationV3 {
+pub struct FouParameterEstimationV3 {
   alpha: f64,
   mu: f64,
   sigma: f64,
@@ -228,7 +228,7 @@ pub struct FOUParameterEstimationV3 {
   estimated_alpha: Option<f64>,
 }
 
-impl FOUParameterEstimationV3 {
+impl FouParameterEstimationV3 {
   pub fn new(
     series_length: usize,
     hurst: f64,
@@ -528,7 +528,7 @@ mod tests {
 
   #[test]
   fn fou_v3_round_trip_recovers_in_range_params() {
-    let mut v3 = FOUParameterEstimationV3::new(512, 0.65, 0.3, 1.5, 0.1, 0.0, 1.0, 1.0 / 511.0);
+    let mut v3 = FouParameterEstimationV3::new(512, 0.65, 0.3, 1.5, 0.1, 0.0, 1.0, 1.0 / 511.0);
     let res = v3.estimate_parameters();
     assert!(res.hurst.is_finite() && (0.0..1.0).contains(&res.hurst));
     assert!(res.sigma > 0.0 && res.theta > 0.0);

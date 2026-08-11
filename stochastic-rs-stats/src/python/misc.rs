@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "GaussianKDE", unsendable)]
 pub struct PyGaussianKDE {
-  inner: crate::gaussian_kde::GaussianKDE,
+  inner: crate::gaussian_kde::GaussianKde,
 }
 
 #[pymethods]
@@ -12,7 +12,7 @@ impl PyGaussianKDE {
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, bandwidth: f64) -> Self {
     Self {
-      inner: crate::gaussian_kde::GaussianKDE::new(data.as_array().to_owned(), bandwidth),
+      inner: crate::gaussian_kde::GaussianKde::new(data.as_array().to_owned(), bandwidth),
     }
   }
 
@@ -20,7 +20,7 @@ impl PyGaussianKDE {
   #[staticmethod]
   fn silverman<'py>(data: PyReadonlyArray1<'py, f64>) -> Self {
     Self {
-      inner: crate::gaussian_kde::GaussianKDE::with_silverman_bandwidth(data.as_array().to_owned()),
+      inner: crate::gaussian_kde::GaussianKde::with_silverman_bandwidth(data.as_array().to_owned()),
     }
   }
 

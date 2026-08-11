@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 #[cfg(feature = "openblas")]
 #[pyclass(name = "ADFTest", unsendable)]
 pub struct PyADFTest {
-  inner: crate::stationarity::adf::ADFResult,
+  inner: crate::stationarity::adf::AdfResult,
 }
 
 #[cfg(feature = "openblas")]
@@ -50,7 +50,7 @@ impl PyADFTest {
         }
       },
     };
-    let cfg = crate::stationarity::adf::ADFConfig {
+    let cfg = crate::stationarity::adf::AdfConfig {
       deterministic: det,
       lag_selection: sel,
       max_lags,
@@ -89,7 +89,7 @@ impl PyADFTest {
 #[cfg(feature = "openblas")]
 #[pyclass(name = "KPSSTest", unsendable)]
 pub struct PyKPSSTest {
-  inner: crate::stationarity::kpss::KPSSResult,
+  inner: crate::stationarity::kpss::KpssResult,
 }
 
 #[cfg(feature = "openblas")]
@@ -104,15 +104,15 @@ impl PyKPSSTest {
     alpha: f64,
   ) -> PyResult<Self> {
     let t = match trend.to_ascii_lowercase().as_str() {
-      "level" | "c" => crate::stationarity::kpss::KPSSTrend::Level,
-      "trend" | "ct" => crate::stationarity::kpss::KPSSTrend::Trend,
+      "level" | "c" => crate::stationarity::kpss::KpssTrend::Level,
+      "trend" | "ct" => crate::stationarity::kpss::KpssTrend::Trend,
       o => {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
           "trend must be 'level' or 'trend', got '{o}'"
         )));
       }
     };
-    let cfg = crate::stationarity::kpss::KPSSConfig {
+    let cfg = crate::stationarity::kpss::KpssConfig {
       trend: t,
       lags,
       alpha,
@@ -157,7 +157,7 @@ impl PyPhillipsPerronTest {
     alpha: f64,
   ) -> PyResult<Self> {
     use crate::stationarity::DeterministicTerm;
-    use crate::stationarity::phillips_perron::PPTestType;
+    use crate::stationarity::phillips_perron::PpTestType;
     let det = match deterministic.to_ascii_lowercase().as_str() {
       "n" | "none" => DeterministicTerm::None,
       "c" | "constant" => DeterministicTerm::Constant,
@@ -169,8 +169,8 @@ impl PyPhillipsPerronTest {
       }
     };
     let tt = match test_type.to_ascii_lowercase().as_str() {
-      "tau" => PPTestType::Tau,
-      "rho" => PPTestType::Rho,
+      "tau" => PpTestType::Tau,
+      "rho" => PpTestType::Rho,
       o => {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
           "test_type must be 'tau' or 'rho', got '{o}'"
@@ -205,7 +205,7 @@ impl PyPhillipsPerronTest {
 #[cfg(feature = "openblas")]
 #[pyclass(name = "ERSTest", unsendable)]
 pub struct PyERSTest {
-  inner: crate::stationarity::ers_dfgls::ERSResult,
+  inner: crate::stationarity::ers_dfgls::ErsResult,
 }
 
 #[cfg(feature = "openblas")]
@@ -223,10 +223,10 @@ impl PyERSTest {
     alpha: f64,
   ) -> PyResult<Self> {
     use crate::stationarity::LagSelection;
-    use crate::stationarity::ers_dfgls::ERSTrend;
+    use crate::stationarity::ers_dfgls::ErsTrend;
     let tr = match trend.to_ascii_lowercase().as_str() {
-      "c" | "constant" => ERSTrend::Constant,
-      "ct" | "trend" => ERSTrend::ConstantTrend,
+      "c" | "constant" => ErsTrend::Constant,
+      "ct" | "trend" => ErsTrend::ConstantTrend,
       o => {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
           "trend must be 'c' or 'ct', got '{o}'"
@@ -245,7 +245,7 @@ impl PyERSTest {
         }
       },
     };
-    let cfg = crate::stationarity::ers_dfgls::ERSConfig {
+    let cfg = crate::stationarity::ers_dfgls::ErsConfig {
       trend: tr,
       lag_selection: sel,
       max_lags,
@@ -294,10 +294,10 @@ impl PyLeybourneMcCabeTest {
     bootstrap_seed: u64,
     alpha: f64,
   ) -> PyResult<Self> {
-    use crate::stationarity::leybourne_mccabe::LMTrend;
+    use crate::stationarity::leybourne_mccabe::LmTrend;
     let tr = match trend.to_ascii_lowercase().as_str() {
-      "level" | "c" => LMTrend::Level,
-      "trend" | "ct" => LMTrend::Trend,
+      "level" | "c" => LmTrend::Level,
+      "trend" | "ct" => LmTrend::Trend,
       o => {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
           "trend must be 'level' or 'trend', got '{o}'"

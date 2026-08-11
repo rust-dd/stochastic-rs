@@ -4,7 +4,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use super::EPS;
-use super::HestonNMLECEKFParams;
+use super::HestonNmleCekfParams;
 use super::filter::HestonCekfConsistencyBounds;
 use super::filter::HestonCekfCorrection;
 use super::filter::HestonCekfFilterConfig;
@@ -15,7 +15,7 @@ use crate::heston_mle::nmle_heston_with_delta;
 
 /// Configuration of the alternating batch estimator (published API).
 #[derive(Clone, Debug)]
-pub struct HestonNMLECEKFConfig {
+pub struct HestonNmleCekfConfig {
   pub r: f64,
   pub delta: f64,
   pub max_iters: usize,
@@ -23,7 +23,7 @@ pub struct HestonNMLECEKFConfig {
   pub param_damping: f64,
   pub initial_v0: f64,
   pub initial_p0: f64,
-  pub initial_params: HestonNMLECEKFParams,
+  pub initial_params: HestonNmleCekfParams,
   pub q11: f64,
   pub q12: f64,
   pub q22: f64,
@@ -35,7 +35,7 @@ pub struct HestonNMLECEKFConfig {
   pub use_consistent_terms: bool,
 }
 
-impl Default for HestonNMLECEKFConfig {
+impl Default for HestonNmleCekfConfig {
   fn default() -> Self {
     Self {
       r: 0.0,
@@ -45,7 +45,7 @@ impl Default for HestonNMLECEKFConfig {
       param_damping: 0.7,
       initial_v0: 0.04,
       initial_p0: 0.1,
-      initial_params: HestonNMLECEKFParams::default(),
+      initial_params: HestonNmleCekfParams::default(),
       q11: 1.0,
       q12: 0.0,
       q22: 1.0,
@@ -56,7 +56,7 @@ impl Default for HestonNMLECEKFConfig {
 
 /// Output of the alternating batch estimator (published API).
 #[derive(Clone, Debug)]
-pub struct HestonNMLECEKFResult {
+pub struct HestonNmleCekfResult {
   pub params: HestonMleResult,
   pub vol_path: Array1<f64>,
   pub cov_path: Array1<f64>,
@@ -73,8 +73,8 @@ pub struct HestonNMLECEKFResult {
 /// refresh is performed.
 pub fn nmle_cekf_heston(
   prices: ArrayView1<'_, f64>,
-  config: HestonNMLECEKFConfig,
-) -> HestonNMLECEKFResult {
+  config: HestonNmleCekfConfig,
+) -> HestonNmleCekfResult {
   validate_batch_config(prices, &config);
   let mut parameters = config.initial_params.projected_batch();
   let mut converged = false;
@@ -83,7 +83,7 @@ pub fn nmle_cekf_heston(
   for iteration in 0..config.max_iters {
     let (variance_path, _) = cekf_pass(prices, parameters, &config);
     let nmle = nmle_heston_with_delta(prices, variance_path.view(), config.r, config.delta);
-    let updated = HestonNMLECEKFParams::from(nmle).projected_batch();
+    let updated = HestonNmleCekfParams::from(nmle).projected_batch();
     let blended = blend_params(parameters, updated, config.param_damping).projected_batch();
     let max_difference = (blended.kappa - parameters.kappa)
       .abs()
@@ -100,7 +100,7 @@ pub fn nmle_cekf_heston(
   }
 
   let (variance_path, covariance_path) = cekf_pass(prices, parameters, &config);
-  HestonNMLECEKFResult {
+  HestonNmleCekfResult {
     params: HestonMleResult {
       v0: variance_path[0].max(0.0),
       kappa: parameters.kappa,
@@ -117,8 +117,8 @@ pub fn nmle_cekf_heston(
 
 pub(super) fn cekf_pass(
   prices: ArrayView1<'_, f64>,
-  parameters: HestonNMLECEKFParams,
-  config: &HestonNMLECEKFConfig,
+  parameters: HestonNmleCekfParams,
+  config: &HestonNmleCekfConfig,
 ) -> (Array1<f64>, Array1<f64>) {
   let filter_config = HestonCekfFilterConfig {
     r: config.r,
@@ -136,8 +136,8 @@ pub(super) fn cekf_pass(
 }
 
 fn batch_correction(
-  parameters: HestonNMLECEKFParams,
-  config: &HestonNMLECEKFConfig,
+  parameters: HestonNmleCekfParams,
+  config: &HestonNmleCekfConfig,
 ) -> HestonCekfCorrection {
   if config.use_consistent_terms {
     HestonCekfCorrection::Consistent {
@@ -153,12 +153,12 @@ fn batch_correction(
 }
 
 fn blend_params(
-  old: HestonNMLECEKFParams,
-  new: HestonNMLECEKFParams,
+  old: HestonNmleCekfParams,
+  new: HestonNmleCekfParams,
   alpha: f64,
-) -> HestonNMLECEKFParams {
+) -> HestonNmleCekfParams {
   let weight = alpha.clamp(0.0, 1.0);
-  HestonNMLECEKFParams {
+  HestonNmleCekfParams {
     kappa: (1.0 - weight) * old.kappa + weight * new.kappa,
     theta: (1.0 - weight) * old.theta + weight * new.theta,
     sigma: (1.0 - weight) * old.sigma + weight * new.sigma,
@@ -166,7 +166,7 @@ fn blend_params(
   }
 }
 
-fn validate_batch_config(prices: ArrayView1<'_, f64>, config: &HestonNMLECEKFConfig) {
+fn validate_batch_config(prices: ArrayView1<'_, f64>, config: &HestonNmleCekfConfig) {
   assert!(
     prices.len() >= 2,
     "nmle_cekf_heston requires at least 2 prices"

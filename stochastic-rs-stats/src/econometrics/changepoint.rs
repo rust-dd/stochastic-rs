@@ -21,7 +21,7 @@ use crate::traits::FloatExt;
 
 /// Result of a CUSUM control-chart pass.
 #[derive(Debug, Clone)]
-pub struct CusumResult {
+pub struct ChangepointCusumResult {
   /// Upper-side CUSUM statistic $S_t^+$.
   pub upper: Array1<f64>,
   /// Lower-side CUSUM statistic $S_t^-$.
@@ -35,10 +35,10 @@ pub struct CusumResult {
 ///
 /// `series` is standardised in-place: pass already-standardised residuals or a
 /// raw series whose mean and standard deviation will be subtracted.
-pub fn cusum<T: FloatExt>(series: ArrayView1<T>, k: f64, h: f64) -> CusumResult {
+pub fn cusum<T: FloatExt>(series: ArrayView1<T>, k: f64, h: f64) -> ChangepointCusumResult {
   let n = series.len();
   if n == 0 {
-    return CusumResult {
+    return ChangepointCusumResult {
       upper: Array1::zeros(0),
       lower: Array1::zeros(0),
       alarms: Vec::new(),
@@ -66,7 +66,7 @@ pub fn cusum<T: FloatExt>(series: ArrayView1<T>, k: f64, h: f64) -> CusumResult 
       alarms.push(i);
     }
   }
-  CusumResult {
+  ChangepointCusumResult {
     upper,
     lower,
     alarms,

@@ -10,7 +10,7 @@ use super::common::validate_series;
 
 /// Phillips-Perron test statistic variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PPTestType {
+pub enum PpTestType {
   /// Z-tau (t-ratio style) statistic.
   Tau,
   /// Z-rho statistic.
@@ -23,7 +23,7 @@ pub struct PhillipsPerronConfig {
   /// Deterministic terms in the test regression.
   pub deterministic: DeterministicTerm,
   /// PP statistic type.
-  pub test_type: PPTestType,
+  pub test_type: PpTestType,
   /// Newey-West lag length. If `None`, a Schwert-style default is used.
   pub lags: Option<usize>,
   /// Significance level for decision output (used for `Tau`).
@@ -34,7 +34,7 @@ impl Default for PhillipsPerronConfig {
   fn default() -> Self {
     Self {
       deterministic: DeterministicTerm::Constant,
-      test_type: PPTestType::Tau,
+      test_type: PpTestType::Tau,
       lags: None,
       alpha: 0.05,
     }
@@ -49,7 +49,7 @@ pub struct PhillipsPerronResult {
   /// Newey-West lag length used.
   pub used_lags: usize,
   /// Variant of the PP statistic.
-  pub test_type: PPTestType,
+  pub test_type: PpTestType,
   /// Critical values (available for `Tau` output).
   pub critical_values: Option<CriticalValues>,
   /// Unit-root rejection decision (available for `Tau` output).
@@ -96,21 +96,21 @@ pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> Ph
   let rho = 1.0 + fit.gamma;
 
   let statistic = match cfg.test_type {
-    PPTestType::Rho => {
+    PpTestType::Rho => {
       n_f * (rho - 1.0) - 0.5 * ((n_f * n_f * fit.sigma2 / s2.max(1e-12)) * (lam2 - s2))
     }
-    PPTestType::Tau => {
+    PpTestType::Tau => {
       let se = fit.std_err_gamma.max(1e-12);
       (gamma0 / lam2).sqrt() * ((rho - 1.0) / se) - 0.5 * ((lam2 - s2) / lam) * (n_f * se / s)
     }
   };
 
   let (critical_values, reject_unit_root) = match cfg.test_type {
-    PPTestType::Tau => {
+    PpTestType::Tau => {
       let cvals = adf_critical_values(cfg.deterministic);
       (Some(cvals), Some(statistic < cvals.value_at(cfg.alpha)))
     }
-    PPTestType::Rho => (None, None),
+    PpTestType::Rho => (None, None),
   };
 
   PhillipsPerronResult {
@@ -127,8 +127,8 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
 
-  use super::PPTestType;
   use super::PhillipsPerronConfig;
+  use super::PpTestType;
   use super::phillips_perron_test;
   use crate::stationarity::common::DeterministicTerm;
 
@@ -163,7 +163,7 @@ mod tests {
     let x = simulate_ar1(0.75, 2500, 0xA11CE);
     let cfg = PhillipsPerronConfig {
       deterministic: DeterministicTerm::Constant,
-      test_type: PPTestType::Tau,
+      test_type: PpTestType::Tau,
       lags: Some(12),
       ..PhillipsPerronConfig::default()
     };
@@ -180,7 +180,7 @@ mod tests {
     let x = simulate_random_walk(2500, 0xBADC0DE);
     let cfg = PhillipsPerronConfig {
       deterministic: DeterministicTerm::Constant,
-      test_type: PPTestType::Tau,
+      test_type: PpTestType::Tau,
       lags: Some(12),
       alpha: 0.01,
     };

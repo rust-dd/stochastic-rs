@@ -17,8 +17,8 @@ use crate::heston_mle::HestonMleResult;
 mod batch;
 mod filter;
 
-pub use batch::HestonNMLECEKFConfig;
-pub use batch::HestonNMLECEKFResult;
+pub use batch::HestonNmleCekfConfig;
+pub use batch::HestonNmleCekfResult;
 pub use batch::nmle_cekf_heston;
 pub use filter::HestonCekfConsistencyBounds;
 pub use filter::HestonCekfCorrection;
@@ -39,14 +39,14 @@ const BATCH_RHO_MAX: f64 = 0.9999;
 
 /// Heston parameters used by the CEKF state transition and measurement model.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct HestonNMLECEKFParams {
+pub struct HestonNmleCekfParams {
   pub kappa: f64,
   pub theta: f64,
   pub sigma: f64,
   pub rho: f64,
 }
 
-impl Default for HestonNMLECEKFParams {
+impl Default for HestonNmleCekfParams {
   fn default() -> Self {
     Self {
       kappa: 1.5,
@@ -57,7 +57,7 @@ impl Default for HestonNMLECEKFParams {
   }
 }
 
-impl From<HestonMleResult> for HestonNMLECEKFParams {
+impl From<HestonMleResult> for HestonNmleCekfParams {
   fn from(value: HestonMleResult) -> Self {
     Self {
       kappa: value.kappa,
@@ -68,7 +68,7 @@ impl From<HestonMleResult> for HestonNMLECEKFParams {
   }
 }
 
-impl HestonNMLECEKFParams {
+impl HestonNmleCekfParams {
   pub(crate) fn projected_batch(mut self) -> Self {
     self.kappa = self.kappa.abs().max(EPS);
     self.theta = self.theta.abs().max(EPS);

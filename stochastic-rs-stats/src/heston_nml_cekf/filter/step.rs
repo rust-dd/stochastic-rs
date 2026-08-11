@@ -9,7 +9,7 @@ use super::HestonCekfStepResult;
 use super::HestonCekfVarianceProjection;
 use crate::heston_nml_cekf::EPS;
 use crate::heston_nml_cekf::HestonCekfError;
-use crate::heston_nml_cekf::HestonNMLECEKFParams;
+use crate::heston_nml_cekf::HestonNmleCekfParams;
 
 #[derive(Clone, Copy)]
 pub(super) enum FloorPolicy {
@@ -20,7 +20,7 @@ pub(super) enum FloorPolicy {
 pub(super) fn step_impl(
   previous: HestonCekfState,
   log_return: f64,
-  parameters: HestonNMLECEKFParams,
+  parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
   floor_policy: FloorPolicy,
 ) -> Result<HestonCekfStepResult, HestonCekfError> {

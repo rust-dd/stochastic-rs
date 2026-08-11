@@ -1,8 +1,8 @@
 use super::HestonCekfConsistencyBounds;
 use super::HestonCekfCorrection;
 use super::HestonCekfFilterConfig;
-use super::HestonNMLECEKFConfig;
-use super::HestonNMLECEKFParams;
+use super::HestonNmleCekfConfig;
+use super::HestonNmleCekfParams;
 use super::batch::cekf_pass;
 use super::filter_heston_cekf;
 use super::nmle_cekf_heston;
@@ -13,7 +13,7 @@ fn batch_estimator_returns_finite_outputs() {
   let observations = 320;
   let delta = 1.0 / (observations as f64 - 1.0);
   let (prices, _) = simulate_heston_prices(observations, delta, 42);
-  let config = HestonNMLECEKFConfig {
+  let config = HestonNmleCekfConfig {
     r: 0.01,
     delta,
     max_iters: 8,
@@ -21,13 +21,13 @@ fn batch_estimator_returns_finite_outputs() {
     param_damping: 0.6,
     initial_v0: 0.06,
     initial_p0: 0.2,
-    initial_params: HestonNMLECEKFParams {
+    initial_params: HestonNmleCekfParams {
       kappa: 1.0,
       theta: 0.03,
       sigma: 0.4,
       rho: -0.3,
     },
-    ..HestonNMLECEKFConfig::default()
+    ..HestonNmleCekfConfig::default()
   };
   let result = nmle_cekf_heston(prices.view(), config);
 
@@ -56,17 +56,17 @@ fn batch_estimator_returns_finite_outputs() {
 fn batch_reported_parameters_reproduce_the_returned_path() {
   let delta = 1.0 / 252.0;
   let (prices, _) = simulate_heston_prices(360, delta, 53);
-  let config = HestonNMLECEKFConfig {
+  let config = HestonNmleCekfConfig {
     r: 0.015,
     delta,
     max_iters: 2,
     tol: 1e-12,
     param_damping: 0.35,
     initial_v0: 0.07,
-    ..HestonNMLECEKFConfig::default()
+    ..HestonNmleCekfConfig::default()
   };
   let result = nmle_cekf_heston(prices.view(), config.clone());
-  let reported = HestonNMLECEKFParams::from(result.params.clone()).projected_batch();
+  let reported = HestonNmleCekfParams::from(result.params.clone()).projected_batch();
   let (expected_variance, expected_covariance) = cekf_pass(prices.view(), reported, &config);
 
   assert_eq!(result.vol_path, expected_variance);
@@ -77,19 +77,19 @@ fn batch_reported_parameters_reproduce_the_returned_path() {
 fn batch_stops_without_a_hidden_parameter_refresh() {
   let delta = 1.0 / 252.0;
   let (prices, _) = simulate_heston_prices(256, delta, 59);
-  let initial = HestonNMLECEKFParams {
+  let initial = HestonNmleCekfParams {
     kappa: 0.91,
     theta: 0.071,
     sigma: 0.47,
     rho: -0.28,
   };
-  let config = HestonNMLECEKFConfig {
+  let config = HestonNmleCekfConfig {
     delta,
     max_iters: 1,
     tol: 1e-15,
     param_damping: 0.0,
     initial_params: initial,
-    ..HestonNMLECEKFConfig::default()
+    ..HestonNmleCekfConfig::default()
   };
   let result = nmle_cekf_heston(prices.view(), config);
 
@@ -103,13 +103,13 @@ fn batch_stops_without_a_hidden_parameter_refresh() {
 fn batch_nonidentity_noise_uses_the_corrected_filter_core() {
   let delta = 1.0 / 252.0;
   let (prices, _) = simulate_heston_prices(64, delta, 61);
-  let parameters = HestonNMLECEKFParams {
+  let parameters = HestonNmleCekfParams {
     kappa: 1.1,
     theta: 0.05,
     sigma: 0.36,
     rho: -0.4,
   };
-  let batch = HestonNMLECEKFConfig {
+  let batch = HestonNmleCekfConfig {
     delta,
     initial_params: parameters,
     initial_p0: 0.0004,
@@ -117,7 +117,7 @@ fn batch_nonidentity_noise_uses_the_corrected_filter_core() {
     q12: 0.35,
     q22: 1.2,
     use_consistent_terms: true,
-    ..HestonNMLECEKFConfig::default()
+    ..HestonNmleCekfConfig::default()
   };
   let (batch_variance, batch_covariance) = cekf_pass(prices.view(), parameters, &batch);
   let filter = HestonCekfFilterConfig {

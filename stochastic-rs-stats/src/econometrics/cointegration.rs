@@ -20,7 +20,7 @@ use ndarray_linalg::Eig;
 use ndarray_linalg::Inverse;
 use ndarray_linalg::LeastSquaresSvd;
 
-use crate::stationarity::adf::ADFConfig;
+use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
 
 /// Result of an Engle-Granger 2-step test for $y_t = \alpha + \beta x_t + \varepsilon_t$.
@@ -61,7 +61,7 @@ pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrange
   for i in 0..n {
     residuals[i] = y[i] - alpha - beta * x[i];
   }
-  let cfg = ADFConfig::default();
+  let cfg = AdfConfig::default();
   let adf = adf_test(residuals.view(), cfg);
   let crit = phillips_ouliaris_critical_values_two_var();
   let reject = adf.statistic < crit.1;

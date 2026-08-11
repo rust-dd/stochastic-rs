@@ -15,13 +15,13 @@ use ndarray::ArrayView1;
 /// - `data`: 1D array of data points.
 /// - `bandwidth`: The bandwidth (smoothing parameter) for the Gaussian kernel.
 #[derive(Debug)]
-pub struct GaussianKDE {
+pub struct GaussianKde {
   data: Array1<f64>,
   bandwidth: f64,
 }
 
-impl GaussianKDE {
-  /// Creates a new `GaussianKDE` with given data and bandwidth.
+impl GaussianKde {
+  /// Creates a new `GaussianKde` with given data and bandwidth.
   ///
   /// # Arguments
   ///
@@ -30,21 +30,21 @@ impl GaussianKDE {
   ///
   /// # Returns
   ///
-  /// A `GaussianKDE` instance containing the specified data and bandwidth.
+  /// A `GaussianKde` instance containing the specified data and bandwidth.
   ///
   /// # Examples
   ///
   /// ```
   /// use ndarray::Array1;
-  /// // Suppose we already have a GaussianKDE struct in scope
+  /// // Suppose we already have a GaussianKde struct in scope
   /// // let data = Array1::from(vec![1.0, 2.0, 3.0]);
-  /// // let kde = GaussianKDE::new(data, 0.5);
+  /// // let kde = GaussianKde::new(data, 0.5);
   /// ```
   pub fn new(data: Array1<f64>, bandwidth: f64) -> Self {
     Self { data, bandwidth }
   }
 
-  /// Creates a new `GaussianKDE` where the bandwidth is automatically
+  /// Creates a new `GaussianKde` where the bandwidth is automatically
   /// chosen by Silverman's rule of thumb.
   ///
   /// Silverman’s rule of thumb (for 1D) is:
@@ -62,7 +62,7 @@ impl GaussianKDE {
   ///
   /// # Returns
   ///
-  /// A `GaussianKDE` instance with bandwidth estimated by Silverman's rule.
+  /// A `GaussianKde` instance with bandwidth estimated by Silverman's rule.
   pub fn with_silverman_bandwidth(data: Array1<f64>) -> Self {
     let h = silverman_bandwidth(data.view());
     Self { data, bandwidth: h }
@@ -98,7 +98,7 @@ impl GaussianKDE {
   /// # Examples
   ///
   /// ```text
-  /// // let kde = GaussianKDE::new(data, 0.5);
+  /// // let kde = GaussianKde::new(data, 0.5);
   /// // let density_value = kde.evaluate(1.5);
   /// ```
   pub fn evaluate(&self, x: f64) -> f64 {
@@ -123,7 +123,7 @@ impl GaussianKDE {
   /// # Examples
   ///
   /// ```text
-  /// // let kde = GaussianKDE::new(data, 0.5);
+  /// // let kde = GaussianKde::new(data, 0.5);
   /// // let xs = Array1::linspace(0.0, 5.0, 50);
   /// // let ys = kde.evaluate_array(&xs);
   /// ```

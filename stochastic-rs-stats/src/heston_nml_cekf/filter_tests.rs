@@ -6,7 +6,7 @@ use super::HestonCekfError;
 use super::HestonCekfFilterConfig;
 use super::HestonCekfPositiveStatePolicy;
 use super::HestonCekfState;
-use super::HestonNMLECEKFParams;
+use super::HestonNmleCekfParams;
 use super::filter_heston_cekf;
 use super::heston_cekf_step;
 use super::test_support::assert_close;
@@ -15,7 +15,7 @@ use super::test_support::simulate_heston_prices;
 #[test]
 fn fixed_filter_matches_repeated_steps() {
   let (prices, _) = simulate_heston_prices(80, 1.0 / 252.0, 9);
-  let parameters = HestonNMLECEKFParams::default();
+  let parameters = HestonNmleCekfParams::default();
   let config = HestonCekfFilterConfig::default();
   let filtered = filter_heston_cekf(prices.view(), parameters, &config).unwrap();
   let mut state = HestonCekfState {
@@ -39,7 +39,7 @@ fn fixed_filter_matches_repeated_steps() {
 #[test]
 fn future_prices_cannot_change_a_filtered_prefix() {
   let (prices, _) = simulate_heston_prices(96, 1.0 / 252.0, 17);
-  let parameters = HestonNMLECEKFParams::default();
+  let parameters = HestonNmleCekfParams::default();
   let config = HestonCekfFilterConfig::default();
   let full = filter_heston_cekf(prices.view(), parameters, &config).unwrap();
   let prefix = filter_heston_cekf(prices.slice(ndarray::s![..51]), parameters, &config).unwrap();
@@ -60,7 +60,7 @@ fn future_prices_cannot_change_a_filtered_prefix() {
 #[test]
 fn consistent_filter_rejects_a_parameter_outside_prior_bounds() {
   let prices = Array1::from_vec(vec![100.0, 100.2]);
-  let parameters = HestonNMLECEKFParams::default();
+  let parameters = HestonNmleCekfParams::default();
   let config = HestonCekfFilterConfig {
     correction: HestonCekfCorrection::Consistent {
       bounds: HestonCekfConsistencyBounds {
@@ -83,7 +83,7 @@ fn consistent_filter_rejects_a_parameter_outside_prior_bounds() {
 
 #[test]
 fn consistent_delta_q_uses_prior_bounds() {
-  let parameters = HestonNMLECEKFParams::default();
+  let parameters = HestonNmleCekfParams::default();
   let previous = HestonCekfState {
     variance: 0.05,
     error_covariance_bound: 0.002,
@@ -121,7 +121,7 @@ fn consistent_delta_q_uses_prior_bounds() {
 
 #[test]
 fn nonidentity_noise_uses_full_cross_covariance_algebra() {
-  let parameters = HestonNMLECEKFParams {
+  let parameters = HestonNmleCekfParams {
     kappa: 1.2,
     theta: 0.05,
     sigma: 0.32,
@@ -209,7 +209,7 @@ fn a_filter_floor_hit_is_a_typed_hard_failure() {
   let result = heston_cekf_step(
     previous,
     100.0,
-    HestonNMLECEKFParams::default(),
+    HestonNmleCekfParams::default(),
     &HestonCekfFilterConfig::default(),
   );
 
@@ -228,7 +228,7 @@ fn projection_is_bit_identical_to_strict_when_the_state_is_feasible() {
     variance: 0.04,
     error_covariance_bound: 0.0004,
   };
-  let parameters = HestonNMLECEKFParams::default();
+  let parameters = HestonNmleCekfParams::default();
   let strict_config = HestonCekfFilterConfig::default();
   let projected_config = HestonCekfFilterConfig {
     positive_state_policy: HestonCekfPositiveStatePolicy::Project { floor: 1e-6 },
@@ -247,7 +247,7 @@ fn projection_is_audited_without_changing_covariance_algebra() {
     variance: 0.04,
     error_covariance_bound: 0.0004,
   };
-  let parameters = HestonNMLECEKFParams::default();
+  let parameters = HestonNmleCekfParams::default();
   let low_floor_config = HestonCekfFilterConfig {
     positive_state_policy: HestonCekfPositiveStatePolicy::Project { floor: 1e-6 },
     ..HestonCekfFilterConfig::default()
@@ -279,7 +279,7 @@ fn fixed_filter_aggregates_indexed_projection_diagnostics() {
     positive_state_policy: HestonCekfPositiveStatePolicy::Project { floor: 1e-6 },
     ..HestonCekfFilterConfig::default()
   };
-  let result = filter_heston_cekf(prices.view(), HestonNMLECEKFParams::default(), &config).unwrap();
+  let result = filter_heston_cekf(prices.view(), HestonNmleCekfParams::default(), &config).unwrap();
   let projection = result.projection_diagnostics.last_projection.unwrap();
 
   assert_eq!(result.projection_diagnostics.total_steps, 1);
@@ -303,7 +303,7 @@ fn projection_floor_must_be_finite_and_above_the_numerical_floor() {
       ..HestonCekfFilterConfig::default()
     };
     assert!(matches!(
-      filter_heston_cekf(prices.view(), HestonNMLECEKFParams::default(), &config),
+      filter_heston_cekf(prices.view(), HestonNmleCekfParams::default(), &config),
       Err(HestonCekfError::InvalidValue {
         field: "positive state projection floor",
         ..
@@ -318,7 +318,7 @@ fn projection_does_not_mask_an_invalid_predicted_state() {
     variance: 0.04,
     error_covariance_bound: 0.0004,
   };
-  let parameters = HestonNMLECEKFParams {
+  let parameters = HestonNmleCekfParams {
     kappa: 300.0,
     theta: 0.001,
     sigma: 0.3,
@@ -354,10 +354,10 @@ fn projection_does_not_mask_a_nonfinite_updated_state() {
     heston_cekf_step(
       previous,
       f64::MAX,
-      HestonNMLECEKFParams {
+      HestonNmleCekfParams {
         sigma: 10.0,
         rho: -0.9,
-        ..HestonNMLECEKFParams::default()
+        ..HestonNmleCekfParams::default()
       },
       &config
     ),

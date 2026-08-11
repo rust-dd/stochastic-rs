@@ -8,7 +8,7 @@ use super::common::validate_series;
 
 /// Deterministic specification for Leybourne-McCabe style testing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LMTrend {
+pub enum LmTrend {
   /// Stationary around a fixed mean.
   Level,
   /// Trend-stationary around a linear trend.
@@ -19,7 +19,7 @@ pub enum LMTrend {
 #[derive(Debug, Clone, Copy)]
 pub struct LeybourneMcCabeConfig {
   /// Null deterministic structure.
-  pub trend: LMTrend,
+  pub trend: LmTrend,
   /// AR prewhitening lag order.
   pub ar_lags: usize,
   /// Parametric bootstrap replications for p-value estimation.
@@ -33,7 +33,7 @@ pub struct LeybourneMcCabeConfig {
 impl Default for LeybourneMcCabeConfig {
   fn default() -> Self {
     Self {
-      trend: LMTrend::Level,
+      trend: LmTrend::Level,
       ar_lags: 1,
       bootstrap_samples: 400,
       bootstrap_seed: 1234,
@@ -64,13 +64,13 @@ impl crate::traits::HypothesisTest for LeybourneMcCabeResult {
   }
 }
 
-fn detrend_series(y: &[f64], trend: LMTrend) -> Vec<f64> {
+fn detrend_series(y: &[f64], trend: LmTrend) -> Vec<f64> {
   match trend {
-    LMTrend::Level => {
+    LmTrend::Level => {
       let mean = y.iter().sum::<f64>() / y.len() as f64;
       y.iter().map(|v| v - mean).collect()
     }
-    LMTrend::Trend => regress_on_deterministics(y, true).residuals,
+    LmTrend::Trend => regress_on_deterministics(y, true).residuals,
   }
 }
 
@@ -93,7 +93,7 @@ fn lm_statistic_from_residuals(residuals: &[f64]) -> f64 {
 
 fn lm_statistic_with_prewhitening(
   y: &[f64],
-  trend: LMTrend,
+  trend: LmTrend,
   ar_lags: usize,
 ) -> (f64, Vec<f64>, f64) {
   let y_det = detrend_series(y, trend);
