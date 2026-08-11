@@ -152,3 +152,24 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   with no signal. Callers who want the pre-2.7 clamp write
   `.unwrap_or(-0.5)` explicitly. The Python `Leverage` constructor now
   raises `ValueError` instead of silently returning `-0.5`.
+
+### stochastic-rs-stochastic: sub-Feller Cir/Fcir/Heston2D paths are accepted, not rejected
+
+- `Cir::new`, `Fcir::new`, and `Heston2D::new` no longer hard-`assert!` the
+  Feller condition (`2·kappa·theta ≥ sigma²` per factor) — this is a
+  behavioral change, not a signature change (breaking only in the sense
+  that code relying on the previous panic must update, e.g. a
+  `#[should_panic]` test). All three already carry a `use_sym` flag whose
+  entire purpose is handling paths that touch the zero boundary
+  (reflecting when `true`, flooring at zero otherwise), so the Feller
+  precondition was rejecting parameter sets the sampler already handles
+  correctly — and was already absent on `Heston`'s (also-CIR) variance
+  factor, which is the inconsistency this closes. Sub-Feller parameters
+  are now accepted unconditionally; in debug builds, constructing with a
+  Feller violation and `use_sym` not set to `Some(true)` prints a one-line
+  diagnostic to stderr (never panics); release builds pay nothing for the
+  check either way.
+- `stochastic-rs-stochastic::volatility::heston2d`'s
+  `rejects_matlab_feller_violation` test (asserted the old panic) is now
+  `accepts_matlab_feller_violation_with_use_sym`, which builds with
+  `use_sym = Some(true)` and asserts the sampled path is finite instead.

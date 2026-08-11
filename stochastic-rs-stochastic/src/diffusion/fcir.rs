@@ -42,6 +42,16 @@ pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
+  /// Create a new Fcir process.
+  ///
+  /// Same Feller-condition contract as [`crate::diffusion::cir::Cir`]:
+  /// `2·theta·mu ≥ sigma²` keeps the continuous-time process strictly
+  /// positive, but sub-Feller parameters are accepted rather than
+  /// rejected, since the discretised step already keeps every sample
+  /// non-negative — floored at zero by default, or reflected when
+  /// [`use_sym`](Self::use_sym) is `true`. In debug builds, a violation
+  /// not paired with `use_sym = Some(true)` prints a one-line diagnostic
+  /// to stderr; it never panics.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -55,10 +65,15 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
-    assert!(
-      T::from_usize_(2) * theta * mu >= sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
+    #[cfg(debug_assertions)]
+    if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
+      eprintln!(
+        "warning: Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
+         without use_sym = Some(true); the path floors at zero on every \
+         boundary hit instead of reflecting — pass use_sym = Some(true) for \
+         the standard sub-Feller mitigation"
+      );
+    }
 
     Self {
       hurst,
@@ -144,3 +159,34 @@ py_process_1d!(PyFcir, Fcir,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
   params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// `2*theta*mu = 2*0.5*0.1 = 0.1 < sigma^2 = 1.0` — Feller condition
+  /// violated, mirroring the equivalent `Cir` test. `use_sym = Some(true)`
+  /// must build and sample without panicking.
+  #[test]
+  fn fcir_accepts_sub_feller_with_use_sym() {
+    let fcir = Fcir::<f64, _>::new(
+      0.7,
+      0.5,
+      0.1,
+      1.0,
+      256,
+      Some(0.1),
+      Some(1.0),
+      Some(true),
+      Deterministic::new(7),
+    );
+    let path = fcir.sample();
+    assert_eq!(path.len(), 256);
+    assert!(
+      path.iter().all(|x| x.is_finite()),
+      "sub-Feller Fcir path must stay finite under use_sym = Some(true)"
+    );
+  }
+}

@@ -104,6 +104,9 @@ fn cholesky_4x4<T: FloatExt>(rho: [T; 6]) -> [T; 10] {
   [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]
 }
 
+/// Validates every hard precondition except the Feller condition, which
+/// [`Heston2D::new`] checks separately (accepted, not rejected — see its
+/// doc comment).
 fn validate_params<T: FloatExt>(
   x0: &[Option<T>; 2],
   v0: &[Option<T>; 2],
@@ -134,11 +137,6 @@ fn validate_params<T: FloatExt>(
     assert!(kappa[i] >= T::zero(), "kappa[{}] must be non-negative", i);
     assert!(theta[i] >= T::zero(), "theta[{}] must be non-negative", i);
     assert!(sigma[i] >= T::zero(), "sigma[{}] must be non-negative", i);
-    let feller_lhs = T::from_f64_fast(2.0) * kappa[i] * theta[i];
-    assert!(
-      feller_lhs >= sigma[i] * sigma[i],
-      "asset {i} does not satisfy the Feller condition"
-    );
   }
   for (idx, r) in rho.iter().enumerate() {
     assert!(r.is_finite(), "rho[{}] must be finite", idx);
@@ -147,6 +145,36 @@ fn validate_params<T: FloatExt>(
       "rho[{}] out of [-1, 1]",
       idx
     );
+  }
+}
+
+/// In debug builds, warns to stderr for each asset whose variance factor
+/// violates the Feller condition `2·kappa·theta ≥ sigma²` without
+/// `use_sym = Some(true)`. Mirrors [`crate::diffusion::cir::Cir::new`]:
+/// sub-Feller parameters are accepted, not rejected, since the Euler step
+/// already floors (or reflects, under `use_sym`) each variance factor at
+/// zero regardless.
+fn warn_on_feller_violation<T: FloatExt>(
+  kappa: &[T; 2],
+  theta: &[T; 2],
+  sigma: &[T; 2],
+  use_sym: Option<bool>,
+) {
+  if use_sym == Some(true) {
+    return;
+  }
+  for i in 0..2 {
+    let feller_lhs = T::from_f64_fast(2.0) * kappa[i] * theta[i];
+    if feller_lhs < sigma[i] * sigma[i] {
+      #[cfg(debug_assertions)]
+      eprintln!(
+        "warning: Heston2D::new: asset {i} does not satisfy the Feller \
+         condition (2*kappa*theta < sigma^2) and use_sym is not set to \
+         true; its variance floors at zero on every boundary hit instead \
+         of reflecting — pass use_sym = Some(true) for the standard \
+         sub-Feller mitigation"
+      );
+    }
   }
 }
 
@@ -166,6 +194,7 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
     seed: S,
   ) -> Self {
     validate_params(&x0, &v0, &mu, &theta, &kappa, &sigma, &rho, n, t);
+    warn_on_feller_violation(&kappa, &theta, &sigma, use_sym);
     let chol = cholesky_4x4::<T>(rho);
     Self {
       x0,

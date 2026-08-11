@@ -287,11 +287,13 @@ fn rejects_non_finite_correlation() {
   let _ = inputs.build();
 }
 
-/// Reference: FSDA `Heston2D.m` rejects `2*kappa*theta - sigma^2 < 0`.
+/// Reference: FSDA `Heston2D.m` case with `2*kappa*theta - sigma^2 < 0` for
+/// asset 0. `Cir`/`Fcir`-style contract: sub-Feller parameters are accepted
+/// (not rejected) as long as the Euler variance step stays finite —
+/// `use_sym = Some(true)` is the documented mitigation.
 #[test]
-#[should_panic(expected = "does not satisfy the Feller condition")]
-fn rejects_matlab_feller_violation() {
-  let _ = Heston2D::<f64, _>::new(
+fn accepts_matlab_feller_violation_with_use_sym() {
+  let model = Heston2D::<f64, _>::new(
     [Some(0.0), Some(0.0)],
     [Some(0.4), Some(0.4)],
     [0.0, 0.0],
@@ -301,9 +303,14 @@ fn rejects_matlab_feller_violation() {
     rho_default(),
     16,
     Some(1.0),
-    Some(false),
+    Some(true),
     Deterministic::new(5),
   );
+  let [x1, v1, x2, v2] = model.sample();
+  assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
+  assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
+  assert!(v1.iter().all(|x| *x >= 0.0));
+  assert!(v2.iter().all(|x| *x >= 0.0));
 }
 
 /// Reference: FSDA `Heston2D.m` requires both initial variances to be positive.

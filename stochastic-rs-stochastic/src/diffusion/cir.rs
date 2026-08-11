@@ -44,6 +44,18 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
 
 impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   /// Create a new Cir process.
+  ///
+  /// The Feller condition `2·theta·mu ≥ sigma²` keeps the *continuous-time*
+  /// process strictly positive. Parameters that violate it are accepted
+  /// rather than rejected: the discretised step already keeps every
+  /// sample non-negative regardless — floored at zero by default, or
+  /// reflected about zero when [`use_sym`](Self::use_sym) is `true`,
+  /// which is the documented way to handle sub-Feller paths (matching the
+  /// same-shaped variance factor in
+  /// [`Heston`](crate::volatility::heston::Heston), which imposes no
+  /// Feller precondition at all). In debug builds, a violation not paired
+  /// with `use_sym = Some(true)` prints a one-line diagnostic to stderr;
+  /// it never panics, and release builds pay nothing for the check.
   pub fn new(
     theta: T,
     mu: T,
@@ -54,10 +66,15 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    assert!(
-      T::from_usize_(2) * theta * mu >= sigma.powi(2),
-      "2 * theta * mu < sigma^2"
-    );
+    #[cfg(debug_assertions)]
+    if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
+      eprintln!(
+        "warning: Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
+         without use_sym = Some(true); the path floors at zero on every \
+         boundary hit instead of reflecting — pass use_sym = Some(true) for \
+         the standard sub-Feller mitigation"
+      );
+    }
 
     Self {
       theta,
@@ -150,3 +167,52 @@ py_process_1d!(PyCir, Cir,
   sig: (theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
   params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// `2*theta*mu = 2*0.5*0.1 = 0.1 < sigma^2 = 1.0` — Feller condition
+  /// violated. `use_sym = Some(true)` is the documented mitigation:
+  /// construction and sampling must succeed without panicking, and the
+  /// path must stay finite.
+  #[test]
+  fn cir_accepts_sub_feller_with_use_sym() {
+    let cir = Cir::<f64, _>::new(
+      0.5,
+      0.1,
+      1.0,
+      256,
+      Some(0.1),
+      Some(1.0),
+      Some(true),
+      Deterministic::new(7),
+    );
+    let path = cir.sample();
+    assert_eq!(path.len(), 256);
+    assert!(
+      path.iter().all(|x| x.is_finite()),
+      "sub-Feller Cir path must stay finite under use_sym = Some(true)"
+    );
+  }
+
+  /// The default (floor-at-zero) scheme must also accept sub-Feller
+  /// parameters without panicking — only the diagnostic warning differs.
+  #[test]
+  fn cir_accepts_sub_feller_without_use_sym() {
+    let cir = Cir::<f64, _>::new(
+      0.5,
+      0.1,
+      1.0,
+      256,
+      Some(0.1),
+      Some(1.0),
+      None,
+      Deterministic::new(7),
+    );
+    let path = cir.sample();
+    assert!(path.iter().all(|x| x.is_finite() && *x >= 0.0));
+  }
+}
