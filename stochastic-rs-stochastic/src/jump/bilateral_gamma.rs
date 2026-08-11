@@ -33,12 +33,13 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded> {
   pub alpha_m: T,
   /// Rate parameter for negative jumps.
   pub lambda_m: T,
-  /// Number of discrete simulation points.
+  /// Number of points sampled along the bilateral-gamma path.
   pub n: usize,
-  /// Initial value of the process.
+  /// Initial value X₀ of the bilateral-gamma path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 
@@ -162,12 +163,13 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded> {
   pub alpha_m: T,
   /// Rate parameter for negative jumps.
   pub lambda_m: T,
-  /// Number of discrete simulation points.
+  /// Number of points sampled along the bilateral-gamma-motion path.
   pub n: usize,
-  /// Initial value of the process.
+  /// Initial value X₀ of the bilateral-gamma-motion path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

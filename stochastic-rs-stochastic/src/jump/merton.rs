@@ -40,14 +40,27 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Drift rate μ of the log-price (this field is named `alpha`, not the
+  /// module header's compensator κ).
   pub alpha: T,
+  /// Diffusion scale σ of the continuous (Brownian) component.
   pub sigma: T,
+  /// Jump (Poisson) intensity λ — arrival rate of the log-normal jumps.
   pub lambda: T,
+  /// Jump-size compensator κ (E\[Y−1\]-like term, matching the module
+  /// header's own λκ), subtracted from the drift scaled by `lambda` —
+  /// not a mean-reversion level; Merton's jump-diffusion has no mean
+  /// reversion.
   pub theta: T,
+  /// Number of points sampled along the Merton path.
   pub n: usize,
+  /// Initial value X₀ of the Merton path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Compound-Poisson jump driver generating the log-normal jump sizes.
   pub cpoisson: CompoundPoisson<T, D>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

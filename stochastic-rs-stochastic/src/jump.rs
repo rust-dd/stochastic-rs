@@ -1,8 +1,13 @@
 //! # Jump
 //!
-//! $$
-//! dX_t=a(t,X_t)dt+b(t,X_t)dW_t
-//! $$
+//! Discontinuous-path processes: a continuous (Brownian, possibly zero)
+//! component plus a jump component driven by a Poisson-type counting
+//! process or a subordinated time-change. Covers compound-Poisson
+//! jump-diffusions on top of GBM/Heston (Merton, Kou, Bates, HKDE,
+//! self-exciting Hawkes-driven jumps), pure-jump Lévy processes built by
+//! Brownian subordination (VG, NIG, bilateral Gamma), and tempered-stable
+//! / CGMY-family processes built from a truncated Rosiński series. Each
+//! module's own header states its concrete jump mechanism.
 //!
 pub mod bates;
 pub mod bilateral_gamma;

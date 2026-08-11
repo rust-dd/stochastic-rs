@@ -27,14 +27,28 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Drift rate μ of the log-price (this field is named `alpha`, not the
+  /// module header's jump-size rates η₁/η₂).
   pub alpha: T,
+  /// Diffusion scale σ of the continuous (Brownian) component.
   pub sigma: T,
+  /// Jump (Poisson) intensity λ — arrival rate of the double-exponential
+  /// jumps.
   pub lambda: T,
+  /// Jump-size compensator (E\[Y−1\]-like term), subtracted from the
+  /// drift scaled by `lambda` — not a mean-reversion level; Kou's jump
+  /// process has no mean reversion.
   pub theta: T,
+  /// Number of points sampled along the Kou path.
   pub n: usize,
+  /// Initial value X₀ of the Kou path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Compound-Poisson jump driver generating the double-exponential
+  /// log-jump sizes.
   pub cpoisson: CompoundPoisson<T, D>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

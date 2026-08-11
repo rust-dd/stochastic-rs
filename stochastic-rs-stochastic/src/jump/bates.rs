@@ -36,23 +36,50 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Direct drift rate μ of the asset — one of three mutually-exclusive
+  /// drift specifications (`mu` xor `b` xor the `(r, r_f)` pair); exactly
+  /// one must be `Some`.
   pub mu: Option<T>,
+  /// Cost-of-carry rate b, an alternative drift specification to `mu`.
   pub b: Option<T>,
+  /// Domestic risk-free rate; paired with `r_f` as a third drift
+  /// specification via `r - r_f`.
   pub r: Option<T>,
+  /// Foreign risk-free rate / dividend yield, paired with `r`.
   pub r_f: Option<T>,
+  /// Jump (Poisson) intensity λ — arrival rate of the log-price jumps.
   pub lambda: T,
+  /// Jump-size compensator κ (E[Y−1]-like term, matching the module
+  /// header's own λκ_J), subtracted from the drift scaled by `lambda`.
+  /// Unrelated to mean-reversion speed despite the letter k.
   pub k: T,
+  /// Variance-drift intercept (κθ combined) in the reparametrized variance
+  /// recursion `dv = (alpha − beta·v)dt + ...`, equivalent to `κ(θ−v)`
+  /// with `alpha = κθ`.
   pub alpha: T,
+  /// Variance-drift slope (mean-reversion speed κ) in the same
+  /// reparametrized recursion.
   pub beta: T,
+  /// Vol-of-vol σ scaling the variance factor's own diffusion.
   pub sigma: T,
+  /// Instantaneous correlation ρ between the asset's and variance's
+  /// driving Brownian motions.
   pub rho: T,
+  /// Number of points sampled along the Bates path.
   pub n: usize,
+  /// Initial asset price S₀.
   pub s0: Option<T>,
+  /// Initial variance level v₀.
   pub v0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Reflect (true) instead of floor-at-zero (false/None) negative
+  /// variance proposals.
   pub use_sym: Option<bool>,
   cgns: Cgns<T>,
+  /// Compound-Poisson jump driver added to the asset's log-return.
   pub cpoisson: CompoundPoisson<T, D>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

@@ -35,6 +35,7 @@ pub struct Cts<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<T>,
   /// Total time horizon
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

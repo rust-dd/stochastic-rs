@@ -24,16 +24,33 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Hurst exponent H of the driving fractional Gaussian noise (roughness
+  /// / long-memory of the diffusion part; H = 0.5 recovers a standard
+  /// OU-with-jumps).
   pub hurst: T,
+  /// Mean-reversion speed (κ in the module header's `dX_t=κ(θ−X_t)dt+...`).
+  /// Multiplies `(mu - X_t)`, despite the field's own name.
   pub theta: T,
+  /// Long-run mean level (θ in the module header). The level `X` reverts
+  /// to between jumps.
   pub mu: T,
+  /// Diffusion scale for the fractional-Gaussian-noise term (σ in the
+  /// module header).
   pub sigma: T,
+  /// Number of points sampled along the fOU-plus-jumps path.
   pub n: usize,
+  /// Initial value X₀ of the fOU-plus-jumps path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// User-supplied inter-arrival-time distribution for jumps (must sample
+  /// strictly positive values).
   pub jump_times: D,
+  /// User-supplied jump-size distribution added directly to the path at
+  /// each jump.
   pub jump_sizes: D,
   fgn: Fgn<T, Unseeded, B>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

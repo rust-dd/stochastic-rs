@@ -16,18 +16,26 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Long-run target level / model location parameter.
+  /// Skewness-in-subordinated-time β (matches the module header's own β,
+  /// multiplying the IG-subordinator increment `I_t`). NIG is a pure Lévy
+  /// process with **no mean reversion** — despite the field's name, this
+  /// is not a target level.
   pub theta: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `√(I_t) dW_t`, the Brownian-subordinated
+  /// component riding on top of the IG time-change.
   pub sigma: T,
-  /// Mean-reversion speed parameter.
+  /// Variance-rate of the inverse-Gaussian subordinator (its shape
+  /// parameter is `dt²/kappa`) — controls the IG time-change's dispersion,
+  /// akin to `nu` in [`Vg`](super::vg::Vg). Despite the letter, this is
+  /// **not** a mean-reversion speed; NIG has no mean reversion.
   pub kappa: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the NIG path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the NIG path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

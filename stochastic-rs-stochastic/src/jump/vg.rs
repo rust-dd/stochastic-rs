@@ -16,18 +16,27 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Vg<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Drift / long-run mean-level parameter.
+  /// Drift-in-subordinated-time θ (matches the module header's own θ,
+  /// multiplying the gamma-subordinator increment `G_t`) — a skewness
+  /// parameter, not a mean-reversion level; VG is a pure Lévy process
+  /// with no mean reversion, despite the field's name.
   pub mu: T,
-  /// Diffusion / noise scale parameter.
+  /// Diffusion scale σ multiplying `√(G_t) W_{G_t}`, the
+  /// Brownian-subordinated component riding on top of the gamma
+  /// time-change.
   pub sigma: T,
-  /// Volatility-of-volatility / tail-thickness parameter.
+  /// Variance rate ν of the gamma subordinator `G_t ~ Gamma(t/ν, ν)` —
+  /// controls kurtosis/tail thickness of the VG increments, not a
+  /// vol-of-vol in the Heston sense (there is no separate volatility
+  /// process here).
   pub nu: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the VG path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the VG path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

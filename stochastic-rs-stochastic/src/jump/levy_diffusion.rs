@@ -23,12 +23,19 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Constant drift rate (the module header's generic μ_t, constant here).
   pub gamma: T,
+  /// Diffusion scale σ of the continuous (Brownian) component.
   pub sigma: T,
+  /// Number of points sampled along the Lévy-diffusion path.
   pub n: usize,
+  /// Initial value X₀ of the Lévy-diffusion path.
   pub x0: Option<T>,
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Compound-Poisson driver providing the jump component `dL_t`.
   pub cpoisson: CompoundPoisson<T, D>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

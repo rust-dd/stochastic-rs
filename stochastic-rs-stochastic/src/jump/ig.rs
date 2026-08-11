@@ -15,14 +15,17 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 pub struct Ig<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Model asymmetry / nonlinearity parameter.
+  /// Rate γ of the inverse-Gaussian subordinator: sets the per-step mean
+  /// (`gamma * dt`) and, via the mean squared, the per-step shape of the
+  /// IG(mean, shape) increments — not an asymmetry/skew parameter.
   pub gamma: T,
-  /// Number of discrete simulation points (or samples).
+  /// Number of points sampled along the IG-subordinator path.
   pub n: usize,
-  /// Initial value of the primary state variable.
+  /// Initial value X₀ of the IG-subordinator path.
   pub x0: Option<T>,
-  /// Total simulation horizon (defaults to 1 when omitted).
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 

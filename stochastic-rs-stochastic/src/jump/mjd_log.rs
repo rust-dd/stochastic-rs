@@ -60,6 +60,7 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub s0: Option<T>,
   /// Total simulation horizon (defaults to 1)
   pub t: Option<T>,
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
 }
 
