@@ -75,7 +75,8 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
   /// Enables the symmetric/truncated update variant for the underlying
   /// CIR factor when true (see [`Cir::use_sym`]).
   pub use_sym: Option<bool>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or
+  /// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

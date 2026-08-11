@@ -4,9 +4,11 @@
 //! driven by a single standard Brownian motion, with no jump component.
 //! Covers mean-reverting families (Ornstein–Uhlenbeck, CIR, Jacobi, Pearson
 //! and their fractional/nonlinear variants), non-mean-reverting log-normal
-//! families (GBM and its inhomogeneous/log-domain variants), and
-//! population-growth diffusions (logistic, Gompertz, Verhulst, Kimura).
-//! Each module's own header states its concrete `a(t, X_t)` / `b(t, X_t)`.
+//! families (GBM and its inhomogeneous/log-domain/displaced variants),
+//! population-growth diffusions (logistic, Gompertz, Verhulst, Kimura), and
+//! dimension-indexed radial processes (the squared and plain Bessel
+//! families). Each module's own header states its concrete `a(t, X_t)` /
+//! `b(t, X_t)`.
 //!
 pub mod ait_sahalia;
 pub mod bessel;
