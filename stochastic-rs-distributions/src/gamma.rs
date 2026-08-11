@@ -14,6 +14,7 @@
 //! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for
 //! generating gamma variables", *ACM TOMS* 26(3), 363-372,
 //! DOI: 10.1145/358407.358414.
+use std::cell::Cell;
 use std::cell::UnsafeCell;
 
 use rand::Rng;
@@ -32,7 +33,7 @@ pub struct SimdGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   index: UnsafeCell<usize>,
   normal: SimdNormal<T, 64, R>,
   simd_rng: UnsafeCell<R>,
-  pub(crate) stream_seed: u64,
+  pub(crate) stream_seed: Cell<u64>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
@@ -49,7 +50,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
       index: UnsafeCell::new(16),
       normal,
       simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed,
+      stream_seed: Cell::new(stream_seed),
     }
   }
 
@@ -58,7 +59,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
   #[doc(hidden)]
   pub fn fork(&self, stream_idx: u64) -> Self {
-    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    let mut basis = self.stream_seed.get();
+    let call_basis = crate::simd_rng::derive_seed(&mut basis);
+    self.stream_seed.set(basis);
+    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
     Self::new(
       self.alpha,
       self.scale,

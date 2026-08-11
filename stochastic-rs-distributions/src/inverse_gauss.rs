@@ -4,6 +4,7 @@
 //! f(x)=\sqrt{\frac{\lambda}{2\pi x^3}}\exp\!\left(-\frac{\lambda(x-\mu)^2}{2\mu^2 x}\right),\ x>0
 //! $$
 //!
+use std::cell::Cell;
 use std::cell::UnsafeCell;
 
 use rand::Rng;
@@ -24,7 +25,7 @@ pub struct SimdInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
-  pub(crate) stream_seed: u64,
+  pub(crate) stream_seed: Cell<u64>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
@@ -40,7 +41,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed,
+      stream_seed: Cell::new(stream_seed),
     }
   }
 
@@ -49,7 +50,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
   /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
   #[doc(hidden)]
   pub fn fork(&self, stream_idx: u64) -> Self {
-    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    let mut basis = self.stream_seed.get();
+    let call_basis = crate::simd_rng::derive_seed(&mut basis);
+    self.stream_seed.set(basis);
+    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
     Self::new(
       self.mu,
       self.lambda,

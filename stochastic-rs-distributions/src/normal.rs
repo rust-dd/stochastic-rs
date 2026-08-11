@@ -4,6 +4,7 @@
 //! f(x)=\frac{1}{\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
 //! $$
 //!
+use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
 
@@ -152,7 +153,7 @@ pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = Simd
   buffer: UnsafeCell<[T; N]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
-  pub(crate) stream_seed: u64,
+  pub(crate) stream_seed: Cell<u64>,
 }
 
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
@@ -181,7 +182,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
       buffer: UnsafeCell::new([T::zero(); N]),
       index: UnsafeCell::new(N),
       simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed,
+      stream_seed: Cell::new(stream_seed),
     }
   }
 
@@ -190,7 +191,10 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
   /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
   #[doc(hidden)]
   pub fn fork(&self, stream_idx: u64) -> Self {
-    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    let mut basis = self.stream_seed.get();
+    let call_basis = crate::simd_rng::derive_seed(&mut basis);
+    self.stream_seed.set(basis);
+    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
     Self::new(
       self.mean,
       self.std_dev,

@@ -234,6 +234,75 @@ mod distribution_sampler_tests {
     assert_eq!(a, b);
   }
 
+  /// A second follow-up review (2026-08-11) caught that the fix above only
+  /// proved two *separately-constructed* samplers agree on their *first*
+  /// call — `fork` derived every worker's seed from a value frozen at
+  /// construction, so a single object's `sample_matrix` replayed the exact
+  /// same matrix on every call. "Construct once, call `sample_matrix` per
+  /// Monte Carlo iteration" is the library's central usage pattern, so this
+  /// was a real bug, not a theoretical one. `fork` now advances an
+  /// interior-mutable basis on every parallel-path call; this test asserts
+  /// two consecutive calls diverge, for both `Deterministic` and
+  /// `Unseeded` (repeat calls must advance regardless of seeding strategy).
+  #[test]
+  fn sample_matrix_repeat_calls_advance() {
+    let pool = rayon::ThreadPoolBuilder::new()
+      .num_threads(4)
+      .build()
+      .expect("failed to build 4-thread pool");
+    pool.install(|| {
+      let det = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+      let call1 = det.sample_matrix(200, 2000);
+      let call2 = det.sample_matrix(200, 2000);
+      assert_ne!(
+        call1, call2,
+        "Deterministic sample_matrix replayed the same matrix on a repeat call"
+      );
+
+      let unseeded = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
+      let call1 = unseeded.sample_matrix(200, 2000);
+      let call2 = unseeded.sample_matrix(200, 2000);
+      assert_ne!(
+        call1, call2,
+        "Unseeded sample_matrix replayed the same matrix on a repeat call"
+      );
+    });
+  }
+
+  /// Companion to [`sample_matrix_repeat_calls_advance`]: advancing the
+  /// fork basis per call must not break cross-object reproducibility.
+  /// Two identically-`Deterministic`-seeded objects still need to agree
+  /// call-for-call (their live states advance in lockstep from an
+  /// identical starting point), and a small *serial* call sandwiched
+  /// between the two parallel calls (below the fork threshold, so it never
+  /// touches the fork basis) must not desynchronize them.
+  #[test]
+  fn sample_matrix_call_sequence_deterministic() {
+    let pool = rayon::ThreadPoolBuilder::new()
+      .num_threads(4)
+      .build()
+      .expect("failed to build 4-thread pool");
+    pool.install(|| {
+      let dist_a = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+      let dist_b = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+
+      let a_call1 = dist_a.sample_matrix(200, 2000);
+      let b_call1 = dist_b.sample_matrix(200, 2000);
+      assert_eq!(a_call1, b_call1, "first parallel call diverged");
+
+      // Below MIN_PAR_CHUNK: takes the serial `fill_slice` path, which
+      // must not perturb either object's fork basis.
+      let a_serial = dist_a.sample_matrix(2, 8);
+      let b_serial = dist_b.sample_matrix(2, 8);
+      assert_eq!(a_serial, b_serial, "serial call diverged");
+
+      let a_call2 = dist_a.sample_matrix(200, 2000);
+      let b_call2 = dist_b.sample_matrix(200, 2000);
+      assert_eq!(a_call2, b_call2, "second parallel call diverged");
+      assert_ne!(a_call1, a_call2, "second parallel call replayed the first");
+    });
+  }
+
   /// `rand_distr::Distribution::sample`'s `rng` argument is documented as
   /// unused across every `Simd*` type — feeding it two genuinely different
   /// external RNGs must not change the output of a `Deterministic`-seeded

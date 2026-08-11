@@ -25,18 +25,32 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `Deterministic::new(seed)` for reproducible output regardless of what
   `Rng` is passed to `.sample()`.
 - `DistributionSampler::sample_matrix`'s parallel fan-out is now
-  reproducible under `Deterministic` seeding. Previously each rayon worker
-  received a `Clone` of the sampler, and every `Simd*` `Clone` impl
-  re-seeds from `Unseeded` by design (`Clone` means "give me an
-  independent stream") — so a `Deterministic`-seeded sampler silently lost
-  reproducibility the moment `sample_matrix` went multi-threaded. Workers
-  now come from a new `#[doc(hidden)] DistributionSampler::fork(stream_idx)`
-  that derives each worker's seed from the parent's own seed via
-  `splitmix64(parent_seed ^ stream_idx)`: two identically-`Deterministic`-
-  seeded samplers now produce bit-identical `sample_matrix` output
-  regardless of thread count. `Unseeded`-constructed samplers keep today's
-  independent-random parallel behavior. No API signature changed; this is
-  a behavior fix.
+  reproducible under `Deterministic` seeding, including across repeated
+  calls on the same object. Previously each rayon worker received a
+  `Clone` of the sampler, and every `Simd*` `Clone` impl re-seeds from
+  `Unseeded` by design (`Clone` means "give me an independent stream") —
+  so a `Deterministic`-seeded sampler silently lost reproducibility the
+  moment `sample_matrix` went multi-threaded. Workers now come from a new
+  `#[doc(hidden)] DistributionSampler::fork(stream_idx)` that derives each
+  worker's seed from a basis value drawn fresh off the sampler's own live
+  state — an interior-mutable cell distinct from the stream driving real
+  samples — on every call that takes the parallel path, combined with
+  `stream_idx` via `splitmix64(basis ^ stream_idx)`. Two
+  identically-`Deterministic`-seeded samplers now produce bit-identical
+  `sample_matrix` output call-for-call (first call matches first, second
+  matches second, ...) regardless of thread count; repeated calls on the
+  *same* sampler never replay, for `Deterministic`- and
+  `Unseeded`-constructed samplers alike; and a serial call (below the
+  parallel threshold) never touches the fork basis, so interleaving
+  serial and parallel calls stays deterministic across two
+  identically-seeded samplers. No API signature changed; this is a
+  behavior fix.
+- The Python bindings' `sample_par(m, n)` inherits this fix directly:
+  seeded (`seed=...`) callers previously always executed the serial path
+  under the hood (a workaround for the same-call-replay behavior above —
+  going parallel for a reproducible sampler wasn't safe yet); they now
+  take the same parallel path as unseeded callers, reproducible
+  call-for-call via the per-call fork basis described above.
 - Integer-count distributions (`SimdBinomial`, `SimdGeometric`,
   `SimdHypergeometric`, `SimdPoisson`) no longer silently emit `0` when a
   draw overflows the requested output integer type (e.g. sampling

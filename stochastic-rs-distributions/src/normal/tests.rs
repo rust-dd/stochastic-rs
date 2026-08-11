@@ -1,4 +1,6 @@
 use stochastic_rs_core::simd_rng::Deterministic;
+#[cfg(feature = "dual-stream-rng")]
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdNormal;
 use crate::special::erf;

@@ -4,6 +4,7 @@
 //! f(x)=\frac{1}{x\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(\ln x-\mu)^2}{2\sigma^2}\right),\ x>0
 //! $$
 //!
+use std::cell::Cell;
 use std::cell::UnsafeCell;
 
 use rand::Rng;
@@ -21,7 +22,7 @@ pub struct SimdLogNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   normal: SimdNormal<T, 64, R>,
-  stream_seed: u64,
+  stream_seed: Cell<u64>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
@@ -31,11 +32,12 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
   /// [`Self::fill_slice`]), so this type has no separate engine of its
   /// own — `stream_seed` reuses `normal`'s already-captured value purely so
   /// [`Self::fork`] has a stable anchor to derive parallel worker streams
-  /// from (see `SimdBeta::new` for the same reuse pattern).
+  /// from (see `SimdBeta::new` for the same reuse pattern). Its own
+  /// independent `Cell`, so this fork cursor advances on its own from here.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, sigma: T, seed: &S) -> Self {
     assert!(sigma > T::zero());
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = normal.stream_seed;
+    let stream_seed = Cell::new(normal.stream_seed.get());
     Self {
       mu,
       sigma,
@@ -51,7 +53,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
   /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
   #[doc(hidden)]
   pub fn fork(&self, stream_idx: u64) -> Self {
-    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    let mut basis = self.stream_seed.get();
+    let call_basis = crate::simd_rng::derive_seed(&mut basis);
+    self.stream_seed.set(basis);
+    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
     Self::new(
       self.mu,
       self.sigma,

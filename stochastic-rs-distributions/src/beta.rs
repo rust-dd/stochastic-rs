@@ -4,6 +4,7 @@
 //! f(x)=\frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha,\beta)},\ x\in(0,1)
 //! $$
 //!
+use std::cell::Cell;
 use std::cell::UnsafeCell;
 
 use rand::Rng;
@@ -24,7 +25,7 @@ pub struct SimdBeta<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   gamma2: SimdGamma<T, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  stream_seed: u64,
+  stream_seed: Cell<u64>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
@@ -36,8 +37,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
     let gamma2 = SimdGamma::<T, R>::new(beta, T::one(), seed);
     // No own engine to seed — reuse gamma1's already-captured stream_seed
     // as this sampler's fork anchor rather than drawing a fresh value (that
-    // would shift gamma2's derivation relative to today's stream).
-    let stream_seed = gamma1.stream_seed;
+    // would shift gamma2's derivation relative to today's stream). This is
+    // its own independent `Cell`, so SimdBeta's fork cursor advances on its
+    // own from here on, never touching gamma1's.
+    let stream_seed = Cell::new(gamma1.stream_seed.get());
     Self {
       alpha,
       beta,
@@ -54,7 +57,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
   /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
   #[doc(hidden)]
   pub fn fork(&self, stream_idx: u64) -> Self {
-    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    let mut basis = self.stream_seed.get();
+    let call_basis = crate::simd_rng::derive_seed(&mut basis);
+    self.stream_seed.set(basis);
+    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
     Self::new(
       self.alpha,
       self.beta,

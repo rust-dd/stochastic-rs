@@ -114,12 +114,13 @@ pub trait DistributionSampler<T> {
   /// Builds an independent worker stream for the `stream_idx`-th chunk of a
   /// parallel `sample_matrix` fan-out.
   ///
-  /// Deterministic when `self` was constructed from a [`Deterministic`]
-  /// seed — the same `stream_idx` always yields a child with the same
-  /// output — so two identically-seeded samplers produce bit-identical
-  /// `sample_matrix` results regardless of thread count. Independent-random
-  /// when `self` was constructed from [`Unseeded`], matching the un-forked
-  /// parallel behavior.
+  /// Implementors hold their fork anchor in an interior-mutable cell that
+  /// this method reads *and advances* (via
+  /// [`derive_seed`](crate::simd_rng::derive_seed)) before deriving the
+  /// child seed — so `stream_idx` alone does not determine the output:
+  /// which *call* to `sample_matrix` this is matters too. See
+  /// [`sample_matrix`](Self::sample_matrix) for the resulting cross-call
+  /// semantics.
   ///
   /// [`Deterministic`]: crate::simd_rng::Deterministic
   /// [`Unseeded`]: crate::simd_rng::Unseeded
@@ -144,6 +145,29 @@ pub trait DistributionSampler<T> {
     }
   }
 
+  /// Fills an `m × n` matrix, splitting the fill across a rayon `scope`
+  /// when the workload is large enough to amortise the fork cost (below
+  /// that threshold this runs the same single-threaded path as
+  /// [`fill_slice`](Self::fill_slice)).
+  ///
+  /// **Parallel-fork semantics.** Each *call* that takes the parallel path
+  /// draws one fresh basis value off this object's own live state (a
+  /// [`fork`](Self::fork)-private cell, distinct from the stream that
+  /// drives real samples) and fans it out to the workers via
+  /// `derive_fork_seed(basis, worker_index)`. Consequences:
+  /// - Two [`Deterministic`]-seeded objects constructed from the same seed
+  ///   produce bit-identical output call-for-call: the *first*
+  ///   `sample_matrix` call on each agrees, the *second* call on each
+  ///   agrees, and so on — because their live states advance in lockstep.
+  /// - Repeated calls on the *same* object never replay: the basis
+  ///   advances every time the parallel path runs, for both
+  ///   [`Deterministic`]- and [`Unseeded`]-constructed objects.
+  /// - A serial call (small `m * n`) does not touch the fork basis at all,
+  ///   so interleaving serial and parallel calls stays deterministic
+  ///   across two identically-seeded objects.
+  ///
+  /// [`Deterministic`]: crate::simd_rng::Deterministic
+  /// [`Unseeded`]: crate::simd_rng::Unseeded
   #[inline]
   fn sample_matrix(&self, m: usize, n: usize) -> ndarray::Array2<T>
   where

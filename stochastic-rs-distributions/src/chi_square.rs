@@ -4,6 +4,8 @@
 //! X\sim\chi^2_\nu,\quad f(x)=\frac{1}{2^{\nu/2}\Gamma(\nu/2)}x^{\nu/2-1}e^{-x/2}
 //! $$
 //!
+use std::cell::Cell;
+
 use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -16,7 +18,7 @@ use crate::simd_rng::SimdRngExt;
 pub struct SimdChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   df: T,
   gamma: SimdGamma<T, R>,
-  stream_seed: u64,
+  stream_seed: Cell<u64>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
@@ -25,7 +27,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
     let gamma = SimdGamma::<T, R>::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed);
     // No own engine to seed — reuse gamma's already-captured stream_seed as
     // this sampler's fork anchor (see SimdBeta::new for the same pattern).
-    let stream_seed = gamma.stream_seed;
+    // Its own independent `Cell`, so this fork cursor advances on its own.
+    let stream_seed = Cell::new(gamma.stream_seed.get());
     Self {
       df: k,
       gamma,
@@ -38,7 +41,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
   /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
   #[doc(hidden)]
   pub fn fork(&self, stream_idx: u64) -> Self {
-    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    let mut basis = self.stream_seed.get();
+    let call_basis = crate::simd_rng::derive_seed(&mut basis);
+    self.stream_seed.set(basis);
+    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
     Self::new(self.df, &crate::simd_rng::Deterministic::new(child_seed))
   }
 

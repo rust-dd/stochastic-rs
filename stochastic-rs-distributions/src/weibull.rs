@@ -4,6 +4,7 @@
 //! f(x)=\frac{k}{\lambda}\left(\frac{x}{\lambda}\right)^{k-1}e^{-(x/\lambda)^k},\ x\ge0
 //! $$
 //!
+use std::cell::Cell;
 use std::cell::UnsafeCell;
 
 use rand::Rng;
@@ -21,7 +22,7 @@ pub struct SimdWeibull<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   exp1: SimdExpZig<T, 64, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  stream_seed: u64,
+  stream_seed: Cell<u64>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
@@ -32,7 +33,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
     let exp1 = SimdExpZig::new(T::one(), seed);
     // No own engine to seed — reuse exp1's already-captured stream_seed as
     // this sampler's fork anchor (see SimdBeta::new for the same pattern).
-    let stream_seed = exp1.stream_seed;
+    // Its own independent `Cell`, so this fork cursor advances on its own.
+    let stream_seed = Cell::new(exp1.stream_seed.get());
     Self {
       lambda,
       inv_k: T::one() / k,
@@ -48,7 +50,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
   /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
   #[doc(hidden)]
   pub fn fork(&self, stream_idx: u64) -> Self {
-    let child_seed = crate::simd_rng::derive_fork_seed(self.stream_seed, stream_idx);
+    let mut basis = self.stream_seed.get();
+    let call_basis = crate::simd_rng::derive_seed(&mut basis);
+    self.stream_seed.set(basis);
+    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
     Self::new(
       self.lambda,
       T::one() / self.inv_k,

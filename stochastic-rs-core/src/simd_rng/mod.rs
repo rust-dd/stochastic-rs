@@ -174,10 +174,14 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   /// what constructing an RNG already did).
   ///
   /// Samplers with their own internal stream store the returned value (as
-  /// `stream_seed`) so a parallel fan-out (e.g.
-  /// `stochastic-rs-distributions`' `DistributionSampler::fork`) can later
-  /// derive reproducible, independent per-worker streams via
-  /// [`derive_fork_seed(stream_seed, stream_idx)`](derive_fork_seed).
+  /// `stream_seed`, in an interior-mutable cell) as the initial *fork
+  /// basis* for a parallel fan-out (e.g.
+  /// `stochastic-rs-distributions`' `DistributionSampler::fork`). Each
+  /// fan-out call reads and advances that cell via
+  /// [`derive_seed`] before deriving per-worker streams with
+  /// [`derive_fork_seed(basis, stream_idx)`](derive_fork_seed) — so
+  /// repeated fan-outs from the same sampler never replay, while two
+  /// identically-seeded samplers still agree call-for-call.
   fn seed_value(&self) -> u64;
 }
 
