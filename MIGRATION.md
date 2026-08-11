@@ -321,3 +321,23 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `BivariateExt::percent_point`, the canonical name used internally by the
   trait's default sampler and by all 13 bivariate families. No signature
   or behavior change on either trait method.
+
+### stochastic-rs-stochastic: BlackKarasinski/CirPlusPlus constructor order now matches the crate convention
+
+- `BlackKarasinski::new`'s parameter order changes from `(theta, a, sigma,
+  r0, n, t, seed)` to `(theta, a, sigma, n, r0, t, seed)` — `n` moves
+  before `r0`, matching every other single-factor short-rate model in the
+  crate (`Vasicek`, `Cir`, `HullWhite`: `(..., n, x0, t, seed)`). Both
+  types are unreleased (added on `main`, never published), so there is no
+  deprecated shim; update positional call sites by swapping the `r0` and
+  `n` arguments. The Python binding's keyword names (`theta=`, `a=`,
+  `sigma=`, `n=`, `r0=`, `t=`, `seed=`) are unchanged — its
+  `#[pyo3(signature = ...)]` already listed `n` before `r0` (pyo3 requires
+  required arguments before optional ones), so this reorder makes the Rust
+  constructor agree with the Python signature instead of contradicting it.
+- `CirPlusPlus::new`'s parameter order changes from `(kappa, theta, sigma,
+  x0, phi, n, t, use_sym, seed)` to `(kappa, theta, sigma, phi, n, x0, t,
+  use_sym, seed)` — `x0` moves after `phi`/`n`, matching `Cir::new`'s own
+  `(theta, mu, sigma, n, x0, t, use_sym, seed)` tail. Same rationale, and
+  the same already-agreeing Python keyword signature, as `BlackKarasinski`
+  above.

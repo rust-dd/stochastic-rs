@@ -27,7 +27,7 @@
 //!
 //! Reuses [`Cir`]'s own sampler rather than re-deriving the discretization:
 //! [`sampler`](ProcessExt::sampler) builds a plain [`Cir`] from this
-//! struct's own `kappa`/`theta`/`sigma`/`x0`/`n`/`t`/`use_sym`/`seed`
+//! struct's own `kappa`/`theta`/`sigma`/`n`/`x0`/`t`/`use_sym`/`seed`
 //! fields (cloning the seed source — cheap and side-effect-free, see
 //! [`SeedExt`]'s `Clone` supertrait) and keeps its real [`CirSampler`], so
 //! at `phi ≡ 0` the two processes consume the same Gaussian stream through
@@ -62,14 +62,14 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
   pub theta: T,
   /// Diffusion scale σ multiplying `sqrt(x_t) dW_t`.
   pub sigma: T,
-  /// Initial value `x_0` of the CIR factor — not `r_0` directly; the
-  /// observed short rate at `t=0` is `x_0 + phi(0)`.
-  pub x0: Option<T>,
   /// Deterministic shift φ(t) fitting today's term structure, added to
   /// the CIR factor to form the observed short rate `r_t = x_t + phi(t)`.
   pub phi: Fn1D<T>,
   /// Number of points sampled along the path.
   pub n: usize,
+  /// Initial value `x_0` of the CIR factor — not `r_0` directly; the
+  /// observed short rate at `t=0` is `x_0 + phi(0)`.
+  pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Enables the symmetric/truncated update variant for the underlying
@@ -91,9 +91,9 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     kappa: T,
     theta: T,
     sigma: T,
-    x0: Option<T>,
     phi: impl Into<Fn1D<T>>,
     n: usize,
+    x0: Option<T>,
     t: Option<T>,
     use_sym: Option<bool>,
     seed: S,
@@ -111,9 +111,9 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
       kappa,
       theta,
       sigma,
-      x0,
       phi: phi.into(),
       n,
+      x0,
       t,
       use_sym,
       seed,
@@ -224,9 +224,9 @@ impl PyCirPlusPlus {
           kappa,
           theta,
           sigma,
-          x0,
           Fn1D::Py(phi),
           n,
+          x0,
           t,
           use_sym,
           Deterministic::new(s),
@@ -237,9 +237,9 @@ impl PyCirPlusPlus {
           kappa,
           theta,
           sigma,
-          x0,
           Fn1D::Py(phi),
           n,
+          x0,
           t,
           use_sym,
           Unseeded,
@@ -301,9 +301,9 @@ mod tests {
       kappa,
       theta,
       sigma,
-      Some(x0),
       zero_phi as fn(f64) -> f64,
       n,
+      Some(x0),
       Some(t),
       None,
       Deterministic::new(seed),
@@ -343,9 +343,9 @@ mod tests {
       kappa,
       theta,
       sigma,
-      Some(x0),
       const_phi as fn(f64) -> f64,
       n,
+      Some(x0),
       Some(t),
       None,
       Deterministic::new(seed),
@@ -367,9 +367,9 @@ mod tests {
       0.5,
       0.1,
       1.0,
-      Some(0.1),
       zero_phi as fn(f64) -> f64,
       256,
+      Some(0.1),
       Some(1.0),
       Some(true),
       Deterministic::new(7),

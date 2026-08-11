@@ -69,12 +69,12 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
   pub a: T,
   /// Diffusion scale σ multiplying `dW_t` in the log-rate SDE.
   pub sigma: T,
+  /// Number of points sampled along the path.
+  pub n: usize,
   /// Initial short rate r₀. Must be `> 0` so `ln(r0)` is defined; every
   /// subsequent path point is `exp(...)` and so is positive unconditionally
   /// regardless of `r0`.
   pub r0: Option<T>,
-  /// Number of points sampled along the path.
-  pub n: usize,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
@@ -95,8 +95,8 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     theta: impl Into<Fn1D<T>>,
     a: T,
     sigma: T,
-    r0: Option<T>,
     n: usize,
+    r0: Option<T>,
     t: Option<T>,
     seed: S,
   ) -> Self {
@@ -114,8 +114,8 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
       theta: theta.into(),
       a,
       sigma,
-      r0,
       n,
+      r0,
       t,
       seed,
     }
@@ -255,8 +255,8 @@ impl PyBlackKarasinski {
           Fn1D::Py(theta),
           a,
           sigma,
-          r0,
           n,
+          r0,
           t,
           Deterministic::new(s),
         )),
@@ -266,8 +266,8 @@ impl PyBlackKarasinski {
           Fn1D::Py(theta),
           a,
           sigma,
-          r0,
           n,
+          r0,
           t,
           Unseeded,
         )),
@@ -319,8 +319,8 @@ mod tests {
           theta_const as fn(f64) -> f64,
           a,
           sigma,
-          Some(r0),
           n,
+          Some(r0),
           Some(t),
           Deterministic::new(seed),
         );
@@ -348,8 +348,8 @@ mod tests {
       theta_const as fn(f64) -> f64,
       0.8,
       0.5,
-      Some(0.03),
       300,
+      Some(0.03),
       Some(2.0),
       Deterministic::new(2718),
     );
@@ -368,8 +368,8 @@ mod tests {
       theta_const as fn(f64) -> f64,
       0.0,
       0.1,
-      Some(0.03),
       10,
+      Some(0.03),
       Some(1.0),
       Deterministic::new(42),
     );
@@ -388,8 +388,8 @@ mod tests {
       theta_const as fn(f64) -> f64,
       -0.3,
       0.1,
-      Some(0.03),
       10,
+      Some(0.03),
       Some(1.0),
       Deterministic::new(42),
     );
@@ -416,8 +416,8 @@ mod tests {
       theta_const as fn(f64) -> f64,
       a,
       0.0,
-      Some(r0),
       n,
+      Some(r0),
       Some(t),
       Deterministic::new(42),
     );
@@ -446,8 +446,8 @@ mod tests {
       theta_const as fn(f64) -> f64,
       0.8,
       -0.2,
-      Some(0.03),
       10,
+      Some(0.03),
       Some(1.0),
       Deterministic::new(42),
     );
@@ -466,9 +466,9 @@ mod tests {
       0.5,
       0.04,
       0.2,
-      Some(0.03),
       zero_phi as fn(f64) -> f64,
       100,
+      Some(0.03),
       Some(1.0),
       None,
       Deterministic::new(42),
@@ -478,9 +478,9 @@ mod tests {
       0.5,
       0.04,
       0.2,
-      Some(0.03),
       zero_phi as fn(f64) -> f64,
       100,
+      Some(0.03),
       Some(1.0),
       None,
       Deterministic::new(42),
@@ -492,8 +492,8 @@ mod tests {
       theta_const as fn(f64) -> f64,
       0.8,
       0.1,
-      Some(0.03),
       100,
+      Some(0.03),
       Some(1.0),
       Deterministic::new(42),
     )
@@ -502,8 +502,8 @@ mod tests {
       theta_const as fn(f64) -> f64,
       0.8,
       0.1,
-      Some(0.03),
       100,
+      Some(0.03),
       Some(1.0),
       Deterministic::new(42),
     )
