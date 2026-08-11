@@ -50,13 +50,22 @@ use crate::traits::ProcessExt;
 /// Euler recursion is run only up to the second-to-last grid point, and the
 /// last point is assigned `xt` directly rather than through one more
 /// (noisy) step.
+///
+/// Euler-bias caveat: the discretization error is far from uniform across
+/// the path. The drift's own `1/(T-s)` term stays mild for most of `[0, T]`
+/// but grows sharply in the last few steps before the final-step guard
+/// takes over — measured at `n = 201` as ~0.75% relative variance error at
+/// the midpoint but ~65% one grid step before the end. Callers who need
+/// accurate statistics *near* (not just exactly at) the terminal boundary
+/// should use a much finer grid than one tuned only for interior accuracy.
 pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
   pub sigma: T,
   /// Number of points sampled along the path. Both endpoints are
   /// represented as distinct points only when `n >= 2`; `n = 1` collapses to
-  /// the single value `x0` (matching how every other single-path process in
-  /// this crate degrades at `n = 1`).
+  /// the single value `x0`, not `xt` — an arbitrary but documented tie-break
+  /// (matching how every other single-path process in this crate degrades at
+  /// `n = 1`), not a claim that `x0` is somehow more correct than `xt` here.
   pub n: usize,
   /// Pinned starting value X₀ (defaults to 0 when omitted).
   pub x0: Option<T>,
@@ -98,22 +107,31 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BrownianBridge<T, S> {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
       xt: self.xt.unwrap_or(T::zero()),
+      sigma: self.sigma,
       t,
       dt,
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma * dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
     }
   }
 }
 
 /// Reusable [`BrownianBridge`] sampling state: precomputed Euler step size
-/// and the owned Gaussian source, already scaled by `sigma * sqrt(dt)` since
-/// the bridge's diffusion coefficient is constant (unlike, say,
-/// [`crate::diffusion::bessel::Bessel`]'s state-dependent `2√X`).
+/// and the owned Gaussian source. The source draws raw `N(0, dt)` and
+/// `sigma` is applied as a multiplier at consumption in `fill_path`, mirroring
+/// [`crate::diffusion::bessel::Bessel`] / [`crate::diffusion::gbm::Gbm`] /
+/// [`crate::diffusion::ou::Ou`] / [`crate::diffusion::cir::Cir`] rather than
+/// baking the model's own scale into `std_dev` — the latter would make
+/// `SimdNormal::new`'s `assert!(std_dev > 0)` panic outright for `sigma =
+/// 0.0` (a legitimate, degenerate-but-valid input: a zero-vol bridge is just
+/// the deterministic linear interpolation), which this crate's house
+/// convention never does for an in-range parameter (warn-but-accept at
+/// worst, as `Cir`/`Bessel` do at their own boundaries — never panic).
 #[doc(hidden)]
 pub struct BrownianBridgeSampler<T: FloatExt> {
   n: usize,
   x0: T,
   xt: T,
+  sigma: T,
   t: T,
   dt: T,
   normal: SimdNormal<T>,
@@ -139,7 +157,7 @@ impl<T: FloatExt> BrownianBridgeSampler<T> {
     for (k, z) in interior.iter_mut().enumerate() {
       let s = T::from_usize_(k) * self.dt;
       let drift = (self.xt - prev) / (self.t - s) * self.dt;
-      let next = prev + drift + *z;
+      let next = prev + drift + self.sigma * *z;
       *z = next;
       prev = next;
     }
@@ -259,6 +277,38 @@ mod tests {
       best_rel_err <= 2e-2,
       "best-of-3 relative error {best_rel_err} exceeds 2e-2 (expected {expected})"
     );
+  }
+
+  /// `sigma = 0.0` must not panic (regression: `SimdNormal::new` requires
+  /// `std_dev > 0`, so the diffusion scale must never be baked into it) and
+  /// must collapse to the exact deterministic interpolation
+  /// `x0 + (xt - x0) * s / T` at every grid point, endpoints included.
+  #[test]
+  fn brownian_bridge_zero_volatility_is_exact_interpolation() {
+    let x0 = 0.5_f64;
+    let xt = -1.25_f64;
+    let t = 2.0_f64;
+    let n = 50;
+    let bridge = BrownianBridge::<f64, _>::new(
+      0.0,
+      n,
+      Some(x0),
+      Some(xt),
+      Some(t),
+      Deterministic::new(2718),
+    );
+    let path = bridge.sample();
+
+    for (i, &value) in path.iter().enumerate() {
+      let s = i as f64 * (t / (n - 1) as f64);
+      let expected = x0 + (xt - x0) * s / t;
+      assert!(
+        (value - expected).abs() < 1e-9,
+        "grid point {i}: got {value}, expected {expected}"
+      );
+    }
+    assert_eq!(path[0], x0, "path[0] must equal x0 exactly");
+    assert_eq!(path[n - 1], xt, "path[n-1] must equal xt exactly");
   }
 
   /// Same seed twice must be bit-identical.
