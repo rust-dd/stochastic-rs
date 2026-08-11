@@ -25,8 +25,13 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Time-dependent coefficient a(t) in the short rate's drift term
   /// `a(t)·dt`.
   pub a: Fn1D<T>,
-  /// Time-dependent coefficient b(t) multiplying the short rate's own
-  /// level in its update step.
+  /// Time-dependent diffusion-scale function b(t) for the short-rate
+  /// component: `sample_inner` pre-fills `r[1..]` with fresh N(0, dt)
+  /// residuals before the update loop runs, and at step `i` this
+  /// multiplies the residual still sitting in `r[i]` just before that
+  /// slot is overwritten in place with the real path value — the same
+  /// pre-fill-then-consume pattern as e.g. `HullWhite`'s `diff_scale *
+  /// *z`. A diffusion coefficient, not a level-multiplying term.
   pub b: Fn1D<T>,
   /// Time-dependent scaling function p(t,T) multiplying the entire
   /// bracketed drift-plus-diffusion term of the bond-price component
@@ -36,8 +41,13 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Time-dependent drift-rate function q(t,T) for the bond-price
   /// component (multiplied by `dt` inside `p`'s bracket).
   pub q: Fn2D<T>,
-  /// Time-dependent coefficient v(t,T) multiplying the bond-price
-  /// component's own level inside `p`'s bracket.
+  /// Time-dependent diffusion-scale function v(t,T) for the bond-price
+  /// component: `sample_inner` pre-fills `p[1..]` with fresh N(0, dt)
+  /// residuals before the update loop runs, and at step `i` this
+  /// multiplies the residual still sitting in `p[i]` just before that
+  /// slot is overwritten in place — the diffusion term inside `p`'s own
+  /// bracket, the same role `b` plays for `r` and `sigma` plays for `f`.
+  /// Not a level-multiplying term.
   pub v: Fn2D<T>,
   /// Time-dependent forward-rate drift function α(t,T) (matches the
   /// module header's own α(t,T) — HJM drift of `f(t,T)`).
