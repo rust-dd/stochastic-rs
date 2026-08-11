@@ -18,6 +18,15 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   explicit `Rng` (e.g. `dist.fill_slice(&mut rng, &mut out)`) drop that
   first argument; there is no other change needed since the internal
   stream was always the one actually driving output for every other type.
+- `fill_slice_fast(out)` → `fill_slice(out)` (rename, same behavior). This
+  was the pre-wave recommended name for the same amortised-SIMD bulk fill;
+  the rng-ignoring `fill_slice(rng, out)` above was a second, discouraged
+  entry point into the same code. Both collapse into the one
+  `fill_slice(out)` method now — update any call site still spelled
+  `.fill_slice_fast(...)`.
+- `SimdNormal::fill_16(rng, out)` → `fill_16(out)`. Same
+  drop-the-ignored-`Rng`-argument change as `fill_slice`, applied to
+  `SimdNormal`'s 16-lane fixed-size hot-path fill.
 - `rand_distr::Distribution::sample(&self, rng)` is unchanged in shape but
   the `rng` argument is now uniformly unused across all 27 `Simd*` types
   (previously true for 24/27; `SimdBinomial`, `SimdHypergeometric`, and
@@ -31,26 +40,40 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `Unseeded` by design (`Clone` means "give me an independent stream") —
   so a `Deterministic`-seeded sampler silently lost reproducibility the
   moment `sample_matrix` went multi-threaded. Workers now come from a new
-  `#[doc(hidden)] DistributionSampler::fork(stream_idx)` that derives each
-  worker's seed from a basis value drawn fresh off the sampler's own live
-  state — an interior-mutable cell distinct from the stream driving real
-  samples — on every call that takes the parallel path, combined with
+  `#[doc(hidden)] DistributionSampler::fork(stream_idx)`, called once per
+  worker, sequentially on the caller thread, before any worker starts
+  filling; each call reads *and advances* the sampler's own live state —
+  an interior-mutable cell distinct from the stream driving real samples —
+  so every worker draws its own fresh basis value (not one basis shared
+  across the call and fanned out by index), combined with its
   `stream_idx` via `splitmix64(basis ^ stream_idx)`. Two
   identically-`Deterministic`-seeded samplers now produce bit-identical
   `sample_matrix` output call-for-call (first call matches first, second
-  matches second, ...) regardless of thread count; repeated calls on the
-  *same* sampler never replay, for `Deterministic`- and
-  `Unseeded`-constructed samplers alike; and a serial call (below the
-  parallel threshold) never touches the fork basis, so interleaving
-  serial and parallel calls stays deterministic across two
-  identically-seeded samplers. No API signature changed; this is a
-  behavior fix.
+  matches second, ...) **for a fixed thread-pool size** — the worker
+  count is `min(rayon::current_num_threads(), size-derived cap)`, so the
+  same two samplers compared under a different
+  `rayon::current_num_threads()` are not guaranteed to agree, since that
+  changes how many times `fork` is called; repeated calls on the *same*
+  sampler never replay, for `Deterministic`- and `Unseeded`-constructed
+  samplers alike; and a serial call (below the parallel threshold) never
+  touches the fork basis, so interleaving serial and parallel calls stays
+  deterministic across two identically-seeded samplers. No API signature
+  changed; this is a behavior fix.
+- `DistributionSampler` gained a new required method,
+  `#[doc(hidden)] fn fork(&self, stream_idx: u64) -> Self`, and
+  `sample_matrix`'s own bound changed from `Self: Clone + Send` to
+  `Self: Sized + Send` — `fork` replaced `Clone` as the fan-out mechanism,
+  so `Clone` is no longer required. Together with `fill_slice` losing its
+  `Rng` argument (above), this is everything an external implementor of
+  `DistributionSampler` (there are none in-tree besides the 27 `Simd*`
+  types) must update.
 - The Python bindings' `sample_par(m, n)` inherits this fix directly:
   seeded (`seed=...`) callers previously always executed the serial path
   under the hood (a workaround for the same-call-replay behavior above —
   going parallel for a reproducible sampler wasn't safe yet); they now
   take the same parallel path as unseeded callers, reproducible
-  call-for-call via the per-call fork basis described above.
+  call-for-call via the per-call fork basis described above. The same
+  fixed-thread-pool-size caveat applies here too.
 - Integer-count distributions (`SimdBinomial`, `SimdGeometric`,
   `SimdHypergeometric`, `SimdPoisson`) no longer silently emit `0` when a
   draw overflows the requested output integer type (e.g. sampling
@@ -89,10 +112,14 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 - `CVine::sample_seeded`, `DVine::sample_seeded`,
   `NestedArchimedean::sample_seeded` — all renamed to `sample_with_seed`
   and moved from a bespoke inherent method into the `MultivariateExt`
-  trait implementation itself (same call syntax `x.sample_with_seed(n,
-  seed)`, but the method now requires `use
-  stochastic_rs_copulas::traits::MultivariateExt;` in scope, exactly like
-  the existing `.sample(n)`).
+  trait implementation itself. This is *not* a pure rename: the old
+  inherent method returned a bare `Array2<f64>`; the new trait method
+  returns `Result<Array2<f64>, Box<dyn Error>>` (matching every other
+  `MultivariateExt`/`BivariateExt` sampler), so callers add `?` (or
+  `.unwrap()`) — `let paths = x.sample_seeded(n, seed);` becomes `let
+  paths = x.sample_with_seed(n, seed)?;`. The method also now requires
+  `use stochastic_rs_copulas::traits::MultivariateExt;` in scope, exactly
+  like the existing `.sample(n)`.
 - Fixed a latent determinism bug in `NestedArchimedean`: the Clayton
   family's root frailty draw was hardcoded to `Unseeded` regardless of the
   caller's seed (every row re-drew from a fresh unseeded `Gamma`), so

@@ -150,19 +150,27 @@ pub trait DistributionSampler<T> {
   /// that threshold this runs the same single-threaded path as
   /// [`fill_slice`](Self::fill_slice)).
   ///
-  /// **Parallel-fork semantics.** Each *call* that takes the parallel path
-  /// draws one fresh basis value off this object's own live state (a
-  /// [`fork`](Self::fork)-private cell, distinct from the stream that
-  /// drives real samples) and fans it out to the workers via
-  /// `derive_fork_seed(basis, worker_index)`. Consequences:
+  /// **Parallel-fork semantics.** Each worker gets its own fresh basis:
+  /// the parallel path calls [`fork`](Self::fork) once per worker
+  /// (`stream_idx = 0..workers`), sequentially on the caller thread and
+  /// before any worker starts filling, and every `fork` call reads *and
+  /// advances* this object's live state (a private cell distinct from the
+  /// stream that drives real samples) — so worker 0, worker 1, … each draw
+  /// a *different* basis value, combined with their own `stream_idx` via
+  /// `derive_fork_seed(basis, stream_idx)`; it is not one basis shared
+  /// across the call and fanned out by index alone. Consequences:
   /// - Two [`Deterministic`]-seeded objects constructed from the same seed
-  ///   produce bit-identical output call-for-call: the *first*
-  ///   `sample_matrix` call on each agrees, the *second* call on each
-  ///   agrees, and so on — because their live states advance in lockstep.
-  /// - Repeated calls on the *same* object never replay: the basis
+  ///   and run with the same worker count produce bit-identical output
+  ///   call-for-call: the *first* `sample_matrix` call on each agrees, the
+  ///   *second* call on each agrees, and so on — because their live states
+  ///   advance through the same sequence of `fork` calls in lockstep. A
+  ///   different worker count (e.g. a different
+  ///   `rayon::current_num_threads()`) changes how many times `fork` is
+  ///   called and breaks the correspondence.
+  /// - Repeated calls on the *same* object never replay: the live state
   ///   advances every time the parallel path runs, for both
   ///   [`Deterministic`]- and [`Unseeded`]-constructed objects.
-  /// - A serial call (small `m * n`) does not touch the fork basis at all,
+  /// - A serial call (small `m * n`) does not touch the fork state at all,
   ///   so interleaving serial and parallel calls stays deterministic
   ///   across two identically-seeded objects.
   ///

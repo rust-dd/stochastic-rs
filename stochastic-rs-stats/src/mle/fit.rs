@@ -33,14 +33,20 @@ pub struct MleResult {
   /// Whether the L-BFGS run reached a recognised convergence criterion
   /// (`SolverConverged` / `TargetCostReached`).
   ///
-  /// `false` means [`params`](Self::params) is the untouched initial
-  /// guess passed in via `model`'s parameters at call time: either the
-  /// optimiser itself errored before completing a step, or it terminated
-  /// (max iterations, an internal line-search exit, timeout, interrupt)
-  /// without ever improving on that starting point. Previously this case
-  /// was indistinguishable from a genuine fit — the initial guess was
-  /// returned silently. Inspect this field (or propagate it) before
-  /// trusting [`params`](Self::params) downstream.
+  /// `false` means the optimiser did not report clean convergence;
+  /// [`params`](Self::params) then holds the best point found so far,
+  /// which may equal the initial guess only if nothing better was ever
+  /// found. Two distinct cases collapse into `false`: if the optimiser
+  /// itself errored before completing a step, [`params`](Self::params)
+  /// is the untouched initial guess passed in via `model`'s parameters
+  /// at call time; if it instead terminated without error but without
+  /// meeting its own tolerance (max iterations, an internal line-search
+  /// exit, timeout, interrupt), [`params`](Self::params) is
+  /// `get_best_param()` — typically an improved point, not the initial
+  /// guess. Previously both cases were indistinguishable from a genuine
+  /// fit — a fallback was returned silently with no signal. Inspect this
+  /// field (or propagate it) before trusting [`params`](Self::params)
+  /// downstream.
   pub converged: bool,
   /// Number of L-BFGS iterations performed. `0` when the optimiser
   /// errored before its first step, or when the model has no free

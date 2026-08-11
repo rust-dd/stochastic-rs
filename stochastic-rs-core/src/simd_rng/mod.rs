@@ -117,12 +117,19 @@ pub fn derive_seed(state: &mut u64) -> u64 {
 /// Derives a parallel worker's stream seed from a sampler's stored
 /// [`SeedExt::seed_value`] and a worker index.
 ///
-/// Pure function of its two inputs: callers can derive any number of
-/// worker seeds, in any order, from the same `parent_seed` and always get
-/// the same per-`stream_idx` child back. This is what lets
-/// `DistributionSampler::sample_matrix`'s parallel fan-out reproduce the
-/// same per-chunk streams across two identically-[`Deterministic`]-seeded
-/// samplers regardless of how rayon schedules the chunks.
+/// Pure function of its two inputs: the same `(parent_seed, stream_idx)`
+/// pair always yields the same child seed, independent of what other
+/// pairs are derived around it. Each worker passes a *different*
+/// `parent_seed` here — `fork` reads and advances the sampler's shared
+/// fork-basis cell once per worker, so `stream_idx` alone does not select
+/// the basis. This function's purity is therefore not by itself what
+/// makes `DistributionSampler::sample_matrix`'s parallel fan-out
+/// reproducible; that guarantee comes from `fork` being invoked for every
+/// `stream_idx` sequentially on the caller thread, before any worker
+/// starts filling its chunk — two identically-[`Deterministic`]-seeded
+/// samplers issue that same sequential run of `fork` calls and so land on
+/// the same `(basis, stream_idx)` pairs regardless of how rayon later
+/// schedules the (already-seeded) fill work.
 #[inline]
 pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {
   splitmix64_mix(parent_seed ^ stream_idx)
@@ -177,11 +184,13 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   /// `stream_seed`, in an interior-mutable cell) as the initial *fork
   /// basis* for a parallel fan-out (e.g.
   /// `stochastic-rs-distributions`' `DistributionSampler::fork`). Each
-  /// fan-out call reads and advances that cell via
-  /// [`derive_seed`] before deriving per-worker streams with
-  /// [`derive_fork_seed(basis, stream_idx)`](derive_fork_seed) — so
-  /// repeated fan-outs from the same sampler never replay, while two
-  /// identically-seeded samplers still agree call-for-call.
+  /// worker's fork reads and advances that cell via
+  /// [`derive_seed`] to get its own fresh basis, then derives its stream
+  /// with [`derive_fork_seed(basis, stream_idx)`](derive_fork_seed) — one
+  /// read-and-advance per worker, not one per fan-out call — so repeated
+  /// fan-outs from the same sampler never replay, while two
+  /// identically-seeded samplers issuing the same sequence of forks still
+  /// agree call-for-call.
   fn seed_value(&self) -> u64;
 }
 
