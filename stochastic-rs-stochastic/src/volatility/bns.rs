@@ -10,8 +10,8 @@
 //! where $Z = (Z_t)_{t \ge 0}$ is a **non-negative Lévy subordinator**
 //! (Barndorff-Nielsen & Shephard 2001, *Journal of the Royal Statistical
 //! Society* Series B, §2). The volatility process is the
-//! [`non-Gaussian Ornstein-Uhlenbeck process`][BNS01] with mean-reversion
-//! rate $\lambda$; the jumps of $Z$ provide the positive shocks that
+//! [`non-Gaussian Ornstein-Uhlenbeck process`](https://doi.org/10.1111/1467-9868.00282)
+//! with mean-reversion rate $\lambda$; the jumps of $Z$ provide the positive shocks that
 //! keep $\sigma^2_t \ge 0$ at all times.
 //!
 //! ## Subordinator choice — compound Poisson + Gamma jumps
@@ -35,7 +35,7 @@
 //!
 //! ## References
 //!
-//! - [BNS01]: Barndorff-Nielsen, O.E., Shephard, N. (2001), "Non-Gaussian
+//! - Barndorff-Nielsen, O.E., Shephard, N. (2001), "Non-Gaussian
 //!   Ornstein-Uhlenbeck-based models and some of their uses in financial
 //!   economics", *Journal of the Royal Statistical Society* Series B,
 //!   63(2), 167-241.

@@ -45,7 +45,8 @@
 //! products), use a true Volterra simulator** — e.g.
 //! [`crate::rough::MarkovLift`] (Bilokon-Wong 2026 generalised
 //! Gauss-Laguerre exponential-sum representation; SIMD-batched) or
-//! [`crate::rough::rl_heston::RlHeston`] / [`crate::rough::rl_bs::RlBs`]
+//! [`crate::rough::rl_heston::RlHeston`] /
+//! [`crate::rough::rl_bs::RlBlackScholes`]
 //! built on top of it, or [`crate::process::volterra::Volterra`] for the
 //! raw fractional integral.
 //!
@@ -86,7 +87,7 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
 }

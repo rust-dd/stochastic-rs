@@ -74,7 +74,7 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded> {
   /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
   /// omitted).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: Cgns<T>,

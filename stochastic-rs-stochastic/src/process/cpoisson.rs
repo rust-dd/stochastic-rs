@@ -27,7 +27,7 @@ where
   pub distribution: D,
   /// Poisson driver defining jump arrival intensity and timeline.
   pub poisson: Poisson<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

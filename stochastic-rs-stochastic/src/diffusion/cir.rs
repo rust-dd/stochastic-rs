@@ -39,7 +39,7 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Enables symmetric/truncated update variant when true.
   pub use_sym: Option<bool>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

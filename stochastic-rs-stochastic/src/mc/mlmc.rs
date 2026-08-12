@@ -1,7 +1,7 @@
 //! # Multi-Level Monte Carlo (MLMC)
 //!
 //!
-//! $\mathbb{E}[P_L] = \mathbb{E}[P_0]
+//! $\mathbb{E}\[P_L\] = \mathbb{E}\[P_0\]
 //!   + \sum_{\ell=1}^{L}\mathbb{E}[P_\ell - P_{\ell-1}]$
 //!
 //! Adaptive MLMC with optimal sample allocation following Giles (2008).

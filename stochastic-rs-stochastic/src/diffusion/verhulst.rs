@@ -34,7 +34,7 @@ pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// If true, clamp the state into [0, K] each step
   pub clamp: Option<bool>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

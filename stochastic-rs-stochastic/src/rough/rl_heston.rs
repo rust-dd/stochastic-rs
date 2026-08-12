@@ -11,7 +11,8 @@
 //! standard Euler step driven by $W^s$ correlated to $W^v$.
 //!
 //! The underlying kernel + Markov-lift is built once at struct construction
-//! and reused across every [`sample`] / [`sample_batch`] call.
+//! and reused across every [`sample`](crate::traits::ProcessExt::sample) /
+//! [`sample_batch`](RlHeston::sample_batch) call.
 //!
 //! Reference: Bilokon & Wong (2026) §5.5; El Euch O., Rosenbaum M. *The
 //! characteristic function of rough Heston models*, Math. Finance 29 (2019),

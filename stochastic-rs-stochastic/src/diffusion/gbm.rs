@@ -35,7 +35,7 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Cached parameters of the terminal log-normal: ln S_T ∼ N(`ln_mu`, `ln_sigma`).
   ln_mu: f64,
   ln_sigma: f64,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

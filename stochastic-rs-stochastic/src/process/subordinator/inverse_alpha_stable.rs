@@ -26,7 +26,7 @@ pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub u_steps: usize,
   /// Optional upper bound for inverse-domain `u`.
   pub u_max: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

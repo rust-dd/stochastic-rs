@@ -34,7 +34,7 @@ pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// If true, reflect at 0; otherwise clamp at 0
   pub use_sym: Option<bool>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

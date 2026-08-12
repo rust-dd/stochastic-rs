@@ -10,9 +10,10 @@
 //! independent Ou-like Markov factors driven by the same Brownian motion.
 //!
 //! The [`MarkovLift`] stepper (with the kernel quadrature) is built once per
-//! struct in [`new`]/[`seeded`] and reused across every [`sample`] and
-//! [`sample_batch`] call — repeated sampling does not re-run Golub–Welsch
-//! or recompute per-$\delta t$ factors.
+//! struct in [`RlFBm::new`] (whichever seed strategy `S` is chosen) and
+//! reused across every [`sample`](crate::traits::ProcessExt::sample) and
+//! [`sample_batch`](RlFBm::sample_batch) call — repeated sampling does not
+//! re-run Golub–Welsch or recompute per-$\delta t$ factors.
 //!
 //! Not to be confused with Mandelbrot–Van Ness fBM: the two share the
 //! covariance structure asymptotically, but RL-fBM has non-stationary
@@ -96,8 +97,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
     self.sample_batch_impl(&self.seed.derive(), m)
   }
 
-  /// Multi-core version of [`sample_batch`] — rayon parallelises the outer
-  /// tile loop so batch-SIMD and core scheduling compound.
+  /// Multi-core version of [`RlFBm::sample_batch`] — rayon parallelises the
+  /// outer tile loop so batch-SIMD and core scheduling compound.
   pub fn sample_batch_par(&self, m: usize) -> Array2<T> {
     self.sample_batch_par_impl(&self.seed.derive(), m)
   }

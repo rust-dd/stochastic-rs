@@ -13,8 +13,9 @@ use crate::traits::FloatExt;
 use crate::volatility::HestonPow;
 
 /// Compile-time selector for the variance-discretisation scheme that
-/// [`Heston::sample`] runs. The schemes are zero-sized marker types and the
-/// choice is a type parameter, so each variant is monomorphised separately:
+/// [`Heston::sample`](super::Heston) runs. The schemes are zero-sized
+/// marker types and the choice is a type parameter, so each variant is
+/// monomorphised separately:
 /// the default [`Euler`] path keeps its exact code generation (no runtime
 /// branch on the scheme), and [`AndersenQe`] is a wholly independent code
 /// path selected at compile time via [`Heston::qe`].

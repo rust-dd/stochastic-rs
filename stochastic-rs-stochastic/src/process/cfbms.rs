@@ -22,7 +22,7 @@ pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Simulation horizon [0, t] for both paths (defaults to `1` if `None`).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cfgns: Cfgns<T>,
 }

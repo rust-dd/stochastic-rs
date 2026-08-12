@@ -37,7 +37,7 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded> {
   /// with a cutoff at distance `r`. Not a financial rate; this is a pure
   /// covariance-field simulator.
   pub r: T,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

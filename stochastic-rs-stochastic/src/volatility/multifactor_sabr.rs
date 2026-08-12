@@ -19,7 +19,7 @@
 //! The term structure is given by `knots` — sorted breakpoints in
 //! $(0, T)$ that split $[0, T]$ into $K + 1$ buckets — and three
 //! per-bucket coefficient vectors of length $K + 1$. Bucket $k$ covers
-//! $[\text{knots}[k-1], \text{knots}[k])$ (with the obvious open ends),
+//! $\[\text{knots}\[k-1\], \text{knots}\[k\])$ (with the obvious open ends),
 //! and at simulation time $t_i$ the active bucket is the number of knots
 //! $\le t_i$.
 //!

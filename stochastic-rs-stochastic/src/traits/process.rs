@@ -102,9 +102,10 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// one. The parallel methods split `m` paths into a fixed number of chunks —
 /// a pure function of `m`, never of the ambient thread pool — and construct
 /// **one sampler per chunk**, all sequentially on the calling thread before
-/// any chunk reaches rayon. [`sample_map`] folds over each chunk's paths
-/// reusing a single output buffer; [`sample_par`] keeps every path,
-/// allocating each fresh (no buffer reuse, no clone).
+/// any chunk reaches rayon. [`sample_map`](Self::sample_map) folds over each
+/// chunk's paths reusing a single output buffer;
+/// [`sample_par`](Self::sample_par) keeps every path, allocating each fresh
+/// (no buffer reuse, no clone).
 ///
 /// ### Reproducibility requirement on implementors
 ///

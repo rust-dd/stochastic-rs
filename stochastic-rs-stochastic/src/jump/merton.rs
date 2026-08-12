@@ -11,8 +11,9 @@
 //!
 //! - [`SimdNormal<T>`](stochastic_rs_distributions::normal::SimdNormal) for
 //!   the classical lognormal-jump Merton (1976) model
-//! - [`SimdLaplace<T>`] / a custom asymmetric double-exponential for Kou-style
-//!   jumps
+//! - [`SimdGed<T>`](stochastic_rs_distributions::ged::SimdGed) with β=1
+//!   (Laplace / double-exponential) / a custom asymmetric variant for
+//!   Kou-style jumps
 //! - any user-defined `Distribution<T>`
 //!
 //! Python bindings (under the `python` feature) need a monomorphic type

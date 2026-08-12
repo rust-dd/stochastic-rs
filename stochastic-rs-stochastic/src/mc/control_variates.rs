@@ -1,7 +1,7 @@
 //! # Control Variates
 //!
 //! $$
-//! W = Y + c^*\bigl(V - \mathbb{E}[V]\bigr),\quad
+//! W = Y + c^*\bigl(V - \mathbb{E}\[V\]\bigr),\quad
 //! c^* = -\frac{\operatorname{Cov}(Y,V)}{\operatorname{Var}(V)}
 //! $$
 //!

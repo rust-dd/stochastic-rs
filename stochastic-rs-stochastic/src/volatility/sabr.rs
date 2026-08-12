@@ -37,7 +37,7 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
   pub alpha0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
 }

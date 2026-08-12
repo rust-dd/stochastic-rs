@@ -56,7 +56,7 @@ pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub beta: Array1<T>,
   /// Number of observations
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

@@ -69,7 +69,7 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Use the reflection method for the variance to avoid negative values.
   pub use_sym: Option<bool>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// First factor's correlated Gaussian noise source: $(W_1^S, W_1^v)$.
   cgns1: Cgns<T>,

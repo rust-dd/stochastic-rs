@@ -22,7 +22,7 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded> {
   pub mean: Option<T>,
   /// Standard deviation of generated noise samples.
   pub std_dev: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 
