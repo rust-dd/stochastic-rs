@@ -52,6 +52,87 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
       seed,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Vasicek::default().with_theta(1.0).with_sigma(0.05)`.
+  ///
+  /// **Cache note, different from every `Cgns`-based type in this crate**:
+  /// the embedded `ou: Ou<T, S>` is built once in `new()` via
+  /// `Ou::new(.., seed.derive())` — a one-time derive off the constructor's
+  /// own `seed` argument. Rebuilding `ou` inside a setter by deriving from
+  /// `self.seed` *again* would advance `self.seed`'s state a second time,
+  /// producing a *different* child than a fresh `Vasicek::new(new_field,
+  /// .., seed)` would (which derives its *first* child from an unadvanced
+  /// `seed`). So every setter below except `with_seed` rebuilds `ou` by
+  /// reusing `self.ou.seed.clone()` (the already-fixed derived seed,
+  /// `Ou::seed` being `pub`) instead of deriving again; only `with_seed`
+  /// re-derives, from the *new* outer seed, exactly mirroring `new()`'s own
+  /// construction order.
+  /// Replace `theta`; rebuilds the embedded `Ou`.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    self.theta = theta;
+    let ou_seed = self.ou.seed.clone();
+    self.ou = Ou::new(theta, self.mu, self.sigma, self.n, self.x0, self.t, ou_seed);
+    self
+  }
+
+  /// Replace `mu`; rebuilds the embedded `Ou`.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    let ou_seed = self.ou.seed.clone();
+    self.ou = Ou::new(self.theta, mu, self.sigma, self.n, self.x0, self.t, ou_seed);
+    self
+  }
+
+  /// Replace `sigma`; rebuilds the embedded `Ou`.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    let ou_seed = self.ou.seed.clone();
+    self.ou = Ou::new(self.theta, self.mu, sigma, self.n, self.x0, self.t, ou_seed);
+    self
+  }
+
+  /// Replace `x0`; rebuilds the embedded `Ou`.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    let ou_seed = self.ou.seed.clone();
+    self.ou = Ou::new(self.theta, self.mu, self.sigma, self.n, x0, self.t, ou_seed);
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the embedded
+  /// `Ou`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    let ou_seed = self.ou.seed.clone();
+    self.ou = Ou::new(self.theta, self.mu, self.sigma, n, self.x0, self.t, ou_seed);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the embedded `Ou`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    let ou_seed = self.ou.seed.clone();
+    self.ou = Ou::new(self.theta, self.mu, self.sigma, self.n, self.x0, t, ou_seed);
+    self
+  }
+
+  /// Replace the seed strategy's value; re-derives the embedded `Ou`'s
+  /// seed from the *new* outer seed, exactly mirroring `new()`'s own
+  /// construction order (derive before moving `seed` into `self.seed`).
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.ou = Ou::new(
+      self.theta,
+      self.mu,
+      self.sigma,
+      self.n,
+      self.x0,
+      self.t,
+      seed.derive(),
+    );
+    self.seed = seed;
+    self
+  }
 }
 
 /// a=3.0, b=0.03, σ=0.02, r₀=0.03 — matches the crate's Vasicek

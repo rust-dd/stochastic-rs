@@ -110,6 +110,43 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
       _backend: PhantomData,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Fgn::default().with_hurst(0.3)`.
+  ///
+  /// **Cache note**: `sqrt_eigenvalues`/`fft_handler` (the Davies-Harte
+  /// circulant-embedding FFT plan and eigenvalues) are an expensive, pure
+  /// function of `hurst` and the *requested* length (`out_len`, not the
+  /// padded `n`) and `t`. Rather than hand-duplicating `new()`'s ~60-line
+  /// FFT setup (and risking it drifting out of sync), the three setters
+  /// that feed the cache call `Self::new(..)` again wholesale, reusing
+  /// `out_len` (not `n`, which is already power-of-two padded) as the
+  /// constructor's own `n` argument. `with_seed` is the one exception:
+  /// neither cached array depends on the seed, so it stays a plain field
+  /// write.
+  /// Replace `hurst`; rebuilds the FFT/eigenvalue cache.
+  pub fn with_hurst(self, hurst: T) -> Self {
+    Self::new(hurst, self.out_len, self.t, self.seed)
+  }
+
+  /// Replace the (requested, pre-padding) number of simulation steps;
+  /// rebuilds the FFT/eigenvalue cache.
+  pub fn with_steps(self, n: usize) -> Self {
+    Self::new(self.hurst, n, self.t, self.seed)
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the FFT/eigenvalue cache
+  /// (`scale` depends on `t`).
+  pub fn with_horizon(self, t: Option<T>) -> Self {
+    Self::new(self.hurst, self.out_len, t, self.seed)
+  }
+
+  /// Replace the seed strategy's value, all else unchanged. Neither cached
+  /// array depends on the seed, so this is a plain field write.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// H=0.7 — matches the crate's own long-memory-example convention used

@@ -100,6 +100,46 @@ impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
       seed,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `BrownianBridge::default().with_sigma(0.5).with_xt(Some(-1.0))`. No
+  /// persisted cache: `sampler()` builds its Gaussian source fresh from
+  /// `self` every call.
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace the pinned starting value `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the pinned terminal value `xt`, all else unchanged.
+  pub fn with_xt(mut self, xt: Option<T>) -> Self {
+    self.xt = xt;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// σ=1, x₀=xt=0 (the module doc's own "standard bridge"), t=1, n=252 — a

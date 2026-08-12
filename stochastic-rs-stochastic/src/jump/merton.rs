@@ -101,6 +101,65 @@ where
       seed,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Merton::default().with_alpha(0.06)`. No persisted cache:
+  /// `sampler()` builds its Gaussian diffusion source fresh from `self`
+  /// every call, correctly threading `self.seed` (unlike `Bates1996`'s
+  /// documented `cgns` quirk — see that type's own doc).
+  /// Replace `alpha`, all else unchanged.
+  pub fn with_alpha(mut self, alpha: T) -> Self {
+    self.alpha = alpha;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `lambda`, all else unchanged.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    self.theta = theta;
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the compound-Poisson jump driver, all else unchanged.
+  pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D>) -> Self {
+    self.cpoisson = cpoisson;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0 — matches the crate's Merton

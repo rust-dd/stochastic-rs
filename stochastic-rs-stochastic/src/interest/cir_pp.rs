@@ -130,6 +130,64 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
       seed,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `CirPlusPlus::default().with_kappa(3.0)`. No persisted cache:
+  /// `sampler()` builds a transient `Cir` (and its sampler) fresh from
+  /// `self`'s own fields every call.
+  /// Replace `kappa`, all else unchanged.
+  pub fn with_kappa(mut self, kappa: T) -> Self {
+    self.kappa = kappa;
+    self
+  }
+
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    self.theta = theta;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace the deterministic shift `phi`, all else unchanged.
+  pub fn with_phi(mut self, phi: impl Into<Fn1D<T>>) -> Self {
+    self.phi = phi.into();
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace `use_sym`, all else unchanged.
+  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
+    self.use_sym = use_sym;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// κ=2.5, θ=0.04, σ=0.2, φ(t)≡0, x₀=0.04 — reuses

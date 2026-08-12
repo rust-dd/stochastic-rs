@@ -93,6 +93,64 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Bergomi::default().with_nu(0.6).with_rho(-0.2)`.
+  /// Replace `nu`, all else unchanged.
+  pub fn with_nu(mut self, nu: T) -> Self {
+    self.nu = nu;
+    self
+  }
+
+  /// Replace `v0`, all else unchanged.
+  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+    self.v0 = v0;
+    self
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `r`, all else unchanged.
+  pub fn with_r(mut self, r: T) -> Self {
+    self.r = r;
+    self
+  }
+
+  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
+  /// (`cgns`) so the new correlation actually reaches the sampler instead
+  /// of a stale one computed from the old `rho`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    self.rho = rho;
+    self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the cached
+  /// correlated-Gaussian generator, whose length and step size derive
+  /// from `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the cached
+  /// correlated-Gaussian generator's step size, which derives from `t`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6 — matches the crate's Bergomi

@@ -39,15 +39,29 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Recomputes the cached terminal-log-normal parameters `(ln_mu, ln_sigma)`
+/// from the four public fields they derive from — shared by `new()` and by
+/// every `with_*` setter that touches `mu`/`sigma`/`x0`/`t`, so the two can
+/// never drift apart.
+fn terminal_lognormal_cache<T: FloatExt>(
+  mu: T,
+  sigma: T,
+  x0: Option<T>,
+  t: Option<T>,
+) -> (f64, f64) {
+  let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
+  let mu_f64 = mu.to_f64().unwrap();
+  let sigma_f64 = sigma.to_f64().unwrap();
+  let t_f64 = t.unwrap_or(T::one()).to_f64().unwrap();
+
+  let mu_ln = x0_f64.ln() + (mu_f64 - 0.5 * sigma_f64 * sigma_f64) * t_f64;
+  let sigma_ln = sigma_f64 * t_f64.sqrt();
+  (mu_ln, sigma_ln)
+}
+
 impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
-    let mu_f64 = mu.to_f64().unwrap();
-    let sigma_f64 = sigma.to_f64().unwrap();
-    let t_f64 = t.unwrap_or(T::one()).to_f64().unwrap();
-
-    let mu_ln = x0_f64.ln() + (mu_f64 - 0.5 * sigma_f64 * sigma_f64) * t_f64;
-    let sigma_ln = sigma_f64 * t_f64.sqrt();
+    let (ln_mu, ln_sigma) = terminal_lognormal_cache(mu, sigma, x0, t);
 
     Self {
       mu,
@@ -55,10 +69,56 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
       n,
       x0,
       t,
-      ln_mu: mu_ln,
-      ln_sigma: sigma_ln,
+      ln_mu,
+      ln_sigma,
       seed,
     }
+  }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Gbm::default().with_mu(0.08).with_sigma(0.35)`.
+  /// Replace `mu`; rebuilds the cached terminal-log-normal parameters
+  /// (`ln_mu`/`ln_sigma`, read by [`DistributionExt`]'s moment methods) so
+  /// they stay consistent with the new `mu`.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(mu, self.sigma, self.x0, self.t);
+    self
+  }
+
+  /// Replace `sigma`; rebuilds the cached terminal-log-normal parameters.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(self.mu, sigma, self.x0, self.t);
+    self
+  }
+
+  /// Replace `x0`; rebuilds the cached terminal-log-normal parameters.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(self.mu, self.sigma, x0, self.t);
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged. Does
+  /// not touch the terminal-log-normal cache, which does not depend on `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the cached
+  /// terminal-log-normal parameters.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(self.mu, self.sigma, self.x0, t);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 

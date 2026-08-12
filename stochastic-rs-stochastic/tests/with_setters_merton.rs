@@ -1,0 +1,200 @@
+//! TDD tests for A1-c Task 4: `with_*` builder setters on `Merton`
+//! (`jump/merton.rs`). No persisted cache: `sampler()` builds its Gaussian
+//! diffusion source fresh from `self.{alpha,sigma,lambda,theta,n,t,seed}`
+//! on every call, threading the outer seed correctly. But `cpoisson`'s own
+//! seed is (pre-existing, documented on the field) always `Unseeded`, and
+//! unlike `Bates1996`'s `[S, v]` pair there is no separate jump-free
+//! sub-array here — `Merton`'s single output path mixes the jump term in
+//! at every index — so a *nonzero*-intensity `cpoisson` makes the whole
+//! path non-reproducible, not just part of it. The round-trip tests below
+//! use a nonzero-intensity `cpoisson` (realistic, but only field-equality +
+//! finite-sample checked); the three cache/seed tests that need bit-exact
+//! comparison against a fresh construction use a `lambda = 0` `cpoisson`
+//! instead, whose `sample_grid_increments` short-circuits to an all-zero,
+//! RNG-free array (confirmed by reading `CompoundPoisson::
+//! sample_grid_increments`: `if lambda_dt <= 0.0 { return increments; }`),
+//! making the *entire* path exactly reproducible under a fixed seed.
+
+use ndarray::Array1;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
+use stochastic_rs_stochastic::process::poisson::Poisson;
+use stochastic_rs_stochastic::traits::ProcessExt;
+
+fn nonzero_cpoisson() -> CompoundPoisson<f64, ScalarNormal<f64>> {
+  CompoundPoisson::new(
+    ScalarNormal::new(0.0, 0.1),
+    Poisson::new(1.0, Some(64), Some(1.0), Unseeded),
+    Unseeded,
+  )
+}
+fn zero_cpoisson() -> CompoundPoisson<f64, ScalarNormal<f64>> {
+  CompoundPoisson::new(
+    ScalarNormal::new(0.0, 0.1),
+    Poisson::new(0.0, Some(64), Some(1.0), Unseeded),
+    Unseeded,
+  )
+}
+
+fn merton_base_seeded<S: SeedExt>(seed: S) -> Merton<f64, ScalarNormal<f64>, S> {
+  Merton::new(
+    0.03,
+    0.2,
+    1.0,
+    0.0,
+    64,
+    Some(0.0),
+    Some(1.0),
+    nonzero_cpoisson(),
+    seed,
+  )
+}
+fn merton_base() -> Merton<f64, ScalarNormal<f64>> {
+  merton_base_seeded(Unseeded)
+}
+fn merton_zero_jump_seeded<S: SeedExt>(seed: S) -> Merton<f64, ScalarNormal<f64>, S> {
+  Merton::new(
+    0.03,
+    0.2,
+    1.0,
+    0.0,
+    64,
+    Some(0.0),
+    Some(1.0),
+    zero_cpoisson(),
+    seed,
+  )
+}
+
+#[derive(Debug, PartialEq)]
+struct MertonFields {
+  alpha: f64,
+  sigma: f64,
+  lambda: f64,
+  theta: f64,
+  n: usize,
+  x0: Option<f64>,
+  t: Option<f64>,
+}
+fn fields<S: SeedExt>(x: &Merton<f64, ScalarNormal<f64>, S>) -> MertonFields {
+  MertonFields {
+    alpha: x.alpha,
+    sigma: x.sigma,
+    lambda: x.lambda,
+    theta: x.theta,
+    n: x.n,
+    x0: x.x0,
+    t: x.t,
+  }
+}
+fn finite(out: &Array1<f64>) -> bool {
+  out.iter().all(|v| v.is_finite())
+}
+
+macro_rules! plain_test {
+  ($name:ident, $setter:ident, $field:ident, $val:expr) => {
+    #[test]
+    fn $name() {
+      let mut expected = merton_base();
+      expected.$field = $val;
+      let got = merton_base().$setter($val);
+      assert_eq!(got.$field, $val);
+      assert_eq!(fields(&got), fields(&expected));
+      assert!(finite(&got.sample()));
+    }
+  };
+}
+
+plain_test!(merton_with_alpha_round_trip, with_alpha, alpha, 0.06);
+plain_test!(merton_with_sigma_round_trip, with_sigma, sigma, 0.3);
+plain_test!(merton_with_lambda_round_trip, with_lambda, lambda, 2.0);
+plain_test!(merton_with_theta_round_trip, with_theta, theta, 0.02);
+plain_test!(merton_with_x0_round_trip, with_x0, x0, Some(1.0));
+
+#[test]
+fn merton_with_cpoisson_round_trip() {
+  let wide = CompoundPoisson::new(
+    ScalarNormal::new(0.0, 5.0),
+    Poisson::new(4.0, Some(64), Some(1.0), Unseeded),
+    Unseeded,
+  );
+  let got = merton_base().with_cpoisson(wide);
+  assert_eq!(fields(&got), fields(&merton_base()));
+  assert!(finite(&got.sample()));
+}
+
+#[test]
+fn merton_with_steps_matches_fresh_construction() {
+  let mut expected = merton_zero_jump_seeded(Unseeded);
+  expected.n = 128;
+  let got = merton_zero_jump_seeded(Unseeded).with_steps(128);
+  assert_eq!(got.n, 128);
+  assert_eq!(fields(&got), fields(&expected));
+
+  let want = Merton::new(
+    0.03,
+    0.2,
+    1.0,
+    0.0,
+    128,
+    Some(0.0),
+    Some(1.0),
+    zero_cpoisson(),
+    Deterministic::new(9),
+  )
+  .sample();
+  let got_seeded = merton_zero_jump_seeded(Deterministic::new(9))
+    .with_steps(128)
+    .sample();
+  assert_eq!(want, got_seeded);
+}
+
+#[test]
+fn merton_with_horizon_matches_fresh_construction() {
+  let mut expected = merton_zero_jump_seeded(Unseeded);
+  expected.t = Some(2.0);
+  let got = merton_zero_jump_seeded(Unseeded).with_horizon(Some(2.0));
+  assert_eq!(got.t, Some(2.0));
+  assert_eq!(fields(&got), fields(&expected));
+
+  let want = Merton::new(
+    0.03,
+    0.2,
+    1.0,
+    0.0,
+    64,
+    Some(0.0),
+    Some(2.0),
+    zero_cpoisson(),
+    Deterministic::new(11),
+  )
+  .sample();
+  let got_seeded = merton_zero_jump_seeded(Deterministic::new(11))
+    .with_horizon(Some(2.0))
+    .sample();
+  assert_eq!(want, got_seeded);
+}
+
+#[test]
+fn merton_with_seed_matches_fresh_construction() {
+  let want = Merton::new(
+    0.03,
+    0.2,
+    1.0,
+    0.0,
+    64,
+    Some(0.0),
+    Some(1.0),
+    zero_cpoisson(),
+    Deterministic::new(13),
+  )
+  .sample();
+  let got = merton_zero_jump_seeded(Deterministic::new(1))
+    .with_seed(Deterministic::new(13))
+    .sample();
+  assert_eq!(want, got);
+}

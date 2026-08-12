@@ -74,6 +74,72 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Sabr::default().with_beta(0.5).with_rho(-0.6)`.
+  /// Replace `nu`, all else unchanged.
+  pub fn with_nu(mut self, nu: T) -> Self {
+    assert!(nu >= T::zero(), "nu must be non-negative");
+    self.nu = nu;
+    self
+  }
+
+  /// Replace `beta`, all else unchanged.
+  pub fn with_beta(mut self, beta: T) -> Self {
+    assert!(
+      beta >= T::zero() && beta <= T::one(),
+      "beta must be in [0, 1] for Sabr"
+    );
+    self.beta = beta;
+    self
+  }
+
+  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
+  /// (`cgns`) so the new correlation actually reaches the sampler instead
+  /// of a stale one computed from the old `rho`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    self.rho = rho;
+    self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace `f0`, all else unchanged.
+  pub fn with_f0(mut self, f0: Option<T>) -> Self {
+    self.f0 = f0;
+    self
+  }
+
+  /// Replace `alpha0`, all else unchanged.
+  pub fn with_alpha0(mut self, alpha0: Option<T>) -> Self {
+    if let Some(a) = alpha0 {
+      assert!(a >= T::zero(), "alpha0 must be non-negative");
+    }
+    self.alpha0 = alpha0;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the cached
+  /// correlated-Gaussian generator, whose length and step size derive
+  /// from `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the cached
+  /// correlated-Gaussian generator's step size, which derives from `t`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// ν=0.4, β=0.7, ρ=-0.3, f₀=1, α₀=0.3 — matches the crate's Sabr

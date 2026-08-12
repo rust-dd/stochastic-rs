@@ -46,6 +46,39 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
       seed,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Poisson::default().with_lambda(4.0)`. No persisted cache:
+  /// `sampler()` builds its exponential inter-arrival source fresh from
+  /// `self` every call.
+  /// Replace `lambda`, all else unchanged.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace the fixed event count `n`; re-validates that at least one of
+  /// `n`/the horizon is still provided, matching `new()`'s own check.
+  pub fn with_steps(mut self, n: Option<usize>) -> Self {
+    validate_n_or_tmax(n, self.t_max, "Poisson");
+    self.n = n;
+    self
+  }
+
+  /// Replace the terminal-time horizon `t_max`; re-validates that at least
+  /// one of the horizon/`n` is still provided, matching `new()`'s own
+  /// check.
+  pub fn with_horizon(mut self, t_max: Option<T>) -> Self {
+    validate_n_or_tmax(self.n, t_max, "Poisson");
+    self.t_max = t_max;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// λ=2.0 — matches the crate's Poisson visualization-gallery fixture

@@ -55,6 +55,47 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
       fgn: Fgn::new(hurst, n - 1, t, Unseeded),
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Fbm::default().with_hurst(0.3)`.
+  ///
+  /// **Cache note**: the embedded `fgn: Fgn<T, Unseeded, Cpu>` holds the
+  /// expensive FFT/eigenvalue cache and is always constructed with the
+  /// literal `Unseeded` — never consulted for randomness (`FbmSampler`
+  /// draws through a Gaussian source built from the *outer* `self.seed`
+  /// and only borrows `fgn` for its cached FFT plan/eigenvalues), so unlike
+  /// [`Vasicek`](crate::interest::vasicek::Vasicek)'s embedded `Ou` there is
+  /// no seed-derivation subtlety here: every setter that feeds `fgn`
+  /// rebuilds it with the exact expression `new()` itself uses.
+  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    self.hurst = hurst;
+    self.fgn = Fgn::new(hurst, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the embedded
+  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self.fgn = Fgn::new(self.hurst, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.fgn = Fgn::new(self.hurst, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// seed is a never-read dummy, so this does not touch it.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// H=0.7, t=1 — matches the crate's Fbm visualization-gallery fixture

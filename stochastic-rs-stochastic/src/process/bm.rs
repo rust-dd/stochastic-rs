@@ -28,6 +28,27 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
     Self { n, t, seed }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Bm::default().with_steps(500)`. No persisted cache: `sampler()`
+  /// builds its Gaussian source fresh from `self` every call.
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// t=1, n=252 — one trading year of daily steps, matching the crate's Bm

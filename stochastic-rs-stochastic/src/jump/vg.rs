@@ -54,6 +54,53 @@ impl<T: FloatExt, S: SeedExt> Vg<T, S> {
       seed,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `Vg::default().with_nu(0.25).with_sigma(0.3)`. No persisted cache:
+  /// `sampler()` builds its gamma subordinator and Gaussian source fresh
+  /// from `self` every call.
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `nu`, all else unchanged.
+  pub fn with_nu(mut self, nu: T) -> Self {
+    assert!(nu > T::zero(), "nu must be positive");
+    self.nu = nu;
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// μ=0.0, σ=0.2, ν=0.15, x₀=0, t=1, n=252 — matches the crate's Vg

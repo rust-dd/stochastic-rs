@@ -128,6 +128,52 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
       seed,
     }
   }
+
+  /// Every field has a matching `with_*` builder setter, e.g.
+  /// `BlackKarasinski::default().with_a(0.6)`. No persisted cache:
+  /// `sampler()` computes its exact-OU decay/std fresh from `self` and
+  /// borrows `&self.theta` directly every call.
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
+    self.theta = theta.into();
+    self
+  }
+
+  /// Replace `a`, all else unchanged.
+  pub fn with_a(mut self, a: T) -> Self {
+    self.a = a;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `r0`, all else unchanged.
+  pub fn with_r0(mut self, r0: Option<T>) -> Self {
+    self.r0 = r0;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
 }
 
 /// θ(t)≡0.05 (this file's own `theta_const` test fixture), a=0.8, σ=0.1,
