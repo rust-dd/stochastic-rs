@@ -119,7 +119,7 @@
 //!
 //! | Role | Models (field) |
 //! |---|---|
-//! | Jump (Poisson) intensity — arrival rate | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou), [`Bates1996`](crate::jump::bates::Bates1996), [`MjdLog`](crate::jump::mjd_log::MjdLog) (`lambda`) |
+//! | Jump (Poisson) intensity — arrival rate | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou), [`Bates1996`](crate::jump::bates::Bates1996), [`MjdLog`](crate::jump::mjd_log::MjdLog), [`JumpFou`](crate::jump::jump_fou::JumpFou), [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) (`lambda`) |
 //! | Lévy-density tempering rate (`lambda_plus`/`lambda_minus`, i.e. G/M) — an exponential decay rate of the jump-size density, not an arrival rate | [`Cgmy`](crate::jump::cgmy::Cgmy), [`Cts`](crate::jump::cts::Cts), [`Rdts`](crate::jump::rdts::Rdts), `KoBoL`, [`BilateralGamma`](crate::jump::bilateral_gamma::BilateralGamma) (`lambda_plus`/`lambda_minus` or `lambda_p`/`lambda_m`) |
 //!
 //! In the Hawkes family, `lambda_t` is the modeled self-exciting intensity

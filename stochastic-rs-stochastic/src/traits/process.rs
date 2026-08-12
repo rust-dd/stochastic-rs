@@ -149,91 +149,74 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// Overriding it to advance the shared state before each chunk's
 /// `sampler()` call gives each such clone a distinct starting point.
 ///
-/// **No in-tree process is a full exception anymore** (as of this wave):
-/// every process's sampled randomness derives from `self.seed` for at least
-/// its diffusion component. That was not always true, and getting there
-/// took three corrected verdicts, each initially documented right here as
-/// "cannot be fixed" before being re-derived from the code and fixed:
+/// **No process in this crate is an exception, full or partial.** Every
+/// concrete `ProcessExt` implementor derives all of its sampled randomness
+/// from `self.seed` — its diffusion component, and, for the jump-diffusion
+/// types that have one, its jump component too. That was not always true;
+/// getting here took several corrected rounds (a `Cgns`- or `Fgn`-shaped
+/// diffusion once thought structurally unfixable turned out to be a plain
+/// missed wire — `Cgns::sample_impl<S2: SeedExt>(&self, seed: &S2)` was
+/// generic over an *external* seed all along, so a bare `.sample()`
+/// bypassing it was a bug, not a limitation; a `pub cpoisson:
+/// CompoundPoisson<T, D>` field structurally pinned to `Unseeded` — present
+/// on `Merton`, `Kou`, `LevyDiffusion`, `Bates1996` and `JumpFou` — turned
+/// out to need a genuine breaking constructor change, made by the
+/// zero-exception-reproducibility wave's Tasks 1 and 2). See MIGRATION.md
+/// for that history and the before/after call sites of the breaking
+/// changes; it is not repeated here, on purpose — a corrected verdict
+/// restated as a live exception list is exactly how this file drifted out
+/// of sync with the code three times before.
 ///
-/// - [`Bates1996`](crate::jump::bates::Bates1996) and
-///   [`RoughHeston`](crate::volatility::fheston::RoughHeston) were once
-///   listed as full exceptions on the grounds that their correlated-Gaussian
-///   source ([`Cgns`](crate::noise::cgns::Cgns)) was built with a hard-wired
-///   `Unseeded` and consumed via a bare `.sample()`. That reasoning was
-///   wrong: `Cgns::sample_impl<S2: SeedExt>(&self, seed: &S2)` is generic
-///   over an *external* seed — exactly how every sibling `cgns`-holding type
-///   in this crate drives it — so the bare `.sample()` was a plain bug, not
-///   a structural limitation. Both `sampler()`s now capture
-///   `self.seed.derive()` once, as an owned field on the returned sampler,
-///   and `fill_paths` drives `cgns` via `sample_impl` on that owned field
-///   instead of a bare `.sample()`. `RoughHeston` has no jump component, so
-///   this makes it **fully** reproducible — it carries no exception at all.
-///   `Bates1996`'s diffusion is reproducible too, but it moves to the
-///   partial-exception list below rather than losing its exception
-///   entirely: independently of the `cgns` bug, its own
-///   `cpoisson: CompoundPoisson<T, D>` field is *also* structurally pinned
-///   to `Unseeded`, the same as `Merton`'s.
-/// - [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) was a
-///   narrower case — only its jump timing/size draws
-///   (`rng: self.seed.rng()`) were reproducible, not its private
-///   `fgn: Fgn<T, Unseeded, B>` diffusion, whose sampler used to read
-///   `fgn`'s own dead seed via `fgn.sampler()`. Fixed non-breakingly, since
-///   that field is private: `sampler()` now builds the Gaussian source from
-///   `self.seed.derive()` directly and borrows `fgn` only for its
-///   `Arc`-shared FFT plan/eigenvalues. It is fully reproducible too now.
-/// - [`JumpFou`](crate::jump::jump_fou::JumpFou) was, at one point, declared
-///   the crate's one remaining full exception on the grounds that *both*
-///   its `fgn: Fgn<T, Unseeded, B>` diffusion and its
-///   `cpoisson: CompoundPoisson<T, D>` jump driver were "the type's own
-///   public-field-shaped structural pins." That was wrong about `fgn`:
-///   `jump_fou.rs`'s `fgn` field is **private**, byte-for-byte the same
-///   shape as `JumpFOUCustom`'s — fixed identically. `JumpFou`'s `cpoisson`
-///   genuinely is public and structurally pinned, so it moves to the
-///   partial-exception list below instead of leaving the exception list
-///   entirely.
-/// - [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou),
-///   and [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) were
-///   the remaining partial exceptions in the same shape: a public
-///   `cpoisson: CompoundPoisson<T, D>` field structurally pinned to
-///   `Unseeded`. Unlike the bugs above, this one genuinely required a
-///   breaking change — widening the field to `CompoundPoisson<T, D, S>` —
-///   which the zero-exception-reproducibility wave's Task 1 made: each
-///   type's `new()` now takes the jump-size distribution and intensity
-///   directly and builds `cpoisson` internally, deriving its seed from the
-///   constructor's own `seed: S` parameter via `seed.clone().derive()` (a
-///   hash-mixed child, decorrelated from but a deterministic function of
-///   the same `seed` the diffusion component consults directly — cloned
-///   first so deriving the child does not itself advance the value stored
-///   into `self.seed`). `sampler()` for all three derives a fresh,
-///   chunk-local jump seed from `self.cpoisson.seed` for every chunk,
-///   mirroring the diffusion component's own per-chunk `self.seed`-derived
-///   basis, rather than sharing a borrowed `&self.cpoisson` across chunks
-///   (which would race on the same atomic during the parallel region). All
-///   three are now **fully** reproducible — no exception at all. See
-///   MIGRATION.md for the before/after call sites.
+/// **This guarantee is enforced, not merely asserted.**
+/// `tests/reproducibility_all_processes.rs` enumerates every concrete
+/// `ProcessExt` implementor in the crate (124 as of this wave — derived by
+/// grepping `impl … ProcessExt<…> for …` blocks under `src/`, excluding the
+/// blanket marker-trait impls in this file; the test's own doc comment
+/// carries the exact command and an instruction to extend the list when a
+/// process is added) and asserts, for each: two freshly constructed,
+/// identically-[`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)
+/// -seeded instances agree bit-for-bit on [`sample`](Self::sample), and
+/// [`sample_par`](Self::sample_par) agrees bit-for-bit across rayon
+/// thread-pool sizes at both `m <= MAX_CHUNKS` (one path per chunk — cannot
+/// by itself expose cross-chunk correlation) and `m > MAX_CHUNKS` (several
+/// paths per chunk). Five separate instances of the missed-wire/pinned-field
+/// bug class above were each found by a different ad-hoc sweep before this
+/// test existed, precisely because no single test enumerated the whole
+/// surface; a type with no line in that file is a type nothing here is
+/// proving anything about.
 ///
-/// [`Bates1996`](crate::jump::bates::Bates1996) and
-/// [`JumpFou`](crate::jump::jump_fou::JumpFou) had the same partial-exception
-/// shape as the three types above (a public
-/// `cpoisson: CompoundPoisson<T, D>` field structurally pinned to
-/// `Unseeded`, each type's diffusion component otherwise correctly
-/// consulting `self.seed`). Task 2 of the same wave applied the identical
-/// fix to both, leaving the partial-exception list empty. See MIGRATION.md.
-///
-/// Backend-level exceptions exist independently of the per-process list
-/// above: `Fgn`/`Fbm` on the `accelerate` feature's `Accelerate` backend get
-/// thread-count-independent seed consumption but not bit-identical output
-/// (vDSP's own arithmetic is not bit-stable — see
-/// [`Backend`](crate::device::Backend)'s doc), and GPU backends
-/// (`CudaNative`/`CubeCl`/`MetalNative`) are excluded from this guarantee
-/// entirely, with `Fbm` specifically not even reaching seed-dependence on
-/// those three (see [`Fbm::sample_par`](crate::process::fbm::Fbm::sample_par)'s
-/// own doc).
+/// **Backend-level exceptions are a separate axis, untouched by the
+/// above and not covered by that test** (which only instantiates
+/// backend-generic processes on the default `Cpu` backend):
+/// `Fgn`/`Fbm` on the `accelerate` feature's `Accelerate` backend get
+/// thread-count-independent seed *consumption* but not bit-identical
+/// *output* — vDSP's own arithmetic is not bit-stable across Apple
+/// Silicon's heterogeneous P-core/E-core scheduler. Measured on an M4 Max:
+/// two identically-seeded `Accelerate` calls agreed in all of 400 swept
+/// `(n, m)` configurations on an otherwise-idle system (0/400 differing),
+/// but 21 of those same 400 configurations diverged when the identical
+/// sweep ran under induced full-core load (worst observed relative
+/// difference `2.08e-3`); the `Cpu` backend, swept under the identical
+/// induced load, stayed bit-exact in all 400 — see
+/// [`Backend`](crate::device::Backend)'s own doc for the full per-backend
+/// table and `tests/deterministic_parallelism_accelerate.rs` for the
+/// measurement. GPU backends (`CudaNative`/`CubeCl`/`MetalNative`) are
+/// excluded from this guarantee entirely, deliberately: each draws one
+/// value from `self.seed.rng()` per batch call and hands it to the
+/// on-device kernel's own Philox/PCG-style RNG, so output is a function of
+/// the pinned seed but *not* of host thread-pool size, yet cross-run
+/// bit-identity across GPU driver versions, vendors, or repeated runs on
+/// the same device is untested and not promised; `Fbm` specifically does
+/// not even reach seed-dependence on those three (see
+/// [`Fbm::sample_par`](crate::process::fbm::Fbm::sample_par)'s own doc).
+/// None of this is a defect to fix — it is a weaker, explicitly measured
+/// and documented contract for those backends specifically, standing
+/// alongside, not contradicting, the unconditional guarantee below.
 ///
 /// Same seed + same `m` ⇒ bit-identical output on any machine, any
 /// thread-pool size, and any chunking of `m` (chunks need not each hold
-/// exactly one path for them to be mutually independent) for every process
-/// satisfying the requirement above;
+/// exactly one path for them to be mutually independent), for every
+/// process in this crate on its default `Cpu` backend.
 /// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still draw
 /// fresh randomness on every call.
 ///

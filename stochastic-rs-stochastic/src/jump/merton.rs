@@ -53,7 +53,9 @@ where
   /// `cpoisson.poisson.lambda`) for the jump-arrival rate. Every setter
   /// that can change it (`with_lambda`, `with_cpoisson`) keeps
   /// `cpoisson.poisson.lambda` synced to match — see those methods' docs
-  /// and `resync_cpoisson_poisson`.
+  /// and `resync_cpoisson_poisson`. That syncing only happens through the
+  /// setters: a direct `pub` field assignment (`merton.lambda = x`) is not
+  /// intercepted and will desync it from `cpoisson.poisson.lambda`.
   pub lambda: T,
   /// Jump-size compensator κ (E\[Y−1\]-like term, matching the module
   /// header's own λκ), subtracted from the drift scaled by `lambda` —

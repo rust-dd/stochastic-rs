@@ -458,15 +458,6 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   outright. Their `sample`/`sample_par`/`sample_map` were never seed-
   reproducible at all — not even serially, not even at `m == 1` — so
   neither this fix nor the one in the entry above changes that.
-- Guarantee, complete: for every process in the crate **except**
-  `Bates1996` and `RoughHeston`, a `Deterministic` seed and the same `m`
-  now produce bit-identical `sample_par`/`sample_map` output on any
-  machine and under any rayon thread-pool size — the same guarantee
-  `stochastic-rs-distributions`'s `DistributionSampler::sample_matrix` fix
-  elsewhere in this file provides for its own `(m, n)` pair. `Unseeded`
-  processes still draw fresh randomness on every call, exactly as before.
-  This supersedes the still-accurate-but-incomplete guarantee in the
-  entry above, which predates this fix for the lazy class.
 - `ProcessExt::sample()`'s default now ticks
   `#[doc(hidden)] fn advance_chunk_seed(&self)` once, *after* sampling —
   see the entry above for the mechanism; it applies unchanged to this
@@ -554,52 +545,11 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   properties this fix actually guarantees (reproducibility, cross-chunk
   independence), since neither depends on matching a specific historical
   value.
-- **Scope correction — the exception list above was incomplete.**
-  `Bates1996` and `RoughHeston` are correctly identified as not
-  `self.seed`-reproducible at all, but they are not the only two: `JumpFou`
-  has the identical property — its `Fgn<T, Unseeded, B>` diffusion field and
-  its `CompoundPoisson<T, D>` jump field (default `S = Unseeded`) are both
-  hard-wired away from `self.seed`, so `self.seed` is a dead field there and
-  two identically-`Deterministic`-seeded `JumpFou`s produce different
-  output, confirmed empirically. `JumpFOUCustom` and `Merton` are a
-  narrower, pre-existing case, but not the *same* narrower case: only half
-  of each type's randomness is reproducible, and it is not the same half.
-  `Merton` hard-wires its `CompoundPoisson<T, D>` jump field to `Unseeded`
-  while its diffusion component correctly consults `self.seed` — noted
-  already in `tests/sampler_v3_golden.rs`'s header. `JumpFOUCustom` has no
-  `CompoundPoisson` field at all — it is the other way around: its jump
-  timing/size draws (`rng: self.seed.rng()`, built in `sampler()`) are the
-  reproducible half, and its own diffusion driver (`fgn: Fgn<T, Unseeded,
-  B>`) is hard-wired away from `self.seed` instead; this was not previously
-  documented anywhere. Neither is changed here: `Merton` would need its
-  `CompoundPoisson<T, D>` field to become `CompoundPoisson<T, D, S>`, a
-  breaking API change to a `pub` field, out of scope for a reproducibility
-  bugfix; `JumpFOUCustom` has no such field to widen in the first place —
-  its private `fgn` could be threaded more cheaply in isolation, but that is
-  a different, narrower change than the one `Merton` would need. Left as
-  documented exceptions instead; see the doc comments on each type and
-  `ProcessExt`'s trait-level reproducibility section.
-- Guarantee, corrected: for every process in the crate **except**
-  `Bates1996`, `RoughHeston`, and `JumpFou` (no randomness reachable from
-  `self.seed` at all), **except the jump component of** `Merton` (diffusion
-  is reproducible, jump arrivals/sizes are not), and **except the diffusion
-  component of** `JumpFOUCustom` (jump arrivals/sizes are reproducible,
-  diffusion is not), a `Deterministic` seed and the same `m` now produce
-  bit-identical `sample_par`/`sample_map` output on any machine, under any
-  rayon thread-pool size, and — new in this entry — regardless of how many
-  paths land in the same chunk (`m` need not be `<= MAX_CHUNKS` for chunks
-  to stay mutually independent). `Fgn`'s and `Fbm`'s own `sample_par`
-  overrides remain a separate, still-open exception from the entry above
-  (not superseded by this one, since neither entry touches their batched
-  backends): each of the `m` items in their `Cpu`/`Accelerate` batches
-  derives its seed from the same shared atomic *inside* the parallel region
-  rather than before it, so both types are seed-reproducible per call but
-  not thread-count independent under `sample_par` specifically (`sample_map`
-  on both types goes through this entry's ordinary `chunked_samplers`
-  mechanism and is unaffected). This supersedes the "guarantee, complete"
-  claim in the entry above, which was accurate about thread-count
-  independence but silent on cross-chunk correlation and incomplete about
-  the exception list.
+- **`Bates1996`, `RoughHeston` and `JumpFou` turned out not to be the only
+  processes with no randomness reachable from `self.seed` at all** — see
+  "the process-level reproducibility exception list is now empty" further
+  down this file for the corrected, final account instead of restating an
+  intermediate exception list here that later turned out wrong twice more.
 - New tests at `m = 256` (`> MAX_CHUNKS = 64`, so multiple paths share a
   chunk) cover the regime the earlier `m = 64`/`m = 16` distinctness tests
   could not reach — at `m <= MAX_CHUNKS` every chunk holds exactly one path,
@@ -792,136 +742,71 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   on the *same* shared atomic concurrently) in favor of sequential,
   uncontended `derive()` calls before the parallel region starts.
 
-### stochastic-rs-stochastic: `Bates1996` and `RoughHeston`'s "unfixable" verdict was wrong — both corrected
+### stochastic-rs-stochastic: the process-level reproducibility exception list is now empty
 
-- **Correction, not merely an update: the verdict recorded in this file's
-  "`Heston` and 9 other 'lazy' processes' `sample_par`/`sample_map` are now
-  reproducible too" entry above ("`Bates1996` and `RoughHeston` ... cannot
-  be fixed this way") was incorrect, and MIGRATION.md repeated it across
-  several later entries — this is worse than having said nothing.** The
-  reasoning given there was that
-  `BatesSampler::fill_paths` (and `RoughHestonSampler::fill_paths`) call
-  `self.cgns.sample()` on a `Cgns<T, Unseeded>`, and that `cgns` is always
-  constructed with the literal `Unseeded`, so "no randomness derives from
-  `self.seed` at all." That description of the *construction* was accurate;
-  the conclusion drawn from it was not. `Cgns::sample_impl<S2: SeedExt>(
-  &self, seed: &S2)` is generic over an *external* seed, independent of
-  whatever `Cgns`'s own embedded `S` is — exactly the mechanism every
-  sibling `cgns`-holding type in this crate (`DuffieKan`,
-  `DuffieKanJumpExp`, `BatesSvj`, `DoubleHeston`, `Hkde`) already used to
-  drive it from the *outer* type's real seed. The bare `.sample()` call was
-  a plain bug — nobody had wired the outer seed through — not a structural
-  limitation of `Cgns`'s design.
-- Fix, identical shape for both types: `sampler()` now derives an owned
-  `seed: S` (`self.seed.derive()`, the same "capture a chunk-unique basis at
-  construction" shape every other fixed type in this crate uses) and
-  `fill_paths` calls `self.cgns.sample_impl(&self.seed)` instead of the bare
-  `self.cgns.sample()`.
-- **`RoughHeston` has no jump component**, so this fix makes it **fully**
-  seed-reproducible — same seed + same `m` ⇒ bit-identical `sample`/
-  `sample_par`/`sample_map` output, on any machine, under any rayon
-  thread-pool size. It carries no exception to `ProcessExt`'s reproducibility
-  guarantee at all now; removed from the exception list in `traits/
-  process.rs` entirely.
-- **`Bates1996` does not become fully reproducible** — not because the
-  `cgns` fix was incomplete, but because it turns out to have an
-  *independent* second defect the original "cannot be fixed" verdict never
-  needed to distinguish, since the whole type was thought unfixable anyway:
-  its `pub cpoisson: CompoundPoisson<T, D>` field is the exact same
-  structural shape as `Merton`'s field of the same name — `CompoundPoisson`
-  defaults its own third type parameter to `Unseeded`, and `Bates1996`'s
-  constructor takes the bare two-argument `CompoundPoisson<T, D>`, so a
-  caller can never supply a `Deterministic`-seeded jump driver through this
-  field, structurally, regardless of `Bates1996`'s own `seed`. So
-  `Bates1996` moves from the crate's three-item *full*-exception list to
-  the *partial*-exception group below, alongside `Merton`: diffusion (and
-  therefore the variance path `v`, driven solely by `cgns`) is now
-  seed-reproducible; jump arrivals/sizes (and therefore the price path `s`,
-  which sums jump increments at every step) are not, and were never claimed
-  to be by this fix.
-- **Correction to this same entry, found by external review: the
-  `JumpFou` re-examination two bullets above was itself wrong about
-  `fgn`.** It claimed "`JumpFou` has no private `cgns`/`fgn` field hiding a
-  fixable bug... both its `fgn: Fgn<T, Unseeded, B>` diffusion and its
-  `cpoisson: CompoundPoisson<T, D>` jump driver are the type's own
-  *public-field-shaped* structural pins." That is false about `fgn`:
-  `jump_fou.rs`'s `fgn: Fgn<T, Unseeded, B>` is **private** — byte-for-byte
-  the same shape as `JumpFOUCustom`'s field this very entry's sibling fix
-  (see "`JumpFOUCustom`'s diffusion is now seed-reproducible too" above)
-  already rewires non-breakingly. Fixed the same way: `JumpFou::sampler()`
-  now builds its Gaussian source from `self.seed.derive()` directly
-  (instead of `self.fgn.sampler()`, which read `fgn`'s own dead `Unseeded`
-  field) and borrows `fgn` only for its `Arc`-shared FFT plan/eigenvalues.
-  `JumpFou`'s `cpoisson: CompoundPoisson<T, D>` field genuinely *is* public
-  and structurally pinned to `Unseeded` (that half of the original bullet
-  was correct), so `JumpFou` does **not** leave the exception list — it
-  moves from the crate's *full*-exception list to the *partial*-exception
-  group below, alongside `Merton`, `Bates1996`, `Kou`, and `LevyDiffusion`:
-  diffusion is now seed-reproducible, jump arrivals/sizes are not. This
-  leaves the crate with **zero full exceptions** — every remaining
-  exception is partial (diffusion reproducible, jump not).
-
-### stochastic-rs-stochastic: `JumpFOUCustom`'s diffusion is now seed-reproducible too
-
-- **Output values under a pinned seed change for `JumpFOUCustom`:** its
-  private `fgn: Fgn<T, Unseeded, B>` field's own `.sampler()` was used to
-  build the diffusion's Gaussian source, which reads `fgn`'s own dead
-  `Unseeded` field, not the outer `self.seed` — the same bug class as
-  `Bates1996`/`RoughHeston` above, on a private rather than a `cgns` field.
-  Because the field is private, this was fixable non-breakingly (unlike
-  `Merton`'s public `cpoisson`, which cannot be re-typed without breaking
-  callers): `sampler()` now builds the Gaussian source directly from
-  `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT plan
-  and eigenvalues, the same pattern `Fbm` already used for its own embedded,
-  permanently-`Unseeded` `fgn`.
-- `JumpFOUCustom` has no `CompoundPoisson` field (its jump timing/size draws
-  were already reproducible via `rng: self.seed.rng()`), so fixing the
-  diffusion makes it **fully** seed-reproducible — removed from the
-  exception list in `traits/process.rs` entirely.
-
-### stochastic-rs-stochastic: `Kou` and `LevyDiffusion` join `Merton`'s documented partial-exception group
-
-- **Doc-only — no behavior change.** `Kou` and `LevyDiffusion` have
-  `Merton`'s exact partial-exception shape (line-for-line: `KouSampler`/
-  `LevyDiffusionSampler::fill_path` are themselves near-identical to
-  `MertonSampler::fill_path`) and always did: a `pub cpoisson:
-  CompoundPoisson<T, D>` field structurally pinned to `Unseeded`, so jump
-  arrivals/sizes are never seed-reproducible even though each type's
-  diffusion component (a `SimdNormal` built from `&self.seed` in
-  `sampler()`) is. Neither was named in any type doc, the `ProcessExt`
-  trait doc, or MIGRATION.md before this entry — an omission, not a design
-  decision. Both now carry the same field-level doc `Merton::cpoisson`
-  already had, and both are named in `traits/process.rs`'s partial-exception
-  paragraph alongside `Merton` and `Bates1996`.
-
-### stochastic-rs-stochastic: exception list, final state after this wave
-
-- **Full exception (no randomness reachable from `self.seed` at all): none.**
-  `Bates1996`, `RoughHeston`, and `JumpFou` were each incorrectly listed
-  here in an earlier entry in this file, in three separate mistakes; all
-  three are corrected above. The crate has zero full exceptions as of this
-  wave.
-- **Partial exception (diffusion reproducible, jump arrivals/sizes not, via
-  a `pub cpoisson: CompoundPoisson<T, D>` field structurally pinned to
-  `Unseeded`):** `Merton`, `Bates1996`, `Kou`, `LevyDiffusion`, `JumpFou`.
-  **Superseded below:** the zero-exception-reproducibility wave's Task 1
-  fixed `Merton`, `Kou`, and `LevyDiffusion` (see "`Merton`, `Kou`,
-  `LevyDiffusion` absorb the jump-driver construction" further down) —
-  `Bates1996` and `JumpFou` are the two that remain in this group.
-  **Superseded further still:** the same wave's Task 2 fixed both (see
-  "`Bates1996` and `JumpFou` absorb the jump-driver construction" further
-  down). The partial-exception list is empty as of Task 2 — the crate has
-  zero exceptions of any kind.
-- **No exception (fully seed-reproducible) as of this wave:** every other
-  process in the crate, including `RoughHeston` and `JumpFOUCustom`, both
-  corrected/fixed above, and `Fgn`/`Fbm` on the `Cpu` backend, whose
-  `sample_par` override is now thread-count independent. `Accelerate` is
-  **not** included in this bit-identical guarantee, despite an earlier
-  entry above claiming otherwise — see the correction there and
-  `device.rs`'s `Backend` trait doc for what it actually offers
-  (thread-count-independent seed consumption, but not bit-stable vDSP
-  arithmetic). GPU backends remain excluded from the guarantee entirely,
-  documented on the same trait.
+- **This entry replaces three earlier ones in this file** ("`Heston` and 9
+  other 'lazy' processes'...", "`sample_par`/`sample_map` chunk bases are
+  now derived, not cloned...", and the corrections layered onto both) that
+  each asserted a guarantee "for every process except a specific,
+  shrinking list," revised on nearly every subsequent commit as review
+  found the list itself wrong or incomplete. Restating a corrected verdict
+  as a new live exception list is exactly how this file drifted out of
+  sync with the code repeatedly; this entry states the settled history and
+  the current guarantee once, instead of layering a fourth version on top.
+- `Bates1996` and `RoughHeston` were twice listed as full exceptions ("no
+  randomness reachable from `self.seed` at all") on the theory that their
+  correlated-Gaussian source (`Cgns`, always built with a hard-wired
+  `Unseeded`) could never be redirected to an external seed. Wrong:
+  `Cgns::sample_impl<S2: SeedExt>(&self, seed: &S2)` accepts an *external*
+  seed, exactly how every sibling `cgns`-holding type (`DuffieKan`,
+  `DuffieKanJumpExp`, `BatesSvj`, `DoubleHeston`, `Hkde`) already drove it —
+  nobody had wired these two the same way. Fixed by deriving an owned
+  `seed: S` in `sampler()` and calling `sample_impl` on it instead of the
+  bare `.sample()`. `RoughHeston` has no jump component, so this alone made
+  it fully reproducible; `Bates1996`'s separate `cpoisson` defect (below)
+  kept it partially exceptional until Task 2.
+- `JumpFou` was also listed as a full exception, on the theory that both
+  its `fgn` diffusion field and its `cpoisson` jump field were structural,
+  public-field-shaped pins. Wrong about `fgn`: `jump_fou.rs`'s
+  `fgn: Fgn<T, Unseeded, B>` is **private** — the identical shape
+  `JumpFOUCustom`'s field has, fixed the same non-breaking way (next
+  bullet). Its `cpoisson` genuinely was public and pinned, so `JumpFou`
+  stayed partially exceptional until Task 2.
+- `JumpFOUCustom`'s private `fgn` field's own `sampler()` read `fgn`'s own
+  dead `Unseeded` seed instead of the outer `self.seed`. Fixed
+  non-breakingly (the field is private, unlike `Merton`'s public
+  `cpoisson`): `sampler()` now builds the Gaussian source from
+  `self.seed.derive()` directly, borrowing `fgn` only for its `Arc`-shared
+  FFT plan/eigenvalues. It has no `CompoundPoisson` field, so this alone
+  made it fully reproducible.
+- `Merton`, `Kou`, `LevyDiffusion`, `Bates1996` and `JumpFou` shared one
+  remaining, genuinely breaking defect: a `pub cpoisson:
+  CompoundPoisson<T, D>` field structurally pinned to `Unseeded`
+  (`CompoundPoisson`'s third type parameter defaults to `Unseeded`, and
+  none of the five types' field declarations named `S`), so no caller could
+  ever supply a `Deterministic`-seeded jump driver through it regardless of
+  the outer process's own seed. Neither was named in any type doc, the
+  `ProcessExt` trait doc, or this file before being found — an omission,
+  not a design decision. The zero-exception-reproducibility wave's Task 1
+  fixed `Merton`/`Kou`/`LevyDiffusion`; Task 2 fixed `Bates1996`/`JumpFou`
+  — see the two dedicated entries below for the breaking constructor change
+  and before/after call sites.
+- **Current, final state: zero exceptions of any kind.** Every process in
+  `stochastic-rs-stochastic` derives all of its sampled randomness from
+  `self.seed`, for both its diffusion and (where applicable) jump
+  component. Same seed + same `m` ⇒ bit-identical `sample`/`sample_par`/
+  `sample_map` output, on any machine and under any rayon thread-pool size.
+  This is no longer an assertion in this file alone:
+  `tests/reproducibility_all_processes.rs` enumerates every concrete
+  `ProcessExt` implementor (124 as of this wave) and asserts it directly,
+  so a regression on any one type fails that test instead of waiting for
+  another ad-hoc review to notice — the exact failure mode that produced
+  the corrections this entry replaces. Backend-level exceptions are a
+  separate, unaffected axis: `Accelerate` is seed-consumption-deterministic
+  but not bit-identical (vDSP's own arithmetic is not bit-stable — see the
+  `Fgn`/`Fbm` entry above and `device.rs`'s `Backend` trait doc), and GPU
+  backends are excluded from the guarantee entirely — both by design, not
+  regression.
 
 ### stochastic-rs-stochastic: `Merton`, `Kou`, `LevyDiffusion` absorb the jump-driver construction — fully seed-reproducible
 
