@@ -108,33 +108,55 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
   where
     Self: 's;
 
+  /// Snapshots a seed once, at construction, for [`AdgSampler`] to own (a
+  /// non-advancing clone — `sample_inner`'s own `SimdNormal::new` calls are
+  /// what advance it, reproducing the legacy stream bit-for-bit on the
+  /// first path). The drift, level and observation maps are user-supplied
+  /// [`Fn1D`] callables (not clonable, since the Python variant holds a
+  /// `pyo3::Py`) so there is nothing else reusable to hoist across calls
+  /// beyond the borrowed process itself; owning the seed — rather than the
+  /// per-row `sample_inner` reading `&self.seed` directly — is what makes
+  /// `sample_par`/`sample_map`'s chunked fan-out deterministic: each
+  /// chunk's sampler is built sequentially, after
+  /// [`advance_chunk_seed`](Self::advance_chunk_seed) gives it a distinct
+  /// state to snapshot.
   fn sampler(&self) -> AdgSampler<'_, T, S> {
-    AdgSampler(self)
+    AdgSampler {
+      adg: self,
+      seed: self.seed.clone(),
+    }
+  }
+
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
+  /// method's docs.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
   }
 }
 
-/// Borrow-based [`Adg`] sampler. The drift, level and observation maps are
-/// user-supplied [`Fn1D`] callables (not clonable, since the Python variant
-/// holds a `pyo3::Py`) and each row's Gaussian increments are generated inside
-/// the step body, so there is nothing reusable to hoist across calls beyond
-/// the borrowed process itself.
+/// Reusable [`Adg`] sampler: borrows the process and owns a seed derived
+/// once at construction. Each row's Gaussian increments are generated
+/// inside the step body from that owned seed.
 #[doc(hidden)]
-pub struct AdgSampler<'a, T: FloatExt, S: SeedExt>(&'a Adg<T, S>);
+pub struct AdgSampler<'a, T: FloatExt, S: SeedExt> {
+  adg: &'a Adg<T, S>,
+  seed: S,
+}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for AdgSampler<'_, T, S> {
   type Output = Array2<T>;
 
   fn sample_into(&mut self, out: &mut Array2<T>) {
-    *out = self.0.sample_inner();
+    *out = self.adg.sample_inner(&self.seed);
   }
 
   fn sample(&mut self) -> Array2<T> {
-    self.0.sample_inner()
+    self.adg.sample_inner(&self.seed)
   }
 }
 
 impl<T: FloatExt, S: SeedExt> Adg<T, S> {
-  fn sample_inner(&self) -> Array2<T> {
+  fn sample_inner(&self, seed: &S) -> Array2<T> {
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
     } else {
@@ -154,7 +176,7 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
       }
 
       let tail = &mut row_slice[1..];
-      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
       normal.fill_slice(tail);
 
       for j in 1..self.n {

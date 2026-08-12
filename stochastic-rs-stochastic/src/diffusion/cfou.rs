@@ -95,24 +95,40 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {
     Self: 's;
 
   /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and seed source. The first `sample` derives the
-  /// same child seed the legacy `sample()` did — bit-identical — and each
-  /// subsequent call advances the seed for an independent path.
+  /// FFT plan + eigenvalues) and owning a seed snapshotted once at
+  /// construction (a non-advancing clone — `fill_path`'s own `derive()`
+  /// call is what advances it, reproducing the legacy stream bit-for-bit on
+  /// the first path). Owning the seed — rather than reading `&self.seed`
+  /// per path — is what makes `sample_par`/`sample_map`'s chunked fan-out
+  /// deterministic: each chunk's sampler is built sequentially, after
+  /// [`advance_chunk_seed`](Self::advance_chunk_seed) gives it a distinct
+  /// state to snapshot; repeat calls on one sampler continue to advance the
+  /// owned clone for an independent path.
   fn sampler(&self) -> CfouSampler<'_, T, S, B> {
-    CfouSampler { cfou: self }
+    CfouSampler {
+      cfou: self,
+      seed: self.seed.clone(),
+    }
+  }
+
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
+  /// method's docs.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
   }
 }
 
 /// Reusable [`Cfou`] sampling state: borrows the process for its inner [`Fgn`]
-/// and seed source. The path is the complex Euler step
-/// `Z_{k+1} = Z_k - (lambda - i omega) Z_k dt + sqrt(a) Δζ_k`, with
-/// `Δζ_k = (ΔB_k^{(1)} + i ΔB_k^{(2)}) / sqrt(2)`.
+/// and owns a seed derived once at construction. The path is the complex
+/// Euler step `Z_{k+1} = Z_k - (lambda - i omega) Z_k dt + sqrt(a) Δζ_k`,
+/// with `Δζ_k = (ΔB_k^{(1)} + i ΔB_k^{(2)}) / sqrt(2)`.
 ///
 /// Source:
 /// - https://arxiv.org/abs/2406.18004
 #[doc(hidden)]
 pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfou: &'a Cfou<T, S, B>,
+  seed: S,
 }
 
 impl<T: FloatExt, S: SeedExt, B: Backend> CfouSampler<'_, T, S, B> {
@@ -122,7 +138,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> CfouSampler<'_, T, S, B> {
     }
     let p = self.cfou;
     let dt = p.fgn.dt();
-    let (noise_1, noise_2) = p.fgn.noise_pair(&p.seed.derive());
+    let (noise_1, noise_2) = p.fgn.noise_pair(&self.seed.derive());
     let gamma = Complex::new(p.lambda, -p.omega);
     let dt_c = Complex::new(dt, T::zero());
     let noise_scale = (p.a * T::from_f64_fast(0.5)).sqrt();

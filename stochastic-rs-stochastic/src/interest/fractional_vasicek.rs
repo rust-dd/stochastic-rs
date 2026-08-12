@@ -8,7 +8,9 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
 use crate::diffusion::fou::Fou;
+use crate::diffusion::fou::FouSampler;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -31,7 +33,12 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]), kept
+  /// for API symmetry with every other process in the crate. Sampling
+  /// itself never reads this field directly — [`FVasicek::new`] derives a
+  /// child seed from it once, at construction, to seed [`fou`](Self::fou),
+  /// which is what all sampling — including `advance_chunk_seed` — actually
+  /// consults.
   pub seed: S,
   /// Wrapped fractional-OU process carrying the actual sampling state;
   /// see module header — `FVasicek` is `Fou` under short-rate-model
@@ -71,31 +78,43 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FVasicek<T, S> {
   where
     Self: 's;
 
+  /// Builds and owns the wrapped [`Fou`]'s own sampler *once*, rather than
+  /// calling [`Fou::sample`] (which would call `Fou::sampler()` fresh, and
+  /// hence derive a new seed basis, on every path). Owning it here is what
+  /// makes `sample_par`/`sample_map`'s chunked fan-out deterministic: each
+  /// chunk's `FVasicekSampler` is built sequentially, so each owns a
+  /// distinct `FouSampler` basis; repeat calls on one sampler reuse and
+  /// advance that same inner sampler, exactly as a standalone `Fou` would.
   fn sampler(&self) -> FVasicekSampler<'_, T, S> {
-    FVasicekSampler { proc: self }
+    FVasicekSampler {
+      fou: self.fou.sampler(),
+    }
+  }
+
+  /// Delegates to the wrapped [`Fou`]'s own `advance_chunk_seed` — see
+  /// [`Self::seed`]'s doc for why `self.seed` itself is never the one to
+  /// advance.
+  fn advance_chunk_seed(&self) {
+    self.fou.advance_chunk_seed();
   }
 }
 
-/// Reusable [`FVasicek`] sampling state. Borrows the process so each call
-/// resamples the wrapped fractional OU through its `Arc`-shared fGn FFT plan.
-///
-/// The inner [`Fou`] owns no persistent Gaussian source, so this samples
-/// through [`Fou::sample`] each call: the FFT plan and circulant eigenvalues
-/// are `Arc`-shared and reused, only the per-call `SimdNormal` is rebuilt.
+/// Reusable [`FVasicek`] sampling state: owns the wrapped [`Fou`]'s sampler
+/// (borrowed FFT plan, owned per-chunk seed), built once.
 #[doc(hidden)]
 pub struct FVasicekSampler<'a, T: FloatExt, S: SeedExt> {
-  proc: &'a FVasicek<T, S>,
+  fou: FouSampler<'a, T, S, Cpu>,
 }
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for FVasicekSampler<'_, T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    *out = self.proc.fou.sample();
+    self.fou.sample_into(out);
   }
 
   fn sample(&mut self) -> Array1<T> {
-    self.proc.fou.sample()
+    self.fou.sample()
   }
 }
 

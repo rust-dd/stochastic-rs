@@ -26,8 +26,13 @@ use crate::traits::ProcessExt;
 /// branch on the scheme), and [`AndersenQe`] is a wholly independent code
 /// path selected at compile time via [`Heston::qe`].
 pub trait HestonScheme: Send + Sync + 'static {
-  /// Generate `[stock path, variance path]` under this scheme.
-  fn simulate<T: FloatExt, S: SeedExt>(model: &Heston<T, S, Self>) -> [Array1<T>; 2]
+  /// Generate `[stock path, variance path]` under this scheme, drawing from
+  /// `seed` — a basis owned by the calling [`HestonSampler`], derived once
+  /// at its construction, never `model.seed` directly. That indirection is
+  /// what makes `sample_par`/`sample_map`'s chunked fan-out deterministic:
+  /// each chunk's sampler owns a distinct basis instead of every chunk
+  /// racing on the same live `model.seed` inside the parallel region.
+  fn simulate<T: FloatExt, S: SeedExt>(model: &Heston<T, S, Self>, seed: &S) -> [Array1<T>; 2]
   where
     Self: Sized;
 }
@@ -151,34 +156,53 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> ProcessExt<T> for Heston<T, S, 
   where
     Self: 's;
 
+  /// Snapshots a seed once, at construction, for [`HestonSampler`] to own
+  /// and pass into `Sch::simulate` — see that trait method's docs for why.
+  /// This is a non-advancing clone, not a derive: `Sch::simulate`'s own
+  /// `seed.derive()` call is what advances it, reproducing the legacy
+  /// stream bit-for-bit on the first path (deriving here *too* would
+  /// consume an extra, un-golden-tested tick).
   fn sampler(&self) -> HestonSampler<'_, T, S, Sch> {
-    HestonSampler(self)
+    HestonSampler {
+      model: self,
+      seed: self.seed.clone(),
+    }
+  }
+
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
+  /// method's docs.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
   }
 }
 
-/// Borrow-based [`Heston`] sampler. The variance discretisation runs inside the
-/// compile-time-selected [`HestonScheme`], which owns its own RNG setup, so
-/// each call re-dispatches to `Sch::simulate`; there is nothing reusable to
-/// hoist across calls.
+/// Reusable [`Heston`] sampler: borrows the process and owns a seed derived
+/// once at construction. The variance discretisation runs inside the
+/// compile-time-selected [`HestonScheme`], which owns its own RNG setup
+/// beyond that seed, so each call re-dispatches to `Sch::simulate`; there is
+/// nothing else reusable to hoist across calls.
 #[doc(hidden)]
-pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme>(&'a Heston<T, S, Sch>);
+pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme> {
+  model: &'a Heston<T, S, Sch>,
+  seed: S,
+}
 
 impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> PathSampler<T> for HestonSampler<'_, T, S, Sch> {
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
-    *out = Sch::simulate(self.0);
+    *out = Sch::simulate(self.model, &self.seed);
   }
 
   fn sample(&mut self) -> [Array1<T>; 2] {
-    Sch::simulate(self.0)
+    Sch::simulate(self.model, &self.seed)
   }
 }
 
 impl HestonScheme for Euler {
-  fn simulate<T: FloatExt, S: SeedExt>(model: &Heston<T, S, Euler>) -> [Array1<T>; 2] {
+  fn simulate<T: FloatExt, S: SeedExt>(model: &Heston<T, S, Euler>, seed: &S) -> [Array1<T>; 2] {
     let dt = model.cgns.dt();
-    let [cgn1, cgn2] = &model.cgns.sample_impl(&model.seed.derive());
+    let [cgn1, cgn2] = &model.cgns.sample_impl(&seed.derive());
 
     let mut s = Array1::<T>::zeros(model.n);
     let mut v = Array1::<T>::zeros(model.n);
@@ -214,7 +238,10 @@ impl HestonScheme for AndersenQe {
   /// `V = Ψ⁻¹(U)` (eq. 24-26/29/30) — followed by the asset update (eq. 33).
   /// Correlation is handled analytically through the `K` constants, so no
   /// correlated Brownian pair is needed (unlike [`Euler`]).
-  fn simulate<T: FloatExt, S: SeedExt>(model: &Heston<T, S, AndersenQe>) -> [Array1<T>; 2] {
+  fn simulate<T: FloatExt, S: SeedExt>(
+    model: &Heston<T, S, AndersenQe>,
+    seed: &S,
+  ) -> [Array1<T>; 2] {
     assert!(
       matches!(model.pow, HestonPow::Sqrt),
       "Andersen QE is defined only for the square-root (CIR) variance; use HestonPow::Sqrt"
@@ -263,8 +290,8 @@ impl HestonScheme for AndersenQe {
     // Independent noise sub-streams: normals (Z_V for the quadratic branch and
     // Z for the asset) via the buffered SimdNormal, a uniform stream for the
     // exponential branch. Built here because SimdNormal is not `Sync`.
-    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &model.seed.derive());
-    let mut urng = model.seed.derive().rng();
+    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &seed.derive());
+    let mut urng = seed.derive().rng();
 
     let mut log_s = s0.ln();
     let mut v_prev = v0;

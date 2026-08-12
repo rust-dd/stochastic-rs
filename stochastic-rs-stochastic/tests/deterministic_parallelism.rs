@@ -19,16 +19,25 @@
 //! cloned the same state and `m` extra paths bought zero extra diversity).
 //! `sabr_sample_par_is_thread_count_independent` and
 //! `sabr_sample_par_paths_are_distinct` below cover that class explicitly,
-//! in addition to `Gbm`. The same review also found the fix was a no-op for
-//! processes whose `sampler()` reads the seed *lazily* per path (`Heston`
-//! and 11 others); that class needs a real sampler rewrite, covered
-//! separately.
+//! in addition to `Gbm`.
+//!
+//! The same review found the fix was a no-op for processes whose
+//! `sampler()` reads the seed *lazily* per path from inside the returned
+//! sampler (`Heston`, and 9 more) — advancing the seed sequentially before
+//! any chunk runs cannot help a process that never advances anything at
+//! `sampler()` construction; each chunk's sampler shares live access to the
+//! same atomic and races on it during the parallel region itself.
+//! `heston_sample_par_is_thread_count_independent` below covers that class,
+//! fixed by rewriting the sampler to own a seed rather than reading the
+//! process's directly.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::HestonPow;
+use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
 const SEED: u64 = 42;
@@ -40,6 +49,27 @@ fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
     32,
     Some(1.0),
     Some(1.0),
+    Deterministic::new(seed),
+  )
+}
+
+/// `Heston` is "lazy": pre-fix, `sampler()` did nothing and `Sch::simulate`
+/// read `model.seed.derive()` fresh per path, from inside the (potentially
+/// parallel) closure — advancing `self.seed` at construction alone cannot
+/// fix a process that never advances anything at construction.
+fn heston(seed: u64) -> Heston<f64, Deterministic> {
+  Heston::<f64, _>::new(
+    Some(1.0),
+    Some(0.04),
+    2.0,
+    0.04,
+    0.3,
+    -0.7,
+    0.05,
+    32,
+    Some(1.0),
+    HestonPow::Sqrt,
+    None,
     Deterministic::new(seed),
   )
 }
@@ -95,6 +125,29 @@ fn sample_par_is_thread_count_independent() {
   assert_eq!(r1.len(), m);
   assert_eq!(r1, r3, "sample_par diverged between 1 and 3 threads");
   assert_eq!(r1, r8, "sample_par diverged between 1 and 8 threads");
+}
+
+/// Same guarantee, on the "lazy" class (`Heston`): pre-fix, this was a
+/// no-op — the fix has to rewrite `sampler()` to own the seed, not merely
+/// pre-build samplers sequentially.
+#[test]
+fn heston_sample_par_is_thread_count_independent() {
+  let m = 64;
+  let run = |threads: usize| {
+    pool(threads)
+      .install(|| heston(SEED).sample_par(m))
+      .iter()
+      .map(bits_2d)
+      .collect::<Vec<_>>()
+  };
+
+  let r1 = run(1);
+  let r3 = run(3);
+  let r8 = run(8);
+
+  assert_eq!(r1.len(), m);
+  assert_eq!(r1, r3, "Heston sample_par diverged between 1 and 3 threads");
+  assert_eq!(r1, r8, "Heston sample_par diverged between 1 and 8 threads");
 }
 
 /// Same guarantee, on the "clone-snapshot" class (`Sabr`): pre-fix, every

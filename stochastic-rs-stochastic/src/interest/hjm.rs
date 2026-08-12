@@ -112,33 +112,55 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
   where
     Self: 's;
 
+  /// Snapshots a seed once, at construction, for [`HjmSampler`] to own (a
+  /// non-advancing clone — `sample_inner`'s own `SimdNormal::new` calls are
+  /// what advance it, reproducing the legacy stream bit-for-bit on the
+  /// first path). The three SDE components are driven by user-supplied
+  /// [`Fn1D`] / [`Fn2D`] callables (not clonable, since the Python variant
+  /// holds a `pyo3::Py`) so there is nothing else reusable to hoist across
+  /// calls beyond the borrowed process itself; owning the seed — rather
+  /// than `sample_inner` reading `&self.seed` directly — is what makes
+  /// `sample_par`/`sample_map`'s chunked fan-out deterministic: each
+  /// chunk's sampler is built sequentially, after
+  /// [`advance_chunk_seed`](Self::advance_chunk_seed) gives it a distinct
+  /// state to snapshot.
   fn sampler(&self) -> HjmSampler<'_, T, S> {
-    HjmSampler(self)
+    HjmSampler {
+      hjm: self,
+      seed: self.seed.clone(),
+    }
+  }
+
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
+  /// method's docs.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
   }
 }
 
-/// Borrow-based [`Hjm`] sampler. The three SDE components are driven by
-/// user-supplied [`Fn1D`] / [`Fn2D`] callables (not clonable, since the Python
-/// variant holds a `pyo3::Py`), and each component's Gaussian increments are
-/// generated inside the step body, so there is nothing reusable to hoist
-/// across calls beyond the borrowed process itself.
+/// Reusable [`Hjm`] sampler: borrows the process and owns a seed derived
+/// once at construction. Each SDE component's Gaussian increments are
+/// generated inside the step body from that owned seed.
 #[doc(hidden)]
-pub struct HjmSampler<'a, T: FloatExt, S: SeedExt>(&'a Hjm<T, S>);
+pub struct HjmSampler<'a, T: FloatExt, S: SeedExt> {
+  hjm: &'a Hjm<T, S>,
+  seed: S,
+}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for HjmSampler<'_, T, S> {
   type Output = [Array1<T>; 3];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
-    *out = self.0.sample_inner();
+    *out = self.hjm.sample_inner(&self.seed);
   }
 
   fn sample(&mut self) -> [Array1<T>; 3] {
-    self.0.sample_inner()
+    self.hjm.sample_inner(&self.seed)
   }
 }
 
 impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
-  fn sample_inner(&self) -> [Array1<T>; 3] {
+  fn sample_inner(&self, seed: &S) -> [Array1<T>; 3] {
     let mut r = Array1::<T>::zeros(self.n);
     let mut p = Array1::<T>::zeros(self.n);
     let mut f_ = Array1::<T>::zeros(self.n);
@@ -161,7 +183,7 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
         .as_slice_mut()
         .expect("Hjm short-rate path must be contiguous in memory");
       let r_tail = &mut r_slice[1..];
-      let normal_r = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+      let normal_r = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
       normal_r.fill_slice(r_tail);
     }
     {
@@ -169,7 +191,7 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
         .as_slice_mut()
         .expect("Hjm bond-price path must be contiguous in memory");
       let p_tail = &mut p_slice[1..];
-      let normal_p = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+      let normal_p = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
       normal_p.fill_slice(p_tail);
     }
     {
@@ -177,7 +199,7 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
         .as_slice_mut()
         .expect("Hjm forward-rate path must be contiguous in memory");
       let f_tail = &mut f_slice[1..];
-      let normal_f = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+      let normal_f = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
       normal_f.fill_slice(f_tail);
     }
 

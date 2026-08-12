@@ -82,24 +82,42 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfgns<T, S, B> {
     Self: 's;
 
   /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and seed source. The first `sample` reproduces the
-  /// legacy `sample_impl(&seed)` stream bit-for-bit; each subsequent call
-  /// advances the seed for an independent correlated pair.
+  /// FFT plan + eigenvalues) and owning a seed snapshotted once at
+  /// construction (a non-advancing clone). The first `sample` reproduces
+  /// the legacy `sample_impl(&seed)` stream bit-for-bit — `sample_impl`'s
+  /// own use of the seed is what advances it — and each subsequent call
+  /// advances the owned clone for an independent correlated pair. Owning
+  /// the seed — rather than reading `&self.cfgns.seed` per call — is what
+  /// makes `sample_par`/`sample_map`'s chunked fan-out deterministic: each
+  /// chunk's sampler is built sequentially, after
+  /// [`advance_chunk_seed`](Self::advance_chunk_seed) gives it a distinct
+  /// state to snapshot.
   fn sampler(&self) -> CfgnsSampler<'_, T, S, B> {
-    CfgnsSampler { cfgns: self }
+    CfgnsSampler {
+      cfgns: self,
+      seed: self.seed.clone(),
+    }
+  }
+
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
+  /// method's docs.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
   }
 }
 
 /// Reusable [`Cfgns`] sampling state: borrows the process for its inner [`Fgn`]
-/// (one paired fGN pass per call) and seed source.
+/// (one paired fGN pass per call) and owns a seed derived once at
+/// construction.
 #[doc(hidden)]
 pub struct CfgnsSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfgns: &'a Cfgns<T, S, B>,
+  seed: S,
 }
 
 impl<T: FloatExt, S: SeedExt, B: Backend> CfgnsSampler<'_, T, S, B> {
   fn fill_paths(&mut self, fgn1_out: &mut [T], fgn2_out: &mut [T]) {
-    let [fgn1, fgn2] = self.cfgns.sample_impl(&self.cfgns.seed);
+    let [fgn1, fgn2] = self.cfgns.sample_impl(&self.seed);
     fgn1_out.copy_from_slice(fgn1.as_slice().expect("Cfgns noise 1 must be contiguous"));
     fgn2_out.copy_from_slice(fgn2.as_slice().expect("Cfgns noise 2 must be contiguous"));
   }
@@ -116,7 +134,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for CfgnsSampler<'_, T,
   }
 
   fn sample(&mut self) -> [Array1<T>; 2] {
-    self.cfgns.sample_impl(&self.cfgns.seed)
+    self.cfgns.sample_impl(&self.seed)
   }
 }
 

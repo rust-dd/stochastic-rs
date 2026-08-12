@@ -421,3 +421,51 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   items derives its seed from the same shared atomic *inside* the parallel
   region rather than before it), confirmed empirically but not addressed
   here; tracked as follow-up work, not part of this fix.
+
+### stochastic-rs-stochastic: `Heston` and 9 other "lazy" processes' `sample_par` / `sample_map` are now reproducible too
+
+- **Output values under a pinned seed change again for these 10 types**
+  (`Heston`, `Hjm`, `Adg`, `FVasicek`, `Cfgns`, and the fractional family
+  `Fou`/`Fgbm`/`Fcir`/`FJacobi`/`Cfou`): the chunk-sequencing fix in the
+  entry above (advancing the seed once per chunk before that chunk's
+  `sampler()` runs) is a no-op for a process whose `sampler()` reads
+  `&self.seed` *lazily*, per path, from inside the returned sampler,
+  rather than once at construction — every chunk's sampler shares live
+  access to the same atomic regardless of how carefully the chunks
+  themselves were sequenced, so concurrent chunks still raced on it during
+  the parallel region itself. These 10 are rewritten to capture an owned,
+  cloned seed in their sampler at construction instead; their existing
+  per-path code already derived from *a* seed each call, so it now derives
+  from that owned clone rather than the shared field — a clone, not a
+  fresh derive, so the value on the very first path is unchanged from
+  before this whole wave (both fixes combined reproduce the pre-`map_init`
+  -era stream bit-for-bit there), but the second and later paths, and
+  every chunk boundary, now land on values the scheduler-dependent
+  original code could never reliably reproduce.
+- Two processes named by the same review, `Bates1996` and `RoughHeston`,
+  **cannot** be fixed this way and are not: neither's sampled randomness
+  derives from `self.seed` **at all**, by pre-existing design predating
+  this requirement. `Bates1996`'s diffusion hard-wires an `Unseeded`
+  correlated-Gaussian source (`Cgns::new(rho, n - 1, t, Unseeded)` in its
+  constructor) and its jump component reads its own `CompoundPoisson`
+  driver's seed field directly through `sample_grid_relative_increments`,
+  bypassing `ProcessExt` entirely; `RoughHeston`'s correlated-Gaussian
+  source is documented in its own `sampler()` as ignoring `self.seed`
+  outright. Their `sample`/`sample_par`/`sample_map` were never seed-
+  reproducible at all — not even serially, not even at `m == 1` — so
+  neither this fix nor the one in the entry above changes that.
+- Guarantee, complete: for every process in the crate **except**
+  `Bates1996` and `RoughHeston`, a `Deterministic` seed and the same `m`
+  now produce bit-identical `sample_par`/`sample_map` output on any
+  machine and under any rayon thread-pool size — the same guarantee
+  `stochastic-rs-distributions`'s `DistributionSampler::sample_matrix` fix
+  elsewhere in this file provides for its own `(m, n)` pair. `Unseeded`
+  processes still draw fresh randomness on every call, exactly as before.
+  This supersedes the still-accurate-but-incomplete guarantee in the
+  entry above, which predates this fix for the lazy class.
+- `ProcessExt::sample()`'s default now ticks
+  `#[doc(hidden)] fn advance_chunk_seed(&self)` once, *after* sampling —
+  see the entry above for the mechanism; it applies unchanged to this
+  entry's rewritten processes too, since owning a cloned seed converts
+  them into instances of the same "clone-based sampler" shape `Sabr` and
+  its 28 siblings already were.
