@@ -121,6 +121,12 @@ impl<T: FloatExt, const K: usize, S: SeedExt> ProcessExt<T> for MultifactorHesto
   where
     Self: 's;
 
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
+  /// returned sampler, so each chunk's clone must see a distinct state.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
+  }
+
   fn sampler(&self) -> MultifactorHestonSampler<T, K, S> {
     MultifactorHestonSampler {
       n: self.n,

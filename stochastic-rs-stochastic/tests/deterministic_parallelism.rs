@@ -12,12 +12,24 @@
 //! via `ThreadPoolBuilder::install` for exactly this reason: asserting
 //! reproducibility only under the ambient pool would not exercise the
 //! defect at all.
+//!
+//! A follow-up review found the first version of this fix actively
+//! regressed processes whose `sampler()` *clones* the seed (`Sabr` and 28
+//! others — a non-advancing snapshot per `SeedExt`'s design, so every chunk
+//! cloned the same state and `m` extra paths bought zero extra diversity).
+//! `sabr_sample_par_is_thread_count_independent` and
+//! `sabr_sample_par_paths_are_distinct` below cover that class explicitly,
+//! in addition to `Gbm`. The same review also found the fix was a no-op for
+//! processes whose `sampler()` reads the seed *lazily* per path (`Heston`
+//! and 11 others); that class needs a real sampler rewrite, covered
+//! separately.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
 const SEED: u64 = 42;
 
@@ -32,12 +44,33 @@ fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
   )
 }
 
+/// `Sabr` is "clone-snapshot": `sampler()` does `seed: self.seed.clone()`,
+/// and `Deterministic::clone()` is a non-advancing snapshot of the current
+/// state — every chunk that clones before `self.seed` itself advances gets
+/// the identical snapshot.
+fn sabr(seed: u64) -> Sabr<f64, Deterministic> {
+  Sabr::<f64, _>::new(
+    0.3,
+    0.5,
+    0.0,
+    32,
+    Some(1.0),
+    Some(0.2),
+    Some(1.0),
+    Deterministic::new(seed),
+  )
+}
+
 fn bits_1d(path: &Array1<f64>) -> Vec<u64> {
   path.iter().map(|x| x.to_bits()).collect()
 }
 
 fn bits_paths(paths: &[Array1<f64>]) -> Vec<Vec<u64>> {
   paths.iter().map(bits_1d).collect()
+}
+
+fn bits_2d([a, b]: &[Array1<f64>; 2]) -> Vec<u64> {
+  a.iter().chain(b.iter()).map(|x| x.to_bits()).collect()
 }
 
 fn pool(num_threads: usize) -> rayon::ThreadPool {
@@ -62,6 +95,49 @@ fn sample_par_is_thread_count_independent() {
   assert_eq!(r1.len(), m);
   assert_eq!(r1, r3, "sample_par diverged between 1 and 3 threads");
   assert_eq!(r1, r8, "sample_par diverged between 1 and 8 threads");
+}
+
+/// Same guarantee, on the "clone-snapshot" class (`Sabr`): pre-fix, every
+/// chunk cloned the identical snapshot, so this held trivially (all chunks
+/// agreed — with each other, uselessly) but `sabr_sample_par_paths_are_distinct`
+/// below would have failed.
+#[test]
+fn sabr_sample_par_is_thread_count_independent() {
+  let m = 64;
+  let run = |threads: usize| {
+    pool(threads)
+      .install(|| sabr(SEED).sample_par(m))
+      .iter()
+      .map(bits_2d)
+      .collect::<Vec<_>>()
+  };
+
+  let r1 = run(1);
+  let r3 = run(3);
+  let r8 = run(8);
+
+  assert_eq!(r1.len(), m);
+  assert_eq!(r1, r3, "Sabr sample_par diverged between 1 and 3 threads");
+  assert_eq!(r1, r8, "Sabr sample_par diverged between 1 and 8 threads");
+}
+
+/// `Sabr` (clone-snapshot), `m = 64`: no two paths identical. This is the
+/// test that catches the clone-snapshot regression specifically — with
+/// `chunk_count` capping chunks at `MAX_CHUNKS = 64` and every chunk cloning
+/// the same unchanged seed, `sample_par(m)` would degenerate to at most
+/// `MAX_CHUNKS` distinct paths repeated, independent of `m`, without
+/// `advance_chunk_seed` giving each chunk's clone a different state to
+/// snapshot.
+#[test]
+fn sabr_sample_par_paths_are_distinct() {
+  let m = 64;
+  let paths = sabr(SEED).sample_par(m);
+  assert_eq!(paths.len(), m);
+  let keys = paths
+    .iter()
+    .map(bits_2d)
+    .collect::<std::collections::HashSet<_>>();
+  assert_eq!(keys.len(), m, "Sabr sample_par produced duplicate paths");
 }
 
 /// Two identically-seeded processes, same `m`, run under *different*

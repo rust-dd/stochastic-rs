@@ -162,6 +162,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
   where
     Self: 's;
 
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
+  /// returned sampler, so each chunk's clone must see a distinct state.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
+  }
+
   fn sampler(&self) -> MultifactorSabrSampler<T, S> {
     MultifactorSabrSampler {
       n: self.n,

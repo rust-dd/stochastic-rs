@@ -102,6 +102,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
   where
     Self: 's;
 
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
+  /// returned sampler, so each chunk's clone must see a distinct state.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
+  }
+
   fn sampler(&self) -> FBatesSvjSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {

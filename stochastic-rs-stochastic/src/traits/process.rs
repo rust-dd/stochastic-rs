@@ -7,29 +7,39 @@ use stochastic_rs_distributions::traits::FloatExt;
 
 use super::sampler::PathSampler;
 
-/// Target number of paths per chunk in [`ProcessExt::sample_par`] /
-/// [`ProcessExt::sample_map`]'s chunked fan-out. Building a sampler
-/// (`SimdNormal`-class construction) and dispatching one rayon task are both
-/// low-hundreds-of-nanoseconds costs; 8 paths per chunk keeps that overhead a
-/// small fraction of a chunk's own sampling work for any path length worth
-/// parallelizing over, while scaling chunk count — and hence the exposed
-/// parallelism — linearly with `m` instead of pinning it to the machine's
-/// core count.
-const MIN_PAR_PATHS: usize = 8;
+/// Upper bound on the number of chunks [`ProcessExt::sample_par`] /
+/// [`ProcessExt::sample_map`] split `m` paths into.
+///
+/// `chunk_count`'s prologue (building every chunk's sampler, sequentially,
+/// on the calling thread — see [`ProcessExt::chunked_samplers`]) costs at
+/// most `MAX_CHUNKS` sampler constructions, however large `m` is. That
+/// bound matters because `sampler()` is not always cheap: the worst in-tree
+/// case (`Cir2F`, whose `sampler()` evaluates a user-supplied `Fn1D` — a
+/// Python callback, for the `Fn1D::Py` variant — once per grid point) would
+/// otherwise pay a *sequential, GIL-round-tripping* construction cost that
+/// grows with `m` (the previous rule, `m.div_ceil(8)`, made `sample_par(1000)`
+/// build 125 chunks — 125 sequential constructions — instead of a number
+/// bounded by the machine's core count). 64 is comfortably above real-world
+/// hardware-thread counts, so `m >= 64` still saturates any realistic rayon
+/// pool, while `m < 64` gets one chunk per path (full parallelism for small
+/// `m`, the other end `m.div_ceil(8)` got wrong by forcing `m <= 8` fully
+/// serial).
+const MAX_CHUNKS: usize = 64;
 
 /// Number of chunks to split `m` paths into.
 ///
 /// A pure function of `m` alone. **Must never read
 /// `rayon::current_num_threads()`**: the chunk count fixes how many times
-/// [`sampler()`](ProcessExt::sampler) is called before any chunk starts
-/// running, which fixes how many times a
+/// [`sampler()`](ProcessExt::sampler) (and
+/// [`advance_chunk_seed()`](ProcessExt::advance_chunk_seed)) is called
+/// before any chunk starts running, which fixes how many times a
 /// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) process's
 /// shared seed state advances. If that count depended on the ambient
 /// thread-pool size, the same seed and the same `m` could produce different
 /// output on two machines (or two test runs) with different pool sizes —
 /// exactly the defect this module fixes.
 fn chunk_count(m: usize) -> usize {
-  m.div_ceil(MIN_PAR_PATHS).max(1).min(m)
+  m.min(MAX_CHUNKS)
 }
 
 /// Splits `m` into `chunks` contiguous run lengths, as even as possible (the
@@ -80,15 +90,56 @@ fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
 /// one. The parallel methods split `m` paths into a fixed number of chunks —
 /// a pure function of `m`, never of the ambient thread pool — and construct
 /// **one sampler per chunk**, all sequentially on the calling thread before
-/// any chunk reaches rayon. That sequencing is what makes the fan-out
-/// deterministic: a
-/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) process's
-/// shared seed state advances once per chunk, in chunk-index order,
-/// regardless of which thread later runs which chunk or how many threads
-/// exist. [`sample_map`] folds over each chunk's paths reusing a single
-/// output buffer; [`sample_par`] keeps every path, allocating each fresh (no
-/// buffer reuse, no clone). Same seed + same `m` ⇒ bit-identical output on
-/// any machine and any thread-pool size;
+/// any chunk reaches rayon. [`sample_map`] folds over each chunk's paths
+/// reusing a single output buffer; [`sample_par`] keeps every path,
+/// allocating each fresh (no buffer reuse, no clone).
+///
+/// ### Reproducibility requirement on implementors
+///
+/// Sequential chunk construction only produces bit-identical, thread-count-
+/// independent output if **every chunk's sampler draws from a distinct seed
+/// basis**. There are two ways for an implementor to guarantee that, and a
+/// process must use one of them:
+///
+/// - `sampler()` itself advances the process's `Deterministic` seed state at
+///   construction time (e.g. it builds a `SimdNormal`/`SimdPoisson`/… from
+///   `&self.seed` or `&self.seed.derive()`, or owns a chunk-specific `S`
+///   captured via `self.seed.derive()`) — true for most processes in this
+///   crate, and nothing further is required.
+/// - `sampler()` instead *clones* the seed (`self.seed.clone()`), which is
+///   `SeedExt`'s designed inverse of advancing — a `Deterministic::clone()`
+///   is a non-advancing snapshot. Such a process must override
+///   [`advance_chunk_seed`](Self::advance_chunk_seed) to advance the shared
+///   state itself before `sampler()` runs, or every chunk clones the same
+///   snapshot and `sample_par(m)` degenerates to at most `MAX_CHUNKS`
+///   distinct paths repeated, independent of `m`.
+///
+/// A process whose `sampler()` reads `&self.seed` *lazily*, per path, from
+/// inside the returned sampler (rather than once at construction) satisfies
+/// neither shape — every chunk's sampler shares live access to the same
+/// atomic, so concurrent chunks race on it during the parallel region
+/// itself, which no amount of pre-parallel sequencing can fix. That shape
+/// must be rewritten to capture an owned `self.seed.clone()` at `sampler()`
+/// construction (not `.derive()` — cloning first and deriving from the
+/// clone inside the existing per-path code, unchanged, reproduces the exact
+/// value a direct `self.seed.derive()` there would have; deriving *both* at
+/// construction *and* again per path shifts the value for no reason),
+/// converting it to the second bullet above — an `advance_chunk_seed`
+/// override is required alongside the rewrite.
+///
+/// Two in-tree processes cannot satisfy either shape because their sampled
+/// randomness does not derive from `self.seed` **at all**, by pre-existing
+/// design predating this requirement: [`Bates1996`](crate::jump::bates::Bates1996)
+/// (diffusion hard-wires an `Unseeded` correlated-Gaussian source; the jump
+/// component reads its own driver's seed field directly, bypassing this
+/// trait) and [`RoughHeston`](crate::volatility::fheston::RoughHeston) (its
+/// correlated-Gaussian source is documented as ignoring `self.seed`
+/// entirely). Their `sample`/`sample_par`/`sample_map` are not seed-
+/// reproducible at all — not even serially, not even at `m == 1` — so the
+/// reproducibility guarantee below does not apply to them; see MIGRATION.md.
+///
+/// Same seed + same `m` ⇒ bit-identical output on any machine and any
+/// thread-pool size for every process satisfying the requirement above;
 /// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still draw
 /// fresh randomness on every call.
 ///
@@ -110,35 +161,78 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   #[doc(hidden)]
   fn sampler(&self) -> Self::Sampler<'_>;
 
-  /// Builds one pre-seeded sampler per chunk, paired with that chunk's path
-  /// count, **sequentially on the calling thread, before any chunk reaches
-  /// rayon**. Implementation detail behind [`sample_par`](Self::sample_par) /
-  /// [`sample_map`](Self::sample_map): this sequential construction is what
-  /// fixes the order in which a `Deterministic` process's shared seed state
-  /// is consumed, independent of how rayon later schedules the chunks.
+  /// Advances this process's own `Deterministic` seed state by one tick,
+  /// discarding the returned value — called purely for the side effect.
+  /// Called from [`chunked_samplers`](Self::chunked_samplers) (once per
+  /// chunk, before that chunk's `sampler()`) and from
+  /// [`sample`](Self::sample) (once per call, after sampling).
+  ///
+  /// The default is a no-op, correct for any process whose `sampler()`
+  /// itself advances the seed at construction (the common case — see the
+  /// trait-level "Reproducibility requirement on implementors" section);
+  /// an *additional* advance here would be harmless but redundant for those.
+  /// **Override this** for a process whose `sampler()` instead clones the
+  /// seed (`self.seed.clone()`, a non-advancing snapshot per `SeedExt`'s
+  /// design) — e.g. `fn advance_chunk_seed(&self) { self.seed.seed_value(); }`
+  /// — so each chunk's clone snapshots a distinct state instead of every
+  /// chunk replaying the same one, and repeated top-level `sample()` calls
+  /// advance instead of replaying the first path forever.
+  #[doc(hidden)]
+  fn advance_chunk_seed(&self) {}
+
+  /// Builds one sampler per chunk, paired with that chunk's path count,
+  /// **sequentially on the calling thread, before any chunk reaches
+  /// rayon** — each chunk's sampler is only *distinctly* seeded (the
+  /// "pre-seeded" this method's implementors must deliver) if the process
+  /// satisfies the trait-level reproducibility requirement: most do so via
+  /// `sampler()` alone; the rest must override
+  /// [`advance_chunk_seed`](Self::advance_chunk_seed), which this method
+  /// calls immediately before each [`sampler()`](Self::sampler) call, in
+  /// this fixed sequential order. That sequencing is what fixes the order
+  /// in which a `Deterministic` process's shared seed state is consumed,
+  /// independent of how rayon later schedules the chunks — implementation
+  /// detail behind [`sample_par`](Self::sample_par) /
+  /// [`sample_map`](Self::sample_map).
   #[doc(hidden)]
   fn chunked_samplers(&self, m: usize) -> Vec<(Self::Sampler<'_>, usize)> {
     let chunks = chunk_count(m);
     chunk_lens(m, chunks)
-      .map(|len| (self.sampler(), len))
+      .map(|len| {
+        self.advance_chunk_seed();
+        (self.sampler(), len)
+      })
       .collect()
   }
 
   /// A single sampled path.
+  ///
+  /// Ticks [`advance_chunk_seed`](Self::advance_chunk_seed) *after* sampling
+  /// (not before): a clone-based `sampler()` (see that method's docs) reads
+  /// `self.seed`'s *current* state to build the sampler, so ticking first
+  /// would make this call's own basis skip a state the caller never
+  /// consumed — ticking after instead advances `self.seed` by exactly the
+  /// same one step the sampler's own internal derive just consumed from its
+  /// clone, so the *next* independent `sample()` call picks up where this
+  /// one left off (matching a process whose `sampler()` advances directly,
+  /// which this is a no-op for). This is what keeps repeated top-level
+  /// `sample()` calls on one process advancing, for every process in the
+  /// crate, not only the ones with an owned, per-call-advancing sampler.
   fn sample(&self) -> Self::Output {
-    self.sampler().sample()
+    let out = self.sampler().sample();
+    self.advance_chunk_seed();
+    out
   }
 
   /// Maps `f` over `m` independently sampled paths, reusing one sampler and
   /// one output buffer per chunk (no per-path allocation or RNG re-init).
   /// This is the parallel primitive.
   ///
-  /// **Reproducibility.** Same seed + same `m` ⇒ bit-identical output, on
-  /// any machine and under any rayon thread-pool size — see
-  /// [`chunked_samplers`](Self::chunked_samplers).
-  /// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still
-  /// draw fresh randomness on every call, exactly as before this guarantee
-  /// existed.
+  /// **Reproducibility.** For a process satisfying the trait-level
+  /// "Reproducibility requirement on implementors" (see [`ProcessExt`]'s
+  /// own docs — true for every process in this crate except the two named
+  /// exceptions there), same seed + same `m` ⇒ bit-identical output, on any
+  /// machine and under any rayon thread-pool size. `Unseeded` processes
+  /// still draw fresh randomness on every call.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
     if m == 0 {
       return Vec::new();
@@ -180,12 +274,8 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// it reuses one sampler per chunk, but allocates a fresh owned path each
   /// step — cheaper than mapping then cloning when every path is wanted.
   ///
-  /// **Reproducibility.** Same seed + same `m` ⇒ bit-identical output, on
-  /// any machine and under any rayon thread-pool size — see
-  /// [`chunked_samplers`](Self::chunked_samplers).
-  /// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still
-  /// draw fresh randomness on every call, exactly as before this guarantee
-  /// existed.
+  /// **Reproducibility.** Same guarantee and the same caveat as
+  /// [`sample_map`](Self::sample_map) above.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     if m == 0 {
       return Vec::new();

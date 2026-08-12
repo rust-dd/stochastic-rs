@@ -69,6 +69,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
   where
     Self: 's;
 
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
+  /// returned sampler, so each chunk's clone must see a distinct state.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
+  }
+
   fn sampler(&self) -> MultivariateHawkesSampler<'_, T, S> {
     MultivariateHawkesSampler {
       mu: &self.mu,

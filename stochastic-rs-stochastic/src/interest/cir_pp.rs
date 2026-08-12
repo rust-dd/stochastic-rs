@@ -129,6 +129,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CirPlusPlus<T, S> {
   where
     Self: 's;
 
+  /// `sampler()` clones `self.seed` into a transient `Cir` (a non-advancing
+  /// snapshot), so each chunk's clone must see a distinct state.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
+  }
+
   fn sampler(&self) -> CirPlusPlusSampler<'_, T> {
     let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);

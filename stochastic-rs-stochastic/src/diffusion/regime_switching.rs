@@ -188,6 +188,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
   where
     Self: 's;
 
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
+  /// returned sampler, so each chunk's clone must see a distinct state.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
+  }
+
   fn sampler(&self) -> RegimeSwitchingDiffusionSampler<T, S> {
     RegimeSwitchingDiffusionSampler {
       mu: self.mu,

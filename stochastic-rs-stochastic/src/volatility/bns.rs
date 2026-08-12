@@ -118,6 +118,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
   where
     Self: 's;
 
+  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
+  /// returned sampler, so each chunk's clone must see a distinct state.
+  fn advance_chunk_seed(&self) {
+    self.seed.seed_value();
+  }
+
   fn sampler(&self) -> BnsSampler<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let lam_dt = self.lambda * dt;
