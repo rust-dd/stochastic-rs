@@ -28,23 +28,6 @@ pub(crate) const N: usize = 24;
 /// Grid size for the tempered-stable jump family (`Cgmy`/`Cts`/`KoBoL`/
 /// `Rdts`/`Svcgmy`), a parameter distinct from `N`.
 pub(crate) const J: usize = 8;
-/// Steps per path for `Volterra` only. `VolterraKernel::eval` recomputes
-/// `scilib::math::basic::gamma` (measured ~2.74ms/call — scilib 1.0.0
-/// evaluates it as a Weierstrass infinite product to a 1e-12 relative-term
-/// threshold) on every `(i, j)` pair of its O(n²) kernel loop, unlike this
-/// crate's five other `scilib::gamma` call sites (`Svcgmy`/`Cgmy`/`Cts`/
-/// `Rdts`/`KoBoL`), which all call it once per `sampler()`. At `N = 24`
-/// that is 276 calls/path, and this guard draws roughly 320 Volterra paths
-/// (two bit-identity samples plus four `sample_par` runs), which alone
-/// accounted for essentially the whole suite's wall-clock time (~137s of
-/// ~138s total) before this constant existed. `Volterra::new` has no
-/// lower bound on `n` (`fill_path` handles `n <= 1` explicitly), and this
-/// guard is about seed plumbing, not statistics, so a smaller step count
-/// here costs zero coverage — every assertion `check()` makes still runs,
-/// at every `m`, across both pool sizes. The redundant-gamma call itself
-/// is a real, separate performance bug in `process/volterra.rs`, out of
-/// scope for this guard to fix (recorded as a follow-up instead).
-pub(crate) const N_VOLTERRA: usize = 8;
 /// Jump intensity for the seven distribution-taking types: high enough that
 /// a jump-component reproducibility bug cannot hide behind a
 /// diffusion-only comparison.

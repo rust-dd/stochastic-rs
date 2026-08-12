@@ -40,7 +40,6 @@ use stochastic_rs_stochastic::process::volterra::VolterraKernel;
 
 use crate::common::LAMBDA;
 use crate::common::N;
-use crate::common::N_VOLTERRA;
 use crate::common::guard;
 
 guard!(bm, "Bm", |s| Bm::new(N, Some(1.0), s));
@@ -179,7 +178,7 @@ guard!(
 
 guard!(volterra, "Volterra", |s| Volterra::new(
   VolterraKernel::FractionalBM { h: 0.7 },
-  N_VOLTERRA,
+  N,
   Some(1.0),
   s
 ));
