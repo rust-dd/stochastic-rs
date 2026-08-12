@@ -372,10 +372,9 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// one output buffer per chunk (no per-path allocation or RNG re-init).
   /// This is the parallel primitive.
   ///
-  /// **Reproducibility.** For a process satisfying the trait-level
-  /// "Reproducibility requirement on implementors" (see [`ProcessExt`]'s
-  /// own docs — true for every process in this crate except the two named
-  /// partial exceptions there; there are no full exceptions left), same
+  /// **Reproducibility.** Every process in this crate satisfies the
+  /// trait-level "Reproducibility requirement on implementors" (see
+  /// [`ProcessExt`]'s own docs — no exceptions, full or partial), so same
   /// seed + same `m` ⇒ bit-identical output, on any machine and under any
   /// rayon thread-pool size. `Unseeded` processes still draw fresh
   /// randomness on every call.
@@ -420,8 +419,8 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// it reuses one sampler per chunk, but allocates a fresh owned path each
   /// step — cheaper than mapping then cloning when every path is wanted.
   ///
-  /// **Reproducibility.** Same guarantee and the same caveat as
-  /// [`sample_map`](Self::sample_map) above.
+  /// **Reproducibility.** Same guarantee as [`sample_map`](Self::sample_map)
+  /// above.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     if m == 0 {
       return Vec::new();
