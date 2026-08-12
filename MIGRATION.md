@@ -656,6 +656,104 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   already-tracked `Fgn`/`Fbm` `sample_par` batched-backend gap, both
   unchanged by this entry.
 
+### stochastic-rs-stochastic: `Fgn`/`Fbm` `sample_par` are now thread-count independent
+
+- **Output values under a pinned seed change for `Fgn::sample_par` and
+  `Fbm::sample_par`** (the CPU and `accelerate`-feature backends only — see
+  below): these were the crate's only two in-tree `sample_par` overrides,
+  bypassing `ProcessExt`'s default `chunked_samplers` mechanism entirely to
+  reach the batched backend path, so neither Task 1 nor the later chunk-
+  derivation fixes touched them — this entry closes that tracked gap.
+  `Backend::generate_batch`'s `Cpu` impl used to do
+  `(0..m).into_par_iter().map(|_| fgn.sample_cpu())`, and `sample_cpu` reads
+  `&self.seed` — a shared `Deterministic` atomic — fresh, from *inside* the
+  parallel region, once per path; which of the `m` parallel iterations
+  claimed which tick depended on rayon's scheduling, hence on thread-pool
+  size. Fix: `generate_batch` now takes an explicit `seed: &S2` parameter;
+  on `Cpu`, it derives one basis **per path** (`(0..m).map(|_|
+  seed.derive())`, sequentially, on the calling thread) before handing the
+  `m` (basis, path) pairs to rayon, so which physical thread ends up
+  computing path `i` no longer changes which basis path `i` consumes.
+  Same seed + same `m` ⇒ bit-identical output on any machine, under any
+  rayon thread-pool size, for the `Cpu` backend (and `Accelerate` — see
+  below); `Unseeded` still draws fresh randomness every call.
+- **Rejected intermediate design, kept here as a warning:** the first
+  implementation reused this wave's `ProcessExt::chunk_count`/`chunk_lens`
+  verbatim — capping at `MAX_CHUNKS = 64` chunks, one `SimdNormal` built per
+  chunk and reused sequentially across that chunk's paths, exactly
+  `ProcessExt::chunked_samplers`'s own shape. It was correct (thread-count
+  independent, bit-identical) but ~2× *slower* at `m = 1000`
+  (`FGN_sample_par/sample_par/1000`: 7.34 ms → 13.4–18.4 ms measured).
+  Root cause: `Fgn::fill_cpu` calls `ndrustfft::ndfft_inplace_par`, which is
+  *itself* a nested rayon parallel region (`ndarray::parallel`'s
+  `Zip::par_for_each` over the array's rows). The old, unchunked code ran
+  `m` independent outer rayon leaf tasks, each making exactly one such
+  nested call — cheap, since a single-row `Zip` has nothing left to split
+  and returns immediately. Chunking collapsed that to `MAX_CHUNKS` outer
+  tasks each firing the same nested-rayon entry point repeatedly, back to
+  back, from one worker thread — measurably more expensive than spreading
+  the identical nested calls across independent outer tasks. Shipped fix:
+  one rayon leaf task per **path**, uncapped (not `chunk_count`-limited),
+  preserving the original fine-grained parallelism while still deriving
+  every basis sequentially up front. The extra `SimdNormal` construction
+  cost (one per path instead of one per `MAX_CHUNKS`-capped chunk) is
+  negligible next to an FFT. This is *not* a case for reusing `chunk_count`
+  everywhere the wave's shape applies — a nested-parallel hot loop is a
+  real exception, and any future batched-FFT-style override should
+  benchmark before assuming the same chunking constant is safe.
+- **A second, deeper bug in `Fbm::sample_par` specifically — not merely
+  thread-count dependence, but seed-blindness:** `Fbm::sample_par` drove the
+  batch through `self.fgn.noise_batch(m)`, where `self.fgn: Fgn<T, Unseeded,
+  B>` is *always* `Unseeded` by construction (see `Fbm`'s own doc — the
+  embedded `fgn` exists only for its FFT/eigenvalue cache and was never
+  meant to carry randomness). Since `generate_batch` read `fgn`'s own seed
+  field, `Fbm::sample_par` never consulted `Fbm`'s real `self.seed` at all —
+  a `Deterministic`-seeded `Fbm::sample_par` drew fresh, non-reproducible
+  randomness on *every single call*, seeded or not, regardless of thread
+  count. Fixed by threading `self.seed` (the outer, real seed) into
+  `noise_batch`/`generate_batch` explicitly, instead of relying on `fgn`'s
+  dead field. `Fgn::sample_par` did not have this second bug — its `self`
+  already was the real, correctly-seeded object — only the race.
+- **`Accelerate` (the `accelerate` feature's vDSP backend) gets the identical
+  guarantee via a *different* mechanism than `Cpu`, deliberately**: unlike
+  `ndfft_inplace_par`, `vDSP_fft_zip` is a plain FFI call with no internal
+  rayon parallelism, so grouping several paths into one thread's sequential
+  work costs nothing extra there. `sample_accelerate_impl` now takes an
+  external seed generic instead of reading `self.seed`, and
+  `Backend::generate_batch`'s `Accelerate` impl *does* use
+  `ProcessExt::chunk_count`/`chunk_lens` (capped at `MAX_CHUNKS = 64`,
+  unlike `Cpu`) before handing each chunk to rayon as one
+  `sample_accelerate_impl(len, ..)` vDSP batch call — the parallelism
+  granularity changed (one rayon task per chunk instead of one per path),
+  which does not regress wall-clock throughput once `chunk_count(m)` meets
+  or exceeds the machine's core count, true of essentially all real
+  hardware (and unlike `Cpu`, there is no nested-rayon call inside the
+  chunk to contend with).
+- **The GPU backends (`CudaNative`, `CubeCl`/`gpu`, `MetalNative`) are
+  explicitly OUT of this reproducibility guarantee, documented rather than
+  fixed:** each already draws one `u32`/`u64` value from `self.seed.rng()`
+  per batch call and feeds it to the on-device kernel's own Philox/PCG-style
+  RNG, so output is a function of the pinned seed and not of host
+  thread-pool size (there is no host-side rayon fan-out inside their
+  `generate_batch` — it is a single kernel-launch call), but cross-run
+  bit-identity across GPU driver versions, vendors, or repeated runs on the
+  same device is untested and not promised. `Backend::generate`/
+  `generate_batch`/`generate_pair`'s new `seed: &S2` parameter is ignored by
+  all three, exactly as `generate`'s host-side seed parameter already was.
+  See `device.rs`'s `Backend` trait doc for the full per-backend table.
+- Perf, shipped design vs. the pre-existing (buggy) code — `cargo bench
+  --bench fgn_fbm -- "FGN_sample_par|FBM_sample_par"` (Apple Silicon,
+  `n = 4096`, mean of 100 samples): `FGN_sample_par/sample_par/100` 806 µs
+  → 796 µs; `/1000` 7.34 ms → 7.05 ms; `FBM_sample_par/sample_par/10`
+  228 µs → 223 µs; `/100` 1.04 ms → 1.01 ms; `/1000` 8.82 ms → 9.00 ms (+2%,
+  within this benchmark's run-to-run noise band — the `sample_sequential`
+  control at the same `m`, untouched by this fix, moved +1 to +6% between
+  the same two runs). No regression at any sampled `m`; the small
+  improvements at most `m` are consistent with removing the old code's
+  atomic contention (up to `m` threads calling `Deterministic::next_u64()`
+  on the *same* shared atomic concurrently) in favor of sequential,
+  uncontended `derive()` calls before the parallel region starts.
+
 ### stochastic-rs-copulas: default the generator method
 
 - `BivariateExt::generator` is no longer a required method. It now has a

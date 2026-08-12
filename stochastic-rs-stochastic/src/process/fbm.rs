@@ -130,10 +130,20 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
 
   /// The `m` fGN noises are generated in one batched backend call, then each
   /// path is assembled (cumulative sum) on the host across all cores.
+  ///
+  /// **Reproducibility.** Same guarantee as [`Fgn::sample_par`](crate::noise::fgn::Fgn::sample_par),
+  /// with one added wrinkle this override alone has to get right: the
+  /// embedded `self.fgn` is always [`Unseeded`] (never consulted for
+  /// randomness — see this type's own doc), so the batch is driven by
+  /// `self.seed` passed in explicitly here, not `self.fgn.noise_batch`'s own
+  /// (dead) seed. Getting that backwards was the actual bug this fixes:
+  /// passing `self.fgn`'s seed silently ignored `self.seed` entirely, so a
+  /// `Deterministic`-seeded `Fbm::sample_par` used to draw fresh randomness
+  /// on every call regardless of the pinned seed.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     self
       .fgn
-      .noise_batch(m)
+      .noise_batch(m, &self.seed)
       .into_par_iter()
       .map(|fgn_row| {
         let mut fbm = Array1::<T>::zeros(self.n);

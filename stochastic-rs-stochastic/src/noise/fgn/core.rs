@@ -172,6 +172,15 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     self.sample_cpu_impl(&Deterministic::new(seed))
   }
 
+  /// Test-only convenience: `sample_cpu_impl(&self.seed)`, identical to what
+  /// `ProcessExt::sample()` does for the `Cpu` backend. `Backend::generate_batch`
+  /// used to call this once per path; it now builds one `SimdNormal` per
+  /// chunk and calls `fill_cpu` directly (see `device.rs`'s `Cpu` impl), so
+  /// this has no production caller left — kept `#[cfg(test)]` for the
+  /// covariance/marginal tests in this module and the CPU-vs-CUDA comparison
+  /// tests in `cuda_native/tests.rs`, rather than duplicating this one-liner
+  /// in both places.
+  #[cfg(test)]
   pub(crate) fn sample_cpu(&self) -> Array1<T> {
     self.sample_cpu_impl(&self.seed)
   }
@@ -286,9 +295,13 @@ impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {
     B::generate(self, seed)
   }
 
-  /// `m` fGN paths in one batched `B` call, one [`Array1`] per path.
-  pub(crate) fn noise_batch(&self, m: usize) -> Vec<Array1<T>> {
-    B::generate_batch(self, m)
+  /// `m` fGN paths in one batched `B` call, one [`Array1`] per path. `seed`
+  /// is external to `self` so a wrapper type (e.g. [`Fbm`](crate::process::fbm::Fbm),
+  /// whose embedded `fgn` is always [`Unseeded`]) can drive the batch from
+  /// its *own* real seed instead of `self.seed` — see
+  /// [`Backend::generate_batch`]'s doc for which backends actually consult it.
+  pub(crate) fn noise_batch<S2: SeedExt>(&self, m: usize, seed: &S2) -> Vec<Array1<T>> {
+    B::generate_batch(self, m, seed)
   }
 
   /// Two independent fGN paths in one pass on backend `B`.

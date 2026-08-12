@@ -70,10 +70,20 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
     B::generate(self, &self.seed)
   }
 
-  /// The `m` paths are generated in **one batched backend call** (a single FFT
-  /// plan over the whole batch).
+  /// The `m` paths are generated in **one batched backend call**.
+  ///
+  /// **Reproducibility.** On [`Cpu`](crate::device::Cpu) (and the
+  /// `accelerate` feature's `Accelerate` backend): same seed + same `m` ⇒
+  /// bit-identical output, on any machine and under any rayon thread-pool
+  /// size — `Backend::generate_batch` derives every basis it needs
+  /// sequentially, on the calling thread, before any parallel work starts
+  /// (see each backend's own impl doc for its exact granularity — `Cpu` and
+  /// `Accelerate` differ there for performance reasons, not correctness
+  /// ones). GPU backends are excluded from this guarantee; see
+  /// [`Backend`](crate::device::Backend)'s doc for the full per-backend
+  /// table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    B::generate_batch(self, m)
+    B::generate_batch(self, m, &self.seed)
   }
 }
 

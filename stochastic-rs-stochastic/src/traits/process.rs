@@ -38,7 +38,18 @@ const MAX_CHUNKS: usize = 64;
 /// thread-pool size, the same seed and the same `m` could produce different
 /// output on two machines (or two test runs) with different pool sizes —
 /// exactly the defect this module fixes.
-fn chunk_count(m: usize) -> usize {
+///
+/// `pub(crate)` rather than private: the `accelerate` feature's `Backend`
+/// impl (`device.rs`) reuses it verbatim for `Fgn`/`Fbm`'s own `sample_par`
+/// overrides on that backend, which bypass this trait to reach the batched
+/// backend path but must split `m` the same data-derived way to get the
+/// same thread-count-independence guarantee. The default `Cpu` backend
+/// does not reuse it — measurement showed grouping several paths per
+/// `MAX_CHUNKS`-capped chunk regressed wall time roughly 2× at `m = 1000`
+/// there, because each path's own FFT call is itself a nested rayon
+/// parallel region (see `device.rs`'s `Cpu::generate_batch` doc), so `Cpu`
+/// instead derives one basis per **path**, uncapped.
+pub(crate) fn chunk_count(m: usize) -> usize {
   m.min(MAX_CHUNKS)
 }
 
@@ -48,8 +59,9 @@ fn chunk_count(m: usize) -> usize {
 /// `chunks == 0` only ever arises from `chunk_count(0)`; the `checked_div`/
 /// `checked_rem` fall back to `0` there (rather than relying on every caller
 /// to check `m` first) so this function stays total instead of panicking on
-/// the `m / 0` that a plain division would perform.
-fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
+/// the `m / 0` that a plain division would perform. `pub(crate)` for the
+/// same reason as `chunk_count` above.
+pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
   let base = m.checked_div(chunks).unwrap_or(0);
   let rem = m.checked_rem(chunks).unwrap_or(0);
   (0..chunks).map(move |i| base + usize::from(i < rem))

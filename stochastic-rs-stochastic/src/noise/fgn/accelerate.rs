@@ -69,13 +69,13 @@ struct Scratch {
 }
 
 thread_local! {
-  static SETUPS: RefCell<Vec<FftSetup>> = RefCell::new(Vec::new());
-  static SCRATCH: RefCell<Scratch> = RefCell::new(Scratch {
+  static SETUPS: RefCell<Vec<FftSetup>> = const { RefCell::new(Vec::new()) };
+  static SCRATCH: RefCell<Scratch> = const { RefCell::new(Scratch {
     real: Vec::new(),
     imag: Vec::new(),
     out: Vec::new(),
     eig: Vec::new(),
-  });
+  }) };
 }
 
 /// Returns a vDSP setup for `log2n`, creating it once per thread and reusing it
@@ -188,7 +188,17 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  pub(crate) fn sample_accelerate_impl(&self, m: usize) -> Result<Array2<T>> {
+  /// Samples `m` paths in one vDSP batch using an external `seed`, generic
+  /// over the caller's own seed strategy rather than `self.seed` — this is
+  /// what lets [`Backend::generate_batch`](crate::device::Backend::generate_batch)
+  /// drive the CPU-equivalent chunked, thread-count-independent path (see
+  /// `device.rs`'s `Accelerate` impl) instead of racing every chunk on the
+  /// same `self.seed` atomic inside the parallel region.
+  pub(crate) fn sample_accelerate_impl<S2: SeedExt>(
+    &self,
+    m: usize,
+    seed: &S2,
+  ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let hurst = self.hurst.to_f64().unwrap();
@@ -197,6 +207,6 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       .sqrt_eigenvalues
       .as_slice()
       .expect("eigenvalues are contiguous");
-    sample_f32::<T, S>(eig_t, n, m, offset, hurst, t, &self.seed)
+    sample_f32::<T, S2>(eig_t, n, m, offset, hurst, t, seed)
   }
 }
