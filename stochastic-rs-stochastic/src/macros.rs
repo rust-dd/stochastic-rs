@@ -74,10 +74,16 @@ macro_rules! py_process_1d {
         use numpy::ndarray::Array2;
         use $crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        // The default `ProcessExt::sample_par` uses `rayon::into_par_iter`,
-        // which races on the shared `Deterministic` state and breaks the
-        // seed-determinism guarantee. Serialize on the seeded path; keep the
-        // parallel path for the unseeded one.
+        // `ProcessExt::sample_par` no longer races on a shared `Deterministic`
+        // state (see `traits/process.rs`'s "Reproducibility requirement on
+        // implementors" and the 124-type guard in
+        // `tests/reproducibility_all_processes.rs`), so this serialization is
+        // obsolete on the Rust side. It stays here because lifting it needs a
+        // Python-side reproducibility test proving `sample_par` under a seed
+        // is thread-count independent through the PyO3 boundary too, which
+        // does not exist yet (`stochastic-rs-py` is out of scope for this
+        // fix). Keep serializing on the seeded path until that test exists;
+        // keep the parallel path for the unseeded one.
         let is_seeded = self.seeded_f32.is_some() || self.seeded_f64.is_some();
         $crate::py_dispatch!(self, |inner| {
           let paths: Vec<_> = if is_seeded {
