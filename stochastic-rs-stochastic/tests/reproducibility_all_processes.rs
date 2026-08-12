@@ -26,16 +26,23 @@
 //! anywhere in this tree is a type this guard is not proving anything
 //! about.
 //!
-//! Sixteen types cannot be built from scalars alone (nine are generic over
-//! a compile-time backend `B` — instantiated here on the default `Cpu`
-//! backend only, since GPU backends deliberately ignore the seed and are
-//! not part of this guarantee; seven take a jump-size distribution `D`,
-//! passed as `ScalarNormal`/`ScalarExp` per the crate's convention) — these
-//! get the same one-closure-per-type treatment as everything else, just
-//! with a longer argument list. `process::ccustom::CompoundCustom` takes
-//! *two* such distributions plus a nested `CustomJt`, an eighth
-//! distribution-shaped case beyond the seven usually named; it is covered
-//! in `process.rs` alongside the rest. `n` is kept small throughout (this
+//! Sixteen types cannot be built from scalars alone: ten are generic over a
+//! compile-time backend `B` (`JumpFOUCustom`, `JumpFou`, `FJacobi`, `Fou`,
+//! `Fgbm`, `Fcir`, `Cfou`, `Cfgns`, `Fgn`, `Fbm` — instantiated here on the
+//! default `Cpu` backend only, since GPU backends deliberately ignore the
+//! seed and are not part of this guarantee), and eight take a jump-size
+//! distribution `D`, passed as `ScalarNormal`/`ScalarExp` per the crate's
+//! convention (`Bates1996`, `JumpFou`, `Kou`, `LevyDiffusion`, `Merton`,
+//! `CompoundPoisson`, `JumpFOUCustom`, `CustomJt`). `JumpFou` and
+//! `JumpFOUCustom` fall in both buckets, so the union is `10 + 8 - 2 = 16`
+//! distinct types, matching the sixteen above. These sixteen get the same
+//! one-closure-per-type treatment as everything else, just with a longer
+//! argument list. `process::ccustom::CompoundCustom` takes *two* such
+//! distributions plus a nested `CustomJt` (`D1`/`D2`, not one `D` reused
+//! twice the way `JumpFOUCustom` reuses `ScalarExp`) — a ninth,
+//! structurally distinct distribution-shaped case beyond the eight usually
+//! named, sitting outside this count entirely; it is covered in
+//! `process.rs` alongside the rest. `n` is kept small throughout (this
 //! guard is about seed plumbing, not statistics); jump intensities are
 //! pushed high enough that a jump component's own reproducibility bug
 //! cannot hide behind a diffusion-only comparison.

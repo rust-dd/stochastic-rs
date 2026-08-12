@@ -1,13 +1,13 @@
 //! `process/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
 //! derivation of the 124-type list, and shared methodology notes.
-//! `CompoundPoisson` and `CustomJt` are two of the seven named
-//! distribution-taking types; `CompoundCustom` is the eighth,
+//! `CompoundPoisson` and `CustomJt` are two of the eight named
+//! distribution-taking types; `CompoundCustom` is the ninth,
 //! unnamed-by-the-usual-count case mentioned there — it takes two
 //! distributions (`D1`, `D2`) plus a nested `CustomJt<T, D2>`, whose own
 //! `Unseeded` seed field is inert (its sampler drives it through an
 //! *externally* supplied seed instead, exactly like `CompoundPoisson`'s
-//! nested `Poisson` below). `Fbm` is one of the nine backend-generic types.
+//! nested `Poisson` below). `Fbm` is one of the ten backend-generic types.
 
 use ndarray::Array1;
 use ndarray::Array2;

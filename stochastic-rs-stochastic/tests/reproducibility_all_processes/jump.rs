@@ -2,11 +2,11 @@
 //! `../reproducibility_all_processes.rs` for the full rationale, the
 //! derivation of the 124-type list, and shared methodology notes.
 //! `Bates1996`, `JumpFou`, `Kou`, `LevyDiffusion` and `Merton` are five of
-//! the seven distribution-taking types named there, driven at `LAMBDA = 50`
+//! the eight distribution-taking types named there, driven at `LAMBDA = 50`
 //! so a jump-component reproducibility bug cannot hide behind a
 //! diffusion-only comparison; `JumpFOUCustom` is the sixth (its jump
 //! timing/size draws use two independent `ScalarExp` distributions instead
-//! of one `ScalarNormal`) and one of the nine backend-generic types besides.
+//! of one `ScalarNormal`) and one of the ten backend-generic types besides.
 
 use stochastic_rs_distributions::scalar::ScalarExp;
 use stochastic_rs_distributions::scalar::ScalarNormal;
