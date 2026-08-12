@@ -69,28 +69,24 @@ macro_rules! py_process_1d {
         $crate::py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
       }
 
+      /// `m` independent paths via [`ProcessExt::sample_par`], stacked into
+      /// an `(m, n)` array. Bit-identical across rayon thread-pool sizes for
+      /// a given seed and `m` — see `ProcessExt::sample_par`'s own doc and
+      /// the 124-type guard in `tests/reproducibility_all_processes.rs` for
+      /// the Rust-side proof, and
+      /// `stochastic-rs-py/tests/test_sample_par_thread_count.py` for the
+      /// same property verified across this PyO3 boundary (subprocesses
+      /// with different `RAYON_NUM_THREADS` values). Until that Python test
+      /// existed, the seeded path here serialized into `m` sequential
+      /// `sample()` calls instead of calling `sample_par` — a different,
+      /// also-deterministic sequence; see MIGRATION.md for the switch.
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use numpy::ndarray::Array2;
         use $crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        // `ProcessExt::sample_par` no longer races on a shared `Deterministic`
-        // state (see `traits/process.rs`'s "Reproducibility requirement on
-        // implementors" and the 124-type guard in
-        // `tests/reproducibility_all_processes.rs`), so this serialization is
-        // obsolete on the Rust side. It stays here because lifting it needs a
-        // Python-side reproducibility test proving `sample_par` under a seed
-        // is thread-count independent through the PyO3 boundary too, which
-        // does not exist yet (`stochastic-rs-py` is out of scope for this
-        // fix). Keep serializing on the seeded path until that test exists;
-        // keep the parallel path for the unseeded one.
-        let is_seeded = self.seeded_f32.is_some() || self.seeded_f64.is_some();
         $crate::py_dispatch!(self, |inner| {
-          let paths: Vec<_> = if is_seeded {
-            (0..m).map(|_| inner.sample()).collect()
-          } else {
-            inner.sample_par(m)
-          };
+          let paths = inner.sample_par(m);
           let n = paths[0].len();
           let mut result = Array2::zeros((m, n));
           for (i, path) in paths.iter().enumerate() {
@@ -149,19 +145,16 @@ macro_rules! py_process_2x1d {
         })
       }
 
+      /// Same reproducibility guarantee as `py_process_1d!`'s `sample_par`
+      /// (see its doc comment) — bit-identical across rayon thread-pool
+      /// sizes for a given seed and `m`.
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
         use numpy::IntoPyArray;
         use numpy::ndarray::Array2;
         use $crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        // Serialize on the seeded path (see `py_process_1d!` rationale).
-        let is_seeded = self.seeded_f32.is_some() || self.seeded_f64.is_some();
         $crate::py_dispatch!(self, |inner| {
-          let samples: Vec<_> = if is_seeded {
-            (0..m).map(|_| inner.sample()).collect()
-          } else {
-            inner.sample_par(m)
-          };
+          let samples = inner.sample_par(m);
           let n = samples[0][0].len();
           let mut r0 = Array2::zeros((m, n));
           let mut r1 = Array2::zeros((m, n));
@@ -219,18 +212,15 @@ macro_rules! py_process_2d {
         $crate::py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
       }
 
+      /// Same reproducibility guarantee as `py_process_1d!`'s `sample_par`
+      /// (see its doc comment) — bit-identical across rayon thread-pool
+      /// sizes for a given seed and `m`.
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use $crate::traits::ProcessExt;
         use pyo3::IntoPyObjectExt;
-        // Serialize on the seeded path (see `py_process_1d!` rationale).
-        let is_seeded = self.seeded_f32.is_some() || self.seeded_f64.is_some();
         $crate::py_dispatch!(self, |inner| {
-          let samples: Vec<_> = if is_seeded {
-            (0..m).map(|_| inner.sample()).collect()
-          } else {
-            inner.sample_par(m)
-          };
+          let samples = inner.sample_par(m);
           pyo3::types::PyList::new(
             py,
             samples.iter().map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),

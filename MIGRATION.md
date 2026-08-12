@@ -1273,6 +1273,82 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   change — one extra `.sample()` call per type is negligible next to the
   existing four `sample_par` runs each type already made.
 
+### stochastic-rs-stochastic: seeded Python `sample_par` no longer serializes into `m` sequential `sample()` calls
+
+- **Behavior change for `m > 64`, same seed — Python-visible only.** Every
+  `py_process_1d!`/`py_process_2x1d!`/`py_process_2d!`-generated class's
+  `sample_par(m)` special-cased seeded instances: instead of calling
+  `ProcessExt::sample_par`, it called `.sample()` `m` times in a loop on one
+  instance (`(0..m).map(|_| inner.sample()).collect()`). That dates from a
+  genuine race in the default `sample_par` on shared `Deterministic` state
+  (`2026-05-08 fix: par seed`) which no longer exists: `sample_par`'s chunk
+  count has been a pure function of `m` alone since, and every chunk's
+  sampler is built sequentially, before any chunk reaches rayon (see this
+  file's reproducibility entries above and the 124-type guard in
+  `tests/reproducibility_all_processes.rs`). `sample_par(m)` now always
+  calls `ProcessExt::sample_par` — the same call the unseeded path already
+  used, and the same call `PyMerton`/`PyKou`/`PyLevyDiffusion::sample_par`
+  (hand-written, `src/jump/{merton,kou,levy_diffusion}.rs`) already made
+  unconditionally; those three were never part of this serialization and
+  needed no change.
+- **Only visible once `m` exceeds `MAX_CHUNKS` (64, `traits/process.rs`).**
+  `chunk_count(m) = m.min(64)`, so at `m <= 64` every path already got its
+  own freshly derived sampler under the *old* code too — the loop-of-
+  `sample()` and the chunked path were already identical there, and stay
+  identical now. The two diverge only once a chunk holds more than one path
+  (`m > 64`): that chunk's one sampler is then asked for several draws in a
+  row from its own continuing stream, not a freshly derived basis per draw.
+  Measured directly (`PyGbm(0.05, 0.2, 8, x0=100.0, t=1.0, seed=42)`,
+  comparing the old loop-of-`sample()` recipe against current
+  `sample_par`): identical at `m` = 1, 8, 63, 64; at `m = 65`, row 0 still
+  matches (both give `[100.0, 108.778910, 102.730042, 90.836069, 96.806925,
+  95.123516, 105.653593, 112.420187]`) but row 1 onward differ (old:
+  `[100.0, 102.988805, 113.671610, 120.576411, 110.666630, 119.211345,
+  114.536010, 116.051663]`; new: `[100.0, 89.167261, 71.715847, 70.949297,
+  72.410013, 69.849579, 73.360293, 68.515575]` — 64 of the 65 rows differ in
+  total). The mechanism (`chunk_count`'s purity and the `MAX_CHUNKS`
+  threshold) is shared by every `py_process_*!`-generated class, not just
+  `PyGbm` — this is one representative measurement, not an isolated case.
+- How to tell if you are affected: you called `sample_par(m)` on a
+  `seed=`-constructed process with `m > 64`. Unseeded instances are
+  unaffected (they always used `sample_par`); seeded instances with
+  `m <= 64` are unaffected (identical either way, see above).
+- How to reproduce the pre-fix sequence, if you depended on its exact
+  values — it was always just `m` sequential `.sample()` calls on one
+  instance, and still is:
+
+  ```python
+  # Before: sample_par(m) under a seed, for m > 64, drew this sequence.
+  # Still available directly, unchanged:
+  g = sr.PyGbm(0.05, 0.2, 8, x0=100.0, t=1.0, seed=42)
+  legacy = np.stack([g.sample() for _ in range(m)])
+
+  # After: sample_par(m) itself now draws through the same chunked/rayon
+  # path as every unseeded call, and every other ProcessExt::sample_par
+  # caller in the crate.
+  new = sr.PyGbm(0.05, 0.2, 8, x0=100.0, t=1.0, seed=42).sample_par(m)
+  ```
+- **Why this is the right direction, not just a cleanup.** The new
+  behavior is bit-identical across any rayon thread-pool size for a given
+  seed and `m` — the same guarantee every other `ProcessExt::sample_par`
+  caller in this crate already has (see "the process-level reproducibility
+  exception list is now empty" above) — where the old serialized loop's
+  only virtue was determinism within one arbitrary, undocumented
+  convention that Python users had no way to discover. Verified across the
+  PyO3 boundary specifically — not just in Rust — by
+  `stochastic-rs-py/tests/test_sample_par_thread_count.py`: it runs the
+  same seeded `sample_par` call in subprocesses under different
+  `RAYON_NUM_THREADS` values and asserts the arrays are identical, at both
+  `m = 64` (one path per chunk) and `m = 256` (several paths per chunk).
+- Nothing pins the old numeric values. `stochastic-rs-py/tests/test_stochastic.py`'s
+  `test_gbm_sample_par_determinism` compares two independent same-seed
+  calls to each other (`np.allclose(a, b)`), not to a hardcoded array, and
+  passes under either implementation (`m = 8`, below the 64 threshold
+  above, is unaffected either way); no Python test file has a hardcoded
+  `sample_par` array. `tests/sampler_v3_golden.rs`'s
+  `golden_merton_streams`/`golden_bates_streams` pin `.sample()`, never
+  `sample_par`, so they are untouched. No re-pin was needed anywhere.
+
 ### stochastic-rs-copulas: default the generator method
 
 - `BivariateExt::generator` is no longer a required method. It now has a
