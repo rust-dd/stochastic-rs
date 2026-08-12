@@ -16,6 +16,7 @@
 use rand_distr::Normal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::diffusion::fou::Fou;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
@@ -23,6 +24,7 @@ use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::stochastic::volatility::HestonPow;
 use stochastic_rs::stochastic::volatility::heston::Heston;
+use stochastic_rs::stochastic::volatility::sabr::Sabr;
 use stochastic_rs::traits::PathSampler;
 use stochastic_rs::traits::ProcessExt;
 
@@ -134,6 +136,82 @@ fn golden_heston_streams() {
       4580640673470114080,
       4574353474520915898,
       4584221584215986456,
+    ],
+  );
+}
+
+#[test]
+fn golden_sabr_streams() {
+  // Pinned before the C1 correlation-fix rewrite lands (a reviewer verified
+  // the rewrite's first path matches this pre-rewrite value for `Sabr` and
+  // all 10 rewritten types), specifically so that rewrite cannot silently
+  // shift it. `Sabr` is "clone-snapshot": `sampler()` currently does
+  // `seed: self.seed.clone()`, so this exercises that shape directly.
+  let sabr = Sabr::<f64, _>::new(
+    0.3,
+    0.5,
+    -0.7,
+    N,
+    Some(1.0),
+    Some(0.2),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let [f, a] = sabr.sample();
+  assert_close(
+    &f,
+    &[
+      4607182418800017408,
+      4607470611485312969,
+      4607195393466663091,
+      4607256618755914074,
+      4606122964360972460,
+      4606277885911825184,
+      4606927526128110858,
+      4605786245219509036,
+    ],
+  );
+  assert_close(
+    &a,
+    &[
+      4596373779694328218,
+      4595561519371525225,
+      4596207781262441424,
+      4595996209766421720,
+      4596855723141723989,
+      4595755526112337061,
+      4594915282930478293,
+      4595904931460021670,
+    ],
+  );
+}
+
+#[test]
+fn golden_fou_stream() {
+  // Pinned before the C1 correlation-fix rewrite lands — see
+  // `golden_sabr_streams` above. `Fou` is one of the 10 "lazy" types
+  // rewritten to own a seed at `sampler()` construction.
+  let fou = Fou::<f64, _>::new(
+    0.7,
+    1.3,
+    0.8,
+    0.2,
+    N,
+    Some(0.2),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  assert_close(
+    &fou.sample(),
+    &[
+      4596373779694328218,
+      4600306872643172956,
+      4602099920409686161,
+      4602782325076011741,
+      4603273410930381009,
+      4602687963748544572,
+      4602116189115551230,
+      4603097156562520143,
     ],
   );
 }
