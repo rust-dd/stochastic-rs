@@ -28,7 +28,6 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   normal: SimdNormal<T, 64, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
   stream_seed: Cell<u64>,
 }
 
@@ -71,7 +70,6 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
       normal,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
       stream_seed: Cell::new(stream_seed),
     }
   }
@@ -108,13 +106,15 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
   }
 
   /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
+  /// sampler draws from (see the crate-level RNG policy). `ig` and
+  /// `normal` each own and refill their own internal buffer, so this type
+  /// needs no separate engine of its own (matches `SimdLogNormal`, which
+  /// dropped its equivalent field for the same reason).
   pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
     if out.len() < SMALL_NIG_THRESHOLD {
       for x in out.iter_mut() {
-        let d = self.ig.sample(rng);
-        let z = self.normal.sample(rng);
+        let d = self.ig.sample_fast();
+        let z = self.normal.sample_fast();
         *x = self.mu + self.beta * d + d.sqrt() * z;
       }
       return;
@@ -385,5 +385,25 @@ mod tests {
         "pdf({x}) = {p}, expected finite >= 0"
       );
     }
+  }
+
+  /// `fill_slice`'s below-`SMALL_NIG_THRESHOLD` branch calls
+  /// `ig.sample_fast()`/`normal.sample_fast()` directly (rather than the
+  /// removed vestigial-`simd_rng`-backed `Distribution::sample(rng)` path);
+  /// regression check that the refactor kept the same-seed replay
+  /// contract and produced only finite output.
+  #[test]
+  fn nig_fill_slice_small_n_is_deterministic_and_finite() {
+    let dist_a = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0, &Deterministic::new(7));
+    let dist_b = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0, &Deterministic::new(7));
+    let mut out_a = [0.0_f64; 8];
+    let mut out_b = [0.0_f64; 8];
+    dist_a.fill_slice(&mut out_a);
+    dist_b.fill_slice(&mut out_b);
+    assert_eq!(out_a, out_b, "same seed must replay bit-for-bit");
+    assert!(
+      out_a.iter().all(|x| x.is_finite()),
+      "all samples must be finite, got {out_a:?}"
+    );
   }
 }
