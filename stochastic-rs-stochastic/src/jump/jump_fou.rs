@@ -17,25 +17,34 @@ use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::process::cpoisson::CompoundPoisson;
+use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// The private `fgn: Fgn<T, Unseeded, B>` field is never consulted for its
-/// own seed — `sampler()` builds a plain [`SimdNormal`] from
-/// `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT plan
-/// and eigenvalues, the same pattern
-/// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
-/// [`Fbm`](crate::process::fbm::Fbm) use for their own embedded,
-/// permanently-`Unseeded` `fgn`. The diffusion component is therefore fully
-/// seed-reproducible. **Partial exception to [`ProcessExt`]'s
-/// reproducibility guarantee** remains only through `cpoisson` — see that
-/// field's own doc below. (This was previously documented as a *full*
-/// exception — "no randomness derives from `self.seed` at all" — on the
-/// grounds that `fgn` was hard-wired to `Unseeded`; that was true of the
-/// field's *value* but not, as first claimed, unfixable: the field is
-/// private, so rewiring how it's used is non-breaking, exactly as for
-/// `JumpFOUCustom`'s identical shape.)
+/// Fully seed-reproducible: no exception to [`ProcessExt`]'s reproducibility
+/// guarantee. Both halves consult `self.seed`, independently:
+///
+/// - The private `fgn: Fgn<T, Unseeded, B>` field is never consulted for its
+///   own seed — `sampler()` builds a plain [`SimdNormal`] from
+///   `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT
+///   plan and eigenvalues, the same pattern
+///   [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
+///   [`Fbm`](crate::process::fbm::Fbm) use for their own embedded,
+///   permanently-`Unseeded` `fgn`. (This was fixable non-breakingly because
+///   the field is private — rewiring how it's used carries no signature
+///   change.)
+/// - `cpoisson` is built internally by [`new`](Self::new) from `seed`,
+///   exactly like [`Merton`](crate::jump::merton::Merton)'s field of the
+///   same name — see that field's own doc below.
+///
+/// (This type was previously documented as a *full* exception — "no
+/// randomness derives from `self.seed` at all" — on the grounds that both
+/// halves were hard-wired away from it. That was correct about the values at
+/// the time, but not about what was fixable: `fgn` needed only a private,
+/// non-breaking rewire (done first); `cpoisson` needed the same breaking
+/// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates1996` needed, applied here
+/// last. See MIGRATION.md.)
 pub struct JumpFou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -60,19 +69,45 @@ where
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
+  /// Jump (Poisson) intensity λ — arrival rate of the jumps added to the
+  /// fOU path. Single source of truth: `sampler()` reads this field
+  /// directly (not `cpoisson.poisson.lambda`) for the jump-arrival rate.
+  /// `JumpFou` has no `with_*` builder setters, so unlike
+  /// [`Bates1996`](crate::jump::bates::Bates1996) or
+  /// [`Merton`](crate::jump::merton::Merton) there is no setter that could
+  /// let this drift out of sync with the mirror — [`new`](Self::new)
+  /// establishes the invariant once, at construction.
+  pub lambda: T,
   /// Compound-Poisson jump driver adding `dJ_t` on top of the fOU path.
-  /// **Partial exception to [`ProcessExt`]'s reproducibility guarantee:**
-  /// hard-wired to `Unseeded` (default `S`) by pre-existing design — the
-  /// same shape as [`Merton`](crate::jump::merton::Merton)'s field of the
-  /// same name — so the jump arrivals/sizes are never seed-reproducible
-  /// even though the diffusion component (the private `fgn` field, driven
-  /// by `self.seed`) is. See MIGRATION.md and [`ProcessExt`]'s trait-level
-  /// reproducibility section.
-  pub cpoisson: CompoundPoisson<T, D>,
+  /// Fully seed-reproducible: [`new`](Self::new) builds it internally from
+  /// `seed` (`seed.clone().derive()` — a hash-mixed child, decorrelated
+  /// from but a deterministic function of the same `seed` the diffusion
+  /// component consults directly), and `sampler()` derives a fresh,
+  /// chunk-local basis off `self.cpoisson.seed` for every chunk, mirroring
+  /// the diffusion component's own per-chunk `self.seed`-derived basis.
+  ///
+  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
+  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
+  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
+  /// inert there (`grid_increments` never consults them). That inertness
+  /// is scoped to *this type's own* sampling, though: `cpoisson` is a
+  /// `CompoundPoisson` in its own right, and calling `.sample()` on it
+  /// directly (bypassing `JumpFou` entirely) drives it through
+  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` and
+  /// *does* consult `.seed` — genuinely live there. Left `pub` for both
+  /// reasons, matching [`Merton::cpoisson`](crate::jump::merton::Merton::cpoisson):
+  /// a caller can inspect or directly `.sample()` the embedded
+  /// compound-Poisson process as its own standalone `ProcessExt`, and can
+  /// replace it via direct field assignment — which does not adopt the
+  /// replacement's `lambda` into `self.lambda` (there is no `with_cpoisson`
+  /// setter here to do that adoption for you, unlike `Merton`/`Bates1996`),
+  /// so assign `self.lambda` to match separately if you do this.
+  pub cpoisson: CompoundPoisson<T, D, S>,
   fgn: Fgn<T, Unseeded, B>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Drives
-  /// the diffusion component only — see `cpoisson`'s doc above for the
-  /// remaining exception.
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
+  /// directly by the diffusion component; `cpoisson`'s own seed (set at
+  /// construction from this same value — see `cpoisson`'s doc above)
+  /// drives the jump component.
   pub seed: S,
 }
 
@@ -81,18 +116,30 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Builds the compound-Poisson jump driver internally from `jump_dist`
+  /// and `lambda`, seeded from `seed` (see `cpoisson`'s field doc) — the
+  /// caller supplies the jump-size distribution and intensity directly
+  /// instead of pre-building a `Poisson`/`CompoundPoisson` pair and
+  /// threading a third, independent seed through it by hand.
   pub fn new(
     hurst: T,
     theta: T,
     mu: T,
     sigma: T,
+    lambda: T,
+    jump_dist: D,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    cpoisson: CompoundPoisson<T, D>,
     seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
+
+    let cpoisson = CompoundPoisson::new(
+      jump_dist,
+      Poisson::new(lambda, Some(n), t, Unseeded),
+      seed.clone().derive(),
+    );
 
     Self {
       hurst,
@@ -102,6 +149,7 @@ where
       n,
       x0,
       t,
+      lambda,
       cpoisson,
       fgn: Fgn::new(hurst, n - 1, t, Unseeded),
       seed,
@@ -116,16 +164,19 @@ where
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = JumpFouSampler<'s, T, D, B>
+    = JumpFouSampler<'s, T, D, S, B>
   where
     Self: 's;
 
   /// Owns a Gaussian source derived from `self.seed` (not `fgn.sampler()`,
   /// which would build it from `fgn`'s own permanently-`Unseeded` field —
   /// see the type doc) and borrows `fgn` (for its `Arc`-shared FFT
-  /// plan/eigenvalues only) and the compound-Poisson jump driver, re-drawn
-  /// per fill exactly as the legacy `sample()` did.
-  fn sampler(&self) -> JumpFouSampler<'_, T, D, B> {
+  /// plan/eigenvalues only). Also owns a separate, independently-derived
+  /// jump seed and borrows only the jump-size distribution — never a
+  /// borrowed `&self.cpoisson` shared across chunks, which would let
+  /// concurrent chunks race on the same shared atomic during the parallel
+  /// region (see `ProcessExt`'s trait-level reproducibility requirement).
+  fn sampler(&self) -> JumpFouSampler<'_, T, D, S, B> {
     JumpFouSampler {
       n: self.n,
       theta: self.theta,
@@ -135,17 +186,19 @@ where
       dt: self.fgn.dt(),
       fgn: &self.fgn,
       normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
-      cpoisson: &self.cpoisson,
+      jump_distribution: &self.cpoisson.distribution,
+      lambda: self.lambda,
+      jump_seed: self.cpoisson.seed.derive(),
     }
   }
 }
 
 /// Reusable [`JumpFou`] sampling state: borrows `fgn` for its `Arc`-shared
-/// FFT plan/eigenvalues and the compound-Poisson jump driver, and owns the
-/// Gaussian source, so a Monte-Carlo loop pays the fGn `SimdNormal` setup
-/// once and reuses the FFT plan.
+/// FFT plan/eigenvalues and the jump-size distribution, and owns the
+/// Gaussian source and a separately-derived jump seed, so a Monte-Carlo loop
+/// pays the fGn `SimdNormal` setup once and reuses the FFT plan.
 #[doc(hidden)]
-pub struct JumpFouSampler<'a, T, D, B>
+pub struct JumpFouSampler<'a, T, D, S: SeedExt, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -159,10 +212,12 @@ where
   dt: T,
   fgn: &'a Fgn<T, Unseeded, B>,
   normal: SimdNormal<T>,
-  cpoisson: &'a CompoundPoisson<T, D>,
+  jump_distribution: &'a D,
+  lambda: T,
+  jump_seed: S,
 }
 
-impl<T, D, B> JumpFouSampler<'_, T, D, B>
+impl<T, D, S: SeedExt, B> JumpFouSampler<'_, T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -177,7 +232,13 @@ where
     self
       .fgn
       .fill_cpu(&mut self.normal, fgn.as_slice_mut().unwrap());
-    let jump_increments = self.cpoisson.sample_grid_increments(out.len(), self.dt);
+    let jump_increments = crate::process::cpoisson::grid_increments(
+      self.jump_distribution,
+      self.lambda,
+      &self.jump_seed,
+      out.len(),
+      self.dt,
+    );
 
     out[0] = self.x0;
 
@@ -190,7 +251,7 @@ where
   }
 }
 
-impl<T, D, B> PathSampler<T> for JumpFouSampler<'_, T, D, B>
+impl<T, D, S: SeedExt, B> PathSampler<T> for JumpFouSampler<'_, T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -212,7 +273,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, cpoisson, seed } via fgn
+backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, lambda, cpoisson, seed } via fgn
   where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(feature = "python")]
@@ -244,8 +305,6 @@ impl PyJumpFou {
     seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    use crate::process::cpoisson::CompoundPoisson;
-    use crate::process::poisson::Poisson;
     let mut s = Self {
       inner_f32: None,
       inner_f64: None,
@@ -254,11 +313,7 @@ impl PyJumpFou {
     };
     match dtype.unwrap_or("f64") {
       "f32" => {
-        let cpoisson = CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32), Unseeded),
-          Unseeded,
-        );
+        let jump_dist = crate::traits::CallableDist::new(distribution);
         match seed {
           Some(sd) => {
             s.seeded_f32 = Some(JumpFou::new(
@@ -266,10 +321,11 @@ impl PyJumpFou {
               theta as f32,
               mu as f32,
               sigma as f32,
+              lambda_ as f32,
+              jump_dist,
               n,
               x0.map(|v| v as f32),
               t.map(|v| v as f32),
-              cpoisson,
               Deterministic::new(sd),
             ));
           }
@@ -279,21 +335,18 @@ impl PyJumpFou {
               theta as f32,
               mu as f32,
               sigma as f32,
+              lambda_ as f32,
+              jump_dist,
               n,
               x0.map(|v| v as f32),
               t.map(|v| v as f32),
-              cpoisson,
               Unseeded,
             ));
           }
         }
       }
       _ => {
-        let cpoisson = CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, Some(n), t, Unseeded),
-          Unseeded,
-        );
+        let jump_dist = crate::traits::CallableDist::new(distribution);
         match seed {
           Some(sd) => {
             s.seeded_f64 = Some(JumpFou::new(
@@ -301,16 +354,17 @@ impl PyJumpFou {
               theta,
               mu,
               sigma,
+              lambda_,
+              jump_dist,
               n,
               x0,
               t,
-              cpoisson,
               Deterministic::new(sd),
             ));
           }
           None => {
             s.inner_f64 = Some(JumpFou::new(
-              hurst, theta, mu, sigma, n, x0, t, cpoisson, Unseeded,
+              hurst, theta, mu, sigma, lambda_, jump_dist, n, x0, t, Unseeded,
             ));
           }
         }

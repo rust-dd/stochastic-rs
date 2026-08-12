@@ -213,16 +213,12 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 ///   MIGRATION.md for the before/after call sites.
 ///
 /// [`Bates1996`](crate::jump::bates::Bates1996) and
-/// [`JumpFou`](crate::jump::jump_fou::JumpFou) are the crate's two
-/// remaining partial exceptions, sharing the shape
-/// [`Merton`](crate::jump::merton::Merton)/[`Kou`](crate::jump::kou::Kou)/
-/// [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) had before
-/// the fix above: a public `cpoisson: CompoundPoisson<T, D>` field
-/// structurally pinned to `Unseeded` (widening it to
-/// `CompoundPoisson<T, D, S>` would be a breaking change to a public
-/// field), while each type's diffusion component correctly consults
-/// `self.seed`. So both have reproducible diffusion but never-reproducible
-/// jump arrivals/sizes — not fixed for either here. See MIGRATION.md.
+/// [`JumpFou`](crate::jump::jump_fou::JumpFou) had the same partial-exception
+/// shape as the three types above (a public
+/// `cpoisson: CompoundPoisson<T, D>` field structurally pinned to
+/// `Unseeded`, each type's diffusion component otherwise correctly
+/// consulting `self.seed`). Task 2 of the same wave applied the identical
+/// fix to both, leaving the partial-exception list empty. See MIGRATION.md.
 ///
 /// Backend-level exceptions exist independently of the per-process list
 /// above: `Fgn`/`Fbm` on the `accelerate` feature's `Accelerate` backend get

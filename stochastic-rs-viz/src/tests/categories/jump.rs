@@ -16,7 +16,6 @@ use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
 
 use crate::GridPlotter;
-use crate::tests::normal_cpoisson;
 
 pub(crate) fn register(mut grid: GridPlotter, n: usize, j: usize, traj: usize) -> GridPlotter {
   grid = grid.register(
@@ -113,10 +112,11 @@ pub(crate) fn register(mut grid: GridPlotter, n: usize, j: usize, traj: usize) -
       2.0,
       0.03,
       0.2,
+      1.0,
+      ScalarNormal::new(0.0, 0.08),
       n,
       Some(0.03),
       Some(1.0),
-      normal_cpoisson(1.0, n, 0.08),
       Unseeded,
     ),
     "Jump: Jump-Fou",
@@ -150,12 +150,12 @@ pub(crate) fn register(mut grid: GridPlotter, n: usize, j: usize, traj: usize) -
       0.8,
       0.3,
       -0.5,
+      ScalarNormal::new(0.0, 0.05),
       n,
       Some(100.0),
       Some(0.04),
       Some(1.0),
       Some(false),
-      normal_cpoisson(0.8, n, 0.05),
       Unseeded,
     ),
     "Jump: Bates 1996 (S: solid, v: dashed)",

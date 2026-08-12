@@ -13,6 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::noise::cgns::Cgns;
 use crate::process::cpoisson::CompoundPoisson;
+use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -50,6 +51,12 @@ where
   /// Foreign risk-free rate / dividend yield, paired with `r`.
   pub r_f: Option<T>,
   /// Jump (Poisson) intensity λ — arrival rate of the log-price jumps.
+  /// Single source of truth: `sampler()` reads this field directly (not
+  /// `cpoisson.poisson.lambda`) for both the jump-arrival rate and the
+  /// drift's `-lambda*k` compensator term. Every setter that can change it
+  /// (`with_lambda`, `with_cpoisson`) keeps `cpoisson.poisson.lambda`
+  /// synced to match — see those methods' docs and
+  /// `resync_cpoisson_poisson`.
   pub lambda: T,
   /// Jump-size compensator κ (E[Y−1]-like term, matching the module
   /// header's own λκ_J), subtracted from the drift scaled by `lambda`.
@@ -86,15 +93,35 @@ where
   /// so this indirection is an implementation detail.
   cgns: Cgns<T>,
   /// Compound-Poisson jump driver added to the asset's log-return.
-  /// **Partial exception to [`ProcessExt`]'s reproducibility guarantee:**
-  /// hard-wired to `Unseeded` (default `S`) by pre-existing design — the
-  /// same shape as [`Merton`](crate::jump::merton::Merton)'s field of the
-  /// same name — so the jump arrivals/sizes are never seed-reproducible
-  /// even though the diffusion component above (driven by `cgns` and
-  /// `self.seed`) is. See MIGRATION.md and [`ProcessExt`]'s trait-level
-  /// reproducibility section.
-  pub cpoisson: CompoundPoisson<T, D>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
+  /// Fully seed-reproducible: [`new`](Self::new) builds it internally from
+  /// `seed` (`seed.clone().derive()` — a hash-mixed child, decorrelated
+  /// from but a deterministic function of the same `seed` the diffusion
+  /// component (`cgns`) consults directly), and `sampler()` derives a
+  /// fresh, chunk-local basis off `self.cpoisson.seed` for every chunk,
+  /// mirroring the diffusion component's own per-chunk `self.seed`-derived
+  /// basis.
+  ///
+  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
+  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
+  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
+  /// inert there (`grid_relative_increments` never consults them). That
+  /// inertness is scoped to *this type's own* sampling, though: `cpoisson`
+  /// is a `CompoundPoisson` in its own right, and calling `.sample()` on it
+  /// directly (bypassing `Bates1996` entirely) drives it through
+  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` (fixed
+  /// count vs. horizon mode) and *does* consult `.seed` — genuinely live
+  /// there. Left `pub` for both reasons: a caller can inspect or directly
+  /// `.sample()` the embedded compound-Poisson process as its own
+  /// standalone `ProcessExt`, and can replace it wholesale via
+  /// [`with_cpoisson`](Self::with_cpoisson) (which keeps `self.lambda` in
+  /// sync with the replacement — see that method's doc) or direct field
+  /// assignment (which does not; assign through `with_cpoisson` unless you
+  /// separately update `self.lambda` to match).
+  pub cpoisson: CompoundPoisson<T, D, S>,
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
+  /// directly by the diffusion component (via `cgns.sample_impl`);
+  /// `cpoisson`'s own seed (set at construction from this same value — see
+  /// `cpoisson`'s doc above) drives the jump component.
   pub seed: S,
 }
 
@@ -103,6 +130,11 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Builds the compound-Poisson jump driver internally from `jump_dist`
+  /// and `lambda`, seeded from `seed` (see `cpoisson`'s field doc) — the
+  /// caller supplies the jump-size distribution and intensity directly
+  /// instead of pre-building a `Poisson`/`CompoundPoisson` pair and
+  /// threading a third, independent seed through it by hand.
   pub fn new(
     mu: Option<T>,
     b: Option<T>,
@@ -114,18 +146,24 @@ where
     beta: T,
     sigma: T,
     rho: T,
+    jump_dist: D,
     n: usize,
     s0: Option<T>,
     v0: Option<T>,
     t: Option<T>,
     use_sym: Option<bool>,
-    cpoisson: CompoundPoisson<T, D>,
     seed: S,
   ) -> Self {
     if let Some(v0) = v0 {
       assert!(v0 >= T::zero(), "v0 must be non-negative");
     }
     validate_drift_args(mu, b, r, r_f, "Bates1996");
+
+    let cpoisson = CompoundPoisson::new(
+      jump_dist,
+      Poisson::new(lambda, Some(n), t, Unseeded),
+      seed.clone().derive(),
+    );
 
     Self {
       mu,
@@ -177,9 +215,15 @@ where
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged. `sampler()` reads `self.lambda`
+  /// directly for both the jump-arrival intensity and the drift's
+  /// `-lambda*k` compensator term (see `cpoisson`'s field doc), so this
+  /// alone already changes both; it also re-syncs the otherwise-cosmetic
+  /// mirror `cpoisson.poisson.lambda` (see `resync_cpoisson_poisson`) so a
+  /// caller inspecting it does not see a stale value.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     self.lambda = lambda;
+    self.resync_cpoisson_poisson();
     self
   }
 
@@ -237,33 +281,69 @@ where
     self
   }
 
-  /// Replace the compound-Poisson jump driver, all else unchanged.
-  pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D>) -> Self {
+  /// Replace the compound-Poisson jump driver wholesale, adopting its
+  /// intensity as the new `self.lambda` — `sampler()` reads `self.lambda`,
+  /// not `cpoisson.poisson.lambda`, for the jump-arrival rate and the
+  /// drift's `-lambda*k` compensator term (see `cpoisson`'s field doc), so
+  /// without this adoption the incoming driver's own intensity would be
+  /// silently ignored and the *old* `self.lambda` would keep driving both
+  /// while only the distribution changed. `cpoisson.poisson.{n,t_max}` are
+  /// left exactly as the caller supplied them (not normalized to
+  /// `self.{n,t}`) since, unlike `lambda`, they carry no live weight on
+  /// this type's sampling path either way.
+  pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D, S>) -> Self {
+    self.lambda = cpoisson.poisson.lambda;
     self.cpoisson = cpoisson;
     self
   }
 
   /// Replace the number of simulation steps `n`; rebuilds the cached
   /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
+  /// from `n`, and re-syncs `cpoisson.poisson.n` (see
+  /// `resync_cpoisson_poisson`) — dead on this type's own sampling path,
+  /// but kept from silently going stale for a caller inspecting `cpoisson`
+  /// directly.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
+    self.resync_cpoisson_poisson();
     self
   }
 
   /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// correlated-Gaussian generator's step size, which derives from `t`,
+  /// and re-syncs `cpoisson.poisson.t_max` (see `resync_cpoisson_poisson`)
+  /// — dead on this type's own sampling path, but kept from silently going
+  /// stale for a caller inspecting `cpoisson` directly.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
+    self.resync_cpoisson_poisson();
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value, all else unchanged — including
+  /// re-deriving `cpoisson`'s own seed from the new value exactly as
+  /// [`new`](Self::new) does (`cpoisson`'s distribution and lambda are
+  /// untouched), so the result matches a fresh construction with this seed
+  /// rather than leaving the jump component keyed to the old one.
   pub fn with_seed(mut self, seed: S) -> Self {
+    self.cpoisson.seed = seed.clone().derive();
     self.seed = seed;
     self
+  }
+
+  /// Rebuilds `cpoisson.poisson` from `self.{lambda, n, t}` so a caller
+  /// reading `cpoisson.poisson` directly never sees it disagree with the
+  /// outer struct's own record of the same three values — most
+  /// load-bearing for `lambda`, which `sampler()` actually reads off
+  /// `self` (not off this mirror) for the jump-arrival rate and the
+  /// drift's `-lambda*k` compensator term, but applied uniformly to
+  /// `n`/`t_max` too even though those two are inert on the sampling path
+  /// either way (see `cpoisson`'s field doc). Called from every setter
+  /// that changes `lambda`, `n`, or `t`.
+  fn resync_cpoisson_poisson(&mut self) {
+    self.cpoisson.poisson = Poisson::new(self.lambda, Some(self.n), self.t, Unseeded);
   }
 }
 
@@ -294,14 +374,19 @@ where
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler — the same
-  /// shape `Cgns`'s own `sampler()` uses — so the correlated-Gaussian
-  /// diffusion driver (`cgns`, otherwise permanently `Unseeded`; see the
-  /// type doc) is driven via `sample_impl(&self.seed)` instead of a bare
-  /// `.sample()` that only ever reads `cgns`'s own dead `Unseeded` field.
+  /// Derives (not clones) `self.seed` and `self.cpoisson.seed`, independently,
+  /// into the returned sampler — the same shape `Cgns`'s own `sampler()`
+  /// uses — so the correlated-Gaussian diffusion driver (`cgns`, otherwise
+  /// permanently `Unseeded`; see the type doc) is driven via
+  /// `sample_impl(&self.seed)` instead of a bare `.sample()` that only ever
+  /// reads `cgns`'s own dead `Unseeded` field, and the jump driver is
+  /// likewise driven from an owned, chunk-local basis rather than a
+  /// borrowed `&self.cpoisson` shared across chunks (which would let
+  /// concurrent chunks race on the same shared atomic during the parallel
+  /// region — see `ProcessExt`'s trait-level reproducibility requirement).
   /// Adjacent chunks land on hash-scrambled, mutually independent bases for
   /// the same reason every other `derive()`-based sampler in this crate
-  /// does (see `ProcessExt`'s trait-level reproducibility section).
+  /// does.
   fn sampler(&self) -> BatesSampler<'_, T, D, S> {
     BatesSampler {
       n: self.n,
@@ -316,15 +401,19 @@ where
       use_sym: self.use_sym.unwrap_or(false),
       dt: self.cgns.dt(),
       cgns: self.cgns,
-      cpoisson: &self.cpoisson,
+      jump_distribution: &self.cpoisson.distribution,
+      jump_seed: self.cpoisson.seed.derive(),
       seed: self.seed.derive(),
     }
   }
 }
 
-/// Reusable [`Bates1996`] sampling state: owns the correlated-Gaussian generator
-/// and an owned, already-derived seed to drive it, and borrows the (non-`Clone`)
-/// compound-Poisson driver so a Monte-Carlo loop reuses both output buffers.
+/// Reusable [`Bates1996`] sampling state: owns the correlated-Gaussian
+/// generator and an owned, already-derived seed to drive it, borrows the
+/// jump-size distribution, and owns a separate, already-derived seed to
+/// drive the jump arrivals — mirroring
+/// [`MertonSampler`](crate::jump::merton::MertonSampler)'s shape — so a
+/// Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
 pub struct BatesSampler<'a, T, D, S: SeedExt>
 where
@@ -343,7 +432,8 @@ where
   use_sym: bool,
   dt: T,
   cgns: Cgns<T>,
-  cpoisson: &'a CompoundPoisson<T, D>,
+  jump_distribution: &'a D,
+  jump_seed: S,
   seed: S,
 }
 
@@ -358,7 +448,13 @@ where
     }
     let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed);
-    let jump_increments = self.cpoisson.sample_grid_relative_increments(self.n, dt);
+    let jump_increments = crate::process::cpoisson::grid_relative_increments(
+      self.jump_distribution,
+      self.lambda,
+      &self.jump_seed,
+      self.n,
+      dt,
+    );
 
     s[0] = self.s0;
     v[0] = self.v0;
@@ -406,185 +502,16 @@ where
   }
 }
 
-#[cfg(feature = "python")]
-#[pyo3::prelude::pyclass]
-pub struct PyBates {
-  inner_f32: Option<Bates1996<f32, crate::traits::CallableDist<f32>>>,
-  inner_f64: Option<Bates1996<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32:
-    Option<Bates1996<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64:
-    Option<Bates1996<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
-}
-
-#[cfg(feature = "python")]
-#[pyo3::prelude::pymethods]
-impl PyBates {
-  #[new]
-  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None))]
-  fn new(
-    lambda_: f64,
-    k: f64,
-    alpha: f64,
-    beta: f64,
-    sigma: f64,
-    rho: f64,
-    distribution: pyo3::Py<pyo3::PyAny>,
-    n: usize,
-    mu: Option<f64>,
-    b: Option<f64>,
-    r: Option<f64>,
-    r_f: Option<f64>,
-    s0: Option<f64>,
-    v0: Option<f64>,
-    t: Option<f64>,
-    use_sym: Option<bool>,
-    seed: Option<u64>,
-    dtype: Option<&str>,
-  ) -> Self {
-    use crate::process::poisson::Poisson;
-    let mut s = Self {
-      inner_f32: None,
-      inner_f64: None,
-      seeded_f32: None,
-      seeded_f64: None,
-    };
-    match dtype.unwrap_or("f64") {
-      "f32" => {
-        let cpoisson = CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32), Unseeded),
-          Unseeded,
-        );
-        match seed {
-          Some(sd) => {
-            s.seeded_f32 = Some(Bates1996::new(
-              mu.map(|v| v as f32),
-              b.map(|v| v as f32),
-              r.map(|v| v as f32),
-              r_f.map(|v| v as f32),
-              lambda_ as f32,
-              k as f32,
-              alpha as f32,
-              beta as f32,
-              sigma as f32,
-              rho as f32,
-              n,
-              s0.map(|v| v as f32),
-              v0.map(|v| v as f32),
-              t.map(|v| v as f32),
-              use_sym,
-              cpoisson,
-              Deterministic::new(sd),
-            ));
-          }
-          None => {
-            s.inner_f32 = Some(Bates1996::new(
-              mu.map(|v| v as f32),
-              b.map(|v| v as f32),
-              r.map(|v| v as f32),
-              r_f.map(|v| v as f32),
-              lambda_ as f32,
-              k as f32,
-              alpha as f32,
-              beta as f32,
-              sigma as f32,
-              rho as f32,
-              n,
-              s0.map(|v| v as f32),
-              v0.map(|v| v as f32),
-              t.map(|v| v as f32),
-              use_sym,
-              cpoisson,
-              Unseeded,
-            ));
-          }
-        }
-      }
-      _ => {
-        let cpoisson = CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, Some(n), t, Unseeded),
-          Unseeded,
-        );
-        match seed {
-          Some(sd) => {
-            s.seeded_f64 = Some(Bates1996::new(
-              mu,
-              b,
-              r,
-              r_f,
-              lambda_,
-              k,
-              alpha,
-              beta,
-              sigma,
-              rho,
-              n,
-              s0,
-              v0,
-              t,
-              use_sym,
-              cpoisson,
-              Deterministic::new(sd),
-            ));
-          }
-          None => {
-            s.inner_f64 = Some(Bates1996::new(
-              mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cpoisson,
-              Unseeded,
-            ));
-          }
-        }
-      }
-    }
-    s
-  }
-
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-
-    use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
-      let [a, b] = inner.sample();
-      (
-        a.into_pyarray(py).into_py_any(py).unwrap(),
-        b.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    })
-  }
-
-  fn sample_par<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-    m: usize,
-  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use numpy::ndarray::Array2;
-    use pyo3::IntoPyObjectExt;
-
-    use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
-      let samples = inner.sample_par(m);
-      let n = samples[0][0].len();
-      let mut r0 = Array2::zeros((m, n));
-      let mut r1 = Array2::zeros((m, n));
-      for (i, [a, b]) in samples.iter().enumerate() {
-        r0.row_mut(i).assign(a);
-        r1.row_mut(i).assign(b);
-      }
-      (
-        r0.into_pyarray(py).into_py_any(py).unwrap(),
-        r1.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    })
-  }
-}
-
-// Split out to keep this file under the project's 600-line cap (this type
-// now carries a full set of `with_*` builder setters on top of the model
-// itself). Same pattern as `volatility/bates_svj.rs`.
+// Both submodules split out to keep this file under the project's 600-line
+// cap (this type now carries a full set of `with_*` builder setters on top
+// of the model itself, plus the Python bindings). Same pattern as
+// `volatility/bates_svj.rs` uses for its own test split.
 #[cfg(test)]
 #[path = "bates_tests.rs"]
 mod tests;
+
+#[cfg(feature = "python")]
+#[path = "bates_python.rs"]
+mod python;
+#[cfg(feature = "python")]
+pub use python::PyBates;

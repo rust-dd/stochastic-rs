@@ -7,35 +7,37 @@
 //! unlike `cpoisson`, the `fgn` field is **private**, byte-for-byte the
 //! same shape as `JumpFOUCustom`'s field this wave already fixed
 //! non-breakingly (see `deterministic_parallelism_jump_fou_custom.rs`).
-//! `JumpFou::sampler()` now builds its Gaussian source from
-//! `self.seed.derive()` directly (rather than `self.fgn.sampler()`, which
-//! read `fgn`'s own dead `Unseeded` field) and borrows `fgn` only for its
-//! `Arc`-shared FFT plan/eigenvalues.
+//! `JumpFou::sampler()` builds its Gaussian source from `self.seed.derive()`
+//! directly (rather than `self.fgn.sampler()`, which read `fgn`'s own dead
+//! `Unseeded` field) and borrows `fgn` only for its `Arc`-shared FFT
+//! plan/eigenvalues.
 //!
-//! `cpoisson` genuinely is public and structurally pinned to `Unseeded`
-//! (that half of the original exception was correct), so `JumpFou` does
-//! not leave the exception list entirely — it moves from the crate's
-//! *full*-exception list to the *partial*-exception group (`Merton`,
-//! `Bates1996`, `Kou`, `LevyDiffusion`, `JumpFou`): diffusion is
-//! reproducible, jump arrivals/sizes are not. `JumpFou`'s single
-//! `Array1<T>` output mixes both additively (`out[i] = ... + sigma *
-//! fgn[i-1] + jump_increments[i]`), so unlike `Bates1996` (which exposes
-//! the diffusion-only variance path separately) there is no public channel
-//! that isolates the diffusion from a nonzero jump component. The tests
-//! below use a *zero-intensity* `cpoisson` to prove the diffusion fix
-//! (`CompoundPoisson::sample_grid_increments` short-circuits to an
-//! all-zero array with no RNG draw at all when `lambda_dt <= 0.0`,
-//! confirmed by reading that function), and a separate high-intensity
-//! `cpoisson` to prove the jump half still diverges run to run.
+//! `cpoisson` genuinely was public and structurally pinned to `Unseeded`
+//! (that half of the original exception was correct) — fixed by the
+//! zero-exception-reproducibility wave's Task 2, the same breaking widening
+//! (`CompoundPoisson<T, D>` -> `CompoundPoisson<T, D, S>`, `new()` absorbing
+//! the jump-size distribution and a new top-level `lambda: T` field) Task 1
+//! applied to `Merton`/`Kou`/`LevyDiffusion` and Task 2 also applied to
+//! `Bates1996`. `JumpFou` is now **fully** seed-reproducible — this was the
+//! crate's last exception of any kind. See MIGRATION.md.
+//!
+//! The tests below still separate a zero-intensity diffusion check from a
+//! nonzero-intensity check: `JumpFou`'s single `Array1<T>` output mixes the
+//! fGn diffusion and the jump term additively at every index (`out[i] = ...
+//! + sigma * fgn[i-1] + jump_increments[i]`), so a zero-intensity run proves
+//! the diffusion half is seed-driven in isolation (no jump draw at all —
+//! `CompoundPoisson::sample_grid_increments` short-circuits to an all-zero
+//! array with no RNG draw when `lambda_dt <= 0.0`, confirmed by reading that
+//! function), independent of whether the jump half is also fixed. The
+//! dedicated full-reproducibility battery (bit-identity at nonzero lambda,
+//! thread-count independence at m=64/256, distinctness at m=256) lives in
+//! `reproducibility_bates_jump_fou.rs`, alongside `Bates1996`'s.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
-use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 const SEED: u64 = 42;
@@ -47,35 +49,11 @@ fn jump_fou_zero_jump(seed: u64) -> JumpFou<f64, ScalarNormal<f64>, Deterministi
     1.5,
     0.0,
     0.2,
-    N,
-    Some(0.0),
-    Some(1.0),
-    CompoundPoisson::new(
-      ScalarNormal::new(0.0, 1.0),
-      Poisson::new(0.0, Some(N), Some(1.0), Unseeded),
-      Unseeded,
-    ),
-    Deterministic::new(seed),
-  )
-}
-
-/// High jump intensity: makes `jump_fou_jump_component_still_diverges` fail
-/// only if the jump component were actually fixed, not by unlucky all-zero
-/// draws.
-fn jump_fou_with_jumps(seed: u64) -> JumpFou<f64, ScalarNormal<f64>, Deterministic> {
-  JumpFou::new(
-    0.65,
-    1.5,
     0.0,
-    0.2,
+    ScalarNormal::new(0.0, 1.0),
     N,
     Some(0.0),
     Some(1.0),
-    CompoundPoisson::new(
-      ScalarNormal::new(0.0, 0.1),
-      Poisson::new(50.0, Some(N), Some(1.0), Unseeded),
-      Unseeded,
-    ),
     Deterministic::new(seed),
   )
 }
@@ -155,20 +133,4 @@ fn jump_fou_diffusion_sample_par_paths_are_distinct() {
     .map(bits_1d)
     .collect::<std::collections::HashSet<_>>();
   assert_eq!(keys.len(), m, "JumpFou sample_par produced duplicate paths");
-}
-
-/// The still-broken half, by design: `cpoisson` stays structurally
-/// `Unseeded` (see the module doc). This pins the documented exception
-/// boundary: if this test starts failing, either `JumpFou`'s jump driver
-/// became reproducible (update the exception list) or the diffusion fix
-/// regressed into leaking into the jump stream (a real bug).
-#[test]
-fn jump_fou_jump_component_still_diverges() {
-  let a = jump_fou_with_jumps(SEED).sample();
-  let b = jump_fou_with_jumps(SEED).sample();
-  assert_ne!(
-    bits_1d(&a),
-    bits_1d(&b),
-    "expected JumpFou output (still Unseeded-jump-driven) to vary run to run"
-  );
 }

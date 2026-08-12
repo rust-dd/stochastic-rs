@@ -8,55 +8,56 @@
 //! sibling `cgns`-holding type in this crate drives it. Both `sampler()`s
 //! now do that.
 //!
-//! `RoughHeston` has no jump component, so it is now **fully**
-//! seed-reproducible. `Bates1996` is not: independently of the `cgns` bug,
-//! its public `cpoisson: CompoundPoisson<T, D>` field is structurally
-//! pinned to `Unseeded` (the same shape as `Merton`/`Kou`/`LevyDiffusion`'s
-//! field of the same name), so its jump arrivals/sizes — and therefore its
-//! price path, which sums jump increments at every step — remain
-//! unreproducible; only its variance path (driven solely by the now-fixed
-//! `cgns`) is. `bates_price_path_jump_component_still_diverges` locks that
-//! boundary in.
+//! `RoughHeston` has no jump component, so this made it **fully**
+//! seed-reproducible. `Bates1996`'s jump component (`cpoisson: CompoundPoisson<T,
+//! D>` structurally pinned to `Unseeded`, the same shape as
+//! `Merton`/`Kou`/`LevyDiffusion`'s field of the same name) remained broken
+//! independently of the `cgns` fix — closed by the
+//! zero-exception-reproducibility wave's Task 2, which widened the field to
+//! `CompoundPoisson<T, D, S>` and had `new()` absorb its construction (see
+//! MIGRATION.md). `Bates1996` is now **fully** seed-reproducible too — this
+//! file's variance-path-only tests below predate that fix and are kept
+//! (still valid: the variance path never depended on jumps), plus one
+//! full-output test proving the price path is reproducible now too. The
+//! dedicated full-reproducibility battery (bit-identity at nonzero lambda,
+//! thread-count independence at m=64/256, distinctness at m=256, all on the
+//! `[s, v]` pair together) lives in `reproducibility_bates_jump_fou.rs`.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
-use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
-use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
 
 const SEED: u64 = 42;
 const N: usize = 128;
 
-/// High jump intensity (mean ~50 jumps over the unit horizon at this grid):
-/// makes `bates_price_path_jump_component_still_diverges` fail only if the
-/// jump component were actually fixed, not by unlucky all-zero draws.
+/// High jump intensity (mean ~50 jumps over the unit horizon at this grid,
+/// via the single top-level `lambda` — see `Bates1996::lambda`'s doc for why
+/// this is now the one value that reaches both the drift compensator and
+/// the actual jump arrivals): makes `bates_price_path_is_seed_reproducible`
+/// a real exercise of the jump component, not an unlucky all-zero-draw
+/// coincidence.
 fn bates(seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Deterministic> {
   Bates1996::new(
     Some(0.05),
     None,
     None,
     None,
-    2.0,
+    50.0,
     0.0,
     0.04,
     1.5,
     0.3,
     -0.6,
+    ScalarNormal::new(0.0, 0.05),
     N,
     Some(100.0),
     Some(0.04),
     Some(1.0),
     Some(false),
-    CompoundPoisson::new(
-      ScalarNormal::new(0.0, 0.05),
-      Poisson::new(50.0, Some(N), Some(1.0), Unseeded),
-      Unseeded,
-    ),
     Deterministic::new(seed),
   )
 }
@@ -158,21 +159,23 @@ fn bates_variance_path_sample_par_is_thread_count_independent_beyond_max_chunks(
   );
 }
 
-/// The still-broken half, by design: `cpoisson` stays structurally
-/// `Unseeded` (see the module doc), so the price path — which sums jump
-/// increments at every step — still varies run to run even under a pinned
-/// seed. This pins the documented exception boundary: if this test starts
-/// failing, either `Bates1996`'s jump driver became reproducible (update
-/// the exception list) or the diffusion fix regressed into leaking into the
-/// jump stream (a real bug).
+/// The formerly-broken half, closed by Task 2 of the
+/// zero-exception-reproducibility wave (see the module doc): `cpoisson` is
+/// no longer structurally pinned to `Unseeded`, so the price path — which
+/// sums jump increments at every step — now agrees for two
+/// identically-seeded objects too, at the same `lambda = 50` this fixture
+/// already uses to make jumps fire reliably. The fuller battery (thread-count
+/// independence, distinctness) lives in `reproducibility_bates_jump_fou.rs`;
+/// this test just closes out the historical "still diverges" boundary this
+/// file used to pin.
 #[test]
-fn bates_price_path_jump_component_still_diverges() {
+fn bates_price_path_is_seed_reproducible() {
   let [sa, _] = bates(SEED).sample();
   let [sb, _] = bates(SEED).sample();
-  assert_ne!(
+  assert_eq!(
     bits_1d(&sa),
     bits_1d(&sb),
-    "expected Bates1996 price path (still Unseeded-jump-driven) to vary run to run"
+    "Bates1996 price path diverged for two identically-seeded objects"
   );
 }
 

@@ -16,6 +16,12 @@
 //! standalone `CompoundPoisson` (see `golden_compound_poisson_streams`)
 //! could be. `Merton`'s own jump driver is now seeded from the same
 //! `Deterministic` the diffusion component uses, so it is pinnable too.
+//! `golden_bates_streams` is the second: Task 2 of the same wave applied the
+//! identical fix to `Bates1996`, whose jump term is *multiplicative*
+//! (`sample_grid_relative_increments`, not `Merton`'s additive
+//! `sample_grid_increments`) and whose output is a `[s, v]` pair rather than
+//! a single array — both pinned below, with a same-file counterfactual
+//! proving the pin is not diffusion-only.
 
 use rand_distr::Normal;
 use stochastic_rs::distributions::scalar::ScalarNormal;
@@ -24,6 +30,7 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::fou::Fou;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::stochastic::jump::bates::Bates1996;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
@@ -316,6 +323,97 @@ fn golden_merton_streams() {
       4590859968188903663,
       13785162989269995008,
     ],
+  );
+}
+
+/// The second golden covering a jump chain (see this file's own header) and
+/// the first covering `Bates1996`'s *multiplicative* jump term
+/// (`sample_grid_relative_increments`, not `Merton`'s additive
+/// `sample_grid_increments`) together with its `[s, v]` pair output.
+/// `lambda = 3.0` at `N = 8` (`dt = 1/7`) matches `golden_merton_streams`'s
+/// own reasoning: `lambda * dt ≈ 0.43` per step, high enough that this
+/// stream exercises at least one nonzero jump increment. `k = 0.0` keeps the
+/// drift's `-lambda*k` compensator term at zero regardless of `lambda`, so
+/// the divergence proof below (comparing against a `lambda = 0`
+/// counterfactual, same `k`) isolates the jump term specifically rather
+/// than a coincidental drift shift.
+#[test]
+fn golden_bates_streams() {
+  let bates = Bates1996::new(
+    Some(0.05),
+    None,
+    None,
+    None,
+    3.0,
+    0.0,
+    0.04,
+    1.5,
+    0.3,
+    -0.6,
+    ScalarNormal::new(0.0, 0.1),
+    N,
+    Some(100.0),
+    Some(0.04),
+    Some(1.0),
+    Some(false),
+    Deterministic::new(42),
+  );
+  let [s, v] = bates.sample();
+  assert_close(
+    &s,
+    &[
+      4636737291354636288,
+      4637237855814108933,
+      4636980197197895274,
+      4637119380743617754,
+      4636347933066129122,
+      4636396627911248212,
+      4636650751471554252,
+      4636854863732819059,
+    ],
+  );
+  assert_close(
+    &v,
+    &[
+      4585925428558828667,
+      4579986716671955822,
+      4584221907410356252,
+      4582883765447896902,
+      4586133690055868866,
+      4572975989110218152,
+      4561793493522807552,
+      4577356478036536416,
+    ],
+  );
+
+  // Not a diffusion-only pin: a lambda=0 counterfactual (same seed, same k,
+  // same everything else) diverges on the price path, which is only
+  // possible if the golden above actually depends on the jump term.
+  let zero_lambda = Bates1996::new(
+    Some(0.05),
+    None,
+    None,
+    None,
+    0.0,
+    0.0,
+    0.04,
+    1.5,
+    0.3,
+    -0.6,
+    ScalarNormal::new(0.0, 0.1),
+    N,
+    Some(100.0),
+    Some(0.04),
+    Some(1.0),
+    Some(false),
+    Deterministic::new(42),
+  );
+  let [s_zero, _] = zero_lambda.sample();
+  assert_ne!(
+    bits(&s),
+    bits(&s_zero),
+    "golden_bates_streams must not be reproducible solely via the diffusion \
+     component — a lambda=0 counterfactual should diverge"
   );
 }
 

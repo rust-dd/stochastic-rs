@@ -111,47 +111,76 @@ where
     grid_increments(&self.distribution, self.poisson.lambda, &self.seed, n, dt)
   }
 
-  #[inline]
-  fn relative_jump_from_count<R: Rng + ?Sized>(&self, jump_count: u32, rng: &mut R) -> T {
-    let mut factor = T::one();
-    for _ in 0..jump_count {
-      let y = self.distribution.sample(rng);
-      factor = factor * (T::one() + y);
-    }
-    factor - T::one()
-  }
-
   /// Draw multiplicative jump increments on a fixed simulation grid.
   ///
   /// If the per-jump return is `Y`, then for each interval this returns
   /// `prod_k(1 + Y_k) - 1`, preserving multiple jumps in one `dt` step.
   pub fn sample_grid_relative_increments(&self, n: usize, dt: T) -> Array1<T> {
-    let mut increments = Array1::<T>::zeros(n);
-    if n <= 1 {
-      return increments;
-    }
-
-    let lambda_dt = (self.poisson.lambda * dt).to_f64().unwrap();
-    assert!(
-      lambda_dt.is_finite(),
-      "CompoundPoisson: lambda * dt must be finite (got lambda={}, dt={})",
-      self.poisson.lambda.to_f64().unwrap_or(f64::NAN),
-      dt.to_f64().unwrap_or(f64::NAN),
-    );
-    if lambda_dt <= 0.0 {
-      return increments;
-    }
-
-    let poisson = SimdPoisson::<u32>::new(lambda_dt, &self.seed);
-    self.seed.derive(); // skip one to differ from sample_grid_increments
-    let mut rng = self.seed.rng();
-    for i in 1..n {
-      let jump_count = poisson.sample(&mut rng);
-      increments[i] = self.relative_jump_from_count(jump_count, &mut rng);
-    }
-
-    increments
+    grid_relative_increments(&self.distribution, self.poisson.lambda, &self.seed, n, dt)
   }
+}
+
+#[inline]
+fn relative_jump_from_count<T, D, R>(distribution: &D, jump_count: u32, rng: &mut R) -> T
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  R: Rng + ?Sized,
+{
+  let mut factor = T::one();
+  for _ in 0..jump_count {
+    let y = distribution.sample(rng);
+    factor = factor * (T::one() + y);
+  }
+  factor - T::one()
+}
+
+/// Core of [`CompoundPoisson::sample_grid_relative_increments`], parameterized
+/// explicitly over `lambda`/`distribution`/`seed` instead of reading them off
+/// `&self` — the multiplicative-jump counterpart of [`grid_increments`]
+/// above, for the same reason: a caller such as
+/// [`Bates1996`](crate::jump::bates::Bates1996)'s `sampler()` must drive this
+/// computation from its own single-source-of-truth `self.lambda` and a
+/// pre-derived, chunk-local seed rather than `self.poisson.lambda`/a shared
+/// `&self.cpoisson`. Behavior-identical to, and the sole body of,
+/// [`CompoundPoisson::sample_grid_relative_increments`].
+pub(crate) fn grid_relative_increments<T, D, S>(
+  distribution: &D,
+  lambda: T,
+  seed: &S,
+  n: usize,
+  dt: T,
+) -> Array1<T>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  S: SeedExt,
+{
+  let mut increments = Array1::<T>::zeros(n);
+  if n <= 1 {
+    return increments;
+  }
+
+  let lambda_dt = (lambda * dt).to_f64().unwrap();
+  assert!(
+    lambda_dt.is_finite(),
+    "CompoundPoisson: lambda * dt must be finite (got lambda={}, dt={})",
+    lambda.to_f64().unwrap_or(f64::NAN),
+    dt.to_f64().unwrap_or(f64::NAN),
+  );
+  if lambda_dt <= 0.0 {
+    return increments;
+  }
+
+  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  seed.derive(); // skip one to differ from grid_increments
+  let mut rng = seed.rng();
+  for i in 1..n {
+    let jump_count = poisson.sample(&mut rng);
+    increments[i] = relative_jump_from_count(distribution, jump_count, &mut rng);
+  }
+
+  increments
 }
 
 impl<T, D, S: SeedExt> ProcessExt<T> for CompoundPoisson<T, D, S>
@@ -270,13 +299,8 @@ mod tests {
 
   #[test]
   fn relative_increment_compounds_multiple_jumps() {
-    let cp = CompoundPoisson::new(
-      ConstJump(0.1f64),
-      Poisson::new(1.0, Some(4), Some(1.0), Unseeded),
-      Unseeded,
-    );
     let mut rng = crate::simd_rng::rng();
-    let rel = cp.relative_jump_from_count(3, &mut rng);
+    let rel = relative_jump_from_count(&ConstJump(0.1f64), 3, &mut rng);
     let expected = 1.1f64.powi(3) - 1.0;
     assert!((rel - expected).abs() < 1e-12);
   }

@@ -908,6 +908,10 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   fixed `Merton`, `Kou`, and `LevyDiffusion` (see "`Merton`, `Kou`,
   `LevyDiffusion` absorb the jump-driver construction" further down) —
   `Bates1996` and `JumpFou` are the two that remain in this group.
+  **Superseded further still:** the same wave's Task 2 fixed both (see
+  "`Bates1996` and `JumpFou` absorb the jump-driver construction" further
+  down). The partial-exception list is empty as of Task 2 — the crate has
+  zero exceptions of any kind.
 - **No exception (fully seed-reproducible) as of this wave:** every other
   process in the crate, including `RoughHeston` and `JumpFOUCustom`, both
   corrected/fixed above, and `Fgn`/`Fbm` on the `Cpu` backend, whose
@@ -1073,6 +1077,175 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   golden pin covering a jump chain (`lambda = 3.0` at `N = 8` so the
   8-point stream exercises at least one nonzero jump increment, not just an
   all-zero `sample_grid_increments` short-circuit).
+
+### stochastic-rs-stochastic: `Bates1996` and `JumpFou` absorb the jump-driver construction — zero exceptions left
+
+- **Breaking constructor change, deliberate — Task 2 of the
+  zero-exception-reproducibility wave**, applying the identical fix Task 1
+  made to `Merton`/`Kou`/`LevyDiffusion` to the two remaining
+  partial-exception types. Both types' `cpoisson: CompoundPoisson<T, D>`
+  field was structurally pinned to `Unseeded` for the same reason: the
+  field's declared type never named `S`, so no caller could ever supply a
+  `Deterministic`-seeded jump driver through it regardless of the outer
+  process's own seed. The field is now `cpoisson: CompoundPoisson<T, D, S>`
+  on both, and `new()` absorbs the compound-Poisson construction: it takes
+  the jump-size distribution directly and builds the internal
+  `Poisson`/`CompoundPoisson` pair itself, seeded from the constructor's own
+  `seed: S` parameter via `seed.clone().derive()` (cloned first so deriving
+  the jump child does not itself advance the value stored into `self.seed`
+  — identical rationale to Task 1's fix).
+- Before/after call sites:
+
+  ```rust
+  // Before
+  let cpoisson = CompoundPoisson::new(
+    ScalarNormal::new(0.0, 0.05),
+    Poisson::new(2.0, Some(128), Some(1.0), Unseeded),
+    Unseeded,
+  );
+  let b = Bates1996::new(
+    Some(0.05), None, None, None, 2.0, 0.0, 0.04, 1.5, 0.3, -0.6,
+    128, Some(100.0), Some(0.04), Some(1.0), Some(false),
+    cpoisson, Deterministic::new(42),
+  );
+
+  // After
+  let b = Bates1996::new(
+    Some(0.05), None, None, None, 2.0, 0.0, 0.04, 1.5, 0.3, -0.6,
+    ScalarNormal::new(0.0, 0.05),
+    128, Some(100.0), Some(0.04), Some(1.0), Some(false),
+    Deterministic::new(42),
+  );
+  ```
+
+  ```rust
+  // Before
+  let cpoisson = CompoundPoisson::new(
+    ScalarNormal::new(0.0, 0.08),
+    Poisson::new(1.0, Some(252), Some(1.0), Unseeded),
+    Unseeded,
+  );
+  let j = JumpFou::new(
+    0.7, 1.5, 0.03, 0.2, 252, Some(0.0), Some(1.0), cpoisson, Deterministic::new(42),
+  );
+
+  // After
+  let j = JumpFou::new(
+    0.7, 1.5, 0.03, 0.2, 1.0, ScalarNormal::new(0.0, 0.08),
+    252, Some(0.0), Some(1.0), Deterministic::new(42),
+  );
+  ```
+
+  `jump_dist: D` is inserted right before the `n, x0/s0(+v0), t, seed` tail
+  in both — the same slot Task 1 used, not `cpoisson`'s old slot immediately
+  before `seed` — so it sits alongside the other model parameters rather
+  than at the very end. `JumpFou::new` gains an explicit `lambda: T`
+  parameter it did not have before (previously only reachable inside the
+  pre-built `cpoisson`'s own `Poisson`), inserted right after `sigma`;
+  `Bates1996` already had `lambda` as a top-level parameter (used for the
+  drift's `-lambda*k` compensator term) and keeps its position unchanged.
+- `cpoisson` stays `pub` on both, for the same two reasons Task 1's entry
+  gives for `Merton`/`Kou`/`LevyDiffusion`: it is a `CompoundPoisson` in its
+  own right (`.sample()` on it directly drives `Poisson::sample_impl`, which
+  genuinely branches on `.n`/`.t_max` and consults `.seed`), and a caller can
+  still replace it wholesale — via `Bates1996::with_cpoisson` (`JumpFou` has
+  no `with_*` setters at all, so `new()` establishing the invariant is
+  sufficient for it, the same as `Kou`/`LevyDiffusion` in Task 1).
+- **A live instance of Task 1's `with_cpoisson`/intensity bug, found on
+  `Bates1996` before any fix was applied here (not introduced by this
+  task).** `sampler()` reads the jump-arrival intensity off `self.lambda`
+  directly, not off `cpoisson.poisson.lambda` — for `Bates1996` specifically
+  this was already live pre-Task-2, because `with_lambda` (`bates.rs:181`,
+  pre-fix) wrote only `self.lambda` while the sampler's jump term
+  (`self.cpoisson.sample_grid_relative_increments(...)`) read
+  `cpoisson.poisson.lambda`, a value `with_lambda` never touched. Measured
+  before the fix, on a `lambda = 0` base with `k = 0` (isolating the jump
+  half — `k = 0` also neutralizes the drift's `-lambda*k` term, and
+  `cpoisson.poisson.lambda = 0` makes `sample_grid_relative_increments`
+  short-circuit to an all-zero, RNG-free array, giving a luck-independent
+  comparison despite `cpoisson.seed` being `Unseeded` at the time):
+
+      after with_lambda(80):  self.lambda = 80  but  cpoisson.poisson.lambda = 0
+      with_lambda(80) path == fresh lambda=80 ? false
+      with_lambda(80) path == fresh lambda=0  ? true
+
+  Fixed the same way as `Merton`: `self.lambda` is the single source of
+  truth end to end. `with_lambda` and `with_cpoisson` (the latter now
+  adopting the incoming driver's `cpoisson.poisson.lambda` into
+  `self.lambda`, exactly like `Merton::with_cpoisson`) both call a new
+  private `resync_cpoisson_poisson` helper that rebuilds
+  `cpoisson.poisson` from `self.{lambda, n, t}`, so the mirror never goes
+  stale for a caller inspecting `cpoisson` directly; `with_steps`/
+  `with_horizon` call it too (dead on the sampling path, matching `n`/`t`'s
+  own inertness there, but kept in sync for the same reason). See
+  `Bates1996::{lambda,cpoisson,with_lambda,with_cpoisson,with_steps,with_horizon}`'s
+  doc comments and the regression tests in `with_setters_jump_correlation.rs`
+  (`bates_with_cpoisson_changes_sampled_intensity`,
+  `bates_with_lambda_syncs_cpoisson_and_changes_sampled_path`) and
+  `reproducibility_bates_jump_fou.rs`
+  (`lambda_is_single_sourced_at_construction`). `JumpFou` has no `with_*`
+  setters and no top-level `lambda` before this fix, so it was not exposed
+  to this bug — `new()` establishing the invariant is sufficient, matching
+  `Kou`/`LevyDiffusion` in Task 1.
+- `sampler()` for both now derives a fresh, chunk-local jump seed
+  (`self.cpoisson.seed.derive()`) once per chunk, mirroring the diffusion
+  component's own per-chunk basis — never a borrowed `&self.cpoisson` shared
+  across chunks. This was a *live* risk for both, not merely a style
+  preference: `Bates1996`'s old `BatesSampler` held
+  `cpoisson: &'a CompoundPoisson<T, D>` (a shared borrow reused across every
+  chunk in `sample_par`), and `JumpFou`'s old `JumpFouSampler` held the
+  analogous `cpoisson: &'a CompoundPoisson<T, D>`; once `cpoisson`'s own `S`
+  can be `Deterministic` (this fix), a shared borrow would let concurrent
+  chunks race on the same shared atomic during the parallel region. Both
+  samplers now own `jump_distribution: &'a D` (borrowed — read-only) plus an
+  owned, derived `jump_seed: S`, the same split `Merton`/`Kou`/`LevyDiffusion`
+  use. `Bates1996`'s multiplicative jump term needed a new free function,
+  `grid_relative_increments` (parallel to the additive `grid_increments`
+  Task 1 already exposed), extracted from
+  `CompoundPoisson::sample_grid_relative_increments`'s existing body with no
+  behavior change — that method is now a one-line delegator to it, exactly
+  mirroring `sample_grid_increments`/`grid_increments`'s existing
+  relationship.
+- **`JumpFou`'s private `fgn: Fgn<T, Unseeded, B>` diffusion field did not
+  need fixing here — it was already fixed by the predecessor wave's final
+  round** (see "`Bates1996` and `RoughHeston`'s 'unfixable' verdict was
+  wrong" above, the `JumpFou` re-examination bullet, and its own correction
+  two bullets later). Verified directly before touching this file:
+  `jump_fou.rs`'s `sampler()` already built
+  `normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive())`
+  (not `self.fgn.sampler()`, which would read `fgn`'s own dead `Unseeded`
+  field) and the type's own doc comment already documented the diffusion
+  half as fixed; `deterministic_parallelism_jump_fou.rs`'s
+  `jump_fou_diffusion_is_seed_reproducible_with_zero_jump_intensity` and its
+  thread-count-independence/distinctness siblings already existed and
+  already passed before this task's changes. Only the field's doc comment
+  and the two test files' now-stale "partial exception" framing needed
+  updating to reflect that `cpoisson` — the one remaining broken half — is
+  fixed too.
+- Both types are now **fully** seed-reproducible — no exception to
+  `ProcessExt`'s reproducibility guarantee, and no exception of any kind
+  remains anywhere in the crate. `traits/process.rs`'s partial-exception
+  list no longer names either type — the list itself is now empty; see the
+  summary entry further up this file for the corresponding update.
+- New test file: `stochastic-rs-stochastic/tests/reproducibility_bates_jump_fou.rs`
+  — for each type, bit-identical `.sample()` between two
+  identically-`Deterministic`-seeded objects under `lambda = 50` (jumps
+  dominate), a same-file `lambda = 0` counterfactual proving the bit-identity
+  test is not a diffusion-only pin, `sample_par` bit-identical across
+  1/3/8-thread pools at both `m = 64` and `m = 256`, and `m = 256` producing
+  256 distinct paths. `deterministic_parallelism_bates_rough_heston.rs`'s
+  `bates_price_path_jump_component_still_diverges` (pinned the old, broken
+  behavior via `assert_ne!`) is replaced by
+  `bates_price_path_is_seed_reproducible`; `deterministic_parallelism_jump_fou.rs`'s
+  analogous `jump_fou_jump_component_still_diverges` is removed outright
+  (its zero-intensity diffusion tests are unaffected and kept).
+- `tests/sampler_v3_golden.rs` gains `golden_bates_streams`: the second
+  golden pin covering a jump chain (after `golden_merton_streams`), the
+  first covering a *multiplicative* jump term and a two-array `[s, v]`
+  output. `lambda = 3.0` at `N = 8`, same reasoning as the `Merton` golden;
+  `k = 0.0` isolates the jump term from the drift compensator so a same-file
+  `lambda = 0` counterfactual (same `k`) diverging on the price path proves
+  the pin is not diffusion-only.
 
 ### stochastic-rs-copulas: default the generator method
 

@@ -1,8 +1,3 @@
-use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::scalar::ScalarNormal;
-use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
-use stochastic_rs_stochastic::process::poisson::Poisson;
-
 mod categories;
 mod plot_grid;
 mod sde_methods;
@@ -62,16 +57,4 @@ pub(crate) fn f_adg_b(_: f64) -> f64 {
 
 pub(crate) fn f_adg_c(_: f64) -> f64 {
   0.05
-}
-
-pub(crate) fn normal_cpoisson(
-  lambda: f64,
-  n: usize,
-  jump_sigma: f64,
-) -> CompoundPoisson<f64, ScalarNormal<f64>> {
-  CompoundPoisson::new(
-    ScalarNormal::new(0.0, jump_sigma),
-    Poisson::new(lambda, Some(n), Some(1.0), Unseeded),
-    Unseeded,
-  )
 }
