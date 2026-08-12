@@ -372,10 +372,14 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `Ou`, most of the crate), but a follow-up review found it **actively
   regressed** processes whose `sampler()` instead *clones* the seed
   (`Sabr`, `DoubleHeston`, `Bergomi`, and 26 more — a non-advancing
-  snapshot per `SeedExt`'s design, so every chunk cloned the identical
-  state and `sample_par(m)` degenerated to at most `MAX_CHUNKS` distinct
-  paths repeated, independent of `m`, worse than the original scheduler-
-  dependent bug it replaced). This entry now describes the corrected fix
+  snapshot per `SeedExt`'s design, so every chunk cloned the identical,
+  unchanged state and `sample_par(m)` degenerated to only as many distinct
+  paths as one chunk's own length under the `m.div_ceil(8)` rule then in
+  effect (8, for `m` a multiple of 8 — a path-count, not a chunk-count;
+  the `MAX_CHUNKS` bound described later in this entry did not exist at
+  this point in the fix's history), each repeated across every chunk,
+  worse than the original scheduler-dependent bug it replaced). This entry
+  now describes the corrected fix
   for that class (a separate follow-up fixes a second class, "lazy"
   processes such as `Heston`, for which the first fix was merely a no-op —
   see the next entry below); any code that hard-coded expected output
@@ -469,3 +473,118 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   entry's rewritten processes too, since owning a cloned seed converts
   them into instances of the same "clone-based sampler" shape `Sabr` and
   its 28 siblings already were.
+
+### stochastic-rs-stochastic: `sample_par` / `sample_map` chunk bases are now derived, not cloned — adjacent chunks were still correlated
+
+- **Output values under a pinned seed change a third time**, for every
+  process touched by the two entries above plus `Cgns`. Both prior fixes
+  were individually verified — thread-count independence held, and
+  `Sabr::sample()` called twice no longer repeated its first path — but a
+  further review measured what they actually left behind: **adjacent
+  chunks were still correlated with each other.** Both the clone-snapshot
+  shape (`self.seed.clone()` plus the `advance_chunk_seed` override) and
+  the "lazy-rewritten" shape from the entry above (also a clone, per that
+  entry's own description) copy `self.seed`'s *raw, unmixed* counter into
+  the new sampler; whatever then advances that counter — `advance_chunk_seed`
+  between chunks, or the per-path `derive()` inside the sampler — does so by
+  the same γ stride used everywhere else in `SeedExt`. So chunk `i` path `j`
+  and chunk `i+1` path `j-1` sat one stride apart on the same line, not on
+  independent hash outputs. Measured at `m = 1000`: `Sabr` produced only 78
+  of 1000 paths actually distinct; `Heston`/`Fou` at `m = 256` produced only
+  67 of 256. At realistic Monte-Carlo sample sizes this silently cuts
+  effective sample size by an order of magnitude and re-weights the
+  estimator with duplicated paths — while every thread-count-independence
+  test kept passing, since that property never required chunks to be
+  mutually *uncorrelated*, only insensitive to how rayon interleaves them.
+- Fix: `sampler()` now always captures its basis with `self.seed.derive()` —
+  never `.clone()` — and any per-path code that used to call `.derive()`
+  *again* on that basis now consumes it directly instead. `derive()` (unlike
+  `clone()`) hash-mixes the counter before handing it to the new owner, so
+  chunk `i`'s basis and chunk `i+1`'s basis are uncorrelated hash outputs
+  regardless of how many further times the owning sampler ticks its own copy
+  afterward. One shape now covers both previously-distinct classes —
+  clone-snapshot (`Sabr`, `DoubleHeston`, `Bergomi`, ...) and lazy-rewritten
+  (`Heston`, `Fou`, `Hjm`, ...) — around 40 types in total. A sampler whose
+  per-path code needs its own owned `S` rather than a borrowed `&S` (e.g.
+  `MultifactorSabr`, building two fresh `Gn` generators per path) still
+  calls `.derive()` there, but only on this already-derived, already-
+  decorrelated basis, which stays safe under any further ticking.
+  `#[doc(hidden)] fn advance_chunk_seed` becomes a no-op again for every one
+  of these types — the mechanism it was introduced for (advancing a *cloned*
+  snapshot) no longer applies to them. `CirPlusPlus` keeps its override: its
+  clone feeds a persistent Xoshiro engine built once per chunk and reused
+  across every path in that chunk via the engine's own advancement, never
+  re-consulting the `Deterministic`-level seed per path, so cloning is safe
+  there specifically.
+- `Cgns` (the correlated-Gaussian generator well over a dozen other
+  processes build on) had the same defect in a form a text search for
+  `self.seed.clone()` could not find: `sampler()` cloned the *entire* `Cgns`
+  struct (`CgnsSampler { cgns: self.clone() }`), not a `seed` field.
+  Measured: `Cgns::sample_par(64)` produced 1 distinct path of 64;
+  `sample()` called three times in a row on one object produced 1 distinct
+  result of 3 — the same "repeated call replays the first path" bug the
+  entry above fixed everywhere else via `advance_chunk_seed`, still live
+  here. Fixed with the same derive-not-clone shape. `Cgns` is the one type
+  in the crate where this change is user-visible even at `m == 1`: unlike
+  `Heston` and the other rewritten types (whose legacy `sampler()` always
+  had exactly one `derive()` hop before this whole wave), `Cgns`'s own
+  pre-existing behavior had *zero* mixing hops between `self.seed` and its
+  first draw, so its very first `sample()` now differs from a bare
+  `sample_impl(&seed)` call by the one hash-mixing hop `derive()` adds — no
+  golden test pinned the old zero-hop value.
+- `CompoundPoisson` needed its own golden re-pin (`cum`/`jumps` in
+  `golden_compound_poisson_streams`, not `times`) for a third, distinct
+  reason: `Poisson::sample_impl` consumes *two* ticks per call
+  (`SimdExp::new` then `.rng()`), not one. Moving a `.derive()` from
+  per-path code to `sampler()` reproduces a *single*-tick consumer's value
+  exactly (that is the whole mechanism this entry relies on for `Heston`/
+  `Sabr`/`Fou`/the ~40 other types above), but for a two-tick consumer that
+  something *else* still reads the seed after (`cum`/`jumps` are drawn from
+  the same seed right after `times`), the clone-based legacy shape hid the
+  consumer's second tick inside a disposable derived temporary, invisible
+  to anything downstream; deriving the whole basis once, up front, exposes
+  both ticks onto the one live counter everything else shares, shifting
+  every value downstream of the first two-tick consumer. `times` itself is
+  unaffected, since nothing runs before it. No other in-tree type both (a)
+  wraps a two-or-more-tick consumer and (b) has a golden test pinning
+  values read after it, so this is not expected to recur, but the same
+  silent shift applies unobserved to any multi-tick-consumer type without
+  golden coverage (e.g. `DoubleHeston`'s second `Cgns::sample_impl` call,
+  `Hkde`'s `Cgns` call followed by its own jump draws) — harmless for the
+  properties this fix actually guarantees (reproducibility, cross-chunk
+  independence), since neither depends on matching a specific historical
+  value.
+- **Scope correction — the exception list above was incomplete.**
+  `Bates1996` and `RoughHeston` are correctly identified as not
+  `self.seed`-reproducible at all, but they are not the only two: `JumpFou`
+  has the identical property — its `Fgn<T, Unseeded, B>` diffusion field and
+  its `CompoundPoisson<T, D>` jump field (default `S = Unseeded`) are both
+  hard-wired away from `self.seed`, so `self.seed` is a dead field there and
+  two identically-`Deterministic`-seeded `JumpFou`s produce different
+  output, confirmed empirically. `JumpFOUCustom` and `Merton` are a
+  narrower, pre-existing case: their diffusion component correctly consults
+  `self.seed` and is reproducible, but both hard-wire their
+  `CompoundPoisson<T, D>` jump field to `Unseeded` — `Merton`'s case was
+  already noted in `tests/sampler_v3_golden.rs`'s header; `JumpFOUCustom`'s
+  was not previously documented anywhere. None of the three are changed
+  here: all three would need their `CompoundPoisson<T, D>` field to become
+  `CompoundPoisson<T, D, S>`, and that field is `pub` on both `JumpFou` and
+  `Merton` — widening it to require a matching seed type is a breaking API
+  change to a public field, out of scope for a reproducibility bugfix. Left
+  as documented exceptions instead; see the doc comments on each type and
+  `ProcessExt`'s trait-level reproducibility section.
+- Guarantee, corrected: for every process in the crate **except**
+  `Bates1996`, `RoughHeston`, and `JumpFou` (no randomness reachable from
+  `self.seed` at all), and **except the jump component of** `JumpFOUCustom`
+  and `Merton` (diffusion is reproducible, jump arrivals/sizes are not), a
+  `Deterministic` seed and the same `m` now produce bit-identical
+  `sample_par`/`sample_map` output on any machine, under any rayon
+  thread-pool size, and — new in this entry — regardless of how many paths
+  land in the same chunk (`m` need not be `<= MAX_CHUNKS` for chunks to stay
+  mutually independent). This supersedes the "guarantee, complete" claim in
+  the entry above, which was accurate about thread-count independence but
+  silent on cross-chunk correlation and incomplete about the exception list.
+- New tests at `m = 256` (`> MAX_CHUNKS = 64`, so multiple paths share a
+  chunk) cover the regime the earlier `m = 64`/`m = 16` distinctness tests
+  could not reach — at `m <= MAX_CHUNKS` every chunk holds exactly one path,
+  which cannot expose cross-chunk correlation at all.

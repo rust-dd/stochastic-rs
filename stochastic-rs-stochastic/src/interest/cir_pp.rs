@@ -131,6 +131,22 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CirPlusPlus<T, S> {
 
   /// `sampler()` clones `self.seed` into a transient `Cir` (a non-advancing
   /// snapshot), so each chunk's clone must see a distinct state.
+  ///
+  /// `CirPlusPlus` is the crate's one remaining user of this override (every
+  /// other type that needed it before was rewritten to derive its own basis
+  /// instead — see [`ProcessExt`]'s trait-level reproducibility section),
+  /// which surfaces one known, undocumented-until-now asymmetry: this method
+  /// runs *before* `sampler()` when called from
+  /// [`chunked_samplers`](ProcessExt::chunked_samplers) (so `sample_par(m)`'s
+  /// chunks each see a freshly-ticked state), but *after* sampling when
+  /// called from [`sample`](ProcessExt::sample)'s default (so a fresh
+  /// object's very first `.sample()` sees `self.seed`'s *un*-ticked starting
+  /// state). A brand-new `CirPlusPlus`'s first `.sample()` and its first
+  /// `sample_par(m)` chunk therefore consume different bases one tick apart.
+  /// Not fixed here: the after-sampling placement in `sample`'s default was
+  /// deliberately chosen so repeated `.sample()` calls advance instead of
+  /// replaying (see this file's own git history / MIGRATION.md), and
+  /// reordering it would trade this asymmetry for that regression.
   fn advance_chunk_seed(&self) {
     self.seed.seed_value();
   }

@@ -97,49 +97,68 @@ fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
 /// ### Reproducibility requirement on implementors
 ///
 /// Sequential chunk construction only produces bit-identical, thread-count-
-/// independent output if **every chunk's sampler draws from a distinct seed
-/// basis**. There are two ways for an implementor to guarantee that, and a
-/// process must use one of them:
+/// independent, **chunk-independent** output if `sampler()` captures its
+/// basis via `self.seed.derive()` — never `self.seed.clone()`, and never by
+/// reading `&self.seed` lazily per path from inside the returned sampler.
+/// `derive()` advances `self.seed`'s shared state *and* hash-mixes the
+/// result before handing it to the new owner, so — since
+/// [`chunked_samplers`](Self::chunked_samplers) calls `sampler()` once per
+/// chunk, sequentially, before any chunk reaches rayon — every chunk's
+/// basis is a distinct, mutually-uncorrelated hash output. `clone()` is
+/// `SeedExt`'s deliberate *non-advancing, non-mixing* inverse of that: it
+/// copies the raw counter with zero hash hops, so even a process that
+/// advances the shared state once per chunk before cloning (the
+/// [`advance_chunk_seed`](Self::advance_chunk_seed) mechanism below) only
+/// ever gives adjacent chunks bases that are one raw arithmetic stride
+/// apart — close enough, for whatever the sampler's own per-path code then
+/// does with that raw value, to still overlap across chunks (measured: only
+/// 78 of 1000 `Sabr` paths, 67 of 256 `Heston` paths, actually distinct).
+/// Reading `&self.seed` lazily per path is unsound for a third, independent
+/// reason — every chunk's sampler then shares live access to the same
+/// atomic, racing on it during the parallel region itself, which no amount
+/// of pre-parallel sequencing can fix.
 ///
-/// - `sampler()` itself advances the process's `Deterministic` seed state at
-///   construction time (e.g. it builds a `SimdNormal`/`SimdPoisson`/… from
-///   `&self.seed` or `&self.seed.derive()`, or owns a chunk-specific `S`
-///   captured via `self.seed.derive()`) — true for most processes in this
-///   crate, and nothing further is required.
-/// - `sampler()` instead *clones* the seed (`self.seed.clone()`), which is
-///   `SeedExt`'s designed inverse of advancing — a `Deterministic::clone()`
-///   is a non-advancing snapshot. Such a process must override
-///   [`advance_chunk_seed`](Self::advance_chunk_seed) to advance the shared
-///   state itself before `sampler()` runs, or every chunk clones the same
-///   snapshot and `sample_par(m)` degenerates to at most `MAX_CHUNKS`
-///   distinct paths repeated, independent of `m`.
+/// A sampler may call `.derive()` again, further, on its *own* already-
+/// derived basis without any of the above risk — e.g. to build several
+/// independent per-path sub-streams, or because a downstream constructor
+/// needs an owned `S` rather than a borrowed `&S`
+/// ([`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr)
+/// builds two fresh [`Gn`](crate::noise::gn::Gn) generators per path this
+/// way). That basis is already a chunk-unique hash output, so any amount of
+/// further ticking, by any mechanism, stays confined to that one chunk's
+/// own uncorrelated sequence.
 ///
-/// A process whose `sampler()` reads `&self.seed` *lazily*, per path, from
-/// inside the returned sampler (rather than once at construction) satisfies
-/// neither shape — every chunk's sampler shares live access to the same
-/// atomic, so concurrent chunks race on it during the parallel region
-/// itself, which no amount of pre-parallel sequencing can fix. That shape
-/// must be rewritten to capture an owned `self.seed.clone()` at `sampler()`
-/// construction (not `.derive()` — cloning first and deriving from the
-/// clone inside the existing per-path code, unchanged, reproduces the exact
-/// value a direct `self.seed.derive()` there would have; deriving *both* at
-/// construction *and* again per path shifts the value for no reason),
-/// converting it to the second bullet above — an `advance_chunk_seed`
-/// override is required alongside the rewrite.
+/// [`advance_chunk_seed`](Self::advance_chunk_seed) exists for one
+/// remaining legitimate case: a `sampler()` that clones because the clone
+/// feeds a *persistent* engine (e.g. a buffered `SimdNormal`) built once per
+/// chunk and reused across every path in that chunk via the engine's own
+/// internal advancement, never re-consulting the `Deterministic`-level seed
+/// per path — see [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus).
+/// Overriding it to advance the shared state before each chunk's
+/// `sampler()` call gives each such clone a distinct starting point.
 ///
-/// Two in-tree processes cannot satisfy either shape because their sampled
-/// randomness does not derive from `self.seed` **at all**, by pre-existing
-/// design predating this requirement: [`Bates1996`](crate::jump::bates::Bates1996)
-/// (diffusion hard-wires an `Unseeded` correlated-Gaussian source; the jump
-/// component reads its own driver's seed field directly, bypassing this
-/// trait) and [`RoughHeston`](crate::volatility::fheston::RoughHeston) (its
+/// A small number of in-tree processes cannot satisfy any of this because
+/// their sampled randomness does not derive from `self.seed` **at all**, by
+/// pre-existing design predating this requirement:
+/// [`Bates1996`](crate::jump::bates::Bates1996) (diffusion hard-wires an
+/// `Unseeded` correlated-Gaussian source; the jump component reads its own
+/// driver's seed field directly, bypassing this trait),
+/// [`RoughHeston`](crate::volatility::fheston::RoughHeston) (its
 /// correlated-Gaussian source is documented as ignoring `self.seed`
-/// entirely). Their `sample`/`sample_par`/`sample_map` are not seed-
-/// reproducible at all — not even serially, not even at `m == 1` — so the
-/// reproducibility guarantee below does not apply to them; see MIGRATION.md.
+/// entirely), and [`JumpFou`](crate::jump::jump_fou::JumpFou) (both its fGn
+/// diffusion and its `CompoundPoisson` jump driver default to `Unseeded`).
+/// Their `sample`/`sample_par`/`sample_map` are not seed-reproducible at
+/// all — not even serially, not even at `m == 1`.
+/// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
+/// [`Merton`](crate::jump::merton::Merton) are a narrower case: their
+/// diffusion component does consult `self.seed` and is reproducible, but
+/// both hard-wire their `CompoundPoisson` jump driver to `Unseeded`, so
+/// their overall output still is not. See MIGRATION.md.
 ///
-/// Same seed + same `m` ⇒ bit-identical output on any machine and any
-/// thread-pool size for every process satisfying the requirement above;
+/// Same seed + same `m` ⇒ bit-identical output on any machine, any
+/// thread-pool size, and any chunking of `m` (chunks need not each hold
+/// exactly one path for them to be mutually independent) for every process
+/// satisfying the requirement above;
 /// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) processes still draw
 /// fresh randomness on every call.
 ///
@@ -167,15 +186,20 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// chunk, before that chunk's `sampler()`) and from
   /// [`sample`](Self::sample) (once per call, after sampling).
   ///
-  /// The default is a no-op, correct for any process whose `sampler()`
-  /// itself advances the seed at construction (the common case — see the
-  /// trait-level "Reproducibility requirement on implementors" section);
-  /// an *additional* advance here would be harmless but redundant for those.
-  /// **Override this** for a process whose `sampler()` instead clones the
-  /// seed (`self.seed.clone()`, a non-advancing snapshot per `SeedExt`'s
-  /// design) — e.g. `fn advance_chunk_seed(&self) { self.seed.seed_value(); }`
-  /// — so each chunk's clone snapshots a distinct state instead of every
-  /// chunk replaying the same one, and repeated top-level `sample()` calls
+  /// The default is a no-op, correct for every process whose `sampler()`
+  /// derives its own basis at construction (see the trait-level
+  /// "Reproducibility requirement on implementors" section — this is now
+  /// the required shape, so the default covers almost every process in the
+  /// crate); an *additional* advance here would be harmless but redundant
+  /// for those. **Override this** for the narrow remaining case: a
+  /// `sampler()` that clones the seed (`self.seed.clone()`, a
+  /// non-advancing snapshot per `SeedExt`'s design) because the clone feeds
+  /// a persistent engine reused across a whole chunk rather than being
+  /// re-derived per path — see
+  /// [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus)'s override,
+  /// `fn advance_chunk_seed(&self) { self.seed.seed_value(); }` — so each
+  /// chunk's clone snapshots a distinct state instead of every chunk
+  /// replaying the same one, and repeated top-level `sample()` calls
   /// advance instead of replaying the first path forever.
   #[doc(hidden)]
   fn advance_chunk_seed(&self) {}

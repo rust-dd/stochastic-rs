@@ -59,8 +59,14 @@ where
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Compound-Poisson jump driver generating the log-normal jump sizes.
+  /// **Partial exception to [`ProcessExt`]'s reproducibility guarantee:**
+  /// hard-wired to `Unseeded` (default `S`) by pre-existing design, so the
+  /// jump arrivals/sizes are never seed-reproducible even though the
+  /// diffusion component below is. See MIGRATION.md and [`ProcessExt`]'s
+  /// trait-level reproducibility section.
   pub cpoisson: CompoundPoisson<T, D>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
+  /// by the diffusion component only — see `cpoisson`'s doc above.
   pub seed: S,
 }
 

@@ -19,6 +19,13 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// **Partially exempt from [`ProcessExt`]'s reproducibility guarantee.** The
+/// jump timing/size draws (`rng: self.seed.rng()` in `sampler()`) do consult
+/// `self.seed` and are reproducible; the diffusion driver
+/// (`fgn: Fgn<T, Unseeded, B>`) is hard-wired to `Unseeded` by pre-existing
+/// design and is not, so overall `sample`/`sample_par`/`sample_map` output
+/// still is not seed-reproducible end-to-end. See MIGRATION.md and
+/// [`ProcessExt`]'s trait-level reproducibility section.
 pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,

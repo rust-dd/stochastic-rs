@@ -21,6 +21,19 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// **`self.seed` is a documented exception to [`ProcessExt`]'s reproducibility
+/// guarantee: it is never consulted.** The diffusion driver
+/// (`fgn: Fgn<T, Unseeded, B>`) and the default `cpoisson: CompoundPoisson<T,
+/// D>` (`S = Unseeded`) are both hard-wired to `Unseeded` by pre-existing
+/// design, so no randomness in `sample`/`sample_par`/`sample_map` derives
+/// from `self.seed` at all — two identically-`Deterministic`-seeded
+/// `JumpFou`s produce different output. `self.seed` is retained on the
+/// struct only for API-shape consistency with the rest of the crate. Fixing
+/// this would require widening the public `cpoisson: CompoundPoisson<T, D>`
+/// field to `CompoundPoisson<T, D, S>` (a breaking API change accepted by
+/// callers who construct their own `CompoundPoisson`), so it is documented
+/// here rather than fixed; see MIGRATION.md and
+/// [`ProcessExt`]'s trait-level reproducibility section.
 pub struct JumpFou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -48,7 +61,9 @@ where
   /// Compound-Poisson jump driver adding `dJ_t` on top of the fOU path.
   pub cpoisson: CompoundPoisson<T, D>,
   fgn: Fgn<T, Unseeded, B>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). **Not
+  /// currently consulted by `sample`/`sample_par`/`sample_map`** — see the
+  /// struct-level documentation.
   pub seed: S,
 }
 
