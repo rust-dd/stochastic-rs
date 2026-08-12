@@ -272,11 +272,16 @@ guard!(jacobi, "Jacobi", |s| Jacobi::new(
   s
 ));
 
+// `x0 = 0.0` sits exactly on the Wright–Fisher diffusion's absorbing
+// boundary: `sigma * sqrt(x0 * (1 - x0))` vanishes there, so the path stays
+// at 0 for every remaining step regardless of any Gaussian draw (correct
+// model behavior, not a sampler bug) and no seed could ever change the
+// output. `0.5` sits in the interior where the diffusion term is live.
 guard!(kimura, "Kimura", |s| Kimura::new(
   0.1,
   0.2,
   N,
-  Some(0.0),
+  Some(0.5),
   Some(1.0),
   s
 ));

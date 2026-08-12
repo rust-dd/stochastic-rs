@@ -162,10 +162,19 @@ guard!(poisson_subordinator, "PoissonSubordinator", |s| {
   PoissonSubordinator::new(2.0, N, Some(0.0), Some(1.0), s)
 });
 
+// `c = 1.0, mu = 1.0` gives a large-jump arrival rate (`lambda0 * dt`) of
+// ~0.12/step with an acceptance probability at the minimum jump size
+// (`exp(-mu * epsilon)`) of only ~0.61, so over `N` steps this process's
+// accepted-jump count is 0 for a non-negligible fraction of seeds —
+// measured: seeds 42 and 43 both realized zero accepted jumps, making
+// `sample()` exactly the deterministic small-jump drift term for both,
+// bit-identical regardless of seed. `c = 5.0, mu = 0.3` raises the
+// candidate rate roughly fivefold and the minimum-jump acceptance to
+// ~0.86, making an empty path negligibly unlikely.
 guard!(
   tempered_stable_subordinator,
   "TemperedStableSubordinator",
-  |s| TemperedStableSubordinator::new(0.5, 1.0, 1.0, 0.5, N, Some(0.0), Some(1.0), s)
+  |s| TemperedStableSubordinator::new(0.5, 5.0, 0.3, 0.5, N, Some(0.0), Some(1.0), s)
 );
 
 guard!(volterra, "Volterra", |s| Volterra::new(

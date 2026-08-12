@@ -10,7 +10,6 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SeedExt;
 // `Cir2F` needs two full `Cir<T, S>` sub-processes — the crate's most
 // constructor-heavy type — pulled in from the diffusion family.
 use stochastic_rs_stochastic::diffusion::cir::Cir;
@@ -70,6 +69,15 @@ guard!(black_karasinski, "BlackKarasinski", |s| {
   )
 });
 
+// Sub-`Cir` seeds are fixed (7/8 — the pair `cir_2f.rs`'s own
+// `outer_seed_is_authoritative_over_sub_seeds` test uses), never derived
+// from `s`. `Cir2F::new` overwrites both anyway (see its doc), so their
+// as-constructed value is inert when the type is correct — but deriving
+// them from `s` here would route the outer seed into the sub-processes
+// independently of `Cir2F::new`'s own logic, so `check`'s discrimination
+// assertion would keep passing even if `Cir2F::new` regressed to ignoring
+// `seed` entirely. Fixed sub-seeds make that assertion depend only on
+// `Cir2F::new`'s own forwarding, which is the thing under test.
 guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
   Cir::new(
     1.0,
@@ -79,7 +87,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     Some(0.03),
     Some(1.0),
     Some(false),
-    s.derive()
+    Deterministic::new(7)
   ),
   Cir::new(
     1.2,
@@ -89,7 +97,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     Some(0.02),
     Some(1.0),
     Some(false),
-    s.derive()
+    Deterministic::new(8)
   ),
   fn1d_a as fn(f64) -> f64,
   s

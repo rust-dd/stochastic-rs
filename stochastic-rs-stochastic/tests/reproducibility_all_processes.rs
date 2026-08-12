@@ -1,9 +1,28 @@
 //! Exhaustive reproducibility guard: every concrete `ProcessExt` implementor
 //! in `stochastic-rs-stochastic`, instantiated with a `Deterministic` seed,
-//! must produce bit-identical output from two fresh identically-seeded
-//! instances, and `sample_par` must be bit-identical across rayon
-//! thread-pool sizes at both a size `<= MAX_CHUNKS` (one path per chunk) and
-//! a size above it (several paths per chunk).
+//! must (a) produce bit-identical output from two fresh identically-seeded
+//! instances, (b) produce genuinely different output from a fresh instance
+//! seeded differently, and (c) produce `sample_par` output that is
+//! bit-identical across rayon thread-pool sizes at both a size `<=
+//! MAX_CHUNKS` (one path per chunk) and a size above it (several paths per
+//! chunk).
+//!
+//! **(b) exists because (a) alone cannot tell a correctly-seeded type from
+//! one whose `seed` field is dead.** Two identically-seeded instances of a
+//! constructor that never reads `self.seed` — because it forgot to, or
+//! because it reads a sub-component's own pre-existing seed instead — still
+//! agree with each other bit-for-bit, so (a) passes either way; only
+//! asserting that a *different* seed changes the output can tell the two
+//! apart. This is not hypothetical: `interest/cir_2f.rs`'s `Cir2F::new` once
+//! stored its `seed` parameter on the struct but never used it — `sampler()`
+//! read the two pre-built `Cir` factors' own seeds instead — and every
+//! assertion this file made before (b) existed still reported `ok` for
+//! `cir_2f`, because both compared instances were built with the guard's own
+//! fixed `SEED`. (b) is what would have caught it; see `common::check` and
+//! `interest.rs`'s `cir_2f` case, which pins the two `Cir` factors' own
+//! sub-seeds to fixed values distinct from the outer seed under test, so
+//! that only `Cir2F::new`'s own seed-forwarding — not the guard's
+//! construction code — can make (b) pass.
 //!
 //! **How this list was derived and how to extend it.** `grep -rn
 //! "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src

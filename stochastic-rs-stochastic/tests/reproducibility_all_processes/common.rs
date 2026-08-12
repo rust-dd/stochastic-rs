@@ -16,6 +16,12 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 pub(crate) const SEED: u64 = 42;
+/// A second seed, distinct from [`SEED`], used only by the discrimination
+/// half of [`check`]: it must produce different `.sample()` output than
+/// `SEED` does. Any value different from `SEED` works — `Deterministic`
+/// mixes its state with splitmix64, so adjacent seeds are not adjacent
+/// streams.
+pub(crate) const OTHER_SEED: u64 = 43;
 /// Steps per path. Small on purpose — this guard is about seed plumbing,
 /// not statistics.
 pub(crate) const N: usize = 24;
@@ -114,14 +120,20 @@ pub(crate) fn pool(num_threads: usize) -> rayon::ThreadPool {
     .expect("failed to build rayon thread pool")
 }
 
-/// The guard's three assertions, run once per process type: (a) two fresh,
+/// The guard's four assertions, run once per process type: (a) two fresh,
 /// identically-`Deterministic`-seeded instances agree bit-for-bit on
-/// `.sample()`; (b)/(c) `sample_par` agrees bit-for-bit across two rayon
-/// pool sizes, both at `m <= MAX_CHUNKS` and at `m > MAX_CHUNKS`. GPU
-/// backends are never reached here — every backend-generic constructor
-/// called from the submodules below goes through the inherent `Cpu`-only
-/// `new()`, so there is no way to build a GPU-backed instance through this
-/// function at all.
+/// `.sample()`; (b) a fresh instance built from [`OTHER_SEED`] disagrees
+/// with (a) — the discriminating half, without which (a) alone cannot tell
+/// a correctly-seeded type from one whose `self.seed` is a dead field: two
+/// builds that both ignore the seed still agree with each other on (a), so
+/// (a) alone is satisfied by either a correct implementation or a broken
+/// one that ignores `seed` entirely (see the `Cir2F` case this assertion
+/// was added for, in the crate-root doc comment); (c)/(d) `sample_par`
+/// agrees bit-for-bit across two rayon pool sizes, both at `m <=
+/// MAX_CHUNKS` and at `m > MAX_CHUNKS`. GPU backends are never reached
+/// here — every backend-generic constructor called from the submodules
+/// below goes through the inherent `Cpu`-only `new()`, so there is no way
+/// to build a GPU-backed instance through this function at all.
 pub(crate) fn check<P, F>(name: &str, make: F)
 where
   F: Fn(Deterministic) -> P + Sync,
@@ -133,6 +145,18 @@ where
   assert_eq!(
     a, b,
     "{name}: two fresh identically-seeded instances diverged on sample()"
+  );
+
+  let c = make(Deterministic::new(OTHER_SEED)).sample().repro_bits();
+  assert_ne!(
+    a, c,
+    "{name}: sample() was bit-identical under seed {SEED} and seed {OTHER_SEED} \
+     — this type's seed is not reaching its sampled output. Either `self.seed` \
+     (or a sub-component's seed derived from it) is never read on the sampling \
+     path (the `Cir2F` class of bug), or this guard's own construction is \
+     degenerate for discrimination purposes (e.g. zero volatility, an \
+     intensity so low every path is empty, a deterministic limit) and needs \
+     different parameters, not a weaker assertion"
   );
 
   for &m in &[M_ONE_PER_CHUNK, M_MULTI_PER_CHUNK] {
