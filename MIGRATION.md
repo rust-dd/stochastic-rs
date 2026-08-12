@@ -942,9 +942,12 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `merton_with_seed_matches_fresh_construction`'s own name. `with_seed` now
   re-derives `cpoisson.seed` the same way `new()` does.
 - All three are now **fully** seed-reproducible — no exception to
-  `ProcessExt`'s reproducibility guarantee. Removed from the
-  partial-exception list in `traits/process.rs` and in the summary above;
-  `Bates1996` and `JumpFou` are the two that remain (Task 2 of this wave).
+  `ProcessExt`'s reproducibility guarantee. At the time this task shipped,
+  `Bates1996` and `JumpFou` still carried the identical `cpoisson` defect
+  and remained partial exceptions; Task 2 of this wave fixed both the same
+  way (see that entry below), and a later commit in this wave replaced
+  `traits/process.rs`'s exception list with the unconditional guarantee
+  stated as prose — see the "Current, final state" summary above.
 - New test: `stochastic-rs-stochastic/tests/reproducibility_jump_family.rs`
   — for each type, bit-identical `.sample()` between two
   identically-`Deterministic`-seeded objects under `lambda = 50` (jumps
@@ -1109,9 +1112,11 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   fixed too.
 - Both types are now **fully** seed-reproducible — no exception to
   `ProcessExt`'s reproducibility guarantee, and no exception of any kind
-  remains anywhere in the crate. `traits/process.rs`'s partial-exception
-  list no longer names either type — the list itself is now empty; see the
-  summary entry further up this file for the corresponding update.
+  remains anywhere in the crate. A later commit in this wave (`docs: state
+  the reproducibility guarantee without exceptions`) replaced
+  `traits/process.rs`'s partial-exception list entirely, stating the
+  guarantee as prose instead of an enumerated list — see the summary entry
+  further up this file for the corresponding update.
 - New test file: `stochastic-rs-stochastic/tests/reproducibility_bates_jump_fou.rs`
   — for each type, bit-identical `.sample()` between two
   identically-`Deterministic`-seeded objects under `lambda = 50` (jumps
