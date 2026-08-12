@@ -34,7 +34,7 @@
 //! the same name), so jump arrivals/sizes — and therefore the price path
 //! `s`, which sums jump increments at every step — are still not
 //! seed-reproducible. Dedicated reproducibility tests for the fixed
-//! diffusion live in `deterministic_parallelism_seed_fixes.rs`; the tests
+//! diffusion live in `deterministic_parallelism_bates_rough_heston.rs`; the tests
 //! below were written against the *old*, fully-unreproducible behavior and
 //! still pass unchanged (none of them assert non-reproducibility as a
 //! requirement), so they are left as-is except where a comment stated the
