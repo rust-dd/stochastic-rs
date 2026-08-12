@@ -9,6 +9,20 @@ pub enum Fn1D<T: FloatExt> {
   Py(pyo3::Py<pyo3::PyAny>),
 }
 
+/// Manual, not `#[derive(Clone)]`: `pyo3::Py<PyAny>` (0.28) has no
+/// unconditional `Clone` impl, only `clone_ref(py)`, which needs a GIL
+/// token — mirrors the GIL-acquisition pattern [`Fn1D::call`]'s own `Py`
+/// arm already uses.
+impl<T: FloatExt> Clone for Fn1D<T> {
+  fn clone(&self) -> Self {
+    match self {
+      Fn1D::Native(f) => Fn1D::Native(*f),
+      #[cfg(feature = "python")]
+      Fn1D::Py(callable) => Fn1D::Py(pyo3::Python::attach(|py| callable.clone_ref(py))),
+    }
+  }
+}
+
 impl<T: FloatExt> Fn1D<T> {
   pub fn call(&self, t: T) -> T {
     match self {
@@ -36,6 +50,17 @@ pub enum Fn2D<T: FloatExt> {
   Native(fn(T, T) -> T),
   #[cfg(feature = "python")]
   Py(pyo3::Py<pyo3::PyAny>),
+}
+
+/// Manual, not `#[derive(Clone)]`: see [`Fn1D`]'s own `Clone` impl doc.
+impl<T: FloatExt> Clone for Fn2D<T> {
+  fn clone(&self) -> Self {
+    match self {
+      Fn2D::Native(f) => Fn2D::Native(*f),
+      #[cfg(feature = "python")]
+      Fn2D::Py(callable) => Fn2D::Py(pyo3::Python::attach(|py| callable.clone_ref(py))),
+    }
+  }
 }
 
 impl<T: FloatExt> Fn2D<T> {

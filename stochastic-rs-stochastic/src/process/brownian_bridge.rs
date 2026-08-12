@@ -66,6 +66,7 @@ use crate::traits::ProcessExt;
 /// the true final step, which is why the explicit final-step guard below
 /// (assigning `xt` directly) exists only for bit-exactness, not to patch
 /// over a bias.
+#[derive(Clone)]
 pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
   pub sigma: T,

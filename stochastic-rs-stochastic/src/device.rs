@@ -15,22 +15,27 @@ use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 
 /// CPU backend — the default `B` for every process.
+#[derive(Clone, Copy)]
 pub struct Cpu;
 
 /// cudarc + cuFFT + NVRTC Philox.
 #[cfg(feature = "cuda-native")]
+#[derive(Clone, Copy)]
 pub struct CudaNative;
 
 /// cubecl Rust kernels (CUDA or wgpu, per the compiled `cubecl-*` runtime).
 #[cfg(feature = "gpu")]
+#[derive(Clone, Copy)]
 pub struct CubeCl;
 
 /// Hand-written MSL via the `metal` crate. f32 only — Apple GPUs lack f64.
 #[cfg(feature = "metal")]
+#[derive(Clone, Copy)]
 pub struct MetalNative;
 
 /// Apple vDSP / AMX (FFI system framework, macOS).
 #[cfg(feature = "accelerate")]
+#[derive(Clone, Copy)]
 pub struct Accelerate;
 
 /// A compile-time fGN sampling backend. Implemented by the marker types in this

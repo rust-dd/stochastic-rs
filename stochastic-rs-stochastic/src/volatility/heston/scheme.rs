@@ -33,6 +33,7 @@ pub trait HestonScheme: Send + Sync + 'static {
 
 /// Full-truncation (or reflection, when `use_sym`) Euler–Maruyama — the
 /// original Heston discretisation. Default scheme; behaviour is unchanged.
+#[derive(Clone, Copy)]
 pub struct Euler;
 
 /// Andersen (2008) Quadratic-Exponential scheme. Markedly lower variance bias
@@ -43,6 +44,7 @@ pub struct Euler;
 /// Reference: Andersen, L. (2008), "Simple and efficient simulation of the
 /// Heston stochastic volatility model", *Journal of Computational Finance*
 /// 11(3), 1-42 (§3.2 scheme QE, §4.2 eq. 33 for the asset).
+#[derive(Clone, Copy)]
 pub struct AndersenQe;
 
 impl HestonScheme for Euler {

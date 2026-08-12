@@ -24,6 +24,7 @@ use crate::traits::ProcessExt;
 ///
 /// <https://www.columbia.edu/~sk75/MagSci02.pdf>
 ///
+#[derive(Clone)]
 pub struct Kou<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,

@@ -49,6 +49,7 @@ use crate::traits::ProcessExt;
 /// See the module doc for the `theta`/`a` naming convention (shared with
 /// [`HullWhite`](crate::interest::hull_white::HullWhite)) and the exact-OU
 /// discretization.
+#[derive(Clone)]
 pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
   /// Time-dependent additive drift target θ(t), fitted to the initial term
   /// structure of the log-rate — same role as

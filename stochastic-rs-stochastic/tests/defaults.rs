@@ -5,6 +5,7 @@
 //! `Default` impl doc for where its parameter values come from.
 
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
@@ -27,6 +28,7 @@ use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
@@ -71,4 +73,275 @@ fn defaults_sample_finite() {
   assert!(ok(&s) && ok(&v2));
   let [s, v2] = RoughBergomi::<f64>::default().sample();
   assert!(ok(&s) && ok(&v2));
+}
+
+fn bits(path: &Array1<f64>) -> Vec<u64> {
+  path.iter().map(|x| x.to_bits()).collect()
+}
+
+fn theta04(_t: f64) -> f64 {
+  0.04
+}
+
+fn zero_phi(_t: f64) -> f64 {
+  0.0
+}
+
+fn theta05(_t: f64) -> f64 {
+  0.05
+}
+
+/// Same parameter values as each type's `Default` (seed swapped for an
+/// explicit `Deterministic` one) — `x.clone().sample() == x.sample()`
+/// bit-for-bit must hold uniformly per the pinned decision (`ProcessExt`'s
+/// `## Clone semantics`): whole-struct `Clone` snapshots the seed rather
+/// than forking it, so the clone replays the identical path if sampled
+/// before either side draws anything else.
+///
+/// `Merton`/`Kou` are intentionally absent: their `cpoisson` field type is
+/// `CompoundPoisson<T, D>`, which fixes *that* field's own seed strategy to
+/// `Unseeded` regardless of the outer process's `S` (pre-existing, documented
+/// on `Merton::cpoisson` — "never seed-reproducible even though the
+/// diffusion component is"). `x.sample() != x.sample()` already holds for
+/// the very same instance before `Clone` enters the picture at all, so
+/// bit-exact `Clone` equality is not a meaningful assertion for these two;
+/// `merton_and_kou_jump_component_is_not_seed_reproducible` below pins that
+/// pre-existing behavior instead so the exclusion is not mistaken for an
+/// oversight.
+#[test]
+fn clone_preserves_deterministic_path() {
+  let a = Gbm::<f64, _>::new(0.05, 0.2, N, Some(100.0), Some(1.0), Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Ou::<f64, _>::new(
+    2.0,
+    0.0,
+    0.2,
+    N,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Cir::<f64, _>::new(
+    2.5,
+    0.04,
+    0.2,
+    N,
+    Some(0.04),
+    Some(1.0),
+    Some(false),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Cev::<f64, _>::new(
+    0.04,
+    0.2,
+    0.8,
+    N,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Vg::<f64, _>::new(
+    0.0,
+    0.2,
+    0.15,
+    N,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Vasicek::<f64, _>::new(
+    3.0,
+    0.03,
+    0.02,
+    N,
+    Some(0.03),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = HullWhite::<f64, _>::new(
+    theta04 as fn(f64) -> f64,
+    0.4,
+    0.02,
+    N,
+    Some(0.02),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = CirPlusPlus::<f64, _>::new(
+    0.5,
+    0.04,
+    0.2,
+    zero_phi as fn(f64) -> f64,
+    N,
+    Some(0.03),
+    Some(1.0),
+    None,
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = BlackKarasinski::<f64, _>::new(
+    theta05 as fn(f64) -> f64,
+    0.8,
+    0.1,
+    N,
+    Some(0.03),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Fgn::<f64, _>::new(0.7, N, Some(1.0), Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Gn::<f64, _>::new(N, Some(1.0), Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Bm::<f64, _>::new(N, Some(1.0), Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Fbm::<f64, _>::new(0.7, N, Some(1.0), Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Poisson::<f64, _>::new(2.0, Some(N), Some(1.0), Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = BrownianBridge::<f64, _>::new(1.0, N, None, None, Some(1.0), Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = SquaredBessel::<f64, _>::new(3.0, N, Some(1.0), Some(1.0), None, Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Bessel::<f64, _>::new(3.0, N, Some(1.0), Some(1.0), None, Deterministic::new(42));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = DisplacedDiffusion::<f64, _>::new(
+    0.05,
+    0.2,
+    30.0,
+    N,
+    Some(100.0),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Heston::<f64, _>::new(
+    Some(100.0),
+    Some(0.04),
+    2.0,
+    0.04,
+    0.3,
+    -0.7,
+    0.05,
+    N,
+    Some(1.0),
+    HestonPow::Sqrt,
+    Some(false),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  let [s1, v1] = a.sample();
+  let [s2, v2] = b.sample();
+  assert_eq!(bits(&s1), bits(&s2));
+  assert_eq!(bits(&v1), bits(&v2));
+
+  let a = Sabr::<f64, _>::new(
+    0.4,
+    0.7,
+    -0.3,
+    N,
+    Some(1.0),
+    Some(0.3),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  let [f1, a1] = a.sample();
+  let [f2, a2] = b.sample();
+  assert_eq!(bits(&f1), bits(&f2));
+  assert_eq!(bits(&a1), bits(&a2));
+
+  let a = Bergomi::<f64, _>::new(
+    0.4,
+    Some(0.2),
+    Some(100.0),
+    0.01,
+    -0.6,
+    N,
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  let [s1, v1] = a.sample();
+  let [s2, v2] = b.sample();
+  assert_eq!(bits(&s1), bits(&s2));
+  assert_eq!(bits(&v1), bits(&v2));
+
+  let a = RoughBergomi::<f64, _>::new(
+    0.1,
+    0.4,
+    Some(0.2),
+    Some(100.0),
+    0.01,
+    -0.6,
+    N,
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  let [s1, v1] = a.sample();
+  let [s2, v2] = b.sample();
+  assert_eq!(bits(&s1), bits(&s2));
+  assert_eq!(bits(&v1), bits(&v2));
+}
+
+/// Pins the pre-existing (not introduced by this task) reason `Merton`/`Kou`
+/// are excluded above: their jump component's seed strategy is fixed to
+/// `Unseeded` regardless of the process's own seed, so even the *same*
+/// instance's own `.sample()` is not repeatable — a fact `Clone` cannot
+/// change either way. See `Merton::cpoisson`'s field doc. `Clone` itself
+/// still derives and still works structurally (finite output, correct
+/// length) on both — only the bit-exact seed-replay assertion above does
+/// not apply to them.
+#[test]
+fn merton_and_kou_jump_component_is_not_seed_reproducible() {
+  let a = Merton::<f64, ScalarNormal<f64>>::default();
+  assert_ne!(bits(&a.sample()), bits(&a.sample()));
+  assert!(ok(&a.clone().sample()));
+
+  let a = Kou::<f64, ScalarNormal<f64>>::default();
+  assert_ne!(bits(&a.sample()), bits(&a.sample()));
+  assert!(ok(&a.clone().sample()));
 }

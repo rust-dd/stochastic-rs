@@ -18,6 +18,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant proportional drift rate μ. GBM has no mean reversion — `mu`
   /// is not a long-run level; it is the constant rate at which `S_t`

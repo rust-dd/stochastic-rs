@@ -14,6 +14,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant proportional drift rate μ — CEV has no mean reversion.
   pub mu: T,

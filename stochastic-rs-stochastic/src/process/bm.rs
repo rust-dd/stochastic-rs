@@ -14,6 +14,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Bm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Number of discrete time points in the generated path.
   pub n: usize,

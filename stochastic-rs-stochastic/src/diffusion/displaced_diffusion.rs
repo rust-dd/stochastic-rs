@@ -43,6 +43,7 @@ use crate::traits::ProcessExt;
 /// See the module doc for the exact closed-form identity and the exact
 /// bit-for-bit relationship to [`Gbm`](crate::diffusion::gbm::Gbm) at
 /// `beta = 0`.
+#[derive(Clone)]
 pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant proportional drift rate μ of the shifted variable `S_t +
   /// beta` (same "no mean reversion" role as

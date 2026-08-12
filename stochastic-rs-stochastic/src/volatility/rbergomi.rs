@@ -64,6 +64,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent H ∈ (0, 0.5) controlling roughness and long-memory of
   /// the (scaled-Brownian-motion-approximated) variance driver.

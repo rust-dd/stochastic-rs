@@ -19,6 +19,7 @@ use crate::device::Backend;
 use crate::device::Cpu;
 use crate::traits::FloatExt;
 
+#[derive(Clone)]
 pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,

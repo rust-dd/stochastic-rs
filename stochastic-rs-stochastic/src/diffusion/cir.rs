@@ -21,6 +21,7 @@ use crate::traits::ProcessExt;
 /// In the SDE notation `dX = κ(θ − X) dt + σ √X dW` the Rust field
 /// [`theta`](Self::theta) corresponds to κ (mean-reversion speed) and
 /// [`mu`](Self::mu) corresponds to θ (long-run mean level).
+#[derive(Clone)]
 pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed (κ in the SDE). Controls how fast `X` is pulled
   /// back toward [`mu`](Self::mu).

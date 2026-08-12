@@ -18,6 +18,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Vol-of-vol $\nu$: diffusion coefficient of the volatility state
   /// $\alpha_t$ (see module docs for the SDE).

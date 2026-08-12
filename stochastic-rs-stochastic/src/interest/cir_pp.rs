@@ -53,6 +53,7 @@ use crate::traits::ProcessExt;
 ///
 /// See the module doc for the `kappa`/`theta` naming note and the
 /// composition with [`Cir`].
+#[derive(Clone)]
 pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed κ of the underlying CIR factor `x_t` (see the
   /// module doc: unlike [`Cir::theta`], the speed here is named `kappa`).

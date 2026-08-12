@@ -23,6 +23,7 @@ pub use scheme::AndersenQe;
 pub use scheme::Euler;
 pub use scheme::HestonScheme;
 
+#[derive(Clone)]
 pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler> {
   /// Initial stock price
   pub s0: Option<T>,

@@ -15,6 +15,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Vg<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift-in-subordinated-time θ (matches the module header's own θ,
   /// multiplying the gamma-subordinator increment `G_t`) — a skewness

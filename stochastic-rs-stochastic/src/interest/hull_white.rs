@@ -17,6 +17,7 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded> {
   /// Time-dependent drift target function θ(t), fitted to the initial
   /// term structure — added directly into the drift alongside `-alpha*r`.

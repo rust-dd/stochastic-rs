@@ -17,6 +17,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct CompoundPoisson<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,

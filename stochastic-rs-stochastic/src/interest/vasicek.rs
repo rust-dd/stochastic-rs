@@ -18,6 +18,7 @@ use crate::traits::ProcessExt;
 /// semantics: in the SDE `dr = a(b − r) dt + σ dW` (file header) the Rust
 /// field [`theta`](Self::theta) corresponds to `a` (mean-reversion speed)
 /// and [`mu`](Self::mu) corresponds to `b` (long-run mean level).
+#[derive(Clone)]
 pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// Mean-reversion speed (`a` in the SDE). Controls how fast `r` is pulled
   /// back toward [`mu`](Self::mu).
