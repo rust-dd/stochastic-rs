@@ -562,28 +562,44 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   hard-wired away from `self.seed`, so `self.seed` is a dead field there and
   two identically-`Deterministic`-seeded `JumpFou`s produce different
   output, confirmed empirically. `JumpFOUCustom` and `Merton` are a
-  narrower, pre-existing case: their diffusion component correctly consults
-  `self.seed` and is reproducible, but both hard-wire their
-  `CompoundPoisson<T, D>` jump field to `Unseeded` — `Merton`'s case was
-  already noted in `tests/sampler_v3_golden.rs`'s header; `JumpFOUCustom`'s
-  was not previously documented anywhere. None of the three are changed
-  here: all three would need their `CompoundPoisson<T, D>` field to become
-  `CompoundPoisson<T, D, S>`, and that field is `pub` on both `JumpFou` and
-  `Merton` — widening it to require a matching seed type is a breaking API
-  change to a public field, out of scope for a reproducibility bugfix. Left
-  as documented exceptions instead; see the doc comments on each type and
+  narrower, pre-existing case, but not the *same* narrower case: only half
+  of each type's randomness is reproducible, and it is not the same half.
+  `Merton` hard-wires its `CompoundPoisson<T, D>` jump field to `Unseeded`
+  while its diffusion component correctly consults `self.seed` — noted
+  already in `tests/sampler_v3_golden.rs`'s header. `JumpFOUCustom` has no
+  `CompoundPoisson` field at all — it is the other way around: its jump
+  timing/size draws (`rng: self.seed.rng()`, built in `sampler()`) are the
+  reproducible half, and its own diffusion driver (`fgn: Fgn<T, Unseeded,
+  B>`) is hard-wired away from `self.seed` instead; this was not previously
+  documented anywhere. Neither is changed here: `Merton` would need its
+  `CompoundPoisson<T, D>` field to become `CompoundPoisson<T, D, S>`, a
+  breaking API change to a `pub` field, out of scope for a reproducibility
+  bugfix; `JumpFOUCustom` has no such field to widen in the first place —
+  its private `fgn` could be threaded more cheaply in isolation, but that is
+  a different, narrower change than the one `Merton` would need. Left as
+  documented exceptions instead; see the doc comments on each type and
   `ProcessExt`'s trait-level reproducibility section.
 - Guarantee, corrected: for every process in the crate **except**
   `Bates1996`, `RoughHeston`, and `JumpFou` (no randomness reachable from
-  `self.seed` at all), and **except the jump component of** `JumpFOUCustom`
-  and `Merton` (diffusion is reproducible, jump arrivals/sizes are not), a
-  `Deterministic` seed and the same `m` now produce bit-identical
-  `sample_par`/`sample_map` output on any machine, under any rayon
-  thread-pool size, and — new in this entry — regardless of how many paths
-  land in the same chunk (`m` need not be `<= MAX_CHUNKS` for chunks to stay
-  mutually independent). This supersedes the "guarantee, complete" claim in
-  the entry above, which was accurate about thread-count independence but
-  silent on cross-chunk correlation and incomplete about the exception list.
+  `self.seed` at all), **except the jump component of** `Merton` (diffusion
+  is reproducible, jump arrivals/sizes are not), and **except the diffusion
+  component of** `JumpFOUCustom` (jump arrivals/sizes are reproducible,
+  diffusion is not), a `Deterministic` seed and the same `m` now produce
+  bit-identical `sample_par`/`sample_map` output on any machine, under any
+  rayon thread-pool size, and — new in this entry — regardless of how many
+  paths land in the same chunk (`m` need not be `<= MAX_CHUNKS` for chunks
+  to stay mutually independent). `Fgn`'s and `Fbm`'s own `sample_par`
+  overrides remain a separate, still-open exception from the entry above
+  (not superseded by this one, since neither entry touches their batched
+  backends): each of the `m` items in their `Cpu`/`Accelerate` batches
+  derives its seed from the same shared atomic *inside* the parallel region
+  rather than before it, so both types are seed-reproducible per call but
+  not thread-count independent under `sample_par` specifically (`sample_map`
+  on both types goes through this entry's ordinary `chunked_samplers`
+  mechanism and is unaffected). This supersedes the "guarantee, complete"
+  claim in the entry above, which was accurate about thread-count
+  independence but silent on cross-chunk correlation and incomplete about
+  the exception list.
 - New tests at `m = 256` (`> MAX_CHUNKS = 64`, so multiple paths share a
   chunk) cover the regime the earlier `m = 64`/`m = 16` distinctness tests
   could not reach — at `m <= MAX_CHUNKS` every chunk holds exactly one path,

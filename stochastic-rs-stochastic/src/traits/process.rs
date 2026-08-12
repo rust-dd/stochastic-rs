@@ -150,10 +150,15 @@ fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
 /// Their `sample`/`sample_par`/`sample_map` are not seed-reproducible at
 /// all — not even serially, not even at `m == 1`.
 /// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
-/// [`Merton`](crate::jump::merton::Merton) are a narrower case: their
-/// diffusion component does consult `self.seed` and is reproducible, but
-/// both hard-wire their `CompoundPoisson` jump driver to `Unseeded`, so
-/// their overall output still is not. See MIGRATION.md.
+/// [`Merton`](crate::jump::merton::Merton) are a narrower case: only half of
+/// their randomness is reproducible, but not the same half. `Merton`
+/// hard-wires its `CompoundPoisson` jump driver to `Unseeded` while its
+/// diffusion component consults `self.seed` correctly; `JumpFOUCustom` has
+/// no `CompoundPoisson` field at all — it is the other way around, with its
+/// jump timing/size draws (`rng: self.seed.rng()`) the reproducible half and
+/// its own diffusion driver (`fgn: Fgn<T, Unseeded, B>`) hard-wired away
+/// from `self.seed`. Either way, their overall output still is not fully
+/// seed-reproducible. See MIGRATION.md.
 ///
 /// Same seed + same `m` ⇒ bit-identical output on any machine, any
 /// thread-pool size, and any chunking of `m` (chunks need not each hold
@@ -253,10 +258,11 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   ///
   /// **Reproducibility.** For a process satisfying the trait-level
   /// "Reproducibility requirement on implementors" (see [`ProcessExt`]'s
-  /// own docs — true for every process in this crate except the two named
-  /// exceptions there), same seed + same `m` ⇒ bit-identical output, on any
-  /// machine and under any rayon thread-pool size. `Unseeded` processes
-  /// still draw fresh randomness on every call.
+  /// own docs — true for every process in this crate except the named
+  /// exceptions there: three fully, two only partially), same seed + same
+  /// `m` ⇒ bit-identical output, on any machine and under any rayon
+  /// thread-pool size. `Unseeded` processes still draw fresh randomness on
+  /// every call.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
     if m == 0 {
       return Vec::new();
