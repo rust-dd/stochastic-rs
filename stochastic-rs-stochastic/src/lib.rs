@@ -2,6 +2,9 @@
 //!
 //! Stochastic process simulation: 140+ process types implementing `ProcessExt`.
 
+// Defaults to `warn`, which is how 94 broken doc links accumulated
+// unnoticed; deny so a regression fails the build instead of drifting.
+#![deny(rustdoc::broken_intra_doc_links)]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
