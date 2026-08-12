@@ -754,6 +754,63 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   on the *same* shared atomic concurrently) in favor of sequential,
   uncontended `derive()` calls before the parallel region starts.
 
+### stochastic-rs-stochastic: `Bates1996` and `RoughHeston`'s "unfixable" verdict was wrong — both corrected
+
+- **Correction, not merely an update: the verdict recorded in this file's
+  "`Heston` and 9 other 'lazy' processes' `sample_par`/`sample_map` are now
+  reproducible too" entry above ("`Bates1996` and `RoughHeston` ... cannot
+  be fixed this way") was incorrect, and MIGRATION.md repeated it across
+  several later entries — this is worse than having said nothing.** The
+  reasoning given there was that
+  `BatesSampler::fill_paths` (and `RoughHestonSampler::fill_paths`) call
+  `self.cgns.sample()` on a `Cgns<T, Unseeded>`, and that `cgns` is always
+  constructed with the literal `Unseeded`, so "no randomness derives from
+  `self.seed` at all." That description of the *construction* was accurate;
+  the conclusion drawn from it was not. `Cgns::sample_impl<S2: SeedExt>(
+  &self, seed: &S2)` is generic over an *external* seed, independent of
+  whatever `Cgns`'s own embedded `S` is — exactly the mechanism every
+  sibling `cgns`-holding type in this crate (`DuffieKan`,
+  `DuffieKanJumpExp`, `BatesSvj`, `DoubleHeston`, `Hkde`) already used to
+  drive it from the *outer* type's real seed. The bare `.sample()` call was
+  a plain bug — nobody had wired the outer seed through — not a structural
+  limitation of `Cgns`'s design.
+- Fix, identical shape for both types: `sampler()` now derives an owned
+  `seed: S` (`self.seed.derive()`, the same "capture a chunk-unique basis at
+  construction" shape every other fixed type in this crate uses) and
+  `fill_paths` calls `self.cgns.sample_impl(&self.seed)` instead of the bare
+  `self.cgns.sample()`.
+- **`RoughHeston` has no jump component**, so this fix makes it **fully**
+  seed-reproducible — same seed + same `m` ⇒ bit-identical `sample`/
+  `sample_par`/`sample_map` output, on any machine, under any rayon
+  thread-pool size. It carries no exception to `ProcessExt`'s reproducibility
+  guarantee at all now; removed from the exception list in `traits/
+  process.rs` entirely.
+- **`Bates1996` does not become fully reproducible** — not because the
+  `cgns` fix was incomplete, but because it turns out to have an
+  *independent* second defect the original "cannot be fixed" verdict never
+  needed to distinguish, since the whole type was thought unfixable anyway:
+  its `pub cpoisson: CompoundPoisson<T, D>` field is the exact same
+  structural shape as `Merton`'s field of the same name — `CompoundPoisson`
+  defaults its own third type parameter to `Unseeded`, and `Bates1996`'s
+  constructor takes the bare two-argument `CompoundPoisson<T, D>`, so a
+  caller can never supply a `Deterministic`-seeded jump driver through this
+  field, structurally, regardless of `Bates1996`'s own `seed`. So
+  `Bates1996` moves from the crate's three-item *full*-exception list to
+  the *partial*-exception group below, alongside `Merton`: diffusion (and
+  therefore the variance path `v`, driven solely by `cgns`) is now
+  seed-reproducible; jump arrivals/sizes (and therefore the price path `s`,
+  which sums jump increments at every step) are not, and were never claimed
+  to be by this fix.
+- Re-examined `JumpFou` against the same "is the verdict actually
+  structural" question this correction raised: it is. Unlike `Bates1996`/
+  `RoughHeston`, `JumpFou` has no private `cgns`/`fgn` field hiding a fixable
+  bug behind a misleading "cannot be fixed" note — both its `fgn: Fgn<T,
+  Unseeded, B>` diffusion and its `cpoisson: CompoundPoisson<T, D>` jump
+  driver are the type's own *public-field-shaped* structural pins (widening
+  either to accept an `S` parameter would be a breaking change to a public
+  field), exactly like `Merton`'s `cpoisson`. `JumpFou` remains the crate's
+  one remaining full exception, correctly.
+
 ### stochastic-rs-copulas: default the generator method
 
 - `BivariateExt::generator` is no longer a required method. It now has a

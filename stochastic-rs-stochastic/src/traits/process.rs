@@ -149,18 +149,35 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// Overriding it to advance the shared state before each chunk's
 /// `sampler()` call gives each such clone a distinct starting point.
 ///
-/// A small number of in-tree processes cannot satisfy any of this because
-/// their sampled randomness does not derive from `self.seed` **at all**, by
-/// pre-existing design predating this requirement:
-/// [`Bates1996`](crate::jump::bates::Bates1996) (diffusion hard-wires an
-/// `Unseeded` correlated-Gaussian source; the jump component reads its own
-/// driver's seed field directly, bypassing this trait),
-/// [`RoughHeston`](crate::volatility::fheston::RoughHeston) (its
-/// correlated-Gaussian source is documented as ignoring `self.seed`
-/// entirely), and [`JumpFou`](crate::jump::jump_fou::JumpFou) (both its fGn
-/// diffusion and its `CompoundPoisson` jump driver default to `Unseeded`).
-/// Their `sample`/`sample_par`/`sample_map` are not seed-reproducible at
-/// all — not even serially, not even at `m == 1`.
+/// One in-tree process cannot satisfy any of this because its sampled
+/// randomness does not derive from `self.seed` **at all**, by pre-existing
+/// design predating this requirement:
+/// [`JumpFou`](crate::jump::jump_fou::JumpFou) (both its fGn diffusion and
+/// its `CompoundPoisson` jump driver default to `Unseeded`, and its public
+/// `cpoisson: CompoundPoisson<T, D>` field structurally pins that — widening
+/// it would be a breaking change). Its `sample`/`sample_par`/`sample_map`
+/// are not seed-reproducible at all — not even serially, not even at
+/// `m == 1`.
+///
+/// **Two corrected verdicts:** [`Bates1996`](crate::jump::bates::Bates1996)
+/// and [`RoughHeston`](crate::volatility::fheston::RoughHeston) were once
+/// listed as full exceptions here too, on the grounds that their
+/// correlated-Gaussian source ([`Cgns`](crate::noise::cgns::Cgns)) was built
+/// with a hard-wired `Unseeded` and consumed via a bare `.sample()`. That
+/// reasoning was wrong: `Cgns::sample_impl<S2: SeedExt>(&self, seed: &S2)`
+/// is generic over an *external* seed — exactly how every sibling
+/// `cgns`-holding type in this crate drives it — so the bare `.sample()` was
+/// a plain bug, not a structural limitation. Both `sampler()`s now capture
+/// `self.seed.derive()` once, as an owned field on the returned sampler, and
+/// `fill_paths` drives `cgns` via `sample_impl` on that owned field instead
+/// of a bare `.sample()`. `RoughHeston` has no jump component, so this makes
+/// it **fully** reproducible — it carries no exception at all now.
+/// `Bates1996`'s diffusion is reproducible too, but it moves to the
+/// narrower partial-exception case below (alongside `Merton`) rather than
+/// losing its exception entirely: independently of the `cgns` bug, its own
+/// `cpoisson: CompoundPoisson<T, D>` field is *also* structurally pinned to
+/// `Unseeded`, the same as `Merton`'s.
+///
 /// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
 /// [`Merton`](crate::jump::merton::Merton) are a narrower case: only half of
 /// their randomness is reproducible, but not the same half. `Merton`

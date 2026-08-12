@@ -78,8 +78,21 @@ where
   /// Reflect (true) instead of floor-at-zero (false/None) negative
   /// variance proposals.
   pub use_sym: Option<bool>,
+  /// Correlated-Gaussian generator driving the price/variance diffusion.
+  /// Constructed once (and rebuilt by `with_rho`/`with_steps`/`with_horizon`)
+  /// with a `Cgns<T>` (`S = Unseeded`) that itself is never consulted — the
+  /// sampler drives it via `cgns.sample_impl(&self.seed)` instead, so this
+  /// field's own dead `Unseeded` is irrelevant to reproducibility. Private,
+  /// so this indirection is an implementation detail.
   cgns: Cgns<T>,
   /// Compound-Poisson jump driver added to the asset's log-return.
+  /// **Partial exception to [`ProcessExt`]'s reproducibility guarantee:**
+  /// hard-wired to `Unseeded` (default `S`) by pre-existing design — the
+  /// same shape as [`Merton`](crate::jump::merton::Merton)'s field of the
+  /// same name — so the jump arrivals/sizes are never seed-reproducible
+  /// even though the diffusion component above (driven by `cgns` and
+  /// `self.seed`) is. See MIGRATION.md and [`ProcessExt`]'s trait-level
+  /// reproducibility section.
   pub cpoisson: CompoundPoisson<T, D>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -277,11 +290,19 @@ where
 {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = BatesSampler<'s, T, D>
+    = BatesSampler<'s, T, D, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> BatesSampler<'_, T, D> {
+  /// Derives (not clones) `self.seed` into the returned sampler — the same
+  /// shape `Cgns`'s own `sampler()` uses — so the correlated-Gaussian
+  /// diffusion driver (`cgns`, otherwise permanently `Unseeded`; see the
+  /// type doc) is driven via `sample_impl(&self.seed)` instead of a bare
+  /// `.sample()` that only ever reads `cgns`'s own dead `Unseeded` field.
+  /// Adjacent chunks land on hash-scrambled, mutually independent bases for
+  /// the same reason every other `derive()`-based sampler in this crate
+  /// does (see `ProcessExt`'s trait-level reproducibility section).
+  fn sampler(&self) -> BatesSampler<'_, T, D, S> {
     BatesSampler {
       n: self.n,
       s0: self.s0.unwrap_or(T::zero()),
@@ -296,15 +317,16 @@ where
       dt: self.cgns.dt(),
       cgns: self.cgns,
       cpoisson: &self.cpoisson,
+      seed: self.seed.derive(),
     }
   }
 }
 
 /// Reusable [`Bates1996`] sampling state: owns the correlated-Gaussian generator
-/// and borrows the (non-`Clone`) compound-Poisson driver so a Monte-Carlo loop
-/// reuses both output buffers.
+/// and an owned, already-derived seed to drive it, and borrows the (non-`Clone`)
+/// compound-Poisson driver so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
-pub struct BatesSampler<'a, T, D>
+pub struct BatesSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -322,9 +344,10 @@ where
   dt: T,
   cgns: Cgns<T>,
   cpoisson: &'a CompoundPoisson<T, D>,
+  seed: S,
 }
 
-impl<T, D> BatesSampler<'_, T, D>
+impl<T, D, S: SeedExt> BatesSampler<'_, T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -334,7 +357,7 @@ where
       return;
     }
     let dt = self.dt;
-    let [cgn1, cgn2] = &self.cgns.sample();
+    let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed);
     let jump_increments = self.cpoisson.sample_grid_relative_increments(self.n, dt);
 
     s[0] = self.s0;
@@ -357,7 +380,7 @@ where
   }
 }
 
-impl<T, D> PathSampler<T> for BatesSampler<'_, T, D>
+impl<T, D, S: SeedExt> PathSampler<T> for BatesSampler<'_, T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

@@ -85,19 +85,34 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = RoughHestonSampler<T>
+    = RoughHestonSampler<T, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> RoughHestonSampler<T> {
+  /// Derives (not clones) `self.seed` into the returned sampler, matching
+  /// `Cgns`'s and `Bates1996`'s own `sampler()` shape. **Correction to an
+  /// earlier verdict:** this was once documented as a full exception —
+  /// "correlated-Gaussian source ignores `self.seed` entirely" — on the
+  /// grounds that `cgns` was built fresh with the literal `Unseeded` and
+  /// consumed via a bare `.sample()`. That reasoning was wrong: `Cgns::
+  /// sample_impl<S2: SeedExt>(&self, seed: &S2)` is generic over an external
+  /// seed, exactly like every sibling `cgns`-holding type
+  /// (`DuffieKan`/`BatesSvj`/`DoubleHeston`/`Hkde`) already uses — the bare
+  /// `.sample()` was a plain bug, not a structural limitation. Fixed the
+  /// same way `Bates1996`'s identical bug was fixed. Unlike `Bates1996`,
+  /// `RoughHeston` has no jump component, so this fix makes the type
+  /// **fully** seed-reproducible, not merely partially — it carries no
+  /// exception at all now.
+  fn sampler(&self) -> RoughHestonSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
       T::zero()
     };
-    // Cgns for rho-correlated noise, with `Unseeded` baked in exactly as the
-    // legacy `sample` did (the noise ignores `self.seed`).
+    // `cgns`'s own seed stays the dead `Unseeded` default — the sampler
+    // drives it via `sample_impl(&self.seed)` below instead, exactly like
+    // `Bates1996`'s private `cgns` field.
     let rho = self.rho.unwrap_or(T::zero());
     RoughHestonSampler {
       n: self.n,
@@ -113,15 +128,17 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
       dt,
       g: gamma(self.hurst.to_f64().unwrap() - 0.5),
       cgns: Cgns::new(rho, n_steps, self.t, Unseeded),
+      seed: self.seed.derive(),
     }
   }
 }
 
-/// Reusable [`RoughHeston`] sampling state: owns the (always-`Unseeded`)
-/// correlated-Gaussian generator and the precomputed Volterra-kernel constants
-/// so a Monte-Carlo loop reuses both output buffers.
+/// Reusable [`RoughHeston`] sampling state: owns the correlated-Gaussian
+/// generator, an owned already-derived seed to drive it, and the
+/// precomputed Volterra-kernel constants, so a Monte-Carlo loop reuses both
+/// output buffers.
 #[doc(hidden)]
-pub struct RoughHestonSampler<T: FloatExt> {
+pub struct RoughHestonSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   hurst: T,
   theta: T,
@@ -135,16 +152,17 @@ pub struct RoughHestonSampler<T: FloatExt> {
   dt: T,
   g: f64,
   cgns: Cgns<T>,
+  seed: S,
 }
 
-impl<T: FloatExt> RoughHestonSampler<T> {
+impl<T: FloatExt, S: SeedExt> RoughHestonSampler<T, S> {
   fn fill_paths(&mut self, s: &mut [T], v2: &mut [T]) {
     if self.n == 0 {
       return;
     }
     let dt = self.dt;
 
-    let [gn_vol, gn_price] = self.cgns.sample();
+    let [gn_vol, gn_price] = self.cgns.sample_impl(&self.seed);
 
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);
@@ -187,7 +205,7 @@ impl<T: FloatExt> RoughHestonSampler<T> {
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for RoughHestonSampler<T> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughHestonSampler<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {

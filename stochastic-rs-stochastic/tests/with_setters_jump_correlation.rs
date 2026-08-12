@@ -12,30 +12,39 @@
 //! `Poisson::lambda`, a directly comparable sub-field. `HestonStochCorr` has
 //! no private cache at all.
 //!
-//! **`Bates1996` pre-existing quirk (not introduced or fixed by this task):**
-//! unlike every other `cgns`-holding type in this crate (`DuffieKan`,
-//! `DuffieKanJumpExp`, `BatesSvj`, `DoubleHeston`, `Hkde` — all of which draw
-//! via `cgns.sample_impl(&self.seed)`, explicitly threading the *outer*
-//! seed through), `BatesSampler::fill_paths` draws via a bare
-//! `self.cgns.sample()`. `cgns` is always constructed with the literal
-//! `Unseeded` (see `Bates1996::new`, and both `with_rho`/`with_steps`/
-//! `with_horizon`, which reproduce that same construction), so `Cgns`'s
-//! *own* internal seed is always `Unseeded` regardless of what `S`/`seed`
-//! the outer `Bates1996` carries — the outer `seed` field is never actually
-//! read by the diffusion part of sampling (nor by `cpoisson`, whose own
-//! seed is independently always `Unseeded` too, same as `Merton`/`Kou`).
-//! Net effect: **`Bates1996::sample()` is not bit-reproducible across two
-//! calls at all, for *any* field, seed included** — this predates this
-//! task's `with_*` setters and is outside its scope (the setters correctly
-//! reproduce whatever `new(...)` already did; that a `new(...)` call itself
-//! is not seed-reproducible for this specific type is the actual bug, and
-//! is flagged in the task report rather than fixed here as a "no behavior
-//! changes" boundary). Practically: `with_rho`/`with_seed` below can only
-//! assert the field was set and sampling stays finite, not bit-exact
-//! equality against a fresh construction like every other cached type in
-//! this wave gets — and `with_rho` genuinely cannot do better, since `rho`
-//! only enters through the (non-reproducible) noise itself. `with_steps`
-//! is one exception to the general limitation — growing `n` past the old
+//! **`Bates1996` reproducibility status — corrected since these tests were
+//! written.** At the time this file was authored, unlike every other
+//! `cgns`-holding type in this crate (`DuffieKan`, `DuffieKanJumpExp`,
+//! `BatesSvj`, `DoubleHeston`, `Hkde` — all of which draw via
+//! `cgns.sample_impl(&self.seed)`, explicitly threading the *outer* seed
+//! through), `BatesSampler::fill_paths` drew via a bare `self.cgns.sample()`,
+//! which only ever read `cgns`'s own permanently-`Unseeded` field (`cgns` is
+//! always constructed with the literal `Unseeded` — see `Bates1996::new` and
+//! `with_rho`/`with_steps`/`with_horizon`, which rebuild it identically) —
+//! so the outer `seed` field was never actually read by the diffusion part
+//! of sampling. The deterministic-parallelism wave's Task 4 fixed this: it
+//! was a plain bug (`Cgns::sample_impl<S2: SeedExt>` is generic over an
+//! external seed, exactly like every sibling type already used), not a
+//! structural limitation, and `fill_paths` now drives `cgns` via
+//! `cgns.sample_impl(&self.seed)` (an owned, per-chunk-derived copy). The
+//! variance path `v` (driven solely by `cgns`) is fully seed-reproducible
+//! as of that fix. **What is still not reproducible:** `cpoisson:
+//! CompoundPoisson<T, D>` remains independently, structurally pinned to
+//! `Unseeded` (the same shape as `Merton`/`Kou`/`LevyDiffusion`'s field of
+//! the same name), so jump arrivals/sizes — and therefore the price path
+//! `s`, which sums jump increments at every step — are still not
+//! seed-reproducible. Dedicated reproducibility tests for the fixed
+//! diffusion live in `deterministic_parallelism_seed_fixes.rs`; the tests
+//! below were written against the *old*, fully-unreproducible behavior and
+//! still pass unchanged (none of them assert non-reproducibility as a
+//! requirement), so they are left as-is except where a comment stated the
+//! old status as fact — those are corrected in place. `with_rho`/`with_seed`
+//! below still only assert the field was set and sampling stays finite,
+//! not bit-exact equality against a fresh construction like every other
+//! cached type in this wave gets — a *stronger*, `Deterministic`-seeded
+//! version pinning `v` exactly is now possible but was not retrofitted
+//! here, to keep this task's setter-round-trip scope unchanged. `with_steps`
+//! is one exception to that general limitation — growing `n` past the old
 //! cache's buffer length would panic with an out-of-bounds index if the
 //! cache were left stale, regardless of any RNG values, so "no panic" is
 //! still a genuine, deterministic proof of resize. `with_horizon` is the
@@ -217,16 +226,18 @@ fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
 fn bates_with_rho_round_trip() {
   // KNOWN GAP, named rather than silently absent: this test cannot prove
   // `with_rho` rebuilt the cache the way `with_horizon`'s degenerate-
-  // recurrence test (below) proves it for `dt`. That trick works by
-  // pinning `v_prev = 0`, which zeroes *both* `cgn1` and `cgn2`'s
-  // contribution to price — but `rho` only ever shows up *inside* the
-  // correlated-noise combination `gn2 = rho*gn1 + c*z` (see `Cgns::
-  // sample_impl`), i.e. exclusively through the very noise this test's
-  // degenerate setup deliberately eliminates to sidestep the type's
-  // pre-existing non-reproducibility. There is no analogous degenerate
-  // parameterization that isolates rho's effect while remaining
-  // RNG-independent, since removing the noise removes rho's only avenue
-  // to matter. What is still verifiable here: the field itself changed,
+  // recurrence test (below) proves it for `dt`, using that same RNG-
+  // independent technique (pinning `v_prev = 0`, which zeroes *both* `cgn1`
+  // and `cgn2`'s contribution to price) — `rho` only ever shows up *inside*
+  // the correlated-noise combination `gn2 = rho*gn1 + c*z` (see `Cgns::
+  // sample_impl`), i.e. exclusively through the very noise an RNG-
+  // independent setup has to eliminate, which removes rho's only avenue to
+  // matter too. This is a limitation of the *technique*, not of
+  // `Bates1996` itself (see the module doc for its corrected reproducibility
+  // status): since the diffusion fix, a `Deterministic`-seeded comparison of
+  // the sampled variance path directly would also isolate rho's effect, but
+  // was not retrofitted here to keep this task's setter-round-trip scope
+  // unchanged. What is still verifiable here: the field itself changed,
   // nothing else did, and sampling still succeeds.
   let mut expected = bates_base();
   expected.rho = -0.4;
@@ -244,8 +255,9 @@ fn bates_with_steps_rebuilds_cgns_cache() {
   // `cgns` stale (still sized for 256 increments), `fill_paths`'s
   // `cgn1[i - 1]`/`cgn2[i - 1]` indexing would panic with an out-of-bounds
   // access once `i` exceeded the old length — a deterministic,
-  // RNG-value-independent proof of resize that survives the type's
-  // pre-existing non-reproducibility (see the module doc).
+  // RNG-value-independent proof of resize that works regardless of whether
+  // sampling is otherwise reproducible (see the module doc for `Bates1996`'s
+  // corrected, partial reproducibility status).
   let got = bates_base().with_steps(1024);
   assert_eq!(got.n, 1024);
   assert_eq!(bates_fields(&got), bates_fields(&expected));
@@ -263,9 +275,11 @@ fn bates_with_horizon_round_trip() {
 }
 
 /// Degenerate `Bates1996` whose `[S, v]` path is an *exact, RNG-independent*
-/// closed form, sidestepping the type's pre-existing non-reproducibility
-/// (see the module doc) to actually observe whether `with_horizon` rebuilt
-/// `cgns`'s cached `dt` — the value used in the drift term via `self.dt`
+/// closed form, sidestepping noise entirely (rather than switching to a
+/// `Deterministic` seed and comparing sampled values — also possible since
+/// the diffusion fix described in the module doc, but not the technique
+/// used here) to actually observe whether `with_horizon` rebuilt `cgns`'s
+/// cached `dt` — the value used in the drift term via `self.dt`
 /// (`BatesSampler::fill_paths`) — rather than leaving it stale.
 ///
 /// `v0 = 0` and `alpha = 0` pin the variance path at exactly `0` for the
@@ -339,12 +353,15 @@ fn bates_with_horizon_rebuilds_cgns_cache_dt_via_degenerate_recurrence() {
 #[test]
 fn bates_with_seed_round_trip() {
   // `seed` cannot be compared with `==` (neither `Unseeded` nor
-  // `Deterministic` implement `PartialEq`), and — per the module doc —
-  // `Bates1996`'s outer `seed` field is never actually read by sampling in
-  // the first place (a pre-existing quirk, not introduced here), so a
-  // fresh-construction sample comparison would not prove anything about
-  // this setter specifically. What is verifiable: it is a plain field
-  // write that disturbs nothing else, and sampling still succeeds.
+  // `Deterministic` implement `PartialEq`). Since the diffusion fix
+  // described in the module doc, a fresh-construction *variance-path*
+  // sample comparison against a `Deterministic::new(13)`-seeded `Bates1996`
+  // would now prove `with_seed` reached the sampler (the price path still
+  // would not, since `cpoisson` stays `Unseeded` regardless) — not written
+  // here, to keep this test's scope to the plain setter round-trip every
+  // other type's `with_seed` test in this wave uses. What is verifiable
+  // here instead: it is a plain field write that disturbs nothing else, and
+  // sampling still succeeds.
   // (`with_seed` only ever replaces the *value* of a seed already of type
   // `S`, not its type, so the receiver must already be `Deterministic`-
   // seeded — matching every other type's `with_seed` in this wave.)
