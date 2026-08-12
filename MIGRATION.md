@@ -998,14 +998,44 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   parameter and keep its position, inserting `jump_dist: D` where
   `cpoisson` used to sit, ahead of the `…, n, x0, t, seed` tail.
 - The `cpoisson` field stays `pub` on all three (now correctly typed
-  `CompoundPoisson<T, D, S>`) — the pre-fix field's `Poisson` sub-object
-  carried no information beyond `.lambda` (`.n`/`.t_max`/`.seed` were never
-  read by `sample_grid_increments`), and that value is now a direct `new()`
-  parameter, so keeping the field public and mutable preserves 100% of the
-  prior capability (a caller can still swap in a whole custom jump driver
-  via `Merton::with_cpoisson` — re-typed, not renamed — or direct field
-  assignment) at zero cost. `Merton`'s field doc no longer claims the jumps
-  are non-reproducible.
+  `CompoundPoisson<T, D, S>`), for two reasons. First, `cpoisson` is a
+  `CompoundPoisson` in its own right: calling `.sample()` on it directly
+  (bypassing the outer type entirely) drives it through
+  `Poisson::sample_impl`, which genuinely branches on `.n`/`.t_max` (fixed
+  count vs. horizon mode) and consults `.seed` — none of that is dead in
+  that usage, only on *this type's own* `sample_grid_increments`-driven
+  sampling path, where only `.distribution` and `.lambda` are ever read.
+  Second, a caller can still replace the whole jump driver via
+  `Merton::with_cpoisson` (re-typed, not renamed) — see the correction
+  below for what that does and does not preserve. `Merton`'s field doc no
+  longer claims the jumps are non-reproducible.
+- **Correction, found by this task's own review: the paragraph above
+  overclaimed 100% capability preservation via `with_cpoisson`.** `sampler()`
+  reads the jump-arrival intensity off `self.lambda` directly, not off
+  `cpoisson.poisson.lambda` — so `with_cpoisson`, as first shipped, replaced
+  the jump-*size* distribution but silently left sampling at the *old*
+  `self.lambda`, ignoring the swapped-in driver's own intensity entirely.
+  Measured: `with_cpoisson(lambda=0)` on a `lambda=80` `Merton` produced a
+  path matching a fresh `lambda=80` construction, not `lambda=0`. Pre-fix,
+  `with_cpoisson` was the *only* way to set intensity, and it worked; this
+  regressed it to half-working. Fixed (separate commit, `fix: make the jump
+  intensity single sourced`) by making `self.lambda` the single source of
+  truth end to end: `with_cpoisson` now adopts the incoming driver's
+  `cpoisson.poisson.lambda` into `self.lambda`, and every setter that
+  changes `lambda`/`n`/`t` (`with_lambda`, `with_steps`, `with_horizon`)
+  re-syncs the otherwise-cosmetic `cpoisson.poisson` mirror via a new
+  private `resync_cpoisson_poisson` helper, so it never goes stale for a
+  caller inspecting it directly. `LevyDiffusion` gained its own top-level
+  `pub lambda: T` field (it had none before — `lambda` lived only inside
+  `cpoisson.poisson.lambda`) so all three types agree on where λ lives;
+  `Kou`/`LevyDiffusion` have no `with_*` setters, so `new()` establishing
+  the invariant is sufficient for them. See
+  `Merton::{lambda,cpoisson,with_lambda,with_cpoisson,with_steps,with_horizon}`'s
+  doc comments and the new regression tests in `with_setters_merton.rs`
+  (`merton_with_cpoisson_changes_sampled_intensity`,
+  `merton_with_lambda_syncs_cpoisson_and_changes_sampled_path`) and
+  `reproducibility_jump_family.rs`
+  (`jump_family_lambda_is_single_sourced_at_construction`).
 - `sampler()` for all three now derives a fresh, chunk-local jump seed
   (`self.cpoisson.seed.derive()`) once per chunk, mirroring how the
   diffusion component already derived its own per-chunk basis — never a

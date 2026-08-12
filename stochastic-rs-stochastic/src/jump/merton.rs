@@ -49,6 +49,11 @@ where
   /// Diffusion scale σ of the continuous (Brownian) component.
   pub sigma: T,
   /// Jump (Poisson) intensity λ — arrival rate of the log-normal jumps.
+  /// Single source of truth: `sampler()` reads this field directly (not
+  /// `cpoisson.poisson.lambda`) for the jump-arrival rate. Every setter
+  /// that can change it (`with_lambda`, `with_cpoisson`) keeps
+  /// `cpoisson.poisson.lambda` synced to match — see those methods' docs
+  /// and `resync_cpoisson_poisson`.
   pub lambda: T,
   /// Jump-size compensator κ (E\[Y−1\]-like term, matching the module
   /// header's own λκ), subtracted from the drift scaled by `lambda` —
@@ -68,10 +73,23 @@ where
   /// component consults directly), and `sampler()` derives a fresh,
   /// chunk-local basis off `self.cpoisson.seed` for every chunk, mirroring
   /// the diffusion component's own per-chunk `self.seed`-derived basis.
-  /// Left `pub` (now correctly generic over `S`, unlike the pre-fix
-  /// `CompoundPoisson<T, D, Unseeded>`) so a caller may still swap in a
-  /// whole custom jump driver via [`with_cpoisson`](Self::with_cpoisson) or
-  /// direct field assignment.
+  ///
+  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
+  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
+  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
+  /// inert there (`grid_increments` never consults them). That inertness
+  /// is scoped to *this type's own* sampling, though: `cpoisson` is a
+  /// `CompoundPoisson` in its own right, and calling `.sample()` on it
+  /// directly (bypassing `Merton` entirely) drives it through
+  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` (fixed
+  /// count vs. horizon mode) and *does* consult `.seed` — genuinely live
+  /// there. Left `pub` for both reasons: a caller can inspect or directly
+  /// `.sample()` the embedded compound-Poisson process as its own
+  /// standalone `ProcessExt`, and can replace it wholesale via
+  /// [`with_cpoisson`](Self::with_cpoisson) (which keeps `self.lambda` in
+  /// sync with the replacement — see that method's doc) or direct field
+  /// assignment (which does not; assign through `with_cpoisson` unless
+  /// you separately update `self.lambda` to match).
   pub cpoisson: CompoundPoisson<T, D, S>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
   /// directly by the diffusion component; `cpoisson`'s own seed (set at
@@ -136,9 +154,15 @@ where
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged. `sampler()` reads `self.lambda`
+  /// directly for the jump-arrival intensity (see `cpoisson`'s field doc),
+  /// so this alone already changes the sampled jump rate; it also
+  /// re-syncs the otherwise-cosmetic mirror `cpoisson.poisson.lambda` (see
+  /// `resync_cpoisson_poisson`) so a caller inspecting it does not see a
+  /// stale value.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     self.lambda = lambda;
+    self.resync_cpoisson_poisson();
     self
   }
 
@@ -154,21 +178,39 @@ where
     self
   }
 
-  /// Replace the compound-Poisson jump driver, all else unchanged.
+  /// Replace the compound-Poisson jump driver wholesale, adopting its
+  /// intensity as the new `self.lambda` — `sampler()` reads `self.lambda`,
+  /// not `cpoisson.poisson.lambda`, for the jump-arrival rate (see
+  /// `cpoisson`'s field doc), so without this adoption the incoming
+  /// driver's own intensity would be silently ignored and the *old*
+  /// `self.lambda` would keep driving jumps while only the distribution
+  /// changed. `cpoisson.poisson.{n,t_max}` are left exactly as the caller
+  /// supplied them (not normalized to `self.{n,t}`) since, unlike
+  /// `lambda`, they carry no live weight on this type's sampling path
+  /// either way.
   pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D, S>) -> Self {
+    self.lambda = cpoisson.poisson.lambda;
     self.cpoisson = cpoisson;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
+  /// Replace the number of simulation steps `n`, all else unchanged; also
+  /// re-syncs `cpoisson.poisson.n` (see `resync_cpoisson_poisson`) — dead
+  /// on this type's own sampling path, but kept from silently going stale
+  /// for a caller inspecting `cpoisson` directly.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;
+    self.resync_cpoisson_poisson();
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`, all else unchanged; also re-syncs
+  /// `cpoisson.poisson.t_max` (see `resync_cpoisson_poisson`) — dead on
+  /// this type's own sampling path, but kept from silently going stale for
+  /// a caller inspecting `cpoisson` directly.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
+    self.resync_cpoisson_poisson();
     self
   }
 
@@ -181,6 +223,18 @@ where
     self.cpoisson.seed = seed.clone().derive();
     self.seed = seed;
     self
+  }
+
+  /// Rebuilds `cpoisson.poisson` from `self.{lambda, n, t}` so a caller
+  /// reading `cpoisson.poisson` directly never sees it disagree with the
+  /// outer struct's own record of the same three values — most load-
+  /// bearing for `lambda`, which `sampler()` actually reads off `self`
+  /// (not off this mirror) for the jump-arrival rate, but applied
+  /// uniformly to `n`/`t_max` too even though those two are inert on the
+  /// sampling path either way (see `cpoisson`'s field doc). Called from
+  /// every setter that changes `lambda`, `n`, or `t`.
+  fn resync_cpoisson_poisson(&mut self) {
+    self.cpoisson.poisson = Poisson::new(self.lambda, Some(self.n), self.t, Unseeded);
   }
 }
 

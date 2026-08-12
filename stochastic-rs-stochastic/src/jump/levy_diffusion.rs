@@ -28,6 +28,15 @@ where
   pub gamma: T,
   /// Diffusion scale σ of the continuous (Brownian) component.
   pub sigma: T,
+  /// Jump (Poisson) intensity λ — arrival rate of the jump component
+  /// `dL_t`. Single source of truth, the same convention
+  /// [`Merton`](crate::jump::merton::Merton)/[`Kou`](crate::jump::kou::Kou)
+  /// use: `sampler()` reads this field directly, not
+  /// `cpoisson.poisson.lambda`. This type has no `with_*` setters, so
+  /// unlike `Merton` there is no setter path that could desync the two —
+  /// [`new`](Self::new) sets both from the same argument and nothing
+  /// mutates either afterward short of direct field assignment.
+  pub lambda: T,
   /// Number of points sampled along the Lévy-diffusion path.
   pub n: usize,
   /// Initial value X₀ of the Lévy-diffusion path.
@@ -42,13 +51,23 @@ where
   /// [`Merton`](crate::jump::merton::Merton)'s field of the same name
   /// uses), and `sampler()` derives a fresh, chunk-local basis off
   /// `self.cpoisson.seed` for every chunk, mirroring the diffusion
-  /// component's own per-chunk `self.seed`-derived basis. Left `pub` (now
-  /// correctly generic over `S`) so a caller may still swap in a whole
-  /// custom jump driver via direct field assignment. The jump intensity λ
-  /// lives only here, as `cpoisson.poisson.lambda` — this type has no
-  /// top-level `lambda` field of its own since, unlike
-  /// [`Merton`](crate::jump::merton::Merton)/[`Kou`](crate::jump::kou::Kou),
-  /// its drift term does not need one.
+  /// component's own per-chunk `self.seed`-derived basis.
+  ///
+  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
+  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
+  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
+  /// inert there (`grid_increments` never consults them). That inertness
+  /// is scoped to *this type's own* sampling, though: `cpoisson` is a
+  /// `CompoundPoisson` in its own right, and calling `.sample()` on it
+  /// directly (bypassing `LevyDiffusion` entirely) drives it through
+  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` (fixed
+  /// count vs. horizon mode) and *does* consult `.seed` — genuinely live
+  /// there. Left `pub` for both reasons: a caller can inspect or directly
+  /// `.sample()` the embedded compound-Poisson process as its own
+  /// standalone `ProcessExt`, and can replace it wholesale via direct
+  /// field assignment (which does not update `self.lambda` — assign that
+  /// separately to match, since this type has no `with_cpoisson`-style
+  /// setter to do it automatically).
   pub cpoisson: CompoundPoisson<T, D, S>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
   /// directly by the diffusion component; `cpoisson`'s own seed (set at
@@ -85,6 +104,7 @@ where
     Self {
       gamma,
       sigma,
+      lambda,
       n,
       x0,
       t,
@@ -128,7 +148,7 @@ where
       dt,
       drift_dt: self.gamma * dt,
       jump_distribution: &self.cpoisson.distribution,
-      lambda: self.cpoisson.poisson.lambda,
+      lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
     }

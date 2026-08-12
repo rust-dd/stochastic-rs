@@ -225,3 +225,26 @@ fn levy_diffusion_sample_par_paths_are_distinct() {
     "LevyDiffusion sample_par produced duplicate paths at m=256"
   );
 }
+
+/// Guards the single-source-of-truth invariant a Task 1 review caught
+/// broken on `Merton` (`with_cpoisson` silently dropping the driver's
+/// lambda — see `with_setters_merton.rs`'s dedicated regression tests):
+/// `self.lambda` and the otherwise-cosmetic mirror `cpoisson.poisson.lambda`
+/// must agree right out of `new()`, for all three types, including
+/// `LevyDiffusion`, which gained its own top-level `lambda` field as part
+/// of that same fix (previously `self.lambda` did not exist on
+/// `LevyDiffusion` at all).
+#[test]
+fn jump_family_lambda_is_single_sourced_at_construction() {
+  let m = merton_with_jumps(SEED);
+  assert_eq!(m.lambda, LAMBDA);
+  assert_eq!(m.cpoisson.poisson.lambda, LAMBDA);
+
+  let k = kou_with_jumps(SEED);
+  assert_eq!(k.lambda, LAMBDA);
+  assert_eq!(k.cpoisson.poisson.lambda, LAMBDA);
+
+  let l = levy_diffusion_with_jumps(SEED);
+  assert_eq!(l.lambda, LAMBDA);
+  assert_eq!(l.cpoisson.poisson.lambda, LAMBDA);
+}
