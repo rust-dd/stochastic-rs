@@ -175,12 +175,12 @@ fn sabr_sample_par_is_thread_count_independent() {
 }
 
 /// `Sabr` (clone-snapshot), `m = 64`: no two paths identical. This is the
-/// test that catches the clone-snapshot regression specifically — with
-/// `chunk_count` capping chunks at `MAX_CHUNKS = 64` and every chunk cloning
-/// the same unchanged seed, `sample_par(m)` would degenerate to at most
-/// `MAX_CHUNKS` distinct paths repeated, independent of `m`, without
-/// `advance_chunk_seed` giving each chunk's clone a different state to
-/// snapshot.
+/// test that catches the clone-snapshot regression specifically. Under the
+/// very first fix (the `m.div_ceil(8)` chunking rule — `MAX_CHUNKS` did not
+/// exist at that point in the fix's history), every chunk cloned the same
+/// unchanged seed, so `sample_par(m)` degenerated to only as many distinct
+/// paths as one chunk's own LENGTH (8, under that rule — a path-count, not
+/// a chunk-count), each repeated across every chunk.
 #[test]
 fn sabr_sample_par_paths_are_distinct() {
   let m = 64;
@@ -191,6 +191,52 @@ fn sabr_sample_par_paths_are_distinct() {
     .map(bits_2d)
     .collect::<std::collections::HashSet<_>>();
   assert_eq!(keys.len(), m, "Sabr sample_par produced duplicate paths");
+}
+
+/// `Sabr` (clone-snapshot) beyond `MAX_CHUNKS = 64`: at `m = 256`,
+/// `chunk_count` caps at 64 chunks, so several chunks carry more than one
+/// path each — the regime the `m = 64` test above cannot exercise (there,
+/// `chunk_count(64) == 64` gives exactly one path per chunk, which cannot
+/// expose cross-chunk correlation). Before `sampler()` derived — rather
+/// than cloned — its chunk basis, adjacent chunks' bases were a raw,
+/// unmixed γ stride apart, so `sample_par(1000)` measured only 78 of 1000
+/// paths distinct; deriving gives every chunk a hash-scrambled,
+/// uncorrelated basis regardless of how many paths share it.
+#[test]
+fn sabr_sample_par_paths_are_distinct_beyond_max_chunks() {
+  let m = 256;
+  let paths = sabr(SEED).sample_par(m);
+  assert_eq!(paths.len(), m);
+  let keys = paths
+    .iter()
+    .map(bits_2d)
+    .collect::<std::collections::HashSet<_>>();
+  assert_eq!(
+    keys.len(),
+    m,
+    "Sabr sample_par produced duplicate paths beyond MAX_CHUNKS"
+  );
+}
+
+/// Same guarantee on the "lazy-rewritten" class (`Heston`) beyond
+/// `MAX_CHUNKS`: `Heston::sampler()` now derives its own basis once (rather
+/// than the process's `self.seed` being read fresh per path), so chunk
+/// bases stay hash-scrambled relative to each other even when `m` forces
+/// multiple paths onto the same chunk.
+#[test]
+fn heston_sample_par_paths_are_distinct_beyond_max_chunks() {
+  let m = 256;
+  let paths = heston(SEED).sample_par(m);
+  assert_eq!(paths.len(), m);
+  let keys = paths
+    .iter()
+    .map(bits_2d)
+    .collect::<std::collections::HashSet<_>>();
+  assert_eq!(
+    keys.len(),
+    m,
+    "Heston sample_par produced duplicate paths beyond MAX_CHUNKS"
+  );
 }
 
 /// Two identically-seeded processes, same `m`, run under *different*

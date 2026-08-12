@@ -102,12 +102,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> FBatesSvjSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
@@ -130,10 +128,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
       dt,
       g: T::from_f64_fast(gamma(self.hurst.to_f64().unwrap() - 0.5)),
       // `Unseeded` baked into the Cgns exactly as the legacy `sample` did; the
-      // noise is drawn via `sample_impl(&self.seed.derive())`, so the Cgns's
-      // own seed is irrelevant.
+      // noise is drawn via `sample_impl(&self.seed)`, so the Cgns's own seed
+      // is irrelevant.
       cgns: Cgns::new(self.rho, n_steps, self.t, Unseeded),
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -169,7 +167,7 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
     let dt = self.dt;
 
     // Use Cgns for rho-correlated noise: [gn_vol, gn_price]
-    let [gn_vol, gn_price] = self.cgns.sample_impl(&self.seed.derive());
+    let [gn_vol, gn_price] = self.cgns.sample_impl(&self.seed);
 
     let mut yt = Array1::<T>::zeros(self.n);
     let mut zt = Array1::<T>::zeros(self.n);

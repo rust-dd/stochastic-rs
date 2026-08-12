@@ -56,17 +56,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfbms<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> CfbmsSampler<'_, T, S> {
     CfbmsSampler {
       n: self.n,
       cfgns: &self.cfgns,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -86,7 +84,7 @@ impl<T: FloatExt, S: SeedExt> CfbmsSampler<'_, T, S> {
     if self.n == 0 {
       return;
     }
-    let [fgn1, fgn2] = self.cfgns.sample_impl(&self.seed.derive());
+    let [fgn1, fgn2] = self.cfgns.sample_impl(&self.seed);
     fbm1[0] = T::zero();
     fbm2[0] = T::zero();
     for i in 1..self.n {

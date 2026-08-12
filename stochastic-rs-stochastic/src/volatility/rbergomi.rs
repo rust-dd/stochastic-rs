@@ -124,12 +124,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> RoughBergomiSampler<T, S> {
     RoughBergomiSampler {
       n: self.n,
@@ -140,7 +138,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
       r: self.r,
       dt: self.cgns.dt(),
       cgns: self.cgns,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -167,7 +165,7 @@ impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
       return;
     }
     let dt = self.dt;
-    let [cgn1, z] = &self.cgns.sample_impl(&self.seed.derive());
+    let [cgn1, z] = &self.cgns.sample_impl(&self.seed);
 
     s[0] = self.s0;
     v2[0] = self.v0_sq;

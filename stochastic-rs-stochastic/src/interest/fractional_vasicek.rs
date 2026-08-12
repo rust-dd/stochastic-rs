@@ -37,8 +37,8 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// for API symmetry with every other process in the crate. Sampling
   /// itself never reads this field directly — [`FVasicek::new`] derives a
   /// child seed from it once, at construction, to seed [`fou`](Self::fou),
-  /// which is what all sampling — including `advance_chunk_seed` — actually
-  /// consults.
+  /// which is what all sampling actually consults — including chunk
+  /// decorrelation, via `fou`'s own `sampler()`.
   pub seed: S,
   /// Wrapped fractional-OU process carrying the actual sampling state;
   /// see module header — `FVasicek` is `Fou` under short-rate-model
@@ -89,13 +89,6 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FVasicek<T, S> {
     FVasicekSampler {
       fou: self.fou.sampler(),
     }
-  }
-
-  /// Delegates to the wrapped [`Fou`]'s own `advance_chunk_seed` — see
-  /// [`Self::seed`]'s doc for why `self.seed` itself is never the one to
-  /// advance.
-  fn advance_chunk_seed(&self) {
-    self.fou.advance_chunk_seed();
   }
 }
 

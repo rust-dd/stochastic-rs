@@ -216,6 +216,20 @@ fn golden_fou_stream() {
   );
 }
 
+/// `cum`/`jumps` (but not `times`) were re-pinned by the deterministic-
+/// parallelism wave's cross-chunk-correlation fix: `CompoundPoisson`'s
+/// `sampler()` now derives (not clones) its basis, and `Poisson::sample_impl`
+/// consumes two internal ticks (`SimdExp::new` + `.rng()`) per call rather
+/// than one. For a single-tick-per-call consumer, moving the derive from
+/// per-path code to `sampler()` leaves the fed-in value unchanged (see
+/// `golden_heston_streams`/`golden_sabr_streams`/`golden_fou_stream`); for a
+/// two-tick consumer followed by more code that keeps reading the seed
+/// (`cum`/`jumps` are drawn after `times`, from the same seed), the extra
+/// tick that used to be absorbed inside a disposable cloned-then-derived
+/// temporary is now visible on the shared counter, shifting everything
+/// downstream. `times` is unaffected because nothing before it reads the
+/// seed. This is expected and was traded for `sample_par`/`sample_map`
+/// actually being cross-chunk-independent; see MIGRATION.md.
 #[test]
 fn golden_compound_poisson_streams() {
   let cpoisson = CompoundPoisson::<f64, _, _>::new(
@@ -241,26 +255,26 @@ fn golden_compound_poisson_streams() {
     &cum,
     &[
       0,
-      13813246270254564078,
-      13813493359277356966,
-      13816202492603102966,
-      13809209142784623622,
-      13815935968900354872,
-      13818888094263487897,
-      13821817264823823442,
+      13821590905287482682,
+      13823140035420567097,
+      13823193588762097129,
+      13821607767976760320,
+      13812879127933788120,
+      13815136404819208294,
+      13819433902103997129,
     ],
   );
   assert_close(
     &jumps,
     &[
       0,
-      13813246270254564078,
-      13793425308110460687,
-      13808951124542062240,
-      4589992313301300467,
-      13813097826453328181,
-      13812833020371879930,
-      13814434815486154264,
+      13821590905287482682,
+      13814232978050278395,
+      13792373287096932327,
+      4591007703804512164,
+      4595874907490768916,
+      13808047411661410587,
+      13814724200134044972,
     ],
   );
 }

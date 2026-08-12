@@ -108,29 +108,23 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
   where
     Self: 's;
 
-  /// Snapshots a seed once, at construction, for [`AdgSampler`] to own (a
-  /// non-advancing clone — `sample_inner`'s own `SimdNormal::new` calls are
-  /// what advance it, reproducing the legacy stream bit-for-bit on the
-  /// first path). The drift, level and observation maps are user-supplied
-  /// [`Fn1D`] callables (not clonable, since the Python variant holds a
-  /// `pyo3::Py`) so there is nothing else reusable to hoist across calls
-  /// beyond the borrowed process itself; owning the seed — rather than the
-  /// per-row `sample_inner` reading `&self.seed` directly — is what makes
-  /// `sample_par`/`sample_map`'s chunked fan-out deterministic: each
-  /// chunk's sampler is built sequentially, after
-  /// [`advance_chunk_seed`](Self::advance_chunk_seed) gives it a distinct
-  /// state to snapshot.
+  /// Derives a seed once, at construction, for [`AdgSampler`] to own.
+  /// Deriving (not cloning) is what decorrelates chunks: the derived value
+  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
+  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
+  /// other rather than one raw stride apart. The drift, level and
+  /// observation maps are user-supplied [`Fn1D`] callables (not clonable,
+  /// since the Python variant holds a `pyo3::Py`) so there is nothing else
+  /// reusable to hoist across calls beyond the borrowed process itself;
+  /// the per-row `sample_inner`'s `SimdNormal::new(..., seed)` calls
+  /// consume this owned seed directly, the same ticks the legacy code
+  /// consumed from `self.seed` per call, so the first path reproduces the
+  /// legacy stream bit-for-bit.
   fn sampler(&self) -> AdgSampler<'_, T, S> {
     AdgSampler {
       adg: self,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
-  }
-
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
-  /// method's docs.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
   }
 }
 

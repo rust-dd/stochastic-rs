@@ -118,12 +118,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> BnsSampler<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let lam_dt = self.lambda * dt;
@@ -136,7 +134,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
       dt,
       decay: (-lam_dt).exp(), // e^{-λ·Δt}
       jump_rate_per_step: (self.nu * lam_dt).to_f64().unwrap(),
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -174,8 +172,8 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
     // internal UnsafeCell-backed buffers are not `Sync`. Each draws a stream
     // derived from `self.seed` in the legacy order, so a `Deterministic` seed
     // makes the whole path reproducible.
-    let jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one(), &self.seed.derive());
-    let normal_dist = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive());
+    let jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one(), &self.seed);
+    let normal_dist = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut rng = self.seed.rng();
     for i in 1..self.n {
       // 1. Number of jumps in [t_{i-1}, t_i] from the compound-Poisson

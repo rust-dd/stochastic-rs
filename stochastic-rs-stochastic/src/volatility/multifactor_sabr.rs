@@ -162,12 +162,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> MultifactorSabrSampler<T, S> {
     MultifactorSabrSampler {
       n: self.n,
@@ -179,15 +177,19 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
       rho: self.rho.clone(),
       nu: self.nu.clone(),
       dt: self.dt(),
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
 
 /// Reusable dynamic-[`MultifactorSabr`] sampling state: owns the term-structure
-/// coefficient vectors and the seed source. The two independent Gaussian
-/// increment streams are rebuilt per fill via `self.seed.derive()` in the
-/// legacy order, so the first call reproduces the original stream bit-for-bit.
+/// coefficient vectors and the seed source. `seed` is already this sampler's
+/// own chunk-decorrelated basis (derived once by `sampler()`), so the two
+/// independent Gaussian increment streams can safely tick it twice more per
+/// fill — via `self.seed.derive()`, since [`Gn::new`] needs an owned seed —
+/// without reintroducing cross-chunk correlation; the legacy consumption
+/// order is preserved, so the first call reproduces the original stream
+/// bit-for-bit.
 #[doc(hidden)]
 pub struct MultifactorSabrSampler<T: FloatExt, S: SeedExt> {
   n: usize,

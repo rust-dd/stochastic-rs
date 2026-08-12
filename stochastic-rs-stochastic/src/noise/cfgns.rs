@@ -82,27 +82,21 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfgns<T, S, B> {
     Self: 's;
 
   /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed snapshotted once at
-  /// construction (a non-advancing clone). The first `sample` reproduces
-  /// the legacy `sample_impl(&seed)` stream bit-for-bit — `sample_impl`'s
-  /// own use of the seed is what advances it — and each subsequent call
-  /// advances the owned clone for an independent correlated pair. Owning
-  /// the seed — rather than reading `&self.cfgns.seed` per call — is what
-  /// makes `sample_par`/`sample_map`'s chunked fan-out deterministic: each
-  /// chunk's sampler is built sequentially, after
-  /// [`advance_chunk_seed`](Self::advance_chunk_seed) gives it a distinct
-  /// state to snapshot.
+  /// FFT plan + eigenvalues) and owning a seed derived once at
+  /// construction. Deriving (not cloning) is what decorrelates chunks: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart. The first
+  /// `sample` reproduces the legacy `sample_impl(&seed)` stream bit-for-bit
+  /// — `sample_impl`'s own use of the seed is what advances it, the same
+  /// tick the legacy code consumed from `self.seed` directly — and each
+  /// subsequent call advances the owned seed further for an independent
+  /// correlated pair.
   fn sampler(&self) -> CfgnsSampler<'_, T, S, B> {
     CfgnsSampler {
       cfgns: self,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
-  }
-
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
-  /// method's docs.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
   }
 }
 

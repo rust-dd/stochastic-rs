@@ -188,12 +188,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> RegimeSwitchingDiffusionSampler<T, S> {
     RegimeSwitchingDiffusionSampler {
       mu: self.mu,
@@ -203,7 +201,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
       n: self.n,
       s0: self.s0.unwrap_or(T::one()),
       t: self.t,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -211,7 +209,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RegimeSwitchingDiffusion<T, S> {
 /// Reusable [`RegimeSwitchingDiffusion`] sampling state: owns the generator
 /// matrix, per-regime volatilities and the seed source so a Monte-Carlo loop
 /// reuses both output buffers. Both the diffusion Gaussian stream and the
-/// regime-transition RNG are rebuilt per call from the cloned seed, in the same
+/// regime-transition RNG are rebuilt per call from the derived seed, in the same
 /// order as the legacy `sample` body.
 #[doc(hidden)]
 pub struct RegimeSwitchingDiffusionSampler<T: FloatExt, S: SeedExt> {

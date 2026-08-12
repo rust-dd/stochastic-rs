@@ -69,19 +69,17 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> MultivariateHawkesSampler<'_, T, S> {
     MultivariateHawkesSampler {
       mu: &self.mu,
       alpha: &self.alpha,
       beta: &self.beta,
       t_max: self.t_max,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -89,8 +87,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultivariateHawkes<T, S> {
 /// Reusable [`MultivariateHawkes`] sampling state: borrows the baseline
 /// intensities, excitation and decay matrices and owns the seed source. The
 /// component count is a runtime property of `mu`, and event counts differ per
-/// path, so each call rebuilds the output `Vec`; the RNG is freshly derived from
-/// the owned seed each call, exactly as the legacy `sample` body did.
+/// path, so each call rebuilds the output `Vec`; the RNG is rebuilt from the
+/// owned seed each call, exactly as the legacy `sample` body did.
 #[doc(hidden)]
 pub struct MultivariateHawkesSampler<'a, T: FloatExt, S: SeedExt> {
   mu: &'a Array1<T>,

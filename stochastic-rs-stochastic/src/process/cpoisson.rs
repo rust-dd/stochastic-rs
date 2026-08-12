@@ -138,17 +138,15 @@ where
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> CompoundPoissonSampler<'_, T, D, S> {
     CompoundPoissonSampler {
       distribution: &self.distribution,
       poisson: &self.poisson,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -174,9 +172,9 @@ where
   D: Distribution<T> + Send + Sync,
 {
   fn sample_inner(&mut self) -> [Array1<T>; 3] {
-    let poisson = self.poisson.sample_impl(&self.seed.derive());
+    let poisson = self.poisson.sample_impl(&self.seed);
     let mut jumps = Array1::<T>::zeros(poisson.len());
-    self.seed.derive();
+    self.seed.derive(); // skip one so `rng` differs from `poisson`'s stream
     let mut rng = self.seed.rng();
     for i in 1..poisson.len() {
       jumps[i] = self.distribution.sample(&mut rng);

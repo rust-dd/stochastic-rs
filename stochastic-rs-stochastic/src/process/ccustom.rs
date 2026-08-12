@@ -82,18 +82,16 @@ where
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> CompoundCustomSampler<'_, T, D1, D2, S> {
     CompoundCustomSampler {
       n: self.n,
       jumps_distribution: &self.jumps_distribution,
       customjt: &self.customjt,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -122,7 +120,7 @@ where
   D2: Distribution<T> + Send + Sync,
 {
   fn sample_inner(&mut self) -> [Array1<T>; 3] {
-    let p = self.customjt.sample_impl(&self.seed.derive());
+    let p = self.customjt.sample_impl(&self.seed);
     let mut jumps = Array1::<T>::zeros(self.n.unwrap_or(p.len()));
     let mut rng = self.seed.rng();
     for i in 1..p.len() {

@@ -117,12 +117,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> HestonStochCorrSampler<T, S> {
     HestonStochCorrSampler {
       r: self.r,
@@ -138,14 +136,14 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
       rho2: self.rho2,
       n: self.n,
       t: self.t,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
 
 /// Reusable [`HestonStochCorr`] sampling state: owns the seed source so a
 /// Monte-Carlo loop reuses all three output buffers. The three Gaussian streams
-/// are rebuilt per call from the (cloned) seed, exactly as the legacy `sample`
+/// are rebuilt per call from the (derived) seed, exactly as the legacy `sample`
 /// body did.
 #[doc(hidden)]
 pub struct HestonStochCorrSampler<T: FloatExt, S: SeedExt> {

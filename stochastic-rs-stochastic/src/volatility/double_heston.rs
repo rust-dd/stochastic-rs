@@ -138,12 +138,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> DoubleHestonSampler<T, S> {
     DoubleHestonSampler {
       n: self.n,
@@ -161,7 +159,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
       use_sym: self.use_sym.unwrap_or(false),
       cgns1: self.cgns1,
       cgns2: self.cgns2,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -195,8 +193,8 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
       return;
     }
     let dt = self.dt;
-    let [ds1, dv1n] = &self.cgns1.sample_impl(&self.seed.derive());
-    let [ds2, dv2n] = &self.cgns2.sample_impl(&self.seed.derive());
+    let [ds1, dv1n] = &self.cgns1.sample_impl(&self.seed);
+    let [ds2, dv2n] = &self.cgns2.sample_impl(&self.seed);
 
     s[0] = self.s0;
     v1[0] = self.v1_0;

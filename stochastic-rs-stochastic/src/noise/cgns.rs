@@ -81,15 +81,33 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgns<T, S> {
   where
     Self: 's;
 
+  /// Derives (not clones) `self.seed`: a whole-struct `self.clone()` here
+  /// would copy `self.seed`'s raw, unmixed counter into every chunk's
+  /// sampler, so adjacent chunks' bases would differ by exactly one γ
+  /// stride instead of being hash-scrambled relative to each other — the
+  /// same cross-chunk correlation bug this fixes elsewhere in the crate
+  /// (see MIGRATION.md).
   fn sampler(&self) -> CgnsSampler<T, S> {
-    CgnsSampler { cgns: self.clone() }
+    CgnsSampler {
+      cgns: Cgns {
+        rho: self.rho,
+        n: self.n,
+        t: self.t,
+        seed: self.seed.derive(),
+      },
+    }
   }
 }
 
-/// Reusable [`Cgns`] sampling state: owns the (cheap, `Copy`) generator and its
-/// seed source. The first `sample` reproduces the legacy `sample_impl(&seed)`
-/// stream bit-for-bit; each subsequent call advances the owned seed for an
-/// independent correlated pair.
+/// Reusable [`Cgns`] sampling state: owns the (cheap, `Copy`) generator and a
+/// **derived** copy of its seed source. `sampler()` calls `self.seed.derive()`
+/// once, so each chunk's `CgnsSampler` starts from a hash-mixed, chunk-unique
+/// basis rather than a raw clone — required for `sample_par`/`sample_map` to
+/// produce independent chunks. This means the very first `sample()` no
+/// longer matches a bare `sample_impl(&seed)` call bit-for-bit (one extra
+/// hash-mixing hop versus the pre-existing behavior); no golden test pins
+/// that old equivalence. Every subsequent call was already independent
+/// under the previous scheme and remains so here.
 #[doc(hidden)]
 pub struct CgnsSampler<T: FloatExt, S: SeedExt> {
   cgns: Cgns<T, S>,

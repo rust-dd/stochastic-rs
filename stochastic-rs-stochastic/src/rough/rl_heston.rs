@@ -165,12 +165,13 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart. `fill_paths`
+  /// then uses this owned seed directly (no further derive) — exactly one
+  /// derive from `self.seed` per chunk, matching what the legacy per-call
+  /// `derive()` consumed.
   fn sampler(&self) -> RlHestonSampler<'_, T, S> {
     RlHestonSampler {
       n: self.n,
@@ -183,7 +184,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
       dt: self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1),
       cgns: self.cgns,
       markov: &self.markov,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -212,7 +213,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHestonSampler<'_, T, S> {
       return;
     }
     let dt = self.dt;
-    let [dw_s, dw_v] = self.cgns.sample_impl(&self.seed.derive());
+    let [dw_s, dw_v] = self.cgns.sample_impl(&self.seed);
 
     let kappa = self.kappa;
     let theta = self.theta;

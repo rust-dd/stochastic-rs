@@ -95,26 +95,21 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {
     Self: 's;
 
   /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed snapshotted once at
-  /// construction (a non-advancing clone — `fill_path`'s own `derive()`
-  /// call is what advances it, reproducing the legacy stream bit-for-bit on
-  /// the first path). Owning the seed — rather than reading `&self.seed`
-  /// per path — is what makes `sample_par`/`sample_map`'s chunked fan-out
-  /// deterministic: each chunk's sampler is built sequentially, after
-  /// [`advance_chunk_seed`](Self::advance_chunk_seed) gives it a distinct
-  /// state to snapshot; repeat calls on one sampler continue to advance the
-  /// owned clone for an independent path.
+  /// FFT plan + eigenvalues) and owning a seed derived once at construction.
+  /// Deriving (not cloning) is what decorrelates chunks: the derived value
+  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
+  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
+  /// other rather than one raw stride apart. `fill_path` then uses this
+  /// owned seed *directly* (no further derive) — exactly one derive from
+  /// `self.seed` per chunk, matching what the legacy per-call `derive()`
+  /// consumed, so the first path reproduces the legacy stream bit-for-bit.
+  /// Repeat calls on one sampler advance the same owned seed further, for
+  /// an independent path each time.
   fn sampler(&self) -> CfouSampler<'_, T, S, B> {
     CfouSampler {
       cfou: self,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
-  }
-
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot); see that
-  /// method's docs.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
   }
 }
 
@@ -138,7 +133,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> CfouSampler<'_, T, S, B> {
     }
     let p = self.cfou;
     let dt = p.fgn.dt();
-    let (noise_1, noise_2) = p.fgn.noise_pair(&self.seed.derive());
+    let (noise_1, noise_2) = p.fgn.noise_pair(&self.seed);
     let gamma = Complex::new(p.lambda, -p.omega);
     let dt_c = Complex::new(dt, T::zero());
     let noise_scale = (p.a * T::from_f64_fast(0.5)).sqrt();

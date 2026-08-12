@@ -139,19 +139,18 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFBm<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` for the inner [`Gn`] to own: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart — matching
+  /// `RlFOU`/`RlBlackScholes`, which already build their inner `Gn` this way.
   fn sampler(&self) -> RlFBmSampler<T, S> {
     RlFBmSampler {
       n: self.n,
       gn: Gn::<T, S> {
         n: self.n - 1,
         t: self.t,
-        seed: self.seed.clone(),
+        seed: self.seed.derive(),
       },
       markov: self.markov.clone(),
     }

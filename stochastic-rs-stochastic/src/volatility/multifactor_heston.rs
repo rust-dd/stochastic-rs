@@ -121,12 +121,10 @@ impl<T: FloatExt, const K: usize, S: SeedExt> ProcessExt<T> for MultifactorHesto
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> MultifactorHestonSampler<T, K, S> {
     MultifactorHestonSampler {
       n: self.n,
@@ -138,15 +136,16 @@ impl<T: FloatExt, const K: usize, S: SeedExt> ProcessExt<T> for MultifactorHesto
       mu: self.mu,
       dt: self.cgns[0].dt(),
       cgns: self.cgns.clone(),
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
 
 /// Reusable [`MultifactorHeston`] sampling state: owns one correlated-Gaussian
 /// generator per factor plus the seed source so a Monte-Carlo loop reuses the
-/// stock buffer and all `K` variance buffers. Per-factor noise is re-derived in
-/// factor order, so the first call reproduces the original stream bit-for-bit.
+/// stock buffer and all `K` variance buffers. Per-factor noise is drawn
+/// directly off the owned `seed` in factor order, so the first call
+/// reproduces the original stream bit-for-bit.
 #[doc(hidden)]
 pub struct MultifactorHestonSampler<T: FloatExt, const K: usize, S: SeedExt> {
   n: usize,
@@ -175,7 +174,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHestonSampler<T, K, S> 
 
     // Pre-sample all factor noises so the inner loop is a tight scalar pass.
     let factor_noises = (0..K)
-      .map(|k| self.cgns[k].sample_impl(&self.seed.derive()))
+      .map(|k| self.cgns[k].sample_impl(&self.seed))
       .collect::<Vec<_>>();
 
     for i in 1..self.n {

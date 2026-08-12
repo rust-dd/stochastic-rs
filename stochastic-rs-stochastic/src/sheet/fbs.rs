@@ -60,19 +60,17 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> FbsSampler<T, S> {
     FbsSampler {
       hurst: self.hurst,
       m: self.m,
       n: self.n,
       r: self.r,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
@@ -80,7 +78,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
 /// Reusable [`Fbs`] sampling state: owns the seed source so a Monte-Carlo loop
 /// reuses the output field. The circulant-embedding covariance, FFT handlers and
 /// scratch are rebuilt per call; both the matrix and scalar Gaussian draws come
-/// from the cloned seed in the same order as the legacy `sample` body.
+/// from the derived seed in the same order as the legacy `sample` body.
 #[doc(hidden)]
 pub struct FbsSampler<T: FloatExt, S: SeedExt> {
   hurst: T,

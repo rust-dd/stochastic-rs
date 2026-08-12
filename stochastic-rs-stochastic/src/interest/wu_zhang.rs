@@ -139,12 +139,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` (a non-advancing snapshot) into the
-  /// returned sampler, so each chunk's clone must see a distinct state.
-  fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
-  }
-
+  /// Derives (not clones) `self.seed` into the returned sampler: the
+  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
+  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
+  /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> WuZhangDSampler<T, S> {
     WuZhangDSampler {
       alpha: self.alpha.clone(),
@@ -156,7 +154,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
       xn: self.xn,
       n: self.n,
       t: self.t,
-      seed: self.seed.clone(),
+      seed: self.seed.derive(),
     }
   }
 }
