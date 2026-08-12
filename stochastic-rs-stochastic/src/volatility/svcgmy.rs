@@ -213,8 +213,12 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
 
-    // Γ_0=0, Γ_j = Γ_{j-1} + E'_j; we reuse Poisson-generator-as-arrival-times for Γ_j
-    let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
+    // Γ_0=0, Γ_j = Γ_{j-1} + E'_j; we reuse Poisson-generator-as-arrival-times for Γ_j.
+    // Derives (not `Unseeded`) so Γ_j is reproducible under a `Deterministic` seed and
+    // distinct path-to-path: `self.seed` is this sampler's own already chunk-decorrelated
+    // basis (see `sampler()`), so ticking it once more per fill stays safely confined to
+    // this chunk's own sequence.
+    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
 
     // c(τ_j) = C * v_{k-1} where (k-1)dt < τ_j <= k dt
     let mut c_tau = Array1::<T>::zeros(size);

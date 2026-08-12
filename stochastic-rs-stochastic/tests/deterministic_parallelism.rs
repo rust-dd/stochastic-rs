@@ -30,15 +30,27 @@
 //! `heston_sample_par_is_thread_count_independent` below covers that class,
 //! fixed by rewriting the sampler to own a seed rather than reading the
 //! process's directly.
+//!
+//! A third review found a distinct bug class neither the `seed.clone()` grep
+//! nor a `sampler()`-body sweep can see: `Cgmy`, `KoBoL`, `Cts`, `Rdts` and
+//! `Svcgmy` each hard-wire `Unseeded` on a `Poisson` built *inside*
+//! `fill_path`/`fill_paths` (an arrival-time series reused as Γ_j), so that
+//! one component of the path was never reachable from `self.seed` at all —
+//! not a chunking defect, a plain missed wire. `cgmy_sample_is_deterministic`
+//! / `svcgmy_sample_is_deterministic` below cover the two the review asked
+//! for by name; `KoBoL`/`Cts`/`Rdts` got the identical one-line fix without
+//! their own dedicated tests here (see the source for the shared pattern).
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
+use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 const SEED: u64 = 42;
 
@@ -86,6 +98,46 @@ fn sabr(seed: u64) -> Sabr<f64, Deterministic> {
     32,
     Some(1.0),
     Some(0.2),
+    Some(1.0),
+    Deterministic::new(seed),
+  )
+}
+
+/// `Cgmy` is the tempered-stable jump family's base case: its per-path
+/// Gamma-arrival-time series `P` was built via `Poisson::new(..., Unseeded)`
+/// inside `fill_path`, entirely bypassing `self.seed`.
+fn cgmy(seed: u64) -> Cgmy<f64, Deterministic> {
+  Cgmy::<f64, _>::new(
+    1.0,
+    3.0,
+    3.0,
+    0.5,
+    32,
+    8,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(seed),
+  )
+}
+
+/// `Svcgmy` had the identical hard-wired-`Unseeded` `Poisson` bug, but is
+/// the sharper case: its `sampler()` was already fixed to `derive()` (not
+/// `clone()`) in the cross-chunk-correlation round, so it was covered by
+/// that round's "Guarantee, corrected" claim while still not being
+/// seed-reproducible at all, via this one line.
+fn svcgmy(seed: u64) -> Svcgmy<f64, Deterministic> {
+  Svcgmy::<f64, _>::new(
+    1.0,
+    1.0,
+    0.5,
+    2.0,
+    0.04,
+    0.2,
+    0.0,
+    32,
+    8,
+    Some(0.0),
+    Some(0.04),
     Some(1.0),
     Deterministic::new(seed),
   )
@@ -237,6 +289,73 @@ fn heston_sample_par_paths_are_distinct_beyond_max_chunks() {
     m,
     "Heston sample_par produced duplicate paths beyond MAX_CHUNKS"
   );
+}
+
+/// `Cgmy`'s per-path Gamma-arrival-time series `P` was hard-wired to
+/// `Unseeded` inside `fill_path` — invisible to both the `seed.clone()` grep
+/// and the `sampler()`-body sweep that found every other bug in this suite,
+/// since `sampler()` itself is correctly seeded and the defect is a plain
+/// object *inside* the per-path method. Before the fix, two identically-
+/// `Deterministic`-seeded `Cgmy` objects disagreed on a single `.sample()`
+/// call — not a chunking defect, `sample_par`/`sample_map` are not even
+/// involved here.
+#[test]
+fn cgmy_sample_is_deterministic() {
+  let a = bits_1d(&cgmy(SEED).sample());
+  let b = bits_1d(&cgmy(SEED).sample());
+  assert_eq!(a, b, "two identically-seeded Cgmy objects diverged");
+}
+
+/// Same bug as `cgmy_sample_is_deterministic`, exercised through
+/// `sample_par` at `m = 256`: fixed by deriving the per-path `Poisson`'s
+/// seed from the sampler's own (already chunk-decorrelated) `seed` field
+/// instead of hard-wiring `Unseeded`.
+#[test]
+fn cgmy_sample_par_is_thread_count_independent() {
+  let m = 256;
+  let run = |threads: usize| bits_paths(&pool(threads).install(|| cgmy(SEED).sample_par(m)));
+
+  let r1 = run(1);
+  let r8 = run(8);
+
+  assert_eq!(r1.len(), m);
+  assert_eq!(r1, r8, "Cgmy sample_par diverged between 1 and 8 threads");
+}
+
+/// `Svcgmy` — the review's named "sharp" case: this file's own
+/// cross-chunk-correlation fix already converted its `sampler()` from
+/// `clone()` to `derive()`, so it was covered by that round's "Guarantee,
+/// corrected" claim while still not being seed-reproducible at all, via the
+/// identical hard-wired-`Unseeded` per-path `Poisson` as `Cgmy`.
+#[test]
+fn svcgmy_sample_is_deterministic() {
+  let a = svcgmy(SEED).sample();
+  let b = svcgmy(SEED).sample();
+  assert_eq!(
+    bits_2d(&a),
+    bits_2d(&b),
+    "two identically-seeded Svcgmy objects diverged"
+  );
+}
+
+/// Same bug as `svcgmy_sample_is_deterministic`, through `sample_par` at
+/// `m = 256`.
+#[test]
+fn svcgmy_sample_par_is_thread_count_independent() {
+  let m = 256;
+  let run = |threads: usize| {
+    pool(threads)
+      .install(|| svcgmy(SEED).sample_par(m))
+      .iter()
+      .map(bits_2d)
+      .collect::<Vec<_>>()
+  };
+
+  let r1 = run(1);
+  let r8 = run(8);
+
+  assert_eq!(r1.len(), m);
+  assert_eq!(r1, r8, "Svcgmy sample_par diverged between 1 and 8 threads");
 }
 
 /// Two identically-seeded processes, same `m`, run under *different*

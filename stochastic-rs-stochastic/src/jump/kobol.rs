@@ -117,11 +117,11 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for KoBoL<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = KoBoLSampler<T>
+    = KoBoLSampler<T, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> KoBoLSampler<T> {
+  fn sampler(&self) -> KoBoLSampler<T, S> {
     // Uniform and Exp(1) sources are derived from `self.seed` in the same
     // order as the legacy `sample()`, so the first fill reproduces it
     // bit-for-bit; both owned sources advance on reuse. The seed-independent
@@ -162,16 +162,20 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for KoBoL<T, S> {
       b_t,
       uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
       exp: SimdExp::<T>::new(T::one(), &self.seed),
+      seed: self.seed.derive(),
     }
   }
 }
 
 /// Reusable [`KoBoL`] sampling state: owns the uniform and exponential sources
 /// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once. The Gamma arrival series, jump sizes and ordering are rebuilt
+/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
+/// series (`P`, below) — derived once more per fill so `P` is reproducible
+/// under a `Deterministic` seed and distinct path-to-path, rather than
+/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
 /// per path inside `fill_path`.
 #[doc(hidden)]
-pub struct KoBoLSampler<T: FloatExt> {
+pub struct KoBoLSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,
   lambda_plus: T,
@@ -185,9 +189,10 @@ pub struct KoBoLSampler<T: FloatExt> {
   b_t: T,
   uniform: SimdUniform<T>,
   exp: SimdExp<T>,
+  seed: S,
 }
 
-impl<T: FloatExt> KoBoLSampler<T> {
+impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -205,7 +210,7 @@ impl<T: FloatExt> KoBoLSampler<T> {
     let mut U = Array1::<T>::zeros(size);
     self.uniform.fill_slice(U.as_slice_mut().unwrap());
     let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
-    let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
+    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -259,7 +264,7 @@ impl<T: FloatExt> KoBoLSampler<T> {
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for KoBoLSampler<T> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for KoBoLSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

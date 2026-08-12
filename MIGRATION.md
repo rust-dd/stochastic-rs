@@ -588,3 +588,54 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   chunk) cover the regime the earlier `m = 64`/`m = 16` distinctness tests
   could not reach — at `m <= MAX_CHUNKS` every chunk holds exactly one path,
   which cannot expose cross-chunk correlation at all.
+
+### stochastic-rs-stochastic: `Svcgmy`, `Cgmy`, `KoBoL`, `Cts`, `Rdts` are now seed-reproducible
+
+- **Output values under a pinned seed change for these five types** — not a
+  chunking defect, a plain missed wire: each one's `fill_path`/`fill_paths`
+  built a `Poisson` arrival-time series (reused as Γ_j, the tempered-stable
+  Rosiński series' jump-count process) via `Poisson::new(T::one(), Some(size),
+  None, Unseeded)`, hard-wiring that one component away from `self.seed`
+  entirely, inside the per-path method rather than at `sampler()` construction
+  where every other random source in these types is built. Neither the
+  `self.seed.clone()` grep behind the first fix in this file nor a sweep of
+  `sampler()` bodies for the cross-chunk-correlation fix two entries above
+  could find this: `sampler()` itself was already correct (direct,
+  `self.seed`-derived `SimdUniform`/`SimdExp` sources built once per chunk,
+  the "eager" shape that never needed either fix), and the broken line lives
+  entirely inside the per-path method those sweeps did not inspect.
+  Measured before the fix: `Svcgmy`, `Cgmy` and `KoBoL` were fully
+  non-reproducible — two identically-`Deterministic`-seeded objects
+  disagreed on a single `.sample()` call, `sample_par`/`sample_map` not even
+  involved; `Cts` was `sample()`-reproducible but not thread-count
+  independent; `Rdts` happened to pass in one reviewer configuration but
+  carried the identical line. `Svcgmy` is the sharpest case: the
+  cross-chunk-correlation entry above had already converted its `sampler()`
+  from `clone()` to `derive()`, so it was covered by that entry's "Guarantee,
+  corrected" claim while still not being seed-reproducible at all, via this
+  one line.
+- Fix: `Svcgmy` already retained an owned `seed: S` field on its sampler
+  (added by the cross-chunk-correlation fix); `Cgmy`, `KoBoL`, `Cts` and
+  `Rdts` did not (their samplers were not generic over `S` at all, holding
+  only the `SimdUniform`/`SimdExp` engines built from `self.seed` at
+  construction), so each gained one — populated via `self.seed.derive()`
+  in `sampler()`, matching the shape the cross-chunk-correlation fix
+  established elsewhere. The per-path `Poisson::new(..., Unseeded)` call in
+  all five now reads `Poisson::new(T::one(), Some(size), None,
+  self.seed.derive())` instead: deriving once per fill from this owned,
+  already chunk-decorrelated basis keeps Γ_j reproducible under a
+  `Deterministic` seed and distinct path-to-path, safely, for the same
+  reason repeated further derives are safe anywhere else in the crate a
+  sampler's own basis is already chunk-unique.
+- A dedicated sweep for the same hard-wired-`Unseeded`-in-per-path-code
+  pattern, run after this fix, found no further instances: every other
+  `Unseeded` literal in the crate is either a struct-level default generic,
+  a Python-binding's correct behavior when no seed is given, test code, a
+  type-constrained convenience constructor that can only ever produce an
+  `Unseeded` value (`Volterra::fbm`), or a field whose own `Unseeded` is
+  provably inert because every consumer of it is externally re-seeded
+  (`Cgns`/`Fgn`/`RlFBm` fields across the volatility/interest/rough
+  families) — except the already-documented exceptions
+  (`Bates1996`/`RoughHeston`/`JumpFou`/`JumpFOUCustom`'s diffusion) and the
+  already-tracked `Fgn`/`Fbm` `sample_par` batched-backend gap, both
+  unchanged by this entry.

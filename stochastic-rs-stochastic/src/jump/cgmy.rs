@@ -105,11 +105,11 @@ impl<T: FloatExt, S: SeedExt> Cgmy<T, S> {
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = CgmySampler<T>
+    = CgmySampler<T, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> CgmySampler<T> {
+  fn sampler(&self) -> CgmySampler<T, S> {
     // Uniform and Exp(1) sources are derived from `self.seed` in the same
     // order as the legacy `sample()`, so the first fill reproduces it
     // bit-for-bit; both owned sources advance on reuse for independent paths.
@@ -143,16 +143,20 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgmy<T, S> {
       b_t,
       uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
       exp: SimdExp::<T>::new(T::one(), &self.seed),
+      seed: self.seed.derive(),
     }
   }
 }
 
 /// Reusable [`Cgmy`] sampling state: owns the uniform and exponential sources
 /// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once. The Gamma arrival series, jump sizes and ordering are rebuilt
+/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
+/// series (`P`, below) — derived once more per fill so `P` is reproducible
+/// under a `Deterministic` seed and distinct path-to-path, rather than
+/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
 /// per path inside `fill_path`.
 #[doc(hidden)]
-pub struct CgmySampler<T: FloatExt> {
+pub struct CgmySampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,
   c: T,
@@ -165,9 +169,10 @@ pub struct CgmySampler<T: FloatExt> {
   b_t: T,
   uniform: SimdUniform<T>,
   exp: SimdExp<T>,
+  seed: S,
 }
 
-impl<T: FloatExt> CgmySampler<T> {
+impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -188,7 +193,7 @@ impl<T: FloatExt> CgmySampler<T> {
     let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
-    let P = Poisson::new(T::one(), Some(size), None, Unseeded).sample();
+    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
 
     // τ_j ~ Unif(0,T)
     let mut tau_raw = Array1::<T>::zeros(size);
@@ -242,7 +247,7 @@ impl<T: FloatExt> CgmySampler<T> {
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for CgmySampler<T> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for CgmySampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
