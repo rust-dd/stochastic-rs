@@ -811,6 +811,24 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   field), exactly like `Merton`'s `cpoisson`. `JumpFou` remains the crate's
   one remaining full exception, correctly.
 
+### stochastic-rs-stochastic: `JumpFOUCustom`'s diffusion is now seed-reproducible too
+
+- **Output values under a pinned seed change for `JumpFOUCustom`:** its
+  private `fgn: Fgn<T, Unseeded, B>` field's own `.sampler()` was used to
+  build the diffusion's Gaussian source, which reads `fgn`'s own dead
+  `Unseeded` field, not the outer `self.seed` — the same bug class as
+  `Bates1996`/`RoughHeston` above, on a private rather than a `cgns` field.
+  Because the field is private, this was fixable non-breakingly (unlike
+  `Merton`'s public `cpoisson`, which cannot be re-typed without breaking
+  callers): `sampler()` now builds the Gaussian source directly from
+  `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT plan
+  and eigenvalues, the same pattern `Fbm` already used for its own embedded,
+  permanently-`Unseeded` `fgn`.
+- `JumpFOUCustom` has no `CompoundPoisson` field (its jump timing/size draws
+  were already reproducible via `rng: self.seed.rng()`), so fixing the
+  diffusion makes it **fully** seed-reproducible — removed from the
+  exception list in `traits/process.rs` entirely.
+
 ### stochastic-rs-copulas: default the generator method
 
 - `BivariateExt::generator` is no longer a required method. It now has a

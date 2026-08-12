@@ -9,23 +9,28 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
-use crate::noise::fgn::FgnSampler;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// **Partially exempt from [`ProcessExt`]'s reproducibility guarantee.** The
-/// jump timing/size draws (`rng: self.seed.rng()` in `sampler()`) do consult
-/// `self.seed` and are reproducible; the diffusion driver
-/// (`fgn: Fgn<T, Unseeded, B>`) is hard-wired to `Unseeded` by pre-existing
-/// design and is not, so overall `sample`/`sample_par`/`sample_map` output
-/// still is not seed-reproducible end-to-end. See MIGRATION.md and
-/// [`ProcessExt`]'s trait-level reproducibility section.
+/// The private `fgn: Fgn<T, Unseeded, B>` field is never consulted for its
+/// own seed — `sampler()` builds a plain [`SimdNormal`] from
+/// `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT plan
+/// and eigenvalues, the same pattern [`Fbm`](crate::process::fbm::Fbm) uses
+/// for its own embedded, permanently-`Unseeded` `fgn`. Both the jump
+/// timing/size draws (`rng: self.seed.rng()`) and the diffusion now consult
+/// `self.seed`, so `sample`/`sample_par`/`sample_map` are fully
+/// seed-reproducible — this type carries no exception to
+/// [`ProcessExt`]'s reproducibility guarantee. (It once did: the diffusion
+/// used to read `fgn.sampler()`, which draws from `fgn`'s own dead
+/// `Unseeded` field; fixed since the field is private and non-breaking to
+/// rewire. See MIGRATION.md.)
 pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -108,11 +113,13 @@ where
     Self: 's;
 
   fn sampler(&self) -> JumpFOUCustomSampler<'_, T, D, B> {
-    // Owns the fractional-noise sampler (reproducing `fgn.sample()` on its
-    // first call) and an owned jump RNG derived from `self.seed`, and borrows
-    // the user-supplied inter-arrival / jump-size distributions. The fGn and
-    // jump seed sources are independent, so the first fill reproduces the
-    // legacy stream bit-for-bit; both owned sources advance on reuse.
+    // Owns a Gaussian source derived from `self.seed` (not `fgn.sampler()`,
+    // which would build it from `fgn`'s own permanently-`Unseeded` field —
+    // see the type doc) and an owned jump RNG also derived from `self.seed`,
+    // and borrows `fgn` (for its `Arc`-shared FFT plan/eigenvalues only) and
+    // the user-supplied inter-arrival / jump-size distributions. The two
+    // owned sources are independent derives off the same counter, so they
+    // stay mutually uncorrelated; both advance on reuse.
     JumpFOUCustomSampler {
       n: self.n,
       theta: self.theta,
@@ -120,7 +127,8 @@ where
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
       dt: self.fgn.dt(),
-      fgn_sampler: self.fgn.sampler(),
+      fgn: &self.fgn,
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
       jump_times: &self.jump_times,
       jump_sizes: &self.jump_sizes,
       rng: self.seed.rng(),
@@ -128,9 +136,10 @@ where
   }
 }
 
-/// Reusable [`JumpFOUCustom`] sampling state: owns the fractional-noise
-/// sampler and a jump RNG, and borrows the inter-arrival / jump-size
-/// distributions, so a Monte-Carlo loop pays the fGn `SimdNormal` setup once.
+/// Reusable [`JumpFOUCustom`] sampling state: borrows `fgn` for its
+/// `Arc`-shared FFT plan/eigenvalues and the inter-arrival / jump-size
+/// distributions, and owns the Gaussian source and jump RNG, so a
+/// Monte-Carlo loop pays the fGn `SimdNormal` setup once.
 #[doc(hidden)]
 pub struct JumpFOUCustomSampler<'a, T, D, B>
 where
@@ -144,7 +153,8 @@ where
   sigma: T,
   x0: T,
   dt: T,
-  fgn_sampler: FgnSampler<'a, T, Unseeded, B>,
+  fgn: &'a Fgn<T, Unseeded, B>,
+  normal: SimdNormal<T>,
   jump_times: &'a D,
   jump_sizes: &'a D,
   rng: SimdRng,
@@ -167,7 +177,10 @@ where
       return;
     }
 
-    let fgn = &self.fgn_sampler.sample();
+    let mut fgn = Array1::<T>::zeros(self.fgn.out_len);
+    self
+      .fgn
+      .fill_cpu(&mut self.normal, fgn.as_slice_mut().unwrap());
 
     out[0] = self.x0;
     let mut next_jump_time = self.jump_times.sample(&mut self.rng);

@@ -178,16 +178,24 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// `cpoisson: CompoundPoisson<T, D>` field is *also* structurally pinned to
 /// `Unseeded`, the same as `Merton`'s.
 ///
-/// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
-/// [`Merton`](crate::jump::merton::Merton) are a narrower case: only half of
-/// their randomness is reproducible, but not the same half. `Merton`
-/// hard-wires its `CompoundPoisson` jump driver to `Unseeded` while its
-/// diffusion component consults `self.seed` correctly; `JumpFOUCustom` has
-/// no `CompoundPoisson` field at all — it is the other way around, with its
-/// jump timing/size draws (`rng: self.seed.rng()`) the reproducible half and
-/// its own diffusion driver (`fgn: Fgn<T, Unseeded, B>`) hard-wired away
-/// from `self.seed`. Either way, their overall output still is not fully
-/// seed-reproducible. See MIGRATION.md.
+/// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) was a
+/// similar narrower case — only its jump timing/size draws
+/// (`rng: self.seed.rng()`) were reproducible, not its private
+/// `fgn: Fgn<T, Unseeded, B>` diffusion, whose sampler used to read `fgn`'s
+/// own dead seed via `fgn.sampler()`. Fixed non-breakingly, since that field
+/// is private: `sampler()` now builds the Gaussian source from
+/// `self.seed.derive()` directly and borrows `fgn` only for its `Arc`-shared
+/// FFT plan/eigenvalues. It is fully reproducible too now.
+///
+/// [`Merton`](crate::jump::merton::Merton) and
+/// [`Bates1996`](crate::jump::bates::Bates1996) remain genuine partial
+/// exceptions, both structurally pinned the same way: a public
+/// `cpoisson: CompoundPoisson<T, D>` field defaulting to `Unseeded`
+/// (widening it to `CompoundPoisson<T, D, S>` would be a breaking change to
+/// a public field), while each type's diffusion component correctly
+/// consults `self.seed`. So both have reproducible diffusion but
+/// never-reproducible jump arrivals/sizes — not fixed here. See
+/// MIGRATION.md.
 ///
 /// Same seed + same `m` ⇒ bit-identical output on any machine, any
 /// thread-pool size, and any chunking of `m` (chunks need not each hold
