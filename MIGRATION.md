@@ -1067,7 +1067,7 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `with_horizon` call it too (dead on the sampling path, matching `n`/`t`'s
   own inertness there, but kept in sync for the same reason). See
   `Bates1996::{lambda,cpoisson,with_lambda,with_cpoisson,with_steps,with_horizon}`'s
-  doc comments and the regression tests in `with_setters_jump_correlation.rs`
+  doc comments and the regression tests in `with_setters_bates.rs`
   (`bates_with_cpoisson_changes_sampled_intensity`,
   `bates_with_lambda_syncs_cpoisson_and_changes_sampled_path`) and
   `reproducibility_bates_jump_fou.rs`
