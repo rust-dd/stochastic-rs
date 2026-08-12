@@ -39,19 +39,52 @@ pub enum VolterraKernel {
 }
 
 impl VolterraKernel {
-  fn eval<T: FloatExt>(&self, t: T, s: T) -> T {
+  /// Precomputes this kernel's parameter-derived terms once, ahead of the
+  /// $O(n^2)$ convolution in [`VolterraSampler::fill_path`].
+  ///
+  /// [`VolterraKernel::FractionalBM`]'s $\Gamma(H+1/2)$ is a Weierstrass
+  /// infinite product (`scilib::math::basic::gamma`) iterated to a fixed
+  /// relative-error threshold — measured at ~2.7ms per call, which used to
+  /// be paid on every `(i, j)` pair of the kernel loop instead of once, the
+  /// way this crate's other `scilib::gamma` call sites do. `h` is fixed for
+  /// the sampler's lifetime, so the value prepared here is identical to the
+  /// one every per-pair call used to produce.
+  fn prepare<T: FloatExt>(&self) -> PreparedVolterraKernel<T> {
+    match self {
+      VolterraKernel::FractionalBM { h } => PreparedVolterraKernel::FractionalBM {
+        exp: T::from_f64_fast(*h - 0.5),
+        gamma_val: T::from_f64_fast(scilib::math::basic::gamma(*h + 0.5)),
+      },
+      VolterraKernel::PowerLaw { gamma } => PreparedVolterraKernel::PowerLaw {
+        gamma: T::from_f64_fast(*gamma),
+      },
+      VolterraKernel::Exponential { beta } => PreparedVolterraKernel::Exponential {
+        beta: T::from_f64_fast(*beta),
+      },
+    }
+  }
+}
+
+/// [`VolterraKernel`] with its parameter-derived terms evaluated once by
+/// [`VolterraKernel::prepare`] and reused for every `(i, j)` pair the
+/// sampling loop consults.
+#[derive(Clone, Copy, Debug)]
+enum PreparedVolterraKernel<T: FloatExt> {
+  FractionalBM { exp: T, gamma_val: T },
+  PowerLaw { gamma: T },
+  Exponential { beta: T },
+}
+
+impl<T: FloatExt> PreparedVolterraKernel<T> {
+  fn eval(&self, t: T, s: T) -> T {
     let tau = t - s;
     if tau <= T::zero() {
       return T::zero();
     }
     match self {
-      VolterraKernel::FractionalBM { h } => {
-        let exp = T::from_f64_fast(*h - 0.5);
-        let gamma_val = T::from_f64_fast(scilib::math::basic::gamma(*h + 0.5));
-        tau.powf(exp) / gamma_val
-      }
-      VolterraKernel::PowerLaw { gamma } => tau.powf(T::from_f64_fast(*gamma)),
-      VolterraKernel::Exponential { beta } => (-T::from_f64_fast(*beta) * tau).exp(),
+      PreparedVolterraKernel::FractionalBM { exp, gamma_val } => tau.powf(*exp) / *gamma_val,
+      PreparedVolterraKernel::PowerLaw { gamma } => tau.powf(*gamma),
+      PreparedVolterraKernel::Exponential { beta } => (-*beta * tau).exp(),
     }
   }
 }
@@ -93,7 +126,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
     VolterraSampler {
-      kernel: self.kernel,
+      kernel: self.kernel.prepare::<T>(),
       n: self.n,
       dt,
       sqrt_dt: dt.sqrt(),
@@ -103,13 +136,15 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
 }
 
 /// Reusable [`Volterra`] sampling state: the owned Gaussian source for the
-/// Brownian increments plus the precomputed time step and kernel.
+/// Brownian increments plus the precomputed time step and prepared kernel
+/// (see [`PreparedVolterraKernel`] — built once here rather than re-derived
+/// on every kernel evaluation).
 ///
 /// $X_{t_i} = \sum_{j=1}^{i} K(t_i, t_{j-1})\,\Delta W_j$, complexity $O(n^2)$
 /// due to the full-history convolution.
 #[doc(hidden)]
 pub struct VolterraSampler<T: FloatExt> {
-  kernel: VolterraKernel,
+  kernel: PreparedVolterraKernel<T>,
   n: usize,
   dt: T,
   sqrt_dt: T,
