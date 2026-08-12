@@ -25,14 +25,14 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Gn::default().with_steps(500)`. No persisted cache: `sampler()`
+/// builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
     Gn { n, t, seed }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Gn::default().with_steps(500)`. No persisted cache: `sampler()`
-  /// builds its Gaussian source fresh from `self` every call.
   /// Replace the number of increments `n`, all else unchanged.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;

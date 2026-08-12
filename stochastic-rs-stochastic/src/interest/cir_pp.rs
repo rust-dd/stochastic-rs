@@ -90,6 +90,10 @@ fn default_phi<T: FloatExt>(_t: T) -> T {
   T::zero()
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `CirPlusPlus::default().with_kappa(3.0)`. No persisted cache:
+/// `sampler()` builds a transient `Cir` (and its sampler) fresh from
+/// `self`'s own fields every call.
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
   /// Create a new CirPlusPlus process.
   ///
@@ -131,10 +135,6 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `CirPlusPlus::default().with_kappa(3.0)`. No persisted cache:
-  /// `sampler()` builds a transient `Cir` (and its sampler) fresh from
-  /// `self`'s own fields every call.
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     self.kappa = kappa;

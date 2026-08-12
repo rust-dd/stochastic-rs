@@ -69,6 +69,9 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `DisplacedDiffusion::default().with_beta(10.0)`. No persisted cache:
+/// `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
   pub fn new(mu: T, sigma: T, beta: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
@@ -82,9 +85,6 @@ impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `DisplacedDiffusion::default().with_beta(10.0)`. No persisted cache:
-  /// `sampler()` builds its Gaussian source fresh from `self` every call.
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
     self.mu = mu;

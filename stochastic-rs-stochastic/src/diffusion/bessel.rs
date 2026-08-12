@@ -60,6 +60,9 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `SquaredBessel::default().with_delta(4.0)`. No persisted cache:
+/// `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
   /// Create a new SquaredBessel process.
   ///
@@ -98,9 +101,6 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `SquaredBessel::default().with_delta(4.0)`. No persisted cache:
-  /// `sampler()` builds its Gaussian source fresh from `self` every call.
   /// Replace `delta`, all else unchanged.
   pub fn with_delta(mut self, delta: T) -> Self {
     self.delta = delta;
@@ -284,6 +284,9 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Bessel::default().with_delta(4.0)`. No persisted cache: `sampler()`
+/// builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
   /// Create a new Bessel process.
   ///
@@ -317,9 +320,6 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Bessel::default().with_delta(4.0)`. No persisted cache: `sampler()`
-  /// builds its Gaussian source fresh from `self` every call.
   /// Replace `delta`, all else unchanged.
   pub fn with_delta(mut self, delta: T) -> Self {
     self.delta = delta;

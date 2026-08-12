@@ -36,6 +36,10 @@ fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name
   }
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Poisson::default().with_lambda(4.0)`. No persisted cache:
+/// `sampler()` builds its exponential inter-arrival source fresh from
+/// `self` every call.
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
     validate_n_or_tmax(n, t_max, "Poisson");
@@ -47,10 +51,6 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Poisson::default().with_lambda(4.0)`. No persisted cache:
-  /// `sampler()` builds its exponential inter-arrival source fresh from
-  /// `self` every call.
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     self.lambda = lambda;

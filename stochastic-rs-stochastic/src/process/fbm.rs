@@ -43,6 +43,17 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   fgn: Fgn<T, Unseeded, B>,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Fbm::default().with_hurst(0.3)`.
+///
+/// **Cache note**: the embedded `fgn: Fgn<T, Unseeded, Cpu>` holds the
+/// expensive FFT/eigenvalue cache and is always constructed with the
+/// literal `Unseeded` — never consulted for randomness (`FbmSampler`
+/// draws through a Gaussian source built from the *outer* `self.seed`
+/// and only borrows `fgn` for its cached FFT plan/eigenvalues), so unlike
+/// [`Vasicek`](crate::interest::vasicek::Vasicek)'s embedded `Ou` there is
+/// no seed-derivation subtlety here: every setter that feeds `fgn`
+/// rebuilds it with the exact expression `new()` itself uses.
 impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must be at least 2");
@@ -56,17 +67,6 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Fbm::default().with_hurst(0.3)`.
-  ///
-  /// **Cache note**: the embedded `fgn: Fgn<T, Unseeded, Cpu>` holds the
-  /// expensive FFT/eigenvalue cache and is always constructed with the
-  /// literal `Unseeded` — never consulted for randomness (`FbmSampler`
-  /// draws through a Gaussian source built from the *outer* `self.seed`
-  /// and only borrows `fgn` for its cached FFT plan/eigenvalues), so unlike
-  /// [`Vasicek`](crate::interest::vasicek::Vasicek)'s embedded `Ou` there is
-  /// no seed-derivation subtlety here: every setter that feeds `fgn`
-  /// rebuilds it with the exact expression `new()` itself uses.
   /// Replace `hurst`; rebuilds the embedded `fgn`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     self.hurst = hurst;

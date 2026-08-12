@@ -59,6 +59,8 @@ fn terminal_lognormal_cache<T: FloatExt>(
   (mu_ln, sigma_ln)
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Gbm::default().with_mu(0.08).with_sigma(0.35)`.
 impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     let (ln_mu, ln_sigma) = terminal_lognormal_cache(mu, sigma, x0, t);
@@ -75,8 +77,6 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Gbm::default().with_mu(0.08).with_sigma(0.35)`.
   /// Replace `mu`; rebuilds the cached terminal-log-normal parameters
   /// (`ln_mu`/`ln_sigma`, read by [`DistributionExt`]'s moment methods) so
   /// they stay consistent with the new `mu`.

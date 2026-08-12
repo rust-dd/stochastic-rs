@@ -45,6 +45,10 @@ fn default_theta<T: FloatExt>(_t: T) -> T {
   T::from_f64_fast(0.04)
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `HullWhite::default().with_alpha(0.6)`. No persisted cache:
+/// `sampler()` builds its Gaussian source fresh from `self` and borrows
+/// `&self.theta` directly every call.
 impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
   pub fn new(
     theta: impl Into<Fn1D<T>>,
@@ -66,10 +70,6 @@ impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `HullWhite::default().with_alpha(0.6)`. No persisted cache:
-  /// `sampler()` builds its Gaussian source fresh from `self` and borrows
-  /// `&self.theta` directly every call.
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
     self.theta = theta.into();

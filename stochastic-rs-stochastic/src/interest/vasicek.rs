@@ -39,6 +39,21 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
   ou: Ou<T, S>,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Vasicek::default().with_theta(1.0).with_sigma(0.05)`.
+///
+/// **Cache note, different from every `Cgns`-based type in this crate**:
+/// the embedded `ou: Ou<T, S>` is built once in `new()` via
+/// `Ou::new(.., seed.derive())` — a one-time derive off the constructor's
+/// own `seed` argument. Rebuilding `ou` inside a setter by deriving from
+/// `self.seed` *again* would advance `self.seed`'s state a second time,
+/// producing a *different* child than a fresh `Vasicek::new(new_field,
+/// .., seed)` would (which derives its *first* child from an unadvanced
+/// `seed`). So every setter below except `with_seed` rebuilds `ou` by
+/// reusing `self.ou.seed.clone()` (the already-fixed derived seed,
+/// `Ou::seed` being `pub`) instead of deriving again; only `with_seed`
+/// re-derives, from the *new* outer seed, exactly mirroring `new()`'s own
+/// construction order.
 impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
@@ -53,21 +68,6 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Vasicek::default().with_theta(1.0).with_sigma(0.05)`.
-  ///
-  /// **Cache note, different from every `Cgns`-based type in this crate**:
-  /// the embedded `ou: Ou<T, S>` is built once in `new()` via
-  /// `Ou::new(.., seed.derive())` — a one-time derive off the constructor's
-  /// own `seed` argument. Rebuilding `ou` inside a setter by deriving from
-  /// `self.seed` *again* would advance `self.seed`'s state a second time,
-  /// producing a *different* child than a fresh `Vasicek::new(new_field,
-  /// .., seed)` would (which derives its *first* child from an unadvanced
-  /// `seed`). So every setter below except `with_seed` rebuilds `ou` by
-  /// reusing `self.ou.seed.clone()` (the already-fixed derived seed,
-  /// `Ou::seed` being `pub`) instead of deriving again; only `with_seed`
-  /// re-derives, from the *new* outer seed, exactly mirroring `new()`'s own
-  /// construction order.
   /// Replace `theta`; rebuilds the embedded `Ou`.
   pub fn with_theta(mut self, theta: T) -> Self {
     self.theta = theta;

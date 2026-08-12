@@ -47,6 +47,19 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   _backend: PhantomData<B>,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Fgn::default().with_hurst(0.3)`.
+///
+/// **Cache note**: `sqrt_eigenvalues`/`fft_handler` (the Davies-Harte
+/// circulant-embedding FFT plan and eigenvalues) are an expensive, pure
+/// function of `hurst` and the *requested* length (`out_len`, not the
+/// padded `n`) and `t`. Rather than hand-duplicating `new()`'s ~60-line
+/// FFT setup (and risking it drifting out of sync), the three setters
+/// that feed the cache call `Self::new(..)` again wholesale, reusing
+/// `out_len` (not `n`, which is already power-of-two padded) as the
+/// constructor's own `n` argument. `with_seed` is the one exception:
+/// neither cached array depends on the seed, so it stays a plain field
+/// write.
 impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
@@ -111,19 +124,6 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Fgn::default().with_hurst(0.3)`.
-  ///
-  /// **Cache note**: `sqrt_eigenvalues`/`fft_handler` (the Davies-Harte
-  /// circulant-embedding FFT plan and eigenvalues) are an expensive, pure
-  /// function of `hurst` and the *requested* length (`out_len`, not the
-  /// padded `n`) and `t`. Rather than hand-duplicating `new()`'s ~60-line
-  /// FFT setup (and risking it drifting out of sync), the three setters
-  /// that feed the cache call `Self::new(..)` again wholesale, reusing
-  /// `out_len` (not `n`, which is already power-of-two padded) as the
-  /// constructor's own `n` argument. `with_seed` is the one exception:
-  /// neither cached array depends on the seed, so it stays a plain field
-  /// write.
   /// Replace `hurst`; rebuilds the FFT/eigenvalue cache.
   pub fn with_hurst(self, hurst: T) -> Self {
     Self::new(hurst, self.out_len, self.t, self.seed)

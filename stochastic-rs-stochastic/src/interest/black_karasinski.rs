@@ -89,6 +89,10 @@ fn default_theta<T: FloatExt>(_t: T) -> T {
   T::from_f64_fast(0.05)
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `BlackKarasinski::default().with_a(0.6)`. No persisted cache:
+/// `sampler()` computes its exact-OU decay/std fresh from `self` and
+/// borrows `&self.theta` directly every call.
 impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
   /// Create a new BlackKarasinski process.
   ///
@@ -129,10 +133,6 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `BlackKarasinski::default().with_a(0.6)`. No persisted cache:
-  /// `sampler()` computes its exact-OU decay/std fresh from `self` and
-  /// borrows `&self.theta` directly every call.
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
     self.theta = theta.into();

@@ -33,6 +33,9 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Cev::default().with_gamma(0.5).with_sigma(0.3)`. No persisted cache:
+/// `sampler()` builds its Gaussian stream fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Cev<T, S> {
   pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
@@ -46,9 +49,6 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Cev::default().with_gamma(0.5).with_sigma(0.3)`. No persisted cache:
-  /// `sampler()` builds its Gaussian stream fresh from `self` every call.
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
     self.mu = mu;

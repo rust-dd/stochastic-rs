@@ -89,6 +89,10 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `BrownianBridge::default().with_sigma(0.5).with_xt(Some(-1.0))`. No
+/// persisted cache: `sampler()` builds its Gaussian source fresh from
+/// `self` every call.
 impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
   pub fn new(sigma: T, n: usize, x0: Option<T>, xt: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
@@ -101,10 +105,6 @@ impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `BrownianBridge::default().with_sigma(0.5).with_xt(Some(-1.0))`. No
-  /// persisted cache: `sampler()` builds its Gaussian source fresh from
-  /// `self` every call.
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     self.sigma = sigma;

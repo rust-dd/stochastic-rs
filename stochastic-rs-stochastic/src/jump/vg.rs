@@ -41,6 +41,10 @@ pub struct Vg<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Vg::default().with_nu(0.25).with_sigma(0.3)`. No persisted cache:
+/// `sampler()` builds its gamma subordinator and Gaussian source fresh
+/// from `self` every call.
 impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(nu > T::zero(), "nu must be positive");
@@ -55,10 +59,6 @@ impl<T: FloatExt, S: SeedExt> Vg<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Vg::default().with_nu(0.25).with_sigma(0.3)`. No persisted cache:
-  /// `sampler()` builds its gamma subordinator and Gaussian source fresh
-  /// from `self` every call.
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
     self.mu = mu;

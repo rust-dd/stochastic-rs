@@ -91,6 +91,8 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `RoughBergomi::default().with_hurst(0.3).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
   pub fn new(
     hurst: T,
@@ -117,8 +119,6 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `RoughBergomi::default().with_hurst(0.3).with_rho(-0.2)`.
   /// Replace `hurst`, all else unchanged.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     self.hurst = hurst;

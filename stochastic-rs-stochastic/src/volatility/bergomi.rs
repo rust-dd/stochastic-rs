@@ -70,6 +70,8 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Bergomi::default().with_nu(0.6).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
   pub fn new(
     nu: T,
@@ -94,8 +96,6 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Bergomi::default().with_nu(0.6).with_rho(-0.2)`.
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
     self.nu = nu;

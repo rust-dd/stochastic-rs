@@ -43,6 +43,9 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Cir::default().with_theta(3.0).with_sigma(0.3)`. No persisted cache:
+/// `sampler()` builds its Gaussian stream fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   /// Create a new Cir process.
   ///
@@ -90,9 +93,6 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Cir::default().with_theta(3.0).with_sigma(0.3)`. No persisted cache:
-  /// `sampler()` builds its Gaussian stream fresh from `self` every call.
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
     self.theta = theta;

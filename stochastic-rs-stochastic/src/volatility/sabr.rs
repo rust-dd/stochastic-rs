@@ -42,6 +42,8 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
   cgns: Cgns<T>,
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Sabr::default().with_beta(0.5).with_rho(-0.6)`.
 impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
   pub fn new(
     nu: T,
@@ -75,8 +77,6 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
     }
   }
 
-  /// Every field has a matching `with_*` builder setter, e.g.
-  /// `Sabr::default().with_beta(0.5).with_rho(-0.6)`.
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
     assert!(nu >= T::zero(), "nu must be non-negative");
