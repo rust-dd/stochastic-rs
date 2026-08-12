@@ -9,16 +9,22 @@
 //! itself is covered bit-for-bit, machine-independently, by
 //! [`sampler_first_path_matches_sample`].
 //!
-//! `Merton` is intentionally absent: it hard-wires its inner
-//! `CompoundPoisson<T, D>` to `Unseeded`, so its jump chain is not
-//! bit-reproducible; the standalone `CompoundPoisson` covers the jump family.
+//! `golden_merton_streams` below is the first golden covering a jump chain:
+//! before the zero-exception-reproducibility wave's Task 1, `Merton` hard-
+//! wired its inner `CompoundPoisson<T, D>` to `Unseeded`, so its jump chain
+//! was not bit-reproducible and could not be golden-pinned — only the
+//! standalone `CompoundPoisson` (see `golden_compound_poisson_streams`)
+//! could be. `Merton`'s own jump driver is now seeded from the same
+//! `Deterministic` the diffusion component uses, so it is pinnable too.
 
 use rand_distr::Normal;
+use stochastic_rs::distributions::scalar::ScalarNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::fou::Fou;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::poisson::Poisson;
@@ -275,6 +281,40 @@ fn golden_compound_poisson_streams() {
       4595874907490768916,
       13808047411661410587,
       13814724200134044972,
+    ],
+  );
+}
+
+/// The first golden covering a jump chain — see this file's own header for
+/// why `Merton` could not be included before the zero-exception-
+/// reproducibility wave's Task 1. `lambda = 3.0` at `N = 8` (`dt = 1/7`)
+/// gives `lambda * dt ≈ 0.43` per step, high enough that this stream
+/// exercises at least one nonzero jump increment, not just an all-zero
+/// `sample_grid_increments` short-circuit.
+#[test]
+fn golden_merton_streams() {
+  let merton = Merton::new(
+    0.03,
+    0.2,
+    3.0,
+    0.0,
+    ScalarNormal::new(0.0, 0.1),
+    N,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  assert_close(
+    &merton.sample(),
+    &[
+      0,
+      4590578534663088414,
+      4581639020107344888,
+      13815295515786926506,
+      13809401478369850988,
+      13804506849033497710,
+      4590859968188903663,
+      13785162989269995008,
     ],
   );
 }

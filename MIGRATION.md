@@ -1065,6 +1065,14 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `Kou` too (previously excluded, with a dedicated test pinning their
   non-reproducibility as expected behavior — deleted, since the premise no
   longer holds).
+- `tests/sampler_v3_golden.rs`'s header claimed "`Merton` is intentionally
+  absent: it hard-wires its inner `CompoundPoisson<T, D>` to `Unseeded`, so
+  its jump chain is not bit-reproducible" — true when written, false as of
+  this fix. Corrected (separate commit, `docs: correct the merton golden
+  justification`), and a `golden_merton_streams` test added: the first
+  golden pin covering a jump chain (`lambda = 3.0` at `N = 8` so the
+  8-point stream exercises at least one nonzero jump increment, not just an
+  all-zero `sample_grid_increments` short-circuit).
 
 ### stochastic-rs-copulas: default the generator method
 
