@@ -80,6 +80,15 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Constant shift φ(t) ≡ 0 used by [`CirPlusPlus`]'s `Default` impl —
+/// matches this file's own `zero_phi` test fixture. `φ ≡ 0` degenerates
+/// `CirPlusPlus` to plain [`Cir`] exactly (see
+/// `cir_pp_zero_shift_equals_cir` below), the most rigorously-tested
+/// instance to default to.
+fn default_phi<T: FloatExt>(_t: T) -> T {
+  T::zero()
+}
+
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
   /// Create a new CirPlusPlus process.
   ///
@@ -119,6 +128,25 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
       use_sym,
       seed,
     }
+  }
+}
+
+/// κ=0.5, θ=0.04, σ=0.2, φ(t)≡0, x₀=0.03, t=1, n=252 — matches this file's
+/// own `cir_pp_zero_shift_equals_cir` / `cir_pp_is_deterministic` test
+/// fixture; Feller condition `2κθ = 0.04 = σ² = 0.04` holds at equality.
+impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(0.5),
+      T::from_f64_fast(0.04),
+      T::from_f64_fast(0.2),
+      default_phi::<T> as fn(T) -> T,
+      252,
+      Some(T::from_f64_fast(0.03)),
+      Some(T::one()),
+      None,
+      Unseeded,
+    )
   }
 }
 

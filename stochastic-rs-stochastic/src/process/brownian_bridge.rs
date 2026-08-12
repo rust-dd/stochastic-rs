@@ -101,6 +101,15 @@ impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
   }
 }
 
+/// σ=1, x₀=xt=0 (the module doc's own "standard bridge"), t=1, n=252 — a
+/// unit diffusion scale on the pinned-at-zero bridge that the struct doc's
+/// closed-form moments already assume by default.
+impl<T: FloatExt> Default for BrownianBridge<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(T::one(), 252, None, None, Some(T::one()), Unseeded)
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BrownianBridge<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>

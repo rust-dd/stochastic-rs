@@ -98,6 +98,22 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
   }
 }
 
+/// δ=3, x₀=1, t=1, n=252 — matches this file's own
+/// `besq_mean_matches_closed_form` / `bessel_squared_matches_besq_mean` test
+/// fixture; δ≥2 keeps the process strictly positive.
+impl<T: FloatExt> Default for SquaredBessel<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(3.0),
+      252,
+      Some(T::one()),
+      Some(T::one()),
+      None,
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SquaredBessel<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -256,6 +272,22 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
       use_sym,
       seed,
     }
+  }
+}
+
+/// δ=3, x₀=1, t=1, n=252 — same δ/x₀/t as [`SquaredBessel`]'s `Default`
+/// (this file's own `bessel_squared_matches_besq_mean` test fixture
+/// compares the two directly); δ≥2 keeps the process strictly positive.
+impl<T: FloatExt> Default for Bessel<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(3.0),
+      252,
+      Some(T::one()),
+      Some(T::one()),
+      None,
+      Unseeded,
+    )
   }
 }
 

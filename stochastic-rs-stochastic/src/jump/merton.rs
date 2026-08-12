@@ -28,9 +28,11 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::process::cpoisson::CompoundPoisson;
+use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -97,6 +99,34 @@ where
       cpoisson,
       seed,
     }
+  }
+}
+
+/// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0, t=1, n=252, lognormal jump size
+/// `N(0, 0.1)` — matches the crate's Merton visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/jump.rs`'s `normal_cpoisson(1.0,
+/// n, 0.1)`); `D = ScalarNormal<T>` per this crate's jump-size-distribution
+/// convention (`Sync`-safe, drives the shared RNG — see
+/// `stochastic-rs-distributions::scalar`).
+impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
+  fn default() -> Self {
+    let n = 252;
+    let t = Some(T::one());
+    Self::new(
+      T::from_f64_fast(0.03),
+      T::from_f64_fast(0.2),
+      T::one(),
+      T::zero(),
+      n,
+      Some(T::zero()),
+      t,
+      CompoundPoisson::new(
+        ScalarNormal::new(T::zero(), T::from_f64_fast(0.1)),
+        Poisson::new(T::one(), Some(n), t, Unseeded),
+        Unseeded,
+      ),
+      Unseeded,
+    )
   }
 }
 

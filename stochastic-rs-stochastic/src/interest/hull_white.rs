@@ -36,6 +36,14 @@ pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Constant θ(t) ≡ 0.04 used by [`HullWhite`]'s `Default` impl — matches
+/// this file's own `const_theta` test fixture. A constant target degenerates
+/// Hull-White to the time-homogeneous case, the simplest well-defined
+/// instance to default to.
+fn default_theta<T: FloatExt>(_t: T) -> T {
+  T::from_f64_fast(0.04)
+}
+
 impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
   pub fn new(
     theta: impl Into<Fn1D<T>>,
@@ -55,6 +63,24 @@ impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
       t,
       seed,
     }
+  }
+}
+
+/// θ(t)≡0.04 (this file's own `const_theta` test fixture), α=0.4, σ=0.02,
+/// r₀=0.02, t=1, n=252 — α/σ/r₀ match the crate's Hull-White
+/// visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/interest.rs`).
+impl<T: FloatExt> Default for HullWhite<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      default_theta::<T> as fn(T) -> T,
+      T::from_f64_fast(0.4),
+      T::from_f64_fast(0.02),
+      252,
+      Some(T::from_f64_fast(0.02)),
+      Some(T::one()),
+      Unseeded,
+    )
   }
 }
 

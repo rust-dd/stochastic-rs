@@ -56,6 +56,14 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   }
 }
 
+/// H=0.7, t=1, n=252 — matches the crate's Fbm visualization-gallery
+/// fixture (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`).
+impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
+  fn default() -> Self {
+    Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)
+  }
+}
+
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>

@@ -48,6 +48,14 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   }
 }
 
+/// λ=2.0, t_max=1, n=252 — matches the crate's Poisson visualization-gallery
+/// fixture (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`).
+impl<T: FloatExt> Default for Poisson<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(T::from_f64_fast(2.0), Some(252), Some(T::one()), Unseeded)
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   /// Sample with an explicit seed, used by callers like CompoundPoisson.
   pub fn sample_with_seed(&self, seed: u64) -> Array1<T> {

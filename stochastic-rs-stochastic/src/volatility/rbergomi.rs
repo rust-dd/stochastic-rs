@@ -117,6 +117,25 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
   }
 }
 
+/// H=0.1, ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6, t=1, n=252 — matches the
+/// crate's Rough Bergomi visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/volatility_and_sheet.rs`).
+impl<T: FloatExt> Default for RoughBergomi<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(0.1),
+      T::from_f64_fast(0.4),
+      Some(T::from_f64_fast(0.2)),
+      Some(T::from_f64_fast(100.0)),
+      T::from_f64_fast(0.01),
+      T::from_f64_fast(-0.6),
+      252,
+      Some(T::one()),
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>

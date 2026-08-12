@@ -48,6 +48,23 @@ impl<T: FloatExt, S: SeedExt> Ou<T, S> {
   }
 }
 
+/// θ=2.0, μ=0.0, σ=0.2, x₀=0, t=1, n=252 — matches the crate's Ou
+/// visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/diffusion.rs`).
+impl<T: FloatExt> Default for Ou<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(2.0),
+      T::zero(),
+      T::from_f64_fast(0.2),
+      252,
+      Some(T::zero()),
+      Some(T::one()),
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ou<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>

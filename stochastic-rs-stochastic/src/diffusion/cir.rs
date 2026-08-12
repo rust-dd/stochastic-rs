@@ -90,6 +90,25 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   }
 }
 
+/// θ=2.5, μ=0.04, σ=0.2, x₀=0.04, t=1, use_sym=false, n=252 — matches the
+/// crate's Cir visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/diffusion.rs`); Feller condition
+/// `2θμ = 0.2 ≥ σ² = 0.04` holds.
+impl<T: FloatExt> Default for Cir<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(2.5),
+      T::from_f64_fast(0.04),
+      T::from_f64_fast(0.2),
+      252,
+      Some(T::from_f64_fast(0.04)),
+      Some(T::one()),
+      Some(false),
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>

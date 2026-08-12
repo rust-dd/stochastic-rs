@@ -82,6 +82,25 @@ impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
   }
 }
 
+/// μ=0.05, σ=0.2, β=30, x₀=100, t=1, n=252 — μ/σ/x₀/t match [`Gbm`]'s own
+/// `Default` (β=0 degenerates this type exactly to `Gbm`, see the module
+/// doc), and β=30 matches this file's own
+/// `displaced_diffusion_mean_matches_closed_form` test fixture, showcasing
+/// the type's distinguishing shift feature rather than the degenerate case.
+impl<T: FloatExt> Default for DisplacedDiffusion<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(0.05),
+      T::from_f64_fast(0.2),
+      T::from_f64_fast(30.0),
+      252,
+      Some(T::from_f64_fast(100.0)),
+      Some(T::one()),
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DisplacedDiffusion<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>

@@ -53,6 +53,23 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
   }
 }
 
+/// a=3.0, b=0.03, σ=0.02, r₀=0.03, t=1, n=252 — matches the crate's Vasicek
+/// visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/interest.rs`).
+impl<T: FloatExt> Default for Vasicek<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(3.0),
+      T::from_f64_fast(0.03),
+      T::from_f64_fast(0.02),
+      252,
+      Some(T::from_f64_fast(0.03)),
+      Some(T::one()),
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Vasicek<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>

@@ -55,6 +55,23 @@ impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   }
 }
 
+/// μ=0.0, σ=0.2, ν=0.15, x₀=0, t=1, n=252 — matches the crate's Vg
+/// visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/jump.rs`).
+impl<T: FloatExt> Default for Vg<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::zero(),
+      T::from_f64_fast(0.2),
+      T::from_f64_fast(0.15),
+      252,
+      Some(T::zero()),
+      Some(T::one()),
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   #[inline]
   fn dt(&self) -> T {

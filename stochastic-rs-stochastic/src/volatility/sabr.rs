@@ -75,6 +75,24 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
   }
 }
 
+/// ν=0.4, β=0.7, ρ=-0.3, f₀=1, α₀=0.3, t=1, n=252 — matches the crate's Sabr
+/// visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/volatility_and_sheet.rs`).
+impl<T: FloatExt> Default for Sabr<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      T::from_f64_fast(0.4),
+      T::from_f64_fast(0.7),
+      T::from_f64_fast(-0.3),
+      252,
+      Some(T::one()),
+      Some(T::from_f64_fast(0.3)),
+      Some(T::one()),
+      Unseeded,
+    )
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sabr<T, S> {
   /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
   /// stochastic-volatility state `α` (see module docs for the SDE).

@@ -96,7 +96,33 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
       _scheme: PhantomData,
     }
   }
+}
 
+/// s₀=100, v₀=0.04, κ=2.0, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05, t=1, n=252 —
+/// matches the crate's Heston visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/volatility_and_sheet.rs`); a
+/// standard Heston (1993, DOI: 10.1093/rfs/6.2.327) parameterization
+/// satisfying the Feller condition (`2κθ = 0.16 ≥ σ² = 0.09`).
+impl<T: FloatExt> Default for Heston<T, Unseeded, Euler> {
+  fn default() -> Self {
+    Self::new(
+      Some(T::from_f64_fast(100.0)),
+      Some(T::from_f64_fast(0.04)),
+      T::from_f64_fast(2.0),
+      T::from_f64_fast(0.04),
+      T::from_f64_fast(0.3),
+      T::from_f64_fast(-0.7),
+      T::from_f64_fast(0.05),
+      252,
+      Some(T::one()),
+      HestonPow::Sqrt,
+      Some(false),
+      Unseeded,
+    )
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
   /// Switch to the [`AndersenQe`] variance scheme at compile time. Consumes
   /// the model and re-tags it — zero runtime cost (the fields are moved and
   /// the marker swapped). QE is defined for the square-root (CIR) variance,

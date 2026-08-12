@@ -82,6 +82,12 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
+/// Constant θ(t) ≡ 0.05 used by [`BlackKarasinski`]'s `Default` impl —
+/// matches this file's own `theta_const` test fixture.
+fn default_theta<T: FloatExt>(_t: T) -> T {
+  T::from_f64_fast(0.05)
+}
+
 impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
   /// Create a new BlackKarasinski process.
   ///
@@ -120,6 +126,24 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
       t,
       seed,
     }
+  }
+}
+
+/// θ(t)≡0.05 (this file's own `theta_const` test fixture), a=0.8, σ=0.1,
+/// r₀=0.03, t=1, n=252 — matches
+/// `black_karasinski_log_mean_matches_ou`/`black_karasinski_is_deterministic`
+/// below.
+impl<T: FloatExt> Default for BlackKarasinski<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(
+      default_theta::<T> as fn(T) -> T,
+      T::from_f64_fast(0.8),
+      T::from_f64_fast(0.1),
+      252,
+      Some(T::from_f64_fast(0.03)),
+      Some(T::one()),
+      Unseeded,
+    )
   }
 }
 

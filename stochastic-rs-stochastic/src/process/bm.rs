@@ -29,6 +29,15 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
   }
 }
 
+/// t=1, n=252 — one trading year of daily steps, matching the crate's Bm
+/// visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`).
+impl<T: FloatExt> Default for Bm<T, Unseeded> {
+  fn default() -> Self {
+    Self::new(252, Some(T::one()), Unseeded)
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bm<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>
