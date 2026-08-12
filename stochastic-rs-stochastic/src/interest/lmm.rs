@@ -239,7 +239,16 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lmm<T, S> {
   /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
   /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
   /// relative to each other rather than one raw stride apart.
+  ///
+  /// Re-validates `tenor`/`l0`/`sigma` jointly before doing anything else:
+  /// the `with_*` setters for these three fields (deliberately, see their
+  /// own docs) only check each field's own internal invariant, not their
+  /// combined shape, since doing that eagerly would make it impossible to
+  /// change the Libor count via chained setters. This restores a clean
+  /// `assert_eq!`-quality panic for a leftover mismatch at sample time,
+  /// instead of an opaque out-of-bounds index panic from `fill_matrix`.
   fn sampler(&self) -> LmmSampler<T, S> {
+    validate_lmm_inputs(&self.tenor, &self.l0, &self.sigma);
     LmmSampler {
       tenor: self.tenor.clone(),
       l0: self.l0.clone(),

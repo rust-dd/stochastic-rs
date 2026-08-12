@@ -199,6 +199,10 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho >= -T::one() && rho <= T::one(),
+      "rho must be in [-1, 1]"
+    );
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self

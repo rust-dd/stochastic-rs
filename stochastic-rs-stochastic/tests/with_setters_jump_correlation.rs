@@ -30,14 +30,22 @@
 //! reproduce whatever `new(...)` already did; that a `new(...)` call itself
 //! is not seed-reproducible for this specific type is the actual bug, and
 //! is flagged in the task report rather than fixed here as a "no behavior
-//! changes" boundary). Practically: `with_rho`/`with_horizon`/`with_seed`
-//! below can only assert the field was set and sampling stays finite, not
-//! bit-exact equality against a fresh construction like every other cached
-//! type in this wave gets. `with_steps` is the one exception — growing `n`
-//! past the old cache's buffer length would panic with an out-of-bounds
-//! index if the cache were left stale, regardless of any RNG values, so
-//! "no panic" is still a genuine, deterministic proof of resize for that
-//! one setter.
+//! changes" boundary). Practically: `with_rho`/`with_seed` below can only
+//! assert the field was set and sampling stays finite, not bit-exact
+//! equality against a fresh construction like every other cached type in
+//! this wave gets — and `with_rho` genuinely cannot do better, since `rho`
+//! only enters through the (non-reproducible) noise itself. `with_steps`
+//! is one exception to the general limitation — growing `n` past the old
+//! cache's buffer length would panic with an out-of-bounds index if the
+//! cache were left stale, regardless of any RNG values, so "no panic" is
+//! still a genuine, deterministic proof of resize. `with_horizon` is the
+//! other: a degenerate parameterization (`v0 = alpha = 0`, jump intensity
+//! `0`) pins the variance path at exactly `0` and the jump increments at
+//! exactly `0` with *no RNG draw at all* (see
+//! `bates_with_horizon_rebuilds_cgns_cache_dt_via_degenerate_recurrence`),
+//! collapsing price to the exact, RNG-independent recurrence
+//! `s[i] = s[i-1]*(1 + drift*dt)` — making `dt`, and therefore whether
+//! `with_horizon` rebuilt the cache, directly observable.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -171,6 +179,17 @@ fn bates_with_v0_rejects_negative() {
 }
 
 #[test]
+#[should_panic(expected = "one of (r and r_f), b, or mu must be provided")]
+fn bates_with_mu_rejects_when_no_drift_spec_remains() {
+  // Base has only `mu = Some(0.05)` set; clearing it to `None` leaves
+  // `(r, r_f)`, `b`, and `mu` all absent, which `validate_drift_args`
+  // rejects — the same check `new()` itself runs. One representative test
+  // via `with_mu` suffices: `with_b`/`with_r`/`with_r_f` all call the
+  // identical check.
+  let _ = bates_base().with_mu(None);
+}
+
+#[test]
 fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
   let wide_cpoisson = || {
     CompoundPoisson::new(
@@ -196,11 +215,19 @@ fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
 
 #[test]
 fn bates_with_rho_round_trip() {
-  // See the module doc: `Bates1996::sample()` is not bit-reproducible for
-  // *any* field given the type's pre-existing dead-seed quirk, so unlike
-  // `BatesSvj`/`Hkde`/`DoubleHeston`'s `with_rho`, this cannot compare
-  // against a fresh equivalent construction. What is still verifiable: the
-  // field itself changed, nothing else did, and sampling still succeeds.
+  // KNOWN GAP, named rather than silently absent: this test cannot prove
+  // `with_rho` rebuilt the cache the way `with_horizon`'s degenerate-
+  // recurrence test (below) proves it for `dt`. That trick works by
+  // pinning `v_prev = 0`, which zeroes *both* `cgn1` and `cgn2`'s
+  // contribution to price — but `rho` only ever shows up *inside* the
+  // correlated-noise combination `gn2 = rho*gn1 + c*z` (see `Cgns::
+  // sample_impl`), i.e. exclusively through the very noise this test's
+  // degenerate setup deliberately eliminates to sidestep the type's
+  // pre-existing non-reproducibility. There is no analogous degenerate
+  // parameterization that isolates rho's effect while remaining
+  // RNG-independent, since removing the noise removes rho's only avenue
+  // to matter. What is still verifiable here: the field itself changed,
+  // nothing else did, and sampling still succeeds.
   let mut expected = bates_base();
   expected.rho = -0.4;
   let got = bates_base().with_rho(-0.4);
@@ -233,6 +260,80 @@ fn bates_with_horizon_round_trip() {
   assert_eq!(got.t, Some(2.0));
   assert_eq!(bates_fields(&got), bates_fields(&expected));
   assert!(finite2(&got.sample()));
+}
+
+/// Degenerate `Bates1996` whose `[S, v]` path is an *exact, RNG-independent*
+/// closed form, sidestepping the type's pre-existing non-reproducibility
+/// (see the module doc) to actually observe whether `with_horizon` rebuilt
+/// `cgns`'s cached `dt` — the value used in the drift term via `self.dt`
+/// (`BatesSampler::fill_paths`) — rather than leaving it stale.
+///
+/// `v0 = 0` and `alpha = 0` pin the variance path at exactly `0` for the
+/// whole run: `dv = (0 - beta*0)*dt + sigma*0*cgn2[i-1] = 0` regardless of
+/// `cgn2`'s actual (non-reproducible) values, so `v[i] = 0` for every `i` by
+/// induction. That zeroes price's diffusion term
+/// `s[i-1]*v_prev.sqrt()*cgn1[i-1]` too, regardless of `cgn1`. Setting the
+/// jump intensity (both `Bates1996.lambda` and the `cpoisson`'s own
+/// `Poisson::lambda`) to `0` makes `CompoundPoisson::
+/// sample_grid_relative_increments` short-circuit
+/// (`if lambda_dt <= 0.0 { return increments; }`) to an all-zero array with
+/// *no RNG draw at all* — confirmed by reading that function before relying
+/// on it here. What remains is `s[i] = s[i-1]*(1 + drift*dt)`, computed
+/// identically regardless of `Unseeded`'s actual entropy.
+fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, ScalarNormal<f64>, S> {
+  Bates1996::new(
+    Some(0.05),
+    None,
+    None,
+    None,
+    0.0, // lambda: disables the drift's jump compensation term too
+    0.0,
+    0.0, // alpha: keeps v pinned at v0 = 0
+    0.0,
+    0.0,
+    0.0, // rho: irrelevant here, the noise it would scale is already zero
+    257,
+    Some(100.0),
+    Some(0.0), // v0 = 0
+    t,
+    Some(false),
+    CompoundPoisson::new(
+      ScalarNormal::new(0.0, 1.0),
+      Poisson::new(0.0, Some(257), t, Unseeded), // lambda = 0: no jumps, ever
+      Unseeded,
+    ),
+    seed,
+  )
+}
+
+#[test]
+fn bates_with_horizon_rebuilds_cgns_cache_dt_via_degenerate_recurrence() {
+  let n = 257usize;
+  let want_t = 2.0;
+
+  let want = degenerate_bates(Some(want_t), Unseeded).sample();
+  let got = degenerate_bates(Some(1.0), Unseeded)
+    .with_horizon(Some(want_t))
+    .sample();
+  assert_eq!(
+    want[0], got[0],
+    "with_horizon must rebuild the cgns cache's dt (read via self.dt in \
+     the drift term), not just t"
+  );
+
+  // Sanity check on the degenerate setup itself, independent of
+  // `with_horizon`: confirms the recurrence really is the closed form the
+  // doc comment above claims, not just internally self-consistent between
+  // `want` and `got`.
+  let dt = want_t / (n - 1) as f64;
+  let expected_last = 100.0_f64 * (1.0 + 0.05 * dt).powi((n - 1) as i32);
+  assert!(
+    (want[0][n - 1] - expected_last).abs() < 1e-6 * expected_last.abs(),
+    "degenerate recurrence didn't match the hand-derived closed form: \
+     got {}, want {}",
+    want[0][n - 1],
+    expected_last
+  );
 }
 
 #[test]
