@@ -149,54 +149,70 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// Overriding it to advance the shared state before each chunk's
 /// `sampler()` call gives each such clone a distinct starting point.
 ///
-/// One in-tree process cannot satisfy any of this because its sampled
-/// randomness does not derive from `self.seed` **at all**, by pre-existing
-/// design predating this requirement:
-/// [`JumpFou`](crate::jump::jump_fou::JumpFou) (both its fGn diffusion and
-/// its `CompoundPoisson` jump driver default to `Unseeded`, and its public
-/// `cpoisson: CompoundPoisson<T, D>` field structurally pins that — widening
-/// it would be a breaking change). Its `sample`/`sample_par`/`sample_map`
-/// are not seed-reproducible at all — not even serially, not even at
-/// `m == 1`.
+/// **No in-tree process is a full exception anymore** (as of this wave):
+/// every process's sampled randomness derives from `self.seed` for at least
+/// its diffusion component. That was not always true, and getting there
+/// took three corrected verdicts, each initially documented right here as
+/// "cannot be fixed" before being re-derived from the code and fixed:
 ///
-/// **Two corrected verdicts:** [`Bates1996`](crate::jump::bates::Bates1996)
-/// and [`RoughHeston`](crate::volatility::fheston::RoughHeston) were once
-/// listed as full exceptions here too, on the grounds that their
-/// correlated-Gaussian source ([`Cgns`](crate::noise::cgns::Cgns)) was built
-/// with a hard-wired `Unseeded` and consumed via a bare `.sample()`. That
-/// reasoning was wrong: `Cgns::sample_impl<S2: SeedExt>(&self, seed: &S2)`
-/// is generic over an *external* seed — exactly how every sibling
-/// `cgns`-holding type in this crate drives it — so the bare `.sample()` was
-/// a plain bug, not a structural limitation. Both `sampler()`s now capture
-/// `self.seed.derive()` once, as an owned field on the returned sampler, and
-/// `fill_paths` drives `cgns` via `sample_impl` on that owned field instead
-/// of a bare `.sample()`. `RoughHeston` has no jump component, so this makes
-/// it **fully** reproducible — it carries no exception at all now.
-/// `Bates1996`'s diffusion is reproducible too, but it moves to the
-/// narrower partial-exception case below (alongside `Merton`) rather than
-/// losing its exception entirely: independently of the `cgns` bug, its own
-/// `cpoisson: CompoundPoisson<T, D>` field is *also* structurally pinned to
-/// `Unseeded`, the same as `Merton`'s.
-///
-/// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) was a
-/// similar narrower case — only its jump timing/size draws
-/// (`rng: self.seed.rng()`) were reproducible, not its private
-/// `fgn: Fgn<T, Unseeded, B>` diffusion, whose sampler used to read `fgn`'s
-/// own dead seed via `fgn.sampler()`. Fixed non-breakingly, since that field
-/// is private: `sampler()` now builds the Gaussian source from
-/// `self.seed.derive()` directly and borrows `fgn` only for its `Arc`-shared
-/// FFT plan/eigenvalues. It is fully reproducible too now.
+/// - [`Bates1996`](crate::jump::bates::Bates1996) and
+///   [`RoughHeston`](crate::volatility::fheston::RoughHeston) were once
+///   listed as full exceptions on the grounds that their correlated-Gaussian
+///   source ([`Cgns`](crate::noise::cgns::Cgns)) was built with a hard-wired
+///   `Unseeded` and consumed via a bare `.sample()`. That reasoning was
+///   wrong: `Cgns::sample_impl<S2: SeedExt>(&self, seed: &S2)` is generic
+///   over an *external* seed — exactly how every sibling `cgns`-holding type
+///   in this crate drives it — so the bare `.sample()` was a plain bug, not
+///   a structural limitation. Both `sampler()`s now capture
+///   `self.seed.derive()` once, as an owned field on the returned sampler,
+///   and `fill_paths` drives `cgns` via `sample_impl` on that owned field
+///   instead of a bare `.sample()`. `RoughHeston` has no jump component, so
+///   this makes it **fully** reproducible — it carries no exception at all.
+///   `Bates1996`'s diffusion is reproducible too, but it moves to the
+///   partial-exception list below rather than losing its exception
+///   entirely: independently of the `cgns` bug, its own
+///   `cpoisson: CompoundPoisson<T, D>` field is *also* structurally pinned
+///   to `Unseeded`, the same as `Merton`'s.
+/// - [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) was a
+///   narrower case — only its jump timing/size draws
+///   (`rng: self.seed.rng()`) were reproducible, not its private
+///   `fgn: Fgn<T, Unseeded, B>` diffusion, whose sampler used to read
+///   `fgn`'s own dead seed via `fgn.sampler()`. Fixed non-breakingly, since
+///   that field is private: `sampler()` now builds the Gaussian source from
+///   `self.seed.derive()` directly and borrows `fgn` only for its
+///   `Arc`-shared FFT plan/eigenvalues. It is fully reproducible too now.
+/// - [`JumpFou`](crate::jump::jump_fou::JumpFou) was, at one point, declared
+///   the crate's one remaining full exception on the grounds that *both*
+///   its `fgn: Fgn<T, Unseeded, B>` diffusion and its
+///   `cpoisson: CompoundPoisson<T, D>` jump driver were "the type's own
+///   public-field-shaped structural pins." That was wrong about `fgn`:
+///   `jump_fou.rs`'s `fgn` field is **private**, byte-for-byte the same
+///   shape as `JumpFOUCustom`'s — fixed identically. `JumpFou`'s `cpoisson`
+///   genuinely is public and structurally pinned, so it moves to the
+///   partial-exception list below instead of leaving the exception list
+///   entirely.
 ///
 /// [`Merton`](crate::jump::merton::Merton),
-/// [`Bates1996`](crate::jump::bates::Bates1996), [`Kou`](crate::jump::kou::Kou)
-/// and [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) remain
-/// genuine partial exceptions, all sharing one shape: a public
+/// [`Bates1996`](crate::jump::bates::Bates1996), [`Kou`](crate::jump::kou::Kou),
+/// [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion), and
+/// [`JumpFou`](crate::jump::jump_fou::JumpFou) are the crate's five partial
+/// exceptions, all sharing one shape: a public
 /// `cpoisson: CompoundPoisson<T, D>` field structurally pinned to `Unseeded`
 /// (widening it to `CompoundPoisson<T, D, S>` would be a breaking change to
 /// a public field), while each type's diffusion component correctly
-/// consults `self.seed`. So all four have reproducible diffusion but
+/// consults `self.seed`. So all five have reproducible diffusion but
 /// never-reproducible jump arrivals/sizes — not fixed for any of them here.
 /// See MIGRATION.md.
+///
+/// Backend-level exceptions exist independently of the per-process list
+/// above: `Fgn`/`Fbm` on the `accelerate` feature's `Accelerate` backend get
+/// thread-count-independent seed consumption but not bit-identical output
+/// (vDSP's own arithmetic is not bit-stable — see
+/// [`Backend`](crate::device::Backend)'s doc), and GPU backends
+/// (`CudaNative`/`CubeCl`/`MetalNative`) are excluded from this guarantee
+/// entirely, with `Fbm` specifically not even reaching seed-dependence on
+/// those three (see [`Fbm::sample_par`](crate::process::fbm::Fbm::sample_par)'s
+/// own doc).
 ///
 /// Same seed + same `m` ⇒ bit-identical output on any machine, any
 /// thread-pool size, and any chunking of `m` (chunks need not each hold
@@ -359,11 +375,11 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   ///
   /// **Reproducibility.** For a process satisfying the trait-level
   /// "Reproducibility requirement on implementors" (see [`ProcessExt`]'s
-  /// own docs — true for every process in this crate except the named
-  /// exceptions there: three fully, two only partially), same seed + same
-  /// `m` ⇒ bit-identical output, on any machine and under any rayon
-  /// thread-pool size. `Unseeded` processes still draw fresh randomness on
-  /// every call.
+  /// own docs — true for every process in this crate except the five named
+  /// partial exceptions there; there are no full exceptions left as of this
+  /// wave), same seed + same `m` ⇒ bit-identical output, on any machine and
+  /// under any rayon thread-pool size. `Unseeded` processes still draw
+  /// fresh randomness on every call.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
     if m == 0 {
       return Vec::new();

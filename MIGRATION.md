@@ -675,8 +675,9 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `m` (basis, path) pairs to rayon, so which physical thread ends up
   computing path `i` no longer changes which basis path `i` consumes.
   Same seed + same `m` ⇒ bit-identical output on any machine, under any
-  rayon thread-pool size, for the `Cpu` backend (and `Accelerate` — see
-  below); `Unseeded` still draws fresh randomness every call.
+  rayon thread-pool size, for the `Cpu` backend; `Unseeded` still draws
+  fresh randomness every call. (`Accelerate` gets the same seed-consumption
+  fix but a weaker overall guarantee — see below.)
 - **Rejected intermediate design, kept here as a warning:** the first
   implementation reused this wave's `ProcessExt::chunk_count`/`chunk_lens`
   verbatim — capping at `MAX_CHUNKS = 64` chunks, one `SimdNormal` built per
@@ -714,21 +715,43 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `noise_batch`/`generate_batch` explicitly, instead of relying on `fgn`'s
   dead field. `Fgn::sample_par` did not have this second bug — its `self`
   already was the real, correctly-seeded object — only the race.
-- **`Accelerate` (the `accelerate` feature's vDSP backend) gets the identical
-  guarantee via a *different* mechanism than `Cpu`, deliberately**: unlike
-  `ndfft_inplace_par`, `vDSP_fft_zip` is a plain FFI call with no internal
-  rayon parallelism, so grouping several paths into one thread's sequential
-  work costs nothing extra there. `sample_accelerate_impl` now takes an
-  external seed generic instead of reading `self.seed`, and
-  `Backend::generate_batch`'s `Accelerate` impl *does* use
-  `ProcessExt::chunk_count`/`chunk_lens` (capped at `MAX_CHUNKS = 64`,
-  unlike `Cpu`) before handing each chunk to rayon as one
-  `sample_accelerate_impl(len, ..)` vDSP batch call — the parallelism
-  granularity changed (one rayon task per chunk instead of one per path),
-  which does not regress wall-clock throughput once `chunk_count(m)` meets
-  or exceeds the machine's core count, true of essentially all real
-  hardware (and unlike `Cpu`, there is no nested-rayon call inside the
-  chunk to contend with).
+- **Correction — `Accelerate` does NOT carry `Cpu`'s bit-identity
+  guarantee; this was asserted without evidence and is wrong.** The
+  original version of this bullet claimed "gets the identical guarantee...
+  deliberately," reasoning only about the *seed-consumption* mechanism
+  (which is genuinely fixed the same way — see below) and never measuring
+  the actual output. External review measured it directly: two
+  identically-`Deterministic`-seeded `Accelerate` calls, same process, same
+  seed, same `m`, nothing else touched, disagreed in 207 of 1024 elements
+  (max relative difference `1.29e-5`), repeatably. Independently reproduced
+  while fixing this entry (Apple M4 Max, 10 P-cores + 4 E-cores): 400
+  repeated calls across 35 `(n, m)` combinations on an otherwise-idle
+  system showed **zero** divergence, but the identical sweep run with all
+  14 cores saturated by unrelated floating-point work showed **21 of 400**
+  configurations diverge, worst observed relative difference `2.08e-3`;
+  `Cpu`, run under the identical induced load and sweep, stayed bit-exact
+  in all 400 — isolating the effect to `Accelerate`/vDSP specifically, not
+  the measurement method. This matches the reviewer's hypothesis: Apple
+  Silicon's heterogeneous P-core/E-core scheduler can dispatch
+  `vDSP_fft_zip` to different core types across calls, and the vectorized
+  FFT code path is not guaranteed to produce bit-identical results across
+  core types. **What the seed-consumption fix actually gives `Accelerate`:**
+  `sample_accelerate_impl` now takes an external seed generic instead of
+  reading `self.seed`, and `Backend::generate_batch`'s `Accelerate` impl
+  uses `ProcessExt::chunk_count`/`chunk_lens` (capped at `MAX_CHUNKS = 64`,
+  unlike `Cpu` — see the rejected-design note above for why `Cpu` cannot do
+  the same; `vDSP_fft_zip` has no internal rayon parallelism to contend
+  with, so grouping is free here) before handing each chunk to rayon as one
+  `sample_accelerate_impl(len, ..)` vDSP batch call. This makes *which
+  derived basis feeds which path* thread-count independent, exactly like
+  `Cpu` — a real, meaningful fix, just not a sufficient one for bit
+  identity, since vDSP's own arithmetic sits on top of it. Corrected
+  guarantee: `Accelerate` is seed-consumption-deterministic (thread-count
+  independent) but **not** bit-identical — reproducible-effort-only, the
+  same tier as the GPU backends below, not `Cpu`'s tier. See `device.rs`'s
+  `Backend` trait doc for the corrected table and
+  `tests/deterministic_parallelism_accelerate.rs` for the measurement this
+  correction is based on.
 - **The GPU backends (`CudaNative`, `CubeCl`/`gpu`, `MetalNative`) are
   explicitly OUT of this reproducibility guarantee, documented rather than
   fixed:** each already draws one `u32`/`u64` value from `self.seed.rng()`
@@ -741,6 +764,21 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `generate_batch`/`generate_pair`'s new `seed: &S2` parameter is ignored by
   all three, exactly as `generate`'s host-side seed parameter already was.
   See `device.rs`'s `Backend` trait doc for the full per-backend table.
+- **Correction — the GPU row's "output is a function of the pinned seed"
+  claim is false for `Fbm` specifically.** `Fbm` reaches a GPU backend via
+  `backend_switch!(… via fgn)`, which re-types only the embedded `fgn:
+  Fgn<T, Unseeded, B>` field — `Fbm::sample_par` still passes `&self.seed`
+  to `noise_batch`, but the GPU backends ignore that parameter and read
+  `fgn.seed` instead (see the trait doc table), which for `Fbm` is *always*
+  `Unseeded`, never the real outer seed. So a `Deterministic`-seeded `Fbm`
+  on `MetalNative`/`CudaNative`/`CubeCl` draws fresh randomness on every
+  call, exactly as if it were `Unseeded` — not merely "untested cross-run
+  stability" like bare `Fgn` on the same backends, but zero dependence on
+  the pinned seed at all. This wave's `Fbm` seed-blindness fix (see above)
+  covers the `Cpu`/`Accelerate` backends only; GPU backends were never in
+  scope for either fix and remain seed-blind for `Fbm` specifically.
+  Documented on `Fbm::sample_par`'s own doc rather than restated in the
+  trait-level table, since it is `Fbm`-specific, not backend-specific.
 - Perf, shipped design vs. the pre-existing (buggy) code — `cargo bench
   --bench fgn_fbm -- "FGN_sample_par|FBM_sample_par"` (Apple Silicon,
   `n = 4096`, mean of 100 samples): `FGN_sample_par/sample_par/100` 806 µs
@@ -801,15 +839,27 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   seed-reproducible; jump arrivals/sizes (and therefore the price path `s`,
   which sums jump increments at every step) are not, and were never claimed
   to be by this fix.
-- Re-examined `JumpFou` against the same "is the verdict actually
-  structural" question this correction raised: it is. Unlike `Bates1996`/
-  `RoughHeston`, `JumpFou` has no private `cgns`/`fgn` field hiding a fixable
-  bug behind a misleading "cannot be fixed" note — both its `fgn: Fgn<T,
-  Unseeded, B>` diffusion and its `cpoisson: CompoundPoisson<T, D>` jump
-  driver are the type's own *public-field-shaped* structural pins (widening
-  either to accept an `S` parameter would be a breaking change to a public
-  field), exactly like `Merton`'s `cpoisson`. `JumpFou` remains the crate's
-  one remaining full exception, correctly.
+- **Correction to this same entry, found by external review: the
+  `JumpFou` re-examination two bullets above was itself wrong about
+  `fgn`.** It claimed "`JumpFou` has no private `cgns`/`fgn` field hiding a
+  fixable bug... both its `fgn: Fgn<T, Unseeded, B>` diffusion and its
+  `cpoisson: CompoundPoisson<T, D>` jump driver are the type's own
+  *public-field-shaped* structural pins." That is false about `fgn`:
+  `jump_fou.rs`'s `fgn: Fgn<T, Unseeded, B>` is **private** — byte-for-byte
+  the same shape as `JumpFOUCustom`'s field this very entry's sibling fix
+  (see "`JumpFOUCustom`'s diffusion is now seed-reproducible too" above)
+  already rewires non-breakingly. Fixed the same way: `JumpFou::sampler()`
+  now builds its Gaussian source from `self.seed.derive()` directly
+  (instead of `self.fgn.sampler()`, which read `fgn`'s own dead `Unseeded`
+  field) and borrows `fgn` only for its `Arc`-shared FFT plan/eigenvalues.
+  `JumpFou`'s `cpoisson: CompoundPoisson<T, D>` field genuinely *is* public
+  and structurally pinned to `Unseeded` (that half of the original bullet
+  was correct), so `JumpFou` does **not** leave the exception list — it
+  moves from the crate's *full*-exception list to the *partial*-exception
+  group below, alongside `Merton`, `Bates1996`, `Kou`, and `LevyDiffusion`:
+  diffusion is now seed-reproducible, jump arrivals/sizes are not. This
+  leaves the crate with **zero full exceptions** — every remaining
+  exception is partial (diffusion reproducible, jump not).
 
 ### stochastic-rs-stochastic: `JumpFOUCustom`'s diffusion is now seed-reproducible too
 
@@ -846,18 +896,24 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 
 ### stochastic-rs-stochastic: exception list, final state after this wave
 
-- **Full exception (no randomness reachable from `self.seed` at all):**
-  `JumpFou` only. `Bates1996` and `RoughHeston` were incorrectly listed
-  here in an earlier entry in this file; both are corrected above.
+- **Full exception (no randomness reachable from `self.seed` at all): none.**
+  `Bates1996`, `RoughHeston`, and `JumpFou` were each incorrectly listed
+  here in an earlier entry in this file, in three separate mistakes; all
+  three are corrected above. The crate has zero full exceptions as of this
+  wave.
 - **Partial exception (diffusion reproducible, jump arrivals/sizes not, via
   a `pub cpoisson: CompoundPoisson<T, D>` field structurally pinned to
-  `Unseeded`):** `Merton`, `Bates1996`, `Kou`, `LevyDiffusion`.
+  `Unseeded`):** `Merton`, `Bates1996`, `Kou`, `LevyDiffusion`, `JumpFou`.
 - **No exception (fully seed-reproducible) as of this wave:** every other
   process in the crate, including `RoughHeston` and `JumpFOUCustom`, both
-  corrected/fixed above, and `Fgn`/`Fbm`, whose own `sample_par` overrides
-  are now thread-count independent on the `Cpu`/`Accelerate` backends (GPU
-  backends excluded from the guarantee, documented on `device.rs`'s
-  `Backend` trait).
+  corrected/fixed above, and `Fgn`/`Fbm` on the `Cpu` backend, whose
+  `sample_par` override is now thread-count independent. `Accelerate` is
+  **not** included in this bit-identical guarantee, despite an earlier
+  entry above claiming otherwise — see the correction there and
+  `device.rs`'s `Backend` trait doc for what it actually offers
+  (thread-count-independent seed consumption, but not bit-stable vDSP
+  arithmetic). GPU backends remain excluded from the guarantee entirely,
+  documented on the same trait.
 
 ### stochastic-rs-copulas: default the generator method
 

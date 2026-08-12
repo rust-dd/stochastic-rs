@@ -11,9 +11,20 @@
 //! read-only during `vDSP_fft_zip`, so a per-thread cache keyed by `log2n` is
 //! safe and needs no `Send`/`Sync` wrapper.
 //!
-//! This sampler is single-path optimal; batches are parallelised across cores
-//! at the device level (see [`crate::device`]), one task per path, each reusing
-//! its worker's cached setup and scratch.
+//! Batches are parallelised across cores at the device level (see
+//! [`crate::device`]'s `Backend for Accelerate` impl): one rayon task per
+//! `ProcessExt::chunk_count`-sized chunk (not one per path — changed when
+//! seeding was fixed to derive a basis per chunk, matching `Cpu`'s shape),
+//! each chunk calling `sample_accelerate_impl` once for its whole run of
+//! paths and reusing its worker's cached setup and scratch throughout.
+//!
+//! **Reproducibility caveat:** seed *consumption* here is thread-count
+//! independent (same mechanism as [`Cpu`](crate::device::Cpu)), but
+//! `vDSP_fft_zip`'s own floating-point output is not bit-stable across
+//! otherwise-identical calls — measured (see
+//! [`Backend`](crate::device::Backend)'s doc and
+//! `tests/deterministic_parallelism_accelerate.rs`). Do not rely on this
+//! backend for bit-exact reproducibility.
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::ffi::c_void;

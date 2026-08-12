@@ -67,8 +67,12 @@ fn fgn_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Fgn sample_par diverged between 1 and 8 threads");
 }
 
-/// Same guarantee, beyond `MAX_CHUNKS = 64`: several paths then share one
-/// chunk's `SimdNormal`, the regime `m = 64` above cannot reach.
+/// Same guarantee at a larger `m`. Note this does *not* exercise a "several
+/// paths share one chunk" regime the way the generic `ProcessExt`-default
+/// path's own `MAX_CHUNKS`-boundary tests do: `Fgn`'s `Cpu::generate_batch`
+/// derives one basis per **path**, uncapped (see that impl's own doc for
+/// why — chunking regressed perf here), so there is no chunk-count concept
+/// to cross at any `m`. Kept as a plain larger-`m` sanity check instead.
 #[test]
 fn fgn_sample_par_is_thread_count_independent_beyond_max_chunks() {
   let m = 256;
@@ -99,6 +103,9 @@ fn fbm_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Fbm sample_par diverged between 1 and 8 threads");
 }
 
+/// Same larger-`m` sanity check as `fgn_sample_par_is_thread_count_independent_beyond_max_chunks`
+/// above — `Fbm::sample_par` reaches the identical uncapped, per-path
+/// `Cpu::generate_batch` mechanism.
 #[test]
 fn fbm_sample_par_is_thread_count_independent_beyond_max_chunks() {
   let m = 256;

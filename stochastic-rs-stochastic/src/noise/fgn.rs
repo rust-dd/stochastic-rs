@@ -72,14 +72,15 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
 
   /// The `m` paths are generated in **one batched backend call**.
   ///
-  /// **Reproducibility.** On [`Cpu`](crate::device::Cpu) (and the
-  /// `accelerate` feature's `Accelerate` backend): same seed + same `m` ⇒
-  /// bit-identical output, on any machine and under any rayon thread-pool
-  /// size — `Backend::generate_batch` derives every basis it needs
-  /// sequentially, on the calling thread, before any parallel work starts
-  /// (see each backend's own impl doc for its exact granularity — `Cpu` and
-  /// `Accelerate` differ there for performance reasons, not correctness
-  /// ones). GPU backends are excluded from this guarantee; see
+  /// **Reproducibility.** On [`Cpu`](crate::device::Cpu): same seed + same
+  /// `m` ⇒ bit-identical output, on any machine and under any rayon
+  /// thread-pool size — `Backend::generate_batch` derives every basis it
+  /// needs sequentially, on the calling thread, before any parallel work
+  /// starts. The `accelerate` feature's `Accelerate` backend gets the
+  /// identical seed-consumption fix but **not** bit-identical output —
+  /// `vDSP_fft_zip`'s own arithmetic is not bit-stable across otherwise-
+  /// identical calls (measured; see [`Backend`](crate::device::Backend)'s
+  /// doc). GPU backends are excluded from this guarantee entirely; see
   /// [`Backend`](crate::device::Backend)'s doc for the full per-backend
   /// table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {

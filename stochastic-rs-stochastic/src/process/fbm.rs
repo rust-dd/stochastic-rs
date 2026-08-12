@@ -131,15 +131,35 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   /// The `m` fGN noises are generated in one batched backend call, then each
   /// path is assembled (cumulative sum) on the host across all cores.
   ///
-  /// **Reproducibility.** Same guarantee as [`Fgn::sample_par`](crate::noise::fgn::Fgn::sample_par),
-  /// with one added wrinkle this override alone has to get right: the
-  /// embedded `self.fgn` is always [`Unseeded`] (never consulted for
-  /// randomness — see this type's own doc), so the batch is driven by
-  /// `self.seed` passed in explicitly here, not `self.fgn.noise_batch`'s own
-  /// (dead) seed. Getting that backwards was the actual bug this fixes:
-  /// passing `self.fgn`'s seed silently ignored `self.seed` entirely, so a
-  /// `Deterministic`-seeded `Fbm::sample_par` used to draw fresh randomness
-  /// on every call regardless of the pinned seed.
+  /// **Reproducibility on `Cpu`/`Accelerate`.** Same guarantee as
+  /// [`Fgn::sample_par`](crate::noise::fgn::Fgn::sample_par) on those two
+  /// backends (`Cpu`: bit-identical; `Accelerate`: thread-count-independent
+  /// seed consumption, but not bit-identical — see
+  /// [`Backend`](crate::device::Backend)'s doc), with one added wrinkle this
+  /// override alone has to get right: the embedded `self.fgn` is always
+  /// [`Unseeded`] (never consulted for randomness — see this type's own
+  /// doc), so the batch is driven by `self.seed` passed in explicitly here,
+  /// not `self.fgn.noise_batch`'s own (dead) seed. Getting that backwards
+  /// was the actual bug this fixes: passing `self.fgn`'s seed silently
+  /// ignored `self.seed` entirely, so a `Deterministic`-seeded
+  /// `Fbm::sample_par` used to draw fresh randomness on every call
+  /// regardless of the pinned seed.
+  ///
+  /// **On GPU backends (`CudaNative`/`CubeCl`/`MetalNative`), this fix does
+  /// not reach — `Fbm::sample_par` remains seed-blind there, unlike bare
+  /// [`Fgn`](crate::noise::fgn::Fgn) on the same backends.** `self.seed` is
+  /// still passed to `noise_batch`, but the GPU `Backend::generate_batch`
+  /// impls ignore that parameter entirely and read `fgn.seed` internally
+  /// instead (see [`Backend`](crate::device::Backend)'s doc) — for bare
+  /// `Fgn`, `fgn` *is* `self`, so `fgn.seed` happens to be the real seed
+  /// anyway; for `Fbm`, `fgn` is the permanently-`Unseeded` embedded field,
+  /// so a `Deterministic`-seeded `Fbm` on a GPU backend draws fresh
+  /// randomness on every call, exactly as if it were `Unseeded` — not
+  /// merely "untested across runs" like the GPU backends' documented
+  /// caveat for other types, but zero dependence on the pinned seed at
+  /// all. Not fixed here: doing so would require either widening what
+  /// `Backend::generate_batch`'s GPU impls read, or giving `Fbm` its own
+  /// GPU-specific noise path, both larger changes than this fix's scope.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     self
       .fgn
