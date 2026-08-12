@@ -11,11 +11,9 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::process::cpoisson::CompoundPoisson;
-use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -24,6 +22,21 @@ use crate::traits::ProcessExt;
 ///
 /// <https://www.columbia.edu/~sk75/MagSci02.pdf>
 ///
+/// **No `Default` impl.** `KouSampler::fill_path` is driven entirely by the
+/// generic jump-size distribution `D` — it is line-for-line the same
+/// recursion [`crate::jump::merton::MertonSampler::fill_path`] runs, so `D`
+/// is the *only* thing that makes a `Kou` a Kou rather than a Merton in
+/// this crate. This model's own definition (module doc above) is a
+/// double-exponential log-jump `log Y ~ p·Exp(η₁) − (1−p)·Exp(η₂)`, and the
+/// crate does not yet ship an asymmetric-double-exponential distribution
+/// type (`stochastic_rs_distributions::scalar` has `ScalarNormal` /
+/// `ScalarExp`, not a signed double-exponential) — a genuine gap, not an
+/// oversight of this note. A Gaussian `D` does not approximate that law in
+/// the tails, which is the entire reason Kou (2002) exists as a distinct
+/// model from Merton (1976), so shipping a `Default` here would silently
+/// hand out Merton-with-Gaussian-jumps under the `Kou` name. Construct with
+/// your own `D: Distribution<T> + Send + Sync` implementing the true
+/// double-exponential law instead (see [`Kou::new`]).
 #[derive(Clone)]
 pub struct Kou<T, D, S: SeedExt = Unseeded>
 where
@@ -83,35 +96,6 @@ where
       cpoisson,
       seed,
     }
-  }
-}
-
-/// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0, t=1, n=252, jump size `N(0, 0.12)` —
-/// matches the crate's Kou visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/jump.rs`'s `normal_cpoisson(1.0,
-/// n, 0.12)`). The crate has no dedicated asymmetric-double-exponential
-/// distribution type yet, so `D = ScalarNormal<T>` — the same stand-in the
-/// visualization gallery itself uses for this type (see the module doc's
-/// `log Y` formula for the true double-exponential law this approximates).
-impl<T: FloatExt> Default for Kou<T, ScalarNormal<T>, Unseeded> {
-  fn default() -> Self {
-    let n = 252;
-    let t = Some(T::one());
-    Self::new(
-      T::from_f64_fast(0.03),
-      T::from_f64_fast(0.2),
-      T::one(),
-      T::zero(),
-      n,
-      Some(T::zero()),
-      t,
-      CompoundPoisson::new(
-        ScalarNormal::new(T::zero(), T::from_f64_fast(0.12)),
-        Poisson::new(T::one(), Some(n), t, Unseeded),
-        Unseeded,
-      ),
-      Unseeded,
-    )
   }
 }
 

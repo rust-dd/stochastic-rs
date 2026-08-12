@@ -47,10 +47,12 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
   }
 }
 
-/// μ=0.04, σ=0.2, γ=0.8, x₀=1, t=1, n=252 — matches the crate's Cev
-/// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/diffusion.rs`); γ<1 is the usual
-/// equity-market calibration (see the `gamma` field doc).
+/// μ=0.04, σ=0.2, γ=0.8, x₀=1 — matches the crate's Cev visualization-gallery
+/// fixture (`stochastic-rs-viz/src/tests/categories/diffusion.rs`, which
+/// itself runs at n=96, not the n=252 below); γ<1 is the usual
+/// equity-market calibration (see the `gamma` field doc). t=1, n=252 — one
+/// trading year of daily steps (this crate's `Default` convention, not
+/// itself drawn from that fixture).
 impl<T: FloatExt> Default for Cev<T, Unseeded> {
   fn default() -> Self {
     Self::new(

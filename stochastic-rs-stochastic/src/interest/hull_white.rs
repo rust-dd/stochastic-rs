@@ -68,9 +68,11 @@ impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
 }
 
 /// θ(t)≡0.04 (this file's own `const_theta` test fixture), α=0.4, σ=0.02,
-/// r₀=0.02, t=1, n=252 — α/σ/r₀ match the crate's Hull-White
-/// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/interest.rs`).
+/// r₀=0.02 — α/σ/r₀ match the crate's Hull-White visualization-gallery
+/// fixture (`stochastic-rs-viz/src/tests/categories/interest.rs`, which
+/// itself runs at n=96, not the n=252 below). t=1, n=252 — one trading year
+/// of daily steps (this crate's `Default` convention, not itself drawn
+/// from that fixture).
 impl<T: FloatExt> Default for HullWhite<T, Unseeded> {
   fn default() -> Self {
     Self::new(

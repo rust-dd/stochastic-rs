@@ -57,8 +57,11 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   }
 }
 
-/// H=0.7, t=1, n=252 — matches the crate's Fbm visualization-gallery
-/// fixture (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`).
+/// H=0.7, t=1 — matches the crate's Fbm visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`, which
+/// itself runs at n=96, not the n=252 below). n=252 — one trading year of
+/// daily steps (this crate's `Default` convention, not itself drawn from
+/// that fixture).
 impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)

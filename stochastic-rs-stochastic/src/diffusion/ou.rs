@@ -48,9 +48,11 @@ impl<T: FloatExt, S: SeedExt> Ou<T, S> {
   }
 }
 
-/// θ=2.0, μ=0.0, σ=0.2, x₀=0, t=1, n=252 — matches the crate's Ou
-/// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/diffusion.rs`).
+/// θ=2.0, μ=0.0, σ=0.2, x₀=0 — matches the crate's Ou visualization-gallery
+/// fixture (`stochastic-rs-viz/src/tests/categories/diffusion.rs`, which
+/// itself runs at n=96, not the n=252 below). t=1, n=252 — one trading year
+/// of daily steps (this crate's `Default` convention, not itself drawn
+/// from that fixture).
 impl<T: FloatExt> Default for Ou<T, Unseeded> {
   fn default() -> Self {
     Self::new(

@@ -132,18 +132,30 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
   }
 }
 
-/// κ=0.5, θ=0.04, σ=0.2, φ(t)≡0, x₀=0.03, t=1, n=252 — matches this file's
-/// own `cir_pp_zero_shift_equals_cir` / `cir_pp_is_deterministic` test
-/// fixture; Feller condition `2κθ = 0.04 = σ² = 0.04` holds at equality.
+/// κ=2.5, θ=0.04, σ=0.2, φ(t)≡0, x₀=0.04 — reuses
+/// [`Cir`](crate::diffusion::cir::Cir)'s own `Default` parameterization
+/// verbatim, since φ≡0 degenerates `CirPlusPlus` to `Cir` exactly (this
+/// file's own `cir_pp_zero_shift_equals_cir` test proves it bit-for-bit).
+/// Feller condition `2κθ = 0.2 ≥ σ² = 0.04` holds with a comfortable
+/// margin. This deliberately does **not** reuse this file's own
+/// `cir_pp_is_deterministic` test values (κ=0.5, θ=0.04, σ=0.2, x₀=0.03):
+/// those sit exactly *on* the Feller boundary in real arithmetic
+/// (`2·0.5·0.04 = 0.04 = 0.2²`), but `0.2 * 0.2 == 0.040000000000000001`
+/// in `f64` — one ulp above `0.04` — so `CirPlusPlus::new`'s sub-Feller
+/// guard fires and prints a warning on every construction. A `Default`
+/// that warns on construction defeats the point of a zero-friction entry
+/// point, so this picks a parameterization with real headroom instead.
+/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
+/// convention).
 impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
   fn default() -> Self {
     Self::new(
-      T::from_f64_fast(0.5),
+      T::from_f64_fast(2.5),
       T::from_f64_fast(0.04),
       T::from_f64_fast(0.2),
       default_phi::<T> as fn(T) -> T,
       252,
-      Some(T::from_f64_fast(0.03)),
+      Some(T::from_f64_fast(0.04)),
       Some(T::one()),
       None,
       Unseeded,

@@ -95,9 +95,12 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
   }
 }
 
-/// ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6, t=1, n=252 — matches the crate's
-/// Bergomi visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/volatility_and_sheet.rs`).
+/// ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6 — matches the crate's Bergomi
+/// visualization-gallery fixture
+/// (`stochastic-rs-viz/src/tests/categories/volatility_and_sheet.rs`, which
+/// itself runs at n=96, not the n=252 below). t=1, n=252 — one trading year
+/// of daily steps (this crate's `Default` convention, not itself drawn
+/// from that fixture).
 impl<T: FloatExt> Default for Bergomi<T, Unseeded> {
   fn default() -> Self {
     Self::new(

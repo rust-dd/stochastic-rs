@@ -6,6 +6,7 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
@@ -25,6 +26,7 @@ use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
+use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -63,7 +65,9 @@ fn defaults_sample_finite() {
   assert!(ok(&Bessel::<f64>::default().sample()));
   assert!(ok(&DisplacedDiffusion::<f64>::default().sample()));
   assert!(ok(&Merton::<f64, ScalarNormal<f64>>::default().sample()));
-  assert!(ok(&Kou::<f64, ScalarNormal<f64>>::default().sample()));
+  // `Kou` has no `Default` — see `Kou`'s own struct doc: a Gaussian jump
+  // distribution would silently ship Merton-with-Gaussian-jumps under the
+  // Kou name, since only `D` distinguishes the two samplers in this crate.
 
   let [s, v] = Heston::<f64>::default().sample();
   assert!(ok(&s) && ok(&v));
@@ -73,6 +77,18 @@ fn defaults_sample_finite() {
   assert!(ok(&s) && ok(&v2));
   let [s, v2] = RoughBergomi::<f64>::default().sample();
   assert!(ok(&s) && ok(&v2));
+}
+
+/// `CirPlusPlus::default()` must clear the Feller guard in real `f64`
+/// arithmetic — not merely avoid the warning via `use_sym`, which would
+/// leave the type sub-Feller in fact while only suppressing the print. See
+/// `CirPlusPlus::default`'s own doc for why its previous parameterization
+/// (κ=0.5) failed this by one ulp (`2·0.5·0.04 == 0.04` but
+/// `0.2 * 0.2 == 0.040000000000000001`).
+#[test]
+fn cir_pp_default_clears_feller_guard() {
+  let d = CirPlusPlus::<f64>::default();
+  assert!(2.0 * d.kappa * d.theta >= d.sigma * d.sigma);
 }
 
 fn bits(path: &Array1<f64>) -> Vec<u64> {
@@ -188,12 +204,12 @@ fn clone_preserves_deterministic_path() {
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
   let a = CirPlusPlus::<f64, _>::new(
-    0.5,
+    2.5,
     0.04,
     0.2,
     zero_phi as fn(f64) -> f64,
     N,
-    Some(0.03),
+    Some(0.04),
     Some(1.0),
     None,
     Deterministic::new(42),
@@ -328,20 +344,38 @@ fn clone_preserves_deterministic_path() {
 }
 
 /// Pins the pre-existing (not introduced by this task) reason `Merton`/`Kou`
-/// are excluded above: their jump component's seed strategy is fixed to
+/// are excluded from `clone_preserves_deterministic_path` above: their
+/// `cpoisson` field type fixes *that* field's own seed strategy to
 /// `Unseeded` regardless of the process's own seed, so even the *same*
 /// instance's own `.sample()` is not repeatable — a fact `Clone` cannot
 /// change either way. See `Merton::cpoisson`'s field doc. `Clone` itself
 /// still derives and still works structurally (finite output, correct
 /// length) on both — only the bit-exact seed-replay assertion above does
-/// not apply to them.
+/// not apply to them. `Kou` is constructed explicitly here (not via
+/// `Default`, which it does not have — see its struct doc) with the same
+/// `ScalarNormal` stand-in `Merton::default()` uses, purely to exercise
+/// this structural property on both `CompoundPoisson`-driven jump types.
 #[test]
 fn merton_and_kou_jump_component_is_not_seed_reproducible() {
   let a = Merton::<f64, ScalarNormal<f64>>::default();
   assert_ne!(bits(&a.sample()), bits(&a.sample()));
   assert!(ok(&a.clone().sample()));
 
-  let a = Kou::<f64, ScalarNormal<f64>>::default();
+  let a = Kou::<f64, _>::new(
+    0.03,
+    0.2,
+    1.0,
+    0.0,
+    N,
+    Some(0.0),
+    Some(1.0),
+    CompoundPoisson::new(
+      ScalarNormal::new(0.0, 0.12),
+      Poisson::new(1.0, Some(N), Some(1.0), Unseeded),
+      Unseeded,
+    ),
+    Unseeded,
+  );
   assert_ne!(bits(&a.sample()), bits(&a.sample()));
   assert!(ok(&a.clone().sample()));
 }

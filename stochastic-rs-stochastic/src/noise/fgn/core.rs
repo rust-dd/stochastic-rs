@@ -112,10 +112,12 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   }
 }
 
-/// H=0.7, t=1, n=252 — H=0.7 matches the crate's own long-memory-example
-/// convention used throughout its visualization gallery
+/// H=0.7 — matches the crate's own long-memory-example convention used
+/// throughout its visualization gallery
 /// (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs` and
-/// several `diffusion.rs` fractional-process fixtures).
+/// several `diffusion.rs` fractional-process fixtures, all run at n=96, not
+/// the n=252 below). t=1, n=252 — one trading year of daily steps (this
+/// crate's `Default` convention, not itself drawn from that gallery).
 impl<T: FloatExt> Default for Fgn<T, Unseeded, Cpu> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)

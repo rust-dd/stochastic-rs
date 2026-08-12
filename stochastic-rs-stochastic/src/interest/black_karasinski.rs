@@ -131,9 +131,11 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
 }
 
 /// θ(t)≡0.05 (this file's own `theta_const` test fixture), a=0.8, σ=0.1,
-/// r₀=0.03, t=1, n=252 — matches
+/// r₀=0.03, t=1 — matches
 /// `black_karasinski_log_mean_matches_ou`/`black_karasinski_is_deterministic`
-/// below.
+/// below (both use these values at t=1; their own `n` varies across this
+/// file's tests and is not itself a fixture value). n=252 — one trading
+/// year of daily steps (this crate's `Default` convention).
 impl<T: FloatExt> Default for BlackKarasinski<T, Unseeded> {
   fn default() -> Self {
     Self::new(

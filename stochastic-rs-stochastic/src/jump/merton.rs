@@ -103,12 +103,17 @@ where
   }
 }
 
-/// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0, t=1, n=252, lognormal jump size
-/// `N(0, 0.1)` — matches the crate's Merton visualization-gallery fixture
+/// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0 — matches the crate's Merton
+/// visualization-gallery fixture
 /// (`stochastic-rs-viz/src/tests/categories/jump.rs`'s `normal_cpoisson(1.0,
-/// n, 0.1)`); `D = ScalarNormal<T>` per this crate's jump-size-distribution
-/// convention (`Sync`-safe, drives the shared RNG — see
-/// `stochastic-rs-distributions::scalar`).
+/// n, 0.1)`, which itself runs at n=96, not the n=252 below); `D =
+/// ScalarNormal<T>` per this crate's jump-size-distribution convention
+/// (`Sync`-safe, drives the shared RNG — see
+/// `stochastic-rs-distributions::scalar`). The log-jump (not the jump
+/// factor `Y` itself) is Gaussian, `N(0, 0.1)` — the classical
+/// lognormal-jump Merton (1976) model this file's own top doc names. t=1,
+/// n=252 — one trading year of daily steps (this crate's `Default`
+/// convention, not itself drawn from that fixture).
 impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
   fn default() -> Self {
     let n = 252;

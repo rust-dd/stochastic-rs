@@ -155,9 +155,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   }
 }
 
-/// Gamma(shape=2, scale=2) — mean 4, matching this crate's own repeated
-/// Gamma benchmark fixture (`benches/distributions.rs`,
-/// `benches/dist_multicore.rs`).
+/// Gamma(shape=2, scale=2) — mean 4, matching the repeated Gamma fixture in
+/// the umbrella crate's workspace-root `benches/distributions.rs` and
+/// `benches/dist_multicore.rs` (not this crate's own — `stochastic-rs-
+/// distributions` has no `benches/` directory of its own).
 impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdGamma<T, R> {
   fn default() -> Self {
     Self::new(T::from(2.0).unwrap(), T::from(2.0).unwrap(), &Unseeded)

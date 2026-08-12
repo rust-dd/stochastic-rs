@@ -99,9 +99,11 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
   }
 }
 
-/// δ=3, x₀=1, t=1, n=252 — matches this file's own
+/// δ=3, x₀=1, t=1 — matches this file's own
 /// `besq_mean_matches_closed_form` / `bessel_squared_matches_besq_mean` test
-/// fixture; δ≥2 keeps the process strictly positive.
+/// fixture (which itself runs at n=200, not the n=252 below); δ≥2 keeps the
+/// process strictly positive. n=252 — one trading year of daily steps
+/// (this crate's `Default` convention).
 impl<T: FloatExt> Default for SquaredBessel<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -277,9 +279,11 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
   }
 }
 
-/// δ=3, x₀=1, t=1, n=252 — same δ/x₀/t as [`SquaredBessel`]'s `Default`
-/// (this file's own `bessel_squared_matches_besq_mean` test fixture
-/// compares the two directly); δ≥2 keeps the process strictly positive.
+/// δ=3, x₀=1, t=1 — same δ/x₀/t as [`SquaredBessel`]'s `Default` (this
+/// file's own `bessel_squared_matches_besq_mean` test fixture compares the
+/// two directly, at n=200 there); δ≥2 keeps the process strictly positive.
+/// n=252 — one trading year of daily steps (this crate's `Default`
+/// convention).
 impl<T: FloatExt> Default for Bessel<T, Unseeded> {
   fn default() -> Self {
     Self::new(

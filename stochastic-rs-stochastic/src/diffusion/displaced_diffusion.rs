@@ -83,11 +83,15 @@ impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
   }
 }
 
-/// μ=0.05, σ=0.2, β=30, x₀=100, t=1, n=252 — μ/σ/x₀/t match [`Gbm`]'s own
+/// μ=0.05, σ=0.2, β=30, x₀=100, t=1 — μ/σ/x₀/t match [`Gbm`]'s own
 /// `Default` (β=0 degenerates this type exactly to `Gbm`, see the module
 /// doc), and β=30 matches this file's own
-/// `displaced_diffusion_mean_matches_closed_form` test fixture, showcasing
-/// the type's distinguishing shift feature rather than the degenerate case.
+/// `displaced_diffusion_mean_matches_closed_form` test fixture (which
+/// itself runs at n=200, not the n=252 below), showcasing the type's
+/// distinguishing shift feature rather than the degenerate case. n=252 —
+/// one trading year of daily steps, consistent with [`Gbm`]'s own `Default`
+/// n (this crate's shared convention, not itself drawn from either fixture
+/// above).
 impl<T: FloatExt> Default for DisplacedDiffusion<T, Unseeded> {
   fn default() -> Self {
     Self::new(
