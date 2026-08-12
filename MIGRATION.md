@@ -904,6 +904,10 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 - **Partial exception (diffusion reproducible, jump arrivals/sizes not, via
   a `pub cpoisson: CompoundPoisson<T, D>` field structurally pinned to
   `Unseeded`):** `Merton`, `Bates1996`, `Kou`, `LevyDiffusion`, `JumpFou`.
+  **Superseded below:** the zero-exception-reproducibility wave's Task 1
+  fixed `Merton`, `Kou`, and `LevyDiffusion` (see "`Merton`, `Kou`,
+  `LevyDiffusion` absorb the jump-driver construction" further down) —
+  `Bates1996` and `JumpFou` are the two that remain in this group.
 - **No exception (fully seed-reproducible) as of this wave:** every other
   process in the crate, including `RoughHeston` and `JumpFOUCustom`, both
   corrected/fixed above, and `Fgn`/`Fbm` on the `Cpu` backend, whose
@@ -914,6 +918,123 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   (thread-count-independent seed consumption, but not bit-stable vDSP
   arithmetic). GPU backends remain excluded from the guarantee entirely,
   documented on the same trait.
+
+### stochastic-rs-stochastic: `Merton`, `Kou`, `LevyDiffusion` absorb the jump-driver construction — fully seed-reproducible
+
+- **Breaking constructor change, deliberate — Task 1 of the
+  zero-exception-reproducibility wave.** All three types' `cpoisson:
+  CompoundPoisson<T, D>` field was structurally pinned to `Unseeded`:
+  `CompoundPoisson<T, D, S: SeedExt = Unseeded>`'s third parameter defaults
+  to `Unseeded`, and the field's declared type never named `S`, so no
+  caller could ever supply a `Deterministic`-seeded jump driver through it
+  regardless of the outer process's own seed. The field is now `cpoisson:
+  CompoundPoisson<T, D, S>` (`S` matching the process's own), and `new()`
+  absorbs the compound-Poisson construction: it takes the jump-size
+  distribution and the intensity directly and builds the internal
+  `Poisson`/`CompoundPoisson` pair itself, seeded from the constructor's
+  own `seed: S` parameter. This also collapses the three-step, three-seed
+  construction chain (`Poisson::new(…, seed)` → `CompoundPoisson::new(dist,
+  poisson, seed)` → `Merton::new(…, cpoisson, …, seed)`) the 2026-08-11 API
+  review flagged as a footgun into one call with one seed.
+- Before/after call sites:
+
+  ```rust
+  // Before
+  let cpoisson = CompoundPoisson::new(
+    ScalarNormal::new(0.0, 0.1),
+    Poisson::new(1.0, Some(252), Some(1.0), Unseeded),
+    Unseeded,
+  );
+  let m = Merton::new(
+    0.03, 0.2, 1.0, 0.0, 252, Some(0.0), Some(1.0), cpoisson, Deterministic::new(42),
+  );
+
+  // After
+  let m = Merton::new(
+    0.03, 0.2, 1.0, 0.0, ScalarNormal::new(0.0, 0.1), 252, Some(0.0), Some(1.0),
+    Deterministic::new(42),
+  );
+  ```
+
+  ```rust
+  // Before
+  let cpoisson = CompoundPoisson::new(
+    ScalarNormal::new(0.0, 0.12),
+    Poisson::new(1.0, Some(252), Some(1.0), Unseeded),
+    Unseeded,
+  );
+  let k = Kou::new(
+    0.03, 0.2, 1.0, 0.0, 252, Some(0.0), Some(1.0), cpoisson, Deterministic::new(42),
+  );
+
+  // After
+  let k = Kou::new(
+    0.03, 0.2, 1.0, 0.0, ScalarNormal::new(0.0, 0.12), 252, Some(0.0), Some(1.0),
+    Deterministic::new(42),
+  );
+  ```
+
+  ```rust
+  // Before
+  let cpoisson = CompoundPoisson::new(
+    ScalarNormal::new(0.0, 0.08),
+    Poisson::new(1.0, Some(252), Some(1.0), Unseeded),
+    Unseeded,
+  );
+  let l = LevyDiffusion::new(
+    0.01, 0.2, 252, Some(0.0), Some(1.0), cpoisson, Deterministic::new(42),
+  );
+
+  // After
+  let l = LevyDiffusion::new(
+    0.01, 0.2, 1.0, ScalarNormal::new(0.0, 0.08), 252, Some(0.0), Some(1.0),
+    Deterministic::new(42),
+  );
+  ```
+
+  `LevyDiffusion::new` gains an explicit `lambda: T` parameter it did not
+  have before (previously only reachable inside the pre-built `cpoisson`'s
+  own `Poisson`); `Merton`/`Kou` already had `lambda` as a top-level
+  parameter and keep its position, inserting `jump_dist: D` where
+  `cpoisson` used to sit, ahead of the `…, n, x0, t, seed` tail.
+- The `cpoisson` field stays `pub` on all three (now correctly typed
+  `CompoundPoisson<T, D, S>`) — the pre-fix field's `Poisson` sub-object
+  carried no information beyond `.lambda` (`.n`/`.t_max`/`.seed` were never
+  read by `sample_grid_increments`), and that value is now a direct `new()`
+  parameter, so keeping the field public and mutable preserves 100% of the
+  prior capability (a caller can still swap in a whole custom jump driver
+  via `Merton::with_cpoisson` — re-typed, not renamed — or direct field
+  assignment) at zero cost. `Merton`'s field doc no longer claims the jumps
+  are non-reproducible.
+- `sampler()` for all three now derives a fresh, chunk-local jump seed
+  (`self.cpoisson.seed.derive()`) once per chunk, mirroring how the
+  diffusion component already derived its own per-chunk basis — never a
+  borrowed `&self.cpoisson` shared across chunks, which would let
+  concurrent chunks race on the same shared atomic during the parallel
+  region (see `ProcessExt`'s trait-level reproducibility requirement).
+  `new()` seeds `cpoisson` via `seed.clone().derive()`, not a bare
+  `seed.derive()`, specifically so deriving the jump child does not itself
+  advance the value stored into `self.seed` — the diffusion component's
+  bit-exact stream under a given seed is unchanged by this fix.
+- Found and fixed along the way: `Merton::with_seed` previously replaced
+  only the top-level `self.seed`, leaving `cpoisson`'s own (now-meaningful)
+  seed keyed to whatever it was at construction — silently *not* matching a
+  fresh construction with the new seed, contradicted by
+  `merton_with_seed_matches_fresh_construction`'s own name. `with_seed` now
+  re-derives `cpoisson.seed` the same way `new()` does.
+- All three are now **fully** seed-reproducible — no exception to
+  `ProcessExt`'s reproducibility guarantee. Removed from the
+  partial-exception list in `traits/process.rs` and in the summary above;
+  `Bates1996` and `JumpFou` are the two that remain (Task 2 of this wave).
+- New test: `stochastic-rs-stochastic/tests/reproducibility_jump_family.rs`
+  — for each type, bit-identical `.sample()` between two
+  identically-`Deterministic`-seeded objects under `lambda = 50` (jumps
+  dominate), `sample_par` bit-identical across 1/3/8-thread pools at both
+  `m = 64` and `m = 256`, and `m = 256` producing 256 distinct paths.
+  `defaults.rs`'s `clone_preserves_deterministic_path` now covers `Merton`/
+  `Kou` too (previously excluded, with a dedicated test pinning their
+  non-reproducibility as expected behavior — deleted, since the premise no
+  longer holds).
 
 ### stochastic-rs-copulas: default the generator method
 

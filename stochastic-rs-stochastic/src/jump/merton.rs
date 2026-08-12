@@ -62,14 +62,21 @@ where
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Compound-Poisson jump driver generating the log-normal jump sizes.
-  /// **Partial exception to [`ProcessExt`]'s reproducibility guarantee:**
-  /// hard-wired to `Unseeded` (default `S`) by pre-existing design, so the
-  /// jump arrivals/sizes are never seed-reproducible even though the
-  /// diffusion component below is. See MIGRATION.md and [`ProcessExt`]'s
-  /// trait-level reproducibility section.
-  pub cpoisson: CompoundPoisson<T, D>,
+  /// Fully seed-reproducible: [`new`](Self::new) builds it internally from
+  /// `seed` (`seed.clone().derive()` — a hash-mixed child, decorrelated
+  /// from but a deterministic function of the same `seed` the diffusion
+  /// component consults directly), and `sampler()` derives a fresh,
+  /// chunk-local basis off `self.cpoisson.seed` for every chunk, mirroring
+  /// the diffusion component's own per-chunk `self.seed`-derived basis.
+  /// Left `pub` (now correctly generic over `S`, unlike the pre-fix
+  /// `CompoundPoisson<T, D, Unseeded>`) so a caller may still swap in a
+  /// whole custom jump driver via [`with_cpoisson`](Self::with_cpoisson) or
+  /// direct field assignment.
+  pub cpoisson: CompoundPoisson<T, D, S>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
-  /// by the diffusion component only — see `cpoisson`'s doc above.
+  /// directly by the diffusion component; `cpoisson`'s own seed (set at
+  /// construction from this same value — see `cpoisson`'s doc above) drives
+  /// the jump component.
   pub seed: S,
 }
 
@@ -83,17 +90,27 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Builds the compound-Poisson jump driver internally from `jump_dist`
+  /// and `lambda`, seeded from `seed` (see `cpoisson`'s field doc) — the
+  /// caller supplies the jump-size distribution and intensity directly
+  /// instead of pre-building a `Poisson`/`CompoundPoisson` pair and
+  /// threading a third, independent seed through it by hand.
   pub fn new(
     alpha: T,
     sigma: T,
     lambda: T,
     theta: T,
+    jump_dist: D,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    cpoisson: CompoundPoisson<T, D>,
     seed: S,
   ) -> Self {
+    let cpoisson = CompoundPoisson::new(
+      jump_dist,
+      Poisson::new(lambda, Some(n), t, Unseeded),
+      seed.clone().derive(),
+    );
     Self {
       alpha,
       sigma,
@@ -138,7 +155,7 @@ where
   }
 
   /// Replace the compound-Poisson jump driver, all else unchanged.
-  pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D>) -> Self {
+  pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D, S>) -> Self {
     self.cpoisson = cpoisson;
     self
   }
@@ -155,24 +172,29 @@ where
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value, all else unchanged — including
+  /// re-deriving `cpoisson`'s own seed from the new value exactly as
+  /// [`new`](Self::new) does (`cpoisson`'s distribution and lambda are
+  /// untouched), so the result matches a fresh construction with this
+  /// seed rather than leaving the jump component keyed to the old one.
   pub fn with_seed(mut self, seed: S) -> Self {
+    self.cpoisson.seed = seed.clone().derive();
     self.seed = seed;
     self
   }
 }
 
-/// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0 — matches the crate's Merton
+/// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0 — the same λ=1.0 pairing with a
+/// `ScalarNormal(0, 0.1)` jump size used directly by the crate's Merton
 /// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/jump.rs`'s `normal_cpoisson(1.0,
-/// n, 0.1)`, which itself runs at n=96, not the n=252 below); `D =
-/// ScalarNormal<T>` per this crate's jump-size-distribution convention
-/// (`Sync`-safe, drives the shared RNG — see
-/// `stochastic-rs-distributions::scalar`). The log-jump (not the jump
-/// factor `Y` itself) is Gaussian, `N(0, 0.1)` — the classical
-/// lognormal-jump Merton (1976) model this file's own top doc names. t=1,
-/// n=252 — one trading year of daily steps (this crate's `Default`
-/// convention, not itself drawn from that fixture).
+/// (`stochastic-rs-viz/src/tests/categories/jump.rs`'s `Merton::new` entry,
+/// which itself runs at n=96, not the n=252 below); `D = ScalarNormal<T>`
+/// per this crate's jump-size-distribution convention (`Sync`-safe, drives
+/// the shared RNG — see `stochastic-rs-distributions::scalar`). The
+/// log-jump (not the jump factor `Y` itself) is Gaussian, `N(0, 0.1)` — the
+/// classical lognormal-jump Merton (1976) model this file's own top doc
+/// names. t=1, n=252 — one trading year of daily steps (this crate's
+/// `Default` convention, not itself drawn from that fixture).
 impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
   fn default() -> Self {
     let n = 252;
@@ -182,14 +204,10 @@ impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
       T::from_f64_fast(0.2),
       T::one(),
       T::zero(),
+      ScalarNormal::new(T::zero(), T::from_f64_fast(0.1)),
       n,
       Some(T::zero()),
       t,
-      CompoundPoisson::new(
-        ScalarNormal::new(T::zero(), T::from_f64_fast(0.1)),
-        Poisson::new(T::one(), Some(n), t, Unseeded),
-        Unseeded,
-      ),
       Unseeded,
     )
   }
@@ -202,16 +220,21 @@ where
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = MertonSampler<'s, T, D>
+    = MertonSampler<'s, T, D, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> MertonSampler<'_, T, D> {
-    // The diffusion source is owned and derived from `self.seed`; the
-    // compound-Poisson jump driver is borrowed and re-drawn per fill exactly
-    // as the legacy `sample()` did (it rebuilds its own RNG from
-    // `cpoisson.seed` each call). The two seed sources are independent, so the
-    // first fill reproduces the legacy stream bit-for-bit.
+  fn sampler(&self) -> MertonSampler<'_, T, D, S> {
+    // The diffusion source is owned and derived from `self.seed`. The jump
+    // driver's distribution/lambda are borrowed straight off `self.cpoisson`
+    // (read-only parameters, safe to share across chunks), but its seed is
+    // captured as an owned, chunk-local `self.cpoisson.seed.derive()` —
+    // never a borrowed `&self.cpoisson`, which would let every chunk's
+    // sampler race on the same shared atomic during the parallel region
+    // (see `ProcessExt`'s "Reproducibility requirement on implementors").
+    // Each path within one chunk still re-derives its own jump sub-stream
+    // from that owned basis exactly as the legacy `sample()` did from the
+    // old (always-`Unseeded`) field, so only the seed *source* changed.
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
     } else {
@@ -227,7 +250,9 @@ where
       x0: self.x0.unwrap_or(T::zero()),
       dt,
       drift_dt,
-      cpoisson: &self.cpoisson,
+      jump_distribution: &self.cpoisson.distribution,
+      lambda: self.lambda,
+      jump_seed: self.cpoisson.seed.derive(),
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
     }
   }
@@ -237,7 +262,7 @@ where
 /// borrows the compound-Poisson jump driver, so a Monte-Carlo loop pays the
 /// `SimdNormal` setup once.
 #[doc(hidden)]
-pub struct MertonSampler<'a, T, D>
+pub struct MertonSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -247,11 +272,13 @@ where
   x0: T,
   dt: T,
   drift_dt: T,
-  cpoisson: &'a CompoundPoisson<T, D>,
+  jump_distribution: &'a D,
+  lambda: T,
+  jump_seed: S,
   normal: SimdNormal<T>,
 }
 
-impl<T, D> MertonSampler<'_, T, D>
+impl<T, D, S: SeedExt> MertonSampler<'_, T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -261,7 +288,13 @@ where
       return;
     }
 
-    let jump_increments = self.cpoisson.sample_grid_increments(out.len(), self.dt);
+    let jump_increments = crate::process::cpoisson::grid_increments(
+      self.jump_distribution,
+      self.lambda,
+      &self.jump_seed,
+      out.len(),
+      self.dt,
+    );
     let mut gn = Array1::<T>::zeros(out.len() - 1);
     if let Some(gn_slice) = gn.as_slice_mut() {
       self.normal.fill_slice(gn_slice);
@@ -275,7 +308,7 @@ where
   }
 }
 
-impl<T, D> PathSampler<T> for MertonSampler<'_, T, D>
+impl<T, D, S: SeedExt> PathSampler<T> for MertonSampler<'_, T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -322,7 +355,6 @@ impl PyMerton {
     seed: Option<u64>,
     dtype: Option<&str>,
   ) -> Self {
-    use crate::process::poisson::Poisson;
     let mut s = Self {
       inner_f32: None,
       inner_f64: None,
@@ -331,11 +363,7 @@ impl PyMerton {
     };
     match dtype.unwrap_or("f64") {
       "f32" => {
-        let cpoisson = CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, Some(n), t.map(|v| v as f32), Unseeded),
-          Unseeded,
-        );
+        let jump_dist = crate::traits::CallableDist::new(distribution);
         match seed {
           Some(sd) => {
             s.seeded_f32 = Some(Merton::new(
@@ -343,10 +371,10 @@ impl PyMerton {
               sigma as f32,
               lambda_ as f32,
               theta as f32,
+              jump_dist,
               n,
               x0.map(|v| v as f32),
               t.map(|v| v as f32),
-              cpoisson,
               Deterministic::new(sd),
             ));
           }
@@ -356,21 +384,17 @@ impl PyMerton {
               sigma as f32,
               lambda_ as f32,
               theta as f32,
+              jump_dist,
               n,
               x0.map(|v| v as f32),
               t.map(|v| v as f32),
-              cpoisson,
               Unseeded,
             ));
           }
         }
       }
       _ => {
-        let cpoisson = CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, Some(n), t, Unseeded),
-          Unseeded,
-        );
+        let jump_dist = crate::traits::CallableDist::new(distribution);
         match seed {
           Some(sd) => {
             s.seeded_f64 = Some(Merton::new(
@@ -378,16 +402,16 @@ impl PyMerton {
               sigma,
               lambda_,
               theta,
+              jump_dist,
               n,
               x0,
               t,
-              cpoisson,
               Deterministic::new(sd),
             ));
           }
           None => {
             s.inner_f64 = Some(Merton::new(
-              alpha, sigma, lambda_, theta, n, x0, t, cpoisson, Unseeded,
+              alpha, sigma, lambda_, theta, jump_dist, n, x0, t, Unseeded,
             ));
           }
         }

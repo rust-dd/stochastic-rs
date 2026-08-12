@@ -191,18 +191,38 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 ///   genuinely is public and structurally pinned, so it moves to the
 ///   partial-exception list below instead of leaving the exception list
 ///   entirely.
+/// - [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou),
+///   and [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) were
+///   the remaining partial exceptions in the same shape: a public
+///   `cpoisson: CompoundPoisson<T, D>` field structurally pinned to
+///   `Unseeded`. Unlike the bugs above, this one genuinely required a
+///   breaking change — widening the field to `CompoundPoisson<T, D, S>` —
+///   which the zero-exception-reproducibility wave's Task 1 made: each
+///   type's `new()` now takes the jump-size distribution and intensity
+///   directly and builds `cpoisson` internally, deriving its seed from the
+///   constructor's own `seed: S` parameter via `seed.clone().derive()` (a
+///   hash-mixed child, decorrelated from but a deterministic function of
+///   the same `seed` the diffusion component consults directly — cloned
+///   first so deriving the child does not itself advance the value stored
+///   into `self.seed`). `sampler()` for all three derives a fresh,
+///   chunk-local jump seed from `self.cpoisson.seed` for every chunk,
+///   mirroring the diffusion component's own per-chunk `self.seed`-derived
+///   basis, rather than sharing a borrowed `&self.cpoisson` across chunks
+///   (which would race on the same atomic during the parallel region). All
+///   three are now **fully** reproducible — no exception at all. See
+///   MIGRATION.md for the before/after call sites.
 ///
-/// [`Merton`](crate::jump::merton::Merton),
-/// [`Bates1996`](crate::jump::bates::Bates1996), [`Kou`](crate::jump::kou::Kou),
-/// [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion), and
-/// [`JumpFou`](crate::jump::jump_fou::JumpFou) are the crate's five partial
-/// exceptions, all sharing one shape: a public
-/// `cpoisson: CompoundPoisson<T, D>` field structurally pinned to `Unseeded`
-/// (widening it to `CompoundPoisson<T, D, S>` would be a breaking change to
-/// a public field), while each type's diffusion component correctly
-/// consults `self.seed`. So all five have reproducible diffusion but
-/// never-reproducible jump arrivals/sizes — not fixed for any of them here.
-/// See MIGRATION.md.
+/// [`Bates1996`](crate::jump::bates::Bates1996) and
+/// [`JumpFou`](crate::jump::jump_fou::JumpFou) are the crate's two
+/// remaining partial exceptions, sharing the shape
+/// [`Merton`](crate::jump::merton::Merton)/[`Kou`](crate::jump::kou::Kou)/
+/// [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) had before
+/// the fix above: a public `cpoisson: CompoundPoisson<T, D>` field
+/// structurally pinned to `Unseeded` (widening it to
+/// `CompoundPoisson<T, D, S>` would be a breaking change to a public
+/// field), while each type's diffusion component correctly consults
+/// `self.seed`. So both have reproducible diffusion but never-reproducible
+/// jump arrivals/sizes — not fixed for either here. See MIGRATION.md.
 ///
 /// Backend-level exceptions exist independently of the per-process list
 /// above: `Fgn`/`Fbm` on the `accelerate` feature's `Accelerate` backend get
@@ -375,11 +395,11 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   ///
   /// **Reproducibility.** For a process satisfying the trait-level
   /// "Reproducibility requirement on implementors" (see [`ProcessExt`]'s
-  /// own docs — true for every process in this crate except the five named
-  /// partial exceptions there; there are no full exceptions left as of this
-  /// wave), same seed + same `m` ⇒ bit-identical output, on any machine and
-  /// under any rayon thread-pool size. `Unseeded` processes still draw
-  /// fresh randomness on every call.
+  /// own docs — true for every process in this crate except the two named
+  /// partial exceptions there; there are no full exceptions left), same
+  /// seed + same `m` ⇒ bit-identical output, on any machine and under any
+  /// rayon thread-pool size. `Unseeded` processes still draw fresh
+  /// randomness on every call.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
     if m == 0 {
       return Vec::new();

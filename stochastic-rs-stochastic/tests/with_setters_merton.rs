@@ -1,19 +1,17 @@
 //! TDD tests for A1-c Task 4: `with_*` builder setters on `Merton`
 //! (`jump/merton.rs`). No persisted cache: `sampler()` builds its Gaussian
 //! diffusion source fresh from `self.{alpha,sigma,lambda,theta,n,t,seed}`
-//! on every call, threading the outer seed correctly. But `cpoisson`'s own
-//! seed is (pre-existing, documented on the field) always `Unseeded`, and
-//! unlike `Bates1996`'s `[S, v]` pair there is no separate jump-free
-//! sub-array here — `Merton`'s single output path mixes the jump term in
-//! at every index — so a *nonzero*-intensity `cpoisson` makes the whole
-//! path non-reproducible, not just part of it. The round-trip tests below
-//! use a nonzero-intensity `cpoisson` (realistic, but only field-equality +
-//! finite-sample checked); the three cache/seed tests that need bit-exact
-//! comparison against a fresh construction use a `lambda = 0` `cpoisson`
-//! instead, whose `sample_grid_increments` short-circuits to an all-zero,
-//! RNG-free array (confirmed by reading `CompoundPoisson::
-//! sample_grid_increments`: `if lambda_dt <= 0.0 { return increments; }`),
-//! making the *entire* path exactly reproducible under a fixed seed.
+//! on every call, threading the outer seed correctly. Since the zero-
+//! exception-reproducibility wave's Task 1, `cpoisson`'s own seed is no
+//! longer pinned to `Unseeded` either — `new()` builds it from the same
+//! `seed: S` the caller passes in — so a nonzero-intensity jump component
+//! is now just as reproducible as the diffusion; the round-trip tests below
+//! keep a nonzero-intensity jump distribution throughout (no more need for
+//! a `lambda = 0` degenerate case to get bit-exact comparisons). Unlike
+//! `Bates1996`'s `[S, v]` pair there is no separate jump-free sub-array
+//! here — `Merton`'s single output path mixes the jump term in at every
+//! index — so these bit-exact comparisons genuinely exercise both halves at
+//! once.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -25,49 +23,21 @@ use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
-fn nonzero_cpoisson() -> CompoundPoisson<f64, ScalarNormal<f64>> {
-  CompoundPoisson::new(
-    ScalarNormal::new(0.0, 0.1),
-    Poisson::new(1.0, Some(64), Some(1.0), Unseeded),
-    Unseeded,
-  )
-}
-fn zero_cpoisson() -> CompoundPoisson<f64, ScalarNormal<f64>> {
-  CompoundPoisson::new(
-    ScalarNormal::new(0.0, 0.1),
-    Poisson::new(0.0, Some(64), Some(1.0), Unseeded),
-    Unseeded,
-  )
-}
-
 fn merton_base_seeded<S: SeedExt>(seed: S) -> Merton<f64, ScalarNormal<f64>, S> {
   Merton::new(
     0.03,
     0.2,
     1.0,
     0.0,
+    ScalarNormal::new(0.0, 0.1),
     64,
     Some(0.0),
     Some(1.0),
-    nonzero_cpoisson(),
     seed,
   )
 }
 fn merton_base() -> Merton<f64, ScalarNormal<f64>> {
   merton_base_seeded(Unseeded)
-}
-fn merton_zero_jump_seeded<S: SeedExt>(seed: S) -> Merton<f64, ScalarNormal<f64>, S> {
-  Merton::new(
-    0.03,
-    0.2,
-    1.0,
-    0.0,
-    64,
-    Some(0.0),
-    Some(1.0),
-    zero_cpoisson(),
-    seed,
-  )
 }
 
 #[derive(Debug, PartialEq)]
@@ -129,25 +99,29 @@ fn merton_with_cpoisson_round_trip() {
 
 #[test]
 fn merton_with_steps_matches_fresh_construction() {
-  let mut expected = merton_zero_jump_seeded(Unseeded);
+  let mut expected = merton_base_seeded(Unseeded);
   expected.n = 128;
-  let got = merton_zero_jump_seeded(Unseeded).with_steps(128);
+  let got = merton_base_seeded(Unseeded).with_steps(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
 
+  // Bit-exact against a fresh construction, jumps included: `cpoisson`'s
+  // own seed is now derived from the same `seed: S` passed to `new()` (see
+  // this file's module doc), so this is no longer restricted to a
+  // `lambda = 0` degenerate case.
   let want = Merton::new(
     0.03,
     0.2,
     1.0,
     0.0,
+    ScalarNormal::new(0.0, 0.1),
     128,
     Some(0.0),
     Some(1.0),
-    zero_cpoisson(),
     Deterministic::new(9),
   )
   .sample();
-  let got_seeded = merton_zero_jump_seeded(Deterministic::new(9))
+  let got_seeded = merton_base_seeded(Deterministic::new(9))
     .with_steps(128)
     .sample();
   assert_eq!(want, got_seeded);
@@ -155,9 +129,9 @@ fn merton_with_steps_matches_fresh_construction() {
 
 #[test]
 fn merton_with_horizon_matches_fresh_construction() {
-  let mut expected = merton_zero_jump_seeded(Unseeded);
+  let mut expected = merton_base_seeded(Unseeded);
   expected.t = Some(2.0);
-  let got = merton_zero_jump_seeded(Unseeded).with_horizon(Some(2.0));
+  let got = merton_base_seeded(Unseeded).with_horizon(Some(2.0));
   assert_eq!(got.t, Some(2.0));
   assert_eq!(fields(&got), fields(&expected));
 
@@ -166,14 +140,14 @@ fn merton_with_horizon_matches_fresh_construction() {
     0.2,
     1.0,
     0.0,
+    ScalarNormal::new(0.0, 0.1),
     64,
     Some(0.0),
     Some(2.0),
-    zero_cpoisson(),
     Deterministic::new(11),
   )
   .sample();
-  let got_seeded = merton_zero_jump_seeded(Deterministic::new(11))
+  let got_seeded = merton_base_seeded(Deterministic::new(11))
     .with_horizon(Some(2.0))
     .sample();
   assert_eq!(want, got_seeded);
@@ -186,14 +160,14 @@ fn merton_with_seed_matches_fresh_construction() {
     0.2,
     1.0,
     0.0,
+    ScalarNormal::new(0.0, 0.1),
     64,
     Some(0.0),
     Some(1.0),
-    zero_cpoisson(),
     Deterministic::new(13),
   )
   .sample();
-  let got = merton_zero_jump_seeded(Deterministic::new(1))
+  let got = merton_base_seeded(Deterministic::new(1))
     .with_seed(Deterministic::new(13))
     .sample();
   assert_eq!(want, got);

@@ -1,5 +1,6 @@
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::scalar::ScalarExp;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
@@ -68,10 +69,10 @@ pub(crate) fn register(mut grid: GridPlotter, n: usize, j: usize, traj: usize) -
       0.2,
       1.0,
       0.0,
+      ScalarNormal::new(0.0, 0.1),
       n,
       Some(0.0),
       Some(1.0),
-      normal_cpoisson(1.0, n, 0.1),
       Unseeded,
     ),
     "Jump: Merton",
@@ -83,10 +84,10 @@ pub(crate) fn register(mut grid: GridPlotter, n: usize, j: usize, traj: usize) -
       0.2,
       1.0,
       0.0,
+      ScalarNormal::new(0.0, 0.12),
       n,
       Some(0.0),
       Some(1.0),
-      normal_cpoisson(1.0, n, 0.12),
       Unseeded,
     ),
     "Jump: Kou",
@@ -96,10 +97,11 @@ pub(crate) fn register(mut grid: GridPlotter, n: usize, j: usize, traj: usize) -
     &LevyDiffusion::new(
       0.01,
       0.2,
+      1.0,
+      ScalarNormal::new(0.0, 0.08),
       n,
       Some(0.0),
       Some(1.0),
-      normal_cpoisson(1.0, n, 0.08),
       Unseeded,
     ),
     "Jump: Levy Diffusion",

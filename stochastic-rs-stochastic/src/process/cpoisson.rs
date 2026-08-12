@@ -45,6 +45,59 @@ where
   }
 }
 
+/// Core of [`CompoundPoisson::sample_grid_increments`], parameterized
+/// explicitly over `lambda`/`distribution`/`seed` instead of reading them
+/// off `&self`. Exists so a caller that must supply a fresh, chunk-local
+/// seed rather than a shared `self.seed` — e.g. a jump-diffusion
+/// `sampler()` that pre-derives one basis per chunk to stay reproducible
+/// under `sample_par` without racing other chunks on a shared atomic (see
+/// [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou),
+/// [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion)) — can
+/// drive the identical computation without owning a whole
+/// [`CompoundPoisson`]. Behavior-identical to, and the sole body of,
+/// [`CompoundPoisson::sample_grid_increments`].
+pub(crate) fn grid_increments<T, D, S>(
+  distribution: &D,
+  lambda: T,
+  seed: &S,
+  n: usize,
+  dt: T,
+) -> Array1<T>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  S: SeedExt,
+{
+  let mut increments = Array1::<T>::zeros(n);
+  if n <= 1 {
+    return increments;
+  }
+
+  let lambda_dt = (lambda * dt).to_f64().unwrap();
+  assert!(
+    lambda_dt.is_finite(),
+    "CompoundPoisson: lambda * dt must be finite (got lambda={}, dt={})",
+    lambda.to_f64().unwrap_or(f64::NAN),
+    dt.to_f64().unwrap_or(f64::NAN),
+  );
+  if lambda_dt <= 0.0 {
+    return increments;
+  }
+
+  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  let mut rng = seed.rng();
+  for i in 1..n {
+    let jump_count = poisson.sample(&mut rng);
+    let mut jump_sum = T::zero();
+    for _ in 0..jump_count {
+      jump_sum += distribution.sample(&mut rng);
+    }
+    increments[i] = jump_sum;
+  }
+
+  increments
+}
+
 impl<T, D, S: SeedExt> CompoundPoisson<T, D, S>
 where
   T: FloatExt,
@@ -55,34 +108,7 @@ where
   /// The returned array has length `n`, with `increments[0] = 0` and
   /// `increments[i]` holding the sum of jump sizes over `((i-1)dt, i*dt]`.
   pub fn sample_grid_increments(&self, n: usize, dt: T) -> Array1<T> {
-    let mut increments = Array1::<T>::zeros(n);
-    if n <= 1 {
-      return increments;
-    }
-
-    let lambda_dt = (self.poisson.lambda * dt).to_f64().unwrap();
-    assert!(
-      lambda_dt.is_finite(),
-      "CompoundPoisson: lambda * dt must be finite (got lambda={}, dt={})",
-      self.poisson.lambda.to_f64().unwrap_or(f64::NAN),
-      dt.to_f64().unwrap_or(f64::NAN),
-    );
-    if lambda_dt <= 0.0 {
-      return increments;
-    }
-
-    let poisson = SimdPoisson::<u32>::new(lambda_dt, &self.seed);
-    let mut rng = self.seed.rng();
-    for i in 1..n {
-      let jump_count = poisson.sample(&mut rng);
-      let mut jump_sum = T::zero();
-      for _ in 0..jump_count {
-        jump_sum += self.distribution.sample(&mut rng);
-      }
-      increments[i] = jump_sum;
-    }
-
-    increments
+    grid_increments(&self.distribution, self.poisson.lambda, &self.seed, n, dt)
   }
 
   #[inline]

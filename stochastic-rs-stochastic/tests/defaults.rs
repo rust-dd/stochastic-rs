@@ -6,7 +6,6 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
@@ -26,7 +25,6 @@ use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
-use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -114,16 +112,18 @@ fn theta05(_t: f64) -> f64 {
 /// than forking it, so the clone replays the identical path if sampled
 /// before either side draws anything else.
 ///
-/// `Merton`/`Kou` are intentionally absent: their `cpoisson` field type is
-/// `CompoundPoisson<T, D>`, which fixes *that* field's own seed strategy to
-/// `Unseeded` regardless of the outer process's `S` (pre-existing, documented
-/// on `Merton::cpoisson` — "never seed-reproducible even though the
-/// diffusion component is"). `x.sample() != x.sample()` already holds for
-/// the very same instance before `Clone` enters the picture at all, so
-/// bit-exact `Clone` equality is not a meaningful assertion for these two;
-/// `merton_and_kou_jump_component_is_not_seed_reproducible` below pins that
-/// pre-existing behavior instead so the exclusion is not mistaken for an
-/// oversight.
+/// `Merton`/`Kou` are included below (they were excluded before the
+/// zero-exception-reproducibility wave's Task 1: their `cpoisson` field
+/// type was `CompoundPoisson<T, D>`, fixing *that* field's own seed
+/// strategy to `Unseeded` regardless of the outer process's `S`, so
+/// `x.sample() != x.sample()` held for the very same instance before
+/// `Clone` even entered the picture). `new()` now builds `cpoisson`
+/// internally from the same `seed: S` passed in, so `#[derive(Clone)]`'s
+/// plain field-wise clone of `seed` — the mechanism this test otherwise
+/// exercises uniformly — snapshots the jump component's reproducibility
+/// exactly as it always did the diffusion's. A nonzero-intensity jump
+/// distribution is used for both so the jump half is actually exercised,
+/// not short-circuited to an all-zero, RNG-free array.
 #[test]
 fn clone_preserves_deterministic_path() {
   let a = Gbm::<f64, _>::new(0.05, 0.2, N, Some(100.0), Some(1.0), Deterministic::new(42));
@@ -341,41 +341,36 @@ fn clone_preserves_deterministic_path() {
   let [s2, v2] = b.sample();
   assert_eq!(bits(&s1), bits(&s2));
   assert_eq!(bits(&v1), bits(&v2));
-}
 
-/// Pins the pre-existing (not introduced by this task) reason `Merton`/`Kou`
-/// are excluded from `clone_preserves_deterministic_path` above: their
-/// `cpoisson` field type fixes *that* field's own seed strategy to
-/// `Unseeded` regardless of the process's own seed, so even the *same*
-/// instance's own `.sample()` is not repeatable — a fact `Clone` cannot
-/// change either way. See `Merton::cpoisson`'s field doc. `Clone` itself
-/// still derives and still works structurally (finite output, correct
-/// length) on both — only the bit-exact seed-replay assertion above does
-/// not apply to them. `Kou` is constructed explicitly here (not via
-/// `Default`, which it does not have — see its struct doc) with the same
-/// `ScalarNormal` stand-in `Merton::default()` uses, purely to exercise
-/// this structural property on both `CompoundPoisson`-driven jump types.
-#[test]
-fn merton_and_kou_jump_component_is_not_seed_reproducible() {
-  let a = Merton::<f64, ScalarNormal<f64>>::default();
-  assert_ne!(bits(&a.sample()), bits(&a.sample()));
-  assert!(ok(&a.clone().sample()));
-
-  let a = Kou::<f64, _>::new(
+  // `Merton`/`Kou`: see this function's module doc for why these two were
+  // excluded before the zero-exception-reproducibility wave's Task 1, and
+  // why a nonzero-intensity jump distribution is used here (proves the
+  // jump component specifically, not just the diffusion).
+  let a = Merton::new(
     0.03,
     0.2,
     1.0,
     0.0,
+    ScalarNormal::new(0.0, 0.1),
     N,
     Some(0.0),
     Some(1.0),
-    CompoundPoisson::new(
-      ScalarNormal::new(0.0, 0.12),
-      Poisson::new(1.0, Some(N), Some(1.0), Unseeded),
-      Unseeded,
-    ),
-    Unseeded,
+    Deterministic::new(42),
   );
-  assert_ne!(bits(&a.sample()), bits(&a.sample()));
-  assert!(ok(&a.clone().sample()));
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
+
+  let a = Kou::new(
+    0.03,
+    0.2,
+    1.0,
+    0.0,
+    ScalarNormal::new(0.0, 0.12),
+    N,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(42),
+  );
+  let b = a.clone();
+  assert_eq!(bits(&a.sample()), bits(&b.sample()));
 }
