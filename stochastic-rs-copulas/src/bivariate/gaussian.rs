@@ -108,11 +108,6 @@ impl BivariateExt for GaussianCopula {
     self.theta = Some(theta);
   }
 
-  /// Gaussian copula is **not** Archimedean — no scalar generator.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err("Gaussian copula is not Archimedean — generator not defined".into())
-  }
-
   /// Density $c(u,v) = (1-\rho^2)^{-1/2}\exp\{-(\rho^2(x^2+y^2) -
   /// 2\rho xy)/(2(1-\rho^2))\}$ with $x = \Phi^{-1}(u)$, $y = \Phi^{-1}(v)$
   /// — the ratio of the bivariate normal density to the product of its

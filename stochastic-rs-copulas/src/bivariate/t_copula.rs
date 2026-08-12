@@ -225,11 +225,6 @@ impl BivariateExt for TCopula {
     self.theta = Some(theta);
   }
 
-  /// t-copula is **not** Archimedean — no scalar generator.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err("t-copula is not Archimedean — generator not defined".into())
-  }
-
   fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
@@ -563,5 +558,14 @@ mod tests {
     assert_eq!(c.nu(), 4.0, "a failed set_nu must not mutate the field");
     assert!(c.set_nu(6.0).is_ok());
     assert_eq!(c.nu(), 6.0);
+  }
+
+  /// `generator` has no override in this family, so this exercises
+  /// `BivariateExt::generator`'s trait-default body directly.
+  #[test]
+  fn t_copula_generator_returns_err_not_archimedean() {
+    let c = TCopula::with_nu(4.0);
+    let t = array![0.5_f64, 0.8];
+    assert!(c.generator(&t).is_err());
   }
 }

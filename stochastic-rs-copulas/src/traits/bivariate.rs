@@ -101,7 +101,23 @@ pub trait BivariateExt {
     }
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  /// Archimedean generator $\varphi_\theta(t)$, satisfying $C(u,v) =
+  /// \varphi^{-1}(\varphi(u) + \varphi(v))$. Overridden with a closed form
+  /// by the six Archimedean families (AMH, Clayton, Frank, Gumbel,
+  /// Independence, Joe); every other family has no Archimedean
+  /// representation, so the default here — derived from `r#type()`'s
+  /// `Debug` label — returns the anchored
+  /// `"<Type> is not Archimedean — generator not defined"` without each
+  /// family hand-writing an identical stub.
+  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+    Err(
+      format!(
+        "{:?} is not Archimedean — generator not defined",
+        self.r#type()
+      )
+      .into(),
+    )
+  }
 
   fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     self.sample_with_uniform(
@@ -272,5 +288,82 @@ pub trait BivariateExt {
     let out = self.partial_derivative(&X);
 
     Ok(*out?.get(0).unwrap())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+
+  use super::*;
+
+  /// Minimal non-Archimedean stand-in that does **not** override
+  /// `generator` at all — proves the trait-default body (not any family's
+  /// own hand-written stub) is what actually answers the call.
+  struct DummyNonArchimedean;
+
+  impl BivariateExt for DummyNonArchimedean {
+    fn r#type(&self) -> BivariateCopulaType {
+      BivariateCopulaType::Fgm
+    }
+
+    fn tau(&self) -> Option<f64> {
+      None
+    }
+
+    fn set_tau(&mut self, _tau: f64) {}
+
+    fn theta(&self) -> Option<f64> {
+      None
+    }
+
+    fn theta_bounds(&self) -> (f64, f64) {
+      (-1.0, 1.0)
+    }
+
+    fn invalid_thetas(&self) -> Vec<f64> {
+      vec![]
+    }
+
+    fn set_theta(&mut self, _theta: f64) {}
+
+    fn compute_theta(&self) -> f64 {
+      0.0
+    }
+
+    fn tail_dependence(&self) -> TailDependence<f64> {
+      TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      }
+    }
+
+    fn pdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+      Err("not implemented for DummyNonArchimedean".into())
+    }
+
+    fn cdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+      Err("not implemented for DummyNonArchimedean".into())
+    }
+  }
+
+  /// `generator()`'s default body — reached here by a type that has no
+  /// override whatsoever — returns the anchored "<Type> is not Archimedean
+  /// — generator not defined" message built from `r#type()`'s `Debug`
+  /// label, matching the pattern the 7 real non-Archimedean families used
+  /// to hand-write individually.
+  #[test]
+  fn generator_default_returns_anchored_not_archimedean_err() {
+    let dummy = DummyNonArchimedean;
+    let t = array![0.5_f64, 0.8];
+    let msg = dummy.generator(&t).unwrap_err().to_string();
+    assert!(
+      msg.contains("is not Archimedean — generator not defined"),
+      "unexpected message: {msg}"
+    );
+    assert!(
+      msg.starts_with("Fgm"),
+      "expected the r#type() Debug label as prefix, got: {msg}"
+    );
   }
 }

@@ -143,11 +143,6 @@ impl BivariateExt for HuslerReiss {
     self.theta = Some(theta);
   }
 
-  /// Hüsler-Reiss is **not** Archimedean — no scalar generator.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err("Hüsler-Reiss is not Archimedean — generator not defined".into())
-  }
-
   /// Density $c(u,v) = C(u,v) / (uv) \cdot [\Phi(\alpha)\Phi(\beta) +
   /// (\lambda/2)\varphi(\alpha)/y]$ with $x = -\ln u$, $y = -\ln v$,
   /// $\alpha = 1/\lambda + (\lambda/2)\ln(x/y)$, $\beta = 2/\lambda -
@@ -417,5 +412,14 @@ mod tests {
       near_one_a < 0.1,
       "lambda=1.5 v->1- limit should be close to 0, got {near_one_a}"
     );
+  }
+
+  /// `generator` has no override in this family, so this exercises
+  /// `BivariateExt::generator`'s trait-default body directly.
+  #[test]
+  fn hr_generator_returns_err_not_archimedean() {
+    let c = HuslerReiss::new();
+    let t = array![0.5_f64, 0.8];
+    assert!(c.generator(&t).is_err());
   }
 }

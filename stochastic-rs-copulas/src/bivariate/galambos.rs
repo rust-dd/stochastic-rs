@@ -130,11 +130,6 @@ impl BivariateExt for Galambos {
     self.theta = Some(theta);
   }
 
-  /// Galambos is **not** Archimedean — no scalar generator.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err("Galambos is not Archimedean — generator not defined".into())
-  }
-
   /// Density via the closed-form chain-rule derivation
   /// $c(u,v) = C(u,v)/(uv) \cdot [g(x,y) + (\theta+1)\,T^{2\theta+1}/(xy)^{\theta+1}]$
   /// where $x = -\ln u$, $y = -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$,
@@ -398,5 +393,14 @@ mod tests {
       a > 0.9,
       "theta=1.5 v->0+ limit should be close to 1, got {a}"
     );
+  }
+
+  /// `generator` has no override in this family, so this exercises
+  /// `BivariateExt::generator`'s trait-default body directly.
+  #[test]
+  fn galambos_generator_returns_err_not_archimedean() {
+    let c = Galambos::new();
+    let t = array![0.5_f64, 0.8];
+    assert!(c.generator(&t).is_err());
   }
 }

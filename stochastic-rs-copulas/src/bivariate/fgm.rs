@@ -81,11 +81,6 @@ impl BivariateExt for Fgm {
     self.theta = Some(theta);
   }
 
-  /// FGM is **not** an Archimedean copula; the generator is undefined.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err("FGM is not Archimedean — generator not defined".into())
-  }
-
   /// Density $c(u,v) = 1 + \theta(1 - 2u)(1 - 2v)$.
   fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;

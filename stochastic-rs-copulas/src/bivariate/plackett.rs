@@ -106,11 +106,6 @@ impl BivariateExt for Plackett {
     self.theta = Some(theta);
   }
 
-  /// Plackett is **not** Archimedean; the generator is undefined.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err("Plackett is not Archimedean — generator not defined".into())
-  }
-
   /// Density (Nelsen 2006 eq.3.3.8):
   /// $c(u,v) = \frac{\theta [1 + (\theta-1)(u + v - 2 u v)]}{\{[1 + (\theta-1)(u + v)]^2 - 4 u v \theta (\theta - 1)\}^{3/2}}$.
   fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {

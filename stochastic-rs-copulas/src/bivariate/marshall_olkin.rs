@@ -140,11 +140,6 @@ impl BivariateExt for MarshallOlkin {
     self.beta = None;
   }
 
-  /// Marshall-Olkin is **not** Archimedean — no generator.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err("Marshall-Olkin is not Archimedean — generator not defined".into())
-  }
-
   /// Overrides the default `theta`-only guard: a legitimate
   /// [`MarshallOlkin::with_alpha_beta`] construction leaves `theta` as
   /// `None`, which the generic check would otherwise misreport as unfit —
@@ -424,5 +419,14 @@ mod tests {
       c.partial_derivative(&x).is_err(),
       "partial_derivative must Err, not panic, when unfit"
     );
+  }
+
+  /// `generator` has no override in this family, so this exercises
+  /// `BivariateExt::generator`'s trait-default body directly.
+  #[test]
+  fn marshall_olkin_generator_returns_err_not_archimedean() {
+    let c = MarshallOlkin::with_alpha_beta(0.5, 0.3);
+    let t = array![0.5_f64, 0.8];
+    assert!(c.generator(&t).is_err());
   }
 }

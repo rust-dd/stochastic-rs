@@ -655,3 +655,21 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   (`Bates1996`/`RoughHeston`/`JumpFou`/`JumpFOUCustom`'s diffusion) and the
   already-tracked `Fgn`/`Fbm` `sample_par` batched-backend gap, both
   unchanged by this entry.
+
+### stochastic-rs-copulas: default the generator method
+
+- `BivariateExt::generator` is no longer a required method. It now has a
+  default body — `Err("{r#type():?} is not Archimedean — generator not
+  defined")` — so the 7 non-Archimedean families (FGM, Gaussian,
+  Hüsler-Reiss, Galambos, Plackett, Student-t, Marshall-Olkin) no longer
+  hand-write an identical stub; each deleted its own copy and now falls
+  through to the default. This is additive for external implementors (a
+  required method became optional), but the exact `Err` message text
+  changes for 5 of the 7 families whose old hand-written string didn't
+  match their `CopulaType`'s `Debug` label verbatim: `"FGM …"` → `"Fgm
+  …"`, `"Gaussian copula …"` → `"Gaussian …"`, `"Hüsler-Reiss …"` →
+  `"HuslerReiss …"`, `"t-copula …"` → `"TCopula …"`, `"Marshall-Olkin …"`
+  → `"MarshallOlkin …"` (Galambos and Plackett were already identical to
+  their Debug label and are unchanged). Code matching on the old exact
+  strings should match on the `"is not Archimedean — generator not
+  defined"` suffix instead.
