@@ -187,15 +187,16 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// `self.seed.derive()` directly and borrows `fgn` only for its `Arc`-shared
 /// FFT plan/eigenvalues. It is fully reproducible too now.
 ///
-/// [`Merton`](crate::jump::merton::Merton) and
-/// [`Bates1996`](crate::jump::bates::Bates1996) remain genuine partial
-/// exceptions, both structurally pinned the same way: a public
-/// `cpoisson: CompoundPoisson<T, D>` field defaulting to `Unseeded`
+/// [`Merton`](crate::jump::merton::Merton),
+/// [`Bates1996`](crate::jump::bates::Bates1996), [`Kou`](crate::jump::kou::Kou)
+/// and [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) remain
+/// genuine partial exceptions, all sharing one shape: a public
+/// `cpoisson: CompoundPoisson<T, D>` field structurally pinned to `Unseeded`
 /// (widening it to `CompoundPoisson<T, D, S>` would be a breaking change to
 /// a public field), while each type's diffusion component correctly
-/// consults `self.seed`. So both have reproducible diffusion but
-/// never-reproducible jump arrivals/sizes — not fixed here. See
-/// MIGRATION.md.
+/// consults `self.seed`. So all four have reproducible diffusion but
+/// never-reproducible jump arrivals/sizes — not fixed for any of them here.
+/// See MIGRATION.md.
 ///
 /// Same seed + same `m` ⇒ bit-identical output on any machine, any
 /// thread-pool size, and any chunking of `m` (chunks need not each hold

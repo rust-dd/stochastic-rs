@@ -63,6 +63,13 @@ where
   pub t: Option<T>,
   /// Compound-Poisson jump driver generating the double-exponential
   /// log-jump sizes.
+  /// **Partial exception to [`ProcessExt`]'s reproducibility guarantee:**
+  /// hard-wired to `Unseeded` (default `S`) by pre-existing design — the
+  /// same shape as [`Merton`](crate::jump::merton::Merton)'s field of the
+  /// same name — so the jump arrivals/sizes are never seed-reproducible
+  /// even though the diffusion component below (driven by `self.seed`) is.
+  /// See MIGRATION.md and [`ProcessExt`]'s trait-level reproducibility
+  /// section.
   pub cpoisson: CompoundPoisson<T, D>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,

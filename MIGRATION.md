@@ -829,6 +829,36 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   diffusion makes it **fully** seed-reproducible — removed from the
   exception list in `traits/process.rs` entirely.
 
+### stochastic-rs-stochastic: `Kou` and `LevyDiffusion` join `Merton`'s documented partial-exception group
+
+- **Doc-only — no behavior change.** `Kou` and `LevyDiffusion` have
+  `Merton`'s exact partial-exception shape (line-for-line: `KouSampler`/
+  `LevyDiffusionSampler::fill_path` are themselves near-identical to
+  `MertonSampler::fill_path`) and always did: a `pub cpoisson:
+  CompoundPoisson<T, D>` field structurally pinned to `Unseeded`, so jump
+  arrivals/sizes are never seed-reproducible even though each type's
+  diffusion component (a `SimdNormal` built from `&self.seed` in
+  `sampler()`) is. Neither was named in any type doc, the `ProcessExt`
+  trait doc, or MIGRATION.md before this entry — an omission, not a design
+  decision. Both now carry the same field-level doc `Merton::cpoisson`
+  already had, and both are named in `traits/process.rs`'s partial-exception
+  paragraph alongside `Merton` and `Bates1996`.
+
+### stochastic-rs-stochastic: exception list, final state after this wave
+
+- **Full exception (no randomness reachable from `self.seed` at all):**
+  `JumpFou` only. `Bates1996` and `RoughHeston` were incorrectly listed
+  here in an earlier entry in this file; both are corrected above.
+- **Partial exception (diffusion reproducible, jump arrivals/sizes not, via
+  a `pub cpoisson: CompoundPoisson<T, D>` field structurally pinned to
+  `Unseeded`):** `Merton`, `Bates1996`, `Kou`, `LevyDiffusion`.
+- **No exception (fully seed-reproducible) as of this wave:** every other
+  process in the crate, including `RoughHeston` and `JumpFOUCustom`, both
+  corrected/fixed above, and `Fgn`/`Fbm`, whose own `sample_par` overrides
+  are now thread-count independent on the `Cpu`/`Accelerate` backends (GPU
+  backends excluded from the guarantee, documented on `device.rs`'s
+  `Backend` trait).
+
 ### stochastic-rs-copulas: default the generator method
 
 - `BivariateExt::generator` is no longer a required method. It now has a
