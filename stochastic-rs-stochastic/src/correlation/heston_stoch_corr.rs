@@ -33,6 +33,9 @@ use crate::traits::ProcessExt;
 /// The log-price Cholesky decomposition (Eq. 2.7 with ρ₁=0):
 ///
 /// dx = (r−½v)dt + ρ_t√v dW̃^ν + ρ₂√v dW̃^ρ + √(1−ρ_t²−ρ₂²)√v dW̃^x
+///
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `HestonStochCorr::new(..).with_kappa_v(2.5).with_rho2(-0.4)`.
 #[derive(Debug, Clone)]
 pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
   // Market
@@ -107,6 +110,90 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
       t,
       seed,
     }
+  }
+
+  /// Replace `r`, all else unchanged.
+  pub fn with_r(mut self, r: T) -> Self {
+    self.r = r;
+    self
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: T) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `v0`, all else unchanged.
+  pub fn with_v0(mut self, v0: T) -> Self {
+    self.v0 = v0;
+    self
+  }
+
+  /// Replace `kappa_v`, all else unchanged.
+  pub fn with_kappa_v(mut self, kappa_v: T) -> Self {
+    self.kappa_v = kappa_v;
+    self
+  }
+
+  /// Replace `mu_v`, all else unchanged.
+  pub fn with_mu_v(mut self, mu_v: T) -> Self {
+    self.mu_v = mu_v;
+    self
+  }
+
+  /// Replace `sigma_v`, all else unchanged.
+  pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
+    self.sigma_v = sigma_v;
+    self
+  }
+
+  /// Replace `rho0`, all else unchanged.
+  pub fn with_rho0(mut self, rho0: T) -> Self {
+    self.rho0 = rho0;
+    self
+  }
+
+  /// Replace `kappa_r`, all else unchanged.
+  pub fn with_kappa_r(mut self, kappa_r: T) -> Self {
+    self.kappa_r = kappa_r;
+    self
+  }
+
+  /// Replace `mu_r`, all else unchanged.
+  pub fn with_mu_r(mut self, mu_r: T) -> Self {
+    self.mu_r = mu_r;
+    self
+  }
+
+  /// Replace `sigma_r`, all else unchanged.
+  pub fn with_sigma_r(mut self, sigma_r: T) -> Self {
+    self.sigma_r = sigma_r;
+    self
+  }
+
+  /// Replace `rho2`, all else unchanged.
+  pub fn with_rho2(mut self, rho2: T) -> Self {
+    self.rho2 = rho2;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 

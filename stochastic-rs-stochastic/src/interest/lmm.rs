@@ -81,6 +81,10 @@ use crate::traits::ProcessExt;
 /// Drift-coupled LIBOR Market Model (BGM/Jamshidian) under the spot-LIBOR
 /// measure. See module header for the precise scope, dynamics and
 /// references.
+///
+/// Every field has a matching `with_*` builder setter (in addition to
+/// [`with_correlation`](Lmm::with_correlation)), e.g.
+/// `Lmm::new(..).with_steps(200).with_horizon(Some(1.5))`.
 pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Tenor dates `T_0 < T_1 < … < T_M`, length `M+1`. Strictly increasing.
   pub tenor: Array1<T>,
@@ -139,6 +143,74 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
       "correlation cols must equal number of Libors"
     );
     self.chol = Some(cholesky_lower(&rho));
+    self
+  }
+
+  /// Replace `tenor`. Panics if the new tenor has fewer than two dates or
+  /// is not strictly increasing — the same checks `new(...)` runs on its
+  /// own `tenor` argument. Does not cross-check `tenor.len() - 1` against
+  /// `l0`/`sigma`'s *current* length: eagerly doing so would make it
+  /// impossible to ever change the Libor count via chained setters (every
+  /// ordering of `.with_tenor(..).with_l0(..).with_sigma(..)` has an
+  /// intermediate state where exactly one of the three hasn't caught up
+  /// yet). A leftover mismatch by the time `.sample()` runs still panics
+  /// there, same as indexing a too-short array inside `Lmm::new`'s own
+  /// equivalent misuse would.
+  pub fn with_tenor(mut self, tenor: Array1<T>) -> Self {
+    assert!(tenor.len() >= 2, "tenor must have at least two dates");
+    for i in 0..tenor.len() - 1 {
+      assert!(tenor[i + 1] > tenor[i], "tenor must be strictly increasing");
+    }
+    self.tenor = tenor;
+    self
+  }
+
+  /// Replace `l0`. Panics if any entry is not strictly positive. If the new
+  /// `l0` has a different length than the current one, the cached
+  /// correlation Cholesky factor `chol` (if any) is no longer
+  /// shape-compatible and cannot be recomputed from public fields alone —
+  /// only the original `rho` matrix determines it, and that matrix is not
+  /// retained after [`with_correlation`](Lmm::with_correlation) decomposes
+  /// it — so it is invalidated (reset to `None`, the identity-correlation
+  /// default) rather than left stale. A same-length replacement leaves
+  /// `chol` untouched, since its value never depended on `l0`'s contents,
+  /// only its length.
+  pub fn with_l0(mut self, l0: Array1<T>) -> Self {
+    for &v in l0.iter() {
+      assert!(v > T::zero(), "initial Libor L_n(0) must be positive");
+    }
+    let shape_changed = l0.len() != self.l0.len();
+    self.l0 = l0;
+    if shape_changed {
+      self.chol = None;
+    }
+    self
+  }
+
+  /// Replace `sigma`. Panics if any entry is negative.
+  pub fn with_sigma(mut self, sigma: Array1<T>) -> Self {
+    for &v in sigma.iter() {
+      assert!(v >= T::zero(), "volatility σ_n must be non-negative");
+    }
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace the number of simulation grid points `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
     self
   }
 }

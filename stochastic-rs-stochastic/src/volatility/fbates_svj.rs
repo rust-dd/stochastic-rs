@@ -27,6 +27,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `FBatesSvj::new(..).with_hurst(0.15).with_rho(-0.4)`.
 pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   /// Hurst exponent controlling roughness (H ∈ (0, 0.5) for rough).
   pub hurst: T,
@@ -92,6 +94,92 @@ impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
       t,
       seed,
     }
+  }
+
+  /// Replace `hurst`, all else unchanged. `FBatesSvj` has no persisted
+  /// correlated-noise cache (`sampler()` builds `cgns` fresh from `rho`,
+  /// `n`, `t` on every call), so every setter here is a plain field write.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    self.hurst = hurst;
+    self
+  }
+
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: T) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `v0`, all else unchanged.
+  pub fn with_v0(mut self, v0: T) -> Self {
+    self.v0 = v0;
+    self
+  }
+
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    self.theta = theta;
+    self
+  }
+
+  /// Replace `kappa`, all else unchanged.
+  pub fn with_kappa(mut self, kappa: T) -> Self {
+    self.kappa = kappa;
+    self
+  }
+
+  /// Replace `xi`, all else unchanged.
+  pub fn with_xi(mut self, xi: T) -> Self {
+    self.xi = xi;
+    self
+  }
+
+  /// Replace `rho`, all else unchanged.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    self.rho = rho;
+    self
+  }
+
+  /// Replace `lambda`, all else unchanged.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace `nu`, all else unchanged.
+  pub fn with_nu(mut self, nu: T) -> Self {
+    self.nu = nu;
+    self
+  }
+
+  /// Replace `omega`, all else unchanged.
+  pub fn with_omega(mut self, omega: T) -> Self {
+    self.omega = omega;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 

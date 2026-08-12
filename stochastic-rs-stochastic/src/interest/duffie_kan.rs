@@ -18,6 +18,9 @@ use crate::traits::ProcessExt;
 /// `alpha`/`beta`/`gamma`) are the concrete, fixed-numeric form of the
 /// module header's abstract `K(Θ-X)dt+√(A+BX)dW` — see each field's own
 /// doc for exactly which term it multiplies.
+///
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `DuffieKan::new(..).with_rho(-0.5).with_sigma1(0.02)`.
 pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded> {
   /// Diffusion-loading coefficient on `r_t`, shared between both factors'
   /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
@@ -106,6 +109,116 @@ impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
       seed,
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
+  }
+
+  /// Replace `alpha`, all else unchanged.
+  pub fn with_alpha(mut self, alpha: T) -> Self {
+    self.alpha = alpha;
+    self
+  }
+
+  /// Replace `beta`, all else unchanged.
+  pub fn with_beta(mut self, beta: T) -> Self {
+    self.beta = beta;
+    self
+  }
+
+  /// Replace `gamma`, all else unchanged.
+  pub fn with_gamma(mut self, gamma: T) -> Self {
+    self.gamma = gamma;
+    self
+  }
+
+  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
+  /// (`cgns`) so the new correlation actually reaches the sampler instead
+  /// of a stale one computed from the old `rho`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    self.rho = rho;
+    self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace `a1`, all else unchanged.
+  pub fn with_a1(mut self, a1: T) -> Self {
+    self.a1 = a1;
+    self
+  }
+
+  /// Replace `b1`, all else unchanged.
+  pub fn with_b1(mut self, b1: T) -> Self {
+    self.b1 = b1;
+    self
+  }
+
+  /// Replace `c1`, all else unchanged.
+  pub fn with_c1(mut self, c1: T) -> Self {
+    self.c1 = c1;
+    self
+  }
+
+  /// Replace `sigma1`, all else unchanged.
+  pub fn with_sigma1(mut self, sigma1: T) -> Self {
+    self.sigma1 = sigma1;
+    self
+  }
+
+  /// Replace `a2`, all else unchanged.
+  pub fn with_a2(mut self, a2: T) -> Self {
+    self.a2 = a2;
+    self
+  }
+
+  /// Replace `b2`, all else unchanged.
+  pub fn with_b2(mut self, b2: T) -> Self {
+    self.b2 = b2;
+    self
+  }
+
+  /// Replace `c2`, all else unchanged.
+  pub fn with_c2(mut self, c2: T) -> Self {
+    self.c2 = c2;
+    self
+  }
+
+  /// Replace `sigma2`, all else unchanged.
+  pub fn with_sigma2(mut self, sigma2: T) -> Self {
+    self.sigma2 = sigma2;
+    self
+  }
+
+  /// Replace `r0`, all else unchanged.
+  pub fn with_r0(mut self, r0: Option<T>) -> Self {
+    self.r0 = r0;
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the cached
+  /// correlated-Gaussian generator, whose length and step size derive
+  /// from `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the cached
+  /// correlated-Gaussian generator's step size, which derives from `t`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 

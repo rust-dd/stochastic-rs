@@ -31,6 +31,8 @@ fn validate_drift_args<T: FloatExt>(
   }
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Bates1996::new(..).with_lambda(0.8).with_rho(-0.4)`.
 pub struct Bates1996<T, D, S: SeedExt = Unseeded>
 where
   T: FloatExt,
@@ -132,6 +134,123 @@ where
       cpoisson,
       seed,
     }
+  }
+
+  /// Replace `mu`; re-validates that a drift specification still exists.
+  pub fn with_mu(mut self, mu: Option<T>) -> Self {
+    self.mu = mu;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
+    self
+  }
+
+  /// Replace `b`; re-validates that a drift specification still exists.
+  pub fn with_b(mut self, b: Option<T>) -> Self {
+    self.b = b;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
+    self
+  }
+
+  /// Replace `r`; re-validates that a drift specification still exists.
+  pub fn with_r(mut self, r: Option<T>) -> Self {
+    self.r = r;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
+    self
+  }
+
+  /// Replace `r_f`; re-validates that a drift specification still exists.
+  pub fn with_r_f(mut self, r_f: Option<T>) -> Self {
+    self.r_f = r_f;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
+    self
+  }
+
+  /// Replace `lambda`, all else unchanged.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace `k`, all else unchanged.
+  pub fn with_k(mut self, k: T) -> Self {
+    self.k = k;
+    self
+  }
+
+  /// Replace `alpha`, all else unchanged.
+  pub fn with_alpha(mut self, alpha: T) -> Self {
+    self.alpha = alpha;
+    self
+  }
+
+  /// Replace `beta`, all else unchanged.
+  pub fn with_beta(mut self, beta: T) -> Self {
+    self.beta = beta;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
+  /// (`cgns`) so the new correlation actually reaches the sampler instead
+  /// of a stale one computed from the old `rho`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    self.rho = rho;
+    self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `v0`, all else unchanged.
+  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+    if let Some(v) = v0 {
+      assert!(v >= T::zero(), "v0 must be non-negative");
+    }
+    self.v0 = v0;
+    self
+  }
+
+  /// Replace `use_sym`, all else unchanged.
+  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
+    self.use_sym = use_sym;
+    self
+  }
+
+  /// Replace the compound-Poisson jump driver, all else unchanged.
+  pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D>) -> Self {
+    self.cpoisson = cpoisson;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the cached
+  /// correlated-Gaussian generator, whose length and step size derive
+  /// from `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the cached
+  /// correlated-Gaussian generator's step size, which derives from `t`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 
@@ -440,60 +559,9 @@ impl PyBates {
   }
 }
 
+// Split out to keep this file under the project's 600-line cap (this type
+// now carries a full set of `with_*` builder setters on top of the model
+// itself). Same pattern as `volatility/bates_svj.rs`.
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_distributions::scalar::ScalarNormal;
-
-  use super::*;
-  use crate::process::poisson::Poisson;
-
-  fn make_bates(
-    mu: Option<f64>,
-    b: Option<f64>,
-    r: Option<f64>,
-    r_f: Option<f64>,
-  ) -> Bates1996<f64, ScalarNormal<f64>> {
-    let cpoisson = CompoundPoisson::new(
-      ScalarNormal::new(0.0, 1.0),
-      Poisson::new(1.0, Some(8), Some(1.0), Unseeded),
-      Unseeded,
-    );
-    Bates1996::new(
-      mu,
-      b,
-      r,
-      r_f,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      8,
-      Some(1.0),
-      Some(0.0),
-      Some(1.0),
-      Some(false),
-      cpoisson,
-      Unseeded,
-    )
-  }
-
-  #[test]
-  fn effective_drift_prefers_r_minus_rf_when_present() {
-    let p = make_bates(Some(0.9), Some(0.7), Some(0.4), Some(0.1));
-    assert!((p.effective_drift() - 0.3).abs() < 1e-12);
-  }
-
-  #[test]
-  fn effective_drift_uses_b_if_rates_missing() {
-    let p = make_bates(Some(0.9), Some(0.7), None, None);
-    assert!((p.effective_drift() - 0.7).abs() < 1e-12);
-  }
-
-  #[test]
-  fn effective_drift_falls_back_to_mu() {
-    let p = make_bates(Some(0.9), None, None, None);
-    assert!((p.effective_drift() - 0.9).abs() < 1e-12);
-  }
-}
+#[path = "bates_tests.rs"]
+mod tests;

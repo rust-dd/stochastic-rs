@@ -35,6 +35,9 @@ use crate::traits::ProcessExt;
 /// The two variance factors are assumed independent of each other; only
 /// within a factor is there a correlation between the stock shock and the
 /// variance shock ($\rho_1$ and $\rho_2$).
+///
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `DoubleHeston::new(..).with_kappa1(2.5).with_rho2(-0.4)`.
 pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded> {
   /// Initial stock price.
   pub s0: Option<T>,
@@ -127,6 +130,127 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
       cgns1: Cgns::new(rho1, n - 1, t, Unseeded),
       cgns2: Cgns::new(rho2, n - 1, t, Unseeded),
     }
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `v1_0`, all else unchanged.
+  pub fn with_v1_0(mut self, v1_0: Option<T>) -> Self {
+    if let Some(v) = v1_0 {
+      assert!(v >= T::zero(), "v1_0 must be non-negative");
+    }
+    self.v1_0 = v1_0;
+    self
+  }
+
+  /// Replace `v2_0`, all else unchanged.
+  pub fn with_v2_0(mut self, v2_0: Option<T>) -> Self {
+    if let Some(v) = v2_0 {
+      assert!(v >= T::zero(), "v2_0 must be non-negative");
+    }
+    self.v2_0 = v2_0;
+    self
+  }
+
+  /// Replace `kappa1`, all else unchanged.
+  pub fn with_kappa1(mut self, kappa1: T) -> Self {
+    assert!(kappa1 >= T::zero(), "kappa1 must be non-negative");
+    self.kappa1 = kappa1;
+    self
+  }
+
+  /// Replace `theta1`, all else unchanged.
+  pub fn with_theta1(mut self, theta1: T) -> Self {
+    assert!(theta1 >= T::zero(), "theta1 must be non-negative");
+    self.theta1 = theta1;
+    self
+  }
+
+  /// Replace `sigma1`, all else unchanged.
+  pub fn with_sigma1(mut self, sigma1: T) -> Self {
+    assert!(sigma1 >= T::zero(), "sigma1 must be non-negative");
+    self.sigma1 = sigma1;
+    self
+  }
+
+  /// Replace `rho1`; rebuilds the first factor's cached correlated-Gaussian
+  /// generator (`cgns1`) so the new correlation actually reaches the
+  /// sampler instead of a stale one computed from the old `rho1`.
+  pub fn with_rho1(mut self, rho1: T) -> Self {
+    self.rho1 = rho1;
+    self.cgns1 = Cgns::new(rho1, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace `kappa2`, all else unchanged.
+  pub fn with_kappa2(mut self, kappa2: T) -> Self {
+    assert!(kappa2 >= T::zero(), "kappa2 must be non-negative");
+    self.kappa2 = kappa2;
+    self
+  }
+
+  /// Replace `theta2`, all else unchanged.
+  pub fn with_theta2(mut self, theta2: T) -> Self {
+    assert!(theta2 >= T::zero(), "theta2 must be non-negative");
+    self.theta2 = theta2;
+    self
+  }
+
+  /// Replace `sigma2`, all else unchanged.
+  pub fn with_sigma2(mut self, sigma2: T) -> Self {
+    assert!(sigma2 >= T::zero(), "sigma2 must be non-negative");
+    self.sigma2 = sigma2;
+    self
+  }
+
+  /// Replace `rho2`; rebuilds the second factor's cached correlated-Gaussian
+  /// generator (`cgns2`) so the new correlation actually reaches the
+  /// sampler instead of a stale one computed from the old `rho2`.
+  pub fn with_rho2(mut self, rho2: T) -> Self {
+    self.rho2 = rho2;
+    self.cgns2 = Cgns::new(rho2, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds both cached
+  /// correlated-Gaussian generators, whose lengths and step sizes derive
+  /// from `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self.cgns1 = Cgns::new(self.rho1, n - 1, self.t, Unseeded);
+    self.cgns2 = Cgns::new(self.rho2, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds both cached
+  /// correlated-Gaussian generators' step sizes, which derive from `t`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.cgns1 = Cgns::new(self.rho1, self.n - 1, t, Unseeded);
+    self.cgns2 = Cgns::new(self.rho2, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace `use_sym`, all else unchanged.
+  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
+    self.use_sym = use_sym;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 

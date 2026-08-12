@@ -27,6 +27,9 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Heston + Kou Double-Exponential jump-diffusion process.
+///
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `Hkde::new(..).with_lambda(0.8).with_rho(-0.4)`.
 pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate (or risk-free rate minus dividend yield).
   pub mu: T,
@@ -107,6 +110,112 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
       seed,
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
+  }
+
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `kappa`, all else unchanged.
+  pub fn with_kappa(mut self, kappa: T) -> Self {
+    self.kappa = kappa;
+    self
+  }
+
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    self.theta = theta;
+    self
+  }
+
+  /// Replace `sigma_v`, all else unchanged.
+  pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
+    self.sigma_v = sigma_v;
+    self
+  }
+
+  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
+  /// (`cgns`) so the new correlation actually reaches the sampler instead
+  /// of a stale one computed from the old `rho`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho >= -T::one() && rho <= T::one(),
+      "rho must be in [-1, 1]"
+    );
+    self.rho = rho;
+    self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace `v0`, all else unchanged.
+  pub fn with_v0(mut self, v0: T) -> Self {
+    self.v0 = v0;
+    self
+  }
+
+  /// Replace `lambda`, all else unchanged.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    assert!(lambda >= T::zero(), "lambda must be >= 0");
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace `p_up`, all else unchanged.
+  pub fn with_p_up(mut self, p_up: T) -> Self {
+    self.p_up = p_up;
+    self
+  }
+
+  /// Replace `eta1`, all else unchanged.
+  pub fn with_eta1(mut self, eta1: T) -> Self {
+    assert!(eta1 > T::one(), "eta1 must be > 1 for finite expectation");
+    self.eta1 = eta1;
+    self
+  }
+
+  /// Replace `eta2`, all else unchanged.
+  pub fn with_eta2(mut self, eta2: T) -> Self {
+    assert!(eta2 > T::zero(), "eta2 must be > 0");
+    self.eta2 = eta2;
+    self
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `use_sym`, all else unchanged.
+  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
+    self.use_sym = use_sym;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the cached
+  /// correlated-Gaussian generator, whose length and step size derive
+  /// from `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the cached
+  /// correlated-Gaussian generator's step size, which derives from `t`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 

@@ -38,6 +38,8 @@ fn validate_drift_args<T: FloatExt>(
   }
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `BatesSvj::new(..).with_lambda(0.8).with_rho(-0.4)`.
 pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
@@ -125,6 +127,123 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
       seed,
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
+  }
+
+  /// Replace `mu`; re-validates that a drift specification still exists.
+  pub fn with_mu(mut self, mu: Option<T>) -> Self {
+    self.mu = mu;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
+    self
+  }
+
+  /// Replace `b`; re-validates that a drift specification still exists.
+  pub fn with_b(mut self, b: Option<T>) -> Self {
+    self.b = b;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
+    self
+  }
+
+  /// Replace `r`; re-validates that a drift specification still exists.
+  pub fn with_r(mut self, r: Option<T>) -> Self {
+    self.r = r;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
+    self
+  }
+
+  /// Replace `r_f`; re-validates that a drift specification still exists.
+  pub fn with_r_f(mut self, r_f: Option<T>) -> Self {
+    self.r_f = r_f;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
+    self
+  }
+
+  /// Replace `lambda`, all else unchanged.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    assert!(lambda >= T::zero(), "lambda must be >= 0");
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace `nu`, all else unchanged.
+  pub fn with_nu(mut self, nu: T) -> Self {
+    self.nu = nu;
+    self
+  }
+
+  /// Replace `omega`, all else unchanged.
+  pub fn with_omega(mut self, omega: T) -> Self {
+    assert!(omega >= T::zero(), "omega must be >= 0");
+    self.omega = omega;
+    self
+  }
+
+  /// Replace `alpha`, all else unchanged.
+  pub fn with_alpha(mut self, alpha: T) -> Self {
+    self.alpha = alpha;
+    self
+  }
+
+  /// Replace `beta`, all else unchanged.
+  pub fn with_beta(mut self, beta: T) -> Self {
+    self.beta = beta;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
+  /// (`cgns`) so the new correlation actually reaches the sampler instead
+  /// of a stale one computed from the old `rho`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    self.rho = rho;
+    self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `v0`, all else unchanged.
+  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+    self.v0 = v0;
+    self
+  }
+
+  /// Replace `use_sym`, all else unchanged.
+  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
+    self.use_sym = use_sym;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the cached
+  /// correlated-Gaussian generator, whose length and step size derive
+  /// from `n`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the cached
+  /// correlated-Gaussian generator's step size, which derives from `t`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 
@@ -285,132 +404,13 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BatesSvjSampler<T, S> {
   }
 }
 
+// Split out to keep this file under the project's 600-line cap (this type
+// now carries a full set of `with_*` builder setters on top of the model
+// itself). Same pattern as
+// `stochastic-rs-quant/src/pricing/malliavin_thalmaier/engine/delta.rs`.
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn variance_stays_non_negative() {
-    let p = BatesSvj::new(
-      Some(0.05_f64),
-      None,
-      None,
-      None,
-      0.5,
-      -0.1,
-      0.2,
-      0.04,
-      1.5,
-      0.3,
-      -0.7,
-      256,
-      Some(100.0),
-      Some(0.04),
-      Some(1.0),
-      Some(false),
-      Unseeded,
-    );
-    let [_s, v] = p.sample();
-    assert!(v.iter().all(|x| *x >= 0.0));
-  }
-
-  #[test]
-  fn price_stays_positive() {
-    let p = BatesSvj::new(
-      Some(0.05_f64),
-      None,
-      None,
-      None,
-      0.5,
-      -0.1,
-      0.2,
-      0.04,
-      1.5,
-      0.3,
-      -0.7,
-      256,
-      Some(100.0),
-      Some(0.04),
-      Some(1.0),
-      Some(false),
-      Unseeded,
-    );
-    let [s, _v] = p.sample();
-    assert!(s.iter().all(|x| *x > 0.0));
-  }
-
-  #[test]
-  fn drift_prefers_r_minus_rf() {
-    let p = BatesSvj::new(
-      Some(0.9_f64),
-      Some(0.7),
-      Some(0.4),
-      Some(0.1),
-      0.5,
-      0.0,
-      0.1,
-      0.04,
-      1.5,
-      0.3,
-      -0.5,
-      8,
-      Some(1.0),
-      Some(0.04),
-      Some(1.0),
-      None,
-      Unseeded,
-    );
-    assert!((p.drift() - 0.3).abs() < 1e-12);
-  }
-
-  #[test]
-  fn drift_uses_b_if_rates_missing() {
-    let p = BatesSvj::new(
-      Some(0.9_f64),
-      Some(0.7),
-      None,
-      None,
-      0.5,
-      0.0,
-      0.1,
-      0.04,
-      1.5,
-      0.3,
-      -0.5,
-      8,
-      Some(1.0),
-      Some(0.04),
-      Some(1.0),
-      None,
-      Unseeded,
-    );
-    assert!((p.drift() - 0.7).abs() < 1e-12);
-  }
-
-  #[test]
-  fn drift_falls_back_to_mu() {
-    let p = BatesSvj::new(
-      Some(0.9_f64),
-      None,
-      None,
-      None,
-      0.5,
-      0.0,
-      0.1,
-      0.04,
-      1.5,
-      0.3,
-      -0.5,
-      8,
-      Some(1.0),
-      Some(0.04),
-      Some(1.0),
-      None,
-      Unseeded,
-    );
-    assert!((p.drift() - 0.9).abs() < 1e-12);
-  }
-}
+#[path = "bates_svj_tests.rs"]
+mod tests;
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]

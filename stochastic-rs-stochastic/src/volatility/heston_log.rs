@@ -35,6 +35,8 @@ fn validate_drift_args<T: FloatExt>(
   }
 }
 
+/// Every field has a matching `with_*` builder setter, e.g.
+/// `HestonLog::new(..).with_kappa(2.0).with_rho(-0.4)`.
 pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
@@ -112,6 +114,108 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
       use_sym,
       seed,
     }
+  }
+
+  /// Replace `mu`; re-validates that a drift specification still exists.
+  pub fn with_mu(mut self, mu: Option<T>) -> Self {
+    self.mu = mu;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
+    self
+  }
+
+  /// Replace `b`; re-validates that a drift specification still exists.
+  pub fn with_b(mut self, b: Option<T>) -> Self {
+    self.b = b;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
+    self
+  }
+
+  /// Replace `r`; re-validates that a drift specification still exists.
+  pub fn with_r(mut self, r: Option<T>) -> Self {
+    self.r = r;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
+    self
+  }
+
+  /// Replace `r_f`; re-validates that a drift specification still exists.
+  pub fn with_r_f(mut self, r_f: Option<T>) -> Self {
+    self.r_f = r_f;
+    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
+    self
+  }
+
+  /// Replace `kappa`, all else unchanged.
+  pub fn with_kappa(mut self, kappa: T) -> Self {
+    assert!(kappa >= T::zero(), "kappa must be >= 0");
+    self.kappa = kappa;
+    self
+  }
+
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    assert!(theta >= T::zero(), "theta must be >= 0");
+    self.theta = theta;
+    self
+  }
+
+  /// Replace `xi`, all else unchanged.
+  pub fn with_xi(mut self, xi: T) -> Self {
+    assert!(xi >= T::zero(), "xi must be >= 0");
+    self.xi = xi;
+    self
+  }
+
+  /// Replace `rho`, all else unchanged. `HestonLog` has no persisted
+  /// correlated-noise cache (`sampler()` builds its Gaussian streams fresh
+  /// from `rho` on every call), so unlike `BatesSvj`/`Hkde` this is a plain
+  /// field write.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho >= -T::one() && rho <= T::one(),
+      "rho must be in [-1, 1]"
+    );
+    self.rho = rho;
+    self
+  }
+
+  /// Replace `s0`, all else unchanged.
+  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `v0`, all else unchanged.
+  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+    if let Some(v) = v0 {
+      assert!(v >= T::zero(), "v0 must be >= 0");
+    }
+    self.v0 = v0;
+    self
+  }
+
+  /// Replace `use_sym`, all else unchanged.
+  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
+    self.use_sym = use_sym;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`, all else unchanged.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self
+  }
+
+  /// Replace the simulation horizon `t`, all else unchanged.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
   }
 }
 
