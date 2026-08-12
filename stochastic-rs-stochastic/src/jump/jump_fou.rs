@@ -10,30 +10,32 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
-use crate::noise::fgn::FgnSampler;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// **`self.seed` is a documented exception to [`ProcessExt`]'s reproducibility
-/// guarantee: it is never consulted.** The diffusion driver
-/// (`fgn: Fgn<T, Unseeded, B>`) and the default `cpoisson: CompoundPoisson<T,
-/// D>` (`S = Unseeded`) are both hard-wired to `Unseeded` by pre-existing
-/// design, so no randomness in `sample`/`sample_par`/`sample_map` derives
-/// from `self.seed` at all — two identically-`Deterministic`-seeded
-/// `JumpFou`s produce different output. `self.seed` is retained on the
-/// struct only for API-shape consistency with the rest of the crate. Fixing
-/// this would require widening the public `cpoisson: CompoundPoisson<T, D>`
-/// field to `CompoundPoisson<T, D, S>` (a breaking API change accepted by
-/// callers who construct their own `CompoundPoisson`), so it is documented
-/// here rather than fixed; see MIGRATION.md and
-/// [`ProcessExt`]'s trait-level reproducibility section.
+/// The private `fgn: Fgn<T, Unseeded, B>` field is never consulted for its
+/// own seed — `sampler()` builds a plain [`SimdNormal`] from
+/// `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT plan
+/// and eigenvalues, the same pattern
+/// [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
+/// [`Fbm`](crate::process::fbm::Fbm) use for their own embedded,
+/// permanently-`Unseeded` `fgn`. The diffusion component is therefore fully
+/// seed-reproducible. **Partial exception to [`ProcessExt`]'s
+/// reproducibility guarantee** remains only through `cpoisson` — see that
+/// field's own doc below. (This was previously documented as a *full*
+/// exception — "no randomness derives from `self.seed` at all" — on the
+/// grounds that `fgn` was hard-wired to `Unseeded`; that was true of the
+/// field's *value* but not, as first claimed, unfixable: the field is
+/// private, so rewiring how it's used is non-breaking, exactly as for
+/// `JumpFOUCustom`'s identical shape.)
 pub struct JumpFou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -59,11 +61,18 @@ where
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Compound-Poisson jump driver adding `dJ_t` on top of the fOU path.
+  /// **Partial exception to [`ProcessExt`]'s reproducibility guarantee:**
+  /// hard-wired to `Unseeded` (default `S`) by pre-existing design — the
+  /// same shape as [`Merton`](crate::jump::merton::Merton)'s field of the
+  /// same name — so the jump arrivals/sizes are never seed-reproducible
+  /// even though the diffusion component (the private `fgn` field, driven
+  /// by `self.seed`) is. See MIGRATION.md and [`ProcessExt`]'s trait-level
+  /// reproducibility section.
   pub cpoisson: CompoundPoisson<T, D>,
   fgn: Fgn<T, Unseeded, B>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). **Not
-  /// currently consulted by `sample`/`sample_par`/`sample_map`** — see the
-  /// struct-level documentation.
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Drives
+  /// the diffusion component only — see `cpoisson`'s doc above for the
+  /// remaining exception.
   pub seed: S,
 }
 
@@ -111,12 +120,12 @@ where
   where
     Self: 's;
 
+  /// Owns a Gaussian source derived from `self.seed` (not `fgn.sampler()`,
+  /// which would build it from `fgn`'s own permanently-`Unseeded` field —
+  /// see the type doc) and borrows `fgn` (for its `Arc`-shared FFT
+  /// plan/eigenvalues only) and the compound-Poisson jump driver, re-drawn
+  /// per fill exactly as the legacy `sample()` did.
   fn sampler(&self) -> JumpFouSampler<'_, T, D, B> {
-    // Owns the fractional-noise sampler (which reproduces `fgn.sample()` on its
-    // first call and reuses the `Arc`-shared FFT plan) and borrows the
-    // compound-Poisson jump driver, re-drawn per fill exactly as the legacy
-    // `sample()` did. The fGn and jump seed sources are independent, so the
-    // first fill reproduces the legacy stream bit-for-bit.
     JumpFouSampler {
       n: self.n,
       theta: self.theta,
@@ -124,15 +133,17 @@ where
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
       dt: self.fgn.dt(),
-      fgn_sampler: self.fgn.sampler(),
+      fgn: &self.fgn,
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
       cpoisson: &self.cpoisson,
     }
   }
 }
 
-/// Reusable [`JumpFou`] sampling state: owns the fractional-noise sampler and
-/// borrows the compound-Poisson jump driver, so a Monte-Carlo loop pays the
-/// fGn `SimdNormal` setup once and reuses the FFT plan.
+/// Reusable [`JumpFou`] sampling state: borrows `fgn` for its `Arc`-shared
+/// FFT plan/eigenvalues and the compound-Poisson jump driver, and owns the
+/// Gaussian source, so a Monte-Carlo loop pays the fGn `SimdNormal` setup
+/// once and reuses the FFT plan.
 #[doc(hidden)]
 pub struct JumpFouSampler<'a, T, D, B>
 where
@@ -146,7 +157,8 @@ where
   sigma: T,
   x0: T,
   dt: T,
-  fgn_sampler: FgnSampler<'a, T, Unseeded, B>,
+  fgn: &'a Fgn<T, Unseeded, B>,
+  normal: SimdNormal<T>,
   cpoisson: &'a CompoundPoisson<T, D>,
 }
 
@@ -161,7 +173,10 @@ where
       return;
     }
 
-    let fgn = &self.fgn_sampler.sample();
+    let mut fgn = Array1::<T>::zeros(self.fgn.out_len);
+    self
+      .fgn
+      .fill_cpu(&mut self.normal, fgn.as_slice_mut().unwrap());
     let jump_increments = self.cpoisson.sample_grid_increments(out.len(), self.dt);
 
     out[0] = self.x0;
