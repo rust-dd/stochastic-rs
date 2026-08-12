@@ -10,6 +10,7 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 // `Cir2F` needs two full `Cir<T, S>` sub-processes — the crate's most
 // constructor-heavy type — pulled in from the diffusion family.
 use stochastic_rs_stochastic::diffusion::cir::Cir;
@@ -78,7 +79,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     Some(0.03),
     Some(1.0),
     Some(false),
-    s.clone()
+    s.derive()
   ),
   Cir::new(
     1.2,
@@ -88,7 +89,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     Some(0.02),
     Some(1.0),
     Some(false),
-    s.clone()
+    s.derive()
   ),
   fn1d_a as fn(f64) -> f64,
   s

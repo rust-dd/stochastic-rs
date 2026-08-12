@@ -1137,6 +1137,75 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `lambda = 0` counterfactual (same `k`) diverging on the price path proves
   the pin is not diffusion-only.
 
+### stochastic-rs-stochastic: `Cir2F`'s outer seed is now authoritative
+
+- **`Cir2F` was the last instance of the pre-wave `Merton(cpoisson)` shape,
+  found by this wave's own closing review, one module outside the `jump/`
+  sweep that found the other five.** `Cir2F::new(x, y, phi, seed)` built its
+  sampler as `self.x.sampler()`/`self.y.sampler()` and never read
+  `self.seed` at all — the two pre-built `Cir` sub-processes' own seeds
+  drove every sampled value, and the outer `seed` argument (and
+  `c.seed.reseed(k)`) was dead. Measured before the fix:
+  `Cir2F::new(Cir(seed=7), Cir(seed=8), phi, Deterministic::new(42))` and
+  the identical construction with `Deterministic::new(999_999)` produced
+  bit-identical output; keeping the outer seed at `42` but changing the
+  sub-seeds to `12345`/`12346` changed the output.
+- Fix: `new` now overwrites `x.seed`/`y.seed` with two independent children
+  derived from the outer `seed` (`seed.derive()`, called twice in sequence
+  — never `clone()`, which is a non-advancing snapshot and would leave both
+  factors replaying the identical stream), discarding whatever seed the
+  caller built the two `Cir`s with.
+- **`new` keeps taking pre-built `Cir<T, S>` factors rather than absorbing
+  their constructor parameters the way Task 1 absorbed `CompoundPoisson`'s.**
+  Each factor's κ/θ/σ/`x0`/`use_sym` is independently meaningful and worth
+  keeping addressable as a standalone `Cir` — unlike a jump driver, which is
+  pure plumbing with no standalone identity worth preserving — and
+  flattening both factors' seven non-seed fields into `Cir2F::new` would
+  roughly double `Cir::new`'s own arity for no readability benefit. Only
+  seeding is taken over; parameterization stays delegated.
+- Before/after call site — behavior-breaking, not signature-breaking (the
+  call still compiles unchanged; only which seed controls the output
+  changes, so a `#[should_panic]`-style migration note does not apply —
+  this is a silent behavior change any pinned-output caller must re-check):
+
+  ```rust
+  // Before — the *sub*-Cir seeds actually drove output; Cir2F::new's own
+  // `seed` argument was never read.
+  let x = Cir::new(1.0, 0.03, 0.1, 252, Some(0.03), Some(1.0), Some(false), Deterministic::new(7));
+  let y = Cir::new(1.2, 0.02, 0.1, 252, Some(0.02), Some(1.0), Some(false), Deterministic::new(8));
+  let r = Cir2F::new(x, y, phi as fn(f64) -> f64, Deterministic::new(42)); // 42 was never read
+
+  // After — Cir2F::new's own `seed` is authoritative; the sub-Cirs' own
+  // constructor seed value is discarded and replaced with an independent
+  // derived child (any value works there — `Deterministic::new(0)` below
+  // is a placeholder, not a driver of anything).
+  let x = Cir::new(1.0, 0.03, 0.1, 252, Some(0.03), Some(1.0), Some(false), Deterministic::new(0));
+  let y = Cir::new(1.2, 0.02, 0.1, 252, Some(0.02), Some(1.0), Some(false), Deterministic::new(0));
+  let r = Cir2F::new(x, y, phi as fn(f64) -> f64, Deterministic::new(42)); // now drives both factors
+  ```
+
+- No golden test pinned `Cir2F`'s stream before this fix (confirmed by
+  grepping `tests/sampler_v3_golden.rs` and every `stochastic-rs-stochastic`
+  test file for `Cir2F`), so no re-pin was needed.
+- Two new tests in `interest/cir_2f.rs`, each written to fail if the fix
+  were reverted: `outer_seed_is_authoritative_over_sub_seeds` (two `Cir2F`s
+  differing only in outer seed must differ; two differing only in the
+  sub-`Cir`s' seeds must not) and `factors_are_independent_streams` (`x`
+  and `y`, built with identical parameters, must sample different paths —
+  proof the two derived children are genuinely independent streams, not one
+  stream reused twice).
+- `tests/reproducibility_all_processes/interest.rs`'s `cir_2f` guard case
+  built both sub-`Cir`s from `s.clone()` — a non-advancing snapshot of the
+  same outer seed passed to both, so the two factors consumed the identical
+  Gaussian shock sequence: correlated noise, not the module doc's own
+  independent `W^1`/`W^2`, i.e. a degenerate stand-in for a real two-factor
+  CIR model. Changed to `s.derive()` per factor so the guarded instance
+  matches the documented model. This does not change whether the guard's
+  own assertions pass (fresh-vs-fresh bit-identity and thread-count
+  independence are relative properties, unaffected either way, and no
+  golden test pins this guard's specific output) — it only makes the
+  guarded construction itself correct.
+
 ### stochastic-rs-copulas: default the generator method
 
 - `BivariateExt::generator` is no longer a required method. It now has a

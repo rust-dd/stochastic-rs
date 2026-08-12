@@ -18,21 +18,40 @@ use crate::traits::ProcessExt;
 
 pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
   /// First CIR factor `x_t` (own κ₁/θ₁/σ₁ carried inside the wrapped
-  /// [`Cir`]).
+  /// [`Cir`]). [`new`](Self::new) overwrites this factor's `seed` field with
+  /// an independent child derived from the outer `seed` — whatever seed the
+  /// `Cir` was constructed with is discarded, so the outer `seed` is the
+  /// single source of truth for both factors' randomness.
   pub x: Cir<T, S>,
   /// Second CIR factor `y_t` (own κ₂/θ₂/σ₂ carried inside the wrapped
-  /// [`Cir`]).
+  /// [`Cir`]). Same seed-overwrite behavior as [`x`](Self::x) — [`new`](Self::new)
+  /// assigns it its own independent child, derived from the outer `seed`
+  /// right after `x`'s, so the two factors never share a stream.
   pub y: Cir<T, S>,
   /// Deterministic time-dependent shift φ(t) added to `x_t + y_t` so the
   /// output short rate `r_t = x_t + y_t + φ(t)` can be fitted to an
   /// initial term structure (shift extension, as in CIR++).
   pub phi: Fn1D<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Authoritative: [`new`](Self::new) derives `x`'s and `y`'s own seeds
+  /// from this value (two independent children, in that order), overwriting
+  /// whatever seed the caller constructed `x`/`y` with.
   pub seed: S,
 }
 
 impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
-  pub fn new(x: Cir<T, S>, y: Cir<T, S>, phi: impl Into<Fn1D<T>>, seed: S) -> Self {
+  /// `x` and `y` are taken pre-built (rather than absorbing their
+  /// constructor parameters, the way `Merton`/`Kou`/`LevyDiffusion` absorbed
+  /// `CompoundPoisson`'s) because each factor's own parameter set — κ, θ,
+  /// σ, `x0`, `use_sym` — is independently meaningful and worth keeping
+  /// addressable as a standalone [`Cir`], unlike a jump driver that is pure
+  /// plumbing; flattening both factors' fields into one constructor would
+  /// roughly double `Cir::new`'s own arity for no benefit. What `new` does
+  /// take over is seeding: `x.seed` and `y.seed` are overwritten with two
+  /// independent children derived from `seed` (`derive()`, never `clone()`,
+  /// so the factors run mutually uncorrelated streams — see the `x`/`y`
+  /// field docs), so the outer `seed` is the only seed that matters.
+  pub fn new(mut x: Cir<T, S>, mut y: Cir<T, S>, phi: impl Into<Fn1D<T>>, seed: S) -> Self {
     assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
     if let (Some(tx), Some(ty)) = (x.t, y.t) {
       assert!(
@@ -40,6 +59,8 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
         "x and y Cir factors must use the same time horizon"
       );
     }
+    x.seed = seed.derive();
+    y.seed = seed.derive();
     Self {
       x,
       y,
@@ -110,6 +131,8 @@ impl<T: FloatExt> PathSampler<T> for Cir2FSampler<T> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   fn phi_fn(t: f64) -> f64 {
@@ -152,5 +175,98 @@ mod tests {
       Unseeded,
     );
     let _ = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
+  }
+
+  fn cir_pair(seed_x: u64, seed_y: u64) -> (Cir<f64, Deterministic>, Cir<f64, Deterministic>) {
+    (
+      Cir::new(
+        1.0,
+        0.03,
+        0.1,
+        32,
+        Some(0.03),
+        Some(1.0),
+        Some(false),
+        Deterministic::new(seed_x),
+      ),
+      Cir::new(
+        1.2,
+        0.02,
+        0.1,
+        32,
+        Some(0.02),
+        Some(1.0),
+        Some(false),
+        Deterministic::new(seed_y),
+      ),
+    )
+  }
+
+  /// Would fail if the fix were reverted: pre-fix, `Cir2F::sampler()` called
+  /// `self.x.sampler()`/`self.y.sampler()` directly and never read
+  /// `self.seed`, so the *sub*-`Cir`s' own seeds drove all of the output and
+  /// the outer `Cir2F::new` seed argument was dead.
+  #[test]
+  fn outer_seed_is_authoritative_over_sub_seeds() {
+    let (x1, y1) = cir_pair(7, 8);
+    let a = Cir2F::new(x1, y1, phi_fn as fn(f64) -> f64, Deterministic::new(42)).sample();
+
+    let (x2, y2) = cir_pair(7, 8);
+    let b = Cir2F::new(
+      x2,
+      y2,
+      phi_fn as fn(f64) -> f64,
+      Deterministic::new(999_999),
+    )
+    .sample();
+    assert_ne!(a, b, "changing only the outer seed must change the output");
+
+    let (x3, y3) = cir_pair(12_345, 12_346);
+    let c = Cir2F::new(x3, y3, phi_fn as fn(f64) -> f64, Deterministic::new(42)).sample();
+    assert_eq!(
+      a, c,
+      "changing only the sub-Cir seeds must not change the output"
+    );
+  }
+
+  /// Would fail if `new` derived one child seed and reused it for both `x`
+  /// and `y` instead of deriving two: with identical Cir parameters on both
+  /// factors, a shared stream would make the two factors' paths identical.
+  #[test]
+  fn factors_are_independent_streams() {
+    let same_params = || {
+      Cir::new(
+        1.0_f64,
+        0.04,
+        0.2,
+        64,
+        Some(0.05),
+        Some(1.0),
+        Some(false),
+        Deterministic::new(0),
+      )
+    };
+    let model = Cir2F::new(
+      same_params(),
+      same_params(),
+      phi_fn as fn(f64) -> f64,
+      Deterministic::new(42),
+    );
+
+    assert_ne!(
+      model.x.seed.current(),
+      model.y.seed.current(),
+      "x and y must receive independently derived seeds, not the same one twice"
+    );
+
+    let mut x_only = same_params();
+    x_only.seed = model.x.seed.clone();
+    let mut y_only = same_params();
+    y_only.seed = model.y.seed.clone();
+    assert_ne!(
+      x_only.sample(),
+      y_only.sample(),
+      "x and y must be independent streams, not one stream reused twice"
+    );
   }
 }
