@@ -143,6 +143,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
   }
 }
 
+/// U(0, 1) — matches this file's own [`SimdUniform::unit`] constructor for
+/// the standard uniform distribution.
+impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdUniform<T, R> {
+  fn default() -> Self {
+    Self::unit()
+  }
+}
+
 impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdUniform<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.low, self.low + self.scale, &Unseeded)

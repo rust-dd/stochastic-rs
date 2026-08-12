@@ -38,6 +38,16 @@ impl Frank {
   }
 }
 
+/// Unfit placeholder (`theta = tau = None`) — matches the zero-arg
+/// `new()`-equivalent shape of this crate's other 11 bivariate families
+/// (e.g. `Clayton::default()`); delegates to [`Frank::new`] so it can never
+/// drift from what that constructor already produces.
+impl Default for Frank {
+  fn default() -> Self {
+    Self::new(None, None)
+  }
+}
+
 impl BivariateExt for Frank {
   fn r#type(&self) -> CopulaType {
     self.r#type

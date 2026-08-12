@@ -477,6 +477,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdExp<T, R> {
   }
 }
 
+/// Exp(1) — the standard exponential; matches this file's own module doc
+/// ("Generates Exp(1) samples internally, then scales by 1/lambda").
+impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdExp<T, R> {
+  fn default() -> Self {
+    Self::new(T::one(), &Unseeded)
+  }
+}
+
 impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdExp<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.inner.lambda, &Unseeded)

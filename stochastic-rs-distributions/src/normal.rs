@@ -401,6 +401,13 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
   }
 }
 
+/// N(0, 1) — the standard normal distribution.
+impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Default for SimdNormal<T, N, R> {
+  fn default() -> Self {
+    Self::new(T::zero(), T::one(), &Unseeded)
+  }
+}
+
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Clone for SimdNormal<T, N, R> {
   fn clone(&self) -> Self {
     // Cloning a stochastic source means "give me an independent stream", so

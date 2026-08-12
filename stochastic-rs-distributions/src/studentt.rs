@@ -128,6 +128,15 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
   }
 }
 
+/// ν=5 — matches this crate's own Student-t fixture used across
+/// `tests/distribution_ext_vs_reference.rs`, `benches/distributions.rs` and
+/// `benches/dist_multicore.rs`.
+impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdStudentT<T, R> {
+  fn default() -> Self {
+    Self::new(T::from(5.0).unwrap(), &Unseeded)
+  }
+}
+
 impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdStudentT<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.nu, &Unseeded)

@@ -136,6 +136,16 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
   }
 }
 
+/// LogNormal(μ=0, σ=1) — the standard log-normal, matching [`SimdNormal`]'s
+/// own N(0,1) default and this file's inner `normal` sub-sampler, which is
+/// always constructed as N(0,1) regardless of the caller's own μ,σ (see
+/// [`SimdLogNormal::new`]).
+impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdLogNormal<T, R> {
+  fn default() -> Self {
+    Self::new(T::zero(), T::one(), &Unseeded)
+  }
+}
+
 impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdLogNormal<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.mu, self.sigma, &Unseeded)

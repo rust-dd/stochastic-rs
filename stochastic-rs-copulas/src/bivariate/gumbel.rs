@@ -34,6 +34,16 @@ impl Gumbel {
   }
 }
 
+/// Unfit placeholder (`theta = tau = None`) — matches the zero-arg
+/// `new()`-equivalent shape of this crate's other 11 bivariate families
+/// (e.g. `Clayton::default()`); delegates to [`Gumbel::new`] so it can never
+/// drift from what that constructor already produces.
+impl Default for Gumbel {
+  fn default() -> Self {
+    Self::new(None, None)
+  }
+}
+
 impl BivariateExt for Gumbel {
   fn r#type(&self) -> CopulaType {
     self.r#type

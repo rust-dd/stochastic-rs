@@ -155,6 +155,15 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   }
 }
 
+/// Gamma(shape=2, scale=2) — mean 4, matching this crate's own repeated
+/// Gamma benchmark fixture (`benches/distributions.rs`,
+/// `benches/dist_multicore.rs`).
+impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdGamma<T, R> {
+  fn default() -> Self {
+    Self::new(T::from(2.0).unwrap(), T::from(2.0).unwrap(), &Unseeded)
+  }
+}
+
 impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGamma<T, R> {
   fn clone(&self) -> Self {
     Self::new(self.alpha, self.scale, &Unseeded)
