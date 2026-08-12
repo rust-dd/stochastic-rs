@@ -133,6 +133,31 @@ fn bates_variance_path_sample_par_is_thread_count_independent() {
   );
 }
 
+/// Same guarantee beyond `MAX_CHUNKS = 64`: `Bates1996` goes through
+/// `ProcessExt::sample_par`'s default (not an override, unlike `Fgn`/`Fbm`),
+/// so at `m = 256` several paths genuinely share one chunk's derived basis —
+/// the regime `m = 64` above cannot reach.
+#[test]
+fn bates_variance_path_sample_par_is_thread_count_independent_beyond_max_chunks() {
+  let m = 256;
+  let run = |threads: usize| {
+    pool(threads)
+      .install(|| bates(SEED).sample_par(m))
+      .iter()
+      .map(|[_, v]| bits_1d(v))
+      .collect::<Vec<_>>()
+  };
+
+  let r1 = run(1);
+  let r8 = run(8);
+
+  assert_eq!(r1.len(), m);
+  assert_eq!(
+    r1, r8,
+    "Bates1996 variance path sample_par diverged between 1 and 8 threads at m=256"
+  );
+}
+
 /// The still-broken half, by design: `cpoisson` stays structurally
 /// `Unseeded` (see the module doc), so the price path — which sums jump
 /// increments at every step — still varies run to run even under a pinned
@@ -187,6 +212,29 @@ fn rough_heston_sample_par_is_thread_count_independent() {
   assert_eq!(
     r1, r8,
     "RoughHeston sample_par diverged between 1 and 8 threads"
+  );
+}
+
+/// Same guarantee beyond `MAX_CHUNKS = 64` (see the `Bates1996` variant
+/// above for why this regime matters).
+#[test]
+fn rough_heston_sample_par_is_thread_count_independent_beyond_max_chunks() {
+  let m = 256;
+  let run = |threads: usize| {
+    pool(threads)
+      .install(|| rough_heston(SEED).sample_par(m))
+      .iter()
+      .map(bits_2d)
+      .collect::<Vec<_>>()
+  };
+
+  let r1 = run(1);
+  let r8 = run(8);
+
+  assert_eq!(r1.len(), m);
+  assert_eq!(
+    r1, r8,
+    "RoughHeston sample_par diverged between 1 and 8 threads at m=256"
   );
 }
 
