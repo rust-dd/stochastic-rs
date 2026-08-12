@@ -162,3 +162,24 @@ fn sabr_with_seed_matches_fresh_construction() {
     .sample();
   assert_eq!(want, got);
 }
+
+/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
+/// `sabr_base()` helper the bit-exact `cgns`-rebuild tests above need
+/// (those require literal, hand-chosen fixtures for the fresh-construction
+/// comparisons; this one exercises the wave's own headline "same model, one
+/// parameter changed" form directly). Compares via the `SabrFields` mirror,
+/// not a `Sabr { .., ..Sabr::default() }` struct-update literal: `Sabr` has
+/// a private `cgns` cache field, so that literal wouldn't even compile from
+/// this external test crate.
+#[test]
+fn sabr_default_with_beta_round_trip() {
+  let base = Sabr::<f64>::default();
+  let got = Sabr::<f64>::default().with_beta(0.5);
+  let expected = SabrFields {
+    beta: 0.5,
+    ..fields(&base)
+  };
+  assert_eq!(got.beta, 0.5);
+  assert_eq!(fields(&got), expected);
+  assert!(finite2(&got.sample()));
+}

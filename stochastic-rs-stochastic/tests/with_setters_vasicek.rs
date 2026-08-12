@@ -132,3 +132,24 @@ fn vasicek_with_seed_matches_fresh_construction() {
     .sample();
   assert_eq!(want, got);
 }
+
+/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
+/// `vasicek_base()` helper the bit-exact `ou`-rebuild tests above need
+/// (those require literal, hand-chosen fixtures for the fresh-construction
+/// comparisons; this one exercises the wave's own headline "same model, one
+/// parameter changed" form directly). Compares via the `VasicekFields`
+/// mirror, not a `Vasicek { .., ..Vasicek::default() }` struct-update
+/// literal: `Vasicek` has a private `ou` cache field, so that literal
+/// wouldn't even compile from this external test crate.
+#[test]
+fn vasicek_default_with_mu_round_trip() {
+  let base = Vasicek::<f64>::default();
+  let got = Vasicek::<f64>::default().with_mu(0.05);
+  let expected = VasicekFields {
+    mu: 0.05,
+    ..fields(&base)
+  };
+  assert_eq!(got.mu, 0.05);
+  assert_eq!(fields(&got), expected);
+  assert!(finite(&got.sample()));
+}

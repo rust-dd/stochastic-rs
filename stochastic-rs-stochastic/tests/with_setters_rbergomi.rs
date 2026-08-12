@@ -160,3 +160,24 @@ fn rb_with_seed_matches_fresh_construction() {
     .sample();
   assert_eq!(want, got);
 }
+
+/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
+/// `rb_base()` helper the bit-exact `cgns`-rebuild tests above need (those
+/// require literal, hand-chosen fixtures for the fresh-construction
+/// comparisons; this one exercises the wave's own headline "same model, one
+/// parameter changed" form directly). Compares via the `RbFields` mirror,
+/// not a `RoughBergomi { .., ..RoughBergomi::default() }` struct-update
+/// literal: `RoughBergomi` has a private `cgns` cache field, so that literal
+/// wouldn't even compile from this external test crate.
+#[test]
+fn rb_default_with_hurst_round_trip() {
+  let base = RoughBergomi::<f64>::default();
+  let got = RoughBergomi::<f64>::default().with_hurst(0.3);
+  let expected = RbFields {
+    hurst: 0.3,
+    ..fields(&base)
+  };
+  assert_eq!(got.hurst, 0.3);
+  assert_eq!(fields(&got), expected);
+  assert!(finite2(&got.sample()));
+}

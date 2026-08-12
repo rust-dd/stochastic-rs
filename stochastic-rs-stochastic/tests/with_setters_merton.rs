@@ -198,3 +198,23 @@ fn merton_with_seed_matches_fresh_construction() {
     .sample();
   assert_eq!(want, got);
 }
+
+/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
+/// `merton_base()` helper the other tests need (`Merton::new` has no
+/// default-constructible jump source of its own, so every other helper here
+/// must pass an explicit `cpoisson`). Compares via the `MertonFields`
+/// mirror, not a `Merton { .., ..Merton::default() }` struct-update
+/// literal, for consistency with the rest of this file's style (and in case
+/// a future cache field is made private).
+#[test]
+fn merton_default_with_alpha_round_trip() {
+  let base = Merton::<f64, ScalarNormal<f64>>::default();
+  let got = Merton::<f64, ScalarNormal<f64>>::default().with_alpha(0.06);
+  let expected = MertonFields {
+    alpha: 0.06,
+    ..fields(&base)
+  };
+  assert_eq!(got.alpha, 0.06);
+  assert_eq!(fields(&got), expected);
+  assert!(finite(&got.sample()));
+}

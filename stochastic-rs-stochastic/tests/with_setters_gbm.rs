@@ -127,3 +127,24 @@ fn gbm_with_seed_matches_fresh_construction() {
     .sample();
   assert_eq!(want, got);
 }
+
+/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
+/// `gbm_base()` helper the bit-exact cache tests above need (those require
+/// literal, hand-chosen fixtures for the fresh-construction comparisons;
+/// this one exercises the wave's own headline "same model, one parameter
+/// changed" form directly). Compares via the `GbmFields` mirror (not a
+/// `Gbm { .., ..Gbm::default() }` struct-update literal): `Gbm` has private
+/// cache fields (`ln_mu`/`ln_sigma`), so that literal wouldn't even compile
+/// from this external test crate.
+#[test]
+fn gbm_default_with_x0_round_trip() {
+  let base = Gbm::<f64>::default();
+  let got = Gbm::<f64>::default().with_x0(Some(50.0));
+  let expected = GbmFields {
+    x0: Some(50.0),
+    ..fields(&base)
+  };
+  assert_eq!(got.x0, Some(50.0));
+  assert_eq!(fields(&got), expected);
+  assert!(finite(&got.sample()));
+}
