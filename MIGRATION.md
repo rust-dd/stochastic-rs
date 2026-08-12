@@ -1206,6 +1206,73 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   golden test pins this guard's specific output) — it only makes the
   guarded construction itself correct.
 
+### stochastic-rs-stochastic: the reproducibility guard now asserts that a different seed changes the output
+
+- **The guard's two assertions until this commit — same-seed bit-identity
+  and thread-count invariance — cannot distinguish a correctly seeded type
+  from one whose `seed` field never reaches its output.** Two fresh
+  instances built from the *same* `Deterministic` seed agree bit-for-bit
+  whether or not the constructor actually reads that seed, and thread-count
+  invariance is a property of whatever stream *is* used, seeded or not. This
+  is exactly why the `Cir2F` defect (previous entry) was found by this
+  wave's own closing review and not by
+  `tests/reproducibility_all_processes.rs`: reverting that fix and
+  re-running `cargo test -p stochastic-rs-stochastic --test
+  reproducibility_all_processes cir_2f` still reported `ok`. The "so a
+  regression on any one type fails that test instead of waiting for another
+  ad-hoc review to notice" claim two entries above was true of the
+  coverage (all 124 types), not yet of this defect class.
+- Fix: `tests/reproducibility_all_processes/common.rs`'s `check()` gained a
+  third assertion, applied to all 124 types from this one shared function —
+  a fresh instance built from a second fixed seed (`OTHER_SEED = 43`, beside
+  the existing `SEED = 42`) must produce `.sample()` output different from
+  `SEED`'s. The failure message names both candidate causes directly: a
+  dead `seed` field, or a guard configuration where noise cannot reach the
+  output.
+- **`interest.rs`'s `cir_2f` guard case needed a second fix beyond the
+  `s.clone()` → `s.derive()` change the previous entry made.** That earlier
+  fix derived the two sub-`Cir`s' own seeds from the same `s` the guard
+  varies between `check()`'s two construction calls — so even with
+  `Cir2F::new` reverted to the pre-fix, seed-ignoring shape, changing `s`
+  still changed the sub-`Cir`s' own seeds (derived in the guard's closure,
+  before `Cir2F::new` ever runs) and therefore still changed the output,
+  letting the new discrimination assertion pass by accident. Changed the
+  two sub-`Cir`s to fixed, hardcoded seeds (`7`/`8`, matching
+  `cir_2f.rs`'s own `outer_seed_is_authoritative_over_sub_seeds` unit test)
+  so the only thing that can vary between the guard's two calls is what
+  `Cir2F::new` itself derives from the outer seed — the thing under test.
+  Verified by a destructive check: with this closure fix in place and
+  `Cir2F::new` reverted to the buggy shape (the two `x.seed = seed.derive()`
+  / `y.seed = seed.derive()` lines removed), `cir_2f` now fails with
+  "sample() was bit-identical under seed 42 and seed 43 — this type's seed
+  is not reaching its sampled output"; restored, 124/124 pass again, tree
+  clean.
+- **Two of the 124 types failed the new assertion on first run, both
+  degenerate guard configurations, not type-level bugs:**
+  - `Kimura` was guarded with `x0 = Some(0.0)`, exactly the Wright–Fisher
+    diffusion's absorbing boundary: `sigma * sqrt(x0 * (1 - x0))` is `0`
+    there, so the discretized path stays at `0` forever regardless of any
+    Gaussian draw — correct model behavior (0 and 1 are absorbing for this
+    SDE), not a sampler defect. Changed to `x0 = Some(0.5)`, an interior
+    point where the diffusion term is live.
+  - `TemperedStableSubordinator` was guarded with `c = 1.0, mu = 1.0`,
+    giving a large-jump arrival rate of ~0.123/step and a minimum-jump
+    acceptance probability of ~0.61 (`exp(-mu * epsilon)`) — low enough
+    that a fully candidate-free 23-step path has ~5.9% probability, and
+    seeds `42` and `43` both landed on one. Measured: the "failing" output
+    was bit-identical to the pure deterministic small-jump-drift term `i *
+    small_jump_drift`, with no jump contribution in either run. Changed to
+    `c = 5.0, mu = 0.3` (arrival rate ~0.615/step, minimum-jump acceptance
+    ~0.86), which drops the candidate-free-path probability to ~0.0001%.
+- No type needed a principled exception — all 124 pass the new assertion
+  with real, non-degenerate parameters. The "zero exceptions of any kind"
+  claim two entries above still holds; its "a regression on any one type
+  fails that test" clause is, from this commit, backed for this defect
+  class too.
+- Guard wall-clock: 13.8-14.0s, unchanged within noise from before this
+  change — one extra `.sample()` call per type is negligible next to the
+  existing four `sample_par` runs each type already made.
+
 ### stochastic-rs-copulas: default the generator method
 
 - `BivariateExt::generator` is no longer a required method. It now has a
