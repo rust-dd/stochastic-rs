@@ -70,7 +70,6 @@ use rand::Rng;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::gamma::SimdGamma;
-use stochastic_rs_distributions::special::ln_gamma;
 
 use super::CopulaType;
 use crate::traits::MultivariateExt;
@@ -502,15 +501,6 @@ impl MultivariateExt for NestedArchimedean {
     }
     Ok(out)
   }
-}
-
-/// Generator log-density coefficient used by the closed-form Clayton-NAC
-/// density (kept here so the test module can cross-validate the finite
-/// difference path).
-#[allow(dead_code)]
-pub(crate) fn clayton_log_density_constant(theta: f64, d: usize) -> f64 {
-  // log Γ(d + 1/θ) − log Γ(1/θ): the prefactor of the d-leaf Clayton density.
-  ln_gamma(d as f64 + 1.0 / theta) - ln_gamma(1.0 / theta)
 }
 
 #[cfg(test)]

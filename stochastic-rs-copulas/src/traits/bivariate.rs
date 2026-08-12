@@ -224,9 +224,9 @@ pub trait BivariateExt {
     self.percent_point_numerical(y, V)
   }
 
-  /// Brent-root-finding numerical inversion of
-  /// [`partial_derivative_scalar`](Self::partial_derivative_scalar) that
-  /// backs the default [`percent_point`](Self::percent_point). Exposed
+  /// Brent-root-finding numerical inversion of `partial_derivative_scalar`
+  /// (`#[doc(hidden)]`, so not itself a doc link target) that backs the
+  /// default [`percent_point`](Self::percent_point). Exposed
   /// under its own name so a family that overrides `percent_point` (to
   /// special-case a degenerate parameter, say) has a way to fall back to
   /// this generic implementation — calling `Self::percent_point` from
