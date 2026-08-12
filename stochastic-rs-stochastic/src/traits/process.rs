@@ -170,6 +170,69 @@ fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
 /// Implementor footgun: the default `sample()` routes through `sampler()`,
 /// so a sampler must never call back into `ProcessExt::sample` of the same
 /// process unless that process overrides `sample` with a real body.
+///
+/// ## `Clone` semantics
+///
+/// Every process type in this crate that implements `Clone` today does so
+/// via a plain `#[derive(Clone)]` over a `seed: S` field — there is no
+/// per-type override. For
+/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) seeds
+/// that derive clones `seed` field-wise, which resolves to
+/// `Deterministic::clone()`: a byte-for-byte copy of the seed's *current*
+/// counter into a fresh, independent `AtomicU64` (see that type's own doc —
+/// "Cloning snapshots the current state"). So whole-struct `Clone`
+/// **snapshots** the seed rather than forking it:
+///
+/// ```
+/// use stochastic_rs_core::simd_rng::Deterministic;
+/// use stochastic_rs_stochastic::diffusion::ou::Ou;
+/// use stochastic_rs_stochastic::traits::ProcessExt;
+///
+/// let a = Ou::<f64, _>::new(0.5, 0.02, 0.1, 32, Some(0.03), Some(1.0), Deterministic::new(42));
+/// let b = a.clone();
+/// // `b` snapshots `a`'s seed exactly as it stood at `.clone()`, so sampled
+/// // immediately afterward — before either side draws anything else — the
+/// // two agree bit-for-bit.
+/// assert_eq!(a.sample(), b.sample());
+/// ```
+///
+/// [`Unseeded`](stochastic_rs_core::simd_rng::Unseeded) makes the
+/// distinction moot: it carries no state, so snapshot and fork coincide,
+/// and `.sample()` still draws fresh randomness on every call regardless of
+/// how many times the process was cloned beforehand.
+///
+/// This is a deliberate choice, and it intentionally diverges from
+/// `stochastic-rs-distributions`, where `Clone` on a distribution (e.g.
+/// [`SimdNormal`](stochastic_rs_distributions::normal::SimdNormal))
+/// re-seeds independently by design ("cloning a stochastic source means
+/// 'give me an independent stream'"). The two crates answer different
+/// questions: a distribution is typically cloned to obtain an unrelated
+/// sampler, while a process is typically cloned to answer "same model, one
+/// parameter changed" — `let bumped = base.clone(); bumped.kappa += h;` —
+/// which only isolates `h`'s effect if `bumped` and `base` share the same
+/// underlying noise. That is the common-random-numbers technique behind
+/// finite-difference Greeks ([`MalliavinExt`](crate::traits::MalliavinExt))
+/// and bump-and-reprice sensitivity analysis; forking on clone would
+/// silently replace every such comparison with uncorrelated Monte Carlo
+/// noise instead of isolating the bumped parameter.
+///
+/// **Tradeoff accepted:** a caller who clones a process purely to obtain a
+/// second, *independent* simulation stream — not to bump a parameter — gets
+/// the identical-path behaviour above if they sample both sides before
+/// either has drawn anything else, which is easy to trip over silently. For
+/// an independent stream, construct a fresh seed instead of cloning
+/// (`Deterministic::new(new_seed)`, or `Unseeded`), or call
+/// [`reseed`](stochastic_rs_core::simd_rng::SeedExt::reseed) on the clone's
+/// `seed` field before sampling it.
+///
+/// Not to be confused with the *internal* rule in "Reproducibility
+/// requirement on implementors" above: that rule constrains how one
+/// process's own `sampler()` builds its per-call/per-chunk basis
+/// (`derive()`, never `clone()`, on `self.seed`, from inside a single
+/// `&self` call). This section is about the outer, whole-struct `Clone` a
+/// caller invokes once, from outside, before ever calling `sample()` — the
+/// two are unrelated, and this section's guarantee holds no matter how any
+/// individual type's `sampler()` is implemented.
 pub trait ProcessExt<T: FloatExt>: Send + Sync {
   type Output: Send;
 
