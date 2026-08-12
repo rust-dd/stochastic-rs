@@ -61,6 +61,7 @@ pub trait BivariateExt {
 
   fn compute_theta(&self) -> f64;
 
+  #[doc(hidden)]
   fn _compute_theta(&mut self) {
     self.set_theta(self.compute_theta());
     let _ = self.check_theta();
@@ -189,6 +190,7 @@ pub trait BivariateExt {
     Ok(())
   }
 
+  #[doc(hidden)]
   fn check_marginal(&self, u: &Array1<f64>) -> Result<(), String> {
     if !u.iter().all(|x| (0.0..=1.0).contains(x)) {
       return Err("Marginal values must be in the interval [0, 1]".into());
@@ -282,6 +284,7 @@ pub trait BivariateExt {
     Ok(deriv)
   }
 
+  #[doc(hidden)]
   fn partial_derivative_scalar(&self, U: f64, V: f64) -> Result<f64, Box<dyn Error>> {
     self.check_fit()?;
     let X = stack![Axis(1), Array1::from(vec![U]), Array1::from(vec![V])];
@@ -296,6 +299,7 @@ mod tests {
   use ndarray::array;
 
   use super::*;
+  use crate::bivariate::clayton::Clayton;
 
   /// Minimal non-Archimedean stand-in that does **not** override
   /// `generator` at all — proves the trait-default body (not any family's
@@ -365,5 +369,25 @@ mod tests {
       msg.starts_with("Fgm"),
       "expected the r#type() Debug label as prefix, got: {msg}"
     );
+  }
+
+  /// `#[doc(hidden)]` hides `_compute_theta` / `check_marginal` /
+  /// `partial_derivative_scalar` from rendered docs but must not restrict
+  /// who can call them — they stay reachable in-crate exactly like
+  /// `sample_with_uniform` already was. Compile-guard test: this would
+  /// stop compiling if any of the three ever became `pub(crate)` (or
+  /// otherwise less visible) by mistake.
+  #[test]
+  fn doc_hidden_methods_remain_callable_in_crate() {
+    let mut c = Clayton::new();
+    c.set_tau(0.5);
+    c._compute_theta();
+    assert!(c.theta().is_some());
+
+    let u = array![0.1_f64, 0.5, 0.9];
+    assert!(c.check_marginal(&u).is_ok());
+
+    let scalar = c.partial_derivative_scalar(0.3, 0.6).unwrap();
+    assert!((0.0..=1.0).contains(&scalar));
   }
 }

@@ -673,3 +673,13 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   their Debug label and are unchanged). Code matching on the old exact
   strings should match on the `"is not Archimedean — generator not
   defined"` suffix instead.
+
+### stochastic-rs-copulas: hide internal bivariate trait methods
+
+- `BivariateExt::{_compute_theta, check_marginal, partial_derivative_scalar}`
+  are now `#[doc(hidden)]`, matching `sample_with_uniform` (hidden in an
+  earlier wave). All three remain fully callable — `#[doc(hidden)]` only
+  removes them from rendered docs, it is not an access modifier — this
+  just signals they are internal plumbing riding the public trait vtable,
+  not part of the supported contract. No code changes needed at any call
+  site.
