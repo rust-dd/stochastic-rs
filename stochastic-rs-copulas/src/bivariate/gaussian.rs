@@ -20,7 +20,7 @@
 //! $$
 //! \Phi_2(x,y;\rho) = \Phi(x) + \Phi(y) - 1 + Q(x,y;\rho),
 //! $$
-//! where $Q(x,y;\rho) = \Pr\[X>x, Y>y\]$ is the bivariate normal upper
+//! where $Q(x,y;\rho) = \Pr\left[X>x, Y>y\right]$ is the bivariate normal upper
 //! survival probability computed by `owens_t::biv_norm` (an Owen's
 //! T-function reduction) — the crate exposes the survival form, not the
 //! CDF directly, so the inclusion-exclusion identity above bridges the two.
