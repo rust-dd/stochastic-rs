@@ -29,6 +29,7 @@ use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::special::ln_gamma;
 
 use crate::traits::FloatExt;
+use crate::volterra::VolterraKernel;
 
 /// Exponential-sum approximation of the Riemann–Liouville kernel $t^{H-1/2}$.
 #[derive(Debug, Clone)]
@@ -41,6 +42,15 @@ pub struct RlKernel<T: FloatExt> {
   pub weights: Array1<T>,
   /// Cached $\Gamma(H+1/2)$ used by the Markov-lift update formula.
   pub gamma_h_half: T,
+  /// `weights` normalised by $\Gamma(H+1/2)$: $w_l/\Gamma(H+1/2)$. Backs
+  /// the [`VolterraKernel`] impl below, so that its `weights()` and
+  /// `evaluate()` describe the same kernel $K(t) = t^{H-1/2}/\Gamma(H+1/2)$
+  /// used by the SDE in the [`rough`](crate::rough) module docs. `weights`
+  /// itself stays un-normalised because
+  /// [`MarkovLift`](crate::rough::markov_lift::MarkovLift) applies the
+  /// $1/\Gamma(H+1/2)$ factor once, outside the per-mode sum, as an
+  /// optimisation.
+  pub normalized_weights: Array1<T>,
 }
 
 impl<T: FloatExt> RlKernel<T> {
@@ -69,11 +79,15 @@ impl<T: FloatExt> RlKernel<T> {
     let (nodes_f64, weights_f64) = gen_laguerre_nodes_weights(degree, alpha);
 
     let inv_gamma_half_minus_h = 1.0 / gamma(0.5 - h_f64);
+    let inv_gamma_h_half = 1.0 / gamma(h_f64 + 0.5);
     let mut nodes = Array1::<T>::zeros(degree);
     let mut weights = Array1::<T>::zeros(degree);
+    let mut normalized_weights = Array1::<T>::zeros(degree);
     for i in 0..degree {
       nodes[i] = T::from_f64_fast(nodes_f64[i]);
-      weights[i] = T::from_f64_fast(weights_f64[i] * nodes_f64[i].exp() * inv_gamma_half_minus_h);
+      let w = weights_f64[i] * nodes_f64[i].exp() * inv_gamma_half_minus_h;
+      weights[i] = T::from_f64_fast(w);
+      normalized_weights[i] = T::from_f64_fast(w * inv_gamma_h_half);
     }
 
     Self {
@@ -81,6 +95,7 @@ impl<T: FloatExt> RlKernel<T> {
       nodes,
       weights,
       gamma_h_half: T::from_f64_fast(gamma(h_f64 + 0.5)),
+      normalized_weights,
     }
   }
 
@@ -98,6 +113,45 @@ impl<T: FloatExt> RlKernel<T> {
       acc += *w * (-*x * t).exp();
     }
     acc
+  }
+}
+
+impl<T: FloatExt> VolterraKernel<T> for RlKernel<T> {
+  fn nodes(&self) -> &Array1<T> {
+    &self.nodes
+  }
+
+  // Deliberately not `&self.weights`: this trait method's contract is the
+  // *normalised* kernel (see `normalized_weights`'s field doc), so returning
+  // the un-normalised `weights` field here would be the actual bug.
+  #[allow(clippy::misnamed_getters)]
+  fn weights(&self) -> &Array1<T> {
+    &self.normalized_weights
+  }
+
+  /// Exact closed form $K(t) = t^{H-1/2}/\Gamma(H+1/2)$ — the kernel that
+  /// the `rough` module's SDE actually uses (see the
+  /// [module docs](crate::rough)) — computed directly, **not** through the
+  /// exponential sum. The inherent [`RlKernel::evaluate`] is itself only an
+  /// approximation of $t^{H-1/2}$ (see its own docs), so routing the exact
+  /// reference value through it would make `evaluate` inherit the fit's
+  /// approximation error instead of supplying the ground truth that
+  /// [`nodes`](VolterraKernel::nodes)/[`weights`](VolterraKernel::weights)
+  /// are fitted against.
+  fn evaluate(&self, t: T) -> T {
+    t.powf(self.hurst - T::from_f64_fast(0.5)) / self.gamma_h_half
+  }
+
+  /// $\int_0^{dt} K(u)\,du = \delta t^{H+1/2}/\Gamma(H+3/2)$, the closed
+  /// form obtained by integrating $u^{H-1/2}/\Gamma(H+1/2)$ term-by-term —
+  /// this is the quantity [`MarkovLift`](crate::rough::markov_lift::MarkovLift)
+  /// hard-codes as `dt_pow_h_plus_half / gamma_h_plus_three_half`.
+  fn integral_from_zero(&self, dt: T) -> T {
+    let h_f64 = self
+      .hurst
+      .to_f64()
+      .expect("Hurst must be convertible to f64");
+    dt.powf(self.hurst + T::from_f64_fast(0.5)) / T::from_f64_fast(gamma(h_f64 + 1.5))
   }
 }
 
@@ -152,7 +206,89 @@ fn gen_laguerre_nodes_weights(n: usize, alpha: f64) -> (Vec<f64>, Vec<f64>) {
 #[cfg(test)]
 mod tests {
   use super::RlKernel;
+  use super::gamma;
   use super::gen_laguerre_nodes_weights;
+  use crate::volterra::VolterraKernel;
+
+  /// `VolterraKernel::evaluate` must be the *exact* closed-form kernel
+  /// $t^{H-1/2}/\Gamma(H+1/2)$, computed independently of both the exp-sum
+  /// fit and of `RlKernel`'s own cached `gamma_h_half` — it is the ground
+  /// truth the fit is judged against, not a rescaling of the (approximate)
+  /// inherent `evaluate`.
+  #[test]
+  fn volterra_kernel_evaluate_matches_independent_closed_form() {
+    let hurst = 0.3_f64;
+    let k = RlKernel::<f64>::new(hurst, 40);
+    for &t in &[0.05_f64, 0.5, 2.0] {
+      let expected = t.powf(hurst - 0.5) / gamma(hurst + 0.5);
+      let via_trait = VolterraKernel::evaluate(&k, t);
+      let rel = (via_trait - expected).abs() / expected.abs();
+      assert!(
+        rel < 1e-12,
+        "t={t}: via_trait={via_trait} expected={expected} rel={rel}"
+      );
+    }
+  }
+
+  /// Mirrors `volterra::kernel::tests::integral_from_zero_matches_numerical_quadrature`
+  /// for the RL kernel specifically: `integral_from_zero` must equal the
+  /// midpoint-rule quadrature of the *normalised* `VolterraKernel::evaluate`.
+  /// Getting the normalisation wrong (e.g. forgetting to divide by
+  /// `gamma_h_half`) would miss this by a factor of `Γ(H+1/2)` — comfortably
+  /// outside the 1e-4 tolerance for every Hurst below.
+  ///
+  /// Uses a finer grid than the brief's own `dt=0.01, n=200_000` recipe:
+  /// at `hurst=0.1` the integrand `u^{-0.4}` is singular enough that
+  /// `n=200_000` midpoints alone carry ~1.4e-4 discretisation error even
+  /// against the *exact* power law (independently confirmed with no
+  /// `RlKernel` involved), which would swamp the 1e-4 tolerance before this
+  /// test ever got to check normalisation. `n=2_000_000` brings that down
+  /// to ~3.6e-5, leaving headroom to actually test what this test is for.
+  #[test]
+  fn volterra_kernel_integral_from_zero_matches_quadrature() {
+    let dt = 0.01_f64;
+    let n = 2_000_000;
+    let h = dt / n as f64;
+    for hurst in [0.1_f64, 0.3, 0.45] {
+      let k = RlKernel::<f64>::new(hurst, 40);
+      let mut acc = 0.0;
+      for i in 0..n {
+        acc += VolterraKernel::evaluate(&k, (i as f64 + 0.5) * h);
+      }
+      acc *= h;
+      let closed = VolterraKernel::integral_from_zero(&k, dt);
+      let rel = (acc - closed).abs() / closed.abs().max(1e-300);
+      assert!(
+        rel < 1e-4,
+        "hurst={hurst}: quadrature={acc} closed={closed} rel={rel}"
+      );
+    }
+  }
+
+  /// `VolterraKernel::weights`/`nodes` must reproduce the *exact*
+  /// `VolterraKernel::evaluate` via the exponential sum, within the same
+  /// 5e-3 tolerance the brief's own kernel tests use. `degree=150` is
+  /// chosen empirically: `degree=40` (the existing `exp_sum_approximates_power_law`
+  /// test's degree, tuned for `t >= 0.2`) misses by ~5x at `t=1e-2`, and
+  /// `degree=200` hits a pre-existing instability in the underlying
+  /// Laguerre quadrature (`normalized_weights` turns non-finite) — a
+  /// latent issue in `gen_laguerre_nodes_weights` at high degree, outside
+  /// this trait's scope, so `degree=150` stays comfortably clear of both
+  /// edges.
+  #[test]
+  fn volterra_kernel_exponential_sum_matches_evaluate() {
+    let k = RlKernel::<f64>::new(0.3, 150);
+    for &t in &[1e-2, 0.1, 0.5, 1.0] {
+      let nodes = VolterraKernel::nodes(&k);
+      let weights = VolterraKernel::weights(&k);
+      let approx: f64 = (0..VolterraKernel::degree(&k))
+        .map(|l| weights[l] * (-nodes[l] * t).exp())
+        .sum();
+      let truth = VolterraKernel::evaluate(&k, t);
+      let rel = (approx - truth).abs() / truth.abs();
+      assert!(rel < 5e-3, "t={t}: approx={approx} truth={truth} rel={rel}");
+    }
+  }
 
   /// The exp-sum should reproduce the power-law kernel to relative precision
   /// that improves with the Hurst exponent and degrades near t → 0.

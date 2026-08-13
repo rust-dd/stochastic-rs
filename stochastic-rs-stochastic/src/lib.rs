@@ -47,6 +47,7 @@ pub mod rough;
 pub mod sde;
 pub mod sheet;
 pub mod volatility;
+pub mod volterra;
 
 /// Default number of time steps
 pub const N: usize = 1000;
