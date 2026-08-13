@@ -5,8 +5,11 @@
 //! $$
 //!
 //! A Volterra-SDE simulator collapsing the full history into a bounded
-//! state of $N' \approx \log n$ exponential factors. Provides two entry
-//! points:
+//! state of $N' \approx \log n$ exponential factors. [`MarkovLift`] is now
+//! a thin wrapper over the kernel-generic
+//! [`VolterraLift`](crate::volterra::VolterraLift), specialised to
+//! `RlKernel<T>` and to $(x)$-only coefficients; the two entry points below
+//! simply adapt arguments and delegate:
 //!
 //! - [`simulate`](MarkovLift::simulate) — single path, SIMD across the
 //!   $N'$ quadrature factors via `wide::f64x4` (f64) / `wide::f32x8` (f32).

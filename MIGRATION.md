@@ -1376,3 +1376,71 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   just signals they are internal plumbing riding the public trait vtable,
   not part of the supported contract. No code changes needed at any call
   site.
+
+### stochastic-rs-stochastic: `MarkovLift` is now a specialisation of the kernel-generic `VolterraLift`
+
+- **`MarkovLift<T>`'s two public fields are gone.** `pub kernel: RlKernel<T>`
+  and `pub dt: T` are replaced by a single private `inner:
+  VolterraLift<T, RlKernel<T>>`. Nothing in this crate read either field
+  (verified by a repo-wide grep before making the change), but they were
+  public, crates.io-visible API. `MarkovLift::new`/`simulate`/
+  `simulate_batch`/`simulate_batch_par` keep their exact signatures —
+  `Fn(T) -> T` coefficients, same positional arguments — so every
+  constructor call site (`RlFBm`, `RlBlackScholes`, `RlFOU`, `RlHeston`,
+  all unmodified) needs no change. Only code that read `.kernel`/`.dt`
+  directly on a constructed `MarkovLift` needs to hold onto its own
+  `RlKernel`/`dt` values instead — which any such caller already has,
+  since those are exactly the two arguments it passed to `MarkovLift::new`
+  moments earlier:
+
+  ```rust
+  // Before
+  let kernel = RlKernel::new(0.1, 23);
+  let dt = 1.0 / 23.0;
+  let markov = MarkovLift::new(kernel.clone(), dt);
+  let hurst = markov.kernel.hurst; // read back off the stepper
+  let step = markov.dt;
+
+  // After
+  let kernel = RlKernel::new(0.1, 23);
+  let dt = 1.0 / 23.0;
+  let markov = MarkovLift::new(kernel.clone(), dt);
+  let hurst = kernel.hurst; // already owned by the caller
+  let step = dt;
+  ```
+
+- **`RlFBm`/`RlBlackScholes`/`RlFOU`/`RlHeston` output shifts by up to
+  ~1e-13 relative (measured max ≈ 512 ULP), because the arithmetic is now
+  reassociated, not because a normalising factor moved.** `MarkovLift`
+  used to compute its two boundary weights (the drift term's $\delta
+  t^{H+1/2}/\Gamma(H+3/2)$ and the diffusion term's $\delta
+  t^{H-1/2}/\Gamma(H+1/2)$) via a hand-written multiply-by-reciprocal with
+  a cached $\Gamma(H+1/2)$, reusing the algebraic identity $\Gamma(H+3/2) =
+  (H+\tfrac12)\Gamma(H+\tfrac12)$; it now calls
+  [`VolterraKernel::integral_from_zero`]/[`VolterraKernel::evaluate`]
+  through the generic [`VolterraLift`] stepper, which divide directly and
+  evaluate $\Gamma(H+3/2)$ independently. The per-mode history-sum weights
+  are similarly reassociated: normalised once per node at
+  `RlKernel::new()` time and summed directly, instead of summed
+  unnormalised and scaled once at the end. Both orderings were checked
+  against a 60-decimal-digit (`mpmath`) reference for a spread of
+  `(H, dt)` pairs and a representative history-sum snapshot: both sit
+  within single-digit ULPs of the reference, on either side of it with no
+  consistent direction — the signature of reassociation, not a defect in
+  either path (a double-normalisation bug would be off by a whole factor
+  of $\Gamma(H+\tfrac12)$, roughly 33% at $H=0.1$, not ~1e-13). Example,
+  `RlFBm::new(0.1, 24, Some(1.0), None, Deterministic::new(42)).sample()[3]`:
+
+  ```
+  // Before: 0.029421993826289912  (0x3f9e20cc95117012)
+  // After:  0.029421993826289898  (0x3f9e20cc9511700e)
+  // relative difference: 4.7e-16
+  ```
+
+  Anyone who pinned exact `Rl*` output (bit-for-bit or beyond ~11 decimal
+  digits) will see this shift once. It does not compound release over
+  release — it is a one-time consequence of this refactor, not an ongoing
+  source of drift. `tests/volterra_lift_reproducibility.rs` pins all four
+  `Rl*` processes' `sample`/`sample_batch` output within a `1e-11` relative
+  tolerance (justified there against the measured maximum) as the
+  permanent guard against anything larger than this reassociation.

@@ -27,9 +27,11 @@
 //! stepper needs at the current step, before any history has accumulated.
 //! [`crate::rough::kernel::RlKernel`], the Riemann–Liouville kernel behind
 //! [`crate::rough`]'s rough-volatility processes, implements it too (see
-//! that module for the `impl` block), so a kernel-generic stepper can drive
-//! both the fractional and the exponential-family kernels through one
-//! interface.
+//! that module for the `impl` block), so [`VolterraLift`] — the
+//! Markov-lift-style stepper built on top of this trait — drives both the
+//! fractional and the exponential-family kernels through one interface.
+//! [`crate::rough::markov_lift::MarkovLift`] is `VolterraLift<T,
+//! RlKernel<T>>` kept as a thin, backward-compatible wrapper.
 //!
 //! # References
 //! - Abi Jaber E., El Euch O. *Multi-factor approximation of rough
@@ -37,8 +39,10 @@
 //! - Alfonsi A., Kebaier A. *Approximation of Stochastic Volterra Equations
 //!   with kernels of completely monotone type*, arXiv:2102.13505 (2021).
 pub mod kernel;
+pub mod lift;
 
 pub use kernel::ExponentialKernel;
 pub use kernel::GammaKernel;
 pub use kernel::SumOfExponentials;
 pub use kernel::VolterraKernel;
+pub use lift::VolterraLift;
