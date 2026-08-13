@@ -8,7 +8,7 @@
 //! $$
 //!
 //! where $\gamma_h(X) = \sum_{j=|h|+1}^{n} r_j r_{j-|h|}$ is the lag-$h$ return
-//! autocovariance and $k:[0,1]\to[0,1]$ is the chosen kernel weight.
+//! autocovariance and $k:\[0,1\]\to\[0,1\]$ is the chosen kernel weight.
 //!
 //! Reference: Barndorff-Nielsen, Hansen, Lunde, Shephard, "Designing Realised
 //! Kernels to Measure the Ex-Post Variation of Equity Prices in the Presence

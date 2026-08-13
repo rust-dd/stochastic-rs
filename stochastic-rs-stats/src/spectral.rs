@@ -22,13 +22,13 @@ pub enum DetrendMethod {
 /// Window function used before FFT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowFunction {
-  /// w[n] = 1
+  /// w\[n\] = 1
   Rectangular,
-  /// w[n] = 0.5 - 0.5 cos(2πn/(N-1))
+  /// w\[n\] = 0.5 - 0.5 cos(2πn/(N-1))
   Hann,
-  /// w[n] = 0.54 - 0.46 cos(2πn/(N-1))
+  /// w\[n\] = 0.54 - 0.46 cos(2πn/(N-1))
   Hamming,
-  /// w[n] = 0.42 - 0.5 cos(2πn/(N-1)) + 0.08 cos(4πn/(N-1))
+  /// w\[n\] = 0.42 - 0.5 cos(2πn/(N-1)) + 0.08 cos(4πn/(N-1))
   Blackman,
 }
 
