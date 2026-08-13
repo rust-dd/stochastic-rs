@@ -71,6 +71,17 @@
 //! already said "$\nu$"); both now use `nu`, so no `sigma`/`nu` collision
 //! remains in those two types.
 //!
+//! [`VolterraSde`](crate::volterra::sve::VolterraSde) and
+//! [`VolterraLift`](crate::volterra::lift::VolterraLift) are the one place
+//! in this crate where the diffusion coefficient is **not** spelled `sigma`
+//! at all — deliberately, not a collision to resolve. Both are
+//! kernel-generic engines taking an arbitrary $(t,x)\mapsto T$ callable, not
+//! a fixed named model with a literature-pinned Greek letter for that slot,
+//! so the fields are spelled out in English (`drift`, `diffusion`) instead;
+//! [`MarkovLift`](crate::rough::markov_lift::MarkovLift), the same engine's
+//! $(x)$-only-coefficient, `RlKernel`-specialised predecessor, took the same
+//! approach with its `f`/`g` closure parameters.
+//!
 //! ## ν (nu)
 //!
 //! | Role | Models (field) |

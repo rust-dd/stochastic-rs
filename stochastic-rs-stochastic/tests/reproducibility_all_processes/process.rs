@@ -36,7 +36,7 @@ use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::Inver
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
 use stochastic_rs_stochastic::process::volterra::Volterra;
-use stochastic_rs_stochastic::process::volterra::VolterraKernel;
+use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
 
 use crate::common::LAMBDA;
 use crate::common::N;
@@ -177,7 +177,7 @@ guard!(
 );
 
 guard!(volterra, "Volterra", |s| Volterra::new(
-  VolterraKernel::FractionalBM { h: 0.7 },
+  VolterraKernelSpec::FractionalBM { h: 0.7 },
   N,
   Some(1.0),
   s

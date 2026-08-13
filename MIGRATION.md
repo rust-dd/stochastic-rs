@@ -1444,3 +1444,51 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
   `Rl*` processes' `sample`/`sample_batch` output within a `1e-11` relative
   tolerance (justified there against the measured maximum) as the
   permanent guard against anything larger than this reassociation.
+
+### stochastic-rs-stochastic: `process::volterra::VolterraKernel` renamed to `VolterraKernelSpec`; `Volterra::fbm` now solves `H < 1/2` via the Markov lift
+
+- **The `VolterraKernel` enum is now `VolterraKernelSpec`.** The name was
+  freed for [`crate::volterra::VolterraKernel`], the exponential-sum trait
+  [`VolterraSde`](crate::volterra::sve::VolterraSde) is built on — the two
+  are unrelated types (a closed enum of kernel *shapes* vs. an open trait
+  of exponential-sum *fits*) that happened to share a name. Every variant
+  (`FractionalBM`, `PowerLaw`, `Exponential`) and every field is unchanged;
+  only the type name at the call site changes:
+
+  ```rust
+  // Before
+  use stochastic_rs_stochastic::process::volterra::VolterraKernel;
+  let v = Volterra::new(VolterraKernel::FractionalBM { h: 0.7 }, n, Some(1.0), seed);
+
+  // After
+  use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
+  let v = Volterra::new(VolterraKernelSpec::FractionalBM { h: 0.7 }, n, Some(1.0), seed);
+  ```
+
+- **`Volterra::fbm`/`Volterra::new` with `VolterraKernelSpec::FractionalBM {
+  h }` for `h` in `(0, 1/2)` now delegates to
+  [`VolterraSde`](crate::volterra::sve::VolterraSde) with an internally
+  built [`RlKernel`](crate::rough::kernel::RlKernel), solved at $O(nN')$ by
+  the Markov lift instead of the previous $O(n^2)$ direct convolution —
+  sampled output for this range changes as a result (a real numeric shift
+  from a different discretisation, not a bug: the lift integrates the
+  kernel exactly over each sub-interval and draws its Brownian increments
+  through a different generator than the old direct-convolution sampler
+  did). This is the same class of change, for the same reason, as
+  `MarkovLift`'s own generalisation above; nothing here pins exact
+  pre-change `Volterra::fbm(h < 0.5, ...)` values, so no test needed
+  re-pinning.
+
+- **Every other `Volterra` kernel — `FractionalBM` with `h >= 1/2` (the
+  124-type reproducibility guard's own case, `h = 0.7`), `PowerLaw` at any
+  exponent, and `Exponential` at any rate — is bit-identical to before.**
+  These now route through [`reference_path`](crate::volterra::reference::reference_path)
+  internally (the same $O(n^2)$ convolution this type always ran, now
+  shared with [`VolterraSde`]'s own cross-implementation oracle instead of
+  duplicated), but draw exactly the same Gaussian increments in exactly the
+  same order and combine them with exactly the same accumulation order, so
+  output is unchanged — verified directly, not just by construction:
+  `Deterministic::new(42)`-seeded `Volterra::new(kernel, 40, Some(1.0),
+  seed).sample()` produces byte-for-byte identical `f64::to_bits()` output
+  before and after this change, for `Exponential { beta: 1.3 }`, `PowerLaw
+  { gamma: -0.2 }`, and `FractionalBM { h: 0.7 }` alike.
