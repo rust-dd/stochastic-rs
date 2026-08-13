@@ -134,16 +134,8 @@ fn rl_heston_bit_identical() {
   assert_bits_eq("RlHeston::sample.v", &v, &HESTON_SAMPLE_V);
 
   let [sb, vb] = heston.sample_batch(M);
-  assert_bits_eq_2d(
-    "RlHeston::sample_batch.s",
-    &sb,
-    &HESTON_SAMPLE_BATCH_S,
-  );
-  assert_bits_eq_2d(
-    "RlHeston::sample_batch.v",
-    &vb,
-    &HESTON_SAMPLE_BATCH_V,
-  );
+  assert_bits_eq_2d("RlHeston::sample_batch.s", &sb, &HESTON_SAMPLE_BATCH_S);
+  assert_bits_eq_2d("RlHeston::sample_batch.v", &vb, &HESTON_SAMPLE_BATCH_V);
 }
 
 const BS_SAMPLE: [u64; 24] = [
