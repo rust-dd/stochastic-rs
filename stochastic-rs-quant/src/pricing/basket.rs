@@ -114,8 +114,8 @@ impl GeometricBasketPricer {
 /// measure.
 ///
 /// $$
-/// E[B] = \sum_i w_i S_{i,0} e^{(r-q_i)T},\qquad
-/// E[B^2] = \sum_{i,j} w_i w_j S_i S_j e^{((r-q_i) + (r-q_j) + \rho_{ij}\sigma_i\sigma_j)T}
+/// E\left[B\right] = \sum_i w_i S_{i,0} e^{(r-q_i)T},\qquad
+/// E\left[B^2\right] = \sum_{i,j} w_i w_j S_i S_j e^{((r-q_i) + (r-q_j) + \rho_{ij}\sigma_i\sigma_j)T}
 /// $$
 #[derive(Debug, Clone)]
 pub struct ArithmeticBasketLevyPricer {

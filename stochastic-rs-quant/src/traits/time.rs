@@ -14,14 +14,14 @@ pub trait TimeExt {
   /// Day-count convention applied when deriving τ from `(eval, expiration)`.
   /// Returns `None` to keep the historical default of Actual/365 Fixed; an
   /// instrument that wants ISDA / ICMA / 30E semantics on its date-based τ
-  /// override this to plug into [`tau_or_from_dates`]. The override is
-  /// ignored when `tau()` returns `Some`.
+  /// override this to plug into [`tau_or_from_dates`](Self::tau_or_from_dates).
+  /// The override is ignored when `tau()` returns `Some`.
   fn dcc(&self) -> Option<crate::calendar::DayCountConvention> {
     None
   }
 
   /// Resolve the time-to-maturity τ from `tau()` or, if absent, from
-  /// `(eval, expiration)` via the convention returned by [`dcc`]
+  /// `(eval, expiration)` via the convention returned by [`dcc`](Self::dcc)
   /// (defaults to Actual/365 Fixed).
   ///
   /// Returns `f64::NAN` when neither path is available — consistent with the
@@ -43,7 +43,8 @@ pub trait TimeExt {
   }
 
   /// Compute `tau` using a specific day count convention, overriding both
-  /// the explicit `tau` slot and the instrument's [`dcc`] default. Returns
+  /// the explicit `tau` slot and the instrument's [`dcc`](Self::dcc) default.
+  /// Returns
   /// `f64::NAN` when neither `tau` nor a `(eval, expiration)` pair is set
   /// (matching the rest of the crate's missing-data convention).
   fn tau_with_dcc(&self, dcc: crate::calendar::DayCountConvention) -> f64 {

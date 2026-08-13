@@ -8,7 +8,8 @@
 //!
 //! ## Why a separate trait from [`ModelPricer`](crate::traits::ModelPricer)?
 //!
-//! [`ModelPricer`] is the canonical pricing trait for *equity* options:
+//! [`ModelPricer`](crate::traits::ModelPricer) is the canonical pricing trait for
+//! *equity* options:
 //! `price_call(s, k, r, q, tau)` consumes spot, strike, rates, and dividend
 //! yield and returns an option price. [`VolatilityModel`] sits one layer
 //! lower for *interest-rate* options: given a forward $F$ (e.g. forward

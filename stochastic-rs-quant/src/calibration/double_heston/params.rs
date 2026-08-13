@@ -87,7 +87,8 @@ impl DoubleHestonParams {
     self
   }
 
-  /// Convert to a [`DoubleHestonFourier`] model for pricing / vol surface generation.
+  /// Convert to a [`DoubleHestonFourier`](crate::pricing::fourier::DoubleHestonFourier)
+  /// model for pricing / vol surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::DoubleHestonFourier {
     crate::pricing::fourier::DoubleHestonFourier {
       v1_0: self.v1_0,

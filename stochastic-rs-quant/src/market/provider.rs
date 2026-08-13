@@ -2,7 +2,7 @@
 //!
 //! A [`MarketDataProvider`] decouples the rest of the library (vol-surface
 //! construction, portfolio return series, calibration) from where the data
-//! comes from. The concrete [`crate::yahoo`] connector is one
+//! comes from. The concrete `crate::yahoo` connector is one
 //! implementation; [`MockProvider`] is an in-memory implementation backed
 //! by fixtures for offline, reproducible tests.
 //!
@@ -157,7 +157,7 @@ impl OptionChain {
 /// Source of historical and option-chain market data.
 ///
 /// Implementors: [`MockProvider`] (in-memory fixtures, offline) and
-/// [`crate::yahoo`]'s connector (live, behind the `yahoo` feature).
+/// `crate::yahoo`'s connector (live, behind the `yahoo` feature).
 pub trait MarketDataProvider {
   /// Historical OHLCV between `start` and `end` (Unix epoch seconds).
   fn price_history(&self, symbol: &str, start: f64, end: f64) -> anyhow::Result<PriceHistory>;

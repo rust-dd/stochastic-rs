@@ -168,7 +168,7 @@ impl FourierModelExt for KouFourier {
 /// Normal Inverse Gaussian (NIG) Lévy model for Fourier pricing.
 ///
 /// Characteristic exponent (Barndorff-Nielsen 1997, with the standard
-/// martingale correction so $E[S_T] = S_0 e^{(r-q)T}$):
+/// martingale correction so $E\left[S_T\right] = S_0 e^{(r-q)T}$):
 ///
 /// $$
 /// \psi(\xi) = \delta\bigl(\sqrt{\alpha^2 - \beta^2}

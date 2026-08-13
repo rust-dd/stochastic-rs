@@ -1,11 +1,13 @@
 //! # Strategies
 //!
-//! Trading strategies parameterised by a [`Strategy`] trait. A strategy
-//! consumes a per-bar [`MarketBar`] and emits a [`StrategyAction`]
-//! (target position, optional rebalance cost). A minimal
-//! [`Backtest`] driver iterates through a `&[MarketBar]` and returns a
-//! [`BacktestResult`] with per-bar PnL, cumulative equity, and a flat
-//! position-vs-time vector.
+//! Trading strategies parameterised by a [`Strategy`](crate::strategies::Strategy)
+//! trait. A strategy consumes a per-bar [`MarketBar`](crate::strategies::MarketBar)
+//! and emits a [`StrategyAction`](crate::strategies::StrategyAction) (target
+//! position, optional rebalance cost). A minimal
+//! [`Backtest`](crate::strategies::Backtest) driver iterates through a
+//! `&[MarketBar]` and returns a
+//! [`BacktestResult`](crate::strategies::BacktestResult) with per-bar PnL,
+//! cumulative equity, and a flat position-vs-time vector.
 //!
 //! $$
 //! V_0=\mathbb E^{\mathbb Q}\!\left[e^{-\int_0^T r_tdt}\,\Pi(X_T)\right]

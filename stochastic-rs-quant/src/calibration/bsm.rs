@@ -33,7 +33,8 @@ pub struct BSMCalibrationResult {
 }
 
 impl BSMCalibrationResult {
-  /// Convert to a [`BSMFourier`] model for pricing / vol surface generation.
+  /// Convert to a [`BSMFourier`](crate::pricing::fourier::BSMFourier) model for pricing
+  /// / vol surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::BSMFourier {
     crate::pricing::fourier::BSMFourier {
       sigma: self.v,

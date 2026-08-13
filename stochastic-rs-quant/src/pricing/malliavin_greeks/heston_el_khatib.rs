@@ -173,7 +173,8 @@ impl HestonMalliavinGreeks {
   /// ```
   ///
   /// `D_u A` is computed by a central Cameron-Martin perturbation of the
-  /// stored Brownian increments. This is intentionally separate from [`delta`]:
+  /// stored Brownian increments. This is intentionally separate from
+  /// [`delta`](Self::delta):
   /// it is O(n_steps^2), more variance-sensitive, and mainly useful when the
   /// paper's full estimator is required explicitly.
   pub fn delta_el_khatib(&self) -> f64 {
@@ -185,7 +186,8 @@ impl HestonMalliavinGreeks {
     self.delta_el_khatib_from_normals(&normal_s, &normal_perp)
   }
 
-  /// Seeded variant of [`delta_el_khatib`] for reproducible tests and benchmarks.
+  /// Seeded variant of [`delta_el_khatib`](Self::delta_el_khatib) for reproducible
+  /// tests and benchmarks.
   pub fn delta_el_khatib_with_seed(&self, seed: u64) -> f64 {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let sqrt_dt = dt.sqrt();

@@ -1,7 +1,7 @@
 //! # Portfolio Types
 //!
 //! $$
-//! \mathbf{w}^\*=\arg\max_{\mathbf{w}} \frac{\mathbb E[R_p]-r_f}{\sigma_p}
+//! \mathbf{w}^\*=\arg\max_{\mathbf{w}} \frac{\mathbb E\left[R_p\right]-r_f}{\sigma_p}
 //! $$
 //!
 //! Shared enums and result containers for portfolio optimization.
@@ -23,7 +23,7 @@ pub enum OptimizerMethod {
   BlackLitterman,
 }
 
-/// Error returned by [`OptimizerMethod::from_str`] for unrecognized inputs.
+/// Error returned by [`OptimizerMethod::from_str`](OptimizerMethod) for unrecognized inputs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnknownOptimizerMethod(pub String);
 

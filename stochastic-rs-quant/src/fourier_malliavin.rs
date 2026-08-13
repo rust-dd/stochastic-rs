@@ -8,7 +8,8 @@
 //! volatility-of-volatility and quarticity from observed price paths
 //! using the Fourier-Malliavin method of Malliavin & Mancino.
 //!
-//! The primary API is the [`FMVol`] engine struct which pre-computes
+//! The primary API is the [`FMVol`](crate::fourier_malliavin::engine::FMVol) engine
+//! struct which pre-computes
 //! the Fourier coefficients of price increments once and exposes all
 //! estimators as cheap method calls.
 //!

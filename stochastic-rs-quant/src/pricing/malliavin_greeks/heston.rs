@@ -106,7 +106,8 @@ impl HestonMalliavinGreeks {
   /// ```
   ///
   /// This is exact for smooth payoffs (vanilla calls/puts) and does not require
-  /// Malliavin weights. For non-smooth payoffs (digitals, barriers), use [`delta`].
+  /// Malliavin weights. For non-smooth payoffs (digitals, barriers), use
+  /// [`delta`](Self::delta).
   pub fn delta_pathwise(&self) -> f64 {
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
@@ -159,7 +160,7 @@ impl HestonMalliavinGreeks {
   /// calculus", arXiv:0904.3247 (2009), Proposition 5 and the Delta section.
   /// <https://arxiv.org/abs/0904.3247>
   ///
-  /// For vanilla calls, prefer [`delta_pathwise`] which is exact.
+  /// For vanilla calls, prefer [`delta_pathwise`](Self::delta_pathwise) which is exact.
   pub fn delta(&self) -> f64 {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();

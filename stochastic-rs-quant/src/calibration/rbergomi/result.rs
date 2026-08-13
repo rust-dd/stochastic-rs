@@ -12,7 +12,8 @@ pub struct RBergomiCalibrationResult {
 }
 
 impl RBergomiCalibrationResult {
-  /// Convert to an [`RBergomiPricer`] for pricing / vol surface generation.
+  /// Convert to an [`RBergomiPricer`](crate::pricing::rbergomi::RBergomiPricer) for
+  /// pricing / vol surface generation.
   pub fn to_model(&self) -> crate::pricing::rbergomi::RBergomiPricer {
     crate::pricing::rbergomi::RBergomiPricer::new(self.calibrated_params.clone())
   }

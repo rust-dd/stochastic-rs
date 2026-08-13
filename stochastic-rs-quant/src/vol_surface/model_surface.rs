@@ -6,7 +6,8 @@
 //!
 //! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJD,
 //! Kou, Hkde) get [`ModelPricer`] via a blanket impl in `fourier.rs`.
-//! Non-Fourier models ([`SabrModel`], [`HscmModel`]) have explicit impls.
+//! Non-Fourier models ([`SabrModel`](crate::pricing::sabr::SabrModel),
+//! [`HscmModel`](crate::pricing::heston_stoch_corr::HscmModel)) have explicit impls.
 
 use ndarray::Array2;
 

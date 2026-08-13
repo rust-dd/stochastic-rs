@@ -194,7 +194,7 @@ impl ImpliedVolSurface {
 
   /// Build a surface from an AI surrogate's flat output vector.
   ///
-  /// Bridges [`stochastic_rs_ai::volatility::StochVolNn::predict_surface`]
+  /// Bridges `stochastic_rs_ai::volatility::StochVolNn::predict_surface`
   /// (and the specialized `HestonNn` / `RBergomiNn` / `OneFactorNn` wrappers)
   /// to the vol-surface pipeline. The neural network returns a flat
   /// `Vec<f32>` of length `N_T * N_K` in row-major `(maturity, strike)`

@@ -42,7 +42,7 @@ pub struct HestonSlvParams {
   pub rho: f64,
   /// Initial variance.
   pub v0: f64,
-  /// Mixing factor in $[0,1]$. $\eta=0$: pure local vol,
+  /// Mixing factor in $\left[0,1\right]$. $\eta=0$: pure local vol,
   /// $\eta=1$: full stochastic vol.
   pub eta: f64,
 }

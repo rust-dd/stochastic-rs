@@ -66,7 +66,8 @@ pub struct HestonParams {
 }
 
 impl HestonParams {
-  /// Convert to a [`HestonFourier`] model for pricing / vol surface generation.
+  /// Convert to a [`HestonFourier`](crate::pricing::fourier::HestonFourier) model for
+  /// pricing / vol surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::HestonFourier {
     crate::pricing::fourier::HestonFourier {
       v0: self.v0,

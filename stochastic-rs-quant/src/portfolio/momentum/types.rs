@@ -95,7 +95,7 @@ pub enum WeightScheme {
   ScoreWeighted,
 }
 
-/// Error returned by [`WeightScheme::from_str`] for unrecognized inputs.
+/// Error returned by [`WeightScheme::from_str`](WeightScheme) for unrecognized inputs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnknownWeightScheme(pub String);
 

@@ -25,7 +25,7 @@ pub struct LedoitWolfResult<T: FloatExt> {
   pub covariance: Array2<T>,
   /// Sample covariance $S$.
   pub sample: Array2<T>,
-  /// Optimal shrinkage intensity $\alpha\in[0,1]$.
+  /// Optimal shrinkage intensity $\alpha\in\left[0,1\right]$.
   pub alpha: T,
   /// Average diagonal $\mu = \mathrm{tr}(S)/p$.
   pub mu: T,

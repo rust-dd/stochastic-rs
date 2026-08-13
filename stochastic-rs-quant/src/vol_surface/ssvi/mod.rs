@@ -14,7 +14,7 @@
 //!
 //! $$
 //! \varphi(\theta)=\frac{\eta}{\theta^\gamma\,(1+\theta)^{1-\gamma}},
-//! \quad \eta>0,\;\gamma\in[0,1]
+//! \quad \eta>0,\;\gamma\in\left[0,1\right]
 //! $$
 //!
 //! Calibration based on Cohort, Corbetta, Martini & Laachir (2018),

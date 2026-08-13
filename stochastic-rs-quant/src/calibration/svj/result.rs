@@ -35,7 +35,8 @@ impl crate::traits::ToModel for SVJCalibrationResult {
 }
 
 impl SVJCalibrationResult {
-  /// Convert to a [`BatesFourier`] model for pricing / vol surface generation.
+  /// Convert to a [`BatesFourier`](crate::pricing::fourier::BatesFourier) model for
+  /// pricing / vol surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::BatesFourier {
     crate::pricing::fourier::BatesFourier {
       v0: self.v0,

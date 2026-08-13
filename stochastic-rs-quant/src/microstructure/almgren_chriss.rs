@@ -6,8 +6,8 @@
 //! impact $g(v) = \gamma v$, linear temporary impact $h(v) = \eta v$ plus a
 //! fixed half-spread $\epsilon\,\mathrm{sign}(v)$.
 //!
-//! Mean-variance objective $E[C] + \lambda\,\mathrm{Var}[C]$ admits the
-//! closed-form trajectory
+//! Mean-variance objective $E\left[C\right] + \lambda\,\mathrm{Var}\left[C\right]$
+//! admits the closed-form trajectory
 //!
 //! $$
 //! x_k = X\,\frac{\sinh\bigl(\kappa(T-t_k)\bigr)}{\sinh(\kappa T)},
@@ -119,14 +119,14 @@ pub struct AlmgrenChrissPlan<T: FloatExt> {
   pub kappa: T,
   /// Modified temporary-impact coefficient $\tilde\eta = \eta - \gamma\tau/2$.
   pub eta_tilde: T,
-  /// Expected execution cost $E[C]$.
+  /// Expected execution cost $E\left[C\right]$.
   pub expected_cost: T,
-  /// Variance of execution cost $\mathrm{Var}[C]$.
+  /// Variance of execution cost $\mathrm{Var}\left[C\right]$.
   pub variance: T,
 }
 
 impl<T: FloatExt> AlmgrenChrissPlan<T> {
-  /// Implementation shortfall: $E[C] + \lambda\,\mathrm{Var}[C]$.
+  /// Implementation shortfall: $E\left[C\right] + \lambda\,\mathrm{Var}\left[C\right]$.
   pub fn risk_adjusted_cost(&self, lambda: T) -> T {
     self.expected_cost + lambda * self.variance
   }

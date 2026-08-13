@@ -32,9 +32,11 @@
 //! ```
 //!
 //! All calibration results expose `.to_model()` (or implement [`ToModel`]) returning
-//! a [`ModelPricer`]. Every [`ModelPricer`] automatically gets [`ModelSurface`] via
-//! blanket impl, enabling [`build_surface_from_model()`] and
-//! [`build_surface_from_calibration()`] to work with any calibrated model.
+//! a [`ModelPricer`]. Every [`ModelPricer`] automatically gets
+//! [`ModelSurface`](crate::vol_surface::model_surface::ModelSurface) via blanket impl,
+//! enabling [`build_surface_from_model()`](crate::vol_surface::pipeline::build_surface_from_model)
+//! and [`build_surface_from_calibration()`](crate::vol_surface::pipeline::build_surface_from_calibration)
+//! to work with any calibrated model.
 //!
 //! ## Examples
 //!

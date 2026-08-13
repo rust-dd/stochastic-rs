@@ -339,7 +339,8 @@ impl<T: FloatExt> RateHelper<T> for FuturesRateHelper<T> {
 /// Build a discount curve from a slice of rate helpers.
 ///
 /// Helpers whose quotes are invalid are silently skipped. The resulting
-/// `Vec` of [`Instrument`]s is sorted internally by [`bootstrap`].
+/// `Vec` of [`Instrument`]s is sorted internally by
+/// [`bootstrap()`](crate::curves::bootstrap::bootstrap).
 ///
 /// **Design note (`&[&dyn RateHelper<T>]`):** the bootstrap input is
 /// intentionally heterogeneous — deposits, FRAs, futures, and swaps each

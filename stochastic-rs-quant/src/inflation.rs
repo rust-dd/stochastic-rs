@@ -10,10 +10,11 @@
 //! price index $I(t)$ plays the role of the FX spot.
 //!
 //! Submodules:
-//! - [`index`] — price-index identifiers (CPI, RPI, HICP, custom) plus a
-//!   simple `FixingHistory` for past prints.
-//! - [`curve`] — zero-coupon and year-on-year inflation curves.
-//! - [`swap`] — zero-coupon and year-on-year inflation-linked swaps.
+//! - [`index`](crate::inflation::index) — price-index identifiers (CPI, RPI, HICP,
+//!   custom) plus a simple `FixingHistory` for past prints.
+//! - [`curve`](crate::inflation::curve) — zero-coupon and year-on-year inflation curves.
+//! - [`swap`](crate::inflation::swap) — zero-coupon and year-on-year inflation-linked
+//!   swaps.
 //!
 //! Source:
 //! - Jarrow, R. & Yildirim, Y. (2003), "Pricing Treasury Inflation

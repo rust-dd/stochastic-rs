@@ -51,7 +51,8 @@ impl crate::traits::ToModel for SabrCalibrationResult {
 }
 
 impl SabrCalibrationResult {
-  /// Convert to a [`SabrModel`] for pricing / vol surface generation.
+  /// Convert to a [`SabrModel`](crate::pricing::sabr::SabrModel) for pricing / vol
+  /// surface generation.
   pub fn to_model(&self) -> crate::pricing::sabr::SabrModel {
     crate::pricing::sabr::SabrModel {
       alpha: self.alpha,

@@ -54,14 +54,16 @@ impl Greeks {
     }
   }
 
-  /// Component index order used by the [`stochastic_rs_viz::Plottable`] impl
-  /// and the [`as_array`](Self::as_array) accessor. Stable so downstream
-  /// callers can hard-code positional access (`out[0] == delta` etc).
+  /// Component index order used by the `stochastic_rs_viz::Plottable` impl
+  /// (only compiled under the `viz` feature) and the
+  /// [`as_array`](Self::as_array) accessor. Stable so downstream callers
+  /// can hard-code positional access (`out[0] == delta` etc).
   pub const COMPONENT_NAMES: [&'static str; 9] = [
     "delta", "gamma", "vega", "theta", "rho", "vanna", "charm", "volga", "veta",
   ];
 
-  /// Flatten into the canonical 9-element array matching [`COMPONENT_NAMES`].
+  /// Flatten into the canonical 9-element array matching
+  /// [`COMPONENT_NAMES`](Self::COMPONENT_NAMES).
   pub fn as_array(&self) -> [f64; 9] {
     [
       self.delta, self.gamma, self.vega, self.theta, self.rho, self.vanna, self.charm, self.volga,
@@ -138,8 +140,10 @@ pub trait ModelPricer {
 /// pathwise Greeks call the inherent methods (`malliavin_greeks::*::delta`)
 /// directly.
 ///
-/// First-order: [`delta`], [`vega`], [`theta`], [`rho`].
-/// Second-order: [`gamma`], [`vanna`], [`charm`], [`volga`], [`veta`].
+/// First-order: [`delta`](Self::delta), [`vega`](Self::vega),
+/// [`theta`](Self::theta), [`rho`](Self::rho).
+/// Second-order: [`gamma`](Self::gamma), [`vanna`](Self::vanna),
+/// [`charm`](Self::charm), [`volga`](Self::volga), [`veta`](Self::veta).
 pub trait GreeksExt {
   /// Delta — $\partial V / \partial S$.
   fn delta(&self) -> f64;

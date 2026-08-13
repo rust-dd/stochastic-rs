@@ -232,8 +232,8 @@ impl PricerExt for SabrPricer {
 
 /// Sabr model parameters (model only, no market data).
 ///
-/// Implements [`ModelPricer`] via the Hagan (2002) implied-vol formula
-/// plugged into Black-Scholes.
+/// Implements [`ModelPricer`](crate::traits::ModelPricer) via the Hagan (2002)
+/// implied-vol formula plugged into Black-Scholes.
 #[derive(Clone, Copy, Debug)]
 pub struct SabrModel {
   pub alpha: f64,
