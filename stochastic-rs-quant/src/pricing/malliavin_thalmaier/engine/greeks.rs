@@ -6,10 +6,26 @@ use crate::traits::FloatExt;
 ///
 /// # Example
 ///
-/// ```ignore
-/// let engine = MtGreeks::new(params, 0.01.into(), 50_000);
+/// ```
+/// use ndarray::Array2;
+/// use stochastic_rs_quant::pricing::malliavin_thalmaier::{
+///     AssetParams, MtGreeks, MtPayoff, MultiHestonParams,
+/// };
+///
+/// let first = AssetParams { s0: 100.0, v0: 0.0625, kappa: 1.0, theta: 0.0625, xi: 0.0, rho: 0.0 };
+/// let second = AssetParams { s0: 100.0, v0: 0.04, kappa: 1.0, theta: 0.04, xi: 0.0, rho: 0.0 };
+/// let mut cross_corr = Array2::<f64>::eye(2);
+/// cross_corr[[0, 1]] = 0.2;
+/// cross_corr[[1, 0]] = 0.2;
+/// let params = MultiHestonParams {
+///     assets: vec![first, second], cross_corr, r: 0.0, tau: 1.0, n_steps: 9,
+/// };
+///
+/// let engine = MtGreeks::new(params, 0.01, 16);
 /// let payoff = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
-/// let deltas = engine.all_deltas(&payoff);
+/// // `_with_seed` keeps this doctest deterministic.
+/// let deltas = engine.all_deltas_with_seed(&payoff, 42);
+/// assert_eq!(deltas.len(), 2);
 /// ```
 #[derive(Debug, Clone)]
 pub struct MtGreeks<T: FloatExt> {

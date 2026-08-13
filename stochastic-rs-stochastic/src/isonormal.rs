@@ -41,8 +41,8 @@ use crate::traits::FloatExt;
 ///
 /// # Example
 ///
-/// ```ignore
-/// use stochastic_rs::stochastic::isonormal::{fbm_custom_inc_cov, IsoNormal};
+/// ```
+/// use stochastic_rs_stochastic::isonormal::{fbm_custom_inc_cov, IsoNormal};
 ///
 /// let inner_product = |_aux_idx: usize, idx: usize| -> f64 { fbm_custom_inc_cov(idx, 0.7) };
 /// let index_functions = vec![0, 1, 2, 3, 4];

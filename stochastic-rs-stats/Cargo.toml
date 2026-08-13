@@ -11,9 +11,6 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["statistics", "estimation", "hurst", "mle", "stochastic"]
 categories = ["mathematics", "science"]
 
-[lib]
-doctest = false
-
 [features]
 default = []
 openblas = [

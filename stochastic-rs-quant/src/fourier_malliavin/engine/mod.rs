@@ -38,10 +38,19 @@ mod validation_tests;
 /// Generic over `T: FloatExt` (`f32` / `f64`).
 ///
 /// # Example
-/// ```ignore
+/// ```
+/// use stochastic_rs_quant::fourier_malliavin::FMVol;
+///
+/// let n = 200;
+/// let times: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+/// let log_prices: Vec<f64> = times.iter().map(|&t| (10.0 * t).sin() * 0.01).collect();
 /// let engine = FMVol::new(&log_prices, &times, 1.0);
-/// let iv   = engine.integrated_variance();
+///
+/// let iv = engine.integrated_variance();
+/// let tau = [0.25, 0.5, 0.75];
 /// let spot = engine.spot_variance(&tau, None);
+/// assert!(iv.is_finite());
+/// assert_eq!(spot.len(), 3);
 /// ```
 pub struct FMVol<T: FloatExt> {
   /// Precomputed Fourier coefficients of price increments.

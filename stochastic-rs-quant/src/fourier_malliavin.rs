@@ -14,19 +14,25 @@
 //! estimators as cheap method calls.
 //!
 //! # Example
-//! ```ignore
+//! ```
 //! use ndarray::Array1;
-//! use stochastic_rs::quant::fourier_malliavin::FMVol;
+//! use stochastic_rs_quant::fourier_malliavin::FMVol;
 //!
+//! let n = 200;
+//! let times: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+//! let log_prices: Vec<f64> = times.iter().map(|&t| (10.0 * t).sin() * 0.01).collect();
 //! let engine = FMVol::new(&log_prices, &times, 1.0_f64);
 //!
 //! // Integrated quantities
 //! let iv = engine.integrated_variance();
 //! let il = engine.integrated_leverage(None);
+//! assert!(iv.is_finite() && iv >= 0.0);
+//! assert!(il.is_finite());
 //!
 //! // Spot quantities at evaluation times
-//! let tau = Array1::linspace(0.0, 1.0, 51);
+//! let tau = Array1::linspace(0.1, 0.9, 21);
 //! let spot_var = engine.spot_variance(tau.as_slice().unwrap(), None);
+//! assert_eq!(spot_var.len(), 21);
 //! ```
 //!
 //! # References

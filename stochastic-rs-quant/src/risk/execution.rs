@@ -6,9 +6,13 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use stochastic_rs_quant::microstructure::{AlmgrenChrissParams, ExecutionDirection};
+//! ```
+//! use ndarray::Array1;
+//! use stochastic_rs_quant::microstructure::AlmgrenChrissParams;
 //! use stochastic_rs_quant::risk::{PnlOrLoss, VarMethod, liquidity_adjusted_var};
+//!
+//! let pnl_samples = Array1::<f64>::linspace(-5.0, 5.0, 50);
+//! let execution_params = AlmgrenChrissParams::<f64>::new(10_000.0, 1.0, 10, 0.02, 1e-6, 1e-5, 1e-6);
 //!
 //! let var_plus_exec = liquidity_adjusted_var(
 //!     pnl_samples.view(),
@@ -17,6 +21,7 @@
 //!     VarMethod::Historical,
 //!     &execution_params,
 //! );
+//! assert!(var_plus_exec.is_finite());
 //! ```
 
 use ndarray::ArrayView1;

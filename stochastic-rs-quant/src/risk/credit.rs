@@ -6,14 +6,25 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use stochastic_rs_quant::credit::survival_curve::SurvivalCurve;
+//! ```
+//! use stochastic_rs_quant::credit::survival_curve::{
+//!     HazardInterpolation, SurvivalCurve, SurvivalPoint,
+//! };
 //! use stochastic_rs_quant::risk::credit::expected_credit_loss;
 //!
-//! let curve: SurvivalCurve<f64> = /* bootstrap from CDS */;
+//! // In practice these nodes are bootstrapped from CDS spreads; two
+//! // (time, survival) points keep this example self-contained.
+//! let curve = SurvivalCurve::new(
+//!     vec![
+//!         SurvivalPoint { time: 1.0, survival_probability: 0.98 },
+//!         SurvivalPoint { time: 5.0, survival_probability: 0.90 },
+//!     ],
+//!     HazardInterpolation::PiecewiseConstantHazard,
+//! );
 //! let lgd = 0.6;
 //! let exposure = 1_000_000.0;
 //! let ecl = expected_credit_loss(&curve, 1.0, lgd, exposure);
+//! assert!(ecl > 0.0);
 //! ```
 
 use crate::credit::survival_curve::SurvivalCurve;

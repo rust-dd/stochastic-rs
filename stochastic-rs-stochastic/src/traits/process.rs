@@ -449,7 +449,9 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
 /// process struct. Use this in generic code that should only operate on single-path
 /// processes (e.g. `Bm`, `Ou`, `Gbm`, `Vasicek`).
 ///
-/// ```ignore
+/// ```
+/// use stochastic_rs_stochastic::traits::{FloatExt, OneDimensional};
+///
 /// fn last_value<T: FloatExt, P: OneDimensional<T>>(p: &P) -> T {
 ///   *p.sample().last().unwrap()
 /// }

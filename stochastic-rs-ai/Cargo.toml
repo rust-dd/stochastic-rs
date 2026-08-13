@@ -12,9 +12,6 @@ keywords = ["volatility", "neural-network", "finance", "quant", "surrogate"]
 categories = ["finance", "mathematics", "science"]
 exclude = ["src/volatility/*TrainSet.txt.gz", "**/*.gz"]
 
-[lib]
-doctest = false
-
 [features]
 default = []
 # Bridge feature: enables `StochVolNn::predict_implied_vol_surface` which

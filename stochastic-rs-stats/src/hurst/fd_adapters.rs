@@ -11,12 +11,24 @@
 //!
 //! Disambiguate at the call site when both traits are in scope:
 //!
-//! ```ignore
-//! use stochastic_rs_stats::fractal_dim::{Higuchi, FractalDimEstimator};
+//! ```
+//! use stochastic_rs_core::simd_rng::Deterministic;
+//! use stochastic_rs_stats::fractal_dim::{FractalDimEstimator, Higuchi};
 //! use stochastic_rs_stats::hurst::HurstEstimator;
+//! use stochastic_rs_stochastic::process::fbm::Fbm;
+//! use stochastic_rs_stochastic::traits::ProcessExt;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let hurst = 0.7_f64;
+//! let signal = Fbm::new(hurst, 256, Some(1.0), Deterministic::new(7)).sample();
+//!
 //! let est = Higuchi { kmax: 32 };
-//! let d_result = FractalDimEstimator::estimate(&est, signal)?;   // → FdResult
-//! let h_result = HurstEstimator::estimate(&est, signal)?;        // → HurstResult
+//! let d_result = FractalDimEstimator::estimate(&est, signal.view())?; // → FdResult
+//! let h_result = HurstEstimator::estimate(&est, signal.view())?;      // → HurstResult
+//! assert!((1.0..2.0).contains(&d_result.d));
+//! assert!((0.0..=1.0).contains(&h_result.hurst));
+//! # Ok(())
+//! # }
 //! ```
 
 use ndarray::ArrayView1;

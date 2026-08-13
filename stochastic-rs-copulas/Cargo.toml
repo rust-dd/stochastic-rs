@@ -11,9 +11,6 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["copula", "dependence", "statistics", "gaussian", "vine"]
 categories = ["mathematics", "simulation", "science"]
 
-[lib]
-doctest = false
-
 [features]
 default = []
 openblas = ["dep:ndarray-linalg", "dep:openblas-src", "ndarray-linalg/openblas-system"]

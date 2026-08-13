@@ -77,9 +77,15 @@ impl CarrMadanPricer {
   /// finite. `alpha` is left at the default damping coefficient (0.75).
   ///
   /// # Example
-  /// ```ignore
+  /// ```
+  /// use stochastic_rs_quant::pricing::fourier::{CarrMadanPricer, HestonFourier};
+  ///
+  /// let heston = HestonFourier {
+  ///     v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6, r: 0.05, q: 0.0,
+  /// };
   /// let pricer = CarrMadanPricer::cumulant_sized(&heston, /* t */ 5.0, /* s */ 100.0, 12.0);
   /// let price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 5.0);
+  /// assert!(price.is_finite() && price > 0.0);
   /// ```
   pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, s: f64, l_factor: f64) -> Self {
     let cumulants = model.cumulants(t);

@@ -11,9 +11,6 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["stochastic", "simd", "rng", "monte-carlo", "simulation"]
 categories = ["algorithms", "mathematics", "simulation"]
 
-[lib]
-doctest = false
-
 [features]
 default = []
 python = []

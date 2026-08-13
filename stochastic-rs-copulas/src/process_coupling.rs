@@ -21,16 +21,23 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```
 //! use ndarray::Array1;
 //! use stochastic_rs_copulas::bivariate::clayton::Clayton;
 //! use stochastic_rs_copulas::process_coupling::couple_marginals;
 //! use stochastic_rs_copulas::traits::BivariateExt;
 //!
-//! let s1 = sample_bm(1024);
-//! let s2 = sample_bm(1024);
-//! let mut c = Clayton::new(Some(2.0), None);
+//! // Marginals from any source work identically (e.g. two `Array1<f64>`
+//! // paths from `ProcessExt::sample()`); a deterministic sequence keeps
+//! // this example self-contained per the no-stochastic-dependency note
+//! // above.
+//! let s1 = Array1::linspace(0.0, 1.0, 32);
+//! let s2 = Array1::linspace(1.0, 0.0, 32);
+//! let mut c = Clayton::new();
+//! c.set_tau(0.5);
+//! c._compute_theta();
 //! let coupled = couple_marginals(&s1, &s2, &mut c).unwrap();
+//! assert_eq!(coupled.shape(), &[32, 2]);
 //! ```
 
 use std::error::Error;

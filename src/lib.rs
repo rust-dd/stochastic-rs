@@ -40,10 +40,11 @@ pub use stochastic_rs_viz as visualization;
 /// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
 /// without pulling them one by one.
 ///
-/// ```ignore
+/// ```
 /// use stochastic_rs::prelude::*;
+/// use stochastic_rs::simd_rng::Unseeded;
 ///
-/// let bm = stochastic_rs::stochastic::process::bm::Bm::new(1000, Some(1.0));
+/// let bm = stochastic_rs::stochastic::process::bm::Bm::new(1000, Some(1.0), Unseeded);
 /// let path = bm.sample();
 /// ```
 pub mod prelude {

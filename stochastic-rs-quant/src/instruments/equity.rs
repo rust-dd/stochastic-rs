@@ -4,14 +4,16 @@
 //! with an engine from [`crate::pricing::engines`] (analytic Black-Scholes,
 //! analytic Heston, …) to obtain a price.
 //!
-//! ```ignore
+//! ```
+//! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::instruments::equity::EuropeanOption;
 //! use stochastic_rs_quant::pricing::engines::AnalyticBSEngine;
-//! use stochastic_rs_quant::OptionType;
+//! use stochastic_rs_quant::traits::{PricingEngine, PricingResult};
 //!
 //! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 0.5);
 //! let engine = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
 //! let r = engine.calculate(&opt);
+//! assert!(r.npv() > 0.0);
 //! ```
 
 use crate::OptionType;

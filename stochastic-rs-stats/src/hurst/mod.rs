@@ -25,11 +25,18 @@
 //! which output you want by importing the relevant trait or by
 //! disambiguating the call:
 //!
-//! ```ignore
+//! ```
+//! use stochastic_rs_core::simd_rng::Deterministic;
 //! use stochastic_rs_stats::hurst::HurstEstimator;
+//! use stochastic_rs_stochastic::process::fbm::Fbm;
+//! use stochastic_rs_stochastic::traits::ProcessExt;
+//!
+//! let signal = Fbm::new(0.7_f64, 256, Some(1.0), Deterministic::new(7)).sample();
 //! let h = stochastic_rs_stats::fractal_dim::Higuchi { kmax: 32 }
-//!     .estimate(signal)?  // HurstEstimator::estimate → HurstResult
+//!     .estimate(signal.view())  // HurstEstimator::estimate → HurstResult
+//!     .unwrap()
 //!     .hurst;
+//! assert!((0.0..=1.0).contains(&h));
 //! ```
 
 use std::fmt;

@@ -11,9 +11,6 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["plotly", "visualization", "stochastic", "plotting", "finance"]
 categories = ["visualization", "science"]
 
-[lib]
-doctest = false
-
 [features]
 default = []
 

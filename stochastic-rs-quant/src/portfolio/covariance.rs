@@ -6,14 +6,21 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use ndarray::ArrayView2;
-//! use stochastic_rs_quant::portfolio::{
-//!     shrinkage_covariance, portfolio_variance,
-//! };
+//! ```
+//! use ndarray::array;
+//! use stochastic_rs_quant::portfolio::{portfolio_variance, shrinkage_covariance};
 //!
+//! let returns = array![
+//!     [0.01, 0.02, -0.01],
+//!     [-0.02, 0.01, 0.03],
+//!     [0.03, -0.01, 0.02],
+//!     [0.00, 0.02, -0.02],
+//!     [0.01, -0.03, 0.01],
+//! ];
 //! let cov = shrinkage_covariance(returns.view());
+//! let weights = [0.5, 0.3, 0.2];
 //! let var = portfolio_variance(&weights, cov.view());
+//! assert!(var >= 0.0);
 //! ```
 
 use ndarray::Array2;

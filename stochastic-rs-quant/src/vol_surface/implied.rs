@@ -208,11 +208,19 @@ impl ImpliedVolSurface {
   ///
   /// # Example
   ///
-  /// ```ignore
-  /// let flat = nn.predict_surface(&params)?;          // Vec<f32>, len N_T*N_K
+  /// ```
+  /// use stochastic_rs_quant::vol_surface::ImpliedVolSurface;
+  ///
+  /// let strikes = vec![90.0, 100.0, 110.0];
+  /// let maturities = vec![0.5, 1.0];
+  /// let forwards = vec![101.0, 102.0];
+  /// // In practice this comes from `StochVolNn::predict_surface(&params)?`;
+  /// // a literal grid keeps this example free of a trained surrogate.
+  /// let flat: Vec<f32> = vec![0.22, 0.20, 0.21, 0.24, 0.22, 0.23];
   /// let surf = ImpliedVolSurface::from_flat_iv_grid(
   ///     strikes, maturities, forwards, &flat,
   /// );
+  /// assert_eq!(surf.ivs.dim(), (2, 3));
   /// ```
   #[must_use]
   pub fn from_flat_iv_grid(

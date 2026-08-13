@@ -6,9 +6,9 @@
 //! engine outputs, or any "derived from market" datum a uniform invalidation
 //! API.
 //!
-//! ```ignore
+//! ```
 //! use std::sync::Arc;
-//! use stochastic_rs_quant::market::{SimpleQuote, Cached, Observable};
+//! use stochastic_rs_quant::market::{Cached, Observable, Quote, SimpleQuote};
 //!
 //! let spot = Arc::new(SimpleQuote::new(100.0));
 //! let s2 = Arc::clone(&spot) as Arc<dyn Observable>;

@@ -2,17 +2,24 @@
 //! payoff (`Instrument`) from the model+market+method that values it
 //! (`PricingEngine`).
 //!
-//! ```ignore
+//! ```
+//! use stochastic_rs_quant::OptionType;
+//! use stochastic_rs_quant::instruments::equity::EuropeanOption;
+//! use stochastic_rs_quant::pricing::engines::{AnalyticBSEngine, AnalyticHestonEngine, HestonStaticParams};
+//! use stochastic_rs_quant::traits::{PricingEngine, PricingResult};
+//!
 //! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-//! let bs  = AnalyticBSEngine::new(spot, vol, rate, div);
+//! let bs  = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
 //! let r   = bs.calculate(&opt);
 //! if let Some(g) = r.greeks() {
 //!     println!("NPV = {}, Δ = {}", r.npv(), g.delta);
 //! }
 //!
 //! // Swap engines without touching the instrument:
-//! let heston = AnalyticHestonEngine::new(spot, params, rate, div);
+//! let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.6);
+//! let heston = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
 //! let r2 = heston.calculate(&opt);
+//! assert!(r2.npv() > 0.0);
 //! ```
 
 use super::pricing::Greeks;

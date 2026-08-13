@@ -403,7 +403,6 @@ hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
 name = "stochastic_rs"
 crate-type = ["lib"]
 path = "src/lib.rs"
-doctest = false
 
 [profile.release]
 debug = false

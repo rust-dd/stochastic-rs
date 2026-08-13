@@ -36,9 +36,10 @@ impl GaussianKde {
   ///
   /// ```
   /// use ndarray::Array1;
-  /// // Suppose we already have a GaussianKde struct in scope
-  /// // let data = Array1::from(vec![1.0, 2.0, 3.0]);
-  /// // let kde = GaussianKde::new(data, 0.5);
+  /// use stochastic_rs_stats::gaussian_kde::GaussianKde;
+  ///
+  /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
+  /// let kde = GaussianKde::new(data, 0.5);
   /// ```
   pub fn new(data: Array1<f64>, bandwidth: f64) -> Self {
     Self { data, bandwidth }
@@ -97,9 +98,14 @@ impl GaussianKde {
   ///
   /// # Examples
   ///
-  /// ```text
-  /// // let kde = GaussianKde::new(data, 0.5);
-  /// // let density_value = kde.evaluate(1.5);
+  /// ```
+  /// use ndarray::Array1;
+  /// use stochastic_rs_stats::gaussian_kde::GaussianKde;
+  ///
+  /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
+  /// let kde = GaussianKde::new(data, 0.5);
+  /// let density_value = kde.evaluate(1.5);
+  /// assert!(density_value > 0.0);
   /// ```
   pub fn evaluate(&self, x: f64) -> f64 {
     let sum: f64 = self
@@ -122,10 +128,15 @@ impl GaussianKde {
   ///
   /// # Examples
   ///
-  /// ```text
-  /// // let kde = GaussianKde::new(data, 0.5);
-  /// // let xs = Array1::linspace(0.0, 5.0, 50);
-  /// // let ys = kde.evaluate_array(&xs);
+  /// ```
+  /// use ndarray::Array1;
+  /// use stochastic_rs_stats::gaussian_kde::GaussianKde;
+  ///
+  /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
+  /// let kde = GaussianKde::new(data, 0.5);
+  /// let xs = Array1::linspace(0.0, 5.0, 50);
+  /// let ys = kde.evaluate_array(&xs);
+  /// assert_eq!(ys.len(), 50);
   /// ```
   pub fn evaluate_array(&self, x_values: &Array1<f64>) -> Array1<f64> {
     x_values.mapv(|x| self.evaluate(x))

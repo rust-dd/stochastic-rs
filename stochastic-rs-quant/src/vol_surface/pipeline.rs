@@ -96,9 +96,22 @@ pub fn build_surface_from_model<M: ModelPricer + ?Sized>(
 ///
 /// Accepts any type implementing [`ToModel`] (all calibration results).
 ///
-/// ```rust,ignore
-/// let result = heston_calibrator.calibrate();
-/// let surface = build_surface_from_calibration(&result, s, r, q, &strikes, &mats);
+/// ```
+/// use nalgebra::DVector;
+/// use stochastic_rs_quant::OptionType;
+/// use stochastic_rs_quant::calibration::{BSMCalibrator, BSMParams};
+/// use stochastic_rs_quant::pricing::bsm::BSMPricer;
+/// use stochastic_rs_quant::traits::{Calibrator, PricerExt};
+/// use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
+///
+/// let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
+/// let (call, _) = BSMPricer::builder(s, 0.2, k, r).tau(tau).build().calculate_call_put();
+/// let calibrator = BSMCalibrator::new(BSMParams { v: 0.3 }, DVector::from_vec(vec![call]),
+///     DVector::from_vec(vec![s]), DVector::from_vec(vec![k]), r, None, None, None, tau,
+///     OptionType::Call);
+/// let result = calibrator.calibrate(None).unwrap();
+/// let surface = build_surface_from_calibration(&result, s, r, 0.0, &[k], &[tau]);
+/// assert_eq!(surface.iv_surface.ivs.dim(), (1, 1));
 /// ```
 pub fn build_surface_from_calibration<C: ToModel>(
   calibration: &C,

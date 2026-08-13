@@ -11,13 +11,16 @@ use stochastic_rs_distributions::traits::FloatExt;
 
 /// Convenience: plot a single 1D process sample as HTML.
 ///
-/// ```ignore
+/// ```
+/// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_stochastic::process::bm::Bm;
 /// use stochastic_rs_stochastic::traits::ProcessExt;
 /// use stochastic_rs_viz::plot_process;
 ///
-/// let bm = Bm::new(1000, Some(1.0));
-/// plot_process(&bm.sample(), "bm.html");
+/// let bm = Bm::new(1000, Some(1.0), Unseeded);
+/// // A temp path keeps this example from writing into the working tree.
+/// let path = std::env::temp_dir().join("stochastic_rs_doctest_bm.html");
+/// plot_process(&bm.sample(), path.to_str().unwrap());
 /// ```
 pub fn plot_process<T: FloatExt>(sample: &Array1<T>, path: &str) {
   let xs: Vec<f64> = (0..sample.len()).map(|i| i as f64).collect();
@@ -58,12 +61,14 @@ pub fn plot_vol_surface(strikes: &[f64], maturities: &[f64], ivs: &Array2<f64>, 
 /// `z` shape is `(len(y), len(x))` — row `j` corresponds to `y[j]`, column
 /// `i` to `x[i]`. `title` becomes both the plot title and the trace name.
 ///
-/// ```ignore
+/// ```
 /// use ndarray::array;
 /// use stochastic_rs_viz::plot_heatmap;
 ///
 /// let cov = array![[1.0, 0.3], [0.3, 1.0]];
-/// plot_heatmap(&cov, &["a", "b"], &["a", "b"], "covariance", "cov.html");
+/// // A temp path keeps this example from writing into the working tree.
+/// let path = std::env::temp_dir().join("stochastic_rs_doctest_cov.html");
+/// plot_heatmap(&cov, &["a", "b"], &["a", "b"], "covariance", path.to_str().unwrap());
 /// ```
 pub fn plot_heatmap<X, Y>(z: &Array2<f64>, x: &[X], y: &[Y], title: &str, path: &str)
 where
