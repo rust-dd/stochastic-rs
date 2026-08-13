@@ -49,11 +49,14 @@
 //! - Li M., Huang C., Hu Y. *Numerical methods for stochastic Volterra
 //!   integral equations with weakly singular kernels*, arXiv:2004.04916
 //!   (2020).
+pub mod fit;
 pub mod kernel;
 pub mod lift;
 pub mod reference;
 pub mod sve;
 
+pub use fit::fit_l1;
+pub use fit::l1_error;
 pub use kernel::ExponentialKernel;
 pub use kernel::GammaKernel;
 pub use kernel::SumOfExponentials;
