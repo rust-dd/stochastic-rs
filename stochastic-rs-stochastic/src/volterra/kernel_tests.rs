@@ -2,6 +2,7 @@ use ndarray::Array1;
 
 use super::ExponentialKernel;
 use super::GammaKernel;
+use super::RlKernel;
 use super::SumOfExponentials;
 use super::VolterraKernel;
 
@@ -130,4 +131,58 @@ fn exponential_sum_approximates_the_kernel() {
       );
     }
   }
+}
+
+#[test]
+#[should_panic(expected = "beta > 0")]
+fn exponential_kernel_rejects_non_positive_beta() {
+  let _ = ExponentialKernel::<f64>::new(0.0, 1.0);
+}
+
+#[test]
+#[should_panic(expected = "lambda > 0")]
+fn gamma_kernel_rejects_non_positive_lambda() {
+  let _ = GammaKernel::<f64>::new(0.3, 0.0, 10);
+}
+
+/// `GammaKernel::new` raises Hurst validation itself only in its own
+/// `lambda` check; the Hurst range is enforced by the `RlKernel::new` call
+/// inside it, and must still surface here as a panic, not e.g. a silent
+/// `NaN` from an out-of-range Laguerre `alpha`.
+#[test]
+#[should_panic(expected = "Hurst in (0, 1/2)")]
+fn gamma_kernel_rejects_hurst_out_of_range() {
+  let _ = GammaKernel::<f64>::new(0.7, 1.0, 10);
+}
+
+/// `degree` is not re-validated inside `GammaKernel::new`; this locks in
+/// that `RlKernel::new`'s stability ceiling still fires through it.
+#[test]
+#[should_panic(expected = "quadrature degree must be <=")]
+fn gamma_kernel_rejects_degree_above_stability_ceiling() {
+  let _ = GammaKernel::<f64>::new(0.3, 1.0, RlKernel::<f64>::MAX_STABLE_DEGREE + 1);
+}
+
+#[test]
+#[should_panic(expected = "same length")]
+fn sum_of_exponentials_rejects_mismatched_lengths() {
+  let _ = SumOfExponentials::new(
+    Array1::from_vec(vec![1.0, 2.0]),
+    Array1::from_vec(vec![1.0]),
+  );
+}
+
+#[test]
+#[should_panic(expected = "at least one term")]
+fn sum_of_exponentials_rejects_empty() {
+  let _ = SumOfExponentials::new(Array1::<f64>::zeros(0), Array1::<f64>::zeros(0));
+}
+
+#[test]
+#[should_panic(expected = "strictly positive")]
+fn sum_of_exponentials_rejects_non_positive_node() {
+  let _ = SumOfExponentials::new(
+    Array1::from_vec(vec![1.0, -0.5]),
+    Array1::from_vec(vec![1.0, 1.0]),
+  );
 }

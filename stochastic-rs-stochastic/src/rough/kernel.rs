@@ -45,15 +45,34 @@ pub struct RlKernel<T: FloatExt> {
   /// `weights` normalised by $\Gamma(H+1/2)$: $w_l/\Gamma(H+1/2)$. Backs
   /// the [`VolterraKernel`] impl below, so that its `weights()` and
   /// `evaluate()` describe the same kernel $K(t) = t^{H-1/2}/\Gamma(H+1/2)$
-  /// used by the SDE in the [`rough`](crate::rough) module docs. `weights`
-  /// itself stays un-normalised because
-  /// [`MarkovLift`](crate::rough::markov_lift::MarkovLift) applies the
-  /// $1/\Gamma(H+1/2)$ factor once, outside the per-mode sum, as an
-  /// optimisation.
+  /// used by the SDE in the [`rough`](crate::rough) module docs.
+  ///
+  /// **Do not divide by `gamma_h_half` again when consuming this field (or
+  /// the trait's `weights()`/`evaluate()`/`integral_from_zero()`) — the
+  /// $1/\Gamma(H+1/2)$ factor is already folded in here.** Doing so would
+  /// not panic; it would silently produce a kernel too small by that
+  /// factor. `weights` itself stays un-normalised for a *different*,
+  /// non-trait call path:
+  /// [`MarkovLift`](crate::rough::markov_lift::MarkovLift) reads the
+  /// **inherent** (un-normalised) `weights`/`evaluate` directly and
+  /// applies $1/\Gamma(H+1/2)$ itself, once, outside the per-mode sum, as
+  /// an optimisation. A kernel-generic stepper driven through
+  /// [`VolterraKernel`] instead must not carry that split over — see the
+  /// invariant stated on [`VolterraKernel::weights`].
   pub normalized_weights: Array1<T>,
 }
 
 impl<T: FloatExt> RlKernel<T> {
+  /// Quadrature degrees at or below this are confirmed numerically stable.
+  /// Above it, the underlying `gen_laguerre_nodes_weights` measurably
+  /// starts producing non-finite weights — independently confirmed finite
+  /// through 175, non-finite somewhere in 176–189, for every Hurst tested
+  /// — and it does so silently, with no panic: `weights`/
+  /// `normalized_weights` just turn `NaN`, and every Markov-lift path
+  /// built from them follows. [`RlKernel::new`] enforces this as a hard
+  /// ceiling rather than handing back a NaN-poisoned kernel.
+  pub const MAX_STABLE_DEGREE: usize = 175;
+
   /// Default quadrature degree for a grid of $N$ points: $\lfloor\log N\rfloor + 20$,
   /// matching the empirical choice of the Bilokon–Wong reference implementation.
   #[must_use]
@@ -66,6 +85,7 @@ impl<T: FloatExt> RlKernel<T> {
   /// # Panics
   /// - if $H \notin (0, 1/2)$ (the Laguerre parameter $\alpha = -(H+1/2)$ must satisfy $\alpha > -1$)
   /// - if `degree == 0`
+  /// - if `degree` exceeds [`Self::MAX_STABLE_DEGREE`]
   #[must_use]
   pub fn new(hurst: T, degree: usize) -> Self {
     let h_f64 = hurst.to_f64().expect("Hurst must be convertible to f64");
@@ -74,6 +94,11 @@ impl<T: FloatExt> RlKernel<T> {
       "RL kernel requires Hurst in (0, 1/2), got {h_f64}"
     );
     assert!(degree > 0, "quadrature degree must be positive");
+    let max_degree = Self::MAX_STABLE_DEGREE;
+    assert!(
+      degree <= max_degree,
+      "quadrature degree must be <= {max_degree} (see RlKernel::MAX_STABLE_DEGREE's docs — the underlying quadrature measurably produces non-finite weights above this), got {degree}"
+    );
 
     let alpha = -(h_f64 + 0.5);
     let (nodes_f64, weights_f64) = gen_laguerre_nodes_weights(degree, alpha);
@@ -356,6 +381,15 @@ mod tests {
   #[should_panic(expected = "Hurst in (0, 1/2)")]
   fn rejects_h_above_half() {
     let _ = RlKernel::<f64>::new(0.7, 20);
+  }
+
+  /// The ceiling exists because degrees above it measure as producing
+  /// non-finite weights (see `MAX_STABLE_DEGREE`'s docs) with no panic of
+  /// their own — this locks in that a caller gets a hard error instead.
+  #[test]
+  #[should_panic(expected = "quadrature degree must be <=")]
+  fn rejects_degree_above_stability_ceiling() {
+    let _ = RlKernel::<f64>::new(0.3, RlKernel::<f64>::MAX_STABLE_DEGREE + 1);
   }
 
   #[test]

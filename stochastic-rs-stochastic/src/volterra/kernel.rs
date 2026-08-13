@@ -36,6 +36,24 @@ pub trait VolterraKernel<T: FloatExt>: Clone {
   /// Quadrature nodes $x_l$.
   fn nodes(&self) -> &Array1<T>;
   /// Scaled weights $w_l$, already absorbing any normalising constant.
+  ///
+  /// **Invariant, true for every implementor**: $\sum_l w_l\, e^{-x_l t}
+  /// \approx K(t)$ using *these* $w_l$ (`weights()[l]`) and $x_l$
+  /// (`nodes()[l]`), where $K$ is exactly what
+  /// [`evaluate`](Self::evaluate) returns; and
+  /// [`integral_from_zero`](Self::integral_from_zero) is $\int_0^{dt}
+  /// K(u)\,du$ for that same $K$. A kernel-generic caller **must** build
+  /// per-mode products from these trait methods alone and **must not**
+  /// apply any further normalising factor on top (e.g. the
+  /// Riemann–Liouville kernel's $1/\Gamma(H+1/2)$) — it is already folded
+  /// into `weights`, `evaluate`, and `integral_from_zero` here. The
+  /// existing [`MarkovLift`](crate::rough::markov_lift::MarkovLift)
+  /// deliberately does the opposite: it reads
+  /// [`RlKernel`]'s *inherent*, un-normalised `weights`/`evaluate`,
+  /// applying that factor itself,
+  /// once, outside the sum. That split belongs to `MarkovLift`'s own
+  /// hand-written loop and must not be copied into a kernel-generic
+  /// stepper built on this trait.
   fn weights(&self) -> &Array1<T>;
   /// Number of exponential factors $N'$.
   fn degree(&self) -> usize {
@@ -133,9 +151,16 @@ impl<T: FloatExt> GammaKernel<T> {
   /// Construct the tempered kernel for Hurst $H$, tempering rate $\lambda$,
   /// using $N'$ Laguerre nodes (see [`RlKernel::new`]).
   ///
+  /// `degree` is **not** defaulted or capped here: it funnels straight
+  /// into [`RlKernel::new`]'s own quadrature, so
+  /// [`RlKernel::MAX_STABLE_DEGREE`] applies to it transitively — a
+  /// `degree` past that ceiling panics there, not silently.
+  ///
   /// # Panics
-  /// - if $H \notin (0, 1/2)$ or $\lambda \le 0$ (propagated from, resp.
-  ///   raised ahead of, the same checks in [`RlKernel::new`])
+  /// - if $H \notin (0, 1/2)$, `degree == 0`, or `degree` exceeds
+  ///   [`RlKernel::MAX_STABLE_DEGREE`] (all raised inside the
+  ///   [`RlKernel::new`] call below)
+  /// - if $\lambda \le 0$ (checked ahead of that call)
   #[must_use]
   pub fn new(hurst: T, lambda: T, degree: usize) -> Self {
     assert!(
@@ -209,8 +234,16 @@ pub struct SumOfExponentials<T: FloatExt> {
 }
 
 impl<T: FloatExt> SumOfExponentials<T> {
+  /// This is the trust boundary for externally calibrated `nodes`/`weights`
+  /// — nothing here checks that the caller's fit is *good*, only that it is
+  /// well-formed enough not to fail silently.
+  ///
   /// # Panics
   /// - if `nodes` and `weights` have different lengths, or either is empty
+  /// - if any node is not strictly positive (a zero node makes
+  ///   `integral_from_zero`'s `(1-e^0)/x_l` divide `0.0/0.0` to `NaN` with
+  ///   no panic; a negative node yields a growing, non-decaying "kernel"
+  ///   with no diagnostic at all)
   #[must_use]
   pub fn new(nodes: Array1<T>, weights: Array1<T>) -> Self {
     assert_eq!(
@@ -221,6 +254,10 @@ impl<T: FloatExt> SumOfExponentials<T> {
     assert!(
       !nodes.is_empty(),
       "SumOfExponentials requires at least one term"
+    );
+    assert!(
+      nodes.iter().all(|&x| x > T::zero()),
+      "SumOfExponentials requires all nodes to be strictly positive"
     );
     Self { nodes, weights }
   }
