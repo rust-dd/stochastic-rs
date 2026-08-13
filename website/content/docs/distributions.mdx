@@ -12,9 +12,10 @@ The `stochastic-rs-distributions` crate ships **19 user-facing
 distributions**, every one of them with:
 
 - A `Simd<Name><T>` struct that implements `rand_distr::Distribution<T>`
-- Bulk fillers `fill_slice(rng, dst)` and `fill_slice_fast(dst)`
+- A bulk filler `fill_slice(dst)` that draws from the distribution's own
+  internal RNG (no separate `rng`-explicit / `_fast` pair)
 - A
-  [`DistributionExt<T>`](/docs/concepts/distribution-ext)
+  [`DistributionExt`](/docs/concepts/distribution-ext)
   impl with closed-form pdf / cdf / characteristic function / moments
 - A `py_distribution!`-generated `#[pyclass]` for Python use
 - A KS-test against the analytic CDF
@@ -56,28 +57,7 @@ distributions**, every one of them with:
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::distributions::normal::SimdNormal;
-use stochastic_rs::simd_rng::Deterministic;
-use stochastic_rs::traits::DistributionExt;
-use rand_distr::Distribution;
-
-let d = SimdNormal::<f64>::new(/* mean */ 0.0, /* std */ 1.0, &Deterministic::new(42));
-
-// Single sample
-let mut rng = rand::thread_rng();
-let x: f64 = d.sample(&mut rng);
-
-// Bulk fill (uses internal RNG)
-let mut buf = vec![0.0_f64; 10_000];
-d.fill_slice_fast(&mut buf);
-
-// Closed-form analytics
-assert!((d.mean() - 0.0).abs() < 1e-12);
-assert!((d.variance() - 1.0).abs() < 1e-12);
-let pdf = d.pdf(0.0);                        // 1/sqrt(2π) ≈ 0.3989
-let cdf = d.cdf(1.96);                       // ≈ 0.975
-```
+<RustExample path="tests/doctest_distributions_normal.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -99,20 +79,7 @@ print(d.pdf(0.0), d.cdf(1.96))               # 0.3989, 0.975
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::distributions::beta::SimdBeta;
-use stochastic_rs::simd_rng::Deterministic;
-use stochastic_rs::traits::DistributionExt;
-
-let d = SimdBeta::<f64>::new(/* alpha */ 2.0, /* beta */ 5.0, &Deterministic::new(42));
-let mut buf = vec![0.0; 1_000];
-d.fill_slice_fast(&mut buf);
-assert!(buf.iter().all(|&x| x >= 0.0 && x <= 1.0));
-
-// E[X] = α / (α + β) = 2/7
-// Var = αβ / ((α+β)²(α+β+1)) = 10/(49·8)
-println!("mean={:.4}, var={:.4}", d.mean(), d.variance());
-```
+<RustExample path="tests/doctest_distributions_beta.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -130,17 +97,7 @@ print(d.mean(), d.variance())                # 0.2857, 0.0255
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::distributions::poisson::SimdPoisson;
-use stochastic_rs::simd_rng::Deterministic;
-
-let d = SimdPoisson::<u32>::new(/* lambda */ 4.0, &Deterministic::new(42));
-let mut buf = vec![0_u32; 10_000];
-d.fill_slice_fast(&mut buf);
-
-let mean = buf.iter().sum::<u32>() as f64 / 10_000.0;
-println!("sample mean = {:.3} (expect ≈ 4.0)", mean);
-```
+<RustExample path="tests/doctest_distributions_poisson.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -162,7 +119,10 @@ Every distribution follows the same `new(args, &seed)` constructor pattern — p
 [`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible
 stream. See the [seeding concept page](/docs/concepts/seeding) for the
 full design (including `SeedExt::reseed`, the generic `R: SimdRngExt`
-backing RNG, and the experimental `dual-stream-rng` feature).
+backing RNG, and the experimental `dual-stream-rng` feature). `Foo` and
+`d` below stand for any distribution and its instance — the general
+shape, not a concrete type — so this pattern is not wired into the
+compiled-example mechanism the way the catalog entries above are:
 
 ```rust
 use stochastic_rs::simd_rng::{Deterministic, Unseeded};
@@ -178,24 +138,27 @@ let d = Foo::<T>::new(/* params */, &shared_seed_source);             // share a
 ```rust
 use rand_distr::Distribution;
 
-// Single sample (rng explicit)
-let mut rng = rand::thread_rng();
+// Single sample, via the project's own RNG (see the seeding concept page)
+let mut rng = Deterministic::new(0).rng();
 let x: f64 = d.sample(&mut rng);
 
-// Bulk fill (uses internal RNG, applies SIMD)
+// Bulk fill (uses the distribution's own internal RNG, applies SIMD)
 let mut buf = vec![0.0_f64; 10_000];
-d.fill_slice(&mut rng, &mut buf);
-d.fill_slice_fast(&mut buf);   // optimised internal pipeline
+d.fill_slice(&mut buf);
 ```
 
 ### Closed-form analytics
+
+`DistributionExt` is `f64`-only (not generic over `T`) and every method
+defaults to a `type_name`-annotated `unimplemented!()`, overridden per
+distribution where a closed form exists:
 
 ```rust
 use stochastic_rs::traits::DistributionExt;
 
 let pdf = d.pdf(0.5);
 let cdf = d.cdf(0.5);
-let cf  = d.characteristic_fn(2.0);          // Complex<T>
+let cf  = d.characteristic_function(2.0);    // Complex64
 let m1  = d.mean();
 let m2  = d.variance();
 ```

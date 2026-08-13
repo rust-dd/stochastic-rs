@@ -34,14 +34,7 @@ The textbook log-normal diffusion $dS_t = \mu S_t\,dt + \sigma S_t\,dW_t$.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::stochastic::diffusion::gbm::Gbm;
-
-let p = Gbm::<f64>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0));
-let path = p.sample();              // Array1<f64>, length 1000
-let paths = p.sample_par(10_000);   // Vec<Array1<f64>>, 10_000 paths of length 1000
-```
+<RustExample path="tests/doctest_processes_gbm.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -62,27 +55,7 @@ $d\langle W^1, W^2\rangle_t = \rho\,dt$.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::volatility::HestonPow;
-use stochastic_rs::stochastic::volatility::heston::Heston;
-
-let p = Heston::<f64, _>::new(
-    Some(100.0),       // s0
-    Some(0.04),        // v0
-    2.0,               // kappa
-    0.04,              // theta
-    0.3,               // sigma (vol-of-vol)
-    -0.7,              // rho
-    0.03,              // mu
-    1_000,             // n
-    Some(1.0),         // t
-    HestonPow::Sqrt,   // 0.5 = classic Heston; ThreeHalves = 3/2 model
-    Some(true),        // use_sym: reflect variance to stay non-negative
-    Unseeded,
-);
-let [s_path, v_path] = p.sample();   // [Array1<f64>; 2]
-```
+<RustExample path="tests/doctest_processes_heston.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -102,18 +75,7 @@ default. For large `κ`, high `|ρ|`, or long maturities Euler carries a noticea
 discretisation bias; switch to the Andersen (2008) **Quadratic-Exponential (QE)**
 scheme at compile time with `.qe()`:
 
-```rust
-use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::volatility::HestonPow;
-use stochastic_rs::stochastic::volatility::heston::Heston;
-
-let qe = Heston::<f64, _>::new(
-    Some(100.0), Some(0.04), 2.0, 0.04, 0.3, -0.7, 0.03,
-    1_000, Some(1.0), HestonPow::Sqrt, Some(true), Unseeded,
-)
-.qe();                               // -> Heston<f64, _, AndersenQe>
-let [s_path, v_path] = qe.sample();
-```
+<RustExample path="tests/doctest_processes_heston_qe.rs" />
 
 The scheme is a zero-sized type parameter (`Heston<T, S, Sch>`), so the choice is
 monomorphised with no per-step branch. QE is defined for the square-root (CIR)
@@ -130,14 +92,7 @@ $H > 0.5$ is persistent.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::simd_rng::Deterministic;
-use stochastic_rs::stochastic::noise::fgn::Fgn;
-
-let fgn = Fgn::<f64, _>::new(/* hurst */ 0.3, /* n */ 4096,
-                             /* t */ Some(1.0), Deterministic::new(42));
-let increments = fgn.sample();
-```
+<RustExample path="tests/doctest_processes_fgn.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -158,7 +113,10 @@ fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
 Every process follows the same `new(args, seed)` pattern (mirrors the
 distribution constructors — see the [seeding concept
 page](/docs/concepts/seeding)). The seed argument is a value implementing
-[`SeedExt`](/docs/concepts/seeding):
+[`SeedExt`](/docs/concepts/seeding). `Foo` below stands for any process —
+this is the shape every constructor follows, not a concrete type, so it
+is not wired into the compiled-example mechanism the way the catalog
+entries above are:
 
 ```rust
 use stochastic_rs::simd_rng::{Deterministic, Unseeded};
@@ -176,6 +134,8 @@ seeds without rebuilding the process.
 
 ### Sampling
 
+Continuing with the same placeholder `p` from above:
+
 ```rust
 let path  = p.sample();          // Array1<T>, length n
 let paths = p.sample_par(m);     // Array2<T>, shape (m, n)
@@ -189,7 +149,11 @@ thread-count-independent.
 
 CPU SIMD (`f64x4` / `f32x8`) is on by default. The fractional / fGN family
 (`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`)
-additionally picks a sampling **backend** at compile time with `.on::<B>()`:
+additionally picks a sampling **backend** at compile time with `.on::<B>()`.
+`CudaNative` only exists when the `cuda-native` feature is compiled, which
+needs an NVIDIA CUDA 12.x toolkit and GPU — not available in the CI
+runners that build this site, so this block is illustrative rather than
+compiled:
 
 ```rust
 use stochastic_rs::simd_rng::Unseeded;

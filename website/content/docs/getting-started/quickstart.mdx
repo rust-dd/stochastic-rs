@@ -22,16 +22,7 @@ with 1000 steps:
 
 ### Rust
 
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::stochastic::diffusion::ou::Ou;
-
-fn main() {
-    let p = Ou::<f64>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0));
-    let path = p.sample();
-    println!("len = {}, mean = {:.3}", path.len(), path.mean().unwrap());
-}
-```
+<RustExample path="tests/doctest_quickstart_ou.rs" />
 
 ### Python
 
@@ -53,24 +44,7 @@ characteristic-function evaluation.
 
 ### Rust
 
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::quant::pricing::heston::HestonPricer;
-use stochastic_rs::quant::types::OptionType;
-
-fn main() {
-    let pricer = HestonPricer::<f64>::new(
-        /* s0 */ 100.0, /* k */ 100.0, /* tau */ 1.0,
-        /* r */ 0.03, /* q */ 0.0,
-        /* v0 */ 0.04, /* kappa */ 2.0, /* theta */ 0.04,
-        /* sigma */ 0.3, /* rho */ -0.5,
-    );
-    let price = pricer.price(OptionType::Call);
-    let greeks = pricer.greeks(OptionType::Call);
-    println!("call = {:.4}, delta = {:.4}, vega = {:.4}",
-             price, greeks.delta, greeks.vega);
-}
-```
+<RustExample path="tests/doctest_quickstart_heston.rs" />
 
 ### Python
 
@@ -88,34 +62,24 @@ print(f"call={price:.4f}, delta={greeks.delta:.4f}, vega={greeks.vega:.4f}")
 
 ## 3. Estimate Hurst from a fractional-Brownian path
 
-The Fukasawa estimator gives a strongly consistent Hurst estimate from
-high-frequency increments. It is the recommended estimator for empirical
-roughness studies.
+The `hurst` module's `HurstEstimator` trait unifies six estimators. This
+vignette uses the rescaled-range estimator (Hurst 1951 + Anis-Lloyd 1976
+bias correction) directly on a sampled path — see the
+[statistics catalog page](/docs/stats#hurst-exponent-estimation) for why
+the Fukasawa/Whittle estimator (also in this module) is the wrong tool
+for that job: it estimates latent-volatility roughness from a
+realized-variance series, not the Hurst exponent of a raw path.
 
 ### Rust
 
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::stochastic::noise::fgn::Fgn;
-use stochastic_rs::stats::fukasawa_hurst::FukasawaHurst;
-
-fn main() {
-    let fgn = Fgn::<f64>::new(0.3, 1.0, 4096, Some(1.0));
-    let path = fgn.sample();
-    let est = FukasawaHurst::<f64>::new().estimate(path.view());
-    println!("H = {:.3} ± {:.3}", est.point, est.se);
-}
-```
+<RustExample path="tests/doctest_quickstart_hurst.rs" />
 
 ### Python
 
 ```python
-import stochastic_rs as srs
-
-fgn = srs.Fgn(hurst=0.3, sigma=1.0, n=4096, t=1.0)
-path = fgn.sample()
-est = srs.fukasawa_hurst(path)
-print(f"H = {est.point:.3f} ± {est.se:.3f}")
+# No Hurst estimator is currently exposed through the Python bindings —
+# see /docs/python for the exact parity list. Use the Rust API directly
+# until that lands.
 ```
 
 ## Where next

@@ -6,19 +6,27 @@ since: 2.0.0
 status: stable
 ---
 
-# `DistributionExt<T>`
+# `DistributionExt`
 
 Closed-form analytics for every distribution that has them.
 
+`DistributionExt` is `f64`-only (not generic over `T`), and every method
+defaults to a `type_name`-annotated `unimplemented!()` — a distribution
+overrides only the methods it has a closed form for:
+
 ```rust
-pub trait DistributionExt<T: FloatExt> {
-    fn pdf(&self, x: T) -> T;
-    fn cdf(&self, x: T) -> T;
-    fn characteristic_fn(&self, t: T) -> Complex<T>;
-    fn mean(&self) -> T;
-    fn variance(&self) -> T;
-    fn skewness(&self) -> T { unimplemented_moment::<T>() }
-    fn kurtosis(&self) -> T { unimplemented_moment::<T>() }
+pub trait DistributionExt {
+    fn characteristic_function(&self, t: f64) -> Complex64 { /* unimplemented!() by default */ }
+    fn pdf(&self, x: f64) -> f64 { /* unimplemented!() by default */ }
+    fn cdf(&self, x: f64) -> f64 { /* unimplemented!() by default */ }
+    fn inv_cdf(&self, p: f64) -> f64 { /* unimplemented!() by default */ }
+    fn mean(&self) -> f64 { /* unimplemented!() by default */ }
+    fn median(&self) -> f64 { /* unimplemented!() by default */ }
+    fn mode(&self) -> f64 { /* unimplemented!() by default */ }
+    fn variance(&self) -> f64 { /* unimplemented!() by default */ }
+    fn skewness(&self) -> f64 { /* unimplemented!() by default */ }
+    fn kurtosis(&self) -> f64 { /* unimplemented!() by default */ }
+    fn entropy(&self) -> f64 { /* unimplemented!() by default */ }
 }
 ```
 
@@ -39,14 +47,10 @@ closed-form skewness and excess kurtosis.
 Project rule: an unimplemented moment **panics** with a helpful
 message including the type name, never silently returns 0. This was a
 deliberate choice after a v1.x bug where a silent-zero kurtosis caused
-a downstream calibration to converge on garbage.
+a downstream calibration to converge on garbage. Reproduced below (the
+crate's own equivalent helper is private):
 
-```rust
-fn unimplemented_moment<T>() -> ! {
-    let name = std::any::type_name::<T>();
-    unimplemented!("moment not implemented for {name}")
-}
-```
+<RustExample path="tests/doctest_concepts_unimplemented_moment.rs" />
 
 If you hit such a panic, you have two options:
 

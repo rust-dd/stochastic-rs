@@ -1,6 +1,6 @@
 ---
 title: PricerExt and ModelPricer
-description: The two pricer trait surfaces — date-aware PricerExt for vanilla flow, and concrete-typed ModelPricer for fast Greeks and calibration without &dyn.
+description: The two pricer trait surfaces — date-aware PricerExt for a single pricer instance, and ModelPricer for pricing a strike/tau grid without &dyn.
 category: concept
 since: 2.0.0
 status: stable
@@ -8,75 +8,97 @@ status: stable
 
 # `PricerExt` and `ModelPricer`
 
-Two related but distinct surfaces.
+Two related but distinct surfaces. Both are plain `f64` traits — neither
+is generic over `T: FloatExt`.
 
-## `PricerExt<T>`
+## `PricerExt`
 
-Date-aware pricing surface. Every concrete pricer implements:
+Date-aware pricing surface (it extends `TimeExt`). Every concrete pricer
+implements:
 
 ```rust
-pub trait PricerExt<T: FloatExt> {
-    fn price(&self, opt: OptionType) -> T;
-    fn price_with_dcc(&self, opt: OptionType, valuation: NaiveDate, expiry: NaiveDate) -> T;
+pub trait PricerExt: TimeExt {
+    fn calculate_call_put(&self) -> (f64, f64);
+    fn calculate_price(&self) -> f64;
+    fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
+        f64::NAN // default: not every pricer inverts a price to a vol
+    }
 }
 ```
 
-The `_with_dcc` variant uses `TimeExt::tau_with_dcc(valuation, expiry,
-calendar, daycount)` to compute $\tau$ — necessary for production code
-that has to honour day-count conventions (ACT/360, ACT/365, 30/360,
-ACT/ACT) and holiday calendars.
+The option type, strike, spot, and maturity all live on the pricer
+struct itself (set at construction, e.g. via a `BSMPricer::builder(...)`
+or `HestonPricer::builder(...)`) rather than being passed to `calculate_price`.
+`calculate_call_put` returns both legs regardless of the pricer's own
+`option_type`; `calculate_price` returns the one `option_type` was built
+with. `TimeExt::tau_or_from_dates` derives $\tau$ from either an explicit
+`tau` or an `(eval, expiration)` pair with a day-count convention.
 
-## `ModelPricer<T>`
+## `ModelPricer`
 
-Concrete-typed pricer interface — no `&dyn`, no `Box<dyn>`. The trait
-exposes:
+Prices a strike/tau grid directly, no `&dyn`, no `Box<dyn>`:
 
 ```rust
-pub trait ModelPricer<T: FloatExt> {
-    type Model;     // e.g. HestonModel, BSMModel
-    fn price(&self, k: T, tau: T, opt: OptionType) -> T;
-    fn greeks(&self, k: T, tau: T, opt: OptionType) -> Greeks<T> { /* default FD */ }
+pub trait ModelPricer {
+    fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
+
+    // default: put-call parity from price_call
+    fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        let call = self.price_call(s, k, r, q, tau);
+        call - s * (-q * tau).exp() + k * (-r * tau).exp()
+    }
+
+    // default: dispatches to price_call / price_put
+    fn price_option(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+        match option_type {
+            OptionType::Call => self.price_call(s, k, r, q, tau),
+            OptionType::Put => self.price_put(s, k, r, q, tau),
+        }
+    }
 }
 ```
 
-The `Model` associated type lets calibrators produce a concrete pricer
-without boxing. This is the surface on which fast calibration loops
-build.
+Unlike `PricerExt`, nothing about the contract (strike, spot, tau) is
+baked into the pricer — every price query passes its own `(s, k, r, q,
+tau)`, which is what makes vectorized pricing across a strike/maturity
+grid (vol-surface construction, calibration) cheap: one model instance,
+many `price_option` calls.
 
 ## Why two traits
 
 `PricerExt` is the user-facing API for one-off pricing of a specific
 contract. `ModelPricer` is the building block for vol surfaces and
-calibrators, where you price thousands of strikes against a single
-calibrated model and the type-erasure overhead of `&dyn` matters.
+calibrators, where you price thousands of `(k, tau)` points against a
+single model.
 
-Most pricers implement **both**. The `Model::Pricer` associated type
-on `ToModel` lets a calibrator produce the right concrete pricer:
+`ToModel` bridges a calibration result to the concrete `ModelPricer` it
+produces:
 
 ```rust
 pub trait ToModel {
-    type Pricer;
-    fn to_pricer(&self, params: &Self::Params) -> Self::Pricer;
+    type Model: ModelPricer;
+    fn to_model(&self, r: f64, q: f64) -> Self::Model;
 }
 ```
 
 ## Greeks via `GreeksExt`
 
-`Greeks` is a 9-field struct: delta, gamma, vega, theta, rho, vanna,
-charm, volga, veta.
+Greeks are a **separate** trait from both `PricerExt` and `ModelPricer` —
+`GreeksExt` — with one required accessor (`delta`) and NaN-defaulted
+accessors for the rest (`gamma`, `vega`, `theta`, `rho`, `vanna`, `charm`,
+`volga`, `veta`), plus an aggregating `greeks()` that calls all nine and
+packs them into a `Greeks` struct (plain `f64` fields, not generic).
 
-The default `greeks()` on `ModelPricer` is **finite-difference** — it
-re-prices with bumped parameters. This is fine for closed-form pricers
-(BSM, Bachelier, …) but expensive for MC pricers, where the path
-bundle is the long pole.
-
-MC pricers override `greeks()` with a **single-pass** implementation
-that re-uses the path bundle and bumps the discount / payoff inside the
-path-aggregation loop. See the
+Pricers that expose Greeks do so via **inherent methods**
+(`BSMPricer::delta`, `HestonPricer::delta`, …); `GreeksExt` gives generic
+code one dispatch point when it needs to treat several pricer types
+uniformly. The default `greeks()` calls the individual accessors, which
+is fine for analytical pricers but wrong for Monte Carlo pricers unless
+they override it — see the
 [greeks-pattern SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/greeks-pattern/SKILL.md)
-for the exact protocol.
+for the single-pass protocol MC pricers use instead.
 
 ## See also
 
-- [Calibrator and CalibrationResult](/docs/concepts/traits#calibrator-t-and-calibrationresult)
+- [Calibrator and CalibrationResult](/docs/concepts/traits#calibrator-and-calibrationresult)
 - [Quant catalog](/docs/quant) — pricers, calibrators, vol surface, risk

@@ -9,9 +9,11 @@ status: stable
 # Statistics & estimators
 
 The `stochastic-rs-stats` crate ships estimators for the most common
-quant-finance workflows. All estimators take an `ArrayView1<T>` (price
-or log-return series) and return a `*Result` struct with the point
-estimate, standard error, and a parametric or bootstrap p-value.
+quant-finance workflows. Most take an `ArrayView1<T>` (price or
+log-return series) and return a plain, flat `*Result` struct — but the
+struct's field names are estimator-specific (see
+[Common pattern](#common-pattern) below), not a single uniform
+`point`/`se`/`p_value` shape.
 
 ## Sub-modules
 
@@ -23,7 +25,7 @@ estimate, standard error, and a parametric or bootstrap p-value.
 | `stationarity`         | ADF, KPSS, Phillips-Perron, Leybourne-McCabe, ERS DF-GLS                       |
 | `econometrics`         | Engle-Granger and Johansen cointegration, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
-| `fukasawa_hurst`       | Fukasawa estimator with L-BFGS-B + Paxson + Eq.16 corrections (intraday Table 1 validation) |
+| `hurst`                | Six Hurst estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle/Fukasawa (`hurst::whittle`, L-BFGS-B + Paxson + Eq.16 corrections, intraday Table 1 validation), variations |
 | `gaussian_kde`         | Gaussian KDE                                                                   |
 | `tail_index`           | Hill estimator + variants                                                      |
 | `spectral`             | Periodogram and spectrum search                                                |
@@ -36,18 +38,7 @@ estimate, standard error, and a parametric or bootstrap p-value.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::stats::realized::variance::RealizedVariance;
-use ndarray::ArrayView1;
-
-let log_returns: Vec<f64> = /* 1-min log-returns over a trading day */;
-let result = RealizedVariance::<f64>::new()
-    .estimate(ArrayView1::from(&log_returns));
-
-println!("RV  = {:.6}", result.point);
-println!("SE  = {:.6}", result.se);
-println!("ann = {:.4}", (result.point * 252.0).sqrt());  // annualised vol
-```
+<RustExample path="tests/doctest_stats_realized_variance.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -65,24 +56,16 @@ print("ann =", np.sqrt(res.point * 252))
 
 ### ADF stationarity test
 
-Null hypothesis: unit root (non-stationary). Reject if p-value < 0.05.
+Null hypothesis: unit root (non-stationary). `adf_test` lives under the
+`openblas`-gated `stationarity` module (OLS regression via
+`ndarray-linalg`) and reports the rejection decision directly as
+`reject_unit_root: bool` at the `alpha` configured on `AdfConfig` — there
+is no separate `p_value` field, only the test statistic and tabulated
+critical values.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::stats::stationarity::adf::AugmentedDickeyFuller;
-
-let series: Vec<f64> = /* prices or log-returns */;
-let result = AugmentedDickeyFuller::<f64>::new()
-    .lag(5)
-    .test(ArrayView1::from(&series));
-
-if result.p_value < 0.05 {
-    println!("reject H0 (unit root) at 5% — series is stationary");
-} else {
-    println!("cannot reject unit root, p={:.3}", result.p_value);
-}
-```
+<RustExample path="tests/doctest_stats_adf.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -94,52 +77,61 @@ print(f"t-stat={res.point:.3f}, p={res.p_value:.3f}")
 </Tab>
 </Tabs>
 
-### Fukasawa Hurst estimator
+### Hurst exponent estimation
 
-Strongly consistent Hurst estimate from high-frequency increments.
-Recommended for empirical roughness studies.
+The `hurst` module unifies six estimators (rescaled-range, DFA, GPH,
+wavelet, Whittle, variations) behind one `HurstEstimator` trait —
+`estimate(x) -> Result<HurstResult, HurstError>`. The example below uses
+`RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which
+estimates the Hurst exponent of a signal directly:
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::simd_rng::Deterministic;
-use stochastic_rs::stochastic::noise::fgn::Fgn;
-use stochastic_rs::stats::fukasawa_hurst::FukasawaHurst;
-use stochastic_rs::traits::ProcessExt;
-
-let true_h = 0.3;
-let path = Fgn::<f64, _>::new(true_h, 1.0, 4096, Some(1.0), Deterministic::new(42)).sample();
-let res = FukasawaHurst::<f64>::new().estimate(path.view());
-
-println!("H̃ = {:.3} (true = {:.3})", res.point, true_h);
-println!("95% CI: [{:.3}, {:.3}]", res.ci_lower, res.ci_upper);
-```
+<RustExample path="tests/doctest_stats_hurst.rs" />
 </Tab>
 <Tab value="Python">
 ```python
-import stochastic_rs as srs
-
-fgn = srs.Fgn(hurst=0.3, sigma=1.0, n=4096, t=1.0, seed=42)
-path = fgn.sample()
-res = srs.fukasawa_hurst(path)
-print(f"H̃ = {res.point:.3f}, CI=[{res.ci_lower:.3f}, {res.ci_upper:.3f}]")
+# No Hurst estimator (rescaled-range or Fukasawa/Whittle) is currently
+# exposed through the Python bindings — see /docs/python for the exact
+# parity list. Use the Rust API directly until that lands.
 ```
 </Tab>
 </Tabs>
 
+The `fukasawa_hurst` sub-module (`stats::hurst::whittle`) estimates a
+*different* quantity — the roughness of a latent volatility process from
+a realized-variance time series, not the Hurst exponent of a path
+sampled directly from `Fgn`. Feeding raw path samples into it silently
+recovers nonsense; see `stochastic-rs-stats/src/hurst/whittle.rs`'s own
+`simulate_log_rv` test helper for the construction it actually expects
+(a simulated log-variance process aggregated into intraday realized-variance
+bins).
+
 ## Common pattern
 
-```rust
-use stochastic_rs::stats::fukasawa_hurst::FukasawaHurst;
+Every estimator here returns a plain, flat struct — no boxed traits, no
+enums to match on — but the **field names are estimator-specific**, not
+a uniform `point`/`se`/`p_value` triple. For example:
 
-let est = FukasawaHurst::<f64>::new().estimate(path.view());
-println!("H = {:.3} ± {:.3}, p = {:.3}",
-         est.point, est.se, est.p_value);
+```rust
+// RescaledRange, Dfa, Gph, Wavelet, Whittle, Variations all return this:
+pub struct HurstResult<T> {
+    pub hurst: T,
+    pub std_err: Option<T>,
+    pub n_obs: usize,
+    pub diagnostic: HurstDiagnostic<T>,
+}
+
+// while the stationarity tests (ADF, KPSS, ...) return their own shape:
+pub struct AdfResult {
+    pub statistic: f64,
+    pub reject_unit_root: bool,
+    // .. lags, critical values, etc. — see the stationarity module
+}
 ```
 
-`*Result` structs are flat — no boxed traits, no enums you have to
-match on. One struct per estimator, so calibrating loops can read
-`result.point` without dispatch overhead.
+Check the specific estimator's result struct for its field names — the
+per-module source under `stochastic-rs-stats/src/` documents each one.
 
 ## Adding an estimator
 

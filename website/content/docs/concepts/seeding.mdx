@@ -27,15 +27,7 @@ use stochastic_rs::simd_rng::Unseeded;
 | **`Unseeded`**          | Auto-seeded from a globally-unique sequence (see [contention](#auto-seeding-and-contention)). | Default production sampling, no need for reproducibility. |
 | **`Deterministic(u64)`**| Reproducible stream rooted at the seed.         | Unit tests, regression baselines, kalibration sweeps. |
 
-```rust
-use stochastic_rs::stochastic::diffusion::gbm::Gbm;
-
-// auto-seeded — each constructed RNG draws a fresh, globally-unique seed
-let gbm_a = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
-
-// reproducible — same `seed` parameter ⇒ same path
-let gbm_b = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Deterministic::new(42));
-```
+<RustExample path="tests/doctest_concepts_seeding_gbm.rs" />
 
 ## Auto-seeding and contention
 
@@ -72,6 +64,7 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
     fn derive(&self) -> Self;                        // child seed for sub-components
     fn rng_ext<R: SimdRngExt>(&self) -> R;           // generic backing RNG (see below)
     fn reseed(&self, seed: u64) {}                   // optional in-place reset
+    fn seed_value(&self) -> u64;                     // fresh seed, advancing state like rng()/rng_ext()
 }
 ```
 
@@ -87,16 +80,7 @@ internal `state` without rebuilding the process. The typical use case is
 a kalibration loop that sweeps many seeds for the same parameterised
 process:
 
-```rust
-let fbm = Fbm::<f64, _>::new(0.7, 1_000, Some(1.0), Deterministic::new(0));
-
-// Replay 100 reproducible paths, one per seed, with zero re-allocation
-for s in 1..=100u64 {
-    fbm.seed.reseed(s);
-    let path = fbm.sample();
-    // ... feed path into your kalibration objective ...
-}
-```
+<RustExample path="tests/doctest_concepts_seeding_reseed.rs" />
 
 | Source           | `reseed(s)` behaviour                                       |
 |------------------|-------------------------------------------------------------|
@@ -143,13 +127,13 @@ is reachable through the
 [`dual-stream-rng`](#dual-stream-rng-feature) cargo feature.
 
 ```rust
-pub trait SimdRngExt: Sized + Send + 'static {
+pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
     const HAS_PAIR_ILP: bool = false;
 
     fn new() -> Self;
     fn from_seed(seed: u64) -> Self;
-    fn next_i32x8(&mut self) -> i32x8;
-    fn next_i32x8_pair(&mut self) -> (i32x8, i32x8) { /* default = two single calls */ }
+    fn next_i32x8(&mut self) -> wide::i32x8;
+    fn next_i32x8_pair(&mut self) -> (wide::i32x8, wide::i32x8) { /* default = two single calls */ }
     fn next_i32(&mut self) -> i32;
     fn next_f64(&mut self) -> f64;
     fn next_f32(&mut self) -> f32;
@@ -158,16 +142,14 @@ pub trait SimdRngExt: Sized + Send + 'static {
 }
 ```
 
+The `rand::RngCore` supertrait is why any `SimdRngExt` (including
+`SimdRng`) can be handed anywhere a `rand::Rng` is expected — e.g. to
+`rand_distr::Distribution::sample`.
+
 `SimdNormal<T, N, R>` and `SimdExp<T, R>` carry the `R: SimdRngExt`
 parameter explicitly so the same struct serves both backends:
 
-```rust
-// default (single-stream) — no opt-in needed
-let n = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-
-// dual-stream via the type alias (feature `dual-stream-rng`)
-let n_dual = SimdNormalDual::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-```
+<RustExample path="tests/doctest_concepts_seeding_dual_stream.rs" />
 
 ## `dual-stream-rng` feature
 
@@ -264,31 +246,7 @@ deterministic-stream change.
 
 ## End-to-end example
 
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::simd_rng::Deterministic;
-use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::process::fbm::Fbm;
-
-// 1. Auto-seeded production sampling
-let fbm = Fbm::<f64, _>::new(0.7, 1_000, Some(1.0), Unseeded);
-let path = fbm.sample();
-
-// 2. Reproducible kalibration sweep — same instance, different seeds
-let fbm = Fbm::<f64, _>::new(0.7, 1_000, Some(1.0), Deterministic::new(0));
-let paths: Vec<_> = (1..=100u64)
-    .map(|s| {
-        fbm.seed.reseed(s);
-        fbm.sample()
-    })
-    .collect();
-
-// 3. Reproducible replay — Deterministic with the same seed always
-// produces the same path, even on different process instances:
-let a = Fbm::<f64, _>::new(0.7, 1_000, Some(1.0), Deterministic::new(42)).sample();
-let b = Fbm::<f64, _>::new(0.7, 1_000, Some(1.0), Deterministic::new(42)).sample();
-assert_eq!(a.as_slice(), b.as_slice());
-```
+<RustExample path="tests/doctest_concepts_seeding_end_to_end.rs" />
 
 See also: [`ProcessExt`](/docs/concepts/process-ext) for the trait
 itself, and the

@@ -12,7 +12,10 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **20 items in 5 groups**:
+Brings **20 items in 5 groups**. The five lists below are name groupings
+for reference, not standalone Rust statements — see
+[Importing concrete types](#importing-concrete-types) for a compiled,
+runnable example.
 
 ## Trait core (7)
 
@@ -84,12 +87,7 @@ combination without surprises.
 The prelude ships only traits and option-type enums. You always name
 concrete types yourself:
 
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::stochastic::diffusion::ou::Ou;
-use stochastic_rs::quant::pricing::heston::HestonPricer;
-use stochastic_rs::quant::calibration::heston::HestonCalibrator;
-```
+<RustExample path="tests/doctest_concepts_prelude_concrete_imports.rs" />
 
 This is a deliberate trade-off: a prelude that ships every concrete type
 would be a 200+-line dump every editor has to autocomplete through. Keeping

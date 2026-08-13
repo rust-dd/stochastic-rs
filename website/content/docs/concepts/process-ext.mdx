@@ -63,22 +63,7 @@ handled by user code (sample at fine $\Delta t$, then resample).
 
 ## Choosing a method
 
-```rust
-use stochastic_rs::stochastic::diffusion::gbm::Gbm;
-use stochastic_rs::simd_rng::Unseeded;
-
-let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, Some(1.0), Some(1.0), Unseeded);
-
-// one path
-let path = gbm.sample();
-
-// 1M paths, reduced to a payoff mean — no per-path allocation
-let mean = gbm.sample_map(1_000_000, |p| (p.last().unwrap() - 1.0).max(0.0)).iter().sum::<f64>()
-    / 1_000_000.0;
-
-// 1k paths, kept (for plotting / path-dependent post-processing)
-let paths = gbm.sample_par(1_000);
-```
+<RustExample path="tests/doctest_concepts_process_ext_choosing_method.rs" />
 
 | Method            | Returns            | Use when                                                                 |
 |-------------------|--------------------|--------------------------------------------------------------------------|
@@ -146,7 +131,8 @@ ship for FGN / fBM only — see the [add-gpu-sampler SKILL](https://github.com/d
 
 Every process follows the same canonical `new(args, seed)` constructor
 (see the [seeding concept page](/docs/concepts/seeding) for the full
-design):
+design). `Foo` stands for any process — this is the shape, not a
+concrete type, so it stays illustrative rather than compiled:
 
 ```rust
 use stochastic_rs::simd_rng::{Deterministic, Unseeded};

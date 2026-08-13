@@ -40,27 +40,37 @@ time the pipeline is:
 
 ## Example — Heston surrogate inference
 
+`HestonNn` is not generic and is not constructed from a bare path string —
+`load` takes a model directory plus a `candle_core::Device`, and
+`predict_surface` takes a fixed-size `[f32; INPUT_DIM]` parameter array
+(`INPUT_DIM = 5`) rather than separate strike/expiry vectors (the strike
+and maturity grid is baked into the training set; use
+`predict_implied_vol_surface`, gated behind this crate's own `quant`
+feature, to get a full `ImpliedVolSurface` back for an arbitrary grid).
+No trained `.safetensors` model ships in this repository — only the
+gzip-npy training sets the round-trip test consumes — so this block is
+illustrative rather than compiled:
+
 <Tabs items={['Rust']}>
 <Tab value="Rust">
 ```rust
+use candle_core::Device;
 use stochastic_rs::ai::volatility::heston::HestonNn;
-use stochastic_rs::quant::vol_surface::implied::ImpliedVolSurface;
 
-let nn = HestonNn::<f64>::load("heston.safetensors")?;
+let device = Device::Cpu;
+let nn = HestonNn::load("path/to/trained/heston", &device)?;
 
-let params = HestonParams {
-    kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.5, v0: 0.04,
-};
-let strikes  = vec![80.0, 90.0, 100.0, 110.0, 120.0];
-let expiries = vec![0.25, 0.5, 1.0, 2.0];
+// [v0, rho, sigma, kappa, theta] — bounds are HestonNn::PARAM_LB / PARAM_UB
+let params: [f32; 5] = [0.04, -0.5, 0.3, 2.0, 0.04];
+let strikes    = vec![80.0, 90.0, 100.0, 110.0, 120.0];
+let maturities = vec![0.25, 0.5, 1.0, 2.0];
+let forwards   = vec![100.0; maturities.len()];
 
-// Inference returns a flat (strikes × expiries) IV grid in <1ms
-let iv_grid = nn.predict_surface(&params, &strikes, &expiries);
-
-let surface = ImpliedVolSurface::<f64>::from_flat_iv_grid(
-    &strikes, &expiries, &iv_grid, /* spot */ 100.0,
-);
-println!("ATM 1y IV = {:.4}", surface.iv_at(100.0, 1.0));
+// Inference returns a full ImpliedVolSurface in <1ms
+let surface = nn.predict_implied_vol_surface(&params, strikes, maturities, forwards)?;
+// `ivs` is the raw (maturities x strikes) grid; there is no `iv_at(k, t)`
+// point-query helper today, so read it directly or use `smile_slice`.
+println!("1y smile: {:?}", surface.smile_slice(/* maturity_idx */ 2));
 ```
 </Tab>
 </Tabs>

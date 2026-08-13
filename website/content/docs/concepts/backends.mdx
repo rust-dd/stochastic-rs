@@ -19,7 +19,10 @@ but `.on::<B>()` is the recommended API.
 
 ## Switching backend
 
-Re-type the process with the `.on::<B>()` turbofish, then sample as usual:
+Re-type the process with the `.on::<B>()` turbofish, then sample as usual.
+`CudaNative` only exists when the `cuda-native` feature is compiled (an
+NVIDIA CUDA 12.x toolkit and GPU), which the CI runners that build this
+site do not have, so this block is illustrative rather than compiled:
 
 ```rust
 use stochastic_rs::stochastic::device::CudaNative;
@@ -51,11 +54,7 @@ live under `stochastic_rs::stochastic::device` and **only exist when their
 feature is compiled**. Selecting an unavailable backend is therefore a *compile
 error*, not a silent runtime fallback.
 
-```rust
-use stochastic_rs::traits::{Backend, Cpu};          // always available
-#[cfg(feature = "metal")]
-use stochastic_rs::stochastic::device::MetalNative;  // feature-gated marker
-```
+<RustExample path="tests/doctest_concepts_backends_import.rs" />
 
 ## Which processes support it
 

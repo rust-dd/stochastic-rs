@@ -1,10 +1,10 @@
 ---
 title: Visualization
-description: GridPlotter — Plotly-based grid plotter for quick HTML visualisation of paths, surfaces, and smiles. Feature-gated behind viz.
+description: GridPlotter — Plotly-based grid plotter for quick HTML visualisation of paths, surfaces, and smiles.
 category: concept
 since: 2.0.0
 status: stable
-features: ["viz"]
+features: []
 ---
 
 # Visualization
@@ -13,14 +13,15 @@ features: ["viz"]
 [Plotly](https://plotly.com) that produces self-contained HTML plots
 suitable for notebooks, READMEs, and quick visual checks.
 
-The crate is feature-gated behind `viz` (default off) so a default
-build does not pull Plotly's transitive deps.
+`stochastic-rs-viz` is an unconditional dependency of the umbrella crate
+(there is no `viz` cargo feature gating it), re-exported as
+`stochastic_rs::visualization`:
 
 ```toml
 [dependencies]
 stochastic-rs-viz = "2.6"
-# or via the umbrella:
-stochastic-rs = { version = "2.6", features = ["viz"] }
+# or via the umbrella (always available, no feature flag needed):
+stochastic-rs = "2.6"
 ```
 
 ## Examples
@@ -29,18 +30,7 @@ stochastic-rs = { version = "2.6", features = ["viz"] }
 
 <Tabs items={['Rust']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::viz::GridPlotter;
-use stochastic_rs::stochastic::diffusion::ou::Ou;
-use stochastic_rs::traits::ProcessExt;
-
-let p = Ou::<f64>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0));
-let paths = p.sample_par(8);
-
-let mut plot = GridPlotter::new();
-plot.add_paths("OU", &paths);
-plot.write_html("ou_paths.html")?;
-```
+<RustExample path="tests/doctest_viz_paths.rs" />
 </Tab>
 </Tabs>
 
@@ -48,18 +38,7 @@ plot.write_html("ou_paths.html")?;
 
 <Tabs items={['Rust']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::viz::GridPlotter;
-use stochastic_rs::quant::vol_surface::implied::ImpliedVolSurface;
-
-let surface = ImpliedVolSurface::<f64>::from_market(
-    &strikes, &expiries, &iv_grid, /* spot */ 100.0,
-);
-
-let mut plot = GridPlotter::new();
-plot.add_iv_surface("IV", &surface);
-plot.write_html("iv_surface.html")?;
-```
+<RustExample path="tests/doctest_viz_iv_surface.rs" />
 </Tab>
 </Tabs>
 

@@ -40,20 +40,7 @@ factor / strategy primitives.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::quant::pricing::bsm::BsmPricer;
-
-let pricer = BsmPricer::<f64>::new(
-    /* s0 */ 100.0, /* k */ 100.0, /* tau */ 1.0,
-    /* r */ 0.05, /* q */ 0.0, /* sigma */ 0.2,
-);
-let call = pricer.price(OptionType::Call);
-let put  = pricer.price(OptionType::Put);
-let g    = pricer.greeks(OptionType::Call);
-println!("call={:.4}, put={:.4}, delta={:.4}, vega={:.4}",
-         call, put, g.delta, g.vega);
-```
+<RustExample path="tests/doctest_quant_bsm.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -74,22 +61,7 @@ print(f"delta={g.delta:.4f}, gamma={g.gamma:.4f}, vega={g.vega:.4f}, "
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::quant::pricing::heston::HestonPricer;
-use stochastic_rs::quant::types::OptionType;
-use stochastic_rs::traits::{ModelPricer, GreeksExt};
-
-let pricer = HestonPricer::<f64>::new(
-    /* s0 */ 100.0, /* k */ 100.0, /* tau */ 1.0,
-    /* r */ 0.03, /* q */ 0.0,
-    /* v0 */ 0.04, /* kappa */ 2.0, /* theta */ 0.04,
-    /* sigma */ 0.3, /* rho */ -0.5,
-);
-let price = pricer.price(OptionType::Call);
-let g = pricer.greeks(OptionType::Call);
-println!("call={:.4}, delta={:.4}, vega={:.4}, vanna={:.4}",
-         price, g.delta, g.vega, g.vanna);
-```
+<RustExample path="tests/doctest_quant_heston_pricer.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -110,21 +82,7 @@ print(f"call={price:.4f}, delta={g.delta:.4f}, vega={g.vega:.4f}")
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
-```rust
-use stochastic_rs::quant::calibration::heston::HestonCalibrator;
-use stochastic_rs::quant::vol_surface::implied::ImpliedVolSurface;
-use stochastic_rs::traits::Calibrator;
-
-let surface = ImpliedVolSurface::<f64>::from_market(
-    &strikes, &expiries, &iv_grid, /* spot */ 100.0,
-);
-let result = HestonCalibrator::<f64>::new(&surface).calibrate()?;
-
-let p = result.params;
-println!("kappa={:.3}, theta={:.4}, sigma={:.3}, rho={:.3}, v0={:.4}",
-         p.kappa, p.theta, p.sigma, p.rho, p.v0);
-println!("RMSE = {:.6} ({} iters)", result.rmse, result.iterations);
-```
+<RustExample path="tests/doctest_quant_heston_calibration.rs" />
 </Tab>
 <Tab value="Python">
 ```python
@@ -147,7 +105,7 @@ print(f"RMSE = {res.rmse:.6f} ({res.iterations} iters)")
 The relevant traits live in [Concepts](/docs/concepts):
 
 - [`PricerExt` / `ModelPricer`](/docs/concepts/pricer-ext)
-- [`Calibrator`, `CalibrationResult`, `ToModel`](/docs/concepts/traits#calibrator-t-and-calibrationresult)
+- [`Calibrator`, `CalibrationResult`, `ToModel`](/docs/concepts/traits#calibrator-and-calibrationresult)
 - [Greeks aggregator](/docs/concepts/traits#greeksext-and-the-greeks-aggregator)
 
 ## Adding a pricer / calibrator

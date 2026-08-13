@@ -78,9 +78,11 @@ transfer overhead.
 
 `fgn_all_backends` (requires `gpu-wgpu`, `metal`, and `accelerate`)
 compares **CPU**, **cubecl-wgpu**, **Metal**, and **Accelerate** on the
-same FGN sampler:
+same FGN sampler. Shape of the four bench groups it registers (the `…`
+elides the closure argument, so this is illustrative rather than
+compiled — see `benches/fgn_all_backends.rs` for the full, real body):
 
-```rust
+```
 g.bench_with_input(BenchmarkId::new("cpu", n),         …);
 g.bench_with_input(BenchmarkId::new("gpu_cubecl", n),  …);
 g.bench_with_input(BenchmarkId::new("metal", n),       …);

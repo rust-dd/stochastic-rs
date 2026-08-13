@@ -17,11 +17,7 @@ stochastic-rs = "2.6"
 
 Then:
 
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::stochastic::diffusion::gbm::Gbm;
-use stochastic_rs::quant::pricing::heston::HestonPricer;
-```
+<RustExample path="tests/doctest_install_imports.rs" />
 
 The umbrella re-exports everything via `pub use` from the sub-crates, so
 existing v1.x import paths keep working.
@@ -60,7 +56,7 @@ stochastic-rs-core (simd_rng)
 | Feature         | Owner crate                  | Pulls in                          | Use when                                              |
 |-----------------|------------------------------|-----------------------------------|-------------------------------------------------------|
 | `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
-| `viz`           | umbrella                     | `stochastic-rs-viz`, `plotly`     | Quick HTML plots                                      |
+| _(none — always on)_ | umbrella                | `stochastic-rs-viz`, `plotly`     | `GridPlotter` is an unconditional umbrella dependency, not feature-gated — see [Visualization](/docs/viz) |
 | `openblas`      | `stats`, `quant`, `copulas`, `stochastic` | `ndarray-linalg/openblas-system` | MLE, multivariate copulas, Cholesky-heavy estimators  |
 | `openblas-static` | same                       | `ndarray-linalg/openblas-static`  | Vendored OpenBLAS — needed for the Windows wheel CI   |
 | `cuda-native`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
@@ -142,7 +138,11 @@ entry in `~/.cargo/config.toml` so it composes with project configs.
 ## GPU support
 
 FGN and fBM ship four independent GPU / accelerator backends — pick the
-one that matches your hardware and toolchain.
+one that matches your hardware and toolchain. Every Rust block in this
+section needs hardware or an OS this site's CI runners (Linux, no GPU)
+do not have — an NVIDIA GPU + CUDA 12.x toolkit, a WebGPU-capable
+adapter, or macOS — so all of them are illustrative rather than
+compiled.
 
 ### The `.on::<B>()` selector (recommended)
 
@@ -286,22 +286,23 @@ cargo build --features openblas
 
 ## Verify the install
 
+<RustExample path="tests/doctest_install_verify.rs" />
+
+Paste the equivalent into your own `src/main.rs` to check the install by
+eye:
+
 ```rust
 use stochastic_rs::prelude::*;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
 
 fn main() {
-    let p = Ou::<f64>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0));
+    let p = Ou::<f64, _>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0), Unseeded);
     let path = p.sample();
     println!("OU path of length {}", path.len());
 }
 ```
 
-Run with:
-
-```bash
-cargo run --release
-```
-
-If this prints `OU path of length 1000`, you are good. Continue with the
+Run with `cargo run --release`. If this prints `OU path of length 1000`,
+you are good. Continue with the
 [Quickstart](/docs/getting-started/quickstart).

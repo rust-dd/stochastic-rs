@@ -83,6 +83,27 @@ jobs:
       - name: cargo doc (intra-doc links)
         run: cargo doc --workspace --no-deps --no-default-features
 
+  # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
+  # includes rather than hand-copied text, so there is nothing to diff for
+  # divergence — the page renders the literal file the `test` job already
+  # compiles and runs. This job is what catches a dangling/renamed path and
+  # proves the MDX build actually resolves every one of them, since neither
+  # `test` nor `lint` above ever looks inside `website/`.
+  docs_website:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v3
+      - uses: oven-sh/setup-bun@v2
+      - name: bun install
+        run: bun install
+      - name: Frontmatter + RustExample path audit
+        run: bun run audit
+      - name: Full site build (resolves every RustExample and internal link)
+        run: bun run build
+
   # In-process Python smoke test (audit §7.9): builds the cdylib via
   # `maturin develop` and exercises the 5 main API surfaces (distributions,
   # stochastic, copulas, stats, quant) including seed-determinism for the
