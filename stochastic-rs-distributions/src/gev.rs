@@ -7,7 +7,7 @@
 //! F(x;\mu,\sigma,\xi) =
 //! \begin{cases}
 //!   \exp\!\Big(-\bigl(1 + \xi\,\tfrac{x - \mu}{\sigma}\bigr)^{-1/\xi}\Big),
-//!     & \xi \neq 0,\ 1 + \xi(x-\mu)/\sigma > 0 \\[4pt]
+//!     & \xi \neq 0,\ 1 + \xi(x-\mu)/\sigma > 0 \\\\\[4pt\]
 //!   \exp\!\Big(-\exp\!\bigl(-(x-\mu)/\sigma\bigr)\Big),
 //!     & \xi = 0
 //! \end{cases}
@@ -30,7 +30,7 @@
 //!
 //! $$
 //! X = \begin{cases}
-//!   \mu - \dfrac{\sigma}{\xi}\bigl(1 - (-\ln U)^{-\xi}\bigr), & \xi \neq 0 \\[4pt]
+//!   \mu - \dfrac{\sigma}{\xi}\bigl(1 - (-\ln U)^{-\xi}\bigr), & \xi \neq 0 \\\\\[4pt\]
 //!   \mu - \sigma\,\ln(-\ln U), & \xi = 0
 //! \end{cases},
 //! \qquad U \sim \mathrm{Uniform}(0, 1).

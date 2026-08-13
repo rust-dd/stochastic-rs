@@ -119,7 +119,7 @@ fn efix<T: SimdFloatExt, R: SimdRngExt>(
 /// generic `R: SimdRngExt` picks the backing RNG: default
 /// [`SimdRng`] (single-stream); the experimental
 /// `SimdRngDual` (dual-stream) is reachable via the
-/// [`SimdExpZigDual`](crate::SimdExpZigDual) type alias when the
+/// `SimdExpZigDual` type alias when the
 /// `dual-stream-rng` feature is enabled.
 pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = SimdRng> {
   lambda: T,
@@ -430,7 +430,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> crate::traits::Distribution
 /// Convenience wrapper around [`SimdExpZig`] with a default buffer size.
 /// Provides the same API with less generic noise. Inherits the `R` backing
 /// RNG parameter from [`SimdExpZig`] so the dual-stream alias
-/// [`SimdExpDual`](crate::SimdExpDual) is just `SimdExp<T, SimdRngDual>`.
+/// `SimdExpDual` is just `SimdExp<T, SimdRngDual>`.
 pub struct SimdExp<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   inner: SimdExpZig<T, 64, R>,
 }

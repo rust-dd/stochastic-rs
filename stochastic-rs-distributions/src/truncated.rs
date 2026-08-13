@@ -21,7 +21,7 @@
 //!
 //! ## Density
 //!
-//! Standard normalisation: $f_{[a,b]}(x) = f(x) / (F(b) - F(a))$ for
+//! Standard normalisation: $f_{\[a,b\]}(x) = f(x) / (F(b) - F(a))$ for
 //! $x \in [a, b]$ and $0$ elsewhere. The CDF normalising constant is
 //! cached at construction time.
 //!
