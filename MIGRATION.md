@@ -1,7 +1,54 @@
 # Migration Guide
 
 Breaking changes are recorded here as they land, grouped by release. Entries
-under `## Unreleased` describe changes on `main` that have not shipped yet.
+under `## Unreleased
+
+### stochastic-rs-stochastic: a kernel-generic Volterra SDE engine
+
+The Markov-lift machinery that previously lived inside `rough/` as a
+rough-volatility internal is now a general stochastic Volterra equation engine
+under `stochastic_rs_stochastic::volterra`. Nothing existing was removed beyond
+the two `MarkovLift` fields documented separately above; this section is what
+became newly available.
+
+- **`VolterraKernel<T>`** — a trait with an exponential-sum contract
+  (`nodes`, `weights`, `degree`, `evaluate`, `integral_from_zero`), implemented
+  by `RlKernel` (Riemann–Liouville), `ExponentialKernel` (exact at one mode),
+  `GammaKernel` (exponentially damped fractional) and `SumOfExponentials`
+  (externally calibrated fits).
+- **`VolterraSde`** — the general equation
+  `X_t = X_0 + ∫ K(t-s) b(s,X_s) ds + ∫ K(t-s) σ(s,X_s) dW_s`, solved by the
+  lift at `O(n N')`. Previously the crate could only produce the Gaussian case
+  at `O(n^2)`.
+- **`VolterraSquareRoot`** — the Volterra Heston variance leg, nonnegative by
+  construction under full truncation.
+- **`GaussianPolynomialVolatility`** — volatility as a polynomial of a Gaussian
+  Volterra process, including the quintic parameterisation.
+- **`fit_l1` / `l1_error`** — refit a kernel's weights to minimise the `L^1`
+  error, which is what bounds the weak (pricing) error.
+- **`reference_path`** — the direct `O(n^2)` convolution, kept permanently as
+  the cross-implementation oracle the lift is tested against.
+
+```rust
+// Before: only the Gaussian convolution, O(n^2), one kernel family.
+use stochastic_rs_stochastic::process::volterra::{Volterra, VolterraKernelSpec};
+let gaussian = Volterra::<f64>::new(VolterraKernelSpec::FractionalBM { h: 0.3 }, 256, Some(1.0), Unseeded);
+
+// After: a genuine SDE with state-dependent coefficients, O(n N').
+use stochastic_rs_stochastic::volterra::{VolterraSde, ExponentialKernel};
+fn drift(_t: f64, x: f64) -> f64 { 0.3 * (0.5 - x) }
+fn diffusion(_t: f64, _x: f64) -> f64 { 0.2 }
+let sde = VolterraSde::new(
+  ExponentialKernel::new(0.7, 1.0),
+  drift as fn(f64, f64) -> f64,
+  diffusion as fn(f64, f64) -> f64,
+  256, Some(0.1), Some(1.0), Unseeded,
+);
+```
+
+The reproducibility guard grew from 124 to 127 types accordingly.
+
+` describe changes on `main` that have not shipped yet.
 
 ## Unreleased
 

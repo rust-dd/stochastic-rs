@@ -1,9 +1,10 @@
 //! `volterra/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 126-type list, and shared methodology notes.
+//! derivation of the 127-type list, and shared methodology notes.
 
 use stochastic_rs_stochastic::rough::kernel::RlKernel;
 use stochastic_rs_stochastic::volterra::ExponentialKernel;
+use stochastic_rs_stochastic::volterra::GaussianPolynomialVolatility;
 use stochastic_rs_stochastic::volterra::VolterraSde;
 use stochastic_rs_stochastic::volterra::VolterraSquareRoot;
 
@@ -43,3 +44,18 @@ guard!(volterra_square_root, "VolterraSquareRoot", |s| {
     s,
   )
 });
+
+// The quintic parameterisation of arXiv:2212.10917 — degree five over an
+// exponential kernel, which represents an Ornstein-Uhlenbeck driver exactly
+// (one mode, no approximation error).
+guard!(
+  gaussian_polynomial_volatility,
+  "GaussianPolynomialVolatility",
+  |s| GaussianPolynomialVolatility::quintic(
+    ExponentialKernel::new(1.5, 1.0),
+    ndarray::array![0.05, 0.3, -0.1, 0.02, 0.004, -0.0007],
+    N,
+    Some(1.0),
+    s
+  )
+);

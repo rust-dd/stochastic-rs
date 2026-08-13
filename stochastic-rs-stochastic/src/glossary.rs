@@ -189,3 +189,16 @@
 //! (`theta1, theta2, theta3`). These are not instances of the cross-model
 //! ambiguity documented above — each field's own doc states which term of
 //! the model's own formula it multiplies.
+//!
+//! ## Volterra kernel symbols
+//!
+//! These belong to the [`volterra`](crate::volterra) engine rather than to a
+//! single model, and are listed here because they appear on several types.
+//!
+//! | Symbol | Role | Where |
+//! |---|---|---|
+//! | $K$ | The Volterra kernel itself. `evaluate` returns it exactly; the exponential sum approximates it | [`VolterraKernel`](crate::volterra::kernel::VolterraKernel) |
+//! | $N'$ | Number of exponential factors in the fit — the lift's state size, and what turns $O(n^2)$ into $O(n N')$ | `degree()` on every kernel |
+//! | $x_l$ | Quadrature **nodes**: the mean-reversion speeds of the lifted factors | `nodes()` |
+//! | $w_l$ | Quadrature **weights**, already carrying any normalising constant. See the invariant on [`weights`](crate::volterra::kernel::VolterraKernel::weights) — a kernel-generic caller must not re-apply a normalisation on top | `weights()` |
+//! | $H$ | Hurst exponent of the Riemann–Liouville kernel, $K(t)=t^{H-1/2}/\Gamma(H+1/2)$. Note this is the *kernel's* roughness, distinct from the `hurst` field on fractional-noise processes, though they coincide for `RlKernel` | [`RlKernel`](crate::rough::kernel::RlKernel) |

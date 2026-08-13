@@ -26,7 +26,7 @@
 //!
 //! **How this list was derived and how to extend it.** `grep -rn
 //! "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src
-//! --include='*.rs'` finds 126 concrete implementations outside
+//! --include='*.rs'` finds 127 concrete implementations outside
 //! `src/traits/` (the file `traits/process.rs` contributes only blanket
 //! impls of *marker* traits keyed off a `P: ProcessExt<...>` bound —
 //! `OneDimensional`, `MultiDimensional`, `TwoDimensional`, `CurveOutput`,
@@ -39,12 +39,12 @@
 //! `VolterraSde`'s own impl did until its bounds were moved to `where`).
 //! Per directory: diffusion 34, process 20, jump 17, volatility 15,
 //! interest 15, autoregressive 9, noise 5, rough 4, correlation 4, sheet 1,
-//! volterra 2 — 126 total, split below into one submodule per directory
+//! volterra 3 — 127 total, split below into one submodule per directory
 //! purely to keep every file under this crate's line-count limit (`common`
 //! holds the shared `check`/`guard!`/`ReproBits` machinery all eleven
 //! submodules use; they and this file together compile into one
 //! `reproducibility_all_processes` test binary, so `cargo test` runs and
-//! reports all 126 checks as before). **When a new process type is added,
+//! reports all 127 checks as before). **When a new process type is added,
 //! add one `guard!` line for it** in the submodule matching its source
 //! directory — a type with no line anywhere in this tree is a type this
 //! guard is not proving anything about.

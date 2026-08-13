@@ -49,7 +49,25 @@
 //! - Li M., Huang C., Hu Y. *Numerical methods for stochastic Volterra
 //!   integral equations with weakly singular kernels*, arXiv:2004.04916
 //!   (2020).
+//! ## Convergence, stated honestly
+//!
+//! Intuition carried over from ordinary SDEs does not apply here. For weakly
+//! singular kernels the strong rates are $\min\{1-\alpha,\ \tfrac12-\beta\}$
+//! for the $\theta$-Euler–Maruyama scheme and $\min\{1-\alpha,\ 1-2\beta\}$
+//! for Milstein — Li, Huang & Hu (2020), *Numerical methods for stochastic
+//! Volterra integral equations with weakly singular kernels*, arXiv:2004.04916
+//! — **not** the usual $1/2$ and $1$. Liu, Hu & Gao (2024), arXiv:2412.11126,
+//! further show the Milstein rate $n^{-2H}$ is **optimal**, so no scheme added
+//! here may be described as improving on it in the strong sense.
+//!
+//! For the kernel approximation itself the picture is better: Bayer & Breneis
+//! (2021), arXiv:2108.05048, prove **superpolynomial** strong convergence in
+//! $N'$ for Lipschitz coefficients, and (2023), arXiv:2309.07023, that the
+//! **weak** error is governed by the $L^1$ kernel error — which is what
+//! [`fit::fit_l1`] targets.
+
 pub mod fit;
+pub mod gaussian_polynomial;
 pub mod kernel;
 pub mod lift;
 pub mod reference;
@@ -58,6 +76,7 @@ pub mod sve;
 
 pub use fit::fit_l1;
 pub use fit::l1_error;
+pub use gaussian_polynomial::GaussianPolynomialVolatility;
 pub use kernel::ExponentialKernel;
 pub use kernel::GammaKernel;
 pub use kernel::SumOfExponentials;
