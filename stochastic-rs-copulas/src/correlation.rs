@@ -59,8 +59,7 @@ pub fn kendall_tau(data: &Array2<f64>) -> Array2<f64> {
 ///
 /// Exact for the bivariate Gaussian (and t) copula; an excellent approximation
 /// for elliptical copulas in general. Use this to plug a `BivariateExt`-fit
-/// τ into the [`MultivariateExt`](crate::traits::MultivariateExt) Gaussian
-/// constructor.
+/// τ into the `MultivariateExt` Gaussian constructor.
 pub fn tau_to_corr(tau: f64) -> f64 {
   (std::f64::consts::FRAC_PI_2 * tau).sin()
 }

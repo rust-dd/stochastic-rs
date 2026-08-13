@@ -63,7 +63,8 @@ impl EmpiricalCopula2D {
   /// Bootstrap resample of `n` `(u, v)` rows drawn **with replacement**
   /// from the rank-transformed empirical support, using the crate's
   /// shared unseeded entropy stream (same default-randomness path as
-  /// e.g. [`crate::bivariate::independence::Independence::sample`]).
+  /// e.g. [`Independence`](crate::bivariate::independence::Independence)'s
+  /// own `sample`).
   ///
   /// This does not draw from the continuous copula; it resamples the `n`
   /// observed `(u, v)` pairs, which is the standard nonparametric
