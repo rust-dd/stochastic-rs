@@ -25,7 +25,7 @@
 //!
 //! Defining the residuals $e_t = X_{t+\Delta} - m(X_t)$ and
 //! $u_t = e_t^2 - v(X_t)$, the population moment conditions instrumented by
-//! $\{1, X_t\}$ are $\mathbb{E}\[g_t\] = 0$ with
+//! $\{1, X_t\}$ are $\mathbb{E}\left[g_t\right] = 0$ with
 //! $g_t = (e_t,\ e_t X_t,\ u_t,\ u_t X_t)^\top$ — four conditions for three
 //! parameters, so the system is over-identified by one, and Hansen's
 //! $J$-statistic $T\,\bar g'\,\hat S^{-1}\,\bar g \sim \chi^2_1$ tests the
