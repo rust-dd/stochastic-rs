@@ -76,12 +76,12 @@ jobs:
         run: cargo fmt --all -- --check
       - name: cargo clippy (workspace)
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
-      # stochastic-rs-stochastic denies `rustdoc::broken_intra_doc_links` at its
+      # All six library crates deny `rustdoc::broken_intra_doc_links` at their
       # crate root, but nothing else in this workflow runs rustdoc — the doctest
-      # gate does not exercise the lint, so 94 broken links once accumulated
+      # gate does not exercise the lint, so 171 broken links once accumulated
       # unnoticed. This step is what makes the deny bite.
       - name: cargo doc (intra-doc links)
-        run: cargo doc -p stochastic-rs-stochastic --no-deps --no-default-features
+        run: cargo doc --workspace --no-deps --no-default-features
 
   # In-process Python smoke test (audit §7.9): builds the cdylib via
   # `maturin develop` and exercises the 5 main API surfaces (distributions,
