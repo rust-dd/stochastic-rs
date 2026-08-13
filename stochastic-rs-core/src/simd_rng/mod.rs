@@ -13,7 +13,7 @@
 //! | constructor | behaviour |
 //! |---|---|
 //! | [`SimdRng::new()`] | globally-unique automatic seed (thread-safe atomic counter) |
-//! | [`SimdRng::from_seed(seed)`] | deterministic – same `seed` ⇒ same stream |
+//! | [`SimdRng::from_seed(seed)`](SimdRng::from_seed) | deterministic – same `seed` ⇒ same stream |
 //!
 //! Use the [`SeedExt`] trait ([`Unseeded`] / [`Deterministic`]) to propagate
 //! determinism through composed distributions and processes at zero cost.

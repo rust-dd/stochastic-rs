@@ -24,7 +24,7 @@ use super::xoshiro::splitmix64_next;
 /// # Construction
 ///
 /// - [`SimdRng::new()`] — globally-unique automatic seed
-/// - [`SimdRng::from_seed(seed)`] — deterministic, reproducible stream
+/// - [`SimdRng::from_seed(seed)`](SimdRng::from_seed) — deterministic, reproducible stream
 pub struct SimdRng {
   pub(super) f64_engine: Xoshiro256PP4,
   pub(super) f32_engine: Xoshiro128PP8,
