@@ -53,6 +53,7 @@ pub mod fit;
 pub mod kernel;
 pub mod lift;
 pub mod reference;
+pub mod square_root;
 pub mod sve;
 
 pub use fit::fit_l1;
@@ -63,4 +64,5 @@ pub use kernel::SumOfExponentials;
 pub use kernel::VolterraKernel;
 pub use lift::VolterraLift;
 pub use reference::reference_path;
+pub use square_root::VolterraSquareRoot;
 pub use sve::VolterraSde;
