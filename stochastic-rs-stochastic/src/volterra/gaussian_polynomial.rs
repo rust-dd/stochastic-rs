@@ -110,19 +110,43 @@ where
     }
   }
 
-  /// The quintic parameterisation of arXiv:2212.10917 — a degree-five
-  /// polynomial, so six coefficients.
+  /// The quintic parameterisation of arXiv:2212.10917.
+  ///
+  /// The model's polynomial is **sparse**, not a general quintic: the paper
+  /// fixes the quadratic and quartic terms at zero, so
+  ///
+  /// $$ p(x) = \alpha_0 + \alpha_1 x + \alpha_3 x^3 + \alpha_5 x^5 . $$
+  ///
+  /// This constructor therefore takes those four coefficients and fills
+  /// degrees 2 and 4 with zero, rather than accepting six free values —
+  /// passing a dense six-coefficient polynomial would produce a strictly
+  /// larger family than the one the citation names. (The paper's "six
+  /// parameters" are $\{\rho, H, \alpha_0, \alpha_1, \alpha_3, \alpha_5\}$,
+  /// counting the correlation and Hurst exponent, neither of which lives on
+  /// this type — see the scope note in the module docs.)
+  ///
+  /// The calibrated instance in the paper's Figure 1 is
+  /// $(\alpha_0, \alpha_1, \alpha_3, \alpha_5) = (0.5907, 1, 0.2893, 0.0549)$
+  /// at $\rho = -0.6843$, $H = -0.0358$.
+  ///
+  /// Use [`new`](Self::new) directly for an unrestricted degree-five
+  /// polynomial; it is a different model and this crate does not claim the
+  /// paper's results for it.
   ///
   /// # Panics
-  /// - if `coefficients` does not have exactly six entries
   /// - under the same conditions as [`new`](Self::new)
   #[must_use]
-  pub fn quintic(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
-    assert_eq!(
-      coefficients.len(),
-      6,
-      "a quintic polynomial needs exactly six coefficients (degrees 0 through 5)"
-    );
+  pub fn quintic(
+    kernel: K,
+    alpha0: T,
+    alpha1: T,
+    alpha3: T,
+    alpha5: T,
+    n: usize,
+    t: Option<T>,
+    seed: S,
+  ) -> Self {
+    let coefficients = Array1::from_vec(vec![alpha0, alpha1, T::zero(), alpha3, T::zero(), alpha5]);
     Self::new(kernel, coefficients, n, t, seed)
   }
 

@@ -1,6 +1,6 @@
 //! `process/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 124-type list, and shared methodology notes.
+//! derivation of the 127-type list, and shared methodology notes.
 //! `CompoundPoisson` and `CustomJt` are two of the eight named
 //! distribution-taking types; `CompoundCustom` is the ninth,
 //! unnamed-by-the-usual-count case mentioned there — it takes two

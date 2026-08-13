@@ -61,10 +61,13 @@ fn output_is_the_polynomial_of_the_driving_gaussian_volterra_path() {
 /// well conditioned. This guards the evaluation order, not the model.
 #[test]
 fn horner_matches_the_direct_power_sum() {
-  let coefficients = array![0.05, 0.3, -0.1, 0.02, 0.004, -0.0007];
+  let coefficients = array![0.5907, 1.0, 0.0, 0.2893, 0.0, 0.0549];
   let gpv = GaussianPolynomialVolatility::quintic(
     kernel(),
-    coefficients.clone(),
+    0.5907,
+    1.0,
+    0.2893,
+    0.0549,
     N,
     Some(1.0),
     Deterministic::new(3),
@@ -125,15 +128,28 @@ fn rejects_an_empty_polynomial() {
   );
 }
 
+/// arXiv:2212.10917's quintic OU model uses a **sparse** polynomial —
+/// $p(x)=\alpha_0+\alpha_1 x+\alpha_3 x^3+\alpha_5 x^5$, with the quadratic
+/// and quartic terms fixed at zero. A dense six-coefficient polynomial is a
+/// strictly larger family, so this pins that `quintic` builds the paper's
+/// shape and not a general degree-five one.
+///
+/// Coefficients are the calibrated instance from the paper's Figure 1.
 #[test]
-#[should_panic(expected = "a quintic polynomial needs exactly six coefficients")]
-fn quintic_rejects_the_wrong_degree() {
-  let _ = GaussianPolynomialVolatility::quintic(
+fn quintic_zeroes_the_quadratic_and_quartic_terms() {
+  let gpv = GaussianPolynomialVolatility::quintic(
     kernel(),
-    array![1.0, 2.0, 3.0],
+    0.5907,
+    1.0,
+    0.2893,
+    0.0549,
     N,
     None,
     Deterministic::new(1),
+  );
+  assert_eq!(
+    gpv.coefficients.to_vec(),
+    vec![0.5907, 1.0, 0.0, 0.2893, 0.0, 0.0549]
   );
 }
 

@@ -2,7 +2,7 @@
 //! (`autoregressive`, `correlation`, `diffusion`, `interest`, `jump`,
 //! `noise`, `process`, `rough`, `sheet`, `volatility`) — see the crate-root
 //! doc comment in `../reproducibility_all_processes.rs` for the full
-//! rationale, derivation of the 124-type list, and methodology notes.
+//! rationale, derivation of the 127-type list, and methodology notes.
 //! Split out purely to keep every file under this crate's line-count limit;
 //! all ten submodules plus this one compile into the single
 //! `reproducibility_all_processes` test binary, so `cargo test` still runs

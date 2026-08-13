@@ -45,15 +45,18 @@ guard!(volterra_square_root, "VolterraSquareRoot", |s| {
   )
 });
 
-// The quintic parameterisation of arXiv:2212.10917 — degree five over an
-// exponential kernel, which represents an Ornstein-Uhlenbeck driver exactly
-// (one mode, no approximation error).
+// The quintic parameterisation of arXiv:2212.10917, at that paper's own
+// Figure-1 calibration, over an exponential kernel — which represents an
+// Ornstein-Uhlenbeck driver exactly (one mode, no approximation error).
 guard!(
   gaussian_polynomial_volatility,
   "GaussianPolynomialVolatility",
   |s| GaussianPolynomialVolatility::quintic(
     ExponentialKernel::new(1.5, 1.0),
-    ndarray::array![0.05, 0.3, -0.1, 0.02, 0.004, -0.0007],
+    0.5907,
+    1.0,
+    0.2893,
+    0.0549,
     N,
     Some(1.0),
     s

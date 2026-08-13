@@ -1,7 +1,9 @@
 # Migration Guide
 
 Breaking changes are recorded here as they land, grouped by release. Entries
-under `## Unreleased
+under `## Unreleased` describe changes on `main` that have not shipped yet.
+
+## Unreleased
 
 ### stochastic-rs-stochastic: a kernel-generic Volterra SDE engine
 
@@ -47,10 +49,6 @@ let sde = VolterraSde::new(
 ```
 
 The reproducibility guard grew from 124 to 127 types accordingly.
-
-` describe changes on `main` that have not shipped yet.
-
-## Unreleased
 
 ### stochastic-rs-distributions: one seeded stream, honest signatures
 

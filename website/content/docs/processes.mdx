@@ -217,3 +217,17 @@ If you contribute, the four relevant SKILLs are:
 - [`add-gpu-sampler`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-gpu-sampler/SKILL.md) — CUDA / Metal port
 
 Each contains the file-by-file recipe.
+
+## Volterra (stochastic Volterra equations)
+
+Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)`
+convolution. See `stochastic_rs::stochastic::volterra`.
+
+| Type | What it is |
+|---|---|
+| `VolterraSde` | The general equation `X_t = X_0 + ∫ K(t-s) b(s,X_s) ds + ∫ K(t-s) σ(s,X_s) dW_s` |
+| `VolterraSquareRoot` | The Volterra Heston variance leg, nonnegative by construction |
+| `GaussianPolynomialVolatility` | Volatility as a polynomial of a Gaussian Volterra process, incl. the quintic parameterisation |
+
+Kernels implementing `VolterraKernel`: `RlKernel` (Riemann–Liouville),
+`ExponentialKernel` (exact at one mode), `GammaKernel`, `SumOfExponentials`.

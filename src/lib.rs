@@ -71,4 +71,5 @@ pub mod prelude {
   pub use crate::traits::SimdFloatExt;
   pub use crate::traits::TimeExt;
   pub use crate::traits::ToModel;
+  pub use crate::traits::VolterraKernel;
 }

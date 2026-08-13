@@ -41,10 +41,14 @@
 //!   the state space of the multifactor approximation is an explicit linear
 //!   transformation of the nonnegative orthant, so the invariant region can be
 //!   enforced exactly instead of by clipping.
-//! - **Abi Jaber (2024)**, arXiv:2412.11264, and **Abi Jaber & Attal (2025)**,
-//!   *iVi*, arXiv:2504.19885 — simulate the **integrated** square-root process
-//!   first; nonnegativity then comes for free, and the Inverse-Gaussian limit
-//!   is exact in two regimes with a single time step.
+//! - **Abi Jaber (2024)**, arXiv:2412.11264 — simulate the **integrated**
+//!   square-root process first; nonnegativity then comes for free, and the
+//!   Inverse-Gaussian limit is exact in two regimes with a single time step.
+//!   That exactness result is for the **classical** square-root process.
+//! - **Abi Jaber & Attal (2025)**, *iVi*, arXiv:2504.19885 — the Volterra
+//!   generalisation of the same idea, which proves **weak convergence** with
+//!   few time steps rather than exactness. The distinction matters: citing the
+//!   two together would credit iVi with a stronger result than it claims.
 //!
 //! Both hinge on explicit constructions from those papers, and implementing
 //! either from a paraphrase would produce something that resembles the method

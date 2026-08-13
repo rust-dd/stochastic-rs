@@ -70,6 +70,15 @@ const RESIDUAL_FLOOR: f64 = 1e-300;
 /// concentrate near zero, and a uniform grid would barely resolve the region
 /// that dominates the integral.
 ///
+/// Returns the incoming weights unchanged if the normal equations cannot be
+/// factorised on the first iteration. That is reachable only through
+/// [`SumOfExponentials`] with nodes badly scaled to `[t_min, t_max]` — nodes
+/// so fast that every basis function underflows to zero across the whole grid
+/// leave a zero normal matrix, and the ridge, which scales with its mean
+/// diagonal, is then zero too. No kernel this crate constructs reaches that
+/// state at any sane degree. There is deliberately no error return; use
+/// [`l1_error`] to confirm a fit actually improved rather than assuming it.
+///
 /// # Panics
 /// - if `t_min` is not strictly positive, or `t_max <= t_min` (the fractional
 ///   kernel is singular at the origin, so the interval must exclude it)
@@ -92,14 +101,14 @@ pub fn fit_l1<T: FloatExt, K: VolterraKernel<T>>(
     "grid ({grid}) must be at least the kernel degree ({n_prime}) or the fit is underdetermined"
   );
 
-  let nodes: Vec<f64> = kernel
+  let nodes = kernel
     .nodes()
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+    .collect::<Vec<f64>>();
 
   let (t, quad) = log_grid(lo, hi, grid);
-  let target: Vec<f64> = t
+  let target = t
     .iter()
     .map(|&ti| {
       kernel
@@ -107,7 +116,7 @@ pub fn fit_l1<T: FloatExt, K: VolterraKernel<T>>(
         .to_f64()
         .unwrap_or(f64::NAN)
     })
-    .collect();
+    .collect::<Vec<f64>>();
 
   let mut design = Array2::<f64>::zeros((grid, n_prime));
   for (i, &ti) in t.iter().enumerate() {
@@ -118,20 +127,20 @@ pub fn fit_l1<T: FloatExt, K: VolterraKernel<T>>(
 
   // Start from the incoming weights, so the first solve refines a good fit
   // rather than searching from nothing.
-  let mut weights: Vec<f64> = kernel
+  let mut weights = kernel
     .weights()
     .iter()
     .map(|w| w.to_f64().unwrap_or(f64::NAN))
-    .collect();
+    .collect::<Vec<f64>>();
 
   for _ in 0..IRLS_ITERATIONS {
-    let obs: Vec<f64> = (0..grid)
+    let obs = (0..grid)
       .map(|i| {
         let fitted: f64 = (0..n_prime).map(|l| design[[i, l]] * weights[l]).sum();
         let residual = (target[i] - fitted).abs().max(RESIDUAL_FLOOR);
         quad[i] / residual
       })
-      .collect();
+      .collect::<Vec<f64>>();
 
     match weighted_least_squares(&design, &target, &obs, n_prime) {
       Some(next) => weights = next,
@@ -200,7 +209,9 @@ pub fn l1_error<T: FloatExt, K: VolterraKernel<T>, A: VolterraKernel<T>>(
 fn log_grid(lo: f64, hi: f64, grid: usize) -> (Vec<f64>, Vec<f64>) {
   let ln_lo = lo.ln();
   let step = (hi.ln() - ln_lo) / (grid - 1) as f64;
-  let t: Vec<f64> = (0..grid).map(|i| (ln_lo + step * i as f64).exp()).collect();
+  let t = (0..grid)
+    .map(|i| (ln_lo + step * i as f64).exp())
+    .collect::<Vec<f64>>();
 
   let mut quad = vec![0.0; grid];
   for i in 0..grid {

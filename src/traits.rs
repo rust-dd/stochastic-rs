@@ -36,3 +36,4 @@ pub use stochastic_rs_stochastic::traits::PathSampler;
 pub use stochastic_rs_stochastic::traits::ProcessExt;
 pub use stochastic_rs_stochastic::traits::TwoDimensional;
 pub use stochastic_rs_stochastic::traits::VariableDimensional;
+pub use stochastic_rs_stochastic::volterra::VolterraKernel;

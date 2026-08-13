@@ -52,10 +52,15 @@ fn output_is_nonnegative_under_a_violated_feller_condition() {
 }
 
 /// The guard above is only meaningful if the thing it guards against actually
-/// happens here. This runs the same lift, same kernel, same seed, same
-/// parameters, with the coefficients evaluated on the raw state instead of
-/// $V^+$ — and asserts it **does** go negative. If this ever stops failing,
-/// the nonnegativity test above has become vacuous and both need revisiting.
+/// happens here. This runs the same lift, kernel and parameters, with the
+/// coefficients evaluated on the raw state instead of
+/// $V^+$ — and asserts it **does** go negative. The seed is *not* bit-identical
+/// to the paired test's: `sampler()` builds its `Gn` from `seed.derive()` and
+/// this constructs one directly, so the draws differ. That is immaterial here —
+/// 400 independent paths under a 12.5x Feller violation go negative under
+/// either derivation — but the claim is "same model, unprotected", not "same
+/// numbers". If this ever stops failing, the nonnegativity test above has
+/// become vacuous and both need revisiting.
 #[test]
 fn the_untruncated_scheme_does_go_negative_at_the_same_parameters() {
   use crate::noise::gn::Gn;

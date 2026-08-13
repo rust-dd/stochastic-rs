@@ -1,6 +1,6 @@
 //! `diffusion/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 124-type list, and shared methodology notes.
+//! derivation of the 127-type list, and shared methodology notes.
 
 use ndarray::Array1;
 use ndarray::Array2;
