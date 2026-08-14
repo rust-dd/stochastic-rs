@@ -24,7 +24,10 @@
 //! 3. Maintain the "$v$ pyramid" $v_{j, k}$ of conditional pseudo-observations
 //!    used by the inner step.
 //!
-//! Storage: $v$ has shape $(d, d)$ with $v[j][k]$ holding $F(u_k \mid u_{k-j}, \dots, u_{k-1})$.
+//! Storage: $v$ has shape $(d, d)$ with $v_{j,k}$ holding $F(u_k \mid u_{k-j}, \dots, u_{k-1})$
+//! — written with subscripts rather than `v[j][k]` because rustdoc parses a
+//! bracketed token inside doc math as an intra-doc link, and the crate denies
+//! unresolved ones.
 //!
 //! ## Density evaluation
 //!
