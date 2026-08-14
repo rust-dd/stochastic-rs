@@ -82,6 +82,15 @@ jobs:
       # unnoticed. This step is what makes the deny bite.
       - name: cargo doc (intra-doc links)
         run: cargo doc --workspace --no-deps --no-default-features
+      # `--no-default-features` never compiles the openblas-gated code, so its
+      # doc links went unchecked by the step above — 54 `cfg(feature =
+      # "openblas")` sites in stochastic-rs-stats alone. A1-d Task 5 found a
+      # broken link that way, by running this locally, after the step above was
+      # already green.
+      - name: Install OpenBLAS
+        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
+      - name: cargo doc (intra-doc links, openblas)
+        run: cargo doc --workspace --no-deps --features openblas
 
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for

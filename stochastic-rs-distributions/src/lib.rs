@@ -41,9 +41,9 @@
 //!
 //! **Positive support** (durations, volatilities, waiting times):
 //! [`exp::SimdExp`] has constant hazard (memoryless); [`weibull::SimdWeibull`]
-//! generalizes it with a hazard that can rise or fall over time and is
-//! built directly on the same ziggurat primitive
-//! ([`exp::SimdExpZig`]) [`exp::SimdExp`] itself wraps.
+//! generalizes it with a hazard that can rise or fall over time, and is
+//! built directly on [`exp::SimdExpZig`] — the same ziggurat primitive
+//! [`exp::SimdExp`] itself wraps.
 //! [`gamma::SimdGamma`] is the waiting-time-for-`k`-events story and the
 //! internal building block for [`beta::SimdBeta`] (ratio of two Gammas),
 //! [`chi_square::SimdChiSquared`] (`= 2·Gamma(k/2, 1)`),
