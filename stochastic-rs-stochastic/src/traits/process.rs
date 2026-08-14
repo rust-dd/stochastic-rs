@@ -450,11 +450,19 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
 /// processes (e.g. `Bm`, `Ou`, `Gbm`, `Vasicek`).
 ///
 /// ```
-/// use stochastic_rs_stochastic::traits::{FloatExt, OneDimensional};
+/// use stochastic_rs_stochastic::process::bm::Bm;
+/// use stochastic_rs_stochastic::simd_rng::Deterministic;
+/// use stochastic_rs_stochastic::traits::{FloatExt, OneDimensional, ProcessExt};
 ///
 /// fn last_value<T: FloatExt, P: OneDimensional<T>>(p: &P) -> T {
 ///   *p.sample().last().unwrap()
 /// }
+///
+/// // `Bm` has `Output = Array1<T>`, so the blanket impl gives it
+/// // `OneDimensional<T>` for free — no manual `impl` needed.
+/// let bm = Bm::<f64, _>::new(64, Some(1.0), Deterministic::new(1));
+/// let v = last_value(&bm);
+/// assert!(v.is_finite());
 /// ```
 pub trait OneDimensional<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {}
 

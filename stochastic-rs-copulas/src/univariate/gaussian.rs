@@ -20,6 +20,15 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
+/// ```
+/// use ndarray::array;
+/// use stochastic_rs_copulas::univariate::gaussian::GaussianUnivariate;
+///
+/// let mut g = GaussianUnivariate::new();
+/// g.fit(&array![1.0, 2.0, 3.0, 4.0, 5.0]);
+/// // The sample mean (3.0) maps to the median of the fitted normal.
+/// assert!((g.cdf(3.0) - 0.5).abs() < 1e-9);
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct GaussianUnivariate {
   /// `Some((mean, std))` once `fit` has been called; `None` otherwise.
@@ -83,9 +92,16 @@ impl GaussianUnivariate {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
+  use ndarray::Axis;
   use ndarray::array;
+  use ndarray::stack;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
+  use crate::bivariate::clayton::Clayton;
+  use crate::traits::BivariateExt;
 
   /// `ppf` is a SciPy-compatible alias for the canonical `percent_point`;
   /// the two must agree exactly since `ppf` delegates to it.
@@ -96,5 +112,37 @@ mod tests {
     for &p in &[0.1, 0.5, 0.9] {
       assert_eq!(g.percent_point(p), g.ppf(p));
     }
+  }
+
+  /// The module doc claims `GaussianUnivariate`'s `cdf` output is "the
+  /// input every `BivariateExt` ... copula expects" — this proves that
+  /// claim rather than merely stating it. Two independently-drawn Gaussian
+  /// columns, each transformed through `fit` + `cdf`, must clear
+  /// `BivariateExt::fit`'s own `check_marginal` KS-uniformity gate (this
+  /// crate's only other production consumer of a marginal transform,
+  /// `EmpiricalCopula2D`, is exercised the same way via its Python
+  /// binding — this is `GaussianUnivariate`'s equivalent real call site).
+  #[test]
+  fn gaussian_univariate_output_feeds_a_real_bivariate_copula() {
+    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
+    let mut x = Array1::<f64>::zeros(600);
+    normal.fill_slice(x.as_slice_mut().unwrap());
+    let mut y = Array1::<f64>::zeros(600);
+    normal.fill_slice(y.as_slice_mut().unwrap());
+
+    let mut gx = GaussianUnivariate::new();
+    gx.fit(&x);
+    let mut gy = GaussianUnivariate::new();
+    gy.fit(&y);
+
+    let u = x.mapv(|v| gx.cdf(v));
+    let v = y.mapv(|v| gy.cdf(v));
+    let data = stack![Axis(1), u, v];
+
+    let mut clayton = Clayton::new();
+    clayton
+      .fit(&data)
+      .expect("Gaussian-margin transform must pass BivariateExt::fit's uniformity check");
+    assert!(clayton.theta().is_some());
   }
 }
