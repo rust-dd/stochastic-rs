@@ -53,8 +53,8 @@
 //! Reference: Bayer, Friz, Gatheral, "Pricing under rough volatility",
 //! Quantitative Finance 16(6), 887-904 (2016) — for the canonical model
 //! that this implementation approximates.
-use ndarray::s;
 use ndarray::Array1;
+use ndarray::s;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -401,8 +401,8 @@ impl PyRoughBergomi {
     py: pyo3::Python<'py>,
     m: usize,
   ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::ndarray::Array2;
     use numpy::IntoPyArray;
+    use numpy::ndarray::Array2;
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;

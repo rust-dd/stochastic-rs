@@ -12,7 +12,7 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **24 items in 6 groups** — re-derive with
+Brings **29 items in 7 groups** — re-derive with
 `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"` against
 `src/lib.rs` any time an item is added or removed; this count has drifted
 before (it read "20 items" for several releases after `VolterraKernel`
@@ -90,6 +90,21 @@ is the `sample()`/`sample_into()` abstraction `ProcessExt::sampler()`
 returns. `VolterraKernel` is the nodes/weights/evaluate trait behind the
 Markovian-lift rough-process family (`RlKernel`, `ExponentialKernel`,
 `GammaKernel`, `SumOfExponentials`).
+
+## Estimation (5)
+
+```rust
+HurstEstimator, FractalDimEstimator,
+HypothesisTest, DiffusionModel,
+TailDependence
+```
+
+The stats and copula trait surface. Without these in scope a first
+`.estimate()` call does not compile at all, which is why they were added —
+`HurstEstimator` covers the nine Hurst estimators, `FractalDimEstimator`
+the fractal-dimension family, `HypothesisTest` the stationarity and
+normality tests, `DiffusionModel` the parametric-SDE estimators, and
+`TailDependence` the upper/lower tail coefficients on bivariate copulas.
 
 ## What is *not* in the prelude (and why)
 

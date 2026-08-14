@@ -76,7 +76,7 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **24** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"`):
+Brings **29** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"`):
 
 - **Trait core**: `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
 - **Pricing**: `PricerExt`, `ModelPricer`, `GreeksExt`

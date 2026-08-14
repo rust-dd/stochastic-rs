@@ -11,9 +11,9 @@ use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use super::SimdFloatExt;
 use super::chi_square::SimdChiSquared;
 use super::normal::SimdNormal;
-use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 
@@ -175,11 +175,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
     let nu = self.nu.to_f64().unwrap();
     let t = nu / (nu + x * x);
     let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-    if x >= 0.0 {
-      1.0 - half
-    } else {
-      half
-    }
+    if x >= 0.0 { 1.0 - half } else { half }
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {
@@ -197,11 +193,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
       let cdf = {
         let t = nu / (nu + x * x);
         let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-        if x >= 0.0 {
-          1.0 - half
-        } else {
-          half
-        }
+        if x >= 0.0 { 1.0 - half } else { half }
       };
       let f = cdf - p;
       let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))

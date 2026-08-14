@@ -11,10 +11,10 @@ use implied_vol::ImpliedBlackVolatility;
 use num_complex::Complex64;
 
 use super::cf_quadrature::integrate_to_convergence;
+use crate::OptionType;
 use crate::traits::GreeksExt;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
-use crate::OptionType;
 
 /// Heston stochastic volatility pricer using the characteristic-function method.
 ///
