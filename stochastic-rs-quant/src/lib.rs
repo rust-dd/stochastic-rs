@@ -11,6 +11,12 @@
 //! - [`pricing`] — Black-Scholes, Heston, Bates, rBergomi, CGMYsv, basket /
 //!   rainbow / Asian / barrier / lookback / cliquet payoffs; Fourier
 //!   (Carr-Madan, Lewis, Gil-Pelaez); Malliavin-Thalmaier Greeks; SLV.
+//! - [`mc`] — variance reduction (antithetic, control variates, stratified,
+//!   importance sampling), quasi-MC (Halton/Sobol), multilevel MC (MLMC),
+//!   and the [`mc::McEstimate`] result type; re-exported from
+//!   `stochastic-rs-stochastic` so pricing code reaches it as
+//!   `stochastic_rs_quant::mc` instead of a 3-hop
+//!   `stochastic_rs_quant::stochastic::mc` path.
 //! - [`bonds`] — affine zero-coupon bond pricing (Vasicek, CIR, Hull-White,
 //!   G2++), duration / convexity.
 //! - [`fourier_malliavin`] — non-parametric realised volatility / leverage /
@@ -95,6 +101,7 @@ pub use stochastic_rs_core::simd_rng;
 pub use stochastic_rs_distributions as distributions;
 pub use stochastic_rs_stats as stats;
 pub use stochastic_rs_stochastic as stochastic;
+pub use stochastic_rs_stochastic::mc;
 
 /// Pricing engines — analytic, Fourier (Carr-Madan / Lewis / Gil-Pelaez),
 /// finite-difference, MC, lattice — for European, American, Asian, barrier,

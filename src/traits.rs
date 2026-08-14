@@ -3,6 +3,7 @@
 pub use stochastic_rs_copulas::traits::BivariateExt;
 #[cfg(feature = "openblas")]
 pub use stochastic_rs_copulas::traits::MultivariateExt;
+pub use stochastic_rs_copulas::traits::TailDependence;
 #[cfg(feature = "python")]
 pub use stochastic_rs_distributions::traits::CallableDist;
 pub use stochastic_rs_distributions::traits::DistributionExt;
@@ -24,6 +25,10 @@ pub use stochastic_rs_quant::traits::PricingResult;
 pub use stochastic_rs_quant::traits::StandardResult;
 pub use stochastic_rs_quant::traits::TimeExt;
 pub use stochastic_rs_quant::traits::ToModel;
+pub use stochastic_rs_stats::fractal_dim::FractalDimEstimator;
+pub use stochastic_rs_stats::hurst::HurstEstimator;
+pub use stochastic_rs_stats::mle::DiffusionModel;
+pub use stochastic_rs_stats::traits::HypothesisTest;
 pub use stochastic_rs_stochastic::device::Backend;
 pub use stochastic_rs_stochastic::device::Cpu;
 pub use stochastic_rs_stochastic::traits::ComplexPathOutput;

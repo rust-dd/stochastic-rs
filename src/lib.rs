@@ -28,6 +28,7 @@ pub use stochastic_rs_distributions as distributions;
 pub use stochastic_rs_quant as quant;
 pub use stochastic_rs_stats as stats;
 pub use stochastic_rs_stochastic as stochastic;
+pub mod bridges;
 pub mod traits;
 pub use stochastic_rs_viz as visualization;
 
@@ -40,7 +41,7 @@ pub use stochastic_rs_viz as visualization;
 /// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
 /// without pulling them one by one.
 ///
-/// Currently 24 items in 6 groups — re-derive with
+/// Currently 29 items in 7 groups — re-derive with
 /// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"` and update
 /// `CLAUDE.md` and `website/content/docs/concepts/prelude.mdx` together
 /// whenever a `pub use` line below is added or removed;
@@ -64,10 +65,14 @@ pub mod prelude {
   pub use crate::traits::CalibrationResult;
   pub use crate::traits::Calibrator;
   pub use crate::traits::Cpu;
+  pub use crate::traits::DiffusionModel;
   pub use crate::traits::DistributionExt;
   pub use crate::traits::DistributionSampler;
   pub use crate::traits::FloatExt;
+  pub use crate::traits::FractalDimEstimator;
   pub use crate::traits::GreeksExt;
+  pub use crate::traits::HurstEstimator;
+  pub use crate::traits::HypothesisTest;
   pub use crate::traits::Instrument;
   pub use crate::traits::InstrumentExt;
   pub use crate::traits::ModelPricer;
@@ -77,6 +82,7 @@ pub mod prelude {
   pub use crate::traits::PricingResult;
   pub use crate::traits::ProcessExt;
   pub use crate::traits::SimdFloatExt;
+  pub use crate::traits::TailDependence;
   pub use crate::traits::TimeExt;
   pub use crate::traits::ToModel;
   pub use crate::traits::VolterraKernel;

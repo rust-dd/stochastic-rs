@@ -63,3 +63,12 @@ ndrustfft = { workspace = true }
 anyhow = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
+
+[package.metadata.docs.rs]
+# Same choice as the umbrella crate's own `[package.metadata.docs.rs]`:
+# `openblas` unlocks the LAPACK-backed `stationarity` module (ADF, KPSS,
+# ERS-DFGLS, Phillips-Perron, Leybourne-McCabe) so it renders instead of
+# silently disappearing behind the default (non-openblas) feature set.
+# `python` is skipped, same reasoning as the umbrella: the pyo3
+# extension-module build isn't meant to render as rustdoc.
+features = ["openblas"]
