@@ -2,8 +2,8 @@
 
 **Python (pyo3) bindings for stochastic-rs**
 
-The `stochastic_rs` Python extension module: 210 entries (198 PyO3 classes
-and 12 functions) spanning distributions, processes, copulas, statistics
+The `stochastic_rs` Python extension module: 234 entries (218 PyO3 classes
+and 16 functions) spanning distributions, processes, copulas, statistics
 and the quant layer. Numpy in, numpy out.
 
 This crate is a `cdylib` and is **not published to crates.io** — it ships to
@@ -24,10 +24,11 @@ p = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
 path = p.sample()                      # numpy.ndarray, shape (1000,)
 
 pricer = srs.HestonPricer(
-    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
-    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+    s=100, v0=0.04, k=100, r=0.03, kappa=2.0, theta=0.04, sigma=0.3,
+    rho=-0.5, tau=1.0, q=0.0,
 )
-print(pricer.price("call"))
+call, put = pricer.call_put()
+print(call)
 ```
 
 ## Building from source
@@ -38,7 +39,7 @@ maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
 ```
 
 Linux and macOS wheels ship with the `openblas` feature enabled; the
-Windows wheel omits the 15 BLAS-backed classes.
+Windows wheel omits the 13 BLAS-backed classes.
 
 ## Part of stochastic-rs
 

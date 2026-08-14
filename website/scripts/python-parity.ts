@@ -1,98 +1,138 @@
 #!/usr/bin/env bun
 /**
- * Regenerate website/public/python-parity.json — the data backing the
- * <PythonParityTable /> component.
+ * Regenerate website/public/python-parity.json — the data backing a future
+ * <PythonParityTable /> component (not yet built; this script only emits
+ * the JSON).
  *
- * Strategy:
- *   1. Walk stochastic-rs-py/src/ for the macro invocations
- *      `py_distribution!`, `py_distribution_int!`, `py_process_1d!`,
- *      `py_process_2x1d!`, `py_process_2d!`, plus hand-written
- *      `#[pyclass]` and `#[pyfunction]` annotations.
- *   2. Emit a flat list:
- *        { rust_path, python_name, kind, status }
- *      where status ∈ {"exposed","partial","planned","rust_only"}.
+ * Strategy: parse `stochastic-rs-py/src/lib.rs`'s `#[pymodule]` function
+ * directly for `m.add_class::<PyXxx>()` and
+ * `m.add_function(pyo3::wrap_pyfunction!(path::to::fn, m))` calls. That
+ * function is the single authoritative list of what the compiled
+ * `stochastic_rs` Python module actually exposes — a `#[pyclass]` defined
+ * in a sub-crate but never registered there is not a real Python entry.
  *
- * The "rust_only" rows are computed by diffing this set against the
- * authoritative Rust public-type list (TODO: parse rustdoc JSON output).
+ * This script previously walked `stochastic-rs-py/src/` for macro
+ * invocations and bare `#[pyclass]`/`#[pyfunction]` attributes, but every
+ * `py_distribution!`/`py_process_*!` call and every hand-written pyclass
+ * lives in the *sub-crates* (`stochastic-rs-distributions`,
+ * `stochastic-rs-stochastic`, `stochastic-rs-quant`, …) — `stochastic-rs-py`
+ * itself holds only this one registration file, so the walk found nothing
+ * and silently wrote 0 rows every run.
  *
- * For now, this scaffold only emits the "exposed" rows. The "rust_only"
- * delta is a follow-up tied to release-checklist SKILL.
+ * `kind` is inferred from the `use` import that brought each `PyXxx` name
+ * into scope (the crate segment of the import path). `openblas_gated` is
+ * true when the registration line falls inside a
+ * `#[cfg(feature = "openblas")]` block.
  */
-import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const PY_SRC = join(import.meta.dir, '..', '..', 'stochastic-rs-py', 'src');
+const LIB_RS = join(
+  import.meta.dir,
+  '..',
+  '..',
+  'stochastic-rs-py',
+  'src',
+  'lib.rs',
+);
 const OUT = join(import.meta.dir, '..', 'public', 'python-parity.json');
+
+type Kind = 'distribution' | 'process' | 'pricer' | 'copula' | 'estimator' | 'unknown';
 
 interface Row {
   python_name: string;
-  rust_macro?: string;
-  kind: 'distribution' | 'process' | 'pricer' | 'calibrator' | 'function' | 'unknown';
-  source_file: string;
-  status: 'exposed' | 'partial' | 'planned' | 'rust_only';
+  kind: Kind;
+  entry_kind: 'class' | 'function';
+  openblas_gated: boolean;
+}
+
+function kindFromCratePath(cratePath: string): Kind {
+  if (cratePath.includes('stochastic_rs_distributions')) return 'distribution';
+  if (cratePath.includes('stochastic_rs_stochastic')) return 'process';
+  if (cratePath.includes('stochastic_rs_quant')) return 'pricer';
+  if (cratePath.includes('stochastic_rs_copulas')) return 'copula';
+  if (cratePath.includes('stochastic_rs_stats')) return 'estimator';
+  return 'unknown';
+}
+
+const lines = readFileSync(LIB_RS, 'utf8').split('\n');
+
+// Map each imported `PyXxx` symbol to the crate it came from, so a later
+// `m.add_class::<PyXxx>()` can be classified without re-parsing `use`.
+const importCrate = new Map<string, string>();
+const useRe = /^\s*use\s+([\w:]+)::(Py\w+);\s*$/;
+for (const line of lines) {
+  const m = useRe.exec(line);
+  if (m) importCrate.set(m[2], m[1]);
 }
 
 const rows: Row[] = [];
+let braceDepth = 0;
+let gateDepth: number | null = null;
+let pendingGate = false;
 
-function* walk(dir: string): Generator<string> {
-  for (const e of readdirSync(dir)) {
-    const full = join(dir, e);
-    if (statSync(full).isDirectory()) yield* walk(full);
-    else if (full.endsWith('.rs')) yield full;
+for (let i = 0; i < lines.length; i++) {
+  const line = lines[i];
+
+  if (line.includes('#[cfg(feature = "openblas")]')) {
+    pendingGate = true;
   }
-}
 
-const macroRe = /py_(distribution|distribution_int|process_1d|process_2x1d|process_2d)!\s*\(\s*(Py\w+)/g;
-const pyclassRe = /#\[pyclass[^\]]*\][\s\S]{0,200}?(?:struct|enum)\s+(Py\w+)/g;
-const pyfnRe = /#\[pyfunction[^\]]*\][\s\S]{0,200}?fn\s+(\w+)/g;
+  const opens = (line.match(/{/g) ?? []).length;
+  const closes = (line.match(/}/g) ?? []).length;
 
-for (const file of walk(PY_SRC)) {
-  const src = readFileSync(file, 'utf8');
-  let m: RegExpExecArray | null;
+  // Capture the depth *before* this line's own opening brace(s), so every
+  // line inside the block (braceDepth > gateDepth) reads as gated —
+  // including the `{` line itself.
+  if (pendingGate && opens > 0) {
+    gateDepth = braceDepth;
+    pendingGate = false;
+  }
 
-  while ((m = macroRe.exec(src)) !== null) {
-    const macro = m[1];
-    const py = m[2];
-    const kind = macro.startsWith('distribution') ? 'distribution' : 'process';
+  braceDepth += opens - closes;
+  const gated = gateDepth !== null;
+
+  const classMatch = /m\.add_class::<(\w+)>\(\)/.exec(line);
+  if (classMatch) {
+    const py = classMatch[1];
     rows.push({
       python_name: py,
-      rust_macro: `py_${macro}!`,
-      kind,
-      source_file: file,
-      status: 'exposed',
+      kind: kindFromCratePath(importCrate.get(py) ?? ''),
+      entry_kind: 'class',
+      openblas_gated: gated,
     });
   }
-  macroRe.lastIndex = 0;
 
-  while ((m = pyclassRe.exec(src)) !== null) {
-    const py = m[1];
-    if (rows.some((r) => r.python_name === py)) continue;
-    rows.push({
-      python_name: py,
-      kind: 'unknown',
-      source_file: file,
-      status: 'exposed',
-    });
+  // `m.add_function(pyo3::wrap_pyfunction!(` opens a call whose qualified
+  // function path is the next non-blank line; the closing `m)?)?;` follows
+  // two lines after that in every occurrence in this file.
+  if (/pyo3::wrap_pyfunction!\(\s*$/.test(line)) {
+    const pathLine = (lines[i + 1] ?? '').trim().replace(/,\s*$/, '');
+    if (/^[\w:]+$/.test(pathLine)) {
+      rows.push({
+        python_name: pathLine.split('::').pop() ?? pathLine,
+        kind: kindFromCratePath(pathLine),
+        entry_kind: 'function',
+        openblas_gated: gated,
+      });
+    }
   }
-  pyclassRe.lastIndex = 0;
 
-  while ((m = pyfnRe.exec(src)) !== null) {
-    rows.push({
-      python_name: m[1],
-      kind: 'function',
-      source_file: file,
-      status: 'exposed',
-    });
-  }
-  pyfnRe.lastIndex = 0;
+  if (gateDepth !== null && braceDepth <= gateDepth) gateDepth = null;
 }
 
 const out = {
   generated_at: new Date().toISOString().slice(0, 10),
+  source: 'stochastic-rs-py/src/lib.rs (#[pymodule] registrations)',
   count: rows.length,
+  classes: rows.filter((r) => r.entry_kind === 'class').length,
+  functions: rows.filter((r) => r.entry_kind === 'function').length,
+  openblas_gated: rows.filter((r) => r.openblas_gated).length,
   rows,
 };
 
 mkdirSync(join(import.meta.dir, '..', 'public'), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out, null, 2));
-console.log(`✔ wrote ${rows.length} rows to ${OUT}`);
+console.log(
+  `✔ wrote ${rows.length} rows to ${OUT} (${out.classes} classes + ${out.functions} functions, ${out.openblas_gated} openblas-gated)`,
+);

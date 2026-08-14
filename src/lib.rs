@@ -40,6 +40,13 @@ pub use stochastic_rs_viz as visualization;
 /// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
 /// without pulling them one by one.
 ///
+/// Currently 24 items in 6 groups — re-derive with
+/// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"` and update
+/// `CLAUDE.md` and `website/content/docs/concepts/prelude.mdx` together
+/// whenever a `pub use` line below is added or removed;
+/// `tests/prelude_completeness.rs` catches the removal direction at
+/// compile time but not additions that go undocumented.
+///
 /// ```
 /// use stochastic_rs::prelude::*;
 /// use stochastic_rs::simd_rng::Unseeded;

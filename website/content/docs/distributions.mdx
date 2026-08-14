@@ -1,6 +1,6 @@
 ---
 title: Distributions
-description: 19 SIMD-accelerated distributions, all with closed-form pdf/cdf/cf/moments via DistributionExt. Bulk samplers; ziggurat, rejection, inversion.
+description: 18 of 29 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
 category: distribution
 since: 2.0.0
 status: stable
@@ -8,8 +8,10 @@ status: stable
 
 # Distributions
 
-The `stochastic-rs-distributions` crate ships **19 user-facing
-distributions**, every one of them with:
+The `stochastic-rs-distributions` crate ships **29** `Simd*` distribution
+structs (`grep -rc "^pub struct Simd" stochastic-rs-distributions/src --include='*.rs'`),
+plus `ComplexDistribution` (30 total). This page's table covers the
+**18** that carry the full package — every one of them has:
 
 - A `Simd<Name><T>` struct that implements `rand_distr::Distribution<T>`
 - A bulk filler `fill_slice(dst)` that draws from the distribution's own
@@ -17,8 +19,36 @@ distributions**, every one of them with:
 - A
   [`DistributionExt`](/docs/concepts/distribution-ext)
   impl with closed-form pdf / cdf / characteristic function / moments
-- A `py_distribution!`-generated `#[pyclass]` for Python use
+- A `py_distribution!`- or `py_distribution_int!`-generated `#[pyclass]`
+  for Python use
 - A KS-test against the analytic CDF
+
+**Not shown here** — 11 more real, public `Simd*` types that don't carry
+the full package (18 + 11 = 29), plus `ComplexDistribution` outside that
+count entirely:
+
+- `Ged`, `Gev`, `Skellam`, and the four `Truncated{Normal,Exp,Beta,Gamma}`
+  wrappers (7) implement `DistributionExt` but have no Python binding.
+- `SimdExpZig` is the ziggurat-table `Exp(1)` primitive that
+  `SimdExp` and other samplers build on internally — the same
+  distribution as the `Exponential` row below, exposed as a lower-level
+  type, not a distinct 19th continuous distribution.
+- `SimdNonCentralChiSquared` is structurally different from every type in
+  this table: its noncentrality parameter is supplied per draw
+  (`sample_ncp(ncp)`), not fixed at construction, so it implements neither
+  `rand_distr::Distribution` nor `DistributionExt` nor `fill_slice` — see
+  its own module docs. It backs the exact CIR transition density
+  (`stochastic-rs-stats/src/cir.rs`) via the free function
+  `non_central_chi_squared::sample(df, lambda, seed)`.
+- `Dirichlet` and `Wishart` are multivariate (a `Vec<T>` / `Array2<f64>`
+  per draw), so the scalar `rand_distr::Distribution<T>` shape does not
+  apply; each exposes its own `sample_fast`/`log_pdf` instead.
+
+That accounts for all 29. `ComplexDistribution` is a 30th, separate type
+(not `Simd`-prefixed) that samples `Complex<T>` directly and is the one
+type with no `DistributionExt` impl at all (see `CLAUDE.md`'s note on the
+trait). The API docs (`cargo doc -p stochastic-rs-distributions`) are the
+exhaustive reference for all of them.
 
 ## The list
 
@@ -34,7 +64,6 @@ distributions**, every one of them with:
 | Gamma                       | Marsaglia-Tsang squeeze                   |
 | Beta                        | Gamma-ratio composition                   |
 | Chi-squared                 | Composition (Gamma)                       |
-| Non-central chi-squared     | Composition ($\chi^2_{\nu-1} + (Z+\sqrt\lambda)^2$) |
 | Inverse Gaussian            | Michael-Schucany                          |
 | Pareto                      | Inversion                                 |
 | Weibull                     | Ziggurat (Exp) + power transform          |

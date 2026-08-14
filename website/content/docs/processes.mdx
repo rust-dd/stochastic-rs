@@ -1,6 +1,6 @@
 ---
 title: Stochastic processes
-description: 120+ stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 127 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
@@ -8,23 +8,42 @@ status: stable
 
 # Stochastic processes
 
-The `stochastic-rs-stochastic` crate ships **120+ processes** organised
-into six families. Every process implements
+The `stochastic-rs-stochastic` crate ships **127 processes** organised
+into eleven families (below). Every process implements
 [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path,
 `sample_map(m, f)` folds over `m` paths in parallel, and `sample_par(m)`
 returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor
 models).
 
+**Derivation**: `grep -rn "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src --include='*.rs' | grep -v /traits/ | wc -l`
+— the same command and per-directory breakdown that
+`stochastic-rs-stochastic/tests/reproducibility_all_processes.rs` uses to
+derive its own exhaustive guard list, so the two never disagree. That file
+excludes `src/traits/process.rs` deliberately: it contributes only blanket
+impls of *marker* traits keyed off a `P: ProcessExt<...>` bound
+(`OneDimensional`, `MultiDimensional`, …), never a concrete process type —
+counting those inflates 127 to 130, which is how earlier audits of this
+page disagreed with each other.
+
 ## Families
 
-| Family            | Count | Examples                                                        |
-|-------------------|-------|-----------------------------------------------------------------|
-| **Diffusion**     | 30    | OU, GBM (log + standard), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque |
-| **Jump**          | 16    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, Hawkes-JD, Lévy diffusion |
-| **Volatility**    | 11    | Heston, SABR, Bergomi, rough Bergomi, double-Heston, HKDE, Bates SVJ, fractional Bates SVJ, fractional Heston |
-| **Interest rate** | 14    | Vasicek, CIR, CIR 2-factor, Hull-White (1F + 2F), G2++, Ho-Lee, HJM, LMM, Wu-Zhang, Duffie-Kan |
-| **Rough**         | 6     | RL fBM, RL Heston, RL fOU, Markov lift, Volterra-kernel based     |
-| **Noise**         | 5     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN |
+| Family                        | Count | Examples                                                        |
+|--------------------------------|-------|-----------------------------------------------------------------|
+| **Diffusion**                  | 34    | OU, GBM (log + standard), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque |
+| **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
+| **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
+| **Volatility**                 | 15    | Heston (+ log, 2D, multifactor), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
+| **Interest rate**               | 15    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump) |
+| **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, TGARCH, AGARCH |
+| **Noise**                       | 5     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN |
+| **Rough (Riemann–Liouville lift)** | 4  | RL Black-Scholes, RL fBM, RL Heston, RL fOU |
+| **Stochastic correlation**      | 4     | Van Emmerich / Jacobi-type, Teng-modified OU, general transformed-OU, Heston with stochastic correlation |
+| **Sheet**                       | 1     | Fractional Brownian sheet (`Fbs`) |
+| **Volterra**                    | 3     | See the Volterra section below |
+
+Every row lists representative examples, not an exhaustive per-type list —
+the exhaustive list (one line per type) is the guard file linked above, or
+`cargo doc` for the API reference.
 
 ## Examples
 

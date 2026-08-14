@@ -1,6 +1,6 @@
 ---
 title: Prelude
-description: stochastic_rs::prelude — twenty items in five groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+description: stochastic_rs::prelude — 24 items in six groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
 category: concept
 since: 2.0.0
 status: stable
@@ -12,8 +12,13 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **20 items in 5 groups**. The five lists below are name groupings
-for reference, not standalone Rust statements — see
+Brings **24 items in 6 groups** — re-derive with
+`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"` against
+`src/lib.rs` any time an item is added or removed; this count has drifted
+before (it read "20 items" for several releases after `VolterraKernel`
+joined the fifth group without a sixth being added for `Backend`/`Cpu`/
+`PathSampler`). The six lists below are name groupings for reference, not
+standalone Rust statements — see
 [Importing concrete types](#importing-concrete-types) for a compiled,
 runnable example.
 
@@ -70,6 +75,22 @@ The three enums that cover ~all option specs in the library. `Moneyness`
 ATM / ITM / OTM; `OptionStyle` European / American / Bermudan; `OptionType`
 Call / Put.
 
+## Backend / sampling (4)
+
+```rust
+Backend, Cpu,
+PathSampler, VolterraKernel
+```
+
+`Backend` is the compute-backend dispatch trait behind `Fgn`/`Fbm`'s
+`.on::<B>()`; `Cpu` is its default (zero-sized) implementor — every other
+backend (`CudaNative`, `CubeCl`, `MetalNative`, `Accelerate`) is feature-gated
+and reached via `stochastic_rs::stochastic::device` instead. `PathSampler`
+is the `sample()`/`sample_into()` abstraction `ProcessExt::sampler()`
+returns. `VolterraKernel` is the nodes/weights/evaluate trait behind the
+Markovian-lift rough-process family (`RlKernel`, `ExponentialKernel`,
+`GammaKernel`, `SumOfExponentials`).
+
 ## What is *not* in the prelude (and why)
 
 - `MalliavinExt` / `Malliavin2DExt` — 0 in-tree implementations today;
@@ -84,8 +105,10 @@ combination without surprises.
 
 ## Importing concrete types
 
-The prelude ships only traits and option-type enums. You always name
-concrete types yourself:
+The prelude ships traits, option-type enums, and one zero-sized backend
+marker (`Cpu`, needed to name the default backend explicitly in generic
+code). Every other concrete type — every process, pricer, calibrator — you
+name yourself:
 
 <RustExample path="tests/doctest_concepts_prelude_concrete_imports.rs" />
 

@@ -43,10 +43,14 @@ Highlights:
   reduced-form survival curves, CDS pricing, JLT migration matrices.
 - **Microstructure** — Almgren-Chriss, Kyle (1985), Bouchaud propagator,
   full price-time priority order book.
-- **Distributions & copulas** — 19 SIMD distributions with
-  closed-form pdf / cdf / cf / moments. Clayton / Frank / Gumbel /
-  Independence bivariate; Gaussian / vine multivariate.
-- **Python bindings** — 210 entries (198 PyO3 classes + 12 functions)
+- **Distributions & copulas** — 18 SIMD distributions with
+  closed-form pdf / cdf / cf / moments and Python bindings (29
+  distribution structs total). 13 bivariate (Clayton / Frank / Gumbel /
+  Independence / AMH / FGM / Galambos / Gaussian / Hüsler-Reiss / Joe /
+  Marshall-Olkin / Plackett / Student-t) and 8 multivariate (Gaussian /
+  Student-t / nested Archimedean / C-vine / D-vine / R-vine / two
+  Gaussian-collapsed tree / vine approximations) copulas.
+- **Python bindings** — 234 entries (218 PyO3 classes + 16 functions)
   spanning every sub-crate except AI surrogates. Numpy-in / numpy-out.
 
 ## Installation
@@ -83,8 +87,8 @@ maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
 ```
 
 Linux (x86_64 / aarch64) and macOS (arm64 / x86_64) wheels ship with
-the `openblas` feature on. The Windows wheel omits the 15
-BLAS-backed classes; everything else (≈195 classes / 12 functions)
+the `openblas` feature on. The Windows wheel omits the 13
+BLAS-backed classes; everything else (205 classes / 16 functions)
 works identically. See the
 [Python bindings page](https://stochastic.rust-dd.com/docs/python) for the parity
 table and the source-build path with vcpkg.

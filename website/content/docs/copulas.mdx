@@ -1,6 +1,6 @@
 ---
 title: Copulas
-description: Bivariate (Clayton, Frank, Gumbel, independence) and multivariate (Gaussian, tree, vine) copulas with the BivariateExt / MultivariateExt traits.
+description: All 13 bivariate and 8 multivariate copulas with the BivariateExt / MultivariateExt traits — Archimedean, extreme-value, elliptical, and vine families.
 category: copula
 since: 2.0.0
 status: stable
@@ -13,28 +13,52 @@ copulas plus correlation utilities and an empirical copula.
 
 ## Bivariate (`BivariateExt<T>`)
 
-Archimedean and elliptical:
+**13** copulas — every variant of the crate's own `bivariate::CopulaType`
+enum (`grep -n "pub enum CopulaType" -A 15 stochastic-rs-copulas/src/bivariate.rs`).
+"Archimedean" below means the type overrides `generator()`, the trait's
+Archimedean-generator hook — the default implementation returns an error,
+so a concrete override is the tree-derived signal, not a label taken from
+each module's own prose:
 
-| Copula        | Family       | Tail dependence    |
-|---------------|--------------|--------------------|
-| Clayton       | Archimedean  | Lower only         |
-| Frank         | Archimedean  | None (symmetric)   |
-| Gumbel        | Archimedean  | Upper only         |
-| Independence  | Trivial      | None               |
+| Copula        | Family              | Tail dependence                                    |
+|---------------|---------------------|-----------------------------------------------------|
+| Amh           | Archimedean         | None                                                |
+| Clayton       | Archimedean         | Lower only ($\lambda_L = 2^{-1/\theta}$)             |
+| Fgm           | Perturbation        | None (bounded perturbation of independence)         |
+| Frank         | Archimedean         | None (symmetric)                                    |
+| Galambos      | Extreme-value       | Upper only ($\lambda_U = 2^{-1/\theta}$)             |
+| Gaussian      | Elliptical          | None, for any $\rho$                                 |
+| Gumbel        | Archimedean         | Upper only ($\lambda_U = 2 - 2^{1/\theta}$)          |
+| HuslerReiss   | Extreme-value       | Upper only ($\lambda_U = 2(1-\Phi(1/\lambda))$)      |
+| Independence  | Trivial             | None                                                 |
+| Joe           | Archimedean         | Upper only ($\lambda_U = 2 - 2^{1/\theta}$)          |
+| MarshallOlkin | Singular (shared-shock) | Upper only ($\lambda_U = \min(\alpha,\beta)$); has a singular component on $u^\alpha = v^\beta$ |
+| Plackett      | Constant odds ratio | None                                                 |
+| TCopula       | Elliptical          | Both, symmetric ($\lambda_L = \lambda_U$)            |
 
 The bivariate samplers are consolidated under `BivariateExt`; the v1.x
 `NCopula2DExt` was removed in v2.0.
 
 ## Multivariate (`MultivariateExt<T>`)
 
-| Copula        | Family        | Notes                          |
-|---------------|---------------|--------------------------------|
-| Gaussian      | Elliptical    | Cholesky-based                 |
-| Tree          | Vine, simplified | Tree-structured Pair-copula |
-| Vine          | Vine, full    | R-vine / D-vine / C-vine       |
+**8** copulas — every variant of `multivariate::CopulaType`
+(`grep -n "pub enum CopulaType" -A 10 stochastic-rs-copulas/src/multivariate.rs`).
+Two of these are **not** real pair-copula-construction vines despite the
+name — each says so in its own module doc:
 
-> Multivariate copulas require the `openblas` feature for the Cholesky
-> factorisation. See [Feature flags](/docs/concepts/feature-flags).
+| Copula              | Family              | Notes                                                  |
+|----------------------|---------------------|---------------------------------------------------------|
+| GaussianMultivariate | Elliptical          | Cholesky-based                                          |
+| TMultivariate        | Elliptical          | Multivariate Student-t                                  |
+| NestedArchimedean    | Archimedean, nested | Outer + per-cluster inner generators (NAC)              |
+| CVine                | Vine, PCC           | Canonical vine — genuine pair-copula construction        |
+| DVine                | Vine, PCC           | D-vine — genuine pair-copula construction                |
+| RVine                | Vine, PCC           | Regular vine — graph-theoretic generalisation of C-/D-vine |
+| TreeMultivariate     | **Not a real vine** | MST-derived implied correlation collapsed to a Gaussian copula — module doc: "Gaussian-collapsed implied-correlation copula, NOT a real R-vine" |
+| VineMultivariate     | **Not a real vine** | Star-C-vine-derived implied correlation collapsed to a Gaussian copula — same disclaimer, same doc |
+
+> Multivariate copulas require the `openblas` feature (linear algebra
+> backend). See [Feature flags](/docs/concepts/feature-flags).
 
 ## Examples
 
@@ -52,9 +76,11 @@ crashes in equity returns.
 import stochastic_rs as srs
 
 cop = srs.Clayton(theta=2.0)
-uv = cop.sample(10_000, seed=42)             # shape (10_000, 2)
-u, v = uv[:, 0], uv[:, 1]
-print("Kendall's tau ≈", srs.kendall_tau(u, v))   # ≈ 0.5
+uv = cop.sample(10_000, seed=42)              # shape (10_000, 2)
+# kendall_tau_matrix takes an (n, k) matrix and returns the k×k pairwise-tau
+# matrix; uv is already (n, 2), so [0, 1] is the one off-diagonal entry.
+tau = srs.kendall_tau_matrix(uv)[0, 1]
+print("Kendall's tau ≈", tau)                 # ≈ 0.5
 ```
 </Tab>
 </Tabs>

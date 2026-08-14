@@ -25,7 +25,7 @@ struct's field names are estimator-specific (see
 | `stationarity`         | ADF, KPSS, Phillips-Perron, Leybourne-McCabe, ERS DF-GLS                       |
 | `econometrics`         | Engle-Granger and Johansen cointegration, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
-| `hurst`                | Six Hurst estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle/Fukasawa (`hurst::whittle`, L-BFGS-B + Paxson + Eq.16 corrections, intraday Table 1 validation), variations |
+| `hurst`                | Six native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle (Fukasawa, Takabatake & Westphal 2019 adapted quasi-likelihood; L-BFGS-B + Paxson + Eq.16 corrections, intraday Table 1 validation), variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **8** `HurstEstimator` implementors total. `hurst::whittle` additionally exposes `Whittle`'s own algorithm through dedicated one-shot functions (`estimate`, `estimate_from_prices`) outside the shared trait — see below |
 | `gaussian_kde`         | Gaussian KDE                                                                   |
 | `tail_index`           | Hill estimator + variants                                                      |
 | `spectral`             | Periodogram and spectrum search                                                |
@@ -46,10 +46,14 @@ import stochastic_rs as srs
 import numpy as np
 
 log_returns = ...   # 1-min log-returns over a trading day
-res = srs.realized_variance(log_returns)
-print("RV  =", res.point)
-print("SE  =", res.se)
-print("ann =", np.sqrt(res.point * 252))
+# annualisation is a constructor argument, not a post-hoc multiplier — it
+# scales straight into `.volatility`. There is no standard-error field:
+# RealizedMoments reports variance/volatility/skewness/kurtosis/quarticity,
+# not a point estimate with a `se` — see the ADF section below for the
+# same "no se/p_value field" pattern on the stationarity tests.
+res = srs.RealizedMoments(log_returns, annualisation=252.0)
+print("RV     =", res.variance)
+print("annVol =", res.volatility)
 ```
 </Tab>
 </Tabs>
@@ -71,8 +75,11 @@ critical values.
 ```python
 import stochastic_rs as srs
 
-res = srs.adf_test(series, lag=5)
-print(f"t-stat={res.point:.3f}, p={res.p_value:.3f}")
+# ADFTest is a class (openblas-gated), not a free function; the fitted
+# object exposes .statistic/.reject_unit_root/.critical_values directly —
+# no .p_value, matching the "no separate p_value field" note above.
+res = srs.ADFTest(series, max_lags=5)
+print(f"t-stat={res.statistic:.3f}, reject_unit_root={res.reject_unit_root}")
 ```
 </Tab>
 </Tabs>
@@ -81,9 +88,11 @@ print(f"t-stat={res.point:.3f}, p={res.p_value:.3f}")
 
 The `hurst` module unifies six estimators (rescaled-range, DFA, GPH,
 wavelet, Whittle, variations) behind one `HurstEstimator` trait —
-`estimate(x) -> Result<HurstResult, HurstError>`. The example below uses
-`RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which
-estimates the Hurst exponent of a signal directly:
+`estimate(x) -> Result<HurstResult, HurstError>` — plus two more
+(`Higuchi`, `Variogram`) that reach the same trait by adapting a
+fractal-dimension estimate. The example below uses `RescaledRange`
+(Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the
+Hurst exponent of a signal directly:
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -91,21 +100,32 @@ estimates the Hurst exponent of a signal directly:
 </Tab>
 <Tab value="Python">
 ```python
-# No Hurst estimator (rescaled-range or Fukasawa/Whittle) is currently
-# exposed through the Python bindings — see /docs/python for the exact
-# parity list. Use the Rust API directly until that lands.
+import stochastic_rs as srs
+
+x = ...   # a price / level series, e.g. np.cumsum(fgn.sample())
+res = srs.RescaledRange().estimate(x)
+print(f"H = {res.hurst:.3f}")
 ```
 </Tab>
 </Tabs>
 
-The `fukasawa_hurst` sub-module (`stats::hurst::whittle`) estimates a
-*different* quantity — the roughness of a latent volatility process from
-a realized-variance time series, not the Hurst exponent of a path
-sampled directly from `Fgn`. Feeding raw path samples into it silently
-recovers nonsense; see `stochastic-rs-stats/src/hurst/whittle.rs`'s own
-`simulate_log_rv` test helper for the construction it actually expects
-(a simulated log-variance process aggregated into intraday realized-variance
-bins).
+All eight `HurstEstimator` implementors are Python-bound (`RescaledRange`,
+`Dfa`, `Gph`, `Wavelet`, `Whittle`, `Variations`, `Higuchi`, `Variogram` —
+the last two also via `.estimate_hurst(x)` alongside their native
+`.estimate(x) -> FdResult` fractal-dimension output).
+
+`Whittle` is a different kind of input from the other five native
+estimators: it and the free-standing `FukasawaHurst` class (Python) /
+`estimate`, `estimate_from_prices` functions (Rust, `stats::hurst::whittle`)
+are the **same** Fukasawa, Takabatake & Westphal (2019) adapted-Whittle
+quasi-likelihood estimator, just reached two ways — the generic trait or
+a dedicated one-shot constructor. Either way it estimates the roughness of
+a *latent volatility* process from a realized-variance time series, not
+the Hurst exponent of a path sampled directly from `Fgn`. Feeding raw path
+samples into it silently recovers nonsense; see
+`stochastic-rs-stats/src/hurst/whittle.rs`'s own `simulate_log_rv` test
+helper for the construction it actually expects (a simulated log-variance
+process aggregated into intraday realized-variance bins).
 
 ## Common pattern
 

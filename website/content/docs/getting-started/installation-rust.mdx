@@ -30,7 +30,7 @@ sub-crates you need:
 ```toml
 [dependencies]
 stochastic-rs-distributions = "2.6"   # SIMD distribution sampling
-stochastic-rs-stochastic = "2.6"   # 120+ process types
+stochastic-rs-stochastic = "2.6"   # 127 process types
 stochastic-rs-copulas = "2.6"   # bivariate / multivariate copulas
 stochastic-rs-stats = "2.6"   # estimators
 stochastic-rs-quant = "2.6"   # pricing / calibration / vol surface
@@ -43,7 +43,7 @@ Topology:
 ```
 stochastic-rs-core (simd_rng)
  └→ stochastic-rs-distributions (FloatExt, SimdFloatExt, distributions)
-     ├→ stochastic-rs-stochastic (ProcessExt + 120+ processes)
+     ├→ stochastic-rs-stochastic (ProcessExt + 127 processes)
      ├→ stochastic-rs-copulas
      └→ stochastic-rs-stats
          └→ stochastic-rs-quant (PricerExt, calibration, vol surface)

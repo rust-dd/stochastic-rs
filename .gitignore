@@ -57,5 +57,9 @@ website/out/
 website/.source/
 website/.env*.local
 
+# Regenerate via `bun run python:parity` — no committed component reads it
+# yet, so keep it out of git rather than let it go stale unreviewed.
+website/public/python-parity.json
+
 docs
 *.tsbuildinfo

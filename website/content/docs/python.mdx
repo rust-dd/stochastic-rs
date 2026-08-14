@@ -1,6 +1,6 @@
 ---
 title: Python bindings
-description: stochastic-rs-py — Python coverage for distributions, processes, pricers, calibrators, copulas, stats. NumPy in / out, 210 entries at v2.6.
+description: stochastic-rs-py — Python coverage for distributions, processes, pricers, calibrators, copulas, stats. NumPy in / out, 234 entries.
 category: concept
 since: 2.0.0
 status: stable
@@ -8,11 +8,20 @@ status: stable
 
 # Python bindings
 
-The `stochastic_rs` Python package wraps the Rust crates via PyO3. At
-**v2.6** the surface is **210 entries**: 198 PyO3
-classes plus 12 free functions across distributions, stochastic
-processes, pricers, calibrators, copulas, and stats. AI bindings are
-deferred to 2.x.
+The `stochastic_rs` Python package wraps the Rust crates via PyO3. The
+surface is **234 entries**: 218 PyO3 classes plus 16 free functions across
+distributions, stochastic processes, pricers, calibrators, copulas, and
+stats — **13** of the classes (stationarity tests, HAR-RV, cointegration,
+the Gaussian HMM, PCA, Fama-MacBeth, pairs-trading) additionally require
+the `openblas` feature. AI bindings are deferred to 2.x.
+
+**Derivation**: `bun run python:parity` (from `website/`) regenerates
+`public/python-parity.json` by parsing every `m.add_class::<PyXxx>()` and
+`m.add_function(pyo3::wrap_pyfunction!(...))` call in
+`stochastic-rs-py/src/lib.rs`'s `#[pymodule]` function — the single place
+that determines what the compiled module actually exposes. A `#[pyclass]`
+defined in a sub-crate but never registered there would not be a real
+Python entry, so this is the only correct place to count from.
 
 ## Installation
 
@@ -37,23 +46,32 @@ import numpy as np
 ou = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=4096, x0=0.0, t=1.0, seed=42)
 path = ou.sample()                    # shape (4096,)
 
-# 2. Estimate the Hurst exponent of an fBM path (stats crate)
-fgn = srs.Fgn(hurst=0.4, sigma=1.0, n=4096, t=1.0, seed=42)
+# 2. Estimate the Hurst exponent of an fBM path (stats crate). RescaledRange
+# takes a level series directly (its default take_differences=True handles
+# the first-differencing) — unlike FukasawaHurst, which estimates a
+# different quantity (latent-volatility roughness from a realized-variance
+# series) and would silently return nonsense fed a raw path; see the
+# statistics catalog page's Hurst section.
+fgn = srs.Fgn(hurst=0.4, n=4096, t=1.0, seed=42)
 fbm = np.cumsum(fgn.sample())
-hurst = srs.fukasawa_hurst(fbm)
-print(f"H = {hurst.point:.3f} (true 0.4)")
+hurst = srs.RescaledRange().estimate(fbm)
+print(f"H = {hurst.hurst:.3f} (true 0.4)")
 
 # 3. Price a Heston call (quant crate)
 pricer = srs.HestonPricer(
-    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
-    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+    s=100, v0=0.04, k=100, r=0.03, kappa=2.0, theta=0.04, sigma=0.3,
+    rho=-0.5, tau=1.0, q=0.0,
 )
-print("Heston call =", pricer.price("call"))
+call, put = pricer.call_put()
+print("Heston call =", call)
 
-# 4. Sample from a Clayton copula (copulas crate)
-cop = srs.Clayton(theta=2.0, seed=42)
-u, v = cop.sample(10_000)
-print("τ̂ =", srs.kendall_tau(u, v))
+# 4. Sample from a Clayton copula (copulas crate). theta/tau are the only
+# constructor args — seed is a sample()-time argument, and sample(n) returns
+# one (n, 2) array rather than a (u, v) tuple.
+cop = srs.Clayton(theta=2.0)
+uv = cop.sample(10_000, seed=42)
+u, v = uv[:, 0], uv[:, 1]
+print("τ̂ =", srs.kendall_tau_matrix(np.column_stack([u, v]))[0, 1])
 ```
 
 ## Bulk sampling — `sample_par(m, n)`
@@ -71,18 +89,22 @@ mc_call = np.exp(-0.05) * payoffs.mean()
 print("MC call =", mc_call)
 ```
 
-## Three pipelines
+## Four pipelines
 
-There are three ways a Rust type ends up in the Python package:
+There are four ways a Rust type ends up in the Python package:
 
-1. **`py_distribution!` macro** — distributions wrap automatically when
-   you invoke the macro at the bottom of the source file.
+1. **`py_distribution!` / `py_distribution_int!` macros** — distributions
+   wrap automatically when you invoke the macro at the bottom of the
+   source file.
 2. **`py_process_*!` macros** — processes use `py_process_1d!`,
    `py_process_2x1d!`, or `py_process_2d!` depending on shape.
-3. **Hand-written `#[pyclass]` blocks** — pricers, calibrators, vol
-   surfaces, and estimators are wrapped by hand in
-   `stochastic-rs-quant/src/python.rs` and
-   `stochastic-rs-stats/src/python.rs`.
+3. **`py_bivariate!` macro** — bivariate copulas, in
+   `stochastic-rs-copulas/src/python.rs`.
+4. **Hand-written `#[pyclass]` blocks** — pricers, calibrators, vol
+   surfaces, and estimators are wrapped by hand across the
+   `stochastic-rs-quant/src/python/` and `stochastic-rs-stats/src/python/`
+   directories (one file per topic — `pricing_analytic.rs`,
+   `calibration_basic.rs`, `stationarity.rs`, `hurst.rs`, …).
 
 For the file-by-file recipe see the
 [`python-bindings`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/python-bindings/SKILL.md)
@@ -92,9 +114,12 @@ SKILL (comprehensive) or
 
 ## Common gotchas
 
-- **Seed reproducibility**. Every wrapper supports
-  `__init__(..., seed=None)`. Pass an explicit seed for tests; rely on
-  the thread-local default for production sampling.
+- **Seed reproducibility**. Every process and distribution wrapper
+  supports `__init__(..., seed=None)`. Bivariate copulas differ: `theta`/
+  `tau` are the only constructor arguments, and the seed is instead an
+  optional argument to `.sample(n, seed=None)`. Either way, pass an
+  explicit seed for tests; rely on the thread-local default for
+  production sampling.
 - **Dtype shims**. `IntoF32` / `IntoF64` shims convert Python `float`
   parameters to the requested dtype. **All distribution parameters are
   `f64`-typed** in the macro — the shim handles down-conversion to `f32`
