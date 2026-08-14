@@ -209,9 +209,17 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdGeometric
     6.0 + self.p * self.p / (1.0 - self.p)
   }
 
+  /// `p = 1.0` is a valid, documented parameter (see [`Self::new`]) — the
+  /// degenerate distribution that always succeeds on the first trial, with
+  /// zero entropy. Computed naively, `q * q.ln()` at `q = 1.0 - p = 0.0` is
+  /// the indeterminate form `0.0 * (-inf) = NaN`; the standard convention
+  /// `x * ln(x) -> 0` as `x -> 0+` (universal in entropy formulas, e.g.
+  /// Shannon entropy) is applied explicitly instead so `p = 1.0` returns
+  /// the mathematically correct `0.0` rather than `NaN`.
   fn entropy(&self) -> f64 {
     let q = 1.0 - self.p;
-    -(q * q.ln() + self.p * self.p.ln()) / self.p
+    let q_term = if q > 0.0 { q * q.ln() } else { 0.0 };
+    -(q_term + self.p * self.p.ln()) / self.p
   }
 
   fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
@@ -234,3 +242,31 @@ py_distribution_int!(PyGeometric, SimdGeometric,
   sig: (p, seed=None),
   params: (p: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::DistributionExt;
+
+  /// Backs `entropy`'s doc comment: `p = 1.0` is a valid, documented
+  /// parameter (always succeeds first try), and its entropy must be the
+  /// mathematically correct `0.0`, not `NaN` from a naive `0 * ln(0)`.
+  #[test]
+  fn entropy_at_p_one_is_zero_not_nan() {
+    let g = SimdGeometric::<u64>::new(1.0, &Unseeded);
+    assert_eq!(
+      g.entropy(),
+      0.0,
+      "p=1.0 is degenerate, entropy must be exactly 0"
+    );
+  }
+
+  /// Away from the boundary, entropy must still be a finite, positive
+  /// number (uncertainty is strictly positive whenever `p < 1`).
+  #[test]
+  fn entropy_at_interior_p_is_finite_and_positive() {
+    let g = SimdGeometric::<u64>::new(0.3, &Unseeded);
+    let h = g.entropy();
+    assert!(h.is_finite() && h > 0.0, "entropy at p=0.3 was {h}");
+  }
+}

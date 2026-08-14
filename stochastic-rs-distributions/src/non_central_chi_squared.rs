@@ -53,6 +53,16 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
   }
 
   /// Draws one χ²_df(ncp) sample.
+  ///
+  /// `ncp` must be non-negative — it is a noncentrality parameter, defined
+  /// as a sum of squared means, so it cannot be negative in any valid use.
+  /// This is not validated here: `ncp < 0.0` makes `ncp.sqrt()` `NaN`,
+  /// which poisons the returned sample. The one in-tree caller
+  /// (`stochastic-rs-stochastic`'s `volatility::svcgmy` Cir-style
+  /// transition, in a sibling crate this one does not depend on and so
+  /// cannot link to) passes a provably non-negative `ncp` (a sum of
+  /// nonnegative terms), so this has not been an issue in practice — but
+  /// the precondition is on the caller, not enforced here.
   #[inline]
   pub fn sample_ncp(&self, ncp: T) -> T {
     let z = self.normal.sample_fast() + ncp.sqrt();
@@ -85,4 +95,27 @@ pub fn sample<T: FloatExt, S: SeedExt>(df: T, lambda: T, seed: &S) -> T {
   };
   let shape = df / two + T::from_f64_fast(mixture_jumps as f64);
   SimdGamma::<T>::new(shape, two, seed).sample_fast()
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::*;
+
+  /// Backs `sample_ncp`'s own doc comment: a negative `ncp` is documented
+  /// to poison the draw with `NaN` via `ncp.sqrt()`, unvalidated.
+  #[test]
+  fn sample_ncp_negative_is_nan() {
+    let s = SimdNonCentralChiSquared::<f64>::new(3.0, &Unseeded);
+    assert!(s.sample_ncp(-1.0).is_nan());
+  }
+
+  /// Non-negative `ncp` (including exactly zero) must stay finite.
+  #[test]
+  fn sample_ncp_nonnegative_is_finite() {
+    let s = SimdNonCentralChiSquared::<f64>::new(3.0, &Unseeded);
+    assert!(s.sample_ncp(0.0).is_finite());
+    assert!(s.sample_ncp(2.5).is_finite());
+  }
 }

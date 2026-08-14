@@ -11,10 +11,10 @@ use implied_vol::ImpliedBlackVolatility;
 use num_complex::Complex64;
 
 use super::cf_quadrature::integrate_to_convergence;
-use crate::OptionType;
 use crate::traits::GreeksExt;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
+use crate::OptionType;
 
 /// Heston stochastic volatility pricer using the characteristic-function method.
 ///
@@ -26,7 +26,9 @@ use crate::traits::TimeExt;
 pub struct HestonPricer {
   /// Stock price
   pub s: f64,
-  /// Initial volatility
+  /// Initial variance v₀ — a variance, not a volatility: this file's own
+  /// `GreeksExt` impl documents the chain rule `σ = √v0` it uses to convert
+  /// into volatility-space derivatives (see `vega`/`vanna`/`volga`/`veta`).
   pub v0: f64,
   /// Strike price
   pub k: f64,
@@ -38,7 +40,8 @@ pub struct HestonPricer {
   pub rho: f64,
   /// Mean reversion rate
   pub kappa: f64,
-  /// Long-run average volatility
+  /// Long-run variance level (θ) — a variance, not a volatility, for the
+  /// same reason as `v0`.
   pub theta: f64,
   /// Volatility of volatility
   pub sigma: f64,
@@ -371,6 +374,16 @@ impl HestonPricer {
 /// computes (that engine predates this trait impl and was never updated to
 /// match; see `heston/tests.rs::heston_greeks_match_engine_bumps` for how
 /// the two are reconciled in tests).
+///
+/// **`NaN` is a deliberate return value here, not just the trait default's
+/// "unimplemented" marker.** `vega`/`vanna`/`volga`/`veta` divide through
+/// the `σ = √v0` chain rule above, which is undefined at `v0 <= 0`; each
+/// guards that case explicitly and returns `NaN` rather than a wrong
+/// finite number. `theta`/`charm`/`veta` carry a second, independent guard
+/// on `tau_or_from_dates()`, returning `NaN` when it is non-finite or not
+/// safely larger than the central-difference step `H_TAU` — see
+/// `heston_greeks_nan_at_degenerate_inputs` for both guards exercised
+/// directly.
 impl GreeksExt for HestonPricer {
   fn delta(&self) -> f64 {
     let h = self.h_s();

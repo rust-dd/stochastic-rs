@@ -160,6 +160,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdCauc
     x0 + g * (std::f64::consts::PI * (p - 0.5)).tan()
   }
 
+  /// `NaN`, not "unimplemented": the defining integral `∫x·f(x)dx` does not
+  /// converge absolutely, so the Cauchy distribution provably has no mean —
+  /// median/mode (both `x0`) are the location statistics to use instead.
   fn mean(&self) -> f64 {
     f64::NAN
   }
@@ -172,14 +175,20 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdCauc
     self.x0.to_f64().unwrap()
   }
 
+  /// `+∞`, not `NaN`: unlike the mean, the variance integral diverges to a
+  /// definite (infinite) value rather than failing to converge at all.
   fn variance(&self) -> f64 {
     f64::INFINITY
   }
 
+  /// `NaN`: skewness is a ratio built from the (nonexistent) mean and a
+  /// third central moment that itself does not converge.
   fn skewness(&self) -> f64 {
     f64::NAN
   }
 
+  /// `NaN`: kurtosis is a ratio built from the (nonexistent) mean and a
+  /// fourth central moment that itself does not converge.
   fn kurtosis(&self) -> f64 {
     f64::NAN
   }
@@ -196,8 +205,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdCauc
     num_complex::Complex64::new(-g * t.abs(), t * x0).exp()
   }
 
+  /// `NaN`: the MGF `E[e^{tX}]` diverges for every `t != 0` because the
+  /// Cauchy tail decays only as `1/x^2`, too slowly for `e^{tx}` to be
+  /// integrable — use `characteristic_function` instead, which exists for
+  /// every Cauchy parameter.
   fn moment_generating_function(&self, _t: f64) -> f64 {
-    // MGF does not exist for the Cauchy distribution.
     f64::NAN
   }
 }
@@ -206,3 +218,27 @@ py_distribution!(PyCauchy, SimdCauchy,
   sig: (x0, gamma_, seed=None, dtype=None),
   params: (x0: f64, gamma_: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::DistributionExt;
+
+  /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`/
+  /// `moment_generating_function`: every one of these must actually return
+  /// the claimed non-finite value, not just carry prose asserting it does.
+  #[test]
+  fn cauchy_moments_are_non_finite_as_documented() {
+    let c = SimdCauchy::<f64>::new(1.5, 2.0, &Unseeded);
+    assert!(c.mean().is_nan(), "mean must be NaN, got {}", c.mean());
+    assert_eq!(c.variance(), f64::INFINITY, "variance must be +inf");
+    assert!(c.skewness().is_nan(), "skewness must be NaN");
+    assert!(c.kurtosis().is_nan(), "kurtosis must be NaN");
+    assert!(
+      c.moment_generating_function(0.5).is_nan(),
+      "MGF at t != 0 must be NaN"
+    );
+    assert_eq!(c.median(), 1.5, "median must equal x0");
+    assert_eq!(c.mode(), 1.5, "mode must equal x0");
+  }
+}

@@ -156,7 +156,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
   fn cdf(&self, x: f64) -> f64 {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    if x < xm { 0.0 } else { 1.0 - (xm / x).powf(a) }
+    if x < xm {
+      0.0
+    } else {
+      1.0 - (xm / x).powf(a)
+    }
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {
@@ -165,6 +169,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
     xm / (1.0 - p).powf(1.0 / a)
   }
 
+  /// `+∞`, not `NaN`, at `alpha <= 1`: the mean integral `∫x·f(x)dx`
+  /// diverges to a definite (infinite) value at these — commonly used —
+  /// shape parameters (e.g. the classic "80/20" Pareto has `alpha ≈ 1.16`).
   fn mean(&self) -> f64 {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
@@ -185,6 +192,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
     self.x_m.to_f64().unwrap()
   }
 
+  /// `+∞`, not `NaN`, at `alpha <= 2`: same divergent-integral reason as
+  /// `mean`, one moment order up.
   fn variance(&self) -> f64 {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
@@ -195,6 +204,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
     }
   }
 
+  /// `NaN`, not `+∞`, at `alpha <= 3`: unlike mean/variance, the third
+  /// central moment does not merely diverge to a signed infinity here — it
+  /// is not defined at all, so `NaN` is the honest answer rather than a
+  /// sign choice.
   fn skewness(&self) -> f64 {
     let a = self.alpha.to_f64().unwrap();
     if a > 3.0 {
@@ -204,6 +217,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
     }
   }
 
+  /// `NaN` at `alpha <= 4`, for the same reason as `skewness` one moment
+  /// order up.
   fn kurtosis(&self) -> f64 {
     let a = self.alpha.to_f64().unwrap();
     if a > 4.0 {
@@ -219,9 +234,47 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
     (xm / a).ln() + 1.0 / a + 1.0
   }
 
+  /// `NaN` for every `t > 0`: the Pareto tail decays only polynomially
+  /// (`~x^{-alpha-1}`), too slowly for `e^{tx}` to be integrable at any
+  /// positive `t`, regardless of `alpha`.
   fn moment_generating_function(&self, _t: f64) -> f64 {
-    // MGF does not exist for t > 0 (heavy tail).
     f64::NAN
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::DistributionExt;
+
+  /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`:
+  /// `alpha = 1.16` (the classic "80/20" Pareto) is a common, valid,
+  /// in-range shape parameter, yet already sits below every one of these
+  /// thresholds — mean is the only finite moment it has.
+  #[test]
+  fn pareto_80_20_moments_match_documented_thresholds() {
+    let p = SimdPareto::<f64>::new(1.0, 1.16, &Unseeded);
+    assert!(
+      p.mean().is_finite(),
+      "alpha=1.16 > 1, mean should be finite"
+    );
+    assert_eq!(p.variance(), f64::INFINITY, "alpha=1.16 <= 2");
+    assert!(p.skewness().is_nan(), "alpha=1.16 <= 3");
+    assert!(p.kurtosis().is_nan(), "alpha=1.16 <= 4");
+    assert!(
+      p.moment_generating_function(0.5).is_nan(),
+      "MGF at t > 0 must be NaN"
+    );
+  }
+
+  /// Above every threshold, all four moments must be finite real numbers.
+  #[test]
+  fn pareto_high_alpha_moments_are_all_finite() {
+    let p = SimdPareto::<f64>::new(1.0, 5.0, &Unseeded);
+    assert!(p.mean().is_finite());
+    assert!(p.variance().is_finite());
+    assert!(p.skewness().is_finite());
+    assert!(p.kurtosis().is_finite());
   }
 }
 

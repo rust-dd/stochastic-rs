@@ -53,8 +53,8 @@
 //! Reference: Bayer, Friz, Gatheral, "Pricing under rough volatility",
 //! Quantitative Finance 16(6), 887-904 (2016) — for the canonical model
 //! that this implementation approximates.
-use ndarray::Array1;
 use ndarray::s;
+use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -67,8 +67,13 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone)]
 pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Hurst exponent H ∈ (0, 0.5) controlling roughness and long-memory of
-  /// the (scaled-Brownian-motion-approximated) variance driver.
+  /// Hurst exponent H ∈ (0, 0.5) controlling roughness of the
+  /// (scaled-Brownian-motion-approximated) variance driver. Unlike true
+  /// fBM, this does **not** encode long-memory: the module doc's "Scope"
+  /// section documents that the factored-out kernel weight preserves
+  /// marginal variance scaling but not the fBM autocovariance, so paths
+  /// sampled here lack the long-memory / antipersistence structure a
+  /// literature-faithful rough Bergomi driver would have.
   pub hurst: T,
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
@@ -396,8 +401,8 @@ impl PyRoughBergomi {
     py: pyo3::Python<'py>,
     m: usize,
   ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
+    use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;

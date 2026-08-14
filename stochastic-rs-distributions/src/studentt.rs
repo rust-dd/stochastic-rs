@@ -11,9 +11,9 @@ use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use super::SimdFloatExt;
 use super::chi_square::SimdChiSquared;
 use super::normal::SimdNormal;
+use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 
@@ -175,7 +175,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
     let nu = self.nu.to_f64().unwrap();
     let t = nu / (nu + x * x);
     let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-    if x >= 0.0 { 1.0 - half } else { half }
+    if x >= 0.0 {
+      1.0 - half
+    } else {
+      half
+    }
   }
 
   fn inv_cdf(&self, p: f64) -> f64 {
@@ -193,7 +197,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
       let cdf = {
         let t = nu / (nu + x * x);
         let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-        if x >= 0.0 { 1.0 - half } else { half }
+        if x >= 0.0 {
+          1.0 - half
+        } else {
+          half
+        }
       };
       let f = cdf - p;
       let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))
@@ -214,6 +222,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
     x
   }
 
+  /// `NaN` at `nu <= 1` (`nu = 1` is the Cauchy distribution — see
+  /// [`crate::cauchy`]'s `SimdCauchy::mean`, same underlying non-convergent
+  /// integral): the mean does not exist there, so it is `NaN` rather than
+  /// `0.0` even though `0.0` is what every finite-mean case below returns.
   fn mean(&self) -> f64 {
     if self.nu.to_f64().unwrap() > 1.0 {
       0.0
@@ -230,6 +242,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
     0.0
   }
 
+  /// Three-way split on `nu`, all mathematically forced by the tail
+  /// behaviour of the Student-t density: `nu > 2` gives the standard finite
+  /// `nu/(nu-2)`; `1 < nu <= 2` (`nu = 2` is the common finance choice for
+  /// "just barely infinite variance") diverges to `+∞`, a definite value;
+  /// `nu <= 1` has no mean to build a variance from at all, so `NaN`.
   fn variance(&self) -> f64 {
     let nu = self.nu.to_f64().unwrap();
     if nu > 2.0 {
@@ -241,6 +258,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
     }
   }
 
+  /// `NaN` at `nu <= 3`: `nu = 3` is itself a common fat-tail choice in
+  /// finance, and it already sits at this threshold — the third central
+  /// moment does not exist there, so skewness is `NaN`, not `0.0`.
   fn skewness(&self) -> f64 {
     if self.nu.to_f64().unwrap() > 3.0 {
       0.0
@@ -249,6 +269,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
     }
   }
 
+  /// Three-way split mirroring `variance` one moment order up: finite for
+  /// `nu > 4`, `+∞` for `2 < nu <= 4` (a definite divergence), `NaN` for
+  /// `nu <= 2` (no variance to build on).
   fn kurtosis(&self) -> f64 {
     let nu = self.nu.to_f64().unwrap();
     if nu > 4.0 {
@@ -271,9 +294,83 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
       + 0.5 * std::f64::consts::PI.ln()
   }
 
+  /// `NaN` for every `nu`: the Student-t tail decays polynomially
+  /// (`~|x|^{-nu-1}`), too slowly for `e^{tx}` to be integrable at any
+  /// `t != 0`, regardless of how large `nu` is.
   fn moment_generating_function(&self, _t: f64) -> f64 {
-    // MGF does not exist for the Student-t distribution.
     f64::NAN
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::traits::DistributionExt;
+
+  /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`:
+  /// `nu = 3` is a common fat-tail choice in finance. It clears the
+  /// mean/variance thresholds (`nu > 1`, `nu > 2`) but sits at exactly the
+  /// skewness threshold (`nu > 3` required, so `nu = 3` itself is NaN) and
+  /// inside kurtosis's divergent-but-defined middle band (`2 < nu <= 4`).
+  #[test]
+  fn studentt_low_nu_moments_match_documented_thresholds() {
+    let t = SimdStudentT::<f64>::new(3.0, &Unseeded);
+    assert_eq!(t.mean(), 0.0, "nu=3 > 1, mean should be 0");
+    assert!(
+      t.variance().is_finite(),
+      "nu=3 > 2, variance should be finite"
+    );
+    assert!(
+      t.skewness().is_nan(),
+      "nu=3 is not > 3, skewness must be NaN"
+    );
+    assert_eq!(
+      t.kurtosis(),
+      f64::INFINITY,
+      "nu=3 is in (2,4], kurtosis diverges to +inf"
+    );
+    assert!(
+      t.moment_generating_function(0.5).is_nan(),
+      "MGF must be NaN for every nu"
+    );
+  }
+
+  /// `nu = 2` (the other boundary of variance's three-way split) clears
+  /// the mean threshold, sits in variance's divergent-but-defined middle
+  /// band (`1 < nu <= 2`), and sits at exactly kurtosis's `NaN` threshold
+  /// (`nu > 2` required there, so `nu = 2` itself has no variance to build
+  /// a kurtosis from at all).
+  #[test]
+  fn studentt_nu_two_variance_diverges_kurtosis_is_nan() {
+    let t = SimdStudentT::<f64>::new(2.0, &Unseeded);
+    assert_eq!(t.mean(), 0.0, "nu=2 > 1, mean should be 0");
+    assert_eq!(
+      t.variance(),
+      f64::INFINITY,
+      "nu=2 is in (1,2], variance diverges to +inf"
+    );
+    assert!(
+      t.kurtosis().is_nan(),
+      "nu=2 is not > 2, kurtosis must be NaN"
+    );
+  }
+
+  /// At `nu = 1` (Cauchy) neither mean nor variance exists.
+  #[test]
+  fn studentt_nu_one_is_cauchy_like() {
+    let t = SimdStudentT::<f64>::new(1.0, &Unseeded);
+    assert!(t.mean().is_nan(), "nu=1 has no mean");
+    assert!(t.variance().is_nan(), "nu=1 has no variance");
+  }
+
+  /// Above every threshold, all four moments must be finite real numbers.
+  #[test]
+  fn studentt_high_nu_moments_are_all_finite() {
+    let t = SimdStudentT::<f64>::new(10.0, &Unseeded);
+    assert!(t.mean().is_finite());
+    assert!(t.variance().is_finite());
+    assert!(t.skewness().is_finite());
+    assert!(t.kurtosis().is_finite());
   }
 }
 

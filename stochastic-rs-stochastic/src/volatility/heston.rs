@@ -27,11 +27,14 @@ pub use scheme::HestonScheme;
 pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler> {
   /// Initial stock price
   pub s0: Option<T>,
-  /// Initial volatility
+  /// Initial variance v₀ — a variance, not a volatility: `dv_t` above is
+  /// the process this seeds, and `sqrt(v_t)` (not `v_t` itself) is the
+  /// instantaneous volatility fed to `dS_t`.
   pub v0: Option<T>,
   /// Mean reversion rate
   pub kappa: T,
-  /// Long-run average volatility
+  /// Long-run variance level (θ in the module header's `dv_t` equation) —
+  /// a variance, not a volatility, for the same reason as `v0`.
   pub theta: T,
   /// Volatility of volatility
   pub sigma: T,
@@ -41,7 +44,7 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler>
   pub mu: T,
   /// Number of time steps
   pub n: usize,
-  /// Time to maturity
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
   /// Power of the variance
   /// If 0.5 then it is the original Heston model
@@ -573,8 +576,8 @@ impl PyHeston {
     py: pyo3::Python<'py>,
     m: usize,
   ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
     use numpy::ndarray::Array2;
+    use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;

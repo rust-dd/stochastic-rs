@@ -36,7 +36,14 @@ pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded> {
   pub kappa: T,
   /// Long-run correlation level (μ ∈ (−1, 1)).
   pub mu: T,
-  /// Correlation volatility (σ > 0).
+  /// Correlation volatility (σ > 0). Not validated by [`TengSCP::new`]: at
+  /// `sigma = 0`, [`density_a`](TengSCP::density_a)/
+  /// [`density_b`](TengSCP::density_b)/
+  /// [`stationary_density_unnorm`](TengSCP::stationary_density_unnorm) all
+  /// divide by `sigma * sigma`, so those (but not path simulation itself,
+  /// which never divides by `sigma`) return non-finite values — see
+  /// [`stationary_density_unnorm`](TengSCP::stationary_density_unnorm)'s own
+  /// doc for the exact breakdown.
   pub sigma: T,
   /// Initial correlation (ρ₀ ∈ (−1, 1)).
   pub rho0: T,
@@ -75,11 +82,18 @@ impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
 
   /// Stationary density exponents (Eq. 33/37):
   /// a = (κ − σ²)/σ², b = κμ/σ².
+  ///
+  /// At `sigma = 0` this divides by zero: `+inf` for `kappa > 0` (its own
+  /// required domain), not `NaN` — a positive value divided by exact zero
+  /// is a well-defined signed infinity in IEEE 754.
   pub fn density_a(&self) -> T {
     let s2 = self.sigma * self.sigma;
     (self.kappa - s2) / s2
   }
 
+  /// At `sigma = 0`: `NaN` if `mu = 0` (a literal `0/0`), otherwise a
+  /// signed infinity matching `mu`'s sign — see [`density_a`](Self::density_a)'s
+  /// own doc for why a nonzero numerator over zero is infinite, not `NaN`.
   pub fn density_b(&self) -> T {
     let s2 = self.sigma * self.sigma;
     self.kappa * self.mu / s2
@@ -88,6 +102,12 @@ impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
   /// Evaluate the (unnormalised) stationary density at ρ̃ ∈ (−1, 1).
   ///
   /// f(ρ̃) ∝ (1+ρ̃)^{a+b} (1−ρ̃)^{a−b}   (Eq. 39)
+  ///
+  /// At `sigma = 0` this is `NaN` for *every* `mu`, even though `density_a`
+  /// and `density_b` individually are merely infinite for `mu != 0`: `a` is
+  /// always `+inf` there, and `a + b` / `a - b` hits `inf + (-inf)` or
+  /// `inf - inf` for one of the two combinations regardless of `b`'s sign,
+  /// which is `NaN` even though neither `a` nor `b` alone was.
   pub fn stationary_density_unnorm(&self, rho: T) -> T {
     let a = self.density_a();
     let b = self.density_b();
@@ -233,6 +253,33 @@ mod tests {
     let d_at_mu = scp.stationary_density_unnorm(0.3);
     let d_at_0 = scp.stationary_density_unnorm(0.0);
     assert!(d_at_mu > d_at_0);
+  }
+
+  /// Backs the doc comments on `sigma`/`density_a`/`density_b`/
+  /// `stationary_density_unnorm`: `TengSCP::new` does not validate that
+  /// `sigma` is positive, so this must actually reach the documented
+  /// non-finite outputs rather than just claim to.
+  #[test]
+  fn zero_sigma_density_functions_are_non_finite() {
+    let zero_mu = TengSCP::new(8.0_f64, 0.0, 0.0, 0.0, 10, Some(1.0), Unseeded);
+    assert_eq!(zero_mu.density_a(), f64::INFINITY);
+    assert!(zero_mu.density_b().is_nan(), "mu=0 makes density_b a 0/0");
+    assert!(zero_mu.stationary_density_unnorm(0.0).is_nan());
+
+    let positive_mu = TengSCP::new(8.0_f64, 0.3, 0.0, 0.0, 10, Some(1.0), Unseeded);
+    assert_eq!(positive_mu.density_a(), f64::INFINITY);
+    assert_eq!(positive_mu.density_b(), f64::INFINITY);
+    assert!(
+      positive_mu.stationary_density_unnorm(0.0).is_nan(),
+      "a - b is inf - inf even though a and b were each merely infinite"
+    );
+
+    let negative_mu = TengSCP::new(8.0_f64, -0.3, 0.0, 0.0, 10, Some(1.0), Unseeded);
+    assert_eq!(negative_mu.density_b(), f64::NEG_INFINITY);
+    assert!(
+      negative_mu.stationary_density_unnorm(0.0).is_nan(),
+      "a + b is inf + (-inf) this time, but still NaN"
+    );
   }
 
   #[test]

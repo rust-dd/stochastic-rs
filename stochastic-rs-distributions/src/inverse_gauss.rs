@@ -11,8 +11,8 @@ use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use super::SimdFloatExt;
 use super::normal::SimdNormal;
+use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 
@@ -211,8 +211,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdInve
     crate::special::norm_cdf(a) + (2.0 * lambda / mu).exp() * crate::special::norm_cdf(-b)
   }
 
+  /// Inverse Gaussian quantile has no closed form.
   fn inv_cdf(&self, _p: f64) -> f64 {
-    // Inverse Gaussian quantile has no closed form.
     unimplemented!(
       "DistributionExt::inv_cdf for SimdInverseGauss has no closed form (use a numerical root-finder on cdf)"
     )

@@ -11,8 +11,8 @@ use rand::Rng;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use super::SimdFloatExt;
 use super::gamma::SimdGamma;
+use super::SimdFloatExt;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 
@@ -259,15 +259,15 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdBeta
       + (a + b - 2.0) * crate::special::digamma(a + b)
   }
 
+  /// Beta CF involves the confluent hypergeometric ₁F₁; not implemented.
   fn characteristic_function(&self, _t: f64) -> num_complex::Complex64 {
-    // Beta CF involves the confluent hypergeometric ₁F₁; not implemented.
     unimplemented!(
       "DistributionExt::characteristic_function for SimdBeta requires the confluent hypergeometric ₁F₁; not implemented"
     )
   }
 
+  /// Closed form involves the confluent hypergeometric function 1F1.
   fn moment_generating_function(&self, _t: f64) -> f64 {
-    // Closed form involves the confluent hypergeometric function 1F1.
     unimplemented!(
       "DistributionExt::moment_generating_function for SimdBeta requires the confluent hypergeometric ₁F₁; not implemented"
     )

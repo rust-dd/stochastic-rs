@@ -298,3 +298,66 @@ fn heston_greeks_all_finite() {
     g.delta
   );
 }
+
+/// `vega`/`vanna`/`volga`/`veta` guard `v0 <= 0` (the `σ = √v0` chain rule
+/// they use is undefined there); `theta`/`charm`/`veta` separately guard a
+/// `tau` that is non-finite or not safely larger than `H_TAU`. Both guards
+/// return `NaN` rather than a wrong finite number — this pins that the
+/// guards actually fire, backing the `impl GreeksExt for HestonPricer`
+/// doc's claim.
+#[test]
+fn heston_greeks_nan_at_degenerate_inputs() {
+  let degenerate_v0 = HestonPricer::new(
+    100.0,
+    0.0,
+    100.0,
+    0.05,
+    Some(0.0),
+    -0.7,
+    1.5,
+    0.04,
+    0.3,
+    Some(0.0),
+    Some(1.0),
+    None,
+    None,
+  );
+  assert!(degenerate_v0.vega().is_nan(), "vega must be NaN at v0 = 0");
+  assert!(
+    degenerate_v0.vanna().is_nan(),
+    "vanna must be NaN at v0 = 0"
+  );
+  assert!(
+    degenerate_v0.volga().is_nan(),
+    "volga must be NaN at v0 = 0"
+  );
+  assert!(degenerate_v0.veta().is_nan(), "veta must be NaN at v0 = 0");
+
+  let degenerate_tau = HestonPricer::new(
+    100.0,
+    0.04,
+    100.0,
+    0.05,
+    Some(0.0),
+    -0.7,
+    1.5,
+    0.04,
+    0.3,
+    Some(0.0),
+    Some(0.0),
+    None,
+    None,
+  );
+  assert!(
+    degenerate_tau.theta().is_nan(),
+    "theta must be NaN at tau = 0"
+  );
+  assert!(
+    degenerate_tau.charm().is_nan(),
+    "charm must be NaN at tau = 0"
+  );
+  assert!(
+    degenerate_tau.veta().is_nan(),
+    "veta must be NaN at tau = 0"
+  );
+}

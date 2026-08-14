@@ -21,7 +21,11 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
   /// Diffusion scale σ multiplying `S_t^γ dW_t`.
   pub sigma: T,
   /// CEV elasticity exponent γ (γ=1 recovers GBM; γ<1 fattens the
-  /// left tail, the usual equity-market calibration).
+  /// left tail, the usual equity-market calibration). At non-integer γ the
+  /// sampler raises `|S_t|` rather than `S_t` to this power: a discretized
+  /// path can cross zero for a step even at valid parameters, and
+  /// `f64::powf` of a negative base at a non-integer exponent is `NaN`,
+  /// which would otherwise poison every subsequent step.
   pub gamma: T,
   /// Number of points sampled along the CEV path.
   pub n: usize,
@@ -159,7 +163,23 @@ impl<T: FloatExt> CevSampler<T> {
     self.normal.fill_slice(tail);
     let mut prev = self.x0;
     for z in tail.iter_mut() {
-      let next = prev + self.mu * prev * self.dt + self.diff_scale * prev.powf(self.gamma) * *z;
+      // `prev.abs()` before the fractional power, matching every sibling
+      // `sigma * |X|^p`-shaped diffusion in this module
+      // ([`Ckls`](crate::diffusion::ckls::Ckls),
+      // [`ThreeHalf`](crate::diffusion::three_half::ThreeHalf),
+      // [`FellerRoot`](crate::diffusion::feller_root::FellerRoot)): Euler
+      // discretization of `dS = mu*S*dt + sigma*S^gamma*dW` routinely pushes
+      // `S` below zero for one step even at valid, realistic parameters
+      // (`gamma < 1` is this field's own documented "usual equity-market
+      // calibration"), and `f64::powf` of a negative base at a non-integer
+      // exponent is `NaN` — which would then poison every subsequent step
+      // through `prev`. Taking the elasticity off `|S|` instead keeps the
+      // path finite through a boundary crossing rather than NaN-poisoning
+      // it; it does not floor `S` itself at zero (unlike the CIR/Bessel
+      // family), matching how the sibling files above handle the same
+      // shape.
+      let next =
+        prev + self.mu * prev * self.dt + self.diff_scale * prev.abs().powf(self.gamma) * *z;
       *z = next;
       prev = next;
     }
@@ -206,17 +226,24 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
     let mut m = Array1::zeros(self.n);
 
     for i in 0..self.n {
+      // `cev[i].abs()` before every fractional power, for the same reason
+      // as `fill_path`'s own `.abs()`: `sample()` no longer produces NaN
+      // through a zero-crossing, but the realized path can still contain a
+      // negative point, and raising that to a non-integer power here would
+      // reintroduce the same `NaN` this method's own output should not have.
       det_term[i] = (self.mu
         - (self.gamma.powi(2)
           * self.sigma.powi(2)
-          * cev[i].powf(T::from_usize_(2) * self.gamma - T::from_usize_(2))
+          * cev[i]
+            .abs()
+            .powf(T::from_usize_(2) * self.gamma - T::from_usize_(2))
           / T::from_usize_(2)))
         * dt;
       if i > 0 {
         stochastic_term[i] =
-          self.sigma * self.gamma * cev[i].powf(self.gamma - T::one()) * gn[i - 1];
+          self.sigma * self.gamma * cev[i].abs().powf(self.gamma - T::one()) * gn[i - 1];
       }
-      m[i] = self.sigma * cev[i].powf(self.gamma) * (det_term[i] + stochastic_term[i]).exp();
+      m[i] = self.sigma * cev[i].abs().powf(self.gamma) * (det_term[i] + stochastic_term[i]).exp();
     }
 
     [cev, m]
@@ -227,3 +254,61 @@ py_process_1d!(PyCev, Cev,
   sig: (mu, sigma, gamma, n, x0=None, t=None, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, gamma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// Regression: at these valid, realistic parameters (`gamma < 1`, this
+  /// file's own "usual equity-market calibration"), Euler discretization
+  /// crosses zero routinely — before the `.abs()` fix in `fill_path`, an
+  /// equivalent 2000-path run crossed zero in 681 paths (34%), and every
+  /// one of those went `NaN` for the rest of its path via
+  /// `f64::powf(negative, non-integer)`. Every point of every path must
+  /// stay finite regardless.
+  #[test]
+  fn cev_stays_finite_through_a_zero_crossing() {
+    let cev = Cev::<f64, _>::new(
+      0.0,
+      0.6,
+      0.5,
+      24,
+      Some(0.5),
+      Some(1.0),
+      Deterministic::new(2718),
+    );
+    for path in cev.sample_par(500) {
+      assert!(
+        path.iter().all(|x| x.is_finite()),
+        "path went non-finite: {path:?}"
+      );
+    }
+  }
+
+  /// Same regression for `malliavin()`, which independently re-raises the
+  /// realized path to fractional powers of its own and needs its own
+  /// `.abs()` for the same reason.
+  #[test]
+  fn cev_malliavin_stays_finite_through_a_zero_crossing() {
+    let cev = Cev::<f64, _>::new(
+      0.0,
+      0.6,
+      0.5,
+      24,
+      Some(0.5),
+      Some(1.0),
+      Deterministic::new(2718),
+    );
+    let [path, m] = cev.malliavin();
+    assert!(
+      path.iter().all(|x| x.is_finite()),
+      "path went non-finite: {path:?}"
+    );
+    assert!(
+      m.iter().all(|x| x.is_finite()),
+      "malliavin derivative went non-finite: {m:?}"
+    );
+  }
+}

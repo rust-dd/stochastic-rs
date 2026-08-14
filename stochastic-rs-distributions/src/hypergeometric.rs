@@ -274,8 +274,8 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdHypergeom
       / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0))
   }
 
+  /// MGF involves the hypergeometric function; not implemented in closed form.
   fn moment_generating_function(&self, _t: f64) -> f64 {
-    // MGF involves the hypergeometric function; not implemented in closed form.
     unimplemented!(
       "DistributionExt::moment_generating_function for SimdHypergeometric requires the Gauss hypergeometric ₂F₁; not implemented"
     )

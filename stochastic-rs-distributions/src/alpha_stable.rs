@@ -291,8 +291,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdAlphaStable<T, R> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdAlphaStable<T, R> {
+  /// No closed form. Use numerical CF inversion (FFT or quadrature) on top.
   fn pdf(&self, _x: f64) -> f64 {
-    // No closed form. Use numerical CF inversion (FFT or quadrature) on top.
     unimplemented!(
       "DistributionExt::pdf for SimdAlphaStable has no closed form (use numerical Fourier inversion of `characteristic_function`)"
     )
