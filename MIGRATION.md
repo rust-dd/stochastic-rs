@@ -1590,3 +1590,21 @@ pinned the old (wrong) output. `df` here is `4*kappa*eta/zeta^2` in
 fall below 1 for sufficiently sub-Feller parameter combinations (already
 accepted, not rejected, per the sub-Feller entry above) — so the bug was
 reachable from real inputs, not only a theoretical corner.
+
+### stochastic-rs-distributions: `SimdGeometric::new` now validates `p`
+
+`SimdGeometric::new` accepted any `p`, silently sampling garbage for `p`
+outside its own documented domain `(0, 1]` (contrast `SimdBinomial::new`,
+which already asserted `p ∈ [0, 1]`). It now asserts `p ∈ (0, 1]`, matching
+`SimdBinomial`'s wording.
+
+```rust
+// Before: silently accepted and sampled garbage.
+let g = SimdGeometric::<u64>::new(0.0, &Unseeded);
+
+// After: panics with "p must be in (0, 1]".
+```
+
+`p = 1.0` remains valid — it did before and still does; only genuinely
+out-of-range `p` (`<= 0.0` or `> 1.0`) now panics. No in-tree caller passes
+an out-of-range `p`.

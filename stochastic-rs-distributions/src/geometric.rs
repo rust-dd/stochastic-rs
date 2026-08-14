@@ -33,6 +33,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
   ///
   /// - `p` — per-trial success probability p ∈ (0, 1].
   pub fn new<S: crate::simd_rng::SeedExt>(p: f64, seed: &S) -> Self {
+    assert!(p > 0.0 && p <= 1.0, "p must be in (0, 1]");
     let stream_seed = seed.seed_value();
     Self {
       p,
@@ -268,5 +269,31 @@ mod tests {
     let g = SimdGeometric::<u64>::new(0.3, &Unseeded);
     let h = g.entropy();
     assert!(h.is_finite() && h > 0.0, "entropy at p=0.3 was {h}");
+  }
+
+  /// `new`'s own doc comment documents `p ∈ (0, 1]` — `p = 1.0` is the
+  /// closed upper boundary, not an excluded limit, and must construct
+  /// without panicking (the entropy fix above already relies on this).
+  #[test]
+  fn new_accepts_p_one() {
+    let _ = SimdGeometric::<u64>::new(1.0, &Unseeded);
+  }
+
+  /// `p = 0.0` sits just outside the documented domain `(0, 1]` (a
+  /// per-trial success probability of zero means the waiting time is
+  /// never finite) and must be rejected at construction, not silently
+  /// turned into garbage output.
+  #[test]
+  #[should_panic(expected = "p must be in (0, 1]")]
+  fn new_rejects_p_zero() {
+    let _ = SimdGeometric::<u64>::new(0.0, &Unseeded);
+  }
+
+  /// `p > 1.0` is not a probability at all and must be rejected the same
+  /// way `p = 0.0` is.
+  #[test]
+  #[should_panic(expected = "p must be in (0, 1]")]
+  fn new_rejects_p_above_one() {
+    let _ = SimdGeometric::<u64>::new(1.5, &Unseeded);
   }
 }

@@ -126,12 +126,12 @@
 //! confirm the override exists (`cargo doc -p stochastic-rs-distributions`
 //! renders exactly what's overridden) before depending on it.
 //!
-//! One further, unrelated caveat while it's on this page:
+//! One further, unrelated note while it's on this page:
 //! [`geometric::SimdGeometric`]'s documented domain for its success
-//! probability is `p ∈ (0, 1]`, but `SimdGeometric::new` does not assert
-//! it (contrast [`binomial::SimdBinomial::new`], which does check
-//! `p ∈ [0, 1]`) — a `p` outside that range is not rejected, it silently
-//! samples garbage.
+//! probability is `p ∈ (0, 1]`; `SimdGeometric::new` asserts it, the same
+//! way [`binomial::SimdBinomial::new`] asserts its own `p ∈ [0, 1]` — the
+//! closed upper endpoint `p = 1.0` (the entropy override's own degenerate
+//! case) stays valid rather than being excluded.
 
 // Defaults to `warn`, which is how 5 broken doc links accumulated
 // unnoticed; deny so a regression fails the build instead of drifting.
