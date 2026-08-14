@@ -25,6 +25,20 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
 /// +\tfrac{\rho\beta\nu\alpha}{4(FK)^{(1-\beta)/2}}
 /// +\tfrac{(2-3\rho^2)\nu^2}{24}\Bigr)\tau\Bigr]
 /// $$
+///
+/// # Panics
+/// - if `k`, `f` or `alpha` is not strictly positive
+/// - if `rho` is not strictly inside $(-1, 1)$ — the $x(z)$ denominator
+///   carries a $1-\rho$ factor, so $\rho = 1$ produces `NaN` and $\rho = -1$
+///   is only conditionally finite
+///
+/// These were previously silent: invalid input returned `0.0`, and
+/// $\rho = 1$ returned `NaN`. A zero implied vol is a *plausible-looking*
+/// number — [`bs_price_fx`] will happily turn it into an intrinsic-value
+/// price with no indication that the vol computation failed — which is the
+/// silent-fallback class this crate has removed elsewhere. Both in-tree
+/// callers are unaffected: the calibrators clamp $\rho$ to $\pm 0.99$ and the
+/// smile plot floors its strike grid at `1e-6`.
 pub fn hagan_implied_vol(
   k: f64,
   f: f64,
@@ -34,9 +48,13 @@ pub fn hagan_implied_vol(
   nu: f64,
   rho: f64,
 ) -> f64 {
-  if k <= 0.0 || f <= 0.0 || alpha <= 0.0 {
-    return 0.0;
-  }
+  assert!(k > 0.0, "strike k must be strictly positive (got {k})");
+  assert!(f > 0.0, "forward f must be strictly positive (got {f})");
+  assert!(alpha > 0.0, "alpha must be strictly positive (got {alpha})");
+  assert!(
+    rho > -1.0 && rho < 1.0,
+    "rho must lie strictly inside (-1, 1) (got {rho})"
+  );
 
   let eps = 1e-07;
   let logfk = (f / k).ln();

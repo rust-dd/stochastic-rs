@@ -39,6 +39,30 @@ each module's own prose:
 The bivariate samplers are consolidated under `BivariateExt`; the v1.x
 `NCopula2DExt` was removed in v2.0.
 
+## Choosing a copula
+
+Every family except `Independence` is fit the same way — moment-matching
+Kendall's tau, then inverting to the family's own shape parameter — so
+*how* you fit isn't the distinguishing axis. The crate's own doc comment
+(`stochastic-rs-copulas/src/bivariate.rs`) has the full comparison,
+including which common heuristics turn out to be wrong on the types in
+this crate. Short version:
+
+| Need | Reach for |
+|---|---|
+| Both positive and negative dependence | `Frank`, `Gaussian`, `TCopula`, `Plackett` — the only four spanning the full `(-1, 1)` range of τ |
+| Only ever positive dependence, lower-tail | `Clayton` — the only family here with lower-tail dependence at all |
+| Only ever positive dependence, upper-tail | `Galambos`, `HuslerReiss`, `Gumbel`, `Joe` — note `Gumbel` and `Joe` share the exact same upper-tail formula, so tail dependence alone won't distinguish them |
+| Symmetric tail dependence (both tails, equal) | `TCopula` — the only one |
+| Weak dependence in either direction (τ within roughly ±0.2-0.3) | `Amh`, `Fgm` — both structurally cannot represent stronger dependence, in either direction |
+| Fast sampling at scale (millions of draws) | `Clayton`, `Gaussian` or `Independence` — the only three with a real closed-form `percent_point`; everything else pays a per-draw root-find |
+| A non-exchangeable, shared-shock dependence structure | `MarshallOlkin`'s `with_alpha_beta` constructor — the one family here that isn't symmetric in its two arguments in general |
+
+All 13 require inputs already probability-integral-transformed to
+`[0, 1]` — `fit` runs a Kolmogorov-Smirnov uniformity check before
+touching Kendall's tau. `Independence` is the one exception: its `fit`
+never reads the data at all.
+
 ## Multivariate (`MultivariateExt<T>`)
 
 **8** copulas — every variant of `multivariate::CopulaType`

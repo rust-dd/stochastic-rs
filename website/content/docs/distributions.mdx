@@ -80,6 +80,33 @@ exhaustive reference for all of them.
 | Poisson             | Inverse transform (precomputed CDF table)    |
 | Hypergeometric      | Inverse transform (precomputed CDF table)    |
 
+## Choosing a distribution
+
+The tables above group by sampling strategy; this groups by modeling role
+instead. The full version — with the honest "these are actually the same
+distribution" call-outs and every citation — lives in the crate's own doc
+comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
+
+| Need | Reach for |
+|---|---|
+| Symmetric, light-tailed, unbounded | `Normal` (default), or `Ged` to tune peakedness — `Ged` is never power-law heavy-tailed, for any shape parameter |
+| Heavy-tailed, unbounded (financial returns) | `StudentT` (`ν=1` **is** `Cauchy`, exactly) or `AlphaStable` (generalizes `Normal` at `α=2` and `Cauchy` at `α=1, β=0`, but has no closed-form pdf/cdf at general `α`); `NormalInverseGauss` for a skewed heavy tail with finite variance and full closed-form moments |
+| Extreme-value / block maxima | `Gev` — a different job from bulk return modeling; only `pdf`/`cdf` are closed-form here, not the moments |
+| Positive, duration/volatility-shaped | `Exponential` (constant hazard), `Weibull` (rising or falling hazard), `Gamma` (waiting time; backs `Beta`/`ChiSquared`/`Ged`/`Dirichlet` internally), `LogNormal` (multiplicative growth), `InverseGauss` (first-passage time) |
+| Genuine power-law heavy tail, positive support | `Pareto` — the only positive-support type here with real threshold-dependent moment existence |
+| Bounded `[0, 1]` or `[a, b]` | `Beta`, `Uniform`, or a `Truncated*` wrapper — the four `Truncated*` types aren't a family to pick among, just "which base distribution, restricted to an interval" |
+| Discrete counts, with replacement | `Poisson`, `Binomial` |
+| Discrete counts, without replacement (finite population) | `Hypergeometric` — that assumption, not a tuning knob, separates it from `Binomial` |
+| Signed count data | `Skellam` — the only discrete type here that can go negative |
+| Covariance matrices, simplex proportions | `Wishart`, `Dirichlet` — both skip `DistributionExt` entirely for their own inherent density methods |
+
+`DistributionExt` coverage is uneven: `Ged`, `Gev`, `Skellam` and the four
+`Truncated*` wrappers implement only `pdf`/`cdf`, not the moments;
+`Dirichlet`, `Wishart`, `SimdNonCentralChiSquared` and
+`ComplexDistribution` implement none of it. Confirm the override exists
+(`cargo doc -p stochastic-rs-distributions`) before assuming `.mean()` /
+`.variance()` are there.
+
 ## Examples
 
 ### Normal — bulk sampling and closed-form moments

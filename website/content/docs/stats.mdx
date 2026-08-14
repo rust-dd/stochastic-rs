@@ -22,7 +22,7 @@ struct's field names are estimator-specific (see
 | `mle`                  | MLE for 1-D diffusions, 6 transition-density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS via argmin. Plus the dedicated Heston MLE / NMLE-CEKF. |
 | `realized`             | Realised variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett, Parzen, Tukey-Hanning, Cubic, Quadratic-Spectral) with BNHLS bandwidth. Semivariance, realised skew / kurtosis, HAR-RV, Jacod pre-averaging, TSRV, multi-scale RV, BNS jump test. |
 | `normality`            | Jarque-Bera, Shapiro-Francia, Anderson-Darling                                 |
-| `stationarity`         | ADF, KPSS, Phillips-Perron, Leybourne-McCabe, ERS DF-GLS                       |
+| `stationarity`         | 9 `HypothesisTest` implementors: ADF, KPSS, Phillips-Perron, Leybourne-McCabe and ERS DF-GLS test unit-root/stationarity; Andrews-Ploberger and CUSUM test regression-parameter stability instead; Lo-MacKinlay tests the random-walk hypothesis; RESET tests linear functional form. See [Choosing a stationarity test](#choosing-a-stationarity-test) — the module's own name undersells how different these nine are. |
 | `econometrics`         | Engle-Granger and Johansen cointegration, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
 | `hurst`                | Six native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle (Fukasawa, Takabatake & Westphal 2019 adapted quasi-likelihood; L-BFGS-B + Paxson + Eq.16 corrections, intraday Table 1 validation), variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **8** `HurstEstimator` implementors total. `hurst::whittle` additionally exposes `Whittle`'s own algorithm through dedicated one-shot functions (`estimate`, `estimate_from_prices`) outside the shared trait — see below |
@@ -126,6 +126,53 @@ samples into it silently recovers nonsense; see
 `stochastic-rs-stats/src/hurst/whittle.rs`'s own `simulate_log_rv` test
 helper for the construction it actually expects (a simulated log-variance
 process aggregated into intraday realized-variance bins).
+
+## Choosing a stationarity test
+
+The `stationarity` module holds nine `HypothesisTest` implementors, but
+"stationarity" accurately describes only five of them — the other four
+test a different null hypothesis entirely, despite living in the same
+module. The module's own doc comment
+(`stochastic-rs-stats/src/stationarity.rs`) has the full comparison with
+literature citations and exact minimum-sample requirements; short version:
+
+| Question you're actually asking | Reach for |
+|---|---|
+| Does this series have a unit root? (H₀: unit root) | `adf::adf_test`, `ers_dfgls::ers_dfgls_test` (usually the better default — the module doc explains why), `phillips_perron::phillips_perron_test` |
+| Is this series stationary? (H₀: stationarity) | `kpss::kpss_test`, `leybourne_mccabe::leybourne_mccabe_test` |
+| Are this regression's coefficients stable over time? | `andrews_ploberger::andrews_ploberger_test` (one unknown breakpoint) or `cusum::cusum_test` (gradual drift in the mean or variance) |
+| Is this specifically a random walk (uncorrelated increments)? | `lo_mackinlay::lo_mackinlay_test` |
+| Is my linear model's functional form correct? | `reset::reset_test` — not a time-series question at all |
+
+Run ADF and KPSS together, not either alone: their null hypotheses are
+opposite, so agreement between the two is real evidence, and disagreement
+is informative too — often a sign of long-range dependence rather than a
+clean unit-root/stationary split. See
+[Choosing a Hurst estimator](#choosing-a-hurst-estimator) below for
+estimating that directly instead of forcing a binary call.
+
+## Choosing a Hurst estimator
+
+Seven of the eight `HurstEstimator` implementors estimate the same
+quantity — the self-similarity exponent of the series handed to
+`.estimate()` — by different routes; the eighth, `Whittle`, estimates
+something else entirely (the warning in the example above). The full
+comparison, with the literature backing each method and exact data-size
+requirements, lives in the `hurst` module's own doc comment
+(`stochastic-rs-stats/src/hurst/mod.rs`). Short version:
+
+| Need | Reach for |
+|---|---|
+| A reasonable general-purpose default | `dfa::Dfa` — its polynomial detrending step is specifically why it tolerates real (trending) data better than `rs::RescaledRange` |
+| A confidence interval, not just a point estimate | `gph::Gph` or `wavelet::Wavelet` — the only two that populate a closed-form standard error |
+| The series is believed to be a rough, mean-reverting (fractional-OU-like) process rather than pure fBM/fGN | `variations::Variations` with `VariationKind::PowerVariation` |
+| You already think in terms of fractal dimension `D` | `fractal_dim::Higuchi` / `fractal_dim::Variogram` via the `H = 2 - D` adapter — prefer `FractalDimEstimator` directly when a degenerate fit matters, since the adapter clamps silently |
+| Roughness of *latent volatility* from a realized-variance series (rough-vol calibration) | `hurst::whittle::Whittle` — and only that input shape; feeding it a raw sampled path is the one mistake this table exists to prevent |
+
+`rs::RescaledRange` is the historical default (Hurst 1951) but is
+documented — in the same paper this crate cites for its own bias
+correction — as the least reliable of the group in finite samples; kept
+for continuity, not as a recommendation.
 
 ## Common pattern
 

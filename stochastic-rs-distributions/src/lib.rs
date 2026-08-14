@@ -2,6 +2,135 @@
 //!
 //! Probability distributions with SIMD bulk sampling, plus the foundational
 //! `FloatExt` / `SimdFloatExt` trait machinery and float impls.
+//!
+//! ## Choosing a distribution
+//!
+//! The website's distributions catalog groups these 29 types (30 counting
+//! [`complex::ComplexDistribution`]) by sampling strategy; this section
+//! groups them by modeling role instead — the axis that actually decides
+//! which one to reach for.
+//!
+//! **Unbounded, light-tailed**: [`normal::SimdNormal`] is the default; the
+//! only other unbounded-symmetric type is [`ged::SimdGed`], whose shape
+//! parameter `β` tunes peakedness (`β=1` Laplace, `β=2` Gaussian, `β<2`
+//! more peaked, `β>2` flatter) but — despite "generalized error
+//! distribution" sounding fat-tailed — its density decays as
+//! $e^{-|z|^\beta}$ for *any* `β > 0`, which is always lighter than a
+//! power law. Reach for [`studentt::SimdStudentT`] or
+//! [`pareto::SimdPareto`] below, not a small `β`, when you actually need
+//! polynomial tail decay.
+//!
+//! **Unbounded, heavy-tailed** (financial returns, extreme risk):
+//! [`cauchy::SimdCauchy`] (no mean or variance, ever) and
+//! [`studentt::SimdStudentT`] (moment-existence thresholds keyed to `ν`:
+//! mean undefined for `ν ≤ 1`, variance infinite for `ν ≤ 2`) are the same
+//! distribution at one point — `StudentT(ν=1)` **is** Cauchy exactly, not
+//! approximately. [`alpha_stable::SimdAlphaStable`] generalizes further
+//! (`α=2` is [`normal::SimdNormal`], `α=1, β=0` is
+//! [`cauchy::SimdCauchy`], again exactly), but at general `α` it has no
+//! closed-form `pdf`/`cdf`/`inv_cdf` at all and often infinite variance —
+//! reach for it only when the stable/self-similar-sum property itself
+//! matters, not merely "heavy tails." [`normal_inverse_gauss::SimdNormalInverseGauss`]
+//! is the usual alternative when you want a *skewed* heavy tail with
+//! **finite** variance and full closed-form moments (Barndorff-Nielsen
+//! 1997, *Scandinavian Journal of Statistics* 24(1), 1-13, DOI:
+//! 10.1111/1467-9469.00045) — the practical reason to prefer NIG over
+//! [`alpha_stable::SimdAlphaStable`] for return modeling specifically.
+//! [`gev::SimdGev`] is a different job again: block-maxima / extreme-value
+//! modeling, not the bulk return distribution.
+//!
+//! **Positive support** (durations, volatilities, waiting times):
+//! [`exp::SimdExp`] has constant hazard (memoryless); [`weibull::SimdWeibull`]
+//! generalizes it with a hazard that can rise or fall over time and is
+//! built directly on the same ziggurat primitive
+//! ([`exp::SimdExpZig`]) [`exp::SimdExp`] itself wraps.
+//! [`gamma::SimdGamma`] is the waiting-time-for-`k`-events story and the
+//! internal building block for [`beta::SimdBeta`] (ratio of two Gammas),
+//! [`chi_square::SimdChiSquared`] (`= 2·Gamma(k/2, 1)`),
+//! [`ged::SimdGed`] and [`dirichlet::SimdDirichlet`].
+//! [`lognormal::SimdLogNormal`] is the multiplicative-growth story (e.g.
+//! GBM levels); [`inverse_gauss::SimdInverseGauss`] is a first-passage-time
+//! distribution and the subordinator inside
+//! [`normal_inverse_gauss::SimdNormalInverseGauss`]. Only
+//! [`pareto::SimdPareto`] among this group is genuinely power-law
+//! heavy-tailed, with explicit threshold behavior (mean finite only for
+//! `α > 1`, variance only for `α > 2` — the crate's own test fixes
+//! `α = 1.16`, the classic "80/20" case, as finite-mean/infinite-variance).
+//!
+//! **Bounded support**: [`beta::SimdBeta`] and [`uniform::SimdUniform`]
+//! are the two general-purpose bounded distributions.
+//! [`truncated::SimdTruncatedNormal`], [`truncated::SimdTruncatedExp`],
+//! [`truncated::SimdTruncatedBeta`] and [`truncated::SimdTruncatedGamma`]
+//! are not a family to choose among — each restricts one specific base
+//! distribution to an interval, so the choice is just "which base did you
+//! already want." Two of the four have a real failure mode worth knowing
+//! before you truncate to a very tight interval: when rejection
+//! acceptance falls below the crate's threshold,
+//! [`truncated::SimdTruncatedBeta`] and [`truncated::SimdTruncatedGamma`]
+//! silently return the clamped interval midpoint rather than a genuine
+//! draw — widen the interval if you see draws piling up on one value.
+//! [`truncated::SimdTruncatedNormal`] and [`truncated::SimdTruncatedExp`]
+//! have no such fallback: tight-interval Normal routes through an exact
+//! closed-form inverse-CDF instead, and Exponential never needed rejection
+//! in the first place.
+//!
+//! **Discrete counts**: [`poisson::SimdPoisson`] (constant-rate count) and
+//! [`binomial::SimdBinomial`] (fixed trials, *with* replacement) are the
+//! two defaults. [`hypergeometric::SimdHypergeometric`] is the one to use
+//! instead of Binomial when sampling is *without* replacement from a
+//! finite population — that assumption, not a tuning knob, is what
+//! separates them. [`geometric::SimdGeometric`] is the discrete analogue
+//! of [`exp::SimdExp`]'s memorylessness (waiting time to first success).
+//! [`skellam::SimdSkellam`] — the difference of two independent
+//! [`poisson::SimdPoisson`] draws — is the only discrete type here that
+//! can go negative, useful for signed count data such as net order-flow
+//! imbalance.
+//!
+//! **Multivariate and structural**: [`dirichlet::SimdDirichlet`] (simplex-
+//! valued, conjugate prior for Categorical/Multinomial proportions) and
+//! [`wishart::SimdWishart`] (SPD-matrix-valued, Bartlett decomposition —
+//! the standard way to generate random covariance/correlation matrices)
+//! both skip [`crate::traits::DistributionExt`] entirely in favor of their
+//! own inherent `pdf`/`log_pdf` methods, since that trait's `f64 -> f64`
+//! shape does not fit a vector- or matrix-valued draw.
+//! [`non_central_chi_squared::SimdNonCentralChiSquared`] is structurally
+//! different again: its noncentrality parameter is supplied per draw
+//! (`sample_ncp(ncp)`, not at construction), it implements neither
+//! `rand_distr::Distribution` nor [`crate::traits::DistributionExt`], and
+//! its purpose in this crate is narrow — backing the exact CIR transition
+//! density (`stochastic-rs-stats::cir`). Prefer the free function
+//! [`non_central_chi_squared::sample`] over the struct directly when
+//! `0 < df < 1`: that function's Poisson-mixture branch handles the case
+//! correctly, while the struct's own `new`/`sample_ncp` path currently
+//! treats any `df` in that range the same as `df ≈ 1`.
+//! [`complex::ComplexDistribution`] is a composition utility, not a shape
+//! family — it pairs two independent distributions as the real and
+//! imaginary parts of a `Complex<T>` draw.
+//!
+//! ## `DistributionExt` coverage is uneven — check before you rely on it
+//!
+//! A type "implementing [`crate::traits::DistributionExt`]" does not mean
+//! every method has a closed form. [`ged::SimdGed`], [`gev::SimdGev`] and
+//! [`skellam::SimdSkellam`] each override only `pdf`/`cdf`; the four
+//! [`truncated`] wrappers do the same. None of these seven expose
+//! `mean`/`variance`/`inv_cdf`/etc. — calling them panics with the
+//! default `unimplemented!("... not implemented for {type_name}")`, even
+//! where the closed form is textbook (`SimdGev`'s own test file computes
+//! its mean via `Γ(1-ξ)` inline, but that formula is not exposed as
+//! `.mean()`). [`dirichlet::SimdDirichlet`], [`wishart::SimdWishart`],
+//! [`non_central_chi_squared::SimdNonCentralChiSquared`] and
+//! [`complex::ComplexDistribution`] implement none of it at all — see the
+//! cluster notes above for what each offers instead. If you need a
+//! specific moment programmatically rather than deriving it by hand,
+//! confirm the override exists (`cargo doc -p stochastic-rs-distributions`
+//! renders exactly what's overridden) before depending on it.
+//!
+//! One further, unrelated caveat while it's on this page:
+//! [`geometric::SimdGeometric`]'s documented domain for its success
+//! probability is `p ∈ (0, 1]`, but `SimdGeometric::new` does not assert
+//! it (contrast [`binomial::SimdBinomial::new`], which does check
+//! `p ∈ [0, 1]`) — a `p` outside that range is not rejected, it silently
+//! samples garbage.
 
 // Defaults to `warn`, which is how 5 broken doc links accumulated
 // unnoticed; deny so a regression fails the build instead of drifting.

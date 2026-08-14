@@ -4,6 +4,112 @@
 //! F_{X_1,\dots,X_d}(x)=C\left(F_1(x_1),\dots,F_d(x_d)\right)
 //! $$
 //!
+//! ## Choosing a copula
+//!
+//! Every family except [`independence::Independence`] is fit the same
+//! way — [`BivariateExt::fit`] moment-matches Kendall's tau-b, then
+//! inverts tau to the family's own shape parameter via `compute_theta` —
+//! so *how* you fit is not a distinguishing axis. What actually
+//! distinguishes these 13 is (1) which Kendall's tau values a family can
+//! even represent, (2) the shape of its tail dependence, and (3) whether
+//! fitting and sampling are closed-form or pay an iterative-solver cost.
+//!
+//! ### What Kendall's tau each family can represent
+//!
+//! | Reachable τ | Families |
+//! |---|---|
+//! | Full `(-1, 1)` | [`frank::Frank`], [`gaussian::GaussianCopula`], [`t_copula::TCopula`], [`plackett::Plackett`] (via an admittedly approximate τ ↔ Spearman's-ρ proxy — a few percent off, per that family's own module doc) |
+//! | Positive only, `[0, 1)` | [`clayton::Clayton`], [`galambos::Galambos`], [`husler_reiss::HuslerReiss`], [`gumbel::Gumbel`], [`joe::Joe`] |
+//! | Narrow, both signs | [`amh::Amh`] (`[-0.18, 0.33]`, asymmetric around 0), [`fgm::Fgm`] (`[-0.22, 0.22]`) |
+//! | Degenerate (no free parameter in practice) | [`independence::Independence`] (`{0}` only); [`marshall_olkin::MarshallOlkin`] on its symmetric `theta` path (`[0, 1]`) — its separate `with_alpha_beta` constructor instead fits two independent shock-rate parameters directly from data, not from tau at all, and is the only family in this crate that is not exchangeable in general |
+//!
+//! Fitting a positive-only-τ family to negatively-dependent data is a real
+//! failure mode, not a hypothetical: [`clayton::Clayton`]'s `compute_theta`
+//! (`θ = 2τ/(1-τ)`) does not clamp, so negative τ silently produces a
+//! negative, out-of-bounds `θ` that only surfaces as an error the first
+//! time something calls [`BivariateExt::check_fit`] — not at `.fit()`
+//! itself. Check your data's empirical τ sign before picking a family,
+//! not after `.fit()` appears to succeed.
+//!
+//! ### Tail shape, and one heuristic to distrust
+//!
+//! Equal (here, zero) upper- and lower-tail dependence does **not** imply
+//! radial symmetry. [`amh::Amh`] has zero tail dependence in both tails
+//! yet is measurably not radially symmetric
+//! (`C(u,v) ≠ u+v-1+C(1-u,1-v)`, confirmed numerically) — the in-tree
+//! counterexample to that heuristic. Radially symmetric here:
+//! [`fgm::Fgm`], [`frank::Frank`], [`gaussian::GaussianCopula`],
+//! [`plackett::Plackett`], [`t_copula::TCopula`],
+//! [`independence::Independence`]. Everything else — including
+//! [`amh::Amh`] — is not.
+//!
+//! [`gumbel::Gumbel`] and [`joe::Joe`] have the identical upper-tail
+//! formula ($\lambda_U = 2 - 2^{1/\theta}$, both requiring `θ ≥ 1`),
+//! confirmed byte-for-byte the same expression in both source files. If
+//! tail dependence is your only selection criterion, these two are
+//! indistinguishable; they differ in Archimedean generator
+//! ($(-\ln t)^\theta$ for Gumbel vs. $-\ln(1-(1-t)^\theta)$ for Joe) and
+//! therefore in dependence shape away from the tail, but neither family's
+//! own doc explains when that interior difference should drive a choice.
+//! Treat "Gumbel or Joe" as a genuine tie unless an external reference or
+//! a goodness-of-fit comparison points at one.
+//!
+//! ### Closed-form vs. iterative: fitting and sampling cost
+//!
+//! `compute_theta` (the tau → theta step inside `.fit()`) is closed-form
+//! for [`clayton::Clayton`], [`fgm::Fgm`], [`gaussian::GaussianCopula`],
+//! [`t_copula::TCopula`], [`marshall_olkin::MarshallOlkin`] and
+//! [`gumbel::Gumbel`]; every other non-degenerate family
+//! ([`amh::Amh`], [`frank::Frank`], [`galambos::Galambos`],
+//! [`husler_reiss::HuslerReiss`], [`joe::Joe`], [`plackett::Plackett`])
+//! root-finds it numerically. A one-time, cheap-in-absolute-terms cost
+//! per `.fit()` call, but not free.
+//!
+//! [`BivariateExt::percent_point`] — the per-sample inversion
+//! [`BivariateExt::sample`] relies on — is a separate cost, and fewer
+//! families avoid it: only [`clayton::Clayton`],
+//! [`gaussian::GaussianCopula`] and [`independence::Independence`] have a
+//! real closed-form inverse. [`frank::Frank`] and [`gumbel::Gumbel`] each
+//! override `percent_point`, but the override is closed-form only at the
+//! degenerate boundary (`θ = 0` / `θ = 1`); every other `θ`, and every
+//! other family — including [`t_copula::TCopula`] despite its closed-form
+//! `partial_derivative` — falls through to the generic Brent-root
+//! [`BivariateExt::percent_point_numerical`], one root-find per sampled
+//! pair. For a Monte Carlo run sampling millions of pairs, that per-draw
+//! cost is a real, practical reason to prefer Clayton or Gaussian when
+//! either is otherwise an acceptable fit.
+//!
+//! ### The common data requirement, and one family that skips it
+//!
+//! `fit` requires both input columns already probability-integral-
+//! transformed to `[0, 1]` — it runs a Kolmogorov-Smirnov uniformity
+//! check (bound `1.627/√n`) on each column before touching Kendall's tau.
+//! Feeding raw prices or returns fails this check; transform through an
+//! empirical or fitted marginal CDF first (see
+//! [`crate::univariate::gaussian::GaussianUnivariate`] or
+//! [`crate::empirical`] for two ready-made transforms).
+//! [`independence::Independence`]'s own `fit` is the one exception: it
+//! hardcodes `tau = theta = 0.0` without reading the data at all, so it
+//! never runs that check — relying on `.fit()` as an implicit
+//! data-quality gate, even when independence is exactly what you expect,
+//! does not work for this one family.
+//!
+//! ### A currently-open rough edge, reported rather than papered over
+//!
+//! A fitted [`frank::Frank`] can land exactly on `θ = 0` (the
+//! independence limit) when empirical τ is very small. At `θ = 0` exactly,
+//! `pdf`/`cdf`/`percent_point`/`partial_derivative` currently return an
+//! error rather than the independence copula those first three methods
+//! otherwise special-case internally, because `θ = 0` is presently
+//! rejected by this family's own theta validation. Use
+//! [`independence::Independence`] directly rather than relying on
+//! Frank's boundary when your data's dependence is that weak.
+//! [`t_copula::TCopula`] similarly accepts `ρ = ±1` as a "valid" theta
+//! where its sibling [`gaussian::GaussianCopula`] does not — avoid fitting
+//! or setting `ρ` to exactly `±1`; `pdf`/`percent_point`/
+//! `partial_derivative` divide by $\sqrt{1-\rho^2}$ and are not guarded at
+//! that boundary the way `cdf` is.
+
 pub use crate::traits::BivariateExt;
 
 pub mod amh;

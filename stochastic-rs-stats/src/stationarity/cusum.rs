@@ -16,7 +16,7 @@
 //!   (Brown-Durbin-Evans 1975, Table 1).
 //! - **CUSUMQ** $S_t = \sum_{j=k+1}^t w_j^2 / \sum_{j=k+1}^T w_j^2$ —
 //!   sensitive to a shift in the conditional variance. Boundary is parallel
-//!   to the line $E[S_t] = (t-k)/(T-k)$ with half-width
+//!   to the line $E\[S_t\] = (t-k)/(T-k)$ with half-width
 //!   $c_\alpha \sqrt{2/(T-k-2)}$ where $c_\alpha \in \{1.07275, 0.84717,
 //!   0.74346\}$ (Edgerton-Wells 1994 large-sample approximation to the
 //!   Durbin 1969 exact table).

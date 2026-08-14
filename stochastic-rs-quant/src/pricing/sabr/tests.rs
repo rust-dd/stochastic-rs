@@ -150,3 +150,89 @@ fn alpha_from_atm_vol_reference() {
     );
   }
 }
+
+/// Independent cross-check of [`hagan_implied_vol`] against a 40-decimal-digit
+/// reimplementation of Hagan Eq. A.69a, rather than against values this crate
+/// produced itself.
+///
+/// The rest of this file's reference cases are regression pins — they catch
+/// drift but would not catch a formula that was wrong from the start. These
+/// five were recomputed with `mpmath` at `mp.dps = 40`:
+///
+/// ```text
+/// from mpmath import mp, mpf, log, sqrt
+/// mp.dps = 40
+/// logfk = log(F/K); fk = (F*K)**(1-beta)
+/// a = (1-beta)**2*alpha**2/(24*fk)
+/// b = rho*beta*nu*alpha/(4*sqrt(fk))
+/// c = (2-3*rho**2)*nu**2/24
+/// z = nu*sqrt(fk)*logfk/alpha
+/// x = log((sqrt(1-2*rho*z+z*z)+z-rho)/(1-rho))
+/// sigma = alpha*(z/x)*(1+(a+b+c)*T) / (sqrt(fk)*(1 + (1-beta)**2*logfk**2/24
+///                                                 + (1-beta)**4*logfk**4/1920))
+/// ```
+///
+/// Every case agreed to within 1e-15 relative, i.e. floating-point noise, so
+/// the tolerance below is set at 1e-14 rather than tuned to pass.
+#[test]
+fn hagan_matches_an_independent_high_precision_implementation() {
+  // (K, F, tau, alpha, beta, rho, nu, mpmath value at 40 digits)
+  let cases: &[(f64, f64, f64, f64, f64, f64, f64, f64)] = &[
+    (100.0, 100.0, 1.0, 0.2, 1.0, -0.3, 0.5, 0.20210416666666668),
+    (110.0, 100.0, 1.0, 0.2, 1.0, -0.3, 0.5, 0.19666956015138031),
+    (90.0, 100.0, 1.0, 0.2, 1.0, -0.3, 0.5, 0.21189336164560343),
+    (
+      100.0,
+      100.0,
+      0.5,
+      0.15,
+      0.5,
+      -0.2,
+      0.8,
+      // mpmath: 0.015373767578124999… (same f64 as the shortest form below)
+      0.015373767578125,
+    ),
+    (110.0, 100.0, 0.5, 0.15, 0.5, -0.2, 0.8, 0.03080869461133287),
+  ];
+  for &(k, f, tau, alpha, beta, rho, nu, expected) in cases {
+    let got = hagan_implied_vol(k, f, tau, alpha, beta, nu, rho);
+    let rel = (got - expected).abs() / expected.abs();
+    assert!(
+      rel < 1e-14,
+      "K={k}: got {got:e}, mpmath {expected:e}, rel {rel:e}"
+    );
+  }
+}
+
+/// The ATM `beta = 1` case is simple enough to verify by hand, which pins the
+/// `(a + b + c) * tau` correction independently of any reference value:
+/// `a = 0`, `b = rho*nu*alpha/4 = -0.0075`,
+/// `c = (2 - 3*rho^2)*nu^2/24 = 0.01802083...`, so
+/// `sigma = alpha * (1 + (b + c) * tau) = 0.2 * 1.01052083... = 0.2021041666...`
+#[test]
+fn atm_beta_one_matches_hand_computation() {
+  let (alpha, rho, nu, tau) = (0.2, -0.3, 0.5, 1.0);
+  let b = 0.25 * rho * nu * alpha;
+  let c = (2.0 - 3.0 * rho * rho) * nu * nu / 24.0;
+  let expected = alpha * (1.0 + (b + c) * tau);
+  let got = hagan_implied_vol(100.0, 100.0, tau, alpha, 1.0, nu, rho);
+  assert!((got - expected).abs() < 1e-15, "got {got}, hand {expected}");
+}
+
+#[test]
+#[should_panic(expected = "rho must lie strictly inside (-1, 1)")]
+fn rejects_rho_at_one() {
+  let _ = hagan_implied_vol(110.0, 100.0, 1.0, 0.2, 1.0, 0.5, 1.0);
+}
+
+#[test]
+#[should_panic(expected = "strike k must be strictly positive")]
+fn rejects_a_nonpositive_strike() {
+  let _ = hagan_implied_vol(0.0, 100.0, 1.0, 0.2, 1.0, 0.5, -0.3);
+}
+
+#[test]
+#[should_panic(expected = "alpha must be strictly positive")]
+fn rejects_a_nonpositive_alpha() {
+  let _ = hagan_implied_vol(110.0, 100.0, 1.0, 0.0, 1.0, 0.5, -0.3);
+}

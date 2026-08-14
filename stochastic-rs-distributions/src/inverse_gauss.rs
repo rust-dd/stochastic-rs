@@ -223,7 +223,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdInve
   }
 
   fn median(&self) -> f64 {
-    // No closed form; report mean as a sensible reference value.
+    // No closed form and no simple bound-based approximation used here;
+    // callers that need a reference value should use `mean()` explicitly
+    // instead of assuming this method provides one.
     f64::NAN
   }
 

@@ -535,6 +535,31 @@ mod tests {
     );
   }
 
+  /// [`Whittle`] expects log realized-variance increments built the way
+  /// [`simulate_log_rv`] builds them, not a path sampled directly from a
+  /// self-similar process — see the module doc's "Choosing an estimator"
+  /// warning in `crate::hurst`. Feed it the wrong kind of input on
+  /// purpose: an [`Fgn`](stochastic_rs_stochastic::noise::fgn::Fgn) path
+  /// at a known `H`, unmodified. This is the concrete evidence backing
+  /// that warning, not just an assertion in prose.
+  #[test]
+  fn raw_path_recovers_nonsense_h_from_whittle() {
+    use stochastic_rs_stochastic::noise::fgn::Fgn;
+
+    let true_h = 0.3;
+    let path: Array1<f64> = Fgn::new(true_h, 512, Some(1.0), Deterministic::new(3)).sample();
+    let r = Whittle::default()
+      .estimate(path.view())
+      .expect("whittle trait estimate");
+    assert!(
+      (r.hurst - true_h).abs() > 0.15,
+      "expected an estimate far from the true H={true_h} (wrong input kind), \
+       got H={:.3} — if this starts passing, Whittle may have started \
+       tolerating raw paths and the module doc's warning needs revisiting",
+      r.hurst
+    );
+  }
+
   #[test]
   fn whittle_trait_smoke() {
     let log_rv = simulate_log_rv(0.3, 72, 500, 1.0 / 250.0, 11);

@@ -7,10 +7,11 @@
 //! ## Sampling
 //!
 //! - **Truncated Normal:** plain rejection from the base
-//!   $\mathcal{N}(\mu, \sigma^2)$ via the existing [`SimdNormal`] sampler.
-//!   Tight intervals (probability-mass $< 0.05$) fall back to Robert's
-//!   exponential algorithm (Robert 1995, *Statistics and Computing* 5,
-//!   §3) which keeps acceptance ≥ 0.65 in the worst case.
+//!   $\mathcal{N}(\mu, \sigma^2)$ via the existing [`SimdNormal`] sampler
+//!   while acceptance stays above 5 %. Tight intervals (mass $< 0.05$,
+//!   where rejection would spin) fall back to the closed-form inverse-CDF
+//!   transform instead — exact, not an accept-reject scheme, at the cost
+//!   of one [`crate::special::ndtri`] call per draw.
 //! - **Truncated Exponential:** closed-form inverse-CDF sampling — no
 //!   rejection needed.
 //! - **Truncated Beta / Gamma:** plain rejection from the corresponding
@@ -26,13 +27,9 @@
 //! cached at construction time.
 //!
 //! References:
-//! - Robert, C.P. (1995), "Simulation of truncated normal variables",
-//!   *Statistics and Computing* 5, 121-125.
-//! - Botts, C. (2013), "An accept-reject algorithm for the positive
-//!   multivariate normal distribution", *Computational Statistics* 28,
-//!   1749-1773.
 //! - Devroye, L. (1986), *Non-Uniform Random Variate Generation*,
-//!   Springer, §II.3 (general rejection).
+//!   Springer, §II.3 (general rejection, the wide-interval path for all
+//!   four families here).
 
 use std::cell::UnsafeCell;
 

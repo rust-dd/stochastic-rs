@@ -5,6 +5,30 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 
 ## Unreleased
 
+### stochastic-rs-quant: `hagan_implied_vol` validates its parameters instead of returning `0.0`
+
+`hagan_implied_vol` previously returned `0.0` for `k <= 0`, `f <= 0` or
+`alpha <= 0`, and `NaN` for `rho == 1`. Both were silent. A zero implied vol is
+a plausible-looking number — `bs_price_fx` turns it into an intrinsic-value
+price with no signal that the vol computation failed — so it now panics with a
+message naming the parameter.
+
+```rust
+// Before: silently 0.0, and the caller could not tell.
+let v = hagan_implied_vol(0.0, 100.0, 1.0, 0.2, 1.0, 0.5, -0.3);
+assert_eq!(v, 0.0);
+
+// After: panics with "strike k must be strictly positive (got 0)".
+```
+
+No in-tree caller is affected: both calibrators clamp `rho` to `±0.99`, and the
+smile plot floors its strike grid at `1e-6`. If you call it directly with a
+strike grid that can reach zero, floor it the same way.
+
+The approximation itself is unchanged, and is now covered by a test comparing
+against an independent 40-decimal-digit reimplementation of Hagan Eq. A.69a
+rather than against values this crate produced itself.
+
 ### stochastic-rs-stochastic: a kernel-generic Volterra SDE engine
 
 The Markov-lift machinery that previously lived inside `rough/` as a
