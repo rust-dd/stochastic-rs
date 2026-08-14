@@ -34,6 +34,35 @@ f.partial_derivative(&x).unwrap(); // u (was: v)
 If you were relying on `Frank` rejecting `θ = 0` to catch near-independent
 data reaching this family, check your fitted `θ`/`τ` directly instead.
 
+### stochastic-rs-copulas: `TCopula` now rejects `ρ = ±1`, matching `GaussianCopula`
+
+`TCopula`'s `invalid_thetas` was empty, so `ρ = ±1` passed `check_theta`
+and `pdf` (and, downstream, `log_pdf`) silently returned `NaN` — verified
+directly, on- and off-diagonal, across `ν ∈ {1, 4, 30}` — while
+`partial_derivative`/`percent_point` silently returned a finite-but-wrong
+value instead of erroring. `ρ = ±1` is reachable from `fit()` alone, not
+just a raw `set_theta`: `compute_theta`'s `sin(πτ/2).clamp(-1.0, 1.0)` —
+identical to `GaussianCopula`'s own — lands exactly on `1.0` for
+perfectly rank-correlated input data. `TCopula::default` now lists
+`invalid_thetas: vec![-1.0, 1.0]`, exactly like `GaussianCopula`, so the
+same inputs now fail `check_fit`/`check_theta` cleanly instead.
+
+```rust
+// Before: silently NaN.
+let mut c = TCopula::with_nu(4.0);
+c.set_theta(1.0);
+c.pdf(&x).unwrap()[0]; // NaN
+
+// After: a clean, catchable error.
+let mut c = TCopula::with_nu(4.0);
+c.set_theta(1.0);
+c.pdf(&x).unwrap_err(); // "Theta must be in the interval [-1, 1] and not in [-1.0, 1.0]"
+```
+
+If you were relying on `TCopula` accepting `ρ = ±1`, clamp your input the
+way this crate's own SABR calibrators already clamp correlation away from
+`±1` (e.g. to `±0.99`) before calling `set_theta`/`fit`.
+
 ### stochastic-rs-quant: `hagan_implied_vol` validates its parameters instead of returning `0.0`
 
 `hagan_implied_vol` previously returned `0.0` for `k <= 0`, `f <= 0` or
