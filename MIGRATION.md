@@ -1561,3 +1561,32 @@ The reproducibility guard grew from 124 to 127 types accordingly.
   seed).sample()` produces byte-for-byte identical `f64::to_bits()` output
   before and after this change, for `Exponential { beta: 1.3 }`, `PowerLaw
   { gamma: -0.2 }`, and `FractionalBM { h: 0.7 }` alike.
+
+### stochastic-rs-distributions: `SimdNonCentralChiSquared::sample_ncp` now handles `0 < df < 1` correctly
+
+`SimdNonCentralChiSquared::new`/`sample_ncp` previously treated any `df` in
+`(0, 1)` the same as `df ≈ 1`: the Gaussian-shift decomposition it uses for
+`df ≥ 1` doesn't exist below 1 (it needs a nonnegative central χ²_{df−1}
+degrees of freedom), so the struct silently dropped that term and sampled
+`(Z + sqrt(ncp))^2` regardless of how far below 1 `df` actually was. The
+free function `non_central_chi_squared::sample` already had a correct
+Poisson-mixture branch for this range (`Gamma(df/2 + J, 2)`, `J ~
+Poisson(ncp/2)`); the struct now delegates to that same branch (reseeded
+per draw from an internal fork cursor) instead of keeping a second, wrong
+copy.
+
+```rust
+// Before: silently sampled as if df were 1 — wrong mean/variance for df != 1.
+let s = SimdNonCentralChiSquared::<f64>::new(0.3, &Deterministic::new(1));
+let x = s.sample_ncp(2.0); // mean came out ~= 1+ncp = 3.0, not df+ncp = 2.3
+
+// After: matches the free function's Poisson-mixture branch.
+let x = s.sample_ncp(2.0); // mean ~= df+ncp = 2.3, variance ~= 2*(df+2*ncp) = 8.6
+```
+
+No signature changed; this is a behavior-only fix, and no in-tree test
+pinned the old (wrong) output. `df` here is `4*kappa*eta/zeta^2` in
+`stochastic-rs-stochastic`'s `Svcgmy` Cir-exact variance step, which can
+fall below 1 for sufficiently sub-Feller parameter combinations (already
+accepted, not rejected, per the sub-Feller entry above) — so the bug was
+reachable from real inputs, not only a theoretical corner.

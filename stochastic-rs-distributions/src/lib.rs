@@ -98,11 +98,12 @@
 //! (`sample_ncp(ncp)`, not at construction), it implements neither
 //! `rand_distr::Distribution` nor [`crate::traits::DistributionExt`], and
 //! its purpose in this crate is narrow — backing the exact CIR transition
-//! density (`stochastic-rs-stats::cir`). Prefer the free function
-//! [`non_central_chi_squared::sample`] over the struct directly when
-//! `0 < df < 1`: that function's Poisson-mixture branch handles the case
-//! correctly, while the struct's own `new`/`sample_ncp` path currently
-//! treats any `df` in that range the same as `df ≈ 1`.
+//! density (`stochastic-rs-stats::cir`). For `0 < df < 1`, where the
+//! Gaussian-shift decomposition doesn't exist, `sample_ncp` falls back per
+//! draw to the same Poisson-mixture branch the free function
+//! [`non_central_chi_squared::sample`] uses; buffering only benefits the
+//! `df ≥ 1` path, so prefer the free function for isolated `df < 1` draws
+//! outside a per-step loop.
 //! [`complex::ComplexDistribution`] is a composition utility, not a shape
 //! family — it pairs two independent distributions as the real and
 //! imaginary parts of a `Complex<T>` draw.
