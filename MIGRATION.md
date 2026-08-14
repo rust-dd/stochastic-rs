@@ -5,6 +5,35 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 
 ## Unreleased
 
+### stochastic-rs-copulas: `Frank` now accepts `θ = 0`, its own independence limit
+
+`Frank::new`/`Frank::default` previously listed `0.0` in `invalid_thetas`,
+so a fitted or explicitly-set `θ = 0` — Frank's own independence limit,
+`C(u,v) = uv` — failed `check_fit`/`check_theta`, even though `pdf`,
+`percent_point` and `partial_derivative` each already special-cased
+`θ == 0.0` internally. `θ = 0` is now accepted, matching how
+`Clayton`/`Gumbel` already treat their own independence limits (`θ = 0`
+/ `θ = 1` respectively, both in-bounds and un-excluded).
+
+`percent_point` and `partial_derivative`'s existing `θ == 0.0` branches
+were also fixed to match (both returned the wrong operand), and `cdf`
+gained the `θ == 0.0` branch it never had:
+
+```rust
+// Before: errors out entirely (θ = 0 rejected by check_theta).
+let f = Frank::new(Some(0.0), None);
+f.cdf(&x).unwrap_err(); // "Theta must be in the interval..."
+
+// After: behaves as the independence copula, C(u,v) = uv.
+let f = Frank::new(Some(0.0), None);
+f.cdf(&x).unwrap();               // u * v (was: no branch existed -> NaN once unblocked)
+f.percent_point(&y, &v).unwrap(); // y, the fresh uniform (was: v -> comonotonic, not independent)
+f.partial_derivative(&x).unwrap(); // u (was: v)
+```
+
+If you were relying on `Frank` rejecting `θ = 0` to catch near-independent
+data reaching this family, check your fitted `θ`/`τ` directly instead.
+
 ### stochastic-rs-quant: `hagan_implied_vol` validates its parameters instead of returning `0.0`
 
 `hagan_implied_vol` previously returned `0.0` for `k <= 0`, `f <= 0` or

@@ -33,7 +33,7 @@ impl Frank {
       theta,
       tau,
       theta_bounds: (f64::NEG_INFINITY, f64::INFINITY),
-      invalid_thetas: vec![0.0],
+      invalid_thetas: vec![],
     }
   }
 }
@@ -109,6 +109,11 @@ impl BivariateExt for Frank {
     let V = X.column(1);
 
     let theta = self.theta.unwrap();
+
+    if theta == 0.0 {
+      return Ok(&U * &V);
+    }
+
     let num = ((-theta * &U).exp() - 1.0) * ((-theta * &V).exp() - 1.0);
     let den = (-theta).exp() - 1.0;
     let out = -1.0 / theta * (1.0 + num / den).ln();
@@ -121,7 +126,7 @@ impl BivariateExt for Frank {
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(V.clone());
+      return Ok(y.clone());
     }
 
     self.percent_point_numerical(y, V)
@@ -136,7 +141,7 @@ impl BivariateExt for Frank {
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(V.clone());
+      return Ok(U.clone());
     }
 
     let num = self._g(&U)? * self._g(&V)? + self._g(&U)?;
@@ -231,7 +236,13 @@ impl Frank {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::array;
+
   use super::*;
+
+  fn approx(a: f64, b: f64, tol: f64) -> bool {
+    (a - b).abs() <= tol
+  }
 
   #[test]
   fn frank_tail_dependence_is_zero() {
@@ -239,5 +250,83 @@ mod tests {
     let td = f.tail_dependence();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
+  }
+
+  /// θ=0 is Frank's independence limit (`invalid_thetas` no longer rejects
+  /// it) and must actually behave like one: `pdf(u,v) = 1` everywhere.
+  #[test]
+  fn frank_pdf_at_independence_is_one() {
+    let f = Frank::new(Some(0.0), None);
+    let pdf = f.pdf(&array![[0.2_f64, 0.9], [0.5, 0.5]]).unwrap();
+    assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
+    assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
+  }
+
+  /// `cdf` had no `theta == 0.0` branch at all: unblocking the boundary
+  /// without one would leave `C(u,v) = -1/theta * ln(1 + 0/0)` (both the
+  /// generator ratio's numerator and denominator vanish identically at
+  /// theta=0) evaluating to `NaN` for every input. The independence copula
+  /// is `C(u,v) = uv`.
+  #[test]
+  fn frank_cdf_at_independence_is_uv() {
+    let f = Frank::new(Some(0.0), None);
+    let cdf = f.cdf(&array![[0.3_f64, 0.7], [0.2, 0.9]]).unwrap();
+    assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
+    assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
+  }
+
+  /// `partial_derivative` computes $\partial_v C(u,v)$ (the same "second
+  /// argument, fixed conditioning value" convention as
+  /// [`crate::bivariate::gaussian::GaussianCopula::partial_derivative`]).
+  /// At independence, $C(u,v)=uv \Rightarrow \partial_v C = u$ — not `v`.
+  #[test]
+  fn frank_partial_derivative_at_independence_returns_u() {
+    let f = Frank::new(Some(0.0), None);
+    let pd = f
+      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .unwrap();
+    assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
+    assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
+  }
+
+  /// The test that decides the θ=0 boundary question: at Frank's
+  /// independence limit, `percent_point`'s conditional inverse must not
+  /// depend on the conditioning variable `V` at all, so sampled pairs
+  /// must be empirically independent — Kendall's τ statistically
+  /// indistinguishable from 0.
+  ///
+  /// Tolerance is `6` standard errors of τ under the null of independence
+  /// (Kendall & Gibbons (1990), *Rank Correlation Methods*: `Var(τ) =
+  /// 2(2n+5) / (9n(n-1))` for large `n`), derived from the sample size
+  /// rather than tuned; three pinned seeds, best-of, per this crate's
+  /// statistical-assertion convention.
+  ///
+  /// This must fail (and, before the `percent_point` fix, did fail) against
+  /// the pre-fix `if theta == 0.0 { return Ok(V.clone()) }`: returning the
+  /// conditioning variable instead of the fresh uniform `y` makes `U = V`
+  /// exactly for every sampled pair — perfectly comonotonic, τ ≈ 1 — the
+  /// exact opposite of the independence the caller asked for.
+  #[test]
+  fn frank_independence_sample_kendall_tau_near_zero() {
+    let n = 4000usize;
+    let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
+    let tol = 6.0 * se;
+    let f = Frank::new(Some(0.0), Some(0.0));
+    let best_abs_tau = [2718_u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let samples = f.sample_with_seed(n, seed).unwrap();
+        let u = samples.column(0).to_vec();
+        let v = samples.column(1).to_vec();
+        let (tau, ..) =
+          kendalls::tau_b_with_comparator(&u, &v, |a: &f64, b: &f64| a.partial_cmp(b).unwrap())
+            .unwrap();
+        tau.abs()
+      })
+      .fold(f64::INFINITY, f64::min);
+    assert!(
+      best_abs_tau < tol,
+      "best |tau| across 3 seeds = {best_abs_tau}, expected < {tol} (6 SE, SE={se}, n={n})"
+    );
   }
 }

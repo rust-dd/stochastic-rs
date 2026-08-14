@@ -96,19 +96,17 @@
 //!
 //! ### A currently-open rough edge, reported rather than papered over
 //!
-//! A fitted [`frank::Frank`] can land exactly on `θ = 0` (the
-//! independence limit) when empirical τ is very small. At `θ = 0` exactly,
-//! `pdf`/`cdf`/`percent_point`/`partial_derivative` currently return an
-//! error rather than the independence copula those first three methods
-//! otherwise special-case internally, because `θ = 0` is presently
-//! rejected by this family's own theta validation. Use
-//! [`independence::Independence`] directly rather than relying on
-//! Frank's boundary when your data's dependence is that weak.
-//! [`t_copula::TCopula`] similarly accepts `ρ = ±1` as a "valid" theta
-//! where its sibling [`gaussian::GaussianCopula`] does not — avoid fitting
-//! or setting `ρ` to exactly `±1`; `pdf`/`percent_point`/
-//! `partial_derivative` divide by $\sqrt{1-\rho^2}$ and are not guarded at
-//! that boundary the way `cdf` is.
+//! [`frank::Frank`]'s `pdf` and `partial_derivative` build a denominator
+//! as `g(u) + g(v) + g(1)` (a sum) where the closed form these methods'
+//! own doc comments target needs `g(1) + g(u)·g(v)` (`g(z) = e^{-θz}-1`),
+//! for every `θ` — not just at the `θ = 0` independence limit this
+//! module's own tests cover, which is a disjoint special-cased path and
+//! unaffected. Checked directly against a finite-difference/quadrature
+//! probe of this family's own (correct) `cdf`: the gap is large — order
+//! `0.1`-plus at `θ ∈ {0.5, 1, 2, 5, -3}` — not a rounding artifact.
+//! `Frank::sample`/`percent_point` root-find through `partial_derivative`
+//! and inherit the error. Not fixed here; needs its own test-driven pass
+//! rather than a bundled edit.
 
 pub use crate::traits::BivariateExt;
 
