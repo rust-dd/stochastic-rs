@@ -1759,3 +1759,23 @@ c.percent_point(&y, &v).unwrap(); // == y
 `Clayton::pdf`/`cdf`/`partial_derivative` do not special-case `θ = 0` at
 all and are unchanged by this fix — see `bivariate.rs`'s module doc for
 that separate, still-open gap.
+
+### stochastic-rs-copulas: `Gumbel::partial_derivative` now returns the correct value at its θ=1 independence limit
+
+The `θ = 1` branch returned `V.to_owned()` where independence
+(`C(u,v) = uv`) requires `∂_v C(u,v) = u`. It now returns `U.to_owned()`.
+`Gumbel::percent_point` already had its own correct `θ = 1` branch
+(returning the fresh uniform directly, bypassing `partial_derivative`
+entirely), so `Gumbel::sample` was never affected by this bug — only a
+direct `partial_derivative` call at `θ = 1` (e.g. computing a conditional
+CDF / h-function value) was wrong.
+
+```rust
+// Before: wrong conditional CDF value at Gumbel's own independence limit.
+let g = Gumbel::new(Some(1.0), None);
+g.partial_derivative(&array![[0.3, 0.6]]).unwrap()[0]; // 0.6 (== v)
+
+// After: matches C(u,v) = uv's own ∂_v C = u.
+let g = Gumbel::new(Some(1.0), None);
+g.partial_derivative(&array![[0.3, 0.6]]).unwrap()[0]; // 0.3 (== u)
+```

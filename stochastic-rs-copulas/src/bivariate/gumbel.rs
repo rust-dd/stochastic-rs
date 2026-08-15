@@ -128,6 +128,16 @@ impl BivariateExt for Gumbel {
     self.percent_point_numerical(y, V)
   }
 
+  /// $\partial_v C(u,v) = C(u,v)\big((-\ln u)^\theta+(-\ln
+  /// v)^\theta\big)^{1/\theta-1}(-\ln v)^{\theta-1}/v$. At `θ=1`
+  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u` — not `v`. The
+  /// previous branch returned `V.to_owned()`, the same defect class as
+  /// [`crate::bivariate::frank::Frank::partial_derivative`]'s pre-fix
+  /// `θ = 0` branch. Note that [`Gumbel::percent_point`]'s own `θ = 1`
+  /// branch was already correct (it returns the fresh uniform directly,
+  /// bypassing this method entirely), so `Gumbel::sample` was never
+  /// affected by this bug — only a direct `partial_derivative` call at
+  /// `θ = 1` was wrong.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
     self.check_fit()?;
 
@@ -137,7 +147,7 @@ impl BivariateExt for Gumbel {
     let theta = self.theta.unwrap();
 
     if theta == 1.0 {
-      return Ok(V.to_owned());
+      return Ok(U.to_owned());
     }
 
     let t1 = (-U.ln()).powf(theta);
@@ -176,7 +186,58 @@ impl BivariateExt for Gumbel {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::array;
+
   use super::*;
+
+  /// Direct regression pin for the `θ=1` `partial_derivative` bug: at
+  /// independence (`C(u,v)=uv ⟹ ∂_v C = u`), mirrors
+  /// `frank::tests::frank_partial_derivative_at_independence_returns_u`.
+  /// This is the test that actually exercises the bug fixed above — see
+  /// the next test's doc for why a Kendall's-τ sampling check does not.
+  #[test]
+  fn gumbel_partial_derivative_at_independence_returns_u() {
+    let g = Gumbel::new(Some(1.0), None);
+    let pd = g
+      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .unwrap();
+    assert!((pd[0] - 0.3).abs() < 1e-12, "got {}", pd[0]);
+    assert!((pd[1] - 0.2).abs() < 1e-12, "got {}", pd[1]);
+  }
+
+  /// Kendall's-τ sampling check at `θ=1`, same construction as
+  /// `clayton::tests::clayton_independence_sample_kendall_tau_near_zero`
+  /// and `frank::tests::frank_independence_sample_kendall_tau_near_zero`.
+  /// Unlike those two, this one would pass even without the
+  /// `partial_derivative` fix above: `Gumbel::percent_point` already had
+  /// its own correct `θ=1` branch, so `Gumbel::sample` never routed
+  /// through the buggy `partial_derivative` at this boundary. Kept
+  /// anyway as a direct regression guard on `sample`/`percent_point`
+  /// itself, matching this crate's standing convention of pinning
+  /// independence-limit sampling behavior for every family that has one.
+  #[test]
+  fn gumbel_independence_sample_kendall_tau_near_zero() {
+    let n = 4000usize;
+    let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
+    let tol = 6.0 * se;
+    let g = Gumbel::new(Some(1.0), Some(0.0));
+    let best_abs_tau = [2718_u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let samples = g.sample_with_seed(n, seed).unwrap();
+        let u = samples.column(0).to_vec();
+        let v = samples.column(1).to_vec();
+        let (tau, ..) =
+          kendalls::tau_b_with_comparator(&u, &v, |a: &f64, b: &f64| a.partial_cmp(b).unwrap())
+            .unwrap();
+        tau.abs()
+      })
+      .fold(f64::INFINITY, f64::min);
+    assert!(
+      best_abs_tau < tol,
+      "best |tau| across 3 seeds = {best_abs_tau}, expected < {tol} (6 SE, SE={se}, n={n})"
+    );
+  }
 
   /// Gumbel θ=2: λ_U = 2 − √2 = 0.585786437626905.
   #[test]
