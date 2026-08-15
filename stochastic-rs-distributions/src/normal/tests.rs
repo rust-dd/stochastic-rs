@@ -1,31 +1,42 @@
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
-#[cfg(feature = "dual-stream-rng")]
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
+use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
 use super::SimdNormal;
-use crate::special::erf;
+use crate::traits::DistributionExt as _;
+
+const SEEDS: [u64; 3] = [2718, 999, 42];
 
 fn mean(samples: &[f64]) -> f64 {
   samples.iter().sum::<f64>() / samples.len() as f64
 }
 
-fn normal_cdf(x: f64, mean: f64, std_dev: f64) -> f64 {
-  let z = (x - mean) / (std_dev * 2.0_f64.sqrt());
-  0.5 * (1.0 + erf(z))
-}
-
-fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
-  samples.sort_by(f64::total_cmp);
-  let n = samples.len() as f64;
-  let mut d = 0.0_f64;
-  for (i, &x) in samples.iter().enumerate() {
-    let f = cdf(x).clamp(0.0, 1.0);
-    let i_f = i as f64;
-    let d_plus = ((i_f + 1.0) / n - f).abs();
-    let d_minus = (f - i_f / n).abs();
-    d = d.max(d_plus.max(d_minus));
-  }
-  d
+/// KS against the sampler's own `cdf` (Kolmogorov 1933 / Smirnov 1948 /
+/// Massey 1951 critical values, alpha=0.05 — see
+/// `stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov`'s module
+/// doc), worst-of-three pinned seeds (see [`SEEDS`]): a correct test
+/// still rejects a true null at rate alpha, and the SIMD stream differs
+/// across platforms, so one seed cannot be trusted to be lucky
+/// everywhere. Replaces this file's former `ks_critical = 2.0/sqrt(N)`
+/// bound, which implied an undeclared alpha of roughly 0.0007.
+fn worst_ks_p_value(
+  n: usize,
+  make_dist: impl Fn(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>),
+) -> f64 {
+  SEEDS
+    .into_iter()
+    .map(|seed| {
+      let (samples, cdf) = make_dist(seed);
+      assert_eq!(samples.len(), n);
+      kolmogorov_smirnov_test(
+        ArrayView1::from(&samples),
+        cdf,
+        KolmogorovSmirnovConfig::default(),
+      )
+      .p_value
+    })
+    .fold(1.0_f64, f64::min)
 }
 
 /// The dual-engine pair path interleaves batches from engines A and B —
@@ -34,15 +45,16 @@ fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
 #[test]
 fn simd_normal_dual_pair_path_matches_theoretical_distribution() {
   const N: usize = 40_000;
-  let dist = crate::SimdNormalDual::<f64>::new(0.0, 1.0, &Unseeded);
-  let mut samples = vec![0.0_f64; N];
-  dist.fill_standard_fast(&mut samples);
-  assert!(samples.iter().all(|x| x.is_finite()));
-  let d = ks_statistic(&mut samples, |x| normal_cdf(x, 0.0, 1.0));
-  let ks_critical = 2.0 / (N as f64).sqrt();
+  let worst_p = worst_ks_p_value(N, |seed| {
+    let dist = crate::SimdNormalDual::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_standard_fast(&mut samples);
+    assert!(samples.iter().all(|x| x.is_finite()));
+    (samples, Box::new(move |x| dist.cdf(x)))
+  });
   assert!(
-    d < ks_critical,
-    "dual-path normal KS statistic too large: D={d}, critical={ks_critical}"
+    worst_p > 0.01,
+    "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
   );
 }
 
@@ -68,10 +80,14 @@ fn simd_normal_matches_theoretical_distribution() {
     "normal mean mismatch: emp={mean_emp}, target={mu}, se={mean_se}"
   );
 
-  let d = ks_statistic(&mut samples, |x| normal_cdf(x, mu, sigma));
-  let ks_critical = 2.0 / (N as f64).sqrt();
+  let worst_p = worst_ks_p_value(N, |seed| {
+    let dist = SimdNormal::<f64>::new(mu, sigma, &Deterministic::new(seed));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice(&mut samples);
+    (samples, Box::new(move |x| dist.cdf(x)))
+  });
   assert!(
-    d < ks_critical,
-    "normal KS statistic too large: D={d}, critical={ks_critical}"
+    worst_p > 0.01,
+    "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
   );
 }

@@ -39,3 +39,10 @@ romu = { workspace = true }
 # impls in `tests/distribution_ext_vs_reference.rs`. Production code never
 # delegates to statrs.
 statrs = { workspace = true }
+# Dev-only back-edge: `stochastic-rs-stats` (regular dep) depends on this
+# crate, so this is a dev-dependency cycle — legal in Cargo because
+# dev-dependencies never enter the library build, only `tests/`. Used for
+# the shared Kolmogorov-Smirnov / chi-square goodness-of-fit tests in
+# `stochastic_rs_stats::goodness_of_fit` rather than a fourth copy-pasted
+# KS helper in this crate's own test suite.
+stochastic-rs-stats = { workspace = true }

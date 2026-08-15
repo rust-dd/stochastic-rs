@@ -313,62 +313,68 @@ py_distribution!(PyGamma, SimdGamma,
 
 #[cfg(test)]
 mod tests {
+  use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
+  use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
   use super::SimdGamma;
-  use crate::special::gamma_p;
+  use crate::traits::DistributionExt as _;
 
-  fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
-    samples.sort_by(f64::total_cmp);
-    let n = samples.len() as f64;
-    let mut d = 0.0_f64;
-    for (i, &x) in samples.iter().enumerate() {
-      let f = cdf(x).clamp(0.0, 1.0);
-      let i_f = i as f64;
-      let d_plus = ((i_f + 1.0) / n - f).abs();
-      let d_minus = (f - i_f / n).abs();
-      d = d.max(d_plus.max(d_minus));
-    }
-    d
-  }
-
-  fn gamma_cdf(alpha: f64, scale: f64) -> impl FnMut(f64) -> f64 {
-    move |x| {
-      if x <= 0.0 {
-        0.0
-      } else {
-        gamma_p(alpha, x / scale)
-      }
-    }
-  }
-
+  /// Both tests below check KS against the sampler's own `cdf`
+  /// (Kolmogorov 1933 / Smirnov 1948 / Massey 1951 critical values,
+  /// alpha=0.05 — see
+  /// `stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov`'s module
+  /// doc), worst-of-three pinned seeds: a correct test still rejects a
+  /// true null at rate alpha, and the SIMD stream differs across
+  /// platforms, so one seed cannot be trusted to be lucky everywhere.
+  /// Replaces this test's own former `ks_critical = 2.0/sqrt(N)` bound,
+  /// which implied an undeclared alpha of roughly 0.0007.
   #[test]
   fn simd_gamma_fill_matches_theoretical_distribution() {
     const N: usize = 40_000;
-    let dist = SimdGamma::<f64>::new(2.5, 1.5, &Deterministic::new(42));
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut samples);
-    assert!(samples.iter().all(|x| x.is_finite() && *x > 0.0));
-    let d = ks_statistic(&mut samples, gamma_cdf(2.5, 1.5));
-    let ks_critical = 2.0 / (N as f64).sqrt();
+    let worst_p = [2718u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let dist = SimdGamma::<f64>::new(2.5, 1.5, &Deterministic::new(seed));
+        let mut samples = vec![0.0_f64; N];
+        dist.fill_slice(&mut samples);
+        assert!(samples.iter().all(|x| x.is_finite() && *x > 0.0));
+        kolmogorov_smirnov_test(
+          ArrayView1::from(&samples),
+          |x| dist.cdf(x),
+          KolmogorovSmirnovConfig::default(),
+        )
+        .p_value
+      })
+      .fold(1.0_f64, f64::min);
     assert!(
-      d < ks_critical,
-      "gamma KS statistic too large: D={d}, critical={ks_critical}"
+      worst_p > 0.01,
+      "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
     );
   }
 
   #[test]
   fn simd_gamma_boosted_alpha_below_one_matches_theory() {
     const N: usize = 40_000;
-    let dist = SimdGamma::<f64>::new(0.5, 2.0, &Deterministic::new(7));
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut samples);
-    assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
-    let d = ks_statistic(&mut samples, gamma_cdf(0.5, 2.0));
-    let ks_critical = 2.0 / (N as f64).sqrt();
+    let worst_p = [2718u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let dist = SimdGamma::<f64>::new(0.5, 2.0, &Deterministic::new(seed));
+        let mut samples = vec![0.0_f64; N];
+        dist.fill_slice(&mut samples);
+        assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
+        kolmogorov_smirnov_test(
+          ArrayView1::from(&samples),
+          |x| dist.cdf(x),
+          KolmogorovSmirnovConfig::default(),
+        )
+        .p_value
+      })
+      .fold(1.0_f64, f64::min);
     assert!(
-      d < ks_critical,
-      "boosted gamma KS statistic too large: D={d}, critical={ks_critical}"
+      worst_p > 0.01,
+      "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
     );
   }
 }

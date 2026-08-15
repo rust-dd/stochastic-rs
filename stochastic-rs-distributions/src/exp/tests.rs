@@ -1,32 +1,43 @@
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
+use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
 use super::SimdExp;
 use super::SimdExpZig;
+use crate::traits::DistributionExt as _;
+
+const SEEDS: [u64; 3] = [2718, 999, 42];
 
 fn mean(samples: &[f64]) -> f64 {
   samples.iter().sum::<f64>() / samples.len() as f64
 }
 
-fn exp_cdf(x: f64, lambda: f64) -> f64 {
-  if x <= 0.0 {
-    0.0
-  } else {
-    1.0 - (-lambda * x).exp()
-  }
-}
-
-fn ks_statistic(samples: &mut [f64], mut cdf: impl FnMut(f64) -> f64) -> f64 {
-  samples.sort_by(f64::total_cmp);
-  let n = samples.len() as f64;
-  let mut d = 0.0_f64;
-  for (i, &x) in samples.iter().enumerate() {
-    let f = cdf(x).clamp(0.0, 1.0);
-    let i_f = i as f64;
-    let d_plus = ((i_f + 1.0) / n - f).abs();
-    let d_minus = (f - i_f / n).abs();
-    d = d.max(d_plus.max(d_minus));
-  }
-  d
+/// KS against the sampler's own `cdf` (Kolmogorov 1933 / Smirnov 1948 /
+/// Massey 1951 critical values, alpha=0.05 — see
+/// `stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov`'s module
+/// doc), worst-of-three pinned seeds (see [`SEEDS`]): a correct test
+/// still rejects a true null at rate alpha, and the SIMD stream differs
+/// across platforms, so one seed cannot be trusted to be lucky
+/// everywhere. Replaces this file's former `ks_critical = 2.0/sqrt(N)`
+/// bound, which implied an undeclared alpha of roughly 0.0007.
+fn worst_ks_p_value(
+  n: usize,
+  make_dist: impl Fn(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>),
+) -> f64 {
+  SEEDS
+    .into_iter()
+    .map(|seed| {
+      let (samples, cdf) = make_dist(seed);
+      assert_eq!(samples.len(), n);
+      kolmogorov_smirnov_test(
+        ArrayView1::from(&samples),
+        cdf,
+        KolmogorovSmirnovConfig::default(),
+      )
+      .p_value
+    })
+    .fold(1.0_f64, f64::min)
 }
 
 #[test]
@@ -51,11 +62,15 @@ fn simd_exp_matches_theoretical_distribution() {
     "exp mean mismatch: emp={mean_emp}, target={mean_target}, se={mean_se}"
   );
 
-  let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
-  let ks_critical = 2.0 / (N as f64).sqrt();
+  let worst_p = worst_ks_p_value(N, |seed| {
+    let dist = SimdExp::<f64>::new(lambda, &Deterministic::new(seed));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice(&mut samples);
+    (samples, Box::new(move |x| dist.cdf(x)))
+  });
   assert!(
-    d < ks_critical,
-    "exp KS statistic too large: D={d}, critical={ks_critical}"
+    worst_p > 0.01,
+    "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
   );
 }
 
@@ -66,15 +81,16 @@ fn simd_exp_matches_theoretical_distribution() {
 fn simd_exp_zig_dual_pair_path_matches_theoretical_distribution() {
   const N: usize = 40_000;
   let lambda = 0.9_f64;
-  let dist = crate::SimdExpZigDual::<f64>::new(lambda, &Deterministic::new(0x5116));
-  let mut samples = vec![0.0_f64; N];
-  dist.fill_slice(&mut samples);
-  assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
-  let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
-  let ks_critical = 2.0 / (N as f64).sqrt();
+  let worst_p = worst_ks_p_value(N, |seed| {
+    let dist = crate::SimdExpZigDual::<f64>::new(lambda, &Deterministic::new(seed));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice(&mut samples);
+    assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
+    (samples, Box::new(move |x| dist.cdf(x)))
+  });
   assert!(
-    d < ks_critical,
-    "dual-path exp-zig KS statistic too large: D={d}, critical={ks_critical}"
+    worst_p > 0.01,
+    "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
   );
 }
 
@@ -83,19 +99,15 @@ fn simd_exp_zig_fill_slice_matches_theoretical_distribution() {
   const N: usize = 32_000;
   let lambda = 0.65_f64;
 
-  let dist = SimdExpZig::<f64>::new(lambda, &Deterministic::new(0x5117));
-  let mut samples = vec![0.0_f64; N];
-  dist.fill_slice(&mut samples);
-
+  let worst_p = worst_ks_p_value(N, |seed| {
+    let dist = SimdExpZig::<f64>::new(lambda, &Deterministic::new(seed));
+    let mut samples = vec![0.0_f64; N];
+    dist.fill_slice(&mut samples);
+    assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
+    (samples, Box::new(move |x| dist.cdf(x)))
+  });
   assert!(
-    samples.iter().all(|x| x.is_finite() && *x >= 0.0),
-    "invalid exponential sample encountered"
-  );
-
-  let d = ks_statistic(&mut samples, |x| exp_cdf(x, lambda));
-  let ks_critical = 2.0 / (N as f64).sqrt();
-  assert!(
-    d < ks_critical,
-    "exp-zig KS statistic too large: D={d}, critical={ks_critical}"
+    worst_p > 0.01,
+    "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
   );
 }

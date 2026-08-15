@@ -15,8 +15,10 @@ pub use stochastic_rs_stochastic::traits::ProcessExt;
 /// Unifies `*Result` types produced by hypothesis-test estimators.
 ///
 /// Implemented by stationarity tests (ADF, KPSS, ERS-DFGLS,
-/// Phillips-Perron, Leybourne-McCabe) and normality tests (Jarque-Bera,
-/// Anderson-Darling, Shapiro-Francia). Each test exposes its statistic;
+/// Phillips-Perron, Leybourne-McCabe), normality tests (Jarque-Bera,
+/// Anderson-Darling, Shapiro-Francia), and the general-purpose
+/// goodness-of-fit tests (Kolmogorov-Smirnov, Pearson chi-square). Each
+/// test exposes its statistic;
 /// the rejection decision is `Some(true|false)` when the test embeds a
 /// rejection rule for a fixed `alpha` chosen at run time, or `None` when
 /// the result is informational only (e.g. Phillips-Perron with the
