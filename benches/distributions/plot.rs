@@ -1,3 +1,15 @@
+//! Visual shape comparison of this crate's SIMD samplers against
+//! `rand_distr`, rendered as histograms/PMFs in a plotly subplot grid and
+//! written to disk as HTML.
+//!
+//! This is an eyeball check on distributional *shape* — it has no
+//! significance level, no test statistic, and no pass/fail criterion. The
+//! goodness-of-fit suite in `stochastic-rs-distributions/tests/` is what
+//! actually validates these samplers against their theoretical
+//! distributions; treat agreement or disagreement in this plot as a
+//! prompt to go check that suite, never as evidence in its own right.
+
+use criterion::Criterion;
 use plotly::Layout;
 use plotly::Plot;
 use plotly::Scatter;
@@ -9,25 +21,24 @@ use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
 use rand::rng;
 use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
-
-use crate::beta::SimdBeta;
-use crate::binomial::SimdBinomial;
-use crate::cauchy::SimdCauchy;
-use crate::chi_square::SimdChiSquared;
-use crate::exp::SimdExp;
-use crate::gamma::SimdGamma;
-use crate::geometric::SimdGeometric;
-use crate::hypergeometric::SimdHypergeometric;
-use crate::inverse_gauss::SimdInverseGauss;
-use crate::lognormal::SimdLogNormal;
-use crate::normal::SimdNormal;
-use crate::normal_inverse_gauss::SimdNormalInverseGauss;
-use crate::pareto::SimdPareto;
-use crate::poisson::SimdPoisson;
-use crate::studentt::SimdStudentT;
-use crate::uniform::SimdUniform;
-use crate::weibull::SimdWeibull;
+use stochastic_rs::distributions::beta::SimdBeta;
+use stochastic_rs::distributions::binomial::SimdBinomial;
+use stochastic_rs::distributions::cauchy::SimdCauchy;
+use stochastic_rs::distributions::chi_square::SimdChiSquared;
+use stochastic_rs::distributions::exp::SimdExp;
+use stochastic_rs::distributions::gamma::SimdGamma;
+use stochastic_rs::distributions::geometric::SimdGeometric;
+use stochastic_rs::distributions::hypergeometric::SimdHypergeometric;
+use stochastic_rs::distributions::inverse_gauss::SimdInverseGauss;
+use stochastic_rs::distributions::lognormal::SimdLogNormal;
+use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::distributions::normal_inverse_gauss::SimdNormalInverseGauss;
+use stochastic_rs::distributions::pareto::SimdPareto;
+use stochastic_rs::distributions::poisson::SimdPoisson;
+use stochastic_rs::distributions::studentt::SimdStudentT;
+use stochastic_rs::distributions::uniform::SimdUniform;
+use stochastic_rs::distributions::weibull::SimdWeibull;
+use stochastic_rs::simd_rng::Unseeded;
 
 fn make_histogram(
   samples: &[f32],
@@ -173,9 +184,22 @@ fn add_discrete_pair<F1, F2>(
   );
 }
 
-#[test]
-#[ignore = "interactive: opens a browser via plot.show(); run with --ignored when generating combined plots"]
-fn combined_all_distributions() {
+/// Renders every sampler this crate ships next to its `rand_distr`
+/// counterpart and writes the combined grid to
+/// `target/distributions_shape_comparison.html`.
+///
+/// Eyeballing shape only — see the module doc for why this cannot stand in
+/// for the goodness-of-fit suite.
+pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
+  // Cargo runs every `[[bench]]` target once under `cargo test` (passing
+  // `--test`) as a compile-and-smoke check. Skip the real render there so
+  // `cargo test` never writes a file for this — the same contract the
+  // criterion-registered benchmarks above already get from Criterion
+  // itself.
+  if std::env::args().any(|arg| arg == "--test") {
+    return;
+  }
+
   let mut plot = Plot::new();
   plot.set_layout(
     Layout::new().grid(
@@ -410,5 +434,5 @@ fn combined_all_distributions() {
     || rd_chisq.sample(&mut r2),
   );
 
-  plot.show();
+  plot.write_html("target/distributions_shape_comparison.html");
 }
