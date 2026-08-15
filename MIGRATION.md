@@ -1666,3 +1666,43 @@ let g = SimdGeometric::<u64>::new(0.0, &Unseeded);
 `p = 1.0` remains valid — it did before and still does; only genuinely
 out-of-range `p` (`<= 0.0` or `> 1.0`) now panics. No in-tree caller passes
 an out-of-range `p`.
+
+### stochastic-rs-distributions: `SimdGeometric`'s sampler now matches its own `{1, 2, ...}` analytics
+
+`SimdGeometric::fill_slice` sampled the `{0, 1, 2, ...}` "failures before
+the first success" convention (`floor(ln(U) / ln(1-p))`, the textbook
+inversion for that support), while `pdf`, `cdf`, `mean`, `median`, `mode`,
+`skewness`, `kurtosis`, `characteristic_function`,
+`moment_generating_function` and the module's own header all describe the
+shifted `{1, 2, ...}` "trials up to and including the first success"
+convention instead (`P(X=k) = (1-p)^{k-1} p`, `mean() = 1/p`) — the same
+convention `scipy.stats.geom` uses (contrast `scipy.stats.nbinom`, which is
+`{0, 1, ...}`). Sampler and analytics silently described two different
+distributions: the empirical mean of sampled draws tracked `(1-p)/p`, not
+`mean()`'s `1/p`, and every draw at `p = 1.0` came out `0`, never the `1`
+the documented, degenerate always-succeeds-on-the-first-trial case
+requires.
+
+`fill_slice` now shifts its inversion by `+ 1`, landing on the same
+`{1, 2, ...}` support the rest of the type already committed to — the same
+shift `SimdBinomial`'s own internal geometric waiting-time loop already
+applies to its inner gaps.
+
+```rust
+// Before: sampler and analytics disagreed.
+let g = SimdGeometric::<u64>::new(1.0, &Deterministic::new(1));
+let mut buf = [0u64; 1000];
+g.fill_slice(&mut buf);
+assert!(buf.iter().all(|&x| x == 0)); // every draw 0, but mean() said 1.0
+
+// After: sampler matches mean()/variance()/pdf()/cdf().
+g.fill_slice(&mut buf);
+assert!(buf.iter().all(|&x| x == 1)); // every draw 1, matching mean() == 1.0
+```
+
+If you depended on the old `{0, 1, ...}` sampled values (e.g. treating a
+draw as a zero-based failure count), subtract `1` from every value coming
+out of `sample`/`sample_fast`/`fill_slice`/`sample_n`/`sample_matrix` to
+recover them. `pdf`/`cdf`/`mean`/`variance`/`inv_cdf` and the rest of
+`DistributionExt` are unchanged — they already used the `{1, 2, ...}`
+convention the sampler now agrees with.
