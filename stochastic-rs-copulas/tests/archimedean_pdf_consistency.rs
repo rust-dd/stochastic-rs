@@ -58,14 +58,14 @@ fn assert_pdf_matches_fd(c: &impl BivariateExt, u: f64, v: f64, label: &str) {
   );
 }
 
-/// θ ∈ (0, ∞), avoiding the exact `θ=0` boundary: that point has its own
-/// dedicated independence test plus a separate, unrelated, unfixed gap in
-/// `pdf`/`cdf` there (see `bivariate.rs`'s module doc) — this test
-/// targets the general, non-degenerate formula, which is a different
-/// code path.
+/// θ ∈ [0, ∞), including the exact `θ=0` independence boundary: `pdf`
+/// and `cdf` now both special-case it directly (`c(u,v)=1`, `C(u,v)=uv`),
+/// so it is no longer a disjoint code path that this general sweep has
+/// to avoid — see `clayton.rs`'s own `θ=0` exact-value tests for the
+/// closed-form assertions this finite-difference check complements.
 #[test]
 fn clayton_pdf_matches_finite_difference_cdf() {
-  for &theta in &[0.3_f64, 1.0, 2.5, 5.0] {
+  for &theta in &[0.0_f64, 0.3, 1.0, 2.5, 5.0] {
     let mut c = Clayton::new();
     c.set_theta(theta);
     for &(u, v) in &POINTS {

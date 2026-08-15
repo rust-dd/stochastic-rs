@@ -94,34 +94,34 @@
 //! data-quality gate, even when independence is exactly what you expect,
 //! does not work for this one family.
 //!
-//! ### A currently-open rough edge, reported rather than papered over
+//! ### The `∂_v` convention every `partial_derivative` must follow
 //!
-//! [`clayton::Clayton`]'s `pdf`, `cdf`, and `partial_derivative` do not
-//! special-case `θ = 0` (Clayton's own independence limit, reachable
-//! from `.fit()` on near-independent data) the way `percent_point` now
-//! does: naive floating-point substitution at exactly `θ = 0` hits a
-//! removable singularity that does not resolve to the independence
-//! copula. `cdf(u,v)` evaluates to the constant `1.0` for every `u,v >
-//! 0` (not `uv`); `pdf(u,v)` evaluates to `(uv)^{-1}` (not `1.0`).
-//! `Clayton::sample`, which routes through the now-fixed
-//! `percent_point`, is unaffected — only direct `pdf`/`cdf`/
-//! `partial_derivative` calls at exactly `θ = 0` are wrong. Not fixed
-//! here: it is a different defect class from `percent_point`'s
-//! wrong-operand bug (a missing branch, not a wrong one).
-//!
-//! [`amh::Amh`]'s `partial_derivative` used to compute $\partial_u
-//! C(u,v) = v\big(1-\theta(1-v)\big)/D^2$ (confirmed by differentiating
-//! its own `cdf`, with $D = 1-\theta(1-u)(1-v)$), where every other
-//! family in this crate — [`clayton::Clayton`], [`frank::Frank`],
-//! [`joe::Joe`], [`gaussian::GaussianCopula`] (whose own doc states the
-//! convention explicitly) — computes $\partial_v C(u,v)$, matching
+//! `partial_derivative` means $\partial_v C(u,v)$ throughout this crate —
+//! the derivative w.r.t. the *second* argument, at a fixed conditioning
+//! value — never $\partial_u$. This is not a style preference:
 //! [`BivariateExt::partial_derivative`]'s own finite-difference default
-//! (which perturbs the second column). Because `Amh` does not override
-//! `percent_point`, it fell through to
-//! [`BivariateExt::percent_point_numerical`], which inverts
-//! `partial_derivative` assuming the crate-wide $\partial_v$ convention
-//! — so `Amh::percent_point`/`Amh::sample` silently solved the wrong
-//! equation for `u` given `v`. Now fixed.
+//! perturbs the second column, and
+//! [`BivariateExt::percent_point_numerical`] inverts whatever
+//! `partial_derivative` returns, as a function of `u` at fixed `v`,
+//! assuming it is $\partial_v C(u,v)$ — the conditional CDF of `U` given
+//! `V=v`. [`clayton::Clayton`], [`frank::Frank`], [`joe::Joe`] and
+//! [`gaussian::GaussianCopula`] (whose own doc states this explicitly) all
+//! follow it. A family whose override differentiates the other argument
+//! does not fail loudly: [`amh::Amh`]'s `partial_derivative` computed
+//! $\partial_u C(u,v)$ instead — a value as plausible-looking in
+//! isolation as the correct one — and because `Amh` does not override
+//! `percent_point`, `Amh::percent_point`/`Amh::sample` silently solved the
+//! wrong equation for `u` given `v` until this was fixed.
+//!
+//! Every family also now special-cases its own independence limit
+//! directly in `pdf`, `cdf` and `partial_derivative`, not just
+//! `percent_point` (which already had its own branch, for the families
+//! that override it): naive substitution at that boundary hits a
+//! removable singularity in at least one of the three for every family
+//! that has an independence limit ([`clayton::Clayton`] at `θ = 0`,
+//! [`frank::Frank`] at `θ = 0`, [`gumbel::Gumbel`] at `θ = 1`) except
+//! [`amh::Amh`], whose denominator $D = 1-\theta(1-u)(1-v)$ never
+//! vanishes at its own `θ = 0` and so needed no dedicated branch there.
 
 pub use crate::traits::BivariateExt;
 

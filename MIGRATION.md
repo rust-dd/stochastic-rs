@@ -1816,3 +1816,36 @@ c.partial_derivative(&array![[0.3, 0.6]]).unwrap()[0]; // 0.25136372041420124
 If you fitted or sampled an `Amh` copula before this fix, re-fit and
 re-sample — there is no way to recover the intended values from the old
 output.
+
+### stochastic-rs-copulas: `Clayton::pdf`/`cdf`/`partial_derivative` now special-case `θ=0`
+
+None of the three had a `θ = 0` branch, unlike `percent_point` above. Naive
+substitution at exactly `θ = 0` hits a removable singularity that does not
+resolve to the independence copula: `cdf(u,v)` evaluated to the constant
+`1.0` for every `u,v > 0` (not `uv`); `pdf(u,v)` evaluated to `(uv)^{-1}`
+(not `1.0`); `partial_derivative(u,v)` evaluated to `v^{-1}` (not `u`).
+`Clayton::sample`, which routes through the already-fixed `percent_point`,
+was unaffected — only direct `pdf`/`cdf`/`partial_derivative` calls at
+exactly `θ = 0` were wrong.
+
+```rust
+// Before: silently wrong at Clayton's own independence limit.
+let c = Clayton { theta: Some(0.0), ..Clayton::default() };
+c.cdf(&array![[0.3, 0.7]]).unwrap()[0];               // 1.0 (should be 0.21)
+c.pdf(&array![[0.3, 0.7]]).unwrap()[0];                // 4.761904761904762 (should be 1.0)
+c.partial_derivative(&array![[0.3, 0.7]]).unwrap()[0]; // 1.4285714285714286 (should be 0.3)
+
+// After: matches the independence copula C(u,v) = uv.
+let c = Clayton { theta: Some(0.0), ..Clayton::default() };
+c.cdf(&array![[0.3, 0.7]]).unwrap()[0];               // 0.21
+c.pdf(&array![[0.3, 0.7]]).unwrap()[0];                // 1.0
+c.partial_derivative(&array![[0.3, 0.7]]).unwrap()[0]; // 0.3
+```
+
+Gumbel and Amh were checked for the same gap at their own independence
+limits (`θ = 1`, `θ = 0` respectively). Gumbel's `pdf`/`cdf` already
+special-cased `θ = 1` (only `partial_derivative` needed a fix, already
+recorded in this file's own `Gumbel::partial_derivative` entry above).
+`Amh` needs no such branch at all: its denominator `1-θ(1-u)(1-v)` never
+vanishes at `θ = 0`, so `pdf`/`cdf` were already correct there — see the
+`Amh::partial_derivative` entry above for `Amh`'s actual (unrelated) bug.

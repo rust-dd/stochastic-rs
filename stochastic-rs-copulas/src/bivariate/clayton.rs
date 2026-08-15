@@ -79,9 +79,12 @@ impl BivariateExt for Clayton {
 
   /// Density $c(u,v) = (\theta+1)(uv)^{-\theta-1}\big(u^{-\theta}+v^{-\theta}-1\big)^{-(1+2\theta)/\theta}$
   /// — matches the mixed second partial of `cdf` for every `θ` in this
-  /// family's valid range, checked directly. Not special-cased at the
-  /// `θ = 0` independence boundary the way [`Clayton::percent_point`]
-  /// now is — see [`crate::bivariate`]'s module doc for that gap.
+  /// family's valid range, checked directly. Now special-cased at the
+  /// `θ = 0` independence boundary the same way [`Clayton::percent_point`]
+  /// already is: naive substitution there hits a removable singularity
+  /// (`b.powf(c)` with `b = 1` and `c = -∞`, an IEEE `pow` special case
+  /// that evaluates to `1.0` regardless) that happens to leave `a` — not
+  /// `1.0` — as the answer, i.e. `(uv)^{-1}`.
   fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
@@ -89,12 +92,21 @@ impl BivariateExt for Clayton {
     let V = X.column(1);
 
     let theta = self.theta.unwrap();
+
+    if theta == 0.0 {
+      return Ok(Array1::ones(U.len()));
+    }
+
     let a = (theta + 1.0) * (&U * &V).powf(-theta - 1.0);
     let b = U.powf(-theta) + V.powf(-theta) - 1.0;
     let c = -(2.0 * theta + 1.0) / theta;
     Ok(a * b.powf(c))
   }
 
+  /// At `θ=0` (independence), `C(u,v)=uv`; the general closed form
+  /// `(u^{-θ}+v^{-θ}-1)^{-1/θ}` hits the same `1^{-∞}` removable
+  /// singularity as `pdf` there and evaluates to the constant `1.0` for
+  /// every `u,v > 0`, not `uv`.
   fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
@@ -110,6 +122,11 @@ impl BivariateExt for Clayton {
     }
 
     let theta = self.theta.unwrap();
+
+    if theta == 0.0 {
+      return Ok(&U * &V);
+    }
+
     let mut cdfs = Array1::<f64>::zeros(U.len());
 
     for i in 0..U.len() {
@@ -155,6 +172,10 @@ impl BivariateExt for Clayton {
     Ok(((a + &b - 1.0) / b).powf(-1.0 / theta))
   }
 
+  /// At `θ=0` (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`. The general
+  /// formula hits the same `1^{-∞}` removable singularity as `pdf`/`cdf`
+  /// there (`B = v^0+u^0-1 = 1`, raised to `(-1-θ)/θ → -∞`), leaving `A =
+  /// v^{-1}` — not `u` — as the answer, so it needs its own branch.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
@@ -162,6 +183,11 @@ impl BivariateExt for Clayton {
     let V = X.column(1);
 
     let theta = self.theta.unwrap();
+
+    if theta == 0.0 {
+      return Ok(U.to_owned());
+    }
+
     let A = V.powf(-theta - 1.0);
 
     if A.is_all_infinite() {
@@ -199,7 +225,13 @@ impl BivariateExt for Clayton {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::array;
+
   use super::*;
+
+  fn approx(a: f64, b: f64, tol: f64) -> bool {
+    (a - b).abs() <= tol
+  }
 
   /// Clayton θ=2: λ_L = 2^{−1/2} = 0.707106781186…, λ_U = 0.
   #[test]
@@ -258,5 +290,51 @@ mod tests {
       best_abs_tau < tol,
       "best |tau| across 3 seeds = {best_abs_tau}, expected < {tol} (6 SE, SE={se}, n={n})"
     );
+  }
+
+  /// `θ=0` is Clayton's own independence limit. `pdf`/`cdf`/
+  /// `partial_derivative` had no branch for it at all — mirroring the
+  /// gap `frank::tests::frank_cdf_at_independence_is_uv` documents for
+  /// Frank's pre-fix `cdf` — so naive substitution hit a removable
+  /// `1^{-∞}` singularity instead of resolving to the independence
+  /// copula. Asserted exactly (not via a loose tolerance), matching this
+  /// crate's convention for independence-limit checks.
+  #[test]
+  fn clayton_pdf_at_independence_is_one() {
+    let c = Clayton {
+      theta: Some(0.0),
+      ..Clayton::default()
+    };
+    let pdf = c.pdf(&array![[0.2_f64, 0.9], [0.5, 0.5]]).unwrap();
+    assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
+    assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
+  }
+
+  #[test]
+  fn clayton_cdf_at_independence_is_uv() {
+    let c = Clayton {
+      theta: Some(0.0),
+      ..Clayton::default()
+    };
+    let cdf = c.cdf(&array![[0.3_f64, 0.7], [0.2, 0.9]]).unwrap();
+    assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
+    assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
+  }
+
+  /// `partial_derivative` computes $\partial_v C(u,v)$ (this family's own
+  /// convention, stated in [`Clayton::percent_point`]'s doc). At
+  /// independence, $C(u,v)=uv \Rightarrow \partial_v C = u$ — not the
+  /// pre-fix `1^{-∞}` singularity's `v^{-1}` result.
+  #[test]
+  fn clayton_partial_derivative_at_independence_returns_u() {
+    let c = Clayton {
+      theta: Some(0.0),
+      ..Clayton::default()
+    };
+    let pd = c
+      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .unwrap();
+    assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
+    assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
   }
 }
