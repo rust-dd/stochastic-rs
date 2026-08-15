@@ -4,6 +4,13 @@
 //! dX_t=\left(\frac{\kappa}{X_t}-X_t\right)dt+\sigma\,dW_t
 //! $$
 //!
+//! Reference: Göing-Jaeschke A., Yor M. (2003) — *A Survey and Some
+//! Generalizations of Bessel Processes*, Bernoulli 9(2), 313–349,
+//! DOI: 10.3150/bj/1068128980 — surveys the radial Ornstein-Uhlenbeck
+//! process (the Euclidean norm of a multivariate OU process), of which
+//! this is the scalar SDE with `κ` absorbing the dimension-dependent
+//! constant.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

@@ -4,6 +4,13 @@
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t}\,dB_t^H
 //! $$
 //!
+//! Reference: Mishura Y., Yurchenko-Tytarenko A. (2018) — *Fractional
+//! Cox-Ingersoll-Ross Process with Non-Zero "Mean"*, Modern Stochastics:
+//! Theory and Applications 5(1), 99–111, DOI: 10.15559/18-vmsta97 — the
+//! non-zero-mean-reverting fCIR process this file discretises by Euler
+//! scheme, floored or reflected at zero like
+//! [`Cir`](crate::diffusion::cir::Cir).
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

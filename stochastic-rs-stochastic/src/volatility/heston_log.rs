@@ -10,6 +10,11 @@
 //! where $\langle dW^S, dW^v\rangle = \rho\,dt$.
 //! Log-spot simulation guarantees $S_t > 0$.
 //!
+//! Reference: Heston S. L. (1993) — *A Closed-Form Solution for Options
+//! with Stochastic Volatility with Applications to Bond and Currency
+//! Options*, Review of Financial Studies 6(2), 327–343,
+//! DOI: 10.1093/rfs/6.2.327.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

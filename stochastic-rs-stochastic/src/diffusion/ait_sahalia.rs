@@ -4,6 +4,12 @@
 //! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt+\sqrt{b_0+b_1 X_t+b_2 X_t^{b_3}}\,dW_t
 //! $$
 //!
+//! Reference: Aït-Sahalia Y. (1996) — *Testing Continuous-Time Models of
+//! the Spot Interest Rate*, Review of Financial Studies 9(2), 385–426,
+//! DOI: 10.1093/rfs/9.2.385. This file's Euler-Maruyama discretisation
+//! is a simulation scheme for the paper's nonlinear drift/CEV-type
+//! diffusion family, not the paper's own (non-simulation) estimator.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

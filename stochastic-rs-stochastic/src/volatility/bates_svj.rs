@@ -10,6 +10,14 @@
 //! where $\langle dW, dW^v\rangle = \rho\,dt$, $N_t$ is Poisson with intensity $\lambda$,
 //! and $Z\sim\mathcal{N}(\nu,\omega^2)$.
 //!
+//! Log-price reparametrization of Bates D. S. (1996) — *Jumps and
+//! Stochastic Volatility: Exchange Rate Processes Implicit in Deutsche
+//! Mark Options*, Review of Financial Studies 9(1), 69–107,
+//! DOI: 10.1093/rfs/9.1.69, using the lognormal jump-size convention of
+//! Merton R. C. (1976) — *Option Pricing When Underlying Stock Returns
+//! Are Discontinuous*, Journal of Financial Economics 3(1-2), 125–144,
+//! DOI: 10.1016/0304-405X(76)90022-2.
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]

@@ -4,6 +4,17 @@
 //! dX_t=-\kappa X_t\,dt+\sigma\sqrt{1+X_t^2}\,dW_t
 //! $$
 //!
+//! A Cox-Ingersoll-Ross-style mean-reverting process (Cox, Ingersoll,
+//! Ross (1985), DOI: 10.2307/1911242) modified to replace the `√X_t`
+//! diffusion with the globally Lipschitz, linear-growth `√(1+X_t²)`.
+//! Unlike CIR, `X_t` is not constrained to stay non-negative — there is
+//! no square-root singularity at the origin to protect against, so the
+//! process is well-defined and strong-solution-unique for every real
+//! `κ`, `σ` with no Feller-type condition. No single paper naming this
+//! exact variant could be identified; it reads as a smooth,
+//! always-real-valued cousin of CIR rather than an implementation of a
+//! specific published model.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

@@ -13,6 +13,15 @@
 //! independent zero-drift factors — `u_t` is that second factor, but it
 //! enters `r`'s drift directly rather than being added to it externally.
 //!
+//! References:
+//! - Hull J. & White A. (1994) — *Numerical Procedures for Implementing
+//!   Term Structure Models II: Two-Factor Models*, Journal of
+//!   Derivatives 2(2), 37–48, DOI: 10.3905/jod.1994.407908.
+//! - Brigo D. & Mercurio F. (2006) — *Interest Rate Models — Theory and
+//!   Practice*, 2nd ed., Springer Finance,
+//!   DOI: 10.1007/978-3-540-34604-3 — source of the §4.2-style
+//!   state-space parametrization above.
+//!
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;

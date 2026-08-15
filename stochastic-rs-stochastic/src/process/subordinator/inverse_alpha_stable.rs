@@ -1,3 +1,10 @@
+//! Inverse stable subordinator, simulated by inverting a directly
+//! simulated forward positive `alpha`-stable subordinator path.
+//!
+//! Reference: Meerschaert M. M., Straka P. (2013) — *Inverse Stable
+//! Subordinators*, Mathematical Modelling of Natural Phenomena 8(2),
+//! 1–16, DOI: 10.1051/mmnp/20138201.
+
 use std::marker::PhantomData;
 
 use ndarray::Array1;

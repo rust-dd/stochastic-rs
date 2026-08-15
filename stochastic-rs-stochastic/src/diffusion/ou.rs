@@ -4,6 +4,10 @@
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\,dW_t
 //! $$
 //!
+//! Reference: Uhlenbeck G. E., Ornstein L. S. (1930) — *On the Theory of
+//! the Brownian Motion*, Physical Review 36(5), 823–841,
+//! DOI: 10.1103/PhysRev.36.823.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

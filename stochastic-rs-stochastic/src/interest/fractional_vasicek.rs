@@ -4,6 +4,17 @@
 //! dr_t=a(b-r_t)dt+\sigma dB_t^H
 //! $$
 //!
+//! References:
+//! - Vasicek O. (1977) — *An Equilibrium Characterization of the Term
+//!   Structure*, Journal of Financial Economics 5(2), 177–188,
+//!   DOI: 10.1016/0304-405X(77)90016-2 — the (non-fractional) short-rate
+//!   model this generalises.
+//! - Cheridito P., Kawaguchi H., Maejima M. (2003) — *Fractional
+//!   Ornstein-Uhlenbeck Processes*, Electronic Journal of Probability 8,
+//!   paper 3, 1–14, DOI: 10.1214/EJP.v8-125 — the fractional-noise
+//!   driver ([`Fou`](crate::diffusion::fou::Fou)) this file wraps under
+//!   short-rate parameter names.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

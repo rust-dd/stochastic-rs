@@ -4,6 +4,10 @@
 //! dr_t=\left(\theta(t)-a r_t\right)dt+\sigma dW_t
 //! $$
 //!
+//! Reference: Hull J. & White A. (1990) — *Pricing Interest-Rate-
+//! Derivative Securities*, Review of Financial Studies 3(4), 573–592,
+//! DOI: 10.1093/rfs/3.4.573.
+//!
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;

@@ -4,6 +4,17 @@
 //! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t
 //! $$
 //!
+//! Composition of a fractional Ornstein-Uhlenbeck diffusion (Cheridito,
+//! Kawaguchi, Maejima (2003), *Fractional Ornstein-Uhlenbeck Processes*,
+//! Electronic Journal of Probability 8, paper 3, 1–14,
+//! DOI: 10.1214/EJP.v8-125) with an additive, independent
+//! compound-Poisson jump term `dJ_t` in the style of Merton (1976) —
+//! *Option Pricing When Underlying Stock Returns Are Discontinuous*,
+//! Journal of Financial Economics 3(1-2), 125–144,
+//! DOI: 10.1016/0304-405X(76)90022-2. This exact combination (fOU base
+//! plus an independent jump driver) is this crate's own composition
+//! rather than a single named model from one paper.
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]

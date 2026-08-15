@@ -5,6 +5,10 @@
 //! +\sum_{j=1}^q\beta_j\log(\sigma_{t-j}^2)
 //! $$
 //!
+//! Reference: Nelson D. B. (1991) — *Conditional Heteroskedasticity in
+//! Asset Returns: A New Approach*, Econometrica 59(2), 347–370,
+//! DOI: 10.2307/2938260.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

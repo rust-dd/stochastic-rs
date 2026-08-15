@@ -9,6 +9,11 @@
 //! exponent (field `beta`); $\rho$ is the instantaneous correlation
 //! (field `rho`).
 //!
+//! Reference: Hagan P. S., Kumar D., Lesniewski A. S., Woodward D. E.
+//! (2002) — *Managing Smile Risk*, Wilmott Magazine, September, 84–108.
+//! No DOI is on record for this issue of Wilmott Magazine (it pre-dates
+//! the magazine's DOI registration).
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

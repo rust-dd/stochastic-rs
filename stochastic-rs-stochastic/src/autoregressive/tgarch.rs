@@ -5,6 +5,22 @@
 //! +\sum_{j=1}^q\beta_j\sigma_{t-j}^2
 //! $$
 //!
+//! This is the variance-level threshold recursion of Glosten,
+//! Jagannathan, Runkle (1993) — often called "GJR-GARCH" — not
+//! Zakoian's (1994) original TGARCH, which thresholds the conditional
+//! *standard deviation* `sigma_t` rather than `sigma_t^2`. The two
+//! specifications are not algebraically equivalent; this file's own doc
+//! already flags the type as "T-Garch (GJR-Garch)".
+//!
+//! References:
+//! - Glosten L. R., Jagannathan R., Runkle D. E. (1993) — *On the
+//!   Relation between the Expected Value and the Volatility of the
+//!   Nominal Excess Return on Stocks*, Journal of Finance 48(5),
+//!   1779–1801, DOI: 10.1111/j.1540-6261.1993.tb05128.x.
+//! - Zakoian J.-M. (1994) — *Threshold Heteroskedastic Models*, Journal
+//!   of Economic Dynamics and Control 18(5), 931–955,
+//!   DOI: 10.1016/0165-1889(94)90039-6.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

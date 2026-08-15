@@ -4,6 +4,10 @@
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
 //! $$
 //!
+//! Reference: Cox J. C., Ingersoll J. E., Ross S. A. (1985) — *A Theory
+//! of the Term Structure of Interest Rates*, Econometrica 53(2),
+//! 385–407, DOI: 10.2307/1911242.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

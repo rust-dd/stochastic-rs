@@ -13,6 +13,27 @@
 //! $\langle dW^S, dW^v \rangle = \rho\,dt$.
 //!
 //! Returns `[S, v]` — price and variance paths.
+//!
+//! References:
+//! - Gatheral J., Jaisson T., Rosenbaum M. (2018) — *Volatility Is
+//!   Rough*, Quantitative Finance 18(6), 933–949,
+//!   DOI: 10.1080/14697688.2017.1393551.
+//! - El Euch O. & Rosenbaum M. (2019) — *The Characteristic Function of
+//!   Rough Heston Models*, Mathematical Finance 29(1), 3–38,
+//!   DOI: 10.1111/mafi.12173 — defines the Volterra `v_t` above.
+//! - Bates D. S. (1996), DOI: 10.1093/rfs/9.1.69, and Merton R. C.
+//!   (1976), DOI: 10.1016/0304-405X(76)90022-2, for the jump component
+//!   (see [`BatesSvj`](crate::volatility::bates_svj::BatesSvj)).
+//!
+//! `fill_paths` below approximates the exact fractional-kernel Volterra
+//! convolution with a single OU-type carrier factor `zt` plus a direct
+//! (`O(n²)`) memory sum, scaled by free `c1`/`c2` coefficients — an
+//! approximate lifting scheme in the spirit of Abi Jaber & El Euch
+//! (2019) — *Multifactor Approximation of Rough Volatility Models*,
+//! SIAM Journal on Financial Mathematics 10(2), 309–349,
+//! DOI: 10.1137/18M1170236 — but it is this crate's own one-factor
+//! simplification, not a reproduction of that (or any other specific
+//! published) numerical scheme.
 
 use ndarray::Array1;
 use rand_distr::Distribution;

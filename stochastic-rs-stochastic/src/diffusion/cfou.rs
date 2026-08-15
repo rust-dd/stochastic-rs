@@ -13,8 +13,9 @@
 //! \end{aligned}
 //! $$
 //!
-//! Source:
-//! - https://arxiv.org/abs/2406.18004
+//! Reference: Alazemi F., Alsenafi A., Chen Y., Zhou H. (2024) —
+//! *Parameter Estimation for the Complex Fractional Ornstein-Uhlenbeck
+//! Processes with Hurst Parameter H ∈ (0, 1/2)*, arXiv:2406.18004.
 use ndarray::Array1;
 use num_complex::Complex;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -29,8 +30,8 @@ use crate::traits::ProcessExt;
 
 /// Complex fractional Ornstein-Uhlenbeck process.
 ///
-/// Source:
-/// - https://arxiv.org/abs/2406.18004
+/// Reference: Alazemi, Alsenafi, Chen, Zhou (2024), arXiv:2406.18004
+/// (see the module docs for the full citation).
 pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent of the driving fractional Brownian motion.
   pub hurst: T,
@@ -118,8 +119,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {
 /// Euler step `Z_{k+1} = Z_k - (lambda - i omega) Z_k dt + sqrt(a) Δζ_k`,
 /// with `Δζ_k = (ΔB_k^{(1)} + i ΔB_k^{(2)}) / sqrt(2)`.
 ///
-/// Source:
-/// - https://arxiv.org/abs/2406.18004
+/// Reference: Alazemi, Alsenafi, Chen, Zhou (2024), arXiv:2406.18004.
 #[doc(hidden)]
 pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfou: &'a Cfou<T, S, B>,

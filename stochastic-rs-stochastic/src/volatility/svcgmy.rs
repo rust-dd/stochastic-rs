@@ -1,6 +1,9 @@
 //! # Svcgmy (CGMYSV discrete-time approximation)
 //!
-//! Paper model (Kim 2021):
+//! Paper model — Kim Y. S. (2021), *Sample Path Generation of the
+//! Stochastic Volatility CGMY Process and Its Application to
+//! Path-Dependent Option Pricing*, Journal of Risk and Financial
+//! Management 14(2), 77, DOI: 10.3390/jrfm14020077:
 //! $$
 //! L_t = Z_{V_t} + \rho v_t, \quad V_t = \int_0^t v_s ds,
 //! $$
@@ -31,7 +34,8 @@ use crate::traits::ProcessExt;
 
 /// Cgmy Stochastic Volatility process (CGMYSV)
 ///
-/// Paper: <https://www.econstor.eu/bitstream/10419/239493/1/175133161X.pdf>
+/// Reference: Kim Y. S. (2021), DOI: 10.3390/jrfm14020077 (see the
+/// module docs for the full citation).
 pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded> {
   /// Positive tempering parameter λ+ > 0
   pub lambda_plus: T,

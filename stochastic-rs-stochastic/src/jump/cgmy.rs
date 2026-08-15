@@ -18,6 +18,15 @@
 //! E_j\,U_j^{1/Y}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t
 //! $$
 //! with V_j ∈ {+G, -M}, P(V_j=+G)=P(V_j=-M)=1/2.
+//!
+//! References:
+//! - Carr P., Geman H., Madan D. B., Yor M. (2002) — *The Fine Structure
+//!   of Asset Returns: An Empirical Investigation*, Journal of Business
+//!   75(2), 305–332, DOI: 10.1086/338705 — the CGMY model.
+//! - Rosiński J. (2007) — *Tempering Stable Processes*, Stochastic
+//!   Processes and their Applications 117(6), 677–707,
+//!   DOI: 10.1016/j.spa.2006.10.003 — the truncated shot-noise series
+//!   representation this file's `fill_path` implements.
 
 use ndarray::Array1;
 use scilib::math::basic::gamma;

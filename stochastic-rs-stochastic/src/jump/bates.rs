@@ -4,6 +4,10 @@
 //! \begin{aligned}dS_t&=(r-r_f-\lambda k)S_tdt+\sqrt{v_t}S_t dW_t^S+(Y-1)S_{t^-}dN_t\\dv_t&=\kappa(\theta-v_t)dt+\sigma\sqrt{v_t}dW_t^v\end{aligned}
 //! $$
 //!
+//! Reference: Bates D. S. (1996) — *Jumps and Stochastic Volatility:
+//! Exchange Rate Processes Implicit in Deutsche Mark Options*, Review of
+//! Financial Studies 9(1), 69–107, DOI: 10.1093/rfs/9.1.69.
+//!
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]

@@ -22,6 +22,23 @@
 //! - λ_+ = G, λ_- = M
 //!
 //! then D(p+q)=2C and P(+)=1/2.
+//!
+//! References:
+//! - Koponen I. (1995) — *Analytic Approach to the Problem of
+//!   Convergence of Truncated Lévy Flights Towards the Gaussian
+//!   Stochastic Process*, Physical Review E 52(1), 1197–1199,
+//!   DOI: 10.1103/PhysRevE.52.1197 — introduced this tempered-stable
+//!   Lévy-measure family.
+//! - Boyarchenko S. I., Levendorskiĭ S. Z. (2000) — *Option Pricing for
+//!   Truncated Lévy Processes*, International Journal of Theoretical
+//!   and Applied Finance 3(3), 549–552, DOI: 10.1142/S0219024900000541
+//!   — coined "KoBoL" and applied the family to option pricing.
+//! - Rosiński J. (2007) — *Tempering Stable Processes*, Stochastic
+//!   Processes and their Applications 117(6), 677–707,
+//!   DOI: 10.1016/j.spa.2006.10.003 — the truncated shot-noise series
+//!   representation this file's `fill_path` implements (shared with
+//!   [`Cgmy`](crate::jump::cgmy::Cgmy), of which this family is a
+//!   generalization).
 
 use ndarray::Array1;
 use scilib::math::basic::gamma;

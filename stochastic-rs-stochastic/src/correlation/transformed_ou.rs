@@ -1,4 +1,8 @@
 //! General transformed Ou stochastic correlation (Section 2.1).
+//!
+//! Reference: Teng L., Ehrhardt M., Günther M. (2016) — *Modelling
+//! stochastic correlation*, Journal of Mathematics in Industry 6, 2,
+//! DOI: 10.1186/s13362-016-0018-4.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

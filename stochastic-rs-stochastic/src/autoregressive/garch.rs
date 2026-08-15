@@ -4,6 +4,10 @@
 //! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2+\sum_{j=1}^q\beta_j\sigma_{t-j}^2,\qquad X_t=\sigma_t z_t
 //! $$
 //!
+//! Reference: Bollerslev T. (1986) — *Generalized Autoregressive
+//! Conditional Heteroskedasticity*, Journal of Econometrics 31(3),
+//! 307–327, DOI: 10.1016/0304-4076(86)90063-1.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

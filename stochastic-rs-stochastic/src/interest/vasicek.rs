@@ -4,6 +4,16 @@
 //! dr_t=a(b-r_t)dt+\sigma dW_t
 //! $$
 //!
+//! References:
+//! - Vasicek O. (1977) — *An Equilibrium Characterization of the Term
+//!   Structure*, Journal of Financial Economics 5(2), 177–188,
+//!   DOI: 10.1016/0304-405X(77)90016-2.
+//! - Uhlenbeck G. E., Ornstein L. S. (1930) — *On the Theory of the
+//!   Brownian Motion*, Physical Review 36(5), 823–841,
+//!   DOI: 10.1103/PhysRev.36.823 — the underlying mean-reverting
+//!   diffusion ([`Ou`](crate::diffusion::ou::Ou)) this file wraps under
+//!   short-rate parameter names.
+//!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

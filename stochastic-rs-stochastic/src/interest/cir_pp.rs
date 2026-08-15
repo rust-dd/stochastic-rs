@@ -5,7 +5,8 @@
 //! $$
 //!
 //! Shift-extended CIR short-rate model (Brigo & Mercurio, *Interest Rate
-//! Models — Theory and Practice*, 2nd ed., 2006, §3.9): the CIR factor
+//! Models — Theory and Practice*, 2nd ed., 2006, §3.9,
+//! DOI: 10.1007/978-3-540-34604-3): the CIR factor
 //! `x_t` carries all of the stochastic dynamics, and the deterministic
 //! shift `phi(t)` is fitted separately so that `r_t` matches today's
 //! observed term structure exactly — the same shift-extension idea

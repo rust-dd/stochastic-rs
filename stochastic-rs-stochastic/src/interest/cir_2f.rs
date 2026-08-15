@@ -1,8 +1,19 @@
 //! # Cir 2f
 //!
 //! $$
-//! r_t=x_t+y_t,\ dx_t=\kappa_1(\theta_1-x_t)dt+\sigma_1\sqrt{x_t}dW_t^1,\ dy_t=\kappa_2(\theta_2-y_t)dt+\sigma_2\sqrt{y_t}dW_t^2
+//! r_t=x_t+y_t+\varphi(t),\ dx_t=\kappa_1(\theta_1-x_t)dt+\sigma_1\sqrt{x_t}dW_t^1,\ dy_t=\kappa_2(\theta_2-y_t)dt+\sigma_2\sqrt{y_t}dW_t^2
 //! $$
+//!
+//! Two-additive-factor shift-extended CIR short-rate model (CIR2++):
+//! two independent CIR factors (Cox, Ingersoll, Ross (1985),
+//! DOI: 10.2307/1911242) summed and shifted by a deterministic `φ(t)`
+//! fitted to today's term structure — the two-factor counterpart to
+//! [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus)'s single-factor
+//! shift extension.
+//!
+//! Reference: Brigo D. & Mercurio F. (2006) — *Interest Rate Models —
+//! Theory and Practice*, 2nd ed., Springer Finance,
+//! DOI: 10.1007/978-3-540-34604-3.
 //!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
