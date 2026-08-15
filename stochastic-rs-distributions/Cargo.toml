@@ -31,7 +31,6 @@ num-complex = { workspace = true, features = ["rand"] }
 rayon = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
-plotly = { workspace = true, features = ["plotly_ndarray"] }
 
 [dev-dependencies]
 romu = { workspace = true }
