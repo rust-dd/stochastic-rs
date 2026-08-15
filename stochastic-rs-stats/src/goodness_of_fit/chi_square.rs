@@ -131,9 +131,9 @@ pub fn chi_square_gof_test(
     "alpha must be in (0, 1)"
   );
 
-  let n: u64 = observed.iter().sum();
+  let n = observed.iter().sum::<u64>();
   let n_f = n as f64;
-  let prob_sum: f64 = expected_prob.iter().sum();
+  let prob_sum = expected_prob.iter().sum::<f64>();
   assert!(
     (prob_sum - 1.0).abs() < 1e-6,
     "expected_prob must sum to 1, got {prob_sum}"
@@ -265,7 +265,7 @@ mod tests {
   fn pool_integer_bins_conserves_total_mass() {
     let dist = SimdPoisson::<u64>::new(10.0, &Deterministic::new(1));
     let (_, probs) = pool_integer_bins(20_000, 0, 30, |k| dist.cdf(k as f64), 5.0);
-    let total: f64 = probs.iter().sum();
+    let total = probs.iter().sum::<f64>();
     assert!((total - 1.0).abs() < 1e-9, "bin mass sums to {total}");
   }
 
