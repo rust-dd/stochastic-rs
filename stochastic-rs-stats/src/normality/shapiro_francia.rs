@@ -1,3 +1,14 @@
+//! Shapiro-Francia test for normality: squared correlation between the
+//! ordered sample and Blom-type expected normal order-statistic
+//! approximations. The p-value is obtained here by parametric bootstrap
+//! under the null rather than Shapiro & Francia's original
+//! normal-theory approximation formula for the mean/variance of `W`.
+//!
+//! Reference: Shapiro S. S. & Francia R. S. (1972) — *An Approximate
+//! Analysis of Variance Test for Normality*, Journal of the American
+//! Statistical Association 67(337), 215–216,
+//! DOI: 10.1080/01621459.1972.10481232.
+
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;

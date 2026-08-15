@@ -1,3 +1,15 @@
+//! Jarque-Bera test for normality, comparing sample skewness and excess
+//! kurtosis against their values under normality via the asymptotic
+//! chi-square(2) statistic.
+//!
+//! References:
+//! - Jarque C. M. & Bera A. K. (1980) — *Efficient Tests for Normality,
+//!   Homoscedasticity and Serial Independence of Regression Residuals*,
+//!   Economics Letters 6(3), 255–259, DOI: 10.1016/0165-1765(80)90024-5.
+//! - Jarque C. M. & Bera A. K. (1987) — *A Test for Normality of
+//!   Observations and Regression Residuals*, International Statistical
+//!   Review 55(2), 163–172, DOI: 10.2307/1403192.
+
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma_p;
 

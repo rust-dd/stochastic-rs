@@ -1,3 +1,18 @@
+//! Phillips-Perron unit-root test — corrects the (lag-0) Dickey-Fuller
+//! regression for serial correlation and heteroskedasticity via a
+//! Newey-West long-run variance estimate instead of augmenting the
+//! regression with lagged differences. Implements both the `Tau`
+//! (t-ratio-style) and `Rho` variants of the test statistic.
+//!
+//! References:
+//! - Phillips P. C. B. & Perron P. (1988) — *Testing for a Unit Root in
+//!   Time Series Regression*, Biometrika 75(2), 335–346,
+//!   DOI: 10.1093/biomet/75.2.335.
+//! - Newey W. K. & West K. D. (1987) — *A Simple, Positive
+//!   Semi-Definite, Heteroskedasticity and Autocorrelation Consistent
+//!   Covariance Matrix*, Econometrica 55(3), 703–708,
+//!   DOI: 10.2307/1913610.
+
 use ndarray::ArrayView1;
 
 use super::common::CriticalValues;

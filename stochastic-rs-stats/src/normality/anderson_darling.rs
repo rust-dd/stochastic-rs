@@ -1,3 +1,17 @@
+//! Anderson-Darling test for normality, using the Stephens (1974)
+//! finite-sample correction and p-value approximation for the case
+//! where both the mean and variance are estimated from the sample.
+//!
+//! References:
+//! - Anderson T. W. & Darling D. A. (1952) — *Asymptotic Theory of
+//!   Certain "Goodness of Fit" Criteria Based on Stochastic Processes*,
+//!   Ann. Math. Statist. 23(2), 193–212, DOI: 10.1214/aoms/1177729437.
+//! - Stephens M. A. (1974) — *EDF Statistics for Goodness of Fit and
+//!   Some Comparisons*, J. Amer. Statist. Assoc. 69(347), 730–737,
+//!   DOI: 10.1080/01621459.1974.10480196 — source of the
+//!   `1 + 0.75/n + 2.25/n²` adjustment and the piecewise p-value
+//!   approximation used below.
+
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::norm_cdf;
 

@@ -1,3 +1,18 @@
+//! KPSS stationarity test: an LM statistic for the null of
+//! (trend-)stationarity against a unit-root alternative, using a
+//! Newey-West long-run variance estimate.
+//!
+//! References:
+//! - Kwiatkowski D., Phillips P. C. B., Schmidt P., Shin Y. (1992) —
+//!   *Testing the Null Hypothesis of Stationarity Against the
+//!   Alternative of a Unit Root*, Journal of Econometrics 54(1-3),
+//!   159–178, DOI: 10.1016/0304-4076(92)90104-Y. Critical values below
+//!   are this paper's Table 1.
+//! - Newey W. K. & West K. D. (1987) — *A Simple, Positive
+//!   Semi-Definite, Heteroskedasticity and Autocorrelation Consistent
+//!   Covariance Matrix*, Econometrica 55(3), 703–708,
+//!   DOI: 10.2307/1913610.
+
 use ndarray::ArrayView1;
 
 use super::common::newey_west_long_run_variance;

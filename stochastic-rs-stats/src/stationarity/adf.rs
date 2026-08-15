@@ -1,3 +1,15 @@
+//! Augmented Dickey-Fuller unit-root test.
+//!
+//! References:
+//! - Dickey D. A. & Fuller W. A. (1979) — *Distribution of the
+//!   Estimators for Autoregressive Time Series with a Unit Root*,
+//!   Journal of the American Statistical Association 74(366), 427–431,
+//!   DOI: 10.2307/2286348.
+//! - Said S. E. & Dickey D. A. (1984) — *Testing for Unit Roots in
+//!   Autoregressive-Moving Average Models of Unknown Order*, Biometrika
+//!   71(3), 599–607, DOI: 10.1093/biomet/71.3.599 — the lagged-difference
+//!   augmentation this file's `p`-lag regression implements.
+
 use ndarray::ArrayView1;
 
 use super::common::CriticalValues;

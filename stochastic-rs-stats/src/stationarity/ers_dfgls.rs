@@ -1,3 +1,10 @@
+//! Elliott-Rothenberg-Stock (1996) efficient (GLS-detrended) unit-root
+//! test, also known as DF-GLS.
+//!
+//! Reference: Elliott G., Rothenberg T. J., Stock J. H. (1996) —
+//! *Efficient Tests for an Autoregressive Unit Root*, Econometrica
+//! 64(4), 813–836, DOI: 10.2307/2171846.
+
 use ndarray::ArrayView1;
 
 use super::common::CriticalValues;
