@@ -15,8 +15,9 @@
 //! - Kou Double-Exponential Jump-Diffusion
 //!
 //! Source:
-//! - Carr, P. & Madan, D. (1999), "Option valuation using the fast Fourier transform"
-//!   https://doi.org/10.1016/S0165-1889(98)00038-5
+//! - Carr, P. & Madan, D. (1999), "Option valuation using the fast Fourier
+//!   transform", Journal of Computational Finance 2(4), 61-73.
+//!   https://doi.org/10.21314/JCF.1999.043
 //! - Madan, D., Carr, P. & Chang, E. (1998), "The Variance Gamma Process and Option Pricing"
 //!   https://doi.org/10.1023/A:1009703431535
 
