@@ -174,7 +174,18 @@ impl BivariateExt for Amh {
     Ok(out)
   }
 
-  /// $\partial_u C(u,v) = v[1 - \theta(1-v)] / D^2$.
+  /// $\partial_v C(u,v) = u\big(1 - \theta(1-u)\big) / D^2$ — the crate-wide
+  /// "derivative w.r.t. the second argument, at fixed conditioning value"
+  /// convention used throughout this crate ([`crate::bivariate::clayton::Clayton`],
+  /// [`crate::bivariate::frank::Frank`], [`crate::bivariate::joe::Joe`],
+  /// [`crate::bivariate::gaussian::GaussianCopula`]), matching
+  /// [`BivariateExt::partial_derivative`]'s own finite-difference default
+  /// (which perturbs the second column). The previous formula computed
+  /// $\partial_u C(u,v) = v\big(1-\theta(1-v)\big)/D^2$ instead — a
+  /// correct derivative, but of the wrong argument, so `Amh::percent_point`
+  /// / `Amh::sample` (via [`BivariateExt::percent_point_numerical`], which
+  /// this family does not override) silently solved the wrong equation
+  /// for `u` given `v`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
     let u_col = x.column(0);
@@ -184,16 +195,16 @@ impl BivariateExt for Amh {
     for i in 0..u_col.len() {
       let u = u_col[i];
       let v = v_col[i];
-      if v <= 0.0 {
+      if u <= 0.0 {
         out[i] = 0.0;
         continue;
       }
-      if v >= 1.0 {
+      if u >= 1.0 {
         out[i] = 1.0;
         continue;
       }
       let d = 1.0 - theta * (1.0 - u) * (1.0 - v);
-      out[i] = v * (1.0 - theta * (1.0 - v)) / (d * d);
+      out[i] = u * (1.0 - theta * (1.0 - u)) / (d * d);
     }
     Ok(out)
   }
@@ -326,5 +337,87 @@ mod tests {
     let td = c.tail_dependence();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
+  }
+
+  /// `partial_derivative` computes $\partial_v C(u,v)$ (the same "second
+  /// argument, fixed conditioning value" convention as
+  /// [`crate::bivariate::frank::Frank::partial_derivative`]). At
+  /// independence ($\theta=0$, $C(u,v)=uv$), $\partial_v C = u$ — not $v$.
+  /// The previous formula computed $\partial_u C(u,v)$, which equals $v$
+  /// at this same point — an equally plausible-looking value in
+  /// isolation, which is exactly why this direct pin, not just the
+  /// sampling check below, is needed.
+  #[test]
+  fn amh_partial_derivative_at_independence_returns_u() {
+    let mut c = Amh::new();
+    c.set_theta(0.0);
+    let pd = c
+      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .unwrap();
+    assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
+    assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
+  }
+
+  /// Kendall's τ is built from the products `(u_i-u_j)(v_i-v_j)`, which is
+  /// exactly symmetric under swapping every pair's two coordinates, so τ
+  /// takes the identical value whether a sampler draws `(U,V)` or its
+  /// transpose `(V,U)`. It cannot, even in principle, catch a sampler that
+  /// differentiates the wrong argument. What does catch it: the empirical
+  /// joint CDF at specific, labeled, off-diagonal points — `P(U<=a,
+  /// V<=b)` for `a != b`, compared against the closed-form `C(a,b)` —
+  /// because that statistic is keyed to which physical column is `U` and
+  /// which is `V`, not just their pairing.
+  ///
+  /// Before the `partial_derivative` fix, root-finding on the wrong
+  /// partial routinely failed to bracket a solution (its achievable range
+  /// over `u`, for fixed `v`, does not cover the sampled quantile `p`),
+  /// and `percent_point_numerical`'s `unwrap_or(f64::EPSILON)` fallback
+  /// clamped roughly three quarters of `U` draws to ~0 at `θ=0.6` —
+  /// pushing every `emp(a,b)` here far from the true `C(a,b)`, with
+  /// errors up to 0.47 (`n=20000`). This test's tolerance is nowhere near
+  /// that: 6 standard errors of a Bernoulli proportion at `n=20000`,
+  /// worst-case `p=0.5`.
+  #[test]
+  fn amh_sample_matches_closed_form_cdf_at_off_diagonal_points() {
+    let n = 20_000usize;
+    let se = (0.25_f64 / n as f64).sqrt();
+    let tol = 6.0 * se;
+    let theta = 0.6_f64;
+    let mut c = Amh::new();
+    c.set_tau(0.2);
+    c.set_theta(theta);
+    let cdf_true = |a: f64, b: f64| a * b / (1.0 - theta * (1.0 - a) * (1.0 - b));
+    let points = [
+      (0.3_f64, 0.7_f64),
+      (0.7, 0.3),
+      (0.2, 0.8),
+      (0.8, 0.2),
+      (0.5, 0.5),
+    ];
+
+    let best_max_abs_err = [2718_u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let samples = c.sample_with_seed(n, seed).unwrap();
+        let u = samples.column(0);
+        let v = samples.column(1);
+        points
+          .iter()
+          .map(|&(a, b)| {
+            let count = u
+              .iter()
+              .zip(v.iter())
+              .filter(|&(&ui, &vi)| ui <= a && vi <= b)
+              .count();
+            (cdf_true(a, b) - count as f64 / n as f64).abs()
+          })
+          .fold(0.0_f64, f64::max)
+      })
+      .fold(f64::INFINITY, f64::min);
+
+    assert!(
+      best_max_abs_err < tol,
+      "best max |emp - true| across 3 seeds = {best_max_abs_err}, expected < {tol} (6 SE, SE={se}, n={n})"
+    );
   }
 }

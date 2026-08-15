@@ -23,6 +23,7 @@
 //! was written to catch (36% at Frank's θ=-3).
 
 use ndarray::array;
+use stochastic_rs_copulas::bivariate::amh::Amh;
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::bivariate::frank::Frank;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
@@ -108,6 +109,25 @@ fn joe_pdf_matches_finite_difference_cdf() {
     j.set_theta(theta);
     for &(u, v) in &POINTS {
       assert_pdf_matches_fd(&j, u, v, &format!("Joe θ={theta} (u,v)=({u},{v})"));
+    }
+  }
+}
+
+/// θ ∈ (-1, 1), including `θ=0`: unlike Clayton's `(u^{-θ}+v^{-θ}-1)^{-1/θ}`,
+/// AMH's `D = 1-θ(1-u)(1-v)` never vanishes at `θ=0`, so `pdf`/`cdf` were
+/// already correct there without a dedicated branch — confirmed by this
+/// same sweep rather than assumed. This test targets `pdf` against `cdf`
+/// only; it does not exercise `partial_derivative`, whose separate
+/// wrong-argument bug (fixed alongside this test) is instead pinned by
+/// `amh.rs`'s own `amh_partial_derivative_at_independence_returns_u` and
+/// `amh_sample_matches_closed_form_cdf_at_off_diagonal_points`.
+#[test]
+fn amh_pdf_matches_finite_difference_cdf() {
+  let mut a = Amh::new();
+  for &theta in &[-0.9_f64, -0.3, 0.0, 0.5, 0.9] {
+    a.set_theta(theta);
+    for &(u, v) in &POINTS {
+      assert_pdf_matches_fd(&a, u, v, &format!("Amh θ={theta} (u,v)=({u},{v})"));
     }
   }
 }

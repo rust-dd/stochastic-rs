@@ -109,21 +109,19 @@
 //! here: it is a different defect class from `percent_point`'s
 //! wrong-operand bug (a missing branch, not a wrong one).
 //!
-//! [`amh::Amh`]'s `partial_derivative` computes $\partial_u C(u,v) =
-//! v\big(1-\theta(1-v)\big)/D^2$ (confirmed by differentiating its own
-//! `cdf`, with $D = 1-\theta(1-u)(1-v)$), where every other family in
-//! this crate — [`clayton::Clayton`], [`frank::Frank`], [`joe::Joe`],
-//! [`gaussian::GaussianCopula`] (whose own doc states the convention
-//! explicitly) — computes $\partial_v C(u,v)$, matching
+//! [`amh::Amh`]'s `partial_derivative` used to compute $\partial_u
+//! C(u,v) = v\big(1-\theta(1-v)\big)/D^2$ (confirmed by differentiating
+//! its own `cdf`, with $D = 1-\theta(1-u)(1-v)$), where every other
+//! family in this crate — [`clayton::Clayton`], [`frank::Frank`],
+//! [`joe::Joe`], [`gaussian::GaussianCopula`] (whose own doc states the
+//! convention explicitly) — computes $\partial_v C(u,v)$, matching
 //! [`BivariateExt::partial_derivative`]'s own finite-difference default
-//! (which perturbs the second column). `Amh` does not override
-//! `percent_point`, so it falls through to
+//! (which perturbs the second column). Because `Amh` does not override
+//! `percent_point`, it fell through to
 //! [`BivariateExt::percent_point_numerical`], which inverts
 //! `partial_derivative` assuming the crate-wide $\partial_v$ convention
-//! — meaning `Amh::percent_point`/`Amh::sample` silently solve the
-//! wrong equation for `u` given `v`. Not fixed here: a different family
-//! and a different defect class (a whole differentiated-argument swap)
-//! from anything patched this pass.
+//! — so `Amh::percent_point`/`Amh::sample` silently solved the wrong
+//! equation for `u` given `v`. Now fixed.
 
 pub use crate::traits::BivariateExt;
 

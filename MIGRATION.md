@@ -1779,3 +1779,40 @@ g.partial_derivative(&array![[0.3, 0.6]]).unwrap()[0]; // 0.6 (== v)
 let g = Gumbel::new(Some(1.0), None);
 g.partial_derivative(&array![[0.3, 0.6]]).unwrap()[0]; // 0.3 (== u)
 ```
+
+### stochastic-rs-copulas: `Amh::partial_derivative` now differentiates the correct argument
+
+It computed $\partial_u C(u,v)$ — a correct derivative, but of the wrong
+argument. Every other family in this crate computes $\partial_v C(u,v)$
+(the derivative w.r.t. the *second* argument, at fixed conditioning
+value), which is what `BivariateExt`'s finite-difference default and
+`percent_point_numerical`'s root-finder both assume. Because `Amh` does
+not override `percent_point`, it fell through to that shared root-finder,
+which inverted the wrong function — so `Amh::percent_point`/`Amh::sample`
+silently solved the wrong equation for `u` given `v`, and **previously
+sampled `Amh` data came from the transposed copula**, not the one
+requested.
+
+This was not a harmless relabeling: at a representative `θ=0.6`, the
+wrong partial's achievable range (for a fixed conditioning `v`) does not
+cover most sampled quantiles, so `percent_point_numerical`'s Brent search
+routinely failed to bracket a root and its `unwrap_or(f64::EPSILON)`
+fallback clamped roughly three quarters of `U` draws to ~0. Old `Amh`
+samples are not simply column-swapped; they are not distributed as any
+`Amh` copula and must be redrawn.
+
+```rust
+// Before: wrong conditional CDF value (∂_u C, not ∂_v C).
+let mut c = Amh::new();
+c.set_theta(0.6);
+c.partial_derivative(&array![[0.3, 0.6]]).unwrap()[0]; // 0.6587463017751479
+
+// After: matches a finite-difference probe of this family's own cdf.
+let mut c = Amh::new();
+c.set_theta(0.6);
+c.partial_derivative(&array![[0.3, 0.6]]).unwrap()[0]; // 0.25136372041420124
+```
+
+If you fitted or sampled an `Amh` copula before this fix, re-fit and
+re-sample — there is no way to recover the intended values from the old
+output.
