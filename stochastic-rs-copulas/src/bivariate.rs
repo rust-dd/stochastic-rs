@@ -96,17 +96,34 @@
 //!
 //! ### A currently-open rough edge, reported rather than papered over
 //!
-//! [`frank::Frank`]'s `pdf` and `partial_derivative` build a denominator
-//! as `g(u) + g(v) + g(1)` (a sum) where the closed form these methods'
-//! own doc comments target needs `g(1) + g(u)·g(v)` (`g(z) = e^{-θz}-1`),
-//! for every `θ` — not just at the `θ = 0` independence limit this
-//! module's own tests cover, which is a disjoint special-cased path and
-//! unaffected. Checked directly against a finite-difference/quadrature
-//! probe of this family's own (correct) `cdf`: the gap is large — order
-//! `0.1`-plus at `θ ∈ {0.5, 1, 2, 5, -3}` — not a rounding artifact.
-//! `Frank::sample`/`percent_point` root-find through `partial_derivative`
-//! and inherit the error. Not fixed here; needs its own test-driven pass
-//! rather than a bundled edit.
+//! [`clayton::Clayton`]'s `pdf`, `cdf`, and `partial_derivative` do not
+//! special-case `θ = 0` (Clayton's own independence limit, reachable
+//! from `.fit()` on near-independent data) the way `percent_point` now
+//! does: naive floating-point substitution at exactly `θ = 0` hits a
+//! removable singularity that does not resolve to the independence
+//! copula. `cdf(u,v)` evaluates to the constant `1.0` for every `u,v >
+//! 0` (not `uv`); `pdf(u,v)` evaluates to `(uv)^{-1}` (not `1.0`).
+//! `Clayton::sample`, which routes through the now-fixed
+//! `percent_point`, is unaffected — only direct `pdf`/`cdf`/
+//! `partial_derivative` calls at exactly `θ = 0` are wrong. Not fixed
+//! here: it is a different defect class from `percent_point`'s
+//! wrong-operand bug (a missing branch, not a wrong one).
+//!
+//! [`amh::Amh`]'s `partial_derivative` computes $\partial_u C(u,v) =
+//! v\big(1-\theta(1-v)\big)/D^2$ (confirmed by differentiating its own
+//! `cdf`, with $D = 1-\theta(1-u)(1-v)$), where every other family in
+//! this crate — [`clayton::Clayton`], [`frank::Frank`], [`joe::Joe`],
+//! [`gaussian::GaussianCopula`] (whose own doc states the convention
+//! explicitly) — computes $\partial_v C(u,v)$, matching
+//! [`BivariateExt::partial_derivative`]'s own finite-difference default
+//! (which perturbs the second column). `Amh` does not override
+//! `percent_point`, so it falls through to
+//! [`BivariateExt::percent_point_numerical`], which inverts
+//! `partial_derivative` assuming the crate-wide $\partial_v$ convention
+//! — meaning `Amh::percent_point`/`Amh::sample` silently solve the
+//! wrong equation for `u` given `v`. Not fixed here: a different family
+//! and a different defect class (a whole differentiated-argument swap)
+//! from anything patched this pass.
 
 pub use crate::traits::BivariateExt;
 

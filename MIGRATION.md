@@ -1706,3 +1706,30 @@ out of `sample`/`sample_fast`/`fill_slice`/`sample_n`/`sample_matrix` to
 recover them. `pdf`/`cdf`/`mean`/`variance`/`inv_cdf` and the rest of
 `DistributionExt` are unchanged — they already used the `{1, 2, ...}`
 convention the sampler now agrees with.
+
+### stochastic-rs-copulas: `Frank::pdf`/`Frank::partial_derivative` now use the correct denominator
+
+Both methods built their denominator as `g(u) + g(v) + g(1)` (a sum,
+`g(z) = e^{-θz}-1`) for every `θ ≠ 0`, when the closed form (obtained by
+differentiating this family's own `cdf`, and matching Nelsen (2006),
+*An Introduction to Copulas*, 2nd ed., Example 4.23 / Table 4.1) needs
+`g(1) + g(u)·g(v)`. Measured against a finite difference of `cdf`, `pdf`
+was 83%-268% off across `θ ∈ {0.5, 2, 5, -3}` — every practical non-zero
+θ. `sample`/`percent_point` root-find through `partial_derivative`, so
+sampled output changes for every non-zero θ as well. `θ = 0`
+(independence) is unaffected — a disjoint, separately special-cased path.
+
+```rust
+// Before: pdf silently wrong for every θ ≠ 0 (and sampling with it).
+let f = Frank::new(Some(5.0), None);
+f.pdf(&array![[0.4, 0.6]]).unwrap()[0]; // ~0.0042 (268x too small)
+
+// After: matches a finite-difference probe of this family's own cdf.
+let f = Frank::new(Some(5.0), None);
+f.pdf(&array![[0.4, 0.6]]).unwrap()[0]; // ~1.136
+```
+
+If you fitted or sampled a `Frank` copula at any non-zero θ before this
+fix, both the density and any samples drawn from it need to be
+recomputed — there is no way to recover the intended values from the old
+output.

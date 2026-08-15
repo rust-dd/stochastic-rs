@@ -84,6 +84,16 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
+  /// Density $c(u,v) = -\theta\,g(1)\,e^{-\theta(u+v)} \big/ \big(g(1)+g(u)g(v)\big)^2$,
+  /// $g(z) = e^{-\theta z}-1$ — the mixed second partial of this family's
+  /// own `cdf`, obtained by direct differentiation and cross-checked
+  /// against a finite-difference probe of `cdf`. The previous denominator,
+  /// `g(u)+g(v)+g(1)` (a sum), was wrong for every `θ ≠ 0` — up to 268×
+  /// off at `θ=5` — because nothing checked `pdf` against `cdf` directly;
+  /// `θ = 0` was unaffected (a disjoint, separately special-cased path).
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd
+  /// ed., Springer, Example 4.23 / Table 4.1 (Frank generator
+  /// $\varphi_\theta(t) = -\ln\frac{e^{-\theta t}-1}{e^{-\theta}-1}$).
   fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
@@ -97,7 +107,7 @@ impl BivariateExt for Frank {
     }
 
     let num = (-theta * self._g(&Array1::ones(U.len()))?) * (1.0 + self._g(&(&U + &V))?);
-    let aux = self._g(&U)? + self._g(&V)? + self._g(&Array1::ones(U.len()))?;
+    let aux = self._g(&Array1::ones(U.len()))? + self._g(&U)? * self._g(&V)?;
     let den = aux.pow2();
     Ok(num / den)
   }
@@ -132,6 +142,14 @@ impl BivariateExt for Frank {
     self.percent_point_numerical(y, V)
   }
 
+  /// $\partial_v C(u,v) = g(u)\,e^{-\theta v} \big/ \big(g(1)+g(u)g(v)\big)$,
+  /// $g(z)=e^{-\theta z}-1$ — same "derivative w.r.t. the second
+  /// argument, at fixed conditioning value" convention as
+  /// [`crate::bivariate::clayton::Clayton::partial_derivative`]. The
+  /// previous denominator shared `pdf`'s `g(u)+g(v)+g(1)` bug; the
+  /// numerator (`g(u)·g(v)+g(u) = g(u)·e^{-\theta v}`) was already
+  /// correct, which is why `partial_derivative` looked closer to right
+  /// than `pdf` did even though both drew from the same wrong `aux`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
     self.check_fit()?;
 
@@ -145,7 +163,7 @@ impl BivariateExt for Frank {
     }
 
     let num = self._g(&U)? * self._g(&V)? + self._g(&U)?;
-    let den = self._g(&U)? + self._g(&V)? + self._g(&Array1::ones(U.len()))?;
+    let den = self._g(&Array1::ones(U.len()))? + self._g(&U)? * self._g(&V)?;
     Ok(num / den)
   }
 
