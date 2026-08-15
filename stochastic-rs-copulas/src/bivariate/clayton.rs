@@ -77,6 +77,11 @@ impl BivariateExt for Clayton {
     Ok((1.0 / theta) * (t.powf(-theta) - 1.0))
   }
 
+  /// Density $c(u,v) = (\theta+1)(uv)^{-\theta-1}\big(u^{-\theta}+v^{-\theta}-1\big)^{-(1+2\theta)/\theta}$
+  /// — matches the mixed second partial of `cdf` for every `θ` in this
+  /// family's valid range, checked directly. Not special-cased at the
+  /// `θ = 0` independence boundary the way [`Clayton::percent_point`]
+  /// now is — see [`crate::bivariate`]'s module doc for that gap.
   fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
@@ -121,13 +126,21 @@ impl BivariateExt for Clayton {
     Ok(cdfs)
   }
 
+  /// Inverse conditional `u` solving `∂_v C(u,v) = p` (`p = y`): closed
+  /// form `u = (1+v^{-θ}(p^{-θ/(1+θ)}-1))^{-1/θ}` for `θ ≠ 0`. At `θ=0`
+  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`, so the inverse is the
+  /// identity on the fresh uniform `p` — not `v`. The previous branch
+  /// returned `V.clone()`, making every sampled pair exactly comonotonic
+  /// (`U=V`, Kendall's τ ≈ 1) instead of independent — the same defect
+  /// class as [`crate::bivariate::frank::Frank::percent_point`]'s
+  /// pre-fix `θ = 0` branch.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(V.clone());
+      return Ok(y.clone());
     }
 
     let a = y.powf(theta / (-1.0 - theta));
@@ -209,5 +222,41 @@ mod tests {
   fn bivariate_sample_takes_shared_ref() {
     let c = Clayton::default();
     let _ = c.sample(8);
+  }
+
+  /// The `θ=0` regression test, mirroring
+  /// `frank::tests::frank_independence_sample_kendall_tau_near_zero`
+  /// exactly (same tolerance derivation — `6` standard errors of τ under
+  /// the null of independence, Kendall & Gibbons (1990) — same 3-seed
+  /// best-of). Before the `percent_point` fix, `θ=0` returned
+  /// `V.clone()`, making `U=V` exactly for every sampled pair
+  /// (comonotonic, τ≈1) instead of the independence `θ=0` is supposed to
+  /// mean.
+  #[test]
+  fn clayton_independence_sample_kendall_tau_near_zero() {
+    let n = 4000usize;
+    let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
+    let tol = 6.0 * se;
+    let c = Clayton {
+      theta: Some(0.0),
+      tau: Some(0.0),
+      ..Clayton::default()
+    };
+    let best_abs_tau = [2718_u64, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let samples = c.sample_with_seed(n, seed).unwrap();
+        let u = samples.column(0).to_vec();
+        let v = samples.column(1).to_vec();
+        let (tau, ..) =
+          kendalls::tau_b_with_comparator(&u, &v, |a: &f64, b: &f64| a.partial_cmp(b).unwrap())
+            .unwrap();
+        tau.abs()
+      })
+      .fold(f64::INFINITY, f64::min);
+    assert!(
+      best_abs_tau < tol,
+      "best |tau| across 3 seeds = {best_abs_tau}, expected < {tol} (6 SE, SE={se}, n={n})"
+    );
   }
 }

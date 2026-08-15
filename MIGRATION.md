@@ -1733,3 +1733,29 @@ If you fitted or sampled a `Frank` copula at any non-zero θ before this
 fix, both the density and any samples drawn from it need to be
 recomputed — there is no way to recover the intended values from the old
 output.
+
+### stochastic-rs-copulas: `Clayton::percent_point` now returns the correct value at its θ=0 independence limit
+
+The `θ = 0` branch returned `V.clone()` (the conditioning value), making
+every sampled pair exactly comonotonic (`U = V`, Kendall's `τ ≈ 1`)
+instead of independent — the opposite of what `θ = 0` (Clayton's own
+independence limit, reachable from `.fit()` on near-independent data) is
+supposed to produce. It now returns `y.clone()` (the fresh uniform
+draw), matching `Frank::percent_point`'s own `θ = 0` fix above and the
+general relation `∂_v C(u,v) = u` at independence (`C(u,v) = uv`).
+
+```rust
+// Before: comonotonic samples (τ ≈ 1) at Clayton's own independence limit.
+let mut c = Clayton::new();
+c.set_theta(0.0);
+c.percent_point(&y, &v).unwrap(); // == v
+
+// After: independent samples (τ ≈ 0), as θ = 0 is supposed to mean.
+let mut c = Clayton::new();
+c.set_theta(0.0);
+c.percent_point(&y, &v).unwrap(); // == y
+```
+
+`Clayton::pdf`/`cdf`/`partial_derivative` do not special-case `θ = 0` at
+all and are unchanged by this fix — see `bivariate.rs`'s module doc for
+that separate, still-open gap.
