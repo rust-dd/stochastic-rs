@@ -123,9 +123,7 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
 }
 
 /// μ=0.05, σ=0.2, x₀=100, t=1, n=252 — one trading year of daily steps on a
-/// textbook equity (matches this file's own tests and the crate's Gbm
-/// visualization-gallery fixture,
-/// `stochastic-rs-viz/src/tests/categories/diffusion.rs`).
+/// textbook equity (matches this file's own tests).
 impl<T: FloatExt> Default for Gbm<T, Unseeded> {
   fn default() -> Self {
     Self::new(

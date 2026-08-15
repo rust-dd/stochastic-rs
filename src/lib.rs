@@ -30,7 +30,6 @@ pub use stochastic_rs_stats as stats;
 pub use stochastic_rs_stochastic as stochastic;
 pub mod bridges;
 pub mod traits;
-pub use stochastic_rs_viz as visualization;
 
 // Python bindings will live in `stochastic-rs-py` (Phase 6 follow-up).
 // The umbrella `python` feature is currently a no-op pending that migration.

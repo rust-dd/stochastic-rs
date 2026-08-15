@@ -177,7 +177,9 @@ plots comparing:
 - Surrogate prediction.
 
 The plot should show match within ~10 bps in IV across the grid.
-Use `stochastic-rs-viz` for the plotter.
+Build the grid directly with `plotly` (`Plot` / `Scatter` / `LayoutGrid`)
+and `write_html` — never `.show()` — following the pattern in
+`examples/plot_distribution.rs`.
 
 If the fit is visibly off — e.g. the wing tails diverge — the
 training set was too small (try 50_000 samples) or the network too

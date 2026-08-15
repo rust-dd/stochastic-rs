@@ -8,7 +8,7 @@ status: stable
 
 # Workspace layout
 
-`stochastic-rs` is a Cargo workspace with **9 sub-crates** as siblings
+`stochastic-rs` is a Cargo workspace with **8 sub-crates** as siblings
 under the workspace root. The `stochastic-rs` umbrella crate keeps the
 v1.x public API by re-exporting everything via `pub use`.
 
@@ -21,7 +21,6 @@ stochastic-rs/                        (workspace root + umbrella crate)
 ├── stochastic-rs-stats/              MLE, Hurst, realised, stationarity, …
 ├── stochastic-rs-quant/              PricerExt, ModelPricer, calibration, vol surface
 ├── stochastic-rs-ai/                 Neural surrogates (feature-gated)
-├── stochastic-rs-viz/                Plotly grid plotter
 └── stochastic-rs-py/                 PyO3 cdylib (234 entries)
 ```
 
@@ -39,9 +38,9 @@ stochastic-rs/                        (workspace root + umbrella crate)
         └────────┬──────────┘
                  ▼
             stochastic-rs-quant
-              ┌───┴───┐
-              ▼       ▼
-             ai      viz
+                 │
+                 ▼
+                 ai
 ```
 
 The PyO3 crate (`stochastic-rs-py`) sits on the side: it depends on the
@@ -53,7 +52,7 @@ producer crates and re-exports `#[pyclass]`-wrapped types via the
 
 1. **Compile time**. Pulling only `stochastic-rs-distributions` for a
    distribution-sampling job avoids compiling the quant + AI surface.
-2. **Feature gating**. `ai`, `openblas`, `cuda`, `metal`, `viz` live on
+2. **Feature gating**. `ai`, `openblas`, `cuda`, `metal` live on
    the crates that own the optional dependency, so a default
    `cargo build` never tries to link CUDA on a laptop with no GPU.
 3. **Versioning**. Sub-crates can ship patch releases independently when

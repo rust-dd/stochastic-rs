@@ -5,6 +5,30 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 
 ## Unreleased
 
+### stochastic-rs-viz: crate removed
+
+`stochastic-rs-viz` — the `GridPlotter` / `Plottable` / `plot_process` /
+`plot_distribution` / `plot_vol_surface` / `plot_heatmap` Plotly wrapper,
+previously re-exported from the umbrella as `stochastic_rs::visualization`
+— has been removed from the workspace. It had zero external crates.io
+dependents, and its umbrella dependency was unconditional (not
+feature-gated), so every user of `stochastic-rs` paid its compile cost
+whether or not they ever plotted anything.
+
+If you imported `stochastic-rs-viz` directly, or used
+`stochastic_rs::visualization::*`: depend on `plotly` yourself (`0.10`,
+with the `plotly_ndarray` feature — the version this crate used) and build
+the `Plot` / `Scatter` / `Layout` calls directly; there is no drop-in
+replacement type. Three worked examples cover the idiomatic path for the
+three things this library gives you to plot — `examples/plot_process.rs`
+(a stochastic process, GBM), `examples/plot_copula.rs` (a copula, Clayton),
+and `examples/plot_distribution.rs` (a distribution, a Gamma histogram
+with its closed-form pdf overlaid) — run any of them with `cargo run
+--example <name>`.
+
+`stochastic-rs-quant`'s optional `viz` feature (`Greeks: Plottable`) is
+gone along with it.
+
 ### stochastic-rs-copulas: `Frank` now accepts `θ = 0`, its own independence limit
 
 `Frank::new`/`Frank::default` previously listed `0.0` in `invalid_thetas`,

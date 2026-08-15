@@ -51,7 +51,6 @@ stochastic-rs-copulas
 stochastic-rs-stats
 stochastic-rs-quant
 stochastic-rs-ai
-stochastic-rs-viz
 stochastic-rs-py
 ```
 
@@ -101,7 +100,7 @@ version DOI is only known after stage 5.5.
 ```bash
 # 4.1 Dry-run publish.sh: this runs `cargo publish --dry-run` on each
 # sub-crate in dependency order (core → distributions → stochastic →
-# copulas → stats → quant → ai → viz → umbrella).
+# copulas → stats → quant → ai → umbrella).
 ./publish.sh --dry-run
 ```
 

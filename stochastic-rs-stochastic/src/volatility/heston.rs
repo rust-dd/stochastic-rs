@@ -102,14 +102,10 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
   }
 }
 
-/// s₀=100, v₀=0.04, κ=2.0, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05 — matches the
-/// crate's Heston visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/volatility_and_sheet.rs`, which
-/// itself runs at n=96, not the n=252 below); a parameterization of the
-/// Heston (1993) stochastic-volatility model satisfying the Feller
-/// condition (`2κθ = 0.16 ≥ σ² = 0.09`). t=1, n=252 — one trading year of
-/// daily steps (this crate's `Default` convention, not itself drawn from
-/// that fixture).
+/// s₀=100, v₀=0.04, κ=2.0, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05 — a
+/// parameterization of the Heston (1993) stochastic-volatility model
+/// satisfying the Feller condition (`2κθ = 0.16 ≥ σ² = 0.09`). t=1, n=252
+/// — one trading year of daily steps (this crate's `Default` convention).
 impl<T: FloatExt> Default for Heston<T, Unseeded, Euler> {
   fn default() -> Self {
     Self::new(

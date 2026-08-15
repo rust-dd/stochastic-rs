@@ -15,7 +15,87 @@ mod gpu_visual {
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
-  use stochastic_rs::visualization::GridPlotter;
+
+  /// Minimal grid-of-subplots HTML writer for this file's visual tests only
+  /// (`stochastic-rs-viz`'s `GridPlotter` was removed workspace-wide; this
+  /// keeps just the rows/cols layout + per-panel title annotation it used to
+  /// provide, without pulling a crate back in for two test files).
+  ///
+  /// `panels` is `(panel title, [(series name, y-values)])`; every series in
+  /// a panel is plotted against an implicit `0..1`-normalized index axis.
+  fn grid_plot(
+    panels: &[(String, Vec<(String, Vec<f64>)>)],
+    cols: usize,
+    title: &str,
+    show_legend: bool,
+    line_width: f64,
+  ) -> plotly::Plot {
+    use plotly::Layout;
+    use plotly::Plot;
+    use plotly::Scatter;
+    use plotly::common::Anchor;
+    use plotly::common::Font;
+    use plotly::common::Line;
+    use plotly::common::Mode;
+    use plotly::layout::Annotation;
+    use plotly::layout::GridPattern;
+    use plotly::layout::LayoutGrid;
+
+    let rows = panels.len().div_ceil(cols);
+    let mut plot = Plot::new();
+    let mut annotations = Vec::with_capacity(panels.len());
+
+    for (idx, (label, series)) in panels.iter().enumerate() {
+      let subplot = idx + 1;
+      let (xa, ya) = if subplot == 1 {
+        ("x".to_string(), "y".to_string())
+      } else {
+        (format!("x{subplot}"), format!("y{subplot}"))
+      };
+      let n_points = series[0].1.len();
+      let t = (0..n_points)
+        .map(|i| i as f64 / (n_points - 1).max(1) as f64)
+        .collect::<Vec<f64>>();
+      for (name, values) in series {
+        plot.add_trace(
+          Scatter::new(t.clone(), values.clone())
+            .mode(Mode::Lines)
+            .line(Line::new().width(line_width))
+            .name(name.as_str())
+            .show_legend(show_legend)
+            .x_axis(xa.as_str())
+            .y_axis(ya.as_str()),
+        );
+      }
+      annotations.push(
+        Annotation::new()
+          .text(format!("<b>{label}</b>"))
+          .x_ref(format!("{xa} domain"))
+          .y_ref(format!("{ya} domain"))
+          .x(0.5)
+          .y(0.985)
+          .x_anchor(Anchor::Center)
+          .y_anchor(Anchor::Top)
+          .font(Font::new().size(11))
+          .show_arrow(false),
+      );
+    }
+
+    plot.set_layout(
+      Layout::new()
+        .title(title)
+        .height((rows * 380 + 120).max(500))
+        .width((cols * 420).max(700))
+        .annotations(annotations)
+        .grid(
+          LayoutGrid::new()
+            .rows(rows)
+            .columns(cols)
+            .pattern(GridPattern::Independent),
+        ),
+    );
+    plot
+  }
 
   fn gpu_fgn_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
     let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeCl>();
@@ -83,12 +163,7 @@ mod gpu_visual {
     let max_lag = 20;
     let hursts = [0.25_f64, 0.5, 0.72, 0.9];
 
-    let mut grid = GridPlotter::new()
-      .title("fGN autocovariance: theory vs CPU vs GPU")
-      .cols(2)
-      .line_width(2.0)
-      .show_legend(true);
-
+    let mut panels = Vec::with_capacity(hursts.len());
     for &h in &hursts {
       let theory = theoretical_autocovariance(h, n, max_lag);
       let cpu_acov = empirical_autocovariance(&cpu_fgn_paths(h, n, m), max_lag);
@@ -107,13 +182,23 @@ mod gpu_visual {
         );
       }
 
-      grid = grid.register_paths(
-        vec![theory, cpu_acov, gpu_acov],
-        &format!("H={h} (blue=theory, red=CPU, green=GPU)"),
-      );
+      panels.push((
+        format!("H={h}"),
+        vec![
+          ("theory".to_string(), theory),
+          ("CPU".to_string(), cpu_acov),
+          ("GPU".to_string(), gpu_acov),
+        ],
+      ));
     }
 
-    let plot = grid.plot();
+    let plot = grid_plot(
+      &panels,
+      2,
+      "fGN autocovariance: theory vs CPU vs GPU",
+      true,
+      2.0,
+    );
     plot.write_html("target/gpu_autocovariance.html");
     eprintln!("\nWrote target/gpu_autocovariance.html");
   }
@@ -125,18 +210,17 @@ mod gpu_visual {
     let traj = 8;
     let hursts = [0.2_f32, 0.35, 0.5, 0.72, 0.85, 0.95];
 
-    let mut grid = GridPlotter::new()
-      .title("GPU fGN trajectories (CubeCL)")
-      .cols(3)
-      .line_width(1.0)
-      .show_legend(false);
-
+    let mut panels = Vec::with_capacity(hursts.len());
     for &h in &hursts {
-      let paths = gpu_fgn_paths(h, n, traj);
-      grid = grid.register_paths(paths, &format!("fGN H={h}"));
+      let series = gpu_fgn_paths(h, n, traj)
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| (format!("path {}", i + 1), p))
+        .collect();
+      panels.push((format!("fGN H={h}"), series));
     }
 
-    let plot = grid.plot();
+    let plot = grid_plot(&panels, 3, "GPU fGN trajectories (CubeCL)", false, 1.0);
     plot.write_html("target/gpu_fgn_trajectories.html");
     eprintln!("Wrote target/gpu_fgn_trajectories.html");
   }
@@ -148,18 +232,17 @@ mod gpu_visual {
     let traj = 8;
     let hursts = [0.2_f32, 0.35, 0.5, 0.72, 0.85, 0.95];
 
-    let mut grid = GridPlotter::new()
-      .title("GPU fBM trajectories (CubeCL)")
-      .cols(3)
-      .line_width(1.0)
-      .show_legend(false);
-
+    let mut panels = Vec::with_capacity(hursts.len());
     for &h in &hursts {
-      let paths = gpu_fbm_paths(h, n, traj);
-      grid = grid.register_paths(paths, &format!("fBM H={h}"));
+      let series = gpu_fbm_paths(h, n, traj)
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| (format!("path {}", i + 1), p))
+        .collect();
+      panels.push((format!("fBM H={h}"), series));
     }
 
-    let plot = grid.plot();
+    let plot = grid_plot(&panels, 3, "GPU fBM trajectories (CubeCL)", false, 1.0);
     plot.write_html("target/gpu_fbm_trajectories.html");
     eprintln!("Wrote target/gpu_fbm_trajectories.html");
   }

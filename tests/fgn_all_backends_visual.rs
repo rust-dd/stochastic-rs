@@ -13,7 +13,87 @@ mod all_backends {
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
-  use stochastic_rs::visualization::GridPlotter;
+
+  /// Minimal grid-of-subplots HTML writer for this file's visual tests only
+  /// (`stochastic-rs-viz`'s `GridPlotter` was removed workspace-wide; this
+  /// keeps just the rows/cols layout + per-panel title annotation it used to
+  /// provide, without pulling a crate back in for two test files).
+  ///
+  /// `panels` is `(panel title, [(series name, y-values)])`; every series in
+  /// a panel is plotted against an implicit `0..1`-normalized index axis.
+  fn grid_plot(
+    panels: &[(String, Vec<(String, Vec<f64>)>)],
+    cols: usize,
+    title: &str,
+    show_legend: bool,
+    line_width: f64,
+  ) -> plotly::Plot {
+    use plotly::Layout;
+    use plotly::Plot;
+    use plotly::Scatter;
+    use plotly::common::Anchor;
+    use plotly::common::Font;
+    use plotly::common::Line;
+    use plotly::common::Mode;
+    use plotly::layout::Annotation;
+    use plotly::layout::GridPattern;
+    use plotly::layout::LayoutGrid;
+
+    let rows = panels.len().div_ceil(cols);
+    let mut plot = Plot::new();
+    let mut annotations = Vec::with_capacity(panels.len());
+
+    for (idx, (label, series)) in panels.iter().enumerate() {
+      let subplot = idx + 1;
+      let (xa, ya) = if subplot == 1 {
+        ("x".to_string(), "y".to_string())
+      } else {
+        (format!("x{subplot}"), format!("y{subplot}"))
+      };
+      let n_points = series[0].1.len();
+      let t = (0..n_points)
+        .map(|i| i as f64 / (n_points - 1).max(1) as f64)
+        .collect::<Vec<f64>>();
+      for (name, values) in series {
+        plot.add_trace(
+          Scatter::new(t.clone(), values.clone())
+            .mode(Mode::Lines)
+            .line(Line::new().width(line_width))
+            .name(name.as_str())
+            .show_legend(show_legend)
+            .x_axis(xa.as_str())
+            .y_axis(ya.as_str()),
+        );
+      }
+      annotations.push(
+        Annotation::new()
+          .text(format!("<b>{label}</b>"))
+          .x_ref(format!("{xa} domain"))
+          .y_ref(format!("{ya} domain"))
+          .x(0.5)
+          .y(0.985)
+          .x_anchor(Anchor::Center)
+          .y_anchor(Anchor::Top)
+          .font(Font::new().size(11))
+          .show_arrow(false),
+      );
+    }
+
+    plot.set_layout(
+      Layout::new()
+        .title(title)
+        .height((rows * 380 + 120).max(500))
+        .width((cols * 420).max(700))
+        .annotations(annotations)
+        .grid(
+          LayoutGrid::new()
+            .rows(rows)
+            .columns(cols)
+            .pattern(GridPattern::Independent),
+        ),
+    );
+    plot
+  }
 
   fn cpu_fgn(h: f64, n: usize, m: usize) -> Vec<Vec<f64>> {
     let fgn = Fgn::<f64>::new(h, n, Some(1.0), Unseeded);
@@ -98,12 +178,7 @@ mod all_backends {
     let max_lag = 15;
     let hursts = [0.25_f64, 0.5, 0.72, 0.9];
 
-    let mut grid = GridPlotter::new()
-      .title("fGN autocovariance: Theory / CPU / GPU / Metal / Accelerate")
-      .cols(2)
-      .line_width(2.0)
-      .show_legend(true);
-
+    let mut panels = Vec::with_capacity(hursts.len());
     for &h in &hursts {
       let th = theory_acov(h, n, max_lag);
       let cpu = empirical_acov(&cpu_fgn(h, n, m), max_lag);
@@ -121,13 +196,25 @@ mod all_backends {
         );
       }
 
-      grid = grid.register_paths(
-        vec![th, cpu, gpu, mtl, acc],
-        &format!("H={h} (theory/CPU/GPU/Metal/Accel)"),
-      );
+      panels.push((
+        format!("H={h}"),
+        vec![
+          ("theory".to_string(), th),
+          ("CPU".to_string(), cpu),
+          ("GPU".to_string(), gpu),
+          ("Metal".to_string(), mtl),
+          ("Accelerate".to_string(), acc),
+        ],
+      ));
     }
 
-    let plot = grid.plot();
+    let plot = grid_plot(
+      &panels,
+      2,
+      "fGN autocovariance: Theory / CPU / GPU / Metal / Accelerate",
+      true,
+      2.0,
+    );
     plot.write_html("target/all_backends_autocovariance.html");
     eprintln!("\nWrote target/all_backends_autocovariance.html");
   }
@@ -139,20 +226,29 @@ mod all_backends {
     let traj = 5;
     let hursts = [0.25_f32, 0.5, 0.72, 0.9];
 
-    let mut grid = GridPlotter::new()
-      .title("fGN trajectories by backend (5 paths each)")
-      .cols(4)
-      .line_width(1.0)
-      .show_legend(false);
+    let to_series = |paths: Vec<Vec<f64>>| {
+      paths
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| (format!("path {}", i + 1), p))
+        .collect::<Vec<(String, Vec<f64>)>>()
+    };
 
+    let mut panels = Vec::with_capacity(hursts.len() * 4);
     for &h in &hursts {
-      grid = grid.register_paths(cpu_fgn(h as f64, n, traj), &format!("CPU H={h}"));
-      grid = grid.register_paths(gpu_fgn(h, n, traj), &format!("GPU H={h}"));
-      grid = grid.register_paths(metal_fgn(h, n, traj), &format!("Metal H={h}"));
-      grid = grid.register_paths(accel_fgn(h, n, traj), &format!("Accel H={h}"));
+      panels.push((format!("CPU H={h}"), to_series(cpu_fgn(h as f64, n, traj))));
+      panels.push((format!("GPU H={h}"), to_series(gpu_fgn(h, n, traj))));
+      panels.push((format!("Metal H={h}"), to_series(metal_fgn(h, n, traj))));
+      panels.push((format!("Accel H={h}"), to_series(accel_fgn(h, n, traj))));
     }
 
-    let plot = grid.plot();
+    let plot = grid_plot(
+      &panels,
+      4,
+      "fGN trajectories by backend (5 paths each)",
+      false,
+      1.0,
+    );
     plot.write_html("target/all_backends_fgn_trajectories.html");
     eprintln!("Wrote target/all_backends_fgn_trajectories.html");
   }
@@ -164,17 +260,23 @@ mod all_backends {
     let traj = 5;
     let hursts = [0.25_f32, 0.5, 0.72, 0.9];
 
-    let mut grid = GridPlotter::new()
-      .title("fBM trajectories — Metal GPU (5 paths each)")
-      .cols(2)
-      .line_width(1.2)
-      .show_legend(false);
-
+    let mut panels = Vec::with_capacity(hursts.len());
     for &h in &hursts {
-      grid = grid.register_paths(metal_fbm(h, n, traj), &format!("fBM H={h}"));
+      let series = metal_fbm(h, n, traj)
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| (format!("path {}", i + 1), p))
+        .collect();
+      panels.push((format!("fBM H={h}"), series));
     }
 
-    let plot = grid.plot();
+    let plot = grid_plot(
+      &panels,
+      2,
+      "fBM trajectories — Metal GPU (5 paths each)",
+      false,
+      1.2,
+    );
     plot.write_html("target/all_backends_fbm_trajectories.html");
     eprintln!("Wrote target/all_backends_fbm_trajectories.html");
   }

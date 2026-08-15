@@ -5,9 +5,9 @@ description: Conventions for adding / propagating Cargo features across the stoc
 
 # Feature flag management — stochastic-rs
 
-The workspace has 9 sub-crates, several of which carry optional
+The workspace has 8 sub-crates, several of which carry optional
 dependencies (`openblas`, `cuda`, `metal`, `python`, `yahoo`, `ai`,
-`hotpath`, `viz`). Without discipline, `cargo check --all-features`
+`hotpath`). Without discipline, `cargo check --all-features`
 explodes with "feature X needed but not propagated" or, worse, an
 unflagged path silently compiles a `Box<dyn Fn(f64) -> f64>` that
 panics at runtime.
@@ -189,7 +189,6 @@ loader, a new distribution backend):
 | `yahoo` | `-quant` | Live-data tests; experimental. |
 | `ai` | `-ai`, umbrella | Neural surrogates (rc.1 experimental). |
 | `hotpath` | umbrella | Profiling-mode build. |
-| `viz` | `-viz`, umbrella | Plotly grid plotter. |
 
 ## Related SKILLs
 

@@ -35,7 +35,6 @@ stochastic-rs-copulas = "2.6"   # bivariate / multivariate copulas
 stochastic-rs-stats = "2.6"   # estimators
 stochastic-rs-quant = "2.6"   # pricing / calibration / vol surface
 stochastic-rs-ai = "2.6"   # neural surrogates (candle)
-stochastic-rs-viz = "2.6"   # plotly grid plotter
 ```
 
 Topology:
@@ -47,8 +46,7 @@ stochastic-rs-core (simd_rng)
      ├→ stochastic-rs-copulas
      └→ stochastic-rs-stats
          └→ stochastic-rs-quant (PricerExt, calibration, vol surface)
-             ├→ stochastic-rs-ai
-             └→ stochastic-rs-viz
+             └→ stochastic-rs-ai
 ```
 
 ## Cargo features
@@ -56,7 +54,6 @@ stochastic-rs-core (simd_rng)
 | Feature         | Owner crate                  | Pulls in                          | Use when                                              |
 |-----------------|------------------------------|-----------------------------------|-------------------------------------------------------|
 | `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
-| _(none — always on)_ | umbrella                | `stochastic-rs-viz`, `plotly`     | `GridPlotter` is an unconditional umbrella dependency, not feature-gated — see [Visualization](/docs/viz) |
 | `openblas`      | `stats`, `quant`, `copulas`, `stochastic` | `ndarray-linalg/openblas-system` | MLE, multivariate copulas, Cholesky-heavy estimators  |
 | `openblas-static` | same                       | `ndarray-linalg/openblas-static`  | Vendored OpenBLAS — needed for the Windows wheel CI   |
 | `cuda-native`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |

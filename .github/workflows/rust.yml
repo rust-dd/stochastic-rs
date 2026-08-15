@@ -26,7 +26,6 @@ jobs:
           - stochastic-rs-stats
           - stochastic-rs-quant
           - stochastic-rs-ai
-          - stochastic-rs-viz
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable

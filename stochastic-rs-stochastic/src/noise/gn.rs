@@ -52,9 +52,8 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
   }
 }
 
-/// t=1, n=252 — one trading year of daily `N(0, dt)` increments, matching
-/// the crate's Gn visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`).
+/// t=1, n=252 — one trading year of daily `N(0, dt)` increments (this
+/// crate's `Default` convention).
 impl<T: FloatExt> Default for Gn<T, Unseeded> {
   fn default() -> Self {
     Self::new(252, Some(T::one()), Unseeded)

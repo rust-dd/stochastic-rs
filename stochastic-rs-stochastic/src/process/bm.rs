@@ -51,9 +51,8 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
   }
 }
 
-/// t=1, n=252 — one trading year of daily steps, matching the crate's Bm
-/// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`).
+/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
+/// convention).
 impl<T: FloatExt> Default for Bm<T, Unseeded> {
   fn default() -> Self {
     Self::new(252, Some(T::one()), Unseeded)

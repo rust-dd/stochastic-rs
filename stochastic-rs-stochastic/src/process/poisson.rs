@@ -81,11 +81,8 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   }
 }
 
-/// λ=2.0 — matches the crate's Poisson visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/noise_and_process.rs`, which
-/// itself runs at n=96, not the n=252 below). t_max=1, n=252 — one trading
-/// year of daily steps (this crate's `Default` convention, not itself
-/// drawn from that fixture).
+/// λ=2.0 — a textbook Poisson parameterization. t_max=1, n=252 — one
+/// trading year of daily steps (this crate's `Default` convention).
 impl<T: FloatExt> Default for Poisson<T, Unseeded> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(2.0), Some(252), Some(T::one()), Unseeded)

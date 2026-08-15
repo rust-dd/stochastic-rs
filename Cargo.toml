@@ -7,7 +7,6 @@ members = [
     "stochastic-rs-stats",
     "stochastic-rs-quant",
     "stochastic-rs-ai",
-    "stochastic-rs-viz",
     "stochastic-rs-py",
 ]
 
@@ -23,7 +22,6 @@ stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "2.6" }
 stochastic-rs-stats = { path = "stochastic-rs-stats", version = "2.6" }
 stochastic-rs-quant = { path = "stochastic-rs-quant", version = "2.6" }
 stochastic-rs-ai = { path = "stochastic-rs-ai", version = "2.6" }
-stochastic-rs-viz = { path = "stochastic-rs-viz", version = "2.6" }
 
 # Math / numerical core
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
@@ -126,7 +124,6 @@ stochastic-rs-stochastic = { workspace = true }
 stochastic-rs-copulas = { workspace = true }
 stochastic-rs-stats = { workspace = true }
 stochastic-rs-quant = { workspace = true }
-stochastic-rs-viz = { workspace = true }
 stochastic-rs-ai = { workspace = true, optional = true }
 anyhow = { workspace = true }
 argmin = { workspace = true }

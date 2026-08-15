@@ -22,7 +22,6 @@ Rust core.
 | `metal`           | `-stochastic`               | `metal`                             | macOS GPU FGN / fBM (`MetalNative` backend) |
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend) |
 | `openblas`        | `-stats`, `-quant`          | `ndarray-linalg/openblas`            | MLE, multivariate copulas, Cholesky-heavy |
-| `viz`             | umbrella                    | `stochastic-rs-viz`, `plotly`        | Quick HTML plots                          |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
@@ -39,7 +38,6 @@ relevant sub-crate. Example from the umbrella `Cargo.toml`:
 [features]
 default = []
 ai      = ["stochastic-rs-ai"]
-viz     = ["stochastic-rs-viz"]
 cuda-native = ["dep:cudarc", "stochastic-rs-stochastic/cuda-native"]
 metal       = ["dep:metal", "stochastic-rs-stochastic/metal"]
 openblas = [

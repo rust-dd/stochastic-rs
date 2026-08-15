@@ -142,12 +142,10 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   }
 }
 
-/// θ=2.5, μ=0.04, σ=0.2, x₀=0.04, use_sym=false — matches the crate's Cir
-/// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/diffusion.rs`, which itself
-/// runs at n=96, not the n=252 below); Feller condition `2θμ = 0.2 ≥ σ² =
-/// 0.04` holds. t=1, n=252 — one trading year of daily steps (this crate's
-/// `Default` convention, not itself drawn from that fixture).
+/// θ=2.5, μ=0.04, σ=0.2, x₀=0.04, use_sym=false — a textbook Cir
+/// parameterization; Feller condition `2θμ = 0.2 ≥ σ² = 0.04` holds. t=1,
+/// n=252 — one trading year of daily steps (this crate's `Default`
+/// convention).
 impl<T: FloatExt> Default for Cir<T, Unseeded> {
   fn default() -> Self {
     Self::new(

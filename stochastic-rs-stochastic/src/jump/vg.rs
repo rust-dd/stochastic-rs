@@ -103,9 +103,7 @@ impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   }
 }
 
-/// μ=0.0, σ=0.2, ν=0.15, x₀=0, t=1, n=252 — matches the crate's Vg
-/// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/jump.rs`).
+/// μ=0.0, σ=0.2, ν=0.15, x₀=0, t=1, n=252 — a textbook Vg parameterization.
 impl<T: FloatExt> Default for Vg<T, Unseeded> {
   fn default() -> Self {
     Self::new(

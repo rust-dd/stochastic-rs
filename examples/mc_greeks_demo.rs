@@ -85,8 +85,8 @@ fn main() {
     greeks.vanna, greeks.charm, greeks.volga, greeks.veta
   );
 
-  // 4) Greeks::as_array → 9-element canonical layout used by the optional
-  //    `viz` feature's `Plottable` impl.
+  // 4) Greeks::as_array → 9-element canonical layout, stable positional
+  //    access for callers that hard-code `out[0] == delta` etc.
   let arr = greeks.as_array();
   println!(
     "\nGreeks::as_array (length = {}, COMPONENT_NAMES order):",

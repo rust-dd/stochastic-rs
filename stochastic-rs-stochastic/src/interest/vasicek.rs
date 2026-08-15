@@ -135,12 +135,9 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
   }
 }
 
-/// a=3.0, b=0.03, σ=0.02, r₀=0.03 — matches the crate's Vasicek
-/// visualization-gallery fixture
-/// (`stochastic-rs-viz/src/tests/categories/interest.rs`, which itself runs
-/// at n=96, not the n=252 below). t=1, n=252 — one trading year of daily
-/// steps (this crate's `Default` convention, not itself drawn from that
-/// fixture).
+/// a=3.0, b=0.03, σ=0.02, r₀=0.03 — a textbook Vasicek parameterization.
+/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
+/// convention).
 impl<T: FloatExt> Default for Vasicek<T, Unseeded> {
   fn default() -> Self {
     Self::new(

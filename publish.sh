@@ -61,8 +61,7 @@ PUBLISH_ORDER=(
   "stochastic-rs-stochastic"      # core, distributions
   "stochastic-rs-stats"           # core, distributions, stochastic
   "stochastic-rs-copulas"         # core, distributions
-  "stochastic-rs-viz"             # core, distributions, stochastic — MUST precede quant
-  "stochastic-rs-quant"           # core, distributions, stochastic, stats, copulas, viz (optional dep)
+  "stochastic-rs-quant"           # core, distributions, stochastic, stats, copulas
   "stochastic-rs-ai"              # core, distributions, stochastic, quant
   "stochastic-rs"                 # umbrella — last
 )
