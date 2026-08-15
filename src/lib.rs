@@ -41,7 +41,9 @@ pub mod traits;
 /// without pulling them one by one.
 ///
 /// Currently 29 items in 7 groups — re-derive with
-/// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"` and update
+/// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` — the
+/// leading indentation matters, since a bare `grep -c "pub use"` also matches
+/// this very comment and reports two too many — and update
 /// `CLAUDE.md` and `website/content/docs/concepts/prelude.mdx` together
 /// whenever a `pub use` line below is added or removed;
 /// `tests/prelude_completeness.rs` catches the removal direction at

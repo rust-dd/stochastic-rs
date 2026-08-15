@@ -75,7 +75,7 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **29** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"`):
+Brings **29** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
 - **Trait core**: `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
 - **Pricing**: `PricerExt`, `ModelPricer`, `GreeksExt`
@@ -83,6 +83,7 @@ Brings **29** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep
 - **Instrument / engine**: `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult`
 - **Option types**: `Moneyness`, `OptionStyle`, `OptionType`
 - **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`
+- **Estimation**: `HurstEstimator`, `FractalDimEstimator`, `HypothesisTest`, `DiffusionModel`, `TailDependence`
 
 `MalliavinExt` / `Malliavin2DExt` are intentionally **not** in the prelude (0 in-tree impls — deferred). Reach via `stochastic_rs::traits::MalliavinExt`. `MultivariateExt` (openblas-only) and `CallableDist` (python-only) likewise reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free.
 

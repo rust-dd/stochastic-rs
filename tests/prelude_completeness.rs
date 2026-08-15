@@ -10,9 +10,9 @@
 //! compile error here, not a silent doc/reality mismatch. This cannot
 //! catch the opposite direction (a new item added to the prelude but
 //! never documented) — for that, re-run the derivation below and compare
-//! against the six group lists in `CLAUDE.md` and `prelude.mdx`:
+//! against the seven group lists in `CLAUDE.md` and `prelude.mdx`:
 //!
-//! `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"`
+//! `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`
 
 #![allow(unused_imports)]
 
@@ -21,10 +21,14 @@ use stochastic_rs::prelude::BivariateExt;
 use stochastic_rs::prelude::CalibrationResult;
 use stochastic_rs::prelude::Calibrator;
 use stochastic_rs::prelude::Cpu;
+use stochastic_rs::prelude::DiffusionModel;
 use stochastic_rs::prelude::DistributionExt;
 use stochastic_rs::prelude::DistributionSampler;
 use stochastic_rs::prelude::FloatExt;
+use stochastic_rs::prelude::FractalDimEstimator;
 use stochastic_rs::prelude::GreeksExt;
+use stochastic_rs::prelude::HurstEstimator;
+use stochastic_rs::prelude::HypothesisTest;
 use stochastic_rs::prelude::Instrument;
 use stochastic_rs::prelude::InstrumentExt;
 use stochastic_rs::prelude::ModelPricer;
@@ -37,12 +41,13 @@ use stochastic_rs::prelude::PricingEngine;
 use stochastic_rs::prelude::PricingResult;
 use stochastic_rs::prelude::ProcessExt;
 use stochastic_rs::prelude::SimdFloatExt;
+use stochastic_rs::prelude::TailDependence;
 use stochastic_rs::prelude::TimeExt;
 use stochastic_rs::prelude::ToModel;
 use stochastic_rs::prelude::VolterraKernel;
 
 #[test]
-fn all_twenty_four_documented_prelude_items_resolve() {
+fn all_twenty_nine_documented_prelude_items_resolve() {
   // The import above is the assertion: if it compiles, every name CLAUDE.md
   // and prelude.mdx list is still a real prelude export. Nothing to run.
 }

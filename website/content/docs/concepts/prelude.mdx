@@ -13,7 +13,7 @@ use stochastic_rs::prelude::*;
 ```
 
 Brings **29 items in 7 groups** — re-derive with
-`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "pub use"` against
+`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
 `src/lib.rs` any time an item is added or removed; this count has drifted
 before (it read "20 items" for several releases after `VolterraKernel`
 joined the fifth group without a sixth being added for `Backend`/`Cpu`/
@@ -102,7 +102,7 @@ TailDependence
 The stats and copula trait surface. Without these in scope a first
 `.estimate()` call does not compile at all, which is why they were added —
 `HurstEstimator` covers the eight Hurst estimators, `FractalDimEstimator`
-the fractal-dimension family, `HypothesisTest` all thirteen result types
+the fractal-dimension family, `HypothesisTest` all fifteen result types (`grep -rc 'impl.*HypothesisTest for' stochastic-rs-stats/src`)
 across stationarity, structural-break, random-walk, functional-form,
 normality and autocorrelation testing, `DiffusionModel` the parametric-SDE
 estimators, and `TailDependence` the upper/lower tail coefficients on
