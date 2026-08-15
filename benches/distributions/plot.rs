@@ -107,6 +107,10 @@ fn add_trace(
   );
 }
 
+/// Eight parameters, against clippy's default cap of seven. Grouping them into
+/// a struct would only move the same list one level down while making each
+/// call site longer, so the lint is silenced rather than worked around.
+#[allow(clippy::too_many_arguments)]
 fn add_continuous_pair<F1, F2>(
   plot: &mut Plot,
   axes: (String, String),

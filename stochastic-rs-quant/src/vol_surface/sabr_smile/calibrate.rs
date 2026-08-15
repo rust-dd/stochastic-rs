@@ -17,6 +17,23 @@ use crate::pricing::sabr::forward_fx;
 use crate::pricing::sabr::fx_delta_from_forward;
 use crate::pricing::sabr::hagan_implied_vol;
 
+/// Writes `plot` to `target/<name>` and returns nothing.
+///
+/// Deliberately **not** `Plot::show()`. `show()` shells out to `open` (macOS)
+/// or `xdg-open` (Linux) and `.expect()`s on the result, so it pops a browser
+/// window as a side effect of any caller — including tests — and panics
+/// outright where no opener exists. `sabr_smile::tests` calls the plotting
+/// entry points, so `show()` here opened a real browser tab on every
+/// `cargo test -p stochastic-rs-quant` run. Writing the file leaves the caller
+/// to open it deliberately, matching the convention the `examples/` plots use.
+fn write_plot(plot: &Plot, name: &str) {
+  let path = std::path::Path::new("target").join(name);
+  if let Some(dir) = path.parent() {
+    let _ = std::fs::create_dir_all(dir);
+  }
+  plot.write_html(&path);
+}
+
 impl SabrSmileCalibrator {
   pub fn calibrate(&self) -> SabrSmileResult {
     // Bounds: [k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]
@@ -128,7 +145,7 @@ impl SabrSmileCalibrator {
         .x_axis(Axis::new().title("Strike price"))
         .y_axis(Axis::new().title("Implied volatility")),
     );
-    plot.show();
+    write_plot(&plot, "sabr_smile.html");
   }
 
   /// Returns the vector of calibration results in the same order as `cases`.
@@ -231,7 +248,7 @@ impl SabrSmileCalibrator {
         .x_axis(Axis::new().title("Strike"))
         .y_axis(Axis::new().title("Implied vol")),
     );
-    plot.show();
+    write_plot(&plot, "sabr_smile_many.html");
 
     results
   }
