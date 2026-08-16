@@ -165,6 +165,22 @@ impl SabrPricer {
   pub fn forward(&self) -> f64 {
     forward_fx(self.s, self.tau_required(), self.r, self.q.unwrap_or(0.0))
   }
+
+  /// Implied volatility from the Hagan (2002) general-β expansion, evaluated
+  /// at `self.k` against [`self.forward()`](Self::forward).
+  ///
+  /// # Panics
+  /// Panics if `self.k` or the forward is not strictly positive, if
+  /// `self.alpha` is not strictly positive, or if `self.rho` does not lie
+  /// strictly inside $(-1, 1)$ — see
+  /// [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol)'s own
+  /// `# Panics` section, which this inherits unchanged. A non-positive spot
+  /// or strike is invalid input for this equity/FX pricer, not a market
+  /// state to accommodate, so this panics rather than degrading silently;
+  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator) validates
+  /// `s`/`k` before ever constructing a `SabrPricer` from calibrated data,
+  /// so this only fires when a `SabrPricer` is built directly from bad
+  /// input.
   pub fn sigma(&self) -> f64 {
     hagan_implied_vol(
       self.k,
@@ -243,6 +259,19 @@ pub struct SabrModel {
 }
 
 impl crate::traits::ModelPricer for SabrModel {
+  /// # Panics
+  /// Panics if `k`, or the forward derived from `s`, is not strictly
+  /// positive — see [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol)'s
+  /// `# Panics` section. [`ModelPricer`](crate::traits::ModelPricer) has no
+  /// fallible return channel, so a non-positive spot or strike in a
+  /// strike/maturity grid aborts the whole grid rather than degrading that
+  /// one point to `0.0` — deliberately: a non-positive spot or strike is
+  /// invalid input for this equity/FX model, not a value worth pricing as
+  /// if it were merely deep out-of-the-money. The `is_finite`/`<= 0.0`
+  /// guard just below never runs for a non-positive `k`/forward — the panic
+  /// above happens first; it exists to floor genuinely degenerate-but-valid
+  /// `(alpha, beta, nu, rho)` combinations that produce a non-finite or
+  /// non-positive `sigma` from an otherwise-positive `k`/forward.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let fwd = s * ((r - q) * tau).exp();
     let sigma = hagan_implied_vol(k, fwd, tau, self.alpha, self.beta, self.nu, self.rho);

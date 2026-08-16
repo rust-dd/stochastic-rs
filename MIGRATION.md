@@ -184,6 +184,39 @@ let cal = SabrCapletCalibrator {
 };
 ```
 
+### stochastic-rs-quant: `SabrCalibrator` rejects a non-positive or `NaN` spot/strike instead of panicking
+
+`SabrCalibrator::calibrate` panicked instead of returning `Err` whenever a
+spot/forward level or strike in the market data was zero, negative, or
+`NaN`, because it passed `s`/`k` straight into `SabrPricer` and from there
+into `hagan_implied_vol` (see the `hagan_implied_vol` entry above), which
+now asserts both are strictly positive. `alpha` and `rho` were already
+clamped before reaching the optimiser; `s` and `k` were not.
+
+Unlike `SabrCapletCalibrator`, this calibrator gained no displacement
+shift. A negative interest-rate forward is a genuine market state; a
+non-positive equity/FX spot or strike is not — it is invalid input, so
+`calibrate` now validates `s` and `k` up front and returns `Err` naming the
+offending quote instead of panicking inside the Levenberg-Marquardt cost
+callback.
+
+```rust
+// Before: panics inside the Levenberg-Marquardt cost callback.
+let cal = SabrCalibrator::new(None, c_market, bad_s /* contains 0.0 */, k, r, q, tau, OptionType::Call, false);
+cal.calibrate(None).unwrap(); // panics: "forward f must be strictly positive ..."
+
+// After: calibrate() returns Err (never panics), naming the offending quote.
+let cal = SabrCalibrator::new(None, c_market, bad_s, k, r, q, tau, OptionType::Call, false);
+let res = cal.calibrate(None); // Err("SabrCalibrator: s[0] must be strictly positive (got 0)")
+```
+
+`SabrCalibrator::new` itself is unchanged and still infallible — the check
+runs inside `calibrate()`, the same place `SabrCapletCalibrator` runs its
+`validate_shift()`, so existing valid calibrations are unaffected. The
+check also rejects `NaN` (`!x.is_finite() || x <= 0.0`, not a plain
+`x <= 0.0`, which `NaN` would silently pass): `SabrCapletCalibrator`'s own
+`validate_shift` does not, and is not changed by this entry.
+
 ### stochastic-rs-stochastic: a kernel-generic Volterra SDE engine
 
 The Markov-lift machinery that previously lived inside `rough/` as a

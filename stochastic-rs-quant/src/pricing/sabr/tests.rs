@@ -1,4 +1,5 @@
 use super::*;
+use crate::traits::ModelPricer;
 use crate::traits::PricerExt;
 
 #[test]
@@ -14,6 +15,76 @@ fn sabr_pricer_basic() {
   assert!(c >= 0.0 && p >= 0.0);
   let d = pr.sabr_fx_forward_delta(1.0);
   assert!(d.is_finite());
+}
+
+/// `SabrPricer::sigma`'s `# Panics` section documents that a non-positive
+/// spot (hence non-positive forward) panics; this pins that it actually
+/// does, and with the message the section promises.
+#[test]
+#[should_panic(expected = "forward f must be strictly positive")]
+fn sabr_pricer_sigma_panics_on_nonpositive_spot() {
+  let pr = SabrPricer::new(
+    -3.724,
+    3.8,
+    0.065,
+    Some(0.022),
+    0.11,
+    1.0,
+    0.6,
+    0.5,
+    Some(0.5),
+    None,
+    None,
+  );
+  let _ = pr.sigma();
+}
+
+/// Same guarantee, for a non-positive strike.
+#[test]
+#[should_panic(expected = "strike k must be strictly positive")]
+fn sabr_pricer_sigma_panics_on_nonpositive_strike() {
+  let pr = SabrPricer::new(
+    3.724,
+    -3.8,
+    0.065,
+    Some(0.022),
+    0.11,
+    1.0,
+    0.6,
+    0.5,
+    Some(0.5),
+    None,
+    None,
+  );
+  let _ = pr.sigma();
+}
+
+/// `SabrModel::price_call`'s `# Panics` section documents that a
+/// non-positive forward panics rather than degrading to `0.0`; this pins
+/// that it actually does.
+#[test]
+#[should_panic(expected = "forward f must be strictly positive")]
+fn sabr_model_price_call_panics_on_nonpositive_spot() {
+  let model = SabrModel {
+    alpha: 0.2,
+    beta: 1.0,
+    nu: 0.6,
+    rho: -0.3,
+  };
+  let _ = model.price_call(-100.0, 100.0, 0.02, 0.0, 1.0);
+}
+
+/// Same guarantee, for a non-positive strike.
+#[test]
+#[should_panic(expected = "strike k must be strictly positive")]
+fn sabr_model_price_call_panics_on_nonpositive_strike() {
+  let model = SabrModel {
+    alpha: 0.2,
+    beta: 1.0,
+    nu: 0.6,
+    rho: -0.3,
+  };
+  let _ = model.price_call(100.0, -10.0, 0.02, 0.0, 1.0);
 }
 
 /// Hagan (2002, Eq. A.69a) general-β implied vol — reference values.

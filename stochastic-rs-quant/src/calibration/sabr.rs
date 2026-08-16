@@ -9,6 +9,22 @@
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
+//! ## Non-positive spot or strike
+//!
+//! [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol) requires a
+//! strictly positive forward and strike, and `s`/`k` here feed both
+//! directly. [`SabrCapletCalibrator`](crate::calibration::sabr_caplet::SabrCapletCalibrator)
+//! handles the analogous problem with a displacement shift because a
+//! negative interest-rate forward is a genuine market state (EUR, JPY and
+//! CHF caplet forwards were routinely negative from roughly 2015 to 2022).
+//! That reasoning does not transfer here: `s`/`k` are an equity or FX spot
+//! and strike, so a non-positive value is not a market state, it is invalid
+//! input. [`Calibrator::calibrate`](crate::traits::Calibrator::calibrate)
+//! therefore rejects it outright — `Err` naming the offending quote —
+//! rather than reinterpreting it in shifted coordinates. Do not
+//! "harmonise" this calibrator with the caplet one's shift; the two fixes
+//! address the same symptom for different, non-interchangeable reasons.
+//!
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -95,6 +111,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
     if let Some(p) = initial {
       this.params = Some(p.projected());
     }
+    this.validate_market_data()?;
     Ok(this.solve())
   }
 }
@@ -214,6 +231,31 @@ impl SabrCalibrator {
 }
 
 impl SabrCalibrator {
+  /// Checks that every spot/forward level and strike is finite and
+  /// strictly positive, as the underlying Hagan expansion requires. Called
+  /// from [`Calibrator::calibrate`](crate::traits::Calibrator::calibrate)
+  /// so bad market data surfaces as `Err` naming the offending quote
+  /// instead of panicking inside the Levenberg-Marquardt cost callback —
+  /// see the module documentation for why this calibrator rejects rather
+  /// than shifts. Checked as `!x.is_finite() || x <= 0.0` — matching
+  /// [`RBergomiCalibrator`](crate::calibration::rbergomi::RBergomiCalibrator)'s
+  /// own `is_finite() && x > 0.0` precondition on its scalar inputs — so
+  /// `NaN` is rejected too: a plain `x <= 0.0` silently lets `NaN` through,
+  /// since every comparison against `NaN` is false.
+  fn validate_market_data(&self) -> Result<(), anyhow::Error> {
+    for (i, &s) in self.s.iter().enumerate() {
+      if !s.is_finite() || s <= 0.0 {
+        anyhow::bail!("SabrCalibrator: s[{i}] must be strictly positive (got {s})");
+      }
+    }
+    for (i, &k) in self.k.iter().enumerate() {
+      if !k.is_finite() || k <= 0.0 {
+        anyhow::bail!("SabrCalibrator: k[{i}] must be strictly positive (got {k})");
+      }
+    }
+    Ok(())
+  }
+
   fn solve(&self) -> SabrCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
@@ -496,5 +538,40 @@ mod tests {
     );
 
     calibrator.calibrate(None).unwrap();
+  }
+
+  fn calibrator(s: f64, k: f64) -> SabrCalibrator {
+    SabrCalibrator::new(
+      None,
+      vec![1.0].into(),
+      vec![s].into(),
+      vec![k].into(),
+      0.02,
+      Some(0.01),
+      0.5,
+      OptionType::Call,
+      false,
+    )
+  }
+
+  /// `calibrate` must return `Err`, not panic, for a non-positive or `NaN`
+  /// spot/strike — it used to panic inside the Levenberg-Marquardt cost
+  /// callback because `s`/`k` fed `hagan_implied_vol` unchecked.
+  #[test]
+  fn sabr_calibrate_rejects_nonpositive_or_nan_spot_and_strike() {
+    for bad_s in [0.0, -50.0, f64::NAN] {
+      let err = calibrator(bad_s, 100.0).calibrate(None).unwrap_err();
+      assert!(
+        err.to_string().contains("s[0]"),
+        "s = {bad_s}: unexpected message {err}"
+      );
+    }
+    for bad_k in [0.0, -10.0, f64::NAN] {
+      let err = calibrator(100.0, bad_k).calibrate(None).unwrap_err();
+      assert!(
+        err.to_string().contains("k[0]"),
+        "k = {bad_k}: unexpected message {err}"
+      );
+    }
   }
 }
