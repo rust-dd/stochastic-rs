@@ -1986,3 +1986,44 @@ change for that package's own users and belongs to a deliberate
 Python-side migration, not a side effect of correcting the Rust type name
 — especially since the Rust name could be fixed without touching
 `stochastic-rs-py`'s sources at all.
+
+### stochastic-rs-quant: `alpha_from_atm_vol` validates its parameters and documents root selection
+
+`alpha_from_atm_vol` solves the Hagan (2002) Eq. A.69b cubic for α by
+Newton's method from a fixed initial guess, with no parameter validation
+and no documented root-selection rule. It now asserts `f > 0`, `v_atm >
+0`, and `rho` strictly inside `(-1, 1)` — the same style and message shape
+`hagan_implied_vol` already uses for its own `k`/`f`/`alpha`/`rho` checks.
+
+```rust
+// Before: no validation; a bad input just fed Newton's method.
+let a = alpha_from_atm_vol(0.0, 100.0, 1.0, 1.0, -0.3, 0.5);
+
+// After: panics with "v_atm must be strictly positive (got 0)".
+```
+
+The cubic can have up to three real roots (two when β = 1, since the α³
+term vanishes). Only one is economically meaningful: α is a volatility
+level, so the correct root is the one near the zeroth-order estimate `α₀
+= σ_ATM · F^{1−β}` — the exact root when ρ = 0, ν = 0, and the branch that
+root continuously becomes as ρ, ν move away from zero. Any other real
+root is an artifact of the polynomial's degree with no connection to that
+unperturbed solution: the crate's own first `alpha_from_atm_vol_reference`
+case (β = 1, ρ = −0.3, ν = 0.5, τ = 1, σ_ATM = 0.20) has a second positive
+root at α ≈ 26.9 that round-trips through `hagan_implied_vol` back to
+0.20 exactly as validly as the correct α ≈ 0.198 — Newton, seeded at α₀,
+has always returned the correct one here; this was previously undocumented
+and untested against the alternative. A new
+`alpha_from_atm_vol_close_roots_reference` test pins a harder case (β = 1,
+ρ = −0.95, ν = 1.5, τ = 3, σ_ATM = 0.15) where the two positive roots are
+within 5% of each other (≈0.3657 and ≈0.3838) and confirms the solver
+still returns the smaller, correct one — a round-trip check alone cannot
+tell them apart, since both round-trip. Newton is not *proven* to stay in
+the correct basin for arbitrary parameters — there is no post-hoc check on
+which root was found — so this documents and tests the solver's actual
+behavior, not an unverified guarantee.
+
+No numeric output changes: all 14 existing reference values (9 in
+`hagan_implied_vol_reference`, 5 in `alpha_from_atm_vol_reference`) and
+the separate 5-case independent-mpmath cross-check remain bit-identical —
+the new asserts are no-ops for every value already covered by a test.

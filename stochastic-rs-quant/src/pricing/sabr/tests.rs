@@ -151,6 +151,49 @@ fn alpha_from_atm_vol_reference() {
   }
 }
 
+/// A hazard case for [`alpha_from_atm_vol`]'s root selection: at these
+/// parameters the Hagan Eq. A.69b quadratic (β = 1, so the cubic's α³ term
+/// vanishes) has two positive real roots within 5% of each other —
+/// α ≈ 0.3657 (economically meaningful, near the zeroth-order estimate
+/// `α₀ = σ_ATM · F^{1−β} = 0.15`) and α ≈ 0.3838 (spurious). Found by a
+/// grid search over (β, ρ, ν, τ, F, σ_ATM) for the closest positive-root
+/// pair reachable within this crate's own SABR-smile calibrator bounds
+/// (`ρ ∈ [-0.99, 0.99]`, `ν ∈ [0.01, 10]`, `vol_surface::sabr_smile`).
+///
+/// Both roots round-trip through [`hagan_implied_vol`] back to `v_atm` —
+/// proving a round-trip check alone (as in `alpha_from_atm_vol_reference`
+/// above) cannot distinguish "found *a* root" from "found the *correct*
+/// root" — so this pins the exact value Newton must return, not just that
+/// *some* value satisfies the round trip.
+#[test]
+fn alpha_from_atm_vol_close_roots_reference() {
+  let (v_atm, f, tau, beta, rho, nu) = (0.15, 100.0, 3.0, 1.0, -0.95, 1.5);
+  let correct_root = 3.656720905235972e-1;
+  let spurious_root = 3.838162135699706e-1;
+  assert!(
+    spurious_root / correct_root < 1.05,
+    "fixture drifted: roots are no longer a close-roots hazard"
+  );
+
+  let got = alpha_from_atm_vol(v_atm, f, tau, beta, rho, nu);
+  let err = (got - correct_root).abs() / correct_root;
+  assert!(
+    err < 1e-8,
+    "solver did not return the economically meaningful root: got {got:.15e}, expected {correct_root:.15e}, rel_err={err:.2e}"
+  );
+
+  let vol_at_correct = hagan_implied_vol(f, f, tau, correct_root, beta, nu, rho);
+  assert!(
+    (vol_at_correct - v_atm).abs() < 1e-10,
+    "correct root should round-trip: got {vol_at_correct:.15e}"
+  );
+  let vol_at_spurious = hagan_implied_vol(f, f, tau, spurious_root, beta, nu, rho);
+  assert!(
+    (vol_at_spurious - v_atm).abs() < 1e-10,
+    "spurious root should *also* round-trip, which is exactly the hazard: got {vol_at_spurious:.15e}"
+  );
+}
+
 /// Independent cross-check of [`hagan_implied_vol`] against a 40-decimal-digit
 /// reimplementation of Hagan Eq. A.69a, rather than against values this crate
 /// produced itself.
@@ -235,4 +278,22 @@ fn rejects_a_nonpositive_strike() {
 #[should_panic(expected = "alpha must be strictly positive")]
 fn rejects_a_nonpositive_alpha() {
   let _ = hagan_implied_vol(110.0, 100.0, 1.0, 0.0, 1.0, 0.5, -0.3);
+}
+
+#[test]
+#[should_panic(expected = "forward f must be strictly positive")]
+fn alpha_from_atm_vol_rejects_a_nonpositive_forward() {
+  let _ = alpha_from_atm_vol(0.2, 0.0, 1.0, 1.0, -0.3, 0.5);
+}
+
+#[test]
+#[should_panic(expected = "v_atm must be strictly positive")]
+fn alpha_from_atm_vol_rejects_a_nonpositive_v_atm() {
+  let _ = alpha_from_atm_vol(0.0, 100.0, 1.0, 1.0, -0.3, 0.5);
+}
+
+#[test]
+#[should_panic(expected = "rho must lie strictly inside (-1, 1)")]
+fn alpha_from_atm_vol_rejects_rho_at_one() {
+  let _ = alpha_from_atm_vol(0.2, 100.0, 1.0, 1.0, 1.0, 0.5);
 }
