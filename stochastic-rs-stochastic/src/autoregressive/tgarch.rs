@@ -1,4 +1,4 @@
-//! # Tgarch
+//! # GjrGarch
 //!
 //! $$
 //! \sigma_t^2=\omega+\sum_{i=1}^p(\alpha_i+\gamma_i\mathbf 1_{\{X_{t-i}<0\}})X_{t-i}^2
@@ -6,11 +6,15 @@
 //! $$
 //!
 //! This is the variance-level threshold recursion of Glosten,
-//! Jagannathan, Runkle (1993) — often called "GJR-GARCH" — not
+//! Jagannathan, Runkle (1993) — commonly called "GJR-GARCH" — not
 //! Zakoian's (1994) original TGARCH, which thresholds the conditional
 //! *standard deviation* `sigma_t` rather than `sigma_t^2`. The two
-//! specifications are not algebraically equivalent; this file's own doc
-//! already flags the type as "T-Garch (GJR-Garch)".
+//! specifications are not algebraically equivalent. This type was
+//! previously named `Tgarch`, a name that described Zakoian's model
+//! rather than this one; the old name is kept as a deprecated alias (see
+//! [`Tgarch`]), but the type itself has always implemented the GJR
+//! recursion above. Zakoian's own thresholded-standard-deviation
+//! recursion is not implemented under either name.
 //!
 //! References:
 //! - Glosten L. R., Jagannathan R., Runkle D. E. (1993) — *On the
@@ -31,7 +35,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements a general T-Garch (GJR-Garch)(p,q) model:
+/// Implements the Glosten-Jagannathan-Runkle (1993) GJR-GARCH(p,q) model:
 ///
 /// \[
 ///   \sigma_t^2
@@ -55,7 +59,7 @@ use crate::traits::ProcessExt;
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
 #[derive(Debug, Clone)]
-pub struct Tgarch<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Arch coefficients α_i (positive-squared-residual loading), length p.
@@ -71,7 +75,7 @@ pub struct Tgarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> Tgarch<T, S> {
+impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
   pub fn new(
     omega: T,
     alpha: Array1<T>,
@@ -80,10 +84,10 @@ impl<T: FloatExt, S: SeedExt> Tgarch<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(omega > T::zero(), "Tgarch requires omega > 0");
+    assert!(omega > T::zero(), "GjrGarch requires omega > 0");
     assert!(
       alpha.len() == gamma.len(),
-      "Tgarch requires alpha.len() == gamma.len()"
+      "GjrGarch requires alpha.len() == gamma.len()"
     );
     Self {
       omega,
@@ -96,15 +100,15 @@ impl<T: FloatExt, S: SeedExt> Tgarch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Tgarch<T, S> {
+impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GjrGarch<T, S> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = TgarchSampler<T>
+    = GjrGarchSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> TgarchSampler<T> {
-    TgarchSampler {
+  fn sampler(&self) -> GjrGarchSampler<T> {
+    GjrGarchSampler {
       n: self.n,
       omega: self.omega,
       alpha: self.alpha.clone(),
@@ -115,11 +119,11 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Tgarch<T, S> {
   }
 }
 
-/// Reusable [`Tgarch`] sampling state: owns the standard-normal innovation
+/// Reusable [`GjrGarch`] sampling state: owns the standard-normal innovation
 /// source and the variance coefficients so a Monte-Carlo loop pays the
 /// `SimdNormal` setup once.
 #[doc(hidden)]
-pub struct TgarchSampler<T: FloatExt> {
+pub struct GjrGarchSampler<T: FloatExt> {
   n: usize,
   omega: T,
   alpha: Array1<T>,
@@ -128,7 +132,7 @@ pub struct TgarchSampler<T: FloatExt> {
   normal: SimdNormal<T>,
 }
 
-impl<T: FloatExt> TgarchSampler<T> {
+impl<T: FloatExt> GjrGarchSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let p = self.alpha.len();
@@ -152,7 +156,7 @@ impl<T: FloatExt> TgarchSampler<T> {
     let denom = T::one() - sum_alpha - sum_gamma_half - sum_beta;
     assert!(
       denom > T::zero(),
-      "Tgarch requires sum(alpha) + 0.5*sum(gamma) + sum(beta) < 1 for finite unconditional variance"
+      "GjrGarch requires sum(alpha) + 0.5*sum(gamma) + sum(beta) < 1 for finite unconditional variance"
     );
 
     for t in 0..n {
@@ -189,7 +193,7 @@ impl<T: FloatExt> TgarchSampler<T> {
       }
       assert!(
         sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "Tgarch produced non-positive or non-finite conditional variance at t={}",
+        "GjrGarch produced non-positive or non-finite conditional variance at t={}",
         t
       );
       // X_t = sigma_t * z_t
@@ -198,13 +202,13 @@ impl<T: FloatExt> TgarchSampler<T> {
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for TgarchSampler<T> {
+impl<T: FloatExt> PathSampler<T> for GjrGarchSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("Tgarch output must be contiguous");
+      .expect("GjrGarch output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -214,7 +218,19 @@ impl<T: FloatExt> PathSampler<T> for TgarchSampler<T> {
   }
 }
 
-py_process_1d!(PyTgarch, Tgarch,
+/// Deprecated alias for [`GjrGarch`]. The name `Tgarch` suggested Zakoian's
+/// (1994) TGARCH, but this type has always implemented the
+/// variance-threshold recursion of Glosten, Jagannathan, Runkle (1993)
+/// instead — a different, non-algebraically-equivalent model (see the
+/// module docs above). Zakoian's own model is not implemented in this
+/// crate.
+#[deprecated(
+  since = "2.7.0",
+  note = "renamed to `GjrGarch`: this type implements Glosten-Jagannathan-Runkle (1993), not Zakoian's (1994) TGARCH"
+)]
+pub use GjrGarch as Tgarch;
+
+py_process_1d!(PyTgarch, GjrGarch,
   sig: (omega, alpha, gamma_, beta, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize)
 );

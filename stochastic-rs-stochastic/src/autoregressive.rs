@@ -25,7 +25,7 @@ mod tests {
   use super::egarch::Egarch;
   use super::garch::Garch;
   use super::sarima::Sarima;
-  use super::tgarch::Tgarch;
+  use super::tgarch::GjrGarch;
   use crate::traits::ProcessExt;
 
   #[test]
@@ -58,9 +58,9 @@ mod tests {
   }
 
   #[test]
-  fn tgarch_rejects_mismatched_alpha_gamma_lengths() {
+  fn gjr_garch_rejects_mismatched_alpha_gamma_lengths() {
     let result = std::panic::catch_unwind(|| {
-      let _ = Tgarch::<f64>::new(
+      let _ = GjrGarch::<f64>::new(
         0.05,
         Array1::from_vec(vec![0.1, 0.05]),
         Array1::from_vec(vec![0.1]),

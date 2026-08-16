@@ -11,7 +11,7 @@ use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
 use stochastic_rs_stochastic::autoregressive::ma::MAq;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
-use stochastic_rs_stochastic::autoregressive::tgarch::Tgarch;
+use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
 
 use crate::common::N;
 use crate::common::guard;
@@ -86,7 +86,7 @@ guard!(sarima, "Sarima", |s| Sarima::new(
   s
 ));
 
-guard!(tgarch, "Tgarch", |s| Tgarch::new(
+guard!(gjr_garch, "GjrGarch", |s| GjrGarch::new(
   0.05,
   Array1::from(vec![0.1, 0.05]),
   Array1::from(vec![0.02, 0.01]),

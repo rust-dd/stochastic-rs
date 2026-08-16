@@ -1946,3 +1946,43 @@ recorded in this file's own `Gumbel::partial_derivative` entry above).
 `Amh` needs no such branch at all: its denominator `1-θ(1-u)(1-v)` never
 vanishes at `θ = 0`, so `pdf`/`cdf` were already correct there — see the
 `Amh::partial_derivative` entry above for `Amh`'s actual (unrelated) bug.
+
+### stochastic-rs-stochastic: `Tgarch` renamed to `GjrGarch`
+
+`Tgarch`'s recursion has always thresholded the conditional **variance**:
+`σ_t² = ω + Σ(αᵢ + γᵢ·1{X_{t-i}<0})X²_{t-i} + Σβⱼσ²_{t-j}` — verified
+directly: the sampler accumulates squared shocks and past variances into a
+`sigma2` buffer, square-rooting only once, at the very end, to produce
+each step's innovation. That is Glosten, Jagannathan & Runkle (1993) —
+commonly called "GJR-GARCH" — not Zakoian's (1994) TGARCH, which
+thresholds the conditional *standard deviation* instead; the two
+specifications are not algebraically equivalent. The type is renamed to
+`GjrGarch` to name the model it actually implements. `Tgarch` remains as a
+deprecated `pub use` alias, so existing call sites keep compiling with a
+warning rather than breaking; `TgarchSampler` (the `#[doc(hidden)]`
+`ProcessExt::Sampler` associated type, never named outside this module) is
+renamed to `GjrGarchSampler` outright, with no alias, since nothing
+outside `tgarch.rs` referenced it. Zakoian's own thresholded-standard-
+deviation TGARCH is not implemented in this crate under either name.
+
+```rust
+// Before: compiles, but the name claims Zakoian's TGARCH.
+use stochastic_rs_stochastic::autoregressive::tgarch::Tgarch;
+let m = Tgarch::new(omega, alpha, gamma, beta, n, seed);
+
+// After: same type, correctly named; `Tgarch` still compiles (deprecated).
+use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
+let m = GjrGarch::new(omega, alpha, gamma, beta, n, seed);
+```
+
+The Python class name is unchanged: `PyTgarch` (built internally from the
+renamed `GjrGarch`) is still what `stochastic-rs-py` registers, because
+pyo3's default class name is the literal Rust identifier a `#[pyclass]`
+struct is declared with, and that identifier — the `py_process_1d!`
+macro's `$py_name` argument, in `tgarch.rs` — was deliberately left as
+`PyTgarch`. `stochastic-rs-py` is a separately published, separately
+versioned wheel; renaming its Python-visible class name is a breaking
+change for that package's own users and belongs to a deliberate
+Python-side migration, not a side effect of correcting the Rust type name
+— especially since the Rust name could be fixed without touching
+`stochastic-rs-py`'s sources at all.

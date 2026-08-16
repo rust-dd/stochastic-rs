@@ -37,7 +37,8 @@ use crate::traits::ProcessExt;
 /// - `m`:     Optional batch size (unused by default).
 ///
 /// # Notes
-/// - This is essentially a T-Garch-like structure but with different naming (`delta`).
+/// - This is essentially a [`GjrGarch`](crate::autoregressive::tgarch::GjrGarch)-like
+///   structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
 #[derive(Debug, Clone)]
 pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
