@@ -103,13 +103,86 @@ assert_eq!(v, 0.0);
 // After: panics with "strike k must be strictly positive (got 0)".
 ```
 
-No in-tree caller is affected: both calibrators clamp `rho` to `±0.99`, and the
-smile plot floors its strike grid at `1e-6`. If you call it directly with a
-strike grid that can reach zero, floor it the same way.
+`SabrSmileCalibrator` (`vol_surface::sabr_smile`) is unaffected: it bounds its
+strike search to `[s * 0.5, s * 2.0]` and clamps `rho` to `±0.99`, so it never
+reaches this assertion, and its smile plot separately floors its own strike
+grid at `1e-6`. `SabrCapletCalibrator` (`calibration::sabr_caplet`) was **not**
+unaffected — it passed caller-supplied `forward`/`strikes` straight through
+with no positivity guard at all, so a negative-rate caplet smile (EUR, JPY and
+CHF forwards were routinely negative from roughly 2015 to 2022) panicked
+inside its Nelder-Mead cost callback instead of returning an error. See the
+next entry for the fix. If you call `hagan_implied_vol` directly with a strike
+or forward that can reach zero or below, shift or floor it yourself first.
 
 The approximation itself is unchanged, and is now covered by a test comparing
 against an independent 40-decimal-digit reimplementation of Hagan Eq. A.69a
 rather than against values this crate produced itself.
+
+### stochastic-rs-quant: `SabrCapletCalibrator` gains a `shift` for negative and near-zero rates
+
+`SabrCapletCalibrator::calibrate` panicked instead of returning `Err` whenever
+the forward or any strike was zero or negative, because it passed them
+straight into `hagan_implied_vol` (see the entry above), which now asserts
+both are strictly positive. That is not a contrived input: EUR, JPY and CHF
+caplet forwards were routinely negative from roughly 2015 to 2022, and a
+caplet calibrator that panics on negative rates does not work for the
+instrument family it exists to serve.
+
+`SabrCapletCalibrator` gained a `shift: f64` field implementing the same
+displaced-diffusion convention `ShiftedSabrVolatility`
+(`instruments::option`) already uses: `forward` and every strike are shifted
+by `shift` before reaching the Hagan expansion, so a negative forward becomes
+positive in shifted coordinates. `shift` defaults to `0.0` via `new()`,
+reproducing the previous behavior byte-for-byte, and is set with the new
+`with_shift` builder — market convention for EUR caplets has been 2%-3%,
+i.e. `0.02`-`0.03`. `calibrate` now validates the shift before running the
+optimizer and returns `Err` naming the offending forward or strike if the
+shift still leaves it non-positive, instead of panicking inside the
+optimizer's cost callback.
+
+```rust
+// Before: panics inside the Nelder-Mead cost callback on negative-rate data.
+let cal = SabrCapletCalibrator::new(-0.0025, 1.5, 0.5, strikes, market_vols);
+cal.calibrate(None).unwrap(); // panics: "strike k must be strictly positive ..."
+
+// After: shift the coordinates so the Hagan expansion sees a positive
+// forward/strikes. calibrate() returns Err (never panics) if the shift is
+// still insufficient, naming the offending value.
+let cal = SabrCapletCalibrator::new(-0.0025, 1.5, 0.5, strikes, market_vols)
+  .with_shift(0.02);
+let res = cal.calibrate(None)?;
+```
+
+`SabrCapletCalibrationResult` and `SabrCapletParams` both gained a matching
+`shift: f64` field, so the calibrated `alpha`/`nu`/`rho` — expressed in
+*shifted* coordinates whenever `shift != 0.0` — cannot be read back without
+also seeing the shift they were fit under. A new
+`SabrCapletCalibrationResult::to_shifted_volatility()` converts directly to a
+`ShiftedSabrVolatility` that applies the shift automatically on every
+`implied_volatility` call; the existing `to_model()` (which returns the
+unshifted `SabrModel`) still compiles but requires the caller to shift `s`/`k`
+themselves before pricing once `shift != 0.0` — its doc comment now says so
+explicitly, and passing the original unshifted values back in reproduces the
+same panic this fix addresses elsewhere.
+
+Any direct struct-literal construction of `SabrCapletCalibrator`,
+`SabrCapletCalibrationResult` or `SabrCapletParams` — bypassing `new()` /
+`solve()` — needs the new `shift` field added (`shift: 0.0` keeps prior
+behavior):
+
+```rust
+// Before
+let cal = SabrCapletCalibrator {
+  forward, expiry, beta, strikes, market_vols,
+  weights: None, initial_guess: None, max_iters: 600, sd_tolerance: 1e-10,
+};
+
+// After
+let cal = SabrCapletCalibrator {
+  forward, shift: 0.0, expiry, beta, strikes, market_vols,
+  weights: None, initial_guess: None, max_iters: 600, sd_tolerance: 1e-10,
+};
+```
 
 ### stochastic-rs-stochastic: a kernel-generic Volterra SDE engine
 

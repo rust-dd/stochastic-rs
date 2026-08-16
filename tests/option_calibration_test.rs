@@ -174,6 +174,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
 
   let cal = SabrCapletCalibrator {
     forward,
+    shift: 0.0,
     expiry,
     beta: target_beta,
     strikes: strikes.clone(),
@@ -188,4 +189,128 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
   assert!((res.alpha - target_alpha).abs() < 1e-3);
   assert!((res.nu - target_nu).abs() < 1e-2);
   assert!((res.rho - target_rho).abs() < 1e-2);
+  assert_eq!(res.shift, 0.0);
+}
+
+/// Reviewer repro: negative forward and negative strikes, no shift
+/// configured (the default). `hagan_implied_vol` now asserts `k > 0` /
+/// `f > 0`, so this used to panic inside the Nelder-Mead cost callback
+/// instead of surfacing through `Calibrator::calibrate`'s `Result`.
+#[test]
+fn sabr_caplet_calibration_rejects_negative_forward_without_shift() {
+  use stochastic_rs::quant::calibration::SabrCapletCalibrator;
+  use stochastic_rs::traits::Calibrator;
+
+  let cal = SabrCapletCalibrator::new(
+    -0.002,
+    0.5,
+    1.0,
+    vec![-0.005, -0.002, 0.0, 0.005],
+    vec![0.5, 0.5, 0.5, 0.5],
+  );
+  let err = cal.calibrate(None).unwrap_err();
+  let msg = err.to_string();
+  assert!(
+    msg.contains("-0.002"),
+    "error should name the offending forward: {msg}"
+  );
+}
+
+/// A shift that fixes the forward but is still too small for the lowest
+/// strike must be reported by value, not silently truncated or panicked
+/// through.
+#[test]
+fn sabr_caplet_calibration_rejects_insufficient_shift() {
+  use stochastic_rs::quant::calibration::SabrCapletCalibrator;
+  use stochastic_rs::traits::Calibrator;
+
+  // shift=0.003 makes the forward positive (-0.002 + 0.003 = 0.001) but
+  // not the lowest strike (-0.005 + 0.003 = -0.002 <= 0).
+  let cal = SabrCapletCalibrator::new(
+    -0.002,
+    0.5,
+    1.0,
+    vec![-0.005, -0.002, 0.0, 0.005],
+    vec![0.5, 0.5, 0.5, 0.5],
+  )
+  .with_shift(0.003);
+  let err = cal.calibrate(None).unwrap_err();
+  let msg = err.to_string();
+  assert!(
+    msg.contains("-0.005"),
+    "error should name the offending strike: {msg}"
+  );
+}
+
+/// Round-trip recovery on a negative forward with strikes spanning
+/// negative, zero and positive values — the realistic EUR/JPY/CHF caplet
+/// regime from roughly 2015 to 2022. `shift = 0.02` is the market
+/// convention mentioned for EUR caplets; every shifted strike/forward is
+/// then comfortably positive (0.0125 to 0.03).
+#[test]
+fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
+  use stochastic_rs::quant::calibration::SabrCapletCalibrator;
+  use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
+  use stochastic_rs::traits::Calibrator;
+
+  let shift = 0.02_f64;
+  let forward = -0.0025_f64;
+  let expiry = 1.5_f64;
+  let target_beta = 0.5;
+  let target_nu = 0.4;
+  let target_rho = -0.3;
+
+  let strikes: Vec<f64> = vec![-0.0075, -0.005, -0.0025, 0.0, 0.0025, 0.005, 0.0075, 0.01];
+  let shifted_forward = forward + shift;
+  // sigma_ATM ~= 38% on the shifted forward, chosen so the shifted-coordinate
+  // smile stays in Hagan's well-behaved regime (log-moneyness < 1 in
+  // magnitude across the whole strike grid).
+  let target_alpha = 0.38 * shifted_forward.powf(1.0 - target_beta);
+
+  let market_vols: Vec<f64> = strikes
+    .iter()
+    .map(|&k| {
+      hagan_implied_vol(
+        k + shift,
+        shifted_forward,
+        expiry,
+        target_alpha,
+        target_beta,
+        target_nu,
+        target_rho,
+      )
+    })
+    .collect();
+
+  let cal = SabrCapletCalibrator {
+    forward,
+    shift,
+    expiry,
+    beta: target_beta,
+    strikes: strikes.clone(),
+    market_vols: market_vols.clone(),
+    weights: None,
+    initial_guess: Some((0.03, 0.3, -0.1)),
+    max_iters: 800,
+    sd_tolerance: 1e-12,
+  };
+  let res = cal.calibrate(None).unwrap();
+
+  assert_eq!(res.shift, shift);
+  assert!(res.rmse < 1e-6, "RMSE too large: {}", res.rmse);
+  assert!(
+    (res.alpha - target_alpha).abs() < 1e-3,
+    "alpha recovery: got {}, target {target_alpha}",
+    res.alpha
+  );
+  assert!(
+    (res.nu - target_nu).abs() < 1e-2,
+    "nu recovery: got {}, target {target_nu}",
+    res.nu
+  );
+  assert!(
+    (res.rho - target_rho).abs() < 1e-2,
+    "rho recovery: got {}, target {target_rho}",
+    res.rho
+  );
 }
