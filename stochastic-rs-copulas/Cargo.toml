@@ -46,6 +46,5 @@ argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] 
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 owens-t = { workspace = true }
-plotly = { workspace = true, features = ["plotly_ndarray"] }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
