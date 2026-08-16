@@ -157,7 +157,6 @@ numpy = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 ordered-float = { workspace = true }
 owens-t = { workspace = true }
-plotly = { workspace = true, features = ["plotly_ndarray"] }
 polars = { workspace = true, features = ["lazy"], optional = true }
 quadrature = { workspace = true }
 rand = { workspace = true }
@@ -177,6 +176,7 @@ parking_lot = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["html_reports"] }
+plotly = { workspace = true, features = ["plotly_ndarray"] }
 rand = { workspace = true }
 rand_distr = { workspace = true }
 romu = { workspace = true }
@@ -386,6 +386,11 @@ python = [
     "stochastic-rs-quant/python",
 ]
 mimalloc = ["dep:mimalloc"]
+# Plotly-backed HTML plotting: `stochastic-rs-quant`'s SABR-smile plotter and,
+# when `ai` is also enabled, `stochastic-rs-ai`'s fit-plot helper. Uses a weak
+# dependency feature (`stochastic-rs-ai?/viz`) so enabling `viz` alone does
+# not pull in the (heavy, optional) `ai` sub-crate on its own.
+viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
 yahoo = [
     "dep:time",
     "dep:yahoo_finance_api",
@@ -410,5 +415,5 @@ lto = true
 # Avoid `all-features = true`: it pulls in native GPU SDKs (cubecl-cuda,
 # cudarc, metal), system OpenBLAS, pyo3 link, and yahoo's tokio-test
 # dev-only feature, none of which build cleanly on docs.rs.
-features = ["openblas", "ai", "yahoo"]
+features = ["openblas", "ai", "yahoo", "viz"]
 rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

@@ -104,12 +104,16 @@ impl RBergomiNn {
 #[cfg(test)]
 mod tests {
   use std::fs;
+  #[cfg(feature = "viz")]
   use std::path::Path;
 
   use super::*;
+  #[cfg(feature = "viz")]
   use crate::volatility::common::load_trainset_gzip_npy;
+  #[cfg(feature = "viz")]
   use crate::volatility::common::rmse_1d;
   use crate::volatility::common::synthetic_surface_dataset;
+  #[cfg(feature = "viz")]
   use crate::volatility::common::write_surface_fit_plot_html;
 
   #[test]
@@ -159,6 +163,7 @@ mod tests {
     Ok(())
   }
 
+  #[cfg(feature = "viz")]
   #[test]
   fn real_trainset_fit_plot() -> Result<()> {
     let trainset_path = Path::new("src/ai/volatility/rBergomiTrainSet.txt.gz");

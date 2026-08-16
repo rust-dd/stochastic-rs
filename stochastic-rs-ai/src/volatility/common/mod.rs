@@ -2,6 +2,7 @@ mod dataset;
 mod metadata;
 mod model;
 mod network;
+#[cfg(feature = "viz")]
 mod plot;
 mod scaler;
 mod spec;
@@ -11,6 +12,7 @@ pub use dataset::rmse_1d;
 #[cfg(test)]
 pub(crate) use dataset::synthetic_surface_dataset;
 pub use model::StochVolNn;
+#[cfg(feature = "viz")]
 pub use plot::write_surface_fit_plot_html;
 pub use spec::EpochMetrics;
 pub use spec::StochVolModelSpec;

@@ -40,6 +40,10 @@ python = [
     "stochastic-rs-stats/python",
     "stochastic-rs-copulas/python",
 ]
+# Gates the SABR-smile HTML plotter (`SabrSmileCalibrator::plot`,
+# `calibrate_and_plot_many`'s chart output). Plotly is optional so a caller
+# that only calibrates doesn't compile a plotting stack.
+viz = ["dep:plotly"]
 
 [dependencies]
 stochastic-rs-core = { workspace = true }
@@ -73,7 +77,7 @@ chrono = { workspace = true }
 parking_lot = { workspace = true }
 anyhow = { workspace = true }
 ordered-float = { workspace = true }
-plotly = { workspace = true, features = ["plotly_ndarray"] }
+plotly = { workspace = true, features = ["plotly_ndarray"], optional = true }
 flate2 = { workspace = true }
 owens-t = { workspace = true }
 wide = { workspace = true }

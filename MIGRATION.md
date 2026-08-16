@@ -5,6 +5,54 @@ under `## Unreleased` describe changes on `main` that have not shipped yet.
 
 ## Unreleased
 
+### stochastic-rs-ai / stochastic-rs-quant: HTML plotting is now opt-in behind a `viz` feature
+
+`plotly` was a mandatory, unconditional dependency of `stochastic-rs-ai`
+and `stochastic-rs-quant` — every caller compiled `plotly` itself plus its
+dependency tree (serde, the `rinja` HTML templating engine, `darling`'s
+derive-macro plumbing, and more) even for code that never draws a chart.
+It was also declared, unused, in `stochastic-rs-stochastic` and
+`stochastic-rs-copulas` (dead weight left over from an earlier refactor),
+and unconditionally in the umbrella's own `[dependencies]` even though
+only `examples/`/`benches/` reference it there. All four are fixed: the
+two dead declarations are gone, `stochastic-rs-ai`'s
+`volatility::common::write_surface_fit_plot_html` and
+`stochastic-rs-quant`'s `SabrSmileCalibrator::plot` /
+`calibrate_and_plot_many`'s chart output now live behind a `viz` feature
+on each crate, and the umbrella moved `plotly` to `[dev-dependencies]`
+(it only ever needed it for its own `examples/`/`benches/`) while
+exposing its own `viz` feature that threads through to both sub-crates.
+
+```toml
+# Before: plotly always compiled, no feature needed.
+stochastic-rs-ai = "2.6"
+stochastic-rs-quant = "2.6"
+
+# After: opt in explicitly for plotting.
+stochastic-rs = { version = "2.7", features = ["viz"] }
+# or at the sub-crate level:
+stochastic-rs-ai = { version = "2.7", features = ["viz"] }
+stochastic-rs-quant = { version = "2.7", features = ["viz"] }
+```
+
+The umbrella's `viz` forwards to `stochastic-rs-quant/viz` unconditionally
+(`quant` is never optional there) but reaches `stochastic-rs-ai` through
+the weak-dependency syntax `stochastic-rs-ai?/viz`, so `features =
+["viz"]` alone does not drag in the (heavy, already-optional) `ai`
+sub-crate — combine `features = ["ai", "viz"]` to also get the AI
+surrogate's fit-plot helper.
+
+`SabrSmileCalibrator::calibrate_and_plot_many` keeps its existing
+signature and still returns calibration results without `viz`; only the
+HTML-writing portion is gated, so callers that only wanted the
+`Vec<SabrSmileResult>` are unaffected. `SabrSmileCalibrator::plot` and
+`write_surface_fit_plot_html` are compile-time absent without `viz`.
+
+`stochastic-rs-quant` previously shipped an unrelated `viz` feature
+(`Greeks: Plottable`, removed below with `stochastic-rs-viz`); the name
+is reused here for this SABR-smile plotter — same "opt into plotting"
+meaning, a different and smaller surface.
+
 ### stochastic-rs-viz: crate removed
 
 `stochastic-rs-viz` — the `GridPlotter` / `Plottable` / `plot_process` /

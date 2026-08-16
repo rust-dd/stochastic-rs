@@ -1,8 +1,14 @@
+#[cfg(feature = "viz")]
 use plotly::Plot;
+#[cfg(feature = "viz")]
 use plotly::Scatter;
+#[cfg(feature = "viz")]
 use plotly::common::Mode;
+#[cfg(feature = "viz")]
 use plotly::common::Title;
+#[cfg(feature = "viz")]
 use plotly::layout::Axis;
+#[cfg(feature = "viz")]
 use plotly::layout::Layout;
 
 use super::objective::NVARS;
@@ -26,6 +32,7 @@ use crate::pricing::sabr::hagan_implied_vol;
 /// entry points, so `show()` here opened a real browser tab on every
 /// `cargo test -p stochastic-rs-quant` run. Writing the file leaves the caller
 /// to open it deliberately, matching the convention the `examples/` plots use.
+#[cfg(feature = "viz")]
 fn write_plot(plot: &Plot, name: &str) {
   let path = std::path::Path::new("target").join(name);
   if let Some(dir) = path.parent() {
@@ -108,6 +115,9 @@ impl SabrSmileCalibrator {
   }
 
   /// Build and write an HTML plot of the Sabr smile using calibrated params and sensible K range.
+  ///
+  /// Requires the `viz` feature.
+  #[cfg(feature = "viz")]
   pub fn plot(&self, res: &SabrSmileResult) {
     let tau = self.quotes.tau;
     let (k_min, k_max) = (
@@ -149,6 +159,9 @@ impl SabrSmileCalibrator {
   }
 
   /// Returns the vector of calibration results in the same order as `cases`.
+  ///
+  /// With the `viz` feature enabled, also writes an HTML plot of all smiles
+  /// to `target/sabr_smile_many.html`.
   pub fn calibrate_and_plot_many(
     s: f64,
     r_d: f64,
@@ -162,93 +175,96 @@ impl SabrSmileCalibrator {
       results.push(calib.calibrate());
     }
 
-    let colors = [
-      "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
-    ];
-
-    let mut plot = Plot::new();
-
-    // Each tenor gets its own x-range based on its calibrated strikes — the
-    // Hagan approximation can blow up at strikes far outside the calibration
-    // region (especially short tenors with extreme ρ).
-    for (i, (label, q)) in cases.iter().enumerate() {
-      let res = &results[i];
-      let fwd = forward_fx(s, q.tau, r_d, r_f);
-
-      let lo = res.k_rr_put.min(res.k_bf_put).min(res.k_atm);
-      let hi = res.k_rr_call.max(res.k_bf_call).max(res.k_atm);
-      let pad = (hi - lo) * 0.25;
-      let k_lo = (lo - pad).max(1e-6);
-      let k_hi = hi + pad;
-
-      let n = 200usize;
-      let xs: Vec<f64> = (0..n)
-        .map(|j| k_lo + (k_hi - k_lo) * (j as f64) / ((n - 1) as f64))
-        .collect();
-
-      // Cap vols at 3× ATM to filter Hagan blow-ups.
-      let vol_cap = q.sigma_atm * 3.0;
-      let ys: Vec<f64> = xs
-        .iter()
-        .map(|&k| {
-          let v = hagan_implied_vol(
-            k,
-            fwd,
-            q.tau,
-            res.params.alpha,
-            res.params.beta,
-            res.params.nu,
-            res.params.rho,
-          );
-          if v > 0.0 && v < vol_cap { v } else { f64::NAN }
-        })
-        .collect();
-
-      let color = colors[i % colors.len()];
-      let trace = Scatter::new(xs, ys)
-        .mode(Mode::Lines)
-        .name(*label)
-        .line(plotly::common::Line::new().color(color));
-      plot.add_trace(trace);
-
-      let strikes = vec![
-        res.k_atm,
-        res.k_rr_call,
-        res.k_rr_put,
-        res.k_bf_call,
-        res.k_bf_put,
+    #[cfg(feature = "viz")]
+    {
+      let colors = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
       ];
-      let marker_vols: Vec<f64> = strikes
-        .iter()
-        .map(|&k| {
-          hagan_implied_vol(
-            k,
-            fwd,
-            q.tau,
-            res.params.alpha,
-            res.params.beta,
-            res.params.nu,
-            res.params.rho,
-          )
-        })
-        .collect();
-      let marker = Scatter::new(strikes, marker_vols)
-        .mode(Mode::Markers)
-        .marker(plotly::common::Marker::new().color(color).size(8))
-        .show_legend(false);
-      plot.add_trace(marker);
-    }
 
-    plot.set_layout(
-      Layout::new()
-        .title(Title::from(&format!(
-          "Sabr Smile (β={}) — ATM/RR/BF calibrated strikes",
-          beta
-        )))
-        .x_axis(Axis::new().title("Strike"))
-        .y_axis(Axis::new().title("Implied vol")),
-    );
-    write_plot(&plot, "sabr_smile_many.html");
+      let mut plot = Plot::new();
+
+      // Each tenor gets its own x-range based on its calibrated strikes — the
+      // Hagan approximation can blow up at strikes far outside the calibration
+      // region (especially short tenors with extreme ρ).
+      for (i, (label, q)) in cases.iter().enumerate() {
+        let res = &results[i];
+        let fwd = forward_fx(s, q.tau, r_d, r_f);
+
+        let lo = res.k_rr_put.min(res.k_bf_put).min(res.k_atm);
+        let hi = res.k_rr_call.max(res.k_bf_call).max(res.k_atm);
+        let pad = (hi - lo) * 0.25;
+        let k_lo = (lo - pad).max(1e-6);
+        let k_hi = hi + pad;
+
+        let n = 200usize;
+        let xs: Vec<f64> = (0..n)
+          .map(|j| k_lo + (k_hi - k_lo) * (j as f64) / ((n - 1) as f64))
+          .collect();
+
+        // Cap vols at 3× ATM to filter Hagan blow-ups.
+        let vol_cap = q.sigma_atm * 3.0;
+        let ys: Vec<f64> = xs
+          .iter()
+          .map(|&k| {
+            let v = hagan_implied_vol(
+              k,
+              fwd,
+              q.tau,
+              res.params.alpha,
+              res.params.beta,
+              res.params.nu,
+              res.params.rho,
+            );
+            if v > 0.0 && v < vol_cap { v } else { f64::NAN }
+          })
+          .collect();
+
+        let color = colors[i % colors.len()];
+        let trace = Scatter::new(xs, ys)
+          .mode(Mode::Lines)
+          .name(*label)
+          .line(plotly::common::Line::new().color(color));
+        plot.add_trace(trace);
+
+        let strikes = vec![
+          res.k_atm,
+          res.k_rr_call,
+          res.k_rr_put,
+          res.k_bf_call,
+          res.k_bf_put,
+        ];
+        let marker_vols: Vec<f64> = strikes
+          .iter()
+          .map(|&k| {
+            hagan_implied_vol(
+              k,
+              fwd,
+              q.tau,
+              res.params.alpha,
+              res.params.beta,
+              res.params.nu,
+              res.params.rho,
+            )
+          })
+          .collect();
+        let marker = Scatter::new(strikes, marker_vols)
+          .mode(Mode::Markers)
+          .marker(plotly::common::Marker::new().color(color).size(8))
+          .show_legend(false);
+        plot.add_trace(marker);
+      }
+
+      plot.set_layout(
+        Layout::new()
+          .title(Title::from(&format!(
+            "Sabr Smile (β={}) — ATM/RR/BF calibrated strikes",
+            beta
+          )))
+          .x_axis(Axis::new().title("Strike"))
+          .y_axis(Axis::new().title("Implied vol")),
+      );
+      write_plot(&plot, "sabr_smile_many.html");
+    }
 
     results
   }

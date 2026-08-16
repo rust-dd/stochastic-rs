@@ -14,6 +14,8 @@ use plotly::common::Title;
 use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
 
+/// Writes a grid of actual-vs-predicted implied-vol smiles (one panel per
+/// maturity) to an HTML file. Requires the `viz` feature.
 pub fn write_surface_fit_plot_html<P: AsRef<Path>>(
   output_html: P,
   title: &str,
