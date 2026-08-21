@@ -20,7 +20,7 @@
 //! review caught broken: `sampler()` reads `self.lambda`, not
 //! `cpoisson.poisson.lambda`, so `with_cpoisson` originally left a swapped-
 //! in driver's own intensity silently ignored. See `Merton::cpoisson`'s and
-//! `Merton::with_cpoisson`'s field/method docs and MIGRATION.md.
+//! `Merton::with_cpoisson`'s field/method docs.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

@@ -27,7 +27,7 @@
 //! `task-2-report.md` in `.superpowers/sdd/2026-08-13-volterra-sde-engine/`
 //! for the full numeric proof; a genuine double-normalisation bug would be
 //! off by a whole factor of $\Gamma(H{+}\tfrac12)$, roughly 33% at
-//! $H=0.1$, not ~1e-13). See `MIGRATION.md` for the before/after example.
+//! $H=0.1$, not ~1e-13).
 //!
 //! **The bound: `1e-11` relative.** The largest observed shift across every
 //! value dumped by both `sample` and `sample_batch`, all four processes, is

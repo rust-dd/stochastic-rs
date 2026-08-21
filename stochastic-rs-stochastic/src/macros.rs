@@ -79,7 +79,7 @@ macro_rules! py_process_1d {
       /// with different `RAYON_NUM_THREADS` values). Until that Python test
       /// existed, the seeded path here serialized into `m` sequential
       /// `sample()` calls instead of calling `sample_par` — a different,
-      /// also-deterministic sequence; see MIGRATION.md for the switch.
+      /// also-deterministic sequence.
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use numpy::ndarray::Array2;

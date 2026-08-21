@@ -245,7 +245,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CirPlusPlus<T, S> {
   /// `sample_par(m)` chunk therefore consume different bases one tick apart.
   /// Not fixed here: the after-sampling placement in `sample`'s default was
   /// deliberately chosen so repeated `.sample()` calls advance instead of
-  /// replaying (see this file's own git history / MIGRATION.md), and
+  /// replaying (see this file's own git history), and
   /// reordering it would trade this asymmetry for that regression.
   fn advance_chunk_seed(&self) {
     self.seed.seed_value();

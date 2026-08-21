@@ -19,7 +19,7 @@
 //! the jump-size distribution and a new top-level `lambda: T` field) Task 1
 //! applied to `Merton`/`Kou`/`LevyDiffusion` and Task 2 also applied to
 //! `Bates1996`. `JumpFou` is now **fully** seed-reproducible — this was the
-//! crate's last exception of any kind. See MIGRATION.md.
+//! crate's last exception of any kind.
 //!
 //! The tests below still separate a zero-intensity diffusion check from a
 //! nonzero-intensity check: `JumpFou`'s single `Array1<T>` output mixes the

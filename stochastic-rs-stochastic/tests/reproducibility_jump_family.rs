@@ -4,8 +4,8 @@
 //! `seed: S` into it (`seed.clone().derive()`) instead of hard-wiring
 //! `cpoisson: CompoundPoisson<T, D>` to `Unseeded` in the public field type.
 //! All three are now fully seed-reproducible — no exception to
-//! `ProcessExt`'s reproducibility guarantee. See MIGRATION.md and
-//! `traits/process.rs`'s trait-level reproducibility section.
+//! `ProcessExt`'s reproducibility guarantee. See `traits/process.rs`'s
+//! trait-level reproducibility section.
 //!
 //! Before this fix (see this file's prior revision / the RED-phase probe in
 //! the task report), two identically-`Deterministic`-seeded objects

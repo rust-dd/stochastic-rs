@@ -30,7 +30,7 @@ use crate::traits::ProcessExt;
 /// [`ProcessExt`]'s reproducibility guarantee. (It once did: the diffusion
 /// used to read `fgn.sampler()`, which draws from `fgn`'s own dead
 /// `Unseeded` field; fixed since the field is private and non-breaking to
-/// rewire. See MIGRATION.md.)
+/// rewire.)
 pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,

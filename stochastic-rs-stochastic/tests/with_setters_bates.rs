@@ -68,7 +68,7 @@
 //! `Merton` and the Task 2 controller addendum found live on `Bates1996`
 //! itself (`with_lambda` used to leave `cpoisson.poisson.lambda` — the value
 //! that actually governed jump arrivals — stale). See `Bates1996::{lambda,
-//! cpoisson, with_lambda, with_cpoisson}`'s doc comments and MIGRATION.md.
+//! cpoisson, with_lambda, with_cpoisson}`'s doc comments.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

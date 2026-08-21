@@ -242,7 +242,7 @@ fn golden_fou_stream() {
 /// temporary is now visible on the shared counter, shifting everything
 /// downstream. `times` is unaffected because nothing before it reads the
 /// seed. This is expected and was traded for `sample_par`/`sample_map`
-/// actually being cross-chunk-independent; see MIGRATION.md.
+/// actually being cross-chunk-independent.
 #[test]
 fn golden_compound_poisson_streams() {
   let cpoisson = CompoundPoisson::<f64, _, _>::new(

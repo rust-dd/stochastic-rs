@@ -85,8 +85,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgns<T, S> {
   /// would copy `self.seed`'s raw, unmixed counter into every chunk's
   /// sampler, so adjacent chunks' bases would differ by exactly one γ
   /// stride instead of being hash-scrambled relative to each other — the
-  /// same cross-chunk correlation bug this fixes elsewhere in the crate
-  /// (see MIGRATION.md).
+  /// same cross-chunk correlation bug this fixes elsewhere in the crate.
   fn sampler(&self) -> CgnsSampler<T, S> {
     CgnsSampler {
       cgns: Cgns {

@@ -1,6 +1,6 @@
 //! Reproducibility tests for `Bates1996` and `RoughHeston`, whose earlier
 //! "cannot be fixed this way" verdict (documented in
-//! `stochastic-rs-stochastic/src/traits/process.rs` and `MIGRATION.md`) was
+//! `stochastic-rs-stochastic/src/traits/process.rs`) was
 //! wrong: both built a correlated-Gaussian generator (`Cgns`) with the
 //! literal `Unseeded` and drove it via a bare `.sample()`, which only ever
 //! reads `Cgns`'s own (dead) seed field — but `Cgns::sample_impl<S2:
@@ -15,7 +15,7 @@
 //! independently of the `cgns` fix — closed by the
 //! zero-exception-reproducibility wave's Task 2, which widened the field to
 //! `CompoundPoisson<T, D, S>` and had `new()` absorb its construction (see
-//! MIGRATION.md). `Bates1996` is now **fully** seed-reproducible too — this
+//! `traits/process.rs`). `Bates1996` is now **fully** seed-reproducible too — this
 //! file's variance-path-only tests below predate that fix and are kept
 //! (still valid: the variance path never depended on jumps), plus one
 //! full-output test proving the price path is reproducible now too. The

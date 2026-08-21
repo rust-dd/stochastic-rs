@@ -162,11 +162,10 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// CompoundPoisson<T, D>` field structurally pinned to `Unseeded` — present
 /// on `Merton`, `Kou`, `LevyDiffusion`, `Bates1996` and `JumpFou` — turned
 /// out to need a genuine breaking constructor change, made by the
-/// zero-exception-reproducibility wave's Tasks 1 and 2). See MIGRATION.md
-/// for that history and the before/after call sites of the breaking
-/// changes; it is not repeated here, on purpose — a corrected verdict
-/// restated as a live exception list is exactly how this file drifted out
-/// of sync with the code three times before.
+/// zero-exception-reproducibility wave's Tasks 1 and 2). That history is
+/// deliberately not repeated here — a corrected verdict restated as a live
+/// exception list is exactly how this file drifted out of sync with the
+/// code three times before.
 ///
 /// **This guarantee is enforced, not merely asserted.**
 /// `tests/reproducibility_all_processes.rs` enumerates every concrete

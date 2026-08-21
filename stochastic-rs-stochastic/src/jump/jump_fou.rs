@@ -55,7 +55,7 @@ use crate::traits::ProcessExt;
 /// the time, but not about what was fixable: `fgn` needed only a private,
 /// non-breaking rewire (done first); `cpoisson` needed the same breaking
 /// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates1996` needed, applied here
-/// last. See MIGRATION.md.)
+/// last.)
 pub struct JumpFou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,

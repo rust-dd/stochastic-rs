@@ -23,7 +23,7 @@
 //! duplicated. That fallback preserves the exact driving-randomness stream
 //! these three cases always drew (see `ReferenceVolterraSampler`'s own
 //! `fill_path`), so their sampled output is unchanged; only $H<1/2$'s
-//! output changes, per `MIGRATION.md`.
+//! output changes.
 //!
 //! Reference:
 //! - Decreusefond, L. & Üstünel, A. S. (1999), "Stochastic Analysis of the Fractional Brownian Motion"
@@ -47,7 +47,7 @@ use crate::volterra::sve::VolterraSdeSampler;
 
 /// Volterra kernel specification.
 ///
-/// Renamed from `VolterraKernel` (breaking; see `MIGRATION.md`) to free that
+/// Renamed from `VolterraKernel` (breaking) to free that
 /// name for [`crate::volterra::VolterraKernel`], the exponential-sum trait
 /// [`VolterraSde`] is built on. This enum stays the small, closed set of
 /// kernel *shapes* [`Volterra`] accepts, not a trait implementor —
