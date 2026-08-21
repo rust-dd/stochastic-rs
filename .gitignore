@@ -63,3 +63,6 @@ website/public/python-parity.json
 
 docs
 *.tsbuildinfo
+
+# Migration notes are kept locally only (like docs/), not published
+MIGRATION.md
