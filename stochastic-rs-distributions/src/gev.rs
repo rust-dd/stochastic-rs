@@ -161,8 +161,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
     let mu = T::splat(self.mu);
     let one = T::splat(T::one());
     let mut u = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<8>();
+    for chunk in chunks {
       T::fill_uniform_simd(rng, &mut u);
       for x in u.iter_mut() {
         *x = Self::clamp_open_unit(*x);
@@ -173,9 +173,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
       } else {
         mu - T::splat(self.sigma / self.xi) * (one - T::simd_powf(m_ln_u, -self.xi))
       };
-      chunk.copy_from_slice(&T::simd_to_array(x));
+      *chunk = T::simd_to_array(x);
     }
-    for x in chunks.into_remainder().iter_mut() {
+    for x in rem.iter_mut() {
       *x = self.sample_one(rng, gumbel);
     }
   }

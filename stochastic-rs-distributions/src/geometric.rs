@@ -102,8 +102,8 @@ impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
       return;
     }
     let inv_ln1p = f64x8::splat(1.0 / ln1p);
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<8>();
+    for chunk in chunks {
       let mut u = [0.0_f64; 8];
       rng.fill_uniform_f64(&mut u);
       let v = f64x8::from(u);
@@ -118,7 +118,6 @@ impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
         *o = cast.unwrap_or(T::max_value());
       }
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let mut u = [0.0_f64; 8];
       rng.fill_uniform_f64(&mut u);

@@ -133,13 +133,16 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
     }
     let alpha = T::splat(self.alpha);
     let mut ybuf = [T::zero(); 64];
-    let mut chunks = out.chunks_exact_mut(64);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<64>();
+    for chunk in chunks {
       self.gamma.fill_slice(&mut ybuf);
-      for (sub, y8) in chunk.chunks_exact_mut(8).zip(ybuf.chunks_exact(8)) {
-        let mut a = [T::zero(); 8];
-        a.copy_from_slice(y8);
-        let mag = T::simd_powf(T::simd_from_array(a), inv_beta);
+      for (sub, y8) in chunk
+        .as_chunks_mut::<8>()
+        .0
+        .iter_mut()
+        .zip(ybuf.as_chunks::<8>().0.iter())
+      {
+        let mag = T::simd_powf(T::simd_from_array(*y8), inv_beta);
         let t = T::simd_to_array(alpha * mag);
         let signs = rng.next_i32x8().to_array();
         for i in 0..8 {
@@ -147,7 +150,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
         }
       }
     }
-    for x in chunks.into_remainder().iter_mut() {
+    for x in rem.iter_mut() {
       let mag = self.gamma.sample_fast().powf(inv_beta);
       let signed = if rng.next_i32() >= 0 { mag } else { -mag };
       *x = self.alpha * signed + self.mu;

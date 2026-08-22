@@ -104,30 +104,30 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
     let low = T::splat(self.low);
     let scale = T::splat(self.scale);
     let mut tmp = [T::zero(); 256];
-    let mut chunks = out.chunks_exact_mut(256);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<256>();
+    for chunk in chunks {
       T::fill_uniform_simd(rng, &mut tmp);
-      for (sub, u8) in chunk.chunks_exact_mut(8).zip(tmp.chunks_exact(8)) {
-        let mut a = [T::zero(); 8];
-        a.copy_from_slice(u8);
-        let vals = T::simd_to_array(low + T::simd_from_array(a) * scale);
-        sub.copy_from_slice(&vals);
+      for (sub, u8) in chunk
+        .as_chunks_mut::<8>()
+        .0
+        .iter_mut()
+        .zip(tmp.as_chunks::<8>().0.iter())
+      {
+        *sub = T::simd_to_array(low + T::simd_from_array(*u8) * scale);
       }
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let n = rem.len();
       T::fill_uniform_simd(rng, &mut tmp[..n]);
       let mut off = 0;
-      let mut sub = rem.chunks_exact_mut(8);
-      for s in &mut sub {
+      let (sub, sub_rem) = rem.as_chunks_mut::<8>();
+      for s in sub.iter_mut() {
         let mut a = [T::zero(); 8];
         a.copy_from_slice(&tmp[off..off + 8]);
-        let vals = T::simd_to_array(low + T::simd_from_array(a) * scale);
-        s.copy_from_slice(&vals);
+        *s = T::simd_to_array(low + T::simd_from_array(a) * scale);
         off += 8;
       }
-      for (i, x) in sub.into_remainder().iter_mut().enumerate() {
+      for (i, x) in sub_rem.iter_mut().enumerate() {
         *x = self.low + tmp[off + i] * self.scale;
       }
     }

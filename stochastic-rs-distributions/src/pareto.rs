@@ -94,15 +94,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
     let one = T::splat(T::one());
     let eps = T::splat(T::min_positive_val());
     let mut u = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<8>();
+    for chunk in chunks {
       T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let base = T::simd_max(one - v, eps);
       let x = xm * T::simd_exp(T::simd_ln(base) * neg_inv_alpha);
-      chunk.copy_from_slice(&T::simd_to_array(x));
+      *chunk = T::simd_to_array(x);
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);

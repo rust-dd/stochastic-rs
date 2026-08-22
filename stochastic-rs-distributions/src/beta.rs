@@ -104,24 +104,21 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
     }
     let mut g1 = [T::zero(); 64];
     let mut g2 = [T::zero(); 64];
-    let mut chunks = out.chunks_exact_mut(64);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<64>();
+    for chunk in chunks {
       self.gamma1.fill_slice(&mut g1);
       self.gamma2.fill_slice(&mut g2);
-      for (sub, (a8, b8)) in chunk
-        .chunks_exact_mut(8)
-        .zip(g1.chunks_exact(8).zip(g2.chunks_exact(8)))
-      {
-        let mut aa = [T::zero(); 8];
-        let mut ba = [T::zero(); 8];
-        aa.copy_from_slice(a8);
-        ba.copy_from_slice(b8);
-        let a = T::simd_from_array(aa);
-        let b = T::simd_from_array(ba);
-        sub.copy_from_slice(&T::simd_to_array(a / (a + b)));
+      for (sub, (a8, b8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
+        g1.as_chunks::<8>()
+          .0
+          .iter()
+          .zip(g2.as_chunks::<8>().0.iter()),
+      ) {
+        let a = T::simd_from_array(*a8);
+        let b = T::simd_from_array(*b8);
+        *sub = T::simd_to_array(a / (a + b));
       }
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let n = rem.len();
       self.gamma1.fill_slice(&mut g1[..n]);

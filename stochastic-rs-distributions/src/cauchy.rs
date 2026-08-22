@@ -93,15 +93,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdCauchy<T, R> {
     let pi = T::splat(T::pi());
     let half = T::splat(T::from(0.5).unwrap());
     let mut u = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<8>();
+    for chunk in chunks {
       T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let z = T::simd_tan(pi * (v - half));
       let x = x0 + g * z;
-      chunk.copy_from_slice(&T::simd_to_array(x));
+      *chunk = T::simd_to_array(x);
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);

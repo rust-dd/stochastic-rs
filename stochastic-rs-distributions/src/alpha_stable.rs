@@ -117,8 +117,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
     let loc = T::splat(self.location);
     let mut u1 = [T::zero(); 8];
     let mut u2 = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<8>();
+    for chunk in chunks {
       T::fill_uniform_simd(rng, &mut u1);
       T::fill_uniform_simd(rng, &mut u2);
       for i in 0..8 {
@@ -130,9 +130,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
       let r = T::simd_sqrt(-two * T::simd_ln(v1));
       let z = r * T::simd_cos(pi2 * v2);
       let x = loc + scale * z;
-      chunk.copy_from_slice(&T::simd_to_array(x));
+      *chunk = T::simd_to_array(x);
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u1);
       T::fill_uniform_simd(rng, &mut u2);
@@ -170,8 +169,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
 
     let mut u = [T::zero(); 8];
     let mut e = [T::zero(); 8];
-    let mut chunks = out.chunks_exact_mut(8);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<8>();
+    for chunk in chunks {
       T::fill_uniform_simd(rng, &mut u);
       T::fill_uniform_simd(rng, &mut e);
       for i in 0..8 {
@@ -189,9 +188,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
       let ratio = T::simd_max(T::simd_cos(v - phi) / w, min_pos);
       let tail = T::simd_powf(ratio, exp_term);
       let x = loc + scale * s_v * (numer / denom) * tail;
-      chunk.copy_from_slice(&T::simd_to_array(x));
+      *chunk = T::simd_to_array(x);
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u);
       T::fill_uniform_simd(rng, &mut e);

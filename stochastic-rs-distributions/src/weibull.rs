@@ -91,30 +91,32 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
     let lambda = T::splat(self.lambda);
     let inv_k = self.inv_k;
     let mut tmp = [T::zero(); 64];
-    let mut chunks = out.chunks_exact_mut(64);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<64>();
+    for chunk in chunks {
       self.exp1.fill_slice(&mut tmp);
-      for (sub, e8) in chunk.chunks_exact_mut(8).zip(tmp.chunks_exact(8)) {
-        let mut a = [T::zero(); 8];
-        a.copy_from_slice(e8);
-        let y = lambda * T::simd_powf(T::simd_from_array(a), inv_k);
-        sub.copy_from_slice(&T::simd_to_array(y));
+      for (sub, e8) in chunk
+        .as_chunks_mut::<8>()
+        .0
+        .iter_mut()
+        .zip(tmp.as_chunks::<8>().0.iter())
+      {
+        let y = lambda * T::simd_powf(T::simd_from_array(*e8), inv_k);
+        *sub = T::simd_to_array(y);
       }
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let n = rem.len();
       self.exp1.fill_slice(&mut tmp[..n]);
       let mut off = 0;
-      let mut sub = rem.chunks_exact_mut(8);
-      for s in &mut sub {
+      let (sub, sub_rem) = rem.as_chunks_mut::<8>();
+      for s in sub.iter_mut() {
         let mut a = [T::zero(); 8];
         a.copy_from_slice(&tmp[off..off + 8]);
         let y = lambda * T::simd_powf(T::simd_from_array(a), inv_k);
-        s.copy_from_slice(&T::simd_to_array(y));
+        *s = T::simd_to_array(y);
         off += 8;
       }
-      for (i, x) in sub.into_remainder().iter_mut().enumerate() {
+      for (i, x) in sub_rem.iter_mut().enumerate() {
         *x = self.lambda * tmp[off + i].powf(inv_k);
       }
     }

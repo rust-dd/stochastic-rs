@@ -92,8 +92,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
     let mm = T::splat(self.mu);
     let ss = T::splat(self.sigma);
     let mut tmp = [T::zero(); 16];
-    let mut chunks = out.chunks_exact_mut(16);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<16>();
+    for chunk in chunks {
       self.normal.fill_16(&mut tmp);
       for half in 0..2 {
         let base = half * 8;
@@ -104,7 +104,6 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
         chunk[base..base + 8].copy_from_slice(&x);
       }
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       self.normal.fill_slice(&mut tmp[..rem.len()]);
       let mut done = 0;

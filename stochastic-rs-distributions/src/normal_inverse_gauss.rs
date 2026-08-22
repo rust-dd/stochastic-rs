@@ -123,25 +123,23 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     let beta = T::splat(self.beta);
     let mut dbuf = [T::zero(); 64];
     let mut zbuf = [T::zero(); 64];
-    let mut chunks = out.chunks_exact_mut(64);
-    for chunk in &mut chunks {
+    let (chunks, rem) = out.as_chunks_mut::<64>();
+    for chunk in chunks {
       self.ig.fill_slice(&mut dbuf);
       self.normal.fill_standard_fast(&mut zbuf);
-      for (sub, (d8, z8)) in chunk
-        .chunks_exact_mut(8)
-        .zip(dbuf.chunks_exact(8).zip(zbuf.chunks_exact(8)))
-      {
-        let mut da = [T::zero(); 8];
-        let mut za = [T::zero(); 8];
-        da.copy_from_slice(d8);
-        za.copy_from_slice(z8);
-        let d = T::simd_from_array(da);
-        let z = T::simd_from_array(za);
+      for (sub, (d8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
+        dbuf
+          .as_chunks::<8>()
+          .0
+          .iter()
+          .zip(zbuf.as_chunks::<8>().0.iter()),
+      ) {
+        let d = T::simd_from_array(*d8);
+        let z = T::simd_from_array(*z8);
         let x = mu + beta * d + T::simd_sqrt(d) * z;
-        sub.copy_from_slice(&T::simd_to_array(x));
+        *sub = T::simd_to_array(x);
       }
     }
-    let rem = chunks.into_remainder();
     if !rem.is_empty() {
       let n = rem.len();
       self.ig.fill_slice(&mut dbuf[..n]);
