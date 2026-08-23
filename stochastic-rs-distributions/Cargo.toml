@@ -44,4 +44,11 @@ statrs = { workspace = true }
 # the shared Kolmogorov-Smirnov / chi-square goodness-of-fit tests in
 # `stochastic_rs_stats::goodness_of_fit` rather than a fourth copy-pasted
 # KS helper in this crate's own test suite.
-stochastic-rs-stats = { workspace = true }
+#
+# Declared path-only, deliberately: a dev-dependency carrying a `version`
+# makes `cargo publish` demand that version already be on crates.io, and
+# `stochastic-rs-stats` cannot be there first because it depends on this
+# crate. Cargo strips path-only dev-dependencies from the published
+# manifest, so local `cargo test` keeps the back-edge and the registry
+# never sees the cycle.
+stochastic-rs-stats = { path = "../stochastic-rs-stats" }
