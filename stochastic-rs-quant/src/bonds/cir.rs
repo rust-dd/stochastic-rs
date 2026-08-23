@@ -57,20 +57,6 @@ mod tests {
     assert!((p - 1.0).abs() < 1e-10, "P(t,t)=1 violated: {p}");
   }
 
-  /// Same assertion as `zcb_at_zero_tau_equals_one`, through `ShortRatePricer`.
-  /// The model now holds only `theta`, `mu`, `sigma`; `r0` and `tau` are the
-  /// query, so one `Cir` can price a whole maturity grid.
-  #[test]
-  fn zcb_at_zero_tau_equals_one_via_trait() {
-    let c = Cir {
-      theta: 0.5,
-      mu: 0.04,
-      sigma: 0.01,
-    };
-    let p = c.zero_coupon_price(0.05, 0.0);
-    assert!((p - 1.0).abs() < 1e-10, "P(t,t)=1 violated: {p}");
-  }
-
   #[test]
   fn zcb_finite_at_short_tau() {
     let c = Cir {
