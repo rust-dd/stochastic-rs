@@ -14,6 +14,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::OptionType;
+use crate::traits::ModelPricer;
 
 /// Cash-or-nothing digital pays a fixed cash amount $Q$ when the option
 /// finishes in the money.
@@ -113,6 +114,25 @@ impl crate::traits::GreeksExt for CashOrNothingPricer {
   }
 }
 
+impl ModelPricer for CashOrNothingPricer {
+  /// `cash`/`sigma` are model state; `(s, k, r, q, tau)` is the query, with
+  /// $b = r - q$ fed into $d_2$.
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
+    let disc = (-r * tau).exp();
+    self.cash * disc * norm_cdf(d2)
+  }
+
+  /// Overrides the trait's vanilla-parity default: here
+  /// $C_{\text{CoN}} + P_{\text{CoN}} = Qe^{-rT}$, not
+  /// $C - Se^{-qT} + Ke^{-rT}$ — see `cash_call_put_parity`.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
+    let disc = (-r * tau).exp();
+    self.cash * disc * norm_cdf(-d2)
+  }
+}
+
 /// Asset-or-nothing digital pays the underlying when the option finishes in
 /// the money.
 ///
@@ -181,6 +201,26 @@ impl crate::traits::GreeksExt for AssetOrNothingPricer {
   }
 }
 
+impl ModelPricer for AssetOrNothingPricer {
+  /// `sigma` is model state; `(s, k, r, q, tau)` is the query, $b = r - q$.
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let b = r - q;
+    let (d1, _) = bsm_d1_d2(s, k, b, self.sigma, tau);
+    let coc = ((b - r) * tau).exp();
+    s * coc * norm_cdf(d1)
+  }
+
+  /// Overrides the trait's vanilla-parity default: here
+  /// $C_{\text{AoN}} + P_{\text{AoN}} = Se^{(b-r)T}$ — see
+  /// `aon_call_put_parity` — not vanilla put-call parity.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let b = r - q;
+    let (d1, _) = bsm_d1_d2(s, k, b, self.sigma, tau);
+    let coc = ((b - r) * tau).exp();
+    s * coc * norm_cdf(-d1)
+  }
+}
+
 /// Gap option: pays $S - K_2$ when $S > K_1$ (call) or $K_2 - S$ when
 /// $S < K_1$ (put). Reduces to a vanilla when $K_1 = K_2$.
 ///
@@ -224,6 +264,30 @@ impl GapPricer {
   }
 }
 
+impl ModelPricer for GapPricer {
+  /// $K_1$ (the moneyness trigger) is the query strike `k`; $K_2$ (the
+  /// payoff strike) and `sigma` stay model state on `self.k2`/`self.sigma`
+  /// — reduces to a vanilla call when `self.k2 == k`, see
+  /// `gap_reduces_to_vanilla`.
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let b = r - q;
+    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
+    let coc = ((b - r) * tau).exp();
+    let disc = (-r * tau).exp();
+    s * coc * norm_cdf(d1) - self.k2 * disc * norm_cdf(d2)
+  }
+
+  /// Overrides the trait's default with the gap put's own closed form
+  /// rather than trusting vanilla parity against a single strike.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let b = r - q;
+    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
+    let coc = ((b - r) * tau).exp();
+    let disc = (-r * tau).exp();
+    self.k2 * disc * norm_cdf(-d2) - s * coc * norm_cdf(-d1)
+  }
+}
+
 /// Supershare option pays $S_T / X_L$ when $X_L \le S_T \le X_H$.
 ///
 /// $$
@@ -259,186 +323,39 @@ impl SuperSharePricer {
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  /// Cash-or-nothing call: S=100, K=80, Q=10, r=0.06, b=0.06, sigma=0.35,
-  /// T=0.75 → 7.3444 (verified analytically against Q*e^{-rT}*N(d2)).
-  #[test]
-  fn cash_or_nothing_call_closed_form() {
-    let p = CashOrNothingPricer {
-      s: 100.0,
-      k: 80.0,
-      cash: 10.0,
-      r: 0.06,
-      b: 0.06,
-      sigma: 0.35,
-      t: 0.75,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
-    assert!((price - 7.3444).abs() < 0.005, "price={price}");
+impl ModelPricer for SuperSharePricer {
+  /// $X_L$ (the lower trigger, also the payoff divisor) is the query
+  /// strike `k`; $X_H$ and `sigma` stay model state on `self.x_high`/
+  /// `self.sigma`.
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let b = r - q;
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
+    let d2 = bsm_d1(s, self.x_high, b, self.sigma, tau);
+    let coc = ((b - r) * tau).exp();
+    s / k * coc * (norm_cdf(d1) - norm_cdf(d2))
   }
 
-  /// Cash-or-nothing put: S=100, K=80, Q=10, r=0.06, b=0.06, sigma=0.35,
-  /// T=0.75 → ~ Q*e^{-rT}*N(-d2) = 10 * 0.95599 * (1 - 0.97264/Q*e^{rT})
-  /// ≈ 0.0303
-  #[test]
-  fn cash_call_put_parity() {
-    // CoN call + CoN put = Q * e^{-rT}
-    let base = CashOrNothingPricer {
-      s: 100.0,
-      k: 80.0,
-      cash: 10.0,
-      r: 0.06,
-      b: 0.06,
-      sigma: 0.35,
-      t: 0.75,
-      option_type: OptionType::Call,
-    };
-    let put = CashOrNothingPricer {
-      option_type: OptionType::Put,
-      ..base.clone()
-    };
-    let total = base.price() + put.price();
-    let expected = 10.0 * (-0.06_f64 * 0.75).exp();
-    assert!((total - expected).abs() < 1e-10, "total={total}");
-  }
-
-  /// Asset-or-nothing call + put = forward $S e^{(b-r)T}$
-  #[test]
-  fn aon_call_put_parity() {
-    let c = AssetOrNothingPricer {
-      s: 100.0,
-      k: 105.0,
-      r: 0.05,
-      b: 0.03,
-      sigma: 0.25,
-      t: 1.0,
-      option_type: OptionType::Call,
-    };
-    let p = AssetOrNothingPricer {
-      option_type: OptionType::Put,
-      ..c.clone()
-    };
-    let total = c.price() + p.price();
-    let expected = 100.0 * ((0.03_f64 - 0.05_f64) * 1.0).exp();
-    assert!((total - expected).abs() < 1e-9, "total={total}");
-  }
-
-  /// Vanilla call = AoN(call, K) - K * CoN(call, K)/Q (with Q=1).
-  #[test]
-  fn vanilla_decomposition() {
-    let s = 100.0;
-    let k = 100.0;
-    let r = 0.05;
-    let b = 0.05;
-    let sigma = 0.2;
-    let t = 1.0;
-    let aon = AssetOrNothingPricer {
-      s,
-      k,
-      r,
-      b,
-      sigma,
-      t,
-      option_type: OptionType::Call,
-    };
-    let con = CashOrNothingPricer {
-      s,
-      k,
-      cash: 1.0,
-      r,
-      b,
-      sigma,
-      t,
-      option_type: OptionType::Call,
-    };
-    // BSM vanilla call ≈ 10.4506
-    let vanilla = aon.price() - k * con.price();
-    assert!((vanilla - 10.4506).abs() < 0.005, "decomposition={vanilla}");
-  }
-
-  /// Gap call with $K_1 = K_2$ equals BSM vanilla call.
-  #[test]
-  fn gap_reduces_to_vanilla() {
-    let p = GapPricer {
-      s: 100.0,
-      k1: 100.0,
-      k2: 100.0,
-      r: 0.05,
-      b: 0.05,
-      sigma: 0.2,
-      t: 1.0,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
-    assert!((price - 10.4506).abs() < 0.005, "gap={price}");
-  }
-
-  /// Haug 2007, p. 178: Gap call with S=50, K1=50, K2=57, r=0.09, b=0.09,
-  /// sigma=0.20, T=0.5 → -0.0053
-  #[test]
-  fn gap_haug_negative_payoff() {
-    let p = GapPricer {
-      s: 50.0,
-      k1: 50.0,
-      k2: 57.0,
-      r: 0.09,
-      b: 0.09,
-      sigma: 0.20,
-      t: 0.5,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
-    assert!(price.abs() < 0.05, "gap call={price}");
-    // The option gives a negative cash flow when S is between K1 and K2
-    assert!(price < 0.0);
-  }
-
-  /// Supershare must be non-negative and zero when bands are infinitely apart
-  /// in the wrong direction.
-  #[test]
-  fn supershare_positive() {
-    let p = SuperSharePricer {
-      s: 100.0,
-      x_low: 90.0,
-      x_high: 110.0,
-      r: 0.05,
-      b: 0.0,
-      sigma: 0.2,
-      t: 0.25,
-    };
-    let price = p.price();
-    assert!(price > 0.0, "supershare={price}");
-    assert!(price < p.s, "supershare must be < S");
-  }
-
-  /// Cash-or-nothing delta uses finite difference vs analytic.
-  #[test]
-  fn cash_delta_matches_fd() {
-    let h = 0.01;
-    let base = CashOrNothingPricer {
-      s: 100.0,
-      k: 100.0,
-      cash: 10.0,
-      r: 0.05,
-      b: 0.02,
-      sigma: 0.25,
-      t: 0.5,
-      option_type: OptionType::Call,
-    };
-    let up = CashOrNothingPricer {
-      s: 100.0 + h,
-      ..base.clone()
-    };
-    let dn = CashOrNothingPricer {
-      s: 100.0 - h,
-      ..base.clone()
-    };
-    let fd = (up.price() - dn.price()) / (2.0 * h);
-    let analytic = base.delta();
-    assert!((fd - analytic).abs() < 1e-4, "fd={fd}, analytic={analytic}");
+  /// A supershare has no put analogue — Haug (2007) defines only the
+  /// payoff above — so this returns `NaN` rather than the trait's
+  /// vanilla-parity default, which would silently return a number with no
+  /// corresponding instrument.
+  fn price_put(&self, _s: f64, _k: f64, _r: f64, _q: f64, _tau: f64) -> f64 {
+    f64::NAN
   }
 }
+
+/// $d_1=\frac{\ln(S/K)+(b+\sigma^2/2)T}{\sigma\sqrt T}$ — the standardized
+/// moneyness term shared by every [`ModelPricer`] impl above.
+fn bsm_d1(s: f64, k: f64, b: f64, sigma: f64, t: f64) -> f64 {
+  ((s / k).ln() + (b + 0.5 * sigma * sigma) * t) / (sigma * t.sqrt())
+}
+
+/// $(d_1,\ d_1-\sigma\sqrt T)$.
+fn bsm_d1_d2(s: f64, k: f64, b: f64, sigma: f64, t: f64) -> (f64, f64) {
+  let d1 = bsm_d1(s, k, b, sigma, t);
+  (d1, d1 - sigma * t.sqrt())
+}
+
+#[cfg(test)]
+#[path = "digital_tests.rs"]
+mod tests;

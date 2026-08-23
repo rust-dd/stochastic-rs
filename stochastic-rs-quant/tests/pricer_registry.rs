@@ -8,19 +8,20 @@
 //! `stochastic-rs-quant/src`, excluding `python/` (21 `Py`-prefixed PyO3
 //! wrappers that hold the wrapped type as an `inner` field and carry no
 //! trait of their own — e.g. `PyBSMPricer { inner: BSMPricer }`). 50 structs
-//! remain. 15 of the 50 already implement one of [`PricerExt`],
-//! [`ModelPricer`], or [`PricingEngine`] — but only 2 of those 15
-//! ([`HestonSlvPricer`], [`RBergomiPricer`]) implement `ModelPricer`
-//! specifically, the trait this registry exists to guard. The other 13
-//! carry the older `PricerExt` (11) or `PricingEngine` (2) surface.
+//! remain. 19 of the 50 already implement one of [`PricerExt`],
+//! [`ModelPricer`], or [`PricingEngine`] — 6 of those 19
+//! ([`AssetOrNothingPricer`], [`CashOrNothingPricer`], [`GapPricer`],
+//! [`HestonSlvPricer`], [`RBergomiPricer`], [`SuperSharePricer`]) implement
+//! `ModelPricer` specifically, the trait this registry exists to guard. The
+//! other 13 carry the older `PricerExt` (11) or `PricingEngine` (2) surface.
 //!
 //! Per the A2 design (`docs/superpowers/specs/2026-08-23-a2-quant-consistency-design.md`,
 //! decision D1) and its Task 5, 10 of those 11 `PricerExt` structs migrate to
 //! `ModelPricer`; `KirkSpreadPricer` is explicitly excluded and instead joins
 //! the multi-asset no-trait family once `PricerExt` is retired (Task 6). Task
-//! 3 additionally gives `ModelPricer` to the 4 digital-option structs, which
-//! are `ORPHAN` today. Each trait gets its own compile-checked list below so
-//! a claim about *which* trait a struct carries can drift no more than the
+//! 3 gave `ModelPricer` to the 4 digital-option structs above, which were
+//! `ORPHAN` before it ran. Each trait gets its own compile-checked list below
+//! so a claim about *which* trait a struct carries can drift no more than the
 //! claim that it carries one at all.
 
 use stochastic_rs_quant::bonds::Cir;
@@ -29,12 +30,16 @@ use stochastic_rs_quant::bonds::Vasicek;
 use stochastic_rs_quant::instruments::EuropeanOption;
 use stochastic_rs_quant::pricing::AnalyticBSEngine;
 use stochastic_rs_quant::pricing::AnalyticHestonEngine;
+use stochastic_rs_quant::pricing::AssetOrNothingPricer;
 use stochastic_rs_quant::pricing::BSMPricer;
 use stochastic_rs_quant::pricing::BjerksundStensland2002Pricer;
+use stochastic_rs_quant::pricing::CashOrNothingPricer;
+use stochastic_rs_quant::pricing::GapPricer;
 use stochastic_rs_quant::pricing::HestonPricer;
 use stochastic_rs_quant::pricing::HestonSlvPricer;
 use stochastic_rs_quant::pricing::KirkSpreadPricer;
 use stochastic_rs_quant::pricing::RBergomiPricer;
+use stochastic_rs_quant::pricing::SuperSharePricer;
 use stochastic_rs_quant::pricing::asian::AsianPricer;
 use stochastic_rs_quant::pricing::finite_difference::FiniteDifferencePricer;
 use stochastic_rs_quant::pricing::heston_stoch_corr::HestonStochCorrPricer;
@@ -82,10 +87,17 @@ macro_rules! assert_short_rate_pricer {
 }
 
 // Structs already on the decoupled `price_call(s, k, r, q, tau)` surface
-// used by calibration and vol-surface construction. Grows to 16 as Task 3
-// adds the 4 digital options and Task 5 migrates 10 of the 11
-// `assert_pricer_ext!` members below (all but `KirkSpreadPricer`).
-assert_model_pricer!(HestonSlvPricer, RBergomiPricer);
+// used by calibration and vol-surface construction: the 4 digital options
+// (Task 3) plus the 2 original members. Grows to 16 once Task 5 migrates 10
+// of the 11 `assert_pricer_ext!` members below (all but `KirkSpreadPricer`).
+assert_model_pricer!(
+  AssetOrNothingPricer,
+  CashOrNothingPricer,
+  GapPricer,
+  HestonSlvPricer,
+  RBergomiPricer,
+  SuperSharePricer,
+);
 
 // Single-underlying options on the legacy bundled-market-data `PricerExt`
 // surface (`calculate_call_put` / `calculate_price`, no `(s, k, r, q, tau)`
@@ -113,15 +125,6 @@ assert_pricer_ext!(
   SnellEnvelopePricer,
 );
 
-// Digital options — `AssetOrNothingPricer`, `CashOrNothingPricer`,
-// `GapPricer`, `SuperSharePricer` — are `ORPHAN` today (implement neither
-// `PricerExt` nor `ModelPricer`), but A2 Task 3 explicitly assigns this
-// family to `ModelPricer`, not to `no_trait_by_design`: the design spec
-// calls them pricers that "already fit `price_call(s, k, r, q, tau)`... the
-// cheapest genuine trait additions". Named here rather than left for Task 3
-// to rediscover; there is no compile-time assertion yet because there is
-// nothing to check against until one of them gains a trait.
-
 // QuantLib-style decoupled engines (`Instrument` + `PricingEngine<I>` +
 // `PricingResult`, see `traits::instrument`) rather than `ModelPricer`. This
 // is a considered second pricing architecture, not a gap: `Instrument`
@@ -137,7 +140,7 @@ assert_pricing_engine!(
 // The short-rate bond family (Task 2). `Cir`, `HullWhite`, `Vasicek` are
 // named for their model, not `*Pricer`/`*Engine`, so this file's header
 // derivation command (`pub struct .*(?:Pricer|Engine)`) never sees them —
-// they sit outside the 71/21/50/15 header counts entirely, not folded into
+// they sit outside the 71/21/50/19 header counts entirely, not folded into
 // any of them. Registered here anyway because `ShortRatePricer` is a real
 // family with exactly these three implementors and D6's guard is worth
 // having for it too.
@@ -195,6 +198,6 @@ mod no_trait_by_design {
   //!   `score_momentum`/`build_momentum` allocate weights across N assets.
   //!   Neither has a single option struck at `K` on `S` to put through
   //!   `price_call(s, k, r, q, tau)`. The design spec's own count implies
-  //!   them (35 orphans, "33 of them in `pricing/`" — these two are the
-  //!   other 2) without naming them; this bullet is the missing name.
+  //!   them (31 orphans post-Task-3, "29 of them in `pricing/`" — these two
+  //!   are the other 2) without naming them; this bullet is the missing name.
 }
