@@ -17,7 +17,7 @@ mod weights;
 /// Parameters for a single asset in a multi-asset Heston model.
 #[derive(Clone, Debug)]
 pub struct AssetParams<T: FloatExt> {
-  pub s0: T,
+  pub s: T,
   pub v0: T,
   pub kappa: T,
   pub theta: T,
@@ -113,8 +113,8 @@ impl<T: FloatExt> MultiHestonParams<T> {
       }
     }
     for (i, a) in self.assets.iter().enumerate() {
-      if !num_traits::Float::is_finite(a.s0) || a.s0 <= T::zero() {
-        anyhow::bail!("assets[{i}].s0 must be finite and positive");
+      if !num_traits::Float::is_finite(a.s) || a.s <= T::zero() {
+        anyhow::bail!("assets[{i}].s must be finite and positive");
       }
       for (name, value) in [
         ("v0", a.v0),
@@ -167,7 +167,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
     let mut prices = Array2::<T>::zeros((d, n));
     let mut vols = Array2::<T>::zeros((d, n));
     for i in 0..d {
-      prices[[i, 0]] = self.assets[i].s0;
+      prices[[i, 0]] = self.assets[i].s;
       vols[[i, 0]] = self.assets[i].v0.max(T::zero());
     }
 

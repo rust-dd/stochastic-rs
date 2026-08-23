@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn gbm_delta_positive_for_call() {
   let greeks = GbmMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     sigma: 0.2,
     r: 0.05,
     q: 0.0,
@@ -22,7 +22,7 @@ fn gbm_delta_positive_for_call() {
 #[test]
 fn gbm_gamma_positive() {
   let greeks = GbmMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     sigma: 0.2,
     r: 0.05,
     q: 0.0,
@@ -38,7 +38,7 @@ fn gbm_gamma_positive() {
 #[test]
 fn gbm_vega_positive() {
   let greeks = GbmMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     sigma: 0.2,
     r: 0.05,
     q: 0.0,
@@ -54,7 +54,7 @@ fn gbm_vega_positive() {
 #[test]
 fn gbm_all_greeks_consistent() {
   let greeks = GbmMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     sigma: 0.2,
     r: 0.05,
     q: 0.0,
@@ -73,7 +73,7 @@ fn gbm_all_greeks_consistent() {
 #[test]
 fn heston_delta_positive_for_call() {
   let greeks = HestonMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -95,7 +95,7 @@ fn heston_delta_positive_for_call() {
 #[test]
 fn heston_delta_pathwise_positive() {
   let greeks = HestonMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -117,7 +117,7 @@ fn heston_delta_pathwise_positive() {
 #[test]
 fn heston_delta_el_khatib_gbm_limit() {
   let greeks = HestonMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -139,7 +139,7 @@ fn heston_delta_el_khatib_gbm_limit() {
 #[test]
 fn heston_delta_el_khatib_full_kernel_finite() {
   let greeks = HestonMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -161,7 +161,7 @@ fn heston_delta_el_khatib_full_kernel_finite() {
 #[test]
 fn heston_gamma_positive() {
   let greeks = HestonMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -183,7 +183,7 @@ fn heston_gamma_positive() {
 #[test]
 fn heston_vega_v0_positive() {
   let greeks = HestonMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -202,7 +202,7 @@ fn heston_vega_v0_positive() {
 #[test]
 fn heston_malliavin_vs_pathwise_consistent() {
   let greeks = HestonMalliavinGreeks {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,

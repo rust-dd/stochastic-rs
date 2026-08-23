@@ -12,7 +12,7 @@ use super::simulation::simulate_rbergomi_terminal_samples;
 #[derive(Clone)]
 pub struct RBergomiCalibrator {
   /// Spot level $S_0$.
-  pub s0: f64,
+  pub s: f64,
   /// Risk-free rate $r$.
   pub r: f64,
   /// Continuous dividend yield $q$ (or foreign rate for FX). Defaults to 0
@@ -34,15 +34,15 @@ impl RBergomiCalibrator {
   /// (non-finite spot/rate, non-positive config counts, malformed params,
   /// or malformed market slices).
   pub fn new(
-    s0: f64,
+    s: f64,
     r: f64,
     params: RBergomiParams,
     mut market_slices: Vec<RBergomiMarketSlice>,
     config: RBergomiCalibrationConfig,
     record_history: bool,
   ) -> anyhow::Result<Self> {
-    if !(s0.is_finite() && s0 > 0.0) {
-      anyhow::bail!("s0 must be finite and positive, got {s0}");
+    if !(s.is_finite() && s > 0.0) {
+      anyhow::bail!("s must be finite and positive, got {s}");
     }
     if !r.is_finite() {
       anyhow::bail!("r must be finite, got {r}");
@@ -88,7 +88,7 @@ impl RBergomiCalibrator {
     market_slices.sort_by(|a, b| a.maturity.total_cmp(&b.maturity));
 
     Ok(Self {
-      s0,
+      s,
       r,
       q: 0.0,
       params: params.projected(),
@@ -140,7 +140,7 @@ impl RBergomiCalibrator {
       let seed = self.slice_seed(idx, slice.maturity);
       let model_samples = simulate_rbergomi_terminal_samples(
         &p,
-        self.s0,
+        self.s,
         self.r,
         self.q,
         slice.maturity,

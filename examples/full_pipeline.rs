@@ -128,7 +128,7 @@ fn main() {
 
   let trs = TotalReturnSwap {
     notional: 10_000_000.0,
-    spot: spot_q.value(),
+    s: spot_q.value(),
     equity_drift_rate: rate_q.value(),
     schedule: (1..=4)
       .map(|i| TrsPeriod {

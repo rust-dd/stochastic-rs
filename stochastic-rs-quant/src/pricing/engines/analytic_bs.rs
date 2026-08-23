@@ -30,7 +30,7 @@ use crate::traits::StandardResult;
 /// [`calculate`](Self::calculate) call.
 #[derive(Clone)]
 pub struct AnalyticBSEngine {
-  pub spot: Handle<SimpleQuote<f64>>,
+  pub s: Handle<SimpleQuote<f64>>,
   pub volatility: Handle<SimpleQuote<f64>>,
   pub risk_free: Handle<SimpleQuote<f64>>,
   pub dividend_yield: Handle<SimpleQuote<f64>>,
@@ -41,13 +41,13 @@ impl AnalyticBSEngine {
   /// Build from explicit handles. Defaults to `BSMCoc::Merton1973` (equity
   /// with continuous dividend yield).
   pub fn new(
-    spot: Handle<SimpleQuote<f64>>,
+    s: Handle<SimpleQuote<f64>>,
     volatility: Handle<SimpleQuote<f64>>,
     risk_free: Handle<SimpleQuote<f64>>,
     dividend_yield: Handle<SimpleQuote<f64>>,
   ) -> Self {
     Self {
-      spot,
+      s,
       volatility,
       risk_free,
       dividend_yield,
@@ -78,7 +78,7 @@ impl AnalyticBSEngine {
 
   fn build_pricer(&self, strike: f64, opt_type: OptionType, opt: &EuropeanOption) -> BSMPricer {
     BSMPricer {
-      s: Self::read_quote(&self.spot, 0.0),
+      s: Self::read_quote(&self.s, 0.0),
       v: Self::read_quote(&self.volatility, 0.0),
       k: strike,
       r: Self::read_quote(&self.risk_free, 0.0),
@@ -110,7 +110,7 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   type Result = StandardResult;
 
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
-    let s = Self::read_quote(&self.spot, 0.0);
+    let s = Self::read_quote(&self.s, 0.0);
     let sigma = Self::read_quote(&self.volatility, 0.0);
     let r = Self::read_quote(&self.risk_free, 0.0);
     let q = Self::read_quote(&self.dividend_yield, 0.0);

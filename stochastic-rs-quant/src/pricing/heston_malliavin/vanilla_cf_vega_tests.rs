@@ -9,7 +9,7 @@ use crate::OptionType;
 
 fn high_vol_of_vol_non_feller_model() -> HestonModel {
   HestonModel {
-    spot: 490.91,
+    s: 490.91,
     initial_variance: 0.299_494,
     kappa: 4.0,
     theta: 0.072_326,
@@ -106,7 +106,7 @@ fn cf_helper_rejects_zero_vol_of_vol_instead_of_dividing_by_zero() {
 #[test]
 fn short_dated_low_variance_vertical_uses_analytic_primary_when_bumps_are_unstable() {
   let model = HestonModel {
-    spot: 720.65,
+    s: 720.65,
     initial_variance: 0.010_896_709_741_918,
     kappa: 8.0,
     theta: 0.054_842_534_327_897_8,

@@ -101,14 +101,14 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
           .params
           .assets
           .iter()
-          .map(|a| <T as num_traits::Float>::abs(a.s0))
+          .map(|a| <T as num_traits::Float>::abs(a.s))
           .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
           .max(T::one());
         let box_hi = self
           .params
           .assets
           .iter()
-          .map(|a| T::from_f64_fast(2.0) * <T as num_traits::Float>::abs(a.s0).max(base))
+          .map(|a| T::from_f64_fast(2.0) * <T as num_traits::Float>::abs(a.s).max(base))
           .collect();
         let box_width = vec![T::from_f64_fast(0.5) * base; self.params.n_assets()];
         Some(MtLocalization {
@@ -122,14 +122,14 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
           .params
           .assets
           .iter()
-          .map(|a| <T as num_traits::Float>::abs(a.s0))
+          .map(|a| <T as num_traits::Float>::abs(a.s))
           .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
           .max(T::one());
         let box_hi = self
           .params
           .assets
           .iter()
-          .map(|a| T::from_f64_fast(2.5) * <T as num_traits::Float>::abs(a.s0).max(base))
+          .map(|a| T::from_f64_fast(2.5) * <T as num_traits::Float>::abs(a.s).max(base))
           .collect();
         let box_width = vec![T::from_f64_fast(0.75) * base; self.params.n_assets()];
         Some(MtLocalization {
@@ -284,7 +284,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
       .params
       .assets
       .iter()
-      .map(|a| <T as num_traits::Float>::abs(a.s0))
+      .map(|a| <T as num_traits::Float>::abs(a.s))
       .fold(T::zero(), |a, b| a.max(b));
     let terminal_scale = st
       .iter()

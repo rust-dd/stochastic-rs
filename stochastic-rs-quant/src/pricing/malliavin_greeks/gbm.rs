@@ -8,7 +8,7 @@ use crate::traits::ProcessExt;
 #[derive(Debug, Clone)]
 pub struct GbmMalliavinGreeks {
   /// Spot price
-  pub s0: f64,
+  pub s: f64,
   /// Volatility
   pub sigma: f64,
   /// Risk-free rate
@@ -37,7 +37,7 @@ impl GbmMalliavinGreeks {
       mu,
       self.sigma,
       self.n_steps,
-      Some(self.s0),
+      Some(self.s),
       Some(self.tau),
       Unseeded,
     );
@@ -84,7 +84,7 @@ impl GbmMalliavinGreeks {
     let mut sum = 0.0;
     for i in 0..self.n_paths {
       let payoff = (s_t[i] - self.k).max(0.0);
-      let weight = w_t[i] / (self.s0 * self.sigma * self.tau);
+      let weight = w_t[i] / (self.s * self.sigma * self.tau);
       sum += discount * payoff * weight;
     }
 
@@ -108,7 +108,7 @@ impl GbmMalliavinGreeks {
       let payoff = (s_t[i] - self.k).max(0.0);
       let w = w_t[i];
       let weight =
-        (w * w - self.sigma * t * w - t) / (self.s0 * self.s0 * self.sigma * self.sigma * t * t);
+        (w * w - self.sigma * t * w - t) / (self.s * self.s * self.sigma * self.sigma * t * t);
       sum += discount * payoff * weight;
     }
 
@@ -187,12 +187,12 @@ impl GbmMalliavinGreeks {
       let disc_payoff = discount * payoff;
 
       // Delta weight
-      let w_delta = w / (self.s0 * self.sigma * t);
+      let w_delta = w / (self.s * self.sigma * t);
       sum_delta += disc_payoff * w_delta;
 
       // Gamma weight
       let w_gamma =
-        (w * w - self.sigma * t * w - t) / (self.s0 * self.s0 * self.sigma * self.sigma * t * t);
+        (w * w - self.sigma * t * w - t) / (self.s * self.s * self.sigma * self.sigma * t * t);
       sum_gamma += disc_payoff * w_gamma;
 
       // Vega weight

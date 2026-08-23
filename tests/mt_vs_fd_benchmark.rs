@@ -15,7 +15,7 @@ use stochastic_rs::quant::pricing::malliavin_thalmaier::MultiHestonParams;
 
 fn make_params_2d() -> MultiHestonParams<f64> {
   let first = AssetParams {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -44,9 +44,9 @@ fn fd_all_deltas(
   let bump = 0.5;
   Array1::from_shape_fn(params.n_assets(), |asset| {
     let mut up = params.clone();
-    up.assets[asset].s0 += bump;
+    up.assets[asset].s += bump;
     let mut down = params.clone();
-    down.assets[asset].s0 -= bump;
+    down.assets[asset].s -= bump;
     let price_up = MtGreeks::new(up, 0.01, n_paths).price_with_seed(payoff, seed);
     let price_down = MtGreeks::new(down, 0.01, n_paths).price_with_seed(payoff, seed);
     (price_up - price_down) / (2.0 * bump)

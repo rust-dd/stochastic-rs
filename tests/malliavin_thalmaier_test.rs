@@ -11,7 +11,7 @@ use stochastic_rs::quant::pricing::malliavin_thalmaier::g_digital_put_2d;
 
 fn paper_params() -> MultiHestonParams<f64> {
   let first = AssetParams {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.25 * 0.25,
     kappa: 1.0,
     theta: 0.25 * 0.25,
@@ -19,7 +19,7 @@ fn paper_params() -> MultiHestonParams<f64> {
     rho: 0.0,
   };
   let second = AssetParams {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.20 * 0.20,
     kappa: 1.0,
     theta: 0.20 * 0.20,

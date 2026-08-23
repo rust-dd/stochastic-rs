@@ -11,7 +11,7 @@ use crate::traits::ProcessExt;
 #[derive(Debug, Clone)]
 pub struct HestonMalliavinGreeks {
   /// Spot price
-  pub s0: f64,
+  pub s: f64,
   /// Initial variance
   pub v0: f64,
   /// Mean reversion speed
@@ -47,7 +47,7 @@ impl HestonMalliavinGreeks {
     let dt = self.tau / (self.n_steps - 1) as f64;
 
     let heston = Heston::new(
-      Some(self.s0),
+      Some(self.s),
       Some(self.v0),
       self.kappa,
       self.theta,
@@ -113,7 +113,7 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s0),
+      Some(self.s),
       Some(self.v0),
       self.kappa,
       self.theta,
@@ -133,7 +133,7 @@ impl HestonMalliavinGreeks {
       let [s_path, _] = heston.sample();
       let s_t = s_path[self.n_steps - 1];
       if s_t > self.k {
-        sum += discount * s_t / self.s0;
+        sum += discount * s_t / self.s;
       }
     }
 
@@ -167,7 +167,7 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s0),
+      Some(self.s),
       Some(self.v0),
       self.kappa,
       self.theta,
@@ -204,7 +204,7 @@ impl HestonMalliavinGreeks {
         numerator += sqrt_v_k * dw_s;
       }
 
-      let pi_delta = numerator / (self.s0 * int_v.max(1e-12));
+      let pi_delta = numerator / (self.s * int_v.max(1e-12));
       sum += discount * payoff * pi_delta;
     }
 
@@ -223,7 +223,7 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s0),
+      Some(self.s),
       Some(self.v0),
       self.kappa,
       self.theta,
@@ -261,8 +261,8 @@ impl HestonMalliavinGreeks {
       }
 
       let int_v_safe = int_v.max(1e-12);
-      let pi_delta = numerator / (self.s0 * int_v_safe);
-      let pi_gamma = pi_delta * pi_delta - self.tau / (self.s0 * self.s0 * int_v_safe);
+      let pi_delta = numerator / (self.s * int_v_safe);
+      let pi_gamma = pi_delta * pi_delta - self.tau / (self.s * self.s * int_v_safe);
       sum += discount * payoff * pi_gamma;
     }
 
@@ -285,7 +285,7 @@ impl HestonMalliavinGreeks {
       let seed = 0xCAFE_u64.wrapping_add(i as u64);
 
       let heston_up = Heston::new(
-        Some(self.s0),
+        Some(self.s),
         Some(self.v0 + dv),
         self.kappa,
         self.theta,
@@ -299,7 +299,7 @@ impl HestonMalliavinGreeks {
         Deterministic::new(seed),
       );
       let heston_dn = Heston::new(
-        Some(self.s0),
+        Some(self.s),
         Some((self.v0 - dv).max(1e-6)),
         self.kappa,
         self.theta,
@@ -334,7 +334,7 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s0),
+      Some(self.s),
       Some(self.v0),
       self.kappa,
       self.theta,
@@ -373,8 +373,8 @@ impl HestonMalliavinGreeks {
       }
 
       let int_v_safe = int_v.max(1e-12);
-      let pi_delta = numerator / (self.s0 * int_v_safe);
-      let pi_gamma = pi_delta * pi_delta - self.tau / (self.s0 * self.s0 * int_v_safe);
+      let pi_delta = numerator / (self.s * int_v_safe);
+      let pi_gamma = pi_delta * pi_delta - self.tau / (self.s * self.s * int_v_safe);
       let disc_payoff = discount * payoff;
       sum_delta += disc_payoff * pi_delta;
       sum_gamma += disc_payoff * pi_gamma;

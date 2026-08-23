@@ -50,7 +50,7 @@ impl HestonStaticParams {
 /// Analytic Heston engine.
 #[derive(Clone)]
 pub struct AnalyticHestonEngine {
-  pub spot: Handle<SimpleQuote<f64>>,
+  pub s: Handle<SimpleQuote<f64>>,
   pub risk_free: Handle<SimpleQuote<f64>>,
   pub dividend_yield: Handle<SimpleQuote<f64>>,
   pub params: HestonStaticParams,
@@ -60,13 +60,13 @@ pub struct AnalyticHestonEngine {
 
 impl AnalyticHestonEngine {
   pub fn new(
-    spot: Handle<SimpleQuote<f64>>,
+    s: Handle<SimpleQuote<f64>>,
     risk_free: Handle<SimpleQuote<f64>>,
     dividend_yield: Handle<SimpleQuote<f64>>,
     params: HestonStaticParams,
   ) -> Self {
     Self {
-      spot,
+      s,
       risk_free,
       dividend_yield,
       params,
@@ -96,7 +96,7 @@ impl AnalyticHestonEngine {
     opt: &EuropeanOption,
   ) -> HestonPricer {
     HestonPricer {
-      s: s_override.unwrap_or_else(|| Self::read_quote(&self.spot, 0.0)),
+      s: s_override.unwrap_or_else(|| Self::read_quote(&self.s, 0.0)),
       v0: v0_override.unwrap_or(self.params.v0),
       k: opt.strike,
       r: Self::read_quote(&self.risk_free, 0.0),
@@ -128,7 +128,7 @@ impl AnalyticHestonEngine {
   }
 
   fn finite_diff_greeks(&self, opt: &EuropeanOption) -> Greeks {
-    let s = Self::read_quote(&self.spot, 0.0);
+    let s = Self::read_quote(&self.s, 0.0);
     let h_s = (s.abs().max(1.0)) * self.bump;
     let p0 = self.price_at(None, None, None, opt);
     let p_up = self.price_at(Some(s + h_s), None, None, opt);

@@ -12,8 +12,8 @@ use crate::traits::FloatExt;
 ///     AssetParams, MtGreeks, MtPayoff, MultiHestonParams,
 /// };
 ///
-/// let first = AssetParams { s0: 100.0, v0: 0.0625, kappa: 1.0, theta: 0.0625, xi: 0.0, rho: 0.0 };
-/// let second = AssetParams { s0: 100.0, v0: 0.04, kappa: 1.0, theta: 0.04, xi: 0.0, rho: 0.0 };
+/// let first = AssetParams { s: 100.0, v0: 0.0625, kappa: 1.0, theta: 0.0625, xi: 0.0, rho: 0.0 };
+/// let second = AssetParams { s: 100.0, v0: 0.04, kappa: 1.0, theta: 0.04, xi: 0.0, rho: 0.0 };
 /// let mut cross_corr = Array2::<f64>::eye(2);
 /// cross_corr[[0, 1]] = 0.2;
 /// cross_corr[[1, 0]] = 0.2;

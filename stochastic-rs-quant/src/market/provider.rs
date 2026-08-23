@@ -118,7 +118,7 @@ pub struct OptionChain {
   /// Underlying ticker.
   pub symbol: String,
   /// Spot price of the underlying.
-  pub spot: f64,
+  pub s: f64,
   /// Quotes (calls and puts intermixed; use `is_call` to split).
   pub quotes: Vec<ChainQuote>,
 }
@@ -148,7 +148,7 @@ impl OptionChain {
     }
     let forwards: Vec<(f64, f64)> = taus
       .into_iter()
-      .map(|t| (t, self.spot * ((r - q) * t).exp()))
+      .map(|t| (t, self.s * ((r - q) * t).exp()))
       .collect();
     (quotes, forwards)
   }
@@ -316,7 +316,7 @@ mod tests {
   fn option_chain_to_surface_inputs_filters_and_builds_forwards() {
     let chain = OptionChain {
       symbol: "TEST".to_string(),
-      spot: 100.0,
+      s: 100.0,
       quotes: vec![
         ChainQuote {
           strike: 95.0,

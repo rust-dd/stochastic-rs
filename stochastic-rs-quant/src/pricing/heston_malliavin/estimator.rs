@@ -21,7 +21,7 @@ pub(super) const OBSERVABLES: usize = 4;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HestonModel {
   /// Initial underlying price.
-  pub spot: f64,
+  pub s: f64,
   /// Initial instantaneous variance.
   pub initial_variance: f64,
   /// Variance mean-reversion speed.

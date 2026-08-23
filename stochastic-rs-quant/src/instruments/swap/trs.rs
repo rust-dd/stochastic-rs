@@ -73,7 +73,8 @@ pub struct TrsPeriod<T: FloatExt> {
 #[derive(Debug, Clone)]
 pub struct TotalReturnSwap<T: FloatExt> {
   pub notional: T,
-  pub spot: T,
+  /// Spot price of the reference asset.
+  pub s: T,
   /// Continuously-compounded drift of the *total wealth* of the
   /// reference asset (capital + dividends). For a stock referenced
   /// against an OIS-collateralised TRS this is the OIS rate;
@@ -111,7 +112,7 @@ impl<T: FloatExt> TotalReturnSwap<T> {
   /// Total-return forward $F_{\mathrm{TR}}(t) = S_0\,e^{r\,t}$ — the
   /// reference for per-period total-return calculations.
   pub fn total_return_forward(&self, t: T) -> T {
-    self.spot * (self.equity_drift_rate * t).exp()
+    self.s * (self.equity_drift_rate * t).exp()
   }
 
   /// Value the swap given a discount-factor function `df(t)`.
@@ -119,7 +120,7 @@ impl<T: FloatExt> TotalReturnSwap<T> {
     let one = T::one();
     let zero = T::zero();
     let n = self.schedule.len();
-    let mut prev_fwd = self.spot;
+    let mut prev_fwd = self.s;
     let mut equity_pv = zero;
     let mut funding_pv = zero;
     let mut annuity = zero;
@@ -196,7 +197,7 @@ mod tests {
     // 0.5 r² α + O(α³) — small but not zero.
     let trs = TotalReturnSwap {
       notional: 1_000_000.0,
-      spot: 100.0,
+      s: 100.0,
       equity_drift_rate: 0.04,
       schedule: quarterly_schedule(1.0, 0.04),
       spread: 0.0,
@@ -219,7 +220,7 @@ mod tests {
     // (Smoke test: model has no `dividend_yield` field at all.)
     let trs = TotalReturnSwap {
       notional: 1.0,
-      spot: 100.0,
+      s: 100.0,
       equity_drift_rate: 0.05,
       schedule: quarterly_schedule(1.0, 0.05),
       spread: 0.0,
@@ -233,7 +234,7 @@ mod tests {
   fn pay_vs_receive_have_opposite_signs() {
     let mut trs = TotalReturnSwap {
       notional: 1_000_000.0,
-      spot: 100.0,
+      s: 100.0,
       equity_drift_rate: 0.06,
       schedule: quarterly_schedule(1.0, 0.04),
       spread: 0.005,
@@ -249,7 +250,7 @@ mod tests {
   fn fair_spread_zeroes_net_pv() {
     let mut trs = TotalReturnSwap {
       notional: 1_000_000.0,
-      spot: 100.0,
+      s: 100.0,
       equity_drift_rate: 0.06,
       schedule: quarterly_schedule(2.0, 0.04),
       spread: 0.0,
@@ -269,7 +270,7 @@ mod tests {
   fn cashflows_match_period_count() {
     let trs = TotalReturnSwap {
       notional: 1.0,
-      spot: 100.0,
+      s: 100.0,
       equity_drift_rate: 0.05,
       schedule: quarterly_schedule(1.0, 0.05),
       spread: 0.0,
@@ -288,7 +289,7 @@ mod tests {
     let t: f64 = 1.0;
     let trs = TotalReturnSwap {
       notional: 1.0,
-      spot: 100.0,
+      s: 100.0,
       equity_drift_rate: r,
       schedule: vec![TrsPeriod {
         end_time: t,

@@ -10,7 +10,7 @@ use crate::traits::PricerExt;
 
 fn bsm_limit_model(rho: f64) -> HestonModel {
   HestonModel {
-    spot: 100.0,
+    s: 100.0,
     initial_variance: 0.04,
     kappa: 0.0,
     theta: 0.04,
@@ -37,7 +37,7 @@ fn config(paths: usize, steps: usize, seed: u64) -> HestonMalliavinConfig {
 
 fn bsm(model: HestonModel, strike: f64, option_type: OptionType) -> BSMPricer {
   BSMPricer::builder(
-    model.spot,
+    model.s,
     model.initial_variance.sqrt(),
     strike,
     model.risk_free_rate,
@@ -130,7 +130,7 @@ fn small_vol_of_vol_converges_to_the_bsm_limit() {
 #[test]
 fn vertical_estimate_is_pathwise_linear_in_its_call_legs() {
   let model = HestonModel {
-    spot: 100.0,
+    s: 100.0,
     initial_variance: 0.05,
     kappa: 1.6,
     theta: 0.04,

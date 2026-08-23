@@ -65,7 +65,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
   {
     let d = self.params.n_assets();
     let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
-    let spots = Array1::from_iter(self.params.assets.iter().map(|params| params.s0));
+    let spots = Array1::from_iter(self.params.assets.iter().map(|params| params.s));
     let localization = self.localization(payoff);
     let mut sum = T::zero();
 
@@ -152,7 +152,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
   {
     let d = self.params.n_assets();
     let discount = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
-    let spots = Array1::from_iter(self.params.assets.iter().map(|params| params.s0));
+    let spots = Array1::from_iter(self.params.assets.iter().map(|params| params.s));
     let localization = self.localization(payoff);
     let mut sums = Array1::<T>::zeros(d);
 
@@ -220,7 +220,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
       anyhow::bail!("Delta asset={asset} is out of bounds for n_assets={d}");
     }
     for (asset, params) in self.params.assets.iter().enumerate() {
-      if !params.s0.is_finite() || params.s0 <= T::zero() {
+      if !params.s.is_finite() || params.s <= T::zero() {
         anyhow::bail!("initial spot for asset {asset} must be finite and positive");
       }
     }

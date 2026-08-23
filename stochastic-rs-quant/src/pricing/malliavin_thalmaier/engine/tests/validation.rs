@@ -99,12 +99,12 @@ fn independent_stochastic_vol_delta_matches_conditional_benchmark() {
     let a = (0..2)
       .map(|asset| {
         let root_i = integrated[asset].sqrt();
-        ((100.0 / params.assets[asset].s0).ln() - params.r * params.tau + 0.5 * integrated[asset])
+        ((100.0 / params.assets[asset].s).ln() - params.r * params.tau + 0.5 * integrated[asset])
           / root_i
       })
       .collect::<Vec<_>>();
     conditional_sum +=
-      -discount * norm_pdf(a[0]) * norm_cdf(a[1]) / (params.assets[0].s0 * integrated[0].sqrt());
+      -discount * norm_pdf(a[0]) * norm_cdf(a[1]) / (params.assets[0].s * integrated[0].sqrt());
   }
 
   let benchmark = conditional_sum / n_paths as f64;
@@ -117,7 +117,7 @@ fn independent_stochastic_vol_delta_matches_conditional_benchmark() {
 #[test]
 fn cross_gamma_keeps_the_down_bump_positive_for_small_spots() {
   let mut params = constant_volatility_params();
-  params.assets[0].s0 = 0.005;
+  params.assets[0].s = 0.005;
   let engine = MtGreeks::new(params, 0.01, 8);
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [0.005, 100.0],

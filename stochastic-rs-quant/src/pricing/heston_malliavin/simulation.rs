@@ -27,7 +27,7 @@ pub(super) fn simulate_path(
   let sqrt_dt = dt.sqrt();
   let orthogonal_scale = (1.0 - model.rho.powi(2)).sqrt();
   let mut variance = initial_variance;
-  let mut log_spot = model.spot.ln();
+  let mut log_spot = model.s.ln();
   let mut integrated_variance = 0.0;
   let mut orthogonal_stochastic_integral = 0.0;
 
@@ -56,11 +56,11 @@ pub(super) fn simulate_path(
     return Err(HestonMalliavinError::NonFiniteSimulation);
   }
   let conditional_innovation = orthogonal_scale * orthogonal_stochastic_integral;
-  let spot_delta_weight = conditional_innovation / (model.spot * conditional_variance);
+  let spot_delta_weight = conditional_innovation / (model.s * conditional_variance);
   let spot_gamma_weight = conditional_innovation.powi(2)
-    / (model.spot.powi(2) * conditional_variance.powi(2))
-    - conditional_innovation / (model.spot.powi(2) * conditional_variance)
-    - 1.0 / (model.spot.powi(2) * conditional_variance);
+    / (model.s.powi(2) * conditional_variance.powi(2))
+    - conditional_innovation / (model.s.powi(2) * conditional_variance)
+    - 1.0 / (model.s.powi(2) * conditional_variance);
   Ok(SimulatedPath {
     terminal_spot,
     integrated_variance,
@@ -71,7 +71,7 @@ pub(super) fn simulate_path(
 }
 
 pub(super) fn validate_model(model: HestonModel) -> Result<(), HestonMalliavinError> {
-  if !model.spot.is_finite() || model.spot <= 0.0 {
+  if !model.s.is_finite() || model.s <= 0.0 {
     return Err(HestonMalliavinError::InvalidInput(
       "spot must be finite and positive",
     ));

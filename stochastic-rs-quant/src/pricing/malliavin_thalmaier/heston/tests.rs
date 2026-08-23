@@ -4,7 +4,7 @@ use super::*;
 
 fn two_asset_params() -> MultiHestonParams<f64> {
   let asset = AssetParams {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,

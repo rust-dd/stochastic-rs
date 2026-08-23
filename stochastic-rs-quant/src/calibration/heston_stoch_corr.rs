@@ -186,15 +186,15 @@ fn eval_sse(x: &[f64], data: &CalibData) -> f64 {
 /// calibrator.
 #[derive(Clone, Debug)]
 pub struct HscmCalibrator {
-  pub s0: f64,
+  pub s: f64,
   pub options: Vec<MarketOption>,
   pub max_iter: usize,
 }
 
 impl HscmCalibrator {
-  pub fn new(s0: f64, options: Vec<MarketOption>) -> Self {
+  pub fn new(s: f64, options: Vec<MarketOption>) -> Self {
     Self {
-      s0,
+      s,
       options,
       max_iter: 500,
     }
@@ -217,12 +217,7 @@ impl crate::traits::Calibrator for HscmCalibrator {
     // mild-skew, short-tenor SPX-style starting point. Users with a better
     // prior should pass `Some([...])`.
     let guess = initial.unwrap_or([2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3]);
-    Ok(calibrate_hscm(
-      self.s0,
-      &self.options,
-      &guess,
-      self.max_iter,
-    ))
+    Ok(calibrate_hscm(self.s, &self.options, &guess, self.max_iter))
   }
 }
 

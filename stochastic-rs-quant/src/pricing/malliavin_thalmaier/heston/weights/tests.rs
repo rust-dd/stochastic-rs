@@ -44,7 +44,7 @@ fn product_rule_adds_the_off_diagonal_weight_correction() {
 #[test]
 fn log_euler_reconstructs_the_price_noise_exactly() {
   let asset = super::super::AssetParams {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 1.0,
     theta: 0.04,
@@ -62,7 +62,7 @@ fn log_euler_reconstructs_the_price_noise_exactly() {
 
   for asset in 0..2 {
     let terminal = paths.prices[[asset, paths.n_steps - 1]];
-    let reconstructed = params.assets[asset].s0
+    let reconstructed = params.assets[asset].s
       * ((params.r - 0.5 * params.assets[asset].v0) * params.tau
         + paths.ito_integral(asset, params.r, params.tau))
       .exp();
@@ -73,7 +73,7 @@ fn log_euler_reconstructs_the_price_noise_exactly() {
 #[test]
 fn paths_with_stochastic_leverage_reject_conditional_weights() {
   let leveraged = super::super::AssetParams {
-    s0: 100.0,
+    s: 100.0,
     v0: 0.04,
     kappa: 1.0,
     theta: 0.04,

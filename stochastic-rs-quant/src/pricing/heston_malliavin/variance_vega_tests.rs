@@ -18,7 +18,7 @@ const REFERENCE_CF_VEGA: f64 = 20.849_039;
 /// tiny absolute bump is noise-dominated at small path counts.
 fn under_sampled_model() -> HestonModel {
   HestonModel {
-    spot: 490.91,
+    s: 490.91,
     initial_variance: 0.299_494,
     kappa: 4.0,
     theta: 0.072_326,
@@ -133,7 +133,7 @@ fn under_sampled_default_is_positive_across_seeds_and_converges_with_paths() {
 #[test]
 fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
   let model = HestonModel {
-    spot: 100.0,
+    s: 100.0,
     initial_variance: 0.04,
     kappa: 1.5,
     theta: 0.04,
@@ -161,7 +161,7 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
     let discrete_loading =
       (1.0 - (1.0 - model.kappa * dt).powi(config.steps as i32)) / (model.kappa * model.maturity);
     let price = |variance: f64| {
-      BSMPricer::builder(model.spot, variance.sqrt(), 105.0, model.risk_free_rate)
+      BSMPricer::builder(model.s, variance.sqrt(), 105.0, model.risk_free_rate)
         .q(model.dividend_yield)
         .tau(model.maturity)
         .option_type(OptionType::Call)

@@ -47,7 +47,7 @@ fn assert_mc_close(value: f64, standard_error: f64, expected: f64, floor: f64) {
 #[test]
 fn stochastic_volatility_greeks_match_analytic_heston_finite_differences() {
   let model = HestonModel {
-    spot: 100.0,
+    s: 100.0,
     initial_variance: 0.04,
     kappa: 1.5,
     theta: 0.04,
@@ -62,31 +62,21 @@ fn stochastic_volatility_greeks_match_analytic_heston_finite_differences() {
   let result = estimator.estimate(&VanillaPortfolio::call(strike)).unwrap();
   let spot_bump = 0.1;
   let variance_bump = 1e-5;
-  let reference_price = analytic_call(model, strike, model.spot, model.initial_variance);
-  let spot_up = analytic_call(
-    model,
-    strike,
-    model.spot + spot_bump,
-    model.initial_variance,
-  );
-  let spot_down = analytic_call(
-    model,
-    strike,
-    model.spot - spot_bump,
-    model.initial_variance,
-  );
+  let reference_price = analytic_call(model, strike, model.s, model.initial_variance);
+  let spot_up = analytic_call(model, strike, model.s + spot_bump, model.initial_variance);
+  let spot_down = analytic_call(model, strike, model.s - spot_bump, model.initial_variance);
   let reference_delta = (spot_up - spot_down) / (2.0 * spot_bump);
   let reference_gamma = (spot_up - 2.0 * reference_price + spot_down) / spot_bump.powi(2);
   let variance_up = analytic_call(
     model,
     strike,
-    model.spot,
+    model.s,
     model.initial_variance + variance_bump,
   );
   let variance_down = analytic_call(
     model,
     strike,
-    model.spot,
+    model.s,
     model.initial_variance - variance_bump,
   );
   let reference_variance_vega = (variance_up - variance_down) / (2.0 * variance_bump);

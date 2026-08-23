@@ -9,7 +9,7 @@ use super::VanillaPortfolio;
 
 fn model() -> HestonModel {
   HestonModel {
-    spot: 100.0,
+    s: 100.0,
     initial_variance: 0.04,
     kappa: 1.5,
     theta: 0.06,

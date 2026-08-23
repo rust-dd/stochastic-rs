@@ -56,15 +56,15 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
     if asset_b >= dimension {
       anyhow::bail!("asset_b={asset_b} is out of bounds for n_assets={dimension}");
     }
-    let spot = self.params.assets[asset_b].s0;
+    let spot = self.params.assets[asset_b].s;
     let bump = spot * T::from_f64_fast(0.01);
     if bump <= T::zero() {
       anyhow::bail!("asset_b spot is too small for a representable central-difference bump");
     }
     let mut up = self.params.clone();
-    up.assets[asset_b].s0 += bump;
+    up.assets[asset_b].s += bump;
     let mut dn = self.params.clone();
-    dn.assets[asset_b].s0 -= bump;
+    dn.assets[asset_b].s -= bump;
 
     let d_up =
       MtGreeks::try_new(up, self.h, self.n_paths)?.try_delta_with_seed(payoff, asset_a, seed)?;

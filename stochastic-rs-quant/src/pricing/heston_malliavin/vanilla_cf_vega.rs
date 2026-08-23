@@ -185,7 +185,7 @@ fn portfolio_price(
 
 fn pricer(model: HestonModel, strike: f64, initial_variance: f64) -> HestonPricer {
   HestonPricer::builder(
-    model.spot,
+    model.s,
     initial_variance,
     strike,
     model.risk_free_rate,

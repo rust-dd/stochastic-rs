@@ -570,7 +570,7 @@ mod tests {
     let mut mp = MockProvider::new();
     mp.insert_option_chain(OptionChain {
       symbol: "ACME".to_string(),
-      spot: s,
+      s,
       quotes,
     });
 

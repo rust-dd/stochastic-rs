@@ -73,7 +73,7 @@ impl MarketDataProvider for YahooProvider {
       .result
       .first()
       .ok_or_else(|| anyhow::anyhow!("Yahoo option_chain.result empty for {symbol}"))?;
-    let spot = result.quote.regular_market_price;
+    let s = result.quote.regular_market_price;
     let now = OffsetDateTime::now_utc().unix_timestamp() as f64;
     let options = result
       .options
@@ -108,7 +108,7 @@ impl MarketDataProvider for YahooProvider {
     }
     Ok(OptionChain {
       symbol: symbol.to_string(),
-      spot,
+      s,
       quotes,
     })
   }

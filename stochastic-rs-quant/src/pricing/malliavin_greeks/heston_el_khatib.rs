@@ -43,7 +43,7 @@ impl HestonMalliavinGreeks {
     let mut s = Array1::<f64>::zeros(self.n_steps);
     let v = self.variance_path_from_shifted_increments(dw_v, 0.0);
 
-    s[0] = self.s0;
+    s[0] = self.s;
     for k in 0..(self.n_steps - 1) {
       let s_prev = s[k];
       let sqrt_v = v[k].max(0.0).sqrt();
@@ -216,7 +216,7 @@ impl HestonMalliavinGreeks {
       let w_t: f64 = path.dw_s.iter().sum();
       let a = Self::regularize_el_khatib_a(self.el_khatib_a(&path.v, &path.dw_s, &path.dw_v));
       let du_a = self.el_khatib_du_a(&path.dw_s, &path.dw_v);
-      let weight = (w_t / a + du_a / (a * a)) / self.s0;
+      let weight = (w_t / a + du_a / (a * a)) / self.s;
 
       if weight.is_finite() {
         sum += discount * payoff * weight;
