@@ -12,58 +12,32 @@
 //! (`stochastic_rs_stats::fou_estimator::FouEstimateResult`,
 //! `stochastic_rs_stochastic::diffusion::ou::Ou`,
 //! `stochastic_rs_stochastic::interest::vasicek::Vasicek`).
-use crate::traits::PricerExt;
-use crate::traits::TimeExt;
+use crate::traits::ShortRatePricer;
 
 /// Vasicek model for zero-coupon bond pricing.
 ///
 /// `dR(t) = θ(μ − R(t)) dt + σ dW(t)` where `R(t)` is the short rate.
+///
+/// Holds only the model parameters — the short rate and maturity are the
+/// query, passed to [`ShortRatePricer::zero_coupon_price`], so one `Vasicek`
+/// prices an entire maturity grid instead of one struct per maturity.
 #[derive(Default, Debug)]
 pub struct Vasicek {
-  /// Short rate at evaluation date.
-  pub r_t: f64,
   /// Mean-reversion speed (κ in the SDE).
   pub theta: f64,
   /// Long-run mean of the short rate (the level `r_t` reverts to).
   pub mu: f64,
   /// Volatility.
   pub sigma: f64,
-  /// Maturity of the bond in years
-  pub tau: f64,
-  /// Evaluation date
-  pub eval: Option<chrono::NaiveDate>,
-  /// Expiration date
-  pub expiration: Option<chrono::NaiveDate>,
 }
 
-impl PricerExt for Vasicek {
-  fn calculate_call_put(&self) -> (f64, f64) {
-    let price = self.calculate_price();
-    (price, price)
-  }
-
-  fn calculate_price(&self) -> f64 {
-    let tau = self.tau;
-
-    let B = (1.0 - (-self.theta * tau).exp()) / self.theta;
-    let A = (self.mu - (self.sigma.powi(2) / (2.0 * self.theta.powi(2)))) * (B - tau)
-      - (self.sigma.powi(2) / (4.0 * self.theta)) * B.powi(2);
-
-    (A - B * self.r_t).exp()
-  }
-}
-
-impl TimeExt for Vasicek {
-  fn tau(&self) -> Option<f64> {
-    Some(self.tau)
-  }
-
-  fn eval(&self) -> Option<chrono::NaiveDate> {
-    self.eval
-  }
-
-  fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiration
+impl ShortRatePricer for Vasicek {
+  fn zero_coupon_price(&self, r0: f64, tau: f64) -> f64 {
+    assert!(tau >= 0.0, "tau must be non-negative (got {tau})");
+    let b = (1.0 - (-self.theta * tau).exp()) / self.theta;
+    let a = (self.mu - (self.sigma.powi(2) / (2.0 * self.theta.powi(2)))) * (b - tau)
+      - (self.sigma.powi(2) / (4.0 * self.theta)) * b.powi(2);
+    (a - b * r0).exp()
   }
 }
 
@@ -83,19 +57,11 @@ impl Vasicek {
   /// genuine fractional pricing, use the rough-volatility models in
   /// `stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek` or
   /// `stochastic_rs_stochastic::rough::*`.
-  pub fn from_fou_estimate(
-    est: &stochastic_rs_stats::fou_estimator::FouEstimateResult,
-    r_t: f64,
-    tau: f64,
-  ) -> Self {
+  pub fn from_fou_estimate(est: &stochastic_rs_stats::fou_estimator::FouEstimateResult) -> Self {
     Self {
-      r_t,
       theta: est.theta,
       mu: est.mu,
       sigma: est.sigma,
-      tau,
-      eval: None,
-      expiration: None,
     }
   }
 }
@@ -107,46 +73,34 @@ mod tests {
   #[test]
   fn zcb_at_zero_tau_equals_one() {
     let v = Vasicek {
-      r_t: 0.05,
       theta: 0.5,
       mu: 0.04,
       sigma: 0.01,
-      tau: 0.0,
-      eval: None,
-      expiration: None,
     };
-    let p = v.calculate_price();
+    let p = v.zero_coupon_price(0.05, 0.0);
     assert!((p - 1.0).abs() < 1e-12, "P(t,t)=1 violated: {p}");
   }
 
   #[test]
   fn zcb_decreases_with_rate() {
-    let make = |r| Vasicek {
-      r_t: r,
+    let v = Vasicek {
       theta: 0.5,
       mu: 0.04,
       sigma: 0.01,
-      tau: 1.0,
-      eval: None,
-      expiration: None,
     };
-    let p_low = make(0.02).calculate_price();
-    let p_high = make(0.08).calculate_price();
+    let p_low = v.zero_coupon_price(0.02, 1.0);
+    let p_high = v.zero_coupon_price(0.08, 1.0);
     assert!(p_high < p_low, "ZCB should decrease with short rate");
   }
 
   #[test]
   fn zcb_positive_and_below_one() {
     let v = Vasicek {
-      r_t: 0.05,
       theta: 0.5,
       mu: 0.04,
       sigma: 0.01,
-      tau: 5.0,
-      eval: None,
-      expiration: None,
     };
-    let p = v.calculate_price();
+    let p = v.zero_coupon_price(0.05, 5.0);
     assert!(p > 0.0 && p < 1.0, "ZCB out of range: {p}");
   }
 
@@ -158,13 +112,22 @@ mod tests {
       mu: 0.035,
       theta: 0.42,
     };
-    let v = Vasicek::from_fou_estimate(&est, 0.04, 2.0);
-    assert_eq!(v.r_t, 0.04);
+    let v = Vasicek::from_fou_estimate(&est);
     assert_eq!(v.theta, 0.42);
     assert_eq!(v.mu, 0.035);
     assert_eq!(v.sigma, 0.012);
-    assert_eq!(v.tau, 2.0);
-    let p = v.calculate_price();
+    let p = v.zero_coupon_price(0.04, 2.0);
     assert!(p > 0.0 && p < 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "tau must be non-negative")]
+  fn zero_coupon_price_panics_on_negative_tau() {
+    let v = Vasicek {
+      theta: 0.5,
+      mu: 0.04,
+      sigma: 0.01,
+    };
+    v.zero_coupon_price(0.05, -1.0);
   }
 }

@@ -36,76 +36,62 @@
 //!   families with the Ho-Lee and Hull and White short rate models",
 //!   arXiv:1707.02496, §3 (eq. 3.3-3.4 + θ(t) Brigo formula).
 use crate::curves::DiscountCurve;
-use crate::traits::PricerExt;
-use crate::traits::TimeExt;
+use crate::traits::ShortRatePricer;
 
 /// Hull-White ZCB pricer parameterised by the calibrated initial discount
-/// curve. The struct stores the *projection* of that curve onto the two
-/// time points the closed form actually needs ($P^M(0,t)$, $P^M(0,T)$,
+/// curve. The struct stores the *projection* of that curve onto the time
+/// points the closed form actually needs ($P^M(0,t)$, $P^M(0,T)$,
 /// $f^M(0,t)$), which keeps the type Python-bindable (no `&'a` lifetime,
 /// no `fn(f64)->f64` field) and decouples pricing from curve interpolation.
+///
+/// Holds only the model — the evaluation-time projection of the curve and
+/// the model parameters `alpha`/`sigma`. The short rate and the maturity
+/// horizon `tau` (which the struct's `p0_at_maturity` projection was built
+/// for, via [`from_curve`](Self::from_curve)) are the query, passed to
+/// [`ShortRatePricer::zero_coupon_price`].
 ///
 /// Use [`HullWhite::from_curve`] to build the struct from a [`DiscountCurve`];
 /// or set the discount/forward fields directly if you already have them.
 #[derive(Default, Debug, Clone)]
 pub struct HullWhite {
-  /// Current short rate $r(t)$.
-  pub r_t: f64,
   /// Mean-reversion speed $a > 0$.
   pub alpha: f64,
   /// Short-rate volatility $\sigma > 0$.
   pub sigma: f64,
-  /// Time to maturity $\tau = T - t$ in years.
-  pub tau: f64,
   /// Evaluation time $t$ measured from the curve's inception in years
   /// (i.e., the curve was calibrated at "time 0", and `t` is how far in
   /// the future we are pricing). For pricing as-of curve inception, use `t = 0`.
   pub t: f64,
   /// Initial market discount factor at evaluation time, $P^M(0, t)$.
   pub p0_at_t: f64,
-  /// Initial market discount factor at maturity, $P^M(0, T) = P^M(0, t+\tau)$.
+  /// Initial market discount factor at maturity, $P^M(0, T) = P^M(0, t+\tau)$,
+  /// projected for the `tau` passed to [`from_curve`](Self::from_curve).
   pub p0_at_maturity: f64,
   /// Initial market instantaneous forward rate at evaluation time, $f^M(0, t)$.
   pub f0_at_t: f64,
-  /// Optional evaluation date (used by [`TimeExt`] for date-aware downstream).
-  pub eval: Option<chrono::NaiveDate>,
-  /// Optional maturity date (used by [`TimeExt`] for date-aware downstream).
-  pub expiration: Option<chrono::NaiveDate>,
 }
 
 impl HullWhite {
   /// Build a Hull-White pricer by projecting a calibrated [`DiscountCurve`]
-  /// onto the time points the closed form needs.
+  /// onto the time points the closed form needs, for the maturity horizon
+  /// `tau`.
   ///
   /// The instantaneous forward $f^M(0, t) = -\partial_T \ln P^M(0, t)$ is
   /// estimated by a centered finite difference on the curve's log-discount
   /// factor. The bump width is chosen as `max(1e-4, 1e-4·t)` — small enough
   /// to keep the discretisation error well below the bond's typical scale,
   /// large enough to avoid catastrophic cancellation.
-  pub fn from_curve(
-    curve: &DiscountCurve<f64>,
-    r_t: f64,
-    alpha: f64,
-    sigma: f64,
-    t: f64,
-    tau: f64,
-    eval: Option<chrono::NaiveDate>,
-    expiration: Option<chrono::NaiveDate>,
-  ) -> Self {
+  pub fn from_curve(curve: &DiscountCurve<f64>, alpha: f64, sigma: f64, t: f64, tau: f64) -> Self {
     let p0_at_t = curve.discount_factor(t);
     let p0_at_maturity = curve.discount_factor(t + tau);
     let f0_at_t = instantaneous_forward(curve, t);
     Self {
-      r_t,
       alpha,
       sigma,
-      tau,
       t,
       p0_at_t,
       p0_at_maturity,
       f0_at_t,
-      eval,
-      expiration,
     }
   }
 }
@@ -127,41 +113,22 @@ fn instantaneous_forward(curve: &DiscountCurve<f64>, t: f64) -> f64 {
   }
 }
 
-impl PricerExt for HullWhite {
-  fn calculate_call_put(&self) -> (f64, f64) {
-    let price = self.calculate_price();
-    (price, price)
-  }
-
-  fn calculate_price(&self) -> f64 {
+impl ShortRatePricer for HullWhite {
+  fn zero_coupon_price(&self, r0: f64, tau: f64) -> f64 {
+    assert!(tau >= 0.0, "tau must be non-negative (got {tau})");
     let a = self.alpha;
     let sigma = self.sigma;
-    let r = self.r_t;
-    let tau = self.tau;
     let t = self.t;
 
     // B(t,T) = (1 - e^{-a τ}) / a
     let b = (1.0 - (-a * tau).exp()) / a;
 
     // Exponent: B·f^M(0,t) - σ²/(4a)·(1-e^{-2at})·B² - B·r(t)
-    let exponent =
-      b * self.f0_at_t - (sigma * sigma) / (4.0 * a) * (1.0 - (-2.0 * a * t).exp()) * b * b - b * r;
+    let exponent = b * self.f0_at_t
+      - (sigma * sigma) / (4.0 * a) * (1.0 - (-2.0 * a * t).exp()) * b * b
+      - b * r0;
 
     self.p0_at_maturity / self.p0_at_t * exponent.exp()
-  }
-}
-
-impl TimeExt for HullWhite {
-  fn tau(&self) -> Option<f64> {
-    Some(self.tau)
-  }
-
-  fn eval(&self) -> Option<chrono::NaiveDate> {
-    self.eval
-  }
-
-  fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiration
   }
 }
 
@@ -191,8 +158,8 @@ mod tests {
   #[test]
   fn zcb_at_zero_tau_equals_one() {
     let curve = flat_curve(0.05);
-    let h = HullWhite::from_curve(&curve, 0.05, 0.5, 0.01, 0.5, 0.0, None, None);
-    let p = h.calculate_price();
+    let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.5, 0.0);
+    let p = h.zero_coupon_price(0.05, 0.0);
     assert!((p - 1.0).abs() < 1e-12, "P(t,t) must be 1, got {p}");
   }
 
@@ -204,8 +171,8 @@ mod tests {
     let curve = flat_curve(rate);
     // For a flat curve at rate r_market, f^M(0, 0) = r_market.
     let f0_at_zero = instantaneous_forward(&curve, 0.0);
-    let h = HullWhite::from_curve(&curve, f0_at_zero, 0.5, 0.01, 0.0, 2.0, None, None);
-    let p_hw = h.calculate_price();
+    let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.0, 2.0);
+    let p_hw = h.zero_coupon_price(f0_at_zero, 2.0);
     let p_market = curve.discount_factor(2.0);
     assert!(
       (p_hw - p_market).abs() < 1e-6,
@@ -216,8 +183,8 @@ mod tests {
   #[test]
   fn zcb_finite_and_positive() {
     let curve = flat_curve(0.05);
-    let h = HullWhite::from_curve(&curve, 0.05, 0.5, 0.01, 0.0, 2.0, None, None);
-    let p = h.calculate_price();
+    let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.0, 2.0);
+    let p = h.zero_coupon_price(0.05, 2.0);
     assert!(
       p.is_finite() && p > 0.0,
       "ZCB must be finite-positive, got {p}"
@@ -227,9 +194,9 @@ mod tests {
   #[test]
   fn zcb_decreases_with_short_rate() {
     let curve = flat_curve(0.05);
-    let make = |r| HullWhite::from_curve(&curve, r, 0.5, 0.01, 0.0, 1.0, None, None);
-    let p_low = make(0.02).calculate_price();
-    let p_high = make(0.08).calculate_price();
+    let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.0, 1.0);
+    let p_low = h.zero_coupon_price(0.02, 1.0);
+    let p_high = h.zero_coupon_price(0.08, 1.0);
     assert!(
       p_high < p_low,
       "ZCB must decrease with short rate: p(0.02)={p_low} vs p(0.08)={p_high}"
@@ -239,8 +206,8 @@ mod tests {
   #[test]
   fn zcb_below_one_for_positive_rate_and_tau() {
     let curve = flat_curve(0.05);
-    let h = HullWhite::from_curve(&curve, 0.05, 0.5, 0.01, 0.0, 5.0, None, None);
-    let p = h.calculate_price();
+    let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.0, 5.0);
+    let p = h.zero_coupon_price(0.05, 5.0);
     assert!(p < 1.0 && p > 0.0, "ZCB out of range: {p}");
   }
 
@@ -249,13 +216,21 @@ mod tests {
     // The fix removes Utc::now()-dependence: prices computed at any wall-clock
     // moment must be equal for identical inputs.
     let curve = flat_curve(0.04);
-    let make = || HullWhite::from_curve(&curve, 0.04, 0.3, 0.015, 1.0, 2.0, None, None);
-    let p1 = make().calculate_price();
-    let p2 = make().calculate_price();
+    let make = || HullWhite::from_curve(&curve, 0.3, 0.015, 1.0, 2.0);
+    let p1 = make().zero_coupon_price(0.04, 2.0);
+    let p2 = make().zero_coupon_price(0.04, 2.0);
     assert_eq!(
       p1.to_bits(),
       p2.to_bits(),
       "HW must be deterministic, got {p1} != {p2}"
     );
+  }
+
+  #[test]
+  #[should_panic(expected = "tau must be non-negative")]
+  fn zero_coupon_price_panics_on_negative_tau() {
+    let curve = flat_curve(0.05);
+    let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.0, 1.0);
+    h.zero_coupon_price(0.05, -1.0);
   }
 }

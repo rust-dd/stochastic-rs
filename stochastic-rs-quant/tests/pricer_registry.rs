@@ -23,6 +23,9 @@
 //! a claim about *which* trait a struct carries can drift no more than the
 //! claim that it carries one at all.
 
+use stochastic_rs_quant::bonds::Cir;
+use stochastic_rs_quant::bonds::HullWhite;
+use stochastic_rs_quant::bonds::Vasicek;
 use stochastic_rs_quant::instruments::EuropeanOption;
 use stochastic_rs_quant::pricing::AnalyticBSEngine;
 use stochastic_rs_quant::pricing::AnalyticHestonEngine;
@@ -42,6 +45,7 @@ use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::ModelPricer;
 use stochastic_rs_quant::traits::PricerExt;
 use stochastic_rs_quant::traits::PricingEngine;
+use stochastic_rs_quant::traits::ShortRatePricer;
 
 /// Asserts `$t` implements [`ModelPricer`] at compile time.
 macro_rules! assert_model_pricer {
@@ -65,6 +69,15 @@ macro_rules! assert_pricing_engine {
   ($(($t:ty, $i:ty)),* $(,)?) => { $(const _: fn() = || {
     fn assert_impl<T: PricingEngine<I>, I>() {}
     assert_impl::<$t, $i>();
+  };)* };
+}
+
+/// Asserts `$t` implements the short-rate bond family's [`ShortRatePricer`]
+/// at compile time.
+macro_rules! assert_short_rate_pricer {
+  ($($t:ty),* $(,)?) => { $(const _: fn() = || {
+    fn assert_impl<T: ShortRatePricer + ?Sized>() {}
+    assert_impl::<$t>();
   };)* };
 }
 
@@ -120,6 +133,15 @@ assert_pricing_engine!(
   (AnalyticBSEngine, EuropeanOption),
   (AnalyticHestonEngine, EuropeanOption),
 );
+
+// The short-rate bond family (Task 2). `Cir`, `HullWhite`, `Vasicek` are
+// named for their model, not `*Pricer`/`*Engine`, so this file's header
+// derivation command (`pub struct .*(?:Pricer|Engine)`) never sees them —
+// they sit outside the 71/21/50/15 header counts entirely, not folded into
+// any of them. Registered here anyway because `ShortRatePricer` is a real
+// family with exactly these three implementors and D6's guard is worth
+// having for it too.
+assert_short_rate_pricer!(Cir, HullWhite, Vasicek);
 
 mod no_trait_by_design {
   //! Families that deliberately carry no `ModelPricer` implementation, with

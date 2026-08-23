@@ -2,11 +2,13 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::curves::PyDiscountCurve;
-use crate::traits::PricerExt;
+use crate::traits::ShortRatePricer;
 
 #[pyclass(name = "VasicekBond", unsendable)]
 pub struct PyVasicekBond {
   inner: crate::bonds::vasicek::Vasicek,
+  r_t: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -14,20 +16,14 @@ impl PyVasicekBond {
   #[new]
   fn new(r_t: f64, theta: f64, mu: f64, sigma: f64, tau: f64) -> Self {
     Self {
-      inner: crate::bonds::vasicek::Vasicek {
-        r_t,
-        theta,
-        mu,
-        sigma,
-        tau,
-        eval: None,
-        expiration: None,
-      },
+      inner: crate::bonds::vasicek::Vasicek { theta, mu, sigma },
+      r_t,
+      tau,
     }
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self.inner.zero_coupon_price(self.r_t, self.tau)
   }
 }
 
@@ -40,6 +36,8 @@ impl PyVasicekBond {
 #[pyclass(name = "CIRBond", unsendable)]
 pub struct PyCIRBond {
   inner: crate::bonds::cir::Cir,
+  r_t: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -49,20 +47,14 @@ impl PyCIRBond {
   #[new]
   fn new(r_t: f64, theta: f64, mu: f64, sigma: f64, tau: f64) -> Self {
     Self {
-      inner: crate::bonds::cir::Cir {
-        r_t,
-        theta,
-        mu,
-        sigma,
-        tau,
-        eval: None,
-        expiration: None,
-      },
+      inner: crate::bonds::cir::Cir { theta, mu, sigma },
+      r_t,
+      tau,
     }
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self.inner.zero_coupon_price(self.r_t, self.tau)
   }
 }
 
@@ -73,6 +65,8 @@ impl PyCIRBond {
 #[pyclass(name = "HullWhiteBond", unsendable)]
 pub struct PyHullWhiteBond {
   inner: crate::bonds::hull_white::HullWhite,
+  r_t: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -100,17 +94,15 @@ impl PyHullWhiteBond {
     }
     Ok(Self {
       inner: crate::bonds::hull_white::HullWhite {
-        r_t,
         alpha,
         sigma,
-        tau,
         t,
         p0_at_t,
         p0_at_maturity,
         f0_at_t,
-        eval: None,
-        expiration: None,
       },
+      r_t,
+      tau,
     })
   }
 
@@ -134,20 +126,13 @@ impl PyHullWhiteBond {
       return Err(PyValueError::new_err("tau must be >= 0"));
     }
     Ok(Self {
-      inner: crate::bonds::hull_white::HullWhite::from_curve(
-        &curve.inner,
-        r_t,
-        alpha,
-        sigma,
-        t,
-        tau,
-        None,
-        None,
-      ),
+      inner: crate::bonds::hull_white::HullWhite::from_curve(&curve.inner, alpha, sigma, t, tau),
+      r_t,
+      tau,
     })
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self.inner.zero_coupon_price(self.r_t, self.tau)
   }
 }
