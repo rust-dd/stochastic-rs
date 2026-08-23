@@ -46,9 +46,13 @@ use crate::traits::ShortRatePricer;
 ///
 /// Holds only the model — the evaluation-time projection of the curve and
 /// the model parameters `alpha`/`sigma`. The short rate and the maturity
-/// horizon `tau` (which the struct's `p0_at_maturity` projection was built
-/// for, via [`from_curve`](Self::from_curve)) are the query, passed to
-/// [`ShortRatePricer::zero_coupon_price`].
+/// horizon `tau` are the query, passed to
+/// [`ShortRatePricer::zero_coupon_price`]. [`from_curve`](Self::from_curve)
+/// additionally retains the curve itself (`curve`, below) so that call can
+/// honestly reproject $P^M(0, t+\tau)$ for *any* `tau`, not just the one it
+/// was built with — the model is genuinely reusable across a maturity grid.
+/// A `HullWhite` built by setting `p0_at_maturity` directly (no curve — see
+/// `curve`'s own doc) has no such freedom and is pinned to `pinned_tau`.
 ///
 /// Use [`HullWhite::from_curve`] to build the struct from a [`DiscountCurve`];
 /// or set the discount/forward fields directly if you already have them.
@@ -65,16 +69,30 @@ pub struct HullWhite {
   /// Initial market discount factor at evaluation time, $P^M(0, t)$.
   pub p0_at_t: f64,
   /// Initial market discount factor at maturity, $P^M(0, T) = P^M(0, t+\tau)$,
-  /// projected for the `tau` passed to [`from_curve`](Self::from_curve).
+  /// cached for `pinned_tau`. Ignored in favor of a fresh lookup on `curve`
+  /// when `curve` is `Some` — see
+  /// [`ShortRatePricer::zero_coupon_price`]'s impl on this type.
   pub p0_at_maturity: f64,
   /// Initial market instantaneous forward rate at evaluation time, $f^M(0, t)$.
   pub f0_at_t: f64,
+  /// The maturity horizon `p0_at_maturity` was projected for. Only
+  /// consulted when `curve` is `None`, to reject a query `tau` the cached
+  /// `p0_at_maturity` was never computed for instead of silently pricing
+  /// against the wrong discount factor.
+  pub pinned_tau: f64,
+  /// The calibrated curve, retained by [`from_curve`](Self::from_curve) so
+  /// every query can reproject `P^M(0, t+\tau)` fresh instead of trusting a
+  /// single cached `p0_at_maturity`. `None` when built by setting
+  /// `p0_at_maturity` directly (no curve available to requery) — a
+  /// `HullWhite` built this way only prices at `pinned_tau`.
+  pub curve: Option<DiscountCurve<f64>>,
 }
 
 impl HullWhite {
   /// Build a Hull-White pricer by projecting a calibrated [`DiscountCurve`]
   /// onto the time points the closed form needs, for the maturity horizon
-  /// `tau`.
+  /// `tau`. The curve itself is retained (`curve`), so the returned model
+  /// honestly reprices at any `tau`, not just this one — see the struct doc.
   ///
   /// The instantaneous forward $f^M(0, t) = -\partial_T \ln P^M(0, t)$ is
   /// estimated by a centered finite difference on the curve's log-discount
@@ -92,6 +110,8 @@ impl HullWhite {
       p0_at_t,
       p0_at_maturity,
       f0_at_t,
+      pinned_tau: tau,
+      curve: Some(curve.clone()),
     }
   }
 }
@@ -114,11 +134,34 @@ fn instantaneous_forward(curve: &DiscountCurve<f64>, t: f64) -> f64 {
 }
 
 impl ShortRatePricer for HullWhite {
+  /// When `curve` is set (built via [`from_curve`](Self::from_curve)), looks
+  /// up `P^M(0, t+tau)` fresh for whatever `tau` is queried — one model
+  /// honestly reprices any maturity. Otherwise falls back to the cached
+  /// `p0_at_maturity`, which is only valid for `pinned_tau`.
+  ///
+  /// # Panics
+  /// - if `tau` is negative (the trait's contract)
+  /// - if `curve` is `None` and `tau` does not equal `pinned_tau` — the
+  ///   cached `p0_at_maturity` was never computed for any other maturity,
+  ///   so pricing against it would silently return a wrong number
   fn zero_coupon_price(&self, r0: f64, tau: f64) -> f64 {
     assert!(tau >= 0.0, "tau must be non-negative (got {tau})");
     let a = self.alpha;
     let sigma = self.sigma;
     let t = self.t;
+
+    let p0_at_maturity = match &self.curve {
+      Some(curve) => curve.discount_factor(t + tau),
+      None => {
+        let pinned_tau = self.pinned_tau;
+        assert!(
+          tau == pinned_tau,
+          "tau must equal the maturity this HullWhite was built for when no \
+           curve is stored (got tau={tau}, built for tau={pinned_tau})"
+        );
+        self.p0_at_maturity
+      }
+    };
 
     // B(t,T) = (1 - e^{-a τ}) / a
     let b = (1.0 - (-a * tau).exp()) / a;
@@ -128,7 +171,7 @@ impl ShortRatePricer for HullWhite {
       - (sigma * sigma) / (4.0 * a) * (1.0 - (-2.0 * a * t).exp()) * b * b
       - b * r0;
 
-    self.p0_at_maturity / self.p0_at_t * exponent.exp()
+    p0_at_maturity / self.p0_at_t * exponent.exp()
   }
 }
 
@@ -232,5 +275,88 @@ mod tests {
     let curve = flat_curve(0.05);
     let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.0, 1.0);
     h.zero_coupon_price(0.05, -1.0);
+  }
+
+  /// Regression: `from_curve` used to bake `p0_at_maturity` for a single
+  /// `tau`, so a later `zero_coupon_price` query at a *different* `tau`
+  /// silently priced against the wrong discount factor — plausible-looking,
+  /// wrong. A model built for `tau=5.0` must now reproject its own curve
+  /// and reproduce exactly what a model built directly for `tau=1.0` gives
+  /// when both are queried at `tau=1.0`, matching to the bit.
+  #[test]
+  fn zero_coupon_price_reprices_any_maturity_from_one_model() {
+    let curve = flat_curve(0.05);
+    let built_for_five = HullWhite::from_curve(&curve, 0.5, 0.01, 0.5, 5.0);
+    let built_for_one = HullWhite::from_curve(&curve, 0.5, 0.01, 0.5, 1.0);
+    let p_reused = built_for_five.zero_coupon_price(0.08, 1.0);
+    let p_direct = built_for_one.zero_coupon_price(0.08, 1.0);
+    assert_eq!(
+      p_reused.to_bits(),
+      p_direct.to_bits(),
+      "a model built for tau=5.0, queried at tau=1.0, must match a model \
+       built directly for tau=1.0: {p_reused} vs {p_direct}"
+    );
+  }
+
+  /// Same invariant, restated without `HullWhite`'s own history: two
+  /// *independently* built curve-backed models, queried at two different
+  /// `tau`s each, must agree with each other at every shared query point —
+  /// the price only depends on the query, never on which `tau` the model
+  /// happened to be constructed with.
+  #[test]
+  fn zero_coupon_price_is_independent_of_construction_tau() {
+    let curve = flat_curve(0.05);
+    let h = HullWhite::from_curve(&curve, 0.5, 0.01, 0.5, 2.0);
+    for &tau in &[0.5, 1.0, 2.0, 3.0, 7.5] {
+      let p = h.zero_coupon_price(0.08, tau);
+      let p_from_scratch =
+        HullWhite::from_curve(&curve, 0.5, 0.01, 0.5, tau).zero_coupon_price(0.08, tau);
+      assert_eq!(
+        p.to_bits(),
+        p_from_scratch.to_bits(),
+        "tau={tau}: reused model gave {p}, fresh model gave {p_from_scratch}"
+      );
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "tau must equal the maturity this HullWhite was built for")]
+  fn zero_coupon_price_panics_on_tau_mismatch_without_curve() {
+    // Mirrors PyHullWhiteBond::new's "already have the projected numbers"
+    // path, which has no curve to requery.
+    let h = HullWhite {
+      alpha: 0.5,
+      sigma: 0.01,
+      t: 0.0,
+      p0_at_t: 1.0,
+      p0_at_maturity: 0.9,
+      f0_at_t: 0.05,
+      pinned_tau: 1.0,
+      curve: None,
+    };
+    h.zero_coupon_price(0.05, 2.0);
+  }
+
+  #[test]
+  fn zero_coupon_price_without_curve_matches_curve_backed_at_pinned_tau() {
+    let curve = flat_curve(0.05);
+    let with_curve = HullWhite::from_curve(&curve, 0.5, 0.01, 0.0, 2.0);
+    let raw = HullWhite {
+      alpha: 0.5,
+      sigma: 0.01,
+      t: 0.0,
+      p0_at_t: with_curve.p0_at_t,
+      p0_at_maturity: with_curve.p0_at_maturity,
+      f0_at_t: with_curve.f0_at_t,
+      pinned_tau: 2.0,
+      curve: None,
+    };
+    let p_with_curve = with_curve.zero_coupon_price(0.05, 2.0);
+    let p_raw = raw.zero_coupon_price(0.05, 2.0);
+    assert_eq!(
+      p_with_curve.to_bits(),
+      p_raw.to_bits(),
+      "no-curve fallback must match the curve-backed computation at pinned_tau"
+    );
   }
 }

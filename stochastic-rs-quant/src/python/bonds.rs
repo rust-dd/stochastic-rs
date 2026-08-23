@@ -100,6 +100,8 @@ impl PyHullWhiteBond {
         p0_at_t,
         p0_at_maturity,
         f0_at_t,
+        pinned_tau: tau,
+        curve: None,
       },
       r_t,
       tau,
