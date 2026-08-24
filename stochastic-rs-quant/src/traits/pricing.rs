@@ -71,17 +71,32 @@ impl Greeks {
   }
 }
 
-/// Trait for models that can price European options at arbitrary (K, T) points.
+/// Trait for models that can price a single-underlying call or put at
+/// arbitrary (K, T) points.
 ///
 /// Unlike [`PricerExt`], which bundles market data and strike into the pricer,
 /// `ModelPricer` separates the model from the pricing query. This enables
 /// vectorized pricing across strike/maturity grids for calibration and vol
 /// surface construction.
+///
+/// Exercise style is the **implementor's** choice, not the trait's: most
+/// members price European exercise, but the American approximations
+/// (`BjerksundStensland2002Pricer`, `SnellEnvelopePricer`,
+/// `FiniteDifferencePricer` at [`OptionStyle::American`](crate::OptionStyle))
+/// implement it too, and each says so on its own type. What the trait fixes
+/// is the *query* shape — one spot, one strike, one rate, one dividend
+/// yield, one maturity — not the exercise right.
 pub trait ModelPricer {
-  /// Price a European call option.
+  /// Price a call option.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
 
-  /// Price a European put via put-call parity.
+  /// Price a put via European put-call parity.
+  ///
+  /// **Override this** unless the model's carry factor is literally
+  /// $e^{-q\tau}$ and its exercise is European — the default silently
+  /// returns a plausible wrong number otherwise. See `BSMPricer`
+  /// (cost-of-carry conventions) and `BjerksundStensland2002Pricer`
+  /// (American early exercise) for the two failure modes.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let call = self.price_call(s, k, r, q, tau);
     call - s * (-q * tau).exp() + k * (-r * tau).exp()

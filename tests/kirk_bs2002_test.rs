@@ -3,9 +3,9 @@
 //! Reference values taken from Haug's "The Complete Guide to Option Pricing
 //! Formulas" and the Python notebook by arawn10 (Kaggle, 2023).
 
-use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::pricing::bjerksund_stensland::BjerksundStensland2002Pricer;
 use stochastic_rs::quant::pricing::kirk::KirkSpreadPricer;
+use stochastic_rs::traits::ModelPricer;
 use stochastic_rs::traits::PricerExt;
 
 fn assert_close(a: f64, b: f64, tol: f64) {
@@ -118,103 +118,43 @@ fn kirk_spread_high_correlation() {
 fn bs2002_call_otm() {
   // fs=90, x=100, t=0.5, r=0.1, b=0, v=0.15 → 0.8099
   // b=0 means q=r
-  let pricer = BjerksundStensland2002Pricer::new(
-    90.0,
-    0.15,
-    100.0,
-    0.1,
-    Some(0.1), // q = r → b = 0
-    Some(0.5),
-    None,
-    None,
-    OptionType::Call,
-  );
-  assert_close(pricer.calculate_price(), 0.8099, 0.01);
+  let price = BjerksundStensland2002Pricer::new(0.15).price_call(90.0, 100.0, 0.1, 0.1, 0.5);
+  assert_close(price, 0.8099, 0.01);
 }
 
 #[test]
 fn bs2002_call_atm() {
   // fs=100, x=100, t=0.5, r=0.1, b=0, v=0.25 → 6.7661
-  let pricer = BjerksundStensland2002Pricer::new(
-    100.0,
-    0.25,
-    100.0,
-    0.1,
-    Some(0.1),
-    Some(0.5),
-    None,
-    None,
-    OptionType::Call,
-  );
-  assert_close(pricer.calculate_price(), 6.7661, 0.01);
+  let price = BjerksundStensland2002Pricer::new(0.25).price_call(100.0, 100.0, 0.1, 0.1, 0.5);
+  assert_close(price, 6.7661, 0.01);
 }
 
 #[test]
 fn bs2002_call_itm() {
   // fs=110, x=100, t=0.5, r=0.1, b=0, v=0.35 → 15.5137
-  let pricer = BjerksundStensland2002Pricer::new(
-    110.0,
-    0.35,
-    100.0,
-    0.1,
-    Some(0.1),
-    Some(0.5),
-    None,
-    None,
-    OptionType::Call,
-  );
-  assert_close(pricer.calculate_price(), 15.5137, 0.01);
+  let price = BjerksundStensland2002Pricer::new(0.35).price_call(110.0, 100.0, 0.1, 0.1, 0.5);
+  assert_close(price, 15.5137, 0.01);
 }
 
 #[test]
 fn bs2002_put_via_symmetry() {
   // Put: fs=90, x=100, t=0.5, r=0.1, b=0, v=0.15 → 10.5400
-  let pricer = BjerksundStensland2002Pricer::new(
-    90.0,
-    0.15,
-    100.0,
-    0.1,
-    Some(0.1),
-    Some(0.5),
-    None,
-    None,
-    OptionType::Put,
-  );
-  assert_close(pricer.calculate_price(), 10.5400, 0.01);
+  let price = BjerksundStensland2002Pricer::new(0.15).price_put(90.0, 100.0, 0.1, 0.1, 0.5);
+  assert_close(price, 10.5400, 0.01);
 }
 
 #[test]
 fn bs2002_put_atm() {
   // Put: fs=100, x=100, t=0.5, r=0.1, b=0, v=0.25 → 6.7661
-  let pricer = BjerksundStensland2002Pricer::new(
-    100.0,
-    0.25,
-    100.0,
-    0.1,
-    Some(0.1),
-    Some(0.5),
-    None,
-    None,
-    OptionType::Put,
-  );
-  assert_close(pricer.calculate_price(), 6.7661, 0.01);
+  let price = BjerksundStensland2002Pricer::new(0.25).price_put(100.0, 100.0, 0.1, 0.1, 0.5);
+  assert_close(price, 6.7661, 0.01);
 }
 
 #[test]
 fn bs2002_put_otm() {
   // Put: fs=110, x=100, t=0.5, r=0.1, b=0, v=0.35 → 5.8374
-  let pricer = BjerksundStensland2002Pricer::new(
-    110.0,
-    0.35,
-    100.0,
-    0.1,
-    Some(0.1),
-    Some(0.5),
-    None,
-    None,
-    OptionType::Put,
-  );
-  assert_close(pricer.calculate_price(), 5.8374, 0.01);
+  let price = BjerksundStensland2002Pricer::new(0.35).price_put(110.0, 100.0, 0.1, 0.1, 0.5);
+  assert_close(price, 5.8374, 0.01);
 }
 
 #[test]
@@ -222,30 +162,10 @@ fn bs2002_symmetric_at_zero_rate() {
   // When r=0, b=0: C(S,X) == P(X,S) by symmetry
   // "Testing that American valuation works for integer inputs"
   // c(100, 100, T=1, r=0, b=0, v=0.35) → 13.892
-  let call_pricer = BjerksundStensland2002Pricer::new(
-    100.0,
-    0.35,
-    100.0,
-    0.0,
-    Some(0.0),
-    Some(1.0),
-    None,
-    None,
-    OptionType::Call,
-  );
-  let put_pricer = BjerksundStensland2002Pricer::new(
-    100.0,
-    0.35,
-    100.0,
-    0.0,
-    Some(0.0),
-    Some(1.0),
-    None,
-    None,
-    OptionType::Put,
-  );
-  assert_close(call_pricer.calculate_price(), 13.892, 0.01);
-  assert_close(put_pricer.calculate_price(), 13.892, 0.01);
+  let call_price = BjerksundStensland2002Pricer::new(0.35).price_call(100.0, 100.0, 0.0, 0.0, 1.0);
+  let put_price = BjerksundStensland2002Pricer::new(0.35).price_put(100.0, 100.0, 0.0, 0.0, 1.0);
+  assert_close(call_price, 13.892, 0.01);
+  assert_close(put_price, 13.892, 0.01);
 }
 
 #[test]
@@ -254,21 +174,8 @@ fn bs2002_exceeds_european_value() {
   use stochastic_rs::quant::pricing::bsm::BSMCoc;
   use stochastic_rs::quant::pricing::bsm::BSMPricer;
 
-  let am = BjerksundStensland2002Pricer::new(
-    100.0,
-    0.30,
-    100.0,
-    0.08,
-    Some(0.04),
-    Some(1.0),
-    None,
-    None,
-    OptionType::Put,
-  );
-  let eu = BSMPricer::new(0.30, BSMCoc::Merton1973);
-
-  let am_price = am.calculate_price();
-  let eu_price = stochastic_rs::traits::ModelPricer::price_put(&eu, 100.0, 100.0, 0.08, 0.04, 1.0);
+  let am_price = BjerksundStensland2002Pricer::new(0.30).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
+  let eu_price = BSMPricer::new(0.30, BSMCoc::Merton1973).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
   assert!(
     am_price >= eu_price - 0.001,
     "American put ({am_price}) must be >= European put ({eu_price})"
@@ -279,16 +186,6 @@ fn bs2002_exceeds_european_value() {
 fn bs2002_call_with_dividend() {
   // fs=42, x=40, t=0.75, r=0.04, b=-0.04, v=0.35 → ~5.28
   // b = -0.04 means q = r - b = 0.04 - (-0.04) = 0.08
-  let pricer = BjerksundStensland2002Pricer::new(
-    42.0,
-    0.35,
-    40.0,
-    0.04,
-    Some(0.08), // q = r - b = 0.04 - (-0.04)
-    Some(0.75),
-    None,
-    None,
-    OptionType::Call,
-  );
-  assert_close(pricer.calculate_price(), 5.28, 0.05);
+  let price = BjerksundStensland2002Pricer::new(0.35).price_call(42.0, 40.0, 0.04, 0.08, 0.75);
+  assert_close(price, 5.28, 0.05);
 }

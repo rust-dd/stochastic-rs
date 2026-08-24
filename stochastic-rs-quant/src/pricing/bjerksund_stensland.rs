@@ -22,78 +22,41 @@
 use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
 
-use crate::OptionType;
-use crate::traits::PricerExt;
-use crate::traits::TimeExt;
+use crate::traits::ModelPricer;
 
 /// Bjerksund-Stensland 2002 pricer for American options.
 ///
-/// Falls back to the GBS (European) value when early exercise
-/// is never optimal (i.e. when `b >= r` for calls).
-#[derive(Debug, Clone)]
+/// The struct holds **model state only** — the volatility. Spot, strike,
+/// rate, dividend yield and maturity are the pricing *query* and travel as
+/// arguments to [`ModelPricer::price_call`], so one instance prices a whole
+/// strike/maturity grid.
+///
+/// Falls back to the GBS (European) value when early exercise is never
+/// optimal (i.e. when `b >= r` for calls).
+///
+/// ```
+/// use stochastic_rs_quant::pricing::bjerksund_stensland::BjerksundStensland2002Pricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// let model = BjerksundStensland2002Pricer::new(0.35);
+/// // A dividend-paying American call is worth at least its European value.
+/// let american = model.price_call(42.0, 40.0, 0.04, 0.08, 0.75);
+/// assert!(american > 42.0 - 40.0);
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct BjerksundStensland2002Pricer {
-  /// Spot / forward price
-  pub s: f64,
   /// Volatility
   pub v: f64,
-  /// Strike price
-  pub k: f64,
-  /// Risk-free rate
-  pub r: f64,
-  /// Dividend yield
-  pub q: Option<f64>,
-  /// Time to maturity in years
-  pub tau: Option<f64>,
-  /// Evaluation date
-  pub eval: Option<chrono::NaiveDate>,
-  /// Expiration date
-  pub expiration: Option<chrono::NaiveDate>,
-  /// Option type
-  pub option_type: OptionType,
 }
 
 impl BjerksundStensland2002Pricer {
-  pub fn new(
-    s: f64,
-    v: f64,
-    k: f64,
-    r: f64,
-    q: Option<f64>,
-    tau: Option<f64>,
-    eval: Option<chrono::NaiveDate>,
-    expiration: Option<chrono::NaiveDate>,
-    option_type: OptionType,
-  ) -> Self {
-    Self {
-      s,
-      v,
-      k,
-      r,
-      q,
-      tau,
-      eval,
-      expiration,
-      option_type,
-    }
-  }
-
-  pub fn builder(s: f64, v: f64, k: f64, r: f64) -> BjerksundStensland2002PricerBuilder {
-    BjerksundStensland2002PricerBuilder {
-      s,
-      v,
-      k,
-      r,
-      q: None,
-      tau: None,
-      eval: None,
-      expiration: None,
-      option_type: OptionType::Call,
-    }
+  pub const fn new(v: f64) -> Self {
+    Self { v }
   }
 
   /// Cost of carry: b = r - q
-  fn b(&self) -> f64 {
-    self.r - self.q.unwrap_or(0.0)
+  fn b(r: f64, q: f64) -> f64 {
+    r - q
   }
 
   /// European GBS call price (used as lower bound).
@@ -215,95 +178,92 @@ impl BjerksundStensland2002Pricer {
     // Ensure at least the European value
     f64::max(value, e_value)
   }
-}
 
-#[derive(Debug, Clone)]
-pub struct BjerksundStensland2002PricerBuilder {
-  s: f64,
-  v: f64,
-  k: f64,
-  r: f64,
-  q: Option<f64>,
-  tau: Option<f64>,
-  eval: Option<chrono::NaiveDate>,
-  expiration: Option<chrono::NaiveDate>,
-  option_type: OptionType,
-}
-
-impl BjerksundStensland2002PricerBuilder {
-  pub fn q(mut self, q: f64) -> Self {
-    self.q = Some(q);
-    self
-  }
-  pub fn tau(mut self, tau: f64) -> Self {
-    self.tau = Some(tau);
-    self
-  }
-  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
-    self.eval = Some(eval);
-    self
-  }
-  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
-    self.expiration = Some(expiration);
-    self
-  }
-  pub fn option_type(mut self, option_type: OptionType) -> Self {
-    self.option_type = option_type;
-    self
-  }
-  pub fn build(self) -> BjerksundStensland2002Pricer {
-    BjerksundStensland2002Pricer {
-      s: self.s,
-      v: self.v,
-      k: self.k,
-      r: self.r,
-      q: self.q,
-      tau: self.tau,
-      eval: self.eval,
-      expiration: self.expiration,
-      option_type: self.option_type,
-    }
-  }
-}
-
-impl PricerExt for BjerksundStensland2002Pricer {
-  fn calculate_call_put(&self) -> (f64, f64) {
-    let tau = self.tau_or_from_dates();
-    let b = self.b();
+  /// American call and put price at one query point.
+  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    let b = Self::b(r, q);
 
     // Call: direct BS2002
-    let call = self.bs2002_call(self.s, self.k, tau, self.r, b, self.v);
+    let call = self.bs2002_call(s, k, tau, r, b, self.v);
 
     // Put: use the Bjerksund-Stensland symmetry relation
     // P(S, X, T, r, b, v) = C(X, S, T, r-b, -b, v)
-    let put_as_call = self.bs2002_call(self.k, self.s, tau, self.r - b, -b, self.v);
-    let put = f64::max(
-      put_as_call,
-      self.gbs_put(self.s, self.k, tau, self.r, b, self.v),
-    );
+    let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.v);
+    let put = f64::max(put_as_call, self.gbs_put(s, k, tau, r, b, self.v));
 
     (call, put)
   }
+}
 
-  fn calculate_price(&self) -> f64 {
-    let (call, put) = self.calculate_call_put();
-    match self.option_type {
-      OptionType::Call => call,
-      OptionType::Put => put,
-    }
+impl ModelPricer for BjerksundStensland2002Pricer {
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.call_put(s, k, r, q, tau).0
+  }
+
+  /// Overrides the trait's vanilla-parity default. Put-call parity holds
+  /// for European options only; an American put carries an early-exercise
+  /// premium the call does not, so the default would understate it. This
+  /// returns the Bjerksund-Stensland symmetry value
+  /// $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$, floored at the European put — see
+  /// `bs2002_price_put_overrides_vanilla_parity`.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.call_put(s, k, r, q, tau).1
   }
 }
 
-impl TimeExt for BjerksundStensland2002Pricer {
-  fn tau(&self) -> Option<f64> {
-    self.tau
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  const S: f64 = 100.0;
+  const K: f64 = 105.0;
+  const R: f64 = 0.05;
+  const Q: f64 = 0.02;
+  const TAU: f64 = 0.75;
+  const V: f64 = 0.25;
+
+  /// Cross-arch tolerance: the goldens route through `norm_cdf` and
+  /// `biv_norm`, whose last bits differ between aarch64-darwin and CI's
+  /// ubuntu x86_64 under FMA contraction.
+  const TOL: f64 = 1e-12;
+
+  /// Captured from `PricerExt::calculate_call_put()` **before** the
+  /// `ModelPricer` reshape. The reshape is an API change only.
+  #[test]
+  fn bs2002_model_pricer_matches_pre_refactor_goldens() {
+    let model = BjerksundStensland2002Pricer::new(V);
+    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    assert!((call - 7.356284498106589).abs() < TOL, "call {call}");
+    assert!((put - 10.292920281301193).abs() < TOL, "put {put}");
+    assert_eq!(model.price_call(S, K, R, Q, TAU), call);
+    assert_eq!(model.price_put(S, K, R, Q, TAU), put);
   }
 
-  fn eval(&self) -> Option<chrono::NaiveDate> {
-    self.eval
+  /// American puts carry an early-exercise premium the call does not, so
+  /// European put-call parity — the trait's `price_put` default — is not
+  /// merely imprecise here, it is the wrong model.
+  #[test]
+  fn bs2002_price_put_overrides_vanilla_parity() {
+    let model = BjerksundStensland2002Pricer::new(V);
+    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let vanilla = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
+    assert!(
+      put > vanilla + 1e-3,
+      "American put must exceed the European-parity value: {put} vs {vanilla}"
+    );
   }
 
-  fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiration
+  /// The capability the reshape exists for: one model, a whole grid.
+  #[test]
+  fn bs2002_one_model_prices_a_grid() {
+    let model = BjerksundStensland2002Pricer::new(V);
+    for &tau in &[0.25, 0.5, 1.0] {
+      let mut prev = f64::INFINITY;
+      for &k in &[90.0, 100.0, 110.0] {
+        let c = model.price_call(S, k, R, Q, tau);
+        assert!(c.is_finite() && c < prev, "call must fall in strike");
+        prev = c;
+      }
+    }
   }
 }

@@ -173,12 +173,7 @@ mod tests {
       "expected strict early-exercise premium: american {american} vs european {european}"
     );
 
-    let reference = BjerksundStensland2002Pricer::builder(s, sigma, k, r)
-      .q(q)
-      .tau(tau)
-      .option_type(OptionType::Call)
-      .build()
-      .calculate_price();
+    let reference = BjerksundStensland2002Pricer::new(sigma).price_call(s, k, r, q, tau);
     let rel_err = (american - reference).abs() / reference;
     assert!(
       rel_err < 1e-2,
@@ -207,12 +202,7 @@ mod tests {
     let model = CrrModel::new(sigma, 1000);
     let crr = model.price_american(s, k, r, q, tau, OptionType::Put);
 
-    let reference = BjerksundStensland2002Pricer::builder(s, sigma, k, r)
-      .q(q)
-      .tau(tau)
-      .option_type(OptionType::Put)
-      .build()
-      .calculate_price();
+    let reference = BjerksundStensland2002Pricer::new(sigma).price_put(s, k, r, q, tau);
 
     let rel_err = (crr - reference).abs() / reference;
     assert!(

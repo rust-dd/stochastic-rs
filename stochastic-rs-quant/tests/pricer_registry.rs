@@ -15,8 +15,8 @@
 //! revision's stated command produce 81 rather than the 71 it claimed.
 //!
 //! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
-//! [`PricingEngine`]: **8** carry `ModelPricer` (the trait this registry
-//! exists to guard), **9** the older `PricerExt`, **2** `PricingEngine`.
+//! [`PricingEngine`]: **9** carry `ModelPricer` (the trait this registry
+//! exists to guard), **8** the older `PricerExt`, **2** `PricingEngine`.
 //! Every one of those three numbers is the length of the matching macro
 //! invocation below and nothing else — re-derive rather than
 //! arithmetic-adjust them, with (substituting the macro name):
@@ -109,15 +109,19 @@ macro_rules! assert_short_rate_pricer {
 // Reaches 16 when 5b has migrated all nine of the `assert_pricer_ext!`
 // members below except `KirkSpreadPricer`.
 //
-// `BSMPricer` and `AsianPricer` override `price_put` rather than taking the
-// trait's vanilla put-call-parity default: their cost-of-carry factor is
-// `exp((b - r) * tau)`, which equals the default's `exp(-q * tau)` only
-// when `b = r - q` — false for `BSMCoc::Bsm1973` at `q != 0` and for
-// `Black1976` / `Asay1982`, and never true for the Asian pricer's
-// averaged-underlying carry.
+// Several members override `price_put` rather than taking the trait's
+// vanilla put-call-parity default. `BSMPricer` and `AsianPricer` because
+// their cost-of-carry factor is `exp((b - r) * tau)`, which equals the
+// default's `exp(-q * tau)` only when `b = r - q` — false for
+// `BSMCoc::Bsm1973` at `q != 0` and for `Black1976` / `Asay1982`, and only
+// on a measure-zero line for the Asian pricer's averaged-underlying carry.
+// `BjerksundStensland2002Pricer` because European put-call parity does not
+// hold for an American option at all: its put carries an early-exercise
+// premium the call does not.
 assert_model_pricer!(
   AsianPricer,
   AssetOrNothingPricer,
+  BjerksundStensland2002Pricer,
   BSMPricer,
   CashOrNothingPricer,
   GapPricer,
@@ -139,7 +143,6 @@ assert_model_pricer!(
 // `PricerExt` is retired (Task 6) it becomes trait-less like its multi-asset
 // siblings. Filed here by what it implements now, not by its final family.
 assert_pricer_ext!(
-  BjerksundStensland2002Pricer,
   FiniteDifferencePricer,
   GbmMalliavinPricer,
   HestonPricer,
