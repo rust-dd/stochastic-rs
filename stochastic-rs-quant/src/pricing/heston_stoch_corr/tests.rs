@@ -32,22 +32,8 @@ fn carr_madan_reduces_to_heston_short_dated() {
   use crate::pricing::heston::HestonPricer;
   let (rho, kappa, theta, sigma, v0, s, r) = (-0.7, 2.0, 0.04, 0.3, 0.04, 100.0, 0.03);
   for tau in [0.02, 0.005, 0.002] {
-    let heston = HestonPricer::new(
-      s,
-      v0,
-      s,
-      r,
-      None,
-      rho,
-      kappa,
-      theta,
-      sigma,
-      Some(0.0),
-      Some(tau),
-      None,
-      None,
-    );
-    let heston_call = heston.calculate_call_put().0;
+    let heston = HestonPricer::new(v0, rho, kappa, theta, sigma, Some(0.0));
+    let heston_call = heston.call_put(s, s, r, 0.0, tau).0;
     let hscm = HestonStochCorrPricer::new(
       s, r, s, v0, kappa, theta, sigma, rho, 10.0, rho, 1e-10, 0.0, tau,
     );
@@ -183,22 +169,8 @@ fn compare_with_standard_heston() {
   let k = 100.0;
   let tau = 0.5;
 
-  let heston = HestonPricer::new(
-    s,
-    v0,
-    k,
-    r,
-    None,
-    rho,
-    kappa,
-    theta,
-    sigma,
-    Some(0.0),
-    Some(tau),
-    None,
-    None,
-  );
-  let (h_call, _) = heston.calculate_call_put();
+  let heston = HestonPricer::new(v0, rho, kappa, theta, sigma, Some(0.0));
+  let (h_call, _) = heston.call_put(s, k, r, 0.0, tau);
 
   // HSCM with σ_r ≈ 0 should be close to Heston
   let hscm = HestonStochCorrPricer::new(

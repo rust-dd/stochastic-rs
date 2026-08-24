@@ -6,16 +6,16 @@
 
 use std::sync::Arc;
 
-use crate::OptionType;
 use crate::instruments::equity::EuropeanOption;
 use crate::market::Handle;
 use crate::market::Quote;
 use crate::market::SimpleQuote;
 use crate::pricing::HestonPricer;
 use crate::traits::Greeks;
-use crate::traits::PricerExt;
+use crate::traits::ModelPricer;
 use crate::traits::PricingEngine;
 use crate::traits::StandardResult;
+use crate::traits::TimeExt;
 
 /// Heston model parameters that are calibrated, not market-quoted.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -88,28 +88,29 @@ impl AnalyticHestonEngine {
     handle.current().map(|q| q.value()).unwrap_or(default)
   }
 
-  fn build_pricer(
+  /// The model carries no query, so the engine resolves one from its own
+  /// market handles and the instrument — `EuropeanOption` implements
+  /// [`TimeExt`](crate::traits::TimeExt), so it resolves its own τ.
+  fn model_and_query(
     &self,
     s_override: Option<f64>,
     v0_override: Option<f64>,
     tau_override: Option<f64>,
     opt: &EuropeanOption,
-  ) -> HestonPricer {
-    HestonPricer {
-      s: s_override.unwrap_or_else(|| Self::read_quote(&self.s, 0.0)),
-      v0: v0_override.unwrap_or(self.params.v0),
-      k: opt.strike,
-      r: Self::read_quote(&self.r, 0.0),
-      q: Some(Self::read_quote(&self.dividend_yield, 0.0)),
-      rho: self.params.rho,
-      kappa: self.params.kappa,
-      theta: self.params.theta,
-      sigma: self.params.sigma,
-      lambda: self.params.lambda,
-      tau: tau_override.or(opt.tau),
-      eval: opt.eval,
-      expiration: opt.expiry,
-    }
+  ) -> (HestonPricer, f64, f64, f64, f64, f64) {
+    let model = HestonPricer::new(
+      v0_override.unwrap_or(self.params.v0),
+      self.params.rho,
+      self.params.kappa,
+      self.params.theta,
+      self.params.sigma,
+      self.params.lambda,
+    );
+    let s = s_override.unwrap_or_else(|| Self::read_quote(&self.s, 0.0));
+    let r = Self::read_quote(&self.r, 0.0);
+    let q = Self::read_quote(&self.dividend_yield, 0.0);
+    let tau = tau_override.unwrap_or_else(|| opt.tau_or_from_dates());
+    (model, s, opt.strike, r, q, tau)
   }
 
   fn price_at(
@@ -119,12 +120,8 @@ impl AnalyticHestonEngine {
     tau_override: Option<f64>,
     opt: &EuropeanOption,
   ) -> f64 {
-    let pricer = self.build_pricer(s_override, v0_override, tau_override, opt);
-    let (call, put) = pricer.calculate_call_put();
-    match opt.option_type {
-      OptionType::Call => call,
-      OptionType::Put => put,
-    }
+    let (model, s, k, r, q, tau) = self.model_and_query(s_override, v0_override, tau_override, opt);
+    model.price_option(s, k, r, q, tau, opt.option_type)
   }
 
   fn finite_diff_greeks(&self, opt: &EuropeanOption) -> Greeks {
@@ -148,7 +145,7 @@ impl AnalyticHestonEngine {
       f64::NAN
     };
 
-    let tau = opt.tau.unwrap_or(f64::NAN);
+    let tau = opt.tau_or_from_dates();
     let theta = if tau.is_finite() && tau > self.bump {
       let h_t = tau * self.bump;
       let p_t_dn = self.price_at(None, None, Some(tau - h_t), opt);
@@ -175,12 +172,7 @@ impl PricingEngine<EuropeanOption> for AnalyticHestonEngine {
   type Result = StandardResult;
 
   fn calculate(&self, opt: &EuropeanOption) -> StandardResult {
-    let pricer = self.build_pricer(None, None, None, opt);
-    let (call, put) = pricer.calculate_call_put();
-    let npv = match opt.option_type {
-      OptionType::Call => call,
-      OptionType::Put => put,
-    };
+    let npv = self.price_at(None, None, None, opt);
     let greeks = self.finite_diff_greeks(opt);
     StandardResult::with_greeks(npv, greeks)
   }
@@ -189,6 +181,7 @@ impl PricingEngine<EuropeanOption> for AnalyticHestonEngine {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::OptionType;
   use crate::pricing::engines::AnalyticBSEngine;
   use crate::traits::PricingResult;
 

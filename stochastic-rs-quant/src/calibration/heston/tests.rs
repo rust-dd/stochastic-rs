@@ -8,7 +8,6 @@ use super::*;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::Calibrator;
-use crate::traits::PricerExt;
 use crate::traits::ProcessExt;
 
 const HESTON_REF: [f64; 9] = [
@@ -19,22 +18,8 @@ const REF_STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.
 #[test]
 fn heston_pricer_matches_reference() {
   for (i, &k) in REF_STRIKES.iter().enumerate() {
-    let pricer = HestonPricer::new(
-      100.0,
-      0.04,
-      k,
-      0.05,
-      Some(0.0),
-      -0.7,
-      1.5,
-      0.04,
-      0.3,
-      Some(0.0),
-      Some(1.0),
-      None,
-      None,
-    );
-    let (call, _) = pricer.calculate_call_put();
+    let pricer = HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+    let (call, _) = pricer.call_put(100.0, k, 0.05, 0.0, 1.0);
     assert!(
       (call - HESTON_REF[i]).abs() < 0.15,
       "Heston K={k}: got {call:.6}, expected {:.6}",
@@ -164,27 +149,21 @@ fn test_heston_calibrate_with_mle_seed() {
   let strikes = vec![80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
   let s_grid = vec![s0; strikes.len()];
   let r = 0.01;
-  let q = Some(0.0);
+  let q_value = 0.0;
+  let q = Some(q_value);
   let tau = 0.5;
 
   let mut c_market = Vec::with_capacity(strikes.len());
   for &kk in &strikes {
     let pr = HestonPricer::new(
-      s0,
       true_params.v0,
-      kk,
-      r,
-      q,
       true_params.rho,
       true_params.kappa,
       true_params.theta,
       true_params.sigma,
       Some(0.0),
-      Some(tau),
-      None,
-      None,
     );
-    let (call, _) = pr.calculate_call_put();
+    let (call, _) = pr.call_put(s0, kk, r, q_value, tau);
     c_market.push(call);
   }
 
@@ -240,27 +219,21 @@ fn test_heston_calibrate_with_pmle_seed() {
   let strikes = vec![80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
   let s_grid = vec![s0; strikes.len()];
   let r = 0.01;
-  let q = Some(0.0);
+  let q_value = 0.0;
+  let q = Some(q_value);
   let tau = 0.5;
 
   let mut c_market = Vec::with_capacity(strikes.len());
   for &kk in &strikes {
     let pr = HestonPricer::new(
-      s0,
       true_params.v0,
-      kk,
-      r,
-      q,
       true_params.rho,
       true_params.kappa,
       true_params.theta,
       true_params.sigma,
       Some(0.0),
-      Some(tau),
-      None,
-      None,
     );
-    let (call, _) = pr.calculate_call_put();
+    let (call, _) = pr.call_put(s0, kk, r, q_value, tau);
     c_market.push(call);
   }
 
@@ -318,27 +291,21 @@ fn test_heston_calibrate_with_nmle_cekf_seed() {
   let strikes = vec![80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
   let s_grid = vec![s0; strikes.len()];
   let r = 0.01;
-  let q = Some(0.0);
+  let q_value = 0.0;
+  let q = Some(q_value);
   let tau = 0.5;
 
   let mut c_market = Vec::with_capacity(strikes.len());
   for &kk in &strikes {
     let pr = HestonPricer::new(
-      s0,
       true_params.v0,
-      kk,
-      r,
-      q,
       true_params.rho,
       true_params.kappa,
       true_params.theta,
       true_params.sigma,
       Some(0.0),
-      Some(tau),
-      None,
-      None,
     );
-    let (call, _) = pr.calculate_call_put();
+    let (call, _) = pr.call_put(s0, kk, r, q_value, tau);
     c_market.push(call);
   }
 
@@ -426,7 +393,8 @@ fn test_heston_cui_price_and_jacobian_finite() {
   let s = vec![100.0; 6];
   let k = vec![80.0, 90.0, 95.0, 100.0, 110.0, 120.0];
   let r = 0.01;
-  let q = Some(0.0);
+  let q_value = 0.0;
+  let q = Some(q_value);
   let tau = 0.75;
   let option_type = OptionType::Call;
 
@@ -458,21 +426,14 @@ fn test_heston_cui_price_and_jacobian_finite() {
 
   for (i, &strike) in k.iter().enumerate() {
     let pr = HestonPricer::new(
-      s[i],
       params.v0,
-      strike,
-      r,
-      q,
       params.rho,
       params.kappa,
       params.theta,
       params.sigma,
       Some(0.0),
-      Some(tau),
-      None,
-      None,
     );
-    let (call_ref, _) = pr.calculate_call_put();
+    let (call_ref, _) = pr.call_put(s[i], strike, r, q_value, tau);
     let rel = ((c_model[i] - call_ref).abs()) / (1.0 + call_ref.abs());
     assert!(rel < 5e-2, "quote {} relative gap too large: {}", i, rel);
   }

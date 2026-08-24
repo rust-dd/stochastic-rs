@@ -2,25 +2,17 @@ use super::HestonCalibrator;
 use super::HestonParams;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
-use crate::traits::PricerExt;
 
 fn converged_call(params: &HestonParams, k: f64, tau: f64) -> f64 {
   HestonPricer::new(
-    100.0,
     params.v0,
-    k,
-    0.05,
-    Some(0.0),
     params.rho,
     params.kappa,
     params.theta,
     params.sigma,
     Some(0.0),
-    Some(tau),
-    None,
-    None,
   )
-  .calculate_call_put()
+  .call_put(100.0, k, 0.05, 0.0, tau)
   .0
 }
 

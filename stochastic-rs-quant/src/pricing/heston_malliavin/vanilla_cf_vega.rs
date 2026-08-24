@@ -7,7 +7,6 @@ use super::simulation::validate_model;
 use super::variance_vega::effective_initial_variance_bump;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
-use crate::traits::PricerExt;
 
 /// Bump controls for deterministic Heston characteristic-function vega.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -126,8 +125,8 @@ fn portfolio_initial_variance_vega(
         "vanilla legs require positive strikes and finite quantities",
       ));
     }
-    let pricer = pricer(model, leg.strike, model.initial_variance);
-    let (call, put) = pricer.calculate_call_put_initial_variance_vega();
+    let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, model.initial_variance);
+    let (call, put) = pricer.call_put_initial_variance_vega(s, k, r, q, tau);
     let leg_value = match leg.kind {
       OptionType::Call => call,
       OptionType::Put => put,
@@ -168,8 +167,8 @@ fn portfolio_price(
         "vanilla legs require positive strikes and finite quantities",
       ));
     }
-    let pricer = pricer(model, leg.strike, initial_variance);
-    let (call, put) = pricer.calculate_call_put();
+    let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, initial_variance);
+    let (call, put) = pricer.call_put(s, k, r, q, tau);
     let leg_price = match leg.kind {
       OptionType::Call => call,
       OptionType::Put => put,
@@ -183,18 +182,26 @@ fn portfolio_price(
   }
 }
 
-fn pricer(model: HestonModel, strike: f64, initial_variance: f64) -> HestonPricer {
-  HestonPricer::builder(
+/// The Heston model at `initial_variance`, paired with the
+/// `(s, k, r, q, tau)` query this portfolio leg is priced at.
+fn pricer(
+  model: HestonModel,
+  strike: f64,
+  initial_variance: f64,
+) -> (HestonPricer, f64, f64, f64, f64, f64) {
+  (
+    HestonPricer::new(
+      initial_variance,
+      model.rho,
+      model.kappa,
+      model.theta,
+      model.vol_of_vol,
+      None,
+    ),
     model.s,
-    initial_variance,
     strike,
     model.risk_free_rate,
-    model.rho,
-    model.kappa,
-    model.theta,
-    model.vol_of_vol,
+    model.dividend_yield,
+    model.tau,
   )
-  .q(model.dividend_yield)
-  .tau(model.tau)
-  .build()
 }

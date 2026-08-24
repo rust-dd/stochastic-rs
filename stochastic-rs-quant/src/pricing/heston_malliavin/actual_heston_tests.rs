@@ -3,7 +3,7 @@ use super::HestonMalliavinEstimator;
 use super::HestonModel;
 use super::VanillaPortfolio;
 use crate::pricing::heston::HestonPricer;
-use crate::traits::PricerExt;
+use crate::traits::ModelPricer;
 
 fn config() -> HestonMalliavinConfig {
   HestonMalliavinConfig {
@@ -19,21 +19,21 @@ fn config() -> HestonMalliavinConfig {
 }
 
 fn analytic_call(model: HestonModel, strike: f64, spot: f64, initial_variance: f64) -> f64 {
-  HestonPricer::builder(
-    spot,
+  HestonPricer::new(
     initial_variance,
-    strike,
-    model.risk_free_rate,
     model.rho,
     model.kappa,
     model.theta,
     model.vol_of_vol,
+    None,
   )
-  .q(model.dividend_yield)
-  .tau(model.tau)
-  .build()
-  .calculate_call_put()
-  .0
+  .price_call(
+    spot,
+    strike,
+    model.risk_free_rate,
+    model.dividend_yield,
+    model.tau,
+  )
 }
 
 fn assert_mc_close(value: f64, standard_error: f64, expected: f64, floor: f64) {

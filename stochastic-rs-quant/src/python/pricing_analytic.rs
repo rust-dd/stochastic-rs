@@ -94,9 +94,17 @@ impl PyBSMPricer {
   }
 }
 
+/// The Rust model holds the six Heston parameters only, so the wrapper
+/// carries the `(s, k, r, q, tau)` query the Python-visible no-argument
+/// methods are defined at. Python's constructor signature is unchanged.
 #[pyclass(name = "HestonPricer", unsendable)]
 pub struct PyHestonPricer {
   inner: crate::pricing::heston::HestonPricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -116,29 +124,26 @@ impl PyHestonPricer {
     q: Option<f64>,
     lambda_: Option<f64>,
   ) -> Self {
-    let inner = crate::pricing::heston::HestonPricer::new(
+    let inner = crate::pricing::heston::HestonPricer::new(v0, rho, kappa, theta, sigma, lambda_);
+    Self {
+      inner,
       s,
-      v0,
       k,
       r,
-      q,
-      rho,
-      kappa,
-      theta,
-      sigma,
-      lambda_,
-      Some(tau),
-      None,
-      None,
-    );
-    Self { inner }
+      q: q.unwrap_or(0.0),
+      tau,
+    }
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self
+      .inner
+      .price_call(self.s, self.k, self.r, self.q, self.tau)
   }
   fn call_put(&self) -> (f64, f64) {
-    self.inner.calculate_call_put()
+    self
+      .inner
+      .call_put(self.s, self.k, self.r, self.q, self.tau)
   }
 }
 

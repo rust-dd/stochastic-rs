@@ -12,7 +12,6 @@ use super::transform::to_optimizer_coordinates;
 use crate::CalibrationLossScore;
 use crate::calibration::CalibrationHistory;
 use crate::pricing::heston::HestonPricer;
-use crate::traits::PricerExt;
 
 impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
   type JacobianStorage = Owned<f64, Dyn, Dyn>;
@@ -45,21 +44,20 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
             .enumerate()
             .map(|(i, _)| {
               let pricer = HestonPricer::new(
-                self.s[i],
                 params_eff.v0,
-                self.k[i],
-                self.r,
-                self.q,
                 params_eff.rho,
                 params_eff.kappa,
                 params_eff.theta,
                 params_eff.sigma,
                 Some(0.0),
-                Some(self.flat_t[i]),
-                None,
-                None,
               );
-              pricer.calculate_call_put()
+              pricer.call_put(
+                self.s[i],
+                self.k[i],
+                self.r,
+                self.q.unwrap_or(0.0),
+                self.flat_t[i],
+              )
             })
             .collect::<Vec<(f64, f64)>>()
             .into(),

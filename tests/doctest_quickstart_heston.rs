@@ -3,20 +3,19 @@
 //! page.
 
 use stochastic_rs::prelude::*;
+use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 
 #[test]
 fn price_a_heston_european_call() {
-  let pricer = HestonPricer::builder(
-    /* s */ 100.0, /* v0 */ 0.04, /* k */ 100.0, /* r */ 0.03,
-    /* rho */ -0.5, /* kappa */ 2.0, /* theta */ 0.04, /* sigma */ 0.3,
-  )
-  .q(0.0)
-  .tau(1.0)
-  .build();
+  let model = HestonPricer::new(
+    /* v0 */ 0.04, /* rho */ -0.5, /* kappa */ 2.0, /* theta */ 0.04,
+    /* sigma */ 0.3, /* lambda */ None,
+  );
+  let (s, k, r, q, tau) = (100.0, 100.0, 0.03, 0.0, 1.0);
 
-  let price = pricer.calculate_price();
-  let greeks = pricer.greeks();
+  let price = model.price_call(s, k, r, q, tau);
+  let greeks = model.greeks(s, k, r, q, tau, OptionType::Call);
   assert!(price > 0.0);
   assert!(greeks.vega > 0.0);
 }

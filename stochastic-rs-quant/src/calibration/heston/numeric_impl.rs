@@ -15,7 +15,6 @@ use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
-use crate::traits::PricerExt;
 
 impl HestonCalibrator {
   pub(super) fn fallback_params() -> HestonParams {
@@ -121,21 +120,20 @@ impl HestonCalibrator {
 
     for (idx, _) in self.c_market.iter().enumerate() {
       let pricer = HestonPricer::new(
-        self.s[idx],
         params.v0,
-        self.k[idx],
-        self.r,
-        self.q,
         params.rho,
         params.kappa,
         params.theta,
         params.sigma,
         Some(0.0),
-        Some(self.flat_t[idx]),
-        None,
-        None,
       );
-      let (call, put) = pricer.calculate_call_put();
+      let (call, put) = pricer.call_put(
+        self.s[idx],
+        self.k[idx],
+        self.r,
+        self.q.unwrap_or(0.0),
+        self.flat_t[idx],
+      );
 
       match self.option_type {
         OptionType::Call => c_model[idx] = call.max(0.0),

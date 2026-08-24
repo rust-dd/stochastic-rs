@@ -207,7 +207,6 @@ mod tests {
   use crate::pricing::fourier::KouFourier;
   use crate::pricing::heston::HestonPricer;
   use crate::traits::ModelPricer;
-  use crate::traits::PricerExt;
 
   /// Reference: Fang & Oosterlee (2008) §5.1. Verifies COS against the
   /// in-tree analytic BSM pricer to `3e-5` — not machine precision: that
@@ -250,10 +249,8 @@ mod tests {
       r: 0.05,
       q: 0.0,
     };
-    let reference = HestonPricer::builder(100.0, 0.04, 100.0, 0.05, -0.7, 1.5, 0.04, 0.3)
-      .tau(1.0)
-      .build()
-      .calculate_price();
+    let reference =
+      HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, None).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
     // History: `HestonFourier::cumulants` used to understate `c2` for this
     // parameter set (missing `v0` terms — see `cumulants`'s doc), so
     // `CosEngine::default`'s `L=10` truncation was too narrow and this test
