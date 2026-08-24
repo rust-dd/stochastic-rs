@@ -79,7 +79,7 @@ pub struct SabrCapletCalibrationResult {
 }
 
 impl SabrCapletCalibrationResult {
-  /// Convert to a [`SabrModel`](crate::pricing::sabr::SabrModel) for pricing /
+  /// Convert to a [`SabrPricer`](crate::pricing::sabr::SabrPricer) for pricing /
   /// vol-surface generation.
   ///
   /// `alpha`/`nu`/`rho` stay in *shifted* coordinates whenever
@@ -90,8 +90,8 @@ impl SabrCapletCalibrationResult {
   /// values reproduces the same panic this shift exists to avoid.
   /// [`Self::to_shifted_volatility`] does the shifting internally and is
   /// the safer conversion whenever `shift` is nonzero.
-  pub fn to_model(&self) -> crate::pricing::sabr::SabrModel {
-    crate::pricing::sabr::SabrModel {
+  pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
+    crate::pricing::sabr::SabrPricer {
       alpha: self.alpha,
       beta: self.beta,
       nu: self.nu,
@@ -114,7 +114,7 @@ impl SabrCapletCalibrationResult {
 }
 
 impl crate::traits::ToModel for SabrCapletCalibrationResult {
-  type Model = crate::pricing::sabr::SabrModel;
+  type Model = crate::pricing::sabr::SabrPricer;
   fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
     SabrCapletCalibrationResult::to_model(self)
   }

@@ -25,6 +25,4 @@ pub use hagan::hagan_implied_vol;
 pub use hagan::hagan_implied_vol_beta1;
 pub use hagan::model_price_hagan;
 pub use hagan::model_price_hagan_general;
-pub use pricer::SabrModel;
 pub use pricer::SabrPricer;
-pub use pricer::SabrPricerBuilder;

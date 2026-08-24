@@ -98,7 +98,7 @@ pub use rainbow::McRainbowPricer;
 pub use rainbow::RainbowPayoff;
 pub use rainbow::StulzRainbowPricer;
 pub use rbergomi::RBergomiPricer;
-pub use sabr::SabrModel;
+pub use sabr::SabrPricer;
 pub use slv::HestonSlvParams;
 pub use slv::HestonSlvPricer;
 pub use slv::LeverageSurface;

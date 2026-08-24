@@ -1,19 +1,18 @@
 use super::*;
+use crate::OptionType;
 use crate::traits::ModelPricer;
-use crate::traits::PricerExt;
 
 #[test]
 fn sabr_pricer_basic() {
   let s = 3.724;
   let k = 3.8;
   let r = 0.065;
-  let q = Some(0.022);
+  let q = 0.022;
   let tau = 30.0 / 365.0;
-  let pr = SabrPricer::new(s, k, r, q, 0.11, 1.0, 0.6, 0.5, Some(tau), None, None);
-  let (c, p) = pr.calculate_call_put();
-  println!("Call: {}, Put: {}", c, p);
+  let pr = SabrPricer::new(0.11, 1.0, 0.6, 0.5);
+  let (c, p) = pr.call_put(s, k, r, q, tau);
   assert!(c >= 0.0 && p >= 0.0);
-  let d = pr.sabr_fx_forward_delta(1.0);
+  let d = pr.sabr_fx_forward_delta(s, k, r, q, tau, 1.0);
   assert!(d.is_finite());
 }
 
@@ -23,49 +22,24 @@ fn sabr_pricer_basic() {
 #[test]
 #[should_panic(expected = "forward f must be strictly positive")]
 fn sabr_pricer_sigma_panics_on_nonpositive_spot() {
-  let pr = SabrPricer::new(
-    -3.724,
-    3.8,
-    0.065,
-    Some(0.022),
-    0.11,
-    1.0,
-    0.6,
-    0.5,
-    Some(0.5),
-    None,
-    None,
-  );
-  let _ = pr.sigma();
+  let _ = SabrPricer::new(0.11, 1.0, 0.6, 0.5).sigma(-3.724, 3.8, 0.065, 0.022, 0.5);
 }
 
 /// Same guarantee, for a non-positive strike.
 #[test]
 #[should_panic(expected = "strike k must be strictly positive")]
 fn sabr_pricer_sigma_panics_on_nonpositive_strike() {
-  let pr = SabrPricer::new(
-    3.724,
-    -3.8,
-    0.065,
-    Some(0.022),
-    0.11,
-    1.0,
-    0.6,
-    0.5,
-    Some(0.5),
-    None,
-    None,
-  );
-  let _ = pr.sigma();
+  let _ = SabrPricer::new(0.11, 1.0, 0.6, 0.5).sigma(3.724, -3.8, 0.065, 0.022, 0.5);
 }
 
-/// `SabrModel::price_call`'s `# Panics` section documents that a
+/// `SabrPricer::price_call`'s `# Panics` section documents that a
 /// non-positive forward panics rather than degrading to `0.0`; this pins
-/// that it actually does.
+/// that it actually does. (Held over from the former `SabrModel`, whose
+/// four fields and pricing path this type absorbed.)
 #[test]
 #[should_panic(expected = "forward f must be strictly positive")]
-fn sabr_model_price_call_panics_on_nonpositive_spot() {
-  let model = SabrModel {
+fn sabr_price_call_panics_on_nonpositive_spot() {
+  let model = SabrPricer {
     alpha: 0.2,
     beta: 1.0,
     nu: 0.6,
@@ -77,14 +51,97 @@ fn sabr_model_price_call_panics_on_nonpositive_spot() {
 /// Same guarantee, for a non-positive strike.
 #[test]
 #[should_panic(expected = "strike k must be strictly positive")]
-fn sabr_model_price_call_panics_on_nonpositive_strike() {
-  let model = SabrModel {
+fn sabr_price_call_panics_on_nonpositive_strike() {
+  let model = SabrPricer {
     alpha: 0.2,
     beta: 1.0,
     nu: 0.6,
     rho: -0.3,
   };
   let _ = model.price_call(100.0, -10.0, 0.02, 0.0, 1.0);
+}
+
+const S: f64 = 100.0;
+const K: f64 = 105.0;
+const R: f64 = 0.05;
+const Q: f64 = 0.02;
+const TAU: f64 = 0.75;
+
+/// Cross-arch tolerance: the goldens route through `norm_cdf` and the
+/// Hagan expansion, whose last bits differ between aarch64-darwin and CI's
+/// ubuntu x86_64 under FMA contraction.
+const TOL: f64 = 1e-12;
+
+fn golden_model() -> SabrPricer {
+  SabrPricer::new(0.11, 1.0, 0.6, 0.5)
+}
+
+/// Captured from `PricerExt::calculate_call_put()` and the four inherent
+/// accessors **before** the `ModelPricer` reshape. The reshape (and the
+/// `SabrModel` merge) is an API change only.
+#[test]
+fn sabr_model_pricer_matches_pre_refactor_goldens() {
+  let m = golden_model();
+  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  assert!((call - 2.838473552840881).abs() < TOL, "call {call}");
+  assert!((put - 5.462693453220915).abs() < TOL, "put {put}");
+  assert_eq!(m.price_call(S, K, R, Q, TAU), call);
+  assert_eq!(m.price_put(S, K, R, Q, TAU), put);
+
+  let fwd = m.forward(S, R, Q, TAU);
+  assert!((fwd - 102.27550341644461).abs() < TOL, "forward {fwd}");
+  let sigma = m.sigma(S, K, R, Q, TAU);
+  assert!((sigma - 0.11646804397344582).abs() < TOL, "sigma {sigma}");
+  let delta = m.sabr_fx_forward_delta(S, K, R, Q, TAU, 1.0);
+  assert!((delta - 0.38215996147751785).abs() < TOL, "delta {delta}");
+  let iv = m.implied_volatility(3.0, S, K, R, Q, TAU, OptionType::Call);
+  assert!((iv - 0.12131352686290568).abs() < TOL, "iv {iv}");
+}
+
+/// This model's carry is `b = r - q`, which is exactly the case where the
+/// trait's vanilla put-call parity is *mathematically* right — so this is
+/// the one member of 5b whose `price_put` override buys bit-identity
+/// rather than correctness. Both facts are pinned: parity holds to 1e-12,
+/// and `price_put` is the Black-Scholes closed form the pre-query
+/// `calculate_call_put().1` returned.
+#[test]
+fn sabr_price_put_matches_parity_but_is_the_closed_form() {
+  let m = golden_model();
+  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let parity = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
+  assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
+  assert_eq!(m.price_put(S, K, R, Q, TAU), put);
+}
+
+/// The merge is behaviour-preserving: pricing through this type is still
+/// exactly "Hagan implied vol, then Black-Scholes at Merton (1973) carry",
+/// which is what the deleted `SabrModel::price_call` did. Written against
+/// a hand-composed reference rather than against anything routed through
+/// `SabrPricer`, so it cannot go stale with the type.
+#[test]
+fn sabr_price_call_is_hagan_vol_through_black_scholes() {
+  use crate::pricing::bsm::BSMCoc;
+  use crate::pricing::bsm::BSMPricer;
+
+  let m = golden_model();
+  let fwd = S * ((R - Q) * TAU).exp();
+  let sigma = hagan_implied_vol(K, fwd, TAU, m.alpha, m.beta, m.nu, m.rho);
+  let want = BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(S, K, R, Q, TAU);
+  assert_eq!(m.price_call(S, K, R, Q, TAU), want);
+}
+
+/// The capability the reshape exists for: one model, a whole grid.
+#[test]
+fn sabr_one_model_prices_a_grid() {
+  let m = golden_model();
+  for &tau in &[0.25, 0.5, 1.0] {
+    let mut prev = f64::INFINITY;
+    for &k in &[90.0, 100.0, 110.0] {
+      let c = m.price_call(S, k, R, Q, tau);
+      assert!(c.is_finite() && c < prev, "call must fall in strike");
+      prev = c;
+    }
+  }
 }
 
 /// Hagan (2002, Eq. A.69a) general-β implied vol — reference values.

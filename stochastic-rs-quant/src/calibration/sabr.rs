@@ -40,7 +40,6 @@ use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
 use crate::pricing::sabr::SabrPricer;
-use crate::traits::PricerExt;
 
 const RHO_BOUND: f64 = 0.9999;
 const ALPHA_MIN: f64 = 1e-6;
@@ -60,17 +59,17 @@ pub struct SabrCalibrationResult {
 }
 
 impl crate::traits::ToModel for SabrCalibrationResult {
-  type Model = crate::pricing::sabr::SabrModel;
+  type Model = crate::pricing::sabr::SabrPricer;
   fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
     SabrCalibrationResult::to_model(self)
   }
 }
 
 impl SabrCalibrationResult {
-  /// Convert to a [`SabrModel`](crate::pricing::sabr::SabrModel) for pricing / vol
-  /// surface generation.
-  pub fn to_model(&self) -> crate::pricing::sabr::SabrModel {
-    crate::pricing::sabr::SabrModel {
+  /// Convert to a [`SabrPricer`](crate::pricing::sabr::SabrPricer) for
+  /// pricing / vol surface generation.
+  pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
+    crate::pricing::sabr::SabrPricer {
       alpha: self.alpha,
       beta: self.beta,
       nu: self.nu,
@@ -320,20 +319,14 @@ impl SabrCalibrator {
   fn compute_model_prices_for(&self, p: &SabrParams) -> DVector<f64> {
     let mut c_model = DVector::zeros(self.c_market.len());
     for i in 0..self.c_market.len() {
-      let pr = SabrPricer::new(
+      let pr = SabrPricer::new(p.alpha, p.beta, p.nu, p.rho);
+      let (call, put) = pr.call_put(
         self.s[i],
         self.k[i],
         self.r,
-        self.q,
-        p.alpha,
-        p.beta,
-        p.nu,
-        p.rho,
-        Some(self.tau),
-        None,
-        None,
+        self.q.unwrap_or(0.0),
+        self.tau,
       );
-      let (call, put) = pr.calculate_call_put();
       c_model[i] = match self.option_type {
         OptionType::Call => call,
         OptionType::Put => put,
@@ -423,20 +416,14 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
             .iter()
             .enumerate()
             .map(|(i, _)| {
-              let pr = SabrPricer::new(
+              let pr = SabrPricer::new(p.alpha, p.beta, p.nu, p.rho);
+              pr.call_put(
                 self.s[i],
                 self.k[i],
                 self.r,
-                self.q,
-                p.alpha,
-                p.beta,
-                p.nu,
-                p.rho,
-                Some(self.tau),
-                None,
-                None,
-              );
-              pr.calculate_call_put()
+                self.q.unwrap_or(0.0),
+                self.tau,
+              )
             })
             .collect::<Vec<(f64, f64)>>()
             .into(),
@@ -490,7 +477,7 @@ mod tests {
     let s = vec![100.0; 8];
     let k = vec![80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0];
     let r = 0.02;
-    let q = Some(0.01);
+    let q = 0.01;
     let tau = 0.5;
 
     let true_p = SabrParams {
@@ -503,20 +490,8 @@ mod tests {
     // Build synthetic market prices
     let mut c_market = Vec::new();
     for &kk in &k {
-      let pr = SabrPricer::new(
-        100.0,
-        kk,
-        r,
-        q,
-        true_p.alpha,
-        true_p.beta,
-        true_p.nu,
-        true_p.rho,
-        Some(tau),
-        None,
-        None,
-      );
-      let (call, _) = pr.calculate_call_put();
+      let pr = SabrPricer::new(true_p.alpha, true_p.beta, true_p.nu, true_p.rho);
+      let (call, _) = pr.call_put(100.0, kk, r, q, tau);
       c_market.push(call);
     }
 
@@ -531,7 +506,7 @@ mod tests {
       s.clone().into(),
       k.clone().into(),
       r,
-      q,
+      Some(q),
       tau,
       OptionType::Call,
       true,

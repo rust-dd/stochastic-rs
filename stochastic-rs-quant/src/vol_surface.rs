@@ -14,7 +14,7 @@
 //!   SabrCalibrator ───┼─────────────► HestonFourier    ─┐
 //!   HscmCalibrator ───┤               BatesFourier      │
 //!   BSMCalibrator ────┘               VarianceGammaF..  ├──────► ImpliedVolSurface
-//!                                     SabrModel         │            │
+//!                                     SabrPricer        │            │
 //!                                     HscmModel         │        .fit_svi_slices()
 //!                                     ...              ─┘        .fit_ssvi()
 //!                                                                    │
@@ -191,7 +191,7 @@
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::calibration::{SabrCalibrator, SabrParams};
 //! use stochastic_rs_quant::pricing::sabr::SabrPricer;
-//! use stochastic_rs_quant::traits::{Calibrator, PricerExt};
+//! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_model;
 //!
 //! let s0 = 100.0;
@@ -204,8 +204,8 @@
 //! // Calibrate Sabr per slice, from synthetic (round-trippable) market prices.
 //! let sabr_results: Vec<_> = taus.iter().map(|&tau| {
 //!     let prices: Vec<f64> = strikes.iter().map(|&k| {
-//!         SabrPricer::new(s0, k, r, Some(q), true_p.alpha, true_p.beta, true_p.nu, true_p.rho,
-//!             Some(tau), None, None).calculate_call_put().0
+//!         SabrPricer::new(true_p.alpha, true_p.beta, true_p.nu, true_p.rho)
+//!             .price_call(s0, k, r, q, tau)
 //!     }).collect();
 //!     let cal = SabrCalibrator::new(None, prices.into(), DVector::from_element(strikes.len(), s0),
 //!         DVector::from_vec(strikes.to_vec()), r, Some(q), tau, OptionType::Call, false);

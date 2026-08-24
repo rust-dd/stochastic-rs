@@ -467,9 +467,9 @@ mod tests {
 
   #[test]
   fn build_surface_from_model_sabr() {
-    use crate::pricing::sabr::SabrModel;
+    use crate::pricing::sabr::SabrPricer;
 
-    let model = SabrModel {
+    let model = SabrPricer {
       alpha: 0.2,
       beta: 1.0,
       nu: 0.4,

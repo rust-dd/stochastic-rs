@@ -142,9 +142,17 @@ impl PyHestonPricer {
   }
 }
 
+/// The Rust model holds `(alpha, beta, nu, rho)` only, so the wrapper
+/// carries the `(s, k, r, q, tau)` query the Python-visible no-argument
+/// methods are defined at. Python's constructor signature is unchanged.
 #[pyclass(name = "SabrPricer", unsendable)]
 pub struct PySabrPricer {
   inner: crate::pricing::sabr::SabrPricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -162,27 +170,26 @@ impl PySabrPricer {
     tau: f64,
     q: Option<f64>,
   ) -> Self {
-    let inner = crate::pricing::sabr::SabrPricer::new(
+    let inner = crate::pricing::sabr::SabrPricer::new(alpha, beta, nu, rho);
+    Self {
+      inner,
       s,
       k,
       r,
-      q,
-      alpha,
-      beta,
-      nu,
-      rho,
-      Some(tau),
-      None,
-      None,
-    );
-    Self { inner }
+      q: q.unwrap_or(0.0),
+      tau,
+    }
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self
+      .inner
+      .price_call(self.s, self.k, self.r, self.q, self.tau)
   }
   fn call_put(&self) -> (f64, f64) {
-    self.inner.calculate_call_put()
+    self
+      .inner
+      .call_put(self.s, self.k, self.r, self.q, self.tau)
   }
 }
 

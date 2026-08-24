@@ -7,21 +7,33 @@ use crate::pricing::bsm::BSMPricer;
 use crate::pricing::sabr::hagan::forward_fx;
 use crate::pricing::sabr::hagan::fx_delta_from_forward;
 use crate::pricing::sabr::hagan::hagan_implied_vol;
-use crate::traits::PricerExt;
-use crate::traits::TimeExt;
+use crate::traits::ModelPricer;
 
-/// Pricer that uses Sabr (Hagan 2002, general β) to produce an implied vol,
-/// then prices via Black-GK.
+/// Sabr (Hagan 2002, general β) model parameters.
+///
+/// The struct holds **model state only** — the four Sabr parameters. Spot,
+/// strike, rate, dividend yield and maturity are the pricing *query* and
+/// travel as arguments to [`ModelPricer::price_call`], so one instance
+/// prices a whole strike/maturity grid. Pricing plugs the Hagan (2002)
+/// general-β implied vol into Black-Scholes at Merton (1973) cost of carry
+/// (`b = r - q`), which under the FX reading is Garman-Kohlhagen with
+/// `(r, q) = (r_d, r_f)`.
+///
+/// This type absorbed the former `SabrModel`, which held these same four
+/// fields and priced the same way: once `SabrPricer` stopped bundling
+/// market data, the two were the same struct twice. See the 5b report.
+///
+/// ```
+/// use stochastic_rs_quant::pricing::sabr::SabrPricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// let model = SabrPricer::new(0.2, 1.0, 0.4, -0.3);
+/// let atm = model.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
+/// let otm = model.price_call(100.0, 130.0, 0.05, 0.0, 1.0);
+/// assert!(atm > otm);
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct SabrPricer {
-  /// Underlying spot/forward level.
-  pub s: f64,
-  /// Strike level.
-  pub k: f64,
-  /// Risk-free rate (domestic)
-  pub r: f64,
-  /// Dividend/foreign rate (q)
-  pub q: Option<f64>,
   /// Model shape/loading parameter.
   pub alpha: f64,
   /// Cev exponent (0 = normal, 1 = lognormal).
@@ -30,209 +42,105 @@ pub struct SabrPricer {
   pub nu: f64,
   /// Correlation parameter.
   pub rho: f64,
-  /// Time-to-maturity in years.
-  pub tau: Option<f64>,
-  /// Valuation date.
-  pub eval: Option<chrono::NaiveDate>,
-  /// Expiration date.
-  pub expiration: Option<chrono::NaiveDate>,
 }
 
 impl SabrPricer {
-  pub fn new(
-    s: f64,
-    k: f64,
-    r: f64,
-    q: Option<f64>,
-    alpha: f64,
-    beta: f64,
-    nu: f64,
-    rho: f64,
-    tau: Option<f64>,
-    eval: Option<chrono::NaiveDate>,
-    expiration: Option<chrono::NaiveDate>,
-  ) -> Self {
+  pub const fn new(alpha: f64, beta: f64, nu: f64, rho: f64) -> Self {
     Self {
-      s,
-      k,
-      r,
-      q,
       alpha,
       beta,
       nu,
       rho,
-      tau,
-      eval,
-      expiration,
     }
   }
 
-  pub fn builder(
-    s: f64,
-    k: f64,
-    r: f64,
-    alpha: f64,
-    beta: f64,
-    nu: f64,
-    rho: f64,
-  ) -> SabrPricerBuilder {
-    SabrPricerBuilder {
-      s,
-      k,
-      r,
-      q: None,
-      alpha,
-      beta,
-      nu,
-      rho,
-      tau: None,
-      eval: None,
-      expiration: None,
-    }
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct SabrPricerBuilder {
-  s: f64,
-  k: f64,
-  r: f64,
-  q: Option<f64>,
-  alpha: f64,
-  beta: f64,
-  nu: f64,
-  rho: f64,
-  tau: Option<f64>,
-  eval: Option<chrono::NaiveDate>,
-  expiration: Option<chrono::NaiveDate>,
-}
-
-impl SabrPricerBuilder {
-  pub fn q(mut self, q: f64) -> Self {
-    self.q = Some(q);
-    self
-  }
-  pub fn tau(mut self, tau: f64) -> Self {
-    self.tau = Some(tau);
-    self
-  }
-  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
-    self.eval = Some(eval);
-    self
-  }
-  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
-    self.expiration = Some(expiration);
-    self
-  }
-  pub fn build(self) -> SabrPricer {
-    SabrPricer {
-      s: self.s,
-      k: self.k,
-      r: self.r,
-      q: self.q,
-      alpha: self.alpha,
-      beta: self.beta,
-      nu: self.nu,
-      rho: self.rho,
-      tau: self.tau,
-      eval: self.eval,
-      expiration: self.expiration,
-    }
-  }
-}
-
-impl TimeExt for SabrPricer {
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-  fn eval(&self) -> Option<chrono::NaiveDate> {
-    self.eval
-  }
-  fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiration
-  }
-}
-
-impl SabrPricer {
-  /// Time to maturity in years, derived from `tau` if set, otherwise from
-  /// `eval`+`expiration` via [`TimeExt::tau_or_from_dates`].
-  ///
-  /// Panics if neither was provided.
-  fn tau_required(&self) -> f64 {
-    self.tau_or_from_dates()
+  /// Forward at one query point, `s·e^{(r-q)τ}`. Under the FX reading
+  /// `(r, q)` are the domestic and foreign rates.
+  pub fn forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    forward_fx(s, tau, r, q)
   }
 
-  pub fn forward(&self) -> f64 {
-    forward_fx(self.s, self.tau_required(), self.r, self.q.unwrap_or(0.0))
-  }
-
-  /// Implied volatility from the Hagan (2002) general-β expansion, evaluated
-  /// at `self.k` against [`self.forward()`](Self::forward).
+  /// Implied volatility from the Hagan (2002) general-β expansion,
+  /// evaluated at `k` against [`forward`](Self::forward).
   ///
   /// # Panics
-  /// Panics if `self.k` or the forward is not strictly positive, if
+  /// Panics if `k` or the forward is not strictly positive, if
   /// `self.alpha` is not strictly positive, or if `self.rho` does not lie
   /// strictly inside $(-1, 1)$ — see
   /// [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol)'s own
   /// `# Panics` section, which this inherits unchanged. A non-positive spot
-  /// or strike is invalid input for this equity/FX pricer, not a market
+  /// or strike is invalid input for this equity/FX model, not a market
   /// state to accommodate, so this panics rather than degrading silently;
   /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator) validates
   /// `s`/`k` before ever constructing a `SabrPricer` from calibrated data,
-  /// so this only fires when a `SabrPricer` is built directly from bad
-  /// input.
-  pub fn sigma(&self) -> f64 {
+  /// so this only fires when one is built directly from bad input.
+  pub fn sigma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     hagan_implied_vol(
-      self.k,
-      self.forward(),
-      self.tau_required(),
+      k,
+      self.forward(s, r, q, tau),
+      tau,
       self.alpha,
       self.beta,
       self.nu,
       self.rho,
     )
   }
-  /// Forward-based (premium-included) delta with r_f := q
-  pub fn sabr_fx_forward_delta(&self, phi: f64) -> f64 {
+
+  /// Forward-based (premium-included) FX delta, with the foreign rate read
+  /// off the query's `q` slot.
+  pub fn sabr_fx_forward_delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, phi: f64) -> f64 {
     fx_delta_from_forward(
-      self.k,
-      self.forward(),
-      self.sigma(),
-      self.tau_required(),
-      self.q.unwrap_or(0.0),
+      k,
+      self.forward(s, r, q, tau),
+      self.sigma(s, k, r, q, tau),
+      tau,
+      q,
       phi,
     )
   }
-}
 
-impl PricerExt for SabrPricer {
-  fn calculate_call_put(&self) -> (f64, f64) {
-    let sigma = self.sigma();
-    let q = self
-      .q
-      .expect("BSMCoc::Merton1973 requires `q` (dividend yield)");
-    BSMPricer::new(sigma, BSMCoc::Merton1973).call_put(
-      self.s,
-      self.k,
-      self.r,
-      q,
-      self.tau_required(),
-    )
+  /// Call and put price at one query point.
+  ///
+  /// A `sigma` that comes out non-finite or non-positive floors **both**
+  /// legs to `0.0` rather than letting a degenerate volatility propagate
+  /// into `d1`/`d2`. That floor is the contract the former `SabrModel`
+  /// documented for its `price_call`; it never fires for a non-positive
+  /// `k` or forward, because [`sigma`](Self::sigma) panics on those first.
+  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    let sigma = self.sigma(s, k, r, q, tau);
+    if !sigma.is_finite() || sigma <= 0.0 {
+      return (0.0, 0.0);
+    }
+    BSMPricer::new(sigma, BSMCoc::Merton1973).call_put(s, k, r, q, tau)
   }
 
-  fn calculate_price(&self) -> f64 {
-    self.calculate_call_put().0
-  }
-
-  fn implied_volatility(&self, c_price: f64, option_type: OptionType) -> f64 {
-    let tau = self.calculate_tau_in_years();
-    let q = self.q.unwrap_or(0.0);
-    let forward = self.s * ((self.r - q) * tau).exp();
-    let undiscounted_price = c_price * (self.r * tau).exp();
+  /// Black volatility implied by `price` at one query point.
+  ///
+  /// Depends on none of the four Sabr parameters — it inverts a price for a
+  /// volatility rather than pricing at one, so any `SabrPricer` returns the
+  /// same answer. Kept as an inherent method on this type (rather than a
+  /// free function) because it is the inverse of
+  /// [`call_put`](Self::call_put) and shares its `b = r - q` carry
+  /// convention.
+  ///
+  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
+  /// the inversion can invert.
+  pub fn implied_volatility(
+    &self,
+    c_price: f64,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    let forward = self.forward(s, r, q, tau);
+    let undiscounted_price = c_price * (r * tau).exp();
     ImpliedBlackVolatility::builder()
       .option_price(undiscounted_price)
       .forward(forward)
-      .strike(self.k)
+      .strike(k)
       .expiry(tau)
       .is_call(option_type == OptionType::Call)
       .build()
@@ -241,38 +149,27 @@ impl PricerExt for SabrPricer {
   }
 }
 
-/// Sabr model parameters (model only, no market data).
-///
-/// Implements [`ModelPricer`](crate::traits::ModelPricer) via the Hagan (2002)
-/// implied-vol formula plugged into Black-Scholes.
-#[derive(Clone, Copy, Debug)]
-pub struct SabrModel {
-  pub alpha: f64,
-  pub beta: f64,
-  pub nu: f64,
-  pub rho: f64,
-}
-
-impl crate::traits::ModelPricer for SabrModel {
+impl ModelPricer for SabrPricer {
   /// # Panics
   /// Panics if `k`, or the forward derived from `s`, is not strictly
-  /// positive — see [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol)'s
-  /// `# Panics` section. [`ModelPricer`](crate::traits::ModelPricer) has no
-  /// fallible return channel, so a non-positive spot or strike in a
-  /// strike/maturity grid aborts the whole grid rather than degrading that
-  /// one point to `0.0` — deliberately: a non-positive spot or strike is
-  /// invalid input for this equity/FX model, not a value worth pricing as
-  /// if it were merely deep out-of-the-money. The `is_finite`/`<= 0.0`
-  /// guard just below never runs for a non-positive `k`/forward — the panic
-  /// above happens first; it exists to floor genuinely degenerate-but-valid
-  /// `(alpha, beta, nu, rho)` combinations that produce a non-finite or
-  /// non-positive `sigma` from an otherwise-positive `k`/forward.
+  /// positive — see [`sigma`](SabrPricer::sigma)'s `# Panics` section.
+  /// [`ModelPricer`] has no fallible return channel, so a non-positive spot
+  /// or strike in a strike/maturity grid aborts the whole grid rather than
+  /// degrading that one point to `0.0` — deliberately: a non-positive spot
+  /// or strike is invalid input for this equity/FX model, not a value worth
+  /// pricing as if it were merely deep out-of-the-money.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    let fwd = s * ((r - q) * tau).exp();
-    let sigma = hagan_implied_vol(k, fwd, tau, self.alpha, self.beta, self.nu, self.rho);
-    if !sigma.is_finite() || sigma <= 0.0 {
-      return 0.0;
-    }
-    BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(s, k, r, q, tau)
+    self.call_put(s, k, r, q, tau).0
+  }
+
+  /// Takes the Black-Scholes closed-form put rather than the trait's
+  /// vanilla-parity default. The two are *mathematically* the same here —
+  /// the carry is `b = r - q`, which is exactly the case where vanilla
+  /// parity holds — but the closed form is what the pre-query
+  /// `calculate_call_put().1` returned, so delegating keeps the number
+  /// bit-identical rather than merely equal to within rounding. See
+  /// `sabr_price_put_matches_parity_but_is_the_closed_form`.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.call_put(s, k, r, q, tau).1
   }
 }

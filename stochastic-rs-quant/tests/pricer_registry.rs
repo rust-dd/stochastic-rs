@@ -15,8 +15,8 @@
 //! revision's stated command produce 81 rather than the 71 it claimed.
 //!
 //! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
-//! [`PricingEngine`]: **10** carry `ModelPricer` (the trait this registry
-//! exists to guard), **7** the older `PricerExt`, **2** `PricingEngine`.
+//! [`PricingEngine`]: **11** carry `ModelPricer` (the trait this registry
+//! exists to guard), **6** the older `PricerExt`, **2** `PricingEngine`.
 //! Every one of those three numbers is the length of the matching macro
 //! invocation below and nothing else — re-derive rather than
 //! arithmetic-adjust them, with (substituting the macro name):
@@ -127,6 +127,7 @@ assert_model_pricer!(
   GapPricer,
   HestonSlvPricer,
   RBergomiPricer,
+  SabrPricer,
   SnellEnvelopePricer,
   SuperSharePricer,
 );
@@ -150,7 +151,6 @@ assert_pricer_ext!(
   HestonStochCorrPricer,
   KirkSpreadPricer,
   Merton1976Pricer,
-  SabrPricer,
 );
 
 // QuantLib-style decoupled engines (`Instrument` + `PricingEngine<I>` +
