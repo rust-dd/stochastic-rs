@@ -114,7 +114,6 @@ mod tests {
   use crate::pricing::BjerksundStensland2002Pricer;
   use crate::pricing::finite_difference::FiniteDifferenceMethod;
   use crate::pricing::finite_difference::FiniteDifferencePricer;
-  use crate::traits::PricerExt;
 
   #[test]
   fn crr_call_recovers_black_scholes_at_high_steps() {
@@ -219,13 +218,14 @@ mod tests {
     let model = CrrModel::new(sigma, 1000);
     let crr = model.price_american(s, k, r, 0.0, tau, OptionType::Put);
 
-    let fd = FiniteDifferencePricer::builder(s, sigma, k, r, 4000, 400)
-      .tau(tau)
-      .option_style(OptionStyle::American)
-      .option_type(OptionType::Put)
-      .method(FiniteDifferenceMethod::CrankNicolson)
-      .build()
-      .calculate_price();
+    let fd = FiniteDifferencePricer::new(
+      sigma,
+      4000,
+      400,
+      OptionStyle::American,
+      FiniteDifferenceMethod::CrankNicolson,
+    )
+    .price_put(s, k, r, 0.0, tau);
 
     let rel_err = (crr - fd).abs() / fd;
     assert!(rel_err < 5e-3, "crr {crr} vs fd {fd} (rel err {rel_err})");

@@ -15,8 +15,8 @@
 //! revision's stated command produce 81 rather than the 71 it claimed.
 //!
 //! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
-//! [`PricingEngine`]: **12** carry `ModelPricer` (the trait this registry
-//! exists to guard), **5** the older `PricerExt`, **2** `PricingEngine`.
+//! [`PricingEngine`]: **13** carry `ModelPricer` (the trait this registry
+//! exists to guard), **4** the older `PricerExt`, **2** `PricingEngine`.
 //! Every one of those three numbers is the length of the matching macro
 //! invocation below and nothing else — re-derive rather than
 //! arithmetic-adjust them, with (substituting the macro name):
@@ -124,6 +124,7 @@ assert_model_pricer!(
   BjerksundStensland2002Pricer,
   BSMPricer,
   CashOrNothingPricer,
+  FiniteDifferencePricer,
   GapPricer,
   GbmMalliavinPricer,
   HestonSlvPricer,
@@ -146,7 +147,6 @@ assert_model_pricer!(
 // `PricerExt` is retired (Task 6) it becomes trait-less like its multi-asset
 // siblings. Filed here by what it implements now, not by its final family.
 assert_pricer_ext!(
-  FiniteDifferencePricer,
   HestonPricer,
   HestonStochCorrPricer,
   KirkSpreadPricer,
