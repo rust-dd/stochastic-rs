@@ -51,7 +51,7 @@ impl HestonStaticParams {
 #[derive(Clone)]
 pub struct AnalyticHestonEngine {
   pub s: Handle<SimpleQuote<f64>>,
-  pub risk_free: Handle<SimpleQuote<f64>>,
+  pub r: Handle<SimpleQuote<f64>>,
   pub dividend_yield: Handle<SimpleQuote<f64>>,
   pub params: HestonStaticParams,
   /// Relative bump used for finite-difference Greeks (default 1e-3).
@@ -61,13 +61,13 @@ pub struct AnalyticHestonEngine {
 impl AnalyticHestonEngine {
   pub fn new(
     s: Handle<SimpleQuote<f64>>,
-    risk_free: Handle<SimpleQuote<f64>>,
+    r: Handle<SimpleQuote<f64>>,
     dividend_yield: Handle<SimpleQuote<f64>>,
     params: HestonStaticParams,
   ) -> Self {
     Self {
       s,
-      risk_free,
+      r,
       dividend_yield,
       params,
       bump: 1e-3,
@@ -99,7 +99,7 @@ impl AnalyticHestonEngine {
       s: s_override.unwrap_or_else(|| Self::read_quote(&self.s, 0.0)),
       v0: v0_override.unwrap_or(self.params.v0),
       k: opt.strike,
-      r: Self::read_quote(&self.risk_free, 0.0),
+      r: Self::read_quote(&self.r, 0.0),
       q: Some(Self::read_quote(&self.dividend_yield, 0.0)),
       rho: self.params.rho,
       kappa: self.params.kappa,

@@ -28,7 +28,7 @@ pub struct PortfolioEngineConfig {
   /// Target return used by return-constrained optimizers.
   pub target_return: f64,
   /// Risk-free rate used in Sharpe computations and scoring.
-  pub risk_free: f64,
+  pub r: f64,
   /// Tail proportion for CVaR optimizers — the **fraction of worst returns**
   /// to average. Typical values: 0.01–0.10. **Note**: this is the opposite
   /// convention from [`crate::risk`] (which uses `confidence = 1 - tail`).
@@ -46,7 +46,7 @@ impl Default for PortfolioEngineConfig {
     Self {
       optimizer: OptimizerMethod::Markowitz,
       target_return: 0.1,
-      risk_free: 0.0,
+      r: 0.0,
       cvar_alpha: 0.05,
       allow_short: false,
       optimizer_config: OptimizerConfig::default(),
@@ -86,7 +86,7 @@ impl PortfolioEngine {
       corr,
       aligned_returns,
       self.config.target_return,
-      self.config.risk_free,
+      self.config.r,
       self.config.cvar_alpha,
       self.config.allow_short,
       &self.config.optimizer_config,
@@ -95,7 +95,7 @@ impl PortfolioEngine {
 
   /// Compute momentum scores from arbitrary model estimates implementing [`ModelEstimate`].
   pub fn score_momentum<T: ModelEstimate>(&self, evaluations: &[T]) -> Vec<MomentumScore> {
-    compute_scores(evaluations, self.config.risk_free)
+    compute_scores(evaluations, self.config.r)
   }
 
   /// Build a momentum portfolio using either ranking or target-return optimization.
@@ -112,7 +112,7 @@ impl PortfolioEngine {
       build_portfolio_target_internal(
         &scores,
         target_return,
-        self.config.risk_free,
+        self.config.r,
         self.config.optimizer,
         self.config.cvar_alpha,
         self.config.allow_short,
@@ -181,7 +181,7 @@ mod tests {
     let engine = PortfolioEngine::new(PortfolioEngineConfig {
       optimizer: OptimizerMethod::Markowitz,
       target_return: 0.08,
-      risk_free: 0.02,
+      r: 0.02,
       cvar_alpha: 0.05,
       allow_short: true,
       optimizer_config: OptimizerConfig::default(),

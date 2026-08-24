@@ -32,7 +32,7 @@ use crate::traits::StandardResult;
 pub struct AnalyticBSEngine {
   pub s: Handle<SimpleQuote<f64>>,
   pub volatility: Handle<SimpleQuote<f64>>,
-  pub risk_free: Handle<SimpleQuote<f64>>,
+  pub r: Handle<SimpleQuote<f64>>,
   pub dividend_yield: Handle<SimpleQuote<f64>>,
   pub coc: BSMCoc,
 }
@@ -43,13 +43,13 @@ impl AnalyticBSEngine {
   pub fn new(
     s: Handle<SimpleQuote<f64>>,
     volatility: Handle<SimpleQuote<f64>>,
-    risk_free: Handle<SimpleQuote<f64>>,
+    r: Handle<SimpleQuote<f64>>,
     dividend_yield: Handle<SimpleQuote<f64>>,
   ) -> Self {
     Self {
       s,
       volatility,
-      risk_free,
+      r,
       dividend_yield,
       coc: BSMCoc::Merton1973,
     }
@@ -81,7 +81,7 @@ impl AnalyticBSEngine {
       s: Self::read_quote(&self.s, 0.0),
       v: Self::read_quote(&self.volatility, 0.0),
       k: strike,
-      r: Self::read_quote(&self.risk_free, 0.0),
+      r: Self::read_quote(&self.r, 0.0),
       r_d: None,
       r_f: None,
       q: Some(Self::read_quote(&self.dividend_yield, 0.0)),
@@ -112,7 +112,7 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
     let s = Self::read_quote(&self.s, 0.0);
     let sigma = Self::read_quote(&self.volatility, 0.0);
-    let r = Self::read_quote(&self.risk_free, 0.0);
+    let r = Self::read_quote(&self.r, 0.0);
     let q = Self::read_quote(&self.dividend_yield, 0.0);
     let b = r - q;
     let tau = opt.tau.unwrap_or(f64::NAN);
