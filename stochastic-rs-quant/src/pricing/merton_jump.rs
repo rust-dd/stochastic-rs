@@ -267,9 +267,24 @@ impl Merton1976Pricer {
   }
 
   /// The `(r, q)` pair handed to the per-term [`BSMPricer`] query. This
-  /// pricer stores four rate fields; the model takes two, so the
-  /// cost-of-carry convention decides which two are in play —
-  /// `(r_d, r_f)` under Garman-Kohlhagen, `(r, q)` otherwise.
+  /// pricer stores four rate fields; the model takes two, and the pair it
+  /// takes is `(discount rate, carry offset)` — [`BSMPricer`] always
+  /// discounts at the query's `r` and carries at `b(r, q)`.
+  ///
+  /// So this solves for the `(r, q)` that reproduces *this* pricer's
+  /// discount and carry exactly. For every convention but Garman-Kohlhagen
+  /// that is just the stored pair. Under
+  /// [`BSMCoc::GarmanKohlhagen1983`] the two come apart: the carry is
+  /// `r_d - r_f` but the discount is this pricer's own `r`, which is a
+  /// separate field. Since GK's `b(r, q) = r - q`, the effective dividend
+  /// yield that reproduces it is `q = r - r_d + r_f` — an identity, not an
+  /// approximation, and it collapses to `r_f` in the ordinary case
+  /// `r == r_d`.
+  ///
+  /// Textbook Garman-Kohlhagen would discount at `r_d` and ignore `r`.
+  /// This pricer never has: changing that is a deliberate modelling choice
+  /// for whichever task migrates `Merton1976Pricer`, not a side effect of
+  /// `BSMPricer` moving to `ModelPricer`.
   ///
   /// # Panics
   /// - `BSMCoc::Merton1973` without `q`
@@ -282,14 +297,15 @@ impl Merton1976Pricer {
           .q
           .expect("BSMCoc::Merton1973 requires `q` (dividend yield)"),
       ),
-      BSMCoc::GarmanKohlhagen1983 => (
-        self
+      BSMCoc::GarmanKohlhagen1983 => {
+        let r_d = self
           .r_d
-          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_d`"),
-        self
+          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_d`");
+        let r_f = self
           .r_f
-          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_f`"),
-      ),
+          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_f`");
+        (self.r, self.r - r_d + r_f)
+      }
       BSMCoc::Bsm1973 | BSMCoc::Black1976 | BSMCoc::Asay1982 => (self.r, self.q.unwrap_or(0.0)),
     }
   }

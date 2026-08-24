@@ -422,6 +422,7 @@ fn time_ext_tau_with_dcc() {
 }
 
 struct MockPricerWithDcc {
+  tau: Option<f64>,
   eval: NaiveDate,
   expiration: NaiveDate,
   dcc: Option<DayCountConvention>,
@@ -429,7 +430,7 @@ struct MockPricerWithDcc {
 
 impl stochastic_rs::traits::TimeExt for MockPricerWithDcc {
   fn tau(&self) -> Option<f64> {
-    None
+    self.tau
   }
   fn eval(&self) -> Option<NaiveDate> {
     Some(self.eval)
@@ -450,11 +451,13 @@ fn time_ext_dcc_override_switches_tau_or_from_dates() {
   let eval = d(2025, 1, 15);
   let expiration = d(2025, 7, 15); // 181 days
   let default = MockPricerWithDcc {
+    tau: None,
     eval,
     expiration,
     dcc: None,
   };
   let act360 = MockPricerWithDcc {
+    tau: None,
     eval,
     expiration,
     dcc: Some(DayCountConvention::Actual360),
@@ -495,4 +498,41 @@ fn default_impls() {
     BusinessDayConvention::ModifiedFollowing
   );
   assert_eq!(Frequency::default(), Frequency::SemiAnnual);
+}
+
+/// `TimeExt::tau_or_from_dates` short-circuits on an explicit `tau`: the
+/// `(eval, expiration)` pair and the `dcc` override are both skipped, not
+/// merged. Pins the precedence branch of the trait default at
+/// `traits/time.rs`, which governs every `TimeExt` implementor in the
+/// workspace — including `EuropeanOption`, whose engine relies on it.
+#[test]
+fn time_ext_explicit_tau_wins_over_dates_and_dcc() {
+  use stochastic_rs::traits::TimeExt;
+
+  // Dates and dcc chosen so that *either* date-derived tau (181/365 or
+  // 181/360) is far from the explicit 0.5 — a merged or ignored `tau`
+  // could not land on 0.5 by accident.
+  let pricer = MockPricerWithDcc {
+    tau: Some(0.5),
+    eval: d(2025, 1, 15),
+    expiration: d(2025, 7, 15),
+    dcc: Some(DayCountConvention::Actual360),
+  };
+  assert!(
+    (pricer.tau_or_from_dates() - 0.5).abs() < 1e-12,
+    "explicit tau must win over the date pair and the dcc override"
+  );
+  assert!(
+    (pricer.tau_with_dcc(DayCountConvention::ActualActualISDA) - 0.5).abs() < 1e-12,
+    "explicit tau must win over an explicitly requested dcc too"
+  );
+  // The same mock without `tau` does use the dates, so the assertion above
+  // is about precedence and not about the mock being inert.
+  let dated = MockPricerWithDcc {
+    tau: None,
+    eval: d(2025, 1, 15),
+    expiration: d(2025, 7, 15),
+    dcc: Some(DayCountConvention::Actual360),
+  };
+  assert!((dated.tau_or_from_dates() - 181.0 / 360.0).abs() < 1e-12);
 }

@@ -22,7 +22,6 @@ use stochastic_rs::quant::pricing::barrier::BarrierType;
 use stochastic_rs::quant::pricing::barrier::MCBarrierPricer;
 use stochastic_rs::quant::pricing::bsm::BSMCoc;
 use stochastic_rs::quant::pricing::bsm::BSMPricer;
-use stochastic_rs::quant::traits::Greeks;
 use stochastic_rs::quant::traits::ModelPricer;
 
 fn main() {
@@ -59,17 +58,7 @@ fn main() {
   let bs = BSMPricer::new(sigma, BSMCoc::Bsm1973);
   let ot = OptionType::Call;
   let bs_price = bs.price_call(s, k, r, 0.0, t);
-  let greeks = Greeks {
-    delta: bs.delta(s, k, r, 0.0, t, ot),
-    gamma: bs.gamma(s, k, r, 0.0, t),
-    vega: bs.vega(s, k, r, 0.0, t),
-    theta: bs.theta(s, k, r, 0.0, t, ot),
-    rho: bs.rho(s, k, r, 0.0, t, ot),
-    vanna: bs.vanna(s, k, r, 0.0, t),
-    charm: bs.charm(s, k, r, 0.0, t, ot),
-    volga: bs.vomma(s, k, r, 0.0, t),
-    veta: bs.dvega_dtime(s, k, r, 0.0, t),
-  };
+  let greeks = bs.greeks(s, k, r, 0.0, t, ot);
 
   println!(
     "Price:  BS analytic = {bs_price:.4}    MC = {mc_price:.4}    rel-err = {:.4}%",

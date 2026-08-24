@@ -6,6 +6,14 @@ use crate::traits::ModelPricer;
 const Q: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75);
 /// Volatility every golden below is pinned at.
 const V: f64 = 0.25;
+/// Tolerance the pre-refactor goldens are held to. Absolute, matching
+/// `merton_price_m10_matches_pre_refactor_value`'s precedent: the values
+/// were captured on aarch64-darwin and CI runs x86_64-linux, and every one
+/// of them routes through `norm_cdf`, so bit-exactness would be a hostage
+/// to FMA contraction and libm differences rather than a real invariant.
+/// Three orders tighter than any refactor error this test is meant to
+/// catch.
+const TOL: f64 = 1e-12;
 
 #[test]
 fn bsm_price() {
@@ -61,15 +69,17 @@ fn bsm_model_pricer_matches_pre_refactor_goldens() {
     let model = BSMPricer::new(V, coc);
     let call = model.price_call(s, k, r, q, tau);
     let put = model.price_put(s, k, r, q, tau);
-    assert_eq!(call, want_call, "{coc:?} call");
-    assert_eq!(put, want_put, "{coc:?} put");
+    assert!((call - want_call).abs() < TOL, "{coc:?} call: {call}");
+    assert!((put - want_put).abs() < TOL, "{coc:?} put: {put}");
     assert_eq!(
       model.price_option(s, k, r, q, tau, OptionType::Call),
-      want_call
+      call,
+      "{coc:?}: price_option must dispatch to price_call"
     );
     assert_eq!(
       model.price_option(s, k, r, q, tau, OptionType::Put),
-      want_put
+      put,
+      "{coc:?}: price_option must dispatch to price_put"
     );
   }
 }
@@ -172,9 +182,11 @@ fn bsm_dates_match_tau_pricing() {
   let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
   let (c_dates, p_dates) = model.call_put(100.0, 100.0, 0.05, 0.0, tau);
   let (c_tau, p_tau) = model.call_put(100.0, 100.0, 0.05, 0.0, 1.0);
+  // 2026-01-02 → 2027-01-02 is 365 days and 2026 is not a leap year, so
+  // Act/365F gives tau == 1.0 exactly and the two prices are identical.
   assert!(
-    (c_dates - c_tau).abs() < 1e-2 && (p_dates - p_tau).abs() < 1e-2,
-    "365/365 date span must price within a day of tau=1: dates=({c_dates},{p_dates}), tau=({c_tau},{p_tau})"
+    (c_dates - c_tau).abs() < 1e-12 && (p_dates - p_tau).abs() < 1e-12,
+    "date-derived tau diverged from tau=1: dates=({c_dates},{p_dates}), tau=({c_tau},{p_tau})"
   );
   let iv = model.implied_volatility(c_dates, 100.0, 100.0, 0.05, 0.0, tau, OptionType::Call);
   assert!((iv - 0.2).abs() < 1e-6, "IV from date-derived tau: {iv}");
@@ -271,7 +283,7 @@ fn bsm_greeks_match_pre_refactor_goldens() {
     ),
   ];
   for (name, got, want) in cases {
-    assert_eq!(got, want, "{name}");
+    assert!((got - want).abs() < TOL, "{name}: got {got}, want {want}");
   }
 }
 
@@ -334,5 +346,41 @@ fn bsm_one_model_prices_a_grid() {
       assert!(call < prev, "call must decrease in strike at tau={tau}");
       prev = call;
     }
+  }
+}
+
+/// [`BSMPricer::greeks`] renames two members on the way into the
+/// [`Greeks`](crate::traits::Greeks) aggregate — `volga` is `vomma` and
+/// `veta` is `dvega_dtime`. Swapping those two lines in the aggregate is a
+/// silent, plausible-looking error, so every member is pinned against its
+/// accessor here. This is the mapping's only test; `AnalyticBSEngine` and
+/// the `mc_greeks_demo` example both route through `greeks()` rather than
+/// repeating it.
+#[test]
+fn bsm_greeks_aggregate_matches_accessors() {
+  let (s, k, r, q, tau) = Q;
+  let m = BSMPricer::new(V, BSMCoc::Merton1973);
+  for ot in [OptionType::Call, OptionType::Put] {
+    let g = m.greeks(s, k, r, q, tau, ot);
+    assert_eq!(g.delta, m.delta(s, k, r, q, tau, ot), "delta");
+    assert_eq!(g.gamma, m.gamma(s, k, r, q, tau), "gamma");
+    assert_eq!(g.vega, m.vega(s, k, r, q, tau), "vega");
+    assert_eq!(g.theta, m.theta(s, k, r, q, tau, ot), "theta");
+    assert_eq!(g.rho, m.rho(s, k, r, q, tau, ot), "rho");
+    assert_eq!(g.vanna, m.vanna(s, k, r, q, tau), "vanna");
+    assert_eq!(g.charm, m.charm(s, k, r, q, tau, ot), "charm");
+    assert_eq!(g.volga, m.vomma(s, k, r, q, tau), "volga is vomma");
+    assert_eq!(
+      g.veta,
+      m.dvega_dtime(s, k, r, q, tau),
+      "veta is dvega_dtime"
+    );
+    // volga and veta are the two renamed members: assert they are not each
+    // other, so a swapped pair cannot pass the equalities above by accident
+    // if the two ever coincide numerically at some other query point.
+    assert_ne!(
+      g.volga, g.veta,
+      "volga and veta must not be interchangeable"
+    );
   }
 }

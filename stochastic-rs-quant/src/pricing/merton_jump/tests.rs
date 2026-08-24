@@ -209,3 +209,45 @@ fn merton_greeks_theta_charm_veta_nan_near_expiry() {
   assert!(m.charm().is_nan(), "charm should be NaN at tau=1e-6");
   assert!(m.veta().is_nan(), "veta should be NaN at tau=1e-6");
 }
+
+/// Under `BSMCoc::GarmanKohlhagen1983` this pricer carries at `r_d - r_f`
+/// but discounts at its own `r` field, which is separate from `r_d`. That
+/// split only shows up at `r != r_d`, so it is pinned here against a
+/// hand-written closed form rather than against anything routed through
+/// [`Merton1976Pricer::query_rates`]. Textbook GK would discount at `r_d`;
+/// whichever task migrates this pricer decides whether to change that.
+#[test]
+fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
+  use stochastic_rs_distributions::special::norm_cdf;
+
+  let (s, k, v, tau) = (100.0_f64, 105.0_f64, 0.25_f64, 0.75_f64);
+  let (r, r_d, r_f) = (0.06_f64, 0.05_f64, 0.02_f64);
+  let m = Merton1976Pricer::builder(s, v, k, r, 0.0, 0.4, 20)
+    .r_d(r_d)
+    .r_f(r_f)
+    .tau(tau)
+    .coc(BSMCoc::GarmanKohlhagen1983)
+    .build();
+
+  let b = r_d - r_f;
+  let sqrt_tau = tau.sqrt();
+  let d1 = ((s / k).ln() + (b + 0.5 * v * v) * tau) / (v * sqrt_tau);
+  let d2 = d1 - v * sqrt_tau;
+
+  // delta pins the carry factor exp((b - r) * tau) — wrong on either leg
+  // if `b` came from (r, q) or the discount came from r_d.
+  let want_delta = ((b - r) * tau).exp() * norm_cdf(d1);
+  assert!(
+    (m.delta() - want_delta).abs() < 1e-12,
+    "GK delta: got {}, want {want_delta}",
+    m.delta()
+  );
+
+  // rho pins the discount factor exp(-r * tau) on its own.
+  let want_rho = k * tau * (-r * tau).exp() * norm_cdf(d2);
+  assert!(
+    (m.rho() - want_rho).abs() < 1e-12,
+    "GK rho must discount at r ({r}), not r_d ({r_d}): got {}, want {want_rho}",
+    m.rho()
+  );
+}

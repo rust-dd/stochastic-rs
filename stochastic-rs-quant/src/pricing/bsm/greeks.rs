@@ -3,6 +3,7 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use super::pricer::BSMPricer;
 use crate::OptionType;
+use crate::traits::Greeks;
 
 /// Closed-form Greeks, evaluated at the same `(s, k, r, q, tau)` query
 /// [`BSMPricer`]'s pricing methods take. Only the Greeks whose value
@@ -14,6 +15,37 @@ use crate::OptionType;
 /// implement it. The query-carrying types built on this model
 /// (`AnalyticBSEngine`, `Merton1976Pricer`) implement it and delegate here.
 impl BSMPricer {
+  /// Every Greek at one query point, in a [`Greeks`] aggregate.
+  ///
+  /// This is what the removed `GreeksExt` impl's `greeks()` provided, and
+  /// it is the **only** place the aggregate's two renamed members are
+  /// mapped: `Greeks::volga` is [`vomma`](Self::vomma) and `Greeks::veta`
+  /// is [`dvega_dtime`](Self::dvega_dtime). Callers that need the whole set
+  /// (`AnalyticBSEngine`, the `mc_greeks_demo` example) go through here
+  /// rather than re-deriving the mapping in a struct literal — see
+  /// `bsm_greeks_aggregate_matches_accessors`.
+  pub fn greeks(
+    &self,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> Greeks {
+    Greeks {
+      delta: self.delta(s, k, r, q, tau, option_type),
+      gamma: self.gamma(s, k, r, q, tau),
+      vega: self.vega(s, k, r, q, tau),
+      theta: self.theta(s, k, r, q, tau, option_type),
+      rho: self.rho(s, k, r, q, tau, option_type),
+      vanna: self.vanna(s, k, r, q, tau),
+      charm: self.charm(s, k, r, q, tau, option_type),
+      volga: self.vomma(s, k, r, q, tau),
+      veta: self.dvega_dtime(s, k, r, q, tau),
+    }
+  }
+
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     let (d1, _) = self.d1_d2(s, k, r, q, tau);
