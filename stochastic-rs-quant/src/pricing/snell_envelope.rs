@@ -53,7 +53,8 @@ pub struct SnellEnvelopeResult {
 /// ```
 ///
 /// # Panics
-/// [`price_call`](ModelPricer::price_call), [`price_put`], and
+/// [`price_call`](ModelPricer::price_call),
+/// [`price_put`](ModelPricer::price_put), and
 /// [`price_detailed`](Self::price_detailed) panic on a non-positive or
 /// non-finite spot / strike / rate / dividend yield / maturity, and on a
 /// risk-neutral probability outside `[0, 1]` (raise `steps`). These are the
