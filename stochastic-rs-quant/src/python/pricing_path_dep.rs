@@ -2,11 +2,20 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::parse_option_type;
+use crate::traits::ModelPricer;
 use crate::traits::PricerExt;
 
+/// The Rust model holds `v` only, so the wrapper carries the
+/// `(s, k, r, q, tau)` query the Python-visible no-argument methods are
+/// defined at. Python's constructor signature is unchanged.
 #[pyclass(name = "AsianPricer", unsendable)]
 pub struct PyAsianPricer {
   inner: crate::pricing::asian::AsianPricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -15,15 +24,24 @@ impl PyAsianPricer {
   #[pyo3(signature = (s, v, k, r, tau, q=None))]
   fn new(s: f64, v: f64, k: f64, r: f64, tau: f64, q: Option<f64>) -> Self {
     Self {
-      inner: crate::pricing::asian::AsianPricer::new(s, v, k, r, q, Some(tau), None, None),
+      inner: crate::pricing::asian::AsianPricer::new(v),
+      s,
+      k,
+      r,
+      q: q.unwrap_or(0.0),
+      tau,
     }
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self
+      .inner
+      .price_call(self.s, self.k, self.r, self.q, self.tau)
   }
   fn call_put(&self) -> (f64, f64) {
-    self.inner.calculate_call_put()
+    self
+      .inner
+      .call_put(self.s, self.k, self.r, self.q, self.tau)
   }
 }
 

@@ -15,23 +15,31 @@
 //! revision's stated command produce 81 rather than the 71 it claimed.
 //!
 //! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
-//! [`PricingEngine`] — 7 of those 19 ([`AssetOrNothingPricer`],
-//! [`BSMPricer`], [`CashOrNothingPricer`], [`GapPricer`],
-//! [`HestonSlvPricer`], [`RBergomiPricer`], [`SuperSharePricer`]) implement
-//! `ModelPricer` specifically, the trait this registry exists to guard. The
-//! other 12 carry the older `PricerExt` (10) or `PricingEngine` (2) surface.
-//! Each count is the length of the matching macro invocation below, so it
-//! can be re-derived from this file alone.
+//! [`PricingEngine`]: **8** carry `ModelPricer` (the trait this registry
+//! exists to guard), **9** the older `PricerExt`, **2** `PricingEngine`.
+//! Every one of those three numbers is the length of the matching macro
+//! invocation below and nothing else — re-derive rather than
+//! arithmetic-adjust them, with (substituting the macro name):
+//!
+//! ```text
+//! awk '/^assert_model_pricer!\(/,/^\);/' stochastic-rs-quant/tests/pricer_registry.rs | grep -c '^  [A-Z]'
+//! ```
+//!
+//! The names are deliberately *not* repeated in this prose: the macro
+//! invocation is the list, and a second copy of it here is a copy that can
+//! drift.
 //!
 //! Per the A2 design (`docs/superpowers/specs/2026-08-23-a2-quant-consistency-design.md`,
-//! decision D1) and its Task 5, 9 of those 10 remaining `PricerExt` structs
-//! migrate to `ModelPricer`; `KirkSpreadPricer` is explicitly excluded and
-//! instead joins the multi-asset no-trait family once `PricerExt` is retired
-//! (Task 6). Task 3 gave `ModelPricer` to the 4 digital-option structs above,
-//! which were `ORPHAN` before it ran; Task 5a added `BSMPricer`. Each trait
-//! gets its own compile-checked list below so a claim about *which* trait a
-//! struct carries can drift no more than the claim that it carries one at
-//! all.
+//! decision D1) and its Task 5, 9 of the 10 `PricerExt` structs that
+//! existed after Task 5a migrate to `ModelPricer`; `KirkSpreadPricer` is
+//! explicitly excluded and instead joins the multi-asset no-trait family
+//! once `PricerExt` is retired (Task 6). Task 3 gave `ModelPricer` to the 4
+//! digital-option structs, which were `ORPHAN` before it ran; Task 5a added
+//! `BSMPricer`; Task 5b is migrating the remaining nine one at a time, so
+//! the two counts above move in lockstep until `assert_pricer_ext!` holds
+//! `KirkSpreadPricer` alone. Each trait gets its own compile-checked list
+//! below so a claim about *which* trait a struct carries can drift no more
+//! than the claim that it carries one at all.
 
 use stochastic_rs_quant::bonds::Cir;
 use stochastic_rs_quant::bonds::HullWhite;
@@ -95,17 +103,20 @@ macro_rules! assert_short_rate_pricer {
   };)* };
 }
 
-// Structs already on the decoupled `price_call(s, k, r, q, tau)` surface
-// used by calibration and vol-surface construction: the 4 digital options
-// (Task 3), the 2 original members, and `BSMPricer` (Task 5a). Grows to 16
-// once Task 5b migrates 9 of the 10 `assert_pricer_ext!` members below (all
-// but `KirkSpreadPricer`).
+// Structs on the decoupled `price_call(s, k, r, q, tau)` surface used by
+// calibration and vol-surface construction: the 4 digital options (Task 3),
+// the 2 original members, `BSMPricer` (Task 5a), and Task 5b's arrivals.
+// Reaches 16 when 5b has migrated all nine of the `assert_pricer_ext!`
+// members below except `KirkSpreadPricer`.
 //
-// `BSMPricer` overrides `price_put` rather than taking the trait's vanilla
-// put-call-parity default: its cost-of-carry factor is `exp((b - r) * tau)`,
-// which equals the default's `exp(-q * tau)` only when `b = r - q` — false
-// for `BSMCoc::Bsm1973` at `q != 0` and for `Black1976` / `Asay1982`.
+// `BSMPricer` and `AsianPricer` override `price_put` rather than taking the
+// trait's vanilla put-call-parity default: their cost-of-carry factor is
+// `exp((b - r) * tau)`, which equals the default's `exp(-q * tau)` only
+// when `b = r - q` — false for `BSMCoc::Bsm1973` at `q != 0` and for
+// `Black1976` / `Asay1982`, and never true for the Asian pricer's
+// averaged-underlying carry.
 assert_model_pricer!(
+  AsianPricer,
   AssetOrNothingPricer,
   BSMPricer,
   CashOrNothingPricer,
@@ -128,7 +139,6 @@ assert_model_pricer!(
 // `PricerExt` is retired (Task 6) it becomes trait-less like its multi-asset
 // siblings. Filed here by what it implements now, not by its final family.
 assert_pricer_ext!(
-  AsianPricer,
   BjerksundStensland2002Pricer,
   FiniteDifferencePricer,
   GbmMalliavinPricer,
