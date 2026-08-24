@@ -320,6 +320,7 @@ mod tests {
   use super::*;
   use crate::pricing::bsm::BSMCoc;
   use crate::pricing::bsm::BSMPricer;
+  use crate::traits::ModelPricer;
 
   #[test]
   fn american_put_is_at_least_european_put() {
@@ -337,21 +338,7 @@ mod tests {
     )
     .calculate_price();
 
-    let euro = BSMPricer::new(
-      100.0,
-      0.2,
-      100.0,
-      0.03,
-      None,
-      None,
-      Some(0.01),
-      Some(1.0),
-      None,
-      None,
-      OptionType::Put,
-      BSMCoc::Merton1973,
-    )
-    .calculate_price();
+    let euro = BSMPricer::new(0.2, BSMCoc::Merton1973).price_put(100.0, 100.0, 0.03, 0.01, 1.0);
 
     assert!(amer + 1e-10 >= euro);
   }
@@ -372,21 +359,7 @@ mod tests {
     )
     .calculate_price();
 
-    let euro = BSMPricer::new(
-      100.0,
-      0.2,
-      100.0,
-      0.05,
-      None,
-      None,
-      Some(0.0),
-      Some(1.0),
-      None,
-      None,
-      OptionType::Call,
-      BSMCoc::Merton1973,
-    )
-    .calculate_price();
+    let euro = BSMPricer::new(0.2, BSMCoc::Merton1973).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
 
     assert!((amer - euro).abs() < 5e-2);
   }
@@ -440,21 +413,7 @@ mod tests {
     )
     .calculate_price();
 
-    let euro = BSMPricer::new(
-      100.0,
-      0.25,
-      90.0,
-      0.03,
-      None,
-      None,
-      Some(0.08),
-      Some(1.0),
-      None,
-      None,
-      OptionType::Call,
-      BSMCoc::Merton1973,
-    )
-    .calculate_price();
+    let euro = BSMPricer::new(0.25, BSMCoc::Merton1973).price_call(100.0, 90.0, 0.03, 0.08, 1.0);
 
     assert!(amer + 1e-10 >= euro);
   }

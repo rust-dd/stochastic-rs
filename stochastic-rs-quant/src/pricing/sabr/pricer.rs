@@ -208,21 +208,16 @@ impl SabrPricer {
 impl PricerExt for SabrPricer {
   fn calculate_call_put(&self) -> (f64, f64) {
     let sigma = self.sigma();
-    let pricer = BSMPricer::new(
+    let q = self
+      .q
+      .expect("BSMCoc::Merton1973 requires `q` (dividend yield)");
+    BSMPricer::new(sigma, BSMCoc::Merton1973).call_put(
       self.s,
-      sigma,
       self.k,
       self.r,
-      None,
-      None,
-      self.q,
-      Some(self.tau_required()),
-      self.eval,
-      self.expiration,
-      OptionType::Call,
-      BSMCoc::Merton1973,
-    );
-    pricer.calculate_call_put()
+      q,
+      self.tau_required(),
+    )
   }
 
   fn calculate_price(&self) -> f64 {
@@ -278,20 +273,6 @@ impl crate::traits::ModelPricer for SabrModel {
     if !sigma.is_finite() || sigma <= 0.0 {
       return 0.0;
     }
-    let pricer = BSMPricer::new(
-      s,
-      sigma,
-      k,
-      r,
-      None,
-      None,
-      Some(q),
-      Some(tau),
-      None,
-      None,
-      OptionType::Call,
-      BSMCoc::Merton1973,
-    );
-    pricer.calculate_call_put().0
+    BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(s, k, r, q, tau)
   }
 }

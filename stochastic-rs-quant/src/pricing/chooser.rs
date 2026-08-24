@@ -218,7 +218,6 @@ mod tests {
   fn simple_chooser_bounded_by_straddle() {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
-    use crate::traits::PricerExt;
 
     let s = 100.0;
     let k = 100.0;
@@ -237,12 +236,7 @@ mod tests {
     };
     let chooser_price = chooser.price();
 
-    let call = BSMPricer::builder(s, sigma, k, r)
-      .tau(tau)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Bsm1973)
-      .build()
-      .calculate_call_put();
+    let call = BSMPricer::new(sigma, BSMCoc::Bsm1973).call_put(s, k, r, 0.0, tau);
 
     // Chooser must be bounded between max(call,put) and call+put.
     assert!(chooser_price > call.0.max(call.1));

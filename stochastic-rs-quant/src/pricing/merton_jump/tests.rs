@@ -53,31 +53,21 @@ fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
 #[test]
 fn merton_greeks_lambda_zero_equals_bs() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BSMPricer::new(
-    m.s,
-    m.v,
-    m.k,
-    m.r,
-    m.r_d,
-    m.r_f,
-    m.q,
-    m.tau,
-    m.eval,
-    m.expiration,
-    m.option_type,
-    m.b,
-  );
+  let bs = BSMPricer::new(m.v, m.b);
+  let (s, k, ot) = (m.s, m.k, m.option_type);
+  let (r, q) = m.query_rates();
+  let tau = m.tau_or_from_dates();
 
   let cases = [
-    ("delta", m.delta(), bs.delta()),
-    ("gamma", m.gamma(), bs.gamma()),
-    ("vega", m.vega(), bs.vega()),
-    ("theta", m.theta(), bs.theta()),
-    ("rho", m.rho(), bs.rho()),
-    ("vanna", m.vanna(), bs.vanna()),
-    ("charm", m.charm(), bs.charm()),
-    ("volga", m.volga(), bs.vomma()),
-    ("veta", m.veta(), bs.dvega_dtime()),
+    ("delta", m.delta(), bs.delta(s, k, r, q, tau, ot)),
+    ("gamma", m.gamma(), bs.gamma(s, k, r, q, tau)),
+    ("vega", m.vega(), bs.vega(s, k, r, q, tau)),
+    ("theta", m.theta(), bs.theta(s, k, r, q, tau, ot)),
+    ("rho", m.rho(), bs.rho(s, k, r, q, tau, ot)),
+    ("vanna", m.vanna(), bs.vanna(s, k, r, q, tau)),
+    ("charm", m.charm(), bs.charm(s, k, r, q, tau, ot)),
+    ("volga", m.volga(), bs.vomma(s, k, r, q, tau)),
+    ("veta", m.veta(), bs.dvega_dtime(s, k, r, q, tau)),
   ];
   for (name, got, want) in cases {
     assert!((got - want).abs() < 1e-10, "{name}: got {got}, want {want}");

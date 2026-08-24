@@ -18,6 +18,7 @@
 
 use crate::OptionType;
 use crate::traits::Instrument;
+use crate::traits::TimeExt;
 
 /// European-exercise vanilla equity option.
 ///
@@ -67,6 +68,23 @@ impl Instrument for EuropeanOption {
       OptionType::Call => "EuropeanCall",
       OptionType::Put => "EuropeanPut",
     }
+  }
+}
+
+/// The instrument owns the maturity, so it is the instrument that resolves
+/// `(eval, expiry)` to τ for an engine — pricing models take τ as a query
+/// argument and hold no dates of their own.
+impl TimeExt for EuropeanOption {
+  fn tau(&self) -> Option<f64> {
+    self.tau
+  }
+
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
+  }
+
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiry
   }
 }
 

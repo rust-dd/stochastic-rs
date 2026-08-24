@@ -225,18 +225,14 @@
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::calibration::{BSMCalibrator, BSMParams};
 //! use stochastic_rs_quant::pricing::bsm::{BSMCoc, BSMPricer};
-//! use stochastic_rs_quant::traits::{Calibrator, PricerExt};
+//! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 //!
 //! let s = 100.0;
 //! let k = 100.0;
 //! let r = 0.05;
 //! let true_sigma = 0.2;
-//! let pricer = BSMPricer::builder(s, true_sigma, k, r)
-//!     .tau(1.0)
-//!     .coc(BSMCoc::Bsm1973)
-//!     .build();
-//! let (call, _) = pricer.calculate_call_put();
+//! let call = BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, 1.0);
 //!
 //! let cal = BSMCalibrator::new(BSMParams { v: 0.2 }, DVector::from_vec(vec![call]),
 //!     DVector::from_vec(vec![s]), DVector::from_vec(vec![k]), r, None, None, None, 1.0,

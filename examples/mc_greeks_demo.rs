@@ -3,7 +3,8 @@
 //! Prices a vanilla European call via `MCBarrierPricer` (with a far-OTM
 //! `UpAndOut` barrier so no path ever hits it — gives a plain vanilla
 //! payoff) and reports the full first- and second-order Greek aggregate
-//! (`GreeksExt::greeks` on the analytic `BSMPricer`).
+//! (the analytic `BSMPricer`'s closed-form Greeks, collected into a
+//! `Greeks` aggregate).
 //!
 //! The MC pricer is wired in as the *price* engine; the Greeks come from
 //! the canonical analytic reference because `MCBarrierPricer::price` does
@@ -21,8 +22,8 @@ use stochastic_rs::quant::pricing::barrier::BarrierType;
 use stochastic_rs::quant::pricing::barrier::MCBarrierPricer;
 use stochastic_rs::quant::pricing::bsm::BSMCoc;
 use stochastic_rs::quant::pricing::bsm::BSMPricer;
-use stochastic_rs::quant::traits::GreeksExt;
-use stochastic_rs::quant::traits::PricerExt;
+use stochastic_rs::quant::traits::Greeks;
+use stochastic_rs::quant::traits::ModelPricer;
 
 fn main() {
   let s: f64 = 100.0;
@@ -52,14 +53,23 @@ fn main() {
     OptionType::Call,
   );
 
-  // 2) Analytic BS reference + full GreeksExt aggregator.
-  let bs = BSMPricer::builder(s, sigma, k, r)
-    .tau(t)
-    .option_type(OptionType::Call)
-    .coc(BSMCoc::Bsm1973)
-    .build();
-  let bs_price = PricerExt::calculate_price(&bs);
-  let greeks = bs.greeks();
+  // 2) Analytic BS reference + the full first-/second-order Greek set.
+  //    `BSMPricer` holds only (v, coc); the (s, k, r, q, tau) query and
+  //    the option type travel to each call.
+  let bs = BSMPricer::new(sigma, BSMCoc::Bsm1973);
+  let ot = OptionType::Call;
+  let bs_price = bs.price_call(s, k, r, 0.0, t);
+  let greeks = Greeks {
+    delta: bs.delta(s, k, r, 0.0, t, ot),
+    gamma: bs.gamma(s, k, r, 0.0, t),
+    vega: bs.vega(s, k, r, 0.0, t),
+    theta: bs.theta(s, k, r, 0.0, t, ot),
+    rho: bs.rho(s, k, r, 0.0, t, ot),
+    vanna: bs.vanna(s, k, r, 0.0, t),
+    charm: bs.charm(s, k, r, 0.0, t, ot),
+    volga: bs.vomma(s, k, r, 0.0, t),
+    veta: bs.dvega_dtime(s, k, r, 0.0, t),
+  };
 
   println!(
     "Price:  BS analytic = {bs_price:.4}    MC = {mc_price:.4}    rel-err = {:.4}%",
@@ -71,7 +81,7 @@ fn main() {
   //    family (see `pricing::malliavin_thalmaier`) rather than a naive
   //    central-difference re-run, because the latter is dominated by
   //    sampling noise on Γ, Θ, vanna, charm, volga, veta.
-  println!("\nGreeks aggregator (`GreeksExt::greeks` on BSMPricer):");
+  println!("\nGreeks aggregate (closed-form, from BSMPricer):");
   println!(
     "  Δ      = {:+.4}      Γ     = {:+.4}      V    = {:+.4}",
     greeks.delta, greeks.gamma, greeks.vega

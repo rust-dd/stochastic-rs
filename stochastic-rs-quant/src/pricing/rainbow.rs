@@ -31,7 +31,6 @@ use owens_t::biv_norm;
 #[cfg(feature = "openblas")]
 use rayon::prelude::*;
 
-use crate::OptionType;
 #[cfg(feature = "openblas")]
 use crate::traits::FloatExt;
 
@@ -131,26 +130,14 @@ impl StulzRainbowPricer {
   fn call_on_max(&self) -> f64 {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
-    use crate::traits::PricerExt;
+    use crate::traits::ModelPricer;
 
     // Stulz identity: max(max(S1,S2) - K, 0) = call(S1, K) + call(S2, K)
     // - call_on_min(S1, S2, K)
-    let c1 = BSMPricer::builder(self.s1, self.sigma1, self.k, self.r)
-      .tau(self.tau)
-      .q(self.q1)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Merton1973)
-      .build()
-      .calculate_call_put()
-      .0;
-    let c2 = BSMPricer::builder(self.s2, self.sigma2, self.k, self.r)
-      .tau(self.tau)
-      .q(self.q2)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Merton1973)
-      .build()
-      .calculate_call_put()
-      .0;
+    let c1 = BSMPricer::new(self.sigma1, BSMCoc::Merton1973)
+      .price_call(self.s1, self.k, self.r, self.q1, self.tau);
+    let c2 = BSMPricer::new(self.sigma2, BSMCoc::Merton1973)
+      .price_call(self.s2, self.k, self.r, self.q2, self.tau);
     c1 + c2 - self.call_on_min()
   }
 
@@ -333,7 +320,7 @@ mod tests {
   fn stulz_min_max_decomposition() {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
-    use crate::traits::PricerExt;
+    use crate::traits::ModelPricer;
 
     let s1 = 100.0;
     let s2 = 105.0;
@@ -373,22 +360,8 @@ mod tests {
       payoff: RainbowPayoff::CallOnMax,
     }
     .price();
-    let c1 = BSMPricer::builder(s1, v1, k, r)
-      .tau(tau)
-      .q(q1)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Merton1973)
-      .build()
-      .calculate_call_put()
-      .0;
-    let c2 = BSMPricer::builder(s2, v2, k, r)
-      .tau(tau)
-      .q(q2)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Merton1973)
-      .build()
-      .calculate_call_put()
-      .0;
+    let c1 = BSMPricer::new(v1, BSMCoc::Merton1973).price_call(s1, k, r, q1, tau);
+    let c2 = BSMPricer::new(v2, BSMCoc::Merton1973).price_call(s2, k, r, q2, tau);
     let lhs = cmin + cmax;
     let rhs = c1 + c2;
     assert!((lhs - rhs).abs() < 0.01, "lhs={lhs}, rhs={rhs}");
@@ -434,7 +407,7 @@ mod tests {
   fn call_on_max_dominates_vanilla() {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
-    use crate::traits::PricerExt;
+    use crate::traits::ModelPricer;
 
     let s1 = 100.0;
     let s2 = 100.0;
@@ -455,14 +428,7 @@ mod tests {
       payoff: RainbowPayoff::CallOnMax,
     }
     .price();
-    let c1 = BSMPricer::builder(s1, v1, 100.0, 0.05)
-      .tau(1.0)
-      .q(0.0)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Merton1973)
-      .build()
-      .calculate_call_put()
-      .0;
+    let c1 = BSMPricer::new(v1, BSMCoc::Merton1973).price_call(s1, 100.0, 0.05, 0.0, 1.0);
     assert!(cmax > c1, "cmax={cmax} should be > c1={c1}");
   }
 

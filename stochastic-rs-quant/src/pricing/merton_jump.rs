@@ -8,6 +8,7 @@ use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
 use crate::OptionType;
 use crate::traits::GreeksExt;
+use crate::traits::ModelPricer;
 use crate::traits::PricerExt;
 use crate::traits::TimeExt;
 
@@ -194,12 +195,13 @@ impl PricerExt for Merton1976Pricer {
   /// `merton_price_m10_matches_pre_refactor_value` for the regression pin).
   fn calculate_call_put(&self) -> (f64, f64) {
     let tau = self.tau_or_from_dates();
+    let (r, q) = self.query_rates();
     let mut call = 0.0;
     let mut put = 0.0;
 
     for i in 0..self.m {
       let weight = self.poisson_weight(i, tau);
-      let (c, p) = self.term_bsm(i, tau).calculate_call_put();
+      let (c, p) = self.term_bsm(i, tau).call_put(self.s, self.k, r, q, tau);
       call += c * weight;
       put += p * weight;
     }
@@ -264,30 +266,43 @@ impl Merton1976Pricer {
     (-lt).exp() * ratio
   }
 
-  /// `BSMPricer` sharing every Merton field except volatility, which
-  /// defaults to `self.v` (the no-jump / Black-Scholes limit); callers
-  /// override `.v` per Poisson term.
-  fn base_bsm(&self, tau: f64) -> BSMPricer {
-    BSMPricer::new(
-      self.s,
-      self.v,
-      self.k,
-      self.r,
-      self.r_d,
-      self.r_f,
-      self.q,
-      Some(tau),
-      None,
-      None,
-      self.option_type,
-      self.b,
-    )
+  /// The `(r, q)` pair handed to the per-term [`BSMPricer`] query. This
+  /// pricer stores four rate fields; the model takes two, so the
+  /// cost-of-carry convention decides which two are in play —
+  /// `(r_d, r_f)` under Garman-Kohlhagen, `(r, q)` otherwise.
+  ///
+  /// # Panics
+  /// - `BSMCoc::Merton1973` without `q`
+  /// - `BSMCoc::GarmanKohlhagen1983` without `r_d` / `r_f`
+  fn query_rates(&self) -> (f64, f64) {
+    match self.b {
+      BSMCoc::Merton1973 => (
+        self.r,
+        self
+          .q
+          .expect("BSMCoc::Merton1973 requires `q` (dividend yield)"),
+      ),
+      BSMCoc::GarmanKohlhagen1983 => (
+        self
+          .r_d
+          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_d`"),
+        self
+          .r_f
+          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_f`"),
+      ),
+      BSMCoc::Bsm1973 | BSMCoc::Black1976 | BSMCoc::Asay1982 => (self.r, self.q.unwrap_or(0.0)),
+    }
+  }
+
+  /// `BSMPricer` at this pricer's cost-of-carry convention and total
+  /// volatility `self.v` (the no-jump / Black-Scholes limit);
+  /// [`term_bsm`](Self::term_bsm) swaps in the per-term volatility.
+  fn base_bsm(&self) -> BSMPricer {
+    BSMPricer::new(self.v, self.b)
   }
 
   fn term_bsm(&self, n: usize, tau: f64) -> BSMPricer {
-    let mut bsm = self.base_bsm(tau);
-    bsm.v = self.term_vol(n, tau);
-    bsm
+    BSMPricer::new(self.term_vol(n, tau), self.b)
   }
 
   /// Poisson-weighted series over a closed-form BSM Greek. Exact whenever
@@ -305,14 +320,14 @@ impl Merton1976Pricer {
   /// off-the-money strike (`norm_pdf(d1) → 0` exponentially, beating the
   /// linear `1/v`) — so a `NaN` contribution here is floored to `0` rather
   /// than poisoning the whole sum.
-  fn greek_series(&self, greek: impl Fn(&BSMPricer) -> f64) -> f64 {
+  fn greek_series(&self, greek: impl Fn(&BSMPricer, f64) -> f64) -> f64 {
     let tau = self.tau_or_from_dates();
     if self.lambda <= 0.0 {
-      return greek(&self.base_bsm(tau));
+      return greek(&self.base_bsm(), tau);
     }
     (0..self.m)
       .map(|n| {
-        let contribution = self.poisson_weight(n, tau) * greek(&self.term_bsm(n, tau));
+        let contribution = self.poisson_weight(n, tau) * greek(&self.term_bsm(n, tau), tau);
         if contribution.is_nan() {
           0.0
         } else {
@@ -338,7 +353,8 @@ impl Merton1976Pricer {
   /// limitation of that method, unrelated to `GreeksExt` and out of scope
   /// to fix here).
   fn series_price(&self) -> f64 {
-    self.greek_series(|bsm| bsm.calculate_price())
+    let (r, q) = self.query_rates();
+    self.greek_series(|bsm, tau| bsm.price_option(self.s, self.k, r, q, tau, self.option_type))
   }
 
   const H_TAU: f64 = 1e-5;
@@ -396,20 +412,26 @@ impl Merton1976Pricer {
 /// doc).
 impl GreeksExt for Merton1976Pricer {
   fn delta(&self) -> f64 {
-    self.greek_series(|bsm| bsm.delta())
+    let (r, q) = self.query_rates();
+    self.greek_series(|bsm, tau| bsm.delta(self.s, self.k, r, q, tau, self.option_type))
   }
 
   fn gamma(&self) -> f64 {
-    self.greek_series(|bsm| bsm.gamma())
+    let (r, q) = self.query_rates();
+    self.greek_series(|bsm, tau| bsm.gamma(self.s, self.k, r, q, tau))
   }
 
   fn rho(&self) -> f64 {
-    self.greek_series(|bsm| bsm.rho())
+    let (r, q) = self.query_rates();
+    self.greek_series(|bsm, tau| bsm.rho(self.s, self.k, r, q, tau, self.option_type))
   }
 
   fn vega(&self) -> f64 {
     if self.lambda <= 0.0 {
-      return self.base_bsm(self.tau_or_from_dates()).vega();
+      let (r, q) = self.query_rates();
+      return self
+        .base_bsm()
+        .vega(self.s, self.k, r, q, self.tau_or_from_dates());
     }
     let h = self.h_v();
     (self.bumped(0.0, h, 0.0).series_price() - self.bumped(0.0, -h, 0.0).series_price()) / (2.0 * h)
@@ -417,7 +439,15 @@ impl GreeksExt for Merton1976Pricer {
 
   fn theta(&self) -> f64 {
     if self.lambda <= 0.0 {
-      return self.base_bsm(self.tau_or_from_dates()).theta();
+      let (r, q) = self.query_rates();
+      return self.base_bsm().theta(
+        self.s,
+        self.k,
+        r,
+        q,
+        self.tau_or_from_dates(),
+        self.option_type,
+      );
     }
     let tau = self.tau_or_from_dates();
     let h = Self::H_TAU;
@@ -430,7 +460,10 @@ impl GreeksExt for Merton1976Pricer {
 
   fn vanna(&self) -> f64 {
     if self.lambda <= 0.0 {
-      return self.base_bsm(self.tau_or_from_dates()).vanna();
+      let (r, q) = self.query_rates();
+      return self
+        .base_bsm()
+        .vanna(self.s, self.k, r, q, self.tau_or_from_dates());
     }
     let hs = self.h_s();
     let hv = self.h_v();
@@ -443,7 +476,15 @@ impl GreeksExt for Merton1976Pricer {
 
   fn charm(&self) -> f64 {
     if self.lambda <= 0.0 {
-      return self.base_bsm(self.tau_or_from_dates()).charm();
+      let (r, q) = self.query_rates();
+      return self.base_bsm().charm(
+        self.s,
+        self.k,
+        r,
+        q,
+        self.tau_or_from_dates(),
+        self.option_type,
+      );
     }
     let tau = self.tau_or_from_dates();
     let ht = Self::H_TAU;
@@ -460,7 +501,10 @@ impl GreeksExt for Merton1976Pricer {
 
   fn volga(&self) -> f64 {
     if self.lambda <= 0.0 {
-      return self.base_bsm(self.tau_or_from_dates()).vomma();
+      let (r, q) = self.query_rates();
+      return self
+        .base_bsm()
+        .vomma(self.s, self.k, r, q, self.tau_or_from_dates());
     }
     let h = self.h_v();
     let p0 = self.series_price();
@@ -470,7 +514,10 @@ impl GreeksExt for Merton1976Pricer {
 
   fn veta(&self) -> f64 {
     if self.lambda <= 0.0 {
-      return self.base_bsm(self.tau_or_from_dates()).dvega_dtime();
+      let (r, q) = self.query_rates();
+      return self
+        .base_bsm()
+        .dvega_dtime(self.s, self.k, r, q, self.tau_or_from_dates());
     }
     let tau = self.tau_or_from_dates();
     let ht = Self::H_TAU;

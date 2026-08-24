@@ -27,8 +27,10 @@ pub trait PricerExt: TimeExt {
 ```
 
 The option type, strike, spot, and maturity all live on the pricer
-struct itself (set at construction, e.g. via a `BSMPricer::builder(...)`
-or `HestonPricer::builder(...)`) rather than being passed to `calculate_price`.
+struct itself (set at construction, e.g. via a `HestonPricer::builder(...)`)
+rather than being passed to `calculate_price`. `BSMPricer` used to be the
+other example here; it has since moved to `ModelPricer` below, where the
+query is an argument.
 `calculate_call_put` returns both legs regardless of the pricer's own
 `option_type`; `calculate_price` returns the one `option_type` was built
 with. `TimeExt::tau_or_from_dates` derives $\tau$ from either an explicit

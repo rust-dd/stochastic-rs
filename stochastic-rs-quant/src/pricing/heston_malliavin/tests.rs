@@ -6,7 +6,7 @@ use super::VanillaPortfolio;
 use crate::OptionType;
 use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
-use crate::traits::PricerExt;
+use crate::traits::ModelPricer;
 
 fn bsm_limit_model(rho: f64) -> HestonModel {
   HestonModel {
@@ -35,18 +35,19 @@ fn config(paths: usize, steps: usize, seed: u64) -> HestonMalliavinConfig {
   }
 }
 
-fn bsm(model: HestonModel, strike: f64, option_type: OptionType) -> BSMPricer {
-  BSMPricer::builder(
-    model.s,
-    model.initial_variance.sqrt(),
-    strike,
-    model.risk_free_rate,
+/// The Black-Scholes model at the Heston model's `v0` as a flat
+/// volatility, plus the `(s, k, r, q, tau)` query point it is compared at.
+fn bsm(model: HestonModel, strike: f64) -> (BSMPricer, (f64, f64, f64, f64, f64)) {
+  (
+    BSMPricer::new(model.initial_variance.sqrt(), BSMCoc::Merton1973),
+    (
+      model.s,
+      strike,
+      model.risk_free_rate,
+      model.dividend_yield,
+      model.tau,
+    ),
   )
-  .q(model.dividend_yield)
-  .tau(model.tau)
-  .option_type(option_type)
-  .coc(BSMCoc::Merton1973)
-  .build()
 }
 
 fn assert_mc_close(value: f64, standard_error: f64, expected: f64, floor: f64) {
@@ -70,30 +71,31 @@ fn correlated_zero_vol_of_vol_matches_bsm_price_and_malliavin_greeks() {
   let strike = 105.0;
   let estimator = HestonMalliavinEstimator::new(model, config(300_000, 8, 71)).unwrap();
   let result = estimator.estimate(&VanillaPortfolio::call(strike)).unwrap();
-  let reference = bsm(model, strike, OptionType::Call);
+  let (reference, (s, k, r, q, tau)) = bsm(model, strike);
+  let ot = OptionType::Call;
 
   assert_mc_close(
     result.price.value,
     result.price.standard_error,
-    reference.calculate_price(),
+    reference.price_option(s, k, r, q, tau, ot),
     2e-3,
   );
   assert_mc_close(
     result.spot_delta.value,
     result.spot_delta.standard_error,
-    reference.delta(),
+    reference.delta(s, k, r, q, tau, ot),
     2e-3,
   );
   assert_mc_close(
     result.spot_gamma.value,
     result.spot_gamma.standard_error,
-    reference.gamma(),
+    reference.gamma(s, k, r, q, tau),
     8e-4,
   );
   assert_mc_close(
     result.initial_variance_vega.value,
     result.initial_variance_vega.standard_error,
-    reference.vega() / (2.0 * model.initial_variance.sqrt()),
+    reference.vega(s, k, r, q, tau) / (2.0 * model.initial_variance.sqrt()),
     3e-2,
   );
 }
@@ -105,24 +107,25 @@ fn small_vol_of_vol_converges_to_the_bsm_limit() {
   model.vol_of_vol = 1e-7;
   let estimator = HestonMalliavinEstimator::new(model, config(180_000, 32, 117)).unwrap();
   let result = estimator.estimate(&VanillaPortfolio::put(95.0)).unwrap();
-  let reference = bsm(model, 95.0, OptionType::Put);
+  let (reference, (s, k, r, q, tau)) = bsm(model, 95.0);
+  let ot = OptionType::Put;
 
   assert_mc_close(
     result.price.value,
     result.price.standard_error,
-    reference.calculate_price(),
+    reference.price_option(s, k, r, q, tau, ot),
     3e-3,
   );
   assert_mc_close(
     result.spot_delta.value,
     result.spot_delta.standard_error,
-    reference.delta(),
+    reference.delta(s, k, r, q, tau, ot),
     3e-3,
   );
   assert_mc_close(
     result.spot_gamma.value,
     result.spot_gamma.standard_error,
-    reference.gamma(),
+    reference.gamma(s, k, r, q, tau),
     1e-3,
   );
 }

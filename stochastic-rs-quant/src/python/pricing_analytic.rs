@@ -1,11 +1,22 @@
 use pyo3::prelude::*;
 
 use super::parse_option_type;
+use crate::traits::ModelPricer;
 use crate::traits::PricerExt;
 
+/// The Rust model holds `(v, coc)` only, so the wrapper carries the
+/// `(s, k, r, q, tau)` query and the option type that the Python-visible
+/// no-argument methods are defined at. Python's constructor signature is
+/// unchanged.
 #[pyclass(name = "BSMPricer", unsendable)]
 pub struct PyBSMPricer {
   inner: crate::pricing::bsm::BSMPricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
+  option_type: crate::OptionType,
 }
 
 #[pymethods]
@@ -22,53 +33,64 @@ impl PyBSMPricer {
     q: Option<f64>,
   ) -> PyResult<Self> {
     let ot = parse_option_type(option_type)?;
-    let inner = crate::pricing::bsm::BSMPricer::new(
+    let inner = crate::pricing::bsm::BSMPricer::new(v, crate::pricing::bsm::BSMCoc::default());
+    Ok(Self {
+      inner,
       s,
-      v,
       k,
       r,
-      None,
-      None,
-      q,
-      Some(tau),
-      None,
-      None,
-      ot,
-      crate::pricing::bsm::BSMCoc::default(),
-    );
-    Ok(Self { inner })
+      q: q.unwrap_or(0.0),
+      tau,
+      option_type: ot,
+    })
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self
+      .inner
+      .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
   fn call_put(&self) -> (f64, f64) {
-    self.inner.calculate_call_put()
+    self
+      .inner
+      .call_put(self.s, self.k, self.r, self.q, self.tau)
   }
   fn delta(&self) -> f64 {
-    self.inner.delta()
+    self
+      .inner
+      .delta(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
   fn gamma(&self) -> f64 {
-    self.inner.gamma()
+    self.inner.gamma(self.s, self.k, self.r, self.q, self.tau)
   }
   fn vega(&self) -> f64 {
-    self.inner.vega()
+    self.inner.vega(self.s, self.k, self.r, self.q, self.tau)
   }
   fn theta(&self) -> f64 {
-    self.inner.theta()
+    self
+      .inner
+      .theta(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
   fn rho(&self) -> f64 {
-    self.inner.rho()
+    self
+      .inner
+      .rho(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
   fn vanna(&self) -> f64 {
-    self.inner.vanna()
+    self.inner.vanna(self.s, self.k, self.r, self.q, self.tau)
   }
   fn charm(&self) -> f64 {
-    self.inner.charm()
+    self
+      .inner
+      .charm(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
   fn implied_volatility(&self, c_price: f64, option_type: &str) -> PyResult<f64> {
     let ot = parse_option_type(option_type)?;
-    Ok(self.inner.implied_volatility(c_price, ot))
+    Ok(
+      self
+        .inner
+        .implied_volatility(c_price, self.s, self.k, self.r, self.q, self.tau, ot),
+    )
   }
 }
 

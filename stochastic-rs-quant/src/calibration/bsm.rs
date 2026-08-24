@@ -19,7 +19,7 @@ use crate::OptionType;
 use crate::calibration::CalibrationHistory;
 use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
-use crate::traits::PricerExt;
+use crate::traits::ModelPricer;
 
 /// Calibration result for the BSM model.
 #[derive(Clone, Debug)]
@@ -219,25 +219,14 @@ impl BSMCalibrator {
       .iter()
       .enumerate()
       .map(|(idx, _)| {
-        let pricer = BSMPricer::new(
+        BSMPricer::new(result.params.v, BSMCoc::Bsm1973).price_option(
           result.s[idx],
-          result.params.v,
           result.k[idx],
           result.r,
-          result.r_d,
-          result.r_f,
-          result.q,
-          Some(result.flat_t[idx]),
-          None,
-          None,
+          result.q.unwrap_or(0.0),
+          result.flat_t[idx],
           result.option_type,
-          BSMCoc::Bsm1973,
-        );
-        let (call, put) = pricer.calculate_call_put();
-        match result.option_type {
-          OptionType::Call => call,
-          OptionType::Put => put,
-        }
+        )
       })
       .collect();
     let loss = CalibrationLossScore::compute_selected(
@@ -255,6 +244,19 @@ impl BSMCalibrator {
 
   pub fn set_initial_guess(&mut self, params: BSMParams) {
     self.params = params;
+  }
+
+  /// `(s, k, q, tau)` for quote `idx` — the per-quote half of the
+  /// `(s, k, r, q, tau)` query the [`BSMPricer`] model is priced at.
+  /// `q` defaults to `0.0`; the hard-coded [`BSMCoc::Bsm1973`] carries at
+  /// `b = r` and never reads it.
+  fn query(&self, idx: usize) -> (f64, f64, f64, f64) {
+    (
+      self.s[idx],
+      self.k[idx],
+      self.q.unwrap_or(0.0),
+      self.flat_t[idx],
+    )
   }
 }
 
@@ -277,21 +279,9 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
     let mut vegas: Vec<f64> = Vec::with_capacity(n);
 
     for (idx, _) in self.c_market.iter().enumerate() {
-      let pricer = BSMPricer::new(
-        self.s[idx],
-        self.params.v,
-        self.k[idx],
-        self.r,
-        self.r_d,
-        self.r_f,
-        self.q,
-        Some(self.flat_t[idx]),
-        None,
-        None,
-        self.option_type,
-        BSMCoc::Bsm1973,
-      );
-      let (call, put) = pricer.calculate_call_put();
+      let model = BSMPricer::new(self.params.v, BSMCoc::Bsm1973);
+      let (s, k, q, tau) = self.query(idx);
+      let (call, put) = model.call_put(s, k, self.r, q, tau);
 
       match self.option_type {
         OptionType::Call => c_model[idx] = call,
@@ -299,7 +289,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
       }
 
       // Collect vega for vega-weighted residuals (calibration in vol space)
-      let vega = pricer.vega().abs().max(1e-8);
+      let vega = model.vega(s, k, self.r, q, tau).abs().max(1e-8);
       vegas.push(vega);
 
       self
@@ -333,29 +323,13 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
     let mut J = DMatrix::zeros(n, 1);
 
     for idx in 0..n {
-      let pricer = BSMPricer::new(
-        self.s[idx],
-        self.params.v,
-        self.k[idx],
-        self.r,
-        self.r_d,
-        self.r_f,
-        self.q,
-        Some(self.flat_t[idx]),
-        None,
-        None,
-        self.option_type,
-        BSMCoc::Bsm1973,
-      );
+      let model = BSMPricer::new(self.params.v, BSMCoc::Bsm1973);
+      let (s, k, q, tau) = self.query(idx);
 
-      let (call, put) = pricer.calculate_call_put();
-      let c_model_i = match self.option_type {
-        OptionType::Call => call,
-        OptionType::Put => put,
-      };
+      let c_model_i = model.price_option(s, k, self.r, q, tau, self.option_type);
 
-      let vega = pricer.vega().abs().max(1e-8);
-      let vomma = pricer.vomma();
+      let vega = model.vega(s, k, self.r, q, tau).abs().max(1e-8);
+      let vomma = model.vomma(s, k, self.r, q, tau);
       let r_i = (c_model_i - self.c_market[idx]) / vega;
 
       J[(idx, 0)] = 1.0 - r_i * (vomma / vega);
@@ -422,14 +396,7 @@ mod tests {
     let make_slice = |tau: f64| -> MarketSlice {
       let prices: Vec<f64> = strikes
         .iter()
-        .map(|&k| {
-          let pricer = BSMPricer::builder(s, true_sigma, k, r)
-            .tau(tau)
-            .coc(BSMCoc::Bsm1973)
-            .build();
-          let (call, _) = pricer.calculate_call_put();
-          call
-        })
+        .map(|&k| BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, tau))
         .collect();
       MarketSlice {
         strikes: strikes.clone(),
@@ -470,11 +437,7 @@ mod tests {
     let s = 100.0_f64;
     let k = 100.0_f64;
     let true_sigma = 0.20_f64;
-    let pricer = BSMPricer::builder(s, true_sigma, k, 0.03)
-      .tau(0.5)
-      .coc(BSMCoc::Bsm1973)
-      .build();
-    let (call, _) = pricer.calculate_call_put();
+    let call = BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, 0.03, 0.0, 0.5);
 
     let calibrator = BSMCalibrator::new(
       BSMParams { v: 0.4 },

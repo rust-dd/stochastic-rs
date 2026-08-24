@@ -7,7 +7,6 @@
 
 use std::sync::Arc;
 
-use crate::OptionType;
 use crate::instruments::equity::DigitalKind;
 use crate::instruments::equity::DigitalOption;
 use crate::instruments::equity::EuropeanOption;
@@ -18,10 +17,11 @@ use crate::pricing::AssetOrNothingPricer;
 use crate::pricing::BSMCoc;
 use crate::pricing::BSMPricer;
 use crate::pricing::CashOrNothingPricer;
-use crate::traits::GreeksExt;
-use crate::traits::PricerExt;
+use crate::traits::Greeks;
+use crate::traits::ModelPricer;
 use crate::traits::PricingEngine;
 use crate::traits::StandardResult;
+use crate::traits::TimeExt;
 
 /// Analytic Black-Scholes engine.
 ///
@@ -76,22 +76,20 @@ impl AnalyticBSEngine {
     handle.current().map(|q| q.value()).unwrap_or(default)
   }
 
-  fn build_pricer(&self, strike: f64, opt_type: OptionType, opt: &EuropeanOption) -> BSMPricer {
-    BSMPricer {
-      s: Self::read_quote(&self.s, 0.0),
-      v: Self::read_quote(&self.volatility, 0.0),
-      k: strike,
-      r: Self::read_quote(&self.r, 0.0),
-      r_d: None,
-      r_f: None,
-      q: Some(Self::read_quote(&self.dividend_yield, 0.0)),
-      tau: opt.tau,
-      eval: opt.eval,
-      expiration: opt.expiry,
-      dcc: None,
-      option_type: opt_type,
-      b: self.coc,
-    }
+  /// The [`BSMPricer`] model the current handles describe, paired with the
+  /// `(s, k, r, q, tau)` query point `opt` asks for. The instrument owns
+  /// the maturity, so τ is resolved through its own
+  /// [`TimeExt`](crate::traits::TimeExt) rather than by the model.
+  fn model_and_query(&self, opt: &EuropeanOption) -> (BSMPricer, (f64, f64, f64, f64, f64)) {
+    let model = BSMPricer::new(Self::read_quote(&self.volatility, 0.0), self.coc);
+    let query = (
+      Self::read_quote(&self.s, 0.0),
+      opt.strike,
+      Self::read_quote(&self.r, 0.0),
+      Self::read_quote(&self.dividend_yield, 0.0),
+      opt.tau_or_from_dates(),
+    );
+    (model, query)
   }
 }
 
@@ -99,9 +97,20 @@ impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
   type Result = StandardResult;
 
   fn calculate(&self, opt: &EuropeanOption) -> StandardResult {
-    let pricer = self.build_pricer(opt.strike, opt.option_type, opt);
-    let npv = pricer.calculate_price();
-    let greeks = pricer.greeks();
+    let (model, (s, k, r, q, tau)) = self.model_and_query(opt);
+    let ot = opt.option_type;
+    let npv = model.price_option(s, k, r, q, tau, ot);
+    let greeks = Greeks {
+      delta: model.delta(s, k, r, q, tau, ot),
+      gamma: model.gamma(s, k, r, q, tau),
+      vega: model.vega(s, k, r, q, tau),
+      theta: model.theta(s, k, r, q, tau, ot),
+      rho: model.rho(s, k, r, q, tau, ot),
+      vanna: model.vanna(s, k, r, q, tau),
+      charm: model.charm(s, k, r, q, tau, ot),
+      volga: model.vomma(s, k, r, q, tau),
+      veta: model.dvega_dtime(s, k, r, q, tau),
+    };
     StandardResult::with_greeks(npv, greeks)
   }
 }
@@ -146,6 +155,7 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::OptionType;
   use crate::traits::InstrumentExt;
   use crate::traits::PricingResult;
 

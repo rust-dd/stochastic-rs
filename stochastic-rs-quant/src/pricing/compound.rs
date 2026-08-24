@@ -174,7 +174,7 @@ mod tests {
   fn call_on_call_basic() {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
-    use crate::traits::PricerExt;
+    use crate::traits::ModelPricer;
     let p = CompoundPricer {
       s: 50.0,
       k1: 10.0,
@@ -187,13 +187,7 @@ mod tests {
       compound_type: CompoundType::CallOnCall,
     };
     let coc_price = p.price();
-    let inner = BSMPricer::builder(50.0, 0.40, 50.0, 0.05)
-      .tau(1.0)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Bsm1973)
-      .build()
-      .calculate_call_put()
-      .0;
+    let inner = BSMPricer::new(0.40, BSMCoc::Bsm1973).price_call(50.0, 50.0, 0.05, 0.0, 1.0);
     assert!(coc_price > 0.0, "CoC={coc_price}");
     assert!(
       coc_price < inner,
@@ -206,7 +200,7 @@ mod tests {
   fn coc_bounded_below_by_call_minus_strike() {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
-    use crate::traits::PricerExt;
+    use crate::traits::ModelPricer;
 
     let s = 100.0;
     let r = 0.05;
@@ -225,13 +219,7 @@ mod tests {
     };
     let coc = p.price();
 
-    let outer = BSMPricer::builder(s, sigma, 100.0, r)
-      .tau(1.0)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Bsm1973)
-      .build()
-      .calculate_call_put()
-      .0;
+    let outer = BSMPricer::new(sigma, BSMCoc::Bsm1973).price_call(s, 100.0, r, 0.0, 1.0);
 
     // Compound is bounded by inner option price minus discounted strike (very loose but always true)
     assert!(coc < outer);
@@ -262,7 +250,7 @@ mod tests {
   fn compound_put_call_parity() {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
-    use crate::traits::PricerExt;
+    use crate::traits::ModelPricer;
 
     let s = 100.0;
     let k1 = 5.0;
@@ -288,13 +276,7 @@ mod tests {
       ..coc.clone()
     };
 
-    let inner_call = BSMPricer::builder(s, sigma, k2, r)
-      .tau(t2)
-      .option_type(OptionType::Call)
-      .coc(BSMCoc::Bsm1973)
-      .build()
-      .calculate_call_put()
-      .0;
+    let inner_call = BSMPricer::new(sigma, BSMCoc::Bsm1973).price_call(s, k2, r, 0.0, t2);
 
     let lhs = coc.price() - poc.price();
     let rhs = inner_call - k1 * (-r * t1).exp();

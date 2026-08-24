@@ -1,9 +1,7 @@
 use stochastic_rs_distributions::special::norm_cdf;
 
-use crate::OptionType;
 use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
-use crate::traits::PricerExt;
 
 /// Forward FX F = S * exp((r_d - r_f) T)
 pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
@@ -158,21 +156,9 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
 
 /// Black-Scholes(-Garman-Kohlhagen) price for FX under GK using BSMPricer.
 pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> (f64, f64) {
-  let pricer = BSMPricer::new(
-    s,
-    sigma,
-    k,
-    r_d,
-    Some(r_d),
-    Some(r_f),
-    None,
-    Some(tau),
-    None,
-    None,
-    OptionType::Call,
-    BSMCoc::GarmanKohlhagen1983,
-  );
-  pricer.calculate_call_put()
+  // Garman-Kohlhagen puts the foreign rate in the model's dividend slot,
+  // so the query's `(r, q)` pair is `(r_d, r_f)`.
+  BSMPricer::new(sigma, BSMCoc::GarmanKohlhagen1983).call_put(s, k, r_d, r_f, tau)
 }
 
 /// Delta on forward with premium included

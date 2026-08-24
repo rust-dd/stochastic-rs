@@ -265,23 +265,10 @@ fn bs2002_exceeds_european_value() {
     None,
     OptionType::Put,
   );
-  let eu = BSMPricer::new(
-    100.0,
-    0.30,
-    100.0,
-    0.08,
-    None,
-    None,
-    Some(0.04),
-    Some(1.0),
-    None,
-    None,
-    OptionType::Put,
-    BSMCoc::Merton1973,
-  );
+  let eu = BSMPricer::new(0.30, BSMCoc::Merton1973);
 
   let am_price = am.calculate_price();
-  let (_, eu_price) = eu.calculate_call_put();
+  let eu_price = stochastic_rs::traits::ModelPricer::price_put(&eu, 100.0, 100.0, 0.08, 0.04, 1.0);
   assert!(
     am_price >= eu_price - 0.001,
     "American put ({am_price}) must be >= European put ({eu_price})"

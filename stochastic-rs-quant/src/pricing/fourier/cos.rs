@@ -199,12 +199,14 @@ fn chi_psi(kf: f64, a: f64, bma: f64, c: f64, d: f64) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::pricing::bsm::BSMCoc;
   use crate::pricing::bsm::BSMPricer;
   use crate::pricing::fourier::BSMFourier;
   use crate::pricing::fourier::GilPelaezPricer;
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::fourier::KouFourier;
   use crate::pricing::heston::HestonPricer;
+  use crate::traits::ModelPricer;
   use crate::traits::PricerExt;
 
   /// Reference: Fang & Oosterlee (2008) §5.1. Verifies COS against the
@@ -222,10 +224,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
     };
-    let expected = BSMPricer::builder(100.0, 0.25, 110.0, 0.05)
-      .tau(1.0)
-      .build()
-      .calculate_price();
+    let expected = BSMPricer::new(0.25, BSMCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let price = CosEngine::default().price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call);
     // `BSMPricer` goes through `norm_cdf`, whose `erf` (stochastic-rs-distributions
     // special.rs) is documented at "relative error ~1.5e-7" (Abramowitz & Stegun
@@ -329,10 +328,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
     };
-    let expected = BSMPricer::builder(100.0, 0.25, 110.0, 0.05)
-      .tau(1.0)
-      .build()
-      .calculate_price();
+    let expected = BSMPricer::new(0.25, BSMCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let err_small =
       (CosEngine::new(64, 10.0).price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call)
         - expected)

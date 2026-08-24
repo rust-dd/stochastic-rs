@@ -4,25 +4,34 @@
 //! the point: prose counts drift, `static_assertions`-style trait bounds do
 //! not. Each list below is one of the families the A2 design defines.
 //!
-//! Derived from `pub struct .*(?:Pricer|Engine)` across
-//! `stochastic-rs-quant/src`, excluding `python/` (21 `Py`-prefixed PyO3
-//! wrappers that hold the wrapped type as an `inner` field and carry no
-//! trait of their own — e.g. `PyBSMPricer { inner: BSMPricer }`). 50 structs
-//! remain. 19 of the 50 already implement one of [`PricerExt`],
-//! [`ModelPricer`], or [`PricingEngine`] — 6 of those 19
-//! ([`AssetOrNothingPricer`], [`CashOrNothingPricer`], [`GapPricer`],
+//! Derived from
+//! `grep -rnE "pub struct [A-Za-z0-9_]*(Pricer|Engine)\b" --include='*.rs' stochastic-rs-quant/src`
+//! — 71 structs, of which 21 live in `python/` (`Py`-prefixed PyO3 wrappers
+//! that hold the wrapped type as an `inner` field and carry no trait of
+//! their own — e.g. `PyBSMPricer { inner: BSMPricer }`). 50 structs remain.
+//! The `\b` matters: it drops the 9 `*PricerBuilder` helpers and
+//! `PortfolioEngineConfig`, which the bare `.*(?:Pricer|Engine)` regex an
+//! earlier revision of this header cited would have swept in, making that
+//! revision's stated command produce 81 rather than the 71 it claimed.
+//!
+//! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
+//! [`PricingEngine`] — 7 of those 19 ([`AssetOrNothingPricer`],
+//! [`BSMPricer`], [`CashOrNothingPricer`], [`GapPricer`],
 //! [`HestonSlvPricer`], [`RBergomiPricer`], [`SuperSharePricer`]) implement
 //! `ModelPricer` specifically, the trait this registry exists to guard. The
-//! other 13 carry the older `PricerExt` (11) or `PricingEngine` (2) surface.
+//! other 12 carry the older `PricerExt` (10) or `PricingEngine` (2) surface.
+//! Each count is the length of the matching macro invocation below, so it
+//! can be re-derived from this file alone.
 //!
 //! Per the A2 design (`docs/superpowers/specs/2026-08-23-a2-quant-consistency-design.md`,
-//! decision D1) and its Task 5, 10 of those 11 `PricerExt` structs migrate to
-//! `ModelPricer`; `KirkSpreadPricer` is explicitly excluded and instead joins
-//! the multi-asset no-trait family once `PricerExt` is retired (Task 6). Task
-//! 3 gave `ModelPricer` to the 4 digital-option structs above, which were
-//! `ORPHAN` before it ran. Each trait gets its own compile-checked list below
-//! so a claim about *which* trait a struct carries can drift no more than the
-//! claim that it carries one at all.
+//! decision D1) and its Task 5, 9 of those 10 remaining `PricerExt` structs
+//! migrate to `ModelPricer`; `KirkSpreadPricer` is explicitly excluded and
+//! instead joins the multi-asset no-trait family once `PricerExt` is retired
+//! (Task 6). Task 3 gave `ModelPricer` to the 4 digital-option structs above,
+//! which were `ORPHAN` before it ran; Task 5a added `BSMPricer`. Each trait
+//! gets its own compile-checked list below so a claim about *which* trait a
+//! struct carries can drift no more than the claim that it carries one at
+//! all.
 
 use stochastic_rs_quant::bonds::Cir;
 use stochastic_rs_quant::bonds::HullWhite;
@@ -88,10 +97,17 @@ macro_rules! assert_short_rate_pricer {
 
 // Structs already on the decoupled `price_call(s, k, r, q, tau)` surface
 // used by calibration and vol-surface construction: the 4 digital options
-// (Task 3) plus the 2 original members. Grows to 16 once Task 5 migrates 10
-// of the 11 `assert_pricer_ext!` members below (all but `KirkSpreadPricer`).
+// (Task 3), the 2 original members, and `BSMPricer` (Task 5a). Grows to 16
+// once Task 5b migrates 9 of the 10 `assert_pricer_ext!` members below (all
+// but `KirkSpreadPricer`).
+//
+// `BSMPricer` overrides `price_put` rather than taking the trait's vanilla
+// put-call-parity default: its cost-of-carry factor is `exp((b - r) * tau)`,
+// which equals the default's `exp(-q * tau)` only when `b = r - q` — false
+// for `BSMCoc::Bsm1973` at `q != 0` and for `Black1976` / `Asay1982`.
 assert_model_pricer!(
   AssetOrNothingPricer,
+  BSMPricer,
   CashOrNothingPricer,
   GapPricer,
   HestonSlvPricer,
@@ -113,7 +129,6 @@ assert_model_pricer!(
 // siblings. Filed here by what it implements now, not by its final family.
 assert_pricer_ext!(
   AsianPricer,
-  BSMPricer,
   BjerksundStensland2002Pricer,
   FiniteDifferencePricer,
   GbmMalliavinPricer,
@@ -139,7 +154,7 @@ assert_pricing_engine!(
 
 // The short-rate bond family (Task 2). `Cir`, `HullWhite`, `Vasicek` are
 // named for their model, not `*Pricer`/`*Engine`, so this file's header
-// derivation command (`pub struct .*(?:Pricer|Engine)`) never sees them —
+// derivation command never sees them —
 // they sit outside the 71/21/50/19 header counts entirely, not folded into
 // any of them. Registered here anyway because `ShortRatePricer` is a real
 // family with exactly these three implementors and D6's guard is worth

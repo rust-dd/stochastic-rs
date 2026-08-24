@@ -22,7 +22,6 @@ use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
 use crate::pricing::fourier::HKDEFourier;
 use crate::traits::ModelPricer;
-use crate::traits::PricerExt;
 
 const EPS: f64 = 1e-8;
 
@@ -247,21 +246,17 @@ fn market_weight(
     return 1.0;
   }
 
-  let pricer = BSMPricer::new(
+  // `implied_volatility` inverts a price for a vol, so the model's own `v`
+  // is unused — only the cost-of-carry convention matters.
+  let sigma_mkt = BSMPricer::new(0.2, BSMCoc::Bsm1973).implied_volatility(
+    market_price,
     s,
-    0.2,
     k,
     r,
-    None,
-    None,
-    Some(q),
-    Some(t),
-    None,
-    None,
+    q,
+    t,
     option_type,
-    BSMCoc::Bsm1973,
   );
-  let sigma_mkt = pricer.implied_volatility(market_price, option_type);
 
   if !sigma_mkt.is_finite() || sigma_mkt <= EPS {
     return 1.0;

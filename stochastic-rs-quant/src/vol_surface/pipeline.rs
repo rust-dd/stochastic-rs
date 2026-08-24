@@ -100,12 +100,12 @@ pub fn build_surface_from_model<M: ModelPricer + ?Sized>(
 /// use nalgebra::DVector;
 /// use stochastic_rs_quant::OptionType;
 /// use stochastic_rs_quant::calibration::{BSMCalibrator, BSMParams};
-/// use stochastic_rs_quant::pricing::bsm::BSMPricer;
-/// use stochastic_rs_quant::traits::{Calibrator, PricerExt};
+/// use stochastic_rs_quant::pricing::bsm::{BSMCoc, BSMPricer};
+/// use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 /// use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 ///
 /// let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
-/// let (call, _) = BSMPricer::builder(s, 0.2, k, r).tau(tau).build().calculate_call_put();
+/// let call = BSMPricer::new(0.2, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, tau);
 /// let calibrator = BSMCalibrator::new(BSMParams { v: 0.3 }, DVector::from_vec(vec![call]),
 ///     DVector::from_vec(vec![s]), DVector::from_vec(vec![k]), r, None, None, None, tau,
 ///     OptionType::Call);

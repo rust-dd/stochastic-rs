@@ -3,208 +3,227 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use super::pricer::BSMPricer;
 use crate::OptionType;
-use crate::traits::PricerExt;
 
+/// Closed-form Greeks, evaluated at the same `(s, k, r, q, tau)` query
+/// [`BSMPricer`]'s pricing methods take. Only the Greeks whose value
+/// actually differs between a call and a put take `option_type`.
+///
+/// These are inherent methods and not a
+/// [`GreeksExt`](crate::traits::GreeksExt) impl: that trait's accessors
+/// take no arguments, so only a type that already carries a query can
+/// implement it. The query-carrying types built on this model
+/// (`AnalyticBSEngine`, `Merton1976Pricer`) implement it and delegate here.
 impl BSMPricer {
-  /// Calculate the delta
-  pub fn delta(&self) -> f64 {
-    let (d1, _) = self.d1_d2();
-    let tau = self.tau_required();
-    let exp_bt = ((self.b() - self.r) * tau).exp();
+  /// Delta — $\partial V/\partial S$.
+  pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (d1, _) = self.d1_d2(s, k, r, q, tau);
+    let exp_bt = ((self.b(r, q) - r) * tau).exp();
 
-    if self.option_type == OptionType::Call {
+    if option_type == OptionType::Call {
       exp_bt * norm_cdf(d1)
     } else {
       exp_bt * (norm_cdf(d1) - 1.0)
     }
   }
 
-  /// Calculate the gamma
-  pub fn gamma(&self) -> f64 {
-    let T = self.tau_required();
-    let (d1, _) = self.d1_d2();
+  /// Gamma — $\partial^2 V/\partial S^2$.
+  pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
-    ((self.b() - self.r) * T).exp() * norm_pdf(d1) / (self.s * self.v * self.tau_required().sqrt())
+    ((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) / (s * self.v * tau.sqrt())
   }
 
-  /// Calculate the gamma percent
-  pub fn gamma_percent(&self) -> f64 {
-    self.gamma() / self.s * 100.0
+  /// Gamma per 1% of spot.
+  pub fn gamma_percent(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.gamma(s, k, r, q, tau) / s * 100.0
   }
 
-  /// Calculate the theta
-  pub fn theta(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
+  /// Theta — $\partial V/\partial t$ (calendar convention).
+  pub fn theta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
+    let b = self.b(r, q);
 
-    let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
-    let exp_rt = (-self.r * self.tau_required()).exp();
+    let exp_bt = ((b - r) * tau).exp();
+    let exp_rt = (-r * tau).exp();
     let pdf_d1 = norm_pdf(d1);
 
-    let first_term = -self.s * exp_bt * pdf_d1 * self.v / (2.0 * self.tau_required().sqrt());
+    let first_term = -s * exp_bt * pdf_d1 * self.v / (2.0 * tau.sqrt());
 
-    if self.option_type == OptionType::Call {
-      let second_term = -(self.b() - self.r) * self.s * exp_bt * norm_cdf(d1);
-      let third_term = -self.r * self.k * exp_rt * norm_cdf(d2);
+    if option_type == OptionType::Call {
+      let second_term = -(b - r) * s * exp_bt * norm_cdf(d1);
+      let third_term = -r * k * exp_rt * norm_cdf(d2);
       first_term + second_term + third_term
     } else {
-      let second_term = (self.b() - self.r) * self.s * exp_bt * norm_cdf(-d1);
-      let third_term = -self.r * self.k * exp_rt * norm_cdf(-d2);
+      let second_term = (b - r) * s * exp_bt * norm_cdf(-d1);
+      let third_term = -r * k * exp_rt * norm_cdf(-d2);
       first_term + second_term + third_term
     }
   }
 
-  /// Calculate the vega
-  pub fn vega(&self) -> f64 {
-    let (d1, _) = self.d1_d2();
+  /// Vega — $\partial V/\partial \sigma$.
+  pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
-    self.s
-      * ((self.b() - self.r) * self.tau_required()).exp()
-      * norm_pdf(d1)
-      * self.tau_required().sqrt()
+    s * ((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) * tau.sqrt()
   }
 
-  /// Calculate the rho
-  pub fn rho(&self) -> f64 {
-    let (_, d2) = self.d1_d2();
+  /// Rho — $\partial V/\partial r$.
+  pub fn rho(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
-    let exp_rt = (-self.r * self.tau_required()).exp();
+    let exp_rt = (-r * tau).exp();
 
-    if self.option_type == OptionType::Call {
-      self.k * self.tau_required() * exp_rt * norm_cdf(d2)
+    if option_type == OptionType::Call {
+      k * tau * exp_rt * norm_cdf(d2)
     } else {
-      -self.k * self.tau_required() * exp_rt * norm_cdf(-d2)
+      -k * tau * exp_rt * norm_cdf(-d2)
     }
   }
 
-  /// Calculate the vomma
-  pub fn vomma(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
+  /// Vomma / volga — $\partial^2 V/\partial \sigma^2$.
+  pub fn vomma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    self.vega() * d1 * d2 / self.v
+    self.vega(s, k, r, q, tau) * d1 * d2 / self.v
   }
 
-  /// Calculate the charm
-  pub fn charm(&self) -> f64 {
+  /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
+  pub fn charm(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     let v = self.v;
-    let r = self.r;
-    let b = self.b();
-    let tau = self.tau_required();
-    let (d1, d2) = self.d1_d2();
+    let b = self.b(r, q);
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
     let exp_bt = ((b - r) * tau).exp();
     let pdf_d1 = norm_pdf(d1);
-    let sqrt_T = tau.sqrt();
+    let sqrt_tau = tau.sqrt();
 
-    match self.option_type {
+    match option_type {
       OptionType::Call => {
-        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) + (b - r) * norm_cdf(d1))
+        exp_bt * (pdf_d1 * ((b / (v * sqrt_tau)) - (d2 / (2.0 * tau))) + (b - r) * norm_cdf(d1))
       }
       OptionType::Put => {
-        exp_bt * (pdf_d1 * ((b / (v * sqrt_T)) - (d2 / (2.0 * tau))) - (b - r) * norm_cdf(-d1))
+        exp_bt * (pdf_d1 * ((b / (v * sqrt_tau)) - (d2 / (2.0 * tau))) - (b - r) * norm_cdf(-d1))
       }
     }
   }
 
-  /// Calculate the vanna
-  pub fn vanna(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
+  /// Vanna — $\partial^2 V/\partial S\partial \sigma$.
+  pub fn vanna(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    -((self.b() - self.r) * self.tau_required()).exp() * norm_pdf(d1) * d2 / self.v
+    -((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) * d2 / self.v
   }
 
-  /// Calculate the zomma
-  pub fn zomma(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
+  /// Zomma — $\partial \Gamma/\partial \sigma$.
+  pub fn zomma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    self.gamma() * (d1 * d2 - 1.0) / self.v
+    self.gamma(s, k, r, q, tau) * (d1 * d2 - 1.0) / self.v
   }
 
-  /// Calculate the zomma percent
-  pub fn zomma_percent(&self) -> f64 {
-    self.zomma() * self.s / 100.0
+  /// Zomma per 1% of spot.
+  pub fn zomma_percent(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.zomma(s, k, r, q, tau) * s / 100.0
   }
 
-  /// Calculate the speed
-  pub fn speed(&self) -> f64 {
-    let (d1, _) = self.d1_d2();
+  /// Speed — $\partial^3 V/\partial S^3$.
+  pub fn speed(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
-    -self.gamma() * (1.0 + d1 / (self.v * self.tau_required().sqrt())) / self.s
+    -self.gamma(s, k, r, q, tau) * (1.0 + d1 / (self.v * tau.sqrt())) / s
   }
 
-  /// Calculate the color
-  pub fn color(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
+  /// Color — $\partial \Gamma/\partial t$.
+  pub fn color(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
+    let b = self.b(r, q);
 
-    self.gamma()
-      * (self.r - self.b()
-        + self.b() * d1 / (self.v * self.tau_required().sqrt())
-        + (1.0 - d1 * d2) / (2.0 * self.tau_required()))
+    self.gamma(s, k, r, q, tau)
+      * (r - b + b * d1 / (self.v * tau.sqrt()) + (1.0 - d1 * d2) / (2.0 * tau))
   }
 
-  /// Calculate the ultima
-  pub fn ultima(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
+  /// Ultima — $\partial^3 V/\partial \sigma^3$.
+  pub fn ultima(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    -self.vomma() / self.v * (d1 * d2 - (d1 / d2) + (d2 / d1) - 1.0)
+    -self.vomma(s, k, r, q, tau) / self.v * (d1 * d2 - (d1 / d2) + (d2 / d1) - 1.0)
   }
 
-  /// Calculate the DvegaDtime
-  pub fn dvega_dtime(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
+  /// Veta / DvegaDtime — $\partial^2 V/\partial \sigma \partial t$.
+  pub fn dvega_dtime(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
+    let b = self.b(r, q);
 
-    self.vega()
-      * (self.r - self.b() + self.b() * d1 / (self.v * self.tau_required().sqrt())
-        - (d1 * d2 + 1.0) / (2.0 * self.tau_required()))
+    self.vega(s, k, r, q, tau)
+      * (r - b + b * d1 / (self.v * tau.sqrt()) - (d1 * d2 + 1.0) / (2.0 * tau))
   }
 
-  /// Calculating Lambda (elasticity)
-  pub fn lambda(&mut self) -> (f64, f64) {
-    let (call, put) = self.calculate_call_put();
-    (self.delta() * self.s / call, self.delta() * self.s / put)
+  /// Lambda (elasticity) against the call and against the put, both using
+  /// the delta of `option_type` — preserved verbatim from the pre-query
+  /// method, which likewise divided a single delta by both prices.
+  pub fn lambda(
+    &self,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> (f64, f64) {
+    let (call, put) = self.call_put(s, k, r, q, tau);
+    let delta = self.delta(s, k, r, q, tau, option_type);
+    (delta * s / call, delta * s / put)
   }
 
-  /// Calculate the phi
-  pub fn phi(&self) -> f64 {
-    let (d1, _) = self.d1_d2();
+  /// Phi — $\partial V/\partial q$ (dividend / carry rho).
+  pub fn phi(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
-    let exp_bt = ((self.b() - self.r) * self.tau_required()).exp();
+    let exp_bt = ((self.b(r, q) - r) * tau).exp();
 
-    if self.option_type == OptionType::Call {
-      -self.tau_required() * self.s * exp_bt * norm_cdf(d1)
+    if option_type == OptionType::Call {
+      -tau * s * exp_bt * norm_cdf(d1)
     } else {
-      self.tau_required() * self.s * exp_bt * norm_cdf(-d1)
+      tau * s * exp_bt * norm_cdf(-d1)
     }
   }
 
-  /// Calculate the zeta
-  pub fn zeta(&self) -> f64 {
-    let (_, d2) = self.d1_d2();
+  /// Zeta — risk-neutral probability of finishing in the money.
+  pub fn zeta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
-    if self.option_type == OptionType::Call {
+    if option_type == OptionType::Call {
       norm_cdf(d2)
     } else {
       -norm_cdf(-d2)
     }
   }
 
-  /// Calculate the strike delta
-  pub fn strike_delta(&self) -> f64 {
-    let (_, d2) = self.d1_d2();
+  /// Strike delta — $\partial V/\partial K$.
+  pub fn strike_delta(
+    &self,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
-    let exp_rt = (-self.r * self.tau_required()).exp();
+    let exp_rt = (-r * tau).exp();
 
-    if self.option_type == OptionType::Call {
+    if option_type == OptionType::Call {
       -exp_rt * norm_cdf(d2)
     } else {
       exp_rt * norm_cdf(-d2)
     }
   }
 
-  /// Calculate the strike gamma
-  pub fn strike_gamma(&self) -> f64 {
-    let (_, d2) = self.d1_d2();
+  /// Strike gamma — $\partial^2 V/\partial K^2$.
+  pub fn strike_gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
-    norm_pdf(d2) * (-self.r * self.tau_required()).exp()
-      / (self.k * self.v * self.tau_required().sqrt())
+    norm_pdf(d2) * (-r * tau).exp() / (k * self.v * tau.sqrt())
   }
 }

@@ -7,7 +7,7 @@ use super::VanillaPortfolio;
 use crate::OptionType;
 use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
-use crate::traits::PricerExt;
+use crate::traits::ModelPricer;
 
 const UNDER_SAMPLED_SEED: u64 = 7;
 /// Analytic characteristic-function initial-variance vega of the fixture
@@ -161,13 +161,13 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
     let discrete_loading =
       (1.0 - (1.0 - model.kappa * dt).powi(config.steps as i32)) / (model.kappa * model.tau);
     let price = |variance: f64| {
-      BSMPricer::builder(model.s, variance.sqrt(), 105.0, model.risk_free_rate)
-        .q(model.dividend_yield)
-        .tau(model.tau)
-        .option_type(OptionType::Call)
-        .coc(BSMCoc::Merton1973)
-        .build()
-        .calculate_price()
+      BSMPricer::new(variance.sqrt(), BSMCoc::Merton1973).price_call(
+        model.s,
+        105.0,
+        model.risk_free_rate,
+        model.dividend_yield,
+        model.tau,
+      )
     };
     let reference = (price(model.initial_variance + bump * discrete_loading)
       - price(model.initial_variance - bump * discrete_loading))

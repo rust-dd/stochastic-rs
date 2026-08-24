@@ -4,7 +4,6 @@
 //! checked against analytic Gaussian-model bond prices or deterministic limits.
 
 use ndarray::Array1;
-use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::lattice::BinomialTree;
 use stochastic_rs::quant::lattice::BlackKarasinskiTree;
 use stochastic_rs::quant::lattice::BlackKarasinskiTreeModel;
@@ -14,7 +13,7 @@ use stochastic_rs::quant::lattice::HullWhiteTree;
 use stochastic_rs::quant::lattice::HullWhiteTreeModel;
 use stochastic_rs::quant::pricing::BSMCoc;
 use stochastic_rs::quant::pricing::BSMPricer;
-use stochastic_rs::traits::PricerExt;
+use stochastic_rs::traits::ModelPricer;
 
 fn approx(a: f64, b: f64, tol: f64) {
   assert!(
@@ -48,21 +47,7 @@ fn crr_binomial_tree_matches_black_scholes_call() {
   );
   let lattice_price = tree.backward_induct(terminal, |_level, _node, _state| (-r * dt).exp());
 
-  let bsm = BSMPricer::new(
-    s0,
-    sigma,
-    k,
-    r,
-    None,
-    None,
-    Some(0.0),
-    Some(tau),
-    None,
-    None,
-    OptionType::Call,
-    BSMCoc::Merton1973,
-  )
-  .calculate_price();
+  let bsm = BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(s0, k, r, 0.0, tau);
 
   approx(lattice_price, bsm, 2e-2);
 }

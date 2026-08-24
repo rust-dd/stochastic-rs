@@ -12,4 +12,3 @@ mod tests;
 
 pub use pricer::BSMCoc;
 pub use pricer::BSMPricer;
-pub use pricer::BSMPricerBuilder;
