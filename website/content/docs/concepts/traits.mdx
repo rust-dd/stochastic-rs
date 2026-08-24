@@ -1,6 +1,6 @@
 ---
 title: Traits overview
-description: The trait surface that organises the library — FloatExt, ProcessExt, DistributionExt, PricerExt, ModelPricer, Calibrator, GreeksExt, and friends.
+description: The trait surface that organises the library — FloatExt, ProcessExt, DistributionExt, ModelPricer, ShortRatePricer, Calibrator, GreeksExt, and friends.
 category: concept
 since: 2.0.0
 status: stable
@@ -22,8 +22,8 @@ generically over the float type via [`FloatExt`](#floatext).
 | `DistributionExt`         | `stochastic-rs-distributions`  | Closed-form pdf / cdf / cf / moments (`f64`-only)      |
 | `BivariateExt<T>`         | `stochastic-rs-copulas`        | Bivariate copulas                                      |
 | `MultivariateExt<T>`      | `stochastic-rs-copulas`        | Multivariate copulas (openblas-only)                   |
-| `PricerExt`               | `stochastic-rs-quant`          | Single-instance pricing (`f64`-only)                   |
 | `ModelPricer`             | `stochastic-rs-quant`          | Concrete-typed strike/tau-grid pricer (no `&dyn`)      |
+| `ShortRatePricer`         | `stochastic-rs-quant`          | Short-rate bond pricing (`Vasicek`, `Cir`, `HullWhite`)|
 | `ToModel`, `ToShortRateModel` | `stochastic-rs-quant`      | Calibrator → Concrete pricer bridge                    |
 | `FourierModelExt<T>`      | `stochastic-rs-quant`          | Characteristic function models                         |
 | `Calibrator`              | `stochastic-rs-quant`          | Result-based calibration (`type Params`, `type Error`) |

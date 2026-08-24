@@ -5,7 +5,7 @@
     "prelude",
     "process-ext",
     "distribution-ext",
-    "pricer-ext",
+    "model-pricer",
     "seeding",
     "feature-flags",
     "backends",

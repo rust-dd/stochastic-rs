@@ -10,10 +10,10 @@
 //! that hold the wrapped type as an `inner` field and carry no trait of
 //! their own — e.g. `PyBSMPricer { inner: BSMPricer }`). 50 structs remain.
 //! The `\b` matters: the bare `.*(?:Pricer|Engine)` regex an earlier
-//! revision of this header cited reports 72 against the same tree. The one
-//! struct between them is `PortfolioEngineConfig`. It used to be ten:
-//! 9 `*PricerBuilder` helpers were the rest of the gap until Task 5 dropped
-//! eight of them and Task 6 the last (`KirkSpreadPricerBuilder`).
+//! revision of this header cited reports 72 against the same tree, one
+//! more, and that one is `PortfolioEngineConfig`. The gap used to be ten —
+//! the other nine were `*PricerBuilder` helpers, of which Task 5 deleted
+//! eight and Task 6 the last (`KirkSpreadPricerBuilder`).
 //!
 //! 18 of the 50 implement either [`ModelPricer`] or [`PricingEngine`]:
 //! **16** carry `ModelPricer` (the trait this registry exists to guard) and
@@ -26,10 +26,10 @@
 //! awk '/^assert_pricing_engine!\(/,/^\);/' stochastic-rs-quant/tests/pricer_registry.rs | grep -c '^  ('
 //! ```
 //!
-//! The two differ because `assert_pricing_engine!` takes `(pricer,
-//! instrument)` pairs, so its entries open with a paren rather than an
-//! uppercase letter — a single command for both reports 0 for this one, as
-//! an earlier revision of this header claimed it would not.
+//! Two commands, not one with the macro name substituted: an earlier
+//! revision of this header said one would do, but `assert_pricing_engine!`
+//! takes `(pricer, instrument)` pairs, so its entries open with a paren
+//! and `grep -c '^  [A-Z]'` reports 0 for it.
 //!
 //! The names are deliberately *not* repeated in this prose: the macro
 //! invocation is the list, and a second copy of it here is a copy that can

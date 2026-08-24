@@ -1,0 +1,151 @@
+---
+title: ModelPricer
+description: The pricing trait — the struct holds model parameters and each call carries its own (s, k, r, q, tau) query, so one model prices a whole grid.
+category: concept
+since: 2.0.0
+status: stable
+---
+
+# `ModelPricer`
+
+The single-underlying pricing surface. A plain `f64` trait — not generic
+over `T: FloatExt`.
+
+```rust
+pub trait ModelPricer {
+    fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
+
+    // default: put-call parity from price_call
+    fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        let call = self.price_call(s, k, r, q, tau);
+        call - s * (-q * tau).exp() + k * (-r * tau).exp()
+    }
+
+    // default: dispatches to price_call / price_put
+    fn price_option(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+        match option_type {
+            OptionType::Call => self.price_call(s, k, r, q, tau),
+            OptionType::Put => self.price_put(s, k, r, q, tau),
+        }
+    }
+}
+```
+
+## Model, then query
+
+The struct holds **model parameters only** — `BSMPricer` holds a
+volatility and a cost-of-carry convention, `HestonPricer` holds
+$(v_0,\kappa,\theta,\sigma,\rho)$. Nothing about the contract (spot,
+strike, rate, dividend yield, maturity) is baked in; every price query
+passes its own `(s, k, r, q, tau)`.
+
+That is what makes vectorized pricing across a strike/maturity grid —
+vol-surface construction, calibration — cheap: one model instance, many
+`price_option` calls, no `&dyn`, no `Box<dyn>`.
+
+Half of the implementors also expose an inherent `call_put(s, k, r, q,
+tau) -> (f64, f64)` returning both legs from one evaluation, which is
+what their trait methods project from.
+
+## Override `price_put` unless parity really holds
+
+The default `price_put` recomposes the put from the call by **European**
+put-call parity with a carry factor of exactly $e^{-q\tau}$. Two families
+must override it or the default is a silent mispricing:
+
+- **Non-standard cost of carry** — `BSMPricer`, `AsianPricer` and
+  `Merton1976Pricer` carry at $e^{(b-r)\tau}$, which equals $e^{-q\tau}$
+  only when $b = r - q$.
+- **American exercise** — `BjerksundStensland2002Pricer`,
+  `SnellEnvelopePricer` and `FiniteDifferencePricer` price a put carrying
+  an early-exercise premium the call does not, so European parity is not
+  an approximation but the wrong model.
+
+Exercise style is the **implementor's** choice, not the trait's: what
+`ModelPricer` fixes is the *query* shape, not the exercise right.
+
+## Blanket implementations
+
+Two blanket impls do most of the work:
+
+- `impl<T: FourierModelExt> ModelPricer for T` — any model with a
+  characteristic function gets priced by Gil-Pelaez quadrature for free.
+- `impl<T: ModelPricer + ?Sized> ModelSurface for T` — any `ModelPricer`
+  gets `vol_surface(s, r, q, strikes, maturities)`.
+
+`ToModel` bridges a calibration result to the concrete `ModelPricer` it
+produces:
+
+```rust
+pub trait ToModel {
+    type Model: ModelPricer;
+    fn to_model(&self, r: f64, q: f64) -> Self::Model;
+}
+```
+
+## Bonds and multi-asset payoffs
+
+`ModelPricer`'s query has one underlying and one strike, so two families
+sit outside it deliberately:
+
+- **Short-rate bonds** (`Vasicek`, `Cir`, `HullWhite`) implement
+  `ShortRatePricer` instead — they price off a short rate and a tenor,
+  not a spot and a strike.
+- **Multi-asset payoffs** (`MargrabePricer`, `KirkSpreadPricer`,
+  `McSpreadPricer`, the basket and rainbow pricers) carry **no** pricing
+  trait. `MargrabePricer` is an exchange option with no strike at all;
+  `KirkSpreadPricer` strikes against a spread of two forwards, so its
+  query is `call_put(f1, f2, x, r, tau)`; the basket and rainbow pricers
+  take N legs. A shared signature would need an `Option<f64>` strike and
+  a variable-length underlying list — a dishonest shape for all of them.
+  They follow the same model/query convention through inherent methods
+  instead.
+
+The path-dependent family (barriers, lookbacks, cliquets, autocallables,
+Bermudans, chooser, compound, variance/volatility swaps) is trait-less
+for the same reason: each carries its own contract schedule.
+
+## Greeks via `GreeksExt`
+
+Greeks are a **separate** trait from `ModelPricer` — `GreeksExt` — with
+one required accessor (`delta`) and NaN-defaulted accessors for the rest
+(`gamma`, `vega`, `theta`, `rho`, `vanna`, `charm`, `volga`, `veta`),
+plus an aggregating `greeks()` that calls all nine and packs them into a
+`Greeks` struct (plain `f64` fields, not generic).
+
+Pricers that expose Greeks do so via **inherent methods**
+(`BSMPricer::delta`, `HestonPricer::delta`, …); `GreeksExt` gives generic
+code one dispatch point when it needs to treat several pricer types
+uniformly. The default `greeks()` calls the individual accessors, which
+is fine for analytical pricers but wrong for Monte Carlo pricers unless
+they override it — see the
+[greeks-pattern SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/greeks-pattern/SKILL.md)
+for the single-pass protocol MC pricers use instead.
+
+## `TimeExt` — dates to `tau`
+
+`ModelPricer` takes `tau` in years. When the contract is given as dates
+instead, `TimeExt::tau_or_from_dates()` derives $\tau$ from either an
+explicit `tau` or an `(eval, expiration)` pair under a day-count
+convention, and `tau_with_dcc(dcc)` overrides the convention explicitly.
+Convert at the call site, then price.
+
+## What replaced `PricerExt`
+
+Before 3.0 a second trait, `PricerExt: TimeExt`, bundled the market data
+and the strike **into** the pricer and exposed `calculate_call_put()` /
+`calculate_price()` / `implied_volatility()` with no arguments. It is
+removed: pricing a second strike meant constructing a second pricer,
+which is exactly what made grid pricing expensive.
+
+Every former implementor moved to `ModelPricer`, to `ShortRatePricer`, or
+— for `KirkSpreadPricer` — to inherent methods carrying its own natural
+query. `calculate_call_put()` becomes `call_put(...)`,
+`calculate_price()` becomes `price_call(...)`, and the four pricers that
+genuinely invert a price to a vol keep `implied_volatility` as an
+inherent method. See `MIGRATION.md` for the per-pricer mapping.
+
+## See also
+
+- [Calibrator and CalibrationResult](/docs/concepts/traits#calibrator-and-calibrationresult)
+- [Quant catalog](/docs/quant) — pricers, calibrators, vol surface, risk
