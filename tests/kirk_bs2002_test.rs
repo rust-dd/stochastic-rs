@@ -6,7 +6,6 @@
 use stochastic_rs::quant::pricing::bjerksund_stensland::BjerksundStensland2002Pricer;
 use stochastic_rs::quant::pricing::kirk::KirkSpreadPricer;
 use stochastic_rs::traits::ModelPricer;
-use stochastic_rs::traits::PricerExt;
 
 fn assert_close(a: f64, b: f64, tol: f64) {
   assert!(
@@ -23,18 +22,17 @@ fn assert_close(a: f64, b: f64, tol: f64) {
 fn kirk_spread_call_atm() {
   // Heat-rate style option: F1=35, F2=34, X=3 (conversion cost), high corr
   let pricer = KirkSpreadPricer::new(
+    0.35, // v1
+    0.35, // v2
+    0.90, // corr
+  );
+  let (call, put) = pricer.call_put(
     35.0, // f1 (electricity)
     34.0, // f2 (gas * heat rate)
     3.0,  // x (VOM)
     0.05, // r
-    0.35, // v1
-    0.35, // v2
-    0.90, // corr
-    Some(1.0),
-    None,
-    None,
+    1.0,  // tau
   );
-  let (call, put) = pricer.calculate_call_put();
   // Spread = 35 - 34 = 1, strike = 3 → OTM call
   assert!(call > 0.0, "call must be positive");
   assert!(put > call, "OTM call should be less than put");
@@ -49,8 +47,8 @@ fn kirk_spread_put_call_parity() {
   let r = 0.05;
   let tau = 0.5;
 
-  let pricer = KirkSpreadPricer::new(f1, f2, x, r, 0.30, 0.25, 0.7, Some(tau), None, None);
-  let (call, put) = pricer.calculate_call_put();
+  let pricer = KirkSpreadPricer::new(0.30, 0.25, 0.7);
+  let (call, put) = pricer.call_put(f1, f2, x, r, tau);
 
   let parity_diff = call - put;
   let expected = (f1 - f2 - x) * (-r * tau).exp();
@@ -59,51 +57,18 @@ fn kirk_spread_put_call_parity() {
 
 #[test]
 fn kirk_spread_zero_correlation() {
-  let pricer = KirkSpreadPricer::new(
-    100.0,
-    95.0,
-    5.0,
-    0.05,
-    0.20,
-    0.20,
-    0.0,
-    Some(1.0),
-    None,
-    None,
-  );
-  let (call, _put) = pricer.calculate_call_put();
+  let pricer = KirkSpreadPricer::new(0.20, 0.20, 0.0);
+  let (call, _put) = pricer.call_put(100.0, 95.0, 5.0, 0.05, 1.0);
   assert!(call > 0.0);
 }
 
 #[test]
 fn kirk_spread_high_correlation() {
   // High correlation reduces spread volatility → lower option price
-  let low_corr = KirkSpreadPricer::new(
-    100.0,
-    95.0,
-    5.0,
-    0.05,
-    0.30,
-    0.30,
-    0.3,
-    Some(1.0),
-    None,
-    None,
-  );
-  let high_corr = KirkSpreadPricer::new(
-    100.0,
-    95.0,
-    5.0,
-    0.05,
-    0.30,
-    0.30,
-    0.95,
-    Some(1.0),
-    None,
-    None,
-  );
-  let (c_low, _) = low_corr.calculate_call_put();
-  let (c_high, _) = high_corr.calculate_call_put();
+  let low_corr = KirkSpreadPricer::new(0.30, 0.30, 0.3);
+  let high_corr = KirkSpreadPricer::new(0.30, 0.30, 0.95);
+  let (c_low, _) = low_corr.call_put(100.0, 95.0, 5.0, 0.05, 1.0);
+  let (c_high, _) = high_corr.call_put(100.0, 95.0, 5.0, 0.05, 1.0);
   assert!(
     c_high < c_low,
     "higher correlation should reduce spread option value"

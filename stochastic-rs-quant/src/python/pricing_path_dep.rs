@@ -3,7 +3,6 @@ use pyo3::prelude::*;
 
 use super::parse_option_type;
 use crate::traits::ModelPricer;
-use crate::traits::PricerExt;
 
 /// The Rust model holds `v` only, so the wrapper carries the
 /// `(s, k, r, q, tau)` query the Python-visible no-argument methods are
@@ -469,9 +468,17 @@ impl PyMCBarrierPricer {
   }
 }
 
+/// The Rust model holds `(v1, v2, corr)` only, so the wrapper carries the
+/// `(f1, f2, x, r, tau)` query the Python-visible no-argument methods are
+/// defined at. Python's constructor signature is unchanged.
 #[pyclass(name = "KirkSpreadPricer", unsendable)]
 pub struct PyKirkSpreadPricer {
   inner: crate::pricing::kirk::KirkSpreadPricer,
+  f1: f64,
+  f2: f64,
+  x: f64,
+  r: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -479,22 +486,18 @@ impl PyKirkSpreadPricer {
   #[new]
   fn new(f1: f64, f2: f64, x: f64, r: f64, v1: f64, v2: f64, corr: f64, tau: f64) -> Self {
     Self {
-      inner: crate::pricing::kirk::KirkSpreadPricer::new(
-        f1,
-        f2,
-        x,
-        r,
-        v1,
-        v2,
-        corr,
-        Some(tau),
-        None,
-        None,
-      ),
+      inner: crate::pricing::kirk::KirkSpreadPricer::new(v1, v2, corr),
+      f1,
+      f2,
+      x,
+      r,
+      tau,
     }
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self
+      .inner
+      .price_call(self.f1, self.f2, self.x, self.r, self.tau)
   }
 }

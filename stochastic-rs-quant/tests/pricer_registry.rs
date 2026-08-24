@@ -9,39 +9,44 @@
 //! — 71 structs, of which 21 live in `python/` (`Py`-prefixed PyO3 wrappers
 //! that hold the wrapped type as an `inner` field and carry no trait of
 //! their own — e.g. `PyBSMPricer { inner: BSMPricer }`). 50 structs remain.
-//! The `\b` matters: it drops the 9 `*PricerBuilder` helpers and
-//! `PortfolioEngineConfig`, which the bare `.*(?:Pricer|Engine)` regex an
-//! earlier revision of this header cited would have swept in, making that
-//! revision's stated command produce 81 rather than the 71 it claimed.
+//! The `\b` matters: the bare `.*(?:Pricer|Engine)` regex an earlier
+//! revision of this header cited reports 72 against the same tree. The one
+//! struct between them is `PortfolioEngineConfig`. It used to be ten:
+//! 9 `*PricerBuilder` helpers were the rest of the gap until Task 5 dropped
+//! eight of them and Task 6 the last (`KirkSpreadPricerBuilder`).
 //!
-//! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
-//! [`PricingEngine`]: **16** carry `ModelPricer` (the trait this registry
-//! exists to guard), **1** the older `PricerExt`, **2** `PricingEngine`.
-//! Every one of those three numbers is the length of the matching macro
+//! 18 of the 50 implement either [`ModelPricer`] or [`PricingEngine`]:
+//! **16** carry `ModelPricer` (the trait this registry exists to guard) and
+//! **2** `PricingEngine`. Both numbers are the length of the matching macro
 //! invocation below and nothing else — re-derive rather than
-//! arithmetic-adjust them, with (substituting the macro name):
+//! arithmetic-adjust them:
 //!
 //! ```text
 //! awk '/^assert_model_pricer!\(/,/^\);/' stochastic-rs-quant/tests/pricer_registry.rs | grep -c '^  [A-Z]'
+//! awk '/^assert_pricing_engine!\(/,/^\);/' stochastic-rs-quant/tests/pricer_registry.rs | grep -c '^  ('
 //! ```
+//!
+//! The two differ because `assert_pricing_engine!` takes `(pricer,
+//! instrument)` pairs, so its entries open with a paren rather than an
+//! uppercase letter — a single command for both reports 0 for this one, as
+//! an earlier revision of this header claimed it would not.
 //!
 //! The names are deliberately *not* repeated in this prose: the macro
 //! invocation is the list, and a second copy of it here is a copy that can
 //! drift.
 //!
 //! Per the A2 design (`docs/superpowers/specs/2026-08-23-a2-quant-consistency-design.md`,
-//! decision D1) and its Task 5, 9 of the 10 `PricerExt` structs that
-//! existed after Task 5a migrate to `ModelPricer`; `KirkSpreadPricer` is
-//! explicitly excluded and instead joins the multi-asset no-trait family
-//! once `PricerExt` is retired (Task 6). Task 3 gave `ModelPricer` to the 4
-//! digital-option structs, which were `ORPHAN` before it ran; Task 5a added
-//! `BSMPricer`; Task 5b migrated the remaining nine, taking `PricerExt`
-//! from 10 implementors to `KirkSpreadPricer` alone — which is why
-//! `assert_pricer_ext!` below is a single-line invocation and its count is
-//! read off that line rather than with the per-line `awk` above. Each trait
-//! gets its own compile-checked list
-//! below so a claim about *which* trait a struct carries can drift no more
-//! than the claim that it carries one at all.
+//! decision D1), `PricerExt` is retired and this file no longer has a list
+//! for it. Task 3 gave `ModelPricer` to the 4 digital-option structs, which
+//! were `ORPHAN` before it ran; Task 5a added `BSMPricer`; Task 5b migrated
+//! nine more, taking `PricerExt` from 10 implementors down to
+//! `KirkSpreadPricer` alone; Task 6 took the trait off that one and deleted
+//! it. `KirkSpreadPricer` did not migrate to `ModelPricer` — it prices a
+//! two-asset spread, so a single strike fits it no better than it fits
+//! `MargrabePricer` — and is now filed under `no_trait_by_design` with its
+//! multi-asset siblings. Each surviving trait gets its own compile-checked
+//! list below so a claim about *which* trait a struct carries can drift no
+//! more than the claim that it carries one at all.
 
 use stochastic_rs_quant::bonds::Cir;
 use stochastic_rs_quant::bonds::HullWhite;
@@ -57,7 +62,6 @@ use stochastic_rs_quant::pricing::GapPricer;
 use stochastic_rs_quant::pricing::HestonPricer;
 use stochastic_rs_quant::pricing::HestonSlvPricer;
 use stochastic_rs_quant::pricing::HestonStochCorrPricer;
-use stochastic_rs_quant::pricing::KirkSpreadPricer;
 use stochastic_rs_quant::pricing::RBergomiPricer;
 use stochastic_rs_quant::pricing::SuperSharePricer;
 use stochastic_rs_quant::pricing::asian::AsianPricer;
@@ -67,7 +71,6 @@ use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
 use stochastic_rs_quant::pricing::sabr::SabrPricer;
 use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::ModelPricer;
-use stochastic_rs_quant::traits::PricerExt;
 use stochastic_rs_quant::traits::PricingEngine;
 use stochastic_rs_quant::traits::ShortRatePricer;
 
@@ -75,14 +78,6 @@ use stochastic_rs_quant::traits::ShortRatePricer;
 macro_rules! assert_model_pricer {
   ($($t:ty),* $(,)?) => { $(const _: fn() = || {
     fn assert_impl<T: ModelPricer + ?Sized>() {}
-    assert_impl::<$t>();
-  };)* };
-}
-
-/// Asserts `$t` implements the legacy [`PricerExt`] surface at compile time.
-macro_rules! assert_pricer_ext {
-  ($($t:ty),* $(,)?) => { $(const _: fn() = || {
-    fn assert_impl<T: PricerExt + ?Sized>() {}
     assert_impl::<$t>();
   };)* };
 }
@@ -147,20 +142,6 @@ assert_model_pricer!(
   SuperSharePricer,
 );
 
-// Single-underlying options on the legacy bundled-market-data `PricerExt`
-// surface (`calculate_call_put` / `calculate_price`, no `(s, k, r, q, tau)`
-// query point) but not yet `ModelPricer`.
-//
-// `KirkSpreadPricer` sits here rather than in `no_trait_by_design`'s
-// multi-asset family only because it still has `PricerExt` *today* — it
-// prices a two-asset spread, so `ModelPricer`'s single strike fits it no
-// better than it fits `MargrabePricer`, and Task 5 Step 1 of the A2 plan
-// names it explicitly: "`KirkSpreadPricer` takes two forwards and is
-// excluded by the design". It is not migrating to `ModelPricer`; once
-// `PricerExt` is retired (Task 6) it becomes trait-less like its multi-asset
-// siblings. Filed here by what it implements now, not by its final family.
-assert_pricer_ext!(KirkSpreadPricer,);
-
 // QuantLib-style decoupled engines (`Instrument` + `PricingEngine<I>` +
 // `PricingResult`, see `traits::instrument`) rather than `ModelPricer`. This
 // is a considered second pricing architecture, not a gap: `Instrument`
@@ -186,20 +167,23 @@ mod no_trait_by_design {
   //! Families that deliberately carry no `ModelPricer` implementation, with
   //! the reason. Listing them here is what makes the omission deliberate
   //! rather than an oversight — see the A2 design's D1. Some of these do
-  //! carry `PricerExt` or `PricingEngine` instead (see the lists above);
-  //! this module is specifically about `ModelPricer`'s
-  //! `price_call(s, k, r, q, tau)` shape not fitting.
+  //! carry `PricingEngine` instead (see the list above); this module is
+  //! specifically about `ModelPricer`'s `price_call(s, k, r, q, tau)` shape
+  //! not fitting.
   //!
   //! - Multi-asset (`ArithmeticBasketLevyPricer`, `GeometricBasketPricer`,
-  //!   `McBasketPricer`, `MargrabePricer`, `McSpreadPricer`,
-  //!   `StulzRainbowPricer`, `McRainbowPricer`): `MargrabePricer` is an
-  //!   exchange option with no strike; the basket and spread pricers bundle
-  //!   N legs and weights into the struct; the rainbow pricers price the
-  //!   best/worst of N assets. A shared signature would need an
-  //!   `Option<f64>` strike and a variable-length underlying list.
-  //!   `KirkSpreadPricer` belongs conceptually to this family too (D1 names
-  //!   it explicitly) but is listed under `assert_pricer_ext!` above instead,
-  //!   because it still carries `PricerExt` until Task 6 retires it.
+  //!   `McBasketPricer`, `MargrabePricer`, `KirkSpreadPricer`,
+  //!   `McSpreadPricer`, `StulzRainbowPricer`, `McRainbowPricer`):
+  //!   `MargrabePricer` is an exchange option with no strike;
+  //!   `KirkSpreadPricer` has one but strikes it against a *spread* of two
+  //!   forwards; the basket and spread pricers bundle N legs and weights
+  //!   into the struct; the rainbow pricers price the best/worst of N
+  //!   assets. A shared signature would need an `Option<f64>` strike and a
+  //!   variable-length underlying list. `KirkSpreadPricer` is the only one
+  //!   of the eight that follows D3's model/query split today
+  //!   (`KirkSpreadPricer::call_put(f1, f2, x, r, tau)` against a struct
+  //!   holding `v1`/`v2`/`corr`), because Task 6 had to reshape it when it
+  //!   took `PricerExt` away; the other seven still bundle their query.
   //! - Path-dependent (`BarrierPricer`, `DoubleBarrierPricer`,
   //!   `MCBarrierPricer`, `FixedLookbackPricer`, `FloatingLookbackPricer`,
   //!   `CliquetPricer`, `McCliquetPricer`, `AutocallablePricer`,
