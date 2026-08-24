@@ -5,7 +5,6 @@
 use num_complex::Complex64;
 
 use super::model::HestonStochCorrPricer;
-use crate::traits::TimeExt;
 
 impl HestonStochCorrPricer {
   /// Evaluate the characteristic function φ(u) via RK4 integration
@@ -18,19 +17,16 @@ impl HestonStochCorrPricer {
   /// dA/dτ = iu·r + κ_v·θ_v·D + κ_r·μ_r·C + ½σ_r²·C² + σ_r·ρ₂·m·iu·C
   /// ```
   /// where m = √(θ_v − σ_v²/(8κ_v)).
-  pub fn char_func(&self, u: f64) -> Complex64 {
-    self.char_func_complex(Complex64::new(u, 0.0))
+  pub fn char_func(&self, u: f64, s: f64, r: f64, q: f64, tau: f64) -> Complex64 {
+    self.char_func_complex(Complex64::new(u, 0.0), s, r, q, tau)
   }
 
   /// Characteristic function accepting complex u (needed for Carr-Madan
   /// where we evaluate at u − (α+1)i).
-  pub fn char_func_complex(&self, u: Complex64) -> Complex64 {
-    let tau = self.tau_or_from_dates();
-    let x0 = self.s.ln();
+  pub fn char_func_complex(&self, u: Complex64, s: f64, r: f64, q: f64, tau: f64) -> Complex64 {
+    let x0 = s.ln();
     let iu = Complex64::i() * u;
-    let r = self.r;
     // Dividend yield: enters the log-stock drift as (r - q), not the discount.
-    let q = self.q.unwrap_or(0.0);
     let drift = r - q;
     let kv = self.kappa_v;
     let mv = self.theta_v;

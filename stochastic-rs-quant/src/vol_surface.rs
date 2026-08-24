@@ -15,7 +15,7 @@
 //!   HscmCalibrator ───┤               BatesFourier      │
 //!   BSMCalibrator ────┘               VarianceGammaF..  ├──────► ImpliedVolSurface
 //!                                     SabrPricer        │            │
-//!                                     HscmModel         │        .fit_svi_slices()
+//!                                     HestonStochCorr.. │        .fit_svi_slices()
 //!                                     ...              ─┘        .fit_ssvi()
 //!                                                                    │
 //!                      build_surface_from_model()                    ▼

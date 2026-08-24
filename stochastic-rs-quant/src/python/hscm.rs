@@ -6,10 +6,13 @@ use crate::traits::ModelPricer;
 /// Heston-stochastic-correlation model wrapper. Implements the Carr-Madan
 /// pricer through `ModelPricer`. 9 parameters: `(v0, kappa_v, theta_v,
 /// sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2)`.
+///
+/// The Python class name is unchanged; the Rust type it wraps is now
+/// `HestonStochCorrPricer`, which absorbed the former `HscmModel`.
 #[pyclass(name = "HscmModel", from_py_object, unsendable)]
 #[derive(Clone)]
 pub struct PyHscmModel {
-  pub inner: crate::pricing::heston_stoch_corr::HscmModel,
+  pub inner: crate::pricing::heston_stoch_corr::HestonStochCorrPricer,
 }
 
 #[pymethods]
@@ -36,7 +39,7 @@ impl PyHscmModel {
       return Err(PyValueError::new_err("|rho0|, |rho2|, |mu_r| must be < 1"));
     }
     Ok(Self {
-      inner: crate::pricing::heston_stoch_corr::HscmModel {
+      inner: crate::pricing::heston_stoch_corr::HestonStochCorrPricer {
         v0,
         kappa_v,
         theta_v,

@@ -7,7 +7,8 @@
 //! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJD,
 //! Kou, Hkde) get [`ModelPricer`] via a blanket impl in `fourier.rs`.
 //! Non-Fourier models ([`SabrPricer`](crate::pricing::sabr::SabrPricer),
-//! [`HscmModel`](crate::pricing::heston_stoch_corr::HscmModel)) have explicit impls.
+//! [`HestonStochCorrPricer`](crate::pricing::heston_stoch_corr::HestonStochCorrPricer))
+//! have explicit impls.
 
 use ndarray::Array2;
 
@@ -138,7 +139,7 @@ mod tests {
   use crate::pricing::fourier::DoubleHestonFourier;
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::fourier::VarianceGammaFourier;
-  use crate::pricing::heston_stoch_corr::HscmModel;
+  use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   use crate::pricing::sabr::SabrPricer;
 
   #[test]
@@ -313,7 +314,7 @@ mod tests {
 
   #[test]
   fn hscm_via_model_surface() {
-    let model = HscmModel {
+    let model = HestonStochCorrPricer {
       v0: 0.04,
       kappa_v: 2.0,
       theta_v: 0.04,

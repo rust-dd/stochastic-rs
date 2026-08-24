@@ -91,7 +91,7 @@ pub use fourier::LewisPricer;
 pub use fourier::MertonJDFourier;
 pub use fourier::VarianceGammaFourier;
 pub use heston::HestonPricer;
-pub use heston_stoch_corr::HscmModel;
+pub use heston_stoch_corr::HestonStochCorrPricer;
 pub use kirk::KirkSpreadPricer;
 #[cfg(feature = "openblas")]
 pub use rainbow::McRainbowPricer;

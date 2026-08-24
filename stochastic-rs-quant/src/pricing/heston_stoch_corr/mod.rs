@@ -43,5 +43,3 @@ pub mod pricer;
 mod tests;
 
 pub use model::HestonStochCorrPricer;
-pub use model::HestonStochCorrPricerBuilder;
-pub use pricer::HscmModel;

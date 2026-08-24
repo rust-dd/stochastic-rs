@@ -15,8 +15,8 @@
 //! revision's stated command produce 81 rather than the 71 it claimed.
 //!
 //! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
-//! [`PricingEngine`]: **15** carry `ModelPricer` (the trait this registry
-//! exists to guard), **2** the older `PricerExt`, **2** `PricingEngine`.
+//! [`PricingEngine`]: **16** carry `ModelPricer` (the trait this registry
+//! exists to guard), **1** the older `PricerExt`, **2** `PricingEngine`.
 //! Every one of those three numbers is the length of the matching macro
 //! invocation below and nothing else — re-derive rather than
 //! arithmetic-adjust them, with (substituting the macro name):
@@ -54,12 +54,12 @@ use stochastic_rs_quant::pricing::CashOrNothingPricer;
 use stochastic_rs_quant::pricing::GapPricer;
 use stochastic_rs_quant::pricing::HestonPricer;
 use stochastic_rs_quant::pricing::HestonSlvPricer;
+use stochastic_rs_quant::pricing::HestonStochCorrPricer;
 use stochastic_rs_quant::pricing::KirkSpreadPricer;
 use stochastic_rs_quant::pricing::RBergomiPricer;
 use stochastic_rs_quant::pricing::SuperSharePricer;
 use stochastic_rs_quant::pricing::asian::AsianPricer;
 use stochastic_rs_quant::pricing::finite_difference::FiniteDifferencePricer;
-use stochastic_rs_quant::pricing::heston_stoch_corr::HestonStochCorrPricer;
 use stochastic_rs_quant::pricing::malliavin_gbm::GbmMalliavinPricer;
 use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
 use stochastic_rs_quant::pricing::sabr::SabrPricer;
@@ -127,6 +127,7 @@ assert_model_pricer!(
   FiniteDifferencePricer,
   GapPricer,
   GbmMalliavinPricer,
+  HestonStochCorrPricer,
   HestonPricer,
   HestonSlvPricer,
   Merton1976Pricer,
@@ -148,7 +149,7 @@ assert_model_pricer!(
 // excluded by the design". It is not migrating to `ModelPricer`; once
 // `PricerExt` is retired (Task 6) it becomes trait-less like its multi-asset
 // siblings. Filed here by what it implements now, not by its final family.
-assert_pricer_ext!(HestonStochCorrPricer, KirkSpreadPricer,);
+assert_pricer_ext!(KirkSpreadPricer,);
 
 // QuantLib-style decoupled engines (`Instrument` + `PricingEngine<I>` +
 // `PricingResult`, see `traits::instrument`) rather than `ModelPricer`. This

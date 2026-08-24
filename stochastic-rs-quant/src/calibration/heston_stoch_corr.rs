@@ -71,7 +71,7 @@ pub struct HscmCalibrationResult {
   pub final_objective: f64,
 }
 
-impl From<HscmCalibrationResult> for crate::pricing::heston_stoch_corr::HscmModel {
+impl From<HscmCalibrationResult> for crate::pricing::heston_stoch_corr::HestonStochCorrPricer {
   fn from(r: HscmCalibrationResult) -> Self {
     Self {
       v0: r.v0,
@@ -88,7 +88,7 @@ impl From<HscmCalibrationResult> for crate::pricing::heston_stoch_corr::HscmMode
 }
 
 impl crate::traits::ToModel for HscmCalibrationResult {
-  type Model = crate::pricing::heston_stoch_corr::HscmModel;
+  type Model = crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
     HscmCalibrationResult::to_model(self)
   }
@@ -118,10 +118,10 @@ impl crate::traits::CalibrationResult for HscmCalibrationResult {
 }
 
 impl HscmCalibrationResult {
-  /// Convert to an [`HscmModel`](crate::pricing::heston_stoch_corr::HscmModel) for
+  /// Convert to an [`HestonStochCorrPricer`](crate::pricing::heston_stoch_corr::HestonStochCorrPricer) for
   /// pricing / vol surface generation.
-  pub fn to_model(&self) -> crate::pricing::heston_stoch_corr::HscmModel {
-    crate::pricing::heston_stoch_corr::HscmModel::from(self.clone())
+  pub fn to_model(&self) -> crate::pricing::heston_stoch_corr::HestonStochCorrPricer {
+    crate::pricing::heston_stoch_corr::HestonStochCorrPricer::from(self.clone())
   }
 
   pub fn to_vec(&self) -> Vec<f64> {
@@ -140,10 +140,8 @@ impl HscmCalibrationResult {
 }
 
 fn price_call(p: &[f64], s0: f64, k: f64, tau: f64, r: f64) -> f64 {
-  let pricer = HestonStochCorrPricer::new(
-    s0, r, k, p[3], p[0], p[1], p[2], p[7], p[4], p[5], p[6], p[8], tau,
-  );
-  pricer.price_call_carr_madan()
+  let model = HestonStochCorrPricer::new(p[3], p[0], p[1], p[2], p[7], p[4], p[5], p[6], p[8]);
+  model.price_call_carr_madan(s0, k, r, 0.0, tau)
 }
 
 /// Data passed to the SLSQP objective via user_data.
