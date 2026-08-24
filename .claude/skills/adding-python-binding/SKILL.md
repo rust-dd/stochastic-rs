@@ -57,8 +57,13 @@ impl PyFoo {
         Ok(Self { inner: crate::pricing::foo::Foo { a, b, c } })
     }
 
-    fn price(&self) -> f64 {
-        self.inner.calculate_price()
+    // The Rust pricer holds model parameters only; the query is passed
+    // to the call. Keep the Python kwarg names stable even when the Rust
+    // field names differ — bind explicitly (`tau: t`) rather than relying
+    // on field-init shorthand.
+    #[pyo3(signature = (s, k, r, q, tau))]
+    fn price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        self.inner.price_call(s, k, r, q, tau)
     }
 }
 ```

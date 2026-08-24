@@ -97,19 +97,23 @@ pub struct PyBSMPricer {
 #[pymethods]
 impl PyBSMPricer {
   #[new]
-  #[pyo3(signature = (s, k, r, q, sigma, t))]
-  fn new(s: f64, k: f64, r: f64, q: f64, sigma: f64, t: f64) -> PyResult<Self> {
+  // Since 3.0 the Rust pricer holds MODEL parameters only — `BSMPricer`
+  // is `{ v, b }`. Spot, strike, rates and maturity are query arguments.
+  #[pyo3(signature = (sigma,))]
+  fn new(sigma: f64) -> PyResult<Self> {
     if sigma <= 0.0 {
       return Err(PyValueError::new_err("sigma must be > 0"));
     }
     Ok(Self {
-      inner: crate::pricing::bsm::BSMPricer { s, k, r, q, sigma, t,
-        eval: None, expiration: None },
+      inner: crate::pricing::bsm::BSMPricer::new(sigma, BSMCoc::Merton1973),
     })
   }
 
-  fn price(&self) -> f64 {
-    self.inner.calculate_price()
+  // Keep the Python kwarg names stable across a Rust rename: bind
+  // explicitly (`tau: t`) rather than relying on field-init shorthand.
+  #[pyo3(signature = (s, k, r, q, tau))]
+  fn price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.inner.price_call(s, k, r, q, tau)
   }
 }
 ```

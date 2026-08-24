@@ -78,8 +78,9 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Option / derivative pricer | `TimeExt` + `PricerExt` | Date-aware pricing, `calculate_call_put()`, implied vol |
-| Pricing model for (K, T) grids | `ModelPricer` | Enables vol-surface construction via `ModelSurface` blanket impl |
+| Single-underlying option pricer | `ModelPricer` | `price_call(s, k, r, q, tau)` / `price_put`; also enables vol-surface construction via the `ModelSurface` blanket impl |
+| Short-rate / bond model | `ShortRatePricer` | `zero_coupon_price(r0, tau)` / `zero_yield` |
+| Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `call_put(...)` / `price_call(...)`. A shared trait would abstract over nothing |
 | Fourier / characteristic-function model | `FourierModelExt` | Auto-gets `ModelPricer` → `ModelSurface` via blanket impls |
 | Calibration result | `ToModel` | Connects to `build_surface_from_calibration()` pipeline |
 | Holiday / business-day calendar | `CalendarExt` | Plugs into `BusinessDayConvention::adjust()` and `ScheduleBuilder` |

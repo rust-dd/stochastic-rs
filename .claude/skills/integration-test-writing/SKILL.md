@@ -105,12 +105,26 @@ When a test asserts agreement with a paper's published table:
 /// (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
 #[test]
 fn heston_table1_row4() {
-    let pricer = HestonPricer::new(100.0, 0.0, 100.0, 0.04, 2.0, 0.04, 0.5, -0.5, 0.5);
-    let call = pricer.calculate_price();
+    // Model parameters on the struct: v0, rho, kappa, theta, sigma, lambda.
+    let model = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.5, Some(0.0));
+    // Market query at the call: s, k, r, q, tau.
+    let call = model.price_call(100.0, 100.0, 0.0, 0.0, 0.5);
     assert!(
         (call - 6.8061).abs() < 5e-3,
         "call = {call}, expected 6.8061 ± 5e-3"
     );
+}
+```
+
+The model/query split is what makes a paper's *whole* table one test
+rather than one test per row — build the model once and sweep the query,
+taking every `want` from the published table and none from your own run:
+
+```rust
+// (strike, published call price) — transcribe these from the paper.
+for &(k, want) in &TABLE_1_ROWS {
+    let call = model.price_call(100.0, k, 0.0, 0.0, 0.5);
+    assert!((call - want).abs() < 5e-3, "K={k}: {call} vs {want}");
 }
 ```
 

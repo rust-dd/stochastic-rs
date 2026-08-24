@@ -5,14 +5,18 @@ description: How to expose first- and second-order Greeks via the GreeksExt trai
 
 # Greeks pattern — stochastic-rs
 
-The `GreeksExt` trait in `stochastic-rs-quant::traits` lets pricers
-report first- and second-order Greeks via a uniform interface. The
-trait has default implementations that compute each Greek by
-finite-differencing the pricer's `calculate_price()`, **plus** a single
-`greeks()` aggregator that returns the full bundle.
+First- and second-order Greeks reach callers one of two ways, and which
+one applies depends on whether the type carries its own market data. The
+`GreeksExt` trait in `stochastic-rs-quant::traits` serves the four types
+that do; every `ModelPricer` instead exposes query-taking inherent
+accessors plus a `greeks(...)` aggregate. Section 1 shows both.
+
+Note that `GreeksExt`'s accessors default to `f64::NAN`, **not** to a
+finite difference — a pricer that does not override `vega` reports NaN so
+a consumer can distinguish "not exposed" from a real zero.
 
 The single-pass `greeks()` aggregator is the load-bearing part for MC
-pricers: defaults call each Greek separately, which means N independent
+pricers: calling each Greek separately means N independent
 re-pricings (with different random seeds, in general). Overriding
 `greeks()` to share a single set of MC paths across all Greeks is
 **mandatory** for MC pricers; otherwise users get visibly inconsistent
@@ -36,35 +40,46 @@ pub struct Greeks {
     pub veta: f64,
 }
 
-pub trait GreeksExt: PricerExt {
-    fn delta(&self) -> f64 { /* default: central diff in spot */ }
-    fn gamma(&self) -> f64 { /* default: central second-diff in spot */ }
-    fn vega(&self)  -> f64 { /* default: central diff in vol */ }
-    fn theta(&self) -> f64 { /* default: forward diff in tau, sign-flipped */ }
-    fn rho(&self)   -> f64 { /* default: central diff in r */ }
-    fn vanna(&self) -> f64 { /* default: cross-diff (S, σ) */ }
-    fn charm(&self) -> f64 { /* default: cross-diff (S, T) */ }
-    fn volga(&self) -> f64 { /* default: second-diff in σ */ }
-    fn veta(&self)  -> f64 { /* default: cross-diff (σ, T) */ }
+// `GreeksExt` has no supertrait, and only `delta` is required — every
+// other accessor defaults to `f64::NAN`, NOT to a finite difference. A
+// pricer that does not override `vega` reports NaN, so a consumer can
+// tell "not exposed" from a real zero.
+pub trait GreeksExt {
+    fn delta(&self) -> f64;
+    fn gamma(&self) -> f64 { f64::NAN }
+    fn vega(&self)  -> f64 { f64::NAN }
+    fn theta(&self) -> f64 { f64::NAN }
+    fn rho(&self)   -> f64 { f64::NAN }
+    fn vanna(&self) -> f64 { f64::NAN }
+    fn charm(&self) -> f64 { f64::NAN }
+    fn volga(&self) -> f64 { f64::NAN }
+    fn veta(&self)  -> f64 { f64::NAN }
+}
+```
 
-    /// Single-pass aggregator. Default implementation calls each
-    /// per-Greek method individually, which is fine for analytic
-    /// pricers (delta() + gamma() + vega() are independent
-    /// finite-difference calls) but is INCORRECT for Monte Carlo
-    /// pricers — they must override this to share a single set of paths.
-    fn greeks(&self) -> Greeks {
-        Greeks {
-            delta: self.delta(),
-            gamma: self.gamma(),
-            vega:  self.vega(),
-            theta: self.theta(),
-            rho:   self.rho(),
-            vanna: self.vanna(),
-            charm: self.charm(),
-            volga: self.volga(),
-            veta:  self.veta(),
-        }
-    }
+**Which shape to use is decided by whether the type carries its own
+market data**, and since 3.0 most pricers do not:
+
+- A type that **bundles** its market data — the two digital pricers, and
+  the dedicated `GbmMalliavinGreeks` / `HestonMalliavinGreeks` — can
+  answer `delta(&self)` with no arguments, so it implements `GreeksExt`.
+  These four are the only implementors.
+- A **`ModelPricer`** holds model parameters only, so `delta(&self)` has
+  no spot to differentiate against. It exposes **inherent, query-taking**
+  accessors plus an aggregate instead, and does *not* implement
+  `GreeksExt`:
+
+```rust
+impl BSMPricer {
+    pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 { ... }
+    pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 { ... }
+
+    /// Aggregate. Provide this whenever you provide the accessors —
+    /// without it every caller hand-writes the nine-field `Greeks { .. }`
+    /// literal, and a mis-mapped field (volga vs veta) has nowhere to be
+    /// caught. Monte Carlo pricers should override it to share one set
+    /// of paths rather than calling each accessor separately.
+    pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks { ... }
 }
 ```
 
