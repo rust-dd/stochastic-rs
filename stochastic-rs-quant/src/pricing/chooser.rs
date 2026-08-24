@@ -168,15 +168,15 @@ pub struct ForwardStartPricer {
 
 impl ForwardStartPricer {
   pub fn price(&self) -> f64 {
-    let tau = self.tau - self.t1;
+    let remaining_tau = self.tau - self.t1;
     let v = self.sigma;
     let v2 = v * v;
     let b = self.r - self.q;
-    let d1 = ((-self.alpha.ln()) + (b + 0.5 * v2) * tau) / (v * tau.sqrt());
-    let d2 = d1 - v * tau.sqrt();
+    let d1 = ((-self.alpha.ln()) + (b + 0.5 * v2) * remaining_tau) / (v * remaining_tau.sqrt());
+    let d2 = d1 - v * remaining_tau.sqrt();
     let coc1 = ((b - self.r) * self.t1).exp();
-    let coc_tau = ((b - self.r) * tau).exp();
-    let disc = (-self.r * tau).exp();
+    let coc_tau = ((b - self.r) * remaining_tau).exp();
+    let disc = (-self.r * remaining_tau).exp();
     match self.option_type {
       OptionType::Call => {
         self.s * coc1 * (coc_tau * norm_cdf(d1) - self.alpha * disc * norm_cdf(d2))

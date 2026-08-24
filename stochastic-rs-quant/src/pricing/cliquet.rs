@@ -56,8 +56,8 @@ impl CliquetPricer {
   /// Payoff convention: the sum of capped/floored returns is paid at
   /// maturity $T$, discounted by a single factor $e^{-rT}$.
   pub fn price(&self) -> f64 {
-    let tau = self.tau / self.m as f64;
-    let per_period = self.expected_period_payoff(tau);
+    let period_tau = self.tau / self.m as f64;
+    let per_period = self.expected_period_payoff(period_tau);
     self.notional * self.m as f64 * per_period * (-self.r * self.tau).exp()
   }
 
@@ -125,9 +125,9 @@ pub struct McCliquetPricer {
 
 impl McCliquetPricer {
   pub fn price(&self) -> f64 {
-    let tau = self.tau / self.m as f64;
-    let drift = (self.r - self.q - 0.5 * self.sigma * self.sigma) * tau;
-    let vol = self.sigma * tau.sqrt();
+    let period_tau = self.tau / self.m as f64;
+    let drift = (self.r - self.q - 0.5 * self.sigma * self.sigma) * period_tau;
+    let vol = self.sigma * period_tau.sqrt();
     let m = self.m;
     let f_l = self.local_floor.unwrap_or(f64::NEG_INFINITY);
     let c_l = self.local_cap.unwrap_or(f64::INFINITY);
