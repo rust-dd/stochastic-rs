@@ -35,9 +35,11 @@
 //! explicitly excluded and instead joins the multi-asset no-trait family
 //! once `PricerExt` is retired (Task 6). Task 3 gave `ModelPricer` to the 4
 //! digital-option structs, which were `ORPHAN` before it ran; Task 5a added
-//! `BSMPricer`; Task 5b is migrating the remaining nine one at a time, so
-//! the two counts above move in lockstep until `assert_pricer_ext!` holds
-//! `KirkSpreadPricer` alone. Each trait gets its own compile-checked list
+//! `BSMPricer`; Task 5b migrated the remaining nine, taking `PricerExt`
+//! from 10 implementors to `KirkSpreadPricer` alone — which is why
+//! `assert_pricer_ext!` below is a single-line invocation and its count is
+//! read off that line rather than with the per-line `awk` above. Each trait
+//! gets its own compile-checked list
 //! below so a claim about *which* trait a struct carries can drift no more
 //! than the claim that it carries one at all.
 
@@ -105,19 +107,27 @@ macro_rules! assert_short_rate_pricer {
 
 // Structs on the decoupled `price_call(s, k, r, q, tau)` surface used by
 // calibration and vol-surface construction: the 4 digital options (Task 3),
-// the 2 original members, `BSMPricer` (Task 5a), and Task 5b's arrivals.
-// Reaches 16 when 5b has migrated all nine of the `assert_pricer_ext!`
-// members below except `KirkSpreadPricer`.
+// the 2 original members, `BSMPricer` (Task 5a), and Task 5b's 9 arrivals.
+// 5b is complete, so this list has reached the 16 the A2 design predicted.
 //
-// Several members override `price_put` rather than taking the trait's
-// vanilla put-call-parity default. `BSMPricer` and `AsianPricer` because
-// their cost-of-carry factor is `exp((b - r) * tau)`, which equals the
-// default's `exp(-q * tau)` only when `b = r - q` — false for
-// `BSMCoc::Bsm1973` at `q != 0` and for `Black1976` / `Asay1982`, and only
-// on a measure-zero line for the Asian pricer's averaged-underlying carry.
-// `BjerksundStensland2002Pricer` and `SnellEnvelopePricer` because European
-// put-call parity does not hold for an American option at all: its put
-// carries an early-exercise premium the call does not.
+// Every 5b arrival overrides `price_put` rather than taking the trait's
+// vanilla put-call-parity default, for one of three reasons:
+//
+//  - cost of carry: `BSMPricer`, `AsianPricer`, `Merton1976Pricer` carry at
+//    `exp((b - r) * tau)`, which equals the default's `exp(-q * tau)` only
+//    when `b = r - q` — false for `BSMCoc::Bsm1973` at `q != 0` and for
+//    `Black1976` / `Asay1982`, and true only on a measure-zero line for the
+//    Asian pricer's averaged-underlying carry;
+//  - American exercise: `BjerksundStensland2002Pricer`,
+//    `SnellEnvelopePricer` and `FiniteDifferencePricer` price a put that
+//    carries an early-exercise premium the call does not, so European
+//    parity is not an approximation but the wrong model;
+//  - exactness: `SabrPricer`, `HestonPricer`, `HestonStochCorrPricer` and
+//    `GbmMalliavinPricer` all have carry `b = r - q`, where the default is
+//    mathematically right — but it recomposes the put from the call and so
+//    can land an ulp away from the closed form, drop a `max(0)` floor
+//    (`HestonStochCorrPricer`, `GbmMalliavinPricer`), or run a second
+//    independent Monte Carlo (`GbmMalliavinPricer`).
 assert_model_pricer!(
   AsianPricer,
   AssetOrNothingPricer,
@@ -127,9 +137,9 @@ assert_model_pricer!(
   FiniteDifferencePricer,
   GapPricer,
   GbmMalliavinPricer,
-  HestonStochCorrPricer,
   HestonPricer,
   HestonSlvPricer,
+  HestonStochCorrPricer,
   Merton1976Pricer,
   RBergomiPricer,
   SabrPricer,
