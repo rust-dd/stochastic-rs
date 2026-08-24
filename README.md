@@ -107,14 +107,14 @@ fn main() {
     let path = ou.sample();
     println!("OU path points: {}", path.len());
 
-    // Heston (1993) European option, closed form. HestonPricer::new args:
-    // s, v0, k, r, q, rho, kappa, theta, sigma, lambda, tau, eval, expiration
-    let pricer = HestonPricer::new(
-        100.0, 0.04, 100.0, 0.03, Some(0.0),
-        -0.5, 2.0, 0.04, 0.3, Some(0.0),
-        Some(1.0), None, None,
-    );
-    let (call, put) = pricer.calculate_call_put();
+    // Heston (1993) European option, closed form. The model holds only its own
+    // parameters; the pricing query is passed to the call, so one model can
+    // price a whole strike/maturity grid.
+    // HestonPricer::new args: v0, rho, kappa, theta, sigma, lambda
+    let pricer = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.3, Some(0.0));
+    // price_call/price_put args: s, k, r, q, tau
+    let call = pricer.price_call(100.0, 100.0, 0.03, 0.0, 1.0);
+    let put = pricer.price_put(100.0, 100.0, 0.03, 0.0, 1.0);
     println!("call={call:.4}, put={put:.4}");
 }
 ```
