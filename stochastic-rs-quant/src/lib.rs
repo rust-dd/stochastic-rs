@@ -70,7 +70,8 @@
 //!
 //! ### Cross-cutting
 //! - [`traits`] — public trait surface ([`traits::ModelPricer`],
-//!   [`traits::PricerExt`], [`traits::Calibrator`], [`traits::GreeksExt`],
+//!   [`traits::ShortRatePricer`], [`traits::Calibrator`],
+//!   [`traits::GreeksExt`],
 //!   [`traits::Instrument`], [`traits::PricingEngine`], ...). The
 //!   characteristic-function bound `FourierModelExt` lives in
 //!   [`pricing::fourier`]; `TimeExt` lives in [`traits::time`];

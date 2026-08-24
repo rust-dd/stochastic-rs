@@ -14,7 +14,7 @@ stochastic-rs/                        (workspace root + umbrella)
 ├── stochastic-rs-stochastic/         — ProcessExt + 127 processes (incl. interest::lmm::Lmm drift-coupled LMM)
 ├── stochastic-rs-copulas/            — BivariateExt + copulas (13 bivariate + 8 multivariate)
 ├── stochastic-rs-stats/              — estimators
-├── stochastic-rs-quant/              — pricing/calibration/vol_surface + PricerExt/ModelPricer/ToModel
+├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
 ├── stochastic-rs-ai/                 — neural surrogates (feature-gated upstream)
 └── stochastic-rs-py/                 — pyo3 cdylib (234 entries: 218 PyO3 classes + 16 pyfunctions, 13 of the classes openblas-gated, across distributions/stochastic/quant/copulas/stats; AI bindings deferred to 2.x). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
 ```
@@ -59,8 +59,7 @@ older summary.
 - `MalliavinExt<T>` / `Malliavin2DExt<T>` — finite-difference Malliavin Greeks (0 in-tree implementors today — deferred)
 - `BivariateExt` / `MultivariateExt` — copula traits in `stochastic-rs-copulas::traits`; **13** bivariate + **8** multivariate implementors (note: `NCopula2DExt` was removed in v2.0 — bivariate samplers consolidated under `BivariateExt`)
 - `TimeExt` — day-count-aware maturity: `tau()`, `tau_or_from_dates()`, `tau_with_dcc(dcc)` (explicit day-count override), both NaN-on-missing-data by convention
-- `PricerExt: TimeExt` — the legacy bundled-market-data pricer surface: `calculate_call_put()`, `calculate_price()`, `implied_volatility()` (defaults to NaN)
-- `ModelPricer` — `price_call(s, k, r, q, tau)` / `price_put` (put-call parity default) / `price_option`; separates the model from the pricing query, unlike `PricerExt` which bundles market data into the pricer — this is what makes vectorized pricing across a strike/maturity grid possible
+- `ModelPricer` — `price_call(s, k, r, q, tau)` / `price_put` (put-call parity default) / `price_option`; the struct holds model parameters and the query travels as arguments, which is what makes vectorized pricing across a strike/maturity grid possible. It replaced the bundled-market-data `PricerExt` (`calculate_call_put()` / `calculate_price()` / `implied_volatility()`), retired once its last implementor moved off it
 - `ToModel` / `ToShortRateModel` — bridge a `Calibrator`'s output to a concrete pricer via associated type: `ToModel::Model: ModelPricer` for spot/strike models, `ToShortRateModel::Model` (no `ModelPricer` bound) for short-rate models (Hull-White, Black-Karasinski, G2++) that price off a yield curve and drift offset instead
 - `FourierModelExt` — `chf(t, xi)` (characteristic function) + `cumulants(t)`; blanket-implements `ModelPricer` via Gil-Pelaez quadrature, and every `ModelPricer` (Fourier-based or not) blanket-implements `ModelSurface` (`vol_surface(s, r, q, strikes, maturities)`)
 - `Calibrator` / `CalibrationResult` — `Calibrator::calibrate(initial) -> Result<Output, Error>`, `type Params: Clone`; `type Error` is a free associated type, not fixed by the trait, but all **12** in-tree calibrators set it to `anyhow::Error` by convention. `CalibrationResult` requires `rmse()`/`converged()`/`params()` and defaults `loss_score()`/`iterations()`/`message()` to `None` and `max_error()` to NaN
@@ -75,10 +74,10 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **29** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
+Brings **28** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
 - **Trait core**: `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
-- **Pricing**: `PricerExt`, `ModelPricer`, `GreeksExt`
+- **Pricing**: `ModelPricer`, `GreeksExt`
 - **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
 - **Instrument / engine**: `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult`
 - **Option types**: `Moneyness`, `OptionStyle`, `OptionType`

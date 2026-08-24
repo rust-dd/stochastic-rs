@@ -1,16 +1,6 @@
-//! Pricing traits — `PricerExt`, `ModelPricer`, `GreeksExt`.
+//! Pricing traits — `ModelPricer`, `GreeksExt`.
 
 use crate::OptionType;
-
-pub trait PricerExt: super::time::TimeExt {
-  fn calculate_call_put(&self) -> (f64, f64);
-
-  fn calculate_price(&self) -> f64;
-
-  fn implied_volatility(&self, _c_price: f64, _option_type: OptionType) -> f64 {
-    f64::NAN
-  }
-}
 
 /// Aggregate Greek values produced by [`GreeksExt::greeks`].
 ///
@@ -74,10 +64,11 @@ impl Greeks {
 /// Trait for models that can price a single-underlying call or put at
 /// arbitrary (K, T) points.
 ///
-/// Unlike [`PricerExt`], which bundles market data and strike into the pricer,
-/// `ModelPricer` separates the model from the pricing query. This enables
-/// vectorized pricing across strike/maturity grids for calibration and vol
-/// surface construction.
+/// The struct holds model parameters; the query travels as arguments. That
+/// separation is what enables vectorized pricing across strike/maturity
+/// grids for calibration and vol surface construction — the retired
+/// `PricerExt` bundled market data and strike into the pricer instead, so
+/// a second query point meant a second pricer.
 ///
 /// Exercise style is the **implementor's** choice, not the trait's: most
 /// members price European exercise, but the American approximations

@@ -19,7 +19,6 @@ pub use stochastic_rs_quant::traits::GreeksExt;
 pub use stochastic_rs_quant::traits::Instrument;
 pub use stochastic_rs_quant::traits::InstrumentExt;
 pub use stochastic_rs_quant::traits::ModelPricer;
-pub use stochastic_rs_quant::traits::PricerExt;
 pub use stochastic_rs_quant::traits::PricingEngine;
 pub use stochastic_rs_quant::traits::PricingResult;
 pub use stochastic_rs_quant::traits::StandardResult;
