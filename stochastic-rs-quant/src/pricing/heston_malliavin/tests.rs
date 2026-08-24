@@ -18,7 +18,7 @@ fn bsm_limit_model(rho: f64) -> HestonModel {
     rho,
     risk_free_rate: 0.03,
     dividend_yield: 0.01,
-    maturity: 0.75,
+    tau: 0.75,
   }
 }
 
@@ -43,7 +43,7 @@ fn bsm(model: HestonModel, strike: f64, option_type: OptionType) -> BSMPricer {
     model.risk_free_rate,
   )
   .q(model.dividend_yield)
-  .tau(model.maturity)
+  .tau(model.tau)
   .option_type(option_type)
   .coc(BSMCoc::Merton1973)
   .build()
@@ -138,7 +138,7 @@ fn vertical_estimate_is_pathwise_linear_in_its_call_legs() {
     rho: -0.65,
     risk_free_rate: 0.025,
     dividend_yield: 0.012,
-    maturity: 0.5,
+    tau: 0.5,
   };
   let simulation = config(80_000, 48, 991);
   let estimator = HestonMalliavinEstimator::new(model, simulation).unwrap();

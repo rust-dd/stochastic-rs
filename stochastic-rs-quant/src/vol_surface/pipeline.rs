@@ -300,16 +300,16 @@ mod tests {
 
     let slices: Vec<MarketSlice> = taus
       .iter()
-      .map(|&t| {
+      .map(|&tau| {
         let prices: Vec<f64> = strikes
           .iter()
-          .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, t))
+          .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
           .collect();
         MarketSlice {
           strikes: strikes.clone(),
           prices,
           is_call: vec![true; strikes.len()],
-          t,
+          tau,
         }
       })
       .collect();
@@ -375,16 +375,16 @@ mod tests {
 
     let slices: Vec<MarketSlice> = taus
       .iter()
-      .map(|&t| {
+      .map(|&tau| {
         let prices: Vec<f64> = strikes
           .iter()
-          .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, t))
+          .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
           .collect();
         MarketSlice {
           strikes: strikes.clone(),
           prices,
           is_call: vec![true; strikes.len()],
-          t,
+          tau,
         }
       })
       .collect();
@@ -434,16 +434,16 @@ mod tests {
 
     let slices: Vec<MarketSlice> = [0.5, 1.0]
       .iter()
-      .map(|&t| {
+      .map(|&tau| {
         let prices: Vec<f64> = strikes
           .iter()
-          .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, t))
+          .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
           .collect();
         MarketSlice {
           strikes: strikes.clone(),
           prices,
           is_call: vec![true; strikes.len()],
-          t,
+          tau,
         }
       })
       .collect();

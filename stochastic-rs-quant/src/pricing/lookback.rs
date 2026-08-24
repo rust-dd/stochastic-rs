@@ -36,7 +36,7 @@ pub struct FloatingLookbackPricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -48,7 +48,7 @@ impl FloatingLookbackPricer {
     let q = self.q;
     let b = r - q;
     let sigma = self.sigma;
-    let t = self.t;
+    let t = self.tau;
     let sqrt_t = t.sqrt();
     let sigma2 = sigma * sigma;
 
@@ -115,7 +115,7 @@ pub struct FixedLookbackPricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -136,10 +136,10 @@ impl FixedLookbackPricer {
           r: self.r,
           q: self.q,
           sigma: self.sigma,
-          t: self.t,
+          tau: self.tau,
           option_type: OptionType::Put,
         };
-        fp.price() + self.s * (-self.q * self.t).exp() - self.k * (-self.r * self.t).exp()
+        fp.price() + self.s * (-self.q * self.tau).exp() - self.k * (-self.r * self.tau).exp()
       }
       OptionType::Put => {
         let s_min = self.s_min.unwrap_or(self.s);
@@ -151,10 +151,10 @@ impl FixedLookbackPricer {
           r: self.r,
           q: self.q,
           sigma: self.sigma,
-          t: self.t,
+          tau: self.tau,
           option_type: OptionType::Call,
         };
-        fc.price() + self.k * (-self.r * self.t).exp() - self.s * (-self.q * self.t).exp()
+        fc.price() + self.k * (-self.r * self.tau).exp() - self.s * (-self.q * self.tau).exp()
       }
     }
   }
@@ -174,7 +174,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let price = p.price();
@@ -193,7 +193,7 @@ mod tests {
       r: 0.10,
       q: 0.0,
       sigma: 0.10,
-      t: 0.5,
+      tau: 0.5,
       option_type: OptionType::Call,
     };
     let price = p.price();
@@ -212,7 +212,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Put,
     };
     let price = p.price();
@@ -231,7 +231,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let high_vol = FloatingLookbackPricer { sigma: 0.4, ..base };
@@ -249,7 +249,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let price = p.price();
@@ -270,7 +270,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Put,
     };
     let price = p.price();

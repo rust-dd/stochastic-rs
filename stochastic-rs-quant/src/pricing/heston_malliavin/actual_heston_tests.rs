@@ -30,7 +30,7 @@ fn analytic_call(model: HestonModel, strike: f64, spot: f64, initial_variance: f
     model.vol_of_vol,
   )
   .q(model.dividend_yield)
-  .tau(model.maturity)
+  .tau(model.tau)
   .build()
   .calculate_call_put()
   .0
@@ -55,7 +55,7 @@ fn stochastic_volatility_greeks_match_analytic_heston_finite_differences() {
     rho: -0.7,
     risk_free_rate: 0.03,
     dividend_yield: 0.01,
-    maturity: 0.5,
+    tau: 0.5,
   };
   let strike = 100.0;
   let estimator = HestonMalliavinEstimator::new(model, config()).unwrap();

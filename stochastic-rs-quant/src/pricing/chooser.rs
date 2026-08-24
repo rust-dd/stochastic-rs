@@ -33,10 +33,10 @@ pub struct SimpleChooserPricer {
   pub q: f64,
   /// Volatility.
   pub sigma: f64,
-  /// Choice time (must be strictly less than `t`).
+  /// Choice time (must be strictly less than `tau`).
   pub t1: f64,
-  /// Common maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
 }
 
 impl SimpleChooserPricer {
@@ -44,15 +44,15 @@ impl SimpleChooserPricer {
     let v = self.sigma;
     let v2 = v * v;
     let b = self.r - self.q;
-    let sqrt_t = self.t.sqrt();
+    let sqrt_t = self.tau.sqrt();
     let sqrt_t1 = self.t1.sqrt();
-    let d = ((self.s / self.k).ln() + (b + 0.5 * v2) * self.t) / (v * sqrt_t);
-    let y = ((self.s / self.k).ln() + b * self.t + 0.5 * v2 * self.t1) / (v * sqrt_t1);
+    let d = ((self.s / self.k).ln() + (b + 0.5 * v2) * self.tau) / (v * sqrt_t);
+    let y = ((self.s / self.k).ln() + b * self.tau + 0.5 * v2 * self.t1) / (v * sqrt_t1);
 
-    self.s * (-self.q * self.t).exp() * norm_cdf(d)
-      - self.k * (-self.r * self.t).exp() * norm_cdf(d - v * sqrt_t)
-      - self.s * (-self.q * self.t).exp() * norm_cdf(-y)
-      + self.k * (-self.r * self.t).exp() * norm_cdf(-y + v * sqrt_t1)
+    self.s * (-self.q * self.tau).exp() * norm_cdf(d)
+      - self.k * (-self.r * self.tau).exp() * norm_cdf(d - v * sqrt_t)
+      - self.s * (-self.q * self.tau).exp() * norm_cdf(-y)
+      + self.k * (-self.r * self.tau).exp() * norm_cdf(-y + v * sqrt_t1)
   }
 }
 
@@ -160,15 +160,15 @@ pub struct ForwardStartPricer {
   pub sigma: f64,
   /// Strike-fixing time.
   pub t1: f64,
-  /// Maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
 
 impl ForwardStartPricer {
   pub fn price(&self) -> f64 {
-    let tau = self.t - self.t1;
+    let tau = self.tau - self.t1;
     let v = self.sigma;
     let v2 = v * v;
     let b = self.r - self.q;
@@ -203,7 +203,7 @@ mod tests {
       q: 0.0,
       sigma: 0.25,
       t1: 0.25,
-      t: 0.5,
+      tau: 0.5,
     };
     let price = p.price();
     assert!((price - 6.1071).abs() < 0.01, "chooser={price}");
@@ -224,7 +224,7 @@ mod tests {
     let k = 100.0;
     let r = 0.05;
     let sigma = 0.25;
-    let t = 1.0;
+    let tau = 1.0;
 
     let chooser = SimpleChooserPricer {
       s,
@@ -233,12 +233,12 @@ mod tests {
       q: 0.0,
       sigma,
       t1: 0.5,
-      t,
+      tau,
     };
     let chooser_price = chooser.price();
 
     let call = BSMPricer::builder(s, sigma, k, r)
-      .tau(t)
+      .tau(tau)
       .option_type(OptionType::Call)
       .coc(BSMCoc::Bsm1973)
       .build()
@@ -258,7 +258,7 @@ mod tests {
     let q = 0.02;
     let sigma = 0.3;
     let t1 = 0.4;
-    let t = 1.0;
+    let tau = 1.0;
     let k = 95.0;
 
     let simple = SimpleChooserPricer {
@@ -268,7 +268,7 @@ mod tests {
       q,
       sigma,
       t1,
-      t,
+      tau,
     };
     let complex = ComplexChooserPricer {
       s,
@@ -277,9 +277,9 @@ mod tests {
       sigma,
       t1,
       k_call: k,
-      t_call: t,
+      t_call: tau,
       k_put: k,
-      t_put: t,
+      t_put: tau,
     };
     let diff = (simple.price() - complex.price()).abs();
     assert!(diff < 0.01, "diff={diff}");
@@ -296,7 +296,7 @@ mod tests {
       q: 0.0,
       sigma: 0.20,
       t1: 0.25,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let high = ForwardStartPricer {

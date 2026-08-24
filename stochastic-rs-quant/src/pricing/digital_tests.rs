@@ -11,7 +11,7 @@ fn cash_or_nothing_call_closed_form() {
     r: 0.06,
     b: 0.06,
     sigma: 0.35,
-    t: 0.75,
+    tau: 0.75,
     option_type: OptionType::Call,
   };
   let price = p.price();
@@ -31,7 +31,7 @@ fn cash_call_put_parity() {
     r: 0.06,
     b: 0.06,
     sigma: 0.35,
-    t: 0.75,
+    tau: 0.75,
     option_type: OptionType::Call,
   };
   let put = CashOrNothingPricer {
@@ -52,7 +52,7 @@ fn aon_call_put_parity() {
     r: 0.05,
     b: 0.03,
     sigma: 0.25,
-    t: 1.0,
+    tau: 1.0,
     option_type: OptionType::Call,
   };
   let p = AssetOrNothingPricer {
@@ -72,14 +72,14 @@ fn vanilla_decomposition() {
   let r = 0.05;
   let b = 0.05;
   let sigma = 0.2;
-  let t = 1.0;
+  let tau = 1.0;
   let aon = AssetOrNothingPricer {
     s,
     k,
     r,
     b,
     sigma,
-    t,
+    tau,
     option_type: OptionType::Call,
   };
   let con = CashOrNothingPricer {
@@ -89,7 +89,7 @@ fn vanilla_decomposition() {
     r,
     b,
     sigma,
-    t,
+    tau,
     option_type: OptionType::Call,
   };
   // BSM vanilla call ≈ 10.4506
@@ -107,7 +107,7 @@ fn gap_reduces_to_vanilla() {
     r: 0.05,
     b: 0.05,
     sigma: 0.2,
-    t: 1.0,
+    tau: 1.0,
     option_type: OptionType::Call,
   };
   let price = p.price();
@@ -125,7 +125,7 @@ fn gap_haug_negative_payoff() {
     r: 0.09,
     b: 0.09,
     sigma: 0.20,
-    t: 0.5,
+    tau: 0.5,
     option_type: OptionType::Call,
   };
   let price = p.price();
@@ -145,7 +145,7 @@ fn supershare_positive() {
     r: 0.05,
     b: 0.0,
     sigma: 0.2,
-    t: 0.25,
+    tau: 0.25,
   };
   let price = p.price();
   assert!(price > 0.0, "supershare={price}");
@@ -163,7 +163,7 @@ fn cash_delta_matches_fd() {
     r: 0.05,
     b: 0.02,
     sigma: 0.25,
-    t: 0.5,
+    tau: 0.5,
     option_type: OptionType::Call,
   };
   let up = CashOrNothingPricer {
@@ -191,7 +191,7 @@ fn cash_or_nothing_call_via_model_pricer() {
     r: 0.06,
     b: 0.06,
     sigma: 0.35,
-    t: 0.75,
+    tau: 0.75,
     option_type: OptionType::Call,
   };
   let call = base.price_call(100.0, 80.0, 0.06, 0.0, 0.75);
@@ -215,7 +215,7 @@ fn aon_call_via_model_pricer() {
     r: 0.05,
     b: 0.03,
     sigma: 0.25,
-    t: 1.0,
+    tau: 1.0,
     option_type: OptionType::Call,
   };
   let call = c.price_call(100.0, 105.0, 0.05, 0.02, 1.0);
@@ -243,7 +243,7 @@ fn gap_call_via_model_pricer() {
     r: 0.09,
     b: 0.09,
     sigma: 0.20,
-    t: 0.5,
+    tau: 0.5,
     option_type: OptionType::Call,
   };
   let call = p.price_call(50.0, 50.0, 0.09, 0.0, 0.5);
@@ -267,7 +267,7 @@ fn gap_call_via_model_pricer() {
     r: 0.05,
     b: 0.05,
     sigma: 0.2,
-    t: 1.0,
+    tau: 1.0,
     option_type: OptionType::Call,
   };
   let vprice = vanilla.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
@@ -285,7 +285,7 @@ fn supershare_call_via_model_pricer() {
     r: 0.05,
     b: 0.0,
     sigma: 0.2,
-    t: 0.25,
+    tau: 0.25,
   };
   let call = p.price_call(100.0, 90.0, 0.05, 0.05, 0.25);
   assert!(

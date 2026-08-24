@@ -82,8 +82,8 @@ pub struct StulzRainbowPricer {
   pub q1: f64,
   /// Dividend yield 2.
   pub q2: f64,
-  /// Time to maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Payoff type.
   pub payoff: RainbowPayoff,
 }
@@ -108,7 +108,7 @@ impl StulzRainbowPricer {
     let r = self.r;
     let q1 = self.q1;
     let q2 = self.q2;
-    let t = self.t;
+    let t = self.tau;
     let sqrt_t = t.sqrt();
 
     // Combined spread vol
@@ -136,7 +136,7 @@ impl StulzRainbowPricer {
     // Stulz identity: max(max(S1,S2) - K, 0) = call(S1, K) + call(S2, K)
     // - call_on_min(S1, S2, K)
     let c1 = BSMPricer::builder(self.s1, self.sigma1, self.k, self.r)
-      .tau(self.t)
+      .tau(self.tau)
       .q(self.q1)
       .option_type(OptionType::Call)
       .coc(BSMCoc::Merton1973)
@@ -144,7 +144,7 @@ impl StulzRainbowPricer {
       .calculate_call_put()
       .0;
     let c2 = BSMPricer::builder(self.s2, self.sigma2, self.k, self.r)
-      .tau(self.t)
+      .tau(self.tau)
       .q(self.q2)
       .option_type(OptionType::Call)
       .coc(BSMCoc::Merton1973)
@@ -175,7 +175,7 @@ impl StulzRainbowPricer {
       rho: self.rho,
       q1: self.q1,
       q2: self.q2,
-      t: self.t,
+      tau: self.tau,
     }
     .price();
     let m21 = MargrabePricer {
@@ -186,14 +186,15 @@ impl StulzRainbowPricer {
       rho: self.rho,
       q1: self.q2,
       q2: self.q1,
-      t: self.t,
+      tau: self.tau,
     }
     .price();
     // F_max + F_min = s1 e^{-q1T} + s2 e^{-q2T}, F_max - F_min = m12 + m21,
     // so F_min = (s1 e^{-q1T} + s2 e^{-q2T} - (m12 + m21)) / 2.
     let f_min = 0.5
-      * (self.s1 * (-self.q1 * self.t).exp() + self.s2 * (-self.q2 * self.t).exp() - (m12 + m21));
-    call_min + self.k * (-self.r * self.t).exp() - f_min
+      * (self.s1 * (-self.q1 * self.tau).exp() + self.s2 * (-self.q2 * self.tau).exp()
+        - (m12 + m21));
+    call_min + self.k * (-self.r * self.tau).exp() - f_min
   }
 
   fn put_on_max(&self) -> f64 {
@@ -207,7 +208,7 @@ impl StulzRainbowPricer {
       rho: self.rho,
       q1: self.q1,
       q2: self.q2,
-      t: self.t,
+      tau: self.tau,
     }
     .price();
     let m21 = MargrabePricer {
@@ -218,12 +219,14 @@ impl StulzRainbowPricer {
       rho: self.rho,
       q1: self.q2,
       q2: self.q1,
-      t: self.t,
+      tau: self.tau,
     }
     .price();
     let f_max = 0.5
-      * (self.s1 * (-self.q1 * self.t).exp() + self.s2 * (-self.q2 * self.t).exp() + (m12 + m21));
-    call_max + self.k * (-self.r * self.t).exp() - f_max
+      * (self.s1 * (-self.q1 * self.tau).exp()
+        + self.s2 * (-self.q2 * self.tau).exp()
+        + (m12 + m21));
+    call_max + self.k * (-self.r * self.tau).exp() - f_max
   }
 }
 
@@ -245,8 +248,8 @@ pub struct McRainbowPricer {
   pub k: f64,
   /// Risk-free rate.
   pub r: f64,
-  /// Time to maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Payoff type.
   pub payoff: RainbowPayoff,
   /// Number of MC paths.
@@ -285,10 +288,10 @@ impl McRainbowPricer {
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)
-      .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.t)
+      .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.tau)
       .collect();
     let vols: Vec<f64> = (0..n_assets)
-      .map(|i| self.sigma[i] * self.t.sqrt())
+      .map(|i| self.sigma[i] * self.tau.sqrt())
       .collect();
     let n_paths = self.n_paths;
 
@@ -314,7 +317,7 @@ impl McRainbowPricer {
       })
       .sum();
 
-    (-self.r * self.t).exp() * sum / n_paths as f64
+    (-self.r * self.tau).exp() * sum / n_paths as f64
   }
 }
 
@@ -341,7 +344,7 @@ mod tests {
     let r = 0.05;
     let q1 = 0.0;
     let q2 = 0.0;
-    let t = 1.0;
+    let tau = 1.0;
     let cmin = StulzRainbowPricer {
       s1,
       s2,
@@ -352,7 +355,7 @@ mod tests {
       r,
       q1,
       q2,
-      t,
+      tau,
       payoff: RainbowPayoff::CallOnMin,
     }
     .price();
@@ -366,12 +369,12 @@ mod tests {
       r,
       q1,
       q2,
-      t,
+      tau,
       payoff: RainbowPayoff::CallOnMax,
     }
     .price();
     let c1 = BSMPricer::builder(s1, v1, k, r)
-      .tau(t)
+      .tau(tau)
       .q(q1)
       .option_type(OptionType::Call)
       .coc(BSMCoc::Merton1973)
@@ -379,7 +382,7 @@ mod tests {
       .calculate_call_put()
       .0;
     let c2 = BSMPricer::builder(s2, v2, k, r)
-      .tau(t)
+      .tau(tau)
       .q(q2)
       .option_type(OptionType::Call)
       .coc(BSMCoc::Merton1973)
@@ -405,7 +408,7 @@ mod tests {
       r: 0.05,
       q1: 0.0,
       q2: 0.0,
-      t: 1.0,
+      tau: 1.0,
       payoff: RainbowPayoff::CallOnMin,
     }
     .price();
@@ -416,7 +419,7 @@ mod tests {
       rho: array![[1.0, 0.4], [0.4, 1.0]],
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       payoff: RainbowPayoff::CallOnMin,
       n_paths: 200_000,
     }
@@ -448,7 +451,7 @@ mod tests {
       r: 0.05,
       q1: 0.0,
       q2: 0.0,
-      t: 1.0,
+      tau: 1.0,
       payoff: RainbowPayoff::CallOnMax,
     }
     .price();
@@ -482,7 +485,7 @@ mod tests {
       rho: rho.clone(),
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       payoff: RainbowPayoff::CallOnMax,
       n_paths: 50_000,
     }
@@ -494,7 +497,7 @@ mod tests {
       rho,
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       payoff: RainbowPayoff::CallOnMin,
       n_paths: 50_000,
     }
@@ -515,7 +518,7 @@ mod tests {
       r: 0.05,
       q1: 0.0,
       q2: 0.0,
-      t: 0.5,
+      tau: 0.5,
       payoff: RainbowPayoff::PutOnMin,
     };
     let price = p.price();

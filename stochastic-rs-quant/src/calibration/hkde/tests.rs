@@ -162,17 +162,17 @@ fn hkde_calibrate_from_slices_multi_maturity() {
   };
   let slice_strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
 
-  let make_slice = |t: f64| -> MarketSlice {
+  let make_slice = |tau: f64| -> MarketSlice {
     let model = make_model();
     let prices: Vec<f64> = slice_strikes
       .iter()
-      .map(|&k| model.price_call(s0, k, r, q, t).max(0.0))
+      .map(|&k| model.price_call(s0, k, r, q, tau).max(0.0))
       .collect();
     MarketSlice {
       strikes: slice_strikes.clone(),
       prices,
       is_call: vec![true; slice_strikes.len()],
-      t,
+      tau,
     }
   };
 

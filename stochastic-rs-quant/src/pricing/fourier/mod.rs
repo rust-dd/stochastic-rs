@@ -442,7 +442,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       rebate: 0.0,
       barrier_type: BarrierType::DownAndOut,
       option_type: OptionType::Call,

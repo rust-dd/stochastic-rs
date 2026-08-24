@@ -195,6 +195,6 @@ fn pricer(model: HestonModel, strike: f64, initial_variance: f64) -> HestonPrice
     model.vol_of_vol,
   )
   .q(model.dividend_yield)
-  .tau(model.maturity)
+  .tau(model.tau)
   .build()
 }

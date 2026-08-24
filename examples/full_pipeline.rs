@@ -108,7 +108,7 @@ fn main() {
     s: spot_q.value(),
     r: rate_q.value(),
     q: div_q.value(),
-    t: 1.0,
+    tau: 1.0,
   };
   let k_var_bsm = var_swap.fair_strike_bsm(vol_q.value());
   let k_var_heston =

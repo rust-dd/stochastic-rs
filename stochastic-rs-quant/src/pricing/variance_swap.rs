@@ -52,13 +52,13 @@ pub struct VarianceSwapPricer {
   /// Continuous dividend yield.
   pub q: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
 }
 
 impl VarianceSwapPricer {
   /// Forward $F = S_0 e^{(r-q)T}$.
   pub fn forward(&self) -> f64 {
-    self.s * ((self.r - self.q) * self.t).exp()
+    self.s * ((self.r - self.q) * self.tau).exp()
   }
 
   /// Black–Scholes fair strike: $K_{\text{var}} = \sigma^2$.
@@ -84,7 +84,7 @@ impl VarianceSwapPricer {
       "strikes / prices length mismatch"
     );
     let n = strikes.len();
-    if n < 2 || self.t <= 0.0 {
+    if n < 2 || self.tau <= 0.0 {
       return 0.0;
     }
     debug_assert!(
@@ -97,7 +97,7 @@ impl VarianceSwapPricer {
     );
 
     let fwd = self.forward();
-    let disc = (self.r * self.t).exp();
+    let disc = (self.r * self.tau).exp();
 
     let k0_idx = strikes
       .iter()
@@ -124,8 +124,8 @@ impl VarianceSwapPricer {
       integral += dk * otm_prices[i] / (strikes[i] * strikes[i]);
     }
 
-    let drift = (self.r - self.q) * self.t;
-    let fair = (2.0 / self.t) * (drift - (fwd / k0 - 1.0) - (k0 / self.s).ln() + disc * integral);
+    let drift = (self.r - self.q) * self.tau;
+    let fair = (2.0 / self.tau) * (drift - (fwd / k0 - 1.0) - (k0 / self.s).ln() + disc * integral);
     fair.max(0.0)
   }
 
@@ -135,15 +135,15 @@ impl VarianceSwapPricer {
   /// $E\!\left[\frac{1}{T}\int_0^T V_t\,dt\right]$, depends only on
   /// `(v0, kappa, theta, T)` — not on `(rho, sigma, r, q)`.
   pub fn fair_strike_heston(&self, v0: f64, kappa: f64, theta: f64) -> f64 {
-    let t = self.t;
-    if t <= 0.0 {
+    let tau = self.tau;
+    if tau <= 0.0 {
       return v0;
     }
     if kappa.abs() < 1e-10 {
       // Limit κ → 0 of (1 - e^{-κT})/(κT) is 1, so K_var → v0.
       return v0;
     }
-    let factor = (1.0 - (-kappa * t).exp()) / (kappa * t);
+    let factor = (1.0 - (-kappa * tau).exp()) / (kappa * tau);
     theta + (v0 - theta) * factor
   }
 
@@ -165,8 +165,8 @@ impl VarianceSwapPricer {
     if n_obs == 0 {
       return cont;
     }
-    let t = self.t;
-    let dt = t / n_obs as f64;
+    let tau = self.tau;
+    let dt = tau / n_obs as f64;
     // Leading-order Bernard–Cui adjustment for log-return moment.
     // ξ = θ + (V0 - θ)·factor; correction ≈ ¼·ξ²·dt + ρ·σ·ξ·dt.
     let xi = cont;
@@ -254,19 +254,19 @@ impl VolatilitySwapPricer {
   /// \frac{\sigma^2(V_0 - \theta)^2 (1-e^{-2\kappa T})}{2\kappa^3 T^2}$
   /// to leading order; the closed form is messier — we use a tractable
   /// approximation suitable for short maturities.
-  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, t: f64) -> f64 {
+  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
     let pricer = VarianceSwapPricer {
       s: 1.0,
       r: 0.0,
       q: 0.0,
-      t,
+      tau,
     };
     let k_var = pricer.fair_strike_heston(v0, kappa, theta);
-    if kappa.abs() < 1e-10 || t <= 0.0 {
+    if kappa.abs() < 1e-10 || tau <= 0.0 {
       return k_var.max(0.0).sqrt();
     }
-    let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * t).exp()))
-      / (2.0 * kappa.powi(3) * t * t);
+    let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * tau).exp()))
+      / (2.0 * kappa.powi(3) * tau * tau);
     Self::fair_strike_from_var(k_var, dispersion.max(0.0))
   }
 }
@@ -280,7 +280,7 @@ mod tests {
       s: 100.0,
       r: 0.05,
       q: 0.0,
-      t: 1.0,
+      tau: 1.0,
     }
   }
 
@@ -360,7 +360,7 @@ mod tests {
       s: 100.0,
       r: 0.0,
       q: 0.0,
-      t: 50.0,
+      tau: 50.0,
     };
     let k_var = p.fair_strike_heston(0.09, 2.0, 0.04);
     assert!(
@@ -399,15 +399,15 @@ mod tests {
       s: 100.0,
       r: 0.0,
       q: 0.0,
-      t: 1.0,
+      tau: 1.0,
     };
     let sigma = 0.25;
     let strikes: Vec<f64> = (10..=400).map(|i| i as f64 * 0.5).collect();
     let prices: Vec<f64> = strikes
       .iter()
       .map(|&k| {
-        let d1 = ((p.s / k).ln() + 0.5 * sigma * sigma * p.t) / (sigma * p.t.sqrt());
-        let d2 = d1 - sigma * p.t.sqrt();
+        let d1 = ((p.s / k).ln() + 0.5 * sigma * sigma * p.tau) / (sigma * p.tau.sqrt());
+        let d2 = d1 - sigma * p.tau.sqrt();
         if k >= p.s {
           // call
           p.s * norm_cdf(d1) - k * norm_cdf(d2)

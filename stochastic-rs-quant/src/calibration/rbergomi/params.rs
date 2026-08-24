@@ -253,16 +253,16 @@ impl RBergomiParams {
 
 #[derive(Clone, Debug)]
 pub struct RBergomiMarketSlice {
-  /// Maturity $T_j$ in years.
-  pub maturity: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Market terminal samples $\{S_{T_j}^{\mathrm{MKT},(m)}\}$.
   pub terminal_samples: Vec<f64>,
 }
 
 impl RBergomiMarketSlice {
   pub(super) fn validate(&self) -> Result<(), String> {
-    if !self.maturity.is_finite() || self.maturity <= 0.0 {
-      return Err("RBergomiMarketSlice.maturity must be finite and positive".to_string());
+    if !self.tau.is_finite() || self.tau <= 0.0 {
+      return Err("RBergomiMarketSlice.tau must be finite and positive".to_string());
     }
     if self.terminal_samples.is_empty() {
       return Err("RBergomiMarketSlice.terminal_samples cannot be empty".to_string());

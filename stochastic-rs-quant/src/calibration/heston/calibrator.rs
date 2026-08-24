@@ -136,7 +136,7 @@ impl HestonCalibrator {
       for i in 0..slice.strikes.len() {
         flat_prices.push(slice.prices[i]);
         flat_strikes.push(slice.strikes[i]);
-        flat_t.push(slice.t);
+        flat_t.push(slice.tau);
         flat_s.push(s);
       }
     }

@@ -26,7 +26,7 @@ pub struct MarketSlice {
   /// `true` for call, `false` for put.
   pub is_call: Vec<bool>,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
 }
 
 impl MarketSlice {
@@ -45,12 +45,12 @@ impl MarketSlice {
     expiration: chrono::NaiveDate,
     dcc: crate::calendar::DayCountConvention,
   ) -> Self {
-    let t = dcc.year_fraction(eval, expiration);
+    let tau = dcc.year_fraction(eval, expiration);
     Self {
       strikes,
       prices,
       is_call,
-      t,
+      tau,
     }
   }
 }

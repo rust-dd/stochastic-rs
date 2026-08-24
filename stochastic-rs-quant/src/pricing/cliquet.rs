@@ -38,8 +38,8 @@ pub struct CliquetPricer {
   pub notional: f64,
   /// Number of sub-periods.
   pub m: usize,
-  /// Total maturity in years (each period = $T/M$).
-  pub t: f64,
+  /// Time to maturity in years (each period = $T/M$).
+  pub tau: f64,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
@@ -56,9 +56,9 @@ impl CliquetPricer {
   /// Payoff convention: the sum of capped/floored returns is paid at
   /// maturity $T$, discounted by a single factor $e^{-rT}$.
   pub fn price(&self) -> f64 {
-    let tau = self.t / self.m as f64;
+    let tau = self.tau / self.m as f64;
     let per_period = self.expected_period_payoff(tau);
-    self.notional * self.m as f64 * per_period * (-self.r * self.t).exp()
+    self.notional * self.m as f64 * per_period * (-self.r * self.tau).exp()
   }
 
   /// Risk-neutral expectation $E^Q[\min(\max(R, f_l), c_l)]$ for one
@@ -103,8 +103,8 @@ pub struct McCliquetPricer {
   pub notional: f64,
   /// Number of sub-periods.
   pub m: usize,
-  /// Total maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
@@ -125,7 +125,7 @@ pub struct McCliquetPricer {
 
 impl McCliquetPricer {
   pub fn price(&self) -> f64 {
-    let tau = self.t / self.m as f64;
+    let tau = self.tau / self.m as f64;
     let drift = (self.r - self.q - 0.5 * self.sigma * self.sigma) * tau;
     let vol = self.sigma * tau.sqrt();
     let m = self.m;
@@ -154,7 +154,7 @@ impl McCliquetPricer {
         sum_returns.min(c_g).max(f_g)
       })
       .sum();
-    self.notional * (-self.r * self.t).exp() * sum / self.n_paths as f64
+    self.notional * (-self.r * self.tau).exp() * sum / self.n_paths as f64
   }
 }
 
@@ -168,12 +168,12 @@ mod tests {
   fn unbounded_cliquet_one_period_equals_expected_return() {
     let r: f64 = 0.05;
     let q: f64 = 0.0;
-    let t: f64 = 1.0;
+    let tau: f64 = 1.0;
     let p = CliquetPricer {
       s: 100.0,
       notional: 1.0,
       m: 1,
-      t,
+      tau,
       r,
       q,
       sigma: 0.20,
@@ -181,7 +181,7 @@ mod tests {
       local_cap: None,
     };
     let price = p.price();
-    let expected = (-r * t).exp() * (((r - q) * t).exp() - 1.0);
+    let expected = (-r * tau).exp() * (((r - q) * tau).exp() - 1.0);
     assert!(
       (price - expected).abs() < 1e-9,
       "price={price}, expected={expected}"
@@ -198,7 +198,7 @@ mod tests {
         s: 100.0,
         notional: 100.0,
         m,
-        t: 1.0,
+        tau: 1.0,
         r: 0.05,
         q: 0.0,
         sigma: 0.20,
@@ -219,7 +219,7 @@ mod tests {
       s: 100.0,
       notional: 100.0,
       m: 12,
-      t: 1.0,
+      tau: 1.0,
       r: 0.04,
       q: 0.0,
       sigma: 0.25,
@@ -231,7 +231,7 @@ mod tests {
       s: 100.0,
       notional: 100.0,
       m: 12,
-      t: 1.0,
+      tau: 1.0,
       r: 0.04,
       q: 0.0,
       sigma: 0.25,
@@ -253,7 +253,7 @@ mod tests {
       s: 100.0,
       notional: 100.0,
       m: 12,
-      t: 1.0,
+      tau: 1.0,
       r: 0.04,
       q: 0.0,
       sigma: 0.25,
@@ -268,7 +268,7 @@ mod tests {
       s: 100.0,
       notional: 100.0,
       m: 12,
-      t: 1.0,
+      tau: 1.0,
       r: 0.04,
       q: 0.0,
       sigma: 0.25,
@@ -290,7 +290,7 @@ mod tests {
         s: 100.0,
         notional: 100.0,
         m: 12,
-        t: 1.0,
+        tau: 1.0,
         r: 0.04,
         q: 0.0,
         sigma,

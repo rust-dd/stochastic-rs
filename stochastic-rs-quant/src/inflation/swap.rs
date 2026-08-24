@@ -31,8 +31,8 @@ pub struct ZeroCouponInflationSwap<T: FloatExt> {
   pub notional: T,
   /// Fixed (par) rate.
   pub fixed_rate: T,
-  /// Maturity in years.
-  pub maturity: T,
+  /// Time to maturity in years.
+  pub tau: T,
 }
 
 impl<T: FloatExt> ZeroCouponInflationSwap<T> {
@@ -40,19 +40,19 @@ impl<T: FloatExt> ZeroCouponInflationSwap<T> {
   /// $T$, discounted by $P_n(0,T)$). The discount factor is supplied by
   /// the caller — typically the nominal discount curve.
   pub fn npv(&self, curve: &(impl InflationCurve<T> + ?Sized), nominal_df: T) -> T {
-    let inflation_leg = self.notional * (curve.forward_index_ratio(self.maturity) - T::one());
-    let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.maturity) - T::one());
+    let inflation_leg = self.notional * (curve.forward_index_ratio(self.tau) - T::one());
+    let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.tau) - T::one());
     nominal_df * (inflation_leg - fixed_leg)
   }
 
   /// Par rate that makes the swap NPV zero.
   pub fn fair_fixed_rate(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> T {
-    if self.maturity <= T::epsilon() {
+    if self.tau <= T::epsilon() {
       return T::zero();
     }
     curve
-      .forward_index_ratio(self.maturity)
-      .powf(T::one() / self.maturity)
+      .forward_index_ratio(self.tau)
+      .powf(T::one() / self.tau)
       - T::one()
   }
 }
@@ -175,13 +175,13 @@ mod tests {
     let s = ZeroCouponInflationSwap::<f64> {
       notional: 1_000_000.0,
       fixed_rate: 0.0,
-      maturity: 5.0,
+      tau: 5.0,
     };
     let par = s.fair_fixed_rate(&curve);
     let s_par = ZeroCouponInflationSwap::<f64> {
       notional: 1_000_000.0,
       fixed_rate: par,
-      maturity: 5.0,
+      tau: 5.0,
     };
     let npv = s_par.npv(&curve, (-0.04_f64 * 5.0).exp());
     assert!(npv.abs() < 1e-7, "npv at par={npv}");
@@ -196,7 +196,7 @@ mod tests {
     let s = ZeroCouponInflationSwap::<f64> {
       notional: 1_000_000.0,
       fixed_rate: 0.025,
-      maturity: 5.0,
+      tau: 5.0,
     };
     let df = (-0.04_f64 * 5.0).exp();
     let lo = s.npv(&curve_lo, df);

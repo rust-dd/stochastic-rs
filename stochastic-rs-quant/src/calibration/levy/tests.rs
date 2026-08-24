@@ -64,7 +64,7 @@ fn vg_calibrate_recovers_reference_prices() {
     strikes: STRIKES.to_vec(),
     prices: VG_REF.to_vec(),
     is_call: vec![true; 9],
-    t: 1.0,
+    tau: 1.0,
   };
 
   let calibrator =
@@ -85,7 +85,7 @@ fn mjd_calibrate_recovers_reference_prices() {
     strikes: STRIKES.to_vec(),
     prices: MJD_REF.to_vec(),
     is_call: vec![true; 9],
-    t: 1.0,
+    tau: 1.0,
   };
 
   let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.05, 0.0, vec![market]);
@@ -105,7 +105,7 @@ fn test_levy_vg_calibrate() {
     strikes: vec![90.0, 95.0, 100.0, 105.0, 110.0],
     prices: vec![12.5, 9.0, 6.2, 4.0, 2.3],
     is_call: vec![true, true, true, true, true],
-    t: 0.5,
+    tau: 0.5,
   };
 
   let calibrator = LevyCalibrator::new(
@@ -163,7 +163,7 @@ fn test_levy_merton_calibrate() {
     strikes: vec![90.0, 95.0, 100.0, 105.0, 110.0],
     prices: vec![12.5, 9.0, 6.2, 4.0, 2.3],
     is_call: vec![true, true, true, true, true],
-    t: 0.5,
+    tau: 0.5,
   };
 
   let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.03, 0.01, vec![market]);

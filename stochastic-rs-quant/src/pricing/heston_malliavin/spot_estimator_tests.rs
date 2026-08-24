@@ -17,7 +17,7 @@ fn model() -> HestonModel {
     rho: -0.65,
     risk_free_rate: 0.03,
     dividend_yield: 0.01,
-    maturity: 45.0 / 365.0,
+    tau: 45.0 / 365.0,
   }
 }
 

@@ -85,7 +85,7 @@ impl RBergomiCalibrator {
         .validate()
         .map_err(|e| anyhow::anyhow!("invalid market slice at index {idx}: {e}"))?;
     }
-    market_slices.sort_by(|a, b| a.maturity.total_cmp(&b.maturity));
+    market_slices.sort_by(|a, b| a.tau.total_cmp(&b.tau));
 
     Ok(Self {
       s,
@@ -137,20 +137,20 @@ impl RBergomiCalibrator {
     let mut per_maturity = Vec::with_capacity(self.market_slices.len());
 
     for (idx, slice) in self.market_slices.iter().enumerate() {
-      let seed = self.slice_seed(idx, slice.maturity);
+      let seed = self.slice_seed(idx, slice.tau);
       let model_samples = simulate_rbergomi_terminal_samples(
         &p,
         self.s,
         self.r,
         self.q,
-        slice.maturity,
+        slice.tau,
         self.config.paths,
         self.config.steps_per_year,
         self.config.msoe_terms,
         seed,
       );
       let w1 = empirical_wasserstein_1(&model_samples, &slice.terminal_samples);
-      per_maturity.push((slice.maturity, w1));
+      per_maturity.push((slice.tau, w1));
     }
 
     let avg = per_maturity.iter().map(|(_, w)| *w).sum::<f64>() / per_maturity.len().max(1) as f64;
@@ -339,14 +339,14 @@ impl RBergomiCalibrator {
     });
   }
 
-  fn slice_seed(&self, idx: usize, maturity: f64) -> u64 {
+  fn slice_seed(&self, idx: usize, tau: f64) -> u64 {
     let a = 0x9E37_79B9_7F4A_7C15_u64;
     let b = 0xBF58_476D_1CE4_E5B9_u64;
     self
       .config
       .random_seed
       .wrapping_add(a.wrapping_mul((idx as u64).wrapping_add(1)))
-      ^ maturity.to_bits().wrapping_mul(b)
+      ^ tau.to_bits().wrapping_mul(b)
   }
 }
 

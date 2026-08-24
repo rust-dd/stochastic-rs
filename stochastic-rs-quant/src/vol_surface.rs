@@ -62,11 +62,11 @@
 //! };
 //! let strikes = [90., 100., 110.];
 //! let maturities = [0.25, 0.5, 1.0];
-//! let slices: Vec<MarketSlice> = maturities.iter().map(|&t| MarketSlice {
+//! let slices: Vec<MarketSlice> = maturities.iter().map(|&tau| MarketSlice {
 //!     strikes: strikes.to_vec(),
-//!     prices: strikes.iter().map(|&k| model_true.price_call(s0, k, r, q, t)).collect(),
+//!     prices: strikes.iter().map(|&k| model_true.price_call(s0, k, r, q, tau)).collect(),
 //!     is_call: vec![true; strikes.len()],
-//!     t,
+//!     tau,
 //! }).collect();
 //!
 //! // A reasonable initial guess keeps the optimiser fast; `None` here would
@@ -103,11 +103,11 @@
 //! };
 //! let strikes = [90., 95., 100., 105., 110.];
 //! let maturities = [0.25, 0.5, 1.0];
-//! let slices: Vec<MarketSlice> = maturities.iter().map(|&t| MarketSlice {
+//! let slices: Vec<MarketSlice> = maturities.iter().map(|&tau| MarketSlice {
 //!     strikes: strikes.to_vec(),
-//!     prices: strikes.iter().map(|&k| model_true.price_call(s0, k, r, q, t)).collect(),
+//!     prices: strikes.iter().map(|&k| model_true.price_call(s0, k, r, q, tau)).collect(),
 //!     is_call: vec![true; strikes.len()],
-//!     t,
+//!     tau,
 //! }).collect();
 //!
 //! // A reasonable initial guess keeps the optimiser fast; `None` here would
@@ -134,7 +134,7 @@
 //!     strikes: vec![90.0, 95.0, 100.0, 105.0, 110.0],
 //!     prices: vec![12.5, 9.0, 6.2, 4.0, 2.3],
 //!     is_call: vec![true; 5],
-//!     t: 0.5,
+//!     tau: 0.5,
 //! };
 //! let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.03, 0.01, vec![slice]);
 //! let result = cal.calibrate(None).unwrap();
@@ -150,9 +150,9 @@
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 //!
 //! let options = vec![
-//!     MarketOption { strike: 95.0, maturity: 0.25, price: 8.0, rate: 0.03 },
-//!     MarketOption { strike: 100.0, maturity: 0.50, price: 7.5, rate: 0.03 },
-//!     MarketOption { strike: 105.0, maturity: 1.00, price: 6.0, rate: 0.03 },
+//!     MarketOption { strike: 95.0, tau: 0.25, price: 8.0, rate: 0.03 },
+//!     MarketOption { strike: 100.0, tau: 0.50, price: 7.5, rate: 0.03 },
+//!     MarketOption { strike: 105.0, tau: 1.00, price: 6.0, rate: 0.03 },
 //! ];
 //! let guess = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
 //! // A small `max_iter` keeps this example fast; it need not fully converge

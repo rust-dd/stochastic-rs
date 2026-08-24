@@ -125,14 +125,14 @@ fn heston_demo() {
 
   let slices: Vec<MarketSlice> = maturities
     .iter()
-    .map(|&t| MarketSlice {
+    .map(|&tau| MarketSlice {
       strikes: strikes.clone(),
       prices: strikes
         .iter()
-        .map(|&k| model_true.price_call(s0, k, r, q, t))
+        .map(|&k| model_true.price_call(s0, k, r, q, tau))
         .collect(),
       is_call: vec![true; strikes.len()],
-      t,
+      tau,
     })
     .collect();
 
@@ -178,7 +178,7 @@ fn heston_demo() {
   let mut max_err = 0.0_f64;
   for slice in &slices {
     for (&k, &px) in slice.strikes.iter().zip(slice.prices.iter()) {
-      let priced = model.price_call(s0, k, r, q, slice.t);
+      let priced = model.price_call(s0, k, r, q, slice.tau);
       max_err = max_err.max((priced - px).abs());
     }
   }

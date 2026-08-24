@@ -187,7 +187,7 @@ impl BSMCalibrator {
       for i in 0..slice.strikes.len() {
         flat_prices.push(slice.prices[i]);
         flat_strikes.push(slice.strikes[i]);
-        flat_t.push(slice.t);
+        flat_t.push(slice.tau);
         flat_s.push(s);
       }
     }
@@ -419,12 +419,12 @@ mod tests {
     let true_sigma = 0.25_f64;
     let strikes = vec![85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0];
 
-    let make_slice = |t: f64| -> MarketSlice {
+    let make_slice = |tau: f64| -> MarketSlice {
       let prices: Vec<f64> = strikes
         .iter()
         .map(|&k| {
           let pricer = BSMPricer::builder(s, true_sigma, k, r)
-            .tau(t)
+            .tau(tau)
             .coc(BSMCoc::Bsm1973)
             .build();
           let (call, _) = pricer.calculate_call_put();
@@ -435,7 +435,7 @@ mod tests {
         strikes: strikes.clone(),
         prices,
         is_call: vec![true; strikes.len()],
-        t,
+        tau,
       }
     };
 

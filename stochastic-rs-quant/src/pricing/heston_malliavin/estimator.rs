@@ -37,7 +37,7 @@ pub struct HestonModel {
   /// Continuous dividend yield.
   pub dividend_yield: f64,
   /// Time to maturity in years.
-  pub maturity: f64,
+  pub tau: f64,
 }
 
 /// Monte Carlo controls for the Malliavin estimator.
@@ -370,7 +370,7 @@ impl HestonMalliavinEstimator {
       self.config.minimum_integrated_variance,
       self.config.minimum_conditional_variance,
     )?;
-    let discount = (-self.model.risk_free_rate * self.model.maturity).exp();
+    let discount = (-self.model.risk_free_rate * self.model.tau).exp();
     let base_payoff = finite_payoff(payoff, base.terminal_spot)?;
     let up_payoff = finite_payoff(payoff, up.terminal_spot)?;
     let down_payoff = finite_payoff(payoff, down.terminal_spot)?;

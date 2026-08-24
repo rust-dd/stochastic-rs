@@ -38,8 +38,8 @@ pub struct MargrabePricer {
   pub q1: f64,
   /// Dividend yield 2.
   pub q2: f64,
-  /// Time to maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
 }
 
 impl MargrabePricer {
@@ -50,14 +50,16 @@ impl MargrabePricer {
     let v_sq = self.sigma1 * self.sigma1 + self.sigma2 * self.sigma2
       - 2.0 * self.rho * self.sigma1 * self.sigma2;
     if v_sq < 1e-14 {
-      return (self.s1 * (-self.q1 * self.t).exp() - self.s2 * (-self.q2 * self.t).exp()).max(0.0);
+      return (self.s1 * (-self.q1 * self.tau).exp() - self.s2 * (-self.q2 * self.tau).exp())
+        .max(0.0);
     }
     let v = v_sq.sqrt();
-    let sqrt_t = self.t.sqrt();
-    let d1 = ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.t) / (v * sqrt_t);
+    let sqrt_t = self.tau.sqrt();
+    let d1 =
+      ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.tau) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
-    self.s1 * (-self.q1 * self.t).exp() * norm_cdf(d1)
-      - self.s2 * (-self.q2 * self.t).exp() * norm_cdf(d2)
+    self.s1 * (-self.q1 * self.tau).exp() * norm_cdf(d1)
+      - self.s2 * (-self.q2 * self.tau).exp() * norm_cdf(d2)
   }
 
   /// Greek delta with respect to $S_1$.
@@ -65,12 +67,13 @@ impl MargrabePricer {
     let v_sq = self.sigma1 * self.sigma1 + self.sigma2 * self.sigma2
       - 2.0 * self.rho * self.sigma1 * self.sigma2;
     if v_sq < 1e-14 {
-      return (-self.q1 * self.t).exp();
+      return (-self.q1 * self.tau).exp();
     }
     let v = v_sq.sqrt();
-    let sqrt_t = self.t.sqrt();
-    let d1 = ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.t) / (v * sqrt_t);
-    (-self.q1 * self.t).exp() * norm_cdf(d1)
+    let sqrt_t = self.tau.sqrt();
+    let d1 =
+      ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.tau) / (v * sqrt_t);
+    (-self.q1 * self.tau).exp() * norm_cdf(d1)
   }
 
   /// Greek delta with respect to $S_2$.
@@ -78,13 +81,14 @@ impl MargrabePricer {
     let v_sq = self.sigma1 * self.sigma1 + self.sigma2 * self.sigma2
       - 2.0 * self.rho * self.sigma1 * self.sigma2;
     if v_sq < 1e-14 {
-      return -(-self.q2 * self.t).exp();
+      return -(-self.q2 * self.tau).exp();
     }
     let v = v_sq.sqrt();
-    let sqrt_t = self.t.sqrt();
-    let d1 = ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.t) / (v * sqrt_t);
+    let sqrt_t = self.tau.sqrt();
+    let d1 =
+      ((self.s1 / self.s2).ln() + (self.q2 - self.q1 + 0.5 * v_sq) * self.tau) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
-    -(-self.q2 * self.t).exp() * norm_cdf(d2)
+    -(-self.q2 * self.tau).exp() * norm_cdf(d2)
   }
 }
 
@@ -111,8 +115,8 @@ pub struct McSpreadPricer {
   pub q1: f64,
   /// Dividend yield 2.
   pub q2: f64,
-  /// Time to maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
   /// Number of MC paths.
@@ -125,10 +129,10 @@ impl McSpreadPricer {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
-    let drift1 = (self.r - self.q1 - 0.5 * self.sigma1 * self.sigma1) * self.t;
-    let drift2 = (self.r - self.q2 - 0.5 * self.sigma2 * self.sigma2) * self.t;
-    let vol1 = self.sigma1 * self.t.sqrt();
-    let vol2 = self.sigma2 * self.t.sqrt();
+    let drift1 = (self.r - self.q1 - 0.5 * self.sigma1 * self.sigma1) * self.tau;
+    let drift2 = (self.r - self.q2 - 0.5 * self.sigma2 * self.sigma2) * self.tau;
+    let vol1 = self.sigma1 * self.tau.sqrt();
+    let vol2 = self.sigma2 * self.tau.sqrt();
     let rho = self.rho;
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).max(0.0).sqrt();
 
@@ -147,7 +151,7 @@ impl McSpreadPricer {
       })
       .sum();
 
-    (-self.r * self.t).exp() * sum / self.n_paths as f64
+    (-self.r * self.tau).exp() * sum / self.n_paths as f64
   }
 }
 
@@ -167,7 +171,7 @@ mod tests {
       rho: 1.0,
       q1: 0.0,
       q2: 0.0,
-      t: 1.0,
+      tau: 1.0,
     };
     let price = p.price();
     assert!(price.abs() < 1e-8, "perfect-corr Margrabe={price}");
@@ -187,7 +191,7 @@ mod tests {
       rho: 0.0,
       q1: 0.0,
       q2: 0.0,
-      t: 1.0,
+      tau: 1.0,
     };
     let price = p.price();
     let expected = 11.246;
@@ -205,7 +209,7 @@ mod tests {
       rho: 0.5,
       q1: 0.01,
       q2: 0.02,
-      t: 0.5,
+      tau: 0.5,
     };
     let price = p.price();
     let intrinsic = 200.0 * (-0.01_f64 * 0.5).exp() - 100.0 * (-0.02_f64 * 0.5).exp();
@@ -227,7 +231,7 @@ mod tests {
       rho: 0.4,
       q1: 0.0,
       q2: 0.0,
-      t: 1.0,
+      tau: 1.0,
     };
     let mc = McSpreadPricer {
       s1: 110.0,
@@ -239,7 +243,7 @@ mod tests {
       r: 0.0,
       q1: 0.0,
       q2: 0.0,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
       n_paths: 100_000,
     };

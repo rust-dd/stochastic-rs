@@ -37,7 +37,7 @@ pub struct CashOrNothingPricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -46,7 +46,7 @@ impl CashOrNothingPricer {
   /// Closed-form price.
   pub fn price(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let disc = (-self.r * self.t).exp();
+    let disc = (-self.r * self.tau).exp();
     match self.option_type {
       OptionType::Call => self.cash * disc * norm_cdf(d2),
       OptionType::Put => self.cash * disc * norm_cdf(-d2),
@@ -56,8 +56,8 @@ impl CashOrNothingPricer {
   /// Delta: $\partial V/\partial S$.
   pub fn delta(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let disc = (-self.r * self.t).exp();
-    let denom = self.s * self.sigma * self.t.sqrt();
+    let disc = (-self.r * self.tau).exp();
+    let denom = self.s * self.sigma * self.tau.sqrt();
     let sign = match self.option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
@@ -68,10 +68,10 @@ impl CashOrNothingPricer {
   /// Gamma: $\partial^2 V/\partial S^2$.
   pub fn gamma(&self) -> f64 {
     let (_, d2) = self.d1_d2();
-    let disc = (-self.r * self.t).exp();
+    let disc = (-self.r * self.tau).exp();
     let s = self.s;
     let v = self.sigma;
-    let t = self.t;
+    let t = self.tau;
     let sqrt_t = t.sqrt();
     let sign = match self.option_type {
       OptionType::Call => 1.0,
@@ -84,7 +84,7 @@ impl CashOrNothingPricer {
   /// Vega: $\partial V/\partial \sigma$.
   pub fn vega(&self) -> f64 {
     let (d1, d2) = self.d1_d2();
-    let disc = (-self.r * self.t).exp();
+    let disc = (-self.r * self.tau).exp();
     let sign = match self.option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
@@ -94,7 +94,7 @@ impl CashOrNothingPricer {
 
   fn d1_d2(&self) -> (f64, f64) {
     let v = self.sigma;
-    let t = self.t;
+    let t = self.tau;
     let sqrt_t = t.sqrt();
     let d1 = ((self.s / self.k).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
@@ -152,7 +152,7 @@ pub struct AssetOrNothingPricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -161,7 +161,7 @@ impl AssetOrNothingPricer {
   /// Closed-form price.
   pub fn price(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let coc = ((self.b - self.r) * self.t).exp();
+    let coc = ((self.b - self.r) * self.tau).exp();
     match self.option_type {
       OptionType::Call => self.s * coc * norm_cdf(d1),
       OptionType::Put => self.s * coc * norm_cdf(-d1),
@@ -171,9 +171,9 @@ impl AssetOrNothingPricer {
   /// Delta.
   pub fn delta(&self) -> f64 {
     let (d1, _) = self.d1_d2();
-    let coc = ((self.b - self.r) * self.t).exp();
+    let coc = ((self.b - self.r) * self.tau).exp();
     let v = self.sigma;
-    let sqrt_t = self.t.sqrt();
+    let sqrt_t = self.tau.sqrt();
     let cdf_term = match self.option_type {
       OptionType::Call => norm_cdf(d1),
       OptionType::Put => norm_cdf(-d1),
@@ -187,7 +187,7 @@ impl AssetOrNothingPricer {
 
   fn d1_d2(&self) -> (f64, f64) {
     let v = self.sigma;
-    let t = self.t;
+    let t = self.tau;
     let sqrt_t = t.sqrt();
     let d1 = ((self.s / self.k).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
@@ -243,7 +243,7 @@ pub struct GapPricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -251,12 +251,12 @@ pub struct GapPricer {
 impl GapPricer {
   pub fn price(&self) -> f64 {
     let v = self.sigma;
-    let t = self.t;
+    let t = self.tau;
     let sqrt_t = t.sqrt();
     let d1 = ((self.s / self.k1).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let d2 = d1 - v * sqrt_t;
-    let coc = ((self.b - self.r) * self.t).exp();
-    let disc = (-self.r * self.t).exp();
+    let coc = ((self.b - self.r) * self.tau).exp();
+    let disc = (-self.r * self.tau).exp();
     match self.option_type {
       OptionType::Call => self.s * coc * norm_cdf(d1) - self.k2 * disc * norm_cdf(d2),
       OptionType::Put => self.k2 * disc * norm_cdf(-d2) - self.s * coc * norm_cdf(-d1),
@@ -308,17 +308,17 @@ pub struct SuperSharePricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
 }
 
 impl SuperSharePricer {
   pub fn price(&self) -> f64 {
     let v = self.sigma;
-    let t = self.t;
+    let t = self.tau;
     let sqrt_t = t.sqrt();
     let d1 = ((self.s / self.x_low).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
     let d2 = ((self.s / self.x_high).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
-    let coc = ((self.b - self.r) * self.t).exp();
+    let coc = ((self.b - self.r) * self.tau).exp();
     self.s / self.x_low * coc * (norm_cdf(d1) - norm_cdf(d2))
   }
 }

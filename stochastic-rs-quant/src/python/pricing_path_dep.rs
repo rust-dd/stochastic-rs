@@ -70,7 +70,7 @@ impl PyBarrierPricer {
         r,
         q,
         sigma,
-        t,
+        tau: t,
         rebate,
         barrier_type: bt,
         option_type: ot,
@@ -111,7 +111,7 @@ impl PyFloatingLookbackPricer {
         r,
         q,
         sigma,
-        t,
+        tau: t,
         option_type: ot,
       },
     })
@@ -174,7 +174,7 @@ impl PyVarianceSwapPricer {
   #[new]
   fn new(s: f64, r: f64, q: f64, t: f64) -> Self {
     Self {
-      inner: crate::pricing::variance_swap::VarianceSwapPricer { s, r, q, t },
+      inner: crate::pricing::variance_swap::VarianceSwapPricer { s, r, q, tau: t },
     }
   }
 
@@ -264,7 +264,7 @@ impl PySimpleChooserPricer {
         q,
         sigma,
         t1,
-        t,
+        tau: t,
       },
     }
   }
@@ -299,7 +299,7 @@ impl PyCliquetPricer {
         s,
         notional,
         m,
-        t,
+        tau: t,
         r,
         q,
         sigma,
@@ -344,7 +344,7 @@ impl PyFixedLookbackPricer {
         r,
         q,
         sigma,
-        t,
+        tau: t,
         option_type: ot,
       },
     })
@@ -385,7 +385,7 @@ impl PyDoubleBarrierPricer {
         r,
         q,
         sigma,
-        t,
+        tau: t,
         option_type: ot,
       },
     })

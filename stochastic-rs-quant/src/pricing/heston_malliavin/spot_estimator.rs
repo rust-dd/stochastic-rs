@@ -56,7 +56,7 @@ pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
   let mut statistics = OnlineCovariance::<HESTON_MALLIAVIN_SPOT_OBSERVABLES>::default();
   let mut variance_normals = vec![0.0; config.steps];
   let mut orthogonal_normals = vec![0.0; config.steps];
-  let discount = (-model.risk_free_rate * model.maturity).exp();
+  let discount = (-model.risk_free_rate * model.tau).exp();
 
   for _ in 0..pairs {
     for draw in &mut variance_normals {

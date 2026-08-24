@@ -59,8 +59,8 @@ pub struct GeometricBasketPricer {
   pub k: f64,
   /// Risk-free rate.
   pub r: f64,
-  /// Time to maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -95,11 +95,11 @@ impl GeometricBasketPricer {
     for i in 0..n_assets {
       log_g0 += self.weights[i] * self.s[i].ln();
     }
-    let g_fwd = (log_g0 + mu_g * self.t).exp();
-    let disc = (-self.r * self.t).exp();
+    let g_fwd = (log_g0 + mu_g * self.tau).exp();
+    let disc = (-self.r * self.tau).exp();
 
-    let sqrt_t = self.t.sqrt();
-    let d1 = ((g_fwd / self.k).ln() + 0.5 * sigma_g_sq * self.t) / (sigma_g * sqrt_t);
+    let sqrt_t = self.tau.sqrt();
+    let d1 = ((g_fwd / self.k).ln() + 0.5 * sigma_g_sq * self.tau) / (sigma_g * sqrt_t);
     let d2 = d1 - sigma_g * sqrt_t;
     match self.option_type {
       OptionType::Call => disc * (g_fwd * norm_cdf(d1) - self.k * norm_cdf(d2)),
@@ -133,8 +133,8 @@ pub struct ArithmeticBasketLevyPricer {
   pub k: f64,
   /// Risk-free rate.
   pub r: f64,
-  /// Time to maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -147,7 +147,7 @@ impl ArithmeticBasketLevyPricer {
       self.weights.view(),
       self.q.view(),
       self.r,
-      self.t,
+      self.tau,
     );
     let m2 = second_moment(
       self.s.view(),
@@ -156,14 +156,14 @@ impl ArithmeticBasketLevyPricer {
       self.q.view(),
       self.rho.view(),
       self.r,
-      self.t,
+      self.tau,
     );
     let var = (m2 / (m1 * m1)).ln().max(1e-14);
-    let sigma_eff = (var / self.t).sqrt();
-    let sqrt_t = self.t.sqrt();
+    let sigma_eff = (var / self.tau).sqrt();
+    let sqrt_t = self.tau.sqrt();
     let d1 = ((m1 / self.k).ln() + 0.5 * var) / (sigma_eff * sqrt_t);
     let d2 = d1 - sigma_eff * sqrt_t;
-    let disc = (-self.r * self.t).exp();
+    let disc = (-self.r * self.tau).exp();
     match self.option_type {
       OptionType::Call => disc * (m1 * norm_cdf(d1) - self.k * norm_cdf(d2)),
       OptionType::Put => disc * (self.k * norm_cdf(-d2) - m1 * norm_cdf(-d1)),
@@ -225,8 +225,8 @@ pub struct McBasketPricer {
   pub k: f64,
   /// Risk-free rate.
   pub r: f64,
-  /// Time to maturity.
-  pub t: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
   /// Average type.
@@ -268,10 +268,10 @@ impl McBasketPricer {
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)
-      .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.t)
+      .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.tau)
       .collect();
     let vols: Vec<f64> = (0..n_assets)
-      .map(|i| self.sigma[i] * self.t.sqrt())
+      .map(|i| self.sigma[i] * self.tau.sqrt())
       .collect();
     let phi = match self.option_type {
       OptionType::Call => 1.0,
@@ -315,7 +315,7 @@ impl McBasketPricer {
       })
       .sum();
 
-    (-self.r * self.t).exp() * sum / n_paths as f64
+    (-self.r * self.tau).exp() * sum / n_paths as f64
   }
 }
 
@@ -358,7 +358,7 @@ mod tests {
       rho: array![[1.0]],
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let price = p.price();
@@ -379,7 +379,7 @@ mod tests {
       rho,
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let price = p.price();
@@ -399,7 +399,7 @@ mod tests {
       rho: rho.clone(),
       k: 100.0,
       r: 0.04,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     }
     .price();
@@ -411,7 +411,7 @@ mod tests {
       rho,
       k: 100.0,
       r: 0.04,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     }
     .price();
@@ -431,7 +431,7 @@ mod tests {
       rho: rho.clone(),
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     }
     .price();
@@ -443,7 +443,7 @@ mod tests {
       rho,
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
       avg_type: BasketAverageType::Arithmetic,
       n_paths: 100_000,
@@ -466,7 +466,7 @@ mod tests {
       rho: rho.clone(),
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     }
     .price();
@@ -478,7 +478,7 @@ mod tests {
       rho,
       k: 100.0,
       r: 0.05,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
       avg_type: BasketAverageType::Geometric,
       n_paths: 200_000,
@@ -494,7 +494,7 @@ mod tests {
   fn arithmetic_basket_parity() {
     let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.3);
     let r = 0.04;
-    let t = 1.0;
+    let tau = 1.0;
     let k = 95.0;
     let c = ArithmeticBasketLevyPricer {
       s: s.clone(),
@@ -504,7 +504,7 @@ mod tests {
       rho: rho.clone(),
       k,
       r,
-      t,
+      tau,
       option_type: OptionType::Call,
     }
     .price();
@@ -516,13 +516,13 @@ mod tests {
       rho: rho.clone(),
       k,
       r,
-      t,
+      tau,
       option_type: OptionType::Put,
     }
     .price();
-    let f = first_moment(s.view(), w.view(), q.view(), r, t);
+    let f = first_moment(s.view(), w.view(), q.view(), r, tau);
     let lhs = c - p;
-    let rhs = (-r * t).exp() * (f - k);
+    let rhs = (-r * tau).exp() * (f - k);
     assert!((lhs - rhs).abs() < 0.01, "lhs={lhs}, rhs={rhs}");
   }
 }

@@ -242,8 +242,8 @@ impl PyRBergomiCalibrator {
     use crate::calibration::rbergomi::*;
     let inner_slices: Vec<RBergomiMarketSlice> = slices
       .into_iter()
-      .map(|(maturity, terminal_samples)| RBergomiMarketSlice {
-        maturity,
+      .map(|(tau, terminal_samples)| RBergomiMarketSlice {
+        tau,
         terminal_samples,
       })
       .collect();

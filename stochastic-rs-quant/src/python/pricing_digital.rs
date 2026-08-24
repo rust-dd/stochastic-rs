@@ -31,7 +31,7 @@ impl PyCashOrNothingPricer {
         r,
         b,
         sigma,
-        t,
+        tau: t,
         option_type: ot,
       },
     })
@@ -69,7 +69,7 @@ impl PyAssetOrNothingPricer {
         r,
         b,
         sigma,
-        t,
+        tau: t,
         option_type: ot,
       },
     })
@@ -108,7 +108,7 @@ impl PyGapPricer {
         r,
         b,
         sigma,
-        t,
+        tau: t,
         option_type: ot,
       },
     })
@@ -136,7 +136,7 @@ impl PySuperSharePricer {
         r,
         b,
         sigma,
-        t,
+        tau: t,
       },
     }
   }

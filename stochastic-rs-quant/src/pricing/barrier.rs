@@ -46,7 +46,7 @@ pub struct BarrierPricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
   /// Rebate paid when barrier is hit.
   pub rebate: f64,
   /// Barrier type.
@@ -64,7 +64,7 @@ impl BarrierPricer {
     let r = self.r;
     let q = self.q;
     let sigma = self.sigma;
-    let t = self.t;
+    let t = self.tau;
     let rebate = self.rebate;
 
     let sigma2 = sigma * sigma;
@@ -196,7 +196,7 @@ pub struct DoubleBarrierPricer {
   /// Volatility.
   pub sigma: f64,
   /// Time to maturity in years.
-  pub t: f64,
+  pub tau: f64,
   /// Option type.
   pub option_type: OptionType,
 }
@@ -216,7 +216,7 @@ impl DoubleBarrierPricer {
     let r = self.r;
     let q = self.q;
     let sigma = self.sigma;
-    let t = self.t;
+    let t = self.tau;
 
     let sigma2 = sigma * sigma;
     let sqrt_t = t.sqrt();
@@ -390,7 +390,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       rebate: 0.0,
       barrier_type,
       option_type,
@@ -464,7 +464,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let price = p.price();
@@ -482,7 +482,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
       sigma: 0.2,
-      t: 1.0,
+      tau: 1.0,
       option_type: OptionType::Call,
     };
     let price = p.price();

@@ -23,7 +23,7 @@ pub(super) fn simulate_path(
   minimum_integrated_variance: f64,
   minimum_conditional_variance: f64,
 ) -> Result<SimulatedPath, HestonMalliavinError> {
-  let dt = model.maturity / variance_normals.len() as f64;
+  let dt = model.tau / variance_normals.len() as f64;
   let sqrt_dt = dt.sqrt();
   let orthogonal_scale = (1.0 - model.rho.powi(2)).sqrt();
   let mut variance = initial_variance;
@@ -104,7 +104,7 @@ pub(super) fn validate_model(model: HestonModel) -> Result<(), HestonMalliavinEr
   if !model.risk_free_rate.is_finite() || !model.dividend_yield.is_finite() {
     return Err(HestonMalliavinError::InvalidInput("rates must be finite"));
   }
-  if !model.maturity.is_finite() || model.maturity <= 0.0 {
+  if !model.tau.is_finite() || model.tau <= 0.0 {
     return Err(HestonMalliavinError::InvalidInput(
       "maturity must be finite and positive",
     ));

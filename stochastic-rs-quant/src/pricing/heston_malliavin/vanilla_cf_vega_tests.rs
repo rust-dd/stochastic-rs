@@ -17,7 +17,7 @@ fn high_vol_of_vol_non_feller_model() -> HestonModel {
     rho: 0.390_534,
     risk_free_rate: 0.05,
     dividend_yield: 0.0,
-    maturity: 36.0 / 365.0,
+    tau: 36.0 / 365.0,
   }
 }
 
@@ -114,7 +114,7 @@ fn short_dated_low_variance_vertical_uses_analytic_primary_when_bumps_are_unstab
     rho: -0.479_725_587_697_811,
     risk_free_rate: 0.036_667_089_448_444_35,
     dividend_yield: 0.006_297_374_154_871_42,
-    maturity: 0.076_712_328_767_123_3,
+    tau: 0.076_712_328_767_123_3,
   };
   let payoff = VanillaPortfolio::vertical(OptionType::Put, 686.0, 649.0);
   let estimate = heston_vanilla_portfolio_cf_initial_variance_vega(

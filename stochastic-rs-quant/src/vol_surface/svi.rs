@@ -62,11 +62,11 @@ impl<T: FloatExt> SviRawParams<T> {
 
   /// Evaluate implied volatility $\sigma(k, T)$ at log-moneyness $k$ for expiry $T$.
   #[inline]
-  pub fn implied_vol(&self, k: T, t: T) -> T {
+  pub fn implied_vol(&self, k: T, tau: T) -> T {
     let w = self.total_variance(k);
     let zero = T::zero();
-    if w > zero && t > zero {
-      (w / t).sqrt()
+    if w > zero && tau > zero {
+      (w / tau).sqrt()
     } else {
       T::nan()
     }
@@ -189,7 +189,7 @@ impl<T: FloatExt> SviRawParams<T> {
   }
 
   /// Convert to Jump-Wings parameterization.
-  pub fn jump_wings(self, t: T) -> SviJumpWings<T> {
+  pub fn jump_wings(self, tau: T) -> SviJumpWings<T> {
     let half = T::from_f64_fast(0.5);
     let one = T::one();
     let sqrt_m2s2 = (self.m * self.m + self.sigma * self.sigma).sqrt();
@@ -206,7 +206,7 @@ impl<T: FloatExt> SviRawParams<T> {
       p_t,
       c_t,
       v_tilde,
-      t,
+      tau,
     }
   }
 
@@ -254,8 +254,8 @@ pub struct SviJumpWings<T: FloatExt> {
   pub c_t: T,
   /// Minimum total variance
   pub v_tilde: T,
-  /// Time to expiry
-  pub t: T,
+  /// Time to maturity in years.
+  pub tau: T,
 }
 
 /// Calibrate raw SVI parameters to observed total-variance data via

@@ -71,7 +71,7 @@ impl PyHscmMarketOption {
     Self {
       inner: crate::calibration::heston_stoch_corr::MarketOption {
         strike,
-        maturity,
+        tau: maturity,
         price,
         rate,
       },
@@ -84,7 +84,7 @@ impl PyHscmMarketOption {
   }
   #[getter]
   fn maturity(&self) -> f64 {
-    self.inner.maturity
+    self.inner.tau
   }
   #[getter]
   fn price(&self) -> f64 {

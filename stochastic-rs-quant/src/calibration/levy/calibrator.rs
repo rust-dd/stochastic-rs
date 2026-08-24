@@ -94,7 +94,7 @@ impl LevyCalibrator {
       for i in 0..slice.strikes.len() {
         prices.push(slice.prices[i]);
         strikes.push(slice.strikes[i]);
-        ts.push(slice.t);
+        ts.push(slice.tau);
         is_call.push(slice.is_call[i]);
       }
     }

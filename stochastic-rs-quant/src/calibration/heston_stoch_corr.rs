@@ -29,7 +29,7 @@ pub const BOUNDS: [(f64, f64); 9] = [
 #[derive(Clone, Debug)]
 pub struct MarketOption {
   pub strike: f64,
-  pub maturity: f64,
+  pub tau: f64,
   pub price: f64,
   pub rate: f64,
 }
@@ -172,7 +172,7 @@ fn slsqp_objective(x: &[f64], gradient: Option<&mut [f64]>, data: &mut CalibData
 fn eval_sse(x: &[f64], data: &CalibData) -> f64 {
   let mut obj = 0.0;
   for opt in &data.options {
-    let model = price_call(x, data.s0, opt.strike, opt.maturity, opt.rate);
+    let model = price_call(x, data.s0, opt.strike, opt.tau, opt.rate);
     let err = (model - opt.price) / opt.price.max(1e-6);
     obj += err * err;
   }
@@ -225,7 +225,7 @@ impl crate::traits::Calibrator for HscmCalibrator {
 ///
 /// # Arguments
 /// * `s0` — Spot price.
-/// * `options` — Market option data (strike, maturity, price, rate).
+/// * `options` — Market option data (strike, tau, price, rate).
 /// * `initial_guess` — 9-element initial parameter guess.
 /// * `max_iter` — Maximum SLSQP iterations.
 pub fn calibrate_hscm(
@@ -266,7 +266,7 @@ pub fn calibrate_hscm(
   let mut sse = 0.0;
   let mut sae = 0.0;
   for opt in options {
-    let model = price_call(&x, s0, opt.strike, opt.maturity, opt.rate);
+    let model = price_call(&x, s0, opt.strike, opt.tau, opt.rate);
     let err = model - opt.price;
     sse += err * err;
     sae += err.abs();
@@ -299,19 +299,19 @@ mod tests {
     let options = vec![
       MarketOption {
         strike: 95.0,
-        maturity: 0.25,
+        tau: 0.25,
         price: 8.0,
         rate: 0.03,
       },
       MarketOption {
         strike: 100.0,
-        maturity: 0.25,
+        tau: 0.25,
         price: 5.5,
         rate: 0.03,
       },
       MarketOption {
         strike: 105.0,
-        maturity: 0.25,
+        tau: 0.25,
         price: 3.5,
         rate: 0.03,
       },
@@ -322,7 +322,7 @@ mod tests {
     let initial_sse: f64 = options
       .iter()
       .map(|opt| {
-        let m = price_call(&guess, 100.0, opt.strike, opt.maturity, opt.rate);
+        let m = price_call(&guess, 100.0, opt.strike, opt.tau, opt.rate);
         let err = (m - opt.price) / opt.price.max(1e-6);
         err * err
       })
@@ -358,7 +358,7 @@ mod tests {
       .iter()
       .map(|&k| MarketOption {
         strike: k,
-        maturity: tau,
+        tau,
         price: price_call(&truth, s0, k, tau, r),
         rate: r,
       })
@@ -369,7 +369,7 @@ mod tests {
     let initial_sse: f64 = options
       .iter()
       .map(|opt| {
-        let m = price_call(&guess, s0, opt.strike, opt.maturity, opt.rate);
+        let m = price_call(&guess, s0, opt.strike, opt.tau, opt.rate);
         let err = (m - opt.price) / opt.price.max(1e-6);
         err * err
       })

@@ -26,7 +26,7 @@ pub struct FxForward<T: FloatExt> {
   /// Continuously-compounded foreign (base-currency) risk-free rate.
   pub foreign_rate: T,
   /// Time to maturity in years.
-  pub maturity: T,
+  pub tau: T,
 }
 
 impl<T: FloatExt> std::fmt::Display for FxForward<T> {
@@ -36,19 +36,19 @@ impl<T: FloatExt> std::fmt::Display for FxForward<T> {
       "FxForward({}, spot={:.6}, T={:.4})",
       self.pair,
       self.s.to_f64().unwrap_or(f64::NAN),
-      self.maturity.to_f64().unwrap_or(f64::NAN)
+      self.tau.to_f64().unwrap_or(f64::NAN)
     )
   }
 }
 
 impl<T: FloatExt> FxForward<T> {
-  pub fn new(pair: CurrencyPair, s: T, domestic_rate: T, foreign_rate: T, maturity: T) -> Self {
+  pub fn new(pair: CurrencyPair, s: T, domestic_rate: T, foreign_rate: T, tau: T) -> Self {
     Self {
       pair,
       s,
       domestic_rate,
       foreign_rate,
-      maturity,
+      tau,
     }
   }
 
@@ -56,7 +56,7 @@ impl<T: FloatExt> FxForward<T> {
   ///
   /// $F = S \cdot e^{(r_d - r_f)\,\tau}$
   pub fn forward_rate(&self) -> T {
-    self.s * ((self.domestic_rate - self.foreign_rate) * self.maturity).exp()
+    self.s * ((self.domestic_rate - self.foreign_rate) * self.tau).exp()
   }
 
   /// Forward exchange rate under simple (linear) compounding.
@@ -64,7 +64,7 @@ impl<T: FloatExt> FxForward<T> {
   /// $F = S \cdot \frac{1 + r_d \tau}{1 + r_f \tau}$
   pub fn forward_rate_simple(&self) -> T {
     let one = T::one();
-    self.s * (one + self.domestic_rate * self.maturity) / (one + self.foreign_rate * self.maturity)
+    self.s * (one + self.domestic_rate * self.tau) / (one + self.foreign_rate * self.tau)
   }
 
   /// Forward points: $F - S$.
@@ -84,21 +84,21 @@ impl<T: FloatExt> FxForward<T> {
 
   /// Annualised forward premium: $\frac{F - S}{S \cdot \tau}$.
   pub fn annualised_premium(&self) -> T {
-    self.forward_points() / (self.s * self.maturity)
+    self.forward_points() / (self.s * self.tau)
   }
 
   /// Implied domestic rate given a forward rate and foreign rate.
   ///
   /// $r_d = r_f + \frac{1}{\tau}\ln\!\left(\frac{F}{S}\right)$
-  pub fn implied_domestic_rate(s: T, forward: T, foreign_rate: T, maturity: T) -> T {
-    foreign_rate + (forward / s).ln() / maturity
+  pub fn implied_domestic_rate(s: T, forward: T, foreign_rate: T, tau: T) -> T {
+    foreign_rate + (forward / s).ln() / tau
   }
 
   /// Implied foreign rate given a forward rate and domestic rate.
   ///
   /// $r_f = r_d - \frac{1}{\tau}\ln\!\left(\frac{F}{S}\right)$
-  pub fn implied_foreign_rate(s: T, forward: T, domestic_rate: T, maturity: T) -> T {
-    domestic_rate - (forward / s).ln() / maturity
+  pub fn implied_foreign_rate(s: T, forward: T, domestic_rate: T, tau: T) -> T {
+    domestic_rate - (forward / s).ln() / tau
   }
 }
 

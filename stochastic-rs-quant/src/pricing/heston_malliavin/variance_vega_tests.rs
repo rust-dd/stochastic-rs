@@ -26,7 +26,7 @@ fn under_sampled_model() -> HestonModel {
     rho: 0.390_534,
     risk_free_rate: 0.05,
     dividend_yield: 0.0,
-    maturity: 36.0 / 365.0,
+    tau: 36.0 / 365.0,
   }
 }
 
@@ -141,7 +141,7 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
     rho: 0.35,
     risk_free_rate: 0.03,
     dividend_yield: 0.01,
-    maturity: 0.75,
+    tau: 0.75,
   };
   let payoff = VanillaPortfolio::call(105.0);
   for seed in [11, 29, 47] {
@@ -157,13 +157,13 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
       .unwrap();
     let bump = estimate.initial_variance_vega_diagnostics.effective_bump;
     assert!((bump - 0.0012).abs() < 1e-15);
-    let dt = model.maturity / config.steps as f64;
+    let dt = model.tau / config.steps as f64;
     let discrete_loading =
-      (1.0 - (1.0 - model.kappa * dt).powi(config.steps as i32)) / (model.kappa * model.maturity);
+      (1.0 - (1.0 - model.kappa * dt).powi(config.steps as i32)) / (model.kappa * model.tau);
     let price = |variance: f64| {
       BSMPricer::builder(model.s, variance.sqrt(), 105.0, model.risk_free_rate)
         .q(model.dividend_yield)
-        .tau(model.maturity)
+        .tau(model.tau)
         .option_type(OptionType::Call)
         .coc(BSMCoc::Merton1973)
         .build()

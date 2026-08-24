@@ -18,7 +18,7 @@ impl PyMarketSlice {
         strikes,
         prices,
         is_call,
-        t,
+        tau: t,
       },
     }
   }
