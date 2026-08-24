@@ -6,202 +6,78 @@
 //!
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
-use crate::OptionType;
-use crate::traits::GreeksExt;
 use crate::traits::ModelPricer;
-use crate::traits::PricerExt;
-use crate::traits::TimeExt;
 
-#[derive(Debug, Clone)]
+mod greeks;
+
+/// Merton (1976) jump-diffusion pricer.
+///
+/// The struct holds **model state only** — the total volatility, the jump
+/// intensity and jump-variance share, the Poisson-series truncation limit
+/// and the cost-of-carry convention. Spot, strike, rate, dividend yield and
+/// maturity are the pricing *query* and travel as arguments to
+/// [`ModelPricer::price_call`] and to every Greek, so one instance prices a
+/// whole strike/maturity grid.
+///
+/// The query's `(r, q)` pair is **`(discount rate, carry offset)`**, not
+/// necessarily `(risk-free rate, dividend yield)`: this pricer discounts at
+/// `r` and carries at [`BSMPricer::b(r, q)`](BSMPricer::b), whose value
+/// depends on `self.b`. To reproduce a discount `r₀` with a carry `b₀` —
+/// Garman-Kohlhagen's `b₀ = r_d − r_f`, say — pass
+/// `(r, q) = (r₀, r₀ − b₀)`, which is an identity rather than an
+/// approximation because GK's `b(r, q) = r − q`. See
+/// `merton_gk_carries_at_rd_minus_rf_and_discounts_at_r`.
+///
+/// ```
+/// use stochastic_rs_quant::pricing::bsm::BSMCoc;
+/// use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// let model = Merton1976Pricer::new(0.2, 0.5, 0.4, 10, BSMCoc::Bsm1973);
+/// let atm = model.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
+/// let otm = model.price_call(100.0, 120.0, 0.05, 0.0, 0.5);
+/// assert!(atm > otm);
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct Merton1976Pricer {
-  /// Underlying price
-  pub s: f64,
   /// Volatility
   pub v: f64,
-  /// Strike price
-  pub k: f64,
-  /// Risk-free rate
-  pub r: f64,
-  /// Domestic risk-free rate
-  pub r_d: Option<f64>,
-  /// Foreign risk-free rate
-  pub r_f: Option<f64>,
-  /// Dividend yield
-  pub q: Option<f64>,
   /// Expected number of jumps
   pub lambda: f64,
   /// Percentage of the volatility due to jumps
   pub gamma: f64,
   /// Iteration limit
   pub m: usize,
-  /// Time to maturity in years
-  pub tau: Option<f64>,
-  /// Evaluation date
-  pub eval: Option<chrono::NaiveDate>,
-  /// Expiration date
-  pub expiration: Option<chrono::NaiveDate>,
-  /// Option type
-  pub option_type: OptionType,
   /// Cost of carry
   pub b: BSMCoc,
 }
 
 impl Merton1976Pricer {
-  pub fn new(
-    s: f64,
-    v: f64,
-    k: f64,
-    r: f64,
-    r_d: Option<f64>,
-    r_f: Option<f64>,
-    q: Option<f64>,
-    lambda: f64,
-    gamma: f64,
-    m: usize,
-    tau: Option<f64>,
-    eval: Option<chrono::NaiveDate>,
-    expiration: Option<chrono::NaiveDate>,
-    option_type: OptionType,
-    b: BSMCoc,
-  ) -> Self {
+  pub const fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BSMCoc) -> Self {
     Self {
-      s,
       v,
-      k,
-      r,
-      r_d,
-      r_f,
-      q,
       lambda,
       gamma,
       m,
-      tau,
-      eval,
-      expiration,
-      option_type,
       b,
     }
   }
 
-  pub fn builder(
-    s: f64,
-    v: f64,
-    k: f64,
-    r: f64,
-    lambda: f64,
-    gamma: f64,
-    m: usize,
-  ) -> Merton1976PricerBuilder {
-    Merton1976PricerBuilder {
-      s,
-      v,
-      k,
-      r,
-      r_d: None,
-      r_f: None,
-      q: None,
-      lambda,
-      gamma,
-      m,
-      tau: None,
-      eval: None,
-      expiration: None,
-      option_type: OptionType::Call,
-      b: BSMCoc::Bsm1973,
-    }
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct Merton1976PricerBuilder {
-  s: f64,
-  v: f64,
-  k: f64,
-  r: f64,
-  r_d: Option<f64>,
-  r_f: Option<f64>,
-  q: Option<f64>,
-  lambda: f64,
-  gamma: f64,
-  m: usize,
-  tau: Option<f64>,
-  eval: Option<chrono::NaiveDate>,
-  expiration: Option<chrono::NaiveDate>,
-  option_type: OptionType,
-  b: BSMCoc,
-}
-
-impl Merton1976PricerBuilder {
-  pub fn r_d(mut self, r_d: f64) -> Self {
-    self.r_d = Some(r_d);
-    self
-  }
-  pub fn r_f(mut self, r_f: f64) -> Self {
-    self.r_f = Some(r_f);
-    self
-  }
-  pub fn q(mut self, q: f64) -> Self {
-    self.q = Some(q);
-    self
-  }
-  pub fn tau(mut self, tau: f64) -> Self {
-    self.tau = Some(tau);
-    self
-  }
-  pub fn eval(mut self, eval: chrono::NaiveDate) -> Self {
-    self.eval = Some(eval);
-    self
-  }
-  pub fn expiration(mut self, expiration: chrono::NaiveDate) -> Self {
-    self.expiration = Some(expiration);
-    self
-  }
-  pub fn option_type(mut self, option_type: OptionType) -> Self {
-    self.option_type = option_type;
-    self
-  }
-  pub fn coc(mut self, b: BSMCoc) -> Self {
-    self.b = b;
-    self
-  }
-  pub fn build(self) -> Merton1976Pricer {
-    Merton1976Pricer {
-      s: self.s,
-      v: self.v,
-      k: self.k,
-      r: self.r,
-      r_d: self.r_d,
-      r_f: self.r_f,
-      q: self.q,
-      lambda: self.lambda,
-      gamma: self.gamma,
-      m: self.m,
-      tau: self.tau,
-      eval: self.eval,
-      expiration: self.expiration,
-      option_type: self.option_type,
-      b: self.b,
-    }
-  }
-}
-
-impl PricerExt for Merton1976Pricer {
   /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$,
-  /// routed through [`Merton1976Pricer::poisson_weight`]'s running-product
-  /// weight rather than an integer `n!` — the latter overflows `usize` past
-  /// `n \approx 21` (the crate's Python binding documents a default of
-  /// `m = 50`), silently producing garbage instead of a price. Numerically
-  /// identical to the pre-refactor factorial-based loop for `m \le 20` (see
+  /// routed through [`poisson_weight`](Self::poisson_weight)'s
+  /// running-product weight rather than an integer `n!` — the latter
+  /// overflows `usize` past `n \approx 21` (the crate's Python binding
+  /// documents a default of `m = 50`), silently producing garbage instead
+  /// of a price. Numerically identical to the pre-refactor factorial-based
+  /// loop for `m \le 20` (see
   /// `merton_price_m10_matches_pre_refactor_value` for the regression pin).
-  fn calculate_call_put(&self) -> (f64, f64) {
-    let tau = self.tau_or_from_dates();
-    let (r, q) = self.query_rates();
+  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let mut call = 0.0;
     let mut put = 0.0;
 
     for i in 0..self.m {
       let weight = self.poisson_weight(i, tau);
-      let (c, p) = self.term_bsm(i, tau).call_put(self.s, self.k, r, q, tau);
+      let (c, p) = self.term_bsm(i, tau).call_put(s, k, r, q, tau);
       call += c * weight;
       put += p * weight;
     }
@@ -209,49 +85,22 @@ impl PricerExt for Merton1976Pricer {
     (call, put)
   }
 
-  fn calculate_price(&self) -> f64 {
-    let (call, put) = self.calculate_call_put();
-    match self.option_type {
-      OptionType::Call => call,
-      OptionType::Put => put,
-    }
-  }
-}
-
-impl TimeExt for Merton1976Pricer {
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn eval(&self) -> Option<chrono::NaiveDate> {
-    self.eval
-  }
-
-  fn expiration(&self) -> Option<chrono::NaiveDate> {
-    self.expiration
-  }
-}
-
-impl Merton1976Pricer {
   /// Jump-size standard deviation implied by decomposing total volatility
   /// `v` into a diffusive part and a jump part that together explain a
-  /// `gamma` fraction of the variance. Mirrors the private `delta()`
-  /// closure inside [`PricerExt::calculate_call_put`].
+  /// `gamma` fraction of the variance.
   fn jump_size_std(&self) -> f64 {
     (self.v.powi(2) * self.gamma / self.lambda).sqrt()
   }
 
   /// Diffusive volatility component (total variance minus the jump
-  /// contribution). Mirrors the private `z()` closure inside
-  /// [`PricerExt::calculate_call_put`].
+  /// contribution).
   fn diffusive_std(&self) -> f64 {
     (self.v.powi(2) - self.lambda * self.jump_size_std().powi(2)).sqrt()
   }
 
   /// Per-term volatility used by the `n`-th element of the Poisson-weighted
-  /// series. Mirrors the private `sigma()` closure inside
-  /// [`PricerExt::calculate_call_put`], so Greeks built from it stay exact
-  /// derivatives of the price the pricer actually returns.
+  /// series, so Greeks built from it stay exact derivatives of the price
+  /// the pricer actually returns.
   fn term_vol(&self, n: usize, tau: f64) -> f64 {
     ((self.diffusive_std().powi(2) + self.jump_size_std().powi(2)) * n as f64 / tau).sqrt()
   }
@@ -266,50 +115,6 @@ impl Merton1976Pricer {
     (-lt).exp() * ratio
   }
 
-  /// The `(r, q)` pair handed to the per-term [`BSMPricer`] query. This
-  /// pricer stores four rate fields; the model takes two, and the pair it
-  /// takes is `(discount rate, carry offset)` — [`BSMPricer`] always
-  /// discounts at the query's `r` and carries at `b(r, q)`.
-  ///
-  /// So this solves for the `(r, q)` that reproduces *this* pricer's
-  /// discount and carry exactly. For every convention but Garman-Kohlhagen
-  /// that is just the stored pair. Under
-  /// [`BSMCoc::GarmanKohlhagen1983`] the two come apart: the carry is
-  /// `r_d - r_f` but the discount is this pricer's own `r`, which is a
-  /// separate field. Since GK's `b(r, q) = r - q`, the effective dividend
-  /// yield that reproduces it is `q = r - r_d + r_f` — an identity, not an
-  /// approximation, and it collapses to `r_f` in the ordinary case
-  /// `r == r_d`.
-  ///
-  /// Textbook Garman-Kohlhagen would discount at `r_d` and ignore `r`.
-  /// This pricer never has: changing that is a deliberate modelling choice
-  /// for whichever task migrates `Merton1976Pricer`, not a side effect of
-  /// `BSMPricer` moving to `ModelPricer`.
-  ///
-  /// # Panics
-  /// - `BSMCoc::Merton1973` without `q`
-  /// - `BSMCoc::GarmanKohlhagen1983` without `r_d` / `r_f`
-  fn query_rates(&self) -> (f64, f64) {
-    match self.b {
-      BSMCoc::Merton1973 => (
-        self.r,
-        self
-          .q
-          .expect("BSMCoc::Merton1973 requires `q` (dividend yield)"),
-      ),
-      BSMCoc::GarmanKohlhagen1983 => {
-        let r_d = self
-          .r_d
-          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_d`");
-        let r_f = self
-          .r_f
-          .expect("BSMCoc::GarmanKohlhagen1983 requires `r_f`");
-        (self.r, self.r - r_d + r_f)
-      }
-      BSMCoc::Bsm1973 | BSMCoc::Black1976 | BSMCoc::Asay1982 => (self.r, self.q.unwrap_or(0.0)),
-    }
-  }
-
   /// `BSMPricer` at this pricer's cost-of-carry convention and total
   /// volatility `self.v` (the no-jump / Black-Scholes limit);
   /// [`term_bsm`](Self::term_bsm) swaps in the per-term volatility.
@@ -320,232 +125,21 @@ impl Merton1976Pricer {
   fn term_bsm(&self, n: usize, tau: f64) -> BSMPricer {
     BSMPricer::new(self.term_vol(n, tau), self.b)
   }
-
-  /// Poisson-weighted series over a closed-form BSM Greek. Exact whenever
-  /// the Greek's bump variable enters neither [`term_vol`](Self::term_vol)
-  /// nor [`poisson_weight`](Self::poisson_weight) — true for spot and
-  /// rate, which is why `delta`/`gamma`/`rho` use this path. `λ ≤ 0`
-  /// returns the single surviving (`n = 0`, weight 1) term directly,
-  /// sidestepping the `0/0` singularity
-  /// [`jump_size_std`](Self::jump_size_std) would otherwise hit.
-  ///
-  /// `n = 0` is always priced at `term_vol(0, τ) = 0` exactly (a property
-  /// of the existing price series, not of this method), which sends
-  /// `1/v`-shaped closed forms like [`BSMPricer::gamma`] to `0/0`. That
-  /// term's true contribution is its `v → 0⁺` limit, which is `0` for any
-  /// off-the-money strike (`norm_pdf(d1) → 0` exponentially, beating the
-  /// linear `1/v`) — so a `NaN` contribution here is floored to `0` rather
-  /// than poisoning the whole sum.
-  fn greek_series(&self, greek: impl Fn(&BSMPricer, f64) -> f64) -> f64 {
-    let tau = self.tau_or_from_dates();
-    if self.lambda <= 0.0 {
-      return greek(&self.base_bsm(), tau);
-    }
-    (0..self.m)
-      .map(|n| {
-        let contribution = self.poisson_weight(n, tau) * greek(&self.term_bsm(n, tau), tau);
-        if contribution.is_nan() {
-          0.0
-        } else {
-          contribution
-        }
-      })
-      .sum()
-  }
-
-  /// Overflow-safe re-implementation of [`PricerExt::calculate_price`]'s
-  /// Poisson sum, built on [`greek_series`](Self::greek_series) instead of
-  /// [`PricerExt::calculate_call_put`]'s own loop. Numerically identical to
-  /// `calculate_price()` for `m ≤ 20` — both compute `Σ w_n · BS_n(σ_n)`,
-  /// just accumulating the same weight `w_n` via a different (equally
-  /// valid) route — but unlike `calculate_call_put()`, this never
-  /// overflows for larger `m`, since
-  /// [`poisson_weight`](Self::poisson_weight) never materializes `n!` as
-  /// an integer. Every finite-difference Greek below calls this instead of
-  /// `calculate_price()`, so all 9 Greeks stay valid at `m` values
-  /// `calculate_call_put()` itself cannot handle (the crate's Python
-  /// binding documents a default of `m = 50`, past `calculate_call_put`'s
-  /// `m ≈ 21` `usize`-factorial overflow threshold — a pre-existing
-  /// limitation of that method, unrelated to `GreeksExt` and out of scope
-  /// to fix here).
-  fn series_price(&self) -> f64 {
-    let (r, q) = self.query_rates();
-    self.greek_series(|bsm, tau| bsm.price_option(self.s, self.k, r, q, tau, self.option_type))
-  }
-
-  const H_TAU: f64 = 1e-5;
-
-  fn h_s(&self) -> f64 {
-    self.s.abs() * 1e-4
-  }
-
-  fn h_v(&self) -> f64 {
-    self.v.abs().max(0.01) * 1e-4
-  }
-
-  /// Clone with `s`/`v`/`tau` bumped — backs the Greeks a naive Poisson
-  /// series would get wrong (see the [`GreeksExt`] impl doc below).
-  fn bumped(&self, ds: f64, dv: f64, dtau: f64) -> Self {
-    let mut p = self.clone();
-    p.s += ds;
-    p.v = (p.v + dv).max(1e-8);
-    let tau = p.tau_or_from_dates();
-    p.tau = Some(tau + dtau);
-    p.eval = None;
-    p.expiration = None;
-    p
-  }
 }
 
-/// Poisson-weighted-series Greeks for the Merton (1976) jump-diffusion
-/// model.
-///
-/// `delta`/`gamma`/`rho` are exact closed-form series over the
-/// corresponding [`BSMPricer`] Greek (`Σ w_n · greek(σ_n)`): neither the
-/// per-term volatility `σ_n` nor the Poisson weights `w_n` depend on spot
-/// or rate, so the naive series *is* the true derivative.
-/// `vega`/`theta`/`vanna`/`charm`/`volga`/`veta` bump `v`/`tau` on a cloned
-/// pricer instead — `σ_n` is itself a function of both (via
-/// [`Merton1976Pricer::term_vol`]), so a naive `Σ w_n · greek(σ_n)` would
-/// silently drop the chain-rule term and stop being the true derivative of
-/// the price. `theta`/`charm`/`veta` use the calendar `-∂/∂τ` convention
-/// (matching [`BSMPricer::theta`] / `charm` / `dvega_dtime`, and the
-/// `λ ≤ 0` Black-Scholes limit below).
-///
-/// `theta`/`charm`/`veta`'s `λ > 0` path additionally guards near expiry:
-/// at `τ ≤ h_τ` the down-`τ` bump in [`Merton1976Pricer::bumped`] would
-/// evaluate the price series at a negative time-to-maturity, producing
-/// per-term `NaN`s that [`Merton1976Pricer::greek_series`]'s `NaN`-floor
-/// silently zeroes out of the down-leg — turning an undefined derivative
-/// into large finite garbage instead of `NaN`. Mirrors
-/// [`HestonPricer::theta`](crate::pricing::heston::HestonPricer::theta)'s
-/// identical guard.
-///
-/// All 9 methods price through [`Merton1976Pricer::series_price`], not
-/// [`PricerExt::calculate_price`] — so, unlike `calculate_price()` itself,
-/// every Greek here stays finite for `m` past `calculate_call_put`'s
-/// `usize`-factorial overflow threshold (`m ≈ 21`; see `series_price`'s
-/// doc).
-impl GreeksExt for Merton1976Pricer {
-  fn delta(&self) -> f64 {
-    let (r, q) = self.query_rates();
-    self.greek_series(|bsm, tau| bsm.delta(self.s, self.k, r, q, tau, self.option_type))
+impl ModelPricer for Merton1976Pricer {
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.call_put(s, k, r, q, tau).0
   }
 
-  fn gamma(&self) -> f64 {
-    let (r, q) = self.query_rates();
-    self.greek_series(|bsm, tau| bsm.gamma(self.s, self.k, r, q, tau))
-  }
-
-  fn rho(&self) -> f64 {
-    let (r, q) = self.query_rates();
-    self.greek_series(|bsm, tau| bsm.rho(self.s, self.k, r, q, tau, self.option_type))
-  }
-
-  fn vega(&self) -> f64 {
-    if self.lambda <= 0.0 {
-      let (r, q) = self.query_rates();
-      return self
-        .base_bsm()
-        .vega(self.s, self.k, r, q, self.tau_or_from_dates());
-    }
-    let h = self.h_v();
-    (self.bumped(0.0, h, 0.0).series_price() - self.bumped(0.0, -h, 0.0).series_price()) / (2.0 * h)
-  }
-
-  fn theta(&self) -> f64 {
-    if self.lambda <= 0.0 {
-      let (r, q) = self.query_rates();
-      return self.base_bsm().theta(
-        self.s,
-        self.k,
-        r,
-        q,
-        self.tau_or_from_dates(),
-        self.option_type,
-      );
-    }
-    let tau = self.tau_or_from_dates();
-    let h = Self::H_TAU;
-    if !(tau.is_finite() && tau > h) {
-      return f64::NAN;
-    }
-    -(self.bumped(0.0, 0.0, h).series_price() - self.bumped(0.0, 0.0, -h).series_price())
-      / (2.0 * h)
-  }
-
-  fn vanna(&self) -> f64 {
-    if self.lambda <= 0.0 {
-      let (r, q) = self.query_rates();
-      return self
-        .base_bsm()
-        .vanna(self.s, self.k, r, q, self.tau_or_from_dates());
-    }
-    let hs = self.h_s();
-    let hv = self.h_v();
-    (self.bumped(hs, hv, 0.0).series_price()
-      - self.bumped(hs, -hv, 0.0).series_price()
-      - self.bumped(-hs, hv, 0.0).series_price()
-      + self.bumped(-hs, -hv, 0.0).series_price())
-      / (4.0 * hs * hv)
-  }
-
-  fn charm(&self) -> f64 {
-    if self.lambda <= 0.0 {
-      let (r, q) = self.query_rates();
-      return self.base_bsm().charm(
-        self.s,
-        self.k,
-        r,
-        q,
-        self.tau_or_from_dates(),
-        self.option_type,
-      );
-    }
-    let tau = self.tau_or_from_dates();
-    let ht = Self::H_TAU;
-    if !(tau.is_finite() && tau > ht) {
-      return f64::NAN;
-    }
-    let hs = self.h_s();
-    -(self.bumped(hs, 0.0, ht).series_price()
-      - self.bumped(hs, 0.0, -ht).series_price()
-      - self.bumped(-hs, 0.0, ht).series_price()
-      + self.bumped(-hs, 0.0, -ht).series_price())
-      / (4.0 * hs * ht)
-  }
-
-  fn volga(&self) -> f64 {
-    if self.lambda <= 0.0 {
-      let (r, q) = self.query_rates();
-      return self
-        .base_bsm()
-        .vomma(self.s, self.k, r, q, self.tau_or_from_dates());
-    }
-    let h = self.h_v();
-    let p0 = self.series_price();
-    (self.bumped(0.0, h, 0.0).series_price() - 2.0 * p0 + self.bumped(0.0, -h, 0.0).series_price())
-      / (h * h)
-  }
-
-  fn veta(&self) -> f64 {
-    if self.lambda <= 0.0 {
-      let (r, q) = self.query_rates();
-      return self
-        .base_bsm()
-        .dvega_dtime(self.s, self.k, r, q, self.tau_or_from_dates());
-    }
-    let tau = self.tau_or_from_dates();
-    let ht = Self::H_TAU;
-    if !(tau.is_finite() && tau > ht) {
-      return f64::NAN;
-    }
-    let hv = self.h_v();
-    -(self.bumped(0.0, hv, ht).series_price()
-      - self.bumped(0.0, hv, -ht).series_price()
-      - self.bumped(0.0, -hv, ht).series_price()
-      + self.bumped(0.0, -hv, -ht).series_price())
-      / (4.0 * hv * ht)
+  /// Overrides the trait's vanilla-parity default for the same reason
+  /// [`BSMPricer::price_put`] does, inherited term by term: each element of
+  /// the Poisson series carries at $e^{(b-r)\tau}$, which equals the
+  /// default's $e^{-q\tau}$ only when $b = r - q$ — false for
+  /// [`BSMCoc::Bsm1973`] at `q != 0` and for [`BSMCoc::Black1976`] /
+  /// [`BSMCoc::Asay1982`]. See `merton_price_put_overrides_vanilla_parity`.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.call_put(s, k, r, q, tau).1
   }
 }
 

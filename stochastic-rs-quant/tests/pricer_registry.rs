@@ -15,8 +15,8 @@
 //! revision's stated command produce 81 rather than the 71 it claimed.
 //!
 //! 19 of the 50 implement one of [`PricerExt`], [`ModelPricer`], or
-//! [`PricingEngine`]: **14** carry `ModelPricer` (the trait this registry
-//! exists to guard), **3** the older `PricerExt`, **2** `PricingEngine`.
+//! [`PricingEngine`]: **15** carry `ModelPricer` (the trait this registry
+//! exists to guard), **2** the older `PricerExt`, **2** `PricingEngine`.
 //! Every one of those three numbers is the length of the matching macro
 //! invocation below and nothing else — re-derive rather than
 //! arithmetic-adjust them, with (substituting the macro name):
@@ -129,6 +129,7 @@ assert_model_pricer!(
   GbmMalliavinPricer,
   HestonPricer,
   HestonSlvPricer,
+  Merton1976Pricer,
   RBergomiPricer,
   SabrPricer,
   SnellEnvelopePricer,
@@ -147,7 +148,7 @@ assert_model_pricer!(
 // excluded by the design". It is not migrating to `ModelPricer`; once
 // `PricerExt` is retired (Task 6) it becomes trait-less like its multi-asset
 // siblings. Filed here by what it implements now, not by its final family.
-assert_pricer_ext!(HestonStochCorrPricer, KirkSpreadPricer, Merton1976Pricer,);
+assert_pricer_ext!(HestonStochCorrPricer, KirkSpreadPricer,);
 
 // QuantLib-style decoupled engines (`Instrument` + `PricingEngine<I>` +
 // `PricingResult`, see `traits::instrument`) rather than `ModelPricer`. This

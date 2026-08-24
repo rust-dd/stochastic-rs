@@ -2,7 +2,6 @@ use pyo3::prelude::*;
 
 use super::parse_option_type;
 use crate::traits::ModelPricer;
-use crate::traits::PricerExt;
 
 /// The Rust model holds `(v, coc)` only, so the wrapper carries the
 /// `(s, k, r, q, tau)` query and the option type that the Python-visible
@@ -198,9 +197,23 @@ impl PySabrPricer {
   }
 }
 
+/// The Rust model holds `(v, lambda, gamma, m, coc)` only, so the wrapper
+/// carries the `(s, k, r, q, tau)` query and the option type the
+/// Python-visible no-argument methods are defined at. Python's constructor
+/// signature is unchanged.
+///
+/// `q` remains a no-op here, exactly as before: this class hardcodes
+/// `BSMCoc::Bsm1973`, whose cost of carry is `r` and never reads the
+/// dividend yield.
 #[pyclass(name = "Merton1976Pricer", unsendable)]
 pub struct PyMerton1976Pricer {
   inner: crate::pricing::merton_jump::Merton1976Pricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
+  option_type: crate::OptionType,
 }
 
 #[pymethods]
@@ -221,22 +234,32 @@ impl PyMerton1976Pricer {
     m: usize,
   ) -> PyResult<Self> {
     let ot = parse_option_type(option_type)?;
-    let mut builder =
-      crate::pricing::merton_jump::Merton1976Pricer::builder(s, v, k, r, lambda_, gamma, m)
-        .tau(tau)
-        .option_type(ot);
-    if let Some(qv) = q {
-      builder = builder.q(qv);
-    }
+    let inner = crate::pricing::merton_jump::Merton1976Pricer::new(
+      v,
+      lambda_,
+      gamma,
+      m,
+      crate::pricing::bsm::BSMCoc::Bsm1973,
+    );
     Ok(Self {
-      inner: builder.build(),
+      inner,
+      s,
+      k,
+      r,
+      q: q.unwrap_or(0.0),
+      tau,
+      option_type: ot,
     })
   }
 
   fn price(&self) -> f64 {
-    self.inner.calculate_price()
+    self
+      .inner
+      .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
   fn call_put(&self) -> (f64, f64) {
-    self.inner.calculate_call_put()
+    self
+      .inner
+      .call_put(self.s, self.k, self.r, self.q, self.tau)
   }
 }
