@@ -195,6 +195,22 @@ const GOLDEN_QUERY: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75)
 /// and `price_call_at_strike` **before** the `ModelPricer` reshape, at the
 /// paper's parameter set and `(s, k, r, q, tau) = (100, 105, 0.05, 0.02,
 /// 0.75)`. The reshape (and the `HscmModel` merge) is an API change only.
+///
+/// **These values are known to be wrong, and deliberately so.** The pricer
+/// discounts twice: `exp(-r * tau)` is applied inside `char_func_complex`
+/// (`cf.rs`, in the returned exponential) and again in
+/// `price_call_carr_madan` (`pricer.rs`). Every price here is therefore low
+/// by exactly `1 - exp(-r * tau)` — 3.68% at this query. It is invisible at
+/// the source paper's `r = 0`, which is why it survived.
+///
+/// The bug predates the `ModelPricer` reshape. It is pinned rather than
+/// fixed so the reshape could be verified against the behaviour it actually
+/// replaced; fixing it is a separate, deliberate change that must move these
+/// numbers. The fix is to drop `-r * tau` from the `cf.rs` exponential and
+/// leave `pricer.rs` alone — and it will also break
+/// `hscm_price_put_matches_parity_but_is_floored`, whose zero-floor assertion
+/// currently fires only because the double discount pushes the deep-ITM call
+/// below parity.
 #[test]
 fn hscm_model_pricer_matches_pre_refactor_goldens() {
   let m = paper_model();
