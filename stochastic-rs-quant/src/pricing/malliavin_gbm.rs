@@ -13,16 +13,61 @@ use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use crate::traits::ModelPricer;
 use crate::traits::ProcessExt;
 
+/// Laplace localisation kernel of bandwidth `l`, and its cdf.
+///
+/// `l == 0` is the degenerate — but reachable — bandwidth, and the `0.0` /
+/// step-function pair returned there is the $l \to 0$ **Dirac limit**, not a
+/// silent sentinel: the density concentrates to a point mass, so its value
+/// away from the atom is genuinely zero, and
+/// $\tfrac12(1 + \operatorname{sgn} x\,(1 - e^{-|x|/l}))$ tends to exactly
+/// the Heaviside step the caller compares it against. That is what keeps the
+/// two consistent — the localisation weight
+/// `pdf + (H - cdf)·t2` collapses to `0 + 0·t2`, not to a half-evaluated
+/// mixture.
+///
+/// At the atom $x = 0$ the limit is not the step: the symmetric Laplace cdf
+/// is $\tfrac12$ there for **every** $l > 0$, so the right-continuous
+/// $F(0) = 1$ this branch returns is a choice, not a limit. The choice is
+/// the one that makes the collapse exact — the caller's Heaviside is also
+/// $1$ at a tie, so `H - cdf` cancels rather than leaving half the term —
+/// and it reaches exactly one entry of the $M^2$ double loop, the diagonal
+/// $j = i$ where `diff` is identically zero.
+///
+/// The one caller that reaches `l == 0` is
+/// [`conditional_call_malliavin_localized`](GbmMalliavinPricer::conditional_call_malliavin_localized),
+/// whose `lf` scale is `0.0` exactly when every simulated payoff is zero —
+/// every path finished out of the money. The emptied localisation sum then
+/// multiplies an identically-zero payoff vector, so the conditional price it
+/// produces is `0.0` because the option really is worthless on that sample,
+/// not because the kernel vanished. The companion `l1` scale is strictly
+/// positive by construction and never lands here.
+///
+/// # Panics
+/// Panics on a negative bandwidth. That is not reachable from either scale
+/// above — `lf` is a square root or `0.0`, `l1` is positive or `1e-8` — so
+/// the assert states the invariant rather than handling a case: a negative
+/// bandwidth has no limit interpretation at all, and the old `l <= 0.0`
+/// guard would have folded it in with the well-defined `l == 0`.
 fn laplace_pdf(x: f64, l: f64) -> f64 {
-  if l <= 0.0 {
+  assert!(
+    l >= 0.0,
+    "laplace bandwidth l must be non-negative (got {l})"
+  );
+  if l == 0.0 {
     return 0.0;
   }
 
   (-(x.abs()) / l).exp() / (2.0 * l)
 }
 
+/// Cdf of [`laplace_pdf`] — see its doc for the `l == 0` Dirac limit and the
+/// negative-bandwidth panic, which this shares.
 fn laplace_cdf(x: f64, l: f64) -> f64 {
-  if l <= 0.0 {
+  assert!(
+    l >= 0.0,
+    "laplace bandwidth l must be non-negative (got {l})"
+  );
+  if l == 0.0 {
     return if x < 0.0 { 0.0 } else { 1.0 };
   }
 
@@ -435,106 +480,5 @@ impl GbmMalliavinPricer {
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  const S: f64 = 100.0;
-  const K: f64 = 99.99;
-  const R: f64 = 0.1;
-  const TAU: f64 = 1.0;
-
-  fn pricer() -> GbmMalliavinPricer {
-    GbmMalliavinPricer::new(0.1, 2_000, 128, 0.5)
-  }
-
-  #[test]
-  fn malliavin_pricer_returns_finite_non_negative_prices() {
-    let p = pricer();
-    let (call, put) = p.call_put(S, K, R, 0.0, TAU);
-
-    // Basic sanity checks: finite and non-negative prices
-    assert!(call.is_finite(), "Call price should be finite");
-    assert!(put.is_finite(), "Put price should be finite");
-    assert!(call >= 0.0, "Call price should be non-negative");
-    assert!(put >= 0.0, "Put price should be non-negative");
-
-    // Very loose upper bounds to avoid flakiness due to Monte Carlo noise
-    assert!(call < S * 2.0, "Call price is unreasonably large");
-    assert!(put < K * 2.0, "Put price is unreasonably large");
-  }
-
-  #[test]
-  fn malliavin_pricer_localized_returns_finite_non_negative_prices() {
-    let p = pricer();
-    let (call, put) = p.call_put_localized(S, K, R, 0.0, TAU);
-
-    // Basic sanity checks: finite and non-negative prices
-    assert!(call.is_finite(), "Localized call price should be finite");
-    assert!(put.is_finite(), "Localized put price should be finite");
-    assert!(call >= 0.0, "Localized call price should be non-negative");
-    assert!(put >= 0.0, "Localized put price should be non-negative");
-
-    // Very loose upper bounds to avoid flakiness due to Monte Carlo noise
-    assert!(call < S * 2.0, "Localized call price is unreasonably large");
-    assert!(put < K * 2.0, "Localized put price is unreasonably large");
-  }
-
-  /// `price_call` and `price_put` are the two legs of `call_put`, so the
-  /// put must satisfy put-call parity **against the call from its own
-  /// simulation**, not against some other run's. This is what the trait's
-  /// `price_put` default would break: it would run a second, independent
-  /// Monte Carlo for its `price_call` term.
-  #[test]
-  fn malliavin_put_is_parity_against_its_own_call() {
-    let (call, put) = pricer().call_put(S, K, R, 0.02, TAU);
-    let parity = call - S * (-0.02_f64 * TAU).exp() + K * (-R * TAU).exp();
-    assert!(
-      (put - parity.max(0.0)).abs() < 1e-12,
-      "put {put} must be the floored parity value {parity} of its own call"
-    );
-  }
-
-  /// The `max(0)` floor the pre-query `calculate_call_put` applied — which
-  /// the trait's `price_put` default does **not** have — still guards the
-  /// output. It cannot be pinned by a single deterministic value: the floor
-  /// fires exactly when the Monte Carlo call estimate lands below its
-  /// parity-implied lower bound, which is an estimator-noise event on an
-  /// `Unseeded` RNG. What *is* deterministic is the guarantee, so that is
-  /// what this asserts, across the strike range where a negative
-  /// parity value is reachable.
-  #[test]
-  fn malliavin_put_is_never_negative() {
-    let p = pricer();
-    for &k in &[1.0, 50.0, 99.99, 150.0] {
-      let put = p.price_put(S, k, R, 0.0, TAU);
-      assert!(put >= 0.0, "put at K={k} must be floored, got {put}");
-    }
-  }
-
-  /// `t_eval` is an absolute time, so a maturity shorter than it is not a
-  /// query this instance can price — and it says so rather than returning
-  /// a number.
-  #[test]
-  #[should_panic(expected = "t_eval must be in (0, T)")]
-  fn malliavin_rejects_a_maturity_shorter_than_t_eval() {
-    let _ = pricer().price_call(S, K, R, 0.0, 0.25);
-  }
-
-  /// The capability the reshape exists for: one model, many query points.
-  /// Monte Carlo noise makes a strict monotonicity assertion flaky, so this
-  /// pins the weaker property that every point is priced and finite, plus
-  /// the no-arbitrage upper bound.
-  #[test]
-  fn malliavin_one_model_prices_a_grid() {
-    let model = GbmMalliavinPricer::new(0.2, 400, 64, 0.25);
-    for &tau in &[0.5, 1.0] {
-      for &k in &[90.0, 100.0, 110.0] {
-        let c = model.price_call(S, k, 0.03, 0.01, tau);
-        assert!(
-          c.is_finite() && (0.0..=S).contains(&c),
-          "call {c} out of bounds"
-        );
-      }
-    }
-  }
-}
+#[path = "malliavin_gbm/tests.rs"]
+mod tests;
