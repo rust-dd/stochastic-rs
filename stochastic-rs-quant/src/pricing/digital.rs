@@ -74,7 +74,15 @@ impl CashOrNothingPricer {
   /// hand-assembling a nine-field struct literal, which is where a
   /// mis-mapped member loses its only pin — see
   /// `digital_greeks_aggregates_match_their_accessors`.
-  pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> Greeks {
+  pub fn greeks(
+    &self,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> Greeks {
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       gamma: self.gamma(s, k, r, q, tau, option_type),
@@ -163,7 +171,15 @@ impl AssetOrNothingPricer {
   /// not expose stay [`f64::NAN`]. See
   /// [`CashOrNothingPricer::greeks`] for why this is an inherent method
   /// rather than a [`GreeksExt`](crate::traits::GreeksExt) impl.
-  pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> Greeks {
+  pub fn greeks(
+    &self,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> Greeks {
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       ..Greeks::nan()

@@ -178,15 +178,15 @@ pub fn fourier_model_surface_fft_with(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::pricing::fourier::BatesFourier;
-  use crate::pricing::fourier::DoubleHestonFourier;
-  use crate::pricing::fourier::HestonFourier;
-  use crate::pricing::fourier::VarianceGammaFourier;
   use crate::OptionStyle;
   use crate::pricing::bsm::BSMCoc;
   use crate::pricing::bsm::BSMPricer;
   use crate::pricing::finite_difference::FiniteDifferenceMethod;
   use crate::pricing::finite_difference::FiniteDifferencePricer;
+  use crate::pricing::fourier::BatesFourier;
+  use crate::pricing::fourier::DoubleHestonFourier;
+  use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::fourier::VarianceGammaFourier;
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   use crate::pricing::sabr::SabrPricer;
 
