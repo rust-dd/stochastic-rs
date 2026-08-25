@@ -166,8 +166,10 @@ impl VanillaEuropeanCall for BSMPricer {
   /// where $b = 0$ and the forward is just $S$; under [`BSMCoc::Bsm1973`] at
   /// `q != 0` it would discount a dividend the price never paid. Both leave
   /// every price inside the no-arbitrage band, so the surface inverts them
-  /// into a full smile — see `bsm_black1976_surface_recovers_flat_vol`, which
-  /// fails against the default. [`BSMCoc::Merton1973`] and
+  /// into a full smile — see
+  /// `futures_carry_surface_recovers_the_models_flat_vol` and
+  /// `dividend_ignoring_carry_surface_recovers_the_models_flat_vol`, both of
+  /// which fail against the default. [`BSMCoc::Merton1973`] and
   /// [`BSMCoc::GarmanKohlhagen1983`] have $b = r - q$ and so land on the
   /// default's exact expression, bit for bit.
   ///

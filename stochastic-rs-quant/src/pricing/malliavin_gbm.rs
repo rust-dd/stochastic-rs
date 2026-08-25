@@ -11,8 +11,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
 use crate::traits::ModelPricer;
-use crate::traits::VanillaEuropeanCall;
 use crate::traits::ProcessExt;
+use crate::traits::VanillaEuropeanCall;
 
 /// Laplace localisation kernel of bandwidth `l`, and its cdf.
 ///

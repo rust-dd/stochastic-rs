@@ -126,7 +126,7 @@ impl VanillaEuropeanCall for FiniteDifferencePricer {
   /// convincing: at `q = 0.06` every point on a 5x2 grid inverts to a finite
   /// vol within 0.008 of the model's own `v`, so nothing in the output marks
   /// it as an American price pushed through a European formula. See
-  /// `fd_american_surface_is_all_nan`.
+  /// `american_finite_difference_surface_is_all_nan`.
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     match self.option_style {
       OptionStyle::European => s * ((r - q) * tau).exp(),
