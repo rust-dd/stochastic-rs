@@ -1,4 +1,27 @@
 //! # Traits — umbrella re-export hub.
+//!
+//! Mirrors every trait each sub-crate exports from its own `traits` module,
+//! under the same feature gates. Hub membership is **independent of prelude
+//! membership**: a trait kept out of [`crate::prelude`] — because it has no
+//! in-tree implementors, or because it is feature-gated and the prelude is
+//! deliberately feature-flag-free — still belongs here, and
+//! `website/content/docs/concepts/prelude.mdx` tells readers to "reach via
+//! `traits::*`" on exactly that basis. `MalliavinExt`, `MultivariateExt`,
+//! `CallableDist`, `ShortRatePricer` and `VanillaEuropeanCall` are all in
+//! that position.
+//!
+//! The quant half of the mirror is derivable, so a future omission is
+//! measurable rather than a matter of reading:
+//!
+//! ```text
+//! diff <(grep '^pub use \(calibration\|instrument\|pricing\|short_rate\|time\)::' \
+//!          stochastic-rs-quant/src/traits.rs | sed 's/.*:://;s/;//' | sort) \
+//!      <(grep '^pub use stochastic_rs_quant::traits::' src/traits.rs \
+//!          | sed 's/.*:://;s/;//' | sort)
+//! ```
+//!
+//! `tests/prelude_completeness.rs` names the prelude-excluded traits
+//! explicitly, so dropping one from this hub is a compile error there.
 
 pub use stochastic_rs_copulas::traits::BivariateExt;
 #[cfg(feature = "openblas")]
@@ -21,9 +44,12 @@ pub use stochastic_rs_quant::traits::InstrumentExt;
 pub use stochastic_rs_quant::traits::ModelPricer;
 pub use stochastic_rs_quant::traits::PricingEngine;
 pub use stochastic_rs_quant::traits::PricingResult;
+pub use stochastic_rs_quant::traits::ShortRatePricer;
 pub use stochastic_rs_quant::traits::StandardResult;
 pub use stochastic_rs_quant::traits::TimeExt;
 pub use stochastic_rs_quant::traits::ToModel;
+pub use stochastic_rs_quant::traits::ToShortRateModel;
+pub use stochastic_rs_quant::traits::VanillaEuropeanCall;
 pub use stochastic_rs_stats::fractal_dim::FractalDimEstimator;
 pub use stochastic_rs_stats::hurst::HurstEstimator;
 pub use stochastic_rs_stats::mle::DiffusionModel;

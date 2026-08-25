@@ -50,3 +50,33 @@ fn all_twenty_eight_documented_prelude_items_resolve() {
   // The import above is the assertion: if it compiles, every name CLAUDE.md
   // and prelude.mdx list is still a real prelude export. Nothing to run.
 }
+
+/// The other half of the documented contract: a trait kept **out** of the
+/// prelude is still reachable via `stochastic_rs::traits::*`. CLAUDE.md says
+/// that for `MalliavinExt`, `MultivariateExt` and `CallableDist`, and
+/// `prelude.mdx`'s "What is *not* in the prelude (and why)" section repeats
+/// it — but nothing forced the hub to keep the promise, and `ShortRatePricer`
+/// (half of the headline `ModelPricer`/`ShortRatePricer` pair) and
+/// `VanillaEuropeanCall` had both fallen through it, reachable only as the
+/// much longer `stochastic_rs::quant::traits::…`.
+///
+/// Every bullet of that section is named below, the two feature-gated ones
+/// behind the same gates the hub uses — so this compiles on a default build
+/// and still covers `MultivariateExt` / `CallableDist` when those features
+/// are on.
+mod prelude_excluded_traits_stay_hub_reachable {
+  #[cfg(feature = "python")]
+  use stochastic_rs::traits::CallableDist;
+  use stochastic_rs::traits::Malliavin2DExt;
+  use stochastic_rs::traits::MalliavinExt;
+  #[cfg(feature = "openblas")]
+  use stochastic_rs::traits::MultivariateExt;
+  use stochastic_rs::traits::ShortRatePricer;
+  use stochastic_rs::traits::ToShortRateModel;
+  use stochastic_rs::traits::VanillaEuropeanCall;
+
+  #[test]
+  fn every_prelude_excluded_trait_resolves_through_the_hub() {
+    // The imports above are the assertion. Nothing to run.
+  }
+}

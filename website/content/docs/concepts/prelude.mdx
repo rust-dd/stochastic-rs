@@ -118,10 +118,22 @@ bivariate copulas.
 - `MultivariateExt` — `openblas`-only; importing it from a default-build
   would be a hard error. Reach via `traits::*`.
 - `CallableDist` — `python`-only; same reason.
+- `ShortRatePricer` — the short-rate half of the pricing pair. Its query is
+  a yield curve and a drift offset rather than a spot and a strike, so it
+  answers a different question from `ModelPricer` and does not belong beside
+  it in a default import. Reach via `traits::*`.
+- `VanillaEuropeanCall` / `ToShortRateModel` — markers you implement rather
+  than call: the first asserts a `ModelPricer` really is a European vanilla
+  call so `vol_surface` can invert it, the second bridges a short-rate
+  calibration to its model. Reach via `traits::*`.
 
 These are intentionally left out so the prelude is feature-flag-free —
 `use stochastic_rs::prelude::*;` works on every supported feature
 combination without surprises.
+
+"Reach via `traits::*`" is a promise the hub has to keep, so
+`tests/prelude_completeness.rs` names every trait on this list and fails to
+compile if `stochastic_rs::traits` drops one.
 
 ## Importing concrete types
 

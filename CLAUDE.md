@@ -84,7 +84,14 @@ Brings **28** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep
 - **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`
 - **Estimation**: `HurstEstimator`, `FractalDimEstimator`, `HypothesisTest`, `DiffusionModel`, `TailDependence`
 
-`MalliavinExt` / `Malliavin2DExt` are intentionally **not** in the prelude (0 in-tree impls — deferred). Reach via `stochastic_rs::traits::MalliavinExt`. `MultivariateExt` (openblas-only) and `CallableDist` (python-only) likewise reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free.
+`MalliavinExt` / `Malliavin2DExt` are intentionally **not** in the prelude (0 in-tree impls — deferred). Reach via `stochastic_rs::traits::MalliavinExt`. `MultivariateExt` (openblas-only) and `CallableDist` (python-only) likewise reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query) and the two markers `VanillaEuropeanCall` / `ToShortRateModel`.
+
+Hub membership is **independent of prelude membership**: `src/traits.rs` mirrors every trait each sub-crate exports from its own `traits` module, prelude-excluded ones included. The quant half is derivable, and `tests/prelude_completeness.rs` turns a dropped re-export into a compile error:
+
+```bash
+diff <(grep '^pub use \(calibration\|instrument\|pricing\|short_rate\|time\)::' stochastic-rs-quant/src/traits.rs | sed 's/.*:://;s/;//' | sort) \
+     <(grep '^pub use stochastic_rs_quant::traits::' src/traits.rs | sed 's/.*:://;s/;//' | sort)
+```
 
 ## Skills
 
