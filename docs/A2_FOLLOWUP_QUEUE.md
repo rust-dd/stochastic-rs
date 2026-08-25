@@ -19,6 +19,33 @@ digitals split first, and 16 is the gate everything else feeds.
   `f201190`, `2ba9c34`). Two deliberately did *not* become panics, with reasons in
   the ledger. Turned up a crate-wide trap: `f64::max` discards a `NaN` operand, so
   any `.max(0.0)` floor converts poison into a plausible zero.
+- **4 — `ModelSurface` bounded to the payoffs its inversion is valid for**
+  (`3f0888e`, `c9b3ab8`, `f7feb7b`, `01e89ac`, `bd5f6ae`). **My own population
+  figure was wrong**: I said eighteen, counting only named `impl ModelPricer`
+  blocks. `ModelPricer` is itself blanket-implemented over `FourierModelExt`, so
+  the real count was **30** concrete types (18 + 12, disjoint sets).
+
+  Seven could not be described by the Black inversion, and each was *measured*
+  rather than argued: `AssetOrNothingPricer` returned **10/10 finite** implied vols
+  between 1.32 and 5.53 at σ=0.25. The three American pricers are worse than the
+  digitals, not better — they land **within 0.008 of the model's own volatility**,
+  so nothing in the output marks them as wrong.
+
+  A **second instance with nothing to do with payoff shape** turned up in the
+  process: `BSMPricer`/`Merton1976Pricer` under `Black1976`/`Asay1982` carry at
+  `b = 0`, so their forward is `S`, not `S·e^{rτ}`. Inverting *correct* prices at
+  the wrong forward fabricated a **0.080 → 0.150 smile out of a flat σ=0.20
+  model**, every point finite. That is why the fix is not a bare marker: a bare
+  marker would have been *false* for `BSMPricer` and the fabricated smile would
+  have survived the change meant to kill exactly that class of bug. The marker
+  carries `vanilla_call_forward(s, r, q, tau)`, so it is checkable rather than a
+  comment with a compiler — and it also resolves `FiniteDifferencePricer`, whose
+  exercise style is a runtime field a bare marker could only handle by breaking
+  European FD surfaces or leaving American ones silently wrong.
+
+  21/21 vanilla surfaces bit-identical by raw `to_bits()` diff; the only three that
+  moved are the carry-mismatch cases, from wrong to right.
+
 - **3 — The four digitals carried both conventions at once** (`06b8593`,
   `944207a`, `251f8cb`, `0de4035`). Each now holds `sigma` plus its own contract
   parameter. Dissolved two other items with it: `analytic_bs` no longer builds a
@@ -26,11 +53,7 @@ digitals split first, and 16 is the gate everything else feeds.
 
 ## In progress
 
-- **4 — Bound `ModelSurface` to the payoffs its inversion is valid for.** The
-  blanket `impl<T: ModelPricer + ?Sized>` applies a European Black inversion, but
-  the wave took the population from six vanilla types to eighteen, adding four
-  digitals and three American pricers. A cash-or-nothing lands *inside* the
-  no-arbitrage band, so the caller gets a finite, confident, meaningless surface.
+(nothing)
 
 ## Queued — real defects
 
@@ -64,8 +87,10 @@ digitals split first, and 16 is the gate everything else feeds.
   re-exports every other quant trait and omits this one. The prelude exclusion is
   deliberate and documented; the hub omission is not, and CLAUDE.md's own stated
   pattern for prelude-excluded traits is "reachable via `traits::*`". One line.
-- **10 — Guard `LevyModel` and `CrrModel` in the pricer registry**, and close the
-  registry's proven blind spot. Both implement `ModelPricer` and appear nowhere in
+- **10 — Close the registry's proven blind spot.** The shallow half is **done**:
+  `LevyModel` and `CrrModel<f64>` are now registered and `assert_model_pricer!`
+  went 16 → 18 with the header arithmetic re-derived. What remains is the deeper
+  half — Both implement `ModelPricer` and appear nowhere in
   the file, because its inventory derives from `pub struct *(Pricer|Engine)` and
   neither is named that way — while the file's opening line claims "every
   pricer/engine struct in this crate". The deeper fix is a runtime test that
@@ -125,6 +150,21 @@ digitals split first, and 16 is the gate everything else feeds.
 - **17 — Update the nine READMEs pinning `stochastic-rs = "2.6"`** against a
   workspace at `3.0.0-beta.1`. A user copying that line gets a crate where
   `PricerExt` still exists and `HestonPricer::new` takes 13 arguments.
+
+## Queued — found while closing item 4
+
+- **19 — The `NaN`-swallow is live in the hottest pricing path.**
+  `pricing/fourier/pricer.rs` ends three expressions in `.max(0.0)` — lines
+  **167, 274, 305**. `f64::NAN.max(0.0)` is `0.0`, so a `NaN` characteristic
+  function becomes a plausible zero price for all 12 Fourier models. Same trap as
+  the one closed in item 2, still open where it matters most. (The report that
+  surfaced this named two sites; there are three.)
+- **20 — `VolSurfaceResult::is_arbitrage_free()` returns `true` for an all-`NaN`
+  surface.** Verified reachable at BASE: `finite_ivs = 0/6`, `atm_vol = [NaN, NaN]`,
+  `is_arbitrage_free = true`. A `bool` sentinel of the same family as the numeric
+  ones already cleared.
+- **21 — `Merton1976Pricer::price_call` returns `NaN` at exactly `S == K`** under
+  `Black1976`/`Asay1982`: `term_vol(0, τ)` is `0.0`, so `d1 = ∞ · 0`. Pre-existing.
 
 ## Gate
 
