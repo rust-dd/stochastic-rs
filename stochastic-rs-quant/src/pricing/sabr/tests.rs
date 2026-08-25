@@ -102,7 +102,10 @@ fn sabr_degeneracy_tracks_tau_not_the_strike_grid() {
       "K={k} at tau=10 must be NaN"
     );
     let short = m.price_call(100.0, k, 0.0, 0.0, 0.25);
-    assert!(short.is_finite(), "K={k} at tau=0.25 must price, got {short}");
+    assert!(
+      short.is_finite(),
+      "K={k} at tau=0.25 must price, got {short}"
+    );
   }
 }
 
