@@ -38,7 +38,11 @@
 //! Per the A2 design (`docs/superpowers/specs/2026-08-23-a2-quant-consistency-design.md`,
 //! decision D1), `PricerExt` is retired and this file no longer has a list
 //! for it. Task 3 gave `ModelPricer` to the 4 digital-option structs, which
-//! were `ORPHAN` before it ran; Task 5a added `BSMPricer`; Task 5b migrated
+//! were `ORPHAN` before it ran — it did not take their bundled
+//! `s`/`k`/`r`/`b`/`tau`/`option_type` fields away, so for a while each of
+//! the four answered the same question two ways; the follow-up removed the
+//! fields, so all 16 entries below now hold model (and contract) state
+//! only. Task 5a added `BSMPricer`; Task 5b migrated
 //! nine more, taking `PricerExt` from 10 implementors down to
 //! `KirkSpreadPricer` alone; Task 6 took the trait off that one and deleted
 //! it. `KirkSpreadPricer` did not migrate to `ModelPricer` — it prices a

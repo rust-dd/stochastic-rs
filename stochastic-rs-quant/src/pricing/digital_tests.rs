@@ -174,3 +174,57 @@ fn supershare_has_no_put_analogue() {
     "supershare has no put analogue"
   );
 }
+
+/// One model instance prices a whole strike/maturity grid — the capability
+/// [`ModelPricer`] exists for and the pre-query struct could not offer
+/// without rebuilding itself per point.
+#[test]
+fn digital_one_model_prices_a_grid() {
+  let con = CashOrNothingPricer::new(10.0, 0.25);
+  let strikes = [80.0, 90.0, 100.0, 110.0, 120.0];
+  let maturities = [0.25, 0.5, 1.0];
+
+  for tau in maturities {
+    let prices = strikes.map(|k| con.price_call(100.0, k, 0.05, 0.01, tau));
+    for w in prices.windows(2) {
+      assert!(
+        w[0] > w[1],
+        "cash-or-nothing call must fall in K at tau={tau}: {prices:?}"
+      );
+    }
+  }
+}
+
+/// Every argument the trait hands a digital must reach its price. A
+/// parameter that is accepted and then ignored — or precomputed at
+/// construction from an earlier query — returns a plausible in-range number
+/// with nothing to distinguish it, so each of the five is perturbed on its
+/// own and required to move the price.
+#[test]
+fn every_query_argument_drives_the_price() {
+  let base = (100.0, 100.0, 0.05, 0.01, 0.5);
+  let bump = |i: usize| {
+    let mut v = [base.0, base.1, base.2, base.3, base.4];
+    v[i] *= 1.10;
+    (v[0], v[1], v[2], v[3], v[4])
+  };
+  let price_all = |(s, k, r, q, tau): (f64, f64, f64, f64, f64)| {
+    [
+      CashOrNothingPricer::new(10.0, 0.25).price_call(s, k, r, q, tau),
+      AssetOrNothingPricer::new(0.25).price_call(s, k, r, q, tau),
+      GapPricer::new(105.0, 0.25).price_call(s, k, r, q, tau),
+      SuperSharePricer::new(120.0, 0.25).price_call(s, k, r, q, tau),
+    ]
+  };
+
+  let at_base = price_all(base);
+  for (i, name) in ["s", "k", "r", "q", "tau"].iter().enumerate() {
+    let moved = price_all(bump(i));
+    for (j, (a, b)) in at_base.iter().zip(moved.iter()).enumerate() {
+      assert!(
+        (a - b).abs() > 1e-9,
+        "pricer {j}: bumping {name} left the price at {a}"
+      );
+    }
+  }
+}
