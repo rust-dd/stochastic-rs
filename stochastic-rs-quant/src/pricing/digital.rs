@@ -290,33 +290,37 @@ impl ModelPricer for GapPricer {
 /// $$
 /// V = \frac{S}{X_L} e^{(b-r)T}[N(d_1) - N(d_2)]
 /// $$
-#[derive(Debug, Clone)]
+///
+/// Holds model and contract state only: the volatility and the upper
+/// trigger. Spot, lower trigger, rate, dividend yield and maturity are the
+/// pricing *query* and travel as arguments to
+/// [`ModelPricer::price_call`], so one instance prices a whole
+/// strike/maturity grid. The cost of carry is not a field — it is
+/// $b = r - q$, recomputed from the query's own rates on every call.
+///
+/// ```
+/// use stochastic_rs_quant::pricing::SuperSharePricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// // X_H = 110 on the model, X_L = 90 as the query strike.
+/// let model = SuperSharePricer::new(110.0, 0.2);
+/// let v = model.price_call(100.0, 90.0, 0.05, 0.05, 0.25);
+/// assert!(v > 0.0 && v < 100.0);
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct SuperSharePricer {
-  /// Spot price.
-  pub s: f64,
-  /// Lower trigger.
-  pub x_low: f64,
-  /// Upper trigger.
+  /// Upper trigger $X_H$ — a term of the contract. The *lower* trigger
+  /// $X_L$ is the query's `k`: it is the band edge the payoff is struck
+  /// and divided by, so it is the one of the pair that behaves like a
+  /// strike.
   pub x_high: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Cost of carry.
-  pub b: f64,
   /// Volatility.
   pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
 }
 
 impl SuperSharePricer {
-  pub fn price(&self) -> f64 {
-    let v = self.sigma;
-    let t = self.tau;
-    let sqrt_t = t.sqrt();
-    let d1 = ((self.s / self.x_low).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
-    let d2 = ((self.s / self.x_high).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
-    let coc = ((self.b - self.r) * self.tau).exp();
-    self.s / self.x_low * coc * (norm_cdf(d1) - norm_cdf(d2))
+  pub const fn new(x_high: f64, sigma: f64) -> Self {
+    Self { x_high, sigma }
   }
 }
 

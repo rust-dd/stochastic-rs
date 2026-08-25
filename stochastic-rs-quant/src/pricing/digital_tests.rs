@@ -120,22 +120,13 @@ fn gap_haug_negative_payoff() {
   assert!(price < 0.0);
 }
 
-/// Supershare must be non-negative and zero when bands are infinitely apart
-/// in the wrong direction.
+/// Supershare must be non-negative and below the spot.
 #[test]
 fn supershare_positive() {
-  let p = SuperSharePricer {
-    s: 100.0,
-    x_low: 90.0,
-    x_high: 110.0,
-    r: 0.05,
-    b: 0.0,
-    sigma: 0.2,
-    tau: 0.25,
-  };
-  let price = p.price();
+  let p = SuperSharePricer::new(110.0, 0.2);
+  let price = p.price_call(100.0, 90.0, 0.05, 0.05, 0.25);
   assert!(price > 0.0, "supershare={price}");
-  assert!(price < p.s, "supershare must be < S");
+  assert!(price < 100.0, "supershare must be < S");
 }
 
 /// Cash-or-nothing delta uses finite difference vs analytic.
@@ -239,26 +230,12 @@ fn gap_put_matches_its_own_parity() {
   );
 }
 
-/// Same scenario as `supershare_positive`, priced through [`ModelPricer`];
-/// also proves the documented no-put contract on `price_put`.
+/// The documented no-put contract: Haug (2007) defines only the supershare
+/// payoff, so `price_put` returns `NaN` rather than the trait's
+/// vanilla-parity default.
 #[test]
-fn supershare_call_via_model_pricer() {
-  let p = SuperSharePricer {
-    s: 100.0,
-    x_low: 90.0,
-    x_high: 110.0,
-    r: 0.05,
-    b: 0.0,
-    sigma: 0.2,
-    tau: 0.25,
-  };
-  let call = p.price_call(100.0, 90.0, 0.05, 0.05, 0.25);
-  assert!(
-    (call - p.price()).abs() < 1e-9,
-    "trait={call}, inherent={}",
-    p.price()
-  );
-  assert!(call > 0.0 && call < p.s, "supershare={call}");
+fn supershare_has_no_put_analogue() {
+  let p = SuperSharePricer::new(110.0, 0.2);
   assert!(
     p.price_put(100.0, 90.0, 0.05, 0.05, 0.25).is_nan(),
     "supershare has no put analogue"

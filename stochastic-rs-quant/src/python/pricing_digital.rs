@@ -131,9 +131,20 @@ impl PyGapPricer {
   }
 }
 
+/// The Rust model holds `(x_high, sigma)` only — the lower trigger `x_low`
+/// is the query's strike — so the wrapper carries the `(s, x_low, r, q, tau)`
+/// query the Python-visible no-argument method is defined at. Python's
+/// constructor signature is unchanged, `b` included: the model derives its
+/// cost of carry as $b = r - q$, so the wrapper stores the `q` that
+/// reproduces the `b` the caller passed.
 #[pyclass(name = "SuperSharePricer", unsendable)]
 pub struct PySuperSharePricer {
   inner: crate::pricing::digital::SuperSharePricer,
+  s: f64,
+  x_low: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
 }
 
 #[pymethods]
@@ -141,19 +152,18 @@ impl PySuperSharePricer {
   #[new]
   fn new(s: f64, x_low: f64, x_high: f64, r: f64, b: f64, sigma: f64, t: f64) -> Self {
     Self {
-      inner: crate::pricing::digital::SuperSharePricer {
-        s,
-        x_low,
-        x_high,
-        r,
-        b,
-        sigma,
-        tau: t,
-      },
+      inner: crate::pricing::digital::SuperSharePricer::new(x_high, sigma),
+      s,
+      x_low,
+      r,
+      q: r - b,
+      tau: t,
     }
   }
 
   fn price(&self) -> f64 {
-    self.inner.price()
+    self
+      .inner
+      .price_call(self.s, self.x_low, self.r, self.q, self.tau)
   }
 }
