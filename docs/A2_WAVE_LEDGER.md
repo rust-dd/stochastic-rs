@@ -233,8 +233,39 @@ confident fictitious NPV.
 2. ~~**`pricing/slv.rs:377-380`**~~ — **closed** in `a3cb8a7`. The leverage surface
    turned out to be genuinely rate-dependent, so the fix follows the `HullWhite`
    two-constructor precedent rather than substituting the query rates.
-3. **Six non-`NaN` sentinels**, above.
-4. **`price_call_carr_madan` is unreliable deep in the money**, found while fixing
+3. ~~**Six non-`NaN` sentinels**~~ — **closed** across `f263dd6`, `a3ca7e4`,
+   `98c2830`, `f201190`, `2ba9c34`. Two of the six did **not** become panics, and
+   the reasoning is the durable part:
+
+   - **SABR's degenerate Hagan vol → documented `NaN`, not a panic.** The bracket
+     `1 + (a+b+c)τ` in Eq. A.69a goes negative because `c = (2−3ρ²)ν²/24` is itself
+     negative for `|ρ| > √(2/3)`. Every individual argument is legal — `sigma()`
+     has already asserted `k`, forward, `alpha`, `rho` — so this is
+     *not computable here*, not *invalid input*. Decisive: `(α,β,ν,ρ) =
+     (0.2, 1, 3, −0.9)` at `τ=10` yields `σ = −0.3925`, and all four values lie
+     **inside `SabrCalibrator`'s own projection box**. A panic would abort an
+     entire calibration over one Levenberg-Marquardt probe point.
+   - **`laplace_pdf`'s `l == 0` → kept.** `l < 0` is unreachable and now panics;
+     `l == 0` is reachable exactly when every simulated payoff is zero, and there
+     the returned `0.0` is the correct Dirac limit. The test written for it found
+     a subtlety worth pinning: at the atom `x == 0` the branch returns `1.0` where
+     the symmetric Laplace cdf is `0.5` for every `l > 0`, so that value is a
+     **convention, not a limit** — and it is load-bearing, cancelling the diagonal
+     `j == i` term.
+
+   **A trap found in the process, and worth remembering crate-wide:**
+   `fair_strike_replication` ended in `fair.max(0.0)`, and `f64::max` **discards a
+   `NaN` operand** — `f64::NAN.max(0.0)` is `0.0`, verified. So a single `NaN` in
+   `otm_prices` returned exactly zero, re-entering the sentinel behind the new
+   guards. Any `.max(0.0)` floor on a possibly-`NaN` quantity is this bug.
+
+   Teeth verified by reverting rather than asserted: an unlinked spot handle used
+   to price a European put at **95.12** and a Heston call at **−47.56**.
+4. **`replication_weights`** (`variance_swap.rs:~210`) returns an all-zero weight
+   vector for `n < 2 || maturity <= 0` — the same defect class, now inconsistent
+   with the sibling `fair_strike_replication` that panics on exactly those
+   conditions. Found while closing (3); left because it was outside that scope.
+5. **`price_call_carr_madan` is unreliable deep in the money**, found while fixing
    (1) and separate from it: the `K^{−α}` damping prefactor amplifies quadrature
    error, worsening with maturity. At `τ = 2, K = 0.01` against spot 100 it returns
    **881 915.7**; at `K = 20` it returns 10.46 against a lower bound of 77.98. A
@@ -242,7 +273,7 @@ confident fictitious NPV.
    discount. Prices at `K >= 0.2·S` are unaffected. Root cause localised to
    `integrate_to_convergence`'s `tol = 1e-8` and width-50 initial panels — **not**
    the RK4 step, which moves the result by only 2e-12.
-5. **`HestonSlvPricer` spot anchoring** — `LeverageSurface` is indexed by absolute
+6. **`HestonSlvPricer` spot anchoring** — `LeverageSurface` is indexed by absolute
    spot and `calibrate_leverage` takes a specific `s0`, so pricing far from it walks
    into the surface's clamped boundary, unguarded. Same "precomputed against
    something the query can contradict" shape as (2), which is now fixed for rates
