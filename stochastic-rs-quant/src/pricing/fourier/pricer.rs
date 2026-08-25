@@ -11,6 +11,32 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::pricing::cf_quadrature::integrate_to_convergence;
 
+/// Floor a price at zero **without** swallowing a `NaN`.
+///
+/// A floor and a poison-check are different operations, and `f64::max` runs
+/// them together into one wrong answer: it returns the non-`NaN` operand, so
+/// `f64::NAN.max(0.0)` is `0.0`. A bare `.max(0.0)` therefore converts an
+/// undefined price into a plausible zero, which is precisely the sentinel
+/// [the failure convention](crate::traits::ModelPricer#how-pricing-fails)
+/// rules out.
+///
+/// The two conditions the three call sites face are genuinely different:
+///
+/// - A small **negative** price is quadrature or FFT round-off around a
+///   deep-wing value whose true price is a few ulp above zero. Zero is the
+///   right answer, and the floor stays.
+/// - A **`NaN`** price means an input was undefined — a `NaN` maturity
+///   arriving from [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt),
+///   a non-positive strike, a characteristic function that overflowed. There
+///   is no price to floor, so the `NaN` travels on.
+///
+/// Same shape as `VarianceSwapPricer::fair_strike_replication`'s floor and
+/// `CosEngine::price`'s, which close the identical trap.
+#[inline]
+fn floor_price(x: f64) -> f64 {
+  if x.is_nan() { x } else { x.max(0.0) }
+}
+
 /// Carr–Madan FFT pricer.
 ///
 /// Evaluates call prices across a grid of strikes with a single FFT pass.
@@ -115,6 +141,11 @@ impl CarrMadanPricer {
   ///
   /// Returns `(log_strikes, call_prices)` where `log_strikes` are
   /// $k_u = b + \lambda u$ and $b = -L/2$ centres the grid on $\ln K = 0$.
+  ///
+  /// Prices are floored at zero — FFT ringing puts deep-wing values a few ulp
+  /// below it — but a `NaN` is passed through rather than floored, so a
+  /// characteristic function that overflowed or a non-finite `s` / `r` / `t`
+  /// poisons the grid visibly. See `floor_price`.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
@@ -164,7 +195,7 @@ impl CarrMadanPricer {
     for u in 0..n {
       let k_u = b + lambda * u as f64;
       log_strikes[u] = k_u;
-      prices[u] = ((-alpha * k_u).exp() * output[u].re / PI).max(0.0);
+      prices[u] = floor_price((-alpha * k_u).exp() * output[u].re / PI);
     }
 
     (log_strikes, prices)
@@ -238,6 +269,16 @@ pub struct GilPelaezPricer;
 
 impl GilPelaezPricer {
   /// Price a European call using double-exponential quadrature.
+  ///
+  /// This is the blanket [`ModelPricer::price_call`](crate::traits::ModelPricer)
+  /// for every [`FourierModelExt`] model, so it is the crate's busiest pricing
+  /// path.
+  ///
+  /// Returns [`f64::NAN`] when any of `s`, `k`, `r`, `q` or `t` is non-finite
+  /// — `tau` reaches it as one legitimately, since
+  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) documents `NaN`
+  /// as its missing-data return. The result is otherwise floored at zero; see
+  /// `floor_price` for why the two are separate operations.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
     let ln_ks = (k / s).ln();
 
@@ -271,7 +312,7 @@ impl GilPelaezPricer {
     let p2 = 0.5 + FRAC_1_PI * integrate_to_convergence(integrand_p2, 1e-8, 1e-8);
 
     let call = s * (-q * t).exp() * p1 - k * (-r * t).exp() * p2;
-    call.max(0.0)
+    floor_price(call)
   }
 }
 
@@ -284,6 +325,11 @@ impl GilPelaezPricer {
 pub struct LewisPricer;
 
 impl LewisPricer {
+  /// Price a European call by Lewis (2001) single-strike quadrature.
+  ///
+  /// Returns [`f64::NAN`] when any of `s`, `k`, `r`, `q` or `t` is non-finite,
+  /// on the same terms as [`GilPelaezPricer::price_call`]; the result is
+  /// otherwise floored at zero by `floor_price`.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
     let ln_ks = (k / s).ln();
     let disc = (-r * t).exp();
@@ -302,6 +348,120 @@ impl LewisPricer {
     let integral = integrate_to_convergence(integrand, 1e-8, 1e-8);
 
     let call = s * disc * fwd_factor - sqrt_sk * disc * FRAC_1_PI * integral;
-    call.max(0.0)
+    floor_price(call)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::pricing::fourier::BSMFourier;
+  use crate::pricing::fourier::Cumulants;
+
+  /// A characteristic function that overflows to `NaN`, standing in for a
+  /// user model blowing up at a parameter corner. Mirrors `cos.rs`'s
+  /// `NanModel`, which pins the same convention for `CosEngine::price`.
+  struct NanChfModel;
+
+  impl FourierModelExt for NanChfModel {
+    fn chf(&self, _t: f64, _xi: Complex64) -> Complex64 {
+      Complex64::new(f64::NAN, f64::NAN)
+    }
+
+    fn cumulants(&self, _t: f64) -> Cumulants {
+      Cumulants {
+        c1: 0.0,
+        c2: 0.04,
+        c4: 0.0,
+      }
+    }
+  }
+
+  fn bsm() -> BSMFourier {
+    BSMFourier {
+      sigma: 0.15,
+      r: 0.05,
+      q: 0.0,
+    }
+  }
+
+  /// The FFT carries a `NaN` characteristic function straight through to the
+  /// strike grid; only the floor could lose it. Before the poison-check the
+  /// whole grid came back as exactly `0.0` and the interpolation on top of it
+  /// returned a plausible zero call price.
+  #[test]
+  fn carr_madan_surface_preserves_nan_from_chf_blowup() {
+    let pricer = CarrMadanPricer::default();
+    let (_, prices) = pricer.price_call_surface(&NanChfModel, 100.0, 0.05, 1.0);
+    assert!(
+      prices.iter().all(|p| p.is_nan()),
+      "a NaN chf must leave every grid price NaN"
+    );
+
+    let interpolated = pricer.price_call(&NanChfModel, 100.0, 100.0, 0.05, 1.0);
+    assert!(
+      interpolated.is_nan(),
+      "interpolating a poisoned grid must stay NaN, got {interpolated}"
+    );
+  }
+
+  /// Each of `s`, `k`, `r` and `tau` reaches the final floor as a `NaN` when
+  /// supplied as one, and `tau` is not hypothetical: `TimeExt::tau_or_from_dates`
+  /// documents `NaN` as its missing-data return, so an option whose expiry date
+  /// never resolved priced at exactly `0.0` here.
+  #[test]
+  fn gil_pelaez_preserves_nan_market_inputs() {
+    let m = bsm();
+    let nan = f64::NAN;
+    let gp = |s, k, r, t| GilPelaezPricer::price_call(&m, s, k, r, 0.0, t);
+    for (name, price) in [
+      ("tau", gp(100.0, 100.0, 0.05, nan)),
+      ("s", gp(nan, 100.0, 0.05, 1.0)),
+      ("k", gp(100.0, nan, 0.05, 1.0)),
+      ("r", gp(100.0, 100.0, nan, 1.0)),
+    ] {
+      assert!(price.is_nan(), "NaN {name} must exit as NaN, got {price}");
+    }
+  }
+
+  #[test]
+  fn lewis_preserves_nan_market_inputs() {
+    let m = bsm();
+    let nan = f64::NAN;
+    let lewis = |s, k, r, t| LewisPricer::price_call(&m, s, k, r, 0.0, t);
+    for (name, price) in [
+      ("tau", lewis(100.0, 100.0, 0.05, nan)),
+      ("s", lewis(nan, 100.0, 0.05, 1.0)),
+      ("k", lewis(100.0, nan, 0.05, 1.0)),
+    ] {
+      assert!(price.is_nan(), "NaN {name} must exit as NaN, got {price}");
+    }
+  }
+
+  /// The floor and the poison-check must stay separate operations: a negative
+  /// price is round-off and still floors to zero, a `NaN` is undefined and
+  /// travels on.
+  #[test]
+  fn floor_price_separates_the_floor_from_the_poison_check() {
+    assert_eq!(floor_price(-1e-12), 0.0);
+    assert_eq!(floor_price(-5.0), 0.0);
+    assert_eq!(floor_price(0.0), 0.0);
+    assert_eq!(floor_price(3.5), 3.5);
+    assert!(floor_price(f64::NAN).is_nan());
+  }
+
+  /// The poison-check must not disturb a price that was never poisoned.
+  #[test]
+  fn finite_prices_are_unchanged_by_the_poison_check() {
+    let m = bsm();
+    let gp = GilPelaezPricer::price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
+    let lw = LewisPricer::price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
+    let cm = CarrMadanPricer::default().price_call(&m, 100.0, 100.0, 0.05, 1.0);
+    for (name, p) in [("gil-pelaez", gp), ("lewis", lw), ("carr-madan", cm)] {
+      assert!(
+        p.is_finite() && p > 0.0,
+        "{name} must still price finitely, got {p}"
+      );
+    }
   }
 }
