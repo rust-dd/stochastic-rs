@@ -261,11 +261,26 @@ confident fictitious NPV.
 
    Teeth verified by reverting rather than asserted: an unlinked spot handle used
    to price a European put at **95.12** and a Heston call at **−47.56**.
-4. **`replication_weights`** (`variance_swap.rs:~210`) returns an all-zero weight
+4. ~~**The four digitals carried both conventions at once**~~ — **closed** across
+   `06b8593`, `944207a`, `251f8cb`, `0de4035`. Each now holds `sigma` plus its own
+   *contract* parameter and nothing else: `cash`, `k2`, `x_high`. The cost of carry
+   `b` became query-derived. `GreeksExt` came off both implementors that had it, per
+   the standing ruling. Three problems dissolved together: `analytic_bs.rs` no longer
+   builds a whole pricer per query point (it did, twenty lines from the European arm
+   that already did it correctly), and the `d1` copies in `digital.rs` fell from five
+   to two.
+
+   One assertion was deleted and it is the legitimate kind: it pinned that the trait
+   `price_call(...)` agreed with the inherent no-argument `price()`, and `price()` no
+   longer exists. Both halves of its content survive — the `7.3444` golden at
+   `digital_tests.rs:13`, and the cash-parity invariant at a **tighter** tolerance
+   than before (1e-10 against the old 1e-9). Crate-wide `#[test]` count went 750 →
+   752; the runtime suite went 694 → 696.
+5. **`replication_weights`** (`variance_swap.rs:~210`) returns an all-zero weight
    vector for `n < 2 || maturity <= 0` — the same defect class, now inconsistent
    with the sibling `fair_strike_replication` that panics on exactly those
    conditions. Found while closing (3); left because it was outside that scope.
-5. **`price_call_carr_madan` is unreliable deep in the money**, found while fixing
+6. **`price_call_carr_madan` is unreliable deep in the money**, found while fixing
    (1) and separate from it: the `K^{−α}` damping prefactor amplifies quadrature
    error, worsening with maturity. At `τ = 2, K = 0.01` against spot 100 it returns
    **881 915.7**; at `K = 20` it returns 10.46 against a lower bound of 77.98. A
@@ -273,7 +288,7 @@ confident fictitious NPV.
    discount. Prices at `K >= 0.2·S` are unaffected. Root cause localised to
    `integrate_to_convergence`'s `tol = 1e-8` and width-50 initial panels — **not**
    the RK4 step, which moves the result by only 2e-12.
-6. **`HestonSlvPricer` spot anchoring** — `LeverageSurface` is indexed by absolute
+7. **`HestonSlvPricer` spot anchoring** — `LeverageSurface` is indexed by absolute
    spot and `calibrate_leverage` takes a specific `s0`, so pricing far from it walks
    into the surface's clamped boundary, unguarded. Same "precomputed against
    something the query can contradict" shape as (2), which is now fixed for rates
