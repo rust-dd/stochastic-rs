@@ -46,7 +46,54 @@ pub struct SabrPricer {
 }
 
 impl SabrPricer {
-  pub const fn new(alpha: f64, beta: f64, nu: f64, rho: f64) -> Self {
+  /// Validating constructor.
+  ///
+  /// Two of these four already had a guard and two did not, and the split
+  /// was not deliberate: [`hagan_implied_vol`] rejects `alpha` and `rho`,
+  /// but one layer down and one call later, while `beta` and `nu` reached
+  /// the expansion unchecked and produced finite prices. At `beta = 5` the
+  /// at-the-money call returns the spot itself — the no-arbitrage ceiling,
+  /// which reads as a legitimate deep-in-the-money value.
+  ///
+  /// The messages here deliberately avoid
+  /// [`hagan_implied_vol`]'s wording, so neither guard's message is a
+  /// substring of the other's and a `should_panic` anchored on one cannot
+  /// be satisfied by the other firing. The accessor keeps its own check:
+  /// the fields are `pub`, so this is a front door and not a wall.
+  ///
+  /// # Panics
+  /// - if `alpha` is not strictly positive, or `NaN` — a volatility level
+  /// - if `beta` is outside `[0, 1]`, or `NaN` — the Cev exponent, `0` for
+  ///   the normal and `1` for the lognormal model
+  /// - if `nu` is negative or `NaN` — a vol-of-vol
+  /// - if `rho` is outside the *open* interval `(-1, 1)`, or `NaN`. The
+  ///   bound matches [`hagan_implied_vol`]'s exactly: its expansion carries
+  ///   a `1 - rho` denominator, so admitting `±1` here would only defer the
+  ///   same panic.
+  ///
+  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s
+  /// projection box — `alpha, nu >= 1e-6`, `beta` in `[0, 1]`, `rho`
+  /// clamped to `±0.9999` — lies strictly inside all four, so no legal
+  /// calibration iterate can trip this.
+  ///
+  /// [`hagan_implied_vol`]: crate::pricing::sabr::hagan_implied_vol
+  pub fn new(alpha: f64, beta: f64, nu: f64, rho: f64) -> Self {
+    assert!(
+      alpha > 0.0,
+      "SabrPricer::new: alpha must be a strictly positive volatility level (got {alpha})"
+    );
+    assert!(
+      (0.0..=1.0).contains(&beta),
+      "SabrPricer::new: beta must be in [0, 1] (got {beta})"
+    );
+    assert!(
+      nu >= 0.0,
+      "SabrPricer::new: nu must be a non-negative vol-of-vol (got {nu})"
+    );
+    assert!(
+      rho > -1.0 && rho < 1.0,
+      "SabrPricer::new: rho must be in the open interval (-1, 1) (got {rho})"
+    );
     Self {
       alpha,
       beta,

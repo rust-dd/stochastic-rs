@@ -35,7 +35,52 @@ pub struct HestonStaticParams {
 }
 
 impl HestonStaticParams {
-  pub const fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> Self {
+  /// Validating constructor, rejecting exactly what
+  /// [`HestonPricer::new`] rejects.
+  ///
+  /// These parameters feed that constructor inside
+  /// `AnalyticHestonEngine::model_and_query`, so an invalid one was
+  /// already rejected — but at *pricing* time, naming a type the caller
+  /// never mentioned, and only if they went on to call
+  /// [`PricingEngine::calculate`]. Nothing about which values are valid
+  /// changes here; only the layer that says so.
+  ///
+  /// Note the argument order differs from the inner constructor's
+  /// (`v0, rho, kappa, theta, sigma, lambda`), which is why each check is
+  /// matched to its field by name rather than by position.
+  ///
+  /// The fields are `pub`, so this is the front door and not a wall: a
+  /// struct literal still reaches them, and the inner constructor stays the
+  /// second line of defence. Its messages carry the `HestonPricer::new`
+  /// prefix and these carry `HestonStaticParams::new`, so neither is a
+  /// substring of the other.
+  ///
+  /// # Panics
+  /// - if `v0` or `theta` is negative or `NaN` — a variance cannot be either
+  /// - if `sigma` is not strictly positive — the characteristic function
+  ///   divides by $\sigma^2$
+  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
+  ///
+  /// `kappa` is unconstrained for the same reason it is on
+  /// [`HestonPricer::new`]: a non-positive mean-reversion rate is a
+  /// non-stationary but well-defined affine model.
+  pub fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> Self {
+    assert!(
+      v0 >= 0.0,
+      "HestonStaticParams::new: v0 must be a non-negative variance (got {v0})"
+    );
+    assert!(
+      theta >= 0.0,
+      "HestonStaticParams::new: theta must be a non-negative variance (got {theta})"
+    );
+    assert!(
+      sigma > 0.0,
+      "HestonStaticParams::new: sigma must be strictly positive (got {sigma})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&rho),
+      "HestonStaticParams::new: rho must be in [-1, 1] (got {rho})"
+    );
     Self {
       v0,
       kappa,
@@ -271,5 +316,106 @@ mod tests {
     let p = engine.calculate(&put).npv();
     let parity = 100.0 * (-0.02_f64).exp() - 100.0 * (-0.05_f64).exp();
     assert!((c - p - parity).abs() < 1e-2);
+  }
+
+  /// `HestonStaticParams::new` validates the same parameters
+  /// [`HestonPricer::new`] does, at the layer the caller actually supplied
+  /// them.
+  ///
+  /// Before this the struct built happily and the rejection arrived from
+  /// `model_and_query`'s inner `HestonPricer::new` — at *pricing* time,
+  /// naming a type the caller never mentioned, and only if they went on to
+  /// call `calculate`. The parameters are identical; only the layer moved.
+  ///
+  /// The fields are `pub`, so this is a front door and not a wall: a struct
+  /// literal still reaches them, which is why the inner constructor stays
+  /// the second line of defence. Its messages carry the `HestonPricer::new`
+  /// prefix and these carry `HestonStaticParams::new`, so neither is a
+  /// substring of the other and an `expected` anchor cannot be satisfied by
+  /// the wrong guard firing.
+  mod construction_validation {
+    use super::*;
+
+    #[test]
+    #[should_panic(
+      expected = "HestonStaticParams::new: v0 must be a non-negative variance (got -0.01)"
+    )]
+    fn new_rejects_negative_v0() {
+      let _ = HestonStaticParams::new(-0.01, 1.5, 0.04, 0.3, -0.7);
+    }
+
+    #[test]
+    #[should_panic(
+      expected = "HestonStaticParams::new: theta must be a non-negative variance (got -0.04)"
+    )]
+    fn new_rejects_negative_theta() {
+      let _ = HestonStaticParams::new(0.04, 1.5, -0.04, 0.3, -0.7);
+    }
+
+    #[test]
+    #[should_panic(expected = "HestonStaticParams::new: sigma must be strictly positive (got 0)")]
+    fn new_rejects_zero_sigma() {
+      let _ = HestonStaticParams::new(0.04, 1.5, 0.04, 0.0, -0.7);
+    }
+
+    #[test]
+    #[should_panic(expected = "HestonStaticParams::new: rho must be in [-1, 1] (got -1.5)")]
+    fn new_rejects_out_of_range_rho() {
+      let _ = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -1.5);
+    }
+
+    /// The argument order differs from [`HestonPricer::new`]'s — this one
+    /// is `(v0, kappa, theta, sigma, rho)`, that one is
+    /// `(v0, rho, kappa, theta, sigma, lambda)` — so a guard copied
+    /// positionally rather than by name would check the wrong field. This
+    /// pins each message against the value that actually offended.
+    #[test]
+    fn each_message_names_the_field_the_caller_passed() {
+      let cases: [(&str, fn()); 4] = [
+        ("v0", || {
+          let _ = HestonStaticParams::new(-0.5, 1.5, 0.04, 0.3, -0.7);
+        }),
+        ("theta", || {
+          let _ = HestonStaticParams::new(0.04, 1.5, -0.5, 0.3, -0.7);
+        }),
+        ("sigma", || {
+          let _ = HestonStaticParams::new(0.04, 1.5, 0.04, -0.5, -0.7);
+        }),
+        ("rho", || {
+          let _ = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -1.5);
+        }),
+      ];
+      for (field, build) in cases {
+        let err = std::panic::catch_unwind(build).expect_err("must reject");
+        let msg = err.downcast_ref::<String>().cloned().unwrap_or_else(|| {
+          err
+            .downcast_ref::<&str>()
+            .copied()
+            .unwrap_or("")
+            .to_string()
+        });
+        assert!(
+          msg.contains(&format!("HestonStaticParams::new: {field} ")),
+          "{field}: wrong message {msg}"
+        );
+      }
+    }
+
+    /// `kappa` stays unconstrained for the same reason it does on
+    /// [`HestonPricer::new`] — a non-positive mean-reversion rate is a
+    /// non-stationary but well-defined affine model — and the admissible
+    /// zero variances and unit correlations must still construct.
+    #[test]
+    fn new_accepts_what_the_inner_constructor_accepts() {
+      assert_eq!(
+        HestonStaticParams::new(0.04, -1.5, 0.04, 0.3, -0.7).kappa,
+        -1.5
+      );
+      let edges = HestonStaticParams::new(0.0, 1.5, 0.0, 1e-12, -1.0);
+      assert_eq!(edges.v0, 0.0);
+      assert_eq!(edges.theta, 0.0);
+      assert_eq!(edges.rho, -1.0);
+      assert_eq!(HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, 1.0).rho, 1.0);
+    }
   }
 }

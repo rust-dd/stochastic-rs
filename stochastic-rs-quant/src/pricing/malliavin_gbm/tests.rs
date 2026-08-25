@@ -167,3 +167,72 @@ fn malliavin_one_model_prices_a_grid() {
     }
   }
 }
+
+/// `GbmMalliavinPricer::new` validates the estimator's own shape.
+///
+/// `n_paths` and `n_steps` are simulation *counts*, and both degenerate
+/// into a fabricated **0.0** price rather than a complaint: with
+/// `n_paths = 0` there is nothing to average, `call_put_from_conditional`
+/// takes its `count == 0` branch and returns the discounted average of an
+/// empty sample; with `n_steps = 1` the step size `tau / (n_steps - 1)` is
+/// infinite and the same zero comes out the other end. `n_steps = 0` is the
+/// loud one — `n_steps - 1` underflows — so of the three degenerate counts
+/// only one announced itself.
+///
+/// `t_eval` keeps its accessor guard: the constructor can only check the
+/// half of `0 < t_eval < tau` that does not need the query, since `tau`
+/// arrives per call. The two messages are deliberately different — neither
+/// is a substring of the other — so a test anchored on one cannot be
+/// satisfied by the other firing.
+mod construction_validation {
+  use super::*;
+
+  #[test]
+  #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
+  fn new_rejects_zero_paths() {
+    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5);
+  }
+
+  #[test]
+  #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 1)")]
+  fn new_rejects_a_single_time_step() {
+    let _ = GbmMalliavinPricer::new(0.2, 200, 1, 0.5);
+  }
+
+  #[test]
+  #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 0)")]
+  fn new_rejects_zero_time_steps() {
+    let _ = GbmMalliavinPricer::new(0.2, 200, 0, 0.5);
+  }
+
+  /// The Malliavin weight carries `+ σ·t_eval` *linearly*, so unlike the
+  /// squared-only uses elsewhere a negative volatility is not absorbed —
+  /// it biases the weight and the conditional expectation built on it.
+  #[test]
+  #[should_panic(
+    expected = "GbmMalliavinPricer::new: v must be a non-negative volatility (got -0.2)"
+  )]
+  fn new_rejects_negative_volatility() {
+    let _ = GbmMalliavinPricer::new(-0.2, 200, 100, 0.5);
+  }
+
+  #[test]
+  #[should_panic(expected = "GbmMalliavinPricer::new: t_eval must be strictly positive (got -0.5)")]
+  fn new_rejects_non_positive_t_eval() {
+    let _ = GbmMalliavinPricer::new(0.2, 200, 100, -0.5);
+  }
+
+  /// The `t_eval < tau` half is unreachable from the constructor and stays
+  /// where it was, with its own wording.
+  #[test]
+  #[should_panic(expected = "t_eval must be in (0, T)")]
+  fn the_query_dependent_half_stays_at_the_accessor() {
+    let _ = GbmMalliavinPricer::new(0.2, 200, 64, 2.0).price_call(S, K, R, 0.0, TAU);
+  }
+
+  #[test]
+  fn the_smallest_usable_grid_stays_constructible() {
+    let m = GbmMalliavinPricer::new(0.0, 1, 2, 1e-12);
+    assert_eq!((m.n_paths, m.n_steps), (1, 2));
+  }
+}

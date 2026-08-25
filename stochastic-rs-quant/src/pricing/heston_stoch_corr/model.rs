@@ -57,8 +57,36 @@ pub struct HestonStochCorrPricer {
 }
 
 impl HestonStochCorrPricer {
+  /// Validating constructor.
+  ///
+  /// Nothing here announced itself before: every invalid value below
+  /// produced a finite, plausible Carr-Madan price. A `rho2` of `-1.5` came
+  /// within `0.03` of the correct answer, which is the whole problem — it
+  /// is indistinguishable from a small modelling difference.
+  ///
+  /// # Panics
+  /// - if `v0` or `theta_v` is negative or `NaN` — a variance cannot be either
+  /// - if `sigma_v` or `sigma_r` is negative or `NaN` — a volatility cannot be
+  /// - if `rho0`, `mu_r` or `rho2` is outside `[-1, 1]` or `NaN`. All three
+  ///   are correlations: the initial level, the level it mean-reverts to
+  ///   and the correlation between the two driving Brownians. Leaving any
+  ///   one out would put an out-of-range number into the same expansion the
+  ///   other two are protected from.
+  ///
+  /// `sigma_v == 0` is **accepted**, unlike on
+  /// [`HestonPricer::new`](crate::pricing::HestonPricer). The reason is the
+  /// characteristic function: Heston's closed form divides by $\sigma^2$,
+  /// while this model integrates a Riccati system by Rk4 in which
+  /// `sigma_v` only ever multiplies, so a zero vol-of-vol is the
+  /// deterministic-variance limit rather than a division by zero.
+  ///
+  /// `kappa_v` and `kappa_r` are unconstrained, matching
+  /// [`HestonPricer`](crate::pricing::HestonPricer)'s treatment of
+  /// `kappa`. The calibrator's
+  /// `BOUNDS` box lies strictly inside every check above, so no legal
+  /// calibration iterate can trip this.
   #[allow(clippy::too_many_arguments)]
-  pub const fn new(
+  pub fn new(
     v0: f64,
     kappa_v: f64,
     theta_v: f64,
@@ -69,6 +97,34 @@ impl HestonStochCorrPricer {
     sigma_r: f64,
     rho2: f64,
   ) -> Self {
+    assert!(
+      v0 >= 0.0,
+      "HestonStochCorrPricer::new: v0 must be a non-negative variance (got {v0})"
+    );
+    assert!(
+      theta_v >= 0.0,
+      "HestonStochCorrPricer::new: theta_v must be a non-negative variance (got {theta_v})"
+    );
+    assert!(
+      sigma_v >= 0.0,
+      "HestonStochCorrPricer::new: sigma_v must be a non-negative volatility (got {sigma_v})"
+    );
+    assert!(
+      sigma_r >= 0.0,
+      "HestonStochCorrPricer::new: sigma_r must be a non-negative volatility (got {sigma_r})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&rho0),
+      "HestonStochCorrPricer::new: rho0 must be in [-1, 1] (got {rho0})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&mu_r),
+      "HestonStochCorrPricer::new: mu_r must be in [-1, 1] (got {mu_r})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&rho2),
+      "HestonStochCorrPricer::new: rho2 must be in [-1, 1] (got {rho2})"
+    );
     Self {
       v0,
       kappa_v,

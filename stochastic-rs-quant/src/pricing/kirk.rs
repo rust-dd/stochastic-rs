@@ -58,7 +58,36 @@ pub struct KirkSpreadPricer {
 }
 
 impl KirkSpreadPricer {
-  pub const fn new(v1: f64, v2: f64, corr: f64) -> Self {
+  /// Validating constructor.
+  ///
+  /// Kirk's combined volatility is
+  /// $\sqrt{\sigma_1^2 + (\sigma_2 w)^2 - 2\rho\sigma_1\sigma_2 w}$, so
+  /// an out-of-range correlation is only caught by the square root when it
+  /// happens to drive the radicand negative — which it does at $\rho > 1$
+  /// and does *not* at $\rho < -1$, where the price comes back finite and
+  /// an order of magnitude wrong. Both volatilities are checked for the same
+  /// reason and to the same standard; validating one would swap the old
+  /// asymmetry for a new one.
+  ///
+  /// # Panics
+  /// - if `v1` or `v2` is negative or `NaN` — not a volatility
+  /// - if `corr` is outside `[-1, 1]` or `NaN` — not a correlation
+  ///
+  /// Perfect correlation either way and a zero-volatility leg are
+  /// admissible and stay accepted.
+  pub fn new(v1: f64, v2: f64, corr: f64) -> Self {
+    assert!(
+      v1 >= 0.0,
+      "KirkSpreadPricer::new: v1 must be a non-negative volatility (got {v1})"
+    );
+    assert!(
+      v2 >= 0.0,
+      "KirkSpreadPricer::new: v2 must be a non-negative volatility (got {v2})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&corr),
+      "KirkSpreadPricer::new: corr must be in [-1, 1] (got {corr})"
+    );
     Self { v1, v2, corr }
   }
 
@@ -149,5 +178,51 @@ mod tests {
       prices[0] > prices[1] && prices[1] > prices[2],
       "spread calls must decay in the strike: {prices:?}"
     );
+  }
+
+  /// Kirk's combined volatility is
+  /// `√(σ₁² + (σ₂w)² - 2ρσ₁σ₂w)`, so a correlation outside `[-1, 1]` is not
+  /// caught by the square root unless it happens to drive the radicand
+  /// negative. At `ρ = -5` it does not: the spread call comes back
+  /// `14.0959` against the correct `1.2691` — an order of magnitude out and
+  /// entirely plausible. (`ρ = +5` does turn the radicand negative and
+  /// yields `NaN`, so only one side of the invalid range announced itself.)
+  #[test]
+  #[should_panic(expected = "KirkSpreadPricer::new: corr must be in [-1, 1] (got -5)")]
+  fn new_rejects_correlation_below_minus_one() {
+    let _ = KirkSpreadPricer::new(0.35, 0.35, -5.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "KirkSpreadPricer::new: corr must be in [-1, 1] (got 5)")]
+  fn new_rejects_correlation_above_one() {
+    let _ = KirkSpreadPricer::new(0.35, 0.35, 5.0);
+  }
+
+  /// `v1` and `v2` are the same kind of quantity, so both are checked —
+  /// validating one would swap the old asymmetry for a new one. At
+  /// `v1 = -0.35` the call is `7.8656` against `1.2691`.
+  #[test]
+  #[should_panic(
+    expected = "KirkSpreadPricer::new: v1 must be a non-negative volatility (got -0.35)"
+  )]
+  fn new_rejects_negative_first_volatility() {
+    let _ = KirkSpreadPricer::new(-0.35, 0.35, 0.9);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "KirkSpreadPricer::new: v2 must be a non-negative volatility (got -0.35)"
+  )]
+  fn new_rejects_negative_second_volatility() {
+    let _ = KirkSpreadPricer::new(0.35, -0.35, 0.9);
+  }
+
+  /// The admissible edges the validation must not swallow: perfect
+  /// correlation either way, and a zero volatility leg.
+  #[test]
+  fn new_accepts_the_admissible_edges() {
+    assert_eq!(KirkSpreadPricer::new(0.35, 0.0, -1.0).corr, -1.0);
+    assert_eq!(KirkSpreadPricer::new(0.0, 0.35, 1.0).corr, 1.0);
   }
 }

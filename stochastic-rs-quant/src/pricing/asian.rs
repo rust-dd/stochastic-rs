@@ -32,7 +32,24 @@ pub struct AsianPricer {
 }
 
 impl AsianPricer {
-  pub const fn new(v: f64) -> Self {
+  /// Validating constructor.
+  ///
+  /// # Panics
+  /// - if `v` is negative or `NaN`. A negative volatility flips the sign of
+  ///   `1/(sigma*sqrt(tau))` and so of $d_1$, while $d_2 = d_1 -
+  ///   \sigma\sqrt\tau$ moves the other way: the two cross and the call
+  ///   comes back **negative**, which is not the price of anything — case 1
+  ///   of the crate's [failure
+  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
+  ///
+  /// `v == 0` is accepted: the averaged underlying is then deterministic and
+  /// the closed form returns its discounted intrinsic forward value, which
+  /// is a degenerate limit rather than an invalid input.
+  pub fn new(v: f64) -> Self {
+    assert!(
+      v >= 0.0,
+      "AsianPricer::new: v must be a non-negative volatility (got {v})"
+    );
     Self { v }
   }
 
@@ -139,5 +156,32 @@ mod tests {
         prev = c;
       }
     }
+  }
+
+  /// A negative volatility flips the sign of `1/(σ√τ)` and so of `d₁`,
+  /// while `d₂ = d₁ - σ√τ` moves the *other* way — the two cross, and the
+  /// call comes back **negative**: `-4.4548…` at `σ = -0.25` against
+  /// `+6.7783` at `σ = +0.25`. Not the price of anything, and finite enough
+  /// to flow into a residual unnoticed.
+  ///
+  /// `σ = 0` is admissible and deliberately still accepted: the averaged
+  /// underlying becomes deterministic and the closed form returns its
+  /// discounted intrinsic forward value.
+  #[test]
+  #[should_panic(expected = "AsianPricer::new: v must be a non-negative volatility (got -0.25)")]
+  fn new_rejects_negative_volatility() {
+    let _ = AsianPricer::new(-0.25);
+  }
+
+  #[test]
+  #[should_panic(expected = "AsianPricer::new: v must be a non-negative volatility (got NaN)")]
+  fn new_rejects_nan_volatility() {
+    let _ = AsianPricer::new(f64::NAN);
+  }
+
+  #[test]
+  fn new_accepts_the_zero_volatility_limit() {
+    let deterministic = AsianPricer::new(0.0);
+    assert!(deterministic.price_call(S, K, R, Q, TAU).is_finite());
   }
 }

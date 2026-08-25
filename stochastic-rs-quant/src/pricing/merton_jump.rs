@@ -54,7 +54,35 @@ pub struct Merton1976Pricer {
 }
 
 impl Merton1976Pricer {
-  pub const fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BSMCoc) -> Self {
+  /// Validating constructor.
+  ///
+  /// # Panics
+  /// - if `v` is negative or `NaN`. Every use of `v` in the price squares
+  ///   it, so a negative volatility silently prices as its own absolute
+  ///   value; the Greeks are worse, since `with_v_bump` floors the bumped
+  ///   volatility at `1e-8` and both legs of the central difference then
+  ///   land on the floor, returning a `vega` of `0`.
+  /// - if `m` is `0`. It is the Poisson-series length, so an empty series
+  ///   runs the sum zero times and [`call_put`](Self::call_put) returns
+  ///   `(0.0, 0.0)` — the plausible-looking sentinel the crate's [failure
+  ///   convention](crate::traits::ModelPricer#how-pricing-fails) rules out,
+  ///   indistinguishable from a genuinely worthless option.
+  ///
+  /// `lambda` and `gamma` are deliberately **not** checked. `lambda == 0`
+  /// is a *supported* state rather than an invalid one — the Greeks
+  /// collapse to plain Black-Scholes there, which
+  /// `merton_greeks_lambda_zero_equals_bs` pins — and a `gamma` outside
+  /// `[0, 1]` drives $\sigma^2 - \lambda z^2$ negative, which announces
+  /// itself as `NaN` rather than as a number.
+  pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BSMCoc) -> Self {
+    assert!(
+      v >= 0.0,
+      "Merton1976Pricer::new: v must be a non-negative volatility (got {v})"
+    );
+    assert!(
+      m >= 1,
+      "Merton1976Pricer::new: m must be at least 1 (got {m})"
+    );
     Self {
       v,
       lambda,

@@ -50,7 +50,21 @@ pub struct BjerksundStensland2002Pricer {
 }
 
 impl BjerksundStensland2002Pricer {
-  pub const fn new(v: f64) -> Self {
+  /// Validating constructor.
+  ///
+  /// # Panics
+  /// - if `v` is negative or `NaN`. A negative volatility does not announce
+  ///   itself here — the approximation returns exactly the option's
+  ///   intrinsic value, an ordinary answer for a deep-in-the-money American
+  ///   call with nothing marking it as wrong. Case 1 of the crate's
+  ///   [failure convention](crate::traits::ModelPricer#how-pricing-fails).
+  ///
+  /// `v == 0` is accepted as the deterministic limit.
+  pub fn new(v: f64) -> Self {
+    assert!(
+      v >= 0.0,
+      "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got {v})"
+    );
     Self { v }
   }
 
@@ -265,5 +279,30 @@ mod tests {
         prev = c;
       }
     }
+  }
+
+  /// A negative volatility does not announce itself here — it returns
+  /// exactly the intrinsic value (`2.0` at `S = 42, K = 40`), which is a
+  /// perfectly ordinary answer for a deep-in-the-money American call and
+  /// nothing marks it as wrong. The reference at `σ = +0.35` is `5.2869`.
+  #[test]
+  #[should_panic(
+    expected = "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got -0.35)"
+  )]
+  fn new_rejects_negative_volatility() {
+    let _ = BjerksundStensland2002Pricer::new(-0.35);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got NaN)"
+  )]
+  fn new_rejects_nan_volatility() {
+    let _ = BjerksundStensland2002Pricer::new(f64::NAN);
+  }
+
+  #[test]
+  fn new_accepts_the_zero_volatility_limit() {
+    assert_eq!(BjerksundStensland2002Pricer::new(0.0).v, 0.0);
   }
 }

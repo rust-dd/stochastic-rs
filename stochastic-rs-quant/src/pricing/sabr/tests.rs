@@ -473,3 +473,82 @@ fn alpha_from_atm_vol_rejects_a_nonpositive_v_atm() {
 fn alpha_from_atm_vol_rejects_rho_at_one() {
   let _ = alpha_from_atm_vol(0.2, 100.0, 1.0, 1.0, 1.0, 0.5);
 }
+
+/// `SabrPricer::new` validates its four parameters where they are supplied,
+/// instead of leaving two of them to `hagan_implied_vol` at pricing time
+/// and the other two to nobody.
+///
+/// The split before this was not deliberate: `alpha` and `rho` already
+/// panicked (from `hagan_implied_vol`, one layer down and one call later),
+/// while `beta` and `nu` — equally invalid, equally out of range — produced
+/// finite prices. At `beta = 5` the ATM call comes back **100.0**, exactly
+/// the spot, which is the no-arbitrage *ceiling* and reads as a legitimate
+/// deep-in-the-money value; at `beta = -1` it is `4.877` and at `nu = -0.4`
+/// it is `10.479`, both against a reference of `10.616`.
+///
+/// The messages deliberately do not reuse `hagan_implied_vol`'s wording:
+/// its `"alpha must be strictly positive"` and
+/// `"rho must lie strictly inside (-1, 1)"` must not be substrings of
+/// these, so a `should_panic` anchored on the accessor cannot be satisfied
+/// by the constructor and vice versa.
+mod construction_validation {
+  use super::*;
+
+  #[test]
+  #[should_panic(
+    expected = "SabrPricer::new: alpha must be a strictly positive volatility level (got -0.2)"
+  )]
+  fn new_rejects_non_positive_alpha() {
+    let _ = SabrPricer::new(-0.2, 1.0, 0.4, -0.3);
+  }
+
+  #[test]
+  #[should_panic(expected = "SabrPricer::new: beta must be in [0, 1] (got 5)")]
+  fn new_rejects_cev_exponent_above_one() {
+    let _ = SabrPricer::new(0.2, 5.0, 0.4, -0.3);
+  }
+
+  #[test]
+  #[should_panic(expected = "SabrPricer::new: beta must be in [0, 1] (got -1)")]
+  fn new_rejects_negative_cev_exponent() {
+    let _ = SabrPricer::new(0.2, -1.0, 0.4, -0.3);
+  }
+
+  #[test]
+  #[should_panic(expected = "SabrPricer::new: nu must be a non-negative vol-of-vol (got -0.4)")]
+  fn new_rejects_negative_vol_of_vol() {
+    let _ = SabrPricer::new(0.2, 1.0, -0.4, -0.3);
+  }
+
+  #[test]
+  #[should_panic(expected = "SabrPricer::new: rho must be in the open interval (-1, 1) (got 5)")]
+  fn new_rejects_out_of_range_rho() {
+    let _ = SabrPricer::new(0.2, 1.0, 0.4, 5.0);
+  }
+
+  /// Hagan's expansion carries a `1 - rho` denominator, so `rho = 1` is
+  /// excluded at both layers rather than only at the accessor. The bound is
+  /// *open*, matching `hagan_implied_vol` exactly — a constructor that
+  /// admitted `±1` would only defer the same panic.
+  #[test]
+  #[should_panic(expected = "SabrPricer::new: rho must be in the open interval (-1, 1) (got 1)")]
+  fn new_rejects_unit_rho_like_the_expansion_does() {
+    let _ = SabrPricer::new(0.2, 1.0, 0.4, 1.0);
+  }
+
+  /// The whole of `SabrCalibrator`'s projection box must still construct:
+  /// it clamps `alpha` and `nu` to at least `1e-6`, `beta` to `[0, 1]` and
+  /// `rho` to `±0.9999`. A guard tighter than the box would abort a
+  /// calibration on a legal iterate.
+  #[test]
+  fn the_calibrators_projection_box_stays_constructible() {
+    for &(alpha, beta, nu, rho) in &[
+      (1e-6, 0.0, 1e-6, -0.9999),
+      (1e-6, 1.0, 1e-6, 0.9999),
+      (0.2, 0.5, 0.0, 0.0),
+    ] {
+      let m = SabrPricer::new(alpha, beta, nu, rho);
+      assert_eq!((m.alpha, m.beta, m.nu, m.rho), (alpha, beta, nu, rho));
+    }
+  }
+}

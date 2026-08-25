@@ -60,13 +60,40 @@ pub struct FiniteDifferencePricer {
 }
 
 impl FiniteDifferencePricer {
-  pub const fn new(
+  /// Validating constructor.
+  ///
+  /// # Panics
+  /// - if `v` is negative or `NaN`. The Pde coefficients use $\sigma^2$, so
+  ///   a negative volatility silently solves for its own absolute value —
+  ///   an answer to a question the caller did not ask.
+  /// - if `t_n` or `s_n` is `0`. These are grid *counts*, so zero is not a
+  ///   coarse grid but no grid: at `t_n = 0` the time loop never runs and
+  ///   the payoff is read straight off the initial grid as a small finite
+  ///   number indistinguishable from a cheap short-dated option, while
+  ///   `s_n = 0` underflows `s_n - 1`. Only one of the two announced
+  ///   itself. Both are case 1 of the crate's [failure
+  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
+  ///
+  /// `v == 0` is the deterministic limit and stays accepted.
+  pub fn new(
     v: f64,
     t_n: usize,
     s_n: usize,
     option_style: OptionStyle,
     method: FiniteDifferenceMethod,
   ) -> Self {
+    assert!(
+      v >= 0.0,
+      "FiniteDifferencePricer::new: v must be a non-negative volatility (got {v})"
+    );
+    assert!(
+      t_n >= 1,
+      "FiniteDifferencePricer::new: t_n must be at least 1 (got {t_n})"
+    );
+    assert!(
+      s_n >= 1,
+      "FiniteDifferencePricer::new: s_n must be at least 1 (got {s_n})"
+    );
     Self {
       v,
       t_n,
@@ -709,5 +736,52 @@ mod tests {
         prev = c;
       }
     }
+  }
+
+  /// `t_n` and `s_n` are grid *counts*, so zero is not a coarse grid — it
+  /// is no grid. `t_n = 0` skips the time loop and returns the payoff read
+  /// straight off the initial grid: `0.6667` for an ATM call, a small
+  /// finite number that looks exactly like a cheap short-dated option.
+  /// `s_n = 0` is louder — it underflows `s_n - 1` — but neither is a
+  /// price, and only one of the two announced itself.
+  #[test]
+  #[should_panic(expected = "FiniteDifferencePricer::new: t_n must be at least 1 (got 0)")]
+  fn new_rejects_zero_time_steps() {
+    let _ = FiniteDifferencePricer::new(
+      0.25,
+      0,
+      100,
+      OptionStyle::European,
+      FiniteDifferenceMethod::CrankNicolson,
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "FiniteDifferencePricer::new: s_n must be at least 1 (got 0)")]
+  fn new_rejects_zero_price_steps() {
+    let _ = FiniteDifferencePricer::new(
+      0.25,
+      500,
+      0,
+      OptionStyle::European,
+      FiniteDifferenceMethod::CrankNicolson,
+    );
+  }
+
+  /// The PDE coefficients use `v²`, so a negative volatility prices as its
+  /// own absolute value — the solver silently answers a question the caller
+  /// did not ask rather than the one they did.
+  #[test]
+  #[should_panic(
+    expected = "FiniteDifferencePricer::new: v must be a non-negative volatility (got -0.25)"
+  )]
+  fn new_rejects_negative_volatility() {
+    let _ = FiniteDifferencePricer::new(
+      -0.25,
+      500,
+      100,
+      OptionStyle::European,
+      FiniteDifferenceMethod::CrankNicolson,
+    );
   }
 }

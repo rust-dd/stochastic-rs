@@ -408,3 +408,123 @@ fn hscm_one_model_prices_a_grid() {
     }
   }
 }
+
+/// `HestonStochCorrPricer::new` validates the parameters that have a
+/// domain, at the layer the caller supplies them.
+///
+/// Nothing announced itself before: every invalid value below produced a
+/// finite, plausible Carr-Madan price against a reference of `6.9417`
+/// (`s = k = 100, r = 0.05, τ = 0.5`) — `v0 = -0.04` gave `2.3422`,
+/// `theta_v = -0.04` gave `4.9724`, `rho0 = -1.5` gave `7.0771` and
+/// `rho2 = -1.5` gave `6.9712`. The last is within `0.03` of the correct
+/// answer, which is the whole problem: it is indistinguishable from a small
+/// modelling difference.
+///
+/// `sigma_v = 0` is deliberately **accepted**, unlike on
+/// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
+/// rejected. The reason is the characteristic function: Heston's closed
+/// form divides by `sigma^2`, while this model integrates a Riccati system
+/// by RK4 in which `sigma_v` only ever multiplies, so a zero vol-of-vol is
+/// the deterministic-variance limit rather than a division by zero.
+///
+/// `kappa_v` and `kappa_r` stay unconstrained, matching
+/// [`HestonPricer::new`]'s treatment of `kappa`.
+mod construction_validation {
+  use super::*;
+
+  fn ok() -> [f64; 9] {
+    [0.04, 2.0, 0.04, 0.3, -0.7, 5.0, -0.5, 0.2, 0.3]
+  }
+
+  fn build(p: [f64; 9]) -> HestonStochCorrPricer {
+    HestonStochCorrPricer::new(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8])
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "HestonStochCorrPricer::new: v0 must be a non-negative variance (got -0.04)"
+  )]
+  fn new_rejects_negative_v0() {
+    let mut p = ok();
+    p[0] = -0.04;
+    let _ = build(p);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "HestonStochCorrPricer::new: theta_v must be a non-negative variance (got -0.04)"
+  )]
+  fn new_rejects_negative_long_run_variance() {
+    let mut p = ok();
+    p[2] = -0.04;
+    let _ = build(p);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "HestonStochCorrPricer::new: sigma_v must be a non-negative volatility (got -0.3)"
+  )]
+  fn new_rejects_negative_vol_of_vol() {
+    let mut p = ok();
+    p[3] = -0.3;
+    let _ = build(p);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "HestonStochCorrPricer::new: sigma_r must be a non-negative volatility (got -0.2)"
+  )]
+  fn new_rejects_negative_correlation_volatility() {
+    let mut p = ok();
+    p[7] = -0.2;
+    let _ = build(p);
+  }
+
+  /// Three separate correlations, all bounded, all checked — `rho0` is the
+  /// initial level, `mu_r` the level it mean-reverts to and `rho2` the
+  /// correlation between the two driving Brownians. Leaving any one out
+  /// would put a number outside `[-1, 1]` into the same expansion the other
+  /// two are protected from.
+  #[test]
+  fn every_correlation_is_bounded() {
+    for (idx, name) in [(4_usize, "rho0"), (6, "mu_r"), (8, "rho2")] {
+      for bad in [-1.5_f64, 1.5] {
+        let mut p = ok();
+        p[idx] = bad;
+        let err = std::panic::catch_unwind(move || build(p)).expect_err("must reject");
+        let msg = err.downcast_ref::<String>().cloned().unwrap_or_else(|| {
+          err
+            .downcast_ref::<&str>()
+            .copied()
+            .unwrap_or("")
+            .to_string()
+        });
+        assert!(
+          msg.contains(&format!(
+            "HestonStochCorrPricer::new: {name} must be in [-1, 1]"
+          )),
+          "{name} at {bad}: wrong message {msg}"
+        );
+      }
+    }
+  }
+
+  /// The calibrator's `BOUNDS` box and the admissible degenerate edges must
+  /// all still construct — a guard tighter than the box would abort a
+  /// calibration on a legal iterate.
+  #[test]
+  fn the_calibrators_bounds_box_stays_constructible() {
+    let lo = build([0.001, 0.01, 0.001, 0.01, -0.99, 0.01, -0.99, 0.01, -0.99]);
+    assert_eq!(lo.v0, 0.001);
+    let hi = build([0.5, 10.0, 1.0, 2.0, 0.99, 20.0, 0.99, 2.0, 0.99]);
+    assert_eq!(hi.rho2, 0.99);
+
+    let deterministic = build([0.04, 2.0, 0.0, 0.0, -1.0, 5.0, 1.0, 0.0, -1.0]);
+    assert_eq!(deterministic.sigma_v, 0.0);
+    assert_eq!(deterministic.theta_v, 0.0);
+    assert_eq!(
+      build([0.04, -2.0, 0.04, 0.3, -0.7, -5.0, -0.5, 0.2, 0.3]).kappa_v,
+      -2.0
+    );
+  }
+}

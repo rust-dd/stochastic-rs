@@ -228,3 +228,99 @@ fn every_query_argument_drives_the_price() {
     }
   }
 }
+
+/// All four digitals share `bsm_d1`, so all four share what a negative
+/// volatility does to it: `1/(σ√τ)` flips sign, `d₁` flips with it, and the
+/// price that comes back is finite, plausible and wrong. Measured against
+/// each pricer's own reference scenario:
+///
+/// | pricer | `σ < 0` | reference |
+/// |---|---|---|
+/// | cash-or-nothing | `2.2155` | `7.3444` |
+/// | asset-or-nothing | `24.7563` | `73.2636` |
+/// | gap | `-5.5735` | `10.4506` |
+/// | supershare | `-0.7482` | positive |
+///
+/// Two of the four are negative, which no option is, and two are merely
+/// wrong. Validating one and not the rest would have swapped the old
+/// asymmetry for a new one, so all four are checked.
+///
+/// `σ = 0` stays admissible everywhere — it is the deterministic limit, not
+/// an invalid input — and so does a negative `cash` payout, which is a
+/// short digital rather than an impossible contract.
+mod construction_validation {
+  use super::*;
+
+  #[test]
+  #[should_panic(
+    expected = "CashOrNothingPricer::new: sigma must be a non-negative volatility (got -0.35)"
+  )]
+  fn cash_or_nothing_rejects_negative_sigma() {
+    let _ = CashOrNothingPricer::new(10.0, -0.35);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "AssetOrNothingPricer::new: sigma must be a non-negative volatility (got -0.25)"
+  )]
+  fn asset_or_nothing_rejects_negative_sigma() {
+    let _ = AssetOrNothingPricer::new(-0.25);
+  }
+
+  #[test]
+  #[should_panic(expected = "GapPricer::new: sigma must be a non-negative volatility (got -0.2)")]
+  fn gap_rejects_negative_sigma() {
+    let _ = GapPricer::new(100.0, -0.2);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "SuperSharePricer::new: sigma must be a non-negative volatility (got -0.2)"
+  )]
+  fn supershare_rejects_negative_sigma() {
+    let _ = SuperSharePricer::new(110.0, -0.2);
+  }
+
+  /// The inverse of the rule above, and the reason the guard spells out
+  /// `sigma.is_nan() || sigma >= 0.0`. `AnalyticBSEngine` builds
+  /// these two pricers from the volatility it reads off a market handle,
+  /// and an unlinked handle reads as `NaN` by design — missing data, case 2
+  /// of the convention, which has to reach the caller as a `NaN` NPV
+  /// instead of aborting the engine. Rejecting it here would have turned
+  /// `every_unlinked_handle_poisons_npv_and_greeks` red, which is how this
+  /// was caught.
+  #[test]
+  fn a_nan_sigma_propagates_as_missing_data_rather_than_panicking() {
+    let aon = AssetOrNothingPricer::new(f64::NAN);
+    assert!(aon.price_call(100.0, 90.0, 0.05, 0.02, 1.0).is_nan());
+    let con = CashOrNothingPricer::new(10.0, f64::NAN);
+    assert!(con.price_call(100.0, 80.0, 0.06, 0.0, 0.75).is_nan());
+  }
+
+  /// `x_high` has no handle behind it, so it keeps the stricter test.
+  #[test]
+  #[should_panic(expected = "SuperSharePricer::new: x_high must be strictly positive (got NaN)")]
+  fn a_nan_upper_band_is_still_rejected() {
+    let _ = SuperSharePricer::new(f64::NAN, 0.2);
+  }
+
+  /// The supershare's upper band edge is a price level, so a non-positive
+  /// one is not a band. The *lower* edge arrives as the query strike, which
+  /// is why `x_high < k` — an inverted band, and the only combination that
+  /// produces the negative `-0.1357` measured at `x_high = 80, k = 90` — is
+  /// deliberately **not** checked here: no single argument to this
+  /// constructor is invalid in that case.
+  #[test]
+  #[should_panic(expected = "SuperSharePricer::new: x_high must be strictly positive (got -110)")]
+  fn supershare_rejects_non_positive_upper_band() {
+    let _ = SuperSharePricer::new(-110.0, 0.2);
+  }
+
+  #[test]
+  fn contract_terms_and_the_zero_volatility_limit_stay_accepted() {
+    assert_eq!(CashOrNothingPricer::new(-10.0, 0.35).cash, -10.0);
+    assert_eq!(GapPricer::new(-100.0, 0.2).k2, -100.0);
+    assert_eq!(AssetOrNothingPricer::new(0.0).sigma, 0.0);
+    assert_eq!(SuperSharePricer::new(80.0, 0.2).x_high, 80.0);
+  }
+}

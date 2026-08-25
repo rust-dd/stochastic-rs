@@ -139,7 +139,42 @@ impl ModelPricer for GbmMalliavinPricer {
 impl VanillaEuropeanCall for GbmMalliavinPricer {}
 
 impl GbmMalliavinPricer {
-  pub const fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {
+  /// Validating constructor.
+  ///
+  /// # Panics
+  /// - if `v` is negative or `NaN`. Unlike the squared-only uses elsewhere
+  ///   in this crate, the Malliavin weight carries `+ sigma * t_eval`
+  ///   *linearly*, so a negative volatility is not absorbed — it biases the
+  ///   weight and every conditional expectation built on it.
+  /// - if `n_paths` is `0` — there is nothing to average, and
+  ///   `call_put_from_conditional` takes its `count == 0` branch and
+  ///   returns a fabricated `0.0` price.
+  /// - if `n_steps` is below `2` — the step size is `tau / (n_steps - 1)`,
+  ///   which is infinite at `1` (fabricating the same `0.0`) and underflows
+  ///   at `0`.
+  /// - if `t_eval` is not strictly positive, or `NaN`.
+  ///
+  /// Only the query-independent half of `0 < t_eval < tau` is checkable
+  /// here, since `tau` arrives per call; the upper half stays where it was,
+  /// with its own distinct wording, so an `expected` anchor on one cannot
+  /// be satisfied by the other.
+  pub fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {
+    assert!(
+      v >= 0.0,
+      "GbmMalliavinPricer::new: v must be a non-negative volatility (got {v})"
+    );
+    assert!(
+      n_paths >= 1,
+      "GbmMalliavinPricer::new: n_paths must be at least 1 (got {n_paths})"
+    );
+    assert!(
+      n_steps >= 2,
+      "GbmMalliavinPricer::new: n_steps must be at least 2 (got {n_steps})"
+    );
+    assert!(
+      t_eval > 0.0,
+      "GbmMalliavinPricer::new: t_eval must be strictly positive (got {t_eval})"
+    );
     Self {
       v,
       n_paths,
