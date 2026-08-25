@@ -74,6 +74,11 @@ impl SabrPricer {
   /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator) validates
   /// `s`/`k` before ever constructing a `SabrPricer` from calibrated data,
   /// so this only fires when one is built directly from bad input.
+  ///
+  /// Validating the arguments does **not** make the result usable as a
+  /// volatility: the expansion can still evaluate to a non-positive number
+  /// on a legal parameter combination, which is why
+  /// [`call_put`](Self::call_put) screens it rather than pricing off it.
   pub fn sigma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     hagan_implied_vol(
       k,
@@ -101,25 +106,37 @@ impl SabrPricer {
 
   /// Call and put price at one query point.
   ///
-  /// A `sigma` that comes out non-finite or non-positive floors **both**
-  /// legs to `0.0` rather than letting a degenerate volatility propagate
-  /// into `d1`/`d2`. That floor is the contract the former `SabrModel`
-  /// documented for its `price_call`; it never fires for a non-positive
-  /// `k` or forward, because [`sigma`](Self::sigma) panics on those first.
-  /// The reachable trigger is therefore a *parameter* combination — β, ν, ρ
-  /// and τ driving the Hagan expansion itself to ≤ 0 — not a bad query point.
+  /// Returns [`f64::NAN`] for **both** legs when [`sigma`](Self::sigma)
+  /// comes out non-finite or not strictly positive, rather than letting a
+  /// degenerate volatility propagate into `d1`/`d2`. That is case 2 of the
+  /// crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails) — not
+  /// computable here — and not case 1, because every individual argument is
+  /// already legal by the time this branch is reachable: `sigma` panics
+  /// first on a non-positive `k` or forward, a non-positive `alpha`, or a
+  /// `rho` outside $(-1, 1)$.
   ///
-  /// That floor predates the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) and sits
-  /// against it: a zero call *and* a zero put is not a price any instrument
-  /// has, and unlike a `NaN` it does not propagate, so a calibration residual
-  /// computed against it looks merely bad rather than invalid. Kept for now
-  /// because changing it moves prices; flagged so it is not mistaken for the
-  /// convention.
+  /// What is left is a *parameter combination*. Hagan (2002) is a small-τ
+  /// asymptotic expansion whose bracket $1 + (a + b + c)\tau$ turns negative
+  /// once the correction term outgrows it, and the ν² coefficient
+  /// $c = (2 - 3\rho^2)\nu^2 / 24$ is itself negative for
+  /// $|\rho| > \sqrt{2/3}$: at $(\alpha, \beta, \nu, \rho) = (0.2, 1, 3,
+  /// -0.9)$ and $\tau = 10$ the expansion returns $\sigma = -0.3925$. Every
+  /// one of those four values lies inside
+  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s own
+  /// projection box, so this is a calibration-output shape rather than a
+  /// user-input one — panicking would abort a whole calibration over a
+  /// single bad probe point, where `NaN` marks that residual invalid and
+  /// leaves the rest of the grid alone.
+  ///
+  /// This floored both legs to `0.0` before, the contract the former
+  /// `SabrModel` documented. A zero call *and* a zero put is not a price any
+  /// instrument has, and unlike `NaN` a zero does not propagate, so a
+  /// residual computed against it looked merely bad rather than invalid.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let sigma = self.sigma(s, k, r, q, tau);
     if !sigma.is_finite() || sigma <= 0.0 {
-      return (0.0, 0.0);
+      return (f64::NAN, f64::NAN);
     }
     BSMPricer::new(sigma, BSMCoc::Merton1973).call_put(s, k, r, q, tau)
   }
@@ -168,6 +185,9 @@ impl ModelPricer for SabrPricer {
   /// degrading that one point to `0.0` — deliberately: a non-positive spot
   /// or strike is invalid input for this equity/FX model, not a value worth
   /// pricing as if it were merely deep out-of-the-money.
+  ///
+  /// Returns [`f64::NAN`] on a degenerate Hagan volatility — see
+  /// [`call_put`](SabrPricer::call_put).
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).0
   }
@@ -179,6 +199,10 @@ impl ModelPricer for SabrPricer {
   /// `calculate_call_put().1` returned, so delegating keeps the number
   /// bit-identical rather than merely equal to within rounding. See
   /// `sabr_price_put_matches_parity_but_is_the_closed_form`.
+  ///
+  /// Panics and returns [`f64::NAN`] under exactly the same conditions as
+  /// [`price_call`](SabrPricer::price_call), since both read the same
+  /// [`call_put`](SabrPricer::call_put) pair.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).1
   }

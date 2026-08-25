@@ -61,6 +61,51 @@ fn sabr_price_call_panics_on_nonpositive_strike() {
   let _ = model.price_call(100.0, -10.0, 0.02, 0.0, 1.0);
 }
 
+/// The Hagan (2002) expansion is a small-τ asymptotic, and its bracket
+/// `1 + (a + b + c) τ` goes negative once the correction outgrows it. Every
+/// argument below is individually legal — `alpha > 0`, `beta = 1`,
+/// `nu > 0`, `|rho| < 1`, positive spot and strike — so `sigma` does not
+/// panic; it returns `-0.3925`, and `(0.2, 1.0, 3.0, -0.9)` sits inside
+/// `SabrCalibrator`'s own projection box (`|ρ| ≤ 0.9999`, ν unbounded
+/// above), which is what makes this a reachable calibration-output shape
+/// rather than a hypothetical.
+///
+/// Both legs must therefore be `NaN`. Before the fix they were `(0.0, 0.0)`
+/// — a zero call *and* a zero put, which no real option has, and which a
+/// caller's `is_finite()` check cannot tell from a genuine deep-OTM price.
+#[test]
+fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
+  let m = SabrPricer::new(0.2, 1.0, 3.0, -0.9);
+  let sigma = m.sigma(100.0, 100.0, 0.0, 0.0, 10.0);
+  assert!(
+    sigma < 0.0,
+    "fixture drifted: expansion no longer degenerates, sigma={sigma}"
+  );
+
+  let (call, put) = m.call_put(100.0, 100.0, 0.0, 0.0, 10.0);
+  assert!(call.is_nan(), "call must be NaN, got {call}");
+  assert!(put.is_nan(), "put must be NaN, got {put}");
+  assert!(m.price_call(100.0, 100.0, 0.0, 0.0, 10.0).is_nan());
+  assert!(m.price_put(100.0, 100.0, 0.0, 0.0, 10.0).is_nan());
+}
+
+/// The degeneracy is a property of the parameter/τ combination, not of one
+/// query point, so it must not be mistaken for a strike-grid artifact: at
+/// these parameters the whole strike row is `NaN`, and shortening τ to a
+/// value the expansion is actually valid at brings every point back finite.
+#[test]
+fn sabr_degeneracy_tracks_tau_not_the_strike_grid() {
+  let m = SabrPricer::new(0.2, 1.0, 3.0, -0.9);
+  for &k in &[80.0, 100.0, 125.0] {
+    assert!(
+      m.price_call(100.0, k, 0.0, 0.0, 10.0).is_nan(),
+      "K={k} at tau=10 must be NaN"
+    );
+    let short = m.price_call(100.0, k, 0.0, 0.0, 0.25);
+    assert!(short.is_finite(), "K={k} at tau=0.25 must price, got {short}");
+  }
+}
+
 const S: f64 = 100.0;
 const K: f64 = 105.0;
 const R: f64 = 0.05;
