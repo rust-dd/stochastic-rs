@@ -27,7 +27,12 @@
 //! `vega`/`vanna`/`volga`/`veta` divide through the `σ = √v0` chain rule
 //! above, which is undefined at `v0 == 0`; each guards that case explicitly
 //! and returns `NaN` rather than a wrong finite number. A *negative* `v0` is
-//! a different thing — invalid input, case 1 — and panics.
+//! a different thing — invalid input, case 1 — and panics. That panic is now
+//! the second line of defence: [`HestonPricer::new`] rejects a negative
+//! variance at construction, and this guard covers what the constructor
+//! cannot, since the fields are `pub` and a struct literal or a later
+//! assignment reaches them directly. The two messages are deliberately
+//! distinct so a test anchored on one cannot be satisfied by the other.
 //! `theta`/`charm`/`veta` carry a second, independent guard on `tau`,
 //! returning `NaN` when it is non-finite or not safely larger than the
 //! central-difference step `H_TAU` — see
@@ -61,6 +66,10 @@ impl HestonPricer {
   /// them: `v0 == 0` is an admissible Heston state whose volatility-space
   /// derivative happens not to exist, while a negative variance is invalid
   /// input with no model behind it at all.
+  ///
+  /// A negative `v0` cannot arrive through [`HestonPricer::new`] any more —
+  /// it is rejected there. This guard exists for the `pub` field written
+  /// directly, and says so in its own words rather than the constructor's.
   ///
   /// # Panics
   /// - if `v0` is negative (or `NaN`), naming the offending value

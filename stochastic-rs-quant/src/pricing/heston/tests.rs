@@ -286,11 +286,27 @@ fn heston_greeks_nan_at_degenerate_inputs() {
 ///
 /// `heston_greeks_nan_at_degenerate_inputs` pins the `v0 == 0` half and is
 /// deliberately unchanged by this split.
+///
+/// The helper builds the struct literally rather than through
+/// [`HestonPricer::new`], which now rejects a negative `v0` at construction:
+/// the fields are `pub`, so the literal is the back door the accessor guard
+/// still has to cover, and routing through it keeps these five tests
+/// exercising the accessor rather than the constructor. The two guards carry
+/// deliberately different messages — neither is a substring of the other —
+/// so the `expected` anchors below cannot be satisfied by the constructor
+/// firing instead. `construction_validation` covers the front door.
 mod negative_v0_panics {
   use super::*;
 
   fn negative_v0() -> HestonPricer {
-    HestonPricer::new(-0.01, -0.7, 1.5, 0.04, 0.3, Some(0.0))
+    HestonPricer {
+      v0: -0.01,
+      rho: -0.7,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      lambda: Some(0.0),
+    }
   }
 
   #[test]
@@ -335,6 +351,95 @@ mod negative_v0_panics {
     let ot = OptionType::Call;
     assert!(m.delta(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
     assert!(m.rho(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
+  }
+}
+
+/// `HestonPricer::new` validates its model parameters, so one invalid value
+/// gets **one** response instead of two opposite ones chosen by which method
+/// the caller reaches for. Before this, `new(-0.01, …)` built happily and
+/// then `price_call` returned a finite number off a negative variance while
+/// `vega` panicked.
+///
+/// The boundary cases matter as much as the rejections: `v0 == 0` and
+/// `theta == 0` are admissible Heston states, `|rho| == 1` is a degenerate
+/// but real correlation, and the Feller condition `2κθ ≥ σ²` is a warning
+/// condition in this crate — none of them may be rejected here.
+mod construction_validation {
+  use super::*;
+
+  #[test]
+  #[should_panic(expected = "HestonPricer::new: v0 must be a non-negative variance (got -0.01)")]
+  fn new_rejects_negative_v0() {
+    let _ = HestonPricer::new(-0.01, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+  }
+
+  /// `NaN >= 0.0` is `false`, so the same assert catches a poisoned `v0`
+  /// before it reaches a price that would come back `NaN` with no origin.
+  #[test]
+  #[should_panic(expected = "HestonPricer::new: v0 must be a non-negative variance (got NaN)")]
+  fn new_rejects_nan_v0() {
+    let _ = HestonPricer::new(f64::NAN, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+  }
+
+  /// `theta` is a variance for the same reason `v0` is, so it earns the same
+  /// check — leaving it out would have replaced the old asymmetry with a new
+  /// one.
+  #[test]
+  #[should_panic(expected = "HestonPricer::new: theta must be a non-negative variance (got -0.04)")]
+  fn new_rejects_negative_theta() {
+    let _ = HestonPricer::new(0.04, -0.7, 1.5, -0.04, 0.3, Some(0.0));
+  }
+
+  /// The characteristic function divides by `σ²`, so `sigma == 0` is not a
+  /// degenerate-but-priceable state here — it is `inf · 0` inside `C`, which
+  /// reaches the caller as a `NaN` price with nothing naming the cause.
+  #[test]
+  #[should_panic(expected = "HestonPricer::new: sigma must be strictly positive (got 0)")]
+  fn new_rejects_zero_sigma() {
+    let _ = HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.0, Some(0.0));
+  }
+
+  #[test]
+  #[should_panic(expected = "HestonPricer::new: sigma must be strictly positive (got -0.3)")]
+  fn new_rejects_negative_sigma() {
+    let _ = HestonPricer::new(0.04, -0.7, 1.5, 0.04, -0.3, Some(0.0));
+  }
+
+  #[test]
+  #[should_panic(expected = "HestonPricer::new: rho must be in [-1, 1] (got -1.5)")]
+  fn new_rejects_out_of_range_rho() {
+    let _ = HestonPricer::new(0.04, -1.5, 1.5, 0.04, 0.3, Some(0.0));
+  }
+
+  /// The admissible edges the validation must not swallow. `v0 == 0` is
+  /// separately relied on by `heston_greeks_nan_at_degenerate_inputs`.
+  #[test]
+  fn new_accepts_the_admissible_edges() {
+    let zero_variances = HestonPricer::new(0.0, -1.0, 1.5, 0.0, 1e-12, None);
+    assert_eq!(zero_variances.v0, 0.0);
+    assert_eq!(zero_variances.theta, 0.0);
+    assert_eq!(zero_variances.rho, -1.0);
+    assert_eq!(HestonPricer::new(0.04, 1.0, 1.5, 0.04, 0.3, None).rho, 1.0);
+  }
+
+  /// Feller stays a warning condition: `2κθ = 0.04` against `σ² = 2.25`
+  /// violates it, and the model must still construct and price.
+  #[test]
+  fn new_does_not_enforce_feller() {
+    let m = HestonPricer::new(0.04, -0.7, 0.5, 0.04, 1.5, None);
+    let feller = 2.0 * m.kappa * m.theta;
+    assert!(feller < m.sigma * m.sigma, "not a Feller violation");
+    assert!(m.price_call(100.0, 100.0, 0.05, 0.0, 1.0).is_finite());
+  }
+
+  /// `kappa` is deliberately unchecked: a non-positive mean-reversion rate
+  /// is a non-stationary but well-defined affine model, not invalid input,
+  /// and the calibrator's `P_KAPPA` floor is a search box rather than a
+  /// validity claim.
+  #[test]
+  fn new_does_not_constrain_kappa() {
+    let m = HestonPricer::new(0.04, -0.7, -1.5, 0.04, 0.3, None);
+    assert_eq!(m.kappa, -1.5);
   }
 }
 

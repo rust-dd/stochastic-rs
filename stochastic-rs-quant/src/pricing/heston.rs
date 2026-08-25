@@ -58,14 +58,50 @@ pub struct HestonPricer {
 }
 
 impl HestonPricer {
-  pub const fn new(
-    v0: f64,
-    rho: f64,
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    lambda: Option<f64>,
-  ) -> Self {
+  /// Validating constructor.
+  ///
+  /// Rejects the parameter values that have no Heston model behind them, so
+  /// one invalid value gets one response — case 1 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails) — instead of
+  /// a finite price from [`price_call`](ModelPricer::price_call), a whole
+  /// surface from `vol_surface`, and a panic from
+  /// [`vega`](Self::vega), chosen by which method the caller reaches for.
+  ///
+  /// What it deliberately **accepts**: `v0 == 0` and `theta == 0` (admissible
+  /// degenerate states — the volatility-space Greeks return `NaN` there
+  /// rather than rejecting them), `|rho| == 1`, any `kappa` (a non-positive
+  /// mean-reversion rate is a non-stationary but well-defined affine model),
+  /// any `lambda`, and any parameter set violating the Feller condition
+  /// $2\kappa\theta \ge \sigma^2$, which is a warning condition in this
+  /// crate and not an error.
+  ///
+  /// The fields are `pub`, so this is the front door and not a wall: a
+  /// struct literal or a later assignment can still install a negative
+  /// variance, which is why the volatility-space Greeks keep their own
+  /// [guard](Self::vega) with a distinct message.
+  ///
+  /// # Panics
+  /// - if `v0` or `theta` is negative or `NaN` — a variance cannot be either
+  /// - if `sigma` is not strictly positive — the characteristic function
+  ///   divides by $\sigma^2$
+  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
+  pub fn new(v0: f64, rho: f64, kappa: f64, theta: f64, sigma: f64, lambda: Option<f64>) -> Self {
+    assert!(
+      v0 >= 0.0,
+      "HestonPricer::new: v0 must be a non-negative variance (got {v0})"
+    );
+    assert!(
+      theta >= 0.0,
+      "HestonPricer::new: theta must be a non-negative variance (got {theta})"
+    );
+    assert!(
+      sigma > 0.0,
+      "HestonPricer::new: sigma must be strictly positive (got {sigma})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&rho),
+      "HestonPricer::new: rho must be in [-1, 1] (got {rho})"
+    );
     Self {
       v0,
       rho,
