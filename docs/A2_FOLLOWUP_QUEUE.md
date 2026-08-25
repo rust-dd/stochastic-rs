@@ -19,6 +19,10 @@ digitals split first, and 16 is the gate everything else feeds.
   `f201190`, `2ba9c34`). Two deliberately did *not* become panics, with reasons in
   the ledger. Turned up a crate-wide trap: `f64::max` discards a `NaN` operand, so
   any `.max(0.0)` floor converts poison into a plausible zero.
+- **3 — The four digitals carried both conventions at once** (`06b8593`,
+  `944207a`, `251f8cb`, `0de4035`). Each now holds `sigma` plus its own contract
+  parameter. Dissolved two other items with it: `analytic_bs` no longer builds a
+  pricer per query point, and the `d1` copies fell five → two.
 - **4 — `ModelSurface` bounded to the payoffs its inversion is valid for**
   (`3f0888e`, `c9b3ab8`, `f7feb7b`, `01e89ac`, `bd5f6ae`). **My own population
   figure was wrong**: I said eighteen, counting only named `impl ModelPricer`
@@ -45,11 +49,6 @@ digitals split first, and 16 is the gate everything else feeds.
 
   21/21 vanilla surfaces bit-identical by raw `to_bits()` diff; the only three that
   moved are the carry-mismatch cases, from wrong to right.
-
-- **3 — The four digitals carried both conventions at once** (`06b8593`,
-  `944207a`, `251f8cb`, `0de4035`). Each now holds `sigma` plus its own contract
-  parameter. Dissolved two other items with it: `analytic_bs` no longer builds a
-  pricer per query point, and the `d1` copies fell five → two.
 
 ## In progress
 
