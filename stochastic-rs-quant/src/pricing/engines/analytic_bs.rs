@@ -118,8 +118,8 @@ impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
 
   /// The NPV and every Greek are [`f64::NAN`] when any market handle is
   /// unlinked or the instrument's maturity is unset — case 2 of the crate's
-  /// [failure convention](crate::traits::ModelPricer#how-pricing-fails).
-  /// See [`AnalyticBSEngine::read_quote`].
+  /// [failure convention](crate::traits::ModelPricer#how-pricing-fails). An
+  /// unset handle is missing data, not a zero market.
   fn calculate(&self, opt: &EuropeanOption) -> StandardResult {
     let (model, (s, k, r, q, tau)) = self.model_and_query(opt);
     let ot = opt.option_type;
@@ -138,10 +138,10 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   /// The NPV is [`f64::NAN`] when `opt.tau` is unset, following the same
   /// missing-data convention as [`crate::traits::TimeExt::tau_or_from_dates`],
   /// **and** when any of the `s`, `volatility`, `r` or `dividend_yield`
-  /// handles is unlinked — see [`AnalyticBSEngine::read_quote`]. The two used
-  /// to disagree: a missing maturity poisoned the result while a missing spot
-  /// read as `0.0` and priced the digital at a zero spot, so one unpopulated
-  /// input reported itself and the other did not.
+  /// handles is unlinked. The two used to disagree: a missing maturity
+  /// poisoned the result while a missing spot read as `0.0` and priced the
+  /// digital at a zero spot, so one unpopulated input reported itself and the
+  /// other did not.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
     let s = Self::read_quote(&self.s);
     let sigma = Self::read_quote(&self.volatility);
@@ -289,10 +289,7 @@ mod tests {
     let npv = no_spot.calculate(&put).npv();
     assert!(npv.is_nan(), "unlinked spot must not price, got {npv}");
 
-    let no_tau = EuropeanOption {
-      tau: None,
-      ..put
-    };
+    let no_tau = EuropeanOption { tau: None, ..put };
     let full = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     assert!(
       full.calculate(&no_tau).npv().is_nan(),
@@ -323,7 +320,11 @@ mod tests {
       let engine = AnalyticBSEngine::new(s, vol, r, q);
 
       let res = engine.calculate(&call);
-      assert!(res.npv().is_nan(), "handle {missing}: european npv {}", res.npv());
+      assert!(
+        res.npv().is_nan(),
+        "handle {missing}: european npv {}",
+        res.npv()
+      );
       assert!(
         res.greeks().unwrap().as_array().iter().all(|g| g.is_nan()),
         "handle {missing}: greeks must be all-NaN"
