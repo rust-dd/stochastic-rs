@@ -33,8 +33,44 @@ pub struct VolSurfaceResult {
 
 impl VolSurfaceResult {
   /// Whether the entire surface is arbitrage-free.
-  pub fn is_arbitrage_free(&self) -> bool {
-    self.calendar_spread_free && self.butterfly_checks.iter().all(|(free, _)| *free)
+  ///
+  /// - `Some(true)` — every slice was checked and none violates the butterfly
+  ///   or the calendar-spread condition.
+  /// - `Some(false)` — a checked slice violates one of them.
+  /// - `None` — **nothing was checkable**, so there is no answer to give.
+  ///
+  /// The third case is why this is not a `bool`. Both arbitrage checks are
+  /// universal quantifiers over a grid — `check_butterfly_ssvi` seeds
+  /// `min_g` at $+\infty$ and lowers it only where the density evaluates,
+  /// [`SsviSurface::is_calendar_spread_free`](super::ssvi::SsviSurface::is_calendar_spread_free)
+  /// returns early only on a violation — so both are vacuously `true` over an
+  /// empty grid. And the grid *does* go empty:
+  /// [`ImpliedVolSurface::smile_slice`](super::implied::ImpliedVolSurface::smile_slice)
+  /// deliberately drops nodes whose implied vol did not invert, which is
+  /// right in itself but leaves a surface built from out-of-band prices with
+  /// no nodes at all. "No violation found" and "nothing to look at" then
+  /// produce the same `true`, and a caller cannot separate them.
+  ///
+  /// A slice is treated as checked when its `min_g` came back finite: `+inf`
+  /// is the untouched seed, so it is exactly the marker for a slice on which
+  /// the loop body never ran. That also settles the calendar leg, which shares
+  /// the same per-slice log-moneyness grids.
+  ///
+  /// This is the `bool` analogue of case 2 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails): the inputs
+  /// were legitimate, the answer is genuinely undefined here, and `None`
+  /// propagates where a `true` would have been mistaken for a clean bill of
+  /// health.
+  pub fn is_arbitrage_free(&self) -> Option<bool> {
+    let anything_checked = !self.butterfly_checks.is_empty()
+      && self
+        .butterfly_checks
+        .iter()
+        .all(|(_, min_g)| min_g.is_finite());
+    if !anything_checked {
+      return None;
+    }
+    Some(self.calendar_spread_free && self.butterfly_checks.iter().all(|(free, _)| *free))
   }
 
   /// Compute local volatility surface on a grid from the SSVI fit.
@@ -559,5 +595,61 @@ mod tests {
         "SVI fit error too large at k={k}: model={w_model} market={w_mkt} rel_err={rel_err}"
       );
     }
+  }
+
+  /// A surface whose every implied vol failed to invert has no grid left to
+  /// check, and both arbitrage checks pass vacuously over the empty grid. The
+  /// `bool` this method used to return could not say so; `None` can.
+  #[test]
+  fn all_nan_surface_reports_nothing_checkable() {
+    // An undiscounted call worth 1e6 against a forward of 100 is outside the
+    // no-arbitrage band, so Black inversion fails at every node.
+    let prices = Array2::<f64>::from_elem((2, 3), 1e6);
+    let result = build_surface(
+      vec![90.0, 100.0, 110.0],
+      vec![0.5, 1.0],
+      vec![100.0, 100.0],
+      &prices,
+      true,
+    );
+
+    let finite = result
+      .iv_surface
+      .ivs
+      .iter()
+      .filter(|v| v.is_finite())
+      .count();
+    assert_eq!(finite, 0, "every node must have failed to invert");
+
+    // The mechanism, pinned: `min_g` is the untouched `+inf` seed on both
+    // slices, and the calendar leg still reports clean.
+    for (free, min_g) in &result.butterfly_checks {
+      assert!(
+        *free && min_g.is_infinite(),
+        "vacuous butterfly pass expected"
+      );
+    }
+    assert!(
+      result.calendar_spread_free,
+      "vacuous calendar pass expected"
+    );
+
+    assert_eq!(
+      result.is_arbitrage_free(),
+      None,
+      "nothing checkable must not report a clean surface"
+    );
+  }
+
+  /// The guard must not fire on a surface that really was checked.
+  #[test]
+  fn checkable_surface_still_answers() {
+    let (strikes, maturities, forwards, prices) = make_test_prices();
+    let result = build_surface(strikes, maturities, forwards, &prices, true);
+
+    for (_, min_g) in &result.butterfly_checks {
+      assert!(min_g.is_finite(), "every slice must have been evaluated");
+    }
+    assert_eq!(result.is_arbitrage_free(), Some(true));
   }
 }

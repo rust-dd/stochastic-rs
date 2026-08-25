@@ -79,7 +79,7 @@
 //!     OptionType::Call, false);
 //! let params = cal.calibrate(None).unwrap();
 //! let surface = build_surface_from_calibration(&params, s0, r, q, &strikes, &maturities);
-//! assert!(surface.is_arbitrage_free());
+//! assert_eq!(surface.is_arbitrage_free(), Some(true));
 //! ```
 //!
 //! ### SVJ / Bates (multi-maturity joint calibration)
