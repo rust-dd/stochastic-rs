@@ -377,3 +377,148 @@ fn merton_one_model_prices_a_grid() {
     }
   }
 }
+
+/// The zero-volatility `n = 0` term is a removable singularity at the
+/// forward, and the price there is the limit — not `NaN`.
+///
+/// `term_vol(0, τ)` is exactly `0`, so the no-jump term prices a
+/// zero-volatility Black-Scholes call. Its `d₁` is `±∞` wherever
+/// `Se^{bτ} ≠ K` and `0/0` **at** the forward, which used to poison the
+/// whole Poisson sum. The limit is not undefined: both normal CDFs converge
+/// to `½` as `σ → 0⁺` along `Se^{bτ} = K`, so the term tends to
+/// `½(Se^{(b-r)τ} - Ke^{-rτ}) = 0`.
+///
+/// [`BSMCoc::Black1976`] and [`BSMCoc::Asay1982`] are where this bites,
+/// and the reason is the cost of carry: `b = 0` puts the forward at `S`, so
+/// the singular strike is the at-the-money one — the single most quoted
+/// point on a futures-option surface. The three carrying conventions put it
+/// at `Se^{bτ}`, a strike nobody asks for exactly, which is why this went
+/// unnoticed.
+mod zero_vol_term_at_the_forward {
+  use stochastic_rs_distributions::special::norm_cdf;
+
+  use super::*;
+
+  const FUT_TAU: f64 = 0.5;
+
+  fn futures(coc: BSMCoc) -> Merton1976Pricer {
+    Merton1976Pricer::new(0.2, 0.5, 0.4, 10, coc)
+  }
+
+  /// Hand-written Merton (1976) reference at the forward, sharing no code
+  /// with the pricer: `Σ_{n<m} w_n · e^{-rτ}K[N(h_n) - N(-h_n)]` with
+  /// `h_n = σ_n√τ/2`, the Black-76 at-the-forward call. `σ_0 = 0` makes
+  /// `h_0 = 0` and the `n = 0` term contribute exactly `0`, which is the
+  /// limit this test exists to pin. Every input is rebuilt from the public
+  /// fields — the jump and diffusive variances, the Poisson weights and
+  /// `σ_n` — so nothing here routes through the pricer's own helpers.
+  ///
+  /// The algebraically equal `2N(h) - 1` is deliberately **not** used:
+  /// `norm_cdf` is `0.5(1 + erf(·))` over Abramowitz-Stegun 7.1.26, whose
+  /// relative error is ~1.5e-7, so `N(-h) != 1 - N(h)` at the 1e-8 level
+  /// and that form disagrees with the pricer by 7.6e-8 — the approximation's
+  /// own asymmetry, not a pricing difference. Evaluating at the same two
+  /// points the pricer does keeps the comparison about the series.
+  fn atm_forward_reference(m: &Merton1976Pricer, k: f64, r: f64, tau: f64) -> f64 {
+    let jump_var = m.v * m.v * m.gamma / m.lambda;
+    let diffusive_var = m.v * m.v - m.lambda * jump_var;
+    let disc = (-r * tau).exp();
+    let lt = m.lambda * tau;
+
+    let mut weight = (-lt).exp();
+    let mut price = 0.0;
+    for n in 0..m.m {
+      if n > 0 {
+        weight *= lt / n as f64;
+      }
+      let sigma = ((diffusive_var + jump_var) * n as f64 / tau).sqrt();
+      let half = 0.5 * sigma * tau.sqrt();
+      price += weight * disc * k * (norm_cdf(half) - norm_cdf(-half));
+    }
+    price
+  }
+
+  /// The headline: an at-the-money futures option priced `NaN`.
+  #[test]
+  fn futures_atm_call_and_put_are_finite() {
+    for coc in [BSMCoc::Black1976, BSMCoc::Asay1982] {
+      let m = futures(coc);
+      let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
+      assert!(call.is_finite() && call > 0.0, "{coc:?} call {call}");
+      assert!(put.is_finite() && put > 0.0, "{coc:?} put {put}");
+      assert_eq!(
+        m.price_call(S, S, R, Q, FUT_TAU),
+        call,
+        "{coc:?} price_call"
+      );
+      assert_eq!(m.price_put(S, S, R, Q, FUT_TAU), put, "{coc:?} price_put");
+    }
+  }
+
+  /// The value is the *limit*, not merely a finite number: it matches a
+  /// hand-written Black-76 Poisson series that never evaluates a `0/0`.
+  #[test]
+  fn futures_atm_call_matches_hand_written_series() {
+    let m = futures(BSMCoc::Black1976);
+    let got = m.price_call(S, S, R, Q, FUT_TAU);
+    let want = atm_forward_reference(&m, S, R, FUT_TAU);
+    assert!((got - want).abs() < TOL, "got {got}, hand-written {want}");
+  }
+
+  /// Continuity across the singular strike. The `n = 0` term is
+  /// `e^{-rτ}\max(F-K, 0)` — piecewise *linear* in `K` with a kink exactly
+  /// at the forward — so the price there is the limit **from above**, where
+  /// that term is identically zero. A two-sided midpoint would sit half the
+  /// kink too high, which is why this checks the one-sided limit and pins
+  /// the kink separately rather than averaging the two.
+  #[test]
+  fn futures_price_is_continuous_across_the_forward() {
+    let m = futures(BSMCoc::Black1976);
+    let eps = 1e-6;
+    let at = m.price_call(S, S, R, Q, FUT_TAU);
+    let below = m.price_call(S, S - eps, R, Q, FUT_TAU);
+    let above = m.price_call(S, S + eps, R, Q, FUT_TAU);
+    assert!(
+      below > at && at > above,
+      "monotone in K: {below}, {at}, {above}"
+    );
+    assert!(
+      (at - above).abs() < 1e-5,
+      "not the limit from above: {at} vs {above}"
+    );
+    assert!(
+      below - at > 5e-7,
+      "the n = 0 kink must survive: {below} vs {at}"
+    );
+  }
+
+  /// The singularity is at the *forward*, not at the money — `Bsm1973` hits
+  /// the identical `0/0` once `r = 0` moves its forward onto the strike.
+  /// This is the pin that stops the fix being read as a `BSMCoc` special
+  /// case.
+  #[test]
+  fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
+    let m = merton(0.5, 0.4, 10);
+    let flat = m.price_call(S, S, 0.0, Q, FUT_TAU);
+    assert!(flat.is_finite() && flat > 0.0, "Bsm1973 at r=0: {flat}");
+  }
+
+  /// Generalised put-call parity still holds at the filled-in point:
+  /// `b = 0` under `Black1976`, so `C - P = (S - K)e^{-rτ}`, which is `0`
+  /// at the money. A limit taken on only one leg would break this.
+  #[test]
+  fn futures_atm_parity_holds_at_the_filled_in_point() {
+    let m = futures(BSMCoc::Black1976);
+    let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
+    assert!((call - put).abs() < TOL, "call {call} vs put {put}");
+  }
+
+  /// A strike away from the forward keeps the value it already had — the
+  /// interception is confined to the `0/0` point.
+  #[test]
+  fn away_from_the_forward_is_untouched() {
+    let m = futures(BSMCoc::Black1976);
+    let got = m.price_call(S, 110.0, R, 0.0, 1.0);
+    assert!((got - 2.4991309893156535).abs() < TOL, "got {got}");
+  }
+}

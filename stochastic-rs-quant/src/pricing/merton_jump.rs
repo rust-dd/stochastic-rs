@@ -78,7 +78,7 @@ impl Merton1976Pricer {
 
     for i in 0..self.m {
       let weight = self.poisson_weight(i, tau);
-      let (c, p) = self.term_bsm(i, tau).call_put(s, k, r, q, tau);
+      let (c, p) = self.term_call_put(i, tau, s, k, r, q);
       call += c * weight;
       put += p * weight;
     }
@@ -125,6 +125,49 @@ impl Merton1976Pricer {
 
   fn term_bsm(&self, n: usize, tau: f64) -> BSMPricer {
     BSMPricer::new(self.term_vol(n, tau), self.b)
+  }
+
+  /// Call and put of the `n`-th Poisson term, with the one point where the
+  /// zero-volatility term is a *removable singularity* filled in.
+  ///
+  /// [`term_vol`](Self::term_vol) is exactly `0` at `n = 0`, so the no-jump
+  /// term prices a zero-volatility Black-Scholes call. Its
+  /// $d_1 = (\ln(S/K) + b\tau)/(\sigma\sqrt\tau) + \sigma\sqrt\tau/2$ is
+  /// $\pm\infty$ wherever $Se^{b\tau} \ne K$, which saturates both normal
+  /// CDFs and collapses the term to its discounted intrinsic forward value.
+  /// **At** the forward the leading numerator vanishes too, leaving $0/0$,
+  /// and a single `NaN` term poisons the whole Poisson sum.
+  ///
+  /// That point is a removable singularity, not an undefined quantity. Let
+  /// $\sigma \to 0^+$ along $Se^{b\tau} = K$: then $d_1 = \sigma\sqrt\tau/2
+  /// \to 0^+$ and $d_2 = -\sigma\sqrt\tau/2 \to 0^-$, so both CDFs converge
+  /// to $\tfrac12$ and the term tends to
+  /// $\tfrac12(Se^{(b-r)\tau} - Ke^{-r\tau})$ — which is zero, because
+  /// being at the forward *is* the statement $Se^{b\tau} = K$. The branch
+  /// below writes that limit out rather than returning the constant, so a
+  /// non-finite discount rate still propagates instead of being replaced by
+  /// a confident zero. This is a degenerate limit with a value, not case 2
+  /// of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails).
+  ///
+  /// Only the $0/0$ point is intercepted; every other term keeps the value
+  /// [`BSMPricer::call_put`] already produced, degenerate or not.
+  ///
+  /// [`BSMCoc::Black1976`] and [`BSMCoc::Asay1982`] are where this bites in
+  /// practice, and the cost of carry is the reason: their $b = 0$ puts the
+  /// forward at $S$, so the singular strike is the at-the-money one — the
+  /// most-quoted point on a futures-option surface. The three carrying
+  /// conventions put it at $Se^{b\tau}$, a strike nobody asks for exactly,
+  /// which is why this survived so long.
+  fn term_call_put(&self, n: usize, tau: f64, s: f64, k: f64, r: f64, q: f64) -> (f64, f64) {
+    let term = self.term_bsm(n, tau);
+    let (d1, _) = term.d1_d2(s, k, r, q, tau);
+    if d1.is_nan() && term.v == 0.0 && tau > 0.0 && s > 0.0 && k > 0.0 {
+      let half_carry = 0.5 * s * ((term.b(r, q) - r) * tau).exp();
+      let half_disc = 0.5 * k * (-r * tau).exp();
+      return (half_carry - half_disc, half_disc - half_carry);
+    }
+    term.call_put(s, k, r, q, tau)
   }
 }
 
