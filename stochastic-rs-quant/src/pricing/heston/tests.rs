@@ -277,6 +277,67 @@ fn heston_greeks_nan_at_degenerate_inputs() {
   );
 }
 
+/// A *negative* `v0` is invalid input, not a degenerate-but-admissible
+/// state, so the four volatility-space Greeks panic on it rather than
+/// returning the `NaN` that `v0 == 0` earns. Pinned per accessor because each
+/// guards independently; the `expected` anchor is on the parameter name and
+/// value, so an unrelated panic (an index slip, an arithmetic overflow) fails
+/// the test instead of silently satisfying it.
+///
+/// `heston_greeks_nan_at_degenerate_inputs` pins the `v0 == 0` half and is
+/// deliberately unchanged by this split.
+mod negative_v0_panics {
+  use super::*;
+
+  fn negative_v0() -> HestonPricer {
+    HestonPricer::new(-0.01, -0.7, 1.5, 0.04, 0.3, Some(0.0))
+  }
+
+  #[test]
+  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
+  fn vega_rejects_negative_v0() {
+    negative_v0().vega(100.0, 100.0, 0.05, 0.0, 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
+  fn vanna_rejects_negative_v0() {
+    negative_v0().vanna(100.0, 100.0, 0.05, 0.0, 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
+  fn volga_rejects_negative_v0() {
+    negative_v0().volga(100.0, 100.0, 0.05, 0.0, 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
+  fn veta_rejects_negative_v0() {
+    negative_v0().veta(100.0, 100.0, 0.05, 0.0, 1.0);
+  }
+
+  /// The `v0` guard runs before the `tau` guard, so a negative `v0` panics
+  /// even at a `tau` that would independently have returned `NaN`. Without
+  /// this, a caller could mask invalid input behind a degenerate maturity.
+  #[test]
+  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
+  fn veta_rejects_negative_v0_before_degenerate_tau() {
+    negative_v0().veta(100.0, 100.0, 0.05, 0.0, 0.0);
+  }
+
+  /// Greeks that do not route through the `σ = √v0` chain rule keep working
+  /// at a negative `v0` exactly as before — the split must not widen into a
+  /// blanket model-parameter check.
+  #[test]
+  fn delta_and_rho_are_unaffected_by_the_guard() {
+    let m = negative_v0();
+    let ot = OptionType::Call;
+    assert!(m.delta(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
+    assert!(m.rho(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
+  }
+}
+
 const TOL: f64 = 1e-12;
 
 /// Captured from `PricerExt::calculate_call_put()`, `implied_volatility`,
