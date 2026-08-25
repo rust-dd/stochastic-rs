@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 
 use super::parse_option_type;
+use crate::traits::ModelPricer;
 
 #[pyclass(name = "CashOrNothingPricer", unsendable)]
 pub struct PyCashOrNothingPricer {
@@ -80,9 +81,21 @@ impl PyAssetOrNothingPricer {
   }
 }
 
+/// The Rust model holds `(k2, sigma)` only — the trigger strike `k1` is the
+/// query's strike — so the wrapper carries the `(s, k1, r, q, tau)` query
+/// and the option type the Python-visible no-argument method is defined at.
+/// Python's constructor signature is unchanged, `b` included: the model
+/// derives its cost of carry as $b = r - q$, so the wrapper stores the `q`
+/// that reproduces the `b` the caller passed.
 #[pyclass(name = "GapPricer", unsendable)]
 pub struct PyGapPricer {
   inner: crate::pricing::digital::GapPricer,
+  s: f64,
+  k1: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
+  option_type: crate::OptionType,
 }
 
 #[pymethods]
@@ -101,21 +114,20 @@ impl PyGapPricer {
   ) -> PyResult<Self> {
     let ot = parse_option_type(option_type)?;
     Ok(Self {
-      inner: crate::pricing::digital::GapPricer {
-        s,
-        k1,
-        k2,
-        r,
-        b,
-        sigma,
-        tau: t,
-        option_type: ot,
-      },
+      inner: crate::pricing::digital::GapPricer::new(k2, sigma),
+      s,
+      k1,
+      r,
+      q: r - b,
+      tau: t,
+      option_type: ot,
     })
   }
 
   fn price(&self) -> f64 {
-    self.inner.price()
+    self
+      .inner
+      .price_option(self.s, self.k1, self.r, self.q, self.tau, self.option_type)
   }
 }
 

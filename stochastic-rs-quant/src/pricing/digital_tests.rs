@@ -98,19 +98,14 @@ fn vanilla_decomposition() {
 }
 
 /// Gap call with $K_1 = K_2$ equals BSM vanilla call.
+///
+/// `b = 0.05` is expressed as the query's `q = r - b = 0`, which is how a
+/// scenario names its cost of carry now that the model derives $b$ from the
+/// query instead of storing it.
 #[test]
 fn gap_reduces_to_vanilla() {
-  let p = GapPricer {
-    s: 100.0,
-    k1: 100.0,
-    k2: 100.0,
-    r: 0.05,
-    b: 0.05,
-    sigma: 0.2,
-    tau: 1.0,
-    option_type: OptionType::Call,
-  };
-  let price = p.price();
+  let p = GapPricer::new(100.0, 0.2);
+  let price = p.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
   assert!((price - 10.4506).abs() < 0.005, "gap={price}");
 }
 
@@ -118,17 +113,8 @@ fn gap_reduces_to_vanilla() {
 /// sigma=0.20, T=0.5 → -0.0053
 #[test]
 fn gap_haug_negative_payoff() {
-  let p = GapPricer {
-    s: 50.0,
-    k1: 50.0,
-    k2: 57.0,
-    r: 0.09,
-    b: 0.09,
-    sigma: 0.20,
-    tau: 0.5,
-    option_type: OptionType::Call,
-  };
-  let price = p.price();
+  let p = GapPricer::new(57.0, 0.20);
+  let price = p.price_call(50.0, 50.0, 0.09, 0.0, 0.5);
   assert!(price.abs() < 0.05, "gap call={price}");
   // The option gives a negative cash flow when S is between K1 and K2
   assert!(price < 0.0);
@@ -229,49 +215,28 @@ fn aon_call_via_model_pricer() {
   assert!((call + put - expected).abs() < 1e-9, "total={}", call + put);
 }
 
-/// Same scenario as `gap_haug_negative_payoff` ($K_1 \ne K_2$, so this also
-/// proves the query strike binds to $K_1$, not $K_2$) plus
-/// `gap_reduces_to_vanilla`, both priced through [`ModelPricer`]. The put
-/// check uses gap's own parity identity, $C - P = Se^{-qT} - K_2e^{-rT}$
-/// (derived from the closed forms; holds regardless of $K_1$).
+/// The gap put has its own parity identity, $C - P = Se^{-qT} - K_2e^{-rT}$
+/// (derived from the closed forms; holds regardless of $K_1$), which is not
+/// the trait's vanilla parity against the query strike — the two differ
+/// exactly because $K_1 \ne K_2$ here. Same scenario as
+/// `gap_haug_negative_payoff`, so this doubles as proof that the query
+/// strike binds to $K_1$ and `self.k2` to the payoff strike.
 #[test]
-fn gap_call_via_model_pricer() {
-  let p = GapPricer {
-    s: 50.0,
-    k1: 50.0,
-    k2: 57.0,
-    r: 0.09,
-    b: 0.09,
-    sigma: 0.20,
-    tau: 0.5,
-    option_type: OptionType::Call,
-  };
+fn gap_put_matches_its_own_parity() {
+  let p = GapPricer::new(57.0, 0.20);
   let call = p.price_call(50.0, 50.0, 0.09, 0.0, 0.5);
   let put = p.price_put(50.0, 50.0, 0.09, 0.0, 0.5);
-  assert!(
-    (call - p.price()).abs() < 1e-9,
-    "trait={call}, inherent={}",
-    p.price()
-  );
-  assert!(call.abs() < 0.05 && call < 0.0, "gap call={call}");
   let parity = 50.0 - 57.0 * (-0.09_f64 * 0.5).exp();
   assert!(
     (call - put - parity).abs() < 1e-9,
     "gap parity: {call} - {put}"
   );
 
-  let vanilla = GapPricer {
-    s: 100.0,
-    k1: 100.0,
-    k2: 100.0,
-    r: 0.05,
-    b: 0.05,
-    sigma: 0.2,
-    tau: 1.0,
-    option_type: OptionType::Call,
-  };
-  let vprice = vanilla.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
-  assert!((vprice - 10.4506).abs() < 0.005, "gap-as-vanilla={vprice}");
+  let vanilla_parity = 50.0 - 50.0 * (-0.09_f64 * 0.5).exp();
+  assert!(
+    (call - put - vanilla_parity).abs() > 1e-3,
+    "K1 != K2, so vanilla parity against the query strike must NOT hold"
+  );
 }
 
 /// Same scenario as `supershare_positive`, priced through [`ModelPricer`];

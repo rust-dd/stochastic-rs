@@ -228,39 +228,36 @@ impl ModelPricer for AssetOrNothingPricer {
 /// V = S e^{(b-r)T}N(d_1) - K_2 e^{-rT}N(d_2),\quad
 /// d_1=\frac{\ln(S/K_1)+(b+\tfrac12\sigma^2)T}{\sigma\sqrt T}
 /// $$
-#[derive(Debug, Clone)]
+///
+/// Holds model and contract state only: the volatility and the payoff
+/// strike. Spot, trigger strike, rate, dividend yield and maturity are the
+/// pricing *query* and travel as arguments to
+/// [`ModelPricer::price_call`], so one instance prices a whole
+/// strike/maturity grid. The cost of carry is not a field — it is
+/// $b = r - q$, recomputed from the query's own rates on every call.
+///
+/// ```
+/// use stochastic_rs_quant::pricing::GapPricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// // K2 = 100 on the model, K1 = 100 as the query strike: a vanilla call.
+/// let model = GapPricer::new(100.0, 0.2);
+/// let vanilla = model.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
+/// assert!((vanilla - 10.4506).abs() < 0.005);
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct GapPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Trigger strike $K_1$.
-  pub k1: f64,
-  /// Payoff strike $K_2$.
+  /// Payoff strike $K_2$ — a term of the contract. The *trigger* strike
+  /// $K_1$ is the query's `k`, since it is $K_1$ that sets the moneyness
+  /// boundary and so enters $d_1$.
   pub k2: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Cost of carry.
-  pub b: f64,
   /// Volatility.
   pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option type.
-  pub option_type: OptionType,
 }
 
 impl GapPricer {
-  pub fn price(&self) -> f64 {
-    let v = self.sigma;
-    let t = self.tau;
-    let sqrt_t = t.sqrt();
-    let d1 = ((self.s / self.k1).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
-    let d2 = d1 - v * sqrt_t;
-    let coc = ((self.b - self.r) * self.tau).exp();
-    let disc = (-self.r * self.tau).exp();
-    match self.option_type {
-      OptionType::Call => self.s * coc * norm_cdf(d1) - self.k2 * disc * norm_cdf(d2),
-      OptionType::Put => self.k2 * disc * norm_cdf(-d2) - self.s * coc * norm_cdf(-d1),
-    }
+  pub const fn new(k2: f64, sigma: f64) -> Self {
+    Self { k2, sigma }
   }
 }
 
