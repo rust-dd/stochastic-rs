@@ -182,8 +182,16 @@ mod tests {
   use crate::pricing::fourier::DoubleHestonFourier;
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::fourier::VarianceGammaFourier;
+  use crate::OptionStyle;
+  use crate::pricing::bsm::BSMCoc;
+  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::finite_difference::FiniteDifferenceMethod;
+  use crate::pricing::finite_difference::FiniteDifferencePricer;
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   use crate::pricing::sabr::SabrPricer;
+
+  const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
+  const GRID_T: [f64; 2] = [0.25, 1.0];
 
   #[test]
   fn heston_via_model_surface() {
@@ -411,5 +419,156 @@ mod tests {
       err < 0.01,
       "SSVI should fit Heston surface closely: model={iv_model} ssvi={iv_ssvi} err={err}"
     );
+  }
+
+  /// The default forward is the literal expression `vol_surface` used to
+  /// inline, so every model that does not override the hook keeps the
+  /// surface it had. `assert_eq!` on `f64` is the point: "equal to within a
+  /// tolerance" would not distinguish a re-association that moves an ulp
+  /// from the expression itself.
+  #[test]
+  fn default_forward_is_bit_identical_to_the_inlined_expression() {
+    let heston = HestonFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.0,
+    };
+    let sabr = SabrPricer {
+      alpha: 0.2,
+      beta: 1.0,
+      nu: 0.4,
+      rho: -0.3,
+    };
+
+    for &(s, r, q) in &[
+      (100.0, 0.05, 0.0),
+      (87.5, 0.031, 0.017),
+      (250.0, -0.004, 0.02),
+      (1.234_5, 0.0, 0.0),
+    ] {
+      for &t in &[0.25_f64, 1.0, 3.0, 7.5] {
+        let expected = s * ((r - q) * t).exp();
+        assert_eq!(heston.vanilla_call_forward(s, r, q, t), expected);
+        assert_eq!(sabr.vanilla_call_forward(s, r, q, t), expected);
+        // The two cost-of-carry conventions with `b = r - q` must land on
+        // the same expression rather than merely near it.
+        for coc in [BSMCoc::Merton1973, BSMCoc::GarmanKohlhagen1983] {
+          assert_eq!(
+            BSMPricer::new(0.2, coc).vanilla_call_forward(s, r, q, t),
+            expected
+          );
+        }
+      }
+    }
+  }
+
+  /// A flat-volatility model must invert to a flat surface. Under
+  /// [`BSMCoc::Black1976`] the carry is `b = 0`, so the forward is `s` — and
+  /// against the default `s * exp((r - q) * tau)` these same *correct* prices
+  /// invert to a smile running 0.080 to 0.150 across this grid, every point
+  /// finite and none of them 0.20. That is what
+  /// [`BSMPricer::vanilla_call_forward`] exists to prevent, and deleting the
+  /// override fails this test rather than degrading it.
+  #[test]
+  fn futures_carry_surface_recovers_the_models_flat_vol() {
+    for coc in [BSMCoc::Black1976, BSMCoc::Asay1982] {
+      let model = BSMPricer::new(0.20, coc);
+      let surface = model.vol_surface(100.0, 0.05, 0.0, &GRID_K, &GRID_T);
+
+      for (j, &t) in GRID_T.iter().enumerate() {
+        assert_eq!(surface.forwards[j], 100.0, "{coc:?} forward at T={t}");
+        for (i, &k) in GRID_K.iter().enumerate() {
+          let iv = surface.ivs[[j, i]];
+          assert!(
+            (iv - 0.20).abs() < 1e-6,
+            "{coc:?} should invert flat: iv={iv} at T={t}, K={k}"
+          );
+        }
+      }
+    }
+  }
+
+  /// The same failure with the dividend yield rather than the carry
+  /// convention: [`BSMCoc::Bsm1973`] carries at `b = r` and ignores `q`, so a
+  /// surface asked for at `q = 0.03` must still invert flat. Against the
+  /// default forward it produces a 0.274-to-0.233 skew out of a model that
+  /// has none.
+  #[test]
+  fn dividend_ignoring_carry_surface_recovers_the_models_flat_vol() {
+    let model = BSMPricer::new(0.20, BSMCoc::Bsm1973);
+    let surface = model.vol_surface(100.0, 0.05, 0.03, &GRID_K, &GRID_T);
+
+    for (j, &t) in GRID_T.iter().enumerate() {
+      for (i, &k) in GRID_K.iter().enumerate() {
+        let iv = surface.ivs[[j, i]];
+        assert!(
+          (iv - 0.20).abs() < 1e-6,
+          "Bsm1973 at q=0.03 should invert flat: iv={iv} at T={t}, K={k}"
+        );
+      }
+    }
+  }
+
+  /// [`FiniteDifferencePricer`] is the one implementor whose exercise style
+  /// is a field, so it is the one that has to answer per instance. At
+  /// [`OptionStyle::American`] the whole surface must be `NaN`.
+  ///
+  /// Without the `NaN` this grid comes back 10/10 finite, every point within
+  /// 0.008 of the model's own `v` — an American price pushed through a
+  /// European inversion looks like a slightly noisy European one, which is
+  /// exactly why a `NaN` and not a warning.
+  #[test]
+  fn american_finite_difference_surface_is_all_nan() {
+    let model = FiniteDifferencePricer::new(
+      0.25,
+      200,
+      100,
+      OptionStyle::American,
+      FiniteDifferenceMethod::CrankNicolson,
+    );
+    let surface = model.vol_surface(100.0, 0.05, 0.06, &GRID_K, &GRID_T);
+
+    for (j, &t) in GRID_T.iter().enumerate() {
+      assert!(surface.forwards[j].is_nan(), "forward at T={t}");
+      for (i, &k) in GRID_K.iter().enumerate() {
+        assert!(
+          surface.ivs[[j, i]].is_nan(),
+          "iv at T={t}, K={k} is {}",
+          surface.ivs[[j, i]]
+        );
+        assert!(surface.total_variance[[j, i]].is_nan(), "w at T={t}, K={k}");
+        assert!(surface.log_moneyness[[j, i]].is_nan(), "k at T={t}, K={k}");
+      }
+    }
+  }
+
+  /// Control for `american_finite_difference_surface_is_all_nan`: the same
+  /// solver at [`OptionStyle::European`] still produces a surface, so the
+  /// `NaN` above is the exercise style and not the type.
+  #[test]
+  fn european_finite_difference_surface_is_finite() {
+    let model = FiniteDifferencePricer::new(
+      0.25,
+      200,
+      100,
+      OptionStyle::European,
+      FiniteDifferenceMethod::CrankNicolson,
+    );
+    let surface = model.vol_surface(100.0, 0.05, 0.06, &GRID_K, &GRID_T);
+
+    for (j, &t) in GRID_T.iter().enumerate() {
+      assert_eq!(surface.forwards[j], 100.0 * ((0.05 - 0.06) * t).exp());
+      for (i, &k) in GRID_K.iter().enumerate() {
+        let iv = surface.ivs[[j, i]];
+        assert!(
+          (iv - 0.25).abs() < 5e-3,
+          "European FD should recover its own v: iv={iv} at T={t}, K={k}"
+        );
+      }
+    }
   }
 }
