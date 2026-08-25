@@ -7,6 +7,28 @@ and consistency work it surfaced but did not own.
 Ordering is dependency-driven, not priority-driven: items 8 and 12 needed the
 digitals split first, and 16 is the gate everything else feeds.
 
+## Execution order
+
+Fifteen open items grouped into seven steps. Several are too small to justify a
+round of their own, so they travel with the item they share a file or a failure
+mode with. Ordering is driven by two things only: a live wrong number outranks a
+consistency wart, and **anything that breaks a `pub` API must land inside the
+`3.0.0-beta` window**, because after stable it costs a second major version.
+
+| Step | Items | Why here |
+|---|---|---|
+| **1** | 19, 20, 5 | Live sentinels returning a plausible wrong answer. All three are the shape already closed twice; 19 sits in the hottest path in the crate. |
+| **2** | 21, 22 | Invalid state accepted at construction, surfacing later somewhere else. Same layer, same fix shape. |
+| **3** | 6, 7 | Numerics. Both are quadrature or surface-extent problems needing an independent reference to verify, not a reread. |
+| **4** | 10 | The registry's deep blind spot — a runtime inventory. Best done before the breaking work, so it guards it. |
+| **5** | 13, 14, 11, 12 | **Breaking. Beta window or never.** 13 is the largest single item left. |
+| **6** | 15, 16, 17 | Cosmetic and documentation. 16 owns a deliberate golden move. |
+| **7** | 18 | The gate: full battery, then push. |
+
+Step 5 is the one with a deadline. Everything else can slip past 3.0.0 without
+costing anything but tidiness.
+
+
 ## Done
 
 - **1 — `HestonStochCorrPricer` double discount** (`d8a2f30`). A real 3.68 %
