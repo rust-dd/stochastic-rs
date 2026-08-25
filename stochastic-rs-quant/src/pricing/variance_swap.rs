@@ -157,9 +157,25 @@ impl VarianceSwapPricer {
   /// Continuous-monitoring expected integrated variance,
   /// $E\!\left[\frac{1}{T}\int_0^T V_t\,dt\right]$, depends only on
   /// `(v0, kappa, theta, T)` — not on `(rho, sigma, r, q)`.
+  ///
+  /// At `tau == 0` the factor $\frac{1-e^{-\kappa T}}{\kappa T}$ tends to 1
+  /// and the strike is `v0`. That branch is a genuine limit and stays.
+  ///
+  /// # Panics
+  /// Panics if `self.tau` is negative — or `NaN`, which fails the same test.
+  /// A negative maturity is not a market state, and the `tau <= 0.0` branch
+  /// this replaces returned `v0` for one: a plausible variance strike,
+  /// numerically identical to the correct $T \to 0$ answer, for an input that
+  /// has no answer at all. Case 1 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails), and the same
+  /// guard its neighbour
+  /// [`fair_strike_replication`](Self::fair_strike_replication) already
+  /// carries.
   pub fn fair_strike_heston(&self, v0: f64, kappa: f64, theta: f64) -> f64 {
     let tau = self.tau;
-    if tau <= 0.0 {
+    assert!(tau >= 0.0, "maturity tau must be non-negative (got {tau})");
+    if tau == 0.0 {
+      // Limit T → 0 of (1 - e^{-κT})/(κT) is 1, so K_var → v0.
       return v0;
     }
     if kappa.abs() < 1e-10 {
@@ -175,6 +191,10 @@ impl VarianceSwapPricer {
   ///
   /// Adds $\frac{T}{N}$ correction reflecting the discrete-vs-continuous
   /// gap; for $N \to \infty$ converges to the continuous strike.
+  ///
+  /// # Panics
+  /// Panics on a negative `self.tau`, via
+  /// [`fair_strike_heston`](Self::fair_strike_heston).
   pub fn fair_strike_heston_discrete(
     &self,
     v0: f64,
@@ -241,12 +261,32 @@ impl VarianceSwapPricer {
 ///
 /// Weight at strike $K_i$ is $\frac{2}{T}\,\frac{\Delta K_i}{K_i^2}$
 /// (Demeterfi et al., eq. (28)). Returned in the same order as `strikes`.
+///
+/// # Panics
+/// - if fewer than two strikes are supplied — $\Delta K_i$ is a difference
+///   against a neighbour, so a one-point "strip" has no weight to compute
+/// - if `maturity` is not strictly positive, `NaN` included — the $2/T$
+///   prefactor has no value there
+///
+/// Both used to return `vec![0.0; n]`. An all-zero weight vector hedges
+/// nothing and prices a zero strike downstream, and nothing in it says the
+/// strip was rejected rather than computed — case 1 of the crate's [failure
+/// convention](crate::traits::ModelPricer#how-pricing-fails). The sibling
+/// [`VarianceSwapPricer::fair_strike_replication`], which this function
+/// exists to hedge, already panicked on exactly these two conditions, so the
+/// pair disagreed about whether the same strip was an error.
 pub fn replication_weights(strikes: &[f64], maturity: f64) -> Vec<f64> {
   let n = strikes.len();
+  assert!(
+    n >= 2,
+    "static replication needs at least 2 strikes (got {n})"
+  );
+  assert!(
+    maturity > 0.0,
+    "maturity must be strictly positive (got {maturity})"
+  );
+
   let mut w = vec![0.0; n];
-  if n < 2 || maturity <= 0.0 {
-    return w;
-  }
   for i in 0..n {
     let dk = if i == 0 {
       strikes[1] - strikes[0]
@@ -598,5 +638,87 @@ mod tests {
       rel_err < 0.02,
       "K_var={k_var}, expected≈{target}, rel_err={rel_err}"
     );
+  }
+
+  #[test]
+  #[should_panic(expected = "static replication needs at least 2 strikes (got 1)")]
+  fn replication_weights_reject_a_single_strike() {
+    let _ = replication_weights(&[100.0], 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "static replication needs at least 2 strikes (got 0)")]
+  fn replication_weights_reject_an_empty_strip() {
+    let _ = replication_weights(&[], 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "maturity must be strictly positive (got 0)")]
+  fn replication_weights_reject_a_zero_maturity() {
+    let _ = replication_weights(&[90.0, 100.0, 110.0], 0.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "maturity must be strictly positive (got -1)")]
+  fn replication_weights_reject_a_negative_maturity() {
+    let _ = replication_weights(&[90.0, 100.0, 110.0], -1.0);
+  }
+
+  /// `replication_weights` and `fair_strike_replication` are meant to be used
+  /// together — one hedges what the other prices — so they must agree about
+  /// which inputs are errors. They did not: the sibling panicked on a
+  /// one-point strip and a non-positive maturity while this one returned an
+  /// all-zero weight vector, which replicates nothing and prices a zero
+  /// strike downstream with no signal.
+  #[test]
+  fn the_replication_pair_rejects_the_same_inputs() {
+    for (strikes, tau) in [
+      (vec![100.0], 1.0),
+      (vec![90.0, 100.0, 110.0], 0.0),
+      (vec![90.0, 100.0, 110.0], -1.0),
+    ] {
+      let prices = vec![1.0; strikes.len()];
+      let p = VarianceSwapPricer {
+        s: 100.0,
+        r: 0.0,
+        q: 0.0,
+        tau,
+      };
+      let sibling =
+        std::panic::catch_unwind(|| p.fair_strike_replication(&strikes, &prices)).is_err();
+      let weights = std::panic::catch_unwind(|| replication_weights(&strikes, tau)).is_err();
+      assert_eq!(
+        sibling, weights,
+        "strikes={strikes:?} tau={tau}: fair_strike_replication panicked={sibling}, \
+         replication_weights panicked={weights}"
+      );
+      assert!(sibling, "strikes={strikes:?} tau={tau} must be rejected");
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "maturity tau must be non-negative (got -1)")]
+  fn heston_fair_strike_rejects_a_negative_maturity() {
+    let p = VarianceSwapPricer {
+      s: 100.0,
+      r: 0.05,
+      q: 0.0,
+      tau: -1.0,
+    };
+    let _ = p.fair_strike_heston(0.04, 1.5, 0.04);
+  }
+
+  /// `tau == 0` is the genuine $T \to 0$ limit of
+  /// $\frac{1-e^{-\kappa T}}{\kappa T} \to 1$, not a sentinel, so it keeps
+  /// returning `v0` — the negative-maturity guard must not take it with it.
+  #[test]
+  fn heston_fair_strike_zero_maturity_stays_the_v0_limit() {
+    let p = VarianceSwapPricer {
+      s: 100.0,
+      r: 0.05,
+      q: 0.0,
+      tau: 0.0,
+    };
+    assert_eq!(p.fair_strike_heston(0.04, 1.5, 0.10), 0.04);
   }
 }
