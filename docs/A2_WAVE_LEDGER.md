@@ -131,16 +131,33 @@ configurations — **zero mismatches**, and confirmed the pre-refactor American 
 European calls were always exactly equal, i.e. that path was genuinely untested
 before.
 
-**Live bug found, pinned not fixed:** `HestonStochCorrPricer` **discounts twice** —
-`exp(-r·tau)` inside `char_func_complex` (`cf.rs:73`) and again in
-`price_call_carr_madan` (`pricer.rs:27`). Invisible at the source paper's `r = 0`;
-**3.68 % under-price** at `r=0.05, τ=0.75`. The fix is to drop `-r * tau` from
-`cf.rs:73` and leave `pricer.rs` alone. Why the suite never caught it: one
-cross-check ran against a **15 %** tolerance, and both put-call-parity tests are
-structurally vacuous because the put is *derived* from the call by parity. The
-golden's doc comment now states the values are known-wrong and names the fix.
-**Note: fixing it also breaks `hscm_price_put_matches_parity_but_is_floored`, whose
-zero-floor assertion fires only because of the bug. Follow-up owed.**
+**Live bug found here, fixed afterwards in `d8a2f30`:** `HestonStochCorrPricer`
+**discounted twice** — `exp(-r·tau)` inside `char_func_complex` (`cf.rs:73`) and
+again in `price_call_carr_madan` (`pricer.rs:27`). Invisible at the source paper's
+`r = 0`; **3.68 % under-price** at `r=0.05, τ=0.75`. It was pinned rather than
+fixed during the wave so that the reshape could be verified against the behaviour
+it actually replaced.
+
+Why the suite never caught it, and this is the durable lesson: one cross-check ran
+against a **15 %** tolerance, both put-call-parity tests were structurally vacuous
+(the put is *derived* from the call by parity, so parity held by construction), and
+— found only during the fix — **the two errors were partially cancelling.**
+`compare_with_standard_heston` read 0.95 % before the fix and 2.47 % after, which
+decomposes as −1.49 % (the discount) + 2.47 % (the affine approximation). The old
+number looked healthy because it was wrong twice.
+
+The fix replaced both vacuous parity tests with guards that have no free
+parameters: `char_func_reproduces_the_forward` asserts φ(−i) = S·e^{(r−q)τ}, which
+a folded-in discount breaks by exactly `1 − e^{−rτ}`, and
+`call_respects_no_arbitrage_bounds` asserts the model-free band, which the double
+discount breached by 12–49×. Tolerances tightened 15 % → 3 %, 1 % → 0.3 %,
+1e-2 → 1e-14.
+
+There is **no sound pinned deep-ITM floor case**, established by measurement rather
+than assumed: a European put is strictly positive at every finite strike, so the
+exact unfloored parity is never negative, and the numerical residual's sign
+oscillates with both strike and maturity. The replacement asserts the floor's
+*contract* over a 3×8 grid with a `rescued >= 3` counter to stop it going vacuous.
 
 **Two type deletions:** `SabrModel` → `SabrPricer`, `HscmModel` →
 `HestonStochCorrPricer`. Capability fully preserved in both; same fields, same order,
@@ -210,10 +227,26 @@ confident fictitious NPV.
 
 ## Open follow-ups
 
-1. **`HestonStochCorrPricer` double discount** — real 3.68 % mispricing, pinned. Fix
-   also rewrites `hscm_price_put_matches_parity_but_is_floored`.
-2. **`pricing/slv.rs:377-380`** — `ModelPricer` impl discarding its rate arguments.
+1. ~~**`HestonStochCorrPricer` double discount**~~ — **closed** in `d8a2f30`,
+   verified against a from-scratch DOP853 + QUADPACK reference sharing no code
+   with the crate: relative error fell from 3.69 % to 6e-5, a 592× improvement.
+2. ~~**`pricing/slv.rs:377-380`**~~ — **closed** in `a3cb8a7`. The leverage surface
+   turned out to be genuinely rate-dependent, so the fix follows the `HullWhite`
+   two-constructor precedent rather than substituting the query rates.
 3. **Six non-`NaN` sentinels**, above.
+4. **`price_call_carr_madan` is unreliable deep in the money**, found while fixing
+   (1) and separate from it: the `K^{−α}` damping prefactor amplifies quadrature
+   error, worsening with maturity. At `τ = 2, K = 0.01` against spot 100 it returns
+   **881 915.7**; at `K = 20` it returns 10.46 against a lower bound of 77.98. A
+   multiplicative discount cannot create a blow-up, so this predates the double
+   discount. Prices at `K >= 0.2·S` are unaffected. Root cause localised to
+   `integrate_to_convergence`'s `tol = 1e-8` and width-50 initial panels — **not**
+   the RK4 step, which moves the result by only 2e-12.
+5. **`HestonSlvPricer` spot anchoring** — `LeverageSurface` is indexed by absolute
+   spot and `calibrate_leverage` takes a specific `s0`, so pricing far from it walks
+   into the surface's clamped boundary, unguarded. Same "precomputed against
+   something the query can contradict" shape as (2), which is now fixed for rates
+   but not for spot.
 4. **Multi-asset asymmetry** — `KirkSpreadPricer` is now the only one of eight
    multi-asset pricers following the model/query split. `Margrabe`, `StulzRainbow`,
    `McRainbow`, `GeometricBasket`, `ArithmeticBasketLevy`, `McBasket` and `McSpread`
