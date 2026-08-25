@@ -138,7 +138,7 @@ impl ModelPricer for HestonStochCorrPricer {
   /// [`call_put`](HestonStochCorrPricer::call_put) applies to both legs,
   /// and associates the three terms in a different order from the
   /// pre-query `calculate_call_put`. Routing through `call_put` keeps both.
-  /// See `hscm_price_put_matches_parity_but_is_floored`.
+  /// See `hscm_put_is_parity_and_is_floored_at_zero`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).1
   }
