@@ -100,8 +100,23 @@ digitals split first, and 16 is the gate everything else feeds.
   method. A newcomer importing the prelude gets a pricing trait on the new
   convention and a Greeks trait on the old one, side by side.
 - **15 — Unify the doc phrasing for `tau`, `s` and `r`.** One *identifier* per
-  concept was achieved; one *phrasing* was not — 42 `pub tau:` fields across twelve
-  distinct wordings, 26 `pub s:` across eleven, 42 `pub r:` across seven.
+  concept was achieved; one *phrasing* was not. Measured at `9465768`:
+
+  | field | fields | distinct wordings | most common |
+  |---|---|---|---|
+  | `pub tau:` | 38 | 12 | `Time to maturity in years.` (21) |
+  | `pub s:` | 39 | **18** | `Spot.` (5) |
+  | `pub r:` | 49 | 7 | `Risk-free rate.` (27) |
+
+  ```
+  cd stochastic-rs-quant/src && grep -rB1 "pub s: " --include="*.rs" . \
+    | grep "///" | sed 's/.*\/\/\/ *//' | sort -u | wc -l
+  ```
+
+  **`s` is the worst of the three, not `tau`** — 18 wordings across 39 fields, with
+  the most common covering only five. The final review's write-up put the emphasis
+  on `tau`, where the canonical phrasing already covers 21 of 38; its per-field
+  counts for all three were also off (42/26/42 against the measured 38/39/49).
 - **16 — Align the `vega` signature across `ModelPricer` implementors.**
   `Merton1976Pricer`'s takes `option_type`; `HestonPricer`'s and `BSMPricer`'s do
   not. This item **owns a golden move**: `option_type` is consumed by
