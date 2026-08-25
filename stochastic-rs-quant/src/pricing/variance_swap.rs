@@ -77,6 +77,18 @@ impl VarianceSwapPricer {
   /// NaN strikes will cause the closest-to-forward selection to panic via
   /// `partial_cmp().unwrap()` since NaN is unordered. Filter NaN at the
   /// caller side (real exchange data should never carry NaN strikes).
+  ///
+  /// # Panics
+  /// - if `strikes` and `otm_prices` differ in length
+  /// - if fewer than two strikes are supplied — the trapezoidal weights
+  ///   need a neighbour on at least one side, so a one-point "strip" is not
+  ///   a thin replication, it is not a replication
+  /// - if `self.tau` is not strictly positive
+  ///
+  /// All three used to return `0.0`, which is a plausible-looking variance
+  /// strike: `fair_strike_bsm(0.0)` is `0.0` too, and a caller cannot tell
+  /// the two apart. Case 1 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails).
   pub fn fair_strike_replication(&self, strikes: &[f64], otm_prices: &[f64]) -> f64 {
     assert_eq!(
       strikes.len(),
@@ -84,9 +96,15 @@ impl VarianceSwapPricer {
       "strikes / prices length mismatch"
     );
     let n = strikes.len();
-    if n < 2 || self.tau <= 0.0 {
-      return 0.0;
-    }
+    assert!(
+      n >= 2,
+      "static replication needs at least 2 strikes (got {n})"
+    );
+    assert!(
+      self.tau > 0.0,
+      "maturity tau must be strictly positive (got {})",
+      self.tau
+    );
     debug_assert!(
       strikes.windows(2).all(|w| w[0] <= w[1]),
       "strikes must be sorted ascending"
@@ -180,10 +198,24 @@ impl VarianceSwapPricer {
   /// `dt` is the time between observations in years; use
   /// [`BUSINESS_DAY_252_DT`] for the standard 252-day equity convention or
   /// `1.0 / 365.0` for calendar-day sampling.
+  ///
+  /// # Panics
+  /// Panics if fewer than two prices are supplied: $N = \text{len} - 1$ log
+  /// returns is zero of them, and the estimator's $1/(N\Delta t)$ normaliser
+  /// divides by zero.
+  ///
+  /// This returned `0.0` before, and `0.0` is the sharpest possible case of
+  /// a plausible-looking sentinel here — it is also the *correct* answer for
+  /// a constant price path, which
+  /// `realized_variance_constant_path_is_zero` pins. "No data" and "no
+  /// movement" were the same number. Case 1 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails).
   pub fn realized_variance(prices: &[f64], dt: f64) -> f64 {
-    if prices.len() < 2 {
-      return 0.0;
-    }
+    assert!(
+      prices.len() >= 2,
+      "realized variance needs at least 2 prices (got {})",
+      prices.len()
+    );
     let n = prices.len() - 1;
     let mut rv = 0.0;
     for i in 1..=n {
@@ -240,10 +272,21 @@ impl VolatilitySwapPricer {
   }
 
   /// Convexity-adjusted vol strike from variance strike + variance-of-variance.
+  ///
+  /// # Panics
+  /// Panics if `k_var` is not strictly positive. The crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails) names a
+  /// negative variance as programmer error outright, and `k_var = 0` is no
+  /// better here: the Jensen correction divides by $K_{\text{var}}^{3/2}$,
+  /// so the expansion this method *is* has no value there.
+  ///
+  /// Returning `0.0` — the old behaviour — handed back a vol strike
+  /// indistinguishable from `fair_strike_bsm(0.0)`.
   pub fn fair_strike_from_var(k_var: f64, var_of_var: f64) -> f64 {
-    if k_var <= 0.0 {
-      return 0.0;
-    }
+    assert!(
+      k_var > 0.0,
+      "variance strike k_var must be strictly positive (got {k_var})"
+    );
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
@@ -254,6 +297,16 @@ impl VolatilitySwapPricer {
   /// \frac{\sigma^2(V_0 - \theta)^2 (1-e^{-2\kappa T})}{2\kappa^3 T^2}$
   /// to leading order; the closed form is messier — we use a tractable
   /// approximation suitable for short maturities.
+  ///
+  /// # Panics
+  /// Panics if the underlying variance strike
+  /// $\theta + (V_0 - \theta)\,\frac{1 - e^{-\kappa T}}{\kappa T}$ is not
+  /// strictly positive, which for a convex combination means a negative
+  /// `v0` or `theta`. The check sits ahead of the κ → 0 branch rather than
+  /// inside [`fair_strike_from_var`](Self::fair_strike_from_var) so that
+  /// both branches reject the same inputs — the short-circuit used to floor
+  /// a negative strike to `0.0` through `max(0.0)` while the main path
+  /// returned a sentinel of its own.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
     let pricer = VarianceSwapPricer {
       s: 1.0,
@@ -262,8 +315,12 @@ impl VolatilitySwapPricer {
       tau,
     };
     let k_var = pricer.fair_strike_heston(v0, kappa, theta);
+    assert!(
+      k_var > 0.0,
+      "heston variance strike must be strictly positive (got {k_var} from v0={v0}, theta={theta})"
+    );
     if kappa.abs() < 1e-10 || tau <= 0.0 {
-      return k_var.max(0.0).sqrt();
+      return k_var.sqrt();
     }
     let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * tau).exp()))
       / (2.0 * kappa.powi(3) * tau * tau);
@@ -376,6 +433,98 @@ mod tests {
     let k_disc_fine = p.fair_strike_heston_discrete(0.04, 1.5, 0.04, 0.3, -0.7, 100_000);
     let k_disc_coarse = p.fair_strike_heston_discrete(0.04, 1.5, 0.04, 0.3, -0.7, 12);
     assert!((k_disc_fine - k_cont).abs() < (k_disc_coarse - k_cont).abs());
+  }
+
+  /// A non-positive maturity is invalid input, not a not-computable point:
+  /// there is no window to annualise over. It returned `0.0` before, which
+  /// `bsm_fair_strike_is_sigma_squared` shows is a value the same type also
+  /// produces as a genuine answer.
+  #[test]
+  #[should_panic(expected = "maturity tau must be strictly positive (got 0)")]
+  fn replication_rejects_a_nonpositive_maturity() {
+    let p = VarianceSwapPricer {
+      s: 100.0,
+      r: 0.0,
+      q: 0.0,
+      tau: 0.0,
+    };
+    let _ = p.fair_strike_replication(&[90.0, 100.0, 110.0], &[1.0, 2.0, 1.0]);
+  }
+
+  /// The trapezoidal weights read `strikes[i±1]`, so one strike is not a
+  /// coarse strip — it is not a strip. Checked at both reachable lengths so
+  /// the guard cannot pass on the empty case alone.
+  #[test]
+  fn replication_rejects_a_strip_shorter_than_two_strikes() {
+    for (strikes, prices) in [(&[][..], &[][..]), (&[100.0][..], &[2.0][..])] {
+      let err = std::panic::catch_unwind(|| {
+        pricer().fair_strike_replication(strikes, prices)
+      })
+      .unwrap_err();
+      let msg = err
+        .downcast_ref::<String>()
+        .cloned()
+        .unwrap_or_else(|| (*err.downcast_ref::<&str>().unwrap_or(&"")).to_string());
+      assert!(
+        msg.contains("static replication needs at least 2 strikes"),
+        "wrong panic for len {}: {msg}",
+        strikes.len()
+      );
+    }
+  }
+
+  /// "No observations" and "no movement" were the same number before —
+  /// `realized_variance_constant_path_is_zero` above is the genuine `0.0`
+  /// this one used to be indistinguishable from.
+  #[test]
+  #[should_panic(expected = "realized variance needs at least 2 prices (got 1)")]
+  fn realized_variance_rejects_a_single_price() {
+    let _ = VarianceSwapPricer::realized_variance(&[100.0], BUSINESS_DAY_252_DT);
+  }
+
+  #[test]
+  #[should_panic(expected = "realized variance needs at least 2 prices (got 0)")]
+  fn realized_variance_rejects_an_empty_path() {
+    let _ = VarianceSwapPricer::realized_variance(&[], BUSINESS_DAY_252_DT);
+  }
+
+  /// A negative variance is programmer error by the crate convention, and a
+  /// zero one leaves the Jensen correction dividing by `k_var^{3/2}`.
+  /// `vol_swap_zero_dispersion_recovers_sqrt_var` above is the real `0.2`
+  /// this used to collide with at the bottom of its range.
+  #[test]
+  #[should_panic(expected = "variance strike k_var must be strictly positive (got -0.01)")]
+  fn vol_swap_rejects_a_negative_variance_strike() {
+    let _ = VolatilitySwapPricer::fair_strike_from_var(-0.01, 0.001);
+  }
+
+  #[test]
+  #[should_panic(expected = "variance strike k_var must be strictly positive (got 0)")]
+  fn vol_swap_rejects_a_zero_variance_strike() {
+    let _ = VolatilitySwapPricer::fair_strike_from_var(0.0, 0.001);
+  }
+
+  /// Both branches of `VolatilitySwapPricer::fair_strike_heston` must reject
+  /// the same inputs. The κ → 0 short-circuit used to floor a negative
+  /// strike through `max(0.0)` and return `0.0` while the main path returned
+  /// its own sentinel, so a caller sweeping κ would have seen the guard
+  /// change shape underneath them.
+  #[test]
+  fn vol_swap_heston_rejects_a_negative_variance_on_both_branches() {
+    for &kappa in &[1e-12, 1.5] {
+      let err = std::panic::catch_unwind(|| {
+        VolatilitySwapPricer::fair_strike_heston(-0.04, kappa, -0.04, 0.3, 1.0)
+      })
+      .unwrap_err();
+      let msg = err
+        .downcast_ref::<String>()
+        .cloned()
+        .unwrap_or_else(|| (*err.downcast_ref::<&str>().unwrap_or(&"")).to_string());
+      assert!(
+        msg.contains("heston variance strike must be strictly positive"),
+        "kappa={kappa} gave the wrong panic: {msg}"
+      );
+    }
   }
 
   #[test]
