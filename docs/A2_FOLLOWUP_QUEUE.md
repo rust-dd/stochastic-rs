@@ -50,6 +50,28 @@ digitals split first, and 16 is the gate everything else feeds.
   21/21 vanilla surfaces bit-identical by raw `to_bits()` diff; the only three that
   moved are the carry-mismatch cases, from wrong to right.
 
+- **8 — Heston `v0` validation moved to construction** (`f6cdcb0`). `const fn` was
+  dropped after measuring the cost: **33 call sites, zero const/static items** of
+  that type, and the calibrator can't trip it — its optimizer runs in bounded
+  logistic coordinates over a strictly admissible box. Validated `v0`, `theta`,
+  `sigma` and `rho`, not just `v0`: fixing one would have swapped the old asymmetry
+  for a new one, and `sigma == 0` is not a degenerate-but-priceable state here
+  (`C`/`D` divide by `sigma²`, giving `NaN` with nothing naming the cause).
+  Deliberately still accepted: any `kappa`, and any set violating Feller — a
+  warning condition in this crate, not an error.
+
+  The accessor guard **stayed**, because `new` is a front door and not a wall: the
+  fields are `pub` and written directly in three in-tree sites. The two panic
+  messages were made deliberately **non-nesting**, so a `should_panic` anchored on
+  one cannot be satisfied by the other firing. Six of nine new tests were run at
+  BASE and failed; the other three pin the boundary against over-tightening.
+- **9 — Umbrella traits hub completed** (`f30776a`). **Three** traits were missing,
+  not one: `ShortRatePricer`, `VanillaEuropeanCall` (added two commits earlier, same
+  omission) and `ToShortRateModel` — the last paired with a `ToModel` that *was*
+  already there. `tests/prelude_completeness.rs` now fails to compile if the hub
+  drops one; it errored with three `E0432` at BASE. The prelude itself is unchanged
+  at 28.
+
 ## In progress
 
 (nothing)
@@ -76,16 +98,6 @@ digitals split first, and 16 is the gate everything else feeds.
 
 ## Queued — soundness and discoverability
 
-- **8 — Move the Heston `v0` validation to construction.** The assert added during
-  the wave sits on the Greeks accessor, but `HestonPricer::new` is a `const fn`
-  with no validation. So `new(-0.01, …).price_call(…)` returns a finite number off
-  a negative variance and `.vol_surface(…)` builds a whole surface from it, while
-  `.vega(…)` panics — one invalid parameter, two opposite responses chosen by which
-  method the caller reaches for. Validating means giving up `const fn`; weigh it.
-- **9 — Re-export `ShortRatePricer` from the umbrella `traits` hub.** `src/traits.rs`
-  re-exports every other quant trait and omits this one. The prelude exclusion is
-  deliberate and documented; the hub omission is not, and CLAUDE.md's own stated
-  pattern for prelude-excluded traits is "reachable via `traits::*`". One line.
 - **10 — Close the registry's proven blind spot.** The shallow half is **done**:
   `LevyModel` and `CrrModel<f64>` are now registered and `assert_model_pricer!`
   went 16 → 18 with the header arithmetic re-derived. What remains is the deeper
@@ -164,6 +176,18 @@ digitals split first, and 16 is the gate everything else feeds.
   ones already cleared.
 - **21 — `Merton1976Pricer::price_call` returns `NaN` at exactly `S == K`** under
   `Black1976`/`Asay1982`: `term_vol(0, τ)` is `0.0`, so `d1 = ∞ · 0`. Pre-existing.
+
+## Queued — found while closing items 8 and 9
+
+- **22 — `HestonStaticParams::new` is still an unvalidated `const fn`**
+  (`pricing/engines/analytic_heston.rs:38`), feeding the now-validated
+  `HestonPricer::new` at line 107 — so an invalid parameter surfaces at pricing
+  time from the inner constructor rather than where the caller supplied it. Item 8
+  one layer up. Fourteen other `pub const fn new` constructors in `pricing/` share
+  the shape:
+  ```
+  grep -rn "pub const fn new" --include='*.rs' stochastic-rs-quant/src/pricing/ | wc -l
+  ```
 
 ## Gate
 
