@@ -106,6 +106,16 @@ impl SabrPricer {
   /// into `d1`/`d2`. That floor is the contract the former `SabrModel`
   /// documented for its `price_call`; it never fires for a non-positive
   /// `k` or forward, because [`sigma`](Self::sigma) panics on those first.
+  /// The reachable trigger is therefore a *parameter* combination — β, ν, ρ
+  /// and τ driving the Hagan expansion itself to ≤ 0 — not a bad query point.
+  ///
+  /// That floor predates the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails) and sits
+  /// against it: a zero call *and* a zero put is not a price any instrument
+  /// has, and unlike a `NaN` it does not propagate, so a calibration residual
+  /// computed against it looks merely bad rather than invalid. Kept for now
+  /// because changing it moves prices; flagged so it is not mistaken for the
+  /// convention.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let sigma = self.sigma(s, k, r, q, tau);
     if !sigma.is_finite() || sigma <= 0.0 {

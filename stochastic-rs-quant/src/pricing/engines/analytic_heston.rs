@@ -124,6 +124,20 @@ impl AnalyticHestonEngine {
     model.price_option(s, k, r, q, tau, opt.option_type)
   }
 
+  /// Bump-and-revalue Greeks, with `vanna`/`charm`/`volga`/`veta` left at
+  /// [`Greeks::nan`] because this engine does not compute them.
+  ///
+  /// `vega` is additionally `NaN` at `v0 <= 0`, where the `σ = √v0` chain
+  /// rule is undefined, and `theta` at a `tau` that is non-finite or not
+  /// larger than `bump`. Both are case 2 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails).
+  ///
+  /// Unlike [`HestonPricer`](crate::pricing::heston::HestonPricer)'s own
+  /// volatility-space Greeks, a *negative* `v0` is not rejected here: this
+  /// method fills one member of a struct whose others are finite and usable,
+  /// so panicking would take down the whole
+  /// [`PricingEngine::calculate`](crate::traits::PricingEngine::calculate)
+  /// call to report a single degenerate field.
   fn finite_diff_greeks(&self, opt: &EuropeanOption) -> Greeks {
     let s = Self::read_quote(&self.s, 0.0);
     let h_s = (s.abs().max(1.0)) * self.bump;

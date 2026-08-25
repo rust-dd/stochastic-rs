@@ -106,6 +106,21 @@ impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
 impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   type Result = StandardResult;
 
+  /// NPV only — the closed-form digital Greeks are not wired through this
+  /// engine, so [`PricingResult::greeks`](crate::traits::PricingResult) stays
+  /// at [`Greeks::nan`](crate::traits::Greeks::nan).
+  ///
+  /// The NPV is `NaN` when `opt.tau` is unset, following the same
+  /// missing-data convention as [`crate::traits::TimeExt::tau_or_from_dates`].
+  ///
+  /// **Unset market handles do not behave the same way.** `s`, `volatility`,
+  /// `r` and `dividend_yield` each read through `read_quote(handle, 0.0)`, so
+  /// an empty handle silently supplies `0.0` and the option prices at a zero
+  /// spot or a zero vol rather than reporting that the input was missing. A
+  /// missing maturity poisons the result; a missing spot does not. The
+  /// asymmetry is pre-existing and is left as-is here deliberately —
+  /// documented so a caller can check its handles rather than trust a finite
+  /// number that came from nothing.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
     let s = Self::read_quote(&self.s, 0.0);
     let sigma = Self::read_quote(&self.volatility, 0.0);

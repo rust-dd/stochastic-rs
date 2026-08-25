@@ -165,6 +165,9 @@ impl SnellEnvelopePricer {
 
     for i in (0..self.steps).rev() {
       let mut s_i0 = s * d.powi(i as i32);
+      // NaN means "no node at this time step was worth exercising"; the
+      // `is_finite` check below then omits the step from the boundary rather
+      // than recording a spot of 0. Never escapes this function.
       let mut boundary_s = f64::NAN;
 
       for j in 0..=i {

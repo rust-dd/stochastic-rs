@@ -77,6 +77,41 @@ impl Greeks {
 /// implement it too, and each says so on its own type. What the trait fixes
 /// is the *query* shape — one spot, one strike, one rate, one dividend
 /// yield, one maturity — not the exercise right.
+///
+/// # How pricing fails
+///
+/// This is the crate-wide convention for every pricer, Greek accessor and
+/// surface builder, stated here once. Individual methods say *when* they hit
+/// one of these cases; they do not restate the rule.
+///
+/// Pricing deliberately does **not** return [`Result`]. Threading `?` through
+/// a strike/maturity grid would cost more than it buys, so the three failure
+/// modes are separated by kind instead:
+///
+/// 1. **Invalid parameter — panic**, with a message naming the parameter and
+///    its value (`"strike k must be strictly positive (got -1)"`). A
+///    non-positive strike or a negative variance is programmer error, not a
+///    market state, and there is no answer to return. `hagan_implied_vol` and
+///    `SnellEnvelopePricer::validate_query` set the message style. A method
+///    that can panic carries a `# Panics` section.
+/// 2. **Not computable at this point — [`f64::NAN`], documented.** The inputs
+///    are legitimate but the quantity is genuinely undefined *here*: a strike
+///    outside a Fourier pricer's truncation grid, a second derivative at a
+///    grid boundary, a central difference in $\tau$ that would step past
+///    expiry, a yield at $\tau = 0$, a Greek this pricer does not expose. Any
+///    method that can return `NaN` says so in its own doc.
+/// 3. **Calibration did not converge — [`Result::Err`].** Calibration is the
+///    one part of the crate with a fallible return channel, and it keeps it.
+///
+/// What the convention rules out is the fourth option: a **plausible-looking
+/// sentinel**. Returning `0.0` from a failed volatility inversion hands the
+/// caller a number that flows into an intrinsic-value price with nothing to
+/// distinguish it from a real one, and `f64::max` will quietly discard a `NaN`
+/// operand in favour of a finite one, so a clamp has to test for `NaN`
+/// explicitly before it applies. `NaN` propagates; a zero does not.
+///
+/// Callers that need to *avoid* the `NaN` rather than detect it after the
+/// fact should test first — `CarrMadanPricer::strike_in_grid` is the pattern.
 pub trait ModelPricer {
   /// Price a call option.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
@@ -88,6 +123,17 @@ pub trait ModelPricer {
   /// returns a plausible wrong number otherwise. See `BSMPricer`
   /// (cost-of-carry conventions) and `BjerksundStensland2002Pricer`
   /// (American early exercise) for the two failure modes.
+  ///
+  /// This default is the one place the trait itself can produce the
+  /// plausible-looking sentinel [the failure
+  /// convention](ModelPricer#how-pricing-fails) otherwise rules out, and it
+  /// cannot detect the mismatch: parity is
+  /// arithmetic on a call price, so a wrong carry yields a finite,
+  /// well-scaled, wrong put with no `NaN` to propagate and nothing to assert
+  /// on. It stays a default because most implementors *are* European with
+  /// carry $e^{-q\tau}$ — but a new implementor must decide, not inherit.
+  /// `SuperSharePricer` shows the third option: override to return a
+  /// documented `NaN` when the payoff has no put analogue at all.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let call = self.price_call(s, k, r, q, tau);
     call - s * (-q * tau).exp() + k * (-r * tau).exp()
@@ -109,6 +155,13 @@ pub trait ModelPricer {
 /// code a single dispatch point. Only [`delta`](Self::delta) is required;
 /// pricers that don't compute the higher-order Greeks return [`f64::NAN`]
 /// from the default impls.
+///
+/// Those defaults are case 2 of [the failure
+/// convention](ModelPricer#how-pricing-fails), and the reason they are `NAN`
+/// rather than `0.0` is that a Greek genuinely *is* zero sometimes — the vega
+/// of a deep in-the-money digital, the gamma of a forward. A zero default
+/// would make "this pricer does not expose vega" indistinguishable from
+/// "vega is zero here", and the two call for opposite responses.
 ///
 /// Pricers may have multiple Greek variants (analytical, Malliavin, finite
 /// difference) — the trait exposes the canonical form. For Malliavin /

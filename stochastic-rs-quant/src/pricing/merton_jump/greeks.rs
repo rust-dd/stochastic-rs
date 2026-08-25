@@ -13,7 +13,9 @@
 //! `-∂/∂τ` convention (matching `BSMPricer::theta` / `charm` /
 //! `dvega_dtime`, and the `λ ≤ 0` Black-Scholes limit below).
 //!
-//! `theta`/`charm`/`veta`'s `λ > 0` path additionally guards near expiry:
+//! `theta`/`charm`/`veta`'s `λ > 0` path additionally guards near expiry —
+//! case 2 of the crate's [failure
+//! convention](crate::traits::ModelPricer#how-pricing-fails):
 //! at `τ ≤ h_τ` the down-`τ` bump would evaluate the price series at a
 //! negative time-to-maturity, producing per-term `NaN`s that
 //! `greek_series`'s `NaN`-floor silently zeroes out of the down-leg —
@@ -121,6 +123,10 @@ impl Merton1976Pricer {
   }
 
   /// Theta — $\partial V/\partial t$ (calendar convention).
+  ///
+  /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
+  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BSMPricer`] and
+  /// inherits its behaviour instead.
   pub fn theta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if self.lambda <= 0.0 {
       return self.base_bsm().theta(s, k, r, q, tau, option_type);
@@ -151,6 +157,10 @@ impl Merton1976Pricer {
   }
 
   /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
+  ///
+  /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
+  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BSMPricer`] and
+  /// inherits its behaviour instead.
   pub fn charm(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if self.lambda <= 0.0 {
       return self.base_bsm().charm(s, k, r, q, tau, option_type);
@@ -185,6 +195,10 @@ impl Merton1976Pricer {
   }
 
   /// Veta — $\partial^2 V/\partial\sigma\partial t$ (vega decay).
+  ///
+  /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
+  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BSMPricer`] and
+  /// inherits its behaviour instead.
   pub fn veta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if self.lambda <= 0.0 {
       return self.base_bsm().dvega_dtime(s, k, r, q, tau);

@@ -204,6 +204,9 @@ impl GbmMalliavinGreeks {
       sum_rho += disc_payoff * w_rho;
     }
 
+    // theta and the four second-order Greeks stay NaN: this estimator has no
+    // Malliavin weight for them, and NaN is how the crate says "not exposed"
+    // — see `crate::traits::GreeksExt`.
     crate::traits::Greeks {
       delta: sum_delta / m,
       gamma: sum_gamma / m,

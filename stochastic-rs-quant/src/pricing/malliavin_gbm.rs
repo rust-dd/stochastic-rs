@@ -187,6 +187,11 @@ impl GbmMalliavinPricer {
   ///   C^M(t, x) ≈ e^{-r(T-t)} * [ Σ_j φ(S_T^{(j)}) H(S_t^{(j)} - x) coef^{(j)} ] /
   ///                                   [ Σ_j H(S_t^{(j)} - x) coef^{(j)} ],
   /// where H is the Heaviside step function and coef^{(j)} is the Malliavin weight.
+  ///
+  /// An entry is `NaN` where that path's denominator collapses to ~0 — no
+  /// sampled path lands above `S_t^{(i)}` with appreciable weight, so the
+  /// conditional expectation has nothing to average and is undefined at that
+  /// point rather than zero. Raise `n_paths` if entries come back `NaN`.
   pub fn conditional_call_malliavin(
     &self,
     s: f64,
@@ -277,6 +282,11 @@ impl GbmMalliavinPricer {
   /// Returns:
   ///   - S_t: shape (M,)
   ///   - Localized C^M(t, S_t^{(i)}): shape (M,)
+  ///
+  /// An entry is `NaN` where that path's localised denominator collapses to
+  /// ~0, for the same reason as
+  /// [`conditional_call_malliavin`](Self::conditional_call_malliavin) — the
+  /// Laplace kernel put no appreciable mass near `S_t^{(i)}`.
   pub fn conditional_call_malliavin_localized(
     &self,
     s: f64,

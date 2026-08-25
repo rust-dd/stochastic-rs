@@ -126,7 +126,23 @@ impl DupireBuilder {
 impl Dupire {
   /// Compute local volatility surface on the same (T, K) grid as the input call surface.
   ///
-  /// Returns Array2 (N_T, N_K) with σ_loc(K_i, T_j); boundaries in K use NaN where the second derivative is ill-defined.
+  /// Returns Array2 (N_T, N_K) with σ_loc(K_i, T_j).
+  ///
+  /// A cell is left `NaN` wherever the Dupire formula has no admissible
+  /// value there, which is case 2 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails) and the shared
+  /// contract of every `local_vol_*` method on this type:
+  ///
+  /// - the two `K` boundary columns, where the 3-point second-derivative
+  ///   stencil does not fit;
+  /// - any cell whose `T` stencil spans a zero `dt` (duplicate maturities);
+  /// - any cell whose denominator `½K²∂²C/∂K²` is below `eps` or non-finite,
+  ///   or whose implied `σ²` comes out negative — a call surface that is not
+  ///   locally arbitrage-free.
+  ///
+  /// `NaN` rather than `0.0` because a zero local vol is a *usable-looking*
+  /// number that would propagate into a degenerate simulation instead of
+  /// flagging the bad cell.
   #[must_use]
   pub fn local_vol_surface(&self) -> Array2<f64> {
     assert_eq!(
@@ -224,6 +240,10 @@ impl Dupire {
   /// Falliable variant of [`Self::local_vol_surface_from_custom_derivatives`].
   /// Returns an error if any of `dc_dk`, `d2c_dk2`, `dc_dt` is `None` or has
   /// the wrong shape.
+  ///
+  /// Individual cells follow [`local_vol_surface`](Self::local_vol_surface)'s
+  /// `NaN` contract, minus the stencil-boundary cases — supplying the
+  /// derivatives directly means every column is computable in principle.
   pub fn try_local_vol_surface_from_custom_derivatives(&self) -> anyhow::Result<Array2<f64>> {
     let dc_dk = self
       .dc_dk
@@ -287,6 +307,10 @@ impl Dupire {
   }
 
   /// Convenience: compute local volatility for a single maturity slice at time index j.
+  ///
+  /// Cells follow [`local_vol_surface`](Self::local_vol_surface)'s `NaN`
+  /// contract. A slice shorter than 3 strikes is returned entirely `NaN`:
+  /// the second-derivative stencil never fits.
   #[must_use]
   pub fn local_vol_slice(&self, j: usize) -> Vec<f64> {
     assert!(j < self.ts.len());
@@ -370,6 +394,9 @@ impl Dupire {
   /// Falliable variant of [`Self::local_vol_slice_from_custom_derivatives`].
   /// Returns an error if any of `dc_dk`, `d2c_dk2`, `dc_dt` is `None`, has the
   /// wrong shape, or `j` is out of range.
+  ///
+  /// Individual cells follow [`local_vol_surface`](Self::local_vol_surface)'s
+  /// `NaN` contract.
   pub fn try_local_vol_slice_from_custom_derivatives(&self, j: usize) -> anyhow::Result<Vec<f64>> {
     if j >= self.ts.len() {
       anyhow::bail!("j={j} out of range for ts.len()={}", self.ts.len());
