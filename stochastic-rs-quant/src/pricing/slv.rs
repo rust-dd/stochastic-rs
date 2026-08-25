@@ -134,6 +134,13 @@ fn fractional_index(grid: &Array1<f64>, x: f64) -> f64 {
 ///
 /// The local-volatility surface is provided as a grid:
 /// `local_vol_values[j, i]` = $\sigma_\text{LV}(S_i, t_j)$.
+///
+/// **The returned surface is anchored to `(r, q)`.** The particle cloud that
+/// supplies $\mathbb{E}[V_t \mid S_t = K]$ is evolved under the risk-neutral
+/// drift $r - q$, so a different rate produces a different conditional
+/// expectation and hence a different $L$. Feed the same `(r, q)` to
+/// [`HestonSlvPricer::new`] so the pricer can reject queries the surface
+/// cannot honour.
 pub fn calibrate_leverage(
   params: &HestonSlvParams,
   s0: f64,
@@ -228,6 +235,10 @@ pub fn calibrate_leverage(
 /// Calibrate the leverage surface directly from a [`super::dupire::Dupire`]
 /// instance. Computes the Dupire local-vol surface, then delegates to
 /// [`calibrate_leverage`].
+///
+/// The result is anchored to `dupire.r` / `dupire.q` twice over: the Dupire
+/// numerator carries an explicit $(r-q)K\,\partial_K C + qC$ term, and the
+/// particle drift in [`calibrate_leverage`] is $r-q$.
 pub fn calibrate_from_dupire(
   params: &HestonSlvParams,
   dupire: &super::dupire::Dupire,
@@ -285,17 +296,39 @@ pub fn calibrate_from_dupire(
   )
 }
 
+/// Largest absolute deviation between a queried rate and the rate the
+/// leverage surface was calibrated at that still counts as a match. Rates
+/// live on the order of $10^{-2}$, so this is "equal up to float round-trip
+/// noise" rather than a tolerance band.
+const RATE_MATCH_TOL: f64 = 1e-12;
+
 /// Heston-SLV Monte Carlo pricer with a pre-calibrated leverage surface.
+///
+/// The leverage function is not rate-agnostic: [`calibrate_leverage`] evolves
+/// its particle cloud under the drift $r - q$, and a Dupire-sourced target
+/// surface carries $(r, q)$ in its own numerator. A surface calibrated at one
+/// rate does **not** reproduce the market at another, so [`ModelPricer`] queries
+/// are checked against the calibration rates rather than silently substituted.
+///
+/// Two constructors, two capabilities:
+///
+/// - [`HestonSlvPricer::new`] — the surface came out of a calibration at a
+///   known `(r, q)`. Pricing at any other rate panics naming both pairs.
+/// - [`HestonSlvPricer::unanchored`] — the surface is a hand-supplied
+///   $L(S,t)$ with no rate provenance (a pure-Heston $L \equiv 1$, say). The
+///   SDE is then fully specified by the query, so `r` and `q` drive drift and
+///   discounting directly and every rate is accepted.
 #[derive(Debug, Clone)]
 pub struct HestonSlvPricer {
   /// Model parameters.
   pub params: HestonSlvParams,
   /// Calibrated leverage surface.
   pub leverage: LeverageSurface,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
+  /// The `(r, q)` pair [`leverage`](Self::leverage) was calibrated against,
+  /// or `None` when the surface carries no rate provenance. Not a pricing
+  /// input — the rates that price come from the [`ModelPricer`] query; this
+  /// is the guard those queries are checked against.
+  pub calibration_rates: Option<(f64, f64)>,
   /// Number of MC paths.
   pub n_paths: usize,
   /// Time-discretization steps per year.
@@ -305,12 +338,32 @@ pub struct HestonSlvPricer {
 }
 
 impl HestonSlvPricer {
+  /// Pricer for a `leverage` surface calibrated at `(r, q)` — the pair passed
+  /// to [`calibrate_leverage`], or `dupire.r` / `dupire.q` for
+  /// [`calibrate_from_dupire`]. Pricing at any other rate panics.
   pub fn new(params: HestonSlvParams, leverage: LeverageSurface, r: f64, q: f64) -> Self {
     Self {
       params,
       leverage,
-      r,
-      q,
+      calibration_rates: Some((r, q)),
+      n_paths: 100_000,
+      steps_per_year: 200,
+      seed: 42,
+    }
+  }
+
+  /// Pricer for a `leverage` surface with no rate provenance: the query's
+  /// `r` and `q` drive drift and discounting, and no rate is rejected.
+  ///
+  /// Use this only for a surface that was *not* produced by calibrating
+  /// against market data at a particular rate. A calibrated surface priced
+  /// this way returns a confident number that no longer reprices the surface
+  /// it was fitted to.
+  pub fn unanchored(params: HestonSlvParams, leverage: LeverageSurface) -> Self {
+    Self {
+      params,
+      leverage,
+      calibration_rates: None,
       n_paths: 100_000,
       steps_per_year: 200,
       seed: 42,
@@ -332,7 +385,23 @@ impl HestonSlvPricer {
     self
   }
 
-  fn mc_call_price(&self, s: f64, k: f64, tau: f64) -> f64 {
+  /// Panic unless `(r, q)` is the pair the leverage surface was calibrated
+  /// at. A no-op for an [`unanchored`](Self::unanchored) pricer.
+  fn check_rates(&self, r: f64, q: f64) {
+    let Some((r0, q0)) = self.calibration_rates else {
+      return;
+    };
+    if (r - r0).abs() > RATE_MATCH_TOL || (q - q0).abs() > RATE_MATCH_TOL {
+      panic!(
+        "HestonSlvPricer: leverage surface calibrated at r={r0}, q={q0} but queried at r={r}, q={q}. \
+         L(S,t) is rate-dependent, so pricing at another rate would silently stop reproducing the \
+         calibrated surface. Recalibrate at the query rates, or build the pricer with \
+         HestonSlvPricer::unanchored if the surface has no rate provenance."
+      );
+    }
+  }
+
+  fn mc_call_price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let n_steps = ((tau * self.steps_per_year as f64).round() as usize).max(1);
     let dt = tau / n_steps as f64;
     let sqrt_dt = dt.sqrt();
@@ -362,7 +431,7 @@ impl HestonSlvPricer {
           (v + self.params.kappa * (self.params.theta - v_pos) * dt + sigma_mixed * sqrt_v * dw_v)
             .max(0.0);
 
-        let drift = (self.r - self.q) - 0.5 * l * l * v_pos;
+        let drift = (r - q) - 0.5 * l * l * v_pos;
         x += drift * dt + l * sqrt_v * dw_x;
       }
 
@@ -370,13 +439,19 @@ impl HestonSlvPricer {
       payoff_sum += (s_t - k).max(0.0);
     }
 
-    (-self.r * tau).exp() * payoff_sum / self.n_paths as f64
+    (-r * tau).exp() * payoff_sum / self.n_paths as f64
   }
 }
 
 impl ModelPricer for HestonSlvPricer {
-  fn price_call(&self, s: f64, k: f64, _r: f64, _q: f64, tau: f64) -> f64 {
-    self.mc_call_price(s, k, tau)
+  /// # Panics
+  ///
+  /// When the pricer came from [`HestonSlvPricer::new`] and `(r, q)` differs
+  /// from the pair the leverage surface was calibrated at — see
+  /// [`HestonSlvPricer`] for why substituting is not a valid reprojection.
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.check_rates(r, q);
+    self.mc_call_price(s, k, r, q, tau)
   }
 }
 
@@ -408,4 +483,90 @@ fn kernel_conditional_mean(
   }
 
   (sum_vk, sum_k)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn params() -> HestonSlvParams {
+    HestonSlvParams {
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+      v0: 0.04,
+      eta: 1.0,
+    }
+  }
+
+  /// $L \equiv 1$ — a pure Heston model, so the surface has no rate
+  /// provenance and every query rate is legitimate.
+  fn unit_leverage() -> LeverageSurface {
+    LeverageSurface::new(
+      Array1::from_vec(vec![50.0, 100.0, 150.0]),
+      Array1::from_vec(vec![0.25, 0.5, 1.0]),
+      Array2::ones((3, 3)),
+    )
+  }
+
+  fn tune(pricer: HestonSlvPricer) -> HestonSlvPricer {
+    pricer
+      .with_paths(4_000)
+      .with_steps_per_year(48)
+      .with_seed(7)
+  }
+
+  #[test]
+  fn unanchored_price_call_responds_to_rate() {
+    let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
+    let low = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
+    let high = pricer.price_call(100.0, 100.0, 0.10, 0.0, 0.5);
+    assert!(
+      high > low,
+      "call rho is positive: r=0.05 -> {low}, r=0.10 -> {high}"
+    );
+  }
+
+  #[test]
+  fn unanchored_price_call_responds_to_dividend() {
+    let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
+    let no_div = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
+    let with_div = pricer.price_call(100.0, 100.0, 0.05, 0.05, 0.5);
+    assert!(
+      with_div < no_div,
+      "a dividend yield must cheapen a call: q=0 -> {no_div}, q=0.05 -> {with_div}"
+    );
+  }
+
+  #[test]
+  fn calibrated_pricer_accepts_its_own_rates() {
+    let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
+    let c = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
+    assert!(
+      c.is_finite() && c > 0.0,
+      "call must be finite-positive: {c}"
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "calibrated at r=0.05, q=0 but queried at r=0.1, q=0")]
+  fn calibrated_pricer_rejects_rate_mismatch() {
+    let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
+    pricer.price_call(100.0, 100.0, 0.1, 0.0, 0.5);
+  }
+
+  #[test]
+  #[should_panic(expected = "calibrated at r=0.05, q=0 but queried at r=0.05, q=0.02")]
+  fn calibrated_pricer_rejects_dividend_mismatch() {
+    let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
+    pricer.price_call(100.0, 100.0, 0.05, 0.02, 0.5);
+  }
+
+  #[test]
+  #[should_panic(expected = "calibrated at r=0.05, q=0 but queried at r=0.02, q=0")]
+  fn calibrated_pricer_rejects_mismatch_through_price_put() {
+    let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
+    pricer.price_put(100.0, 100.0, 0.02, 0.0, 0.5);
+  }
 }
