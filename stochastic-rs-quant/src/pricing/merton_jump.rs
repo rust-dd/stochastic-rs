@@ -7,6 +7,7 @@
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 mod greeks;
 
@@ -140,6 +141,21 @@ impl ModelPricer for Merton1976Pricer {
   /// [`BSMCoc::Asay1982`]. See `merton_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).1
+  }
+}
+
+/// European vanilla call — every term of the Poisson series is one, priced
+/// through [`BSMPricer`], so this inherits that type's carry question along
+/// with its answer.
+impl VanillaEuropeanCall for Merton1976Pricer {
+  /// $Se^{b\tau}$ at the [`BSMCoc`](crate::pricing::bsm::BSMCoc) convention
+  /// held in `self.b`, delegated to
+  /// [`BSMPricer::vanilla_call_forward`] for the same reason
+  /// [`price_put`](ModelPricer::price_put) delegates: the series carries term
+  /// by term at whatever the underlying `BSMPricer` carries at, so the two
+  /// must not be able to disagree.
+  fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.base_bsm().vanilla_call_forward(s, r, q, tau)
   }
 }
 

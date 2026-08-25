@@ -11,6 +11,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 use crate::traits::ProcessExt;
 
 /// Laplace localisation kernel of bandwidth `l`, and its cdf.
@@ -129,6 +130,13 @@ impl ModelPricer for GbmMalliavinPricer {
     self.call_put(s, k, r, q, tau).1
   }
 }
+
+/// European vanilla call: the Malliavin conditional estimator targets the
+/// vanilla call under Gbm, whose carry is $b=r-q$. A surface built from it
+/// carries the estimator's Monte Carlo error into every implied vol, and
+/// [`t_eval`](GbmMalliavinPricer::t_eval) still bounds which maturities the
+/// grid may contain.
+impl VanillaEuropeanCall for GbmMalliavinPricer {}
 
 impl GbmMalliavinPricer {
   pub const fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {

@@ -71,6 +71,12 @@ impl<T: FourierModelExt> crate::traits::ModelPricer for T {
   }
 }
 
+/// Every [`FourierModelExt`] model is a European vanilla call pricer:
+/// [`GilPelaezPricer::price_call`] returns
+/// $Se^{-q\tau}P_1-Ke^{-r\tau}P_2$, the vanilla European call, on the
+/// forward $Se^{(r-q)\tau}$ the default reports.
+impl<T: FourierModelExt> crate::traits::VanillaEuropeanCall for T {}
+
 /// Compute $\Gamma(-Y)$ via the reflection formula.
 pub fn gamma_neg_y_pub(y: f64) -> f64 {
   gamma_neg_y(y)

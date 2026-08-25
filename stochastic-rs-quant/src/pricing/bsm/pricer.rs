@@ -4,6 +4,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum BSMCoc {
@@ -150,5 +151,28 @@ impl ModelPricer for BSMPricer {
   /// `q != r`. See `bsm_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).1
+  }
+}
+
+/// European vanilla call — but **not** always on $Se^{(r-q)\tau}$, which is
+/// why this overrides the default forward.
+impl VanillaEuropeanCall for BSMPricer {
+  /// $Se^{b\tau}$ at this pricer's own cost of carry, which is
+  /// [`b(r, q)`](BSMPricer::b) and equals $r - q$ for only two of the five
+  /// [`BSMCoc`] conventions.
+  ///
+  /// The default $Se^{(r-q)\tau}$ would be the *futures price grown at the
+  /// risk-free rate* under [`BSMCoc::Black1976`] / [`BSMCoc::Asay1982`],
+  /// where $b = 0$ and the forward is just $S$; under [`BSMCoc::Bsm1973`] at
+  /// `q != 0` it would discount a dividend the price never paid. Both leave
+  /// every price inside the no-arbitrage band, so the surface inverts them
+  /// into a full smile — see `bsm_black1976_surface_recovers_flat_vol`, which
+  /// fails against the default. [`BSMCoc::Merton1973`] and
+  /// [`BSMCoc::GarmanKohlhagen1983`] have $b = r - q$ and so land on the
+  /// default's exact expression, bit for bit.
+  ///
+  /// [`BSMCoc`]: crate::pricing::bsm::BSMCoc
+  fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    s * (self.b(r, q) * tau).exp()
   }
 }

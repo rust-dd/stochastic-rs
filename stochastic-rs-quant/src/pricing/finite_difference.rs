@@ -10,6 +10,7 @@ use ndarray::s;
 use crate::OptionStyle;
 use crate::OptionType;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FiniteDifferenceMethod {
@@ -108,6 +109,29 @@ impl ModelPricer for FiniteDifferencePricer {
   /// `fd_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price(s, k, r, q, tau, OptionType::Put)
+  }
+}
+
+/// A European vanilla call **only at** [`OptionStyle::European`]; the same
+/// solver at [`OptionStyle::American`] returns an American price, which the
+/// Black inversion has no volatility to offer. The exercise style is a field
+/// rather than a type parameter, so this is the one in-tree implementor whose
+/// answer depends on the instance.
+impl VanillaEuropeanCall for FiniteDifferencePricer {
+  /// $Se^{(r-q)\tau}$ at [`OptionStyle::European`], and [`f64::NAN`] at
+  /// [`OptionStyle::American`] — case 2 of [the failure
+  /// convention](ModelPricer#how-pricing-fails).
+  ///
+  /// Without the `NaN` an American surface is not merely approximate but
+  /// convincing: at `q = 0.06` every point on a 5x2 grid inverts to a finite
+  /// vol within 0.008 of the model's own `v`, so nothing in the output marks
+  /// it as an American price pushed through a European formula. See
+  /// `fd_american_surface_is_all_nan`.
+  fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    match self.option_style {
+      OptionStyle::European => s * ((r - q) * tau).exp(),
+      OptionStyle::American => f64::NAN,
+    }
   }
 }
 

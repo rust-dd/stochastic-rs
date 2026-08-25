@@ -105,6 +105,11 @@ impl crate::traits::ModelPricer for LevyModel {
   }
 }
 
+/// Each variant forwards to a [`FourierModelExt`](crate::pricing::fourier::FourierModelExt)
+/// model, so the enum is a European vanilla call pricer exactly as its
+/// members are.
+impl crate::traits::VanillaEuropeanCall for LevyModel {}
+
 impl crate::traits::ToModel for LevyCalibrationResult {
   type Model = LevyModel;
   fn to_model(&self, r: f64, q: f64) -> Self::Model {

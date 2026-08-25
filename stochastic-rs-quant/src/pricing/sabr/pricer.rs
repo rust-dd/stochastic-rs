@@ -8,6 +8,7 @@ use crate::pricing::sabr::hagan::forward_fx;
 use crate::pricing::sabr::hagan::fx_delta_from_forward;
 use crate::pricing::sabr::hagan::hagan_implied_vol;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 /// Sabr (Hagan 2002, general β) model parameters.
 ///
@@ -207,3 +208,9 @@ impl ModelPricer for SabrPricer {
     self.call_put(s, k, r, q, tau).1
   }
 }
+
+/// European vanilla call: Hagan's expansion produces a Black volatility
+/// that [`call_put`](SabrPricer::call_put) prices as a vanilla against
+/// [`forward`](SabrPricer::forward), which is the default's
+/// $Se^{(r-q)\tau}$ under another name.
+impl VanillaEuropeanCall for SabrPricer {}

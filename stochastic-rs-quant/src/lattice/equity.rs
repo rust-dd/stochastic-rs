@@ -11,6 +11,7 @@ use crate::OptionStyle;
 use crate::OptionType;
 use crate::traits::FloatExt;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 /// Cox-Ross-Rubinstein binomial-tree model for European and American options.
 ///
@@ -106,6 +107,13 @@ impl ModelPricer for CrrModel<f64> {
     self.price_european(s, k, r, q, tau, OptionType::Put)
   }
 }
+
+/// [`price_call`](ModelPricer::price_call) routes to the private
+/// `price_european` rollback, not to
+/// [`price_american`](CrrModel::price_american), so the trait's call really
+/// is the European vanilla one on the forward $Se^{(r-q)\tau}$ the lattice
+/// drifts at.
+impl VanillaEuropeanCall for CrrModel<f64> {}
 
 #[cfg(test)]
 mod tests {

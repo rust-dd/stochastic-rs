@@ -28,6 +28,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 /// Heston model parameters augmented with the SLV mixing factor.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -454,6 +455,10 @@ impl ModelPricer for HestonSlvPricer {
     self.mc_call_price(s, k, r, q, tau)
   }
 }
+
+/// European vanilla call: the particle simulation averages $(S_T-K)^+$
+/// under a log-spot drifted at $r-q$, so the default forward applies.
+impl VanillaEuropeanCall for HestonSlvPricer {}
 
 // Silverman's rule-of-thumb bandwidth for Gaussian kernel.
 fn silverman_bandwidth(x: &Array1<f64>) -> f64 {

@@ -17,6 +17,7 @@
 use crate::calibration::rbergomi::RBergomiParams;
 use crate::calibration::rbergomi::simulate_rbergomi_terminal_samples;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 /// Monte Carlo pricer for the rough Bergomi model.
 ///
@@ -117,6 +118,10 @@ impl ModelPricer for RBergomiPricer {
     self.mc_call_price(s, k, r, q, tau)
   }
 }
+
+/// European vanilla call: the Monte Carlo averages $(S_T-K)^+$ over
+/// terminal samples drifted at $r-q$, so the default forward applies.
+impl VanillaEuropeanCall for RBergomiPricer {}
 
 #[cfg(test)]
 mod tests {

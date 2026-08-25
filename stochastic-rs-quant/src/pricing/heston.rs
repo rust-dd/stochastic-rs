@@ -13,6 +13,7 @@ use num_complex::Complex64;
 use super::cf_quadrature::integrate_to_convergence;
 use crate::OptionType;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 mod greeks;
 
@@ -136,6 +137,10 @@ impl ModelPricer for HestonPricer {
     self.call_put(s, k, r, q, tau).1
   }
 }
+
+/// European vanilla call on the forward $Se^{(r-q)\tau}$ — this model's
+/// cost of carry is $b=r-q$, so the default forward applies unchanged.
+impl VanillaEuropeanCall for HestonPricer {}
 
 impl HestonPricer {
   /// Returns analytic call and put derivatives with respect to initial variance.

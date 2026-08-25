@@ -4,6 +4,7 @@
 
 use crate::OptionType;
 use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 /// Heston model with stochastic correlation (Teng, Ehrhardt & Günther,
 /// 2016), priced by Carr-Madan dampened Fourier inversion.
@@ -143,3 +144,9 @@ impl ModelPricer for HestonStochCorrPricer {
     self.call_put(s, k, r, q, tau).1
   }
 }
+
+/// European vanilla call on the forward $Se^{(r-q)\tau}$ — the carry is
+/// $b=r-q$, the same case
+/// [`implied_volatility`](HestonStochCorrPricer::implied_volatility) already
+/// inverts against.
+impl VanillaEuropeanCall for HestonStochCorrPricer {}
