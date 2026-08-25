@@ -100,7 +100,13 @@ costing anything but tidiness.
 
 ## Queued — real defects
 
-- **5 — `replication_weights` returns an all-zero vector** for `n < 2 ||
+- **5 — CLOSED** (`2cdc2c0`). `replication_weights` now panics with its sibling's
+  exact wording. `fair_strike_heston`'s old `tau <= 0.0` branch was **split**:
+  `tau == 0` is the genuine `T → 0` limit of `(1-e^{-κT})/(κT) → 1` and stays, a
+  negative or `NaN` `tau` panics. Six of seven new tests were confirmed failing at
+  BASE; the seventh pins the deliberate keep.
+
+  ~~Original:~~ `replication_weights` returned an all-zero vector for `n < 2 ||
   maturity <= 0` (`variance_swap.rs:~210`). Same class as the six sentinels, and
   now inconsistent with the sibling `fair_strike_replication`, which panics on
   exactly those conditions. Found while closing item 2.
@@ -186,16 +192,46 @@ costing anything but tidiness.
 
 ## Queued — found while closing item 4
 
-- **19 — The `NaN`-swallow is live in the hottest pricing path.**
-  `pricing/fourier/pricer.rs` ends three expressions in `.max(0.0)` — lines
-  **167, 274, 305**. `f64::NAN.max(0.0)` is `0.0`, so a `NaN` characteristic
-  function becomes a plausible zero price for all 12 Fourier models. Same trap as
-  the one closed in item 2, still open where it matters most. (The report that
-  surfaced this named two sites; there are three.)
-- **20 — `VolSurfaceResult::is_arbitrage_free()` returns `true` for an all-`NaN`
-  surface.** Verified reachable at BASE: `finite_ivs = 0/6`, `atm_vol = [NaN, NaN]`,
-  `is_arbitrage_free = true`. A `bool` sentinel of the same family as the numeric
-  ones already cleared.
+- **19 — HALF CLOSED** (`f6ca4d7`). The three `.max(0.0)` sites in
+  `pricing/fourier/pricer.rs` now route through
+  `floor_price(x) = if x.is_nan() { x } else { x.max(0.0) }`, separating the floor
+  (a genuinely negative deep-wing price is quadrature round-off and should be
+  floored) from the poison check (a `NaN` has no price to floor).
+
+  **The stated mechanism held at one site of three, and the truth is worse.** A
+  fully-`NaN` characteristic function never reaches the Gil-Pelaez or Lewis floors
+  at all: `integrate_to_convergence(|_| NAN, …)` returns **`0.0`**, so `p1 = p2 =
+  0.5` and those pricers returned **2.438528774964297** and **100.00000000000001**
+  (the spot) — well-scaled fake prices, not zeros. What actually reached those two
+  floors as `NaN` is a non-finite *market input*, `tau` included — and `tau`
+  arrives as `NaN` legitimately from `TimeExt::tau_or_from_dates`, so an option
+  whose expiry never resolved priced at zero through the crate's busiest path.
+  That half is now fixed.
+- **19b — the quadrature swallows a `NaN` integrand.**
+  `pricing/cf_quadrature.rs`'s `integrate_to_convergence` returns `0.0` for an
+  integrand that is `NaN` everywhere, so item 19's headline — a `NaN` chf yielding
+  a plausible price across all 12 Fourier models — is **still live** on the two
+  quadrature paths. Only the FFT path is closed. The swallow originates in the
+  third-party `quadrature` crate's `double_exponential`; our wrapper is the only
+  place we control, so the guard belongs there.
+- **19c — the same trap, one line from a file already fixed.**
+  `variance_swap.rs:372` — `Self::fair_strike_from_var(k_var, dispersion.max(0.0))`.
+  A `NaN` `sigma` passes the `k_var > 0.0` guard, because `k_var` does not depend
+  on `sigma`, and the floor then turns the `NaN` dispersion into `0.0`. Measured:
+  `VolatilitySwapPricer::fair_strike_heston(0.04, 1.5, 0.04, NAN, 1.0)` returns
+  **0.2**, exactly `sqrt(k_var)` — indistinguishable from a real zero-dispersion
+  strike.
+- **20 — CLOSED** (`2bda294`). `is_arbitrage_free` returns `Option<bool>`; `None`
+  is the `bool` analogue of the convention's case-2 `NaN`.
+
+  **The cause was not `NaN` comparison.** `ImpliedVolSurface::smile_slice`
+  **deliberately drops** non-finite IVs — pinned by its own
+  `smile_slice_filters_nans` test — so an all-`NaN` surface leaves *empty* grids
+  and both arbitrage checks are universal quantifiers over an empty set.
+  `check_butterfly_ssvi` returned `(true, inf)` off its untouched `+inf` seed, and
+  `atm_total_variance` hit its `n == 0` branch returning `0.0`, making `[0.0, 0.0]`
+  trivially non-decreasing. "Nothing violated" and "nothing checked" collapsed to
+  one answer.
 - **21 — `Merton1976Pricer::price_call` returns `NaN` at exactly `S == K`** under
   `Black1976`/`Asay1982`: `term_vol(0, τ)` is `0.0`, so `d1 = ∞ · 0`. Pre-existing.
 
@@ -219,6 +255,13 @@ costing anything but tidiness.
   `include_str!`s its README into the umbrella crate, so README blocks are real
   doctests that `cargo check` cannot see, and omitting that line is how a broken
   README doctest reached `main` mid-wave.
+
+  **Check disk headroom before running it.** The battery is seven full workspace
+  builds across `--all-targets`, `--features openblas`, `--features python`, doc
+  and clippy. Running it on a volume already near capacity took this machine to
+  **zero bytes free**, which disabled every tool including the one needed to clean
+  up. `df -h` first; `target/debug/incremental` and duplicate hash-variants in
+  `target/debug/deps` are the two reclaimable pools, worth ~65 GB together here.
 
   Also unresolved: **this branch has never been built on x86_64.** Dev is
   aarch64-darwin, CI is ubuntu x86_64, and every golden in the wave was verified on
