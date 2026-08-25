@@ -148,6 +148,65 @@ pub trait ModelPricer {
   }
 }
 
+/// Asserts that a [`ModelPricer`]'s [`price_call`](ModelPricer::price_call)
+/// really is a **European vanilla call**: payoff $(S_T - K)^+$ struck at the
+/// query's `k`, exercisable only at `tau`, on an underlying whose forward is
+/// [`vanilla_call_forward`](Self::vanilla_call_forward).
+///
+/// [`ModelPricer`] fixes the *query* shape and nothing else. Its own doc says
+/// exercise style is the implementor's choice; the payoff is no more fixed
+/// than the exercise, so a cash-or-nothing digital and an American put are as
+/// much `ModelPricer`s as a Heston call is. This trait is the separate
+/// statement that a type is the vanilla case, and nothing infers it.
+///
+/// It exists because one consumer needs that guarantee and cannot check it.
+/// [`ModelSurface::vol_surface`] prices a call grid and inverts every price
+/// through the Black formula, which has an answer for a European vanilla call
+/// and for nothing else — but the inversion does not *fail* on other payoffs.
+/// It returns whatever volatility reproduces the number, and a digital with a
+/// realistic payout prices inside the no-arbitrage band, so the answer comes
+/// back finite. That is the plausible-looking sentinel [the failure
+/// convention](ModelPricer#how-pricing-fails) rules out, arriving through a
+/// trait bound rather than a return value. Gating the surface on this trait
+/// makes the call a compile error instead.
+///
+/// The rule for adding an implementation is the trait's own sentence above,
+/// applied to *every* instance and *every* query the type accepts: if some
+/// configuration prices something other than a European vanilla call, either
+/// the type does not carry this trait at all or
+/// [`vanilla_call_forward`](Self::vanilla_call_forward) reports the
+/// configurations it cannot describe. The compile-checked inventory of who
+/// carries it lives in `stochastic-rs-quant/tests/pricer_registry.rs`, which
+/// also records why each abstainer abstains.
+///
+/// [`ModelSurface::vol_surface`]: crate::vol_surface::ModelSurface::vol_surface
+pub trait VanillaEuropeanCall: ModelPricer {
+  /// Forward price of the underlying that
+  /// [`price_call`](ModelPricer::price_call)'s call is struck on, at this
+  /// query.
+  ///
+  /// The default $S e^{(r-q)\tau}$ is correct whenever the model's cost of
+  /// carry is $b = r - q$. **Override it** when the carry is anything else:
+  /// [`BSMPricer`](crate::pricing::bsm::BSMPricer) under
+  /// [`BSMCoc::Black1976`](crate::pricing::bsm::BSMCoc::Black1976) carries at
+  /// $b = 0$, so its forward is $S$. The surface inverts against this value,
+  /// and inverting a *correct* price at the wrong forward fabricates a smile
+  /// out of a flat-volatility model — every price is in the no-arbitrage
+  /// band, so every implied vol comes back finite and wrong.
+  ///
+  /// Returns [`f64::NAN`] when *this instance* is not a European vanilla call
+  /// at this query even though the type sometimes is;
+  /// [`FiniteDifferencePricer`](crate::pricing::finite_difference::FiniteDifferencePricer)
+  /// at [`OptionStyle::American`](crate::OptionStyle) is the in-tree case.
+  /// That is case 2 of [the failure
+  /// convention](ModelPricer#how-pricing-fails), and the surface propagates
+  /// the `NaN` across the whole slice rather than pushing an American price
+  /// through a European inversion.
+  fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    s * ((r - q) * tau).exp()
+  }
+}
+
 /// Common interface for Greeks reporting.
 ///
 /// Pricers expose Greeks via inherent methods today (`BSMPricer::delta`,

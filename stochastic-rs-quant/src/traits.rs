@@ -1,7 +1,8 @@
 //! # Quant traits — pricing, time, calibration, model bridging.
 //!
 //! Organised as focused submodules: [`pricing`] (`ModelPricer` /
-//! `GreeksExt`), [`time`] (`TimeExt`), [`short_rate`] (`ShortRatePricer`), and
+//! `VanillaEuropeanCall` / `GreeksExt`), [`time`] (`TimeExt`),
+//! [`short_rate`] (`ShortRatePricer`), and
 //! [`calibration`] (`Calibrator` / `CalibrationResult` / `ToModel` /
 //! `ToShortRateModel`). Upstream traits are re-exported so call-sites can
 //! write `crate::traits::FloatExt` without reaching into the foundation
@@ -25,6 +26,7 @@ pub use instrument::StandardResult;
 pub use pricing::Greeks;
 pub use pricing::GreeksExt;
 pub use pricing::ModelPricer;
+pub use pricing::VanillaEuropeanCall;
 pub use short_rate::ShortRatePricer;
 pub use stochastic_rs_copulas::traits::BivariateExt;
 #[cfg(feature = "openblas")]
