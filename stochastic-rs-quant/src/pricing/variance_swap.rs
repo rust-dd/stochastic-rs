@@ -89,6 +89,11 @@ impl VarianceSwapPricer {
   /// strike: `fair_strike_bsm(0.0)` is `0.0` too, and a caller cannot tell
   /// the two apart. Case 1 of the crate's [failure
   /// convention](crate::traits::ModelPricer#how-pricing-fails).
+  ///
+  /// A non-`NaN` result is floored at zero. The floor tests for `NaN` first,
+  /// because `f64::max` discards a `NaN` operand in favour of the finite one
+  /// — so a single `NaN` in `otm_prices` used to come back as exactly `0.0`,
+  /// re-entering by the back door the sentinel the guards above remove.
   pub fn fair_strike_replication(&self, strikes: &[f64], otm_prices: &[f64]) -> f64 {
     assert_eq!(
       strikes.len(),
@@ -144,7 +149,7 @@ impl VarianceSwapPricer {
 
     let drift = (self.r - self.q) * self.tau;
     let fair = (2.0 / self.tau) * (drift - (fwd / k0 - 1.0) - (k0 / self.s).ln() + disc * integral);
-    fair.max(0.0)
+    if fair.is_nan() { fair } else { fair.max(0.0) }
   }
 
   /// Heston closed-form fair variance strike (Brockhaus–Long 2000).
@@ -457,10 +462,8 @@ mod tests {
   #[test]
   fn replication_rejects_a_strip_shorter_than_two_strikes() {
     for (strikes, prices) in [(&[][..], &[][..]), (&[100.0][..], &[2.0][..])] {
-      let err = std::panic::catch_unwind(|| {
-        pricer().fair_strike_replication(strikes, prices)
-      })
-      .unwrap_err();
+      let err =
+        std::panic::catch_unwind(|| pricer().fair_strike_replication(strikes, prices)).unwrap_err();
       let msg = err
         .downcast_ref::<String>()
         .cloned()
@@ -471,6 +474,28 @@ mod tests {
         strikes.len()
       );
     }
+  }
+
+  /// The guards above are worth nothing if a `NaN` can still arrive as
+  /// `0.0`, and `f64::max` hands back the finite operand when the other is
+  /// `NaN` — so the final floor had to learn to test first. A `NaN` option
+  /// price is the reachable source: the strikes are `debug_assert`ed finite,
+  /// the prices never were.
+  #[test]
+  fn replication_does_not_floor_a_nan_price_to_zero() {
+    let p = pricer();
+    let strikes = [90.0, 100.0, 110.0];
+    let got = p.fair_strike_replication(&strikes, &[1.0, f64::NAN, 1.0]);
+    assert!(
+      got.is_nan(),
+      "a NaN price must not floor to a strike, got {got}"
+    );
+
+    let clean = p.fair_strike_replication(&strikes, &[1.0, 2.0, 1.0]);
+    assert!(
+      clean.is_finite(),
+      "control case must still price, got {clean}"
+    );
   }
 
   /// "No observations" and "no movement" were the same number before —
