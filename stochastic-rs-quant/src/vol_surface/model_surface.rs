@@ -1,11 +1,18 @@
 //! # Model-Generated Implied Volatility Surfaces
 //!
-//! Any calibrated model implementing [`ModelPricer`] automatically gets
-//! [`ModelSurface::vol_surface()`] via a blanket implementation that prices
-//! a grid of European calls and inverts to implied volatility.
+//! Any calibrated model implementing [`VanillaEuropeanCall`] automatically
+//! gets [`ModelSurface::vol_surface()`] via a blanket implementation that
+//! prices a grid of European calls and inverts to implied volatility.
+//!
+//! [`ModelPricer`](crate::traits::ModelPricer) alone is deliberately not
+//! enough. The inversion is a European Black inversion, so it is only
+//! meaningful for a European vanilla call, and `ModelPricer` covers digital,
+//! Asian and American payoffs too — [`VanillaEuropeanCall`] is the narrower
+//! bound that says the inversion applies. See that trait for what widening
+//! this bound silently produces.
 //!
 //! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJD,
-//! Kou, Hkde) get [`ModelPricer`] via a blanket impl in `fourier.rs`.
+//! Kou, Hkde) get both traits via blanket impls in `fourier/mod.rs`.
 //! Non-Fourier models ([`SabrPricer`](crate::pricing::sabr::SabrPricer),
 //! [`HestonStochCorrPricer`](crate::pricing::heston_stoch_corr::HestonStochCorrPricer))
 //! have explicit impls.
@@ -15,15 +22,47 @@ use ndarray::Array2;
 use super::implied::ImpliedVolSurface;
 use crate::pricing::fourier::CarrMadanPricer;
 use crate::pricing::fourier::FourierModelExt;
-use crate::traits::ModelPricer;
+use crate::traits::VanillaEuropeanCall;
 
 /// Trait for generating an implied vol surface from a calibrated model.
 ///
-/// Any [`ModelPricer`] automatically gets this via a blanket implementation.
-/// The default prices calls across the (strike, maturity) grid and inverts
-/// to implied vol. Models like Sabr can override for efficiency.
-pub trait ModelSurface: ModelPricer {
+/// Every [`VanillaEuropeanCall`] gets this via a blanket implementation. The
+/// default prices calls across the (strike, maturity) grid and inverts each
+/// through the Black formula. Models like Sabr can override for efficiency.
+///
+/// The supertrait is the whole point of the bound. A
+/// [`ModelPricer`](crate::traits::ModelPricer) that is *not* a European
+/// vanilla call has no method here at all:
+///
+/// ```compile_fail,E0599
+/// use stochastic_rs_quant::pricing::CashOrNothingPricer;
+/// use stochastic_rs_quant::vol_surface::ModelSurface;
+///
+/// let model = CashOrNothingPricer::new(10.0, 0.35);
+/// let _ = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
+/// ```
+///
+/// The same call on a model that *is* one compiles, so the failure above is
+/// the bound and not a typo:
+///
+/// ```
+/// use stochastic_rs_quant::pricing::fourier::BSMFourier;
+/// use stochastic_rs_quant::vol_surface::ModelSurface;
+///
+/// let model = BSMFourier { sigma: 0.35, r: 0.05, q: 0.0 };
+/// let surface = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
+/// assert!((surface.ivs[[0, 0]] - 0.35).abs() < 1e-6);
+/// ```
+pub trait ModelSurface: VanillaEuropeanCall {
   /// Generate an implied vol surface on the given grid.
+  ///
+  /// Each maturity's slice is inverted against
+  /// [`vanilla_call_forward`](VanillaEuropeanCall::vanilla_call_forward)
+  /// rather than an assumed $Se^{(r-q)\tau}$, so a model that carries at
+  /// something else inverts against its own forward. An implementor that
+  /// reports [`f64::NAN`] there — it is not a European vanilla call at that
+  /// query — leaves the whole slice `NaN`, including
+  /// [`log_moneyness`](ImpliedVolSurface::log_moneyness).
   fn vol_surface(
     &self,
     s: f64,
@@ -36,7 +75,7 @@ pub trait ModelSurface: ModelPricer {
     let nk = strikes.len();
     let forwards: Vec<f64> = maturities
       .iter()
-      .map(|&t| s * ((r - q) * t).exp())
+      .map(|&t| self.vanilla_call_forward(s, r, q, t))
       .collect();
 
     let mut prices = Array2::<f64>::zeros((nt, nk));
@@ -60,8 +99,12 @@ pub trait ModelSurface: ModelPricer {
   }
 }
 
-/// Blanket: every [`ModelPricer`] gets [`ModelSurface`] for free.
-impl<T: ModelPricer + ?Sized> ModelSurface for T {}
+/// Blanket: every [`VanillaEuropeanCall`] gets [`ModelSurface`] for free.
+///
+/// This was `impl<T: ModelPricer + ?Sized>` until the pricer population grew
+/// past European vanillas; [`VanillaEuropeanCall`] records what the wider
+/// bound had been asserting without saying so.
+impl<T: VanillaEuropeanCall + ?Sized> ModelSurface for T {}
 
 /// Generate an implied vol surface using Carr-Madan FFT for faster pricing
 /// with the default `(N_pow2 = 12, alpha = 0.75)` damping settings.

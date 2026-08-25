@@ -32,11 +32,14 @@
 //! ```
 //!
 //! All calibration results expose `.to_model()` (or implement [`ToModel`]) returning
-//! a [`ModelPricer`]. Every [`ModelPricer`] automatically gets
+//! a [`ModelPricer`]. Every model that also asserts
+//! [`VanillaEuropeanCall`](crate::traits::VanillaEuropeanCall) automatically gets
 //! [`ModelSurface`](crate::vol_surface::model_surface::ModelSurface) via blanket impl,
 //! enabling [`build_surface_from_model()`](crate::vol_surface::pipeline::build_surface_from_model)
 //! and [`build_surface_from_calibration()`](crate::vol_surface::pipeline::build_surface_from_calibration)
-//! to work with any calibrated model.
+//! to work with any calibrated model. The extra assertion is what keeps a
+//! digital or American pricer — equally a [`ModelPricer`] — out of a Black
+//! inversion that has no volatility to offer for it.
 //!
 //! ## Examples
 //!

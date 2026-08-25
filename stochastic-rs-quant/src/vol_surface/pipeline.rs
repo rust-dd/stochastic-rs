@@ -12,7 +12,6 @@ use super::implied::ImpliedVolSurface;
 use super::model_surface::ModelSurface;
 use super::ssvi::SsviSurface;
 use super::svi::SviRawParams;
-use crate::traits::ModelPricer;
 use crate::traits::ToModel;
 
 /// Result of the full vol-surface pipeline.
@@ -70,17 +69,23 @@ pub fn build_surface(
 
 /// Build a complete volatility surface from any calibrated model.
 ///
-/// Works with all `ModelPricer` implementations: Heston, Bates/SVJ, Lévy
+/// Works with all [`ModelSurface`] implementations: Heston, Bates/SVJ, Lévy
 /// (Vg, Nig, Cgmy, Merton, Kou), HSCM, Sabr, or any custom model.
 ///
+/// The bound is [`ModelSurface`] and not
+/// [`ModelPricer`](crate::traits::ModelPricer) because this function inverts
+/// the model's calls through the Black formula — see
+/// [`VanillaEuropeanCall`](crate::traits::VanillaEuropeanCall) for why a
+/// digital or American `ModelPricer` must not reach it.
+///
 /// # Arguments
-/// * `model` - Calibrated model implementing [`ModelPricer`]
+/// * `model` - Calibrated model implementing [`ModelSurface`]
 /// * `s` - Spot price
 /// * `r` - Risk-free rate
 /// * `q` - Dividend yield
 /// * `strikes` - Strike prices (ascending)
 /// * `maturities` - Maturities in years (ascending)
-pub fn build_surface_from_model<M: ModelPricer + ?Sized>(
+pub fn build_surface_from_model<M: ModelSurface + ?Sized>(
   model: &M,
   s: f64,
   r: f64,
@@ -94,7 +99,11 @@ pub fn build_surface_from_model<M: ModelPricer + ?Sized>(
 
 /// Build a complete volatility surface directly from a calibration result.
 ///
-/// Accepts any type implementing [`ToModel`] (all calibration results).
+/// Accepts any [`ToModel`] whose model is a European vanilla call pricer —
+/// every calibration result in the crate. [`ToModel`] itself stays bounded at
+/// [`ModelPricer`](crate::traits::ModelPricer) so a calibrator may still
+/// produce a model with no surface to build; the `where` clause is what asks
+/// for one here.
 ///
 /// ```
 /// use nalgebra::DVector;
@@ -120,7 +129,10 @@ pub fn build_surface_from_calibration<C: ToModel>(
   q: f64,
   strikes: &[f64],
   maturities: &[f64],
-) -> VolSurfaceResult {
+) -> VolSurfaceResult
+where
+  C::Model: ModelSurface,
+{
   let model = calibration.to_model(r, q);
   build_surface_from_model(&model, s, r, q, strikes, maturities)
 }
