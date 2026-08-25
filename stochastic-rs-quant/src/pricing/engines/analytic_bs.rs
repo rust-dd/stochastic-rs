@@ -81,8 +81,19 @@ impl AnalyticBSEngine {
     self
   }
 
-  fn read_quote(handle: &Handle<SimpleQuote<f64>>, default: f64) -> f64 {
-    handle.current().map(|q| q.value()).unwrap_or(default)
+  /// Current value of a market handle, or [`f64::NAN`] when the handle is
+  /// unlinked.
+  ///
+  /// An unset handle is *missing data*, not a zero market. Reading it as
+  /// `0.0` priced the option at a spot, vol or rate the caller never
+  /// supplied and returned a finite, confident, fictitious NPV; `NaN`
+  /// propagates instead, so `npv().is_finite()` is a real check. This is
+  /// the same answer the crate gives for a missing maturity
+  /// ([`TimeExt::tau_or_from_dates`]) and for a missing curve quote
+  /// (`market::rate_helper`, which drops the helper rather than substitute
+  /// a rate), so every input this engine reads now fails the same way.
+  fn read_quote(handle: &Handle<SimpleQuote<f64>>) -> f64 {
+    handle.current().map(|q| q.value()).unwrap_or(f64::NAN)
   }
 
   /// The [`BSMPricer`] model the current handles describe, paired with the
@@ -90,12 +101,12 @@ impl AnalyticBSEngine {
   /// the maturity, so τ is resolved through its own
   /// [`TimeExt`](crate::traits::TimeExt) rather than by the model.
   fn model_and_query(&self, opt: &EuropeanOption) -> (BSMPricer, (f64, f64, f64, f64, f64)) {
-    let model = BSMPricer::new(Self::read_quote(&self.volatility, 0.0), self.coc);
+    let model = BSMPricer::new(Self::read_quote(&self.volatility), self.coc);
     let query = (
-      Self::read_quote(&self.s, 0.0),
+      Self::read_quote(&self.s),
       opt.strike,
-      Self::read_quote(&self.r, 0.0),
-      Self::read_quote(&self.dividend_yield, 0.0),
+      Self::read_quote(&self.r),
+      Self::read_quote(&self.dividend_yield),
       opt.tau_or_from_dates(),
     );
     (model, query)
@@ -105,6 +116,10 @@ impl AnalyticBSEngine {
 impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
   type Result = StandardResult;
 
+  /// The NPV and every Greek are [`f64::NAN`] when any market handle is
+  /// unlinked or the instrument's maturity is unset — case 2 of the crate's
+  /// [failure convention](crate::traits::ModelPricer#how-pricing-fails).
+  /// See [`AnalyticBSEngine::read_quote`].
   fn calculate(&self, opt: &EuropeanOption) -> StandardResult {
     let (model, (s, k, r, q, tau)) = self.model_and_query(opt);
     let ot = opt.option_type;
@@ -120,22 +135,18 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   /// engine, so [`PricingResult::greeks`](crate::traits::PricingResult) stays
   /// at [`Greeks::nan`](crate::traits::Greeks::nan).
   ///
-  /// The NPV is `NaN` when `opt.tau` is unset, following the same
-  /// missing-data convention as [`crate::traits::TimeExt::tau_or_from_dates`].
-  ///
-  /// **Unset market handles do not behave the same way.** `s`, `volatility`,
-  /// `r` and `dividend_yield` each read through `read_quote(handle, 0.0)`, so
-  /// an empty handle silently supplies `0.0` and the option prices at a zero
-  /// spot or a zero vol rather than reporting that the input was missing. A
-  /// missing maturity poisons the result; a missing spot does not. The
-  /// asymmetry is pre-existing and is left as-is here deliberately —
-  /// documented so a caller can check its handles rather than trust a finite
-  /// number that came from nothing.
+  /// The NPV is [`f64::NAN`] when `opt.tau` is unset, following the same
+  /// missing-data convention as [`crate::traits::TimeExt::tau_or_from_dates`],
+  /// **and** when any of the `s`, `volatility`, `r` or `dividend_yield`
+  /// handles is unlinked — see [`AnalyticBSEngine::read_quote`]. The two used
+  /// to disagree: a missing maturity poisoned the result while a missing spot
+  /// read as `0.0` and priced the digital at a zero spot, so one unpopulated
+  /// input reported itself and the other did not.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
-    let s = Self::read_quote(&self.s, 0.0);
-    let sigma = Self::read_quote(&self.volatility, 0.0);
-    let r = Self::read_quote(&self.r, 0.0);
-    let q = Self::read_quote(&self.dividend_yield, 0.0);
+    let s = Self::read_quote(&self.s);
+    let sigma = Self::read_quote(&self.volatility);
+    let r = Self::read_quote(&self.r);
+    let q = Self::read_quote(&self.dividend_yield);
     let b = r - q;
     let tau = opt.tau.unwrap_or(f64::NAN);
     let npv = match opt.kind {
@@ -258,6 +269,68 @@ mod tests {
     let a = engine.calculate(&dated).npv();
     let b = engine.calculate(&by_tau).npv();
     assert!((a - b).abs() < 1e-12, "dated={a}, tau=1.0 gives {b}");
+  }
+
+  /// One engine, one instrument, two ways to leave an input unpopulated —
+  /// and they now report the same way. Before the fix an unlinked spot read
+  /// as `0.0` and this priced a put at `K·e^{-rτ} = 95.12`: a finite,
+  /// well-scaled NPV sourced from a spot the caller never supplied, which no
+  /// `is_finite()` check downstream could tell from a real one. The unset
+  /// maturity next to it already gave `NaN`.
+  #[test]
+  fn an_unlinked_handle_reports_like_an_unset_maturity() {
+    let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
+    let no_spot = AnalyticBSEngine::new(
+      Handle::empty(),
+      Handle::new(Arc::new(SimpleQuote::new(0.20))),
+      Handle::new(Arc::new(SimpleQuote::new(0.05))),
+      Handle::new(Arc::new(SimpleQuote::new(0.0))),
+    );
+    let npv = no_spot.calculate(&put).npv();
+    assert!(npv.is_nan(), "unlinked spot must not price, got {npv}");
+
+    let no_tau = EuropeanOption {
+      tau: None,
+      ..put
+    };
+    let full = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+    assert!(
+      full.calculate(&no_tau).npv().is_nan(),
+      "unset maturity must not price either"
+    );
+  }
+
+  /// Each of the four handles independently, on both instrument types the
+  /// engine serves, and through the Greeks as well as the NPV. Naming them
+  /// one at a time is what stops the guard passing because some *other*
+  /// input happened to be missing.
+  #[test]
+  fn every_unlinked_handle_poisons_npv_and_greeks() {
+    let call = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let digital = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, 1.0);
+    let linked = |v: f64| Handle::new(Arc::new(SimpleQuote::new(v)));
+    let quotes = [100.0, 0.20, 0.05, 0.0];
+
+    for missing in 0..4 {
+      let mut h = [
+        linked(quotes[0]),
+        linked(quotes[1]),
+        linked(quotes[2]),
+        linked(quotes[3]),
+      ];
+      h[missing] = Handle::empty();
+      let [s, vol, r, q] = h;
+      let engine = AnalyticBSEngine::new(s, vol, r, q);
+
+      let res = engine.calculate(&call);
+      assert!(res.npv().is_nan(), "handle {missing}: european npv {}", res.npv());
+      assert!(
+        res.greeks().unwrap().as_array().iter().all(|g| g.is_nan()),
+        "handle {missing}: greeks must be all-NaN"
+      );
+      let d = PricingEngine::<DigitalOption>::calculate(&engine, &digital).npv();
+      assert!(d.is_nan(), "handle {missing}: digital npv {d}");
+    }
   }
 
   #[test]

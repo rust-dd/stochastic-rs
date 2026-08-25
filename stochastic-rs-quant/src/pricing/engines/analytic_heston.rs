@@ -84,8 +84,14 @@ impl AnalyticHestonEngine {
     )
   }
 
-  fn read_quote(handle: &Handle<SimpleQuote<f64>>, default: f64) -> f64 {
-    handle.current().map(|q| q.value()).unwrap_or(default)
+  /// Current value of a market handle, or [`f64::NAN`] when the handle is
+  /// unlinked — the same missing-data answer as
+  /// [`AnalyticBSEngine::read_quote`](crate::pricing::engines::AnalyticBSEngine)
+  /// and as [`TimeExt::tau_or_from_dates`] gives for a missing maturity.
+  /// Reading an unset handle as `0.0` priced at a spot or rate the caller
+  /// never supplied.
+  fn read_quote(handle: &Handle<SimpleQuote<f64>>) -> f64 {
+    handle.current().map(|q| q.value()).unwrap_or(f64::NAN)
   }
 
   /// The model carries no query, so the engine resolves one from its own
@@ -106,9 +112,9 @@ impl AnalyticHestonEngine {
       self.params.sigma,
       self.params.lambda,
     );
-    let s = s_override.unwrap_or_else(|| Self::read_quote(&self.s, 0.0));
-    let r = Self::read_quote(&self.r, 0.0);
-    let q = Self::read_quote(&self.dividend_yield, 0.0);
+    let s = s_override.unwrap_or_else(|| Self::read_quote(&self.s));
+    let r = Self::read_quote(&self.r);
+    let q = Self::read_quote(&self.dividend_yield);
     let tau = tau_override.unwrap_or_else(|| opt.tau_or_from_dates());
     (model, s, opt.strike, r, q, tau)
   }
@@ -130,7 +136,9 @@ impl AnalyticHestonEngine {
   /// `vega` is additionally `NaN` at `v0 <= 0`, where the `σ = √v0` chain
   /// rule is undefined, and `theta` at a `tau` that is non-finite or not
   /// larger than `bump`. Both are case 2 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails).
+  /// convention](crate::traits::ModelPricer#how-pricing-fails), as is the
+  /// all-`NaN` struct an unlinked market handle produces — see
+  /// [`read_quote`](Self::read_quote).
   ///
   /// Unlike [`HestonPricer`](crate::pricing::heston::HestonPricer)'s own
   /// volatility-space Greeks, a *negative* `v0` is not rejected here: this
@@ -139,7 +147,7 @@ impl AnalyticHestonEngine {
   /// [`PricingEngine::calculate`](crate::traits::PricingEngine::calculate)
   /// call to report a single degenerate field.
   fn finite_diff_greeks(&self, opt: &EuropeanOption) -> Greeks {
-    let s = Self::read_quote(&self.s, 0.0);
+    let s = Self::read_quote(&self.s);
     let h_s = (s.abs().max(1.0)) * self.bump;
     let p0 = self.price_at(None, None, None, opt);
     let p_up = self.price_at(Some(s + h_s), None, None, opt);
@@ -223,6 +231,34 @@ mod tests {
     let p_h = heston.calculate(&opt).npv();
     let p_b = bs.calculate(&opt).npv();
     assert!((p_h - p_b).abs() < 0.05, "heston={p_h}, bs={p_b}");
+  }
+
+  /// Same missing-data convention as [`AnalyticBSEngine`], checked handle by
+  /// handle. Before the fix an unlinked spot read as `0.0`, and the Heston
+  /// characteristic-function integral at `s = 0` returned a finite NPV for a
+  /// spot the caller never supplied. `delta` and `gamma` are additionally
+  /// worth naming here: they bump `s` by `s.abs().max(1.0) * bump`, and
+  /// `f64::max` discards a `NaN` operand, so the step size stays finite —
+  /// only the re-valuation at `NaN ± h` carries the poison through.
+  #[test]
+  fn every_unlinked_handle_poisons_npv_and_greeks() {
+    let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+    let linked = |v: f64| Handle::new(Arc::new(SimpleQuote::new(v)));
+    let quotes = [100.0, 0.05, 0.0];
+
+    for missing in 0..3 {
+      let mut h = [linked(quotes[0]), linked(quotes[1]), linked(quotes[2])];
+      h[missing] = Handle::empty();
+      let [s, r, q] = h;
+      let res = AnalyticHestonEngine::new(s, r, q, params).calculate(&opt);
+      assert!(res.npv().is_nan(), "handle {missing}: npv {}", res.npv());
+      let g = res.greeks().unwrap();
+      assert!(g.delta.is_nan(), "handle {missing}: delta {}", g.delta);
+      assert!(g.gamma.is_nan(), "handle {missing}: gamma {}", g.gamma);
+      assert!(g.vega.is_nan(), "handle {missing}: vega {}", g.vega);
+      assert!(g.theta.is_nan(), "handle {missing}: theta {}", g.theta);
+    }
   }
 
   #[test]
