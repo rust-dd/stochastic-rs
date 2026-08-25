@@ -2,19 +2,14 @@ use super::*;
 
 /// Cash-or-nothing call: S=100, K=80, Q=10, r=0.06, b=0.06, sigma=0.35,
 /// T=0.75 → 7.3444 (verified analytically against Q*e^{-rT}*N(d2)).
+///
+/// `b = 0.06` is expressed as the query's `q = r - b = 0`, which is how
+/// every scenario in this file names its cost of carry now that the model
+/// derives $b$ from the query instead of storing it.
 #[test]
 fn cash_or_nothing_call_closed_form() {
-  let p = CashOrNothingPricer {
-    s: 100.0,
-    k: 80.0,
-    cash: 10.0,
-    r: 0.06,
-    b: 0.06,
-    sigma: 0.35,
-    tau: 0.75,
-    option_type: OptionType::Call,
-  };
-  let price = p.price();
+  let p = CashOrNothingPricer::new(10.0, 0.35);
+  let price = p.price_call(100.0, 80.0, 0.06, 0.0, 0.75);
   assert!((price - 7.3444).abs() < 0.005, "price={price}");
 }
 
@@ -24,21 +19,10 @@ fn cash_or_nothing_call_closed_form() {
 #[test]
 fn cash_call_put_parity() {
   // CoN call + CoN put = Q * e^{-rT}
-  let base = CashOrNothingPricer {
-    s: 100.0,
-    k: 80.0,
-    cash: 10.0,
-    r: 0.06,
-    b: 0.06,
-    sigma: 0.35,
-    tau: 0.75,
-    option_type: OptionType::Call,
-  };
-  let put = CashOrNothingPricer {
-    option_type: OptionType::Put,
-    ..base.clone()
-  };
-  let total = base.price() + put.price();
+  let p = CashOrNothingPricer::new(10.0, 0.35);
+  let call = p.price_call(100.0, 80.0, 0.06, 0.0, 0.75);
+  let put = p.price_put(100.0, 80.0, 0.06, 0.0, 0.75);
+  let total = call + put;
   let expected = 10.0 * (-0.06_f64 * 0.75).exp();
   assert!((total - expected).abs() < 1e-10, "total={total}");
 }
@@ -46,20 +30,10 @@ fn cash_call_put_parity() {
 /// Asset-or-nothing call + put = forward $S e^{(b-r)T}$
 #[test]
 fn aon_call_put_parity() {
-  let c = AssetOrNothingPricer {
-    s: 100.0,
-    k: 105.0,
-    r: 0.05,
-    b: 0.03,
-    sigma: 0.25,
-    tau: 1.0,
-    option_type: OptionType::Call,
-  };
-  let p = AssetOrNothingPricer {
-    option_type: OptionType::Put,
-    ..c.clone()
-  };
-  let total = c.price() + p.price();
+  let p = AssetOrNothingPricer::new(0.25);
+  let call = p.price_call(100.0, 105.0, 0.05, 0.02, 1.0);
+  let put = p.price_put(100.0, 105.0, 0.05, 0.02, 1.0);
+  let total = call + put;
   let expected = 100.0 * ((0.03_f64 - 0.05_f64) * 1.0).exp();
   assert!((total - expected).abs() < 1e-9, "total={total}");
 }
@@ -70,38 +44,17 @@ fn vanilla_decomposition() {
   let s = 100.0;
   let k = 100.0;
   let r = 0.05;
-  let b = 0.05;
+  let q = 0.0;
   let sigma = 0.2;
   let tau = 1.0;
-  let aon = AssetOrNothingPricer {
-    s,
-    k,
-    r,
-    b,
-    sigma,
-    tau,
-    option_type: OptionType::Call,
-  };
-  let con = CashOrNothingPricer {
-    s,
-    k,
-    cash: 1.0,
-    r,
-    b,
-    sigma,
-    tau,
-    option_type: OptionType::Call,
-  };
+  let aon = AssetOrNothingPricer::new(sigma);
+  let con = CashOrNothingPricer::new(1.0, sigma);
   // BSM vanilla call ≈ 10.4506
-  let vanilla = aon.price() - k * con.price();
+  let vanilla = aon.price_call(s, k, r, q, tau) - k * con.price_call(s, k, r, q, tau);
   assert!((vanilla - 10.4506).abs() < 0.005, "decomposition={vanilla}");
 }
 
 /// Gap call with $K_1 = K_2$ equals BSM vanilla call.
-///
-/// `b = 0.05` is expressed as the query's `q = r - b = 0`, which is how a
-/// scenario names its cost of carry now that the model derives $b$ from the
-/// query instead of storing it.
 #[test]
 fn gap_reduces_to_vanilla() {
   let p = GapPricer::new(100.0, 0.2);
@@ -129,81 +82,61 @@ fn supershare_positive() {
   assert!(price < 100.0, "supershare must be < S");
 }
 
-/// Cash-or-nothing delta uses finite difference vs analytic.
+/// Cash-or-nothing delta uses finite difference vs analytic, on both option
+/// types — the put's delta is the call's negated, and checking only the call
+/// would leave the `option_type` wiring of every digital Greek unpinned.
 #[test]
 fn cash_delta_matches_fd() {
   let h = 0.01;
-  let base = CashOrNothingPricer {
-    s: 100.0,
-    k: 100.0,
-    cash: 10.0,
-    r: 0.05,
-    b: 0.02,
-    sigma: 0.25,
-    tau: 0.5,
-    option_type: OptionType::Call,
-  };
-  let up = CashOrNothingPricer {
-    s: 100.0 + h,
-    ..base.clone()
-  };
-  let dn = CashOrNothingPricer {
-    s: 100.0 - h,
-    ..base.clone()
-  };
-  let fd = (up.price() - dn.price()) / (2.0 * h);
-  let analytic = base.delta();
-  assert!((fd - analytic).abs() < 1e-4, "fd={fd}, analytic={analytic}");
+  let p = CashOrNothingPricer::new(10.0, 0.25);
+  let (k, r, q, tau) = (100.0, 0.05, 0.03, 0.5);
+
+  for ot in [OptionType::Call, OptionType::Put] {
+    let up = p.price_option(100.0 + h, k, r, q, tau, ot);
+    let dn = p.price_option(100.0 - h, k, r, q, tau, ot);
+    let fd = (up - dn) / (2.0 * h);
+    let analytic = p.delta(100.0, k, r, q, tau, ot);
+    assert!(
+      (fd - analytic).abs() < 1e-4,
+      "{ot:?}: fd={fd}, analytic={analytic}"
+    );
+  }
 }
 
-/// Same scenario as `cash_or_nothing_call_closed_form` /
-/// `cash_call_put_parity`, priced through [`ModelPricer`] instead of the
-/// inherent `price()`.
+/// The aggregate is the only place the exposed Greeks are mapped into
+/// [`Greeks`]'s nine members, so it gets the same guard `BSMPricer`'s does:
+/// every member either equals its accessor or is `NaN`, and the `NaN`s are
+/// the ones the pricer genuinely does not expose (which is what the removed
+/// `GreeksExt` defaults produced). A hand-written struct literal at a call
+/// site is what loses this pin.
 #[test]
-fn cash_or_nothing_call_via_model_pricer() {
-  let base = CashOrNothingPricer {
-    s: 100.0,
-    k: 80.0,
-    cash: 10.0,
-    r: 0.06,
-    b: 0.06,
-    sigma: 0.35,
-    tau: 0.75,
-    option_type: OptionType::Call,
-  };
-  let call = base.price_call(100.0, 80.0, 0.06, 0.0, 0.75);
-  let put = base.price_put(100.0, 80.0, 0.06, 0.0, 0.75);
-  assert!(
-    (call - base.price()).abs() < 1e-9,
-    "trait={call}, inherent={}",
-    base.price()
-  );
-  assert!((call - 7.3444).abs() < 0.005, "price={call}");
-  let expected = 10.0 * (-0.06_f64 * 0.75).exp();
-  assert!((call + put - expected).abs() < 1e-9, "total={}", call + put);
-}
+fn digital_greeks_aggregates_match_their_accessors() {
+  let (s, k, r, q, tau, ot) = (100.0, 100.0, 0.05, 0.03, 0.5, OptionType::Put);
 
-/// Same scenario as `aon_call_put_parity`, priced through [`ModelPricer`].
-#[test]
-fn aon_call_via_model_pricer() {
-  let c = AssetOrNothingPricer {
-    s: 100.0,
-    k: 105.0,
-    r: 0.05,
-    b: 0.03,
-    sigma: 0.25,
-    tau: 1.0,
-    option_type: OptionType::Call,
-  };
-  let call = c.price_call(100.0, 105.0, 0.05, 0.02, 1.0);
-  let put = c.price_put(100.0, 105.0, 0.05, 0.02, 1.0);
-  assert!(
-    (call - c.price()).abs() < 1e-9,
-    "trait={call}, inherent={}",
-    c.price()
-  );
-  let expected = 100.0 * ((0.03_f64 - 0.05_f64) * 1.0).exp();
-  assert!((call + put - expected).abs() < 1e-9, "total={}", call + put);
+  let con = CashOrNothingPricer::new(10.0, 0.25);
+  let g = con.greeks(s, k, r, q, tau, ot);
+  assert_eq!(g.delta, con.delta(s, k, r, q, tau, ot));
+  assert_eq!(g.gamma, con.gamma(s, k, r, q, tau, ot));
+  assert_eq!(g.vega, con.vega(s, k, r, q, tau, ot));
+  for (name, value) in Greeks::COMPONENT_NAMES.iter().zip(g.as_array()) {
+    let exposed = matches!(*name, "delta" | "gamma" | "vega");
+    assert_eq!(
+      value.is_nan(),
+      !exposed,
+      "cash-or-nothing {name} = {value} (exposed={exposed})"
+    );
+  }
+
+  let aon = AssetOrNothingPricer::new(0.25);
+  let g = aon.greeks(s, k, r, q, tau, ot);
+  assert_eq!(g.delta, aon.delta(s, k, r, q, tau, ot));
+  for (name, value) in Greeks::COMPONENT_NAMES.iter().zip(g.as_array()) {
+    assert_eq!(
+      value.is_nan(),
+      *name != "delta",
+      "asset-or-nothing {name} = {value}"
+    );
+  }
 }
 
 /// The gap put has its own parity identity, $C - P = Se^{-qT} - K_2e^{-rT}$

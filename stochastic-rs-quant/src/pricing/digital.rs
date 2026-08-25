@@ -5,6 +5,20 @@
 //! d_{1,2}=\frac{\ln(S/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
+//! Every pricer here holds **model and contract state only** — the
+//! volatility, plus whatever the payoff itself fixes (the cash payout, the
+//! second strike, the upper band). Spot, strike, rate, dividend yield and
+//! maturity are the pricing *query* and travel as arguments to
+//! [`ModelPricer::price_call`] and to every Greek below, so one instance
+//! prices a whole strike/maturity grid.
+//!
+//! The cost of carry $b$ is deliberately **not** a field. These four all use
+//! $b = r - q$ (Merton's 1973 convention), recomputed from the query's own
+//! rates on every call. A `b` fixed at construction would be a market
+//! quantity frozen at one $(r, q)$ and then silently reused at another —
+//! plausible in range, wrong in value, and invisible to any assertion on the
+//! price alone.
+//!
 //! Source:
 //! - Reiner, E. & Rubinstein, M. (1991), "Unscrambling the Binary Code"
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4
@@ -14,6 +28,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::OptionType;
+use crate::traits::Greeks;
 use crate::traits::ModelPricer;
 
 /// Cash-or-nothing digital pays a fixed cash amount $Q$ when the option
@@ -22,95 +37,79 @@ use crate::traits::ModelPricer;
 /// $$
 /// C_{\text{CoN}}=Qe^{-rT}N(d_2),\qquad P_{\text{CoN}}=Qe^{-rT}N(-d_2)
 /// $$
-#[derive(Debug, Clone)]
+///
+/// ```
+/// use stochastic_rs_quant::pricing::CashOrNothingPricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// let model = CashOrNothingPricer::new(10.0, 0.35);
+/// let itm = model.price_call(100.0, 80.0, 0.06, 0.0, 0.75);
+/// let otm = model.price_call(100.0, 120.0, 0.06, 0.0, 0.75);
+/// assert!(itm > otm);
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct CashOrNothingPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Strike (decision boundary).
-  pub k: f64,
-  /// Cash payout $Q$.
+  /// Cash payout $Q$ — a term of the contract, not a market quote, so it
+  /// stays on the struct next to the volatility rather than travelling
+  /// with the query.
   pub cash: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Cost of carry $b = r - q$.
-  pub b: f64,
   /// Volatility.
   pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option type.
-  pub option_type: OptionType,
 }
 
 impl CashOrNothingPricer {
-  /// Closed-form price.
-  pub fn price(&self) -> f64 {
-    let (_, d2) = self.d1_d2();
-    let disc = (-self.r * self.tau).exp();
-    match self.option_type {
-      OptionType::Call => self.cash * disc * norm_cdf(d2),
-      OptionType::Put => self.cash * disc * norm_cdf(-d2),
+  pub const fn new(cash: f64, sigma: f64) -> Self {
+    Self { cash, sigma }
+  }
+
+  /// Every Greek this pricer exposes at one query point, in a [`Greeks`]
+  /// aggregate; the six it does not expose stay [`f64::NAN`].
+  ///
+  /// This is what the removed
+  /// [`GreeksExt`](crate::traits::GreeksExt) impl's `greeks()` provided.
+  /// The trait's accessors take no arguments, so only a type that already
+  /// carries a query can implement it, and this one no longer does —
+  /// `BSMPricer` and `HestonPricer` came off the trait the same way.
+  /// Callers that want the whole set go through here rather than
+  /// hand-assembling a nine-field struct literal, which is where a
+  /// mis-mapped member loses its only pin — see
+  /// `digital_greeks_aggregates_match_their_accessors`.
+  pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> Greeks {
+    Greeks {
+      delta: self.delta(s, k, r, q, tau, option_type),
+      gamma: self.gamma(s, k, r, q, tau, option_type),
+      vega: self.vega(s, k, r, q, tau, option_type),
+      ..Greeks::nan()
     }
   }
 
-  /// Delta: $\partial V/\partial S$.
-  pub fn delta(&self) -> f64 {
-    let (_, d2) = self.d1_d2();
-    let disc = (-self.r * self.tau).exp();
-    let denom = self.s * self.sigma * self.tau.sqrt();
-    let sign = match self.option_type {
-      OptionType::Call => 1.0,
-      OptionType::Put => -1.0,
-    };
-    sign * self.cash * disc * norm_pdf(d2) / denom
+  /// Delta — $\partial V/\partial S$.
+  pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
+    let disc = (-r * tau).exp();
+    let denom = s * self.sigma * tau.sqrt();
+
+    call_put_sign(option_type) * self.cash * disc * norm_pdf(d2) / denom
   }
 
-  /// Gamma: $\partial^2 V/\partial S^2$.
-  pub fn gamma(&self) -> f64 {
-    let (_, d2) = self.d1_d2();
-    let disc = (-self.r * self.tau).exp();
-    let s = self.s;
+  /// Gamma — $\partial^2 V/\partial S^2$.
+  pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
+    let disc = (-r * tau).exp();
     let v = self.sigma;
-    let t = self.tau;
-    let sqrt_t = t.sqrt();
-    let sign = match self.option_type {
-      OptionType::Call => 1.0,
-      OptionType::Put => -1.0,
-    };
+    let sqrt_t = tau.sqrt();
     let pdf = norm_pdf(d2);
-    -sign * self.cash * disc * pdf * (1.0 + d2 * (v * sqrt_t)) / (s * s * v * sqrt_t)
+
+    -call_put_sign(option_type) * self.cash * disc * pdf * (1.0 + d2 * (v * sqrt_t))
+      / (s * s * v * sqrt_t)
   }
 
-  /// Vega: $\partial V/\partial \sigma$.
-  pub fn vega(&self) -> f64 {
-    let (d1, d2) = self.d1_d2();
-    let disc = (-self.r * self.tau).exp();
-    let sign = match self.option_type {
-      OptionType::Call => 1.0,
-      OptionType::Put => -1.0,
-    };
-    -sign * self.cash * disc * norm_pdf(d2) * d1 / self.sigma
-  }
+  /// Vega — $\partial V/\partial \sigma$.
+  pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let (d1, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
+    let disc = (-r * tau).exp();
 
-  fn d1_d2(&self) -> (f64, f64) {
-    let v = self.sigma;
-    let t = self.tau;
-    let sqrt_t = t.sqrt();
-    let d1 = ((self.s / self.k).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
-    let d2 = d1 - v * sqrt_t;
-    (d1, d2)
-  }
-}
-
-impl crate::traits::GreeksExt for CashOrNothingPricer {
-  fn delta(&self) -> f64 {
-    CashOrNothingPricer::delta(self)
-  }
-  fn gamma(&self) -> f64 {
-    CashOrNothingPricer::gamma(self)
-  }
-  fn vega(&self) -> f64 {
-    CashOrNothingPricer::vega(self)
+    -call_put_sign(option_type) * self.cash * disc * norm_pdf(d2) * d1 / self.sigma
   }
 }
 
@@ -139,65 +138,51 @@ impl ModelPricer for CashOrNothingPricer {
 /// $$
 /// C_{\text{AoN}}=Se^{(b-r)T}N(d_1),\qquad P_{\text{AoN}}=Se^{(b-r)T}N(-d_1)
 /// $$
-#[derive(Debug, Clone)]
+///
+/// ```
+/// use stochastic_rs_quant::pricing::AssetOrNothingPricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// let model = AssetOrNothingPricer::new(0.25);
+/// let itm = model.price_call(100.0, 90.0, 0.05, 0.02, 1.0);
+/// let otm = model.price_call(100.0, 110.0, 0.05, 0.02, 1.0);
+/// assert!(itm > otm);
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct AssetOrNothingPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Strike.
-  pub k: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Cost of carry.
-  pub b: f64,
   /// Volatility.
   pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option type.
-  pub option_type: OptionType,
 }
 
 impl AssetOrNothingPricer {
-  /// Closed-form price.
-  pub fn price(&self) -> f64 {
-    let (d1, _) = self.d1_d2();
-    let coc = ((self.b - self.r) * self.tau).exp();
-    match self.option_type {
-      OptionType::Call => self.s * coc * norm_cdf(d1),
-      OptionType::Put => self.s * coc * norm_cdf(-d1),
+  pub const fn new(sigma: f64) -> Self {
+    Self { sigma }
+  }
+
+  /// Every Greek this pricer exposes at one query point; the eight it does
+  /// not expose stay [`f64::NAN`]. See
+  /// [`CashOrNothingPricer::greeks`] for why this is an inherent method
+  /// rather than a [`GreeksExt`](crate::traits::GreeksExt) impl.
+  pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> Greeks {
+    Greeks {
+      delta: self.delta(s, k, r, q, tau, option_type),
+      ..Greeks::nan()
     }
   }
 
-  /// Delta.
-  pub fn delta(&self) -> f64 {
-    let (d1, _) = self.d1_d2();
-    let coc = ((self.b - self.r) * self.tau).exp();
+  /// Delta — $\partial V/\partial S$.
+  pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let b = r - q;
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
+    let coc = ((b - r) * tau).exp();
     let v = self.sigma;
-    let sqrt_t = self.tau.sqrt();
-    let cdf_term = match self.option_type {
+    let sqrt_t = tau.sqrt();
+    let cdf_term = match option_type {
       OptionType::Call => norm_cdf(d1),
       OptionType::Put => norm_cdf(-d1),
     };
-    let sign = match self.option_type {
-      OptionType::Call => 1.0,
-      OptionType::Put => -1.0,
-    };
-    coc * cdf_term + sign * coc * norm_pdf(d1) / (v * sqrt_t)
-  }
 
-  fn d1_d2(&self) -> (f64, f64) {
-    let v = self.sigma;
-    let t = self.tau;
-    let sqrt_t = t.sqrt();
-    let d1 = ((self.s / self.k).ln() + (self.b + 0.5 * v * v) * t) / (v * sqrt_t);
-    let d2 = d1 - v * sqrt_t;
-    (d1, d2)
-  }
-}
-
-impl crate::traits::GreeksExt for AssetOrNothingPricer {
-  fn delta(&self) -> f64 {
-    AssetOrNothingPricer::delta(self)
+    coc * cdf_term + call_put_sign(option_type) * coc * norm_pdf(d1) / (v * sqrt_t)
   }
 }
 
@@ -205,7 +190,7 @@ impl ModelPricer for AssetOrNothingPricer {
   /// `sigma` is model state; `(s, k, r, q, tau)` is the query, $b = r - q$.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let (d1, _) = bsm_d1_d2(s, k, b, self.sigma, tau);
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
     s * coc * norm_cdf(d1)
   }
@@ -215,7 +200,7 @@ impl ModelPricer for AssetOrNothingPricer {
   /// `aon_call_put_parity` — not vanilla put-call parity.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let (d1, _) = bsm_d1_d2(s, k, b, self.sigma, tau);
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
     s * coc * norm_cdf(-d1)
   }
@@ -228,13 +213,6 @@ impl ModelPricer for AssetOrNothingPricer {
 /// V = S e^{(b-r)T}N(d_1) - K_2 e^{-rT}N(d_2),\quad
 /// d_1=\frac{\ln(S/K_1)+(b+\tfrac12\sigma^2)T}{\sigma\sqrt T}
 /// $$
-///
-/// Holds model and contract state only: the volatility and the payoff
-/// strike. Spot, trigger strike, rate, dividend yield and maturity are the
-/// pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid. The cost of carry is not a field — it is
-/// $b = r - q$, recomputed from the query's own rates on every call.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::GapPricer;
@@ -291,13 +269,6 @@ impl ModelPricer for GapPricer {
 /// V = \frac{S}{X_L} e^{(b-r)T}[N(d_1) - N(d_2)]
 /// $$
 ///
-/// Holds model and contract state only: the volatility and the upper
-/// trigger. Spot, lower trigger, rate, dividend yield and maturity are the
-/// pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid. The cost of carry is not a field — it is
-/// $b = r - q$, recomputed from the query's own rates on every call.
-///
 /// ```
 /// use stochastic_rs_quant::pricing::SuperSharePricer;
 /// use stochastic_rs_quant::traits::ModelPricer;
@@ -345,8 +316,22 @@ impl ModelPricer for SuperSharePricer {
   }
 }
 
+/// $+1$ for a call, $-1$ for a put — the sign a digital Greek picks up
+/// because the put's $N(-d)$ differentiates to $-\phi(d)$ where the call's
+/// $N(d)$ gives $+\phi(d)$.
+const fn call_put_sign(option_type: OptionType) -> f64 {
+  match option_type {
+    OptionType::Call => 1.0,
+    OptionType::Put => -1.0,
+  }
+}
+
 /// $d_1=\frac{\ln(S/K)+(b+\sigma^2/2)T}{\sigma\sqrt T}$ — the standardized
-/// moneyness term shared by every [`ModelPricer`] impl above.
+/// moneyness term, and the **only** copy of it in this module. Every price
+/// and every Greek above routes through here or through
+/// [`bsm_d1_d2`]; the four per-struct `d1_d2(&self)` methods that used to
+/// sit alongside it read the bundled query fields, so removing those fields
+/// left this the single source.
 fn bsm_d1(s: f64, k: f64, b: f64, sigma: f64, t: f64) -> f64 {
   ((s / k).ln() + (b + 0.5 * sigma * sigma) * t) / (sigma * t.sqrt())
 }

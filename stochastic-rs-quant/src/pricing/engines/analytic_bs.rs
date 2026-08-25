@@ -111,6 +111,27 @@ impl AnalyticBSEngine {
     );
     (model, query)
   }
+
+  /// The `(s, k, r, q, tau)` query point a [`DigitalOption`] asks for.
+  ///
+  /// The digital counterpart of [`model_and_query`](Self::model_and_query),
+  /// minus the model: which of the two digital pricers to build depends on
+  /// `opt.kind`, so [`calculate`](PricingEngine::calculate) picks that and
+  /// this supplies the query both arms share.
+  ///
+  /// τ is read straight off `opt.tau` rather than through
+  /// [`TimeExt`](crate::traits::TimeExt), because [`DigitalOption`] does not
+  /// implement it — the `(eval, expiry)` pair it carries is inert. That is
+  /// the one input the two arms of this engine still resolve differently.
+  fn digital_query(&self, opt: &DigitalOption) -> (f64, f64, f64, f64, f64) {
+    (
+      Self::read_quote(&self.s),
+      opt.strike,
+      Self::read_quote(&self.r),
+      Self::read_quote(&self.dividend_yield),
+      opt.tau.unwrap_or(f64::NAN),
+    )
+  }
 }
 
 impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
@@ -131,6 +152,17 @@ impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
 impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   type Result = StandardResult;
 
+  /// Built the same way as the [`EuropeanOption`] arm above: one model from
+  /// the market handles and the instrument's own contract terms, one
+  /// `(s, k, r, q, tau)` query, one
+  /// [`price_option`](ModelPricer::price_option) call. The digital pricers
+  /// hold model state only, so the instance costs two `f64`s and carries
+  /// nothing from the query — where this arm used to build a fresh
+  /// eight-field pricer per call and read the price back off the struct.
+  ///
+  /// The digital pricers fix the cost of carry at $b = r - q$, so this arm
+  /// ignores [`coc`](Self::coc); only the European arm honours it.
+  ///
   /// NPV only — the closed-form digital Greeks are not wired through this
   /// engine, so [`PricingResult::greeks`](crate::traits::PricingResult) stays
   /// at [`Greeks::nan`](crate::traits::Greeks::nan).
@@ -143,34 +175,16 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   /// digital at a zero spot, so one unpopulated input reported itself and the
   /// other did not.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
-    let s = Self::read_quote(&self.s);
+    let (s, k, r, q, tau) = self.digital_query(opt);
     let sigma = Self::read_quote(&self.volatility);
-    let r = Self::read_quote(&self.r);
-    let q = Self::read_quote(&self.dividend_yield);
-    let b = r - q;
-    let tau = opt.tau.unwrap_or(f64::NAN);
+    let ot = opt.option_type;
     let npv = match opt.kind {
-      DigitalKind::CashOrNothing { cash } => CashOrNothingPricer {
-        s,
-        k: opt.strike,
-        cash,
-        r,
-        b,
-        sigma,
-        tau,
-        option_type: opt.option_type,
+      DigitalKind::CashOrNothing { cash } => {
+        CashOrNothingPricer::new(cash, sigma).price_option(s, k, r, q, tau, ot)
       }
-      .price(),
-      DigitalKind::AssetOrNothing => AssetOrNothingPricer {
-        s,
-        k: opt.strike,
-        r,
-        b,
-        sigma,
-        tau,
-        option_type: opt.option_type,
+      DigitalKind::AssetOrNothing => {
+        AssetOrNothingPricer::new(sigma).price_option(s, k, r, q, tau, ot)
       }
-      .price(),
     };
     StandardResult::npv_only(npv)
   }
@@ -340,5 +354,31 @@ mod tests {
     let engine = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     let r = engine.calculate(&opt);
     assert!(r.npv() > 0.0 && r.npv() < 1.0);
+  }
+
+  /// The digital arm is exactly its model at the handles' current values and
+  /// the instrument's own τ — the same guard
+  /// `engine_greeks_match_the_model_aggregate` gives the European arm, and
+  /// what makes "one file, one convention" checkable rather than asserted.
+  /// Both kinds and both option types, since the engine's job here is the
+  /// wiring (quote reads, τ, strike, payout, call/put dispatch) and not the
+  /// formulas, which `digital_tests.rs` pins.
+  #[test]
+  fn digital_npv_matches_the_model_at_the_same_query() {
+    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.05, 0.02);
+    let query = (100.0, 105.0, 0.05, 0.02, 0.75);
+    let (s, k, r, q, tau) = query;
+
+    for ot in [OptionType::Call, OptionType::Put] {
+      let cash = DigitalOption::cash_or_nothing(k, ot, 10.0, tau);
+      let got = PricingEngine::<DigitalOption>::calculate(&engine, &cash).npv();
+      let want = CashOrNothingPricer::new(10.0, 0.25).price_option(s, k, r, q, tau, ot);
+      assert_eq!(got, want, "cash-or-nothing {ot:?}");
+
+      let asset = DigitalOption::asset_or_nothing(k, ot, tau);
+      let got = PricingEngine::<DigitalOption>::calculate(&engine, &asset).npv();
+      let want = AssetOrNothingPricer::new(0.25).price_option(s, k, r, q, tau, ot);
+      assert_eq!(got, want, "asset-or-nothing {ot:?}");
+    }
   }
 }
