@@ -84,12 +84,18 @@ stochastic-rs-quant/src/calibration.rs   -- pub mod xyz
 use crate::pricing::xyz::XyzModel;
 
 /// Market option for XYZ calibration.
+///
+/// Field names follow the crate-wide vocabulary: `s` spot, `k` strike,
+/// `tau` time to maturity in years, `r` risk-free rate (`r_d`/`r_f` only
+/// where two rates genuinely exist). Do not reintroduce `spot`, `s0`,
+/// `maturity` or `risk_free` — one name per concept is enforced across
+/// the quant crate.
 #[derive(Clone, Debug)]
 pub struct MarketOption {
-    pub strike: f64,
-    pub maturity: f64,
+    pub k: f64,
+    pub tau: f64,
     pub price: f64,
-    pub rate: f64,
+    pub r: f64,
 }
 
 /// Calibrated parameter set.
@@ -131,14 +137,14 @@ impl crate::traits::ToModel for XyzCalibrationResult {
 /// The calibrator. Stateful struct so generic pipelines can consume it.
 #[derive(Clone, Debug)]
 pub struct XyzCalibrator {
-    pub s0: f64,
+    pub s: f64,
     pub options: Vec<MarketOption>,
     pub max_iter: usize,
 }
 
 impl XyzCalibrator {
-    pub fn new(s0: f64, options: Vec<MarketOption>) -> Self {
-        Self { s0, options, max_iter: 500 }
+    pub fn new(s: f64, options: Vec<MarketOption>) -> Self {
+        Self { s, options, max_iter: 500 }
     }
     pub fn with_max_iter(mut self, max_iter: usize) -> Self {
         self.max_iter = max_iter;

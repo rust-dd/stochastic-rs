@@ -149,7 +149,9 @@ impl GreeksExt for MyMcPricer {
             gamma: (v_sup - 2.0 * v_base + v_sdn) / (h * h),
             vega:  (v_vup - v_vdn) / (2.0 * hs),
             // ...
-            ..Default::default()  // unfilled Greeks → 0.0; or use NAN sentinel
+            ..Greeks::nan()  // unfilled Greeks stay NaN — never 0.0, which
+                             // is a legitimate value and so unreadable as
+                             // "not exposed"
         }
     }
 }
@@ -172,35 +174,52 @@ implementations:
 For an analytic (closed-form) pricer, you usually only override the
 Greeks you know analytically:
 
+An analytic pricer holds model parameters only, so it does **not**
+implement `GreeksExt` — there is no spot on the struct to differentiate
+against. It exposes query-taking inherent methods, and every Greek it does
+not implement is simply absent rather than defaulting to anything:
+
 ```rust
-impl GreeksExt for BsmPricer {
-    fn delta(&self) -> f64 {
-        let d1 = self.d1();
-        match self.option_type {
+impl BSMPricer {
+    pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 {
+        let (d1, _) = self.d1_d2(s, k, r, q, tau);
+        match ot {
             OptionType::Call => norm_cdf(d1),
             OptionType::Put  => norm_cdf(d1) - 1.0,
         }
     }
 
-    fn gamma(&self) -> f64 {
-        let d1 = self.d1();
-        norm_pdf(d1) / (self.s * self.sigma * self.tau.sqrt())
+    pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        let (d1, _) = self.d1_d2(s, k, r, q, tau);
+        norm_pdf(d1) / (s * self.v * tau.sqrt())
     }
 
-    fn vega(&self) -> f64 {
-        let d1 = self.d1();
-        self.s * norm_pdf(d1) * self.tau.sqrt()
+    pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        let (d1, _) = self.d1_d2(s, k, r, q, tau);
+        s * norm_pdf(d1) * tau.sqrt()
     }
 
-    // theta, rho, vanna, charm, volga, veta — fall through to default
-    // finite-difference, which is fine for an analytic pricer.
-
-    // greeks() — fall through to default; the cost of N calls is N
-    // closed-form evaluations, no random-noise problem.
+    /// Provide this whenever you provide the accessors. Without it every
+    /// caller hand-writes the nine-field literal, and a mis-mapped field
+    /// (volga vs veta) has nowhere to be caught.
+    pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks {
+        Greeks {
+            delta: self.delta(s, k, r, q, tau, ot),
+            gamma: self.gamma(s, k, r, q, tau),
+            vega:  self.vega(s, k, r, q, tau),
+            ..Greeks::nan()
+        }
+    }
 }
 ```
 
-Reference: `BsmPricer` in `pricing/bsm.rs`.
+Note `..Greeks::nan()`, not `..Default::default()` — they are the same
+thing (`Default for Greeks` returns `nan()`), but spelling it `nan()` says
+the intent. **Never fill an unimplemented Greek with `0.0`**: a zero is a
+legitimate value for several Greeks, so a consumer cannot tell it from
+"not exposed", which is the whole reason the members default to `NaN`.
+
+Reference: `BSMPricer` in `pricing/bsm/greeks.rs`.
 
 ## 6. Bump-size conventions
 

@@ -66,6 +66,16 @@ impl AnalyticBSEngine {
   }
 
   /// Override the cost-of-carry convention.
+  ///
+  /// # Behaviour change in 3.0
+  ///
+  /// [`BSMCoc::GarmanKohlhagen1983`] used to **panic** here: the old
+  /// pricer resolved its carry from a separate `r_d` field that this
+  /// engine never set, so the lookup hit an `expect` on `None`. The
+  /// engine now passes its own rate and dividend-yield handles as the
+  /// domestic and foreign rates — the standard Garman-Kohlhagen
+  /// embedding — and returns a price instead. Code that relied on the
+  /// panic to detect an unsupported convention will now get a number.
   pub fn with_coc(mut self, coc: BSMCoc) -> Self {
     self.coc = coc;
     self

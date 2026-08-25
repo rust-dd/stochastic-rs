@@ -98,8 +98,12 @@ sit outside it deliberately:
   query is `call_put(f1, f2, x, r, tau)`; the basket and rainbow pricers
   take N legs. A shared signature would need an `Option<f64>` strike and
   a variable-length underlying list — a dishonest shape for all of them.
-  They follow the same model/query convention through inherent methods
-  instead.
+
+  Of these, only `KirkSpreadPricer` currently follows the model/query
+  convention, through inherent methods. The other seven still hold their
+  market data as struct fields behind a no-argument `price()`; converting
+  them is planned but not done. `pricer_registry.rs` records the current
+  state of each.
 
 The path-dependent family (barriers, lookbacks, cliquets, autocallables,
 Bermudans, chooser, compound, variance/volatility swaps) is trait-less
@@ -143,7 +147,12 @@ Every former implementor moved to `ModelPricer`, to `ShortRatePricer`, or
 query. `calculate_call_put()` becomes `call_put(...)`,
 `calculate_price()` becomes `price_call(...)`, and the four pricers that
 genuinely invert a price to a vol keep `implied_volatility` as an
-inherent method. See `MIGRATION.md` for the per-pricer mapping.
+inherent method.
+
+For the per-pricer mapping, each type's own rustdoc names what its model
+state is and what its query is; `pricer_registry.rs` in the crate's test
+directory is the compile-checked inventory of which pricer carries which
+trait, including the ones that deliberately carry none.
 
 ## See also
 
