@@ -125,44 +125,77 @@ impl MargrabePricer {
 /// Monte-Carlo spread option pricer for general non-zero strikes under
 /// correlated geometric Brownian motion. Pays
 /// $\max\!\big(\phi(S_1 - S_2 - K), 0\big)$ where $\phi=\pm 1$.
-#[derive(Debug, Clone)]
+///
+/// The struct holds **model and method state only** — the two volatilities,
+/// their correlation, and the Monte Carlo path count. The two spots, the
+/// strike, the rate, the two dividend yields and the maturity are the
+/// pricing *query* and travel as arguments, so one instance prices a whole
+/// strike/maturity grid.
+///
+/// `n_paths` is neither model nor query but a convergence control, and it
+/// sits beside the model for the same reason
+/// `GbmMalliavinPricer` keeps its own path and step counts there: it fixes
+/// how accurately this instance answers, not what it is answering about.
+///
+/// [`price_call`](Self::price_call) and [`price_put`](Self::price_put) each
+/// run **one** simulation. Neither is derived from the other by put-call
+/// parity, which would quote the two legs off different samples.
+///
+/// Like [`MargrabePricer`] this is a two-asset payoff and so carries no
+/// [`ModelPricer`](crate::traits::ModelPricer); it follows the same
+/// "convention, no trait" split through inherent methods.
+///
+/// ```
+/// use stochastic_rs_quant::pricing::spread::McSpreadPricer;
+///
+/// let model = McSpreadPricer::new(0.25, 0.20, 0.4, 20_000);
+/// let atm = model.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
+/// assert!(atm > 0.0);
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct McSpreadPricer {
-  /// Spot of asset 1.
-  pub s1: f64,
-  /// Spot of asset 2.
-  pub s2: f64,
-  /// Strike.
-  pub k: f64,
   /// Volatility of asset 1.
   pub sigma1: f64,
   /// Volatility of asset 2.
   pub sigma2: f64,
   /// Correlation.
   pub rho: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield 1.
-  pub q1: f64,
-  /// Dividend yield 2.
-  pub q2: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option type.
-  pub option_type: OptionType,
   /// Number of MC paths.
   pub n_paths: usize,
 }
 
 impl McSpreadPricer {
-  pub fn price(&self) -> f64 {
-    let phi = match self.option_type {
+  /// Builds the model from the two volatilities and their correlation,
+  /// plus the Monte Carlo path count every price off this instance uses.
+  pub const fn new(sigma1: f64, sigma2: f64, rho: f64, n_paths: usize) -> Self {
+    Self {
+      sigma1,
+      sigma2,
+      rho,
+      n_paths,
+    }
+  }
+
+  /// Price either leg at one query point with a single simulation.
+  pub fn price_option(
+    &self,
+    s1: f64,
+    s2: f64,
+    k: f64,
+    r: f64,
+    q1: f64,
+    q2: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    let phi = match option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
-    let drift1 = (self.r - self.q1 - 0.5 * self.sigma1 * self.sigma1) * self.tau;
-    let drift2 = (self.r - self.q2 - 0.5 * self.sigma2 * self.sigma2) * self.tau;
-    let vol1 = self.sigma1 * self.tau.sqrt();
-    let vol2 = self.sigma2 * self.tau.sqrt();
+    let drift1 = (r - q1 - 0.5 * self.sigma1 * self.sigma1) * tau;
+    let drift2 = (r - q2 - 0.5 * self.sigma2 * self.sigma2) * tau;
+    let vol1 = self.sigma1 * tau.sqrt();
+    let vol2 = self.sigma2 * tau.sqrt();
     let rho = self.rho;
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).max(0.0).sqrt();
 
@@ -175,13 +208,23 @@ impl McSpreadPricer {
         let z1 = all_z[2 * i];
         let z2_indep = all_z[2 * i + 1];
         let z2 = rho * z1 + sqrt_one_minus_rho2 * z2_indep;
-        let s1_t = self.s1 * (drift1 + vol1 * z1).exp();
-        let s2_t = self.s2 * (drift2 + vol2 * z2).exp();
-        ((phi * (s1_t - s2_t - self.k)).max(0.0)) as f64
+        let s1_t = s1 * (drift1 + vol1 * z1).exp();
+        let s2_t = s2 * (drift2 + vol2 * z2).exp();
+        ((phi * (s1_t - s2_t - k)).max(0.0)) as f64
       })
       .sum();
 
-    (-self.r * self.tau).exp() * sum / self.n_paths as f64
+    (-r * tau).exp() * sum / self.n_paths as f64
+  }
+
+  /// Price the spread call $\max(S_1-S_2-K,0)$ at one query point.
+  pub fn price_call(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    self.price_option(s1, s2, k, r, q1, q2, tau, OptionType::Call)
+  }
+
+  /// Price the spread put $\max(K-(S_1-S_2),0)$ at one query point.
+  pub fn price_put(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    self.price_option(s1, s2, k, r, q1, q2, tau, OptionType::Put)
   }
 }
 
@@ -274,26 +317,31 @@ mod tests {
     );
   }
 
+  /// One Monte Carlo model instance prices a whole strike grid, both legs.
+  /// The strikes are far enough apart that the ordering survives the
+  /// sampling error of independent simulations.
+  #[test]
+  fn mc_spread_one_model_prices_a_strike_grid() {
+    let model = McSpreadPricer::new(0.30, 0.25, 0.3, 100_000);
+    let calls = [0.0, 10.0, 25.0].map(|k| model.price_call(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0));
+    let puts = [0.0, 10.0, 25.0].map(|k| model.price_put(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0));
+    assert!(
+      calls[0] > calls[1] && calls[1] > calls[2],
+      "spread calls must decay in the strike: {calls:?}"
+    );
+    assert!(
+      puts[0] < puts[1] && puts[1] < puts[2],
+      "spread puts must rise in the strike: {puts:?}"
+    );
+  }
+
   /// Margrabe ↔ MC (K=0) consistency: with enough paths the MC spread call
   /// should match Margrabe within 1.5%.
   #[test]
   fn margrabe_matches_mc_zero_strike() {
     let m_price = MargrabePricer::new(0.25, 0.20, 0.4).price(110.0, 100.0, 0.0, 0.0, 1.0);
-    let mc = McSpreadPricer {
-      s1: 110.0,
-      s2: 100.0,
-      k: 0.0,
-      sigma1: 0.25,
-      sigma2: 0.20,
-      rho: 0.4,
-      r: 0.0,
-      q1: 0.0,
-      q2: 0.0,
-      tau: 1.0,
-      option_type: OptionType::Call,
-      n_paths: 100_000,
-    };
-    let mc_price = mc.price();
+    let mc = McSpreadPricer::new(0.25, 0.20, 0.4, 100_000);
+    let mc_price = mc.price_call(110.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
     let rel = (m_price - mc_price).abs() / m_price;
     assert!(rel < 0.02, "margrabe={m_price}, mc={mc_price}, rel={rel}");
   }
