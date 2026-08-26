@@ -352,6 +352,15 @@ impl VolatilitySwapPricer {
   /// both branches reject the same inputs — the short-circuit used to floor
   /// a negative strike to `0.0` through `max(0.0)` while the main path
   /// returned a sentinel of its own.
+  ///
+  /// Returns [`f64::NAN`] for a `NaN` `sigma`, which is the one undefined
+  /// input the `k_var` assertion cannot reach: `k_var` is built from
+  /// `(v0, kappa, theta, tau)` and never reads `sigma`, so the check has to
+  /// happen where the dispersion is floored instead. A floor and a poison
+  /// check are different operations and `f64::max` runs them together into
+  /// one wrong answer — a dispersion below zero is round-off and still
+  /// floors, an undefined one has nothing to floor. Same split as
+  /// [`VarianceSwapPricer::fair_strike_replication`]'s.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
     let pricer = VarianceSwapPricer {
       s: 1.0,
@@ -369,7 +378,12 @@ impl VolatilitySwapPricer {
     }
     let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * tau).exp()))
       / (2.0 * kappa.powi(3) * tau * tau);
-    Self::fair_strike_from_var(k_var, dispersion.max(0.0))
+    let floored = if dispersion.is_nan() {
+      dispersion
+    } else {
+      dispersion.max(0.0)
+    };
+    Self::fair_strike_from_var(k_var, floored)
   }
 }
 
@@ -567,6 +581,32 @@ mod tests {
   #[should_panic(expected = "variance strike k_var must be strictly positive (got 0)")]
   fn vol_swap_rejects_a_zero_variance_strike() {
     let _ = VolatilitySwapPricer::fair_strike_from_var(0.0, 0.001);
+  }
+
+  /// A `NaN` vol-of-vol is the one undefined input the `k_var > 0` guard
+  /// cannot see: `k_var` is built from `(v0, kappa, theta, tau)` and does not
+  /// read `sigma` at all, so the assertion passes and the `NaN` arrives at
+  /// the Jensen correction intact. `f64::NAN.max(0.0)` is `0.0`, so the floor
+  /// used to hand back `sqrt(k_var)` — exactly `0.2` here, which is the
+  /// number `vol_swap_zero_dispersion_recovers_sqrt_var` pins as the *real*
+  /// answer for a genuinely dispersion-free swap. The two were
+  /// indistinguishable.
+  #[test]
+  fn vol_swap_heston_preserves_a_nan_vol_of_vol() {
+    let k = VolatilitySwapPricer::fair_strike_heston(0.04, 1.5, 0.04, f64::NAN, 1.0);
+    assert!(k.is_nan(), "a NaN sigma must exit as NaN, got {k}");
+  }
+
+  /// The poison check must not disturb the dispersion it is guarding: a
+  /// finite vol-of-vol still lowers the strike below `sqrt(k_var)` by the
+  /// convexity correction, and `sigma = 0` still lands exactly on it.
+  #[test]
+  fn vol_swap_heston_is_unchanged_by_the_poison_check() {
+    let naive = 0.04_f64.sqrt();
+    let dispersed = VolatilitySwapPricer::fair_strike_heston(0.09, 1.5, 0.04, 0.3, 1.0);
+    assert!(dispersed.is_finite() && dispersed > 0.0, "{dispersed}");
+    let flat = VolatilitySwapPricer::fair_strike_heston(0.04, 1.5, 0.04, 0.3, 1.0);
+    assert!((flat - naive).abs() < 1e-15, "{flat} vs {naive}");
   }
 
   /// Both branches of `VolatilitySwapPricer::fair_strike_heston` must reject
