@@ -61,53 +61,81 @@ impl RainbowPayoff {
 }
 
 /// Stulz (1982) closed-form pricer for a two-asset max/min option.
-#[derive(Debug, Clone)]
+///
+/// The struct holds **model and contract state only** — the two
+/// volatilities, their correlation, and which of the four best-of/worst-of
+/// payoffs this contract pays. The two spots, the strike, the rate, the two
+/// dividend yields and the maturity are the pricing *query* and travel as
+/// arguments to [`price`](Self::price), so one instance prices a whole
+/// strike/maturity grid.
+///
+/// [`RainbowPayoff`] stays on the struct for the same reason the digitals'
+/// cash payout does: it names *which contract* this is, not how the market
+/// is quoted. It carries a call/put axis of its own, which is the one place
+/// this family departs from the crate's `price_call`/`price_put`
+/// convention — separating that axis out would mean breaking a second
+/// public enum, so the whole payoff travels together.
+///
+/// Nothing derived from a query is cached. The combined spread volatility
+/// $\sqrt{\sigma_1^2+\sigma_2^2-2\rho\sigma_1\sigma_2}$ is model-only, and
+/// is still recomputed per call; $d$, $y_1$ and $y_2$ could not be cached
+/// in any case, since each carries the query's own rates and maturity.
+///
+/// A two-asset payoff carries no [`ModelPricer`](crate::traits::ModelPricer),
+/// whose `price_call(s, k, r, q, tau)` has one underlying. This is the
+/// multi-asset "convention, no trait" family — see
+/// [`KirkSpreadPricer`](crate::pricing::kirk::KirkSpreadPricer).
+///
+/// ```
+/// use stochastic_rs_quant::pricing::rainbow::RainbowPayoff;
+/// use stochastic_rs_quant::pricing::rainbow::StulzRainbowPricer;
+///
+/// let worst_of = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.20, 0.30, 0.5);
+/// let best_of = StulzRainbowPricer::new(RainbowPayoff::CallOnMax, 0.20, 0.30, 0.5);
+/// let cmin = worst_of.price(100.0, 105.0, 100.0, 0.05, 0.0, 0.0, 1.0);
+/// let cmax = best_of.price(100.0, 105.0, 100.0, 0.05, 0.0, 0.0, 1.0);
+/// assert!(cmax > cmin, "the best of two assets is worth more than the worst");
+/// ```
+#[derive(Debug, Clone, Copy)]
 pub struct StulzRainbowPricer {
-  /// Spot 1.
-  pub s1: f64,
-  /// Spot 2.
-  pub s2: f64,
-  /// Strike.
-  pub k: f64,
+  /// Payoff type — a term of the contract, not a market quote, so it stays
+  /// on the struct next to the model rather than travelling with the query.
+  pub payoff: RainbowPayoff,
   /// Volatility 1.
   pub sigma1: f64,
   /// Volatility 2.
   pub sigma2: f64,
   /// Correlation.
   pub rho: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield 1.
-  pub q1: f64,
-  /// Dividend yield 2.
-  pub q2: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Payoff type.
-  pub payoff: RainbowPayoff,
 }
 
 impl StulzRainbowPricer {
-  pub fn price(&self) -> f64 {
-    match self.payoff {
-      RainbowPayoff::CallOnMin => self.call_on_min(),
-      RainbowPayoff::CallOnMax => self.call_on_max(),
-      RainbowPayoff::PutOnMin => self.put_on_min(),
-      RainbowPayoff::PutOnMax => self.put_on_max(),
+  /// Builds the pricer from the payoff this contract pays, the two
+  /// volatilities and their correlation.
+  pub const fn new(payoff: RainbowPayoff, sigma1: f64, sigma2: f64, rho: f64) -> Self {
+    Self {
+      payoff,
+      sigma1,
+      sigma2,
+      rho,
     }
   }
 
-  fn call_on_min(&self) -> f64 {
-    let s1 = self.s1;
-    let s2 = self.s2;
-    let k = self.k;
+  /// Price the contract at one query point.
+  pub fn price(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    match self.payoff {
+      RainbowPayoff::CallOnMin => self.call_on_min(s1, s2, k, r, q1, q2, tau),
+      RainbowPayoff::CallOnMax => self.call_on_max(s1, s2, k, r, q1, q2, tau),
+      RainbowPayoff::PutOnMin => self.put_on_min(s1, s2, k, r, q1, q2, tau),
+      RainbowPayoff::PutOnMax => self.put_on_max(s1, s2, k, r, q1, q2, tau),
+    }
+  }
+
+  fn call_on_min(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     let v1 = self.sigma1;
     let v2 = self.sigma2;
     let rho = self.rho;
-    let r = self.r;
-    let q1 = self.q1;
-    let q2 = self.q2;
-    let t = self.tau;
+    let t = tau;
     let sqrt_t = t.sqrt();
 
     // Combined spread vol
@@ -127,57 +155,46 @@ impl StulzRainbowPricer {
       - k * (-r * t).exp() * bvn(y1 - v1 * sqrt_t, y2 - v2 * sqrt_t, rho)
   }
 
-  fn call_on_max(&self) -> f64 {
+  fn call_on_max(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     use crate::pricing::bsm::BSMCoc;
     use crate::pricing::bsm::BSMPricer;
     use crate::traits::ModelPricer;
 
     // Stulz identity: max(max(S1,S2) - K, 0) = call(S1, K) + call(S2, K)
     // - call_on_min(S1, S2, K)
-    let c1 = BSMPricer::new(self.sigma1, BSMCoc::Merton1973)
-      .price_call(self.s1, self.k, self.r, self.q1, self.tau);
-    let c2 = BSMPricer::new(self.sigma2, BSMCoc::Merton1973)
-      .price_call(self.s2, self.k, self.r, self.q2, self.tau);
-    c1 + c2 - self.call_on_min()
+    let c1 = BSMPricer::new(self.sigma1, BSMCoc::Merton1973).price_call(s1, k, r, q1, tau);
+    let c2 = BSMPricer::new(self.sigma2, BSMCoc::Merton1973).price_call(s2, k, r, q2, tau);
+    c1 + c2 - self.call_on_min(s1, s2, k, r, q1, q2, tau)
   }
 
-  fn put_on_min(&self) -> f64 {
+  fn put_on_min(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     // Stulz identity: max(K - min(S1,S2), 0) = K * e^{-rT} - min_call(0)
     //   = call_on_min(S1, S2, K) - F_min where F_min = E[min(S1,S2)] discounted
     // Easier: put-call parity for min options:
     // put_on_min - call_on_min = K * e^{-rT} - E[min(S1, S2)] * e^{-rT}
     // E[min(S1, S2)] = S1 e^{(r-q1)T} + S2 e^{(r-q2)T} - E[max(S1, S2)]
     // and E[max(S1, S2)] - E[min(S1, S2)] is the Margrabe expected payoff.
-    let call_min = self.call_on_min();
+    let call_min = self.call_on_min(s1, s2, k, r, q1, q2, tau);
     // Use put-call-min parity: P_min = C_min + K e^{-rT} - F_min where
     // F_min = S1 e^{-q1 T} + S2 e^{-q2 T} - F_max and the difference
     // F_max - F_min equals the Margrabe expected payoff $E[(S_1-S_2)^+] +
     // E[(S_2-S_1)^+]$. Use Margrabe to compute it.
     use crate::pricing::spread::MargrabePricer;
-    let m12 = MargrabePricer::new(self.sigma1, self.sigma2, self.rho)
-      .price(self.s1, self.s2, self.q1, self.q2, self.tau);
-    let m21 = MargrabePricer::new(self.sigma2, self.sigma1, self.rho)
-      .price(self.s2, self.s1, self.q2, self.q1, self.tau);
+    let m12 = MargrabePricer::new(self.sigma1, self.sigma2, self.rho).price(s1, s2, q1, q2, tau);
+    let m21 = MargrabePricer::new(self.sigma2, self.sigma1, self.rho).price(s2, s1, q2, q1, tau);
     // F_max + F_min = s1 e^{-q1T} + s2 e^{-q2T}, F_max - F_min = m12 + m21,
     // so F_min = (s1 e^{-q1T} + s2 e^{-q2T} - (m12 + m21)) / 2.
-    let f_min = 0.5
-      * (self.s1 * (-self.q1 * self.tau).exp() + self.s2 * (-self.q2 * self.tau).exp()
-        - (m12 + m21));
-    call_min + self.k * (-self.r * self.tau).exp() - f_min
+    let f_min = 0.5 * (s1 * (-q1 * tau).exp() + s2 * (-q2 * tau).exp() - (m12 + m21));
+    call_min + k * (-r * tau).exp() - f_min
   }
 
-  fn put_on_max(&self) -> f64 {
-    let call_max = self.call_on_max();
+  fn put_on_max(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    let call_max = self.call_on_max(s1, s2, k, r, q1, q2, tau);
     use crate::pricing::spread::MargrabePricer;
-    let m12 = MargrabePricer::new(self.sigma1, self.sigma2, self.rho)
-      .price(self.s1, self.s2, self.q1, self.q2, self.tau);
-    let m21 = MargrabePricer::new(self.sigma2, self.sigma1, self.rho)
-      .price(self.s2, self.s1, self.q2, self.q1, self.tau);
-    let f_max = 0.5
-      * (self.s1 * (-self.q1 * self.tau).exp()
-        + self.s2 * (-self.q2 * self.tau).exp()
-        + (m12 + m21));
-    call_max + self.k * (-self.r * self.tau).exp() - f_max
+    let m12 = MargrabePricer::new(self.sigma1, self.sigma2, self.rho).price(s1, s2, q1, q2, tau);
+    let m21 = MargrabePricer::new(self.sigma2, self.sigma1, self.rho).price(s2, s1, q2, q1, tau);
+    let f_max = 0.5 * (s1 * (-q1 * tau).exp() + s2 * (-q2 * tau).exp() + (m12 + m21));
+    call_max + k * (-r * tau).exp() - f_max
   }
 }
 
@@ -279,6 +296,71 @@ mod tests {
 
   use super::*;
 
+  /// Cross-arch tolerance: these goldens come from `biv_norm` and
+  /// `norm_cdf`, whose last bit is a hostage to FMA contraction and libm
+  /// differences between the aarch64-darwin dev machine and CI's ubuntu
+  /// x86_64.
+  const TOL: f64 = 1e-12;
+
+  /// Values captured from the bundled-market-data `StulzRainbowPricer`
+  /// **before** the model/query reshape. The reshape is an API change only,
+  /// so these must not move. All four payoffs are pinned, because
+  /// `PutOnMin` and `PutOnMax` route through `MargrabePricer`, which the
+  /// same wave reshaped one commit earlier.
+  #[test]
+  fn stulz_matches_pre_refactor_goldens() {
+    let expected = [
+      (RainbowPayoff::CallOnMin, 6.572032430799396),
+      (RainbowPayoff::CallOnMax, 21.3836021143453),
+      (RainbowPayoff::PutOnMin, 10.164180157272469),
+      (RainbowPayoff::PutOnMax, 3.0373392880150476),
+    ];
+    for (payoff, want) in expected {
+      let got = StulzRainbowPricer::new(payoff, 0.20, 0.30, 0.5)
+        .price(100.0, 105.0, 100.0, 0.05, 0.0, 0.0, 1.0);
+      assert!((got - want).abs() < TOL, "{payoff:?} {got}");
+    }
+
+    // Asymmetric: distinct spots, strike, both dividend yields, a negative
+    // correlation and a non-unit maturity, so a query field left behind on
+    // the struct could not survive by coinciding with a default.
+    let asymmetric = [
+      (RainbowPayoff::CallOnMin, 4.089461008811323),
+      (RainbowPayoff::CallOnMax, 39.80815123244825),
+      (RainbowPayoff::PutOnMin, 18.459568337156256),
+      (RainbowPayoff::PutOnMax, 0.4223483563151831),
+    ];
+    for (payoff, want) in asymmetric {
+      let got = StulzRainbowPricer::new(payoff, 0.33, 0.19, -0.4)
+        .price(88.0, 121.0, 95.0, 0.037, 0.021, 0.013, 1.75);
+      assert!((got - want).abs() < TOL, "{payoff:?} {got}");
+    }
+  }
+
+  /// One model instance prices a whole strike grid — the point of the split.
+  #[test]
+  fn stulz_one_model_prices_a_strike_grid() {
+    let model = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.25, 0.30, 0.4);
+    let prices = [90.0, 100.0, 110.0].map(|k| model.price(100.0, 100.0, k, 0.05, 0.0, 0.0, 1.0));
+    assert!(
+      prices[0] > prices[1] && prices[1] > prices[2],
+      "worst-of calls must decay in the strike: {prices:?}"
+    );
+  }
+
+  /// The maturity is a query argument, so one instance covers a term
+  /// structure. A `tau` cached at construction would return the same number
+  /// three times.
+  #[test]
+  fn stulz_one_model_prices_a_maturity_grid() {
+    let model = StulzRainbowPricer::new(RainbowPayoff::CallOnMax, 0.25, 0.30, 0.4);
+    let prices = [0.25, 1.0, 4.0].map(|tau| model.price(100.0, 100.0, 100.0, 0.05, 0.0, 0.0, tau));
+    assert!(
+      prices[0] < prices[1] && prices[1] < prices[2],
+      "best-of calls must rise in tau: {prices:?}"
+    );
+  }
+
   /// Stulz: $C_{\min} + C_{\max} = C_1 + C_2$ (vanilla call sum).
   #[test]
   fn stulz_min_max_decomposition() {
@@ -296,34 +378,10 @@ mod tests {
     let q1 = 0.0;
     let q2 = 0.0;
     let tau = 1.0;
-    let cmin = StulzRainbowPricer {
-      s1,
-      s2,
-      k,
-      sigma1: v1,
-      sigma2: v2,
-      rho,
-      r,
-      q1,
-      q2,
-      tau,
-      payoff: RainbowPayoff::CallOnMin,
-    }
-    .price();
-    let cmax = StulzRainbowPricer {
-      s1,
-      s2,
-      k,
-      sigma1: v1,
-      sigma2: v2,
-      rho,
-      r,
-      q1,
-      q2,
-      tau,
-      payoff: RainbowPayoff::CallOnMax,
-    }
-    .price();
+    let cmin = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, v1, v2, rho)
+      .price(s1, s2, k, r, q1, q2, tau);
+    let cmax = StulzRainbowPricer::new(RainbowPayoff::CallOnMax, v1, v2, rho)
+      .price(s1, s2, k, r, q1, q2, tau);
     let c1 = BSMPricer::new(v1, BSMCoc::Merton1973).price_call(s1, k, r, q1, tau);
     let c2 = BSMPricer::new(v2, BSMCoc::Merton1973).price_call(s2, k, r, q2, tau);
     let lhs = cmin + cmax;
@@ -335,20 +393,8 @@ mod tests {
   #[cfg(feature = "openblas")]
   #[test]
   fn stulz_min_matches_mc() {
-    let stulz = StulzRainbowPricer {
-      s1: 100.0,
-      s2: 100.0,
-      k: 100.0,
-      sigma1: 0.25,
-      sigma2: 0.30,
-      rho: 0.4,
-      r: 0.05,
-      q1: 0.0,
-      q2: 0.0,
-      tau: 1.0,
-      payoff: RainbowPayoff::CallOnMin,
-    }
-    .price();
+    let stulz = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.25, 0.30, 0.4)
+      .price(100.0, 100.0, 100.0, 0.05, 0.0, 0.0, 1.0);
     let mc = McRainbowPricer {
       s: array![100.0, 100.0],
       sigma: array![0.25, 0.30],
@@ -378,20 +424,8 @@ mod tests {
     let v1 = 0.25;
     let v2 = 0.25;
     let rho = 0.0;
-    let cmax = StulzRainbowPricer {
-      s1,
-      s2,
-      k: 100.0,
-      sigma1: v1,
-      sigma2: v2,
-      rho,
-      r: 0.05,
-      q1: 0.0,
-      q2: 0.0,
-      tau: 1.0,
-      payoff: RainbowPayoff::CallOnMax,
-    }
-    .price();
+    let cmax = StulzRainbowPricer::new(RainbowPayoff::CallOnMax, v1, v2, rho)
+      .price(s1, s2, 100.0, 0.05, 0.0, 0.0, 1.0);
     let c1 = BSMPricer::new(v1, BSMCoc::Merton1973).price_call(s1, 100.0, 0.05, 0.0, 1.0);
     assert!(cmax > c1, "cmax={cmax} should be > c1={c1}");
   }
@@ -438,20 +472,8 @@ mod tests {
   /// Stulz put-on-min via parity should be positive.
   #[test]
   fn stulz_put_on_min_positive() {
-    let p = StulzRainbowPricer {
-      s1: 100.0,
-      s2: 105.0,
-      k: 100.0,
-      sigma1: 0.25,
-      sigma2: 0.20,
-      rho: 0.3,
-      r: 0.05,
-      q1: 0.0,
-      q2: 0.0,
-      tau: 0.5,
-      payoff: RainbowPayoff::PutOnMin,
-    };
-    let price = p.price();
+    let p = StulzRainbowPricer::new(RainbowPayoff::PutOnMin, 0.25, 0.20, 0.3);
+    let price = p.price(100.0, 105.0, 100.0, 0.05, 0.0, 0.0, 0.5);
     assert!(price > 0.0, "put_on_min={price}");
   }
 }
