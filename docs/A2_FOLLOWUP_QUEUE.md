@@ -110,7 +110,26 @@ costing anything but tidiness.
   maturity <= 0` (`variance_swap.rs:~210`). Same class as the six sentinels, and
   now inconsistent with the sibling `fair_strike_replication`, which panics on
   exactly those conditions. Found while closing item 2.
-- **6 — Deep-ITM Carr-Madan inversion is unreliable.** At spot 100, `τ=2, K=0.01`
+- **6 — CLOSED** (`2488d33`). The error in `integrate_to_convergence` is now
+  controlled. The proof is the part that matters: **all three pinned
+  `heston_stoch_corr` goldens moved, and each moved toward the independently
+  computed DOP853 + QUADPACK reference by a factor of ~2.6e8** — from ~3e-4 off to
+  ~1e-12 off, i.e. to the reference's own precision.
+
+  | quantity | \|old − ref\| | \|new − ref\| |
+  |---|---|---|
+  | `q=0` call | 3.006e-04 | **1.091e-12** |
+  | `q=0.02` call | 2.945e-04 | **1.128e-12** |
+  | `K=110` | 2.924e-04 | **1.502e-12** |
+
+  **The band test's floor came all the way down**, `K = 20` → `K = 0.01` — the exact
+  strike that used to return 881 915.7 against a spot of 100. Its doc comment had
+  said it stopped at 20 to avoid asserting the quadrature rather than the model;
+  that reason no longer holds. The inversion was also found wrong at **every**
+  strike on the grid, not only deep ones — the deep ones were merely where the
+  `K^{−α}` prefactor made it visible.
+
+  ~~Original:~~ deep-ITM Carr-Madan inversion was unreliable At spot 100, `τ=2, K=0.01`
   returns **881 915.7**; `K=20` returns 10.46 against a lower bound of 77.98. The
   `K^{−α}` damping prefactor amplifies quadrature error. Root cause localised to
   `integrate_to_convergence`'s `tol = 1e-8` and width-50 initial panels — **not**
@@ -207,14 +226,30 @@ costing anything but tidiness.
   arrives as `NaN` legitimately from `TimeExt::tau_or_from_dates`, so an option
   whose expiry never resolved priced at zero through the crate's busiest path.
   That half is now fixed.
-- **19b — the quadrature swallows a `NaN` integrand.**
+- **19b — CLOSED** (`b0e01b6`). A `Cell`-based watcher poisons the result when the
+  integrand is `NaN` at any node the rule evaluates. **The precise mechanism is
+  sharper than "the quadrature eats a NaN":** `double_exponential::integrate`
+  rewrites every non-finite sample to `0.0` *before the rule sees it*, which is
+  why no downstream floor could ever have caught it.
+
+  **`±∞` deliberately keeps the third-party behaviour.** An overflowing integrand
+  is a different case from an undefined one, and the crate's own Lévy loss
+  integrand reaches `∞` transiently on unprojected calibration iterates — poisoning
+  there would abort a run that currently recovers. Same shape as the decision to
+  leave `BSMPricer::new` unvalidated in item 22: the rule is right in the abstract
+  and wrong against a live caller. **Do not "fix" this.**
+
+  ~~Original:~~ the quadrature swallowed a `NaN` integrand
   `pricing/cf_quadrature.rs`'s `integrate_to_convergence` returns `0.0` for an
   integrand that is `NaN` everywhere, so item 19's headline — a `NaN` chf yielding
   a plausible price across all 12 Fourier models — is **still live** on the two
   quadrature paths. Only the FFT path is closed. The swallow originates in the
   third-party `quadrature` crate's `double_exponential`; our wrapper is the only
   place we control, so the guard belongs there.
-- **19c — the same trap, one line from a file already fixed.**
+- **19c — CLOSED** (`65d86d9`). A `NaN` vol-of-vol now propagates through the
+  volatility-swap strike instead of being floored to a plausible `0.2`.
+
+  ~~Original:~~ the same trap, one line from a file already fixed
   `variance_swap.rs:372` — `Self::fair_strike_from_var(k_var, dispersion.max(0.0))`.
   A `NaN` `sigma` passes the `k_var > 0.0` guard, because `k_var` does not depend
   on `sigma`, and the floor then turns the `NaN` dispersion into `0.0`. Measured:
