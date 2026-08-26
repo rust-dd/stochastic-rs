@@ -188,15 +188,34 @@ costing anything but tidiness.
 
 ## Queued — soundness and discoverability
 
-- **10 — Close the registry's proven blind spot.** The shallow half is **done**:
-  `LevyModel` and `CrrModel<f64>` are now registered and `assert_model_pricer!`
-  went 16 → 18 with the header arithmetic re-derived. What remains is the deeper
-  half — Both implement `ModelPricer` and appear nowhere in
-  the file, because its inventory derives from `pub struct *(Pricer|Engine)` and
-  neither is named that way — while the file's opening line claims "every
-  pricer/engine struct in this crate". The deeper fix is a runtime test that
-  re-derives the inventory from source and diffs it against the hand-curated list;
-  a probe struct added during the wave's own review left the test passing.
+- **10 — CLOSED** (`1505ff9`). `registry_matches_crate_source` re-derives the
+  inventory from `src/**/*.rs` with `syn` and diffs it against the hand-curated
+  lists, so the lists are now the assertion rather than the source. The parser is
+  the point: a regex over lines is the technique behind thirteen counting errors
+  in this project, one of them inside `pricer_registry.rs` itself.
+
+  **Two signals, unioned, because neither alone closes it.** Trait membership
+  (`ModelPricer`, `PricingEngine`, `ShortRatePricer`, `VanillaEuropeanCall`)
+  catches what name shape misses — `LevyModel`, `CrrModel`, `Cir`, `HullWhite`,
+  `Vasicek`. Name shape (`pub struct *Pricer` / `*Engine`, matched on the parsed
+  identifier, so `*PricerBuilder` and `*EngineConfig` fall out structurally)
+  catches the orphan, which by definition implements nothing. Everything in the
+  union must sit in a trait list or in `NO_TRAIT_BY_DESIGN` with a reason.
+
+  **Teeth proven the way the blind spot was.** Both probes were added to
+  `pricing/asian.rs` and both failed the test: `ReviewProbeOrphanPricer` — the
+  same struct that passed unnoticed during the wave's own review — and a
+  `ReviewProbeQuietModel` carrying `ModelPricer` under a model's name.
+
+  Turned up in passing: `AnalyticBSEngine`'s second instrument (`DigitalOption`)
+  was a prose caveat, not an assertion. The engine list is now
+  `(engine, instrument)` pairs and went 2 → 3. The `FourierModelExt` blanket
+  impls are pinned too, so a *second* blanket widening what `ModelPricer` covers
+  is a failure rather than a silent change. **Residual blind spot**: a struct
+  that neither carries a pricing trait nor is named `*Pricer`/`*Engine` — a
+  `FooModel` with an inherent `price()` — is in neither signal. Rust cannot
+  enumerate a trait's implementors at run time, so closing that needs a signal
+  the compiler exposes.
 - **11 — Disambiguate the two meanings of `price` and `price_call`.**
   `KirkSpreadPricer::price_call(&self, f1, f2, x, r, tau)` shares the name and the
   5-`f64` arity of `ModelPricer::price_call(s, k, r, q, tau)` with different
