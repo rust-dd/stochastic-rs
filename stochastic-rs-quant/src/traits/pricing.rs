@@ -2,7 +2,9 @@
 
 use crate::OptionType;
 
-/// Aggregate Greek values produced by [`GreeksExt::greeks`].
+/// Aggregate Greek values — the return type shared by the pricers' inherent
+/// `greeks(s, k, r, q, tau, option_type)` aggregators and by
+/// [`GreeksExt::greeks`].
 ///
 /// Members default to [`f64::NAN`] so consumers can identify Greeks the
 /// pricer does not expose. First-order: [`delta`](Self::delta),
@@ -207,25 +209,48 @@ pub trait VanillaEuropeanCall: ModelPricer {
   }
 }
 
-/// Common interface for Greeks reporting.
+/// Greeks for an estimator that has already fixed its query.
 ///
-/// Pricers expose Greeks via inherent methods today (`BSMPricer::delta`,
-/// `CashOrNothingPricer::delta`, …) — this trait gives generic / heterogeneous
-/// code a single dispatch point. Only [`delta`](Self::delta) is required;
-/// pricers that don't compute the higher-order Greeks return [`f64::NAN`]
-/// from the default impls.
+/// Every accessor takes `&self` and nothing else, so an implementor must
+/// carry the spot, strike, rate and maturity on the struct. That is the
+/// bundled shape the rest of the crate retired with `PricerExt`, and this
+/// trait keeps it for the one family where it is not a wart: the Monte Carlo
+/// Malliavin estimators
+/// ([`GbmMalliavinGreeks`](crate::pricing::malliavin_greeks::GbmMalliavinGreeks),
+/// [`HestonMalliavinGreeks`](crate::pricing::malliavin_greeks::HestonMalliavinGreeks)),
+/// which own a simulation rather than a closed form. Their
+/// [`greeks`](Self::greeks) override runs **one** pass and returns
+/// estimators drawn from the same paths; a query-taking signature would
+/// re-simulate per accessor and mix disjoint draws, which is exactly what
+/// the override exists to prevent.
 ///
+/// **The analytic pricers deliberately do not implement it, and cannot.**
+/// Five of them aggregate through an inherent
+/// `greeks(&self, s, k, r, q, tau, option_type) -> Greeks` —
+/// [`BSMPricer`](crate::pricing::bsm::BSMPricer),
+/// [`HestonPricer`](crate::pricing::heston::HestonPricer),
+/// [`Merton1976Pricer`](crate::pricing::merton_jump::Merton1976Pricer),
+/// [`CashOrNothingPricer`](crate::pricing::digital::CashOrNothingPricer) and
+/// [`AssetOrNothingPricer`](crate::pricing::digital::AssetOrNothingPricer),
+/// one identical signature across all five — because they hold model state
+/// only and price a whole grid from a single instance, the same split
+/// [`ModelPricer`] makes. No no-argument accessor can express that. This
+/// trait is therefore *not* the crate's Greeks interface and does not aim to
+/// be: for a pricer, call the inherent method.
+///
+/// It is kept out of `stochastic_rs::prelude` on that basis — a default
+/// import that offered a no-argument Greeks trait beside a query-taking
+/// [`ModelPricer`] advertised a symmetry the crate does not have. Reach it as
+/// `stochastic_rs::traits::GreeksExt` (or `crate::traits::GreeksExt` in-tree).
+///
+/// Only [`delta`](Self::delta) is required; an implementor that does not
+/// compute a higher-order Greek inherits [`f64::NAN`] from the default impl.
 /// Those defaults are case 2 of [the failure
 /// convention](ModelPricer#how-pricing-fails), and the reason they are `NAN`
 /// rather than `0.0` is that a Greek genuinely *is* zero sometimes — the vega
 /// of a deep in-the-money digital, the gamma of a forward. A zero default
-/// would make "this pricer does not expose vega" indistinguishable from
+/// would make "this estimator does not expose vega" indistinguishable from
 /// "vega is zero here", and the two call for opposite responses.
-///
-/// Pricers may have multiple Greek variants (analytical, Malliavin, finite
-/// difference) — the trait exposes the canonical form. For Malliavin /
-/// pathwise Greeks call the inherent methods (`malliavin_greeks::*::delta`)
-/// directly.
 ///
 /// First-order: [`delta`](Self::delta), [`vega`](Self::vega),
 /// [`theta`](Self::theta), [`rho`](Self::rho).

@@ -7,8 +7,8 @@
 //! deliberately feature-flag-free — still belongs here, and
 //! `website/content/docs/concepts/prelude.mdx` tells readers to "reach via
 //! `traits::*`" on exactly that basis. `MalliavinExt`, `MultivariateExt`,
-//! `CallableDist`, `ShortRatePricer` and `VanillaEuropeanCall` are all in
-//! that position.
+//! `CallableDist`, `ShortRatePricer`, `VanillaEuropeanCall` and `GreeksExt`
+//! are all in that position.
 //!
 //! The quant half of the mirror is derivable, so a future omission is
 //! measurable rather than a matter of reading:

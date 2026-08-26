@@ -1,6 +1,6 @@
 ---
 title: Prelude
-description: stochastic_rs::prelude — 28 items in seven groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+description: stochastic_rs::prelude — 27 items in seven groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
 category: concept
 since: 2.0.0
 status: stable
@@ -12,7 +12,7 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **28 items in 7 groups** — re-derive with
+Brings **27 items in 7 groups** — re-derive with
 `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
 `src/lib.rs` any time an item is added or removed; this count has drifted
 before (it read "20 items" for several releases after `VolterraKernel`
@@ -34,18 +34,20 @@ TimeExt
 These are the bounds you write on generic functions. Almost every public
 function in the library carries `T: FloatExt`.
 
-## Pricing (2)
+## Pricing (1)
 
 ```rust
-ModelPricer, GreeksExt
+ModelPricer
 ```
 
 [`ModelPricer`](/docs/concepts/model-pricer) is the concrete-typed pricing
-surface (no `&dyn`); `GreeksExt` gives the unified Greeks aggregator on
-every pricer. The date-aware `PricerExt` that used to sit here was removed
-in 3.0 — `ShortRatePricer` and the multi-asset family's inherent methods
-absorbed the implementors that `ModelPricer` did not, and neither is in
-the prelude.
+surface (no `&dyn`). The date-aware `PricerExt` that used to sit here was
+removed in 3.0 — `ShortRatePricer` and the multi-asset family's inherent
+methods absorbed the implementors that `ModelPricer` did not, and neither is
+in the prelude. `GreeksExt` left this group in `3.0.0-beta`: a pricer's
+Greeks are an inherent `greeks(s, k, r, q, tau, option_type)` method, so the
+no-argument trait beside a query-taking `ModelPricer` advertised a symmetry
+the crate does not have.
 
 ## Calibration (3)
 
@@ -126,6 +128,11 @@ bivariate copulas.
   than call: the first asserts a `ModelPricer` really is a European vanilla
   call so `vol_surface` can invert it, the second bridges a short-rate
   calibration to its model. Reach via `traits::*`.
+- `GreeksExt` — two implementors, both Monte Carlo Malliavin estimators that
+  bundle their query by necessity, and no generic consumer in the workspace.
+  The five analytic pricers that aggregate Greeks do it through an inherent
+  query-taking method they could not put behind a no-argument trait. Reach
+  via `traits::*`.
 
 These are intentionally left out so the prelude is feature-flag-free —
 `use stochastic_rs::prelude::*;` works on every supported feature

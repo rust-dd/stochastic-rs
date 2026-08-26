@@ -109,22 +109,26 @@ The path-dependent family (barriers, lookbacks, cliquets, autocallables,
 Bermudans, chooser, compound, variance/volatility swaps) is trait-less
 for the same reason: each carries its own contract schedule.
 
-## Greeks via `GreeksExt`
+## Greeks
 
-Greeks are a **separate** trait from `ModelPricer` — `GreeksExt` — with
-one required accessor (`delta`) and NaN-defaulted accessors for the rest
-(`gamma`, `vega`, `theta`, `rho`, `vanna`, `charm`, `volga`, `veta`),
-plus an aggregating `greeks()` that calls all nine and packs them into a
-`Greeks` struct (plain `f64` fields, not generic).
+A pricer's Greeks follow the same model/query split as its prices:
+**inherent methods** taking the query, not a trait. `BSMPricer`,
+`HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and
+`AssetOrNothingPricer` each expose
+`greeks(s, k, r, q, tau, option_type) -> Greeks` — one identical signature
+across all five — alongside per-Greek accessors on the same shape. `Greeks`
+is a plain `f64` struct of nine named fields (`delta`, `gamma`, `vega`,
+`theta`, `rho`, `vanna`, `charm`, `volga`, `veta`), NaN where the pricer
+exposes nothing.
 
-Pricers that expose Greeks do so via **inherent methods**
-(`BSMPricer::delta`, `HestonPricer::delta`, …); `GreeksExt` gives generic
-code one dispatch point when it needs to treat several pricer types
-uniformly. The default `greeks()` calls the individual accessors, which
-is fine for analytical pricers but wrong for Monte Carlo pricers unless
-they override it — see the
+`GreeksExt` is **not** that interface. Its accessors take `&self` and
+nothing else, so only an estimator that already owns its query can
+implement it: the Monte Carlo Malliavin pair `GbmMalliavinGreeks` and
+`HestonMalliavinGreeks`, whose `greeks()` override runs a single simulation
+so the returned estimators share their paths — see the
 [greeks-pattern SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/greeks-pattern/SKILL.md)
-for the single-pass protocol MC pricers use instead.
+for that single-pass protocol. It is reached via
+`stochastic_rs::traits::GreeksExt`, not the prelude.
 
 ## `TimeExt` — dates to `tau`
 

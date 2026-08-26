@@ -64,7 +64,8 @@ older summary.
 - `FourierModelExt` — `chf(t, xi)` (characteristic function) + `cumulants(t)`; blanket-implements `ModelPricer` via Gil-Pelaez quadrature. `ModelSurface` (`vol_surface(s, r, q, strikes, maturities)`) blanket-implements over `VanillaEuropeanCall`, **not** over `ModelPricer` — its Black inversion is only meaningful for a European vanilla call, and the marker carries a `vanilla_call_forward` hook so a model whose carry is not `r - q` states its own forward rather than having one assumed
 - `Calibrator` / `CalibrationResult` — `Calibrator::calibrate(initial) -> Result<Output, Error>`, `type Params: Clone`; `type Error` is a free associated type, not fixed by the trait, but all **12** in-tree calibrators set it to `anyhow::Error` by convention. `CalibrationResult` requires `rmse()`/`converged()`/`params()` and defaults `loss_score()`/`iterations()`/`message()` to `None` and `max_error()` to NaN
 - `Instrument` / `InstrumentExt` / `PricingEngine` / `PricingResult` — QuantLib-style decoupling (`AnalyticBSEngine`, `AnalyticHestonEngine`)
-- `GreeksExt` + `Greeks` struct — first- + second-order Greeks (delta/gamma/vega/theta/rho/vanna/charm/volga/veta), aggregator with single-pass override for MC pricers
+- `Greeks` struct — first- + second-order Greeks (delta/gamma/vega/theta/rho/vanna/charm/volga/veta); the return type of the **5** identical inherent `greeks(s, k, r, q, tau, option_type)` aggregators (`BSMPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer`, `AssetOrNothingPricer`)
+- `GreeksExt` — no-argument Greeks for the **2** query-bundled Monte Carlo Malliavin estimators only (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`), whose `greeks()` override shares one simulation across the accessors. Not the crate's Greeks interface and not in the prelude — a pricer's Greeks are the inherent method above
 - `CalendarExt` — pluggable holiday calendars for business day adjustment (`is_business_day`)
 - `DistributionExt` — characteristic function / pdf / cdf / moments. **18/19** distributions implement closed-form (only `ComplexDistribution` lacks; 5 named no-closed-form `unimplemented!()` cases on specific moments — see `project_distribution_ext_status.md` memory). Defaults `unimplemented!("... is not implemented for {type}")`, **never `0.0`**.
 
@@ -74,17 +75,17 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **28** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
+Brings **27** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
 - **Trait core**: `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
-- **Pricing**: `ModelPricer`, `GreeksExt`
+- **Pricing**: `ModelPricer`
 - **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
 - **Instrument / engine**: `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult`
 - **Option types**: `Moneyness`, `OptionStyle`, `OptionType`
 - **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`
 - **Estimation**: `HurstEstimator`, `FractalDimEstimator`, `HypothesisTest`, `DiffusionModel`, `TailDependence`
 
-`MalliavinExt` / `Malliavin2DExt` are intentionally **not** in the prelude (0 in-tree impls — deferred). Reach via `stochastic_rs::traits::MalliavinExt`. `MultivariateExt` (openblas-only) and `CallableDist` (python-only) likewise reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query) and the two markers `VanillaEuropeanCall` / `ToShortRateModel`.
+`MalliavinExt` / `Malliavin2DExt` are intentionally **not** in the prelude (0 in-tree impls — deferred). Reach via `stochastic_rs::traits::MalliavinExt`. `MultivariateExt` (openblas-only) and `CallableDist` (python-only) likewise reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have).
 
 Hub membership is **independent of prelude membership**: `src/traits.rs` mirrors every trait each sub-crate exports from its own `traits` module, prelude-excluded ones included. The quant half is derivable, and `tests/prelude_completeness.rs` turns a dropped re-export into a compile error:
 

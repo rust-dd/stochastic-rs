@@ -28,7 +28,7 @@ generically over the float type via [`FloatExt`](#floatext).
 | `FourierModelExt<T>`      | `stochastic-rs-quant`          | Characteristic function models                         |
 | `Calibrator`              | `stochastic-rs-quant`          | Result-based calibration (`type Params`, `type Error`) |
 | `Instrument`, `PricingEngine` | `stochastic-rs-quant`      | QuantLib-style decoupling of payoff vs engine          |
-| `GreeksExt`               | `stochastic-rs-quant`          | First- + second-order Greeks aggregator (`f64`-only)   |
+| `GreeksExt`               | `stochastic-rs-quant`          | No-argument Greeks for the MC Malliavin estimators     |
 | `MalliavinExt<T>`         | `stochastic-rs-stochastic`     | Finite-difference Malliavin Greeks                     |
 | `CalendarExt`             | `stochastic-rs-quant`          | Pluggable holiday calendars                            |
 | `TimeExt`                 | `stochastic-rs-quant`          | Day-count-aware maturity (`tau_with_dcc`)              |
@@ -149,13 +149,22 @@ the [Quant catalog](/docs/quant) for the calibrators that ship today.
 
 ## `GreeksExt` and the `Greeks` aggregator
 
-`GreeksExt` is a **separate** trait from `ModelPricer` — one required
-accessor (`delta`), NaN-defaulted accessors for the rest, and an
-aggregating `greeks()`. Pricers usually expose Greeks via their own
-inherent methods (`BSMPricer::delta`, `HestonPricer::delta`, …) and may
-or may not also implement `GreeksExt`; MC pricers override the default
-`greeks()` with a single-pass computation that re-uses the path bundle.
-`Greeks` itself is a plain `f64` struct, not generic over `T`:
+`Greeks` is the aggregate: a plain `f64` struct with nine named fields,
+not generic over `T`. It is what a pricer's inherent
+`greeks(s, k, r, q, tau, option_type)` returns — `BSMPricer`,
+`HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and
+`AssetOrNothingPricer` all share that one signature, because they hold model
+state only and price a grid from a single instance.
+
+`GreeksExt` is a **separate**, narrower trait: one required accessor
+(`delta`), NaN-defaulted accessors for the rest, and an aggregating
+`greeks()` — all taking `&self` and nothing else. Only the Monte Carlo
+Malliavin estimators (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`)
+implement it, and for them the bundled query is the point: their `greeks()`
+override runs one simulation so the nine numbers come from the same paths.
+The analytic pricers above cannot implement it and deliberately do not, so
+`GreeksExt` is not the crate's Greeks interface and is not in the prelude —
+reach it via `stochastic_rs::traits::GreeksExt`.
 
 <RustExample path="tests/doctest_concepts_greeks_shape.rs" />
 
