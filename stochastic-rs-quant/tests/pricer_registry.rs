@@ -64,11 +64,17 @@
 //!
 //! A struct that neither carries a pricing trait nor is named `*Pricer` /
 //! `*Engine` — a `FooModel` with an inherent `price()` and nothing else — is in
-//! neither signal and passes unseen. So does a pricer-shaped struct declared
-//! `pub(crate)` rather than `pub`, and anything under `src/python/`, which the
-//! scan skips by path. The first is the real residual: closing it needs a
-//! signal the compiler exposes, and Rust cannot enumerate a trait's
+//! neither signal and passes unseen. That is the real residual: closing it
+//! needs a signal the compiler exposes, and Rust cannot enumerate a trait's
 //! implementors at run time.
+//!
+//! Two narrower gaps, both bounded. The name signal wants `pub`, so a
+//! `pub(crate)` or `pub(super)` pricer is invisible *to that signal* — the
+//! trait signal still sees it if it implements one, and the crate's only such
+//! struct today, `calibration/rbergomi/simulation.rs`'s `MsoeEngine`,
+//! implements none. And anything under `src/python/` is skipped by path,
+//! deliberately: those are `#[cfg(feature = "python")]` wrappers holding their
+//! subject in an `inner` field, with no trait of their own.
 //!
 //! Per the A2 design (`docs/superpowers/specs/2026-08-23-a2-quant-consistency-design.md`,
 //! decision D1), `PricerExt` is retired and this file no longer has a list for
@@ -340,7 +346,7 @@ const BLANKET_IMPLS: &[(&str, &str)] = &[
 
 const MULTI_ASSET: &str = "multi-asset: no single (s, k) query point";
 const PATH_DEPENDENT: &str = "path-dependent: contract parameters live in the struct";
-const FOURIER_ENGINE: &str = "Fourier engine: parameterised by a model, not a model";
+const FOURIER_ENGINE: &str = "Fourier engine: takes the model per call rather than being one";
 const NON_OPTION: &str = "not a single-underlying option pricer";
 
 // Families that deliberately carry no `ModelPricer` implementation, with the
