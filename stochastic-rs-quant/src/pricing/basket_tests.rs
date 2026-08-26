@@ -176,20 +176,13 @@ fn levy_vs_mc_arithmetic() {
     q.view(),
     1.0,
   );
-  let mc = McBasketPricer {
-    s,
-    weights: w,
-    sigma: sig,
-    q,
-    rho,
-    k: 100.0,
-    r: 0.05,
-    tau: 1.0,
-    option_type: OptionType::Call,
-    avg_type: BasketAverageType::Arithmetic,
-    n_paths: 100_000,
-  }
-  .price();
+  let mc = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 100_000).price_call(
+    s.view(),
+    100.0,
+    0.05,
+    q.view(),
+    1.0,
+  );
   let rel = (levy - mc).abs() / mc;
   assert!(rel < 0.03, "levy={levy}, mc={mc}, rel={rel}");
 }
@@ -206,20 +199,13 @@ fn mc_geometric_matches_closed_form() {
     q.view(),
     1.0,
   );
-  let mc = McBasketPricer {
-    s,
-    weights: w,
-    sigma: sig,
-    q,
-    rho,
-    k: 100.0,
-    r: 0.05,
-    tau: 1.0,
-    option_type: OptionType::Call,
-    avg_type: BasketAverageType::Geometric,
-    n_paths: 200_000,
-  }
-  .price();
+  let mc = McBasketPricer::new(w, BasketAverageType::Geometric, sig, rho, 200_000).price_call(
+    s.view(),
+    100.0,
+    0.05,
+    q.view(),
+    1.0,
+  );
   let rel = (cf - mc).abs() / cf;
   assert!(rel < 0.02, "cf={cf}, mc={mc}");
 }
@@ -239,4 +225,43 @@ fn arithmetic_basket_parity() {
   let lhs = c - p;
   let rhs = (-r * tau).exp() * (f - k);
   assert!((lhs - rhs).abs() < 0.01, "lhs={lhs}, rhs={rhs}");
+}
+
+/// One Monte Carlo model instance prices a whole strike grid, both legs.
+/// The strikes are far enough apart that the ordering survives the sampling
+/// error of independent simulations.
+#[cfg(feature = "openblas")]
+#[test]
+fn mc_basket_one_model_prices_a_strike_grid() {
+  let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.4);
+  let model = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 50_000);
+  let calls = [80.0, 100.0, 130.0].map(|k| model.price_call(s.view(), k, 0.05, q.view(), 1.0));
+  let puts = [80.0, 100.0, 130.0].map(|k| model.price_put(s.view(), k, 0.05, q.view(), 1.0));
+  assert!(
+    calls[0] > calls[1] && calls[1] > calls[2],
+    "basket calls must decay in the strike: {calls:?}"
+  );
+  assert!(
+    puts[0] < puts[1] && puts[1] < puts[2],
+    "basket puts must rise in the strike: {puts:?}"
+  );
+}
+
+/// The model and the weights fix how many assets there are; a query that
+/// disagrees is reported by `try_price` as an `Err`, not a panic. Pinned
+/// because that is the reason the check did not move to the constructor.
+#[cfg(feature = "openblas")]
+#[test]
+fn mc_basket_try_price_reports_a_query_dimension_mismatch() {
+  let (_, w, sig, _, rho) = iid_basket(3, 0.25, 0.4);
+  let model = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 1_000);
+  let s = array![100.0, 100.0];
+  let q = array![0.0, 0.0];
+  let err = model
+    .try_price(s.view(), 100.0, 0.05, q.view(), 1.0, OptionType::Call)
+    .expect_err("a two-asset query against a three-asset model is not priceable");
+  assert!(
+    err.to_string().contains("does not match n_assets=2"),
+    "{err}"
+  );
 }

@@ -338,81 +338,130 @@ fn second_moment(
   m
 }
 
-/// Monte Carlo basket option pricer. Supports arithmetic and geometric
-/// payoffs. Uses `ndarray_linalg::Cholesky` for the correlation factor and
-/// is therefore gated behind the `openblas` feature.
+/// Which average the basket is struck against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BasketAverageType {
+  /// $\sum_i w_i S_{i,T}$.
   Arithmetic,
+  /// $\prod_i S_{i,T}^{w_i}$.
   Geometric,
 }
 
+/// Monte Carlo basket option pricer. Supports arithmetic and geometric
+/// payoffs. Uses `ndarray_linalg::Cholesky` for the correlation factor and
+/// is therefore gated behind the `openblas` feature.
+///
+/// The struct holds **model, contract and method state only** — the
+/// per-asset volatilities and their correlation, the basket weights and
+/// which average they are applied to, and the Monte Carlo path count. The
+/// spot vector, the strike, the rate, the dividend-yield vector and the
+/// maturity are the pricing *query* and travel as arguments.
+///
+/// [`BasketAverageType`] sits beside the weights because it is the same kind
+/// of thing: both say what the option is written on, and neither moves when
+/// the market does.
+///
+/// `n_paths` is neither model, contract nor query but a convergence control,
+/// and it sits on the struct for the same reason
+/// `GbmMalliavinPricer` keeps its own path and step counts there.
+///
+/// The dimension and positive-definiteness checks stay in
+/// [`try_price`](Self::try_price) rather than moving to [`new`](Self::new):
+/// `try_price` is the only advertised way to surface either as an `Err`, and
+/// a constructor that panicked on them first would leave it nothing to
+/// report.
 #[cfg(feature = "openblas")]
 #[derive(Debug, Clone)]
 pub struct McBasketPricer {
-  /// Spot prices.
-  pub s: Array1<f64>,
-  /// Weights.
+  /// Weights — a term of the contract, not a market quote.
   pub weights: Array1<f64>,
+  /// Average type — likewise a term of the contract.
+  pub avg_type: BasketAverageType,
   /// Volatilities.
   pub sigma: Array1<f64>,
-  /// Dividend yields.
-  pub q: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
-  /// Strike.
-  pub k: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option type.
-  pub option_type: OptionType,
-  /// Average type.
-  pub avg_type: BasketAverageType,
   /// Number of MC paths.
   pub n_paths: usize,
 }
 
 #[cfg(feature = "openblas")]
 impl McBasketPricer {
-  /// Falliable variant of [`Self::price`] that surfaces invalid inputs
+  /// Builds the pricer from the basket weights and the average they are
+  /// applied to, the per-asset volatilities and their correlation matrix,
+  /// plus the Monte Carlo path count every price off this instance uses.
+  pub fn new(
+    weights: Array1<f64>,
+    avg_type: BasketAverageType,
+    sigma: Array1<f64>,
+    rho: Array2<f64>,
+    n_paths: usize,
+  ) -> Self {
+    Self {
+      weights,
+      avg_type,
+      sigma,
+      rho,
+      n_paths,
+    }
+  }
+
+  /// Falliable variant of [`Self::price_option`] that surfaces invalid inputs
   /// (non-SPD correlation, dimension mismatch) as an `Err` instead of a panic.
-  pub fn try_price(&self) -> anyhow::Result<f64> {
-    let n_assets = self.s.len();
+  pub fn try_price(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+    option_type: OptionType,
+  ) -> anyhow::Result<f64> {
+    let n_assets = s.len();
     if self.rho.shape() != [n_assets, n_assets] {
       anyhow::bail!(
         "rho shape {:?} does not match n_assets={n_assets}",
         self.rho.shape()
       );
     }
-    if self.weights.len() != n_assets || self.sigma.len() != n_assets || self.q.len() != n_assets {
+    if self.weights.len() != n_assets || self.sigma.len() != n_assets || q.len() != n_assets {
       anyhow::bail!(
         "weights/sigma/q lengths must match n_assets={n_assets} (got {}/{}/{})",
         self.weights.len(),
         self.sigma.len(),
-        self.q.len()
+        q.len()
       );
     }
     let _ = self
       .rho
       .cholesky(UPLO::Lower)
       .map_err(|e| anyhow::anyhow!("correlation matrix is not positive definite: {e}"))?;
-    Ok(self.price())
+    Ok(self.price_option(s, k, r, q, tau, option_type))
   }
 
-  pub fn price(&self) -> f64 {
-    let n_assets = self.s.len();
+  /// Price either leg at one query point with a single simulation.
+  ///
+  /// # Panics
+  /// If the correlation matrix is not positive definite — call
+  /// [`try_price`](Self::try_price) to handle that gracefully.
+  pub fn price_option(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    let n_assets = s.len();
     let l: Array2<f64> = self.rho.cholesky(UPLO::Lower).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)
-      .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.tau)
+      .map(|i| (r - q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * tau)
       .collect();
-    let vols: Vec<f64> = (0..n_assets)
-      .map(|i| self.sigma[i] * self.tau.sqrt())
-      .collect();
-    let phi = match self.option_type {
+    let vols: Vec<f64> = (0..n_assets).map(|i| self.sigma[i] * tau.sqrt()).collect();
+    let phi = match option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
@@ -436,7 +485,7 @@ impl McBasketPricer {
           zc[i] = acc;
         }
         let s_t: Vec<f64> = (0..n_assets)
-          .map(|i| self.s[i] * (drifts[i] + vols[i] * zc[i]).exp())
+          .map(|i| s[i] * (drifts[i] + vols[i] * zc[i]).exp())
           .collect();
         let basket = match self.avg_type {
           BasketAverageType::Arithmetic => {
@@ -450,11 +499,35 @@ impl McBasketPricer {
             log_g.exp()
           }
         };
-        (phi * (basket - self.k)).max(0.0)
+        (phi * (basket - k)).max(0.0)
       })
       .sum();
 
-    (-self.r * self.tau).exp() * sum / n_paths as f64
+    (-r * tau).exp() * sum / n_paths as f64
+  }
+
+  /// Price the basket call at one query point.
+  pub fn price_call(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> f64 {
+    self.price_option(s, k, r, q, tau, OptionType::Call)
+  }
+
+  /// Price the basket put at one query point.
+  pub fn price_put(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> f64 {
+    self.price_option(s, k, r, q, tau, OptionType::Put)
   }
 }
 
