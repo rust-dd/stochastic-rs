@@ -135,7 +135,50 @@ costing anything but tidiness.
   `integrate_to_convergence`'s `tol = 1e-8` and width-50 initial panels — **not**
   the RK4 step, which moves the result by 2e-12. Prices at `K >= 0.2·S` are
   unaffected, which is why nothing catches it. Found while closing item 1.
-- **7 — `HestonSlvPricer` spot anchoring.** `LeverageSurface` is indexed by
+- **7 — CLOSED** (`19e2982` split, `8c2aa86` guard). The bound is the **surface's own
+  grid extent** — `spots[0]..=spots[last]`, `tau in 0..=times[last]` — not a picked
+  tolerance, and out-of-extent queries return documented `NaN`.
+
+  **What the surface actually does at its edge:** a *flat hold* of the nearest edge
+  value, forever, on both axes and in both directions. Measured — and the
+  measurement is what settles it: two surfaces with **identical edge columns** but
+  interiors differing 3x returned **bit-identical** prices at `s = 1000`, while
+  disagreeing by **95 %** at the calibration spot. Far enough out, the calibrated
+  interior contributes literally nothing.
+
+  **How invisible it was:** the clamped price at `s = 1000` was **60 % low** against
+  a surface that carried the calibrated shape out there — yet finite, positive,
+  strictly inside the no-arbitrage band, and **within 0.2 % of a plain Black price
+  at sigma = 0.2**. Nothing marked it.
+
+  **Why the grid edge and not a tighter bound:** the "interior discarded" regime
+  does *not* start at the edge — at `s = 131` and `s = 60` paths still diffuse back
+  in. Any tighter line would be a diffusion distance depending on `tau`, `v0` and
+  `L` itself. The grid edge is the only line the **data** draws.
+
+  **`NaN`, not panic**, and correctly reasoned: the crate's convention names *"a
+  strike outside a Fourier pricer's truncation grid"* as case 2, which is literally
+  this shape. The rate anchor panics because it contradicts state the pricer
+  *recorded*; a moved spot is a market state. The rate check runs first, so a query
+  wrong on both counts still panics. Unlike the rate anchor this applies to **both**
+  constructors — extent belongs to the surface, rate provenance only to a
+  calibration.
+
+  **Two bonus defects, both predicted by the standing trap list.** A `NaN`
+  coordinate was **laundered into an edge value** (`L(NaN, 0.5) = 1.9`), because
+  `fractional_index` falls through its loop and returns `n-1`. And
+  `price_call(-100, …)` returned a confident **`0.0`**: `ln(s)` is `NaN` for `s < 0`
+  and `(NaN - k).max(0.0)` is `0.0` — the `f64::max` trap again, third sighting.
+
+  **Scope note:** the *maturity* half of the same clamp was closed with it (6.8 %
+  error at `tau=1`, 22.7 % at `tau=2` past a 0.5 horizon). One object, one flat
+  hold, one silence — closing half would have left the defect live.
+
+  `slv.rs` (577 lines, the queue's 572 was stale) split into
+  `slv/{mod,calibration,pricer}.rs` + `pricer/tests.rs` at 306/207/218/181, all
+  under the 400 soft target. Verified a pure move.
+
+  ~~Original:~~ `HestonSlvPricer` spot anchoring `LeverageSurface` is indexed by
   absolute spot and `calibrate_leverage` takes a specific `s0`, so pricing far from
   it walks into the surface's clamped boundary, unguarded. Same "precomputed
   against something the query can contradict" shape as the rate bug fixed in
