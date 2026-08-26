@@ -32,6 +32,26 @@ impl HestonStochCorrPricer {
 
     let integral = integrate_to_convergence(integrand, 0.0, 1e-8);
     let call = (-alpha * log_k).exp() * FRAC_1_PI * integral;
-    call.max(0.0)
+    floor_price(call)
   }
+}
+
+/// Floor a price at zero **without** swallowing a `NaN`.
+///
+/// A floor and a poison-check are different operations, and `f64::max` runs
+/// them together into one wrong answer: it returns the non-`NaN` operand, so
+/// `f64::NAN.max(0.0)` is `0.0`. The deep-wing inversion really can come back
+/// a few ulp below zero and that value should floor; a `NaN` has no price to
+/// floor and travels on, as [the failure
+/// convention](crate::traits::ModelPricer#how-pricing-fails) requires.
+///
+/// Every non-finite market input poisons this model's characteristic
+/// function — `tau` through the Rk4 step size, `s` through `ln S`, `r` and
+/// `q` through the drift — and `tau` arrives as `NaN` legitimately from
+/// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt). Same shape as
+/// `pricing/fourier/pricer.rs`'s floor of the same name and
+/// `VarianceSwapPricer::fair_strike_replication`'s.
+#[inline]
+pub(super) fn floor_price(x: f64) -> f64 {
+  if x.is_nan() { x } else { x.max(0.0) }
 }

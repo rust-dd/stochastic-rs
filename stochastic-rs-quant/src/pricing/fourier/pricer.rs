@@ -405,6 +405,22 @@ mod tests {
     );
   }
 
+  /// The headline of the sentinel item: a `NaN` characteristic function used
+  /// to reach neither floor, because the swallow happened upstream.
+  /// `integrate_to_convergence` returned `0.0` for a wholly-`NaN` integrand,
+  /// so `p1 = p2 = 0.5` and Gil-Pelaez handed back `2.438528774964297` while
+  /// Lewis handed back `100.00000000000001` — the spot. Two well-scaled fake
+  /// prices, which is worse than a zero: nothing about either says the model
+  /// blew up.
+  #[test]
+  fn quadrature_pricers_preserve_nan_from_chf_blowup() {
+    let gp = GilPelaezPricer::price_call(&NanChfModel, 100.0, 100.0, 0.05, 0.0, 1.0);
+    let lw = LewisPricer::price_call(&NanChfModel, 100.0, 100.0, 0.05, 0.0, 1.0);
+    for (name, p) in [("gil-pelaez", gp), ("lewis", lw)] {
+      assert!(p.is_nan(), "{name} must exit as NaN on a NaN chf, got {p}");
+    }
+  }
+
   /// Each of `s`, `k`, `r` and `tau` reaches the final floor as a `NaN` when
   /// supplied as one, and `tau` is not hypothetical: `TimeExt::tau_or_from_dates`
   /// documents `NaN` as its missing-data return, so an option whose expiry date

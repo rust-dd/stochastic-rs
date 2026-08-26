@@ -395,6 +395,35 @@ fn hscm_put_is_parity_and_is_floored_at_zero() {
   );
 }
 
+/// A non-finite market input has to survive the Carr-Madan inversion. Every
+/// one of them poisons the characteristic function, and the quadrature used
+/// to swallow that `NaN` and return `0.0` — after which `call.max(0.0)`
+/// could not have recovered it anyway, since `f64::NAN.max(0.0)` is `0.0`.
+/// So both halves are needed: the poison check in the quadrature, and a
+/// floor here that tests for `NaN` before it clamps.
+///
+/// `tau` is not a hypothetical: [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt)
+/// documents `NaN` as its missing-data return, so an option whose expiry
+/// never resolved priced at exactly zero through this pricer.
+#[test]
+fn hscm_preserves_nan_market_inputs() {
+  let m = paper_model();
+  let nan = f64::NAN;
+  for (name, s, k, r, q, tau) in [
+    ("tau", 100.0, 105.0, 0.05, 0.02, nan),
+    ("s", nan, 105.0, 0.05, 0.02, 0.75),
+    ("k", 100.0, nan, 0.05, 0.02, 0.75),
+    ("r", 100.0, 105.0, nan, 0.02, 0.75),
+    ("q", 100.0, 105.0, 0.05, nan, 0.75),
+  ] {
+    let call = m.price_call_carr_madan(s, k, r, q, tau);
+    assert!(call.is_nan(), "NaN {name} must exit as NaN, got {call}");
+    let (c, p) = m.call_put(s, k, r, q, tau);
+    assert!(c.is_nan(), "NaN {name} must leave call_put's call NaN, got {c}");
+    assert!(p.is_nan(), "NaN {name} must leave call_put's put NaN, got {p}");
+  }
+}
+
 /// The capability the reshape exists for: one model, a whole grid.
 #[test]
 fn hscm_one_model_prices_a_grid() {

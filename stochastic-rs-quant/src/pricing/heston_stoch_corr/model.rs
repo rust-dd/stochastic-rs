@@ -2,6 +2,7 @@
 //! Characteristic-function logic lives in [`super::cf`], Carr-Madan
 //! inversion in [`super::pricer`].
 
+use super::pricer::floor_price;
 use crate::OptionType;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -141,11 +142,16 @@ impl HestonStochCorrPricer {
   /// Call and put price at one query point. Both legs are floored at zero:
   /// the Carr-Madan inversion is a numerical quadrature and can return a
   /// small negative value deep out of the money.
+  ///
+  /// Returns `(NaN, NaN)` when any of `s`, `k`, `r`, `q` or `tau` is
+  /// non-finite. The floor tests for `NaN` before it clamps — see
+  /// `floor_price` in [`super::pricer`] — because `f64::max` would otherwise
+  /// turn an undefined price into a plausible zero.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let call = self.price_call_carr_madan(s, k, r, q, tau);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
-    (call.max(0.0), put.max(0.0))
+    (floor_price(call), floor_price(put))
   }
 
   /// Black volatility implied by `price` at one query point.
