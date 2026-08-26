@@ -145,6 +145,15 @@ explicit `tau` or an `(eval, expiration)` pair under a day-count
 convention, and `tau_with_dcc(dcc)` overrides the convention explicitly.
 Convert at the call site, then price.
 
+**Instruments implement it; pricers do not.** `EuropeanOption` and
+`DigitalOption` own a maturity and resolve it; a pricer holds model state and
+receives $\tau$ as a query argument, so it has no dates to resolve. The
+design that retired `PricerExt` also suggested moving this trait's role into
+the calendar module — that is dropped rather than pending. The date
+arithmetic is already there (`DayCountConvention::year_fraction`, which both
+derivations call); what `TimeExt` adds is the instrument-side question of
+*which* maturity slot is populated, and that belongs on the instrument.
+
 ## What replaced `PricerExt`
 
 Before 3.0 a second trait, `PricerExt: TimeExt`, bundled the market data

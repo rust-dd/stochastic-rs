@@ -119,17 +119,19 @@ impl AnalyticBSEngine {
   /// `opt.kind`, so [`calculate`](PricingEngine::calculate) picks that and
   /// this supplies the query both arms share.
   ///
-  /// τ is read straight off `opt.tau` rather than through
-  /// [`TimeExt`](crate::traits::TimeExt), because [`DigitalOption`] does not
-  /// implement it — the `(eval, expiry)` pair it carries is inert. That is
-  /// the one input the two arms of this engine still resolve differently.
+  /// τ resolves through the instrument's own
+  /// [`TimeExt`](crate::traits::TimeExt), exactly as in
+  /// [`model_and_query`](Self::model_and_query). The two arms of this engine
+  /// used to differ here — this one read `opt.tau` directly, so a
+  /// date-constructed [`DigitalOption`] priced at [`f64::NAN`] while an
+  /// otherwise identical [`EuropeanOption`] resolved its dates.
   fn digital_query(&self, opt: &DigitalOption) -> (f64, f64, f64, f64, f64) {
     (
       Self::read_quote(&self.s),
       opt.strike,
       Self::read_quote(&self.r),
       Self::read_quote(&self.dividend_yield),
-      opt.tau.unwrap_or(f64::NAN),
+      opt.tau_or_from_dates(),
     )
   }
 }
@@ -167,13 +169,14 @@ impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   /// engine, so [`PricingResult::greeks`](crate::traits::PricingResult) stays
   /// at [`Greeks::nan`](crate::traits::Greeks::nan).
   ///
-  /// The NPV is [`f64::NAN`] when `opt.tau` is unset, following the same
-  /// missing-data convention as [`crate::traits::TimeExt::tau_or_from_dates`],
-  /// **and** when any of the `s`, `volatility`, `r` or `dividend_yield`
-  /// handles is unlinked. The two used to disagree: a missing maturity
-  /// poisoned the result while a missing spot read as `0.0` and priced the
-  /// digital at a zero spot, so one unpopulated input reported itself and the
-  /// other did not.
+  /// The NPV is [`f64::NAN`] when the instrument's maturity does not resolve
+  /// — neither an explicit `tau` nor an `(eval, expiry)` pair — following the
+  /// same missing-data convention as
+  /// [`crate::traits::TimeExt::tau_or_from_dates`], **and** when any of the
+  /// `s`, `volatility`, `r` or `dividend_yield` handles is unlinked. The two
+  /// used to disagree: a missing maturity poisoned the result while a missing
+  /// spot read as `0.0` and priced the digital at a zero spot, so one
+  /// unpopulated input reported itself and the other did not.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
     let (s, k, r, q, tau) = self.digital_query(opt);
     let sigma = Self::read_quote(&self.volatility);
@@ -380,5 +383,59 @@ mod tests {
       let want = AssetOrNothingPricer::new(0.25).price_option(s, k, r, q, tau, ot);
       assert_eq!(got, want, "asset-or-nothing {ot:?}");
     }
+  }
+
+  /// The two arms of this engine now resolve their maturity identically. At
+  /// BASE the dated digital priced at `NaN` — `digital_query` read `opt.tau`
+  /// directly and the `(eval, expiry)` pair was inert — while the dated
+  /// European beside it priced normally off the same dates.
+  ///
+  /// Both halves are asserted: that the dated digital prices at all, and
+  /// that it prices *bit-identically* to the τ the dates resolve to. The
+  /// first alone would pass on any finite wrong number.
+  #[test]
+  fn a_date_built_digital_prices_like_the_tau_the_dates_resolve_to() {
+    let eval = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let expiry = chrono::NaiveDate::from_ymd_opt(2024, 7, 1).unwrap();
+    let tau = 182.0 / 365.0;
+    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.05, 0.02);
+
+    for ot in [OptionType::Call, OptionType::Put] {
+      let dated = DigitalOption::cash_or_nothing_dates(105.0, ot, 10.0, eval, expiry);
+      let by_tau = DigitalOption::cash_or_nothing(105.0, ot, 10.0, tau);
+      let got = PricingEngine::<DigitalOption>::calculate(&engine, &dated).npv();
+      assert!(got.is_finite(), "dated cash-or-nothing {ot:?} priced {got}");
+      assert_eq!(
+        got,
+        PricingEngine::<DigitalOption>::calculate(&engine, &by_tau).npv(),
+        "dated cash-or-nothing {ot:?} must match its explicit-tau twin"
+      );
+
+      let dated = DigitalOption::asset_or_nothing_dates(105.0, ot, eval, expiry);
+      let by_tau = DigitalOption::asset_or_nothing(105.0, ot, tau);
+      let got = PricingEngine::<DigitalOption>::calculate(&engine, &dated).npv();
+      assert!(
+        got.is_finite(),
+        "dated asset-or-nothing {ot:?} priced {got}"
+      );
+      assert_eq!(
+        got,
+        PricingEngine::<DigitalOption>::calculate(&engine, &by_tau).npv(),
+        "dated asset-or-nothing {ot:?} must match its explicit-tau twin"
+      );
+    }
+  }
+
+  /// The missing-maturity case is unchanged by the `TimeExt` routing: no
+  /// `tau` and no date pair is still `NaN`, not a zero maturity.
+  #[test]
+  fn a_digital_with_neither_tau_nor_dates_still_does_not_price() {
+    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.05, 0.02);
+    let opt = DigitalOption {
+      tau: None,
+      ..DigitalOption::cash_or_nothing(105.0, OptionType::Call, 10.0, 0.5)
+    };
+    let npv = PricingEngine::<DigitalOption>::calculate(&engine, &opt).npv();
+    assert!(npv.is_nan(), "unset maturity must not price, got {npv}");
   }
 }

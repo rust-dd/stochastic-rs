@@ -1,6 +1,45 @@
 //! Time / day-count traits — `TimeExt`.
 
+/// Day-count-aware maturity for a type that **owns** one.
+///
+/// [`tau`](Self::tau) is the only required member; the derived accessors
+/// resolve τ either from it or from an `(eval, expiration)` pair through a
+/// [`DayCountConvention`](crate::calendar::DayCountConvention).
+///
+/// # Who implements it
+///
+/// Instruments, and only instruments:
+/// [`EuropeanOption`](crate::instruments::equity::EuropeanOption) and
+/// [`DigitalOption`](crate::instruments::equity::DigitalOption). Both are
+/// read by [`AnalyticBSEngine`](crate::pricing::engines::AnalyticBSEngine),
+/// the European one also by
+/// [`AnalyticHestonEngine`](crate::pricing::engines::AnalyticHestonEngine).
+///
+/// **No pricer implements this trait**, and none should: a pricer holds
+/// model state and takes τ as a query argument, so it has no maturity of its
+/// own to resolve. That is the whole of the split — the instrument owns the
+/// date pair, converts once, and hands the engine a number.
+///
+/// # Why it is not in the calendar module
+///
+/// The design that retired `PricerExt` also said this trait's role should
+/// move toward [`crate::calendar`] rather than live on the pricer. The half
+/// about the pricer happened: `PricerExt: TimeExt` is gone and the pricer
+/// side of the trait went with it.
+///
+/// The move into `calendar` is **dropped, not deferred.** The arithmetic is
+/// already there —
+/// [`DayCountConvention::year_fraction`](crate::calendar::DayCountConvention::year_fraction)
+/// is what both derivations below call, and this trait adds no date maths of
+/// its own. What it adds is the instrument-side question "*which* of my two
+/// maturity slots is populated", which is an instrument concern; relocating
+/// it would put that concern inside a date-arithmetic module and leave the
+/// instruments importing a calendar type to describe themselves. A third
+/// implementor, when one arrives, will be an instrument too.
 pub trait TimeExt {
+  /// Maturity in years, when the instrument was given one directly.
+  ///
+  /// `None` means "ask the date pair instead" — it is not zero.
   fn tau(&self) -> Option<f64>;
 
   fn eval(&self) -> Option<chrono::NaiveDate> {

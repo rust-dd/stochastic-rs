@@ -89,6 +89,12 @@ impl TimeExt for EuropeanOption {
 }
 
 /// Cash-or-nothing or asset-or-nothing digital option.
+///
+/// Maturity may be specified either in years (`tau`) or as a calendar date
+/// pair (`eval`/`expiry`), exactly as on [`EuropeanOption`] — the two share
+/// [`AnalyticBSEngine`](crate::pricing::engines::AnalyticBSEngine) and had
+/// to be told apart by which constructor built them until
+/// [`TimeExt`] arrived here.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DigitalOption {
   pub strike: f64,
@@ -109,6 +115,7 @@ pub enum DigitalKind {
 }
 
 impl DigitalOption {
+  /// Cash-or-nothing digital with maturity in years.
   pub const fn cash_or_nothing(strike: f64, option_type: OptionType, cash: f64, tau: f64) -> Self {
     Self {
       strike,
@@ -120,6 +127,30 @@ impl DigitalOption {
     }
   }
 
+  /// Cash-or-nothing digital with calendar dates — the digital counterpart
+  /// of [`EuropeanOption::new_dates`].
+  ///
+  /// Like its counterpart it validates nothing: an `expiry` before `eval`
+  /// yields a negative τ rather than a panic. Guarding only here would swap
+  /// the asymmetry this constructor exists to remove for a new one.
+  pub const fn cash_or_nothing_dates(
+    strike: f64,
+    option_type: OptionType,
+    cash: f64,
+    eval: chrono::NaiveDate,
+    expiry: chrono::NaiveDate,
+  ) -> Self {
+    Self {
+      strike,
+      option_type,
+      kind: DigitalKind::CashOrNothing { cash },
+      tau: None,
+      eval: Some(eval),
+      expiry: Some(expiry),
+    }
+  }
+
+  /// Asset-or-nothing digital with maturity in years.
   pub const fn asset_or_nothing(strike: f64, option_type: OptionType, tau: f64) -> Self {
     Self {
       strike,
@@ -130,11 +161,48 @@ impl DigitalOption {
       expiry: None,
     }
   }
+
+  /// Asset-or-nothing digital with calendar dates — the digital counterpart
+  /// of [`EuropeanOption::new_dates`], and unvalidated for the same reason
+  /// as [`cash_or_nothing_dates`](Self::cash_or_nothing_dates).
+  pub const fn asset_or_nothing_dates(
+    strike: f64,
+    option_type: OptionType,
+    eval: chrono::NaiveDate,
+    expiry: chrono::NaiveDate,
+  ) -> Self {
+    Self {
+      strike,
+      option_type,
+      kind: DigitalKind::AssetOrNothing,
+      tau: None,
+      eval: Some(eval),
+      expiry: Some(expiry),
+    }
+  }
 }
 
 impl Instrument for DigitalOption {
   fn instrument_kind(&self) -> &'static str {
     "DigitalOption"
+  }
+}
+
+/// The same reasoning as [`EuropeanOption`]'s impl above, and the same three
+/// fields — the struct carried `(eval, expiry)` from the start, but nothing
+/// read them, so a date-built digital priced at [`f64::NAN`] while its
+/// sibling in this file, through the same engine, resolved its dates.
+impl TimeExt for DigitalOption {
+  fn tau(&self) -> Option<f64> {
+    self.tau
+  }
+
+  fn eval(&self) -> Option<chrono::NaiveDate> {
+    self.eval
+  }
+
+  fn expiration(&self) -> Option<chrono::NaiveDate> {
+    self.expiry
   }
 }
 
@@ -154,5 +222,69 @@ mod tests {
   fn digital_option_kind() {
     let opt = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, 0.5);
     assert_eq!(opt.instrument_kind(), "DigitalOption");
+  }
+
+  fn jan_first() -> chrono::NaiveDate {
+    chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()
+  }
+
+  fn jul_first() -> chrono::NaiveDate {
+    chrono::NaiveDate::from_ymd_opt(2024, 7, 1).unwrap()
+  }
+
+  /// The point of the item: the same date pair must give the same τ on both
+  /// instruments in this file. It resolved on one and returned `NaN` on the
+  /// other until `DigitalOption` gained its `TimeExt` impl.
+  #[test]
+  fn digital_resolves_dates_like_its_european_sibling() {
+    let european = EuropeanOption::new_dates(100.0, OptionType::Call, jan_first(), jul_first());
+    let cash =
+      DigitalOption::cash_or_nothing_dates(100.0, OptionType::Call, 1.0, jan_first(), jul_first());
+    let asset =
+      DigitalOption::asset_or_nothing_dates(100.0, OptionType::Call, jan_first(), jul_first());
+
+    // 2024 is a leap year: 2024-01-01 to 2024-07-01 is 182 days, Actual/365F.
+    let expected = 182.0 / 365.0;
+    assert_eq!(european.tau_or_from_dates(), expected);
+    assert_eq!(cash.tau_or_from_dates(), expected);
+    assert_eq!(asset.tau_or_from_dates(), expected);
+  }
+
+  /// An explicit `tau` still short-circuits the date path, so the two
+  /// existing constructors are untouched by the new impl.
+  #[test]
+  fn digital_explicit_tau_short_circuits_the_date_path() {
+    let cash = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, 0.5);
+    let asset = DigitalOption::asset_or_nothing(100.0, OptionType::Call, 0.5);
+    assert_eq!(cash.tau_or_from_dates(), 0.5);
+    assert_eq!(asset.tau_or_from_dates(), 0.5);
+  }
+
+  /// Neither path available is still `NaN` — the fields are `pub`, so this
+  /// state is reachable by struct literal even though no constructor builds
+  /// it.
+  #[test]
+  fn digital_without_tau_or_dates_is_nan() {
+    let opt = DigitalOption {
+      strike: 100.0,
+      option_type: OptionType::Call,
+      kind: DigitalKind::AssetOrNothing,
+      tau: None,
+      eval: None,
+      expiry: None,
+    };
+    assert!(opt.tau_or_from_dates().is_nan());
+  }
+
+  /// `dcc()` defaults to `None`, so an explicit override reaches the digital
+  /// the same way it reaches `EuropeanOption`.
+  #[test]
+  fn digital_honours_an_explicit_day_count_override() {
+    let cash =
+      DigitalOption::cash_or_nothing_dates(100.0, OptionType::Call, 1.0, jan_first(), jul_first());
+    assert_eq!(
+      cash.tau_with_dcc(crate::calendar::DayCountConvention::Actual360),
+      182.0 / 360.0
+    );
   }
 }
