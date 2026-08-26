@@ -87,3 +87,6 @@ yahoo_finance_api = { workspace = true, optional = true }
 tokio-test = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
+
+[dev-dependencies]
+syn = { workspace = true }

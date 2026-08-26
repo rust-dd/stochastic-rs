@@ -102,6 +102,7 @@ tokio-test = "0.4.4"
 # Dev
 romu = "0.8.0"
 criterion = { version = "0.8", features = ["html_reports"] }
+syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
 
 [package]
 name = "stochastic-rs"
