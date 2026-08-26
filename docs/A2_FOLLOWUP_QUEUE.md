@@ -232,20 +232,84 @@ costing anything but tidiness.
   `atm_total_variance` hit its `n == 0` branch returning `0.0`, making `[0.0, 0.0]`
   trivially non-decreasing. "Nothing violated" and "nothing checked" collapsed to
   one answer.
-- **21 — `Merton1976Pricer::price_call` returns `NaN` at exactly `S == K`** under
-  `Black1976`/`Asay1982`: `term_vol(0, τ)` is `0.0`, so `d1 = ∞ · 0`. Pre-existing.
+- **21 — CLOSED** (`8ad5e81`). The `0/0` point is a **removable singularity**, so it
+  is computed rather than documented away. Along `σ → 0⁺` at the forward,
+  `d₁ = σ√τ/2 → 0⁺` and `d₂ = −σ√τ/2 → 0⁻`, so **both CDFs converge to ½** and the
+  term tends to `½(Se^{(b−r)τ} − Ke^{−rτ})` — which is 0, because being at the
+  forward *is* `Se^{bτ} = K`. The fix writes that as an expression rather than the
+  constant `0`, so a non-finite `r` still propagates instead of becoming a
+  confident zero.
+
+  **Why it went unnoticed, and it is the carry fix that explains it:** under
+  `Black1976`/`Asay1982` `b = 0` puts the forward at `S`, so the singular strike
+  *is* the ATM strike — the most-quoted point on a futures-option surface. Under
+  the carrying conventions it sits at `Se^{bτ}`, a strike nobody quotes exactly.
+  Proved not to be a `BSMCoc` special case: `Bsm1973` at `r = 0` moves its forward
+  onto the strike and reproduces the `NaN`.
 
 ## Queued — found while closing items 8 and 9
 
-- **22 — `HestonStaticParams::new` is still an unvalidated `const fn`**
+- **22 — CLOSED** (`bc3afc5`). Thirteen constructors now validate and are no longer
+  `const fn`. The split was **measured, not reasoned**: a probe constructed all 14
+  with invalid parameters and recorded what came back. 13 of 14 returned a wrong
+  *number* rather than an obvious failure — `AsianPricer` a **negative call**
+  (−4.455) at `v = −0.25`, `SabrPricer` **the spot** (100.0) at `beta = 5`,
+  `FiniteDifferencePricer` 0.667 at `t_n = 0`.
+
+  **`BSMPricer::new` is deliberately left unguarded**, and this is the finding
+  worth keeping: three measured callers depend on it accepting what a guard would
+  reject. `BSMCalibrator::residuals`/`jacobian` construct it from an
+  **unprojected** Levenberg-Marquardt iterate, so a guard would abort a live
+  calibration on a transient negative step; `AnalyticBSEngine` builds it from
+  `read_quote(volatility)`, which is `NaN` for an unlinked handle **by design**;
+  and `Merton1976Pricer::term_bsm(0, ·)` constructs it at `v == 0` on every single
+  price. Guarding it needs `BSMCalibrator` to gain a projection box first — its
+  own item, below.
+
+  **Two places where copying the Heston template would have been wrong:**
+  `HestonStochCorrPricer` gets `sigma_v >= 0`, not `> 0`, because its Riccati
+  system only ever *multiplies* by `sigma_v` (Heston's `> 0` exists because its
+  closed form divides by `σ²`) — zero vol-of-vol is the deterministic-variance
+  limit. And the digital `sigma` guards **permit `NaN`**: the inverse trap fired
+  for real here, `sigma >= 0.0` turning an `analytic_bs` test red, because
+  `read_quote` documents `NaN` as missing data and it flows straight into
+  `CashOrNothingPricer::new`.
+
+  ~~Original:~~ `HestonStaticParams::new` was an unvalidated `const fn`
   (`pricing/engines/analytic_heston.rs:38`), feeding the now-validated
   `HestonPricer::new` at line 107 — so an invalid parameter surfaces at pricing
   time from the inner constructor rather than where the caller supplied it. Item 8
-  one layer up. Fourteen other `pub const fn new` constructors in `pricing/` share
-  the shape:
+  one layer up. Thirteen other `pub const fn new` constructors in `pricing/` shared
+  the shape (the command below counts 14 **including** this one):
   ```
   grep -rn "pub const fn new" --include='*.rs' stochastic-rs-quant/src/pricing/ | wc -l
   ```
+
+## Queued — found while closing step 2
+
+- **23 — `term_vol` departs from Haug, which may make item 21 moot.** The crate uses
+  `σₙ = √((d² + z²)·n/τ)`; Haug's is `σₙ = √(d² + z²·n/τ)`, giving `σ₀ = d` — the
+  diffusive vol — rather than 0. **That difference is why the `n = 0` term is
+  degenerate at all.** If the formula is wrong, item 21 is filling a hole that
+  should not exist. Not touched because correcting it moves every Merton golden,
+  so it needs an item that owns that move.
+- **24 — `Merton1976Pricer::call_put` returns `NaN` at `λ = 0`, but its Greeks
+  return the Black-Scholes value.** `greek_series` has an explicit
+  `if self.lambda <= 0.0` branch; `call_put` has none, so `jump_size_std` hits
+  `v²γ/0`. Price and Greeks disagree about whether `λ = 0` is a supported state —
+  and `merton_greeks_lambda_zero_equals_bs` pins the Greeks side, so the
+  disagreement is asserted rather than accidental.
+- **25 — `malliavin_one_model_prices_a_grid` is flaky.** It failed once with
+  `call 103.976 out of bounds` against its own `c <= S = 100` bound, then passed
+  5/5 on re-run. **Unseeded** Monte Carlo (`Gbm::new(…, Unseeded)`). The upper
+  bound is violated, not just monotonicity, so this is a genuine CI hazard rather
+  than a tolerance question — and the crate's own testing conventions mandate
+  pinned seeds for exactly this reason.
+- **26 — `BSMCalibrator` has no projection box.** `set_params` writes the raw
+  Levenberg-Marquardt vector, so the optimizer can and does pass through negative
+  volatilities. Every sibling calibrator (`SabrCalibrator`, the HSC bounds) projects
+  into a strictly admissible box. This is the blocker on item 22's one deliberate
+  omission.
 
 ## Gate
 
