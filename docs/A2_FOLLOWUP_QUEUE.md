@@ -216,13 +216,53 @@ costing anything but tidiness.
   `FooModel` with an inherent `price()` — is in neither signal. Rust cannot
   enumerate a trait's implementors at run time, so closing that needs a signal
   the compiler exposes.
-- **11 — Disambiguate the two meanings of `price` and `price_call`.**
+- **11 — CLOSED** (`e3739b1`), and **renamed rather than only documented**:
+  `spread_call_put` / `spread_call` / `spread_put`.
+
+  **My shadowing claim was wrong.** `KirkSpreadPricer` does not implement
+  `ModelPricer`, so no trait method was being shadowed. The real defect is arity
+  plus type identity: five `f64`s, same name, meanings differing in four of five
+  positions, nothing for the compiler to catch.
+
+  **And the sharper instance was one I had not listed.** `call_put` has **eight**
+  siblings taking `(s, k, r, q, tau)` against Kirk's `(f1, f2, x, r, tau)`.
+  Renaming only `price_call`/`price_put` would have fixed the smaller half and left
+  the worse one live — so all three moved together.
+
+  **Measured what the confusion actually produced:** reading Kirk's query as a
+  vanilla one returned **10.943403655286877** — finite, positive, and squarely
+  inside the band a Black call at those inputs would occupy. Pinned as a test so
+  the rename cannot later be reverted as cosmetic, with a `compile_fail` doctest
+  proving the old name no longer resolves.
+
+  Kirk is the **only** member that needed it: the other seven are separated by
+  their signatures already (`ArrayView1` legs, or no strike at all). Re-measured
+  in passing: 11 no-argument `price(&self)` against 6 query-taking `price(` in
+  `pricing/`, all path-dependent and out of scope.
   `KirkSpreadPricer::price_call(&self, f1, f2, x, r, tau)` shares the name and the
   5-`f64` arity of `ModelPricer::price_call(s, k, r, q, tau)` with different
   meanings in positions 1-4, and with the prelude imported the inherent method
   silently wins. Separately, `price` means two opposite things inside `pricing/`.
   Re-measure after item 3, which removed part of it.
-- **12 — Give `DigitalOption` the same date story as `EuropeanOption`.** It carries
+- **12 — CLOSED** (`1b9906b`). `DigitalOption` implements `TimeExt` and gains dated
+  constructors; `AnalyticBSEngine::digital_query` resolves through
+  `tau_or_from_dates()` instead of reading `opt.tau` directly. The test asserts
+  both halves — that a dated digital prices at all, **and** that it prices
+  bit-identically to its explicit-`tau` twin; `is_finite()` alone would have passed
+  on any wrong number.
+
+  **`TimeExt`'s unfinished move is dropped, not deferred**, and recorded in three
+  places. The reasoning: the pricer half *already happened* (`PricerExt: TimeExt`
+  is gone, no pricer implements it), and the "one implementor" premise was itself
+  out of date — this item took it from 1 to **2**, both instruments. The calendar
+  module already owns the arithmetic (`DayCountConvention::year_fraction`, which
+  both derivations call); what `TimeExt` adds is *which* maturity slot is
+  populated, an instrument concern. Relocating it would put that inside a
+  date-arithmetic module.
+
+  No validation added, deliberately: `EuropeanOption::new_dates` accepts
+  `expiry < eval`, and guarding only the digital would swap the asymmetry this item
+  exists to remove for a new one. It carries
   the same `tau`/`eval`/`expiry` triple, does not implement `TimeExt`, has no
   `new_dates`, and its date fields are read by nothing — so a date-constructed
   digital silently prices at `NaN`. Decide at the same time whether `TimeExt`'s
@@ -306,7 +346,29 @@ costing anything but tidiness.
   fields where the split is genuinely ambiguous. **Acceptable to ship in beta, not
   in 3.0.0 stable**: seven `pub` structs, and the beta window is where breaking is
   free.
-- **14 — Decide what `GreeksExt` is for.** It remains no-argument — the retired
+- **14 — CLOSED** (`178fdd0`), by **demoting rather than deleting or rebuilding**.
+  Out of the prelude (28 -> 27), kept in both traits hubs.
+
+  **The premise's own number was stale, and correcting it cut both ways.**
+  `GreeksExt` has **two** implementors, not four — item 3 stripped the two digitals'
+  fields and their impls went with them. The survivors, `GbmMalliavinGreeks` and
+  `HestonMalliavinGreeks`, are **not pricers**: they are Monte Carlo estimator
+  objects that legitimately own their query.
+
+  **The finding that decided it:** five analytic aggregators already share **one
+  identical signature** — `greeks(&self, s, k, r, q, tau, option_type) -> Greeks`
+  across `BSMPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer`,
+  `AssetOrNothingPricer`. Five consecutive Greek-bearing additions **declined** the
+  trait because they structurally could not satisfy it. It is not a trait waiting
+  for implementors; it is a trait its natural candidates cannot join.
+
+  **Why not delete:** `HestonMalliavinGreeks::greeks()` exists *only* through the
+  trait — there is no inherent `all_greeks`. And for the two MC types the bundled
+  query is **correct**, not a wart: one simulation, nine consistent estimators. A
+  query-taking signature would re-simulate per accessor.
+
+  **Why not invent `ModelGreeks`:** five implementors, still zero consumers.
+  Trading a trait nothing calls for another trait nothing calls is churn. It remains no-argument — the retired
   convention — with four implementors, **zero** generic consumers anywhere, and a
   prelude slot, while every real Greek in the crate is now a query-taking inherent
   method. A newcomer importing the prelude gets a pricing trait on the new
