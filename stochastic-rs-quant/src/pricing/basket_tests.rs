@@ -122,19 +122,46 @@ fn geometric_below_arithmetic() {
     q.view(),
     1.0,
   );
-  let ari = ArithmeticBasketLevyPricer {
-    s,
-    weights: w,
-    sigma: sig,
-    q,
-    rho,
-    k: 100.0,
-    r: 0.04,
-    tau: 1.0,
-    option_type: OptionType::Call,
-  }
-  .price();
+  let ari =
+    ArithmeticBasketLevyPricer::new(w, sig, rho).price_call(s.view(), 100.0, 0.04, q.view(), 1.0);
   assert!(geo < ari, "geo={geo} should be < ari={ari}");
+}
+
+/// Values captured from the bundled-market-data
+/// `ArithmeticBasketLevyPricer` **before** the model/query reshape. The
+/// reshape is an API change only, so these must not move.
+#[test]
+fn arithmetic_basket_levy_matches_pre_refactor_goldens() {
+  let (s, w, sig, q, rho) = asymmetric_basket();
+  let model = ArithmeticBasketLevyPricer::new(w, sig, rho);
+  let call = model.price_call(s.view(), 97.5, 0.031, q.view(), 1.4);
+  assert!((call - 9.750478538898065).abs() < TOL, "asym call {call}");
+  let put = model.price_put(s.view(), 97.5, 0.031, q.view(), 1.4);
+  assert!((put - 6.581038540006583).abs() < TOL, "asym put {put}");
+
+  let (s, w, sig, q, rho) = iid_basket(4, 0.30, 0.5);
+  let model = ArithmeticBasketLevyPricer::new(w, sig, rho);
+  let call = model.price_call(s.view(), 100.0, 0.04, q.view(), 1.0);
+  assert!((call - 11.361162412209948).abs() < TOL, "iid call {call}");
+  let put = model.price_put(s.view(), 100.0, 0.04, q.view(), 1.0);
+  assert!((put - 7.440106327442262).abs() < TOL, "iid put {put}");
+}
+
+/// One model instance prices a whole strike grid — the point of the split.
+#[test]
+fn arithmetic_basket_levy_one_model_prices_a_strike_grid() {
+  let (s, w, sig, q, rho) = asymmetric_basket();
+  let model = ArithmeticBasketLevyPricer::new(w, sig, rho);
+  let calls = [80.0, 97.5, 120.0].map(|k| model.price_call(s.view(), k, 0.031, q.view(), 1.4));
+  let puts = [80.0, 97.5, 120.0].map(|k| model.price_put(s.view(), k, 0.031, q.view(), 1.4));
+  assert!(
+    calls[0] > calls[1] && calls[1] > calls[2],
+    "basket calls must decay in the strike: {calls:?}"
+  );
+  assert!(
+    puts[0] < puts[1] && puts[1] < puts[2],
+    "basket puts must rise in the strike: {puts:?}"
+  );
 }
 
 /// Levy and MC should agree within ~3% for a 4-asset arithmetic basket.
@@ -142,18 +169,13 @@ fn geometric_below_arithmetic() {
 #[test]
 fn levy_vs_mc_arithmetic() {
   let (s, w, sig, q, rho) = iid_basket(4, 0.25, 0.4);
-  let levy = ArithmeticBasketLevyPricer {
-    s: s.clone(),
-    weights: w.clone(),
-    sigma: sig.clone(),
-    q: q.clone(),
-    rho: rho.clone(),
-    k: 100.0,
-    r: 0.05,
-    tau: 1.0,
-    option_type: OptionType::Call,
-  }
-  .price();
+  let levy = ArithmeticBasketLevyPricer::new(w.clone(), sig.clone(), rho.clone()).price_call(
+    s.view(),
+    100.0,
+    0.05,
+    q.view(),
+    1.0,
+  );
   let mc = McBasketPricer {
     s,
     weights: w,
@@ -210,30 +232,9 @@ fn arithmetic_basket_parity() {
   let r = 0.04;
   let tau = 1.0;
   let k = 95.0;
-  let c = ArithmeticBasketLevyPricer {
-    s: s.clone(),
-    weights: w.clone(),
-    sigma: sig.clone(),
-    q: q.clone(),
-    rho: rho.clone(),
-    k,
-    r,
-    tau,
-    option_type: OptionType::Call,
-  }
-  .price();
-  let p = ArithmeticBasketLevyPricer {
-    s: s.clone(),
-    weights: w.clone(),
-    sigma: sig.clone(),
-    q: q.clone(),
-    rho: rho.clone(),
-    k,
-    r,
-    tau,
-    option_type: OptionType::Put,
-  }
-  .price();
+  let model = ArithmeticBasketLevyPricer::new(w.clone(), sig.clone(), rho.clone());
+  let c = model.price_call(s.view(), k, r, q.view(), tau);
+  let p = model.price_put(s.view(), k, r, q.view(), tau);
   let f = first_moment(s.view(), w.view(), q.view(), r, tau);
   let lhs = c - p;
   let rhs = (-r * tau).exp() * (f - k);

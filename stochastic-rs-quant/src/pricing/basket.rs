@@ -202,57 +202,111 @@ impl GeometricBasketPricer {
 /// E\left[B\right] = \sum_i w_i S_{i,0} e^{(r-q_i)T},\qquad
 /// E\left[B^2\right] = \sum_{i,j} w_i w_j S_i S_j e^{((r-q_i) + (r-q_j) + \rho_{ij}\sigma_i\sigma_j)T}
 /// $$
+///
+/// The struct holds **model and contract state only** — the per-asset
+/// volatilities and their correlation, plus the basket weights. The spot
+/// vector, the strike, the rate, the dividend-yield vector and the maturity
+/// are the pricing *query* and travel as arguments, so one instance prices a
+/// whole strike/maturity grid.
+///
+/// The weights split the same way as
+/// [`GeometricBasketPricer`]'s and for the same reason. Here the case is if
+/// anything plainer: both matched moments carry the query's own rate, yields
+/// and spots, so no part of this approximation can be cached at construction
+/// even in principle.
+///
+/// ```
+/// use ndarray::array;
+/// use stochastic_rs_quant::pricing::basket::ArithmeticBasketLevyPricer;
+///
+/// let model = ArithmeticBasketLevyPricer::new(
+///   array![0.5, 0.5],
+///   array![0.20, 0.30],
+///   array![[1.0, 0.4], [0.4, 1.0]],
+/// );
+/// let s = array![100.0, 100.0];
+/// let q = array![0.0, 0.0];
+/// let itm = model.price_call(s.view(), 90.0, 0.05, q.view(), 1.0);
+/// let otm = model.price_call(s.view(), 110.0, 0.05, q.view(), 1.0);
+/// assert!(itm > otm);
+/// ```
 #[derive(Debug, Clone)]
 pub struct ArithmeticBasketLevyPricer {
-  /// Spot prices.
-  pub s: Array1<f64>,
-  /// Weights (need not sum to one).
+  /// Weights (need not sum to one) — a term of the contract, not a market
+  /// quote.
   pub weights: Array1<f64>,
   /// Volatilities.
   pub sigma: Array1<f64>,
-  /// Dividend yields.
-  pub q: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
-  /// Strike.
-  pub k: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option type.
-  pub option_type: OptionType,
 }
 
 impl ArithmeticBasketLevyPricer {
-  /// Price using Levy (1992) two-moment lognormal approximation.
-  pub fn price(&self) -> f64 {
-    let m1 = first_moment(
-      self.s.view(),
-      self.weights.view(),
-      self.q.view(),
-      self.r,
-      self.tau,
-    );
+  /// Builds the pricer from the basket weights, the per-asset volatilities
+  /// and their correlation matrix.
+  pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
+    Self {
+      weights,
+      sigma,
+      rho,
+    }
+  }
+
+  /// Price either leg at one query point using Levy (1992) two-moment
+  /// lognormal approximation.
+  pub fn price_option(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    let m1 = first_moment(s, self.weights.view(), q, r, tau);
     let m2 = second_moment(
-      self.s.view(),
+      s,
       self.weights.view(),
       self.sigma.view(),
-      self.q.view(),
+      q,
       self.rho.view(),
-      self.r,
-      self.tau,
+      r,
+      tau,
     );
     let var = (m2 / (m1 * m1)).ln().max(1e-14);
-    let sigma_eff = (var / self.tau).sqrt();
-    let sqrt_t = self.tau.sqrt();
-    let d1 = ((m1 / self.k).ln() + 0.5 * var) / (sigma_eff * sqrt_t);
+    let sigma_eff = (var / tau).sqrt();
+    let sqrt_t = tau.sqrt();
+    let d1 = ((m1 / k).ln() + 0.5 * var) / (sigma_eff * sqrt_t);
     let d2 = d1 - sigma_eff * sqrt_t;
-    let disc = (-self.r * self.tau).exp();
-    match self.option_type {
-      OptionType::Call => disc * (m1 * norm_cdf(d1) - self.k * norm_cdf(d2)),
-      OptionType::Put => disc * (self.k * norm_cdf(-d2) - m1 * norm_cdf(-d1)),
+    let disc = (-r * tau).exp();
+    match option_type {
+      OptionType::Call => disc * (m1 * norm_cdf(d1) - k * norm_cdf(d2)),
+      OptionType::Put => disc * (k * norm_cdf(-d2) - m1 * norm_cdf(-d1)),
     }
+  }
+
+  /// Price the arithmetic basket call at one query point.
+  pub fn price_call(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> f64 {
+    self.price_option(s, k, r, q, tau, OptionType::Call)
+  }
+
+  /// Price the arithmetic basket put at one query point.
+  pub fn price_put(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> f64 {
+    self.price_option(s, k, r, q, tau, OptionType::Put)
   }
 }
 
