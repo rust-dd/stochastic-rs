@@ -154,28 +154,10 @@ impl StulzRainbowPricer {
     // F_max - F_min equals the Margrabe expected payoff $E[(S_1-S_2)^+] +
     // E[(S_2-S_1)^+]$. Use Margrabe to compute it.
     use crate::pricing::spread::MargrabePricer;
-    let m12 = MargrabePricer {
-      s1: self.s1,
-      s2: self.s2,
-      sigma1: self.sigma1,
-      sigma2: self.sigma2,
-      rho: self.rho,
-      q1: self.q1,
-      q2: self.q2,
-      tau: self.tau,
-    }
-    .price();
-    let m21 = MargrabePricer {
-      s1: self.s2,
-      s2: self.s1,
-      sigma1: self.sigma2,
-      sigma2: self.sigma1,
-      rho: self.rho,
-      q1: self.q2,
-      q2: self.q1,
-      tau: self.tau,
-    }
-    .price();
+    let m12 = MargrabePricer::new(self.sigma1, self.sigma2, self.rho)
+      .price(self.s1, self.s2, self.q1, self.q2, self.tau);
+    let m21 = MargrabePricer::new(self.sigma2, self.sigma1, self.rho)
+      .price(self.s2, self.s1, self.q2, self.q1, self.tau);
     // F_max + F_min = s1 e^{-q1T} + s2 e^{-q2T}, F_max - F_min = m12 + m21,
     // so F_min = (s1 e^{-q1T} + s2 e^{-q2T} - (m12 + m21)) / 2.
     let f_min = 0.5
@@ -187,28 +169,10 @@ impl StulzRainbowPricer {
   fn put_on_max(&self) -> f64 {
     let call_max = self.call_on_max();
     use crate::pricing::spread::MargrabePricer;
-    let m12 = MargrabePricer {
-      s1: self.s1,
-      s2: self.s2,
-      sigma1: self.sigma1,
-      sigma2: self.sigma2,
-      rho: self.rho,
-      q1: self.q1,
-      q2: self.q2,
-      tau: self.tau,
-    }
-    .price();
-    let m21 = MargrabePricer {
-      s1: self.s2,
-      s2: self.s1,
-      sigma1: self.sigma2,
-      sigma2: self.sigma1,
-      rho: self.rho,
-      q1: self.q2,
-      q2: self.q1,
-      tau: self.tau,
-    }
-    .price();
+    let m12 = MargrabePricer::new(self.sigma1, self.sigma2, self.rho)
+      .price(self.s1, self.s2, self.q1, self.q2, self.tau);
+    let m21 = MargrabePricer::new(self.sigma2, self.sigma1, self.rho)
+      .price(self.s2, self.s1, self.q2, self.q1, self.tau);
     let f_max = 0.5
       * (self.s1 * (-self.q1 * self.tau).exp()
         + self.s2 * (-self.q2 * self.tau).exp()
