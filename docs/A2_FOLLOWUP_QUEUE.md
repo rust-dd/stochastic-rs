@@ -231,7 +231,74 @@ costing anything but tidiness.
 
 ## Queued — consistency
 
-- **13 — Convert the seven remaining multi-asset pricers to model/query.**
+- **13 — CLOSED** (`f12ee4c` … `3232496`, nine commits, one per pricer). The whole
+  eight-member multi-asset family is now on one convention; all eight structs sit
+  at 4-6 fields. **43 analytic goldens are bit-identical** to BASE, captured on
+  deliberately asymmetric configurations — distinct spots, weights, both yields,
+  negative off-diagonal correlation, non-round strike, non-unit maturity — so none
+  could survive by coinciding with a default. 20 are now pinned in-tree at 1e-12.
+
+  **The rule that made it uniform:** `OptionType` is a *method selector*
+  everywhere; every other contract enum or number stays on the struct, as
+  `cash`/`k2`/`x_high` do on the digitals.
+
+  **Margrabe was verified rather than assumed**, and it is the clean case for a
+  reason: `σ² = σ1²+σ2²−2ρσ1σ2` really is model-only — exactly the property Kirk
+  lacks. It is still recomputed per call rather than cached, so no field is ever a
+  number left over from a query. It has **no `r` at all** (an exchange option's two
+  discount factors cancel), documented as an *absence* so nobody "fixes" it later.
+
+  **`GeometricBasketPricer`'s `weights` were the ambiguous case, and both readings
+  agree:** contract, because `∏ Sᵢ^{wᵢ}` is what the term sheet writes; and
+  inseparable from the model, because `σ_G² = Σ wᵢwⱼρᵢⱼσᵢσⱼ`. `σ_G` *could* be
+  cached honestly — no query enters it — and deliberately is not, because `μ_G` and
+  the geometric forward both carry the query, and caching one of three would put a
+  struct field next to two that can never be one.
+
+  **`n_paths` sits on the struct as method state**, decided by in-crate evidence
+  rather than taste: `GbmMalliavinPricer` already documents itself as holding
+  "model and method state only — the volatility, the Monte Carlo path/step counts".
+
+  **One honest wart, flagged not hidden:** `RainbowPayoff` is a contract term but
+  *contains* a call/put axis, so the family departs from `price_call`/`price_put`
+  in exactly one place. Splitting it into `{Max,Min}` × `OptionType` would break a
+  second public enum, past this item's remit. Kept whole, written into the doc.
+
+  **Validation deliberately omitted**, following this project's own Kirk sequencing
+  — reshape (`dad4a78`) then validate (`bc3afc5`) as separate commits. The
+  dimension and SPD checks stayed in `try_price` rather than moving to `new`,
+  because `try_price` is the only advertised way to surface them as `Err` and a
+  panicking constructor would leave it nothing to report.
+
+  The registry **passed unchanged and correctly** — no type changed category — but
+  its *prose* had become false ("the other seven still bundle their query"). That
+  was rewritten as a factual correction to a comment, **not a list edited to match
+  the code**.
+
+## Queued — found while closing step 5a
+
+- **27 — Four live `NaN`-laundering defects in the multi-asset family**, measured
+  rather than argued, preserved byte-for-byte because fixing them is item 19's
+  shape and would have wrecked the one-commit-per-pricer property:
+  - **`ArithmeticBasketLevyPricer` with a `NaN` *model* `sigma` returns
+    `4.877057549928611`** — a plausible ATM basket call. `basket.rs:276`'s
+    `(m2/(m1*m1)).ln().max(1e-14)` turns `NaN` into `1e-14`, so `σ_eff ≈ 1e-7` and
+    the price collapses to the zero-vol intrinsic. Nothing in the query is wrong;
+    a poisoned *model* parameter yields a healthy-looking number. The sharpest of
+    the four.
+  - **`RainbowPayoff::evaluate` silently drops a `NaN` leg** (`rainbow.rs:54-55`).
+    `CallOnMax` on `[120, NaN, 90]` at `K=100` returns **20.0** — a three-asset
+    best-of prices as a two-asset best-of.
+  - `MargrabePricer::price` returns **`0.0`** for `tau = NaN` on the degenerate-vol
+    branch — and `tau` arrives as `NaN` legitimately from `TimeExt`.
+  - `McSpreadPricer` returns **`0.0`** for a `NaN` spot *or* a `NaN` model `rho`;
+    the per-path floor zeroes every poisoned payoff and averages them.
+
+  Clean under the same probe: Stulz, Geometric basket, and Levy with a `NaN` tau.
+- **28 — The seven now have unguarded public constructors** that item 22's standard
+  would guard. Owed by the reshape-then-validate sequencing above.
+
+
   `Margrabe`, `StulzRainbow`, `McRainbow`, `GeometricBasket`,
   `ArithmeticBasketLevy`, `McBasket`, `McSpread` still hold `s`/`k`/`r`/`tau`
   behind a no-argument `price()`; `KirkSpreadPricer` is the only one of the eight
