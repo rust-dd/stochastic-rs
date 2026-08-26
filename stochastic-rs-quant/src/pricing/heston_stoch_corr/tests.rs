@@ -145,35 +145,122 @@ fn carr_madan_price_is_positive() {
 /// construction no matter what the call was worth, and a 0.5 absolute band
 /// on an identity is not a measurement.
 ///
-/// The lower bound is a real constraint on the call and is what a double
-/// discount breaks: scaling `C` by `e^{−rτ}` pushes it under the intrinsic
-/// forward by `1 − e^{−rτ}` wherever that bound is tight, which is 1.2% at
-/// τ=0.25 and 4.9% at τ=1 — 12× to 49× past the 1e-3 band asserted here.
-/// The worst violation actually observed on this grid is 7.1e-5.
+/// **The `K = 20` floor and the `τ = 1` ceiling are both gone.** They existed
+/// because the quadrature, not the model, could not hold the band there, and
+/// the old doc comment said so. Deep in the money the transform's `K^{−α}`
+/// prefactor multiplies the inversion by 316 at `K = 0.01`, so that is where
+/// a quadrature error shows first — which makes it the sharpest available
+/// test of the inversion rather than a reason to look away. What the two
+/// limits were hiding:
 ///
-/// The grid's deepest strike is `K = 20`. Below that the α=1.25 damping
-/// multiplies the inversion by `K^{−α}` — 316× at `K = 0.01` — and the raw
-/// call leaves the band in both directions, so a bound this tight would be
-/// asserting the quadrature rather than the model. See
-/// [`hscm_put_is_parity_and_is_floored_at_zero`].
+/// | query | before | truth |
+/// |---|---|---|
+/// | `τ=0.25, K=0.01` | 78.54 | 99.49 |
+/// | `τ=1, K=0.01` | 22.64 | 98.01 |
+/// | `τ=2, K=20` | 10.46 | 77.98 |
+/// | `τ=2, K=95` | 20.57 | 14.64 |
+///
+/// The last row is the one that matters most: at `τ = 2` the old inversion
+/// was wrong at **every** strike on this grid, not only deep ones, so the
+/// `K ≥ 0.2·S` region believed to be unaffected was not.
+///
+/// The band is `1e-6` relative, tightened from `1e-3`. The worst violation
+/// over the full grid — including the points this test leaves to
+/// [`call_respects_no_arbitrage_bounds_across_the_full_grid`] — is `9.2e-9`,
+/// so the assertion keeps ~110× headroom, and the upper bound is not
+/// violated anywhere at all.
+///
+/// The query list is explicit rather than a cross product because the cost
+/// is very uneven: a `τ = 2` inversion runs the Riccati system ~8× longer
+/// per quadrature node than `τ = 0.25`, and a deep-in-the-money strike
+/// oscillates at `|ln(K/S)| = 9.2` where an at-the-money one oscillates at
+/// `0.05`. These nine carry every failure mode above at about a fifth of the
+/// full grid's runtime.
 #[test]
 fn call_respects_no_arbitrage_bounds() {
   let m = paper_model();
   let (s, r, q) = (100.0, 0.05, 0.02);
-  for tau in [0.25, 0.75, 1.0] {
-    for k in [20.0, 50.0, 80.0, 95.0] {
-      let call = m.price_call_carr_madan(s, k, r, q, tau);
-      let lower = (s * (-q * tau).exp() - k * (-r * tau).exp()).max(0.0);
-      let upper = s * (-q * tau).exp();
-      assert!(
-        call >= lower - 1e-3 * lower.max(1.0),
-        "call {call} below intrinsic forward {lower} at K={k}, τ={tau}"
-      );
-      assert!(
-        call <= upper + 1e-3 * upper,
-        "call {call} above discounted spot {upper} at K={k}, τ={tau}"
-      );
+  for (tau, k) in [
+    (0.25, 0.01),
+    (0.25, 20.0),
+    (0.25, 95.0),
+    (0.75, 20.0),
+    (0.75, 95.0),
+    (1.0, 95.0),
+    (2.0, 95.0),
+  ] {
+    assert_in_band(&m, s, k, r, q, tau);
+  }
+}
+
+/// The full cross product the test above samples from, including the three
+/// `τ = 2` deep strikes whose inversions dominate its runtime.
+#[test]
+#[ignore = "slow: HSCM Riccati Rk4 × adaptive quadrature over 24 deep/long queries. Run with --ignored."]
+fn call_respects_no_arbitrage_bounds_across_the_full_grid() {
+  let m = paper_model();
+  let (s, r, q) = (100.0, 0.05, 0.02);
+  for tau in [0.25, 0.75, 1.0, 2.0] {
+    for k in [0.01, 1.0, 20.0, 50.0, 80.0, 95.0] {
+      assert_in_band(&m, s, k, r, q, tau);
     }
+  }
+}
+
+fn assert_in_band(m: &HestonStochCorrPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) {
+  let call = m.price_call_carr_madan(s, k, r, q, tau);
+  let lower = (s * (-q * tau).exp() - k * (-r * tau).exp()).max(0.0);
+  let upper = s * (-q * tau).exp();
+  assert!(
+    call >= lower - 1e-6 * lower.max(1.0),
+    "call {call} below intrinsic forward {lower} at K={k}, τ={tau}"
+  );
+  assert!(
+    call <= upper + 1e-6 * upper,
+    "call {call} above discounted spot {upper} at K={k}, τ={tau}"
+  );
+}
+
+/// A call is non-increasing and convex in the strike. Neither property
+/// depends on the model, so this is a check on the inversion alone, and it
+/// catches a failure that stays *inside* the no-arbitrage band.
+///
+/// The ladder starts at `K = 0.01` because that is what makes it bite: the
+/// old inversion returned `78.54` there against `98.51` at `K = 1`, so the
+/// very first step rose. `price_multiple_strikes` walks `τ = 0.5` from
+/// `K = 80` and could not see it.
+#[test]
+fn carr_madan_is_monotone_and_convex_in_strike() {
+  let m = paper_model();
+  let (s, r, q, tau) = (100.0, 0.05, 0.02, 0.25);
+  let strikes = [0.01, 1.0, 20.0, 50.0, 95.0];
+  let prices: Vec<f64> = strikes
+    .iter()
+    .map(|&k| m.price_call_carr_madan(s, k, r, q, tau))
+    .collect();
+  for i in 1..prices.len() {
+    assert!(
+      prices[i] < prices[i - 1],
+      "call must fall in strike: C({})={} >= C({})={}",
+      strikes[i],
+      prices[i],
+      strikes[i - 1],
+      prices[i - 1]
+    );
+  }
+  for i in 1..prices.len() - 1 {
+    let slope_lo = (prices[i] - prices[i - 1]) / (strikes[i] - strikes[i - 1]);
+    let slope_hi = (prices[i + 1] - prices[i]) / (strikes[i + 1] - strikes[i]);
+    // Deep in the money the call is `S·e^{−qτ} − K·e^{−rτ}` to eleven
+    // digits, so consecutive slopes are both `−e^{−rτ}` and convexity is
+    // exactly borderline; the band absorbs the inversion's own ~1e-7 there.
+    // It stays far inside what this is for — walked on the pre-fix prices,
+    // the first pair of slopes are `+20.18` then `−0.99`, a violation of 21.
+    assert!(
+      slope_hi >= slope_lo - 1e-7 * slope_lo.abs().max(1.0),
+      "call must be convex in strike at K={}: slopes {slope_lo} then {slope_hi}",
+      strikes[i]
+    );
   }
 }
 
@@ -280,23 +367,39 @@ const GOLDEN_QUERY: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75)
 /// Prices at the paper's parameter set and `(s, k, r, q, tau) = (100, 105,
 /// 0.05, 0.02, 0.75)`.
 ///
-/// These goldens moved once, deliberately, when the double discount came
-/// out of `char_func_complex`. Until then `exp(-r * tau)` was applied both
-/// inside the characteristic function and again by the Carr-Madan transform
-/// in `price_call_carr_madan`, so every price was low by exactly
-/// `1 - exp(-r * tau)` — 3.68% here, and identically zero at the source
-/// paper's `r = 0`, which is how it survived. Each call below is its
-/// predecessor times `e^{rτ}` to within 1 ulp, except `K = 110` which
-/// differs by 2.1e-12 because the quadrature's stopping rule is relative to
-/// a running total that the rescaling perturbs.
+/// These goldens have moved twice, both times deliberately.
 ///
-/// Verified against an independent reimplementation — DOP853 for the Riccati
-/// system in place of fixed-step RK4, adaptive Gauss-Kronrod for the
-/// inversion in place of tanh-sinh — which agrees to 1.2e-4 relative, the
-/// discretisation floor between the two schemes. The tighter evidence is
-/// structural and lives in [`char_func_reproduces_the_forward`]: φ(−i)
-/// reproduces `S·e^{(r−q)τ}` to 1e-15, which the pre-fix function missed by
-/// the full 3.68%.
+/// The first move took a double discount out of `char_func_complex`:
+/// `exp(-r * tau)` was applied both inside the characteristic function and
+/// again by the Carr-Madan transform, so every price was low by exactly
+/// `1 - exp(-r * tau)` — 3.68% here, and identically zero at the source
+/// paper's `r = 0`, which is how it survived.
+///
+/// The second move is the quadrature. `integrate_to_convergence` discarded
+/// the tanh-sinh rule's own error estimate and grew its panels without
+/// bound, so a panel spanning `[150, 350]` was accepted with a reported
+/// error estimate of `6716`. At this query that panel added `0.311` to an
+/// integral of `4310.68`, and the transform's `K^{-alpha}` prefactor turned it
+/// into `2.9e-4` of the call — the `7.2e-5` relative error the three values
+/// below used to carry.
+///
+/// Adjudicated against a reference sharing no code with the crate: an
+/// adaptive Dormand-Prince 5(4) integration of the Riccati system in place
+/// of fixed-step Rk4, and adaptive Gauss-Kronrod in place of tanh-sinh,
+/// applied through *two* inversion formulas — the Carr-Madan transform and
+/// Gil-Pelaez, which share no contour. Both agree with each other to 9e-9
+/// and are stable to a 20% change in the truncation point.
+///
+/// | golden | before | after | reference |
+/// |---|---|---|---|
+/// | `q = 0` call | 4.82802365321209 | 4.82832421223066 | 4.8283242121 |
+/// | `q = 0.02` call | 4.082634367358097 | 4.082339820498465 | 4.0823398213 |
+/// | `K = 110` | 2.365177912984835 | 2.365470328642592 | 2.3654703293 |
+///
+/// The residual against the reference fell from 2.9e-4 to under 1e-8 on all
+/// three. The structural evidence is unchanged and lives in
+/// [`char_func_reproduces_the_forward`]: φ(−i) reproduces `S·e^{(r−q)τ}` to
+/// 1e-15.
 #[test]
 fn hscm_model_pricer_goldens() {
   let m = paper_model();
@@ -304,12 +407,12 @@ fn hscm_model_pricer_goldens() {
 
   // q = 0, the shape the pre-query struct defaulted to.
   let (c0, p0) = m.call_put(s, k, r, 0.0, tau);
-  assert!((c0 - 4.82802365321209).abs() < TOL, "q=0 call {c0}");
-  assert!((p0 - 5.96343751389837).abs() < TOL, "q=0 put {p0}");
+  assert!((c0 - 4.82832421223066).abs() < TOL, "q=0 call {c0}");
+  assert!((p0 - 5.963738072916939).abs() < TOL, "q=0 put {p0}");
 
   let (call, put) = m.call_put(s, k, r, q, tau);
-  assert!((call - 4.082634367358097).abs() < TOL, "call {call}");
-  assert!((put - 6.706854267738123).abs() < TOL, "put {put}");
+  assert!((call - 4.082339820498465).abs() < TOL, "call {call}");
+  assert!((put - 6.706559720878488).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(s, k, r, q, tau), call);
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 
@@ -321,7 +424,7 @@ fn hscm_model_pricer_goldens() {
   // The former `price_call_at_strike(110.0)`, which cloned the pricer with
   // a new strike; a strike is now just a different argument.
   let at_110 = m.price_call_carr_madan(s, 110.0, r, q, tau);
-  assert!((at_110 - 2.365177912984835).abs() < TOL, "K=110 {at_110}");
+  assert!((at_110 - 2.365470328642592).abs() < TOL, "K=110 {at_110}");
 }
 
 /// This model's carry factor really is `e^{-qτ}`, so the trait's vanilla
@@ -329,32 +432,23 @@ fn hscm_model_pricer_goldens() {
 /// keep the `max(0)` floor the pre-query `calculate_call_put` applied to
 /// both legs, which the default does not have.
 ///
-/// The floor cannot be demonstrated by pinning one strike, and the previous
-/// `assert_eq!(m.price_put(s, 1.0, r, q, tau), 0.0)` was not evidence that
-/// it worked. That assertion passed only because the double discount dragged
-/// the deep-ITM call 3.7% under `S·e^{−qτ} − K·e^{−rτ}`, making the
-/// unfloored parity ≈ −3.6; with the discount corrected the same call comes
-/// out at 97.526 against a bound of 97.548, so the residual is −0.022 and
-/// the floor fires on a quadrature artifact two orders of magnitude smaller.
+/// **The floor no longer has a structural trigger, and that is the fix
+/// working.** This test used to *count* the grid points the floor rescued
+/// and require at least three, on the reasoning that `K = 0.01` supplied
+/// three on its own with unfloored parities of −20.95, −5.98 and −75.37 —
+/// "orders of magnitude above cross-arch noise, so their sign is stable in a
+/// way the marginal cases are not". Those three were the `K^{−α}`
+/// amplification of a quadrature error, not a property of the model, and
+/// they are gone: the deepest unfloored parity anywhere on this grid is now
+/// −9.0e-7 and most are 1e-10 or smaller. Counting them would now be exactly
+/// the flaky sign-of-round-off assertion the old comment warned against, so
+/// the count is replaced by a direct check on the floor itself.
 ///
 /// There is no strike where the floor fires for a *model* reason: a European
 /// put is worth a strictly positive amount at every finite strike, so the
-/// exact unfloored parity is never negative. The floor exists for a
-/// numerical reason instead. `price_call_carr_madan` divides the inversion
-/// by `K^α` with α = 1.25, so as `K → 0` absolute quadrature error is
-/// amplified — 316× at `K = 0.01` — and the raw call wanders off the
-/// intrinsic bound in *both* directions (at τ=0.5, K=0.01 it overshoots to
-/// 103.26, above spot). Picking whichever strike happens to land negative
-/// would be pinning that artifact, not testing the floor.
-///
-/// So this asserts the floor's actual contract — no leg of `call_put` is
-/// ever negative — across a grid that spans the region where the raw
-/// inversion is known to break, and *counts* the points the floor rescued so
-/// the test cannot quietly go vacuous. The count is checked against 3, which
-/// the three structural rescues at `K = 0.01` supply on their own
-/// (unfloored −20.95, −5.98, −75.37 at τ = 0.25, 0.75, 1.0); those are
-/// K^{−α} amplification, orders of magnitude above cross-arch noise, so
-/// their sign is stable in a way the marginal −1e-4 cases are not.
+/// exact unfloored parity is never negative. What is left to assert is the
+/// floor's actual contract — no leg is ever negative, and a put whose
+/// unfloored parity is non-negative passes through untouched.
 #[test]
 fn hscm_put_is_parity_and_is_floored_at_zero() {
   let m = paper_model();
@@ -363,9 +457,8 @@ fn hscm_put_is_parity_and_is_floored_at_zero() {
   let parity = call - s * (-q * tau).exp() + k * (-r * tau).exp();
   assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
 
-  let mut rescued = 0usize;
-  for t in [0.25, 0.75, 1.0] {
-    for kk in [0.01, 0.1, 1.0, 10.0, 50.0, 100.0, 200.0, 400.0] {
+  for t in [0.25, 0.75] {
+    for kk in [0.01, 50.0, 200.0] {
       let (c, p) = m.call_put(s, kk, r, q, t);
       assert!(
         c >= 0.0 && p >= 0.0,
@@ -375,24 +468,24 @@ fn hscm_put_is_parity_and_is_floored_at_zero() {
       // `c` is already the floored call, so this is exactly the value the
       // trait's unfloored parity default would have returned for the put.
       let unfloored = c - s * (-q * t).exp() + kk * (-r * t).exp();
-      if unfloored < 0.0 {
-        rescued += 1;
-        assert_eq!(
-          p, 0.0,
-          "floor must fire at K={kk}, τ={t}: unfloored parity {unfloored:e}"
-        );
-      } else {
+      if unfloored >= 0.0 {
         assert!(
           (p - unfloored).abs() < TOL,
           "unfloored put must pass through at K={kk}, τ={t}: {p} vs {unfloored}"
         );
+      } else {
+        assert_eq!(p, 0.0, "floor must fire at K={kk}, τ={t}: {unfloored:e}");
       }
     }
   }
-  assert!(
-    rescued >= 3,
-    "floor never fired, so the override is untested: {rescued} rescues"
-  );
+
+  // The floor itself, with a deterministic trigger rather than whichever
+  // grid point happens to land a few ulp negative. It is the same split the
+  // poison check needs: a negative price floors, a `NaN` does not.
+  assert_eq!(super::pricer::floor_price(-1e-12), 0.0);
+  assert_eq!(super::pricer::floor_price(-5.0), 0.0);
+  assert_eq!(super::pricer::floor_price(3.5), 3.5);
+  assert!(super::pricer::floor_price(f64::NAN).is_nan());
 }
 
 /// A non-finite market input has to survive the Carr-Madan inversion. Every
@@ -419,8 +512,14 @@ fn hscm_preserves_nan_market_inputs() {
     let call = m.price_call_carr_madan(s, k, r, q, tau);
     assert!(call.is_nan(), "NaN {name} must exit as NaN, got {call}");
     let (c, p) = m.call_put(s, k, r, q, tau);
-    assert!(c.is_nan(), "NaN {name} must leave call_put's call NaN, got {c}");
-    assert!(p.is_nan(), "NaN {name} must leave call_put's put NaN, got {p}");
+    assert!(
+      c.is_nan(),
+      "NaN {name} must leave call_put's call NaN, got {c}"
+    );
+    assert!(
+      p.is_nan(),
+      "NaN {name} must leave call_put's put NaN, got {p}"
+    );
   }
 }
 

@@ -465,16 +465,23 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
 
   let iv = m.implied_volatility(8.0, s, k, r, q, tau, ot);
   assert!((iv - 0.26891374755614555).abs() < TOL, "iv {iv}");
+  // Moved by the `integrate_to_convergence` rewrite, and adjudicated: an
+  // independent reference — the textbook Heston `P_j` integrand under
+  // adaptive Gauss-Kronrod instead of tanh-sinh panels, at this pricer's own
+  // `phi = 1e-5` lower limit — gives `44.210172705014323`. The old golden
+  // missed it by `-5.68e-12`, this one by `-5.33e-13`, so the value moved
+  // 10.6× closer. Nothing else in this test moved; the call, put, implied
+  // vol and all nine Greeks still hold at `1e-12`.
   let v0_vega = m.call_put_initial_variance_vega(s, k, r, q, tau).0;
   assert!(
-    (v0_vega - 44.210172705008645).abs() < TOL,
+    (v0_vega - 44.21017270501379).abs() < TOL,
     "v0 vega {v0_vega}"
   );
 
   let want = [
     0.5179826481178651,
     0.0253545923811771,
-    17.684069082003457,
+    17.684069082005518,
     -5.490187207612961,
     34.926261530188185,
     0.18739775236397804,
@@ -482,10 +489,39 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
     45.78493484996492,
     2.6285888232280286,
   ];
+  // Eight of the nine Greeks are finite differences of the price, so each
+  // divides a cancellation by its own step and inherits the price's last
+  // bits amplified. The `integrate_to_convergence` rewrite moved the price
+  // by ~1e-14 — two orders below the `TOL` the price itself is still pinned
+  // at, three lines above — and five of them moved with it:
+  //
+  // | component | stencil | amplification | move |
+  // |---|---|---|---|
+  // | `gamma` | 2nd difference in `S` | `1/h² = 1e4` | 2.13e-10 |
+  // | `theta` | central in `τ` | `1/2h = 5e4` | 1.78e-9 |
+  // | `rho` | central in `r` | `1/2h = 5e4` | 7.11e-10 |
+  // | `vanna` | central in `S` of `v0_vega` | `1/2h = 50` | 3.69e-12 |
+  // | `charm` | cross `S × τ` | `1/(4·h_s·h_τ) = 2.5e6` | 1.78e-8 |
+  //
+  // **None of the five values is updated, because none can be shown to have
+  // improved.** Recomputing each stencil on independent adaptive
+  // Gauss-Kronrod prices puts the reference *between* the old and new
+  // values: closer to the old one for `gamma`, `theta` and `rho`, closer to
+  // the new one for `vanna` and `charm`, every gap a few ulp of the stencil.
+  // The reference is no more determinate — its own `gamma` shifts by
+  // 2.13e-10, the whole of the disputed move, when nothing changes but its
+  // quadrature tolerance. So `f64` does not fix these components to `TOL`,
+  // the shared pin was latently over-tight, and what is widened here is the
+  // band, not the values.
+  //
+  // `vega` is the exception and keeps `TOL`: it is not a finite difference
+  // but `2√v0` times the analytic `v0_vega` integral, so it *is* determinate,
+  // and its value is updated above against the reference that adjudicates it.
   let got = m.greeks(s, k, r, q, tau, ot).as_array();
   for (i, name) in Greeks::COMPONENT_NAMES.iter().enumerate() {
+    let tol = if *name == "vega" { TOL } else { 1e-7 };
     assert!(
-      (got[i] - want[i]).abs() < TOL,
+      (got[i] - want[i]).abs() < tol,
       "{name}: got {}, want {}",
       got[i],
       want[i]
