@@ -357,14 +357,19 @@ const NON_OPTION: &str = "not a single-underlying option pricer";
 //
 //  - `MULTI_ASSET`: `MargrabePricer` is an exchange option with no strike;
 //    `KirkSpreadPricer` has one but strikes it against a *spread* of two
-//    forwards; the basket and spread pricers bundle N legs and weights into the
-//    struct; the rainbow pricers price the best/worst of N assets. A shared
-//    signature would need an `Option<f64>` strike and a variable-length
-//    underlying list. `KirkSpreadPricer` is the only one of the eight that
-//    follows D3's model/query split today
-//    (`KirkSpreadPricer::call_put(f1, f2, x, r, tau)` against a struct holding
-//    `v1`/`v2`/`corr`), because Task 6 had to reshape it when it took
-//    `PricerExt` away; the other seven still bundle their query.
+//    forwards; the basket pricers strike one against a weighted average of N
+//    assets; the rainbow pricers price the best/worst of N. A shared signature
+//    would need an `Option<f64>` strike and a variable-length underlying list,
+//    which is why this family follows D3's model/query split by convention
+//    rather than through a trait. All eight follow it: each holds its
+//    volatilities and correlation and takes the spots, strike, rate, yields and
+//    maturity per call — `KirkSpreadPricer::call_put(f1, f2, x, r, tau)`,
+//    `MargrabePricer::price(s1, s2, q1, q2, tau)`,
+//    `GeometricBasketPricer::price_call(s, k, r, q, tau)`. What else stays on a
+//    struct is contract, not market data: the basket weights and average type,
+//    and the rainbow payoff. The three Monte Carlo members additionally hold
+//    `n_paths`, which is neither — a convergence control, kept beside the model
+//    as `GbmMalliavinPricer` keeps its own path and step counts.
 //  - `PATH_DEPENDENT`: each bundles its own contract parameters (barrier level,
 //    lookback window, cliquet reset schedule, autocall trigger/coupon schedule,
 //    Bermudan exercise dates, chooser decision date, ...) into the struct and
