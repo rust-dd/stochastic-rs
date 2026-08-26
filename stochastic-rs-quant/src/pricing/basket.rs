@@ -42,35 +42,96 @@ use crate::traits::FloatExt;
 /// $$
 ///
 /// where the weights satisfy $\sum_i w_i = 1$.
+///
+/// The struct holds **model and contract state only** — the per-asset
+/// volatilities and their correlation, plus the basket weights. The spot
+/// vector, the strike, the rate, the dividend-yield vector and the maturity
+/// are the pricing *query* and travel as arguments, so one instance prices a
+/// whole strike/maturity grid.
+///
+/// The weights are the field where the split is not obvious, and they land
+/// on the struct for two independent reasons. They are a **contract** term:
+/// $\prod_i S_i^{w_i}$ is what the option is written on, fixed by the term
+/// sheet and not by the market, exactly like the digitals' cash payout. They
+/// are also inseparable from the model, because the effective volatility
+/// $\sigma_G^2=\sum_{i,j} w_i w_j \rho_{ij}\sigma_i\sigma_j$ is a function of
+/// the weights, the volatilities and the correlation and of nothing else — a
+/// query-side weight vector would leave the basket with no volatility of its
+/// own.
+///
+/// The dividend yields go the other way. A yield is a market quote, which
+/// the crate already says in
+/// [`ModelPricer`](crate::traits::ModelPricer)'s
+/// `price_call(s, k, r, q, tau)`; a vector of them is the same quantity per
+/// asset, so it travels with the query.
+///
+/// $\sigma_G$ could be cached at construction, since no query enters it, and
+/// deliberately is not: the drift $\mu_G$ and the geometric forward both
+/// carry the query's own rate, yields and spots, so caching one of the three
+/// would put a struct field next to two that can never be one.
+///
+/// An $n$-asset payoff carries no
+/// [`ModelPricer`](crate::traits::ModelPricer), whose
+/// `price_call(s, k, r, q, tau)` has a single underlying — this is the
+/// multi-asset "convention, no trait" family, see
+/// [`KirkSpreadPricer`](crate::pricing::kirk::KirkSpreadPricer).
+///
+/// ```
+/// use ndarray::array;
+/// use stochastic_rs_quant::pricing::basket::GeometricBasketPricer;
+///
+/// let model = GeometricBasketPricer::new(
+///   array![0.5, 0.5],
+///   array![0.20, 0.30],
+///   array![[1.0, 0.4], [0.4, 1.0]],
+/// );
+/// let s = array![100.0, 100.0];
+/// let q = array![0.0, 0.0];
+/// let itm = model.price_call(s.view(), 90.0, 0.05, q.view(), 1.0);
+/// let otm = model.price_call(s.view(), 110.0, 0.05, q.view(), 1.0);
+/// assert!(itm > otm);
+/// ```
 #[derive(Debug, Clone)]
 pub struct GeometricBasketPricer {
-  /// Spot prices $S_{i,0}$.
-  pub s: Array1<f64>,
-  /// Basket weights $w_i$ (must sum to one).
+  /// Basket weights $w_i$ (must sum to one) — a term of the contract, not a
+  /// market quote.
   pub weights: Array1<f64>,
   /// Volatilities.
   pub sigma: Array1<f64>,
-  /// Dividend yields.
-  pub q: Array1<f64>,
   /// Correlation matrix $\rho_{ij}$ ($n \times n$, symmetric, ones on
   /// diagonal).
   pub rho: Array2<f64>,
-  /// Strike.
-  pub k: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option type.
-  pub option_type: OptionType,
 }
 
 impl GeometricBasketPricer {
-  pub fn price(&self) -> f64 {
-    let n_assets = self.s.len();
+  /// Builds the pricer from the basket weights, the per-asset volatilities
+  /// and their correlation matrix.
+  pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
+    Self {
+      weights,
+      sigma,
+      rho,
+    }
+  }
+
+  /// Price either leg at one query point.
+  ///
+  /// # Panics
+  /// If the query's spot or yield vector disagrees with the length the
+  /// weights, volatilities and correlation matrix fix between them.
+  pub fn price_option(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    let n_assets = s.len();
     assert_eq!(self.weights.len(), n_assets);
     assert_eq!(self.sigma.len(), n_assets);
-    assert_eq!(self.q.len(), n_assets);
+    assert_eq!(q.len(), n_assets);
     assert_eq!(self.rho.shape(), [n_assets, n_assets]);
 
     // Geometric basket vol: sigma_G^2 = sum_i sum_j w_i w_j rho_{ij} sigma_i sigma_j
@@ -87,24 +148,48 @@ impl GeometricBasketPricer {
     // mu_G = sum_i w_i [r - q_i - 0.5 sigma_i^2] + 0.5 sigma_G^2
     let mut mu_g = 0.5 * sigma_g_sq;
     for i in 0..n_assets {
-      mu_g += self.weights[i] * (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]);
+      mu_g += self.weights[i] * (r - q[i] - 0.5 * self.sigma[i] * self.sigma[i]);
     }
 
     // log of geometric forward
     let mut log_g0 = 0.0;
     for i in 0..n_assets {
-      log_g0 += self.weights[i] * self.s[i].ln();
+      log_g0 += self.weights[i] * s[i].ln();
     }
-    let g_fwd = (log_g0 + mu_g * self.tau).exp();
-    let disc = (-self.r * self.tau).exp();
+    let g_fwd = (log_g0 + mu_g * tau).exp();
+    let disc = (-r * tau).exp();
 
-    let sqrt_t = self.tau.sqrt();
-    let d1 = ((g_fwd / self.k).ln() + 0.5 * sigma_g_sq * self.tau) / (sigma_g * sqrt_t);
+    let sqrt_t = tau.sqrt();
+    let d1 = ((g_fwd / k).ln() + 0.5 * sigma_g_sq * tau) / (sigma_g * sqrt_t);
     let d2 = d1 - sigma_g * sqrt_t;
-    match self.option_type {
-      OptionType::Call => disc * (g_fwd * norm_cdf(d1) - self.k * norm_cdf(d2)),
-      OptionType::Put => disc * (self.k * norm_cdf(-d2) - g_fwd * norm_cdf(-d1)),
+    match option_type {
+      OptionType::Call => disc * (g_fwd * norm_cdf(d1) - k * norm_cdf(d2)),
+      OptionType::Put => disc * (k * norm_cdf(-d2) - g_fwd * norm_cdf(-d1)),
     }
+  }
+
+  /// Price the geometric basket call at one query point.
+  pub fn price_call(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> f64 {
+    self.price_option(s, k, r, q, tau, OptionType::Call)
+  }
+
+  /// Price the geometric basket put at one query point.
+  pub fn price_put(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> f64 {
+    self.price_option(s, k, r, q, tau, OptionType::Put)
   }
 }
 
