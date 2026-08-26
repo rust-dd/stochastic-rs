@@ -24,6 +24,8 @@ use ndarray::Array1;
 #[cfg(feature = "openblas")]
 use ndarray::Array2;
 #[cfg(feature = "openblas")]
+use ndarray::ArrayView1;
+#[cfg(feature = "openblas")]
 use ndarray_linalg::Cholesky;
 #[cfg(feature = "openblas")]
 use ndarray_linalg::UPLO;
@@ -201,66 +203,98 @@ impl StulzRainbowPricer {
 /// Monte-Carlo rainbow pricer for arbitrary $n$ assets. Gated behind the
 /// `openblas` feature because it relies on `ndarray_linalg::Cholesky` for
 /// the correlation factor.
+///
+/// The struct holds **model, contract and method state only** — the vector
+/// of volatilities, the correlation matrix, which best-of/worst-of payoff
+/// this contract pays, and the Monte Carlo path count. The spot vector, the
+/// strike, the rate, the dividend-yield vector and the maturity are the
+/// pricing *query* and travel as arguments to [`price`](Self::price).
+///
+/// The volatilities and the correlation matrix fix how many assets the
+/// model has, and the query's spot and yield vectors have to agree with it.
+/// That check stays in [`try_price`](Self::try_price) rather than moving to
+/// [`new`](Self::new), alongside the positive-definiteness test: `try_price`
+/// is the only advertised way to surface either as an `Err`, and a
+/// constructor that panicked on them first would leave it nothing to report.
 #[cfg(feature = "openblas")]
 #[derive(Debug, Clone)]
 pub struct McRainbowPricer {
-  /// Spot prices.
-  pub s: Array1<f64>,
+  /// Payoff type — a term of the contract, not a market quote.
+  pub payoff: RainbowPayoff,
   /// Volatilities.
   pub sigma: Array1<f64>,
-  /// Dividend yields.
-  pub q: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
-  /// Strike.
-  pub k: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Payoff type.
-  pub payoff: RainbowPayoff,
   /// Number of MC paths.
   pub n_paths: usize,
 }
 
 #[cfg(feature = "openblas")]
 impl McRainbowPricer {
+  /// Builds the pricer from the payoff this contract pays, the per-asset
+  /// volatilities and their correlation matrix, plus the Monte Carlo path
+  /// count every price off this instance uses.
+  pub fn new(payoff: RainbowPayoff, sigma: Array1<f64>, rho: Array2<f64>, n_paths: usize) -> Self {
+    Self {
+      payoff,
+      sigma,
+      rho,
+      n_paths,
+    }
+  }
+
   /// Falliable variant of [`Self::price`] that surfaces invalid inputs
   /// (non-SPD correlation, dimension mismatch) as an `Err` instead of a panic.
-  pub fn try_price(&self) -> anyhow::Result<f64> {
-    let n_assets = self.s.len();
+  pub fn try_price(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> anyhow::Result<f64> {
+    let n_assets = s.len();
     if self.rho.shape() != [n_assets, n_assets] {
       anyhow::bail!(
         "rho shape {:?} does not match n_assets={n_assets}",
         self.rho.shape()
       );
     }
-    if self.sigma.len() != n_assets || self.q.len() != n_assets {
+    if self.sigma.len() != n_assets || q.len() != n_assets {
       anyhow::bail!(
         "sigma/q lengths must match n_assets={n_assets} (got {}/{})",
         self.sigma.len(),
-        self.q.len()
+        q.len()
       );
     }
     let _ = self
       .rho
       .cholesky(UPLO::Lower)
       .map_err(|e| anyhow::anyhow!("correlation matrix is not positive definite: {e}"))?;
-    Ok(self.price())
+    Ok(self.price(s, k, r, q, tau))
   }
 
-  pub fn price(&self) -> f64 {
-    let n_assets = self.s.len();
+  /// Price the contract at one query point.
+  ///
+  /// # Panics
+  /// If the correlation matrix is not positive definite — call
+  /// [`try_price`](Self::try_price) to handle that gracefully.
+  pub fn price(
+    &self,
+    s: ArrayView1<'_, f64>,
+    k: f64,
+    r: f64,
+    q: ArrayView1<'_, f64>,
+    tau: f64,
+  ) -> f64 {
+    let n_assets = s.len();
     let l: Array2<f64> = self.rho.cholesky(UPLO::Lower).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)
-      .map(|i| (self.r - self.q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * self.tau)
+      .map(|i| (r - q[i] - 0.5 * self.sigma[i] * self.sigma[i]) * tau)
       .collect();
-    let vols: Vec<f64> = (0..n_assets)
-      .map(|i| self.sigma[i] * self.tau.sqrt())
-      .collect();
+    let vols: Vec<f64> = (0..n_assets).map(|i| self.sigma[i] * tau.sqrt()).collect();
     let n_paths = self.n_paths;
 
     let mut all_z = vec![0.0_f64; n_paths * n_assets];
@@ -279,13 +313,13 @@ impl McRainbowPricer {
           zc[i] = acc;
         }
         let s_t: Vec<f64> = (0..n_assets)
-          .map(|i| self.s[i] * (drifts[i] + vols[i] * zc[i]).exp())
+          .map(|i| s[i] * (drifts[i] + vols[i] * zc[i]).exp())
           .collect();
-        self.payoff.evaluate(&s_t, self.k)
+        self.payoff.evaluate(&s_t, k)
       })
       .sum();
 
-    (-self.r * self.tau).exp() * sum / n_paths as f64
+    (-r * tau).exp() * sum / n_paths as f64
   }
 }
 
@@ -395,18 +429,15 @@ mod tests {
   fn stulz_min_matches_mc() {
     let stulz = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.25, 0.30, 0.4)
       .price(100.0, 100.0, 100.0, 0.05, 0.0, 0.0, 1.0);
-    let mc = McRainbowPricer {
-      s: array![100.0, 100.0],
-      sigma: array![0.25, 0.30],
-      q: array![0.0, 0.0],
-      rho: array![[1.0, 0.4], [0.4, 1.0]],
-      k: 100.0,
-      r: 0.05,
-      tau: 1.0,
-      payoff: RainbowPayoff::CallOnMin,
-      n_paths: 200_000,
-    }
-    .price();
+    let s = array![100.0, 100.0];
+    let q = array![0.0, 0.0];
+    let mc = McRainbowPricer::new(
+      RainbowPayoff::CallOnMin,
+      array![0.25, 0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+      200_000,
+    )
+    .price(s.view(), 100.0, 0.05, q.view(), 1.0);
     let rel = (stulz - mc).abs() / stulz.max(1e-10);
     assert!(rel < 0.03, "stulz={stulz}, mc={mc}, rel={rel}");
   }
@@ -442,31 +473,80 @@ mod tests {
     for i in 0..n {
       rho[[i, i]] = 1.0;
     }
-    let mc_max = McRainbowPricer {
-      s: s.clone(),
-      sigma: sig.clone(),
-      q: q.clone(),
-      rho: rho.clone(),
-      k: 100.0,
-      r: 0.05,
-      tau: 1.0,
-      payoff: RainbowPayoff::CallOnMax,
-      n_paths: 50_000,
-    }
-    .price();
-    let mc_min = McRainbowPricer {
-      s,
-      sigma: sig,
-      q,
-      rho,
-      k: 100.0,
-      r: 0.05,
-      tau: 1.0,
-      payoff: RainbowPayoff::CallOnMin,
-      n_paths: 50_000,
-    }
-    .price();
+    let mc_max = McRainbowPricer::new(RainbowPayoff::CallOnMax, sig.clone(), rho.clone(), 50_000)
+      .price(s.view(), 100.0, 0.05, q.view(), 1.0);
+    let mc_min = McRainbowPricer::new(RainbowPayoff::CallOnMin, sig, rho, 50_000).price(
+      s.view(),
+      100.0,
+      0.05,
+      q.view(),
+      1.0,
+    );
     assert!(mc_max > mc_min);
+  }
+
+  /// One Monte Carlo model instance prices a whole strike grid. The
+  /// strikes are far enough apart that the ordering survives the sampling
+  /// error of independent simulations.
+  #[cfg(feature = "openblas")]
+  #[test]
+  fn mc_rainbow_one_model_prices_a_strike_grid() {
+    let s = array![100.0, 100.0];
+    let q = array![0.0, 0.0];
+    let model = McRainbowPricer::new(
+      RainbowPayoff::CallOnMax,
+      array![0.25, 0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+      50_000,
+    );
+    let prices = [80.0, 100.0, 130.0].map(|k| model.price(s.view(), k, 0.05, q.view(), 1.0));
+    assert!(
+      prices[0] > prices[1] && prices[1] > prices[2],
+      "best-of calls must decay in the strike: {prices:?}"
+    );
+  }
+
+  /// The model fixes how many assets there are; a query that disagrees is
+  /// reported by `try_price` as an `Err`, not a panic. Pinned because that
+  /// is the reason the check did not move to the constructor.
+  #[cfg(feature = "openblas")]
+  #[test]
+  fn mc_rainbow_try_price_reports_a_query_dimension_mismatch() {
+    let model = McRainbowPricer::new(
+      RainbowPayoff::CallOnMin,
+      array![0.25, 0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+      1_000,
+    );
+    let s = array![100.0, 100.0, 100.0];
+    let q = array![0.0, 0.0, 0.0];
+    let err = model
+      .try_price(s.view(), 100.0, 0.05, q.view(), 1.0)
+      .expect_err("a three-asset query against a two-asset model is not priceable");
+    assert!(
+      err.to_string().contains("does not match n_assets=3"),
+      "{err}"
+    );
+  }
+
+  /// A correlation matrix that is symmetric but not positive definite is
+  /// also an `Err` rather than a panic — the other half of what keeps the
+  /// constructor unguarded.
+  #[cfg(feature = "openblas")]
+  #[test]
+  fn mc_rainbow_try_price_reports_a_non_spd_correlation() {
+    let model = McRainbowPricer::new(
+      RainbowPayoff::CallOnMin,
+      array![0.25, 0.30],
+      array![[1.0, 2.0], [2.0, 1.0]],
+      1_000,
+    );
+    let s = array![100.0, 100.0];
+    let q = array![0.0, 0.0];
+    let err = model
+      .try_price(s.view(), 100.0, 0.05, q.view(), 1.0)
+      .expect_err("rho = 2 is not a correlation");
+    assert!(err.to_string().contains("not positive definite"), "{err}");
   }
 
   /// Stulz put-on-min via parity should be positive.
