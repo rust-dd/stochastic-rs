@@ -31,6 +31,30 @@ const RATE_MATCH_TOL: f64 = 1e-12;
 ///   SDE is then fully specified by the query, so `r` and `q` drive drift and
 ///   discounting directly and every rate is accepted.
 ///
+/// # Spot and maturity are bounded by the surface, not by the rate anchor
+///
+/// The `s` and `tau` of a query are *honoured* — they drive the simulation —
+/// but [`LeverageSurface`] is indexed by absolute spot out to a finite
+/// horizon, and past either edge
+/// [`interpolate`](LeverageSurface::interpolate) holds the boundary value
+/// flat. Far enough out every path spends its whole life on that hold, and
+/// the price stops depending on the calibrated interior at all: two surfaces
+/// differing by a factor of three in the middle and agreeing on their edges
+/// return **bit-identical** prices there, while at the calibration spot they
+/// disagree by 95 %. The clamped answer is not marked in any way — it is
+/// finite, positive and inside the no-arbitrage band — so it is `NaN`-gated
+/// instead, on [`LeverageSurface::covers`].
+///
+/// This is a bound and not a rate-style equality check because a strike
+/// ladder around the calibration spot is what the type is *for*. Inside the
+/// grid the same flat hold only touches the wings of the terminal
+/// distribution, which no finite grid avoids and which
+/// [`calibrate_leverage`] applies to its own particles for the same reason.
+///
+/// Unlike the rate anchor this bound applies to **both** constructors: the
+/// extent belongs to the surface, whereas `(r, q)` provenance is something
+/// only a calibration can supply.
+///
 /// [`calibrate_leverage`]: super::calibrate_leverage
 #[derive(Debug, Clone)]
 pub struct HestonSlvPricer {
@@ -159,6 +183,19 @@ impl HestonSlvPricer {
 }
 
 impl ModelPricer for HestonSlvPricer {
+  /// Returns [`f64::NAN`] when `(s, tau)` falls outside the leverage
+  /// surface's own extent — case 2 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails), the same one
+  /// `CarrMadanPricer::price_call` reports for a strike outside its FFT grid.
+  /// Test with [`LeverageSurface::covers`] before pricing, or recalibrate
+  /// over a grid that spans the query. See [`HestonSlvPricer`] for what the
+  /// clamped answer would otherwise have been.
+  ///
+  /// The rate check runs first, so a query that is wrong on both counts
+  /// panics rather than returning `NaN`: a rate the pricer never agreed to
+  /// price at is a wiring error, and it should not be reported as a surface
+  /// edge.
+  ///
   /// # Panics
   ///
   /// When the pricer came from [`HestonSlvPricer::new`] and `(r, q)` differs
@@ -166,6 +203,9 @@ impl ModelPricer for HestonSlvPricer {
   /// [`HestonSlvPricer`] for why substituting is not a valid reprojection.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.check_rates(r, q);
+    if !self.leverage.covers(s, tau) {
+      return f64::NAN;
+    }
     self.mc_call_price(s, k, r, q, tau)
   }
 }

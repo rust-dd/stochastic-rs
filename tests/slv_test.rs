@@ -190,6 +190,70 @@ fn slv_pricer_flat_vol_vs_bsm_sanity() {
   );
 }
 
+/// A surface calibrated on 70..130 carries no information about a spot of
+/// 1000, but the bilinear clamp answers anyway: before the gate this query
+/// returned a finite, positive number inside the no-arbitrage band, within
+/// 0.2% of a plain Black price, with nothing marking it as extrapolated.
+#[test]
+fn slv_price_is_nan_outside_the_calibrated_spot_range() {
+  let params = heston_params(1.0);
+  let spots = Array1::linspace(70.0, 130.0, 11);
+  let times = Array1::from_vec(vec![0.1, 0.25, 0.5]);
+  let lv_grid = flat_local_vol_grid(0.2, &spots, &times);
+
+  let leverage = calibrate_leverage(
+    &params, 100.0, 0.05, 0.0, &spots, &times, &lv_grid, &spots, &times, 2000, 99,
+  );
+  assert_eq!(leverage.spot_range(), (70.0, 130.0));
+
+  let pricer = HestonSlvPricer::new(params, leverage, 0.05, 0.0)
+    .with_paths(2_000)
+    .with_steps_per_year(48)
+    .with_seed(77);
+
+  let inside = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
+  assert!(inside.is_finite() && inside > 0.0, "in-grid spot: {inside}");
+
+  for s in [1000.0, 131.0, 10.0] {
+    let out = pricer.price_call(s, s, 0.05, 0.0, 0.5);
+    assert!(out.is_nan(), "s={s} is outside 70..130 but priced at {out}");
+  }
+}
+
+/// The same hole on the maturity axis: past `times.last()` the leverage is
+/// the last calibrated row held forward forever.
+#[test]
+fn slv_price_is_nan_beyond_the_calibrated_horizon() {
+  let params = heston_params(1.0);
+  let spots = Array1::linspace(70.0, 130.0, 11);
+  let times = Array1::from_vec(vec![0.1, 0.25, 0.5]);
+  let lv_grid = flat_local_vol_grid(0.2, &spots, &times);
+
+  let leverage = calibrate_leverage(
+    &params, 100.0, 0.05, 0.0, &spots, &times, &lv_grid, &spots, &times, 2000, 99,
+  );
+  assert_eq!(leverage.horizon(), 0.5);
+
+  let pricer = HestonSlvPricer::new(params, leverage, 0.05, 0.0)
+    .with_paths(2_000)
+    .with_steps_per_year(48)
+    .with_seed(77);
+
+  let at_horizon = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
+  assert!(
+    at_horizon.is_finite() && at_horizon > 0.0,
+    "the horizon itself is covered: {at_horizon}"
+  );
+
+  for tau in [0.51, 1.0, 5.0] {
+    let out = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
+    assert!(
+      out.is_nan(),
+      "tau={tau} is past the 0.5 horizon but priced at {out}"
+    );
+  }
+}
+
 fn normal_cdf(x: f64) -> f64 {
   stochastic_rs::distributions::special::norm_cdf(x)
 }
