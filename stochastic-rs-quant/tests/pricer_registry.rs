@@ -363,7 +363,7 @@ const NON_OPTION: &str = "not a single-underlying option pricer";
 //    which is why this family follows D3's model/query split by convention
 //    rather than through a trait. All eight follow it: each holds its
 //    volatilities and correlation and takes the spots, strike, rate, yields and
-//    maturity per call — `KirkSpreadPricer::call_put(f1, f2, x, r, tau)`,
+//    maturity per call — `KirkSpreadPricer::spread_call_put(f1, f2, x, r, tau)`,
 //    `MargrabePricer::price(s1, s2, q1, q2, tau)`,
 //    `GeometricBasketPricer::price_call(s, k, r, q, tau)`. What else stays on a
 //    struct is contract, not market data: the basket weights and average type,

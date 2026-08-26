@@ -95,15 +95,22 @@ sit outside it deliberately:
   `McSpreadPricer`, the basket and rainbow pricers) carry **no** pricing
   trait. `MargrabePricer` is an exchange option with no strike at all;
   `KirkSpreadPricer` strikes against a spread of two forwards, so its
-  query is `call_put(f1, f2, x, r, tau)`; the basket and rainbow pricers
-  take N legs. A shared signature would need an `Option<f64>` strike and
-  a variable-length underlying list — a dishonest shape for all of them.
+  query is `spread_call_put(f1, f2, x, r, tau)`; the basket and rainbow
+  pricers take N legs. A shared signature would need an `Option<f64>` strike
+  and a variable-length underlying list — a dishonest shape for all of them.
 
-  Of these, only `KirkSpreadPricer` currently follows the model/query
-  convention, through inherent methods. The other seven still hold their
-  market data as struct fields behind a no-argument `price()`; converting
-  them is planned but not done. `pricer_registry.rs` records the current
-  state of each.
+  All eight follow the model/query split through inherent methods: each holds
+  its volatilities and correlation and takes the spots, strike, rate, yields
+  and maturity per call. `pricer_registry.rs` records the state of each.
+
+  `KirkSpreadPricer` is the one member whose methods carry a `spread_`
+  prefix. Its query is five `f64`s, exactly the arity of the
+  `(s, k, r, q, tau)` the single-underlying pricers take, and it disagrees
+  with them in four of the five positions — so under the plain names a
+  misdirected call compiled and returned a finite, well-scaled, wrong price.
+  The other seven are separated by their signatures already
+  (`GeometricBasketPricer::price_call` takes `ArrayView1` legs,
+  `MargrabePricer::price` has no strike), so they keep the plain names.
 
 The path-dependent family (barriers, lookbacks, cliquets, autocallables,
 Bermudans, chooser, compound, variance/volatility swaps) is trait-less
@@ -151,7 +158,9 @@ Every former implementor moved to `ModelPricer`, to `ShortRatePricer`, or
 query. `calculate_call_put()` becomes `call_put(...)`,
 `calculate_price()` becomes `price_call(...)`, and the four pricers that
 genuinely invert a price to a vol keep `implied_volatility` as an
-inherent method.
+inherent method. `KirkSpreadPricer` is the exception on naming as well:
+its two-forward query took the same five `f64`s, so its methods are
+`spread_call_put` / `spread_call` / `spread_put`.
 
 For the per-pricer mapping, each type's own rustdoc names what its model
 state is and what its query is; `pricer_registry.rs` in the crate's test

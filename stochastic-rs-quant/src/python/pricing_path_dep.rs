@@ -498,6 +498,6 @@ impl PyKirkSpreadPricer {
   fn price(&self) -> f64 {
     self
       .inner
-      .price_call(self.f1, self.f2, self.x, self.r, self.tau)
+      .spread_call(self.f1, self.f2, self.x, self.r, self.tau)
   }
 }

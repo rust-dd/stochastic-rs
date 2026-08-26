@@ -29,7 +29,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 /// The struct holds **model state only** — the two volatilities and their
 /// correlation. The two forwards, the spread strike, the rate and the
 /// maturity are the pricing *query* and travel as arguments to
-/// [`call_put`](Self::call_put), so one instance prices a whole
+/// [`spread_call_put`](Self::spread_call_put), so one instance prices a whole
 /// forward/strike/maturity grid.
 ///
 /// This is a **two-forward** payoff, so it deliberately carries no
@@ -40,12 +40,49 @@ use stochastic_rs_distributions::special::norm_cdf;
 /// `McSpreadPricer`, and exposes the same model/query split through inherent
 /// methods.
 ///
+/// # Why the methods are named `spread_*`
+///
+/// Everything in this query is an `f64`, so nothing but the name separates
+/// `(f1, f2, x, r, tau)` from the `(s, k, r, q, tau)` the rest of the crate
+/// takes at the same arity — and the two disagree in four of five positions.
+/// Under the old names a call meant for a vanilla pricer landed here and came
+/// back finite, well scaled and wrong, which is the plausible-looking
+/// sentinel [the failure
+/// convention](crate::traits::ModelPricer#how-pricing-fails) rules out. The
+/// clash was not hypothetical: eight sibling pricers expose
+/// `call_put(s, k, r, q, tau)` (`BSMPricer`, `HestonPricer`,
+/// `Merton1976Pricer`, `SabrPricer`, `AsianPricer`,
+/// `BjerksundStensland2002Pricer`, `HestonStochCorrPricer`,
+/// `GbmMalliavinPricer`) and
+/// [`ModelPricer::price_call`](crate::traits::ModelPricer::price_call) is the same shape
+/// again. The `spread_` prefix turns that silent wrong number into
+/// `error[E0599]: no method named ...`.
+///
+/// The other multi-asset members keep the plain names because their
+/// signatures already separate them — `GeometricBasketPricer::price_call`
+/// takes `ArrayView1` legs, `MargrabePricer::price` has no strike at all.
+/// Kirk was the one member whose query was `f64`-for-`f64` identical.
+///
 /// ```
 /// use stochastic_rs_quant::pricing::kirk::KirkSpreadPricer;
 ///
 /// let model = KirkSpreadPricer::new(0.35, 0.35, 0.9);
-/// let (call, put) = model.call_put(35.0, 34.0, 3.0, 0.05, 1.0);
+/// let (call, put) = model.spread_call_put(35.0, 34.0, 3.0, 0.05, 1.0);
 /// assert!(put > call, "the spread 35 - 34 is far below the strike 3");
+/// ```
+///
+/// The retired names are gone rather than deprecated, so a stale call site is
+/// a compile error instead of a warning that a `-D warnings` build would
+/// have to suppress:
+///
+/// ```compile_fail
+/// use stochastic_rs_quant::pricing::kirk::KirkSpreadPricer;
+/// use stochastic_rs_quant::traits::ModelPricer;
+///
+/// let model = KirkSpreadPricer::new(0.35, 0.35, 0.9);
+/// // Reads as (s, k, r, q, tau) and used to compile, returning a spread
+/// // price struck at x = 0.05 against forwards 100 and 95.
+/// let _ = model.price_call(100.0, 95.0, 0.05, 0.02, 1.0);
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct KirkSpreadPricer {
@@ -91,15 +128,18 @@ impl KirkSpreadPricer {
     Self { v1, v2, corr }
   }
 
-  /// Call and put price at one query point.
+  /// Spread call and spread put at one query point.
   ///
   /// `f1` and `f2` are the two forwards, `x` the spread strike (conversion
-  /// cost), `r` the risk-free rate and `tau` the maturity in years.
+  /// cost), `r` the risk-free rate and `tau` the maturity in years. **This is
+  /// not the `(s, k, r, q, tau)` query** the single-underlying pricers take
+  /// at the same arity; [`KirkSpreadPricer`](Self)'s own documentation has
+  /// the reason the name carries the `spread_` prefix.
   ///
   /// The combined volatility is query-dependent, not model state: Kirk
   /// weights $\sigma_2$ by $F_2/(F_2+X)$, so it is recomputed per call
   /// rather than cached on the struct.
-  pub fn call_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> (f64, f64) {
+  pub fn spread_call_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> (f64, f64) {
     // Ratio transformation: F = F1 / (F2 + X)
     let denom = f2 + x;
     let f = f1 / denom;
@@ -123,13 +163,23 @@ impl KirkSpreadPricer {
   }
 
   /// Price the spread call $\max(F_1-F_2-X,0)$ at one query point.
-  pub fn price_call(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> f64 {
-    self.call_put(f1, f2, x, r, tau).0
+  ///
+  /// `f1` and `f2` are the two forwards, `x` the spread strike (conversion
+  /// cost), `r` the risk-free rate and `tau` the maturity in years — the
+  /// same query [`spread_call_put`](Self::spread_call_put) takes, of which
+  /// this is the first projection.
+  pub fn spread_call(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> f64 {
+    self.spread_call_put(f1, f2, x, r, tau).0
   }
 
   /// Price the spread put $\max(X-(F_1-F_2),0)$ at one query point.
-  pub fn price_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> f64 {
-    self.call_put(f1, f2, x, r, tau).1
+  ///
+  /// `f1` and `f2` are the two forwards, `x` the spread strike (conversion
+  /// cost), `r` the risk-free rate and `tau` the maturity in years — the
+  /// same query [`spread_call_put`](Self::spread_call_put) takes, of which
+  /// this is the second projection.
+  pub fn spread_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> f64 {
+    self.spread_call_put(f1, f2, x, r, tau).1
   }
 }
 
@@ -144,36 +194,57 @@ mod tests {
 
   /// Values captured from `PricerExt::calculate_call_put()` **before** the
   /// model/query reshape, at `KirkSpreadPricer::new(f1, f2, x, r, v1, v2,
-  /// corr, Some(tau), None, None)`. The reshape is an API change only, so
-  /// these must not move.
+  /// corr, Some(tau), None, None)`. The reshape and the later `spread_*`
+  /// rename are API changes only, so these must not move.
   #[test]
   fn kirk_call_put_matches_pre_refactor_goldens() {
     let heat_rate = KirkSpreadPricer::new(0.35, 0.35, 0.90);
-    let (call, put) = heat_rate.call_put(35.0, 34.0, 3.0, 0.05, 1.0);
+    let (call, put) = heat_rate.spread_call_put(35.0, 34.0, 3.0, 0.05, 1.0);
     assert!((call - 1.2691102653060158).abs() < TOL, "call {call}");
     assert!((put - 3.1715691143074434).abs() < TOL, "put {put}");
 
     let itm = KirkSpreadPricer::new(0.30, 0.25, 0.7);
-    let (call, put) = itm.call_put(100.0, 90.0, 5.0, 0.05, 0.5);
+    let (call, put) = itm.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
     assert!((call - 8.547484304937198).abs() < TOL, "call {call}");
     assert!((put - 3.670934744795539).abs() < TOL, "put {put}");
   }
 
-  /// `price_call` / `price_put` are projections of `call_put`, not
+  /// `spread_call` / `spread_put` are projections of `spread_call_put`, not
   /// recomputations — they must agree bit for bit.
   #[test]
   fn kirk_price_legs_project_call_put() {
     let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);
-    let (call, put) = model.call_put(100.0, 90.0, 5.0, 0.05, 0.5);
-    assert_eq!(model.price_call(100.0, 90.0, 5.0, 0.05, 0.5), call);
-    assert_eq!(model.price_put(100.0, 90.0, 5.0, 0.05, 0.5), put);
+    let (call, put) = model.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
+    assert_eq!(model.spread_call(100.0, 90.0, 5.0, 0.05, 0.5), call);
+    assert_eq!(model.spread_put(100.0, 90.0, 5.0, 0.05, 0.5), put);
+  }
+
+  /// The number the old `price_call` name handed back when a
+  /// `(s, k, r, q, tau)` call landed here by mistake: finite, positive,
+  /// well scaled against a spot of 100 — nothing about it announces that it
+  /// is a spread struck at `x = 0.05` on forwards 100 and 95 rather than a
+  /// vanilla call struck at 95. The `spread_` prefix is what now makes that
+  /// call `error[E0599]`; this test pins the value the compiler used to let
+  /// through, so the rename cannot be reverted as cosmetic.
+  #[test]
+  fn the_misread_vanilla_query_still_produces_a_plausible_number() {
+    let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);
+    let misread = model.spread_call(100.0, 95.0, 0.05, 0.02, 1.0);
+    assert!(
+      (misread - 10.943403655286877).abs() < TOL,
+      "misread spread price {misread}"
+    );
+    assert!(
+      misread.is_finite() && misread > 0.0,
+      "the confusion is silent precisely because this is a healthy number"
+    );
   }
 
   /// One model instance prices a whole query grid — the point of the split.
   #[test]
   fn kirk_one_model_prices_a_strike_grid() {
     let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);
-    let prices = [1.0, 5.0, 10.0].map(|x| model.price_call(100.0, 90.0, x, 0.05, 0.5));
+    let prices = [1.0, 5.0, 10.0].map(|x| model.spread_call(100.0, 90.0, x, 0.05, 0.5));
     assert!(
       prices[0] > prices[1] && prices[1] > prices[2],
       "spread calls must decay in the strike: {prices:?}"
