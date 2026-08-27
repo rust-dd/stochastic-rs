@@ -175,10 +175,9 @@ our names in the field.
 
 ## 4. The sample implementation
 
-For Euler-Maruyama discretisation:
-
-Split it: `sampler()` hoists everything that does not vary per path,
-and the `PathSampler` impl runs the recursion.
+For an Euler-Maruyama discretisation, split the work in two:
+`sampler()` hoists everything that does not vary per path, and the
+`PathSampler` impl runs the recursion.
 
 ```rust
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Foo<T, S> {
@@ -237,8 +236,9 @@ Four conventions in there:
 - **Draw Gaussians in bulk** with `SimdNormal::fill_slice`, never one
   per step. Per `dev-rules` §7a, `rand_distr::StandardNormal` is
   reserved for `benches/` — library code uses the workspace's own
-  `Simd*` distributions, and the seed goes to the **constructor**, not
-  to a `fill_slice(rng, …)` argument (which is ignored).
+  `Simd*` distributions. `fill_slice(out)` takes no RNG argument at
+  all — the seed goes to the constructor, by reference:
+  `SimdNormal::<T>::new(mean, std, &self.seed)`.
 - **Fold constants into the noise.** Putting `dt.sqrt()` in the
   distribution's std keeps it out of the inner loop.
 - Use `T::from_f64_fast` / `T::from_usize_` (not `T::from`) at the

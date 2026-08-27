@@ -78,9 +78,14 @@ RNG and exist precisely for that slot.
 
 Two traps worth naming:
 
-- **`fill_slice(rng, out)` ignores `rng`.** The `Simd*` types draw from
-  their own internal stream. Seeding an external `StdRng` and handing it
-  over changes nothing; the seed must go to the constructor.
+- **`fill_slice(out)` takes no RNG at all.** Every `Simd*` bulk fill is
+  `pub fn fill_slice(&self, out: &mut [T])` — one argument. The type
+  draws from its own internal stream, seeded at construction, so there
+  is nowhere to hand an external `StdRng`; the seed must go to the
+  constructor (`SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42))`).
+  Older notes describing a two-argument `fill_slice(_rng, out)` that
+  ignored its first parameter, or a `fill_slice_fast` companion, are
+  stale: neither exists.
 - **The `rand_distr::Distribution` trait import stays.** Our own `Simd*`
   types implement it, so `use rand_distr::Distribution;` is still how
   `.sample()` resolves. Removing those impls would break downstream users;

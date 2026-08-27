@@ -31,34 +31,38 @@ The rules here keep the suite reproducible, gateable, and pruned.
 ### 1.1 The seed goes through the constructor, never through an `Rng` argument
 
 This is the trap that cost a red CI on main. The workspace's SIMD
-distributions take an `Rng` parameter on `fill_slice` / `sample` **and
-ignore it** — they draw from their own internal stream, seeded at
-construction:
+distributions draw from their **own** internal stream, seeded at
+construction — the seed never travels as a call argument:
 
 ```rust
-pub fn fill_slice<Rr: Rng + ?Sized>(&self, _rng: &mut Rr, out: &mut [T]) {
-    self.fill_slice_fast(out)   // note the underscore on _rng
-}
+pub fn fill_slice(&self, out: &mut [T])    // one argument, no RNG
 ```
 
-So this produces a *different sample on every run* despite looking seeded:
+So the seed has exactly one way in, and it is the constructor's last
+parameter:
 
 ```rust
-// WRONG — the StdRng is discarded; `&Unseeded` reseeds from entropy each run
+// WRONG — `&Unseeded` reseeds from entropy on every run
 let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-let mut rng = StdRng::seed_from_u64(42);
-dist.fill_slice(&mut rng, &mut x);
+dist.fill_slice(&mut x);
 ```
 
 ```rust
 // RIGHT — the seed reaches the stream that is actually used
 let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-dist.fill_slice_fast(&mut x);
+dist.fill_slice(&mut x);
 ```
 
 `anderson_darling.rs` shipped the wrong form for months with a comment
-claiming it defended against flakiness. It did not; it was three unseeded
-draws. If a test hands an `Rng` to a `Simd*` distribution, that is a bug.
+claiming it defended against flakiness. It did not; it was three
+unseeded draws.
+
+Historical note, because older docs and older code both carry it: this
+API used to be `fill_slice(_rng, out)`, taking and silently discarding
+an `Rng`, with a `fill_slice_fast(out)` companion. **Neither exists any
+more** — every `Simd*` type has the single-argument form above, and
+there is no `fill_slice_fast` anywhere in the workspace. Code passing an
+`Rng` to `fill_slice` no longer compiles, which is the point.
 
 ### 1.2 Statistical assertions need more than one seed
 

@@ -9,8 +9,8 @@ Each distribution lives at `stochastic-rs-distributions/src/<name>.rs`
 and ships a `SimdXxx<T>` struct that implements:
 
 1. The `rand_distr::Distribution<T>` trait (per-sample `sample(rng)`).
-2. Bulk fillers `fill_slice(rng, dst)` and `fill_slice_fast(dst)` (with
-   internal RNG seed advancement).
+2. A bulk filler `fill_slice(&self, out: &mut [T])` — no RNG argument;
+   it advances the type's own internal stream.
 3. `DistributionExt` for closed-form pdf / cdf / characteristic
    function / moments.
 4. The `py_distribution!` macro at the bottom for Python exposure.
@@ -80,12 +80,11 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdFoo<T, N, R> {
     /// type satisfies call sites that hand over an `Rng`. The samples come
     /// from `self.simd_rng`, seeded in `new`. Keep the underscore: it is the
     /// signal to readers that seeding an external RNG does nothing.
-    pub fn fill_slice<Rr: rand::Rng + ?Sized>(&self, _rng: &mut Rr, dst: &mut [T]) {
-        self.fill_slice_fast(dst)
-    }
-
-    /// Bulk fill optimised for speed; may use different SIMD intrinsics.
-    pub fn fill_slice_fast(&self, dst: &mut [T]) { /* ... */ }
+    /// Bulk fill. Takes **no** RNG argument — the type draws from its
+    /// own internal stream, seeded at construction. There is no
+    /// `fill_slice_fast` companion; this is the only bulk entry point,
+    /// and every `Simd*` type in the crate has exactly this signature.
+    pub fn fill_slice(&self, out: &mut [T]) { /* ... */ }
 }
 
 // `use rand_distr::Distribution;` — NOT `rand::distributions`, which
@@ -166,9 +165,11 @@ mod tests {
     /// 1. Kolmogorov-Smirnov test against the analytical CDF.
     #[test]
     fn ks_test_passes() {
-        let d = SimdFoo::<f64>::with_seed(2.0, 3.0, 42);
+        // The seed is the constructor's last parameter, taken by
+        // reference as `&impl SeedExt`. There is no `with_seed`.
+        let d = SimdFoo::<f64>::new(2.0, 3.0, &Deterministic::new(42));
         let mut samples = vec![0.0; 100_000];
-        d.fill_slice_fast(&mut samples);
+        d.fill_slice(&mut samples);
         let p = ks_test(&samples, |x| d.cdf(x));
         assert!(p > 0.05, "KS p-value = {p}");
     }
