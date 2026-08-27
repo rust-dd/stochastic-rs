@@ -745,7 +745,26 @@ costing anything but tidiness.
 
 ## Queued — found while closing step 6c
 
-- **32 — A degenerate Merton term's Greeks are wrong *at* the forward.** Item 31
+- **32 — CLOSED** (`fdd4d49`), and **the fix is better than the brief asked for.**
+  I described patching each Greek's forward limit. The agent found the limit
+  differs *per Greek **and** per side of the forward*, removed the floor
+  **entirely**, and encoded the side as a `TermRegime` type rather than a branch
+  condition — so the six price-differencing Greeks inherit `term_call_put`'s limit
+  for free instead of each restating it.
+
+  Limits now returned: `delta -> ½e^{(b−r)tau}` and `rho -> ½K·tau·e^{−r·tau}` at
+  the forward, keeping their saturated closed forms away from it;
+  **`gamma -> +inf`** at the forward, `0` away from it. Returning the honest
+  infinity rather than a `NaN` or the old `0.0` is the call I flagged as needing
+  justification.
+
+  The drift-guard test was renamed from `..._are_a_known_zero` to
+  **`..._are_their_limits`** — which is exactly right: it asserted both the wrong
+  values and the right ones so it could not drift, and now the right ones are what
+  the code returns. **Ordinary Merton goldens are untouched** — zero golden lines
+  changed in `formula.rs`, so item 23's Haug-validated values stand.
+
+  ~~Original:~~ a degenerate Merton term's Greeks were wrong at the forward Item 31
   narrowed the floor but kept it there, because `d1` is genuinely `0/0`: delta,
   gamma and rho return `0.0` where the `sigma -> 0+` limits are **0.48765**,
   **`+inf`** and **24.3827**. `theta` is right for a reason that does not
