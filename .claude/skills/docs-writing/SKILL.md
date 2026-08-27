@@ -1,6 +1,6 @@
 ---
 name: docs-writing
-description: Conventions for writing and maintaining stochastic-rs documentation pages under website/content/docs/. Eight page templates (process / distribution / copula / pricer / calibrator / estimator / AI surrogate / concept), frontmatter schema, KaTeX gotchas, meta.json sidebar wiring, doctest-backed examples, and the audit-script contract. Invoke whenever a new public type ships and needs a docs page, or when fixing rot in existing pages.
+description: Conventions for writing and maintaining stochastic-rs documentation pages under website/content/docs/. Nine section templates (process / distribution / pricer / calibrator / estimator / copula / AI surrogate / concept / tutorial), frontmatter schema, KaTeX gotchas, meta.json sidebar wiring, doctest-backed examples, and what the audit script does and does not enforce. Invoke whenever a new public type ships and needs documenting, or when fixing rot in existing pages.
 ---
 
 # Docs writing — stochastic-rs
@@ -40,10 +40,20 @@ content here) plus per-feature `<section>/<name>.mdx` pages, add a
 If a new type does not fit any of these slots, **stop and ask** — adding
 a new top-level section is a sidebar decision, not a per-page one.
 
-## 2. Frontmatter schema (mandatory)
+## 2. Frontmatter schema
 
 Every page begins with frontmatter validated by zod in
-`website/source.config.ts`. Required keys:
+`website/source.config.ts`. **Nothing below is enforced as required** —
+in the shipped schema every extended key is `.optional()`, and
+`features` / `references` are `.default([])`; only fumadocs' own base
+`title` is mandatory. What *is* enforced is the **shape** of any key you
+do supply: `category` must be one of the ten enum values, `crate` must
+match `/^stochastic-rs(-[a-z]+)?$/`, `since` must match a semver-ish
+regex, `status` must be one of `stable|experimental|deprecated`, and
+each `references` entry needs `author` / `year` / `title`.
+
+Treat the list below as the **house style** — supply these keys because
+reviewers expect them, not because a build will fail without them:
 
 ```yaml
 ---
@@ -76,12 +86,25 @@ references:
 - `references` empty array is allowed only on `concept` pages. Every
   numerical / model page must cite at least one paper.
 
-## 3. The page templates
+## 3. The section templates
+
+**Read this before using any template below.** The docs site is
+currently **26 `.mdx` files**, and outside `getting-started/` (4 pages)
+and `concepts/` (9 pages) it is one flat page per crate area:
+`processes.mdx`, `distributions.mdx`, `quant.mdx`, `stats.mdx`,
+`copulas.mdx`, `ai.mdx`, `tutorials.mdx`, plus `index`, `api`,
+`python`, `benchmarks`, `comparison`, `contributing`.
+
+So a "process page" is **a section within `processes.mdx`**, not a file
+of its own. The templates below are the per-type *section* shape to
+write inside those aggregate pages. §1's promotion rule still applies if
+one outgrows ~600 lines — but nothing has yet, so do not create
+`processes/<name>.mdx` on the assumption that the folder form exists.
 
 Each section below is a copy-paste-ready skeleton. Replace the angle-bracketed
 fields, keep the section ordering, do not invent extra top-level headers.
 
-### 3.1 Process page (≈80 pages — by far the most common)
+### 3.1 Process section (one `processes.mdx`, ~127 types documented in it)
 
 ```mdx
 ---
@@ -156,7 +179,7 @@ path = p.sample()  # numpy.ndarray, shape (n,)
 hand-written `<PaperRef />` blocks for the rare paper without DOI.>
 ```
 
-### 3.2 Distribution page (19 pages)
+### 3.2 Distribution section (one `distributions.mdx`)
 
 ```mdx
 ---
@@ -196,11 +219,19 @@ $$ \varphi(t) = \dots $$
 | Skewness      | $\dots$ (or "**not implemented** — see notes")    |
 | Excess kurtosis | $\dots$                                          |
 
-> **DistributionExt status note**: per `memory/project_distribution_ext_status.md`,
-> 18/19 distributions ship closed-form `DistributionExt`. If a specific moment
-> falls into the 5 "no closed-form" cases, mark it explicitly here as
-> `unimplemented!` and link to the issue tracking the fix. Never leave it as
-> a silent zero.
+> **DistributionExt status note**: the coverage figure is tracked in the
+> auto-memory entry `project_distribution_ext_status` and restated in the
+> root `CLAUDE.md` ("18/19 implement closed-form; 5 named no-closed-form
+> `unimplemented!()` cases"). **Re-derive it before quoting it** — a raw
+> `impl ... DistributionExt` count over
+> `stochastic-rs-distributions/src` returns a different number (23) than
+> the per-distribution figure, because several files define more than
+> one type (`truncated.rs` alone has four). Cite the source, not a
+> number you counted in passing.
+>
+> If a specific moment has no closed form, mark it explicitly as
+> `unimplemented!` with the anchored message the trait mandates, and say
+> so on the page. Never leave it as a silent zero.
 
 ## Examples
 
@@ -232,7 +263,7 @@ validates the sampler against the analytic CDF.>
 ## References
 ```
 
-### 3.3 Pricer page (~30 pages)
+### 3.3 Pricer section (inside `quant.mdx`)
 
 ```mdx
 ---
@@ -302,7 +333,7 @@ $O(\text{steps} \times \text{paths})$ for MC, $O(N \log N)$ for FFT, etc.
 ## References
 ```
 
-### 3.4 Calibrator page (~12 pages)
+### 3.4 Calibrator section (inside `quant.mdx`; 12 in-tree calibrators)
 
 ```mdx
 ---
@@ -363,7 +394,7 @@ caveats.>
 ## References
 ```
 
-### 3.5 Estimator page (~30 pages)
+### 3.5 Estimator section (one `stats.mdx`)
 
 ```mdx
 ---
@@ -420,7 +451,7 @@ numerical examples (e.g. Fukasawa intraday Table 1).>
 ## References
 ```
 
-### 3.6 Copula page (10 pages)
+### 3.6 Copula section (one `copulas.mdx`; 13 bivariate + 8 multivariate)
 
 ```mdx
 ---
@@ -470,7 +501,7 @@ $\theta \in <\text{interval}>$, with limits:
 ## References
 ```
 
-### 3.7 AI surrogate page (3 pages)
+### 3.7 AI surrogate section (one `ai.mdx`; 3 surrogates)
 
 Per `vol-surrogate-nn` SKILL. Required sections:
 
@@ -486,7 +517,7 @@ Per `vol-surrogate-nn` SKILL. Required sections:
 9. References
 ```
 
-### 3.8 Concept page (~8 pages)
+### 3.8 Concept page (`concepts/`, 9 pages — the only per-topic folder besides `getting-started/`)
 
 Free-form. Required ingredients:
 
@@ -497,7 +528,7 @@ Free-form. Required ingredients:
   `ProcessExt::sample()` vs `sample_par()`)
 - Cross-links to the SKILLs that operationalise the concept
 
-### 3.9 Tutorial page (8–10 pages)
+### 3.9 Tutorial section (one `tutorials.mdx`)
 
 Long-form, end-to-end, narrative. Required structure:
 
@@ -513,7 +544,10 @@ Long-form, end-to-end, narrative. Required structure:
 ## 4. Cross-linking conventions
 
 - **Internal links**: always relative, no leading `/docs/` prefix duplication.
-  Use `[OU](/docs/processes/diffusion/ou)`. Fumadocs MDX validates these at
+  With the current flat tree that means an in-page anchor —
+  `[OU](/docs/processes#ornstein-uhlenbeck)` — not
+  `/docs/processes/diffusion/ou`, which resolves to nothing.
+  Fumadocs MDX validates these at
   build time — broken links fail CI.
 - **docs.rs links**: don't hand-write them. Frontmatter `module_path` is
   rendered by `<DocsRsLink />` automatically in the page header.
@@ -550,27 +584,41 @@ $$
 
 ## 6. `meta.json` (sidebar)
 
-Each section directory has a `meta.json` declaring sidebar order. Example
-from `processes/diffusion/meta.json`:
+Each *directory* has a `meta.json` declaring sidebar order. There are
+exactly **three** in the tree — `content/docs/meta.json`,
+`content/docs/getting-started/meta.json` and
+`content/docs/concepts/meta.json` — because those are the only
+directories. (There is no `processes/diffusion/meta.json`; there is no
+`processes/` directory at all.)
+
+The root one, verbatim:
 
 ```json
 {
-  "title": "Diffusion processes",
+  "title": "Documentation",
   "pages": [
-    "overview",
-    "---Single-factor---",
-    "ou", "gbm", "gbm-log", "cir", "cev", "ckls", "ait-sahalia",
-    "---Bounded support---",
-    "jacobi", "fjacobi", "logistic", "verhulst", "kimura", "pearson",
-    "---Special---",
-    "regime-switching", "fouque", "feller", "feller-root", "three-half"
+    "index",
+    "---Start here---",
+    "getting-started", "concepts", "comparison",
+    "---Reference---",
+    "processes", "distributions", "copulas", "stats", "quant", "ai",
+    "---Bindings---",
+    "python",
+    "---Guides---",
+    "tutorials", "benchmarks",
+    ...
   ]
 }
 ```
 
-`---Section---` strings render as non-clickable group headers. The audit
-script ensures **every** mdx file in the directory appears in `pages` —
-forgetting a new file is a hard error.
+A folder entry (`getting-started`, `concepts`) refers to the directory
+and picks up that directory's own `meta.json`.
+
+`---Section---` strings render as non-clickable group headers, and the
+audit script filters them out before checking coverage. This coverage
+check is one of only **two** things `docs-audit.ts` actually enforces
+(see §10) — so forgetting a new file here genuinely is a hard error,
+unlike most rules in this SKILL.
 
 ## 7. The `<RustExample>` component (doctest-backed examples)
 
@@ -603,7 +651,7 @@ Citation format:
 - url only → `Author (year). Title. <url>`
 
 The audit pings DOIs / arXiv IDs quarterly. Broken links produce a row
-in `website/audit/AUDIT_<YYYY-MM-DD>.md`.
+in the audit script's stdout (§10 — nothing is written to disk).
 
 ## 9. Adding a new page — checklist
 
@@ -623,23 +671,40 @@ in `website/audit/AUDIT_<YYYY-MM-DD>.md`.
 
 ## 10. Audit script — what it enforces
 
-`website/scripts/docs-audit.ts` runs in CI on every PR and as a quarterly
-cron. Hard failures (block CI):
+`website/scripts/docs-audit.ts` (123 lines) describes itself in its own
+header as "a working scaffold". **Only two checks are actually
+implemented**, and both hard-fail (`process.exit(1)`):
 
-1. Frontmatter zod schema violation
-2. `module_path` does not resolve in the workspace
-3. Public type added in `src/` with no matching MDX page
-4. MDX file missing from its directory's `meta.json`
-5. `<RustExample path="..." />` points at a non-existent file
-6. Broken internal Markdown link
+1. **meta.json coverage** — `checkMetaCoverage()`: an `.mdx` file missing
+   from its directory's `pages` array. (`---Section---` divider entries
+   are filtered out, so they do not count as coverage.)
+2. **`<RustExample path="..." />` points at a non-existent file.**
 
-Soft warnings (report-only):
+Everything else is a `// TODO:` at the bottom of the script and is **not
+enforced by anything**:
 
-- `last-checked` sha older than 90 days while source changed
-- DOI / arXiv URL no longer resolves
-- Description outside 20–160 chars (warn at 80% of bound)
+- `module_path` resolution against the workspace
+- a public-type-without-a-page differ
+- the DOI / arXiv soft-warn checker
+- `last-checked` sha age
+- any description length bound (the zod schema has no `.min`/`.max` on
+  `description` at all)
+- a `z.refine` tying `status: 'deprecated'` to `replaced_by`
+- a category-conditional check on empty `references`
 
-Output: `website/audit/AUDIT_<YYYY-MM-DD>.md`.
+Frontmatter *shape* violations are caught, but by fumadocs' zod schema at
+build time, not by this script. Broken internal links are caught by
+`next build`, likewise not by this script.
+
+**The output path in the script's own success message,
+`website/audit/AUDIT_*.md`, does not exist** — there is no `website/audit/`
+directory and no `AUDIT_*.md` anywhere, nor the `docs/DOCSITE_AUDIT_<date>.md`
+its header mentions. Nothing is stamped to disk today; the script prints
+to stdout. Do not tell a reader to go read an audit report.
+
+Given all of the above: **the audit script is a weak gate, so review by
+hand.** This SKILL's rules are conventions the tooling mostly does not
+check for you.
 
 ## 11. Bun cheatsheet (the workspace uses Bun, not pnpm/npm)
 
@@ -649,15 +714,18 @@ cd website
 bun install                    # install / update deps
 bun run dev                    # local dev server (http://localhost:3000)
 bun run build                  # production build (validates internal links)
-bun run lint                   # eslint + frontmatter schema (scripts/lint-mdx.ts)
-bun run lint:mdx               # frontmatter schema only
-bun run audit                  # full docs audit (scripts/docs-audit.ts)
+bun run lint                   # `next lint` only — NOT the frontmatter schema
+bun run lint:mdx               # frontmatter schema (scripts/lint-mdx.ts)
+bun run typecheck              # tsc
+bun run audit                  # docs audit (scripts/docs-audit.ts) — see §10
 bun run python:parity          # regenerate public/python-parity.json
-bun run bench:publish          # regenerate public/bench/*.json from criterion
 bun add <pkg>                  # add a runtime dep
 bun add -d <pkg>               # add a dev dep
 bunx <bin> ...                 # one-off binary (no global install)
 ```
+
+There is no `bench:publish` script and no `website/public/bench/`;
+`website/public/` holds only `python-parity.json`.
 
 If a script bypasses Bun (e.g. CI calls `node scripts/foo.ts`), prefer
 `bun run scripts/foo.ts` — Bun's TS runtime is part of the workspace
@@ -667,8 +735,11 @@ contract.
 
 - **No emoji in body text** (frontmatter `status` icons rendered by the
   layout are fine). Per project convention.
-- **No `// ---` separator banners** (`feedback_no_section_separators.md`).
-- **No statrs in code examples** (`feedback_no_statrs_distributions.md`).
+- **No `// ---` separator banners** (memory entry
+  `feedback_no_section_separators`; these are auto-memory entries, not
+  files in this repo).
+- **No statrs in code examples** (memory entry
+  `feedback_no_statrs_distributions`).
 - **Convert relative dates to absolute** (`Today` → `2026-05-10`) the same
   way the memory system does. Future-readers thank you.
 - **Capitalisation**: titles use sentence case, not Title Case.
