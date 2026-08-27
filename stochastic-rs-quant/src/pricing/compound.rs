@@ -51,7 +51,7 @@ impl CompoundType {
 /// Geske (1979) compound option.
 #[derive(Debug, Clone)]
 pub struct CompoundPricer {
-  /// Spot.
+  /// Spot price.
   pub s: f64,
   /// Outer strike.
   pub k1: f64,

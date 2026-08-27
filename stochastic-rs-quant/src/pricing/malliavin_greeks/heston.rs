@@ -10,7 +10,7 @@ use crate::traits::ProcessExt;
 /// Malliavin-weighted Greeks computation for a European call under Heston dynamics.
 #[derive(Debug, Clone)]
 pub struct HestonMalliavinGreeks {
-  /// Spot price
+  /// Spot price.
   pub s: f64,
   /// Initial variance
   pub v0: f64,
@@ -22,9 +22,9 @@ pub struct HestonMalliavinGreeks {
   pub xi: f64,
   /// Correlation between price and variance Brownians
   pub rho: f64,
-  /// Risk-free rate
+  /// Risk-free rate.
   pub r: f64,
-  /// Time to maturity
+  /// Time to maturity in years.
   pub tau: f64,
   /// Strike price
   pub k: f64,

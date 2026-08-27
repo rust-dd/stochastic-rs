@@ -11,11 +11,11 @@ use super::simulation::simulate_rbergomi_terminal_samples;
 
 #[derive(Clone)]
 pub struct RBergomiCalibrator {
-  /// Spot level $S_0$.
+  /// Spot price.
   pub s: f64,
-  /// Risk-free rate $r$.
+  /// Risk-free rate.
   pub r: f64,
-  /// Continuous dividend yield $q$ (or foreign rate for FX). Defaults to 0
+  /// Continuous dividend yield (or foreign rate for FX). Defaults to 0
   /// when constructed via [`Self::new`]; set with [`Self::with_dividend_yield`].
   pub q: f64,
   /// Current parameter guess.

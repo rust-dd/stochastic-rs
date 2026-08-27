@@ -17,9 +17,9 @@ pub struct DeltaHedge {
   pub c_delta: f64,
   /// Strike price
   pub k: f64,
-  /// Stock price
+  /// Spot price.
   pub s: f64,
-  /// Initial stock price
+  /// Initial spot price.
   pub s0: f64,
   /// The size of the option contract
   pub contract_size: f64,

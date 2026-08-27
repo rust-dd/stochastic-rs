@@ -156,7 +156,7 @@ pub struct BSMCalibrator {
   pub r_f: Option<f64>,
   /// Dividend yield.
   pub q: Option<f64>,
-  /// Time to maturity (kept for the legacy single-tau constructor).
+  /// Time to maturity in years (kept for the legacy single-tau constructor).
   pub tau: f64,
   /// Time to maturity per quote (flattened). Supports multi-maturity
   /// joint calibration. Always populated — for the single-tau

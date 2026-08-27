@@ -85,7 +85,7 @@ impl PriceHistory {
 pub struct ChainQuote {
   /// Strike price.
   pub strike: f64,
-  /// Time to expiry in years.
+  /// Time to maturity in years.
   pub tau: f64,
   /// Last traded price.
   pub last: f64,
@@ -117,7 +117,7 @@ impl ChainQuote {
 pub struct OptionChain {
   /// Underlying ticker.
   pub symbol: String,
-  /// Spot price of the underlying.
+  /// Spot price.
   pub s: f64,
   /// Quotes (calls and puts intermixed; use `is_call` to split).
   pub quotes: Vec<ChainQuote>,

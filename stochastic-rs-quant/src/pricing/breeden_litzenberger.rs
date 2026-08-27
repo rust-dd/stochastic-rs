@@ -10,9 +10,9 @@ pub struct BreedenLitzenberger {
   pub strikes: Vec<f64>,
   /// Option prices `C(K_i, T)` or `P(K_i, T)` at the same maturity `T` (present values).
   pub prices: Vec<f64>,
-  /// Risk-free rate
+  /// Risk-free rate.
   pub r: f64,
-  /// Time to maturity in years
+  /// Time to maturity in years.
   pub tau: f64,
   /// Optional pre-calculated second derivative ∂²C/∂K² at each strike (overrides finite-difference computation)
   pub d2c_dk2: Option<Vec<f64>>,

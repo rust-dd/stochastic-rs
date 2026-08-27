@@ -97,7 +97,7 @@ impl CliquetPricer {
 /// local-capped returns.
 #[derive(Debug, Clone)]
 pub struct McCliquetPricer {
-  /// Spot.
+  /// Spot price.
   pub s: f64,
   /// Notional.
   pub notional: f64,

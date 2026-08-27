@@ -15,7 +15,7 @@ pub struct Dupire {
   pub ts: Vec<f64>,
   /// Call price surface with shape (N_T, N_K), row = fixed T_j, col = K_i, values are present call prices C(K_i, T_j)
   pub calls: Array2<f64>,
-  /// Risk-free rate
+  /// Risk-free rate.
   pub r: f64,
   /// Dividend yield
   pub q: f64,

@@ -37,11 +37,11 @@ impl fmt::Display for McResult {
 pub struct CgmysvPricer {
   /// CGMYSV model parameters.
   pub params: CgmysvParams,
-  /// Spot price $S_0$.
+  /// Spot price.
   pub s: f64,
-  /// Risk-free rate $r$.
+  /// Risk-free rate.
   pub r: f64,
-  /// Continuous dividend yield $q$.
+  /// Continuous dividend yield.
   pub q: f64,
   /// Number of Monte Carlo paths ($N$).
   pub n_paths: usize,

@@ -58,7 +58,7 @@ impl std::error::Error for ImpliedSurfaceError {}
 pub struct OptionQuote {
   /// Strike price
   pub strike: f64,
-  /// Time to expiry in years
+  /// Time to maturity in years.
   pub tau: f64,
   /// Market price of the option
   pub price: f64,
@@ -409,7 +409,7 @@ pub struct SmileSlice {
   pub total_variance: Vec<f64>,
   /// Forward price
   pub forward: f64,
-  /// Time to expiry in years
+  /// Time to maturity in years.
   pub tau: f64,
 }
 

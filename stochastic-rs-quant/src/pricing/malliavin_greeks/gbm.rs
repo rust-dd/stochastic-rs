@@ -7,15 +7,15 @@ use crate::traits::ProcessExt;
 /// Malliavin-weighted Greeks computation for a European call under Gbm dynamics.
 #[derive(Debug, Clone)]
 pub struct GbmMalliavinGreeks {
-  /// Spot price
+  /// Spot price.
   pub s: f64,
   /// Volatility
   pub sigma: f64,
-  /// Risk-free rate
+  /// Risk-free rate.
   pub r: f64,
   /// Dividend yield
   pub q: f64,
-  /// Time to maturity T
+  /// Time to maturity in years.
   pub tau: f64,
   /// Strike price
   pub k: f64,

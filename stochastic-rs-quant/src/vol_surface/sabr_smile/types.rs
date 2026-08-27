@@ -2,7 +2,7 @@ use crate::calibration::sabr::SabrParams;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SabrSmileQuotes {
-  /// Time to maturity in years
+  /// Time to maturity in years.
   pub tau: f64,
   /// ATM vol (decimal)
   pub sigma_atm: f64,
@@ -14,7 +14,7 @@ pub struct SabrSmileQuotes {
 
 #[derive(Clone, Debug)]
 pub struct SabrSmileCalibrator {
-  /// Spot FX rate S
+  /// Spot FX rate.
   pub s: f64,
   /// Domestic rate r_d
   pub r_d: f64,

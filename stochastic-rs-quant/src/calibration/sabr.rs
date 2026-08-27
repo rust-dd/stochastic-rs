@@ -190,7 +190,7 @@ pub struct SabrCalibrator {
   pub r: f64,
   /// Dividend yield / convenience yield.
   pub q: Option<f64>,
-  /// Time-to-maturity in years.
+  /// Time to maturity in years.
   pub tau: f64,
   /// Option direction (call/put).
   pub option_type: OptionType,

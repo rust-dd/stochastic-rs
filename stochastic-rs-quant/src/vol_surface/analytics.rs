@@ -27,7 +27,7 @@ pub struct SmileAnalytics<T: FloatExt> {
   pub atm_convexity: T,
   /// ATM total variance $w(k=0) = \sigma^2 T$
   pub atm_total_variance: T,
-  /// Time to expiry
+  /// Time to maturity in years.
   pub tau: T,
 }
 

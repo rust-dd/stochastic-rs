@@ -62,7 +62,7 @@ pub struct DeltaHedgedPnL {
   pub gamma: f64,
   /// Volatility
   pub sigma: f64,
-  /// Spot price
+  /// Spot price.
   pub s: f64,
 }
 

@@ -23,7 +23,7 @@ use crate::OptionType;
 /// minimum; a put gives the right to sell at the observed maximum.
 #[derive(Debug, Clone)]
 pub struct FloatingLookbackPricer {
-  /// Current underlying price.
+  /// Spot price.
   pub s: f64,
   /// Observed minimum price (for calls; defaults to `s`).
   pub s_min: Option<f64>,
@@ -100,7 +100,7 @@ impl FloatingLookbackPricer {
 /// a put pays $\max(K-S_{\min},0)$.
 #[derive(Debug, Clone)]
 pub struct FixedLookbackPricer {
-  /// Current underlying price.
+  /// Spot price.
   pub s: f64,
   /// Strike price.
   pub k: f64,

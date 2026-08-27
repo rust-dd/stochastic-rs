@@ -31,7 +31,7 @@ use crate::calibration::CalibrationHistory;
 pub struct LevyCalibrator {
   /// Lévy model to calibrate.
   pub model_type: LevyModelType,
-  /// Underlying spot price.
+  /// Spot price.
   pub s: f64,
   /// Risk-free rate.
   pub r: f64,

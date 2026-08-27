@@ -23,7 +23,7 @@ use crate::OptionType;
 /// $$
 #[derive(Debug, Clone)]
 pub struct SimpleChooserPricer {
-  /// Spot.
+  /// Spot price.
   pub s: f64,
   /// Strike of both call and put.
   pub k: f64,
@@ -64,7 +64,7 @@ impl SimpleChooserPricer {
 /// integral.
 #[derive(Debug, Clone)]
 pub struct ComplexChooserPricer {
-  /// Spot.
+  /// Spot price.
   pub s: f64,
   /// Risk-free rate.
   pub r: f64,
@@ -148,7 +148,7 @@ impl ComplexChooserPricer {
 /// $K = \alpha S_{t_1}$.
 #[derive(Debug, Clone)]
 pub struct ForwardStartPricer {
-  /// Spot.
+  /// Spot price.
   pub s: f64,
   /// Strike multiplier.
   pub alpha: f64,
