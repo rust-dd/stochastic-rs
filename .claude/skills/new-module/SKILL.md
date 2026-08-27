@@ -68,7 +68,9 @@ stochastic-rs-stochastic/src/mc/
   mlmc.rs
 ```
 Use when the module root itself defines shared types alongside submodule
-declarations. `mc/` and `noise/fgn/` follow this.
+declarations. In this workspace **only `mc/` actually follows Pattern
+C** — `noise/fgn/` looks like it should but is Pattern B, with its root
+in the sibling `noise/fgn.rs` and no `mod.rs` inside the directory.
 
 Both B and C are in active use; pick whichever the surrounding crate
 already uses rather than introducing the other one next to it.
@@ -93,7 +95,11 @@ already uses rather than introducing the other one next to it.
   and propagate the feature from the sub-crate to the umbrella — see
   `feature-flag-management`.
 - **A new trait:** additionally mirror it in the sub-crate's
-  `src/traits.rs` **and** the umbrella's `src/traits.rs`. Decide
+  `src/traits.rs` **and** the umbrella's `src/traits.rs`. (Caveat:
+  `-stochastic`, `-quant`, `-stats`, `-distributions` and `-copulas`
+  each have a `src/traits.rs`; `-core` and `-ai` do **not** — `-core`'s
+  `SeedExt` / `SimdRng` live under `src/simd_rng/` and are re-exported
+  from its `lib.rs`.) Decide
   separately whether it belongs in `src/lib.rs`'s `prelude` — hub
   membership and prelude membership are independent (see `CLAUDE.md`).
 
@@ -108,7 +114,7 @@ Before writing code, determine which existing traits the new types should implem
 | Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
 | Process with Malliavin support | `MalliavinExt<T>` or `Malliavin2DExt<T>` | Malliavin derivative computation |
 | Probability distribution | `DistributionExt` | CF, PDF, CDF, moments |
-| SIMD-accelerated distribution | `DistributionSampler<T>` (from `distributions.rs`) | Bulk `fill_slice()` + `sample_matrix()` |
+| SIMD-accelerated distribution | `DistributionSampler<T>` (`stochastic-rs-distributions/src/traits/distribution.rs`) | Requires `fill_slice()` + `fork()`; `sample_matrix()` / `sample_n()` are provided |
 
 ### `quant/` modules
 
@@ -126,7 +132,7 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Bivariate copula | `BivariateExt` | `sample()`, `fit()`, `pdf()`, `cdf()`, Kendall's tau |
+| Bivariate copula | `BivariateExt` | 11 required methods; `sample()` / `fit()` / inversion are defaulted. Tau is `tau()` / `set_tau()` accessors, not a `kendall_tau()` method. See `copula-bivariate` |
 | Multivariate copula | `MultivariateExt` | `sample()`, `fit()`, `pdf()`, `cdf()` |
 
 ### Blanket-impl chains (do NOT duplicate by hand)
@@ -200,8 +206,14 @@ Keep internal helpers `pub(crate)` or private. Match the pattern of sibling modu
 
 ### Pricing pipeline (quant)
 If the module produces a pricer, verify it works with:
-- `build_surface_from_model(&dyn ModelPricer, …)` — vol-surface construction
-- `build_surface_from_calibration(&dyn ToModel, …)` — calibration → vol-surface
+- `build_surface_from_model<M: ModelSurface + ?Sized>(model: &M, s, r, q, strikes, maturities)`
+  — vol-surface construction. Generic, **not** `&dyn`, and the bound is
+  `ModelSurface`, not `ModelPricer`: the Black inversion is only
+  meaningful for a European vanilla call, which is what `ModelSurface`'s
+  `VanillaEuropeanCall` supertrait asserts.
+- `build_surface_from_calibration<C: ToModel>(calibration: &C, s, r, q, strikes, maturities)
+  where C::Model: ModelSurface` — calibration → vol-surface. Note the
+  extra `where` clause: implementing `ToModel` is not enough on its own.
 
 ### Calendar pipeline (quant)
 If the module uses dates, verify it works with:
@@ -258,7 +270,7 @@ Every new file must have:
 
 Before marking a new module as done:
 
-- [ ] Placed in the correct top-level module (`stochastic/`, `quant/`, `stats/`, `distributions/`, `copulas/`)
+- [ ] Placed in the correct **sub-crate** (`stochastic-rs-stochastic`, `-quant`, `-stats`, `-distributions`, `-copulas`, `-core`, `-ai`) — see §1; the umbrella `src/` is not where code goes
 - [ ] Module root has LaTeX doc header and re-exports
 - [ ] Registered in the parent module's `.rs` file (alphabetical order)
 - [ ] All numerical code generic over `FloatExt`, arrays use `ndarray`
