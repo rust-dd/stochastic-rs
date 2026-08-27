@@ -61,7 +61,10 @@ website/.env*.local
 # yet, so keep it out of git rather than let it go stale unreviewed.
 website/public/python-parity.json
 
-docs
+# The top-level LaTeX/audit scratch directory (see the two blocks above).
+# Anchored: unanchored `docs` is a basename match, equivalent to `**/docs`,
+# and it also blanketed website/app/docs/ and website/content/docs/.
+/docs/
 *.tsbuildinfo
 
 # Migration notes are kept locally only (like docs/), not published
