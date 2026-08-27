@@ -1,213 +1,230 @@
 ---
 name: add-gpu-sampler
-description: How to add a GPU-accelerated sampler (CUDA / Metal) for a process or distribution. Invoke when porting a CPU sampler to GPU for the long-horizon / many-paths regime where CPU SIMD saturates.
+description: How to add or extend a GPU / accelerated sampling backend (CUDA, Metal, wgpu, Accelerate) in stochastic-rs-stochastic. Invoke when porting fGN sampling to a new device, or when a backend-generic process needs to reach one.
 ---
 
-# Add GPU sampler — stochastic-rs
+# Add GPU sampler — stochastic-rs-stochastic
 
-GPU samplers in this workspace target two backends: **CUDA** (via
-`cust` + NVRTC for kernels) on Linux/Windows with NVIDIA hardware, and
-**Metal** (via `metal-rs`) on Apple Silicon. Both are feature-gated:
-
-- `--features cuda` → enables `cuda_native` paths.
-- `--features metal` → enables `metal` paths.
-
-CPU-fallback parity is **non-negotiable**: a GPU sampler must match
-the CPU sampler bit-for-bit (within float-precision noise) on a fixed
-seed. Without this, a user toggling features sees inconsistent
-results.
-
-## 1. Pre-flight checklist
-
-Before writing the kernel:
-
-1. **FFT length is a power of 2.** GPU FFTs (cuFFT, Metal Performance
-   Shaders) are highly tuned for power-of-2 lengths. If your sampler
-   needs a non-power-of-2, pad with zeros to the next power-of-2.
-
-2. **RNG choice: Philox vs cuRAND.** Philox-4×32-10 is the workspace
-   default (see `noise/fgn/cuda_native.rs`). It is:
-   - Counter-based (no state to thread through kernels).
-   - Deterministic across CPU and GPU at the bit level (the CPU SIMD
-     path uses the same Philox).
-   - Identical seed → identical output.
-
-   Avoid cuRAND/curandStateXORWOW: it stateful, GPU-only, and not
-   reproducible across CPU.
-
-3. **Fused-kernel layout.** Combine RNG generation + scaling +
-   transform into a single kernel rather than three round-trips. The
-   FGN GPU pipeline fuses Philox + Gaussian-transform + sqrt-eigenvalue
-   scaling in one launch — see `noise/fgn/cuda_native.rs`.
-
-4. **Memory layout.** Output is row-major `Array2<T>` matching the
-   CPU shape. Allocate device memory once per Process struct (cache it
-   between `sample()` calls) — the rc.0 GPU FBM bench had a 30 %
-   regression because each call re-allocated.
-
-## 2. The skeleton
+Acceleration in this workspace is **not** a `#[cfg]` fork inside
+`sample()`. It is a compile-time type parameter. A process carries a
+backend marker `B` (defaulting to `Cpu`), the `Backend` trait
+monomorphises sampling to that marker with **no runtime branch**, and
+the caller switches with a turbofish:
 
 ```rust
-// stochastic-rs-stochastic/src/noise/fgn/cuda_native.rs (reference)
+let fbm = Fbm::<f64, _>::new(0.7, 1024, None, Deterministic::new(42));
+let paths = fbm.on::<CudaNative>().sample_par(256);
+```
 
-#[cfg(feature = "cuda")]
-pub mod cuda {
-    use cust::prelude::*;
-    use crate::traits::FloatExt;
+The markers only exist when their feature is compiled, so selecting an
+unavailable backend is a **compile error**, not a silent runtime
+fallback to CPU. Read `stochastic-rs-stochastic/src/device.rs` in full
+before touching any of this — it is 249 lines, current, and it is the
+contract.
 
-    /// Compile-time-baked NVRTC kernel; loaded once per process.
-    static FGN_KERNEL_PTX: &str = include_str!("fgn_kernel.cu");
+## 1. The five backends and their real feature names
 
-    pub fn fgn_sample_cuda<T: FloatExt>(
-        hurst: T,
-        n: usize,
-        t: T,
-        seed: u64,
-    ) -> Vec<T> {
-        let _ctx = quick_init().expect("CUDA init failed");
-        let module = Module::from_ptx(FGN_KERNEL_PTX, &[]).unwrap();
-        let stream = Stream::new(StreamFlags::DEFAULT, None).unwrap();
+| Marker | Feature | What it is |
+|---|---|---|
+| `Cpu` | *(none — always available)* | Default `B` for every process |
+| `CudaNative` | `cuda-native` | `cudarc` + cuFFT + NVRTC, fused Philox kernel |
+| `CubeCl` | `gpu` (+ `gpu-cuda` / `gpu-wgpu`) | cubecl Rust kernels |
+| `MetalNative` | `metal` | Hand-written MSL via the `metal` crate; **f32 only** |
+| `Accelerate` | `accelerate` | Apple vDSP / AMX — a **CPU** path, not a GPU |
 
-        // Allocate device-side output buffer.
-        let mut d_out = unsafe {
-            DeviceBuffer::<T>::uninitialized(n).unwrap()
-        };
+There is no bare `cuda` feature and no `metal-rs` dependency. The CUDA
+backend is `cudarc`, not `cust`. Kernels are Rust string constants
+compiled at runtime by NVRTC (`noise/fgn/cuda_native/kernels.rs`) —
+there are **no `.cu` files** anywhere in the repo.
 
-        // Launch fused-kernel: Philox + Gaussian + sqrt-eig + cumsum.
-        let kernel = module.get_function("fgn_sample_kernel").unwrap();
-        let block_size = 256u32;
-        let grid_size = ((n as u32) + block_size - 1) / block_size;
+## 2. Reproducibility: read the table before you write a test
 
-        unsafe {
-            launch!(
-                kernel<<<grid_size, block_size, 0, stream>>>(
-                    d_out.as_device_ptr(),
-                    hurst.to_f64().unwrap() as f32,
-                    n as u32,
-                    t.to_f64().unwrap() as f32,
-                    seed,
-                )
-            ).unwrap();
-        }
+This is where the old version of this SKILL was actively harmful. It is
+**not** true that "a GPU sampler must match the CPU sampler bit-for-bit".
+The shipped, documented contract (`Backend`'s own trait doc) is:
 
-        stream.synchronize().unwrap();
+| Backend | `sample` / `sample_par` reproducible? |
+|---|---|
+| `Cpu` | **Yes.** Same seed + same `m` ⇒ bit-identical, on any machine, under any rayon thread-pool size. |
+| `Accelerate` | **No — measured, not assumed.** Seed *consumption* is thread-count independent, but `vDSP_fft_zip`'s arithmetic is not bit-stable across calls: 400 repeated calls on an idle M4 Max diverged 0 times; the same sweep under core saturation diverged 21/400, worst relative difference `2.08e-3`. Consistent with P-core/E-core dispatch. `Cpu` stayed bit-exact under identical load. |
+| `CudaNative` / `CubeCl` / `MetalNative` | **Not guaranteed.** Each batch call draws one value from `fgn.seed` and hands it to the device kernel's own Philox/PCG RNG. Output is a function of the pinned seed and *not* of host thread-pool size (no host-side rayon fan-out in `generate_batch`), but bit-identity across driver versions, vendors, or repeated runs is untested and unpromised. |
 
-        let mut h_out = vec![T::zero(); n];
-        d_out.copy_to(&mut h_out).unwrap();
-        h_out
-    }
+So: **do not write a `cpu_and_gpu_match_bit_for_bit` test.** It
+contradicts the design, and "fixing" a GPU backend to satisfy it would
+mean reimplementing the device RNG on the host for no benefit. Treat the
+three GPU backends and `Accelerate` as reproducible-effort-only.
+
+One further trap, documented on `Fbm::sample_par`: on the three GPU
+backends `Fbm` is **not even a function of the pinned seed**. If you
+need seed-pinned fBm, stay on `Cpu`.
+
+What you test instead:
+
+- **Distributional agreement**, not bit equality: variance scaling
+  `Var(X_t) ∝ t^{2H}`, lag-1 autocovariance sign, mean ≈ 0 — the same
+  properties `add-fractional-process` §5 lists, run on the new backend.
+- **Shape and finiteness**: `generate_batch(fgn, m, seed)` returns `m`
+  paths of `fgn.out_len`, all finite.
+- **Marker-is-a-backend**, the compile-time check `device.rs`'s own
+  test module uses:
+  ```rust
+  #[test]
+  fn marker_is_a_backend() {
+      fn assert_backend<B: Backend>() {}
+      assert_backend::<MyBackend>();
+  }
+  ```
+- For a **CPU-side** backend like `Accelerate`, thread-count-independent
+  *seed consumption* is testable and is tested —
+  `tests/deterministic_parallelism_accelerate.rs`.
+
+## 3. The `Backend` trait — what you implement
+
+```rust
+pub trait Backend: Sized + Send + Sync {
+    /// One fGN increment vector. `seed` drives CPU/Accelerate only;
+    /// GPU backends ignore it and seed from `fgn.seed`.
+    fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
+        fgn: &Fgn<T, S, Self>, seed: &S2,
+    ) -> Array1<T>;
+
+    /// `m` paths in one batched call.
+    fn generate_batch<T: FloatExt, S: SeedExt, S2: SeedExt>(
+        fgn: &Fgn<T, S, Self>, m: usize, seed: &S2,
+    ) -> Vec<Array1<T>>;
+
+    /// Two independent paths. Defaults to `generate_batch(fgn, 2, seed)`;
+    /// `Cpu` overrides it with the real/imag parts of a single circulant
+    /// FFT (Dietrich & Newsam) — one FFT, two independent fields.
+    fn generate_pair<T, S, S2>(fgn: &Fgn<T, S, Self>, seed: &S2)
+        -> (Array1<T>, Array1<T>) { … }
 }
 ```
 
-The `.cu` source lives next to the `.rs` and is compiled at runtime
-via NVRTC. It must define `fgn_sample_kernel(__global__)` with
-matching argument types.
+Two methods required, one defaulted. The markers are zero-sized unit
+structs, which is what makes the `Send + Sync` supertraits free.
 
-## 3. The `.cu` kernel — Philox baseline
+**The `seed: &S2` parameter is the whole reproducibility mechanism.** If
+your backend runs on the host, thread it through and derive per-unit
+bases *sequentially on the calling thread* before handing work to rayon.
+If it runs on-device, ignore it and document that you did.
+
+## 4. Adding a GPU backend
+
+Device-side backends are registered by the `gpu_backend!` macro in
+`device.rs` — three lines do all three GPU backends:
+
+```rust
+gpu_backend!("cuda-native", CudaNative => sample_cuda_native_impl);
+gpu_backend!("gpu",         CubeCl     => sample_gpu_impl);
+gpu_backend!("metal",       MetalNative => sample_metal_impl);
+```
+
+The macro generates a feature-gated `impl Backend` whose `generate` /
+`generate_batch` both delegate to one inherent method on `Fgn` with the
+signature `fn <name>(&self, m: usize) -> Result<Array2<T>, _>`, ignoring
+the host seed. So the work is:
+
+1. Declare the marker in `device.rs`, feature-gated and `#[derive(Clone, Copy)]`.
+2. Write `Fgn::sample_<name>_impl(&self, m) -> Result<Array2<T>, _>` in
+   a new `noise/fgn/<name>.rs`, gated on the feature; add the `#[cfg]`
+   `use` to `noise/fgn.rs`.
+3. Add one `gpu_backend!` line.
+4. Add the feature to `stochastic-rs-stochastic/Cargo.toml` **and**
+   propagate it from the umbrella root `Cargo.toml` — see
+   `feature-flag-management`.
+5. Extend the reproducibility table in `Backend`'s trait doc. It is
+   normative; a backend absent from it is undocumented.
+
+A host-side backend (the `Accelerate` shape) does **not** use the macro:
+write the `impl Backend` by hand so you can thread `seed` through
+`chunk_count` / `chunk_lens` and derive one basis per chunk sequentially
+before `into_par_iter()`. Copy `Accelerate`'s impl.
+
+### Why `Cpu` and `Accelerate` chunk differently
+
+`Cpu::generate_batch` derives one basis **per path**, not per chunk,
+because each path's `ndrustfft::ndfft_inplace_par` is itself a nested
+rayon region — measurement showed chunking roughly **doubled** wall time
+at `m = 1000`. `Accelerate` does chunk, because `vDSP_fft_zip` is a
+plain FFI call with no nested rayon. Do not "unify" these; the
+divergence is measured and both impls document it.
+
+## 5. Kernel conventions
+
+The CUDA kernel is a `pub(super) const &str` of CUDA C compiled by
+NVRTC at runtime (`cuda_native/kernels.rs`), fusing RNG + scaling into
+one launch to avoid a memory round-trip:
 
 ```cuda
-// fgn_kernel.cu (excerpt)
+extern "C" __global__ void gen_scale_f32(
+    float* __restrict__ data, const float* __restrict__ sqrt_eigs,
+    int traj_size, int total,
+    unsigned long long seed, unsigned long long seq)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= total) return;
 
-__device__ inline float philox_normal(uint64_t seed, uint32_t idx) {
-    // Philox-4x32-10 → uniform → Box-Muller → Gaussian
-    uint4 ctr = {idx, 0u, 0u, 0u};
-    uint2 key = {(uint32_t)(seed & 0xffffffff), (uint32_t)(seed >> 32)};
-    uint4 u = philox4x32_10(ctr, key);
-    float u0 = (float)u.x / 4294967296.0f;
-    float u1 = (float)u.y / 4294967296.0f;
-    return sqrtf(-2.0f * logf(u0)) * cosf(6.2831853f * u1);
-}
-
-extern "C" __global__ void fgn_sample_kernel(
-    float* out, float hurst, uint32_t n, float t, uint64_t seed
-) {
-    uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
-    float z = philox_normal(seed, idx);
-    // ... apply sqrt-eigenvalue scaling + cumsum-style aggregation ...
-    out[idx] = z;
+    /* Philox-2x32-10, counter = tid + seq, key = seed */
+    …
+    float eig = sqrt_eigs[tid % traj_size];
+    data[2*tid]   = r * cs * eig;      /* interleaved complex output */
+    data[2*tid+1] = r * sn * eig;
 }
 ```
 
-The CPU SIMD path uses the same Philox-4×32-10 with the same `(seed,
-idx)` counter, so bit-for-bit determinism is achievable.
+Four things that carry over to a new kernel:
 
-## 4. ProcessExt overrides
+- **Philox-2×32-10**, not cuRAND. Counter-based, no per-thread state to
+  thread through, and it drops the cuRAND dependency plus one round-trip.
+  (Note: 2×32, not the 4×32 an earlier version of this SKILL claimed.)
+- **Fuse.** One launch for RNG + Box-Muller + `sqrt_eigenvalue` scaling,
+  writing interleaved complex, rather than three round-trips.
+- **f32 on device.** Apple GPUs have no f64; the CUDA path also runs
+  f32. Convert at the host boundary (`cuda_native/convert.rs`).
+- **Pad to a power of two.** cuFFT and MPS are tuned for it; `Fgn::new`
+  already does `n.next_power_of_two()` and carries the `offset`.
 
-A process exposing GPU sampling overrides one or more of the four
-`ProcessExt::sample_*` methods:
-
-```rust
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FbmGpu<T, S> {
-    type Output = Array1<T>;
-
-    fn sample(&self) -> Self::Output {
-        #[cfg(feature = "cuda")]
-        {
-            return Array1::from(cuda::fgn_sample_cuda(self.hurst, self.n, self.t.unwrap_or(T::one()), self.seed.derive().to_u64()));
-        }
-        #[cfg(feature = "metal")]
-        {
-            return Array1::from(metal::fgn_sample_metal(...));
-        }
-        // CPU fallback
-        self.sample_cpu()
-    }
-
-    fn sample_par(&self, m: usize) -> Vec<Self::Output> { /* batched GPU launch */ }
-}
-```
-
-The conditional gates ensure a single binary built without GPU
-features still compiles; the cfg-disabled path silently falls through
-to CPU.
-
-## 5. Bit-for-bit reproducibility test
-
-```rust
-#[cfg(test)]
-#[cfg(feature = "cuda")]
-mod cuda_tests {
-    /// CPU and GPU samplers produce identical paths under the same seed.
-    #[test]
-    fn cpu_and_gpu_match_bit_for_bit() {
-        let cpu = FbmCpu::seeded(0.7, 1024, None, None, 42).sample();
-        let gpu = FbmGpu::seeded(0.7, 1024, None, None, 42).sample();
-        for i in 0..1024 {
-            assert_eq!(cpu[i].to_bits(), gpu[i].to_bits(), "mismatch at i={i}");
-        }
-    }
-}
-```
-
-If the test fails, the CPU and GPU code paths diverged — likely a
-different RNG implementation or a different Box-Muller order. Don't
-relax the tolerance; debug to bit equality.
+Cache device state on the struct rather than per call —
+`cuda_native/state.rs` exists for that. The rc.0 GPU FBM bench regressed
+~30 % from per-call allocation.
 
 ## 6. Anti-patterns
 
-- **Do not** use cuRAND. Bit-deterministic CPU↔GPU equality is the
-  workspace requirement; cuRAND breaks that.
-- **Do not** allocate device memory inside the hot loop. Cache the
-  buffer on the struct.
-- **Do not** mix f32 and f64 across CPU/GPU. The kernel runs in f32 by
-  default (Apple Silicon Metal restricts; CUDA prefers); convert at the
-  boundary.
-- **Do not** ship a GPU sampler without the bit-equality test. The §1.4
-  audit caught a mismatch where the GPU FBM was correct *on average*
-  but had a different seed-mapping; the test made the bug obvious.
+- **Do not** write a bit-for-bit CPU↔GPU equality test. See §2.
+- **Do not** `#[cfg]`-branch inside `sample()`. Add a `Backend` marker;
+  the dispatch is a type parameter with no runtime branch.
+- **Do not** silently fall back to CPU when a feature is off. An
+  unavailable backend must be a compile error — that is why the markers
+  are themselves feature-gated.
+- **Do not** use cuRAND, or a stateful per-thread RNG.
+- **Do not** allocate device memory per call. Cache it in the
+  backend's state module.
+- **Do not** name the feature `cuda`. It is `cuda-native` (cudarc) or
+  `gpu` / `gpu-cuda` / `gpu-wgpu` (cubecl); they are different backends.
+- **Do not** add a backend without extending `Backend`'s
+  reproducibility table.
 
 ## 7. Reference impls
 
-- `noise/fgn/cuda_native.rs` — Philox + scale fused kernel; the
-  reference for the §3 / §5 patterns.
-- `noise/fgn/metal.rs` — Metal Performance Shaders alternative.
-- `noise/fgn/gpu.rs` — `wgpu`-backed cross-platform fallback (lower
-  priority than cuda_native).
+- `device.rs` — the `Backend` trait, all five markers, the
+  `gpu_backend!` macro, `Cpu` and `Accelerate` written out by hand.
+- `noise/fgn/cuda_native/` — `mod.rs`, `kernels.rs` (NVRTC sources),
+  `sampler.rs`, `state.rs` (cached device state), `convert.rs`,
+  `tests.rs`. The most complete backend.
+- `noise/fgn/metal.rs`, `noise/fgn/gpu.rs`, `noise/fgn/accelerate.rs` —
+  the other three.
+- `macros.rs`'s `backend_switch!` — generates the `.on::<B2>()` method
+  for a backend-generic process, in two forms (real `fgn` field, or
+  `PhantomData`). Invoke it rather than hand-writing `on`.
+- `tests/deterministic_parallelism_accelerate.rs` — what a
+  reproducibility test for a host-side backend actually looks like.
 
 ## Related SKILLs
 
-- `feature-flag-management` — for the `cuda` / `metal` propagation
-  through workspace.
-- `add-fractional-process` — the natural consumer of GPU FGN.
-- `bench-writing` — for `[[bench]] required-features = ["cuda"]` gating.
+- `feature-flag-management` — propagating `cuda-native` / `gpu` /
+  `metal` / `accelerate` from the sub-crate to the umbrella.
+- `add-fractional-process` — the backend-generic consumers (`Fou`,
+  `Fgbm`, `FJacobi`, `Cfou`, `JumpFou`, … all carry `B`).
+- `bench-writing` — the exact `required-features` sets for the gated
+  GPU benches.
