@@ -9,7 +9,7 @@ use crate::pricing::cf_quadrature::integrate_to_convergence;
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
 /// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.
 ///
-/// The martingale correction $-T\,\psi(-i)$ ensures that $E[S_T] = S_0 e^{(r-q)T}$.
+/// The martingale correction $-T\,\psi(-i)$ ensures that $E\left[S_T\right] = S_0 e^{(r-q)T}$.
 pub(super) fn levy_char_exponent(
   model_type: LevyModelType,
   params: &[f64],

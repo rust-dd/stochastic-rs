@@ -146,7 +146,7 @@ impl<T: FloatExt> PathSampler<T> for ArimaSampler<T> {
 }
 
 /// Inverse differencing once, converting Y into X:
-/// X[0] = Y[0],  X[t] = X[t-1] + Y[t], for t=1..(n-1).
+/// `X[0] = Y[0]`, `X[t] = X[t-1] + Y[t]`, for `t = 1..(n-1)`.
 fn inverse_difference<T: FloatExt>(y: &Array1<T>) -> Array1<T> {
   let n = y.len();
   if n == 0 {
