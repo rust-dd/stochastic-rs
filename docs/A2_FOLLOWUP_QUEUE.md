@@ -395,7 +395,10 @@ costing anything but tidiness.
   prelude slot, while every real Greek in the crate is now a query-taking inherent
   method. A newcomer importing the prelude gets a pricing trait on the new
   convention and a Greeks trait on the old one, side by side.
-- **15 — Unify the doc phrasing for `tau`, `s` and `r`.** One *identifier* per
+- **15 — CLOSED** (`f61f9fc`). Spread collapsed: `s` **18 -> 8** wordings, `tau`
+  **12 -> 5**, `r` **7 -> 5**. Informative divergences were kept, not flattened —
+  a field documented as `Time to maturity in years (each period = $T/M$)` carries
+  real information a bare canonical phrasing would destroy. One *identifier* per
   concept was achieved; one *phrasing* was not. Measured at `9465768`:
 
   | field | fields | distinct wordings | most common |
@@ -413,12 +416,26 @@ costing anything but tidiness.
   the most common covering only five. The final review's write-up put the emphasis
   on `tau`, where the canonical phrasing already covers 21 of 38; its per-field
   counts for all three were also off (42/26/42 against the measured 38/39/49).
-- **16 — Align the `vega` signature across `ModelPricer` implementors.**
+- **16 — CLOSED** (`95d0d30`), and **no golden moved after all.** This item was
+  dispatched owning a golden move, on the premise that removing `option_type` from
+  `Merton1976Pricer::{vega, vanna, volga, veta}` would shift put-side values by
+  finite-difference round-off. It did not: `git diff` over the whole step removes
+  **zero** numeric literals. All three implementors now spell `vega` identically.
+
+  The test it added pins the *licensing property*, not just the consequence:
+  generalised put-call parity's spread `C - P = S e^{(b-r)tau} - K e^{-r tau}`
+  carries no `sigma`, so any derivative touching `sigma` annihilates it. It
+  differences the **put** series and gets the same answers back — in two halves,
+  because the Greek level does not imply the price level. **The tolerance is a
+  round-off budget, not a fitted number.**
   `Merton1976Pricer`'s takes `option_type`; `HestonPricer`'s and `BSMPricer`'s do
   not. This item **owns a golden move**: `option_type` is consumed by
   `series_price` inside a central difference, so removing it shifts put-side values
   by finite-difference round-off. That is why the wave could not do it.
-- **17 — Update the nine READMEs pinning `stochastic-rs = "2.6"`** against a
+- **17 — CLOSED** (`169d442`). All nine pinned to the current version, **and three
+  stale examples fixed** — the sweep found more than the version string.
+
+  ~~Original:~~ nine READMEs pinned `stochastic-rs = "2.6"` against a
   workspace at `3.0.0-beta.1`. A user copying that line gets a crate where
   `PricerExt` still exists and `HestonPricer::new` takes 13 arguments.
 
