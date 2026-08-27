@@ -111,9 +111,10 @@ paths under reuse, no seed collision across the $2^{18}$ block boundary, and
 parallel independence for `sample_par` / `sample_map` — is validated
 separately in
 [`tests/sampler_v3_rng.rs`](https://github.com/dancixx/stochastic-rs/blob/main/tests/sampler_v3_rng.rs).
-Parallel sampling is statistically independent but **not** bit-reproducible
-across runs (worker scheduling decides which derived seed lands on which
-path); use a serial `sample()` loop when you need bit-exact replay. See
+Parallel sampling is bit-reproducible too: `sample_par` / `sample_map` return
+bit-identical output for the same seed and the same `m` under any Rayon
+thread-pool size, because each chunk's sampler is built sequentially before
+any work reaches Rayon. See
 [ProcessExt → parallel sampling and determinism](/docs/concepts/process-ext#parallel-sampling-and-determinism).
 
 ## SimdRngExt — generic backing RNG
@@ -157,7 +158,7 @@ Opt-in via cargo feature:
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "2.6", features = ["dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-beta.1", features = ["dual-stream-rng"] }
 ```
 
 Unlocks `SimdRngDual`, `SimdNormalDual`, `SimdExpDual`, `SimdExpZigDual`.

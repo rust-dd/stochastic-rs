@@ -104,12 +104,18 @@ consequences depend on the seed strategy:
 - **`Deterministic` + `sample()` (serial)** — bit-for-bit reproducible.
   Repeated calls advance the seed, so successive paths differ. A serial loop
   of `sample()` is the way to get reproducible Monte-Carlo runs.
-- **`Deterministic` + `sample_par` / `sample_map` (parallel)** — every path
-  is an independent, valid draw, but the **order** in which workers consume
-  derived seeds depends on Rayon scheduling, so the result is **not**
-  bit-reproducible across runs. Use it for production throughput where
-  statistical reproducibility suffices; use a serial loop when you need
-  bit-exact replay.
+- **`Deterministic` + `sample_par` / `sample_map` (parallel)** — also
+  bit-for-bit reproducible: the same seed and the same `m` give bit-identical
+  output on any machine and under any Rayon thread-pool size. Each chunk's
+  sampler is built sequentially, before any work reaches Rayon, so scheduling
+  cannot decide which basis lands on which path. **No process is an
+  exception, full or partial**, and
+  `stochastic-rs-stochastic/tests/reproducibility_all_processes.rs` enumerates
+  every concrete implementor to enforce it. The one caveat is a *backend*,
+  not a process: `Fgn` / `Fbm` on the `accelerate` backend get
+  thread-count-independent seed *consumption* but not bit-identical *output*,
+  because vDSP's arithmetic is not bit-stable across Apple Silicon's
+  P-core / E-core scheduler.
 - **`Unseeded`** — every path is independently auto-seeded in either mode.
 
 In all modes the seeds handed out are globally unique, so paths never
