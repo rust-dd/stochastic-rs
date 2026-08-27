@@ -6,8 +6,8 @@ description: Conventions for adding / propagating Cargo features across the stoc
 # Feature flag management — stochastic-rs
 
 The workspace has 8 sub-crates, several of which carry optional
-dependencies (`openblas`, `cuda`, `metal`, `python`, `yahoo`, `ai`,
-`hotpath`). Without discipline, `cargo check --all-features`
+dependencies (`openblas`, `cuda-native`, `gpu`, `metal`, `accelerate`,
+`python`, `yahoo`, `ai`, `hotpath`). Without discipline, `cargo check --all-features`
 explodes with "feature X needed but not propagated" or, worse, an
 unflagged path silently compiles a `Box<dyn Fn(f64) -> f64>` that
 panics at runtime.
@@ -97,7 +97,7 @@ cargo check --workspace --no-default-features
 cargo check --workspace --features openblas
 cargo check --workspace --features ai
 cargo check --workspace --features python
-cargo check --workspace --features cuda
+cargo check --workspace --features cuda-native
 
 # 2.3 The thermonuclear all-features path — catches the §4.1 trap
 cargo check --workspace --all-features
@@ -182,16 +182,32 @@ loader, a new distribution backend):
 
 | Feature | Crates that publish it | Notes |
 |---|---|---|
-| `openblas` | `-stats`, `-quant`, `-stochastic`, `-distributions`, umbrella | LAPACK-backed linear algebra. |
-| `cuda` | `-stochastic`, `-distributions`, `-ai`, umbrella | Native CUDA via cust + NVRTC. |
-| `metal` | `-stochastic`, `-distributions`, umbrella | Apple Silicon GPU. |
-| `python` | `-distributions`, `-stochastic`, `-quant`, `-stats`, `-copulas`, `-py` | PyO3 bindings (cdylib gated). |
-| `yahoo` | `-quant` | Live-data tests; experimental. |
-| `ai` | `-ai`, umbrella | Neural surrogates (rc.1 experimental). |
-| `hotpath` | umbrella | Profiling-mode build. |
+Verify against the `[features]` blocks before trusting this table —
+it is a summary, and the sub-crate columns are the part that drifts.
+
+| Feature | Crates that publish it | Notes |
+|---|---|---|
+| `openblas` | `-stats`, `-quant`, `-stochastic`, `-copulas`, `-py`, umbrella | LAPACK-backed linear algebra (system-link). |
+| `openblas-static` | same set | Vendored OpenBLAS; used by the Windows wheel CI job only. |
+| `cuda-native` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. There is no bare `cuda` feature. |
+| `gpu` | `-stochastic`, umbrella | cubecl runtime-agnostic base. |
+| `gpu-cuda` / `gpu-wgpu` | `-stochastic`, umbrella | cubecl backends; each implies `gpu`. |
+| `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
+| `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
+| `dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
+| `python` | `-distributions`, `-stochastic`, `-quant`, `-stats`, `-copulas`, umbrella | PyO3 bindings. Note `-py` has **no** `python` feature — it forces `pyo3/extension-module` unconditionally. |
+| `yahoo` | `-quant`, umbrella | Live-data tests; experimental. |
+| `ai` | umbrella | Pulls `-ai` and turns on its `quant` bridge feature. |
+| `quant` / `viz` | `-ai` | `quant` gates `predict_implied_vol_surface`; `viz` gates the plot helper. |
+| `hotpath` / `hotpath-alloc` | umbrella | Profiling-mode build. |
+| `jemalloc` / `mimalloc` | umbrella | Allocator swaps. |
 
 ## Related SKILLs
 
-- `release-checklist` — uses this SKILL's matrix as a release gate.
+- `release-checklist` — `cargo check --workspace --all-features` is one
+  of its stage-1 gates.
+- `add-gpu-sampler` — what each of the five backend features actually
+  selects, and why `cuda-native` and `gpu-cuda` are different backends
+  rather than aliases.
 - `add-gpu-sampler`, `add-jump-process` — invoke when the new module is
   feature-gated.
