@@ -775,7 +775,20 @@ costing anything but tidiness.
 
 ## Gate
 
-- **18 — Full release battery, then push.** 38 commits sit unpushed; nothing from
+- **18 — BATTERY GREEN, push pending.** All six gates clean on the full workspace:
+  tests with `--features openblas` (935 quant lib + 176 across 20 other suites,
+  0 failures), workspace doctests (41+2+7+5 — the line that once shipped a broken
+  README to `main`), `--all-features` and `--no-default-features` checks, clippy
+  `-D warnings` on **both** feature sets, `cargo doc` on both, and `fmt --check`.
+
+  **Still unresolved and not closable from this machine:** the branch has never
+  been built on x86_64. Dev is aarch64-darwin, CI is ubuntu x86_64, and every
+  golden was verified on one target only — which now matters more than when this
+  item was written, because item 23 rewrote every Merton value and added new 1e-12
+  pins. One count-valued assertion was already loosened for this reason
+  (`037c232`); nothing has swept for others. **The push is what surfaces it.**
+
+  ~~Original:~~ full release battery, then push 38 commits sit unpushed; nothing from
   this wave is on the remote. The battery **must** include
   `cargo test --workspace --exclude stochastic-rs-py --doc`: this repo
   `include_str!`s its README into the umbrella crate, so README blocks are real
