@@ -126,20 +126,33 @@ seed, named tolerance:
 ```rust
 #[cfg(test)]
 mod tests {
-    /// Reference: Hurst & Co. (2024), Table 3 row 2 — H = 0.7 ± 0.02.
+    use ndarray::ArrayView1;
+    use stochastic_rs_core::simd_rng::Deterministic;
+    use stochastic_rs_stochastic::process::fbm::Fbm;
+    use stochastic_rs_stochastic::traits::ProcessExt;
+
+    /// Reference: <Author, Year>, Table 3 row 2 — H = 0.7 +/- 0.02.
     #[test]
     fn hurst_recovery_matches_paper_table3() {
-        let mut rng = StdRng::seed_from_u64(42);
-        let series = simulate_fbm(0.7, 5_000, &mut rng);
+        // Seed the *process*, not an external Rng. `dev-rules` §7a:
+        // `StdRng` / `rand_distr` belong to `benches/` only, and a
+        // `Simd*` distribution ignores any `Rng` handed to `fill_slice`
+        // — the seed must reach the constructor.
+        let series = Fbm::<f64, _>::new(0.7, 5_000, None, Deterministic::new(42)).sample();
         let result = estimate_hurst(series.view());
         assert!(
             (result.estimate - 0.7).abs() < 0.02,
-            "H = {}, expected 0.7 ± 0.02",
+            "H = {}, expected 0.7 +/- 0.02",
             result.estimate
         );
     }
 }
 ```
+
+Pin the seed through the workspace's own constructor. See
+`integration-test-writing` §1.1 for the trap this avoids — an external
+`StdRng` handed to a `Simd*` distribution is silently discarded, so the
+test looks seeded and is not.
 
 The `feedback_test_batching` memory entry says "when adding many tests
 write all first, then run cargo test once". For estimators that take
@@ -152,11 +165,15 @@ Expose as `#[pyfunction]` (preferred for stateless estimators) or
 `#[pyclass]` (when the estimator carries state — e.g. a fitted model
 that supports `predict`):
 
+Wrappers live in **`stochastic-rs-stats/src/python/`** — the stats
+crate's own module, not the quant crate's. It is a directory split by
+topic (`hurst.rs`, `mle.rs`, `normality.rs`, `realized.rs`,
+`stationarity`-adjacent `misc.rs`, …) with a `mod.rs` re-exporting the
+`Py*` types, and `stochastic-rs-py/src/lib.rs` imports them as
+`stochastic_rs_stats::python::PyXxx`.
+
 ```rust
-// stochastic-rs-quant/src/python/ (yes, the Python wrappers for
-// stats estimators live in the quant crate's python.rs because that's
-// where stochastic-rs-py registers them; alternative is direct
-// registration from -stats but the existing pattern is via -quant).
+// stochastic-rs-stats/src/python/foo.rs
 
 #[pyfunction]
 #[pyo3(signature = (samples))]
@@ -188,8 +205,11 @@ Then register both in `stochastic-rs-py/src/lib.rs`.
 - **Do not** silently fall through to a slow path when openblas isn't
   available. Either gate explicitly with `#[cfg(feature = "openblas")]`
   or provide a documented closed-form fallback.
-- **Do not** roll your own ADF / KPSS regression. If you need linear
-  regression, use the helpers in `stochastic-rs-stats::stationarity`.
+- **Do not** roll your own ADF / KPSS regression. Shared helpers live
+  in `stochastic-rs-stats/src/stationarity/common.rs`.
+- **Do not** seed a test with `StdRng` / `rand_distr`. `dev-rules` §7a
+  reserves those for `benches/`; seed the workspace's own process or
+  `Simd*` distribution at its constructor.
 - **Do not** depend on `statrs` for distribution math — write closed
   forms via `stochastic_rs_distributions::DistributionExt`. See
   `feedback_no_statrs_distributions` memory entry.
@@ -198,15 +218,22 @@ Then register both in `stochastic-rs-py/src/lib.rs`.
 
 ## 9. Reference impls
 
-- `fukasawa_hurst::estimate` (`fukasawa_hurst.rs`) — rough-vol Hurst
-  via L-BFGS-B + Paxson + Eq. 16 corrections; paper-Table 1 validation
-  test.
-- `stationarity::adf::adf_test` (`stationarity/adf.rs`) — Augmented
-  Dickey-Fuller with Mackinnon p-values + test-statistic struct.
-- `stationarity::kpss::kpss_test` — KPSS with bandwidth-aware long-run
-  variance estimator.
-- `mle::*` — MLE family (gamma / lognormal / NIG / Heston) with
-  closed-form score / Fisher info where available.
+- `hurst::whittle::estimate` (`hurst/whittle.rs`) — the Fukasawa
+  rough-vol Hurst estimator (L-BFGS-B + Paxson + Eq. 16 corrections),
+  returning `FukasawaResult`; paper-Table 1 validation test. Note the
+  path: there is no `fukasawa_hurst.rs`; it lives under `hurst/` and is
+  named for the *method*, not the author. `estimate_from_prices` and
+  `estimate_from_prices_generic<T>` are the convenience entry points.
+- `stationarity::adf::adf_test(y, cfg)` — Augmented Dickey-Fuller with
+  Mackinnon p-values. Note the second argument: this crate's
+  stationarity tests take a `*Config` struct, not loose parameters
+  (`AdfConfig`, `KpssConfig`, …). Follow that shape.
+- `stationarity::kpss::kpss_test(y, cfg)` — KPSS with bandwidth-aware
+  long-run variance.
+- `hurst/` — nine sibling estimators (`dfa`, `gph`, `rs`, `variations`,
+  `wavelet`, `whittle`, …) sharing one result convention. The best place
+  to see the pattern repeated.
+- `mle/` — MLE family (`density.rs`, `fit.rs`, `process_impls/`).
 
 ## Related SKILLs
 
