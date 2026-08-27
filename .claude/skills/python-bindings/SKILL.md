@@ -33,14 +33,22 @@ distribution's source file**, e.g. `stochastic-rs-distributions/src/normal.rs`:
 
 ```rust
 py_distribution!(PyNormal, SimdNormal,
-  sig: (mean, std, seed = None, dtype = None),
-  params: (mean: f64, std: f64),
+  sig: (mean, std_dev, seed=None, dtype=None),
+  params: (mean: f64, std_dev: f64)
 );
 ```
 
+`sig` is the full PyO3 signature and must end with `seed=None,
+dtype=None`; `params` lists only the distribution parameters — the macro
+appends `seed` and `dtype` itself.
+
 What you get:
-- `PyNormal` `#[pyclass(unsendable)]`
-- `__new__(mean, std, seed=None, dtype=None)` — `seed: Option<u64>`,
+- `PyNormal` `#[pyclass(unsendable)]` — note that `py_distribution!`
+  **does** emit `unsendable`, while the `py_process_*!` macros do not.
+- Two inner slots, `inner_f32` / `inner_f64`. Unlike the process macros
+  there are no separate `seeded_*` slots: the seed is folded straight
+  into the constructor as `&Deterministic::new(sd)` (or `&Unseeded`).
+- `__new__(mean, std_dev, seed=None, dtype=None)` — `seed: Option<u64>`,
   `dtype: Option<&str>` ∈ {"f32", "f64"}, default f64
 - `sample(n)` returning `numpy.ndarray`
 - `sample_par(m, n)` returning `numpy.ndarray` (parallel matrix)
@@ -63,9 +71,16 @@ shape:
 
 | Macro | Output shape | Examples |
 |---|---|---|
-| `py_process_1d!` | `Array1<T>` (single 1-D path) | GBM, OU, Vasicek, fBM, Cir |
-| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | Heston (price, vol), 2-D Brownian |
-| `py_process_2d!` | `Array2<T>` (correlated multi-asset) | Multi-asset GBM |
+| `py_process_1d!` | `Array1<T>` (single 1-D path) | `Gbm`, `Ou`, `Fou`, `Fbm`, `Cir` |
+| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | `Sabr`, `HestonLog`, `DuffieKan`, `Cgns`, `Cbms` |
+| `py_process_2d!` | `Array2<T>` (correlated multi-asset) | `Cfou`, `Fbs` (`sheet/fbs.rs`) |
+
+Not every two-component process uses the macro: `Heston` itself has a
+**hand-written** `PyHeston` (`volatility/heston.rs`), as does `Merton`
+(whose jump distribution crosses the boundary as a `CallableDist`).
+Reach for a hand-written wrapper when the constructor takes something
+the macro cannot express — a Python callable, or a third type parameter
+like `Heston`'s scheme selector.
 
 Invoke at the **bottom of the process's source file**, e.g.
 `stochastic-rs-stochastic/src/diffusion/gbm.rs`:
