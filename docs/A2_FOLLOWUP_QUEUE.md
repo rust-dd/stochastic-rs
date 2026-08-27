@@ -513,13 +513,65 @@ costing anything but tidiness.
 
 ## Queued — found while closing step 2
 
-- **23 — `term_vol` departs from Haug, which may make item 21 moot.** The crate uses
+- **23 — CLOSED** (`05a9b5a`, `e393783`). **The crate's formula was wrong, and this
+  is the most consequential finding of the whole effort.** `sigma_n` was
+  `sqrt((d² + z²)·n/tau)`, scaling the *diffusive* variance by the jump count.
+  Conditional on `n` jumps the diffusion runs for the whole of `tau` however many
+  jumps land in it, so `Var = d²·tau + n·z²` and `sigma_n = sqrt(d² + z²·n/tau)`,
+  giving `sigma_0 = d`.
+
+  **Confirmed against the primary source**, with a citation correction: Merton
+  (1976) MIT Sloan WP 787-75 §III eq. (18) — *"a Black-Scholes option where the
+  formal variance per unit time on the stock is σ² + nδ²/τ"* — and Haug §6.9.1 at
+  **pp. 253-255**, not the 205-207 the crate cited. The old formula matches no
+  source and is provably not a reparameterisation of one.
+
+  **Six independent adjudications, run before any golden was touched:** the
+  `gamma = 0` limit (must be Black-Scholes — new formula exact to 2e-15, old off by
+  up to 16.20 against 4.58), the `lambda -> inf` CLT, `E_N[sigma_N² tau]` against
+  the declared `v² tau` (old: −30 % to +40 %), Gil-Pelaez CF inversion sharing no
+  code (old: −54 %), an 8M-path Monte Carlo (**old formula: −758 standard
+  errors**), and **Haug's own published examples** — 0.241746 against his 0.2417,
+  21.7354755 against his 21.735476.
+
+  **All 14 goldens moved; zero survived.** The reference call went
+  `1.9630 -> 4.2761`, a **54 % underprice**, and `volga` **changed sign**
+  (−0.4009 -> +3.6928). Haug's examples are now the only pin in the crate whose
+  expected value comes from published literature.
+
+  **The prediction discipline is worth copying:** a bit-exact Python replica was
+  validated by reproducing **all 14 old goldens bit-for-bit** before it was
+  trusted to predict the new ones — so the replica was proven against known
+  values, not against the answer it was about to give.
+
+  **Item 21 is not redundant, but its reachable set collapsed.** With
+  `sigma_0 = d`, the `n = 0` term is degenerate only where the *diffusive* vol is
+  exactly zero. Its test module was retargeted from `v = 0.2, gamma = 0.4` to
+  `v = 0` — from firing on every ATM futures price to firing only on a frozen
+  underlying. The crate uses
   `σₙ = √((d² + z²)·n/τ)`; Haug's is `σₙ = √(d² + z²·n/τ)`, giving `σ₀ = d` — the
   diffusive vol — rather than 0. **That difference is why the `n = 0` term is
   degenerate at all.** If the formula is wrong, item 21 is filling a hole that
   should not exist. Not touched because correcting it moves every Merton golden,
   so it needs an item that owns that move.
-- **24 — `Merton1976Pricer::call_put` returns `NaN` at `λ = 0`, but its Greeks
+- **24 — CLOSED** (`171d84a`). **The price was wrong; the Greeks were right.**
+  `lambda = 0` means no jumps, so the model *is* Black-Scholes at `v`. The `NaN`
+  came from evaluating the per-jump *size* `z = sqrt(v² gamma / lambda)` — a
+  quantity the model never needs, since only `lambda z²` enters.
+
+  **The limit is genuinely discontinuous, and that is pinned too.** At fixed
+  `gamma`, `lambda -> 0+` sends `z² -> inf`: jumps get rarer *and* larger, holding
+  their variance share all the way down, so the price tends to
+  `BS(v·sqrt(1−gamma))` = **3.3205**, not to the value at `lambda = 0` = **4.5817**.
+  The two coincide only at `gamma = 0`. Asserting both halves stops anyone
+  "fixing" the discontinuity by assuming continuity.
+
+  **`lambda < 0` deliberately left disagreeing**, with the reason recorded:
+  narrowing the Greeks' `lambda <= 0` branch to `== 0` would route a negative
+  intensity into `greek_series`'s `NaN` floor and return a confident **`0.0`** —
+  strictly worse than the disagreement.
+
+  ~~Original:~~ price and Greeks disagreed at `lambda = 0`
   return the Black-Scholes value.** `greek_series` has an explicit
   `if self.lambda <= 0.0` branch; `call_put` has none, so `jump_size_std` hits
   `v²γ/0`. Price and Greeks disagree about whether `λ = 0` is a supported state —
@@ -536,6 +588,23 @@ costing anything but tidiness.
   volatilities. Every sibling calibrator (`SabrCalibrator`, the HSC bounds) projects
   into a strictly admissible box. This is the blocker on item 22's one deliberate
   omission.
+
+## Queued — found while closing step 6a
+
+- **29 — `diffusive_std` round-trips through `sqrt`.** It computes
+  `v² − lambda·(sqrt(v² gamma / lambda))²` where `lambda z² = v² gamma`
+  analytically. At the pure-jump corner `gamma = 1` this lands on `d = 0` for
+  some `(v, lambda)` pairs and on **`NaN`** for others — a valid model that prices
+  or doesn't by floating-point luck. `d² = v²(1−gamma)` is exact and
+  `lambda`-free.
+- **30 — A pre-existing broken intra-doc link, exactly the LaTeX-bracket trap.**
+  `calibration/levy/loss.rs:12` writes `$E[S_T] = …$` and `[S_T]` parses as a
+  link. Today it errors only under `cargo doc --document-private-items`; plain
+  `cargo doc` passes. **One flag away from a hard CI failure.**
+- **31 — `greek_series`'s `NaN` floor** (`if contribution.is_nan() { 0.0 }`) is the
+  crate's named laundering shape, and item 23 removed its stated justification.
+  Re-documented honestly rather than removed, because removing it changes
+  degenerate-config Greeks.
 
 ## Gate
 
