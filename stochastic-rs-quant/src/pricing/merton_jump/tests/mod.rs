@@ -3,19 +3,23 @@ use crate::OptionType;
 use crate::pricing::bsm::BSMPricer;
 use crate::traits::Greeks;
 
+mod construction;
+mod degenerate;
+mod formula;
+
 /// `m` (Poisson-series term count) is capped at 20 in these tests:
 /// the pre-refactor term loop computed `n!` as a `usize` product, which
 /// overflows past `n = 20` — a pre-existing limitation of the price series
 /// itself, unrelated to convergence (at `λτ ≤ 0.25` the series is
 /// converged to double precision well before `n = 20`).
 ///
-/// `k = 105` (not `100`, i.e. not ATM): the `n = 0` term is always priced
-/// at zero volatility (see [`Merton1976Pricer::greek_series`]'s doc), which
-/// turns it into a deterministic, piecewise-*linear* payoff of `S` with a
-/// kink exactly at `S = K` (since `Bsm1973`'s cost of carry is `b = r`, the
-/// forward is `S` itself) — `bumped_price`'s finite difference would
-/// straddle that kink at `K = S`, so an ATM strike is *not* a
-/// representative test of a smooth region.
+/// `k = 105` is no longer *forced* to be off the money. It was, while the
+/// `n = 0` term priced at zero volatility: that made the term a
+/// deterministic payoff of `S` with a kink exactly at the forward, which
+/// `bumped_price`'s finite difference would have straddled at `K = S`.
+/// `σ_0 = d > 0` removes the kink, so every strike is now a smooth region;
+/// the value is kept so the goldens below stay comparable across that
+/// change.
 const S: f64 = 100.0;
 const K: f64 = 105.0;
 const R: f64 = 0.05;
@@ -180,32 +184,36 @@ fn merton_greeks_finite_at_m50() {
   assert!(put.is_finite(), "put not finite at m=50: {put}");
 }
 
-/// `call_put` was refactored to accumulate the Poisson weight
-/// `e^{-λτ}(λτ)^n/n!` via [`Merton1976Pricer::poisson_weight`]'s running
-/// product instead of an integer `n!` (which overflows past `n ≈ 20`). The
-/// two accumulation orders are mathematically identical but not guaranteed
-/// bit-for-bit equal, so this pins the m=10 call price to the value the
-/// *pre-refactor* factorial-based loop actually produced — computed by
-/// temporarily instrumenting the old code path with a `println!` before
-/// making any change, not derived from the new code. A tolerance of `1e-12`
-/// absolute leaves headroom for the differing floating-point operation
-/// order while still catching a real regression.
+/// A second `(lambda, gamma)` pin, guarding
+/// [`Merton1976Pricer::poisson_weight`]'s running product against the
+/// integer `n!` it replaced (which overflows past `n ≈ 20`): the two
+/// accumulation orders are mathematically identical but not guaranteed
+/// bit-for-bit equal, so a `1e-12` absolute tolerance leaves headroom for
+/// the operation order while still catching a real regression.
+///
+/// Both values moved with the `σ_n` correction — they were `1.883107` and
+/// `4.290648`, computed with the diffusive variance scaled by `n/τ`. The
+/// call is adjudicated to `4.401577` by Gil-Pelaez inversion of the Merton
+/// characteristic function, which shares no code with the Poisson series;
+/// the `8.3e-6` gap is `norm_cdf`'s Abramowitz-Stegun 7.1.26 error, not a
+/// pricing difference. The put follows from it by the generalised parity
+/// `C - P = S - Ke^{-rτ}` asserted below, so the pair cannot drift apart.
 #[test]
-fn merton_price_m10_matches_pre_refactor_value() {
+fn merton_price_m10_matches_the_reference_value() {
   let m = merton(0.5, 0.3, 10);
   let (call, put) = m.call_put(S, K, R, Q, TAU);
-  // Captured from the factorial-based `(1..=i).product::<usize>()` loop
-  // prior to the `poisson_weight` refactor.
-  let old_call = 1.883_106_823_679_627_8;
-  let old_put = 4.290_647_586_654_042;
+  let want_call = 4.401_569_155_621_004;
+  let want_put = 6.809_109_918_595_418;
   assert!(
-    (call - old_call).abs() < 1e-12,
-    "call regressed: got {call}, pre-refactor {old_call}"
+    (call - want_call).abs() < 1e-12,
+    "call regressed: got {call}, want {want_call}"
   );
   assert!(
-    (put - old_put).abs() < 1e-12,
-    "put regressed: got {put}, pre-refactor {old_put}"
+    (put - want_put).abs() < 1e-12,
+    "put regressed: got {put}, want {want_put}"
   );
+  let parity = call - S + K * (-R * TAU).exp();
+  assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
 }
 
 /// At `τ` below the finite-difference step `H_TAU = 1e-5`, the `λ > 0`
@@ -285,30 +293,44 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
 /// Cross-arch tolerance: the goldens route through `norm_cdf`.
 const TOL: f64 = 1e-12;
 
-/// Captured from `PricerExt::calculate_call_put()` and the `GreeksExt`
-/// aggregate **before** the `ModelPricer` reshape, at
+/// The reference price and Greeks at
 /// `(s, k, r, q, tau) = (100, 105, 0.05, 0, 0.5)` and
-/// `(v, lambda, gamma, m, coc) = (0.2, 0.5, 0.4, 10, Bsm1973)`. The
-/// reshape is an API change only, so none of these move.
+/// `(v, lambda, gamma, m, coc) = (0.2, 0.5, 0.4, 10, Bsm1973)`.
+///
+/// Every value here moved when `σ_n` was corrected from
+/// `√((d² + z²)·n/τ)` to `√(d² + z²·n/τ)`; each is adjudicated against a
+/// reference sharing no code with the pricer. The call was `1.963018` and
+/// is now `4.276112`, against `4.276118` from Gil-Pelaez inversion of the
+/// Merton characteristic function and `4.2717 ± 0.0061` from an 8M-path
+/// Monte Carlo — the old value sat **760 standard errors** below that
+/// interval. The `6.6e-6` residual is `norm_cdf`'s Abramowitz-Stegun
+/// 7.1.26 error.
+///
+/// The nine Greeks are adjudicated as numerical derivatives of that same
+/// characteristic-function price: the five first-order ones agree to
+/// between `3e-9` and `2e-6` relative, the four second-order ones to
+/// `4e-4` (both sides being finite differences there). Under the old `σ_n`
+/// the same comparison was off by 21 % to 111 %, and `volga` had the wrong
+/// sign.
 #[test]
-fn merton_model_pricer_matches_pre_refactor_goldens() {
+fn merton_pins_the_reference_price_and_greeks() {
   let m = merton(0.5, 0.4, 10);
   let (call, put) = m.call_put(S, K, R, Q, TAU);
-  assert!((call - 1.9630180991188086).abs() < TOL, "call {call}");
-  assert!((put - 4.370558862093225).abs() < TOL, "put {put}");
+  assert!((call - 4.276111556095045).abs() < TOL, "call {call}");
+  assert!((put - 6.683652319069461).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(S, K, R, Q, TAU), call);
   assert_eq!(m.price_put(S, K, R, Q, TAU), put);
 
   let want = [
-    0.11304276014424829,
-    0.0035912182544552695,
-    10.982750595306399,
-    -4.14762346306885,
-    4.670628957653009,
-    0.09757814278810172,
-    -0.21871731870071184,
-    -0.40088210528921303,
-    -20.37945229238502,
+    0.4496816609264091,
+    0.032071500866967965,
+    26.41969293408763,
+    -7.717747123159312,
+    20.346027268272934,
+    0.5136783187698057,
+    -0.27511605438235165,
+    3.6927971791556042,
+    -30.537329331892234,
   ];
   let got = m.greeks(S, K, R, Q, TAU, OT).as_array();
   for (i, name) in Greeks::COMPONENT_NAMES.iter().enumerate() {
@@ -375,207 +397,5 @@ fn merton_one_model_prices_a_grid() {
       assert!(c.is_finite() && c < prev, "call must fall in strike");
       prev = c;
     }
-  }
-}
-
-/// The zero-volatility `n = 0` term is a removable singularity at the
-/// forward, and the price there is the limit — not `NaN`.
-///
-/// `term_vol(0, τ)` is exactly `0`, so the no-jump term prices a
-/// zero-volatility Black-Scholes call. Its `d₁` is `±∞` wherever
-/// `Se^{bτ} ≠ K` and `0/0` **at** the forward, which used to poison the
-/// whole Poisson sum. The limit is not undefined: both normal CDFs converge
-/// to `½` as `σ → 0⁺` along `Se^{bτ} = K`, so the term tends to
-/// `½(Se^{(b-r)τ} - Ke^{-rτ}) = 0`.
-///
-/// [`BSMCoc::Black1976`] and [`BSMCoc::Asay1982`] are where this bites,
-/// and the reason is the cost of carry: `b = 0` puts the forward at `S`, so
-/// the singular strike is the at-the-money one — the single most quoted
-/// point on a futures-option surface. The three carrying conventions put it
-/// at `Se^{bτ}`, a strike nobody asks for exactly, which is why this went
-/// unnoticed.
-mod zero_vol_term_at_the_forward {
-  use stochastic_rs_distributions::special::norm_cdf;
-
-  use super::*;
-
-  const FUT_TAU: f64 = 0.5;
-
-  fn futures(coc: BSMCoc) -> Merton1976Pricer {
-    Merton1976Pricer::new(0.2, 0.5, 0.4, 10, coc)
-  }
-
-  /// Hand-written Merton (1976) reference at the forward, sharing no code
-  /// with the pricer: `Σ_{n<m} w_n · e^{-rτ}K[N(h_n) - N(-h_n)]` with
-  /// `h_n = σ_n√τ/2`, the Black-76 at-the-forward call. `σ_0 = 0` makes
-  /// `h_0 = 0` and the `n = 0` term contribute exactly `0`, which is the
-  /// limit this test exists to pin. Every input is rebuilt from the public
-  /// fields — the jump and diffusive variances, the Poisson weights and
-  /// `σ_n` — so nothing here routes through the pricer's own helpers.
-  ///
-  /// The algebraically equal `2N(h) - 1` is deliberately **not** used:
-  /// `norm_cdf` is `0.5(1 + erf(·))` over Abramowitz-Stegun 7.1.26, whose
-  /// relative error is ~1.5e-7, so `N(-h) != 1 - N(h)` at the 1e-8 level
-  /// and that form disagrees with the pricer by 7.6e-8 — the approximation's
-  /// own asymmetry, not a pricing difference. Evaluating at the same two
-  /// points the pricer does keeps the comparison about the series.
-  fn atm_forward_reference(m: &Merton1976Pricer, k: f64, r: f64, tau: f64) -> f64 {
-    let jump_var = m.v * m.v * m.gamma / m.lambda;
-    let diffusive_var = m.v * m.v - m.lambda * jump_var;
-    let disc = (-r * tau).exp();
-    let lt = m.lambda * tau;
-
-    let mut weight = (-lt).exp();
-    let mut price = 0.0;
-    for n in 0..m.m {
-      if n > 0 {
-        weight *= lt / n as f64;
-      }
-      let sigma = ((diffusive_var + jump_var) * n as f64 / tau).sqrt();
-      let half = 0.5 * sigma * tau.sqrt();
-      price += weight * disc * k * (norm_cdf(half) - norm_cdf(-half));
-    }
-    price
-  }
-
-  /// The headline: an at-the-money futures option priced `NaN`.
-  #[test]
-  fn futures_atm_call_and_put_are_finite() {
-    for coc in [BSMCoc::Black1976, BSMCoc::Asay1982] {
-      let m = futures(coc);
-      let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
-      assert!(call.is_finite() && call > 0.0, "{coc:?} call {call}");
-      assert!(put.is_finite() && put > 0.0, "{coc:?} put {put}");
-      assert_eq!(
-        m.price_call(S, S, R, Q, FUT_TAU),
-        call,
-        "{coc:?} price_call"
-      );
-      assert_eq!(m.price_put(S, S, R, Q, FUT_TAU), put, "{coc:?} price_put");
-    }
-  }
-
-  /// The value is the *limit*, not merely a finite number: it matches a
-  /// hand-written Black-76 Poisson series that never evaluates a `0/0`.
-  #[test]
-  fn futures_atm_call_matches_hand_written_series() {
-    let m = futures(BSMCoc::Black1976);
-    let got = m.price_call(S, S, R, Q, FUT_TAU);
-    let want = atm_forward_reference(&m, S, R, FUT_TAU);
-    assert!((got - want).abs() < TOL, "got {got}, hand-written {want}");
-  }
-
-  /// Continuity across the singular strike. The `n = 0` term is
-  /// `e^{-rτ}\max(F-K, 0)` — piecewise *linear* in `K` with a kink exactly
-  /// at the forward — so the price there is the limit **from above**, where
-  /// that term is identically zero. A two-sided midpoint would sit half the
-  /// kink too high, which is why this checks the one-sided limit and pins
-  /// the kink separately rather than averaging the two.
-  #[test]
-  fn futures_price_is_continuous_across_the_forward() {
-    let m = futures(BSMCoc::Black1976);
-    let eps = 1e-6;
-    let at = m.price_call(S, S, R, Q, FUT_TAU);
-    let below = m.price_call(S, S - eps, R, Q, FUT_TAU);
-    let above = m.price_call(S, S + eps, R, Q, FUT_TAU);
-    assert!(
-      below > at && at > above,
-      "monotone in K: {below}, {at}, {above}"
-    );
-    assert!(
-      (at - above).abs() < 1e-5,
-      "not the limit from above: {at} vs {above}"
-    );
-    assert!(
-      below - at > 5e-7,
-      "the n = 0 kink must survive: {below} vs {at}"
-    );
-  }
-
-  /// The singularity is at the *forward*, not at the money — `Bsm1973` hits
-  /// the identical `0/0` once `r = 0` moves its forward onto the strike.
-  /// This is the pin that stops the fix being read as a `BSMCoc` special
-  /// case.
-  #[test]
-  fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
-    let m = merton(0.5, 0.4, 10);
-    let flat = m.price_call(S, S, 0.0, Q, FUT_TAU);
-    assert!(flat.is_finite() && flat > 0.0, "Bsm1973 at r=0: {flat}");
-  }
-
-  /// Generalised put-call parity still holds at the filled-in point:
-  /// `b = 0` under `Black1976`, so `C - P = (S - K)e^{-rτ}`, which is `0`
-  /// at the money. A limit taken on only one leg would break this.
-  #[test]
-  fn futures_atm_parity_holds_at_the_filled_in_point() {
-    let m = futures(BSMCoc::Black1976);
-    let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
-    assert!((call - put).abs() < TOL, "call {call} vs put {put}");
-  }
-
-  /// A strike away from the forward keeps the value it already had — the
-  /// interception is confined to the `0/0` point.
-  #[test]
-  fn away_from_the_forward_is_untouched() {
-    let m = futures(BSMCoc::Black1976);
-    let got = m.price_call(S, 110.0, R, 0.0, 1.0);
-    assert!((got - 2.4991309893156535).abs() < TOL, "got {got}");
-  }
-}
-
-/// `Merton1976Pricer::new` validates the two parameters that admit a value
-/// the series cannot answer for.
-///
-/// `m` is the Poisson-series length, and `m = 0` runs the loop zero times:
-/// `call_put` returns **`(0.0, 0.0)`** — the crate's named anti-pattern, a
-/// plausible-looking sentinel indistinguishable from a genuinely worthless
-/// option.
-///
-/// `v` is squared everywhere it is used in the price, so a negative
-/// volatility silently prices as its own absolute value — `7.9939` at both
-/// `v = ±0.2`, an answer to a question the caller did not ask. The Greeks
-/// are worse: `with_v_bump` floors the bumped volatility at `1e-8`, so at
-/// `v = -0.2` both legs of the central difference land on the floor and
-/// `vega` comes back **0.0**.
-///
-/// `lambda` and `gamma` are deliberately **not** guarded. `lambda = 0` is a
-/// supported state, not an invalid one — the Greeks collapse to plain
-/// Black-Scholes there and `merton_greeks_lambda_zero_equals_bs` pins it —
-/// and a `gamma` outside `[0, 1]` drives `v² - λz²` negative, which
-/// announces itself as `NaN` rather than as a number.
-mod construction_validation {
-  use super::*;
-
-  #[test]
-  #[should_panic(expected = "Merton1976Pricer::new: m must be at least 1 (got 0)")]
-  fn new_rejects_an_empty_series() {
-    let _ = merton(0.5, 0.4, 0);
-  }
-
-  #[test]
-  #[should_panic(
-    expected = "Merton1976Pricer::new: v must be a non-negative volatility (got -0.2)"
-  )]
-  fn new_rejects_negative_volatility() {
-    let _ = Merton1976Pricer::new(-0.2, 0.5, 0.4, 10, BSMCoc::Bsm1973);
-  }
-
-  #[test]
-  #[should_panic(expected = "Merton1976Pricer::new: v must be a non-negative volatility (got NaN)")]
-  fn new_rejects_nan_volatility() {
-    let _ = Merton1976Pricer::new(f64::NAN, 0.5, 0.4, 10, BSMCoc::Bsm1973);
-  }
-
-  /// The supported states the guards must not swallow: the `λ = 0`
-  /// Black-Scholes limit, a single-term series, and a zero total
-  /// volatility.
-  #[test]
-  fn the_supported_degenerate_states_stay_constructible() {
-    assert_eq!(merton(0.0, 0.4, 20).lambda, 0.0);
-    assert_eq!(merton(0.5, 0.4, 1).m, 1);
-    assert_eq!(
-      Merton1976Pricer::new(0.0, 0.5, 0.4, 10, BSMCoc::Bsm1973).v,
-      0.0
-    );
   }
 }

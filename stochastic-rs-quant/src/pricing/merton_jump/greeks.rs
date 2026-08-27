@@ -60,13 +60,18 @@ impl Merton1976Pricer {
   /// surviving (`n = 0`, weight 1) term directly, sidestepping the `0/0`
   /// singularity `jump_size_std` would otherwise hit.
   ///
-  /// `n = 0` is always priced at `term_vol(0, τ) = 0` exactly (a property
-  /// of the existing price series, not of this method), which sends
-  /// `1/v`-shaped closed forms like `BSMPricer::gamma` to `0/0`. That
-  /// term's true contribution is its `v → 0⁺` limit, which is `0` for any
-  /// off-the-money strike (`norm_pdf(d1) → 0` exponentially, beating the
-  /// linear `1/v`) — so a `NaN` contribution here is floored to `0` rather
-  /// than poisoning the whole sum.
+  /// A term priced at `term_vol(n, τ) = 0` sends `1/v`-shaped closed forms
+  /// like `BSMPricer::gamma` to `0/0`. That term's true contribution is its
+  /// `v → 0⁺` limit, which is `0` for any off-the-money strike
+  /// (`norm_pdf(d1) → 0` exponentially, beating the linear `1/v`) — so a
+  /// `NaN` contribution here is floored to `0` rather than poisoning the
+  /// whole sum.
+  ///
+  /// `σ_n = √(d² + z²n/τ)` is zero only where the diffusive volatility `d`
+  /// is, so the floor is reachable at `v == 0` and, for `n = 0` alone, at
+  /// `gamma == 1`. It is **not** reached by an ordinary configuration; the
+  /// floor's cost is that it is also the crate's `NaN`-laundering shape, so
+  /// a `NaN` arriving for any *other* reason leaves as a `0` contribution.
   fn greek_series(&self, tau: f64, greek: impl Fn(&BSMPricer) -> f64) -> f64 {
     if self.lambda <= 0.0 {
       return greek(&self.base_bsm());

@@ -1,8 +1,20 @@
 //! # Merton Jump
 //!
 //! $$
-//! V=\sum_{n=0}^{\infty}e^{-\lambda T}\frac{(\lambda T)^n}{n!}V_{BS}(\sigma_n,r_n)
+//! V=\sum_{n=0}^{\infty}e^{-\lambda\tau}\frac{(\lambda\tau)^n}{n!}V_{BS}(\sigma_n),
+//! \qquad\sigma_n=\sqrt{d^2+z^2\tfrac{n}{\tau}}
 //! $$
+//!
+//! `d` is the diffusive volatility and `z` the per-jump log-size standard
+//! deviation, both implied by the total volatility `v` and the jump
+//! variance share `gamma`.
+//!
+//! Discount rate and cost of carry are the same in every term because the
+//! jumps are taken with $E(Y)=1$: Merton's per-term
+//! $r_n = r-\lambda k+n\ln(1+k)/\tau$ collapses to `r` at
+//! $k = E(Y)-1 = 0$, and the intensity needs no $\lambda(1+k)$ re-weighting
+//! either. That is the same specialisation Haug prints, and the reason this
+//! model carries no mean-jump-size parameter.
 //!
 use super::bsm::BSMCoc;
 use super::bsm::BSMPricer;
@@ -127,11 +139,32 @@ impl Merton1976Pricer {
     (self.v.powi(2) - self.lambda * self.jump_size_std().powi(2)).sqrt()
   }
 
-  /// Per-term volatility used by the `n`-th element of the Poisson-weighted
-  /// series, so Greeks built from it stay exact derivatives of the price
-  /// the pricer actually returns.
+  /// Per-term volatility of the `n`-jump-conditional Black-Scholes term,
+  /// $\sigma_n = \sqrt{d^2 + z^2 n/\tau}$ — Merton (1976) eq. (18), whose
+  /// per-term option is "a Black-Scholes option where the formal variance
+  /// per unit time on the stock is $\sigma^2 + n\delta^2/\tau$", and
+  /// §6.9.1 of Haug's *Complete Guide to Option Pricing Formulas*, which
+  /// prints it as $\sigma_i = \sqrt{z^2 + \delta^2(i/T)}$ at exactly this
+  /// pricer's parameterisation.
+  ///
+  /// Conditioning on `n` jumps over the option's life leaves the log-return
+  /// as the diffusion plus `n` i.i.d. jump sizes, so its variance is
+  /// `d²·τ + n·z²`: the diffusion runs for the *whole* of `τ` however many
+  /// jumps land in it, and only the jump part scales with the count. A
+  /// Black-Scholes term consumes that as `σ_n²·τ`, which gives the
+  /// expression above — and in particular $\sigma_0 = d$, the diffusive
+  /// volatility, rather than `0`.
+  ///
+  /// This is what makes `v` the total volatility the field claims it is.
+  /// Averaging the conditional variance over `N ~ Poisson(λτ)` gives
+  /// `d²τ + λτ·z² = v²τ` exactly, which is the identity
+  /// [`diffusive_std`](Self::diffusive_std)'s `v² − λz²` subtraction exists
+  /// to arrange; the subtraction is dead weight under any other `σ_n`.
+  /// `merton_gamma_zero_is_black_scholes` and
+  /// `merton_conditional_variance_averages_to_the_total` pin the two ends
+  /// of that statement.
   fn term_vol(&self, n: usize, tau: f64) -> f64 {
-    ((self.diffusive_std().powi(2) + self.jump_size_std().powi(2)) * n as f64 / tau).sqrt()
+    (self.diffusive_std().powi(2) + self.jump_size_std().powi(2) * n as f64 / tau).sqrt()
   }
 
   /// Poisson weight `e^{-λτ}(λτ)^n / n!` for the `n`-th term. Accumulates
@@ -158,13 +191,22 @@ impl Merton1976Pricer {
   /// Call and put of the `n`-th Poisson term, with the one point where the
   /// zero-volatility term is a *removable singularity* filled in.
   ///
-  /// [`term_vol`](Self::term_vol) is exactly `0` at `n = 0`, so the no-jump
-  /// term prices a zero-volatility Black-Scholes call. Its
+  /// A term whose [`term_vol`](Self::term_vol) is exactly `0` prices a
+  /// zero-volatility Black-Scholes call. Its
   /// $d_1 = (\ln(S/K) + b\tau)/(\sigma\sqrt\tau) + \sigma\sqrt\tau/2$ is
   /// $\pm\infty$ wherever $Se^{b\tau} \ne K$, which saturates both normal
   /// CDFs and collapses the term to its discounted intrinsic forward value.
   /// **At** the forward the leading numerator vanishes too, leaving $0/0$,
   /// and a single `NaN` term poisons the whole Poisson sum.
+  ///
+  /// $\sigma_n = \sqrt{d^2 + z^2n/\tau}$ is zero only where the *diffusive*
+  /// component `d` is, so this is reachable at `v == 0` — the zero total
+  /// volatility `new` accepts on purpose, where every term of the series is
+  /// degenerate — and, for the `n = 0` term alone, at the pure-jump corner
+  /// `gamma == 1` whenever `v² − λz²` rounds to exactly `0` rather than one
+  /// ulp below it. `zero_total_volatility_at_the_forward_is_the_limit` is
+  /// the live pin; `an_ordinary_configuration_never_reaches_the_branch` is
+  /// the counterpart that keeps the narrowed reachability honest.
   ///
   /// That point is a removable singularity, not an undefined quantity. Let
   /// $\sigma \to 0^+$ along $Se^{b\tau} = K$: then $d_1 = \sigma\sqrt\tau/2
@@ -181,12 +223,12 @@ impl Merton1976Pricer {
   /// Only the $0/0$ point is intercepted; every other term keeps the value
   /// [`BSMPricer::call_put`] already produced, degenerate or not.
   ///
-  /// [`BSMCoc::Black1976`] and [`BSMCoc::Asay1982`] are where this bites in
-  /// practice, and the cost of carry is the reason: their $b = 0$ puts the
-  /// forward at $S$, so the singular strike is the at-the-money one — the
-  /// most-quoted point on a futures-option surface. The three carrying
-  /// conventions put it at $Se^{b\tau}$, a strike nobody asks for exactly,
-  /// which is why this survived so long.
+  /// Which strike is singular is set by the cost of carry, not by the
+  /// volatility: [`BSMCoc::Black1976`] and [`BSMCoc::Asay1982`] have
+  /// $b = 0$, putting the forward at $S$, so a degenerate configuration
+  /// loses its at-the-money point — the most-quoted one on a futures-option
+  /// surface. The three carrying conventions put it at $Se^{b\tau}$, a
+  /// strike nobody asks for exactly.
   fn term_call_put(&self, n: usize, tau: f64, s: f64, k: f64, r: f64, q: f64) -> (f64, f64) {
     let term = self.term_bsm(n, tau);
     let (d1, _) = term.d1_d2(s, k, r, q, tau);
