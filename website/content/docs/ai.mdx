@@ -62,9 +62,9 @@ let nn = HestonNn::load("path/to/trained/heston", &device)?;
 
 // [v0, rho, sigma, kappa, theta] — bounds are HestonNn::PARAM_LB / PARAM_UB
 let params: [f32; 5] = [0.04, -0.5, 0.3, 2.0, 0.04];
-let strikes    = vec![80.0, 90.0, 100.0, 110.0, 120.0];
+let strikes = vec![80.0, 90.0, 100.0, 110.0, 120.0];
 let maturities = vec![0.25, 0.5, 1.0, 2.0];
-let forwards   = vec![100.0; maturities.len()];
+let forwards = vec![100.0; maturities.len()];
 
 // Inference returns a full ImpliedVolSurface in <1ms
 let surface = nn.predict_implied_vol_surface(&params, strikes, maturities, forwards)?;

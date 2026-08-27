@@ -43,21 +43,21 @@ accumulation, …):
 
 ```rust
 pub trait FloatExt:
-    num_traits::Float
-    + num_traits::FromPrimitive
-    + num_traits::Signed
-    + num_traits::FloatConst
-    + std::iter::Sum
-    + SimdFloatExt
-    + num_traits::Zero
-    + Default
-    + std::fmt::Debug
-    + Send
-    + Sync
-    + ndarray::ScalarOperand
-    + std::ops::AddAssign
-    + std::ops::SubAssign
-    + 'static
+  num_traits::Float
+  + num_traits::FromPrimitive
+  + num_traits::Signed
+  + num_traits::FloatConst
+  + std::iter::Sum
+  + SimdFloatExt
+  + num_traits::Zero
+  + Default
+  + std::fmt::Debug
+  + Send
+  + Sync
+  + ndarray::ScalarOperand
+  + std::ops::AddAssign
+  + std::ops::SubAssign
+  + 'static
 {
 }
 ```
@@ -74,11 +74,11 @@ Every stochastic process implements `ProcessExt<T>`:
 
 ```rust
 pub trait ProcessExt<T: FloatExt>: Send + Sync {
-    type Output: Send;                                    // Array1<T>, [Array1<T>; N], Array2<T>, …
-    fn sample(&self) -> Self::Output;
-    fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;
-    fn sample_par(&self, m: usize) -> Vec<Self::Output>;
-    // optional: malliavin-style methods via MalliavinExt
+  type Output: Send; // Array1<T>, [Array1<T>; N], Array2<T>, …
+  fn sample(&self) -> Self::Output;
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;
+  fn sample_par(&self, m: usize) -> Vec<Self::Output>;
+  // optional: malliavin-style methods via MalliavinExt
 }
 ```
 
@@ -97,18 +97,22 @@ The trait is `f64`-only (not generic over `T`), and every method defaults
 to a `type_name`-annotated `unimplemented!()`:
 
 ```rust
+// Signature sketch. Every method below is a *provided* method whose default
+// body is a `type_name`-annotated `unimplemented!()`; the bodies are elided
+// here.
 pub trait DistributionExt {
-    fn characteristic_function(&self, t: f64) -> num_complex::Complex64 { /* unimplemented!() by default */ }
-    fn pdf(&self, x: f64) -> f64 { /* unimplemented!() by default */ }
-    fn cdf(&self, x: f64) -> f64 { /* unimplemented!() by default */ }
-    fn inv_cdf(&self, p: f64) -> f64 { /* unimplemented!() by default */ }
-    fn mean(&self) -> f64 { /* unimplemented!() by default */ }
-    fn median(&self) -> f64 { /* unimplemented!() by default */ }
-    fn mode(&self) -> f64 { /* unimplemented!() by default */ }
-    fn variance(&self) -> f64 { /* unimplemented!() by default */ }
-    fn skewness(&self) -> f64 { /* unimplemented!() by default */ }
-    fn kurtosis(&self) -> f64 { /* unimplemented!() by default */ }
-    fn entropy(&self) -> f64 { /* unimplemented!() by default */ }
+  fn characteristic_function(&self, t: f64) -> num_complex::Complex64;
+  fn pdf(&self, x: f64) -> f64;
+  fn cdf(&self, x: f64) -> f64;
+  fn inv_cdf(&self, p: f64) -> f64;
+  fn mean(&self) -> f64;
+  fn median(&self) -> f64;
+  fn mode(&self) -> f64;
+  fn variance(&self) -> f64;
+  fn skewness(&self) -> f64;
+  fn kurtosis(&self) -> f64;
+  fn entropy(&self) -> f64;
+  fn moment_generating_function(&self, t: f64) -> f64;
 }
 ```
 
@@ -126,22 +130,30 @@ strikes, spots, …) is passed to the calibrator's own constructor, not to
 
 ```rust
 pub trait Calibrator {
-    type InitialGuess;
-    type Params: Clone;
-    type Output: CalibrationResult<Params = Self::Params>;
-    type Error;
-    fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error>;
+  type InitialGuess;
+  type Params: Clone;
+  type Output: CalibrationResult<Params = Self::Params>;
+  type Error;
+  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error>;
 }
 
 pub trait CalibrationResult {
-    type Params: Clone;
-    fn rmse(&self) -> f64;
-    fn converged(&self) -> bool;
-    fn params(&self) -> Self::Params;
-    fn loss_score(&self) -> Option<&CalibrationLossScore> { None }
-    fn iterations(&self) -> Option<usize> { None }
-    fn message(&self) -> Option<&str> { None }
-    fn max_error(&self) -> f64 { f64::NAN }
+  type Params: Clone;
+  fn rmse(&self) -> f64;
+  fn converged(&self) -> bool;
+  fn params(&self) -> Self::Params;
+  fn loss_score(&self) -> Option<&CalibrationLossScore> {
+    None
+  }
+  fn iterations(&self) -> Option<usize> {
+    None
+  }
+  fn message(&self) -> Option<&str> {
+    None
+  }
+  fn max_error(&self) -> f64 {
+    f64::NAN
+  }
 }
 ```
 

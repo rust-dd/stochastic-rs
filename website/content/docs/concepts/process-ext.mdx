@@ -14,16 +14,16 @@ surface is three methods:
 
 ```rust
 pub trait ProcessExt<T: FloatExt>: Send + Sync {
-    type Output: Send;
+  type Output: Send;
 
-    /// One sampled path.
-    fn sample(&self) -> Self::Output;
+  /// One sampled path.
+  fn sample(&self) -> Self::Output;
 
-    /// Map `f` over `m` independently sampled paths, in parallel.
-    fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;
+  /// Map `f` over `m` independently sampled paths, in parallel.
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;
 
-    /// `m` independently sampled paths, kept.
-    fn sample_par(&self, m: usize) -> Vec<Self::Output>;
+  /// `m` independently sampled paths, kept.
+  fn sample_par(&self, m: usize) -> Vec<Self::Output>;
 }
 ```
 

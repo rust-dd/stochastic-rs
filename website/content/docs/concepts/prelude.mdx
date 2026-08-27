@@ -24,7 +24,7 @@ runnable example.
 
 ## Trait core (7)
 
-```rust
+```
 FloatExt, SimdFloatExt,
 ProcessExt, BivariateExt,
 DistributionExt, DistributionSampler,
@@ -36,7 +36,7 @@ function in the library carries `T: FloatExt`.
 
 ## Pricing (1)
 
-```rust
+```
 ModelPricer
 ```
 
@@ -51,7 +51,7 @@ the crate does not have.
 
 ## Calibration (3)
 
-```rust
+```
 Calibrator, CalibrationResult, ToModel
 ```
 
@@ -60,7 +60,7 @@ pricer instance via the associated type — no boxed-trait gymnastics.
 
 ## Instrument / engine (4)
 
-```rust
+```
 Instrument, InstrumentExt,
 PricingEngine, PricingResult
 ```
@@ -72,7 +72,7 @@ implement `PricingEngine` against the relevant `Instrument` types.
 
 ## Option types (3)
 
-```rust
+```
 Moneyness, OptionStyle, OptionType
 ```
 
@@ -82,7 +82,7 @@ Call / Put.
 
 ## Backend / sampling (4)
 
-```rust
+```
 Backend, Cpu,
 PathSampler, VolterraKernel
 ```
@@ -98,7 +98,7 @@ Markovian-lift rough-process family (`RlKernel`, `ExponentialKernel`,
 
 ## Estimation (5)
 
-```rust
+```
 HurstEstimator, FractalDimEstimator,
 HypothesisTest, DiffusionModel,
 TailDependence

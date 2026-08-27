@@ -13,21 +13,21 @@ over `T: FloatExt`.
 
 ```rust
 pub trait ModelPricer {
-    fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
+  fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
 
-    // default: put-call parity from price_call
-    fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-        let call = self.price_call(s, k, r, q, tau);
-        call - s * (-q * tau).exp() + k * (-r * tau).exp()
-    }
+  // default: put-call parity from price_call
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let call = self.price_call(s, k, r, q, tau);
+    call - s * (-q * tau).exp() + k * (-r * tau).exp()
+  }
 
-    // default: dispatches to price_call / price_put
-    fn price_option(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
-        match option_type {
-            OptionType::Call => self.price_call(s, k, r, q, tau),
-            OptionType::Put => self.price_put(s, k, r, q, tau),
-        }
+  // default: dispatches to price_call / price_put
+  fn price_option(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    match option_type {
+      OptionType::Call => self.price_call(s, k, r, q, tau),
+      OptionType::Put => self.price_put(s, k, r, q, tau),
     }
+  }
 }
 ```
 
@@ -80,8 +80,8 @@ produces:
 
 ```rust
 pub trait ToModel {
-    type Model: ModelPricer;
-    fn to_model(&self, r: f64, q: f64) -> Self::Model;
+  type Model: ModelPricer;
+  fn to_model(&self, r: f64, q: f64) -> Self::Model;
 }
 ```
 

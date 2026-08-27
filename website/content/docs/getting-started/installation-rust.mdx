@@ -147,13 +147,13 @@ Select a backend at compile time with `.on::<B>()`, then call `sample()` /
 `sample_par()` as usual — the dispatch is monomorphised, with no runtime branch:
 
 ```rust
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
-use stochastic_rs::simd_rng::Unseeded;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-    .on::<CudaNative>()      // CudaNative | CubeCl | MetalNative | Accelerate | Cpu
-    .sample();
+  .on::<CudaNative>() // CudaNative | CubeCl | MetalNative | Accelerate | Cpu
+  .sample();
 ```
 
 The markers only exist when their feature is compiled, so an unavailable backend
@@ -177,15 +177,16 @@ cargo bench --features cuda-native --bench fgn_cuda_native
 ```
 
 ```rust
-use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::simd_rng::Unseeded;
-
 use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::noise::fgn::Fgn;
 
-let path  = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-    .on::<CudaNative>().sample();          // single path on GPU
+let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+  .on::<CudaNative>()
+  .sample(); // single path on GPU
 let batch = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-    .on::<CudaNative>().sample_par(1024);  // 1024 paths in one launch
+  .on::<CudaNative>()
+  .sample_par(1024); // 1024 paths in one launch
 ```
 
 ### `gpu` / `gpu-cuda` / `gpu-wgpu` — cubecl portable kernels
@@ -207,7 +208,8 @@ use stochastic_rs::stochastic::device::CubeCl;
 
 // routes through whichever cubecl backend is active
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-    .on::<CubeCl>().sample();
+  .on::<CubeCl>()
+  .sample();
 ```
 
 ### `metal` — direct Metal (macOS)
@@ -225,7 +227,8 @@ cargo bench --features metal --bench fgn_metal
 use stochastic_rs::stochastic::device::MetalNative;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-    .on::<MetalNative>().sample();
+  .on::<MetalNative>()
+  .sample();
 ```
 
 ### `accelerate` — Apple Accelerate (macOS, no GPU)
@@ -243,7 +246,8 @@ cargo bench --features accelerate --bench fgn_accelerate
 use stochastic_rs::stochastic::device::Accelerate;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-    .on::<Accelerate>().sample();
+  .on::<Accelerate>()
+  .sample();
 ```
 
 ### Choosing a backend
@@ -309,9 +313,9 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
 
 fn main() {
-    let p = Ou::<f64, _>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0), Unseeded);
-    let path = p.sample();
-    println!("OU path of length {}", path.len());
+  let p = Ou::<f64, _>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0), Unseeded);
+  let path = p.sample();
+  println!("OU path of length {}", path.len());
 }
 ```
 

@@ -15,18 +15,22 @@ defaults to a `type_name`-annotated `unimplemented!()` — a distribution
 overrides only the methods it has a closed form for:
 
 ```rust
+// Signature sketch. Every method below is a *provided* method whose default
+// body is a `type_name`-annotated `unimplemented!()`; the bodies are elided
+// here. See `stochastic-rs-distributions/src/traits/distribution.rs`.
 pub trait DistributionExt {
-    fn characteristic_function(&self, t: f64) -> Complex64 { /* unimplemented!() by default */ }
-    fn pdf(&self, x: f64) -> f64 { /* unimplemented!() by default */ }
-    fn cdf(&self, x: f64) -> f64 { /* unimplemented!() by default */ }
-    fn inv_cdf(&self, p: f64) -> f64 { /* unimplemented!() by default */ }
-    fn mean(&self) -> f64 { /* unimplemented!() by default */ }
-    fn median(&self) -> f64 { /* unimplemented!() by default */ }
-    fn mode(&self) -> f64 { /* unimplemented!() by default */ }
-    fn variance(&self) -> f64 { /* unimplemented!() by default */ }
-    fn skewness(&self) -> f64 { /* unimplemented!() by default */ }
-    fn kurtosis(&self) -> f64 { /* unimplemented!() by default */ }
-    fn entropy(&self) -> f64 { /* unimplemented!() by default */ }
+  fn characteristic_function(&self, t: f64) -> Complex64;
+  fn pdf(&self, x: f64) -> f64;
+  fn cdf(&self, x: f64) -> f64;
+  fn inv_cdf(&self, p: f64) -> f64;
+  fn mean(&self) -> f64;
+  fn median(&self) -> f64;
+  fn mode(&self) -> f64;
+  fn variance(&self) -> f64;
+  fn skewness(&self) -> f64;
+  fn kurtosis(&self) -> f64;
+  fn entropy(&self) -> f64;
+  fn moment_generating_function(&self, t: f64) -> f64;
 }
 ```
 

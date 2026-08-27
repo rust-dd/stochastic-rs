@@ -60,11 +60,11 @@ seed strategy uniformly:
 
 ```rust
 pub trait SeedExt: Clone + Send + Sync + 'static {
-    fn rng(&self) -> SimdRng;                        // single-stream RNG
-    fn derive(&self) -> Self;                        // child seed for sub-components
-    fn rng_ext<R: SimdRngExt>(&self) -> R;           // generic backing RNG (see below)
-    fn reseed(&self, seed: u64) {}                   // optional in-place reset
-    fn seed_value(&self) -> u64;                     // fresh seed, advancing state like rng()/rng_ext()
+  fn rng(&self) -> SimdRng; // single-stream RNG
+  fn derive(&self) -> Self; // child seed for sub-components
+  fn rng_ext<R: SimdRngExt>(&self) -> R; // generic backing RNG (see below)
+  fn reseed(&self, seed: u64) {} // optional in-place reset
+  fn seed_value(&self) -> u64; // fresh seed, advancing state like rng()/rng_ext()
 }
 ```
 
@@ -129,17 +129,19 @@ is reachable through the
 
 ```rust
 pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
-    const HAS_PAIR_ILP: bool = false;
+  const HAS_PAIR_ILP: bool = false;
 
-    fn new() -> Self;
-    fn from_seed(seed: u64) -> Self;
-    fn next_i32x8(&mut self) -> wide::i32x8;
-    fn next_i32x8_pair(&mut self) -> (wide::i32x8, wide::i32x8) { /* default = two single calls */ }
-    fn next_i32(&mut self) -> i32;
-    fn next_f64(&mut self) -> f64;
-    fn next_f32(&mut self) -> f32;
-    fn fill_uniform_f64(&mut self, out: &mut [f64]);
-    fn fill_uniform_f32(&mut self, out: &mut [f32]);
+  fn new() -> Self;
+  fn from_seed(seed: u64) -> Self;
+  fn next_i32x8(&mut self) -> wide::i32x8;
+  fn next_i32x8_pair(&mut self) -> (wide::i32x8, wide::i32x8) {
+    /* default = two single calls */
+  }
+  fn next_i32(&mut self) -> i32;
+  fn next_f64(&mut self) -> f64;
+  fn next_f32(&mut self) -> f32;
+  fn fill_uniform_f64(&mut self, out: &mut [f64]);
+  fn fill_uniform_f32(&mut self, out: &mut [f32]);
 }
 ```
 

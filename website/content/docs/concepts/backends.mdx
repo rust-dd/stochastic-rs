@@ -26,15 +26,15 @@ NVIDIA CUDA 12.x toolkit and GPU), which the CI runners that build this
 site do not have, so this block is illustrative rather than compiled:
 
 ```rust
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
-use stochastic_rs::simd_rng::Unseeded;
 
 let cpu = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded).sample(); // default Cpu
 
 let gpu = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-    .on::<CudaNative>()
-    .sample();                                  // same call, runs on the GPU
+  .on::<CudaNative>()
+  .sample(); // same call, runs on the GPU
 ```
 
 `.on::<B>()` consumes the process and returns it re-typed to backend `B` — the

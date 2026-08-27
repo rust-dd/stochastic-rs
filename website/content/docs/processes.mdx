@@ -156,8 +156,8 @@ seeds without rebuilding the process.
 Continuing with the same placeholder `p` from above:
 
 ```rust
-let path  = p.sample();          // Array1<T>, length n
-let paths = p.sample_par(m);     // Vec<Array1<T>>, m paths of length n
+let path = p.sample(); // Array1<T>, length n
+let paths = p.sample_par(m); // Vec<Array1<T>>, m paths of length n
 ```
 
 `sample_par(m)` uses Rayon. Each path gets a deterministic seed
@@ -181,7 +181,7 @@ use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 
 let fgn = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded);
-let path = fgn.on::<CudaNative>().sample();   // FFT on the GPU, zero runtime branch
+let path = fgn.on::<CudaNative>().sample(); // FFT on the GPU, zero runtime branch
 ```
 
 Backends: `Cpu` (default), `CudaNative` (`cuda-native`), `CubeCl`
