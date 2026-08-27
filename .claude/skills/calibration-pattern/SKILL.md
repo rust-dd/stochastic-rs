@@ -61,7 +61,9 @@ pub trait ToShortRateModel {
 ```
 
 `CalibrationLossScore` (in `crate::types`) is a HashMap of `LossMetric →
-f64` covering rmse / mae / mape / mspe / mre. `get(metric)` returns
+f64`. `LossMetric` has **nine** variants — `Mae, Mse, Rmse, Mpe, Mape,
+Mspe, Rmspe, Mre, Mrpe` — each with a `compute(market, model)` in
+`crate::loss`. `get(metric)` returns
 `f64::NAN` for a missing entry, never 0.0 — a silent zero would read as
 a perfect fit. Read the type's own doc in
 `stochastic-rs-quant/src/types.rs`; there is no `CHANGELOG.md` in this
@@ -100,6 +102,12 @@ use crate::pricing::xyz::XyzModel;
 /// `maturity` or `risk_free` — one name per concept is enforced across
 /// the quant crate.
 #[derive(Clone, Debug)]
+// NOTE: the one concrete `MarketOption` in the tree
+// (`calibration/heston_stoch_corr.rs`) spells these
+// `{ strike, tau, price, rate }`, not `{ k, tau, price, r }` — it
+// predates the short-name convention below and has not been renamed.
+// Follow the convention for new code; expect the long names when
+// reading that file.
 pub struct MarketOption {
     pub k: f64,
     pub tau: f64,
@@ -180,22 +188,40 @@ impl crate::traits::Calibrator for XyzCalibrator {
 
 ## 4. Optimizer choices
 
-`stochastic-rs` uses three optimizers depending on the problem shape:
+`stochastic-rs` uses **four** optimizers depending on the problem shape.
+Check the file you are copying from rather than assuming — the
+attribution below is easy to get backwards.
 
-- **`slsqp` crate** — when there are explicit `[f64; N]` bounds and you
-  need constraints. Used by `HscmCalibrator`, `RBergomiCalibrator`. The
-  `(f, init, &bounds, cons, data)` calling convention is uniform.
+- **`levenberg-marquardt` (v0.14)** — the workhorse, and the default
+  choice for a least-squares residual fit. You implement
+  `LeastSquaresProblem<f64, Dyn, Dyn>` and drive it with
+  `LevenbergMarquardt`. Used by `BSMCalibrator` (`calibration/bsm.rs`),
+  `SabrCalibrator` (`calibration/sabr.rs`), `CgmysvCalibrator`
+  (`calibration/cgmysv.rs`), `HestonCalibrator`
+  (`calibration/heston/{calibrator,lsq}.rs`), `HkdeCalibrator`
+  (`calibration/hkde/calibrator.rs`), and both vol-surface fits
+  (`vol_surface/svi.rs`, `vol_surface/ssvi/calibrate.rs`).
 - **`argmin` (LBFGS / Newton-CG / NelderMead)** — when the problem is
-  unconstrained or when you want a pluggable line search. Used by
-  `SsviCalibrator`, `SviCalibrator` (Levenberg-Marquardt).
-- **Custom Levenberg-Marquardt via `nalgebra`** — when the residuals
-  function is closed-form and you want analytic Jacobian. Used by
-  `SsviLmProblem` (rc.2 added the analytic Jacobian — see
-  `vol_surface/ssvi.rs::SsviLmProblem::jacobian`).
+  unconstrained or you want a pluggable line search. Used by
+  `calibration/hw_swaption.rs`, `calibration/sabr_caplet.rs`,
+  `vol_surface/sabr_smile/objective.rs`, and the portfolio optimizers
+  under `portfolio/optimizers/`.
+- **`slsqp` crate** — when there are explicit bounds and you need
+  constraints. Exactly **one** in-tree user:
+  `calibration/heston_stoch_corr.rs`.
+- **A hand-written routine** — when the loss is not a sum of squares at
+  all. `RBergomiCalibrator` (`calibration/rbergomi/calibrator.rs`) is
+  the example: a multi-stage empirical-Wasserstein fit
+  (`super::loss::empirical_wasserstein_1`) using none of the three
+  crates above.
 
-**Do not** add a new optimizer crate; the three above are sufficient
-for everything we've needed. Adding a 4th adds compile time without
-new capability.
+Analytic Jacobians go on the `LeastSquaresProblem` impl — see
+`SsviLmProblem::jacobian` in
+`stochastic-rs-quant/src/vol_surface/ssvi/calibrate.rs`.
+
+**Do not** add a fifth optimizer crate; the four above cover everything
+we have needed. Adding another adds compile time without new
+capability.
 
 ## 5. The `Result<Output, Error>` contract
 
@@ -343,17 +369,36 @@ m.add_class::<PyXyzCalibrator>()?;
 When in doubt, copy the pattern from one of these (in increasing
 complexity):
 
-- `BSMCalibrator` (`calibration/bsm.rs`) — single-parameter, closed-form,
-  no optimizer.
-- `HestonCalibrator` (`calibration/heston.rs`) — 5-parameter LM with Cui
+Note the file shapes: `bsm`, `heston`, `rbergomi`, `hkde`, `levy`,
+`double_heston` and `svj` are **directories** under
+`stochastic-rs-quant/src/calibration/` with a sibling `.rs` root;
+`heston_stoch_corr`, `cgmysv`, `sabr`, `sabr_caplet` and `hw_swaption`
+are single files. There is no `calibration/heston.rs` or
+`calibration/rbergomi.rs`.
+
+- `BSMCalibrator` (`calibration/bsm.rs`) — the simplest full example.
+  It is **not** closed-form: it implements
+  `LeastSquaresProblem<f64, Dyn, Dyn>` and is driven by
+  `LevenbergMarquardt`.
+- `HestonCalibrator` (`calibration/heston/calibrator.rs`, with the
+  problem in `calibration/heston/lsq.rs`) — 5-parameter LM with the Cui
   Jacobian.
-- `SsviCalibrator` (`vol_surface/ssvi.rs::SsviLmProblem`) — 3-parameter
-  LM with closed-form analytic Jacobian (rc.2).
-- `HscmCalibrator` (`calibration/heston_stoch_corr.rs`) — 9-parameter
-  SLSQP with bounds.
-- `RBergomiCalibrator` (`calibration/rbergomi.rs`) — multi-stage
-  (terminal samples + per-slice fit) with `with_dividend_yield(q)`
-  builder.
+- `HkdeCalibrator` (`calibration/hkde/calibrator.rs`) — LM over a
+  kernel-density surface.
+- `HscmCalibrator` (`calibration/heston_stoch_corr.rs`) — the crate's
+  only SLSQP user, with bounds.
+- `RBergomiCalibrator` (`calibration/rbergomi/calibrator.rs`) —
+  multi-stage empirical-Wasserstein fit, no optimizer crate at all;
+  has a `with_dividend_yield(q)` builder.
+
+**SVI / SSVI are not `Calibrator` implementors.** The Rust entry points
+are free functions — `calibrate_svi` (`vol_surface/svi.rs`) and
+`calibrate_ssvi` (`vol_surface/ssvi/calibrate.rs`, whose LM problem type
+is `SsviLmProblem` with an analytic `jacobian`). The names
+`SviCalibrator` / `SsviCalibrator` exist only as `#[pyclass(name = ...)]`
+labels on the PyO3 wrappers in
+`stochastic-rs-quant/src/python/vol_surface.rs`. Do not look for a Rust
+type by those names.
 
 ## Related SKILLs
 
