@@ -70,8 +70,10 @@ Two blanket impls do most of the work:
 
 - `impl<T: FourierModelExt> ModelPricer for T` — any model with a
   characteristic function gets priced by Gil-Pelaez quadrature for free.
-- `impl<T: ModelPricer + ?Sized> ModelSurface for T` — any `ModelPricer`
-  gets `vol_surface(s, r, q, strikes, maturities)`.
+- `impl<T: VanillaEuropeanCall + ?Sized> ModelSurface for T` — any model
+  that asserts it really is a European vanilla call gets
+  `vol_surface(s, r, q, strikes, maturities)`. A `ModelPricer` that is *not*
+  one (a digital, an American put) has no method there at all.
 
 `ToModel` bridges a calibration result to the concrete `ModelPricer` it
 produces:

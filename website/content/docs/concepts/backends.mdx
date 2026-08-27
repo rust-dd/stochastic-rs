@@ -14,8 +14,9 @@ parameterised by a backend marker `B` (defaulting to `Cpu`); the `Backend` trait
 monomorphises `sample` / `sample_par` to that backend with **no runtime branch**.
 
 This replaces the ad-hoc per-backend methods (`sample_cuda_native`,
-`sample_gpu`, …) with one uniform selector. The low-level methods still exist,
-but `.on::<B>()` is the recommended API.
+`sample_gpu`, …) with one uniform selector. Those methods are now crate-private
+(`sample_*_impl`, wired up in `stochastic_rs::stochastic::device`), so
+`.on::<B>()` is not merely the recommended API — it is the only one.
 
 ## Switching backend
 

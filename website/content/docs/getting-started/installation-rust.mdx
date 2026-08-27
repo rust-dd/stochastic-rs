@@ -12,7 +12,7 @@ status: stable
 
 ```toml
 [dependencies]
-stochastic-rs = "2.6"
+stochastic-rs = "3.0.0-beta.1"
 ```
 
 Then:
@@ -29,12 +29,12 @@ sub-crates you need:
 
 ```toml
 [dependencies]
-stochastic-rs-distributions = "2.6"   # SIMD distribution sampling
-stochastic-rs-stochastic = "2.6"   # 127 process types
-stochastic-rs-copulas = "2.6"   # bivariate / multivariate copulas
-stochastic-rs-stats = "2.6"   # estimators
-stochastic-rs-quant = "2.6"   # pricing / calibration / vol surface
-stochastic-rs-ai = "2.6"   # neural surrogates (candle)
+stochastic-rs-distributions = "3.0.0-beta.1"   # SIMD distribution sampling
+stochastic-rs-stochastic = "3.0.0-beta.1"   # 127 process types
+stochastic-rs-copulas = "3.0.0-beta.1"   # bivariate / multivariate copulas
+stochastic-rs-stats = "3.0.0-beta.1"   # estimators
+stochastic-rs-quant = "3.0.0-beta.1"   # pricing / calibration / vol surface
+stochastic-rs-ai = "3.0.0-beta.1"   # neural surrogates (candle)
 ```
 
 Topology:
@@ -158,8 +158,10 @@ let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
 
 The markers only exist when their feature is compiled, so an unavailable backend
 is a compile error rather than a runtime fallback. See the
-[Backends](/docs/concepts/backends) concept page. The per-backend `sample_*`
-methods below are the lower-level calls `.on::<B>()` dispatches to.
+[Backends](/docs/concepts/backends) concept page. `.on::<B>()` is the whole
+public surface — the per-backend samplers are crate-private (`sample_*_impl`,
+wired up in `stochastic_rs::stochastic::device`) and are reached only through
+it, as in the per-backend blocks below.
 
 ### `cuda-native` — direct CUDA (NVIDIA, recommended)
 
@@ -178,9 +180,12 @@ cargo bench --features cuda-native --bench fgn_cuda_native
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::simd_rng::Unseeded;
 
-let fgn = Fgn::<f32, _>::new(/* hurst */ 0.7, 65_536, None, Unseeded);
-let path  = fgn.sample_cuda_native(1)?;     // single path on GPU
-let batch = fgn.sample_cuda_native(1024)?;  // 1024 paths in one launch
+use stochastic_rs::stochastic::device::CudaNative;
+
+let path  = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+    .on::<CudaNative>().sample();          // single path on GPU
+let batch = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+    .on::<CudaNative>().sample_par(1024);  // 1024 paths in one launch
 ```
 
 ### `gpu` / `gpu-cuda` / `gpu-wgpu` — cubecl portable kernels
@@ -198,7 +203,11 @@ cargo build --features gpu-wgpu
 ```
 
 ```rust
-let path = fgn.sample_gpu(1)?;   // routes through whichever cubecl backend is active
+use stochastic_rs::stochastic::device::CubeCl;
+
+// routes through whichever cubecl backend is active
+let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+    .on::<CubeCl>().sample();
 ```
 
 ### `metal` — direct Metal (macOS)
@@ -213,7 +222,10 @@ cargo bench --features metal --bench fgn_metal
 ```
 
 ```rust
-let path = fgn.sample_metal(1)?;
+use stochastic_rs::stochastic::device::MetalNative;
+
+let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+    .on::<MetalNative>().sample();
 ```
 
 ### `accelerate` — Apple Accelerate (macOS, no GPU)
@@ -228,7 +240,10 @@ cargo bench --features accelerate --bench fgn_accelerate
 ```
 
 ```rust
-let path = fgn.sample_accelerate(1)?;
+use stochastic_rs::stochastic::device::Accelerate;
+
+let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
+    .on::<Accelerate>().sample();
 ```
 
 ### Choosing a backend
@@ -274,7 +289,7 @@ export OPENBLAS_DIR=$(brew --prefix openblas)
 The `openblas-src` crate does not currently support static linking on
 the MSVC target. For source builds use vcpkg with a prebuilt LAPACK
 binary; the Windows wheel CI job uses `openblas-static` with a vendored
-binary (the published Windows wheel **omits** the 15 BLAS-backed
+binary (the published Windows wheel **omits** the 13 BLAS-backed
 classes — see [Python bindings](/docs/python) for the exact list).
 
 ```bash

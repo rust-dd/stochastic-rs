@@ -29,7 +29,7 @@ with 1000 steps:
 ```python
 import stochastic_rs as srs
 
-p = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
+p = srs.PyOu(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
 path = p.sample()
 print("len =", path.shape[0], "mean =", path.mean())
 ```
@@ -52,12 +52,11 @@ characteristic-function evaluation.
 import stochastic_rs as srs
 
 pricer = srs.HestonPricer(
-    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
-    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+    s=100, v0=0.04, k=100, r=0.03, kappa=2.0, theta=0.04, sigma=0.3,
+    rho=-0.5, tau=1.0, q=0.0,
 )
-price = pricer.price("call")
-greeks = pricer.greeks("call")
-print(f"call={price:.4f}, delta={greeks.delta:.4f}, vega={greeks.vega:.4f}")
+call, put = pricer.call_put()
+print(f"call={call:.4f}, put={put:.4f}")
 ```
 
 ## 3. Estimate Hurst from a fractional-Brownian path
@@ -77,9 +76,14 @@ realized-variance series, not the Hurst exponent of a raw path.
 ### Python
 
 ```python
-# No Hurst estimator is currently exposed through the Python bindings —
-# see /docs/python for the exact parity list. Use the Rust API directly
-# until that lands.
+import stochastic_rs as srs
+import numpy as np
+
+# Mirrors the Rust vignette above: R/S on the cumulated path.
+fgn = srs.PyFgn(hurst=0.3, n=4096, t=1.0, seed=7)
+fbm = np.cumsum(fgn.sample())
+res = srs.RescaledRange().estimate(fbm)
+print(f"H = {res.hurst:.3f} (true 0.3)")
 ```
 
 ## Where next

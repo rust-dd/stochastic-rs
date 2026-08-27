@@ -139,12 +139,17 @@ pub trait CalibrationResult {
     fn converged(&self) -> bool;
     fn params(&self) -> Self::Params;
     fn loss_score(&self) -> Option<&CalibrationLossScore> { None }
+    fn iterations(&self) -> Option<usize> { None }
+    fn message(&self) -> Option<&str> { None }
+    fn max_error(&self) -> f64 { f64::NAN }
 }
 ```
 
 `calibrate(None)` lets the calibrator infer its own initial guess.
 `CalibrationResult` carries the calibrated `Params` (via `.params()`),
-the RMSE, and a convergence flag — there is no `.iterations` field. See
+the RMSE, and a convergence flag. `iterations()`, `message()` and
+`max_error()` are optional — they default to `None` / `None` / `f64::NAN`,
+and only the calibrators that record them override. See
 the [Quant catalog](/docs/quant) for the calibrators that ship today.
 
 ## `GreeksExt` and the `Greeks` aggregator

@@ -21,7 +21,7 @@ Rust core.
 | `gpu` / `gpu-cuda` / `gpu-wgpu` | `-stochastic` | `cubecl` (+ `cubecl-cuda` / `-wgpu`) | Portable CUDA / WebGPU kernels (`CubeCl` backend) |
 | `metal`           | `-stochastic`               | `metal`                             | macOS GPU FGN / fBM (`MetalNative` backend) |
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend) |
-| `openblas`        | `-stats`, `-quant`          | `ndarray-linalg/openblas`            | MLE, multivariate copulas, Cholesky-heavy |
+| `openblas`        | `-copulas`, `-quant`, `-stats`, `-stochastic` | `ndarray-linalg/openblas-system`     | MLE, multivariate copulas, Cholesky-heavy |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
@@ -54,7 +54,7 @@ If you depend on a sub-crate directly (recommended for lean builds),
 you enable the feature on that sub-crate:
 
 ```toml
-stochastic-rs-stats = { version = "2.6", features = ["openblas"] }
+stochastic-rs-stats = { version = "3.0.0-beta.1", features = ["openblas"] }
 ```
 
 ## Common gotchas

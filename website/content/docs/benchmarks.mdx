@@ -14,7 +14,7 @@ regression detection.
 
 ## Bench suites
 
-The workspace ships **28 bench files** under `benches/`. The
+The workspace ships **33 bench files** under `benches/`. The
 default-feature suites cover stochastic processes, distribution
 sampling, pricers, risk, microstructure, and lattice methods. The
 remaining suites are feature-gated to backends or optional dependencies.
@@ -27,7 +27,7 @@ dist_multicore      option         risk                 instruments
 microstructure      credit         cashflows            calendar
 lattice             market         filtering            realized
 poisson_process     mle            econometrics         slv
-rl_rough
+rl_rough            hurst          ndarray_overhead     sampler_compare
 ```
 
 ### Feature-gated suites
@@ -41,6 +41,8 @@ rl_rough
 | `fgn_all_backends`   | `gpu-wgpu`, `metal`, `accelerate`  |
 | `factors`            | `openblas`                         |
 | `hotpath_profile`    | `hotpath`                          |
+| `fgn_cuda_compare`   | `cuda-native`, `gpu-cuda`          |
+| `dual_stream_compare`| `dual-stream-rng`                  |
 
 ## FGN — CPU vs CUDA native
 
@@ -265,7 +267,7 @@ Drivers (sub-crate paths):
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "2.6", features = ["dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-beta.1", features = ["dual-stream-rng"] }
 ```
 
 Unlocks `stochastic_rs_core::simd_rng_dual::SimdRngDual` (two parallel

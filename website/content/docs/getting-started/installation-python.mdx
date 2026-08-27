@@ -54,7 +54,7 @@ will use the just-built shared library.
 import stochastic_rs as srs
 import numpy as np
 
-p = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
+p = srs.PyOu(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
 path = p.sample()
 assert isinstance(path, np.ndarray)
 assert path.shape == (1000,)

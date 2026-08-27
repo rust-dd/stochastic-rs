@@ -32,7 +32,7 @@ factor / strategy primitives.
 | **Strategies**     | Cointegrated pairs trading (hedge ratio, spread, z-score, signal generator), forecast-momentum-volatility regime engine, delta hedge.                                       |
 | **Inflation**      | Zero-coupon and YoY inflation curves, CPI / RPI / HICP indices with linear-interpolated reference ratio, ZC and YoY inflation swaps with par-rate solver.                |
 | **FX**             | ISO 4217 currency definitions, FX quoting / cross-rate / triangulation, FX forward via covered interest parity (continuous and simple compounding).                                                                            |
-| **Calendar**       | ACT/360, ACT/365, 30/360, ACT/ACT day-counts. Following / Modified Following / Preceding business-day adjustments. US, UK, TARGET, Tokyo holiday calendars. Pluggable `CalendarExt`. `ScheduleBuilder` for coupon / payment dates.                                |
+| **Calendar**       | ACT/360, ACT/365, 30/360, ACT/ACT day-counts. Following / Modified Following / Preceding business-day adjustments. US, UK, TARGET, Tokyo, HKEX, ASX, SGX, B3 holiday calendars. Pluggable `CalendarExt`. `ScheduleBuilder` for coupon / payment dates.                                |
 
 ## Examples
 
@@ -46,13 +46,16 @@ factor / strategy primitives.
 ```python
 import stochastic_rs as srs
 
-pricer = srs.BsmPricer(s0=100, k=100, tau=1.0, r=0.05, q=0.0, sigma=0.2)
-print("call =", pricer.price("call"))
-print("put  =", pricer.price("put"))
+# The Python wrapper still bundles the query into the constructor — the
+# option type included — so the accessors below take no arguments.
+pricer = srs.BSMPricer(s=100, v=0.2, k=100, r=0.05, tau=1.0, option_type="call", q=0.0)
+call, put = pricer.call_put()
+print("call =", call)
+print("put  =", put)
 
-g = pricer.greeks("call")
-print(f"delta={g.delta:.4f}, gamma={g.gamma:.4f}, vega={g.vega:.4f}, "
-      f"theta={g.theta:.4f}, rho={g.rho:.4f}")
+print(f"delta={pricer.delta():.4f}, gamma={pricer.gamma():.4f}, "
+      f"vega={pricer.vega():.4f}, theta={pricer.theta():.4f}, "
+      f"rho={pricer.rho():.4f}")
 ```
 </Tab>
 </Tabs>
@@ -68,12 +71,11 @@ print(f"delta={g.delta:.4f}, gamma={g.gamma:.4f}, vega={g.vega:.4f}, "
 import stochastic_rs as srs
 
 pricer = srs.HestonPricer(
-    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
-    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+    s=100, v0=0.04, k=100, r=0.03, kappa=2.0, theta=0.04, sigma=0.3,
+    rho=-0.5, tau=1.0, q=0.0,
 )
-price = pricer.price("call")
-g = pricer.greeks("call")
-print(f"call={price:.4f}, delta={g.delta:.4f}, vega={g.vega:.4f}")
+call, put = pricer.call_put()
+print(f"call={call:.4f}, put={put:.4f}")
 ```
 </Tab>
 </Tabs>
@@ -88,21 +90,25 @@ print(f"call={price:.4f}, delta={g.delta:.4f}, vega={g.vega:.4f}")
 ```python
 import stochastic_rs as srs
 
-surface = srs.ImpliedVolSurface.from_market(
-    strikes=strikes, expiries=expiries, iv_grid=iv_grid, spot=100.0,
-)
-res = srs.HestonCalibrator(surface).calibrate()
-print(f"kappa={res.params.kappa:.3f}, theta={res.params.theta:.4f}, "
-      f"sigma={res.params.sigma:.3f}, rho={res.params.rho:.3f}, "
-      f"v0={res.params.v0:.4f}")
-print(f"RMSE = {res.rmse:.6f} ({res.iterations} iters)")
+# The calibrator takes one MarketSlice per expiry — strikes, observed
+# prices, per-strike call/put flags, and tau — not a surface object.
+slices = [
+    srs.MarketSlice(strikes, prices, [True] * len(strikes), tau)
+    for strikes, prices, tau in quotes
+]
+v0, kappa, theta, sigma, rho, converged, rmse = srs.HestonCalibrator(
+    slices, s=100.0, r=0.03
+).calibrate()
+print(f"kappa={kappa:.3f}, theta={theta:.4f}, sigma={sigma:.3f}, "
+      f"rho={rho:.3f}, v0={v0:.4f}")
+print(f"RMSE = {rmse:.6f} (converged={converged})")
 ```
 </Tab>
 </Tabs>
 
 ## Trait overview
 
-The relevant traits live in [Concepts](/docs/concepts):
+The relevant traits live in [Concepts](/docs/concepts/traits):
 
 - [`ModelPricer`](/docs/concepts/model-pricer)
 - [`Calibrator`, `CalibrationResult`, `ToModel`](/docs/concepts/traits#calibrator-and-calibrationresult)

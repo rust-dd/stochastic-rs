@@ -120,7 +120,7 @@ comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
 import stochastic_rs as srs
 import numpy as np
 
-d = srs.Normal(mean=0.0, std=1.0, seed=42)
+d = srs.PyNormal(mean=0.0, std_dev=1.0, seed=42)
 samples = d.sample(10_000)                   # numpy.ndarray
 matrix  = d.sample_par(100, 10_000)          # shape (100, 10_000)
 
@@ -141,7 +141,7 @@ print(d.pdf(0.0), d.cdf(1.96))               # 0.3989, 0.975
 ```python
 import stochastic_rs as srs
 
-d = srs.Beta(alpha=2.0, beta=5.0, seed=42)
+d = srs.PyBeta(alpha=2.0, beta=5.0, seed=42)
 samples = d.sample(1000)
 print(samples.min(), samples.max())          # in [0, 1]
 print(d.mean(), d.variance())                # 0.2857, 0.0255
@@ -159,7 +159,7 @@ print(d.mean(), d.variance())                # 0.2857, 0.0255
 ```python
 import stochastic_rs as srs
 
-d = srs.Poisson(lam=4.0, seed=42)
+d = srs.PyPoissonD(lambda_=4.0, seed=42)
 counts = d.sample(10_000)                    # int dtype
 print(counts.mean(), counts.var())           # both ≈ 4.0
 ```

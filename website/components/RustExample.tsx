@@ -5,7 +5,7 @@ export interface RustExampleProps {
   /**
    * Path to the example file, relative to the workspace root
    * (one directory above this `website/` folder).
-   * Example: `tests/doctest_ou_quickstart.rs` or `examples/calibration_demo.rs`.
+   * Example: `tests/doctest_quickstart_ou.rs` or `examples/calibration_demo.rs`.
    */
   path: string;
   /** Optional: highlight a specific range (1-based inclusive) */

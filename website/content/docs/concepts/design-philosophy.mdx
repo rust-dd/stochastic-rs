@@ -47,7 +47,7 @@ paper.
 Distribution closed forms are written from scratch in
 `stochastic-rs-distributions`, never delegated to
 `statrs::distribution::*`. The reasoning is on the
-[DistributionExt page](/docs/concepts/distribution-ext#why-no-statrs-distribution).
+[DistributionExt page](/docs/concepts/distribution-ext#why-no-statrsdistribution).
 
 ## 4. `ndarray` everywhere, never `Vec<T>`
 
@@ -76,9 +76,11 @@ something that semantically should compute a number.
 
 ## 7. Result-based calibration
 
-`Calibrator<T>` returns `Result<CalibrationResult<Self>, Self::Error>`.
-The error type is `anyhow::Error` for easy chaining. The optimiser may
-fail to converge (bad seed, ill-posed surface, …) and the caller needs
+`Calibrator::calibrate(initial)` returns `Result<Self::Output, Self::Error>`,
+where `Output: CalibrationResult`. `Error` is a free associated type; all
+twelve in-tree calibrators set it to `anyhow::Error` for easy chaining.
+The optimiser may fail to converge (bad seed, ill-posed surface, …) and
+the caller needs
 a graceful path — panicking deep inside an L-BFGS loop is not it.
 
 ## Explicit non-goals

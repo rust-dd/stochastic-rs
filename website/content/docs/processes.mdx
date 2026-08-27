@@ -59,7 +59,7 @@ The textbook log-normal diffusion $dS_t = \mu S_t\,dt + \sigma S_t\,dW_t$.
 ```python
 import stochastic_rs as srs
 
-p = srs.Gbm(mu=0.05, sigma=0.2, n=1000, x0=100.0, t=1.0)
+p = srs.PyGbm(mu=0.05, sigma=0.2, n=1000, x0=100.0, t=1.0)
 path = p.sample()                   # numpy.ndarray, shape (1000,)
 paths = p.sample_par(10_000)        # shape (10_000, 1000)
 ```
@@ -80,7 +80,7 @@ $d\langle W^1, W^2\rangle_t = \rho\,dt$.
 ```python
 import stochastic_rs as srs
 
-p = srs.Heston(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.03,
+p = srs.PyHeston(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.03,
                n=1000, s0=100.0, v0=0.04, t=1.0)
 s, v = p.sample()                   # both numpy arrays
 ```
@@ -118,7 +118,7 @@ $H > 0.5$ is persistent.
 import stochastic_rs as srs
 import numpy as np
 
-fgn = srs.Fgn(hurst=0.3, n=4096, t=1.0, seed=42)
+fgn = srs.PyFgn(hurst=0.3, n=4096, t=1.0, seed=42)
 increments = fgn.sample()
 fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
 ```
@@ -157,7 +157,7 @@ Continuing with the same placeholder `p` from above:
 
 ```rust
 let path  = p.sample();          // Array1<T>, length n
-let paths = p.sample_par(m);     // Array2<T>, shape (m, n)
+let paths = p.sample_par(m);     // Vec<Array1<T>>, m paths of length n
 ```
 
 `sample_par(m)` uses Rayon. Each path gets a deterministic seed
@@ -167,8 +167,9 @@ thread-count-independent.
 ### Acceleration
 
 CPU SIMD (`f64x4` / `f32x8`) is on by default. The fractional / fGN family
-(`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`)
-additionally picks a sampling **backend** at compile time with `.on::<B>()`.
+(`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`,
+`JumpFOUCustom`, and the generic `Sde`) additionally picks a sampling
+**backend** at compile time with `.on::<B>()`.
 `CudaNative` only exists when the `cuda-native` feature is compiled, which
 needs an NVIDIA CUDA 12.x toolkit and GPU — not available in the CI
 runners that build this site, so this block is illustrative rather than
