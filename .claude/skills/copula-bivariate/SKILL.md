@@ -65,9 +65,13 @@ Useful defaults you should usually **not** override:
 | `check_theta` / `check_fit` / `check_marginal` | validation, used by the above |
 
 Override `percent_point` and `partial_derivative` only when you have a
-closed form — Clayton, Frank, Gumbel, Joe all do, and the closed forms
-are both faster and more accurate than the numeric defaults. Override
-`generator` if and only if the family is Archimedean.
+closed form; they are independent choices. Five families override
+`percent_point` (`clayton`, `frank`, `gumbel`, `gaussian`,
+`independence`); several more override only `partial_derivative` (`joe`
+among them). Closed forms are both faster and more accurate than the
+Brent / finite-difference defaults, but a family with neither is
+perfectly valid — the defaults compose. Override `generator` if and
+only if the family is Archimedean.
 
 `tail_dependence` is **required, not defaulted, on purpose**: a silent
 `(0.0, 0.0)` fallback would be a correctness bug for Clayton, Gumbel,
