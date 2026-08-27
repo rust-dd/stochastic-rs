@@ -17,10 +17,13 @@
 //! case 2 of the crate's [failure
 //! convention](crate::traits::ModelPricer#how-pricing-fails):
 //! at `τ ≤ h_τ` the down-`τ` bump would evaluate the price series at a
-//! negative time-to-maturity, producing per-term `NaN`s that
-//! `greek_series`'s `NaN`-floor silently zeroes out of the down-leg —
-//! turning an undefined derivative into large finite garbage instead of
-//! `NaN`. Mirrors
+//! negative time-to-maturity, whose derivative is undefined. The guard is
+//! an explicit statement of that, not the only thing standing behind it:
+//! `greek_series`'s floor no longer zeroes those terms, so a negative
+//! bumped maturity now reaches the caller as `NaN` on its own. It stays
+//! because saying so at the accessor is clearer than relying on which
+//! terms happen to go non-finite, and because it also covers a
+//! non-finite `τ`. Mirrors
 //! [`HestonPricer`](crate::pricing::heston::HestonPricer)'s identical
 //! guard.
 //!
@@ -72,22 +75,54 @@ impl Merton1976Pricer {
   /// like `BSMPricer::gamma` to `0/0`. That term's true contribution is its
   /// `v → 0⁺` limit, which is `0` for any off-the-money strike
   /// (`norm_pdf(d1) → 0` exponentially, beating the linear `1/v`) — so a
-  /// `NaN` contribution here is floored to `0` rather than poisoning the
-  /// whole sum.
+  /// `NaN` contribution from a **degenerate term** is floored to `0` rather
+  /// than poisoning the whole sum.
   ///
+  /// The `term.v == 0.0` half of the test is the whole of that argument
+  /// written down. `f64::NAN.max(0.0)`-shaped laundering is what the bare
+  /// `contribution.is_nan()` test used to be, and it reached far past the
+  /// case it was justified for: with `λ > 0`, a `NaN` `tau` — which
+  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) returns for an
+  /// expiry that never resolved — gave `delta = gamma = vega = rho = 0.0`
+  /// on a perfectly ordinary model whose *price* was `NaN`; so did a `NaN`
+  /// `r`, `s` or `k`, a negative spot or strike, `τ ≤ 0`, and `τ = ∞`. So
+  /// did a `gamma` outside `[0, 1]`, which
+  /// [`new`](Merton1976Pricer::new) documents as announcing itself — it
+  /// announces itself in the price and used to report a confident `0.0` in
+  /// all nine Greeks. And so did a Poisson weight that overflowed to
+  /// `0 · ∞` at `λτ ≳ 5e8`. The `λ ≤ 0` branch above never laundered any
+  /// of these, so price and Greeks disagreed about every one of them.
+  ///
+  /// **What the floor still does, and what it gets wrong.**
   /// `σ_n = √(d² + z²n/τ)` is zero only where the diffusive volatility `d`
-  /// is, so the floor is reachable at `v == 0` and, for `n = 0` alone, at
-  /// `gamma == 1`. It is **not** reached by an ordinary configuration; the
-  /// floor's cost is that it is also the crate's `NaN`-laundering shape, so
-  /// a `NaN` arriving for any *other* reason leaves as a `0` contribution.
+  /// is, so a degenerate term is reachable at `v == 0` and, for `n = 0`
+  /// alone, at `gamma == 1`; an ordinary configuration never has one.
+  /// *Away from the forward* the floor is exact — `d₁` saturates to `±∞`,
+  /// the `1/v`-shaped Greeks really do tend to `0`, and the ones that do
+  /// not (`delta → e^{(b−r)τ}`) never went `NaN` in the first place.
+  /// **At** the forward it is not: `d₁` is `0/0`, every closed form is
+  /// `NaN`, and the `σ → 0⁺` limits are `delta → ½e^{(b−r)τ}`,
+  /// `rho → ½Kτe^{−rτ}` and `gamma → +∞`, not zero. Measured at
+  /// `(S, K, r, τ) = (100, 100, 0.05, 0.5)` under `Black1976`: the floor
+  /// returns `0.0` where the limits are `0.487655`, `24.382748` and a
+  /// `1/σ` divergence. `theta` is the one it gets right there, because the
+  /// bumped Greeks floor a *price*, whose forward limit really is `0`.
+  ///
+  /// That residual is left in place, pinned by
+  /// `the_forward_point_greeks_of_a_degenerate_term_are_a_known_zero`, and
+  /// not fixed here: a correct answer needs a per-Greek limit rather than a
+  /// per-contribution floor, which is the shape of the fix already applied
+  /// to `Merton1976Pricer::term_call_put` for the price and would move
+  /// every degenerate-configuration Greek.
   fn greek_series(&self, tau: f64, greek: impl Fn(&BSMPricer) -> f64) -> f64 {
     if self.lambda <= 0.0 {
       return greek(&self.base_bsm());
     }
     (0..self.m)
       .map(|n| {
-        let contribution = self.poisson_weight(n, tau) * greek(&self.term_bsm(n, tau));
-        if contribution.is_nan() {
+        let term = self.term_bsm(n, tau);
+        let contribution = self.poisson_weight(n, tau) * greek(&term);
+        if contribution.is_nan() && term.v == 0.0 {
           0.0
         } else {
           contribution

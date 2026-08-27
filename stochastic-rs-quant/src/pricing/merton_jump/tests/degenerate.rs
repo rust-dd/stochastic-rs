@@ -221,3 +221,94 @@ fn an_inadmissible_gamma_still_announces_itself() {
     assert!(call.is_nan(), "lambda={lambda} gamma={gamma} priced {call}");
   }
 }
+
+/// The half of `greek_series`'s `NaN` floor that is exact, and the reason
+/// it was narrowed rather than removed.
+///
+/// Away from the forward a degenerate term's `d₁` saturates to `±∞`, so the
+/// `1/v`-shaped closed forms are `0/0` and their `σ → 0⁺` limits really are
+/// `0`: `norm_pdf(d₁) → 0` exponentially and beats the linear `1/v`. The
+/// Greeks that do not vanish there — `delta → e^{(b−r)τ}`, `rho` — never
+/// went `NaN` in the first place, so they are untouched by the floor and
+/// are asserted against their closed forms rather than against `0`.
+#[test]
+fn the_degenerate_term_floor_is_exact_away_from_the_forward() {
+  let m = frozen(BSMCoc::Black1976);
+  let carry = (-R * FUT_TAU).exp();
+  for &k in &[90.0_f64, 110.0] {
+    let in_the_money = if k < S { 1.0 } else { 0.0 };
+    let g = m.greeks(S, k, R, Q, FUT_TAU, OT);
+    assert_eq!(g.gamma, 0.0, "K={k} gamma");
+    assert_eq!(g.vanna, 0.0, "K={k} vanna");
+    assert_eq!(g.volga, 0.0, "K={k} volga");
+    assert!(
+      (g.delta - carry * in_the_money).abs() < TOL,
+      "K={k}: delta {} must be the saturated closed form",
+      g.delta
+    );
+    // And it is a floor, not a poison check: the underlying BSM term is
+    // genuinely `NaN` here, so without it the whole sum would be.
+    assert!(
+      BSMPricer::new(0.0, BSMCoc::Black1976)
+        .gamma(S, k, R, Q, FUT_TAU)
+        .is_nan(),
+      "K={k}: the zero-vol term's gamma must be NaN, else this pins nothing"
+    );
+  }
+}
+
+/// The half the floor gets **wrong**, pinned so it is asserted rather than
+/// assumed, and recorded rather than quietly fixed.
+///
+/// *At* the forward a degenerate term's `d₁` is `0/0`, so every closed form
+/// is `NaN` and the floor returns `0.0` for all three of `delta`, `gamma`
+/// and `rho`. The `σ → 0⁺` limits are not zero: both normal CDFs converge
+/// to `½`, giving `delta → ½e^{(b−r)τ}` and `rho → ½Kτe^{−rτ}`, while
+/// `gamma = φ(d₁)/(Sσ√τ)` diverges like `1/σ`. The sweep below is what
+/// makes those limits a measurement rather than an assertion about
+/// arithmetic.
+///
+/// `theta` is the one the floor gets right, and for a reason that does not
+/// generalise: the bumped Greeks floor a *price*, whose forward limit is
+/// genuinely `0` — the same limit `term_call_put` fills in explicitly on
+/// the price path.
+///
+/// Fixing this needs a per-Greek limit rather than a per-contribution
+/// floor, which would move every degenerate-configuration Greek in the
+/// crate; it is left as its own piece of work.
+#[test]
+fn the_forward_point_greeks_of_a_degenerate_term_are_a_known_zero() {
+  let m = frozen(BSMCoc::Black1976);
+  // Black1976 carries at b = 0, so the forward is S itself.
+  let g = m.greeks(S, S, R, Q, FUT_TAU, OT);
+  assert_eq!(g.delta, 0.0, "delta at the forward");
+  assert_eq!(g.gamma, 0.0, "gamma at the forward");
+  assert_eq!(g.rho, 0.0, "rho at the forward");
+  assert_eq!(g.theta, -0.0, "theta at the forward is the price limit");
+
+  // What they should be, measured along sigma -> 0+.
+  let want_delta = 0.5 * (-R * FUT_TAU).exp();
+  let want_rho = 0.5 * S * FUT_TAU * (-R * FUT_TAU).exp();
+  let mut prev_gamma = 0.0;
+  for (i, &v) in [1e-3_f64, 1e-4, 1e-5, 1e-6].iter().enumerate() {
+    let near = Merton1976Pricer::new(v, 0.5, 0.4, 20, BSMCoc::Black1976);
+    let delta = near.delta(S, S, R, Q, FUT_TAU, OT);
+    let rho = near.rho(S, S, R, Q, FUT_TAU, OT);
+    let gamma = near.gamma(S, S, R, Q, FUT_TAU);
+    assert!(
+      (delta - want_delta).abs() < 1e-3,
+      "v={v}: delta {delta} must approach {want_delta}, not 0"
+    );
+    assert!(
+      (rho - want_rho).abs() < 1e-2,
+      "v={v}: rho {rho} must approach {want_rho}, not 0"
+    );
+    if i > 0 {
+      assert!(
+        gamma > 9.0 * prev_gamma,
+        "v={v}: gamma {gamma} must diverge like 1/sigma, not fall to 0"
+      );
+    }
+    prev_gamma = gamma;
+  }
+}
