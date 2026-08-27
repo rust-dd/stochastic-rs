@@ -58,6 +58,36 @@ fn zero_total_volatility_at_the_forward_is_the_limit() {
   }
 }
 
+/// `0` is the value the *neighbourhood* tends to, not merely a constant
+/// that happens to be finite: the surrounding price is `e^{-rτ}(F-K)⁺`, so
+/// a strike `1e-6` either side of the forward is worth `9.75e-7` on the
+/// in-the-money leg and exactly nothing on the other. Both one-sided limits
+/// are `0`; only the slope jumps.
+///
+/// The pin that a wrong constant would survive `assert_eq!(call, 0.0)` in
+/// isolation but not this.
+#[test]
+fn the_filled_in_value_is_what_its_neighbours_tend_to() {
+  let m = frozen(BSMCoc::Black1976);
+  let eps = 1e-6;
+  let at = m.price_call(S, S, R, Q, FUT_TAU);
+  let below = m.price_call(S, S - eps, R, Q, FUT_TAU);
+  let above = m.price_call(S, S + eps, R, Q, FUT_TAU);
+
+  assert_eq!(at, 0.0);
+  assert_eq!(above, at, "the limit from above");
+  assert!(below > at, "monotone in K: {below}, {at}, {above}");
+  assert!(
+    below - at < 1e-5,
+    "the limit from below must close too: {below} vs {at}"
+  );
+  // and the kink is real — the slope, not the value, is what jumps.
+  assert!(
+    below - at > 9e-7,
+    "the deterministic payoff's kink must survive: {below} vs {at}"
+  );
+}
+
 /// Away from the forward there is no `0/0`: `d₁` saturates to `±∞`, both
 /// CDFs saturate with it, and every term collapses to discounted intrinsic
 /// value on the forward. That is the right answer for a frozen underlying,
