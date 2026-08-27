@@ -16,12 +16,13 @@ dimensions, vine and nested constructions in higher dimensions.
   independence. Each ships cdf, pdf, conditional inverse, Kendall's tau and
   a sampler.
 - **Multivariate (`MultivariateExt`)** — Gaussian, Student-t, C-vine,
-  D-vine, R-vine and nested Archimedean copulas.
+  D-vine, R-vine and nested Archimedean copulas. Behind the `openblas`
+  feature, which the trait and the `multivariate` module are both gated on.
 - **Empirical** — pseudo-observations and the empirical copula.
 - **Process coupling** — drive two stochastic processes through a copula.
 
-Every multivariate sampler has a `sample_seeded(n, seed)` counterpart when
-the draw needs to be reproducible.
+Every multivariate sampler has a `sample_with_seed(n, seed)` counterpart
+when the draw needs to be reproducible, matching the bivariate one below.
 
 ## Usage
 
@@ -37,14 +38,16 @@ let u = c.sample(10_000)?;               // Array2<f64>, shape (10000, 2)
 let v = c.sample_with_seed(10_000, 42)?; // reproducible
 ```
 
-Multivariate constructions take a tree of `PairCopula` variants:
+Multivariate constructions take a tree of `PairCopula` variants, and need
+the `openblas` feature:
 
 ```rust
 use stochastic_rs_copulas::multivariate::cvine::CVine;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
+use stochastic_rs_copulas::traits::MultivariateExt;
 
 let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]])?;
-let draws = cv.sample_seeded(10_000, 42);
+let draws = cv.sample_with_seed(10_000, 42)?;
 ```
 
 ## Part of stochastic-rs
@@ -55,7 +58,7 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "2.6"
+stochastic-rs = "3.0.0-beta.1"
 ```
 
 Depend on `stochastic-rs-copulas` directly only when you want this slice and nothing else.

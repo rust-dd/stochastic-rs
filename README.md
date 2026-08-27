@@ -59,7 +59,7 @@ Highlights:
 
 ```toml
 [dependencies]
-stochastic-rs = "2.6"
+stochastic-rs = "3.0.0-beta.1"
 ```
 
 ```rust
@@ -126,14 +126,13 @@ import stochastic_rs as srs
 p = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
 path = p.sample()                       # numpy.ndarray, shape (1000,)
 
-# Heston European call
+# Heston European option
 pricer = srs.HestonPricer(
-    s0=100, k=100, tau=1.0, r=0.03, q=0.0,
-    v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.5,
+    s=100, v0=0.04, k=100, r=0.03, kappa=2.0, theta=0.04, sigma=0.3,
+    rho=-0.5, tau=1.0, q=0.0,
 )
-print("call =", pricer.price("call"))
-g = pricer.greeks("call")
-print(f"delta={g.delta:.4f}, vega={g.vega:.4f}")
+call, put = pricer.call_put()
+print(f"call={call:.4f}, put={put:.4f}")
 ```
 
 More end-to-end recipes (Heston calibration, fBM Hurst estimation,
@@ -210,7 +209,7 @@ Driven by SIMD `u64→f64` / `u32→f32` magic-number conversion in `SimdRng`
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "2.6", features = ["dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-beta.1", features = ["dual-stream-rng"] }
 ```
 
 Unlocks `SimdRngDual` (two parallel xoshiro engines) and `SimdNormalDual`

@@ -29,7 +29,7 @@ Enable through the umbrella crate:
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "2.6", features = ["ai"] }
+stochastic-rs = { version = "3.0.0-beta.1", features = ["ai"] }
 ```
 
 ## Part of stochastic-rs
@@ -40,7 +40,7 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "2.6"
+stochastic-rs = "3.0.0-beta.1"
 ```
 
 Depend on `stochastic-rs-ai` directly only when you want this slice and nothing else.

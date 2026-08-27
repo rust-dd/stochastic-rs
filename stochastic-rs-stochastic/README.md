@@ -48,7 +48,7 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "2.6"
+stochastic-rs = "3.0.0-beta.1"
 ```
 
 Depend on `stochastic-rs-stochastic` directly only when you want this slice and nothing else.
