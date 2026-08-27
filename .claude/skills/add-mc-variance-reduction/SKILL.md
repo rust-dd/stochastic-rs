@@ -1,11 +1,11 @@
 ---
 name: add-mc-variance-reduction
-description: How to add a Monte Carlo variance-reduction technique to stochastic-rs-quant. Covers antithetic, control-variate, stratified, importance, quasi-MC (Halton/Sobol), and MLMC. Returns McEstimate<T> with 95% CI.
+description: How to add a Monte Carlo variance-reduction technique to stochastic-rs-stochastic. Covers antithetic, control-variate, stratified, importance, quasi-MC (Halton/Sobol), and MLMC. Returns McEstimate<T> with 95% CI.
 ---
 
-# MC variance reduction — stochastic-rs-quant
+# MC variance reduction — stochastic-rs-stochastic
 
-Variance-reduction techniques in `stochastic-rs-quant` follow a uniform
+Variance-reduction techniques in `stochastic-rs-stochastic` follow a uniform
 contract: an MC estimator returns an `McEstimate<T>` struct carrying
 `(point_estimate, std_error, n_paths)` from which the caller can
 compute a 95 % confidence interval. New estimators ship with a
@@ -29,7 +29,7 @@ QMC); Giles 2015 for MLMC.
 ## 1. The `McEstimate<T>` contract
 
 ```rust
-// stochastic-rs-quant/src/mc/types.rs
+// stochastic-rs-stochastic/src/mc/types.rs
 
 #[derive(Debug, Clone)]
 pub struct McEstimate<T: FloatExt> {

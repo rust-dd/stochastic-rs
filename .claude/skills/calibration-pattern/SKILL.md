@@ -23,7 +23,7 @@ Three traits in `crate::traits::calibration` (see
 ```rust
 pub trait Calibrator {
     type InitialGuess;                       // typically [f64; N] or Option<[f64; N]>
-    type Params;                             // the calibrated parameter struct
+    type Params: Clone;                      // the calibrated parameter struct
     type Output: CalibrationResult<Params = Self::Params>;
     type Error;                              // anyhow::Error in production code
 
@@ -34,7 +34,7 @@ pub trait Calibrator {
 }
 
 pub trait CalibrationResult {
-    type Params;
+    type Params: Clone;
 
     fn rmse(&self) -> f64;
     fn converged(&self) -> bool;
@@ -44,12 +44,19 @@ pub trait CalibrationResult {
     fn loss_score(&self) -> Option<&CalibrationLossScore> { None }
     fn iterations(&self) -> Option<usize> { None }
     fn message(&self) -> Option<&str> { None }
-    fn max_error(&self) -> Option<f64> { None }
+    fn max_error(&self) -> f64 { f64::NAN }   // NaN, not Option
 }
 
 pub trait ToModel {
-    type Model;
+    type Model: ModelPricer;                 // the bound is load-bearing
     fn to_model(&self, r: f64, q: f64) -> Self::Model;
+}
+
+// Short-rate results bridge through a separate trait whose Model has
+// NO ModelPricer bound — it prices off a curve, not a spot/strike query.
+pub trait ToShortRateModel {
+    type Model;
+    fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model;
 }
 ```
 
@@ -65,7 +72,7 @@ For a new `XyzCalibrator`, you typically touch:
 ```
 stochastic-rs-quant/src/calibration/xyz.rs    -- the calibrator itself
 stochastic-rs-quant/src/pricing/xyz.rs        -- the underlying pricer / model (already exists)
-stochastic-rs-quant/src/python.rs             -- PyXyzCalibrator wrapper (see python-bindings SKILL)
+stochastic-rs-quant/src/python/             -- PyXyzCalibrator wrapper (see python-bindings SKILL)
 stochastic-rs-py/src/lib.rs                   -- m.add_class registration
 ```
 
@@ -267,7 +274,7 @@ of bug impossible to hide.
 Follow the `python-bindings` SKILL. The standard wrapper:
 
 ```rust
-// stochastic-rs-quant/src/python.rs
+// stochastic-rs-quant/src/python/
 
 #[pyclass(name = "XyzCalibrator", unsendable)]
 pub struct PyXyzCalibrator {

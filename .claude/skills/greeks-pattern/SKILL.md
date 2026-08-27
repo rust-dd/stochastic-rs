@@ -1,13 +1,13 @@
 ---
 name: greeks-pattern
-description: How to expose first- and second-order Greeks via the GreeksExt trait in stochastic-rs. Invoke when adding a new pricer that needs delta/gamma/vega/theta/rho/vanna/charm/volga/veta, or when a Monte Carlo pricer is missing the single-pass `greeks()` override.
+description: How to expose first- and second-order Greeks in stochastic-rs — an inherent greeks(s, k, r, q, tau, option_type) aggregator on a pricer, or the no-argument GreeksExt trait for the two Monte Carlo Malliavin estimators. Invoke when adding a pricer that needs delta/gamma/vega/theta/rho/vanna/charm/volga/veta, or when an MC estimator is missing the single-pass `greeks()` override.
 ---
 
 # Greeks pattern — stochastic-rs
 
 First- and second-order Greeks reach callers one of two ways, and which
 one applies depends on whether the type carries its own market data. The
-`GreeksExt` trait in `stochastic-rs-quant::traits` serves the four types
+`GreeksExt` trait in `stochastic-rs-quant::traits` serves the two types
 that do; every `ModelPricer` instead exposes query-taking inherent
 accessors plus a `greeks(...)` aggregate. Section 1 shows both.
 
@@ -27,7 +27,10 @@ delta/gamma/vega from re-runs.
 ```rust
 // stochastic-rs-quant/src/traits/pricing.rs
 
-#[derive(Debug, Clone, Default)]
+// `Default` is implemented by hand as `Greeks::nan()`, NOT derived —
+// a derived `Default` would be all-zeros, which is exactly the
+// plausible-looking sentinel section 8 forbids.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Greeks {
     pub delta: f64,
     pub gamma: f64,
@@ -54,16 +57,21 @@ pub trait GreeksExt {
     fn charm(&self) -> f64 { f64::NAN }
     fn volga(&self) -> f64 { f64::NAN }
     fn veta(&self)  -> f64 { f64::NAN }
+
+    // Aggregate. The default calls every accessor; the two MC estimators
+    // override it so one simulation backs the whole set (section 4).
+    fn greeks(&self) -> Greeks { /* default: calls every accessor */ }
 }
 ```
 
 **Which shape to use is decided by whether the type carries its own
 market data**, and since 3.0 most pricers do not:
 
-- A type that **bundles** its market data — the two digital pricers, and
-  the dedicated `GbmMalliavinGreeks` / `HestonMalliavinGreeks` — can
-  answer `delta(&self)` with no arguments, so it implements `GreeksExt`.
-  These four are the only implementors.
+- A type that **bundles** its query — the two Monte Carlo Malliavin
+  estimators `GbmMalliavinGreeks` / `HestonMalliavinGreeks` — can answer
+  `delta(&self)` with no arguments, so it implements `GreeksExt`. These
+  two are the only implementors. The analytic pricers, digitals included,
+  deliberately do not and cannot: they hold model state only.
 - A **`ModelPricer`** holds model parameters only, so `delta(&self)` has
   no spot to differentiate against. It exposes **inherent, query-taking**
   accessors plus an aggregate instead, and does *not* implement
@@ -162,11 +170,11 @@ the pricer with the bumped parameter and re-use the same seed so
 "common random numbers" gives variance reduction. Two reference
 implementations:
 
-- `GbmMalliavinGreeks` (`pricing/malliavin_thalmaier/gbm.rs`): the
+- `GbmMalliavinGreeks` (`pricing/malliavin_greeks/gbm.rs`): the
   cleanest single-pass example; uses Malliavin weights to compute Greeks
   *without* finite differencing, but the surrounding `greeks()` shape is
   the canonical pattern.
-- `HestonMalliavinGreeks` (`pricing/malliavin_thalmaier/heston.rs`):
+- `HestonMalliavinGreeks` (`pricing/malliavin_greeks/heston.rs`):
   multi-asset extension; same single-pass shape with cross-Greeks.
 
 ## 5. Analytic-pricer minimal impl
@@ -240,7 +248,7 @@ that's a hint to switch to analytic Greeks.
 
 ## 7. Testing
 
-A new pricer with `GreeksExt` must ship at least:
+A new pricer's inherent `greeks(...)` aggregator must ship at least:
 
 1. **Sign tests:** call delta is positive, put delta is negative,
    gamma is positive for both, vega is positive.
@@ -250,8 +258,8 @@ A new pricer with `GreeksExt` must ship at least:
 4. **Single-pass consistency (MC only):** `greeks().delta == delta()`
    within MC tolerance, sourced from the same seed.
 
-Reference: `pricing/bsm.rs` tests. The MC tests live next to each
-Malliavin-Greeks pricer (`pricing/malliavin_thalmaier/*.rs`).
+Reference: `pricing/bsm/tests.rs`. The MC tests live next to each
+Malliavin-Greeks estimator (`pricing/malliavin_greeks/tests.rs`).
 
 ## 8. Anti-patterns
 
@@ -270,17 +278,20 @@ Malliavin-Greeks pricer (`pricing/malliavin_thalmaier/*.rs`).
 
 ## 9. Reference impls
 
-- `pricing/bsm.rs` — analytic + default fall-through.
-- `pricing/heston.rs` — analytic delta/vega/theta + default fall-through.
-- `pricing/malliavin_thalmaier/gbm.rs` — Malliavin-weighted single-pass.
-- `pricing/malliavin_thalmaier/heston.rs` — multi-asset Malliavin.
-- `pricing/malliavin_thalmaier/sabr.rs` — SABR Malliavin.
+- `pricing/bsm/greeks.rs` — analytic, inherent aggregator.
+- `pricing/heston/greeks.rs` — analytic, fills all nine fields.
+- `pricing/merton_jump/greeks.rs` — analytic, inherent aggregator.
+- `pricing/digital.rs` — the cash-or-nothing and asset-or-nothing
+  aggregators.
+- `pricing/malliavin_greeks/gbm.rs` — Malliavin-weighted single-pass
+  `GreeksExt`.
+- `pricing/malliavin_greeks/heston.rs` — the second `GreeksExt` impl.
 
 ## Related SKILLs
 
 - `add-mc-variance-reduction` — explains the Common Random Numbers
   requirement that the single-pass `greeks()` override depends on.
 - `calibration-pattern` — calibrators consume Greeks via the result's
-  `to_model().greeks()` chain.
+  `to_model(r, q).greeks(s, k, r, q, tau, option_type)` chain.
 - `release-checklist` — the rc.X CHANGELOG should note any new Greek
   added to the public surface.

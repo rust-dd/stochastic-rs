@@ -276,9 +276,11 @@ references: [...]
 ## Greeks
 
 <Either:>
-- ✅ All first- and second-order Greeks via `GreeksExt` (delta, gamma, vega,
-  theta, rho, vanna, charm, volga, veta) — single-pass override available
-  for MC pricers per `greeks-pattern` SKILL.
+- ✅ All first- and second-order Greeks via the inherent
+  `greeks(s, k, r, q, tau, option_type) -> Greeks` aggregator (delta, gamma,
+  vega, theta, rho, vanna, charm, volga, veta) — Monte Carlo Malliavin
+  estimators instead implement `GreeksExt` with a single-pass `greeks()`
+  override, per `greeks-pattern` SKILL.
 - ⚠️ Partial — only <list>.
 - ❌ Not implemented — track at <issue link>.
 
@@ -334,12 +336,15 @@ analytic Jacobian, etc. — one paragraph on why.>
 
 ## `CalibrationResult` fields
 
-| Field          | Type        | Meaning                       |
-|----------------|-------------|-------------------------------|
-| `params`       | `<T>::Params` | Calibrated parameter struct |
-| `rmse`         | `T`         | Final fit error               |
-| `iterations`   | `usize`     | Optimiser iteration count     |
-| `success`      | `bool`      | Convergence flag              |
+| Accessor       | Type                 | Meaning                      |
+|----------------|----------------------|------------------------------|
+| `params()`     | `Self::Params`       | Calibrated parameter struct  |
+| `rmse()`       | `f64`                | Final fit error              |
+| `converged()`  | `bool`               | Convergence flag             |
+| `iterations()` | `Option<usize>`      | Optimiser iterations, if recorded (default `None`) |
+| `message()`    | `Option<&str>`       | Solver message (default `None`) |
+| `max_error()`  | `f64`                | Worst per-quote error (default `f64::NAN`) |
+| `loss_score()` | `Option<&CalibrationLossScore>` | Richer loss breakdown (default `None`) |
 
 ## Example
 

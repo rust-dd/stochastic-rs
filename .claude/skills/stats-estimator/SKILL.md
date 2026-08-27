@@ -153,7 +153,7 @@ Expose as `#[pyfunction]` (preferred for stateless estimators) or
 that supports `predict`):
 
 ```rust
-// stochastic-rs-quant/src/python.rs (yes, the Python wrappers for
+// stochastic-rs-quant/src/python/ (yes, the Python wrappers for
 // stats estimators live in the quant crate's python.rs because that's
 // where stochastic-rs-py registers them; alternative is direct
 // registration from -stats but the existing pattern is via -quant).

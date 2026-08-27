@@ -90,10 +90,6 @@ Two traps worth naming:
 
 When adding a new dependency, always use the latest version available on crates.io. Check with `cargo search <crate>` before adding.
 
-## 8. Latest dependency versions
-
-When adding a new dependency, always use the latest version available on crates.io. Check with `cargo search <crate>` before adding.
-
 ## 9. Comment rules
 Always follow the Rust inline comment or Rust inline documentation pattern. Never use large ugly separators like
 ```

@@ -243,7 +243,7 @@ tests downstream.
 Per `CLAUDE.md`, the prelude does NOT include individual process
 types — users go through `stochastic_rs::stochastic::diffusion::foo::Foo`.
 But the umbrella crate's "Workspace layout" section may mention notable
-new processes (e.g. "120+ processes, incl. interest::lmm::Lmm"). Update
+new processes (e.g. "127 processes, incl. interest::lmm::Lmm"). Update
 that line if your new process is material.
 
 ## 9. Anti-patterns

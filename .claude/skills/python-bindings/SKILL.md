@@ -7,8 +7,8 @@ description: Maintenance and extension rules for stochastic-rs Python (PyO3) bin
 
 The `stochastic-rs-py` cdylib re-exports `#[pyclass]`-wrapped types from
 producer crates (`stochastic-rs-distributions`, `-stochastic`, `-quant`,
-`-stats`, `-copulas`). At rc.1 the surface is **210 entries: 198 PyO3
-classes + 12 pyfunctions** across distributions / stochastic / quant /
+`-stats`, `-copulas`). The surface is **234 entries: 218 PyO3
+classes + 16 pyfunctions** across distributions / stochastic / quant /
 copulas / stats. AI bindings deferred to 2.x.
 
 This skill covers four pipelines:
@@ -16,7 +16,7 @@ This skill covers four pipelines:
 1. **Distributions** — wrapped via `py_distribution!` / `py_distribution_int!`
 2. **Stochastic processes** — wrapped via `py_process_1d!` / `py_process_2x1d!` / `py_process_2d!`
 3. **Quant pricers / calibrators / vol surfaces** — hand-written
-   `#[pyclass]` blocks in `stochastic-rs-quant/src/python.rs`
+   `#[pyclass]` blocks in `stochastic-rs-quant/src/python/`
 4. **Stats estimators** — hand-written `#[pyfunction]`/`#[pyclass]` blocks
 
 For all four, the entry point is `stochastic-rs-py/src/lib.rs`, which
@@ -85,7 +85,7 @@ You get:
 
 ## 2. Hand-written `#[pyclass]` (quant pricers / calibrators)
 
-Located in `stochastic-rs-quant/src/python.rs`. The module is feature-gated
+Located in `stochastic-rs-quant/src/python/`. The module is feature-gated
 behind `#[cfg(feature = "python")]` (whole file). Pattern:
 
 ```rust
@@ -333,4 +333,4 @@ This SKILL only covers the wrapper and registration steps.
 - Module entry point: `stochastic-rs-py/src/lib.rs`
 - Macro definitions: `stochastic-rs-distributions/src/macros.rs`,
   `stochastic-rs-stochastic/src/macros.rs`
-- Quant hand-written wrappers: `stochastic-rs-quant/src/python.rs`
+- Quant hand-written wrappers: `stochastic-rs-quant/src/python/`

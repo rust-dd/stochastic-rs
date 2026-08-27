@@ -18,11 +18,11 @@ semantics, macro internals, error-translation rules), invoke
 |---|---|---|
 | Distribution (`SimdXxx`) | Macro | `py_distribution!` in producer crate |
 | Stochastic process | Macro | `py_process_1d!` / `py_process_2x1d!` / `py_process_2d!` |
-| Pricer / Calibrator / VolSurface | Hand-written | `#[pyclass]` block in `stochastic-rs-quant/src/python.rs` |
-| Stats estimator | Hand-written | `#[pyfunction]` or `#[pyclass]` block in `stochastic-rs-quant/src/python.rs` |
+| Pricer / Calibrator / VolSurface | Hand-written | `#[pyclass]` block in `stochastic-rs-quant/src/python/` |
+| Stats estimator | Hand-written | `#[pyfunction]` or `#[pyclass]` block in `stochastic-rs-quant/src/python/` |
 
 Macro pipelines (rows 1-2) are nearly mechanical; hand-written pipelines
-(rows 3-4) follow patterns set by the existing 198 wrappers.
+(rows 3-4) follow patterns set by the existing 218 wrapper classes.
 
 ## 2. The 5-step recipe
 
@@ -40,7 +40,7 @@ py_distribution!(PyFoo, SimdFoo,
 );
 ```
 
-For **hand-written**, append in `stochastic-rs-quant/src/python.rs`:
+For **hand-written**, append in `stochastic-rs-quant/src/python/`:
 
 ```rust
 #[pyclass(name = "Foo", unsendable)]
@@ -203,7 +203,7 @@ the signature attribute is more idiomatic and shows up in `help(...)`.
 
 ## 6. Where to look when stuck
 
-- The existing 210 wrappers in `stochastic-rs-quant/src/python.rs`
+- The existing hand-written wrappers under `stochastic-rs-quant/src/python/`
   (most pattern-rich source).
 - The `python-bindings` SKILL has the comprehensive mechanics.
 - `stochastic-rs-distributions/src/macros.rs` for the

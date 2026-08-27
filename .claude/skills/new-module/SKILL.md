@@ -69,7 +69,7 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync` | Gets `sample()`, `sample_par(m)` (rayon parallel), `sample_cuda(m)` |
+| Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
 | Process with Malliavin support | `MalliavinExt<T>` or `Malliavin2DExt<T>` | Malliavin derivative computation |
 | Probability distribution | `DistributionExt` | CF, PDF, CDF, moments |
 | SIMD-accelerated distribution | `DistributionSampler<T>` (from `distributions.rs`) | Bulk `fill_slice()` + `sample_matrix()` |
@@ -78,10 +78,10 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Single-underlying option pricer | `ModelPricer` | `price_call(s, k, r, q, tau)` / `price_put`; also enables vol-surface construction via the `ModelSurface` blanket impl |
+| Single-underlying option pricer | `ModelPricer` | `price_call(s, k, r, q, tau)` / `price_put`. Vol-surface construction additionally requires the `VanillaEuropeanCall` marker (which carries `vanilla_call_forward`); `ModelSurface` blanket-impls over **that**, not over `ModelPricer` |
 | Short-rate / bond model | `ShortRatePricer` | `zero_coupon_price(r0, tau)` / `zero_yield` |
 | Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `call_put(...)` / `price_call(...)`. A shared trait would abstract over nothing |
-| Fourier / characteristic-function model | `FourierModelExt` | Auto-gets `ModelPricer` → `ModelSurface` via blanket impls |
+| Fourier / characteristic-function model | `FourierModelExt` | Auto-gets `ModelPricer` **and** `VanillaEuropeanCall`, hence `ModelSurface`, via blanket impls |
 | Calibration result | `ToModel` | Connects to `build_surface_from_calibration()` pipeline |
 | Holiday / business-day calendar | `CalendarExt` | Plugs into `BusinessDayConvention::adjust()` and `ScheduleBuilder` |
 | Type needing tau from dates | Use `TimeExt::tau_with_dcc(DayCountConvention)` | Proper day-count instead of hardcoded `/365.0` |
@@ -96,7 +96,9 @@ Before writing code, determine which existing traits the new types should implem
 ### Blanket-impl chains (do NOT duplicate by hand)
 
 ```
-FourierModelExt  ──blanket──▸  ModelPricer  ──blanket──▸  ModelSurface
+FourierModelExt  ──blanket──▸  ModelPricer
+FourierModelExt  ──blanket──▸  VanillaEuropeanCall (: ModelPricer)
+VanillaEuropeanCall  ──blanket──▸  ModelSurface
 ```
 
 Implement the lowest-level trait; upstream is automatic.
