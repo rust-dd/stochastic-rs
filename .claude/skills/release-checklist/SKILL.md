@@ -9,9 +9,15 @@ This SKILL formalises the release workflow used to ship rc.0 → rc.1 →
 rc.2 → stable. Follow it whenever the user asks to "cut a release", "bump
 to vX.Y.Z", "tag stable", "publish wheels", or similar.
 
-The workflow has **8 stages**. Stages 1-5 are local and reversible; stages
-6-8 publish to public registries and are not. Stop and confirm with the
-user before stage 6.
+The workflow has **8 stages**. Stages 1-5 are local and reversible;
+stages 5.5-8 publish to public registries and are not. Stop and confirm
+with the user before stage 5.5.
+
+**Note the real ordering.** Stage 7 (PyPI wheels) is not a step you
+run — it is a GitHub Action that fires on `release: published`, i.e. the
+moment stage 5.5 creates the release. So the irreversible sequence is
+5.5 (GitHub release → Zenodo DOI *and* PyPI wheels) then 6 (crates.io),
+not 6 then 7. Confirm before 5.5, not before 6.
 
 ## Stage 1 — pre-flight checks
 
@@ -20,7 +26,7 @@ Run from the workspace root (`/Users/danixx/Desktop/stochastic-rs`):
 ```bash
 # 1.1 Working tree clean?
 git status --porcelain     # must be empty (no uncommitted, no untracked)
-git log -1 --oneline       # capture the HEAD commit for the changelog
+git log -1 --oneline       # capture the HEAD commit for the release notes
 
 # 1.2 Tests + clippy + features matrix
 cargo test --workspace --exclude stochastic-rs-py --features openblas --no-fail-fast
@@ -62,6 +68,12 @@ is the only file that needs editing for version itself.
 
 Cross-checks after editing:
 
+**One gotcha before you commit anything.** `.claude/` is gitignored, but
+`.agents/skills` is a symlink to `.claude/skills`, and the umbrella
+`cargo publish` walks it — untracked files under there abort the publish
+with a dirty-tree error that `git status` will not show you. `git add -f`
+any new or modified skill files before stage 4.
+
 ```bash
 # 2.1 No leftover old-version literals
 grep -r '"X-1.Y.Z"' Cargo.toml stochastic-rs-*/Cargo.toml || echo "clean"
@@ -70,26 +82,28 @@ grep -r '"X-1.Y.Z"' Cargo.toml stochastic-rs-*/Cargo.toml || echo "clean"
 cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}' | grep stochastic-rs
 ```
 
-## Stage 3 — CHANGELOG + V1_TO_V2.md updates
+## Stage 3 — `MIGRATION.md` and `CITATION.cff`
 
-`CHANGELOG.md` follows Keep-a-Changelog format with one section per
-release, dated. Pattern:
+**There is no `CHANGELOG.md` in this repo, for any release, and there
+never has been.** Do not create one as part of a release; do not cite
+one. The release-notes surface is:
 
-```
-## [vX.Y.Z] — YYYY-MM-DD
+- **`MIGRATION.md`** (repo root) — the breaking-changes record, written
+  *as changes land*, not at cut time. Entries accumulate under
+  `## Unreleased`; at release, retitle that section to the version and
+  open a fresh `## Unreleased`. Each entry is a `###` heading naming the
+  crate and the change, a before/after code block, and prose on what
+  replaces what. Read the top of the file for the shape.
+- **`git log`** — the per-change sequence.
+- **`docs/V*_UPDATE.md`** (e.g. `docs/V2_3_0_UPDATE.md`,
+  `docs/V2_4_0_UPDATE.md`) — occasional release-scope planning
+  documents, written when a release has a theme worth narrating. Not
+  required, and not written for every release.
+- **The GitHub release body** — the human-facing notes, composed at
+  stage 5.5. That is where a Keep-a-Changelog-style summary goes if you
+  want one.
 
-<one-paragraph summary>
-
-### <Section: bug fix / feature / breaking change / etc.>
-
-- One-line description, file:line reference where helpful.
-```
-
-If this is a stable release (vX.Y.0), also update
-`docs/V1_TO_V2.md` (or `Vn-1_TO_Vn.md` going forward) with the
-**accumulated** breaking changes since the previous stable. The rc.1 →
-rc.2 → stable cycle taught us to keep this updated *as breaking changes
-land*, not at the very end.
+There is no `docs/V1_TO_V2.md`; `MIGRATION.md` absorbed that role.
 
 Bump `CITATION.cff` alongside the crate version — `version` and
 `date-released`. Leave the two `identifiers:` DOIs alone for now; the
@@ -98,11 +112,20 @@ version DOI is only known after stage 5.5.
 ## Stage 4 — local publish dry run
 
 ```bash
-# 4.1 Dry-run publish.sh: this runs `cargo publish --dry-run` on each
+# 4.1 Dry-run publish.sh: runs `cargo publish --dry-run` on each
 # sub-crate in dependency order (core → distributions → stochastic →
 # copulas → stats → quant → ai → umbrella).
 ./publish.sh --dry-run
 ```
+
+`publish.sh` runs its **own** fmt + clippy + test gate before
+publishing anything, so stage 1 and this stage overlap deliberately.
+Its other flags: `--allow-dirty` (publish with uncommitted changes) and
+`--skip-gate` (bypass the fmt/clippy/test gate — not recommended). It
+skips `stochastic-rs-py` entirely (`publish = false`; it is a
+maturin-built cdylib for PyPI, not a crates.io crate), and it skips any
+crate already published at the current local version, so it is safe to
+re-run after a partial failure.
 
 If a dry-run fails, fix and restart from stage 1. Common causes:
 - A new `path = "../foo"` dependency was added without a matching
@@ -156,43 +179,49 @@ curl -s 'https://zenodo.org/api/records?q=title:%22stochastic-rs%22&all_versions
 ./publish.sh                  # without --dry-run; same dependency order
 ```
 
-The script publishes one sub-crate at a time and waits ~30 s between
-each so crates.io has time to index dependencies. If a sub-crate fails
-mid-flight, fix the cause, bump the patch version of *only the
-remaining* sub-crates (not the ones already published), re-tag, and
-resume.
+The script publishes one sub-crate at a time. There is **no manual
+sleep** between crates — cargo ≥ 1.66 waits for the registry index to
+sync after each publish on its own. If a sub-crate fails mid-flight,
+fix the cause and simply re-run `./publish.sh`: already-published
+versions are detected and skipped, so a resume needs no version
+surgery.
 
 ## Stage 7 — build & publish PyPI wheels
 
+**This stage is automatic.** `.github/workflows/pypi.yml` (there is no
+`release.yml`) is triggered by `release: published` — that is, by
+stage 5.5's `gh release create`, **not** by the tag push — and also by
+`workflow_dispatch` for a manual re-run. It builds the Linux, macOS,
+Windows and sdist legs and then publishes them itself:
+
+```yaml
+- uses: PyO3/maturin-action@v1
+  with:
+    command: upload
+    args: --non-interactive --skip-existing dist/*
+```
+
+So there is no `twine`, no TestPyPI hop, and nothing to run locally. The
+build args differ per leg — Linux and macOS pass
+`--features openblas` (macOS adds `--auditwheel skip`), Windows passes
+neither (it links `openblas-static` via its own config). Note that the
+`stochastic-rs-py` crate has no `python` feature: it forces
+`pyo3/extension-module` unconditionally, which is exactly why
+`cargo test --workspace` needs `--exclude stochastic-rs-py`.
+
+A local wheel for debugging one platform:
+
 ```bash
 cd stochastic-rs-py
-maturin build --release --strip --features python   # local platform wheel
+maturin build --release --strip --features openblas
 ```
 
-For multi-platform wheels (Linux x86_64, macOS x86_64 + aarch64, Windows
-x86_64), use the `.github/workflows/release.yml` GitHub Action triggered
-by the `vX.Y.Z` tag push. Do not publish wheels manually unless you are
-specifically testing a single-platform fix.
-
-**macOS Intel (x86_64) note:** the action matrix must include
-`macos-13` (Intel) explicitly — `macos-14` and `macos-15` runners are
-all aarch64 and produce ARM-only wheels. Without the macos-13 leg,
-Intel-Mac users get an installation error on `pip install
-stochastic-rs`.
-
-After wheels build, publish to TestPyPI first:
-
-```bash
-twine upload --repository testpypi target/wheels/*.whl
-pip install -i https://test.pypi.org/simple/ stochastic-rs==X.Y.Z
-python -c "import stochastic_rs; print(stochastic_rs.__version__)"
-```
-
-If the smoke install works:
-
-```bash
-twine upload target/wheels/*.whl     # production PyPI
-```
+**Platform-coverage caveat, worth checking before you cut:** the macOS
+matrix currently has a single `macos-14` runner, which is aarch64. There
+is no `macos-13` (Intel) leg, so `pip install stochastic-rs` on an
+Intel Mac has no wheel to resolve. If Intel-Mac support is intended,
+that matrix needs a `macos-13` entry; if it was dropped deliberately,
+this note is the reminder that it is a deliberate gap.
 
 ## Stage 8 — post-release housekeeping
 
@@ -229,21 +258,25 @@ gh issue list --state open --label "v$(MAJOR.MINOR)"
   clean (mandatory pre-bump check).
 - `python-bindings` — for the per-class registration steps that need to
   be in place before stage 7 can succeed.
-- `bench-writing` — for keeping the rc.X benchmark baseline current
-  between cycles.
+- `bench-writing` — note there is no tracked bench baseline and no
+  bench CI job; benchmarking is not a gate in this checklist.
 
-## Reference: rc.1 → rc.2 → stable cycle (2026-05)
+## Reference: the v2.0.0 cycle (2026-05)
 
-The complete sequence executed in this codebase was:
+The shape that produced v2.0.0 was rc.0 → rc.1 → rc.2 → stable, each rc
+closing a numbered audit's findings, with a multi-day soak before the
+stable cut. The audit documents those rcs closed are **no longer in the
+tree** — do not follow links to `docs/V2_RELEASE_AUDIT_*.md` or
+`docs/QUANT_AUDIT_*.md`; they were removed. `docs/` today holds the
+wave ledgers (`A1*_WAVE_LEDGER.md`, `A2_WAVE_LEDGER.md`,
+`DETERMINISTIC_PARALLELISM_LEDGER.md`, …) and
+`docs/VALIDATION_COVERAGE_AUDIT_2026_08_12.md`.
 
-1. rc.0 (2026-05-07): initial RC; failed on §4.1 feature-flag trap.
-2. rc.1 (2026-05-10 morning): closed 6 P0 + 13 P1 + 23 P2 from
-   `docs/V2_RELEASE_AUDIT_2026-05-07.md`; passed publish.
-3. rc.2 (2026-05-10 evening): closed 11 P0 + 3 P1 from the deep quant
-   audit (`docs/QUANT_AUDIT_2026-05-10_*.md`) + §1.6 stable-cut
-   residuals (clippy clean, Fukasawa seed pinned, bench baseline,
-   Phase A Python coverage gaps).
-4. stable v2.0.0: ~3-7 day soak; then re-run this checklist.
+The workspace is on `3.0.0-beta.1` (root `Cargo.toml`,
+`[workspace.package] version`), so the next cut is a v3 beta / rc, not
+another v2 patch. Check the actual version before assuming.
 
-Each stage was triggered by the user; do not autonomously start a
-release without explicit confirmation.
+Each stage is triggered by the user; do not autonomously start a
+release without explicit confirmation. Note the standing preference: an
+explicit "cut X.Y.Z" authorises the whole tag → push → `gh release`
+flow, so do not re-confirm at every step.
