@@ -11,17 +11,17 @@ members = [
 ]
 
 [workspace.package]
-version = "3.0.0-beta.1"
+version = "3.0.0-beta.2"
 
 [workspace.dependencies]
 # Internal crates
-stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-beta.1" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-beta.1" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-beta.1" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-beta.1" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-beta.1" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-beta.1" }
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-beta.1" }
+stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-beta.2" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-beta.2" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-beta.2" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-beta.2" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-beta.2" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-beta.2" }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-beta.2" }
 
 # Math / numerical core
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
