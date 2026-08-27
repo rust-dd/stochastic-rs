@@ -207,9 +207,18 @@ m.add_class::<PyFoo>()?;
 
 ## 7. CLAUDE.md / prelude updates
 
-- `stochastic-rs-distributions/CLAUDE.md` — list the new distribution.
-- The umbrella `CLAUDE.md` workspace layout doesn't list individual
-  distributions; only update if the count crosses a notable boundary.
+There is exactly **one** `CLAUDE.md` in this repo, at the workspace
+root — there are no per-crate `CLAUDE.md` files, so do not look for
+`stochastic-rs-distributions/CLAUDE.md`.
+
+- The root `CLAUDE.md`'s workspace layout does not enumerate individual
+  distributions, so a new one usually needs no edit there. Update it
+  only if you change something it does state — e.g. the
+  `DistributionExt` coverage line ("**18/19** implement closed-form"),
+  or the `stochastic-rs-py` entry count if you add a Python binding.
+- Distributions are **not** in the prelude individually; users reach
+  them at `stochastic_rs::distributions::foo::SimdFoo`. Only a new
+  *trait* touches `src/traits.rs` and the prelude.
 
 ## 8. Anti-patterns
 

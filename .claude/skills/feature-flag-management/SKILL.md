@@ -39,22 +39,44 @@ in rc.0.
 
 ### 1.2 Workspace propagation for cross-crate features
 
-When the umbrella crate (`stochastic-rs/Cargo.toml`) needs to expose a
-feature that lives in a sub-crate, propagate via the
-`<sub-crate>/<feature>` syntax:
+When the umbrella crate needs to expose a feature that lives in a
+sub-crate, propagate via the `<sub-crate>/<feature>` syntax. The
+umbrella's manifest is the **workspace-root `Cargo.toml`** — the
+umbrella is the root package, so there is no `stochastic-rs/`
+subdirectory; `[workspace]`, `[workspace.dependencies]`, `[package]`,
+`[features]` and every `[[bench]]` all live in that one file:
 
 ```toml
-# In stochastic-rs/Cargo.toml (umbrella):
+# The real entries in the root Cargo.toml, verbatim:
 [features]
-ai = ["stochastic-rs-ai/python", "stochastic-rs-ai/openblas"]
-gpu = ["stochastic-rs-stochastic/gpu", "stochastic-rs-distributions/gpu"]
+ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
+gpu = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/gpu"]
 openblas = [
-  "stochastic-rs-stats/openblas",
-  "stochastic-rs-quant/openblas",
-  "stochastic-rs-stochastic/openblas",
-  "stochastic-rs-distributions/openblas",
+    "dep:ndarray-linalg",
+    "dep:openblas-src",
+    "ndarray-linalg/openblas-system",
+    "stochastic-rs-copulas/openblas",
+    "stochastic-rs-quant/openblas",
+    "stochastic-rs-stats/openblas",
+    "stochastic-rs-stochastic/openblas",
 ]
+viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
 ```
+
+Three things that example teaches which a made-up one would not:
+
+- **Only forward to crates that actually have the feature.** `openblas`
+  reaches `-copulas`, `-quant`, `-stats`, `-stochastic` — but **not**
+  `-distributions`, whose only features are `python` and
+  `dual-stream-rng`. Forwarding to a crate that lacks the feature is a
+  hard cargo error.
+- **`dep:` for optional dependencies the umbrella owns itself**
+  (`dep:cubecl`, `dep:ndarray-linalg`), alongside the
+  `<crate>/<feature>` forwards.
+- **`crate?/feature`** — the weak-dependency form, as in
+  `stochastic-rs-ai?/viz`: enable `-ai`'s `viz` *only if* `-ai` is
+  already being pulled in, so `--features viz` alone does not drag in
+  the heavy optional AI crate.
 
 Why: `cargo` does not auto-enable sub-crate features when the umbrella
 exposes a same-named one. You must list every sub-crate that needs it
@@ -136,7 +158,7 @@ loader, a new distribution backend):
 
 3. **If the umbrella needs to expose it:**
    ```toml
-   # stochastic-rs/Cargo.toml
+   # root Cargo.toml (umbrella)
    [features]
    foo = ["stochastic-rs-X/foo", "stochastic-rs-Y/foo"]
    ```
