@@ -5,191 +5,286 @@ description: How to add a bivariate copula to stochastic-rs-copulas. Invoke when
 
 # Copula bivariate — stochastic-rs-copulas
 
-Bivariate copulas in `stochastic-rs-copulas` implement the
-`BivariateExt` trait, exposing pdf / cdf / inverse / partial
-derivative / parametric tau / sampling. The §6.12 audit fix-pass
-(rc.0) caught a Frank-tau formula bug where a custom Newton iteration
-diverged on positive correlations; the rc.1 fix routed everything
-through `roots::find_root_brent`, which is the canonical pattern.
+Bivariate copulas live in `stochastic-rs-copulas/src/bivariate/<name>.rs`
+and implement `BivariateExt`, defined in
+`stochastic-rs-copulas/src/traits/bivariate.rs` and re-exported from
+`stochastic-rs-copulas/src/traits.rs`. There are **13** families today
+(`grep -c '^pub mod ' stochastic-rs-copulas/src/bivariate.rs`); the
+14th `impl BivariateExt for` is a test double in
+`traits/bivariate.rs`'s own test module.
 
-This SKILL codifies the trait surface, the bounds / invalid-θ
-contract, the `compute_theta` pattern (closed-form when possible,
-Brent root-find otherwise), and the parametric-tau-recovery test that
-prevents the §6.12-class regression.
+Read `stochastic-rs-copulas/src/bivariate.rs`'s module header before
+adding a family. It is current and it is the selection guide: which
+Kendall's τ each family can represent, which are radially symmetric,
+which pay an iterative-solver cost. This SKILL is the *mechanics*; that
+header is the *taxonomy*.
 
-(Note: `NCopula2DExt` was removed in v2.0 — bivariate samplers are
-all consolidated under `BivariateExt`.)
+(Note: `NCopula2DExt` was removed in v2.0 — bivariate samplers are all
+consolidated under `BivariateExt`.)
 
-## 1. The trait surface
+## 1. What you must implement, and what you get free
+
+`BivariateExt` is a wide trait with only **eleven** required methods.
+Everything else — sampling, fitting, inversion, `log_pdf`, `ppf` — is
+defaulted on top of them. Required:
 
 ```rust
-// stochastic-rs-copulas/src/traits.rs
-
-pub trait BivariateExt {
-    /// Parameter bounds for valid copulas. Used by calibrators.
-    fn theta_bounds(&self) -> (f64, f64);
-    /// Discrete θ values that produce a degenerate copula (e.g. θ = 0
-    /// for Clayton produces independence; the sampler may need to
-    /// branch around them).
-    fn invalid_thetas(&self) -> &[f64];
-
-    /// Inverse Kendall's τ: given a target Kendall correlation, return
-    /// the θ that achieves it. Closed-form when possible (Clayton,
-    /// Gumbel) — otherwise Brent root-find on the relationship τ(θ).
-    fn compute_theta(&self, tau: f64) -> f64;
-
-    /// Joint CDF C(u, v).
-    fn cdf(&self, u: f64, v: f64) -> f64;
-    /// Joint PDF c(u, v) = ∂²C/(∂u ∂v).
-    fn pdf(&self, u: f64, v: f64) -> f64;
-    /// Inverse conditional: u_given_v(p, v) such that
-    /// P(U ≤ u | V = v) = p — used for sampling via Rosenblatt.
-    fn percent_point(&self, p: f64, v: f64) -> f64;
-    /// Partial derivative ∂C/∂u — used for conditional sampling.
-    fn partial_derivative(&self, u: f64, v: f64) -> f64;
-    /// Sample (u, v) pairs.
-    fn sample(&self, n: usize) -> ndarray::Array2<f64>;
-}
+fn r#type(&self) -> CopulaType;          // the family's enum discriminant
+fn tau(&self) -> Option<f64>;            // Kendall's tau, None until fit/set
+fn set_tau(&mut self, tau: f64);
+fn theta(&self) -> Option<f64>;          // shape parameter, None until fit/set
+fn set_theta(&mut self, theta: f64);
+fn theta_bounds(&self) -> (f64, f64);
+fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
+fn compute_theta(&self) -> f64;          // reads self.tau() — takes NO argument
+fn tail_dependence(&self) -> TailDependence<f64>;
+fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
 ```
+
+Two shape facts that catch every first attempt:
+
+- **`pdf` / `cdf` are vectorised.** They take an `(n, 2)` `Array2<f64>`
+  of `(u, v)` rows and return an `Array1<f64>` of length `n`. They are
+  **not** scalar `(u: f64, v: f64) -> f64` functions.
+- **`compute_theta` takes no `tau` argument.** It reads `self.tau()`,
+  which `fit()` has already set. The tau → theta inversion is a method
+  on a *populated* struct, not a free function of tau.
+
+Useful defaults you should usually **not** override:
+
+| Method | Default behaviour |
+|---|---|
+| `sample(n)` | `SimdUniform` + `Unseeded`, via `sample_with_uniform` |
+| `sample_with_seed(n, seed)` | same, with `Deterministic::new(seed)` |
+| `fit(X)` | Kendall's tau-b via `kendalls`, then `_compute_theta()` |
+| `percent_point(y, V)` | Brent inversion of `partial_derivative_scalar` |
+| `partial_derivative(X)` | central-difference on `cdf` |
+| `generator(t)` | anchored "not Archimedean" error |
+| `log_pdf` / `ppf` | `pdf(X)?.ln()` / alias for `percent_point` |
+| `check_theta` / `check_fit` / `check_marginal` | validation, used by the above |
+
+Override `percent_point` and `partial_derivative` only when you have a
+closed form — Clayton, Frank, Gumbel, Joe all do, and the closed forms
+are both faster and more accurate than the numeric defaults. Override
+`generator` if and only if the family is Archimedean.
+
+`tail_dependence` is **required, not defaulted, on purpose**: a silent
+`(0.0, 0.0)` fallback would be a correctness bug for Clayton, Gumbel,
+Joe, Galambos, Hüsler-Reiss, Marshall-Olkin and Student-t. It must call
+`self.assert_theta_valid_for_tail_dependence()` first — it has no
+`Result` to propagate through, so it panics on an out-of-domain theta
+rather than returning a nonsensical coefficient.
 
 ## 2. The struct skeleton
 
+Every family stores its bounds and its `CopulaType` as **fields**, and
+carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
+`set_theta`). There is **no `seed` field** — seeding enters through
+`sample_with_seed(n, seed)`, which builds a `Deterministic`-seeded
+`SimdUniform` for that one call.
+
 ```rust
-// stochastic-rs-copulas/src/clayton.rs (reference)
+// stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
 
-use roots::SimpleConvergency;
-use roots::find_root_brent;
+use std::error::Error;
+use std::f64;
 
+use ndarray::Array1;
+use ndarray::Array2;
+
+use super::CopulaType;
+use crate::traits::BivariateExt;
+use crate::traits::TailDependence;
+
+#[derive(Debug, Clone)]
 pub struct Clayton {
-    pub theta: f64,
-    pub seed: u64,
+  pub r#type: CopulaType,
+  pub theta: Option<f64>,
+  pub tau: Option<f64>,
+  pub theta_bounds: (f64, f64),
+  pub invalid_thetas: Vec<f64>,
 }
 
-impl BivariateExt for Clayton {
-    fn theta_bounds(&self) -> (f64, f64) {
-        (-1.0, f64::INFINITY)        // Clayton: θ ∈ (-1, ∞), θ = 0 → indep
+impl Default for Clayton {
+  fn default() -> Self {
+    Self {
+      r#type: CopulaType::Clayton,
+      theta: None,
+      tau: None,
+      theta_bounds: (0.0, f64::INFINITY),
+      invalid_thetas: vec![],
     }
+  }
+}
 
-    fn invalid_thetas(&self) -> &[f64] {
-        &[0.0]                       // Clayton degenerate at θ = 0
-    }
-
-    fn compute_theta(&self, tau: f64) -> f64 {
-        // Clayton has closed-form: τ = θ / (θ + 2)  →  θ = 2τ / (1 - τ)
-        2.0 * tau / (1.0 - tau)
-    }
-
-    fn cdf(&self, u: f64, v: f64) -> f64 {
-        // C(u, v) = (u^{-θ} + v^{-θ} - 1)^{-1/θ}
-        let θ = self.theta;
-        (u.powf(-θ) + v.powf(-θ) - 1.0).powf(-1.0 / θ)
-    }
-
-    // ... pdf / percent_point / partial_derivative / sample ...
+impl Clayton {
+  pub fn new() -> Self {
+    Self::default()
+  }
 }
 ```
+
+Then the accessors are one-liners over those fields, and add your
+family's discriminant to `CopulaType` plus a `pub mod` line in
+`stochastic-rs-copulas/src/bivariate.rs`.
+
+Note Clayton's real bounds: `(0.0, f64::INFINITY)` with
+`invalid_thetas: vec![]`. The `θ ∈ (-1, ∞)` domain with a degenerate
+point at 0 is the textbook Clayton, but this crate ships the
+positive-dependence branch only, and encodes that by the bound rather
+than by an invalid-theta entry.
 
 ## 3. The `compute_theta` pattern — closed-form > Brent > custom
 
-The §6.12 trap was a custom Newton iteration on Frank's
-`τ → θ` map that diverged on positive correlations because the
-secant initialisation hit a flat region. The mandate:
+The §6.12 audit trap was a custom Newton iteration on Frank's τ → θ map
+that diverged on positive correlations. The mandate:
 
-1. **Closed-form first.** If τ(θ) inverts analytically (Clayton, Gumbel,
-   FGM), use it. Cite the textbook formula in a comment.
+1. **Closed-form first.** Clayton: `θ = 2τ/(1-τ)`. Gumbel:
+   `θ = 1/(1-τ)`. Cite the textbook formula in a doc comment.
 
-2. **Brent's method second.** When no closed form exists, use
-   `roots::find_root_brent`:
+2. **Brent's method second**, when no closed form exists. `Frank`'s
+   shipped implementation is the pattern to copy:
 
    ```rust
-   fn compute_theta(&self, tau: f64) -> f64 {
-       let f = |theta: f64| -> f64 { tau_from_theta(theta) - tau };
-       let bounds = self.theta_bounds();
-       let lo = bounds.0.max(-50.0).max(self.theta_bounds().0 + 1e-6);
-       let hi = bounds.1.min( 50.0).min(self.theta_bounds().1 - 1e-6);
-       let mut conv = SimpleConvergency { eps: 1e-12, max_iter: 100 };
-       find_root_brent(lo, hi, &f, &mut conv).unwrap_or(0.0)
+   fn compute_theta(&self) -> f64 {
+     let tau = self.tau.unwrap();
+
+     if tau.abs() < 1e-12 { return 0.0; }
+     if tau >= 1.0 { return f64::INFINITY; }
+     if tau <= -1.0 { return f64::NEG_INFINITY; }
+
+     let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
+     let mut convergency = SimpleConvergency { eps: 1e-8, max_iter: 100 };
+     let (lo, hi) = if tau > 0.0 {
+       (1e-8_f64, 50.0_f64)
+     } else {
+       (-50.0_f64, -1e-8_f64)
+     };
+     find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(0.0)
    }
    ```
 
-   Brent is bracketing → guaranteed convergence on a sign-change. Newton
-   isn't.
+   Brent is bracketing → guaranteed convergence on a sign change.
+   Newton is not. Note that Frank brackets *on the sign of tau*: a
+   single `(-50, 50)` bracket straddles the θ = 0 root and finds it
+   for every input.
 
-3. **Never** roll a custom Newton / secant. The §6.12 trap shipped
-   exactly this: a custom hand-rolled iteration with no convergence
-   proof.
+3. **Never** roll a custom Newton / secant.
 
-## 4. Sampling — Rosenblatt transform
+Handle the degenerate ends explicitly, as Frank and Clayton both do
+(`τ ≥ 1 → ∞`). `compute_theta` returns a bare `f64` — it has no error
+channel, so an unhandled edge shows up later as a `check_fit` failure
+far from its cause.
 
-The standard 2-d copula sampler:
+## 4. Sampling — you get it for free, and it is conditional inversion
+
+Do **not** write a `sample`. The default in `BivariateExt` already
+implements the conditional-inversion (Rosenblatt) sampler:
 
 ```rust
-fn sample(&self, n: usize) -> ndarray::Array2<f64> {
-    let mut rng = StdRng::seed_from_u64(self.seed);
-    let unif = Uniform::new_inclusive(0.0, 1.0);
-    let mut out = ndarray::Array2::<f64>::zeros((n, 2));
-    for i in 0..n {
-        let v = unif.sample(&mut rng);
-        let p = unif.sample(&mut rng);
-        let u = self.percent_point(p, v);  // P(U ≤ u | V = v) = p
-        out[[i, 0]] = u;
-        out[[i, 1]] = v;
-    }
-    out
-}
+// traits/bivariate.rs, defaulted — reproduced here for orientation only
+let mut v = Array1::<f64>::zeros(n);
+ud.fill_slice(v.as_slice_mut().unwrap());
+let mut c = Array1::<f64>::zeros(n);
+ud.fill_slice(c.as_slice_mut().unwrap());
+let u = self.percent_point(&c, &v)?;
+Ok(stack![Axis(1), u, v])
 ```
 
-The `percent_point(p, v)` step is where the inversion happens. For
-copulas where this isn't closed-form (FGM-class, Joe), invert
-`partial_derivative(u, v) = p` w.r.t. `u` via Brent again.
+It errors if `tau` is unset or outside `(-1, 1)`, draws both uniforms
+from one `SimdUniform<f64>`, and returns an `(n, 2)` `Array2<f64>`
+wrapped in `Result`. `sample(&self, ..)` takes `&self`, not `&mut self`.
 
-## 5. Mandatory test: parametric-τ recovery
+What you supply is `percent_point` — either a closed form, or nothing
+at all, in which case `percent_point_numerical` Brent-inverts your
+`partial_derivative` for you. If you override `percent_point` but want
+the generic path for a degenerate branch, call
+`self.percent_point_numerical(y, V)` — calling `Self::percent_point`
+from inside the override just recurses.
+
+Per `dev-rules` §7a, `StdRng` / `rand_distr::Uniform` are **not**
+available here: library code draws from the workspace's own
+`SimdUniform`, seeded via `Deterministic::new(s)` or `Unseeded`.
+
+## 5. Mandatory tests
+
+Each family's test module in this crate carries, at minimum, a
+closed-form tail-dependence check and independence-point checks. Copy
+`clayton.rs`'s set:
 
 ```rust
 #[test]
-fn parametric_tau_recovery() {
-    let target_tau = 0.5;
-    let cop = Clayton {
-        theta: Clayton { theta: 0.0, seed: 0 }.compute_theta(target_tau),
-        seed: 42,
-    };
-    let samples = cop.sample(50_000);
-    let empirical_tau = compute_kendall_tau(&samples);
-    assert!(
-        (empirical_tau - target_tau).abs() < 0.02,
-        "τ recovery: target {target_tau}, got {empirical_tau}"
-    );
+fn clayton_tail_dependence_closed_form() { /* λ_L = 2^{-1/θ}, λ_U = 0 */ }
+
+#[test]
+fn clayton_pdf_at_independence_is_one() { /* c(u,v) = 1 at θ → indep */ }
+
+#[test]
+fn clayton_cdf_at_independence_is_uv() { }
+
+#[test]
+fn clayton_partial_derivative_at_independence_returns_u() { }
+```
+
+Plus the parametric-τ recovery test, which is what catches the §6.12
+class — a wrong `compute_theta` looks fine on the data side but
+produces samples with a different τ than requested:
+
+```rust
+#[test]
+fn clayton_independence_sample_kendall_tau_near_zero() {
+  let mut cop = Clayton::new();
+  cop.set_tau(target_tau);
+  cop._compute_theta();
+  let samples = cop.sample_with_seed(50_000, 42).unwrap();
+  // empirical Kendall's tau on `samples` within tolerance of target_tau
 }
 ```
 
-This is the regression test that catches the §6.12 class. Without it,
-a wrong `compute_theta` looks fine on the data side but produces
-samples with a different τ than requested. **Pin** the seed, **pin** a
-50_000-sample bound on the empirical-τ noise.
+**Pin the seed** via `sample_with_seed` — never plain `sample()`, which
+is `Unseeded` and reseeds from entropy each run. See
+`integration-test-writing` for the full pinned-seed mandate.
 
 ## 6. Anti-patterns
 
+- **Do not** give the struct a `seed` field. Seeding is per-call, via
+  `sample_with_seed`.
+- **Do not** write scalar `pdf(u, v)` / `cdf(u, v)`. The trait is
+  vectorised over an `(n, 2)` array and returns `Result`.
+- **Do not** give `compute_theta` a `tau` parameter. It reads
+  `self.tau()`.
 - **Do not** roll a custom Newton in `compute_theta`. Use Brent.
-- **Do not** silently return `0.0` from `compute_theta` on
-  out-of-domain τ. Validate bounds at construction or in
-  `compute_theta` and panic with a useful message.
-- **Do not** branch on `if theta == 0.0` for the degenerate case in the
-  hot loop. Pre-check at construction; the sampler should never see
-  `theta = 0` for Clayton.
-- **Do not** sample without a seed. `seed: u64` field is mandatory for
-  reproducibility.
+- **Do not** return `Vec::new()`-shaped nonsense from
+  `tail_dependence`, and do not skip
+  `assert_theta_valid_for_tail_dependence()`. `_compute_theta` discards
+  its own `check_theta()` result, so `fit()` on out-of-domain data
+  silently leaves `theta` out of bounds; that assert is the only guard.
+- **Do not** implement `sample` / `fit` / `log_pdf` / `ppf`. They are
+  defaulted and the defaults are correct.
+- **Do not** implement `generator` for a non-Archimedean family. The
+  default already returns the anchored
+  `"<Type> is not Archimedean — generator not defined"` error.
 
 ## 7. Reference impls
 
-- `Clayton` (`clayton.rs`) — closed-form `compute_theta`, Rosenblatt
-  sampling.
-- `Frank` (`frank.rs`) — Brent-based `compute_theta` (rc.1 fix; was
-  custom Newton).
-- `Gumbel` (`gumbel.rs`) — closed-form via Archimedean generator.
-- `FGM` (`fgm.rs`) — Farlie-Gumbel-Morgenstern; bounded τ ∈ [-2/9, 2/9].
+- `Clayton` (`bivariate/clayton.rs`) — closed-form `compute_theta`,
+  closed-form `percent_point` / `partial_derivative`, Archimedean
+  `generator`. The template.
+- `Frank` (`bivariate/frank.rs`) — Brent-based `compute_theta` with
+  sign-of-tau bracketing.
+- `Gumbel` (`bivariate/gumbel.rs`) — closed-form via Archimedean
+  generator; shares Joe's upper-tail formula.
+- `Fgm` (`bivariate/fgm.rs`) — Farlie-Gumbel-Morgenstern, narrow
+  τ ∈ [-0.22, 0.22].
+- `MarshallOlkin` (`bivariate/marshall_olkin.rs`) — the awkward case:
+  a `with_alpha_beta` constructor that fits two shock rates directly
+  rather than inverting tau, and the only non-exchangeable family here.
+  Read it before assuming every family fits the `theta` mould.
 
 ## Related SKILLs
 
+- `integration-test-writing` — the pinned-seed mandate these tests obey.
 - `add-mc-variance-reduction` — when copula sampling is part of an MC
   pricer using common random numbers.
 - `python-bindings` — for the `PyClayton` etc. wrappers.
