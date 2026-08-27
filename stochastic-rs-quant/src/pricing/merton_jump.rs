@@ -81,11 +81,20 @@ impl Merton1976Pricer {
   ///   indistinguishable from a genuinely worthless option.
   ///
   /// `lambda` and `gamma` are deliberately **not** checked. `lambda == 0`
-  /// is a *supported* state rather than an invalid one — the Greeks
-  /// collapse to plain Black-Scholes there, which
-  /// `merton_greeks_lambda_zero_equals_bs` pins — and a `gamma` outside
+  /// is a *supported* state rather than an invalid one — price and Greeks
+  /// both collapse to plain Black-Scholes at `v` there, which
+  /// `merton_price_lambda_zero_equals_bs` and
+  /// `merton_greeks_lambda_zero_equals_bs` pin — and a `gamma` outside
   /// `[0, 1]` drives $\sigma^2 - \lambda z^2$ negative, which announces
   /// itself as `NaN` rather than as a number.
+  ///
+  /// A **negative** `lambda` is neither, and the two halves still disagree
+  /// about it: the price is `NaN`, which is the convention, while the
+  /// Greeks' `λ ≤ 0` branch answers with the Black-Scholes value. Left
+  /// alone here because narrowing that branch to `λ == 0` would route a
+  /// negative intensity into [`greek_series`](Self::greek_series)'s
+  /// `NaN`-floor and turn a visible `NaN` into a confident `0.0`, which is
+  /// worse than the disagreement.
   pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BSMCoc) -> Self {
     assert!(
       v >= 0.0,
@@ -111,7 +120,7 @@ impl Merton1976Pricer {
   /// documents a default of `m = 50`), silently producing garbage instead
   /// of a price. Numerically identical to the pre-refactor factorial-based
   /// loop for `m \le 20` (see
-  /// `merton_price_m10_matches_pre_refactor_value` for the regression pin).
+  /// `merton_price_m10_matches_the_reference_value` for the regression pin).
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let mut call = 0.0;
     let mut put = 0.0;
@@ -129,7 +138,28 @@ impl Merton1976Pricer {
   /// Jump-size standard deviation implied by decomposing total volatility
   /// `v` into a diffusive part and a jump part that together explain a
   /// `gamma` fraction of the variance.
+  ///
+  /// `lambda == 0` is the no-jump state, and a jump that never happens has
+  /// no size: `z = 0`, so the whole variance is diffusive and the series
+  /// collapses to Black-Scholes at `v`. The closed form cannot say that on
+  /// its own — `v²γ/λ` is `∞` at `γ > 0` and `NaN` at `γ = 0`, and either
+  /// way [`diffusive_std`](Self::diffusive_std)'s `λ·z²` becomes `0·∞`, so
+  /// **every** price at `lambda == 0` used to be `NaN` while the Greeks
+  /// returned the Black-Scholes value. Only `λz²`, the jump *variance
+  /// rate*, ever enters the model, and that is `0` here whatever `z` would
+  /// have been.
+  ///
+  /// This is a value at a point, not a limit. Holding `gamma` fixed while
+  /// `λ → 0⁺` keeps a `γ` share of the variance in ever-rarer, ever-larger
+  /// jumps (`z² = γv²/λ → ∞`), so the price tends to Black-Scholes at
+  /// `v√(1-γ)` — the diffusive part alone — and not to the value here. The
+  /// two agree exactly when `gamma == 0`, where there is no jump variance
+  /// to lose. `the_lambda_zero_limit_is_discontinuous_in_gamma` pins both
+  /// halves.
   fn jump_size_std(&self) -> f64 {
+    if self.lambda == 0.0 {
+      return 0.0;
+    }
     (self.v.powi(2) * self.gamma / self.lambda).sqrt()
   }
 

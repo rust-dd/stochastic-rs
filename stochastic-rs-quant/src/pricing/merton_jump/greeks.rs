@@ -56,9 +56,17 @@ impl Merton1976Pricer {
   /// Poisson-weighted series over a closed-form BSM Greek. Exact whenever
   /// the Greek's bump variable enters neither `term_vol` nor
   /// `poisson_weight` — true for spot and rate, which is why
-  /// `delta`/`gamma`/`rho` use this path. `λ ≤ 0` returns the single
-  /// surviving (`n = 0`, weight 1) term directly, sidestepping the `0/0`
-  /// singularity `jump_size_std` would otherwise hit.
+  /// `delta`/`gamma`/`rho` use this path.
+  ///
+  /// `λ ≤ 0` returns the single surviving (`n = 0`, weight 1) term
+  /// directly. At `λ == 0` that is now what the series would produce
+  /// anyway — `Merton1976Pricer::jump_size_std` reports the no-jump state's
+  /// `z = 0`, so `σ_n = v` and the weights are `1, 0, 0, …` — and the
+  /// branch is kept for the bump-based Greeks below, whose `λ ≤ 0` legs
+  /// need the *closed form* rather than a central difference of it to match
+  /// `BSMPricer` to `1e-10`. At `λ < 0` it is load-bearing for a different
+  /// reason: it is the only thing keeping an invalid intensity from
+  /// reaching the `NaN` floor below and coming back as `0.0`.
   ///
   /// A term priced at `term_vol(n, τ) = 0` sends `1/v`-shaped closed forms
   /// like `BSMPricer::gamma` to `0/0`. That term's true contribution is its

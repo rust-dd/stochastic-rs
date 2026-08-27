@@ -6,6 +6,7 @@ use crate::traits::Greeks;
 mod construction;
 mod degenerate;
 mod formula;
+mod lambda_zero;
 
 /// `m` (Poisson-series term count) is capped at 20 in these tests:
 /// the pre-refactor term loop computed `n!` as a `usize` product, which
