@@ -29,8 +29,8 @@ identifiers:
     value: 10.5281/zenodo.21553307
     description: Concept DOI — always resolves to the latest release.
   - type: doi
-    value: 10.5281/zenodo.22062093
-    description: Version DOI for v3.0.0-beta.1.
+    value: 10.5281/zenodo.22132356
+    description: Version DOI for v3.0.0-beta.2.
 keywords:
   - quantitative finance
   - stochastic processes
