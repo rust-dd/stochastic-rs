@@ -317,7 +317,15 @@ costing anything but tidiness.
 
 ## Queued — found while closing step 5a
 
-- **27 — Four live `NaN`-laundering defects in the multi-asset family**, measured
+- **27 — CLOSED** (`5728af4`). All four now propagate. Two findings beyond what I
+  listed: the `4.877057549928611` is **exactly** the price of the same basket at
+  `sigma = [0, 0]`, so the test asserts that *identity* rather than the constant;
+  and `RainbowPayoff` had **two** copies of the trap, not one — `CallOnMin` and
+  `PutOnMax` returned `0.0` through a surviving `(min_p - k).max(0.0)` floor, so
+  fixing only the fold would have left half the payoffs laundering. Every floor is
+  preserved where it is genuinely a floor.
+
+  ~~Original:~~ four live `NaN`-laundering defects, measured
   rather than argued, preserved byte-for-byte because fixing them is item 19's
   shape and would have wrecked the one-commit-per-pricer property:
   - **`ArithmeticBasketLevyPricer` with a `NaN` *model* `sigma` returns
@@ -335,7 +343,21 @@ costing anything but tidiness.
     the per-path floor zeroes every poisoned payoff and averages them.
 
   Clean under the same probe: Stulz, Geometric basket, and Levy with a `NaN` tau.
-- **28 — The seven now have unguarded public constructors** that item 22's standard
+- **28 — CLOSED** (`f764f14`). Guarded by *measuring the wrong number each admits*
+  — `StulzRainbowPricer` at `sigma2 < 0` returned a **negative call** (−11.38);
+  `MargrabePricer` at `rho = 5` returned exactly the intrinsic, because a negative
+  combined variance trips the degenerate branch.
+
+  **Two deliberate omissions, both better-reasoned than a blanket rule.** The MC
+  array pricers' `rho` stays unguarded because
+  `mc_rainbow_try_price_reports_a_non_spd_correlation` constructs `[[1,2],[2,1]]`
+  — an element-range check at `new` would have **pre-empted the exact test that
+  pins `try_price`'s role**, and a correlation check that inspects the diagonal but
+  not the entries is the asymmetry item 22 warns against. And the **weight sum** is
+  not a domain constraint: `w = [-1, 2]` is a long/short basket, a real product. A
+  field doc falsely asserting "must sum to one" was corrected.
+
+  ~~Original:~~ the seven had unguarded public constructors that item 22's standard
   would guard. Owed by the reshape-then-validate sequencing above.
 
 
@@ -577,7 +599,22 @@ costing anything but tidiness.
   `v²γ/0`. Price and Greeks disagree about whether `λ = 0` is a supported state —
   and `merton_greeks_lambda_zero_equals_bs` pins the Greeks side, so the
   disagreement is asserted rather than accidental.
-- **25 — MITIGATED, not fully closed** (`6352360`), and the agent was explicit that
+- **25 — NOW FULLY CLOSED** (`6352360` mitigation, `c2a6adc` seed source).
+  `GbmMalliavinPricer<S: SeedExt = Unseeded>` takes a seed **last**, matching
+  `Gbm::new(mu, sigma, n, x0, t, seed)` — the very process it drives — rather than
+  `MCBarrierPricer`'s `price_seeded(..., seed)`, which puts the seed on the query
+  where this ratio-over-a-path-block estimator cannot use it. It `clone()`s rather
+  than `derive()`s, because `derive` advances the pricer's own state and two
+  identical queries would still differ.
+
+  Seeds `[2718, 999, 42]` are the triple **printed verbatim** in the crate's own
+  testing skill, taken as printed rather than searched for — no seed-fishing.
+  Best-of-three is kept on top and that is deliberate: the SIMD stream differs
+  between aarch64-darwin and the x86_64 CI runner, so any single seed verified here
+  is unverified there. Only the *source of independence* changed, from entropy to
+  three pinned streams.
+
+  ~~Earlier:~~ mitigated only (`6352360`), and the agent was explicit that
   it could not follow the crate's own §1.1: **`GbmMalliavinPricer` has no seed to
   pin.** `sample_paths` builds `Gbm::new(…, Unseeded)` internally and the struct's
   fields carry no seed source, so pinning one means adding a field to a `pub`
@@ -669,10 +706,36 @@ costing anything but tidiness.
   `calibration/levy/loss.rs:12` writes `$E[S_T] = …$` and `[S_T]` parses as a
   link. Today it errors only under `cargo doc --document-private-items`; plain
   `cargo doc` passes. **One flag away from a hard CI failure.**
-- **31 — `greek_series`'s `NaN` floor** (`if contribution.is_nan() { 0.0 }`) is the
+- **31 — CLOSED** (`9cc336b`), by **narrowing rather than removing**. The floor's
+  stated justification covered **one** case and it was catching **seven** — and all
+  seven already had a `NaN` *price*, so price and Greeks disagreed about every one
+  of them: unresolved `tau` from `TimeExt`, `NaN` `r`/`s`/`k`, negative spot or
+  strike, `tau <= 0` or infinite, a `gamma` outside `[0,1]` that `new` documents as
+  *announcing itself*, and an overflowing Poisson weight. Now
+  `contribution.is_nan() && term.v == 0.0`; degenerate configurations are
+  bit-unchanged, everything else propagates.
+
+  **The residual is pinned with both the wrong values and the right ones**, so it
+  cannot drift: *at* the forward a degenerate term's `d1` is `0/0` and the floor
+  returns `0.0` for delta, gamma and rho, where the `sigma -> 0+` limits are
+  0.48765, `+inf` and 24.3827 — measured along `v = 1e-3 … 1e-6`. Fixing that needs
+  a per-Greek limit nine times over, so it is its own work.
+
+  ~~Original:~~ the `NaN` floor whose justification item 23 removed (`if contribution.is_nan() { 0.0 }`) is the
   crate's named laundering shape, and item 23 removed its stated justification.
   Re-documented honestly rather than removed, because removing it changes
   degenerate-config Greeks.
+
+## Queued — found while closing step 6c
+
+- **32 — A degenerate Merton term's Greeks are wrong *at* the forward.** Item 31
+  narrowed the floor but kept it there, because `d1` is genuinely `0/0`: delta,
+  gamma and rho return `0.0` where the `sigma -> 0+` limits are **0.48765**,
+  **`+inf`** and **24.3827**. `theta` is right for a reason that does not
+  generalise — the bumped Greeks floor a *price*, whose forward limit really is 0.
+  Fixing it is item 21's shape applied nine times, and moves every
+  degenerate-configuration Greek. Both the wrong and the right values are already
+  asserted, so it cannot drift while it waits.
 
 ## Gate
 
