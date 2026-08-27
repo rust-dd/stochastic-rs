@@ -80,9 +80,17 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdFoo<T, N, R> {
     pub fn fill_slice_fast(&self, dst: &mut [T]) { /* ... */ }
 }
 
-impl<T: FloatExt> rand::distributions::Distribution<T> for SimdFoo<T> {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> T {
-        // ... your sampling step ...
+// `use rand_distr::Distribution;` — NOT `rand::distributions`, which
+// does not exist on rand 0.9 (the workspace pins rand 0.9.2 /
+// rand_distr 0.5.1). Per `dev-rules` §7a the trait import stays even
+// though the concrete `rand_distr` distributions are banned from
+// library code: our own `Simd*` types implement it, and it is how
+// `.sample()` resolves.
+impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Distribution<T> for SimdFoo<T, N, R> {
+    fn sample<Rr: rand::Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
+        // Draws from the type's OWN internal stream, seeded at
+        // construction — the `_rng` argument is ignored, exactly as in
+        // `fill_slice` above. Underscore it so that is visible.
     }
 }
 ```
