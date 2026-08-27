@@ -71,17 +71,28 @@ Invoke at the **bottom of the process's source file**, e.g.
 `stochastic-rs-stochastic/src/diffusion/gbm.rs`:
 
 ```rust
-py_process_1d!(PyGBM, GBM,
-  sig: (mu, sigma, n, x0 = 1.0, t = 1.0, m = None, seed = None),
-  params: (mu: f64, sigma: f64, n: usize, x0: f64, t: f64, m: Option<usize>),
+py_process_1d!(PyGbm, Gbm,
+  sig: (mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
 );
 ```
 
-You get:
-- `PyGBM.sample()` returning a numpy array
-- `PyGBM.sample_seeded(seed)` for deterministic reproduction
-- Internal `f64` only (no f32 dispatch for processes — too much code-gen
-  growth for marginal benefit)
+`sig` is the full PyO3 signature and must end with `seed=None,
+dtype=None`; `params` lists **only** the model parameters — the macro
+appends `seed: Option<u64>` and `dtype: Option<&str>` itself, and `m` is
+not a constructor parameter at all. Note the PascalCase names (`PyGbm`,
+`Gbm`), not the v1.x acronym spelling.
+
+You get exactly two methods:
+- `PyGbm.sample()` → 1-D numpy array
+- `PyGbm.sample_par(m)` → `(m, n)` numpy array
+
+There is **no `sample_seeded(seed)` method.** The seed is a constructor
+argument — `PyGbm(..., seed=42)` — and the generated class holds four
+`Option` slots (`inner_f32`, `inner_f64`, `seeded_f32`, `seeded_f64`)
+dispatched on `(seed, dtype)` in `__new__`. So **both** float widths are
+supported for processes, via `dtype="f32"` / `dtype="f64"` (default
+`"f64"`), through `IntoF32` / `IntoF64` in `stochastic-rs-core::python`.
 
 ## 2. Hand-written `#[pyclass]` (quant pricers / calibrators)
 
@@ -300,8 +311,10 @@ When wrapping a distribution, confirm:
       `py_process_2d!` (multi-asset)
 - [ ] Macro invocation at end of source file
 - [ ] `m.add_class::<PyXxx>()` added to `stochastic-rs-py/src/lib.rs`
-- [ ] `PyXxx().sample()` smoke test
-- [ ] `PyXxx().sample_seeded(42)` reproduces — exact bit equality
+- [ ] `PyXxx(...).sample()` smoke test
+- [ ] `PyXxx(..., seed=42).sample()` reproduces — exact bit equality
+      (the seed is a constructor kwarg; there is no `sample_seeded`)
+- [ ] `PyXxx(..., dtype="f32")` constructs and samples
 
 ## 8. Pricer / calibrator testing checklist
 

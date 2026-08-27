@@ -11,9 +11,11 @@ failure modes the audits caught:
 - **§4.6 trap (rc.0):** a test compiled fine on `--features openblas`
   but failed on `--no-default-features` because the test imported a
   helper from an openblas-gated module without gating itself.
-- **Fukasawa flake (rc.1):** a non-seeded `Fou::new` inside a test
-  produced sporadic CI failures; rc.2 fixed by switching to
-  `Fou::seeded(...)`.
+- **Fukasawa flake (rc.1):** a `Fou` built with `Unseeded` inside a test
+  produced sporadic CI failures; the fix was to pass
+  `Deterministic::new(seed)` instead. (The `Fou::seeded(...)`
+  constructor that shipped that fix no longer exists — the seed is now
+  `new`'s last parameter. See `add-diffusion-process` §2.)
 - **§6.1 drift:** a benchmark dragged a "test helper" into the bench
   binary, kept compiling for 6 months without anyone running it, then
   broke when the underlying API changed.
