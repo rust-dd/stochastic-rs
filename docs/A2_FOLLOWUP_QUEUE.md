@@ -577,13 +577,48 @@ costing anything but tidiness.
   `v²γ/0`. Price and Greeks disagree about whether `λ = 0` is a supported state —
   and `merton_greeks_lambda_zero_equals_bs` pins the Greeks side, so the
   disagreement is asserted rather than accidental.
-- **25 — `malliavin_one_model_prices_a_grid` is flaky.** It failed once with
+- **25 — MITIGATED, not fully closed** (`6352360`), and the agent was explicit that
+  it could not follow the crate's own §1.1: **`GbmMalliavinPricer` has no seed to
+  pin.** `sample_paths` builds `Gbm::new(…, Unseeded)` internally and the struct's
+  fields carry no seed source, so pinning one means adding a field to a `pub`
+  struct — externally breaking and out of scope.
+
+  It measured the hazard rather than estimating it: **17 of 2000 runs (0.85 %)
+  breach `c <= S`**, about one CI run in 118, worst point **12229.43** against a
+  spot of 100. And **more paths make it worse** — 400 -> 2000 moved the worst
+  observed call from 57.0 to 89.3 — because the estimator is a ratio whose
+  denominator is a Heaviside-weighted count that can be nearly empty.
+
+  Applied §1.2 instead (best-of-three replication): **0 breaches in 666 groups**,
+  a ~6e-7 false-failure rate. `is_finite` is asserted *before* the running `max`,
+  since `f64::max` would discard a `NaN` and hand back a plausible number.
+
+  **Follow-up owed (beta window):** give `GbmMalliavinPricer` a seed source and
+  convert to three pinned seeds. Two sibling tests in the same file are unseeded
+  with the same estimator and the same tail. It failed once with
   `call 103.976 out of bounds` against its own `c <= S = 100` bound, then passed
   5/5 on re-run. **Unseeded** Monte Carlo (`Gbm::new(…, Unseeded)`). The upper
   bound is violated, not just monotonicity, so this is a genuine CI hazard rather
   than a tolerance question — and the crate's own testing conventions mandate
   pinned seeds for exactly this reason.
-- **26 — `BSMCalibrator` has no projection box.** `set_params` writes the raw
+- **26 — CLOSED** (`f66ebc7`), matching `SabrCalibrator` — same optimiser, same
+  parameter shape — rather than Heston's bounded-logistic coordinates (which would
+  have required rewriting the analytic Jacobian chain rule) or HSC's `BOUNDS`
+  (a different optimiser). **Reflection, not clamping**: an overshoot to `-0.3` is
+  told `0.3`, so the calibration does not stall.
+
+  **`set_params` alone was not enough, and testing caught it:**
+  `LevenbergMarquardt::minimize` prices the *starting* point before it has any step
+  to hand back, so a directly-written `pub params` still reached `BSMPricer::new`
+  unprojected. Three projection sites, three tests, **each verified to fail when
+  its own site is removed**.
+
+  **Blocker status: `BSMCalibrator` is cleared, `BSMPricer::new` is still not
+  validatable.** The two other cited callers are live and confirmed —
+  `AnalyticBSEngine` feeds it an unlinked handle's `NaN` *by design*, and
+  `Merton1976Pricer::term_bsm(0, ·)` constructs at `v == 0`. Item 29 made the
+  latter **more** frequent: at `gamma = 1` the `n = 0` term is now exactly `0` on
+  every price, where before it was `0` about half the time. `set_params` writes the raw
   Levenberg-Marquardt vector, so the optimizer can and does pass through negative
   volatilities. Every sibling calibrator (`SabrCalibrator`, the HSC bounds) projects
   into a strictly admissible box. This is the blocker on item 22's one deliberate
@@ -591,13 +626,46 @@ costing anything but tidiness.
 
 ## Queued — found while closing step 6a
 
-- **29 — `diffusive_std` round-trips through `sqrt`.** It computes
+- **29 — CLOSED** (`296a4b6`), and **the formula I put in this queue was wrong at
+  two corners.** I wrote that `d² = v²(1−gamma)` is "exact and `lambda`-free". The
+  agent checked before applying and found the naive substitution moves **299 of 704
+  grid points**:
+  - At **`lambda == 0`**, `jump_size_std` deliberately early-returns `z = 0`, so
+    `d = v`, *not* `v·sqrt(1−gamma)`. `merton_price_lambda_zero_equals_bs` asserts
+    this — and `the_lambda_zero_limit_is_discontinuous_in_gamma` exists precisely
+    to pin that `v·sqrt(1−gamma)` is the **limit**, a different number. The bare
+    formula would have broken both.
+  - Where **`gamma` and `lambda` have opposite signs**, `z` is imaginary and the
+    round-trip announced `NaN`; the bare formula silences an announcement `new`
+    documents.
+
+  What shipped keeps both branches and removes only the round-trip, and tests
+  `jump_size_std()`'s own output rather than re-deriving the condition — so the
+  `NaN` set is identical to the round-trip's **by construction**. All six reported
+  `(v, lambda)` pairs now give `d = 0`; a 400×4 sweep at `gamma = 1` gives `d == 0`
+  everywhere, against 28 exceptions at BASE. Nothing moved: worst relative change
+  on ordinary configurations is **9.9e-15**. It computes
   `v² − lambda·(sqrt(v² gamma / lambda))²` where `lambda z² = v² gamma`
   analytically. At the pure-jump corner `gamma = 1` this lands on `d = 0` for
   some `(v, lambda)` pairs and on **`NaN`** for others — a valid model that prices
   or doesn't by floating-point luck. `d² = v²(1−gamma)` is exact and
   `lambda`-free.
-- **30 — A pre-existing broken intra-doc link, exactly the LaTeX-bracket trap.**
+- **30 — CLOSED** (`629e0aa`), and it was **five live errors in two files, not
+  one**. The four in `stochastic-rs-stochastic/src/autoregressive/arima.rs:149`
+  were already errors under the same flag and are the same trap without the LaTeX:
+  `X[0] = Y[0], X[t] = X[t-1] + Y[t]` in a private fn's doc.
+
+  **It matched the project's own prior fix** rather than inventing one: commit
+  `d016a61` had converted `$E[C]$` to `$E\left[C\right]$` crate-wide, and
+  `pricing/fourier/levy.rs:171` already carries the **identical sentence**
+  correctly — `loss.rs` was simply the copy that got missed, because it sits on a
+  `pub(super)` fn only `--document-private-items` reaches.
+
+  A shape sweep found **27 bracket candidates in 14 files**; the other 24 are inert
+  and that was *proved*, not assumed — `cargo doc --workspace
+  --document-private-items` now exits 0, and they sit inside doctest fences or on
+  `#[cfg(test)]` items rustdoc never documents. **They become live the moment such
+  an item stops being test-gated.**
   `calibration/levy/loss.rs:12` writes `$E[S_T] = …$` and `[S_T]` parses as a
   link. Today it errors only under `cargo doc --document-private-items`; plain
   `cargo doc` passes. **One flag away from a hard CI failure.**
