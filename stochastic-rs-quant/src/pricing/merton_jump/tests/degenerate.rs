@@ -24,6 +24,15 @@
 //! branch; `an_ordinary_configuration_never_reaches_the_branch` is the pin
 //! that keeps that claim from rotting.
 //!
+//! The **Greeks** need the same treatment nine times over, and the limit is
+//! not the same one twice. Away from the forward the `1/σ`-shaped closed
+//! forms tend to `0` while the rest are already saturated; at the forward
+//! `delta → ±½e^{(b−r)τ}`, `rho → ±½Kτe^{−rτ}` and `gamma → +∞`, and only
+//! the price — which is what the six bump-based Greeks difference — tends
+//! to `0` there. A single floor answered `0` for all of them, which was
+//! right away from the forward, right for `theta` everywhere, and wrong for
+//! `delta`, `gamma` and `rho` at the singular strike.
+//!
 //! Which strike is singular is set by the cost of carry, not by the
 //! volatility: `Black1976` and `Asay1982` have `b = 0`, so the hole lands on
 //! the at-the-money strike — the most-quoted point on a futures-option
@@ -155,9 +164,10 @@ fn an_ordinary_configuration_never_reaches_the_branch() {
   for n in 0..m.m {
     let sigma = m.term_vol(n, FUT_TAU);
     assert!(sigma > 0.0, "term {n} volatility {sigma} is not positive");
+    let term = m.term_bsm(n, FUT_TAU);
     assert_eq!(
-      m.term_call_put(n, FUT_TAU, S, S, R, Q),
-      m.term_bsm(n, FUT_TAU).call_put(S, S, R, Q, FUT_TAU),
+      Merton1976Pricer::term_call_put(&term, S, S, R, Q, FUT_TAU),
+      term.call_put(S, S, R, Q, FUT_TAU),
       "term {n} was intercepted"
     );
   }
@@ -222,17 +232,17 @@ fn an_inadmissible_gamma_still_announces_itself() {
   }
 }
 
-/// The half of `greek_series`'s `NaN` floor that is exact, and the reason
-/// it was narrowed rather than removed.
+/// The half of the degenerate term's Greeks that was always exact, and the
+/// reason `greek_series` needed a per-Greek limit rather than a wider floor.
 ///
 /// Away from the forward a degenerate term's `d₁` saturates to `±∞`, so the
 /// `1/v`-shaped closed forms are `0/0` and their `σ → 0⁺` limits really are
-/// `0`: `norm_pdf(d₁) → 0` exponentially and beats the linear `1/v`. The
-/// Greeks that do not vanish there — `delta → e^{(b−r)τ}`, `rho` — never
-/// went `NaN` in the first place, so they are untouched by the floor and
-/// are asserted against their closed forms rather than against `0`.
+/// `0`: `norm_pdf(d₁)` decays like `e^{-c²/2σ²}` and beats the linear
+/// `1/v`. The Greeks that do not vanish there — `delta → e^{(b−r)τ}`, `rho`
+/// — never went `NaN` in the first place, so they keep their closed forms
+/// and are asserted against those rather than against `0`.
 #[test]
-fn the_degenerate_term_floor_is_exact_away_from_the_forward() {
+fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
   let m = frozen(BSMCoc::Black1976);
   let carry = (-R * FUT_TAU).exp();
   for &k in &[90.0_f64, 110.0] {
@@ -246,7 +256,7 @@ fn the_degenerate_term_floor_is_exact_away_from_the_forward() {
       "K={k}: delta {} must be the saturated closed form",
       g.delta
     );
-    // And it is a floor, not a poison check: the underlying BSM term is
+    // And it is a limit, not a poison check: the underlying BSM term is
     // genuinely `NaN` here, so without it the whole sum would be.
     assert!(
       BSMPricer::new(0.0, BSMCoc::Black1976)
@@ -254,61 +264,251 @@ fn the_degenerate_term_floor_is_exact_away_from_the_forward() {
         .is_nan(),
       "K={k}: the zero-vol term's gamma must be NaN, else this pins nothing"
     );
+    assert_eq!(
+      Merton1976Pricer::term_regime(&m.term_bsm(0, FUT_TAU), S, k, R, Q, FUT_TAU),
+      TermRegime::Saturated,
+      "K={k} must reach the saturated arm, not the forward one"
+    );
   }
 }
 
-/// The half the floor gets **wrong**, pinned so it is asserted rather than
-/// assumed, and recorded rather than quietly fixed.
+/// The half that used to be **wrong**, now the limit it should always have
+/// been. This replaces a test that asserted `0.0` for three Greeks whose
+/// limits are not zero, alongside the right answers, so that the gap could
+/// not drift while it went unfixed.
 ///
-/// *At* the forward a degenerate term's `d₁` is `0/0`, so every closed form
-/// is `NaN` and the floor returns `0.0` for all three of `delta`, `gamma`
-/// and `rho`. The `σ → 0⁺` limits are not zero: both normal CDFs converge
-/// to `½`, giving `delta → ½e^{(b−r)τ}` and `rho → ½Kτe^{−rτ}`, while
-/// `gamma = φ(d₁)/(Sσ√τ)` diverges like `1/σ`. The sweep below is what
-/// makes those limits a measurement rather than an assertion about
-/// arithmetic.
+/// At the forward a degenerate term's `d₁` is `0/0`, so every closed form
+/// is `NaN` and the retired floor answered `0.0` for all of them. Three of
+/// those answers were wrong. Both CDFs converge to `½` as `σ → 0⁺` along
+/// `Se^{bτ} = K` — `d₁ = σ√τ/2 → 0⁺`, `d₂ = -σ√τ/2 → 0⁻` — which gives
+/// `delta → ±½e^{(b−r)τ}` and `rho → ±½Kτe^{−rτ}`, while
+/// `gamma = φ(d₁)/(Sσ√τ)` holds a strictly positive numerator over a
+/// vanishing `σ` and diverges like `1/σ`.
 ///
-/// `theta` is the one the floor gets right, and for a reason that does not
-/// generalise: the bumped Greeks floor a *price*, whose forward limit is
-/// genuinely `0` — the same limit `term_call_put` fills in explicitly on
-/// the price path.
+/// The closed forms below would only restate the implementation, so the
+/// sweep is what adjudicates them: it reaches each value from models with
+/// `v > 0`, which have no degenerate term and never enter the branch. The
+/// gaps close **linearly in `σ`** — a decade of `v` buys a decade of
+/// accuracy — which is a stronger statement than "close enough", and `σΓ`
+/// is constant to ten figures across four decades, which is the signature
+/// of a pole rather than of a merely large number.
 ///
-/// Fixing this needs a per-Greek limit rather than a per-contribution
-/// floor, which would move every degenerate-configuration Greek in the
-/// crate; it is left as its own piece of work.
+/// `theta` is the one the floor got right, for a reason that does not
+/// generalise: what the bump-based Greeks difference is a *price*, whose
+/// forward limit genuinely is `½(Se^{(b−r)τ} − Ke^{−rτ}) = 0`.
 #[test]
-fn the_forward_point_greeks_of_a_degenerate_term_are_a_known_zero() {
+fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
   let m = frozen(BSMCoc::Black1976);
-  // Black1976 carries at b = 0, so the forward is S itself.
-  let g = m.greeks(S, S, R, Q, FUT_TAU, OT);
-  assert_eq!(g.delta, 0.0, "delta at the forward");
-  assert_eq!(g.gamma, 0.0, "gamma at the forward");
-  assert_eq!(g.rho, 0.0, "rho at the forward");
-  assert_eq!(g.theta, -0.0, "theta at the forward is the price limit");
+  // Black1976 carries at b = 0, so the forward is S itself and the carry
+  // factor coincides with the discount factor.
+  let disc = (-R * FUT_TAU).exp();
+  let want_delta = 0.5 * disc;
+  let want_rho = 0.5 * S * FUT_TAU * disc;
 
-  // What they should be, measured along sigma -> 0+.
-  let want_delta = 0.5 * (-R * FUT_TAU).exp();
-  let want_rho = 0.5 * S * FUT_TAU * (-R * FUT_TAU).exp();
-  let mut prev_gamma = 0.0;
-  for (i, &v) in [1e-3_f64, 1e-4, 1e-5, 1e-6].iter().enumerate() {
+  let call = m.greeks(S, S, R, Q, FUT_TAU, OT);
+  assert!(
+    (call.delta - want_delta).abs() < TOL,
+    "call delta {} must be the limit {want_delta}, not 0",
+    call.delta
+  );
+  assert!(
+    (call.rho - want_rho).abs() < TOL,
+    "call rho {} must be the limit {want_rho}, not 0",
+    call.rho
+  );
+  assert!(
+    call.gamma.is_infinite() && call.gamma.is_sign_positive(),
+    "gamma must be the +inf its limit is, not 0: {}",
+    call.gamma
+  );
+  assert_eq!(call.theta, -0.0, "theta at the forward is the price limit");
+
+  // `delta` and `rho` keep an `option_type`, so both limits flip sign;
+  // `gamma` does not take one and must be the same divergence on both legs.
+  let put = m.greeks(S, S, R, Q, FUT_TAU, OptionType::Put);
+  assert!(
+    (put.delta + want_delta).abs() < TOL,
+    "put delta {} must be the negated limit",
+    put.delta
+  );
+  assert!(
+    (put.rho + want_rho).abs() < TOL,
+    "put rho {} must be the negated limit",
+    put.rho
+  );
+  assert_eq!(put.gamma, call.gamma, "gamma takes no option_type");
+
+  // What they are the limits *of*, measured along `sigma -> 0+` from models
+  // that never reach the degenerate branch.
+  let mut prev_pole = f64::NAN;
+  for (i, &v) in [1e-3_f64, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8].iter().enumerate() {
     let near = Merton1976Pricer::new(v, 0.5, 0.4, 20, BSMCoc::Black1976);
     let delta = near.delta(S, S, R, Q, FUT_TAU, OT);
     let rho = near.rho(S, S, R, Q, FUT_TAU, OT);
     let gamma = near.gamma(S, S, R, Q, FUT_TAU);
     assert!(
-      (delta - want_delta).abs() < 1e-3,
-      "v={v}: delta {delta} must approach {want_delta}, not 0"
+      (delta - want_delta).abs() < 0.2 * v,
+      "v={v}: delta {delta} must close on {want_delta} linearly in v"
     );
     assert!(
-      (rho - want_rho).abs() < 1e-2,
-      "v={v}: rho {rho} must approach {want_rho}, not 0"
+      (rho - want_rho).abs() < 10.0 * v,
+      "v={v}: rho {rho} must close on {want_rho} linearly in v"
     );
-    if i > 0 {
+    // A `1/sigma` pole has a constant residue; a large finite number does
+    // not. `sigma_n = v*sqrt(0.6 + 1.6n)` here, so `v` is the scale of the
+    // whole series rather than of one term, and the product is constant to
+    // the precision the pole is resolved at.
+    let pole = gamma * v;
+    if i > 2 {
       assert!(
-        gamma > 9.0 * prev_gamma,
-        "v={v}: gamma {gamma} must diverge like 1/sigma, not fall to 0"
+        (pole - prev_pole).abs() < 1e-8 * pole,
+        "v={v}: sigma*gamma must be constant, {prev_pole} -> {pole}"
       );
     }
-    prev_gamma = gamma;
+    assert!(pole > 0.0, "v={v}: the residue must be positive: {pole}");
+    prev_pole = pole;
+  }
+}
+
+/// One degenerate term at the forward is enough to move a model that is
+/// **otherwise ordinary**, which is what makes this a live defect rather
+/// than a curiosity of a frozen underlying.
+///
+/// The pure-jump corner `gamma == 1` puts the whole variance in the jumps,
+/// so `d = 0` and the `n = 0` term alone is degenerate; the other nineteen
+/// have `σ_n = z√(n/τ) > 0` and price normally. Under `Black1976` the
+/// forward is `S`, so the at-the-money strike is the singular one and the
+/// option is one a desk actually quotes. The price there was already right;
+/// `delta`, `gamma` and `rho` were each short one `w₀`-weighted term.
+///
+/// Adjudicated by letting `gamma → 1⁻`, which shrinks `σ_0 = v√(1-γ)`
+/// towards zero through models with **no** degenerate term at all: every
+/// value below is the limit of that family, and `gamma` diverges along it
+/// with a constant `σ_0·Γ` residue.
+#[test]
+fn one_degenerate_term_at_the_forward_moves_an_otherwise_ordinary_model() {
+  let m = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BSMCoc::Black1976);
+  assert_eq!(
+    Merton1976Pricer::term_regime(&m.term_bsm(0, FUT_TAU), S, S, R, Q, FUT_TAU),
+    TermRegime::AtTheForward,
+    "the n = 0 term must be the degenerate one"
+  );
+  for n in 1..m.m {
+    assert!(
+      m.term_vol(n, FUT_TAU) > 0.0,
+      "term {n} must be ordinary, so this is not a frozen model"
+    );
+  }
+  let price = m.price_call(S, S, R, Q, FUT_TAU);
+  assert!(price.is_finite() && price > 0.0, "a live price: {price}");
+
+  let g = m.greeks(S, S, R, Q, FUT_TAU, OT);
+  assert!(
+    g.gamma.is_infinite() && g.gamma.is_sign_positive(),
+    "one degenerate term at the forward is enough to make gamma diverge: {}",
+    g.gamma
+  );
+
+  // The limit of the non-degenerate family that approaches this model.
+  let approaching = |one_minus_gamma: f64| {
+    Merton1976Pricer::new(0.2, 0.5, 1.0 - one_minus_gamma, 20, BSMCoc::Black1976)
+  };
+  let near = approaching(1e-12);
+  assert!(
+    near.term_vol(0, FUT_TAU) > 0.0,
+    "the approaching family must not itself be degenerate"
+  );
+  assert!(
+    (near.delta(S, S, R, Q, FUT_TAU, OT) - g.delta).abs() < 1e-6,
+    "delta {} is not the gamma -> 1- limit {}",
+    g.delta,
+    near.delta(S, S, R, Q, FUT_TAU, OT)
+  );
+  assert!(
+    (near.rho(S, S, R, Q, FUT_TAU, OT) - g.rho).abs() < 1e-4,
+    "rho {} is not the gamma -> 1- limit {}",
+    g.rho,
+    near.rho(S, S, R, Q, FUT_TAU, OT)
+  );
+  assert!(
+    (near.price_call(S, S, R, Q, FUT_TAU) - price).abs() < 1e-4,
+    "price {price} is not the gamma -> 1- limit {}",
+    near.price_call(S, S, R, Q, FUT_TAU)
+  );
+
+  // And the divergence has a residue, so it is a pole and not an overflow.
+  let mut prev_pole = f64::NAN;
+  for (i, e) in [8, 9, 10, 11, 12].iter().enumerate() {
+    let n = approaching(10f64.powi(-e));
+    let pole = n.term_vol(0, FUT_TAU) * n.gamma(S, S, R, Q, FUT_TAU);
+    if i > 0 {
+      assert!(
+        (pole - prev_pole).abs() < 1e-4 * pole,
+        "1-gamma=1e-{e}: sigma_0*gamma must be constant, {prev_pole} -> {pole}"
+      );
+    }
+    prev_pole = pole;
+  }
+}
+
+/// The Greeks' idea of the price and the price are the same function.
+///
+/// Every bump-based Greek differences `series_price`, which prices each
+/// term through `term_call_put` — the same call `call_put` makes — rather
+/// than through a second copy of the degenerate term's forward limit. Two
+/// copies of that expression could drift; this is what stops them being two.
+#[test]
+fn the_greeks_price_a_degenerate_term_exactly_as_the_price_does() {
+  let corner = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BSMCoc::Black1976);
+  for m in [frozen(BSMCoc::Black1976), corner] {
+    for &k in &[S, 90.0, 110.0] {
+      let (call, put) = m.call_put(S, k, R, Q, FUT_TAU);
+      assert_eq!(
+        m.series_price(S, k, R, Q, FUT_TAU, OptionType::Call),
+        call,
+        "K={k} call"
+      );
+      assert_eq!(
+        m.series_price(S, k, R, Q, FUT_TAU, OptionType::Put),
+        put,
+        "K={k} put"
+      );
+    }
+  }
+}
+
+/// The one place the per-Greek limits stop, and why they stop there.
+///
+/// At `λ == 0` `greek_series` hands the single surviving term to
+/// `BSMPricer` directly, and the six bump-based Greeks skip the series
+/// altogether for the same reason. A model that is *both* frozen and
+/// jump-free therefore splits: `delta`, `gamma`, `rho` and the price go
+/// through this crate's own code and get their limits, while the other six
+/// get `BSMPricer`'s undefended `NaN`.
+///
+/// That asymmetry belongs to `BSMPricer`, not to this pricer — the same
+/// query prices `NaN` on a bare one, which
+/// `zero_total_volatility_at_the_forward_is_the_limit` already asserts.
+/// Pinned rather than fixed: fixing it means giving `BSMPricer` a forward
+/// limit of its own, which would move every model built on it.
+#[test]
+fn a_frozen_no_jump_model_inherits_black_scholess_own_gaps() {
+  let m = Merton1976Pricer::new(0.0, 0.0, 0.4, 20, BSMCoc::Black1976);
+  let disc = (-R * FUT_TAU).exp();
+  assert_eq!(m.price_call(S, S, R, Q, FUT_TAU), 0.0, "price");
+  let delta = m.delta(S, S, R, Q, FUT_TAU, OT);
+  assert!((delta - 0.5 * disc).abs() < TOL, "delta {delta}");
+  let rho = m.rho(S, S, R, Q, FUT_TAU, OT);
+  assert!((rho - 0.5 * S * FUT_TAU * disc).abs() < TOL, "rho {rho}");
+  assert!(m.gamma(S, S, R, Q, FUT_TAU).is_infinite(), "gamma");
+  for (name, v) in [
+    ("vega", m.vega(S, S, R, Q, FUT_TAU)),
+    ("theta", m.theta(S, S, R, Q, FUT_TAU, OT)),
+    ("vanna", m.vanna(S, S, R, Q, FUT_TAU)),
+    ("charm", m.charm(S, S, R, Q, FUT_TAU, OT)),
+    ("volga", m.volga(S, S, R, Q, FUT_TAU)),
+    ("veta", m.veta(S, S, R, Q, FUT_TAU)),
+  ] {
+    assert!(v.is_nan(), "{name} must still be BSMPricer's NaN, got {v}");
   }
 }

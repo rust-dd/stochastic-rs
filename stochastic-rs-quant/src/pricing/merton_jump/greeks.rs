@@ -13,14 +13,24 @@
 //! `-∂/∂τ` convention (matching `BSMPricer::theta` / `charm` /
 //! `dvega_dtime`, and the `λ ≤ 0` Black-Scholes limit below).
 //!
+//! A **degenerate term** — one whose `σ_n` is exactly `0`, reachable at
+//! `v == 0` and, for `n = 0` alone, at the pure-jump corner `gamma == 1` —
+//! has no closed form to evaluate, only a `σ → 0⁺` limit, and the limit
+//! differs per Greek and per side of the forward. Each accessor states its
+//! own against [`TermRegime`]; `greek_series` no longer floors anything.
+//! `delta → ½e^{(b−r)τ}` and `rho → ½Kτe^{−rτ}` at the forward and keep
+//! their saturated closed forms away from it, `gamma → +∞` at the forward
+//! and `0` away from it, and the six that difference a price inherit
+//! `term_call_put`'s `½(Se^{(b−r)τ} − Ke^{−rτ}) = 0`.
+//!
 //! `theta`/`charm`/`veta`'s `λ > 0` path additionally guards near expiry —
 //! case 2 of the crate's [failure
 //! convention](crate::traits::ModelPricer#how-pricing-fails):
 //! at `τ ≤ h_τ` the down-`τ` bump would evaluate the price series at a
 //! negative time-to-maturity, whose derivative is undefined. The guard is
 //! an explicit statement of that, not the only thing standing behind it:
-//! `greek_series`'s floor no longer zeroes those terms, so a negative
-//! bumped maturity now reaches the caller as `NaN` on its own. It stays
+//! nothing zeroes those terms, so a negative bumped maturity reaches the
+//! caller as `NaN` on its own. It stays
 //! because saying so at the accessor is clearer than relying on which
 //! terms happen to go non-finite, and because it also covers a
 //! non-finite `τ`. Mirrors
@@ -67,11 +77,13 @@
 //! exception is not a parity failure but an `erf` one, documented on
 //! [`volga`](Merton1976Pricer::volga).
 
+use stochastic_rs_distributions::special::norm_pdf;
+
 use super::Merton1976Pricer;
+use super::TermRegime;
 use crate::OptionType;
 use crate::pricing::bsm::BSMPricer;
 use crate::traits::Greeks;
-use crate::traits::ModelPricer;
 
 impl Merton1976Pricer {
   const H_TAU: f64 = 1e-5;
@@ -91,78 +103,43 @@ impl Merton1976Pricer {
     bumped
   }
 
-  /// Poisson-weighted series over a closed-form BSM Greek. Exact whenever
-  /// the Greek's bump variable enters neither `term_vol` nor
-  /// `poisson_weight` — true for spot and rate, which is why
-  /// `delta`/`gamma`/`rho` use this path.
+  /// Poisson-weighted series over a per-term quantity. Exact whenever the
+  /// Greek's bump variable enters neither `term_vol` nor `poisson_weight` —
+  /// true for spot and rate, which is why `delta`/`gamma`/`rho` use this
+  /// path.
   ///
   /// `λ ≤ 0` returns the single surviving (`n = 0`, weight 1) term
-  /// directly. At `λ == 0` that is now what the series would produce
-  /// anyway — `Merton1976Pricer::jump_size_std` reports the no-jump state's
-  /// `z = 0`, so `σ_n = v` and the weights are `1, 0, 0, …` — and the
-  /// branch is kept for the bump-based Greeks below, whose `λ ≤ 0` legs
-  /// need the *closed form* rather than a central difference of it to match
-  /// `BSMPricer` to `1e-10`. At `λ < 0` it is load-bearing for a different
-  /// reason: it is the only thing keeping an invalid intensity from
-  /// reaching the `NaN` floor below and coming back as `0.0`.
+  /// directly. At `λ == 0` that is what the series would produce anyway —
+  /// `Merton1976Pricer::jump_size_std` reports the no-jump state's `z = 0`,
+  /// so `σ_n = v` and the weights are `1, 0, 0, …` — and the branch is kept
+  /// for the bump-based Greeks below, whose `λ ≤ 0` legs need the *closed
+  /// form* rather than a central difference of it to match `BSMPricer` to
+  /// `1e-10`.
   ///
-  /// A term priced at `term_vol(n, τ) = 0` sends `1/v`-shaped closed forms
-  /// like `BSMPricer::gamma` to `0/0`. That term's true contribution is its
-  /// `v → 0⁺` limit, which is `0` for any off-the-money strike
-  /// (`norm_pdf(d1) → 0` exponentially, beating the linear `1/v`) — so a
-  /// `NaN` contribution from a **degenerate term** is floored to `0` rather
-  /// than poisoning the whole sum.
+  /// One residual survives there on purpose. At `λ == 0` **and** `v == 0`
+  /// the six bump-based Greeks come back `NaN` while `delta`, `gamma`,
+  /// `rho` and the price return their limits, because those six take their
+  /// own `λ ≤ 0` legs straight to [`BSMPricer`], which has no degenerate
+  /// handling of its own. The asymmetry is `BSMPricer`'s rather than this
+  /// pricer's — the same query prices `NaN` on a bare `BSMPricer` — and
+  /// `a_frozen_no_jump_model_inherits_black_scholess_own_gaps` pins it so
+  /// it cannot be mistaken for a regression here.
   ///
-  /// The `term.v == 0.0` half of the test is the whole of that argument
-  /// written down. `f64::NAN.max(0.0)`-shaped laundering is what the bare
-  /// `contribution.is_nan()` test used to be, and it reached far past the
-  /// case it was justified for: with `λ > 0`, a `NaN` `tau` — which
-  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) returns for an
-  /// expiry that never resolved — gave `delta = gamma = vega = rho = 0.0`
-  /// on a perfectly ordinary model whose *price* was `NaN`; so did a `NaN`
-  /// `r`, `s` or `k`, a negative spot or strike, `τ ≤ 0`, and `τ = ∞`. So
-  /// did a `gamma` outside `[0, 1]`, which
-  /// [`new`](Merton1976Pricer::new) documents as announcing itself — it
-  /// announces itself in the price and used to report a confident `0.0` in
-  /// all nine Greeks. And so did a Poisson weight that overflowed to
-  /// `0 · ∞` at `λτ ≳ 5e8`. The `λ ≤ 0` branch above never laundered any
-  /// of these, so price and Greeks disagreed about every one of them.
-  ///
-  /// **What the floor still does, and what it gets wrong.**
-  /// `σ_n = √(d² + z²n/τ)` is zero only where the diffusive volatility `d`
-  /// is, so a degenerate term is reachable at `v == 0` and, for `n = 0`
-  /// alone, at `gamma == 1`; an ordinary configuration never has one.
-  /// *Away from the forward* the floor is exact — `d₁` saturates to `±∞`,
-  /// the `1/v`-shaped Greeks really do tend to `0`, and the ones that do
-  /// not (`delta → e^{(b−r)τ}`) never went `NaN` in the first place.
-  /// **At** the forward it is not: `d₁` is `0/0`, every closed form is
-  /// `NaN`, and the `σ → 0⁺` limits are `delta → ½e^{(b−r)τ}`,
-  /// `rho → ½Kτe^{−rτ}` and `gamma → +∞`, not zero. Measured at
-  /// `(S, K, r, τ) = (100, 100, 0.05, 0.5)` under `Black1976`: the floor
-  /// returns `0.0` where the limits are `0.487655`, `24.382748` and a
-  /// `1/σ` divergence. `theta` is the one it gets right there, because the
-  /// bumped Greeks floor a *price*, whose forward limit really is `0`.
-  ///
-  /// That residual is left in place, pinned by
-  /// `the_forward_point_greeks_of_a_degenerate_term_are_a_known_zero`, and
-  /// not fixed here: a correct answer needs a per-Greek limit rather than a
-  /// per-contribution floor, which is the shape of the fix already applied
-  /// to `Merton1976Pricer::term_call_put` for the price and would move
-  /// every degenerate-configuration Greek.
+  /// **This sum has no `NaN` floor**, and that is the point. It used to
+  /// end `if contribution.is_nan() && term.v == 0.0 { 0.0 }`, which was
+  /// exact away from the forward and wrong at it — `d₁` is `0/0` there, so
+  /// every closed form goes `NaN` and `0` is the limit of only some of
+  /// them. Each caller now states its own `σ → 0⁺` limit against
+  /// [`TermRegime`], which is the shape
+  /// [`term_call_put`](Merton1976Pricer::term_call_put) already used for
+  /// the price, so a term that has no limit worth claiming propagates its
+  /// `NaN` instead of being laundered into a confident `0.0`.
   fn greek_series(&self, tau: f64, greek: impl Fn(&BSMPricer) -> f64) -> f64 {
     if self.lambda <= 0.0 {
       return greek(&self.base_bsm());
     }
     (0..self.m)
-      .map(|n| {
-        let term = self.term_bsm(n, tau);
-        let contribution = self.poisson_weight(n, tau) * greek(&term);
-        if contribution.is_nan() && term.v == 0.0 {
-          0.0
-        } else {
-          contribution
-        }
-      })
+      .map(|n| self.poisson_weight(n, tau) * greek(&self.term_bsm(n, tau)))
       .sum()
   }
 
@@ -175,8 +152,38 @@ impl Merton1976Pricer {
   /// `theta` and `charm` pass the caller's own `option_type` — the spread
   /// their `τ`-derivative sees is not `σ`-free. The four volatility Greeks
   /// pass [`series_call`](Self::series_call) instead.
-  fn series_price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
-    self.greek_series(tau, |bsm| bsm.price_option(s, k, r, q, tau, option_type))
+  ///
+  /// Prices each term through
+  /// [`term_call_put`](Merton1976Pricer::term_call_put) rather than through
+  /// [`ModelPricer::price_option`](crate::traits::ModelPricer::price_option),
+  /// so the degenerate term's forward limit is
+  /// the *same expression* the price uses rather than a second copy of it.
+  /// The value it fills in there is `½(Se^{(b-r)τ} − Ke^{-rτ})`, which is
+  /// `0` — being at the forward is the statement `Se^{bτ} = K` — and that
+  /// is why `theta`, `charm` and the rest of the bump-based Greeks were
+  /// already right at the forward while `delta`, `gamma` and `rho` were
+  /// not: the quantity they floor is a price, whose limit really is zero.
+  ///
+  /// `pub(super)` only so
+  /// `the_greeks_price_a_degenerate_term_exactly_as_the_price_does` can
+  /// assert the two against each other directly; nothing outside this
+  /// module calls it.
+  pub(super) fn series_price(
+    &self,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    self.greek_series(tau, |bsm| {
+      let (call, put) = Merton1976Pricer::term_call_put(bsm, s, k, r, q, tau);
+      match option_type {
+        OptionType::Call => call,
+        OptionType::Put => put,
+      }
+    })
   }
 
   /// [`series_price`](Self::series_price) at the call, for the four Greeks
@@ -191,18 +198,92 @@ impl Merton1976Pricer {
   }
 
   /// Delta — $\partial V/\partial S$.
+  ///
+  /// A [degenerate term at the forward](TermRegime::AtTheForward)
+  /// contributes the $\sigma \to 0^+$ limit of $e^{(b-r)\tau}N(d_1)$, which
+  /// is $\tfrac12 e^{(b-r)\tau}$ for the call and
+  /// $-\tfrac12 e^{(b-r)\tau}$ for the put — the closed form at
+  /// $N(d_1) = \tfrac12$, and no more than that. Written as an expression
+  /// in `r` and `τ` rather than as the number it evaluates to, so a
+  /// non-finite rate still propagates.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
-    self.greek_series(tau, |bsm| bsm.delta(s, k, r, q, tau, option_type))
+    self.greek_series(tau, |bsm| {
+      match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {
+        TermRegime::AtTheForward => {
+          let half_carry = 0.5 * ((bsm.b(r, q) - r) * tau).exp();
+          match option_type {
+            OptionType::Call => half_carry,
+            OptionType::Put => -half_carry,
+          }
+        }
+        TermRegime::Saturated | TermRegime::Ordinary => bsm.delta(s, k, r, q, tau, option_type),
+      }
+    })
   }
 
   /// Gamma — $\partial^2 V/\partial S^2$.
+  ///
+  /// **Returns $+\infty$ at a [degenerate term's
+  /// forward](TermRegime::AtTheForward)**, which is the value of the limit
+  /// and not a failure to compute one. $\Gamma =
+  /// e^{(b-r)\tau}\varphi(d_1)/(S\sigma\sqrt\tau)$ has a finite, strictly
+  /// positive numerator there ($\varphi(0) = 1/\sqrt{2\pi}$) over a
+  /// vanishing $\sigma$, so it diverges like $1/\sigma$ — measured at
+  /// $(S, K, r, \tau) = (100, 100, 0.05, 0.5)$ under
+  /// [`BSMCoc::Black1976`](crate::pricing::bsm::BSMCoc::Black1976),
+  /// $\sigma\Gamma$ is `0.0063285` to sixteen figures across
+  /// $\sigma = 10^{-3} \ldots 10^{-8}$. The frozen underlying's payoff is a
+  /// step at the forward and its second derivative is a Dirac delta; an
+  /// unbounded gamma is what that *is*.
+  ///
+  /// So the arm below is the closed form with $d_1$ at its limit of `0`,
+  /// left to divide by the term's own `+0.0`. IEEE gives $+\infty$ for the
+  /// positive numerator and keeps propagating a non-finite `r`, which a
+  /// literal [`f64::INFINITY`] would not. Case 2 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails) is for a
+  /// quantity that is *undefined* here; this one is defined and unbounded,
+  /// so `NaN` would understate it and `0.0` — what the old floor returned —
+  /// inverts it. `MertonCreditPricer::credit_spread` and
+  /// `g_digital_put_2d`'s logarithmic corner are the crate's precedent for
+  /// letting a real divergence through as one.
+  ///
+  /// Away from the forward the same term contributes `0`, and both are
+  /// pinned: `the_degenerate_term_floor_is_exact_away_from_the_forward` and
+  /// `the_forward_point_greeks_of_a_degenerate_term_are_their_limits`.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.greek_series(tau, |bsm| bsm.gamma(s, k, r, q, tau))
+    self.greek_series(tau, |bsm| {
+      match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {
+        TermRegime::AtTheForward => {
+          ((bsm.b(r, q) - r) * tau).exp() * norm_pdf(0.0) / (s * bsm.v * tau.sqrt())
+        }
+        TermRegime::Saturated => ((bsm.b(r, q) - r) * tau).exp() * 0.0,
+        TermRegime::Ordinary => bsm.gamma(s, k, r, q, tau),
+      }
+    })
   }
 
   /// Rho — $\partial V/\partial r$.
+  ///
+  /// A [degenerate term at the forward](TermRegime::AtTheForward)
+  /// contributes the $\sigma \to 0^+$ limit of $K\tau e^{-r\tau}N(d_2)$,
+  /// which is $\tfrac12 K\tau e^{-r\tau}$ for the call and its negation for
+  /// the put — the closed form at $N(d_2) = \tfrac12$. `rho` is the one of
+  /// the three whose limit carries the *discount* factor rather than the
+  /// carry factor, so it is the accessor that would catch a mix-up of the
+  /// two.
   pub fn rho(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
-    self.greek_series(tau, |bsm| bsm.rho(s, k, r, q, tau, option_type))
+    self.greek_series(tau, |bsm| {
+      match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {
+        TermRegime::AtTheForward => {
+          let half = 0.5 * k * tau * (-r * tau).exp();
+          match option_type {
+            OptionType::Call => half,
+            OptionType::Put => -half,
+          }
+        }
+        TermRegime::Saturated | TermRegime::Ordinary => bsm.rho(s, k, r, q, tau, option_type),
+      }
+    })
   }
 
   /// Vega — $\partial V/\partial\sigma$.

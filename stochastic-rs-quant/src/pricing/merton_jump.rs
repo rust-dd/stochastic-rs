@@ -65,6 +65,35 @@ pub struct Merton1976Pricer {
   pub b: BSMCoc,
 }
 
+/// Where one Poisson term's query sits, which is what decides whether its
+/// closed forms are the value or stand in need of a $\sigma \to 0^+$ limit.
+///
+/// A term whose [`term_vol`](Merton1976Pricer::term_vol) is exactly `0`
+/// prices a zero-volatility Black-Scholes option, and its
+/// $d_1 = (\ln(S/K) + b\tau)/(\sigma\sqrt\tau) + \sigma\sqrt\tau/2$ is then
+/// $\infty \cdot x$ — never finite. *Which* infinity decides everything, and
+/// the two cases have different limits, which is why one blanket `0` could
+/// not serve both.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TermRegime {
+  /// $\sigma_n > 0$, or a query the closed forms already answer with `NaN`
+  /// and must go on answering with one. The closed form *is* the value.
+  Ordinary,
+  /// $\sigma_n = 0$ away from the forward. $d_1 \to \pm\infty$, both normal
+  /// CDFs saturate, and everything but the $1/\sigma$-shaped quantities is
+  /// already its own limit. Those — `gamma` alone among the nine — are
+  /// $0/0$, and their limit is `0`: $\varphi(d_1)$ decays like
+  /// $e^{-c^2/2\sigma^2}$ and beats the linear $1/\sigma$.
+  Saturated,
+  /// $\sigma_n = 0$ **at** the forward $Se^{b\tau} = K$. $d_1$ is $0/0$, so
+  /// every closed form is `NaN` and each needs its own limit. Both CDFs
+  /// converge to $\tfrac12$ — $d_1 = \sigma\sqrt\tau/2 \to 0^+$ and
+  /// $d_2 = -\sigma\sqrt\tau/2 \to 0^-$ — which leaves the price and the
+  /// first-order Greeks finite; `gamma` still divides by $\sigma$ and
+  /// diverges.
+  AtTheForward,
+}
+
 impl Merton1976Pricer {
   /// Validating constructor.
   ///
@@ -127,7 +156,7 @@ impl Merton1976Pricer {
 
     for i in 0..self.m {
       let weight = self.poisson_weight(i, tau);
-      let (c, p) = self.term_call_put(i, tau, s, k, r, q);
+      let (c, p) = Self::term_call_put(&self.term_bsm(i, tau), s, k, r, q, tau);
       call += c * weight;
       put += p * weight;
     }
@@ -253,7 +282,33 @@ impl Merton1976Pricer {
     BSMPricer::new(self.term_vol(n, tau), self.b)
   }
 
-  /// Call and put of the `n`-th Poisson term, with the one point where the
+  /// Classify one Poisson term's query — see [`TermRegime`].
+  ///
+  /// The three guards are what keep a *poisoned* query out of the two
+  /// degenerate arms, where a limit expression would answer it with a
+  /// plausible number instead of propagating. At `v == 0` the term
+  /// volatility is exactly `0` for an infinite or negative `tau` just as
+  /// much as for a good one — `(-0.0f64).sqrt()` is `-0.0`, which compares
+  /// equal to `0.0` — and `d₁` is `NaN` for a non-positive `s` or `k` for a
+  /// reason that has nothing to do with the forward. All three keep the
+  /// closed form's own `NaN`, which is case 2 of the crate's [failure
+  /// convention](crate::traits::ModelPricer#how-pricing-fails).
+  ///
+  /// The `NaN`/`Saturated` split needs no third arm: at `σ_n = 0` the
+  /// leading `1/(σ√τ)` is `+∞`, so `d₁` is `±∞` for any non-zero numerator
+  /// and `NaN` for a zero one, and cannot come out finite.
+  fn term_regime(term: &BSMPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> TermRegime {
+    if term.v != 0.0 || !(tau.is_finite() && tau > 0.0 && s > 0.0 && k > 0.0) {
+      return TermRegime::Ordinary;
+    }
+    if term.d1_d2(s, k, r, q, tau).0.is_nan() {
+      TermRegime::AtTheForward
+    } else {
+      TermRegime::Saturated
+    }
+  }
+
+  /// Call and put of one Poisson term, with the one point where the
   /// zero-volatility term is a *removable singularity* filled in.
   ///
   /// A term whose [`term_vol`](Self::term_vol) is exactly `0` prices a
@@ -295,10 +350,14 @@ impl Merton1976Pricer {
   /// loses its at-the-money point — the most-quoted one on a futures-option
   /// surface. The three carrying conventions put it at $Se^{b\tau}$, a
   /// strike nobody asks for exactly.
-  fn term_call_put(&self, n: usize, tau: f64, s: f64, k: f64, r: f64, q: f64) -> (f64, f64) {
-    let term = self.term_bsm(n, tau);
-    let (d1, _) = term.d1_d2(s, k, r, q, tau);
-    if d1.is_nan() && term.v == 0.0 && tau > 0.0 && s > 0.0 && k > 0.0 {
+  ///
+  /// Takes the term rather than its index so the Greeks'
+  /// [`series_price`](Self::series_price) can price through **this**
+  /// function rather than through a second copy of the same limit; the
+  /// price and the Greeks' idea of the price then cannot come apart, which
+  /// `the_greeks_price_a_degenerate_term_exactly_as_the_price_does` pins.
+  fn term_call_put(term: &BSMPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    if Self::term_regime(term, s, k, r, q, tau) == TermRegime::AtTheForward {
       let half_carry = 0.5 * s * ((term.b(r, q) - r) * tau).exp();
       let half_disc = 0.5 * k * (-r * tau).exp();
       return (half_carry - half_disc, half_disc - half_carry);
