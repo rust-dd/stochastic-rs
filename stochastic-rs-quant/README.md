@@ -19,9 +19,10 @@ surfaces, curves, instruments and risk.
 - **Numerical pricing** — finite differences, CRR and short-rate lattices
   (Hull-White, Black-Karasinski, G2++), Bermudan LSM, Snell envelope,
   Heston SLV, autocallables, baskets.
-- **Greeks** — first and second order via `GreeksExt`, plus Malliavin
-  Greeks (Thalmaier and El Khatib schemes) and a Fourier-Malliavin
-  volatility estimator.
+- **Greeks** — first and second order from each pricer's inherent
+  `greeks(s, k, r, q, tau, option_type)`, plus Malliavin Greeks
+  (Thalmaier and El Khatib schemes, which expose `GreeksExt`) and a
+  Fourier-Malliavin volatility estimator.
 - **Calibration** — Heston (Cui analytic Jacobian), SABR, SVJ, Lévy, rough
   Bergomi, double Heston, HKDE, Hull-White swaption grids, BSM.
 - **Volatility surfaces** — implied surfaces from quotes, SVI, SSVI, SABR
