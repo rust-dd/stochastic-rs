@@ -21,6 +21,13 @@ use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
 use crate::traits::ModelPricer;
 
+/// Lower edge of the projection box for `v`, matching
+/// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s
+/// `ALPHA_MIN`: the same kind of parameter under the same optimiser. No
+/// upper edge, for the same reason SABR gives `alpha` none — a legitimate
+/// fit to a distressed surface can sit anywhere above it.
+const V_MIN: f64 = 1e-6;
+
 /// Calibration result for the BSM model.
 #[derive(Clone, Debug)]
 pub struct BSMCalibrationResult {
@@ -86,6 +93,37 @@ impl crate::traits::Calibrator for BSMCalibrator {
 pub struct BSMParams {
   /// Implied volatility
   pub v: f64,
+}
+
+impl BSMParams {
+  /// Project onto the admissible set $[\text{V\_MIN}, \infty)$, in the
+  /// shape of
+  /// [`SabrParams::project_in_place`](crate::calibration::sabr::SabrParams::project_in_place).
+  ///
+  /// A negative `v` does not announce itself: $d_1$ and $d_2$ both flip
+  /// sign with $\sigma$ (the $\sigma^2/2$ in the numerator does not), so
+  /// [`BSMPricer`] hands back a finite, put-shaped number for a call and
+  /// the residual is built from it as if nothing happened.
+  ///
+  /// `abs()` rather than `max(V_MIN)` alone so the step keeps its
+  /// magnitude — the optimiser that overshot to `-0.3` is told `0.3`, not
+  /// `V_MIN` — which is what stops the box from stalling a live
+  /// calibration on one bad step. `sigma_is_reflected_not_clamped` pins
+  /// both halves.
+  ///
+  /// A `NaN` iterate lands on `V_MIN`, since `f64::max` returns the
+  /// non-`NaN` operand. Intended, and not the crate's laundering shape:
+  /// what is replaced is an optimiser *iterate*, not a computed price, and
+  /// a projection onto a set has to be total.
+  pub fn project_in_place(&mut self) {
+    self.v = self.v.abs().max(V_MIN);
+  }
+
+  /// [`project_in_place`](Self::project_in_place), by value.
+  pub fn projected(mut self) -> Self {
+    self.project_in_place();
+    self
+  }
 }
 
 impl From<BSMParams> for DVector<f64> {
@@ -214,12 +252,13 @@ impl BSMCalibrator {
   fn solve(&self) -> BSMCalibrationResult {
     let (result, report) = LevenbergMarquardt::new().minimize(self.clone());
     let converged = report.termination.was_successful();
+    let fitted = result.effective_params();
     let c_model: Vec<f64> = result
       .c_market
       .iter()
       .enumerate()
       .map(|(idx, _)| {
-        BSMPricer::new(result.params.v, BSMCoc::Bsm1973).price_option(
+        BSMPricer::new(fitted.v, BSMCoc::Bsm1973).price_option(
           result.s[idx],
           result.k[idx],
           result.r,
@@ -236,14 +275,32 @@ impl BSMCalibrator {
     );
 
     BSMCalibrationResult {
-      v: result.params.v,
+      v: fitted.v,
       loss,
       converged,
     }
   }
 
+  /// Set the starting point, projected onto the admissible set — the
+  /// optimiser is never started outside the box it is confined to.
   pub fn set_initial_guess(&mut self, params: BSMParams) {
-    self.params = params;
+    self.params = params.projected();
+  }
+
+  /// The parameters the model is actually priced at: the stored ones,
+  /// projected — [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s
+  /// `effective_params` under the same name.
+  ///
+  /// [`set_params`](LeastSquaresProblem::set_params) alone does not keep
+  /// [`BSMPricer::new`] inside the box: `LevenbergMarquardt::minimize`
+  /// evaluates residuals and the Jacobian at the *starting* point before it
+  /// has a step to hand back, so the first call into the pricer reads
+  /// whatever the caller left in the `pub params` field. Projecting on read
+  /// closes that path and every other one at once;
+  /// `the_optimisers_first_evaluation_is_already_inside_the_box` fails
+  /// without it.
+  fn effective_params(&self) -> BSMParams {
+    self.params.clone().projected()
   }
 
   /// `(s, k, q, tau)` for quote `idx` — the per-quote half of the
@@ -265,12 +322,17 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
   type ParameterStorage = Owned<f64, Dyn>;
   type ResidualStorage = Owned<f64, Dyn>;
 
+  /// Levenberg-Marquardt is unconstrained and steps wherever the
+  /// linearised model points, so the raw iterate is stored only after
+  /// projection — the same hook `SabrCalibrator` uses (`HestonStochCorr`
+  /// carries `BOUNDS`, and Heston moves in bounded logistic coordinates
+  /// instead).
   fn set_params(&mut self, params: &DVector<f64>) {
-    self.params = BSMParams::from(params.clone());
+    self.params = BSMParams::from(params.clone()).projected();
   }
 
   fn params(&self) -> DVector<f64> {
-    self.params.clone().into()
+    self.effective_params().into()
   }
 
   fn residuals(&self) -> Option<DVector<f64>> {
@@ -279,7 +341,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
     let mut vegas: Vec<f64> = Vec::with_capacity(n);
 
     for (idx, _) in self.c_market.iter().enumerate() {
-      let model = BSMPricer::new(self.params.v, BSMCoc::Bsm1973);
+      let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);
       let (s, k, q, tau) = self.query(idx);
       let (call, put) = model.call_put(s, k, self.r, q, tau);
 
@@ -298,7 +360,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
         .push(CalibrationHistory {
           residuals: c_model.clone() - self.c_market.clone(),
           call_put: vec![(call, put)].into(),
-          params: self.params.clone(),
+          params: self.effective_params(),
           loss_scores: CalibrationLossScore::compute_selected(
             self.c_market.as_slice(),
             c_model.as_slice(),
@@ -323,7 +385,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
     let mut J = DMatrix::zeros(n, 1);
 
     for idx in 0..n {
-      let model = BSMPricer::new(self.params.v, BSMCoc::Bsm1973);
+      let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);
       let (s, k, q, tau) = self.query(idx);
 
       let c_model_i = model.price_option(s, k, self.r, q, tau, self.option_type);
@@ -340,127 +402,4 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::traits::Calibrator;
-
-  #[test]
-  fn test_calibrate() {
-    let s = vec![
-      425.73, 425.73, 425.73, 425.67, 425.68, 425.65, 425.65, 425.68, 425.65, 425.16, 424.78,
-      425.19,
-    ];
-
-    let k = vec![
-      395.0, 400.0, 405.0, 410.0, 415.0, 420.0, 425.0, 430.0, 435.0, 440.0, 445.0, 450.0,
-    ];
-
-    let c_market = vec![
-      30.75, 25.88, 21.00, 16.50, 11.88, 7.69, 4.44, 2.10, 0.78, 0.25, 0.10, 0.10,
-    ];
-
-    let r = 0.05;
-    let r_d = None;
-    let r_f = None;
-    let q = None;
-    let tau = 1.0;
-    let option_type = OptionType::Call;
-
-    let calibrator = BSMCalibrator::new(
-      BSMParams { v: 0.2 },
-      c_market.into(),
-      s.into(),
-      k.into(),
-      r,
-      r_d,
-      r_f,
-      q,
-      tau,
-      option_type,
-    );
-
-    calibrator.calibrate(None).unwrap();
-  }
-
-  #[test]
-  fn test_calibrate_from_slices_recovers_constant_sigma() {
-    // Generate three synthetic maturity slices from a known constant sigma,
-    // then check the joint calibrator recovers it on the whole flattened set.
-    use crate::calibration::levy::MarketSlice;
-
-    let s = 100.0_f64;
-    let r = 0.03_f64;
-    let true_sigma = 0.25_f64;
-    let strikes = vec![85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0];
-
-    let make_slice = |tau: f64| -> MarketSlice {
-      let prices: Vec<f64> = strikes
-        .iter()
-        .map(|&k| BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, tau))
-        .collect();
-      MarketSlice {
-        strikes: strikes.clone(),
-        prices,
-        is_call: vec![true; strikes.len()],
-        tau,
-      }
-    };
-
-    let slices = vec![make_slice(0.10), make_slice(0.30), make_slice(0.75)];
-
-    let calibrator = BSMCalibrator::from_slices(
-      BSMParams { v: 0.4 }, // intentionally far from the truth
-      &slices,
-      s,
-      r,
-      None,
-      None,
-      None,
-      OptionType::Call,
-    );
-    let result = calibrator.calibrate(None).unwrap();
-    println!(
-      "recovered sigma = {:.6}  (truth {:.4})  converged = {}",
-      result.v, true_sigma, result.converged
-    );
-    assert!(
-      (result.v - true_sigma).abs() < 1e-3,
-      "expected ~{}, got {}",
-      true_sigma,
-      result.v
-    );
-  }
-
-  #[test]
-  fn calibrator_trait_returns_result() {
-    use crate::traits::CalibrationResult;
-    let s = 100.0_f64;
-    let k = 100.0_f64;
-    let true_sigma = 0.20_f64;
-    let call = BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, 0.03, 0.0, 0.5);
-
-    let calibrator = BSMCalibrator::new(
-      BSMParams { v: 0.4 },
-      DVector::from_vec(vec![call]),
-      DVector::from_vec(vec![s]),
-      DVector::from_vec(vec![k]),
-      0.03,
-      None,
-      None,
-      None,
-      0.5,
-      OptionType::Call,
-    );
-
-    let result: Result<BSMCalibrationResult, anyhow::Error> =
-      Calibrator::calibrate(&calibrator, None);
-    let result = result.expect("trait calibrate must succeed");
-    let params = CalibrationResult::params(&result);
-    assert!(
-      (params.v - true_sigma).abs() < 1e-3,
-      "trait Calibrator path recovered sigma {} via CalibrationResult::params (expected ~{})",
-      params.v,
-      true_sigma
-    );
-  }
-}
+mod tests;
