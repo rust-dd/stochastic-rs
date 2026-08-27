@@ -26,13 +26,21 @@ Three patterns, in order of preference:
 
 | Pattern         | When to use                                             | Reference impl |
 |-----------------|---------------------------------------------------------|----------------|
-| Transformation  | Closed-form `F^{-1}(U)` exists and is fast to evaluate. | `SimdExponential`, `SimdLogNormal` |
-| Ziggurat        | Density is unimodal & smooth; need throughput.          | `SimdNormal`, `SimdGamma` |
-| Rejection / inversion | Density has heavy tails or kink; need correctness.      | `SimdInverseGamma`, `SimdNig` |
+| Transformation  | Closed-form `F^{-1}(U)` exists and is fast to evaluate. | `SimdExp` (`exp.rs`), `SimdLogNormal` |
+| Ziggurat        | Density is unimodal & smooth; need throughput.          | `SimdNormal`, `SimdExpZig` (`exp.rs`) |
+| Rejection       | Density has heavy tails or a kink; need correctness.     | `SimdGamma`, `SimdBinomial` (BTRS), `SimdTruncated*` |
+| Subordination   | The law is a normal mean-variance mixture.               | `SimdNormalInverseGauss` (over `SimdInverseGauss`) |
 
-For tail-heavy distributions (NIG, Variance-Gamma, CGMY), the rejection
-step needs a documented acceptance ratio in the source comments — the
-reviewer needs to verify that the proposal density majorises the target.
+Note the naming: the exponential is `SimdExp` / `SimdExpZig` in
+`exp.rs`, not `SimdExponential`; the Normal-Inverse-Gaussian is
+`SimdNormalInverseGauss` in `normal_inverse_gauss.rs`, not `SimdNig`.
+There is no `SimdInverseGamma` and no `SimdCgmy` — CGMY exists in this
+workspace as a *process* (`stochastic-rs-stochastic/src/jump/cgmy.rs`),
+not as a distribution.
+
+For tail-heavy laws the rejection step needs a documented acceptance
+ratio in the source comments — the reviewer needs to verify that the
+proposal density majorises the target.
 
 ## 2. Mandatory surface
 
@@ -140,8 +148,10 @@ The `//!` header MUST include:
 //! Reference: <Author, Year>, "<Title>", <Journal>, eq. <number>.
 ```
 
-Example: `SimdNig` cites Barndorff-Nielsen (1997) eq. 3; `SimdCgmy`
-cites Carr-Geman-Madan-Yor (2002) eq. 3.4.
+Every distribution file opens with a `//!` header carrying the LaTeX
+for the pdf and/or characteristic function — see
+`normal_inverse_gauss.rs`, which states `Nig(α, β, δ, μ)` and its
+`ψ(u)` in the header before any code.
 
 ## 5. Testing — KS test + reference comparison
 
@@ -241,13 +251,24 @@ Parameters only, no interior mutability — that is what makes it `Sync`.
 
 ## 9. Reference impls
 
-- `SimdNormal` (`normal.rs`) — ziggurat; the canonical reference.
-- `ScalarNormal` / `ScalarExp` (`scalar.rs`) — stateless, `Sync`.
-- `SimdExponential` (`exponential.rs`) — transformation; thinnest possible.
-- `SimdGamma` (`gamma.rs`) — ziggurat with shape > 1, transformation
-  fallback for shape ≤ 1.
-- `SimdNig` (`nig.rs`) — rejection; tail-heavy; Bessel-K-based pdf.
-- `SimdCgmy` (`cgmy.rs`) — Lévy density with rejection; CGMY 2002.
+- `SimdNormal` (`normal.rs`) — ziggurat; the canonical reference. Note
+  its full generics: `SimdNormal<T: SimdFloatExt, const N: usize = 64,
+  R: SimdRngExt = SimdRng>` — the const `N` is the internal buffer
+  length, and most `Simd*` types carry the `R` parameter too.
+- `ScalarNormal` / `ScalarExp` (`scalar.rs`) — stateless and `Sync`;
+  the **only** types eligible for a process's `D: Distribution<T> +
+  Send + Sync` jump slot, because `Simd*` types own an `UnsafeCell`
+  buffer and are `!Sync`. See `dev-rules` §7a.
+- `SimdExp` / `SimdExpZig` (`exp.rs`) — transformation and ziggurat
+  variants of the same law, side by side.
+- `SimdGamma` (`gamma.rs`) — rejection (Marsaglia-Tsang) with a
+  transformation fallback for shape ≤ 1.
+- `SimdNormalInverseGauss` (`normal_inverse_gauss.rs`) — subordination:
+  draws an `SimdInverseGauss` mixing variable, then a `SimdNormal`.
+  The reference for composing one distribution out of two.
+- `SimdTruncatedNormal` / `Exp` / `Beta` / `Gamma` (`truncated.rs`) —
+  four truncated laws in one file; the reference for rejection with a
+  documented acceptance ratio.
 
 ## Related SKILLs
 
