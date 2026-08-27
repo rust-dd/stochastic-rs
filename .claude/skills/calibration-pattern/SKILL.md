@@ -61,9 +61,11 @@ pub trait ToShortRateModel {
 ```
 
 `CalibrationLossScore` (in `crate::types`) is a HashMap of `LossMetric →
-f64` covering rmse / mae / mape / mspe / mre. The rc.2 fix made
-`get(metric)` return `f64::NAN` for missing entries (was 0.0). See the
-rc.2 CHANGELOG entry on `CalibrationLossScore`.
+f64` covering rmse / mae / mape / mspe / mre. `get(metric)` returns
+`f64::NAN` for a missing entry, never 0.0 — a silent zero would read as
+a perfect fit. Read the type's own doc in
+`stochastic-rs-quant/src/types.rs`; there is no `CHANGELOG.md` in this
+repo to look the history up in.
 
 ## 2. The four files of a calibrator
 
@@ -356,7 +358,7 @@ complexity):
 ## Related SKILLs
 
 - `python-bindings` — for the PyXyz wrapper layer.
-- `release-checklist` — CHANGELOG should note any new calibrator's
+- `release-checklist` — `MIGRATION.md` should note any new calibrator's
   parameter conventions in the breaking-change list.
 - `stats-estimator` — sister pattern for statistical estimators (similar
   Result<XxxResult, _> shape, but no `ToModel` bridge).

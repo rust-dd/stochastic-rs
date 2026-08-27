@@ -293,5 +293,5 @@ Malliavin-Greeks estimator (`pricing/malliavin_greeks/tests.rs`).
   requirement that the single-pass `greeks()` override depends on.
 - `calibration-pattern` — calibrators consume Greeks via the result's
   `to_model(r, q).greeks(s, k, r, q, tau, option_type)` chain.
-- `release-checklist` — the rc.X CHANGELOG should note any new Greek
+- `release-checklist` — `MIGRATION.md` should note any new Greek
   added to the public surface.

@@ -1,6 +1,6 @@
 ---
 name: no-version-tags-in-docs
-description: Use when writing or editing Rust `///` or `//!` doc comments — never tag sections with `## v2.3.0 design choice — …` or `## v2.4 deferred — …`. Version history goes in `CHANGELOG.md`, git log, or `docs/V*_UPDATE.md`, never in source doc comments.
+description: Use when writing or editing Rust `///` or `//!` doc comments — never tag sections with `## v2.3.0 design choice — …` or `## v2.4 deferred — …`. Version history goes in `MIGRATION.md`, git log, or `docs/V*_UPDATE.md`, never in source doc comments.
 ---
 
 # No Version-Tagged Sections in Source Doc Comments
@@ -23,9 +23,13 @@ The reader hitting `cargo doc` doesn't have the version landscape. They have the
 
 ## Where versioning DOES belong
 
-- `CHANGELOG.md` — human-curated release notes.
+- `MIGRATION.md` (repo root) — the breaking-changes record, grouped by
+  release, with an `## Unreleased` section for what is on `main`. This
+  repo has **no `CHANGELOG.md`**; do not add one and do not point at one.
 - `git log` / commit messages — sequence of changes.
-- `docs/V*_UPDATE.md` (or equivalent planning docs) — release-scope documents that LIVE outside `cargo doc`.
+- `docs/V*_UPDATE.md` (e.g. `docs/V2_3_0_UPDATE.md`) — occasional
+  release-scope planning documents that LIVE outside `cargo doc`.
+- The GitHub release body — human-curated release notes.
 
 ## How to express "this is a partial implementation"
 

@@ -145,4 +145,4 @@ Doc comments describe what the module / item *does*, not which release ships it.
 //! In v2.3.0 we ship only the closed-form path; the refinement lands in v2.4.
 ```
 
-Version history belongs in `CHANGELOG.md` / git log / `docs/V*_UPDATE.md`, not in `///` or `//!` blocks. To record a genuine limitation near the code, describe **what is not supported and why** without the release number (e.g. "Nested-Clayton sampling is not yet implemented — needs Devroye double-rejection"), or use a `// TODO:` with a short rationale. When porting prose from a `V*_UPDATE.md` planning doc into a module header, strip the version prefix.
+Version history belongs in `MIGRATION.md` (the repo root breaking-changes record — there is no `CHANGELOG.md` here) / git log / `docs/V*_UPDATE.md`, not in `///` or `//!` blocks. To record a genuine limitation near the code, describe **what is not supported and why** without the release number (e.g. "Nested-Clayton sampling is not yet implemented — needs Devroye double-rejection"), or use a `// TODO:` with a short rationale. When porting prose from a `V*_UPDATE.md` planning doc into a module header, strip the version prefix.
