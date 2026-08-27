@@ -7,6 +7,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
@@ -87,10 +88,33 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
 /// - Put price is recovered from put-call parity.
 ///
 /// The struct holds **model and method state only** — the volatility, the
-/// Monte Carlo path/step counts, and the intermediate time `t_eval` at
-/// which the conditional price is estimated. Spot, strike, rate, dividend
+/// Monte Carlo path/step counts, the intermediate time `t_eval` at
+/// which the conditional price is estimated, and the seed strategy the
+/// paths are drawn from. Spot, strike, rate, dividend
 /// yield and maturity are the pricing *query* and travel as arguments to
 /// [`ModelPricer::price_call`].
+///
+/// # Seeding
+/// `S` is the compile-time seed strategy of the underlying
+/// [`Gbm`], and it is the *last* constructor argument for the same reason
+/// it is the last argument of [`Gbm::new`]: this pricer is a thin Monte
+/// Carlo estimator over that process, so the two take a seed the same way.
+/// [`Unseeded`] is the default type parameter, so
+/// `GbmMalliavinPricer::new(v, n_paths, n_steps, t_eval, Unseeded)` keeps
+/// the pre-3.0 behaviour of a fresh stream per run, while
+/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) makes
+/// the estimator a *function* of its query.
+///
+/// The seed reaches the Gaussian stream through the constructor chain
+/// `Gbm::new(…, seed) → SimdNormal::new(…, &seed)` and never through an
+/// `Rng` argument, which the workspace's SIMD distributions accept and
+/// ignore.
+///
+/// `sample_paths` hands the process a **clone** of
+/// this seed rather than a derived child, so the pricer's own state does
+/// not advance across calls: two identical queries against a
+/// `Deterministic` instance return the same price. A pricer that advanced
+/// its seed could not be pinned by a test that prices twice.
 ///
 /// # Panics
 /// Every pricing method asserts `0 < t_eval < tau`. `t_eval` is an
@@ -99,8 +123,10 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
 /// constraint on the strike/maturity grids this model can cover, and the
 /// reason `t_eval` is a construction parameter rather than a query one.
 /// The struct is `Clone`, so a shorter maturity means a second instance.
+/// It is `Copy` only where the seed strategy is — `Unseeded` is a unit
+/// struct, `Deterministic` carries an `AtomicU64` and is `Clone` alone.
 #[derive(Debug, Clone, Copy)]
-pub struct GbmMalliavinPricer {
+pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
   /// Volatility σ
   pub v: f64,
   /// Number of Monte Carlo paths (M)
@@ -110,9 +136,11 @@ pub struct GbmMalliavinPricer {
   /// Intermediate time t where the Malliavin conditional price C(t, S_t) is estimated
   /// (0 < t_eval < tau)
   pub t_eval: f64,
+  /// Seed strategy handed to the underlying [`Gbm`].
+  pub seed: S,
 }
 
-impl ModelPricer for GbmMalliavinPricer {
+impl<S: SeedExt> ModelPricer for GbmMalliavinPricer<S> {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).0
   }
@@ -136,9 +164,9 @@ impl ModelPricer for GbmMalliavinPricer {
 /// carries the estimator's Monte Carlo error into every implied vol, and
 /// [`t_eval`](GbmMalliavinPricer::t_eval) still bounds which maturities the
 /// grid may contain.
-impl VanillaEuropeanCall for GbmMalliavinPricer {}
+impl<S: SeedExt> VanillaEuropeanCall for GbmMalliavinPricer<S> {}
 
-impl GbmMalliavinPricer {
+impl<S: SeedExt> GbmMalliavinPricer<S> {
   /// Validating constructor.
   ///
   /// # Panics
@@ -158,7 +186,11 @@ impl GbmMalliavinPricer {
   /// here, since `tau` arrives per call; the upper half stays where it was,
   /// with its own distinct wording, so an `expected` anchor on one cannot
   /// be satisfied by the other.
-  pub fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {
+  ///
+  /// `seed` is unvalidated — it is a type, not a number, so there is no
+  /// invalid value to reject. See the type-level [Seeding](Self#seeding)
+  /// note for why it is the last parameter.
+  pub fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
     assert!(
       v >= 0.0,
       "GbmMalliavinPricer::new: v must be a non-negative volatility (got {v})"
@@ -180,6 +212,7 @@ impl GbmMalliavinPricer {
       n_paths,
       n_steps,
       t_eval,
+      seed,
     }
   }
 
@@ -245,11 +278,25 @@ impl GbmMalliavinPricer {
   ///
   /// Returns:
   ///   S: shape (M, N), with S[i, k] = S^{(i)}_{t_k}
+  ///
+  /// The process is handed a clone of [`self.seed`](Self#structfield.seed),
+  /// so the pricer's own seed state is unchanged by pricing and the whole
+  /// `M x N` block is reproducible from the constructor argument alone.
+  /// Each of the `M` `sample()` calls draws its own stream from that
+  /// clone, so the paths are independent of one another and still
+  /// identical run to run.
   fn sample_paths(&self, s: f64, r: f64, q: f64, tau: f64) -> Array2<f64> {
     let mu = r - q;
 
     // Construct a Gbm process with Euler discretization on [0, T].
-    let gbm = Gbm::new(mu, self.v, self.n_steps, Some(s), Some(tau), Unseeded);
+    let gbm = Gbm::new(
+      mu,
+      self.v,
+      self.n_steps,
+      Some(s),
+      Some(tau),
+      self.seed.clone(),
+    );
 
     let m = self.n_paths;
     let n = self.n_steps;
@@ -264,7 +311,7 @@ impl GbmMalliavinPricer {
   }
 }
 
-impl GbmMalliavinPricer {
+impl<S: SeedExt> GbmMalliavinPricer<S> {
   /// Malliavin-based conditional CALL prices C^M(t, S_t^{(i)}) for each path i.
   ///
   /// Returns:

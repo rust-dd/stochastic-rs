@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
 
 const S: f64 = 100.0;
@@ -5,40 +7,101 @@ const K: f64 = 99.99;
 const R: f64 = 0.1;
 const TAU: f64 = 1.0;
 
-fn pricer() -> GbmMalliavinPricer {
-  GbmMalliavinPricer::new(0.1, 2_000, 128, 0.5)
+/// The three pinned seeds every sampled assertion in this file runs at.
+///
+/// They are §1.2 of the integration-test skill's own triple, taken as
+/// printed rather than searched for: a seed that passes here is an
+/// unverified coin flip on the x86_64 CI runner, because the SIMD stream
+/// differs between targets, so the defence has to be the *count* of
+/// independent seeds and not the quality of any one of them.
+///
+/// Measured on this triple at the grid configuration below, worst point of
+/// the sweep: `2718 -> 15.88`, `999 -> 9.82`, `42 -> 14.88`, against a
+/// ceiling of `S = 100`. A 200-seed sweep of the same configuration
+/// breached that ceiling once (seed 156, worst point 579), so the
+/// per-seed rate is ~0.5 % and the best of three is ~1e-7.
+const SEEDS: [u64; 3] = [2718, 999, 42];
+
+fn pricer(seed: u64) -> GbmMalliavinPricer<Deterministic> {
+  GbmMalliavinPricer::new(0.1, 2_000, 128, 0.5, Deterministic::new(seed))
 }
 
+/// Finiteness and non-negativity hold on *every* sample and are asserted
+/// per seed. The two loose upper bounds do not: they share the grid test's
+/// ratio estimator and its tail, so they are asserted on the best of the
+/// three seeds. Measured calls here: `9.52`, `12.69`, `9.96` against a
+/// bound of `2S = 200`.
 #[test]
 fn malliavin_pricer_returns_finite_non_negative_prices() {
-  let p = pricer();
-  let (call, put) = p.call_put(S, K, R, 0.0, TAU);
+  let mut best_call = f64::INFINITY;
+  let mut best_put = f64::INFINITY;
+  for seed in SEEDS {
+    let (call, put) = pricer(seed).call_put(S, K, R, 0.0, TAU);
 
-  // Basic sanity checks: finite and non-negative prices
-  assert!(call.is_finite(), "Call price should be finite");
-  assert!(put.is_finite(), "Put price should be finite");
-  assert!(call >= 0.0, "Call price should be non-negative");
-  assert!(put >= 0.0, "Put price should be non-negative");
+    // Basic sanity checks: finite and non-negative prices
+    assert!(call.is_finite(), "seed {seed}: call price should be finite");
+    assert!(put.is_finite(), "seed {seed}: put price should be finite");
+    assert!(call >= 0.0, "seed {seed}: call should be non-negative");
+    assert!(put >= 0.0, "seed {seed}: put should be non-negative");
 
-  // Very loose upper bounds to avoid flakiness due to Monte Carlo noise
-  assert!(call < S * 2.0, "Call price is unreasonably large");
-  assert!(put < K * 2.0, "Put price is unreasonably large");
+    // `is_finite` is asserted *before* the running min because `f64::min`
+    // discards a `NaN` operand, which would hide a poisoned price.
+    best_call = best_call.min(call);
+    best_put = best_put.min(put);
+  }
+
+  // Very loose upper bounds; the estimator's tail is what needs three seeds.
+  assert!(
+    best_call < S * 2.0,
+    "call price {best_call} is unreasonably large"
+  );
+  assert!(
+    best_put < K * 2.0,
+    "put price {best_put} is unreasonably large"
+  );
 }
 
+/// The localised estimator's counterpart of the test above, and the same
+/// split for the same reason. Measured localised calls: `10.18`, `10.77`,
+/// `10.25`.
 #[test]
 fn malliavin_pricer_localized_returns_finite_non_negative_prices() {
-  let p = pricer();
-  let (call, put) = p.call_put_localized(S, K, R, 0.0, TAU);
+  let mut best_call = f64::INFINITY;
+  let mut best_put = f64::INFINITY;
+  for seed in SEEDS {
+    let (call, put) = pricer(seed).call_put_localized(S, K, R, 0.0, TAU);
 
-  // Basic sanity checks: finite and non-negative prices
-  assert!(call.is_finite(), "Localized call price should be finite");
-  assert!(put.is_finite(), "Localized put price should be finite");
-  assert!(call >= 0.0, "Localized call price should be non-negative");
-  assert!(put >= 0.0, "Localized put price should be non-negative");
+    // Basic sanity checks: finite and non-negative prices
+    assert!(
+      call.is_finite(),
+      "seed {seed}: localized call should be finite"
+    );
+    assert!(
+      put.is_finite(),
+      "seed {seed}: localized put should be finite"
+    );
+    assert!(
+      call >= 0.0,
+      "seed {seed}: localized call should be non-negative"
+    );
+    assert!(
+      put >= 0.0,
+      "seed {seed}: localized put should be non-negative"
+    );
+
+    best_call = best_call.min(call);
+    best_put = best_put.min(put);
+  }
 
   // Very loose upper bounds to avoid flakiness due to Monte Carlo noise
-  assert!(call < S * 2.0, "Localized call price is unreasonably large");
-  assert!(put < K * 2.0, "Localized put price is unreasonably large");
+  assert!(
+    best_call < S * 2.0,
+    "localized call price {best_call} is unreasonably large"
+  );
+  assert!(
+    best_put < K * 2.0,
+    "localized put price {best_put} is unreasonably large"
+  );
 }
 
 /// `price_call` and `price_put` are the two legs of `call_put`, so the
@@ -48,28 +111,50 @@ fn malliavin_pricer_localized_returns_finite_non_negative_prices() {
 /// Monte Carlo for its `price_call` term.
 #[test]
 fn malliavin_put_is_parity_against_its_own_call() {
-  let (call, put) = pricer().call_put(S, K, R, 0.02, TAU);
-  let parity = call - S * (-0.02_f64 * TAU).exp() + K * (-R * TAU).exp();
-  assert!(
-    (put - parity.max(0.0)).abs() < 1e-12,
-    "put {put} must be the floored parity value {parity} of its own call"
-  );
+  for seed in SEEDS {
+    let (call, put) = pricer(seed).call_put(S, K, R, 0.02, TAU);
+    let parity = call - S * (-0.02_f64 * TAU).exp() + K * (-R * TAU).exp();
+    assert!(
+      (put - parity.max(0.0)).abs() < 1e-12,
+      "seed {seed}: put {put} must be the floored parity value {parity} of its own call"
+    );
+  }
 }
 
 /// The `max(0)` floor the pre-query `calculate_call_put` applied — which
 /// the trait's `price_put` default does **not** have — still guards the
-/// output. It cannot be pinned by a single deterministic value: the floor
-/// fires exactly when the Monte Carlo call estimate lands below its
-/// parity-implied lower bound, which is an estimator-noise event on an
-/// `Unseeded` RNG. What *is* deterministic is the guarantee, so that is
-/// what this asserts, across the strike range where a negative
-/// parity value is reachable.
+/// output.
+///
+/// *Which side* of the floor a given point lands on is a sample event: it
+/// fires exactly when the Monte Carlo call estimate falls below its
+/// parity-implied lower bound. That is now reproducible rather than
+/// random, but it is still stream-dependent, so it is not what is
+/// asserted — the SIMD stream differs between this machine and the CI
+/// runner, and an assertion that the floor *fires* would be a coin flip
+/// there. What is asserted is the floor's definition, `put == max(parity,
+/// 0)`, which holds whichever side each point lands on and fails if the
+/// floor is removed at any point that lands below.
+///
+/// Both branches are exercised on this platform: at seeds 2718 and 42 the
+/// `K = 1` and `K = 50` points floor (raw parity `-0.811` and `-0.318`)
+/// while `K = 150` does not (parity `+35.74`), and seed 999 floors
+/// nowhere.
 #[test]
 fn malliavin_put_is_never_negative() {
-  let p = pricer();
-  for &k in &[1.0, 50.0, 99.99, 150.0] {
-    let put = p.price_put(S, k, R, 0.0, TAU);
-    assert!(put >= 0.0, "put at K={k} must be floored, got {put}");
+  for seed in SEEDS {
+    let p = pricer(seed);
+    for &k in &[1.0, 50.0, 99.99, 150.0] {
+      let (call, put) = p.call_put(S, k, R, 0.0, TAU);
+      assert!(
+        put >= 0.0,
+        "seed {seed}: put at K={k} must be floored, got {put}"
+      );
+      let parity = call - S + k * (-R * TAU).exp();
+      assert!(
+        (put - parity.max(0.0)).abs() < 1e-12,
+        "seed {seed}, K={k}: put {put} must be the floored parity {parity}"
+      );
+    }
   }
 }
 
@@ -79,7 +164,7 @@ fn malliavin_put_is_never_negative() {
 #[test]
 #[should_panic(expected = "t_eval must be in (0, T)")]
 fn malliavin_rejects_a_maturity_shorter_than_t_eval() {
-  let _ = pricer().price_call(S, K, R, 0.0, 0.25);
+  let _ = pricer(SEEDS[0]).price_call(S, K, R, 0.0, 0.25);
 }
 
 /// The `l == 0` branch is the Dirac limit, so it has to be the *limit*:
@@ -137,17 +222,21 @@ fn negative_bandwidth_is_rejected() {
 /// pricer still prices a live strike.
 #[test]
 fn an_all_worthless_sample_empties_the_kernel_without_poisoning_the_price() {
-  let p = GbmMalliavinPricer::new(0.1, 200, 32, 0.5);
-  let dead = p.call_put_localized(S, 1.0e12, R, 0.0, TAU).0;
-  assert!(
-    dead.is_finite() && dead >= 0.0,
-    "unreachable strike must price to a finite floor, got {dead}"
-  );
-  let live = p.call_put_localized(S, K, R, 0.0, TAU).0;
-  assert!(
-    live > dead,
-    "live strike {live} must beat dead strike {dead}"
-  );
+  for seed in SEEDS {
+    let p = GbmMalliavinPricer::new(0.1, 200, 32, 0.5, Deterministic::new(seed));
+    let dead = p.call_put_localized(S, 1.0e12, R, 0.0, TAU).0;
+    assert!(
+      dead.is_finite() && dead >= 0.0,
+      "seed {seed}: unreachable strike must price to a finite floor, got {dead}"
+    );
+    // The same instance, so the live strike is priced off the same seed —
+    // the dead/live comparison is one sample, not two.
+    let live = p.call_put_localized(S, K, R, 0.0, TAU).0;
+    assert!(
+      live > dead,
+      "seed {seed}: live strike {live} must beat dead strike {dead}"
+    );
+  }
 }
 
 /// The capability the reshape exists for: one model, many query points.
@@ -157,36 +246,36 @@ fn an_all_worthless_sample_empties_the_kernel_without_poisoning_the_price() {
 /// `c <= S` is not: the Malliavin conditional estimator is a *ratio* of
 /// Monte Carlo sums whose denominator is a Heaviside-weighted count, so a
 /// nearly empty denominator sends the estimate arbitrarily high. Over 2000
-/// runs of this exact grid, **17 (0.85 %)** breached the ceiling and the
-/// worst single point reached **12229** at `k = 110, tau = 0.5` — the
-/// `103.976` that failed CI was a mild instance, not an outlier. Paths do
-/// not quiet it: raising `n_paths` from 400 to 2000 moved the worst
+/// unseeded runs of this exact grid, **17 (0.85 %)** breached the ceiling
+/// and the worst single point reached **12229** at `k = 110, tau = 0.5` —
+/// the `103.976` that failed CI was a mild instance, not an outlier. Paths
+/// do not quiet it: raising `n_paths` from 400 to 2000 moved the worst
 /// observed call *up*, from 57.0 to 89.3.
 ///
-/// §1.1 of the integration-test skill would have this pinned by seed and
-/// it cannot be, from here:
-/// [`GbmMalliavinPricer`]`::sample_paths` builds `Gbm::new(…, Unseeded)`
-/// internally and the struct carries no seed to set, so pinning one is a
-/// change to the pricer rather than to this file. §1.2's
-/// replicate-and-take-the-best is reachable and is the same defence: three
-/// independent replications take the false-failure rate from ~1-in-118 to
-/// `0.0085³ ≈ 6e-7`, the rate that section targets. No group of three
-/// breached the ceiling anywhere in the same 2000 runs.
+/// The model now carries a seed, so §1.1 of the integration-test skill is
+/// satisfied directly: the three sweeps below are three *pinned* streams
+/// rather than three draws from entropy, and each is bit-reproducible on a
+/// given target. §1.2's replicate-and-take-the-best still applies on top,
+/// because a seed verified on aarch64 is unverified on the x86_64 CI
+/// runner — the SIMD stream is not the same there. Re-measured on pinned
+/// seeds: a 200-seed sweep of this grid breached the ceiling **once**
+/// (seed 156, worst point 579), so the best of three lands near 1e-7, the
+/// rate §1.2 targets. The three seeds here give worst points of 15.88,
+/// 9.82 and 14.88.
 #[test]
 fn malliavin_one_model_prices_a_grid() {
-  let model = GbmMalliavinPricer::new(0.2, 400, 64, 0.25);
-
   // The worst point of one sweep. `is_finite` is asserted *before* the
   // running max because `f64::max` discards a `NaN` operand, which would
   // turn a poisoned price into a plausible number.
-  let sweep = || {
+  let sweep = |seed: u64| {
+    let model = GbmMalliavinPricer::new(0.2, 400, 64, 0.25, Deterministic::new(seed));
     let mut worst = f64::NEG_INFINITY;
     for &tau in &[0.5_f64, 1.0] {
       for &k in &[90.0_f64, 100.0, 110.0] {
         let c = model.price_call(S, k, 0.03, 0.01, tau);
         assert!(
           c.is_finite() && c >= 0.0,
-          "call {c} at k={k} tau={tau} is not a price"
+          "seed {seed}: call {c} at k={k} tau={tau} is not a price"
         );
         worst = worst.max(c);
       }
@@ -194,12 +283,56 @@ fn malliavin_one_model_prices_a_grid() {
     worst
   };
 
-  let best = (0..3).map(|_| sweep()).fold(f64::INFINITY, f64::min);
+  let best = SEEDS.into_iter().map(sweep).fold(f64::INFINITY, f64::min);
   assert!(
     best <= S,
-    "all three replications breached the no-arbitrage ceiling; \
+    "all three seeds breached the no-arbitrage ceiling; \
      best worst-point {best} against S = {S}"
   );
+}
+
+/// The point of the seed field: the estimator becomes a function of its
+/// query rather than of the moment it ran.
+///
+/// Three claims, and the third is the one that stops
+/// `sample_paths` from quietly switching `self.seed.clone()` to
+/// `self.seed.derive()` — a change that would leave the first two holding
+/// and still make the pricer unpinnable, because `derive` advances the
+/// pricer's own state and so gives the second call a different stream.
+#[test]
+fn a_pinned_seed_makes_the_estimator_a_function_of_its_query() {
+  let p = pricer(SEEDS[0]);
+  let first = p.price_call(S, K, R, 0.0, TAU);
+  assert_eq!(
+    first,
+    pricer(SEEDS[0]).price_call(S, K, R, 0.0, TAU),
+    "a fresh instance on the same seed must reproduce the price"
+  );
+  assert_ne!(
+    first,
+    pricer(SEEDS[1]).price_call(S, K, R, 0.0, TAU),
+    "a different seed must give a different sample, or the seed is ignored"
+  );
+  assert_eq!(
+    first,
+    p.price_call(S, K, R, 0.0, TAU),
+    "the same instance must not advance its own seed between calls"
+  );
+}
+
+/// The seed strategy is a *type* parameter defaulting to [`Unseeded`], so
+/// the bare name still denotes the entropy-seeded pricer and the two
+/// spellings are the same type. `Unseeded` is a unit struct, so that
+/// variant is still `Copy`; `Deterministic` holds an `AtomicU64` and is
+/// not, which is why the `Copy` derive is bounded rather than dropped.
+#[test]
+fn the_default_seed_strategy_is_unseeded() {
+  const fn assert_same(_: GbmMalliavinPricer<Unseeded>) {}
+  const fn assert_copy<T: Copy>() {}
+  assert_copy::<GbmMalliavinPricer>();
+  let bare: GbmMalliavinPricer = GbmMalliavinPricer::new(0.2, 8, 4, 0.5, Unseeded);
+  assert_same(bare);
+  assert_eq!(bare.n_paths, 8);
 }
 
 /// `GbmMalliavinPricer::new` validates the estimator's own shape.
@@ -224,19 +357,19 @@ mod construction_validation {
   #[test]
   #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
   fn new_rejects_zero_paths() {
-    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5);
+    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5, Unseeded);
   }
 
   #[test]
   #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 1)")]
   fn new_rejects_a_single_time_step() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 1, 0.5);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 1, 0.5, Unseeded);
   }
 
   #[test]
   #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 0)")]
   fn new_rejects_zero_time_steps() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 0, 0.5);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 0, 0.5, Unseeded);
   }
 
   /// The Malliavin weight carries `+ σ·t_eval` *linearly*, so unlike the
@@ -247,13 +380,13 @@ mod construction_validation {
     expected = "GbmMalliavinPricer::new: v must be a non-negative volatility (got -0.2)"
   )]
   fn new_rejects_negative_volatility() {
-    let _ = GbmMalliavinPricer::new(-0.2, 200, 100, 0.5);
+    let _ = GbmMalliavinPricer::new(-0.2, 200, 100, 0.5, Unseeded);
   }
 
   #[test]
   #[should_panic(expected = "GbmMalliavinPricer::new: t_eval must be strictly positive (got -0.5)")]
   fn new_rejects_non_positive_t_eval() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 100, -0.5);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 100, -0.5, Unseeded);
   }
 
   /// The `t_eval < tau` half is unreachable from the constructor and stays
@@ -261,12 +394,22 @@ mod construction_validation {
   #[test]
   #[should_panic(expected = "t_eval must be in (0, T)")]
   fn the_query_dependent_half_stays_at_the_accessor() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 64, 2.0).price_call(S, K, R, 0.0, TAU);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 64, 2.0, Unseeded).price_call(S, K, R, 0.0, TAU);
   }
 
   #[test]
   fn the_smallest_usable_grid_stays_constructible() {
-    let m = GbmMalliavinPricer::new(0.0, 1, 2, 1e-12);
+    let m = GbmMalliavinPricer::new(0.0, 1, 2, 1e-12, Unseeded);
     assert_eq!((m.n_paths, m.n_steps), (1, 2));
+  }
+
+  /// The seed is a type, not a number, so there is nothing to reject —
+  /// but the four numeric guards must still fire when one is supplied,
+  /// rather than the seed parameter quietly shifting an argument past
+  /// them.
+  #[test]
+  #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
+  fn the_numeric_guards_still_fire_with_a_pinned_seed() {
+    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5, Deterministic::new(SEEDS[0]));
   }
 }
