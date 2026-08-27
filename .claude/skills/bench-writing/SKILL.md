@@ -5,16 +5,20 @@ description: Conventions for writing criterion benchmarks in stochastic-rs. Grou
 
 # Bench writing — stochastic-rs
 
-Benchmarks live under `benches/` (umbrella) and use the
+Benchmarks live under `benches/` at the **workspace root only** — no
+sub-crate has a `benches/` directory — and use the
 [`criterion`](https://github.com/bheisler/criterion.rs) harness with
-`harness = false` per `[[bench]]` entry in `Cargo.toml`. The §6.1
-audit trap was a benchmark file with three dead helper functions and a
-`println!("starting...")` that shipped to crates.io as dev-deps but was
-never run; this SKILL prevents that drift.
+`harness = false` per `[[bench]]` entry in the root `Cargo.toml`. The
+§6.1 audit trap was a benchmark file with three dead helper functions
+and a `println!("starting...")` that shipped to crates.io as dev-deps
+but was never run; this SKILL prevents that drift.
 
-For the baseline / regression workflow (`--save-baseline rc2` /
-`--baseline rc2`), see `docs/BENCH_BASELINE.md`. This SKILL is about
-*writing* the bench, not maintaining the baseline.
+Baselines are criterion's own (`cargo bench -- --save-baseline <name>`,
+then `--baseline <name>` to compare). There is **no tracked baseline
+document** in this repo and **no bench job in CI**
+(`.github/workflows/rust.yml` has none), so a regression is only caught
+by whoever runs `cargo bench` locally. Do not cite a
+`docs/BENCH_BASELINE.md`; it does not exist.
 
 ## 1. The skeleton
 
@@ -22,21 +26,23 @@ For the baseline / regression workflow (`--save-baseline rc2` /
 // benches/foo.rs
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use stochastic_rs::stochastic::diffusion::gbm::Gbm;
+use stochastic_rs::stochastic::traits::ProcessExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 fn bench_foo(c: &mut Criterion) {
     let mut group = c.benchmark_group("foo");
     for &n in &[1_000usize, 10_000, 100_000] {
         group.throughput(Throughput::Elements(n as u64));
+        // Build the process ONCE, outside b.iter — construction is not
+        // what you are measuring, and re-seeding per iteration hides the
+        // sampler's own per-call cost.
+        let process = Gbm::<f64, _>::new(0.05, 0.2, n, None, None, Deterministic::new(42));
         group.bench_with_input(
             BenchmarkId::from_parameter(n),
             &n,
-            |b, &n| {
-                b.iter(|| {
-                    let process = stochastic_rs::stochastic::diffusion::gbm::Gbm::seeded(
-                        0.05, 0.2, n, None, None, /* seed */ 42,
-                    );
-                    let _ = process.sample();   // black_box-equivalent for IndexOp
-                });
+            |b, _| {
+                b.iter(|| criterion::black_box(process.sample()));
             },
         );
     }
@@ -55,18 +61,32 @@ name = "foo"
 harness = false
 ```
 
-If the bench requires a feature (e.g. `cuda`, `openblas`):
+If the bench requires a feature, gate it. Use the **real** feature
+names from the root `Cargo.toml` — there is no bare `cuda` feature:
 
 ```toml
 [[bench]]
 name = "fgn_cuda_native"
 harness = false
-required-features = ["cuda"]
+required-features = ["cuda-native"]          # cudarc + cuFFT
 ```
 
-The `required-features` gate prevents the bench from being silently
-skipped under `cargo bench --workspace` without the feature; criterion
-emits a "skipped" line so the user notices.
+The gated benches in tree today, with their exact feature sets:
+
+| Bench | `required-features` |
+|---|---|
+| `fgn_gpu` | `["gpu"]` |
+| `fgn_cuda_native` | `["cuda-native"]` |
+| `fgn_cuda_compare` | `["cuda-native", "gpu-cuda"]` |
+| `fgn_all_backends` | `["gpu-wgpu", "metal", "accelerate"]` |
+| `fgn_accelerate` | `["accelerate"]` |
+| `fgn_metal` | `["metal"]` |
+| `factors` | `["openblas"]` |
+| `hotpath_profile` | `["hotpath"]` |
+| `dual_stream_compare` | `["dual-stream-rng"]` |
+
+Without the gate, cargo tries to compile the bench regardless and you
+get a compilation error rather than a skip.
 
 ## 2. Group naming convention
 
@@ -131,15 +151,16 @@ lose the diff.
   });
   ```
 
-- **No `cargo bench --workspace` gate**: if the bench compiles only
-  under a feature, the `[[bench]] required-features` is the gate.
-  Forgetting it produces "compilation error" rows in the bench report.
+- **No feature gate**: if the bench compiles only under a feature, the
+  `[[bench]] required-features` entry is the gate. Forgetting it means
+  `cargo bench -p stochastic-rs` tries to compile it unconditionally and
+  fails the whole run.
 
 ## 6. Hot-path benches vs end-to-end
 
 Two flavours:
 
-- **Hot-path** (`benches/fgn_*.rs`, `benches/distributions.rs`): the
+- **Hot-path** (`benches/fgn_*.rs`, `benches/distributions/`): the
   inner loop of a sampler / kernel. These run *fast* (microseconds);
   criterion's default 100-sample setting is right.
 - **End-to-end** (`benches/option.rs`, `benches/instruments.rs`): a
@@ -155,30 +176,47 @@ Two flavours:
 Before commit, verify:
 
 ```bash
-cargo build --benches --workspace                                 # default features
-cargo build --benches --workspace --features cuda                 # if applicable
-cargo build --benches --workspace --features openblas             # if applicable
+cargo build --benches -p stochastic-rs                              # default features
+cargo build --benches -p stochastic-rs --features openblas          # if applicable
+cargo build --benches -p stochastic-rs --features cuda-native       # if applicable
 ```
+
+Use `-p stochastic-rs`, **not** `--workspace`: every bench lives in the
+umbrella, and `--workspace` drags in `stochastic-rs-py`, which forces
+`pyo3/extension-module` unconditionally and fails to link outside a
+maturin build (same reason `cargo test --workspace` needs
+`--exclude stochastic-rs-py` — see `CLAUDE.md`).
 
 If any leg fails, the bench has drifted from the lib's API. Fix
 before commit; the §6.1 trap was exactly a bench that hadn't compiled
-in 6 months because nobody ran `cargo build --benches`.
+in 6 months because nobody ran `cargo build --benches`. Nothing in CI
+does this for you.
 
 ## 8. Reference benches
 
-- `benches/distributions.rs` — sweep over distribution × sample-count.
-- `benches/fgn_fbm.rs` — comparison sweep CPU vs GPU (gated).
-- `benches/option.rs` — end-to-end Heston / Bates / Merton with
-  reduced sample count.
+`benches/` holds 32 `.rs` files plus one `distributions/` **directory**,
+matched one-to-one by 33 `[[bench]]` entries. Check whether your target
+is a file or a directory before editing.
+
+- `benches/distributions/` — sweep over distribution × sample-count.
+- `benches/fgn_fbm.rs` — ungated CPU fGn / fBm sweep.
+- `benches/fgn_all_backends.rs` — the actual cross-backend comparison;
+  gated on `["gpu-wgpu", "metal", "accelerate"]`.
+- `benches/option.rs` — end-to-end pricing with reduced sample count.
 - `benches/risk.rs` — VaR / ES estimators on synthetic samples.
 - `benches/dist_multicore.rs` — `sample_par` parallelism vs serial.
+- `benches/sampler_compare.rs`, `benches/hotpath_profile.rs` — the
+  sampler-v3 refactor's own measurement harnesses.
 
-## 9. Updating `docs/BENCH_BASELINE.md`
+## 9. Registering a new bench
 
-When you add a new `[[bench]]`, append it to the rc.2 baseline list in
-`docs/BENCH_BASELINE.md` so the next release run captures it. The
-release-checklist SKILL references that doc; out-of-date baseline
-lists silently miss new benches in the regression check.
+A new bench needs **two** edits, both in the root `Cargo.toml`: the
+file under `benches/`, and a `[[bench]]` entry with `harness = false`
+(plus `required-features` if gated). Cargo does not auto-discover with
+`harness = false`, so a missing entry means the bench never runs and
+never compiles — which is exactly the §6.1 drift.
+
+There is no baseline document to append to and no CI job to update.
 
 ## Anti-patterns
 
@@ -188,11 +226,12 @@ lists silently miss new benches in the regression check.
 - **Do not** add a feature-gated bench without `[[bench]]
   required-features`.
 - **Do not** ship a bench that doesn't compile under
-  `cargo build --benches --workspace`.
+  `cargo build --benches -p stochastic-rs`.
 
 ## Related SKILLs
 
-- `release-checklist` — cargo bench is a release gate.
+- `release-checklist` — note that `cargo bench` is **not** one of its
+  gates today; benchmarking is a local, manual step.
 - `add-gpu-sampler` — the natural source of CUDA-only benches.
 - `feature-flag-management` — `required-features` propagation.
 - `integration-test-writing` — same pinned-seed mandate; bench-time
