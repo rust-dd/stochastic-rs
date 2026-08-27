@@ -163,10 +163,45 @@ impl Merton1976Pricer {
     (self.v.powi(2) * self.gamma / self.lambda).sqrt()
   }
 
-  /// Diffusive volatility component (total variance minus the jump
-  /// contribution).
+  /// Diffusive volatility component: total variance minus the jump
+  /// variance rate $\lambda z^2$.
+  ///
+  /// $\lambda z^2$ is the only form in which the jump size enters the
+  /// model, and it is $v^2\gamma$ by construction — substitute
+  /// [`jump_size_std`](Self::jump_size_std)'s $z^2 = v^2\gamma/\lambda$
+  /// and the $\lambda$ cancels — so it is taken directly rather than by
+  /// squaring that method's `sqrt` back out. The round-trip was not
+  /// value-preserving: at the pure-jump corner `gamma == 1` it landed on
+  /// `d = 0` for `(v, lambda)` of `(0.5, 1)`, `(0.2, 1)`, `(0.3, 0.5)` and
+  /// `(0.2, 0.25)`, and one ulp *below* zero — a `NaN` — for `(0.2, 0.5)`
+  /// and `(0.25, 2)`. The same model priced or did not by rounding;
+  /// `the_pure_jump_corner_is_zero_for_every_intensity` is the pin.
+  ///
+  /// The two branches are the states where $\lambda z^2 = v^2\gamma$ is
+  /// *not* an identity, and in both the round-trip announced something the
+  /// bare $v^2(1-\gamma)$ would silence:
+  ///
+  /// - `lambda == 0` has no jump size to speak of, so
+  ///   [`jump_size_std`](Self::jump_size_std) answers `0` and the whole
+  ///   variance is diffusive: `d = v`, not `v√(1-γ)`. That second value is
+  ///   the `λ → 0⁺` *limit*, a different number, and
+  ///   `the_lambda_zero_limit_is_discontinuous_in_gamma` pins the gap.
+  /// - a `z` that is not a real number — $v^2\gamma/\lambda < 0$, which is
+  ///   every `gamma` and `lambda` of opposite sign — must stay `NaN`
+  ///   rather than become a finite $v^2(1-\gamma)$, since that is how a
+  ///   `gamma` outside `[0, 1]` announces itself as [`new`](Self::new)
+  ///   documents. Testing [`jump_size_std`](Self::jump_size_std)'s own
+  ///   output rather than re-deriving the condition keeps the `NaN` set
+  ///   identical to the round-trip's by construction.
   fn diffusive_std(&self) -> f64 {
-    (self.v.powi(2) - self.lambda * self.jump_size_std().powi(2)).sqrt()
+    let jump_variance_rate = if self.lambda == 0.0 {
+      0.0
+    } else if self.jump_size_std().is_nan() {
+      f64::NAN
+    } else {
+      self.v.powi(2) * self.gamma
+    };
+    (self.v.powi(2) - jump_variance_rate).sqrt()
   }
 
   /// Per-term volatility of the `n`-jump-conditional Black-Scholes term,
@@ -233,8 +268,9 @@ impl Merton1976Pricer {
   /// component `d` is, so this is reachable at `v == 0` — the zero total
   /// volatility `new` accepts on purpose, where every term of the series is
   /// degenerate — and, for the `n = 0` term alone, at the pure-jump corner
-  /// `gamma == 1` whenever `v² − λz²` rounds to exactly `0` rather than one
-  /// ulp below it. `zero_total_volatility_at_the_forward_is_the_limit` is
+  /// `gamma == 1`, where `v² − λz²` is now exactly `0` for every intensity
+  /// rather than for the half of them that rounded that way.
+  /// `zero_total_volatility_at_the_forward_is_the_limit` is
   /// the live pin; `an_ordinary_configuration_never_reaches_the_branch` is
   /// the counterpart that keeps the narrowed reachability honest.
   ///

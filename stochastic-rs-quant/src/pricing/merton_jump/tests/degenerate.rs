@@ -9,12 +9,16 @@
 //!
 //! `σ_n = √(d² + z²·n/τ)` is zero only where the *diffusive* volatility `d`
 //! is, so what reaches this branch is a zero total volatility — `v = 0`,
-//! which `new` accepts on purpose. The pure-jump corner `gamma = 1` should
-//! reach it too, at the `n = 0` term alone, but only does so about half the
-//! time: `diffusive_std` computes `v² − λz²` after round-tripping `z`
-//! through a `sqrt`, so `(v, λ) = (0.5, 1)` lands on `d = 0` while
-//! `(0.2, 0.5)` lands one ulp below and returns `NaN`. That is a separate
-//! defect and is not pinned here.
+//! which `new` accepts on purpose — and the pure-jump corner `gamma = 1`,
+//! at the `n = 0` term alone. The corner used to reach it only about half
+//! the time: `diffusive_std` computed `v² − λz²` after round-tripping `z`
+//! through a `sqrt`, so `(v, λ) = (0.5, 1)` landed on `d = 0` while
+//! `(0.2, 0.5)` landed one ulp below and returned `NaN`. `λz²` is `v²γ` by
+//! construction, so it is now taken directly and the corner is `0` for
+//! every intensity;
+//! `the_pure_jump_corner_is_zero_for_every_intensity` pins that, and
+//! `an_inadmissible_gamma_still_announces_itself` pins the `NaN` the
+//! direct form must not silence along with it.
 //!
 //! An ordinary configuration has `σ_0 = d > 0` and never touches the
 //! branch; `an_ordinary_configuration_never_reaches_the_branch` is the pin
@@ -159,4 +163,61 @@ fn an_ordinary_configuration_never_reaches_the_branch() {
   }
   let call = m.price_call(S, S, R, Q, FUT_TAU);
   assert!(call.is_finite() && call > 0.0, "ATM futures call {call}");
+}
+
+/// The pure-jump corner made deterministic: at `gamma = 1` the whole
+/// variance is jump variance, so `d² = v² − λz²` is `0` exactly — for
+/// every intensity, not for the half of them whose `sqrt` round-trip
+/// happened to land on zero rather than one ulp below it.
+///
+/// The six `(v, λ)` pairs are the reported split: the first four returned
+/// `0` before the fix and the last two returned `NaN`, from the same model
+/// and the same `gamma`. The sweep is what makes "every intensity" a
+/// falsifiable claim rather than six lucky draws.
+#[test]
+fn the_pure_jump_corner_is_zero_for_every_intensity() {
+  for &(v, lambda) in &[
+    (0.5, 1.0),
+    (0.2, 1.0),
+    (0.3, 0.5),
+    (0.2, 0.25),
+    (0.2, 0.5),
+    (0.25, 2.0),
+  ] {
+    let m = Merton1976Pricer::new(v, lambda, 1.0, 20, BSMCoc::Bsm1973);
+    assert_eq!(m.diffusive_std(), 0.0, "v={v} lambda={lambda}");
+    let call = m.price_call(S, K, R, Q, TAU);
+    assert!(call.is_finite(), "v={v} lambda={lambda} priced {call}");
+  }
+
+  for i in 1..=400 {
+    let lambda = f64::from(i) * 0.025;
+    for &v in &[0.05, 0.2, 0.35, 1.0] {
+      let m = Merton1976Pricer::new(v, lambda, 1.0, 20, BSMCoc::Bsm1973);
+      assert_eq!(m.diffusive_std(), 0.0, "v={v} lambda={lambda}");
+    }
+  }
+}
+
+/// The `NaN` the direct form would have silenced.
+///
+/// `gamma` and `lambda` of opposite sign make `z = √(v²γ/λ)` imaginary,
+/// and `v²(1−γ)` is a perfectly finite number at exactly those points —
+/// so without `diffusive_std`'s realness branch an inadmissible `gamma`
+/// would price as confidently as an admissible one. `new` documents that
+/// a `gamma` outside `[0, 1]` announces itself; this is the pin. The
+/// third case is the other half of that claim, where the announcement
+/// comes from the subtraction rather than from `z`.
+#[test]
+fn an_inadmissible_gamma_still_announces_itself() {
+  for &(lambda, gamma) in &[(0.5, -0.25), (-0.5, 0.4), (0.5, 1.5)] {
+    let m = Merton1976Pricer::new(0.2, lambda, gamma, 20, BSMCoc::Bsm1973);
+    assert!(
+      m.diffusive_std().is_nan(),
+      "lambda={lambda} gamma={gamma} diffusive_std {}",
+      m.diffusive_std()
+    );
+    let call = m.price_call(S, K, R, Q, TAU);
+    assert!(call.is_nan(), "lambda={lambda} gamma={gamma} priced {call}");
+  }
 }
