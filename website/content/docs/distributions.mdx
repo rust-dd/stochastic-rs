@@ -175,26 +175,34 @@ Every distribution follows the same `new(args, &seed)` constructor pattern — p
 [`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible
 stream. See the [seeding concept page](/docs/concepts/seeding) for the
 full design (including `SeedExt::reseed`, the generic `R: SimdRngExt`
-backing RNG, and the experimental `dual-stream-rng` feature). `Foo` and
-`d` below stand for any distribution and its instance — the general
-shape, not a concrete type — so this pattern is not wired into the
-compiled-example mechanism the way the catalog entries above are:
+backing RNG, and the experimental `dual-stream-rng` feature). Note the
+seed is taken **by reference** and comes last. `SimdNormal` stands in for
+any distribution below; substitute the parameters of the one you want:
 
 ```rust
-use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::Unseeded;
 
-let d = Foo::<T>::new(/* params */, &Unseeded);                       // auto-seeded
-let d = Foo::<T>::new(/* params */, &Deterministic::new(42));         // reproducible
-let d = Foo::<T>::new(/* params */, &shared_seed_source);             // share a seed source
-                                                                       // across sub-components
+// auto-seeded
+let d = SimdNormal::<f64>::new(/* mean */ 0.0, /* std_dev */ 1.0, &Unseeded);
+
+// reproducible
+let d = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+
+// share one seed source across sub-components
+let shared = Deterministic::new(42);
+let d = SimdNormal::<f64>::new(0.0, 1.0, &shared);
 ```
 
 ### Sampling
 
 ```rust
 use rand_distr::Distribution;
+use stochastic_rs::simd_rng::SeedExt;
 
-// Single sample, via the project's own RNG (see the seeding concept page)
+// Single sample, via the project's own RNG (see the seeding concept page).
+// `SeedExt` is what brings `.rng()` into scope.
 let mut rng = Deterministic::new(0).rng();
 let x: f64 = d.sample(&mut rng);
 

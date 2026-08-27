@@ -46,7 +46,10 @@ time the pipeline is:
 (`INPUT_DIM = 5`) rather than separate strike/expiry vectors (the strike
 and maturity grid is baked into the training set; use
 `predict_implied_vol_surface`, gated behind this crate's own `quant`
-feature, to get a full `ImpliedVolSurface` back for an arbitrary grid).
+feature, to get a full `ImpliedVolSurface` back). That grid is **not**
+arbitrary: `strikes.len() * maturities.len()` must equal the model's
+`OUTPUT_DIM`, which for `HestonNn` is fixed at `88` — any other shape
+returns `Err("model output_dim 88 does not match strikes×maturities …")`.
 No trained `.safetensors` model ships in this repository — only the
 gzip-npy training sets the round-trip test consumes — so this block is
 illustrative rather than compiled:
@@ -55,22 +58,30 @@ illustrative rather than compiled:
 <Tab value="Rust">
 ```rust
 use candle_core::Device;
+use stochastic_rs::ai::volatility::heston;
 use stochastic_rs::ai::volatility::heston::HestonNn;
 
 let device = Device::Cpu;
 let nn = HestonNn::load("path/to/trained/heston", &device)?;
 
-// [v0, rho, sigma, kappa, theta] — bounds are HestonNn::PARAM_LB / PARAM_UB
-let params: [f32; 5] = [0.04, -0.5, 0.3, 2.0, 0.04];
-let strikes = vec![80.0, 90.0, 100.0, 110.0, 120.0];
-let maturities = vec![0.25, 0.5, 1.0, 2.0];
+// Five parameters, each within `heston::PARAM_LB` / `heston::PARAM_UB`
+// (module constants, not associated ones):
+//   LB = [0.0001, -0.95, 0.01, 0.01, 1.0]
+//   UB = [0.04,   -0.1,  1.0,  0.2,  10.0]
+// `BoundedScaler` does not clamp, so out-of-range values are silently
+// mapped outside the training domain.
+let params: [f32; heston::INPUT_DIM] = [0.03, -0.5, 0.3, 0.04, 2.0];
+
+// 11 strikes x 8 maturities = 88 = heston::OUTPUT_DIM.
+let strikes: Vec<f64> = (0..11).map(|i| 70.0 + 6.0 * i as f64).collect();
+let maturities = vec![0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0];
 let forwards = vec![100.0; maturities.len()];
 
 // Inference returns a full ImpliedVolSurface in <1ms
 let surface = nn.predict_implied_vol_surface(&params, strikes, maturities, forwards)?;
 // `ivs` is the raw (maturities x strikes) grid; there is no `iv_at(k, t)`
 // point-query helper today, so read it directly or use `smile_slice`.
-println!("1y smile: {:?}", surface.smile_slice(/* maturity_idx */ 2));
+println!("1y smile: {:?}", surface.smile_slice(/* maturity_idx */ 4));
 ```
 </Tab>
 </Tabs>

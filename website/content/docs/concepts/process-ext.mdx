@@ -135,17 +135,32 @@ ship for FGN / fBM only — see the [add-gpu-sampler SKILL](https://github.com/d
 
 ## Construction patterns
 
-Every process follows the same canonical `new(args, seed)` constructor
-(see the [seeding concept page](/docs/concepts/seeding) for the full
-design). `Foo` stands for any process — this is the shape, not a
-concrete type, so it stays illustrative rather than compiled:
+Every process follows the same canonical `new(args…, seed)` constructor —
+model parameters first, seed source **last** (see the [seeding concept
+page](/docs/concepts/seeding) for the full design). `Gbm` stands in for
+any process below; substitute the parameters of the one you want:
 
 ```rust
-use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
-let p = Foo::<T, _>::new(/* params */, n, x0, t, Unseeded);                  // auto-seeded
-let p = Foo::<T, _>::new(/* params */, n, x0, t, Deterministic::new(42));    // reproducible
-let p = Foo::<T, _>::new(/* params */, n, x0, t, shared_seed_source);        // chain seeds
+// auto-seeded
+let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
+
+// reproducible
+let p = Gbm::<f64, _>::new(
+  0.05,
+  0.2,
+  1_000,
+  Some(100.0),
+  Some(1.0),
+  Deterministic::new(42),
+);
+
+// chain seeds: one shared source feeding several processes
+let shared = Deterministic::new(42);
+let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), shared.clone());
 ```
 
 Use `Deterministic` in tests so they replay bit-exactly. Pass a shared

@@ -182,9 +182,9 @@ a uniform `point`/`se`/`p_value` triple. For example:
 
 ```rust
 // RescaledRange, Dfa, Gph, Wavelet, Whittle, Variations all return this:
-pub struct HurstResult<T> {
+pub struct HurstResult<T: FloatExt = f64> {
   pub hurst: T,
-  pub std_err: Option<T>,
+  pub std_err: Option<T>, // only Gph and Wavelet populate this
   pub n_obs: usize,
   pub diagnostic: HurstDiagnostic<T>,
 }
@@ -192,8 +192,10 @@ pub struct HurstResult<T> {
 // while the stationarity tests (ADF, KPSS, ...) return their own shape:
 pub struct AdfResult {
   pub statistic: f64,
+  pub used_lags: usize,
+  pub nobs: usize,
+  pub critical_values: CriticalValues,
   pub reject_unit_root: bool,
-  // .. lags, critical values, etc. — see the stationarity module
 }
 ```
 

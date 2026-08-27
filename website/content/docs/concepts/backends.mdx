@@ -29,6 +29,7 @@ site do not have, so this block is illustrative rather than compiled:
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::traits::ProcessExt;
 
 let cpu = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded).sample(); // default Cpu
 

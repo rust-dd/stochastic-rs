@@ -150,6 +150,7 @@ Select a backend at compile time with `.on::<B>()`, then call `sample()` /
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::traits::ProcessExt;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
   .on::<CudaNative>() // CudaNative | CubeCl | MetalNative | Accelerate | Cpu
@@ -180,6 +181,7 @@ cargo bench --features cuda-native --bench fgn_cuda_native
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::traits::ProcessExt;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
   .on::<CudaNative>()

@@ -129,19 +129,30 @@ fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
 
 ### Construction
 
-Every process follows the same `new(args, seed)` pattern (mirrors the
-distribution constructors — see the [seeding concept
+Every process follows the same `new(args…, seed)` pattern — the model
+parameters first, then `n`, `x0`, `t`, and the seed source **last**
+(mirrors the distribution constructors — see the [seeding concept
 page](/docs/concepts/seeding)). The seed argument is a value implementing
-[`SeedExt`](/docs/concepts/seeding). `Foo` below stands for any process —
-this is the shape every constructor follows, not a concrete type, so it
-is not wired into the compiled-example mechanism the way the catalog
-entries above are:
+[`SeedExt`](/docs/concepts/seeding). `Gbm` stands in for any process
+below; substitute the parameters of the one you want:
 
 ```rust
-use stochastic_rs::simd_rng::{Deterministic, Unseeded};
+use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
-let p = Foo::<T, _>::new(/* params */, n, x0, t, Unseeded);                  // auto-seeded
-let p = Foo::<T, _>::new(/* params */, n, x0, t, Deterministic::new(42));    // reproducible
+// auto-seeded
+let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
+
+// reproducible
+let p = Gbm::<f64, _>::new(
+  0.05,
+  0.2,
+  1_000,
+  Some(100.0),
+  Some(1.0),
+  Deterministic::new(42),
+);
 ```
 
 Use `Deterministic` in tests so they replay bit-exactly; pass a shared
@@ -153,11 +164,14 @@ seeds without rebuilding the process.
 
 ### Sampling
 
-Continuing with the same placeholder `p` from above:
+Continuing with the same `p` from above. `sample` / `sample_par` are
+`ProcessExt` methods, so the trait has to be in scope:
 
 ```rust
-let path = p.sample(); // Array1<T>, length n
-let paths = p.sample_par(m); // Vec<Array1<T>>, m paths of length n
+use stochastic_rs::traits::ProcessExt;
+
+let path = p.sample(); // Array1<f64>, length n
+let paths = p.sample_par(64); // Vec<Array1<f64>>, 64 paths of length n
 ```
 
 `sample_par(m)` uses Rayon. Each path gets a deterministic seed
@@ -179,6 +193,7 @@ compiled:
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::traits::ProcessExt;
 
 let fgn = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded);
 let path = fgn.on::<CudaNative>().sample(); // FFT on the GPU, zero runtime branch

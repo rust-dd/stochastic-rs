@@ -151,9 +151,16 @@ you:
 3. **No XVA engine.** The building blocks exist — Monte Carlo, short-rate
    models, survival curves, copulas — but there is no exposure
    simulation, netting or collateral layer.
-4. **No Brownian bridge.** Sobol and Halton sequences ship without bridge
-   or PCA path construction, so quasi-Monte Carlo is not yet effective
-   for long path-dependent payoffs.
+4. **No QMC path construction.** The pieces exist separately — a
+   `BrownianBridge` process (`stochastic::process::brownian_bridge`) and
+   `SobolSeq` / `HaltonSeq` (`stochastic::mc`) — but nothing joins them:
+   the bridge sampler draws from the ordinary Gaussian stream, not from a
+   low-discrepancy sequence, and the recursive dimension-allocation logic
+   that hands a sequence's leading coordinates to a path's coarsest
+   features is not implemented. There is no PCA path construction either
+   (the `pca` module under `quant::factors` is portfolio factor
+   extraction, unrelated to path generation). So quasi-Monte Carlo is not
+   yet effective for long path-dependent payoffs.
 5. **No commodities.** No seasonal forward curves, no Schwartz-Smith, no
    storage or swing optionality.
 6. **No discrete dividends.** Equity pricing assumes a continuous

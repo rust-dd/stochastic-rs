@@ -78,7 +78,7 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   fn sample(&self) -> Self::Output;
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;
   fn sample_par(&self, m: usize) -> Vec<Self::Output>;
-  // optional: malliavin-style methods via MalliavinExt
+  // `MalliavinExt` is a separate, opt-in trait — no process implements it today.
 }
 ```
 
