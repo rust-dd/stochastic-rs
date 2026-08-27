@@ -7,6 +7,7 @@ mod construction;
 mod degenerate;
 mod formula;
 mod lambda_zero;
+mod option_type;
 mod poison;
 
 /// `m` (Poisson-series term count) is capped at 20 in these tests:
@@ -33,6 +34,10 @@ fn merton(lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
   Merton1976Pricer::new(0.2, lambda, gamma, m, BSMCoc::Bsm1973)
 }
 
+fn merton_at(v: f64, lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
+  Merton1976Pricer::new(v, lambda, gamma, m, BSMCoc::Bsm1973)
+}
+
 fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
   let mut p = *m;
   p.v += dv;
@@ -54,11 +59,7 @@ fn merton_greeks_lambda_zero_equals_bs() {
       bs.delta(S, K, R, Q, TAU, OT),
     ),
     ("gamma", m.gamma(S, K, R, Q, TAU), bs.gamma(S, K, R, Q, TAU)),
-    (
-      "vega",
-      m.vega(S, K, R, Q, TAU, OT),
-      bs.vega(S, K, R, Q, TAU),
-    ),
+    ("vega", m.vega(S, K, R, Q, TAU), bs.vega(S, K, R, Q, TAU)),
     (
       "theta",
       m.theta(S, K, R, Q, TAU, OT),
@@ -69,24 +70,16 @@ fn merton_greeks_lambda_zero_equals_bs() {
       m.rho(S, K, R, Q, TAU, OT),
       bs.rho(S, K, R, Q, TAU, OT),
     ),
-    (
-      "vanna",
-      m.vanna(S, K, R, Q, TAU, OT),
-      bs.vanna(S, K, R, Q, TAU),
-    ),
+    ("vanna", m.vanna(S, K, R, Q, TAU), bs.vanna(S, K, R, Q, TAU)),
     (
       "charm",
       m.charm(S, K, R, Q, TAU, OT),
       bs.charm(S, K, R, Q, TAU, OT),
     ),
-    (
-      "volga",
-      m.volga(S, K, R, Q, TAU, OT),
-      bs.vomma(S, K, R, Q, TAU),
-    ),
+    ("volga", m.volga(S, K, R, Q, TAU), bs.vomma(S, K, R, Q, TAU)),
     (
       "veta",
-      m.veta(S, K, R, Q, TAU, OT),
+      m.veta(S, K, R, Q, TAU),
       bs.dvega_dtime(S, K, R, Q, TAU),
     ),
   ];
@@ -135,7 +128,7 @@ fn merton_greeks_match_finite_difference() {
   let cases = [
     ("delta", m.delta(S, K, R, Q, TAU, OT), delta_fd, 1e-4),
     ("gamma", m.gamma(S, K, R, Q, TAU), gamma_fd, 1e-3),
-    ("vega", m.vega(S, K, R, Q, TAU, OT), vega_fd, 1e-4),
+    ("vega", m.vega(S, K, R, Q, TAU), vega_fd, 1e-4),
     ("theta", m.theta(S, K, R, Q, TAU, OT), theta_fd, 1e-4),
     ("rho", m.rho(S, K, R, Q, TAU, OT), rho_fd, 1e-4),
   ];
@@ -237,7 +230,7 @@ fn merton_greeks_theta_charm_veta_nan_near_expiry() {
     "charm should be NaN at tau=1e-6"
   );
   assert!(
-    m.veta(S, K, R, Q, tiny, OT).is_nan(),
+    m.veta(S, K, R, Q, tiny).is_nan(),
     "veta should be NaN at tau=1e-6"
   );
 }
@@ -355,13 +348,13 @@ fn merton_greeks_aggregate_matches_accessors() {
     let g = m.greeks(S, K, R, Q, TAU, ot);
     assert_eq!(g.delta, m.delta(S, K, R, Q, TAU, ot), "delta");
     assert_eq!(g.gamma, m.gamma(S, K, R, Q, TAU), "gamma");
-    assert_eq!(g.vega, m.vega(S, K, R, Q, TAU, ot), "vega");
+    assert_eq!(g.vega, m.vega(S, K, R, Q, TAU), "vega");
     assert_eq!(g.theta, m.theta(S, K, R, Q, TAU, ot), "theta");
     assert_eq!(g.rho, m.rho(S, K, R, Q, TAU, ot), "rho");
-    assert_eq!(g.vanna, m.vanna(S, K, R, Q, TAU, ot), "vanna");
+    assert_eq!(g.vanna, m.vanna(S, K, R, Q, TAU), "vanna");
     assert_eq!(g.charm, m.charm(S, K, R, Q, TAU, ot), "charm");
-    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU, ot), "volga is vomma");
-    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU, ot), "veta is dvega_dtime");
+    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU), "volga is vomma");
+    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU), "veta is dvega_dtime");
     assert_ne!(g.volga, g.veta, "volga and veta must not be the same value");
   }
 }
