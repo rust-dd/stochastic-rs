@@ -19,7 +19,7 @@ semantics, macro internals, error-translation rules), invoke
 | Distribution (`SimdXxx`) | Macro | `py_distribution!` in producer crate |
 | Stochastic process | Macro | `py_process_1d!` / `py_process_2x1d!` / `py_process_2d!` |
 | Pricer / Calibrator / VolSurface | Hand-written | `#[pyclass]` block in `stochastic-rs-quant/src/python/` |
-| Stats estimator | Hand-written | `#[pyfunction]` or `#[pyclass]` block in `stochastic-rs-quant/src/python/` |
+| Stats estimator | Hand-written | `#[pyfunction]` or `#[pyclass]` block in **`stochastic-rs-stats/src/python/`** — its own crate, not quant's |
 
 Macro pipelines (rows 1-2) are nearly mechanical; hand-written pipelines
 (rows 3-4) follow patterns set by the existing 218 wrapper classes.
@@ -40,7 +40,11 @@ py_distribution!(PyFoo, SimdFoo,
 );
 ```
 
-For **hand-written**, append in `stochastic-rs-quant/src/python/`:
+For **hand-written**, append in the *producing* crate's own `python/`
+module — `stochastic-rs-quant/src/python/` for pricers, calibrators and
+vol surfaces; `stochastic-rs-stats/src/python/` for estimators (it is a
+directory split by topic: `hurst.rs`, `mle.rs`, `normality.rs`,
+`realized.rs`, …, with a `mod.rs` re-exporting the `Py*` types):
 
 ```rust
 #[pyclass(name = "Foo", unsendable)]
@@ -204,6 +208,7 @@ the signature attribute is more idiomatic and shows up in `help(...)`.
 ## 6. Where to look when stuck
 
 - The existing hand-written wrappers under `stochastic-rs-quant/src/python/`
+  and `stochastic-rs-stats/src/python/`
   (most pattern-rich source).
 - The `python-bindings` SKILL has the comprehensive mechanics.
 - `stochastic-rs-distributions/src/macros.rs` for the
