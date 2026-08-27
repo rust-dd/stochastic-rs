@@ -8,12 +8,23 @@ description: How to expose first- and second-order Greeks in stochastic-rs — a
 First- and second-order Greeks reach callers one of two ways, and which
 one applies depends on whether the type carries its own market data. The
 `GreeksExt` trait in `stochastic-rs-quant::traits` serves the two types
-that do; every `ModelPricer` instead exposes query-taking inherent
-accessors plus a `greeks(...)` aggregate. Section 1 shows both.
+that do. **Five** pricers instead expose query-taking inherent
+accessors plus a `greeks(s, k, r, q, tau, option_type)` aggregate —
+`BSMPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer`,
+`AssetOrNothingPricer`. Most `ModelPricer`s expose **no** Greeks at all
+(`GapPricer` and `SuperSharePricer`, both in `pricing/digital.rs`,
+are the in-tree examples); implementing `ModelPricer` does not oblige
+you to add them. Section 1 shows both surfaces.
 
 Note that `GreeksExt`'s accessors default to `f64::NAN`, **not** to a
 finite difference — a pricer that does not override `vega` reports NaN so
 a consumer can distinguish "not exposed" from a real zero.
+
+A third, unrelated `greeks()` exists and is easy to confuse with these
+two: `PricingResult::greeks(&self) -> Option<Greeks>`
+(`traits/instrument.rs`), part of the QuantLib-style engine surface.
+It reports what an engine happened to compute, and is not a way to
+*implement* Greeks on a pricer.
 
 The single-pass `greeks()` aggregator is the load-bearing part for MC
 pricers: calling each Greek separately means N independent
@@ -136,46 +147,77 @@ on construction), and the resulting deltas / gammas / vegas don't share
 control variates. The user observes "delta-from-greeks() ≠
 delta-direct()" within numerical noise.
 
-The mandated pattern: override `greeks()` to do one big simulation and
-populate all Greeks from the same path set:
+The mandated pattern: override `greeks()` so **one** simulation feeds
+every returned Greek. Both in-tree implementors do this with **Malliavin
+weights**, not with bump-and-reprice — there is no bumping machinery in
+this crate. Do not reach for `with_spot_bump(...)`, `with_vol_bump(...)`,
+`with_bump_sizes(...)`, `price_from_paths(...)` or `simulate_with_seed(...)`:
+none of them exist anywhere in the repo.
+
+`GbmMalliavinGreeks` (`pricing/malliavin_greeks/gbm.rs`) is the shape to
+copy. Its `greeks()` is a one-line delegation to an inherent
+`all_greeks()` that simulates once and accumulates four Malliavin
+weights over the same paths:
 
 ```rust
-impl GreeksExt for MyMcPricer {
-    fn greeks(&self) -> Greeks {
-        // Generate *one* set of paths.
-        let paths = self.simulate_with_seed(self.master_seed);
-        // Re-price under each Greek bump using the same path noise
-        // (Common Random Numbers — Glasserman 2003 §7.1).
-        let v_base = price_from_paths(&paths, self);
-        let v_sup  = price_from_paths(&paths, &self.with_spot_bump( h));
-        let v_sdn  = price_from_paths(&paths, &self.with_spot_bump(-h));
-        let v_vup  = price_from_paths(&paths, &self.with_vol_bump( hs));
-        let v_vdn  = price_from_paths(&paths, &self.with_vol_bump(-hs));
-        // ... etc ...
-        Greeks {
-            delta: (v_sup - v_sdn) / (2.0 * h),
-            gamma: (v_sup - 2.0 * v_base + v_sdn) / (h * h),
-            vega:  (v_vup - v_vdn) / (2.0 * hs),
-            // ...
-            ..Greeks::nan()  // unfilled Greeks stay NaN — never 0.0, which
-                             // is a legitimate value and so unreadable as
-                             // "not exposed"
-        }
+pub fn all_greeks(&self) -> Greeks {
+    let (s_t, w_t) = self.simulate();          // ONE simulation
+    let discount = (-self.r * self.tau).exp();
+    let (m, t) = (self.n_paths as f64, self.tau);
+    let (mut sum_delta, mut sum_gamma, mut sum_vega, mut sum_rho) = (0.0, 0.0, 0.0, 0.0);
+
+    for i in 0..self.n_paths {
+        let disc_payoff = discount * (s_t[i] - self.k).max(0.0);
+        let w = w_t[i];                        // the Brownian increment
+        sum_delta += disc_payoff * (w / (self.s * self.sigma * t));
+        sum_gamma += disc_payoff
+            * ((w * w - self.sigma * t * w - t)
+               / (self.s * self.s * self.sigma * self.sigma * t * t));
+        sum_vega  += disc_payoff * ((w * w - t) / (self.sigma * t) - w);
+        sum_rho   += disc_payoff * (w / self.sigma - t);
     }
+
+    Greeks {
+        delta: sum_delta / m,
+        gamma: sum_gamma / m,
+        vega:  sum_vega / m,
+        rho:   sum_rho / m,
+        // No Malliavin weight exists for these, so they stay NaN —
+        // spelled out field by field. There is no `Greeks::nan()`
+        // struct-update shorthand in use here.
+        theta: f64::NAN,
+        vanna: f64::NAN, charm: f64::NAN, volga: f64::NAN, veta: f64::NAN,
+    }
+}
+
+impl GreeksExt for GbmMalliavinGreeks {
+    fn greeks(&self) -> Greeks { self.all_greeks() }
 }
 ```
 
-The `with_spot_bump(...)` / `with_vol_bump(...)` constructors must clone
-the pricer with the bumped parameter and re-use the same seed so
-"common random numbers" gives variance reduction. Two reference
-implementations:
+`HestonMalliavinGreeks` (`pricing/malliavin_greeks/heston.rs`) does the
+same with two helpers instead of one accumulator loop:
 
-- `GbmMalliavinGreeks` (`pricing/malliavin_greeks/gbm.rs`): the
-  cleanest single-pass example; uses Malliavin weights to compute Greeks
-  *without* finite differencing, but the surrounding `greeks()` shape is
-  the canonical pattern.
-- `HestonMalliavinGreeks` (`pricing/malliavin_greeks/heston.rs`):
-  multi-asset extension; same single-pass shape with cross-Greeks.
+```rust
+fn greeks(&self) -> Greeks {
+    let (delta, gamma) = self.delta_gamma_single_pass();
+    let vega = self.vega_v0();
+    Greeks { delta, gamma, vega,
+             theta: f64::NAN, rho: f64::NAN,
+             vanna: f64::NAN, charm: f64::NAN, volga: f64::NAN, veta: f64::NAN }
+}
+```
+
+The point of the override is stated in `all_greeks`'s own doc comment:
+calling `delta()`, `gamma()`, `vega()`, `rho()` individually each runs a
+**fresh** simulation, so the four would come from four different sample
+paths and be mutually inconsistent. Sharing the paths is the whole
+reason the override exists.
+
+If you do write a bump-and-reprice estimator, common random numbers
+(Glasserman 2003 §7.1) is the right technique — but you would be adding
+the bumping API, not using an existing one. See
+`add-mc-variance-reduction` §6.
 
 ## 5. Analytic-pricer minimal impl
 
@@ -231,19 +273,25 @@ Reference: `BSMPricer` in `pricing/bsm/greeks.rs`.
 
 ## 6. Bump-size conventions
 
-The default finite-difference Greeks pick bump sizes that scale with
-the parameter magnitude:
+**There is no default finite-difference machinery in this crate**, and
+no `with_bump_sizes(...)` builder. `GreeksExt`'s accessors default to
+`f64::NAN`, and the five inherent aggregators are closed-form. A Greek
+is either derived analytically, estimated by a Malliavin weight, or
+absent.
 
-| Parameter | Default bump   | Rationale |
+If you are *adding* a bump-and-reprice estimator, these are reasonable
+starting bump sizes — as guidance for new code, not as a description of
+an existing default:
+
+| Parameter | Suggested bump | Rationale |
 |-----------|----------------|-----------|
 | spot S    | `S * 1e-4`     | relative bump; absolute bump fails for large S |
 | vol σ     | `1e-4`         | absolute (vols are O(1)); relative would be too small for low vol |
 | rate r    | `1e-5`         | absolute (rates are O(0.01–0.10)) |
 | maturity T| `1.0 / 365.0`  | one calendar day |
 
-Custom bump sizes for a specific pricer can be exposed as
-`with_bump_sizes(...)` builder methods, but the defaults work for 95%
-of cases. If you find yourself needing ad-hoc bumps in calibration,
+Expose them however the pricer's own builder style suggests. If you find
+yourself needing ad-hoc bumps in calibration,
 that's a hint to switch to analytic Greeks.
 
 ## 7. Testing
