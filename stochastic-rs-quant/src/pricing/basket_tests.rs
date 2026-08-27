@@ -210,6 +210,83 @@ fn mc_geometric_matches_closed_form() {
   assert!(rel < 0.02, "cf={cf}, mc={mc}");
 }
 
+/// A `NaN` *model* parameter used to price at the basket's **zero-volatility
+/// intrinsic**, which is the sharpest form this trap takes anywhere in the
+/// crate: nothing in the query is wrong and the answer is a plausible ATM
+/// call.
+///
+/// `(m2 / m1²).ln().max(1e-14)` turned the `NaN` log-ratio into `1e-14`, so
+/// `sigma_eff ~ 1e-7` and the Levy approximation collapsed onto the
+/// deterministic-basket value. The measurement that identifies it: the
+/// poisoned call and a genuinely zero-volatility basket at the same query
+/// return the *same* number, `4.877057549928611`, against `10.894912…` for
+/// the healthy model.
+///
+/// Both poisoned parameters are written straight to the `pub` fields
+/// rather than passed to the constructor, so this stays a statement about
+/// the estimator rather than about what `new` accepts.
+///
+/// The sibling [`GeometricBasketPricer`] is clean under the same probe —
+/// it has no such floor — and is checked here so the fix is not read as
+/// something the whole file needed.
+#[test]
+fn arithmetic_basket_levy_does_not_launder_a_nan_into_the_zero_vol_intrinsic() {
+  let (s, w, sig, q, rho) = iid_basket(2, 0.20, 0.4);
+  let healthy = ArithmeticBasketLevyPricer::new(w.clone(), sig.clone(), rho.clone());
+  let live = healthy.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
+
+  // The number the poisoned model used to impersonate.
+  let frozen = ArithmeticBasketLevyPricer::new(w.clone(), Array1::zeros(2), rho.clone());
+  let intrinsic = frozen.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
+  assert!(
+    intrinsic > 0.0 && intrinsic < live,
+    "the zero-vol intrinsic {intrinsic} must be a plausible price below the live one {live}"
+  );
+
+  let mut poisoned = healthy.clone();
+  poisoned.sigma[0] = f64::NAN;
+  let got = poisoned.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
+  assert!(got.is_nan(), "a NaN model sigma must not price: got {got}");
+  let got = poisoned.price_put(s.view(), 100.0, 0.05, q.view(), 1.0);
+  assert!(
+    got.is_nan(),
+    "a NaN model sigma must not price a put: {got}"
+  );
+
+  let mut poisoned = healthy.clone();
+  poisoned.rho[[0, 1]] = f64::NAN;
+  let got = poisoned.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
+  assert!(got.is_nan(), "a NaN model rho must not price: got {got}");
+
+  // The `1e-14` floor is untouched where it belongs: a basket with no
+  // volatility at all still prices, rather than dividing by zero.
+  assert!(intrinsic.is_finite());
+
+  // The query-side `NaN`s already propagated and must keep doing so.
+  let mut nan_spot = s.clone();
+  nan_spot[0] = f64::NAN;
+  assert!(
+    healthy
+      .price_call(nan_spot.view(), 100.0, 0.05, q.view(), 1.0)
+      .is_nan()
+  );
+  assert!(
+    healthy
+      .price_call(s.view(), 100.0, 0.05, q.view(), f64::NAN)
+      .is_nan()
+  );
+
+  // Clean under the same probe, and deliberately untouched.
+  let mut geo = GeometricBasketPricer::new(w, sig, rho);
+  geo.sigma[0] = f64::NAN;
+  assert!(
+    geo
+      .price_call(s.view(), 100.0, 0.05, q.view(), 1.0)
+      .is_nan(),
+    "the geometric basket has no such floor and already propagated"
+  );
+}
+
 /// Arithmetic basket put-call parity: $C - P = e^{-rT}(F - K)$ where
 /// $F = E[B]$.
 #[test]

@@ -49,15 +49,57 @@ pub enum RainbowPayoff {
   PutOnMin,
 }
 
+/// `a.max(b)` with a `NaN` operand **propagated** instead of discarded.
+///
+/// `f64::max` returns the non-`NaN` operand, which is right for an
+/// ordering question and wrong for every use in this file. Folded over an
+/// asset vector it silently *drops* an undefined leg, so an $n$-asset
+/// best-of prices as an $(n-1)$-asset best-of; applied as a payoff floor
+/// it turns an undefined payoff into a plausible zero. Same split as
+/// `pricing::fourier::pricer`'s `floor_price`, which closes the identical
+/// trap on the Fourier path.
+#[inline]
+fn nan_max(a: f64, b: f64) -> f64 {
+  if a.is_nan() || b.is_nan() {
+    f64::NAN
+  } else {
+    a.max(b)
+  }
+}
+
+/// `a.min(b)` with a `NaN` operand propagated — see `nan_max`.
+#[inline]
+fn nan_min(a: f64, b: f64) -> f64 {
+  if a.is_nan() || b.is_nan() {
+    f64::NAN
+  } else {
+    a.min(b)
+  }
+}
+
 impl RainbowPayoff {
+  /// The contract's payoff on one simulated terminal-price vector.
+  ///
+  /// A non-finite leg poisons the payoff rather than dropping out of it.
+  /// Both reductions and the floor go through `nan_max` / `nan_min`:
+  /// with the plain `f64::max`/`f64::min` a `NaN` asset was discarded by
+  /// the fold *and* the surviving `(max_p - k).max(0.0)` floor would have
+  /// discarded it again, so `CallOnMax` on `[120, NaN, 90]` at `K = 100`
+  /// returned `20.0` — exactly the two-asset answer, with nothing marking
+  /// the third asset as missing.
+  ///
+  /// An **empty** `prices` slice still yields `0.0` through the untouched
+  /// `±inf` fold seeds. That is a different question — a basket with no
+  /// assets — and it is not reachable from either Monte Carlo caller,
+  /// whose asset count comes from the query's own spot vector.
   pub fn evaluate(&self, prices: &[f64], k: f64) -> f64 {
-    let max_p = prices.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let min_p = prices.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_p = prices.iter().copied().fold(f64::NEG_INFINITY, nan_max);
+    let min_p = prices.iter().copied().fold(f64::INFINITY, nan_min);
     match self {
-      RainbowPayoff::CallOnMax => (max_p - k).max(0.0),
-      RainbowPayoff::CallOnMin => (min_p - k).max(0.0),
-      RainbowPayoff::PutOnMax => (k - max_p).max(0.0),
-      RainbowPayoff::PutOnMin => (k - min_p).max(0.0),
+      RainbowPayoff::CallOnMax => nan_max(max_p - k, 0.0),
+      RainbowPayoff::CallOnMin => nan_max(min_p - k, 0.0),
+      RainbowPayoff::PutOnMax => nan_max(k - max_p, 0.0),
+      RainbowPayoff::PutOnMin => nan_max(k - min_p, 0.0),
     }
   }
 }
@@ -547,6 +589,56 @@ mod tests {
       .try_price(s.view(), 100.0, 0.05, q.view(), 1.0)
       .expect_err("rho = 2 is not a correlation");
     assert!(err.to_string().contains("not positive definite"), "{err}");
+  }
+
+  /// A `NaN` leg used to be **dropped**, so an $n$-asset best-of priced as
+  /// an $(n-1)$-asset best-of.
+  ///
+  /// The identity with the two-asset answer is what makes it a silent
+  /// defect rather than a visible one: `CallOnMax` on `[120, NaN, 90]` at
+  /// `K = 100` returned `20.0`, bit-for-bit the value of the same contract
+  /// written on `[120, 90]`. Nothing in the number marks the third asset
+  /// as missing.
+  ///
+  /// All four payoffs are pinned. Two of them (`CallOnMin`, `PutOnMax`)
+  /// returned `0.0` instead, through the *second* copy of the same trap —
+  /// the surviving `(min_p - k).max(0.0)` floor — so a fix to the fold
+  /// alone would have left them laundering.
+  #[test]
+  fn a_nan_leg_poisons_the_rainbow_payoff_instead_of_dropping_out() {
+    let legs = [120.0, f64::NAN, 90.0];
+    for payoff in [
+      RainbowPayoff::CallOnMax,
+      RainbowPayoff::CallOnMin,
+      RainbowPayoff::PutOnMax,
+      RainbowPayoff::PutOnMin,
+    ] {
+      let got = payoff.evaluate(&legs, 100.0);
+      assert!(got.is_nan(), "{payoff:?} on a NaN leg must not pay: {got}");
+      // Every payoff is also poisoned by an undefined strike.
+      let by_strike = payoff.evaluate(&[120.0, 90.0], f64::NAN);
+      assert!(
+        by_strike.is_nan(),
+        "{payoff:?} at a NaN strike must not pay: {by_strike}"
+      );
+    }
+
+    // The two-asset value the three-asset contract used to impersonate.
+    assert_eq!(
+      RainbowPayoff::CallOnMax.evaluate(&[120.0, 90.0], 100.0),
+      20.0
+    );
+    // And the floor is still a floor for a real, out-of-the-money basket.
+    assert_eq!(
+      RainbowPayoff::CallOnMax.evaluate(&[80.0, 90.0], 100.0),
+      0.0,
+      "a worthless best-of still pays zero"
+    );
+    assert_eq!(
+      RainbowPayoff::PutOnMin.evaluate(&[120.0, 90.0], 100.0),
+      10.0,
+      "the surviving payoffs must be unchanged"
+    );
   }
 
   /// Stulz put-on-min via parity should be positive.

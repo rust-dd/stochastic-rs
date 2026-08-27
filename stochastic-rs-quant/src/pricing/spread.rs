@@ -16,6 +16,20 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::OptionType;
 use crate::traits::FloatExt;
 
+/// Floor a payoff at zero without letting the floor swallow a `NaN`.
+///
+/// `f64::max` returns the non-`NaN` operand, so `f64::NAN.max(0.0)` is
+/// `0.0` — a floor and a poison check run together into one plausible
+/// wrong answer. The floor itself is right: an exchange option and a
+/// spread option both pay `max(·, 0)`, and a value a few ulp below zero
+/// is round-off around a worthless contract. An undefined value has no
+/// payoff to floor, so it travels on. Same split as
+/// `pricing::fourier::pricer`'s `floor_price`.
+#[inline]
+fn floor_payoff(x: f64) -> f64 {
+  if x.is_nan() { x } else { x.max(0.0) }
+}
+
 /// Margrabe (1978) exchange option: pays $\max(S_1 - S_2, 0)$.
 ///
 /// $$
@@ -92,10 +106,20 @@ impl MargrabePricer {
   /// Price the exchange option at one query point. This is always the call
   /// payoff $\max(S_1 - S_2, 0)$; the "put" version $\max(S_2 - S_1, 0)$ is
   /// the same model and the same query with the two legs swapped in both.
+  ///
+  /// The degenerate branch is the $\sigma \to 0$ limit — the spread is
+  /// deterministic, so the option is worth its discounted intrinsic value
+  /// — and it is reached by an *admissible* model, `sigma1 == sigma2` at
+  /// `rho == 1`. It floors through `floor_payoff` rather than
+  /// `f64::max`, because that branch is also where a `NaN` query lands: a
+  /// `NaN` `tau` — which [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt)
+  /// returns for an expiry that never resolved — used to price a perfectly
+  /// correlated exchange option at a confident `0.0`, while the same
+  /// `tau` against any other model returns `NaN`.
   pub fn price(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
-      return (s1 * (-q1 * tau).exp() - s2 * (-q2 * tau).exp()).max(0.0);
+      return floor_payoff(s1 * (-q1 * tau).exp() - s2 * (-q2 * tau).exp());
     }
     let (d1, d2) = Self::d1_d2(v_sq, s1, s2, q1, q2, tau);
     s1 * (-q1 * tau).exp() * norm_cdf(d1) - s2 * (-q2 * tau).exp() * norm_cdf(d2)
@@ -177,6 +201,14 @@ impl McSpreadPricer {
   }
 
   /// Price either leg at one query point with a single simulation.
+  ///
+  /// The per-path payoff floors through `floor_payoff`. With a bare
+  /// `.max(0.0)` **every** poisoned path zeroed independently, so the
+  /// average came back `0.0` rather than `NaN` — a whole simulation's
+  /// worth of undefined payoffs reported as a worthless option. Both a
+  /// `NaN` query coordinate (`s1`, `s2`, `k`, a dividend yield) and a
+  /// `NaN` model parameter (`rho`, either volatility) reach it, the
+  /// latter through the `pub` fields whatever [`new`](Self::new) accepts.
   pub fn price_option(
     &self,
     s1: f64,
@@ -210,7 +242,7 @@ impl McSpreadPricer {
         let z2 = rho * z1 + sqrt_one_minus_rho2 * z2_indep;
         let s1_t = s1 * (drift1 + vol1 * z1).exp();
         let s2_t = s2 * (drift2 + vol2 * z2).exp();
-        ((phi * (s1_t - s2_t - k)).max(0.0)) as f64
+        floor_payoff(phi * (s1_t - s2_t - k))
       })
       .sum();
 
@@ -333,6 +365,96 @@ mod tests {
       puts[0] < puts[1] && puts[1] < puts[2],
       "spread puts must rise in the strike: {puts:?}"
     );
+  }
+
+  /// A `NaN` maturity on the degenerate-volatility branch used to price a
+  /// confident **`0.0`**.
+  ///
+  /// The branch is reached by an admissible model — `sigma1 == sigma2` at
+  /// `rho == 1`, whose combined variance is exactly zero — and `tau`
+  /// arrives as `NaN` legitimately, from
+  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) on an expiry
+  /// that never resolved. The second half is what made it a defect rather
+  /// than a quirk: the *same* `NaN` `tau` against a non-degenerate model
+  /// returns `NaN`, so one exchange option in a book reported no value
+  /// while its neighbour reported no answer.
+  #[test]
+  fn margrabe_does_not_launder_a_nan_query_on_the_degenerate_branch() {
+    let degenerate = MargrabePricer::new(0.2, 0.2, 1.0);
+    assert_eq!(
+      degenerate.combined_variance(),
+      0.0,
+      "this model must actually reach the degenerate branch"
+    );
+    for (name, got) in [
+      ("tau", degenerate.price(100.0, 100.0, 0.0, 0.0, f64::NAN)),
+      ("s1", degenerate.price(f64::NAN, 100.0, 0.0, 0.0, 1.0)),
+      ("q1", degenerate.price(100.0, 100.0, f64::NAN, 0.0, 1.0)),
+    ] {
+      assert!(got.is_nan(), "a NaN {name} must not price: got {got}");
+    }
+    // The non-degenerate model already propagated, and must keep doing so.
+    assert!(
+      MargrabePricer::new(0.25, 0.20, 0.4)
+        .price(100.0, 100.0, 0.0, 0.0, f64::NAN)
+        .is_nan()
+    );
+    // The floor itself is untouched: the branch is still the discounted
+    // intrinsic, floored at zero.
+    assert_eq!(degenerate.price(100.0, 120.0, 0.0, 0.0, 1.0), 0.0);
+    assert!((degenerate.price(120.0, 100.0, 0.0, 0.0, 1.0) - 20.0).abs() < 1e-12);
+  }
+
+  /// The per-path `max(0)` floor zeroed **every** poisoned payoff
+  /// independently, so the average of a fully undefined simulation came
+  /// back as `0.0` rather than `NaN`.
+  ///
+  /// Both routes are pinned. A `NaN` query coordinate is the ordinary one.
+  /// A `NaN` *model* `rho` is written straight to the field rather than
+  /// passed to the constructor: the fields are `pub`, so the estimator is
+  /// reachable in that state whatever `new` chooses to accept.
+  #[test]
+  fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
+    let model = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
+    for (name, got) in [
+      (
+        "s1",
+        model.price_call(f64::NAN, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0),
+      ),
+      (
+        "s2",
+        model.price_call(110.0, f64::NAN, 10.0, 0.02, 0.0, 0.0, 1.0),
+      ),
+      (
+        "k",
+        model.price_call(110.0, 100.0, f64::NAN, 0.02, 0.0, 0.0, 1.0),
+      ),
+      (
+        "q1",
+        model.price_call(110.0, 100.0, 10.0, 0.02, f64::NAN, 0.0, 1.0),
+      ),
+      (
+        "put s1",
+        model.price_put(f64::NAN, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0),
+      ),
+    ] {
+      assert!(got.is_nan(), "a NaN {name} must not price: got {got}");
+    }
+
+    let mut poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
+    poisoned.rho = f64::NAN;
+    let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
+    assert!(got.is_nan(), "a NaN model rho must not price: got {got}");
+
+    poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
+    poisoned.sigma1 = f64::NAN;
+    let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
+    assert!(got.is_nan(), "a NaN model sigma1 must not price: got {got}");
+
+    // The floor is still a floor: a deep out-of-the-money spread call is
+    // worth zero, not a small negative number.
+    let deep = model.price_call(110.0, 100.0, 500.0, 0.02, 0.0, 0.0, 1.0);
+    assert_eq!(deep, 0.0, "the max(0) floor must survive: {deep}");
   }
 
   /// Margrabe ↔ MC (K=0) consistency: with enough paths the MC spread call

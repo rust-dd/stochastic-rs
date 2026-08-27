@@ -273,7 +273,21 @@ impl ArithmeticBasketLevyPricer {
       r,
       tau,
     );
-    let var = (m2 / (m1 * m1)).ln().max(1e-14);
+    // A floor and a poison check are different operations, and `f64::max`
+    // runs them together: `f64::NAN.max(1e-14)` is `1e-14`. The floor
+    // itself is right — a basket whose two matched moments satisfy
+    // `m2 == m1²` has zero variance, and `1e-14` keeps `sigma_eff` out of
+    // a division by zero at that degenerate limit. A `NaN` log-ratio has
+    // no variance to floor: it means a model parameter or a market input
+    // was undefined, and squashing it to `1e-14` gave `sigma_eff ~ 1e-7`
+    // and priced the basket at its zero-volatility intrinsic. Same split
+    // as `pricing::fourier::pricer`'s `floor_price`.
+    let log_ratio = (m2 / (m1 * m1)).ln();
+    let var = if log_ratio.is_nan() {
+      log_ratio
+    } else {
+      log_ratio.max(1e-14)
+    };
     let sigma_eff = (var / tau).sqrt();
     let sqrt_t = tau.sqrt();
     let d1 = ((m1 / k).ln() + 0.5 * var) / (sigma_eff * sqrt_t);
