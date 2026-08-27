@@ -210,6 +210,217 @@ fn mc_geometric_matches_closed_form() {
   assert!(rel < 0.02, "cf={cf}, mc={mc}");
 }
 
+/// The two closed-form basket constructors now reject a shape mismatch, a
+/// negative volatility and an out-of-range correlation entry; the Monte
+/// Carlo one rejects only the volatilities and the path count.
+///
+/// The shape check is the one with the sharpest evidence, and it comes
+/// from the Levy pricer: it has no dimension assertion anywhere, and its
+/// moment loops run over the *query*'s asset count while indexing the
+/// model's vectors, so a surplus model entry is silently discarded and a
+/// short one silently truncates the basket.
+mod construction_validation {
+  use super::*;
+
+  /// `10.894912090686852` — bit-identical to the healthy two-asset price,
+  /// with the third volatility silently ignored.
+  #[test]
+  #[should_panic(
+    expected = "ArithmeticBasketLevyPricer::new: weights, sigma and rho must agree on the asset count"
+  )]
+  fn levy_rejects_a_surplus_volatility() {
+    let _ = ArithmeticBasketLevyPricer::new(
+      array![0.5, 0.5],
+      array![0.20, 0.30, 0.10],
+      array![[1.0, 0.4], [0.4, 1.0]],
+    );
+  }
+
+  /// A 3x3 correlation against a 2-asset model returned `9.783632`, using
+  /// the top-left block and nothing else.
+  #[test]
+  #[should_panic(
+    expected = "GeometricBasketPricer::new: weights, sigma and rho must agree on the asset count"
+  )]
+  fn geometric_rejects_a_correlation_of_the_wrong_size() {
+    let _ = GeometricBasketPricer::new(array![0.5, 0.5], array![0.20, 0.30], Array2::<f64>::eye(3));
+  }
+
+  /// `8.487146` against `10.894912`.
+  #[test]
+  #[should_panic(
+    expected = "ArithmeticBasketLevyPricer::new: sigma[0] must be a non-negative volatility (got -0.2)"
+  )]
+  fn levy_rejects_a_negative_volatility() {
+    let _ = ArithmeticBasketLevyPricer::new(
+      array![0.5, 0.5],
+      array![-0.20, 0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+    );
+  }
+
+  /// `6.946344` against `10.224832`.
+  #[test]
+  #[should_panic(
+    expected = "GeometricBasketPricer::new: sigma[0] must be a non-negative volatility (got -0.2)"
+  )]
+  fn geometric_rejects_a_negative_volatility() {
+    let _ = GeometricBasketPricer::new(
+      array![0.5, 0.5],
+      array![-0.20, 0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+    );
+  }
+
+  /// The `sigma_g_sq.max(0.0)` floor swallows a negative basket variance
+  /// and the geometric call comes back **`0.0`** — the `f64::max` trap
+  /// again, this time on a model parameter rather than a price.
+  #[test]
+  #[should_panic(expected = "GeometricBasketPricer::new: rho[0][1] must be in [-1, 1] (got -5)")]
+  fn geometric_rejects_a_correlation_below_minus_one() {
+    let _ = GeometricBasketPricer::new(
+      array![0.5, 0.5],
+      array![0.20, 0.30],
+      array![[1.0, -5.0], [-5.0, 1.0]],
+    );
+  }
+
+  /// `4.877058` — the basket's zero-volatility intrinsic, the same number
+  /// a `NaN` `sigma` produced before the Levy variance floor was split.
+  #[test]
+  #[should_panic(
+    expected = "ArithmeticBasketLevyPricer::new: rho[0][1] must be in [-1, 1] (got -5)"
+  )]
+  fn levy_rejects_a_correlation_below_minus_one() {
+    let _ = ArithmeticBasketLevyPricer::new(
+      array![0.5, 0.5],
+      array![0.20, 0.30],
+      array![[1.0, -5.0], [-5.0, 1.0]],
+    );
+  }
+
+  /// The range test covers the diagonal, so a matrix carrying variances
+  /// instead of correlations is caught by the same check: `16.837128`
+  /// against `10.224832`.
+  #[test]
+  #[should_panic(expected = "GeometricBasketPricer::new: rho[0][0] must be in [-1, 1] (got 3)")]
+  fn geometric_rejects_a_correlation_diagonal_that_is_not_one() {
+    let _ = GeometricBasketPricer::new(
+      array![0.5, 0.5],
+      array![0.20, 0.30],
+      array![[3.0, 0.4], [0.4, 3.0]],
+    );
+  }
+
+  #[cfg(feature = "openblas")]
+  #[test]
+  #[should_panic(
+    expected = "McBasketPricer::new: sigma[1] must be a non-negative volatility (got -0.3)"
+  )]
+  fn mc_basket_rejects_a_negative_volatility() {
+    let _ = McBasketPricer::new(
+      array![0.5, 0.5],
+      BasketAverageType::Arithmetic,
+      array![0.25, -0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+      1_000,
+    );
+  }
+
+  #[cfg(feature = "openblas")]
+  #[test]
+  #[should_panic(expected = "McBasketPricer::new: n_paths must be at least 1 (got 0)")]
+  fn mc_basket_rejects_a_zero_path_count() {
+    let _ = McBasketPricer::new(
+      array![0.5, 0.5],
+      BasketAverageType::Arithmetic,
+      array![0.25, 0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+      0,
+    );
+  }
+
+  /// The deliberate omissions, pinned so they cannot drift.
+  ///
+  /// The **weight sum** is free on both closed forms: a long/short basket
+  /// is a real product, and `w = [-1, 2]` prices at `29.444371` /
+  /// `22.810134` rather than at nonsense.
+  ///
+  /// **Symmetry** of `rho` is free, because an exact-equality test would
+  /// reject an estimator's round-off-symmetric matrix. The residual is
+  /// asserted rather than described: the geometric basket symmetrises an
+  /// asymmetric `rho` *bit-identically*, and the Levy basket does not.
+  ///
+  /// `McBasketPricer` leaves `rho` and the shapes to `try_price`, which
+  /// `mc_basket_try_price_reports_a_query_dimension_mismatch` needs.
+  #[test]
+  fn the_deliberate_omissions_stay_constructible() {
+    let s = array![100.0, 100.0];
+    let q = array![0.0, 0.0];
+    let rho = array![[1.0, 0.4], [0.4, 1.0]];
+    let long_short = GeometricBasketPricer::new(array![-1.0, 2.0], array![0.20, 0.30], rho.clone());
+    assert!(long_short.price_call(s.view(), 100.0, 0.05, q.view(), 1.0) > 0.0);
+
+    let asym = array![[1.0, 0.4], [0.9, 1.0]];
+    let symm = array![[1.0, 0.65], [0.65, 1.0]];
+    let w = array![0.5, 0.5];
+    let sig = array![0.20, 0.30];
+    let geo_asym = GeometricBasketPricer::new(w.clone(), sig.clone(), asym.clone()).price_call(
+      s.view(),
+      100.0,
+      0.05,
+      q.view(),
+      1.0,
+    );
+    let geo_symm = GeometricBasketPricer::new(w.clone(), sig.clone(), symm.clone()).price_call(
+      s.view(),
+      100.0,
+      0.05,
+      q.view(),
+      1.0,
+    );
+    assert_eq!(
+      geo_asym, geo_symm,
+      "the geometric basket silently symmetrises rho"
+    );
+    let levy_asym = ArithmeticBasketLevyPricer::new(w.clone(), sig.clone(), asym).price_call(
+      s.view(),
+      100.0,
+      0.05,
+      q.view(),
+      1.0,
+    );
+    let levy_symm = ArithmeticBasketLevyPricer::new(w, sig, symm).price_call(
+      s.view(),
+      100.0,
+      0.05,
+      q.view(),
+      1.0,
+    );
+    assert_ne!(
+      levy_asym, levy_symm,
+      "the Levy basket exponentiates each entry, so it does not"
+    );
+  }
+
+  /// The accessor guards stay, because the fields are `pub` and so the
+  /// constructor is a front door and not a wall. A query whose asset count
+  /// disagrees with an internally consistent model is still the accessor's
+  /// to catch, and its message is not a substring of the constructor's.
+  #[test]
+  #[should_panic(expected = "assertion `left == right` failed")]
+  fn the_query_length_check_stays_at_the_accessor() {
+    let model = GeometricBasketPricer::new(
+      array![0.5, 0.5],
+      array![0.20, 0.30],
+      array![[1.0, 0.4], [0.4, 1.0]],
+    );
+    let s = array![100.0, 100.0, 100.0];
+    let q = array![0.0, 0.0, 0.0];
+    let _ = model.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
+  }
+}
+
 /// A `NaN` *model* parameter used to price at the basket's **zero-volatility
 /// intrinsic**, which is the sharpest form this trap takes anywhere in the
 /// crate: nothing in the query is wrong and the answer is a plausible ATM

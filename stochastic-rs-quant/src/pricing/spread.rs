@@ -79,8 +79,44 @@ pub struct MargrabePricer {
 }
 
 impl MargrabePricer {
-  /// Builds the model from the two volatilities and their correlation.
-  pub const fn new(sigma1: f64, sigma2: f64, rho: f64) -> Self {
+  /// Validating constructor.
+  ///
+  /// # Panics
+  /// - if `sigma1` or `sigma2` is negative or `NaN` — not a volatility
+  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
+  ///
+  /// An out-of-range correlation is the sharp one here, because
+  /// [`price`](Self::price)'s degenerate branch catches it and returns a
+  /// number: at `rho = 5` the combined variance
+  /// $\sigma_1^2+\sigma_2^2-2\rho\sigma_1\sigma_2$ goes *negative*, trips
+  /// the `< 1e-14` test, and the exchange option prices as its discounted
+  /// intrinsic — `10.0` against the correct `16.19`. At `rho = -5` the
+  /// variance is merely too large and the price comes back `36.94`. Both
+  /// volatilities are checked to the same standard and for the same
+  /// reason as [`KirkSpreadPricer`](crate::pricing::kirk::KirkSpreadPricer)'s:
+  /// validating one would swap the old asymmetry for a new one, and a
+  /// negative `sigma1` prices at `21.21`.
+  ///
+  /// Admissible and still accepted: perfect correlation either way, and a
+  /// zero-volatility leg. `sigma1 == sigma2` at `rho == 1` is exactly the
+  /// degenerate branch, which is a limit rather than an error.
+  ///
+  /// No longer `const fn`. What made that safe was measured rather than
+  /// assumed: **zero** `const` or `static` items of this type exist in the
+  /// workspace, against 32 `MargrabePricer::new` call sites.
+  pub fn new(sigma1: f64, sigma2: f64, rho: f64) -> Self {
+    assert!(
+      sigma1 >= 0.0,
+      "MargrabePricer::new: sigma1 must be a non-negative volatility (got {sigma1})"
+    );
+    assert!(
+      sigma2 >= 0.0,
+      "MargrabePricer::new: sigma2 must be a non-negative volatility (got {sigma2})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&rho),
+      "MargrabePricer::new: rho must be in [-1, 1] (got {rho})"
+    );
     Self {
       sigma1,
       sigma2,
@@ -189,9 +225,47 @@ pub struct McSpreadPricer {
 }
 
 impl McSpreadPricer {
-  /// Builds the model from the two volatilities and their correlation,
-  /// plus the Monte Carlo path count every price off this instance uses.
-  pub const fn new(sigma1: f64, sigma2: f64, rho: f64, n_paths: usize) -> Self {
+  /// Validating constructor.
+  ///
+  /// # Panics
+  /// - if `sigma1` or `sigma2` is negative or `NaN` — not a volatility
+  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
+  /// - if `n_paths` is `0`
+  ///
+  /// The correlation guard closes a second instance of the `f64::max`
+  /// trap, one layer up from the payoff floor: the Cholesky-free factor
+  /// `sqrt((1 - rho²).max(0.0))` *absorbs* an out-of-range correlation
+  /// instead of announcing it, so the second asset is simulated as
+  /// `rho·z1` alone and the spread call comes back `13.62` at `rho = 5`
+  /// and `35.35` at `rho = -5`, against `10.69`. Both volatilities are
+  /// checked to the same standard: a negative `sigma1` prices at `15.93`.
+  ///
+  /// `n_paths == 0` is the one guard here that does **not** close a wrong
+  /// number — the empty average is `0/0` and the price is already `NaN`.
+  /// It is rejected so that a path count is refused where it is supplied,
+  /// matching
+  /// [`GbmMalliavinPricer::new`](crate::pricing::malliavin_gbm::GbmMalliavinPricer::new),
+  /// the crate's other Monte Carlo pricer holding its own path count.
+  ///
+  /// No longer `const fn`: **zero** `const` or `static` items of this type
+  /// in the workspace, against 20 `McSpreadPricer::new` call sites.
+  pub fn new(sigma1: f64, sigma2: f64, rho: f64, n_paths: usize) -> Self {
+    assert!(
+      sigma1 >= 0.0,
+      "McSpreadPricer::new: sigma1 must be a non-negative volatility (got {sigma1})"
+    );
+    assert!(
+      sigma2 >= 0.0,
+      "McSpreadPricer::new: sigma2 must be a non-negative volatility (got {sigma2})"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&rho),
+      "McSpreadPricer::new: rho must be in [-1, 1] (got {rho})"
+    );
+    assert!(
+      n_paths >= 1,
+      "McSpreadPricer::new: n_paths must be at least 1 (got {n_paths})"
+    );
     Self {
       sigma1,
       sigma2,
@@ -259,212 +333,6 @@ impl McSpreadPricer {
     self.price_option(s1, s2, k, r, q1, q2, tau, OptionType::Put)
   }
 }
-
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  /// Cross-arch tolerance: these goldens come from `norm_cdf`, whose last
-  /// bit is a hostage to FMA contraction and libm differences between the
-  /// aarch64-darwin dev machine and CI's ubuntu x86_64.
-  const TOL: f64 = 1e-12;
-
-  /// Values captured from the bundled-market-data `MargrabePricer` **before**
-  /// the model/query reshape. The reshape is an API change only, so these
-  /// must not move.
-  #[test]
-  fn margrabe_matches_pre_refactor_goldens() {
-    let atm = MargrabePricer::new(0.20, 0.20, 0.0);
-    let price = atm.price(100.0, 100.0, 0.0, 0.0, 1.0);
-    assert!((price - 11.246296562219548).abs() < TOL, "atm {price}");
-    let d1 = atm.delta1(100.0, 100.0, 0.0, 0.0, 1.0);
-    assert!((d1 - 0.5562314828110977).abs() < TOL, "delta1 {d1}");
-    let d2 = atm.delta2(100.0, 100.0, 0.0, 0.0, 1.0);
-    assert!((d2 + 0.44376851718890226).abs() < TOL, "delta2 {d2}");
-
-    let itm = MargrabePricer::new(0.20, 0.20, 0.5);
-    let price = itm.price(200.0, 100.0, 0.01, 0.02, 0.5);
-    assert!((price - 99.99751393839698).abs() < TOL, "itm {price}");
-
-    let skewed = MargrabePricer::new(0.31, 0.17, -0.25);
-    let price = skewed.price(95.0, 105.0, 0.03, 0.011, 2.25);
-    assert!((price - 15.76555742239379).abs() < TOL, "skewed {price}");
-    let d1 = skewed.delta1(95.0, 105.0, 0.03, 0.011, 2.25);
-    assert!((d1 - 0.4848890956486614).abs() < TOL, "delta1 {d1}");
-    let d2 = skewed.delta2(95.0, 105.0, 0.03, 0.011, 2.25);
-    assert!((d2 + 0.28856101584980043).abs() < TOL, "delta2 {d2}");
-  }
-
-  /// One model instance prices a whole query grid — the point of the split.
-  #[test]
-  fn margrabe_one_model_prices_a_spot_grid() {
-    let model = MargrabePricer::new(0.25, 0.20, 0.4);
-    let prices = [90.0, 100.0, 110.0].map(|s1| model.price(s1, 100.0, 0.0, 0.0, 1.0));
-    assert!(
-      prices[0] < prices[1] && prices[1] < prices[2],
-      "the exchange option must rise in S1: {prices:?}"
-    );
-  }
-
-  /// The maturity is a query argument, so one instance covers a term
-  /// structure. A stale `tau` cached at construction would return the same
-  /// number three times.
-  #[test]
-  fn margrabe_one_model_prices_a_maturity_grid() {
-    let model = MargrabePricer::new(0.25, 0.20, 0.4);
-    let prices = [0.25, 1.0, 4.0].map(|tau| model.price(100.0, 100.0, 0.0, 0.0, tau));
-    assert!(
-      prices[0] < prices[1] && prices[1] < prices[2],
-      "an at-the-money exchange option must rise in tau: {prices:?}"
-    );
-  }
-
-  /// Margrabe with σ1=σ2 and ρ=1 must equal $\max(S_1 e^{-q_1 T} - S_2
-  /// e^{-q_2 T}, 0)$ — the spread is deterministic at maturity.
-  #[test]
-  fn margrabe_perfect_correlation_equal_vol() {
-    let price = MargrabePricer::new(0.2, 0.2, 1.0).price(100.0, 100.0, 0.0, 0.0, 1.0);
-    assert!(price.abs() < 1e-8, "perfect-corr Margrabe={price}");
-  }
-
-  /// Margrabe at-the-money with zero correlation, equal vols.
-  /// $S_1 = S_2 = 100$, $\sigma_1 = \sigma_2 = 0.20$, $\rho = 0$, $T = 1$
-  /// → $\sigma_M = \sqrt{0.08} \approx 0.2828$
-  /// → V = 100 * (2N(σ_M/2) - 1) ≈ 11.246
-  #[test]
-  fn margrabe_atm_zero_corr() {
-    let price = MargrabePricer::new(0.20, 0.20, 0.0).price(100.0, 100.0, 0.0, 0.0, 1.0);
-    let expected = 11.246;
-    assert!((price - expected).abs() < 0.05, "Margrabe ATM={price}");
-  }
-
-  /// Margrabe with $S_1 \gg S_2$ approaches the discounted intrinsic.
-  #[test]
-  fn margrabe_deep_itm() {
-    let price = MargrabePricer::new(0.20, 0.20, 0.5).price(200.0, 100.0, 0.01, 0.02, 0.5);
-    let intrinsic = 200.0 * (-0.01_f64 * 0.5).exp() - 100.0 * (-0.02_f64 * 0.5).exp();
-    assert!(
-      price > intrinsic,
-      "Margrabe deep ITM={price} vs intrinsic={intrinsic}"
-    );
-  }
-
-  /// One Monte Carlo model instance prices a whole strike grid, both legs.
-  /// The strikes are far enough apart that the ordering survives the
-  /// sampling error of independent simulations.
-  #[test]
-  fn mc_spread_one_model_prices_a_strike_grid() {
-    let model = McSpreadPricer::new(0.30, 0.25, 0.3, 100_000);
-    let calls = [0.0, 10.0, 25.0].map(|k| model.price_call(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0));
-    let puts = [0.0, 10.0, 25.0].map(|k| model.price_put(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0));
-    assert!(
-      calls[0] > calls[1] && calls[1] > calls[2],
-      "spread calls must decay in the strike: {calls:?}"
-    );
-    assert!(
-      puts[0] < puts[1] && puts[1] < puts[2],
-      "spread puts must rise in the strike: {puts:?}"
-    );
-  }
-
-  /// A `NaN` maturity on the degenerate-volatility branch used to price a
-  /// confident **`0.0`**.
-  ///
-  /// The branch is reached by an admissible model — `sigma1 == sigma2` at
-  /// `rho == 1`, whose combined variance is exactly zero — and `tau`
-  /// arrives as `NaN` legitimately, from
-  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) on an expiry
-  /// that never resolved. The second half is what made it a defect rather
-  /// than a quirk: the *same* `NaN` `tau` against a non-degenerate model
-  /// returns `NaN`, so one exchange option in a book reported no value
-  /// while its neighbour reported no answer.
-  #[test]
-  fn margrabe_does_not_launder_a_nan_query_on_the_degenerate_branch() {
-    let degenerate = MargrabePricer::new(0.2, 0.2, 1.0);
-    assert_eq!(
-      degenerate.combined_variance(),
-      0.0,
-      "this model must actually reach the degenerate branch"
-    );
-    for (name, got) in [
-      ("tau", degenerate.price(100.0, 100.0, 0.0, 0.0, f64::NAN)),
-      ("s1", degenerate.price(f64::NAN, 100.0, 0.0, 0.0, 1.0)),
-      ("q1", degenerate.price(100.0, 100.0, f64::NAN, 0.0, 1.0)),
-    ] {
-      assert!(got.is_nan(), "a NaN {name} must not price: got {got}");
-    }
-    // The non-degenerate model already propagated, and must keep doing so.
-    assert!(
-      MargrabePricer::new(0.25, 0.20, 0.4)
-        .price(100.0, 100.0, 0.0, 0.0, f64::NAN)
-        .is_nan()
-    );
-    // The floor itself is untouched: the branch is still the discounted
-    // intrinsic, floored at zero.
-    assert_eq!(degenerate.price(100.0, 120.0, 0.0, 0.0, 1.0), 0.0);
-    assert!((degenerate.price(120.0, 100.0, 0.0, 0.0, 1.0) - 20.0).abs() < 1e-12);
-  }
-
-  /// The per-path `max(0)` floor zeroed **every** poisoned payoff
-  /// independently, so the average of a fully undefined simulation came
-  /// back as `0.0` rather than `NaN`.
-  ///
-  /// Both routes are pinned. A `NaN` query coordinate is the ordinary one.
-  /// A `NaN` *model* `rho` is written straight to the field rather than
-  /// passed to the constructor: the fields are `pub`, so the estimator is
-  /// reachable in that state whatever `new` chooses to accept.
-  #[test]
-  fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
-    let model = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
-    for (name, got) in [
-      (
-        "s1",
-        model.price_call(f64::NAN, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0),
-      ),
-      (
-        "s2",
-        model.price_call(110.0, f64::NAN, 10.0, 0.02, 0.0, 0.0, 1.0),
-      ),
-      (
-        "k",
-        model.price_call(110.0, 100.0, f64::NAN, 0.02, 0.0, 0.0, 1.0),
-      ),
-      (
-        "q1",
-        model.price_call(110.0, 100.0, 10.0, 0.02, f64::NAN, 0.0, 1.0),
-      ),
-      (
-        "put s1",
-        model.price_put(f64::NAN, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0),
-      ),
-    ] {
-      assert!(got.is_nan(), "a NaN {name} must not price: got {got}");
-    }
-
-    let mut poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
-    poisoned.rho = f64::NAN;
-    let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
-    assert!(got.is_nan(), "a NaN model rho must not price: got {got}");
-
-    poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
-    poisoned.sigma1 = f64::NAN;
-    let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
-    assert!(got.is_nan(), "a NaN model sigma1 must not price: got {got}");
-
-    // The floor is still a floor: a deep out-of-the-money spread call is
-    // worth zero, not a small negative number.
-    let deep = model.price_call(110.0, 100.0, 500.0, 0.02, 0.0, 0.0, 1.0);
-    assert_eq!(deep, 0.0, "the max(0) floor must survive: {deep}");
-  }
-
-  /// Margrabe ↔ MC (K=0) consistency: with enough paths the MC spread call
-  /// should match Margrabe within 1.5%.
-  #[test]
-  fn margrabe_matches_mc_zero_strike() {
-    let m_price = MargrabePricer::new(0.25, 0.20, 0.4).price(110.0, 100.0, 0.0, 0.0, 1.0);
-    let mc = McSpreadPricer::new(0.25, 0.20, 0.4, 100_000);
-    let mc_price = mc.price_call(110.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-    let rel = (m_price - mc_price).abs() / m_price;
-    assert!(rel < 0.02, "margrabe={m_price}, mc={mc_price}, rel={rel}");
-  }
-}
+#[path = "spread_tests.rs"]
+mod tests;
