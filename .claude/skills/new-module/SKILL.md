@@ -11,14 +11,30 @@ Every new module must be **scalable** (trait-based extensibility), **integrated*
 
 Determine the correct top-level module first. Do NOT create a new top-level module without explicit approval.
 
-| Domain | Top-level module | Registration file | Examples |
-|---|---|---|---|
-| Stochastic processes (diffusion, jump, volatility, noise, interest rate, autoregressive) | `stochastic/` | `src/stochastic.rs` | GBM, Heston, CIR, fBM, GARCH |
-| Quantitative finance (pricing, bonds, calibration, calendar, FX, portfolio, strategies, vol-surface) | `quant/` | `src/quant.rs` | BSM pricer, schedule builder, FX forward |
-| Statistical estimators & tests (MLE, KDE, stationarity, normality, spectral) | `stats/` | `src/stats.rs` | Gaussian KDE, ADF test, Hurst estimator |
-| Probability distributions | `distributions/` | `src/distributions.rs` | Normal, Alpha-stable, NIG |
-| Copula models | `copulas/` | `src/copulas.rs` | Clayton, Gaussian, Student-t |
-| Neural network / AI models | `ai/` (feature-gated) | `src/lib.rs` | Vol calibration NN |
+Code lives in **sub-crates**, not in the umbrella. The umbrella's own
+`src/` holds exactly three files — `lib.rs`, `traits.rs`, `bridges.rs`
+— and `lib.rs` merely re-exports each sub-crate under a short alias
+(`pub use stochastic_rs_stochastic as stochastic;`). There is no
+`src/stochastic.rs`, `src/quant.rs`, `src/stats.rs`,
+`src/distributions.rs` or `src/copulas.rs`; that was the pre-split
+layout.
+
+| Domain | Public path | Crate you edit | Registration file | Examples |
+|---|---|---|---|---|
+| Stochastic processes (diffusion, jump, volatility, noise, interest, autoregressive) | `stochastic_rs::stochastic::…` | `stochastic-rs-stochastic/src/` | that crate's `src/lib.rs` | Gbm, Heston, Cir, Fbm |
+| Quantitative finance (pricing, bonds, calibration, calendar, FX, portfolio, strategies, vol_surface) | `stochastic_rs::quant::…` | `stochastic-rs-quant/src/` | that crate's `src/lib.rs` | BSMPricer, schedule builder, FX forward |
+| Statistical estimators & tests (MLE, KDE, stationarity, normality, spectral) | `stochastic_rs::stats::…` | `stochastic-rs-stats/src/` | that crate's `src/lib.rs` | Gaussian KDE, ADF test, Hurst estimators |
+| Probability distributions | `stochastic_rs::distributions::…` | `stochastic-rs-distributions/src/` | that crate's `src/lib.rs` | SimdNormal, SimdAlphaStable |
+| Copula models | `stochastic_rs::copulas::…` | `stochastic-rs-copulas/src/` | that crate's `src/lib.rs` | Clayton, GaussianCopula, TCopula |
+| RNG foundation | `stochastic_rs::simd_rng::…` | `stochastic-rs-core/src/` | that crate's `src/lib.rs` | SimdRng, SeedExt, Deterministic |
+| Neural network / AI models | `stochastic_rs::ai::…` (feature-gated) | `stochastic-rs-ai/src/` | that crate's `src/lib.rs` | Vol surrogates |
+
+The sub-crate split is transparent to users: the umbrella keeps the
+existing public API, so a new module in `stochastic-rs-quant/src/foo.rs`
+is reachable as `stochastic_rs::quant::foo::…` with no umbrella edit at
+all. You only touch the umbrella when adding a **trait** (mirror it in
+`src/traits.rs` — `tests/prelude_completeness.rs` turns a dropped
+re-export into a compile error) or a prelude item.
 
 ### Adding a submodule within an existing top-level module
 
@@ -26,27 +42,36 @@ Three file patterns exist in the project — choose the simplest that fits:
 
 **Pattern A — Leaf file** (single file, no subdirectory):
 ```
-src/stats/my_estimator.rs
+stochastic-rs-stats/src/my_estimator.rs
 ```
-Use when the implementation is self-contained in one file. Most `stats/` and `distributions/` modules follow this.
+Use when the implementation is self-contained in one file. Most `-stats`
+and `-distributions` modules follow this.
 
-**Pattern B — Root file + directory** (multiple subfiles):
+**Pattern B — Sibling root file + directory** (multiple subfiles):
 ```
-src/quant/my_module.rs          ← module root: doc header, pub mod, re-exports, shared traits
-src/quant/my_module/
+stochastic-rs-quant/src/my_module.rs     ← module root: doc header, pub mod, re-exports
+stochastic-rs-quant/src/my_module/
   engine.rs
   types.rs
 ```
-Use when the module has 2+ logical components. Most `quant/` modules (pricing, calibration, calendar, fx, bonds, vol_surface) follow this.
+Use when the module has 2+ logical components. This is the dominant
+shape in `-quant`, where nearly every top-level module appears twice in
+a directory listing — `pricing.rs` beside `pricing/`, `calibration.rs`
+beside `calibration/`, and so on. Note that the root is a **sibling**
+`.rs` file, not a `mod.rs` inside the directory.
 
 **Pattern C — Directory with mod.rs** (when root defines shared types):
 ```
-src/stochastic/mc/
+stochastic-rs-stochastic/src/mc/
   mod.rs                         ← defines McEstimate<T> + pub mod declarations
-  lsm.rs
+  antithetic.rs
   mlmc.rs
 ```
-Use when the module root itself defines shared types alongside submodule declarations. The `mc/` module and `noise/fgn/` follow this.
+Use when the module root itself defines shared types alongside submodule
+declarations. `mc/` and `noise/fgn/` follow this.
+
+Both B and C are in active use; pick whichever the surrounding crate
+already uses rather than introducing the other one next to it.
 
 ### Module root must contain
 
@@ -57,9 +82,20 @@ Use when the module root itself defines shared types alongside submodule declara
 
 ### Registration
 
-- **Submodule within existing top-level:** add `pub mod my_module;` in the parent's `.rs` file (alphabetical order)
-- **New top-level module:** add `pub mod my_module;` in `src/lib.rs` (requires approval per dev-rules)
-- **Feature-gated module:** `#[cfg(feature = "my_feature")] pub mod my_module;`
+- **Submodule within an existing module:** add `pub mod my_module;` in
+  the parent's root `.rs` (Pattern B) or `mod.rs` (Pattern C),
+  alphabetically.
+- **New top-level module in a sub-crate:** add `pub mod my_module;` to
+  **that sub-crate's** `src/lib.rs` — e.g.
+  `stochastic-rs-quant/src/lib.rs`. Not the umbrella's. Requires
+  approval per `dev-rules`.
+- **Feature-gated module:** `#[cfg(feature = "my_feature")] pub mod my_module;`,
+  and propagate the feature from the sub-crate to the umbrella — see
+  `feature-flag-management`.
+- **A new trait:** additionally mirror it in the sub-crate's
+  `src/traits.rs` **and** the umbrella's `src/traits.rs`. Decide
+  separately whether it belongs in `src/lib.rs`'s `prelude` — hub
+  membership and prelude membership are independent (see `CLAUDE.md`).
 
 ## 2. Trait integration map
 
