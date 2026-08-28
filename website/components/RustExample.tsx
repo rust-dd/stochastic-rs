@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { highlight } from 'fumadocs-core/highlight';
+import { CodeBlock, Pre } from 'fumadocs-ui/components/codeblock';
 
 export interface RustExampleProps {
   /**
@@ -12,14 +14,26 @@ export interface RustExampleProps {
   highlight?: string;
 }
 
-export function RustExample({ path, highlight }: RustExampleProps) {
+/**
+ * Inlines a compiled example from the workspace.
+ *
+ * The source is highlighted through the same Shiki pipeline Fumadocs uses for
+ * fenced ```rust blocks, so an included example renders identically to one
+ * written inline. Emitting a bare `<pre><code>` here instead would bypass that
+ * pipeline entirely and the block would render as unstyled plain text beside
+ * its highlighted Python neighbours.
+ */
+export async function RustExample({
+  path,
+  highlight: highlightRange,
+}: RustExampleProps) {
   const workspaceRoot = join(process.cwd(), '..');
   const filePath = join(workspaceRoot, path);
 
   let source: string;
   try {
     source = readFileSync(filePath, 'utf8');
-  } catch (err) {
+  } catch {
     return (
       <pre className="rounded-md border border-red-500/40 bg-red-500/5 p-4 text-sm text-red-600">
         {`<RustExample path="${path}" /> — file not found at ${filePath}`}
@@ -27,10 +41,17 @@ export function RustExample({ path, highlight }: RustExampleProps) {
     );
   }
 
-  const meta = highlight ? `rust {${highlight}}` : 'rust';
-  return (
-    <pre>
-      <code className={`language-${meta.split(' ')[0]}`}>{source}</code>
-    </pre>
-  );
+  const rendered = await highlight(source.trimEnd(), {
+    lang: 'rust',
+    meta: highlightRange ? { __raw: `{${highlightRange}}` } : undefined,
+    components: {
+      pre: (props) => (
+        <CodeBlock {...props} title={path}>
+          <Pre>{props.children}</Pre>
+        </CodeBlock>
+      ),
+    },
+  });
+
+  return rendered;
 }
