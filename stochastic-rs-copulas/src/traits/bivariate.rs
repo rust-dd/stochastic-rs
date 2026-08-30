@@ -1,5 +1,6 @@
 //! `BivariateExt` — bivariate copula trait.
 
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::error::Error;
 
@@ -232,6 +233,12 @@ pub trait BivariateExt {
   /// this generic implementation — calling `Self::percent_point` from
   /// inside an override of that same method would just recurse into the
   /// override instead of reaching this body.
+  ///
+  /// A quantile whose root lies at or below the bracket floor `f64::EPSILON`
+  /// saturates to that floor — the answer is below resolution, which is a
+  /// value, not a failure. A failing `partial_derivative` or a solve that
+  /// does not converge is an `Err`: neither has a quantile to report, and a
+  /// fabricated one would be indistinguishable from a real deep-tail draw.
   fn percent_point_numerical(
     &self,
     y: &Array1<f64>,
@@ -244,13 +251,56 @@ pub trait BivariateExt {
       let y_i = y[i];
       let v_i = V[i];
 
-      let f = |u| self.partial_derivative_scalar(u, v_i).unwrap() - y_i;
+      // The root-finder's closure cannot return a `Result`, so the first
+      // inner failure is parked here and re-raised after the solve.
+      let inner_err: RefCell<Option<Box<dyn Error>>> = RefCell::new(None);
+      let h = |u: f64| match self.partial_derivative_scalar(u, v_i) {
+        Ok(d) => d - y_i,
+        Err(e) => {
+          let mut slot = inner_err.borrow_mut();
+          if slot.is_none() {
+            *slot = Some(e);
+          }
+          f64::NAN
+        }
+      };
+
+      let lo = f64::EPSILON;
+      let f_lo = h(lo);
+      if let Some(e) = inner_err.borrow_mut().take() {
+        return Err(
+          format!(
+            "{:?} h-inverse (percent_point_numerical) failed at (y={y_i}, v={v_i}): {e}",
+            self.r#type()
+          )
+          .into(),
+        );
+      }
+      if f_lo >= 0.0 {
+        results[i] = lo;
+        continue;
+      }
+
       let mut convergency = SimpleConvergency {
         eps: f64::EPSILON,
         max_iter: 50,
       };
-      let min = find_root_brent(f64::EPSILON, 1.0, f, &mut convergency);
-      results[i] = min.unwrap_or(f64::EPSILON);
+      let root = find_root_brent(lo, 1.0, h, &mut convergency);
+      if let Some(e) = inner_err.borrow_mut().take() {
+        return Err(
+          format!(
+            "{:?} h-inverse (percent_point_numerical) failed at (y={y_i}, v={v_i}): {e}",
+            self.r#type()
+          )
+          .into(),
+        );
+      }
+      results[i] = root.map_err(|e| {
+        format!(
+          "{:?} h-inverse (percent_point_numerical) did not converge at (y={y_i}, v={v_i}): {e}",
+          self.r#type()
+        )
+      })?;
     }
 
     Ok(results)
@@ -299,6 +349,7 @@ mod tests {
   use ndarray::array;
 
   use super::*;
+  use crate::bivariate::amh::Amh;
   use crate::bivariate::clayton::Clayton;
 
   /// Minimal non-Archimedean stand-in that does **not** override
@@ -369,6 +420,63 @@ mod tests {
       msg.starts_with("Fgm"),
       "expected the r#type() Debug label as prefix, got: {msg}"
     );
+  }
+
+  /// The unfitted dummy fails inside `partial_derivative_scalar` (its
+  /// `check_fit` refuses), and the failure must come back as an `Err`
+  /// naming the family and the query — not as a panic, and never as a
+  /// fabricated `EPSILON` quantile.
+  #[test]
+  fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
+    let dummy = DummyNonArchimedean;
+    let err = dummy
+      .percent_point_numerical(&array![0.5_f64], &array![0.5_f64])
+      .expect_err("a failing partial_derivative must surface as Err");
+    let msg = err.to_string();
+    assert!(
+      msg.contains("h-inverse") && msg.contains("Fit the copula first"),
+      "unexpected message: {msg}"
+    );
+  }
+
+  /// A target below the bracket floor is a saturation, not a failure: the
+  /// h-function of any copula at `u = EPSILON` is at least `y = 1e-300`, so
+  /// the quantile is below resolution and the floor itself is the honest
+  /// answer.
+  #[test]
+  fn percent_point_numerical_saturates_at_the_bracket_floor() {
+    let mut amh = Amh::new();
+    amh.set_tau(0.25);
+    amh._compute_theta();
+    let out = amh
+      .percent_point_numerical(&array![1e-300_f64], &array![0.5_f64])
+      .expect("saturation is a value");
+    assert_eq!(
+      out[0],
+      f64::EPSILON,
+      "expected the bracket floor, got {}",
+      out[0]
+    );
+  }
+
+  /// Round trip on the numerical path: `u = h^{-1}(y | v)` must satisfy
+  /// `h(u | v) = y`. Amh has a closed-form `partial_derivative` but no
+  /// `percent_point` override, so this exercises exactly the Brent body.
+  #[test]
+  fn percent_point_numerical_round_trips_through_the_h_function() {
+    let mut amh = Amh::new();
+    amh.set_tau(0.25);
+    amh._compute_theta();
+    for &(y, v) in &[(0.1_f64, 0.3_f64), (0.5, 0.5), (0.9, 0.7), (0.05, 0.95)] {
+      let u = amh
+        .percent_point_numerical(&array![y], &array![v])
+        .expect("solve")[0];
+      let back = amh.partial_derivative_scalar(u, v).expect("h eval");
+      assert!(
+        (back - y).abs() < 1e-9,
+        "round trip failed: h(h_inv({y}|{v})|{v}) = {back}"
+      );
+    }
   }
 
   /// `#[doc(hidden)]` hides `_compute_theta` / `check_marginal` /
