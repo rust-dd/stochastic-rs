@@ -11,9 +11,8 @@
 //! *standard deviation* `sigma_t` rather than `sigma_t^2`. The two
 //! specifications are not algebraically equivalent. This type was
 //! previously named `Tgarch`, a name that described Zakoian's model
-//! rather than this one; the old name is kept as a deprecated alias (see
-//! [`Tgarch`]), but the type itself has always implemented the GJR
-//! recursion above. Zakoian's own thresholded-standard-deviation
+//! rather than this one, while the type itself has always implemented
+//! the GJR recursion above. Zakoian's own thresholded-standard-deviation
 //! recursion is not implemented under either name.
 //!
 //! References:
@@ -218,19 +217,7 @@ impl<T: FloatExt> PathSampler<T> for GjrGarchSampler<T> {
   }
 }
 
-/// Deprecated alias for [`GjrGarch`]. The name `Tgarch` suggested Zakoian's
-/// (1994) TGARCH, but this type has always implemented the
-/// variance-threshold recursion of Glosten, Jagannathan, Runkle (1993)
-/// instead — a different, non-algebraically-equivalent model (see the
-/// module docs above). Zakoian's own model is not implemented in this
-/// crate.
-#[deprecated(
-  since = "2.7.0",
-  note = "renamed to `GjrGarch`: this type implements Glosten-Jagannathan-Runkle (1993), not Zakoian's (1994) TGARCH"
-)]
-pub use GjrGarch as Tgarch;
-
-py_process_1d!(PyTgarch, GjrGarch,
+py_process_1d!(PyGjrGarch, GjrGarch,
   sig: (omega, alpha, gamma_, beta, n, seed=None, dtype=None),
   params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize)
 );

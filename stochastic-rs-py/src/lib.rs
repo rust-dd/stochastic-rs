@@ -42,7 +42,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::autoregressive::garch::PyGarch;
   use stochastic_rs_stochastic::autoregressive::ma::PyMAq;
   use stochastic_rs_stochastic::autoregressive::sarima::PySarima;
-  use stochastic_rs_stochastic::autoregressive::tgarch::PyTgarch;
+  use stochastic_rs_stochastic::autoregressive::tgarch::PyGjrGarch;
   // Stochastic — diffusion
   use stochastic_rs_stochastic::diffusion::cev::PyCev;
   use stochastic_rs_stochastic::diffusion::cfou::PyCfou;
@@ -212,7 +212,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyGarch>()?;
   m.add_class::<PyMAq>()?;
   m.add_class::<PySarima>()?;
-  m.add_class::<PyTgarch>()?;
+  m.add_class::<PyGjrGarch>()?;
   m.add_class::<PyFbs>()?;
   m.add_class::<PyBeta>()?;
   m.add_class::<PyAlphaStable>()?;
