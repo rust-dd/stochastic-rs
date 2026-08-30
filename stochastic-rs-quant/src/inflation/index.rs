@@ -13,7 +13,7 @@ use std::fmt::Display;
 
 use chrono::NaiveDate;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Built-in price indices. `Custom(name)` lets users register an arbitrary
 /// index without modifying the enum.
@@ -76,11 +76,11 @@ impl Display for PriceIndex {
 
 /// Historical print store for a single index.
 #[derive(Debug, Clone, Default)]
-pub struct FixingHistory<T: FloatExt> {
+pub struct FixingHistory<T: RealExt> {
   fixings: BTreeMap<NaiveDate, T>,
 }
 
-impl<T: FloatExt> FixingHistory<T> {
+impl<T: RealExt> FixingHistory<T> {
   pub fn new() -> Self {
     Self {
       fixings: BTreeMap::new(),

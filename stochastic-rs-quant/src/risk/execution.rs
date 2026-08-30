@@ -31,11 +31,11 @@ use crate::microstructure::optimal_execution;
 use crate::risk::var::PnlOrLoss;
 use crate::risk::var::VarMethod;
 use crate::risk::var::value_at_risk;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// VaR plus the Almgren-Chriss expected execution cost of liquidating the
 /// position over the configured horizon.
-pub fn liquidity_adjusted_var<T: FloatExt>(
+pub fn liquidity_adjusted_var<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,

@@ -14,11 +14,11 @@
 use ndarray::Array1;
 
 use super::types::CurvePoint;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Nelson-Siegel-Svensson parametric yield curve model (6 parameters).
 #[derive(Debug, Clone)]
-pub struct Svensson<T: FloatExt> {
+pub struct Svensson<T: RealExt> {
   /// Long-term level.
   pub beta0: T,
   /// Short-term slope.
@@ -33,7 +33,7 @@ pub struct Svensson<T: FloatExt> {
   pub lambda2: T,
 }
 
-impl<T: FloatExt> Svensson<T> {
+impl<T: RealExt> Svensson<T> {
   pub fn new(beta0: T, beta1: T, beta2: T, beta3: T, lambda1: T, lambda2: T) -> Self {
     Self {
       beta0,

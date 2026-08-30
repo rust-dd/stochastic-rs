@@ -28,19 +28,19 @@
 //! ```
 
 use crate::credit::survival_curve::SurvivalCurve;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Expected credit loss over the horizon `t` years.
 ///
 /// $\mathrm{ECL} = (1 - Q(t)) \cdot \mathrm{LGD} \cdot \mathrm{exposure}$,
 /// where $Q$ is the survival probability and LGD = 1 − recovery.
-pub fn expected_credit_loss<T: FloatExt>(curve: &SurvivalCurve<T>, t: T, lgd: T, exposure: T) -> T {
+pub fn expected_credit_loss<T: RealExt>(curve: &SurvivalCurve<T>, t: T, lgd: T, exposure: T) -> T {
   let q = curve.survival_probability(t);
   (T::one() - q) * lgd * exposure
 }
 
 /// Probability that default occurs before `t`, i.e. $1 - Q(t)$.
-pub fn probability_of_default_before<T: FloatExt>(curve: &SurvivalCurve<T>, t: T) -> T {
+pub fn probability_of_default_before<T: RealExt>(curve: &SurvivalCurve<T>, t: T) -> T {
   T::one() - curve.survival_probability(t)
 }
 

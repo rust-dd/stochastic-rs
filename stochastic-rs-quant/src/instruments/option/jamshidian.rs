@@ -19,7 +19,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use super::types::SwaptionDirection;
 use crate::curves::DiscountCurve;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Analytic Hull-White European swaption priced via Jamshidian decomposition.
 ///
@@ -30,7 +30,7 @@ use crate::traits::FloatExt;
 /// * `mean_reversion` is $a$, `sigma` is $\sigma$ in the Hull-White SDE.
 /// * `curve` supplies the initial market discount factors $P^M(0,\cdot)$.
 #[allow(clippy::too_many_arguments)]
-pub fn price_jamshidian_hull_white<T: FloatExt>(
+pub fn price_jamshidian_hull_white<T: RealExt>(
   direction: SwaptionDirection,
   strike: T,
   notional: T,
@@ -175,7 +175,7 @@ pub fn price_jamshidian_hull_white<T: FloatExt>(
 /// Thin wrapper around [`price_jamshidian_hull_white`] that stores the swaption
 /// description alongside the Hull-White parameters.
 #[derive(Debug, Clone)]
-pub struct JamshidianHullWhiteSwaption<T: FloatExt> {
+pub struct JamshidianHullWhiteSwaption<T: RealExt> {
   /// Payoff direction.
   pub direction: SwaptionDirection,
   /// Fixed strike $K$.
@@ -194,7 +194,7 @@ pub struct JamshidianHullWhiteSwaption<T: FloatExt> {
   pub sigma: T,
 }
 
-impl<T: FloatExt> JamshidianHullWhiteSwaption<T> {
+impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
   /// Build a Jamshidian-priced European swaption under Hull-White.
   #[allow(clippy::too_many_arguments)]
   pub fn new(

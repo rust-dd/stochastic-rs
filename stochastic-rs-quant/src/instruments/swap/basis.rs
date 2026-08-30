@@ -9,11 +9,11 @@ use crate::cashflows::CurveProvider;
 use crate::cashflows::FloatingIndex;
 use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Same-currency floating-versus-floating basis swap.
 #[derive(Debug, Clone)]
-pub struct BasisSwap<T: FloatExt> {
+pub struct BasisSwap<T: RealExt> {
   /// Pay-leg spread.
   pub pay_spread: T,
   /// Receive-leg spread.
@@ -24,7 +24,7 @@ pub struct BasisSwap<T: FloatExt> {
   pub receive_leg: Leg<T>,
 }
 
-impl<T: FloatExt> BasisSwap<T> {
+impl<T: RealExt> BasisSwap<T> {
   /// Build a basis swap from two floating legs.
   pub fn new(
     pay_schedule: &Schedule,

@@ -21,11 +21,11 @@ use crate::cashflows::CurveProvider;
 use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
 use crate::curves::Compounding;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Bullet fixed-rate bond backed by a deterministic coupon leg.
 #[derive(Debug, Clone)]
-pub struct FixedRateBond<T: FloatExt> {
+pub struct FixedRateBond<T: RealExt> {
   /// Face amount redeemed at maturity.
   pub face_value: T,
   /// Annual coupon rate.
@@ -37,7 +37,7 @@ pub struct FixedRateBond<T: FloatExt> {
   leg: Leg<T>,
 }
 
-impl<T: FloatExt> FixedRateBond<T> {
+impl<T: RealExt> FixedRateBond<T> {
   /// Build a bullet fixed-rate bond from a payment schedule.
   pub fn new(
     schedule: &Schedule,

@@ -28,13 +28,13 @@
 
 use super::types::VolatilityQuoteKind;
 use crate::pricing::sabr::hagan_implied_vol;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Pluggable volatility model used by caplet, cap, floor, and swaption pricers.
 ///
 /// Implementations return the volatility appropriate for their quote family:
 /// a lognormal (Black-76) vol or a normal (Bachelier) vol.
-pub trait VolatilityModel<T: FloatExt>: Send + Sync {
+pub trait VolatilityModel<T: RealExt>: Send + Sync {
   /// Implied volatility at forward $F$, strike $K$, and expiry $\tau$.
   fn implied_volatility(&self, forward: T, strike: T, tau: T) -> T;
 
@@ -44,19 +44,19 @@ pub trait VolatilityModel<T: FloatExt>: Send + Sync {
 
 /// Constant lognormal (Black-76) volatility.
 #[derive(Debug, Clone, Copy)]
-pub struct BlackVolatility<T: FloatExt> {
+pub struct BlackVolatility<T: RealExt> {
   /// Constant lognormal volatility.
   pub sigma: T,
 }
 
-impl<T: FloatExt> BlackVolatility<T> {
+impl<T: RealExt> BlackVolatility<T> {
   /// Build a constant Black-76 volatility surface.
   pub fn new(sigma: T) -> Self {
     Self { sigma }
   }
 }
 
-impl<T: FloatExt> VolatilityModel<T> for BlackVolatility<T> {
+impl<T: RealExt> VolatilityModel<T> for BlackVolatility<T> {
   fn implied_volatility(&self, _forward: T, _strike: T, _tau: T) -> T {
     self.sigma
   }
@@ -68,19 +68,19 @@ impl<T: FloatExt> VolatilityModel<T> for BlackVolatility<T> {
 
 /// Constant normal (Bachelier) volatility.
 #[derive(Debug, Clone, Copy)]
-pub struct BachelierVolatility<T: FloatExt> {
+pub struct BachelierVolatility<T: RealExt> {
   /// Constant normal volatility.
   pub sigma: T,
 }
 
-impl<T: FloatExt> BachelierVolatility<T> {
+impl<T: RealExt> BachelierVolatility<T> {
   /// Build a constant Bachelier volatility surface.
   pub fn new(sigma: T) -> Self {
     Self { sigma }
   }
 }
 
-impl<T: FloatExt> VolatilityModel<T> for BachelierVolatility<T> {
+impl<T: RealExt> VolatilityModel<T> for BachelierVolatility<T> {
   fn implied_volatility(&self, _forward: T, _strike: T, _tau: T) -> T {
     self.sigma
   }
@@ -93,7 +93,7 @@ impl<T: FloatExt> VolatilityModel<T> for BachelierVolatility<T> {
 /// Sabr implied-volatility surface using the Hagan (2002) general-$\beta$
 /// lognormal expansion.
 #[derive(Debug, Clone, Copy)]
-pub struct SabrVolatility<T: FloatExt> {
+pub struct SabrVolatility<T: RealExt> {
   /// Sabr level parameter $\alpha$.
   pub alpha: T,
   /// Sabr Cev exponent $\beta$ ($\beta=0$ normal, $\beta=1$ lognormal).
@@ -104,7 +104,7 @@ pub struct SabrVolatility<T: FloatExt> {
   pub rho: T,
 }
 
-impl<T: FloatExt> SabrVolatility<T> {
+impl<T: RealExt> SabrVolatility<T> {
   /// Build a Sabr implied-volatility surface.
   pub fn new(alpha: T, beta: T, nu: T, rho: T) -> Self {
     Self {
@@ -116,7 +116,7 @@ impl<T: FloatExt> SabrVolatility<T> {
   }
 }
 
-impl<T: FloatExt> VolatilityModel<T> for SabrVolatility<T> {
+impl<T: RealExt> VolatilityModel<T> for SabrVolatility<T> {
   fn implied_volatility(&self, forward: T, strike: T, tau: T) -> T {
     let sigma = hagan_implied_vol(
       strike.to_f64().unwrap_or(0.0),
@@ -146,7 +146,7 @@ impl<T: FloatExt> VolatilityModel<T> for SabrVolatility<T> {
 /// Reference: Oblój, "Fine-tune your smile: Correction to Hagan et al.",
 /// Wilmott Magazine (2008).
 #[derive(Debug, Clone, Copy)]
-pub struct ShiftedSabrVolatility<T: FloatExt> {
+pub struct ShiftedSabrVolatility<T: RealExt> {
   /// Sabr level parameter $\alpha$ in the shifted coordinates.
   pub alpha: T,
   /// Sabr Cev exponent $\beta$.
@@ -159,7 +159,7 @@ pub struct ShiftedSabrVolatility<T: FloatExt> {
   pub shift: T,
 }
 
-impl<T: FloatExt> ShiftedSabrVolatility<T> {
+impl<T: RealExt> ShiftedSabrVolatility<T> {
   /// Build a shifted Sabr volatility surface with displacement `shift`.
   pub fn new(alpha: T, beta: T, nu: T, rho: T, shift: T) -> Self {
     Self {
@@ -172,7 +172,7 @@ impl<T: FloatExt> ShiftedSabrVolatility<T> {
   }
 }
 
-impl<T: FloatExt> VolatilityModel<T> for ShiftedSabrVolatility<T> {
+impl<T: RealExt> VolatilityModel<T> for ShiftedSabrVolatility<T> {
   fn implied_volatility(&self, forward: T, strike: T, tau: T) -> T {
     let sigma = hagan_implied_vol(
       (strike + self.shift).to_f64().unwrap_or(0.0),

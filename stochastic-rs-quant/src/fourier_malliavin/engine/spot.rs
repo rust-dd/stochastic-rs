@@ -6,9 +6,9 @@ use num_complex::Complex;
 use super::FMVol;
 use super::helpers::fejer_inversion;
 use crate::fourier_malliavin::coefficients::convolution_coefficients;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
-impl<T: FloatExt> FMVol<T> {
+impl<T: RealExt> FMVol<T> {
   /// Spot variance at evaluation times `tau`.
   pub fn spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self

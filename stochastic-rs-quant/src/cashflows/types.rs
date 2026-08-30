@@ -13,11 +13,11 @@ use super::RateIndex;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::date_math::add_months;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Single accrual period with a payment date.
 #[derive(Debug, Clone)]
-pub struct AccrualPeriod<T: FloatExt> {
+pub struct AccrualPeriod<T: RealExt> {
   /// Coupon accrual start.
   pub accrual_start: NaiveDate,
   /// Coupon accrual end.
@@ -30,7 +30,7 @@ pub struct AccrualPeriod<T: FloatExt> {
   pub accrual_factor: T,
 }
 
-impl<T: FloatExt> AccrualPeriod<T> {
+impl<T: RealExt> AccrualPeriod<T> {
   /// Build an accrual period and compute the year fraction immediately.
   pub fn new(
     accrual_start: NaiveDate,
@@ -97,11 +97,11 @@ impl Display for RateTenor {
 
 /// Ordered notional profile for a coupon leg.
 #[derive(Debug, Clone)]
-pub struct NotionalSchedule<T: FloatExt> {
+pub struct NotionalSchedule<T: RealExt> {
   notionals: Array1<T>,
 }
 
-impl<T: FloatExt> NotionalSchedule<T> {
+impl<T: RealExt> NotionalSchedule<T> {
   /// Constant notional profile.
   pub fn bullet(periods: usize, notional: T) -> Self {
     Self {
@@ -155,7 +155,7 @@ impl<T: FloatExt> NotionalSchedule<T> {
 
 /// IBOR-style simple forward index.
 #[derive(Debug, Clone)]
-pub struct IborIndex<T: FloatExt> {
+pub struct IborIndex<T: RealExt> {
   /// Human-readable name.
   pub name: String,
   /// Forecast-curve tenor label.
@@ -165,7 +165,7 @@ pub struct IborIndex<T: FloatExt> {
   _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: FloatExt> IborIndex<T> {
+impl<T: RealExt> IborIndex<T> {
   /// Construct a new IBOR index.
   pub fn new(name: impl Into<String>, tenor: RateTenor, day_count: DayCountConvention) -> Self {
     Self {
@@ -177,7 +177,7 @@ impl<T: FloatExt> IborIndex<T> {
   }
 }
 
-impl<T: FloatExt> RateIndex<T> for IborIndex<T> {
+impl<T: RealExt> RateIndex<T> for IborIndex<T> {
   fn curve_key(&self) -> &str {
     self.tenor.curve_key()
   }
@@ -203,7 +203,7 @@ impl<T: FloatExt> RateIndex<T> for IborIndex<T> {
 
 /// OIS-style overnight compounded index.
 #[derive(Debug, Clone)]
-pub struct OvernightIndex<T: FloatExt> {
+pub struct OvernightIndex<T: RealExt> {
   /// Human-readable name.
   pub name: String,
   /// Forecast-curve tenor label.
@@ -213,7 +213,7 @@ pub struct OvernightIndex<T: FloatExt> {
   _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: FloatExt> OvernightIndex<T> {
+impl<T: RealExt> OvernightIndex<T> {
   /// Construct a new overnight index.
   pub fn new(name: impl Into<String>, day_count: DayCountConvention) -> Self {
     Self {
@@ -225,7 +225,7 @@ impl<T: FloatExt> OvernightIndex<T> {
   }
 }
 
-impl<T: FloatExt> RateIndex<T> for OvernightIndex<T> {
+impl<T: RealExt> RateIndex<T> for OvernightIndex<T> {
   fn curve_key(&self) -> &str {
     self.tenor.curve_key()
   }
@@ -251,12 +251,12 @@ impl<T: FloatExt> RateIndex<T> for OvernightIndex<T> {
 
 /// Built-in floating indices supported by [`crate::cashflows::Leg`].
 #[derive(Debug, Clone)]
-pub enum FloatingIndex<T: FloatExt> {
+pub enum FloatingIndex<T: RealExt> {
   Ibor(IborIndex<T>),
   Overnight(OvernightIndex<T>),
 }
 
-impl<T: FloatExt> FloatingIndex<T> {
+impl<T: RealExt> FloatingIndex<T> {
   /// Curve key for the built-in index.
   pub fn curve_key(&self) -> &str {
     match self {
@@ -266,7 +266,7 @@ impl<T: FloatExt> FloatingIndex<T> {
   }
 }
 
-impl<T: FloatExt> Display for FloatingIndex<T> {
+impl<T: RealExt> Display for FloatingIndex<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::Ibor(index) => write!(f, "{}", index.name),
@@ -275,7 +275,7 @@ impl<T: FloatExt> Display for FloatingIndex<T> {
   }
 }
 
-impl<T: FloatExt> RateIndex<T> for FloatingIndex<T> {
+impl<T: RealExt> RateIndex<T> for FloatingIndex<T> {
   fn curve_key(&self) -> &str {
     match self {
       Self::Ibor(index) => index.curve_key(),
@@ -298,7 +298,7 @@ impl<T: FloatExt> RateIndex<T> for FloatingIndex<T> {
 
 /// Constant-maturity swap index.
 #[derive(Debug, Clone)]
-pub struct CmsIndex<T: FloatExt> {
+pub struct CmsIndex<T: RealExt> {
   /// Human-readable name.
   pub name: String,
   /// Swap tenor in months.
@@ -312,7 +312,7 @@ pub struct CmsIndex<T: FloatExt> {
   _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: FloatExt> CmsIndex<T> {
+impl<T: RealExt> CmsIndex<T> {
   /// Construct a new CMS index.
   pub fn new(
     name: impl Into<String>,
@@ -332,7 +332,7 @@ impl<T: FloatExt> CmsIndex<T> {
   }
 }
 
-impl<T: FloatExt> RateIndex<T> for CmsIndex<T> {
+impl<T: RealExt> RateIndex<T> for CmsIndex<T> {
   fn curve_key(&self) -> &str {
     &self.curve_key
   }
@@ -380,7 +380,7 @@ impl<T: FloatExt> RateIndex<T> for CmsIndex<T> {
   }
 }
 
-fn linear_profile<T: FloatExt>(periods: usize, start: T, end: T) -> Array1<T> {
+fn linear_profile<T: RealExt>(periods: usize, start: T, end: T) -> Array1<T> {
   match periods {
     0 => Array1::zeros(0),
     1 => Array1::from_vec(vec![start]),

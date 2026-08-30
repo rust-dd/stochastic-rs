@@ -25,10 +25,10 @@ use super::var::assert_confidence;
 use super::var::gaussian_var;
 use super::var::losses_from_samples;
 use super::var::sample_quantile;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Expected Shortfall using the chosen estimation method.
-pub fn expected_shortfall<T: FloatExt>(
+pub fn expected_shortfall<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
@@ -48,11 +48,7 @@ pub fn expected_shortfall<T: FloatExt>(
 /// $$
 /// \mathrm{ES}_{\alpha}=-\hat\mu+\hat\sigma\,\frac{\phi(\Phi^{-1}(\alpha))}{1-\alpha}.
 /// $$
-pub fn gaussian_es<T: FloatExt>(
-  samples: ArrayView1<T>,
-  confidence: T,
-  orientation: PnlOrLoss,
-) -> T {
+pub fn gaussian_es<T: RealExt>(samples: ArrayView1<T>, confidence: T, orientation: PnlOrLoss) -> T {
   assert_confidence(confidence);
   let losses = losses_from_samples(samples, orientation);
   let n = losses.len();
@@ -89,7 +85,7 @@ pub fn gaussian_es<T: FloatExt>(
 /// Reference: Rockafellar, R. T. & Uryasev, S. (2002), "Conditional
 /// Value-at-Risk for General Loss Distributions", *J. Banking & Finance*
 /// 26(7), 1443-1471, eq. (17).
-pub fn historical_es<T: FloatExt>(
+pub fn historical_es<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
@@ -128,7 +124,7 @@ pub fn historical_es<T: FloatExt>(
 }
 
 /// Monte-Carlo ES alias of [`historical_es`], kept separate for intent.
-pub fn monte_carlo_es<T: FloatExt>(
+pub fn monte_carlo_es<T: RealExt>(
   simulated_samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
@@ -137,7 +133,7 @@ pub fn monte_carlo_es<T: FloatExt>(
 }
 
 /// Convenience: Gaussian VaR and ES together.
-pub fn gaussian_var_es<T: FloatExt>(
+pub fn gaussian_var_es<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,

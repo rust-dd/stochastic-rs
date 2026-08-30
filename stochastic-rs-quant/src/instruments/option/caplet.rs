@@ -21,13 +21,13 @@ use stochastic_rs_distributions::special::norm_cdf;
 use super::types::InterestRateOptionKind;
 use super::types::VolatilityQuoteKind;
 use super::volatility::VolatilityModel;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Black-76 caplet undiscounted forward value $F\Phi(d_1)-K\Phi(d_2)$.
 ///
 /// Returns zero if any input makes the formula undefined (non-positive
 /// forward/strike/time or non-positive vol).
-pub fn black_forward_caplet<T: FloatExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
+pub fn black_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
@@ -42,7 +42,7 @@ pub fn black_forward_caplet<T: FloatExt>(forward: T, strike: T, tau: T, sigma: T
 }
 
 /// Black-76 floorlet undiscounted forward value $K\Phi(-d_2)-F\Phi(-d_1)$.
-pub fn black_forward_floorlet<T: FloatExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
+pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
@@ -57,7 +57,7 @@ pub fn black_forward_floorlet<T: FloatExt>(forward: T, strike: T, tau: T, sigma:
 }
 
 /// Bachelier caplet undiscounted forward value.
-pub fn bachelier_forward_caplet<T: FloatExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
+pub fn bachelier_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
@@ -72,7 +72,7 @@ pub fn bachelier_forward_caplet<T: FloatExt>(forward: T, strike: T, tau: T, sigm
 }
 
 /// Bachelier floorlet undiscounted forward value.
-pub fn bachelier_forward_floorlet<T: FloatExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
+pub fn bachelier_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
@@ -93,7 +93,7 @@ pub fn bachelier_forward_floorlet<T: FloatExt>(forward: T, strike: T, tau: T, si
 /// count fraction for the coupon period. `discount_factor` is $P(t,t_p)$ to
 /// the payment date $t_p$.
 #[allow(clippy::too_many_arguments)]
-pub fn caplet_price<T: FloatExt, V: VolatilityModel<T> + ?Sized>(
+pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   forward: T,
   strike: T,
   tau: T,

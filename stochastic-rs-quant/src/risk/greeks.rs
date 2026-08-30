@@ -16,11 +16,11 @@ use ndarray::Array1;
 
 use super::scenario::CurveShift;
 use crate::curves::DiscountCurve;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Aggregate sensitivities container.
 #[derive(Debug, Clone)]
-pub struct Sensitivities<T: FloatExt> {
+pub struct Sensitivities<T: RealExt> {
   /// Per-pillar DV01 (e.g. PnL per 1 bp parallel bump at each pillar).
   pub bucket_dv01: Array1<T>,
   /// Overall parallel DV01 = sum of the bucket contributions.
@@ -30,7 +30,7 @@ pub struct Sensitivities<T: FloatExt> {
 }
 
 /// Central finite-difference first derivative at `x0`: `(f(x+h) - f(x-h)) / (2h)`.
-pub fn central_difference<T: FloatExt, F>(f: F, x0: T, h: T) -> T
+pub fn central_difference<T: RealExt, F>(f: F, x0: T, h: T) -> T
 where
   F: Fn(T) -> T,
 {
@@ -39,7 +39,7 @@ where
 }
 
 /// Forward finite-difference first derivative at `x0`: `(f(x+h) - f(x)) / h`.
-pub fn forward_difference<T: FloatExt, F>(f: F, x0: T, h: T) -> T
+pub fn forward_difference<T: RealExt, F>(f: F, x0: T, h: T) -> T
 where
   F: Fn(T) -> T,
 {
@@ -47,7 +47,7 @@ where
 }
 
 /// Central difference second derivative.
-pub fn second_difference<T: FloatExt, F>(f: F, x0: T, h: T) -> T
+pub fn second_difference<T: RealExt, F>(f: F, x0: T, h: T) -> T
 where
   F: Fn(T) -> T,
 {
@@ -57,7 +57,7 @@ where
 /// Generic one-sided Greek — scales the central finite-difference by a
 /// user-supplied `bump_size` (e.g. 1 bp) so the output reports PnL per unit
 /// bump without requiring any additional manual scaling.
-pub fn finite_difference_greek<T: FloatExt, F>(f: F, x0: T, bump_size: T) -> T
+pub fn finite_difference_greek<T: RealExt, F>(f: F, x0: T, bump_size: T) -> T
 where
   F: Fn(T) -> T,
 {
@@ -75,7 +75,7 @@ where
 /// the market-positive DV01. A long bond position has a *negative* bucket
 /// value (PV drops when rates rise). To recover the conventional positive
 /// "DV01 per 1 bp" quote, negate and pass `bump_size = 1 bp`.
-pub fn bucket_dv01<T: FloatExt, F>(
+pub fn bucket_dv01<T: RealExt, F>(
   curve: &DiscountCurve<T>,
   bump_size: T,
   mut valuer: F,

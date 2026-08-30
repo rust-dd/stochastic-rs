@@ -7,7 +7,7 @@ use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use num_complex::Complex;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Compute discrete Fourier coefficients of price increments (general irregular grid).
 ///
@@ -15,7 +15,7 @@ use crate::traits::FloatExt;
 ///
 /// Returns an `Array1` of length `2*max_freq+1`.
 /// Index mapping: frequency `k` → index `k + max_freq`.
-pub fn fourier_coefficients_dx<T: FloatExt>(
+pub fn fourier_coefficients_dx<T: RealExt>(
   prices: &[T],
   times: &[T],
   period: T,
@@ -64,7 +64,7 @@ pub fn fourier_coefficients_dx<T: FloatExt>(
 /// FFT-accelerated Fourier coefficients for **uniformly spaced** observations.
 ///
 /// Assumes `t_l = l · T / n`. Runs in O(n log n) instead of O(n · max_freq).
-pub fn fourier_coefficients_dx_uniform<T: FloatExt>(
+pub fn fourier_coefficients_dx_uniform<T: RealExt>(
   prices: &[T],
   period: T,
   max_freq: usize,
@@ -106,7 +106,7 @@ pub fn fourier_coefficients_dx_uniform<T: FloatExt>(
 /// `dx_a` must satisfy `max_freq ≥ n_freq`; `dx_b` must satisfy
 /// `max_freq ≥ n_freq + m_freq`.
 /// Returns coefficients for `k = −m_freq, …, m_freq` (length `2*m_freq+1`).
-pub fn convolution_coefficients<T: FloatExt>(
+pub fn convolution_coefficients<T: RealExt>(
   dx_a: &Array1<Complex<T>>,
   dx_b: &Array1<Complex<T>>,
   period: T,

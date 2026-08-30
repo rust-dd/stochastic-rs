@@ -18,7 +18,7 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Roll (1984) implicit effective spread:
 /// $s_{Roll} = 2\sqrt{\max(0, -\widehat{\mathrm{Cov}}(\Delta p_t, \Delta p_{t-1}))}$.
@@ -30,7 +30,7 @@ use crate::traits::FloatExt;
 /// autocovariance) is also defensible — both estimators are consistent and
 /// differ by $O(1/n)$ on long series. The current implementation uses the
 /// Roll-1984 convention.
-pub fn roll_spread<T: FloatExt>(prices: ArrayView1<T>) -> T {
+pub fn roll_spread<T: RealExt>(prices: ArrayView1<T>) -> T {
   let n = prices.len();
   if n < 3 {
     return T::zero();
@@ -61,7 +61,7 @@ pub fn roll_spread<T: FloatExt>(prices: ArrayView1<T>) -> T {
 /// `trade_price[i]` is the executed trade price at tick `i` and `mid[i]`
 /// the prevailing mid-quote at the same instant. Returns the average
 /// $\frac{1}{N}\sum_i 2\,|p_i - m_i|$ — the realised round-trip cost.
-pub fn effective_spread<T: FloatExt>(trade_price: ArrayView1<T>, mid: ArrayView1<T>) -> T {
+pub fn effective_spread<T: RealExt>(trade_price: ArrayView1<T>, mid: ArrayView1<T>) -> T {
   assert_eq!(
     trade_price.len(),
     mid.len(),
@@ -94,7 +94,7 @@ pub fn effective_spread<T: FloatExt>(trade_price: ArrayView1<T>, mid: ArrayView1
 /// with $\beta = \mathbb E[(\ln(H_t/L_t))^2 + (\ln(H_{t+1}/L_{t+1}))^2]$ and
 /// $\gamma = \mathbb E[(\ln(H_t^{(2)}/L_t^{(2)}))^2]$ where the
 /// superscript $(2)$ denotes the 2-day high/low.
-pub fn corwin_schultz_spread<T: FloatExt>(high: ArrayView1<T>, low: ArrayView1<T>) -> T {
+pub fn corwin_schultz_spread<T: RealExt>(high: ArrayView1<T>, low: ArrayView1<T>) -> T {
   assert_eq!(high.len(), low.len(), "high and low must have equal length");
   let n = high.len();
   if n < 2 {

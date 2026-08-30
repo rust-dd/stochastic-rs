@@ -3,18 +3,18 @@ use chrono::NaiveDate;
 use crate::calendar::DayCountConvention;
 use crate::cashflows::CurveProvider;
 use crate::curves::Compounding;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Zero-coupon bond priced directly from the discount curve.
 #[derive(Debug, Clone)]
-pub struct ZeroCouponBond<T: FloatExt> {
+pub struct ZeroCouponBond<T: RealExt> {
   /// Face amount paid at maturity.
   pub face_value: T,
   /// Maturity date.
   pub maturity_date: NaiveDate,
 }
 
-impl<T: FloatExt> ZeroCouponBond<T> {
+impl<T: RealExt> ZeroCouponBond<T> {
   /// Create a zero-coupon bond.
   pub fn new(face_value: T, maturity_date: NaiveDate) -> Self {
     Self {

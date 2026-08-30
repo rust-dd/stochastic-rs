@@ -1,8 +1,8 @@
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Dirty / clean bond price decomposition.
 #[derive(Debug, Clone)]
-pub struct BondPrice<T: FloatExt> {
+pub struct BondPrice<T: RealExt> {
   /// Present value including accrued interest.
   pub dirty_price: T,
   /// Accrued interest at settlement / valuation.
@@ -13,7 +13,7 @@ pub struct BondPrice<T: FloatExt> {
 
 /// Standard fixed-rate bond analytics.
 #[derive(Debug, Clone)]
-pub struct BondAnalytics<T: FloatExt> {
+pub struct BondAnalytics<T: RealExt> {
   /// Dirty price including accrued interest.
   pub dirty_price: T,
   /// Clean price excluding accrued interest.

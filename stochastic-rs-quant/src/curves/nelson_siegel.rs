@@ -16,11 +16,11 @@
 use ndarray::Array1;
 
 use super::types::CurvePoint;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Nelson-Siegel parametric yield curve model (4 parameters).
 #[derive(Debug, Clone)]
-pub struct NelsonSiegel<T: FloatExt> {
+pub struct NelsonSiegel<T: RealExt> {
   /// Long-term level.
   pub beta0: T,
   /// Short-term slope.
@@ -31,7 +31,7 @@ pub struct NelsonSiegel<T: FloatExt> {
   pub lambda: T,
 }
 
-impl<T: FloatExt> NelsonSiegel<T> {
+impl<T: RealExt> NelsonSiegel<T> {
   pub fn new(beta0: T, beta1: T, beta2: T, lambda: T) -> Self {
     Self {
       beta0,

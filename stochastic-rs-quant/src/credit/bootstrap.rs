@@ -30,7 +30,7 @@ use super::survival_curve::SurvivalCurve;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::cashflows::CurveProvider;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// A single CDS quote fed into [`bootstrap_hazard`].
 #[derive(Debug, Clone)]
@@ -65,7 +65,7 @@ impl CdsQuote {
 ///
 /// The output curve stores survival probabilities at each quoted maturity and
 /// uses [`HazardInterpolation::PiecewiseConstantHazard`] for interpolation.
-pub fn bootstrap_hazard<T: FloatExt>(
+pub fn bootstrap_hazard<T: RealExt>(
   valuation_date: NaiveDate,
   effective_date: NaiveDate,
   quotes: &[CdsQuote],

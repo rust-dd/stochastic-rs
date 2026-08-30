@@ -15,7 +15,7 @@
 
 use crate::curves::DiscountCurve;
 use crate::curves::MultiCurve;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 pub mod coupon;
 pub mod engine;
@@ -40,7 +40,7 @@ pub use types::OvernightIndex;
 pub use types::RateTenor;
 
 /// Abstraction over single-curve and multi-curve setups.
-pub trait CurveProvider<T: FloatExt>: Send + Sync {
+pub trait CurveProvider<T: RealExt>: Send + Sync {
   /// Discount curve used for present value calculations.
   fn discount_curve(&self) -> &DiscountCurve<T>;
 
@@ -48,7 +48,7 @@ pub trait CurveProvider<T: FloatExt>: Send + Sync {
   fn forecast_curve(&self, key: &str) -> Option<&DiscountCurve<T>>;
 }
 
-impl<T: FloatExt> CurveProvider<T> for DiscountCurve<T> {
+impl<T: RealExt> CurveProvider<T> for DiscountCurve<T> {
   fn discount_curve(&self) -> &DiscountCurve<T> {
     self
   }
@@ -58,7 +58,7 @@ impl<T: FloatExt> CurveProvider<T> for DiscountCurve<T> {
   }
 }
 
-impl<T: FloatExt> CurveProvider<T> for MultiCurve<T> {
+impl<T: RealExt> CurveProvider<T> for MultiCurve<T> {
   fn discount_curve(&self) -> &DiscountCurve<T> {
     &self.discount
   }
@@ -69,7 +69,7 @@ impl<T: FloatExt> CurveProvider<T> for MultiCurve<T> {
 }
 
 /// Extensibility point for rate indices used by floating coupons.
-pub trait RateIndex<T: FloatExt>: Clone + Send + Sync {
+pub trait RateIndex<T: RealExt>: Clone + Send + Sync {
   /// Curve label used to request the forecast curve.
   fn curve_key(&self) -> &str;
 

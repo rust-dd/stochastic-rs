@@ -12,14 +12,14 @@ use std::sync::Weak;
 use super::observable::Observable;
 use super::observable::ObservableBase;
 use super::observable::Observer;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Observable numeric market quote.
 ///
 /// Typical implementations are [`SimpleQuote`], [`DerivedQuote`], and
 /// [`CompositeQuote`]. Custom implementations can expose yields, vols,
 /// or any scalar that must propagate changes through a pricing graph.
-pub trait Quote<T: FloatExt>: Observable {
+pub trait Quote<T: RealExt>: Observable {
   /// Current value of the quote.
   fn value(&self) -> T;
   /// True if the quote has a usable value.
@@ -29,17 +29,17 @@ pub trait Quote<T: FloatExt>: Observable {
   }
 }
 
-struct SimpleQuoteInner<T: FloatExt> {
+struct SimpleQuoteInner<T: RealExt> {
   value: RwLock<Option<T>>,
   observable: ObservableBase,
 }
 
 /// Mutable scalar quote. Cheap to clone (shared `Arc` interior).
-pub struct SimpleQuote<T: FloatExt> {
+pub struct SimpleQuote<T: RealExt> {
   inner: Arc<SimpleQuoteInner<T>>,
 }
 
-impl<T: FloatExt> std::fmt::Debug for SimpleQuote<T> {
+impl<T: RealExt> std::fmt::Debug for SimpleQuote<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("SimpleQuote")
       .field("value", &self.inner.value.read().ok().and_then(|v| *v))
@@ -47,7 +47,7 @@ impl<T: FloatExt> std::fmt::Debug for SimpleQuote<T> {
   }
 }
 
-impl<T: FloatExt> Clone for SimpleQuote<T> {
+impl<T: RealExt> Clone for SimpleQuote<T> {
   fn clone(&self) -> Self {
     Self {
       inner: Arc::clone(&self.inner),
@@ -55,7 +55,7 @@ impl<T: FloatExt> Clone for SimpleQuote<T> {
   }
 }
 
-impl<T: FloatExt> SimpleQuote<T> {
+impl<T: RealExt> SimpleQuote<T> {
   /// Construct an initialised quote.
   pub fn new(value: T) -> Self {
     Self {
@@ -105,7 +105,7 @@ impl<T: FloatExt> SimpleQuote<T> {
   }
 }
 
-impl<T: FloatExt> Observable for SimpleQuote<T> {
+impl<T: RealExt> Observable for SimpleQuote<T> {
   fn register_observer(&self, observer: Weak<dyn Observer + Send + Sync>) {
     self.inner.observable.register_observer(observer);
   }
@@ -115,7 +115,7 @@ impl<T: FloatExt> Observable for SimpleQuote<T> {
   }
 }
 
-impl<T: FloatExt> Quote<T> for SimpleQuote<T> {
+impl<T: RealExt> Quote<T> for SimpleQuote<T> {
   fn value(&self) -> T {
     match *self.inner.value.read().expect("quote poisoned") {
       Some(v) => v,
@@ -134,13 +134,13 @@ impl<T: FloatExt> Quote<T> for SimpleQuote<T> {
 }
 
 /// Quote derived from another quote via a pure function of its value.
-pub struct DerivedQuote<T: FloatExt> {
+pub struct DerivedQuote<T: RealExt> {
   base: Arc<dyn Quote<T>>,
   f: Arc<dyn Fn(T) -> T + Send + Sync>,
   observable: ObservableBase,
 }
 
-impl<T: FloatExt> std::fmt::Debug for DerivedQuote<T> {
+impl<T: RealExt> std::fmt::Debug for DerivedQuote<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("DerivedQuote")
       .field("value", &self.value())
@@ -148,7 +148,7 @@ impl<T: FloatExt> std::fmt::Debug for DerivedQuote<T> {
   }
 }
 
-impl<T: FloatExt> Clone for DerivedQuote<T> {
+impl<T: RealExt> Clone for DerivedQuote<T> {
   fn clone(&self) -> Self {
     Self {
       base: Arc::clone(&self.base),
@@ -158,7 +158,7 @@ impl<T: FloatExt> Clone for DerivedQuote<T> {
   }
 }
 
-impl<T: FloatExt> DerivedQuote<T> {
+impl<T: RealExt> DerivedQuote<T> {
   /// Build a derived quote `f(base)`. The returned `Arc<Self>` also serves
   /// as the observer registered against `base`, so relinking the base quote
   /// propagates here without further wiring.
@@ -181,7 +181,7 @@ impl<T: FloatExt> DerivedQuote<T> {
   }
 }
 
-impl<T: FloatExt> Observable for DerivedQuote<T> {
+impl<T: RealExt> Observable for DerivedQuote<T> {
   fn register_observer(&self, observer: Weak<dyn Observer + Send + Sync>) {
     self.observable.register_observer(observer);
   }
@@ -191,26 +191,26 @@ impl<T: FloatExt> Observable for DerivedQuote<T> {
   }
 }
 
-impl<T: FloatExt> Observer for DerivedQuote<T> {
+impl<T: RealExt> Observer for DerivedQuote<T> {
   fn update(&self) {
     self.observable.notify_observers();
   }
 }
 
-impl<T: FloatExt> Quote<T> for DerivedQuote<T> {
+impl<T: RealExt> Quote<T> for DerivedQuote<T> {
   fn value(&self) -> T {
     (self.f)(self.base.value())
   }
 }
 
 /// Quote computed from a slice of underlying quotes.
-pub struct CompositeQuote<T: FloatExt> {
+pub struct CompositeQuote<T: RealExt> {
   inputs: Vec<Arc<dyn Quote<T>>>,
   f: Arc<dyn Fn(&[T]) -> T + Send + Sync>,
   observable: ObservableBase,
 }
 
-impl<T: FloatExt> std::fmt::Debug for CompositeQuote<T> {
+impl<T: RealExt> std::fmt::Debug for CompositeQuote<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("CompositeQuote")
       .field("inputs", &self.inputs.len())
@@ -219,7 +219,7 @@ impl<T: FloatExt> std::fmt::Debug for CompositeQuote<T> {
   }
 }
 
-impl<T: FloatExt> CompositeQuote<T> {
+impl<T: RealExt> CompositeQuote<T> {
   /// Compose a new quote from several inputs.
   pub fn new(
     inputs: Vec<Arc<dyn Quote<T>>>,
@@ -239,7 +239,7 @@ impl<T: FloatExt> CompositeQuote<T> {
   }
 }
 
-impl<T: FloatExt> Observable for CompositeQuote<T> {
+impl<T: RealExt> Observable for CompositeQuote<T> {
   fn register_observer(&self, observer: Weak<dyn Observer + Send + Sync>) {
     self.observable.register_observer(observer);
   }
@@ -249,13 +249,13 @@ impl<T: FloatExt> Observable for CompositeQuote<T> {
   }
 }
 
-impl<T: FloatExt> Observer for CompositeQuote<T> {
+impl<T: RealExt> Observer for CompositeQuote<T> {
   fn update(&self) {
     self.observable.notify_observers();
   }
 }
 
-impl<T: FloatExt> Quote<T> for CompositeQuote<T> {
+impl<T: RealExt> Quote<T> for CompositeQuote<T> {
   fn value(&self) -> T {
     let values: Vec<T> = self.inputs.iter().map(|q| q.value()).collect();
     (self.f)(&values)

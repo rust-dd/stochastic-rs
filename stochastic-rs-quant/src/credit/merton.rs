@@ -34,7 +34,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 /// user-supplied time-to-maturity `tau`.  All numeric results are `f64` because
 /// the model uses the standard-normal CDF from
 /// [`stochastic_rs_distributions::special`], which only supports double
-/// precision; higher-level types that are generic over `T: FloatExt` should
+/// precision; higher-level types that are generic over `T: RealExt` should
 /// convert into `f64` before calling this model.
 #[derive(Debug, Clone)]
 pub struct MertonStructural {

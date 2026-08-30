@@ -14,7 +14,7 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Running drawdown series.  Entry $i$ is $V_i/\max_{s\le i}V_s - 1$.
 ///
@@ -24,7 +24,7 @@ use crate::traits::FloatExt;
 /// itself only makes sense on strictly-positive equity series; values
 /// outside that domain pin `out[i] = 0` since the ratio `v / peak - 1`
 /// has no economic meaning for non-positive peaks.
-pub fn running_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> Array1<T> {
+pub fn running_drawdown<T: RealExt>(equity: ArrayView1<T>) -> Array1<T> {
   let mut out = Array1::zeros(equity.len());
   let mut peak = T::neg_infinity();
   for (i, &v) in equity.iter().enumerate() {
@@ -41,7 +41,7 @@ pub fn running_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> Array1<T> {
 }
 
 /// Maximum drawdown (most negative value of the running drawdown series).
-pub fn max_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> T {
+pub fn max_drawdown<T: RealExt>(equity: ArrayView1<T>) -> T {
   let dd = running_drawdown(equity);
   dd.iter()
     .copied()
@@ -55,7 +55,7 @@ pub fn max_drawdown<T: FloatExt>(equity: ArrayView1<T>) -> T {
 /// alternative definition that measures the longest peak-to-recovery
 /// distance — including the unrecovered tail when the series never
 /// returns to its previous peak — see [`max_peak_to_recovery_duration`].
-pub fn max_drawdown_duration<T: FloatExt>(equity: ArrayView1<T>) -> usize {
+pub fn max_drawdown_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
   let mut peak = T::neg_infinity();
   let mut current = 0usize;
   let mut longest = 0usize;
@@ -85,7 +85,7 @@ pub fn max_drawdown_duration<T: FloatExt>(equity: ArrayView1<T>) -> usize {
 /// Bloomberg / Refinitiv.
 ///
 /// Monotonically-increasing series report `0` (no underwater episodes).
-pub fn max_peak_to_recovery_duration<T: FloatExt>(equity: ArrayView1<T>) -> usize {
+pub fn max_peak_to_recovery_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
   let n = equity.len();
   if n == 0 {
     return 0;
@@ -120,7 +120,7 @@ pub fn max_peak_to_recovery_duration<T: FloatExt>(equity: ArrayView1<T>) -> usiz
 
 /// Full drawdown statistics for an equity series.
 #[derive(Debug, Clone)]
-pub struct DrawdownStats<T: FloatExt> {
+pub struct DrawdownStats<T: RealExt> {
   /// Running drawdown series.
   pub series: Array1<T>,
   /// Most negative drawdown (≤ 0).
@@ -133,7 +133,7 @@ pub struct DrawdownStats<T: FloatExt> {
   pub average: T,
 }
 
-impl<T: FloatExt> DrawdownStats<T> {
+impl<T: RealExt> DrawdownStats<T> {
   /// Compute all drawdown statistics from an equity series.
   pub fn from_equity(equity: ArrayView1<T>) -> Self {
     let series = running_drawdown(equity);
@@ -158,7 +158,7 @@ impl<T: FloatExt> DrawdownStats<T> {
 }
 
 /// Convert a return series into a cumulative equity curve starting at `start`.
-pub fn equity_from_returns<T: FloatExt>(returns: ArrayView1<T>, start: T) -> Array1<T> {
+pub fn equity_from_returns<T: RealExt>(returns: ArrayView1<T>, start: T) -> Array1<T> {
   let mut out = Array1::zeros(returns.len() + 1);
   out[0] = start;
   for (i, &r) in returns.iter().enumerate() {

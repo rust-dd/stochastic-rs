@@ -5,7 +5,7 @@ use num_complex::Complex;
 
 use super::FMVol;
 use crate::fourier_malliavin::coefficients::convolution_coefficients;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 const BIAS_CORRECTED_C_M: f64 = 0.05;
 
@@ -15,12 +15,12 @@ const BIAS_CORRECTED_C_M: f64 = 0.05;
 /// MSE-optimal value for their Heston experiment. The constant is expressed
 /// in the square root of the caller's time unit, exactly as the paper's
 /// `M rho(n)^(1/2) -> c_M` condition requires.
-pub(super) fn default_bias_corrected_m<T: FloatExt>(mesh: T) -> usize {
+pub(super) fn default_bias_corrected_m<T: RealExt>(mesh: T) -> usize {
   let scaled = T::from_f64_fast(BIAS_CORRECTED_C_M) / mesh.sqrt();
   scaled.floor().to_usize().unwrap_or(usize::MAX).max(1)
 }
 
-impl<T: FloatExt> FMVol<T> {
+impl<T: RealExt> FMVol<T> {
   /// Default smoothing window for spot-volatility / spot-leverage / spot-quarticity:
   /// `m ≈ √N`. This is the canonical Malliavin-Mancino choice (Malliavin & Mancino
   /// 2009, eq. 4.5 / Mancino-Recchioni 2015 §3): the bias from a finite Cesàro
@@ -141,7 +141,7 @@ impl<T: FloatExt> FMVol<T> {
 }
 
 /// Fejér kernel inversion (internal helper).
-pub(super) fn fejer_inversion<T: FloatExt>(
+pub(super) fn fejer_inversion<T: RealExt>(
   coeffs: &Array1<Complex<T>>,
   m_freq: usize,
   period: T,

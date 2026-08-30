@@ -11,11 +11,11 @@ use super::RateIndex;
 use super::types::AccrualPeriod;
 use super::types::CmsIndex;
 use super::types::FloatingIndex;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Fixed-rate coupon.
 #[derive(Debug, Clone)]
-pub struct FixedRateCoupon<T: FloatExt> {
+pub struct FixedRateCoupon<T: RealExt> {
   /// Coupon accrual period.
   pub period: AccrualPeriod<T>,
   /// Coupon notional.
@@ -24,7 +24,7 @@ pub struct FixedRateCoupon<T: FloatExt> {
   pub fixed_rate: T,
 }
 
-impl<T: FloatExt> FixedRateCoupon<T> {
+impl<T: RealExt> FixedRateCoupon<T> {
   /// Coupon amount.
   pub fn amount(&self) -> T {
     self.notional * self.fixed_rate * self.period.accrual_factor
@@ -38,7 +38,7 @@ impl<T: FloatExt> FixedRateCoupon<T> {
 
 /// Floating-rate coupon linked to IBOR or overnight indices.
 #[derive(Debug, Clone)]
-pub struct FloatingRateCoupon<T: FloatExt> {
+pub struct FloatingRateCoupon<T: RealExt> {
   /// Coupon accrual period.
   pub period: AccrualPeriod<T>,
   /// Coupon notional.
@@ -51,7 +51,7 @@ pub struct FloatingRateCoupon<T: FloatExt> {
   pub observed_rate: Option<T>,
 }
 
-impl<T: FloatExt> FloatingRateCoupon<T> {
+impl<T: RealExt> FloatingRateCoupon<T> {
   /// Project or use the observed rate for the coupon.
   pub fn rate(&self, curves: &(impl CurveProvider<T> + ?Sized), valuation_date: NaiveDate) -> T {
     self.observed_rate.unwrap_or_else(|| {
@@ -79,7 +79,7 @@ impl<T: FloatExt> FloatingRateCoupon<T> {
 
 /// CMS coupon with a forward swap-rate fixing.
 #[derive(Debug, Clone)]
-pub struct CmsCoupon<T: FloatExt> {
+pub struct CmsCoupon<T: RealExt> {
   /// Coupon accrual period.
   pub period: AccrualPeriod<T>,
   /// Coupon notional.
@@ -92,7 +92,7 @@ pub struct CmsCoupon<T: FloatExt> {
   pub observed_rate: Option<T>,
 }
 
-impl<T: FloatExt> CmsCoupon<T> {
+impl<T: RealExt> CmsCoupon<T> {
   /// Project or use the observed rate for the coupon.
   pub fn rate(&self, curves: &(impl CurveProvider<T> + ?Sized), valuation_date: NaiveDate) -> T {
     self.observed_rate.unwrap_or_else(|| {
@@ -120,7 +120,7 @@ impl<T: FloatExt> CmsCoupon<T> {
 
 /// Simple deterministic payment.
 #[derive(Debug, Clone)]
-pub struct SimpleCashflow<T: FloatExt> {
+pub struct SimpleCashflow<T: RealExt> {
   /// Payment date.
   pub payment_date: NaiveDate,
   /// Amount paid on the payment date.
@@ -129,14 +129,14 @@ pub struct SimpleCashflow<T: FloatExt> {
 
 /// User-facing cashflow variants supported by [`crate::cashflows::Leg`].
 #[derive(Debug, Clone)]
-pub enum Cashflow<T: FloatExt> {
+pub enum Cashflow<T: RealExt> {
   Fixed(FixedRateCoupon<T>),
   Floating(FloatingRateCoupon<T>),
   Cms(CmsCoupon<T>),
   Simple(SimpleCashflow<T>),
 }
 
-impl<T: FloatExt> Cashflow<T> {
+impl<T: RealExt> Cashflow<T> {
   /// Cashflow payment date.
   pub fn payment_date(&self) -> NaiveDate {
     match self {
@@ -173,7 +173,7 @@ impl<T: FloatExt> Cashflow<T> {
   }
 }
 
-impl<T: FloatExt> Display for Cashflow<T> {
+impl<T: RealExt> Display for Cashflow<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::Fixed(_) => write!(f, "Fixed coupon"),

@@ -25,21 +25,21 @@ use crate::curves::DiscountCurve;
 use crate::curves::Instrument;
 use crate::curves::InterpolationMethod;
 use crate::curves::bootstrap;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Quote-driven curve input.
 ///
 /// Implementations convert their current market quote plus conventions
 /// into the curve-building [`Instrument`] enum. A helper whose quote is
 /// missing or invalid must return `None` so the caller can skip it.
-pub trait RateHelper<T: FloatExt>: Send + Sync {
+pub trait RateHelper<T: RealExt>: Send + Sync {
   /// Current maturity (in years from the valuation date).
   fn maturity(&self, valuation_date: NaiveDate) -> T;
   /// Convert the wrapped quote into a curve [`Instrument`].
   fn to_instrument(&self, valuation_date: NaiveDate) -> Option<Instrument<T>>;
 }
 
-fn read_quote<T: FloatExt>(handle: &Handle<dyn Quote<T>>) -> Option<T> {
+fn read_quote<T: RealExt>(handle: &Handle<dyn Quote<T>>) -> Option<T> {
   handle.current().and_then(|q| {
     let v = q.value();
     if v.is_finite() { Some(v) } else { None }
@@ -48,7 +48,7 @@ fn read_quote<T: FloatExt>(handle: &Handle<dyn Quote<T>>) -> Option<T> {
 
 /// Money-market deposit helper.
 #[derive(Debug, Clone)]
-pub struct DepositRateHelper<T: FloatExt> {
+pub struct DepositRateHelper<T: RealExt> {
   /// Quote handle producing the deposit rate.
   pub rate_quote: Handle<dyn Quote<T>>,
   /// Spot / value date of the deposit.
@@ -59,7 +59,7 @@ pub struct DepositRateHelper<T: FloatExt> {
   pub day_count: DayCountConvention,
 }
 
-impl<T: FloatExt> DepositRateHelper<T> {
+impl<T: RealExt> DepositRateHelper<T> {
   /// Construct the helper from an observable rate quote and the deposit dates.
   pub fn new(
     rate_quote: Handle<dyn Quote<T>>,
@@ -76,7 +76,7 @@ impl<T: FloatExt> DepositRateHelper<T> {
   }
 }
 
-impl<T: FloatExt> RateHelper<T> for DepositRateHelper<T> {
+impl<T: RealExt> RateHelper<T> for DepositRateHelper<T> {
   fn maturity(&self, valuation_date: NaiveDate) -> T {
     self
       .day_count
@@ -94,7 +94,7 @@ impl<T: FloatExt> RateHelper<T> for DepositRateHelper<T> {
 
 /// Forward-rate-agreement helper for curve bootstrapping.
 #[derive(Debug, Clone)]
-pub struct FraRateHelper<T: FloatExt> {
+pub struct FraRateHelper<T: RealExt> {
   /// Quote handle producing the FRA rate.
   pub rate_quote: Handle<dyn Quote<T>>,
   /// FRA reference-period start.
@@ -105,7 +105,7 @@ pub struct FraRateHelper<T: FloatExt> {
   pub day_count: DayCountConvention,
 }
 
-impl<T: FloatExt> FraRateHelper<T> {
+impl<T: RealExt> FraRateHelper<T> {
   /// Construct the helper from an observable FRA rate quote and dates.
   pub fn new(
     rate_quote: Handle<dyn Quote<T>>,
@@ -122,7 +122,7 @@ impl<T: FloatExt> FraRateHelper<T> {
   }
 }
 
-impl<T: FloatExt> RateHelper<T> for FraRateHelper<T> {
+impl<T: RealExt> RateHelper<T> for FraRateHelper<T> {
   fn maturity(&self, valuation_date: NaiveDate) -> T {
     self.day_count.year_fraction(valuation_date, self.end_date)
   }
@@ -150,7 +150,7 @@ impl<T: FloatExt> RateHelper<T> for FraRateHelper<T> {
 /// individually. This removes the small day-count bias that the uniform
 /// path inherits when the real swap quote was business-day-adjusted.
 #[derive(Debug, Clone)]
-pub struct SwapRateHelper<T: FloatExt> {
+pub struct SwapRateHelper<T: RealExt> {
   /// Quote handle producing the par swap rate.
   pub rate_quote: Handle<dyn Quote<T>>,
   /// Settlement date of the swap.
@@ -171,7 +171,7 @@ pub struct SwapRateHelper<T: FloatExt> {
   pub convention: Option<BusinessDayConvention>,
 }
 
-impl<T: FloatExt> SwapRateHelper<T> {
+impl<T: RealExt> SwapRateHelper<T> {
   /// Construct the helper from an observable swap rate quote and dates.
   /// Routes through the uniform [`Instrument::Swap`] path; for
   /// calendar-aware bootstrapping, follow with [`with_calendar`](Self::with_calendar).
@@ -241,7 +241,7 @@ impl<T: FloatExt> SwapRateHelper<T> {
   }
 }
 
-impl<T: FloatExt> RateHelper<T> for SwapRateHelper<T> {
+impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
   fn maturity(&self, valuation_date: NaiveDate) -> T {
     self
       .day_count
@@ -282,7 +282,7 @@ impl<T: FloatExt> RateHelper<T> for SwapRateHelper<T> {
 
 /// Interest-rate futures helper with convexity adjustment.
 #[derive(Debug, Clone)]
-pub struct FuturesRateHelper<T: FloatExt> {
+pub struct FuturesRateHelper<T: RealExt> {
   /// Quote handle producing the futures price (100 - rate, in percent points).
   pub price_quote: Handle<dyn Quote<T>>,
   /// First fixing date of the underlying period.
@@ -296,7 +296,7 @@ pub struct FuturesRateHelper<T: FloatExt> {
   pub sigma: T,
 }
 
-impl<T: FloatExt> FuturesRateHelper<T> {
+impl<T: RealExt> FuturesRateHelper<T> {
   /// Construct the helper from an observable futures price quote, dates, and
   /// rate volatility for the convexity adjustment.
   pub fn new(
@@ -316,7 +316,7 @@ impl<T: FloatExt> FuturesRateHelper<T> {
   }
 }
 
-impl<T: FloatExt> RateHelper<T> for FuturesRateHelper<T> {
+impl<T: RealExt> RateHelper<T> for FuturesRateHelper<T> {
   fn maturity(&self, valuation_date: NaiveDate) -> T {
     self.day_count.year_fraction(valuation_date, self.end_date)
   }
@@ -349,7 +349,7 @@ impl<T: FloatExt> RateHelper<T> for FuturesRateHelper<T> {
 /// would force one concrete helper type per call, defeating the purpose.
 /// The slice-of-trait-objects pattern is the canonical QuantLib /
 /// `RateHelper`-vector approach.
-pub fn build_curve<T: FloatExt>(
+pub fn build_curve<T: RealExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,
   method: InterpolationMethod,

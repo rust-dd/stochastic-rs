@@ -16,17 +16,17 @@ use ndarray::ArrayView1;
 
 use super::drawdown::equity_from_returns;
 use super::drawdown::max_drawdown;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Arithmetic mean of a slice.
-fn mean<T: FloatExt>(xs: ArrayView1<T>) -> T {
+fn mean<T: RealExt>(xs: ArrayView1<T>) -> T {
   let n = xs.len();
   assert!(n > 0, "empty series");
   xs.iter().fold(T::zero(), |a, &v| a + v) / T::from_usize_(n)
 }
 
 /// Sample standard deviation (Bessel-corrected).
-fn stdev<T: FloatExt>(xs: ArrayView1<T>) -> T {
+fn stdev<T: RealExt>(xs: ArrayView1<T>) -> T {
   let n = xs.len();
   assert!(n >= 2, "need at least two observations for stdev");
   let m = mean(xs);
@@ -38,7 +38,7 @@ fn stdev<T: FloatExt>(xs: ArrayView1<T>) -> T {
 ///
 /// $$\mathrm{Sharpe}=\frac{\bar r-r_f^{\text{period}}}{\sigma}\sqrt{k},$$
 /// where $k$ is the number of periods per year.
-pub fn sharpe_ratio<T: FloatExt>(
+pub fn sharpe_ratio<T: RealExt>(
   returns: ArrayView1<T>,
   risk_free_per_period: T,
   periods_per_year: T,
@@ -63,7 +63,7 @@ pub fn sharpe_ratio<T: FloatExt>(
 /// & Price (1994) and Sortino & Forsey (1996) use `n_downside` instead, so
 /// figures from those texts will differ by a factor of `sqrt(n /
 /// n_downside)`.
-pub fn sortino_ratio<T: FloatExt>(
+pub fn sortino_ratio<T: RealExt>(
   returns: ArrayView1<T>,
   mar_per_period: T,
   periods_per_year: T,
@@ -88,7 +88,7 @@ pub fn sortino_ratio<T: FloatExt>(
 /// Annualised Information Ratio against a benchmark return series.
 ///
 /// $$\mathrm{IR}=\frac{\overline{r-r_b}}{\sigma_{r-r_b}}\sqrt{k}.$$
-pub fn information_ratio<T: FloatExt>(
+pub fn information_ratio<T: RealExt>(
   returns: ArrayView1<T>,
   benchmark: ArrayView1<T>,
   periods_per_year: T,
@@ -110,7 +110,7 @@ pub fn information_ratio<T: FloatExt>(
 /// Annualised Calmar ratio — annualised return divided by max drawdown.
 ///
 /// $$\mathrm{Calmar}=\frac{\bar r\,k}{|\mathrm{MDD}|}.$$
-pub fn calmar_ratio<T: FloatExt>(returns: ArrayView1<T>, periods_per_year: T) -> T {
+pub fn calmar_ratio<T: RealExt>(returns: ArrayView1<T>, periods_per_year: T) -> T {
   let annualised_return = mean(returns) * periods_per_year;
   let equity = equity_from_returns(returns, T::one());
   let mdd = max_drawdown(equity.view());

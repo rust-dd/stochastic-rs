@@ -10,13 +10,13 @@
 
 use crate::microstructure::AlmgrenChrissParams;
 use crate::microstructure::optimal_execution;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Add the Almgren-Chriss expected execution cost to a model price.
 ///
 /// Returns `model_price + plan.expected_cost`, with optional weighting on
 /// the variance term via `lambda` for risk-adjusted execution cost.
-pub fn execution_adjusted_price<T: FloatExt>(
+pub fn execution_adjusted_price<T: RealExt>(
   model_price: T,
   execution: &AlmgrenChrissParams<T>,
   lambda: T,

@@ -4,7 +4,7 @@
 
 use std::fmt::Display;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Compounding convention for interest rate calculations.
 ///
@@ -38,7 +38,7 @@ impl Display for Compounding {
 
 impl Compounding {
   /// Convert a zero rate to a discount factor.
-  pub fn discount_factor<T: FloatExt>(&self, rate: T, tau: T) -> T {
+  pub fn discount_factor<T: RealExt>(&self, rate: T, tau: T) -> T {
     match self {
       Self::Continuous => (-rate * tau).exp(),
       Self::Simple => T::one() / (T::one() + rate * tau),
@@ -50,7 +50,7 @@ impl Compounding {
   }
 
   /// Convert a discount factor to a zero rate.
-  pub fn zero_rate<T: FloatExt>(&self, df: T, tau: T) -> T {
+  pub fn zero_rate<T: RealExt>(&self, df: T, tau: T) -> T {
     if tau <= T::zero() {
       return T::zero();
     }
@@ -95,7 +95,7 @@ impl Display for InterpolationMethod {
 /// `crate::instruments::*` namespace; the old name is re-exported as a
 /// type alias from `curves::Instrument` for backward compatibility.
 #[derive(Debug, Clone)]
-pub enum BootstrapInstrument<T: FloatExt> {
+pub enum BootstrapInstrument<T: RealExt> {
   /// Cash deposit: `(maturity_in_years, rate)`.
   Deposit { maturity: T, rate: T },
   /// Forward Rate Agreement: `(start, end, rate)`.
@@ -128,7 +128,7 @@ pub enum BootstrapInstrument<T: FloatExt> {
 /// Backward-compat alias. Prefer [`BootstrapInstrument`] in new code.
 pub type Instrument<T> = BootstrapInstrument<T>;
 
-impl<T: FloatExt> BootstrapInstrument<T> {
+impl<T: RealExt> BootstrapInstrument<T> {
   /// The maturity (or end date) of the instrument.
   pub fn maturity(&self) -> T {
     match self {
@@ -144,7 +144,7 @@ impl<T: FloatExt> BootstrapInstrument<T> {
 
 /// A single calibrated point on the curve: `(time, discount_factor)`.
 #[derive(Debug, Clone, Copy)]
-pub struct CurvePoint<T: FloatExt> {
+pub struct CurvePoint<T: RealExt> {
   pub time: T,
   pub discount_factor: T,
 }

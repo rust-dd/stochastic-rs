@@ -30,18 +30,18 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Discrete-time rating transition matrix with an absorbing default state.
 ///
 /// Rows correspond to the starting rating and columns to the rating at the
 /// end of the period.  The last index is the default (absorbing) state.
 #[derive(Debug, Clone)]
-pub struct TransitionMatrix<T: FloatExt> {
+pub struct TransitionMatrix<T: RealExt> {
   matrix: Array2<T>,
 }
 
-impl<T: FloatExt> TransitionMatrix<T> {
+impl<T: RealExt> TransitionMatrix<T> {
   /// Build from a row-stochastic matrix. The last state is treated as the
   /// absorbing default state.
   pub fn new(matrix: Array2<T>) -> Self {
@@ -112,11 +112,11 @@ impl<T: FloatExt> TransitionMatrix<T> {
 
 /// Continuous-time generator matrix (Q-matrix) for a rating Markov chain.
 #[derive(Debug, Clone)]
-pub struct GeneratorMatrix<T: FloatExt> {
+pub struct GeneratorMatrix<T: RealExt> {
   matrix: Array2<T>,
 }
 
-impl<T: FloatExt> GeneratorMatrix<T> {
+impl<T: RealExt> GeneratorMatrix<T> {
   /// Wrap an existing generator matrix. Rows must sum to zero, off-diagonal
   /// entries are non-negative, and diagonal entries are non-positive.
   pub fn new(matrix: Array2<T>) -> Self {
@@ -260,7 +260,7 @@ impl<T: FloatExt> GeneratorMatrix<T> {
   }
 }
 
-fn identity_matrix<T: FloatExt>(n: usize) -> Array2<T> {
+fn identity_matrix<T: RealExt>(n: usize) -> Array2<T> {
   let mut m = Array2::zeros((n, n));
   for i in 0..n {
     m[[i, i]] = T::one();
@@ -273,7 +273,7 @@ fn identity_matrix<T: FloatExt>(n: usize) -> Array2<T> {
 /// Implementation follows Higham (2005) Algorithm 2.3 with the $\theta_{13}$
 /// threshold.  Uses only matrix multiplication and a Gauss-Jordan matrix
 /// inversion so it does not require a LAPACK backend.
-fn expm<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
+fn expm<T: RealExt>(a: &Array2<T>) -> Array2<T> {
   let n = a.nrows();
   if n == 0 {
     return a.clone();
@@ -301,7 +301,7 @@ fn expm<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
   result
 }
 
-fn one_norm<T: FloatExt>(a: &Array2<T>) -> T {
+fn one_norm<T: RealExt>(a: &Array2<T>) -> T {
   let mut max_col = T::zero();
   for j in 0..a.ncols() {
     let mut s = T::zero();
@@ -315,7 +315,7 @@ fn one_norm<T: FloatExt>(a: &Array2<T>) -> T {
   max_col
 }
 
-fn pade13<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
+fn pade13<T: RealExt>(a: &Array2<T>) -> Array2<T> {
   // Padé-13 coefficients from Higham (2005), Table 2.3.
   let b: [T; 14] = [
     T::from_f64_fast(64764752532480000.0),
@@ -358,7 +358,7 @@ fn pade13<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
 
 /// Gauss-Jordan elimination matrix inverse. Suitable for small matrices
 /// (rating matrices are typically 8×8).
-fn invert_matrix<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
+fn invert_matrix<T: RealExt>(a: &Array2<T>) -> Array2<T> {
   let n = a.nrows();
   assert_eq!(n, a.ncols(), "matrix must be square for inversion");
   let mut aug = Array2::<T>::zeros((n, 2 * n));

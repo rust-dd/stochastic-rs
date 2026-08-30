@@ -2,9 +2,9 @@
 
 use super::FMVol;
 use super::helpers::default_bias_corrected_m;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
-pub(super) fn validate_irregular_inputs<T: FloatExt>(
+pub(super) fn validate_irregular_inputs<T: RealExt>(
   prices: &[T],
   times: &[T],
   period: T,
@@ -48,7 +48,7 @@ pub(super) fn validate_irregular_inputs<T: FloatExt>(
   Ok((prices.len() - 1, mesh, times[0]))
 }
 
-pub(super) fn validate_uniform_inputs<T: FloatExt>(
+pub(super) fn validate_uniform_inputs<T: RealExt>(
   prices: &[T],
   period: T,
 ) -> anyhow::Result<usize> {
@@ -82,7 +82,7 @@ pub(super) fn validate_frequency_bounds(
   Ok(())
 }
 
-pub(super) fn default_max_frequency<T: FloatExt>(
+pub(super) fn default_max_frequency<T: RealExt>(
   n: usize,
   n_freq: usize,
   mesh: T,
@@ -112,14 +112,14 @@ pub(super) fn default_max_frequency<T: FloatExt>(
     })
 }
 
-fn validate_period<T: FloatExt>(period: T) -> anyhow::Result<()> {
+fn validate_period<T: RealExt>(period: T) -> anyhow::Result<()> {
   if !period.is_finite() || period <= T::zero() {
     anyhow::bail!("period must be positive and finite");
   }
   Ok(())
 }
 
-impl<T: FloatExt> FMVol<T> {
+impl<T: RealExt> FMVol<T> {
   pub(super) fn validate_stored_frequency(&self, required: usize) -> anyhow::Result<()> {
     if required > self.max_freq {
       anyhow::bail!(

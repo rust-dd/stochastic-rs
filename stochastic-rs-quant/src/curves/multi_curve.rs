@@ -19,18 +19,18 @@
 use ndarray::Array1;
 
 use super::discount_curve::DiscountCurve;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Multi-curve framework holding a discount curve and tenor-specific forecast curves.
 #[derive(Debug, Clone)]
-pub struct MultiCurve<T: FloatExt> {
+pub struct MultiCurve<T: RealExt> {
   /// OIS / SOFR discount curve used for present value computation.
   pub discount: DiscountCurve<T>,
   /// Forecast curves keyed by tenor label (e.g., "1M", "3M", "6M").
   pub forecasts: Vec<(String, DiscountCurve<T>)>,
 }
 
-impl<T: FloatExt> MultiCurve<T> {
+impl<T: RealExt> MultiCurve<T> {
   /// Create a multi-curve framework with a discount curve.
   pub fn new(discount: DiscountCurve<T>) -> Self {
     Self {

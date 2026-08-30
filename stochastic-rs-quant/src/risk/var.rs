@@ -21,7 +21,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Interpretation of the input sample.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -66,7 +66,7 @@ impl Display for VarMethod {
 }
 
 /// Compute VaR for the given sample using the chosen method.
-pub fn value_at_risk<T: FloatExt>(
+pub fn value_at_risk<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
@@ -86,7 +86,7 @@ pub fn value_at_risk<T: FloatExt>(
 /// $$
 /// \mathrm{VaR}_{\alpha}=-\hat\mu+\hat\sigma\,\Phi^{-1}(\alpha).
 /// $$
-pub fn gaussian_var<T: FloatExt>(
+pub fn gaussian_var<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
@@ -106,7 +106,7 @@ pub fn gaussian_var<T: FloatExt>(
 }
 
 /// Historical-simulation VaR (empirical loss quantile).
-pub fn historical_var<T: FloatExt>(
+pub fn historical_var<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
@@ -122,7 +122,7 @@ pub fn historical_var<T: FloatExt>(
 
 /// Monte-Carlo VaR (alias of [`historical_var`] — kept as a separate function
 /// for clarity of intent in client code).
-pub fn monte_carlo_var<T: FloatExt>(
+pub fn monte_carlo_var<T: RealExt>(
   simulated_samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
@@ -149,14 +149,14 @@ pub fn monte_carlo_var_with_sampler<T, D>(
   orientation: PnlOrLoss,
 ) -> T
 where
-  T: FloatExt,
+  T: RealExt,
   D: stochastic_rs_distributions::traits::DistributionSampler<T>,
 {
   let samples = sampler.sample_n(n_samples);
   monte_carlo_var(samples.view(), confidence, orientation)
 }
 
-pub(crate) fn losses_from_samples<T: FloatExt>(
+pub(crate) fn losses_from_samples<T: RealExt>(
   samples: ArrayView1<T>,
   orientation: PnlOrLoss,
 ) -> Array1<T> {
@@ -166,7 +166,7 @@ pub(crate) fn losses_from_samples<T: FloatExt>(
   }
 }
 
-pub(crate) fn sample_quantile<T: FloatExt>(sorted: &[T], confidence: T) -> T {
+pub(crate) fn sample_quantile<T: RealExt>(sorted: &[T], confidence: T) -> T {
   let n = sorted.len();
   assert!(n >= 1, "empty sample");
   let idx = (confidence * T::from_usize_(n - 1)).to_f64().unwrap_or(0.0);
@@ -180,7 +180,7 @@ pub(crate) fn sample_quantile<T: FloatExt>(sorted: &[T], confidence: T) -> T {
   }
 }
 
-pub(crate) fn assert_confidence<T: FloatExt>(c: T) {
+pub(crate) fn assert_confidence<T: RealExt>(c: T) {
   let v = c.to_f64().unwrap_or(0.0);
   assert!(v > 0.0 && v < 1.0, "confidence must lie in (0, 1); got {v}");
 }

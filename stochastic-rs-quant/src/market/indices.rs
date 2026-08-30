@@ -35,9 +35,9 @@ use crate::cashflows::OvernightIndex;
 use crate::cashflows::RateTenor;
 use crate::fx::Currency;
 use crate::fx::currency;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
-struct FixingInner<T: FloatExt> {
+struct FixingInner<T: RealExt> {
   fixings: RwLock<BTreeMap<NaiveDate, T>>,
   observable: ObservableBase,
 }
@@ -46,11 +46,11 @@ struct FixingInner<T: FloatExt> {
 ///
 /// Cheap to clone (shared `Arc` interior). Used by coupons that need past
 /// fixings and by any pricer that must refresh when new fixings arrive.
-pub struct FixingHistory<T: FloatExt> {
+pub struct FixingHistory<T: RealExt> {
   inner: Arc<FixingInner<T>>,
 }
 
-impl<T: FloatExt> Clone for FixingHistory<T> {
+impl<T: RealExt> Clone for FixingHistory<T> {
   fn clone(&self) -> Self {
     Self {
       inner: Arc::clone(&self.inner),
@@ -58,13 +58,13 @@ impl<T: FloatExt> Clone for FixingHistory<T> {
   }
 }
 
-impl<T: FloatExt> Default for FixingHistory<T> {
+impl<T: RealExt> Default for FixingHistory<T> {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<T: FloatExt> std::fmt::Debug for FixingHistory<T> {
+impl<T: RealExt> std::fmt::Debug for FixingHistory<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let n = self
       .inner
@@ -78,7 +78,7 @@ impl<T: FloatExt> std::fmt::Debug for FixingHistory<T> {
   }
 }
 
-impl<T: FloatExt> FixingHistory<T> {
+impl<T: RealExt> FixingHistory<T> {
   /// Empty fixing history.
   pub fn new() -> Self {
     Self {
@@ -158,7 +158,7 @@ impl<T: FloatExt> FixingHistory<T> {
   }
 }
 
-impl<T: FloatExt> Observable for FixingHistory<T> {
+impl<T: RealExt> Observable for FixingHistory<T> {
   fn register_observer(&self, observer: Weak<dyn Observer + Send + Sync>) {
     self.inner.observable.register_observer(observer);
   }
@@ -171,7 +171,7 @@ impl<T: FloatExt> Observable for FixingHistory<T> {
 /// IBOR-style index with canonical conventions, a calendar, and a fixing
 /// history. Wraps the basic [`IborIndex`] used by the cashflow engine.
 #[derive(Debug, Clone)]
-pub struct NamedIborIndex<T: FloatExt> {
+pub struct NamedIborIndex<T: RealExt> {
   /// Underlying typed index consumed by coupons.
   pub index: IborIndex<T>,
   /// Currency the rate is expressed in.
@@ -184,7 +184,7 @@ pub struct NamedIborIndex<T: FloatExt> {
   pub fixings: FixingHistory<T>,
 }
 
-impl<T: FloatExt> NamedIborIndex<T> {
+impl<T: RealExt> NamedIborIndex<T> {
   /// Construct from raw parts — typically via a factory in [`ibor`].
   pub fn new(index: IborIndex<T>, currency: Currency, calendar: Calendar, spot_lag: u32) -> Self {
     Self {
@@ -200,7 +200,7 @@ impl<T: FloatExt> NamedIborIndex<T> {
 /// Overnight index with canonical conventions, a calendar, and a fixing
 /// history. Wraps the basic [`OvernightIndex`] used by the cashflow engine.
 #[derive(Debug, Clone)]
-pub struct NamedOvernightIndex<T: FloatExt> {
+pub struct NamedOvernightIndex<T: RealExt> {
   /// Underlying typed index consumed by coupons.
   pub index: OvernightIndex<T>,
   /// Currency the rate is expressed in.
@@ -211,7 +211,7 @@ pub struct NamedOvernightIndex<T: FloatExt> {
   pub fixings: FixingHistory<T>,
 }
 
-impl<T: FloatExt> NamedOvernightIndex<T> {
+impl<T: RealExt> NamedOvernightIndex<T> {
   /// Construct from raw parts — typically via a factory in [`overnight`].
   pub fn new(index: OvernightIndex<T>, currency: Currency, calendar: Calendar) -> Self {
     Self {
@@ -229,7 +229,7 @@ pub mod ibor {
 
   /// Euribor with arbitrary tenor (months). Uses Actual/360 and the TARGET2
   /// calendar with 2 business day spot lag. See EMMI Euribor rulebook.
-  pub fn euribor<T: FloatExt>(tenor: RateTenor) -> NamedIborIndex<T> {
+  pub fn euribor<T: RealExt>(tenor: RateTenor) -> NamedIborIndex<T> {
     let name = format!("EURIBOR{}", tenor.curve_key());
     let index = IborIndex::new(name, tenor, DayCountConvention::Actual360);
     NamedIborIndex::new(
@@ -241,18 +241,18 @@ pub mod ibor {
   }
 
   /// Three-month Euribor.
-  pub fn euribor_3m<T: FloatExt>() -> NamedIborIndex<T> {
+  pub fn euribor_3m<T: RealExt>() -> NamedIborIndex<T> {
     euribor(RateTenor::ThreeMonths)
   }
 
   /// Six-month Euribor.
-  pub fn euribor_6m<T: FloatExt>() -> NamedIborIndex<T> {
+  pub fn euribor_6m<T: RealExt>() -> NamedIborIndex<T> {
     euribor(RateTenor::SixMonths)
   }
 
   /// USD Libor with arbitrary tenor. Actual/360, US+UK joint calendar,
   /// 2 business day spot lag. Retained for legacy trades.
-  pub fn usd_libor<T: FloatExt>(tenor: RateTenor) -> NamedIborIndex<T> {
+  pub fn usd_libor<T: RealExt>(tenor: RateTenor) -> NamedIborIndex<T> {
     let name = format!("USD-LIBOR-{}", tenor.curve_key());
     let index = IborIndex::new(name, tenor, DayCountConvention::Actual360);
     NamedIborIndex::new(
@@ -267,12 +267,12 @@ pub mod ibor {
   }
 
   /// Three-month USD Libor.
-  pub fn usd_libor_3m<T: FloatExt>() -> NamedIborIndex<T> {
+  pub fn usd_libor_3m<T: RealExt>() -> NamedIborIndex<T> {
     usd_libor(RateTenor::ThreeMonths)
   }
 
   /// Six-month USD Libor.
-  pub fn usd_libor_6m<T: FloatExt>() -> NamedIborIndex<T> {
+  pub fn usd_libor_6m<T: RealExt>() -> NamedIborIndex<T> {
     usd_libor(RateTenor::SixMonths)
   }
 }
@@ -283,7 +283,7 @@ pub mod overnight {
 
   /// SOFR — Secured Overnight Financing Rate (USD). Actual/360, US calendar.
   /// Reference: ARRC SOFR conventions (2019).
-  pub fn sofr<T: FloatExt>() -> NamedOvernightIndex<T> {
+  pub fn sofr<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("SOFR", DayCountConvention::Actual360);
     NamedOvernightIndex::new(
       index,
@@ -293,7 +293,7 @@ pub mod overnight {
   }
 
   /// Effective Federal Funds Rate (USD). Actual/360, US calendar.
-  pub fn fed_funds<T: FloatExt>() -> NamedOvernightIndex<T> {
+  pub fn fed_funds<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("EFFR", DayCountConvention::Actual360);
     NamedOvernightIndex::new(
       index,
@@ -303,13 +303,13 @@ pub mod overnight {
   }
 
   /// ESTR — Euro Short-Term Rate. Actual/360, TARGET2 calendar.
-  pub fn estr<T: FloatExt>() -> NamedOvernightIndex<T> {
+  pub fn estr<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("ESTR", DayCountConvention::Actual360);
     NamedOvernightIndex::new(index, currency::EUR, Calendar::new(HolidayCalendar::Target))
   }
 
   /// SONIA — Sterling Overnight Index Average. Actual/365 fixed, UK calendar.
-  pub fn sonia<T: FloatExt>() -> NamedOvernightIndex<T> {
+  pub fn sonia<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("SONIA", DayCountConvention::Actual365Fixed);
     NamedOvernightIndex::new(
       index,
@@ -320,7 +320,7 @@ pub mod overnight {
 
   /// TONAR — Tokyo Overnight Average Rate (aka TONA). Actual/365 fixed,
   /// Tokyo calendar.
-  pub fn tonar<T: FloatExt>() -> NamedOvernightIndex<T> {
+  pub fn tonar<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("TONAR", DayCountConvention::Actual365Fixed);
     NamedOvernightIndex::new(index, currency::JPY, Calendar::new(HolidayCalendar::Tokyo))
   }

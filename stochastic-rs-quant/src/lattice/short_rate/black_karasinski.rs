@@ -4,11 +4,11 @@ use super::OneFactorShortRateModel;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
 use crate::lattice::tree::TrinomialTree;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Black-Karasinski log-short-rate tree model.
 #[derive(Debug, Clone)]
-pub struct BlackKarasinskiTreeModel<T: FloatExt> {
+pub struct BlackKarasinskiTreeModel<T: RealExt> {
   /// Initial short rate.
   pub initial_rate: T,
   /// Mean reversion speed of the log-rate.
@@ -19,7 +19,7 @@ pub struct BlackKarasinskiTreeModel<T: FloatExt> {
   pub sigma: T,
 }
 
-impl<T: FloatExt> BlackKarasinskiTreeModel<T> {
+impl<T: RealExt> BlackKarasinskiTreeModel<T> {
   /// Construct a Black-Karasinski tree model from rate levels.
   pub fn new(initial_rate: T, mean_reversion: T, long_run_rate: T, sigma: T) -> Self {
     Self {
@@ -31,7 +31,7 @@ impl<T: FloatExt> BlackKarasinskiTreeModel<T> {
   }
 }
 
-impl<T: FloatExt> OneFactorShortRateModel<T> for BlackKarasinskiTreeModel<T> {
+impl<T: RealExt> OneFactorShortRateModel<T> for BlackKarasinskiTreeModel<T> {
   fn initial_state(&self) -> T {
     self.initial_rate.ln()
   }
@@ -51,7 +51,7 @@ impl<T: FloatExt> OneFactorShortRateModel<T> for BlackKarasinskiTreeModel<T> {
 
 /// Black-Karasinski tree engine.
 #[derive(Debug, Clone)]
-pub struct BlackKarasinskiTree<T: FloatExt> {
+pub struct BlackKarasinskiTree<T: RealExt> {
   /// Underlying model.
   pub model: BlackKarasinskiTreeModel<T>,
   /// Trinomial lattice.
@@ -60,7 +60,7 @@ pub struct BlackKarasinskiTree<T: FloatExt> {
   pub horizon: T,
 }
 
-impl<T: FloatExt> BlackKarasinskiTree<T> {
+impl<T: RealExt> BlackKarasinskiTree<T> {
   /// Build a Black-Karasinski tree with `steps` time steps up to `horizon`.
   pub fn new(model: BlackKarasinskiTreeModel<T>, horizon: T, steps: usize) -> Self {
     let tree = build_one_factor_trinomial_tree(&model, horizon, steps);

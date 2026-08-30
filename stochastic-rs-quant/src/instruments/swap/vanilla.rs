@@ -11,11 +11,11 @@ use crate::cashflows::FloatingIndex;
 use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
 use crate::cashflows::OvernightIndex;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Vanilla interest-rate swap backed by fixed and floating legs.
 #[derive(Debug, Clone)]
-pub struct VanillaInterestRateSwap<T: FloatExt> {
+pub struct VanillaInterestRateSwap<T: RealExt> {
   /// Pay/receive direction.
   pub direction: SwapDirection,
   /// Contract notional.
@@ -28,7 +28,7 @@ pub struct VanillaInterestRateSwap<T: FloatExt> {
   pub floating_leg: Leg<T>,
 }
 
-impl<T: FloatExt> VanillaInterestRateSwap<T> {
+impl<T: RealExt> VanillaInterestRateSwap<T> {
   /// Build a vanilla fixed-versus-floating swap.
   pub fn new(
     direction: SwapDirection,

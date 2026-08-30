@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Swap direction.
 ///
@@ -40,7 +40,7 @@ impl Display for CrossCurrencySwapDirection {
 
 /// Standard vanilla IRS valuation summary.
 #[derive(Debug, Clone)]
-pub struct SwapValuation<T: FloatExt> {
+pub struct SwapValuation<T: RealExt> {
   /// Present value of the fixed leg.
   pub fixed_leg_npv: T,
   /// Present value of the floating leg.
@@ -59,7 +59,7 @@ pub struct SwapValuation<T: FloatExt> {
 
 /// Basis-swap valuation summary.
 #[derive(Debug, Clone)]
-pub struct BasisSwapValuation<T: FloatExt> {
+pub struct BasisSwapValuation<T: RealExt> {
   /// Present value of the pay leg.
   pub pay_leg_npv: T,
   /// Present value of the receive leg.
@@ -78,7 +78,7 @@ pub struct BasisSwapValuation<T: FloatExt> {
 
 /// Cross-currency basis-swap valuation summary in domestic currency terms.
 #[derive(Debug, Clone)]
-pub struct CrossCurrencyBasisSwapValuation<T: FloatExt> {
+pub struct CrossCurrencyBasisSwapValuation<T: RealExt> {
   /// Present value of the domestic leg in domestic currency.
   pub domestic_leg_npv: T,
   /// Present value of the foreign leg in foreign currency.

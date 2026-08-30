@@ -11,11 +11,11 @@ use crate::cashflows::CashflowPricer;
 use crate::cashflows::CurveProvider;
 use crate::cashflows::Leg;
 use crate::cashflows::SimpleCashflow;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Deterministic inflation-linked bond using projected index ratios.
 #[derive(Debug, Clone)]
-pub struct InflationLinkedBond<T: FloatExt> {
+pub struct InflationLinkedBond<T: RealExt> {
   /// Real face amount redeemed at maturity before indexation.
   pub real_face_value: T,
   /// Real coupon rate.
@@ -31,7 +31,7 @@ pub struct InflationLinkedBond<T: FloatExt> {
   leg: Leg<T>,
 }
 
-impl<T: FloatExt> InflationLinkedBond<T> {
+impl<T: RealExt> InflationLinkedBond<T> {
   /// Build an inflation-linked bond from projected index ratios for each payment date.
   pub fn new(
     schedule: &Schedule,

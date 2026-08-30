@@ -5,18 +5,18 @@ use ndarray::Array1;
 use super::OneFactorShortRateModel;
 use crate::lattice::tree::TrinomialBranch;
 use crate::lattice::tree::TrinomialTree;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Zero-mean Ornstein-Uhlenbeck factor used as a primitive for Gaussian
 /// short-rate constructions (G2++, curve-fitted Hull-White, …).
 #[derive(Debug, Clone)]
-pub(super) struct OrnsteinUhlenbeckFactor<T: FloatExt> {
+pub(super) struct OrnsteinUhlenbeckFactor<T: RealExt> {
   pub(super) initial_state: T,
   pub(super) mean_reversion: T,
   pub(super) sigma: T,
 }
 
-impl<T: FloatExt> OneFactorShortRateModel<T> for OrnsteinUhlenbeckFactor<T> {
+impl<T: RealExt> OneFactorShortRateModel<T> for OrnsteinUhlenbeckFactor<T> {
   fn initial_state(&self) -> T {
     self.initial_state
   }
@@ -34,7 +34,7 @@ impl<T: FloatExt> OneFactorShortRateModel<T> for OrnsteinUhlenbeckFactor<T> {
   }
 }
 
-pub(super) fn build_one_factor_trinomial_tree<T: FloatExt, M: OneFactorShortRateModel<T>>(
+pub(super) fn build_one_factor_trinomial_tree<T: RealExt, M: OneFactorShortRateModel<T>>(
   model: &M,
   horizon: T,
   steps: usize,
@@ -107,7 +107,7 @@ pub(super) fn build_one_factor_trinomial_tree<T: FloatExt, M: OneFactorShortRate
   TrinomialTree::new(dt, states, branches)
 }
 
-pub(super) fn price_one_factor_zcb<T: FloatExt, M: OneFactorShortRateModel<T>>(
+pub(super) fn price_one_factor_zcb<T: RealExt, M: OneFactorShortRateModel<T>>(
   tree: &TrinomialTree<T>,
   model: &M,
 ) -> T {
@@ -118,7 +118,7 @@ pub(super) fn price_one_factor_zcb<T: FloatExt, M: OneFactorShortRateModel<T>>(
   })
 }
 
-fn sanitize_probabilities<T: FloatExt>(down: &mut T, middle: &mut T, up: &mut T) {
+fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) {
   let zero = T::zero();
   let tol = T::from_f64_fast(1e-12);
   if *down < zero && *down > -tol {
@@ -179,7 +179,7 @@ pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
 /// Hull-White Model and Super-calibration", equations 16–18. Tracked for
 /// v2.4+ — the current corner correction is the canonical QuantLib /
 /// Brigo-Mercurio textbook approach.
-pub(crate) fn correlated_joint_probabilities<T: FloatExt>(
+pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,
   rho: T,

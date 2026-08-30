@@ -13,15 +13,15 @@ use super::types::FloatingIndex;
 use super::types::NotionalSchedule;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Schedule;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Ordered sequence of cash flows.
 #[derive(Debug, Clone)]
-pub struct Leg<T: FloatExt> {
+pub struct Leg<T: RealExt> {
   cashflows: Vec<Cashflow<T>>,
 }
 
-impl<T: FloatExt> Leg<T> {
+impl<T: RealExt> Leg<T> {
   /// Build a leg from explicit cashflows.
   pub fn from_cashflows(mut cashflows: Vec<Cashflow<T>>) -> Self {
     cashflows.sort_by_key(Cashflow::payment_date);
@@ -146,11 +146,11 @@ impl<T: FloatExt> Leg<T> {
 
 /// Builder for bespoke coupon legs.
 #[derive(Debug, Clone, Default)]
-pub struct LegBuilder<T: FloatExt> {
+pub struct LegBuilder<T: RealExt> {
   cashflows: Vec<Cashflow<T>>,
 }
 
-impl<T: FloatExt> LegBuilder<T> {
+impl<T: RealExt> LegBuilder<T> {
   /// Empty leg builder.
   pub fn new() -> Self {
     Self { cashflows: vec![] }

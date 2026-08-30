@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use gauss_quad::GaussLegendre;
 use nalgebra::DVector;
-use stochastic_rs_distributions::FloatExt;
+use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
 
@@ -73,7 +73,7 @@ fn gauss_legendre_64() -> &'static GaussLegendre {
   GL64.get_or_init(|| GaussLegendre::new(64.try_into().unwrap()))
 }
 
-fn compensated_add<T: FloatExt>(sum: &mut T, correction: &mut T, value: T) {
+fn compensated_add<T: RealExt>(sum: &mut T, correction: &mut T, value: T) {
   let adjusted = value - *correction;
   let next = *sum + adjusted;
   *correction = (next - *sum) - adjusted;
@@ -87,7 +87,7 @@ fn compensated_add<T: FloatExt>(sum: &mut T, correction: &mut T, value: T) {
 /// reducing node density. Two consecutive panels must be negligible in every
 /// component; this keeps price and gradient integrals on the same converged
 /// domain and avoids stopping on a single oscillatory cancellation.
-pub(crate) fn integrate_gl_to_convergence<T: FloatExt, const N: usize, F>(
+pub(crate) fn integrate_gl_to_convergence<T: RealExt, const N: usize, F>(
   integrand: F,
   tol: T,
 ) -> Option<[T; N]>

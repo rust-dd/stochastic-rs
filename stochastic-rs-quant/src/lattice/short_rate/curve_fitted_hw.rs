@@ -11,14 +11,14 @@ use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
 use crate::curves::DiscountCurve;
 use crate::lattice::tree::TrinomialTree;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Hull-White model with time-dependent $\theta(t)$ calibrated to an initial
 /// yield curve. The short rate is decomposed as $r(t) = x(t) + \alpha(t)$ where
 /// $x(t)$ is a zero-mean Ornstein-Uhlenbeck process and $\alpha(t)$ is the
 /// deterministic shift that reproduces market zero-coupon bond prices.
 #[derive(Debug, Clone)]
-pub struct CurveFittedHullWhiteModel<T: FloatExt> {
+pub struct CurveFittedHullWhiteModel<T: RealExt> {
   /// Mean reversion speed $a$.
   pub mean_reversion: T,
   /// Volatility $\sigma$.
@@ -29,7 +29,7 @@ pub struct CurveFittedHullWhiteModel<T: FloatExt> {
   pub dt: T,
 }
 
-impl<T: FloatExt> OneFactorShortRateModel<T> for CurveFittedHullWhiteModel<T> {
+impl<T: RealExt> OneFactorShortRateModel<T> for CurveFittedHullWhiteModel<T> {
   fn initial_state(&self) -> T {
     T::zero()
   }
@@ -59,7 +59,7 @@ impl<T: FloatExt> OneFactorShortRateModel<T> for CurveFittedHullWhiteModel<T> {
 /// Reference: Hull & White, "Using Hull-White Interest Rate Trees",
 /// Journal of Derivatives 3(3), 26-36 (1996).
 #[derive(Debug, Clone)]
-pub struct CurveFittedHullWhiteTree<T: FloatExt> {
+pub struct CurveFittedHullWhiteTree<T: RealExt> {
   /// Calibrated model.
   pub model: CurveFittedHullWhiteModel<T>,
   /// Trinomial lattice of the zero-mean $x(t)$ process.
@@ -68,7 +68,7 @@ pub struct CurveFittedHullWhiteTree<T: FloatExt> {
   pub horizon: T,
 }
 
-impl<T: FloatExt> CurveFittedHullWhiteTree<T> {
+impl<T: RealExt> CurveFittedHullWhiteTree<T> {
   /// Build a Hull-White tree calibrated to `curve` with mean reversion `a`,
   /// volatility `sigma`, and `steps` tree steps over `horizon`.
   pub fn new(
@@ -106,7 +106,7 @@ impl<T: FloatExt> CurveFittedHullWhiteTree<T> {
   }
 }
 
-fn fit_alpha_schedule<T: FloatExt>(
+fn fit_alpha_schedule<T: RealExt>(
   tree: &TrinomialTree<T>,
   curve: &DiscountCurve<T>,
   dt: T,

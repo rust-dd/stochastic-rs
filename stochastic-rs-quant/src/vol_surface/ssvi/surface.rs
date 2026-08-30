@@ -1,9 +1,9 @@
 use super::params::SsviParams;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Full SSVI volatility surface.
 #[derive(Clone, Debug)]
-pub struct SsviSurface<T: FloatExt> {
+pub struct SsviSurface<T: RealExt> {
   /// Global SSVI parameters
   pub params: SsviParams<T>,
   /// ATM total variance $\theta_t$ for each maturity (ascending in time)
@@ -12,7 +12,7 @@ pub struct SsviSurface<T: FloatExt> {
   pub maturities: Vec<T>,
 }
 
-impl<T: FloatExt> SsviSurface<T> {
+impl<T: RealExt> SsviSurface<T> {
   pub fn new(params: SsviParams<T>, thetas: Vec<T>, maturities: Vec<T>) -> Self {
     assert_eq!(
       thetas.len(),

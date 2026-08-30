@@ -14,11 +14,11 @@
 
 use super::ssvi::SsviParams;
 use super::svi::SviRawParams;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Smile analytics for a single maturity slice.
 #[derive(Clone, Debug)]
-pub struct SmileAnalytics<T: FloatExt> {
+pub struct SmileAnalytics<T: RealExt> {
   /// ATM implied volatility $\sigma(k=0)$
   pub atm_vol: T,
   /// ATM skew $\partial\sigma/\partial k\big|_{k=0}$
@@ -34,7 +34,7 @@ pub struct SmileAnalytics<T: FloatExt> {
 /// Compute smile analytics from an SVI slice.
 ///
 /// ATM is at $k = 0$ (forward moneyness).
-pub fn svi_analytics<T: FloatExt>(params: &SviRawParams<T>, tau: T) -> SmileAnalytics<T> {
+pub fn svi_analytics<T: RealExt>(params: &SviRawParams<T>, tau: T) -> SmileAnalytics<T> {
   let zero = T::zero();
   let two = T::from_f64_fast(2.0);
   let four = T::from_f64_fast(4.0);
@@ -68,7 +68,7 @@ pub fn svi_analytics<T: FloatExt>(params: &SviRawParams<T>, tau: T) -> SmileAnal
 }
 
 /// Compute smile analytics from an SSVI surface at given maturity.
-pub fn ssvi_analytics<T: FloatExt>(params: &SsviParams<T>, theta: T, tau: T) -> SmileAnalytics<T> {
+pub fn ssvi_analytics<T: RealExt>(params: &SsviParams<T>, theta: T, tau: T) -> SmileAnalytics<T> {
   let zero = T::zero();
   let two = T::from_f64_fast(2.0);
   let four = T::from_f64_fast(4.0);
@@ -104,7 +104,7 @@ pub fn ssvi_analytics<T: FloatExt>(params: &SsviParams<T>, theta: T, tau: T) -> 
 /// Compute ATM vol term structure from SSVI.
 ///
 /// Returns `(maturities, atm_vols)`.
-pub fn atm_term_structure<T: FloatExt>(
+pub fn atm_term_structure<T: RealExt>(
   params: &SsviParams<T>,
   thetas: &[T],
   maturities: &[T],
@@ -129,7 +129,7 @@ pub fn atm_term_structure<T: FloatExt>(
 /// Compute skew term structure from SSVI.
 ///
 /// Returns `(maturities, atm_skews)`.
-pub fn skew_term_structure<T: FloatExt>(
+pub fn skew_term_structure<T: RealExt>(
   params: &SsviParams<T>,
   thetas: &[T],
   maturities: &[T],
@@ -150,7 +150,7 @@ pub fn skew_term_structure<T: FloatExt>(
 ///
 /// RR₂₅ ≈ σ(k₊) − σ(k₋) where k₊, k₋ are approximate 25-delta
 /// log-moneyness points: $k \approx \pm \sigma_{\mathrm{ATM}}\sqrt{T} \cdot 0.6745$.
-pub fn risk_reversal_25d<T: FloatExt>(params: &SviRawParams<T>, tau: T) -> T {
+pub fn risk_reversal_25d<T: RealExt>(params: &SviRawParams<T>, tau: T) -> T {
   let zero = T::zero();
   let z = T::from_f64_fast(0.6745);
   let atm_vol = params.implied_vol(zero, tau);
@@ -172,7 +172,7 @@ pub fn risk_reversal_25d<T: FloatExt>(params: &SviRawParams<T>, tau: T) -> T {
 /// 25-delta butterfly from an SVI slice.
 ///
 /// BF₂₅ = (σ(k₊) + σ(k₋))/2 − σ_ATM
-pub fn butterfly_25d<T: FloatExt>(params: &SviRawParams<T>, tau: T) -> T {
+pub fn butterfly_25d<T: RealExt>(params: &SviRawParams<T>, tau: T) -> T {
   let zero = T::zero();
   let half = T::from_f64_fast(0.5);
   let z = T::from_f64_fast(0.6745);

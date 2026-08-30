@@ -16,11 +16,11 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Result of the Ledoit-Wolf shrinkage estimator.
 #[derive(Debug, Clone)]
-pub struct LedoitWolfResult<T: FloatExt> {
+pub struct LedoitWolfResult<T: RealExt> {
   /// Shrinkage estimator $\hat\Sigma_{LW}$.
   pub covariance: Array2<T>,
   /// Sample covariance $S$.
@@ -33,7 +33,7 @@ pub struct LedoitWolfResult<T: FloatExt> {
 
 /// Sample covariance matrix from an `(observations × assets)` returns matrix.
 /// Uses the unbiased divisor `n - 1`.
-pub fn sample_covariance<T: FloatExt>(returns: ArrayView2<T>) -> Array2<T> {
+pub fn sample_covariance<T: RealExt>(returns: ArrayView2<T>) -> Array2<T> {
   let (t, p) = returns.dim();
   assert!(t >= 2, "need at least two observations for covariance");
   let mut means = Array1::<T>::zeros(p);
@@ -71,7 +71,7 @@ pub fn sample_covariance<T: FloatExt>(returns: ArrayView2<T>) -> Array2<T> {
 /// with $\hat\pi_{ij} = \tfrac{1}{T}\sum_t (y_{ti}y_{tj} - s_{ij})^2$,
 /// $\hat\pi = \sum_{i,j}\hat\pi_{ij}$, $\hat\rho = \sum_i \hat\pi_{ii}$,
 /// $\hat\gamma = \|S - \mu I\|_F^2$.
-pub fn ledoit_wolf_shrinkage<T: FloatExt>(returns: ArrayView2<T>) -> LedoitWolfResult<T> {
+pub fn ledoit_wolf_shrinkage<T: RealExt>(returns: ArrayView2<T>) -> LedoitWolfResult<T> {
   let (t, p) = returns.dim();
   assert!(
     t >= 2 && p >= 1,

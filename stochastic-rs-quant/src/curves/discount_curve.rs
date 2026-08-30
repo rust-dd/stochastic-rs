@@ -15,18 +15,18 @@ use super::interpolation;
 use super::types::Compounding;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// A calibrated discount curve built from (time, discount_factor) pairs.
 ///
 /// Supports arbitrary interpolation methods and compounding conventions.
 #[derive(Debug, Clone)]
-pub struct DiscountCurve<T: FloatExt> {
+pub struct DiscountCurve<T: RealExt> {
   points: Vec<CurvePoint<T>>,
   method: InterpolationMethod,
 }
 
-impl<T: FloatExt> DiscountCurve<T> {
+impl<T: RealExt> DiscountCurve<T> {
   /// Build a discount curve from sorted (time, discount_factor) pairs.
   pub fn new(points: Vec<CurvePoint<T>>, method: InterpolationMethod) -> Self {
     let mut pts = points;

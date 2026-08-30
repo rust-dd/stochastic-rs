@@ -36,7 +36,7 @@ use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::Schedule;
 use crate::cashflows::CurveProvider;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Pay / receive direction of a CDS contract.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -60,7 +60,7 @@ impl Display for CdsPosition {
 
 /// Full CDS valuation breakdown.
 #[derive(Debug, Clone)]
-pub struct CdsValuation<T: FloatExt> {
+pub struct CdsValuation<T: RealExt> {
   /// Discounted expected protection payment (present value of $N(1-R)$ on
   /// default).
   pub protection_leg_npv: T,
@@ -82,7 +82,7 @@ pub struct CdsValuation<T: FloatExt> {
 
 /// Running-spread Credit Default Swap contract.
 #[derive(Debug, Clone)]
-pub struct CreditDefaultSwap<T: FloatExt> {
+pub struct CreditDefaultSwap<T: RealExt> {
   /// Protection buyer / seller flag.
   pub direction: CdsPosition,
   /// Contract notional.
@@ -106,7 +106,7 @@ pub struct CreditDefaultSwap<T: FloatExt> {
   pub integration_step_days: i64,
 }
 
-impl<T: FloatExt> CreditDefaultSwap<T> {
+impl<T: RealExt> CreditDefaultSwap<T> {
   /// Build a running-spread CDS using the provided premium schedule.
   pub fn new(
     direction: CdsPosition,
@@ -366,7 +366,7 @@ impl<T: FloatExt> CreditDefaultSwap<T> {
   }
 }
 
-fn tau_year_fraction<T: FloatExt>(
+fn tau_year_fraction<T: RealExt>(
   dcc: DayCountConvention,
   valuation_date: NaiveDate,
   target: NaiveDate,

@@ -43,7 +43,7 @@
 //! Collateral and Funding*, Wiley (2013), §13 — TRS pricing under
 //! collateralised funding.
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Direction in which the swap is held.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,7 +57,7 @@ pub enum TrsDirection {
 
 /// Schedule entry: accrual end time (in years) and day-count fraction.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TrsPeriod<T: FloatExt> {
+pub struct TrsPeriod<T: RealExt> {
   pub end_time: T,
   pub accrual: T,
   pub funding_rate: T,
@@ -71,7 +71,7 @@ pub struct TrsPeriod<T: FloatExt> {
 /// yield is therefore not a separate input — it is implicit in the
 /// total-return forward.
 #[derive(Debug, Clone)]
-pub struct TotalReturnSwap<T: FloatExt> {
+pub struct TotalReturnSwap<T: RealExt> {
   pub notional: T,
   /// Spot price of the reference asset.
   pub s: T,
@@ -89,7 +89,7 @@ pub struct TotalReturnSwap<T: FloatExt> {
 
 /// Valuation summary for a TRS.
 #[derive(Debug, Clone)]
-pub struct TrsValuation<T: FloatExt> {
+pub struct TrsValuation<T: RealExt> {
   /// PV of the equity total-return leg (positive value to the receiver).
   pub equity_leg_pv: T,
   /// PV of the funding leg (positive value to the receiver of the funding
@@ -108,7 +108,7 @@ pub struct TrsValuation<T: FloatExt> {
   pub funding_cashflows: Vec<T>,
 }
 
-impl<T: FloatExt> TotalReturnSwap<T> {
+impl<T: RealExt> TotalReturnSwap<T> {
   /// Total-return forward $F_{\mathrm{TR}}(t) = S_0\,e^{r\,t}$ — the
   /// reference for per-period total-return calculations.
   pub fn total_return_forward(&self, t: T) -> T {

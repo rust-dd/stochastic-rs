@@ -7,11 +7,11 @@ use crate::cashflows::CurveProvider;
 use crate::cashflows::FloatingIndex;
 use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Floating-rate note backed by a floating coupon leg plus redemption.
 #[derive(Debug, Clone)]
-pub struct FloatingRateBond<T: FloatExt> {
+pub struct FloatingRateBond<T: RealExt> {
   /// Face amount redeemed at maturity.
   pub face_value: T,
   /// Floating index.
@@ -23,7 +23,7 @@ pub struct FloatingRateBond<T: FloatExt> {
   leg: Leg<T>,
 }
 
-impl<T: FloatExt> FloatingRateBond<T> {
+impl<T: RealExt> FloatingRateBond<T> {
   /// Build a floating-rate note from a schedule.
   pub fn new(
     schedule: &crate::calendar::Schedule,

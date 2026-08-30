@@ -16,11 +16,11 @@ use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
 use crate::cashflows::SimpleCashflow;
 use crate::curves::Compounding;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Fixed-rate amortizing bond with explicit outstanding-notional schedule.
 #[derive(Debug, Clone)]
-pub struct AmortizingFixedRateBond<T: FloatExt> {
+pub struct AmortizingFixedRateBond<T: RealExt> {
   /// Initial outstanding notional.
   pub initial_notional: T,
   /// Annual coupon rate.
@@ -33,7 +33,7 @@ pub struct AmortizingFixedRateBond<T: FloatExt> {
   leg: Leg<T>,
 }
 
-impl<T: FloatExt> AmortizingFixedRateBond<T> {
+impl<T: RealExt> AmortizingFixedRateBond<T> {
   /// Build an amortizing fixed-rate bond from an outstanding-notional schedule.
   pub fn new(
     schedule: &Schedule,

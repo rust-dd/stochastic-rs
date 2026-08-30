@@ -34,11 +34,11 @@
 //! - Cetin & Larsen, "Is Kyle's equilibrium model stable?", arXiv:2307.09392
 //!   (2023), Theorem 2.1.
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Equilibrium quantities of a single round of trading.
 #[derive(Debug, Clone, Copy)]
-pub struct KyleEquilibrium<T: FloatExt> {
+pub struct KyleEquilibrium<T: RealExt> {
   /// Insider trading intensity $\beta$.
   pub beta: T,
   /// Price-impact (Kyle's lambda) $\lambda$.
@@ -50,7 +50,7 @@ pub struct KyleEquilibrium<T: FloatExt> {
 }
 
 /// Solve the single-period Kyle equilibrium.
-pub fn single_period_kyle<T: FloatExt>(prior_variance: T, noise_variance: T) -> KyleEquilibrium<T> {
+pub fn single_period_kyle<T: RealExt>(prior_variance: T, noise_variance: T) -> KyleEquilibrium<T> {
   assert!(
     prior_variance > T::zero(),
     "prior_variance must be positive"
@@ -81,7 +81,7 @@ pub fn single_period_kyle<T: FloatExt>(prior_variance: T, noise_variance: T) -> 
 /// At `n_periods = 1` this matches [`single_period_kyle`] exactly (catches
 /// the previous broken `α_{n-1} = (1-√α_n)/2` shortcut which produced
 /// $\beta\lambda = 0.25$ instead of the correct Kyle product $0.5$).
-pub fn multi_period_kyle<T: FloatExt>(
+pub fn multi_period_kyle<T: RealExt>(
   prior_variance: T,
   noise_variance_per_round: T,
   n_periods: usize,
@@ -139,7 +139,7 @@ pub fn multi_period_kyle<T: FloatExt>(
 /// at $\gamma = 1/2$ the LHS is $(1 - 2\gamma_{\text{next}}) \in (0, 1]$ and the
 /// RHS is 0, so the residual is positive. Bisection on this monotone-in-sign
 /// bracket converges to the unique physical root.
-fn solve_gamma_cubic<T: FloatExt>(g_next: T) -> T {
+fn solve_gamma_cubic<T: RealExt>(g_next: T) -> T {
   let half = T::from_f64_fast(0.5);
   let two = T::from_f64_fast(2.0);
   let eight = T::from_f64_fast(8.0);
@@ -159,7 +159,7 @@ fn solve_gamma_cubic<T: FloatExt>(g_next: T) -> T {
   (lo + hi) * half
 }
 
-fn backward_gamma_sequence<T: FloatExt>(n_periods: usize) -> Vec<T> {
+fn backward_gamma_sequence<T: RealExt>(n_periods: usize) -> Vec<T> {
   // gammas[i] holds γ_{i+1}; terminal γ_N = 0 sits at index n_periods-1.
   let mut gammas = vec![T::zero(); n_periods];
   if n_periods >= 2 {

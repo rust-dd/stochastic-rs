@@ -12,11 +12,11 @@
 //! Chapter 5 — Determination of Forward and Futures Prices.
 
 use super::quoting::CurrencyPair;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// FX forward pricer using covered interest parity (CIP).
 #[derive(Debug, Clone, Copy)]
-pub struct FxForward<T: FloatExt> {
+pub struct FxForward<T: RealExt> {
   /// The currency pair (base / quote).
   pub pair: CurrencyPair,
   /// Spot exchange rate (units of quote per unit of base).
@@ -29,7 +29,7 @@ pub struct FxForward<T: FloatExt> {
   pub tau: T,
 }
 
-impl<T: FloatExt> std::fmt::Display for FxForward<T> {
+impl<T: RealExt> std::fmt::Display for FxForward<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(
       f,
@@ -41,7 +41,7 @@ impl<T: FloatExt> std::fmt::Display for FxForward<T> {
   }
 }
 
-impl<T: FloatExt> FxForward<T> {
+impl<T: RealExt> FxForward<T> {
   pub fn new(pair: CurrencyPair, s: T, domestic_rate: T, foreign_rate: T, tau: T) -> Self {
     Self {
       pair,

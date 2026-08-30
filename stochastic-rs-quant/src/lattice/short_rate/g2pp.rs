@@ -8,11 +8,11 @@ use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::correlated_joint_probabilities;
 use crate::lattice::tree::TrinomialTree;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Two-factor Gaussian G2++ tree model.
 #[derive(Debug, Clone)]
-pub struct G2ppTreeModel<T: FloatExt> {
+pub struct G2ppTreeModel<T: RealExt> {
   /// Initial first factor.
   pub initial_x: T,
   /// Initial second factor.
@@ -31,7 +31,7 @@ pub struct G2ppTreeModel<T: FloatExt> {
   pub rho: T,
 }
 
-impl<T: FloatExt> G2ppTreeModel<T> {
+impl<T: RealExt> G2ppTreeModel<T> {
   /// Construct a G2++ tree model.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -57,7 +57,7 @@ impl<T: FloatExt> G2ppTreeModel<T> {
   }
 }
 
-impl<T: FloatExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
+impl<T: RealExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
   fn initial_x(&self) -> T {
     self.initial_x
   }
@@ -100,7 +100,7 @@ impl<T: FloatExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
 /// bond-style backward induction and can be refined later for calibration-grade
 /// swaption work.
 #[derive(Debug, Clone)]
-pub struct G2ppTree<T: FloatExt> {
+pub struct G2ppTree<T: RealExt> {
   /// Underlying model.
   pub model: G2ppTreeModel<T>,
   /// First-factor lattice.
@@ -113,7 +113,7 @@ pub struct G2ppTree<T: FloatExt> {
   pub dt: T,
 }
 
-impl<T: FloatExt> G2ppTree<T> {
+impl<T: RealExt> G2ppTree<T> {
   /// Build a G2++ tree with `steps` time steps up to `horizon`.
   pub fn new(model: G2ppTreeModel<T>, horizon: T, steps: usize) -> Self {
     let x_model = OrnsteinUhlenbeckFactor {

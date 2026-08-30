@@ -23,7 +23,7 @@ use chrono::NaiveDate;
 use crate::calendar::DayCountConvention;
 use crate::cashflows::CurveProvider;
 use crate::cashflows::RateIndex;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Pay/receive direction for a FRA.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -46,7 +46,7 @@ impl std::fmt::Display for FraPosition {
 
 /// Dated Forward Rate Agreement.
 #[derive(Debug, Clone)]
-pub struct ForwardRateAgreement<T: FloatExt, I: RateIndex<T>> {
+pub struct ForwardRateAgreement<T: RealExt, I: RateIndex<T>> {
   /// Pay/receive side.
   pub position: FraPosition,
   /// Notional amount.
@@ -69,7 +69,7 @@ pub struct ForwardRateAgreement<T: FloatExt, I: RateIndex<T>> {
 
 /// Valuation breakdown for a FRA.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
-pub struct FraValuation<T: FloatExt> {
+pub struct FraValuation<T: RealExt> {
   /// Forward rate from the forecast curve.
   pub forward_rate: T,
   /// Year fraction $\alpha$ for the reference period.
@@ -82,7 +82,7 @@ pub struct FraValuation<T: FloatExt> {
   pub npv: T,
 }
 
-impl<T: FloatExt, I: RateIndex<T>> ForwardRateAgreement<T, I> {
+impl<T: RealExt, I: RateIndex<T>> ForwardRateAgreement<T, I> {
   /// Construct a FRA settling at the end date (non-discounted).
   pub fn new(
     position: FraPosition,

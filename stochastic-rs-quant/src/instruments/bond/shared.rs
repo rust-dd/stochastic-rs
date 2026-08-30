@@ -10,9 +10,9 @@ use crate::cashflows::CashflowPricer;
 use crate::cashflows::CurveProvider;
 use crate::cashflows::Leg;
 use crate::curves::Compounding;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
-pub(crate) fn bond_analytics_from_dirty_price<T: FloatExt>(
+pub(crate) fn bond_analytics_from_dirty_price<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
   dirty_price: T,
@@ -56,7 +56,7 @@ pub(crate) fn bond_analytics_from_dirty_price<T: FloatExt>(
   }
 }
 
-pub(crate) fn price_deterministic_leg_from_curve<T: FloatExt>(
+pub(crate) fn price_deterministic_leg_from_curve<T: RealExt>(
   leg: &Leg<T>,
   valuation_date: NaiveDate,
   discount_day_count: DayCountConvention,
@@ -70,7 +70,7 @@ pub(crate) fn price_deterministic_leg_from_curve<T: FloatExt>(
   }
 }
 
-pub(crate) fn accrued_interest_for_deterministic_leg<T: FloatExt>(
+pub(crate) fn accrued_interest_for_deterministic_leg<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
 ) -> T {
@@ -87,7 +87,7 @@ pub(crate) fn accrued_interest_for_deterministic_leg<T: FloatExt>(
     .fold(T::zero(), |acc, value| acc + value)
 }
 
-pub(crate) fn dirty_price_from_yield_for_leg<T: FloatExt>(
+pub(crate) fn dirty_price_from_yield_for_leg<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
   yield_to_maturity: T,
@@ -106,7 +106,7 @@ pub(crate) fn dirty_price_from_yield_for_leg<T: FloatExt>(
     .fold(T::zero(), |acc, value| acc + value)
 }
 
-pub(crate) fn yield_to_maturity_from_dirty_price_for_leg<T: FloatExt>(
+pub(crate) fn yield_to_maturity_from_dirty_price_for_leg<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
   dirty_price: T,
@@ -190,7 +190,7 @@ pub(crate) fn yield_to_maturity_from_dirty_price_for_leg<T: FloatExt>(
   }
 }
 
-pub(crate) fn macaulay_duration_for_leg<T: FloatExt>(
+pub(crate) fn macaulay_duration_for_leg<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
   yield_to_maturity: T,
@@ -223,7 +223,7 @@ pub(crate) fn macaulay_duration_for_leg<T: FloatExt>(
   weighted / dirty_price
 }
 
-pub(crate) fn modified_duration_for_leg<T: FloatExt>(
+pub(crate) fn modified_duration_for_leg<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
   yield_to_maturity: T,
@@ -268,7 +268,7 @@ pub(crate) fn modified_duration_for_leg<T: FloatExt>(
   T::from_f64_fast(-(p_up - p_down) / ((up - down) * p))
 }
 
-pub(crate) fn convexity_for_leg<T: FloatExt>(
+pub(crate) fn convexity_for_leg<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
   yield_to_maturity: T,
@@ -323,7 +323,7 @@ pub(crate) fn convexity_for_leg<T: FloatExt>(
   T::from_f64_fast((p_up - 2.0 * mid + p_down) / (h_eff * h_eff * p))
 }
 
-pub(crate) fn price_with_constant_spread_for_leg<T: FloatExt>(
+pub(crate) fn price_with_constant_spread_for_leg<T: RealExt>(
   leg: &Leg<T>,
   valuation_date: NaiveDate,
   discount_day_count: DayCountConvention,
@@ -345,7 +345,7 @@ pub(crate) fn price_with_constant_spread_for_leg<T: FloatExt>(
     .fold(T::zero(), |acc, value| acc + value)
 }
 
-pub(crate) fn solve_constant_spread_for_leg<T: FloatExt>(
+pub(crate) fn solve_constant_spread_for_leg<T: RealExt>(
   leg: &Leg<T>,
   valuation_date: NaiveDate,
   market_dirty_price: T,
@@ -421,7 +421,7 @@ pub(crate) fn solve_constant_spread_for_leg<T: FloatExt>(
   }
 }
 
-pub(crate) fn fixed_leg_spread_annuity<T: FloatExt>(
+pub(crate) fn fixed_leg_spread_annuity<T: RealExt>(
   leg: &Leg<T>,
   valuation_date: NaiveDate,
   discount_day_count: DayCountConvention,
@@ -441,7 +441,7 @@ pub(crate) fn fixed_leg_spread_annuity<T: FloatExt>(
     .fold(T::zero(), |acc, value| acc + value)
 }
 
-fn min_yield_for_leg<T: FloatExt>(
+fn min_yield_for_leg<T: RealExt>(
   leg: &Leg<T>,
   settlement_date: NaiveDate,
   yield_day_count: DayCountConvention,
@@ -471,7 +471,7 @@ fn min_yield_for_leg<T: FloatExt>(
   }
 }
 
-fn deterministic_cashflow_amount<T: FloatExt>(cashflow: &Cashflow<T>) -> T {
+fn deterministic_cashflow_amount<T: RealExt>(cashflow: &Cashflow<T>) -> T {
   match cashflow {
     Cashflow::Fixed(coupon) => coupon.amount(),
     Cashflow::Simple(cashflow) => cashflow.amount,

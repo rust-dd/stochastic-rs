@@ -1,10 +1,10 @@
 use nalgebra::DVector;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// SSVI global parameters: $\{\rho, \eta, \gamma\}$.
 #[derive(Clone, Copy, Debug)]
-pub struct SsviParams<T: FloatExt> {
+pub struct SsviParams<T: RealExt> {
   /// Correlation ($|\rho| < 1$)
   pub rho: T,
   /// Power-law scale ($\eta > 0$)
@@ -13,7 +13,7 @@ pub struct SsviParams<T: FloatExt> {
   pub gamma: T,
 }
 
-impl<T: FloatExt> SsviParams<T> {
+impl<T: RealExt> SsviParams<T> {
   pub fn new(rho: T, eta: T, gamma: T) -> Self {
     Self { rho, eta, gamma }
   }
@@ -192,7 +192,7 @@ impl SsviParams<f64> {
 
 /// A single SSVI maturity slice with its ATM total variance.
 #[derive(Clone, Debug)]
-pub struct SsviSlice<T: FloatExt> {
+pub struct SsviSlice<T: RealExt> {
   /// Log-forward moneyness values $k_i$
   pub log_moneyness: Vec<T>,
   /// Observed total variance $w_i$

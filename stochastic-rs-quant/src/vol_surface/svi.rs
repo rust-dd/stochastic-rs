@@ -25,11 +25,11 @@ use nalgebra::DVector;
 use nalgebra::Dyn;
 use nalgebra::Owned;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Raw SVI parameters: $\{a, b, \rho, m, \sigma\}$.
 #[derive(Clone, Copy, Debug)]
-pub struct SviRawParams<T: FloatExt> {
+pub struct SviRawParams<T: RealExt> {
   /// Vertical shift
   pub a: T,
   /// Slope magnitude ($b \geq 0$)
@@ -42,7 +42,7 @@ pub struct SviRawParams<T: FloatExt> {
   pub sigma: T,
 }
 
-impl<T: FloatExt> SviRawParams<T> {
+impl<T: RealExt> SviRawParams<T> {
   pub fn new(a: T, b: T, rho: T, m: T, sigma: T) -> Self {
     Self {
       a,
@@ -243,7 +243,7 @@ impl SviRawParams<f64> {
 /// Parametrizes the smile in terms of observable market quantities:
 /// ATM variance, ATM skew, put/call wing slopes, and minimum variance.
 #[derive(Clone, Copy, Debug)]
-pub struct SviJumpWings<T: FloatExt> {
+pub struct SviJumpWings<T: RealExt> {
   /// ATM total variance
   pub v_t: T,
   /// ATM skew
@@ -265,7 +265,7 @@ pub struct SviJumpWings<T: FloatExt> {
 /// * `log_moneyness` - Log-forward moneyness values $k_i$
 /// * `total_variance` - Observed total variance $w_i = \sigma_i^2 T$
 /// * `initial` - Optional initial guess; defaults to a heuristic
-pub fn calibrate_svi<T: FloatExt>(
+pub fn calibrate_svi<T: RealExt>(
   log_moneyness: &[T],
   total_variance: &[T],
   initial: Option<SviRawParams<T>>,

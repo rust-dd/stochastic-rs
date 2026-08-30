@@ -11,11 +11,11 @@ use crate::cashflows::FloatingIndex;
 use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
 use crate::fx::Currency;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Constant-notional cross-currency basis swap with domestic reporting currency.
 #[derive(Debug, Clone)]
-pub struct CrossCurrencyBasisSwap<T: FloatExt> {
+pub struct CrossCurrencyBasisSwap<T: RealExt> {
   /// Receive/pay orientation in domestic currency terms.
   pub direction: CrossCurrencySwapDirection,
   /// Domestic currency.
@@ -34,7 +34,7 @@ pub struct CrossCurrencyBasisSwap<T: FloatExt> {
   pub foreign_leg: Leg<T>,
 }
 
-impl<T: FloatExt> CrossCurrencyBasisSwap<T> {
+impl<T: RealExt> CrossCurrencyBasisSwap<T> {
   /// Build a cross-currency basis swap. The initial notional exchange is assumed
   /// to have already taken place or to be neutral at current spot.
   pub fn new(

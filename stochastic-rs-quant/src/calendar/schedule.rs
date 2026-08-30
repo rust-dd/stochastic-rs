@@ -12,7 +12,7 @@ use super::date_math::add_months;
 use super::date_math::snap_to_imm;
 use super::day_count::DayCountConvention;
 use super::holiday::Calendar;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Payment / coupon frequency.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -87,7 +87,7 @@ pub struct Schedule {
 
 impl Schedule {
   /// Compute year fractions between consecutive adjusted dates.
-  pub fn year_fractions<T: FloatExt>(&self, convention: DayCountConvention) -> Vec<T> {
+  pub fn year_fractions<T: RealExt>(&self, convention: DayCountConvention) -> Vec<T> {
     self
       .adjusted_dates
       .windows(2)

@@ -19,11 +19,11 @@ use chrono::NaiveDate;
 
 use crate::calendar::DayCountConvention;
 use crate::cashflows::CurveProvider;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Cash deposit / loan on the money market.
 #[derive(Debug, Clone)]
-pub struct Deposit<T: FloatExt> {
+pub struct Deposit<T: RealExt> {
   /// Notional principal.
   pub notional: T,
   /// Contract interest rate.
@@ -38,7 +38,7 @@ pub struct Deposit<T: FloatExt> {
 
 /// Deposit valuation breakdown.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
-pub struct DepositValuation<T: FloatExt> {
+pub struct DepositValuation<T: RealExt> {
   /// Accrual factor from value date to maturity.
   pub accrual_factor: T,
   /// Discount factor to maturity.
@@ -49,7 +49,7 @@ pub struct DepositValuation<T: FloatExt> {
   pub npv: T,
 }
 
-impl<T: FloatExt> Deposit<T> {
+impl<T: RealExt> Deposit<T> {
   /// Create a new deposit.
   pub fn new(
     notional: T,

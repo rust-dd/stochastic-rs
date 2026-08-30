@@ -16,7 +16,7 @@ use num_complex::Complex;
 
 use super::coefficients::fourier_coefficients_dx;
 use super::coefficients::fourier_coefficients_dx_uniform;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 mod helpers;
 mod integrated;
@@ -35,7 +35,7 @@ mod validation_tests;
 /// Pre-computes the Fourier coefficients of price increments once, then
 /// exposes integrated and spot estimators as cheap method calls.
 ///
-/// Generic over `T: FloatExt` (`f32` / `f64`).
+/// Generic over `T: RealExt` (`f32` / `f64`).
 ///
 /// # Example
 /// ```
@@ -52,7 +52,7 @@ mod validation_tests;
 /// assert!(iv.is_finite());
 /// assert_eq!(spot.len(), 3);
 /// ```
-pub struct FMVol<T: FloatExt> {
+pub struct FMVol<T: RealExt> {
   /// Precomputed Fourier coefficients of price increments.
   pub(super) dx: Array1<Complex<T>>,
   /// Time period *T*.
@@ -69,7 +69,7 @@ pub struct FMVol<T: FloatExt> {
   pub(super) max_freq: usize,
 }
 
-impl<T: FloatExt> FMVol<T> {
+impl<T: RealExt> FMVol<T> {
   /// Build an engine from irregularly spaced observations.
   ///
   /// Sets `N = floor(n/2)` and pre-computes every frequency needed by the

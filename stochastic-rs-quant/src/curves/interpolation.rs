@@ -8,13 +8,13 @@
 use ndarray::Array1;
 
 use super::types::CurvePoint;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Linearly interpolate on zero rates.
 ///
 /// Zero rates at knots: $r_i = -\ln D_i / t_i$. Between knots, $r(t)$ is linearly interpolated,
 /// then $D(t) = e^{-r(t)\,t}$.
-pub fn linear_on_zero_rates<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
+pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   if points.is_empty() {
     return T::one();
   }
@@ -46,7 +46,7 @@ pub fn linear_on_zero_rates<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
 ///
 /// $\ln D(t)$ is linearly interpolated between knots, which implies piecewise constant
 /// instantaneous forward rates.
-pub fn log_linear_on_discount_factors<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
+pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   if points.is_empty() {
     return T::one();
   }
@@ -71,7 +71,7 @@ pub fn log_linear_on_discount_factors<T: FloatExt>(points: &[CurvePoint<T>], t: 
 ///
 /// Fits a natural cubic spline (second derivative = 0 at boundaries) through the zero rate
 /// knots, then converts back to discount factors.
-pub fn cubic_spline_on_zero_rates<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
+pub fn cubic_spline_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   let n = points.len();
   if n == 0 {
     return T::one();
@@ -117,7 +117,7 @@ pub fn cubic_spline_on_zero_rates<T: FloatExt>(points: &[CurvePoint<T>], t: T) -
 }
 
 /// Compute second derivatives for natural cubic spline (M = 0 at boundaries).
-fn natural_cubic_spline_coefficients<T: FloatExt>(x: &[T], y: &[T]) -> Vec<T> {
+fn natural_cubic_spline_coefficients<T: RealExt>(x: &[T], y: &[T]) -> Vec<T> {
   let n = x.len();
   let mut h = vec![T::zero(); n - 1];
   let mut alpha = vec![T::zero(); n];
@@ -186,7 +186,7 @@ fn natural_cubic_spline_coefficients<T: FloatExt>(x: &[T], y: &[T]) -> Vec<T> {
 /// Reference: Hagan & West (2006), §4 and Appendix. Cross-validated against
 /// the Google `tf-quant-finance` implementation
 /// (`rates/hagan_west/monotone_convex.py`).
-pub fn monotone_convex<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
+pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   let n = points.len();
   if n == 0 {
     return T::one();
@@ -266,7 +266,7 @@ pub fn monotone_convex<T: FloatExt>(points: &[CurvePoint<T>], t: T) -> T {
 /// Compute $\int_0^x G(s) ds$ for the Hagan-West (2006) monotone-convex
 /// interval-relative forward $G$, picking among the four region forms by
 /// the signs of $g_0, g_1$. Returns 0 on the degenerate flat case ($g_0 = g_1 = 0$).
-fn integrate_g_hagan_west<T: FloatExt>(g0: T, g1: T, x: T) -> T {
+fn integrate_g_hagan_west<T: RealExt>(g0: T, g1: T, x: T) -> T {
   let zero = T::zero();
   let two = T::from_f64_fast(2.0);
   let three = T::from_f64_fast(3.0);
@@ -361,7 +361,7 @@ fn integrate_g_hagan_west<T: FloatExt>(g0: T, g1: T, x: T) -> T {
 }
 
 /// Interpolate a discount factor at time `t` using the given method.
-pub fn interpolate_discount_factor<T: FloatExt>(
+pub fn interpolate_discount_factor<T: RealExt>(
   points: &[CurvePoint<T>],
   t: T,
   method: super::types::InterpolationMethod,
@@ -376,7 +376,7 @@ pub fn interpolate_discount_factor<T: FloatExt>(
 }
 
 /// Compute zero rates from curve points as ndarray.
-pub fn zero_rates_from_points<T: FloatExt>(points: &[CurvePoint<T>]) -> Array1<T> {
+pub fn zero_rates_from_points<T: RealExt>(points: &[CurvePoint<T>]) -> Array1<T> {
   Array1::from_vec(
     points
       .iter()

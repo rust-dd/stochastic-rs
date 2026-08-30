@@ -4,11 +4,11 @@ use super::OneFactorShortRateModel;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
 use crate::lattice::tree::TrinomialTree;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// One-factor Hull-White / Vasicek tree model.
 #[derive(Debug, Clone)]
-pub struct HullWhiteTreeModel<T: FloatExt> {
+pub struct HullWhiteTreeModel<T: RealExt> {
   /// Initial short rate.
   pub initial_rate: T,
   /// Mean reversion speed.
@@ -19,7 +19,7 @@ pub struct HullWhiteTreeModel<T: FloatExt> {
   pub sigma: T,
 }
 
-impl<T: FloatExt> HullWhiteTreeModel<T> {
+impl<T: RealExt> HullWhiteTreeModel<T> {
   /// Construct a Hull-White tree model.
   pub fn new(initial_rate: T, mean_reversion: T, theta: T, sigma: T) -> Self {
     Self {
@@ -31,7 +31,7 @@ impl<T: FloatExt> HullWhiteTreeModel<T> {
   }
 }
 
-impl<T: FloatExt> OneFactorShortRateModel<T> for HullWhiteTreeModel<T> {
+impl<T: RealExt> OneFactorShortRateModel<T> for HullWhiteTreeModel<T> {
   fn initial_state(&self) -> T {
     self.initial_rate
   }
@@ -51,7 +51,7 @@ impl<T: FloatExt> OneFactorShortRateModel<T> for HullWhiteTreeModel<T> {
 
 /// Hull-White tree engine.
 #[derive(Debug, Clone)]
-pub struct HullWhiteTree<T: FloatExt> {
+pub struct HullWhiteTree<T: RealExt> {
   /// Underlying model.
   pub model: HullWhiteTreeModel<T>,
   /// Trinomial lattice.
@@ -60,7 +60,7 @@ pub struct HullWhiteTree<T: FloatExt> {
   pub horizon: T,
 }
 
-impl<T: FloatExt> HullWhiteTree<T> {
+impl<T: RealExt> HullWhiteTree<T> {
   /// Build a Hull-White tree with `steps` time steps up to `horizon`.
   pub fn new(model: HullWhiteTreeModel<T>, horizon: T, steps: usize) -> Self {
     let tree = build_one_factor_trinomial_tree(&model, horizon, steps);

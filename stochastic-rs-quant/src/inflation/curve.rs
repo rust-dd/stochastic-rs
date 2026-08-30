@@ -20,11 +20,11 @@ use std::fmt::Debug;
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Generic interface used by inflation-linked instruments to obtain the
 /// projected (forward) CPI value at any settlement time.
-pub trait InflationCurve<T: FloatExt>: Debug + Send + Sync {
+pub trait InflationCurve<T: RealExt>: Debug + Send + Sync {
   /// Forward CPI level at year-fraction `t` from the curve's reference
   /// date, as a multiple of the base index.
   fn forward_index_ratio(&self, t: T) -> T;
@@ -48,14 +48,14 @@ pub trait InflationCurve<T: FloatExt>: Debug + Send + Sync {
 
 /// Zero-coupon breakeven curve interpolated linearly in the breakeven rate.
 #[derive(Debug, Clone)]
-pub struct ZeroCouponInflationCurve<T: FloatExt> {
+pub struct ZeroCouponInflationCurve<T: RealExt> {
   /// Sorted maturities (year fractions, strictly positive).
   pub pillars: Array1<T>,
   /// Annualised breakeven rates per pillar.
   pub breakevens: Array1<T>,
 }
 
-impl<T: FloatExt> ZeroCouponInflationCurve<T> {
+impl<T: RealExt> ZeroCouponInflationCurve<T> {
   pub fn new(pillars: Array1<T>, breakevens: Array1<T>) -> Self {
     assert_eq!(pillars.len(), breakevens.len());
     assert!(!pillars.is_empty(), "need at least one pillar");
@@ -88,7 +88,7 @@ impl<T: FloatExt> ZeroCouponInflationCurve<T> {
   }
 }
 
-impl<T: FloatExt> InflationCurve<T> for ZeroCouponInflationCurve<T> {
+impl<T: RealExt> InflationCurve<T> for ZeroCouponInflationCurve<T> {
   fn forward_index_ratio(&self, t: T) -> T {
     if t <= T::epsilon() {
       return T::one();
@@ -101,7 +101,7 @@ impl<T: FloatExt> InflationCurve<T> for ZeroCouponInflationCurve<T> {
 /// Year-on-year breakeven curve. Stores annualised forward
 /// year-on-year breakeven rates for each interval $[T_{i-1}, T_i]$.
 #[derive(Debug, Clone)]
-pub struct YoyInflationCurve<T: FloatExt> {
+pub struct YoyInflationCurve<T: RealExt> {
   /// Tenor end-points (years), strictly increasing, starting from a value
   /// $> 0$. The first interval is $[0, t_1]$, the second is $[t_1, t_2]$,
   /// etc.
@@ -110,7 +110,7 @@ pub struct YoyInflationCurve<T: FloatExt> {
   pub yoy_breakevens: Array1<T>,
 }
 
-impl<T: FloatExt> YoyInflationCurve<T> {
+impl<T: RealExt> YoyInflationCurve<T> {
   pub fn new(end_points: Array1<T>, yoy_breakevens: Array1<T>) -> Self {
     assert_eq!(end_points.len(), yoy_breakevens.len());
     assert!(!end_points.is_empty(), "need at least one interval");
@@ -125,7 +125,7 @@ impl<T: FloatExt> YoyInflationCurve<T> {
   }
 }
 
-impl<T: FloatExt> InflationCurve<T> for YoyInflationCurve<T> {
+impl<T: RealExt> InflationCurve<T> for YoyInflationCurve<T> {
   fn forward_index_ratio(&self, t: T) -> T {
     let mut ratio = T::one();
     let mut prev = T::zero();

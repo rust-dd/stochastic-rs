@@ -4,9 +4,9 @@ use crate::calendar::DayCountConvention;
 use crate::cashflows::Cashflow;
 use crate::cashflows::CurveProvider;
 use crate::cashflows::Leg;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
-pub(crate) fn fixed_leg_bpv_annuity<T: FloatExt>(
+pub(crate) fn fixed_leg_bpv_annuity<T: RealExt>(
   leg: &Leg<T>,
   valuation_date: NaiveDate,
   discount_day_count: DayCountConvention,
@@ -26,7 +26,7 @@ pub(crate) fn fixed_leg_bpv_annuity<T: FloatExt>(
     .fold(T::zero(), |acc, value| acc + value)
 }
 
-pub(crate) fn floating_leg_spread_annuity<T: FloatExt>(
+pub(crate) fn floating_leg_spread_annuity<T: RealExt>(
   leg: &Leg<T>,
   valuation_date: NaiveDate,
   discount_day_count: DayCountConvention,

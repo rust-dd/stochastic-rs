@@ -26,11 +26,11 @@ use super::volatility::VolatilityModel;
 use crate::calendar::DayCountConvention;
 use crate::cashflows::CurveProvider;
 use crate::instruments::VanillaInterestRateSwap;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// European swaption struck at `strike` on the forward swap rate of `swap`.
 #[derive(Debug, Clone)]
-pub struct EuropeanSwaption<T: FloatExt, V: VolatilityModel<T>> {
+pub struct EuropeanSwaption<T: RealExt, V: VolatilityModel<T>> {
   /// Payoff direction (Payer = call, Receiver = put).
   pub direction: SwaptionDirection,
   /// Fixed strike $K$.
@@ -43,7 +43,7 @@ pub struct EuropeanSwaption<T: FloatExt, V: VolatilityModel<T>> {
   pub vol: V,
 }
 
-impl<T: FloatExt, V: VolatilityModel<T>> EuropeanSwaption<T, V> {
+impl<T: RealExt, V: VolatilityModel<T>> EuropeanSwaption<T, V> {
   /// Build a European swaption.
   pub fn new(
     direction: SwaptionDirection,
@@ -112,7 +112,7 @@ impl<T: FloatExt, V: VolatilityModel<T>> EuropeanSwaption<T, V> {
   }
 }
 
-fn compute_forward_value<T: FloatExt>(
+fn compute_forward_value<T: RealExt>(
   forward: T,
   strike: T,
   tau: T,

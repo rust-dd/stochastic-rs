@@ -19,7 +19,7 @@ use std::fmt::Display;
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Interpolation rule for survival probabilities between calibrated nodes.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,7 +43,7 @@ impl Display for HazardInterpolation {
 
 /// Single calibrated node of a survival curve.
 #[derive(Debug, Clone, Copy)]
-pub struct SurvivalPoint<T: FloatExt> {
+pub struct SurvivalPoint<T: RealExt> {
   /// Year fraction from the valuation date.
   pub time: T,
   /// Risk-neutral survival probability $Q(t)$.
@@ -52,7 +52,7 @@ pub struct SurvivalPoint<T: FloatExt> {
 
 /// Calibrated survival curve $Q(t)=\mathbb{P}(\tau>t)$.
 #[derive(Debug, Clone)]
-pub struct SurvivalCurve<T: FloatExt> {
+pub struct SurvivalCurve<T: RealExt> {
   /// **Invariant:** `points` is never empty. [`Self::new`] inserts the
   /// $(0, 1)$ anchor if absent, so every interior method can assume
   /// `points.first()` and `points.last()` succeed.
@@ -60,7 +60,7 @@ pub struct SurvivalCurve<T: FloatExt> {
   method: HazardInterpolation,
 }
 
-impl<T: FloatExt> SurvivalCurve<T> {
+impl<T: RealExt> SurvivalCurve<T> {
   /// Build a survival curve from sorted `(time, survival)` nodes.
   ///
   /// Nodes are automatically sorted; a `(0, 1)` anchor is inserted if absent.
@@ -253,11 +253,11 @@ impl<T: FloatExt> SurvivalCurve<T> {
 /// Hazard rate curve is a thin view on a [`SurvivalCurve`] that exposes only
 /// the forward/average hazard surface.
 #[derive(Debug, Clone)]
-pub struct HazardRateCurve<T: FloatExt> {
+pub struct HazardRateCurve<T: RealExt> {
   inner: SurvivalCurve<T>,
 }
 
-impl<T: FloatExt> HazardRateCurve<T> {
+impl<T: RealExt> HazardRateCurve<T> {
   /// Wrap an existing survival curve.
   pub fn new(survival: SurvivalCurve<T>) -> Self {
     Self { inner: survival }
@@ -294,7 +294,7 @@ impl<T: FloatExt> HazardRateCurve<T> {
 }
 
 /// Flat-hazard extrapolation beyond the last calibrated node.
-fn extrapolate_flat_hazard<T: FloatExt>(last_time: T, last_survival: T, t: T) -> T {
+fn extrapolate_flat_hazard<T: RealExt>(last_time: T, last_survival: T, t: T) -> T {
   if last_time <= T::zero() {
     return last_survival;
   }

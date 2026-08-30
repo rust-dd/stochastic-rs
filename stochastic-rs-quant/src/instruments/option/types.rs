@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use chrono::NaiveDate;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Rate option payoff family.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -65,7 +65,7 @@ impl Display for VolatilityQuoteKind {
 
 /// Cap / Floor valuation summary.
 #[derive(Debug, Clone)]
-pub struct CapFloorValuation<T: FloatExt> {
+pub struct CapFloorValuation<T: RealExt> {
   /// Total dirty present value.
   pub npv: T,
   /// Discounted cap/floor annuity $\sum_i P(t,t_i)\,\alpha_i\,N_i$.
@@ -80,7 +80,7 @@ pub struct CapFloorValuation<T: FloatExt> {
 
 /// Collar valuation summary.
 #[derive(Debug, Clone)]
-pub struct CollarValuation<T: FloatExt> {
+pub struct CollarValuation<T: RealExt> {
   /// Total net present value (long cap minus long floor, or vice versa).
   pub npv: T,
   /// Cap leg valuation.
@@ -91,7 +91,7 @@ pub struct CollarValuation<T: FloatExt> {
 
 /// European swaption valuation summary.
 #[derive(Debug, Clone)]
-pub struct SwaptionValuation<T: FloatExt> {
+pub struct SwaptionValuation<T: RealExt> {
   /// Present value at the valuation date.
   pub npv: T,
   /// Forward swap rate implied by the current curves.
@@ -108,7 +108,7 @@ pub struct SwaptionValuation<T: FloatExt> {
 
 /// Bermudan swaption valuation summary.
 #[derive(Debug, Clone)]
-pub struct BermudanSwaptionValuation<T: FloatExt> {
+pub struct BermudanSwaptionValuation<T: RealExt> {
   /// Present value at the tree root.
   pub npv: T,
   /// Number of exercise dates considered.
@@ -138,14 +138,14 @@ impl ExerciseSchedule {
 
 /// Fixed coupon schedule for a tree-priced swaption expressed as tree levels.
 #[derive(Debug, Clone)]
-pub struct TreeCouponSchedule<T: FloatExt> {
+pub struct TreeCouponSchedule<T: RealExt> {
   /// Tree levels at which fixed-leg coupons are paid.
   pub levels: Vec<usize>,
   /// Accrual factors $\delta_j$ in the same order as the levels.
   pub accrual_factors: Vec<T>,
 }
 
-impl<T: FloatExt> TreeCouponSchedule<T> {
+impl<T: RealExt> TreeCouponSchedule<T> {
   /// Build a coupon schedule; levels are kept in input order.
   pub fn new(levels: Vec<usize>, accrual_factors: Vec<T>) -> Self {
     assert_eq!(

@@ -2,7 +2,7 @@
 //!
 //! Reference: Hull & White (1994), Black & Karasinski (1991).
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 mod black_karasinski;
 mod common;
@@ -21,7 +21,7 @@ pub use hull_white::HullWhiteTree;
 pub use hull_white::HullWhiteTreeModel;
 
 /// Extensibility point for one-factor short-rate lattice models.
-pub trait OneFactorShortRateModel<T: FloatExt>: Clone + Send + Sync {
+pub trait OneFactorShortRateModel<T: RealExt>: Clone + Send + Sync {
   /// Initial state variable.
   fn initial_state(&self) -> T;
 
@@ -36,7 +36,7 @@ pub trait OneFactorShortRateModel<T: FloatExt>: Clone + Send + Sync {
 }
 
 /// Extensibility point for two-factor short-rate lattice models.
-pub trait TwoFactorShortRateModel<T: FloatExt>: Clone + Send + Sync {
+pub trait TwoFactorShortRateModel<T: RealExt>: Clone + Send + Sync {
   /// Initial first factor.
   fn initial_x(&self) -> T;
 

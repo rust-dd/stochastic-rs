@@ -9,7 +9,7 @@
 //! Spot FX quoting conventions.
 
 use super::currency::Currency;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// An FX currency pair (base / quote).
 ///
@@ -55,7 +55,7 @@ impl CurrencyPair {
   }
 
   /// Invert a rate for this pair.
-  pub fn invert_rate<T: FloatExt>(&self, rate: T) -> T {
+  pub fn invert_rate<T: RealExt>(&self, rate: T) -> T {
     T::one() / rate
   }
 }
@@ -83,7 +83,7 @@ impl std::fmt::Display for CurrencyPair {
 /// market-conventional EUR-base. Callers who need market-priority
 /// normalization should post-process the result by checking
 /// `quote_priority` and inverting the pair + rate when required.
-pub fn cross_rate<T: FloatExt>(
+pub fn cross_rate<T: RealExt>(
   pair1: CurrencyPair,
   rate1: T,
   pair2: CurrencyPair,

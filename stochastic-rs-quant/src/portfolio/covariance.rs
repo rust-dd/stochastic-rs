@@ -27,20 +27,20 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 
 use crate::factors::shrinkage;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Ledoit-Wolf shrinkage covariance for an `(observations × assets)` matrix.
-pub fn shrinkage_covariance<T: FloatExt>(returns: ArrayView2<T>) -> Array2<T> {
+pub fn shrinkage_covariance<T: RealExt>(returns: ArrayView2<T>) -> Array2<T> {
   shrinkage::ledoit_wolf_shrinkage(returns).covariance
 }
 
 /// Sample covariance baseline (unbiased divisor `n - 1`).
-pub fn sample_covariance<T: FloatExt>(returns: ArrayView2<T>) -> Array2<T> {
+pub fn sample_covariance<T: RealExt>(returns: ArrayView2<T>) -> Array2<T> {
   shrinkage::sample_covariance(returns)
 }
 
 /// Portfolio variance $\mathbf{w}^{\top}\Sigma\,\mathbf{w}$.
-pub fn portfolio_variance<T: FloatExt>(weights: &[T], cov: ArrayView2<T>) -> T {
+pub fn portfolio_variance<T: RealExt>(weights: &[T], cov: ArrayView2<T>) -> T {
   let p = weights.len();
   assert_eq!(cov.shape(), &[p, p], "cov shape must match weights length");
   let mut acc = T::zero();

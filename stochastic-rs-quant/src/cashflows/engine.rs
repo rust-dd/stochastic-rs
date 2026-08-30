@@ -9,11 +9,11 @@ use super::CurveProvider;
 use super::coupon::Cashflow;
 use super::leg::Leg;
 use crate::calendar::DayCountConvention;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Dirty / clean PV breakdown.
 #[derive(Debug, Clone)]
-pub struct CashflowSummary<T: FloatExt> {
+pub struct CashflowSummary<T: RealExt> {
   /// Present value including accrued interest.
   pub dirty_npv: T,
   /// Accrued interest at the valuation date.
@@ -41,7 +41,7 @@ impl CashflowPricer {
   }
 
   /// Present value of a single cashflow.
-  pub fn cashflow_npv<T: FloatExt>(
+  pub fn cashflow_npv<T: RealExt>(
     &self,
     cashflow: &Cashflow<T>,
     curves: &(impl CurveProvider<T> + ?Sized),
@@ -58,7 +58,7 @@ impl CashflowPricer {
   }
 
   /// Sum the discounted NPV of every cashflow in a leg.
-  pub fn leg_npv<T: FloatExt>(&self, leg: &Leg<T>, curves: &(impl CurveProvider<T> + ?Sized)) -> T {
+  pub fn leg_npv<T: RealExt>(&self, leg: &Leg<T>, curves: &(impl CurveProvider<T> + ?Sized)) -> T {
     leg
       .cashflows()
       .iter()
@@ -67,7 +67,7 @@ impl CashflowPricer {
   }
 
   /// Accrued interest of the leg on the valuation date.
-  pub fn leg_accrued_interest<T: FloatExt>(
+  pub fn leg_accrued_interest<T: RealExt>(
     &self,
     leg: &Leg<T>,
     curves: &(impl CurveProvider<T> + ?Sized),
@@ -80,7 +80,7 @@ impl CashflowPricer {
   }
 
   /// Dirty / clean PV summary for a leg.
-  pub fn summarize_leg<T: FloatExt>(
+  pub fn summarize_leg<T: RealExt>(
     &self,
     leg: &Leg<T>,
     curves: &(impl CurveProvider<T> + ?Sized),

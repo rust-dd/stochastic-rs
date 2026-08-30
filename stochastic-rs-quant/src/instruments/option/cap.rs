@@ -20,11 +20,11 @@ use crate::cashflows::Cashflow;
 use crate::cashflows::CurveProvider;
 use crate::cashflows::Leg;
 use crate::cashflows::RateIndex;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Interest-rate cap struck at `strike` on the floating coupons of `leg`.
 #[derive(Debug, Clone)]
-pub struct Cap<T: FloatExt, V: VolatilityModel<T>> {
+pub struct Cap<T: RealExt, V: VolatilityModel<T>> {
   /// Fixed strike $K$ applied to every caplet.
   pub strike: T,
   /// Floating leg carrying the underlying coupon fixings.
@@ -33,7 +33,7 @@ pub struct Cap<T: FloatExt, V: VolatilityModel<T>> {
   pub vol: V,
 }
 
-impl<T: FloatExt, V: VolatilityModel<T>> Cap<T, V> {
+impl<T: RealExt, V: VolatilityModel<T>> Cap<T, V> {
   /// Construct a cap.
   pub fn new(strike: T, leg: Leg<T>, vol: V) -> Self {
     Self { strike, leg, vol }
@@ -75,7 +75,7 @@ impl<T: FloatExt, V: VolatilityModel<T>> Cap<T, V> {
 
 /// Interest-rate floor struck at `strike` on the floating coupons of `leg`.
 #[derive(Debug, Clone)]
-pub struct Floor<T: FloatExt, V: VolatilityModel<T>> {
+pub struct Floor<T: RealExt, V: VolatilityModel<T>> {
   /// Fixed strike $K$ applied to every floorlet.
   pub strike: T,
   /// Floating leg carrying the underlying coupon fixings.
@@ -84,7 +84,7 @@ pub struct Floor<T: FloatExt, V: VolatilityModel<T>> {
   pub vol: V,
 }
 
-impl<T: FloatExt, V: VolatilityModel<T>> Floor<T, V> {
+impl<T: RealExt, V: VolatilityModel<T>> Floor<T, V> {
   /// Construct a floor.
   pub fn new(strike: T, leg: Leg<T>, vol: V) -> Self {
     Self { strike, leg, vol }
@@ -126,14 +126,14 @@ impl<T: FloatExt, V: VolatilityModel<T>> Floor<T, V> {
 
 /// Zero-cost collar constructed from a long cap and a short floor.
 #[derive(Debug, Clone)]
-pub struct Collar<T: FloatExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> {
+pub struct Collar<T: RealExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> {
   /// Long cap leg.
   pub cap: Cap<T, VC>,
   /// Short floor leg.
   pub floor: Floor<T, VF>,
 }
 
-impl<T: FloatExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> Collar<T, VC, VF> {
+impl<T: RealExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> Collar<T, VC, VF> {
   /// Construct a collar from an existing cap and floor.
   pub fn new(cap: Cap<T, VC>, floor: Floor<T, VF>) -> Self {
     Self { cap, floor }
@@ -172,7 +172,7 @@ impl<T: FloatExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> Collar<T, VC, 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn price_cap_floor<T: FloatExt, V: VolatilityModel<T> + ?Sized>(
+fn price_cap_floor<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   leg: &Leg<T>,
   strike: T,
   vol: &V,

@@ -32,11 +32,11 @@ use crate::lattice::OneFactorShortRateModel;
 use crate::lattice::TrinomialTree;
 use crate::lattice::TwoFactorShortRateModel;
 use crate::lattice::short_rate::correlated_joint_probabilities;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Bermudan swaption priced on a Hull-White trinomial tree.
 #[derive(Debug, Clone)]
-pub struct BermudanSwaption<T: FloatExt> {
+pub struct BermudanSwaption<T: RealExt> {
   /// Payoff direction.
   pub direction: SwaptionDirection,
   /// Fixed strike $K$.
@@ -49,7 +49,7 @@ pub struct BermudanSwaption<T: FloatExt> {
   pub coupon_schedule: TreeCouponSchedule<T>,
 }
 
-impl<T: FloatExt> BermudanSwaption<T> {
+impl<T: RealExt> BermudanSwaption<T> {
   /// Build a Bermudan swaption tied to the tree-level schedules.
   pub fn new(
     direction: SwaptionDirection,
@@ -148,7 +148,7 @@ impl<T: FloatExt> BermudanSwaption<T> {
   }
 }
 
-fn snap_to_levels<T: FloatExt>(
+fn snap_to_levels<T: RealExt>(
   valuation_date: NaiveDate,
   day_count: DayCountConvention,
   dt: T,
@@ -164,7 +164,7 @@ fn snap_to_levels<T: FloatExt>(
     .collect()
 }
 
-fn price_on_one_factor_tree<T: FloatExt, M: OneFactorShortRateModel<T>>(
+fn price_on_one_factor_tree<T: RealExt, M: OneFactorShortRateModel<T>>(
   tree: &TrinomialTree<T>,
   model: &M,
   direction: SwaptionDirection,
@@ -243,7 +243,7 @@ fn price_on_one_factor_tree<T: FloatExt, M: OneFactorShortRateModel<T>>(
   option[0]
 }
 
-fn backward_expectation<T: FloatExt, M: OneFactorShortRateModel<T>>(
+fn backward_expectation<T: RealExt, M: OneFactorShortRateModel<T>>(
   tree: &TrinomialTree<T>,
   model: &M,
   seed: impl Fn(usize, &TrinomialTree<T>) -> Array1<T>,
@@ -278,7 +278,7 @@ fn backward_expectation<T: FloatExt, M: OneFactorShortRateModel<T>>(
   storage
 }
 
-fn backward_expectation_with_injection<T: FloatExt, M: OneFactorShortRateModel<T>>(
+fn backward_expectation_with_injection<T: RealExt, M: OneFactorShortRateModel<T>>(
   tree: &TrinomialTree<T>,
   model: &M,
   injection: impl Fn(usize) -> T,
@@ -320,7 +320,7 @@ fn backward_expectation_with_injection<T: FloatExt, M: OneFactorShortRateModel<T
   storage
 }
 
-fn price_on_two_factor_tree<T: FloatExt>(
+fn price_on_two_factor_tree<T: RealExt>(
   tree: &G2ppTree<T>,
   direction: SwaptionDirection,
   strike: T,
@@ -428,7 +428,7 @@ fn price_on_two_factor_tree<T: FloatExt>(
   option[[0, 0]]
 }
 
-fn backward_expectation_2d<T: FloatExt>(
+fn backward_expectation_2d<T: RealExt>(
   tree: &G2ppTree<T>,
   seed: impl Fn(usize, &G2ppTree<T>) -> Array2<T>,
 ) -> Vec<Array2<T>> {
@@ -489,7 +489,7 @@ fn backward_expectation_2d<T: FloatExt>(
   storage
 }
 
-fn backward_expectation_2d_with_injection<T: FloatExt>(
+fn backward_expectation_2d_with_injection<T: RealExt>(
   tree: &G2ppTree<T>,
   injection: impl Fn(usize) -> T,
 ) -> Vec<Array2<T>> {

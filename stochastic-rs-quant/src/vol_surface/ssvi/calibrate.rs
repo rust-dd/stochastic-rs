@@ -7,11 +7,11 @@ use nalgebra::Owned;
 
 use super::params::SsviParams;
 use super::params::SsviSlice;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Calibrate SSVI global parameters $(\rho, \eta, \gamma)$ to multiple
 /// maturity slices simultaneously.
-pub fn calibrate_ssvi<T: FloatExt>(
+pub fn calibrate_ssvi<T: RealExt>(
   slices: &[SsviSlice<T>],
   initial: Option<SsviParams<T>>,
 ) -> SsviParams<T> {

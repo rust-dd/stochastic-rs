@@ -15,7 +15,7 @@
 //! Reference: Yamakami & Takeuchi, "Pricing Bermudan Swaption under Two Factor
 //! Hull-White Model with Fast Gauss Transform", arXiv:2212.08250 (2022).
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 pub mod equity;
 pub mod short_rate;
@@ -37,7 +37,7 @@ pub use tree::TrinomialBranch;
 pub use tree::TrinomialTree;
 
 /// Helper trait for one-dimensional node discounting.
-pub trait NodeDiscount<T: FloatExt>: Send + Sync {
+pub trait NodeDiscount<T: RealExt>: Send + Sync {
   /// Discount factor applied over one time step at a node state.
   fn node_discount(&self, dt: T, state: T) -> T;
 }

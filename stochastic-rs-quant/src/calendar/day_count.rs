@@ -5,7 +5,7 @@
 use chrono::Datelike;
 use chrono::NaiveDate;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Day count convention.
 ///
@@ -79,7 +79,7 @@ impl std::fmt::Display for DayCountConvention {
 
 impl DayCountConvention {
   /// Compute the year fraction between two dates.
-  pub fn year_fraction<T: FloatExt>(&self, d1: NaiveDate, d2: NaiveDate) -> T {
+  pub fn year_fraction<T: RealExt>(&self, d1: NaiveDate, d2: NaiveDate) -> T {
     match self {
       Self::Actual360 => {
         let days = (d2 - d1).num_days() as f64;
@@ -148,7 +148,7 @@ impl DayCountConvention {
   ///
   /// # Panics
   /// Panics on `reference_end <= reference_start` or `frequency == 0`.
-  pub fn year_fraction_icma<T: FloatExt>(
+  pub fn year_fraction_icma<T: RealExt>(
     d1: NaiveDate,
     d2: NaiveDate,
     reference_start: NaiveDate,

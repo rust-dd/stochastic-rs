@@ -9,8 +9,8 @@ use ndarray::Array1;
 use super::tree::BinomialTree;
 use crate::OptionStyle;
 use crate::OptionType;
-use crate::traits::FloatExt;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
 /// Cox-Ross-Rubinstein binomial-tree model for European and American options.
@@ -18,14 +18,14 @@ use crate::traits::VanillaEuropeanCall;
 /// $u = e^{\sigma\sqrt{\Delta t}}$, $d = 1/u$,
 /// $p = (e^{(r-q)\Delta t} - d)/(u - d)$.
 #[derive(Debug, Clone, Copy)]
-pub struct CrrModel<T: FloatExt> {
+pub struct CrrModel<T: RealExt> {
   /// Lognormal volatility $\sigma$.
   pub sigma: T,
   /// Number of tree steps.
   pub steps: usize,
 }
 
-impl<T: FloatExt> CrrModel<T> {
+impl<T: RealExt> CrrModel<T> {
   /// Construct a CRR model.
   pub fn new(sigma: T, steps: usize) -> Self {
     assert!(steps >= 1, "steps must be positive");

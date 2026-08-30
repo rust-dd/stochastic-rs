@@ -27,7 +27,7 @@ use std::fmt::Display;
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Direction of the parent order.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -50,7 +50,7 @@ impl Display for ExecutionDirection {
 
 /// Almgren-Chriss model inputs.
 #[derive(Debug, Clone)]
-pub struct AlmgrenChrissParams<T: FloatExt> {
+pub struct AlmgrenChrissParams<T: RealExt> {
   /// Number of shares to execute (always non-negative).
   pub total_shares: T,
   /// Direction of the parent order.
@@ -71,7 +71,7 @@ pub struct AlmgrenChrissParams<T: FloatExt> {
   pub lambda: T,
 }
 
-impl<T: FloatExt> AlmgrenChrissParams<T> {
+impl<T: RealExt> AlmgrenChrissParams<T> {
   /// Construct with sensible defaults: `epsilon = 0`, `direction = Sell`.
   pub fn new(
     total_shares: T,
@@ -106,7 +106,7 @@ impl<T: FloatExt> AlmgrenChrissParams<T> {
 /// signed academic Almgren-Chriss formulation (Almgren-Chriss 2001 §2) where
 /// a buy is the sign-reverse of a sell.
 #[derive(Debug, Clone)]
-pub struct AlmgrenChrissPlan<T: FloatExt> {
+pub struct AlmgrenChrissPlan<T: RealExt> {
   /// Inventory holdings $x_k$ at the end of each interval. For Sell:
   /// $x_0 = +X, \dots, x_N = 0$. For Buy: $x_0 = -X, \dots, x_N = 0$.
   pub inventory: Array1<T>,
@@ -125,7 +125,7 @@ pub struct AlmgrenChrissPlan<T: FloatExt> {
   pub variance: T,
 }
 
-impl<T: FloatExt> AlmgrenChrissPlan<T> {
+impl<T: RealExt> AlmgrenChrissPlan<T> {
   /// Implementation shortfall: $E\left[C\right] + \lambda\,\mathrm{Var}\left[C\right]$.
   pub fn risk_adjusted_cost(&self, lambda: T) -> T {
     self.expected_cost + lambda * self.variance
@@ -133,7 +133,7 @@ impl<T: FloatExt> AlmgrenChrissPlan<T> {
 }
 
 /// Compute the Almgren-Chriss optimal execution schedule.
-pub fn optimal_execution<T: FloatExt>(params: &AlmgrenChrissParams<T>) -> AlmgrenChrissPlan<T> {
+pub fn optimal_execution<T: RealExt>(params: &AlmgrenChrissParams<T>) -> AlmgrenChrissPlan<T> {
   let n = params.n_intervals;
   assert!(n >= 1, "need at least one trading interval");
   assert!(params.horizon > T::zero(), "horizon must be positive");
@@ -230,7 +230,7 @@ pub fn optimal_execution<T: FloatExt>(params: &AlmgrenChrissParams<T>) -> Almgre
 }
 
 #[inline]
-fn sinh<T: FloatExt>(x: T) -> T {
+fn sinh<T: RealExt>(x: T) -> T {
   T::from_f64_fast(x.to_f64().unwrap().sinh())
 }
 

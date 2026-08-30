@@ -20,7 +20,7 @@
 
 use super::ssvi::SsviParams;
 use super::svi::SviRawParams;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Butterfly arbitrage density $g(k)$ at point $k$.
 ///
@@ -30,7 +30,7 @@ use crate::traits::FloatExt;
 ///     + \frac{w''(k)}{2}
 /// $$
 #[inline]
-pub fn butterfly_density_at<T: FloatExt>(k: T, w: T, w_prime: T, w_double_prime: T) -> T {
+pub fn butterfly_density_at<T: RealExt>(k: T, w: T, w_prime: T, w_double_prime: T) -> T {
   if w <= T::zero() {
     return T::nan();
   }
@@ -46,7 +46,7 @@ pub fn butterfly_density_at<T: FloatExt>(k: T, w: T, w_prime: T, w_double_prime:
 /// Check butterfly arbitrage for an SVI slice on a grid of log-moneyness values.
 ///
 /// Returns `(is_free, min_g)` where `min_g` is the minimum density value.
-pub fn check_butterfly_svi<T: FloatExt>(params: &SviRawParams<T>, ks: &[T]) -> (bool, T) {
+pub fn check_butterfly_svi<T: RealExt>(params: &SviRawParams<T>, ks: &[T]) -> (bool, T) {
   let mut min_g = T::infinity();
 
   for &k in ks {
@@ -64,7 +64,7 @@ pub fn check_butterfly_svi<T: FloatExt>(params: &SviRawParams<T>, ks: &[T]) -> (
 }
 
 /// Check butterfly arbitrage for an SSVI slice at given $\theta$.
-pub fn check_butterfly_ssvi<T: FloatExt>(params: &SsviParams<T>, theta: T, ks: &[T]) -> (bool, T) {
+pub fn check_butterfly_ssvi<T: RealExt>(params: &SsviParams<T>, theta: T, ks: &[T]) -> (bool, T) {
   let mut min_g = T::infinity();
 
   for &k in ks {
@@ -112,7 +112,7 @@ pub fn check_calendar_spread(
 /// Roger Lee moment formula asymptotic slope bounds.
 ///
 /// Returns `(right_slope, left_slope)` estimated from the outermost points.
-pub fn lee_moment_slopes<T: FloatExt>(ks: &[T], ws: &[T]) -> (T, T) {
+pub fn lee_moment_slopes<T: RealExt>(ks: &[T], ws: &[T]) -> (T, T) {
   assert!(ks.len() >= 2);
   let n = ks.len();
   let zero = T::zero();
@@ -133,7 +133,7 @@ pub fn lee_moment_slopes<T: FloatExt>(ks: &[T], ws: &[T]) -> (T, T) {
 }
 
 /// Check whether wing slopes satisfy Roger Lee bounds ($\leq 2$).
-pub fn check_lee_bounds<T: FloatExt>(ks: &[T], ws: &[T]) -> bool {
+pub fn check_lee_bounds<T: RealExt>(ks: &[T], ws: &[T]) -> bool {
   let (right, left) = lee_moment_slopes(ks, ws);
   let two = T::from_f64_fast(2.0);
   let eps = T::from_f64_fast(1e-10);

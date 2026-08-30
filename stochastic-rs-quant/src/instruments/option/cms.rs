@@ -22,10 +22,10 @@
 use super::caplet::black_forward_caplet;
 use super::caplet::black_forward_floorlet;
 use super::volatility::VolatilityModel;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Flat-yield annuity-to-par function $G(S)=(1-(1+S\delta)^{-N})/S$.
-fn g_function<T: FloatExt>(s: T, n: T, delta: T) -> T {
+fn g_function<T: RealExt>(s: T, n: T, delta: T) -> T {
   if s.abs() <= T::from_f64_fast(1e-12) {
     return n * delta;
   }
@@ -37,7 +37,7 @@ fn g_function<T: FloatExt>(s: T, n: T, delta: T) -> T {
 ///
 /// `swap_years` is the tenor of the CMS-referenced swap; `fixed_freq` is the
 /// number of fixed-leg payments per year of that swap.
-pub fn hagan_linear_tsr_convexity_factor<T: FloatExt>(s0: T, swap_years: T, fixed_freq: T) -> T {
+pub fn hagan_linear_tsr_convexity_factor<T: RealExt>(s0: T, swap_years: T, fixed_freq: T) -> T {
   let delta = T::one() / fixed_freq;
   let n = swap_years * fixed_freq;
   let bump = s0.abs() * T::from_f64_fast(1e-4);
@@ -60,7 +60,7 @@ pub fn hagan_linear_tsr_convexity_factor<T: FloatExt>(s0: T, swap_years: T, fixe
 ///
 /// `payment_delay` is $T_{pay}-T_{fix}$ in years, zero or positive; the delay
 /// term is only applied when strictly positive.
-pub fn hagan_linear_tsr_convexity_adjustment<T: FloatExt>(
+pub fn hagan_linear_tsr_convexity_adjustment<T: RealExt>(
   s0: T,
   sigma_black: T,
   t_fix: T,
@@ -82,7 +82,7 @@ pub fn hagan_linear_tsr_convexity_adjustment<T: FloatExt>(
 /// CMS caplet struck at `strike` with Hagan convexity adjustment applied to
 /// the forward CMS rate before Black-76 pricing.
 #[derive(Debug, Clone)]
-pub struct CmsCaplet<T: FloatExt, V: VolatilityModel<T>> {
+pub struct CmsCaplet<T: RealExt, V: VolatilityModel<T>> {
   /// Fixed strike $K$.
   pub strike: T,
   /// Coupon notional.
@@ -105,7 +105,7 @@ pub struct CmsCaplet<T: FloatExt, V: VolatilityModel<T>> {
   pub vol: V,
 }
 
-impl<T: FloatExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
+impl<T: RealExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
   /// Present value.
   pub fn price(&self) -> T {
     price_cms_payoff(
@@ -126,7 +126,7 @@ impl<T: FloatExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
 
 /// CMS floorlet — put on the convexity-adjusted forward CMS rate.
 #[derive(Debug, Clone)]
-pub struct CmsFloorlet<T: FloatExt, V: VolatilityModel<T>> {
+pub struct CmsFloorlet<T: RealExt, V: VolatilityModel<T>> {
   /// Fixed strike $K$.
   pub strike: T,
   /// Coupon notional.
@@ -149,7 +149,7 @@ pub struct CmsFloorlet<T: FloatExt, V: VolatilityModel<T>> {
   pub vol: V,
 }
 
-impl<T: FloatExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
+impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
   /// Present value.
   pub fn price(&self) -> T {
     price_cms_payoff(
@@ -169,7 +169,7 @@ impl<T: FloatExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn price_cms_payoff<T: FloatExt, V: VolatilityModel<T> + ?Sized>(
+fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   strike: T,
   notional: T,
   accrual: T,

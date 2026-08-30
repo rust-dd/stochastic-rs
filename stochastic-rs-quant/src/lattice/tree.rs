@@ -5,11 +5,11 @@
 
 use ndarray::Array1;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Recombining binomial tree.
 #[derive(Debug, Clone)]
-pub struct BinomialTree<T: FloatExt> {
+pub struct BinomialTree<T: RealExt> {
   /// Time step.
   pub dt: T,
   /// Node states for each level.
@@ -18,7 +18,7 @@ pub struct BinomialTree<T: FloatExt> {
   pub up_probabilities: Vec<Array1<T>>,
 }
 
-impl<T: FloatExt> BinomialTree<T> {
+impl<T: RealExt> BinomialTree<T> {
   /// Construct a binomial tree from explicit levels and up probabilities.
   pub fn new(dt: T, states: Vec<Array1<T>>, up_probabilities: Vec<Array1<T>>) -> Self {
     assert_eq!(
@@ -93,7 +93,7 @@ impl<T: FloatExt> BinomialTree<T> {
 
 /// Trinomial branch centered on a node of the next level.
 #[derive(Debug, Clone, Copy)]
-pub struct TrinomialBranch<T: FloatExt> {
+pub struct TrinomialBranch<T: RealExt> {
   /// Index of the middle child on the next level.
   pub center_index: usize,
   /// Down probability.
@@ -104,7 +104,7 @@ pub struct TrinomialBranch<T: FloatExt> {
   pub up_probability: T,
 }
 
-impl<T: FloatExt> TrinomialBranch<T> {
+impl<T: RealExt> TrinomialBranch<T> {
   /// Probabilities as `[down, middle, up]`.
   pub fn probabilities(&self) -> [T; 3] {
     [
@@ -117,7 +117,7 @@ impl<T: FloatExt> TrinomialBranch<T> {
 
 /// Recombining trinomial tree with per-node centered branches.
 #[derive(Debug, Clone)]
-pub struct TrinomialTree<T: FloatExt> {
+pub struct TrinomialTree<T: RealExt> {
   /// Time step.
   pub dt: T,
   /// Grid states for each level.
@@ -126,7 +126,7 @@ pub struct TrinomialTree<T: FloatExt> {
   pub branches: Vec<Vec<TrinomialBranch<T>>>,
 }
 
-impl<T: FloatExt> TrinomialTree<T> {
+impl<T: RealExt> TrinomialTree<T> {
   /// Construct a trinomial tree from explicit levels and branches.
   pub fn new(dt: T, states: Vec<Array1<T>>, branches: Vec<Vec<TrinomialBranch<T>>>) -> Self {
     assert_eq!(

@@ -22,11 +22,11 @@
 use ndarray::Array1;
 
 use super::InflationCurve;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Zero-coupon inflation-indexed swap.
 #[derive(Debug, Clone)]
-pub struct ZeroCouponInflationSwap<T: FloatExt> {
+pub struct ZeroCouponInflationSwap<T: RealExt> {
   /// Notional.
   pub notional: T,
   /// Fixed (par) rate.
@@ -35,7 +35,7 @@ pub struct ZeroCouponInflationSwap<T: FloatExt> {
   pub tau: T,
 }
 
-impl<T: FloatExt> ZeroCouponInflationSwap<T> {
+impl<T: RealExt> ZeroCouponInflationSwap<T> {
   /// Net present value of the swap (inflation leg minus fixed leg, paid at
   /// $T$, discounted by $P_n(0,T)$). The discount factor is supplied by
   /// the caller — typically the nominal discount curve.
@@ -59,7 +59,7 @@ impl<T: FloatExt> ZeroCouponInflationSwap<T> {
 
 /// Year-on-year inflation-indexed swap (YYIIS) with annual settlements.
 #[derive(Debug, Clone)]
-pub struct YearOnYearInflationSwap<T: FloatExt> {
+pub struct YearOnYearInflationSwap<T: RealExt> {
   /// Notional.
   pub notional: T,
   /// Fixed rate.
@@ -73,7 +73,7 @@ pub struct YearOnYearInflationSwap<T: FloatExt> {
   pub nominal_discount_factors: Array1<T>,
 }
 
-impl<T: FloatExt> YearOnYearInflationSwap<T> {
+impl<T: RealExt> YearOnYearInflationSwap<T> {
   pub fn new(
     notional: T,
     fixed_rate: T,

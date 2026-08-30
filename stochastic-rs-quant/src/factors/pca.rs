@@ -12,7 +12,7 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray_linalg::SVD;
 
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Result of a PCA factor decomposition.
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ pub struct PcaResult {
 ///
 /// Panics if the underlying SVD fails (rank-deficient input, non-finite
 /// values). Use [`try_pca_decompose`] for a falliable variant.
-pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult {
+pub fn pca_decompose<T: RealExt>(returns: ArrayView2<T>, k: usize) -> PcaResult {
   try_pca_decompose(returns, k)
     .expect("pca_decompose: SVD failed; use try_pca_decompose for falliable variant")
 }
@@ -44,7 +44,7 @@ pub fn pca_decompose<T: FloatExt>(returns: ArrayView2<T>, k: usize) -> PcaResult
 /// Falliable variant of [`pca_decompose`]. Returns
 /// [`crate::factors::FactorsError::SvdFailed`] when the underlying SVD does
 /// not converge (typical cause: rank-deficient or non-finite input).
-pub fn try_pca_decompose<T: FloatExt>(
+pub fn try_pca_decompose<T: RealExt>(
   returns: ArrayView2<T>,
   k: usize,
 ) -> Result<PcaResult, crate::factors::FactorsError> {
@@ -58,7 +58,7 @@ pub fn try_pca_decompose<T: FloatExt>(
   let mut centred = Array2::<f64>::zeros((t, p));
   for j in 0..p {
     let col = returns.column(j);
-    // FloatExt: Default + ToPrimitive ensures to_f64() always returns Some(...).
+    // RealExt: Default + ToPrimitive ensures to_f64() always returns Some(...).
     // unwrap_or_default keeps the fall-back explicit and silences clippy.
     let m = col
       .iter()

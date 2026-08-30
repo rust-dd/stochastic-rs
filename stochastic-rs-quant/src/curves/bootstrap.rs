@@ -17,13 +17,13 @@ use super::interpolation;
 use super::types::CurvePoint;
 use super::types::Instrument;
 use super::types::InterpolationMethod;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Build a discount curve by bootstrapping from a set of market instruments.
 ///
 /// Instruments are processed in order of increasing maturity. Each instrument
 /// provides one equation for one unknown discount factor.
-pub fn bootstrap<T: FloatExt>(
+pub fn bootstrap<T: RealExt>(
   instruments: &[Instrument<T>],
   method: InterpolationMethod,
 ) -> DiscountCurve<T> {
@@ -165,7 +165,7 @@ pub fn bootstrap<T: FloatExt>(
 /// Iterative bootstrapping with root-finding for instruments that don't align with nodes.
 ///
 /// Uses the bisection method to solve for the unknown discount factor at each step.
-pub fn bootstrap_iterative<T: FloatExt>(
+pub fn bootstrap_iterative<T: RealExt>(
   instruments: &[Instrument<T>],
   method: InterpolationMethod,
   tol: T,
@@ -269,7 +269,7 @@ pub fn bootstrap_iterative<T: FloatExt>(
 }
 
 /// Solve for the swap's terminal discount factor using bisection.
-fn solve_swap_df<T: FloatExt>(
+fn solve_swap_df<T: RealExt>(
   existing_points: &[CurvePoint<T>],
   maturity: T,
   swap_rate: T,

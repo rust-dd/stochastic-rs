@@ -17,11 +17,11 @@ use std::fmt::Display;
 use ndarray::Array1;
 
 use crate::curves::DiscountCurve;
-use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Elementary risk-factor perturbation.
 #[derive(Debug, Clone, Copy)]
-pub enum Shock<T: FloatExt> {
+pub enum Shock<T: RealExt> {
   /// Add `value` to the factor (e.g. +100 bps to every zero rate).
   Additive(T),
   /// Multiply the factor by `value` (e.g. 1.10 = +10%).
@@ -30,7 +30,7 @@ pub enum Shock<T: FloatExt> {
   Level(T),
 }
 
-impl<T: FloatExt> Shock<T> {
+impl<T: RealExt> Shock<T> {
   /// Apply the shock to `x`.
   pub fn apply(&self, x: T) -> T {
     match *self {
@@ -41,7 +41,7 @@ impl<T: FloatExt> Shock<T> {
   }
 }
 
-impl<T: FloatExt> Display for Shock<T> {
+impl<T: RealExt> Display for Shock<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::Additive(v) => write!(f, "+{v:?}"),
@@ -53,7 +53,7 @@ impl<T: FloatExt> Display for Shock<T> {
 
 /// Deterministic parallel / key-rate / user-supplied yield curve shift.
 #[derive(Debug, Clone)]
-pub enum CurveShift<T: FloatExt> {
+pub enum CurveShift<T: RealExt> {
   /// Parallel shift: add `amount` to every zero rate.
   Parallel(T),
   /// Twist: linear interpolation between `short_shift` (at `t=0`) and
@@ -68,7 +68,7 @@ pub enum CurveShift<T: FloatExt> {
   AtPillars(Array1<T>),
 }
 
-impl<T: FloatExt> CurveShift<T> {
+impl<T: RealExt> CurveShift<T> {
   /// Apply the shift to the provided discount curve, returning a new
   /// [`DiscountCurve`] that preserves the original interpolation method.
   pub fn apply(&self, base: &DiscountCurve<T>) -> DiscountCurve<T> {
@@ -121,7 +121,7 @@ impl<T: FloatExt> CurveShift<T> {
   }
 }
 
-fn nearest_pillar_index<T: FloatExt>(times: &Array1<T>, target: T) -> usize {
+fn nearest_pillar_index<T: RealExt>(times: &Array1<T>, target: T) -> usize {
   let mut best = 0usize;
   let mut best_diff = (times[0] - target).abs();
   for (i, &t) in times.iter().enumerate().skip(1) {
@@ -136,7 +136,7 @@ fn nearest_pillar_index<T: FloatExt>(times: &Array1<T>, target: T) -> usize {
 
 /// Single stress scenario.
 #[derive(Debug, Clone)]
-pub struct Scenario<T: FloatExt> {
+pub struct Scenario<T: RealExt> {
   /// Human-readable scenario name.
   pub name: String,
   /// Optional free-form tags (e.g. regulator, region).
@@ -147,7 +147,7 @@ pub struct Scenario<T: FloatExt> {
   pub curve_shifts: Vec<(String, CurveShift<T>)>,
 }
 
-impl<T: FloatExt> Scenario<T> {
+impl<T: RealExt> Scenario<T> {
   /// Construct an empty scenario.
   pub fn new(name: impl Into<String>) -> Self {
     Self {
@@ -201,7 +201,7 @@ impl<T: FloatExt> Scenario<T> {
 
 /// Outcome of a single scenario evaluation.
 #[derive(Debug, Clone)]
-pub struct ScenarioResult<T: FloatExt> {
+pub struct ScenarioResult<T: RealExt> {
   /// Scenario name.
   pub name: String,
   /// Portfolio value under the base state.
@@ -217,11 +217,11 @@ pub struct ScenarioResult<T: FloatExt> {
 /// consuming any relevant shocks / curve shifts from the scenario and
 /// returning the portfolio value under the shocked state.
 #[derive(Debug, Clone)]
-pub struct StressTest<T: FloatExt> {
+pub struct StressTest<T: RealExt> {
   scenarios: Vec<Scenario<T>>,
 }
 
-impl<T: FloatExt> StressTest<T> {
+impl<T: RealExt> StressTest<T> {
   /// Build a stress test from an explicit scenario list.
   pub fn new(scenarios: Vec<Scenario<T>>) -> Self {
     Self { scenarios }
