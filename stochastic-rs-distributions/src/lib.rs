@@ -160,6 +160,7 @@ pub use crate::traits::DistributionSampler;
 pub use crate::traits::FloatExt;
 pub use crate::traits::Fn1D;
 pub use crate::traits::Fn2D;
+pub use crate::traits::RealExt;
 pub use crate::traits::SimdFloatExt;
 
 pub mod alpha_stable;

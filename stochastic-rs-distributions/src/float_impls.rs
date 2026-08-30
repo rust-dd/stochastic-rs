@@ -1,5 +1,5 @@
-//! `FloatExt` implementations for `f64` and `f32`, plus thread-local scratch
-//! buffers used by the Fgn circulant embedding.
+//! `RealExt` and `FloatExt` implementations for `f64` and `f32`, plus
+//! thread-local scratch buffers used by the Fgn circulant embedding.
 
 use std::cell::RefCell;
 
@@ -9,6 +9,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::normal::SimdNormal;
 use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 thread_local! {
   static STANDARD_NORMAL_F64: RefCell<Option<Box<SimdNormal<f64, 64>>>> = const { RefCell::new(None) };
@@ -17,11 +18,58 @@ thread_local! {
   static FGN_SCRATCH_F32: RefCell<Vec<Complex<f32>>> = const { RefCell::new(Vec::new()) };
 }
 
-impl FloatExt for f64 {
+impl RealExt for f64 {
   fn from_usize_(n: usize) -> Self {
     n as f64
   }
 
+  #[inline(always)]
+  fn from_f64_fast(v: f64) -> f64 {
+    v
+  }
+
+  fn pi() -> f64 {
+    std::f64::consts::PI
+  }
+
+  fn two_pi() -> f64 {
+    2.0 * std::f64::consts::PI
+  }
+
+  fn min_positive_val() -> f64 {
+    f64::MIN_POSITIVE
+  }
+}
+
+impl RealExt for f32 {
+  fn from_usize_(n: usize) -> Self {
+    n as f32
+  }
+
+  #[inline(always)]
+  fn from_f64_fast(v: f64) -> f32 {
+    v as f32
+  }
+
+  #[inline(always)]
+  fn from_f32_fast(v: f32) -> f32 {
+    v
+  }
+
+  fn pi() -> f32 {
+    std::f32::consts::PI
+  }
+
+  fn two_pi() -> f32 {
+    2.0 * std::f32::consts::PI
+  }
+
+  fn min_positive_val() -> f32 {
+    f32::MIN_POSITIVE
+  }
+}
+
+impl FloatExt for f64 {
   fn fill_standard_normal_slice(out: &mut [Self]) {
     if out.is_empty() {
       return;
@@ -61,10 +109,6 @@ impl FloatExt for f64 {
 }
 
 impl FloatExt for f32 {
-  fn from_usize_(n: usize) -> Self {
-    n as f32
-  }
-
   fn fill_standard_normal_slice(out: &mut [Self]) {
     if out.is_empty() {
       return;

@@ -1,6 +1,6 @@
 ---
 title: Prelude
-description: stochastic_rs::prelude — 27 items in seven groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+description: stochastic_rs::prelude — 28 items in seven groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
 category: concept
 since: 2.0.0
 status: stable
@@ -12,7 +12,7 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **27 items in 7 groups** — re-derive with
+Brings **28 items in 7 groups** — re-derive with
 `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
 `src/lib.rs` any time an item is added or removed; this count has drifted
 before (it read "20 items" for several releases after `VolterraKernel`
@@ -22,17 +22,19 @@ standalone Rust statements — see
 [Importing concrete types](#importing-concrete-types) for a compiled,
 runnable example.
 
-## Trait core (7)
+## Trait core (8)
 
 ```
-FloatExt, SimdFloatExt,
+RealExt, FloatExt, SimdFloatExt,
 ProcessExt, BivariateExt,
 DistributionExt, DistributionSampler,
 TimeExt
 ```
 
-These are the bounds you write on generic functions. Almost every public
-function in the library carries `T: FloatExt`.
+These are the bounds you write on generic functions. Code that simulates
+carries `T: FloatExt` (the full SIMD + RNG surface, so `f32`/`f64` only);
+analytic pricing code carries the looser `T: RealExt` (scalar arithmetic
+only), which a custom scalar such as an AAD dual number can implement.
 
 ## Pricing (1)
 

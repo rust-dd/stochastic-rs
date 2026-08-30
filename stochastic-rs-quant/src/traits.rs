@@ -36,6 +36,7 @@ pub use stochastic_rs_distributions::traits::DistributionSampler;
 pub use stochastic_rs_distributions::traits::FloatExt;
 pub use stochastic_rs_distributions::traits::Fn1D;
 pub use stochastic_rs_distributions::traits::Fn2D;
+pub use stochastic_rs_distributions::traits::RealExt;
 pub use stochastic_rs_distributions::traits::SimdFloatExt;
 pub use stochastic_rs_stochastic::traits::ComplexPathOutput;
 pub use stochastic_rs_stochastic::traits::CurveOutput;

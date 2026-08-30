@@ -91,28 +91,6 @@ impl SimdFloatExt for f32 {
   }
 
   const PREFERS_F32_WN: bool = true;
-
-  #[inline(always)]
-  fn from_f64_fast(v: f64) -> f32 {
-    v as f32
-  }
-
-  #[inline(always)]
-  fn from_f32_fast(v: f32) -> f32 {
-    v
-  }
-
-  fn pi() -> f32 {
-    std::f32::consts::PI
-  }
-
-  fn two_pi() -> f32 {
-    2.0 * std::f32::consts::PI
-  }
-
-  fn min_positive_val() -> f32 {
-    f32::MIN_POSITIVE
-  }
 }
 
 impl SimdFloatExt for f64 {
@@ -191,21 +169,4 @@ impl SimdFloatExt for f64 {
   }
 
   const PREFERS_F32_WN: bool = false;
-
-  #[inline(always)]
-  fn from_f64_fast(v: f64) -> f64 {
-    v
-  }
-
-  fn pi() -> f64 {
-    std::f64::consts::PI
-  }
-
-  fn two_pi() -> f64 {
-    2.0 * std::f64::consts::PI
-  }
-
-  fn min_positive_val() -> f64 {
-    f64::MIN_POSITIVE
-  }
 }

@@ -53,8 +53,9 @@ against `stochastic-rs-quant/src/traits/*.rs` and
 `stochastic-rs-distributions/src/traits/distribution.rs` before trusting an
 older summary.
 
-- `FloatExt` — core float trait bound; lives in `stochastic-rs-distributions::traits`
-- `SimdFloatExt` — SIMD-friendly subset of `FloatExt`
+- `RealExt` — scalar real-number bound (arithmetic, conversions, constants — no SIMD, no RNG); the bound analytic pricing code takes, and the door a custom scalar (AAD dual, tape node) can implement; lives in `stochastic-rs-distributions::traits`
+- `SimdFloatExt` — 8-lane SIMD surface over `RealExt`, plus the uniform RNG fills
+- `FloatExt` — the full simulation-grade bound: `RealExt + SimdFloatExt` + batched normal-fill/fGN scratch; only `f32`/`f64` can implement it, so anything bounded on it is closed to custom scalars by construction
 - `ProcessExt<T>` — stochastic process simulation (`sample`/`sample_par`/`sample_map`); lives in `stochastic-rs-stochastic::traits`. **127** concrete implementors (`grep -rn "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src --include='*.rs' | grep -v /traits/ | wc -l`); the exhaustive per-directory breakdown and the guard that keeps it honest live in `stochastic-rs-stochastic/tests/reproducibility_all_processes.rs`
 - `BivariateExt` / `MultivariateExt` — copula traits in `stochastic-rs-copulas::traits`; **13** bivariate + **8** multivariate implementors (note: `NCopula2DExt` was removed in v2.0 — bivariate samplers consolidated under `BivariateExt`)
 - `TimeExt` — day-count-aware maturity: `tau()`, `tau_or_from_dates()`, `tau_with_dcc(dcc)` (explicit day-count override), both NaN-on-missing-data by convention. Implemented by **instruments only** — `EuropeanOption` and `DigitalOption`, **2** production implementors (`grep -rn "impl TimeExt for" stochastic-rs-quant/src`); a pricer takes `tau` as a query argument and holds no dates. The old intention to move its role into `calendar` is **dropped**, not pending: the arithmetic already lives there and what the trait adds is an instrument concern
@@ -74,9 +75,9 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **27** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
+Brings **28** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
-- **Trait core**: `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
+- **Trait core**: `RealExt`, `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
 - **Pricing**: `ModelPricer`
 - **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
 - **Instrument / engine**: `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult`

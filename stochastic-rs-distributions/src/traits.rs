@@ -15,4 +15,5 @@ pub use callable::Fn2D;
 pub use distribution::DistributionExt;
 pub use distribution::DistributionSampler;
 pub use float::FloatExt;
+pub use float::RealExt;
 pub use float::SimdFloatExt;

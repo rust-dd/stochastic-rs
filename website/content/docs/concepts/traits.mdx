@@ -1,6 +1,6 @@
 ---
 title: Traits overview
-description: The trait surface that organises the library — FloatExt, ProcessExt, DistributionExt, ModelPricer, ShortRatePricer, Calibrator, GreeksExt, and friends.
+description: The trait surface that organises the library — RealExt, FloatExt, ProcessExt, DistributionExt, ModelPricer, ShortRatePricer, Calibrator, GreeksExt, and friends.
 category: concept
 since: 2.0.0
 status: stable
@@ -16,8 +16,9 @@ generically over the float type via [`FloatExt`](#floatext).
 
 | Trait                     | Crate                          | Purpose                                                |
 |---------------------------|--------------------------------|--------------------------------------------------------|
-| `FloatExt`                | `stochastic-rs-distributions`  | Foundational float trait bound (`f32` / `f64`)         |
-| `SimdFloatExt`            | `stochastic-rs-distributions`  | SIMD-friendly subset of `FloatExt`                     |
+| `RealExt`                 | `stochastic-rs-distributions`  | Scalar real bound — open to custom scalars (AAD)       |
+| `FloatExt`                | `stochastic-rs-distributions`  | Full simulation-grade float bound (`f32` / `f64` only) |
+| `SimdFloatExt`            | `stochastic-rs-distributions`  | 8-lane SIMD surface over `RealExt`                     |
 | `ProcessExt<T>`           | `stochastic-rs-stochastic`     | Stochastic process simulation (`sample`, `sample_map`, `sample_par`) |
 | `DistributionExt`         | `stochastic-rs-distributions`  | Closed-form pdf / cdf / cf / moments (`f64`-only)      |
 | `BivariateExt<T>`         | `stochastic-rs-copulas`        | Bivariate copulas                                      |
@@ -32,22 +33,21 @@ generically over the float type via [`FloatExt`](#floatext).
 | `CalendarExt`             | `stochastic-rs-quant`          | Pluggable holiday calendars                            |
 | `TimeExt`                 | `stochastic-rs-quant`          | Day-count-aware maturity, on instruments (`tau_with_dcc`)|
 
-## `FloatExt`
+## `RealExt`, `SimdFloatExt`, `FloatExt`
 
-The trait every numerical type is generic over — the full supertrait
-list (each one pulled in for a concrete reason: `Float` for
-transcendentals, `FloatConst` for `PI`/`TAU`, `ScalarOperand` so
-`ndarray` ops work elementwise, `AddAssign`/`SubAssign` for in-place
-accumulation, …):
+The numeric bound is a three-layer hierarchy. `RealExt` is the scalar
+floor — arithmetic, conversions and constants, with every supertrait pulled
+in for a concrete reason (`Float` for transcendentals, `FloatConst` for
+`PI`/`TAU`, `ScalarOperand` so `ndarray` ops work elementwise,
+`AddAssign`/`SubAssign` for in-place accumulation, …):
 
 ```rust
-pub trait FloatExt:
+pub trait RealExt:
   num_traits::Float
   + num_traits::FromPrimitive
   + num_traits::Signed
   + num_traits::FloatConst
   + std::iter::Sum
-  + SimdFloatExt
   + num_traits::Zero
   + Default
   + std::fmt::Debug
@@ -58,14 +58,27 @@ pub trait FloatExt:
   + std::ops::SubAssign
   + 'static
 {
+  // from_usize_, from_f64_fast, pi, two_pi, min_positive_val
+}
+
+pub trait SimdFloatExt: RealExt {
+  type Simd; // f32x8 / f64x8
+  // splat, simd_ln/exp/sqrt/…, fill_uniform, sample_uniform
+}
+
+pub trait FloatExt: RealExt + SimdFloatExt {
+  // fill_standard_normal_slice, with_fgn_complex_scratch, normal_array
 }
 ```
 
-`f32` and `f64` are blanket-impl'd; user code rarely names the trait
-explicitly except as a bound, e.g. `pub fn my_pricer<T: FloatExt>(s0: T, k: T, t: T) -> T`.
-
-The `SimdFloatExt` subset is what bulk samplers rely on for
-`f32x8` / `f64x4` operations.
+`f32` and `f64` implement all three. The split is what the layers *demand*:
+`RealExt` asks for nothing beyond scalar math, so a custom scalar — an AAD
+dual number, a higher-precision float — can implement it and flow through
+everything bounded on it. `FloatExt` additionally demands the 8-lane SIMD
+surface and RNG-backed fills, so `f32`/`f64` are its only possible
+implementors — the right bound for code that simulates, and a closed door
+by construction. Analytic pricing code is bounded on `RealExt`; path
+generation and Monte Carlo on `FloatExt`.
 
 ## `ProcessExt<T>`
 
