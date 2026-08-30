@@ -66,7 +66,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
     let mut sum = T::zero();
     for (x, g) in out.iter_mut().zip(self.gammas.iter()) {
       *x = g.sample_fast();
-      sum = sum + *x;
+      sum += *x;
     }
     let sum_safe = if sum > T::zero() {
       sum
