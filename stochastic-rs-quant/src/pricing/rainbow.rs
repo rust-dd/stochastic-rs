@@ -35,7 +35,9 @@ use rayon::prelude::*;
 
 #[cfg(feature = "openblas")]
 use crate::mc::McEstimate;
+#[cfg(feature = "openblas")]
 use crate::pricing::mc_stats::std_err_from_sums;
+#[cfg(feature = "openblas")]
 use crate::traits::FloatExt;
 
 /// Type of multi-asset rainbow payoff.
