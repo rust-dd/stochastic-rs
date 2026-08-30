@@ -24,8 +24,6 @@ pub use stochastic_rs_distributions::traits::SimdFloatExt;
 
 pub use crate::device::Backend;
 pub use crate::device::Cpu;
-pub use crate::traits::Malliavin2DExt;
-pub use crate::traits::MalliavinExt;
 pub use crate::traits::ProcessExt;
 
 pub mod aliases;

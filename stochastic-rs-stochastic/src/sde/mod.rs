@@ -6,8 +6,8 @@
 //! `Vasicek`, …) implementing [`crate::traits::ProcessExt`]. Those are the
 //! preferred entry points for built-in models — they have hand-optimised
 //! samplers (FFT circulant embedding, Andersen QE, antithetic, GPU paths, etc.)
-//! and integrate with the broader pipeline (`ModelPricer`, `MalliavinExt`,
-//! visualization, Python bindings).
+//! and integrate with the broader pipeline (`ModelPricer`, visualization,
+//! Python bindings).
 //!
 //! This [`Sde`] type is the **research / custom-SDE** alternative: a
 //! flexible generic solver that takes user-supplied drift and diffusion

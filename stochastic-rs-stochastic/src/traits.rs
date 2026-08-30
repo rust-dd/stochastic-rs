@@ -1,16 +1,13 @@
 //! # Stochastic process traits
 //!
 //! Organised as focused submodules: [`process`] (`ProcessExt` + dimensional
-//! markers) and [`malliavin`] (finite-difference Malliavin sensitivities).
+//! markers) and [`sampler`] ([`PathSampler`]).
 //! Upstream traits are re-exported so call-sites can write
 //! `crate::traits::FloatExt` without reaching into `stochastic_rs_distributions`.
 
-pub mod malliavin;
 pub mod process;
 pub mod sampler;
 
-pub use malliavin::Malliavin2DExt;
-pub use malliavin::MalliavinExt;
 pub use process::ComplexPathOutput;
 pub use process::CurveOutput;
 pub use process::MultiDimensional;

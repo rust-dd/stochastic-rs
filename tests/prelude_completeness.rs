@@ -52,7 +52,7 @@ fn all_twenty_seven_documented_prelude_items_resolve() {
 
 /// The other half of the documented contract: a trait kept **out** of the
 /// prelude is still reachable via `stochastic_rs::traits::*`. CLAUDE.md says
-/// that for `MalliavinExt`, `MultivariateExt`, `CallableDist` and `GreeksExt`,
+/// that for `MultivariateExt`, `CallableDist` and `GreeksExt`,
 /// and `prelude.mdx`'s "What is *not* in the prelude (and why)" section
 /// repeats it — but nothing forced the hub to keep the promise, and
 /// `ShortRatePricer` (half of the headline `ModelPricer`/`ShortRatePricer`
@@ -67,8 +67,6 @@ mod prelude_excluded_traits_stay_hub_reachable {
   #[cfg(feature = "python")]
   use stochastic_rs::traits::CallableDist;
   use stochastic_rs::traits::GreeksExt;
-  use stochastic_rs::traits::Malliavin2DExt;
-  use stochastic_rs::traits::MalliavinExt;
   #[cfg(feature = "openblas")]
   use stochastic_rs::traits::MultivariateExt;
   use stochastic_rs::traits::ShortRatePricer;

@@ -115,8 +115,6 @@ bivariate copulas.
 
 ## What is *not* in the prelude (and why)
 
-- `MalliavinExt` / `Malliavin2DExt` — 0 in-tree implementations today;
-  reach via `stochastic_rs::traits::MalliavinExt`.
 - `MultivariateExt` — `openblas`-only; importing it from a default-build
   would be a hard error. Reach via `traits::*`.
 - `CallableDist` — `python`-only; same reason.

@@ -264,8 +264,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// parameter changed" — `let bumped = base.clone(); bumped.kappa += h;` —
 /// which only isolates `h`'s effect if `bumped` and `base` share the same
 /// underlying noise. That is the common-random-numbers technique behind
-/// finite-difference Greeks ([`MalliavinExt`](crate::traits::MalliavinExt))
-/// and bump-and-reprice sensitivity analysis; forking on clone would
+/// finite-difference Greeks and bump-and-reprice sensitivity analysis; forking on clone would
 /// silently replace every such comparison with uncorrelated Monte Carlo
 /// noise instead of isolating the bumped parameter.
 ///
