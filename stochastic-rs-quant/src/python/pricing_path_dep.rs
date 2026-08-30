@@ -464,7 +464,9 @@ impl PyMCBarrierPricer {
       }
     };
     let ot = parse_option_type(option_type)?;
-    Ok(self.inner.price(s, k, h, r, sigma, t, bt, ot))
+    // Interim: the Rust pricer now returns an McEstimate; the Python
+    // surface gains the full estimate object in the py-sync pass.
+    Ok(self.inner.price(s, k, h, r, sigma, t, bt, ot).mean)
   }
 }
 

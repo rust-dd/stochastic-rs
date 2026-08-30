@@ -14,6 +14,8 @@ use rayon::prelude::*;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 
 /// Floor a payoff at zero without letting the floor swallow a `NaN`.
@@ -293,7 +295,7 @@ impl McSpreadPricer {
     q2: f64,
     tau: f64,
     option_type: OptionType,
-  ) -> f64 {
+  ) -> McEstimate<f64> {
     let phi = match option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
@@ -308,28 +310,56 @@ impl McSpreadPricer {
     let mut all_z = vec![0.0_f64; self.n_paths * 2];
     <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
 
-    let sum: f64 = (0..self.n_paths)
+    let payoff_of = |i: usize| -> f64 {
+      let z1 = all_z[2 * i];
+      let z2_indep = all_z[2 * i + 1];
+      let z2 = rho * z1 + sqrt_one_minus_rho2 * z2_indep;
+      let s1_t = s1 * (drift1 + vol1 * z1).exp();
+      let s2_t = s2 * (drift2 + vol2 * z2).exp();
+      floor_payoff(phi * (s1_t - s2_t - k))
+    };
+    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
+    let sum_sq: f64 = (0..self.n_paths)
       .into_par_iter()
       .map(|i| {
-        let z1 = all_z[2 * i];
-        let z2_indep = all_z[2 * i + 1];
-        let z2 = rho * z1 + sqrt_one_minus_rho2 * z2_indep;
-        let s1_t = s1 * (drift1 + vol1 * z1).exp();
-        let s2_t = s2 * (drift2 + vol2 * z2).exp();
-        floor_payoff(phi * (s1_t - s2_t - k))
+        let y = payoff_of(i);
+        y * y
       })
       .sum();
 
-    (-r * tau).exp() * sum / self.n_paths as f64
+    let discount = (-r * tau).exp();
+    McEstimate {
+      mean: discount * sum / self.n_paths as f64,
+      std_err: discount * std_err_from_sums(sum, sum_sq, self.n_paths),
+      n_samples: self.n_paths,
+    }
   }
 
   /// Price the spread call $\max(S_1-S_2-K,0)$ at one query point.
-  pub fn price_call(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+  pub fn price_call(
+    &self,
+    s1: f64,
+    s2: f64,
+    k: f64,
+    r: f64,
+    q1: f64,
+    q2: f64,
+    tau: f64,
+  ) -> McEstimate<f64> {
     self.price_option(s1, s2, k, r, q1, q2, tau, OptionType::Call)
   }
 
   /// Price the spread put $\max(K-(S_1-S_2),0)$ at one query point.
-  pub fn price_put(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+  pub fn price_put(
+    &self,
+    s1: f64,
+    s2: f64,
+    k: f64,
+    r: f64,
+    q1: f64,
+    q2: f64,
+    tau: f64,
+  ) -> McEstimate<f64> {
     self.price_option(s1, s2, k, r, q1, q2, tau, OptionType::Put)
   }
 }

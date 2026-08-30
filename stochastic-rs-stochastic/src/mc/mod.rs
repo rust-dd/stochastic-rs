@@ -45,3 +45,9 @@ impl<T: FloatExt> McEstimate<T> {
     self.confidence_interval(T::from_f64_fast(1.96))
   }
 }
+
+impl<T: FloatExt + std::fmt::Display> std::fmt::Display for McEstimate<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{:.4} ± {:.4}", self.mean, self.std_err)
+  }
+}

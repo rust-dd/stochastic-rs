@@ -91,8 +91,9 @@ fn margrabe_deep_itm() {
 #[test]
 fn mc_spread_one_model_prices_a_strike_grid() {
   let model = McSpreadPricer::new(0.30, 0.25, 0.3, 100_000);
-  let calls = [0.0, 10.0, 25.0].map(|k| model.price_call(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0));
-  let puts = [0.0, 10.0, 25.0].map(|k| model.price_put(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0));
+  let calls =
+    [0.0, 10.0, 25.0].map(|k| model.price_call(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0).mean);
+  let puts = [0.0, 10.0, 25.0].map(|k| model.price_put(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0).mean);
   assert!(
     calls[0] > calls[1] && calls[1] > calls[2],
     "spread calls must decay in the strike: {calls:?}"
@@ -174,23 +175,37 @@ fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
       model.price_put(f64::NAN, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0),
     ),
   ] {
-    assert!(got.is_nan(), "a NaN {name} must not price: got {got}");
+    assert!(got.mean.is_nan(), "a NaN {name} must not price: got {got}");
+    assert!(
+      got.std_err.is_nan(),
+      "a poisoned run has no error bar either: got {got}"
+    );
   }
 
   let mut poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
   poisoned.rho = f64::NAN;
   let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
-  assert!(got.is_nan(), "a NaN model rho must not price: got {got}");
+  assert!(
+    got.mean.is_nan(),
+    "a NaN model rho must not price: got {got}"
+  );
 
   poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
   poisoned.sigma1 = f64::NAN;
   let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
-  assert!(got.is_nan(), "a NaN model sigma1 must not price: got {got}");
+  assert!(
+    got.mean.is_nan(),
+    "a NaN model sigma1 must not price: got {got}"
+  );
 
   // The floor is still a floor: a deep out-of-the-money spread call is
   // worth zero, not a small negative number.
   let deep = model.price_call(110.0, 100.0, 500.0, 0.02, 0.0, 0.0, 1.0);
-  assert_eq!(deep, 0.0, "the max(0) floor must survive: {deep}");
+  assert_eq!(deep.mean, 0.0, "the max(0) floor must survive: {deep}");
+  assert_eq!(
+    deep.std_err, 0.0,
+    "constant payoffs have zero error: {deep}"
+  );
 }
 
 /// Both constructors now reject a parameter that is not a volatility or
@@ -308,7 +323,14 @@ mod construction_validation {
 fn margrabe_matches_mc_zero_strike() {
   let m_price = MargrabePricer::new(0.25, 0.20, 0.4).price(110.0, 100.0, 0.0, 0.0, 1.0);
   let mc = McSpreadPricer::new(0.25, 0.20, 0.4, 100_000);
-  let mc_price = mc.price_call(110.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-  let rel = (m_price - mc_price).abs() / m_price;
-  assert!(rel < 0.02, "margrabe={m_price}, mc={mc_price}, rel={rel}");
+  let est = mc.price_call(110.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+  let rel = (m_price - est.mean).abs() / m_price;
+  assert!(rel < 0.02, "margrabe={m_price}, mc={est}, rel={rel}");
+  assert_eq!(est.n_samples, 100_000);
+  assert!(
+    est.std_err > 0.0 && est.std_err < 0.01 * m_price,
+    "std_err out of range for n=100k: {est}"
+  );
+  let (lo, hi) = est.ci_95();
+  assert!(lo < hi, "degenerate interval: [{lo}, {hi}]");
 }

@@ -22,6 +22,8 @@
 use rayon::prelude::*;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 
 /// Closed-form cliquet on $M$ equal sub-periods under Black-Scholes.
@@ -124,7 +126,7 @@ pub struct McCliquetPricer {
 }
 
 impl McCliquetPricer {
-  pub fn price(&self) -> f64 {
+  pub fn price(&self) -> McEstimate<f64> {
     let period_tau = self.tau / self.m as f64;
     let drift = (self.r - self.q - 0.5 * self.sigma * self.sigma) * period_tau;
     let vol = self.sigma * period_tau.sqrt();
@@ -138,23 +140,34 @@ impl McCliquetPricer {
     let mut all_z = vec![0.0_f64; self.n_paths * m];
     <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
 
-    let sum: f64 = (0..self.n_paths)
+    let payoff_of = |p: usize| -> f64 {
+      let z = &all_z[p * m..(p + 1) * m];
+      let mut s_curr = self.s;
+      let mut sum_returns = 0.0;
+      for k in 0..m {
+        let s_next = s_curr * (drift + vol * z[k]).exp();
+        let r_i = s_next / s_curr - 1.0;
+        let r_capped = r_i.max(f_l).min(c_l);
+        sum_returns += r_capped;
+        s_curr = s_next;
+      }
+      sum_returns.min(c_g).max(f_g)
+    };
+    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
+    let sum_sq: f64 = (0..self.n_paths)
       .into_par_iter()
       .map(|p| {
-        let z = &all_z[p * m..(p + 1) * m];
-        let mut s_curr = self.s;
-        let mut sum_returns = 0.0;
-        for k in 0..m {
-          let s_next = s_curr * (drift + vol * z[k]).exp();
-          let r_i = s_next / s_curr - 1.0;
-          let r_capped = r_i.max(f_l).min(c_l);
-          sum_returns += r_capped;
-          s_curr = s_next;
-        }
-        sum_returns.min(c_g).max(f_g)
+        let y = payoff_of(p);
+        y * y
       })
       .sum();
-    self.notional * (-self.r * self.tau).exp() * sum / self.n_paths as f64
+
+    let scale = self.notional * (-self.r * self.tau).exp();
+    McEstimate {
+      mean: scale * sum / self.n_paths as f64,
+      std_err: scale.abs() * std_err_from_sums(sum, sum_sq, self.n_paths),
+      n_samples: self.n_paths,
+    }
   }
 }
 
@@ -241,7 +254,8 @@ mod tests {
       global_cap: None,
       n_paths: 100_000,
     }
-    .price();
+    .price()
+    .mean;
     let rel = (cf - mc).abs() / cf.abs().max(1e-10);
     assert!(rel < 0.04, "cf={cf}, mc={mc}, rel={rel}");
   }
@@ -263,7 +277,8 @@ mod tests {
       global_cap: None,
       n_paths: 50_000,
     }
-    .price();
+    .price()
+    .mean;
     let capped = McCliquetPricer {
       s: 100.0,
       notional: 100.0,
@@ -278,7 +293,8 @@ mod tests {
       global_cap: Some(0.20),
       n_paths: 50_000,
     }
-    .price();
+    .price()
+    .mean;
     assert!(capped < no_cap, "capped={capped}, no_cap={no_cap}");
   }
 

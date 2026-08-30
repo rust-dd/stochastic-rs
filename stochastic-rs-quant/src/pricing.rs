@@ -33,6 +33,7 @@ pub mod malliavin_gbm;
 pub mod malliavin_greeks;
 #[cfg(feature = "openblas")]
 pub mod malliavin_thalmaier;
+pub(crate) mod mc_stats;
 pub mod merton_jump;
 pub mod pnl;
 pub mod rainbow;

@@ -34,6 +34,8 @@ use owens_t::biv_norm;
 use rayon::prelude::*;
 
 #[cfg(feature = "openblas")]
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 
 /// Type of multi-asset rainbow payoff.
@@ -364,7 +366,7 @@ impl McRainbowPricer {
     r: f64,
     q: ArrayView1<'_, f64>,
     tau: f64,
-  ) -> anyhow::Result<f64> {
+  ) -> anyhow::Result<McEstimate<f64>> {
     let n_assets = s.len();
     if self.rho.shape() != [n_assets, n_assets] {
       anyhow::bail!(
@@ -398,7 +400,7 @@ impl McRainbowPricer {
     r: f64,
     q: ArrayView1<'_, f64>,
     tau: f64,
-  ) -> f64 {
+  ) -> McEstimate<f64> {
     let n_assets = s.len();
     let l: Array2<f64> = self.rho.cholesky(UPLO::Lower).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
@@ -412,26 +414,36 @@ impl McRainbowPricer {
     let mut all_z = vec![0.0_f64; n_paths * n_assets];
     <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
 
-    let sum: f64 = (0..n_paths)
+    let payoff_of = |p: usize| -> f64 {
+      let z = &all_z[p * n_assets..(p + 1) * n_assets];
+      let mut zc = vec![0.0_f64; n_assets];
+      for i in 0..n_assets {
+        let mut acc = 0.0;
+        for j in 0..=i {
+          acc += l[[i, j]] * z[j];
+        }
+        zc[i] = acc;
+      }
+      let s_t: Vec<f64> = (0..n_assets)
+        .map(|i| s[i] * (drifts[i] + vols[i] * zc[i]).exp())
+        .collect();
+      self.payoff.evaluate(&s_t, k)
+    };
+    let sum: f64 = (0..n_paths).into_par_iter().map(&payoff_of).sum();
+    let sum_sq: f64 = (0..n_paths)
       .into_par_iter()
       .map(|p| {
-        let z = &all_z[p * n_assets..(p + 1) * n_assets];
-        let mut zc = vec![0.0_f64; n_assets];
-        for i in 0..n_assets {
-          let mut acc = 0.0;
-          for j in 0..=i {
-            acc += l[[i, j]] * z[j];
-          }
-          zc[i] = acc;
-        }
-        let s_t: Vec<f64> = (0..n_assets)
-          .map(|i| s[i] * (drifts[i] + vols[i] * zc[i]).exp())
-          .collect();
-        self.payoff.evaluate(&s_t, k)
+        let y = payoff_of(p);
+        y * y
       })
       .sum();
 
-    (-r * tau).exp() * sum / n_paths as f64
+    let discount = (-r * tau).exp();
+    McEstimate {
+      mean: discount * sum / n_paths as f64,
+      std_err: discount * std_err_from_sums(sum, sum_sq, n_paths),
+      n_samples: n_paths,
+    }
   }
 }
 #[cfg(test)]

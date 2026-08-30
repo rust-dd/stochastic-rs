@@ -41,7 +41,7 @@ fn main() {
     n_steps: 252,
   };
   let huge_barrier = 10.0 * s;
-  let mc_price = mc.price(
+  let mc_est = mc.price(
     s,
     k,
     huge_barrier,
@@ -51,6 +51,7 @@ fn main() {
     BarrierType::UpAndOut,
     OptionType::Call,
   );
+  let mc_price = mc_est.mean;
 
   // 2) Analytic BS reference + the full first-/second-order Greek set.
   //    `BSMPricer` holds only (v, coc); the (s, k, r, q, tau) query and
@@ -61,7 +62,7 @@ fn main() {
   let greeks = bs.greeks(s, k, r, 0.0, t, ot);
 
   println!(
-    "Price:  BS analytic = {bs_price:.4}    MC = {mc_price:.4}    rel-err = {:.4}%",
+    "Price:  BS analytic = {bs_price:.4}    MC = {mc_est}    rel-err = {:.4}%",
     100.0 * (mc_price - bs_price).abs() / bs_price
   );
 

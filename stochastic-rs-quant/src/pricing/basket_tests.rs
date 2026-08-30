@@ -183,7 +183,7 @@ fn levy_vs_mc_arithmetic() {
     q.view(),
     1.0,
   );
-  let rel = (levy - mc).abs() / mc;
+  let rel = (levy - mc.mean).abs() / mc.mean;
   assert!(rel < 0.03, "levy={levy}, mc={mc}, rel={rel}");
 }
 
@@ -206,8 +206,12 @@ fn mc_geometric_matches_closed_form() {
     q.view(),
     1.0,
   );
-  let rel = (cf - mc).abs() / cf;
+  let rel = (cf - mc.mean).abs() / cf;
   assert!(rel < 0.02, "cf={cf}, mc={mc}");
+  assert!(
+    mc.std_err > 0.0 && mc.std_err < 0.01 * cf,
+    "std_err out of range for n=200k: {mc}"
+  );
 }
 
 /// The two closed-form basket constructors now reject a shape mismatch, a
@@ -523,8 +527,8 @@ fn arithmetic_basket_parity() {
 fn mc_basket_one_model_prices_a_strike_grid() {
   let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.4);
   let model = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 50_000);
-  let calls = [80.0, 100.0, 130.0].map(|k| model.price_call(s.view(), k, 0.05, q.view(), 1.0));
-  let puts = [80.0, 100.0, 130.0].map(|k| model.price_put(s.view(), k, 0.05, q.view(), 1.0));
+  let calls = [80.0, 100.0, 130.0].map(|k| model.price_call(s.view(), k, 0.05, q.view(), 1.0).mean);
+  let puts = [80.0, 100.0, 130.0].map(|k| model.price_put(s.view(), k, 0.05, q.view(), 1.0).mean);
   assert!(
     calls[0] > calls[1] && calls[1] > calls[2],
     "basket calls must decay in the strike: {calls:?}"

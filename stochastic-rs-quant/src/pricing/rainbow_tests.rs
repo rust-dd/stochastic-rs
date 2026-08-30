@@ -111,8 +111,12 @@ fn stulz_min_matches_mc() {
     200_000,
   )
   .price(s.view(), 100.0, 0.05, q.view(), 1.0);
-  let rel = (stulz - mc).abs() / stulz.max(1e-10);
+  let rel = (stulz - mc.mean).abs() / stulz.max(1e-10);
   assert!(rel < 0.03, "stulz={stulz}, mc={mc}, rel={rel}");
+  assert!(
+    mc.std_err > 0.0 && mc.std_err < 0.01 * stulz,
+    "std_err out of range for n=200k: {mc}"
+  );
 }
 
 /// CallOnMax >= each individual vanilla call (always have at least one
@@ -155,7 +159,7 @@ fn mc_call_on_max_above_min() {
     q.view(),
     1.0,
   );
-  assert!(mc_max > mc_min);
+  assert!(mc_max.mean > mc_min.mean);
 }
 
 /// One Monte Carlo model instance prices a whole strike grid. The
@@ -172,7 +176,7 @@ fn mc_rainbow_one_model_prices_a_strike_grid() {
     array![[1.0, 0.4], [0.4, 1.0]],
     50_000,
   );
-  let prices = [80.0, 100.0, 130.0].map(|k| model.price(s.view(), k, 0.05, q.view(), 1.0));
+  let prices = [80.0, 100.0, 130.0].map(|k| model.price(s.view(), k, 0.05, q.view(), 1.0).mean);
   assert!(
     prices[0] > prices[1] && prices[1] > prices[2],
     "best-of calls must decay in the strike: {prices:?}"

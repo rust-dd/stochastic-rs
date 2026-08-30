@@ -17,6 +17,8 @@
 use ndarray::Array1;
 use rayon::prelude::*;
 
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 
 /// Barrier observation style for the knock-in.
@@ -69,7 +71,7 @@ pub struct AutocallablePricer {
 }
 
 impl AutocallablePricer {
-  pub fn price(&self) -> f64 {
+  pub fn price(&self) -> McEstimate<f64> {
     let n_obs = self.observation_times.len();
     assert!(n_obs > 0, "need at least one observation date");
     let auto_b = self.autocall_barrier * self.s;
@@ -93,9 +95,8 @@ impl AutocallablePricer {
     let mut all_z = vec![0.0_f64; n_paths * max_normals_per_path];
     <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
 
-    let sum: f64 = (0..n_paths)
-      .into_par_iter()
-      .map(|p| {
+    let payoff_of = |p: usize| -> f64 {
+      {
         let z_path = &all_z[p * max_normals_per_path..(p + 1) * max_normals_per_path];
         let mut z_idx = 0_usize;
         let mut s_prev = s0;
@@ -164,9 +165,22 @@ impl AutocallablePricer {
         }
         let _ = autocall_time;
         pv
+      }
+    };
+    let sum: f64 = (0..n_paths).into_par_iter().map(&payoff_of).sum();
+    let sum_sq: f64 = (0..n_paths)
+      .into_par_iter()
+      .map(|p| {
+        let y = payoff_of(p);
+        y * y
       })
       .sum();
-    sum / n_paths as f64
+
+    McEstimate {
+      mean: sum / n_paths as f64,
+      std_err: std_err_from_sums(sum, sum_sq, n_paths),
+      n_samples: n_paths,
+    }
   }
 }
 
@@ -202,7 +216,7 @@ mod tests {
       n_paths: 20_000,
       steps_per_period: 4,
     };
-    let price = p.price();
+    let price = p.price().mean;
     let expected = 100.0 * 1.04 * (-0.03_f64 * 0.25).exp();
     let rel = (price - expected).abs() / expected;
     assert!(rel < 0.01, "price={price}, expected={expected}, rel={rel}");
@@ -233,7 +247,7 @@ mod tests {
       memory: true,
       ..base
     };
-    assert!(athena.price() >= phoenix.price() - 1e-3);
+    assert!(athena.price().mean >= phoenix.price().mean - 1e-3);
   }
 
   /// Continuous knock-in monitoring should give a price below or equal to
@@ -261,7 +275,7 @@ mod tests {
       knock_in_style: KnockInStyle::Continuous,
       ..base
     };
-    assert!(cont.price() <= euro.price() + 1e-2);
+    assert!(cont.price().mean <= euro.price().mean + 1e-2);
   }
 
   /// At near-zero volatility, with spot strictly above the autocall barrier,
@@ -287,7 +301,7 @@ mod tests {
     // Use a barrier slightly below spot so all paths trigger.
     let mut p = p;
     p.autocall_barrier = 0.95;
-    let price = p.price();
+    let price = p.price().mean;
     let expected = 100.0 * 1.05;
     let rel = (price - expected).abs() / expected;
     assert!(rel < 0.005, "price={price}");

@@ -16,6 +16,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 
 /// Barrier type for single-barrier options.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -282,7 +284,7 @@ impl MCBarrierPricer {
     t: f64,
     barrier_type: BarrierType,
     option_type: OptionType,
-  ) -> f64 {
+  ) -> McEstimate<f64> {
     let base = SimdRng::new().next_u64();
     self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, base)
   }
@@ -303,7 +305,7 @@ impl MCBarrierPricer {
     barrier_type: BarrierType,
     option_type: OptionType,
     seed: u64,
-  ) -> f64 {
+  ) -> McEstimate<f64> {
     self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, seed)
   }
 
@@ -319,15 +321,14 @@ impl MCBarrierPricer {
     barrier_type: BarrierType,
     option_type: OptionType,
     base_seed: u64,
-  ) -> f64 {
+  ) -> McEstimate<f64> {
     let dt = t / self.n_steps as f64;
     let drift = (r - 0.5 * sigma * sigma) * dt;
     let vol = sigma * dt.sqrt();
     let discount = (-r * t).exp();
 
-    let sum: f64 = (0..self.n_paths)
-      .into_par_iter()
-      .map(|path| {
+    let payoff_of = |path: usize| -> f64 {
+      {
         // Golden-ratio stride keeps consecutive path seeds far apart in the
         // splitmix state space, so neighbouring paths do not share a stream.
         let seed = base_seed.wrapping_add((path as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
@@ -366,10 +367,22 @@ impl MCBarrierPricer {
         };
 
         if alive { payoff } else { 0.0 }
+      }
+    };
+    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
+    let sum_sq: f64 = (0..self.n_paths)
+      .into_par_iter()
+      .map(|path| {
+        let y = payoff_of(path);
+        y * y
       })
       .sum();
 
-    discount * sum / self.n_paths as f64
+    McEstimate {
+      mean: discount * sum / self.n_paths as f64,
+      std_err: discount * std_err_from_sums(sum, sum_sq, self.n_paths),
+      n_samples: self.n_paths,
+    }
   }
 }
 
