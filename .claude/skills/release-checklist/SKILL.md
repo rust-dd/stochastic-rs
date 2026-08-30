@@ -216,12 +216,14 @@ cd stochastic-rs-py
 maturin build --release --strip --features openblas
 ```
 
-**Platform-coverage caveat, worth checking before you cut:** the macOS
-matrix currently has a single `macos-14` runner, which is aarch64. There
-is no `macos-13` (Intel) leg, so `pip install stochastic-rs` on an
-Intel Mac has no wheel to resolve. If Intel-Mac support is intended,
-that matrix needs a `macos-13` entry; if it was dropped deliberately,
-this note is the reminder that it is a deliberate gap.
+**Platform coverage is settled — do not re-add Intel macOS.** The macOS
+matrix has a single `macos-14` runner (aarch64) and that is deliberate:
+Intel-Mac wheels were dropped at v3.0.0-beta.2 (user decision,
+2026-08-28). GitHub has retired the `macos-13` runner, so adding that
+leg back does not fail — it **queues forever with no runner assigned**
+(observed: 14 hours), and because `publish` needs every build job, one
+stuck leg blocks the whole PyPI release. If Intel support is ever
+revisited, it needs a cross-compilation lane, not a `macos-13` entry.
 
 ## Stage 8 — post-release housekeeping
 
