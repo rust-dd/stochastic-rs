@@ -16,6 +16,8 @@
 
 use crate::calibration::rbergomi::RBergomiParams;
 use crate::calibration::rbergomi::simulate_rbergomi_terminal_samples;
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -76,7 +78,11 @@ impl RBergomiPricer {
     self
   }
 
-  fn mc_call_price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+  /// Call-price estimate with its Monte Carlo error bar. The mean is the
+  /// value [`ModelPricer::price_call`] reports; under antithetic sampling
+  /// the error bar is computed over the per-path antithetic-pair means,
+  /// the unit that actually averages to the estimate.
+  pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
     let samples = simulate_rbergomi_terminal_samples(
       &self.params,
       s,
@@ -91,6 +97,7 @@ impl RBergomiPricer {
 
     let payoff_sum: f64 = samples.iter().map(|&st| (st - k).max(0.0)).sum();
     let mut price = payoff_sum / samples.len() as f64;
+    let discount = (-r * tau).exp();
 
     if self.antithetic {
       let samples_anti = simulate_rbergomi_terminal_samples(
@@ -107,15 +114,40 @@ impl RBergomiPricer {
       let payoff_sum_anti: f64 = samples_anti.iter().map(|&st| (st - k).max(0.0)).sum();
       let price_anti = payoff_sum_anti / samples_anti.len() as f64;
       price = 0.5 * (price + price_anti);
+
+      let n = samples.len().min(samples_anti.len());
+      let mut pair_sum = 0.0_f64;
+      let mut pair_sum_sq = 0.0_f64;
+      for i in 0..n {
+        let y = 0.5 * ((samples[i] - k).max(0.0) + (samples_anti[i] - k).max(0.0));
+        pair_sum += y;
+        pair_sum_sq += y * y;
+      }
+      return McEstimate {
+        mean: discount * price,
+        std_err: discount * std_err_from_sums(pair_sum, pair_sum_sq, n),
+        n_samples: n,
+      };
     }
 
-    (-r * tau).exp() * price
+    let payoff_sq_sum: f64 = samples
+      .iter()
+      .map(|&st| {
+        let y = (st - k).max(0.0);
+        y * y
+      })
+      .sum();
+    McEstimate {
+      mean: discount * price,
+      std_err: discount * std_err_from_sums(payoff_sum, payoff_sq_sum, samples.len()),
+      n_samples: samples.len(),
+    }
   }
 }
 
 impl ModelPricer for RBergomiPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.mc_call_price(s, k, r, q, tau)
+    self.price_call_estimate(s, k, r, q, tau).mean
   }
 }
 

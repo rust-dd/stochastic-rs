@@ -5,6 +5,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::HestonSlvParams;
 use super::LeverageSurface;
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -140,7 +142,19 @@ impl HestonSlvPricer {
     }
   }
 
-  fn mc_call_price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+  /// Call-price estimate with its Monte Carlo error bar, under the same
+  /// rate-anchoring panic and leverage-extent `NaN` rules as
+  /// [`ModelPricer::price_call`]; a query outside the surface's extent has
+  /// no paths to estimate from, so every field of the estimate is poisoned.
+  pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
+    self.check_rates(r, q);
+    if !self.leverage.covers(s, tau) {
+      return McEstimate {
+        mean: f64::NAN,
+        std_err: f64::NAN,
+        n_samples: 0,
+      };
+    }
     let n_steps = ((tau * self.steps_per_year as f64).round() as usize).max(1);
     let dt = tau / n_steps as f64;
     let sqrt_dt = dt.sqrt();
@@ -149,6 +163,7 @@ impl HestonSlvPricer {
 
     let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(self.seed));
     let mut payoff_sum = 0.0;
+    let mut payoff_sq_sum = 0.0;
 
     for _ in 0..self.n_paths {
       let mut x = s.ln();
@@ -175,10 +190,17 @@ impl HestonSlvPricer {
       }
 
       let s_t = x.exp();
-      payoff_sum += (s_t - k).max(0.0);
+      let payoff = (s_t - k).max(0.0);
+      payoff_sum += payoff;
+      payoff_sq_sum += payoff * payoff;
     }
 
-    (-r * tau).exp() * payoff_sum / self.n_paths as f64
+    let discount = (-r * tau).exp();
+    McEstimate {
+      mean: discount * payoff_sum / self.n_paths as f64,
+      std_err: discount * std_err_from_sums(payoff_sum, payoff_sq_sum, self.n_paths),
+      n_samples: self.n_paths,
+    }
   }
 }
 
@@ -202,11 +224,7 @@ impl ModelPricer for HestonSlvPricer {
   /// from the pair the leverage surface was calibrated at — see
   /// [`HestonSlvPricer`] for why substituting is not a valid reprojection.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.check_rates(r, q);
-    if !self.leverage.covers(s, tau) {
-      return f64::NAN;
-    }
-    self.mc_call_price(s, k, r, q, tau)
+    self.price_call_estimate(s, k, r, q, tau).mean
   }
 }
 

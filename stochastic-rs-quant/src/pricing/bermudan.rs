@@ -20,6 +20,8 @@ use ndarray_linalg::LeastSquaresSvd;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 
+use crate::mc::McEstimate;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ProcessExt;
 
 /// Bermudan pricer driven by a path matrix and a set of exercise indices.
@@ -46,7 +48,12 @@ impl BermudanLsmPricer {
 
   /// Price a Bermudan option. `exercise_steps` lists the *column indices*
   /// in `paths` at which the holder may exercise.
-  pub fn price<F>(&self, paths: &Array2<f64>, exercise_steps: &[usize], payoff: F) -> f64
+  pub fn price<F>(
+    &self,
+    paths: &Array2<f64>,
+    exercise_steps: &[usize],
+    payoff: F,
+  ) -> McEstimate<f64>
   where
     F: Fn(f64) -> f64,
   {
@@ -110,11 +117,18 @@ impl BermudanLsmPricer {
     }
 
     let mut total = 0.0;
+    let mut total_sq = 0.0;
     for i in 0..n_paths {
       let disc = disc_step.powi(cf_time[i] as i32);
-      total += cf[i] * disc;
+      let pv = cf[i] * disc;
+      total += pv;
+      total_sq += pv * pv;
     }
-    total / n_paths as f64
+    McEstimate {
+      mean: total / n_paths as f64,
+      std_err: std_err_from_sums(total, total_sq, n_paths),
+      n_samples: n_paths,
+    }
   }
 }
 
@@ -171,7 +185,7 @@ mod tests {
     let exercise: Vec<usize> = (1..=n_steps).collect();
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
-    let berm_price = bermudan.price(&paths, &exercise, payoff);
+    let berm_price = bermudan.price(&paths, &exercise, payoff).mean;
 
     let mut eu_sum = 0.0;
     for i in 0..n_paths {
@@ -206,7 +220,7 @@ mod tests {
     for n_exercise in [2usize, 4, 12, 30, 60] {
       let stride = n_steps / n_exercise;
       let exercise: Vec<usize> = (1..=n_exercise).map(|i| i * stride).collect();
-      let p = bermudan.price(&paths, &exercise, payoff);
+      let p = bermudan.price(&paths, &exercise, payoff).mean;
       assert!(
         p >= prev - 0.05,
         "n_exercise={n_exercise} gives {p}, prev={prev}"
@@ -229,7 +243,7 @@ mod tests {
     let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
-    let berm = bermudan.price(&paths, &[n_steps], payoff);
+    let berm = bermudan.price(&paths, &[n_steps], payoff).mean;
 
     let mut eu_sum = 0.0;
     for i in 0..n_paths {

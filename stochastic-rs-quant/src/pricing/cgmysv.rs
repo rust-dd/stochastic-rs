@@ -20,4 +20,3 @@ pub mod pricer;
 pub use model::CgmysvModel;
 pub use model::CgmysvParams;
 pub use pricer::CgmysvPricer;
-pub use pricer::McResult;

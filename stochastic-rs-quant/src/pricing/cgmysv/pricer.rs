@@ -7,8 +7,6 @@
 //!
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001, Section 4.
 
-use std::fmt;
-
 use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -16,21 +14,9 @@ use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::model::CgmysvParams;
 use crate::OptionType;
+use crate::mc::McEstimate;
 use crate::pricing::barrier::BarrierType;
 use crate::traits::ProcessExt;
-
-/// Monte Carlo pricing result with standard error.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct McResult {
-  pub price: f64,
-  pub std_error: f64,
-}
-
-impl fmt::Display for McResult {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "{:.4} ± {:.4}", self.price, self.std_error)
-  }
-}
 
 /// Monte Carlo pricer for the CGMYSV model.
 #[derive(Debug, Clone)]
@@ -101,7 +87,7 @@ impl CgmysvPricer {
   }
 
   /// Price a European option via Monte Carlo (Section 4.1).
-  pub fn price_european(&self, k: f64, tau: f64, option_type: OptionType) -> McResult {
+  pub fn price_european(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
     let (s_paths, _) = self.generate_price_paths(tau);
     self.european_on_paths(&s_paths, k, tau, option_type)
   }
@@ -112,7 +98,7 @@ impl CgmysvPricer {
     k: f64,
     tau: f64,
     option_type: OptionType,
-  ) -> McResult {
+  ) -> McEstimate<f64> {
     let discount = (-self.r * tau).exp();
     let payoffs: Vec<f64> = (0..self.n_paths)
       .map(|i| {
@@ -131,7 +117,7 @@ impl CgmysvPricer {
   ///
   /// Uses the regression basis $\{1,\,S_t,\,S_t^2,\,\sigma_t,\,\sigma_t^2,\,\sigma_t S_t\}$
   /// following Rachev et al. (2011), Chapter 15.
-  pub fn price_american(&self, k: f64, tau: f64, option_type: OptionType) -> McResult {
+  pub fn price_american(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
     let (s_paths, v_paths) = self.generate_price_paths(tau);
     self.american_on_paths(&s_paths, &v_paths, k, tau, option_type)
   }
@@ -143,7 +129,7 @@ impl CgmysvPricer {
     k: f64,
     tau: f64,
     option_type: OptionType,
-  ) -> McResult {
+  ) -> McEstimate<f64> {
     let dt = tau / self.n_steps as f64;
 
     let payoff = |s: f64| match option_type {
@@ -222,14 +208,15 @@ impl CgmysvPricer {
     let mean = payoffs.iter().sum::<f64>() / np;
     let variance = payoffs.iter().map(|&p| (p - mean).powi(2)).sum::<f64>() / (np - 1.0);
 
-    McResult {
-      price: mean,
-      std_error: (variance / np).sqrt(),
+    McEstimate {
+      mean,
+      std_err: (variance / np).sqrt(),
+      n_samples: n,
     }
   }
 
   /// Price an Asian option (arithmetic average) via Monte Carlo (Section 4.3).
-  pub fn price_asian(&self, k: f64, tau: f64, option_type: OptionType) -> McResult {
+  pub fn price_asian(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
     let (s_paths, _) = self.generate_price_paths(tau);
     let discount = (-self.r * tau).exp();
 
@@ -255,7 +242,7 @@ impl CgmysvPricer {
     barrier: f64,
     barrier_type: BarrierType,
     option_type: OptionType,
-  ) -> McResult {
+  ) -> McEstimate<f64> {
     let (s_paths, _) = self.generate_price_paths(tau);
     let discount = (-self.r * tau).exp();
 
@@ -302,13 +289,14 @@ impl CgmysvPricer {
 }
 
 /// Compute MC price estimate and standard error from discounted payoffs.
-fn mc_stats(payoffs: &[f64], discount: f64) -> McResult {
+fn mc_stats(payoffs: &[f64], discount: f64) -> McEstimate<f64> {
   let n = payoffs.len() as f64;
   let mean = payoffs.iter().sum::<f64>() / n;
   let variance = payoffs.iter().map(|&p| (p - mean).powi(2)).sum::<f64>() / (n - 1.0);
-  McResult {
-    price: discount * mean,
-    std_error: discount * (variance / n).sqrt(),
+  McEstimate {
+    mean: discount * mean,
+    std_err: discount * (variance / n).sqrt(),
+    n_samples: payoffs.len(),
   }
 }
 
@@ -379,14 +367,14 @@ mod tests {
     println!("  Call: {call}  (paper: 19.6840 ± 0.2551)");
     println!("  Put:  {put}  (paper: 32.6914 ± 0.7617)");
     assert!(
-      call.price > 10.0 && call.price < 35.0,
+      call.mean > 10.0 && call.mean < 35.0,
       "MC call = {call}, paper = 19.68"
     );
     assert!(
-      put.price > 15.0 && put.price < 55.0,
+      put.mean > 15.0 && put.mean < 55.0,
       "MC put = {put}, paper = 32.69"
     );
-    assert!(put.price > call.price, "put > call for K > S");
+    assert!(put.mean > call.mean, "put > call for K > S");
   }
 
   /// Table 8: Asian call/put.
@@ -399,8 +387,8 @@ mod tests {
     println!("Table 8 — Asian MC (K=2500, T=25d, N=2000)");
     println!("  Call: {call}  (paper: 21.6513 ± 0.1937)");
     println!("  Put:  {put}  (paper:  9.9964 ± 0.3679)");
-    assert!(call.price > 0.0, "Asian call = {call}");
-    assert!(put.price > 0.0, "Asian put = {put}");
+    assert!(call.mean > 0.0, "Asian call = {call}");
+    assert!(put.mean > 0.0, "Asian put = {put}");
   }
 
   /// Table 9: Barrier knock-out ≤ vanilla.
@@ -420,7 +408,7 @@ mod tests {
     println!("  DO call:   {barrier}  (paper: 16.5518 ± 0.1749)");
     println!("  EU call:   {eu}");
     assert!(
-      barrier.price <= eu.price + 5.0 * (eu.std_error + barrier.std_error),
+      barrier.mean <= eu.mean + 5.0 * (eu.std_err + barrier.std_err),
       "Barrier {barrier} ≤ European {eu}"
     );
   }
@@ -441,10 +429,10 @@ mod tests {
     println!("  American: {am}");
     println!("  European: {eu}");
     assert!(
-      am.price >= eu.price * 0.90,
+      am.mean >= eu.mean * 0.90,
       "American put {am} should be ≥ European put {eu}"
     );
-    assert!(am.price > 0.0, "American put positive: {am}");
+    assert!(am.mean > 0.0, "American put positive: {am}");
   }
 
   /// φ(0) = 1, φ(-i) = exp((r-q)T).

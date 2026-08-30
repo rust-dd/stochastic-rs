@@ -60,7 +60,6 @@ pub use bsm::BSMPricer;
 pub use cgmysv::CgmysvModel;
 pub use cgmysv::CgmysvParams;
 pub use cgmysv::CgmysvPricer;
-pub use cgmysv::McResult;
 pub use chooser::ComplexChooserPricer;
 pub use chooser::ForwardStartPricer;
 pub use chooser::SimpleChooserPricer;
