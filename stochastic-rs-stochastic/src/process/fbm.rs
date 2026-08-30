@@ -25,6 +25,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use crate::buffer::array1_from_fill;
 use crate::device::Backend;
 use crate::device::Cpu;
+use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -106,7 +107,7 @@ impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FbmSampler<'s, T, S, B>
@@ -132,7 +133,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   /// [`Fgn::sample_par`](crate::noise::fgn::Fgn::sample_par) on those two
   /// backends (`Cpu`: bit-identical; `Accelerate`: thread-count-independent
   /// seed consumption, but not bit-identical — see
-  /// [`Backend`](crate::device::Backend)'s doc), with one added wrinkle this
+  /// [`FgnBackend`](crate::device::FgnBackend)'s doc), with one added wrinkle this
   /// override alone has to get right: the embedded `self.fgn` is always
   /// [`Unseeded`] (never consulted for randomness — see this type's own
   /// doc), so the batch is driven by `self.seed` passed in explicitly here,
@@ -145,9 +146,9 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   /// **On GPU backends (`CudaNative`/`CubeCl`/`MetalNative`), this fix does
   /// not reach — `Fbm::sample_par` remains seed-blind there, unlike bare
   /// [`Fgn`](crate::noise::fgn::Fgn) on the same backends.** `self.seed` is
-  /// still passed to `noise_batch`, but the GPU `Backend::generate_batch`
+  /// still passed to `noise_batch`, but the GPU `FgnBackend::generate_batch`
   /// impls ignore that parameter entirely and read `fgn.seed` internally
-  /// instead (see [`Backend`](crate::device::Backend)'s doc) — for bare
+  /// instead (see [`FgnBackend`](crate::device::FgnBackend)'s doc) — for bare
   /// `Fgn`, `fgn` *is* `self`, so `fgn.seed` happens to be the real seed
   /// anyway; for `Fbm`, `fgn` is the permanently-`Unseeded` embedded field,
   /// so a `Deterministic`-seeded `Fbm` on a GPU backend draws fresh
@@ -155,7 +156,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fbm<T, S, B> {
   /// merely "untested across runs" like the GPU backends' documented
   /// caveat for other types, but zero dependence on the pinned seed at
   /// all. Not fixed here: doing so would require either widening what
-  /// `Backend::generate_batch`'s GPU impls read, or giving `Fbm` its own
+  /// `FgnBackend::generate_batch`'s GPU impls read, or giving `Fbm` its own
   /// GPU-specific noise path, both larger changes than this fix's scope.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     self
@@ -183,7 +184,7 @@ pub struct FbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   normal: SimdNormal<T>,
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> FbmSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> FbmSampler<'_, T, S, B> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -205,7 +206,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> FbmSampler<'_, T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FbmSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for FbmSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

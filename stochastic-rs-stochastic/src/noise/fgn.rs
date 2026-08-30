@@ -26,6 +26,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Backend;
+use crate::device::FgnBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -48,7 +49,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fgn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FgnSampler<'s, T, S, B>
@@ -74,14 +75,14 @@ impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fgn<T, S, B> {
   ///
   /// **Reproducibility.** On [`Cpu`](crate::device::Cpu): same seed + same
   /// `m` ⇒ bit-identical output, on any machine and under any rayon
-  /// thread-pool size — `Backend::generate_batch` derives every basis it
+  /// thread-pool size — `FgnBackend::generate_batch` derives every basis it
   /// needs sequentially, on the calling thread, before any parallel work
   /// starts. The `accelerate` feature's `Accelerate` backend gets the
   /// identical seed-consumption fix but **not** bit-identical output —
   /// `vDSP_fft_zip`'s own arithmetic is not bit-stable across otherwise-
-  /// identical calls (measured; see [`Backend`](crate::device::Backend)'s
+  /// identical calls (measured; see [`FgnBackend`](crate::device::FgnBackend)'s
   /// doc). GPU backends are excluded from this guarantee entirely; see
-  /// [`Backend`](crate::device::Backend)'s doc for the full per-backend
+  /// [`FgnBackend`](crate::device::FgnBackend)'s doc for the full per-backend
   /// table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     B::generate_batch(self, m, &self.seed)
@@ -97,7 +98,7 @@ pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
   normal: SimdNormal<T>,
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FgnSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for FgnSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

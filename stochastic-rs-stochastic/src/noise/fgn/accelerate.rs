@@ -22,7 +22,7 @@
 //! independent (same mechanism as [`Cpu`](crate::device::Cpu)), but
 //! `vDSP_fft_zip`'s own floating-point output is not bit-stable across
 //! otherwise-identical calls — measured (see
-//! [`Backend`](crate::device::Backend)'s doc and
+//! [`FgnBackend`](crate::device::FgnBackend)'s doc and
 //! `tests/deterministic_parallelism_accelerate.rs`). Do not rely on this
 //! backend for bit-exact reproducibility.
 use std::any::TypeId;
@@ -201,7 +201,7 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// Samples `m` paths in one vDSP batch using an external `seed`, generic
   /// over the caller's own seed strategy rather than `self.seed` — this is
-  /// what lets [`Backend::generate_batch`](crate::device::Backend::generate_batch)
+  /// what lets [`FgnBackend::generate_batch`](crate::device::FgnBackend::generate_batch)
   /// drive the CPU-equivalent chunked, thread-count-independent path (see
   /// `device.rs`'s `Accelerate` impl) instead of racing every chunk on the
   /// same `self.seed` atomic inside the parallel region.

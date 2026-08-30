@@ -87,7 +87,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// ## Backend selection
 ///
 /// Re-type a process to a compile-time sampling backend with the turbofish
-/// `process.on::<B>()` where `B: `[`Backend`](crate::device::Backend) (e.g.
+/// `process.on::<B>()` where `B: `[`FgnBackend`](crate::device::FgnBackend) (e.g.
 /// `process.on::<CudaNative>()`); the backend marker propagates to the
 /// process's noise source with no runtime branch. Only the fractional family
 /// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
@@ -198,7 +198,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// sweep ran under induced full-core load (worst observed relative
 /// difference `2.08e-3`); the `Cpu` backend, swept under the identical
 /// induced load, stayed bit-exact in all 400 — see
-/// [`Backend`](crate::device::Backend)'s own doc for the full per-backend
+/// [`FgnBackend`](crate::device::FgnBackend)'s own doc for the full per-backend
 /// table and `tests/deterministic_parallelism_accelerate.rs` for the
 /// measurement. GPU backends (`CudaNative`/`CubeCl`/`MetalNative`) are
 /// excluded from this guarantee entirely, deliberately: each draws one

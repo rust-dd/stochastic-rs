@@ -13,8 +13,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
-use crate::device::Backend;
 use crate::device::Cpu;
+use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -68,7 +68,7 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fou<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fou<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FouSampler<'s, T, S, B>
@@ -103,7 +103,7 @@ pub struct FouSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> FouSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> FouSampler<'_, T, S, B> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -122,7 +122,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> FouSampler<'_, T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for FouSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for FouSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

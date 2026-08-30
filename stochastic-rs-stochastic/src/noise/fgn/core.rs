@@ -17,6 +17,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Backend;
 use crate::device::Cpu;
+use crate::device::FgnBackend;
 use crate::traits::FloatExt;
 
 #[derive(Clone)]
@@ -170,7 +171,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   }
 
   /// Test-only convenience: `sample_cpu_impl(&self.seed)`, identical to what
-  /// `ProcessExt::sample()` does for the `Cpu` backend. `Backend::generate_batch`
+  /// `ProcessExt::sample()` does for the `Cpu` backend. `FgnBackend::generate_batch`
   /// used to call this once per path; it now builds one `SimdNormal` per
   /// chunk and calls `fill_cpu` directly (see `device.rs`'s `Cpu` impl), so
   /// this has no production caller left — kept `#[cfg(test)]` for the
@@ -285,7 +286,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
 
-impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> Fgn<T, S, B> {
   /// One fGN increment vector on backend `B`. The host-side `seed` drives the
   /// CPU path only; GPU backends use the fGN's internal RNG.
   pub(crate) fn noise<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
@@ -296,7 +297,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> Fgn<T, S, B> {
   /// is external to `self` so a wrapper type (e.g. [`Fbm`](crate::process::fbm::Fbm),
   /// whose embedded `fgn` is always [`Unseeded`]) can drive the batch from
   /// its *own* real seed instead of `self.seed` — see
-  /// [`Backend::generate_batch`]'s doc for which backends actually consult it.
+  /// [`FgnBackend::generate_batch`]'s doc for which backends actually consult it.
   pub(crate) fn noise_batch<S2: SeedExt>(&self, m: usize, seed: &S2) -> Vec<Array1<T>> {
     B::generate_batch(self, m, seed)
   }

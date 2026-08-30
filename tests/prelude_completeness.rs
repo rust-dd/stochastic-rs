@@ -64,6 +64,7 @@ fn all_twenty_four_documented_prelude_items_resolve() {
 mod prelude_excluded_traits_stay_hub_reachable {
   #[cfg(feature = "python")]
   use stochastic_rs::traits::CallableDist;
+  use stochastic_rs::traits::FgnBackend;
   use stochastic_rs::traits::GreeksExt;
   use stochastic_rs::traits::Instrument;
   use stochastic_rs::traits::InstrumentExt;

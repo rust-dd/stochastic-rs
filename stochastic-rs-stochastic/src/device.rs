@@ -44,12 +44,35 @@ pub struct MetalNative;
 #[derive(Clone, Copy)]
 pub struct Accelerate;
 
-/// A compile-time fGN sampling backend. Implemented by the marker types in this
-/// module; `Fgn<T, S, B>` dispatches to `B` with zero runtime branching.
+/// A compile-time device marker. Implemented by every marker type in this
+/// module; a process parameterised by `B: Backend` monomorphises to that
+/// device with zero runtime branching.
+///
+/// The trait itself carries **no algorithm** — what a device can actually
+/// compute is expressed by capability subtraits ([`FgnBackend`] is the first;
+/// a future accelerated path engine adds its own without touching this
+/// trait or any implementor). Bounding on `Backend` says "this type is
+/// device-parameterised"; bounding on a capability says what the device
+/// must know how to do.
 ///
 /// The `Send + Sync` supertraits let a backend-parameterised process satisfy
 /// the `ProcessExt: Send + Sync` bound and be shared across rayon worker
 /// threads — every marker is a zero-sized unit struct, so this is free.
+pub trait Backend: Sized + Send + Sync {}
+
+impl Backend for Cpu {}
+#[cfg(feature = "cuda-native")]
+impl Backend for CudaNative {}
+#[cfg(feature = "gpu")]
+impl Backend for CubeCl {}
+#[cfg(feature = "metal")]
+impl Backend for MetalNative {}
+#[cfg(feature = "accelerate")]
+impl Backend for Accelerate {}
+
+/// The fGN sampling capability of a [`Backend`]: circulant-embedding
+/// fractional Gaussian noise, the one algorithm every device implements
+/// today. `Fgn<T, S, B>` dispatches to `B` through this trait.
 ///
 /// ## Reproducibility per backend
 ///
@@ -68,7 +91,7 @@ pub struct Accelerate;
 /// covers seed consumption only, not vDSP's own arithmetic); the GPU backends
 /// ignore it (they seed from `fgn.seed` instead, once per batch call) exactly
 /// as documented per-method below.
-pub trait Backend: Sized + Send + Sync {
+pub trait FgnBackend: Backend {
   /// One fGN increment vector. The host-side `seed` drives the CPU/Accelerate
   /// path only; GPU backends use the fGN's internal RNG (`fgn.seed`) and
   /// ignore this parameter — see the trait doc's reproducibility table.
@@ -99,7 +122,7 @@ pub trait Backend: Sized + Send + Sync {
   }
 }
 
-impl Backend for Cpu {
+impl FgnBackend for Cpu {
   fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
     fgn.sample_cpu_impl(seed)
   }
@@ -147,7 +170,7 @@ impl Backend for Cpu {
   }
 }
 
-/// Generates a [`Backend`] impl for a GPU marker whose `$sampler` returns an
+/// Generates an [`FgnBackend`] impl for a GPU marker whose `$sampler` returns an
 /// `Array2<T>` of `m` paths. Single-path `generate` takes the first row; the
 /// host-side seed is unused (GPU backends carry their own RNG, seeded from
 /// `fgn.seed` once per call — see the trait doc's reproducibility table).
@@ -155,7 +178,7 @@ impl Backend for Cpu {
 macro_rules! gpu_backend {
   ($feat:literal, $marker:ident => $sampler:ident) => {
     #[cfg(feature = $feat)]
-    impl Backend for $marker {
+    impl FgnBackend for $marker {
       fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
         fgn: &Fgn<T, S, Self>,
         _seed: &S2,
@@ -199,7 +222,7 @@ gpu_backend!("metal", MetalNative => sample_metal_impl);
 /// wall-clock throughput once `chunk_count(m)` meets or exceeds the core
 /// count (see `MAX_CHUNKS`'s doc).
 #[cfg(feature = "accelerate")]
-impl Backend for Accelerate {
+impl FgnBackend for Accelerate {
   fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
     fgn
       .sample_accelerate_impl(1, seed)
@@ -245,5 +268,14 @@ mod tests {
   fn cpu_marker_is_a_backend() {
     fn assert_backend<B: Backend>() {}
     assert_backend::<Cpu>();
+  }
+
+  /// The marker trait alone must stay algorithm-free: this compiles because
+  /// `Cpu` has the fGN capability, and a future device that lacks it can
+  /// still be a [`Backend`] for the capabilities it does have.
+  #[test]
+  fn cpu_marker_has_the_fgn_capability() {
+    fn assert_fgn<B: FgnBackend>() {}
+    assert_fgn::<Cpu>();
   }
 }

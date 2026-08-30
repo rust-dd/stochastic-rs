@@ -254,7 +254,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
       /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-      pub fn on<B2: $crate::device::Backend>(self) -> $ty<$($targ),+, B2> {
+      pub fn on<B2: $crate::device::FgnBackend>(self) -> $ty<$($targ),+, B2> {
         $ty {
           $($field: self.$field,)*
           fgn: self.fgn.on::<B2>(),
@@ -268,7 +268,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
       /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-      pub fn on<B2: $crate::device::Backend>(self) -> $ty<$($targ),+, B2> {
+      pub fn on<B2: $crate::device::FgnBackend>(self) -> $ty<$($targ),+, B2> {
         $ty {
           $($field: self.$field,)*
           _backend: ::std::marker::PhantomData,

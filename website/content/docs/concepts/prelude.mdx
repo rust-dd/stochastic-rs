@@ -121,6 +121,9 @@ bivariate copulas.
   The five analytic pricers that aggregate Greeks do it through an inherent
   query-taking method they could not put behind a no-argument trait. Reach
   via `traits::*`.
+- `FgnBackend` — the fGN-sampling capability subtrait of `Backend`. The
+  prelude's `Backend` is the bare device marker; the capability is named
+  only in generic code over backends. Reach via `traits::*`.
 - `Instrument` / `InstrumentExt` / `PricingEngine` / `PricingResult` — the
   cross-engine comparison harness: two instruments and two engines (three
   engine×instrument pairings) that exist to validate models against each

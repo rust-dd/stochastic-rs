@@ -57,6 +57,7 @@ pub use stochastic_rs_stats::mle::DiffusionModel;
 pub use stochastic_rs_stats::traits::HypothesisTest;
 pub use stochastic_rs_stochastic::device::Backend;
 pub use stochastic_rs_stochastic::device::Cpu;
+pub use stochastic_rs_stochastic::device::FgnBackend;
 pub use stochastic_rs_stochastic::traits::ComplexPathOutput;
 pub use stochastic_rs_stochastic::traits::CurveOutput;
 pub use stochastic_rs_stochastic::traits::MultiDimensional;

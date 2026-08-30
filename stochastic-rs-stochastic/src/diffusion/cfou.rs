@@ -21,8 +21,8 @@ use num_complex::Complex;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use crate::device::Backend;
 use crate::device::Cpu;
+use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -88,7 +88,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed } via fgn);
 
-impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Cfou<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Cfou<T, S, B> {
   type Output = Array1<Complex<T>>;
   type Sampler<'s>
     = CfouSampler<'s, T, S, B>
@@ -126,7 +126,7 @@ pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> CfouSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> CfouSampler<'_, T, S, B> {
   fn fill_path(&mut self, out: &mut Array1<Complex<T>>) {
     if out.is_empty() {
       return;
@@ -149,7 +149,7 @@ impl<T: FloatExt, S: SeedExt, B: Backend> CfouSampler<'_, T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: Backend> PathSampler<T> for CfouSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for CfouSampler<'_, T, S, B> {
   type Output = Array1<Complex<T>>;
 
   fn sample_into(&mut self, out: &mut Array1<Complex<T>>) {

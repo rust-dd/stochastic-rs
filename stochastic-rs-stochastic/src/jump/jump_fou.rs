@@ -24,8 +24,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
-use crate::device::Backend;
 use crate::device::Cpu;
+use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
@@ -168,7 +168,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B: Backend> ProcessExt<T> for JumpFou<T, D, S, B>
+impl<T, D, S: SeedExt, B: FgnBackend> ProcessExt<T> for JumpFou<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -213,7 +213,7 @@ pub struct JumpFouSampler<'a, T, D, S: SeedExt, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: Backend,
+  B: FgnBackend,
 {
   n: usize,
   theta: T,
@@ -232,7 +232,7 @@ impl<T, D, S: SeedExt, B> JumpFouSampler<'_, T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: Backend,
+  B: FgnBackend,
 {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
@@ -266,7 +266,7 @@ impl<T, D, S: SeedExt, B> PathSampler<T> for JumpFouSampler<'_, T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: Backend,
+  B: FgnBackend,
 {
   type Output = Array1<T>;
 

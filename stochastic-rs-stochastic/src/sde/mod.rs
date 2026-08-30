@@ -190,8 +190,8 @@ use rand::Rng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::noise::fgn::Fgn;
-use crate::device::Backend;
 use crate::device::Cpu;
+use crate::device::FgnBackend;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -273,7 +273,7 @@ where
 backend_switch!([T: FloatExt, F, G] Sde<T, F, G> { drift, diffusion, noise, hursts } via phantom
   where F: Fn(&Array1<T>, T) -> Array1<T>, G: Fn(&Array1<T>, T) -> Array2<T>);
 
-impl<T: FloatExt, F, G, B: Backend> Sde<T, F, G, B>
+impl<T: FloatExt, F, G, B: FgnBackend> Sde<T, F, G, B>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
