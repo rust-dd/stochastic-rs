@@ -6,11 +6,9 @@
 //!
 //! **Status:** experimental, gated behind the `yahoo` feature.
 //!
-//! As of v2.3.0 Tier 1 the public surface exposes both panicking (`new`,
-//! `default`, `get_*`) and falliable (`try_default`, `try_get_*`) variants.
-//! Production callers should prefer the `try_*` variants and supply their
-//! own retry / backoff layer. The panicking variants are kept for backward
-//! compatibility but will be removed in v3.0.
+//! The public surface is falliable-only (`try_default`, `try_get_*`):
+//! network IO, missing symbols and Yahoo schema mismatches surface as
+//! `Err`, and callers supply their own retry / backoff layer.
 //!
 //! Live `#[test]`s that hit AAPL are marked `#[ignore]` so the default
 //! `cargo test --features yahoo` does not perform network IO; opt in with
@@ -73,20 +71,8 @@ impl Display for ReturnType {
   }
 }
 
-impl<'a> Default for Yahoo<'a> {
-  /// Construct with a default [`YahooConnector`].
-  ///
-  /// Panics if connector init fails (TLS / DNS / reqwest builder). Use
-  /// [`Yahoo::try_default`] to surface the failure as `Err`.
-  fn default() -> Self {
-    Self::try_default().expect(
-      "Yahoo::default: YahooConnector init failed — call try_default to handle this gracefully",
-    )
-  }
-}
-
 impl<'a> Yahoo<'a> {
-  /// Falliable variant of [`Self::default`]. Returns an error if
+  /// Construct with a default [`YahooConnector`]. Returns an error if
   /// [`YahooConnector::new`] fails (TLS / DNS / reqwest builder).
   pub fn try_default() -> anyhow::Result<Self> {
     let provider =
@@ -118,17 +104,9 @@ impl<'a> Yahoo<'a> {
     self.end_date = Some(end_date);
   }
 
-  /// Get price history for symbol.
-  ///
-  /// Panics on network IO failure, missing symbol, or Yahoo schema mismatch.
-  /// Use [`Self::try_get_price_history`] to handle these gracefully.
-  pub fn get_price_history(&mut self) {
-    self
-      .try_get_price_history()
-      .expect("get_price_history: network or schema failure — call try_get_price_history to handle gracefully")
-  }
-
-  /// Falliable variant of [`Self::get_price_history`].
+  /// Fetch the price history for the configured symbol into
+  /// `price_history`. Errors on network IO failure, a missing symbol, or a
+  /// Yahoo schema mismatch.
   pub fn try_get_price_history(&mut self) -> anyhow::Result<()> {
     let symbol = self.symbol.as_deref().ok_or_else(|| {
       anyhow::anyhow!("symbol must be set via set_symbol before fetching history")
@@ -162,17 +140,9 @@ impl<'a> Yahoo<'a> {
     Ok(())
   }
 
-  /// Get options for symbol.
-  ///
-  /// Panics on network IO failure, missing symbol, or Yahoo schema mismatch.
-  /// Use [`Self::try_get_options_chain`] to handle these gracefully.
-  pub fn get_options_chain(&mut self, option_type: &OptionType) {
-    self
-      .try_get_options_chain(option_type)
-      .expect("get_options_chain: network or schema failure — call try_get_options_chain to handle gracefully")
-  }
-
-  /// Falliable variant of [`Self::get_options_chain`].
+  /// Fetch the options chain for the configured symbol into `options` and
+  /// `options_chain`. Errors on network IO failure, a missing symbol, or a
+  /// Yahoo schema mismatch.
   pub fn try_get_options_chain(&mut self, option_type: &OptionType) -> anyhow::Result<()> {
     let symbol = self.symbol.as_deref().ok_or_else(|| {
       anyhow::anyhow!("symbol must be set via set_symbol before fetching options")
@@ -217,18 +187,9 @@ impl<'a> Yahoo<'a> {
     Ok(())
   }
 
-  /// Get returns for symbol.
-  ///
-  /// Panics on network IO failure (when price_history is missing and a fetch
-  /// is triggered) or polars build failure. Use [`Self::try_get_returns`] to
-  /// handle these gracefully.
-  pub fn get_returns(&mut self, r#type: ReturnType) {
-    self
-      .try_get_returns(r#type)
-      .expect("get_returns: network or polars failure — call try_get_returns to handle gracefully")
-  }
-
-  /// Falliable variant of [`Self::get_returns`].
+  /// Compute returns of the requested type from `price_history` (fetching
+  /// it first when missing) into `returns`. Errors on network IO failure or
+  /// a polars build failure.
   pub fn try_get_returns(&mut self, r#type: ReturnType) -> anyhow::Result<()> {
     if self.price_history.is_none() {
       self.try_get_price_history()?;
@@ -309,38 +270,36 @@ mod tests {
   #[test]
   #[ignore = "live network test — requires Yahoo Finance reachability"]
   fn test_yahoo_get_price_history() {
-    let mut yahoo = Yahoo::default();
+    let mut yahoo = Yahoo::try_default().expect("connector init");
     yahoo.set_symbol("AAPL");
-    yahoo.get_price_history();
+    yahoo.try_get_price_history().expect("price history fetch");
     assert!(yahoo.price_history.is_some());
   }
 
   #[test]
   #[ignore = "live network test — requires Yahoo Finance reachability"]
   fn test_yahoo_get_options_chain() {
-    let mut yahoo = Yahoo::default();
+    let mut yahoo = Yahoo::try_default().expect("connector init");
     yahoo.set_symbol("AAPL");
-    yahoo.get_options_chain(&OptionType::Call);
+    yahoo
+      .try_get_options_chain(&OptionType::Call)
+      .expect("options chain fetch");
     assert!(yahoo.options.is_some());
   }
 
   #[test]
   #[ignore = "live network test — requires Yahoo Finance reachability"]
   fn test_yahoo_get_returns() {
-    let mut yahoo = Yahoo::default();
-    yahoo.set_symbol("AAPL");
-    yahoo.get_returns(ReturnType::Arithmetic);
-    assert!(yahoo.returns.is_some());
-
-    let mut yahoo = Yahoo::default();
-    yahoo.set_symbol("AAPL");
-    yahoo.get_returns(ReturnType::Logarithmic);
-    assert!(yahoo.returns.is_some());
-
-    let mut yahoo = Yahoo::default();
-    yahoo.set_symbol("AAPL");
-    yahoo.get_returns(ReturnType::Absolute);
-    assert!(yahoo.returns.is_some());
+    for r#type in [
+      ReturnType::Arithmetic,
+      ReturnType::Logarithmic,
+      ReturnType::Absolute,
+    ] {
+      let mut yahoo = Yahoo::try_default().expect("connector init");
+      yahoo.set_symbol("AAPL");
+      yahoo.try_get_returns(r#type).expect("returns fetch");
+      assert!(yahoo.returns.is_some());
+    }
   }
 
   /// Offline test of the falliable Result API — verifies error propagation
