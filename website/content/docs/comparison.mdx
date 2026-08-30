@@ -173,7 +173,7 @@ The concept mapping is closer than the syntax suggests:
 | QuantLib | stochastic-rs |
 |---|---|
 | `StochasticProcess` | `ProcessExt<T>` |
-| `PricingEngine` + `Instrument` | `PricingEngine` + `Instrument`, or `ModelPricer` |
+| `PricingEngine` + `Instrument` | `ModelPricer` or `.valuation(curve)`; a small `PricingEngine` + `Instrument` comparison harness also exists |
 | `Handle<Quote>` / observers | `market::handle` / `market::observable` |
 | `DayCounter` | `DayCountConvention` |
 | `Calendar` | `Calendar` + `HolidayCalendar` |

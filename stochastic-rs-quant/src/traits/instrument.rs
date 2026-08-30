@@ -1,6 +1,16 @@
-//! Instrument / PricingEngine decouple — the architectural split of a
-//! payoff (`Instrument`) from the model+market+method that values it
+//! Instrument / PricingEngine decouple — the split of a payoff
+//! (`Instrument`) from the model+market+method that values it
 //! (`PricingEngine`).
+//!
+//! The pair is deliberately small: two instruments
+//! ([`crate::instruments::equity::EuropeanOption`],
+//! [`crate::instruments::equity::DigitalOption`]) and two engines, three
+//! engine×instrument pairings in all. Its role is cross-engine validation —
+//! price the same contract under Black-Scholes and under Heston and compare
+//! — not a third pricing layer: the crate's two load-bearing layers are
+//! [`crate::traits::ModelPricer`] (model struct + spot/strike query) and the
+//! curve-valued instruments. The four traits here are reachable via
+//! `traits::*` and are deliberately not in the umbrella prelude.
 //!
 //! ```
 //! use stochastic_rs_quant::OptionType;

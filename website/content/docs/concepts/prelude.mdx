@@ -1,6 +1,6 @@
 ---
 title: Prelude
-description: stochastic_rs::prelude — 28 items in seven groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+description: stochastic_rs::prelude — 24 items in six groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
 category: concept
 since: 2.0.0
 status: stable
@@ -12,12 +12,12 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **28 items in 7 groups** — re-derive with
+Brings **24 items in 6 groups** — re-derive with
 `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
 `src/lib.rs` any time an item is added or removed; this count has drifted
 before (it read "20 items" for several releases after `VolterraKernel`
 joined the fifth group without a sixth being added for `Backend`/`Cpu`/
-`PathSampler`). The seven lists below are name groupings for reference, not
+`PathSampler`). The six lists below are name groupings for reference, not
 standalone Rust statements — see
 [Importing concrete types](#importing-concrete-types) for a compiled,
 runnable example.
@@ -59,18 +59,6 @@ Calibrator, CalibrationResult, ToModel
 
 `ToModel` is the bridge that lets a `Calibrator` produce a concrete
 pricer instance via the associated type — no boxed-trait gymnastics.
-
-## Instrument / engine (4)
-
-```
-Instrument, InstrumentExt,
-PricingEngine, PricingResult
-```
-
-The QuantLib-style decoupling: an `Instrument` describes the payoff and
-contract details, a `PricingEngine` does the actual numerics. Two engines
-ship today: `AnalyticBSEngine`, `AnalyticHestonEngine`. New engines
-implement `PricingEngine` against the relevant `Instrument` types.
 
 ## Option types (3)
 
@@ -133,6 +121,14 @@ bivariate copulas.
   The five analytic pricers that aggregate Greeks do it through an inherent
   query-taking method they could not put behind a no-argument trait. Reach
   via `traits::*`.
+- `Instrument` / `InstrumentExt` / `PricingEngine` / `PricingResult` — the
+  cross-engine comparison harness: two instruments and two engines (three
+  engine×instrument pairings) that exist to validate models against each
+  other on the same contract.
+  That is a useful tool, not a third pricing layer — the crate's two layers
+  are `ModelPricer` (spot/strike query) and the instruments'
+  `.valuation(curve)` — and keeping the four in a default import made the
+  harness look like the architecture. Reach via `traits::*`.
 
 These are intentionally left out so the prelude is feature-flag-free —
 `use stochastic_rs::prelude::*;` works on every supported feature

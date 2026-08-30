@@ -36,8 +36,9 @@
 //! - [`curves`] — discount curve construction (linear, log-linear,
 //!   cubic-spline, monotone-convex), bootstrapping.
 //! - [`instruments`] — deposit / FRA / future / swap / swaption / bond /
-//!   inflation linker / FX forward / TRS via [`traits::Instrument`] +
-//!   [`traits::PricingEngine`].
+//!   inflation linker / FX forward / TRS, valued off the shared curve layer.
+//!   The small [`traits::Instrument`] + [`traits::PricingEngine`] pair is a
+//!   cross-engine comparison harness for the two equity vanilla types.
 //! - [`cashflows`] — floating-rate periods, schedules, fixing-aware coupon
 //!   legs.
 //! - [`calendar`] — day-count (ACT/360, 30/360, ...), business-day adjusters,
@@ -128,8 +129,9 @@ pub mod curves;
 pub mod bonds;
 
 /// Market-quoted instruments: deposit, FRA, future, swap, swaption, bond,
-/// inflation linker, FX forward, total-return swap. Each is expressed via
-/// `Instrument` + `PricingEngine` for QuantLib-style decoupling.
+/// inflation linker, FX forward, total-return swap — valued off the curve
+/// layer. `EuropeanOption` and `DigitalOption` additionally plug into the
+/// `Instrument` + `PricingEngine` cross-engine harness.
 pub mod instruments;
 
 /// Cash-flow primitives: floating-rate periods, schedules, day-count

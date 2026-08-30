@@ -75,17 +75,16 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **28** items in 7 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
+Brings **24** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
 - **Trait core**: `RealExt`, `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
 - **Pricing**: `ModelPricer`
 - **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
-- **Instrument / engine**: `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult`
 - **Option types**: `Moneyness`, `OptionStyle`, `OptionType`
 - **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`
 - **Estimation**: `HurstEstimator`, `FractalDimEstimator`, `HypothesisTest`, `DiffusionModel`, `TailDependence`
 
-`MultivariateExt` (openblas-only) and `CallableDist` (python-only) are reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have).
+`MultivariateExt` (openblas-only) and `CallableDist` (python-only) are reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have). The `Instrument`/`InstrumentExt`/`PricingEngine`/`PricingResult` four left the prelude in 3.0: two instruments and two engines (three engine×instrument pairings) are a cross-engine comparison harness for validating models on the same European vanilla, not a third pricing layer — the crate's two layers are `ModelPricer` (spot/strike query) and the instruments' `.valuation(curve)`. All four stay hub-reachable via `traits::*`.
 
 Hub membership is **independent of prelude membership**: `src/traits.rs` mirrors every trait each sub-crate exports from its own `traits` module, prelude-excluded ones included. The quant half is derivable, and `tests/prelude_completeness.rs` turns a dropped re-export into a compile error:
 

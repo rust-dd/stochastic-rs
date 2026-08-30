@@ -28,15 +28,11 @@ use stochastic_rs::prelude::FloatExt;
 use stochastic_rs::prelude::FractalDimEstimator;
 use stochastic_rs::prelude::HurstEstimator;
 use stochastic_rs::prelude::HypothesisTest;
-use stochastic_rs::prelude::Instrument;
-use stochastic_rs::prelude::InstrumentExt;
 use stochastic_rs::prelude::ModelPricer;
 use stochastic_rs::prelude::Moneyness;
 use stochastic_rs::prelude::OptionStyle;
 use stochastic_rs::prelude::OptionType;
 use stochastic_rs::prelude::PathSampler;
-use stochastic_rs::prelude::PricingEngine;
-use stochastic_rs::prelude::PricingResult;
 use stochastic_rs::prelude::ProcessExt;
 use stochastic_rs::prelude::RealExt;
 use stochastic_rs::prelude::SimdFloatExt;
@@ -46,14 +42,15 @@ use stochastic_rs::prelude::ToModel;
 use stochastic_rs::prelude::VolterraKernel;
 
 #[test]
-fn all_twenty_eight_documented_prelude_items_resolve() {
+fn all_twenty_four_documented_prelude_items_resolve() {
   // The import above is the assertion: if it compiles, every name CLAUDE.md
   // and prelude.mdx list is still a real prelude export. Nothing to run.
 }
 
 /// The other half of the documented contract: a trait kept **out** of the
 /// prelude is still reachable via `stochastic_rs::traits::*`. CLAUDE.md says
-/// that for `MultivariateExt`, `CallableDist` and `GreeksExt`,
+/// that for `MultivariateExt`, `CallableDist`, `GreeksExt` and the
+/// `Instrument`/`PricingEngine` four,
 /// and `prelude.mdx`'s "What is *not* in the prelude (and why)" section
 /// repeats it — but nothing forced the hub to keep the promise, and
 /// `ShortRatePricer` (half of the headline `ModelPricer`/`ShortRatePricer`
@@ -68,8 +65,12 @@ mod prelude_excluded_traits_stay_hub_reachable {
   #[cfg(feature = "python")]
   use stochastic_rs::traits::CallableDist;
   use stochastic_rs::traits::GreeksExt;
+  use stochastic_rs::traits::Instrument;
+  use stochastic_rs::traits::InstrumentExt;
   #[cfg(feature = "openblas")]
   use stochastic_rs::traits::MultivariateExt;
+  use stochastic_rs::traits::PricingEngine;
+  use stochastic_rs::traits::PricingResult;
   use stochastic_rs::traits::ShortRatePricer;
   use stochastic_rs::traits::ToShortRateModel;
   use stochastic_rs::traits::VanillaEuropeanCall;

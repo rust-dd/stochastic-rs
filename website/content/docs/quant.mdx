@@ -25,7 +25,7 @@ factor / strategy primitives.
 | **Yield curves**   | Bootstrapping (deposit / FRA / future / swap), Nelson-Siegel / Svensson, multi-curve (OIS vs SOFR), discount-curve interpolation (linear / log-linear / cubic / monotone-convex). |
 | **Bonds**          | Fixed-rate / floating-rate / inflation-linked / amortizing bonds. YTM / Macaulay / modified duration / convexity / Z-spread / OAS. Vasicek / CIR / Hull-White short-rate bond pricing. |
 | **Cashflows**      | Coupon, leg, engine, schedule builder. Day-count + business-day conventions.                               |
-| **Instruments**    | Option (vanilla / barrier / Asian / lookback / digital), bond, swap, equity. Plus the QuantLib-style `Instrument` / `PricingEngine` decoupling. |
+| **Instruments**    | Option (vanilla / barrier / Asian / lookback / digital), bond, swap, equity. Plus the `Instrument` / `PricingEngine` pair as a cross-engine comparison harness. |
 | **Portfolio**      | Covariance estimation (sample, Ledoit-Wolf, OAS), momentum, optimisers (mean-variance, MVO with constraints).                                                                                                              |
 | **Microstructure** | Almgren-Chriss optimal execution, Kyle (1985) strategic-trading equilibria, Bouchaud propagator (power-law / exponential / custom kernels), Roll / Corwin-Schultz spread estimators, full price-time priority order book.                                                                              |
 | **Factors**        | PCA, two-pass Fama-MacBeth, Ledoit-Wolf shrinkage.                                                          |
