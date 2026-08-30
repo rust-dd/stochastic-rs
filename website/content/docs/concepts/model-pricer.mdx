@@ -103,7 +103,9 @@ sit outside it deliberately:
 
   All eight follow the model/query split through inherent methods: each holds
   its volatilities and correlation and takes the spots, strike, rate, yields
-  and maturity per call. `pricer_registry.rs` records the state of each.
+  and maturity per call, and every Monte Carlo member returns an
+  `McEstimate` — the mean plus its standard error and `ci_95()` — rather
+  than a bare number. `pricer_registry.rs` records the state of each.
 
   `KirkSpreadPricer` is the one member whose methods carry a `spread_`
   prefix. Its query is five `f64`s, exactly the arity of the

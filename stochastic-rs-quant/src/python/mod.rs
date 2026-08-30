@@ -101,6 +101,7 @@ pub use pricing_path_dep::PyFixedLookbackPricer;
 pub use pricing_path_dep::PyFloatingLookbackPricer;
 pub use pricing_path_dep::PyKirkSpreadPricer;
 pub use pricing_path_dep::PyMCBarrierPricer;
+pub use pricing_path_dep::PyMcEstimate;
 pub use pricing_path_dep::PySimpleChooserPricer;
 pub use pricing_path_dep::PyVarianceSwapPricer;
 pub use risk::PyDrawdownStats;

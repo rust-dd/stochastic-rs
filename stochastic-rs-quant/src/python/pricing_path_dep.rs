@@ -423,6 +423,51 @@ impl PyDoubleBarrierPricer {
   }
 }
 
+/// Monte Carlo estimate: the mean, its standard error, and the sample
+/// count, with the 95% confidence interval derived on demand.
+#[pyclass(name = "McEstimate")]
+pub struct PyMcEstimate {
+  inner: stochastic_rs_stochastic::mc::McEstimate<f64>,
+}
+
+impl From<stochastic_rs_stochastic::mc::McEstimate<f64>> for PyMcEstimate {
+  fn from(inner: stochastic_rs_stochastic::mc::McEstimate<f64>) -> Self {
+    Self { inner }
+  }
+}
+
+#[pymethods]
+impl PyMcEstimate {
+  #[getter]
+  fn mean(&self) -> f64 {
+    self.inner.mean
+  }
+
+  #[getter]
+  fn std_err(&self) -> f64 {
+    self.inner.std_err
+  }
+
+  #[getter]
+  fn n_samples(&self) -> usize {
+    self.inner.n_samples
+  }
+
+  /// Symmetric confidence interval `[mean ± z * std_err]`.
+  #[pyo3(signature = (z = 1.96))]
+  fn confidence_interval(&self, z: f64) -> (f64, f64) {
+    self.inner.confidence_interval(z)
+  }
+
+  fn ci_95(&self) -> (f64, f64) {
+    self.inner.ci_95()
+  }
+
+  fn __repr__(&self) -> String {
+    format!("{}", self.inner)
+  }
+}
+
 #[pyclass(name = "MCBarrierPricer", unsendable)]
 pub struct PyMCBarrierPricer {
   inner: crate::pricing::barrier::MCBarrierPricer,
@@ -450,7 +495,7 @@ impl PyMCBarrierPricer {
     t: f64,
     barrier_type: &str,
     option_type: &str,
-  ) -> PyResult<f64> {
+  ) -> PyResult<PyMcEstimate> {
     use crate::pricing::barrier::BarrierType;
     let bt = match barrier_type.to_ascii_lowercase().as_str() {
       "up_in" | "ui" => BarrierType::UpAndIn,
@@ -464,9 +509,7 @@ impl PyMCBarrierPricer {
       }
     };
     let ot = parse_option_type(option_type)?;
-    // Interim: the Rust pricer now returns an McEstimate; the Python
-    // surface gains the full estimate object in the py-sync pass.
-    Ok(self.inner.price(s, k, h, r, sigma, t, bt, ot).mean)
+    Ok(self.inner.price(s, k, h, r, sigma, t, bt, ot).into())
   }
 }
 
