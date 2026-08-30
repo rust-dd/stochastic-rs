@@ -23,7 +23,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
-use crate::device::Backend;
 use crate::device::Cpu;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
