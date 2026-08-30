@@ -212,7 +212,9 @@ impl MargrabePricer {
 ///
 /// let model = McSpreadPricer::new(0.25, 0.20, 0.4, 20_000);
 /// let atm = model.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
-/// assert!(atm > 0.0);
+/// assert!(atm.mean > 0.0);
+/// assert!(atm.std_err > 0.0);
+/// println!("{atm}"); // e.g. "11.2 ± 0.05"
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct McSpreadPricer {
