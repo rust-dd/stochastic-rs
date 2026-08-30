@@ -1,6 +1,6 @@
 ---
 title: Sampling backends
-description: Compile-time GPU / accelerator backend selection for the fractional family via `.on::<B>()` — the `Backend` trait, its markers, and zero-cost dispatch.
+description: Compile-time GPU / accelerator backend selection for the fractional family via `.on::<B>()` — the `Backend` marker, the `FgnBackend` capability, and zero-cost dispatch.
 category: concept
 since: 2.4.0
 status: stable
@@ -41,7 +41,15 @@ let gpu = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
 `.on::<B>()` consumes the process and returns it re-typed to backend `B` — the
 fields are moved, nothing is copied, and the choice is resolved at compile time.
 
-## The `Backend` trait
+## The `Backend` marker and the `FgnBackend` capability
+
+`Backend` itself is a bare device marker — it carries no algorithm. What a
+device can compute is expressed by capability subtraits: `FgnBackend:
+Backend` is the fGN sampling capability, the one algorithm every marker
+implements today, and a future accelerated engine adds its own capability
+without touching the marker or any implementor. Bound on `Backend` to say
+"device-parameterised"; bound on `FgnBackend` when the code actually samples
+fractional noise.
 
 | Marker        | Feature                          | Backs onto                             | Hardware            |
 |---------------|----------------------------------|----------------------------------------|---------------------|
@@ -51,7 +59,8 @@ fields are moved, nothing is copied, and the choice is resolved at compile time.
 | `MetalNative` | `metal`                          | hand-written MSL via the `metal` crate | Apple GPU (f32)     |
 | `Accelerate`  | `accelerate`                     | Apple vDSP FFT (CPU), rayon batches    | macOS               |
 
-`Backend` and `Cpu` are re-exported at `stochastic_rs::traits`; the GPU markers
+`Backend`, `Cpu` and `FgnBackend` are re-exported at
+`stochastic_rs::traits`; the GPU markers
 live under `stochastic_rs::stochastic::device` and **only exist when their
 feature is compiled**. Selecting an unavailable backend is therefore a *compile
 error*, not a silent runtime fallback.
