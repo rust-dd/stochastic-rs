@@ -26,7 +26,6 @@ pub use crate::device::Backend;
 pub use crate::device::Cpu;
 pub use crate::traits::ProcessExt;
 
-pub mod aliases;
 pub mod autoregressive;
 pub mod buffer;
 pub mod correlation;
