@@ -950,7 +950,9 @@ fn is_sgx_holiday(date: NaiveDate) -> bool {
 mod tests {
 
   /// The lunar table ends at 2025; a query past it must be loud in debug
-  /// builds, not a silent under-report.
+  /// builds, not a silent under-report. `debug_assert!` is compiled out
+  /// under `--release`, so the guard test only exists where the guard does.
+  #[cfg(debug_assertions)]
   #[test]
   #[should_panic(expected = "outside its 2020-2025 table")]
   fn lunar_lookup_past_the_table_is_loud() {
