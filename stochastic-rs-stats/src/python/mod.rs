@@ -50,6 +50,7 @@ pub use normality::PyJarqueBera;
 pub use normality::PyShapiroFrancia;
 pub use realized::PyBNSJumpTest;
 pub use realized::PyBipowerVariation;
+pub use realized::PyEwmaVariance;
 pub use realized::PyHarRv;
 pub use realized::PyPreAveragedVariance;
 pub use realized::PyRealizedKernel;

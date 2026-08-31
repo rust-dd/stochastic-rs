@@ -58,6 +58,26 @@ print("annVol =", res.volatility)
 </Tab>
 </Tabs>
 
+### EWMA / RiskMetrics variance
+
+The exponentially weighted recursion $\hat\sigma_t^2 = \lambda\hat\sigma_{t-1}^2 + (1-\lambda)r_{t-1}^2$, seeded at $r_0^2$. `riskmetrics_variance` fixes the decay at the RiskMetrics daily $\lambda = 0.94$; `ewma_variance` takes any $\lambda \in (0,1)$. The result carries the full conditional-variance series, the one-step-ahead `forecast`, `lambda` and `nobs`.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_stats_ewma.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+# lambda_ defaults to the RiskMetrics daily 0.94
+res = srs.EwmaVariance(returns, lambda_=0.94)
+print("sigma2 series:", res.variance())
+print("1-step forecast:", res.forecast)
+```
+</Tab>
+</Tabs>
+
 ### ADF stationarity test
 
 Null hypothesis: unit root (non-stationary). `adf_test` lives under the

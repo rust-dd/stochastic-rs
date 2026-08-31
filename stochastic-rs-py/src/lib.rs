@@ -520,6 +520,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     use stochastic_rs_stats::python::PyADFTest;
     use stochastic_rs_stats::python::PyERSTest;
     use stochastic_rs_stats::python::PyEngleGranger;
+    use stochastic_rs_stats::python::PyEwmaVariance;
     use stochastic_rs_stats::python::PyGaussianHmm;
     use stochastic_rs_stats::python::PyGranger;
     use stochastic_rs_stats::python::PyHarRv;
@@ -532,6 +533,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPhillipsPerronTest>()?;
     m.add_class::<PyERSTest>()?;
     m.add_class::<PyLeybourneMcCabeTest>()?;
+    m.add_class::<PyEwmaVariance>()?;
     m.add_class::<PyHarRv>()?;
     m.add_class::<PyEngleGranger>()?;
     m.add_class::<PyJohansen>()?;

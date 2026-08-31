@@ -37,6 +37,7 @@
 //!   DOI: 10.1093/acprof:oso/9780199549498.003.0007
 
 pub mod bipower;
+pub mod ewma;
 pub mod har;
 pub mod kernel;
 pub mod pre_averaging;
@@ -49,6 +50,10 @@ pub use bipower::bns_jump_test;
 pub use bipower::medrv;
 pub use bipower::minrv;
 pub use bipower::tripower_quarticity;
+pub use ewma::EwmaVariance;
+pub use ewma::RISKMETRICS_DAILY_LAMBDA;
+pub use ewma::ewma_variance;
+pub use ewma::riskmetrics_variance;
 pub use har::HarFit;
 pub use har::HarRv;
 pub use har::har_features;

@@ -216,6 +216,45 @@ impl PyPreAveragedVariance {
   }
 }
 
+#[pyclass(name = "EwmaVariance", unsendable)]
+pub struct PyEwmaVariance {
+  inner: crate::realized::ewma::EwmaVariance,
+}
+
+#[pymethods]
+impl PyEwmaVariance {
+  /// EWMA (RiskMetrics) conditional variance of a return series;
+  /// `lambda_` defaults to the RiskMetrics daily decay 0.94.
+  #[new]
+  #[pyo3(signature = (returns, lambda_=0.94))]
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, lambda_: f64) -> Self {
+    Self {
+      inner: crate::realized::ewma::ewma_variance(returns.as_array(), lambda_),
+    }
+  }
+
+  /// Conditional variance series (same length as the input).
+  fn variance<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.variance.clone().into_pyarray(py)
+  }
+
+  #[getter]
+  fn forecast(&self) -> f64 {
+    self.inner.forecast
+  }
+
+  #[getter]
+  fn lambda_(&self) -> f64 {
+    self.inner.lambda
+  }
+
+  #[getter]
+  fn nobs(&self) -> usize {
+    self.inner.nobs
+  }
+}
+
 #[pyclass(name = "HarRv", unsendable)]
 pub struct PyHarRv {
   inner: crate::realized::har::HarRv,
