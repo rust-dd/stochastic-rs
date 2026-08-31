@@ -15,8 +15,8 @@ use crate::calibration::CalibrationHistory;
 /// Hkde least-squares calibrator using Levenberg-Marquardt.
 ///
 /// Source:
-/// - Levenberg (1944), https://doi.org/10.1090/qam/10666
-/// - Marquardt (1963), https://doi.org/10.1137/0111030
+/// - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
+/// - Marquardt (1963), <https://doi.org/10.1137/0111030>
 /// - Agazzotti et al. (2025), arXiv: 2502.13824
 #[derive(Clone)]
 pub struct HKDECalibrator {

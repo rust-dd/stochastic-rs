@@ -73,7 +73,7 @@ pub trait Calibrator {
   /// Returns `Ok(result)` on success and `Err(_)` if the optimiser failed
   /// before producing a usable [`Output`](Self::Output). A successful return
   /// does **not** guarantee convergence — inspect
-  /// [`CalibrationResult::converged`](CalibrationResult::converged) on the
+  /// [`CalibrationResult::converged`] on the
   /// `Ok` value.
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error>;
 }

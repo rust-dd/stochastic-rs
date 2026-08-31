@@ -75,8 +75,22 @@ jobs:
       # crate root, but nothing else in this workflow runs rustdoc — the doctest
       # gate does not exercise the lint, so 171 broken links once accumulated
       # unnoticed. This step is what makes the deny bite.
-      - name: cargo doc (intra-doc links)
+      - name: cargo doc (intra-doc links, deny warnings)
         run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  # metal + accelerate only compile on macOS, so no linux job can lint them;
+  # this is the one arm of the CI that runs on a mac. Check-only: the point
+  # is that the gated code keeps compiling, not to run the GPU.
+  check_macos_backends:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo check (metal + accelerate)
+        run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets
 
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for

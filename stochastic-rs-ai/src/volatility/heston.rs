@@ -6,8 +6,24 @@
 //! - Output (IV surface) standardization with train-set mean/std.
 //!
 //! Source:
-//! - https://github.com/amuguruza/NN-StochVol-Calibrations
+//! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
 //! - `Heston/NNHeston.ipynb`
+//!
+//! # Parameter ordering
+//!
+//! The 5-element input vector is, in order:
+//! `[v0, rho, sigma, theta, kappa]` — initial variance, spot-vol
+//! correlation, vol-of-vol, long-run variance, mean-reversion speed.
+//!
+//! Provenance: [`PARAM_LB`]/[`PARAM_UB`] are copied verbatim from the
+//! notebook's `lb`/`ub` arrays, whose index→name binding is implicit
+//! there too. The assignment above is the only coherent reading of the
+//! intervals — `[-0.95, -0.1]` can only be an equity correlation,
+//! `[1, 10]` only a mean-reversion speed, `[0.0001, 0.04]` a spot
+//! variance (1%–20% vol), `[0.01, 0.2]` a long-run variance, leaving
+//! `[0.01, 1.0]` as the vol-of-vol. A training-set generator must feed
+//! parameters in this order; nothing in the network itself can detect a
+//! permuted input.
 
 use std::path::Path;
 

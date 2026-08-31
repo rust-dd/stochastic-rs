@@ -11,7 +11,7 @@
 //! - Uhlenbeck G. E., Ornstein L. S. (1930) — *On the Theory of the
 //!   Brownian Motion*, Physical Review 36(5), 823–841,
 //!   DOI: 10.1103/PhysRev.36.823 — the underlying mean-reverting
-//!   diffusion ([`Ou`](crate::diffusion::ou::Ou)) this file wraps under
+//!   diffusion ([`Ou`]) this file wraps under
 //!   short-rate parameter names.
 //!
 use ndarray::Array1;

@@ -27,7 +27,7 @@ mod greeks;
 /// Source:
 /// - Heston, S. L. (1993), "A Closed-Form Solution for Options with Stochastic Volatility
 ///   with Applications to Bond and Currency Options"
-///   https://doi.org/10.1093/rfs/6.2.327
+///   <https://doi.org/10.1093/rfs/6.2.327>
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::heston::HestonPricer;

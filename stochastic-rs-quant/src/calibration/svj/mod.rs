@@ -19,9 +19,9 @@
 //!
 //! Source:
 //! - Bates, D. (1996), "Jumps and Stochastic Volatility"
-//!   https://doi.org/10.1093/rfs/9.1.69
+//!   <https://doi.org/10.1093/rfs/9.1.69>
 //! - Heston, S. L. (1993)
-//!   https://doi.org/10.1093/rfs/6.2.327
+//!   <https://doi.org/10.1093/rfs/6.2.327>
 
 mod calibrator;
 mod loss;

@@ -38,7 +38,7 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
@@ -132,7 +132,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fbm<T, S, B> {
   /// [`Fgn::sample_par`](crate::noise::fgn::Fgn::sample_par) on those two
   /// backends (`Cpu`: bit-identical; `Accelerate`: thread-count-independent
   /// seed consumption, but not bit-identical — see
-  /// [`FgnBackend`](crate::device::FgnBackend)'s doc), with one added wrinkle this
+  /// [`FgnBackend`]'s doc), with one added wrinkle this
   /// override alone has to get right: the embedded `self.fgn` is always
   /// [`Unseeded`] (never consulted for randomness — see this type's own
   /// doc), so the batch is driven by `self.seed` passed in explicitly here,
@@ -144,10 +144,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fbm<T, S, B> {
   ///
   /// **On GPU backends (`CudaNative`/`CubeCl`/`MetalNative`), this fix does
   /// not reach — `Fbm::sample_par` remains seed-blind there, unlike bare
-  /// [`Fgn`](crate::noise::fgn::Fgn) on the same backends.** `self.seed` is
+  /// [`Fgn`] on the same backends.** `self.seed` is
   /// still passed to `noise_batch`, but the GPU `FgnBackend::generate_batch`
   /// impls ignore that parameter entirely and read `fgn.seed` internally
-  /// instead (see [`FgnBackend`](crate::device::FgnBackend)'s doc) — for bare
+  /// instead (see [`FgnBackend`]'s doc) — for bare
   /// `Fgn`, `fgn` *is* `self`, so `fgn.seed` happens to be the real seed
   /// anyway; for `Fbm`, `fgn` is the permanently-`Unseeded` embedded field,
   /// so a `Deterministic`-seeded `Fbm` on a GPU backend draws fresh

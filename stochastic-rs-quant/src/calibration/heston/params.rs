@@ -21,7 +21,7 @@ pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
 ///
 /// Source:
 /// - Cui et al. (2017), analytic Heston calibration Jacobian
-///   https://doi.org/10.1016/j.ejor.2017.05.018
+///   <https://doi.org/10.1016/j.ejor.2017.05.018>
 pub enum HestonJacobianMethod {
   /// Central finite-difference Jacobian.
   NumericFiniteDiff,
@@ -29,7 +29,7 @@ pub enum HestonJacobianMethod {
   ///
   /// Source:
   /// - Cui et al. (2017)
-  ///   https://doi.org/10.1016/j.ejor.2017.05.018
+  ///   <https://doi.org/10.1016/j.ejor.2017.05.018>
   #[default]
   CuiAnalytic,
 }
@@ -39,8 +39,8 @@ pub enum HestonJacobianMethod {
 ///
 /// Source:
 /// - Wang et al. (2018), NMLE/PMLE/NMLE-CEKF
-///   https://doi.org/10.1007/s11432-017-9215-8
-///   http://scis.scichina.com/en/2018/042202.pdf
+///   <https://doi.org/10.1007/s11432-017-9215-8>
+///   <http://scis.scichina.com/en/2018/042202.pdf>
 pub enum HestonMleSeedMethod {
   #[default]
   /// Nonlinear MLE based on square-root variance dynamics.

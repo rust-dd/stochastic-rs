@@ -66,7 +66,7 @@ impl crate::traits::ToModel for SabrCalibrationResult {
 }
 
 impl SabrCalibrationResult {
-  /// Convert to a [`SabrPricer`](crate::pricing::sabr::SabrPricer) for
+  /// Convert to a [`SabrPricer`] for
   /// pricing / vol surface generation.
   pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
     crate::pricing::sabr::SabrPricer {
@@ -140,7 +140,7 @@ impl SabrParams {
   }
 }
 
-/// Lossless round-trip [α, β, ν, ρ]. Use [`SabrParams::as_lm_vec`] for the
+/// Lossless round-trip [α, β, ν, ρ]. Use `SabrParams::as_lm_vec` for the
 /// 3-vec [α, ν, ρ] form the Levenberg-Marquardt solver operates on.
 impl From<SabrParams> for DVector<f64> {
   fn from(p: SabrParams) -> Self {

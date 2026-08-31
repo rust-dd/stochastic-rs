@@ -20,7 +20,7 @@
 //! $$
 //!
 //! Source:
-//! - Rough Bergomi model: https://arxiv.org/abs/1609.02108
+//! - Rough Bergomi model: <https://arxiv.org/abs/1609.02108>
 //! - Wasserstein calibration and mSOE-style simulation formulas.
 
 mod calibrator;

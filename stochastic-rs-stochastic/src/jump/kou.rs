@@ -25,7 +25,7 @@ use crate::traits::ProcessExt;
 ///
 /// **No `Default` impl.** `KouSampler::fill_path` is driven entirely by the
 /// generic jump-size distribution `D` — it is line-for-line the same
-/// recursion [`crate::jump::merton::MertonSampler::fill_path`] runs, so `D`
+/// recursion `crate::jump::merton::MertonSampler::fill_path` runs, so `D`
 /// is the *only* thing that makes a `Kou` a Kou rather than a Merton in
 /// this crate. This model's own definition (module doc above) is a
 /// double-exponential log-jump `log Y ~ p·Exp(η₁) − (1−p)·Exp(η₂)`, and the

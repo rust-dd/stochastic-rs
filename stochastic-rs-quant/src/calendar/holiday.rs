@@ -26,14 +26,15 @@ pub enum HolidayCalendar {
   /// Tokyo Stock Exchange calendar.
   Tokyo,
   /// Hong Kong Stock Exchange (HKEX) calendar. Lunar holidays use a
-  /// hardcoded lookup table covering 2020-2035; calls outside that
-  /// window fall back to fixed-date holidays only and may
-  /// under-report lunar closures.
+  /// hardcoded lookup table covering 2020-2025; a lunar lookup outside
+  /// that window trips a debug assertion, and in release builds falls
+  /// back to fixed-date holidays only, under-reporting lunar closures.
   Hkex,
   /// Australian Securities Exchange (ASX) calendar.
   Asx,
   /// Singapore Exchange (SGX) calendar. Lunar / Islamic / Hindu
-  /// holidays use a hardcoded lookup table covering 2020-2035.
+  /// holidays use a hardcoded lookup table covering 2020-2025; the same
+  /// out-of-window behaviour as [`HolidayCalendar::Hkex`] applies.
   Sgx,
   /// B3 / BoVespa (São Paulo) calendar. Black Awareness Day is a
   /// holiday from 2024 onwards only.
@@ -735,8 +736,10 @@ enum LunarHoliday {
 }
 
 /// Lookup table: `(year, month, day, holiday)`. Verified against HKEX and
-/// SGX published trading-calendar PDFs for 2020-2025; 2026-2035 entries
-/// computed from astronomical / Hijri tables.
+/// SGX published trading-calendar PDFs for 2020-2025. No entries exist
+/// beyond 2025 — [`lunar_holiday_on`] debug-asserts on the window so an
+/// out-of-range query is loud in test/debug builds instead of silently
+/// under-reporting.
 static LUNAR_TABLE: &[(i32, u32, u32, LunarHoliday)] = &[
   // 2020 HKEX
   (2020, 1, 27, LunarHoliday::LunarNewYear),
@@ -816,13 +819,19 @@ static LUNAR_TABLE: &[(i32, u32, u32, LunarHoliday)] = &[
 
 fn lunar_holiday_on(date: NaiveDate, tag: LunarHoliday) -> bool {
   let (y, m, d) = (date.year(), date.month(), date.day());
+  debug_assert!(
+    (2020..=2025).contains(&y),
+    "lunar holiday lookup queried outside its 2020-2025 table (year {y}); \
+     lunar closures under-report beyond it"
+  );
   LUNAR_TABLE
     .iter()
     .any(|&(yr, mo, da, t)| yr == y && mo == m && da == d && t == tag)
 }
 
 /// HKEX (Hong Kong Stock Exchange) calendar. Lunar holidays beyond 2025
-/// are not in the table and will silently under-report.
+/// are not in the table; [`lunar_holiday_on`]'s debug assertion makes the
+/// gap loud outside release builds.
 fn is_hkex_holiday(date: NaiveDate) -> bool {
   let (y, m, d) = (date.year(), date.month(), date.day());
   let w = date.weekday();
@@ -939,6 +948,22 @@ fn is_sgx_holiday(date: NaiveDate) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+  /// The lunar table ends at 2025; a query past it must be loud in debug
+  /// builds, not a silent under-report.
+  #[test]
+  #[should_panic(expected = "outside its 2020-2025 table")]
+  fn lunar_lookup_past_the_table_is_loud() {
+    let d = NaiveDate::from_ymd_opt(2026, 2, 17).unwrap();
+    let _ = Calendar::new(HolidayCalendar::Hkex).is_holiday(d);
+  }
+
+  /// The last covered year still answers without tripping the guard.
+  #[test]
+  fn lunar_lookup_at_the_table_edge_is_quiet() {
+    let d = NaiveDate::from_ymd_opt(2025, 10, 7).unwrap();
+    assert!(Calendar::new(HolidayCalendar::Hkex).is_holiday(d));
+  }
   use chrono::NaiveDate;
 
   use super::*;

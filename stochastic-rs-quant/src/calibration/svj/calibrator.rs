@@ -18,9 +18,9 @@ pub(super) const SIGMA_V_MIN: f64 = 1e-8;
 /// SVJ (Bates) least-squares calibrator using Levenberg-Marquardt.
 ///
 /// Source:
-/// - Levenberg (1944), https://doi.org/10.1090/qam/10666
-/// - Marquardt (1963), https://doi.org/10.1137/0111030
-/// - Bates (1996), https://doi.org/10.1093/rfs/9.1.69
+/// - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
+/// - Marquardt (1963), <https://doi.org/10.1137/0111030>
+/// - Bates (1996), <https://doi.org/10.1093/rfs/9.1.69>
 #[derive(Clone)]
 pub struct SVJCalibrator {
   /// Params to calibrate.

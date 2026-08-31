@@ -47,9 +47,9 @@
 //!   "Calibration and Option Pricing with stochastic volatility and double
 //!   exponential jumps", arXiv: 2502.13824
 //! - Kou, S. G. (2002), "A jump-diffusion model for option pricing",
-//!   Management Science 48(8), https://doi.org/10.1287/mnsc.48.8.1086.166
+//!   Management Science 48(8), <https://doi.org/10.1287/mnsc.48.8.1086.166>
 //! - Heston, S. L. (1993), "A closed-form solution for options with stochastic
-//!   volatility", https://doi.org/10.1093/rfs/6.2.327
+//!   volatility", <https://doi.org/10.1093/rfs/6.2.327>
 
 mod calibrator;
 mod loss;

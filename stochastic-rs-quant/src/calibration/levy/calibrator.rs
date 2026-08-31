@@ -25,8 +25,8 @@ use crate::calibration::CalibrationHistory;
 /// Lévy model calibrator via Fourier pricing + Levenberg-Marquardt.
 ///
 /// Source:
-/// - Levenberg (1944), https://doi.org/10.1090/qam/10666
-/// - Marquardt (1963), https://doi.org/10.1137/0111030
+/// - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
+/// - Marquardt (1963), <https://doi.org/10.1137/0111030>
 #[derive(Clone)]
 pub struct LevyCalibrator {
   /// Lévy model to calibrate.

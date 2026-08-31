@@ -162,7 +162,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
   ///
   /// Mirrors the `Gbm::new(..., seed: S)`-style constructor used elsewhere
   /// in the workspace so seed handling is uniform across processes and
-  /// distributions. Pass [`Unseeded`](crate::simd_rng::Unseeded) for an
+  /// distributions. Pass [`Unseeded`] for an
   /// auto-seeded RNG, or [`Deterministic::new(seed)`](crate::simd_rng::Deterministic)
   /// for a reproducible stream.
   ///

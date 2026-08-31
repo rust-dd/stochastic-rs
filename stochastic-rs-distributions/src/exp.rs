@@ -438,7 +438,7 @@ pub struct SimdExp<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
 impl<T: SimdFloatExt, R: SimdRngExt> SimdExp<T, R> {
   /// Creates an exponential distribution with rate `lambda` and the given
   /// seed strategy. Single canonical constructor — pass
-  /// [`Unseeded`](crate::simd_rng::Unseeded) for auto or
+  /// [`Unseeded`] for auto or
   /// [`Deterministic::new(seed)`](crate::simd_rng::Deterministic) for a
   /// reproducible stream.
   #[inline]

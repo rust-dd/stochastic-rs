@@ -21,9 +21,9 @@ use crate::calibration::CalibrationHistory;
 /// Heston least-squares calibrator using Levenberg-Marquardt iterations.
 ///
 /// Source:
-/// - Levenberg (1944), https://doi.org/10.1090/qam/10666
-/// - Marquardt (1963), https://doi.org/10.1137/0111030
-/// - Heston model (1993), https://doi.org/10.1093/rfs/6.2.327
+/// - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
+/// - Marquardt (1963), <https://doi.org/10.1137/0111030>
+/// - Heston model (1993), <https://doi.org/10.1093/rfs/6.2.327>
 pub struct HestonCalibrator {
   /// Params to calibrate (v0, kappa, theta, sigma, rho).
   /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).

@@ -15,7 +15,7 @@ pub enum HestonCekfPositiveStatePolicy {
   /// is not treated as a zero-uncertainty equality constraint.
   ///
   /// See Gupta and Hauser, *Kalman Filtering with Equality and Inequality
-  /// State Constraints*, Eq. 64: https://arxiv.org/abs/0709.2791
+  /// State Constraints*, Eq. 64: <https://arxiv.org/abs/0709.2791>
   Project { floor: f64 },
 }
 

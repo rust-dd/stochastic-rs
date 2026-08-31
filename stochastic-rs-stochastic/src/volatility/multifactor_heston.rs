@@ -25,7 +25,7 @@
 //! full-truncation Euler on each variance factor (Lord-Koekkoek-van Dijk
 //! 2010). The asset draws $K$ correlated $(\Delta W^S_k, \Delta W^V_k)$
 //! pairs per time step through the existing
-//! [`Cgns`](crate::noise::cgns::Cgns) generator, independent across $k$.
+//! [`Cgns`] generator, independent across $k$.
 //!
 //! Reference: Christoffersen, P., Heston, S., Jacobs, K. (2009),
 //! "The shape and term structure of the index option smirk: why

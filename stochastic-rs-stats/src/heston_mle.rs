@@ -24,8 +24,8 @@ pub struct HestonMleResult {
 ///
 /// Source:
 /// - Wang et al. (2018), NMLE closed-form estimators
-///   https://doi.org/10.1007/s11432-017-9215-8
-///   http://scis.scichina.com/en/2018/042202.pdf
+///   <https://doi.org/10.1007/s11432-017-9215-8>
+///   <http://scis.scichina.com/en/2018/042202.pdf>
 pub fn nmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleResult {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let n_obs = v.len();
@@ -38,8 +38,8 @@ pub fn nmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleR
 ///
 /// Source:
 /// - Wang et al. (2018), Eq. (19)-(21) and rho moment estimator
-///   https://doi.org/10.1007/s11432-017-9215-8
-///   http://scis.scichina.com/en/2018/042202.pdf
+///   <https://doi.org/10.1007/s11432-017-9215-8>
+///   <http://scis.scichina.com/en/2018/042202.pdf>
 pub fn nmle_heston_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
@@ -136,8 +136,8 @@ pub fn nmle_heston_with_delta(
 ///
 /// Source:
 /// - Wang et al. (2018), PMLE closed-form estimators
-///   https://doi.org/10.1007/s11432-017-9215-8
-///   http://scis.scichina.com/en/2018/042202.pdf
+///   <https://doi.org/10.1007/s11432-017-9215-8>
+///   <http://scis.scichina.com/en/2018/042202.pdf>
 pub fn pmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleResult {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let n_obs = v.len();
@@ -150,8 +150,8 @@ pub fn pmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleR
 ///
 /// Source:
 /// - Wang et al. (2018), PMLE formulas and rho moment estimator
-///   https://doi.org/10.1007/s11432-017-9215-8
-///   http://scis.scichina.com/en/2018/042202.pdf
+///   <https://doi.org/10.1007/s11432-017-9215-8>
+///   <http://scis.scichina.com/en/2018/042202.pdf>
 pub fn pmle_heston_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,

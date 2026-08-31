@@ -16,13 +16,13 @@
 //!
 //! - [`estimate_fou_v1`] — Daubechies-filter-based fOU estimator
 //!   (Coeurjolly variant).  Hurst from
-//!   [`crate::hurst::variations::daubechies_h_inner`].
+//!   `crate::hurst::variations::daubechies_h_inner`.
 //! - [`estimate_fou_v2`] — moments-based fOU estimator (no linear
 //!   filters).  Hurst from
-//!   [`crate::hurst::variations::central_diff_h_inner`].
+//!   `crate::hurst::variations::central_diff_h_inner`.
 //! - [`estimate_fou_v4`] — high-frequency `k`-th-order `p`-power-variation
 //!   estimator (arXiv:1703.09372).  Hurst from
-//!   [`crate::hurst::variations::power_variation_h_inner`].
+//!   `crate::hurst::variations::power_variation_h_inner`.
 //!
 //! In addition, [`FouParameterEstimationV3`] is a Monte-Carlo
 //! verification helper that simulates an fGN and then re-estimates;

@@ -199,7 +199,7 @@ impl Merton1976Pricer {
 
   /// Delta — $\partial V/\partial S$.
   ///
-  /// A [degenerate term at the forward](TermRegime::AtTheForward)
+  /// A degenerate term at the forward (`TermRegime::AtTheForward`)
   /// contributes the $\sigma \to 0^+$ limit of $e^{(b-r)\tau}N(d_1)$, which
   /// is $\tfrac12 e^{(b-r)\tau}$ for the call and
   /// $-\tfrac12 e^{(b-r)\tau}$ for the put — the closed form at
@@ -223,8 +223,8 @@ impl Merton1976Pricer {
 
   /// Gamma — $\partial^2 V/\partial S^2$.
   ///
-  /// **Returns $+\infty$ at a [degenerate term's
-  /// forward](TermRegime::AtTheForward)**, which is the value of the limit
+  /// **Returns $+\infty$ at a degenerate term's
+  /// forward (`TermRegime::AtTheForward`)**, which is the value of the limit
   /// and not a failure to compute one. $\Gamma =
   /// e^{(b-r)\tau}\varphi(d_1)/(S\sigma\sqrt\tau)$ has a finite, strictly
   /// positive numerator there ($\varphi(0) = 1/\sqrt{2\pi}$) over a
@@ -264,7 +264,7 @@ impl Merton1976Pricer {
 
   /// Rho — $\partial V/\partial r$.
   ///
-  /// A [degenerate term at the forward](TermRegime::AtTheForward)
+  /// A degenerate term at the forward (`TermRegime::AtTheForward`)
   /// contributes the $\sigma \to 0^+$ limit of $K\tau e^{-r\tau}N(d_2)$,
   /// which is $\tfrac12 K\tau e^{-r\tau}$ for the call and its negation for
   /// the put — the closed form at $N(d_2) = \tfrac12$. `rho` is the one of

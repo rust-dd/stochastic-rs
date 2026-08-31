@@ -12,7 +12,7 @@
 //! - Cheridito P., Kawaguchi H., Maejima M. (2003) — *Fractional
 //!   Ornstein-Uhlenbeck Processes*, Electronic Journal of Probability 8,
 //!   paper 3, 1–14, DOI: 10.1214/EJP.v8-125 — the fractional-noise
-//!   driver ([`Fou`](crate::diffusion::fou::Fou)) this file wraps under
+//!   driver ([`Fou`]) this file wraps under
 //!   short-rate parameter names.
 //!
 use ndarray::Array1;

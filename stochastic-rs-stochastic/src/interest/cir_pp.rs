@@ -78,7 +78,7 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
   /// CIR factor when true (see [`Cir::use_sym`]).
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or
-  /// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Deterministic`]).
   pub seed: S,
 }
 
@@ -192,7 +192,7 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
 }
 
 /// κ=2.5, θ=0.04, σ=0.2, φ(t)≡0, x₀=0.04 — reuses
-/// [`Cir`](crate::diffusion::cir::Cir)'s own `Default` parameterization
+/// [`Cir`]'s own `Default` parameterization
 /// verbatim, since φ≡0 degenerates `CirPlusPlus` to `Cir` exactly (this
 /// file's own `cir_pp_zero_shift_equals_cir` test proves it bit-for-bit).
 /// Feller condition `2κθ = 0.2 ≥ σ² = 0.04` holds with a comfortable

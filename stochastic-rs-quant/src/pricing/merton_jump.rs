@@ -121,7 +121,7 @@ impl Merton1976Pricer {
   /// about it: the price is `NaN`, which is the convention, while the
   /// Greeks' `λ ≤ 0` branch answers with the Black-Scholes value. Left
   /// alone here because narrowing that branch to `λ == 0` would route a
-  /// negative intensity into [`greek_series`](Self::greek_series)'s
+  /// negative intensity into `greek_series`'s
   /// `NaN`-floor and turn a visible `NaN` into a confident `0.0`, which is
   /// worse than the disagreement.
   pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BSMCoc) -> Self {
@@ -143,7 +143,7 @@ impl Merton1976Pricer {
   }
 
   /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$,
-  /// routed through [`poisson_weight`](Self::poisson_weight)'s
+  /// routed through `poisson_weight`'s
   /// running-product weight rather than an integer `n!` — the latter
   /// overflows `usize` past `n \approx 21` (the crate's Python binding
   /// documents a default of `m = 50`), silently producing garbage instead
@@ -386,7 +386,7 @@ impl ModelPricer for Merton1976Pricer {
 /// through [`BSMPricer`], so this inherits that type's carry question along
 /// with its answer.
 impl VanillaEuropeanCall for Merton1976Pricer {
-  /// $Se^{b\tau}$ at the [`BSMCoc`](crate::pricing::bsm::BSMCoc) convention
+  /// $Se^{b\tau}$ at the [`BSMCoc`] convention
   /// held in `self.b`, delegated to
   /// [`BSMPricer::vanilla_call_forward`] for the same reason
   /// [`price_put`](ModelPricer::price_put) delegates: the series carries term

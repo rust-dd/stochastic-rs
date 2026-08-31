@@ -6,7 +6,7 @@
 //! - Output (IV surface) standardization with train-set mean/std.
 //!
 //! Source:
-//! - https://github.com/amuguruza/NN-StochVol-Calibrations
+//! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
 //! - `1Factor/Flat Forward Variance/NN1Factor.ipynb`
 
 use std::path::Path;
