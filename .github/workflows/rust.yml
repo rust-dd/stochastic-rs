@@ -172,8 +172,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install system dependencies
-
       # Pinned rather than tracking `@nightly`: nightly-2026-07-25
       # (rustc da86f4d07) ICEs in rustc_codegen_ssa compiling `tokio` under
       # `-C instrument-coverage`, which takes down this job and only this job.
