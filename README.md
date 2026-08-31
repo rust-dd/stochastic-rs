@@ -59,7 +59,7 @@ Highlights:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-beta.2"
+stochastic-rs = "3.0.0-beta.3"
 ```
 
 ```rust
@@ -207,7 +207,7 @@ Driven by SIMD `u64→f64` / `u32→f32` magic-number conversion in `SimdRng`
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "3.0.0-beta.2", features = ["dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-beta.3", features = ["dual-stream-rng"] }
 ```
 
 Unlocks `SimdRngDual` (two parallel xoshiro engines) and `SimdNormalDual`
