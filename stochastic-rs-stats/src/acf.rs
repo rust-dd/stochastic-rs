@@ -201,7 +201,7 @@ mod tests {
 
   /// Self-contained AR(1) generator, mirroring
   /// `stationarity::adf::tests::simulate_ar1` (not imported: that module is
-  /// openblas-gated).
+  /// faer-backed).
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));

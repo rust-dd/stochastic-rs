@@ -10,8 +10,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
-use ndarray_linalg::SVD;
 
+use crate::linalg::svd_thin;
 use crate::traits::RealExt;
 
 /// Result of a PCA factor decomposition.
@@ -71,13 +71,8 @@ pub fn try_pca_decompose<T: RealExt>(
       centred[[i, j]] = returns[[i, j]].to_f64().unwrap_or_default() - m;
     }
   }
-  let (u_opt, sigma, vt_opt) = centred
-    .svd(true, true)
-    .map_err(|e| crate::factors::FactorsError::SvdFailed(e.to_string()))?;
-  let u = u_opt
-    .ok_or_else(|| crate::factors::FactorsError::SvdFailed("U not returned from SVD".into()))?;
-  let vt = vt_opt
-    .ok_or_else(|| crate::factors::FactorsError::SvdFailed("Vt not returned from SVD".into()))?;
+  let (u, sigma, vt) = svd_thin(&centred)
+    .ok_or_else(|| crate::factors::FactorsError::SvdFailed("SVD did not converge".into()))?;
   let v = vt.t().to_owned();
   let r = sigma.len();
   let kk = if k == 0 { r } else { k.min(r) };

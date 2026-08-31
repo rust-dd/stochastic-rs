@@ -16,8 +16,8 @@ dimensions, vine and nested constructions in higher dimensions.
   independence. Each ships cdf, pdf, conditional inverse, Kendall's tau and
   a sampler.
 - **Multivariate (`MultivariateExt`)** — Gaussian, Student-t, C-vine,
-  D-vine, R-vine and nested Archimedean copulas. Behind the `openblas`
-  feature, which the trait and the `multivariate` module are both gated on.
+  D-vine, R-vine and nested Archimedean copulas, in the default build
+  (linear algebra via the pure-Rust `faer`).
 - **Empirical** — pseudo-observations and the empirical copula.
 - **Process coupling** — drive two stochastic processes through a copula.
 
@@ -38,8 +38,7 @@ let u = c.sample(10_000)?;               // Array2<f64>, shape (10000, 2)
 let v = c.sample_with_seed(10_000, 42)?; // reproducible
 ```
 
-Multivariate constructions take a tree of `PairCopula` variants, and need
-the `openblas` feature:
+Multivariate constructions take a tree of `PairCopula` variants:
 
 ```rust
 use stochastic_rs_copulas::multivariate::cvine::CVine;

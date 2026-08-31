@@ -62,13 +62,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
   ///
   /// This must be called before [`Self::sample`] or [`Self::sample_with_seed`]
   /// for user-supplied parameters. Their fallible variants call it directly.
-  pub fn validate(&self) -> anyhow::Result<()>
-  where
-    T: ndarray_linalg::Lapack,
-  {
-    use ndarray_linalg::Cholesky;
-    use ndarray_linalg::UPLO;
-
+  pub fn validate(&self) -> anyhow::Result<()> {
     let d = self.n_assets();
     if d == 0 {
       anyhow::bail!("need at least one asset");
@@ -145,16 +139,15 @@ impl<T: FloatExt> MultiHestonParams<T> {
       corr[[i, d + i]] = self.assets[i].rho;
       corr[[d + i, i]] = self.assets[i].rho;
     }
-    corr.cholesky(UPLO::Lower).map_err(|e| {
-      anyhow::anyhow!("joint Brownian correlation matrix is not positive definite: {e}")
-    })?;
+    if !crate::linalg::is_spd_t(&corr) {
+      anyhow::bail!("joint Brownian correlation matrix is not positive definite");
+    }
     Ok(())
   }
 
   fn sample_with_fill<F>(&self, mut fill_standard_normals: F) -> MultiHestonPaths<T>
   where
     F: FnMut(&mut [T]),
-    T: ndarray_linalg::Lapack,
   {
     let d = self.n_assets();
     let n = self.n_steps;
@@ -218,10 +211,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
   /// Call [`Self::validate`] up-front when the matrix is user-supplied —
   /// the underlying Cholesky factorisation panics on a non-SPD input. Prefer
   /// [`Self::try_sample`] when the matrix comes from external user input.
-  pub fn sample(&self) -> MultiHestonPaths<T>
-  where
-    T: ndarray_linalg::Lapack,
-  {
+  pub fn sample(&self) -> MultiHestonPaths<T> {
     self.sample_with_fill(T::fill_standard_normal_slice)
   }
 
@@ -229,42 +219,27 @@ impl<T: FloatExt> MultiHestonParams<T> {
   /// returns an error when the joint Brownian correlation matrix fails the
   /// positive-definite check (otherwise [`Self::sample`] would panic on the
   /// internal Cholesky factorisation).
-  pub fn try_sample(&self) -> anyhow::Result<MultiHestonPaths<T>>
-  where
-    T: ndarray_linalg::Lapack,
-  {
+  pub fn try_sample(&self) -> anyhow::Result<MultiHestonPaths<T>> {
     self.validate()?;
     Ok(self.sample_with_fill(T::fill_standard_normal_slice))
   }
 
   /// Deterministic variant of [`sample`](Self::sample), intended for reproducible
   /// tests and benchmark comparisons.
-  pub fn sample_with_seed(&self, seed: u64) -> MultiHestonPaths<T>
-  where
-    T: ndarray_linalg::Lapack,
-  {
+  pub fn sample_with_seed(&self, seed: u64) -> MultiHestonPaths<T> {
     let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
     self.sample_with_fill(|z| normal.fill_slice(z))
   }
 
   /// Fallible variant of [`Self::sample_with_seed`]. See [`Self::try_sample`]
   /// for the failure mode (non-SPD joint Brownian correlation).
-  pub fn try_sample_with_seed(&self, seed: u64) -> anyhow::Result<MultiHestonPaths<T>>
-  where
-    T: ndarray_linalg::Lapack,
-  {
+  pub fn try_sample_with_seed(&self, seed: u64) -> anyhow::Result<MultiHestonPaths<T>> {
     self.validate()?;
     let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
     Ok(self.sample_with_fill(|z| normal.fill_slice(z)))
   }
 
-  fn brownian_cholesky(&self) -> Array2<T>
-  where
-    T: ndarray_linalg::Lapack,
-  {
-    use ndarray_linalg::Cholesky;
-    use ndarray_linalg::UPLO;
-
+  fn brownian_cholesky(&self) -> Array2<T> {
     let d = self.n_assets();
     let m = 2 * d;
     let mut corr = Array2::<T>::eye(m);
@@ -277,7 +252,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
       corr[[i, d + i]] = self.assets[i].rho;
       corr[[d + i, i]] = self.assets[i].rho;
     }
-    corr.cholesky(UPLO::Lower).expect(
+    crate::linalg::spd_cholesky_lower_t(&corr).expect(
       "correlation matrix not positive-definite — call MultiHestonParams::validate() up-front",
     )
   }

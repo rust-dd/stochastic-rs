@@ -190,22 +190,14 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   }
 
   /// Inverse of the Malliavin covariance matrix. Requires LAPACK.
-  pub fn gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T>
-  where
-    T: ndarray_linalg::Lapack,
-  {
+  pub fn gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T> {
     self
       .try_gamma_inv(cross_corr, tau)
       .expect("Malliavin covariance matrix is singular; use try_gamma_inv")
   }
 
   /// Fallible inverse of the Malliavin covariance matrix.
-  pub fn try_gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> anyhow::Result<Array2<T>>
-  where
-    T: ndarray_linalg::Lapack,
-  {
-    use ndarray_linalg::Inverse;
-
+  pub fn try_gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> anyhow::Result<Array2<T>> {
     if !self.supports_conditional_malliavin_weights() {
       anyhow::bail!("conditional Malliavin covariance is not exact for stochastic leverage paths");
     }
@@ -227,10 +219,8 @@ impl<T: FloatExt> MultiHestonPaths<T> {
     if !num_traits::Float::is_finite(tau) || tau <= T::zero() {
       anyhow::bail!("tau must be finite and positive");
     }
-    self
-      .malliavin_cov(cross_corr, tau)
-      .inv()
-      .map_err(|error| anyhow::anyhow!("Malliavin covariance matrix is singular: {error}"))
+    crate::linalg::inverse_t(&self.malliavin_cov(cross_corr, tau))
+      .ok_or_else(|| anyhow::anyhow!("Malliavin covariance matrix is singular"))
   }
 }
 

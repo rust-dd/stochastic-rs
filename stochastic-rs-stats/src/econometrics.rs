@@ -9,8 +9,8 @@
 //! \mathrm{rank}(\Pi) = r \in \{0, 1, \ldots, K\}.
 //! $$
 //!
-//! Cointegration and Granger-causality tests require the `openblas` feature
-//! for matrix decompositions. Hidden Markov and changepoint models do not.
+//! Cointegration and Granger-causality tests run their matrix
+//! decompositions on the pure-Rust `faer`, in every build.
 //!
 //! # References
 //! - Engle, Granger, "Co-Integration and Error Correction: Representation,
@@ -33,9 +33,7 @@
 //!   (1954). DOI: 10.2307/2333009
 
 pub mod changepoint;
-#[cfg(feature = "openblas")]
 pub mod cointegration;
-#[cfg(feature = "openblas")]
 pub mod granger;
 pub mod hmm;
 
@@ -43,17 +41,11 @@ pub use changepoint::ChangepointCusumResult;
 pub use changepoint::PeltResult;
 pub use changepoint::cusum;
 pub use changepoint::pelt;
-#[cfg(feature = "openblas")]
 pub use cointegration::EngleGrangerResult;
-#[cfg(feature = "openblas")]
 pub use cointegration::JohansenResult;
-#[cfg(feature = "openblas")]
 pub use cointegration::engle_granger_test;
-#[cfg(feature = "openblas")]
 pub use cointegration::johansen_test;
-#[cfg(feature = "openblas")]
 pub use granger::GrangerResult;
-#[cfg(feature = "openblas")]
 pub use granger::granger_causality;
 pub use hmm::GaussianHmm;
 pub use hmm::HmmFit;

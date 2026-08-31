@@ -24,7 +24,6 @@
 //! explicitly, so dropping one from this hub is a compile error there.
 
 pub use stochastic_rs_copulas::traits::BivariateExt;
-#[cfg(feature = "openblas")]
 pub use stochastic_rs_copulas::traits::MultivariateExt;
 pub use stochastic_rs_copulas::traits::TailDependence;
 #[cfg(feature = "python")]

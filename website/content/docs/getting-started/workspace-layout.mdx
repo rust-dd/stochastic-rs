@@ -52,7 +52,7 @@ producer crates and re-exports `#[pyclass]`-wrapped types via the
 
 1. **Compile time**. Pulling only `stochastic-rs-distributions` for a
    distribution-sampling job avoids compiling the quant + AI surface.
-2. **Feature gating**. `ai`, `openblas`, `cuda`, `metal` live on
+2. **Feature gating**. `ai`, `cuda`, `metal` live on
    the crates that own the optional dependency, so a default
    `cargo build` never tries to link CUDA on a laptop with no GPU.
 3. **Versioning**. Sub-crates can ship patch releases independently when

@@ -1,4 +1,4 @@
-//! Benchmarks for the `quant::factors` module (requires `openblas`).
+//! Benchmarks for the `quant::factors` module.
 
 use criterion::Criterion;
 use criterion::criterion_group;

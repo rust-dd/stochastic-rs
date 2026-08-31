@@ -3,26 +3,14 @@
 //! Split out of `basket.rs` when the file crossed the 600-line cap; a pure
 //! move, with the public paths preserved by the `pub use` in the parent.
 
-#[cfg(feature = "openblas")]
 use ndarray::Array1;
-#[cfg(feature = "openblas")]
 use ndarray::Array2;
-#[cfg(feature = "openblas")]
 use ndarray::ArrayView1;
-#[cfg(feature = "openblas")]
-use ndarray_linalg::Cholesky;
-#[cfg(feature = "openblas")]
-use ndarray_linalg::UPLO;
-#[cfg(feature = "openblas")]
 use rayon::prelude::*;
 
-#[cfg(feature = "openblas")]
 use crate::OptionType;
-#[cfg(feature = "openblas")]
 use crate::mc::McEstimate;
-#[cfg(feature = "openblas")]
 use crate::pricing::mc_stats::std_err_from_sums;
-#[cfg(feature = "openblas")]
 use crate::traits::FloatExt;
 
 /// Which average the basket is struck against.
@@ -35,8 +23,8 @@ pub enum BasketAverageType {
 }
 
 /// Monte Carlo basket option pricer. Supports arithmetic and geometric
-/// payoffs. Uses `ndarray_linalg::Cholesky` for the correlation factor and
-/// is therefore gated behind the `openblas` feature.
+/// payoffs. Uses a Cholesky factorization for the correlation factor and
+/// runs on the pure-Rust `faer`, in every build.
 ///
 /// The struct holds **model, contract and method state only** — the
 /// per-asset volatilities and their correlation, the basket weights and
@@ -57,7 +45,6 @@ pub enum BasketAverageType {
 /// `try_price` is the only advertised way to surface either as an `Err`, and
 /// a constructor that panicked on them first would leave it nothing to
 /// report.
-#[cfg(feature = "openblas")]
 #[derive(Debug, Clone)]
 pub struct McBasketPricer {
   /// Weights — a term of the contract, not a market quote.
@@ -72,7 +59,6 @@ pub struct McBasketPricer {
   pub n_paths: usize,
 }
 
-#[cfg(feature = "openblas")]
 impl McBasketPricer {
   /// Validating constructor.
   ///
@@ -140,10 +126,9 @@ impl McBasketPricer {
         q.len()
       );
     }
-    let _ = self
-      .rho
-      .cholesky(UPLO::Lower)
-      .map_err(|e| anyhow::anyhow!("correlation matrix is not positive definite: {e}"))?;
+    if !crate::linalg::is_spd_t(&self.rho) {
+      anyhow::bail!("correlation matrix is not positive definite");
+    }
     Ok(self.price_option(s, k, r, q, tau, option_type))
   }
 
@@ -162,7 +147,7 @@ impl McBasketPricer {
     option_type: OptionType,
   ) -> McEstimate<f64> {
     let n_assets = s.len();
-    let l: Array2<f64> = self.rho.cholesky(UPLO::Lower).expect(
+    let l: Array2<f64> = crate::linalg::spd_cholesky_lower(&self.rho).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)

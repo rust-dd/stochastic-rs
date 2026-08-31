@@ -17,9 +17,9 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use ndarray_linalg::Cholesky;
-use ndarray_linalg::Inverse;
-use ndarray_linalg::UPLO;
+
+use crate::linalg::inverse;
+use crate::linalg::spd_cholesky_lower;
 
 /// State estimate (mean + covariance) on entry to / exit from a UKF step.
 #[derive(Debug, Clone)]
@@ -61,10 +61,7 @@ where
   let lambda = alpha * alpha * (n as f64 + kappa) - n as f64;
   let scale = (n as f64 + lambda).sqrt();
 
-  let chol = prior
-    .covariance
-    .cholesky(UPLO::Lower)
-    .expect("UKF prior covariance not PD");
+  let chol = spd_cholesky_lower(&prior.covariance).expect("UKF prior covariance not PD");
 
   let n_sigma = 2 * n + 1;
   let mut sigma = Array2::<f64>::zeros((n_sigma, n));
@@ -162,7 +159,7 @@ where
       }
     }
   }
-  let s_inv = s.inv().expect("UKF innovation covariance singular");
+  let s_inv = inverse(&s).expect("UKF innovation covariance singular");
   let kalman_gain = cross.dot(&s_inv);
   let innovation: Array1<f64> = (0..m)
     .map(|j| observation[j] - z_mean[j])

@@ -38,7 +38,7 @@ pub struct MtGreeks<T: FloatExt> {
   pub n_paths: usize,
 }
 
-impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
+impl<T: FloatExt> MtGreeks<T> {
   /// Construct an M-T engine for the given model, regularization level and
   /// Monte Carlo path count.
   pub fn new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Self {

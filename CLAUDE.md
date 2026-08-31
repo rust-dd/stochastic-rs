@@ -16,7 +16,7 @@ stochastic-rs/                        (workspace root + umbrella)
 ├── stochastic-rs-stats/              — estimators
 ├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
 ├── stochastic-rs-ai/                 — neural surrogates (feature-gated upstream)
-└── stochastic-rs-py/                 — pyo3 cdylib (235 entries: 219 PyO3 classes + 16 pyfunctions, 13 of the classes openblas-gated, across distributions/stochastic/quant/copulas/stats; AI bindings deferred to 2.x). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
+└── stochastic-rs-py/                 — pyo3 cdylib (235 entries: 219 PyO3 classes + 16 pyfunctions, across distributions/stochastic/quant/copulas/stats; AI bindings deferred to 2.x). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
 ```
 
 The umbrella crate `stochastic-rs` keeps the existing public API
@@ -75,16 +75,16 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **24** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
+Brings **25** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
-- **Trait core**: `RealExt`, `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
+- **Trait core**: `RealExt`, `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `MultivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
 - **Pricing**: `ModelPricer`
 - **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
 - **Option types**: `Moneyness`, `OptionStyle`, `OptionType`
 - **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`
 - **Estimation**: `HurstEstimator`, `FractalDimEstimator`, `HypothesisTest`, `DiffusionModel`, `TailDependence`
 
-`MultivariateExt` (openblas-only) and `CallableDist` (python-only) are reachable via `traits::*` but excluded from the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have). The `Instrument`/`InstrumentExt`/`PricingEngine`/`PricingResult` four left the prelude in 3.0: two instruments and two engines (three engine×instrument pairings) are a cross-engine comparison harness for validating models on the same European vanilla, not a third pricing layer — the crate's two layers are `ModelPricer` (spot/strike query) and the instruments' `.valuation(curve)`. All four stay hub-reachable via `traits::*`, as is `FgnBackend` (the fGN capability subtrait of the prelude's `Backend` device marker — named only when writing generic code over backends).
+`MultivariateExt` joined the prelude in 3.0, when the linalg stack moved to the pure-Rust faer and its feature-gate exclusion reason died. `CallableDist` (python-only) stays reachable via `traits::*` but out of the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have). The `Instrument`/`InstrumentExt`/`PricingEngine`/`PricingResult` four left the prelude in 3.0: two instruments and two engines (three engine×instrument pairings) are a cross-engine comparison harness for validating models on the same European vanilla, not a third pricing layer — the crate's two layers are `ModelPricer` (spot/strike query) and the instruments' `.valuation(curve)`. All four stay hub-reachable via `traits::*`, as is `FgnBackend` (the fGN capability subtrait of the prelude's `Backend` device marker — named only when writing generic code over backends).
 
 Hub membership is **independent of prelude membership**: `src/traits.rs` mirrors every trait each sub-crate exports from its own `traits` module, prelude-excluded ones included. The quant half is derivable, and `tests/prelude_completeness.rs` turns a dropped re-export into a compile error:
 

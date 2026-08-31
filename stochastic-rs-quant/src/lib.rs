@@ -94,6 +94,7 @@
 #![allow(clippy::needless_range_loop)]
 
 #[macro_use]
+mod linalg;
 mod macros;
 
 pub mod traits;

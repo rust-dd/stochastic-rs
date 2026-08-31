@@ -68,7 +68,7 @@ use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 ```
 
-For per-sub-crate (lean) builds, OpenBLAS / CUDA / Metal / cubecl /
+For per-sub-crate (lean) builds, CUDA / Metal / cubecl /
 Accelerate feature flags, native CPU optimisation, and SIMD details,
 see the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
 on the docs site.
@@ -86,12 +86,10 @@ pip install maturin
 maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
 ```
 
-Linux (x86_64 / aarch64) and macOS (arm64 / x86_64) wheels ship with
-the `openblas` feature on. The Windows wheel omits the 13
-BLAS-backed classes; everything else (205 classes / 16 functions)
-works identically. See the
-[Python bindings page](https://stochastic.rust-dd.com/docs/python) for the parity
-table and the source-build path with vcpkg.
+Linear algebra is pure Rust (`faer`), so every wheel — Linux, macOS and
+Windows — ships the identical full surface with no system BLAS to install.
+See the [Python bindings page](https://stochastic.rust-dd.com/docs/python)
+for the parity table.
 
 ## Quickstart
 

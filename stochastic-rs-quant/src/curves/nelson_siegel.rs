@@ -92,7 +92,6 @@ impl<T: RealExt> NelsonSiegel<T> {
   }
 
   /// Fit the model to market zero rates using grid search on lambda + OLS for betas (Diebold-Li).
-  #[cfg(feature = "openblas")]
   pub fn fit(maturities: &Array1<T>, market_rates: &Array1<T>) -> Self {
     let n = maturities.len();
     let mut best_sse = T::from_f64_fast(f64::MAX);

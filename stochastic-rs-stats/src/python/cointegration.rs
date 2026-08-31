@@ -1,15 +1,11 @@
-#[cfg(feature = "openblas")]
 use numpy::PyReadonlyArray1;
-#[cfg(feature = "openblas")]
 use pyo3::prelude::*;
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "EngleGranger", unsendable)]
 pub struct PyEngleGranger {
   inner: crate::econometrics::cointegration::EngleGrangerResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyEngleGranger {
   /// Engle-Granger 2-step cointegration test for `y_t = α + β x_t + ε_t`.
@@ -46,13 +42,11 @@ impl PyEngleGranger {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "Johansen", unsendable)]
 pub struct PyJohansen {
   inner: crate::econometrics::cointegration::JohansenResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyJohansen {
   /// Johansen trace test on an `(t, k)` matrix.
@@ -78,13 +72,11 @@ impl PyJohansen {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "Granger", unsendable)]
 pub struct PyGranger {
   inner: crate::econometrics::granger::GrangerResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyGranger {
   /// Granger causality of `x` → `y` with `lags` lags at significance `alpha`.

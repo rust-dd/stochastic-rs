@@ -125,7 +125,6 @@ fn noise_robust_estimators_finite_under_microstructure() {
   assert!(msrv.is_finite());
 }
 
-#[cfg(feature = "openblas")]
 #[test]
 fn har_round_trip_recovers_intercept_at_steady_state() {
   use stochastic_rs::stats::realized::HarRv;

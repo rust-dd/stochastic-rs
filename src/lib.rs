@@ -40,7 +40,7 @@ pub mod traits;
 /// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
 /// without pulling them one by one.
 ///
-/// Currently 24 items in 6 groups — re-derive with
+/// Currently 25 items in 6 groups — re-derive with
 /// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` — the
 /// leading indentation matters, since a bare `grep -c "pub use"` also matches
 /// this very comment and reports two too many — and update
@@ -74,6 +74,7 @@ pub mod prelude {
   pub use crate::traits::HurstEstimator;
   pub use crate::traits::HypothesisTest;
   pub use crate::traits::ModelPricer;
+  pub use crate::traits::MultivariateExt;
   pub use crate::traits::PathSampler;
   pub use crate::traits::ProcessExt;
   pub use crate::traits::RealExt;

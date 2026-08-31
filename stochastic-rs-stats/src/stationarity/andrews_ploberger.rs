@@ -41,10 +41,10 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use ndarray_linalg::Inverse;
-use ndarray_linalg::Solve;
 
 use super::common::validate_series;
+use crate::linalg::inverse;
+use crate::linalg::solve;
 
 /// Which aggregation of the local Wald statistic to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,9 +181,9 @@ fn local_wald(y: ArrayView1<f64>, x: ArrayView2<f64>, t1: usize, k: usize) -> f6
 
   let diff = &b1 - &b2;
   let vsum = &v1 + &v2;
-  match vsum.solve(&diff) {
-    Ok(z) => diff.dot(&z).max(0.0),
-    Err(_) => f64::NAN,
+  match solve(&vsum, &diff) {
+    Some(z) => diff.dot(&z).max(0.0),
+    None => f64::NAN,
   }
 }
 
@@ -204,11 +204,11 @@ fn segment_fit(
   let ys = y.slice(ndarray::s![lo..hi]).to_owned();
   let xtx = xs.t().dot(&xs);
   let xty = xs.t().dot(&ys);
-  let beta = xtx.solve(&xty).ok()?;
+  let beta = solve(&xtx, &xty)?;
   let resid = &ys - &xs.dot(&beta);
   let sse: f64 = resid.iter().map(|r| r * r).sum();
   let sigma2 = sse / (n as f64 - k as f64).max(1.0);
-  let xtx_inv = xtx.inv().ok()?;
+  let xtx_inv = inverse(&xtx)?;
   Some((beta, &xtx_inv * sigma2))
 }
 

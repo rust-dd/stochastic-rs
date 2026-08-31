@@ -1,6 +1,6 @@
 ---
 name: stats-estimator
-description: How to add a statistical estimator to stochastic-rs-stats. Covers ArrayView1<T> input shape, *Result struct conventions, parametric vs bootstrap p-values, openblas gating, paper-citation requirements, and reference-comparison tests.
+description: How to add a statistical estimator to stochastic-rs-stats. Covers ArrayView1<T> input shape, *Result struct conventions, parametric vs bootstrap p-values, linear-algebra helpers, paper-citation requirements, and reference-comparison tests.
 ---
 
 # Stats estimator — stochastic-rs-stats
@@ -81,23 +81,15 @@ Bootstrap-only estimators populate `bootstrap_pvalue` only. Estimators
 where both make sense populate both, and document the difference in
 the struct doc.
 
-## 4. openblas-gating
+## 4. Linear algebra
 
-Estimators that need LAPACK (linear regression, SVD, eigendecomposition)
-gate behind `#[cfg(feature = "openblas")]`:
-
-```rust
-#[cfg(feature = "openblas")]
-pub fn estimate_lapack<T: FloatExt>(samples: ArrayView1<T>) -> FooResult {
-    use ndarray_linalg::SVD;
-    // ...
-}
-```
-
-The non-openblas baseline must always compile (and be the default
-build). If the openblas-only path is **strictly** more accurate,
-provide a closed-form fallback that's slower but always available.
-Don't make the user discover at runtime that they need a feature flag.
+Dense linear algebra (least squares, LU solve/inverse, SPD Cholesky,
+eigenvalues) is ungated: it runs on the pure-Rust `faer` through the
+crate-private helpers in `stochastic-rs-stats/src/linalg.rs`
+(`lstsq` / `solve` / `inverse` / `spd_cholesky_lower` / `eigenvalues`).
+Call those instead of touching `faer` directly — they own the
+ndarray↔faer conversions and the finite-solution singularity probe.
+There is no feature flag to gate on.
 
 ## 5. Paper citation header
 
@@ -202,9 +194,9 @@ Then register both in `stochastic-rs-py/src/lib.rs`.
 
 - **Do not** return a tuple `(f64, f64, bool)`. Always return a typed
   struct.
-- **Do not** silently fall through to a slow path when openblas isn't
-  available. Either gate explicitly with `#[cfg(feature = "openblas")]`
-  or provide a documented closed-form fallback.
+- **Do not** bypass `src/linalg.rs` with hand-rolled matrix inverses
+  or direct `faer` calls — the helpers carry the singularity probe and
+  the conversion conventions.
 - **Do not** roll your own ADF / KPSS regression. Shared helpers live
   in `stochastic-rs-stats/src/stationarity/common.rs`.
 - **Do not** seed a test with `StdRng` / `rand_distr`. `dev-rules` §7a

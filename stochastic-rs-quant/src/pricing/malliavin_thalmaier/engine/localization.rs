@@ -13,7 +13,7 @@ pub(super) struct MtLocalization<T: FloatExt> {
   pub(super) box_width: Vec<T>,
 }
 
-impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
+impl<T: FloatExt> MtGreeks<T> {
   pub(super) fn compute_g(&self, payoff: &MtPayoff<T>, st: &[T]) -> Array2<T> {
     let d = self.params.n_assets();
     match payoff {
@@ -266,7 +266,7 @@ impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
         let mut prod = deriv[j];
         for (k, &cutoff_k) in cutoff.iter().enumerate() {
           if k != j {
-            prod *= cutoff_k;
+            prod = prod * cutoff_k;
           }
         }
         prod

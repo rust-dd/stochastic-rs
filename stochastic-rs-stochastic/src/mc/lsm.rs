@@ -10,9 +10,11 @@
 //! Simulation: A Simple Least-Squares Approach",
 //! DOI: 10.1093/rfs/14.1.113
 
+use faer::linalg::solvers::ColPivQr;
+use faer::linalg::solvers::SolveLstsqCore;
+use faer_ext::IntoFaer;
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray_linalg::LeastSquaresSvd;
 
 use crate::traits::FloatExt;
 
@@ -86,12 +88,12 @@ impl<T: FloatExt> Lsm<T> {
       let a_mat = Array2::from_shape_fn((n_itm, n_b), |(row, col)| {
         paths[[itm[row], step]].to_f64().unwrap().powi(col as i32)
       });
-      let b_vec = Array1::from_vec(y_vals);
+      let b_mat = Array2::from_shape_vec((n_itm, 1), y_vals).expect("rhs shape");
 
-      let beta = match a_mat.least_squares(&b_vec) {
-        Ok(result) => result.solution,
-        Err(_) => continue,
-      };
+      let qr = ColPivQr::new(a_mat.view().into_faer());
+      let mut x = b_mat.view().into_faer().to_owned();
+      qr.solve_lstsq_in_place_with_conj(faer::Conj::No, x.as_mut());
+      let beta: Vec<f64> = (0..n_b).map(|j| x[(j, 0)]).collect();
 
       // Exercise decision
       for &idx in &itm {

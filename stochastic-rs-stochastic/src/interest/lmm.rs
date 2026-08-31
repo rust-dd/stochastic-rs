@@ -414,7 +414,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmSampler<T, S> {
 }
 
 /// Lower-triangular Cholesky decomposition of a symmetric positive-definite
-/// matrix. Hand-rolled (no openblas dependency); panics if `rho` is not PSD.
+/// matrix. Hand-rolled (no linalg dependency); panics if `rho` is not PSD.
 ///
 /// Used inline by [`Lmm::with_correlation`].
 fn cholesky_lower<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {

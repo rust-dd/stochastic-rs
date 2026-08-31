@@ -5,7 +5,7 @@
 //! `sample` over numpy arrays.
 //!
 //! The multivariate Gaussian copula is intentionally **not** wrapped because it
-//! depends on `ndarray-linalg` (openblas), which is not part of the default
+//! depended on a system BLAS at the time it was scoped, which was not part of the default
 //! Python build.
 
 #![cfg(feature = "python")]

@@ -1,9 +1,7 @@
 //! Ignored performance comparisons for seeded M-T and finite-difference Greeks.
 //!
-//! Run with `cargo test --release --features openblas --test mt_vs_fd_benchmark
+//! Run with `cargo test --release --test mt_vs_fd_benchmark
 //! -- --ignored --test-threads=1`.
-
-#![cfg(feature = "openblas")]
 
 use ndarray::Array1;
 use ndarray::Array2;

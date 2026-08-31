@@ -9,9 +9,6 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
-use ndarray_linalg::Cholesky;
-use ndarray_linalg::Inverse;
-use ndarray_linalg::UPLO;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -20,6 +17,9 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::CopulaType;
+use super::linalg::is_spd;
+use super::linalg::spd_cholesky_lower;
+use super::linalg::spd_inverse;
 use crate::traits::MultivariateExt;
 
 #[derive(Debug, Clone, Default)]
@@ -60,18 +60,16 @@ impl GaussianMultivariate {
     let dim = corr.nrows();
     self.dim = dim;
 
-    let l_arr = corr
-      .cholesky(UPLO::Lower)
-      .map_err(|_| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
+    let l_arr = spd_cholesky_lower(&corr)
+      .ok_or_else(|| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
     let mut log_det = 0.0;
     for i in 0..dim {
       log_det += l_arr[[i, i]].ln();
     }
     log_det *= 2.0;
 
-    let inv_arr = corr
-      .inv()
-      .map_err(|_| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
+    let inv_arr = spd_inverse(&corr)
+      .ok_or_else(|| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
 
     self.corr = Some(corr);
     self.inv_corr = Some(inv_arr);
@@ -154,7 +152,7 @@ impl GaussianMultivariate {
     if dim != a.ncols() {
       return false;
     }
-    a.cholesky(UPLO::Lower).is_ok()
+    is_spd(a)
   }
 
   fn require_fitted(&self) -> Result<(), Box<dyn Error>> {

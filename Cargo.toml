@@ -24,8 +24,9 @@ stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-beta.2" }
 stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-beta.2" }
 
 # Math / numerical core
+faer = "0.24.4"
+faer-ext = { version = "0.8.0", features = ["ndarray"] }
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
-ndarray-linalg = { version = "0.18.1", default-features = false }
 ndarray-npy = "0.10.0"
 ndrustfft = "0.6.2"
 num-complex = { version = "0.4.6", features = ["rand"] }
@@ -67,9 +68,6 @@ implied-vol = "2.0.0"
 
 # Visualisation
 plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
-
-# Native math (gated)
-openblas-src = { version = "0.10", features = ["cblas"] }
 
 # Python bindings
 pyo3 = { version = "0.28", features = ["extension-module", "chrono"] }
@@ -144,12 +142,10 @@ implied-vol = { workspace = true }
 kendalls = { workspace = true }
 levenberg-marquardt = { workspace = true }
 linreg = { workspace = true }
-openblas-src = { workspace = true, features = ["cblas"], optional = true }
 metal = { workspace = true, optional = true }
 mimalloc = { workspace = true, optional = true }
 nalgebra = { workspace = true }
 ndarray = { workspace = true, features = [ "rayon", "matrixmultiply-threading", ] }
-ndarray-linalg = { workspace = true, optional = true }
 ndarray-npy = { workspace = true }
 ndrustfft = { workspace = true }
 num-complex = { workspace = true, features = ["rand"] }
@@ -283,7 +279,6 @@ harness = false
 [[bench]]
 name = "factors"
 harness = false
-required-features = ["openblas"]
 
 [[bench]]
 name = "econometrics"
@@ -344,28 +339,6 @@ dual-stream-rng = [
     "stochastic-rs-core/dual-stream-rng",
     "stochastic-rs-distributions/dual-stream-rng",
 ]
-openblas = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-system",
-    "stochastic-rs-copulas/openblas",
-    "stochastic-rs-quant/openblas",
-    "stochastic-rs-stats/openblas",
-    "stochastic-rs-stochastic/openblas",
-]
-# Vendored / static OpenBLAS — used by the Windows wheel CI job because the
-# MSVC toolchain cannot reliably link the prebuilt MinGW `.lib`. Unix targets
-# stay on `openblas` (system-link) for faster developer builds.
-openblas-static = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-static",
-    "openblas-src/static",
-    "stochastic-rs-copulas/openblas-static",
-    "stochastic-rs-quant/openblas-static",
-    "stochastic-rs-stats/openblas-static",
-    "stochastic-rs-stochastic/openblas-static",
-]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
 gpu = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/gpu"]
 metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
@@ -414,7 +387,7 @@ lto = true
 
 [package.metadata.docs.rs]
 # Avoid `all-features = true`: it pulls in native GPU SDKs (cubecl-cuda,
-# cudarc, metal), system OpenBLAS, pyo3 link, and yahoo's tokio-test
-# dev-only feature, none of which build cleanly on docs.rs.
-features = ["openblas", "ai", "yahoo", "viz"]
+# cudarc, metal), pyo3 link, and yahoo's tokio-test dev-only feature, none
+# of which build cleanly on docs.rs.
+features = ["ai", "yahoo", "viz"]
 rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

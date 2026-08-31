@@ -19,11 +19,9 @@
 pub mod bootstrap;
 pub mod discount_curve;
 pub mod interpolation;
-#[cfg(feature = "openblas")]
 pub(crate) mod linalg;
 pub mod multi_curve;
 pub mod nelson_siegel;
-#[cfg(feature = "openblas")]
 pub mod svensson;
 pub mod types;
 
@@ -33,7 +31,6 @@ pub use discount_curve::DiscountCurve;
 pub use interpolation::interpolate_discount_factor;
 pub use multi_curve::MultiCurve;
 pub use nelson_siegel::NelsonSiegel;
-#[cfg(feature = "openblas")]
 pub use svensson::Svensson;
 pub use types::Compounding;
 pub use types::CurvePoint;

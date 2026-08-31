@@ -61,8 +61,7 @@ print("annVol =", res.volatility)
 ### ADF stationarity test
 
 Null hypothesis: unit root (non-stationary). `adf_test` lives under the
-`openblas`-gated `stationarity` module (OLS regression via
-`ndarray-linalg`) and reports the rejection decision directly as
+`stationarity` module and reports the rejection decision directly as
 `reject_unit_root: bool` at the `alpha` configured on `AdfConfig` — there
 is no separate `p_value` field, only the test statistic and tabulated
 critical values.
@@ -75,7 +74,7 @@ critical values.
 ```python
 import stochastic_rs as srs
 
-# ADFTest is a class (openblas-gated), not a free function; the fitted
+# ADFTest is a class, not a free function; the fitted
 # object exposes .statistic/.reject_unit_root/.critical_values directly —
 # no .p_value, matching the "no separate p_value field" note above.
 res = srs.ADFTest(series, max_lags=5)
@@ -207,4 +206,4 @@ per-module source under `stochastic-rs-stats/src/` documents each one.
 See the
 [`stats-estimator`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/stats-estimator/SKILL.md)
 SKILL — covers the `ArrayView1<T>` input shape, `*Result` struct
-conventions, openblas gating, and the paper-citation requirement.
+conventions, feature gating, and the paper-citation requirement.

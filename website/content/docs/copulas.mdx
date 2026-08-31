@@ -81,8 +81,8 @@ name — each says so in its own module doc:
 | TreeMultivariate     | **Not a real vine** | MST-derived implied correlation collapsed to a Gaussian copula — module doc: "Gaussian-collapsed implied-correlation copula, NOT a real R-vine" |
 | VineMultivariate     | **Not a real vine** | Star-C-vine-derived implied correlation collapsed to a Gaussian copula — same disclaimer, same doc |
 
-> Multivariate copulas require the `openblas` feature (linear algebra
-> backend). See [Feature flags](/docs/concepts/feature-flags).
+> Multivariate copulas ship in the default build — the linear algebra is
+> the pure-Rust `faer`, no feature flag and no system BLAS.
 
 ## Examples
 
@@ -115,9 +115,8 @@ print("Kendall's tau ≈", tau)                 # ≈ 0.5
 <Tab value="Rust">
 <RustExample path="tests/doctest_copulas_gaussian_multivariate.rs" />
 
-> The multivariate Gaussian copula depends on `ndarray-linalg` (the
-> `openblas` feature) for the Cholesky factorisation, so it is **not**
-> wrapped for Python — use the Rust API directly.
+> The multivariate Gaussian copula is **not** wrapped for Python — use
+> the Rust API directly.
 </Tab>
 </Tabs>
 

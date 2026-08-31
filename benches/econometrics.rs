@@ -4,22 +4,16 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
-#[cfg(feature = "openblas")]
 use ndarray::Array2;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::engle_granger_test;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::granger_causality;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
 
-#[cfg(feature = "openblas")]
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
   let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
@@ -48,7 +42,6 @@ fn bench_changepoint(c: &mut Criterion) {
   });
 }
 
-#[cfg(feature = "openblas")]
 fn bench_cointegration(c: &mut Criterion) {
   let x = random_walk(11, 1_000, 1.0);
   let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(13));
@@ -72,7 +65,6 @@ fn bench_cointegration(c: &mut Criterion) {
   });
 }
 
-#[cfg(feature = "openblas")]
 fn bench_granger(c: &mut Criterion) {
   let x = iid_normal(21, 2_000);
   let y = iid_normal(23, 2_000);
@@ -81,7 +73,6 @@ fn bench_granger(c: &mut Criterion) {
   });
 }
 
-#[cfg(feature = "openblas")]
 fn bench_hmm(c: &mut Criterion) {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(31));
   let mut buf = vec![0.0_f64; 1_000];
@@ -100,7 +91,6 @@ fn bench_hmm(c: &mut Criterion) {
   });
 }
 
-#[cfg(feature = "openblas")]
 criterion_group!(
   benches,
   bench_changepoint,
@@ -108,6 +98,4 @@ criterion_group!(
   bench_granger,
   bench_hmm
 );
-#[cfg(not(feature = "openblas"))]
-criterion_group!(benches, bench_changepoint);
 criterion_main!(benches);

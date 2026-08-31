@@ -39,7 +39,6 @@ rl_rough            hurst          ndarray_overhead     sampler_compare
 | `fgn_metal`          | `metal`                            |
 | `fgn_accelerate`     | `accelerate`                       |
 | `fgn_all_backends`   | `gpu-wgpu`, `metal`, `accelerate`  |
-| `factors`            | `openblas`                         |
 | `hotpath_profile`    | `hotpath`                          |
 | `fgn_cuda_compare`   | `cuda-native`, `gpu-cuda`          |
 | `dual_stream_compare`| `dual-stream-rng`                  |
@@ -307,13 +306,6 @@ cargo bench --bench fgn_fbm            -- --save-baseline v2
 cargo bench --bench process_generation -- --save-baseline v2
 cargo bench --bench option             -- --save-baseline v2
 # … and so on for the rest of the suites
-```
-
-OpenBLAS-gated benches go to a separate baseline name to keep the
-linear-algebra-heavy suite out of the default comparison:
-
-```bash
-cargo bench --bench factors --features openblas -- --save-baseline v2-openblas
 ```
 
 ## Comparing against a baseline

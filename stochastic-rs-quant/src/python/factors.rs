@@ -21,13 +21,11 @@ pub fn sample_covariance<'py>(
   res.into_pyarray(py)
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "PCA", unsendable)]
 pub struct PyPCA {
   inner: crate::factors::pca::PcaResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyPCA {
   /// PCA on a `(T, N)` returns matrix; `k=0` keeps all factors.
@@ -64,13 +62,11 @@ impl PyPCA {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "FamaMacBeth", unsendable)]
 pub struct PyFamaMacBeth {
   inner: crate::factors::fama_macbeth::FamaMacBethResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyFamaMacBeth {
   /// Two-pass Fama-MacBeth cross-sectional regression on `(T, N)` returns
@@ -103,13 +99,11 @@ impl PyFamaMacBeth {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "PairsStrategy", unsendable)]
 pub struct PyPairsStrategy {
   inner: crate::factors::pairs::PairsStrategy,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyPairsStrategy {
   /// Build a pairs-trading strategy from cointegration regression of `y` on `x`.

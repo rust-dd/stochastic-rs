@@ -38,7 +38,6 @@ pub use crate::ito::ItoCalculator;
 pub use crate::ito::ItoResult;
 pub use crate::mc::McEstimate;
 pub use crate::mc::halton::HaltonSeq;
-#[cfg(feature = "openblas")]
 pub use crate::mc::lsm::Lsm;
 pub use crate::mc::mlmc::Mlmc;
 pub use crate::mc::mlmc::MlmcResult;

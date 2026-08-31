@@ -37,7 +37,6 @@
 //!   DOI: 10.1093/acprof:oso/9780199549498.003.0007
 
 pub mod bipower;
-#[cfg(feature = "openblas")]
 pub mod har;
 pub mod kernel;
 pub mod pre_averaging;
@@ -50,11 +49,8 @@ pub use bipower::bns_jump_test;
 pub use bipower::medrv;
 pub use bipower::minrv;
 pub use bipower::tripower_quarticity;
-#[cfg(feature = "openblas")]
 pub use har::HarFit;
-#[cfg(feature = "openblas")]
 pub use har::HarRv;
-#[cfg(feature = "openblas")]
 pub use har::har_features;
 pub use kernel::KernelType;
 pub use kernel::realized_kernel;

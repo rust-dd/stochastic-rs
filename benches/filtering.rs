@@ -4,17 +4,14 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
-#[cfg(feature = "openblas")]
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::stats::filtering::ParticleFilter;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::filtering::UkfState;
 use stochastic_rs::stats::filtering::random_walk_metropolis;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::filtering::unscented_kalman_step;
 
 fn bench_particle(c: &mut Criterion) {
@@ -59,7 +56,6 @@ fn bench_mcmc(c: &mut Criterion) {
   });
 }
 
-#[cfg(feature = "openblas")]
 fn bench_ukf(c: &mut Criterion) {
   let q = Array2::from_shape_vec((2, 2), vec![0.05_f64, 0.0, 0.0, 0.05]).unwrap();
   let r = Array2::from_shape_vec((1, 1), vec![0.5_f64]).unwrap();
@@ -87,8 +83,5 @@ fn bench_ukf(c: &mut Criterion) {
   });
 }
 
-#[cfg(feature = "openblas")]
 criterion_group!(benches, bench_particle, bench_mcmc, bench_ukf);
-#[cfg(not(feature = "openblas"))]
-criterion_group!(benches, bench_particle, bench_mcmc);
 criterion_main!(benches);

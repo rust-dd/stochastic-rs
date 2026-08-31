@@ -38,8 +38,8 @@ pip install maturin
 maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
 ```
 
-Linux and macOS wheels ship with the `openblas` feature enabled; the
-Windows wheel omits the 13 BLAS-backed classes.
+Every wheel — Linux, macOS and Windows — ships the identical full
+surface; the linear algebra is pure Rust (`faer`), so nothing is gated.
 
 ## Part of stochastic-rs
 

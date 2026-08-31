@@ -14,7 +14,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
-use ndarray_linalg::LeastSquaresSvd;
+
+use crate::linalg::lstsq;
 
 /// Result of a Fama-MacBeth two-pass regression.
 #[derive(Debug, Clone)]
@@ -72,13 +73,9 @@ pub fn try_fama_macbeth(
   let mut betas = Array2::<f64>::zeros((n, k + 1));
   for asset in 0..n {
     let y: Array1<f64> = returns.column(asset).to_owned();
-    let sol = design_ts.least_squares(&y).map_err(|e| {
-      crate::factors::FactorsError::OlsFailed(format!(
-        "first-pass OLS failed for asset {asset} (rank-deficient factors? Pre-check via PCA on factor matrix): {e}"
-      ))
-    })?;
+    let sol = lstsq(&design_ts, &y);
     for j in 0..(k + 1) {
-      betas[[asset, j]] = sol.solution[j];
+      betas[[asset, j]] = sol[j];
     }
   }
   let mut design_xs = Array2::<f64>::zeros((n, k + 1));
@@ -91,13 +88,9 @@ pub fn try_fama_macbeth(
   let mut gamma_series = Array2::<f64>::zeros((t, k + 1));
   for time in 0..t {
     let y: Array1<f64> = returns.row(time).to_owned();
-    let sol = design_xs.least_squares(&y).map_err(|e| {
-      crate::factors::FactorsError::OlsFailed(format!(
-        "second-pass cross-sectional OLS failed at time {time} (collinear betas? Verify factor independence): {e}"
-      ))
-    })?;
+    let sol = lstsq(&design_xs, &y);
     for j in 0..(k + 1) {
-      gamma_series[[time, j]] = sol.solution[j];
+      gamma_series[[time, j]] = sol[j];
     }
   }
   let mut gamma_mean = Array1::<f64>::zeros(k + 1);

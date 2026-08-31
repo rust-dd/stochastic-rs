@@ -1,4 +1,3 @@
-#[cfg(feature = "openblas")]
 use ndarray::array;
 
 use super::*;
@@ -97,7 +96,6 @@ fn stulz_min_max_decomposition() {
 }
 
 /// Stulz call-on-min should match Monte Carlo within 2%.
-#[cfg(feature = "openblas")]
 #[test]
 fn stulz_min_matches_mc() {
   let stulz = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.25, 0.30, 0.4)
@@ -139,7 +137,6 @@ fn call_on_max_dominates_vanilla() {
 }
 
 /// 5-asset MC rainbow CallOnMax should be greater than CallOnMin.
-#[cfg(feature = "openblas")]
 #[test]
 fn mc_call_on_max_above_min() {
   let n = 5;
@@ -165,7 +162,6 @@ fn mc_call_on_max_above_min() {
 /// One Monte Carlo model instance prices a whole strike grid. The
 /// strikes are far enough apart that the ordering survives the sampling
 /// error of independent simulations.
-#[cfg(feature = "openblas")]
 #[test]
 fn mc_rainbow_one_model_prices_a_strike_grid() {
   let s = array![100.0, 100.0];
@@ -186,7 +182,6 @@ fn mc_rainbow_one_model_prices_a_strike_grid() {
 /// The model fixes how many assets there are; a query that disagrees is
 /// reported by `try_price` as an `Err`, not a panic. Pinned because that
 /// is the reason the check did not move to the constructor.
-#[cfg(feature = "openblas")]
 #[test]
 fn mc_rainbow_try_price_reports_a_query_dimension_mismatch() {
   let model = McRainbowPricer::new(
@@ -209,7 +204,6 @@ fn mc_rainbow_try_price_reports_a_query_dimension_mismatch() {
 /// A correlation matrix that is symmetric but not positive definite is
 /// also an `Err` rather than a panic — the other half of what keeps the
 /// constructor unguarded.
-#[cfg(feature = "openblas")]
 #[test]
 fn mc_rainbow_try_price_reports_a_non_spd_correlation() {
   let model = McRainbowPricer::new(
@@ -287,7 +281,6 @@ mod construction_validation {
     );
   }
 
-  #[cfg(feature = "openblas")]
   #[test]
   #[should_panic(
     expected = "McRainbowPricer::new: sigma[1] must be a non-negative volatility (got -0.3)"
@@ -301,7 +294,6 @@ mod construction_validation {
     );
   }
 
-  #[cfg(feature = "openblas")]
   #[test]
   #[should_panic(expected = "McRainbowPricer::new: n_paths must be at least 1 (got 0)")]
   fn mc_rainbow_rejects_a_zero_path_count() {
@@ -317,7 +309,6 @@ mod construction_validation {
   /// `rho` entry stays constructible, because
   /// `mc_rainbow_try_price_reports_a_non_spd_correlation` needs it to
   /// reach `try_price` and come back as an `Err` rather than a panic.
-  #[cfg(feature = "openblas")]
   #[test]
   fn mc_rainbow_leaves_the_correlation_matrix_to_try_price() {
     let model = McRainbowPricer::new(

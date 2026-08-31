@@ -273,7 +273,8 @@ The `mc/` module is nine files under
   `estimate(level_sampler) -> MlmcResult<T>`; note it returns its own
   result type, not `McEstimate`.
 - `lsm.rs` — Longstaff-Schwartz, `Lsm::new(r, tau, n_basis)` +
-  `price(paths, payoff)`. **`#[cfg(feature = "openblas")]`-gated** —
+  `price(paths, payoff)`. Ungated — the least-squares solve runs on the
+  pure-Rust `faer`, so it is in every build —
   it needs LAPACK for the regression step, so it is absent from a
   default build.
 
@@ -283,7 +284,7 @@ The `mc/` module is nine files under
 - `add-diffusion-process` — produces the underlying paths; the seed is
   the constructor's last parameter, and CRN depends on `Clone`
   snapshotting it.
-- `feature-flag-management` — `lsm.rs` is `openblas`-gated; a new
+- `feature-flag-management` — if a new
   LAPACK-dependent technique needs the same treatment.
 - `bench-writing` — variance-reduction factor is a natural benchmark
   metric.

@@ -415,7 +415,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     stochastic_rs_quant::python::empirical_cvar,
     m
   )?)?;
-  #[cfg(feature = "openblas")]
   {
     use stochastic_rs_quant::python::PyFamaMacBeth;
     use stochastic_rs_quant::python::PyPCA;
@@ -517,7 +516,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     stochastic_rs_stats::python::random_walk_metropolis,
     m
   )?)?;
-  #[cfg(feature = "openblas")]
   {
     use stochastic_rs_stats::python::PyADFTest;
     use stochastic_rs_stats::python::PyERSTest;

@@ -22,7 +22,7 @@ generically over the float type via [`FloatExt`](#floatext).
 | `ProcessExt<T>`           | `stochastic-rs-stochastic`     | Stochastic process simulation (`sample`, `sample_map`, `sample_par`) |
 | `DistributionExt`         | `stochastic-rs-distributions`  | Closed-form pdf / cdf / cf / moments (`f64`-only)      |
 | `BivariateExt<T>`         | `stochastic-rs-copulas`        | Bivariate copulas                                      |
-| `MultivariateExt<T>`      | `stochastic-rs-copulas`        | Multivariate copulas (openblas-only)                   |
+| `MultivariateExt<T>`      | `stochastic-rs-copulas`        | Multivariate copulas (Gaussian, t, vines, NAC)         |
 | `ModelPricer`             | `stochastic-rs-quant`          | Concrete-typed strike/tau-grid pricer (no `&dyn`)      |
 | `ShortRatePricer`         | `stochastic-rs-quant`          | Short-rate bond pricing (`Vasicek`, `Cir`, `HullWhite`)|
 | `ToModel`, `ToShortRateModel` | `stochastic-rs-quant`      | Calibrator → Concrete pricer bridge                    |

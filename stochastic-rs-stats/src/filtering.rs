@@ -8,8 +8,8 @@
 //! $$
 //! with $v_t, w_t$ independent noise.
 //!
-//! Most algorithms require the `openblas` feature for the linear-algebra
-//! routines on the state-covariance matrix.
+//! The linear-algebra routines on the state-covariance matrix run on the
+//! pure-Rust `faer`, in every build.
 //!
 //! # References
 //! - Gordon, Salmond, Smith, "Novel Approach to Nonlinear/Non-Gaussian
@@ -30,14 +30,11 @@
 
 pub mod mcmc;
 pub mod particle;
-#[cfg(feature = "openblas")]
 pub mod ukf;
 
 pub use mcmc::MhResult;
 pub use mcmc::random_walk_metropolis;
 pub use particle::ParticleFilter;
 pub use particle::ResamplingScheme;
-#[cfg(feature = "openblas")]
 pub use ukf::UkfState;
-#[cfg(feature = "openblas")]
 pub use ukf::unscented_kalman_step;

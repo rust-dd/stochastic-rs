@@ -54,8 +54,6 @@ stochastic-rs-core (simd_rng)
 | Feature         | Owner crate                  | Pulls in                          | Use when                                              |
 |-----------------|------------------------------|-----------------------------------|-------------------------------------------------------|
 | `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
-| `openblas`      | `stats`, `quant`, `copulas`, `stochastic` | `ndarray-linalg/openblas-system` | MLE, multivariate copulas, Cholesky-heavy estimators  |
-| `openblas-static` | same                       | `ndarray-linalg/openblas-static`  | Vendored OpenBLAS — needed for the Windows wheel CI   |
 | `cuda-native`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
 | `gpu`           | `stochastic`                 | `cubecl`, `gpu-fft`               | Portable GPU kernel framework (CPU + GPU runtime)     |
 | `gpu-cuda`      | `stochastic`                 | `cubecl-cuda`                     | cubecl over CUDA (NVIDIA)                             |
@@ -265,42 +263,12 @@ let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
 Concrete numbers and the cross-over point are on the
 [Benchmarks](/docs/benchmarks) page.
 
-## OpenBLAS (required for the `openblas` feature)
+## Linear algebra
 
-The `openblas` feature pulls in `ndarray-linalg` for linear algebra
-(MLE, multivariate copulas, factor models, cointegration, HMM). It
-needs a system OpenBLAS with LAPACK.
-
-**Linux (Debian / Ubuntu)**
-
-```bash
-sudo apt install libopenblas-dev
-```
-
-**Linux (Fedora / RHEL)**
-
-```bash
-sudo dnf install openblas-devel
-```
-
-**macOS**
-
-```bash
-brew install openblas
-export OPENBLAS_DIR=$(brew --prefix openblas)
-```
-
-**Windows**
-
-The `openblas-src` crate does not currently support static linking on
-the MSVC target. For source builds use vcpkg with a prebuilt LAPACK
-binary; the Windows wheel CI job uses `openblas-static` with a vendored
-binary (the published Windows wheel **omits** the 13 BLAS-backed
-classes — see [Python bindings](/docs/python) for the exact list).
-
-```bash
-cargo build --features openblas
-```
+Cholesky, SVD, eigendecompositions and least squares run on the
+pure-Rust [`faer`](https://github.com/sarah-quinones/faer-rs) and are
+always compiled in — there is no BLAS/LAPACK system dependency to
+install on any platform.
 
 ## Verify the install
 

@@ -65,7 +65,7 @@ crate: stochastic-rs-<sub>                     # which sub-crate owns this
 module_path: stochastic_rs::stochastic::diffusion::ou
 since: 2.0.0                                   # first version that shipped this
 status: stable | experimental | deprecated
-features: []                                   # required Cargo features (cuda, openblas, ai, ...)
+features: []                                   # required Cargo features (cuda, metal, ai, ...)
 references:
   - author: "Heston, S."
     year: 1993

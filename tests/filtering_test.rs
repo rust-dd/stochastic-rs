@@ -1,17 +1,14 @@
 //! Integration tests for the `stats::filtering` module.
 
 use ndarray::Array1;
-#[cfg(feature = "openblas")]
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::stats::filtering::ParticleFilter;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::filtering::UkfState;
 use stochastic_rs::stats::filtering::random_walk_metropolis;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::filtering::unscented_kalman_step;
 
 #[test]
@@ -55,7 +52,6 @@ fn metropolis_chain_concentrates_around_mode_of_skewed_target() {
   assert!((mean - 2.5).abs() < 0.1);
 }
 
-#[cfg(feature = "openblas")]
 #[test]
 fn ukf_remains_finite_under_long_run() {
   let mut state = UkfState {

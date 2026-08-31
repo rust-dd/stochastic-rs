@@ -21,7 +21,6 @@ Rust core.
 | `gpu` / `gpu-cuda` / `gpu-wgpu` | `-stochastic` | `cubecl` (+ `cubecl-cuda` / `-wgpu`) | Portable CUDA / WebGPU kernels (`CubeCl` backend) |
 | `metal`           | `-stochastic`               | `metal`                             | macOS GPU FGN / fBM (`MetalNative` backend) |
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend) |
-| `openblas`        | `-copulas`, `-quant`, `-stats`, `-stochastic` | `ndarray-linalg/openblas-system`     | MLE, multivariate copulas, Cholesky-heavy |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
@@ -40,10 +39,6 @@ default = []
 ai      = ["stochastic-rs-ai"]
 cuda-native = ["dep:cudarc", "stochastic-rs-stochastic/cuda-native"]
 metal       = ["dep:metal", "stochastic-rs-stochastic/metal"]
-openblas = [
-  "stochastic-rs-stats/openblas",
-  "stochastic-rs-quant/openblas",
-]
 dual-stream-rng = [
   "stochastic-rs-core/dual-stream-rng",
   "stochastic-rs-distributions/dual-stream-rng",
@@ -54,14 +49,14 @@ If you depend on a sub-crate directly (recommended for lean builds),
 you enable the feature on that sub-crate:
 
 ```toml
-stochastic-rs-stats = { version = "3.0.0-beta.2", features = ["openblas"] }
+stochastic-rs-stats = { version = "3.0.0-beta.2" }
 ```
 
 ## Common gotchas
 
-- **`openblas` is platform-specific.** On macOS use
-  `RUSTFLAGS=-L/opt/homebrew/opt/openblas/lib` or the `system` linkage.
-  On Linux `apt install libopenblas-dev`.
+- **Linear algebra needs no feature at all.** Cholesky, SVD, eigen and
+  least squares run on the pure-Rust `faer` and are always compiled in;
+  the BLAS-backed feature flag from 2.x was removed in 3.0.
 - **`cuda-native` / `gpu-cuda` require the CUDA toolkit on the build
   machine.** CI builds do not install it by default.
 - **`ai` is heavy.** It pulls in `candle-core`, which is a substantial

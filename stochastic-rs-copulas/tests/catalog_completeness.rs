@@ -51,7 +51,6 @@ fn bivariate_catalog_matches_docs_count() {
   assert_eq!(count, 13, "copulas.mdx's bivariate table says 13");
 }
 
-#[cfg(feature = "openblas")]
 #[test]
 fn multivariate_catalog_matches_docs_count() {
   use stochastic_rs_copulas::multivariate::CopulaType as Multivariate;

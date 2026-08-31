@@ -75,8 +75,7 @@ impl PyNelsonSiegel {
     }
   }
 
-  /// Fit Nelson-Siegel parameters to market zero rates (requires openblas feature).
-  #[cfg(feature = "openblas")]
+  /// Fit Nelson-Siegel parameters to market zero rates.
   #[staticmethod]
   fn fit_curve<'py>(
     maturities: numpy::PyReadonlyArray1<'py, f64>,

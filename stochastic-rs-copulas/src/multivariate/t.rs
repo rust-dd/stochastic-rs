@@ -53,9 +53,6 @@ use std::f64;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
-use ndarray_linalg::Cholesky;
-use ndarray_linalg::Inverse;
-use ndarray_linalg::UPLO;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -66,6 +63,9 @@ use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 
 use super::CopulaType;
+use super::linalg::is_spd;
+use super::linalg::spd_cholesky_lower;
+use super::linalg::spd_inverse;
 use crate::correlation::kendall_tau;
 use crate::traits::MultivariateExt;
 
@@ -149,17 +149,15 @@ impl TMultivariate {
     let dim = corr.nrows();
     self.dim = dim;
 
-    let l_arr = corr
-      .cholesky(UPLO::Lower)
-      .map_err(|_| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
+    let l_arr = spd_cholesky_lower(&corr)
+      .ok_or_else(|| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
     let mut log_det = 0.0;
     for i in 0..dim {
       log_det += l_arr[[i, i]].ln();
     }
     log_det *= 2.0;
-    let inv_arr = corr
-      .inv()
-      .map_err(|_| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
+    let inv_arr = spd_inverse(&corr)
+      .ok_or_else(|| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
 
     self.corr = Some(corr);
     self.inv_corr = Some(inv_arr);
@@ -307,7 +305,7 @@ impl TMultivariate {
   fn nearest_spd(mut corr: Array2<f64>) -> Array2<f64> {
     let d = corr.nrows();
     let mut jitter = 0usize;
-    while corr.cholesky(UPLO::Lower).is_err() && jitter < 6 {
+    while !is_spd(&corr) && jitter < 6 {
       let eps = 10f64.powi(-6_i32 + jitter as i32);
       for k in 0..d {
         corr[[k, k]] = 1.0 + eps;

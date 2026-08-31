@@ -1,17 +1,13 @@
-#[cfg(feature = "openblas")]
 use numpy::PyReadonlyArray1;
-#[cfg(feature = "openblas")]
 use pyo3::prelude::*;
 
-/// ADF/KPSS bindings require the openblas feature (the underlying
+/// ADF/KPSS bindings ship in every wheel (the underlying
 /// `stationarity` module pulls in `ndarray-linalg`).
-#[cfg(feature = "openblas")]
 #[pyclass(name = "ADFTest", unsendable)]
 pub struct PyADFTest {
   inner: crate::stationarity::adf::AdfResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyADFTest {
   /// `deterministic`: "n" (none), "c" (constant), or "ct" (constant + trend).
@@ -86,13 +82,11 @@ impl PyADFTest {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "KPSSTest", unsendable)]
 pub struct PyKPSSTest {
   inner: crate::stationarity::kpss::KpssResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyKPSSTest {
   #[new]
@@ -137,13 +131,11 @@ impl PyKPSSTest {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "PhillipsPerronTest", unsendable)]
 pub struct PyPhillipsPerronTest {
   inner: crate::stationarity::phillips_perron::PhillipsPerronResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyPhillipsPerronTest {
   /// `deterministic`: "n" / "c" / "ct". `test_type`: "tau" or "rho".
@@ -202,13 +194,11 @@ impl PyPhillipsPerronTest {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "ERSTest", unsendable)]
 pub struct PyERSTest {
   inner: crate::stationarity::ers_dfgls::ErsResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyERSTest {
   /// Elliott-Rothenberg-Stock DF-GLS unit-root test.
@@ -274,13 +264,11 @@ impl PyERSTest {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "LeybourneMcCabeTest", unsendable)]
 pub struct PyLeybourneMcCabeTest {
   inner: crate::stationarity::leybourne_mccabe::LeybourneMcCabeResult,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyLeybourneMcCabeTest {
   /// Leybourne-McCabe stationarity test (parametric bootstrap p-value).

@@ -4,7 +4,7 @@ use super::greeks::MtGreeks;
 use super::payoff::MtPayoff;
 use crate::traits::FloatExt;
 
-impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
+impl<T: FloatExt> MtGreeks<T> {
   /// Delta for one asset using exact conditional Malliavin weights.
   ///
   /// This compatibility wrapper panics when the model is outside the supported

@@ -1,6 +1,6 @@
 ---
 title: Prelude
-description: stochastic_rs::prelude — 24 items in six groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+description: stochastic_rs::prelude — 25 items in six groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
 category: concept
 since: 2.0.0
 status: stable
@@ -12,7 +12,7 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **24 items in 6 groups** — re-derive with
+Brings **25 items in 6 groups** — re-derive with
 `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
 `src/lib.rs` any time an item is added or removed; this count has drifted
 before (it read "20 items" for several releases after `VolterraKernel`
@@ -22,11 +22,11 @@ standalone Rust statements — see
 [Importing concrete types](#importing-concrete-types) for a compiled,
 runnable example.
 
-## Trait core (8)
+## Trait core (9)
 
 ```
 RealExt, FloatExt, SimdFloatExt,
-ProcessExt, BivariateExt,
+ProcessExt, BivariateExt, MultivariateExt,
 DistributionExt, DistributionSampler,
 TimeExt
 ```
@@ -105,8 +105,6 @@ bivariate copulas.
 
 ## What is *not* in the prelude (and why)
 
-- `MultivariateExt` — `openblas`-only; importing it from a default-build
-  would be a hard error. Reach via `traits::*`.
 - `CallableDist` — `python`-only; same reason.
 - `ShortRatePricer` — the short-rate half of the pricing pair. Its query is
   a yield curve and a drift offset rather than a spot and a strike, so it

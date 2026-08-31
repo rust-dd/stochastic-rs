@@ -6,11 +6,8 @@ use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::engle_granger_test;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::granger_causality;
-#[cfg(feature = "openblas")]
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
 
@@ -48,7 +45,6 @@ fn pelt_segment_count_increases_with_lower_penalty() {
   assert!(cheap.changepoints.len() >= expensive.changepoints.len());
 }
 
-#[cfg(feature = "openblas")]
 #[test]
 fn engle_granger_full_pipeline() {
   let x = random_walk(31, 400, 1.0);
@@ -64,7 +60,6 @@ fn engle_granger_full_pipeline() {
   assert!((res.beta - 1.5).abs() < 0.1);
 }
 
-#[cfg(feature = "openblas")]
 #[test]
 fn johansen_eigenvalues_decreasing_in_magnitude() {
   let mut s = Array2::<f64>::zeros((400, 4));
@@ -84,7 +79,6 @@ fn johansen_eigenvalues_decreasing_in_magnitude() {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[test]
 fn granger_pvalue_in_unit_interval() {
   let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(71));

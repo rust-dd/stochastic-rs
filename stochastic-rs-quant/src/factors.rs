@@ -9,7 +9,7 @@
 //! \alpha = \min\!\bigl(1,\,b^2 / d^2\bigr).
 //! $$
 //!
-//! Requires the `openblas` feature for SVD / eigendecomposition.
+//! SVD and least squares run on the pure-Rust `faer`, in every build.
 //!
 //! # References
 //! - Ledoit, Wolf, "A Well-Conditioned Estimator for Large-Dimensional
@@ -27,11 +27,8 @@
 //!   Relative-Value Arbitrage Rule", Review of Financial Studies, 19(3),
 //!   797-827 (2006). DOI: 10.1093/rfs/hhj020
 
-#[cfg(feature = "openblas")]
 pub mod fama_macbeth;
-#[cfg(feature = "openblas")]
 pub mod pairs;
-#[cfg(feature = "openblas")]
 pub mod pca;
 pub mod shrinkage;
 
@@ -60,25 +57,15 @@ impl std::fmt::Display for FactorsError {
 
 impl std::error::Error for FactorsError {}
 
-#[cfg(feature = "openblas")]
 pub use fama_macbeth::FamaMacBethResult;
-#[cfg(feature = "openblas")]
 pub use fama_macbeth::fama_macbeth;
-#[cfg(feature = "openblas")]
 pub use fama_macbeth::try_fama_macbeth;
-#[cfg(feature = "openblas")]
 pub use pairs::PairsSignal;
-#[cfg(feature = "openblas")]
 pub use pairs::PairsStrategy;
-#[cfg(feature = "openblas")]
 pub use pairs::pairs_signals;
-#[cfg(feature = "openblas")]
 pub use pairs::try_pairs_signals;
-#[cfg(feature = "openblas")]
 pub use pca::PcaResult;
-#[cfg(feature = "openblas")]
 pub use pca::pca_decompose;
-#[cfg(feature = "openblas")]
 pub use pca::try_pca_decompose;
 pub use shrinkage::ledoit_wolf_shrinkage;
 pub use shrinkage::sample_covariance;

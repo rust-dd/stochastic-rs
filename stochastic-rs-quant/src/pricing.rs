@@ -8,7 +8,6 @@ pub mod asian;
 pub mod autocallable;
 pub mod barrier;
 pub mod basket;
-#[cfg(feature = "openblas")]
 pub mod bermudan;
 pub mod bjerksund_stensland;
 pub mod breeden_litzenberger;
@@ -31,7 +30,6 @@ pub mod kirk;
 pub mod lookback;
 pub mod malliavin_gbm;
 pub mod malliavin_greeks;
-#[cfg(feature = "openblas")]
 pub mod malliavin_thalmaier;
 pub(crate) mod mc_stats;
 pub mod merton_jump;
@@ -50,9 +48,7 @@ pub use autocallable::KnockInStyle;
 pub use basket::ArithmeticBasketLevyPricer;
 pub use basket::BasketAverageType;
 pub use basket::GeometricBasketPricer;
-#[cfg(feature = "openblas")]
 pub use basket::McBasketPricer;
-#[cfg(feature = "openblas")]
 pub use bermudan::BermudanLsmPricer;
 pub use bjerksund_stensland::BjerksundStensland2002Pricer;
 pub use bsm::BSMCoc;
@@ -93,7 +89,6 @@ pub use fourier::VarianceGammaFourier;
 pub use heston::HestonPricer;
 pub use heston_stoch_corr::HestonStochCorrPricer;
 pub use kirk::KirkSpreadPricer;
-#[cfg(feature = "openblas")]
 pub use rainbow::McRainbowPricer;
 pub use rainbow::RainbowPayoff;
 pub use rainbow::StulzRainbowPricer;

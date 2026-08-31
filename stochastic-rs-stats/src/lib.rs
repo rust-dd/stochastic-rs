@@ -11,6 +11,7 @@
 #![allow(clippy::needless_range_loop)]
 
 #[macro_use]
+mod linalg;
 mod macros;
 
 pub mod traits;
@@ -43,7 +44,6 @@ pub mod particle_mle;
 pub mod qmle;
 pub mod realized;
 pub mod spectral;
-#[cfg(feature = "openblas")]
 pub mod stationarity;
 pub mod tail_index;
 
@@ -52,14 +52,12 @@ pub mod python;
 
 #[cfg(test)]
 mod tests {
-  #[cfg(feature = "openblas")]
   #[test]
   fn cusum_result_types_do_not_collide() {
     use crate::econometrics::changepoint::*;
     use crate::stationarity::cusum::*;
     // Both names must be nameable in one scope.
     fn _a(_x: ChangepointCusumResult) {}
-    #[cfg(feature = "openblas")]
     fn _b(_x: CusumResult) {}
   }
 }

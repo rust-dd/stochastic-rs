@@ -13,13 +13,6 @@ categories = ["mathematics", "simulation", "science"]
 
 [features]
 default = []
-openblas = ["dep:ndarray-linalg", "dep:openblas-src", "ndarray-linalg/openblas-system"]
-openblas-static = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-static",
-    "openblas-src/static",
-]
 python = [
     "dep:pyo3",
     "dep:numpy",
@@ -28,11 +21,11 @@ python = [
 ]
 
 [dependencies]
+faer = { workspace = true }
+faer-ext = { workspace = true, features = ["ndarray"] }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-linalg = { workspace = true, optional = true }
-openblas-src = { workspace = true, features = ["cblas"], optional = true }
 nalgebra = { workspace = true }
 num-traits = { workspace = true }
 num-complex = { workspace = true }

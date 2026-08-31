@@ -8,9 +8,12 @@ description: Conventions for writing integration tests in stochastic-rs. Pinned-
 This SKILL codifies the testing conventions that prevent the common
 failure modes the audits caught:
 
-- **§4.6 trap (rc.0):** a test compiled fine on `--features openblas`
+- **§4.6 trap (rc.0):** a test compiled fine with a feature enabled
   but failed on `--no-default-features` because the test imported a
-  helper from an openblas-gated module without gating itself.
+  helper from a feature-gated module without gating itself. (The
+  then-culprit BLAS gate no longer exists — linalg is ungated faer
+  now — but the lesson holds for every remaining gate: `python`,
+  `metal`, `gpu`, `ai`.)
 - **Fukasawa flake (rc.1):** a `Fou` built with `Unseeded` inside a test
   produced sporadic CI failures; the fix was to pass
   `Deterministic::new(seed)` instead. (The `Fou::seeded(...)`
@@ -152,29 +155,28 @@ regression tests stay; debug breadcrumbs go.
 
 ## 4. Feature-gating discipline
 
-If a test depends on `feature = "openblas"` (e.g. uses
-`ndarray-linalg::SVD`), gate the *test* explicitly:
+If a test depends on a Cargo feature (e.g. uses a `metal`-gated
+backend), gate the *test* explicitly:
 
 ```rust
-#[cfg(feature = "openblas")]
+#[cfg(feature = "metal")]
 #[test]
-fn svd_based_test() { /* ... */ }
+fn metal_backend_test() { /* ... */ }
 ```
 
 If the entire test module depends on a feature, gate the module:
 
 ```rust
-#![cfg(feature = "openblas")]
-mod openblas_tests {
+#![cfg(feature = "metal")]
+mod metal_tests {
     // ...
 }
 ```
 
-The §4.6 trap was a test that imported `crate::openblas::helper` —
-which only existed under `--features openblas` — without an explicit
-gate. The test compiled fine because the surrounding suite implicitly
-had openblas enabled, then broke when someone ran with
-`--no-default-features`.
+The §4.6 trap was a test that imported a helper that only existed under
+a feature gate — without gating itself. The test compiled fine because
+the surrounding suite implicitly had the feature enabled, then broke
+when someone ran with `--no-default-features`.
 
 Verification: the release-checklist mandates `cargo test --workspace
 --no-default-features` to catch missing gates.

@@ -1,7 +1,5 @@
 //! `MultivariateExt` — feature-gated multivariate copula trait.
 
-#![cfg(feature = "openblas")]
-
 use std::error::Error;
 
 use ndarray::Array1;

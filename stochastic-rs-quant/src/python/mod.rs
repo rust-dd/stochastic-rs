@@ -52,11 +52,8 @@ pub use calibration_basic::PySabrCapletCalibrator;
 pub use curves::PyDiscountCurve;
 pub use curves::PyNelsonSiegel;
 pub use curves::PyZeroCouponInflationCurve;
-#[cfg(feature = "openblas")]
 pub use factors::PyFamaMacBeth;
-#[cfg(feature = "openblas")]
 pub use factors::PyPCA;
-#[cfg(feature = "openblas")]
 pub use factors::PyPairsStrategy;
 pub use factors::empirical_cvar;
 pub use factors::ledoit_wolf_shrinkage;

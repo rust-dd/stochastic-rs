@@ -13,19 +13,6 @@ categories = ["mathematics", "science"]
 
 [features]
 default = []
-openblas = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-system",
-    "stochastic-rs-stochastic/openblas",
-]
-openblas-static = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-static",
-    "openblas-src/static",
-    "stochastic-rs-stochastic/openblas-static",
-]
 python = [
     "dep:pyo3",
     "dep:numpy",
@@ -35,12 +22,12 @@ python = [
 ]
 
 [dependencies]
+faer = { workspace = true }
+faer-ext = { workspace = true, features = ["ndarray"] }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 stochastic-rs-stochastic = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-linalg = { workspace = true, optional = true }
-openblas-src = { workspace = true, features = ["cblas"], optional = true }
 nalgebra = { workspace = true }
 num-traits = { workspace = true }
 num-complex = { workspace = true }
@@ -64,11 +51,3 @@ anyhow = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
 
-[package.metadata.docs.rs]
-# Same choice as the umbrella crate's own `[package.metadata.docs.rs]`:
-# `openblas` unlocks the LAPACK-backed `stationarity` module (ADF, KPSS,
-# ERS-DFGLS, Phillips-Perron, Leybourne-McCabe) so it renders instead of
-# silently disappearing behind the default (non-openblas) feature set.
-# `python` is skipped, same reasoning as the umbrella: the pyo3
-# extension-module build isn't meant to render as rustdoc.
-features = ["openblas"]

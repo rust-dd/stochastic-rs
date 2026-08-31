@@ -19,14 +19,12 @@ pub use stochastic_rs_core::simd_rng;
 pub use stochastic_rs_distributions as distributions;
 
 pub use crate::traits::BivariateExt;
-#[cfg(feature = "openblas")]
 pub use crate::traits::MultivariateExt;
 pub use crate::traits::TailDependence;
 
 pub mod bivariate;
 pub mod correlation;
 pub mod empirical;
-#[cfg(feature = "openblas")]
 pub mod multivariate;
 pub mod process_coupling;
 pub mod univariate;

@@ -43,17 +43,13 @@ jobs:
         features:
           - "" # default
           - "ai"
-          - "openblas"
           - "yahoo"
           - "python"
           - "gpu"
           - "python,gpu"
-          - "openblas,ai,yahoo"
+          - "ai,yahoo"
     steps:
       - uses: actions/checkout@v3
-      - name: Install OpenBLAS (when needed)
-        if: contains(matrix.features, 'openblas')
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (features=${{ matrix.features }})
         run: |
@@ -80,16 +76,7 @@ jobs:
       # gate does not exercise the lint, so 171 broken links once accumulated
       # unnoticed. This step is what makes the deny bite.
       - name: cargo doc (intra-doc links)
-        run: cargo doc --workspace --no-deps --no-default-features
-      # `--no-default-features` never compiles the openblas-gated code, so its
-      # doc links went unchecked by the step above — 54 `cfg(feature =
-      # "openblas")` sites in stochastic-rs-stats alone. A1-d Task 5 found a
-      # broken link that way, by running this locally, after the step above was
-      # already green.
-      - name: Install OpenBLAS
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
-      - name: cargo doc (intra-doc links, openblas)
-        run: cargo doc --workspace --no-deps --features openblas
+        run: cargo doc --workspace --no-deps
 
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for
@@ -124,8 +111,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      - name: Install OpenBLAS
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
       # `maturin develop` requires an active virtualenv on Linux; the
       # ubuntu-latest runner does not have one by default. Create one and
       # invoke maturin / python via the venv's binaries (no `source` so
@@ -135,8 +120,8 @@ jobs:
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install maturin numpy pytest scipy
-      - name: maturin develop (openblas)
-        run: .venv/bin/maturin develop --release --features openblas
+      - name: maturin develop
+        run: .venv/bin/maturin develop --release
       - name: Run python_smoke.py
         # `-u` flushes prints so the last `[OK]`/`[FAIL]` line before any
         # crash shows up in the log; `-X faulthandler` prints a C+Python
@@ -159,8 +144,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v3
-      - name: Install OpenBLAS
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install nextest
@@ -172,14 +155,14 @@ jobs:
       # stochastic-rs-py` because the cdylib is exercised by pytest in the
       # python_smoke job. Mirrors the coverage job's feature set for parity.
       - name: cargo nextest run (workspace)
-        run: cargo nextest run --workspace --exclude stochastic-rs-py --features openblas --profile ci
+        run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci
       # nextest does not run doctests; this gates the crates' doc examples
       # (e.g. the README quickstart rendered on docs.rs) that plain `cargo
       # test` used to cover. `--release` reuses the artifacts built above.
       - name: cargo test --doc (workspace)
-        run: cargo test --release --workspace --exclude stochastic-rs-py --features openblas --doc
+        run: cargo test --release --workspace --exclude stochastic-rs-py --doc
 
-  # Full test run with openblas + coverage. Heavyweight + instrumented, so it
+  # Full test run with coverage. Heavyweight + instrumented, so it
   # only runs on pushes to main; the fast `test` job gates pull requests.
   test_with_coverage:
     runs-on: ubuntu-latest
@@ -190,7 +173,6 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
 
       # Pinned rather than tracking `@nightly`: nightly-2026-07-25
       # (rustc da86f4d07) ICEs in rustc_codegen_ssa compiling `tokio` under
@@ -228,7 +210,7 @@ jobs:
         # unique by the %p pid above) and the `ci-coverage` profile prints the
         # running (N/total) counter; grcov then merges every profraw as before.
         run: |
-          cargo nextest run --release --workspace --exclude stochastic-rs-py --features openblas --profile ci-coverage
+          cargo nextest run --release --workspace --exclude stochastic-rs-py --profile ci-coverage
 
       - name: Generate coverage report
         run: |

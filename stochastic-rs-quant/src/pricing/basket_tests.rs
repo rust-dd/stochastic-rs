@@ -165,7 +165,6 @@ fn arithmetic_basket_levy_one_model_prices_a_strike_grid() {
 }
 
 /// Levy and MC should agree within ~3% for a 4-asset arithmetic basket.
-#[cfg(feature = "openblas")]
 #[test]
 fn levy_vs_mc_arithmetic() {
   let (s, w, sig, q, rho) = iid_basket(4, 0.25, 0.4);
@@ -188,7 +187,6 @@ fn levy_vs_mc_arithmetic() {
 }
 
 /// MC geometric vs analytical geometric basket (should match closely).
-#[cfg(feature = "openblas")]
 #[test]
 fn mc_geometric_matches_closed_form() {
   let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.5);
@@ -316,7 +314,6 @@ mod construction_validation {
     );
   }
 
-  #[cfg(feature = "openblas")]
   #[test]
   #[should_panic(
     expected = "McBasketPricer::new: sigma[1] must be a non-negative volatility (got -0.3)"
@@ -331,7 +328,6 @@ mod construction_validation {
     );
   }
 
-  #[cfg(feature = "openblas")]
   #[test]
   #[should_panic(expected = "McBasketPricer::new: n_paths must be at least 1 (got 0)")]
   fn mc_basket_rejects_a_zero_path_count() {
@@ -522,7 +518,6 @@ fn arithmetic_basket_parity() {
 /// One Monte Carlo model instance prices a whole strike grid, both legs.
 /// The strikes are far enough apart that the ordering survives the sampling
 /// error of independent simulations.
-#[cfg(feature = "openblas")]
 #[test]
 fn mc_basket_one_model_prices_a_strike_grid() {
   let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.4);
@@ -542,7 +537,6 @@ fn mc_basket_one_model_prices_a_strike_grid() {
 /// The model and the weights fix how many assets there are; a query that
 /// disagrees is reported by `try_price` as an `Err`, not a panic. Pinned
 /// because that is the reason the check did not move to the constructor.
-#[cfg(feature = "openblas")]
 #[test]
 fn mc_basket_try_price_reports_a_query_dimension_mismatch() {
   let (_, w, sig, _, rho) = iid_basket(3, 0.25, 0.4);

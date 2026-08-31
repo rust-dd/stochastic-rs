@@ -29,7 +29,6 @@ pub use pricing::ModelPricer;
 pub use pricing::VanillaEuropeanCall;
 pub use short_rate::ShortRatePricer;
 pub use stochastic_rs_copulas::traits::BivariateExt;
-#[cfg(feature = "openblas")]
 pub use stochastic_rs_copulas::traits::MultivariateExt;
 pub use stochastic_rs_distributions::traits::DistributionExt;
 pub use stochastic_rs_distributions::traits::DistributionSampler;

@@ -4,10 +4,8 @@
 //! feature-gated `multivariate` (`MultivariateExt`).
 
 pub mod bivariate;
-#[cfg(feature = "openblas")]
 pub mod multivariate;
 
 pub use bivariate::BivariateExt;
 pub use bivariate::TailDependence;
-#[cfg(feature = "openblas")]
 pub use multivariate::MultivariateExt;

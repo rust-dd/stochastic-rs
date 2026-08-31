@@ -16,7 +16,6 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray_linalg::LeastSquaresSvd;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 
@@ -101,10 +100,7 @@ impl BermudanLsmPricer {
       });
       let b_vec = Array1::from_vec(y_vals);
 
-      let beta = match a_mat.least_squares(&b_vec) {
-        Ok(result) => result.solution,
-        Err(_) => continue,
-      };
+      let beta = crate::linalg::lstsq(&a_mat, &b_vec);
       for &idx in &itm {
         let s = paths[[idx, step]];
         let continuation: f64 = (0..n_b).map(|j| beta[j] * s.powi(j as i32)).sum();

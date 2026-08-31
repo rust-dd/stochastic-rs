@@ -81,7 +81,6 @@ The gated benches in tree today, with their exact feature sets:
 | `fgn_all_backends` | `["gpu-wgpu", "metal", "accelerate"]` |
 | `fgn_accelerate` | `["accelerate"]` |
 | `fgn_metal` | `["metal"]` |
-| `factors` | `["openblas"]` |
 | `hotpath_profile` | `["hotpath"]` |
 | `dual_stream_compare` | `["dual-stream-rng"]` |
 
@@ -177,7 +176,6 @@ Before commit, verify:
 
 ```bash
 cargo build --benches -p stochastic-rs                              # default features
-cargo build --benches -p stochastic-rs --features openblas          # if applicable
 cargo build --benches -p stochastic-rs --features cuda-native       # if applicable
 ```
 

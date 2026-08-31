@@ -1,6 +1,6 @@
 //! Time-series hypothesis tests: unit-root/stationarity, structural-break,
-//! random-walk, and functional-form misspecification. Requires the
-//! `openblas` feature (OLS/GLS regression via `ndarray-linalg`); every
+//! random-walk, and functional-form misspecification. The OLS/GLS
+//! regressions run on the pure-Rust `faer`; every
 //! function here takes `ArrayView1<f64>` / `ArrayView2<f64>` directly, not
 //! generic over [`crate::traits::FloatExt`] the way
 //! [`crate::hurst::HurstEstimator`] is.

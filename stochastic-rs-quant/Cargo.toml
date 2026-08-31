@@ -13,23 +13,6 @@ categories = ["finance", "mathematics", "simulation"]
 
 [features]
 default = []
-openblas = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-system",
-    "stochastic-rs-copulas/openblas",
-    "stochastic-rs-stats/openblas",
-    "stochastic-rs-stochastic/openblas",
-]
-openblas-static = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-static",
-    "openblas-src/static",
-    "stochastic-rs-copulas/openblas-static",
-    "stochastic-rs-stats/openblas-static",
-    "stochastic-rs-stochastic/openblas-static",
-]
 yahoo = ["dep:yahoo_finance_api", "dep:time", "dep:polars", "dep:tokio-test"]
 python = [
     "dep:pyo3",
@@ -46,14 +29,14 @@ python = [
 viz = ["dep:plotly"]
 
 [dependencies]
+faer = { workspace = true }
+faer-ext = { workspace = true, features = ["ndarray"] }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 stochastic-rs-stochastic = { workspace = true }
 stochastic-rs-stats = { workspace = true }
 stochastic-rs-copulas = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-linalg = { workspace = true, optional = true }
-openblas-src = { workspace = true, features = ["cblas"], optional = true }
 ndarray-npy = { workspace = true }
 ndrustfft = { workspace = true }
 nalgebra = { workspace = true }

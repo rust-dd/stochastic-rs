@@ -1,7 +1,5 @@
 //! Public-API regression tests for the Malliavin--Thalmaier Greeks engine.
 
-#![cfg(feature = "openblas")]
-
 use ndarray::Array2;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::AssetParams;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MtGreeks;

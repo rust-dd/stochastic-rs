@@ -28,7 +28,6 @@ use crate::OptionType;
 mod monte_carlo;
 
 pub use monte_carlo::BasketAverageType;
-#[cfg(feature = "openblas")]
 pub use monte_carlo::McBasketPricer;
 
 /// Model-internal shape agreement for a basket pricer's three parameters.
@@ -162,7 +161,7 @@ impl GeometricBasketPricer {
   ///   basket, whose second moment exponentiates each entry separately
   ///   (`11.530486` against the symmetrised `11.525904`).
   /// - **positive semi-definiteness** of `rho`, which needs a Cholesky
-  ///   and so an `openblas` build these two pricers do not require.
+  ///   which these two pricers do not need.
   ///
   /// Measured against a healthy `10.224832`: `sigma = [-0.20, 0.30]`
   /// prices at `6.946344`, an off-diagonal `rho` of `5` at `23.016764`,
@@ -341,7 +340,7 @@ impl ArithmeticBasketLevyPricer {
   ///   basket, whose second moment exponentiates each entry separately
   ///   (`11.530486` against the symmetrised `11.525904`).
   /// - **positive semi-definiteness** of `rho`, which needs a Cholesky
-  ///   and so an `openblas` build these two pricers do not require.
+  ///   which these two pricers do not need.
   ///
   /// The length check earns its place here rather than at the accessor:
   /// unlike its geometric sibling this pricer has **no** dimension

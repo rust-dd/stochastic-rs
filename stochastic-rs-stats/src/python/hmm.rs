@@ -1,15 +1,11 @@
-#[cfg(feature = "openblas")]
 use numpy::PyReadonlyArray1;
-#[cfg(feature = "openblas")]
 use pyo3::prelude::*;
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "GaussianHmm", unsendable)]
 pub struct PyGaussianHmm {
   inner: crate::econometrics::hmm::GaussianHmm,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyGaussianHmm {
   /// Construct a Gaussian-emission HMM with `K` hidden states.

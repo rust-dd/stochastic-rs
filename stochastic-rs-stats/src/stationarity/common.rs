@@ -1,7 +1,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray_linalg::Inverse;
-use ndarray_linalg::Solve;
+
+use crate::linalg::inverse;
+use crate::linalg::solve;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeterministicTerm {
@@ -135,7 +136,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
   let xtx = x_mat.t().dot(&x_mat);
   let xty = x_mat.t().dot(&y_vec);
 
-  let beta_arr = xtx.solve(&xty).expect("OLS failed: singular design matrix");
+  let beta_arr = solve(&xtx, &xty).expect("OLS failed: singular design matrix");
   let fitted = x_mat.dot(&beta_arr);
   let residuals_arr = &y_vec - &fitted;
 
@@ -145,7 +146,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
   let sigma2 = (sse / dof).max(0.0);
 
   let mut std_err = vec![0.0; k];
-  if let Ok(xtx_inv) = xtx.inv() {
+  if let Some(xtx_inv) = inverse(&xtx) {
     let cov = &xtx_inv * sigma2;
     for i in 0..k {
       std_err[i] = cov[[i, i]].max(0.0).sqrt();

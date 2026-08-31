@@ -13,13 +13,6 @@ categories = ["mathematics", "simulation", "science"]
 
 [features]
 default = []
-openblas = ["dep:ndarray-linalg", "dep:openblas-src", "ndarray-linalg/openblas-system"]
-openblas-static = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-static",
-    "openblas-src/static",
-]
 gpu = ["dep:cubecl", "dep:gpu-fft"]
 gpu-cuda = ["gpu", "dep:cubecl-cuda"]
 gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
@@ -29,10 +22,11 @@ accelerate = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
 
 [dependencies]
+faer = { workspace = true }
+faer-ext = { workspace = true, features = ["ndarray"] }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-linalg = { workspace = true, optional = true }
 ndrustfft = { workspace = true }
 num-complex = { workspace = true, features = ["rand"] }
 num-traits = { workspace = true }
@@ -52,7 +46,6 @@ wide = { workspace = true }
 sci-rs = { workspace = true }
 scilib = { workspace = true }
 linreg = { workspace = true }
-openblas-src = { workspace = true, features = ["cblas"], optional = true }
 parking_lot = { workspace = true }
 ordered-float = { workspace = true }
 cubecl = { workspace = true, optional = true, default-features = false }

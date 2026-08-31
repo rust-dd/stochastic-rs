@@ -3,7 +3,7 @@
 //! The square-root / mean-reverting calibrators (`gmm_cir`, `qmle`) all
 //! minimise a smooth 3-parameter objective in log-space; a compact
 //! fixed-size Nelder-Mead simplex is enough and avoids pulling `argmin`
-//! (and its `openblas` transitive linkage) into the default stats build.
+//! into the default stats build.
 
 /// Nelder-Mead simplex minimiser for a 3-parameter objective.
 ///

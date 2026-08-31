@@ -47,7 +47,7 @@ if [[ $SKIP_GATE -eq 0 ]]; then
 
   echo "==> pre-publish gate: cargo test --workspace --exclude stochastic-rs-py"
   # Default features only — keeps the gate tractable on CI / local dev.
-  # `openblas` / `ai` / `yahoo` combinations are exercised by the GitHub
+  # The `ai` / `yahoo` combinations are exercised by the GitHub
   # Actions workflow before tagging.
   cargo test --workspace --exclude stochastic-rs-py --no-default-features
 else

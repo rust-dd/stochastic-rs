@@ -23,7 +23,8 @@ use std::fmt::Display;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use ndarray_linalg::LeastSquaresSvd;
+
+use crate::linalg::lstsq;
 
 /// Side of an open pairs position.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -117,13 +118,9 @@ pub fn try_pairs_signals(
     design[[i, 1]] = x[i];
   }
   let y_owned = y.to_owned();
-  let sol = design.least_squares(&y_owned).map_err(|e| {
-    crate::factors::FactorsError::OlsFailed(format!(
-      "pairs hedge-ratio OLS failed (one of the inputs may be a constant series): {e}"
-    ))
-  })?;
-  let alpha = sol.solution[0];
-  let beta = sol.solution[1];
+  let sol = lstsq(&design, &y_owned);
+  let alpha = sol[0];
+  let beta = sol[1];
   let mut spread = Array1::<f64>::zeros(n);
   for i in 0..n {
     spread[i] = y[i] - alpha - beta * x[i];

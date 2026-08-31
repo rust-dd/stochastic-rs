@@ -19,25 +19,14 @@
 //!   J. Financial & Quantitative Analysis 22
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 5
 //!
-#[cfg(feature = "openblas")]
 use ndarray::Array1;
-#[cfg(feature = "openblas")]
 use ndarray::Array2;
-#[cfg(feature = "openblas")]
 use ndarray::ArrayView1;
-#[cfg(feature = "openblas")]
-use ndarray_linalg::Cholesky;
-#[cfg(feature = "openblas")]
-use ndarray_linalg::UPLO;
 use owens_t::biv_norm;
-#[cfg(feature = "openblas")]
 use rayon::prelude::*;
 
-#[cfg(feature = "openblas")]
 use crate::mc::McEstimate;
-#[cfg(feature = "openblas")]
 use crate::pricing::mc_stats::std_err_from_sums;
-#[cfg(feature = "openblas")]
 use crate::traits::FloatExt;
 
 /// Type of multi-asset rainbow payoff.
@@ -286,7 +275,7 @@ impl StulzRainbowPricer {
 }
 
 /// Monte-Carlo rainbow pricer for arbitrary $n$ assets. Gated behind the
-/// `openblas` feature because it relies on `ndarray_linalg::Cholesky` for
+/// It relies on a Cholesky factorization for
 /// the correlation factor.
 ///
 /// The struct holds **model, contract and method state only** — the vector
@@ -301,7 +290,6 @@ impl StulzRainbowPricer {
 /// [`new`](Self::new), alongside the positive-definiteness test: `try_price`
 /// is the only advertised way to surface either as an `Err`, and a
 /// constructor that panicked on them first would leave it nothing to report.
-#[cfg(feature = "openblas")]
 #[derive(Debug, Clone)]
 pub struct McRainbowPricer {
   /// Payoff type — a term of the contract, not a market quote.
@@ -314,7 +302,6 @@ pub struct McRainbowPricer {
   pub n_paths: usize,
 }
 
-#[cfg(feature = "openblas")]
 impl McRainbowPricer {
   /// Validating constructor.
   ///
@@ -383,10 +370,9 @@ impl McRainbowPricer {
         q.len()
       );
     }
-    let _ = self
-      .rho
-      .cholesky(UPLO::Lower)
-      .map_err(|e| anyhow::anyhow!("correlation matrix is not positive definite: {e}"))?;
+    if !crate::linalg::is_spd_t(&self.rho) {
+      anyhow::bail!("correlation matrix is not positive definite");
+    }
     Ok(self.price(s, k, r, q, tau))
   }
 
@@ -404,7 +390,7 @@ impl McRainbowPricer {
     tau: f64,
   ) -> McEstimate<f64> {
     let n_assets = s.len();
-    let l: Array2<f64> = self.rho.cholesky(UPLO::Lower).expect(
+    let l: Array2<f64> = crate::linalg::spd_cholesky_lower(&self.rho).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)

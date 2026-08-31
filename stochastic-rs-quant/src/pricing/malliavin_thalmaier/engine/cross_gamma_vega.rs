@@ -2,7 +2,7 @@ use super::greeks::MtGreeks;
 use super::payoff::MtPayoff;
 use crate::traits::FloatExt;
 
-impl<T: FloatExt + ndarray_linalg::Lapack> MtGreeks<T> {
+impl<T: FloatExt> MtGreeks<T> {
   /// Cross-Gamma via a common-random-numbers finite difference on Delta.
   ///
   /// This is a numerical utility, not a higher-order Malliavin--Thalmaier

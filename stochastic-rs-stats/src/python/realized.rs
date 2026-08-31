@@ -216,13 +216,11 @@ impl PyPreAveragedVariance {
   }
 }
 
-#[cfg(feature = "openblas")]
 #[pyclass(name = "HarRv", unsendable)]
 pub struct PyHarRv {
   inner: crate::realized::har::HarRv,
 }
 
-#[cfg(feature = "openblas")]
 #[pymethods]
 impl PyHarRv {
   /// Fit HAR-RV (Corsi 2009) on a daily realised-variance history.

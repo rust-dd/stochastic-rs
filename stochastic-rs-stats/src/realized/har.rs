@@ -10,13 +10,13 @@
 //! Volatility", Journal of Financial Econometrics, 7(2), 174-196 (2009).
 //! DOI: 10.1093/jjfinec/nbp001
 //!
-//! Requires the `openblas` feature for the OLS least-squares fit.
+//! The OLS least-squares fit runs on the pure-Rust `faer`.
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use ndarray_linalg::LeastSquaresSvd;
 
+use crate::linalg::lstsq;
 use crate::traits::FloatExt;
 
 /// Daily horizon for the HAR weekly component.
@@ -144,7 +144,7 @@ fn avg_last<T: FloatExt>(v: ArrayView1<T>, window: usize) -> f64 {
 }
 
 fn ols(x: &Array2<f64>, y: &Array1<f64>) -> Array1<f64> {
-  x.least_squares(y).expect("HAR OLS failed").solution
+  lstsq(x, y)
 }
 
 fn residuals(x: &Array2<f64>, y: &Array1<f64>, beta: &Array1<f64>) -> Array1<f64> {

@@ -6,8 +6,10 @@ description: Conventions for adding / propagating Cargo features across the stoc
 # Feature flag management — stochastic-rs
 
 The workspace has 8 sub-crates, several of which carry optional
-dependencies (`openblas`, `cuda-native`, `gpu`, `metal`, `accelerate`,
-`python`, `yahoo`, `ai`, `hotpath`). Without discipline, `cargo check --all-features`
+dependencies (`cuda-native`, `gpu`, `metal`, `accelerate`, `python`,
+`yahoo`, `ai`, `hotpath`). Dense linear algebra is deliberately NOT one
+of them: it runs on the pure-Rust `faer`, always compiled in — there is
+no linalg feature and no system-BLAS dependency. Without discipline, `cargo check --all-features`
 explodes with "feature X needed but not propagated" or, worse, an
 unflagged path silently compiles a `Box<dyn Fn(f64) -> f64>` that
 panics at runtime.
@@ -51,25 +53,15 @@ subdirectory; `[workspace]`, `[workspace.dependencies]`, `[package]`,
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 gpu = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/gpu"]
-openblas = [
-    "dep:ndarray-linalg",
-    "dep:openblas-src",
-    "ndarray-linalg/openblas-system",
-    "stochastic-rs-copulas/openblas",
-    "stochastic-rs-quant/openblas",
-    "stochastic-rs-stats/openblas",
-    "stochastic-rs-stochastic/openblas",
-]
+metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
 viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
 ```
 
 Three things that example teaches which a made-up one would not:
 
-- **Only forward to crates that actually have the feature.** `openblas`
-  reaches `-copulas`, `-quant`, `-stats`, `-stochastic` — but **not**
-  `-distributions`, whose only features are `python` and
-  `dual-stream-rng`. Forwarding to a crate that lacks the feature is a
-  hard cargo error.
+- **Only forward to crates that actually have the feature.** `metal`
+  reaches `-stochastic` only — forwarding to a crate that lacks the
+  feature is a hard cargo error.
 - **`dep:` for optional dependencies the umbrella owns itself**
   (`dep:cubecl`, `dep:ndarray-linalg`), alongside the
   `<crate>/<feature>` forwards.
@@ -81,7 +73,7 @@ Three things that example teaches which a made-up one would not:
 Why: `cargo` does not auto-enable sub-crate features when the umbrella
 exposes a same-named one. You must list every sub-crate that needs it
 explicitly. Forgetting a sub-crate is the most common cause of
-`cargo --all-features` failures (a path that's gated on `openblas` in
+`cargo --all-features` failures (a path that's gated on a feature in
 two crates but only on `default` in a third compiles inconsistently).
 
 ### 1.3 Internal feature gates (sub-crate scoped)
@@ -89,17 +81,12 @@ two crates but only on `default` in a third compiles inconsistently).
 For a sub-crate's *own* internal feature (not exposed via the umbrella):
 
 ```rust
-// stochastic-rs-stats/src/openblas_estimators.rs
-#![cfg(feature = "openblas")]   // module-level guard
+// stochastic-rs-quant/src/yahoo.rs
+#![cfg(feature = "yahoo")]   // module-level guard
 
 // or, at item level:
-#[cfg(feature = "openblas")]
-pub fn linear_regression_lapack(...) -> ... { ... }
-
-#[cfg(not(feature = "openblas"))]
-pub fn linear_regression_lapack(...) -> ... {
-  panic!("linear_regression_lapack requires the 'openblas' feature");
-}
+#[cfg(feature = "metal")]
+pub struct MetalNative;
 ```
 
 The `#[cfg(not(feature))]` no-op variant is sometimes useful for
@@ -116,7 +103,6 @@ Before any version bump (see `release-checklist` SKILL):
 cargo check --workspace --no-default-features
 
 # 2.2 Most-common combinations
-cargo check --workspace --features openblas
 cargo check --workspace --features ai
 cargo check --workspace --features python
 cargo check --workspace --features cuda-native
@@ -124,8 +110,8 @@ cargo check --workspace --features cuda-native
 # 2.3 The thermonuclear all-features path — catches the §4.1 trap
 cargo check --workspace --all-features
 
-# 2.4 Tests on the openblas path (most user-facing)
-cargo test --workspace --exclude stochastic-rs-py --features openblas
+# 2.4 The default-features test run (what users get)
+cargo test --workspace --exclude stochastic-rs-py
 ```
 
 If `cargo check --workspace --all-features` fails but the per-feature
@@ -209,8 +195,6 @@ it is a summary, and the sub-crate columns are the part that drifts.
 
 | Feature | Crates that publish it | Notes |
 |---|---|---|
-| `openblas` | `-stats`, `-quant`, `-stochastic`, `-copulas`, `-py`, umbrella | LAPACK-backed linear algebra (system-link). |
-| `openblas-static` | same set | Vendored OpenBLAS; used by the Windows wheel CI job only. |
 | `cuda-native` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. There is no bare `cuda` feature. |
 | `gpu` | `-stochastic`, umbrella | cubecl runtime-agnostic base. |
 | `gpu-cuda` / `gpu-wgpu` | `-stochastic`, umbrella | cubecl backends; each implies `gpu`. |

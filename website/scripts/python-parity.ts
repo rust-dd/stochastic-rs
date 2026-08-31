@@ -20,9 +20,9 @@
  * and silently wrote 0 rows every run.
  *
  * `kind` is inferred from the `use` import that brought each `PyXxx` name
- * into scope (the crate segment of the import path). `openblas_gated` is
- * true when the registration line falls inside a
- * `#[cfg(feature = "openblas")]` block.
+ * into scope (the crate segment of the import path). Every entry ships in
+ * every wheel — the linalg stack is the pure-Rust faer, so nothing is
+ * feature-gated any more.
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,7 +43,6 @@ interface Row {
   python_name: string;
   kind: Kind;
   entry_kind: 'class' | 'function';
-  openblas_gated: boolean;
 }
 
 function kindFromCratePath(cratePath: string): Kind {
@@ -67,30 +66,8 @@ for (const line of lines) {
 }
 
 const rows: Row[] = [];
-let braceDepth = 0;
-let gateDepth: number | null = null;
-let pendingGate = false;
-
 for (let i = 0; i < lines.length; i++) {
   const line = lines[i];
-
-  if (line.includes('#[cfg(feature = "openblas")]')) {
-    pendingGate = true;
-  }
-
-  const opens = (line.match(/{/g) ?? []).length;
-  const closes = (line.match(/}/g) ?? []).length;
-
-  // Capture the depth *before* this line's own opening brace(s), so every
-  // line inside the block (braceDepth > gateDepth) reads as gated —
-  // including the `{` line itself.
-  if (pendingGate && opens > 0) {
-    gateDepth = braceDepth;
-    pendingGate = false;
-  }
-
-  braceDepth += opens - closes;
-  const gated = gateDepth !== null;
 
   const classMatch = /m\.add_class::<(\w+)>\(\)/.exec(line);
   if (classMatch) {
@@ -99,7 +76,6 @@ for (let i = 0; i < lines.length; i++) {
       python_name: py,
       kind: kindFromCratePath(importCrate.get(py) ?? ''),
       entry_kind: 'class',
-      openblas_gated: gated,
     });
   }
 
@@ -113,12 +89,10 @@ for (let i = 0; i < lines.length; i++) {
         python_name: pathLine.split('::').pop() ?? pathLine,
         kind: kindFromCratePath(pathLine),
         entry_kind: 'function',
-        openblas_gated: gated,
-      });
+        });
     }
   }
 
-  if (gateDepth !== null && braceDepth <= gateDepth) gateDepth = null;
 }
 
 const out = {
@@ -127,12 +101,11 @@ const out = {
   count: rows.length,
   classes: rows.filter((r) => r.entry_kind === 'class').length,
   functions: rows.filter((r) => r.entry_kind === 'function').length,
-  openblas_gated: rows.filter((r) => r.openblas_gated).length,
   rows,
 };
 
 mkdirSync(join(import.meta.dir, '..', 'public'), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out, null, 2));
 console.log(
-  `✔ wrote ${rows.length} rows to ${OUT} (${out.classes} classes + ${out.functions} functions, ${out.openblas_gated} openblas-gated)`,
+  `✔ wrote ${rows.length} rows to ${OUT} (${out.classes} classes + ${out.functions} functions)`,
 );

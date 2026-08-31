@@ -29,7 +29,7 @@ git status --porcelain     # must be empty (no uncommitted, no untracked)
 git log -1 --oneline       # capture the HEAD commit for the release notes
 
 # 1.2 Tests + clippy + features matrix
-cargo test --workspace --exclude stochastic-rs-py --features openblas --no-fail-fast
+cargo test --workspace --exclude stochastic-rs-py --no-fail-fast
 cargo clippy --workspace --all-targets -- -D warnings
 cargo check --workspace --all-features                       # catches the §4.1 feature-flag traps
 cargo check --workspace --no-default-features                # baseline build still works
@@ -201,10 +201,9 @@ Windows and sdist legs and then publishes them itself:
     args: --non-interactive --skip-existing dist/*
 ```
 
-So there is no `twine`, no TestPyPI hop, and nothing to run locally. The
-build args differ per leg — Linux and macOS pass
-`--features openblas` (macOS adds `--auditwheel skip`), Windows passes
-neither (it links `openblas-static` via its own config). Note that the
+So there is no `twine`, no TestPyPI hop, and nothing to run locally.
+Every leg builds with the default feature set — the linalg stack is the
+pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that the
 `stochastic-rs-py` crate has no `python` feature: it forces
 `pyo3/extension-module` unconditionally, which is exactly why
 `cargo test --workspace` needs `--exclude stochastic-rs-py`.
@@ -213,7 +212,7 @@ A local wheel for debugging one platform:
 
 ```bash
 cd stochastic-rs-py
-maturin build --release --strip --features openblas
+maturin build --release --strip
 ```
 
 **Platform coverage is settled — do not re-add Intel macOS.** The macOS

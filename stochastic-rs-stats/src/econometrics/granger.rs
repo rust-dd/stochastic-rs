@@ -11,8 +11,9 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use ndarray_linalg::LeastSquaresSvd;
 use stochastic_rs_distributions::special::beta_i as beta_reg;
+
+use crate::linalg::lstsq;
 
 /// Result of a Granger-causality F-test.
 #[derive(Debug, Clone)]
@@ -85,8 +86,7 @@ pub fn granger_causality(
 }
 
 fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> f64 {
-  let sol = x.least_squares(y).expect("Granger OLS failed");
-  let beta = sol.solution;
+  let beta = lstsq(x, y);
   let yhat = x.dot(&beta);
   (y - &yhat).iter().map(|v| v * v).sum::<f64>()
 }

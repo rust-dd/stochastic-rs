@@ -1,13 +1,11 @@
 //! Comparison tests for the `stochastic::mc` module.
 //!
 //! Validates each Monte Carlo method against analytical or published reference
-//! values. Requires the `openblas` feature for the LSM solver. Run with:
+//! values. Run with:
 //!
 //! ```bash
-//! cargo test --release --features openblas mc_comparison -- --nocapture --test-threads=1
+//! cargo test --release mc_comparison -- --nocapture --test-threads=1
 //! ```
-
-#![cfg(feature = "openblas")]
 
 use ndarray::Array1;
 use ndarray::Array2;

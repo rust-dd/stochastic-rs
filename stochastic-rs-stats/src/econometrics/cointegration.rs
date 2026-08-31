@@ -16,10 +16,10 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use ndarray_linalg::Eig;
-use ndarray_linalg::Inverse;
-use ndarray_linalg::LeastSquaresSvd;
 
+use crate::linalg::eigenvalues;
+use crate::linalg::inverse;
+use crate::linalg::lstsq;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
 
@@ -52,11 +52,9 @@ pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrange
     design[[i, 1]] = x[i];
   }
   let y_owned = y.to_owned();
-  let sol = design
-    .least_squares(&y_owned)
-    .expect("Engle-Granger first-stage OLS failed");
-  let alpha = sol.solution[0];
-  let beta = sol.solution[1];
+  let sol = lstsq(&design, &y_owned);
+  let alpha = sol[0];
+  let beta = sol[1];
   let mut residuals = Array1::<f64>::zeros(n);
   for i in 0..n {
     residuals[i] = y[i] - alpha - beta * x[i];
@@ -130,11 +128,11 @@ pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenResult {
   let s11 = (&r1.t().dot(&r1)) / n_eff as f64;
   let s01 = (&r0.t().dot(&r1)) / n_eff as f64;
   let s10 = s01.t().to_owned();
-  let s00_inv = s00.inv().expect("S00 inverse failed");
+  let s00_inv = inverse(&s00).expect("S00 inverse failed");
   let m = s10.dot(&s00_inv).dot(&s01);
-  let s11_inv = s11.inv().expect("S11 inverse failed");
+  let s11_inv = inverse(&s11).expect("S11 inverse failed");
   let a = s11_inv.dot(&m);
-  let (eigvals_complex, _) = a.eig().expect("Johansen eig failed");
+  let eigvals_complex = eigenvalues(&a).expect("Johansen eig failed");
   let mut eigs: Vec<f64> = eigvals_complex
     .iter()
     .map(|c| c.re.clamp(0.0, 1.0 - 1e-12))
@@ -169,10 +167,7 @@ fn residualise(y: &Array2<f64>, x: &Array2<f64>) -> Array2<f64> {
   }
   for col in 0..p {
     let target = y.column(col).to_owned();
-    let sol = x
-      .least_squares(&target)
-      .expect("residualisation OLS failed");
-    let beta = sol.solution.clone();
+    let beta = lstsq(x, &target);
     for row in 0..n {
       let mut yhat = 0.0;
       for j in 0..q {

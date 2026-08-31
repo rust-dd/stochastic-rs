@@ -1,5 +1,4 @@
 //! Integration tests for the `quant::factors` module.
-#![cfg(feature = "openblas")]
 
 use ndarray::Array2;
 use stochastic_rs::distributions::normal::SimdNormal;
