@@ -5,7 +5,7 @@
 //!
 //! ## Choosing a distribution
 //!
-//! The website's distributions catalog groups these 29 types (30 counting
+//! The website's distributions catalog groups these 30 types (31 counting
 //! [`complex::ComplexDistribution`]) by sampling strategy; this section
 //! groups them by modeling role instead — the axis that actually decides
 //! which one to reach for.
@@ -36,8 +36,9 @@
 //! 1997, *Scandinavian Journal of Statistics* 24(1), 1-13, DOI:
 //! 10.1111/1467-9469.00045) — the practical reason to prefer NIG over
 //! [`alpha_stable::SimdAlphaStable`] for return modeling specifically.
-//! [`gev::SimdGev`] is a different job again: block-maxima / extreme-value
-//! modeling, not the bulk return distribution.
+//! [`gev::SimdGev`] and [`gpd::SimdGpd`] are a different job again:
+//! extreme-value modeling of block maxima and of excesses over a high
+//! threshold respectively, not the bulk return distribution.
 //!
 //! **Positive support** (durations, volatilities, waiting times):
 //! [`exp::SimdExp`] has constant hazard (memoryless); [`weibull::SimdWeibull`]
@@ -111,14 +112,12 @@
 //! ## `DistributionExt` coverage is uneven — check before you rely on it
 //!
 //! A type "implementing [`crate::traits::DistributionExt`]" does not mean
-//! every method has a closed form. [`ged::SimdGed`], [`gev::SimdGev`] and
+//! every method has a closed form. [`ged::SimdGed`] and
 //! [`skellam::SimdSkellam`] each override only `pdf`/`cdf`; the four
-//! [`truncated`] wrappers do the same. None of these seven expose
+//! [`truncated`] wrappers do the same. None of these six expose
 //! `mean`/`variance`/`inv_cdf`/etc. — calling them panics with the
-//! default `unimplemented!("... not implemented for {type_name}")`, even
-//! where the closed form is textbook (`SimdGev`'s own test file computes
-//! its mean via `Γ(1-ξ)` inline, but that formula is not exposed as
-//! `.mean()`). [`dirichlet::SimdDirichlet`], [`wishart::SimdWishart`],
+//! default `unimplemented!("... not implemented for {type_name}")`.
+//! [`dirichlet::SimdDirichlet`], [`wishart::SimdWishart`],
 //! [`non_central_chi_squared::SimdNonCentralChiSquared`] and
 //! [`complex::ComplexDistribution`] implement none of it at all — see the
 //! cluster notes above for what each offers instead. If you need a
@@ -203,6 +202,7 @@ pub type SimdExpZigDual<T, const N: usize = 64> =
 pub mod dirichlet;
 pub mod ged;
 pub mod gev;
+pub mod gpd;
 pub mod pareto;
 pub mod poisson;
 pub mod scalar;
@@ -276,6 +276,7 @@ impl_distribution_sampler_float!(
   gamma::SimdGamma<T>,
   ged::SimdGed<T>,
   gev::SimdGev<T>,
+  gpd::SimdGpd<T>,
   inverse_gauss::SimdInverseGauss<T>,
   lognormal::SimdLogNormal<T>,
   normal_inverse_gauss::SimdNormalInverseGauss<T>,

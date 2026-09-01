@@ -23,6 +23,7 @@ use stochastic_rs_distributions::cauchy::SimdCauchy;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::ged::SimdGed;
 use stochastic_rs_distributions::gev::SimdGev;
+use stochastic_rs_distributions::gpd::SimdGpd;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::lognormal::SimdLogNormal;
 use stochastic_rs_distributions::pareto::SimdPareto;
@@ -156,6 +157,45 @@ fn simd_inverse_gauss_matches_own_cdf() {
 fn simd_ged_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdGed::<f64>::new(0.0, 1.0, 1.5, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    (
+      xs,
+      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+    )
+  });
+}
+
+#[test]
+fn simd_gpd_heavy_tail_matches_own_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdGpd::<f64>::new(0.0, 1.0, 0.3, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    (
+      xs,
+      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+    )
+  });
+}
+
+#[test]
+fn simd_gpd_exponential_matches_own_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdGpd::<f64>::new(0.0, 1.0, 0.0, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    (
+      xs,
+      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+    )
+  });
+}
+
+#[test]
+fn simd_gpd_bounded_tail_matches_own_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdGpd::<f64>::new(0.0, 1.0, -0.3, &Deterministic::new(seed));
     let mut xs = vec![0.0; N];
     dist.fill_slice(&mut xs);
     (

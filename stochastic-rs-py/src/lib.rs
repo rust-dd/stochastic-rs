@@ -23,6 +23,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_distributions::exp::PyExp;
   use stochastic_rs_distributions::gamma::PyGamma;
   use stochastic_rs_distributions::geometric::PyGeometric;
+  use stochastic_rs_distributions::gev::PyGev;
+  use stochastic_rs_distributions::gpd::PyGpd;
   use stochastic_rs_distributions::hypergeometric::PyHypergeometric;
   use stochastic_rs_distributions::inverse_gauss::PyInverseGauss;
   use stochastic_rs_distributions::lognormal::PyLogNormal;
@@ -220,6 +222,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyChiSquared>()?;
   m.add_class::<PyExp>()?;
   m.add_class::<PyGamma>()?;
+  m.add_class::<PyGev>()?;
+  m.add_class::<PyGpd>()?;
   m.add_class::<PyInverseGauss>()?;
   m.add_class::<PyLogNormal>()?;
   m.add_class::<PyNormal>()?;

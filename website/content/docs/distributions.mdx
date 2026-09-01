@@ -1,6 +1,6 @@
 ---
 title: Distributions
-description: 18 of 29 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
+description: 20 of 30 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
 category: distribution
 since: 2.0.0
 status: stable
@@ -8,10 +8,10 @@ status: stable
 
 # Distributions
 
-The `stochastic-rs-distributions` crate ships **29** `Simd*` distribution
+The `stochastic-rs-distributions` crate ships **30** `Simd*` distribution
 structs (`grep -rc "^pub struct Simd" stochastic-rs-distributions/src --include='*.rs'`),
-plus `ComplexDistribution` (30 total). This page's table covers the
-**18** that carry the full package — every one of them has:
+plus `ComplexDistribution` (31 total). This page's table covers the
+**20** that carry the full package — every one of them has:
 
 - A `Simd<Name><T>` struct that implements `rand_distr::Distribution<T>`
 - A bulk filler `fill_slice(dst)` that draws from the distribution's own
@@ -23,16 +23,16 @@ plus `ComplexDistribution` (30 total). This page's table covers the
   for Python use
 - A KS-test against the analytic CDF
 
-**Not shown here** — 11 more real, public `Simd*` types that don't carry
-the full package (18 + 11 = 29), plus `ComplexDistribution` outside that
+**Not shown here** — 10 more real, public `Simd*` types that don't carry
+the full package (20 + 10 = 30), plus `ComplexDistribution` outside that
 count entirely:
 
-- `Ged`, `Gev`, `Skellam`, and the four `Truncated{Normal,Exp,Beta,Gamma}`
-  wrappers (7) implement `DistributionExt` but have no Python binding.
+- `Ged`, `Skellam`, and the four `Truncated{Normal,Exp,Beta,Gamma}`
+  wrappers (6) implement `DistributionExt` but have no Python binding.
 - `SimdExpZig` is the ziggurat-table `Exp(1)` primitive that
   `SimdExp` and other samplers build on internally — the same
   distribution as the `Exponential` row below, exposed as a lower-level
-  type, not a distinct 19th continuous distribution.
+  type, not a distinct continuous distribution of its own.
 - `SimdNonCentralChiSquared` is structurally different from every type in
   this table: its noncentrality parameter is supplied per draw
   (`sample_ncp(ncp)`), not fixed at construction, so it implements neither
@@ -44,7 +44,7 @@ count entirely:
   per draw), so the scalar `rand_distr::Distribution<T>` shape does not
   apply; each exposes its own `sample_fast`/`log_pdf` instead.
 
-That accounts for all 29. `ComplexDistribution` is a 30th, separate type
+That accounts for all 30. `ComplexDistribution` is a 31st, separate type
 (not `Simd`-prefixed) that samples `Complex<T>` directly and is the one
 type with no `DistributionExt` impl at all (see `CLAUDE.md`'s note on the
 trait). The API docs (`cargo doc -p stochastic-rs-distributions`) are the
@@ -66,6 +66,8 @@ exhaustive reference for all of them.
 | Chi-squared                 | Composition (Gamma)                       |
 | Inverse Gaussian            | Michael-Schucany                          |
 | Pareto                      | Inversion                                 |
+| Generalized Pareto          | Inversion                                 |
+| Generalized Extreme Value   | Inversion                                 |
 | Weibull                     | Ziggurat (Exp) + power transform          |
 | Uniform                     | Inversion (trivial)                       |
 | Alpha-stable                | Chambers-Mallows-Stuck                    |
@@ -91,7 +93,7 @@ comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
 |---|---|
 | Symmetric, light-tailed, unbounded | `Normal` (default), or `Ged` to tune peakedness — `Ged` is never power-law heavy-tailed, for any shape parameter |
 | Heavy-tailed, unbounded (financial returns) | `StudentT` (`ν=1` **is** `Cauchy`, exactly) or `AlphaStable` (generalizes `Normal` at `α=2` and `Cauchy` at `α=1, β=0`, but has no closed-form pdf/cdf at general `α`); `NormalInverseGauss` for a skewed heavy tail with finite variance and full closed-form moments |
-| Extreme-value / block maxima | `Gev` — a different job from bulk return modeling; only `pdf`/`cdf` are closed-form here, not the moments |
+| Extreme-value tails | `Gev` for block maxima, `Gpd` for excesses over a threshold — a different job from bulk return modeling; both carry closed-form moments with the usual $\xi$ existence thresholds, and `stats::evt` fits them |
 | Positive, duration/volatility-shaped | `Exponential` (constant hazard), `Weibull` (rising or falling hazard), `Gamma` (waiting time; backs `Beta`/`ChiSquared`/`Ged`/`Dirichlet` internally), `LogNormal` (multiplicative growth), `InverseGauss` (first-passage time) |
 | Genuine power-law heavy tail, positive support | `Pareto` — the only positive-support type here with real threshold-dependent moment existence |
 | Bounded `[0, 1]` or `[a, b]` | `Beta`, `Uniform`, or a `Truncated*` wrapper — the four `Truncated*` types aren't a family to pick among, just "which base distribution, restricted to an interval" |
@@ -100,7 +102,7 @@ comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
 | Signed count data | `Skellam` — the only discrete type here that can go negative |
 | Covariance matrices, simplex proportions | `Wishart`, `Dirichlet` — both skip `DistributionExt` entirely for their own inherent density methods |
 
-`DistributionExt` coverage is uneven: `Ged`, `Gev`, `Skellam` and the four
+`DistributionExt` coverage is uneven: `Ged`, `Skellam` and the four
 `Truncated*` wrappers implement only `pdf`/`cdf`, not the moments;
 `Dirichlet`, `Wishart`, `SimdNonCentralChiSquared` and
 `ComplexDistribution` implement none of it. Confirm the override exists

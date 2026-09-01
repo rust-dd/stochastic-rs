@@ -71,3 +71,15 @@ def test_normal_all_finite():
 def test_normal_small_sample():
     s = sr.PyNormal(0.0, 1.0, seed=3).sample(8)
     assert s.shape == (8,)
+
+
+def test_gpd_and_gev_samplers_are_seeded_and_bounded():
+    gpd = sr.PyGpd(0.0, 1.0, -0.5, seed=3)
+    a = gpd.sample(4096)
+    b = sr.PyGpd(0.0, 1.0, -0.5, seed=3).sample(4096)
+    assert np.allclose(a, b)
+    assert a.min() >= 0.0 and a.max() <= 2.0 + 1e-9  # support [0, mu - sigma/xi]
+    gev = sr.PyGev(0.0, 1.0, 0.2, seed=4)
+    z = gev.sample_par(4, 1024)
+    assert z.shape == (4, 1024)
+    assert np.isfinite(z).all()

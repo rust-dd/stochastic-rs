@@ -60,6 +60,12 @@ use crate::traits::SimdFloatExt;
 
 const SMALL_GEV_THRESHOLD: usize = 16;
 
+/// Euler–Mascheroni $\gamma_E$, the Gumbel mean.
+const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
+
+/// Apéry's constant $\zeta(3)$, in the Gumbel skewness $12\sqrt6\,\zeta(3)/\pi^3$.
+const APERY: f64 = 1.202_056_903_159_594_3;
+
 /// Generalized Extreme Value distribution. Three free parameters: location
 /// `μ`, scale `σ > 0`, shape `ξ`.
 ///
@@ -188,6 +194,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
     }
   }
 
+  fn params(&self) -> (f64, f64, f64) {
+    (
+      self.mu.to_f64().unwrap(),
+      self.sigma.to_f64().unwrap(),
+      self.xi.to_f64().unwrap(),
+    )
+  }
+
   /// Closed-form support: returns `(lo, hi)` as the open interval on
   /// which the GEV density is strictly positive. Used by callers that
   /// need to clip samples or build empirical histograms.
@@ -261,6 +275,99 @@ impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdGev<T, R> {
       }
       (-(t.powf(-1.0 / xi))).exp()
     }
+  }
+
+  fn inv_cdf(&self, p: f64) -> f64 {
+    let (mu, sigma, xi) = self.params();
+    let m_ln_p = -p.ln();
+    if xi.abs() < 1e-12 {
+      mu - sigma * m_ln_p.ln()
+    } else {
+      mu + sigma / xi * (m_ln_p.powf(-xi) - 1.0)
+    }
+  }
+
+  /// $\mu + \sigma(\Gamma(1-\xi) - 1)/\xi$ for $\xi < 1$ ($\mu + \gamma_E\sigma$
+  /// at $\xi = 0$); `+∞` for $\xi \ge 1$.
+  fn mean(&self) -> f64 {
+    let (mu, sigma, xi) = self.params();
+    if xi.abs() < 1e-12 {
+      mu + EULER_MASCHERONI * sigma
+    } else if xi < 1.0 {
+      mu + sigma * (crate::special::gamma(1.0 - xi) - 1.0) / xi
+    } else {
+      f64::INFINITY
+    }
+  }
+
+  fn median(&self) -> f64 {
+    let (mu, sigma, xi) = self.params();
+    if xi.abs() < 1e-12 {
+      mu - sigma * std::f64::consts::LN_2.ln()
+    } else {
+      mu + sigma * (std::f64::consts::LN_2.powf(-xi) - 1.0) / xi
+    }
+  }
+
+  fn mode(&self) -> f64 {
+    let (mu, sigma, xi) = self.params();
+    if xi.abs() < 1e-12 {
+      mu
+    } else {
+      mu + sigma * ((1.0 + xi).powf(-xi) - 1.0) / xi
+    }
+  }
+
+  /// $\sigma^2(g_2 - g_1^2)/\xi^2$ with $g_k = \Gamma(1 - k\xi)$ for
+  /// $\xi < 1/2$ ($\sigma^2\pi^2/6$ at $\xi = 0$); `+∞` for $\xi \ge 1/2$.
+  fn variance(&self) -> f64 {
+    let (_, sigma, xi) = self.params();
+    if xi.abs() < 1e-12 {
+      sigma * sigma * std::f64::consts::PI.powi(2) / 6.0
+    } else if xi < 0.5 {
+      let g1 = crate::special::gamma(1.0 - xi);
+      let g2 = crate::special::gamma(1.0 - 2.0 * xi);
+      sigma * sigma * (g2 - g1 * g1) / (xi * xi)
+    } else {
+      f64::INFINITY
+    }
+  }
+
+  /// `NaN` for $\xi \ge 1/3$, where the third moment is undefined.
+  fn skewness(&self) -> f64 {
+    let (_, _, xi) = self.params();
+    if xi.abs() < 1e-12 {
+      12.0 * 6.0_f64.sqrt() * APERY / std::f64::consts::PI.powi(3)
+    } else if xi < 1.0 / 3.0 {
+      let g1 = crate::special::gamma(1.0 - xi);
+      let g2 = crate::special::gamma(1.0 - 2.0 * xi);
+      let g3 = crate::special::gamma(1.0 - 3.0 * xi);
+      xi.signum() * (g3 - 3.0 * g2 * g1 + 2.0 * g1.powi(3)) / (g2 - g1 * g1).powf(1.5)
+    } else {
+      f64::NAN
+    }
+  }
+
+  /// Excess kurtosis; `NaN` for $\xi \ge 1/4$.
+  fn kurtosis(&self) -> f64 {
+    let (_, _, xi) = self.params();
+    if xi.abs() < 1e-12 {
+      12.0 / 5.0
+    } else if xi < 0.25 {
+      let g1 = crate::special::gamma(1.0 - xi);
+      let g2 = crate::special::gamma(1.0 - 2.0 * xi);
+      let g3 = crate::special::gamma(1.0 - 3.0 * xi);
+      let g4 = crate::special::gamma(1.0 - 4.0 * xi);
+      (g4 - 4.0 * g3 * g1 + 6.0 * g2 * g1 * g1 - 3.0 * g1.powi(4)) / (g2 - g1 * g1).powi(2) - 3.0
+    } else {
+      f64::NAN
+    }
+  }
+
+  /// $\log\sigma + \gamma_E(\xi + 1) + 1$.
+  fn entropy(&self) -> f64 {
+    let (_, sigma, xi) = self.params();
+    sigma.ln() + EULER_MASCHERONI * (xi + 1.0) + 1.0
   }
 }
 
@@ -361,3 +468,8 @@ mod tests {
     }
   }
 }
+
+py_distribution!(PyGev, SimdGev,
+  sig: (mu, sigma, xi, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64, xi: f64)
+);
