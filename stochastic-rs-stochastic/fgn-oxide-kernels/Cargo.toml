@@ -1,0 +1,34 @@
+# Device-only kernel crate for the experimental cuda-oxide fGN backend.
+#
+# This crate contains ONLY `#[kernel]` device code. It is compiled two ways:
+#   1. Normally (plain `cargo build`) it expands to host-side kernel markers
+#      that `stochastic-rs-stochastic`'s `cuda_launch!` calls resolve against.
+#   2. Once, by the maintainer, with the cuda-oxide rustc codegen backend
+#      (`RUSTFLAGS="-Z codegen-backend=…"` + `CUDA_OXIDE_PTX_DIR`), it emits
+#      `fgn_oxide_kernels.ptx`. That PTX is committed and `include_str!`-ed into
+#      the lib so downstream users run with a plain `cargo build` — no
+#      `cargo oxide` / precompile step on their side.
+#
+# Standalone `[workspace]` so the cuda-oxide device build does not pull in the
+# whole stochastic-rs workspace (host-only code can't be lowered to PTX).
+[package]
+name = "fgn-oxide-kernels"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Device-side fGN kernels for the experimental cuda-oxide backend."
+
+# Not a workspace root: the umbrella `Cargo.toml` lists this path under
+# `[workspace].exclude`, so it builds standalone for cuda-oxide PTX generation
+# yet is usable as a path dependency without a "multiple workspace roots" error.
+
+[lib]
+doctest = false
+
+[dependencies]
+# The `#[kernel]` macro expands to code referencing all three cuda-oxide crates
+# (device intrinsics + host-side registration markers), so all are required even
+# though this crate is device-only.
+cuda-device = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
+cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
+cuda-core = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "4a56e4220aab8ce5d085a411e7f806cebb647d14" }
