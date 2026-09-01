@@ -2,7 +2,7 @@
 //!
 //! Hot paths measured:
 //! - Realized variance, semivariance, skewness on 50k intraday returns.
-//! - Bipower variation, MedRV, BNS jump test.
+//! - Bipower variation, MedRV, BNS and Lee-Mykland jump tests.
 //! - Realized kernel (Parzen) at the rule-of-thumb bandwidth.
 //! - Pre-averaging and TSRV / MSRV on 50k-tick noisy paths.
 
@@ -16,6 +16,7 @@ use stochastic_rs::stats::realized::KernelType;
 use stochastic_rs::stats::realized::bipower_variation;
 use stochastic_rs::stats::realized::bns_jump_test;
 use stochastic_rs::stats::realized::kernel::parzen_default_bandwidth;
+use stochastic_rs::stats::realized::lee_mykland_test;
 use stochastic_rs::stats::realized::medrv;
 use stochastic_rs::stats::realized::multi_scale_rv;
 use stochastic_rs::stats::realized::pre_averaged_variance;
@@ -78,6 +79,9 @@ fn bench_bipower(c: &mut Criterion) {
   });
   c.bench_function("bns_jump_test_50k", |b| {
     b.iter(|| std::hint::black_box(bns_jump_test(r.view(), 0.05)));
+  });
+  c.bench_function("lee_mykland_50k_k270", |b| {
+    b.iter(|| std::hint::black_box(lee_mykland_test(r.view(), 270, 0.01)));
   });
 }
 

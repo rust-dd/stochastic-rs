@@ -37,3 +37,18 @@ def test_jarque_bera_statistic_finite():
     jb = sr.JarqueBera(arr)
     assert np.isfinite(jb.statistic)
     assert np.isfinite(jb.p_value)
+
+
+def test_lee_mykland_flags_a_planted_jump():
+    returns = np.random.default_rng(4).standard_normal(3000) * 1e-3
+    returns[1500] = 0.03
+    window = sr.LeeMyklandJumpTest.recommended_window(78)
+    assert window == 141
+    test = sr.LeeMyklandJumpTest(returns, window, alpha=0.01)
+    assert 1500 in test.jump_indices
+    stats = test.statistics()
+    assert stats.shape == (3000,)
+    assert np.isnan(stats[: window - 1]).all()
+    assert abs(stats[1500]) > test.threshold
+    assert test.nobs == 3000 and test.window == window
+

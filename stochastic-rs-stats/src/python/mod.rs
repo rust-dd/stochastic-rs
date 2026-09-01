@@ -52,6 +52,7 @@ pub use realized::PyBNSJumpTest;
 pub use realized::PyBipowerVariation;
 pub use realized::PyEwmaVariance;
 pub use realized::PyHarRv;
+pub use realized::PyLeeMyklandJumpTest;
 pub use realized::PyPreAveragedVariance;
 pub use realized::PyRealizedKernel;
 pub use realized::PyRealizedMoments;

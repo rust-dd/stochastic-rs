@@ -122,6 +122,78 @@ impl PyBNSJumpTest {
   }
 }
 
+#[pyclass(name = "LeeMyklandJumpTest", unsendable)]
+pub struct PyLeeMyklandJumpTest {
+  inner: crate::realized::lee_mykland::LeeMyklandTest,
+}
+
+#[pymethods]
+impl PyLeeMyklandJumpTest {
+  /// Lee-Mykland jump test of every return, with the local volatility taken
+  /// from the `window` observations before it; `alpha` defaults to the
+  /// paper's 1% level.
+  #[new]
+  #[pyo3(signature = (returns, window, alpha=0.01))]
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, window: usize, alpha: f64) -> Self {
+    Self {
+      inner: crate::realized::lee_mykland::lee_mykland_test(returns.as_array(), window, alpha),
+    }
+  }
+
+  /// The paper's window rule: the smallest integer above
+  /// `sqrt(252 * observations_per_day)` (16 for daily data).
+  #[staticmethod]
+  fn recommended_window(observations_per_day: usize) -> usize {
+    crate::realized::lee_mykland::lee_mykland_window(observations_per_day)
+  }
+
+  /// Statistics aligned with the input; NaN over the first `window - 1`
+  /// returns.
+  fn statistics<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.statistics.clone().into_pyarray(py)
+  }
+
+  /// Local volatility behind each statistic, NaN where the statistic is.
+  fn local_volatility<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    self.inner.local_volatility.clone().into_pyarray(py)
+  }
+
+  #[getter]
+  fn jump_indices(&self) -> Vec<usize> {
+    self.inner.jump_indices.clone()
+  }
+  #[getter]
+  fn threshold(&self) -> f64 {
+    self.inner.threshold
+  }
+  #[getter]
+  fn c_n(&self) -> f64 {
+    self.inner.c_n
+  }
+  #[getter]
+  fn s_n(&self) -> f64 {
+    self.inner.s_n
+  }
+  #[getter]
+  fn beta_star(&self) -> f64 {
+    self.inner.beta_star
+  }
+  #[getter]
+  fn window(&self) -> usize {
+    self.inner.window
+  }
+  #[getter]
+  fn alpha(&self) -> f64 {
+    self.inner.alpha
+  }
+  #[getter]
+  fn nobs(&self) -> usize {
+    self.inner.nobs
+  }
+}
+
 #[pyclass(name = "RealizedKernel", unsendable)]
 pub struct PyRealizedKernel {
   rk: f64,

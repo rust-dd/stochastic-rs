@@ -28,6 +28,9 @@
 //!   Continuous Case: The Pre-Averaging Approach", Stochastic Processes and
 //!   their Applications, 119(7), 2249-2276 (2009).
 //!   DOI: 10.1016/j.spa.2008.11.004
+//! - Lee, Mykland, "Jumps in Financial Markets: A New Nonparametric Test and
+//!   Jump Dynamics", Review of Financial Studies, 21(6), 2535-2563 (2008).
+//!   DOI: 10.1093/rfs/hhm056
 //! - Corsi, "A Simple Approximate Long-Memory Model of Realized Volatility",
 //!   Journal of Financial Econometrics, 7(2), 174-196 (2009).
 //!   DOI: 10.1093/jjfinec/nbp001
@@ -40,6 +43,7 @@ pub mod bipower;
 pub mod ewma;
 pub mod har;
 pub mod kernel;
+pub mod lee_mykland;
 pub mod pre_averaging;
 pub mod two_scale;
 pub mod variance;
@@ -59,6 +63,10 @@ pub use har::HarRv;
 pub use har::har_features;
 pub use kernel::KernelType;
 pub use kernel::realized_kernel;
+pub use lee_mykland::LEE_MYKLAND_C;
+pub use lee_mykland::LeeMyklandTest;
+pub use lee_mykland::lee_mykland_test;
+pub use lee_mykland::lee_mykland_window;
 pub use pre_averaging::pre_averaged_variance;
 pub use two_scale::multi_scale_rv;
 pub use two_scale::two_scale_rv;

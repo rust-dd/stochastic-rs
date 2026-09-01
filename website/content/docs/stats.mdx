@@ -20,7 +20,7 @@ struct's field names are estimator-specific (see
 | Module                 | What's inside                                                                  |
 |------------------------|--------------------------------------------------------------------------------|
 | `mle`                  | MLE for 1-D diffusions, 6 transition-density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS via argmin. Plus the dedicated Heston MLE / NMLE-CEKF. |
-| `realized`             | Realised variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett, Parzen, Tukey-Hanning, Cubic, Quadratic-Spectral) with BNHLS bandwidth. Semivariance, realised skew / kurtosis, HAR-RV, Jacod pre-averaging, TSRV, multi-scale RV, BNS jump test. |
+| `realized`             | Realised variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett, Parzen, Tukey-Hanning, Cubic, Quadratic-Spectral) with BNHLS bandwidth. Semivariance, realised skew / kurtosis, HAR-RV, EWMA / RiskMetrics variance, Jacod pre-averaging, TSRV, multi-scale RV, BNS and Lee–Mykland jump tests. |
 | `normality`            | Jarque-Bera, Shapiro-Francia, Anderson-Darling                                 |
 | `stationarity`         | 9 `HypothesisTest` implementors: ADF, KPSS, Phillips-Perron, Leybourne-McCabe and ERS DF-GLS test unit-root/stationarity; Andrews-Ploberger and CUSUM test regression-parameter stability instead; Lo-MacKinlay tests the random-walk hypothesis; RESET tests linear functional form. See [Choosing a stationarity test](#choosing-a-stationarity-test) — the module's own name undersells how different these nine are. |
 | `econometrics`         | Engle-Granger and Johansen cointegration, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
@@ -74,6 +74,26 @@ import stochastic_rs as srs
 res = srs.EwmaVariance(returns, lambda_=0.94)
 print("sigma2 series:", res.variance())
 print("1-step forecast:", res.forecast)
+```
+</Tab>
+</Tabs>
+
+### Lee-Mykland jump test
+
+Every return is standardised by a bipower estimate of the local volatility from the $K$ observations before it, $\mathcal L(i) = r_i / \hat\sigma(t_i)$, and flagged as a jump when $(|\mathcal L(i)| - C_n) / S_n$ leaves the Gumbel region of the sample maximum at level $\alpha$ (Lee & Mykland 2008, Lemma 1). Unlike the BNS test, which only says whether an interval contains jumps, this one returns the jump *times* and sizes. `lee_mykland_window` implements the paper's window rule — the smallest integer above $\sqrt{252 \times \text{observations per day}}$, 16 for daily data.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_stats_lee_mykland.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+window = srs.LeeMyklandJumpTest.recommended_window(78)  # 5-minute data → 141
+test = srs.LeeMyklandJumpTest(returns, window, alpha=0.01)
+print("jumps at:", test.jump_indices)
+print("threshold on |L(i)|:", test.threshold)
 ```
 </Tab>
 </Tabs>
