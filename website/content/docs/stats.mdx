@@ -23,7 +23,7 @@ struct's field names are estimator-specific (see
 | `realized`             | Realised variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett, Parzen, Tukey-Hanning, Cubic, Quadratic-Spectral) with BNHLS bandwidth. Semivariance, realised skew / kurtosis, HAR-RV, EWMA / RiskMetrics variance, Jacod pre-averaging, TSRV, multi-scale RV, BNS and Lee–Mykland jump tests. |
 | `normality`            | Jarque-Bera, Shapiro-Francia, Anderson-Darling                                 |
 | `stationarity`         | 9 `HypothesisTest` implementors: ADF, KPSS, Phillips-Perron, Leybourne-McCabe and ERS DF-GLS test unit-root/stationarity; Andrews-Ploberger and CUSUM test regression-parameter stability instead; Lo-MacKinlay tests the random-walk hypothesis; RESET tests linear functional form. See [Choosing a stationarity test](#choosing-a-stationarity-test) — the module's own name undersells how different these nine are. |
-| `econometrics`         | Engle-Granger and Johansen cointegration, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
+| `econometrics`         | Engle-Granger and Johansen (trace + maximum-eigenvalue) cointegration with VECM estimation, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
 | `hurst`                | Six native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle (Fukasawa, Takabatake & Westphal 2019 adapted quasi-likelihood; L-BFGS-B + Paxson + Eq.16 corrections, intraday Table 1 validation), variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **8** `HurstEstimator` implementors total. `hurst::whittle` additionally exposes `Whittle`'s own algorithm through dedicated one-shot functions (`estimate`, `estimate_from_prices`) outside the shared trait — see below |
 | `gaussian_kde`         | Gaussian KDE                                                                   |
@@ -94,6 +94,29 @@ window = srs.LeeMyklandJumpTest.recommended_window(78)  # 5-minute data → 141
 test = srs.LeeMyklandJumpTest(returns, window, alpha=0.01)
 print("jumps at:", test.jump_indices)
 print("threshold on |L(i)|:", test.threshold)
+```
+</Tab>
+</Tabs>
+
+### Johansen cointegration and VECM
+
+`johansen_test` returns both rank statistics of the concentrated likelihood — $\lambda_{\mathrm{trace}}(r) = -T\sum_{i>r}\log(1-\hat\lambda_i)$ and $\lambda_{\max}(r) = -T\log(1-\hat\lambda_{r+1})$ — with the 5% MacKinnon–Haug–Michelis critical values for an unrestricted constant, and the rank each sequential procedure selects. `vecm_fit` then gives the maximum-likelihood VECM at a chosen rank: $\hat\beta$ (Johansen's normalisation $\hat\beta' S_{11}\hat\beta = I$), $\hat\alpha$, $\hat\Pi = \hat\alpha\hat\beta'$, the short-run $\hat\Gamma_i$, the constant, residuals and their covariance.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_stats_johansen.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+test = srs.Johansen(prices, lags=2)          # prices: (t, k) array
+print("rank (trace):", test.rank_trace, "rank (max-eig):", test.rank_max_eig)
+print("max-eig stats:", test.max_eig_statistics())
+
+fit = srs.Vecm(prices, lags=2, rank=test.rank_trace)
+print("pi:", fit.pi())
+print("gamma_1:", fit.gamma()[0])
 ```
 </Tab>
 </Tabs>

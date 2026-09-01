@@ -1,6 +1,7 @@
 //! # Econometrics
 //!
-//! Cointegration tests, Granger causality, hidden Markov regime models and
+//! Cointegration tests (Engle-Granger, Johansen trace and maximum-eigenvalue)
+//! with VECM estimation, Granger causality, hidden Markov regime models and
 //! changepoint detection on time series.
 //!
 //! $$
@@ -19,6 +20,10 @@
 //! - Johansen, "Statistical Analysis of Cointegration Vectors", Journal of
 //!   Economic Dynamics and Control, 12(2-3), 231-254 (1988).
 //!   DOI: 10.1016/0165-1889(88)90041-3
+//! - MacKinnon, Haug, Michelis, "Numerical Distribution Functions of
+//!   Likelihood Ratio Tests for Cointegration", Journal of Applied
+//!   Econometrics, 14(5), 563-577 (1999).
+//!   DOI: 10.1002/(SICI)1099-1255(199909/10)14:5<563::AID-JAE530>3.0.CO;2-R
 //! - Granger, "Investigating Causal Relations by Econometric Models and
 //!   Cross-Spectral Methods", Econometrica, 37(3), 424-438 (1969).
 //!   DOI: 10.2307/1912791
@@ -43,8 +48,10 @@ pub use changepoint::cusum;
 pub use changepoint::pelt;
 pub use cointegration::EngleGrangerResult;
 pub use cointegration::JohansenResult;
+pub use cointegration::Vecm;
 pub use cointegration::engle_granger_test;
 pub use cointegration::johansen_test;
+pub use cointegration::vecm_fit;
 pub use granger::GrangerResult;
 pub use granger::granger_causality;
 pub use hmm::GaussianHmm;

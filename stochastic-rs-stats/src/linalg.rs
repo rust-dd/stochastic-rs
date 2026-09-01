@@ -1,20 +1,19 @@
 //! faer-backed dense-linalg glue for the estimators: OLS least squares,
 //! LU solve / inverse with a finite-solution singularity probe, SPD
-//! Cholesky, and complex eigenvalues — all on `ndarray` types.
+//! Cholesky and the symmetric eigen-decomposition — all on `ndarray` types.
 
 use faer::Side;
 use faer::linalg::solvers::ColPivQr;
 use faer::linalg::solvers::DenseSolveCore;
-use faer::linalg::solvers::Eigen;
 use faer::linalg::solvers::Llt;
 use faer::linalg::solvers::PartialPivLu;
+use faer::linalg::solvers::SelfAdjointEigen;
 use faer::linalg::solvers::Solve;
 use faer::linalg::solvers::SolveLstsqCore;
 use faer_ext::IntoFaer;
 use faer_ext::IntoNdarray;
 use ndarray::Array1;
 use ndarray::Array2;
-use num_complex::Complex;
 
 /// Least-squares solution of `a x = y` through a column-pivoted QR.
 pub(crate) fn lstsq(a: &Array2<f64>, y: &Array1<f64>) -> Array1<f64> {
@@ -55,11 +54,15 @@ pub(crate) fn spd_cholesky_lower(a: &Array2<f64>) -> Option<Array2<f64>> {
   Some(l)
 }
 
-/// Complex eigenvalues of a general real square matrix.
-pub(crate) fn eigenvalues(a: &Array2<f64>) -> Option<Vec<Complex<f64>>> {
-  let evd: Eigen<f64> = Eigen::new_from_real(a.view().into_faer()).ok()?;
+/// Eigen-decomposition of a symmetric matrix (lower triangle read):
+/// eigenvalues and the matching orthonormal eigenvectors as columns, in
+/// the solver's order — callers that need a particular order sort.
+pub(crate) fn symmetric_eigen(a: &Array2<f64>) -> Option<(Array1<f64>, Array2<f64>)> {
+  let evd = SelfAdjointEigen::new(a.view().into_faer(), Side::Lower).ok()?;
   let s = evd.S();
-  Some((0..a.nrows()).map(|i| s[i]).collect())
+  let values = Array1::from_iter((0..a.nrows()).map(|i| s[i]));
+  let vectors = evd.U().into_ndarray().to_owned();
+  Some((values, vectors))
 }
 
 #[cfg(test)]
@@ -87,10 +90,28 @@ mod tests {
   }
 
   #[test]
-  fn eigenvalues_of_diagonal_matrix() {
-    let a = array![[3.0, 0.0], [0.0, -2.0]];
-    let mut ev: Vec<f64> = eigenvalues(&a).expect("evd").iter().map(|c| c.re).collect();
-    ev.sort_by(|x, y| x.partial_cmp(y).unwrap());
-    assert!((ev[0] + 2.0).abs() < 1e-12 && (ev[1] - 3.0).abs() < 1e-12);
+  fn symmetric_eigen_reconstructs_the_matrix() {
+    let a = array![[4.0, 1.0, 0.5], [1.0, 3.0, 0.2], [0.5, 0.2, 1.0]];
+    let (values, vectors) = symmetric_eigen(&a).expect("evd");
+    let mut recon = Array2::<f64>::zeros((3, 3));
+    for k in 0..3 {
+      for i in 0..3 {
+        for j in 0..3 {
+          recon[[i, j]] += values[k] * vectors[[i, k]] * vectors[[j, k]];
+        }
+      }
+    }
+    for i in 0..3 {
+      for j in 0..3 {
+        assert!((recon[[i, j]] - a[[i, j]]).abs() < 1e-12);
+      }
+    }
+    let gram = vectors.t().dot(&vectors);
+    for i in 0..3 {
+      for j in 0..3 {
+        let want = if i == j { 1.0 } else { 0.0 };
+        assert!((gram[[i, j]] - want).abs() < 1e-12);
+      }
+    }
   }
 }

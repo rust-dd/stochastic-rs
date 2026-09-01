@@ -26,6 +26,7 @@ pub use changepoint::PyPeriodogramFFT;
 pub use cointegration::PyEngleGranger;
 pub use cointegration::PyGranger;
 pub use cointegration::PyJohansen;
+pub use cointegration::PyVecm;
 pub use hmm::PyGaussianHmm;
 pub use hurst::PyDfa;
 pub use hurst::PyFdResult;

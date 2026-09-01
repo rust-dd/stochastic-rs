@@ -13,6 +13,7 @@ use stochastic_rs::stats::econometrics::engle_granger_test;
 use stochastic_rs::stats::econometrics::granger_causality;
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
+use stochastic_rs::stats::econometrics::vecm_fit;
 
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
   let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
@@ -62,6 +63,9 @@ fn bench_cointegration(c: &mut Criterion) {
   }
   c.bench_function("johansen_500x3", |b| {
     b.iter(|| std::hint::black_box(johansen_test(s.view(), 2)));
+  });
+  c.bench_function("vecm_500x3_rank1", |b| {
+    b.iter(|| std::hint::black_box(vecm_fit(s.view(), 2, 1)));
   });
 }
 
