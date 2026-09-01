@@ -521,6 +521,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     use stochastic_rs_stats::python::PyERSTest;
     use stochastic_rs_stats::python::PyEngleGranger;
     use stochastic_rs_stats::python::PyEwmaVariance;
+    use stochastic_rs_stats::python::PyGarchFit;
     use stochastic_rs_stats::python::PyGaussianHmm;
     use stochastic_rs_stats::python::PyGranger;
     use stochastic_rs_stats::python::PyHarRv;
@@ -543,6 +544,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyVecm>()?;
     m.add_class::<PyGranger>()?;
     m.add_class::<PyGaussianHmm>()?;
+    m.add_class::<PyGarchFit>()?;
   }
 
   Ok(())

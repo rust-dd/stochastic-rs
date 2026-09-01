@@ -82,3 +82,34 @@ def test_vecm_shapes_and_pi_factorisation():
     np.testing.assert_allclose(fit.pi(), fit.alpha() @ fit.beta().T, atol=1e-12)
     ratio = fit.beta()[1, 0] / fit.beta()[0, 0]
     assert abs(ratio + 1.0 / 0.7) < 0.1
+
+
+def test_garch_fit_recovers_persistence_below_one():
+    rng = np.random.default_rng(7)
+    n = 1500
+    omega, alpha, beta = 0.05, 0.10, 0.85
+    sigma2 = omega / (1.0 - alpha - beta)
+    r = np.empty(n)
+    for t in range(n):
+        eps = np.sqrt(sigma2) * rng.standard_normal()
+        r[t] = eps
+        sigma2 = omega + alpha * eps * eps + beta * sigma2
+    fit = sr.GarchFit(r, kind="garch", p=1, q=1, mean="zero")
+    assert fit.converged
+    assert fit.param_names() == ["omega", "alpha[1]", "beta[1]"]
+    assert fit.params().shape == (3,)
+    assert 0.0 < fit.persistence < 1.0
+    assert abs(fit.alpha()[0] - alpha) < 3.0 * fit.robust_std_errors()[1]
+    assert fit.conditional_variance().shape == (n,)
+    assert fit.covariance().shape == (3, 3)
+    assert fit.kind == "garch" and fit.mean == "zero"
+
+
+def test_garch_fit_rejects_unknown_kind():
+    r = np.random.default_rng(8).standard_normal(300)
+    try:
+        sr.GarchFit(r, kind="figarch")
+    except ValueError as err:
+        assert "kind must be one of" in str(err)
+    else:
+        raise AssertionError("expected a ValueError")

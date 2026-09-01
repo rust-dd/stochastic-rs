@@ -28,6 +28,7 @@ pub mod econometrics;
 pub mod filtering;
 pub mod fou_estimator;
 pub mod fractal_dim;
+pub mod garch;
 pub mod gaussian_kde;
 pub mod gmm_cir;
 pub mod goodness_of_fit;

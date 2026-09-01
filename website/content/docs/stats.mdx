@@ -31,6 +31,7 @@ struct's field names are estimator-specific (see
 | `spectral`             | Periodogram and spectrum search                                                |
 | `leverage`             | Leverage-effect estimators                                                     |
 | `fou_estimator`        | fOU MLE with Hurst joint estimation                                            |
+| `garch`                | GARCH / GJR-GARCH / EGARCH Gaussian QMLE with inverse-Hessian and Bollerslev-Wooldridge robust standard errors |
 
 ## Examples
 
@@ -117,6 +118,26 @@ print("max-eig stats:", test.max_eig_statistics())
 fit = srs.Vecm(prices, lags=2, rank=test.rank_trace)
 print("pi:", fit.pi())
 print("gamma_1:", fit.gamma()[0])
+```
+</Tab>
+</Tabs>
+
+### GARCH-family QMLE
+
+`garch_fit` maximises the Gaussian quasi-likelihood of a GARCH($p$,$q$), GJR-GARCH($p$,$q$) or EGARCH($p$,$q$) recursion with a constant or zero mean, in unconstrained coordinates that keep the fit inside the stationarity region. The result carries the parameters, both the inverse-Hessian and the Bollerslev–Wooldridge robust standard errors (the latter stay valid under non-Gaussian innovations), the conditional-variance path, standardised residuals, log-likelihood, AIC/BIC and persistence. Pre-sample terms follow the backcast convention of the `arch` reference implementation, whose fits the test-suite reproduces.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_stats_garch.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+fit = srs.GarchFit(returns, kind="gjr", p=1, q=1, mean="constant")
+for name, value, se in zip(fit.param_names(), fit.params(), fit.robust_std_errors()):
+    print(f"{name:9s} {value: .5f} ({se:.5f})")
+print("persistence:", fit.persistence, "log-likelihood:", fit.log_likelihood)
 ```
 </Tab>
 </Tabs>

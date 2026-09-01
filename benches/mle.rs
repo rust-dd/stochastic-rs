@@ -6,8 +6,11 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::garch::GarchSpec;
+use stochastic_rs::stats::garch::garch_fit;
 use stochastic_rs::stats::mle::DensityApprox;
 use stochastic_rs::stats::mle::fit_mle;
+use stochastic_rs::stochastic::autoregressive::garch::Garch;
 use stochastic_rs::stochastic::diffusion::cir::Cir;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::traits::ProcessExt;
@@ -204,10 +207,37 @@ fn bench_mle_fit(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_garch_fit(c: &mut Criterion) {
+  let mut group = c.benchmark_group("garch_fit");
+  group.measurement_time(Duration::from_secs(10));
+  group.sample_size(10);
+  for &(n, label) in &[(1_000usize, "1k"), (5_000, "5k")] {
+    let process = Garch::<f64, _>::new(
+      0.05,
+      ndarray::Array1::from(vec![0.10]),
+      ndarray::Array1::from(vec![0.85]),
+      n,
+      Deterministic::new(42),
+    );
+    let returns = process.sample();
+    for (name, spec) in [
+      ("Garch11", GarchSpec::garch(1, 1)),
+      ("Gjr11", GarchSpec::gjr(1, 1)),
+      ("Egarch11", GarchSpec::egarch(1, 1)),
+    ] {
+      group.bench_function(BenchmarkId::new(name, label), |b| {
+        b.iter(|| black_box(garch_fit(returns.view(), spec)))
+      });
+    }
+  }
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_density_eval,
   bench_log_likelihood,
-  bench_mle_fit
+  bench_mle_fit,
+  bench_garch_fit
 );
 criterion_main!(benches);

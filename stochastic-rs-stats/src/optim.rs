@@ -1,9 +1,10 @@
 //! Small dependency-free optimisers shared by the estimator modules.
 //!
-//! The square-root / mean-reverting calibrators (`gmm_cir`, `qmle`) all
-//! minimise a smooth 3-parameter objective in log-space; a compact
-//! fixed-size Nelder-Mead simplex is enough and avoids pulling `argmin`
-//! into the default stats build.
+//! The square-root / mean-reverting calibrators (`gmm_cir`, `qmle`) minimise
+//! a smooth 3-parameter objective in log-space and the GARCH fitter a
+//! `p + q + 2`-parameter one; a compact Nelder-Mead simplex is enough for
+//! both, so the fixed-size entry point is a thin wrapper over the
+//! any-dimension one.
 
 /// Nelder-Mead simplex minimiser for a 3-parameter objective.
 ///
@@ -21,40 +22,49 @@ pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
   max_iter: usize,
   f: F,
 ) -> ([f64; 3], usize, bool) {
+  let (p, iters, converged) = nelder_mead_vec(&start, max_iter, |p| f(&[p[0], p[1], p[2]]));
+  ([p[0], p[1], p[2]], iters, converged)
+}
+
+/// Nelder-Mead simplex minimiser for an objective of any dimension, under
+/// the same reflection / expansion / contraction / shrink coefficients and
+/// `1e-10` spread tolerance as [`nelder_mead`]; the initial simplex offsets
+/// each coordinate by `0.1`.
+pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
+  start: &[f64],
+  max_iter: usize,
+  f: F,
+) -> (Vec<f64>, usize, bool) {
   const ALPHA: f64 = 1.0;
   const GAMMA: f64 = 2.0;
   const RHO: f64 = 0.5;
   const SHRINK: f64 = 0.5;
   const TOL: f64 = 1e-10;
 
-  let mut simplex = [start, start, start, start];
-  for i in 0..3 {
+  let n = start.len();
+  let mut simplex: Vec<Vec<f64>> = vec![start.to_vec(); n + 1];
+  for i in 0..n {
     simplex[i + 1][i] += 0.1;
   }
-  let mut fvals = [
-    f(&simplex[0]),
-    f(&simplex[1]),
-    f(&simplex[2]),
-    f(&simplex[3]),
-  ];
+  let mut fvals: Vec<f64> = simplex.iter().map(|p| f(p)).collect();
 
   let mut iters = 0;
   while iters < max_iter {
     iters += 1;
-    let mut order = [0, 1, 2, 3];
+    let mut order: Vec<usize> = (0..=n).collect();
     order.sort_by(|&a, &b| fvals[a].partial_cmp(&fvals[b]).unwrap());
     let best = order[0];
-    let worst = order[3];
-    let second_worst = order[2];
+    let worst = order[n];
+    let second_worst = order[n - 1];
 
     if (fvals[worst] - fvals[best]).abs() < TOL {
-      return (simplex[best], iters, true);
+      return (simplex[best].clone(), iters, true);
     }
 
-    let mut centroid = [0.0; 3];
-    for &o in &order[..3] {
-      for d in 0..3 {
-        centroid[d] += simplex[o][d] / 3.0;
+    let mut centroid = vec![0.0; n];
+    for &o in &order[..n] {
+      for d in 0..n {
+        centroid[d] += simplex[o][d] / n as f64;
       }
     }
 
@@ -81,9 +91,10 @@ pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
         simplex[worst] = contract;
         fvals[worst] = f_contract;
       } else {
+        let anchor = simplex[best].clone();
         for &o in &order[1..] {
-          for d in 0..3 {
-            simplex[o][d] = simplex[best][d] + SHRINK * (simplex[o][d] - simplex[best][d]);
+          for d in 0..n {
+            simplex[o][d] = anchor[d] + SHRINK * (simplex[o][d] - anchor[d]);
           }
           fvals[o] = f(&simplex[o]);
         }
@@ -91,24 +102,26 @@ pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
     }
   }
   let mut best = 0;
-  for i in 1..4 {
+  for i in 1..=n {
     if fvals[i] < fvals[best] {
       best = i;
     }
   }
-  (simplex[best], iters, false)
+  (simplex[best].clone(), iters, false)
 }
 
 /// Reflection (`reflect = true`) or contraction (`reflect = false`) of the
 /// worst vertex through the centroid with the given coefficient.
-fn combine(centroid: &[f64; 3], worst: &[f64; 3], coef: f64, reflect: bool) -> [f64; 3] {
-  let mut p = [0.0; 3];
-  for d in 0..3 {
-    p[d] = if reflect {
-      centroid[d] + coef * (centroid[d] - worst[d])
-    } else {
-      centroid[d] + coef * (worst[d] - centroid[d])
-    };
-  }
-  p
+fn combine(centroid: &[f64], worst: &[f64], coef: f64, reflect: bool) -> Vec<f64> {
+  centroid
+    .iter()
+    .zip(worst)
+    .map(|(c, w)| {
+      if reflect {
+        c + coef * (c - w)
+      } else {
+        c + coef * (w - c)
+      }
+    })
+    .collect()
 }

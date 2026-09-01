@@ -11,6 +11,7 @@
 
 mod changepoint;
 mod cointegration;
+mod garch;
 mod hmm;
 mod hurst;
 mod mcmc;
@@ -27,6 +28,7 @@ pub use cointegration::PyEngleGranger;
 pub use cointegration::PyGranger;
 pub use cointegration::PyJohansen;
 pub use cointegration::PyVecm;
+pub use garch::PyGarchFit;
 pub use hmm::PyGaussianHmm;
 pub use hurst::PyDfa;
 pub use hurst::PyFdResult;
