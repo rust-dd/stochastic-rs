@@ -16,7 +16,7 @@ stochastic-rs/                        (workspace root + umbrella)
 ├── stochastic-rs-stats/              — estimators
 ├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
 ├── stochastic-rs-ai/                 — neural surrogates (feature-gated upstream)
-└── stochastic-rs-py/                 — pyo3 cdylib (241 entries: 225 PyO3 classes + 16 pyfunctions, across distributions/stochastic/quant/copulas/stats; AI bindings deferred to 2.x). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
+└── stochastic-rs-py/                 — pyo3 cdylib (247 entries: 229 PyO3 classes + 18 pyfunctions, across distributions/stochastic/quant/copulas/stats; AI bindings deferred to 2.x). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
 ```
 
 The umbrella crate `stochastic-rs` keeps the existing public API

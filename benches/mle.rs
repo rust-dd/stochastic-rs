@@ -5,7 +5,12 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::evt::block_maxima;
+use stochastic_rs::stats::evt::gev_fit;
+use stochastic_rs::stats::evt::hill_estimator;
+use stochastic_rs::stats::evt::pot_fit;
 use stochastic_rs::stats::garch::GarchSpec;
 use stochastic_rs::stats::garch::garch_fit;
 use stochastic_rs::stats::mle::DensityApprox;
@@ -233,11 +238,32 @@ fn bench_garch_fit(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_evt_fit(c: &mut Criterion) {
+  let mut group = c.benchmark_group("evt_fit");
+  group.measurement_time(Duration::from_secs(5));
+  let dist = SimdPareto::<f64>::new(1.0, 3.0, &Deterministic::new(7));
+  let mut losses = vec![0.0; 20_000];
+  dist.fill_slice(&mut losses);
+  let losses = ndarray::Array1::from(losses);
+  group.bench_function("hill_20k_k500", |b| {
+    b.iter(|| black_box(hill_estimator(losses.view(), 500)))
+  });
+  group.bench_function("pot_20k_u3", |b| {
+    b.iter(|| black_box(pot_fit(losses.view(), 3.0)))
+  });
+  let maxima = block_maxima(losses.view(), 100);
+  group.bench_function("gev_200_maxima", |b| {
+    b.iter(|| black_box(gev_fit(maxima.view())))
+  });
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_density_eval,
   bench_log_likelihood,
   bench_mle_fit,
-  bench_garch_fit
+  bench_garch_fit,
+  bench_evt_fit
 );
 criterion_main!(benches);

@@ -25,6 +25,7 @@ pub mod bayesian_diffusion;
 pub mod cir;
 pub mod double_exp;
 pub mod econometrics;
+pub mod evt;
 pub mod filtering;
 pub mod fou_estimator;
 pub mod fractal_dim;

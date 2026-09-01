@@ -113,3 +113,25 @@ def test_garch_fit_rejects_unknown_kind():
         assert "kind must be one of" in str(err)
     else:
         raise AssertionError("expected a ValueError")
+
+
+def test_evt_pipeline_on_a_pareto_tail():
+    rng = np.random.default_rng(9)
+    losses = (1.0 - rng.random(20000)) ** (-1.0 / 3.0)  # Pareto(alpha=3), xi = 1/3
+    hill = sr.HillEstimator(losses, 500)
+    assert abs(hill.xi - 1.0 / 3.0) < 3.0 * hill.std_error
+    assert hill.k == 500 and hill.nobs == 20000
+    pot = sr.PotFit(losses, 3.0)
+    assert pot.converged and pot.n_exceedances >= 10
+    var99 = pot.quantile(0.99)
+    assert pot.expected_shortfall(0.99) > var99 > pot.threshold
+    assert pot.std_errors().shape == (2,)
+    maxima = sr.block_maxima(losses, 100)
+    assert maxima.shape == (200,)
+    gev = sr.GevFit(maxima)
+    assert gev.converged and gev.std_errors().shape == (3,)
+    assert gev.return_level(50.0) > gev.mu
+    excess = sr.mean_excess(losses, np.array([1.0, 2.0, 1e9]))
+    assert np.isfinite(excess[:2]).all() and np.isnan(excess[2])
+    gpd = sr.GpdFit(losses[losses > 3.0] - 3.0)
+    assert abs(gpd.xi - pot.xi) < 1e-12

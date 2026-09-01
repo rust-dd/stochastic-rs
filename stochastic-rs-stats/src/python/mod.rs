@@ -11,6 +11,7 @@
 
 mod changepoint;
 mod cointegration;
+mod evt;
 mod garch;
 mod hmm;
 mod hurst;
@@ -28,6 +29,12 @@ pub use cointegration::PyEngleGranger;
 pub use cointegration::PyGranger;
 pub use cointegration::PyJohansen;
 pub use cointegration::PyVecm;
+pub use evt::PyGevFit;
+pub use evt::PyGpdFit;
+pub use evt::PyHillEstimator;
+pub use evt::PyPotFit;
+pub use evt::block_maxima;
+pub use evt::mean_excess;
 pub use garch::PyGarchFit;
 pub use hmm::PyGaussianHmm;
 pub use hurst::PyDfa;
