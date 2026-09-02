@@ -80,3 +80,22 @@ def test_multi_gbm_and_correlated_driver():
     paths = model.sample_par(2000)
     assert len(paths) == 2000 and paths[0].shape == (3, 64)
     assert not np.array_equal(paths[0], paths[1])
+
+
+def test_wishart_process():
+    b = np.array([[-0.5, 0.1], [0.05, -0.3]])
+    a = np.array([[0.3, 0.1], [0.0, 0.2]])
+    x0 = np.array([[1.0, 0.2], [0.2, 0.5]])
+    process = sr.PyWishart(2.5, b, a, x0, 5, t=1.0, seed=7)
+    path = process.sample()
+    assert path.shape == (5, 2, 2)
+    assert np.allclose(path[0], x0) and np.allclose(path, np.swapaxes(path, 1, 2))
+    paths = process.sample_par(4000)
+    assert len(paths) == 4000 and paths[0].shape == (5, 2, 2)
+    terminal = np.mean([p[-1] for p in paths], axis=0)
+    assert np.abs(terminal - process.mean(1.0)).max() < 0.05
+    v = -0.4 * np.array([[1.0, 0.3], [0.3, 1.0]])
+    lt = process.laplace_transform(v, 1.0)
+    assert 0.0 < lt < 1.0
+    mc = np.mean([np.exp(np.trace(v @ p[-1])) for p in paths])
+    assert abs(mc - lt) < 0.03

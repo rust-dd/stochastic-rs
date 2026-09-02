@@ -71,6 +71,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::diffusion::ou::PyOu;
   use stochastic_rs_stochastic::diffusion::quadratic::PyQuadratic;
   use stochastic_rs_stochastic::diffusion::verhulst::PyVerhulst;
+  use stochastic_rs_stochastic::diffusion::wishart::PyWishart;
   // Stochastic — interest rates
   use stochastic_rs_stochastic::interest::adg::PyAdg;
   use stochastic_rs_stochastic::interest::bgm::PyBgm;
@@ -175,6 +176,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyFouqueOU2D>()?;
   m.add_class::<PyGbm>()?;
   m.add_class::<PyMultiGbm>()?;
+  m.add_class::<PyWishart>()?;
   m.add_class::<PyGbmIh>()?;
   m.add_class::<PyGbmLog>()?;
   m.add_class::<PyGompertz>()?;

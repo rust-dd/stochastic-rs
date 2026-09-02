@@ -29,7 +29,7 @@ page disagreed with each other.
 
 | Family                        | Count | Examples                                                        |
 |--------------------------------|-------|-----------------------------------------------------------------|
-| **Diffusion**                  | 35    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque |
+| **Diffusion**                  | 36    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque, Wishart (matrix-valued CIR) |
 | **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
 | **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
 | **Volatility**                 | 15    | Heston (+ log, 2D, multifactor), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
@@ -166,6 +166,32 @@ model = srs.PyMultiGbm(mu=[0.05, 0.03, 0.01], sigma=[0.2, 0.3, 0.15], rho=rho, n
 paths = model.sample_par(10_000)          # list of (3, 253) arrays
 terminal = np.array([p[:, -1] for p in paths])
 print(np.corrcoef(np.log(terminal).T))    # ≈ rho
+```
+</Tab>
+</Tabs>
+
+### Wishart process (stochastic covariance)
+
+`Wishart` simulates the matrix-valued diffusion `dX = (α aᵀa + bX + Xbᵀ) dt + √X dW a + aᵀ dWᵀ √X` on the positive semidefinite cone: the matrix CIR behind the Gouriéroux–Sufana and Da Fonseca–Grasselli–Tebaldi stochastic-covariance models. Every grid step is sampled **exactly** with the Ahdida–Alfonsi (2013) splitting (one noncentral χ² and `r` Gaussians per coordinate after an extended Cholesky of the remaining block), so any degree `α ≥ d − 1` is admissible and the paths never leave the cone. The closed-form mean and Laplace transform ship alongside for validation. Each path is one `(n, d, d)` array.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_processes_wishart.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+b = np.array([[-0.5, 0.1], [0.05, -0.3]])
+a = np.array([[0.3, 0.1], [0.0, 0.2]])
+x0 = np.array([[1.0, 0.2], [0.2, 0.5]])
+process = srs.PyWishart(alpha=2.5, b=b, a=a, x0=x0, n=5, t=1.0, seed=7)
+paths = process.sample_par(10_000)                    # list of (5, 2, 2) arrays
+terminal = np.mean([p[-1] for p in paths], axis=0)
+print(np.abs(terminal - process.mean(1.0)).max())     # ≈ 0: the scheme is exact
+v = -0.4 * np.array([[1.0, 0.3], [0.3, 1.0]])
+print(process.laplace_transform(v, 1.0))              # E[exp(Tr(v X_1))], eq. (10)
 ```
 </Tab>
 </Tabs>

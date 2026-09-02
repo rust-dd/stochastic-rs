@@ -26,7 +26,7 @@
 //!
 //! **How this list was derived and how to extend it.** `grep -rn
 //! "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src
-//! --include='*.rs'` finds 129 concrete implementations outside
+//! --include='*.rs'` finds 130 concrete implementations outside
 //! `src/traits/` (the file `traits/process.rs` contributes only blanket
 //! impls of *marker* traits keyed off a `P: ProcessExt<...>` bound —
 //! `OneDimensional`, `MultiDimensional`, `TwoDimensional`, `CurveOutput`,
@@ -37,14 +37,14 @@
 //! one physical line — a long generic-bound list belongs in a trailing
 //! `where` clause, not inline, or the grep undercounts (as
 //! `VolterraSde`'s own impl did until its bounds were moved to `where`).
-//! Per directory: diffusion 35, process 20, jump 17, volatility 15,
+//! Per directory: diffusion 36, process 20, jump 17, volatility 15,
 //! interest 15, autoregressive 9, noise 6, rough 4, correlation 4, sheet 1,
-//! volterra 3 — 129 total, split below into one submodule per directory
+//! volterra 3 — 130 total, split below into one submodule per directory
 //! purely to keep every file under this crate's line-count limit (`common`
 //! holds the shared `check`/`guard!`/`ReproBits` machinery all eleven
 //! submodules use; they and this file together compile into one
 //! `reproducibility_all_processes` test binary, so `cargo test` runs and
-//! reports all 129 checks as before). **When a new process type is added,
+//! reports all 130 checks as before). **When a new process type is added,
 //! add one `guard!` line for it** in the submodule matching its source
 //! directory — a type with no line anywhere in this tree is a type this
 //! guard is not proving anything about.

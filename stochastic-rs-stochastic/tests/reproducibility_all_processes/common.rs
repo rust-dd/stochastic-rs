@@ -10,6 +10,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::Array3;
 use num_complex::Complex;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -62,6 +63,12 @@ impl ReproBits for Array1<f64> {
 }
 
 impl ReproBits for Array2<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    self.iter().map(|x| x.to_bits()).collect()
+  }
+}
+
+impl ReproBits for Array3<f64> {
   fn repro_bits(&self) -> Vec<u64> {
     self.iter().map(|x| x.to_bits()).collect()
   }

@@ -1,6 +1,6 @@
 //! `correlation/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes.
+//! derivation of the 130-type list, and shared methodology notes.
 
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::correlation::teng::TengSCP;

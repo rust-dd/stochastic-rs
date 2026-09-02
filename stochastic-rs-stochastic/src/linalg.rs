@@ -1,8 +1,18 @@
 //! Dense linear-algebra glue shared by the multi-factor processes: a
-//! generic lower Cholesky factor and the correlation-matrix checks every
-//! correlated driver performs, so each model no longer carries its own copy.
+//! generic lower Cholesky factor, the correlation-matrix checks every
+//! correlated driver performs, the extended (pivoted) Cholesky and the
+//! matrix exponential the matrix-valued diffusions build on, so each model
+//! no longer carries its own copy.
 
+mod expm;
+mod pivoted_cholesky;
+
+pub(crate) use expm::expm;
+pub(crate) use expm::invert_matrix;
 use ndarray::Array2;
+pub(crate) use pivoted_cholesky::extended_cholesky;
+pub(crate) use pivoted_cholesky::solve_lower;
+pub(crate) use pivoted_cholesky::swap_symmetric;
 
 use crate::traits::FloatExt;
 
@@ -29,6 +39,43 @@ pub(crate) fn cholesky_lower<T: FloatExt>(a: &Array2<T>) -> Array2<T> {
     }
   }
   l
+}
+
+/// Determinant by Gaussian elimination with partial pivoting.
+pub(crate) fn determinant<T: FloatExt>(a: &Array2<T>) -> T {
+  let n = a.nrows();
+  assert_eq!(a.ncols(), n, "matrix must be square");
+  let mut m = a.clone();
+  let mut det = T::one();
+  for col in 0..n {
+    let mut pivot = col;
+    for row in (col + 1)..n {
+      if m[(row, col)].abs() > m[(pivot, col)].abs() {
+        pivot = row;
+      }
+    }
+    if m[(pivot, col)] == T::zero() {
+      return T::zero();
+    }
+    if pivot != col {
+      for j in 0..n {
+        let tmp = m[(col, j)];
+        m[(col, j)] = m[(pivot, j)];
+        m[(pivot, j)] = tmp;
+      }
+      det = -det;
+    }
+    let p = m[(col, col)];
+    det = det * p;
+    for row in (col + 1)..n {
+      let f = m[(row, col)] / p;
+      for j in col..n {
+        let sub = f * m[(col, j)];
+        m[(row, j)] -= sub;
+      }
+    }
+  }
+  det
 }
 
 /// Checks that `rho` is a correlation matrix: square, symmetric, unit
@@ -75,6 +122,15 @@ mod tests {
         }
       }
     }
+  }
+
+  #[test]
+  fn determinant_matches_the_closed_forms() {
+    assert!((determinant(&array![[4.0_f64, 2.0], [1.0, 3.0]]) - 10.0).abs() < 1e-12);
+    let a = array![[2.0_f64, 0.0, 1.0], [1.0, 3.0, 0.0], [0.0, 1.0, 4.0]];
+    // 2·(12 − 0) − 0 + 1·(1 − 0) = 25
+    assert!((determinant(&a) - 25.0).abs() < 1e-12);
+    assert_eq!(determinant(&array![[1.0_f64, 2.0], [2.0, 4.0]]), 0.0);
   }
 
   #[test]

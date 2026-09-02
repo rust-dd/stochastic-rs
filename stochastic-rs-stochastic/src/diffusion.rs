@@ -44,3 +44,4 @@ pub mod radial_ou;
 pub mod regime_switching;
 pub mod three_half;
 pub mod verhulst;
+pub mod wishart;

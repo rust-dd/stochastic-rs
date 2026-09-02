@@ -1,6 +1,6 @@
 //! `diffusion/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes.
+//! derivation of the 130-type list, and shared methodology notes.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -39,6 +39,7 @@ use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
+use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 
 use crate::common::N;
 use crate::common::guard;
@@ -411,6 +412,15 @@ guard!(multi_gbm, "MultiGbm", |s| MultiGbm::new(
   ndarray::array![[1.0, 0.3], [0.3, 1.0]],
   N,
   ndarray::array![100.0, 50.0],
+  Some(1.0),
+  s
+));
+guard!(wishart, "Wishart", |s| Wishart::new(
+  2.5,
+  ndarray::array![[-0.5, 0.1], [0.05, -0.3]],
+  ndarray::array![[0.3, 0.1], [0.0, 0.2]],
+  ndarray::array![[1.0, 0.2], [0.2, 0.5]],
+  N,
   Some(1.0),
   s
 ));
