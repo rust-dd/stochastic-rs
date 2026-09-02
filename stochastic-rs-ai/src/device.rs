@@ -1,8 +1,10 @@
 //! # Training device
 //!
-//! candle runs the surrogates on the CPU by default; the `metal` and `cuda`
-//! cargo features of this crate turn on the matching candle back-ends, and
-//! [`best_available`] picks the fastest device the build can reach. Every
+//! candle runs the surrogates on the CPU by default. The `metal` cargo
+//! feature of this crate turns on candle's Metal back-end; CUDA comes from
+//! enabling `candle-core/cuda` in the consuming manifest (candle-kernels needs
+//! a CUDA toolkit to build, so this crate cannot carry it as a feature). In
+//! both cases [`best_available`] detects the device at run time. Every
 //! constructor in [`crate::volatility`] takes a `&Device`, so a training run
 //! moves to the GPU by passing this device instead of `Device::Cpu` — the
 //! weights are stored device-independently (`safetensors`), so a model trained
@@ -11,22 +13,17 @@
 use anyhow::Result;
 use candle_core::Device;
 
-/// The fastest device this build can use: CUDA when compiled with the `cuda`
-/// feature and a device is present, Metal when compiled with the `metal`
-/// feature on macOS, the CPU otherwise. Errors only when a GPU back-end is
-/// compiled in but its device fails to initialise.
+/// The fastest device this build can reach: CUDA when candle's CUDA back-end
+/// is compiled in and a device is present, Metal when candle's Metal
+/// back-end is compiled in (this crate's `metal` feature) on macOS, the CPU
+/// otherwise. Errors only when a compiled-in back-end fails to initialise
+/// its device.
 pub fn best_available() -> Result<Device> {
-  #[cfg(feature = "cuda")]
-  {
-    if candle_core::utils::cuda_is_available() {
-      return Ok(Device::new_cuda(0)?);
-    }
+  if candle_core::utils::cuda_is_available() {
+    return Ok(Device::new_cuda(0)?);
   }
-  #[cfg(feature = "metal")]
-  {
-    if candle_core::utils::metal_is_available() {
-      return Ok(Device::new_metal(0)?);
-    }
+  if candle_core::utils::metal_is_available() {
+    return Ok(Device::new_metal(0)?);
   }
   Ok(Device::Cpu)
 }
@@ -53,7 +50,7 @@ mod tests {
     let device = best_available().unwrap();
     let name = describe(&device);
     assert!(["cpu", "cuda", "metal"].contains(&name));
-    #[cfg(not(any(feature = "cuda", feature = "metal")))]
+    #[cfg(not(feature = "metal"))]
     assert_eq!(name, "cpu");
   }
 

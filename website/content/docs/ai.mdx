@@ -129,10 +129,11 @@ outside it, and a solution on the boundary is a warning, not an answer.
 
 ## Training on the GPU
 
-candle runs on the CPU by default. The `ai-metal` (macOS) and `ai-cuda`
-features of the umbrella crate compile the matching candle back-end, and
-`ai::device::best_available()` returns the fastest device the build can
-reach — pass it to any surrogate constructor instead of `Device::Cpu`.
+candle runs on the CPU by default. The umbrella's `ai-metal` feature (macOS)
+compiles candle's Metal back-end; for CUDA enable `candle-core/cuda` in your own
+manifest (candle's kernels need a CUDA toolkit to build, so the crate cannot
+carry that feature). `ai::device::best_available()` detects the fastest device
+at run time — pass it to any surrogate constructor instead of `Device::Cpu`.
 Weights are stored device-independently, so a model trained on a GPU loads on
 the CPU and vice versa.
 

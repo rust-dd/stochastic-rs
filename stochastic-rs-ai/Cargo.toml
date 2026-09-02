@@ -21,9 +21,11 @@ quant = ["dep:stochastic-rs-quant", "dep:levenberg-marquardt", "dep:nalgebra"]
 # helper. Plotly is optional so a caller that only trains/predicts doesn't
 # compile a plotting stack.
 viz = ["dep:plotly"]
-# candle GPU back-ends; `device::best_available` prefers them when compiled in.
+# candle Metal back-end; `device::best_available` prefers a GPU it can reach at run time.
+# CUDA is not a feature here: candle-kernels needs a CUDA toolkit to build, which the
+# workspace-wide `--all-features` check cannot assume — enable `candle-core/cuda` in the
+# consuming manifest instead.
 metal = ["candle-core/metal", "candle-nn/metal"]
-cuda = ["candle-core/cuda", "candle-nn/cuda"]
 
 [dependencies]
 stochastic-rs-core = { workspace = true }
