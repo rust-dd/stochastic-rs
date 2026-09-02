@@ -1,6 +1,6 @@
 //! `noise/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 130-type list, and shared methodology notes. `Cfgns`
+//! derivation of the 131-type list, and shared methodology notes. `Cfgns`
 //! and `Fgn` are two of the nine backend-generic types named there,
 //! instantiated on the default `Cpu` backend (their only inherent `new()`).
 

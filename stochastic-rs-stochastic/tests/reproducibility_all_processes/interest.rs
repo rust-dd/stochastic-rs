@@ -1,7 +1,7 @@
 //! `interest/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 130-type list, and shared methodology notes. Six of
-//! these types (`Adg`, `BlackKarasinski`, `Cir2F`'s own `phi`, `CirPlusPlus`,
+//! derivation of the 131-type list, and shared methodology notes. Seven of
+//! these types (`Adg`, `BlackKarasinski`, `Cheyette`, `Cir2F`'s own `phi`, `CirPlusPlus`,
 //! `Hjm`, `HullWhite`, `HullWhite2F`) take an `impl Into<Fn1D<T>>`/
 //! `Fn2D<T>` curve parameter; a bare closure does not coerce to that bound
 //! on its own, so every one is passed as a named function cast explicitly
@@ -16,6 +16,7 @@ use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::interest::adg::Adg;
 use stochastic_rs_stochastic::interest::bgm::Bgm;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
+use stochastic_rs_stochastic::interest::cheyette::Cheyette;
 use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
@@ -247,5 +248,13 @@ guard!(wu_zhang, "WuZhangD", |s| WuZhangD::new(
   2,
   Some(1.0),
   N,
+  s
+));
+guard!(cheyette, "Cheyette", |s| Cheyette::new(
+  fn1d_a as fn(f64) -> f64,
+  0.3,
+  fn2d_a as fn(f64, f64) -> f64,
+  N,
+  Some(1.0),
   s
 ));

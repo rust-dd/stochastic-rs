@@ -75,6 +75,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   // Stochastic — interest rates
   use stochastic_rs_stochastic::interest::adg::PyAdg;
   use stochastic_rs_stochastic::interest::bgm::PyBgm;
+  use stochastic_rs_stochastic::interest::cheyette::PyCheyette;
   use stochastic_rs_stochastic::interest::duffie_kan::PyDuffieKan;
   use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::PyDuffieKanJumpExp;
   use stochastic_rs_stochastic::interest::fractional_vasicek::PyFVasicek;
@@ -220,6 +221,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyHoLee>()?;
   m.add_class::<PyHullWhite>()?;
   m.add_class::<PyHullWhite2F>()?;
+  m.add_class::<PyCheyette>()?;
   m.add_class::<PyAgarch>()?;
   m.add_class::<PySobolSeq>()?;
   m.add_class::<PyBrownianBridgeQmc>()?;

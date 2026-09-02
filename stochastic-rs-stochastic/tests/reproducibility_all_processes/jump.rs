@@ -1,6 +1,6 @@
 //! `jump/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 130-type list, and shared methodology notes.
+//! derivation of the 131-type list, and shared methodology notes.
 //! `Bates1996`, `JumpFou`, `Kou`, `LevyDiffusion` and `Merton` are five of
 //! the eight distribution-taking types named there, driven at `LAMBDA = 50`
 //! so a jump-component reproducibility bug cannot hide behind a

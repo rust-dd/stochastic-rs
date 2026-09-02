@@ -99,3 +99,17 @@ def test_wishart_process():
     assert 0.0 < lt < 1.0
     mc = np.mean([np.exp(np.trace(v @ p[-1])) for p in paths])
     assert abs(mc - lt) < 0.03
+
+
+def test_cheyette_state_and_bonds():
+    model = sr.PyCheyette(lambda t: 0.03, 0.5, lambda t, x: 0.01, 101, t=1.0, seed=3)
+    x, y = model.sample()
+    assert x.shape == (101,) and y.shape == (101,)
+    assert x[0] == 0.0 and y[0] == 0.0
+    assert np.all(np.diff(y) >= 0.0)
+    closed = 0.01**2 * (1.0 - np.exp(-2.0 * 0.5 * 1.0)) / (2.0 * 0.5)
+    assert abs(y[-1] - closed) / closed < 0.01
+    xs, ys = model.sample_par(50)
+    assert xs.shape == (50, 101) and ys.shape == (50, 101)
+    assert abs(model.zero_bond(0.0, 2.0, 0.0, 0.0) - np.exp(-0.06)) < 1e-12
+    assert abs(model.short_rate(0.5, 0.004) - 0.034) < 1e-15

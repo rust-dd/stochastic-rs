@@ -1,6 +1,6 @@
 //! `volatility/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 130-type list, and shared methodology notes.
+//! derivation of the 131-type list, and shared methodology notes.
 //! `RoughHeston::new` does not accept `rho` — matching this crate's own
 //! `deterministic_parallelism_bates_rough_heston.rs`, the guard builds it
 //! then sets the public field directly before sampling.

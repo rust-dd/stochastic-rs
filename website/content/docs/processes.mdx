@@ -33,7 +33,7 @@ page disagreed with each other.
 | **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
 | **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
 | **Volatility**                 | 15    | Heston (+ log, 2D, multifactor), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
-| **Interest rate**               | 15    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump) |
+| **Interest rate**               | 16    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
 | **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, GJR-GARCH, AGARCH |
 | **Noise**                       | 6     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN, k-dimensional correlated increments from a correlation matrix |
 | **Rough (Riemann–Liouville lift)** | 4  | RL Black-Scholes, RL fBM, RL Heston, RL fOU |
@@ -192,6 +192,28 @@ terminal = np.mean([p[-1] for p in paths], axis=0)
 print(np.abs(terminal - process.mean(1.0)).max())     # ≈ 0: the scheme is exact
 v = -0.4 * np.array([[1.0, 0.3], [0.3, 1.0]])
 print(process.laplace_transform(v, 1.0))              # E[exp(Tr(v X_1))], eq. (10)
+```
+</Tab>
+</Tabs>
+
+### Cheyette quasi-Gaussian short rate
+
+`Cheyette` is the one-factor quasi-Gaussian HJM model: the state `(x, y)` follows `dx = (y − κx) dt + σ(t, x) dW`, `dy = (σ² − 2κy) dt`, and the whole forward curve is a function of that pair — `f_t(T) = f_0(T) + e^{−κ(T−t)} (x_t + G y_t)` and `P_t(T) = P_0(T)/P_0(t) · exp(−G x_t − ½ G² y_t)` with `G = (1 − e^{−κ(T−t)})/κ`. A constant `σ` is Hull–White; a displaced or CEV `σ(t, x)` adds the rate skew (Andersen–Piterbarg Vol. II, Ch. 13). The path output is the pair `[x, y]`; `short_rate`, `forward_rate` and `zero_bond` rebuild rates and bonds from it.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_processes_cheyette.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+model = srs.PyCheyette(f0=lambda t: 0.03, kappa=0.5, sigma=lambda t, x: 0.01 + 0.3 * x, n=101, t=1.0, seed=7)
+x, y = model.sample()                          # one state path (x_t, y_t), both length 101
+xs, ys = model.sample_par(2000)                # (2000, 101) each
+print(model.short_rate(1.0, xs[:, -1].mean()))  # ≈ 0.03: x is centred
+print(model.zero_bond(1.0, 3.0, 0.0, 0.0))      # P_0(3) / P_0(1) at the zero state
 ```
 </Tab>
 </Tabs>
