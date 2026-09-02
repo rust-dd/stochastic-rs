@@ -11,17 +11,17 @@ members = [
 ]
 
 [workspace.package]
-version = "3.0.0-beta.3"
+version = "3.0.0-rc.0"
 
 [workspace.dependencies]
 # Internal crates
-stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-beta.3" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-beta.3" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-beta.3" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-beta.3" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-beta.3" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-beta.3" }
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-beta.3" }
+stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-rc.0" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-rc.0" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.0" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-rc.0" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.0" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.0" }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-rc.0" }
 
 # Math / numerical core
 faer = "0.24.4"
