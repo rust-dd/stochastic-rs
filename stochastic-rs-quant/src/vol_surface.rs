@@ -271,6 +271,7 @@
 
 pub mod analytics;
 pub mod arbitrage;
+pub mod essvi;
 pub mod implied;
 pub mod model_surface;
 pub mod pipeline;
@@ -280,6 +281,9 @@ pub mod svi;
 
 // Re-export key types for convenient access.
 pub use analytics::SmileAnalytics;
+pub use essvi::EssviSlice;
+pub use essvi::EssviSurface;
+pub use essvi::calibrate_essvi;
 pub use implied::ImpliedVolSurface;
 pub use implied::OptionQuote;
 pub use implied::SmileSlice;

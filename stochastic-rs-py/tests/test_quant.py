@@ -122,3 +122,18 @@ def test_tree_swaption_calibrators_fit_a_small_grid():
     assert hw[1] > 0.0 and math.isfinite(hw[2])
     g2 = sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, steps_per_year=4, max_iters=60).calibrate()
     assert len(g2) == 7 and abs(g2[4]) < 1.0 and math.isfinite(g2[5])
+
+def test_essvi_surface_calibrates_and_interpolates():
+    import numpy as np
+
+    ks = np.linspace(-0.5, 0.5, 21)
+    maturities = [0.25, 0.5, 1.0, 2.0]
+    ssvi = sr.SsviParams(rho=-0.4, eta=0.6, gamma=0.4)
+    slices = [(ks, np.array([ssvi.total_variance(k, 0.04 * t) for k in ks]), 0.04 * t) for t in maturities]
+    surface = sr.EssviSurface.calibrate(maturities, slices)
+    params = surface.slices()
+    assert len(params) == 4 and all(abs(p[2] + 0.4) < 2e-3 for p in params)
+    assert surface.is_butterfly_free() and surface.is_calendar_spread_free()
+    assert abs(surface.total_variance(0.2, 1.0) - ssvi.total_variance(0.2, 0.04)) < 2e-6
+    assert surface.total_variance(0.1, 0.5) < surface.total_variance(0.1, 0.75) < surface.total_variance(0.1, 1.5)
+    assert abs(surface.implied_vol(0.0, 1.0) - math.sqrt(surface.total_variance(0.0, 1.0))) < 1e-12

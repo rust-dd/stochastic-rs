@@ -280,6 +280,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyDoubleHestonCalibrator;
   use stochastic_rs_quant::python::PyDoubleHestonFourier;
   use stochastic_rs_quant::python::PyDrawdownStats;
+  use stochastic_rs_quant::python::PyEssviSurface;
   use stochastic_rs_quant::python::PyExpectedShortfall;
   use stochastic_rs_quant::python::PyFixedLookbackPricer;
   use stochastic_rs_quant::python::PyFloatingLookbackPricer;
@@ -370,6 +371,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyImpliedVolSurface>()?;
   m.add_class::<PySviCalibrator>()?;
   m.add_class::<PySsviCalibrator>()?;
+  m.add_class::<PyEssviSurface>()?;
   m.add_class::<PyHKDECalibrator>()?;
   m.add_class::<PyHscmModel>()?;
   m.add_class::<PyHscmMarketOption>()?;

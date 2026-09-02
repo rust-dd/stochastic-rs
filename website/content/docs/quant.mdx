@@ -19,7 +19,7 @@ factor / strategy primitives.
 |--------------------|------------------------------------------------------------------------------------------------------------|
 | **Pricing**        | Closed-form (BSM, Bachelier with normal implied-vol inversion, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American). Bermudan LSM. Heston SLV (Guyon-Labordère). |
 | **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Nelder-Mead. |
-| **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI, arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
+| **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI / eSSVI (anchored per-maturity slices with butterfly and calendar bounds), arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
 | **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework. |
 | **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
 | **Yield curves**   | Bootstrapping (deposit / FRA / future / swap / OIS helper), dual-curve tenor bootstrap against an OIS discount curve, Nelson-Siegel / Svensson, multi-curve (OIS discounting, tenor forecasting), discount-curve interpolation (linear / log-linear / cubic / monotone-convex). |
@@ -177,6 +177,32 @@ hw = srs.HullWhiteSwaptionCalibrator(quotes, curve)
 print(hw.calibrate())                                    # (a, sigma, rmse, converged) via Jamshidian
 g2 = srs.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, steps_per_year=4, max_iters=200)
 print(g2.calibrate())                                    # (a, b, sigma, eta, rho, rmse, converged)
+```
+</Tab>
+</Tabs>
+
+### eSSVI slices with arbitrage-free interpolation
+
+`calibrate_essvi` fits one SSVI slice per maturity with its own `(θ, ρ, ψ)` — the extended SSVI surface of Hendriks and Martini — using the anchored scheme of Corbetta, Cohort, Laachir and Martini (2019): each slice is pinned to its quote closest to the money, the Gatheral–Jacquier butterfly bounds become an explicit cap on `ψ`, and the calendar-spread conditions against the previous slice become a floor, so the surface is arbitrage-free by construction rather than by a post-hoc projection. `EssviSurface` interpolates `(θ, ψ, ρψ)` linearly between slices, which the note shows keeps the surface calendar-spread-free, and reports both admissibility checks.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_essvi.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+ks = np.linspace(-0.5, 0.5, 21)
+maturities = [0.25, 0.5, 1.0, 2.0]
+ssvi = srs.SsviParams(rho=-0.4, eta=0.6, gamma=0.4)
+slices = [(ks, np.array([ssvi.total_variance(k, 0.04 * t) for k in ks]), 0.04 * t) for t in maturities]
+
+surface = srs.EssviSurface.calibrate(maturities, slices)     # (ks, total_variances, theta) per slice
+print(surface.slices())                                      # [(t, theta, rho, psi), ...]
+print(surface.is_butterfly_free(), surface.is_calendar_spread_free())
+print(surface.implied_vol(0.1, 0.75))                        # interpolated between the 0.5y and 1y slices
 ```
 </Tab>
 </Tabs>

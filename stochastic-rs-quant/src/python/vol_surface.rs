@@ -190,3 +190,59 @@ impl PySsviCalibrator {
     self.fitted.implied_vol(k, theta, t)
   }
 }
+
+/// Extended SSVI surface: per-maturity `(θ, ρ, ψ)` slices calibrated going
+/// forward within the butterfly and calendar-spread bounds, interpolated
+/// linearly in `(θ, ψ, ρψ)` between maturities.
+#[pyclass(name = "EssviSurface", unsendable)]
+pub struct PyEssviSurface {
+  inner: crate::vol_surface::essvi::EssviSurface<f64>,
+}
+
+#[pymethods]
+impl PyEssviSurface {
+  /// `slices`: one `(log_moneyness, total_variance, theta_atm)` triplet per
+  /// maturity, in ascending maturity order.
+  #[staticmethod]
+  fn calibrate(maturities: Vec<f64>, slices: Vec<(Vec<f64>, Vec<f64>, f64)>) -> Self {
+    let inner_slices: Vec<crate::vol_surface::ssvi::SsviSlice<f64>> = slices
+      .into_iter()
+      .map(
+        |(log_moneyness, total_variance, theta)| crate::vol_surface::ssvi::SsviSlice {
+          log_moneyness,
+          total_variance,
+          theta,
+        },
+      )
+      .collect();
+    Self {
+      inner: crate::vol_surface::essvi::calibrate_essvi(&inner_slices, &maturities),
+    }
+  }
+
+  /// `(maturity, theta, rho, psi)` per calibrated slice.
+  fn slices(&self) -> Vec<(f64, f64, f64, f64)> {
+    self
+      .inner
+      .slices
+      .iter()
+      .map(|s| (s.maturity, s.theta, s.rho, s.psi))
+      .collect()
+  }
+
+  fn total_variance(&self, k: f64, t: f64) -> f64 {
+    self.inner.total_variance(k, t)
+  }
+
+  fn implied_vol(&self, k: f64, t: f64) -> f64 {
+    self.inner.implied_vol(k, t)
+  }
+
+  fn is_butterfly_free(&self) -> bool {
+    self.inner.is_butterfly_free()
+  }
+
+  fn is_calendar_spread_free(&self) -> bool {
+    self.inner.is_calendar_spread_free()
+  }
+}

@@ -113,6 +113,7 @@ pub use pricing_path_dep::PyVarianceSwapPricer;
 pub use risk::PyDrawdownStats;
 pub use risk::PyExpectedShortfall;
 pub use risk::PyVaR;
+pub use vol_surface::PyEssviSurface;
 pub use vol_surface::PyImpliedVolSurface;
 pub use vol_surface::PySsviCalibrator;
 pub use vol_surface::PySsviParams;
