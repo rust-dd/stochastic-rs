@@ -6,6 +6,7 @@ use nalgebra::Owned;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
+use super::params::HestonParams;
 use super::transform::apply_chain_rule;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
@@ -70,21 +71,45 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         });
     }
 
-    Some(weighted_residuals)
+    match &self.regularization {
+      Some(reg) if reg.is_active() => {
+        Some(reg.augment_residuals(weighted_residuals, &physical(&params_eff)))
+      }
+      _ => Some(weighted_residuals),
+    }
   }
 
   fn jacobian(&self) -> Option<DMatrix<f64>> {
     let p = self.effective_params();
     let optimizer_coordinates = to_optimizer_coordinates(&p);
-    match self.jacobian_method {
-      HestonJacobianMethod::NumericFiniteDiff => Some(self.numeric_optimizer_jacobian(&p)),
+    let jacobian = match self.jacobian_method {
+      HestonJacobianMethod::NumericFiniteDiff => self.numeric_optimizer_jacobian(&p),
       HestonJacobianMethod::CuiAnalytic => {
-        if let Some((_, jac)) = self.compute_model_prices_and_residual_jacobian_cui(&p) {
-          Some(apply_chain_rule(jac, &optimizer_coordinates))
-        } else {
-          Some(self.numeric_optimizer_jacobian(&p))
+        match self.compute_model_prices_and_residual_jacobian_cui(&p) {
+          Some((_, jac)) => apply_chain_rule(jac, &optimizer_coordinates),
+          None => self.numeric_optimizer_jacobian(&p),
         }
       }
-    }
+    };
+    Some(match &self.regularization {
+      // The penalty rows are diagonal in the physical parameters; the same
+      // chain rule as the price rows maps them into the optimiser coordinates.
+      Some(reg) if reg.is_active() => reg.augment_jacobian(
+        jacobian,
+        apply_chain_rule(reg.jacobian_rows(), &optimizer_coordinates),
+      ),
+      _ => jacobian,
+    })
   }
+}
+
+/// Physical parameters in the regularisation order `(v0, κ, θ, σ, ρ)`.
+fn physical(params: &HestonParams) -> [f64; 5] {
+  [
+    params.v0,
+    params.kappa,
+    params.theta,
+    params.sigma,
+    params.rho,
+  ]
 }

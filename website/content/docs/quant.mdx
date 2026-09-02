@@ -18,7 +18,7 @@ factor / strategy primitives.
 | Area               | What's inside                                                                                              |
 |--------------------|------------------------------------------------------------------------------------------------------------|
 | **Pricing**        | Closed-form (BSM, Bachelier with normal implied-vol inversion, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American). Bermudan LSM. Heston SLV (Guyon-Labordère). |
-| **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Nelder-Mead. |
+| **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Nelder-Mead. Optional Tikhonov regularisation toward a parameter anchor on the Heston, SABR and swaption calibrators. |
 | **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI / eSSVI (anchored per-maturity slices with butterfly and calendar bounds), arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
 | **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework. |
 | **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
@@ -203,6 +203,29 @@ surface = srs.EssviSurface.calibrate(maturities, slices)     # (ks, total_varian
 print(surface.slices())                                      # [(t, theta, rho, psi), ...]
 print(surface.is_butterfly_free(), surface.is_calendar_spread_free())
 print(surface.implied_vol(0.1, 0.75))                        # interpolated between the 0.5y and 1y slices
+```
+</Tab>
+</Tabs>
+
+### Regularised calibration
+
+Every least-squares and Nelder–Mead calibrator accepts an optional `Regularization`: a Tikhonov pull `Σ λ_j (θ_j − θ_j⁰)²` toward an anchor, entering the Levenberg–Marquardt problems (Heston, SABR) as extra residual rows `√λ_j (θ_j − θ_j⁰)` with matching Jacobian rows and the swaption calibrators (Hull–White, Black–Karasinski, G2++) as a cost penalty. Weights are in price² per parameter² and the default `None` leaves every calibrator bit-for-bit on its unregularised path, so existing results do not move; a weight that is large against the squared price residuals pins its parameter.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_regularization.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+strikes = [80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0]
+prices = [srs.SabrPricer(s=100.0, alpha=0.2, beta=1.0, nu=0.6, rho=-0.3, k=k, r=0.01, tau=1.0).price() for k in strikes]
+
+plain = srs.SabrCalibrator(strikes, prices, s=100.0, r=0.01, tau=1.0).calibrate()
+pulled = srs.SabrCalibrator(strikes, prices, s=100.0, r=0.01, tau=1.0,
+                            regularization=([0.2, 0.9, -0.3], [0.0, 1e4, 0.0])).calibrate()
+print(plain[2], pulled[2])     # nu ≈ 0.6 without the anchor, ≈ 0.9 with it
 ```
 </Tab>
 </Tabs>

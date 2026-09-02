@@ -16,6 +16,7 @@ use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::Regularization;
 
 #[derive(Clone)]
 /// Heston least-squares calibrator using Levenberg-Marquardt iterations.
@@ -44,6 +45,9 @@ pub struct HestonCalibrator {
   pub option_type: OptionType,
   /// Positive row weights applied to price residuals and their Jacobian.
   pub residual_weights: DVector<f64>,
+  /// Optional Tikhonov pull of `(v0, κ, θ, σ, ρ)` toward an anchor; `None`
+  /// keeps the unregularised path.
+  pub regularization: Option<Regularization>,
   /// Optional: time series for MLE-based initial guess
   pub mle_s: Option<Array1<f64>>,
   pub mle_v: Option<Array1<f64>>,
@@ -102,6 +106,7 @@ impl HestonCalibrator {
       flat_t: vec![tau; n],
       option_type,
       residual_weights: DVector::from_element(n, 1.0),
+      regularization: None,
       mle_s,
       mle_v,
       mle_r,
@@ -152,6 +157,7 @@ impl HestonCalibrator {
       flat_t,
       option_type,
       residual_weights: DVector::from_element(quote_count, 1.0),
+      regularization: None,
       mle_s: None,
       mle_v: None,
       mle_r: None,
@@ -193,6 +199,18 @@ impl HestonCalibrator {
       loss,
       converged,
     }
+  }
+
+  /// Adds a Tikhonov pull toward `regularization.anchor` in the natural
+  /// order `(v0, κ, θ, σ, ρ)`.
+  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
+    assert_eq!(
+      regularization.dimension(),
+      5,
+      "Heston regularisation needs five anchors"
+    );
+    self.regularization = Some(regularization);
+    self
   }
 
   pub fn set_initial_guess(&mut self, params: HestonParams) {

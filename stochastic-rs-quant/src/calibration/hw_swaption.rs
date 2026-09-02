@@ -16,6 +16,7 @@ use argmin::core::Executor;
 use argmin::core::State;
 use argmin::solver::neldermead::NelderMead;
 
+use crate::calibration::Regularization;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::caplet::black_forward_caplet;
 use crate::instruments::option::jamshidian::price_jamshidian_hull_white;
@@ -139,6 +140,8 @@ pub struct HullWhiteSwaptionCalibrator<'a> {
   pub max_iters: u64,
   /// Convergence tolerance on simplex standard deviation.
   pub sd_tolerance: f64,
+  /// Optional Tikhonov pull of `(a, σ)` toward an anchor.
+  pub regularization: Option<Regularization>,
 }
 
 impl<'a> HullWhiteSwaptionCalibrator<'a> {
@@ -151,7 +154,19 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
       initial_guess: None,
       max_iters: 400,
       sd_tolerance: 1e-10,
+      regularization: None,
     }
+  }
+
+  /// Adds a Tikhonov pull toward `regularization.anchor` in the order `(a, σ)`.
+  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
+    assert_eq!(
+      regularization.dimension(),
+      2,
+      "Hull-White regularisation needs two anchors"
+    );
+    self.regularization = Some(regularization);
+    self
   }
 
   fn solve(&self) -> HullWhiteCalibrationResult {
@@ -159,6 +174,7 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
       quotes: self.quotes.to_vec(),
       curve_points: serialize_curve(self.curve),
       notional: self.notional,
+      regularization: self.regularization.clone(),
     };
     let (a0, s0) = self.initial_guess.unwrap_or((0.05, 0.01));
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
@@ -212,6 +228,7 @@ struct HullWhiteCost {
   quotes: Vec<SwaptionQuote>,
   curve_points: CurveSnapshot,
   notional: f64,
+  regularization: Option<Regularization>,
 }
 
 impl HullWhiteCost {
@@ -285,7 +302,11 @@ impl CostFunction for HullWhiteCost {
       .zip(market_prices.iter())
       .map(|(m, q)| (m - q).powi(2))
       .sum();
-    Ok(loss)
+    let penalty = self
+      .regularization
+      .as_ref()
+      .map_or(0.0, |reg| reg.penalty(&[a, sigma]));
+    Ok(loss + penalty)
   }
 }
 
@@ -322,5 +343,57 @@ pub(crate) fn serialize_curve(curve: &DiscountCurve<f64>) -> CurveSnapshot {
     times,
     rates,
     method: curve.method(),
+  }
+}
+
+#[cfg(test)]
+mod regularization_tests {
+  use ndarray::Array1;
+
+  use super::HullWhiteSwaptionCalibrator;
+  use super::SwaptionQuote;
+  use crate::calibration::Regularization;
+  use crate::curves::DiscountCurve;
+  use crate::curves::InterpolationMethod;
+  use crate::instruments::option::types::SwaptionDirection;
+  use crate::traits::Calibrator;
+
+  fn quotes() -> Vec<SwaptionQuote> {
+    [(1.0, 2.0, 0.22), (2.0, 3.0, 0.20)]
+      .into_iter()
+      .map(|(expiry, tenor, black_vol)| SwaptionQuote {
+        expiry,
+        tenor,
+        black_vol,
+        fixed_accrual: 0.5,
+        direction: SwaptionDirection::Payer,
+        weight: None,
+      })
+      .collect()
+  }
+
+  /// A heavy pull on the mean reversion pins it at the anchor; the volatility
+  /// stays free to fit the quotes.
+  #[test]
+  fn anchor_on_mean_reversion_pins_it() {
+    let curve = DiscountCurve::from_zero_rates(
+      &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
+      &Array1::from_vec(vec![0.03; 4]),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    );
+    let quotes = quotes();
+    let plain = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0)
+      .calibrate(Some((0.1, 0.01)))
+      .expect("calibration runs");
+    let pulled = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0)
+      .with_regularization(Regularization::new(vec![0.3, 0.01], vec![1e6, 0.0]))
+      .calibrate(Some((0.1, 0.01)))
+      .expect("calibration runs");
+    assert!(
+      (pulled.mean_reversion - 0.3).abs() < 1e-2,
+      "a {}",
+      pulled.mean_reversion
+    );
+    assert!(pulled.sigma > 0.0 && plain.sigma > 0.0);
   }
 }

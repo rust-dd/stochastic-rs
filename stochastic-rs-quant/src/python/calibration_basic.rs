@@ -81,29 +81,33 @@ pub struct PyHestonCalibrator {
 
 #[pymethods]
 impl PyHestonCalibrator {
+  /// `regularization`: optional `(anchor, weights)` Tikhonov pull on `(v0, kappa, theta, sigma, rho)`.
   #[new]
-  #[pyo3(signature = (slices, s, r, option_type="call", q=None))]
+  #[pyo3(signature = (slices, s, r, option_type="call", q=None, regularization=None))]
   fn new(
     slices: Vec<PyMarketSlice>,
     s: f64,
     r: f64,
     option_type: &str,
     q: Option<f64>,
+    regularization: Option<(Vec<f64>, Vec<f64>)>,
   ) -> PyResult<Self> {
     let ot = parse_option_type(option_type)?;
     let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
       slices.into_iter().map(|s| s.inner).collect();
-    Ok(Self {
-      inner: crate::calibration::heston::HestonCalibrator::from_slices(
-        None,
-        &inner_slices,
-        s,
-        r,
-        q,
-        ot,
-        false,
-      ),
-    })
+    let mut inner = crate::calibration::heston::HestonCalibrator::from_slices(
+      None,
+      &inner_slices,
+      s,
+      r,
+      q,
+      ot,
+      false,
+    );
+    if let Some((anchor, weights)) = regularization {
+      inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
+    }
+    Ok(Self { inner })
   }
 
   /// Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`.
@@ -134,8 +138,9 @@ pub struct PySabrCalibrator {
 #[pymethods]
 impl PySabrCalibrator {
   /// Single-maturity SABR calibration (β fixed at 1.0 by default).
+  /// `regularization`: optional `(anchor, weights)` Tikhonov pull on `(alpha, nu, rho)`.
   #[new]
-  #[pyo3(signature = (strikes, prices, s, r, tau, option_type="call", q=None))]
+  #[pyo3(signature = (strikes, prices, s, r, tau, option_type="call", q=None, regularization=None))]
   fn new(
     strikes: Vec<f64>,
     prices: Vec<f64>,
@@ -144,6 +149,7 @@ impl PySabrCalibrator {
     tau: f64,
     option_type: &str,
     q: Option<f64>,
+    regularization: Option<(Vec<f64>, Vec<f64>)>,
   ) -> PyResult<Self> {
     use nalgebra::DVector;
     if strikes.len() != prices.len() {
@@ -153,19 +159,21 @@ impl PySabrCalibrator {
     }
     let n = strikes.len();
     let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::calibration::sabr::SabrCalibrator::new(
-        None,
-        DVector::from_vec(prices),
-        DVector::from_vec(vec![s; n]),
-        DVector::from_vec(strikes),
-        r,
-        q,
-        tau,
-        ot,
-        false,
-      ),
-    })
+    let mut inner = crate::calibration::sabr::SabrCalibrator::new(
+      None,
+      DVector::from_vec(prices),
+      DVector::from_vec(vec![s; n]),
+      DVector::from_vec(strikes),
+      r,
+      q,
+      tau,
+      ot,
+      false,
+    );
+    if let Some((anchor, weights)) = regularization {
+      inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
+    }
+    Ok(Self { inner })
   }
 
   /// Returns `(alpha, beta, nu, rho, converged, loss_rmse)`.

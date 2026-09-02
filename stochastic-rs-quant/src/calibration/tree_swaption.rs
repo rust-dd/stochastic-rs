@@ -26,6 +26,7 @@ use argmin::solver::neldermead::NelderMead;
 use super::hw_swaption::CurveSnapshot;
 use super::hw_swaption::SwaptionQuote;
 use super::hw_swaption::serialize_curve;
+use crate::calibration::Regularization;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::bermudan::BermudanSwaption;
 use crate::instruments::option::caplet::black_forward_caplet;
@@ -211,6 +212,8 @@ pub struct BlackKarasinskiSwaptionCalibrator<'a> {
   pub initial_guess: Option<(f64, f64)>,
   pub max_iters: u64,
   pub sd_tolerance: f64,
+  /// Optional Tikhonov pull of `(a, σ)` toward an anchor.
+  pub regularization: Option<Regularization>,
 }
 
 impl<'a> BlackKarasinskiSwaptionCalibrator<'a> {
@@ -232,12 +235,24 @@ impl<'a> BlackKarasinskiSwaptionCalibrator<'a> {
       initial_guess: None,
       max_iters: 400,
       sd_tolerance: 1e-10,
+      regularization: None,
     }
   }
 
   /// Overrides the Nelder–Mead iteration cap.
   pub fn with_max_iters(mut self, max_iters: u64) -> Self {
     self.max_iters = max_iters;
+    self
+  }
+
+  /// Adds a Tikhonov pull toward `regularization.anchor` in the order `(a, σ)`.
+  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
+    assert_eq!(
+      regularization.dimension(),
+      2,
+      "Black-Karasinski regularisation needs two anchors"
+    );
+    self.regularization = Some(regularization);
     self
   }
 
@@ -249,6 +264,7 @@ impl<'a> BlackKarasinskiSwaptionCalibrator<'a> {
       initial_rate: self.initial_rate,
       long_run_rate: self.long_run_rate,
       steps_per_year: self.steps_per_year,
+      regularization: self.regularization.clone(),
     }
   }
 
@@ -294,6 +310,7 @@ struct BlackKarasinskiCost {
   initial_rate: f64,
   long_run_rate: f64,
   steps_per_year: usize,
+  regularization: Option<Regularization>,
 }
 
 impl BlackKarasinskiCost {
@@ -319,13 +336,19 @@ impl CostFunction for BlackKarasinskiCost {
   type Param = Vec<f64>;
   type Output = f64;
   fn cost(&self, x: &Self::Param) -> Result<f64, argmin::core::Error> {
-    let (model, market) = self.price_series(x[0].abs().max(1e-6), x[1].abs().max(1e-6));
+    let (a, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
+    let (model, market) = self.price_series(a, sigma);
+    let penalty = self
+      .regularization
+      .as_ref()
+      .map_or(0.0, |reg| reg.penalty(&[a, sigma]));
     Ok(
       model
         .iter()
         .zip(&market)
         .map(|(m, q)| (m - q).powi(2))
-        .sum(),
+        .sum::<f64>()
+        + penalty,
     )
   }
 }
@@ -405,6 +428,8 @@ pub struct G2ppSwaptionCalibrator<'a> {
   pub initial_guess: Option<[f64; 5]>,
   pub max_iters: u64,
   pub sd_tolerance: f64,
+  /// Optional Tikhonov pull of `(a, b, σ, η, ρ)` toward an anchor.
+  pub regularization: Option<Regularization>,
 }
 
 impl<'a> G2ppSwaptionCalibrator<'a> {
@@ -424,12 +449,25 @@ impl<'a> G2ppSwaptionCalibrator<'a> {
       initial_guess: None,
       max_iters: 400,
       sd_tolerance: 1e-10,
+      regularization: None,
     }
   }
 
   /// Overrides the Nelder–Mead iteration cap.
   pub fn with_max_iters(mut self, max_iters: u64) -> Self {
     self.max_iters = max_iters;
+    self
+  }
+
+  /// Adds a Tikhonov pull toward `regularization.anchor` in the order
+  /// `(a, b, σ, η, ρ)`.
+  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
+    assert_eq!(
+      regularization.dimension(),
+      5,
+      "G2++ regularisation needs five anchors"
+    );
+    self.regularization = Some(regularization);
     self
   }
 
@@ -440,6 +478,7 @@ impl<'a> G2ppSwaptionCalibrator<'a> {
       notional: self.notional,
       initial_rate: self.initial_rate,
       steps_per_year: self.steps_per_year,
+      regularization: self.regularization.clone(),
     }
   }
 
@@ -492,6 +531,7 @@ struct G2ppCost {
   notional: f64,
   initial_rate: f64,
   steps_per_year: usize,
+  regularization: Option<Regularization>,
 }
 
 impl G2ppCost {
@@ -538,13 +578,24 @@ impl CostFunction for G2ppCost {
   type Param = Vec<f64>;
   type Output = f64;
   fn cost(&self, x: &Self::Param) -> Result<f64, argmin::core::Error> {
-    let (model, market) = self.price_series(&Self::params(x));
+    let p = Self::params(x);
+    let (model, market) = self.price_series(&p);
+    let penalty = self.regularization.as_ref().map_or(0.0, |reg| {
+      reg.penalty(&[
+        p.mean_reversion_x,
+        p.mean_reversion_y,
+        p.sigma_x,
+        p.sigma_y,
+        p.rho,
+      ])
+    });
     Ok(
       model
         .iter()
         .zip(&market)
         .map(|(m, q)| (m - q).powi(2))
-        .sum(),
+        .sum::<f64>()
+        + penalty,
     )
   }
 }

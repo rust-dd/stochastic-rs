@@ -137,3 +137,12 @@ def test_essvi_surface_calibrates_and_interpolates():
     assert abs(surface.total_variance(0.2, 1.0) - ssvi.total_variance(0.2, 0.04)) < 2e-6
     assert surface.total_variance(0.1, 0.5) < surface.total_variance(0.1, 0.75) < surface.total_variance(0.1, 1.5)
     assert abs(surface.implied_vol(0.0, 1.0) - math.sqrt(surface.total_variance(0.0, 1.0))) < 1e-12
+
+def test_sabr_regularization_pulls_nu_to_the_anchor():
+    strikes = [80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0]
+    prices = [sr.SabrPricer(s=100.0, alpha=0.2, beta=1.0, nu=0.6, rho=-0.3, k=k, r=0.01, tau=1.0).price() for k in strikes]
+    plain = sr.SabrCalibrator(strikes, prices, s=100.0, r=0.01, tau=1.0).calibrate()
+    pulled = sr.SabrCalibrator(
+        strikes, prices, s=100.0, r=0.01, tau=1.0, regularization=([0.2, 0.9, -0.3], [0.0, 1e4, 0.0])
+    ).calibrate()
+    assert abs(plain[2] - 0.6) < 0.05 and abs(pulled[2] - 0.9) < 0.05
